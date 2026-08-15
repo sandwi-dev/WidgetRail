@@ -5,6 +5,7 @@
 #include "LauncherExperienceLayout.h"
 
 #include <cstddef>
+#include <cstdint>
 #include <map>
 #include <mutex>
 #include <optional>
@@ -363,7 +364,58 @@ struct WidgetSnapshot final {
     std::wstring advancedPresentationKind;
     std::wstring advancedPresentationPreset;
     WidgetNode root;
+    // Canonical unstyled semantic document retained by the sole native
+    // session owner. It is the immutable base for an atomic update candidate;
+    // renderer-computed styles remain derived response data.
+    std::wstring documentJson;
 };
+
+enum class WidgetPresentationUpdateOperationKind {
+    SetProperties,
+    InsertChild,
+    RemoveChild,
+    MoveChild,
+    ReplaceSubtree,
+};
+
+struct WidgetPresentationPropertyChange final {
+    std::wstring property;
+    std::wstring valueJson;
+};
+
+struct WidgetPresentationUpdateOperation final {
+    WidgetPresentationUpdateOperationKind kind{
+        WidgetPresentationUpdateOperationKind::SetProperties};
+    std::wstring targetId;
+    std::wstring parentId;
+    std::wstring childId;
+    std::optional<std::size_t> index;
+    std::vector<WidgetPresentationPropertyChange> properties;
+    std::wstring subtreeJson;
+};
+
+struct WidgetPresentationUpdate final {
+    int protocolVersion{};
+    std::wstring widgetInstanceId;
+    std::wstring presentationGeneration;
+    long long baseSequence{};
+    long long sequence{};
+    std::vector<WidgetPresentationUpdateOperation> operations;
+    std::wstring renderStylesJson;
+};
+
+struct WidgetPresentationPublication final {
+    std::optional<WidgetSnapshot> checkpoint;
+    std::optional<WidgetPresentationUpdate> update;
+};
+
+/// Builds and validates a complete candidate without mutating the admitted
+/// checkpoint. The session owner publishes the returned value atomically.
+[[nodiscard]] std::optional<WidgetSnapshot> MaterializeWidgetPresentationUpdate(
+    const WidgetSnapshot& checkpoint,
+    const WidgetPresentationUpdate& update,
+    std::wstring_view expectedPresentationGeneration,
+    std::wstring& error);
 
 enum class PlatformMotionPreference { System, Full, Reduced };
 enum class PlatformContrastPreference { System, Standard, High };
@@ -473,7 +525,10 @@ public:
     /// Retires the exact current worker registration, clears its cached
     /// snapshot/input authority, and restores its prior host lifecycle.
     [[nodiscard]] std::optional<bool> RestartWidget(std::wstring_view widgetId);
-    [[nodiscard]] std::optional<WidgetSnapshot> GetSnapshot(std::wstring_view widgetId);
+    [[nodiscard]] std::optional<WidgetPresentationPublication> GetSnapshot(
+        std::wstring_view widgetId,
+        long long baseSequence,
+        bool allowUpdate);
     [[nodiscard]] std::optional<bool> RequestArtwork(
         std::wstring_view widgetId,
         std::wstring_view artworkHandle);
@@ -572,6 +627,10 @@ struct BridgeFrameReadResult final {
     std::string_view payloadUtf8,
     std::wstring& error);
 [[nodiscard]] std::optional<WidgetSnapshot> ParseWidgetSnapshotResponse(
+    std::string_view payloadUtf8,
+    std::wstring& error);
+[[nodiscard]] std::optional<WidgetPresentationUpdate>
+ParseWidgetPresentationUpdateResponse(
     std::string_view payloadUtf8,
     std::wstring& error);
 [[nodiscard]] std::optional<WidgetHostEffect> ParseWidgetHostEffectEvent(

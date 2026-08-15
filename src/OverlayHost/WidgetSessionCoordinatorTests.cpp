@@ -25,6 +25,7 @@ using gba::WidgetAdmissionTrace;
 using gba::WidgetAdmissionTraceStage;
 using gba::WidgetLifecycleState;
 using gba::WidgetPresentationAuthority;
+using gba::WidgetPresentationPublication;
 using gba::WidgetRefreshState;
 using gba::WidgetSessionCoordinator;
 using gba::WidgetSessionEventKind;
@@ -77,10 +78,13 @@ struct FakeBridge final {
     bool releaseStart{};
     int startFailuresRemaining{};
     bool protocolMismatch{};
+    bool publishUpdate{};
+    bool rejectPublishedUpdate{};
     int ensureCalls{};
     int catalogCalls{};
     int snapshotCalls{};
     std::unordered_map<std::wstring, int> snapshotCallsByWidget;
+    std::vector<std::pair<long long, bool>> presentationRequests;
     int lifecycleCalls{};
     int restartCalls{};
 
@@ -113,8 +117,63 @@ struct FakeBridge final {
                 ++lifecycleCalls;
                 return WidgetSessionOperationResult<bool>::Success(true);
             },
-            [this](std::stop_token token, std::wstring_view widgetId) {
-                return GetSnapshot(token, widgetId);
+            [this](std::stop_token token, std::wstring_view widgetId,
+                   const long long baseSequence, const bool allowUpdate) {
+                {
+                    std::scoped_lock lock(mutex);
+                    presentationRequests.emplace_back(baseSequence, allowUpdate);
+                    if (allowUpdate && publishUpdate) {
+                        publishUpdate = false;
+                        ++snapshotCalls;
+                        ++snapshotCallsByWidget[std::wstring(widgetId)];
+                        const auto found = snapshots.find(std::wstring(widgetId));
+                        if (found == snapshots.end()) {
+                            return WidgetSessionOperationResult<
+                                WidgetPresentationPublication>::Failure(
+                                    WidgetSessionFailureStage::Snapshot,
+                                    L"snapshot unavailable");
+                        }
+                        gba::WidgetPresentationUpdate update;
+                        update.protocolVersion = 18;
+                        update.widgetInstanceId = found->second.instanceId;
+                        update.presentationGeneration = catalog.front().presentationGeneration;
+                        update.baseSequence = rejectPublishedUpdate
+                            ? baseSequence - 1 : baseSequence;
+                        update.sequence = baseSequence + 1;
+                        WidgetPresentationPublication publication;
+                        publication.update = std::move(update);
+                        return WidgetSessionOperationResult<
+                            WidgetPresentationPublication>::Success(
+                                std::move(publication));
+                    }
+                }
+                auto snapshot = GetSnapshot(token, widgetId);
+                if (!snapshot.value) {
+                    return WidgetSessionOperationResult<
+                        WidgetPresentationPublication>::Failure(
+                            snapshot.failureStage, std::move(snapshot.safeError));
+                }
+                WidgetPresentationPublication publication;
+                publication.checkpoint = std::move(*snapshot.value);
+                return WidgetSessionOperationResult<
+                    WidgetPresentationPublication>::Success(
+                        std::move(publication));
+            },
+            [](const WidgetSnapshot& checkpoint,
+               const gba::WidgetPresentationUpdate& update,
+               const std::wstring_view generation) {
+                if (checkpoint.instanceId != update.widgetInstanceId ||
+                    checkpoint.sequence != update.baseSequence ||
+                    update.presentationGeneration != generation ||
+                    update.sequence <= update.baseSequence) {
+                    return WidgetSessionOperationResult<WidgetSnapshot>::Failure(
+                        WidgetSessionFailureStage::Protocol,
+                        L"update base mismatch");
+                }
+                auto candidate = checkpoint;
+                candidate.sequence = update.sequence;
+                return WidgetSessionOperationResult<WidgetSnapshot>::Success(
+                    std::move(candidate));
             },
             [this](std::stop_token, std::wstring_view) {
                 std::scoped_lock lock(mutex);
@@ -1200,6 +1259,57 @@ void SelectedLifecycleCorrelationExcludesPinnedTarget() {
     }));
 }
 
+void AtomicUpdateAdmissionAndCheckpointFallback() {
+    FakeBridge bridge;
+    bridge.catalog = {Descriptor(
+        L"alpha", L"alpha.one", L"runtime-1",
+        L"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa")};
+    bridge.snapshots[L"alpha"] = Snapshot(L"alpha.one", 1);
+    bridge.snapshots[L"alpha"].documentJson = L"retained";
+    WidgetSessionCoordinator coordinator(bridge.Operations());
+    assert(coordinator.EstablishCatalog());
+    coordinator.SetLifecycleTargets({{L"alpha", WidgetLifecycleState::Visible}});
+    (void)WaitEvents(coordinator, [](const auto& events) {
+        return std::any_of(events.begin(), events.end(), [](const auto& event) {
+            return event.kind == WidgetSessionEventKind::SnapshotAdmitted;
+        });
+    });
+    assert(coordinator.Snapshot(L"alpha") &&
+           coordinator.Snapshot(L"alpha")->sequence == 1);
+
+    bridge.publishUpdate = true;
+    assert(coordinator.RequestSnapshot(L"alpha"));
+    (void)WaitEvents(coordinator, [](const auto& events) {
+        return std::any_of(events.begin(), events.end(), [](const auto& event) {
+            return event.kind == WidgetSessionEventKind::SnapshotAdmitted;
+        });
+    });
+    assert(coordinator.Snapshot(L"alpha")->sequence == 2);
+    assert(!bridge.presentationRequests.empty() &&
+           bridge.presentationRequests.back() == std::make_pair(1LL, true));
+
+    bridge.snapshots[L"alpha"] = Snapshot(L"alpha.one", 3);
+    bridge.snapshots[L"alpha"].documentJson = L"replacement";
+    bridge.publishUpdate = true;
+    bridge.rejectPublishedUpdate = true;
+    assert(coordinator.RequestSnapshot(L"alpha"));
+    const auto recovered = WaitEvents(coordinator, [](const auto& events) {
+        return std::any_of(events.begin(), events.end(), [](const auto& event) {
+            return event.kind == WidgetSessionEventKind::SnapshotAdmitted;
+        });
+    });
+    assert(std::none_of(recovered.begin(), recovered.end(), [](const auto& event) {
+        return event.kind == WidgetSessionEventKind::Failed;
+    }));
+    assert(coordinator.Snapshot(L"alpha")->sequence == 3);
+    assert(bridge.presentationRequests.size() >= 3);
+    const auto requestCount = bridge.presentationRequests.size();
+    assert(bridge.presentationRequests[requestCount - 2] ==
+           std::make_pair(2LL, true));
+    assert(bridge.presentationRequests[requestCount - 1] ==
+           std::make_pair(0LL, false));
+}
+
 } // namespace
 
 int main() {
@@ -1220,5 +1330,6 @@ int main() {
     CoordinatorEmitsCorrelatedLifecycleAndRequestStages();
     SelectedTraceRejectsPinnedAndSupersededAdmissions();
     SelectedLifecycleCorrelationExcludesPinnedTarget();
-    std::cout << "WidgetSessionCoordinatorTests passed (19 scenarios)\n";
+    AtomicUpdateAdmissionAndCheckpointFallback();
+    std::cout << "WidgetSessionCoordinatorTests passed (20 scenarios)\n";
 }

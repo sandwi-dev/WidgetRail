@@ -5336,3 +5336,43 @@ worker access; the affected broker, Bridge, compatibility, and CLI cases pass
 through their bounded direct or unrestricted focused invocations. No aggregate,
 native build, package mutation, credential access, user-data migration, push,
 or live-account verification ran.
+
+### DLV-241 — native atomic presentation-update admission
+
+The native bridge now advertises protocol-v18 atomic-update capability only
+when the sole `WidgetSessionCoordinator` owns an exact nonzero admitted base
+sequence. A bridge response is decoded as exactly one complete checkpoint or
+one bounded update batch. The batch parser rejects unknown shapes, unsupported
+operations/properties, invalid identity/generation/sequence values, more than
+256 operations, and payloads above 256 KiB before they enter session state.
+Runtime-envelope protocol 2 and the capability-free complete-checkpoint path
+remain unchanged.
+
+The coordinator remains the only retained presentation/admission owner. Its
+checkpoint value carries the bounded unstyled semantic document used to build
+a private candidate; computed styles remain derived response data rather than
+another semantic cache. Materialization clones that admitted document, applies
+the permanent property/insert/remove/move/replace vocabulary, validates the
+complete structure after every operation, reparses the final typed snapshot,
+and publishes it only after instance, presentation generation, base sequence,
+final sequence, node identity, depth, count, and byte bounds all pass. A stale,
+mismatched, malformed, or partially failing batch leaves the admitted typed
+snapshot, action sequence, focus/scroll/UIA input, resources, and rendered
+checkpoint untouched. The same coordinator immediately queues one
+capability-free checkpoint resynchronization; a peer cannot force partial
+visible state or an update-fallback loop.
+
+Focused Release evidence passes the real native bridge parser/materializer
+route, including all five operation kinds, fresh computed styles, stale-base
+rejection, a later-operation failure with no partial mutation, and unknown-field
+rejection. `WidgetSessionCoordinatorTests` passes 20 scenarios, including valid
+update admission and stale-update checkpoint recovery; its affected grouped
+route also passes Overlay State, Widget Lifecycle, and Widget Action Feedback
+(305 checks). One native Release build succeeds without tests or packaging and
+produces `OverlayHost.exe` SHA-256
+`9466B88858AD9890169DA84F1738CD1454FB2F8575218B1F2401972AE05BE110`;
+the four pre-existing `C4244` warnings in unrelated `main.cpp` remain. The one
+authorized clean exact-commit Tier-3 protocol activation result is retained and
+reported separately after this coherent commit. No incremental Taffy/damage,
+provider/package behavior, capture, launch, push, or later DLV-242 work is
+included.

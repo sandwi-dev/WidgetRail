@@ -14,8 +14,9 @@ Snapshots are evidence only. This file is the sole authority for current work.
 
 ## Current baseline
 
-- Accepted production main `cb45a31` contains DLV-240's managed atomic-update
-  contract with runtime-protocol-v2 compatibility, DLV-246's bounded native
+- Accepted production main `1ab2e0d` contains DLV-241's native bounded atomic
+  update admission atop DLV-240's managed contract and runtime-protocol-v2
+  compatibility, DLV-246's bounded native
   process-owner activation lifecycle, and the user-approved DLV-217 autonomous
   Community Game Launcher chain atop DLV-239 retained presentation
   checkpoints and explicit refresh state, DLV-244 fixed chrome and
@@ -25,14 +26,18 @@ Snapshots are evidence only. This file is the sole authority for current work.
 - The user physically accepted DLV-244 tray visibility/stationarity and distinct
   widget envelope admission. Its cumulative commits were integrated as
   `bfaa2a1`, `0c071fb`, `f06a7e9`, `61041a5`, and `94c4873`.
-- Exact accepted-main Release PID 105736 is visibly running from coherent main
-  `cb45a31`; `OverlayHost.exe` SHA-256 is
-  `C9C2B15751320E032657E9E34461FEC15C253214F08F93EE2CEF3E7DBA5AFFE9`.
-  A second exact `--show` invocation exited 0 and the resident owner logged the
-  authenticated activation while PID 105736 remained responsive. The coherent
+- Exact accepted-main Release PID 13680 is visibly running from coherent main
+  `1ab2e0d`; `OverlayHost.exe` SHA-256 is
+  `E2DEDA96D3546FE4C3E18093A8982D1CB4B3D1E96F7027884ED0BF601C7157B1`.
+  A second exact `--show` invocation returned while the resident owner remained
+  responsive and current-session logs show ordinary widget admission. The coherent
   build used serialized MSBuild project traversal after the default parallel
   restore hit an existing zero-error project-reference-graph failure; no
-  product source was changed for that environment workaround. The previous
+  product source was changed for that environment workaround. Previous accepted
+  PID 105736 did not exit after `CloseMainWindow`, a non-forced exact-PID
+  termination request, and a final ten-second drain; it retained the interop DLL
+  and blocked the first link attempt, so the exact planner-owned PID was force-
+  stopped before the successful rebuild. The earlier
   pre-DLV-246 PID 64216 accepted a normal close request but
   remained hung and retained the interop DLL, directly matching the repaired
   teardown defect; only that exact planner-owned PID was then terminated before
@@ -148,7 +153,7 @@ user decision. The native overlay is the sole production presentation path.
 
 | Lane | Task/worktree | State |
 | --- | --- | --- |
-| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | Assigned DLV-241 from exact current main `cb45a31`. Preserve accepted DLV-246 branch `codex/impl-platform-process-owner` and create a clean DLV-241 branch without rewriting it. Preserve completed `codex/impl-platform-snapshot-cache` and `codex/impl-platform-fixed-chrome`. |
+| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | DLV-241 cumulative commits `44bd220` and `5ec3905` are accepted and integrated as `0c264c5` and `1ab2e0d`. Assigned physical-first DLV-242 from exact current main: production code plus one Release build only, then stop for planner launch and user verdict before tests. Preserve accepted DLV-246 branch `codex/impl-platform-process-owner` and completed `codex/impl-platform-snapshot-cache` / `codex/impl-platform-fixed-chrome`. |
 | Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | DLV-240 cumulative candidates `c7f9dfa` and `11b0ca6` are accepted and integrated as `485a935` and `cb45a31`. Assigned DLV-218 from exact current main; preserve the clean DLV-240 branch and create a clean DLV-218 branch without rewriting it. |
 
 The user explicitly approved the DLV-217 aggregate exception on 2026-08-15.
@@ -402,7 +407,22 @@ This is the one exact Tier-3 protocol activation checkpoint after focused native
 and bridge coverage. Stop for another cache/materializer/session owner, partial
 visible publication, protocol ambiguity, or unbounded work.
 
-### Awaiting DLV-241 integration — DLV-242: incremental layout, damage, and UIA
+Candidate `44bd220` keeps the reviewed single bridge/session/materializer
+ownership and passes its focused native suites. Correction `5ec3905` registers
+the previously omitted managed presentation-session project exactly once. The
+clean exact-commit canonical run at
+`artifacts/verification/20260815T172817Z-f9f4c6ba` stopped in the verifier
+self-test before any product step because `scripts/verification-steps.json`
+omits the already-integrated
+`tests/WidgetPresentationSession.Tests/WidgetPresentationSession.Tests.csproj`.
+The one correction run at `artifacts/verification/20260815T173450Z-92f387c3`
+passes that self-test and the performance self-test, then stops at the inherited
+silent managed `widget-sdk-build` restore failure with zero compiler errors.
+It was not rerun. Focused native protocol/materializer/session evidence and the
+clean Release build are accepted; the cumulative chain is integrated as
+`0c264c5` plus `1ab2e0d`.
+
+### Assigned — DLV-242: incremental layout, damage, and UIA
 
 Use admitted impact metadata to avoid whole-widget work. Value/paint-only changes
 retain geometry and repaint only affected bounds; local layout changes recompute
@@ -443,10 +463,10 @@ delete credentials, provider data, accounts, or user files.
 2. DLV-246 is accepted and integrated as `0e75203`.
 3. DLV-240 is accepted and integrated as `485a935` plus `cb45a31` with runtime
    protocol 2 preserved for immutable full-trust applications.
-4. Platform implements DLV-241 from exact current main and runs the one named
-   Tier-3 activation checkpoint.
-5. Platform implements DLV-242 and launches for physical incremental-behavior
-   review.
+4. DLV-241 is accepted and integrated as `0c264c5` plus `1ab2e0d`; its single
+   exact aggregate stopped at the inherited silent managed restore failure.
+5. Platform implements physical-first DLV-242 and launches for user review
+   before regression tests are written or run.
 6. Platform implements DLV-243 separately and launches for slider review.
 7. In parallel with platform DLV-241, widgets executes DLV-218 from exact
    current main to remove the retired product-owned Community domains.
@@ -477,6 +497,7 @@ delete credentials, provider data, accounts, or user files.
 
 | Milestone | Result |
 | --- | --- |
+| DLV-241 | `44bd220` plus `5ec3905` integrated as `0c264c5` plus `1ab2e0d`: single native materializer/session admission owner, bounded atomic protocol-v18 update activation, checkpoint fallback, focused native evidence, and one exact aggregate retained red on the inherited silent managed restore failure after verifier self-tests passed. |
 | DLV-240 | `c7f9dfa` plus `11b0ca6` integrated as `485a935` plus `cb45a31`: bounded managed checkpoint/update contract, automatic SDK diff, frozen runtime-v2 compatibility, and no native traffic activation before DLV-241. |
 | DLV-246 | `4210be7` integrated as `0e75203`: bounded overlapped activation lifecycle, same authenticated singleton/pipe, 26 direct checks, and successful live second-invocation smoke. |
 | DLV-217 | User-approved aggregate exception integrated through `1453a4c`: autonomous full-trust Community Game Launcher, ordinary package lifecycle, public SDK/export path, and registered Community verification. |

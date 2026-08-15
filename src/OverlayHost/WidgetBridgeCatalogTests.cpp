@@ -128,10 +128,125 @@ void VerifyFrameSafeCancellationRecovery() {
             "Next ordinary request did not succeed on a correctly framed replacement transport");
 }
 
+void VerifyAtomicPresentationUpdateMaterialization() {
+    std::wstring error;
+    const auto checkpoint = gba::testing::ParseWidgetSnapshotResponse(R"json({
+        "snapshot": {
+            "protocolVersion":17,
+            "sequence":9,
+            "widgetInstanceId":"update.sample",
+            "activeInputScopeId":"root",
+            "initialFocusId":"a",
+            "surface":{"mode":"standard","preferredWidth":560,"preferredHeight":645,"minimumWidth":320,"minimumHeight":240},
+            "root":{"id":"root","kind":"stack","children":[
+                {"id":"a","kind":"button","text":"Before","actionId":"activate.a","children":[]},
+                {"id":"b","kind":"text","text":"Remove me","children":[]}
+            ]}
+        },
+        "renderStyles":{}
+    })json", error);
+    Require(checkpoint && error.empty() && !checkpoint->documentJson.empty(),
+            "Could not parse the retained update checkpoint");
+
+    const auto update = gba::testing::ParseWidgetPresentationUpdateResponse(R"json({
+        "widgetId":"sample",
+        "update":{
+            "protocolVersion":18,
+            "widgetInstanceId":"update.sample",
+            "presentationGeneration":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "baseSequence":9,
+            "sequence":10,
+            "operations":[
+                {"kind":"setProperties","targetId":"a","properties":[
+                    {"property":"text","value":"After"},
+                    {"property":"isDisabled","value":true}
+                ]},
+                {"kind":"insertChild","parentId":"root","index":2,
+                 "subtree":{"id":"c","kind":"text","text":"Inserted","children":[]}},
+                {"kind":"moveChild","parentId":"root","childId":"c","index":0},
+                {"kind":"removeChild","parentId":"root","childId":"b"},
+                {"kind":"replaceSubtree","targetId":"a",
+                 "subtree":{"id":"a","kind":"button","text":"Replaced","actionId":"activate.a","children":[]}},
+                {"kind":"setProperties","properties":[
+                    {"property":"initialFocusId","value":"a"}
+                ]}
+            ]
+        },
+        "renderStyles":{"a":{"base":{"opacity":{"kind":"number","text":"0.75","number":0.75,"unit":null}}}}
+    })json", error);
+    Require(update && error.empty(), "Could not parse the bounded update batch");
+    auto materialized = gba::MaterializeWidgetPresentationUpdate(
+        *checkpoint, *update, L"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", error);
+    Require(materialized && error.empty(), "Could not materialize the atomic update");
+    Require(materialized->protocolVersion == 18 && materialized->sequence == 10 &&
+                materialized->root.children.size() == 2 &&
+                materialized->root.children[0].id == L"c" &&
+                materialized->root.children[1].id == L"a" &&
+                materialized->root.children[1].text == L"Replaced" &&
+                materialized->root.children[1].baseStyle.at(L"opacity").number == 0.75,
+            "Atomic update did not publish the complete candidate and styles");
+
+    auto stale = *update;
+    stale.baseSequence = 8;
+    error.clear();
+    Require(!gba::MaterializeWidgetPresentationUpdate(
+                *checkpoint, stale,
+                L"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", error) &&
+                checkpoint->sequence == 9 && checkpoint->root.children[0].text == L"Before",
+            "Stale update mutated the retained checkpoint");
+
+    const auto partial = gba::testing::ParseWidgetPresentationUpdateResponse(R"json({
+        "update":{
+            "protocolVersion":18,
+            "widgetInstanceId":"update.sample",
+            "presentationGeneration":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "baseSequence":9,
+            "sequence":11,
+            "operations":[
+                {"kind":"setProperties","targetId":"a","properties":[
+                    {"property":"text","value":"Must not publish"}
+                ]},
+                {"kind":"removeChild","parentId":"root","childId":"absent"}
+            ]
+        },
+        "renderStyles":{}
+    })json", error);
+    Require(partial.has_value(),
+            "Could not parse the deterministic partial-failure batch");
+    error.clear();
+    Require(!gba::MaterializeWidgetPresentationUpdate(
+                *checkpoint, *partial,
+                L"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", error) &&
+                checkpoint->root.children[0].text == L"Before",
+            "A later operation failure partially mutated the checkpoint");
+
+    error.clear();
+    Require(!gba::testing::ParseWidgetPresentationUpdateResponse(R"json({
+        "update":{
+            "protocolVersion":18,"widgetInstanceId":"update.sample",
+            "presentationGeneration":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "baseSequence":9,"sequence":10,"operations":[],"unknown":true
+        }
+    })json", error),
+            "Unknown update fields did not fail closed");
+
+    error.clear();
+    Require(!gba::testing::ParseWidgetPresentationUpdateResponse(R"json({
+        "update":{
+            "protocolVersion":18,"widgetInstanceId":"update.sample",
+            "presentationGeneration":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "baseSequence":9,"sequence":10,"operations":[]
+        },
+        "unknown":true
+    })json", error),
+            "Unknown presentation payload fields did not fail closed");
+}
+
 } // namespace
 
 int main() {
     VerifyFrameSafeCancellationRecovery();
+    VerifyAtomicPresentationUpdateMaterialization();
     std::vector<wchar_t> secret(14);
     for (std::size_t index = 0; index < secret.size(); ++index)
         secret[index] = static_cast<wchar_t>(L'!' + index);

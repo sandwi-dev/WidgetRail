@@ -417,14 +417,31 @@ public:
                                 gba::WidgetSessionFailureStage::Lifecycle,
                                 bridge_.lastError());
                   },
-                  [this](std::stop_token, const std::wstring_view widgetId) {
-                      auto value = bridge_.GetSnapshot(widgetId);
+                  [this](std::stop_token, const std::wstring_view widgetId,
+                         const long long baseSequence, const bool allowUpdate) {
+                      auto value = bridge_.GetSnapshot(
+                          widgetId, baseSequence, allowUpdate);
+                      return value
+                          ? gba::WidgetSessionOperationResult<
+                                gba::WidgetPresentationPublication>::Success(
+                                std::move(*value))
+                          : gba::WidgetSessionOperationResult<
+                                gba::WidgetPresentationPublication>::Failure(
+                                gba::WidgetSessionFailureStage::Snapshot,
+                                bridge_.lastError());
+                  },
+                  [](const gba::WidgetSnapshot& checkpoint,
+                     const gba::WidgetPresentationUpdate& update,
+                     const std::wstring_view presentationGeneration) {
+                      std::wstring error;
+                      auto value = gba::MaterializeWidgetPresentationUpdate(
+                          checkpoint, update, presentationGeneration, error);
                       return value
                           ? gba::WidgetSessionOperationResult<gba::WidgetSnapshot>::Success(
                                 std::move(*value))
                           : gba::WidgetSessionOperationResult<gba::WidgetSnapshot>::Failure(
-                                gba::WidgetSessionFailureStage::Snapshot,
-                                bridge_.lastError());
+                                gba::WidgetSessionFailureStage::Protocol,
+                                std::move(error));
                   },
                   [this](std::stop_token, const std::wstring_view widgetId) {
                       auto value = bridge_.RestartWidget(widgetId);

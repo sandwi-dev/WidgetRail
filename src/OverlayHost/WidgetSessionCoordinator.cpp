@@ -225,6 +225,50 @@ std::vector<WidgetSessionEvent> WidgetSessionCoordinator::TakeEvents() {
         const bool completionCurrent = CompletionIsCurrent(request);
         const auto* completionDescriptor =
             request.widgetId.empty() ? nullptr : FindDescriptor(request.widgetId);
+        if (completion.failure.stage == WidgetSessionFailureStage::None &&
+            request.kind == RequestKind::Snapshot && completion.update &&
+            runtimeCurrent && completionCurrent) {
+            std::wstring updateError;
+            const auto* checkpoint = Snapshot(request.widgetId);
+            std::optional<WidgetSnapshot> candidate;
+            if (checkpoint && completionDescriptor && operations_.materializeUpdate) {
+                auto materialized = operations_.materializeUpdate(
+                    *checkpoint, *completion.update,
+                    completionDescriptor->presentationGeneration);
+                if (materialized.value)
+                    candidate = std::move(*materialized.value);
+                else
+                    updateError = std::move(materialized.safeError);
+            }
+            if (candidate) {
+                completion.snapshot = std::move(*candidate);
+                completion.update.reset();
+            } else {
+                EmitTrace(
+                    request, WidgetSessionTraceStage::RequestCompleted,
+                    WidgetSessionTraceAction::None,
+                    WidgetSessionTraceReason::CheckpointFallback,
+                    WidgetSessionCompletionDisposition::Failed,
+                    completion.completedAt);
+                CompleteRefresh(request, false);
+                auto fallback = MakeRequest(
+                    RequestKind::Snapshot, request.widgetId,
+                    request.lifecycle, request.correlationId);
+                fallback.allowUpdate = false;
+                fallback.baseSequence = 0;
+                const auto queued = Queue(fallback);
+                if (queued.accepted()) {
+                    MarkRefreshInFlight(request.widgetId, queued.requestId);
+                    continue;
+                }
+                completion.update.reset();
+                completion.failure = FailureFrom(
+                    WidgetSessionFailureStage::Protocol,
+                    updateError.empty()
+                        ? L"The widget update was rejected and checkpoint recovery could not be queued."
+                        : std::move(updateError));
+            }
+        }
         const bool snapshotProtocolCurrent =
             (request.kind != RequestKind::Establish &&
              request.kind != RequestKind::Snapshot) ||
@@ -618,6 +662,14 @@ WidgetSessionCoordinator::Request WidgetSessionCoordinator::MakeRequest(
             request.expectedRuntimeGeneration = descriptor->runtimeGeneration;
             request.expectedPresentationGeneration = descriptor->presentationGeneration;
         }
+        if (kind == RequestKind::Snapshot) {
+            const auto* checkpoint = Snapshot(request.widgetId);
+            if (checkpoint && checkpoint->sequence > 0 &&
+                !checkpoint->documentJson.empty()) {
+                request.baseSequence = checkpoint->sequence;
+                request.allowUpdate = true;
+            }
+        }
     }
     return request;
 }
@@ -750,8 +802,21 @@ WidgetSessionCoordinator::Completion WidgetSessionCoordinator::Execute(
         }
         case RequestKind::Snapshot: {
             if (!operations_.getSnapshot) break;
-            auto result = operations_.getSnapshot(stopToken, completion.request.widgetId);
-            if (result.value) completion.snapshot = std::move(*result.value);
+            auto result = operations_.getSnapshot(
+                stopToken, completion.request.widgetId,
+                completion.request.baseSequence,
+                completion.request.allowUpdate);
+            if (result.value) {
+                completion.snapshot = std::move(result.value->checkpoint);
+                completion.update = std::move(result.value->update);
+                if (completion.snapshot.has_value() == completion.update.has_value()) {
+                    completion.snapshot.reset();
+                    completion.update.reset();
+                    completion.failure = FailureFrom(
+                        WidgetSessionFailureStage::Protocol,
+                        L"The bridge returned an invalid widget presentation publication.");
+                }
+            }
             else completion.failure = FailureFrom(result.failureStage, std::move(result.safeError));
             return completion;
         }

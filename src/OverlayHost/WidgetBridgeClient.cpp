@@ -85,7 +85,12 @@ constexpr std::size_t kMaximumIdentifierLength = 128;
 constexpr std::size_t kMaximumLabelLength = 256;
 constexpr std::size_t kMaximumControllerButtonLength = 32;
 constexpr int kMinimumWidgetSnapshotProtocolVersion = 1;
-constexpr int kMaximumWidgetSnapshotProtocolVersion = 17;
+constexpr int kMaximumWidgetSnapshotProtocolVersion = 18;
+constexpr int kAtomicPresentationUpdateVersion = 18;
+constexpr std::size_t kMaximumPresentationUpdateOperations = 256;
+constexpr std::size_t kMaximumPresentationUpdateBytes = 256 * 1024;
+constexpr std::size_t kMaximumWidgetNodes = 2048;
+constexpr std::size_t kMaximumWidgetTreeDepth = 32;
 
 constexpr uint32_t kMaximumShellStyles = 12;
 constexpr uint32_t kMaximumShellProperties = 64;
@@ -1190,7 +1195,285 @@ WidgetSnapshot ParseSnapshot(const JsonObject& source) {
         }
     }
     snapshot.root = ParseNode(source.GetNamedObject(L"root"));
+    snapshot.documentJson = std::wstring(std::wstring_view(source.Stringify()));
     return snapshot;
+}
+
+bool IsPresentationGeneration(const std::wstring_view value) noexcept {
+    return (value.size() == 32 || value.size() == 64) &&
+        std::all_of(value.begin(), value.end(), [](const wchar_t character) {
+            return (character >= L'0' && character <= L'9') ||
+                (character >= L'a' && character <= L'f') ||
+                (character >= L'A' && character <= L'F');
+        });
+}
+
+long long RequiredIntegral(
+    const JsonObject& source,
+    const wchar_t* name,
+    const long long minimum = 0) {
+    if (!source.HasKey(name) ||
+        source.GetNamedValue(name).ValueType() != JsonValueType::Number)
+        throw winrt::hresult_invalid_argument();
+    const double value = source.GetNamedNumber(name);
+    if (!std::isfinite(value) || std::floor(value) != value ||
+        value < static_cast<double>(minimum) ||
+        value > 9'007'199'254'740'991.0)
+        throw winrt::hresult_invalid_argument();
+    return static_cast<long long>(value);
+}
+
+bool IsDocumentPresentationProperty(const std::wstring_view property) noexcept {
+    return property == L"activeInputScopeId" || property == L"initialFocusId" ||
+        property == L"quickActions" || property == L"surface" ||
+        property == L"advancedPresentation";
+}
+
+bool IsNodePresentationProperty(const std::wstring_view property) noexcept {
+    static constexpr std::array<std::wstring_view, 37> properties{
+        L"visibleWhen", L"text", L"accessibilityLabel", L"accessibilityValue",
+        L"actionId", L"textEntryValue", L"textEntryPlaceholder",
+        L"textEntryMaximumLength", L"value", L"minimum", L"maximum", L"step",
+        L"valueChangedActionId", L"sliderInteractionMode", L"imageSource",
+        L"artworkHandle", L"imageFit", L"glyph", L"indicatorSize",
+        L"actionSurfaceOrientation", L"gridMinimumColumnWidth",
+        L"gridMaximumColumns", L"isDisabled", L"isSelected", L"isBusy",
+        L"focusPersistenceId", L"focus", L"inputScopeId", L"scrollAxis",
+        L"scrollNearStartActionId", L"scrollNearEndActionId",
+        L"scrollPaginationThreshold", L"collectionAnchorKey",
+        L"collectionItemKey", L"advancedPresentationSlot", L"styleClasses",
+        L"shortcuts"};
+    return std::find(properties.begin(), properties.end(), property) != properties.end();
+}
+
+bool ValidateWidgetDocumentStructure(
+    const JsonObject& document,
+    std::wstring& error) {
+    if (!HasNoUnknownProperties(document,
+            {L"protocolVersion", L"sequence", L"widgetInstanceId",
+             L"activeInputScopeId", L"initialFocusId", L"quickActions",
+             L"surface", L"advancedPresentation", L"root"}) ||
+        !document.HasKey(L"root") ||
+        document.GetNamedValue(L"root").ValueType() != JsonValueType::Object) {
+        error = L"The materialized widget document shape is invalid.";
+        return false;
+    }
+    std::vector<std::pair<JsonObject, std::size_t>> pending{
+        {document.GetNamedObject(L"root"), 1}};
+    std::unordered_set<std::wstring> ids;
+    std::size_t count{};
+    while (!pending.empty()) {
+        auto [node, depth] = std::move(pending.back());
+        pending.pop_back();
+        if (++count > kMaximumWidgetNodes || depth > kMaximumWidgetTreeDepth) {
+            error = L"The materialized widget tree exceeds its structural bound.";
+            return false;
+        }
+        if (!HasNoUnknownProperties(node,
+                {L"id", L"kind", L"visibleWhen", L"text",
+                 L"accessibilityLabel", L"accessibilityValue", L"actionId",
+                 L"textEntryValue", L"textEntryPlaceholder",
+                 L"textEntryMaximumLength", L"value", L"minimum", L"maximum",
+                 L"step", L"valueChangedActionId", L"sliderInteractionMode",
+                 L"imageSource", L"artworkHandle", L"imageFit", L"glyph",
+                 L"indicatorSize", L"actionSurfaceOrientation",
+                 L"gridMinimumColumnWidth", L"gridMaximumColumns", L"isDisabled",
+                 L"isSelected", L"isBusy", L"focusPersistenceId", L"focus",
+                 L"inputScopeId", L"scrollAxis", L"scrollNearStartActionId",
+                 L"scrollNearEndActionId", L"scrollPaginationThreshold",
+                 L"collectionAnchorKey", L"collectionItemKey",
+                 L"advancedPresentationSlot", L"styleClasses", L"shortcuts",
+                 L"children"})) {
+            error = L"The materialized widget node contains an unknown property.";
+            return false;
+        }
+        const auto id = OptionalString(node, L"id");
+        if (!IsIdentifier(id) || !ids.insert(id).second ||
+            !node.HasKey(L"kind") ||
+            node.GetNamedValue(L"kind").ValueType() != JsonValueType::String ||
+            !node.HasKey(L"children") ||
+            node.GetNamedValue(L"children").ValueType() != JsonValueType::Array) {
+            error = L"The materialized widget tree contains invalid node identity.";
+            return false;
+        }
+        const auto children = node.GetNamedArray(L"children");
+        for (std::uint32_t index = 0; index < children.Size(); ++index) {
+            if (children.GetAt(index).ValueType() != JsonValueType::Object) {
+                error = L"The materialized widget tree contains an invalid child.";
+                return false;
+            }
+            pending.emplace_back(children.GetObjectAt(index), depth + 1);
+        }
+    }
+    error.clear();
+    return true;
+}
+
+std::optional<JsonObject> FindPresentationNode(
+    const JsonObject& document,
+    const std::wstring_view id) {
+    std::vector<JsonObject> pending{document.GetNamedObject(L"root")};
+    while (!pending.empty()) {
+        auto node = std::move(pending.back());
+        pending.pop_back();
+        if (OptionalString(node, L"id") == id) return node;
+        const auto children = node.GetNamedArray(L"children");
+        for (std::uint32_t index = 0; index < children.Size(); ++index)
+            pending.push_back(children.GetObjectAt(index));
+    }
+    return std::nullopt;
+}
+
+struct PresentationNodeParent final {
+    JsonArray children;
+    std::uint32_t index{};
+};
+
+std::optional<PresentationNodeParent> FindPresentationNodeParent(
+    const JsonObject& document,
+    const std::wstring_view id) {
+    std::vector<JsonObject> pending{document.GetNamedObject(L"root")};
+    while (!pending.empty()) {
+        auto node = std::move(pending.back());
+        pending.pop_back();
+        const auto children = node.GetNamedArray(L"children");
+        for (std::uint32_t index = 0; index < children.Size(); ++index) {
+            auto child = children.GetObjectAt(index);
+            if (OptionalString(child, L"id") == id) return PresentationNodeParent{children, index};
+            pending.push_back(std::move(child));
+        }
+    }
+    return std::nullopt;
+}
+
+WidgetPresentationUpdate ParsePresentationUpdatePayload(const JsonObject& payload) {
+    if (!HasNoUnknownProperties(payload, {L"widgetId", L"update", L"renderStyles"}) ||
+        !payload.HasKey(L"update") ||
+        payload.GetNamedValue(L"update").ValueType() != JsonValueType::Object)
+        throw winrt::hresult_invalid_argument();
+    const auto source = payload.GetNamedObject(L"update");
+    if (winrt::to_string(source.Stringify()).size() >
+            kMaximumPresentationUpdateBytes ||
+        !HasOnlyProperties(source,
+            {L"protocolVersion", L"widgetInstanceId", L"presentationGeneration",
+             L"baseSequence", L"sequence", L"operations"}))
+        throw winrt::hresult_invalid_argument();
+
+    WidgetPresentationUpdate update;
+    update.protocolVersion = static_cast<int>(RequiredIntegral(source, L"protocolVersion"));
+    update.widgetInstanceId = OptionalString(source, L"widgetInstanceId");
+    update.presentationGeneration = OptionalString(source, L"presentationGeneration");
+    update.baseSequence = RequiredIntegral(source, L"baseSequence");
+    update.sequence = RequiredIntegral(source, L"sequence", 1);
+    if (update.protocolVersion != kAtomicPresentationUpdateVersion ||
+        !IsIdentifier(update.widgetInstanceId) ||
+        !IsPresentationGeneration(update.presentationGeneration) ||
+        update.sequence <= update.baseSequence ||
+        source.GetNamedValue(L"operations").ValueType() != JsonValueType::Array)
+        throw winrt::hresult_invalid_argument();
+
+    const auto operations = source.GetNamedArray(L"operations");
+    if (operations.Size() > kMaximumPresentationUpdateOperations)
+        throw winrt::hresult_invalid_argument();
+    update.operations.reserve(operations.Size());
+    for (std::uint32_t index = 0; index < operations.Size(); ++index) {
+        if (operations.GetAt(index).ValueType() != JsonValueType::Object)
+            throw winrt::hresult_invalid_argument();
+        const auto encoded = operations.GetObjectAt(index);
+        if (!HasNoUnknownProperties(encoded,
+                {L"kind", L"targetId", L"parentId", L"childId", L"index",
+                 L"properties", L"subtree"}))
+            throw winrt::hresult_invalid_argument();
+        const auto kind = OptionalString(encoded, L"kind");
+        WidgetPresentationUpdateOperation operation;
+        if (kind == L"setProperties")
+            operation.kind = WidgetPresentationUpdateOperationKind::SetProperties;
+        else if (kind == L"insertChild")
+            operation.kind = WidgetPresentationUpdateOperationKind::InsertChild;
+        else if (kind == L"removeChild")
+            operation.kind = WidgetPresentationUpdateOperationKind::RemoveChild;
+        else if (kind == L"moveChild")
+            operation.kind = WidgetPresentationUpdateOperationKind::MoveChild;
+        else if (kind == L"replaceSubtree")
+            operation.kind = WidgetPresentationUpdateOperationKind::ReplaceSubtree;
+        else
+            throw winrt::hresult_invalid_argument();
+        operation.targetId = OptionalString(encoded, L"targetId");
+        operation.parentId = OptionalString(encoded, L"parentId");
+        operation.childId = OptionalString(encoded, L"childId");
+        if (encoded.HasKey(L"index")) {
+            operation.index = static_cast<std::size_t>(
+                RequiredIntegral(encoded, L"index"));
+        }
+        if (encoded.HasKey(L"properties")) {
+            if (encoded.GetNamedValue(L"properties").ValueType() != JsonValueType::Array)
+                throw winrt::hresult_invalid_argument();
+            const auto properties = encoded.GetNamedArray(L"properties");
+            if (properties.Size() == 0 || properties.Size() > 64)
+                throw winrt::hresult_invalid_argument();
+            std::unordered_set<std::wstring> names;
+            for (std::uint32_t propertyIndex = 0;
+                 propertyIndex < properties.Size(); ++propertyIndex) {
+                if (properties.GetAt(propertyIndex).ValueType() != JsonValueType::Object)
+                    throw winrt::hresult_invalid_argument();
+                const auto change = properties.GetObjectAt(propertyIndex);
+                if (!HasOnlyProperties(change, {L"property", L"value"}))
+                    throw winrt::hresult_invalid_argument();
+                auto property = OptionalString(change, L"property");
+                const bool documentProperty = IsDocumentPresentationProperty(property);
+                if ((!documentProperty && !IsNodePresentationProperty(property)) ||
+                    documentProperty != operation.targetId.empty() ||
+                    !names.insert(property).second)
+                    throw winrt::hresult_invalid_argument();
+                operation.properties.push_back({
+                    std::move(property),
+                    std::wstring(std::wstring_view(
+                        change.GetNamedValue(L"value").Stringify()))});
+            }
+        }
+        if (encoded.HasKey(L"subtree")) {
+            if (encoded.GetNamedValue(L"subtree").ValueType() != JsonValueType::Object)
+                throw winrt::hresult_invalid_argument();
+            operation.subtreeJson = std::wstring(std::wstring_view(
+                encoded.GetNamedObject(L"subtree").Stringify()));
+        }
+        const bool valid = [&] {
+            switch (operation.kind) {
+            case WidgetPresentationUpdateOperationKind::SetProperties:
+                return !operation.properties.empty() &&
+                    (operation.targetId.empty() || IsIdentifier(operation.targetId)) &&
+                    operation.parentId.empty() &&
+                    operation.childId.empty() && !operation.index &&
+                    operation.subtreeJson.empty();
+            case WidgetPresentationUpdateOperationKind::InsertChild:
+                return IsIdentifier(operation.parentId) && operation.index &&
+                    !operation.subtreeJson.empty() && operation.targetId.empty() &&
+                    operation.childId.empty() && operation.properties.empty();
+            case WidgetPresentationUpdateOperationKind::RemoveChild:
+                return IsIdentifier(operation.parentId) && IsIdentifier(operation.childId) &&
+                    operation.targetId.empty() && !operation.index &&
+                    operation.properties.empty() && operation.subtreeJson.empty();
+            case WidgetPresentationUpdateOperationKind::MoveChild:
+                return IsIdentifier(operation.parentId) && IsIdentifier(operation.childId) &&
+                    operation.index && operation.targetId.empty() &&
+                    operation.properties.empty() && operation.subtreeJson.empty();
+            case WidgetPresentationUpdateOperationKind::ReplaceSubtree:
+                return IsIdentifier(operation.targetId) && !operation.subtreeJson.empty() &&
+                    operation.parentId.empty() && operation.childId.empty() &&
+                    !operation.index && operation.properties.empty();
+            }
+            return false;
+        }();
+        if (!valid) throw winrt::hresult_invalid_argument();
+        update.operations.push_back(std::move(operation));
+    }
+    if (payload.HasKey(L"renderStyles")) {
+        if (payload.GetNamedValue(L"renderStyles").ValueType() != JsonValueType::Object)
+            throw winrt::hresult_invalid_argument();
+        update.renderStylesJson = std::wstring(std::wstring_view(
+            payload.GetNamedObject(L"renderStyles").Stringify()));
+    }
+    return update;
 }
 
 bool HandleAsyncEvent(
@@ -1451,6 +1734,158 @@ bool HandleAsyncEvent(
 }
 
 } // namespace
+
+std::optional<WidgetSnapshot> MaterializeWidgetPresentationUpdate(
+    const WidgetSnapshot& checkpoint,
+    const WidgetPresentationUpdate& update,
+    const std::wstring_view expectedPresentationGeneration,
+    std::wstring& error) {
+    try {
+        if (update.protocolVersion != kAtomicPresentationUpdateVersion ||
+            checkpoint.documentJson.empty() ||
+            update.widgetInstanceId != checkpoint.instanceId ||
+            update.presentationGeneration != expectedPresentationGeneration ||
+            update.baseSequence != checkpoint.sequence ||
+            update.sequence <= update.baseSequence ||
+            update.operations.size() > kMaximumPresentationUpdateOperations) {
+            error = L"The widget presentation update does not match the admitted checkpoint.";
+            return std::nullopt;
+        }
+
+        auto candidate = JsonObject::Parse(winrt::hstring(checkpoint.documentJson));
+        if (!ValidateWidgetDocumentStructure(candidate, error)) return std::nullopt;
+        for (const auto& operation : update.operations) {
+            switch (operation.kind) {
+            case WidgetPresentationUpdateOperationKind::SetProperties: {
+                JsonObject target = candidate;
+                if (!operation.targetId.empty()) {
+                    const auto node = FindPresentationNode(candidate, operation.targetId);
+                    if (!node) {
+                        error = L"A widget presentation property target is absent.";
+                        return std::nullopt;
+                    }
+                    target = *node;
+                }
+                for (const auto& change : operation.properties) {
+                    const auto value = JsonValue::Parse(winrt::hstring(change.valueJson));
+                    if (value.ValueType() == JsonValueType::Null)
+                        target.Remove(winrt::hstring(change.property));
+                    else
+                        target.Insert(winrt::hstring(change.property), value);
+                }
+                break;
+            }
+            case WidgetPresentationUpdateOperationKind::InsertChild: {
+                const auto parent = FindPresentationNode(candidate, operation.parentId);
+                if (!parent) {
+                    error = L"A widget presentation insert parent is absent.";
+                    return std::nullopt;
+                }
+                auto children = parent->GetNamedArray(L"children");
+                if (!operation.index || *operation.index > children.Size()) {
+                    error = L"A widget presentation insert index is invalid.";
+                    return std::nullopt;
+                }
+                children.InsertAt(
+                    static_cast<std::uint32_t>(*operation.index),
+                    JsonObject::Parse(winrt::hstring(operation.subtreeJson)));
+                break;
+            }
+            case WidgetPresentationUpdateOperationKind::RemoveChild: {
+                const auto parent = FindPresentationNode(candidate, operation.parentId);
+                if (!parent) {
+                    error = L"A widget presentation remove parent is absent.";
+                    return std::nullopt;
+                }
+                auto children = parent->GetNamedArray(L"children");
+                bool removed{};
+                for (std::uint32_t index = 0; index < children.Size(); ++index) {
+                    if (OptionalString(children.GetObjectAt(index), L"id") != operation.childId)
+                        continue;
+                    children.RemoveAt(index);
+                    removed = true;
+                    break;
+                }
+                if (!removed) {
+                    error = L"A widget presentation remove child is absent.";
+                    return std::nullopt;
+                }
+                break;
+            }
+            case WidgetPresentationUpdateOperationKind::MoveChild: {
+                const auto parent = FindPresentationNode(candidate, operation.parentId);
+                if (!parent || !operation.index) {
+                    error = L"A widget presentation move parent is absent.";
+                    return std::nullopt;
+                }
+                auto children = parent->GetNamedArray(L"children");
+                std::optional<std::uint32_t> sourceIndex;
+                JsonObject child{nullptr};
+                for (std::uint32_t index = 0; index < children.Size(); ++index) {
+                    auto candidateChild = children.GetObjectAt(index);
+                    if (OptionalString(candidateChild, L"id") != operation.childId)
+                        continue;
+                    sourceIndex = index;
+                    child = std::move(candidateChild);
+                    break;
+                }
+                if (!sourceIndex) {
+                    error = L"A widget presentation move child is absent.";
+                    return std::nullopt;
+                }
+                children.RemoveAt(*sourceIndex);
+                if (*operation.index > children.Size()) {
+                    error = L"A widget presentation move index is invalid.";
+                    return std::nullopt;
+                }
+                children.InsertAt(static_cast<std::uint32_t>(*operation.index), child);
+                break;
+            }
+            case WidgetPresentationUpdateOperationKind::ReplaceSubtree: {
+                auto subtree = JsonObject::Parse(winrt::hstring(operation.subtreeJson));
+                if (OptionalString(candidate.GetNamedObject(L"root"), L"id") ==
+                    operation.targetId) {
+                    candidate.Insert(L"root", subtree);
+                    break;
+                }
+                const auto parent = FindPresentationNodeParent(candidate, operation.targetId);
+                if (!parent) {
+                    error = L"A widget presentation replacement target is absent.";
+                    return std::nullopt;
+                }
+                parent->children.SetAt(parent->index, subtree);
+                break;
+            }
+            }
+            // Bound every intermediate document before a later operation can
+            // search or transform it.
+            if (!ValidateWidgetDocumentStructure(candidate, error)) return std::nullopt;
+        }
+
+        candidate.Insert(L"protocolVersion", JsonValue::CreateNumberValue(
+            static_cast<double>(std::max(
+                checkpoint.protocolVersion, kAtomicPresentationUpdateVersion))));
+        candidate.Insert(L"sequence", JsonValue::CreateNumberValue(
+            static_cast<double>(update.sequence)));
+        if (winrt::to_string(candidate.Stringify()).size() > kMaximumFrameBytes ||
+            !ValidateWidgetDocumentStructure(candidate, error)) {
+            if (error.empty()) error = L"The materialized widget document is too large.";
+            return std::nullopt;
+        }
+        auto materialized = ParseSnapshot(candidate);
+        if (!update.renderStylesJson.empty()) {
+            ApplyComputedStyles(
+                materialized.root,
+                JsonObject::Parse(winrt::hstring(update.renderStylesJson)));
+        }
+        error.clear();
+        return materialized;
+    } catch (const winrt::hresult_error& exception) {
+        error = L"The widget presentation update is invalid: " +
+            std::wstring(exception.message());
+        return std::nullopt;
+    }
+}
 
 bool WidgetInvalidationQueue::Push(std::wstring widgetId) {
     if (!IsIdentifier(widgetId)) return false;
@@ -2288,12 +2723,30 @@ std::optional<bool> WidgetBridgeClient::RestartWidget(
     return std::nullopt;
 }
 
-std::optional<WidgetSnapshot> WidgetBridgeClient::GetSnapshot(const std::wstring_view widgetId) {
+std::optional<WidgetPresentationPublication> WidgetBridgeClient::GetSnapshot(
+    const std::wstring_view widgetId,
+    const long long baseSequence,
+    const bool allowUpdate) {
     std::scoped_lock lock(requestMutex_);
-    if (pipe_ == INVALID_HANDLE_VALUE) return std::nullopt;
+    if (pipe_ == INVALID_HANDLE_VALUE || baseSequence < 0 ||
+        (allowUpdate && baseSequence == 0)) return std::nullopt;
     try {
         JsonObject payload;
         payload.Insert(L"widgetId", JsonValue::CreateStringValue(winrt::hstring(widgetId)));
+        if (allowUpdate) {
+            JsonObject capabilities;
+            capabilities.Insert(L"maximumProtocolVersion",
+                JsonValue::CreateNumberValue(kAtomicPresentationUpdateVersion));
+            capabilities.Insert(L"maximumOperationsPerBatch",
+                JsonValue::CreateNumberValue(
+                    static_cast<double>(kMaximumPresentationUpdateOperations)));
+            capabilities.Insert(L"maximumBatchBytes",
+                JsonValue::CreateNumberValue(
+                    static_cast<double>(kMaximumPresentationUpdateBytes)));
+            payload.Insert(L"capabilities", capabilities);
+            payload.Insert(L"baseSequence", JsonValue::CreateNumberValue(
+                static_cast<double>(baseSequence)));
+        }
         const long long requestId = ++nextRequestId_;
         JsonObject envelope;
         envelope.Insert(L"protocolVersion", JsonValue::CreateNumberValue(1));
@@ -2317,9 +2770,15 @@ std::optional<WidgetSnapshot> WidgetBridgeClient::GetSnapshot(const std::wstring
                 Fail(L"WidgetBridge returned a mismatched request ID.");
                 return std::nullopt;
             }
-            if (response.GetNamedString(L"type") == L"error") {
+            const auto type = response.GetNamedString(L"type");
+            if (type == L"error") {
                 Fail(std::wstring(std::wstring_view(
                     response.GetNamedObject(L"payload").GetNamedString(L"message"))));
+                return std::nullopt;
+            }
+            if (type != L"snapshot" &&
+                !(allowUpdate && type == L"presentation-update")) {
+                Fail(L"WidgetBridge returned an unexpected snapshot response.");
                 return std::nullopt;
             }
             const auto responsePayload = response.GetNamedObject(L"payload");
@@ -2327,12 +2786,21 @@ std::optional<WidgetSnapshot> WidgetBridgeClient::GetSnapshot(const std::wstring
                 Fail(L"WidgetBridge returned a snapshot for a different widget ID.");
                 return std::nullopt;
             }
+            if (type == L"presentation-update") {
+                WidgetPresentationPublication publication;
+                publication.update = ParsePresentationUpdatePayload(responsePayload);
+                lastError_.clear();
+                return publication;
+            }
             auto snapshot = ParseSnapshot(responsePayload.GetNamedObject(L"snapshot"));
             if (responsePayload.HasKey(L"renderStyles")) {
                 ApplyComputedStyles(snapshot.root,
                                     responsePayload.GetNamedObject(L"renderStyles"));
             }
-            return snapshot;
+            WidgetPresentationPublication publication;
+            publication.checkpoint = std::move(snapshot);
+            lastError_.clear();
+            return publication;
         }
     } catch (const winrt::hresult_error& error) {
         Fail(L"Invalid WidgetBridge JSON: " + std::wstring(error.message()));
@@ -2990,6 +3458,21 @@ std::optional<WidgetSnapshot> ParseWidgetSnapshotResponse(
         return snapshot;
     } catch (const winrt::hresult_error& exception) {
         error = L"Invalid widget snapshot JSON: " + std::wstring(exception.message());
+        return std::nullopt;
+    }
+}
+
+std::optional<WidgetPresentationUpdate> ParseWidgetPresentationUpdateResponse(
+    const std::string_view payloadUtf8,
+    std::wstring& error) {
+    try {
+        const auto payload = JsonObject::Parse(winrt::to_hstring(payloadUtf8));
+        auto update = ParsePresentationUpdatePayload(payload);
+        error.clear();
+        return update;
+    } catch (const winrt::hresult_error& exception) {
+        error = L"Invalid widget presentation update JSON: " +
+            std::wstring(exception.message());
         return std::nullopt;
     }
 }

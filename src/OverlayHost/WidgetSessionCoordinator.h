@@ -73,6 +73,7 @@ enum class WidgetSessionTraceReason {
     MissingDescriptor,
     ExistingRequest,
     NewerTarget,
+    CheckpointFallback,
     ShuttingDown,
 };
 
@@ -179,8 +180,11 @@ struct WidgetSessionOperations final {
         std::stop_token, std::wstring_view, WidgetLifecycleState)> establish;
     std::function<WidgetSessionOperationResult<bool>(
         std::stop_token, std::wstring_view, WidgetLifecycleState)> setLifecycle;
+    std::function<WidgetSessionOperationResult<WidgetPresentationPublication>(
+        std::stop_token, std::wstring_view, long long, bool)> getSnapshot;
     std::function<WidgetSessionOperationResult<WidgetSnapshot>(
-        std::stop_token, std::wstring_view)> getSnapshot;
+        const WidgetSnapshot&, const WidgetPresentationUpdate&, std::wstring_view)>
+        materializeUpdate;
     std::function<WidgetSessionOperationResult<bool>(
         std::stop_token, std::wstring_view)> restart;
 };
@@ -300,6 +304,8 @@ private:
         std::wstring expectedInstanceId;
         std::wstring expectedRuntimeGeneration;
         std::wstring expectedPresentationGeneration;
+        long long baseSequence{};
+        bool allowUpdate{};
         std::uint64_t queuedAt{};
         std::uint64_t startedAt{};
     };
@@ -309,6 +315,7 @@ private:
         WidgetSessionFailure failure;
         std::optional<std::vector<WidgetDescriptor>> descriptors;
         std::optional<WidgetSnapshot> snapshot;
+        std::optional<WidgetPresentationUpdate> update;
         std::optional<bool> acknowledged;
         std::uint64_t completedAt{};
         bool cancelled{};
