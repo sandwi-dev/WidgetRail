@@ -496,9 +496,14 @@ Then repeat the loop.
   Preserve completed `codex/impl-platform-fixed-chrome` and
   `codex/impl-platform-snapshot-cache`; DLV-246 candidate `4210be7` on
   `codex/impl-platform-process-owner` is accepted and integrated as `0e75203`.
-  Preserve that clean branch, receive exact current main `cb45a31`, create a
-  clean DLV-241 branch without rewriting preserved history, and execute only
-  DLV-241. The original
+  Preserve that clean branch. DLV-241 production candidate `44bd220` is
+  source-reviewed but not accepted or integrated because its exact canonical
+  checkpoint stopped in verifier self-test before product execution: the
+  canonical manifest omits the already-integrated
+  `WidgetPresentationSession.Tests` project. Keep the reviewed production diff
+  unchanged, add only the bounded missing verifier registration, run the
+  canonical verifier once at the clean correction commit, and do not start
+  DLV-242. The original
   pre-recovery branch remains
   preserved at `bdf6d88`; do not rewrite it. Its
   prior DLV-220 history remains preserved on `codex/impl-platform-community`.
