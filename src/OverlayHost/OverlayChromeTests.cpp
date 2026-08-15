@@ -1,4 +1,7 @@
 #include "OverlayChrome.h"
+#include "OverlayCompositionSurface.h"
+#include "OverlayState.h"
+#include "TrayLayout.h"
 
 #include <Windows.h>
 #include <d2d1.h>
@@ -207,9 +210,55 @@ void CheckRetainedTrayInvalidation() {
           "appearance revision rebuilds the tray child surface");
 }
 
+struct FixedChromePointerTestContext final {
+    HWND content{};
+    gba::OverlayState state{
+        {}, {L"settings", L"network", L"audio"}};
+    gba::shell::TrayLayout layout;
+    unsigned int activationCount{};
+};
+
+void ActivateFixedChromeTray(
+    void* opaque, const float x, const float y) noexcept {
+    auto& context = *static_cast<FixedChromePointerTestContext*>(opaque);
+    const auto* hit = gba::shell::HitTestTray(context.layout, x, y);
+    if (!hit || hit->slot >= context.state.order().size()) return;
+    ++context.activationCount;
+    const auto& widget = context.state.order()[hit->slot];
+    if (context.state.TrySelectTrayWidget(widget) &&
+        context.state.selectedSlot() == hit->slot) {
+        (void)context.state.Dispatch(gba::Command::Activate);
+    }
+}
+
 LRESULT CALLBACK FixedChromeTestWindowProc(
     HWND window, UINT message, WPARAM wParam, LPARAM lParam) {
+    if (message == WM_NCCREATE) {
+        const auto create = reinterpret_cast<CREATESTRUCTW*>(lParam);
+        SetWindowLongPtrW(
+            window, GWLP_USERDATA,
+            reinterpret_cast<LONG_PTR>(create->lpCreateParams));
+    } else if (message == WM_LBUTTONUP) {
+        auto* context = reinterpret_cast<FixedChromePointerTestContext*>(
+            GetWindowLongPtrW(window, GWLP_USERDATA));
+        if (context) {
+            (void)gba::shell::RouteFixedChromePointerRelease(
+                window, context->content, lParam, context,
+                ActivateFixedChromeTray);
+            return 0;
+        }
+    }
     return DefWindowProcW(window, message, wParam, lParam);
+}
+
+bool RejectChromeTarget(
+    gba::OverlayCompositionSurface& surface,
+    HWND,
+    std::wstring& error) {
+    Check(surface.available(),
+          "content target exists when deterministic chrome-target failure occurs");
+    error = L"deterministic second-target failure";
+    return false;
 }
 
 void CheckFixedChromeWindowPolicy() {
@@ -256,13 +305,15 @@ void CheckFixedChromeWindowPolicy() {
     windowClass.hInstance = GetModuleHandleW(nullptr);
     windowClass.lpszClassName = className;
     Check(RegisterClassW(&windowClass) != 0, "fixed chrome test class registers");
+    FixedChromePointerTestContext pointerContext;
     HWND content = CreateWindowExW(
         WS_EX_TOOLWINDOW, className, L"content", WS_POPUP,
-        20, 20, 640, 480, nullptr, nullptr, windowClass.hInstance, nullptr);
+        640, 600, 1000, 500, nullptr, nullptr, windowClass.hInstance, nullptr);
+    pointerContext.content = content;
     HWND chrome = CreateWindowExW(
         gba::shell::FixedChromeWindowExStyle(), className, L"chrome",
         gba::shell::FixedChromeWindowStyle(), 0, 0, 1, 1,
-        nullptr, nullptr, windowClass.hInstance, nullptr);
+        nullptr, nullptr, windowClass.hInstance, &pointerContext);
     Check(content && chrome, "content and chrome policy HWNDs are created");
     ShowWindow(content, SW_SHOWNOACTIVATE);
     const RECT fixed{720, 900, 1468, 1041};
@@ -320,6 +371,58 @@ void CheckFixedChromeWindowPolicy() {
               gba::shell::IsFixedChromeHit({800, 1000}, guide, tray) &&
               !gba::shell::IsFixedChromeHit({721, 901}, guide, tray),
           "chrome hit testing admits guide/tray and passes transparent gaps through");
+
+    Check(SetWindowPos(
+              content, HWND_TOPMOST, 640, 600, 1000, 500,
+              SWP_NOACTIVATE) != FALSE,
+          "content endpoint is placed for the applied chrome pointer route");
+    Check(pointerContext.state.Dispatch(gba::Command::ToggleOverlay),
+          "existing overlay state activation owner becomes visible");
+    const auto trayLayout = gba::shell::ComputeTrayLayout(
+        1000.0F, 500.0F, pointerContext.state.order().size(),
+        pointerContext.state.selectedSlot(), gba::shell::TrayBand{300.0F, 400.0F});
+    Check(trayLayout.has_value() && trayLayout->tiles.size() == 3,
+          "production tray layout exposes the target tile");
+    pointerContext.layout = *trayLayout;
+    const auto& targetTile = pointerContext.layout.tiles[1].bounds;
+    POINT release{
+        static_cast<LONG>(targetTile.x + targetTile.width * 0.5F),
+        static_cast<LONG>(targetTile.y + targetTile.height * 0.5F),
+    };
+    Check(ClientToScreen(content, &release) && ScreenToClient(chrome, &release),
+          "target tile center maps into the applied chrome HWND");
+    SendMessageW(
+        chrome, WM_LBUTTONUP, 0,
+        MAKELPARAM(static_cast<short>(release.x), static_cast<short>(release.y)));
+    Check(pointerContext.activationCount == 1 &&
+              pointerContext.state.selectedWidget() == L"network" &&
+              pointerContext.state.activeWidget() == L"network" &&
+              pointerContext.state.focusRegion() == gba::FocusRegion::Widget,
+          "real chrome HWND release maps once through the existing tray selection and activation owner");
+
+    ComPtr<ID2D1Factory1> compositionFactory;
+    Check(SUCCEEDED(D2D1CreateFactory(
+              D2D1_FACTORY_TYPE_SINGLE_THREADED,
+              IID_PPV_ARGS(compositionFactory.ReleaseAndGetAddressOf()))),
+          "Direct2D factory is created for paired endpoint recovery");
+    gba::OverlayCompositionSurface composition;
+    std::wstring compositionError;
+    ShowWindow(chrome, SW_SHOWNOACTIVATE);
+    Check(!gba::shell::InitializeFixedChromeComposition(
+              composition, content, chrome, compositionFactory.Get(),
+              compositionError, RejectChromeTarget) &&
+              !composition.available() && !IsWindowVisible(chrome) &&
+              compositionError == L"deterministic second-target failure",
+          "second-target initialization failure resets the half-session and hides chrome");
+    Check(gba::shell::InitializeFixedChromeComposition(
+              composition, content, chrome, compositionFactory.Get(),
+              compositionError),
+          "real paired composition endpoints initialize for runtime recovery");
+    ShowWindow(chrome, SW_SHOWNOACTIVATE);
+    gba::shell::ResetFixedChromeComposition(composition, chrome);
+    Check(!composition.available() && !IsWindowVisible(chrome),
+          "runtime composition or device failure resets and hides both endpoints");
+
     DestroyWindow(content);
     Check(!IsWindow(content) && !IsWindow(chrome),
           "normal owner close destroys the fixed chrome endpoint");

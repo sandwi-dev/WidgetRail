@@ -607,8 +607,9 @@ public:
             return FailHresult(L"D2D1CreateFactory", d2dResult);
         }
         std::wstring compositionError;
-        if (compositionSurface_.Initialize(window_, d2dFactory_.Get(), compositionError) &&
-            compositionSurface_.InitializeChromeTarget(chromeWindow_, compositionError)) {
+        if (gba::shell::InitializeFixedChromeComposition(
+                compositionSurface_, window_, chromeWindow_,
+                d2dFactory_.Get(), compositionError)) {
             // A premultiplied composition target carries transparency in its
             // alpha channel. Drop the legacy HWND color key and use full
             // authored opacity; the separate backdrop remains the only dimmer.
@@ -1229,11 +1230,11 @@ private:
             return 0;
         }
         case WM_LBUTTONUP: {
-            POINT point{static_cast<LONG>(static_cast<short>(LOWORD(lParam))),
-                        static_cast<LONG>(static_cast<short>(HIWORD(lParam)))};
-            if (ClientToScreen(window, &point) && ScreenToClient(app->window_, &point))
-                app->HandlePointerActivation(static_cast<float>(point.x),
-                                             static_cast<float>(point.y));
+            (void)gba::shell::RouteFixedChromePointerRelease(
+                window, app->window_, lParam, app,
+                [](void* context, const float x, const float y) noexcept {
+                    static_cast<OverlayApp*>(context)->HandlePointerActivation(x, y);
+                });
             return 0;
         }
         case WM_SHOWWINDOW:
@@ -1869,7 +1870,8 @@ private:
         }
         pinnedSurfaceCoordinator_.Dispose();
         DiscardGraphicsResources();
-        compositionSurface_.Reset();
+        gba::shell::ResetFixedChromeComposition(
+            compositionSurface_, chromeWindow_);
         retainedGuidePaintKey_.clear();
         retainedTrayPaintState_.reset();
         compositionChromeSession_.reset();
@@ -6576,8 +6578,8 @@ private:
             L"DirectComposition presentation disabled; using HWND fallback: " +
             std::wstring(reason));
         DiscardGraphicsResources();
-        compositionSurface_.Reset();
-        ShowWindow(chromeWindow_, SW_HIDE);
+        gba::shell::ResetFixedChromeComposition(
+            compositionSurface_, chromeWindow_);
         chromeAccessibilityProvider_.Clear();
         retainedGuidePaintKey_.clear();
         retainedTrayPaintState_.reset();

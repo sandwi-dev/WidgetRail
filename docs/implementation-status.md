@@ -5042,3 +5042,32 @@ declarative renderer 4,851/4,851. A native Release build produces
 public protocol, second session/input/focus/accessibility authority, or push was
 performed. Physical user cycling of the exact accepted candidate remains the
 final pixel-level stationarity verdict.
+
+#### Atomic paired-endpoint recovery correction
+
+Content-target and chrome-target initialization now pass through one private
+fixed-chrome composition policy. If the content target succeeds and the chrome
+target fails, that policy resets the complete DirectComposition surface owner
+and hides the chrome HWND before legacy fallback can become current. Runtime
+composition/device-loss fallback and shutdown use the same paired reset, so
+`available()` cannot advertise a half-session and no independent chrome window
+remains visible. The existing graphics device, session/window owner, renderer,
+input/focus router, and accessibility policy remain unchanged.
+
+The chrome window's production pointer mapping is also a named private policy:
+it maps one real `WM_LBUTTONUP` from chrome-client through screen coordinates
+to content-client coordinates, then calls the existing activation owner. The
+direct HWND test applies the owned chrome rectangle, sends that window message
+at the second authored tray tile, and proves the existing `OverlayState`
+selection/activation authority selects and activates `network` exactly once.
+
+Deterministic recovery evidence forces the second-target failure while the
+content target is observably available and then proves composition unavailable
+plus chrome hidden. A real successful two-target DirectComposition session is
+then forced through the runtime reset and proves the same terminal state. The
+focused Release composition group passes placement 112,333/112,333, targeting
+76/76, transition 73/73, chrome/window/recovery 111/111, accessibility provider
+165/165, focus 49/49, host accessibility 34/34, and declarative renderer
+4,851/4,851. One native Release build produces `OverlayHost.exe` without tests
+or packaging. No launch, Tier 3, capture, provider/widget, or public-protocol
+work was performed; physical user cycling remains the final visual verdict.

@@ -1,5 +1,7 @@
 #include "OverlayChrome.h"
 
+#include "OverlayCompositionSurface.h"
+
 namespace gba::shell {
 
 RECT ComputeFixedChromeWindowBounds(
@@ -30,6 +32,58 @@ bool ApplyFixedChromeWindow(
         chrome, HWND_TOPMOST, bounds.left, bounds.top,
         bounds.right - bounds.left, bounds.bottom - bounds.top,
         SWP_NOACTIVATE | (show ? SWP_SHOWWINDOW : SWP_HIDEWINDOW)) != FALSE;
+}
+
+namespace {
+
+bool InitializeProductionChromeTarget(
+    OverlayCompositionSurface& surface,
+    const HWND chrome,
+    std::wstring& error) {
+    return surface.InitializeChromeTarget(chrome, error);
+}
+
+} // namespace
+
+bool InitializeFixedChromeComposition(
+    OverlayCompositionSurface& surface,
+    const HWND content,
+    const HWND chrome,
+    ID2D1Factory1* factory,
+    std::wstring& error,
+    FixedChromeTargetInitializer initializeChrome) {
+    if (!surface.Initialize(content, factory, error)) {
+        ResetFixedChromeComposition(surface, chrome);
+        return false;
+    }
+    if (!initializeChrome) initializeChrome = InitializeProductionChromeTarget;
+    if (initializeChrome(surface, chrome, error)) return true;
+    ResetFixedChromeComposition(surface, chrome);
+    return false;
+}
+
+void ResetFixedChromeComposition(
+    OverlayCompositionSurface& surface, const HWND chrome) noexcept {
+    surface.Reset();
+    if (chrome && IsWindow(chrome)) ShowWindow(chrome, SW_HIDE);
+}
+
+bool RouteFixedChromePointerRelease(
+    const HWND chrome,
+    const HWND content,
+    const LPARAM position,
+    void* const context,
+    const FixedChromePointerActivation activate) noexcept {
+    if (!chrome || !content || !activate ||
+        !IsWindow(chrome) || !IsWindow(content)) return false;
+    POINT point{
+        static_cast<LONG>(static_cast<short>(LOWORD(position))),
+        static_cast<LONG>(static_cast<short>(HIWORD(position))),
+    };
+    if (!ClientToScreen(chrome, &point) || !ScreenToClient(content, &point))
+        return false;
+    activate(context, static_cast<float>(point.x), static_cast<float>(point.y));
+    return true;
 }
 
 bool SameFixedChromeSession(

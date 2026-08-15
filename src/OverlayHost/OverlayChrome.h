@@ -1,10 +1,14 @@
 #pragma once
 
-#include <d2d1.h>
+#include <d2d1_1.h>
 
 #include <cstdint>
 #include <string>
 #include <vector>
+
+namespace gba {
+class OverlayCompositionSurface;
+}
 
 namespace gba::shell {
 
@@ -20,6 +24,37 @@ constexpr DWORD FixedChromeWindowExStyle() noexcept {
     POINT screenPoint, const RECT& guideBounds, const RECT& trayBounds) noexcept;
 [[nodiscard]] bool ApplyFixedChromeWindow(
     HWND owner, HWND chrome, const RECT& bounds, bool show) noexcept;
+
+using FixedChromeTargetInitializer = bool (*)(
+    OverlayCompositionSurface&, HWND, std::wstring&);
+
+/// Initializes the content and chrome targets as one recoverable endpoint pair.
+/// The optional initializer is an internal policy seam used to deterministically
+/// exercise second-target failure; production passes the default.
+[[nodiscard]] bool InitializeFixedChromeComposition(
+    OverlayCompositionSurface& surface,
+    HWND content,
+    HWND chrome,
+    ID2D1Factory1* factory,
+    std::wstring& error,
+    FixedChromeTargetInitializer initializeChrome = nullptr);
+
+/// Atomically makes the paired composition endpoints unavailable to callers
+/// before hiding the companion chrome HWND during fallback/device recovery.
+void ResetFixedChromeComposition(
+    OverlayCompositionSurface& surface, HWND chrome) noexcept;
+
+using FixedChromePointerActivation = void (*)(
+    void* context, float contentClientX, float contentClientY) noexcept;
+
+/// Maps a real chrome-client pointer release into the content HWND coordinate
+/// space and forwards it to the existing sole activation owner.
+[[nodiscard]] bool RouteFixedChromePointerRelease(
+    HWND chrome,
+    HWND content,
+    LPARAM position,
+    void* context,
+    FixedChromePointerActivation activate) noexcept;
 
 struct FixedChromeSessionKey final {
     RECT workArea{};
