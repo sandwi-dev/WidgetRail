@@ -172,7 +172,7 @@ user decision. The native overlay is the sole production presentation path.
 | Lane | Task/worktree | Current state |
 | --- | --- | --- |
 | Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` on `codex/impl-widgets-taffy-ui` | Idle clean. DLV-240 begins only after accepted DLV-239 is integrated and the planner sends the serialized cross-lane baseline. |
-| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` on `codex/impl-platform-fixed-chrome` | Active on the bounded cumulative correction atop physically rejected `c92ef11`: normalize the visible content envelope, prevent same-destination transition restarts, and fix physical tray occlusion/offset/unit handling. Production code and one Release build only; tests wait for the user's verdict. DLV-239 remains paused. |
+| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` on `codex/impl-platform-fixed-chrome` | Physical acceptance pending for unintegrated candidate `9c1585a`: normalized visible content envelope, stable same-destination motion, typed fixed-chrome offsets, DPI-correct surface update offsets, and coordinated three-HWND Z-order. Exact Release PID 57704 is launched for the user's verdict. No tests ran; DLV-239 remains paused. |
 
 DLV-217 remains accepted through `d57fd06` but unintegrated because its exact
 aggregate is honestly 40/41 with one reviewer-history-link failure. Preserve
@@ -605,6 +605,19 @@ Bounded production-only correction atop `c92ef11`:
   the user to verify a fully visible stationary tray, fixed panel-to-guide
   spacing, no guide overlap, no tray occlusion/disappearance, and no post-input
   content jitter. Tests follow only after physical acceptance.
+
+Physical-first correction candidate
+`9c1585ad75a7fadf3e9253cc85baa8618cd74e90` is source-reviewed, built, and
+launched unintegrated as PID 57704. The production-only change separates
+panel-local content geometry from fixed chrome, prevents unchanged destination
+refreshes from restarting motion, makes guide/tray offsets writable only by the
+typed chrome presentation, converts DirectComposition update offsets from
+physical pixels to the active DIP drawing space, and republishes backdrop,
+content, and chrome in one coordinated Z-order batch. The Release executable
+SHA-256 is `785540D68F4431D3835FA3F4B6F8EA377F389C73BD83C30F492398C30FE8DF68`.
+No tests were added, changed, or run. Do not integrate or resume DLV-239 until
+the user physically accepts tray visibility/stationarity, panel-to-guide gap,
+absence of overlap, and absence of idle motion.
 
 Independent review disposition for `3716063`: rejected as the retained base for
 one cumulative correction. The commit correctly separates destination layout
