@@ -4848,7 +4848,7 @@ The staged native responsibility map is:
 | desired versus presented extent | `OverlayApp` timeline plus optional extent fields read independently by placement, input, UIA, and paint | one transaction timeline; destination layout extent is carried separately from the animated presented envelope |
 | composition motion and final geometry | eight `OverlayApp` motion/placement/scale/count fields plus ad-hoc terminal clearing | typed admission/motion directives and one explicit destination-settlement state machine |
 | composition child ownership | one transformed DirectComposition visual carried content, guide, and tray together | the sole `OverlayCompositionSurface` root retains content, guide, and tray child visuals/surfaces; only content receives motion transforms/clips |
-| host-chrome invalidation | every host invalidation repainted the complete content-plus-chrome surface | guide and tray revisions are independent; stable tray surfaces retain background/icons and selection/reorder updates only damaged tile rectangles |
+| host-chrome invalidation | every host invalidation repainted the complete content-plus-chrome surface | guide and tray revisions are independent; `RequiresTrayRepaint` replaces the complete bounded tray surface once for every tray-owned state change, while content-only updates retain it |
 | presented coordinate authority | pointer and UIA shared one whole-frame inverse transform while diagnostics sampled untransformed local chrome bounds | one child-coordinate plan projects animated content and identity-scaled chrome; pointer, hit testing, focus/UIA, and actual screen-bound diagnostics use those same spaces |
 | OS ownership | `OverlayApp` owns HWND, D2D/DComp, focus, input, UIA, and Taffy orchestration | unchanged; the transaction owns no HWND, timer, renderer, compositor, focus graph, or input path |
 
@@ -4911,7 +4911,7 @@ non-actionable.
 The refreshed clangd index covers 100 translation units. Definition/reference
 queries plus `rg` resolve the moved `CommitFrames`, `ApplyChromePresentation`,
 `RenderCompositionFrames`, `CurrentCompositionChildCoordinates`,
-`PlanTrayInvalidation`, and `PlanCompositionChildCoordinates` ownership across
+`RequiresTrayRepaint`, and `PlanCompositionChildCoordinates` ownership across
 `OverlayCompositionSurface`, `OverlayApp`, `OverlayChrome`, and
 `OverlayTargeting`.
 
@@ -4921,7 +4921,8 @@ focus 49/49, host accessibility 34/34, and declarative renderer 4,851/4,851.
 The native Release host build is green. The final bounded production route
 passes all eight differently sized widgets and eight variable-extent motions;
 actual guide/tray rectangles remain identical through motion, rapid reversal
-changes only bounded selected tiles, tray paint counters do not advance during
+performs one complete repaint for each tray-owned selection change, and tray
+paint counters do not advance during
 content-only motion, odd-width union containers retain the exact integer
 destination offset through settlement, and job cleanup leaves zero observed
 processes. Retained route provenance is base `3716063`, host SHA-256
