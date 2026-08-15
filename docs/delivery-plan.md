@@ -154,7 +154,7 @@ user decision. The native overlay is the sole production presentation path.
 | Lane | Task/worktree | State |
 | --- | --- | --- |
 | Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | DLV-241 cumulative commits `44bd220` and `5ec3905` are accepted and integrated as `0c264c5` and `1ab2e0d`. Assigned physical-first DLV-242 from exact current main: production code plus one Release build only, then stop for planner launch and user verdict before tests. Preserve accepted DLV-246 branch `codex/impl-platform-process-owner` and completed `codex/impl-platform-snapshot-cache` / `codex/impl-platform-fixed-chrome`. |
-| Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | DLV-240 cumulative candidates `c7f9dfa` and `11b0ca6` are accepted and integrated as `485a935` and `cb45a31`. Assigned DLV-218 from exact current main; preserve the clean DLV-240 branch and create a clean DLV-218 branch without rewriting it. |
+| Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | DLV-218 candidate `8f49e1c` is rejected pending one bounded correction: an incremental Release must remove retired `runtime\GameLauncher`, `runtime\SpotifyPlaybackHost`, and stale retired Bridge assemblies. Rebase the corrected cumulative commit onto current main while preserving DLV-241's status and verifier registration. Preserve the clean DLV-240 branch. |
 
 The user explicitly approved the DLV-217 aggregate exception on 2026-08-15.
 The preserved four-commit implementation chain was integrated onto current main
@@ -164,7 +164,7 @@ production history and DLV-217 record were retained unchanged.
 
 The DLV-217 Release launch evidence remains accepted. DLV-246 subsequently
 integrated as `0e75203`, followed by DLV-240 as `485a935` and `cb45a31`; the
-coherent native and managed Release now runs visibly as PID 105736. The focused
+coherent native and managed Release now runs visibly as PID 13680. The focused
 managed DLV-217 test rerun was not claimable because this
 checkout's restore graph failed silently before compilation with zero reported
 errors; the accepted exact-tip DLV-217 evidence and explicit aggregate exception
@@ -394,7 +394,7 @@ and direct affected runtime checks. One broader runtime attempt stalled after
 six passes and is not represented as a pass. Update traffic remains inactive
 until DLV-241.
 
-### Assigned — DLV-241: native materialized update admission
+### Accepted and integrated — DLV-241: native materialized update admission
 
 Owner: platform. Negotiate and consume the bounded operation stream under the
 existing bridge/session/admission owners. Materialize a candidate off the
@@ -450,12 +450,25 @@ fallback. Implement separately so DLV-242 scope remains bounded.
 DLV-240 is integrated. Accepted DLV-225/226/228/229/230 remain integrated. New
 styling/provider work requires fresh user evidence rather than speculation.
 
-### Assigned — DLV-218: remove retired domains
+### Correction requested — DLV-218: remove retired domains
 
 Remove retired product-owned Spotify and private Game Launcher domain paths only
 after DLV-217 integration. Retain generic App Library behavior. Add an
 architecture check rejecting Community identities/domain types in core. Never
 delete credentials, provider data, accounts, or user files.
+
+Candidate `8f49e1c` removes the intended source, capability, SDK, catalog, and
+bundled-build ownership while preserving the autonomous Community applications
+and generic App Library contract. It is not accepted because merely removing
+publish commands leaves prior generated output intact: an incremental coherent
+Release can retain `runtime\GameLauncher`, `runtime\SpotifyPlaybackHost`, and
+retired Spotify assemblies already present under `runtime\Bridge`. The bounded
+correction must clean only those generated product outputs, prove retirement
+from a pre-DLV-218 incremental output, and preserve user-installed packages,
+credentials, configuration, private state, and package-owned sources. The
+corrected cumulative commit must also be based on current main so DLV-241's
+implementation-status record and `widget-presentation-session-tests`
+registration remain present.
 
 ## Serialized order
 
@@ -468,8 +481,9 @@ delete credentials, provider data, accounts, or user files.
 5. Platform implements physical-first DLV-242 and launches for user review
    before regression tests are written or run.
 6. Platform implements DLV-243 separately and launches for slider review.
-7. In parallel with platform DLV-241, widgets executes DLV-218 from exact
-   current main to remove the retired product-owned Community domains.
+7. Widgets corrects DLV-218 on exact current main, proves stale generated
+   product outputs are removed by an incremental Release, and returns for
+   independent review.
 
 ## Manual and packaged evidence
 
@@ -507,16 +521,6 @@ delete credentials, provider data, accounts, or user files.
 | DLV-232 | `cd378a2` integrated as `ef56bfc`: failed worker retains only its own last-good inert presentation until fresh admission. |
 | DLV-235 | `b0ea2b4` integrated as `5440e7b`: startup failure survives retarget/revocation; Retry owns a fresh generation. |
 | DLV-234 | `9435050` integrated as `348df2e`: incomplete frames taint and replace the sole transport. |
-| DLV-233 | `1323c8a` integrated as `4b8e0b7`: PATH-isolated Audio fixture with strict UIA/scroll/focus behavior. |
-
-Earlier accepted records retained from the prior recent window:
-
-| Milestone | Result |
-| --- | --- |
-| DLV-231 | `2a379ac` integrated as `fbd2f02`: delayed requests remain revocable while tray/input/close remain responsive. |
-| DLV-230 | `7323468` integrated as `fe2e52c`: responsive YT Music composition. |
-| DLV-229 | `1a8c201` integrated as `1ddedb4`: Network first-page scan state. |
-| DLV-228 | `2784401` integrated as `220a415`: Audio rows/sliders consume width generically. |
 
 Do not mark the continuing delivery goal complete. Continue until the user
 pauses/replaces it or all useful lanes are genuinely blocked. Never push.
