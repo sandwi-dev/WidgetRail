@@ -920,13 +920,15 @@ Live correlation evidence now proves the motivating failure. Transition 23
 returns from Games & Apps to Game Launcher with `currentSnapshot=false`; the
 posted refresh dequeues after 78 ms, but lifecycle reconciliation skips with
 `reason=already-current`, queues no snapshot request, and crosses the 250-ms
-slow threshold while retained Games & Apps pixels remain inert. An unrelated
-Game Launcher provider update about 2.5 seconds later finally refreshes the
-presentation. The preceding transition to Games & Apps queues, starts, and
-admits its establish request normally. DLV-239 must remove this split between
-snapshot freshness and lifecycle-current state: retain the last admitted Game
-Launcher checkpoint for immediate presentation and ensure RefreshRequested can
-obtain current data even when the worker lifecycle is already current.
+slow threshold while retained Games & Apps pixels remain inert. No automatic
+recovery occurs. The user closes the overlay about 1.75
+seconds after selection and reopens it roughly 630 ms later; only that new
+visible session commits Game Launcher and triggers its subsequent provider
+sequences. The preceding transition to Games & Apps queues, starts, and admits
+its establish request normally. DLV-239 must remove this split between snapshot
+freshness and lifecycle-current state: retain the last admitted Game Launcher
+checkpoint for immediate presentation and ensure RefreshRequested can obtain
+current data even when the worker lifecycle is already current.
 
 In scope: introduce explicit Current/RefreshRequested/RefreshInFlight state;
 retain last-good checkpoint through ordinary failure/cancellation/stale result;
