@@ -154,7 +154,7 @@ user decision. The native overlay is the sole production presentation path.
 | Lane | Task/worktree | Current state |
 | --- | --- | --- |
 | Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` on `codex/impl-widgets-taffy-ui` | Idle clean. DLV-240 begins only after accepted DLV-239 is integrated and the planner sends the serialized cross-lane baseline. |
-| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` on `codex/impl-platform-fixed-chrome` | Cumulative DLV-244 correction `00b816d` remains rejected on one concrete initialization/fallback split plus missing direct pointer-route and recovery evidence. DLV-239 remains paused. |
+| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` on `codex/impl-platform-fixed-chrome` | Idle clean after accepted cumulative DLV-244 through `a3300f4`, integrated on main by `013d0b3`. The exact refreshed native Release awaits mandatory user tray-cycling acceptance; DLV-239 remains paused until that verdict. |
 
 DLV-217 remains accepted through `d57fd06` but unintegrated because its exact
 aggregate is honestly 40/41 with one reviewer-history-link failure. Preserve
@@ -427,6 +427,20 @@ drive one real chrome-window tray click through the production coordinate route
 to the existing selection/activation owner. Retain all accepted ordinary-path
 behavior and existing focused evidence. Rerun only the changed chrome,
 targeting, accessibility/recovery cases and one native Release build.
+
+Independent review disposition for cumulative DLV-244 through `a3300f4`:
+accepted and integrated on main by `013d0b3`, pending the mandatory physical
+user verdict. The correction routes both initial targets through one paired
+initialization policy, resets the whole composition owner and hides chrome when
+the second target fails, and uses the same paired reset for runtime fallback and
+shutdown. A real chrome-window `WM_LBUTTONUP` now crosses the production
+coordinate seam and reaches the existing `OverlayState` selection/activation
+owner exactly once. The direct 111-check chrome test independently reran green;
+the retained focused suites and native Release build are proportional. No
+second graphics, session, controller, focus, semantic, or accessibility owner
+was added. Do not mark DLV-244 complete or resume DLV-239 until the user cycles
+all differently sized widgets in both directions, hides/reopens, and accepts
+the fixed tray visually.
 
 Independent review disposition for `3716063`: rejected as the retained base for
 one cumulative correction. The commit correctly separates destination layout
@@ -857,13 +871,10 @@ Do not delete credentials, provider data, accounts, or user files.
 
 1. Main includes physically rejected DLV-238/DLV-236 plus accepted DLV-237
    through `6e2969b`; do not build further work on its false stationarity claim.
-2. Preserve `codex/impl-platform-integration` at `4d0a69e`, create/switch its
-   clean worktree to `codex/impl-platform-fixed-chrome` directly from current
-   planner main (product/architecture baseline `1e9c00d`), and execute revised
-   DLV-244 as the sole platform assignment using the user-authorized separate
-   fixed chrome HWND. Independently review its real applied-window evidence,
-   integrate only if accepted, and launch the exact corrected Release for
-   mandatory user cycling.
+2. Cumulative DLV-244 through `a3300f4` is accepted and integrated by `013d0b3`.
+   Preserve rejected `codex/impl-platform-integration` at `4d0a69e`; launch the
+   exact refreshed main Release for mandatory user cycling and keep DLV-239
+   paused until the physical stationarity verdict.
 3. After the user accepts stationary tray behavior, execute and integrate
    DLV-239, then dispatch DLV-240 to the widgets lane as sole
    shared protocol/managed lead. Platform does not edit shared files.
