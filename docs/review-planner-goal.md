@@ -482,16 +482,18 @@ Then repeat the loop.
   `1453a4c`; its original branch remains preserved on
   `codex/impl-widgets-community-launcher`. Do not move or rewrite that branch
   while the UI queue proceeds. After DLV-240 integration, give the widgets lane
-  current main before DLV-218. The coherent main `c68818b` Release is running
-  visibly as PID 64216 after the approved DLV-217 integration.
+  current main before DLV-218. DLV-246 is integrated on planner main as
+  `0e75203`; its coherent Release is running visibly as PID 74420 after a
+  successful bounded second-invocation activation smoke.
 - Active platform implementation uses the clean isolated worktree
   `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative`. Preserve the
   rejected one-HWND correction branch `codex/impl-platform-integration` at
   `4d0a69e`; accepted DLV-244 is integrated on planner main through `94c4873`.
   Preserve completed `codex/impl-platform-fixed-chrome` and
-  `codex/impl-platform-snapshot-cache`; DLV-246 is complete as candidate
-  `4210be7` on `codex/impl-platform-process-owner` from accepted production
-  baseline `7cc5839` and awaits independent planner review. The original
+  `codex/impl-platform-snapshot-cache`; DLV-246 candidate `4210be7` on
+  `codex/impl-platform-process-owner` is accepted and integrated as `0e75203`.
+  Preserve that clean branch and keep the platform lane idle until DLV-240 is
+  integrated, then rebase or merge current main before DLV-241. The original
   pre-recovery branch remains
   preserved at `bdf6d88`; do not rewrite it. Its
   prior DLV-220 history remains preserved on `codex/impl-platform-community`.
@@ -511,8 +513,8 @@ Then repeat the loop.
   `codex/impl-red-tests` from planner baseline `9d23bfd`. It may edit only implicated tests, test support,
   and their build invocation. Its rejected candidate and uncommitted follow-up
   remain preserved as evidence; do not resume, integrate, or discard them
-  without new user authority. The production defect it exposed is assigned to
-  DLV-246.
+  without new user authority. The production defect it exposed was repaired by
+  accepted and integrated DLV-246.
 - The retained `codex/avalonia-prototype` and `codex/avp004-*` branches are
   closed failed-experiment history. They are not normal startup or review
   surfaces. Do not dispatch, integrate, relaunch, cut over, or delete them

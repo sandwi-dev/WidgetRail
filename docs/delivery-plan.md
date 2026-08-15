@@ -14,8 +14,9 @@ Snapshots are evidence only. This file is the sole authority for current work.
 
 ## Current baseline
 
-- Accepted production tip `1453a4c` contains the user-approved DLV-217
-  autonomous Community Game Launcher chain atop DLV-239 retained presentation
+- Accepted production main `0e75203` contains DLV-246's bounded native
+  process-owner activation lifecycle and the user-approved DLV-217 autonomous
+  Community Game Launcher chain atop DLV-239 retained presentation
   checkpoints and explicit refresh state, DLV-244 fixed chrome and
   destination geometry, corrected DLV-237 admission tracing, DLV-232 worker
   isolation, DLV-235 startup recovery, DLV-230 YT Music composition, and the
@@ -23,13 +24,14 @@ Snapshots are evidence only. This file is the sole authority for current work.
 - The user physically accepted DLV-244 tray visibility/stationarity and distinct
   widget envelope admission. Its cumulative commits were integrated as
   `bfaa2a1`, `0c071fb`, `f06a7e9`, `61041a5`, and `94c4873`.
-- Exact accepted-main Release PID 64216 is visibly running from coherent main
-  `c68818b` / product tip `1453a4c`. The bounded launch-session log smoke
-  observed all eight installed identities select/admit without startup, worker,
-  protocol, placement, or render errors; guide/tray stayed at
-  `2186,1299,747,141` / `2192,1162,735,77` throughout.
-  Computer control did not enumerate the no-taskbar OverlayHost, so live visual
-  inspection remains with the user rather than being claimed from automation.
+- Exact accepted-main Release PID 74420 is visibly running from coherent main
+  `0e75203`; `OverlayHost.exe` SHA-256 is
+  `EA59686BC9F76C94FA0392B78B5AF0ED41046ACA1A006F6DBD2134935E9286DC`.
+  A second exact `--show` invocation exited 0 while PID 74420 remained the sole
+  owner. The previous pre-DLV-246 PID 64216 accepted a normal close request but
+  remained hung and retained the interop DLL, directly matching the repaired
+  teardown defect; only that exact planner-owned PID was then terminated before
+  the successful coherent rebuild. Live visual inspection remains with the user.
 - DLV-245 independently dispositioned both unreliable native routes. The
   process-owner route exposed the production DLV-246 hang. The widget-switch
   route corrected stale authored extents, then exposed an invalid comparison
@@ -141,7 +143,7 @@ user decision. The native overlay is the sole production presentation path.
 
 | Lane | Task/worktree | State |
 | --- | --- | --- |
-| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | DLV-246 candidate `4210be7` is complete and awaiting independent planner review; do not integrate before acceptance. Preserve completed `codex/impl-platform-snapshot-cache` and `codex/impl-platform-fixed-chrome`. |
+| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | DLV-246 candidate `4210be7` is accepted and integrated as `0e75203`. Preserve its clean branch and wait for DLV-240 integration before DLV-241. Preserve completed `codex/impl-platform-snapshot-cache` and `codex/impl-platform-fixed-chrome`. |
 | Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | Assigned DLV-240 from exact accepted main `7cc5839`; move to a clean `codex/impl-widgets-snapshot-update` branch before edits. |
 
 The user explicitly approved the DLV-217 aggregate exception on 2026-08-15.
@@ -150,13 +152,12 @@ as `f4c1df3`, `a2c85db`, `9766a6c`, and `1453a4c`. The sole cherry-pick conflict
 was a mechanical append in `docs/implementation-status.md`; both the newer
 production history and DLV-217 record were retained unchanged.
 
-The coherent native Release rebuilt successfully from main `c68818b` and was
-launched visibly as PID 64216. The launch session selected and admitted all
-eight installed widgets, including the autonomous `game-launcher` and Community
-Spotify identities, with no error/failure/denial records. The focused managed
-test rerun was not claimable because this checkout's restore graph failed
-silently before compilation with zero reported errors; the accepted exact-tip
-DLV-217 evidence and explicit aggregate exception remain the acceptance basis.
+The DLV-217 Release launch evidence remains accepted. DLV-246 subsequently
+integrated as `0e75203`; the coherent native Release now runs visibly as PID
+74420. The focused managed DLV-217 test rerun was not claimable because this
+checkout's restore graph failed silently before compilation with zero reported
+errors; the accepted exact-tip DLV-217 evidence and explicit aggregate exception
+remain the DLV-217 acceptance basis.
 
 ## Dispositioned temporary red-test lane
 
@@ -296,7 +297,7 @@ extent retention, zero hidden background refresh calls, and the native Release
 build passed. The single permitted linked-host attempt exited while publishing
 its unchanged fixture before host assertions and was not repeated. No aggregate.
 
-### Assigned — DLV-246: repair bounded process-owner startup hang
+### Accepted and integrated — DLV-246: repair bounded process-owner startup hang
 
 Owner/baseline: platform `OverlayProcessOwner` production authority and its
 direct native executable test from exact accepted main `7cc5839`. This work is
@@ -333,6 +334,14 @@ be exercised reliably rather than expanding the harness.
 Stop for a new transport/security model, undocumented Windows behavior,
 destructive cleanup, production-profile attachment, shared DLV-240 files, or a
 material change to cross-process activation semantics.
+
+Candidate `4210be7` was independently accepted and integrated as `0e75203`.
+The same per-user/profile mutex and authenticated named pipe now use bounded
+overlapped connect/read/write/reply/stop operations. Exact retained evidence
+passes 26 direct Release checks under the 20-second outer bound and a native
+Release build. After integration, a second exact `--show` invocation exited 0
+while visible owner PID 74420 remained resident. The distinct interactive-logon
+session branch remains source-reviewed rather than directly exercised.
 
 ## Serialized snapshot update program
 
@@ -407,9 +416,8 @@ delete credentials, provider data, accounts, or user files.
 ## Serialized order
 
 1. Accepted DLV-239 is integrated as `7cc5839`.
-2. Widgets implements DLV-240 from exact `7cc5839` while platform independently
-   repairs the isolated process-owner path in DLV-246; platform does not edit
-   shared protocol/bridge files concurrently.
+2. DLV-246 is accepted and integrated as `0e75203`; its platform branch remains
+   clean and idle while widgets completes DLV-240 from exact `7cc5839`.
 3. Platform implements DLV-241 after DLV-240 integration and runs the one named
    Tier-3 activation checkpoint.
 4. Platform implements DLV-242 and launches for physical incremental-behavior
@@ -444,6 +452,7 @@ delete credentials, provider data, accounts, or user files.
 
 | Milestone | Result |
 | --- | --- |
+| DLV-246 | `4210be7` integrated as `0e75203`: bounded overlapped activation lifecycle, same authenticated singleton/pipe, 26 direct checks, and successful live second-invocation smoke. |
 | DLV-217 | User-approved aggregate exception integrated through `1453a4c`: autonomous full-trust Community Game Launcher, ordinary package lifecycle, public SDK/export path, and registered Community verification. |
 | DLV-239 | Integrated as `7cc5839`: retained per-widget checkpoints, explicit refresh state, current-lifecycle refresh queuing, and inert retained authority. |
 | DLV-244 | Integrated through `94c4873`: stable applied chrome HWND, local guide/tray surfaces, coordinated Z-order, panel-local content, and durable destination authority. |
@@ -453,6 +462,11 @@ delete credentials, provider data, accounts, or user files.
 | DLV-234 | `9435050` integrated as `348df2e`: incomplete frames taint and replace the sole transport. |
 | DLV-233 | `1323c8a` integrated as `4b8e0b7`: PATH-isolated Audio fixture with strict UIA/scroll/focus behavior. |
 | DLV-231 | `2a379ac` integrated as `fbd2f02`: delayed requests remain revocable while tray/input/close remain responsive. |
+
+Earlier accepted records retained from the prior recent window:
+
+| Milestone | Result |
+| --- | --- |
 | DLV-230 | `7323468` integrated as `fe2e52c`: responsive YT Music composition. |
 | DLV-229 | `1a8c201` integrated as `1ddedb4`: Network first-page scan state. |
 | DLV-228 | `2784401` integrated as `220a415`: Audio rows/sliders consume width generically. |
