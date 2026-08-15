@@ -1684,6 +1684,7 @@ private:
                     PostMessageW(window_, kCatalogRefreshMessage, 0, 0);
                 }
                 for (auto& invalidatedWidget : bridge_.TakeInvalidatedWidgetIds()) {
+                    sessions_.MarkRefreshRequested(invalidatedWidget);
                     const auto currentWidget = state_.surface() == gba::Surface::Widget
                         ? state_.activeWidget()
                         : state_.selectedWidget();
@@ -1696,9 +1697,10 @@ private:
                             RefreshWidgetSnapshot(invalidatedWidget);
                         });
                     } else {
-                        // Preserve the event's widget identity. An offscreen
-                        // cache is invalidated and will be fetched on selection.
-                        sessions_.RemoveSnapshot(invalidatedWidget);
+                        // Ordinary invalidation is refresh demand, not proof
+                        // that the last admitted semantic checkpoint is unsafe.
+                        // Keep the offscreen widget's own content and envelope;
+                        // selection will request current state without waking it here.
                         renderedSnapshotSequences_.erase(invalidatedWidget);
                     }
                 }
@@ -2353,14 +2355,14 @@ private:
 
         if (invalidateWidgetSnapshots) {
             // Worker snapshots contain bridge-computed widget styles derived
-            // from the same platform revision. Drop every cached snapshot,
-            // then refresh only the visible worker. Live Win32 accessibility
-            // broadcasts reuse the current revision and skip this block.
+            // from the same platform revision. Appearance invalidates those
+            // derived projections and requests a refresh; it does not erase
+            // the last admitted semantic checkpoint or wake hidden workers.
             const std::wstring visibleWidget = state_.surface() == gba::Surface::Widget
                 ? std::wstring(state_.activeWidget())
                 : std::wstring(state_.selectedWidget());
             const bool hadVisibleSnapshot = SnapshotFor(visibleWidget) != nullptr;
-            sessions_.ClearSnapshots();
+            sessions_.MarkAllRefreshRequested();
             renderedSnapshotSequences_.clear();
             if (state_.surface() != gba::Surface::Hidden && hadVisibleSnapshot &&
                 IsBridgeWidget(visibleWidget)) {
@@ -2511,8 +2513,8 @@ private:
         RequestFixedChromeAnchorRefresh(
             FixedChromePlacementReason::DisplayEnvironment);
 
-        // Appearance application also invalidates widget snapshots and target
-        // resources. Suppress its placement step so one notification produces
+        // Appearance application also requests widget refresh and invalidates
+        // target resources. Suppress its placement step so one notification produces
         // one authoritative monitor/work-area/DPI resolve. If appearance is
         // unavailable, the placement refresh still proceeds independently.
         if (plan.reapplyAppearance) {
@@ -2533,9 +2535,9 @@ private:
         if (!actionFailureFeedback_.ReconcileCatalog(descriptors)) {
             AppendDiagnostic(L"Widget action feedback rejected an invalid catalog projection");
         }
-        // Runtime identity owns focus memory independently of snapshot cache
-        // residency. Clear every replaced/removed runtime even when its
-        // offscreen snapshot was evicted earlier.
+        // Runtime identity owns focus memory independently of checkpoint
+        // retention. Clear every replaced/removed runtime even if it never
+        // admitted a checkpoint in this visible session.
         for (const auto& runtime : change.runtimeChanges) {
             focusMemory_.Forget(runtime.widgetId);
             if (declarativeRenderer_ && !runtime.previousInstanceId.empty()) {
@@ -2736,6 +2738,9 @@ private:
                     event.correlationId, event.widgetId, false, GetTickCount64());
                 continue;
             }
+            const bool newerRefreshRequested =
+                sessions_.RefreshState(event.widgetId) ==
+                    gba::WidgetRefreshState::RefreshRequested;
             CommitAdmittedWidgetPresentation(event.widgetId);
             if (pendingContentRevealWidget_ == event.widgetId) {
                 pendingContentRevealWidget_.clear();
@@ -2747,8 +2752,12 @@ private:
             if (pressedInteraction_.Reconcile(*current, focusedElementId_))
                 InvalidateRect(window_, nullptr, FALSE);
             RefreshAndApplyPresentation([] {});
-            admissionTrace_.RecordAdmissionPresentation(
-                event.correlationId, event.widgetId, true, GetTickCount64());
+            if (newerRefreshRequested) {
+                RefreshWidgetSnapshot(event.widgetId, event.correlationId);
+            } else {
+                admissionTrace_.RecordAdmissionPresentation(
+                    event.correlationId, event.widgetId, true, GetTickCount64());
+            }
         }
     }
 
@@ -7575,15 +7584,15 @@ private:
             const auto contentAuthority = gba::ResolveWidgetContentAuthority(
                 sessionPresentation.snapshot != nullptr,
                 sessionPresentation.authority ==
-                    gba::WidgetPresentationAuthority::FailureRetained,
+                    gba::WidgetPresentationAuthority::Current,
                 retainedPresentation.has_value());
-            const bool failureRetainedSnapshot =
-                contentAuthority == gba::WidgetContentAuthority::FailureRetainedSnapshot;
+            const bool sessionRetainedSnapshot =
+                contentAuthority == gba::WidgetContentAuthority::InertRetainedSnapshot;
             const bool transitionRetainedSnapshot =
                 contentAuthority == gba::WidgetContentAuthority::RetainedCommittedSnapshot;
             const bool inertRetainedSnapshot =
-                failureRetainedSnapshot || transitionRetainedSnapshot;
-            const auto* snapshot = failureRetainedSnapshot
+                sessionRetainedSnapshot || transitionRetainedSnapshot;
+            const auto* snapshot = sessionRetainedSnapshot
                 ? sessionPresentation.snapshot
                 : transitionRetainedSnapshot
                     ? &retainedPresentation->snapshot
@@ -7593,7 +7602,7 @@ private:
                 : widget;
             const std::wstring_view renderedFocusId = transitionRetainedSnapshot
                 ? std::wstring_view{retainedPresentation->focusId}
-                : failureRetainedSnapshot
+                : sessionRetainedSnapshot
                     ? std::wstring_view{}
                     : state_.focusRegion() == gba::FocusRegion::Widget
                         ? std::wstring_view{focusedElementId_}
@@ -7797,8 +7806,10 @@ private:
                     const std::wstring paintKey =
                         std::wstring(widget) + L"\n" + std::wstring(renderedWidget) +
                         L"\n" + std::to_wstring(snapshot->sequence) + L"\n" +
-                        (failureRetainedSnapshot
-                            ? L"failure-retained"
+                        (sessionRetainedSnapshot
+                            ? (sessionPresentation.authority ==
+                                    gba::WidgetPresentationAuthority::FailureRetained
+                                ? L"failure-retained" : L"refresh-retained")
                             : transitionRetainedSnapshot ? L"retained" : L"admitted") +
                         L"\n" + inputOwner + L"\n" + std::wstring(renderedFocusId) +
                         L"\n" + semanticFocus + trayState + launcherPresentationKey;
@@ -7891,8 +7902,10 @@ private:
                         AppendDiagnostic(
                             L"Widget presentation paint target=" + std::wstring(widget) +
                             L" content=" +
-                            (failureRetainedSnapshot
-                                ? L"failure-retained"
+                            (sessionRetainedSnapshot
+                                ? (sessionPresentation.authority ==
+                                        gba::WidgetPresentationAuthority::FailureRetained
+                                    ? L"failure-retained" : L"refresh-retained")
                                 : transitionRetainedSnapshot ? L"retained" : L"admitted") +
                             L" rendered=" + std::wstring(renderedWidget) +
                             L" sequence=" + std::to_wstring(snapshot->sequence) +

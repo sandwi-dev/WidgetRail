@@ -114,7 +114,14 @@ struct WidgetSessionFailure final {
 enum class WidgetPresentationAuthority {
     Unavailable,
     Current,
+    RefreshRetained,
     FailureRetained,
+};
+
+enum class WidgetRefreshState {
+    Current,
+    RefreshRequested,
+    RefreshInFlight,
 };
 
 struct WidgetSessionPresentation final {
@@ -227,6 +234,8 @@ public:
     [[nodiscard]] const WidgetDescriptor* FindDescriptor(std::wstring_view widgetId) const noexcept;
     [[nodiscard]] bool Contains(std::wstring_view widgetId) const noexcept;
     [[nodiscard]] const WidgetSnapshot* Snapshot(std::wstring_view widgetId) const noexcept;
+    [[nodiscard]] WidgetRefreshState RefreshState(
+        std::wstring_view widgetId) const noexcept;
     [[nodiscard]] WidgetSessionPresentation Presentation(
         std::wstring_view widgetId) const noexcept;
     [[nodiscard]] const WidgetSessionFailure* Failure(std::wstring_view widgetId) const noexcept;
@@ -242,8 +251,18 @@ public:
         WidgetSessionFailureStage stage,
         std::wstring safeMessage);
     void ClearFailure(std::wstring_view widgetId);
+    /// Records semantic refresh demand without waking a worker or removing its
+    /// last-admitted checkpoint. RequestSnapshot/SetLifecycleTargets own work.
+    void MarkRefreshRequested(std::wstring_view widgetId);
+    void MarkAllRefreshRequested();
+    /// Hard removal only: restart, runtime/generation replacement, trust or
+    /// protocol/corruption authority transitions. Ordinary invalidation must
+    /// use MarkRefreshRequested().
     void RemoveSnapshot(std::wstring_view widgetId);
-    void ClearSnapshots();
+
+    [[nodiscard]] std::size_t RetainedCheckpointCount() const noexcept {
+        return snapshots_.size();
+    }
 
     void ResetCatalogRetry() noexcept { catalogRetryAttempts_ = 0; }
     [[nodiscard]] std::optional<unsigned int> NextCatalogRetryDelay(
@@ -325,6 +344,9 @@ private:
         std::vector<WidgetDescriptor> descriptors);
     [[nodiscard]] bool CompletionRuntimeIsCurrent(const Request& request) const noexcept;
     [[nodiscard]] bool CompletionIsCurrent(const Request& request) const noexcept;
+    void MarkRefreshInFlight(std::wstring_view widgetId, std::uint64_t requestId);
+    void CompleteRefresh(const Request& request, bool admitted) noexcept;
+    void HardRemoveCheckpoint(std::wstring_view widgetId) noexcept;
     void FailCompletion(Completion& completion, WidgetSessionOperationResult<bool> result);
 
     WidgetSessionOperations operations_;
@@ -343,6 +365,8 @@ private:
 
     std::vector<WidgetDescriptor> descriptors_;
     std::unordered_map<std::wstring, WidgetSnapshot> snapshots_;
+    std::unordered_map<std::wstring, WidgetRefreshState> refreshStates_;
+    std::unordered_map<std::wstring, std::uint64_t> refreshRequestIds_;
     std::unordered_map<std::wstring, WidgetSessionFailure> failures_;
     std::unordered_map<std::wstring, WidgetLifecycleState> lifecycleStates_;
     std::unordered_map<std::wstring, WidgetLifecycleState> lifecycleTargets_;

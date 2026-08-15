@@ -70,12 +70,15 @@ std::optional<WidgetSnapshot> WidgetSessionCoordinator::EstablishPresentationFor
     auto established = operations_.establish({}, widgetId, state);
     if (!established.value || established.value->instanceId != descriptor->instanceId)
         return std::nullopt;
-    snapshots_.insert_or_assign(std::wstring(widgetId), *established.value);
-    lifecycleStates_.insert_or_assign(std::wstring(widgetId), state);
+    const auto id = std::wstring(widgetId);
+    snapshots_.insert_or_assign(id, *established.value);
+    refreshStates_.insert_or_assign(id, WidgetRefreshState::Current);
+    refreshRequestIds_.erase(id);
+    lifecycleStates_.insert_or_assign(id, state);
     auto background = operations_.setLifecycle(
         {}, widgetId, WidgetLifecycleState::Background);
     if (!background.value || !*background.value) return std::nullopt;
-    lifecycleStates_.erase(std::wstring(widgetId));
+    lifecycleStates_.erase(id);
     return established.value;
 }
 
@@ -89,12 +92,20 @@ bool WidgetSessionCoordinator::RequestSnapshot(
     const std::uint64_t correlationId) {
     const auto* descriptor = FindDescriptor(widgetId);
     if (!descriptor) return false;
+    const auto id = std::wstring(widgetId);
+    MarkRefreshRequested(id);
     if (explicitRetry) {
-        ++generations_[std::wstring(widgetId)];
+        ++generations_[id];
     }
-    return Queue(MakeRequest(
-        RequestKind::Snapshot, std::wstring(widgetId),
-        WidgetLifecycleState::Background, correlationId)).accepted();
+    if (HasPending(RequestKind::Establish, id)) return true;
+    const auto queued = Queue(MakeRequest(
+        RequestKind::Snapshot, id,
+        WidgetLifecycleState::Background, correlationId));
+    if (queued.accepted() &&
+        queued.action != WidgetSessionTraceAction::Deduplicated) {
+        MarkRefreshInFlight(id, queued.requestId);
+    }
+    return queued.accepted();
 }
 
 bool WidgetSessionCoordinator::RequestRestart(
@@ -103,7 +114,7 @@ bool WidgetSessionCoordinator::RequestRestart(
     if (!Contains(widgetId)) return false;
     const auto id = std::wstring(widgetId);
     ++generations_[id];
-    snapshots_.erase(id);
+    HardRemoveCheckpoint(id);
     lifecycleStates_.erase(id);
     lifecycleTargets_.erase(id);
     awaitingRestartSnapshot_.insert(id);
@@ -150,15 +161,20 @@ void WidgetSessionCoordinator::SetLifecycleTargets(
             continue;
         }
         const auto current = lifecycleStates_.find(widgetId);
-        if (current != lifecycleStates_.end() && current->second == state) {
+        const auto refreshState = RefreshState(widgetId);
+        if (current != lifecycleStates_.end() && current->second == state &&
+            refreshState != WidgetRefreshState::RefreshRequested) {
             EmitLifecycleDecision(
                 widgetCorrelationId, widgetId, state, RequestKind::Lifecycle,
                 WidgetSessionTraceAction::Skipped,
                 WidgetSessionTraceReason::AlreadyCurrent);
             continue;
         }
-        const auto requestKind = Snapshot(widgetId)
-            ? RequestKind::Lifecycle : RequestKind::Establish;
+        const auto requestKind = refreshState == WidgetRefreshState::RefreshRequested
+            ? (current != lifecycleStates_.end() && current->second == state
+                ? RequestKind::Snapshot
+                : RequestKind::Establish)
+            : Snapshot(widgetId) ? RequestKind::Lifecycle : RequestKind::Establish;
         if (deferColdStart && current == lifecycleStates_.end() && !Snapshot(widgetId)) {
             EmitLifecycleDecision(
                 widgetCorrelationId, widgetId, state, requestKind,
@@ -173,6 +189,12 @@ void WidgetSessionCoordinator::SetLifecycleTargets(
         request.generation = queued.generation;
         request.queuedAt = queued.queuedAt;
         request.startedAt = queued.startedAt;
+        if (queued.accepted() &&
+            queued.action != WidgetSessionTraceAction::Deduplicated &&
+            (requestKind == RequestKind::Establish ||
+             requestKind == RequestKind::Snapshot)) {
+            MarkRefreshInFlight(widgetId, queued.requestId);
+        }
         EmitLifecycleDecision(
             widgetCorrelationId, widgetId, state, requestKind,
             queued.action, queued.reason, &request);
@@ -242,11 +264,13 @@ std::vector<WidgetSessionEvent> WidgetSessionCoordinator::TakeEvents() {
             return event;
         };
         if (!completionCurrent && !primaryStartFailure) {
+            CompleteRefresh(request, false);
             events.push_back(makeEvent(
                 WidgetSessionEventKind::StaleCompletionRejected));
             continue;
         }
         if (completion.failure.stage != WidgetSessionFailureStage::None) {
+            CompleteRefresh(request, false);
             if (!request.widgetId.empty()) {
                 awaitingRestartSnapshot_.erase(request.widgetId);
                 if (primaryStartFailure) RevokeRequests(request.widgetId);
@@ -269,6 +293,7 @@ std::vector<WidgetSessionEvent> WidgetSessionCoordinator::TakeEvents() {
         }
         if (request.kind == RequestKind::Establish || request.kind == RequestKind::Snapshot) {
             if (!snapshotProtocolCurrent) {
+                HardRemoveCheckpoint(request.widgetId);
                 auto failure = FailureFrom(
                     WidgetSessionFailureStage::Protocol,
                     L"The worker returned a stale or mismatched widget instance.");
@@ -281,6 +306,7 @@ std::vector<WidgetSessionEvent> WidgetSessionCoordinator::TakeEvents() {
                 continue;
             }
             snapshots_.insert_or_assign(request.widgetId, std::move(*completion.snapshot));
+            CompleteRefresh(request, true);
             failures_.erase(request.widgetId);
             if (request.kind == RequestKind::Establish)
                 lifecycleStates_.insert_or_assign(request.widgetId, request.lifecycle);
@@ -326,15 +352,27 @@ const WidgetSnapshot* WidgetSessionCoordinator::Snapshot(
     return found == snapshots_.end() ? nullptr : &found->second;
 }
 
+WidgetRefreshState WidgetSessionCoordinator::RefreshState(
+    const std::wstring_view widgetId) const noexcept {
+    const auto found = refreshStates_.find(std::wstring(widgetId));
+    if (found != refreshStates_.end()) return found->second;
+    return Snapshot(widgetId)
+        ? WidgetRefreshState::Current
+        : WidgetRefreshState::RefreshRequested;
+}
+
 WidgetSessionPresentation WidgetSessionCoordinator::Presentation(
     const std::wstring_view widgetId) const noexcept {
     const auto* snapshot = Snapshot(widgetId);
     if (!snapshot) return {};
+    const auto id = std::wstring(widgetId);
     return {
         snapshot,
-        failures_.contains(std::wstring(widgetId))
+        failures_.contains(id)
             ? WidgetPresentationAuthority::FailureRetained
-            : WidgetPresentationAuthority::Current,
+            : RefreshState(id) == WidgetRefreshState::Current
+                ? WidgetPresentationAuthority::Current
+                : WidgetPresentationAuthority::RefreshRetained,
     };
 }
 
@@ -380,17 +418,24 @@ void WidgetSessionCoordinator::ClearFailure(const std::wstring_view widgetId) {
     failures_.erase(std::wstring(widgetId));
 }
 
-void WidgetSessionCoordinator::RemoveSnapshot(const std::wstring_view widgetId) {
-    snapshots_.erase(std::wstring(widgetId));
-    RevokeRequests(widgetId);
+void WidgetSessionCoordinator::MarkRefreshRequested(
+    const std::wstring_view widgetId) {
+    if (!Contains(widgetId)) return;
+    const auto id = std::wstring(widgetId);
+    refreshStates_.insert_or_assign(id, WidgetRefreshState::RefreshRequested);
+    refreshRequestIds_.erase(id);
 }
 
-void WidgetSessionCoordinator::ClearSnapshots() {
-    snapshots_.clear();
-    for (auto& [widgetId, generation] : generations_) {
-        (void)widgetId;
-        ++generation;
+void WidgetSessionCoordinator::MarkAllRefreshRequested() {
+    for (const auto& [widgetId, snapshot] : snapshots_) {
+        (void)snapshot;
+        MarkRefreshRequested(widgetId);
     }
+}
+
+void WidgetSessionCoordinator::RemoveSnapshot(const std::wstring_view widgetId) {
+    HardRemoveCheckpoint(widgetId);
+    RevokeRequests(widgetId);
 }
 
 std::optional<unsigned int> WidgetSessionCoordinator::NextCatalogRetryDelay(
@@ -518,6 +563,7 @@ void WidgetSessionCoordinator::RevokeRequests(
     const std::wstring_view widgetId) noexcept {
     const auto id = std::wstring(widgetId);
     bool cancelInFlight = false;
+    std::optional<std::uint64_t> cancelledInFlightId;
     std::vector<Request> cancelled;
     {
         std::scoped_lock lock(queueMutex_);
@@ -529,10 +575,20 @@ void WidgetSessionCoordinator::RevokeRequests(
         });
         if (inFlight_ && inFlight_->widgetId == id) {
             cancelInFlight = true;
+            cancelledInFlightId = inFlight_->id;
             if (inFlightStop_) inFlightStop_->request_stop();
         }
     }
     ++generations_[id];
+    const auto refreshRequest = refreshRequestIds_.find(id);
+    const bool revokedRefresh = refreshRequest != refreshRequestIds_.end() &&
+        (std::any_of(cancelled.begin(), cancelled.end(), [&](const Request& request) {
+            return request.id == refreshRequest->second;
+        }) || cancelledInFlightId == refreshRequest->second);
+    if (revokedRefresh) {
+        refreshStates_.insert_or_assign(id, WidgetRefreshState::RefreshRequested);
+        refreshRequestIds_.erase(id);
+    }
     for (const auto& request : cancelled) {
         EmitTrace(
             request, WidgetSessionTraceStage::RequestCompleted,
@@ -746,7 +802,7 @@ std::optional<WidgetSessionCatalogChange> WidgetSessionCoordinator::ApplyCatalog
         if (current == descriptors.end() || !SameRuntime(previous, *current)) {
             change.runtimeChanges.push_back({previous.id, previous.instanceId});
             ++generations_[previous.id];
-            snapshots_.erase(previous.id);
+            HardRemoveCheckpoint(previous.id);
             failures_.erase(previous.id);
             lifecycleStates_.erase(previous.id);
             lifecycleTargets_.erase(previous.id);
@@ -755,7 +811,7 @@ std::optional<WidgetSessionCatalogChange> WidgetSessionCoordinator::ApplyCatalog
         }
         if (previous.presentationGeneration != current->presentationGeneration) {
             ++generations_[previous.id];
-            snapshots_.erase(previous.id);
+            HardRemoveCheckpoint(previous.id);
         }
     }
     for (const auto& current : descriptors) {
@@ -765,6 +821,13 @@ std::optional<WidgetSessionCatalogChange> WidgetSessionCoordinator::ApplyCatalog
         }
     }
     descriptors_ = std::move(descriptors);
+    for (const auto& descriptor : descriptors_) {
+        refreshStates_.try_emplace(
+            descriptor.id,
+            Snapshot(descriptor.id)
+                ? WidgetRefreshState::Current
+                : WidgetRefreshState::RefreshRequested);
+    }
     return change;
 }
 
@@ -789,6 +852,37 @@ bool WidgetSessionCoordinator::CompletionIsCurrent(const Request& request) const
             return false;
     }
     return true;
+}
+
+void WidgetSessionCoordinator::MarkRefreshInFlight(
+    const std::wstring_view widgetId,
+    const std::uint64_t requestId) {
+    if (widgetId.empty() || requestId == 0) return;
+    const auto id = std::wstring(widgetId);
+    refreshStates_.insert_or_assign(id, WidgetRefreshState::RefreshInFlight);
+    refreshRequestIds_.insert_or_assign(id, requestId);
+}
+
+void WidgetSessionCoordinator::CompleteRefresh(
+    const Request& request,
+    const bool admitted) noexcept {
+    if (request.kind != RequestKind::Establish &&
+        request.kind != RequestKind::Snapshot) return;
+    const auto found = refreshRequestIds_.find(request.widgetId);
+    if (found == refreshRequestIds_.end() || found->second != request.id) return;
+    refreshStates_.insert_or_assign(
+        request.widgetId,
+        admitted ? WidgetRefreshState::Current
+                 : WidgetRefreshState::RefreshRequested);
+    refreshRequestIds_.erase(found);
+}
+
+void WidgetSessionCoordinator::HardRemoveCheckpoint(
+    const std::wstring_view widgetId) noexcept {
+    const auto id = std::wstring(widgetId);
+    snapshots_.erase(id);
+    refreshStates_.erase(id);
+    refreshRequestIds_.erase(id);
 }
 
 void WidgetSessionCoordinator::FailCompletion(

@@ -379,24 +379,24 @@ enum class WidgetExtentAuthority {
 
 enum class WidgetContentAuthority {
     AdmittedSnapshot,
-    FailureRetainedSnapshot,
+    InertRetainedSnapshot,
     RetainedCommittedSnapshot,
     StableStartupStatus,
 };
 
 /// The host-generated worker-start copy must not replace already-painted
-/// widget content for a single frame. Keep one bounded, previously admitted
-/// snapshot as visual-only presentation until the destination snapshot is
-/// available. A stable startup status is reserved for the first widget open,
-/// when there is no prior content to retain.
+/// widget content for a single frame. A refreshing or failed session keeps its
+/// own last-admitted checkpoint as visual-only presentation until current
+/// sequence/action authority is admitted. The transition checkpoint is used
+/// only when the destination has never admitted one; stable startup status is
+/// reserved for the first widget open with no retained content.
 [[nodiscard]] constexpr WidgetContentAuthority ResolveWidgetContentAuthority(
     const bool sessionSnapshotAvailable,
-    const bool failureCurrent,
+    const bool sessionSnapshotCurrent,
     const bool committedSnapshotAvailable) noexcept {
-    if (failureCurrent) return sessionSnapshotAvailable
-        ? WidgetContentAuthority::FailureRetainedSnapshot
-        : WidgetContentAuthority::StableStartupStatus;
-    if (sessionSnapshotAvailable) return WidgetContentAuthority::AdmittedSnapshot;
+    if (sessionSnapshotAvailable) return sessionSnapshotCurrent
+        ? WidgetContentAuthority::AdmittedSnapshot
+        : WidgetContentAuthority::InertRetainedSnapshot;
     if (committedSnapshotAvailable)
         return WidgetContentAuthority::RetainedCommittedSnapshot;
     return WidgetContentAuthority::StableStartupStatus;

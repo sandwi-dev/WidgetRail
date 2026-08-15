@@ -5123,3 +5123,53 @@ started, and completed Establish normally. The evidence shows snapshot eviction
 and lifecycle-current state diverge; DLV-239 must retain the last admitted
 checkpoint and/or ensure `RefreshRequested` queues a snapshot when lifecycle is
 already current.
+
+### DLV-239 — retained checkpoint and explicit refresh state
+
+The native `WidgetSessionCoordinator` remains the sole semantic checkpoint,
+lifecycle, request, cancellation, and completion owner. Each catalog widget now
+has explicit `Current`, `RefreshRequested`, or `RefreshInFlight` freshness state
+beside the existing single last-admitted checkpoint. Ordinary provider/hidden
+and appearance-derived invalidation records refresh demand without deleting the
+checkpoint or waking a background worker. Selection can therefore use that
+widget's own retained snapshot and authored surface hints immediately while the
+same request owner establishes or refreshes current state. An already-current
+lifecycle no longer suppresses requested snapshot work.
+
+Retained refresh or failure content is visual-only. Native interaction, focus,
+quick-action, and UIA authority continue to resolve only a `Current`
+presentation. A successful current request atomically advances checkpoint and
+action authority; failure, cancellation, stale completion, and a newer demand
+arriving during an in-flight request leave the last-good checkpoint inert. The
+existing bounded queue either retains the newer demand or runs one queued
+follow-up. Hard checkpoint removal is now concentrated at explicit restart,
+widget removal/runtime or presentation-generation replacement, protocol/
+instance mismatch, and the existing explicit hard-removal API. Derived renderer
+resources and appearance refresh remain separate from semantic retention.
+
+Deterministic Release evidence passes `WidgetSessionCoordinatorTests` with 19
+scenarios plus `OverlayStateTests`, `WidgetLifecycleTests`, and 305
+`WidgetActionFeedbackTests` checks. The all-eight scenario retains eight exact
+surface extents, observes zero background snapshot calls across ordinary/
+appearance refresh demand, admits a retained lookup within the existing 20-ms
+test bound, and covers resident already-current refresh, unloaded selection,
+failure, cancellation/rapid switch, restart, protocol mismatch, cache count,
+and inert-versus-current authority. The focused composition group passes
+placement 112,340/112,340, targeting 75/75, transition 83/83, chrome 119/119,
+accessibility provider 165/165, focus 49/49, host accessibility 34/34, and
+declarative renderer 4,851/4,851.
+
+One allowed linked widget-switch attempt stopped before running the host route:
+the unchanged `WidgetSwitchFixture` publish exited 1 before an executable
+fixture or authenticated host session was established. It was not retried or
+redesigned, and none of that route's assertions count as evidence. Direct source
+review confirms the coordinator still bounds pending work to 32 requests,
+revokes generation-mismatched work through its existing cancellation owner,
+drains lifecycle through the same shutdown path, and retains no second cache or
+lifecycle owner. A native Release build succeeds without tests or packaging;
+`OverlayHost.exe` SHA-256 is
+`88146E53891572DCB21E5CC068870BF70233FE75B8A2D92C3AC6C7B23A6787E5`.
+No public protocol/SDK, residency policy, incremental Taffy/damage, aggregate,
+launch, capture, provider, packaging, or push work was performed. The linked
+host continuity route and physical retained-selection latency remain residual
+planner/user verification.
