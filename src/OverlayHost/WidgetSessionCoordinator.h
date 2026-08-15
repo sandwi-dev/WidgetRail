@@ -41,6 +41,71 @@ enum class WidgetSessionEventKind {
     StaleCompletionRejected,
 };
 
+enum class WidgetSessionRequestKind {
+    Catalog,
+    Establish,
+    Snapshot,
+    Lifecycle,
+    Restart,
+};
+
+enum class WidgetSessionTraceStage {
+    LifecycleDecision,
+    RequestQueued,
+    RequestStarted,
+    RequestCompleted,
+};
+
+enum class WidgetSessionTraceAction {
+    None,
+    Queued,
+    Deduplicated,
+    Replaced,
+    Skipped,
+};
+
+enum class WidgetSessionTraceReason {
+    None,
+    Deferred,
+    AlreadyCurrent,
+    FailureCurrent,
+    QueueFull,
+    MissingDescriptor,
+    ExistingRequest,
+    NewerTarget,
+    ShuttingDown,
+};
+
+enum class WidgetSessionCompletionDisposition {
+    None,
+    Admitted,
+    Failed,
+    StaleGeneration,
+    WrongLifecycle,
+    Cancelled,
+};
+
+struct WidgetSessionTraceEvent final {
+    std::uint64_t correlationId{};
+    WidgetSessionTraceStage stage{WidgetSessionTraceStage::LifecycleDecision};
+    WidgetSessionTraceAction action{WidgetSessionTraceAction::None};
+    WidgetSessionTraceReason reason{WidgetSessionTraceReason::None};
+    WidgetSessionCompletionDisposition disposition{
+        WidgetSessionCompletionDisposition::None};
+    std::uint64_t requestId{};
+    std::uint64_t generation{};
+    WidgetSessionRequestKind requestKind{WidgetSessionRequestKind::Snapshot};
+    WidgetLifecycleState lifecycle{WidgetLifecycleState::Background};
+    std::wstring widgetId;
+    std::uint64_t queuedAt{};
+    std::uint64_t startedAt{};
+    std::uint64_t completedAt{};
+
+    friend bool operator==(
+        const WidgetSessionTraceEvent&,
+        const WidgetSessionTraceEvent&) = default;
+};
+
 struct WidgetSessionFailure final {
     WidgetSessionFailureStage stage{WidgetSessionFailureStage::None};
     std::wstring safeMessage;
@@ -73,6 +138,13 @@ struct WidgetSessionEvent final {
     WidgetSessionFailure failure;
     std::optional<WidgetSessionCatalogChange> catalog;
     bool completedRestart{};
+    std::uint64_t correlationId{};
+    std::uint64_t requestId{};
+    std::uint64_t generation{};
+    WidgetSessionRequestKind requestKind{WidgetSessionRequestKind::Snapshot};
+    WidgetLifecycleState lifecycle{WidgetLifecycleState::Background};
+    WidgetSessionCompletionDisposition completionDisposition{
+        WidgetSessionCompletionDisposition::None};
 };
 
 template <typename Value>
@@ -117,7 +189,9 @@ public:
 
     explicit WidgetSessionCoordinator(
         WidgetSessionOperations operations,
-        std::function<void()> completionAvailable = {});
+        std::function<void()> completionAvailable = {},
+        std::function<void(const WidgetSessionTraceEvent&)> traceAvailable = {},
+        std::function<std::uint64_t()> timestamp = {});
     ~WidgetSessionCoordinator();
 
     WidgetSessionCoordinator(const WidgetSessionCoordinator&) = delete;
@@ -130,11 +204,17 @@ public:
         std::wstring_view widgetId,
         WidgetLifecycleState state);
     [[nodiscard]] bool RequestCatalog();
-    [[nodiscard]] bool RequestSnapshot(std::wstring_view widgetId, bool explicitRetry = false);
-    [[nodiscard]] bool RequestRestart(std::wstring_view widgetId);
+    [[nodiscard]] bool RequestSnapshot(
+        std::wstring_view widgetId,
+        bool explicitRetry = false,
+        std::uint64_t correlationId = 0);
+    [[nodiscard]] bool RequestRestart(
+        std::wstring_view widgetId,
+        std::uint64_t correlationId = 0);
     void SetLifecycleTargets(
         const std::map<std::wstring, WidgetLifecycleState, std::less<>>& desired,
-        bool deferColdStart = false);
+        bool deferColdStart = false,
+        std::uint64_t correlationId = 0);
 
     /// Applies completed operations on the caller/UI thread. No callback runs
     /// while coordinator state is mutating.
@@ -175,10 +255,24 @@ public:
     void Shutdown() noexcept;
 
 private:
-    enum class RequestKind { Catalog, Establish, Snapshot, Lifecycle, Restart };
+    using RequestKind = WidgetSessionRequestKind;
+
+    struct QueueResult final {
+        WidgetSessionTraceAction action{WidgetSessionTraceAction::Skipped};
+        WidgetSessionTraceReason reason{WidgetSessionTraceReason::None};
+        std::uint64_t requestId{};
+        std::uint64_t generation{};
+        std::uint64_t queuedAt{};
+        std::uint64_t startedAt{};
+
+        [[nodiscard]] bool accepted() const noexcept {
+            return action != WidgetSessionTraceAction::Skipped;
+        }
+    };
 
     struct Request final {
         std::uint64_t id{};
+        std::uint64_t correlationId{};
         std::uint64_t generation{};
         RequestKind kind{RequestKind::Snapshot};
         std::wstring widgetId;
@@ -186,6 +280,8 @@ private:
         std::wstring expectedInstanceId;
         std::wstring expectedRuntimeGeneration;
         std::wstring expectedPresentationGeneration;
+        std::uint64_t queuedAt{};
+        std::uint64_t startedAt{};
     };
 
     struct Completion final {
@@ -194,15 +290,34 @@ private:
         std::optional<std::vector<WidgetDescriptor>> descriptors;
         std::optional<WidgetSnapshot> snapshot;
         std::optional<bool> acknowledged;
+        std::uint64_t completedAt{};
+        bool cancelled{};
     };
 
-    [[nodiscard]] bool Queue(Request request);
+    [[nodiscard]] QueueResult Queue(Request request);
     [[nodiscard]] bool HasPending(RequestKind kind, std::wstring_view widgetId) const noexcept;
     void RevokeRequests(std::wstring_view widgetId) noexcept;
     [[nodiscard]] Request MakeRequest(
         RequestKind kind,
         std::wstring widgetId = {},
-        WidgetLifecycleState lifecycle = WidgetLifecycleState::Background);
+        WidgetLifecycleState lifecycle = WidgetLifecycleState::Background,
+        std::uint64_t correlationId = 0);
+    void EmitTrace(
+        const Request& request,
+        WidgetSessionTraceStage stage,
+        WidgetSessionTraceAction action = WidgetSessionTraceAction::None,
+        WidgetSessionTraceReason reason = WidgetSessionTraceReason::None,
+        WidgetSessionCompletionDisposition disposition =
+            WidgetSessionCompletionDisposition::None,
+        std::uint64_t completedAt = 0) const;
+    void EmitLifecycleDecision(
+        std::uint64_t correlationId,
+        std::wstring_view widgetId,
+        WidgetLifecycleState lifecycle,
+        RequestKind requestKind,
+        WidgetSessionTraceAction action,
+        WidgetSessionTraceReason reason,
+        const Request* request = nullptr) const;
     void WorkerLoop(std::stop_token stopToken);
     [[nodiscard]] Completion Execute(Request request, std::stop_token stopToken);
     [[nodiscard]] std::optional<WidgetSessionCatalogChange> ApplyCatalog(
@@ -213,6 +328,8 @@ private:
 
     WidgetSessionOperations operations_;
     std::function<void()> completionAvailable_;
+    std::function<void(const WidgetSessionTraceEvent&)> traceAvailable_;
+    std::function<std::uint64_t()> timestamp_;
     mutable std::mutex queueMutex_;
     std::condition_variable queueChanged_;
     std::deque<Request> pending_;

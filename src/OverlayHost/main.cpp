@@ -25,6 +25,7 @@
 #include "LauncherExperienceHostProof.h"
 #include "WidgetBridgeClient.h"
 #include "WidgetActionFeedback.h"
+#include "WidgetAdmissionTrace.h"
 #include "WidgetLifecycle.h"
 #include "WidgetSessionCoordinator.h"
 #include "WidgetSurfaceCoordinator.h"
@@ -341,6 +342,9 @@ public:
               [this] {
                   if (window_) InvalidateRect(window_, nullptr, FALSE);
               }}),
+          admissionTrace_([](std::wstring message) {
+              AppendDiagnostic(message);
+          }),
           sessions_(
               gba::WidgetSessionOperations{
                   [this](std::stop_token) {
@@ -408,7 +412,11 @@ public:
               [this] {
                   if (window_)
                       PostMessageW(window_, kWidgetSessionCompletionMessage, 0, 0);
-              }),
+              },
+              [this](const gba::WidgetSessionTraceEvent& event) {
+                  admissionTrace_.RecordSession(event);
+              },
+              [] { return static_cast<std::uint64_t>(GetTickCount64()); }),
           localWidgetPackageImport_(
               localWidgetPackagePicker_,
               [this] { return CurrentLocalWidgetPackageImportOrigin(); },
@@ -1271,19 +1279,22 @@ private:
             if (state_.surface() == gba::Surface::Hidden &&
                 !pinnedSurfaceCoordinator_.pinned()) return 0;
             {
+                const auto correlationId = static_cast<std::uint64_t>(wParam);
                 const std::wstring widgetId = state_.surface() == gba::Surface::Hidden
                     ? std::wstring(pinnedSurfaceCoordinator_.widgetId())
                     : state_.surface() == gba::Surface::Widget
                     ? std::wstring(state_.activeWidget())
                     : std::wstring(state_.selectedWidget());
+                admissionTrace_.RecordRefreshDequeued(
+                    correlationId, widgetId, GetTickCount64());
                 const bool coldPresentationPending =
                     IsBridgeWidget(widgetId) && SnapshotFor(widgetId) == nullptr;
                 RefreshAndApplyPresentation([&] {
                     if (!coldPresentationPending) {
-                        RefreshCurrentBridgeSnapshot();
+                        RefreshCurrentBridgeSnapshot(correlationId);
                         return;
                     }
-                    SyncWidgetActivity();
+                    SyncWidgetActivity(false, correlationId);
                     if (SnapshotFor(widgetId) && pendingContentRevealWidget_ == widgetId) {
                         pendingContentRevealWidget_.clear();
                         // The last-good content was already fully visible.
@@ -1457,6 +1468,7 @@ private:
             if (wParam == kControllerTimer || wParam == kPinnedSurfaceTimer) {
                 const bool controllerTick = wParam == kControllerTimer;
                 const auto now = GetTickCount64();
+                if (controllerTick) admissionTrace_.ObserveSlow(now);
                 // The dedicated deadline timer owns normal expiry. This cheap
                 // state check also closes the race if Win32 timer creation is
                 // temporarily unavailable; it never repaints unless state changed.
@@ -1813,13 +1825,18 @@ private:
     }
 
     template <typename Mutation>
-    void ApplyStateTransition(Mutation mutation) {
+    void ApplyStateTransition(
+        Mutation mutation,
+        const std::optional<gba::Command> command = std::nullopt) {
         const auto priorSurface = state_.surface();
         const auto priorFocusRegion = state_.focusRegion();
         const auto priorExtent = DesiredPresentationExtentDip();
         const auto priorPresentedExtent = PresentedPresentationExtentDip();
         const std::wstring priorSelected(state_.selectedWidget());
         const std::wstring priorActive(state_.activeWidget());
+        const auto priorDesiredLifecycle = gba::DesiredWidgetLifecycle(
+            priorSurface, priorFocusRegion, priorSelected, priorActive,
+            IsBridgeWidget(priorSelected), IsBridgeWidget(priorActive));
         if (priorSurface == gba::Surface::Widget)
             CommitAdmittedWidgetPresentation(priorActive);
         if (priorSurface == gba::Surface::Widget && IsBridgeWidget(priorActive)) {
@@ -1856,14 +1873,45 @@ private:
             priorActive != state_.activeWidget() &&
             IsBridgeWidget(state_.activeWidget()) &&
             SnapshotFor(state_.activeWidget()) == nullptr;
-        SyncWidgetActivity(deferColdWidgetStart);
+        const bool selectionAuthorityChanged =
+            priorSelected != state_.selectedWidget() ||
+            priorActive != state_.activeWidget();
+        const std::wstring traceWidget = state_.surface() == gba::Surface::Widget
+            ? std::wstring(state_.activeWidget())
+            : std::wstring(state_.selectedWidget());
+        const auto now = GetTickCount64();
+        std::uint64_t correlationId{};
+        if (selectionAuthorityChanged &&
+            state_.surface() != gba::Surface::Hidden &&
+            IsBridgeWidget(traceWidget)) {
+            correlationId = admissionTrace_.BeginSelection(
+                state_.selectedWidget(), state_.activeWidget(),
+                deferColdWidgetStart, SnapshotFor(traceWidget) != nullptr, now);
+            admissionTraceWidget_ = traceWidget;
+            admissionTraceCorrelationId_ = correlationId;
+        } else if (command == gba::Command::Activate &&
+                   admissionTraceWidget_ == traceWidget) {
+            correlationId = admissionTraceCorrelationId_;
+        }
+        SyncWidgetActivity(deferColdWidgetStart, correlationId);
+        const auto nextDesiredLifecycle = gba::DesiredWidgetLifecycle(
+            state_.surface(), state_.focusRegion(),
+            state_.selectedWidget(), state_.activeWidget(),
+            IsBridgeWidget(state_.selectedWidget()),
+            IsBridgeWidget(state_.activeWidget()));
+        if (command == gba::Command::Activate && correlationId != 0 &&
+            priorDesiredLifecycle && nextDesiredLifecycle &&
+            priorDesiredLifecycle->widgetId == nextDesiredLifecycle->widgetId) {
+            admissionTrace_.RecordMeaningfulInteractive(
+                correlationId, nextDesiredLifecycle->widgetId,
+                priorDesiredLifecycle->state, nextDesiredLifecycle->state, now);
+        }
         if (state_.surface() == gba::Surface::Widget &&
             priorFocusRegion != state_.focusRegion() &&
             state_.focusRegion() == gba::FocusRegion::Widget) {
             RestoreFocusForActiveSurface(state_.activeWidget());
         }
 
-        const auto now = GetTickCount64();
         if (priorSurface == gba::Surface::Hidden &&
             state_.surface() != gba::Surface::Hidden) {
             if (awaitingSuccessfulOpenPaint_ || !IsWindowVisible(window_)) {
@@ -1914,7 +1962,11 @@ private:
             if (priorSurface != gba::Surface::Hidden &&
                 (enteredBridgeWidget || hoveredBridgeWidget) &&
                 !startupFailureBlocksSnapshot) {
-                PostMessageW(window_, kSnapshotRefreshMessage, 0, 0);
+                const bool posted = PostMessageW(
+                    window_, kSnapshotRefreshMessage,
+                    static_cast<WPARAM>(correlationId), 0) != FALSE;
+                admissionTrace_.RecordRefreshPosted(
+                    correlationId, traceWidget, posted, GetTickCount64());
             }
         }
         const auto nextExtent = DesiredPresentationExtentDip();
@@ -2007,7 +2059,8 @@ private:
         } else if (command == gba::Command::Activate) {
             launcherSafeStartPending_ = false;
         }
-        ApplyStateTransition([&] { return state_.Dispatch(command); });
+        ApplyStateTransition(
+            [&] { return state_.Dispatch(command); }, command);
     }
 
     bool SelectTrayWidget(const std::wstring_view widgetId) {
@@ -2431,7 +2484,9 @@ private:
         InvalidateRect(window_, nullptr, FALSE);
     }
 
-    void SyncWidgetActivity(const bool deferColdWidgetStart = false) {
+    void SyncWidgetActivity(
+        const bool deferColdWidgetStart = false,
+        const std::uint64_t correlationId = 0) {
         std::map<std::wstring, gba::WidgetLifecycleState, std::less<>> desiredStates;
         const auto overlayDesired = gba::DesiredWidgetLifecycle(
             state_.surface(), state_.focusRegion(),
@@ -2456,7 +2511,8 @@ private:
             }
         }
 
-        sessions_.SetLifecycleTargets(desiredStates, deferColdWidgetStart);
+        sessions_.SetLifecycleTargets(
+            desiredStates, deferColdWidgetStart, correlationId);
     }
 
     void ProcessWidgetSessionEvents() {
@@ -2520,7 +2576,11 @@ private:
             const auto currentWidget = state_.surface() == gba::Surface::Widget
                 ? state_.activeWidget()
                 : state_.selectedWidget();
-            if (currentWidget != event.widgetId) continue;
+            if (currentWidget != event.widgetId) {
+                admissionTrace_.RecordAdmissionPresentation(
+                    event.correlationId, event.widgetId, false, GetTickCount64());
+                continue;
+            }
             CommitAdmittedWidgetPresentation(event.widgetId);
             if (pendingContentRevealWidget_ == event.widgetId) {
                 pendingContentRevealWidget_.clear();
@@ -2532,6 +2592,8 @@ private:
             if (pressedInteraction_.Reconcile(*current, focusedElementId_))
                 InvalidateRect(window_, nullptr, FALSE);
             RefreshAndApplyPresentation([] {});
+            admissionTrace_.RecordAdmissionPresentation(
+                event.correlationId, event.widgetId, true, GetTickCount64());
         }
     }
 
@@ -5072,7 +5134,7 @@ private:
         }
     }
 
-    void RefreshCurrentBridgeSnapshot() {
+    void RefreshCurrentBridgeSnapshot(const std::uint64_t correlationId = 0) {
         if (state_.surface() == gba::Surface::Hidden &&
             !pinnedSurfaceCoordinator_.pinned()) return;
         const std::wstring_view widgetId = state_.surface() == gba::Surface::Hidden
@@ -5080,7 +5142,8 @@ private:
             : state_.surface() == gba::Surface::Widget
             ? state_.activeWidget()
             : state_.selectedWidget();
-        if (IsBridgeWidget(widgetId)) RefreshWidgetSnapshot(widgetId);
+        if (IsBridgeWidget(widgetId))
+            RefreshWidgetSnapshot(widgetId, correlationId);
     }
 
     [[nodiscard]] bool TrayYRestartEligible() const noexcept {
@@ -5151,7 +5214,9 @@ private:
         InvalidateRect(window_, nullptr, FALSE);
     }
 
-    void RefreshWidgetSnapshot(const std::wstring_view widgetId) {
+    void RefreshWidgetSnapshot(
+        const std::wstring_view widgetId,
+        const std::uint64_t correlationId = 0) {
         if (!IsBridgeWidget(widgetId)) return;
         // A failed admission owns the presentation until an explicit retry.
         // Fetching a snapshot from the still-background registration would
@@ -5161,7 +5226,7 @@ private:
             ? state_.activeWidget()
             : state_.selectedWidget();
         if (currentWidget == widgetId) RememberCurrentFocus(widgetId);
-        if (!sessions_.RequestSnapshot(widgetId)) {
+        if (!sessions_.RequestSnapshot(widgetId, false, correlationId)) {
             RecordWidgetStartupFailure(widgetId, L"The snapshot request queue is full.");
         }
     }
@@ -7319,7 +7384,10 @@ private:
     std::wstring lastActionMessage_;
     std::wstring lastActionWidgetId_;
     ULONGLONG lastActionExpiresAt_{};
+    std::wstring admissionTraceWidget_;
+    std::uint64_t admissionTraceCorrelationId_{};
     gba::WidgetActionFeedbackHost actionFailureFeedback_;
+    gba::WidgetAdmissionTrace admissionTrace_;
     gba::accessibility::Tree accessibilityTree_;
     gba::accessibility::Tree widgetAccessibilityTree_;
     gba::accessibility::OpenWidgetSemantics openWidgetAccessibility_;

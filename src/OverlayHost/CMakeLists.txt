@@ -58,6 +58,7 @@ add_executable(OverlayHost WIN32
     WidgetBridgeClient.cpp
     LocalWidgetPackageImport.cpp
     WidgetSessionCoordinator.cpp
+    WidgetAdmissionTrace.cpp
     RemoteImageCache.cpp
     ScrollEvidenceProbe.cpp
     DeclarativeLayout.cpp
@@ -130,7 +131,8 @@ gba_link_taffy(OverlayHost)
 if(GBA_BUILD_TESTS)
     enable_testing()
     add_executable(WidgetSessionCoordinatorTests
-        WidgetSessionCoordinatorTests.cpp WidgetSessionCoordinator.cpp)
+        WidgetSessionCoordinatorTests.cpp WidgetSessionCoordinator.cpp
+        WidgetAdmissionTrace.cpp)
     target_compile_features(WidgetSessionCoordinatorTests PRIVATE cxx_std_20)
     target_compile_options(WidgetSessionCoordinatorTests PRIVATE /W4 /permissive- /EHsc)
     target_compile_definitions(WidgetSessionCoordinatorTests PRIVATE

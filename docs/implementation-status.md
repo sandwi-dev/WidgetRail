@@ -4930,3 +4930,32 @@ root PID 20712, with one bridge and eight fixture workers. The explicit
 geometry-only stop occurs before the inherited DLV-231 close/reconnect tail;
 that unrelated tail was not rerun. No Tier 3, capture, provider/package, or
 public-protocol work was performed.
+
+### Correlated widget-selection admission observability (DLV-237)
+
+The production host now assigns one bounded correlation ID when tray selection
+changes widget authority and carries it through the existing posted/dequeued
+snapshot refresh, lifecycle Establish decision, and sole worker-session queue.
+Typed records distinguish queued, deduplicated, replaced, and skipped lifecycle
+work with a bounded reason; worker request queue/start/complete records retain
+request ID, generation, lifecycle, request kind, queue latency, worker duration,
+and admitted/failed/stale-generation/wrong-lifecycle/cancelled disposition. The
+only controller action record is a real Visible-to-Interactive activation.
+
+`WidgetAdmissionTrace` is a private observer: it owns no selection, lifecycle,
+transport, process, presentation, focus, or input decision. It retains at most
+16 transitions and 32 records per transition, sanitizes bounded identifiers,
+emits a single slow marker after 250 ms, and drains at most 64 formatted
+diagnostics to the existing log sink on a background thread. No payload,
+snapshot body, controller-repeat, or paint record is retained.
+
+Focused Release evidence passes `WidgetSessionCoordinatorTests` with 15
+scenarios, including correlated deferred/queued/started/admitted stages,
+monotonic request timing, refresh queue latency, one-shot slow and meaningful-A
+records, sanitization, and bounded eviction. The same route passes
+`OverlayStateTests`, `WidgetLifecycleTests`, and `WidgetActionFeedbackTests`
+(305 checks). A single native Release compile produced `OverlayHost.exe` with
+the observer wired to the ordinary production selection/session seams. No
+physical reproduction, behavior correction, Tier 3, capture, provider/package,
+or public-protocol work was performed; the intermittent selection defect remains
+for evidence collected from a future affected session.

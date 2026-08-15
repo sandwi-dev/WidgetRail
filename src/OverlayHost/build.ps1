@@ -1231,6 +1231,7 @@ function Invoke-WidgetSessionTests {
     $arguments = $common + @(
         (Join-Path $projectDirectory 'WidgetSessionCoordinatorTests.cpp'),
         (Join-Path $projectDirectory 'WidgetSessionCoordinator.cpp'),
+        (Join-Path $projectDirectory 'WidgetAdmissionTrace.cpp'),
         "/Fo:$widgetSessionTestObjectDirectory\",
         "/Fe:$outputDirectory\WidgetSessionCoordinatorTests.exe",
         '/link', '/SUBSYSTEM:CONSOLE'
@@ -1526,6 +1527,7 @@ $hostArguments = $common + @(
     (Join-Path $projectDirectory 'WidgetBridgeClient.cpp'),
     (Join-Path $projectDirectory 'LocalWidgetPackageImport.cpp'),
     (Join-Path $projectDirectory 'WidgetSessionCoordinator.cpp'),
+    (Join-Path $projectDirectory 'WidgetAdmissionTrace.cpp'),
     (Join-Path $projectDirectory 'RemoteImageCache.cpp'),
     (Join-Path $projectDirectory 'ScrollEvidenceProbe.cpp'),
     (Join-Path $projectDirectory 'DeclarativeLayout.cpp'),

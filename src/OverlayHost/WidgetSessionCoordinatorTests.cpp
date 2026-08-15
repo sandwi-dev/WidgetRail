@@ -1,10 +1,12 @@
 #include "WidgetSessionCoordinator.h"
+#include "WidgetAdmissionTrace.h"
 
 #ifdef NDEBUG
 #undef NDEBUG
 #endif
 #include <cassert>
 #include <algorithm>
+#include <atomic>
 #include <chrono>
 #include <condition_variable>
 #include <iostream>
@@ -17,6 +19,8 @@ namespace {
 
 using namespace std::chrono_literals;
 using gba::WidgetDescriptor;
+using gba::WidgetAdmissionTrace;
+using gba::WidgetAdmissionTraceStage;
 using gba::WidgetLifecycleState;
 using gba::WidgetPresentationAuthority;
 using gba::WidgetSessionCoordinator;
@@ -700,6 +704,141 @@ void CancellationIgnoringLateResultsAreStale() {
     }
 }
 
+void CorrelatedAdmissionTraceIsBoundedAndSanitized() {
+    std::mutex diagnosticMutex;
+    std::vector<std::wstring> diagnostics;
+    WidgetAdmissionTrace trace([&](std::wstring message) {
+        std::scoped_lock lock(diagnosticMutex);
+        diagnostics.push_back(std::move(message));
+    });
+    const auto correlation = trace.BeginSelection(
+        L"network<private>", L"network", true, false, 1000);
+    trace.RecordRefreshPosted(correlation, L"network", true, 1001);
+    trace.RecordRefreshDequeued(correlation, L"network", 1020);
+    trace.RecordSession({
+        correlation,
+        gba::WidgetSessionTraceStage::LifecycleDecision,
+        gba::WidgetSessionTraceAction::Queued,
+        gba::WidgetSessionTraceReason::None,
+        gba::WidgetSessionCompletionDisposition::None,
+        7,
+        3,
+        gba::WidgetSessionRequestKind::Establish,
+        WidgetLifecycleState::Visible,
+        L"network",
+        1021,
+    });
+    trace.ObserveSlow(1249);
+    trace.ObserveSlow(1250);
+    trace.RecordMeaningfulInteractive(
+        correlation, L"network", WidgetLifecycleState::Background,
+        WidgetLifecycleState::Interactive, 1251);
+    trace.RecordMeaningfulInteractive(
+        correlation, L"network", WidgetLifecycleState::Visible,
+        WidgetLifecycleState::Interactive, 1252);
+    trace.RecordAdmissionPresentation(correlation, L"network", true, 1260);
+    trace.ObserveSlow(1500);
+
+    const auto snapshot = trace.Snapshot();
+    assert(snapshot.size() == 1);
+    assert(snapshot.front().selectedWidget == L"network?private?");
+    assert(snapshot.front().terminal);
+    assert(std::any_of(
+        snapshot.front().records.begin(), snapshot.front().records.end(),
+        [](const auto& record) {
+            return record.stage == WidgetAdmissionTraceStage::RefreshDequeued &&
+                   record.elapsed == 19;
+        }));
+    assert(std::count_if(
+        snapshot.front().records.begin(), snapshot.front().records.end(),
+        [](const auto& record) {
+            return record.stage == WidgetAdmissionTraceStage::SlowThreshold;
+        }) == 1);
+    assert(std::count_if(
+        snapshot.front().records.begin(), snapshot.front().records.end(),
+        [](const auto& record) {
+            return record.stage == WidgetAdmissionTraceStage::MeaningfulInteractive;
+        }) == 1);
+    assert(trace.Flush(1s));
+    {
+        std::scoped_lock lock(diagnosticMutex);
+        assert(!diagnostics.empty());
+        assert(std::none_of(diagnostics.begin(), diagnostics.end(), [](const auto& value) {
+            return value.find(L'<') != std::wstring::npos ||
+                   value.find(L'>') != std::wstring::npos;
+        }));
+    }
+
+    for (std::size_t index = 0;
+         index < WidgetAdmissionTrace::MaximumTransitions + 3; ++index) {
+        const auto next = trace.BeginSelection(
+            L"selected", L"active", false, true, 2000 + index);
+        trace.RecordAdmissionPresentation(next, L"active", true, 2001 + index);
+    }
+    assert(trace.Snapshot().size() == WidgetAdmissionTrace::MaximumTransitions);
+}
+
+void CoordinatorEmitsCorrelatedLifecycleAndRequestStages() {
+    FakeBridge bridge;
+    bridge.catalog = {
+        Descriptor(L"alpha", L"alpha.one", L"runtime-1", L"view-1"),
+    };
+    bridge.snapshots[L"alpha"] = Snapshot(L"alpha.one", 5);
+    std::mutex traceMutex;
+    std::vector<gba::WidgetSessionTraceEvent> trace;
+    std::atomic<std::uint64_t> now{100};
+    WidgetSessionCoordinator coordinator(
+        bridge.Operations(), {},
+        [&](const gba::WidgetSessionTraceEvent& event) {
+            std::scoped_lock lock(traceMutex);
+            trace.push_back(event);
+        },
+        [&] { return now.fetch_add(1); });
+    assert(coordinator.EstablishCatalog());
+
+    coordinator.SetLifecycleTargets(
+        {{L"alpha", WidgetLifecycleState::Visible}}, true, 40);
+    coordinator.SetLifecycleTargets(
+        {{L"alpha", WidgetLifecycleState::Visible}}, false, 41);
+    const auto events = WaitEvents(coordinator, [](const auto& value) {
+        return std::any_of(value.begin(), value.end(), [](const auto& event) {
+            return event.kind == WidgetSessionEventKind::SnapshotAdmitted;
+        });
+    });
+    assert(events.size() == 1);
+    assert(events.front().correlationId == 41);
+    assert(events.front().completionDisposition ==
+           gba::WidgetSessionCompletionDisposition::Admitted);
+
+    std::scoped_lock lock(traceMutex);
+    assert(std::any_of(trace.begin(), trace.end(), [](const auto& event) {
+        return event.correlationId == 40 &&
+               event.stage == gba::WidgetSessionTraceStage::LifecycleDecision &&
+               event.action == gba::WidgetSessionTraceAction::Skipped &&
+               event.reason == gba::WidgetSessionTraceReason::Deferred;
+    }));
+    const auto queued = std::find_if(trace.begin(), trace.end(), [](const auto& event) {
+        return event.correlationId == 41 &&
+               event.stage == gba::WidgetSessionTraceStage::RequestQueued;
+    });
+    const auto started = std::find_if(trace.begin(), trace.end(), [](const auto& event) {
+        return event.correlationId == 41 &&
+               event.stage == gba::WidgetSessionTraceStage::RequestStarted;
+    });
+    const auto completed = std::find_if(trace.begin(), trace.end(), [](const auto& event) {
+        return event.correlationId == 41 &&
+               event.stage == gba::WidgetSessionTraceStage::RequestCompleted;
+    });
+    assert(queued != trace.end() && started != trace.end() && completed != trace.end());
+    assert(queued->requestId == started->requestId &&
+           started->requestId == completed->requestId);
+    assert(queued->generation == completed->generation);
+    assert(queued->queuedAt <= started->startedAt &&
+           started->startedAt <= completed->completedAt);
+    assert(completed->disposition ==
+           gba::WidgetSessionCompletionDisposition::Admitted);
+}
+
 } // namespace
 
 int main() {
@@ -714,5 +853,7 @@ int main() {
     DelayedSuccessRetainsLastGoodSnapshot();
     HideAndWorkerExitRevokePendingSnapshots();
     CancellationIgnoringLateResultsAreStale();
-    std::cout << "WidgetSessionCoordinatorTests passed (13 scenarios)\n";
+    CorrelatedAdmissionTraceIsBoundedAndSanitized();
+    CoordinatorEmitsCorrelatedLifecycleAndRequestStages();
+    std::cout << "WidgetSessionCoordinatorTests passed (15 scenarios)\n";
 }

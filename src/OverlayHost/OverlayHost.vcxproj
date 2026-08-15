@@ -41,6 +41,7 @@
     <ClCompile Include="WidgetBridgeClient.cpp" />
     <ClCompile Include="LocalWidgetPackageImport.cpp" />
     <ClCompile Include="WidgetSessionCoordinator.cpp" />
+    <ClCompile Include="WidgetAdmissionTrace.cpp" />
     <ClCompile Include="RemoteImageCache.cpp" />
     <ClCompile Include="DeclarativeLayout.cpp" />
     <ClCompile Include="NativeIcons.cpp" />
@@ -60,6 +61,7 @@
     <ClInclude Include="WidgetBridgeClient.h" />
     <ClInclude Include="LocalWidgetPackageImport.h" />
     <ClInclude Include="WidgetSessionCoordinator.h" />
+    <ClInclude Include="WidgetAdmissionTrace.h" />
     <ClInclude Include="RemoteImageCache.h" />
     <ClInclude Include="DeclarativeLayout.h" />
     <ClInclude Include="NativeIcons.h" />
