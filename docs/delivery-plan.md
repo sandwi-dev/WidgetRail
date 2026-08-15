@@ -135,7 +135,7 @@ user decision. The native overlay is the sole production presentation path.
 | --- | --- | --- |
 | Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` on `codex/impl-platform-snapshot-cache` | Assigned DLV-239 from accepted production `94c4873` plus reviewer-plan baseline `6769954`. Preserve completed `codex/impl-platform-fixed-chrome`. |
 | Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | Idle clean. DLV-240 starts only after accepted DLV-239 is integrated and the planner sends the exact main baseline. |
-| Red tests | `Implementation agent — red-test lane`; isolated worktree/branch created from current planner main | Assigned DLV-245. Investigate only the red isolated widget-switch route and hung process-owner executable test; no production-code edits. |
+| Red tests | `Implementation agent — red-test lane`; `C:\Users\dwive\.codex\worktrees\ada5\GameBarAlternative` on `codex/impl-red-tests` | Assigned DLV-245 from planner baseline `9d23bfd`. Investigate only the red isolated widget-switch route and hung process-owner executable test; no production-code edits. |
 
 DLV-217 remains accepted through `d57fd06` but unintegrated because its exact
 aggregate is 40/41 with one reviewer-history-link failure. Preserve the branch;

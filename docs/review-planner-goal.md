@@ -501,8 +501,9 @@ Then repeat the loop.
   no longer registered or present; do not claim they are preserved and do not
   attempt reconstruction without explicit user authority.
 - Local `main` is the planner-owned integration branch.
-- The temporary DLV-245 red-test task uses an isolated worktree/branch created
-  from current planner main. It may edit only implicated tests, test support,
+- The temporary DLV-245 red-test task uses
+  `C:\Users\dwive\.codex\worktrees\ada5\GameBarAlternative` on
+  `codex/impl-red-tests` from planner baseline `9d23bfd`. It may edit only implicated tests, test support,
   and their build invocation. It never authors product fixes; a discovered
   product defect is returned to the owning production lane.
 - The retained `codex/avalonia-prototype` and `codex/avp004-*` branches are
