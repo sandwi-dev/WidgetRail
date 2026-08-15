@@ -593,6 +593,47 @@ Stop for per-widget/element identity branches, unproven paint-only guesses,
 another focus/scroll/interaction owner, visual tearing, stale UIA/hit testing,
 or performance evidence that the complexity has no material benefit.
 
+### Ready after DLV-242 integration — DLV-243: bound optimistic slider feedback damage
+
+Lane/owner/baseline: platform native slider-interaction, retained render result,
+renderer-damage, accessibility-value, and content-composition owners after
+accepted DLV-242 main. This milestone does not expand the public update
+protocol or DLV-242's admitted-update scope.
+
+Visible/performance objective: moving an in-view slider with the controller
+must provide immediate optimistic feedback without recomputing Taffy layout or
+redrawing the complete widget content surface on every step.
+
+Requirements: reuse the current admitted geometry and DLV-242 damage owner to
+update the host-owned optimistic slider value, repaint only the slider's old
+and new visual/value/focus bounds, and publish the corresponding accessibility
+value change. A widget acknowledgement that confirms the optimistic value must
+perform no additional layout or paint; a differing acknowledgement, rejection,
+or timeout reconciliation may repaint only the bounded slider region unless a
+real geometry, viewport, appearance, or device-loss change requires the
+existing correctness fallback. Preserve action sequence/generation authority,
+adjustment mode, repeat cadence, focus, scroll anchors, clipping, failure
+feedback, and normal cleanup.
+
+Acceptance: Audio Mixer and one differently named generic slider fixture cover
+single steps, held repeats, busy action queue, confirming and differing
+acknowledgements, rejection, timeout, focus transfer, scrolling, appearance/
+viewport change, and device recreation. Exact counters must prove zero full
+Taffy layout and zero full content-surface repaint for ordinary optimistic
+steps, zero follow-up paint for a confirming acknowledgement, bounded slider
+damage for reconciliation, and zero tray/guide repaint throughout. Measure
+input-to-visible feedback, render CPU, damage area, and action latency against
+the current full-widget path. Run only affected slider/input/renderer/damage/
+UIA/composition cases and one native Release compile; no Tier 3 or packaged
+route.
+
+Out of scope/stop: do not generalize every host-local interaction, add
+per-widget or node-ID behavior, create another retained semantic/render tree,
+change the public protocol, weaken slider authority/reconciliation, or suppress
+the full correctness fallback for actual structural, geometry, appearance, or
+device-loss changes. Stop if DLV-242 does not expose a single trustworthy
+damage owner or if measurement shows no material benefit.
+
 ## Widgets lane
 
 No independent widgets milestone is executable before serialized DLV-240.
@@ -624,7 +665,9 @@ Do not delete credentials, provider data, accounts, or user files.
    one exact Tier-3 protocol activation checkpoint.
 6. Integrate accepted DLV-241, then execute DLV-242. Launch the complete
    incremental candidate for user cycling/scrolling/interaction review.
-7. DLV-217/218 remain a separate explicit integration decision and do not mix
+7. After accepted DLV-242, execute DLV-243 as the separate bounded optimistic
+   slider-feedback optimization and launch it for controller-slider review.
+8. DLV-217/218 remain a separate explicit integration decision and do not mix
    with the snapshot update program.
 
 ## Manual and packaged verification queue
