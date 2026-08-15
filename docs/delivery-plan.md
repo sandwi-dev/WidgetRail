@@ -172,7 +172,7 @@ user decision. The native overlay is the sole production presentation path.
 | Lane | Task/worktree | Current state |
 | --- | --- | --- |
 | Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` on `codex/impl-widgets-taffy-ui` | Idle clean. DLV-240 begins only after accepted DLV-239 is integrated and the planner sends the serialized cross-lane baseline. |
-| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` on `codex/impl-platform-fixed-chrome` | Paused dirty for user review after the physically rejected DLV-244 tip `a3300f4`. Resume only with the local-first production correction below; remove the unaccepted test edits, create/build an exact code-only candidate, and stop for physical user acceptance. DLV-239 remains paused. |
+| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` on `codex/impl-platform-fixed-chrome` | Idle clean at physically rejected production-only candidate `c92ef11`. Resume only with the bounded content-envelope/motion correction below, create/build an exact code-only candidate, and stop for physical user acceptance. DLV-239 remains paused. |
 
 DLV-217 remains accepted through `d57fd06` but unintegrated because its exact
 aggregate is honestly 40/41 with one reviewer-history-link failure. Preserve
@@ -526,15 +526,56 @@ and do not add, modify, or run tests before acceptance. Do not integrate or
 advance DLV-239.
 
 Physical-first correction candidate
-`c92ef11a2a4b529ed1b91539807581f7dc2f798f` is source-reviewed, built, and
-awaiting the user's verdict; it is not accepted or integrated. The commit
-normalizes guide and tray painting to exact-size `(0,0)` child surfaces and
-uses one fixed chrome-client visual offset per child. No tests were written,
-modified, or run. The exact executable has SHA-256
-`5051C933E322476997EA9E0239BCF7E0A68C72DC55FB80CAA7FF24EF701D1DE1` and was
-visibly launched from the platform worktree as PID `92880`. Wait for the user
-to cycle different widget extents and judge tray stationarity, complete focus
-outline/background, clipping, fixed spacing, motion, and controller behavior.
+`c92ef11a2a4b529ed1b91539807581f7dc2f798f` is physically rejected and remains
+unintegrated. It correctly normalizes guide and tray painting to exact-size
+`(0,0)` child surfaces, and the live log reads one stable applied chrome HWND
+rectangle `2186,1162,747x278`. It does not separate the content coordinate
+model completely: content rendering and motion still use the legacy combined-
+shell window extent with the old vertical guide/tray reservation. The final
+panel is aligned by `footerY`, but the transformed content surface is anchored
+by its larger shell bottom. During motion that hidden reservation scales, so
+the visible panel bottom moves relative to the fixed guide and can pass beneath
+it; the user's Spotify screenshot shows the guide over the widget.
+
+The same live log proves a second production defect. One Audio Mixer switch
+starts four placement transactions in about 55 ms, and one Spotify switch
+starts four in about 110 ms, although each group retains one unchanged desired
+destination extent. `RefreshAndApplyPresentation` compares the current
+interpolated `priorPresentedExtent` to the desired extent and therefore treats
+ordinary lifecycle/snapshot completions during active motion as new geometry.
+Each completion calls `BeginWidgetExtentTransition` and `ShowOverlay` again,
+resampling the partially animated surface as a new source. This produces the
+reported few-pixel up/down motion after controller input has stopped and
+prolongs the interval in which content can cross the guide.
+
+Bounded production-only correction atop `c92ef11`:
+
+- Give content the same normalized local treatment already applied to guide
+  and tray. The content composition surface and settled content HWND must
+  represent the actual visible widget panel envelope, not a combined-shell
+  extent containing the external guide/tray reservation. Compute panel-local
+  rendering, clip, hit-test, UIA, and motion from that one envelope.
+- Anchor the actual visible panel bottom to the fixed guide top minus the
+  authored panel-to-guide gap at admission, every motion sample, cancellation,
+  reversal, and settlement. Scale/translate around that visible panel anchor;
+  never use the bottom of an oversized legacy shell as the transform anchor.
+- Preserve one admitted source and destination for an active identity/extent
+  transition. A lifecycle, snapshot, provider, focus, or paint refresh whose
+  widget and desired destination extent are unchanged may replace/repaint
+  destination pixels, but must not call `BeginWidgetExtentTransition`, perform
+  another placement, or reset motion progress. Compare desired authority and
+  destination geometry, not the current interpolated presented extent, when
+  deciding whether geometry changed.
+- Keep the exact fixed chrome HWND, guide/tray local surfaces, existing HWND
+  roles/ownership/Z-order/backdrop, and sole session/renderer/GameInput/focus/
+  accessibility authorities. Do not change tray layout, public surface hints,
+  widget identities, providers, or snapshot policy.
+- Continue physical-first ordering: production code only, direct source
+  review, exact code-only commit, and one native Release build. Do not add,
+  modify, or run tests. The planner will launch the unintegrated candidate for
+  the user to verify fixed panel-to-guide spacing, stationary tray, no guide
+  overlap, and no post-input content jitter. Tests follow only after physical
+  acceptance.
 
 Independent review disposition for `3716063`: rejected as the retained base for
 one cumulative correction. The commit correctly separates destination layout
