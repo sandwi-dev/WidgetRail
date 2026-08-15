@@ -347,6 +347,58 @@ correction. Do not rerun unchanged green suites while iterating, and do not
 claim physical acceptance until the planner launches the exact integrated
 candidate and the user cycles it.
 
+Independent review disposition for correction `130c105`: rejected; keep the
+cumulative DLV-244 chain unintegrated. It successfully removes ordinary
+selection-time HWND movement and moves attempted coordinate bookkeeping behind
+a successful DirectComposition `Commit`, but two acceptance blockers remain.
+
+First, the decisive eight-widget/fresh-lifecycle route did not execute. The
+changed fixture only compiled because the packaged route stopped at WidgetBridge
+publish. Its production-host matrix, stable-HWND assertion, pre/post-reopen
+comparison, and new committed-coordinate oracle therefore have no runtime
+evidence. A compiled assertion is not a passed regression.
+
+Second, `MaximumCompositionContentPlacement` does not inspect the admitted or
+catalog-authored widget envelopes. It constructs a hard-coded 1600x1200-DIP
+request—the protocol ceiling—and reserves that generic maximum for every
+visible session. On an ordinary work area this can clamp to a nearly
+monitor-sized transparent host. That is not the assigned maximum admitted
+catalog envelope, can regress the user's prior whole-screen-shell concern, and
+crosses the explicit stop condition for a material container choice.
+
+Bounded correction atop `130c105`:
+
+- Extract the stable host/chrome placement calculation into the existing
+  placement/presentation policy layer so a deterministic native test can run it
+  directly without publishing WidgetBridge or launching packaged workers. Feed
+  it all eight real current surface policies as differently sized catalog
+  entries, every initial selection, forward/reverse cycling, hide/reopen,
+  reduced motion, and direct fractional-DPI odd/even work areas. Assert one
+  stable HWND rectangle and exact tray/guide screen corners. Keep one focused
+  production host route when the existing fixture environment is available,
+  but do not make package publication the only oracle for native placement.
+- Size the stable container from the maximum work-area-constrained authored
+  envelope in the current installed catalog, including deterministic fallback
+  policy for an entry whose hints are not yet resident. Do not use the global
+  protocol ceiling merely because it is safe. Keep each widget's visible
+  content at its own requested extent; the stable container remains transparent
+  capacity, not a shared visible shell.
+- Add direct checks that the resulting host is the minimal union of the catalog
+  maximum content placement, guide, and tray and does not expand to the work
+  area unless an installed widget explicitly requests FillAvailable or an
+  equivalent admitted full-area envelope.
+- If native catalog state does not contain enough surface-policy information to
+  calculate that capacity without a public protocol change, or if arbitrary
+  future widget extent inherently requires a near-full-work-area HWND to
+  preserve one-HWND stationarity, stop and report the exact architecture choice
+  to the user. Do not silently add protocol work, reserve the global maximum,
+  or reintroduce selection-time HWND movement.
+
+Run the new deterministic placement test, the changed widget-switch fixture
+when its existing route is available, affected chrome/transition/targeting
+tests, and one native Release compile. Do not rerun unrelated grouped/package
+failures or Tier 3.
+
 Independent review disposition for `3716063`: rejected as the retained base for
 one cumulative correction. The commit correctly separates destination layout
 from the retained presented extent, renders the admitted widget at its own
