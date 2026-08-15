@@ -2119,7 +2119,7 @@ private:
         const bool animateWidgetExtent =
             priorSurface == gba::Surface::Widget &&
             state_.surface() == gba::Surface::Widget &&
-            priorPresentedExtent != nextExtent && destinationSnapshotAdmitted;
+            priorExtent != nextExtent && destinationSnapshotAdmitted;
         if (animateWidgetExtent) {
             BeginWidgetExtentTransition(priorPresentedExtent, nextExtent);
         } else if (compositionSurface_.available() &&
@@ -2132,7 +2132,7 @@ private:
         const auto presentation = gba::DecideOverlayPresentation(
             priorSurface != gba::Surface::Hidden,
             state_.surface() != gba::Surface::Hidden,
-            priorPresentedExtent,
+            priorExtent,
             nextExtent);
         if (priorSurface == gba::Surface::Widget &&
             state_.surface() == gba::Surface::Widget &&
@@ -2949,12 +2949,13 @@ private:
                                 ~PlacementGuard() { active = false; }
                             } guard(compositionPlacementInProgress_);
                             placed = SetWindowPos(
-                                window_, HWND_TOPMOST,
+                                window_, nullptr,
                                 settledContainer.x,
                                 settledContainer.y,
                                 settledContainer.width,
                                 settledContainer.height,
-                                SWP_SHOWWINDOW | SWP_NOACTIVATE | SWP_NOREDRAW);
+                                SWP_SHOWWINDOW | SWP_NOACTIVATE | SWP_NOREDRAW |
+                                    SWP_NOZORDER);
                             if (placed)
                                 presentationTransaction_.SettleCompositionContainer(
                                     settledContainer);
@@ -3097,14 +3098,8 @@ private:
         std::vector<gba::OverlayCompositionSurface::Frame*> framePointers;
         framePointers.reserve(frames.frames.size());
         for (auto& frame : frames.frames) framePointers.push_back(&frame);
-        const gba::OverlayCompositionSurface::ChromePresentation chrome{
-            static_cast<float>(frames.guideClientBounds.left),
-            static_cast<float>(frames.guideClientBounds.top),
-            static_cast<float>(frames.trayClientBounds.left),
-            static_cast<float>(frames.trayClientBounds.top),
-        };
         const HRESULT commitResult = compositionSurface_.CommitFrames(
-            framePointers, !wasVisible, commitTiming, &presentation, &chrome);
+            framePointers, !wasVisible, commitTiming, &presentation);
         if (FAILED(commitResult)) {
             presentationTransaction_.RejectCompositionAdmission();
             DisableCompositionFallback(
@@ -3118,9 +3113,9 @@ private:
         const int containerX = composedContainer.x;
         const int containerY = composedContainer.y;
         const BOOL placed = SetWindowPos(
-            window_, HWND_TOPMOST,
+            window_, nullptr,
             containerX, containerY, containerWidth, containerHeight,
-            SWP_SHOWWINDOW | SWP_NOACTIVATE | SWP_NOREDRAW);
+            SWP_SHOWWINDOW | SWP_NOACTIVATE | SWP_NOREDRAW | SWP_NOZORDER);
         const auto geometryMicroseconds = static_cast<std::uint64_t>(
             std::chrono::duration_cast<std::chrono::microseconds>(
                 std::chrono::steady_clock::now() - geometryStarted).count());
@@ -3267,10 +3262,10 @@ private:
         }
         if (compositionSurface_.available()) {
             const auto anchoredPlacement = AnchorContentPlacementToChrome(
-                *placement, bodyTarget);
+                *placement);
             const auto anchoredContainer = compositionContainer
                 ? AnchorContentPlacementToChrome(
-                    *compositionContainer, bodyTarget)
+                    *compositionContainer)
                 : std::nullopt;
             if (!anchoredPlacement || !anchoredContainer) {
                 DisableCompositionFallback(
@@ -3283,11 +3278,11 @@ private:
 
         ApplyTransitionWindowOpacity(overlayTransitionSample_.shellOpacity);
         const BOOL backdropPlaced = SetWindowPos(
-            backdropWindow_, HWND_TOPMOST,
+            backdropWindow_, nullptr,
             fixedChrome.monitorArea.left, fixedChrome.monitorArea.top,
             fixedChrome.monitorArea.right - fixedChrome.monitorArea.left,
             fixedChrome.monitorArea.bottom - fixedChrome.monitorArea.top,
-            SWP_SHOWWINDOW | SWP_NOACTIVATE);
+            SWP_SHOWWINDOW | SWP_NOACTIVATE | SWP_NOZORDER);
         BOOL overlayPlaced = FALSE;
         if (compositionSurface_.available()) {
             overlayPlaced = PresentCompositionPlacement(
@@ -3348,6 +3343,12 @@ private:
             ShowWindow(window_, SW_SHOWNORMAL);
             ShowWindow(chromeWindow_, compositionSurface_.available()
                 ? SW_SHOWNOACTIVATE : SW_HIDE);
+        }
+        if (compositionSurface_.available() && !ApplyOverlayZOrder()) {
+            AppendDiagnostic(
+                L"Coordinated overlay Z-order placement failed error=" +
+                std::to_wstring(GetLastError()));
+            return OverlayShowResult::Failed;
         }
         if (!wasVisible) {
             // Activation is one best-effort show-time request. Controller
@@ -3443,17 +3444,28 @@ private:
             nullptr);
     }
 
-    void ReassertOverlayZOrder() {
+    [[nodiscard]] bool ApplyOverlayZOrder() {
         if (!window_ || !chromeWindow_ || !backdropWindow_ ||
-            state_.surface() == gba::Surface::Hidden) return;
+            state_.surface() == gba::Surface::Hidden) return false;
         const auto flags = SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE | SWP_SHOWWINDOW;
-        const BOOL backdropResult = SetWindowPos(
-            backdropWindow_, HWND_TOPMOST, 0, 0, 0, 0, flags);
-        const BOOL overlayResult = SetWindowPos(
-            window_, HWND_TOPMOST, 0, 0, 0, 0, flags);
-        const BOOL chromeResult = SetWindowPos(
-            chromeWindow_, HWND_TOPMOST, 0, 0, 0, 0, flags);
-        if (!backdropResult || !overlayResult || !chromeResult) {
+        HDWP positions = BeginDeferWindowPos(3);
+        if (!positions) return false;
+        positions = DeferWindowPos(
+            positions, chromeWindow_, HWND_TOPMOST, 0, 0, 0, 0, flags);
+        if (positions) {
+            positions = DeferWindowPos(
+                positions, window_, chromeWindow_, 0, 0, 0, 0, flags);
+        }
+        if (positions) {
+            positions = DeferWindowPos(
+                positions, backdropWindow_, window_, 0, 0, 0, 0, flags);
+        }
+        return positions && EndDeferWindowPos(positions) != FALSE;
+    }
+
+    void ReassertOverlayZOrder() {
+        if (state_.surface() == gba::Surface::Hidden) return;
+        if (!ApplyOverlayZOrder()) {
             AppendDiagnostic(L"Topmost reassertion failed error=" +
                              std::to_wstring(GetLastError()));
         }
@@ -3670,11 +3682,74 @@ private:
         return resolved;
     }
 
+    [[nodiscard]] gba::OverlayPresentationExtent
+    DesiredContentPanelExtentDip() const {
+        const auto target = DesiredWidgetSurfaceTarget();
+        const auto shellGeometry = gba::ComputeOverlaySurfaceGeometry(
+            target.windowWidthDip, target.windowHeightDip,
+            target.panelWidthDip, target.panelHeightDip);
+        if (!shellGeometry) {
+            return {
+                std::max(1, static_cast<int>(std::lround(target.panelWidthDip))),
+                std::max(1, static_cast<int>(std::lround(target.panelHeightDip))),
+            };
+        }
+        return {
+            std::max(1, static_cast<int>(std::lround(shellGeometry->panelWidth))),
+            std::max(1, static_cast<int>(std::lround(
+                shellGeometry->footerY - shellGeometry->panelY))),
+        };
+    }
+
+    [[nodiscard]] static std::optional<gba::OverlaySurfaceGeometry>
+    ComputePanelLocalSurfaceGeometry(
+        const float viewportWidthDip,
+        const float viewportHeightDip) noexcept {
+        if (!std::isfinite(viewportWidthDip) ||
+            !std::isfinite(viewportHeightDip) ||
+            viewportWidthDip <= 0.0F || viewportHeightDip <= 0.0F) {
+            return std::nullopt;
+        }
+        const float contentInset = std::min(
+            1.0F, std::min(viewportWidthDip, viewportHeightDip) * 0.1F);
+        return gba::OverlaySurfaceGeometry{
+            0.0F,
+            0.0F,
+            viewportWidthDip,
+            viewportHeightDip,
+            0.0F,
+            0.0F,
+            contentInset,
+            contentInset,
+            std::max(0.0F, viewportWidthDip - contentInset * 2.0F),
+            std::max(0.0F, viewportHeightDip - contentInset),
+            viewportHeightDip,
+            0.0F,
+        };
+    }
+
+    [[nodiscard]] std::optional<gba::OverlaySurfaceGeometry>
+    ComputeCurrentWidgetSurfaceGeometry(
+        const float viewportWidthDip,
+        const float viewportHeightDip) const {
+        if (compositionSurface_.available()) {
+            return ComputePanelLocalSurfaceGeometry(
+                viewportWidthDip, viewportHeightDip);
+        }
+        const auto target = DesiredWidgetSurfaceTarget();
+        return gba::ComputeOverlaySurfaceGeometry(
+            viewportWidthDip, viewportHeightDip,
+            target.panelWidthDip, target.panelHeightDip);
+    }
+
     [[nodiscard]] gba::OverlayPresentationExtent DesiredPresentationExtentDip() const {
         if (state_.surface() != gba::Surface::Widget) {
             return {kPanelWidth, kDashboardHeight};
         }
         const auto target = DesiredWidgetSurfaceTarget();
+        if (compositionSurface_.available()) {
+            return DesiredContentPanelExtentDip();
+        }
         return {
             static_cast<int>(std::lround(target.windowWidthDip)),
             static_cast<int>(std::lround(target.windowHeightDip)),
@@ -3767,11 +3842,11 @@ private:
         const bool animateWidgetExtent =
             wasVisible && isVisible &&
             state_.surface() == gba::Surface::Widget &&
-            priorPresentedExtent != nextExtent;
+            priorExtent != nextExtent;
         if (animateWidgetExtent)
             BeginWidgetExtentTransition(priorPresentedExtent, nextExtent);
         const auto presentation = gba::DecideOverlayPresentation(
-            wasVisible, isVisible, priorPresentedExtent, nextExtent);
+            wasVisible, isVisible, priorExtent, nextExtent);
         if (wasVisible && isVisible && priorExtent != nextExtent) {
             const std::wstring currentWidget = state_.surface() == gba::Surface::Widget
                 ? std::wstring(state_.activeWidget())
@@ -4040,10 +4115,8 @@ private:
 
         std::optional<gba::OverlaySurfaceGeometry> surfaceGeometry;
         if (state_.surface() == gba::Surface::Widget) {
-            surfaceGeometry = gba::ComputeOverlaySurfaceGeometry(
-                metrics->viewportWidthDip, metrics->viewportHeightDip,
-                DesiredWidgetSurfaceTarget().panelWidthDip,
-                DesiredWidgetSurfaceTarget().panelHeightDip);
+            surfaceGeometry = ComputeCurrentWidgetSurfaceGeometry(
+                metrics->viewportWidthDip, metrics->viewportHeightDip);
         }
         std::optional<TrayPointerTarget> trayTarget;
         if (const auto sessionTray = CurrentCompositionTrayLayout()) {
@@ -4124,10 +4197,8 @@ private:
 
         std::optional<gba::OverlaySurfaceGeometry> surface;
         if (state_.surface() == gba::Surface::Widget) {
-            surface = gba::ComputeOverlaySurfaceGeometry(
-                metrics->viewportWidthDip, metrics->viewportHeightDip,
-                DesiredWidgetSurfaceTarget().panelWidthDip,
-                DesiredWidgetSurfaceTarget().panelHeightDip);
+            surface = ComputeCurrentWidgetSurfaceGeometry(
+                metrics->viewportWidthDip, metrics->viewportHeightDip);
             if (surface && contains(contentX, contentY, {
                     surface->panelX, surface->panelY, surface->panelWidth,
                     surface->footerY - surface->panelY})) return true;
@@ -5258,14 +5329,8 @@ private:
             dpi,
             interfaceScale);
         if (!metrics) return false;
-        const auto widgetSurface = DesiredWidgetSurfaceTarget();
-        const auto geometry = gba::ComputeOverlaySurfaceGeometry(
-            metrics->viewportWidthDip,
-            metrics->viewportHeightDip,
-            IsBridgeWidget(widget) ? widgetSurface.panelWidthDip : 720.0F,
-            IsBridgeWidget(widget)
-                ? std::optional<float>{widgetSurface.panelHeightDip}
-                : std::nullopt);
+        const auto geometry = ComputeCurrentWidgetSurfaceGeometry(
+            metrics->viewportWidthDip, metrics->viewportHeightDip);
         if (!geometry) return false;
 
         const auto target = gba::input::ResolveResponsiveFocusPersistenceTarget(
@@ -6201,9 +6266,13 @@ private:
             dpi != 0 ? dpi : 96U, interfaceScale);
         if (!metrics) return;
 
-        // BeginDraw supplied by DirectComposition selects the surface and
-        // update clip on this context. Clear that complete clip, then account
-        // for the update offset while retaining the existing DIP transform.
+        // IDCompositionSurface::BeginDraw reports its backing-surface offset
+        // in physical pixels. This device context draws in DIPs after SetDpi,
+        // so convert the atlas offset before composing it after interface zoom.
+        // Treating the raw pixel value as DIPs over-translates every child at
+        // non-96 DPI and can crop an otherwise correctly placed tray surface.
+        const float deviceDipPerPixel = 96.0F /
+            static_cast<float>(dpi != 0 ? dpi : 96U);
         renderTarget_->SetTransform(D2D1::Matrix3x2F::Identity());
         renderTarget_->Clear(compositionSurface_.available()
             ? D2D1::ColorF(0.0F, 0.0F, 0.0F, 0.0F)
@@ -6212,8 +6281,8 @@ private:
             D2D1::Matrix3x2F::Scale(
                 metrics->interfaceScale, metrics->interfaceScale) *
             D2D1::Matrix3x2F::Translation(
-                static_cast<float>(updateOffset.x),
-                static_cast<float>(updateOffset.y)));
+                static_cast<float>(updateOffset.x) * deviceDipPerPixel,
+                static_cast<float>(updateOffset.y) * deviceDipPerPixel));
 
         if (layer == CompositionPaintLayer::Tray && trayLayout) {
             DrawIconStrip(
@@ -6256,8 +6325,6 @@ private:
         std::vector<gba::OverlayCompositionSurface::Frame> frames;
         std::optional<gba::shell::RetainedTrayState> trayState;
         std::wstring guideKey;
-        RECT guideClientBounds{};
-        RECT trayClientBounds{};
     };
 
     // One visible overlay session owns this small chrome raster and its
@@ -6526,6 +6593,21 @@ private:
                 L"Fixed chrome client layout did not fit its applied HWND");
             return false;
         }
+        const gba::OverlayCompositionSurface::ChromePresentation chrome{
+            static_cast<float>(session.guideClientBounds.left),
+            static_cast<float>(session.guideClientBounds.top),
+            static_cast<float>(session.trayClientBounds.left),
+            static_cast<float>(session.trayClientBounds.top),
+        };
+        gba::OverlayCompositionSurface::CommitTiming chromeTiming;
+        const HRESULT chromeResult =
+            compositionSurface_.CommitChromePresentation(chrome, chromeTiming);
+        if (FAILED(chromeResult)) {
+            AppendDiagnostic(
+                L"Fixed chrome child presentation failed hresult=" +
+                std::to_wstring(static_cast<unsigned long>(chromeResult)));
+            return false;
+        }
         ++fixedChromePlacementCount_;
         anchor.intendedWindowBounds = session.windowBounds;
         anchor.actualWindowBounds = actualWindowBounds;
@@ -6546,6 +6628,8 @@ private:
             L" guide-screen=" + FormatPhysicalBounds(*guideScreen) +
             L" tray-screen=" + FormatPhysicalBounds(*trayScreen) +
             L" exact=" + (exact ? std::wstring{L"true"} : L"false") +
+            L" chrome-commit-us=" +
+            std::to_wstring(chromeTiming.commitMicroseconds) +
             L" placement-count=" +
             std::to_wstring(fixedChromePlacementCount_));
         if (!exact) return false;
@@ -6556,29 +6640,19 @@ private:
 
     [[nodiscard]] std::optional<gba::OverlayPlacement>
     AnchorContentPlacementToChrome(
-        gba::OverlayPlacement placement,
-        const gba::ResolvedWidgetSurface& surfaceTarget) const {
+        gba::OverlayPlacement placement) const {
         if (!fixedChromeAnchor_ || !compositionChromeSession_ ||
             placement.width <= 0 || placement.height <= 0) {
             return std::nullopt;
         }
         const auto guide = ProjectChromeClientBoundsToScreen(
             compositionChromeSession_->guideClientBounds);
-        const auto metrics = gba::ComputeOverlayRenderMetrics(
-            placement.width, placement.height,
-            fixedChromeAnchor_->dpi,
-            fixedChromeAnchor_->interfaceScale);
-        if (!guide || !metrics) return std::nullopt;
-        const auto geometry = gba::ComputeOverlaySurfaceGeometry(
-            metrics->viewportWidthDip, metrics->viewportHeightDip,
-            surfaceTarget.panelWidthDip, surfaceTarget.panelHeightDip);
-        if (!geometry) return std::nullopt;
+        if (!guide) return std::nullopt;
 
         constexpr float kPanelToGuideGapDip = 3.0F;
-        const int visiblePanelBottom = static_cast<int>(std::lround(
-            geometry->footerY * metrics->physicalPixelsPerDip));
         const int panelToGuideGap = static_cast<int>(std::lround(
-            kPanelToGuideGapDip * metrics->physicalPixelsPerDip));
+            kPanelToGuideGapDip * fixedChromeAnchor_->dpi / 96.0F *
+            fixedChromeAnchor_->interfaceScale));
         const RECT& work = fixedChromeAnchor_->workArea;
         const int maximumX = work.right - placement.width;
         const int maximumY = work.bottom - placement.height;
@@ -6586,7 +6660,7 @@ private:
         placement.x = work.left +
             ((work.right - work.left) - placement.width) / 2;
         placement.y = std::clamp(
-            static_cast<int>(guide->top) - panelToGuideGap - visiblePanelBottom,
+            static_cast<int>(guide->top) - panelToGuideGap - placement.height,
             static_cast<int>(work.top), maximumY);
         return placement;
     }
@@ -6811,7 +6885,6 @@ private:
             return false;
         }
         set.guideKey = guideKey;
-        set.guideClientBounds = chromeSession.guideClientBounds;
 
         auto nextTrayState = CurrentTrayPaintState(
             *trayLayout, chromeSession.trayWidth, chromeSession.trayHeight,
@@ -6836,7 +6909,6 @@ private:
             }
         }
         set.trayState = std::move(nextTrayState);
-        set.trayClientBounds = chromeSession.trayClientBounds;
         drawMicroseconds = static_cast<std::uint64_t>(
             std::chrono::duration_cast<std::chrono::microseconds>(
                 std::chrono::steady_clock::now() - started).count());
@@ -6919,15 +6991,9 @@ private:
         std::vector<gba::OverlayCompositionSurface::Frame*> framePointers;
         framePointers.reserve(frames.frames.size());
         for (auto& frame : frames.frames) framePointers.push_back(&frame);
-        const gba::OverlayCompositionSurface::ChromePresentation chrome{
-            static_cast<float>(frames.guideClientBounds.left),
-            static_cast<float>(frames.guideClientBounds.top),
-            static_cast<float>(frames.trayClientBounds.left),
-            static_cast<float>(frames.trayClientBounds.top),
-        };
         gba::OverlayCompositionSurface::CommitTiming timing;
         const HRESULT result = compositionSurface_.CommitFrames(
-            framePointers, replacement, timing, nullptr, &chrome);
+            framePointers, replacement, timing, nullptr);
         if (FAILED(result)) {
             DisableCompositionFallback(
                 L"surface commit failed hresult=" +
@@ -7424,12 +7490,18 @@ private:
         declarativeMotionActive_ = false;
         const std::wstring_view widget = state_.activeWidget();
         const bool bridgeWidget = IsBridgeWidget(widget);
-        const auto widgetSurface = DesiredWidgetSurfaceTarget();
-        const auto geometry = gba::ComputeOverlaySurfaceGeometry(
-            width, height, bridgeWidget ? widgetSurface.panelWidthDip : 720.0F,
-            bridgeWidget
-                ? std::optional<float>{widgetSurface.panelHeightDip}
-                : std::nullopt);
+        const auto geometry = layer == CompositionPaintLayer::Content &&
+                compositionSurface_.available()
+            ? ComputePanelLocalSurfaceGeometry(width, height)
+            : [&]() {
+                const auto widgetSurface = DesiredWidgetSurfaceTarget();
+                return gba::ComputeOverlaySurfaceGeometry(
+                    width, height,
+                    bridgeWidget ? widgetSurface.panelWidthDip : 720.0F,
+                    bridgeWidget
+                        ? std::optional<float>{widgetSurface.panelHeightDip}
+                        : std::nullopt);
+            }();
         if (!geometry) return;
         const auto sessionTrayLayout = !frameTrayLayout && compositionSurface_.available()
             ? CurrentCompositionTrayLayout()

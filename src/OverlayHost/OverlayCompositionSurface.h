@@ -86,15 +86,16 @@ public:
     HRESULT EndFrame(Frame& frame) noexcept;
     HRESULT CommitFrame(
         Frame& frame, bool waitForCompletion, CommitTiming& timing,
-        const VisualPresentation* presentation = nullptr,
-        const ChromePresentation* chrome = nullptr) noexcept;
+        const VisualPresentation* presentation = nullptr) noexcept;
     HRESULT CommitFrames(
         std::span<Frame*> frames, bool waitForCompletion, CommitTiming& timing,
-        const VisualPresentation* presentation = nullptr,
-        const ChromePresentation* chrome = nullptr) noexcept;
+        const VisualPresentation* presentation = nullptr) noexcept;
     HRESULT CommitPresentation(
-        const VisualPresentation& presentation, CommitTiming& timing,
-        const ChromePresentation* chrome = nullptr) noexcept;
+        const VisualPresentation& presentation, CommitTiming& timing) noexcept;
+    // Fixed chrome placement is a separate, typed presentation operation.
+    // Content frame replacement and motion cannot mutate these offsets.
+    HRESULT CommitChromePresentation(
+        const ChromePresentation& presentation, CommitTiming& timing) noexcept;
     HRESULT CommitOpacity(float opacity, CommitTiming& timing) noexcept;
     void AbandonFrame(Frame& frame) noexcept;
 

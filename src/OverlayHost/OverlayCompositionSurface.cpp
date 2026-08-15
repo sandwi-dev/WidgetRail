@@ -250,16 +250,14 @@ HRESULT OverlayCompositionSurface::EndFrame(Frame& frame) noexcept {
 
 HRESULT OverlayCompositionSurface::CommitFrame(
     Frame& frame, const bool waitForCompletion, CommitTiming& timing,
-    const VisualPresentation* presentation,
-    const ChromePresentation* chrome) noexcept {
+    const VisualPresentation* presentation) noexcept {
     std::array<Frame*, 1> frames{&frame};
-    return CommitFrames(frames, waitForCompletion, timing, presentation, chrome);
+    return CommitFrames(frames, waitForCompletion, timing, presentation);
 }
 
 HRESULT OverlayCompositionSurface::CommitFrames(
     const std::span<Frame*> frames, const bool waitForCompletion,
-    CommitTiming& timing, const VisualPresentation* presentation,
-    const ChromePresentation* chrome) noexcept {
+    CommitTiming& timing, const VisualPresentation* presentation) noexcept {
     timing = {};
     if (!device_ || frames.empty()) return E_UNEXPECTED;
     for (const auto* frame : frames) {
@@ -272,12 +270,17 @@ HRESULT OverlayCompositionSurface::CommitFrames(
         auto& state = StateFor(frame->layer);
         if (frame->replacement) result = state.visual->SetContent(frame->surface.Get());
         if (FAILED(result)) break;
-        result = state.visual->SetOffsetX(frame->visualOffsetX);
-        if (SUCCEEDED(result)) result = state.visual->SetOffsetY(frame->visualOffsetY);
+        // Content placement belongs to the frame transaction. Guide and tray
+        // offsets belong exclusively to the fixed-chrome session and remain
+        // latched across their surface replacement or repaint.
+        if (frame->layer == Layer::Content) {
+            result = state.visual->SetOffsetX(frame->visualOffsetX);
+            if (SUCCEEDED(result))
+                result = state.visual->SetOffsetY(frame->visualOffsetY);
+        }
         if (FAILED(result)) break;
     }
     if (SUCCEEDED(result) && presentation) result = ApplyPresentation(*presentation);
-    if (SUCCEEDED(result) && chrome) result = ApplyChromePresentation(*chrome);
     if (SUCCEEDED(result)) result = device_->Commit();
     if (SUCCEEDED(result) && waitForCompletion) {
         result = device_->WaitForCommitCompletion();
@@ -339,13 +342,24 @@ HRESULT OverlayCompositionSurface::ApplyChromePresentation(
 }
 
 HRESULT OverlayCompositionSurface::CommitPresentation(
-    const VisualPresentation& presentation, CommitTiming& timing,
-    const ChromePresentation* chrome) noexcept {
+    const VisualPresentation& presentation, CommitTiming& timing) noexcept {
     timing = {};
     if (!device_ || !content_.surface) return E_UNEXPECTED;
     const auto started = std::chrono::steady_clock::now();
     HRESULT result = ApplyPresentation(presentation);
-    if (SUCCEEDED(result) && chrome) result = ApplyChromePresentation(*chrome);
+    if (SUCCEEDED(result)) result = device_->Commit();
+    timing.commitMicroseconds = static_cast<std::uint64_t>(
+        std::chrono::duration_cast<std::chrono::microseconds>(
+            std::chrono::steady_clock::now() - started).count());
+    return result;
+}
+
+HRESULT OverlayCompositionSurface::CommitChromePresentation(
+    const ChromePresentation& presentation, CommitTiming& timing) noexcept {
+    timing = {};
+    if (!device_ || !chromeTarget_ || !chromeRootVisual_) return E_UNEXPECTED;
+    const auto started = std::chrono::steady_clock::now();
+    HRESULT result = ApplyChromePresentation(presentation);
     if (SUCCEEDED(result)) result = device_->Commit();
     timing.commitMicroseconds = static_cast<std::uint64_t>(
         std::chrono::duration_cast<std::chrono::microseconds>(
