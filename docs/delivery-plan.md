@@ -28,11 +28,13 @@ Snapshots are evidence only. This file is the sole authority for current work.
   guide/tray stayed at `2186,1299,747,141` / `2192,1162,735,77` throughout.
   Computer control did not enumerate the no-taskbar OverlayHost, so live visual
   inspection remains with the user rather than being claimed from automation.
-- DLV-244 focused evidence is green. The isolated widget-switch host route stays
-  honestly red because the temporary host exited before readiness without logs.
-  A later Release refresh also stopped a hung process-owner executable test.
-  Neither result is represented as a pass; direct source review, deterministic
-  focused evidence, and the user's physical verdict are the acceptance basis.
+- DLV-245 independently dispositioned both unreliable native routes. The
+  process-owner route exposed the production DLV-246 hang. The widget-switch
+  route corrected stale authored extents, then exposed an invalid comparison
+  between screen coordinates and client-local DIPs; its attempted authoritative
+  replacement still could not observe an applied-chrome sample after the
+  catalog 9-to-8 restoration. No product defect was established by that route,
+  no red result is represented as a pass, and no DLV-245 commit is integrated.
 - DLV-237 correlation identified the admission stall that DLV-239 now closes: a
   selected widget could have no current snapshot while its lifecycle already
   reported current, causing refresh reconciliation to skip indefinitely.
@@ -139,15 +141,37 @@ user decision. The native overlay is the sole production presentation path.
 | --- | --- | --- |
 | Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | Assigned DLV-246 from exact accepted main `7cc5839`; move to a clean `codex/impl-platform-process-owner` branch before edits. Preserve completed `codex/impl-platform-snapshot-cache` and `codex/impl-platform-fixed-chrome`. |
 | Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | Assigned DLV-240 from exact accepted main `7cc5839`; move to a clean `codex/impl-widgets-snapshot-update` branch before edits. |
-| Red tests | `Implementation agent — red-test lane`; `C:\Users\dwive\.codex\worktrees\ada5\GameBarAlternative` on `codex/impl-red-tests` | DLV-245 candidate `c5ac8b5` is under bounded correction: run the final corrected widget-switch geometry case once. The process-owner case remains honestly red and production-owned; no production-code edits here. |
 
 DLV-217 remains accepted through `d57fd06` but unintegrated because its exact
 aggregate is 40/41 with one reviewer-history-link failure. Preserve the branch;
 integration requires separate explicit user approval.
 
-## Temporary red-test lane
+## Dispositioned temporary red-test lane
 
-### Assigned — DLV-245: independently disposition unreliable native host tests
+### Rejected for integration — DLV-245: independently disposition unreliable native host tests
+
+The temporary lane is closed and its worktree/branch remain preserved for
+evidence. Candidate `c5ac8b5` and the later uncommitted test-only correction are
+not accepted or integrated:
+
+- `OverlayProcessOwnerTests.exe` reached profile/window setup and then the first
+  `Begin` call exceeded the exact 20-second PID bound. This is production-owned
+  DLV-246, not a test-only repair.
+- The widget-switch route's old stationarity assertion compared screen-space
+  tray coordinates with client-local DIPs. The corrected assertion required an
+  authoritative Composition child sample with an exact applied chrome HWND and
+  preserved guide/tray screen rectangles.
+- The one authorized corrected route passed compilation and initial geometry,
+  but after catalog restoration from nine to eight entries it emitted no such
+  authoritative sample before selection. Proving that extra checkpoint would
+  require further harness synchronization or new production diagnostics. It is
+  not required to accept the already user-verified DLV-244 behavior, and the
+  proportionality stop rule forbids another harness campaign.
+- The existing production-profile OverlayHost remained untouched. No aggregate
+  ran and no production, protocol, SDK, diagnostics, or reviewer files changed.
+
+The original assignment text remains below as the exact scope that was
+dispositioned.
 
 Owner/baseline: temporary red-test task from current planner main. This lane may
 edit only directly implicated test sources, test-support/harness code, and their

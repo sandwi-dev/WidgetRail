@@ -30,8 +30,8 @@ At the beginning of every goal continuation or scheduled heartbeat:
    worktree:
    - `Implementation agent — widgets lane`
    - `Implementation agent — platform lane`
-   While DLV-245 remains active, also locate `Implementation agent — red-test
-   lane` and verify that it remains test-only and isolated from production files.
+   DLV-245 is closed and rejected; do not locate or resume its preserved
+   temporary red-test task during normal startup.
    The Avalonia lead and AVP-004 extraction tasks are closed historical tasks,
    not startup dependencies. Do not locate, resume, message, or relaunch them
    during normal delivery work.
@@ -108,10 +108,9 @@ Maintain:
   ordered independent Ready milestones when evidence permits.
 - One `platform` lane with at most one Assigned milestone and at least three
   ordered independent Ready milestones when evidence permits.
-- While DLV-245 is active, one temporary `red-test` lane with exactly one
-  Assigned test-only investigation, no production-code authority, and no Ready
-  queue. Remove the task from active coordination after its disposition is
-  reviewed and integrated or rejected.
+- DLV-245's temporary `red-test` lane is closed after rejection. Preserve its
+  branch/worktree evidence, but do not coordinate it as an active lane unless
+  the user explicitly reopens the investigation.
 - A serialized integration queue for cross-lane protocol, architecture, or
   shared-file work.
 - A blocked queue with exact unblocking evidence.
@@ -503,11 +502,13 @@ Then repeat the loop.
   no longer registered or present; do not claim they are preserved and do not
   attempt reconstruction without explicit user authority.
 - Local `main` is the planner-owned integration branch.
-- The temporary DLV-245 red-test task uses
+- The closed DLV-245 red-test task used
   `C:\Users\dwive\.codex\worktrees\ada5\GameBarAlternative` on
   `codex/impl-red-tests` from planner baseline `9d23bfd`. It may edit only implicated tests, test support,
-  and their build invocation. It never authors product fixes; a discovered
-  product defect is returned to the owning production lane.
+  and their build invocation. Its rejected candidate and uncommitted follow-up
+  remain preserved as evidence; do not resume, integrate, or discard them
+  without new user authority. The production defect it exposed is assigned to
+  DLV-246.
 - The retained `codex/avalonia-prototype` and `codex/avp004-*` branches are
   closed failed-experiment history. They are not normal startup or review
   surfaces. Do not dispatch, integrate, relaunch, cut over, or delete them
