@@ -46,7 +46,14 @@ Snapshots are evidence only. This file is the sole authority for current work.
   separate `SetWindowPos`. The accepted test compared the cached intended
   rectangle to diagnostics derived from that same cache, omitted cross-reopen
   equality, and could not observe the compositor/HWND interval. DLV-244 is the
-  mandatory correction; DLV-239 is paused behind it.
+  mandatory correction; DLV-239 is paused behind it. Cumulative DLV-244 through
+  `a3300f4`, integrated by `013d0b3`, is now also physically rejected: the
+  separately rendered chrome still moves while widgets are cycled. Its runtime
+  diagnostics report a calculated/cached rectangle rather than the applied
+  chrome HWND rectangle, so the green source tests and logs did not observe the
+  user's failure. One bounded DLV-244 correction must make the visible-session
+  anchor explicit and prove actual applied screen coordinates before another
+  launch.
 - Corrected DLV-237 now correlates selection, posted/dequeued refresh, lifecycle,
   request, completion, admission, and meaningful A stages to the exact selected
   widget. Pinned/background work cannot terminalize or suppress that trace. The
@@ -154,7 +161,7 @@ user decision. The native overlay is the sole production presentation path.
 | Lane | Task/worktree | Current state |
 | --- | --- | --- |
 | Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` on `codex/impl-widgets-taffy-ui` | Idle clean. DLV-240 begins only after accepted DLV-239 is integrated and the planner sends the serialized cross-lane baseline. |
-| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` on `codex/impl-platform-fixed-chrome` | Idle clean after accepted cumulative DLV-244 through `a3300f4`, integrated on main by `013d0b3`. The exact refreshed native Release awaits mandatory user tray-cycling acceptance; DLV-239 remains paused until that verdict. |
+| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` on `codex/impl-platform-fixed-chrome` | Idle clean at physically rejected DLV-244 tip `a3300f4`, integrated on main by `013d0b3`. A bounded same-lane correction is assigned from current planner main; DLV-239 remains paused. |
 
 DLV-217 remains accepted through `d57fd06` but unintegrated because its exact
 aggregate is honestly 40/41 with one reviewer-history-link failure. Preserve
@@ -429,8 +436,8 @@ behavior and existing focused evidence. Rerun only the changed chrome,
 targeting, accessibility/recovery cases and one native Release build.
 
 Independent review disposition for cumulative DLV-244 through `a3300f4`:
-accepted and integrated on main by `013d0b3`, pending the mandatory physical
-user verdict. The correction routes both initial targets through one paired
+source-accepted and integrated on main by `013d0b3`, then physically rejected
+by the user. The correction routes both initial targets through one paired
 initialization policy, resets the whole composition owner and hides chrome when
 the second target fails, and uses the same paired reset for runtime fallback and
 shutdown. A real chrome-window `WM_LBUTTONUP` now crosses the production
@@ -438,9 +445,49 @@ coordinate seam and reaches the existing `OverlayState` selection/activation
 owner exactly once. The direct 111-check chrome test independently reran green;
 the retained focused suites and native Release build are proportional. No
 second graphics, session, controller, focus, semantic, or accessibility owner
-was added. Do not mark DLV-244 complete or resume DLV-239 until the user cycles
-all differently sized widgets in both directions, hides/reopens, and accepts
-the fixed tray visually.
+was added. Those checks were insufficient: they exercised policy/synthetic
+windows and compared intended state, while the product diagnostic derives its
+reported tray bounds from cached session geometry instead of reading the actual
+applied chrome HWND. The user's live cycling result therefore supersedes them.
+
+Bounded physical-rejection correction atop current planner main:
+
+- Introduce one explicit fixed-chrome screen anchor owned by the existing
+  visible overlay session. Latch monitor identity, physical work area, DPI,
+  interface/accessibility scale, and the resulting physical chrome rectangle
+  when the session opens. Widget selection, content admission, content-window
+  placement, animation, focus, provider updates, scrolling, and sliders must
+  consume but never recalculate or replace that anchor.
+- Change the anchor only for an explicit display/work-area/DPI/accessibility/
+  appearance/catalog-order event, disappearance of the anchored monitor, or a
+  new visible session. A content HWND resize, foreground-window reselection, or
+  `ShowOverlay` refresh during the same visible session is not such an event.
+  Equal work-area/DPI/catalog inputs on hide/reopen must reproduce identical
+  physical chrome corners.
+- Make the single chrome placement owner apply the latched rectangle and retain
+  the last actual `GetWindowRect(chromeWindow_)` result. Runtime transition
+  diagnostics must record the actual HWND rectangle and placement reason, not
+  reconstruct screen bounds from cached session/content geometry. A mismatch
+  between intended and actual rectangles is an explicit failure, never a
+  stationary-tray claim.
+- Audit every call that can enter `ShowOverlay`, monitor selection,
+  `EnsureCompositionChromeSession`, or `ApplyFixedChromeWindow`; content-only
+  routes must perform zero chrome anchor selection and zero `SetWindowPos` on
+  the chrome HWND. Preserve the existing complete small-tray repaint only for
+  tray-owned visual changes.
+- Add one direct production-route regression that starts the real overlay
+  session, cycles all eight installed widget presentations in both directions
+  across their distinct authored extents, samples the actual chrome HWND at
+  start/mid/completion, and covers reverse/reduced motion plus hide/reopen.
+  Assert exact four-corner equality and zero content-caused chrome placement
+  calls. Keep focused monitor/DPI/catalog typed-event, pointer, UIA, recovery,
+  and cleanup checks; do not build capture tooling, another window/session
+  owner, or a generalized simulator.
+- Run only the changed direct placement/transition case, affected chrome/window
+  checks, and one native Release build. Commit one bounded DLV-244 correction,
+  report the remaining physical debt honestly, and stop. The planner will
+  independently review and launch it; DLV-239 cannot resume until the user
+  accepts the live tray position.
 
 Independent review disposition for `3716063`: rejected as the retained base for
 one cumulative correction. The commit correctly separates destination layout
@@ -871,10 +918,11 @@ Do not delete credentials, provider data, accounts, or user files.
 
 1. Main includes physically rejected DLV-238/DLV-236 plus accepted DLV-237
    through `6e2969b`; do not build further work on its false stationarity claim.
-2. Cumulative DLV-244 through `a3300f4` is accepted and integrated by `013d0b3`.
-   Preserve rejected `codex/impl-platform-integration` at `4d0a69e`; launch the
-   exact refreshed main Release for mandatory user cycling and keep DLV-239
-   paused until the physical stationarity verdict.
+2. Cumulative DLV-244 through `a3300f4` is integrated by `013d0b3` but
+   physically rejected. Preserve rejected `codex/impl-platform-integration` at
+   `4d0a69e`; implement and independently review the bounded visible-session
+   anchor/actual-HWND-evidence correction above, then launch that exact main
+   Release for mandatory user cycling. Keep DLV-239 paused.
 3. After the user accepts stationary tray behavior, execute and integrate
    DLV-239, then dispatch DLV-240 to the widgets lane as sole
    shared protocol/managed lead. Platform does not edit shared files.
