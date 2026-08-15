@@ -154,7 +154,7 @@ user decision. The native overlay is the sole production presentation path.
 | Lane | Task/worktree | Current state |
 | --- | --- | --- |
 | Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` on `codex/impl-widgets-taffy-ui` | Idle clean. DLV-240 begins only after accepted DLV-239 is integrated and the planner sends the serialized cross-lane baseline. |
-| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` on `codex/impl-platform-integration` | Assigned revised DLV-244 after merging the new planner baseline. The user authorized a separate fixed chrome HWND; DLV-239 remains paused until DLV-244 is accepted and physically approved. |
+| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | Assigned revised DLV-244. Preserve `codex/impl-platform-integration` at `4d0a69e`, then create/switch the clean worktree to `codex/impl-platform-fixed-chrome` from exact planner main `1e9c00d`. The user authorized a separate fixed chrome HWND; DLV-239 remains paused until DLV-244 is accepted and physically approved. |
 
 DLV-217 remains accepted through `d57fd06` but unintegrated because its exact
 aggregate is honestly 40/41 with one reviewer-history-link failure. Preserve
@@ -239,10 +239,14 @@ stationarity, and do not resume DLV-239 until DLV-244 is accepted and launched.
 ### Assigned — DLV-244: make tray stationarity externally authoritative
 
 Lane/owner/baseline: platform native placement, presentation-transaction, and
-existing sole overlay-session/window/compositor owner on current main. Merge the
-new planner baseline before editing. DLV-239 is paused and must not be mixed
-into this correction. Preserve the separate content/guide/tray retained
-surfaces and complete bounded tray repaint for tray-owned changes.
+existing sole overlay-session/window/compositor owner on exact planner main
+`1e9c00d`. Preserve the rejected `codex/impl-platform-integration` branch at
+`4d0a69e`; from its clean worktree create/switch to
+`codex/impl-platform-fixed-chrome` based directly on `1e9c00d` before editing.
+Do not merge or copy `de3cf47`, `130c105`, or `4d0a69e` into the new branch.
+DLV-239 is paused and must not be mixed into this correction. Preserve the
+accepted separate content/guide/tray retained-surface behavior already on main
+and the complete bounded tray repaint for tray-owned changes.
 
 Visible objective: cycling any sequence of differently sized widgets, hiding
 and reopening on any selected widget, and completing or reversing content
@@ -759,11 +763,12 @@ Do not delete credentials, provider data, accounts, or user files.
 
 1. Main includes physically rejected DLV-238/DLV-236 plus accepted DLV-237
    through `6e2969b`; do not build further work on its false stationarity claim.
-2. Merge the current planner baseline into the clean platform lane and execute
-   revised DLV-244 as the sole platform assignment using the user-authorized
-   separate fixed chrome HWND. Independently review its real applied-window
-   evidence, integrate only if accepted, and launch the exact corrected Release
-   for mandatory user cycling.
+2. Preserve `codex/impl-platform-integration` at `4d0a69e`, create/switch its
+   clean worktree to `codex/impl-platform-fixed-chrome` directly from planner
+   main `1e9c00d`, and execute revised DLV-244 as the sole platform assignment
+   using the user-authorized separate fixed chrome HWND. Independently review
+   its real applied-window evidence, integrate only if accepted, and launch the
+   exact corrected Release for mandatory user cycling.
 3. After the user accepts stationary tray behavior, execute and integrate
    DLV-239, then dispatch DLV-240 to the widgets lane as sole
    shared protocol/managed lead. Platform does not edit shared files.
