@@ -5337,6 +5337,18 @@ through their bounded direct or unrestricted focused invocations. No aggregate,
 native build, package mutation, credential access, user-data migration, push,
 or live-account verification ran.
 
+The packaging correction seeds a pre-retirement incremental Release output with
+the private `runtime\GameLauncher` and `runtime\SpotifyPlaybackHost` trees plus
+retired Spotify provider/protocol/host assemblies inside `runtime\Bridge`. One
+ordinary `build.ps1 -Configuration Release -SkipTests` run removes every seeded
+retired output, republishes current WidgetBridge, WidgetWorkerHost, Settings, and
+bundled widget runtime outputs, and leaves the autonomous Community artifact
+set byte-identical (aggregate SHA-256
+`25FBFBE12E44C36119E67BF06A6AEF28F625C8BEF7A08E4FB567329F8BB45731`
+before and after). Cleanup uses the existing output-root/reparse-safe generated
+directory owner and never targets installed packages, credentials,
+configuration, private state, source packages, or user files.
+
 ### DLV-241 — native atomic presentation-update admission
 
 The native bridge now advertises protocol-v18 atomic-update capability only

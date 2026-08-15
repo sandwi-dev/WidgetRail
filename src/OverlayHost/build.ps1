@@ -1701,6 +1701,12 @@ if (-not $SkipPackaging) {
     $networkControlsOutput = Join-Path $outputDirectory 'runtime\NetworkControls'
     $gamesAppsOutput = Join-Path $outputDirectory 'runtime\GamesApps'
     $mediaSessionsOutput = Join-Path $outputDirectory 'runtime\MediaSessions'
+    # Product-owned Spotify and the private Game Launcher are retired. Purge
+    # exact generated locations before publishing into an incremental output
+    # tree so stale executables or Bridge dependency assemblies cannot ship.
+    Remove-GeneratedDirectory -Path (Join-Path $outputDirectory 'runtime\GameLauncher')
+    Remove-GeneratedDirectory -Path (Join-Path $outputDirectory 'runtime\SpotifyPlaybackHost')
+    Remove-GeneratedDirectory -Path $bridgeOutput
     # YT Music is a community addon now. Remove an incremental build's retired
     # trusted worker so it cannot remain as an accidental fallback.
     Remove-GeneratedDirectory -Path (Join-Path $outputDirectory 'runtime\YtMusic')

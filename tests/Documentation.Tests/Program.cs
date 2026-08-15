@@ -180,6 +180,22 @@ foreach (var retiredPath in new[]
     if (File.Exists(retiredPath))
         failures.Add($"{Relative(retiredPath)} is a retired product-owned domain path.");
 
+var overlayBuild = File.ReadAllText(Path.Combine(repository, "src", "OverlayHost", "build.ps1"));
+var bridgeOutputDeclaration = overlayBuild.IndexOf(
+    "$bridgeOutput = Join-Path $outputDirectory 'runtime\\Bridge'", StringComparison.Ordinal);
+var bridgeOutputCleanup = overlayBuild.IndexOf(
+    "Remove-GeneratedDirectory -Path $bridgeOutput", StringComparison.Ordinal);
+var bridgePublish = overlayBuild.IndexOf(
+    "..\\WidgetBridge\\WidgetBridge.csproj", StringComparison.Ordinal);
+foreach (var retiredOutput in new[] { "runtime\\GameLauncher", "runtime\\SpotifyPlaybackHost" })
+    if (!overlayBuild.Contains(
+            $"Remove-GeneratedDirectory -Path (Join-Path $outputDirectory '{retiredOutput}')",
+            StringComparison.Ordinal))
+        failures.Add($"OverlayHost incremental packaging does not purge {retiredOutput}.");
+if (bridgeOutputDeclaration < 0 || bridgeOutputCleanup <= bridgeOutputDeclaration ||
+    bridgePublish <= bridgeOutputCleanup)
+    failures.Add("OverlayHost incremental packaging does not clean Bridge before republishing it.");
+
 RequireLink(Path.Combine(repository, "README.md"), "docs/widget-authoring-guide.md");
 RequireLink(Path.Combine(repository, "README.md"), "docs/community-companion-services.md");
 RequireLink(Path.Combine(repository, "docs", "README.md"), "widget-authoring-guide.md");
