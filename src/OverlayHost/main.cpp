@@ -4086,6 +4086,61 @@ private:
         }
     }
 
+    struct CommittedWidgetVisualState final {
+        std::wstring widgetId;
+        std::wstring instanceId;
+        std::wstring focusId;
+        std::wstring pressedElementId;
+        long long snapshotSequence{};
+        std::uint64_t sliderPresentationRevision{};
+        long long appearanceRevision{};
+        std::map<std::wstring, float, std::less<>> scrollOffsets;
+        bool animationActive{};
+        bool projectionActive{};
+    };
+
+    [[nodiscard]] bool CurrentSliderAdjustmentVisualActive(
+        const gba::WidgetSnapshot& snapshot) {
+        if (state_.focusRegion() != gba::FocusRegion::Widget ||
+            focusedElementId_.empty()) {
+            return false;
+        }
+        const auto* focused = gba::input::FindNodeInInputScope(
+            snapshot, focusedElementId_, snapshot.activeInputScopeId);
+        return focused && focused->kind == L"slider" &&
+            focused->sliderInteractionMode == L"activateToAdjust" &&
+            sliderInteraction_.AdjustmentModeActive(
+                SliderDescriptor(snapshot, *focused), GetTickCount64());
+    }
+
+    [[nodiscard]] bool CanRetainCommittedWidgetPixels(
+        const std::wstring_view widgetId,
+        const gba::WidgetSnapshot& snapshot) {
+        if (!committedWidgetVisualState_) return false;
+        const auto& committed = *committedWidgetVisualState_;
+        const auto appearanceRevision = appearanceState_.current()
+            ? appearanceState_.current()->revision : 0;
+        if (committed.widgetId != widgetId ||
+            committed.instanceId != snapshot.instanceId ||
+            committed.snapshotSequence != snapshot.sequence ||
+            committed.sliderPresentationRevision !=
+                sliderInteraction_.presentationRevision() ||
+            committed.appearanceRevision != appearanceRevision ||
+            committed.scrollOffsets != lastWidgetRenderResult_.scrollOffsets ||
+            !committed.focusId.empty() ||
+            !committed.pressedElementId.empty() ||
+            committed.animationActive || committed.projectionActive ||
+            pressedInteraction_.active() || declarativeMotionActive_ ||
+            lastWidgetPresentationUsesProjection_ || overlayTransition_.active() ||
+            presentationTransaction_.extentTransitionActive() ||
+            compositionPlacementInProgress_) {
+            return false;
+        }
+        if (CurrentSliderAdjustmentVisualActive(snapshot)) return false;
+        return committed.sliderPresentationRevision ==
+            sliderInteraction_.presentationRevision();
+    }
+
     template <typename Refresh>
     void RefreshAndApplyPresentation(Refresh&& refresh) {
         const bool wasVisible = state_.surface() != gba::Surface::Hidden;
@@ -4127,7 +4182,7 @@ private:
             : std::wstring(state_.selectedWidget());
         const auto nextSessionPresentation =
             sessions_.Presentation(nextVisibleWidget);
-        const bool exactRetainedRefresh =
+        const bool exactRetainedCheckpoint =
             wasVisible && isVisible && priorSurface == state_.surface() &&
             priorVisibleWidget == nextVisibleWidget &&
             priorSessionPresentation.authority ==
@@ -4140,16 +4195,25 @@ private:
             priorSnapshotSequence == nextSessionPresentation.snapshot->sequence &&
             priorExtent == nextExtent && !hadPendingPaint &&
             !pendingContentRenderPlan_;
+        const bool exactRetainedRefresh = exactRetainedCheckpoint &&
+            CanRetainCommittedWidgetPixels(
+                nextVisibleWidget, *nextSessionPresentation.snapshot);
         if (exactRetainedRefresh) {
             // Refresh changes lifecycle/input/UIA authority immediately, but
-            // the admitted checkpoint pixels are exact and intentionally
-            // inert. Do not enqueue a duplicate content frame merely to draw
-            // those same pixels again.
+            // the complete committed visual-state token is already settled
+            // and exact. Do not mutate host-visible state and then skip the
+            // raster that would have represented that mutation.
+            ClearAccessibilityTree();
+            return;
+        }
+        if (exactRetainedCheckpoint) {
+            // The checkpoint pixels are exact, but lifecycle authority would
+            // remove a visible focus/press/adjustment/motion state. Retire the
+            // transient authority only together with the conservative repaint
+            // selected below.
             (void)pressedInteraction_.Clear();
             sliderInteraction_.DeactivateAll();
             declarativeMotionActive_ = false;
-            ClearAccessibilityTree();
-            return;
         }
         const bool animateWidgetExtent =
             wasVisible && isVisible &&
@@ -6540,6 +6604,7 @@ private:
         // logical viewport. Never dispatch controller focus through geometry
         // retained across a resize, DPI migration, or appearance rebuild.
         lastWidgetRenderResult_ = {};
+        committedWidgetVisualState_.reset();
         iconFormat_.Reset();
         hintFormat_.Reset();
         bodyFormat_.Reset();
@@ -7196,7 +7261,9 @@ private:
             renderedSequence != renderedSnapshotSequences_.end() &&
             renderedSequence->second == retainedPresentation.snapshot->sequence &&
             committedDestination &&
-            committedDestination->widgetId == activeWidget;
+            committedDestination->widgetId == activeWidget &&
+            CanRetainCommittedWidgetPixels(
+                activeWidget, *retainedPresentation.snapshot);
         const CompositionLayerGeometry contentGeometry{
             width, height,
         };
@@ -8455,6 +8522,21 @@ private:
                 } else {
                     lastWidgetRenderResult_ = result;
                 }
+                if (!inertRetainedSnapshot && result.succeeded) {
+                    committedWidgetVisualState_ = CommittedWidgetVisualState{
+                        std::wstring{renderedWidget},
+                        snapshot->instanceId,
+                        std::wstring{renderedFocusId},
+                        options.pressedElementId,
+                        snapshot->sequence,
+                        sliderInteraction_.presentationRevision(),
+                        appearanceState_.current()
+                            ? appearanceState_.current()->revision : 0,
+                        result.scrollOffsets,
+                        result.animationActive,
+                        launcherProjection.presentationActive,
+                    };
+                }
                 if (!inertRetainedSnapshot && renderedFocusId == focusedElementId_) {
                     (void)scrollEvidenceProbe_.Publish(
                         widget, semanticSnapshot, result, renderedFocusId,
@@ -8624,6 +8706,7 @@ private:
     bool runtimeInitialized_{};
     std::unordered_map<std::wstring, long long> renderedSnapshotSequences_;
     gba::RenderResult lastWidgetRenderResult_;
+    std::optional<CommittedWidgetVisualState> committedWidgetVisualState_;
     bool lastWidgetPresentationUsesProjection_{};
     std::optional<gba::WidgetPresentationImpact>
         pendingWidgetPresentationImpact_;

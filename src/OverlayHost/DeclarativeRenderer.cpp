@@ -2136,25 +2136,48 @@ DeclarativeRenderer::PlanFocusUpdate(
         if (nodeId.empty()) return true;
         const auto found = cache->nodes.find(std::wstring(nodeId));
         if (found == cache->nodes.end()) return false;
-        if (found->second.visibleBounds.width <= 0.0F ||
-            found->second.visibleBounds.height <= 0.0F) return false;
+
+        const bool targetVisible =
+            found->second.visibleBounds.width > 0.0F &&
+            found->second.visibleBounds.height > 0.0F;
+        if (!targetVisible && !includeFutureFocus) return false;
+
+        std::vector<Rect> scrollViewports;
+        std::set<std::wstring, std::less<>> visited;
+        auto ancestor = found;
+        while (ancestor != cache->nodes.end() &&
+               !ancestor->second.parentId.empty()) {
+            if (!visited.insert(ancestor->second.parentId).second)
+                return false;
+            ancestor = cache->nodes.find(ancestor->second.parentId);
+            if (ancestor != cache->nodes.end() &&
+                ancestor->second.scrollBoundary) {
+                const auto bounded = Intersection(
+                    ancestor->second.paintBounds, viewport);
+                if (bounded.width <= 0.0F || bounded.height <= 0.0F)
+                    return false;
+                scrollViewports.push_back(bounded);
+            }
+        }
+
+        if (!targetVisible) {
+            // A logically valid navigation target can be outside the current
+            // clip precisely because focus-follow has not scrolled it into
+            // view yet. Only one committed scroll viewport is a safe bounded
+            // owner for both the exposed and vacated pixels. Nested or absent
+            // owners remain a conservative full-raster fallback.
+            if (scrollViewports.size() != 1) return false;
+            damage = UnionRect(damage, scrollViewports.front());
+            return true;
+        }
+
         damage = UnionRect(
             damage,
             includeFutureFocus
                 ? Inset(found->second.visibleBounds, -8.0F)
                 : found->second.paintBounds);
-        auto ancestor = found;
-        while (ancestor != cache->nodes.end() &&
-               !ancestor->second.parentId.empty()) {
-            ancestor = cache->nodes.find(ancestor->second.parentId);
-            if (ancestor != cache->nodes.end() &&
-                ancestor->second.scrollBoundary) {
-                // Focus-follow may expose and vacate pixels anywhere in this
-                // clipped viewport. Repaint that bounded existing boundary,
-                // never the complete widget surface.
-                damage = UnionRect(damage, ancestor->second.paintBounds);
-            }
-        }
+        for (const auto scrollViewport : scrollViewports)
+            damage = UnionRect(damage, scrollViewport);
         return true;
     };
     if (!addNode(priorFocusedElementId, false) ||
