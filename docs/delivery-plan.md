@@ -172,7 +172,7 @@ user decision. The native overlay is the sole production presentation path.
 | Lane | Task/worktree | Current state |
 | --- | --- | --- |
 | Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` on `codex/impl-widgets-taffy-ui` | Idle clean. DLV-240 begins only after accepted DLV-239 is integrated and the planner sends the serialized cross-lane baseline. |
-| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` on `codex/impl-platform-fixed-chrome` | Physical acceptance pending for unintegrated correction `7420d7a`, visibly launched as PID 80924. It retains the accepted fixed-tray work and adds durable committed-destination geometry authority for differently sized widget admission. Tests remain deferred; DLV-239 remains paused. |
+| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` on `codex/impl-platform-fixed-chrome` | The user physically accepts fixed tray behavior and differently sized widget admission through `7420d7a`. The lane is completing the authorized bounded DLV-244 post-acceptance tests and correcting rejected expectations. DLV-239 follows after review/integration. |
 
 DLV-217 remains accepted through `d57fd06` but unintegrated because its exact
 aggregate is honestly 40/41 with one reviewer-history-link failure. Preserve
@@ -915,6 +915,18 @@ Visible objective: ordinary hidden/provider invalidation never removes the
 widget's last admitted checkpoint or causes another widget's pixels/envelope to
 stand in. Selection immediately presents that widget's own retained state while
 the existing lifecycle owner requests current state.
+
+Live correlation evidence now proves the motivating failure. Transition 23
+returns from Games & Apps to Game Launcher with `currentSnapshot=false`; the
+posted refresh dequeues after 78 ms, but lifecycle reconciliation skips with
+`reason=already-current`, queues no snapshot request, and crosses the 250-ms
+slow threshold while retained Games & Apps pixels remain inert. An unrelated
+Game Launcher provider update about 2.5 seconds later finally refreshes the
+presentation. The preceding transition to Games & Apps queues, starts, and
+admits its establish request normally. DLV-239 must remove this split between
+snapshot freshness and lifecycle-current state: retain the last admitted Game
+Launcher checkpoint for immediate presentation and ensure RefreshRequested can
+obtain current data even when the worker lifecycle is already current.
 
 In scope: introduce explicit Current/RefreshRequested/RefreshInFlight state;
 retain last-good checkpoint through ordinary failure/cancellation/stale result;
