@@ -154,7 +154,7 @@ user decision. The native overlay is the sole production presentation path.
 | Lane | Task/worktree | Current state |
 | --- | --- | --- |
 | Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` on `codex/impl-widgets-taffy-ui` | Idle clean. DLV-240 begins only after accepted DLV-239 is integrated and the planner sends the serialized cross-lane baseline. |
-| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | Assigned revised DLV-244. Preserve `codex/impl-platform-integration` at `4d0a69e`, then create/switch the clean worktree to `codex/impl-platform-fixed-chrome` from current planner main (product/architecture baseline `1e9c00d` plus reviewer-only branch clarification). The user authorized a separate fixed chrome HWND; DLV-239 remains paused until DLV-244 is accepted and physically approved. |
+| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` on `codex/impl-platform-fixed-chrome` | DLV-244 correction required atop rejected `2698208`. The separate HWND exists, but ownership, pointer/UIA partitioning, chrome invalidation/recovery, and direct two-window regression evidence are incomplete. DLV-239 remains paused. |
 
 DLV-217 remains accepted through `d57fd06` but unintegrated because its exact
 aggregate is honestly 40/41 with one reviewer-history-link failure. Preserve
@@ -335,6 +335,66 @@ Retained rejected evidence: `de3cf47` still exposed a move/commit interval, and
 `130c105` replaced it with a hard-coded 1600x1200-DIP stable host whose decisive
 route did not execute. Preserve both commits unintegrated; do not use either as
 the production baseline or revive their one-HWND capacity strategy.
+
+Independent review disposition for `2698208`: rejected; retain it as the base
+for one bounded DLV-244 correction and do not integrate or launch it. The commit
+does create a second DirectComposition target on the existing device and keeps
+ordinary content placement out of the chrome HWND, but the submitted behavior
+does not meet the authorized two-window contract:
+
+- `CreateWindowExW` creates the chrome `WS_POPUP` with a null owner. It is not an
+  owned companion window, so the implementation relies on three independent
+  `HWND_TOPMOST` calls rather than an OS-enforced overlay pair.
+- `ChromeWindowProc` returns `HTTRANSPARENT` for every point and handles no
+  pointer activation. The tray is therefore pointer-inert instead of routing
+  its authored hit targets through the existing activation owner.
+- The sole `ProviderHost` remains bound to the content HWND. The chrome
+  `WM_GETOBJECT` forwards to `HandleWmGetObject`, which calls
+  `UiaReturnRawElementProvider` for that stored content HWND, not the requesting
+  chrome HWND. No separate, partitioned chrome UIA root exists, so the two HWNDs
+  cannot expose accurate non-duplicated roots or focus events. The directly
+  affected accessibility suite is red and cannot be waived as inherited.
+- `EnsureCompositionChromeSession` reuses a session when only DPI and appearance
+  revision match. It ignores applied work-area/monitor identity and catalog/order
+  geometry, so a same-DPI work-area change or installed-widget count change can
+  leave stale chrome placement/crop. It also reselects the monitor from the
+  content HWND during placement instead of retaining the session's explicit
+  monitor authority, allowing content geometry to influence chrome anchoring.
+- Composition fallback/device loss resets both targets and enables the legacy
+  content-window fallback without hiding or rebuilding the chrome endpoint as a
+  coherent pair.
+- The commit changes no tests. Existing placement/targeting/transition/chrome
+  suites cannot prove the new HWND owner, styles, physical rectangle, pointer
+  route, UIA roots, monitor/catalog invalidation, or pair recovery. The required
+  all-eight two-window lifecycle matrix was not added or executed.
+
+Bounded correction atop `2698208`:
+
+- Make chrome a real owned non-activating popup of the content/session window
+  using documented Win32 ownership, and prove owner, styles, deterministic
+  relative Z-order, taskbar/Alt-Tab policy, paired show/hide, and normal close.
+- Route chrome hit testing and pointer activation through the existing authored
+  screen/client transform and sole activation/focus owner. Return transparent
+  only outside actual chrome hit targets; do not add a second pointer router.
+- Partition the existing semantic publication into subordinate content and
+  chrome UIA roots bound to their actual HWNDs. Expose each element once with
+  accurate screen bounds and keep focus/event authority in the existing logical
+  owner. Make the directly affected UIA suites green.
+- Key fixed-chrome authority on the applied monitor/work-area rectangle, DPI,
+  interface/accessibility scale, appearance, and catalog/order geometry. Change
+  it only for those typed events, never from a content resize or widget identity.
+- Make device loss, composition fallback, initialization failure, and shutdown
+  hide/rebuild/destroy both endpoints coherently with no blank or orphan chrome.
+- Add direct deterministic production-policy tests for owner/styles/Z-order,
+  two real applied window rectangles across all eight distinct content extents
+  and reopen, fractional-DPI parity, pointer routing/pass-through, UIA root and
+  focus partitioning, same-DPI work-area and catalog changes, and fallback/
+  cleanup. Do not create capture tooling or a generalized simulator.
+
+Run the changed direct cases, affected placement/targeting/transition/chrome/
+accessibility/device-loss groups, and one native Release build. Do not integrate
+or claim physical acceptance until every deterministic affected group is green;
+then the planner will review and launch the exact candidate for user cycling.
 
 Independent review disposition for `3716063`: rejected as the retained base for
 one cumulative correction. The commit correctly separates destination layout
