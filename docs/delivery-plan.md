@@ -173,7 +173,7 @@ user decision. The native overlay is the sole production presentation path.
 
 | Lane | Task/worktree | State |
 | --- | --- | --- |
-| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | DLV-242 correction is Assigned atop rejected candidate merge `3f44807`. Eliminate unchanged retained-snapshot raster work, bound host focus/scroll damage, and preserve stable text geometry when the new intrinsic content fits its committed allocation. Build and launch once for user review; do not write tests before acceptance. Preserve accepted DLV-246 branch `codex/impl-platform-process-owner` and completed `codex/impl-platform-snapshot-cache` / `codex/impl-platform-fixed-chrome`. |
+| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | DLV-242 source correction is Assigned atop rejected unlaunched commit `5921ccd`. Close its unsafe retained-visual-state shortcut and offscreen focus-follow fallback before another packaged build or launch. Do not write tests before user acceptance. Preserve accepted DLV-246 branch `codex/impl-platform-process-owner` and completed `codex/impl-platform-snapshot-cache` / `codex/impl-platform-fixed-chrome`. |
 | Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | DLV-218 cumulative branch through `d8b8861` is accepted and integrated. No later widgets assignment is authorized: the known styling/provider items require fresh user evidence, so the lane remains idle rather than manufacturing internal filler while visible DLV-242 is active. Preserve the clean DLV-240 and DLV-218 branches. |
 
 The user explicitly approved the DLV-217 aggregate exception on 2026-08-15.
@@ -610,6 +610,29 @@ Required bounded correction:
   with sleeps, opacity transitions, blanket motion suppression, or widget-
   authored workarounds.
 
+Correction `5921ccd` is rejected at source review and was not launched. Its
+clean packaged build and artifact provenance do not waive two concrete product
+defects:
+
+- `exactRetainedRefresh` clears pressed interaction, deactivates slider state,
+  and stops declarative motion immediately before returning without raster.
+  Its predicate does not prove those visual states were absent or settled, so
+  the shortcut can retain stale pressed/adjusting or mid-animation pixels. A
+  no-raster decision must compare the complete committed visual-state token;
+  if the authority transition changes visible host state, schedule the bounded
+  damage or conservative full fallback before representing it as current.
+- `PlanFocusUpdate` rejects any old or next target whose committed
+  `visibleBounds` is empty before walking its scroll ancestors. The next target
+  is intentionally offscreen at the exact navigation edge where focus-follow
+  must scroll it into view, so ordinary scrolling still falls back to a full-
+  widget repaint. Resolve a uniquely bounded committed scroll viewport from
+  the logical target/ancestor chain and damage that viewport; use full fallback
+  only when no safe bounded scroll owner exists.
+
+The text proof, work-class diagnostic, single-owner boundaries, no-test rule,
+and generic identity-neutral design remain required. Return one bounded source
+correction atop `5921ccd`; do not broaden the milestone.
+
 Verification remains physical-first: source review, one serialized full packaged
 Release build, exact artifact/provenance inspection, and visible launch for the
 user. Do not author or modify regression tests until the user accepts the
@@ -651,7 +674,7 @@ sources, or user files.
 ## Serialized order
 
 1. DLV-247 is accepted and integrated as `a77182d`; its coherent main Release
-   is visibly running as PID 19844 for the user's permission/provider verdict.
+   was previously launched as PID 19844 and then stopped for DLV-242 review.
 2. Accepted DLV-239 is integrated as `7cc5839`.
 3. DLV-246 is accepted and integrated as `0e75203`.
 4. DLV-240 is accepted and integrated as `485a935` plus `cb45a31` with runtime
