@@ -1821,7 +1821,7 @@ WidgetPresentationImpact ClassifyPresentationImpact(
     const WidgetPresentationUpdate& update) {
     using Effect = WidgetPresentationEffect;
     WidgetPresentationImpact impact{
-        update.baseSequence, update.sequence, Effect::None, {}};
+        update.baseSequence, update.sequence, Effect::None, {}, {}, false};
     const auto addTarget = [&](const std::wstring_view id) {
         if (id.empty() ||
             std::find(impact.affectedNodeIds.begin(),
@@ -1835,8 +1835,29 @@ WidgetPresentationImpact ClassifyPresentationImpact(
         if (operation.kind ==
             WidgetPresentationUpdateOperationKind::SetProperties) {
             auto operationEffects = Effect::None;
-            for (const auto& change : operation.properties)
-                operationEffects |= ImpactForPresentationProperty(change.property);
+            for (const auto& change : operation.properties) {
+                const auto propertyEffects =
+                    ImpactForPresentationProperty(change.property);
+                operationEffects |= propertyEffects;
+                if (HasWidgetPresentationEffect(
+                        propertyEffects, Effect::MeasureLayout)) {
+                    if (change.property == L"text" ||
+                        change.property == L"textEntryValue" ||
+                        change.property == L"textEntryPlaceholder") {
+                        if (!operation.targetId.empty() &&
+                            std::find(
+                                impact.textMeasurementNodeIds.begin(),
+                                impact.textMeasurementNodeIds.end(),
+                                operation.targetId) ==
+                                impact.textMeasurementNodeIds.end()) {
+                            impact.textMeasurementNodeIds.emplace_back(
+                                operation.targetId);
+                        }
+                    } else {
+                        impact.hasNonTextMeasureLayout = true;
+                    }
+                }
+            }
             impact.effects |= operationEffects;
             addTarget(operation.targetId);
             if (operation.targetId.empty() &&
@@ -1848,6 +1869,7 @@ WidgetPresentationImpact ClassifyPresentationImpact(
         }
         impact.effects |= Effect::Structure | Effect::MeasureLayout |
             Effect::Paint | Effect::Interaction | Effect::Accessibility;
+        impact.hasNonTextMeasureLayout = true;
         switch (operation.kind) {
         case WidgetPresentationUpdateOperationKind::InsertChild:
         case WidgetPresentationUpdateOperationKind::RemoveChild:

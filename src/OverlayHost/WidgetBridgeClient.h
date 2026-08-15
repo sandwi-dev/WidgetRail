@@ -444,6 +444,14 @@ struct WidgetPresentationImpact final {
     long long sequence{};
     WidgetPresentationEffect effects{WidgetPresentationEffect::None};
     std::vector<std::wstring> affectedNodeIds;
+    /// Exact nodes whose intrinsic text measurement changed. This remains
+    /// internal admission metadata; the renderer may downgrade MeasureLayout
+    /// only after comparing the new DirectWrite/Taffy result with its complete
+    /// committed checkpoint.
+    std::vector<std::wstring> textMeasurementNodeIds;
+    /// A non-text property also requested layout work, so text equivalence
+    /// alone can never justify reusing committed geometry.
+    bool hasNonTextMeasureLayout{};
 };
 
 struct WidgetPresentationMaterialization final {

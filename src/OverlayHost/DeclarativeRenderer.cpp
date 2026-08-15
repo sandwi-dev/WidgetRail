@@ -58,6 +58,35 @@ constexpr NativeColor kDefaultAccent{0.545F, 0.486F, 1.0F, 1.0F};
         std::abs(left.height - right.height) <= 0.01F;
 }
 
+[[nodiscard]] bool SameLayoutBox(
+    const declarative::LayoutBox& left,
+    const declarative::LayoutBox& right) noexcept {
+    return SameRect(left.borderBox, right.borderBox) &&
+        SameRect(left.contentBox, right.contentBox) &&
+        SameRect(left.visibleBox, right.visibleBox) &&
+        left.overflowX == right.overflowX &&
+        left.overflowY == right.overflowY &&
+        left.clippedByAncestor == right.clippedByAncestor &&
+        left.scrollAxis == right.scrollAxis &&
+        std::abs(left.scrollOffset - right.scrollOffset) <= 0.01F &&
+        std::abs(left.maximumScrollOffset - right.maximumScrollOffset) <= 0.01F;
+}
+
+[[nodiscard]] bool SameLayout(
+    const declarative::LayoutResult& left,
+    const declarative::LayoutResult& right) noexcept {
+    if (!left.valid() || !right.valid() ||
+        left.compactMode != right.compactMode ||
+        left.boxes.size() != right.boxes.size()) return false;
+    auto leftBox = left.boxes.begin();
+    auto rightBox = right.boxes.begin();
+    for (; leftBox != left.boxes.end(); ++leftBox, ++rightBox) {
+        if (leftBox->first != rightBox->first ||
+            !SameLayoutBox(leftBox->second, rightBox->second)) return false;
+    }
+    return true;
+}
+
 [[nodiscard]] D2D1_RECT_F D2DRect(const Rect& value) noexcept {
     return D2D1::RectF(value.x, value.y, value.x + value.width, value.y + value.height);
 }
@@ -333,6 +362,7 @@ struct DeclarativeRenderer::RenderPass final {
     Rect deferredFocusRect{};
     float deferredFocusOpacity{1.0F};
     std::optional<Rect> deferredFocusClip;
+    std::map<std::wstring, TextMeasurementProof, std::less<>> textMeasurements;
 
     [[nodiscard]] bool IsResponsiveVisible(const WidgetNode& node) const noexcept {
         return node.visibleWhen.empty() || node.visibleWhen == L"always" ||
@@ -985,6 +1015,9 @@ struct DeclarativeRenderer::RenderPass final {
             owner->writeFactory_, node.text, style, maximumWidth,
             availableHeight);
         if (!plan.IsValid()) {
+            textMeasurements.insert_or_assign(node.id, TextMeasurementProof{
+                maximumWidth, availableHeight, 0.0F, 0.0F,
+                maximumWidth, availableHeight, 0.0F, 0.0F, 0.0F, 0U, false});
             const auto estimated = std::min(
                 maximumWidth,
                 static_cast<float>(node.text.size()) * style.fontSizePx() * 0.56F);
@@ -1005,10 +1038,26 @@ struct DeclarativeRenderer::RenderPass final {
         const auto rasterCeiling = [pixelScale](const float value) {
             return std::ceil(std::max(0.0F, value) * pixelScale) / pixelScale;
         };
-        return {
+        const Size measured{
             std::min(maximumWidth, rasterCeiling(plan.measuredWidth)),
             std::min(availableHeight, rasterCeiling(plan.measuredHeight)),
         };
+        DWRITE_TEXT_METRICS metrics{};
+        const bool hasMetrics = SUCCEEDED(plan.layout->GetMetrics(&metrics));
+        textMeasurements.insert_or_assign(node.id, TextMeasurementProof{
+            maximumWidth,
+            availableHeight,
+            measured.width,
+            measured.height,
+            plan.layoutWidth,
+            plan.layoutHeight,
+            plan.inkInsetTop,
+            plan.inkInsetBottom,
+            plan.baseline,
+            hasMetrics ? metrics.lineCount : 0U,
+            hasMetrics,
+        });
+        return measured;
     }
 
     [[nodiscard]] Size MeasureLeaf(
@@ -1091,6 +1140,7 @@ struct DeclarativeRenderer::RenderPass final {
         const bool fillAutoRoot = true) {
         // First pass gives percentage/em adaptation a deterministic parent estimate.
         prepared.clear();
+        textMeasurements.clear();
         layout = {};
         auto root = PrepareNode(
             snapshot->root,
@@ -1116,6 +1166,7 @@ struct DeclarativeRenderer::RenderPass final {
             layoutOptions);
         // One correction pass resolves parent-relative values against measured boxes.
         prepared.clear();
+        textMeasurements.clear();
         auto correctedRoot = PrepareNode(
             snapshot->root,
             {},
@@ -1143,6 +1194,7 @@ struct DeclarativeRenderer::RenderPass final {
         }
         if (ReconcileCollectionAnchors()) {
             prepared.clear();
+            textMeasurements.clear();
             auto anchoredRoot = PrepareNode(
                 snapshot->root, {}, viewport.width, viewport.height,
                 options.rootFontSizePx, options.surfaceBackground);
@@ -1162,6 +1214,7 @@ struct DeclarativeRenderer::RenderPass final {
             for (std::size_t pass = 0; pass < kMaximumFocusFollowPasses; ++pass) {
                 if (!FollowFocusedDescendant()) break;
                 prepared.clear();
+                textMeasurements.clear();
                 auto revealedRoot = PrepareNode(
                     snapshot->root,
                     {},
@@ -1937,8 +1990,60 @@ DeclarativeRenderer::PlanPresentationUpdate(
             impact.effects, WidgetPresentationEffect::Unknown)) {
         return std::nullopt;
     }
-    const bool localLayout = HasWidgetPresentationEffect(
+    bool localLayout = HasWidgetPresentationEffect(
         impact.effects, WidgetPresentationEffect::MeasureLayout);
+    if (localLayout && !impact.hasNonTextMeasureLayout &&
+        !impact.textMeasurementNodeIds.empty()) {
+        // Text is the one layout-affecting update that can sometimes retain
+        // committed Taffy geometry. Prove that with the exact prior options,
+        // DirectWrite constraints/line metrics, overflow flags, clipping, and
+        // every adjacent layout box. The proof pass borrows but never changes
+        // the renderer's sole scroll-state owner.
+        const auto savedScrollOffsets = scrollOffsets_;
+        const auto savedScrollClock = scrollStateAccessClock_;
+        RenderPass proof;
+        proof.owner = this;
+        proof.snapshot = &snapshot;
+        proof.focusedId = cache->focusedElementId;
+        proof.viewport = viewport;
+        proof.options = cache->options;
+        const auto responsiveViewport = proof.options.responsiveViewport.value_or(
+            Size{viewport.width, viewport.height});
+        proof.compactMode = IsCompactResponsiveSurface(responsiveViewport);
+        proof.BuildLayout(false);
+        scrollOffsets_ = savedScrollOffsets;
+        scrollStateAccessClock_ = savedScrollClock;
+
+        const auto sameProof = [](const TextMeasurementProof& left,
+                                  const TextMeasurementProof& right) noexcept {
+            const auto same = [](const float a, const float b) {
+                return std::abs(a - b) <= 0.01F;
+            };
+            return left.valid && right.valid &&
+                left.lineCount == right.lineCount &&
+                same(left.maximumWidth, right.maximumWidth) &&
+                same(left.maximumHeight, right.maximumHeight) &&
+                same(left.measuredWidth, right.measuredWidth) &&
+                same(left.measuredHeight, right.measuredHeight) &&
+                same(left.layoutWidth, right.layoutWidth) &&
+                same(left.layoutHeight, right.layoutHeight) &&
+                same(left.inkInsetTop, right.inkInsetTop) &&
+                same(left.inkInsetBottom, right.inkInsetBottom) &&
+                same(left.baseline, right.baseline);
+        };
+        bool textMeasurementStable = SameLayout(cache->layout, proof.layout);
+        for (const auto& nodeId : impact.textMeasurementNodeIds) {
+            const auto prior = cache->textMeasurements.find(nodeId);
+            const auto next = proof.textMeasurements.find(nodeId);
+            if (prior == cache->textMeasurements.end() ||
+                next == proof.textMeasurements.end() ||
+                !sameProof(prior->second, next->second)) {
+                textMeasurementStable = false;
+                break;
+            }
+        }
+        if (textMeasurementStable) localLayout = false;
+    }
     const bool rasterWork = localLayout || HasWidgetPresentationEffect(
         impact.effects, WidgetPresentationEffect::Paint) ||
         HasWidgetPresentationEffect(
@@ -2007,6 +2112,68 @@ DeclarativeRenderer::PlanPresentationUpdate(
         std::move(boundaries),
     };
     return IncrementalPresentationPlan{work, damage};
+}
+
+std::optional<IncrementalPresentationPlan>
+DeclarativeRenderer::PlanFocusUpdate(
+    const WidgetSnapshot& snapshot,
+    const std::wstring_view priorFocusedElementId,
+    const std::wstring_view nextFocusedElementId,
+    const Rect viewport) {
+    pendingIncrementalPlan_.reset();
+    const auto& cache = incrementalLayoutCache_;
+    if (!cache || cache->instanceId != snapshot.instanceId ||
+        cache->sequence != snapshot.sequence ||
+        cache->focusedElementId != priorFocusedElementId ||
+        priorFocusedElementId == nextFocusedElementId ||
+        !SameRect(cache->viewport, viewport)) {
+        return std::nullopt;
+    }
+
+    Rect damage{};
+    const auto addNode = [&](const std::wstring_view nodeId,
+                             const bool includeFutureFocus) -> bool {
+        if (nodeId.empty()) return true;
+        const auto found = cache->nodes.find(std::wstring(nodeId));
+        if (found == cache->nodes.end()) return false;
+        if (found->second.visibleBounds.width <= 0.0F ||
+            found->second.visibleBounds.height <= 0.0F) return false;
+        damage = UnionRect(
+            damage,
+            includeFutureFocus
+                ? Inset(found->second.visibleBounds, -8.0F)
+                : found->second.paintBounds);
+        auto ancestor = found;
+        while (ancestor != cache->nodes.end() &&
+               !ancestor->second.parentId.empty()) {
+            ancestor = cache->nodes.find(ancestor->second.parentId);
+            if (ancestor != cache->nodes.end() &&
+                ancestor->second.scrollBoundary) {
+                // Focus-follow may expose and vacate pixels anywhere in this
+                // clipped viewport. Repaint that bounded existing boundary,
+                // never the complete widget surface.
+                damage = UnionRect(damage, ancestor->second.paintBounds);
+            }
+        }
+        return true;
+    };
+    if (!addNode(priorFocusedElementId, false) ||
+        !addNode(nextFocusedElementId, true)) {
+        return std::nullopt;
+    }
+    damage = Intersection(damage, viewport);
+    if (damage.width <= 0.0F || damage.height <= 0.0F) return std::nullopt;
+
+    pendingIncrementalPlan_ = PendingIncrementalPlan{
+        snapshot.instanceId,
+        snapshot.sequence,
+        snapshot.sequence,
+        IncrementalPresentationWork::PaintOnly,
+        damage,
+        {},
+    };
+    return IncrementalPresentationPlan{
+        IncrementalPresentationWork::PaintOnly, damage};
 }
 
 void DeclarativeRenderer::CancelPresentationUpdatePlan() noexcept {
@@ -2097,6 +2264,7 @@ RenderResult DeclarativeRenderer::Render(
         SameRect(incrementalLayoutCache_->viewport, viewport);
     if (pendingMatches) {
         pass.layout = incrementalLayoutCache_->layout;
+        pass.textMeasurements = incrementalLayoutCache_->textMeasurements;
         if (pendingIncrementalPlan_->work ==
             IncrementalPresentationWork::PaintOnly) {
             pass.PrepareAgainstCurrentLayout();
@@ -2165,8 +2333,11 @@ RenderResult DeclarativeRenderer::Render(
         IncrementalLayoutCache cache;
         cache.instanceId = snapshot.instanceId;
         cache.sequence = snapshot.sequence;
+        cache.focusedElementId = std::wstring{focusedElementId};
         cache.viewport = viewport;
         cache.layout = std::move(pass.layout);
+        cache.options = options;
+        cache.textMeasurements = std::move(pass.textMeasurements);
         const auto retain = [&](const auto& self,
                                 const WidgetNode& node,
                                 const std::wstring_view parentId,
@@ -2193,7 +2364,9 @@ RenderResult DeclarativeRenderer::Render(
             IncrementalNodeState state;
             state.parentId = parentId;
             state.safeBoundaryId = std::wstring{inheritedBoundary};
+            state.scrollBoundary = node.kind == L"scroll";
             if (presented != pass.presentation.end()) {
+                state.visibleBounds = presented->second.visibleBox;
                 auto paintBounds = presented->second.visibleBox;
                 if (node.id == pass.focusedId &&
                     prepared != pass.prepared.end()) {

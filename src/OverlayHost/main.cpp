@@ -3611,6 +3611,90 @@ private:
             WidgetSurfaceRequestForSnapshot(*snapshot));
     }
 
+    void InvalidateWidgetFocusChange(
+        const std::wstring_view priorFocusedElementId) {
+        if (!window_) return;
+        const auto full = [&] {
+            pendingContentRenderPlan_.reset();
+            if (declarativeRenderer_)
+                declarativeRenderer_->CancelPresentationUpdatePlan();
+            InvalidateRect(window_, nullptr, FALSE);
+        };
+        if (!declarativeRenderer_ || !compositionSurface_.available() ||
+            state_.surface() != gba::Surface::Widget ||
+            state_.focusRegion() != gba::FocusRegion::Widget ||
+            lastWidgetPresentationUsesProjection_ || declarativeMotionActive_ ||
+            overlayTransition_.active() ||
+            presentationTransaction_.extentTransitionActive() ||
+            compositionPlacementInProgress_ ||
+            pendingWidgetPresentationImpact_) {
+            full();
+            return;
+        }
+        RECT pendingPaint{};
+        if (GetUpdateRect(window_, &pendingPaint, FALSE) != FALSE) {
+            full();
+            return;
+        }
+        const auto* snapshot = InteractionSnapshotFor(state_.activeWidget());
+        RECT client{};
+        if (!snapshot || !lastWidgetRenderResult_.succeeded ||
+            !GetClientRect(window_, &client)) {
+            full();
+            return;
+        }
+        const UINT dpi = std::max(1U, GetDpiForWindow(window_));
+        const float interfaceScale = appearanceState_.current()
+            ? static_cast<float>(appearanceState_.current()->interfaceScale)
+            : 1.0F;
+        const auto metrics = gba::ComputeOverlayRenderMetrics(
+            client.right - client.left, client.bottom - client.top,
+            dpi, interfaceScale);
+        const auto geometry = metrics
+            ? gba::ComputePanelLocalSurfaceGeometry(
+                metrics->viewportWidthDip, metrics->viewportHeightDip)
+            : std::nullopt;
+        if (!metrics || !geometry || metrics->physicalPixelsPerDip <= 0.0F) {
+            full();
+            return;
+        }
+        const gba::declarative::Rect viewport{
+            geometry->widgetViewportX,
+            geometry->widgetViewportY,
+            geometry->widgetViewportWidth,
+            geometry->widgetViewportHeight,
+        };
+        const auto plan = declarativeRenderer_->PlanFocusUpdate(
+            *snapshot, priorFocusedElementId, focusedElementId_, viewport);
+        if (!plan) {
+            full();
+            return;
+        }
+        pendingContentRenderPlan_ = *plan;
+        const auto scale = metrics->physicalPixelsPerDip;
+        RECT update{
+            static_cast<LONG>(std::floor(plan->damage.x * scale)),
+            static_cast<LONG>(std::floor(plan->damage.y * scale)),
+            static_cast<LONG>(std::ceil(
+                (plan->damage.x + plan->damage.width) * scale)),
+            static_cast<LONG>(std::ceil(
+                (plan->damage.y + plan->damage.height) * scale)),
+        };
+        update.left = std::clamp<LONG>(
+            update.left, 0, static_cast<LONG>(client.right));
+        update.top = std::clamp<LONG>(
+            update.top, 0, static_cast<LONG>(client.bottom));
+        update.right = std::clamp<LONG>(
+            update.right, update.left, static_cast<LONG>(client.right));
+        update.bottom = std::clamp<LONG>(
+            update.bottom, update.top, static_cast<LONG>(client.bottom));
+        if (update.right <= update.left || update.bottom <= update.top) {
+            full();
+            return;
+        }
+        InvalidateRect(window_, &update, FALSE);
+    }
+
     [[nodiscard]] bool TryApplyNoRasterWidgetPresentation(
         const std::wstring_view widgetId,
         const gba::WidgetPresentationImpact& impact,
@@ -4005,6 +4089,23 @@ private:
     template <typename Refresh>
     void RefreshAndApplyPresentation(Refresh&& refresh) {
         const bool wasVisible = state_.surface() != gba::Surface::Hidden;
+        const auto priorSurface = state_.surface();
+        const std::wstring priorVisibleWidget = priorSurface == gba::Surface::Widget
+            ? std::wstring(state_.activeWidget())
+            : std::wstring(state_.selectedWidget());
+        const auto priorSessionPresentation =
+            sessions_.Presentation(priorVisibleWidget);
+        const std::wstring priorSnapshotInstance =
+            priorSessionPresentation.snapshot
+                ? priorSessionPresentation.snapshot->instanceId
+                : std::wstring{};
+        const long long priorSnapshotSequence =
+            priorSessionPresentation.snapshot
+                ? priorSessionPresentation.snapshot->sequence
+                : 0;
+        RECT priorPendingPaint{};
+        const bool hadPendingPaint = window_ &&
+            GetUpdateRect(window_, &priorPendingPaint, FALSE) != FALSE;
         const auto priorDesiredExtent = DesiredPresentationExtentDip();
         const auto priorExtent = compositionSurface_.available()
             ? presentationTransaction_.CommittedDestinationExtent(
@@ -4021,6 +4122,35 @@ private:
         std::forward<Refresh>(refresh)();
         const bool isVisible = state_.surface() != gba::Surface::Hidden;
         const auto nextExtent = DesiredPresentationExtentDip();
+        const std::wstring nextVisibleWidget = state_.surface() == gba::Surface::Widget
+            ? std::wstring(state_.activeWidget())
+            : std::wstring(state_.selectedWidget());
+        const auto nextSessionPresentation =
+            sessions_.Presentation(nextVisibleWidget);
+        const bool exactRetainedRefresh =
+            wasVisible && isVisible && priorSurface == state_.surface() &&
+            priorVisibleWidget == nextVisibleWidget &&
+            priorSessionPresentation.authority ==
+                gba::WidgetPresentationAuthority::Current &&
+            nextSessionPresentation.authority ==
+                gba::WidgetPresentationAuthority::RefreshRetained &&
+            priorSessionPresentation.snapshot &&
+            nextSessionPresentation.snapshot &&
+            priorSnapshotInstance == nextSessionPresentation.snapshot->instanceId &&
+            priorSnapshotSequence == nextSessionPresentation.snapshot->sequence &&
+            priorExtent == nextExtent && !hadPendingPaint &&
+            !pendingContentRenderPlan_;
+        if (exactRetainedRefresh) {
+            // Refresh changes lifecycle/input/UIA authority immediately, but
+            // the admitted checkpoint pixels are exact and intentionally
+            // inert. Do not enqueue a duplicate content frame merely to draw
+            // those same pixels again.
+            (void)pressedInteraction_.Clear();
+            sliderInteraction_.DeactivateAll();
+            declarativeMotionActive_ = false;
+            ClearAccessibilityTree();
+            return;
+        }
         const bool animateWidgetExtent =
             wasVisible && isVisible &&
             state_.surface() == gba::Surface::Widget &&
@@ -4288,9 +4418,10 @@ private:
                     sliderInteraction_.DeactivateAll();
                     launcherExperienceProjection_.ObserveFocusInput(
                         widget, GetTickCount64());
+                    const std::wstring priorFocus = focusedElementId_;
                     focusedElementId_ = hit->id;
                     focusMemory_.Remember(widget, *snapshot, focusedElementId_);
-                    InvalidateRect(window_, nullptr, FALSE);
+                    InvalidateWidgetFocusChange(priorFocus);
                     if (hit->enabled) DispatchControllerAction(L"A");
                     return;
                 }
@@ -5234,10 +5365,11 @@ private:
                 (void)pressedInteraction_.Clear();
                 launcherExperienceProjection_.ObserveFocusInput(
                     request.widgetId, GetTickCount64());
+                const std::wstring priorFocus = focusedElementId_;
                 focusedElementId_ = resolved->nodeId;
                 focusMemory_.Remember(request.widgetId, *snapshot, focusedElementId_);
                 (void)SetFocus(window_);
-                InvalidateRect(window_, nullptr, FALSE);
+                InvalidateWidgetFocusChange(priorFocus);
                 continue;
             }
 
@@ -5529,10 +5661,11 @@ private:
 
         sliderInteraction_.DeactivateAll();
         (void)pressedInteraction_.Clear();
+        const std::wstring priorFocus = focusedElementId_;
         focusedElementId_ = *target;
         (void)scrollEvidenceProbe_.RecordTarget(*target, L"responsive");
         focusMemory_.Remember(widget, *snapshot, focusedElementId_);
-        InvalidateRect(window_, nullptr, FALSE);
+        InvalidateWidgetFocusChange(priorFocus);
         return true;
     }
 
@@ -5595,9 +5728,10 @@ private:
             focusedElementId_, snapshot->activeInputScopeId, lastWidgetRenderResult_);
         if (!visible) return;
         if (*visible != focusedElementId_) {
+            const std::wstring priorFocus = focusedElementId_;
             focusedElementId_ = *visible;
             focusMemory_.Remember(widgetId, *snapshot, focusedElementId_);
-            InvalidateRect(window_, nullptr, FALSE);
+            InvalidateWidgetFocusChange(priorFocus);
         }
         const auto projectedDirection =
             direction == gba::input::NavigationDirection::Left ? L"left" :
@@ -5789,9 +5923,10 @@ private:
             (void)pressedInteraction_.Clear();
             launcherExperienceProjection_.ObserveFocusInput(
                 widgetId, GetTickCount64());
+            const std::wstring priorFocus = focusedElementId_;
             focusedElementId_ = *visibleFocus;
             focusMemory_.Remember(widgetId, *snapshot, focusedElementId_);
-            InvalidateRect(window_, nullptr, FALSE);
+            InvalidateWidgetFocusChange(priorFocus);
             return;
         }
         const auto projectedTarget =
@@ -5803,11 +5938,12 @@ private:
             (void)pressedInteraction_.Clear();
             launcherExperienceProjection_.ObserveFocusInput(
                 widgetId, GetTickCount64());
+            const std::wstring priorFocus = focusedElementId_;
             focusedElementId_ = *projectedTarget;
             (void)scrollEvidenceProbe_.RecordTarget(
                 focusedElementId_, direction);
             focusMemory_.Remember(widgetId, *snapshot, focusedElementId_);
-            InvalidateRect(window_, nullptr, FALSE);
+            InvalidateWidgetFocusChange(priorFocus);
             DispatchScrollPagination(widgetId, *snapshot, navigationDirection);
             return;
         }
@@ -5837,10 +5973,11 @@ private:
             (void)pressedInteraction_.Clear();
             launcherExperienceProjection_.ObserveFocusInput(
                 widgetId, GetTickCount64());
+            const std::wstring priorFocus = focusedElementId_;
             focusedElementId_ = explicitTarget->id;
             (void)scrollEvidenceProbe_.RecordTarget(explicitTarget->id, direction);
             focusMemory_.Remember(widgetId, *snapshot, focusedElementId_);
-            InvalidateRect(window_, nullptr, FALSE);
+            InvalidateWidgetFocusChange(priorFocus);
             DispatchScrollPagination(widgetId, *snapshot, navigationDirection);
             return;
         }
@@ -5852,10 +5989,11 @@ private:
             (void)pressedInteraction_.Clear();
             launcherExperienceProjection_.ObserveFocusInput(
                 widgetId, GetTickCount64());
+            const std::wstring priorFocus = focusedElementId_;
             focusedElementId_ = *fallback;
             (void)scrollEvidenceProbe_.RecordTarget(*fallback, direction);
             focusMemory_.Remember(widgetId, *snapshot, focusedElementId_);
-            InvalidateRect(window_, nullptr, FALSE);
+            InvalidateWidgetFocusChange(priorFocus);
             DispatchScrollPagination(widgetId, *snapshot, navigationDirection);
             return;
         }
@@ -5899,8 +6037,10 @@ private:
         if (*visible != focusedElementId_) {
             sliderInteraction_.DeactivateAll();
             (void)pressedInteraction_.Clear();
+            const std::wstring priorFocus = focusedElementId_;
             focusedElementId_ = *visible;
             focusMemory_.Remember(widget, *snapshot, focusedElementId_);
+            InvalidateWidgetFocusChange(priorFocus);
         }
         const auto* focused = gba::input::FindNodeInInputScope(
             *snapshot, focusedElementId_, snapshot->activeInputScopeId);
@@ -6010,9 +6150,10 @@ private:
                 : std::optional<std::wstring>{};
             if (isOpen && visibleFocus && *visibleFocus != focusedElementId_) {
                 (void)pressedInteraction_.Clear();
+                const std::wstring priorFocus = focusedElementId_;
                 focusedElementId_ = *visibleFocus;
                 focusMemory_.Remember(widget, *snapshot, focusedElementId_);
-                InvalidateRect(window_, nullptr, FALSE);
+                InvalidateWidgetFocusChange(priorFocus);
             }
             if (physicalPress && isOpen && visibleFocus &&
                 phase == gba::input::NavigationEventPhase::Pressed &&
@@ -6392,6 +6533,8 @@ private:
 
     void DiscardGraphicsResources(const bool discardRenderTarget = true) {
         if (declarativeRenderer_) declarativeRenderer_->DiscardTargetResources();
+        pendingContentRenderPlan_.reset();
+        activeContentRenderPlan_.reset();
         launcherExperienceProjection_.DiscardTargetResources();
         // Hit and focus rectangles are valid only for the render target's
         // logical viewport. Never dispatch controller focus through geometry
@@ -7036,25 +7179,45 @@ private:
             compositionSurface_.width() != width ||
             compositionSurface_.height() != height;
         if (replaceContent) DiscardGraphicsResources();
+        const std::wstring_view activeWidget = state_.surface() == gba::Surface::Widget
+            ? state_.activeWidget()
+            : std::wstring_view{};
+        const auto retainedPresentation = sessions_.Presentation(activeWidget);
+        const auto renderedSequence = renderedSnapshotSequences_.find(
+            std::wstring(activeWidget));
+        const auto& committedDestination =
+            presentationTransaction_.committedDestination();
+        const bool retainPendingRefreshPixels =
+            !replaceContent && !pendingWidgetPresentationImpact_ &&
+            !pendingContentRenderPlan_ && !activeWidget.empty() &&
+            retainedPresentation.authority ==
+                gba::WidgetPresentationAuthority::RefreshRetained &&
+            retainedPresentation.snapshot &&
+            renderedSequence != renderedSnapshotSequences_.end() &&
+            renderedSequence->second == retainedPresentation.snapshot->sequence &&
+            committedDestination &&
+            committedDestination->widgetId == activeWidget;
         const CompositionLayerGeometry contentGeometry{
             width, height,
         };
         std::optional<RECT> contentUpdate;
+        std::optional<gba::IncrementalPresentationPlan> renderPlan =
+            pendingContentRenderPlan_;
+        const float interfaceScale = appearanceState_.current()
+            ? static_cast<float>(appearanceState_.current()->interfaceScale)
+            : 1.0F;
+        const auto metrics = gba::ComputeOverlayRenderMetrics(
+            static_cast<int>(width), static_cast<int>(height),
+            dpi != 0 ? dpi : 96U, interfaceScale);
+        const auto geometry = metrics
+            ? gba::ComputePanelLocalSurfaceGeometry(
+                metrics->viewportWidthDip, metrics->viewportHeightDip)
+            : std::nullopt;
         if (pendingWidgetPresentationImpact_ && declarativeRenderer_ &&
             state_.surface() == gba::Surface::Widget &&
             IsBridgeWidget(state_.activeWidget())) {
             const auto* snapshot = InteractionSnapshotFor(state_.activeWidget());
-            const float interfaceScale = appearanceState_.current()
-                ? static_cast<float>(appearanceState_.current()->interfaceScale)
-                : 1.0F;
-            const auto metrics = gba::ComputeOverlayRenderMetrics(
-                static_cast<int>(width), static_cast<int>(height),
-                dpi != 0 ? dpi : 96U, interfaceScale);
-            const auto geometry = metrics
-                ? gba::ComputePanelLocalSurfaceGeometry(
-                    metrics->viewportWidthDip, metrics->viewportHeightDip)
-                : std::nullopt;
-            const auto plan = snapshot && geometry
+            renderPlan = snapshot && geometry
                 ? declarativeRenderer_->PlanPresentationUpdate(
                     *snapshot,
                     *pendingWidgetPresentationImpact_,
@@ -7065,41 +7228,58 @@ private:
                         geometry->widgetViewportHeight,
                     })
                 : std::nullopt;
-            if (plan &&
-                plan->work != gba::IncrementalPresentationWork::NoRaster &&
-                metrics && metrics->physicalPixelsPerDip > 0.0F) {
-                const auto scale = metrics->physicalPixelsPerDip;
-                RECT update{
-                    static_cast<LONG>(std::floor(plan->damage.x * scale)),
-                    static_cast<LONG>(std::floor(plan->damage.y * scale)),
-                    static_cast<LONG>(std::ceil(
-                        (plan->damage.x + plan->damage.width) * scale)),
-                    static_cast<LONG>(std::ceil(
-                        (plan->damage.y + plan->damage.height) * scale)),
-                };
-                update.left = std::clamp<LONG>(
-                    update.left, 0, static_cast<LONG>(width));
-                update.top = std::clamp<LONG>(
-                    update.top, 0, static_cast<LONG>(height));
-                update.right = std::clamp<LONG>(
-                    update.right, update.left, static_cast<LONG>(width));
-                update.bottom = std::clamp<LONG>(
-                    update.bottom, update.top, static_cast<LONG>(height));
-                if (update.right > update.left && update.bottom > update.top)
-                    contentUpdate = update;
-            }
-            if (!contentUpdate)
-                declarativeRenderer_->CancelPresentationUpdatePlan();
-        } else if (declarativeRenderer_) {
-            declarativeRenderer_->CancelPresentationUpdatePlan();
         }
-        if (!RenderCompositionLayer(
-                width, height, dpi,
-                gba::OverlayCompositionSurface::Layer::Content,
-                CompositionPaintLayer::Content, contentGeometry,
-                contentUpdate ? &*contentUpdate : nullptr, set,
-                &*trayLayout)) {
-            return false;
+        if (renderPlan &&
+            renderPlan->work != gba::IncrementalPresentationWork::NoRaster &&
+            metrics && metrics->physicalPixelsPerDip > 0.0F) {
+            const auto scale = metrics->physicalPixelsPerDip;
+            RECT update{
+                static_cast<LONG>(std::floor(renderPlan->damage.x * scale)),
+                static_cast<LONG>(std::floor(renderPlan->damage.y * scale)),
+                static_cast<LONG>(std::ceil(
+                    (renderPlan->damage.x + renderPlan->damage.width) * scale)),
+                static_cast<LONG>(std::ceil(
+                    (renderPlan->damage.y + renderPlan->damage.height) * scale)),
+            };
+            update.left = std::clamp<LONG>(
+                update.left, 0, static_cast<LONG>(width));
+            update.top = std::clamp<LONG>(
+                update.top, 0, static_cast<LONG>(height));
+            update.right = std::clamp<LONG>(
+                update.right, update.left, static_cast<LONG>(width));
+            update.bottom = std::clamp<LONG>(
+                update.bottom, update.top, static_cast<LONG>(height));
+            if (update.right > update.left && update.bottom > update.top)
+                contentUpdate = update;
+        }
+        if (!contentUpdate && declarativeRenderer_)
+            declarativeRenderer_->CancelPresentationUpdatePlan();
+        if (contentUpdate && renderPlan) {
+            activeContentRenderPlan_ = *renderPlan;
+        } else {
+            const gba::declarative::Rect fullDamage = geometry
+                ? gba::declarative::Rect{
+                    0.0F, 0.0F,
+                    metrics->viewportWidthDip,
+                    metrics->viewportHeightDip}
+                : gba::declarative::Rect{
+                    0.0F, 0.0F,
+                    static_cast<float>(width), static_cast<float>(height)};
+            activeContentRenderPlan_ = gba::IncrementalPresentationPlan{
+                gba::IncrementalPresentationWork::FullRaster, fullDamage};
+        }
+        if (retainPendingRefreshPixels) {
+            activeContentRenderPlan_ = gba::IncrementalPresentationPlan{
+                gba::IncrementalPresentationWork::NoRaster, {}};
+        } else {
+            if (!RenderCompositionLayer(
+                    width, height, dpi,
+                    gba::OverlayCompositionSurface::Layer::Content,
+                    CompositionPaintLayer::Content, contentGeometry,
+                    contentUpdate ? &*contentUpdate : nullptr, set,
+                    &*trayLayout)) {
+                return false;
+            }
         }
 
         const auto guideKey = CurrentGuidePaintKey(
@@ -7224,6 +7404,13 @@ private:
             DisableCompositionFallback(L"destination draw failed");
             return false;
         }
+        if (frames.frames.empty()) {
+            pendingWidgetPresentationImpact_.reset();
+            pendingContentRenderPlan_.reset();
+            activeContentRenderPlan_.reset();
+            BeginOpenAfterSuccessfulPaint();
+            return true;
+        }
         std::vector<gba::OverlayCompositionSurface::Frame*> framePointers;
         framePointers.reserve(frames.frames.size());
         for (auto& frame : frames.frames) framePointers.push_back(&frame);
@@ -7258,6 +7445,8 @@ private:
         }
         if (performanceCountersActive_) ++performanceSuccessfulFrames_;
         pendingWidgetPresentationImpact_.reset();
+        pendingContentRenderPlan_.reset();
+        activeContentRenderPlan_.reset();
         BeginOpenAfterSuccessfulPaint();
         return true;
     }
@@ -7296,6 +7485,9 @@ private:
         float dpiY = 96.0F;
         renderTarget_->GetDpi(&dpiX, &dpiY);
         renderTarget_->BeginDraw();
+        activeContentRenderPlan_ = gba::IncrementalPresentationPlan{
+            gba::IncrementalPresentationWork::FullRaster,
+            {0.0F, 0.0F, static_cast<float>(width), static_cast<float>(height)}};
         // The HWND is a color-keyed layered window above a separately dimmed
         // full-screen backdrop. Only the authored panel/tray surfaces belong
         // to this window; painting the theme canvas across the client creates
@@ -7314,6 +7506,8 @@ private:
         } else if (SUCCEEDED(result)) {
             if (performanceCountersActive_) ++performanceSuccessfulFrames_;
             pendingWidgetPresentationImpact_.reset();
+            pendingContentRenderPlan_.reset();
+            activeContentRenderPlan_.reset();
             BeginOpenAfterSuccessfulPaint();
         }
         EndPaint(window_, &paint);
@@ -8143,6 +8337,23 @@ private:
                                 compositionChromeSession_->trayClientBounds)
                             : std::nullopt;
                         const auto actualChromeBounds = ActualChromeWindowBounds();
+                        const auto workClass = [&]() -> std::wstring_view {
+                            if (!activeContentRenderPlan_) return L"full";
+                            switch (activeContentRenderPlan_->work) {
+                            case gba::IncrementalPresentationWork::NoRaster:
+                                return L"none";
+                            case gba::IncrementalPresentationWork::PaintOnly:
+                                return L"paint-only";
+                            case gba::IncrementalPresentationWork::LocalLayout:
+                                return L"local-layout";
+                            case gba::IncrementalPresentationWork::FullRaster:
+                                return L"full";
+                            }
+                            return L"full";
+                        }();
+                        const auto damage = activeContentRenderPlan_
+                            ? activeContentRenderPlan_->damage
+                            : gba::declarative::Rect{};
                         AppendDiagnostic(
                             L"Widget presentation paint target=" + std::wstring(widget) +
                             L" content=" +
@@ -8162,6 +8373,11 @@ private:
                                 ? std::wstring{L"none"}
                                 : std::wstring{renderedFocusId}) +
                             L" semantic-focus=" + semanticFocus +
+                            L" work=" + std::wstring(workClass) +
+                            L" damage=" + std::to_wstring(damage.x) + L"," +
+                            std::to_wstring(damage.y) + L"," +
+                            std::to_wstring(damage.width) + L"," +
+                            std::to_wstring(damage.height) +
                             L" tray-total=" +
                             std::to_wstring(trayLayout ? trayLayout->totalCount : 0) +
                             L" tray-visible=" +
@@ -8221,13 +8437,14 @@ private:
                         focusedElementId_, semanticSnapshot.activeInputScopeId, result);
                         visibleFocus && *visibleFocus != focusedElementId_) {
                         (void)pressedInteraction_.Clear();
+                        const std::wstring priorFocus = focusedElementId_;
                         focusedElementId_ = *visibleFocus;
                         (void)scrollEvidenceProbe_.RecordTarget(
                             *visibleFocus, L"reconcile");
                         focusMemory_.Remember(widget, semanticSnapshot, focusedElementId_);
                         // The completed pass used the old focus state. Schedule one
                         // more paint so the recovered target receives its ring.
-                        InvalidateRect(window_, nullptr, FALSE);
+                        InvalidateWidgetFocusChange(priorFocus);
                     }
                 }
                 if (inertRetainedSnapshot) {
@@ -8410,6 +8627,10 @@ private:
     bool lastWidgetPresentationUsesProjection_{};
     std::optional<gba::WidgetPresentationImpact>
         pendingWidgetPresentationImpact_;
+    std::optional<gba::IncrementalPresentationPlan>
+        pendingContentRenderPlan_;
+    std::optional<gba::IncrementalPresentationPlan>
+        activeContentRenderPlan_;
     bool declarativeMotionActive_{};
     gba::OverlayTransitionTimeline overlayTransition_;
     gba::OverlayTransitionSample overlayTransitionSample_{};

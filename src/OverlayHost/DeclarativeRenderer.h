@@ -103,6 +103,7 @@ enum class IncrementalPresentationWork {
     NoRaster,
     PaintOnly,
     LocalLayout,
+    FullRaster,
 };
 
 struct IncrementalPresentationPlan final {
@@ -191,6 +192,16 @@ public:
         const WidgetPresentationImpact& impact,
         declarative::Rect viewport);
 
+    /// Binds an ordinary host-owned focus move to the complete committed
+    /// renderer checkpoint. Scroll ancestors are the bounded damage boundary;
+    /// a missing/mismatched checkpoint requires a conservative full repaint.
+    [[nodiscard]] std::optional<IncrementalPresentationPlan>
+    PlanFocusUpdate(
+        const WidgetSnapshot& snapshot,
+        std::wstring_view priorFocusedElementId,
+        std::wstring_view nextFocusedElementId,
+        declarative::Rect viewport);
+
     void CancelPresentationUpdatePlan() noexcept;
 
     /// Advances the existing complete renderer checkpoint after a typed
@@ -240,17 +251,35 @@ private:
         Failed,
         TrustedArtworkUnavailable,
     };
+    struct TextMeasurementProof final {
+        float maximumWidth{};
+        float maximumHeight{};
+        float measuredWidth{};
+        float measuredHeight{};
+        float layoutWidth{};
+        float layoutHeight{};
+        float inkInsetTop{};
+        float inkInsetBottom{};
+        float baseline{};
+        std::uint32_t lineCount{};
+        bool valid{};
+    };
     struct IncrementalNodeState final {
         declarative::Rect paintBounds;
+        declarative::Rect visibleBounds;
         std::wstring safeBoundaryId;
         std::wstring parentId;
+        bool scrollBoundary{};
     };
     struct IncrementalLayoutCache final {
         std::wstring instanceId;
         long long sequence{};
+        std::wstring focusedElementId;
         declarative::Rect viewport;
         declarative::LayoutResult layout;
+        DeclarativeRenderOptions options;
         std::map<std::wstring, IncrementalNodeState, std::less<>> nodes;
+        std::map<std::wstring, TextMeasurementProof, std::less<>> textMeasurements;
     };
     struct PendingIncrementalPlan final {
         std::wstring instanceId;
