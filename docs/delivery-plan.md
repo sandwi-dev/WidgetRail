@@ -28,7 +28,7 @@ Snapshots are evidence only. This file is the sole authority for current work.
 - The user physically accepted DLV-244 tray visibility/stationarity and distinct
   widget envelope admission. Its cumulative commits were integrated as
   `bfaa2a1`, `0c071fb`, `f06a7e9`, `61041a5`, and `94c4873`.
-- Exact accepted-main Release PID 95216 is visibly running from coherent main
+- Exact accepted-main Release PID 93900 is visibly running from coherent main
   `d8b8861`; `OverlayHost.exe` SHA-256 is
   `7B2FC45CA5055F9D81660C961F94ECBFECB2B162DCB12F05B63A01E36A9DF2ED`.
   Current-session logs show elected production ownership, exact fixed-chrome
@@ -158,7 +158,7 @@ user decision. The native overlay is the sole production presentation path.
 
 | Lane | Task/worktree | State |
 | --- | --- | --- |
-| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | DLV-241 cumulative commits `44bd220` and `5ec3905` are accepted and integrated as `0c264c5` and `1ab2e0d`. DLV-242 production candidate `55bea0c`, refreshed onto current main as `d7ffcaa`, is source-rejected before physical launch; one bounded production-only correction is Assigned, followed by one Release build and planner review. No tests precede the user verdict. Preserve accepted DLV-246 branch `codex/impl-platform-process-owner` and completed `codex/impl-platform-snapshot-cache` / `codex/impl-platform-fixed-chrome`. |
+| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | DLV-241 cumulative commits `44bd220` and `5ec3905` are accepted and integrated as `0c264c5` and `1ab2e0d`. DLV-242 source correction `3bd8c80` is provisionally source-clean, but its first Release package is rejected as stale/incoherent after retaining retired DLV-218 runtime artifacts and producing a live Settings `get-snapshot` invalid-payload failure. A build-only coherent Release correction is Assigned at the unchanged source tip. No tests precede the user verdict. Preserve accepted DLV-246 branch `codex/impl-platform-process-owner` and completed `codex/impl-platform-snapshot-cache` / `codex/impl-platform-fixed-chrome`. |
 | Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | DLV-218 cumulative branch through `d8b8861` is accepted and integrated. No later widgets assignment is authorized: the known styling/provider items require fresh user evidence, so the lane remains idle rather than manufacturing internal filler while visible DLV-242 is active. Preserve the clean DLV-240 and DLV-218 branches. |
 
 The user explicitly approved the DLV-217 aggregate exception on 2026-08-15.
@@ -169,7 +169,7 @@ production history and DLV-217 record were retained unchanged.
 
 The DLV-217 Release launch evidence remains accepted. DLV-246 subsequently
 integrated as `0e75203`, followed by DLV-240 as `485a935` and `cb45a31`; the
-coherent native and managed Release now runs visibly as PID 95216. The focused
+coherent native and managed Release now runs visibly as PID 93900. The focused
 managed DLV-217 test rerun was not claimable because this
 checkout's restore graph failed silently before compilation with zero reported
 errors; the accepted exact-tip DLV-217 evidence and explicit aggregate exception
@@ -442,7 +442,7 @@ status/list changes, launcher/library lists, and media metadata. Build and launc
 the complete candidate for user cycling/scrolling/controller review.
 
 Production candidate `55bea0c`, refreshed without conflict onto accepted main as
-`d7ffcaa`, is rejected at source review and has not been launched or integrated.
+`d7ffcaa`, was rejected at source review and was not integrated.
 Its impact classifier incorrectly treats image/artwork changes and button
 selected/disabled/busy state as non-layout even though those values alter native
 intrinsic measurement. Its local-layout boundary infers paint containment from
@@ -457,6 +457,18 @@ mask concurrent host visual dirtiness. The duplicated local recomputation must
 be removed or justified. Preserve the physical-first order: corrected
 production commit, one Release build, planner source review and user verdict,
 then focused tests only after acceptance.
+
+Correction `3bd8c80` closes those reviewed source blockers and is provisionally
+source-clean. Its first packaged candidate is nevertheless rejected: the output
+still contained retired `runtime\GameLauncher`, `SpotifyPlaybackProtocol*`, and
+`WindowsSpotifyProvider*` artifacts, and the exact launched candidate reported
+`Settings failed: Bridge request 'get-snapshot' has an invalid payload.` The
+candidate PID 61900 was closed normally without integration. Coherent accepted
+main was restored visibly as PID 93900 with the unchanged accepted executable
+hash above. The platform lane now owes only a full authoritative Release build
+at unchanged source tip, proof that DLV-218 cleanup removed retired outputs, and
+non-executing managed-runtime provenance. Source edits, tests, launch, and
+integration remain prohibited until planner review of that corrected package.
 
 ### Ready after DLV-242 — DLV-243: bounded optimistic slider feedback damage
 

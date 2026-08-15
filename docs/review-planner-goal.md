@@ -495,7 +495,7 @@ Then repeat the loop.
   while the UI queue proceeds. DLV-246 is integrated on planner main as
   `0e75203`; DLV-240 follows as `485a935` and `cb45a31`, and DLV-241 is
   integrated as `0c264c5` plus `1ab2e0d`; DLV-218 follows through `d8b8861`.
-  The coherent Release is running visibly as PID 95216 with executable SHA-256
+  The coherent accepted Release is running visibly as PID 93900 with executable SHA-256
   `7B2FC45CA5055F9D81660C961F94ECBFECB2B162DCB12F05B63A01E36A9DF2ED`.
 - Active platform implementation uses the clean isolated worktree
   `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative`. Preserve the
@@ -509,14 +509,16 @@ Then repeat the loop.
   `1ab2e0d`. The correction registered the existing
   `WidgetPresentationSession.Tests` project; its one exact aggregate passed
   verifier self-tests and then stopped at the inherited silent managed restore
-  failure without rerun. DLV-242 production candidate `55bea0c`, refreshed onto
-  accepted main as `d7ffcaa`, is source-rejected before launch: its effect
-  classifier can reuse stale geometry for values that alter intrinsic measure,
-  its fixed-size local boundary does not prove descendant paint containment,
-  and authority/accessibility-only updates fall through to a full content
-  render. The platform lane owns one bounded production-only correction and one
-  Release build, then stops for planner source review, launch, and the user
-  verdict before tests. The original
+  failure without rerun. DLV-242 correction `3bd8c80` closes the reviewed source
+  blockers and is provisionally source-clean, but its first Release package is
+  rejected as stale and incoherent: it retained retired DLV-218 Game Launcher
+  and Spotify bridge artifacts and produced a live Settings `get-snapshot`
+  invalid-payload failure. Candidate PID 61900 was closed normally, accepted
+  main was restored as PID 93900, and the platform lane now owns only a full
+  authoritative build-only correction at the unchanged source tip with cleanup
+  and managed-runtime provenance evidence. It must not edit source or tests,
+  launch, integrate, or push. After planner package review, launch the exact
+  corrected candidate for the user verdict before tests. The original
   pre-recovery branch remains
   preserved at `bdf6d88`; do not rewrite it. Its
   prior DLV-220 history remains preserved on `codex/impl-platform-community`.
