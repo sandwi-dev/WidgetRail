@@ -503,19 +503,27 @@ to Taffy, tile-level damage optimization, public protocol work, DLV-239, or any
 third window/session/input/focus/render authority.
 
 Physical-first candidate `2159e4857ab8cef039365454e3d5fc3828bb2e0f`
-is source-reviewed and awaiting the user's verdict; it is not accepted or
-integrated. The production-only commit changes `src/OverlayHost/main.cpp`,
-replaces the rendering path's screen-to-client chrome round trip with one
-chrome-client layout, anchors content from the actual applied chrome origin,
-and preserves the existing HWND roles, ownership, backdrop, and Z-order code.
-The native Release build succeeded after one compile-only retry for a bounded
-`LONG`/`int` type mismatch. No tests were written, modified, or run. The exact
-unintegrated executable has SHA-256
-`D7777BC2921F4BDEAFB800F5FCF6F008CEF860237980C576DFD4748EDB565484` and was
-visibly launched from the platform worktree as PID `79512` for user cycling.
-Do not add regression tests, integrate the commit, or advance DLV-239 until the
-user accepts tray completeness, stationarity, fixed widget-to-guide spacing,
-motion, pointer/controller behavior, and normal close/reopen on this candidate.
+is physically rejected and remains unintegrated. The production-only commit
+correctly keeps the applied chrome HWND at one observed rectangle while widget
+content extents change, but the user's live screenshot shows the tray pixels
+moving/clipping inside that stationary HWND. The retained diagnostic reports
+the intended client rectangle, not the effective painted child-surface origin.
+The implementation still computes tray pixels in a combined chrome canvas,
+crops them at a nonzero `trayCrop`, subtracts that origin while painting, and
+then translates the cropped DirectComposition visual back to its client offset.
+That leftover internal crop/translation round trip is the bounded defect.
+
+Correction atop `2159e485`: give guide and tray surfaces independent child-local
+coordinate systems beginning at `(0,0)`. Render each at its exact surface size,
+compute the tray layout and focus padding within the tray surface, and position
+each child visual exactly once inside the chrome HWND. Remove child crop-origin
+translation. Painting, retained state, hit testing, pointer routing, UIA, and
+diagnostics must share that normalized local layout; screen bounds are derived
+only from actual chrome origin plus child offset plus element-local bounds.
+Preserve existing HWND roles/ownership/Z-order/backdrop and content motion.
+Make production-code changes only, build and launch for another user verdict,
+and do not add, modify, or run tests before acceptance. Do not integrate or
+advance DLV-239.
 
 Independent review disposition for `3716063`: rejected as the retained base for
 one cumulative correction. The commit correctly separates destination layout
