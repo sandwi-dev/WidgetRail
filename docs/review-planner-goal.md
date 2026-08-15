@@ -256,6 +256,11 @@ On every continuation, perform the following loop in order:
 - Inspect all implementation task statuses with compact waits/snapshots.
 - Inspect each active branch tip, recent DLV commits, worktree cleanliness, and current
   assignment.
+- For native C++ ownership and call-graph review, refresh the user-installed
+  clangd compile database for the exact worktree and use semantic definition,
+  reference, symbol, or hover queries together with `rg`. Treat failed or
+  ambiguous semantic queries as a reason to inspect declarations/callers
+  manually, not as proof that a symbol is unused.
 - For every user-reported regression, inspect the latest accepted OverlayHost
   session log and directly affected worker/provider logs when that surface can
   emit relevant lifecycle, input, transition, capability, or failure evidence.

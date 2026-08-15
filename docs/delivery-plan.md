@@ -9,7 +9,7 @@ Snapshots are evidence only. This file is the sole authority for current work.
 
 ## Current accepted baseline
 
-- Main contains accepted DLV-235 `5440e7b`, DLV-230 `fe2e52c`, Taffy baseline
+- Main contains accepted DLV-232 `ef56bfc`, DLV-235 `5440e7b`, DLV-230 `fe2e52c`, Taffy baseline
   DLV-221 `8836e07`, and the intervening corrections in history above.
 - Taffy is the accepted sole declarative Flex/Responsive Grid geometry engine.
   Widget SDK/protocol, catalog/package/runtime, WidgetBridge transport,
@@ -22,16 +22,23 @@ Snapshots are evidence only. This file is the sole authority for current work.
   recovery and integrated through `5440e7b`. The accepted chain preserves
   responsive selection, frame-safe sole-transport replacement, typed startup
   failure precedence, explicit Retry, and normal zero-process cleanup.
-- The visible Release from exact main `5440e7b` was rebuilt and launched as PID
-  30064 with SHA-256 `C06C7D...AA96`. Exact-session logs contain admitted
-  transitions and bounded stale-completion rejection without crash, forced
-  replacement, or bridge transport failure. Computer control omitted the
-  no-taskbar window, so no planner eight-page visual pass is claimed.
+- DLV-232 `cd378a2`, integrated as `ef56bfc`, makes an unsolicited failed
+  worker's last-good presentation explicitly failure-current and inert. It
+  revokes widget action, focus, hit-test, motion, quick-action, and UIA
+  authority until one valid fresh admission while preserving host Back, Retry,
+  Hold-Y recovery, unaffected widgets, and cleanup. The OS/AppContainer crash
+  induction remains an honestly untested residual risk after one rejected
+  cross-boundary oracle; deterministic affected suites and the native Release
+  compile are green.
+- The visible native-only Release from exact main `ef56bfc` was rebuilt and
+  launched as PID 36856 with SHA-256 `4D0FC7...3E6D`. The prior exact main PID
+  30064 exited normally through its hidden top-level HWND `WM_CLOSE`. No new
+  physical crash induction or eight-page visual verdict is claimed.
 - The user reports three active selection-path defects: retained source-widget
   geometry after cold admission, intermittent tray selection that remains on
   inert old content until A, and tray flashing because widget content and tray
   share redraw ownership. DLV-238, DLV-237, and DLV-236 own those issues in
-  that order after current DLV-232.
+  that order beginning with current DLV-238.
 - The user also identified that complete `WidgetSnapshot` checkpoints conflate
   stable view definition, volatile values, interaction authority, and derived
   appearance validity. Ordinary invalidation currently deletes useful last-
@@ -57,6 +64,9 @@ user decision. The native overlay is the sole production presentation path.
 - Shared protocol/architecture work is serialized to the named lead lane.
 - Implementation tasks never edit reviewer-owned documents. The planner
   independently reviews actual diffs and retained evidence.
+- For native review and hotspot decomposition, keep the user-installed clangd
+  index current for the exact worktree and use semantic definition/reference
+  queries alongside `rg`; do not treat text search alone as ownership proof.
 - Rejected commits remain unintegrated. Corrections stay in their lane and do
   not interrupt unrelated coherent work.
 - Never push. Stop for credentials, destructive recovery, substantial merge
@@ -123,7 +133,7 @@ user decision. The native overlay is the sole production presentation path.
 | Lane | Task/worktree | Current state |
 | --- | --- | --- |
 | Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` on `codex/impl-widgets-taffy-ui` | Idle clean. DLV-240 begins only after accepted DLV-239 is integrated and the planner sends the serialized cross-lane baseline. |
-| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` on `codex/impl-platform-integration` | DLV-232 Assigned; DLV-238, DLV-237, DLV-236, and DLV-239 Ready in that order. DLV-241/242 await DLV-240 integration. |
+| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` on `codex/impl-platform-integration` | DLV-238 Assigned; DLV-237, DLV-236, and DLV-239 Ready in that order. DLV-241/242 await DLV-240 integration. |
 
 DLV-217 remains accepted through `d57fd06` but unintegrated because its exact
 aggregate is honestly 40/41 with one reviewer-history-link failure. Preserve
@@ -131,7 +141,7 @@ that branch. Integration requires separate explicit user approval.
 
 ## Platform lane
 
-### Assigned — DLV-232: generic worker crash isolation and recovery
+### Accepted — DLV-232: generic worker crash isolation and recovery
 
 Baseline: accepted DLV-235 cumulative platform correction. Visible objective: one
 credential-free Community worker may crash repeatedly without closing the
@@ -164,11 +174,30 @@ gesture revocation race is not a DLV-232 blocker when unchanged. Do not add
 service-specific behavior, another lifecycle/input authority, a test-only
 production escape hatch, public protocol work, Tier 3, or unrelated refactoring.
 
-### Ready after DLV-232 integration — DLV-238: commit admitted destination geometry
+Accepted disposition: `cd378a2`, integrated as `ef56bfc`. Independent review
+traced the typed worker failure through the sole bridge event pump, coordinator
+generation revocation, failure-retained rendering, action/focus/hit-test/UIA
+revocation, restart, and fresh admission. Bridge retirement drains the old
+registration's notification lane before replacement publication, so the
+generation-less internal failure notification cannot overtake a newly admitted
+registration. Focused affected suites and one native Release compile are green;
+the real OS/AppContainer crash remains the documented residual risk.
+
+### Assigned — DLV-238: commit admitted destination geometry
 
 Baseline/owner/dependencies: accepted DLV-232 integrated into main; platform native presentation-extent and DirectComposition placement only; do not interrupt DLV-232 or start from an unreviewed tip.
 Visible objective: after a cold/asynchronous switch, retain the old widget's pixels and envelope only until the destination snapshot is admitted; the admitted widget must immediately own its authored width, height, responsive viewport, and final presented extent without waiting for A, a provider update, or another selection.
 Required correction: retire the retained extent as admission changes authority, resolve placement from the destination `DesiredPresentationExtentDip` rather than the pinned old `PresentedPresentationExtentDip`, render the new snapshot once at its destination viewport, and atomically commit that complete frame plus placement before animating old-to-new envelopes. Completion must settle through one explicit destination placement/layout; it may not clear the override with `redraw=false` while leaving old geometry current, scale a destination tree laid out at the source viewport, or add widget identities, another HWND/surface owner, or a second layout path.
+Structural boundary: make this the first staged reduction of the `OverlayApp`
+hotspot. Extract one focused presentation-transaction owner for desired versus
+presented extents, retained-snapshot authority, destination layout, animation
+settlement, and atomic composition/window placement. Leave `OverlayApp` as the
+orchestrator that receives the typed admission and commits the resulting
+directive. Provide a before/after field and responsibility map, use clangd
+definition/reference results for every moved native symbol, and remove shared
+mutable knowledge rather than merely moving methods or creating a cosmetic
+wrapper. Do not attempt a big-bang split or mix later trace/chrome/cache owners
+into DLV-238.
 Preserve: one HWND/root compositor/focus/input/UIA authority, Taffy as sole declarative geometry engine, fixed absolute tray/guide bounds, retained inert old semantics before admission, stale/cancelled snapshot rejection, reduced-motion/device-loss fallback, clipping/scroll/focus reveal, and atomic content/geometry authority.
 Acceptance: cold and cached switches across all eight widgets, including compact-to-tall, tall-to-wide, rapid selection, delayed admission, late revoked completion, failure/last-good, and provider updates, prove that every `content=admitted rendered=<destination>` frame uses the destination surface request and that final presented equals desired without a later snapshot. The Audio Mixer to Network Controls regression must move from retained `592x698` to Network's admitted `632x878` envelope, lay Network out at its own viewport, and retain stationary tray/guide coordinates with no flash, dark band, seam, stale UIA, or intermediate input mismatch.
 Verification: focused widget-switch, extent-transition, composition-placement, surface-policy/Taffy, focus/UIA, reduced-motion/device-loss cases, one bounded eight-widget host route, and native Release build only; no Tier-3 aggregate, provider/package change, capture-harness work, or unrelated refactor.
@@ -465,9 +494,9 @@ Do not delete credentials, provider data, accounts, or user files.
 
 ## Serialized integration order
 
-1. Main is accepted through DLV-235 `5440e7b`; DLV-232 is Assigned.
-2. Integrate accepted DLV-232, then execute/integrate DLV-238, DLV-237, DLV-236,
-   and DLV-239 in platform order. Launch every accepted visible milestone.
+1. Main is accepted through DLV-232 `ef56bfc`; DLV-238 is Assigned.
+2. Execute/integrate DLV-238, DLV-237, DLV-236, and DLV-239 in platform order.
+   Launch every accepted visible milestone.
 3. After DLV-237 launch, the user performs the joint tray-cycling test and the
    planner assigns only the evidence-backed correction without disrupting the
    already ordered independent work.
@@ -512,6 +541,7 @@ Do not delete credentials, provider data, accounts, or user files.
 
 | Milestone | Accepted result |
 | --- | --- |
+| DLV-232 | `cd378a2`, integrated as `ef56bfc`: unsolicited worker exit retains only its own last-good pixels as inert and restores authority solely after fresh admission. |
 | DLV-235 | `b0ea2b4`, reconstructed/integrated as `5440e7b`: worker-start failure survives lifecycle retarget/revocation; explicit Retry owns one fresh generation; valid admission clears it. |
 | DLV-234 | `9435050`, reconstructed/integrated as `348df2e`: incomplete frames taint the sole transport and bounded owned-process replacement restores framing. |
 | DLV-233 | `1323c8a`, reconstructed/integrated as `4b8e0b7`: self-contained PATH-isolated Audio host fixture with strict UIA/scroll/focus behavior. |
@@ -521,6 +551,5 @@ Do not delete credentials, provider data, accounts, or user files.
 | DLV-228 | `2784401`, integrated as `220a415`: Audio rows/cards/sliders consume admitted width generically. |
 | DLV-226 | `2276b4c`, integrated as `9755406`: truthful eight-widget surface-policy audit. |
 | DLV-225 | `3e887ee`, integrated as `3eb0eaf`: bounded content-sized Settings root. |
-| DLV-227 | `86a2a23`, integrated as `856bbbb`: self-contained production-host dependency fixture. |
 
 Do not mark the continuing delivery goal complete; continue until the user pauses/replaces it or all useful lanes are genuinely blocked. Never push.
