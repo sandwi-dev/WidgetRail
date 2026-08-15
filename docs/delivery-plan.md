@@ -30,11 +30,11 @@ Snapshots are evidence only. This file is the sole authority for current work.
   induction remains an honestly untested residual risk after one rejected
   cross-boundary oracle; deterministic affected suites and the native Release
   compile are green.
-- The previously visible native-only Release from exact main `ef56bfc` was
-  launched as PID 36856 with SHA-256 `4D0FC7...3E6D`. It is superseded by the
-  accepted cumulative DLV-238/DLV-236 integration; the exact replacement PID
-  and SHA are recorded after the required rebuild and visible relaunch. No new
-  physical eight-page verdict is claimed until the user reviews that build.
+- The accepted cumulative DLV-238/DLV-236 native-only Release was rebuilt from
+  exact main `7fa146a` and visibly launched as PID 29360 with SHA-256
+  `E74797C3...251FB`. Superseded PID 36856 exited normally through its hidden
+  top-level HWND `WM_CLOSE`. No new physical eight-page verdict is claimed
+  until the user reviews this build.
 - The user reports three active selection-path defects: retained source-widget
   geometry after cold admission, intermittent tray selection that remains on
   inert old content until A, and tray flashing because widget content and tray
