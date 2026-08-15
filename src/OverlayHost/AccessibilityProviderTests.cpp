@@ -893,6 +893,35 @@ int main() {
           composedRootBounds.left == 140 && composedRootBounds.top == 250 &&
           composedRootBounds.right == 620 && composedRootBounds.bottom == 790,
           "composed root follows visual offset and presented extent");
+    host.Publish(
+        finalHostTree,
+        {120, 240, 1.5, 600, 450, 1.2, 1.8, 20, 10, 40, 30, true});
+    SendMessageW(window, WM_APP + 42, 0, 0);
+    RECT independentTrayBounds{};
+    Check(SUCCEEDED(clientTrayItem->get_CurrentBoundingRectangle(
+              &independentTrayBounds)) &&
+          independentTrayBounds.left == 190 &&
+          independentTrayBounds.top == 600 &&
+          independentTrayBounds.right == 286 &&
+          independentTrayBounds.bottom == 696,
+          "tray UIA projects through the fixed chrome child coordinate space");
+    RECT independentRootBounds{};
+    Check(SUCCEEDED(clientRoot->get_CurrentBoundingRectangle(
+              &independentRootBounds)) &&
+          independentRootBounds.left == 120 &&
+          independentRootBounds.top == 240 &&
+          independentRootBounds.right == 720 &&
+          independentRootBounds.bottom == 690,
+          "single UIA root retains the real union HWND bounds with child visuals");
+    host.Publish(
+        finalHostTree,
+        {120, 240, 1.5, 600, 450, 0.8, 1.1, 90, 70, 40, 30, true});
+    SendMessageW(window, WM_APP + 42, 0, 0);
+    RECT retainedTrayBounds{};
+    Check(SUCCEEDED(clientTrayItem->get_CurrentBoundingRectangle(
+              &retainedTrayBounds)) &&
+          EqualRect(&retainedTrayBounds, &independentTrayBounds),
+          "content motion republishes UIA without moving retained tray bounds");
 
     auto presentedSliderTree = Tree(L"generation-4", 13);
     host.Publish(presentedSliderTree, {120, 240, 1.5, 600, 450});

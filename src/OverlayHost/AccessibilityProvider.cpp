@@ -124,16 +124,52 @@ const WidgetNode* FindNode(
     return nullptr;
 }
 
-UiaRect ScreenBounds(const Node& node, const ScreenTransform& transform) noexcept {
-    const double scaleX = transform.scaleX > 0.0
-        ? transform.scaleX : transform.pixelsPerDip;
-    const double scaleY = transform.scaleY > 0.0
-        ? transform.scaleY : transform.pixelsPerDip;
+struct NodeScreenTransform final {
+    double offsetX{};
+    double offsetY{};
+    double scaleX{1.0};
+    double scaleY{1.0};
+};
+
+NodeScreenTransform TransformFor(
+    const ElementDomain domain,
+    const ScreenTransform& transform) noexcept {
+    if (transform.independentChrome && domain != ElementDomain::Widget) {
+        return {
+            transform.originX + transform.chromeOffsetX,
+            transform.originY + transform.chromeOffsetY,
+            transform.pixelsPerDip,
+            transform.pixelsPerDip,
+        };
+    }
     return {
-        transform.originX + transform.visualOffsetX + node.bounds.x * scaleX,
-        transform.originY + transform.visualOffsetY + node.bounds.y * scaleY,
-        node.bounds.width * scaleX,
-        node.bounds.height * scaleY,
+        transform.originX + transform.visualOffsetX,
+        transform.originY + transform.visualOffsetY,
+        transform.scaleX > 0.0 ? transform.scaleX : transform.pixelsPerDip,
+        transform.scaleY > 0.0 ? transform.scaleY : transform.pixelsPerDip,
+    };
+}
+
+UiaRect ScreenBounds(const Node& node, const ScreenTransform& transform) noexcept {
+    const auto projected = TransformFor(node.domain, transform);
+    return {
+        projected.offsetX + node.bounds.x * projected.scaleX,
+        projected.offsetY + node.bounds.y * projected.scaleY,
+        node.bounds.width * projected.scaleX,
+        node.bounds.height * projected.scaleY,
+    };
+}
+
+UiaRect RootScreenBounds(const ScreenTransform& transform) noexcept {
+    if (transform.independentChrome) {
+        return {transform.originX, transform.originY,
+                transform.width, transform.height};
+    }
+    return {
+        transform.originX + transform.visualOffsetX,
+        transform.originY + transform.visualOffsetY,
+        transform.width,
+        transform.height,
     };
 }
 
@@ -439,14 +475,7 @@ public:
         const auto* node = ResolveNode(published);
         if (identity_ && !node) return UIA_E_ELEMENTNOTAVAILABLE;
         if (node) *result = ScreenBounds(*node, published->transform);
-        else if (published) {
-            *result = {
-                       published->transform.originX +
-                           published->transform.visualOffsetX,
-                       published->transform.originY +
-                           published->transform.visualOffsetY,
-                       published->transform.width, published->transform.height};
-        }
+        else if (published) *result = RootScreenBounds(published->transform);
         return S_OK;
     }
 
@@ -497,12 +526,7 @@ public:
             }
         }
         if (best) return CreateFragment(IdentityFor(*published, *best), result);
-        const UiaRect rootBounds{
-            published->transform.originX + published->transform.visualOffsetX,
-            published->transform.originY + published->transform.visualOffsetY,
-            published->transform.width,
-            published->transform.height,
-        };
+        const UiaRect rootBounds = RootScreenBounds(published->transform);
         return Contains(rootBounds, x, y)
             ? CreateFragment(std::nullopt, result)
             : S_OK;
@@ -900,6 +924,9 @@ void ProviderHost::RaisePendingEvents() noexcept {
          previous->transform.scaleY != current->transform.scaleY ||
          previous->transform.visualOffsetX != current->transform.visualOffsetX ||
          previous->transform.visualOffsetY != current->transform.visualOffsetY ||
+         previous->transform.chromeOffsetX != current->transform.chromeOffsetX ||
+         previous->transform.chromeOffsetY != current->transform.chromeOffsetY ||
+         previous->transform.independentChrome != current->transform.independentChrome ||
          previous->transform.width != current->transform.width ||
          previous->transform.height != current->transform.height);
     const bool sameRuntime = previous && current &&
@@ -996,6 +1023,7 @@ void ProviderHost::RaisePendingEvents() noexcept {
         return 0;
     };
     const auto variant = [](const PropertyValue& value, const PropertyKind kind,
+                            const ElementDomain domain,
                             const ScreenTransform* transform) {
         VARIANT result{};
         std::visit([&](const auto& item) {
@@ -1022,23 +1050,14 @@ void ProviderHost::RaisePendingEvents() noexcept {
             } else {
                 SAFEARRAY* array = SafeArrayCreateVector(VT_R8, 0, 4);
                 if (!array) return;
-                const double scaleX = transform
-                    ? (transform->scaleX > 0.0
-                        ? transform->scaleX : transform->pixelsPerDip)
-                    : 1.0;
-                const double scaleY = transform
-                    ? (transform->scaleY > 0.0
-                        ? transform->scaleY : transform->pixelsPerDip)
-                    : 1.0;
+                const auto projected = transform
+                    ? TransformFor(domain, *transform)
+                    : NodeScreenTransform{};
                 const double parts[]{
-                    (transform
-                        ? transform->originX + transform->visualOffsetX : 0.0) +
-                        item.x * scaleX,
-                    (transform
-                        ? transform->originY + transform->visualOffsetY : 0.0) +
-                        item.y * scaleY,
-                    item.width * scaleX,
-                    item.height * scaleY,
+                    projected.offsetX + item.x * projected.scaleX,
+                    projected.offsetY + item.y * projected.scaleY,
+                    item.width * projected.scaleX,
+                    item.height * projected.scaleY,
                 };
                 for (LONG index = 0; index < 4; ++index) {
                     double part = parts[index];
@@ -1056,10 +1075,10 @@ void ProviderHost::RaisePendingEvents() noexcept {
             : providerFor({change.domain, change.nodeId});
         if (!provider) continue;
         VARIANT oldValue = variant(
-            change.oldValue, change.kind,
+            change.oldValue, change.kind, change.domain,
             previous ? &previous->transform : nullptr);
         VARIANT newValue = variant(
-            change.newValue, change.kind,
+            change.newValue, change.kind, change.domain,
             current ? &current->transform : nullptr);
         (void)UiaRaiseAutomationPropertyChangedEvent(
             provider.Get(), propertyId(change.kind), oldValue, newValue);

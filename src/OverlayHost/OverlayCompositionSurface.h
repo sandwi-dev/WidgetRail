@@ -7,6 +7,7 @@
 #include <wrl/client.h>
 
 #include <cstdint>
+#include <span>
 #include <string>
 
 namespace gba {
@@ -16,12 +17,21 @@ namespace gba {
 // attaches it only after EndDraw has completed the full update rectangle.
 class OverlayCompositionSurface final {
 public:
+    enum class Layer {
+        Content,
+        Guide,
+        Tray,
+    };
+
     struct Frame final {
+        Layer layer{Layer::Content};
         Microsoft::WRL::ComPtr<IDCompositionSurface> surface;
         Microsoft::WRL::ComPtr<ID2D1DeviceContext> target;
         POINT updateOffset{};
         unsigned int width{};
         unsigned int height{};
+        float visualOffsetX{};
+        float visualOffsetY{};
         bool replacement{};
         bool drawing{};
     };
@@ -40,21 +50,48 @@ public:
         float clipHeight{};
     };
 
+    struct ChromePresentation final {
+        float guideOffsetX{};
+        float guideOffsetY{};
+        float trayOffsetX{};
+        float trayOffsetY{};
+    };
+
+    struct PaintCounters final {
+        std::uint64_t content{};
+        std::uint64_t guide{};
+        std::uint64_t tray{};
+    };
+
     bool Initialize(HWND window, ID2D1Factory1* factory, std::wstring& error);
     void Reset() noexcept;
 
     [[nodiscard]] bool available() const noexcept { return device_ != nullptr; }
-    [[nodiscard]] bool hasContent() const noexcept { return surface_ != nullptr; }
-    [[nodiscard]] unsigned int width() const noexcept { return width_; }
-    [[nodiscard]] unsigned int height() const noexcept { return height_; }
+    [[nodiscard]] bool hasContent() const noexcept;
+    [[nodiscard]] bool hasContent(Layer layer) const noexcept;
+    [[nodiscard]] unsigned int width() const noexcept;
+    [[nodiscard]] unsigned int height() const noexcept;
+    [[nodiscard]] unsigned int width(Layer layer) const noexcept;
+    [[nodiscard]] unsigned int height(Layer layer) const noexcept;
+    [[nodiscard]] PaintCounters paintCounters() const noexcept { return paintCounters_; }
 
     HRESULT BeginFrame(unsigned int width, unsigned int height, Frame& frame) noexcept;
+    HRESULT BeginFrame(
+        Layer layer, unsigned int width, unsigned int height,
+        float visualOffsetX, float visualOffsetY,
+        const RECT* update, Frame& frame) noexcept;
     HRESULT EndFrame(Frame& frame) noexcept;
     HRESULT CommitFrame(
         Frame& frame, bool waitForCompletion, CommitTiming& timing,
-        const VisualPresentation* presentation = nullptr) noexcept;
+        const VisualPresentation* presentation = nullptr,
+        const ChromePresentation* chrome = nullptr) noexcept;
+    HRESULT CommitFrames(
+        std::span<Frame*> frames, bool waitForCompletion, CommitTiming& timing,
+        const VisualPresentation* presentation = nullptr,
+        const ChromePresentation* chrome = nullptr) noexcept;
     HRESULT CommitPresentation(
-        const VisualPresentation& presentation, CommitTiming& timing) noexcept;
+        const VisualPresentation& presentation, CommitTiming& timing,
+        const ChromePresentation* chrome = nullptr) noexcept;
     HRESULT CommitOpacity(float opacity, CommitTiming& timing) noexcept;
     void AbandonFrame(Frame& frame) noexcept;
 
@@ -64,13 +101,24 @@ private:
     Microsoft::WRL::ComPtr<IDCompositionDesktopDevice> desktopDevice_;
     Microsoft::WRL::ComPtr<IDCompositionDevice2> device_;
     Microsoft::WRL::ComPtr<IDCompositionTarget> target_;
-    Microsoft::WRL::ComPtr<IDCompositionVisual2> visual_;
+    struct LayerState final {
+        Microsoft::WRL::ComPtr<IDCompositionVisual2> visual;
+        Microsoft::WRL::ComPtr<IDCompositionSurface> surface;
+        unsigned int width{};
+        unsigned int height{};
+    };
+
+    Microsoft::WRL::ComPtr<IDCompositionVisual2> rootVisual_;
     Microsoft::WRL::ComPtr<IDCompositionEffectGroup> effect_;
-    Microsoft::WRL::ComPtr<IDCompositionSurface> surface_;
-    unsigned int width_{};
-    unsigned int height_{};
+    LayerState content_;
+    LayerState guide_;
+    LayerState tray_;
+    PaintCounters paintCounters_{};
 
     HRESULT ApplyPresentation(const VisualPresentation& presentation) noexcept;
+    HRESULT ApplyChromePresentation(const ChromePresentation& presentation) noexcept;
+    [[nodiscard]] LayerState& StateFor(Layer layer) noexcept;
+    [[nodiscard]] const LayerState& StateFor(Layer layer) const noexcept;
 };
 
 } // namespace gba

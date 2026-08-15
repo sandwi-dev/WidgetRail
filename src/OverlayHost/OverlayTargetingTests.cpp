@@ -1,5 +1,6 @@
 #include "OverlayTargeting.h"
 
+#include <cmath>
 #include <cstdlib>
 #include <iostream>
 
@@ -13,6 +14,10 @@ void Check(const bool condition, const char* message) {
         std::cerr << "FAIL: " << message << '\n';
         std::exit(EXIT_FAILURE);
     }
+}
+
+void CheckNear(const float actual, const float expected, const char* message) {
+    Check(std::abs(actual - expected) <= 0.01F, message);
 }
 
 } // namespace
@@ -140,6 +145,53 @@ int main() {
     Check(gba::PlanCompositionMotion(0, 700, 540, 620, 540.0F, 620.0F) ==
               gba::CompositionMotionPlan{},
           "invalid source geometry cannot start compositor motion");
+
+    constexpr gba::CompositionPoint contentPoint{100.0F, 80.0F};
+    constexpr gba::CompositionPoint trayPoint{500.0F, 650.0F};
+    constexpr auto childStart = gba::PlanCompositionChildCoordinates(
+        gba::PlanCompositionMotion(
+            1180, 878, 632, 878, 592.0F, 698.0F,
+            gba::CompositionVerticalAnchor::Bottom),
+        632, 878);
+    constexpr auto childMid = gba::PlanCompositionChildCoordinates(
+        gba::PlanCompositionMotion(
+            1180, 878, 632, 878, 612.0F, 788.0F,
+            gba::CompositionVerticalAnchor::Bottom),
+        632, 878);
+    constexpr auto childEnd = gba::PlanCompositionChildCoordinates(
+        gba::PlanCompositionMotion(
+            1180, 878, 632, 878, 632.0F, 878.0F,
+            gba::CompositionVerticalAnchor::Bottom),
+        632, 878);
+    constexpr auto trayStart = gba::ProjectChromePoint(childStart, trayPoint);
+    constexpr auto trayMid = gba::ProjectChromePoint(childMid, trayPoint);
+    constexpr auto trayEnd = gba::ProjectChromePoint(childEnd, trayPoint);
+    Check(trayStart == trayMid && trayMid == trayEnd,
+          "tray and guide child coordinates remain identity-scaled at start midpoint and end");
+    constexpr auto contentStart = gba::ProjectContentPoint(childStart, contentPoint);
+    constexpr auto contentMid = gba::ProjectContentPoint(childMid, contentPoint);
+    constexpr auto contentEnd = gba::ProjectContentPoint(childEnd, contentPoint);
+    Check(contentStart != contentMid && contentMid != contentEnd,
+          "only the destination content coordinate space advances during motion");
+    constexpr auto inverseMid = gba::InverseContentPoint(childMid, contentMid);
+    CheckNear(inverseMid.x, contentPoint.x,
+              "midpoint pointer inverse agrees with animated content x");
+    CheckNear(inverseMid.y, contentPoint.y,
+              "midpoint pointer inverse agrees with animated content y");
+    constexpr auto trayInverse = gba::InverseChromePoint(childMid, trayMid);
+    CheckNear(trayInverse.x, trayPoint.x,
+              "midpoint tray pointer remains in fixed child x space");
+    CheckNear(trayInverse.y, trayPoint.y,
+              "midpoint tray pointer remains in fixed child y space");
+    constexpr auto oddContainerChrome = gba::PlanCompositionChildCoordinates(
+        gba::PlanCompositionMotion(
+            1181, 878, 632, 878, 612.0F, 788.0F,
+            gba::CompositionVerticalAnchor::Bottom),
+        632, 878, 275.0F, 0.0F);
+    CheckNear(oddContainerChrome.chromeOffsetX, 275.0F,
+              "odd-width union uses the exact integer destination x offset");
+    CheckNear(gba::ProjectChromePoint(oddContainerChrome, trayPoint).x, 775.0F,
+              "exact odd-width chrome placement survives final HWND settlement");
 
     Check(gba::ResolveWidgetExtentAuthority(true, true) ==
               gba::WidgetExtentAuthority::AdmittedSnapshot,

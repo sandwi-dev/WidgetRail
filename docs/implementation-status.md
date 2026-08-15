@@ -4847,6 +4847,9 @@ The staged native responsibility map is:
 | retained snapshot/focus/surface request | six mutable `OverlayApp` fields and draw-time selection | private `OverlayPresentationTransaction` retained authority, exposed read-only to rendering and surface policy |
 | desired versus presented extent | `OverlayApp` timeline plus optional extent fields read independently by placement, input, UIA, and paint | one transaction timeline; destination layout extent is carried separately from the animated presented envelope |
 | composition motion and final geometry | eight `OverlayApp` motion/placement/scale/count fields plus ad-hoc terminal clearing | typed admission/motion directives and one explicit destination-settlement state machine |
+| composition child ownership | one transformed DirectComposition visual carried content, guide, and tray together | the sole `OverlayCompositionSurface` root retains content, guide, and tray child visuals/surfaces; only content receives motion transforms/clips |
+| host-chrome invalidation | every host invalidation repainted the complete content-plus-chrome surface | guide and tray revisions are independent; stable tray surfaces retain background/icons and selection/reorder updates only damaged tile rectangles |
+| presented coordinate authority | pointer and UIA shared one whole-frame inverse transform while diagnostics sampled untransformed local chrome bounds | one child-coordinate plan projects animated content and identity-scaled chrome; pointer, hit testing, focus/UIA, and actual screen-bound diagnostics use those same spaces |
 | OS ownership | `OverlayApp` owns HWND, D2D/DComp, focus, input, UIA, and Taffy orchestration | unchanged; the transaction owns no HWND, timer, renderer, compositor, focus graph, or input path |
 
 The worktree clangd index was refreshed for 100 native translation units, and
@@ -4875,3 +4878,55 @@ packaged route was not repeated; therefore OS-level close/reconnect recovery
 after the geometry assertions remains an honest residual evidence gap, not a
 passing DLV-238 claim. No Tier 3, capture, provider/package, second HWND,
 renderer, focus, input, UIA, or layout authority was added.
+
+#### Cumulative independent-chrome correction (DLV-238 + DLV-236)
+
+The sole DirectComposition target now has one root and retained content,
+controller-guide, and tray child visuals/surfaces. Destination content alone
+receives the envelope scale/offset/clip. The guide uses the stable tray-width
+bottom-center band, and guide/tray visuals remain identity-scaled while their
+root-relative offsets follow the final destination inside the union HWND. One
+`CommitFrames` call attaches all replacement children, applies the content and
+chrome presentations, and commits the existing root once; no HWND, device,
+target, root, renderer, provider/tree, focus graph, hit-test owner, or input
+router was added.
+
+Tray invalidation is retained independently of content. Appearance, size,
+catalog-count, layout, or device recreation rebuilds the bounded tray surface;
+stable selection/reorder compares retained tile identities and damages only
+the changed old/new tile rectangles. Snapshot admission, provider publication,
+slider/scroll/content focus updates, and composition motion retain the tray
+background and unchanged icon pixels. The production diagnostic reports
+per-child paint counters and actual screen rectangles rather than treating
+untransformed local bounds as stationarity evidence.
+
+The existing UIA provider now projects widget-domain nodes through the animated
+content child and host/tray nodes through identity-scaled chrome coordinates.
+The same `PlanCompositionChildCoordinates` mapping drives content pointer
+inverse, fixed tray hit testing, authored-surface hit testing, UIA bounds, and
+start/mid/end diagnostics at each committed motion step. The one provider root
+continues to expose the union HWND; retained pre-admission content remains
+non-actionable.
+
+The refreshed clangd index covers 100 translation units. Definition/reference
+queries plus `rg` resolve the moved `CommitFrames`, `ApplyChromePresentation`,
+`RenderCompositionFrames`, `CurrentCompositionChildCoordinates`,
+`PlanTrayInvalidation`, and `PlanCompositionChildCoordinates` ownership across
+`OverlayCompositionSurface`, `OverlayApp`, `OverlayChrome`, and
+`OverlayTargeting`.
+
+Focused Release evidence passes placement 112,333/112,333, targeting 76/76,
+transition 73/73, chrome/invalidation 52/52, accessibility provider 158/158,
+focus 49/49, host accessibility 34/34, and declarative renderer 4,851/4,851.
+The native Release host build is green. The final bounded production route
+passes all eight differently sized widgets and eight variable-extent motions;
+actual guide/tray rectangles remain identical through motion, rapid reversal
+changes only bounded selected tiles, tray paint counters do not advance during
+content-only motion, odd-width union containers retain the exact integer
+destination offset through settlement, and job cleanup leaves zero observed
+processes. Retained route provenance is base `3716063`, host SHA-256
+`824e5a9f3b9efe7939d7dc0cbcae94ec4a2cfb8beef92400a5e0bf1c176e4ae8`,
+root PID 20712, with one bridge and eight fixture workers. The explicit
+geometry-only stop occurs before the inherited DLV-231 close/reconnect tail;
+that unrelated tail was not rerun. No Tier 3, capture, provider/package, or
+public-protocol work was performed.

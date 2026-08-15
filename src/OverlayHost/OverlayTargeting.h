@@ -136,6 +136,99 @@ struct CompositionMotionPlan final {
         const CompositionMotionPlan&) noexcept = default;
 };
 
+struct CompositionChildCoordinateSpaces final {
+    CompositionMotionPlan content;
+    float chromeOffsetX{};
+    float chromeOffsetY{};
+
+    [[nodiscard]] friend constexpr bool operator==(
+        const CompositionChildCoordinateSpaces&,
+        const CompositionChildCoordinateSpaces&) noexcept = default;
+};
+
+struct CompositionPoint final {
+    float x{};
+    float y{};
+
+    [[nodiscard]] friend constexpr bool operator==(
+        const CompositionPoint&,
+        const CompositionPoint&) noexcept = default;
+};
+
+/// The destination content owns the animated transform. Host chrome is placed
+/// once at the destination's final bottom-center origin inside the union HWND.
+[[nodiscard]] constexpr CompositionChildCoordinateSpaces
+PlanCompositionChildCoordinates(
+    const CompositionMotionPlan content,
+    const unsigned int targetWidth,
+    const unsigned int targetHeight) noexcept {
+    if (content.containerWidth == 0 || content.containerHeight == 0 ||
+        targetWidth == 0 || targetHeight == 0 ||
+        targetWidth > content.containerWidth ||
+        targetHeight > content.containerHeight) return {};
+    return {
+        content,
+        (static_cast<float>(content.containerWidth) -
+         static_cast<float>(targetWidth)) * 0.5F,
+        static_cast<float>(content.containerHeight - targetHeight),
+    };
+}
+
+/// Uses the destination HWND placement rather than half-width arithmetic when
+/// the union container has an odd per-axis delta. This keeps retained chrome
+/// on the same physical pixel before and after the HWND settles.
+[[nodiscard]] constexpr CompositionChildCoordinateSpaces
+PlanCompositionChildCoordinates(
+    const CompositionMotionPlan content,
+    const unsigned int targetWidth,
+    const unsigned int targetHeight,
+    const float destinationOffsetX,
+    const float destinationOffsetY) noexcept {
+    auto result = PlanCompositionChildCoordinates(
+        content, targetWidth, targetHeight);
+    if (result.content.containerWidth == 0 ||
+        !(destinationOffsetX >= 0.0F) || !(destinationOffsetY >= 0.0F) ||
+        destinationOffsetX + static_cast<float>(targetWidth) >
+            static_cast<float>(content.containerWidth) ||
+        destinationOffsetY + static_cast<float>(targetHeight) >
+            static_cast<float>(content.containerHeight)) return {};
+    result.chromeOffsetX = destinationOffsetX;
+    result.chromeOffsetY = destinationOffsetY;
+    return result;
+}
+
+[[nodiscard]] constexpr CompositionPoint ProjectContentPoint(
+    const CompositionChildCoordinateSpaces& spaces,
+    const CompositionPoint local) noexcept {
+    return {
+        spaces.content.offsetX + local.x * spaces.content.scaleX,
+        spaces.content.offsetY + local.y * spaces.content.scaleY,
+    };
+}
+
+[[nodiscard]] constexpr CompositionPoint InverseContentPoint(
+    const CompositionChildCoordinateSpaces& spaces,
+    const CompositionPoint presented) noexcept {
+    if (spaces.content.scaleX <= 0.0F || spaces.content.scaleY <= 0.0F) return {};
+    return {
+        (presented.x - spaces.content.offsetX) / spaces.content.scaleX,
+        (presented.y - spaces.content.offsetY) / spaces.content.scaleY,
+    };
+}
+
+[[nodiscard]] constexpr CompositionPoint ProjectChromePoint(
+    const CompositionChildCoordinateSpaces& spaces,
+    const CompositionPoint local) noexcept {
+    return {spaces.chromeOffsetX + local.x, spaces.chromeOffsetY + local.y};
+}
+
+[[nodiscard]] constexpr CompositionPoint InverseChromePoint(
+    const CompositionChildCoordinateSpaces& spaces,
+    const CompositionPoint presented) noexcept {
+    return {presented.x - spaces.chromeOffsetX,
+            presented.y - spaces.chromeOffsetY};
+}
+
 enum class CompositionVerticalAnchor {
     Center,
     Bottom,

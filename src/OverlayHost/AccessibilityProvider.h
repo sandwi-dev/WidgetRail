@@ -43,6 +43,9 @@ struct ScreenTransform final {
     double scaleY{};
     double visualOffsetX{};
     double visualOffsetY{};
+    double chromeOffsetX{};
+    double chromeOffsetY{};
+    bool independentChrome{};
 };
 
 struct ResolvedAction final {

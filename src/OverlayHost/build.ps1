@@ -14,6 +14,7 @@ param(
     [switch]$ProcessOwnerTestsOnly,
     [switch]$CompositionTestsOnly,
     [switch]$WidgetSwitchTestsOnly,
+    [switch]$WidgetSwitchGeometryOnly,
     [switch]$TrustedArtworkTestsOnly,
     [switch]$WidgetSessionTestsOnly,
     [switch]$WidgetBridgeCatalogTestsOnly,
@@ -785,11 +786,15 @@ function Invoke-WidgetSwitchHostTests {
     }
     $hostSha256 = (Get-FileHash -LiteralPath `
         (Join-Path $outputDirectory 'OverlayHost.exe') -Algorithm SHA256).Hash.ToLowerInvariant()
-    & (Join-Path $outputDirectory 'WidgetSwitchHostTests.exe') `
-        --installation $outputDirectory `
-        --fixture-worker $fixture `
-        --repository-commit $repositoryCommit `
-        --host-sha256 $hostSha256
+    $widgetSwitchArguments = @(
+        '--installation', $outputDirectory,
+        '--fixture-worker', $fixture,
+        '--repository-commit', $repositoryCommit,
+        '--host-sha256', $hostSha256)
+    if ($WidgetSwitchGeometryOnly) {
+        $widgetSwitchArguments += '--geometry-only'
+    }
+    & (Join-Path $outputDirectory 'WidgetSwitchHostTests.exe') $widgetSwitchArguments
     if ($LASTEXITCODE -ne 0) {
         throw "WidgetSwitchHostTests failed with exit code $LASTEXITCODE."
     }
@@ -1752,6 +1757,10 @@ if ($WidgetSwitchTestsOnly) {
     }
     Invoke-WidgetSwitchHostTests
     return
+}
+
+if ($WidgetSwitchGeometryOnly) {
+    throw 'WidgetSwitchGeometryOnly requires WidgetSwitchTestsOnly.'
 }
 
 if ($WidgetActionFailureHostTestsOnly) {

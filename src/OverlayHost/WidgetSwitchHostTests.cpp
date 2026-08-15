@@ -47,6 +47,7 @@ struct Arguments final {
     fs::path fixtureWorker;
     std::string repositoryCommit;
     std::string hostSha256;
+    bool geometryOnly{};
 };
 
 struct Target final {
@@ -246,7 +247,9 @@ Arguments ParseArguments(const int argc, wchar_t** argv) {
     Arguments result;
     for (int index = 1; index < argc; ++index) {
         const std::wstring_view argument(argv[index]);
-        if ((argument == L"--installation" || argument == L"--fixture-worker" ||
+        if (argument == L"--geometry-only") {
+            result.geometryOnly = true;
+        } else if ((argument == L"--installation" || argument == L"--fixture-worker" ||
              argument == L"--repository-commit" || argument == L"--host-sha256") &&
             index + 1 < argc) {
             if (argument == L"--installation") result.installation = argv[++index];
@@ -258,7 +261,7 @@ Arguments ParseArguments(const int argc, wchar_t** argv) {
         } else {
             Fail("Usage: WidgetSwitchHostTests --installation <dir> "
                  "--fixture-worker <exe> --repository-commit <sha> "
-                 "--host-sha256 <sha256>");
+                 "--host-sha256 <sha256> [--geometry-only]");
         }
     }
     Require(!result.installation.empty() && !result.fixtureWorker.empty() &&
@@ -803,6 +806,110 @@ void RunRetentionScenario(const Arguments& arguments) {
             }), "Same-identity Settings refresh omitted its bounded completion record.");
     const auto settingsLastGood = waitForPaint(
         restartBefore, kTargets.back(), kTargets.back().id, "admitted");
+
+    if (arguments.geometryOnly) {
+        Require(WaitUntil(kOperationTimeoutMilliseconds, [&] {
+                    const auto pending = ReadUtf8(logPath);
+                    const auto lastStart = pending.rfind("Composition motion start");
+                    const auto lastFinal = pending.rfind(
+                        "Composition motion final steps=");
+                    return lastStart == std::string::npos ||
+                        (lastFinal != std::string::npos && lastFinal > lastStart);
+                }), "Bounded geometry route did not settle its final content motion");
+        const auto log = ReadUtf8(logPath);
+        std::size_t motionAt{};
+        std::size_t motionCount{};
+        while ((motionAt = log.find("Composition motion start", motionAt)) !=
+               std::string::npos) {
+            const auto finalAt = log.find("Composition motion final steps=", motionAt);
+            Require(finalAt != std::string::npos,
+                    "Bounded geometry route found an unterminated composition motion");
+            const auto nextMotionAt = log.find("Composition motion start", finalAt);
+            const auto segment = log.substr(
+                motionAt, nextMotionAt == std::string::npos
+                    ? std::string::npos : nextMotionAt - motionAt);
+            std::size_t sampleAt{};
+            std::size_t sampleCount{};
+            std::string fixedGuide;
+            std::string fixedTray;
+            std::string fixedSelected;
+            std::uint64_t fixedTrayPaints{};
+            while ((sampleAt = segment.find(
+                        "Composition child sample step=", sampleAt)) !=
+                   std::string::npos) {
+                const auto end = segment.find('\n', sampleAt);
+                const auto sample = segment.substr(
+                    sampleAt, end == std::string::npos
+                        ? std::string::npos : end - sampleAt);
+                const auto guide = TextField(sample, "guide=");
+                const auto tray = TextField(sample, "tray=");
+                const auto selected = TextField(sample, "selected=");
+                const auto paints = TextField(sample, "paints=");
+                const auto trayPaintAt = paints.find("tray:");
+                Require(trayPaintAt != std::string::npos,
+                        "Motion sample omitted the retained tray paint counter");
+                const auto trayPaints = paints.substr(trayPaintAt);
+                const auto trayPaintCount = TimingField(trayPaints, "tray:");
+                Require(sample.find("uia-content-transform=matched") !=
+                            std::string::npos,
+                        "Motion sample omitted shared content/UIA coordinate authority");
+                if (sampleCount == 0) {
+                    fixedGuide = guide;
+                    fixedTray = tray;
+                    fixedSelected = selected;
+                    fixedTrayPaints = trayPaintCount;
+                } else {
+                    Require(guide == fixedGuide && tray == fixedTray,
+                            "Actual screen chrome bounds moved during content motion; "
+                            "guide=" + fixedGuide + " -> " + guide +
+                            " tray=" + fixedTray + " -> " + tray);
+                    if (selected != fixedSelected) {
+                        Require(trayPaintCount > fixedTrayPaints &&
+                                    trayPaintCount - fixedTrayPaints <= 2,
+                                "Selected tile moved without one bounded old/new tile update");
+                        fixedSelected = selected;
+                        fixedTrayPaints = trayPaintCount;
+                    } else {
+                        Require(trayPaintCount == fixedTrayPaints,
+                                "Content motion repainted the retained tray surface");
+                    }
+                }
+                ++sampleCount;
+                sampleAt = end == std::string::npos ? segment.size() : end + 1;
+            }
+            Require(sampleCount >= 3 && sampleCount <= 20,
+                    "Bounded motion expected 3..20 start/mid/end child-coordinate "
+                    "samples; observed " + std::to_string(sampleCount));
+            ++motionCount;
+            motionAt = nextMotionAt == std::string::npos
+                ? log.size() : nextMotionAt;
+        }
+        Require(motionCount != 0,
+                "Eight-widget geometry route omitted variable-extent motion");
+        Require(log.find("DirectComposition presentation disabled") ==
+                    std::string::npos,
+                "Eight-widget geometry route fell back from retained child visuals");
+
+        std::vector<DWORD> observedProcessIds;
+        const auto childRoles = ObservedChildRoles(host->Id(), &observedProcessIds);
+        observedProcessIds.push_back(host->Id());
+        std::cout << "Production host provenance scenario=eight-widget-geometry-only"
+                  << " root-pid=" << host->Id()
+                  << " root-start-filetime=" << ProcessStartFileTime(host->Process())
+                  << " profile=" << WideToUtf8(installation->ProcessProfile())
+                  << " commit=" << arguments.repositoryCommit
+                  << " host-sha256=" << arguments.hostSha256
+                  << " child-roles=" << childRoles
+                  << " motions=" << motionCount << '\n';
+        host.reset();
+        Require(WaitUntil(kOperationTimeoutMilliseconds, [&] {
+                    return std::none_of(
+                        observedProcessIds.begin(), observedProcessIds.end(),
+                        ProcessIsRunning);
+                }), "Bounded geometry route left an observed bridge/worker process running.");
+        installation.reset();
+        return;
+    }
 
     std::vector<DWORD> beforeRecoveryProcessIds;
     (void)ObservedChildRoles(host->Id(), &beforeRecoveryProcessIds);

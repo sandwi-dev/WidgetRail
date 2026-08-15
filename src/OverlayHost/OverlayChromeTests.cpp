@@ -8,6 +8,7 @@
 #include <array>
 #include <cstdlib>
 #include <iostream>
+#include <utility>
 
 namespace {
 
@@ -169,6 +170,49 @@ void CheckPremultipliedFrame(
           "premultiplied frame retains transparent, authored, and rounded edge pixels");
 }
 
+void CheckRetainedTrayInvalidation() {
+    gba::shell::RetainedTrayState initial{
+        420, 84, 7,
+        {
+            {{8, 8, 68, 68}, L"settings", true, true},
+            {{76, 8, 136, 68}, L"network", false, false},
+            {{144, 8, 204, 68}, L"audio", false, false},
+        },
+    };
+    Check(gba::shell::PlanTrayInvalidation(nullptr, initial).full,
+          "first tray frame rebuilds its retained child surface");
+    Check(gba::shell::PlanTrayInvalidation(&initial, initial).empty(),
+          "content-only publication retains tray pixels");
+
+    auto selected = initial;
+    selected.items[0].selected = false;
+    selected.items[0].focused = false;
+    selected.items[1].selected = true;
+    selected.items[1].focused = true;
+    const auto selection = gba::shell::PlanTrayInvalidation(&initial, selected);
+    Check(!selection.full && selection.dirtyRects.size() == 2,
+          "selection updates only old and new tray tiles");
+    Check(selection.dirtyRects[0].left == 8 &&
+              selection.dirtyRects[1].left == 76,
+          "selection damage retains exact tile rectangles");
+
+    auto reordered = selected;
+    std::swap(reordered.items[1].identity, reordered.items[2].identity);
+    const auto reorder = gba::shell::PlanTrayInvalidation(&selected, reordered);
+    Check(!reorder.full && reorder.dirtyRects.size() == 2,
+          "reorder updates only the two changed icon tiles");
+
+    auto provider = reordered;
+    const auto providerUpdate = gba::shell::PlanTrayInvalidation(&reordered, provider);
+    Check(providerUpdate.empty(),
+          "provider, slider, scroll, focus, and motion retain unchanged tray pixels");
+
+    auto appearance = provider;
+    ++appearance.appearanceRevision;
+    Check(gba::shell::PlanTrayInvalidation(&provider, appearance).full,
+          "appearance revision rebuilds the tray child surface");
+}
+
 } // namespace
 
 int main() {
@@ -189,6 +233,7 @@ int main() {
     CheckFrame(d2d.Get(), wic.Get(), 1.5F);
     CheckPremultipliedFrame(d2d.Get(), wic.Get(), 1.0F);
     CheckPremultipliedFrame(d2d.Get(), wic.Get(), 1.5F);
+    CheckRetainedTrayInvalidation();
     gba::shell::FillColorKeyRoundedRectangle(nullptr, {}, nullptr);
 
     wic.Reset();

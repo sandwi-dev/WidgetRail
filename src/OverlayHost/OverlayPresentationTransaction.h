@@ -267,6 +267,16 @@ public:
         return contentPlacement_;
     }
 
+    [[nodiscard]] CompositionPoint ChromeOffsetWithinContainer() const noexcept {
+        if (!contentPlacement_ || !motionContainerPlacement_) return {};
+        return {
+            static_cast<float>(
+                contentPlacement_->x - motionContainerPlacement_->x),
+            static_cast<float>(
+                contentPlacement_->y - motionContainerPlacement_->y),
+        };
+    }
+
     [[nodiscard]] std::optional<CompositionMotionPlan> CurrentMotionPlan(
         const unsigned int clientWidth,
         const unsigned int clientHeight,

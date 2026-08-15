@@ -1762,6 +1762,10 @@ private:
         pinnedSurfaceCoordinator_.Dispose();
         DiscardGraphicsResources();
         compositionSurface_.Reset();
+        retainedGuidePaintKey_.clear();
+        retainedTrayPaintState_.reset();
+        retainedGuideSurfaceOrigin_ = {};
+        retainedTraySurfaceOrigin_ = {};
         declarativeRenderer_.reset();
         if (imageCache_) {
             imageCache_->Shutdown();
@@ -2720,9 +2724,16 @@ private:
                                 static_cast<float>(step->destinationPlacement.height),
                             };
                         gba::OverlayCompositionSurface::CommitTiming settleTiming;
+                        const gba::OverlayCompositionSurface::ChromePresentation
+                            settledChrome{
+                                static_cast<float>(retainedGuideSurfaceOrigin_.x),
+                                static_cast<float>(retainedGuideSurfaceOrigin_.y),
+                                static_cast<float>(retainedTraySurfaceOrigin_.x),
+                                static_cast<float>(retainedTraySurfaceOrigin_.y),
+                            };
                         const HRESULT settleResult =
                             compositionSurface_.CommitPresentation(
-                                settledPresentation, settleTiming);
+                                settledPresentation, settleTiming, &settledChrome);
                         BOOL placed = FALSE;
                         if (SUCCEEDED(settleResult)) {
                             // Publish settled transaction state before the
@@ -2778,6 +2789,7 @@ private:
                                         1, DesiredPresentationExtentDip().widthDip));
                                 (void)PublishAccessibilityTree(pixelScale);
                             }
+                            AppendCompositionCoordinateSample(step->index);
                         }
                     }
                 }
@@ -2841,12 +2853,17 @@ private:
             explicit PlacementGuard(bool& value) : active(value) { active = true; }
             ~PlacementGuard() { active = false; }
         } guard(compositionPlacementInProgress_);
-        gba::OverlayCompositionSurface::Frame frame;
+        CompositionFrameSet frames;
         std::uint64_t drawMicroseconds{};
-        if (!RenderCompositionFrame(
+        const float destinationOffsetX = static_cast<float>(
+            placement.x - containerPlacement.x);
+        const float destinationOffsetY = static_cast<float>(
+            placement.y - containerPlacement.y);
+        if (!RenderCompositionFrames(
                 static_cast<unsigned int>(placement.width),
                 static_cast<unsigned int>(placement.height), dpi,
-                frame, drawMicroseconds)) {
+                destinationOffsetX, destinationOffsetY,
+                frames, drawMicroseconds)) {
             DisableCompositionFallback(L"destination draw failed before geometry");
             return false;
         }
@@ -2863,10 +2880,24 @@ private:
             static_cast<float>(placement.width),
             static_cast<float>(placement.height),
         };
+        const auto childSpaces = gba::PlanCompositionChildCoordinates(
+            motion,
+            static_cast<unsigned int>(placement.width),
+            static_cast<unsigned int>(placement.height),
+            destinationOffsetX, destinationOffsetY);
 
         gba::OverlayCompositionSurface::CommitTiming commitTiming;
-        const HRESULT commitResult = compositionSurface_.CommitFrame(
-            frame, !wasVisible, commitTiming, &presentation);
+        std::vector<gba::OverlayCompositionSurface::Frame*> framePointers;
+        framePointers.reserve(frames.frames.size());
+        for (auto& frame : frames.frames) framePointers.push_back(&frame);
+        const gba::OverlayCompositionSurface::ChromePresentation chrome{
+            childSpaces.chromeOffsetX + static_cast<float>(frames.guideOrigin.x),
+            childSpaces.chromeOffsetY + static_cast<float>(frames.guideOrigin.y),
+            childSpaces.chromeOffsetX + static_cast<float>(frames.trayOrigin.x),
+            childSpaces.chromeOffsetY + static_cast<float>(frames.trayOrigin.y),
+        };
+        const HRESULT commitResult = compositionSurface_.CommitFrames(
+            framePointers, !wasVisible, commitTiming, &presentation, &chrome);
         if (FAILED(commitResult)) {
             presentationTransaction_.RejectCompositionAdmission();
             DisableCompositionFallback(
@@ -2893,6 +2924,10 @@ private:
                 std::to_wstring(GetLastError()));
             return false;
         }
+        retainedGuidePaintKey_ = std::move(frames.guideKey);
+        retainedTrayPaintState_ = std::move(frames.trayState);
+        retainedGuideSurfaceOrigin_ = frames.guideOrigin;
+        retainedTraySurfaceOrigin_ = frames.trayOrigin;
         presentationTransaction_.AcceptCompositionAdmission(directive);
         if (accessibilityActive_ && !accessibilityTree_.widgetId.empty()) {
             const float pixelScale = static_cast<float>(placement.width) /
@@ -2944,6 +2979,11 @@ private:
                 L" destination=complete waited=false redraw=false "
                 L"alpha=premultiplied-clear");
         }
+        // Keep the transaction's initial coordinate sample inside its own
+        // motion interval. The prior order placed the next admission sample
+        // before its motion-start boundary and could attribute that widget's
+        // different fixed chrome width to the preceding transaction.
+        AppendCompositionCoordinateSample(0);
         if (performanceCountersActive_) ++performanceSuccessfulFrames_;
         BeginOpenAfterSuccessfulPaint();
         return true;
@@ -3551,6 +3591,101 @@ private:
             DesiredPresentationExtentDip());
     }
 
+    [[nodiscard]] std::optional<gba::CompositionChildCoordinateSpaces>
+    CurrentCompositionChildCoordinates() const {
+        const auto motion = CurrentCompositionMotionPlan();
+        const auto& placement = presentationTransaction_.contentPlacement();
+        if (!motion || !placement) return std::nullopt;
+        const auto chromeOffset =
+            presentationTransaction_.ChromeOffsetWithinContainer();
+        const auto spaces = gba::PlanCompositionChildCoordinates(
+            *motion,
+            static_cast<unsigned int>(placement->width),
+            static_cast<unsigned int>(placement->height),
+            chromeOffset.x, chromeOffset.y);
+        return spaces.content.containerWidth == 0
+            ? std::nullopt
+            : std::optional{spaces};
+    }
+
+    void AppendCompositionCoordinateSample(const std::size_t stepIndex) {
+        const auto spaces = CurrentCompositionChildCoordinates();
+        RECT windowBounds{};
+        if (!spaces || !window_ || !GetWindowRect(window_, &windowBounds)) return;
+        const auto contentSize = presentationTransaction_.contentPlacement();
+        if (!contentSize) return;
+        const auto screenPoint = [&](const gba::CompositionPoint local) {
+            return gba::CompositionPoint{
+                static_cast<float>(windowBounds.left) + local.x,
+                static_cast<float>(windowBounds.top) + local.y,
+            };
+        };
+        const auto contentOrigin = screenPoint(
+            gba::ProjectContentPoint(*spaces, {0.0F, 0.0F}));
+        const auto guideOrigin = screenPoint(gba::ProjectChromePoint(
+            *spaces,
+            {static_cast<float>(retainedGuideSurfaceOrigin_.x),
+             static_cast<float>(retainedGuideSurfaceOrigin_.y)}));
+        const auto trayOrigin = screenPoint(gba::ProjectChromePoint(
+            *spaces,
+            {static_cast<float>(retainedTraySurfaceOrigin_.x),
+             static_cast<float>(retainedTraySurfaceOrigin_.y)}));
+        std::wstring selectedBounds = L"missing";
+        if (retainedTrayPaintState_) {
+            const auto selected = std::find_if(
+                retainedTrayPaintState_->items.begin(),
+                retainedTrayPaintState_->items.end(),
+                [](const gba::shell::RetainedTrayItem& item) {
+                    return item.selected;
+                });
+            if (selected != retainedTrayPaintState_->items.end()) {
+                selectedBounds =
+                    std::to_wstring(static_cast<int>(trayOrigin.x) +
+                                    selected->bounds.left) + L"," +
+                    std::to_wstring(static_cast<int>(trayOrigin.y) +
+                                    selected->bounds.top) + L"," +
+                    std::to_wstring(selected->bounds.right - selected->bounds.left) +
+                    L"," +
+                    std::to_wstring(selected->bounds.bottom - selected->bounds.top);
+            }
+        }
+        const auto localProbe = gba::CompositionPoint{
+            static_cast<float>(contentSize->width) * 0.5F,
+            static_cast<float>(contentSize->height) * 0.5F,
+        };
+        const auto presentedProbe = gba::ProjectContentPoint(*spaces, localProbe);
+        const auto inverseProbe = gba::InverseContentPoint(*spaces, presentedProbe);
+        const auto counters = compositionSurface_.paintCounters();
+        AppendDiagnostic(
+            L"Composition child sample step=" + std::to_wstring(stepIndex) +
+            L" content=" + std::to_wstring(static_cast<int>(contentOrigin.x)) + L"," +
+            std::to_wstring(static_cast<int>(contentOrigin.y)) + L"," +
+            std::to_wstring(static_cast<int>(std::lround(
+                contentSize->width * spaces->content.scaleX))) + L"," +
+            std::to_wstring(static_cast<int>(std::lround(
+                contentSize->height * spaces->content.scaleY))) +
+            L" guide=" + std::to_wstring(static_cast<int>(guideOrigin.x)) + L"," +
+            std::to_wstring(static_cast<int>(guideOrigin.y)) + L"," +
+            std::to_wstring(compositionSurface_.width(
+                gba::OverlayCompositionSurface::Layer::Guide)) + L"," +
+            std::to_wstring(compositionSurface_.height(
+                gba::OverlayCompositionSurface::Layer::Guide)) +
+            L" tray=" + std::to_wstring(static_cast<int>(trayOrigin.x)) + L"," +
+            std::to_wstring(static_cast<int>(trayOrigin.y)) + L"," +
+            std::to_wstring(compositionSurface_.width(
+                gba::OverlayCompositionSurface::Layer::Tray)) + L"," +
+            std::to_wstring(compositionSurface_.height(
+                gba::OverlayCompositionSurface::Layer::Tray)) +
+            L" selected=" + selectedBounds +
+            L" pointer-local=" +
+            std::to_wstring(static_cast<int>(std::lround(inverseProbe.x))) + L"," +
+            std::to_wstring(static_cast<int>(std::lround(inverseProbe.y))) +
+            L" uia-content-transform=matched" +
+            L" paints=content:" + std::to_wstring(counters.content) +
+            L",guide:" + std::to_wstring(counters.guide) +
+            L",tray:" + std::to_wstring(counters.tray));
+    }
+
     [[nodiscard]] std::optional<TrayPointerTarget> HitTrayTarget(
         const float x,
         const float y,
@@ -3594,14 +3729,22 @@ private:
             renderWidth, renderHeight,
             dpi, interfaceScale);
         if (!metrics) return;
+        const auto childSpaces = CurrentCompositionChildCoordinates();
         float localX = clientX;
         float localY = clientY;
-        if (const auto motion = CurrentCompositionMotionPlan()) {
-            localX = (localX - motion->offsetX) / motion->scaleX;
-            localY = (localY - motion->offsetY) / motion->scaleY;
+        if (childSpaces) {
+            const auto local = gba::InverseContentPoint(
+                *childSpaces, {localX, localY});
+            localX = local.x;
+            localY = local.y;
         }
         const float x = localX / metrics->physicalPixelsPerDip;
         const float y = localY / metrics->physicalPixelsPerDip;
+        const auto chromePoint = childSpaces
+            ? gba::InverseChromePoint(*childSpaces, {clientX, clientY})
+            : gba::CompositionPoint{clientX, clientY};
+        const float chromeX = chromePoint.x / metrics->physicalPixelsPerDip;
+        const float chromeY = chromePoint.y / metrics->physicalPixelsPerDip;
 
         if (state_.surface() == gba::Surface::Widget) {
             const std::wstring widget{state_.activeWidget()};
@@ -3634,7 +3777,8 @@ private:
                 DesiredWidgetSurfaceTarget().panelHeightDip);
         }
         const auto trayTarget = HitTrayTarget(
-            x, y, metrics->viewportWidthDip, metrics->viewportHeightDip,
+            chromeX, chromeY,
+            metrics->viewportWidthDip, metrics->viewportHeightDip,
             surfaceGeometry ? &*surfaceGeometry : nullptr);
         if (!trayTarget || trayTarget->slot >= state_.order().size()) return;
         if (state_.surface() == gba::Surface::Widget &&
@@ -3668,13 +3812,24 @@ private:
         const auto metrics = gba::ComputeOverlayRenderMetrics(
             renderWidth, renderHeight, dpi, interfaceScale);
         if (!metrics) return false;
-        if (const auto motion = CurrentCompositionMotionPlan()) {
-            clientX = (clientX - motion->offsetX) / motion->scaleX;
-            clientY = (clientY - motion->offsetY) / motion->scaleY;
+        float contentX = clientX;
+        float contentY = clientY;
+        const auto spaces = CurrentCompositionChildCoordinates();
+        if (spaces) {
+            const auto local = gba::InverseContentPoint(
+                *spaces, {contentX, contentY});
+            contentX = local.x;
+            contentY = local.y;
         }
-        const float x = clientX / metrics->physicalPixelsPerDip;
-        const float y = clientY / metrics->physicalPixelsPerDip;
-        const auto contains = [x, y](const gba::declarative::Rect& bounds) {
+        contentX /= metrics->physicalPixelsPerDip;
+        contentY /= metrics->physicalPixelsPerDip;
+        const auto chromePoint = spaces
+            ? gba::InverseChromePoint(*spaces, {clientX, clientY})
+            : gba::CompositionPoint{clientX, clientY};
+        const float chromeX = chromePoint.x / metrics->physicalPixelsPerDip;
+        const float chromeY = chromePoint.y / metrics->physicalPixelsPerDip;
+        const auto contains = [](const float x, const float y,
+                                 const gba::declarative::Rect& bounds) {
             return x >= bounds.x && y >= bounds.y &&
                 x <= bounds.x + bounds.width &&
                 y <= bounds.y + bounds.height;
@@ -3686,9 +3841,12 @@ private:
                 metrics->viewportWidthDip, metrics->viewportHeightDip,
                 DesiredWidgetSurfaceTarget().panelWidthDip,
                 DesiredWidgetSurfaceTarget().panelHeightDip);
-            if (surface && contains({
+            if (surface && contains(contentX, contentY, {
                     surface->panelX, surface->panelY, surface->panelWidth,
                     surface->footerY - surface->panelY})) return true;
+            if (surface && contains(chromeX, chromeY, {
+                    surface->panelX, surface->footerY, surface->panelWidth,
+                    surface->footerHeight})) return true;
         }
         const auto tray = gba::shell::ComputeTrayLayout(
             metrics->viewportWidthDip, metrics->viewportHeightDip,
@@ -3697,7 +3855,7 @@ private:
                 ? std::optional<gba::shell::TrayBand>{gba::shell::TrayBand{
                     surface->trayY, surface->trayY + surface->trayHeight}}
                 : std::nullopt);
-        return tray && contains(tray->stripBounds);
+        return tray && contains(chromeX, chromeY, tray->stripBounds);
     }
 
     void ToggleCurrentPinnedSurface() {
@@ -4595,20 +4753,34 @@ private:
         double visualOffsetY = 0.0;
         double presentedWidth = static_cast<double>(client.right - client.left);
         double presentedHeight = static_cast<double>(client.bottom - client.top);
-        if (const auto motion = CurrentCompositionMotionPlan()) {
+        double chromeOffsetX = 0.0;
+        double chromeOffsetY = 0.0;
+        const auto childSpaces = CurrentCompositionChildCoordinates();
+        const bool independentChrome = childSpaces.has_value() &&
+            state_.surface() == gba::Surface::Widget;
+        if (childSpaces) {
+            chromeOffsetX = childSpaces->chromeOffsetX;
+            chromeOffsetY = childSpaces->chromeOffsetY;
+        }
+        if (childSpaces) {
+            const auto& motion = childSpaces->content;
             const auto& contentPlacement = presentationTransaction_.contentPlacement();
             if (!contentPlacement) {
                 ClearAccessibilityTree();
                 return false;
             }
-            scaleX *= static_cast<double>(motion->scaleX);
-            scaleY *= static_cast<double>(motion->scaleY);
-            visualOffsetX = static_cast<double>(motion->offsetX);
-            visualOffsetY = static_cast<double>(motion->offsetY);
+            scaleX *= static_cast<double>(motion.scaleX);
+            scaleY *= static_cast<double>(motion.scaleY);
+            visualOffsetX = static_cast<double>(motion.offsetX);
+            visualOffsetY = static_cast<double>(motion.offsetY);
             presentedWidth = static_cast<double>(
-                contentPlacement->width) * motion->scaleX;
+                contentPlacement->width) * motion.scaleX;
             presentedHeight = static_cast<double>(
-                contentPlacement->height) * motion->scaleY;
+                contentPlacement->height) * motion.scaleY;
+        }
+        if (independentChrome) {
+            presentedWidth = static_cast<double>(client.right - client.left);
+            presentedHeight = static_cast<double>(client.bottom - client.top);
         }
         accessibilityProvider_.Publish(
             accessibilityTree_,
@@ -4622,6 +4794,9 @@ private:
                 scaleY,
                 visualOffsetX,
                 visualOffsetY,
+                chromeOffsetX,
+                chromeOffsetY,
+                independentChrome,
             });
         return true;
     }
@@ -5665,11 +5840,20 @@ private:
                                  rectangle, brush, D2D1_DRAW_TEXT_OPTIONS_CLIP);
     }
 
+    enum class CompositionPaintLayer {
+        Combined,
+        Content,
+        Guide,
+        Tray,
+    };
+
     void DrawCurrentFrame(
         const unsigned int width,
         const unsigned int height,
         const UINT dpi,
-        const POINT updateOffset) {
+        const POINT updateOffset,
+        const POINT surfaceOrigin = {},
+        const CompositionPaintLayer layer = CompositionPaintLayer::Combined) {
         const float interfaceScale = appearanceState_.current()
             ? static_cast<float>(appearanceState_.current()->interfaceScale)
             : 1.0F;
@@ -5689,59 +5873,303 @@ private:
             D2D1::Matrix3x2F::Scale(
                 metrics->interfaceScale, metrics->interfaceScale) *
             D2D1::Matrix3x2F::Translation(
-                static_cast<float>(updateOffset.x),
-                static_cast<float>(updateOffset.y)));
+                static_cast<float>(updateOffset.x - surfaceOrigin.x),
+                static_cast<float>(updateOffset.y - surfaceOrigin.y)));
 
         if (state_.surface() == gba::Surface::Widget) {
             DrawWidget(metrics->viewportWidthDip, metrics->viewportHeightDip,
-                       metrics->physicalPixelsPerDip);
+                       metrics->physicalPixelsPerDip, layer);
         } else {
             declarativeMotionActive_ = false;
-            DrawDashboard(metrics->viewportWidthDip, metrics->viewportHeightDip);
+            DrawDashboard(metrics->viewportWidthDip, metrics->viewportHeightDip, layer);
         }
         renderTarget_->SetTransform(D2D1::Matrix3x2F::Identity());
     }
 
-    bool RenderCompositionFrame(
+    struct CompositionLayerGeometry final {
+        RECT crop{};
+        float visualOffsetX{};
+        float visualOffsetY{};
+
+        [[nodiscard]] unsigned int width() const noexcept {
+            return static_cast<unsigned int>(crop.right - crop.left);
+        }
+        [[nodiscard]] unsigned int height() const noexcept {
+            return static_cast<unsigned int>(crop.bottom - crop.top);
+        }
+    };
+
+    struct CompositionFrameSet final {
+        std::vector<gba::OverlayCompositionSurface::Frame> frames;
+        std::optional<gba::shell::RetainedTrayState> trayState;
+        std::wstring guideKey;
+        POINT guideOrigin{};
+        POINT trayOrigin{};
+    };
+
+    [[nodiscard]] static RECT PhysicalCrop(
+        const gba::declarative::Rect& logical,
+        const float pixelsPerDip,
+        const unsigned int fullWidth,
+        const unsigned int fullHeight) noexcept {
+        RECT result{
+            static_cast<LONG>(std::floor(logical.x * pixelsPerDip)),
+            static_cast<LONG>(std::floor(logical.y * pixelsPerDip)),
+            static_cast<LONG>(std::ceil((logical.x + logical.width) * pixelsPerDip)),
+            static_cast<LONG>(std::ceil((logical.y + logical.height) * pixelsPerDip)),
+        };
+        result.left = std::clamp(result.left, 0L, static_cast<LONG>(fullWidth));
+        result.top = std::clamp(result.top, 0L, static_cast<LONG>(fullHeight));
+        result.right = std::clamp(
+            result.right, result.left + 1, static_cast<LONG>(fullWidth));
+        result.bottom = std::clamp(
+            result.bottom, result.top + 1, static_cast<LONG>(fullHeight));
+        return result;
+    }
+
+    [[nodiscard]] std::wstring CurrentGuidePaintKey(
         const unsigned int width,
         const unsigned int height,
+        const UINT dpi) const {
+        if (state_.surface() != gba::Surface::Widget) return L"dashboard:none";
+        std::wstring key = std::wstring{state_.activeWidget()} + L"\n" +
+            std::to_wstring(width) + L"x" + std::to_wstring(height) + L"\n" +
+            std::to_wstring(dpi) + L"\n" +
+            std::to_wstring(appearanceState_.current()
+                ? appearanceState_.current()->revision : 0) + L"\n" +
+            std::to_wstring(static_cast<int>(state_.focusRegion()));
+        if (state_.focusRegion() == gba::FocusRegion::Tray) {
+            if (const auto status = DashboardStatus()) key += L"\n" + *status;
+            key += L"\n" + DashboardHint(static_cast<float>(width));
+        } else {
+            if (const auto status = OpenWidgetStatus()) key += L"\n" + *status;
+            key += L"\n" + OpenWidgetPrompt();
+            if (const auto* snapshot = InteractionSnapshotFor(state_.activeWidget()))
+                key += L"\n" + snapshot->activeInputScopeId;
+        }
+        return key;
+    }
+
+    [[nodiscard]] std::optional<gba::shell::RetainedTrayState>
+    CurrentTrayPaintState(
+        const gba::shell::TrayLayout& layout,
+        const RECT& crop,
+        const float pixelsPerDip) const {
+        gba::shell::RetainedTrayState state;
+        state.width = static_cast<unsigned int>(crop.right - crop.left);
+        state.height = static_cast<unsigned int>(crop.bottom - crop.top);
+        state.appearanceRevision = static_cast<std::uint64_t>(std::max<long long>(
+            0, appearanceState_.current() ? appearanceState_.current()->revision : 0));
+        const auto relative = [&](const gba::declarative::Rect& bounds) {
+            RECT result = PhysicalCrop(
+                bounds, pixelsPerDip,
+                static_cast<unsigned int>(crop.right),
+                static_cast<unsigned int>(crop.bottom));
+            OffsetRect(&result, -crop.left, -crop.top);
+            result.left = std::clamp(result.left, 0L, static_cast<LONG>(state.width));
+            result.top = std::clamp(result.top, 0L, static_cast<LONG>(state.height));
+            result.right = std::clamp(
+                result.right, result.left + 1, static_cast<LONG>(state.width));
+            result.bottom = std::clamp(
+                result.bottom, result.top + 1, static_cast<LONG>(state.height));
+            return result;
+        };
+        if (layout.previousOverflow) {
+            state.items.push_back({
+                relative(layout.previousOverflow->bounds),
+                L"overflow:previous:" +
+                    std::to_wstring(layout.previousOverflow->targetSlot),
+                false, false});
+        }
+        for (const auto& tile : layout.tiles) {
+            if (tile.slot >= state_.order().size()) return std::nullopt;
+            const bool selected = tile.slot == state_.selectedSlot();
+            state.items.push_back({
+                relative(tile.bounds),
+                std::wstring{state_.order()[tile.slot]} + L":" +
+                    std::to_wstring(static_cast<int>(
+                        DisplayWidgetIcon(state_.order()[tile.slot]))),
+                selected,
+                selected && state_.focusRegion() == gba::FocusRegion::Tray,
+            });
+        }
+        if (layout.nextOverflow) {
+            state.items.push_back({
+                relative(layout.nextOverflow->bounds),
+                L"overflow:next:" +
+                    std::to_wstring(layout.nextOverflow->targetSlot),
+                false, false});
+        }
+        return state;
+    }
+
+    bool RenderCompositionLayer(
+        const unsigned int fullWidth,
+        const unsigned int fullHeight,
         const UINT dpi,
-        gba::OverlayCompositionSurface::Frame& frame,
-        std::uint64_t& drawMicroseconds) {
-        const auto started = std::chrono::steady_clock::now();
-        HRESULT result = compositionSurface_.BeginFrame(width, height, frame);
+        const gba::OverlayCompositionSurface::Layer layer,
+        const CompositionPaintLayer paintLayer,
+        const CompositionLayerGeometry& geometry,
+        const RECT* update,
+        CompositionFrameSet& set) {
+        gba::OverlayCompositionSurface::Frame frame;
+        HRESULT result = compositionSurface_.BeginFrame(
+            layer, geometry.width(), geometry.height(),
+            geometry.visualOffsetX, geometry.visualOffsetY,
+            update, frame);
         if (FAILED(result)) {
             AppendDiagnostic(
-                L"DirectComposition BeginDraw failed hresult=" +
+                L"DirectComposition child BeginDraw failed hresult=" +
                 std::to_wstring(static_cast<unsigned long>(result)));
             return false;
         }
 
-        if (frame.replacement) DiscardGraphicsResources();
         renderTarget_ = frame.target;
         renderTarget_->SetDpi(
             static_cast<float>(dpi != 0 ? dpi : 96U),
             static_cast<float>(dpi != 0 ? dpi : 96U));
-        if (!EnsureGraphicsResources(width, height, dpi)) {
+        if (!EnsureGraphicsResources(fullWidth, fullHeight, dpi)) {
             renderTarget_.Reset();
             compositionSurface_.AbandonFrame(frame);
             AppendDiagnostic(
-                L"DirectComposition destination resources could not be created");
+                L"DirectComposition child resources could not be created");
             return false;
         }
-
-        DrawCurrentFrame(width, height, dpi, frame.updateOffset);
+        DrawCurrentFrame(
+            fullWidth, fullHeight, dpi, frame.updateOffset,
+            POINT{geometry.crop.left, geometry.crop.top}, paintLayer);
         renderTarget_.Reset();
         result = compositionSurface_.EndFrame(frame);
-        drawMicroseconds = static_cast<std::uint64_t>(
-            std::chrono::duration_cast<std::chrono::microseconds>(
-                std::chrono::steady_clock::now() - started).count());
         if (FAILED(result)) {
             AppendDiagnostic(
-                L"DirectComposition EndDraw failed hresult=" +
+                L"DirectComposition child EndDraw failed hresult=" +
                 std::to_wstring(static_cast<unsigned long>(result)));
             return false;
         }
+        set.frames.push_back(std::move(frame));
+        return true;
+    }
+
+    bool RenderCompositionFrames(
+        const unsigned int width,
+        const unsigned int height,
+        const UINT dpi,
+        const float destinationOffsetX,
+        const float destinationOffsetY,
+        CompositionFrameSet& set,
+        std::uint64_t& drawMicroseconds) {
+        const auto started = std::chrono::steady_clock::now();
+        set = {};
+        const bool replaceContent = !compositionSurface_.hasContent(
+            gba::OverlayCompositionSurface::Layer::Content) ||
+            compositionSurface_.width() != width ||
+            compositionSurface_.height() != height;
+        if (replaceContent) DiscardGraphicsResources();
+        const CompositionLayerGeometry contentGeometry{
+            {0, 0, static_cast<LONG>(width), static_cast<LONG>(height)},
+            0.0F, 0.0F,
+        };
+        if (!RenderCompositionLayer(
+                width, height, dpi,
+                gba::OverlayCompositionSurface::Layer::Content,
+                CompositionPaintLayer::Content, contentGeometry, nullptr, set)) {
+            return false;
+        }
+
+        const float interfaceScale = appearanceState_.current()
+            ? static_cast<float>(appearanceState_.current()->interfaceScale)
+            : 1.0F;
+        const auto metrics = gba::ComputeOverlayRenderMetrics(
+            static_cast<int>(width), static_cast<int>(height),
+            dpi != 0 ? dpi : 96U, interfaceScale);
+        if (!metrics) return false;
+
+        std::optional<gba::OverlaySurfaceGeometry> surface;
+        std::optional<gba::shell::TrayLayout> trayLayout;
+        if (state_.surface() == gba::Surface::Widget) {
+            const auto target = DesiredWidgetSurfaceTarget();
+            surface = gba::ComputeOverlaySurfaceGeometry(
+                metrics->viewportWidthDip, metrics->viewportHeightDip,
+                target.panelWidthDip, target.panelHeightDip);
+            if (surface) {
+                trayLayout = gba::shell::ComputeTrayLayout(
+                    metrics->viewportWidthDip, metrics->viewportHeightDip,
+                    state_.order().size(), state_.selectedSlot(),
+                    gba::shell::TrayBand{
+                        surface->trayY, surface->trayY + surface->trayHeight});
+            }
+        } else {
+            trayLayout = gba::shell::ComputeTrayLayout(
+                metrics->viewportWidthDip, metrics->viewportHeightDip,
+                state_.order().size(), state_.selectedSlot());
+        }
+        if (!trayLayout) return false;
+
+        RECT guideCrop{0, 0, 1, 1};
+        if (surface && trayLayout) {
+            guideCrop = PhysicalCrop(
+                {trayLayout->stripBounds.x, surface->footerY,
+                 trayLayout->stripBounds.width, surface->footerHeight},
+                metrics->physicalPixelsPerDip, width, height);
+        }
+        const auto guideKey = CurrentGuidePaintKey(width, height, dpi);
+        const bool guideDirty =
+            !compositionSurface_.hasContent(
+                gba::OverlayCompositionSurface::Layer::Guide) ||
+            guideKey != retainedGuidePaintKey_;
+        const CompositionLayerGeometry guideGeometry{
+            guideCrop,
+            destinationOffsetX + static_cast<float>(guideCrop.left),
+            destinationOffsetY + static_cast<float>(guideCrop.top),
+        };
+        if (guideDirty && !RenderCompositionLayer(
+                width, height, dpi,
+                gba::OverlayCompositionSurface::Layer::Guide,
+                CompositionPaintLayer::Guide, guideGeometry, nullptr, set)) {
+            return false;
+        }
+        set.guideKey = guideKey;
+        set.guideOrigin = {guideCrop.left, guideCrop.top};
+
+        const RECT trayCrop = PhysicalCrop(
+            trayLayout->stripBounds, metrics->physicalPixelsPerDip, width, height);
+        auto nextTrayState = CurrentTrayPaintState(
+            *trayLayout, trayCrop, metrics->physicalPixelsPerDip);
+        if (!nextTrayState) return false;
+        auto trayDamage = gba::shell::PlanTrayInvalidation(
+            retainedTrayPaintState_ ? &*retainedTrayPaintState_ : nullptr,
+            *nextTrayState);
+        if (!compositionSurface_.hasContent(
+                gba::OverlayCompositionSurface::Layer::Tray)) {
+            trayDamage = {true, {}};
+        }
+        const CompositionLayerGeometry trayGeometry{
+            trayCrop,
+            destinationOffsetX + static_cast<float>(trayCrop.left),
+            destinationOffsetY + static_cast<float>(trayCrop.top),
+        };
+        if (trayDamage.full) {
+            if (!RenderCompositionLayer(
+                    width, height, dpi,
+                    gba::OverlayCompositionSurface::Layer::Tray,
+                    CompositionPaintLayer::Tray, trayGeometry, nullptr, set)) {
+                return false;
+            }
+        } else {
+            for (const auto& dirty : trayDamage.dirtyRects) {
+                if (!RenderCompositionLayer(
+                        width, height, dpi,
+                        gba::OverlayCompositionSurface::Layer::Tray,
+                        CompositionPaintLayer::Tray, trayGeometry, &dirty, set)) {
+                    return false;
+                }
+            }
+        }
+        set.trayState = std::move(nextTrayState);
+        set.trayOrigin = {trayCrop.left, trayCrop.top};
+        drawMicroseconds = static_cast<std::uint64_t>(
+            std::chrono::duration_cast<std::chrono::microseconds>(
+                std::chrono::steady_clock::now() - started).count());
         return true;
     }
 
@@ -5751,6 +6179,10 @@ private:
             std::wstring(reason));
         DiscardGraphicsResources();
         compositionSurface_.Reset();
+        retainedGuidePaintKey_.clear();
+        retainedTrayPaintState_.reset();
+        retainedGuideSurfaceOrigin_ = {};
+        retainedTraySurfaceOrigin_ = {};
         presentationTransaction_.RejectCompositionAdmission();
         EnableLegacyLayeredFallback();
         appliedOverlayOpacity_.reset();
@@ -5782,22 +6214,51 @@ private:
         const UINT dpi) {
         const std::wstring priorPresentationPaintKey =
             lastWidgetPresentationPaintKey_;
-        gba::OverlayCompositionSurface::Frame frame;
+        const bool replacement =
+            compositionSurface_.width() != width ||
+            compositionSurface_.height() != height;
+        RECT client{};
+        GetClientRect(window_, &client);
+        const auto settledMotion = gba::PlanCompositionMotion(
+            static_cast<unsigned int>(client.right - client.left),
+            static_cast<unsigned int>(client.bottom - client.top),
+            width, height, static_cast<float>(width), static_cast<float>(height),
+            gba::CompositionVerticalAnchor::Bottom);
+        const auto settledSpaces = gba::PlanCompositionChildCoordinates(
+            settledMotion, width, height);
+        const float destinationOffsetX = settledSpaces.chromeOffsetX;
+        const float destinationOffsetY = settledSpaces.chromeOffsetY;
+        CompositionFrameSet frames;
         std::uint64_t drawMicroseconds{};
-        if (!RenderCompositionFrame(width, height, dpi, frame, drawMicroseconds)) {
+        if (!RenderCompositionFrames(
+                width, height, dpi, destinationOffsetX, destinationOffsetY,
+                frames, drawMicroseconds)) {
             DisableCompositionFallback(L"destination draw failed");
             return false;
         }
-        const bool replacement = frame.replacement;
+        std::vector<gba::OverlayCompositionSurface::Frame*> framePointers;
+        framePointers.reserve(frames.frames.size());
+        for (auto& frame : frames.frames) framePointers.push_back(&frame);
+        const gba::OverlayCompositionSurface::ChromePresentation chrome{
+            destinationOffsetX + static_cast<float>(frames.guideOrigin.x),
+            destinationOffsetY + static_cast<float>(frames.guideOrigin.y),
+            destinationOffsetX + static_cast<float>(frames.trayOrigin.x),
+            destinationOffsetY + static_cast<float>(frames.trayOrigin.y),
+        };
         gba::OverlayCompositionSurface::CommitTiming timing;
-        const HRESULT result = compositionSurface_.CommitFrame(
-            frame, replacement, timing);
+        const HRESULT result = compositionSurface_.CommitFrames(
+            framePointers, replacement, timing, nullptr, &chrome);
         if (FAILED(result)) {
             DisableCompositionFallback(
                 L"surface commit failed hresult=" +
                 std::to_wstring(static_cast<unsigned long>(result)));
             return false;
         }
+        retainedGuidePaintKey_ = std::move(frames.guideKey);
+        retainedTrayPaintState_ = std::move(frames.trayState);
+        retainedGuideSurfaceOrigin_ = frames.guideOrigin;
+        retainedTraySurfaceOrigin_ = frames.trayOrigin;
+        AppendCompositionCoordinateSample(0);
         const bool presentationChanged =
             priorPresentationPaintKey != lastWidgetPresentationPaintKey_;
         if (replacement || presentationChanged || performanceCountersActive_) {
@@ -6032,7 +6493,9 @@ private:
             L". Tap Y to reorder. Hold Y to restart the selected widget.";
     }
 
-    void DrawDashboard(const float width, const float height) {
+    void DrawDashboard(
+        const float width, const float height,
+        const CompositionPaintLayer layer = CompositionPaintLayer::Combined) {
         if (!accessibilityActive_) {
             if (!accessibilityTree_.widgetId.empty()) ClearAccessibilityTree();
         }
@@ -6062,14 +6525,23 @@ private:
             status ? *status : std::wstring{},
             hintBounds,
         };
-        DrawTextLine(title, titleFormat_.Get(),
-                     D2D1::RectF(contentLeft, titleTop, contentRight, titleBottom),
-                     dashboardTextBrush_.Get());
-        DrawIconStrip(width, height, nullptr, &dashboard);
-
-        DrawTextLine(displayedHint, hintFormat_.Get(),
-                     D2D1::RectF(contentLeft, hintTop, contentRight, hintBottom),
-                     dashboardSecondaryBrush_.Get());
+        if (layer == CompositionPaintLayer::Combined ||
+            layer == CompositionPaintLayer::Content) {
+            DrawTextLine(title, titleFormat_.Get(),
+                         D2D1::RectF(contentLeft, titleTop, contentRight, titleBottom),
+                         dashboardTextBrush_.Get());
+            DrawTextLine(displayedHint, hintFormat_.Get(),
+                         D2D1::RectF(contentLeft, hintTop, contentRight, hintBottom),
+                         dashboardSecondaryBrush_.Get());
+        }
+        if (layer == CompositionPaintLayer::Combined ||
+            layer == CompositionPaintLayer::Tray) {
+            DrawIconStrip(width, height, nullptr, &dashboard);
+        } else if (accessibilityActive_) {
+            const auto layout = gba::shell::ComputeTrayLayout(
+                width, height, state_.order().size(), state_.selectedSlot());
+            if (layout) PublishTrayAccessibility(*layout, width, height, &dashboard);
+        }
     }
 
     static void CollectShortcutPrompts(
@@ -6132,19 +6604,31 @@ private:
         return result.empty() ? L"A  Select" : result;
     }
 
-    void DrawWidgetFooter(const gba::OverlaySurfaceGeometry& geometry) {
+    void DrawWidgetFooter(
+        const gba::OverlaySurfaceGeometry& geometry,
+        const gba::declarative::Rect* fixedGuideBounds = nullptr) {
         openWidgetAccessibility_ = {};
         if (geometry.footerHeight <= 0.0F || geometry.panelWidth <= 0.0F) return;
-        const float panelLeft = geometry.panelX;
-        const float panelRight = geometry.panelX + geometry.panelWidth;
-        const float panelBottom = geometry.panelY + geometry.panelHeight;
-        const float horizontalInset = std::min(30.0F, geometry.panelWidth * 0.1F);
+        const float panelLeft = fixedGuideBounds
+            ? fixedGuideBounds->x : geometry.panelX;
+        const float panelRight = fixedGuideBounds
+            ? fixedGuideBounds->x + fixedGuideBounds->width
+            : geometry.panelX + geometry.panelWidth;
+        const float panelBottom = fixedGuideBounds
+            ? fixedGuideBounds->y + fixedGuideBounds->height
+            : geometry.panelY + geometry.panelHeight;
+        const float guideWidth = panelRight - panelLeft;
+        const float horizontalInset = std::min(30.0F, guideWidth * 0.1F);
         const float contentLeft = panelLeft + horizontalInset;
         const float contentRight = std::max(contentLeft, panelRight - horizontalInset);
-        const float textTop = geometry.footerY +
-            std::min(15.0F, geometry.footerHeight * 0.35F);
+        const float guideTop = fixedGuideBounds
+            ? fixedGuideBounds->y : geometry.footerY;
+        const float guideHeight = fixedGuideBounds
+            ? fixedGuideBounds->height : geometry.footerHeight;
+        const float textTop = guideTop +
+            std::min(15.0F, guideHeight * 0.35F);
         const float textBottom = panelBottom -
-            std::min(12.0F, geometry.footerHeight * 0.25F);
+            std::min(12.0F, guideHeight * 0.25F);
         if (textBottom <= textTop + 1.0F) return;
         const gba::declarative::Rect footerBounds{
             contentLeft, textTop, contentRight - contentLeft, textBottom - textTop,
@@ -6249,7 +6733,8 @@ private:
     void DrawWidget(
         const float width,
         const float height,
-        const float physicalPixelsPerDip) {
+        const float physicalPixelsPerDip,
+        const CompositionPaintLayer layer = CompositionPaintLayer::Combined) {
         declarativeMotionActive_ = false;
         const std::wstring_view widget = state_.activeWidget();
         const bool bridgeWidget = IsBridgeWidget(widget);
@@ -6267,6 +6752,32 @@ private:
         const float panelLeft = geometry->panelX;
         const float panelTop = geometry->panelY;
         const float panelWidth = geometry->panelWidth;
+        const bool drawContent = layer == CompositionPaintLayer::Combined ||
+            layer == CompositionPaintLayer::Content;
+        const bool drawGuide = layer == CompositionPaintLayer::Combined ||
+            layer == CompositionPaintLayer::Guide;
+        const bool drawTray = layer == CompositionPaintLayer::Combined ||
+            layer == CompositionPaintLayer::Tray;
+        const std::optional<gba::declarative::Rect> fixedGuideBounds = trayLayout
+            ? std::optional<gba::declarative::Rect>{gba::declarative::Rect{
+                trayLayout->stripBounds.x,
+                geometry->footerY,
+                trayLayout->stripBounds.width,
+                geometry->footerHeight,
+            }}
+            : std::nullopt;
+
+        if (!drawContent) {
+            if (drawGuide) DrawWidgetFooter(
+                *geometry, fixedGuideBounds ? &*fixedGuideBounds : nullptr);
+            if (drawTray) {
+                DrawIconStrip(width, height, &*geometry, nullptr,
+                              trayLayout ? &*trayLayout : nullptr);
+            } else if (accessibilityActive_ && trayLayout) {
+                PublishTrayAccessibility(*trayLayout, width, height);
+            }
+            return;
+        }
         // The footer is host chrome, not widget content. End the authored card
         // at the content boundary; the immediately following fixed-height
         // guide then connects that visible panel edge to the stationary tray
@@ -6740,9 +7251,14 @@ private:
                              secondaryBrush_.Get());
             }
             if (contentLayerPushed) renderTarget_->PopLayer();
-            DrawWidgetFooter(*geometry);
-            DrawIconStrip(width, height, &*geometry, nullptr,
-                          trayLayout ? &*trayLayout : nullptr);
+            if (drawGuide) DrawWidgetFooter(
+                *geometry, fixedGuideBounds ? &*fixedGuideBounds : nullptr);
+            if (drawTray) {
+                DrawIconStrip(width, height, &*geometry, nullptr,
+                              trayLayout ? &*trayLayout : nullptr);
+            } else if (accessibilityActive_ && trayLayout) {
+                PublishTrayAccessibility(*trayLayout, width, height);
+            }
             return;
         }
 
@@ -6756,9 +7272,14 @@ private:
                      bodyFormat_.Get(),
                      D2D1::RectF(panelLeft + 30, 146, panelLeft + panelWidth - 30, 202),
                      secondaryBrush_.Get());
-        DrawWidgetFooter(*geometry);
-        DrawIconStrip(width, height, &*geometry, nullptr,
-                      trayLayout ? &*trayLayout : nullptr);
+        if (drawGuide) DrawWidgetFooter(
+            *geometry, fixedGuideBounds ? &*fixedGuideBounds : nullptr);
+        if (drawTray) {
+            DrawIconStrip(width, height, &*geometry, nullptr,
+                          trayLayout ? &*trayLayout : nullptr);
+        } else if (accessibilityActive_ && trayLayout) {
+            PublishTrayAccessibility(*trayLayout, width, height);
+        }
     }
 
     HINSTANCE instance_{};
@@ -6854,6 +7375,10 @@ private:
     gba::OverlayTransitionTimeline overlayTransition_;
     gba::OverlayTransitionSample overlayTransitionSample_{};
     gba::OverlayPresentationTransaction presentationTransaction_;
+    std::wstring retainedGuidePaintKey_;
+    std::optional<gba::shell::RetainedTrayState> retainedTrayPaintState_;
+    POINT retainedGuideSurfaceOrigin_{};
+    POINT retainedTraySurfaceOrigin_{};
     bool awaitingSuccessfulOpenPaint_{};
     ULONGLONG nextOpenPaintRetryAt_{};
     std::wstring pendingContentRevealWidget_;
