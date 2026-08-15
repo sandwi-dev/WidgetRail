@@ -37,8 +37,10 @@ Snapshots are evidence only. This file is the sole authority for current work.
 - The user reports three active selection-path defects: retained source-widget
   geometry after cold admission, intermittent tray selection that remains on
   inert old content until A, and tray flashing because widget content and tray
-  share redraw ownership. DLV-238, DLV-237, and DLV-236 own those issues in
-  that order beginning with current DLV-238.
+  share redraw ownership. The user approved folding DLV-236 retained chrome
+  separation into the active DLV-238 correction so destination geometry and
+  continuous tray/guide stationarity are solved in one coherent composition
+  transaction. DLV-237 correlated admission logging follows that integration.
 - The user also identified that complete `WidgetSnapshot` checkpoints conflate
   stable view definition, volatile values, interaction authority, and derived
   appearance validity. Ordinary invalidation currently deletes useful last-
@@ -101,9 +103,10 @@ user decision. The native overlay is the sole production presentation path.
   than guessed page dimensions. Existing provider/list views remain stable
   Preferred surfaces unless directly justified.
 - The tray and controller guide retain fixed bottom-center screen coordinates.
-  Content envelopes grow or shrink upward/outward. DLV-236 gives persistent
-  tray pixels independent child-visual/surface ownership under the sole
-  DirectComposition target without adding another HWND or focus/input tree.
+  Content envelopes grow or shrink upward/outward. The cumulative DLV-238/
+  DLV-236 correction gives persistent host chrome independent child-visual/
+  surface ownership under the sole DirectComposition target without adding
+  another HWND, compositor root, accessibility provider, or focus/input tree.
 - One HWND wraps the admitted content-plus-chrome union; the overlay never
   becomes a monitor-sized desktop surface.
 - A complete `WidgetSnapshot` is a last-admitted presentation checkpoint, not
@@ -133,7 +136,7 @@ user decision. The native overlay is the sole production presentation path.
 | Lane | Task/worktree | Current state |
 | --- | --- | --- |
 | Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` on `codex/impl-widgets-taffy-ui` | Idle clean. DLV-240 begins only after accepted DLV-239 is integrated and the planner sends the serialized cross-lane baseline. |
-| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` on `codex/impl-platform-integration` | DLV-238 commit `3716063` rejected pending the material transition correction below; task idle. DLV-237, DLV-236, and DLV-239 remain Ready but cannot start from the rejected tip. DLV-241/242 await DLV-240 integration. |
+| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` on `codex/impl-platform-integration` | Cumulative DLV-238/DLV-236 correction Assigned atop rejected `3716063`; DLV-237 and DLV-239 remain Ready in that order. DLV-241/242 await DLV-240 integration. |
 
 DLV-217 remains accepted through `d57fd06` but unintegrated because its exact
 aggregate is honestly 40/41 with one reviewer-history-link failure. Preserve
@@ -183,11 +186,11 @@ generation-less internal failure notification cannot overtake a newly admitted
 registration. Focused affected suites and one native Release compile are green;
 the real OS/AppContainer crash remains the documented residual risk.
 
-### Assigned — DLV-238: commit admitted destination geometry
+### Assigned correction — DLV-238 + DLV-236: commit destination geometry with independent chrome
 
 Baseline/owner/dependencies: accepted DLV-232 integrated into main; platform native presentation-extent and DirectComposition placement only; do not interrupt DLV-232 or start from an unreviewed tip.
 Visible objective: after a cold/asynchronous switch, retain the old widget's pixels and envelope only until the destination snapshot is admitted; the admitted widget must immediately own its authored width, height, responsive viewport, and final presented extent without waiting for A, a provider update, or another selection.
-Required correction: retire the retained extent as admission changes authority, resolve placement from the destination `DesiredPresentationExtentDip` rather than the pinned old `PresentedPresentationExtentDip`, render the new snapshot once at its destination viewport, and atomically commit that complete frame plus placement before animating old-to-new envelopes. Completion must settle through one explicit destination placement/layout; it may not clear the override with `redraw=false` while leaving old geometry current, scale a destination tree laid out at the source viewport, or add widget identities, another HWND/surface owner, or a second layout path.
+Required correction: retire the retained extent as admission changes authority, resolve placement from the destination `DesiredPresentationExtentDip` rather than the pinned old `PresentedPresentationExtentDip`, render the new snapshot once at its destination viewport, and atomically commit that complete frame plus placement before animating old-to-new envelopes. Completion must settle through one explicit destination placement/layout; it may not clear the override with `redraw=false` while leaving old geometry current, scale a destination tree laid out at the source viewport, or add widget identities, another HWND/independent composition owner, or a second layout path. Retained child surfaces beneath the sole existing composition owner are explicitly authorized by the cumulative DLV-236 decision below.
 Structural boundary: make this the first staged reduction of the `OverlayApp`
 hotspot. Extract one focused presentation-transaction owner for desired versus
 presented extents, retained-snapshot authority, destination layout, animation
@@ -203,38 +206,72 @@ Acceptance: cold and cached switches across all eight widgets, including compact
 Verification: focused widget-switch, extent-transition, composition-placement, surface-policy/Taffy, focus/UIA, reduced-motion/device-loss cases, one bounded eight-widget host route, and native Release build only; no Tier-3 aggregate, provider/package change, capture-harness work, or unrelated refactor.
 Stop for per-widget sizing logic, destination content rendered against source geometry, non-atomic HWND/content authority, another compositor/window/focus/input owner, or an undocumented platform dependency or material animation decision.
 
-Independent review disposition for `3716063`: rejected. The commit correctly
-separates destination layout from the retained presented extent, renders the
-admitted widget at its own viewport, settles final geometry explicitly, and
-provides a real first-stage `OverlayApp` responsibility reduction. The retained
-evidence and focused suites are otherwise proportional, and the unrelated
-DLV-231 close/reconnect timeout was correctly not rerun.
+Independent review disposition for `3716063`: rejected as the retained base for
+one cumulative correction. The commit correctly separates destination layout
+from the retained presented extent, renders the admitted widget at its own
+viewport, settles final geometry explicitly, and provides a real first-stage
+`OverlayApp` responsibility reduction. The retained evidence and focused suites
+are otherwise proportional, and the unrelated DLV-231 close/reconnect timeout
+was correctly not rerun.
 
-The remaining blocker is in the actual transition authority, not destination
-layout. `OverlayCompositionSurface::ApplyPresentation` applies the scale and
-offset to the one visual containing widget content, guide, and tray. Therefore
-the admitted destination's tray and guide scale/move with the content envelope
-during every non-reduced-motion transition even though their authored local
-bounds are unchanged. The host-route oracle compares those untransformed local
-bounds and therefore cannot prove fixed absolute screen bounds. The same motion
-steps update the visual transform and inverse pointer mapping, but publish UIA
-only at admission start and final settlement, leaving intermediate UIA bounds
-stale relative to the visible/input geometry.
+The rejected gap is in transition/chrome authority. The one transformed visual
+contains widget content, controller guide, and tray, so non-reduced-motion
+envelope steps scale/move all three. Its host-route oracle compares
+untransformed local tray bounds rather than actual transformed screen bounds.
+Visual and inverse pointer transforms advance each step, while UIA is published
+only at admission and final settlement, leaving intermediate accessibility
+bounds stale.
 
-Do not integrate or begin DLV-237. The correction must retain the accepted
-destination-viewport transaction while proving actual start/mid/end screen
-bounds and matching input/UIA authority. Because the current single transformed
-visual cannot both animate the content envelope and keep its embedded chrome
-stationary, the next implementation choice is material: either snap the whole
-destination envelope immediately until DLV-236 separates retained chrome, or
-bring forward the minimum child-visual/chrome separation that DLV-236 otherwise
-owns. The planner must obtain the user's choice before changing animation or
-surface ownership. No unchanged rerun or local-coordinate assertion can close
-this review.
+User decision: solve this coherently now by folding DLV-236 into the DLV-238
+correction; do not implement a temporary snap-only envelope. Preserve
+`3716063`'s destination-viewport transaction, but evolve the sole existing
+`OverlayCompositionSurface` owner into one DirectComposition root with retained
+child visuals/surfaces for destination content and fixed host chrome. No second
+HWND, top-level target/device, renderer, accessibility provider/tree, focus
+graph, hit-test authority, controller router, or widget protocol concept is
+permitted.
 
-### Ready after DLV-238 integration — DLV-237: correlate deferred widget admission
+Required cumulative correction:
 
-Baseline: accepted DLV-238 integrated into local main. Owner: platform native
+- Transform/clip only the destination content envelope. Keep tray and guide at
+  identity scale and fixed absolute bottom-center screen rectangles throughout
+  start, midpoint, cancellation/reversal, completion, reduced motion, and
+  device recreation.
+- Separate chrome invalidation from content invalidation. Selection/reorder may
+  update only the bounded old/new tray tiles or named affordance; snapshot
+  admission, provider updates, content focus/scroll/slider changes, and content
+  motion must not repaint the retained tray background or unchanged icons.
+- Project content and host-chrome bounds through their real per-child visual
+  coordinate spaces beneath the one accessibility provider. Every motion step
+  must keep visible, pointer/hit-test, focus, and UIA bounds mutually current;
+  do not republish stale whole-tree geometry or create a second semantic owner.
+- Keep one atomic root commit for selected tile, retained inert old content,
+  newly admitted destination content, guide state, clips/transforms, UIA
+  authority, and HWND placement. Preserve premultiplied alpha, fixed panel-to-
+  guide and guide-to-tray offsets, rapid/stale/failure authority, and normal
+  device-loss/hidden cleanup.
+- Retain the DLV-238 before/after responsibility map and extend it with the
+  composition child ownership moved out of `OverlayApp`. Use clangd plus `rg`
+  for every moved symbol. This remains one staged hotspot reduction, not a
+  broad renderer or accessibility rewrite.
+
+Acceptance adds actual start/mid/end absolute screen-bound samples for content,
+guide, tray, selected tile, pointer mapping, and UIA across compact-to-tall and
+tall-to-wide switches. The tray/guide rectangles must be identical while only
+the content envelope changes. Per-surface counters must show zero tray redraws
+after the bounded selection update through delayed admission and every motion
+step, plus zero tray redraws for provider, slider, scroll, and focus updates.
+Catalog/order, appearance, DPI/text scale, accessibility policy, and device
+recreation must still rebuild/update chrome exactly when required. Reuse the
+already-green DLV-238 suites; add/run only the focused child-visual,
+actual-coordinate, UIA, invalidation, device-loss, and one final bounded
+eight-widget route needed for the cumulative correction. Do not rerun the
+inherited DLV-231 close/reconnect tail, Tier 3, providers, packaging, or capture
+work.
+
+### Ready after cumulative DLV-238/DLV-236 integration — DLV-237: correlate deferred widget admission
+
+Baseline: accepted cumulative DLV-238/DLV-236 integrated into local main. Owner: platform native
 selection/lifecycle/session observability only. Do not interrupt DLV-232/DLV-238 or
 start from its unreviewed branch tip.
 
@@ -317,80 +354,26 @@ snapshot-content retention, UI-thread file/serialization work, another
 selection/lifecycle/session authority, or an implementation choice that changes
 the user-visible admission behavior before the cause is established.
 
-### Ready after DLV-237 evidence review — DLV-236: retain the icon tray independently
+### Folded into active DLV-238 correction — DLV-236: retain host chrome independently
 
-Baseline: accepted DLV-237 integrated into local main. Owner: platform native
-composition/rendering only. Do not interrupt DLV-232 or DLV-237, and do not
-start from an unreviewed branch tip. DLV-236 remains independent of the DLV-238
-geometry correction, but follows the DLV-237 evidence review so only one
-selection-path milestone is in flight at a time.
-
-Visible objective: cycling through widgets may repaint the two tray tiles whose
-selection state changes, but the persistent tray background and unchanged
-icons must not clear, flash, or repaint again when a cold/warm worker snapshot
-arrives, widget content animates, or the content envelope changes size.
-
-Required implementation:
-
-- Keep the single overlay HWND, sole DirectComposition device/target and root
-  visual tree, native renderer, accessibility provider, focus graph, hit-test
-  authority, and GameInput owner. Add retained child visual/surface ownership
-  for the host tray; do not create another HWND, top-level compositor, input
-  window, semantic tree, controller router, or widget protocol concept.
-- Separate tray invalidation from widget/content invalidation. Tray paint is
-  allowed only for selection/reorder interaction, catalog/order/overflow
-  changes, host appearance, DPI/text-scale/accessibility changes, explicit
-  animation authored for tray interaction, and graphics-device recreation.
-  Snapshot admission, provider updates, widget focus/scroll/slider paint,
-  content reveal, and content-envelope motion must leave the admitted tray
-  surface retained.
-- Preserve one atomic presentation commit. The selected tile, inert retained
-  old widget pixels, newly admitted widget content, guide state, clips,
-  transforms, and HWND placement may not expose a mismatched intermediate
-  authority. Content-size animation moves only the content envelope; compensate
-  child offsets as the one HWND changes so the tray and guide retain their fixed
-  absolute bottom-center screen rectangles.
-- Preserve premultiplied-alpha/color-key boundaries, device-loss recovery,
-  reduced-motion/high-contrast behavior, overflow controls, pointer hit tests,
-  controller selection/reorder, UIA Selection/Invoke bounds, and normal
-  resource/process cleanup. Do not add widget identity branches or change
-  widget/package/runtime code.
-
-Acceptance:
-
-- Add deterministic per-surface paint/commit evidence for all eight installed
-  widgets covering cached, cold, delayed, failed, and late-revoked snapshots.
-  Each accepted tray selection may produce one bounded tray update; subsequent
-  snapshot admission and content-motion frames must report zero tray-surface
-  redraws. Static tray regions remain pixel-identical; only the old/new selected
-  tiles or a named overflow/reorder affordance may differ.
-- Prove content-only provider, slider, scroll, focus, and live-state updates do
-  not repaint the tray. Separately prove catalog/order, appearance, DPI/text
-  scale, accessibility, and device recreation repaint/rebuild it exactly when
-  required.
-- Retain identical absolute tray/guide bounds through compact-to-wide and
-  wide-to-compact transitions, no opaque flash/dark band/transparent seam, one
-  current UIA selection, bounded draw/commit timing, and normal zero-process
-  shutdown. The user's physical widget-cycling verdict is the final flash gate.
-- Run only affected composition, placement, tray, controller, accessibility,
-  device-loss, and one bounded eight-widget host route plus the native Release
-  build. No Tier-3 aggregate, provider work, package rebuild, or capture-harness
-  expansion.
-
-Stop for a second HWND/compositor/input/focus/accessibility owner, loss of atomic
-selection/content authority, per-widget composition behavior, an undocumented
-DirectComposition dependency, or a material change to tray geometry.
+The user approved completing DLV-236's retained tray/guide child-visual work as
+part of the active DLV-238 correction. Its objective, invalidation policy,
+atomicity requirements, acceptance evidence, and stop conditions now appear in
+the cumulative Assigned section above. DLV-236 is not a later executable
+assignment and must not produce a second implementation commit after that
+cumulative milestone is accepted.
 
 DLV-218 remains dependency-blocked on the user's separate DLV-217 integration
 decision. Mixed-monitor, audio/Bluetooth, legacy-controller, and assistive-
 technology gates still require hardware or user evidence; do not manufacture
-additional internal filler after DLV-236.
+additional internal filler after the active queue.
 
-### Ready after DLV-236 integration — DLV-239: retain checkpoint and separate refresh state
+### Ready after DLV-237 integration — DLV-239: retain checkpoint and separate refresh state
 
 Lane/owner/baseline: platform; existing native session, bridge adapter,
-appearance, and presentation-cache owners on accepted DLV-236 main. This is the
-first milestone governed by `widget-snapshot-cache-design.md`.
+appearance, and presentation-cache owners on accepted cumulative DLV-238/
+DLV-236 plus DLV-237 main. This is the first milestone governed by
+`widget-snapshot-cache-design.md`.
 
 Visible objective: ordinary hidden/provider invalidation never removes the
 widget's last admitted checkpoint or causes another widget's pixels/envelope to
@@ -523,9 +506,10 @@ Do not delete credentials, provider data, accounts, or user files.
 
 ## Serialized integration order
 
-1. Main is accepted through DLV-232 `ef56bfc`; DLV-238 is Assigned.
-2. Execute/integrate DLV-238, DLV-237, DLV-236, and DLV-239 in platform order.
-   Launch every accepted visible milestone.
+1. Main is accepted through DLV-232 `ef56bfc`; the cumulative DLV-238/DLV-236
+   correction is Assigned atop rejected `3716063`.
+2. Execute/integrate cumulative DLV-238/DLV-236, then DLV-237 and DLV-239 in
+   platform order. Launch every accepted visible milestone.
 3. After DLV-237 launch, the user performs the joint tray-cycling test and the
    planner assigns only the evidence-backed correction without disrupting the
    already ordered independent work.
