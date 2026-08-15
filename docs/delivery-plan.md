@@ -172,7 +172,7 @@ user decision. The native overlay is the sole production presentation path.
 | Lane | Task/worktree | Current state |
 | --- | --- | --- |
 | Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` on `codex/impl-widgets-taffy-ui` | Idle clean. DLV-240 begins only after accepted DLV-239 is integrated and the planner sends the serialized cross-lane baseline. |
-| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` on `codex/impl-platform-fixed-chrome` | Physical acceptance pending for unintegrated candidate `9c1585a`: normalized visible content envelope, stable same-destination motion, typed fixed-chrome offsets, DPI-correct surface update offsets, and coordinated three-HWND Z-order. Exact Release PID 57704 is launched for the user's verdict. No tests ran; DLV-239 remains paused. |
+| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` on `codex/impl-platform-fixed-chrome` | The user physically accepted tray visibility and stationarity in unintegrated candidate `9c1585a`. The lane is adding the deferred bounded regression coverage for the accepted defects and correcting rejected legacy expectations. DLV-239 remains paused until cumulative DLV-244 review and integration. |
 
 DLV-217 remains accepted through `d57fd06` but unintegrated because its exact
 aggregate is honestly 40/41 with one reviewer-history-link failure. Preserve
@@ -618,6 +618,16 @@ SHA-256 is `785540D68F4431D3835FA3F4B6F8EA377F389C73BD83C30F492398C30FE8DF68`.
 No tests were added, changed, or run. Do not integrate or resume DLV-239 until
 the user physically accepts tray visibility/stationarity, panel-to-guide gap,
 absence of overlap, and absence of idle motion.
+
+The user physically accepted the corrected tray visibility and stationarity on
+2026-08-15. Post-acceptance test work is now authorized: cover physical-pixel to
+DIP update-offset normalization, latched guide/tray child offsets across frame
+replacement, unchanged tray screen geometry while cycling differently sized
+widgets, no same-destination transition restart, and panel-local guide spacing
+through transition start/midpoint/settlement. Correct existing tests that encode
+the rejected combined-shell behavior. Keep verification to directly affected
+focused native targets and use source review for unreliable headless Z-order
+cases; do not run the product aggregate or unrelated suites.
 
 Independent review disposition for `3716063`: rejected as the retained base for
 one cumulative correction. The commit correctly separates destination layout
