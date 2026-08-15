@@ -9,8 +9,8 @@ Snapshots are evidence only. This file is the sole authority for current work.
 
 ## Current accepted baseline
 
-- Main contains the corrected DLV-238/DLV-236 tray transaction and corrected
-  DLV-237 admission trace through `6e2969b`; DLV-232 `ef56bfc`, DLV-235
+- Main contains the physically rejected DLV-238/DLV-236 tray implementation
+  and corrected DLV-237 admission trace through `6e2969b`; DLV-232 `ef56bfc`, DLV-235
   `5440e7b`, DLV-230 `fe2e52c`, Taffy baseline
   DLV-221 `8836e07`, and the intervening corrections in history above.
 - Taffy is the accepted sole declarative Flex/Responsive Grid geometry engine.
@@ -33,12 +33,18 @@ Snapshots are evidence only. This file is the sole authority for current work.
   cross-boundary oracle; deterministic affected suites and the native Release
   compile are green.
 - The earlier `7fa146a` Release was physically rejected for black cleared tray
-  tiles, clipped focus chrome, and widget-dependent tray geometry. The accepted
-  correction removes tile-level damage, retains one complete small tray raster,
-  and fixes one absolute tray rectangle for the visible session while content
-  alone changes envelope. Exact main `6e2969b` was rebuilt and visibly launched
-  as PID 39536 with SHA-256 `CBFC4515...34343`; physical user review remains the
-  final visual verdict.
+  tiles, clipped focus chrome, and widget-dependent tray geometry. Cumulative
+  DLV-238/DLV-236 removed tile-level damage and retained one complete small tray
+  raster, but exact main `6e2969b` was also physically rejected: the tray still
+  visibly moves while differently sized widgets are cycled. Live PID 39536 logs
+  expose three allegedly fixed rectangles (`2186,1259,747,141`,
+  `2185,1259,748,141`, and `2186,1259,748,141`). Source review shows that the
+  session rectangle is initialized from current widget/container geometry,
+  reset on reopen, and applied through a DirectComposition commit followed by a
+  separate `SetWindowPos`. The accepted test compared the cached intended
+  rectangle to diagnostics derived from that same cache, omitted cross-reopen
+  equality, and could not observe the compositor/HWND interval. DLV-244 is the
+  mandatory correction; DLV-239 is paused behind it.
 - Corrected DLV-237 now correlates selection, posted/dequeued refresh, lifecycle,
   request, completion, admission, and meaningful A stages to the exact selected
   widget. Pinned/background work cannot terminalize or suppress that trace. The
@@ -144,7 +150,7 @@ user decision. The native overlay is the sole production presentation path.
 | Lane | Task/worktree | Current state |
 | --- | --- | --- |
 | Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` on `codex/impl-widgets-taffy-ui` | Idle clean. DLV-240 begins only after accepted DLV-239 is integrated and the planner sends the serialized cross-lane baseline. |
-| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` on `codex/impl-platform-integration` | Corrected DLV-238/DLV-236 and DLV-237 are accepted and integrated through main `6e2969b`; DLV-239 is next. DLV-241/242 await DLV-240 integration. |
+| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` on `codex/impl-platform-integration` | Idle clean at `9f2b4ca` after safely stopping before DLV-239 edits. DLV-244 corrects the physically rejected tray stationarity implementation first; DLV-239 remains paused. |
 
 DLV-217 remains accepted through `d57fd06` but unintegrated because its exact
 aggregate is honestly 40/41 with one reviewer-history-link failure. Preserve
@@ -213,6 +219,83 @@ Preserve: one HWND/root compositor/focus/input/UIA authority, Taffy as sole decl
 Acceptance: cold and cached switches across all eight widgets, including compact-to-tall, tall-to-wide, rapid selection, delayed admission, late revoked completion, failure/last-good, and provider updates, prove that every `content=admitted rendered=<destination>` frame uses the destination surface request and that final presented equals desired without a later snapshot. The Audio Mixer to Network Controls regression must move from retained `592x698` to Network's admitted `632x878` envelope, lay Network out at its own viewport, and retain stationary tray/guide coordinates with no flash, dark band, seam, stale UIA, or intermediate input mismatch.
 Verification: focused widget-switch, extent-transition, composition-placement, surface-policy/Taffy, focus/UIA, reduced-motion/device-loss cases, one bounded eight-widget host route, and native Release build only; no Tier-3 aggregate, provider/package change, capture-harness work, or unrelated refactor.
 Stop for per-widget sizing logic, destination content rendered against source geometry, non-atomic HWND/content authority, another compositor/window/focus/input owner, or an undocumented platform dependency or material animation decision.
+
+Physical rejection supersedes the earlier source/test acceptance. The retained
+surface separation and whole-small-tray repaint policy remain useful, but the
+stationarity claim is false. `CompositionChromeSession` freezes a rectangle
+derived from the first widget/container of one visible session; hide/reopen
+resets that authority. More importantly, a visible resize commits child-visual
+offsets relative to the future container before moving/resizing the HWND in a
+separate operation. The host test cycles widgets but reads an intended rectangle
+reconstructed from the same cached state, so it cannot observe an intermediate
+screen-space jump. Its reopen route never compares pre-hide and post-reopen tray
+bounds. Do not treat the integrated implementation as an accepted baseline for
+stationarity, and do not resume DLV-239 until DLV-244 is accepted and launched.
+
+### Assigned — DLV-244: make tray stationarity externally authoritative
+
+Lane/owner/baseline: platform native placement, presentation-transaction, and
+existing sole DirectComposition owner on integrated main `677d302`. DLV-239 is
+paused and must not be mixed into this correction. Preserve the separate
+content/guide/tray child surfaces and the complete bounded tray repaint for
+tray-owned changes.
+
+Visible objective: cycling any sequence of differently sized widgets, hiding
+and reopening on any selected widget, and completing or reversing content
+motion must leave the tray at one identical bottom-center physical screen
+rectangle. No transient jump, flash, one-pixel drift, or widget-derived anchor
+is acceptable.
+
+Required correction:
+
+- Establish tray/guide geometry from the authoritative monitor work area, DPI,
+  interface/accessibility scale, catalog/order, and host chrome policy. Widget
+  content width, height, surface hints, presented extent, container parity, or
+  selected identity must never seed or recompute the absolute chrome anchor.
+- Retain that anchor across widget selection, admission, motion, cancellation,
+  hide/reopen, and provider/content updates. Change it only for an explicit
+  monitor/work-area/DPI, accessibility/interface-scale, appearance, or
+  catalog/order event whose chrome geometry actually changes; record the typed
+  reason.
+- Remove every externally visible interval in which child-visual offsets refer
+  to a future/past HWND rectangle. The existing sole presentation transaction
+  must admit one coherent screen-space state for HWND geometry, content
+  presentation, tray/guide offsets, hit testing, and UIA. Do not claim atomicity
+  merely because cached desired values are equal.
+- Preserve one HWND, one DirectComposition target/root, one renderer, one
+  accessibility provider/tree, one focus/input owner, and transparent unused
+  client pixels. Do not reintroduce tile damage, a combined content/tray raster,
+  a monitor-sized visible shell, or widget-specific geometry.
+
+Acceptance and verification:
+
+- Add a deterministic lifecycle matrix that starts the overlay with each of all
+  eight widgets selected, cycles every differently sized widget in both
+  directions, hides/reopens between selections, and covers reduced motion plus
+  compact/tall/wide transitions. It must compare the same absolute tray corners
+  across the complete matrix, including pre-hide versus post-reopen.
+- The oracle must derive externally presented screen coordinates from the
+  applied HWND rectangle plus the actual committed child-visual transaction
+  step. It may not compare `CompositionChromeSession::trayScreenBounds` to a
+  diagnostic reconstructed from that same field. A fake/order seam may record
+  externally observable transaction phases, but no test-only compositor owner
+  or second production scheduler is permitted.
+- Include fractional-DPI and odd/even physical-width cases that reproduce the
+  observed 747/748 width and 2185/2186 left-edge drift. Assert that no
+  intermediate phase exposes different absolute tray or guide corners.
+- Directly prove content-only admission, motion, provider, focus, scroll, and
+  slider work does not repaint the tray; tray selection/order/style changes may
+  replace the whole small tray once.
+- Run only the affected placement, composition, widget-switch, chrome,
+  targeting/UIA, reduced-motion/device-loss tests and one native Release build.
+  Do not add capture tooling or run Tier 3. The planner must review the source
+  transaction sequence independently, then launch the exact corrected Release.
+  Physical user cycling is mandatory acceptance evidence; automated green is
+  not sufficient to close this user-reproduced compositor defect.
+
+Stop for another HWND/compositor/focus/input authority, a monitor-sized visible
+surface, a self-referential stationarity oracle, widget-identity geometry, an
+undocumented composition API, or a material shell/animation choice.
 
 Independent review disposition for `3716063`: rejected as the retained base for
 one cumulative correction. The commit correctly separates destination layout
@@ -462,7 +545,7 @@ decision. Mixed-monitor, audio/Bluetooth, legacy-controller, and assistive-
 technology gates still require hardware or user evidence; do not manufacture
 additional internal filler after the active queue.
 
-### Assigned — DLV-239: retain checkpoint and separate refresh state
+### Paused behind DLV-244 — DLV-239: retain checkpoint and separate refresh state
 
 Lane/owner/baseline: platform; existing native session, bridge adapter,
 appearance, and presentation-cache owners on accepted cumulative DLV-238/
@@ -641,12 +724,13 @@ Do not delete credentials, provider data, accounts, or user files.
 
 ## Serialized integration order
 
-1. Main includes accepted corrected DLV-238/DLV-236 plus DLV-237 through
-   `6e2969b`; its exact native Release is visibly launched for physical review.
-2. The user performs the joint
-   tray-cycling test and the planner assigns only the evidence-backed behavior
-   correction without disrupting the already ordered independent work.
-3. Execute and integrate DLV-239, then dispatch DLV-240 to the widgets lane as sole
+1. Main includes physically rejected DLV-238/DLV-236 plus accepted DLV-237
+   through `6e2969b`; do not build further work on its false stationarity claim.
+2. Execute DLV-244 as the sole platform assignment, independently review its
+   non-self-referential transaction evidence, integrate only if accepted, and
+   launch the exact corrected Release for mandatory user cycling.
+3. After the user accepts stationary tray behavior, execute and integrate
+   DLV-239, then dispatch DLV-240 to the widgets lane as sole
    shared protocol/managed lead. Platform does not edit shared files.
 4. Integrate accepted DLV-240, then dispatch DLV-241 to platform. DLV-241 is the
    one exact Tier-3 protocol activation checkpoint.
