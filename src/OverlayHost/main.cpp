@@ -3709,39 +3709,12 @@ private:
         };
     }
 
-    [[nodiscard]] static std::optional<gba::OverlaySurfaceGeometry>
-    ComputePanelLocalSurfaceGeometry(
-        const float viewportWidthDip,
-        const float viewportHeightDip) noexcept {
-        if (!std::isfinite(viewportWidthDip) ||
-            !std::isfinite(viewportHeightDip) ||
-            viewportWidthDip <= 0.0F || viewportHeightDip <= 0.0F) {
-            return std::nullopt;
-        }
-        const float contentInset = std::min(
-            1.0F, std::min(viewportWidthDip, viewportHeightDip) * 0.1F);
-        return gba::OverlaySurfaceGeometry{
-            0.0F,
-            0.0F,
-            viewportWidthDip,
-            viewportHeightDip,
-            0.0F,
-            0.0F,
-            contentInset,
-            contentInset,
-            std::max(0.0F, viewportWidthDip - contentInset * 2.0F),
-            std::max(0.0F, viewportHeightDip - contentInset),
-            viewportHeightDip,
-            0.0F,
-        };
-    }
-
     [[nodiscard]] std::optional<gba::OverlaySurfaceGeometry>
     ComputeCurrentWidgetSurfaceGeometry(
         const float viewportWidthDip,
         const float viewportHeightDip) const {
         if (compositionSurface_.available()) {
-            return ComputePanelLocalSurfaceGeometry(
+            return gba::ComputePanelLocalSurfaceGeometry(
                 viewportWidthDip, viewportHeightDip);
         }
         const auto target = DesiredWidgetSurfaceTarget();
@@ -3924,10 +3897,12 @@ private:
             const auto tray = ProjectChromeClientBoundsToScreen(
                 compositionChromeSession_->trayClientBounds);
             if (!guide || !tray) return std::nullopt;
-            result.guideOffsetX = static_cast<float>(guide->left - windowBounds.left);
-            result.guideOffsetY = static_cast<float>(guide->top - windowBounds.top);
-            result.trayOffsetX = static_cast<float>(tray->left - windowBounds.left);
-            result.trayOffsetY = static_cast<float>(tray->top - windowBounds.top);
+            result = gba::ApplyFixedChromeChildOffsets(
+                result,
+                {static_cast<float>(guide->left - windowBounds.left),
+                 static_cast<float>(guide->top - windowBounds.top)},
+                {static_cast<float>(tray->left - windowBounds.left),
+                 static_cast<float>(tray->top - windowBounds.top)});
         }
         return result;
     }
@@ -6287,8 +6262,8 @@ private:
         // so convert the atlas offset before composing it after interface zoom.
         // Treating the raw pixel value as DIPs over-translates every child at
         // non-96 DPI and can crop an otherwise correctly placed tray surface.
-        const float deviceDipPerPixel = 96.0F /
-            static_cast<float>(dpi != 0 ? dpi : 96U);
+        const auto updateOffsetDip = gba::NormalizeCompositionUpdateOffset(
+            updateOffset, dpi);
         renderTarget_->SetTransform(D2D1::Matrix3x2F::Identity());
         renderTarget_->Clear(compositionSurface_.available()
             ? D2D1::ColorF(0.0F, 0.0F, 0.0F, 0.0F)
@@ -6297,8 +6272,7 @@ private:
             D2D1::Matrix3x2F::Scale(
                 metrics->interfaceScale, metrics->interfaceScale) *
             D2D1::Matrix3x2F::Translation(
-                static_cast<float>(updateOffset.x) * deviceDipPerPixel,
-                static_cast<float>(updateOffset.y) * deviceDipPerPixel));
+                updateOffsetDip.x, updateOffsetDip.y));
 
         if (layer == CompositionPaintLayer::Tray && trayLayout) {
             DrawIconStrip(
@@ -6669,15 +6643,12 @@ private:
         const int panelToGuideGap = static_cast<int>(std::lround(
             kPanelToGuideGapDip * fixedChromeAnchor_->dpi / 96.0F *
             fixedChromeAnchor_->interfaceScale));
-        const RECT& work = fixedChromeAnchor_->workArea;
-        const int maximumX = work.right - placement.width;
-        const int maximumY = work.bottom - placement.height;
-        if (maximumX < work.left || maximumY < work.top) return std::nullopt;
-        placement.x = work.left +
-            ((work.right - work.left) - placement.width) / 2;
-        placement.y = std::clamp(
-            static_cast<int>(guide->top) - panelToGuideGap - placement.height,
-            static_cast<int>(work.top), maximumY);
+        const auto bounds = gba::shell::ComputeContentWindowBoundsAboveGuide(
+            fixedChromeAnchor_->workArea, guide->top,
+            placement.width, placement.height, panelToGuideGap);
+        if (!bounds) return std::nullopt;
+        placement.x = bounds->left;
+        placement.y = bounds->top;
         return placement;
     }
 
@@ -7512,7 +7483,7 @@ private:
         const bool bridgeWidget = IsBridgeWidget(widget);
         const auto geometry = layer == CompositionPaintLayer::Content &&
                 compositionSurface_.available()
-            ? ComputePanelLocalSurfaceGeometry(width, height)
+            ? gba::ComputePanelLocalSurfaceGeometry(width, height)
             : [&]() {
                 const auto widgetSurface = DesiredWidgetSurfaceTarget();
                 return gba::ComputeOverlaySurfaceGeometry(

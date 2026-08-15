@@ -382,6 +382,32 @@ std::optional<OverlaySurfaceGeometry> ComputeOverlaySurfaceGeometry(
     };
 }
 
+std::optional<OverlaySurfaceGeometry> ComputePanelLocalSurfaceGeometry(
+    const float viewportWidthDip,
+    const float viewportHeightDip) noexcept {
+    if (!std::isfinite(viewportWidthDip) ||
+        !std::isfinite(viewportHeightDip) ||
+        viewportWidthDip <= 0.0F || viewportHeightDip <= 0.0F) {
+        return std::nullopt;
+    }
+    const float contentInset = std::min(
+        1.0F, std::min(viewportWidthDip, viewportHeightDip) * 0.1F);
+    return OverlaySurfaceGeometry{
+        0.0F,
+        0.0F,
+        viewportWidthDip,
+        viewportHeightDip,
+        0.0F,
+        0.0F,
+        contentInset,
+        contentInset,
+        std::max(0.0F, viewportWidthDip - contentInset * 2.0F),
+        std::max(0.0F, viewportHeightDip - contentInset),
+        viewportHeightDip,
+        0.0F,
+    };
+}
+
 ControllerGuideDensity ResolveControllerGuideDensity(
     const float availableWidthDip,
     const float textScale) noexcept {

@@ -12,6 +12,19 @@
 
 namespace gba {
 
+/// BeginDraw returns a backing-surface offset in physical pixels. Direct2D
+/// drawing uses DIPs after SetDpi, so normalize before composing the offset
+/// with the interface-scale transform.
+[[nodiscard]] constexpr D2D1_POINT_2F NormalizeCompositionUpdateOffset(
+    const POINT physicalPixels, const unsigned int dpi) noexcept {
+    const float dipPerPixel = 96.0F /
+        static_cast<float>(dpi == 0 ? 96U : dpi);
+    return {
+        static_cast<float>(physicalPixels.x) * dipPerPixel,
+        static_cast<float>(physicalPixels.y) * dipPerPixel,
+    };
+}
+
 // One DirectComposition presentation owner for the overlay HWND. A replacement
 // surface is rendered while it is detached from the visual tree; the caller
 // attaches it only after EndDraw has completed the full update rectangle.
@@ -77,6 +90,13 @@ public:
     [[nodiscard]] unsigned int width(Layer layer) const noexcept;
     [[nodiscard]] unsigned int height(Layer layer) const noexcept;
     [[nodiscard]] PaintCounters paintCounters() const noexcept { return paintCounters_; }
+
+    /// Ordinary frame commits own content placement only. Guide/tray offsets
+    /// belong to the fixed chrome session across repaint and replacement.
+    [[nodiscard]] static constexpr bool FrameOwnsVisualOffset(
+        const Frame& frame) noexcept {
+        return frame.layer == Layer::Content;
+    }
 
     HRESULT BeginFrame(unsigned int width, unsigned int height, Frame& frame) noexcept;
     HRESULT BeginFrame(

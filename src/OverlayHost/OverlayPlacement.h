@@ -195,4 +195,11 @@ struct ControllerGuideAction final {
     float preferredPanelWidthDip,
     std::optional<float> preferredPanelHeightDip = std::nullopt) noexcept;
 
+/// DirectComposition content is panel-local. The fixed guide and tray live in
+/// their companion HWND and reserve no space inside this surface.
+[[nodiscard]] std::optional<OverlaySurfaceGeometry>
+ComputePanelLocalSurfaceGeometry(
+    float viewportWidthDip,
+    float viewportHeightDip) noexcept;
+
 } // namespace gba

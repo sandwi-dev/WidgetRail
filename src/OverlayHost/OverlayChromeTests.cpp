@@ -9,6 +9,7 @@
 #include <wrl/client.h>
 
 #include <array>
+#include <cmath>
 #include <cstdlib>
 #include <iostream>
 #include <utility>
@@ -25,6 +26,48 @@ void Check(const bool condition, const char* message) {
         std::cerr << "FAIL: " << message << '\n';
         std::exit(EXIT_FAILURE);
     }
+}
+
+void CheckCompositionCoordinatePolicies() {
+    const auto dpi120 = gba::NormalizeCompositionUpdateOffset({5, -10}, 120);
+    const auto dpi144 = gba::NormalizeCompositionUpdateOffset({3, 9}, 144);
+    const auto fallback = gba::NormalizeCompositionUpdateOffset({7, -4}, 0);
+    Check(std::abs(dpi120.x - 4.0F) < 0.001F &&
+              std::abs(dpi120.y + 8.0F) < 0.001F,
+          "125-percent BeginDraw pixels normalize to DIPs");
+    Check(std::abs(dpi144.x - 2.0F) < 0.001F &&
+              std::abs(dpi144.y - 6.0F) < 0.001F,
+          "150-percent BeginDraw pixels normalize to DIPs");
+    Check(fallback.x == 7.0F && fallback.y == -4.0F,
+          "missing DPI uses the 96-DPI update-offset contract");
+
+    gba::OverlayCompositionSurface::Frame content;
+    content.layer = gba::OverlayCompositionSurface::Layer::Content;
+    content.replacement = false;
+    gba::OverlayCompositionSurface::Frame guide;
+    guide.layer = gba::OverlayCompositionSurface::Layer::Guide;
+    guide.replacement = false;
+    gba::OverlayCompositionSurface::Frame tray;
+    tray.layer = gba::OverlayCompositionSurface::Layer::Tray;
+    tray.replacement = true;
+    Check(gba::OverlayCompositionSurface::FrameOwnsVisualOffset(content),
+          "ordinary content repaint owns its visual offset");
+    Check(!gba::OverlayCompositionSurface::FrameOwnsVisualOffset(guide),
+          "ordinary guide repaint preserves its latched chrome offset");
+    Check(!gba::OverlayCompositionSurface::FrameOwnsVisualOffset(tray),
+          "tray surface replacement preserves its latched chrome offset");
+
+    constexpr RECT work{0, 0, 1920, 1080};
+    const auto panel = gba::shell::ComputeContentWindowBoundsAboveGuide(
+        work, 900, 760, 385, 5);
+    Check(panel && panel->left == 580 && panel->right == 1340 &&
+              panel->top == 510 && panel->bottom == 895,
+          "panel-local content is centered and ends at the authored guide gap");
+    Check(!gba::shell::ComputeContentWindowBoundsAboveGuide(
+              work, 900, 0, 385, 5) &&
+              !gba::shell::ComputeContentWindowBoundsAboveGuide(
+                  work, 900, 760, 385, -1),
+          "invalid panel-local content placement fails closed");
 }
 
 void CheckFrame(
@@ -449,6 +492,7 @@ int main() {
     CheckFrame(d2d.Get(), wic.Get(), 1.5F);
     CheckPremultipliedFrame(d2d.Get(), wic.Get(), 1.0F);
     CheckPremultipliedFrame(d2d.Get(), wic.Get(), 1.5F);
+    CheckCompositionCoordinatePolicies();
     CheckRetainedTrayInvalidation();
     CheckFixedChromeWindowPolicy();
     gba::shell::FillColorKeyRoundedRectangle(nullptr, {}, nullptr);

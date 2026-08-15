@@ -273,7 +273,7 @@ HRESULT OverlayCompositionSurface::CommitFrames(
         // Content placement belongs to the frame transaction. Guide and tray
         // offsets belong exclusively to the fixed-chrome session and remain
         // latched across their surface replacement or repaint.
-        if (frame->layer == Layer::Content) {
+        if (FrameOwnsVisualOffset(*frame)) {
             result = state.visual->SetOffsetX(frame->visualOffsetX);
             if (SUCCEEDED(result))
                 result = state.visual->SetOffsetY(frame->visualOffsetY);

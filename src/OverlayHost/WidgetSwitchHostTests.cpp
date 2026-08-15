@@ -400,25 +400,6 @@ LoggedBounds ParseBounds(const std::string& value) {
     return result;
 }
 
-bool SameBottomCenteredScreenBounds(
-    const std::string& firstRecord,
-    const std::string& secondRecord,
-    const std::string_view field) {
-    const auto firstShell = ParseBounds(TextField(firstRecord, "shell-bounds="));
-    const auto secondShell = ParseBounds(TextField(secondRecord, "shell-bounds="));
-    const auto first = ParseBounds(TextField(firstRecord, field));
-    const auto second = ParseBounds(TextField(secondRecord, field));
-    constexpr float tolerance = 0.01F;
-    return std::abs(
-               (first.x - firstShell.width * 0.5F) -
-               (second.x - secondShell.width * 0.5F)) <= tolerance &&
-        std::abs(
-               (first.y - firstShell.height) -
-               (second.y - secondShell.height)) <= tolerance &&
-        std::abs(first.width - second.width) <= tolerance &&
-        std::abs(first.height - second.height) <= tolerance;
-}
-
 void RunRetentionScenario(const Arguments& arguments) {
     auto installation = std::make_unique<TemporaryInstallation>(
         arguments.installation, arguments.fixtureWorker);
@@ -437,11 +418,19 @@ void RunRetentionScenario(const Arguments& arguments) {
     std::vector<DWORD> recoveryProcessIds;
     const auto logPath = installation->LocalAppData() /
         L"GameBarAlternative" / L"overlay.log";
-    Require(WaitUntil(kStartupTimeoutMilliseconds, [&] {
-                return ReadUtf8(installation->ReadyPath()).find(kDevelopmentNonceUtf8) !=
-                    std::string::npos;
-            }), "Production host did not publish authenticated development readiness; log=" +
-                    ReadUtf8(logPath));
+    const bool ready = WaitUntil(kStartupTimeoutMilliseconds, [&] {
+        return ReadUtf8(installation->ReadyPath()).find(kDevelopmentNonceUtf8) !=
+            std::string::npos;
+    });
+    if (!ready) {
+        DWORD exitCode = STILL_ACTIVE;
+        GetExitCodeProcess(host->Process(), &exitCode);
+        Fail("Production host did not publish authenticated development readiness; exit=" +
+             std::to_string(exitCode) + " log=" + ReadUtf8(logPath) +
+             " startup-error=" +
+             ReadUtf8(installation->LocalAppData() /
+                 L"GameBarAlternative" / L"startup-error.log"));
+    }
     HWND window{};
     const bool visible = WaitUntil(kStartupTimeoutMilliseconds, [&] {
         window = LocateHostWindow(host->Id());
@@ -825,6 +814,13 @@ void RunRetentionScenario(const Arguments& arguments) {
     SendKey(window, VK_LEFT);
     SendKey(window, VK_RIGHT);
     waitForPaint(reversalBefore, kTargets.back(), kTargets.back().id, "admitted");
+    Require(WaitUntil(kOperationTimeoutMilliseconds, [&] {
+                const auto pending = ReadUtf8(logPath);
+                const auto lastStart = pending.rfind("Composition motion start");
+                const auto lastFinal = pending.rfind("Composition motion final steps=");
+                return lastStart == std::string::npos ||
+                    (lastFinal != std::string::npos && lastFinal > lastStart);
+            }), "Rapid reversal did not settle before same-destination refresh proof");
 
     const auto restartBefore = ReadUtf8(logPath).size();
     const auto restartSignal = installation->StartupSignal(kTargets.back().id);
@@ -837,7 +833,10 @@ void RunRetentionScenario(const Arguments& arguments) {
                 std::error_code ignored;
                 return fs::exists(restartSignal, ignored);
             }), "Final widget refresh did not enter its first snapshot request.");
-    waitForPaint(restartBefore, kTargets.back(), kTargets.back().id, "retained");
+    const auto settingsRetained = waitForPaint(
+        restartBefore, kTargets.back(), kTargets.back().id, "retained");
+    requireSessionTrayBounds(
+        settingsRetained, "same-destination-lifecycle-retained");
     Require(WaitUntil(kOperationTimeoutMilliseconds, [&] {
                 const auto log = ReadUtf8(logPath);
                 return log.size() > restartBefore &&
@@ -845,6 +844,23 @@ void RunRetentionScenario(const Arguments& arguments) {
             }), "Same-identity Settings refresh omitted its bounded completion record.");
     const auto settingsLastGood = waitForPaint(
         restartBefore, kTargets.back(), kTargets.back().id, "admitted");
+    requireSessionTrayBounds(
+        settingsLastGood, "same-destination-snapshot-admitted");
+    Require(WaitUntil(kOperationTimeoutMilliseconds, [&] {
+                const auto pending = ReadUtf8(logPath);
+                return pending.find(
+                    "Composition frame committed content=complete", restartBefore) !=
+                    std::string::npos;
+            }), "Same-destination refresh omitted its complete repaint commit");
+    const auto sameDestinationLog = ReadUtf8(logPath).substr(restartBefore);
+    Require(sameDestinationLog.find("Composition motion start") ==
+                std::string::npos &&
+                sameDestinationLog.find("Composition placement committed") ==
+                std::string::npos &&
+                sameDestinationLog.find("Widget presentation extent refresh") ==
+                std::string::npos,
+            "Same-destination lifecycle/snapshot refresh restarted placement or motion; log=" +
+                sameDestinationLog);
 
     if (arguments.geometryOnly) {
         Require(WaitUntil(kOperationTimeoutMilliseconds, [&] {

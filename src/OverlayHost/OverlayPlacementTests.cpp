@@ -557,29 +557,31 @@ int main() {
     Check(!ResolveWidgetSurface(invalidAxis, ordinaryWork),
           "invalid native axis mode rejects the surface admission");
 
-    const auto preferredGeometry = ComputeOverlaySurfaceGeometry(
-        952.0F, 698.0F, 880.0F, 520.0F);
-    const auto contentGeometry = ComputeOverlaySurfaceGeometry(
-        betweenContent->windowWidthDip, betweenContent->windowHeightDip,
+    const auto preferredPanel = ComputePanelLocalSurfaceGeometry(880.0F, 520.0F);
+    const auto contentPanel = ComputePanelLocalSurfaceGeometry(
         betweenContent->panelWidthDip, betweenContent->panelHeightDip);
-    const auto preferredPlacement = ComputeOverlayPlacement(
-        ordinaryWork.workArea, 96, 952.0F, 698.0F);
-    const auto contentPlacement = ComputeOverlayPlacement(
-        ordinaryWork.workArea, 96,
-        betweenContent->windowWidthDip, betweenContent->windowHeightDip);
-    Check(preferredGeometry && contentGeometry &&
-              preferredPlacement && contentPlacement,
-          "Preferred and Content transitions both resolve anchored geometry");
-    CheckNear(
-        static_cast<float>(preferredPlacement->y) + preferredGeometry->trayY,
-        static_cast<float>(contentPlacement->y) + contentGeometry->trayY,
-        "surface transitions keep the tray at one screen coordinate");
-    CheckNear(
-        static_cast<float>(preferredPlacement->y) + preferredGeometry->footerY +
-            preferredGeometry->footerHeight,
-        static_cast<float>(contentPlacement->y) + contentGeometry->footerY +
-            contentGeometry->footerHeight,
-        "surface transitions keep the guide/panel bottom screen anchor fixed");
+    Check(preferredPanel && contentPanel,
+          "Preferred and Content panels both resolve local composition geometry");
+    CheckNear(preferredPanel->panelX, 0.0F,
+              "Preferred panel starts at the content surface origin");
+    CheckNear(preferredPanel->panelY, 0.0F,
+              "Preferred panel has no external chrome top reservation");
+    CheckNear(preferredPanel->panelWidth, 880.0F,
+              "Preferred panel retains its authored local width");
+    CheckNear(preferredPanel->footerY, 520.0F,
+              "Preferred panel ends at its local surface bottom");
+    CheckNear(preferredPanel->footerHeight, 0.0F,
+              "fixed guide is excluded from the content surface");
+    CheckNear(preferredPanel->trayHeight, 0.0F,
+              "fixed tray is excluded from the content surface");
+    CheckNear(contentPanel->panelWidth, betweenContent->panelWidthDip,
+              "Content width becomes the exact local panel width");
+    CheckNear(contentPanel->panelHeight, betweenContent->panelHeightDip,
+              "Content height becomes the exact local panel height");
+    Check(!ComputePanelLocalSurfaceGeometry(0.0F, 520.0F) &&
+              !ComputePanelLocalSurfaceGeometry(
+                  std::numeric_limits<float>::quiet_NaN(), 520.0F),
+          "invalid panel-local geometry fails closed");
 
     const auto compact720p = ResolveWidgetSurface(
         compactRequest,

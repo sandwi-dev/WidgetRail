@@ -211,6 +211,20 @@ PlanCompositionChildCoordinates(
     return result;
 }
 
+/// Fixed chrome lives in a companion HWND. Its guide/tray offsets are resolved
+/// from that real client origin after the animated content space is planned.
+[[nodiscard]] constexpr CompositionChildCoordinateSpaces
+ApplyFixedChromeChildOffsets(
+    CompositionChildCoordinateSpaces result,
+    const CompositionPoint guideOffset,
+    const CompositionPoint trayOffset) noexcept {
+    result.guideOffsetX = guideOffset.x;
+    result.guideOffsetY = guideOffset.y;
+    result.trayOffsetX = trayOffset.x;
+    result.trayOffsetY = trayOffset.y;
+    return result;
+}
+
 [[nodiscard]] constexpr CompositionPoint ProjectContentPoint(
     const CompositionChildCoordinateSpaces& spaces,
     const CompositionPoint local) noexcept {

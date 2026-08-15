@@ -2,6 +2,8 @@
 
 #include "OverlayCompositionSurface.h"
 
+#include <algorithm>
+
 namespace gba::shell {
 
 RECT ComputeFixedChromeWindowBounds(
@@ -11,6 +13,27 @@ RECT ComputeFixedChromeWindowBounds(
     const LONG availableWidth = workArea.right - workArea.left;
     const LONG left = workArea.left + (availableWidth - width) / 2;
     return {left, workArea.bottom - height, left + width, workArea.bottom};
+}
+
+std::optional<RECT> ComputeContentWindowBoundsAboveGuide(
+    const RECT& workArea,
+    const LONG guideTop,
+    const LONG width,
+    const LONG height,
+    const LONG panelToGuideGap) noexcept {
+    if (width <= 0 || height <= 0 || panelToGuideGap < 0 ||
+        workArea.right <= workArea.left ||
+        workArea.bottom <= workArea.top) return std::nullopt;
+    const LONG maximumX = workArea.right - width;
+    const LONG maximumY = workArea.bottom - height;
+    if (maximumX < workArea.left || maximumY < workArea.top)
+        return std::nullopt;
+    const LONG left = workArea.left +
+        ((workArea.right - workArea.left) - width) / 2;
+    const LONG top = std::clamp(
+        guideTop - panelToGuideGap - height,
+        workArea.top, maximumY);
+    return RECT{left, top, left + width, top + height};
 }
 
 bool IsFixedChromeHit(

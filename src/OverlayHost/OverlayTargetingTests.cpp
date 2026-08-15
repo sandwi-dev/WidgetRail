@@ -125,49 +125,60 @@ int main() {
               fixedContainer.offsetX == 320.0F &&
               fixedContainer.offsetY == 40.0F &&
               fixedContainer.retainsTransparentContainer,
-          "fixed shell container centers settled content and retains transparent unused client");
-    constexpr auto bottomAnchoredDashboard = gba::PlanCompositionMotion(
-        1549, 919, 1549, 236, 1549.0F, 236.0F,
+          "content-only union centers the panel without adding chrome reservation");
+    constexpr auto panelMotionStart = gba::PlanCompositionMotion(
+        760, 645, 760, 385, 560.0F, 645.0F,
         gba::CompositionVerticalAnchor::Bottom);
-    Check(bottomAnchoredDashboard.scaleX == 1.0F &&
-              bottomAnchoredDashboard.scaleY == 1.0F &&
-              bottomAnchoredDashboard.offsetX == 0.0F &&
-              bottomAnchoredDashboard.offsetY == 683.0F &&
-              bottomAnchoredDashboard.retainsTransparentContainer,
-          "cold dashboard is bottom anchored inside the retained shared host");
-    constexpr auto bottomAnchoredTransition = gba::PlanCompositionMotion(
-        1549, 919, 1549, 919, 1549.0F, 236.0F,
+    Check(panelMotionStart.containerWidth == 760 &&
+              panelMotionStart.containerHeight == 645 &&
+              panelMotionStart.scaleX > 0.73F &&
+              panelMotionStart.scaleX < 0.74F &&
+              panelMotionStart.scaleY > 1.67F &&
+              panelMotionStart.scaleY < 1.68F &&
+              panelMotionStart.offsetY == 0.0F,
+          "panel-local destination starts from the retained panel envelope");
+    constexpr auto panelMotionEnd = gba::PlanCompositionMotion(
+        760, 645, 760, 385, 760.0F, 385.0F,
         gba::CompositionVerticalAnchor::Bottom);
-    Check(bottomAnchoredTransition.offsetY == 683.0F &&
-              bottomAnchoredTransition.scaleY > 0.25F &&
-              bottomAnchoredTransition.scaleY < 0.26F,
-          "dashboard-to-widget motion starts from the same bottom anchor");
+    Check(panelMotionEnd.scaleX == 1.0F && panelMotionEnd.scaleY == 1.0F &&
+              panelMotionEnd.offsetX == 0.0F && panelMotionEnd.offsetY == 260.0F,
+          "panel-local destination settles at the same visible bottom edge");
     Check(gba::PlanCompositionMotion(0, 700, 540, 620, 540.0F, 620.0F) ==
               gba::CompositionMotionPlan{},
           "invalid source geometry cannot start compositor motion");
 
     constexpr gba::CompositionPoint contentPoint{100.0F, 80.0F};
-    constexpr gba::CompositionPoint trayPoint{500.0F, 650.0F};
-    constexpr auto childStart = gba::PlanCompositionChildCoordinates(
+    constexpr gba::CompositionPoint guidePoint{200.0F, 30.0F};
+    constexpr gba::CompositionPoint trayPoint{500.0F, 60.0F};
+    constexpr gba::CompositionPoint fixedGuideOffset{-120.0F, 900.0F};
+    constexpr gba::CompositionPoint fixedTrayOffset{-200.0F, 980.0F};
+    constexpr auto childStart = gba::ApplyFixedChromeChildOffsets(
+        gba::PlanCompositionChildCoordinates(
         gba::PlanCompositionMotion(
-            1180, 878, 632, 878, 592.0F, 698.0F,
+            632, 878, 632, 878, 592.0F, 698.0F,
             gba::CompositionVerticalAnchor::Bottom),
-        632, 878);
-    constexpr auto childMid = gba::PlanCompositionChildCoordinates(
+        632, 878), fixedGuideOffset, fixedTrayOffset);
+    constexpr auto childMid = gba::ApplyFixedChromeChildOffsets(
+        gba::PlanCompositionChildCoordinates(
         gba::PlanCompositionMotion(
-            1180, 878, 632, 878, 612.0F, 788.0F,
+            632, 878, 632, 878, 612.0F, 788.0F,
             gba::CompositionVerticalAnchor::Bottom),
-        632, 878);
-    constexpr auto childEnd = gba::PlanCompositionChildCoordinates(
+        632, 878), fixedGuideOffset, fixedTrayOffset);
+    constexpr auto childEnd = gba::ApplyFixedChromeChildOffsets(
+        gba::PlanCompositionChildCoordinates(
         gba::PlanCompositionMotion(
-            1180, 878, 632, 878, 632.0F, 878.0F,
+            632, 878, 632, 878, 632.0F, 878.0F,
             gba::CompositionVerticalAnchor::Bottom),
-        632, 878);
-    constexpr auto trayStart = gba::ProjectChromePoint(childStart, trayPoint);
-    constexpr auto trayMid = gba::ProjectChromePoint(childMid, trayPoint);
-    constexpr auto trayEnd = gba::ProjectChromePoint(childEnd, trayPoint);
-    Check(trayStart == trayMid && trayMid == trayEnd,
-          "tray and guide child coordinates remain identity-scaled at start midpoint and end");
+        632, 878), fixedGuideOffset, fixedTrayOffset);
+    constexpr auto trayStart = gba::ProjectTrayPoint(childStart, trayPoint);
+    constexpr auto trayMid = gba::ProjectTrayPoint(childMid, trayPoint);
+    constexpr auto trayEnd = gba::ProjectTrayPoint(childEnd, trayPoint);
+    constexpr auto guideStart = gba::ProjectGuidePoint(childStart, guidePoint);
+    constexpr auto guideMid = gba::ProjectGuidePoint(childMid, guidePoint);
+    constexpr auto guideEnd = gba::ProjectGuidePoint(childEnd, guidePoint);
+    Check(trayStart == trayMid && trayMid == trayEnd &&
+              guideStart == guideMid && guideMid == guideEnd,
+          "companion-HWND guide and tray stay fixed through content motion");
     constexpr auto contentStart = gba::ProjectContentPoint(childStart, contentPoint);
     constexpr auto contentMid = gba::ProjectContentPoint(childMid, contentPoint);
     constexpr auto contentEnd = gba::ProjectContentPoint(childEnd, contentPoint);
@@ -178,20 +189,21 @@ int main() {
               "midpoint pointer inverse agrees with animated content x");
     CheckNear(inverseMid.y, contentPoint.y,
               "midpoint pointer inverse agrees with animated content y");
-    constexpr auto trayInverse = gba::InverseChromePoint(childMid, trayMid);
+    constexpr auto trayInverse = gba::InverseTrayPoint(childMid, trayMid);
     CheckNear(trayInverse.x, trayPoint.x,
               "midpoint tray pointer remains in fixed child x space");
     CheckNear(trayInverse.y, trayPoint.y,
               "midpoint tray pointer remains in fixed child y space");
-    constexpr auto oddContainerChrome = gba::PlanCompositionChildCoordinates(
-        gba::PlanCompositionMotion(
+    constexpr auto oddContainerChrome = gba::ApplyFixedChromeChildOffsets(
+        gba::PlanCompositionChildCoordinates(gba::PlanCompositionMotion(
             1181, 878, 632, 878, 612.0F, 788.0F,
             gba::CompositionVerticalAnchor::Bottom),
-        632, 878, 275.0F, 0.0F);
-    CheckNear(oddContainerChrome.chromeOffsetX, 275.0F,
-              "odd-width union uses the exact integer destination x offset");
-    CheckNear(gba::ProjectChromePoint(oddContainerChrome, trayPoint).x, 775.0F,
-              "exact odd-width chrome placement survives final HWND settlement");
+        632, 878, 275.0F, 0.0F),
+        fixedGuideOffset, {275.0F, 980.0F});
+    CheckNear(oddContainerChrome.content.offsetX, 284.5F,
+              "odd-width content union retains its fractional visual center");
+    CheckNear(gba::ProjectTrayPoint(oddContainerChrome, trayPoint).x, 775.0F,
+              "fixed tray uses the exact companion-HWND offset at odd parity");
 
     Check(gba::ResolveWidgetExtentAuthority(true, true) ==
               gba::WidgetExtentAuthority::AdmittedSnapshot,

@@ -3,6 +3,7 @@
 #include <d2d1_1.h>
 
 #include <cstdint>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -20,6 +21,12 @@ constexpr DWORD FixedChromeWindowExStyle() noexcept {
 
 [[nodiscard]] RECT ComputeFixedChromeWindowBounds(
     const RECT& workArea, LONG width, LONG height) noexcept;
+[[nodiscard]] std::optional<RECT> ComputeContentWindowBoundsAboveGuide(
+    const RECT& workArea,
+    LONG guideTop,
+    LONG width,
+    LONG height,
+    LONG panelToGuideGap) noexcept;
 [[nodiscard]] bool IsFixedChromeHit(
     POINT screenPoint, const RECT& guideBounds, const RECT& trayBounds) noexcept;
 [[nodiscard]] bool ApplyFixedChromeWindow(

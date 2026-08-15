@@ -274,6 +274,83 @@ void DestinationAdmissionOwnsLayoutBeforeEnvelopeSettlement() {
           "settled viewport is authored Network geometry without stale scaling");
 }
 
+void CommittedDestinationDrivesLateAdmissionAndStableRefresh() {
+    gba::OverlayPresentationTransaction transaction;
+    constexpr gba::OverlayPresentationExtent retainedNetwork{560, 645};
+    constexpr gba::OverlayPresentationExtent admittedYtMusic{760, 385};
+    constexpr gba::OverlayPlacement networkPlacement{680, 250, 560, 645};
+    constexpr gba::OverlayPlacement networkContainer = networkPlacement;
+    const auto network = transaction.PrepareCompositionAdmission(
+        0, 0, networkPlacement, networkContainer, retainedNetwork,
+        10, false, false);
+    transaction.AcceptCompositionAdmission(network, L"network-controls");
+    Check(transaction.committedDestination() &&
+              transaction.committedDestination()->widgetId == L"network-controls" &&
+              transaction.CommittedDestinationExtent(admittedYtMusic) == retainedNetwork &&
+              transaction.PresentedExtent(admittedYtMusic, true) == retainedNetwork,
+          "late provider model changes cannot replace committed destination authority");
+    Check(gba::DecideOverlayPresentation(
+              true, true,
+              transaction.CommittedDestinationExtent(admittedYtMusic),
+              admittedYtMusic) == gba::OverlayPresentationDirective::Place,
+          "YT admission requests placement against the retained Network destination");
+
+    constexpr int guideTop = 900;
+    constexpr int authoredGap = 5;
+    constexpr gba::OverlayPlacement ytPlacement{
+        580, guideTop - authoredGap - admittedYtMusic.heightDip,
+        admittedYtMusic.widthDip, admittedYtMusic.heightDip};
+    constexpr gba::OverlayPlacement motionContainer{
+        580, guideTop - authoredGap - retainedNetwork.heightDip,
+        admittedYtMusic.widthDip, retainedNetwork.heightDip};
+    transaction.BeginExtentTransition(
+        retainedNetwork, admittedYtMusic, 100, false, true);
+    const auto ytAdmission = transaction.PrepareCompositionAdmission(
+        retainedNetwork.widthDip, retainedNetwork.heightDip,
+        ytPlacement, motionContainer, admittedYtMusic,
+        100, false, true);
+    const auto visibleBottom = [&](const gba::CompositionMotionPlan& motion) {
+        return static_cast<float>(motionContainer.y) + motion.offsetY +
+            static_cast<float>(ytPlacement.height) * motion.scaleY;
+    };
+    Near(visibleBottom(ytAdmission.initialPresentation),
+         static_cast<float>(guideTop - authoredGap),
+         "transition start keeps panel above the fixed guide gap");
+    transaction.AcceptCompositionAdmission(ytAdmission, L"org.gbar.samples.ytmusic");
+    Check(transaction.committedDestination() &&
+              transaction.committedDestination()->widgetId ==
+                  L"org.gbar.samples.ytmusic" &&
+              transaction.CommittedDestinationExtent(retainedNetwork) == admittedYtMusic,
+          "successful admission atomically advances identity and destination extent");
+
+    const auto midpoint = transaction.PrepareCompositionStep(170, false);
+    Check(midpoint && !midpoint->finalFrame,
+          "accepted destination retains one in-flight midpoint");
+    Near(visibleBottom(midpoint->presentation),
+         static_cast<float>(guideTop - authoredGap),
+         "transition midpoint keeps panel above the fixed guide gap");
+    transaction.AcceptCompositionStep(*midpoint);
+
+    const auto presentedMidpoint = transaction.PresentedExtent(
+        admittedYtMusic, true);
+    Check(presentedMidpoint != admittedYtMusic &&
+              gba::DecideOverlayPresentation(
+                  true, true,
+                  transaction.CommittedDestinationExtent(admittedYtMusic),
+                  admittedYtMusic) == gba::OverlayPresentationDirective::Repaint,
+          "same-destination lifecycle refresh repaints without restarting motion");
+    transaction.AcceptCompositionRepaint(L"org.gbar.samples.ytmusic");
+    const auto final = transaction.PrepareCompositionStep(240, false);
+    Check(final && final->finalFrame && final->index == midpoint->index + 1,
+          "same-destination refresh preserves the original motion sequence");
+    Near(visibleBottom(final->presentation),
+         static_cast<float>(guideTop - authoredGap),
+         "transition settlement keeps panel above the fixed guide gap");
+    transaction.AcceptCompositionStep(*final);
+    Check(transaction.PresentedExtent(admittedYtMusic, true) == admittedYtMusic,
+          "settled YT destination owns its authored extent");
+}
+
 void ReducedMotionAdmissionCommitsDestinationDirectly() {
     gba::OverlayPresentationTransaction transaction;
     constexpr gba::OverlayPresentationExtent compact{592, 698};
@@ -330,6 +407,7 @@ int main() {
     ReducedMotionExtentSnapsImmediately();
     HiddenExtentRetiresWithoutTerminalFrameWork();
     DestinationAdmissionOwnsLayoutBeforeEnvelopeSettlement();
+    CommittedDestinationDrivesLateAdmissionAndStableRefresh();
     ReducedMotionAdmissionCommitsDestinationDirectly();
     ClockAndDecisionsAreStable();
     std::cout << "OverlayTransitionTests: " << checks << " checks passed\n";

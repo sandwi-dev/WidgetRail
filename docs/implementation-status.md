@@ -5071,3 +5071,55 @@ focused Release composition group passes placement 112,333/112,333, targeting
 4,851/4,851. One native Release build produces `OverlayHost.exe` without tests
 or packaging. No launch, Tier 3, capture, provider/widget, or public-protocol
 work was performed; physical user cycling remains the final visual verdict.
+
+#### Physically accepted destination authority and focused regression lock
+
+The user physically accepted fixed-tray behavior and the cumulative destination-
+size correction through `7420d7a`. The existing presentation transaction now
+retains the last successfully committed widget identity and destination extent.
+An asynchronously admitted widget therefore compares its newly resolved desired
+extent with committed geometry even when the session model changed before the
+refresh wrapper ran. The accepted Network-to-YT case advances from committed and
+presented `560x645` to authored `760x385`; once that destination commit succeeds,
+later same-destination lifecycle or snapshot refreshes remain repaint-only and
+cannot restart placement or motion.
+
+Post-acceptance focused tests expose, without changing the accepted behavior,
+the BeginDraw physical-pixel-to-DIP normalization at 125% and 150% DPI, content-
+only frame-offset ownership, fixed guide/tray offset latching across repaint and
+surface replacement, panel-local geometry without external chrome reservation,
+the authored panel-to-guide gap at motion start/midpoint/settlement, and committed-
+destination authority across late admission and same-destination refresh. Old
+expectations that inferred fixed chrome from a combined shell rectangle were
+removed or replaced with companion-HWND/local-surface expectations.
+
+The focused Release composition group passes placement 112,340/112,340,
+targeting 76/76, transition 83/83, chrome/composition/window 119/119,
+accessibility provider 165/165, focus 49/49, host accessibility 34/34, and
+declarative renderer 4,851/4,851. The updated bounded widget-switch geometry
+fixture compiled, but its isolated temporary host failed before authenticated
+readiness with empty overlay and startup-error logs, so none of that route's
+eight-widget assertions executed. A reviewer-owned accepted host process held
+the ordinary Release link output; it was not terminated. The route was not
+repeated or redesigned after the proportionality stop. Real Z-order source
+review confirms backdrop/content placement uses `SWP_NOZORDER`, followed by one
+deferred `chrome > content > backdrop` operation, while the fixed chrome policy
+retains its owned topmost popup role. Process ownership remains one per-user,
+profile-scoped owner with the existing authenticated activation pipe.
+
+### Pending admission-stall evidence (DLV-239)
+
+This observation is recorded only for the next DLV-239 assignment and was not
+addressed by DLV-244. Live transition 23 at 06:54:33 selected `game-launcher`
+with `currentSnapshot=false`; refresh dequeued after 78 ms, lifecycle Establish
+was skipped with `reason=already-current`, and no snapshot request queued,
+started, or completed. The trace crossed its 250-ms slow threshold while retained
+Games & Apps pixels stayed visible. The user closed the overlay via Guide at
+06:54:35.707 and reopened it at 06:54:36.338. Only that new visible session then
+committed and triggered the Game Launcher extent refresh/sequence 10 from
+06:54:36.464 onward. There was no automatic recovery while the overlay remained
+open; close/reopen was required. Transition 22 to Games & Apps had queued,
+started, and completed Establish normally. The evidence shows snapshot eviction
+and lifecycle-current state diverge; DLV-239 must retain the last admitted
+checkpoint and/or ensure `RefreshRequested` queues a snapshot when lifecycle is
+already current.
