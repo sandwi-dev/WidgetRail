@@ -41,6 +41,7 @@ public:
         Microsoft::WRL::ComPtr<IDCompositionSurface> surface;
         Microsoft::WRL::ComPtr<ID2D1DeviceContext> target;
         POINT updateOffset{};
+        RECT updateArea{};
         unsigned int width{};
         unsigned int height{};
         float visualOffsetX{};

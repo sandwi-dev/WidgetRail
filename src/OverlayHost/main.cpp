@@ -6647,6 +6647,7 @@ private:
         const unsigned int height,
         const UINT dpi,
         const POINT updateOffset,
+        const RECT updateArea,
         const CompositionPaintLayer layer = CompositionPaintLayer::Combined,
         const gba::shell::TrayLayout* trayLayout = nullptr,
         const gba::declarative::Rect* guideBounds = nullptr) {
@@ -6658,14 +6659,30 @@ private:
             dpi != 0 ? dpi : 96U, interfaceScale);
         if (!metrics) return;
 
-        // IDCompositionSurface::BeginDraw reports its backing-surface offset
-        // in physical pixels. This device context draws in DIPs after SetDpi,
-        // so convert the atlas offset before composing it after interface zoom.
-        // Treating the raw pixel value as DIPs over-translates every child at
-        // non-96 DPI and can crop an otherwise correctly placed tray surface.
+        // BeginDraw reports both the requested surface rectangle and the
+        // backing-atlas offset in physical pixels. Direct2D draws in DIPs after
+        // SetDpi, while the widget scene is additionally scaled by the host
+        // interface scale. Translate by the difference of those two physical
+        // origins after DPI normalization: the scene coordinate represented
+        // by updateArea.left/top then lands exactly at updateOffset. For a full
+        // update the requested origin is zero, preserving the settled path.
         const auto updateOffsetDip = gba::NormalizeCompositionUpdateOffset(
             updateOffset, dpi);
+        const auto requestedOriginDip = gba::NormalizeCompositionUpdateOffset(
+            POINT{updateArea.left, updateArea.top}, dpi);
+        const auto requestedExtentDip = gba::NormalizeCompositionUpdateOffset(
+            POINT{
+                updateArea.right - updateArea.left,
+                updateArea.bottom - updateArea.top},
+            dpi);
         renderTarget_->SetTransform(D2D1::Matrix3x2F::Identity());
+        renderTarget_->PushAxisAlignedClip(
+            D2D1::RectF(
+                updateOffsetDip.x,
+                updateOffsetDip.y,
+                updateOffsetDip.x + requestedExtentDip.x,
+                updateOffsetDip.y + requestedExtentDip.y),
+            D2D1_ANTIALIAS_MODE_ALIASED);
         renderTarget_->Clear(compositionSurface_.available()
             ? D2D1::ColorF(0.0F, 0.0F, 0.0F, 0.0F)
             : D2DColor(kSafeCanvasFallback));
@@ -6673,12 +6690,18 @@ private:
             D2D1::Matrix3x2F::Scale(
                 metrics->interfaceScale, metrics->interfaceScale) *
             D2D1::Matrix3x2F::Translation(
-                updateOffsetDip.x, updateOffsetDip.y));
+                updateOffsetDip.x - requestedOriginDip.x,
+                updateOffsetDip.y - requestedOriginDip.y));
+
+        const auto finishUpdate = [&] {
+            renderTarget_->SetTransform(D2D1::Matrix3x2F::Identity());
+            renderTarget_->PopAxisAlignedClip();
+        };
 
         if (layer == CompositionPaintLayer::Tray && trayLayout) {
             DrawIconStrip(
                 width, height, nullptr, nullptr, trayLayout, false);
-            renderTarget_->SetTransform(D2D1::Matrix3x2F::Identity());
+            finishUpdate();
             return;
         }
         if (layer == CompositionPaintLayer::Guide && guideBounds) {
@@ -6691,7 +6714,7 @@ private:
                     PublishTrayAccessibility(*trayLayout, width, height);
                 }
             }
-            renderTarget_->SetTransform(D2D1::Matrix3x2F::Identity());
+            finishUpdate();
             return;
         }
 
@@ -6704,7 +6727,7 @@ private:
             DrawDashboard(metrics->viewportWidthDip, metrics->viewportHeightDip,
                           layer, trayLayout);
         }
-        renderTarget_->SetTransform(D2D1::Matrix3x2F::Identity());
+        finishUpdate();
     }
 
     struct CompositionLayerGeometry final {
@@ -7206,7 +7229,7 @@ private:
             return false;
         }
         DrawCurrentFrame(
-            fullWidth, fullHeight, dpi, frame.updateOffset,
+            fullWidth, fullHeight, dpi, frame.updateOffset, frame.updateArea,
             paintLayer, trayLayout, guideBounds);
         renderTarget_.Reset();
         result = compositionSurface_.EndFrame(frame);
@@ -7561,10 +7584,12 @@ private:
         // an opaque rectangular box around those content-shaped surfaces.
         // Keep the canvas color for style inheritance/contrast, but clear the
         // unused client area to the exact transparency key.
+        const RECT fullUpdate{
+            0, 0, static_cast<LONG>(width), static_cast<LONG>(height)};
         DrawCurrentFrame(
             width, height,
             dpiX > 0 ? static_cast<UINT>(std::lround(dpiX)) : 96U,
-            POINT{});
+            POINT{}, fullUpdate);
 
         const HRESULT result = renderTarget_->EndDraw();
         if (result == D2DERR_RECREATE_TARGET) {

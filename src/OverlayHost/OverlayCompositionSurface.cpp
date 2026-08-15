@@ -225,6 +225,7 @@ HRESULT OverlayCompositionSurface::BeginFrame(
         frame = {};
         return E_INVALIDARG;
     }
+    frame.updateArea = *updateArea;
     const HRESULT beginResult = frame.surface->BeginDraw(
         updateArea, __uuidof(ID2D1DeviceContext),
         reinterpret_cast<void**>(frame.target.ReleaseAndGetAddressOf()),
