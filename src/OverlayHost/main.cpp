@@ -69,6 +69,7 @@ namespace {
 
 constexpr wchar_t kWindowClass[] = L"GameBarAlternative.OverlayHost";
 constexpr wchar_t kBackdropWindowClass[] = L"GameBarAlternative.Backdrop";
+constexpr wchar_t kChromeWindowClass[] = L"GameBarAlternative.Chrome";
 constexpr int kPanelWidth = 1180;
 constexpr int kDashboardHeight = 180;
 constexpr int kWidgetPanelHeight = 700;
@@ -499,6 +500,17 @@ public:
             return FailWin32(L"RegisterClassExW(backdrop)", GetLastError());
         }
 
+        WNDCLASSEXW chromeClass{sizeof(chromeClass)};
+        chromeClass.style = CS_HREDRAW | CS_VREDRAW;
+        chromeClass.lpfnWndProc = ChromeWindowProc;
+        chromeClass.hInstance = instance_;
+        chromeClass.hCursor = LoadCursorW(nullptr, IDC_ARROW);
+        chromeClass.hbrBackground = nullptr;
+        chromeClass.lpszClassName = kChromeWindowClass;
+        if (!RegisterClassExW(&chromeClass)) {
+            return FailWin32(L"RegisterClassExW(chrome)", GetLastError());
+        }
+
         window_ = CreateWindowExW(
             WS_EX_TOOLWINDOW | WS_EX_NOREDIRECTIONBITMAP | WS_EX_TOPMOST,
             kWindowClass,
@@ -516,6 +528,23 @@ public:
             return FailWin32(L"CreateWindowExW", GetLastError());
         }
         accessibilityProvider_.Bind(window_, kAccessibilityActionMessage);
+        chromeWindow_ = CreateWindowExW(
+            WS_EX_TOOLWINDOW | WS_EX_NOREDIRECTIONBITMAP | WS_EX_NOACTIVATE |
+                WS_EX_TOPMOST,
+            kChromeWindowClass,
+            L"Game Bar Alternative chrome",
+            WS_POPUP,
+            CW_USEDEFAULT,
+            CW_USEDEFAULT,
+            1,
+            1,
+            nullptr,
+            nullptr,
+            instance_,
+            this);
+        if (!chromeWindow_) {
+            return FailWin32(L"CreateWindowExW(chrome)", GetLastError());
+        }
         backdropWindow_ = CreateWindowExW(
             WS_EX_TOOLWINDOW | WS_EX_LAYERED | WS_EX_NOACTIVATE | WS_EX_TOPMOST,
             kBackdropWindowClass,
@@ -578,7 +607,8 @@ public:
             return FailHresult(L"D2D1CreateFactory", d2dResult);
         }
         std::wstring compositionError;
-        if (compositionSurface_.Initialize(window_, d2dFactory_.Get(), compositionError)) {
+        if (compositionSurface_.Initialize(window_, d2dFactory_.Get(), compositionError) &&
+            compositionSurface_.InitializeChromeTarget(chromeWindow_, compositionError)) {
             // A premultiplied composition target carries transparency in its
             // alpha channel. Drop the legacy HWND color key and use full
             // authored opacity; the separate backdrop remains the only dimmer.
@@ -1162,6 +1192,36 @@ private:
             EndPaint(window, &paint);
             return 0;
         }
+        default:
+            return DefWindowProcW(window, message, wParam, lParam);
+        }
+    }
+
+    static LRESULT CALLBACK ChromeWindowProc(
+        HWND window, UINT message, WPARAM wParam, LPARAM lParam) {
+        OverlayApp* app = nullptr;
+        if (message == WM_NCCREATE) {
+            const auto create = reinterpret_cast<CREATESTRUCTW*>(lParam);
+            app = static_cast<OverlayApp*>(create->lpCreateParams);
+            app->chromeWindow_ = window;
+            SetWindowLongPtrW(window, GWLP_USERDATA, reinterpret_cast<LONG_PTR>(app));
+        } else {
+            app = reinterpret_cast<OverlayApp*>(GetWindowLongPtrW(window, GWLP_USERDATA));
+        }
+        if (!app) return DefWindowProcW(window, message, wParam, lParam);
+        switch (message) {
+        case WM_NCHITTEST:
+            return HTTRANSPARENT;
+        case WM_ERASEBKGND:
+            return 1;
+        case WM_PAINT: {
+            PAINTSTRUCT paint{};
+            BeginPaint(window, &paint);
+            EndPaint(window, &paint);
+            return 0;
+        }
+        case WM_GETOBJECT:
+            return app->accessibilityProvider_.HandleWmGetObject(wParam, lParam);
         default:
             return DefWindowProcW(window, message, wParam, lParam);
         }
@@ -1812,6 +1872,10 @@ private:
         if (backdropWindow_ && IsWindow(backdropWindow_)) {
             DestroyWindow(backdropWindow_);
             backdropWindow_ = nullptr;
+        }
+        if (chromeWindow_ && IsWindow(chromeWindow_)) {
+            DestroyWindow(chromeWindow_);
+            chromeWindow_ = nullptr;
         }
         if (backdropBrush_) {
             DeleteObject(backdropBrush_);
@@ -2778,8 +2842,7 @@ private:
                         bool accepted = true;
                         bool transactionAccepted = false;
                         if (step->finalFrame) {
-                        const auto settledContainer = ContainerForCompositionChrome(
-                            step->destinationPlacement);
+                        const auto settledContainer = step->destinationPlacement;
                         const gba::OverlayCompositionSurface::VisualPresentation
                             settledPresentation{
                                 1.0F, 1.0F,
@@ -2791,32 +2854,9 @@ private:
                                 static_cast<float>(step->destinationPlacement.height),
                             };
                         gba::OverlayCompositionSurface::CommitTiming settleTiming;
-                        const gba::OverlayCompositionSurface::ChromePresentation
-                            settledChrome{
-                                compositionChromeSession_
-                                    ? static_cast<float>(
-                                        compositionChromeSession_->guideScreenBounds.left -
-                                        settledContainer.x)
-                                    : static_cast<float>(retainedGuideSurfaceOrigin_.x),
-                                compositionChromeSession_
-                                    ? static_cast<float>(
-                                        compositionChromeSession_->guideScreenBounds.top -
-                                        settledContainer.y)
-                                    : static_cast<float>(retainedGuideSurfaceOrigin_.y),
-                                compositionChromeSession_
-                                    ? static_cast<float>(
-                                        compositionChromeSession_->trayScreenBounds.left -
-                                        settledContainer.x)
-                                    : static_cast<float>(retainedTraySurfaceOrigin_.x),
-                                compositionChromeSession_
-                                    ? static_cast<float>(
-                                        compositionChromeSession_->trayScreenBounds.top -
-                                        settledContainer.y)
-                                    : static_cast<float>(retainedTraySurfaceOrigin_.y),
-                            };
                         const HRESULT settleResult =
                             compositionSurface_.CommitPresentation(
-                                settledPresentation, settleTiming, &settledChrome);
+                                settledPresentation, settleTiming);
                         BOOL placed = FALSE;
                         if (SUCCEEDED(settleResult)) {
                             // Publish settled transaction state before the
@@ -2939,15 +2979,17 @@ private:
             explicit PlacementGuard(bool& value) : active(value) { active = true; }
             ~PlacementGuard() { active = false; }
         } guard(compositionPlacementInProgress_);
-        if (!EnsureCompositionChromeSession(
-                static_cast<unsigned int>(placement.width),
-                static_cast<unsigned int>(placement.height), dpi,
-                containerPlacement)) {
+        const HMONITOR chromeMonitor = MonitorFromWindow(
+            window_, MONITOR_DEFAULTTONEAREST);
+        MONITORINFO chromeMonitorInfo{sizeof(chromeMonitorInfo)};
+        if (!chromeMonitor || !GetMonitorInfoW(chromeMonitor, &chromeMonitorInfo) ||
+            !EnsureCompositionChromeSession(dpi, chromeMonitorInfo.rcWork)) {
             DisableCompositionFallback(L"session chrome layout unavailable");
             return false;
         }
-        const auto composedContainer =
-            ContainerForCompositionChrome(containerPlacement);
+        // The content endpoint owns only the active envelope. Fixed guide/tray
+        // chrome is committed in its companion target and never expands this HWND.
+        const auto composedContainer = containerPlacement;
         CompositionFrameSet frames;
         std::uint64_t drawMicroseconds{};
         const float destinationOffsetX = static_cast<float>(
@@ -2980,11 +3022,16 @@ private:
         std::vector<gba::OverlayCompositionSurface::Frame*> framePointers;
         framePointers.reserve(frames.frames.size());
         for (auto& frame : frames.frames) framePointers.push_back(&frame);
+        RECT chromeBounds{};
+        if (!chromeWindow_ || !GetWindowRect(chromeWindow_, &chromeBounds)) {
+            DisableCompositionFallback(L"fixed chrome bounds unavailable");
+            return false;
+        }
         const gba::OverlayCompositionSurface::ChromePresentation chrome{
-            static_cast<float>(frames.guideScreenBounds.left - composedContainer.x),
-            static_cast<float>(frames.guideScreenBounds.top - composedContainer.y),
-            static_cast<float>(frames.trayScreenBounds.left - composedContainer.x),
-            static_cast<float>(frames.trayScreenBounds.top - composedContainer.y),
+            static_cast<float>(frames.guideScreenBounds.left - chromeBounds.left),
+            static_cast<float>(frames.guideScreenBounds.top - chromeBounds.top),
+            static_cast<float>(frames.trayScreenBounds.left - chromeBounds.left),
+            static_cast<float>(frames.trayScreenBounds.top - chromeBounds.top),
         };
         const HRESULT commitResult = compositionSurface_.CommitFrames(
             framePointers, !wasVisible, commitTiming, &presentation, &chrome);
@@ -3232,6 +3279,7 @@ private:
         if (!wasVisible) {
             ShowWindow(backdropWindow_, SW_SHOWNOACTIVATE);
             ShowWindow(window_, SW_SHOWNORMAL);
+            ShowWindow(chromeWindow_, SW_SHOWNOACTIVATE);
         }
         if (!wasVisible) {
             // Activation is one best-effort show-time request. Controller
@@ -3288,10 +3336,13 @@ private:
         bridge_.AbandonWidgetCatalogChangedRevision();
         sessions_.ResetCatalogRetry();
         ShowWindow(window_, SW_HIDE);
+        ShowWindow(chromeWindow_, SW_HIDE);
         ShowWindow(backdropWindow_, SW_HIDE);
         SetWindowPos(window_, HWND_NOTOPMOST, 0, 0, 0, 0,
                      SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
         SetWindowPos(backdropWindow_, HWND_NOTOPMOST, 0, 0, 0, 0,
+                     SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
+        SetWindowPos(chromeWindow_, HWND_NOTOPMOST, 0, 0, 0, 0,
                      SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
         DiscardGraphicsResources();
         const HWND restoreTarget = reinterpret_cast<HWND>(
@@ -3325,14 +3376,16 @@ private:
     }
 
     void ReassertOverlayZOrder() {
-        if (!window_ || !backdropWindow_ ||
+        if (!window_ || !chromeWindow_ || !backdropWindow_ ||
             state_.surface() == gba::Surface::Hidden) return;
         const auto flags = SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE | SWP_SHOWWINDOW;
         const BOOL backdropResult = SetWindowPos(
             backdropWindow_, HWND_TOPMOST, 0, 0, 0, 0, flags);
         const BOOL overlayResult = SetWindowPos(
             window_, HWND_TOPMOST, 0, 0, 0, 0, flags);
-        if (!backdropResult || !overlayResult) {
+        const BOOL chromeResult = SetWindowPos(
+            chromeWindow_, HWND_TOPMOST, 0, 0, 0, 0, flags);
+        if (!backdropResult || !overlayResult || !chromeResult) {
             AppendDiagnostic(L"Topmost reassertion failed error=" +
                              std::to_wstring(GetLastError()));
         }
@@ -3696,7 +3749,8 @@ private:
         if (spaces.content.containerWidth == 0) return std::nullopt;
         auto result = spaces;
         RECT windowBounds{};
-        if (compositionChromeSession_ && window_ && GetWindowRect(window_, &windowBounds)) {
+        if (compositionChromeSession_ && chromeWindow_ &&
+            GetWindowRect(chromeWindow_, &windowBounds)) {
             result.guideOffsetX = static_cast<float>(
                 compositionChromeSession_->guideScreenBounds.left - windowBounds.left);
             result.guideOffsetY = static_cast<float>(
@@ -6057,6 +6111,7 @@ private:
         RECT guideCrop{};
         RECT trayScreenBounds{};
         RECT guideScreenBounds{};
+        RECT windowBounds{};
     };
 
     [[nodiscard]] static RECT PhysicalCrop(
@@ -6090,10 +6145,8 @@ private:
     }
 
     [[nodiscard]] bool EnsureCompositionChromeSession(
-        const unsigned int width,
-        const unsigned int height,
         const UINT dpi,
-        const gba::OverlayPlacement& containerPlacement) {
+        const RECT& workArea) {
         const UINT effectiveDpi = dpi != 0 ? dpi : 96U;
         if (compositionChromeSession_ &&
             compositionChromeSession_->dpi == effectiveDpi &&
@@ -6107,7 +6160,7 @@ private:
             ? static_cast<float>(appearanceState_.current()->interfaceScale)
             : 1.0F;
         const auto metrics = gba::ComputeOverlayRenderMetrics(
-            static_cast<int>(width), static_cast<int>(height), effectiveDpi,
+            workArea.right - workArea.left, workArea.bottom - workArea.top, effectiveDpi,
             interfaceScale);
         if (!metrics) return false;
         const auto layout = gba::shell::ComputeTrayLayout(
@@ -6115,8 +6168,8 @@ private:
             state_.order().size(), state_.selectedSlot());
         if (!layout) return false;
         CompositionChromeSession session;
-        session.canvasWidth = width;
-        session.canvasHeight = height;
+        session.canvasWidth = static_cast<unsigned int>(workArea.right - workArea.left);
+        session.canvasHeight = static_cast<unsigned int>(workArea.bottom - workArea.top);
         session.dpi = effectiveDpi;
         session.appearanceRevision = static_cast<std::uint64_t>(
             std::max<long long>(0, appearanceState_.current()
@@ -6133,17 +6186,18 @@ private:
             (focusOutlineWidth_ + 2.0F) * metrics->physicalPixelsPerDip)));
         session.trayCrop = ExpandCrop(
             PhysicalCrop(layout->stripBounds, metrics->physicalPixelsPerDip,
-                         width, height),
-            focusPadding, width, height);
+                         session.canvasWidth, session.canvasHeight),
+            focusPadding, session.canvasWidth, session.canvasHeight);
         session.guideCrop = PhysicalCrop(
-            session.guideBounds, metrics->physicalPixelsPerDip, width, height);
+            session.guideBounds, metrics->physicalPixelsPerDip,
+            session.canvasWidth, session.canvasHeight);
         const LONG trayWidth = session.trayCrop.right - session.trayCrop.left;
         const LONG trayHeight = session.trayCrop.bottom - session.trayCrop.top;
         session.trayScreenBounds = {
-            containerPlacement.x + (containerPlacement.width - trayWidth) / 2,
-            containerPlacement.y + containerPlacement.height - trayHeight,
-            containerPlacement.x + (containerPlacement.width + trayWidth) / 2,
-            containerPlacement.y + containerPlacement.height,
+            workArea.left + ((workArea.right - workArea.left) - trayWidth) / 2,
+            workArea.bottom - trayHeight,
+            workArea.left + ((workArea.right - workArea.left) + trayWidth) / 2,
+            workArea.bottom,
         };
         const LONG guideWidth = session.guideCrop.right - session.guideCrop.left;
         const LONG guideHeight = session.guideCrop.bottom - session.guideCrop.top;
@@ -6153,6 +6207,22 @@ private:
             session.trayScreenBounds.left + (trayWidth + guideWidth) / 2,
             session.trayScreenBounds.top,
         };
+        session.windowBounds = {
+            std::min(session.trayScreenBounds.left, session.guideScreenBounds.left),
+            session.guideScreenBounds.top,
+            std::max(session.trayScreenBounds.right, session.guideScreenBounds.right),
+            session.trayScreenBounds.bottom,
+        };
+        if (!chromeWindow_ || !SetWindowPos(
+                chromeWindow_, HWND_TOPMOST, session.windowBounds.left,
+                session.windowBounds.top,
+                session.windowBounds.right - session.windowBounds.left,
+                session.windowBounds.bottom - session.windowBounds.top,
+                SWP_NOACTIVATE | SWP_SHOWWINDOW)) {
+            AppendDiagnostic(L"Fixed chrome placement failed error=" +
+                             std::to_wstring(GetLastError()));
+            return false;
+        }
         compositionChromeSession_ = std::move(session);
         return true;
     }
@@ -6353,8 +6423,10 @@ private:
             return false;
         }
 
-        if (!EnsureCompositionChromeSession(
-                width, height, dpi, containerPlacement) ||
+        const HMONITOR monitor = MonitorFromWindow(window_, MONITOR_DEFAULTTONEAREST);
+        MONITORINFO monitorInfo{sizeof(monitorInfo)};
+        if (!monitor || !GetMonitorInfoW(monitor, &monitorInfo) ||
+            !EnsureCompositionChromeSession(dpi, monitorInfo.rcWork) ||
             !compositionChromeSession_) return false;
         const auto& chromeSession = *compositionChromeSession_;
         const float sessionScale = appearanceState_.current()
@@ -6504,11 +6576,13 @@ private:
         std::vector<gba::OverlayCompositionSurface::Frame*> framePointers;
         framePointers.reserve(frames.frames.size());
         for (auto& frame : frames.frames) framePointers.push_back(&frame);
+        RECT chromeBounds{};
+        if (!chromeWindow_ || !GetWindowRect(chromeWindow_, &chromeBounds)) return false;
         const gba::OverlayCompositionSurface::ChromePresentation chrome{
-            static_cast<float>(frames.guideScreenBounds.left - containerPlacement.x),
-            static_cast<float>(frames.guideScreenBounds.top - containerPlacement.y),
-            static_cast<float>(frames.trayScreenBounds.left - containerPlacement.x),
-            static_cast<float>(frames.trayScreenBounds.top - containerPlacement.y),
+            static_cast<float>(frames.guideScreenBounds.left - chromeBounds.left),
+            static_cast<float>(frames.guideScreenBounds.top - chromeBounds.top),
+            static_cast<float>(frames.trayScreenBounds.left - chromeBounds.left),
+            static_cast<float>(frames.trayScreenBounds.top - chromeBounds.top),
         };
         gba::OverlayCompositionSurface::CommitTiming timing;
         const HRESULT result = compositionSurface_.CommitFrames(
@@ -7577,6 +7651,7 @@ private:
 
     HINSTANCE instance_{};
     HWND window_{};
+    HWND chromeWindow_{};
     GbaOverlayPlatformHandle* platform_{};
     gba::PlacementRefreshGate placementRefreshGate_;
     gba::DisplayRefreshAccumulator displayRefresh_;
