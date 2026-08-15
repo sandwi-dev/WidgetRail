@@ -37,6 +37,11 @@ struct CompositionMotionStep final {
     bool finalFrame{};
 };
 
+struct CommittedPresentationDestination final {
+    std::wstring widgetId;
+    OverlayPresentationExtent extentDip;
+};
+
 /// Owns the bounded state of one visible presentation handoff. The Win32 host
 /// remains the sole HWND, compositor, render, focus, input, and UIA owner; it
 /// executes the typed directives produced here after destination layout has
@@ -71,9 +76,12 @@ public:
     [[nodiscard]] OverlayPresentationExtent PresentedExtent(
         const OverlayPresentationExtent desired,
         const bool compositionAvailable) const noexcept {
-        return compositionAvailable
-            ? compositionPresentedExtentDip_.value_or(desired)
-            : animatedExtentDip_.value_or(desired);
+        if (!compositionAvailable) return animatedExtentDip_.value_or(desired);
+        if (compositionPresentedExtentDip_)
+            return *compositionPresentedExtentDip_;
+        return committedDestination_
+            ? committedDestination_->extentDip
+            : desired;
     }
 
     void HoldPresentedExtent(const OverlayPresentationExtent extent) noexcept {
@@ -191,9 +199,12 @@ public:
     }
 
     void AcceptCompositionAdmission(
-        const CompositionAdmissionDirective& directive) noexcept {
+        const CompositionAdmissionDirective& directive,
+        const std::wstring_view widgetId = {}) noexcept {
         contentPlacement_ = directive.destinationPlacement;
         settledContainerPlacement_ = directive.containerPlacement;
+        committedDestination_ = CommittedPresentationDestination{
+            std::wstring{widgetId}, directive.destinationExtentDip};
         if (!directive.animateMotion) {
             finalCompositionPlacement_.reset();
             compositionPresentedExtentDip_.reset();
@@ -217,6 +228,27 @@ public:
                 static_cast<float>(directive.destinationPlacement.height) *
                 directive.initialPresentation.scaleY / motionPixelsPerDipY_)),
         };
+    }
+
+    /// A same-geometry repaint may transfer the active identity without moving
+    /// the HWND. Keep the already committed extent and update only that typed
+    /// destination identity after the frame commit succeeds.
+    void AcceptCompositionRepaint(
+        const std::wstring_view widgetId) noexcept {
+        if (committedDestination_)
+            committedDestination_->widgetId = widgetId;
+    }
+
+    [[nodiscard]] const std::optional<CommittedPresentationDestination>&
+    committedDestination() const noexcept {
+        return committedDestination_;
+    }
+
+    [[nodiscard]] OverlayPresentationExtent CommittedDestinationExtent(
+        const OverlayPresentationExtent fallback) const noexcept {
+        return committedDestination_
+            ? committedDestination_->extentDip
+            : fallback;
     }
 
     void RejectCompositionAdmission() noexcept {
@@ -331,6 +363,7 @@ public:
         settledContainerPlacement_.reset();
         contentPlacement_.reset();
         compositionPresentedExtentDip_.reset();
+        committedDestination_.reset();
         motionPixelsPerDipX_ = 1.0F;
         motionPixelsPerDipY_ = 1.0F;
         motionCommitCount_ = 0;
@@ -348,6 +381,7 @@ private:
     std::optional<OverlayPlacement> settledContainerPlacement_;
     std::optional<OverlayPlacement> contentPlacement_;
     std::optional<OverlayPresentationExtent> compositionPresentedExtentDip_;
+    std::optional<CommittedPresentationDestination> committedDestination_;
     float motionPixelsPerDipX_{1.0F};
     float motionPixelsPerDipY_{1.0F};
     std::uint64_t motionCommitCount_{};

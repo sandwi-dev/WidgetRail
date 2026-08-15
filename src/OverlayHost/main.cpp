@@ -1961,7 +1961,11 @@ private:
         const std::optional<gba::Command> command = std::nullopt) {
         const auto priorSurface = state_.surface();
         const auto priorFocusRegion = state_.focusRegion();
-        const auto priorExtent = DesiredPresentationExtentDip();
+        const auto priorDesiredExtent = DesiredPresentationExtentDip();
+        const auto priorExtent = compositionSurface_.available()
+            ? presentationTransaction_.CommittedDestinationExtent(
+                priorDesiredExtent)
+            : priorDesiredExtent;
         const auto priorPresentedExtent = PresentedPresentationExtentDip();
         const std::wstring priorSelected(state_.selectedWidget());
         const std::wstring priorActive(state_.activeWidget());
@@ -3128,7 +3132,11 @@ private:
         }
         retainedGuidePaintKey_ = std::move(frames.guideKey);
         retainedTrayPaintState_ = std::move(frames.trayState);
-        presentationTransaction_.AcceptCompositionAdmission(directive);
+        presentationTransaction_.AcceptCompositionAdmission(
+            directive,
+            state_.surface() == gba::Surface::Widget
+                ? state_.activeWidget()
+                : state_.selectedWidget());
         if (accessibilityActive_ && !accessibilityTree_.widgetId.empty()) {
             const float pixelScale = static_cast<float>(placement.width) /
                 static_cast<float>(std::max(
@@ -3831,11 +3839,19 @@ private:
     template <typename Refresh>
     void RefreshAndApplyPresentation(Refresh&& refresh) {
         const bool wasVisible = state_.surface() != gba::Surface::Hidden;
-        const auto priorExtent = DesiredPresentationExtentDip();
+        const auto priorDesiredExtent = DesiredPresentationExtentDip();
+        const auto priorExtent = compositionSurface_.available()
+            ? presentationTransaction_.CommittedDestinationExtent(
+                priorDesiredExtent)
+            : priorDesiredExtent;
         const auto priorPresentedExtent = PresentedPresentationExtentDip();
-        const std::wstring priorWidget = state_.surface() == gba::Surface::Widget
-            ? std::wstring(state_.activeWidget())
-            : std::wstring(state_.selectedWidget());
+        const auto& committedDestination =
+            presentationTransaction_.committedDestination();
+        const std::wstring priorWidget = committedDestination
+            ? committedDestination->widgetId
+            : state_.surface() == gba::Surface::Widget
+                ? std::wstring(state_.activeWidget())
+                : std::wstring(state_.selectedWidget());
         std::forward<Refresh>(refresh)();
         const bool isVisible = state_.surface() != gba::Surface::Hidden;
         const auto nextExtent = DesiredPresentationExtentDip();
@@ -7002,6 +7018,10 @@ private:
         }
         retainedGuidePaintKey_ = std::move(frames.guideKey);
         retainedTrayPaintState_ = std::move(frames.trayState);
+        presentationTransaction_.AcceptCompositionRepaint(
+            state_.surface() == gba::Surface::Widget
+                ? state_.activeWidget()
+                : state_.selectedWidget());
         AppendCompositionCoordinateSample(0);
         const bool presentationChanged =
             priorPresentationPaintKey != lastWidgetPresentationPaintKey_;
