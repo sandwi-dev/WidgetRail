@@ -150,7 +150,7 @@ user decision. The native overlay is the sole production presentation path.
 | Lane | Task/worktree | Current state |
 | --- | --- | --- |
 | Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` on `codex/impl-widgets-taffy-ui` | Idle clean. DLV-240 begins only after accepted DLV-239 is integrated and the planner sends the serialized cross-lane baseline. |
-| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` on `codex/impl-platform-integration` | Idle clean at `9f2b4ca` after safely stopping before DLV-239 edits. DLV-244 corrects the physically rejected tray stationarity implementation first; DLV-239 remains paused. |
+| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` on `codex/impl-platform-integration` | Blocked clean at `4d0a69e`. Native catalog descriptors lack pre-start surface policies, so DLV-244 cannot calculate a minimal stable one-HWND container without a material metadata/window decision. DLV-239 remains paused. |
 
 DLV-217 remains accepted through `d57fd06` but unintegrated because its exact
 aggregate is honestly 40/41 with one reviewer-history-link failure. Preserve
@@ -398,6 +398,32 @@ Run the new deterministic placement test, the changed widget-switch fixture
 when its existing route is available, affected chrome/transition/targeting
 tests, and one native Release compile. Do not rerun unrelated grouped/package
 failures or Tier 3.
+
+Blocked disposition after planner baseline `490c7f4`: the platform lane stopped
+cleanly at `4d0a69e` without another implementation commit. Native
+`WidgetDescriptor` has no surface width/height or FillAvailable policy; the
+current surface request exists only in a worker snapshot after that widget is
+started and admitted. Consequently, before a cold selection the host cannot
+derive the assigned maximum installed-catalog envelope from current native
+authority. The rejected protocol-ceiling reservation is not an acceptable
+fallback.
+
+Unblocking requires one explicit user architecture choice:
+
+1. Recommended: add bounded surface-policy metadata to installed catalog/package
+   authority so native placement can calculate the stable minimal container
+   before worker startup. This is a serialized catalog/protocol contract change
+   and must precede the remaining DLV-244 presentation correction.
+2. Reserve a near-full-work-area transparent one-HWND host. This avoids metadata
+   work but changes shell/resource/hit-test behavior and revives the user's
+   whole-screen-host concern even though unused pixels remain transparent.
+3. Give tray/guide a separate top-level HWND. This avoids container reservation
+   but breaks the durable one-HWND/compositor/accessibility authority and is not
+   authorized by the current architecture.
+
+Do not resume DLV-244 or DLV-239 until the user chooses. Preserve cumulative
+unintegrated commits `de3cf47` and `130c105` as review evidence; neither is an
+accepted production baseline.
 
 Independent review disposition for `3716063`: rejected as the retained base for
 one cumulative correction. The commit correctly separates destination layout
@@ -862,6 +888,7 @@ Do not delete credentials, provider data, accounts, or user files.
 
 | Item | Blocker | Required evidence |
 | --- | --- | --- |
+| DLV-244 tray stationarity | Native catalog lacks pre-start surface policy; one-HWND stable capacity therefore requires catalog metadata, a near-full-work-area host, or a second HWND. | Explicit user architecture choice; recommended bounded installed-catalog surface metadata. |
 | Avalonia migration/cutover | Failed and cancelled by user. | New explicit user decision; never resume old AVP work. |
 | DLV-217 integration | Exact aggregate is 40/41 with one reviewer-history-link red. | Explicit user approval to integrate despite the honest documentation-only red. |
 | DLV-230 visible 0.2.9 | YT Music catalog is at its eight-version ceiling. | Approval to remove only inactive non-selected 0.2.0, then install/enable 0.2.9. |
