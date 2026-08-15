@@ -65,6 +65,7 @@ private:
     std::wstring mutexName_;
     std::wstring pipeName_;
     std::vector<std::byte> userSid_;
+    std::vector<std::byte> logonSid_;
     std::atomic<HWND> notificationWindow_{};
     std::atomic<UINT> notificationMessage_{};
     std::atomic<bool> serverReadyOk_{};

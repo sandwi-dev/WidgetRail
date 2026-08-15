@@ -1,8 +1,10 @@
 #include "OverlayProcessOwner.h"
 
 #include <Windows.h>
+#include <sddl.h>
 
 #include <atomic>
+#include <array>
 #include <chrono>
 #include <future>
 #include <iostream>
@@ -18,6 +20,10 @@ using namespace std::chrono_literals;
 constexpr UINT kShowMessage = WM_APP + 0x517;
 std::atomic<int> showMessages{};
 int checks{};
+
+void Completed(const std::string_view scenario) {
+    std::cerr << "OverlayProcessOwnerTests checkpoint completed=" << scenario << '\n';
+}
 
 void Check(const bool condition, const std::string_view message) {
     ++checks;
@@ -77,12 +83,16 @@ int main() {
             0, windowClass.lpszClassName, L"", 0, 0, 0, 1, 1,
             HWND_MESSAGE, nullptr, windowClass.hInstance, nullptr);
         Check(window != nullptr, "message-only test window creates");
+        Completed("profile-and-window-validation");
 
         const auto profile = UniqueProfile(L"hidden-visible");
         gba::process::OverlayProcessOwner owner;
         std::wstring error;
+        const auto ownerBeginStarted = std::chrono::steady_clock::now();
         Check(owner.Begin(profile, 3s, error) == gba::process::OwnershipResult::Owner,
               "first launch wins per-user profile ownership");
+        Check(std::chrono::steady_clock::now() - ownerBeginStarted < 3s,
+              "first-owner startup returns inside its readiness bound");
         auto hiddenClient = std::async(std::launch::async, Client, profile, 3s);
         Check(hiddenClient.get() == gba::process::OwnershipResult::ClientAcknowledged,
               "hidden no-HWND owner acknowledges one Show client");
@@ -91,6 +101,7 @@ int main() {
         PumpUntil(1);
         Check(showMessages.load() == 1,
               "binding the owner window forwards the pending Show exactly once");
+        Completed("hidden-owner-activation");
 
         std::vector<std::future<gba::process::OwnershipResult>> clients;
         for (int index = 0; index < 4; ++index)
@@ -101,6 +112,7 @@ int main() {
         PumpUntil(5);
         Check(showMessages.load() == 5,
               "each simultaneous launch contributes exactly one bounded Show");
+        Completed("simultaneous-clients");
 
         const auto names = gba::process::OverlayProcessOwner::NamesForTests(profile);
         struct BadRequest final { std::uint32_t magic{}; std::uint32_t payload{}; } bad;
@@ -113,6 +125,29 @@ int main() {
         PumpUntil(6, 100ms);
         Check(showMessages.load() == 5,
               "rejected client cannot activate the owner window");
+        Completed("malformed-client-rejection");
+
+        const auto stalledReadProfile = UniqueProfile(L"stalled-read");
+        gba::process::OverlayProcessOwner stalledReadOwner;
+        Check(stalledReadOwner.Begin(stalledReadProfile, 3s, error) ==
+                  gba::process::OwnershipResult::Owner,
+              "stalled-read fixture owns its isolated profile");
+        const auto stalledReadNames =
+            gba::process::OverlayProcessOwner::NamesForTests(stalledReadProfile);
+        HANDLE stalledReader = CreateFileW(
+            stalledReadNames.pipe.c_str(), GENERIC_READ | GENERIC_WRITE, 0,
+            nullptr, OPEN_EXISTING, 0, nullptr);
+        Check(stalledReader != INVALID_HANDLE_VALUE,
+              "stalled client connects without sending an activation frame");
+        auto stoppedReadOwner = std::async(std::launch::async, [&] {
+            stalledReadOwner.Stop();
+        });
+        Check(stoppedReadOwner.wait_for(2s) == std::future_status::ready,
+              "owner stop cancels a pending client read within its bound");
+        stoppedReadOwner.get();
+        CloseHandle(stalledReader);
+        Completed("stalled-server-read-stop");
+
         owner.Stop();
         owner.Stop();
 
@@ -121,6 +156,7 @@ int main() {
                   gba::process::OwnershipResult::Owner,
               "orderly shutdown releases ownership exactly once");
         replacement.Stop();
+        Completed("orderly-owner-replacement");
 
         const auto squattedProfile = UniqueProfile(L"squatted");
         const auto squattedNames =
@@ -136,6 +172,7 @@ int main() {
                   gba::process::OwnershipResult::ClientFailed,
               "owner fails closed when its activation endpoint is already claimed");
         CloseHandle(squatter);
+        Completed("endpoint-squatter-rejection");
 
         const auto stalledProfile = UniqueProfile(L"timeout");
         const auto stalledNames =
@@ -157,6 +194,62 @@ int main() {
               "client timeout is bounded when an owner has no activation transport");
         releasePromise.set_value();
         holder.join();
+        Completed("stalled-owner-timeout");
+
+        const auto replyProfile = UniqueProfile(L"stalled-reply");
+        const auto replyNames = gba::process::OverlayProcessOwner::NamesForTests(replyProfile);
+        std::promise<void> replyServerReadyPromise;
+        auto replyServerReady = replyServerReadyPromise.get_future();
+        std::promise<void> releaseReplyServerPromise;
+        auto releaseReplyServer = releaseReplyServerPromise.get_future();
+        std::thread replyServer([&] {
+            HANDLE replyMutex = CreateMutexW(nullptr, TRUE, replyNames.mutex.c_str());
+            PSECURITY_DESCRIPTOR replyDescriptor{};
+            SECURITY_ATTRIBUTES replySecurity{sizeof(replySecurity)};
+            if (ConvertStringSecurityDescriptorToSecurityDescriptorW(
+                    L"D:P(A;;GA;;;WD)", SDDL_REVISION_1,
+                    &replyDescriptor, nullptr)) {
+                replySecurity.lpSecurityDescriptor = replyDescriptor;
+            }
+            HANDLE replyPipe = CreateNamedPipeW(
+                replyNames.pipe.c_str(), PIPE_ACCESS_DUPLEX | FILE_FLAG_FIRST_PIPE_INSTANCE,
+                PIPE_TYPE_MESSAGE | PIPE_READMODE_MESSAGE | PIPE_WAIT |
+                    PIPE_REJECT_REMOTE_CLIENTS,
+                1, 64, 64, 100,
+                replySecurity.lpSecurityDescriptor ? &replySecurity : nullptr);
+            if (replyDescriptor) LocalFree(replyDescriptor);
+            replyServerReadyPromise.set_value();
+            if (replyMutex && replyPipe != INVALID_HANDLE_VALUE) {
+                const BOOL connected = ConnectNamedPipe(replyPipe, nullptr)
+                    ? TRUE
+                    : GetLastError() == ERROR_PIPE_CONNECTED;
+                if (connected) {
+                    std::array<std::byte, 8> request{};
+                    DWORD readBytes{};
+                    (void)ReadFile(
+                        replyPipe, request.data(), static_cast<DWORD>(request.size()),
+                        &readBytes, nullptr);
+                    releaseReplyServer.wait();
+                    DisconnectNamedPipe(replyPipe);
+                }
+            }
+            if (replyPipe != INVALID_HANDLE_VALUE) CloseHandle(replyPipe);
+            if (replyMutex) {
+                ReleaseMutex(replyMutex);
+                CloseHandle(replyMutex);
+            }
+        });
+        replyServerReady.wait();
+        gba::process::OverlayProcessOwner stalledReplyClient;
+        const auto replyStarted = std::chrono::steady_clock::now();
+        Check(stalledReplyClient.Begin(replyProfile, 150ms, error) ==
+                  gba::process::OwnershipResult::ClientFailed,
+              "client fails when the resident endpoint withholds its reply");
+        Check(std::chrono::steady_clock::now() - replyStarted < 1s,
+              "client request and reply share the advertised activation deadline");
+        releaseReplyServerPromise.set_value();
+        replyServer.join();
+        Completed("stalled-owner-reply-timeout");
 
         const auto staleProfile = UniqueProfile(L"stale");
         const auto staleNames = gba::process::OverlayProcessOwner::NamesForTests(staleProfile);
@@ -174,6 +267,7 @@ int main() {
               "abandoned owner lease is recovered without destructive cleanup");
         recovered.Stop();
         CloseHandle(staleHandle);
+        Completed("abandoned-owner-recovery");
 
         DestroyWindow(window);
         std::cout << "OverlayProcessOwnerTests passed (" << checks << " checks)\n";

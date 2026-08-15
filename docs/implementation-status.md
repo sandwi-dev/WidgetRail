@@ -5216,3 +5216,42 @@ the bounded application step at
 `artifacts/verification/20260813T131228Z-bb1ba3ef`; the canonical aggregate was
 not repeated for the original candidate. The correction runs one new final-tip
 Tier-3 checkpoint after its coherent commit and records that outcome separately.
+
+### DLV-246 — bounded process-owner startup and shutdown
+
+The sole native `OverlayProcessOwner` still owns one per-user/profile mutex and
+one authenticated local activation pipe. The failed first scenario had two
+coupled causes: a later launch could receive `ERROR_ACCESS_DENIED` while opening
+the existing ownership objects, and exception cleanup could then wait forever
+for the synchronous server thread to leave `ConnectNamedPipe`, `ReadFile`,
+`WriteFile`, or `FlushFileBuffers`. The object names and user-SID authentication
+remain unchanged. Object ACLs now use the current logon SID with only the mutex
+wait/release or pipe read/write rights required by that endpoint, as recommended
+for session-local named pipes; the connected client is still impersonated and
+compared with the retained current-user SID before activation is accepted.
+
+The existing pipe is now overlapped rather than a new transport. Server connect,
+request read, reply write, and peer-close drain wait on the same stop event and
+bounded operation events. The client uses one deadline across `WaitNamedPipe`,
+open, mode setup, and an overlapped `TransactNamedPipe`; it no longer relies on
+`CallNamedPipe`'s availability-only timeout. `FlushFileBuffers`, the synchronous
+wake connection, and every unbounded protocol read/write wait are removed.
+Startup publishes readiness only after the pipe and operation event exist, and
+sanitized failures retain their Win32 code. Stop cancels the pending operation,
+drains its completion before releasing `OVERLAPPED` storage, and joins the same
+sole server thread; no second singleton, pipe, profile, transport, or process-
+termination owner was added.
+
+The direct Release executable passes 26 checks under one exact-PID 20-second
+outer bound. It covers first-owner startup, hidden activation, four simultaneous
+clients, malformed rejection, stop during a stalled server read, orderly
+replacement, endpoint squatting, no-endpoint timeout, accepted-request/no-reply
+timeout, abandoned-owner recovery, and idempotent cleanup. The focused build
+route deliberately skips its historical packaged-host fixture. One native
+Release compile succeeds without tests or packaging and produces
+`OverlayHost.exe` SHA-256
+`36245560D2C9B86B8AD8967B6301E7595E5F2DBACB2D775E12CCA67572B26119`;
+four existing `C4244` warnings remain in unrelated `main.cpp`. No aggregate,
+packaged route, shared protocol/bridge, launch, broad process kill, or push was
+performed. A distinct interactive logon session remains source-reviewed rather
+than directly exercised.

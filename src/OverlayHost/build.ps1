@@ -1080,6 +1080,7 @@ function Invoke-ColdDashboardTests {
 }
 
 function Invoke-OverlayProcessOwnerTests {
+    param([switch]$DirectOnly)
     $arguments = $common + @(
         '/DGBA_OVERLAY_PROCESS_OWNER_TESTING',
         (Join-Path $projectDirectory 'OverlayProcessOwnerTests.cpp'),
@@ -1092,13 +1093,20 @@ function Invoke-OverlayProcessOwnerTests {
     if ($LASTEXITCODE -ne 0) {
         throw "OverlayProcessOwnerTests build failed with exit code $LASTEXITCODE."
     }
-    & (Join-Path $outputDirectory 'OverlayProcessOwnerTests.exe')
-    if ($LASTEXITCODE -ne 0) {
-        throw "OverlayProcessOwnerTests failed with exit code $LASTEXITCODE."
+    $processOwnerTestExecutable = Join-Path $outputDirectory 'OverlayProcessOwnerTests.exe'
+    $processOwnerTest = Start-Process -FilePath $processOwnerTestExecutable `
+        -PassThru -NoNewWindow
+    if (-not $processOwnerTest.WaitForExit(20000)) {
+        Stop-Process -Id $processOwnerTest.Id -Force -ErrorAction SilentlyContinue
+        [void]$processOwnerTest.WaitForExit(5000)
+        throw 'OverlayProcessOwnerTests exceeded its 20-second bounded timeout.'
+    }
+    if ($processOwnerTest.ExitCode -ne 0) {
+        throw "OverlayProcessOwnerTests failed with exit code $($processOwnerTest.ExitCode)."
     }
 
     $hostExecutable = Join-Path $outputDirectory 'OverlayHost.exe'
-    if (Test-Path -LiteralPath $hostExecutable) {
+    if (-not $DirectOnly -and (Test-Path -LiteralPath $hostExecutable)) {
         $profile = 'dlv070-exact-' + [Guid]::NewGuid().ToString('N')
         $owner = Start-Process -FilePath $hostExecutable -ArgumentList @(
             '--hidden', '--process-owner-probe', '--process-profile', $profile
@@ -1177,7 +1185,7 @@ if ($ProcessOwnerTestsOnly) {
     if ($SkipTests) {
         throw 'ProcessOwnerTestsOnly cannot be combined with SkipTests.'
     }
-    Invoke-OverlayProcessOwnerTests
+    Invoke-OverlayProcessOwnerTests -DirectOnly
     return
 }
 

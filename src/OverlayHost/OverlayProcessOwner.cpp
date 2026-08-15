@@ -7,6 +7,7 @@
 #include <cstring>
 #include <iomanip>
 #include <sstream>
+#include <system_error>
 #include <utility>
 #include <vector>
 
@@ -18,12 +19,56 @@ constexpr std::uint32_t kReplyAccepted = 0x59414B4F;
 constexpr std::uint16_t kProtocolVersion = 1;
 constexpr std::uint16_t kShowCommand = 1;
 constexpr DWORD kPipeBufferBytes = 64;
+constexpr DWORD kServerOperationTimeoutMs = 1000;
+constexpr DWORD kPipeClientAccess = FILE_READ_DATA | FILE_WRITE_DATA |
+    FILE_READ_EA | FILE_WRITE_EA | FILE_READ_ATTRIBUTES |
+    FILE_WRITE_ATTRIBUTES | READ_CONTROL | SYNCHRONIZE;
 
 struct Request final {
     std::uint32_t magic{kRequestMagic};
     std::uint16_t version{kProtocolVersion};
     std::uint16_t command{kShowCommand};
 };
+
+enum class IoWaitResult {
+    Completed,
+    Stopped,
+    TimedOut,
+    Failed,
+};
+
+[[nodiscard]] IoWaitResult WaitForIo(
+    const HANDLE handle,
+    OVERLAPPED& operation,
+    const HANDLE stopEvent,
+    const DWORD timeout,
+    DWORD& transferred) noexcept {
+    HANDLE waits[2]{stopEvent, operation.hEvent};
+    const DWORD wait = stopEvent
+        ? WaitForMultipleObjects(2, waits, FALSE, timeout)
+        : WaitForSingleObject(operation.hEvent, timeout);
+    const bool completed = stopEvent ? wait == WAIT_OBJECT_0 + 1 : wait == WAIT_OBJECT_0;
+    if (completed) {
+        return GetOverlappedResult(handle, &operation, &transferred, FALSE)
+            ? IoWaitResult::Completed
+            : IoWaitResult::Failed;
+    }
+
+    (void)CancelIoEx(handle, &operation);
+    // CancelIoEx can return before cancellation completes. Drain the local
+    // named-pipe completion before releasing this stack-owned OVERLAPPED.
+    (void)WaitForSingleObject(operation.hEvent, INFINITE);
+    DWORD ignored{};
+    (void)GetOverlappedResult(handle, &operation, &ignored, FALSE);
+    if (stopEvent && wait == WAIT_OBJECT_0) return IoWaitResult::Stopped;
+    return wait == WAIT_TIMEOUT ? IoWaitResult::TimedOut : IoWaitResult::Failed;
+}
+
+[[nodiscard]] DWORD RemainingMilliseconds(const ULONGLONG deadline) noexcept {
+    const ULONGLONG now = GetTickCount64();
+    if (now >= deadline) return 0;
+    return static_cast<DWORD>(std::min<ULONGLONG>(deadline - now, MAXDWORD - 1ULL));
+}
 
 [[nodiscard]] std::uint64_t Hash(const std::wstring_view value) noexcept {
     std::uint64_t result = 1469598103934665603ULL;
@@ -59,6 +104,31 @@ struct Request final {
     return sid;
 }
 
+[[nodiscard]] std::vector<std::byte> CurrentLogonSid() {
+    HANDLE token{};
+    if (!OpenProcessToken(GetCurrentProcess(), TOKEN_QUERY, &token)) return {};
+    DWORD size{};
+    (void)GetTokenInformation(token, TokenGroups, nullptr, 0, &size);
+    std::vector<std::byte> buffer(size);
+    if (size == 0 || !GetTokenInformation(
+            token, TokenGroups, buffer.data(), size, &size)) {
+        CloseHandle(token);
+        return {};
+    }
+    const auto* groups = reinterpret_cast<const TOKEN_GROUPS*>(buffer.data());
+    std::vector<std::byte> sid;
+    for (DWORD index = 0; index < groups->GroupCount; ++index) {
+        const auto& group = groups->Groups[index];
+        if ((group.Attributes & SE_GROUP_LOGON_ID) != SE_GROUP_LOGON_ID) continue;
+        const DWORD sidSize = GetLengthSid(group.Sid);
+        sid.resize(sidSize);
+        if (!CopySid(sidSize, sid.data(), group.Sid)) sid.clear();
+        break;
+    }
+    CloseHandle(token);
+    return sid;
+}
+
 [[nodiscard]] std::wstring SidText(const std::vector<std::byte>& sid) {
     LPWSTR text{};
     if (sid.empty() || !ConvertSidToStringSidW(
@@ -70,10 +140,12 @@ struct Request final {
 
 [[nodiscard]] SECURITY_ATTRIBUTES UserOnlySecurity(
     const std::vector<std::byte>& sid,
+    const std::wstring_view userRights,
     PSECURITY_DESCRIPTOR& descriptor) {
     const auto sidText = SidText(sid);
     if (sidText.empty()) return {};
-    const std::wstring sddl = L"D:P(A;;GA;;;SY)(A;;GA;;;" + sidText + L")";
+    const std::wstring sddl = L"D:P(A;;GA;;;SY)(A;;" + std::wstring(userRights) +
+        L";;;" + sidText + L")";
     if (!ConvertStringSecurityDescriptorToSecurityDescriptorW(
             sddl.c_str(), SDDL_REVISION_1, &descriptor, nullptr)) return {};
     SECURITY_ATTRIBUTES attributes{sizeof(attributes)};
@@ -119,7 +191,8 @@ OwnershipResult OverlayProcessOwner::Begin(
         return OwnershipResult::ClientFailed;
     }
     userSid_ = CurrentUserSid();
-    if (userSid_.empty()) {
+    logonSid_ = CurrentLogonSid();
+    if (userSid_.empty() || logonSid_.empty()) {
         error = L"The current user identity could not be resolved.";
         return OwnershipResult::ClientFailed;
     }
@@ -129,15 +202,18 @@ OwnershipResult OverlayProcessOwner::Begin(
     pipeName_ = L"\\\\.\\pipe\\GameBarAlternative.OverlayHost.Activation." + identity;
 
     PSECURITY_DESCRIPTOR descriptor{};
-    auto security = UserOnlySecurity(userSid_, descriptor);
+    auto security = UserOnlySecurity(logonSid_, L"0x00100001", descriptor);
     if (!security.lpSecurityDescriptor) {
         error = L"Per-user process ownership security could not be created.";
         return OwnershipResult::ClientFailed;
     }
-    mutex_ = CreateMutexW(&security, FALSE, mutexName_.c_str());
+    mutex_ = CreateMutexExW(
+        &security, mutexName_.c_str(), 0, SYNCHRONIZE | MUTEX_MODIFY_STATE);
+    const DWORD mutexError = GetLastError();
     LocalFree(descriptor);
     if (!mutex_) {
-        error = L"The per-user OverlayHost ownership mutex could not be opened.";
+        error = L"The per-user OverlayHost ownership mutex could not be opened (Win32 " +
+            std::to_wstring(mutexError) + L").";
         return OwnershipResult::ClientFailed;
     }
     const DWORD wait = WaitForSingleObject(mutex_, 0);
@@ -171,7 +247,12 @@ bool OverlayProcessOwner::StartServer(std::wstring& error) {
         error = L"OverlayHost activation events could not be created.";
         return false;
     }
-    server_ = std::thread([this] { ServerLoop(); });
+    try {
+        server_ = std::thread([this] { ServerLoop(); });
+    } catch (const std::system_error&) {
+        error = L"OverlayHost activation transport thread could not start.";
+        return false;
+    }
     if (WaitForSingleObject(readyEvent_, 2000) != WAIT_OBJECT_0) {
         error = L"OverlayHost activation transport did not become ready.";
         return false;
@@ -187,9 +268,10 @@ void OverlayProcessOwner::ServerLoop() noexcept {
     bool announced = false;
     while (WaitForSingleObject(stopEvent_, 0) != WAIT_OBJECT_0) {
         PSECURITY_DESCRIPTOR descriptor{};
-        auto security = UserOnlySecurity(userSid_, descriptor);
+        auto security = UserOnlySecurity(logonSid_, L"0x0012019B", descriptor);
         HANDLE pipe = CreateNamedPipeW(
-            pipeName_.c_str(), PIPE_ACCESS_DUPLEX | FILE_FLAG_FIRST_PIPE_INSTANCE,
+            pipeName_.c_str(), PIPE_ACCESS_DUPLEX | FILE_FLAG_FIRST_PIPE_INSTANCE |
+                FILE_FLAG_OVERLAPPED,
             PIPE_TYPE_MESSAGE | PIPE_READMODE_MESSAGE | PIPE_WAIT | PIPE_REJECT_REMOTE_CLIENTS,
             1, kPipeBufferBytes, kPipeBufferBytes, 500, &security);
         if (descriptor) LocalFree(descriptor);
@@ -200,28 +282,89 @@ void OverlayProcessOwner::ServerLoop() noexcept {
             }
             return;
         }
+        HANDLE operationEvent = CreateEventW(nullptr, TRUE, FALSE, nullptr);
+        if (!operationEvent) {
+            if (!announced) {
+                serverReadyOk_.store(false);
+                SetEvent(readyEvent_);
+            }
+            CloseHandle(pipe);
+            return;
+        }
         if (!announced) {
             serverReadyOk_.store(true);
             SetEvent(readyEvent_);
             announced = true;
         }
-        const BOOL connected = ConnectNamedPipe(pipe, nullptr)
-            ? TRUE
-            : GetLastError() == ERROR_PIPE_CONNECTED;
+        OVERLAPPED operation{};
+        operation.hEvent = operationEvent;
+        DWORD transferred{};
+        bool connected = false;
+        if (ConnectNamedPipe(pipe, &operation)) {
+            connected = true;
+        } else {
+            const DWORD connectError = GetLastError();
+            if (connectError == ERROR_PIPE_CONNECTED) {
+                connected = true;
+            } else if (connectError == ERROR_IO_PENDING) {
+                connected = WaitForIo(
+                    pipe, operation, stopEvent_, INFINITE, transferred) ==
+                    IoWaitResult::Completed;
+            }
+        }
         if (connected) {
             Request request{};
             DWORD read{};
-            const bool valid = ReadFile(pipe, &request, sizeof(request), &read, nullptr) &&
-                read == sizeof(request) && request.magic == kRequestMagic &&
+            ResetEvent(operationEvent);
+            operation = {};
+            operation.hEvent = operationEvent;
+            bool readComplete = ReadFile(
+                pipe, &request, sizeof(request), &read, &operation) != FALSE;
+            if (!readComplete && GetLastError() == ERROR_IO_PENDING) {
+                readComplete = WaitForIo(
+                    pipe, operation, stopEvent_, kServerOperationTimeoutMs, read) ==
+                    IoWaitResult::Completed;
+            }
+            const bool valid = readComplete && read == sizeof(request) &&
+                request.magic == kRequestMagic &&
                 request.version == kProtocolVersion && request.command == kShowCommand &&
                 SameUserClient(pipe);
-            const std::uint32_t reply = valid ? kReplyAccepted : 0U;
-            DWORD written{};
-            (void)WriteFile(pipe, &reply, sizeof(reply), &written, nullptr);
-            (void)FlushFileBuffers(pipe);
-            if (valid) SignalShow();
+            if (WaitForSingleObject(stopEvent_, 0) != WAIT_OBJECT_0) {
+                const std::uint32_t reply = valid ? kReplyAccepted : 0U;
+                DWORD written{};
+                ResetEvent(operationEvent);
+                operation = {};
+                operation.hEvent = operationEvent;
+                bool writeComplete = WriteFile(
+                    pipe, &reply, sizeof(reply), &written, &operation) != FALSE;
+                if (!writeComplete && GetLastError() == ERROR_IO_PENDING) {
+                    writeComplete = WaitForIo(
+                        pipe, operation, stopEvent_, kServerOperationTimeoutMs, written) ==
+                        IoWaitResult::Completed;
+                }
+                if (valid && writeComplete && written == sizeof(reply)) SignalShow();
+
+                if (writeComplete) {
+                    // Keep the instance connected until the transaction client consumes
+                    // the reply and closes. Unlike FlushFileBuffers, this wait is both
+                    // time-bounded and cancellable by Stop().
+                    std::byte trailing{};
+                    DWORD trailingRead{};
+                    ResetEvent(operationEvent);
+                    operation = {};
+                    operation.hEvent = operationEvent;
+                    const bool closeObserved = ReadFile(
+                        pipe, &trailing, sizeof(trailing), &trailingRead, &operation) != FALSE;
+                    if (!closeObserved && GetLastError() == ERROR_IO_PENDING) {
+                        (void)WaitForIo(
+                            pipe, operation, stopEvent_, kServerOperationTimeoutMs,
+                            trailingRead);
+                    }
+                }
+            }
         }
         DisconnectNamedPipe(pipe);
+        CloseHandle(operationEvent);
         CloseHandle(pipe);
     }
 }
@@ -262,14 +405,65 @@ bool OverlayProcessOwner::SendShow(
     std::wstring& error) const {
     const ULONGLONG deadline = GetTickCount64() + static_cast<ULONGLONG>(timeout.count());
     do {
+        const DWORD remaining = RemainingMilliseconds(deadline);
+        if (!remaining) break;
+        if (!WaitNamedPipeW(pipeName_.c_str(), std::min<DWORD>(remaining, 250))) {
+            const DWORD waitError = GetLastError();
+            if (waitError == ERROR_SEM_TIMEOUT || waitError == ERROR_FILE_NOT_FOUND)
+                continue;
+            error = L"The resident OverlayHost activation endpoint wait failed (Win32 " +
+                std::to_wstring(waitError) + L").";
+            return false;
+        }
+        HANDLE pipe = CreateFileW(
+            pipeName_.c_str(), kPipeClientAccess, 0, nullptr,
+            OPEN_EXISTING, FILE_FLAG_OVERLAPPED, nullptr);
+        if (pipe == INVALID_HANDLE_VALUE) {
+            const DWORD openError = GetLastError();
+            if (openError != ERROR_PIPE_BUSY && openError != ERROR_FILE_NOT_FOUND) {
+                error = L"The resident OverlayHost activation endpoint could not be opened (Win32 " +
+                    std::to_wstring(openError) + L").";
+                return false;
+            }
+            continue;
+        }
+
+        DWORD mode = PIPE_READMODE_MESSAGE;
+        if (!SetNamedPipeHandleState(pipe, &mode, nullptr, nullptr)) {
+            const DWORD modeError = GetLastError();
+            CloseHandle(pipe);
+            error = L"The resident OverlayHost activation endpoint mode failed (Win32 " +
+                std::to_wstring(modeError) + L").";
+            return false;
+        }
+        HANDLE operationEvent = CreateEventW(nullptr, TRUE, FALSE, nullptr);
+        if (!operationEvent) {
+            const DWORD eventError = GetLastError();
+            CloseHandle(pipe);
+            error = L"The resident OverlayHost activation wait could not be created (Win32 " +
+                std::to_wstring(eventError) + L").";
+            return false;
+        }
+        OVERLAPPED operation{};
+        operation.hEvent = operationEvent;
         const Request request{};
-        DWORD read{};
         std::uint32_t reply{};
-        const auto remaining = std::max<ULONGLONG>(1, deadline - std::min(deadline, GetTickCount64()));
-        if (CallNamedPipeW(
-                pipeName_.c_str(), const_cast<Request*>(&request), sizeof(request),
-                &reply, sizeof(reply), &read,
-                static_cast<DWORD>(std::min<ULONGLONG>(remaining, 250)))) {
+        DWORD read{};
+        bool complete = TransactNamedPipe(
+            pipe, const_cast<Request*>(&request), sizeof(request),
+            &reply, sizeof(reply), &read, &operation) != FALSE;
+        IoWaitResult transactionResult = complete
+            ? IoWaitResult::Completed
+            : IoWaitResult::Failed;
+        if (!complete && GetLastError() == ERROR_IO_PENDING) {
+            transactionResult = WaitForIo(
+                pipe, operation, nullptr, RemainingMilliseconds(deadline), read);
+            complete = transactionResult == IoWaitResult::Completed;
+        }
+        const DWORD transactionError = complete ? ERROR_SUCCESS : GetLastError();
+        CloseHandle(operationEvent);
+        CloseHandle(pipe);
+        if (complete) {
             if (read == sizeof(reply) && reply == kReplyAccepted) {
                 error.clear();
                 return true;
@@ -277,6 +471,10 @@ bool OverlayProcessOwner::SendShow(
             error = L"The resident OverlayHost rejected the activation request.";
             return false;
         }
+        if (transactionResult == IoWaitResult::TimedOut) break;
+        error = L"The resident OverlayHost activation transaction failed (Win32 " +
+            std::to_wstring(transactionError) + L").";
+        return false;
     } while (GetTickCount64() < deadline);
     error = L"The resident OverlayHost did not acknowledge activation in time.";
     return false;
@@ -300,10 +498,6 @@ bool OverlayProcessOwner::WaitForShow(
 void OverlayProcessOwner::Stop() noexcept {
     if (stopEvent_) SetEvent(stopEvent_);
     if (server_.joinable()) {
-        // Wake a blocking ConnectNamedPipe without sending an accepted frame.
-        HANDLE wake = CreateFileW(pipeName_.c_str(), GENERIC_READ | GENERIC_WRITE, 0,
-                                  nullptr, OPEN_EXISTING, 0, nullptr);
-        if (wake != INVALID_HANDLE_VALUE) CloseHandle(wake);
         server_.join();
     }
     notificationWindow_.store(nullptr);
