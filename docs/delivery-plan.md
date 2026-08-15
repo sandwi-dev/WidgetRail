@@ -9,7 +9,7 @@ Snapshots are evidence only. This file is the sole authority for current work.
 
 ## Current accepted baseline
 
-- Main contains accepted DLV-232 `ef56bfc`, DLV-235 `5440e7b`, DLV-230 `fe2e52c`, Taffy baseline
+- Main contains accepted cumulative DLV-238/DLV-236 through `5239886`, DLV-232 `ef56bfc`, DLV-235 `5440e7b`, DLV-230 `fe2e52c`, Taffy baseline
   DLV-221 `8836e07`, and the intervening corrections in history above.
 - Taffy is the accepted sole declarative Flex/Responsive Grid geometry engine.
   Widget SDK/protocol, catalog/package/runtime, WidgetBridge transport,
@@ -30,10 +30,11 @@ Snapshots are evidence only. This file is the sole authority for current work.
   induction remains an honestly untested residual risk after one rejected
   cross-boundary oracle; deterministic affected suites and the native Release
   compile are green.
-- The visible native-only Release from exact main `ef56bfc` was rebuilt and
-  launched as PID 36856 with SHA-256 `4D0FC7...3E6D`. The prior exact main PID
-  30064 exited normally through its hidden top-level HWND `WM_CLOSE`. No new
-  physical crash induction or eight-page visual verdict is claimed.
+- The previously visible native-only Release from exact main `ef56bfc` was
+  launched as PID 36856 with SHA-256 `4D0FC7...3E6D`. It is superseded by the
+  accepted cumulative DLV-238/DLV-236 integration; the exact replacement PID
+  and SHA are recorded after the required rebuild and visible relaunch. No new
+  physical eight-page verdict is claimed until the user reviews that build.
 - The user reports three active selection-path defects: retained source-widget
   geometry after cold admission, intermittent tray selection that remains on
   inert old content until A, and tray flashing because widget content and tray
@@ -136,7 +137,7 @@ user decision. The native overlay is the sole production presentation path.
 | Lane | Task/worktree | Current state |
 | --- | --- | --- |
 | Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` on `codex/impl-widgets-taffy-ui` | Idle clean. DLV-240 begins only after accepted DLV-239 is integrated and the planner sends the serialized cross-lane baseline. |
-| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` on `codex/impl-platform-integration` | Cumulative DLV-238/DLV-236 correction Assigned atop rejected `3716063`; DLV-237 and DLV-239 remain Ready in that order. DLV-241/242 await DLV-240 integration. |
+| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` on `codex/impl-platform-integration` | DLV-237 Assigned on accepted main `5239886`; DLV-239 remains Ready next. DLV-241/242 await DLV-240 integration. |
 
 DLV-217 remains accepted through `d57fd06` but unintegrated because its exact
 aggregate is honestly 40/41 with one reviewer-history-link failure. Preserve
@@ -186,7 +187,7 @@ generation-less internal failure notification cannot overtake a newly admitted
 registration. Focused affected suites and one native Release compile are green;
 the real OS/AppContainer crash remains the documented residual risk.
 
-### Assigned correction — DLV-238 + DLV-236: commit destination geometry with independent chrome
+### Accepted — DLV-238 + DLV-236: commit destination geometry with independent chrome
 
 Baseline/owner/dependencies: accepted DLV-232 integrated into main; platform native presentation-extent and DirectComposition placement only; do not interrupt DLV-232 or start from an unreviewed tip.
 Visible objective: after a cold/asynchronous switch, retain the old widget's pixels and envelope only until the destination snapshot is admitted; the admitted widget must immediately own its authored width, height, responsive viewport, and final presented extent without waiting for A, a provider update, or another selection.
@@ -269,7 +270,20 @@ eight-widget route needed for the cumulative correction. Do not rerun the
 inherited DLV-231 close/reconnect tail, Tier 3, providers, packaging, or capture
 work.
 
-### Ready after cumulative DLV-238/DLV-236 integration — DLV-237: correlate deferred widget admission
+Accepted disposition: destination transaction commit `3716063` plus cumulative
+independent-chrome correction `6c018c4`, integrated together as `8537330` and
+`5239886`. Independent review confirmed one DirectComposition target/root with
+retained content, guide, and tray children; only content receives motion
+transforms. Pointer, hit testing, focus/UIA, and diagnostics use the same child
+coordinate plan. Stable content motion retains tray pixels, while selection or
+reorder damages only changed tiles. Focused targeting 76/76, chrome 52/52,
+accessibility provider 158/158, and transition 73/73 suites passed again at the
+reviewed binary. The bounded eight-widget route retained identical actual
+guide/tray rectangles through eight variable-extent motions, reported no
+composition fallback, and cleaned up all observed processes. The inherited
+DLV-231 close/reconnect tail remains outside this geometry-only acceptance.
+
+### Assigned — DLV-237: correlate deferred widget admission
 
 Baseline: accepted cumulative DLV-238/DLV-236 integrated into local main. Owner: platform native
 selection/lifecycle/session observability only. Do not interrupt DLV-232/DLV-238 or
@@ -506,10 +520,9 @@ Do not delete credentials, provider data, accounts, or user files.
 
 ## Serialized integration order
 
-1. Main is accepted through DLV-232 `ef56bfc`; the cumulative DLV-238/DLV-236
-   correction is Assigned atop rejected `3716063`.
-2. Execute/integrate cumulative DLV-238/DLV-236, then DLV-237 and DLV-239 in
-   platform order. Launch every accepted visible milestone.
+1. Main is accepted through cumulative DLV-238/DLV-236 `5239886`.
+2. Execute/integrate DLV-237 and DLV-239 in platform order. Launch every
+   accepted visible milestone.
 3. After DLV-237 launch, the user performs the joint tray-cycling test and the
    planner assigns only the evidence-backed correction without disrupting the
    already ordered independent work.
@@ -554,6 +567,7 @@ Do not delete credentials, provider data, accounts, or user files.
 
 | Milestone | Accepted result |
 | --- | --- |
+| DLV-238 + DLV-236 | `3716063` + `6c018c4`, integrated as `8537330` + `5239886`: admitted destination geometry and retained independent content/guide/tray child surfaces keep chrome fixed while only content moves. |
 | DLV-232 | `cd378a2`, integrated as `ef56bfc`: unsolicited worker exit retains only its own last-good pixels as inert and restores authority solely after fresh admission. |
 | DLV-235 | `b0ea2b4`, reconstructed/integrated as `5440e7b`: worker-start failure survives lifecycle retarget/revocation; explicit Retry owns one fresh generation; valid admission clears it. |
 | DLV-234 | `9435050`, reconstructed/integrated as `348df2e`: incomplete frames taint the sole transport and bounded owned-process replacement restores framing. |
@@ -563,6 +577,5 @@ Do not delete credentials, provider data, accounts, or user files.
 | DLV-229 | `1a8c201`, integrated as `1ddedb4`: preferred Network envelope exposes complete first-page scan state. |
 | DLV-228 | `2784401`, integrated as `220a415`: Audio rows/cards/sliders consume admitted width generically. |
 | DLV-226 | `2276b4c`, integrated as `9755406`: truthful eight-widget surface-policy audit. |
-| DLV-225 | `3e887ee`, integrated as `3eb0eaf`: bounded content-sized Settings root. |
 
 Do not mark the continuing delivery goal complete; continue until the user pauses/replaces it or all useful lanes are genuinely blocked. Never push.
