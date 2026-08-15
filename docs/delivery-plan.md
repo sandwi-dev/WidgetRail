@@ -111,6 +111,11 @@ user decision. The native overlay is the sole production presentation path.
   DLV-236 correction gives persistent host chrome independent child-visual/
   surface ownership under the sole DirectComposition target without adding
   another HWND, compositor root, accessibility provider, or focus/input tree.
+- Keep the tray's existing small host-owned layout policy during the current
+  correction. Do not migrate its internal tile placement to Taffy merely to
+  replace straightforward arithmetic; reconsider that separately only if
+  additional tray-layout complexity or repeated defects provide evidence that
+  one more declarative layout owner would reduce maintenance cost.
 - One HWND wraps the admitted content-plus-chrome union; the overlay never
   becomes a monitor-sized desktop surface.
 - A complete `WidgetSnapshot` is a last-admitted presentation checkpoint, not
@@ -140,7 +145,7 @@ user decision. The native overlay is the sole production presentation path.
 | Lane | Task/worktree | Current state |
 | --- | --- | --- |
 | Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` on `codex/impl-widgets-taffy-ui` | Idle clean. DLV-240 begins only after accepted DLV-239 is integrated and the planner sends the serialized cross-lane baseline. |
-| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` on `codex/impl-platform-integration` | DLV-237 is already in progress; the physical DLV-238/DLV-236 tray correction is mandatory immediately afterward and before DLV-239. DLV-241/242 await DLV-240 integration. |
+| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` on `codex/impl-platform-integration` | DLV-237 `6b52839` is committed but rejected for the bounded correlation-integrity correction below. The physical DLV-238/DLV-236 tray correction is already in progress and must finish first; then correct DLV-237 before DLV-239. DLV-241/242 await DLV-240 integration. |
 
 DLV-217 remains accepted through `d57fd06` but unintegrated because its exact
 aggregate is honestly 40/41 with one reviewer-history-link failure. Preserve
@@ -426,6 +431,32 @@ snapshot-content retention, UI-thread file/serialization work, another
 selection/lifecycle/session authority, or an implementation choice that changes
 the user-visible admission behavior before the cause is established.
 
+Independent review disposition for `6b52839`: rejected pending one bounded
+correlation-integrity correction after the already-in-progress DLV-238/DLV-236
+tray correction. The typed bounded observer, background diagnostic drain,
+post-to-dequeue timing, request/generation/lifecycle stages, completion
+dispositions, meaningful-A filtering, focused 15-scenario coordinator route,
+305-check state/lifecycle/action route, and native Release compile are otherwise
+acceptable.
+
+The blocking gap is that `SyncWidgetActivity` supplies one selection
+correlation ID to the complete desired lifecycle map, which may contain both
+the selected overlay widget and an unrelated pinned widget. The pinned target's
+request/admission can therefore enter the selected transition and
+`RecordAdmissionPresentation(false)` can mark it terminal before the selected
+widget is admitted, suppressing the required 250-ms selected-widget stall
+marker. Bind a transition to its exact selected/active widget: unrelated pinned
+or background lifecycle work must use correlation zero or its own correlation,
+and trace admission/session APIs must reject a mismatched widget identity
+before changing terminal/slow state. Add one deterministic selected-plus-pinned
+case and one rapid supersession/cancellation case proving only the intended
+target can terminalize the transition and that the current selected transition
+retains its truthful slow/terminal disposition. Do not add another scheduler,
+trace process, public schema, per-input logging, or behavioral admission fix.
+Finish and commit the coherent tray correction first, then apply this DLV-237
+correction before DLV-239; keep both commits unintegrated until independently
+accepted.
+
 ### Folded into active DLV-238 correction — DLV-236: retain host chrome independently
 
 The user approved completing DLV-236's retained tray/guide child-visual work as
@@ -580,11 +611,13 @@ Do not delete credentials, provider data, accounts, or user files.
 
 1. Main includes cumulative DLV-238/DLV-236 `5239886`; its destination geometry
    remains the working baseline while its tray rendering is physically rejected.
-2. Execute/integrate DLV-237, then the required physical DLV-238/DLV-236 tray
-   correction, then DLV-239. Launch every accepted visible milestone.
-3. After DLV-237 launch, the user performs the joint tray-cycling test and the
-   planner assigns only the evidence-backed correction without disrupting the
-   already ordered independent work.
+2. Complete the in-progress physical DLV-238/DLV-236 tray correction, then the
+   bounded DLV-237 correlation-integrity correction. Independently review and
+   integrate the accepted contiguous chain before DLV-239. Launch every
+   accepted visible milestone.
+3. After the corrected DLV-237 chain launches, the user performs the joint
+   tray-cycling test and the planner assigns only the evidence-backed behavior
+   correction without disrupting the already ordered independent work.
 4. After DLV-239 integration, dispatch DLV-240 to the widgets lane as sole
    shared protocol/managed lead. Platform does not edit shared files.
 5. Integrate accepted DLV-240, then dispatch DLV-241 to platform. DLV-241 is the
