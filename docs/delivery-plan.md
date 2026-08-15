@@ -154,7 +154,7 @@ user decision. The native overlay is the sole production presentation path.
 | Lane | Task/worktree | Current state |
 | --- | --- | --- |
 | Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` on `codex/impl-widgets-taffy-ui` | Idle clean. DLV-240 begins only after accepted DLV-239 is integrated and the planner sends the serialized cross-lane baseline. |
-| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` on `codex/impl-platform-fixed-chrome` | DLV-244 correction required atop rejected `2698208`. The separate HWND exists, but ownership, pointer/UIA partitioning, chrome invalidation/recovery, and direct two-window regression evidence are incomplete. DLV-239 remains paused. |
+| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` on `codex/impl-platform-fixed-chrome` | Cumulative DLV-244 correction `00b816d` remains rejected on one concrete initialization/fallback split plus missing direct pointer-route and recovery evidence. DLV-239 remains paused. |
 
 DLV-217 remains accepted through `d57fd06` but unintegrated because its exact
 aggregate is honestly 40/41 with one reviewer-history-link failure. Preserve
@@ -395,6 +395,38 @@ Run the changed direct cases, affected placement/targeting/transition/chrome/
 accessibility/device-loss groups, and one native Release build. Do not integrate
 or claim physical acceptance until every deterministic affected group is green;
 then the planner will review and launch the exact candidate for user cycling.
+
+Independent review disposition for cumulative `2698208` + `00b816d`: rejected;
+do not integrate or launch it. The correction closes the prior ordinary-path
+ownership, applied-rectangle, work-area/catalog invalidation, UIA-root
+partition, and full-tray repaint gaps. The real owned chrome window remains at
+one applied rectangle while the policy test resizes the content window through
+all eight extents. One concrete recovery bug and two required direct-evidence
+gaps remain:
+
+- `Initialize` can succeed while `InitializeChromeTarget` fails. The combined
+  condition then enters `EnableLegacyLayeredFallback` without resetting the
+  successful content DirectComposition owner, so `compositionSurface_.available()`
+  stays true and later presentation continues down the composition path with no
+  chrome target. This can produce a blank/orphan chrome endpoint instead of the
+  required coherent fallback.
+- The new chrome test calls `IsFixedChromeHit` directly, but never sends an
+  applied chrome-window pointer event through `ChromeWindowProc` and verifies
+  the existing tray selection/activation owner receives the correct tile. It
+  proves admission/pass-through rectangles, not the required target mapping.
+- No deterministic test forces chrome-target initialization failure or the
+  runtime composition/device-loss fallback and then verifies that both
+  endpoints hide/reset together. The green legacy suites do not exercise the
+  new second-target failure boundary.
+
+Bounded correction atop `00b816d`: make failed second-target initialization
+atomically reset composition before enabling legacy fallback; add a narrow
+injectable/production policy seam that forces that exact failure and the runtime
+fallback and proves no available half-session or visible chrome remains; and
+drive one real chrome-window tray click through the production coordinate route
+to the existing selection/activation owner. Retain all accepted ordinary-path
+behavior and existing focused evidence. Rerun only the changed chrome,
+targeting, accessibility/recovery cases and one native Release build.
 
 Independent review disposition for `3716063`: rejected as the retained base for
 one cumulative correction. The commit correctly separates destination layout
