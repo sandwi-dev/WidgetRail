@@ -9,8 +9,8 @@ Snapshots are evidence only. This file is the sole authority for current work.
 
 ## Current accepted baseline
 
-- Main contains integrated DLV-238/DLV-236 through `5239886`, but the user
-  physically rejected its tray rendering; DLV-232 `ef56bfc`, DLV-235
+- Main contains the corrected DLV-238/DLV-236 tray transaction and corrected
+  DLV-237 admission trace through `6e2969b`; DLV-232 `ef56bfc`, DLV-235
   `5440e7b`, DLV-230 `fe2e52c`, Taffy baseline
   DLV-221 `8836e07`, and the intervening corrections in history above.
 - Taffy is the accepted sole declarative Flex/Responsive Grid geometry engine.
@@ -32,19 +32,18 @@ Snapshots are evidence only. This file is the sole authority for current work.
   induction remains an honestly untested residual risk after one rejected
   cross-boundary oracle; deterministic affected suites and the native Release
   compile are green.
-- The cumulative DLV-238/DLV-236 native-only Release was rebuilt from
-  exact main `7fa146a` and visibly launched as PID 29360 with SHA-256
-  `E74797C3...251FB`. Superseded PID 36856 exited normally through its hidden
-  top-level HWND `WM_CLOSE`. The user rejected this build: selection changes
-  expose black cleared tile rectangles and clipped focus chrome, and the tray
-  remains indirectly coupled to each widget's destination geometry.
-- The user reports three active selection-path defects: retained source-widget
-  geometry after cold admission, intermittent tray selection that remains on
-  inert old content until A, and tray flashing because widget content and tray
-  share redraw ownership. The user approved folding DLV-236 retained chrome
-  separation into the active DLV-238 correction so destination geometry and
-  continuous tray/guide stationarity are solved in one coherent composition
-  transaction. DLV-237 correlated admission logging follows that integration.
+- The earlier `7fa146a` Release was physically rejected for black cleared tray
+  tiles, clipped focus chrome, and widget-dependent tray geometry. The accepted
+  correction removes tile-level damage, retains one complete small tray raster,
+  and fixes one absolute tray rectangle for the visible session while content
+  alone changes envelope. Exact main `6e2969b` was rebuilt and visibly launched
+  as PID 39536 with SHA-256 `CBFC4515...34343`; physical user review remains the
+  final visual verdict.
+- Corrected DLV-237 now correlates selection, posted/dequeued refresh, lifecycle,
+  request, completion, admission, and meaningful A stages to the exact selected
+  widget. Pinned/background work cannot terminalize or suppress that trace. The
+  user and planner will reproduce the intermittent A-required admission symptom
+  together from this instrumented Release; no behavioral cause is claimed yet.
 - The user also identified that complete `WidgetSnapshot` checkpoints conflate
   stable view definition, volatile values, interaction authority, and derived
   appearance validity. Ordinary invalidation currently deletes useful last-
@@ -145,7 +144,7 @@ user decision. The native overlay is the sole production presentation path.
 | Lane | Task/worktree | Current state |
 | --- | --- | --- |
 | Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` on `codex/impl-widgets-taffy-ui` | Idle clean. DLV-240 begins only after accepted DLV-239 is integrated and the planner sends the serialized cross-lane baseline. |
-| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` on `codex/impl-platform-integration` | DLV-237 `6b52839` is committed but rejected for the bounded correlation-integrity correction below. The physical DLV-238/DLV-236 tray correction is already in progress and must finish first; then correct DLV-237 before DLV-239. DLV-241/242 await DLV-240 integration. |
+| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` on `codex/impl-platform-integration` | Corrected DLV-238/DLV-236 and DLV-237 are accepted and integrated through main `6e2969b`; DLV-239 is next. DLV-241/242 await DLV-240 integration. |
 
 DLV-217 remains accepted through `d57fd06` but unintegrated because its exact
 aggregate is honestly 40/41 with one reviewer-history-link failure. Preserve
@@ -300,12 +299,11 @@ does not reliably repopulate and clips antialiased focus strokes. The route
 checked coordinates and paint counts inside each motion but reset its expected
 tray rectangle at every motion boundary and never verified resulting pixels.
 
-### Required next correction after in-progress DLV-237 — DLV-238 + DLV-236: simple retained tray ownership
+### Accepted and integrated — DLV-238 + DLV-236: simple retained tray ownership
 
-Owner/baseline: platform native composition/chrome only, atop integrated
-`5239886` and accepted DLV-237. This correction preempts DLV-239 after the
-already-coherent DLV-237 observability commit. Do not start snapshot-cache work
-until this visible regression is accepted.
+Owner/baseline: platform native composition/chrome only, integrated as
+`629274b` plus documentation correction `6e2969b` atop the earlier destination
+transaction and DLV-237 trace chain.
 
 Required behavior:
 
@@ -345,12 +343,20 @@ a focused regression that would fail the integrated implementation's observed
 harness or rerun Tier 3; the freshly launched Release and user inspection are
 the final visual verdict.
 
-### Assigned — DLV-237: correlate deferred widget admission
+Independent review disposition: accepted. `RequiresTrayRepaint` replaces the
+complete bounded tray surface once for tray-owned state changes; widget/content
+changes do not repaint it. The production route captures one session rectangle
+and rejects any changed corner before selection, after selection, before
+admission, through every motion sample, and after settlement, including the
+observed 735/736-pixel drift regression. Focused reviewer rerun passes 51 chrome
+checks, the native Release rebuild is green, and live visual approval remains
+user-owned.
 
-Baseline: integrated cumulative DLV-238/DLV-236 on local main; its tray rendering
-is physically rejected but does not alter this observability-only scope. Owner: platform native
-selection/lifecycle/session observability only. Do not interrupt DLV-232/DLV-238 or
-start from its unreviewed branch tip.
+### Accepted and integrated — DLV-237: correlate deferred widget admission
+
+Baseline: corrected cumulative DLV-238/DLV-236 integrated on local main. Owner:
+platform native selection/lifecycle/session observability only. Do not alter
+presentation behavior or start from an unreviewed branch tip.
 
 Visible objective: produce sufficient trustworthy evidence to identify why a
 tray-selected widget can remain on the previous inert presentation until the
@@ -431,31 +437,16 @@ snapshot-content retention, UI-thread file/serialization work, another
 selection/lifecycle/session authority, or an implementation choice that changes
 the user-visible admission behavior before the cause is established.
 
-Independent review disposition for `6b52839`: rejected pending one bounded
-correlation-integrity correction after the already-in-progress DLV-238/DLV-236
-tray correction. The typed bounded observer, background diagnostic drain,
-post-to-dequeue timing, request/generation/lifecycle stages, completion
-dispositions, meaningful-A filtering, focused 15-scenario coordinator route,
-305-check state/lifecycle/action route, and native Release compile are otherwise
-acceptable.
-
-The blocking gap is that `SyncWidgetActivity` supplies one selection
-correlation ID to the complete desired lifecycle map, which may contain both
-the selected overlay widget and an unrelated pinned widget. The pinned target's
-request/admission can therefore enter the selected transition and
-`RecordAdmissionPresentation(false)` can mark it terminal before the selected
-widget is admitted, suppressing the required 250-ms selected-widget stall
-marker. Bind a transition to its exact selected/active widget: unrelated pinned
-or background lifecycle work must use correlation zero or its own correlation,
-and trace admission/session APIs must reject a mismatched widget identity
-before changing terminal/slow state. Add one deterministic selected-plus-pinned
-case and one rapid supersession/cancellation case proving only the intended
-target can terminalize the transition and that the current selected transition
-retains its truthful slow/terminal disposition. Do not add another scheduler,
-trace process, public schema, per-input logging, or behavioral admission fix.
-Finish and commit the coherent tray correction first, then apply this DLV-237
-correction before DLV-239; keep both commits unintegrated until independently
-accepted.
+Independent review disposition: accepted cumulatively as `4bbec64` plus
+correlation-integrity correction `31c5d17`. The bounded observer, background
+diagnostic drain, post-to-dequeue timing, request/generation/lifecycle stages,
+completion dispositions, meaningful-A filtering, and sanitization remain
+observability-only. The correction binds each transition to its exact selected
+or active widget, gives unrelated pinned/background work correlation zero, and
+rejects a mismatched identity before terminal or slow state changes. Focused
+reviewer rerun passes all 17 coordinator scenarios, including selected-plus-
+pinned and rapid supersession cases. The intermittent symptom remains pending
+the user's joint test; no admission behavior was changed speculatively.
 
 ### Folded into active DLV-238 correction — DLV-236: retain host chrome independently
 
@@ -471,7 +462,7 @@ decision. Mixed-monitor, audio/Bluetooth, legacy-controller, and assistive-
 technology gates still require hardware or user evidence; do not manufacture
 additional internal filler after the active queue.
 
-### Ready after DLV-237 integration — DLV-239: retain checkpoint and separate refresh state
+### Assigned — DLV-239: retain checkpoint and separate refresh state
 
 Lane/owner/baseline: platform; existing native session, bridge adapter,
 appearance, and presentation-cache owners on accepted cumulative DLV-238/
@@ -650,24 +641,20 @@ Do not delete credentials, provider data, accounts, or user files.
 
 ## Serialized integration order
 
-1. Main includes cumulative DLV-238/DLV-236 `5239886`; its destination geometry
-   remains the working baseline while its tray rendering is physically rejected.
-2. Complete the in-progress physical DLV-238/DLV-236 tray correction, then the
-   bounded DLV-237 correlation-integrity correction. Independently review and
-   integrate the accepted contiguous chain before DLV-239. Launch every
-   accepted visible milestone.
-3. After the corrected DLV-237 chain launches, the user performs the joint
+1. Main includes accepted corrected DLV-238/DLV-236 plus DLV-237 through
+   `6e2969b`; its exact native Release is visibly launched for physical review.
+2. The user performs the joint
    tray-cycling test and the planner assigns only the evidence-backed behavior
    correction without disrupting the already ordered independent work.
-4. After DLV-239 integration, dispatch DLV-240 to the widgets lane as sole
+3. Execute and integrate DLV-239, then dispatch DLV-240 to the widgets lane as sole
    shared protocol/managed lead. Platform does not edit shared files.
-5. Integrate accepted DLV-240, then dispatch DLV-241 to platform. DLV-241 is the
+4. Integrate accepted DLV-240, then dispatch DLV-241 to platform. DLV-241 is the
    one exact Tier-3 protocol activation checkpoint.
-6. Integrate accepted DLV-241, then execute DLV-242. Launch the complete
+5. Integrate accepted DLV-241, then execute DLV-242. Launch the complete
    incremental candidate for user cycling/scrolling/interaction review.
-7. After accepted DLV-242, execute DLV-243 as the separate bounded optimistic
+6. After accepted DLV-242, execute DLV-243 as the separate bounded optimistic
    slider-feedback optimization and launch it for controller-slider review.
-8. DLV-217/218 remain a separate explicit integration decision and do not mix
+7. DLV-217/218 remain a separate explicit integration decision and do not mix
    with the snapshot update program.
 
 ## Manual and packaged verification queue
