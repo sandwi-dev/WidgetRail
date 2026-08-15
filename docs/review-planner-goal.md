@@ -63,6 +63,10 @@ You own:
 - Refreshing and launching the visible local Release overlay after every
   accepted implementation milestone is integrated so the user can test the
   latest accepted product state.
+- For a user-directed physical-first UI correction, source-reviewing and
+  visibly launching an exact production-only implementation-branch candidate
+  before tests or integration, clearly labelled unaccepted, so the user can
+  decide whether the behavior is correct before regression tests are written.
 - The user explicitly authorizes gracefully closing the planner-launched
   accepted OverlayHost instance when necessary to replace it with the newly
   integrated Release instance. This authority applies after every accepted
@@ -335,6 +339,31 @@ preempt work already in progress.
 
 ### 4. Launch the latest accepted overlay for user testing
 
+The user has established a physical-first exception for visible UI, HWND,
+composition, layout, motion, and controller-feel corrections. When the active
+delivery assignment invokes it:
+
+1. The implementation lane changes production code only, performs a source
+   review, creates an exact code-only candidate commit, and builds Release. It
+   does not write, modify, or run tests before the user's verdict.
+2. The planner reviews the production diff for scope, ownership, lifecycle,
+   documented-API, and destructive-risk problems. This review does not accept
+   the behavior.
+3. The planner may gracefully replace its prior instance and visibly launch
+   the exact implementation-worktree Release as an explicitly unaccepted
+   candidate. Do not integrate it into `main`.
+4. If the user rejects it, return only bounded production-code corrections and
+   rebuild/relaunch; do not create or repair tests for rejected behavior.
+5. Only after the user physically accepts the behavior does the implementation
+   lane add focused regression coverage, run the affected suites once, and
+   commit the test follow-up. The planner then reviews and integrates the
+   accepted cumulative commits.
+
+This exception does not waive a successful Release build, source review, or
+ordinary safety boundaries. It changes the ordering of physical acceptance and
+automated regression work so tests encode accepted behavior rather than
+legitimizing a visibly wrong implementation.
+
 After every accepted implementation milestone is integrated into local `main`:
 
 1. Ensure the main worktree is clean and identify the exact integrated commit.
@@ -392,8 +421,10 @@ After every accepted implementation milestone is integrated into local `main`:
    A desktop tool taking foreground may hide the overlay normally; correlate
    the admitted widget and hide transition in the log before calling it a crash.
 
-Do not launch rejected, partial, dirty, or unintegrated implementation work. Do
-not hide the window. If an already-running OverlayHost prevents the new binary
+Outside the explicit physical-first exception, do not launch rejected, partial,
+dirty, or unintegrated implementation work. Never launch a physical-first
+candidate from a dirty worktree or without an exact code-only commit and green
+Release build. Do not hide the window. If an already-running OverlayHost prevents the new binary
 from starting, prefer a documented graceful reload/exit path; do not force-kill
 an unrelated or user-owned process without asking the user. A launch failure is
 review/planning evidence and must not silently mark the implementation milestone

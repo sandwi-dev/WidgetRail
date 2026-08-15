@@ -449,6 +449,31 @@ for controller feel, visual motion, clipping, and compositor behavior. Do not
 delay that candidate for speculative synthetic coverage that cannot replace the
 user verdict.
 
+### Physical-first UI correction mode
+
+When the active delivery assignment explicitly invokes physical-first mode for
+a visible UI, HWND, composition, layout, motion, or controller-feel defect, it
+supersedes the normal Tier 1 ordering for that assignment:
+
+- Change production code only. Do not add, edit, regenerate, or run automated
+  tests before the user accepts the live behavior.
+- Perform a direct source review for ownership, lifecycle, failure cleanup,
+  documented platform APIs, coordinate spaces, and scope. Build the Release
+  once from the coherent production diff.
+- Commit the production-only candidate with the assignment ID, report its exact
+  files and build result, and stop for planner launch and user testing. A code-
+  only candidate commit is not acceptance and must not be integrated.
+- On physical rejection, correct production code only and build a new exact
+  candidate. Do not alter tests to make rejected behavior look valid.
+- After physical acceptance, add only focused regression tests for the accepted
+  observable invariants, run the affected suites once, and commit the test
+  follow-up separately. The cumulative code and test commits then receive
+  normal planner review and integration.
+
+Do not use physical-first mode for protocol, security, persistence, destructive
+state, or data-integrity changes unless the user explicitly extends it to that
+surface. A Release compile remains required before every physical candidate.
+
 ### Tier 2 — grouped integration verification
 
 Use only when an assignment changes a boundary spanning multiple components,

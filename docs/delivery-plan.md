@@ -93,6 +93,11 @@ user decision. The native overlay is the sole production presentation path.
   conflicts, undocumented input/window APIs, publication, physical-only
   evidence, or a material product choice.
 - User-visible defects and requested features outrank internal refactors.
+- DLV-244 uses the user-directed physical-first UI process. Implement and
+  source-review production code, create an exact code-only candidate commit,
+  and build/launch Release for the user. Do not add, modify, or run tests until
+  the user accepts the live behavior. After acceptance, add focused regression
+  coverage and run it once before integration.
 - Run focused affected Release suites. Use one bounded linked-host group when a
   language/process boundary changes. Run Tier 3 only at a named checkpoint.
 - After one bounded attempt and diagnosis of an unreliable integration case,
@@ -126,6 +131,12 @@ user decision. The native overlay is the sole production presentation path.
   remain coordinated by one overlay session, native window/compositor owner,
   renderer, logical focus model, GameInput router, and accessibility policy;
   they are not independent overlays.
+- Chrome rendering is local-first: only the chrome HWND has an absolute screen
+  rectangle. Guide, tray, focus padding, and tile rectangles are computed in
+  chrome-client coordinates and passed directly to DirectComposition. Their
+  screen bounds are derived afterward from the actual HWND origin only for UIA,
+  pointer projection, and diagnostics; screen-space child rectangles never
+  feed rendering placement.
 - Keep the tray's existing small host-owned layout policy during the current
   correction. Do not migrate its internal tile placement to Taffy merely to
   replace straightforward arithmetic; reconsider that separately only if
@@ -161,7 +172,7 @@ user decision. The native overlay is the sole production presentation path.
 | Lane | Task/worktree | Current state |
 | --- | --- | --- |
 | Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` on `codex/impl-widgets-taffy-ui` | Idle clean. DLV-240 begins only after accepted DLV-239 is integrated and the planner sends the serialized cross-lane baseline. |
-| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` on `codex/impl-platform-fixed-chrome` | Idle clean at physically rejected DLV-244 tip `a3300f4`, integrated on main by `013d0b3`. A bounded same-lane correction is assigned from current planner main; DLV-239 remains paused. |
+| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` on `codex/impl-platform-fixed-chrome` | Paused dirty for user review after the physically rejected DLV-244 tip `a3300f4`. Resume only with the local-first production correction below; remove the unaccepted test edits, create/build an exact code-only candidate, and stop for physical user acceptance. DLV-239 remains paused. |
 
 DLV-217 remains accepted through `d57fd06` but unintegrated because its exact
 aggregate is honestly 40/41 with one reviewer-history-link failure. Preserve
@@ -452,42 +463,44 @@ applied chrome HWND. The user's live cycling result therefore supersedes them.
 
 Bounded physical-rejection correction atop current planner main:
 
-- Introduce one explicit fixed-chrome screen anchor owned by the existing
-  visible overlay session. Latch monitor identity, physical work area, DPI,
-  interface/accessibility scale, and the resulting physical chrome rectangle
-  when the session opens. Widget selection, content admission, content-window
-  placement, animation, focus, provider updates, scrolling, and sliders must
-  consume but never recalculate or replace that anchor.
-- Change the anchor only for an explicit display/work-area/DPI/accessibility/
-  appearance/catalog-order event, disappearance of the anchored monitor, or a
-  new visible session. A content HWND resize, foreground-window reselection, or
-  `ShowOverlay` refresh during the same visible session is not such an event.
-  Equal work-area/DPI/catalog inputs on hide/reopen must reproduce identical
-  physical chrome corners.
-- Make the single chrome placement owner apply the latched rectangle and retain
-  the last actual `GetWindowRect(chromeWindow_)` result. Runtime transition
-  diagnostics must record the actual HWND rectangle and placement reason, not
-  reconstruct screen bounds from cached session/content geometry. A mismatch
-  between intended and actual rectangles is an explicit failure, never a
-  stationary-tray claim.
-- Audit every call that can enter `ShowOverlay`, monitor selection,
-  `EnsureCompositionChromeSession`, or `ApplyFixedChromeWindow`; content-only
-  routes must perform zero chrome anchor selection and zero `SetWindowPos` on
-  the chrome HWND. Preserve the existing complete small-tray repaint only for
-  tray-owned visual changes.
-- Add one direct production-route regression that starts the real overlay
-  session, cycles all eight installed widget presentations in both directions
-  across their distinct authored extents, samples the actual chrome HWND at
-  start/mid/completion, and covers reverse/reduced motion plus hide/reopen.
-  Assert exact four-corner equality and zero content-caused chrome placement
-  calls. Keep focused monitor/DPI/catalog typed-event, pointer, UIA, recovery,
-  and cleanup checks; do not build capture tooling, another window/session
-  owner, or a generalized simulator.
-- Run only the changed direct placement/transition case, affected chrome/window
-  checks, and one native Release build. Commit one bounded DLV-244 correction,
-  report the remaining physical debt honestly, and stop. The planner will
-  independently review and launch it; DLV-239 cannot resume until the user
-  accepts the live tray position.
+- Replace the retained full-work-area child-visual model with one local chrome
+  layout. Compute chrome width as the bounded maximum of guide/tray widths and
+  chrome height as guide height, the fixed guide-to-tray gap, and tray height.
+  Center guide and tray directly inside that client rectangle. DirectComposition
+  receives only these chrome-client offsets; delete the screen-to-client
+  round-trip from the rendering path.
+- Calculate one absolute chrome HWND rectangle from the same monitor work area,
+  DPI, interface scale, and horizontal-centering authority used by content.
+  Bottom-anchor it to the work area. Child screen bounds are downstream
+  projections from the actual chrome HWND origin plus local rectangles only
+  when UIA, pointer handling, or diagnostics require them.
+- Keep widget content in its own tightly bounded HWND. Center it from the same
+  work-area anchor and place its bottom at the fixed panel-to-guide offset above
+  chrome. Widget width/height and transition surfaces never size or reposition
+  chrome; the content panel grows upward and outward around the fixed anchor.
+- Preserve the existing owner/owned HWND relationship, backdrop behavior, and
+  current Z-order code. Do not redesign HWND roles or Z-order without concrete
+  evidence that they cause the reported defect. Preserve one session, graphics
+  device, GameInput/focus, semantic, renderer, and accessibility authority.
+- Remove the current unaccepted `WidgetSwitchHostTests.cpp` edits without using
+  destructive Git recovery. Rework the uncommitted production diff in place;
+  do not carry forward cached screen-space child geometry merely because it is
+  already written.
+- Physical-first acceptance: change production code only, perform direct source
+  review, create an exact `[DLV-244]` code-only candidate commit, and build the
+  native Release. Do not write, modify, or run tests. The planner will inspect
+  the source diff and visibly launch that unintegrated candidate for the user to
+  cycle all widgets and judge tray completeness, stationarity, fixed spacing,
+  motion, and controller behavior.
+- If the user rejects the candidate, correct production code only and rebuild.
+  After the user accepts it, add focused local-layout, real-HWND containment,
+  and stationary-transition regressions in a separate test commit, run the
+  affected suites once, and then review/integrate the cumulative commits.
+
+Out of scope before physical acceptance: new test infrastructure, test edits or
+execution, Z-order redesign, HWND-role changes, capture tooling, tray migration
+to Taffy, tile-level damage optimization, public protocol work, DLV-239, or any
+third window/session/input/focus/render authority.
 
 Independent review disposition for `3716063`: rejected as the retained base for
 one cumulative correction. The commit correctly separates destination layout
