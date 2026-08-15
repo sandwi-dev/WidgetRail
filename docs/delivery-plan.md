@@ -14,8 +14,9 @@ Snapshots are evidence only. This file is the sole authority for current work.
 
 ## Current baseline
 
-- Accepted production main `cb45a31` contains DLV-240's managed atomic-update
-  contract with runtime-protocol-v2 compatibility, DLV-246's bounded native
+- Accepted production main `1ab2e0d` contains DLV-241's native bounded atomic
+  update admission atop DLV-240's managed contract and runtime-protocol-v2
+  compatibility, DLV-246's bounded native
   process-owner activation lifecycle, and the user-approved DLV-217 autonomous
   Community Game Launcher chain atop DLV-239 retained presentation
   checkpoints and explicit refresh state, DLV-244 fixed chrome and
@@ -25,14 +26,18 @@ Snapshots are evidence only. This file is the sole authority for current work.
 - The user physically accepted DLV-244 tray visibility/stationarity and distinct
   widget envelope admission. Its cumulative commits were integrated as
   `bfaa2a1`, `0c071fb`, `f06a7e9`, `61041a5`, and `94c4873`.
-- Exact accepted-main Release PID 105736 is visibly running from coherent main
-  `cb45a31`; `OverlayHost.exe` SHA-256 is
-  `C9C2B15751320E032657E9E34461FEC15C253214F08F93EE2CEF3E7DBA5AFFE9`.
-  A second exact `--show` invocation exited 0 and the resident owner logged the
-  authenticated activation while PID 105736 remained responsive. The coherent
+- Exact accepted-main Release PID 13680 is visibly running from coherent main
+  `1ab2e0d`; `OverlayHost.exe` SHA-256 is
+  `E2DEDA96D3546FE4C3E18093A8982D1CB4B3D1E96F7027884ED0BF601C7157B1`.
+  A second exact `--show` invocation returned while the resident owner remained
+  responsive and current-session logs show ordinary widget admission. The coherent
   build used serialized MSBuild project traversal after the default parallel
   restore hit an existing zero-error project-reference-graph failure; no
-  product source was changed for that environment workaround. The previous
+  product source was changed for that environment workaround. Previous accepted
+  PID 105736 did not exit after `CloseMainWindow`, a non-forced exact-PID
+  termination request, and a final ten-second drain; it retained the interop DLL
+  and blocked the first link attempt, so the exact planner-owned PID was force-
+  stopped before the successful rebuild. The earlier
   pre-DLV-246 PID 64216 accepted a normal close request but
   remained hung and retained the interop DLL, directly matching the repaired
   teardown defect; only that exact planner-owned PID was then terminated before

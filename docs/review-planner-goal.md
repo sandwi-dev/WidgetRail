@@ -486,9 +486,10 @@ Then repeat the loop.
   `1453a4c`; its original branch remains preserved on
   `codex/impl-widgets-community-launcher`. Do not move or rewrite that branch
   while the UI queue proceeds. DLV-246 is integrated on planner main as
-  `0e75203`; DLV-240 follows as `485a935` and `cb45a31`. The coherent Release is
-  running visibly as PID 105736 after a
-  successful bounded second-invocation activation smoke.
+  `0e75203`; DLV-240 follows as `485a935` and `cb45a31`, and DLV-241 is
+  integrated as `0c264c5` plus `1ab2e0d`. The coherent Release is running
+  visibly as PID 13680 with executable SHA-256
+  `E2DEDA96D3546FE4C3E18093A8982D1CB4B3D1E96F7027884ED0BF601C7157B1`.
 - Active platform implementation uses the clean isolated worktree
   `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative`. Preserve the
   rejected one-HWND correction branch `codex/impl-platform-integration` at
