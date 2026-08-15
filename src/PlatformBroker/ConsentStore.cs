@@ -33,6 +33,12 @@ public sealed class ConsentStore
     // never returned to a broker and disappear on the next atomic write.
     private static readonly HashSet<string> RetiredCapabilities = new(StringComparer.Ordinal)
     {
+        "external.spotify.authorization.v1",
+        "external.spotify.configuration.v1",
+        "external.spotify.local-playback.v1",
+        "external.spotify.playback.control.v1",
+        "external.spotify.playback.read.v1",
+        "external.spotify.playlists.read.v1",
         "system.activity.recent.activate.v1",
     };
     private readonly string _root;

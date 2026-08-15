@@ -2060,10 +2060,23 @@ static async Task RetiredConsentMigration()
     var authorityPublisher = InstalledAuthority(catalogRoot, packageId, "1.0.0");
     var consentRoot = Path.Combine(temp.Path, "consent");
     Directory.CreateDirectory(consentRoot);
+    var retiredCapabilities = new[]
+    {
+        "external.spotify.authorization.v1",
+        "external.spotify.configuration.v1",
+        "external.spotify.local-playback.v1",
+        "external.spotify.playback.control.v1",
+        "external.spotify.playback.read.v1",
+        "external.spotify.playlists.read.v1",
+    };
+    var retiredEntries = string.Join(",\n",
+        retiredCapabilities.Select((capabilityId, index) =>
+            $$"""{"packageId":"dev.retired.settings.{{index % 2}}","publisherId":"dev.retired.publisher.{{index % 3}}","capabilityId":"{{capabilityId}}","decision":"{{(index % 2 == 0 ? "grant" : "deny")}}"}"""));
     await File.WriteAllTextAsync(Path.Combine(consentRoot, "consent-v1.json"),
         $$"""
-        {"schemaVersion":1,"revision":2,"entries":[
+        {"schemaVersion":1,"revision":8,"entries":[
           {"packageId":"{{packageId}}","publisherId":"{{authorityPublisher}}","capabilityId":"system.audio.sessions.read.v1","decision":"grant"},
+          {{retiredEntries}},
           {"packageId":"org.gbar.firstparty.recent-apps","publisherId":"org.gbar.firstparty","capabilityId":"system.activity.recent.activate.v1","decision":"grant"}
         ]}
         """);
@@ -2080,6 +2093,11 @@ static async Task RetiredConsentMigration()
     var current = Button(capabilities.Root, "capability.item.0");
     Assert.Equal(false, current.IsDisabled is true);
     Assert.Contains("Granted by you", current.Text!);
+
+    var migrated = await new ConsentStore(consentRoot).LoadAsync();
+    Assert.Equal(1, migrated.Entries.Count);
+    Assert.Equal(PlatformCapabilities.AudioSessionsReadV1,
+        migrated.Entries.Single().CapabilityId);
 }
 
 static async Task PermissionActivationReload()

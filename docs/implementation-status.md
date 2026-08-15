@@ -5388,3 +5388,34 @@ authorized clean exact-commit Tier-3 protocol activation result is retained and
 reported separately after this coherent commit. No incremental Taffy/damage,
 provider/package behavior, capture, launch, push, or later DLV-242 work is
 included.
+
+### DLV-247 — exact retired consent capability migration
+
+`ConsentStore` now recognizes the six published, intentionally retired Spotify
+capability IDs as exact tombstones beside the existing Recent Activity
+tombstone. Loading a bounded valid document filters those retired decisions
+without changing its revision or current decisions. The next ordinary atomic
+consent write omits every tombstoned entry while retaining the existing
+ordering, locking, path-safety, and document-bound policies. The retired IDs
+remain absent from the capability vocabulary and cannot authorize a broker
+request; a near-match such as `external.spotify.future.v1` still fails closed.
+
+The focused temporary-store fixtures cover all six exact IDs across multiple
+package/publisher identities, mixed current grant and deny decisions, migration
+on the next atomic write, an arbitrary Spotify-namespace near-match, duplicate
+retired keys, malformed decisions, and Settings permission readability.
+`PlatformBroker.Tests` passes 52/52 outside the restricted runner. Its first
+restricted run already passed the changed consent case but Windows denied the
+unrelated authenticated named-pipe cases; the single permitted unrestricted
+rerun passed all 52. A serialized Release build of `SettingsWidget.Tests`
+succeeds with zero warnings and errors after the default parallel graph returned
+the inherited silent zero-error failure, and the built executable passes 60/60.
+
+One coherent packaged Release build ran with
+`src\OverlayHost\build.ps1 -Configuration Release -SkipTests` and packaging
+enabled. It produced `OverlayHost.exe` SHA-256
+`C27B7B74FE64558ED3FE025340881DCA663F60C886B5DEB414BD563842F758D6`;
+the four existing `C4244` warnings remain in unrelated native `main.cpp`.
+No Tier 2, Tier 3, provider, hardware, launch, credential, installed-package,
+or live-consent route ran. Every consent fixture used a test-owned temporary
+store, and the user's live consent file was not inspected or modified.

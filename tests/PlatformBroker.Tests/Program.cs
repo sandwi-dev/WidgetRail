@@ -2523,10 +2523,15 @@ static async Task RetiredConsentMigratesSafely()
     using var temp = new TemporaryDirectory();
     Directory.CreateDirectory(temp.Path);
     var documentPath = Path.Combine(temp.Path, "consent-v1.json");
+    var retiredSpotifyCapabilities = RetiredSpotifyCapabilities();
+    var retiredEntries = string.Join(",\n",
+        retiredSpotifyCapabilities.Select((capabilityId, index) =>
+            $$"""{"packageId":"dev.retired.widget.{{index % 3}}","publisherId":"dev.retired.publisher.{{index % 2}}","capabilityId":"{{capabilityId}}","decision":"{{(index % 2 == 0 ? "grant" : "deny")}}"}"""));
     await File.WriteAllTextAsync(documentPath,
-        """
+        $$"""
         {"schemaVersion":1,"revision":7,"entries":[
           {"packageId":"dev.test.widget","publisherId":"dev.test.publisher","capabilityId":"system.audio.sessions.read.v1","decision":"grant"},
+          {{retiredEntries}},
           {"packageId":"org.gbar.firstparty.recent-apps","publisherId":"org.gbar.firstparty","capabilityId":"system.activity.recent.activate.v1","decision":"grant"},
           {"packageId":"dev.test.widget","publisherId":"dev.test.publisher","capabilityId":"system.audio.sessions.control.v1","decision":"deny"}
         ]}
@@ -2538,6 +2543,8 @@ static async Task RetiredConsentMigratesSafely()
     Assert.Equal(2, migrated.Entries.Count);
     Assert.True(!migrated.Entries.Any(entry =>
         entry.CapabilityId == "system.activity.recent.activate.v1"));
+    Assert.True(retiredSpotifyCapabilities.All(capabilityId =>
+        !migrated.Entries.Any(entry => entry.CapabilityId == capabilityId)));
     var identity = new BrokerWidgetIdentity("dev.test.widget", "dev.test.publisher", "test");
     Assert.Equal(ConsentDecision.Grant, await store.GetDecisionAsync(
         identity, PlatformCapabilities.AudioSessionsReadV1));
@@ -2548,22 +2555,45 @@ static async Task RetiredConsentMigratesSafely()
         ConsentDecision.Grant);
     var persisted = await File.ReadAllTextAsync(documentPath);
     Assert.True(!persisted.Contains("system.activity.recent.activate.v1", StringComparison.Ordinal));
+    Assert.True(retiredSpotifyCapabilities.All(capabilityId =>
+        !persisted.Contains(capabilityId, StringComparison.Ordinal)));
+    Assert.Equal(ConsentDecision.Grant, await store.GetDecisionAsync(
+        identity, PlatformCapabilities.AudioSessionsReadV1));
+    Assert.Equal(ConsentDecision.Deny, await store.GetDecisionAsync(
+        identity, PlatformCapabilities.AudioSessionsControlV1));
+    Assert.Equal(ConsentDecision.Grant, await store.GetDecisionAsync(
+        identity, PlatformCapabilities.NetworkReadV1));
 
     await File.WriteAllTextAsync(documentPath,
-        """{"schemaVersion":1,"revision":8,"entries":[{"packageId":"dev.test.widget","publisherId":"dev.test.publisher","capabilityId":"system.unknown.future.v1","decision":"grant"}]}""");
+        """{"schemaVersion":1,"revision":8,"entries":[{"packageId":"dev.test.widget","publisherId":"dev.test.publisher","capabilityId":"external.spotify.future.v1","decision":"grant"}]}""");
     await Assert.ThrowsAsync<BrokerException>(async () => await store.LoadAsync(),
         "invalid_consent");
 
     await File.WriteAllTextAsync(documentPath,
         """
         {"schemaVersion":1,"revision":9,"entries":[
-          {"packageId":"org.gbar.firstparty.recent-apps","publisherId":"org.gbar.firstparty","capabilityId":"system.activity.recent.activate.v1","decision":"grant"},
-          {"packageId":"org.gbar.firstparty.recent-apps","publisherId":"org.gbar.firstparty","capabilityId":"system.activity.recent.activate.v1","decision":"deny"}
+          {"packageId":"dev.retired.duplicate","publisherId":"dev.retired.publisher","capabilityId":"external.spotify.playback.read.v1","decision":"grant"},
+          {"packageId":"dev.retired.duplicate","publisherId":"dev.retired.publisher","capabilityId":"external.spotify.playback.read.v1","decision":"deny"}
         ]}
         """);
     await Assert.ThrowsAsync<BrokerException>(async () => await store.LoadAsync(),
         "invalid_consent");
+
+    await File.WriteAllTextAsync(documentPath,
+        """{"schemaVersion":1,"revision":10,"entries":[{"packageId":"dev.test.widget","publisherId":"dev.test.publisher","capabilityId":"system.audio.sessions.read.v1","decision":"sometimes"}]}""");
+    await Assert.ThrowsAsync<BrokerException>(async () => await store.LoadAsync(),
+        "invalid_consent");
 }
+
+static string[] RetiredSpotifyCapabilities() =>
+[
+    "external.spotify.authorization.v1",
+    "external.spotify.configuration.v1",
+    "external.spotify.local-playback.v1",
+    "external.spotify.playback.control.v1",
+    "external.spotify.playback.read.v1",
+    "external.spotify.playlists.read.v1",
+];
 
 static async Task EventsCoalesceAcrossLifecycle()
 {

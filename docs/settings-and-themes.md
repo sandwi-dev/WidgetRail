@@ -275,11 +275,16 @@ normal editable permission rows because they cannot grant current authority;
 the focusable **Review unsupported or inactive access** row shows their exact
 sanitized identities read-only. Required
 capabilities are not auto-granted, including for first-party packages. The
-exact retired `system.activity.recent.activate.v1` decision is tombstoned:
-loading filters it without discarding current decisions, and the next atomic
-write removes it from persistence. This is a closed migration, not general
-forward compatibility; every arbitrary unknown capability ID still invalidates
-the document and fails closed.
+exact retired `system.activity.recent.activate.v1` decision and the six
+published retired Spotify decisions (`external.spotify.authorization.v1`,
+`external.spotify.configuration.v1`, `external.spotify.local-playback.v1`,
+`external.spotify.playback.control.v1`, `external.spotify.playback.read.v1`,
+and `external.spotify.playlists.read.v1`) are tombstoned. Loading filters them
+without discarding current decisions, and the next atomic write removes them
+from persistence. The Spotify entries are matched by their exact immutable IDs,
+not by a namespace prefix. This is a closed migration, not general forward
+compatibility; every arbitrary unknown capability ID still invalidates the
+document and fails closed.
 
 Settings → Installed widgets uses a separate nested controller flow for
 package versions. Open a package, choose **Manage versions**, and page through
