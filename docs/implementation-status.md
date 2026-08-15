@@ -4823,3 +4823,55 @@ an explicitly untested residual risk because the rejected cross-boundary crash
 oracle was not redesigned or rerun. No test-only production escape hatch,
 public protocol change, provider/domain behavior, Tier 3, capture, or packaged
 integration route was added or run.
+
+### Atomic destination geometry admission (DLV-238)
+
+The native host now keeps a cold destination's retained source snapshot and
+extent only as inert visual presentation until the destination snapshot is
+admitted. Admission resolves the destination's own surface request and Taffy
+layout, renders one complete frame at that destination viewport, then commits
+the frame and the bottom-anchored HWND/container placement from one typed
+presentation directive. DirectComposition may interpolate the complete
+destination inside the old visual envelope, but destination layout never uses
+the retained source viewport. The terminal motion commit explicitly restores
+identity scale/offset and settles the HWND at the destination placement.
+Reduced motion commits that final geometry immediately. Intermediate render,
+WM_SIZE, and WM_WINDOWPOS notifications cannot publish or clear destination
+UIA before the placement transaction owns its geometry; the exact destination
+tree is published after commit, and retained content remains inert beforehand.
+
+The staged native responsibility map is:
+
+| Concern | Before | After |
+| --- | --- | --- |
+| retained snapshot/focus/surface request | six mutable `OverlayApp` fields and draw-time selection | private `OverlayPresentationTransaction` retained authority, exposed read-only to rendering and surface policy |
+| desired versus presented extent | `OverlayApp` timeline plus optional extent fields read independently by placement, input, UIA, and paint | one transaction timeline; destination layout extent is carried separately from the animated presented envelope |
+| composition motion and final geometry | eight `OverlayApp` motion/placement/scale/count fields plus ad-hoc terminal clearing | typed admission/motion directives and one explicit destination-settlement state machine |
+| OS ownership | `OverlayApp` owns HWND, D2D/DComp, focus, input, UIA, and Taffy orchestration | unchanged; the transaction owns no HWND, timer, renderer, compositor, focus graph, or input path |
+
+The worktree clangd index was refreshed for 100 native translation units, and
+definition/reference queries resolved every extracted presentation symbol
+(`RetainAdmittedWidget`, `PresentedExtent`, `BeginExtentTransition`,
+`PrepareCompositionAdmission`, `PrepareCompositionStep`, `CurrentMotionPlan`,
+and `RetireHidden`) between `main.cpp` and the new private owner. Focused
+Release evidence passes placement 112,333/112,333, targeting 68/68,
+transition/transaction 73/73, chrome 45/45, accessibility provider 155/155,
+focus 49/49, host accessibility 34/34, declarative renderer 4,851/4,851,
+surface coordinator 80/80, and Taffy layout 250/250. The final native Release
+host compiles successfully without packaging or aggregate execution.
+
+The bounded production-host route admitted all eight differently sized widgets
+through the ordinary worker path and passed the new per-transition requirement
+that admitted desired extent and viewport differ from retained source geometry.
+On the live 5120x1440, 125%-DPI profile, Network Controls correctly resolved
+its FillAvailable destination to 4048x878 and rendered that complete destination
+while the initial presented envelope remained the prior Games & Apps 892x608;
+the deterministic compact-profile transaction case separately proves the
+required Audio Mixer 592x698 to Network 632x878 admission and settlement. The
+route also reached its pre-existing slow-worker close/reopen tail, where it
+timed out waiting for a fresh Settings admission after the old bridge had been
+revoked. That late DLV-231 recovery assertion is retained unchanged and the
+packaged route was not repeated; therefore OS-level close/reconnect recovery
+after the geometry assertions remains an honest residual evidence gap, not a
+passing DLV-238 claim. No Tier 3, capture, provider/package, second HWND,
+renderer, focus, input, UIA, or layout authority was added.

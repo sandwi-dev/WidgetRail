@@ -13,6 +13,7 @@
 #include "OverlayChrome.h"
 #include "OverlayCompositionSurface.h"
 #include "OverlayPlacement.h"
+#include "OverlayPresentationTransaction.h"
 #include "OverlayProcessOwner.h"
 #include "OverlayTargeting.h"
 #include "OverlayTransition.h"
@@ -1461,7 +1462,8 @@ private:
                 // temporarily unavailable; it never repaints unless state changed.
                 if (controllerTick) actionFailureFeedback_.OnControllerTimer();
                 if (controllerTick &&
-                    (overlayTransition_.active() || extentTransition_.active())) {
+                    (overlayTransition_.active() ||
+                     presentationTransaction_.extentTransitionActive())) {
                     AdvanceOverlayTransition(now);
                 }
                 if (controllerTick && awaitingSuccessfulOpenPaint_ &&
@@ -1696,8 +1698,10 @@ private:
                         std::to_wstring(height));
                 }
             }
-            if (accessibilityActive_) ClearAccessibilityTree();
-            (void)ReconcileResponsiveFocusPersistence();
+            if (accessibilityActive_ && !compositionPlacementInProgress_)
+                ClearAccessibilityTree();
+            if (!compositionPlacementInProgress_)
+                (void)ReconcileResponsiveFocusPersistence();
             if (resize.invalidate && !compositionPlacementInProgress_)
                 InvalidateRect(window_, nullptr, FALSE);
             return 0;
@@ -1915,7 +1919,7 @@ private:
             state_.surface() == gba::Surface::Widget &&
             priorActive != state_.activeWidget() &&
             awaitingIncomingSnapshot) {
-            compositionMotionPresentedExtentDip_ = priorPresentedExtent;
+            presentationTransaction_.HoldPresentedExtent(priorPresentedExtent);
         }
         const bool destinationSnapshotAdmitted =
             state_.surface() == gba::Surface::Widget &&
@@ -1930,14 +1934,9 @@ private:
         } else if (compositionSurface_.available() &&
                    destinationSnapshotAdmitted &&
                    priorPresentedExtent == nextExtent) {
-            compositionMotionPresentedExtentDip_.reset();
+            presentationTransaction_.ReleasePresentedExtent();
         } else if (state_.surface() != gba::Surface::Widget) {
-            extentTransition_.Begin(
-                now, static_cast<float>(nextExtent.widthDip),
-                static_cast<float>(nextExtent.heightDip),
-                static_cast<float>(nextExtent.widthDip),
-                static_cast<float>(nextExtent.heightDip), true);
-            animatedExtentDip_.reset();
+            presentationTransaction_.SettleExtent(nextExtent, now, true);
         }
         const auto presentation = gba::DecideOverlayPresentation(
             priorSurface != gba::Surface::Hidden,
@@ -1970,14 +1969,17 @@ private:
                             : L"animated-resize-in-place")
                     : L"retained") +
                 L" content=" +
-                (awaitingIncomingSnapshot && committedWidgetPresentationSnapshot_
+                (awaitingIncomingSnapshot &&
+                 presentationTransaction_.retainedPresentation()
                     ? L"retained-until-snapshot"
                     : revealWidgetContent ? L"reveal" : L"stable") +
                 L" sizing=" + (awaitingIncomingSnapshot
                     ? L"retained-until-snapshot"
                     : L"snapshot-admitted") +
-                (awaitingIncomingSnapshot && !committedWidgetPresentationWidget_.empty()
-                    ? L" retained-from=" + committedWidgetPresentationWidget_
+                (awaitingIncomingSnapshot &&
+                 presentationTransaction_.retainedPresentation()
+                    ? L" retained-from=" +
+                        presentationTransaction_.retainedPresentation()->widgetId
                     : L""));
         }
         ApplyPresentation(presentation);
@@ -2662,78 +2664,126 @@ private:
         const auto previousExtent = PresentedPresentationExtentDip();
         overlayTransitionSample_ = overlayTransition_.Sample(
             timestamp, CurrentAccessibilityPolicy().reducedMotion);
-        if (extentTransition_.active() || animatedExtentDip_ ||
-            compositionMotionFinalPlacement_) {
-            const auto extent = extentTransition_.Sample(
-                timestamp, CurrentAccessibilityPolicy().reducedMotion);
-            if (compositionSurface_.available() && compositionMotionFinalPlacement_) {
-                const auto& target = *compositionMotionFinalPlacement_;
-                const auto motion = gba::PlanCompositionMotion(
-                    compositionMotionSourceWidth_, compositionMotionSourceHeight_,
-                    static_cast<unsigned int>(target.width),
-                    static_cast<unsigned int>(target.height),
-                    extent.widthDip * compositionMotionPixelsPerDipX_,
-                    extent.heightDip * compositionMotionPixelsPerDipY_,
-                    gba::CompositionVerticalAnchor::Bottom);
-                compositionMotionPresentedExtentDip_ =
-                    gba::OverlayPresentationExtent{
-                        static_cast<int>(std::lround(extent.widthDip)),
-                        static_cast<int>(std::lround(extent.heightDip)),
-                    };
-                const gba::OverlayCompositionSurface::VisualPresentation presentation{
-                    motion.scaleX, motion.scaleY,
-                    motion.offsetX, motion.offsetY,
-                    static_cast<float>(target.width),
-                    static_cast<float>(target.height),
-                };
-                const bool finalFrame = !extent.active;
-                gba::OverlayCompositionSurface::CommitTiming timing;
-                const HRESULT result = compositionSurface_.CommitPresentation(
-                    presentation, timing);
-                if (FAILED(result)) {
-                    DisableCompositionFallback(
-                        L"motion commit failed hresult=" +
-                        std::to_wstring(static_cast<unsigned long>(result)));
-                    compositionMotionFinalPlacement_.reset();
-                } else {
-                    ++compositionMotionCommitCount_;
-                    AppendDiagnostic(
+        if (presentationTransaction_.hasActiveExtent()) {
+            if (compositionSurface_.available()) {
+                const auto step = presentationTransaction_.PrepareCompositionStep(
+                    timestamp, CurrentAccessibilityPolicy().reducedMotion);
+                if (step) {
+                    const gba::OverlayCompositionSurface::VisualPresentation
+                        presentation{
+                            step->presentation.scaleX,
+                            step->presentation.scaleY,
+                            step->presentation.offsetX,
+                            step->presentation.offsetY,
+                            static_cast<float>(step->destinationPlacement.width),
+                            static_cast<float>(step->destinationPlacement.height),
+                        };
+                    gba::OverlayCompositionSurface::CommitTiming timing;
+                    const HRESULT result = compositionSurface_.CommitPresentation(
+                        presentation, timing);
+                    if (FAILED(result)) {
+                        DisableCompositionFallback(
+                            L"motion commit failed hresult=" +
+                            std::to_wstring(static_cast<unsigned long>(result)));
+                        presentationTransaction_.RejectCompositionAdmission();
+                    } else {
+                        AppendDiagnostic(
                         L"Composition motion step index=" +
-                        std::to_wstring(compositionMotionCommitCount_) +
+                        std::to_wstring(step->index) +
                         L" presented=" +
                         std::to_wstring(static_cast<unsigned int>(
-                            std::lround(extent.widthDip *
-                                compositionMotionPixelsPerDipX_))) + L"x" +
+                            std::lround(
+                                step->destinationPlacement.width *
+                                step->presentation.scaleX))) + L"x" +
                         std::to_wstring(static_cast<unsigned int>(
-                            std::lround(extent.heightDip *
-                                compositionMotionPixelsPerDipY_))) +
+                            std::lround(
+                                step->destinationPlacement.height *
+                                step->presentation.scaleY))) +
                         L" commit-us=" + std::to_wstring(timing.commitMicroseconds) +
                         L" waited=false redraw=false");
-                    if (finalFrame) {
+                        bool accepted = true;
+                        bool transactionAccepted = false;
+                        if (step->finalFrame) {
+                        const auto settled = gba::PlanCompositionMotion(
+                            static_cast<unsigned int>(step->destinationPlacement.width),
+                            static_cast<unsigned int>(step->destinationPlacement.height),
+                            static_cast<unsigned int>(step->destinationPlacement.width),
+                            static_cast<unsigned int>(step->destinationPlacement.height),
+                            static_cast<float>(step->destinationPlacement.width),
+                            static_cast<float>(step->destinationPlacement.height),
+                            gba::CompositionVerticalAnchor::Bottom);
+                        const gba::OverlayCompositionSurface::VisualPresentation
+                            settledPresentation{
+                                settled.scaleX, settled.scaleY,
+                                settled.offsetX, settled.offsetY,
+                                static_cast<float>(step->destinationPlacement.width),
+                                static_cast<float>(step->destinationPlacement.height),
+                            };
+                        gba::OverlayCompositionSurface::CommitTiming settleTiming;
+                        const HRESULT settleResult =
+                            compositionSurface_.CommitPresentation(
+                                settledPresentation, settleTiming);
+                        BOOL placed = FALSE;
+                        if (SUCCEEDED(settleResult)) {
+                            // Publish settled transaction state before the
+                            // synchronous WM_WINDOWPOSCHANGED/UIA projection.
+                            presentationTransaction_.AcceptCompositionStep(*step);
+                            transactionAccepted = true;
+                            struct PlacementGuard final {
+                                bool& active;
+                                explicit PlacementGuard(bool& value)
+                                    : active(value) { active = true; }
+                                ~PlacementGuard() { active = false; }
+                            } guard(compositionPlacementInProgress_);
+                            placed = SetWindowPos(
+                                window_, HWND_TOPMOST,
+                                step->destinationPlacement.x,
+                                step->destinationPlacement.y,
+                                step->destinationPlacement.width,
+                                step->destinationPlacement.height,
+                                SWP_SHOWWINDOW | SWP_NOACTIVATE | SWP_NOREDRAW);
+                        }
+                        accepted = SUCCEEDED(settleResult) && placed;
+                        if (!accepted) {
+                            DisableCompositionFallback(
+                                L"motion settlement failed hresult=" +
+                                std::to_wstring(static_cast<unsigned long>(
+                                    settleResult)) +
+                                L" error=" + std::to_wstring(GetLastError()));
+                            presentationTransaction_.RejectCompositionAdmission();
+                        }
+                        if (accepted) {
                         AppendDiagnostic(
                             L"Composition motion final steps=" +
-                            std::to_wstring(compositionMotionCommitCount_) +
-                            L" geometry=retained-container "
-                            L"waited=false redraw=false alpha=premultiplied-clear");
-                        compositionMotionFinalPlacement_.reset();
-                        compositionMotionPresentedExtentDip_.reset();
-                        compositionMotionCommitCount_ = 0;
-                        if (accessibilityActive_ &&
-                            !accessibilityTree_.widgetId.empty()) {
-                            (void)PublishAccessibilityTree(
-                                compositionMotionPixelsPerDipX_);
+                            std::to_wstring(step->index) +
+                            L" geometry=destination-settled bounds=" +
+                            std::to_wstring(step->destinationPlacement.x) + L"," +
+                            std::to_wstring(step->destinationPlacement.y) + L"," +
+                            std::to_wstring(step->destinationPlacement.width) + L"," +
+                            std::to_wstring(step->destinationPlacement.height) +
+                            L" commit-us=" +
+                            std::to_wstring(settleTiming.commitMicroseconds) +
+                            L" waited=false redraw=false alpha=premultiplied-clear");
                         }
-                    } else if (accessibilityActive_ &&
-                               !accessibilityTree_.widgetId.empty()) {
-                        (void)PublishAccessibilityTree(
-                            compositionMotionPixelsPerDipX_);
+                        }
+                        if (accepted) {
+                            if (!transactionAccepted)
+                                presentationTransaction_.AcceptCompositionStep(*step);
+                            if (accessibilityActive_ &&
+                                !accessibilityTree_.widgetId.empty()) {
+                                const float pixelScale =
+                                    static_cast<float>(
+                                        step->destinationPlacement.width) /
+                                    static_cast<float>(std::max(
+                                        1, DesiredPresentationExtentDip().widthDip));
+                                (void)PublishAccessibilityTree(pixelScale);
+                            }
+                        }
                     }
                 }
             } else {
-                animatedExtentDip_ = gba::OverlayPresentationExtent{
-                    static_cast<int>(std::lround(extent.widthDip)),
-                    static_cast<int>(std::lround(extent.heightDip)),
-                };
+                (void)presentationTransaction_.AdvanceFallbackExtent(
+                    timestamp, CurrentAccessibilityPolicy().reducedMotion);
                 const auto nextExtent = PresentedPresentationExtentDip();
                 if (state_.surface() != gba::Surface::Hidden &&
                     previousExtent != nextExtent) {
@@ -2743,7 +2793,6 @@ private:
                             RDW_INVALIDATE | RDW_UPDATENOW | RDW_ALLCHILDREN);
                     }
                 }
-                if (!extent.active) animatedExtentDip_.reset();
             }
         }
         ApplyTransitionWindowOpacity(overlayTransitionSample_.shellOpacity);
@@ -2787,6 +2836,11 @@ private:
         const bool wasVisible) {
         const unsigned int priorWidth = compositionSurface_.width();
         const unsigned int priorHeight = compositionSurface_.height();
+        struct PlacementGuard final {
+            bool& active;
+            explicit PlacementGuard(bool& value) : active(value) { active = true; }
+            ~PlacementGuard() { active = false; }
+        } guard(compositionPlacementInProgress_);
         gba::OverlayCompositionSurface::Frame frame;
         std::uint64_t drawMicroseconds{};
         if (!RenderCompositionFrame(
@@ -2797,68 +2851,24 @@ private:
             return false;
         }
 
-        struct PlacementGuard final {
-            bool& active;
-            explicit PlacementGuard(bool& value) : active(value) { active = true; }
-            ~PlacementGuard() { active = false; }
-        } guard(compositionPlacementInProgress_);
         const auto geometryStarted = std::chrono::steady_clock::now();
-        const bool animateMotion = wasVisible && priorWidth != 0 && priorHeight != 0 &&
-            extentTransition_.active();
-        const auto settled = gba::PlanCompositionMotion(
-            static_cast<unsigned int>(containerPlacement.width),
-            static_cast<unsigned int>(containerPlacement.height),
-            static_cast<unsigned int>(placement.width),
-            static_cast<unsigned int>(placement.height),
-            static_cast<float>(placement.width),
-            static_cast<float>(placement.height),
-            gba::CompositionVerticalAnchor::Bottom);
+        const auto directive =
+            presentationTransaction_.PrepareCompositionAdmission(
+                priorWidth, priorHeight, placement, containerPlacement,
+                DesiredPresentationExtentDip(), GetTickCount64(),
+                CurrentAccessibilityPolicy().reducedMotion, wasVisible);
+        const auto& motion = directive.initialPresentation;
         gba::OverlayCompositionSurface::VisualPresentation presentation{
-            settled.scaleX, settled.scaleY, settled.offsetX, settled.offsetY,
+            motion.scaleX, motion.scaleY, motion.offsetX, motion.offsetY,
             static_cast<float>(placement.width),
             static_cast<float>(placement.height),
         };
-        gba::CompositionMotionPlan initialMotion{};
-        if (animateMotion) {
-            const auto initial = extentTransition_.Sample(
-                GetTickCount64(), CurrentAccessibilityPolicy().reducedMotion);
-            const auto desired = DesiredPresentationExtentDip();
-            const float pixelsPerDipX = static_cast<float>(placement.width) /
-                static_cast<float>(desired.widthDip);
-            const float pixelsPerDipY = static_cast<float>(placement.height) /
-                static_cast<float>(desired.heightDip);
-            initialMotion = gba::PlanCompositionMotion(
-                static_cast<unsigned int>(containerPlacement.width),
-                static_cast<unsigned int>(containerPlacement.height),
-                static_cast<unsigned int>(placement.width),
-                static_cast<unsigned int>(placement.height),
-                initial.widthDip * pixelsPerDipX,
-                initial.heightDip * pixelsPerDipY,
-                gba::CompositionVerticalAnchor::Bottom);
-            presentation = {
-                initialMotion.scaleX, initialMotion.scaleY,
-                initialMotion.offsetX, initialMotion.offsetY,
-                static_cast<float>(placement.width),
-                static_cast<float>(placement.height),
-            };
-            compositionMotionFinalPlacement_ = placement;
-            compositionMotionSourceWidth_ =
-                static_cast<unsigned int>(containerPlacement.width);
-            compositionMotionSourceHeight_ =
-                static_cast<unsigned int>(containerPlacement.height);
-            compositionMotionPixelsPerDipX_ = pixelsPerDipX;
-            compositionMotionPixelsPerDipY_ = pixelsPerDipY;
-            compositionMotionCommitCount_ = 0;
-            compositionMotionPresentedExtentDip_ = gba::OverlayPresentationExtent{
-                static_cast<int>(std::lround(initial.widthDip)),
-                static_cast<int>(std::lround(initial.heightDip)),
-            };
-        }
 
         gba::OverlayCompositionSurface::CommitTiming commitTiming;
         const HRESULT commitResult = compositionSurface_.CommitFrame(
             frame, !wasVisible, commitTiming, &presentation);
         if (FAILED(commitResult)) {
+            presentationTransaction_.RejectCompositionAdmission();
             DisableCompositionFallback(
                 L"destination commit failed hresult=" +
                 std::to_wstring(static_cast<unsigned long>(commitResult)));
@@ -2869,7 +2879,6 @@ private:
         const int containerHeight = containerPlacement.height;
         const int containerX = containerPlacement.x;
         const int containerY = containerPlacement.y;
-        compositionContentPlacement_ = placement;
         const BOOL placed = SetWindowPos(
             window_, HWND_TOPMOST,
             containerX, containerY, containerWidth, containerHeight,
@@ -2878,13 +2887,18 @@ private:
             std::chrono::duration_cast<std::chrono::microseconds>(
                 std::chrono::steady_clock::now() - geometryStarted).count());
         if (!placed) {
-            compositionMotionFinalPlacement_.reset();
-            compositionMotionPresentedExtentDip_.reset();
-            compositionContentPlacement_.reset();
+            presentationTransaction_.RejectCompositionAdmission();
             AppendDiagnostic(
                 L"Committed composition surface could not be placed error=" +
                 std::to_wstring(GetLastError()));
             return false;
+        }
+        presentationTransaction_.AcceptCompositionAdmission(directive);
+        if (accessibilityActive_ && !accessibilityTree_.widgetId.empty()) {
+            const float pixelScale = static_cast<float>(placement.width) /
+                static_cast<float>(std::max(
+                    1, directive.destinationExtentDip.widthDip));
+            (void)PublishAccessibilityTree(pixelScale, true);
         }
 
         const int visibleContentX = containerX + static_cast<int>(
@@ -2901,7 +2915,9 @@ private:
             std::to_wstring(priorWidth) + L"x" + std::to_wstring(priorHeight) +
             L" to=" + std::to_wstring(placement.width) + L"x" +
             std::to_wstring(placement.height) +
-            L" order=" + (animateMotion ? L"commit-motion-container" : L"commit-place") +
+            L" order=" + (directive.animateMotion
+                ? L"commit-motion-container"
+                : L"commit-place") +
             L" draw-us=" + std::to_wstring(drawMicroseconds) +
             L" commit-us=" + std::to_wstring(commitTiming.commitMicroseconds) +
             L" geometry-us=" + std::to_wstring(geometryMicroseconds) +
@@ -2917,7 +2933,7 @@ private:
             std::to_wstring(visibleContentHeight) +
             L" anchor=bottom first-visible=" +
             std::wstring(wasVisible ? L"false" : L"true"));
-        if (animateMotion) {
+        if (directive.animateMotion) {
             AppendDiagnostic(
                 L"Composition motion start from=" +
                 std::to_wstring(priorWidth) + L"x" + std::to_wstring(priorHeight) +
@@ -2988,9 +3004,14 @@ private:
         float desiredWidthDip = static_cast<float>(kPanelWidth);
         float desiredHeightDip = static_cast<float>(kDashboardHeight);
         if (state_.surface() == gba::Surface::Widget) {
-            const auto presented = PresentedPresentationExtentDip();
-            desiredWidthDip = static_cast<float>(presented.widthDip);
-            desiredHeightDip = static_cast<float>(presented.heightDip);
+            // A composition admission renders the complete destination once
+            // at its authored viewport. Only its visual envelope interpolates
+            // from the retained source; the destination layout never does.
+            const auto layoutExtent = compositionSurface_.available()
+                ? DesiredPresentationExtentDip()
+                : PresentedPresentationExtentDip();
+            desiredWidthDip = static_cast<float>(layoutExtent.widthDip);
+            desiredHeightDip = static_cast<float>(layoutExtent.heightDip);
         }
         const auto placement = ComputePlatformPlacement(
             work, dpi,
@@ -3152,18 +3173,7 @@ private:
 
     void RetireCompositionMotionForHiddenState() {
         const bool retiredInFlightCompositionMotion =
-            extentTransition_.active() || compositionMotionFinalPlacement_.has_value() ||
-            compositionMotionPresentedExtentDip_.has_value();
-        extentTransition_.Cancel();
-        animatedExtentDip_.reset();
-        compositionMotionFinalPlacement_.reset();
-        compositionMotionPresentedExtentDip_.reset();
-        compositionContentPlacement_.reset();
-        compositionMotionSourceWidth_ = 0;
-        compositionMotionSourceHeight_ = 0;
-        compositionMotionPixelsPerDipX_ = 1.0F;
-        compositionMotionPixelsPerDipY_ = 1.0F;
-        compositionMotionCommitCount_ = 0;
+            presentationTransaction_.RetireHidden();
         AppendDiagnostic(
             L"Composition motion retired state=hidden in-flight=" +
             std::wstring(retiredInFlightCompositionMotion ? L"true" : L"false") +
@@ -3256,14 +3266,13 @@ private:
     void CommitAdmittedWidgetPresentation(const std::wstring_view widgetId) {
         const auto* snapshot = SnapshotFor(widgetId);
         if (!snapshot) return;
-        committedWidgetSurfaceRequest_ = WidgetSurfaceRequestForSnapshot(*snapshot);
-        committedWidgetSurfaceAvailable_ = true;
-        committedWidgetPresentationWidget_ = widgetId;
-        committedWidgetPresentationSnapshot_ = *snapshot;
-        committedWidgetPresentationFocusId_ =
+        presentationTransaction_.RetainAdmittedWidget(
+            widgetId,
+            *snapshot,
             state_.focusRegion() == gba::FocusRegion::Widget
-                ? focusedElementId_
-                : std::wstring{};
+                ? std::wstring_view{focusedElementId_}
+                : std::wstring_view{},
+            WidgetSurfaceRequestForSnapshot(*snapshot));
     }
 
     [[nodiscard]] std::optional<gba::WidgetSurfaceRequest>
@@ -3271,11 +3280,12 @@ private:
         if (!IsBridgeWidget(state_.activeWidget())) return std::nullopt;
         const auto* snapshot = SnapshotFor(state_.activeWidget());
         switch (gba::ResolveWidgetExtentAuthority(
-            snapshot != nullptr, committedWidgetSurfaceAvailable_)) {
+            snapshot != nullptr,
+            presentationTransaction_.retainedSurfaceAvailable())) {
         case gba::WidgetExtentAuthority::AdmittedSnapshot:
             return WidgetSurfaceRequestForSnapshot(*snapshot);
         case gba::WidgetExtentAuthority::RetainedCommittedSurface:
-            return committedWidgetSurfaceRequest_;
+            return presentationTransaction_.retainedSurfaceRequest();
         case gba::WidgetExtentAuthority::CompactStartupFallback:
             return gba::WidgetSurfaceRequest{gba::WidgetSurfaceMode::Compact};
         }
@@ -3327,8 +3337,8 @@ private:
             const auto* admitted = SnapshotFor(state_.activeWidget());
             measurementSnapshot = admitted
                 ? InteractionSnapshotFor(state_.activeWidget())
-                : committedWidgetPresentationSnapshot_
-                    ? &*committedWidgetPresentationSnapshot_
+                : presentationTransaction_.retainedPresentation()
+                    ? &presentationTransaction_.retainedPresentation()->snapshot
                     : nullptr;
         }
         const auto sameRequest = [](const gba::WidgetSurfaceRequest& left,
@@ -3412,29 +3422,17 @@ private:
 
     [[nodiscard]] gba::OverlayPresentationExtent
     PresentedPresentationExtentDip() const {
-        return compositionSurface_.available()
-            ? compositionMotionPresentedExtentDip_.value_or(
-                DesiredPresentationExtentDip())
-            : animatedExtentDip_.value_or(DesiredPresentationExtentDip());
+        return presentationTransaction_.PresentedExtent(
+            DesiredPresentationExtentDip(), compositionSurface_.available());
     }
 
     void BeginWidgetExtentTransition(
         const gba::OverlayPresentationExtent from,
         const gba::OverlayPresentationExtent target) {
-        extentTransition_.Begin(
-            GetTickCount64(),
-            static_cast<float>(from.widthDip),
-            static_cast<float>(from.heightDip),
-            static_cast<float>(target.widthDip),
-            static_cast<float>(target.heightDip),
-            CurrentAccessibilityPolicy().reducedMotion);
-        const auto initial = extentTransition_.Sample(
-            GetTickCount64(), CurrentAccessibilityPolicy().reducedMotion);
-        animatedExtentDip_ = gba::OverlayPresentationExtent{
-            static_cast<int>(std::lround(initial.widthDip)),
-            static_cast<int>(std::lround(initial.heightDip)),
-        };
-        if (compositionSurface_.available()) animatedExtentDip_.reset();
+        presentationTransaction_.BeginExtentTransition(
+            from, target, GetTickCount64(),
+            CurrentAccessibilityPolicy().reducedMotion,
+            compositionSurface_.available());
     }
 
     void ApplyPresentation(const gba::OverlayPresentationDirective directive) {
@@ -3544,29 +3542,13 @@ private:
 
     [[nodiscard]] std::optional<gba::CompositionMotionPlan>
     CurrentCompositionMotionPlan() const {
-        if (!compositionSurface_.available() ||
-            !compositionContentPlacement_) return std::nullopt;
+        if (!compositionSurface_.available()) return std::nullopt;
         RECT client{};
         if (!window_ || !GetClientRect(window_, &client)) return std::nullopt;
-        const auto& target = *compositionContentPlacement_;
-        const auto presented = compositionMotionPresentedExtentDip_.value_or(
-            DesiredPresentationExtentDip());
-        const float pixelsPerDipX = compositionMotionFinalPlacement_
-            ? compositionMotionPixelsPerDipX_
-            : static_cast<float>(target.width) /
-                static_cast<float>(std::max(1, DesiredPresentationExtentDip().widthDip));
-        const float pixelsPerDipY = compositionMotionFinalPlacement_
-            ? compositionMotionPixelsPerDipY_
-            : static_cast<float>(target.height) /
-                static_cast<float>(std::max(1, DesiredPresentationExtentDip().heightDip));
-        return gba::PlanCompositionMotion(
+        return presentationTransaction_.CurrentMotionPlan(
             static_cast<unsigned int>(client.right - client.left),
             static_cast<unsigned int>(client.bottom - client.top),
-            static_cast<unsigned int>(target.width),
-            static_cast<unsigned int>(target.height),
-            static_cast<float>(presented.widthDip) * pixelsPerDipX,
-            static_cast<float>(presented.heightDip) * pixelsPerDipY,
-            gba::CompositionVerticalAnchor::Bottom);
+            DesiredPresentationExtentDip());
     }
 
     [[nodiscard]] std::optional<TrayPointerTarget> HitTrayTarget(
@@ -3601,11 +3583,12 @@ private:
         const float interfaceScale = appearanceState_.current()
             ? static_cast<float>(appearanceState_.current()->interfaceScale)
             : 1.0F;
-        const int renderWidth = compositionContentPlacement_
-            ? compositionContentPlacement_->width
+        const auto& contentPlacement = presentationTransaction_.contentPlacement();
+        const int renderWidth = contentPlacement
+            ? contentPlacement->width
             : client.right - client.left;
-        const int renderHeight = compositionContentPlacement_
-            ? compositionContentPlacement_->height
+        const int renderHeight = contentPlacement
+            ? contentPlacement->height
             : client.bottom - client.top;
         const auto metrics = gba::ComputeOverlayRenderMetrics(
             renderWidth, renderHeight,
@@ -3671,11 +3654,12 @@ private:
         float clientY) const {
         RECT client{};
         if (!window_ || !GetClientRect(window_, &client)) return false;
-        const int renderWidth = compositionContentPlacement_
-            ? compositionContentPlacement_->width
+        const auto& contentPlacement = presentationTransaction_.contentPlacement();
+        const int renderWidth = contentPlacement
+            ? contentPlacement->width
             : client.right - client.left;
-        const int renderHeight = compositionContentPlacement_
-            ? compositionContentPlacement_->height
+        const int renderHeight = contentPlacement
+            ? contentPlacement->height
             : client.bottom - client.top;
         const UINT dpi = std::max(1U, GetDpiForWindow(window_));
         const float interfaceScale = appearanceState_.current()
@@ -4594,7 +4578,11 @@ private:
         widgetAccessibilityProjection_.Clear();
     }
 
-    bool PublishAccessibilityTree(const double pixelsPerDip) {
+    bool PublishAccessibilityTree(
+        const double pixelsPerDip,
+        const bool forceDuringPlacement = false) {
+        if (compositionPlacementInProgress_ && !forceDuringPlacement)
+            return false;
         POINT origin{};
         RECT client{};
         if (!ClientToScreen(window_, &origin) || !GetClientRect(window_, &client)) {
@@ -4608,14 +4596,19 @@ private:
         double presentedWidth = static_cast<double>(client.right - client.left);
         double presentedHeight = static_cast<double>(client.bottom - client.top);
         if (const auto motion = CurrentCompositionMotionPlan()) {
+            const auto& contentPlacement = presentationTransaction_.contentPlacement();
+            if (!contentPlacement) {
+                ClearAccessibilityTree();
+                return false;
+            }
             scaleX *= static_cast<double>(motion->scaleX);
             scaleY *= static_cast<double>(motion->scaleY);
             visualOffsetX = static_cast<double>(motion->offsetX);
             visualOffsetY = static_cast<double>(motion->offsetY);
             presentedWidth = static_cast<double>(
-                compositionContentPlacement_->width) * motion->scaleX;
+                contentPlacement->width) * motion->scaleX;
             presentedHeight = static_cast<double>(
-                compositionContentPlacement_->height) * motion->scaleY;
+                contentPlacement->height) * motion->scaleY;
         }
         accessibilityProvider_.Publish(
             accessibilityTree_,
@@ -5758,10 +5751,7 @@ private:
             std::wstring(reason));
         DiscardGraphicsResources();
         compositionSurface_.Reset();
-        compositionMotionFinalPlacement_.reset();
-        compositionMotionPresentedExtentDip_.reset();
-        compositionContentPlacement_.reset();
-        compositionMotionCommitCount_ = 0;
+        presentationTransaction_.RejectCompositionAdmission();
         EnableLegacyLayeredFallback();
         appliedOverlayOpacity_.reset();
         ApplyTransitionWindowOpacity(overlayTransitionSample_.shellOpacity);
@@ -5837,11 +5827,12 @@ private:
 
         RECT client{};
         GetClientRect(window_, &client);
-        const auto width = compositionContentPlacement_
-            ? static_cast<unsigned int>(compositionContentPlacement_->width)
+        const auto& contentPlacement = presentationTransaction_.contentPlacement();
+        const auto width = contentPlacement
+            ? static_cast<unsigned int>(contentPlacement->width)
             : static_cast<unsigned int>(client.right - client.left);
-        const auto height = compositionContentPlacement_
-            ? static_cast<unsigned int>(compositionContentPlacement_->height)
+        const auto height = contentPlacement
+            ? static_cast<unsigned int>(contentPlacement->height)
             : static_cast<unsigned int>(client.bottom - client.top);
         const UINT windowDpi = GetDpiForWindow(window_);
         if (compositionSurface_.available()) {
@@ -6308,12 +6299,13 @@ private:
                 contentLayerPushed = true;
             }
             const auto sessionPresentation = sessions_.Presentation(widget);
+            const auto& retainedPresentation =
+                presentationTransaction_.retainedPresentation();
             const auto contentAuthority = gba::ResolveWidgetContentAuthority(
                 sessionPresentation.snapshot != nullptr,
                 sessionPresentation.authority ==
                     gba::WidgetPresentationAuthority::FailureRetained,
-                committedWidgetPresentationSnapshot_.has_value() &&
-                    !committedWidgetPresentationWidget_.empty());
+                retainedPresentation.has_value());
             const bool failureRetainedSnapshot =
                 contentAuthority == gba::WidgetContentAuthority::FailureRetainedSnapshot;
             const bool transitionRetainedSnapshot =
@@ -6323,13 +6315,13 @@ private:
             const auto* snapshot = failureRetainedSnapshot
                 ? sessionPresentation.snapshot
                 : transitionRetainedSnapshot
-                    ? &*committedWidgetPresentationSnapshot_
+                    ? &retainedPresentation->snapshot
                     : sessionPresentation.snapshot;
             const std::wstring_view renderedWidget = transitionRetainedSnapshot
-                ? std::wstring_view{committedWidgetPresentationWidget_}
+                ? std::wstring_view{retainedPresentation->widgetId}
                 : widget;
             const std::wstring_view renderedFocusId = transitionRetainedSnapshot
-                ? std::wstring_view{committedWidgetPresentationFocusId_}
+                ? std::wstring_view{retainedPresentation->focusId}
                 : failureRetainedSnapshot
                     ? std::wstring_view{}
                     : state_.focusRegion() == gba::FocusRegion::Widget
@@ -6649,6 +6641,14 @@ private:
                             (selectedTrayItemVisible ? L"true" : L"false") +
                             L" shell-bounds=0,0," + std::to_wstring(width) + L"," +
                             std::to_wstring(height) +
+                            L" desired-extent=" +
+                            std::to_wstring(DesiredPresentationExtentDip().widthDip) +
+                            L"x" +
+                            std::to_wstring(DesiredPresentationExtentDip().heightDip) +
+                            L" presented-extent=" +
+                            std::to_wstring(PresentedPresentationExtentDip().widthDip) +
+                            L"x" +
+                            std::to_wstring(PresentedPresentationExtentDip().heightDip) +
                             L" body-bounds=" + std::to_wstring(geometry->panelX) + L"," +
                             std::to_wstring(geometry->panelY) + L"," +
                             std::to_wstring(geometry->panelWidth) + L"," +
@@ -6852,19 +6852,13 @@ private:
     gba::RenderResult lastWidgetRenderResult_;
     bool declarativeMotionActive_{};
     gba::OverlayTransitionTimeline overlayTransition_;
-    gba::OverlayExtentTransitionTimeline extentTransition_;
     gba::OverlayTransitionSample overlayTransitionSample_{};
-    std::optional<gba::OverlayPresentationExtent> animatedExtentDip_;
+    gba::OverlayPresentationTransaction presentationTransaction_;
     bool awaitingSuccessfulOpenPaint_{};
     ULONGLONG nextOpenPaintRetryAt_{};
     std::wstring pendingContentRevealWidget_;
-    bool committedWidgetSurfaceAvailable_{};
-    std::optional<gba::WidgetSurfaceRequest> committedWidgetSurfaceRequest_;
     mutable std::optional<WidgetSurfaceResolutionCache>
         widgetSurfaceResolutionCache_;
-    std::wstring committedWidgetPresentationWidget_;
-    std::optional<gba::WidgetSnapshot> committedWidgetPresentationSnapshot_;
-    std::wstring committedWidgetPresentationFocusId_;
     std::wstring lastWidgetPresentationPaintKey_;
     BYTE targetOverlayOpacity_{248};
     BYTE targetBackdropOpacity_{kBackdropOpacity};
@@ -6875,15 +6869,6 @@ private:
     ComPtr<IDWriteFactory> writeFactory_;
     gba::OverlayCompositionSurface compositionSurface_;
     bool compositionPlacementInProgress_{};
-    std::optional<gba::OverlayPlacement> compositionMotionFinalPlacement_;
-    std::optional<gba::OverlayPlacement> compositionContentPlacement_;
-    std::optional<gba::OverlayPresentationExtent>
-        compositionMotionPresentedExtentDip_;
-    unsigned int compositionMotionSourceWidth_{};
-    unsigned int compositionMotionSourceHeight_{};
-    float compositionMotionPixelsPerDipX_{1.0F};
-    float compositionMotionPixelsPerDipY_{1.0F};
-    std::uint64_t compositionMotionCommitCount_{};
     ComPtr<ID2D1HwndRenderTarget> hwndRenderTarget_;
     ComPtr<ID2D1RenderTarget> renderTarget_;
     ComPtr<ID2D1SolidColorBrush> backgroundBrush_;

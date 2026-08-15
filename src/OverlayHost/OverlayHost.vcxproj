@@ -65,6 +65,7 @@
     <ClInclude Include="NativeIcons.h" />
     <ClInclude Include="NativeStyle.h" />
     <ClInclude Include="OverlayPlacement.h" />
+    <ClInclude Include="OverlayPresentationTransaction.h" />
     <ClInclude Include="OverlayTargeting.h" />
     <ClInclude Include="DeclarativeRenderer.h" />
     <ClInclude Include="GuideInputCompatibility.h" />

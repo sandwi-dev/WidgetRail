@@ -54,17 +54,20 @@ struct Target final {
     const wchar_t* label;
     UINT key;
     std::uint32_t firstSnapshotDelayMilliseconds;
+    const char* expectedDesiredExtent;
 };
 
 constexpr std::array<Target, 8> kTargets{{
-    {L"audio-mixer", L"Audio Mixer", VK_RETURN, 0},
-    {L"game-launcher", L"Game Launcher", VK_RIGHT, 420},
-    {L"now-playing", L"Now Playing", VK_RIGHT, 180},
-    {L"games-apps", L"Games & Apps", VK_RIGHT, 320},
-    {L"network-controls", L"Network Controls", VK_RIGHT, 0},
-    {L"yt-music", L"YT Music", VK_RIGHT, 240},
-    {L"spotify", L"Spotify", VK_RIGHT, 240},
-    {L"settings", L"Settings", VK_RIGHT, 0},
+    {L"audio-mixer", L"Audio Mixer", VK_RETURN, 0, "592x698"},
+    {L"game-launcher", L"Game Launcher", VK_RIGHT, 420, "1052x878"},
+    {L"now-playing", L"Now Playing", VK_RIGHT, 180, "832x658"},
+    {L"games-apps", L"Games & Apps", VK_RIGHT, 320, "892x608"},
+    // FillAvailable width is resolved from the selected monitor's live rcWork;
+    // the transaction test covers the representative compact 632x878 profile.
+    {L"network-controls", L"Network Controls", VK_RIGHT, 0, nullptr},
+    {L"yt-music", L"YT Music", VK_RIGHT, 240, "972x778"},
+    {L"spotify", L"Spotify", VK_RIGHT, 240, "1052x738"},
+    {L"settings", L"Settings", VK_RIGHT, 0, nullptr},
 }};
 
 class TemporaryInstallation final {
@@ -540,7 +543,8 @@ void RunRetentionScenario(const Arguments& arguments) {
             const auto finalRecord = settledLog.substr(
                 finalAt, finalEnd == std::string::npos
                     ? std::string::npos : finalEnd - finalAt);
-            Require(finalRecord.find("geometry=retained-container") != std::string::npos &&
+            Require(finalRecord.find("geometry=destination-settled") !=
+                        std::string::npos &&
                         finalRecord.find(
                             "waited=false redraw=false alpha=premultiplied-clear") !=
                             std::string::npos,
@@ -668,6 +672,19 @@ void RunRetentionScenario(const Arguments& arguments) {
                     admittedRecord.find("tray-next=false") != std::string::npos,
                 "Widget switching changed shared tray capacity for " +
                     WideToUtf8(target.label) + "; record=" + admittedRecord);
+        const auto retainedDesired = TextField(retainedRecord, "desired-extent=");
+        const auto admittedDesired = TextField(admittedRecord, "desired-extent=");
+        Require(admittedDesired != retainedDesired &&
+                    TextField(admittedRecord, "viewport-bounds=") !=
+                        TextField(retainedRecord, "viewport-bounds="),
+                "Admitted destination reused retained source layout geometry for " +
+                    WideToUtf8(target.label) + "; retained=" + retainedRecord +
+                    " admitted=" + admittedRecord);
+        if (target.expectedDesiredExtent) {
+            Require(admittedDesired == target.expectedDesiredExtent,
+                    "Admitted destination did not own its authored final extent for " +
+                        WideToUtf8(target.label) + "; record=" + admittedRecord);
+        }
         const auto transition = log.find(TransitionNeedle(target.id), before);
         Require(transition != std::string::npos,
                 "Transition diagnostics omitted the destination identity for " +
@@ -711,6 +728,8 @@ void RunRetentionScenario(const Arguments& arguments) {
                 audioAdmittedRecord.find("tray-selected-visible=true") !=
                     std::string::npos,
             "Shared production tray did not retain every identity at its stable capacity");
+    Require(TextField(audioAdmittedRecord, "desired-extent=") == "592x698",
+            "Audio Mixer did not establish the expected authored source extent");
     recordComposition(
         audioAdmittedEnd == std::string::npos ? audioLog.size() : audioAdmittedEnd + 1,
         kTargets[0].label);

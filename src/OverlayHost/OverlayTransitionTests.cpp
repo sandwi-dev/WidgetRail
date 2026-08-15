@@ -1,4 +1,5 @@
 #include "OverlayTransition.h"
+#include "OverlayPresentationTransaction.h"
 
 #include <cmath>
 #include <cstdlib>
@@ -213,6 +214,83 @@ void HiddenExtentRetiresWithoutTerminalFrameWork() {
          "reopened extent begins from current authoritative height");
 }
 
+void DestinationAdmissionOwnsLayoutBeforeEnvelopeSettlement() {
+    gba::OverlayPresentationTransaction transaction;
+    gba::WidgetSnapshot audioSnapshot;
+    audioSnapshot.instanceId = L"audio-mixer.default";
+    gba::WidgetSurfaceRequest audioRequest;
+    audioRequest.mode = gba::WidgetSurfaceMode::Compact;
+    audioRequest.preferredWidthDip = 520.0F;
+    audioRequest.preferredHeightDip = 520.0F;
+    transaction.RetainAdmittedWidget(
+        L"audio-mixer", audioSnapshot, L"audio-master", audioRequest);
+    Check(transaction.retainedPresentation() &&
+              transaction.retainedPresentation()->widgetId == L"audio-mixer" &&
+              transaction.retainedSurfaceRequest(),
+          "transaction exclusively retains the admitted source presentation");
+
+    constexpr gba::OverlayPresentationExtent audioExtent{592, 698};
+    constexpr gba::OverlayPresentationExtent networkExtent{632, 878};
+    constexpr gba::OverlayPlacement networkPlacement{484, 22, 632, 878};
+    constexpr gba::OverlayPlacement sharedContainer{484, 22, 632, 878};
+    transaction.BeginExtentTransition(
+        audioExtent, networkExtent, 100, false, true);
+    const auto directive = transaction.PrepareCompositionAdmission(
+        592, 698, networkPlacement, sharedContainer, networkExtent,
+        100, false, true);
+    Check(directive.animateMotion &&
+              directive.destinationExtentDip == networkExtent &&
+              directive.destinationPlacement.x == networkPlacement.x &&
+              directive.destinationPlacement.y == networkPlacement.y &&
+              directive.destinationPlacement.width == networkPlacement.width &&
+              directive.destinationPlacement.height == networkPlacement.height,
+          "admission directive carries destination layout independently of motion");
+    Near(directive.initialPresentation.scaleX, 592.0F / 632.0F,
+         "complete Network frame starts inside Audio width envelope");
+    Near(directive.initialPresentation.scaleY, 698.0F / 878.0F,
+         "complete Network frame starts inside Audio height envelope");
+    transaction.AcceptCompositionAdmission(directive);
+    Check(transaction.PresentedExtent(networkExtent, true) == audioExtent,
+          "source extent remains only the visual envelope before settlement");
+
+    const auto final = transaction.PrepareCompositionStep(
+        100 + gba::OverlayExtentTransitionTimeline::DurationMilliseconds,
+        false);
+    Check(final && final->finalFrame &&
+              final->presentedExtentDip == networkExtent &&
+              final->destinationPlacement.x == networkPlacement.x &&
+              final->destinationPlacement.y == networkPlacement.y &&
+              final->destinationPlacement.width == networkPlacement.width &&
+              final->destinationPlacement.height == networkPlacement.height,
+          "motion ends at explicit destination geometry");
+    transaction.AcceptCompositionStep(*final);
+    Check(transaction.PresentedExtent(networkExtent, true) == networkExtent &&
+              !transaction.extentTransitionActive(),
+          "settled destination retires all retained extent authority");
+    const auto settled = transaction.CurrentMotionPlan(
+        632, 878, networkExtent);
+    Check(settled && settled->scaleX == 1.0F && settled->scaleY == 1.0F &&
+              settled->offsetX == 0.0F && settled->offsetY == 0.0F,
+          "settled viewport is authored Network geometry without stale scaling");
+}
+
+void ReducedMotionAdmissionCommitsDestinationDirectly() {
+    gba::OverlayPresentationTransaction transaction;
+    constexpr gba::OverlayPresentationExtent compact{592, 698};
+    constexpr gba::OverlayPresentationExtent wide{1052, 878};
+    constexpr gba::OverlayPlacement placement{274, 22, 1052, 878};
+    transaction.BeginExtentTransition(compact, wide, 400, true, true);
+    const auto directive = transaction.PrepareCompositionAdmission(
+        592, 698, placement, placement, wide, 400, true, true);
+    Check(!directive.animateMotion &&
+              directive.initialPresentation.scaleX == 1.0F &&
+              directive.initialPresentation.scaleY == 1.0F,
+          "reduced motion admits the complete destination at final geometry");
+    transaction.AcceptCompositionAdmission(directive);
+    Check(transaction.PresentedExtent(wide, true) == wide,
+          "reduced motion retains no source extent after admission");
+}
+
 void ClockAndDecisionsAreStable() {
     gba::OverlayTransitionTimeline timeline;
     timeline.BeginOpen(100, false);
@@ -251,6 +329,8 @@ int main() {
     ExtentTransitionIsBoundedAndRetargetable();
     ReducedMotionExtentSnapsImmediately();
     HiddenExtentRetiresWithoutTerminalFrameWork();
+    DestinationAdmissionOwnsLayoutBeforeEnvelopeSettlement();
+    ReducedMotionAdmissionCommitsDestinationDirectly();
     ClockAndDecisionsAreStable();
     std::cout << "OverlayTransitionTests: " << checks << " checks passed\n";
     return EXIT_SUCCESS;
