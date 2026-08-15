@@ -134,6 +134,52 @@ if (!cliReadme.Contains("GameBarAlternative.WidgetSdk", StringComparison.Ordinal
     !cliReadme.Contains("private intermediates", StringComparison.Ordinal))
     failures.Add("tools/GbarCli/README.md is missing the offline scaffold/source-pack contract.");
 
+var coreDomainRoots = new[]
+{
+    Path.Combine(repository, "src", "PlatformBroker"),
+    Path.Combine(repository, "src", "WidgetBridge"),
+    Path.Combine(repository, "src", "WidgetCatalog"),
+    Path.Combine(repository, "src", "WidgetProtocol"),
+    Path.Combine(repository, "src", "WidgetRuntime"),
+    Path.Combine(repository, "src", "WidgetSdk"),
+};
+string[] retiredDomainMarkers =
+[
+    "external.spotify.",
+    "WidgetSpotify",
+    "SpotifyPlatformBroker",
+    "WindowsSpotifyProvider",
+    "org.gbar.samples.spotify",
+    "org.gbar.community.reference.game-launcher",
+    "org.gbar.firstparty.game-launcher",
+    "HostGameLauncherApplicationService",
+];
+foreach (var root in coreDomainRoots)
+{
+    foreach (var file in Directory.EnumerateFiles(root, "*", SearchOption.AllDirectories)
+                 .Where(path => Path.GetExtension(path) is ".cs" or ".csproj" or ".json")
+                 .Where(path => !HasIgnoredSegment(repository, path)))
+    {
+        var source = File.ReadAllText(file);
+        foreach (var marker in retiredDomainMarkers)
+            if (source.Contains(marker, StringComparison.Ordinal))
+                failures.Add($"{Relative(file)} retains retired product domain '{marker}'.");
+    }
+}
+if (!File.ReadAllText(Path.Combine(repository, "src", "PlatformBroker", "Contracts.cs"))
+        .Contains("IAppLibraryPlatformBrokerBackend", StringComparison.Ordinal))
+    failures.Add("Generic App Library behavior was removed with the retired product domains.");
+foreach (var retiredPath in new[]
+         {
+             Path.Combine(repository, "src", "WindowsSpotifyProvider", "WindowsSpotifyProvider.csproj"),
+             Path.Combine(repository, "src", "SpotifyPlaybackProtocol", "SpotifyPlaybackProtocol.csproj"),
+             Path.Combine(repository, "src", "SpotifyPlaybackHost", "SpotifyPlaybackHost.csproj"),
+             Path.Combine(repository, "src", "FirstPartyWidgets", "GameLauncherWidget", "Legacy",
+                 "HostGameLauncherApplicationService.cs"),
+         })
+    if (File.Exists(retiredPath))
+        failures.Add($"{Relative(retiredPath)} is a retired product-owned domain path.");
+
 RequireLink(Path.Combine(repository, "README.md"), "docs/widget-authoring-guide.md");
 RequireLink(Path.Combine(repository, "README.md"), "docs/community-companion-services.md");
 RequireLink(Path.Combine(repository, "docs", "README.md"), "widget-authoring-guide.md");

@@ -10,6 +10,9 @@ playback policy, and lazily started WebView2 Web Playback child. It enters the
 product only through the generic `full-trust-application-v1` supervisor and
 generic overlay protocol. It does not request `external.spotify.*`, load a
 product-owned Spotify assembly, or add a Spotify contract to product core.
+The retired product-owned provider, broker domain, typed SDK service, and
+playback-host source paths have been removed; the package remains the sole
+Spotify domain owner.
 
 The metadata/control path uses Spotify's official Web API and reviewed OpenAPI
 schema, not desktop-client reverse engineering, browser scraping, or private

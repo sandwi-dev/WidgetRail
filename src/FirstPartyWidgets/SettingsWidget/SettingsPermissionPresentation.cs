@@ -419,12 +419,6 @@ internal static class SettingsPermissionPresentation
         PlatformCapabilities.AppLibraryLaunchV1 => "Launch installed apps",
         PlatformCapabilities.MediaSessionsReadV1 => "See Windows media sessions",
         PlatformCapabilities.MediaSessionsControlV1 => "Control media playback",
-        PlatformCapabilities.SpotifyConfigurationV1 => "Use Spotify developer configuration",
-        PlatformCapabilities.SpotifyAuthorizationV1 => "Connect a Spotify account",
-        PlatformCapabilities.SpotifyPlaybackReadV1 => "Read Spotify playback",
-        PlatformCapabilities.SpotifyPlaybackControlV1 => "Control Spotify playback",
-        PlatformCapabilities.SpotifyLocalPlaybackV1 => "Play Spotify on this PC",
-        PlatformCapabilities.SpotifyPlaylistsReadV1 => "See Spotify playlists",
         PlatformCapabilities.PrivateSecretsV1 => "Store private connection secrets",
         _ => "Unsupported capability",
         };
@@ -507,26 +501,6 @@ internal static class SettingsPermissionPresentation
         PlatformCapabilities.MediaSessionsControlV1 =>
             "Use only the play, pause, previous, and next actions that Windows reports as supported " +
             "while the widget is interactive. It cannot automate an app or access its account.",
-        PlatformCapabilities.SpotifyConfigurationV1 =>
-            "Use the public Spotify Client ID you configured for this package. Client secrets, " +
-            "passwords, and OAuth tokens are never exposed to widget code.",
-        PlatformCapabilities.SpotifyAuthorizationV1 =>
-            "Start Spotify Authorization Code with PKCE in your browser and receive only a sanitized " +
-            "connection state. The trusted host stores renewable credentials in Windows Credential Manager.",
-        PlatformCapabilities.SpotifyPlaybackReadV1 =>
-            "See current Spotify devices, item metadata, artwork URL, progress, playback state, " +
-            "queue, shuffle, and repeat through the trusted Spotify provider.",
-        PlatformCapabilities.SpotifyPlaybackControlV1 =>
-            "Control the authenticated Spotify account while the widget is interactive, including " +
-            "transport, seek, shuffle, repeat, device transfer, queue additions, and starting a selected context.",
-        PlatformCapabilities.SpotifyLocalPlaybackV1 =>
-            "Start the host-owned Spotify Web Playback device and transfer playback to this PC. " +
-            "Spotify Premium and the streaming scope are required. OAuth tokens and the internal " +
-            "device ID never reach widget code.",
-        PlatformCapabilities.SpotifyPlaylistsReadV1 =>
-            "See bounded pages of playlists owned or followed by the connected account and read " +
-            "items only where Spotify permits it. Spotify currently limits item access to playlists " +
-            "the user owns or collaborates on.",
         PlatformCapabilities.PrivateSecretsV1 =>
             "Create, replace, inspect metadata for, or delete package-scoped secrets in Windows " +
             "Credential Manager. Stored values are never returned to widget code; an exact-port " +

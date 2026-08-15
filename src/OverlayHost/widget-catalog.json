@@ -39,14 +39,6 @@
       "quickActions": []
     },
     {
-      "id": "game-launcher",
-      "packageId": "org.gbar.firstparty.game-launcher",
-      "instanceId": "game-launcher.default",
-      "packageRoot": "runtime/GameLauncher",
-      "icon": "play",
-      "quickActions": []
-    },
-    {
       "id": "audio-mixer",
       "packageId": "org.gbar.firstparty.audio-mixer",
       "instanceId": "audio-mixer.default",

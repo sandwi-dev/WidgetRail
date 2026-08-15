@@ -7,7 +7,6 @@ using GameBarAlternative.WindowsActivityProvider;
 using GameBarAlternative.WindowsBluetoothProvider;
 using GameBarAlternative.WindowsMediaProvider;
 using GameBarAlternative.WindowsCommunityProvider;
-using GameBarAlternative.WindowsSpotifyProvider;
 
 namespace GameBarAlternative.WidgetBridge;
 
@@ -81,10 +80,7 @@ internal static class Program
                         .GetAwaiter().GetResult().AppLibrary.GogInstalledGamesEnabled),
                 communityBackend,
                 communityBackend,
-                communityBackend,
-                spotify: new WindowsSpotifyPlatformBackend(
-                    new WidgetConfigurationSpotifyClientStore(
-                        new WidgetConfigurationStore(settingsPaths))));
+                communityBackend);
             await using var server = new WidgetBridgeServer(
                 pipeName, catalog, maximumBytes, appearance, consentStore, platformBackend,
                 catalogMonitor, residencyBudget, launcherExperience,

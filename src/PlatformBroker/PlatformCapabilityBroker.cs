@@ -121,7 +121,7 @@ public sealed class PlatformCapabilityBroker : IAsyncDisposable
     private readonly AudioCapabilityDomain _audioDomain;
     private readonly NetworkCapabilityDomain _networkDomain;
     private readonly AppLibraryCapabilityDomain _appLibraryDomain;
-    private readonly MediaSpotifyCapabilityDomain _mediaSpotifyDomain;
+    private readonly MediaCapabilityDomain _mediaDomain;
     private readonly PrivateSecretCapabilityDomain _privateSecretDomain;
     private readonly PrivateStateCapabilityDomain _privateStateDomain;
     private readonly object _gate = new();
@@ -177,8 +177,7 @@ public sealed class PlatformCapabilityBroker : IAsyncDisposable
         _networkDomain = new NetworkCapabilityDomain(_backend);
         _appLibraryDomain = new AppLibraryCapabilityDomain(
             _backend, _identity, appLibrarySavedIdIssuer, appLibraryArtwork);
-        _mediaSpotifyDomain = new MediaSpotifyCapabilityDomain(
-            _backend, _identity, AuthorizeSpotifyScopesAsync);
+        _mediaDomain = new MediaCapabilityDomain(_backend);
         _privateSecretDomain = new PrivateSecretCapabilityDomain(_backend, _identity);
         _privateStateDomain = new PrivateStateCapabilityDomain(_backend, _identity);
         _backend.EventPublished += OnBackendEvent;
@@ -345,8 +344,8 @@ public sealed class PlatformCapabilityBroker : IAsyncDisposable
             BrokerCapabilityDomain.AppLibrary =>
                 await _appLibraryDomain.ExecuteAsync(
                     request.Operation, request.Payload, requestToken).ConfigureAwait(false),
-            BrokerCapabilityDomain.MediaSpotify =>
-                await _mediaSpotifyDomain.ExecuteAsync(
+            BrokerCapabilityDomain.Media =>
+                await _mediaDomain.ExecuteAsync(
                     request.Operation, request.Payload, requestToken).ConfigureAwait(false),
             BrokerCapabilityDomain.Loopback =>
                 await ExecuteLoopbackAsync(request, lease).ConfigureAwait(false),
@@ -686,30 +685,6 @@ public sealed class PlatformCapabilityBroker : IAsyncDisposable
             System.Diagnostics.Stopwatch.GetTimestamp() >= ExpiresAtTimestamp;
     }
 
-    private async Task AuthorizeSpotifyScopesAsync(
-        IReadOnlyList<SpotifyAuthorizationScope> scopes,
-        CancellationToken cancellationToken)
-    {
-        foreach (var scope in scopes)
-        {
-            var capabilityId = scope switch
-            {
-                SpotifyAuthorizationScope.PlaybackStateRead =>
-                    PlatformCapabilities.SpotifyPlaybackReadV1,
-                SpotifyAuthorizationScope.PlaybackStateControl =>
-                    PlatformCapabilities.SpotifyPlaybackControlV1,
-                SpotifyAuthorizationScope.LocalPlayback =>
-                    PlatformCapabilities.SpotifyLocalPlaybackV1,
-                SpotifyAuthorizationScope.PlaylistsRead =>
-                    PlatformCapabilities.SpotifyPlaylistsReadV1,
-                _ => throw new BrokerException(
-                    "invalid_payload", "Spotify scope is invalid."),
-            };
-            await AuthorizeAsync(capabilityId, operation: null, cancellationToken)
-                .ConfigureAwait(false);
-        }
-    }
-
     private async Task<JsonElement> ExecuteLoopbackAsync(
         BrokerRequestEnvelope envelope,
         RequestLease primaryLease)
@@ -783,8 +758,8 @@ public sealed class PlatformCapabilityBroker : IAsyncDisposable
                 BrokerCapabilityDomain.Network =>
                     NetworkCapabilityDomain.ProjectEvent(
                         platformEvent.EventType, platformEvent.Payload),
-                BrokerCapabilityDomain.MediaSpotify =>
-                    MediaSpotifyCapabilityDomain.ProjectEvent(
+                BrokerCapabilityDomain.Media =>
+                    MediaCapabilityDomain.ProjectEvent(
                         platformEvent.EventType, platformEvent.Payload),
                 _ => throw new BrokerException(
                     "invalid_backend_data", "Broker event payload is invalid."),

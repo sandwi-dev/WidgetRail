@@ -65,24 +65,6 @@ if (args.Contains("--community-recovery-acceptance", StringComparer.Ordinal))
     return 0;
 }
 
-if (args.Contains("--spotify-installed-acceptance", StringComparer.Ordinal))
-{
-    static string RequiredArgument(string[] values, string name)
-    {
-        var index = Array.IndexOf(values, name);
-        return index >= 0 && index + 1 < values.Length &&
-               !string.IsNullOrWhiteSpace(values[index + 1])
-            ? Path.GetFullPath(values[index + 1])
-            : throw new ArgumentException($"{name} requires a path.");
-    }
-    await SpotifyInstalledPackageRunsIsolated(
-        RequiredArgument(args, "--catalog"),
-        RequiredArgument(args, "--package"),
-        RequiredArgument(args, "--acceptance-output"));
-    Console.WriteLine("PASS exact installed Spotify Community package acceptance");
-    return 0;
-}
-
 if (args.Contains("--steam-artwork-acceptance", StringComparer.Ordinal))
 {
     using var deployment = await Deployment.CreateAsync(installAsCommunity: true);
@@ -580,8 +562,7 @@ static async Task InstalledSteamArtworkRunsIsolated(BridgeCatalog catalog)
         appLibrary: provider,
         privateSecrets: simulator,
         loopbackHttp: simulator,
-        privateState: simulator,
-        spotify: simulator);
+        privateState: simulator);
     var configured = catalog.GetConfigured("org.gbar.firstparty.game-launcher");
     Assert.True(configured.RequiresAppContainer,
         "Installed Steam artwork did not use the generic AppContainer route.");
@@ -729,8 +710,7 @@ static async Task InstalledGogRunsIsolated(BridgeCatalog catalog)
         appLibrary: appLibrary,
         privateSecrets: simulator,
         loopbackHttp: simulator,
-        privateState: simulator,
-        spotify: simulator);
+        privateState: simulator);
     var configured = catalog.GetConfigured("org.gbar.firstparty.game-launcher");
     using var consentRoot = new TemporaryDirectory("gba-installed-gog-consent");
     var consent = new ConsentStore(consentRoot.Path);
@@ -1422,8 +1402,7 @@ static async Task InstalledGameLauncherOfflineRunsIsolated(BridgeCatalog catalog
         appLibrary: backend,
         privateSecrets: simulated,
         loopbackHttp: simulated,
-        privateState: simulated,
-        spotify: simulated);
+        privateState: simulated);
     var configured = catalog.GetConfigured("org.gbar.firstparty.game-launcher");
     using var consentRoot = new TemporaryDirectory("gba-installed-offline-consent");
     var consent = new ConsentStore(consentRoot.Path);
@@ -2062,26 +2041,20 @@ static async Task CommunityRecoveryPackagesRunIsolated(string? acceptanceOutput 
         communityRecoveryOnly: true);
     var packages = new[]
     {
-        deployment.SpotifyCommunityPackage ??
-            throw new InvalidOperationException("Spotify community package was not produced."),
         deployment.YtMusicPackage ??
             throw new InvalidOperationException("YT Music community package was not produced."),
     };
-    Assert.True(
-        Version.Parse(packages[0].Manifest.Version) > Version.Parse("0.2.10"),
-        "Spotify source package must use a version newer than the stale 0.2.10 payload.");
     Assert.True(
         Version.Parse(packages[1].Manifest.Version) > Version.Parse("0.2.6"),
         "YT Music source package must use a version newer than 0.2.6.");
     var previousVersions = new Dictionary<string, string>(StringComparer.Ordinal)
     {
-        ["org.gbar.samples.spotify"] = "0.2.10",
         ["org.gbar.samples.ytmusic"] = "0.2.6",
     };
 
     var catalog = new WidgetCatalog(deployment.InstalledCatalogRoot);
     var snapshot = await catalog.DiscoverAsync();
-    Assert.Equal(2, snapshot.Widgets.Count);
+    Assert.Equal(1, snapshot.Widgets.Count);
     var loaded = await BridgeCatalog.LoadWithInstalledAsync(
         deployment.EmptyTrustedCatalogPath,
         deployment.InstalledCatalogRoot,
@@ -2119,8 +2092,7 @@ static async Task CommunityRecoveryPackagesRunIsolated(string? acceptanceOutput 
         Assert.True(configured.RequiresAppContainer,
             $"{package.Manifest.Name} bypassed the generic Community AppContainer route.");
         Assert.Equal(deployment.WorkerHostPath, configured.WorkerExecutable);
-        var backend = CreateBackend(
-            spotifyReady: package.Manifest.Id == "org.gbar.samples.spotify");
+        var backend = CreateBackend();
         if (package.Manifest.Id == "org.gbar.samples.ytmusic")
         {
             backend.LoopbackHandler = (_, port, isPost, request, cancellationToken) =>
@@ -2195,159 +2167,6 @@ static async Task CommunityRecoveryPackagesRunIsolated(string? acceptanceOutput 
             },
         }, CreateEvidenceJsonOptions()));
     }
-}
-
-static async Task SpotifyInstalledPackageRunsIsolated(
-    string catalogRoot,
-    string packagePath,
-    string acceptanceOutput)
-{
-    const string packageId = "org.gbar.samples.spotify";
-    const string currentVersion = "0.2.15";
-    string[] rollbackVersions = ["0.2.14"];
-    Assert.True(File.Exists(packagePath), "The exact Spotify archive is missing.");
-
-    using var validationRoot = new TemporaryDirectory("gba-spotify-dlv055-validation");
-    var inspection = await new WidgetCatalog(validationRoot.Path)
-        .CreateInstaller().ValidateAsync(packagePath);
-    Assert.Equal(packageId, inspection.Id);
-    Assert.Equal(currentVersion, inspection.Version.ToString());
-
-    var catalog = new WidgetCatalog(catalogRoot);
-    var snapshot = await catalog.DiscoverAsync();
-    var selected = snapshot.Widgets.Single(widget => widget.Id == packageId);
-    Assert.True(selected.Enabled, "Spotify 0.2.15 is not enabled.");
-    Assert.Equal(currentVersion, selected.ActiveVersion.Version.ToString());
-    var rollbacks = rollbackVersions.Select(rollbackVersion =>
-        selected.Versions.Single(version =>
-            version.Version.ToString() == rollbackVersion)).ToArray();
-    Assert.True(rollbacks.All(rollback =>
-            rollback.Version != selected.ActiveVersion.Version),
-        "Spotify rollback versions were not retained as distinct inactive versions.");
-
-    using var digestRoot = new TemporaryDirectory("gba-spotify-dlv055-digest");
-    var independentlyInstalled = await new WidgetCatalog(digestRoot.Path)
-        .InstallAsync(packagePath);
-    Assert.Equal(
-        independentlyInstalled.ContentDigest,
-        selected.ActiveVersion.ContentDigest);
-    Assert.True(rollbacks.All(rollback =>
-            !string.Equals(
-                rollback.ContentDigest,
-                selected.ActiveVersion.ContentDigest,
-                StringComparison.Ordinal)),
-        "Spotify 0.2.15 must have a distinct digest from every retained rollback.");
-
-    var installedManifest = ManifestJson.Deserialize(await File.ReadAllBytesAsync(
-        Path.Combine(selected.ActiveVersion.InstallPath, "manifest.json")));
-    Assert.Equal(currentVersion, installedManifest.Version);
-    Assert.Equal(packageId, installedManifest.Id);
-
-    var packageOutputRoot = Path.GetDirectoryName(packagePath) ??
-        throw new InvalidOperationException("Spotify package output root is unavailable.");
-    var publishedPayload = Path.Combine(packageOutputRoot, "publish", "SpotifyWidget.dll");
-    var repositoryRoot = FindRepositoryRootForTest();
-    var sourceStyle = Path.Combine(
-        repositoryRoot, "samples", "SpotifyWidget", "styles", "default.gbss");
-    var installedPayload = Path.Combine(
-        selected.ActiveVersion.InstallPath, "payload", "SpotifyWidget.dll");
-    var installedStyle = Path.Combine(
-        selected.ActiveVersion.InstallPath, "styles", "default.gbss");
-    Assert.True(File.Exists(publishedPayload),
-        "The supported Spotify package path omitted its script-owned publish output.");
-    Assert.SequenceEqual(
-        SHA256.HashData(await File.ReadAllBytesAsync(publishedPayload)),
-        SHA256.HashData(await File.ReadAllBytesAsync(installedPayload)));
-    Assert.SequenceEqual(
-        SHA256.HashData(await File.ReadAllBytesAsync(sourceStyle)),
-        SHA256.HashData(await File.ReadAllBytesAsync(installedStyle)));
-
-    using var bridgeRoot = new TemporaryDirectory("gba-spotify-dlv055-bridge");
-    var trustedCatalog = Path.Combine(bridgeRoot.Path, "trusted-catalog.json");
-    await File.WriteAllTextAsync(
-        trustedCatalog,
-        "{\"catalogVersion\":1,\"widgets\":[],\"bundledWidgets\":[]}");
-    var workerHost = Path.Combine(AppContext.BaseDirectory, "WidgetWorkerHost.exe");
-    Assert.True(File.Exists(workerHost), "WidgetWorkerHost.exe is missing from test output.");
-    var loaded = await BridgeCatalog.LoadWithInstalledAsync(
-        trustedCatalog, catalogRoot, workerHost);
-    Assert.True(loaded.InstalledCatalogValid, "The installed catalog was not valid.");
-    var configured = loaded.Catalog.GetConfigured(packageId);
-    Assert.True(configured.RequiresAppContainer, "Spotify did not require AppContainer isolation.");
-    Assert.True(
-        configured.ContentLeaseFactory is not null,
-        "Spotify omitted exact installed-package launch authority.");
-    using (var contentLease = configured.ContentLeaseFactory!(CancellationToken.None))
-    {
-        AssertWorkerArguments(
-            configured,
-            contentLease.Targets.Single(target => target.Target.Kind ==
-                AppContainerAuthorityTargetKind.AuthorityRootDirectory).Target.Path,
-            installedManifest);
-    }
-
-    var backend = CreateBackend(spotifyReady: true);
-    using var consentRoot = new TemporaryDirectory("gba-spotify-dlv055-consent");
-    var consent = new ConsentStore(consentRoot.Path);
-    var identity = new BrokerWidgetIdentity(
-        configured.PackageId, configured.PublisherId, configured.InstanceId);
-    foreach (var capability in configured.DeclaredCapabilities)
-        await consent.SetDecisionAsync(identity, capability, ConsentDecision.Grant);
-
-    await using var client = new WidgetProcessClient(new WidgetProcessOptions
-    {
-        ExecutablePath = configured.WorkerExecutable,
-        Arguments = configured.WorkerArguments,
-        WidgetInstanceId = configured.InstanceId,
-        ConnectTimeout = TimeSpan.FromSeconds(10),
-        RequestTimeout = TimeSpan.FromSeconds(5),
-        MaximumRestartAttempts = 0,
-        StartupExitDiagnostics = WidgetWorkerStartupDiagnostics.LoaderExitCodes,
-        IsolationPolicy = WidgetWorkerIsolationPolicy.RequireAppContainer,
-        IsolationKey = configured.IsolationKey,
-        ReadOnlyPaths = configured.ReadOnlyPaths,
-        ContentLeaseFactory = configured.ContentLeaseFactory,
-        CompanionSessionFactory = context => new BrokerWidgetProcessCompanion(
-            configured.PackageId,
-            configured.PublisherId,
-            configured.InstanceId,
-            configured.DeclaredCapabilities,
-            consent,
-            backend,
-            context),
-    });
-    await client.SetLifecycleStateAsync(WidgetLifecycleState.Visible);
-    var first = await WaitForSnapshotAsync(client, "Conformance Spotify Song");
-    Assert.Equal(0, ViewSnapshotValidator.Validate(first).Count);
-    Assert.Equal(1, client.Starts);
-    await client.SetLifecycleStateAsync(WidgetLifecycleState.Background);
-
-    Directory.CreateDirectory(Path.GetDirectoryName(acceptanceOutput)!);
-    await File.WriteAllTextAsync(acceptanceOutput, JsonSerializer.Serialize(new
-    {
-        packageId,
-        sourceVersion = currentVersion,
-        archiveFileName = Path.GetFileName(packagePath),
-        archiveSha256 = Convert.ToHexString(SHA256.HashData(
-            await File.ReadAllBytesAsync(packagePath))).ToLowerInvariant(),
-        installedRoot = selected.ActiveVersion.InstallPath,
-        installedManifestVersion = installedManifest.Version,
-        selectedVersion = selected.ActiveVersion.Version.ToString(),
-        selectedContentDigest = selected.ActiveVersion.ContentDigest,
-        independentlyInstalledContentDigest = independentlyInstalled.ContentDigest,
-        installedPayloadMatchesSupportedPublish = true,
-        installedGbssMatchesAcceptedSource = true,
-        rollbacks = rollbacks.Select(rollback => new
-        {
-            version = rollback.Version.ToString(),
-            contentDigest = rollback.ContentDigest,
-            retainedInactive = true,
-        }).ToArray(),
-        enabled = selected.Enabled,
-        requiresAppContainer = configured.RequiresAppContainer,
-        firstSnapshotSequence = first.Sequence,
-        firstSnapshotValid = true,
-    }, CreateEvidenceJsonOptions()));
 }
 
 static string[] ReadPackagePaths(string packagePath)
@@ -2552,31 +2371,6 @@ static async Task ExportEvidenceAsync(string outputDirectory)
                 },
             }));
         }
-        else if (package.Manifest.Id == "org.gbar.samples.spotify")
-        {
-            var setup = Nodes(initial.Root).Single(node =>
-                string.Equals(node.ActionId, "spotify.setup.open", StringComparison.Ordinal));
-            await client.SendActionAsync(new WidgetActionEvent("spotify.setup.open", setup.Id));
-            var setupSnapshot = await WaitForSnapshotAsync(client, "Spotify setup");
-            await ExportSnapshotAsync(package, configured, "setup", setupSnapshot);
-            traces.Add(await WriteTraceAsync("GBA-042-spotify-auth-free", new
-            {
-                issue = "GBA-042",
-                authority = "real installed community package in AppContainer with simulated broker",
-                steps = new[]
-                {
-                    new { action = "visible", invariant = "unconfigured state exposes spotify.setup.open" },
-                    new { action = "spotify.setup.open", invariant = "setup view exposes exact redirect guidance and Check configuration action" },
-                },
-                observed = new
-                {
-                    initialNodeCount = Nodes(initial.Root).Count(),
-                    setupNodeCount = Nodes(setupSnapshot.Root).Count(),
-                    configured = backend.SpotifyConfiguration.IsConfigured,
-                },
-                limitation = "OAuth browser authorization is intentionally not exercised by auth-free evidence.",
-            }));
-        }
         else
         {
             traces.Add(await WriteTraceAsync("GBA-039-settings-root", new
@@ -2744,7 +2538,6 @@ static async Task RunCatalogAsync(
         {
             var configured = catalog.GetConfigured(widgetId(package));
             backend = sharedBackend ?? CreateBackend(
-                spotifyReady: package.Manifest.Id == "org.gbar.samples.spotify",
                 gameLibraryCount: package.Manifest.Id is
                     "org.gbar.firstparty.game-launcher" or
                     "org.gbar.community.reference.game-launcher"
@@ -2829,25 +2622,6 @@ static async Task RunCatalogAsync(
                 await ExerciseTextEntryAsync(package, client, snapshot);
             else
                 await ExerciseControlAsync(package, client, snapshot, backend, route);
-            if (package.Manifest.Id == "org.gbar.samples.spotify")
-            {
-                await consent.SetDecisionAsync(
-                    identity,
-                    WidgetSpotifyCapabilities.PlaybackReadCapabilityId,
-                    ConsentDecision.Deny);
-                var refresh = Nodes(snapshot.Root).First(node =>
-                    string.Equals(node.ActionId, "spotify.refresh", StringComparison.Ordinal));
-                await client.SendActionAsync(new WidgetActionEvent(
-                    "spotify.refresh", refresh.Id));
-                var denied = await WaitForSnapshotAsync(client, "Spotify permission is off");
-                Assert.True(Nodes(denied.Root).Any(node =>
-                        string.Equals(node.ActionId, "spotify.retry", StringComparison.Ordinal)),
-                    "Spotify permission revocation did not expose the safe retry state.");
-                Assert.True(!Nodes(denied.Root).Any(node =>
-                        string.Equals(node.Text, "Conformance Spotify Song",
-                            StringComparison.Ordinal)),
-                    "Spotify permission revocation retained provider-derived playback data.");
-            }
             await client.SetLifecycleStateAsync(WidgetLifecycleState.Background);
             await client.StopAsync();
         }
@@ -3269,10 +3043,6 @@ static async Task ExerciseControlAsync(
             actionId = "media.toggle";
             calls = () => backend.MediaControlCalls;
             break;
-        case "org.gbar.samples.spotify":
-            actionId = "spotify.next";
-            calls = () => backend.SpotifyPlaybackControlCalls;
-            break;
         default:
             throw new InvalidOperationException(
                 $"No conformance control is defined for {package.Manifest.Id}.");
@@ -3319,12 +3089,6 @@ static async Task ExerciseControlAsync(
     finally
     {
         client.ActionFailed -= failureHandler;
-    }
-    if (package.Manifest.Id == "org.gbar.samples.spotify")
-    {
-        Assert.Equal(
-            SpotifyPlaybackOperation.Next,
-            backend.LastSpotifyPlaybackCommand?.Operation);
     }
 }
 
@@ -3513,9 +3277,7 @@ static async Task ExerciseAudioDashboardControlsAsync(
     }
 }
 
-static SimulatedPlatformBrokerBackend CreateBackend(
-    bool spotifyReady = false,
-    int gameLibraryCount = 2)
+static SimulatedPlatformBrokerBackend CreateBackend(int gameLibraryCount = 2)
 {
     var backend = new SimulatedPlatformBrokerBackend
     {
@@ -3539,38 +3301,6 @@ static SimulatedPlatformBrokerBackend CreateBackend(
         WifiRadio = new WifiRadioSummary(WifiRadioState.On, true),
         BluetoothRadioState = BluetoothRadioState.On,
     };
-    if (spotifyReady)
-    {
-        var scopes = new[]
-        {
-            SpotifyAuthorizationScope.PlaybackStateRead,
-            SpotifyAuthorizationScope.PlaybackStateControl,
-            SpotifyAuthorizationScope.LocalPlayback,
-            SpotifyAuthorizationScope.PlaylistsRead,
-        };
-        backend.SpotifyConfiguration = new(
-            true, "http://127.0.0.1:43827/callback/");
-        backend.SpotifyAuthorization = new(
-            SpotifyAuthorizationState.Connected, scopes, scopes, null);
-        backend.SpotifyPlayback = new(
-            true,
-            true,
-            12_000,
-            180_000,
-            DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(),
-            SpotifyRepeatState.Off,
-            false,
-            new SpotifyPlaybackItemSummary(
-                SpotifyPlaybackItemType.Track,
-                "Conformance Spotify Song",
-                "Conformance Artist",
-                "Conformance Context",
-                null,
-                "spotify:track:conformance"),
-            new SpotifyPlaybackDisallowedActions(
-                false, false, false, false, false, false, false, false),
-            "Spotify");
-    }
     backend.SetAudioSessions(
         [new AudioSessionSummary("audio-one", "Conformance Game", 0.63, false, true)]);
     backend.SetAudioDevices(
@@ -3850,14 +3580,10 @@ file sealed class Deployment : IDisposable
                     typeof(MediaSessionsWidget), "Conformance Song"),
                 new PackageSpec("games-apps", "src/FirstPartyWidgets/GamesAppsWidget", "GamesApps", WidgetGlyph.Play,
                     typeof(GamesAppsWidget), "Conformance Trusted Game"),
-                new PackageSpec("game-launcher", "src/FirstPartyWidgets/GameLauncherWidget", "GameLauncher", WidgetGlyph.Play,
-                    typeof(GameLauncherWidget), "Conformance Game 00000"),
                 new PackageSpec("audio-mixer", "src/FirstPartyWidgets/AudioMixerWidget", "AudioMixer", WidgetGlyph.Volume,
                     typeof(AudioMixerWidget), "Conformance Game"),
                 new PackageSpec("network-controls", "src/FirstPartyWidgets/NetworkControlsWidget", "NetworkControls", WidgetGlyph.Wifi,
                     typeof(NetworkControlsWidget), "Conformance Wi-Fi"),
-                new PackageSpec("spotify", "samples/SpotifyWidget", "Spotify",
-                    WidgetGlyph.Music, typeof(SpotifySampleWidget), "Conformance Spotify Song"),
                 };
             if (includeEvidencePackages)
             {

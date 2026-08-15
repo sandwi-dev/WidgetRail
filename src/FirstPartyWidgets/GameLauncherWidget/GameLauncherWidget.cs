@@ -54,19 +54,9 @@ public sealed class GameLauncherWidget : Widget
     private string? _heroSavedId;
     private int _heroIndex;
 
-#if GAME_LAUNCHER_COMMUNITY_CORE
     internal GameLauncherWidget(IGameLauncherApplicationService application)
     {
         _application = application ?? throw new ArgumentNullException(nameof(application));
-#else
-    public GameLauncherWidget() : this(null)
-    {
-    }
-
-    internal GameLauncherWidget(IGameLauncherApplicationService? application)
-    {
-        _application = application ?? new HostGameLauncherApplicationService(() => HostServices);
-#endif
         _navigation = CreateNavigator("game-launcher.navigation", GameLauncherRoute.Library,
             maximumDepth: 1, maximumRoutes: 8);
         _library = CreateCursorResource<GameLauncherItem>("game-launcher.library", new()

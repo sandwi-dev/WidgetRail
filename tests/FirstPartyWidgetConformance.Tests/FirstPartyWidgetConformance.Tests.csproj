@@ -12,7 +12,7 @@
     <ProjectReference Include="..\..\src\FirstPartyWidgets\MediaSessionsWidget\MediaSessionsWidget.csproj" />
     <ProjectReference Include="..\..\src\FirstPartyWidgets\NetworkControlsWidget\NetworkControlsWidget.csproj" />
     <ProjectReference Include="..\..\src\FirstPartyWidgets\GamesAppsWidget\GamesAppsWidget.csproj" />
-    <ProjectReference Include="..\..\src\FirstPartyWidgets\GameLauncherWidget\GameLauncherWidget.csproj" />
+    <ProjectReference Include="..\..\src\FirstPartyWidgets\GameLauncherWidget\GameLauncherWidget.Core.csproj" />
     <ProjectReference Include="..\..\src\FirstPartyWidgets\SettingsWidget\SettingsWidget.csproj" />
     <ProjectReference Include="..\..\samples\SpotifyWidget\SpotifyWidget.csproj" />
     <ProjectReference Include="..\..\samples\YtMusicWidget\YtMusicWidget.csproj" />

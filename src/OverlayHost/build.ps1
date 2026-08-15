@@ -1695,13 +1695,11 @@ if (-not $SkipPackaging) {
     }
 
     $bridgeOutput = Join-Path $outputDirectory 'runtime\Bridge'
-    $spotifyPlaybackHostOutput = Join-Path $outputDirectory 'runtime\SpotifyPlaybackHost'
     $workerHostOutput = Join-Path $outputDirectory 'runtime\WidgetWorkerHost'
     $settingsOutput = Join-Path $outputDirectory 'runtime\Settings'
     $audioMixerOutput = Join-Path $outputDirectory 'runtime\AudioMixer'
     $networkControlsOutput = Join-Path $outputDirectory 'runtime\NetworkControls'
     $gamesAppsOutput = Join-Path $outputDirectory 'runtime\GamesApps'
-    $gameLauncherOutput = Join-Path $outputDirectory 'runtime\GameLauncher'
     $mediaSessionsOutput = Join-Path $outputDirectory 'runtime\MediaSessions'
     # YT Music is a community addon now. Remove an incremental build's retired
     # trusted worker so it cannot remain as an accidental fallback.
@@ -1710,13 +1708,6 @@ if (-not $SkipPackaging) {
         --configuration $Configuration --no-self-contained --nologo --output $bridgeOutput
     if ($LASTEXITCODE -ne 0) {
         throw "WidgetBridge publish failed with exit code $LASTEXITCODE."
-    }
-    & dotnet publish (Join-Path $projectDirectory '..\SpotifyPlaybackHost\SpotifyPlaybackHost.csproj') `
-        --configuration $Configuration --no-self-contained --nologo --output $spotifyPlaybackHostOutput
-    if ($LASTEXITCODE -ne 0 -or
-        -not (Test-Path -LiteralPath (Join-Path $spotifyPlaybackHostOutput 'SpotifyPlaybackHost.exe')) -or
-        -not (Test-Path -LiteralPath (Join-Path $spotifyPlaybackHostOutput 'WebView2Loader.dll'))) {
-        throw "Spotify playback host publish failed with exit code $LASTEXITCODE."
     }
     & dotnet publish (Join-Path $projectDirectory '..\WidgetWorkerHost\WidgetWorkerHost.csproj') `
         --configuration $Configuration --no-self-contained --nologo --output $workerHostOutput
@@ -1758,9 +1749,6 @@ if (-not $SkipPackaging) {
     Publish-BundledWidgetPackage `
         (Join-Path $projectDirectory '..\FirstPartyWidgets\GamesAppsWidget') `
         $gamesAppsOutput 'GamesAppsWidget' 'Games & Apps'
-    Publish-BundledWidgetPackage `
-        (Join-Path $projectDirectory '..\FirstPartyWidgets\GameLauncherWidget') `
-        $gameLauncherOutput 'GameLauncherWidget' 'Game Launcher'
     Publish-BundledWidgetPackage `
         (Join-Path $projectDirectory '..\FirstPartyWidgets\MediaSessionsWidget') `
         $mediaSessionsOutput 'MediaSessionsWidget' 'Now Playing'

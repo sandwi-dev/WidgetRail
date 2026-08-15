@@ -7,7 +7,7 @@ internal enum BrokerCapabilityDomain
     Audio,
     Network,
     AppLibrary,
-    MediaSpotify,
+    Media,
     Loopback,
     PrivateSecrets,
     PrivateState,
@@ -28,9 +28,8 @@ internal static class BrokerCapabilityDomains
             PlatformCapabilities.AppRunningReadV1 or
             PlatformCapabilities.AppLibraryLaunchV1)
             return BrokerCapabilityDomain.AppLibrary;
-        if (capabilityId.StartsWith("system.media.", StringComparison.Ordinal) ||
-            capabilityId.StartsWith("external.spotify.", StringComparison.Ordinal))
-            return BrokerCapabilityDomain.MediaSpotify;
+        if (capabilityId.StartsWith("system.media.", StringComparison.Ordinal))
+            return BrokerCapabilityDomain.Media;
         if (capabilityId == PlatformCapabilities.PrivateSecretsV1)
             return BrokerCapabilityDomain.PrivateSecrets;
         if (capabilityId == PlatformCapabilities.PrivateStateV1)

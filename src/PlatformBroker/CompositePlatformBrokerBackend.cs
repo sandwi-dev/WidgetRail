@@ -10,7 +10,6 @@ public sealed class CompositePlatformBrokerBackend : IPlatformBrokerBackend,
     private readonly IAppLibraryPlatformBrokerBackend _appLibrary;
     private readonly IBluetoothPlatformBrokerBackend _bluetooth;
     private readonly IMediaPlatformBrokerBackend _media;
-    private readonly ISpotifyPlatformBrokerBackend _spotify;
     private readonly IPrivateSecretPlatformBrokerBackend _privateSecrets;
     private readonly ILoopbackHttpPlatformBrokerBackend _loopbackHttp;
     private readonly IPrivateStatePlatformBrokerBackend _privateState;
@@ -25,8 +24,7 @@ public sealed class CompositePlatformBrokerBackend : IPlatformBrokerBackend,
         IAppLibraryPlatformBrokerBackend? appLibrary = null,
         IPrivateSecretPlatformBrokerBackend? privateSecrets = null,
         ILoopbackHttpPlatformBrokerBackend? loopbackHttp = null,
-        IPrivateStatePlatformBrokerBackend? privateState = null,
-        ISpotifyPlatformBrokerBackend? spotify = null)
+        IPrivateStatePlatformBrokerBackend? privateState = null)
     {
         _audio = audio ?? throw new ArgumentNullException(nameof(audio));
         _network = network ?? throw new ArgumentNullException(nameof(network));
@@ -34,7 +32,6 @@ public sealed class CompositePlatformBrokerBackend : IPlatformBrokerBackend,
         _appLibrary = appLibrary ?? UnavailableAppLibraryPlatformBrokerBackend.Instance;
         _bluetooth = bluetooth ?? UnavailableBluetoothPlatformBrokerBackend.Instance;
         _media = media ?? UnavailableMediaPlatformBrokerBackend.Instance;
-        _spotify = spotify ?? UnavailableSpotifyPlatformBrokerBackend.Instance;
         _privateSecrets = privateSecrets ?? UnavailablePrivateSecretPlatformBrokerBackend.Instance;
         _loopbackHttp = loopbackHttp ?? UnavailableLoopbackHttpPlatformBrokerBackend.Instance;
         _privateState = privateState ?? UnavailablePrivateStatePlatformBrokerBackend.Instance;
@@ -43,7 +40,6 @@ public sealed class CompositePlatformBrokerBackend : IPlatformBrokerBackend,
         _activity.EventPublished += ForwardActivityEvent;
         _bluetooth.EventPublished += ForwardBluetoothEvent;
         _media.EventPublished += ForwardMediaEvent;
-        _spotify.EventPublished += ForwardSpotifyEvent;
     }
 
     public event EventHandler<BrokerPlatformEvent>? EventPublished;
@@ -175,79 +171,6 @@ public sealed class CompositePlatformBrokerBackend : IPlatformBrokerBackend,
         CancellationToken cancellationToken) =>
         _media.ControlMediaSessionAsync(sessionId, command, cancellationToken);
 
-    public Task<SpotifyConfigurationSummary> GetSpotifyConfigurationAsync(
-        BrokerWidgetIdentity identity, CancellationToken cancellationToken) =>
-        _spotify.GetSpotifyConfigurationAsync(identity, cancellationToken);
-
-    public Task<SpotifyConfigurationSummary> ConfigureSpotifyClientAsync(
-        BrokerWidgetIdentity identity, ConfigureSpotifyClientRequest request,
-        CancellationToken cancellationToken) =>
-        _spotify.ConfigureSpotifyClientAsync(identity, request, cancellationToken);
-
-    public Task<SpotifyAuthorizationSummary> GetSpotifyAuthorizationAsync(
-        BrokerWidgetIdentity identity, CancellationToken cancellationToken) =>
-        _spotify.GetSpotifyAuthorizationAsync(identity, cancellationToken);
-
-    public Task<SpotifyAuthorizationSummary> ConnectSpotifyAsync(
-        BrokerWidgetIdentity identity, ConnectSpotifyRequest request,
-        CancellationToken cancellationToken) =>
-        _spotify.ConnectSpotifyAsync(identity, request, cancellationToken);
-
-    public Task<SpotifyAuthorizationSummary> DisconnectSpotifyAsync(
-        BrokerWidgetIdentity identity, CancellationToken cancellationToken) =>
-        _spotify.DisconnectSpotifyAsync(identity, cancellationToken);
-
-    public Task<SpotifyPlaybackSummary> GetSpotifyPlaybackAsync(
-        BrokerWidgetIdentity identity, CancellationToken cancellationToken) =>
-        _spotify.GetSpotifyPlaybackAsync(identity, cancellationToken);
-
-    public Task ControlSpotifyPlaybackAsync(
-        BrokerWidgetIdentity identity, SpotifyPlaybackCommand command,
-        CancellationToken cancellationToken) =>
-        _spotify.ControlSpotifyPlaybackAsync(identity, command, cancellationToken);
-
-    public Task<SpotifyDevicesSummary> GetSpotifyDevicesAsync(
-        BrokerWidgetIdentity identity, CancellationToken cancellationToken) =>
-        _spotify.GetSpotifyDevicesAsync(identity, cancellationToken);
-
-    public Task TransferSpotifyPlaybackAsync(
-        BrokerWidgetIdentity identity, TransferSpotifyPlaybackRequest request,
-        CancellationToken cancellationToken) =>
-        _spotify.TransferSpotifyPlaybackAsync(identity, request, cancellationToken);
-
-    public Task<SpotifyQueueSummary> GetSpotifyQueueAsync(
-        BrokerWidgetIdentity identity, CancellationToken cancellationToken) =>
-        _spotify.GetSpotifyQueueAsync(identity, cancellationToken);
-
-    public Task AddSpotifyQueueItemAsync(
-        BrokerWidgetIdentity identity, AddSpotifyQueueItemRequest request,
-        CancellationToken cancellationToken) =>
-        _spotify.AddSpotifyQueueItemAsync(identity, request, cancellationToken);
-
-    public Task StartSpotifyPlaybackAsync(
-        BrokerWidgetIdentity identity, StartSpotifyPlaybackRequest request,
-        CancellationToken cancellationToken) =>
-        _spotify.StartSpotifyPlaybackAsync(identity, request, cancellationToken);
-
-    public Task<SpotifyLocalPlaybackSummary> GetSpotifyLocalPlaybackAsync(
-        BrokerWidgetIdentity identity, CancellationToken cancellationToken) =>
-        _spotify.GetSpotifyLocalPlaybackAsync(identity, cancellationToken);
-
-    public Task<SpotifyLocalPlaybackSummary> ControlSpotifyLocalPlaybackAsync(
-        BrokerWidgetIdentity identity, SpotifyLocalPlaybackCommand command,
-        CancellationToken cancellationToken) =>
-        _spotify.ControlSpotifyLocalPlaybackAsync(identity, command, cancellationToken);
-
-    public Task<SpotifyPlaylistPageSummary> GetSpotifyPlaylistsAsync(
-        BrokerWidgetIdentity identity, SpotifyPlaylistPageRequest request,
-        CancellationToken cancellationToken) =>
-        _spotify.GetSpotifyPlaylistsAsync(identity, request, cancellationToken);
-
-    public Task<SpotifyPlaylistItemsSummary> GetSpotifyPlaylistItemsAsync(
-        BrokerWidgetIdentity identity, SpotifyPlaylistItemsRequest request,
-        CancellationToken cancellationToken) =>
-        _spotify.GetSpotifyPlaylistItemsAsync(identity, request, cancellationToken);
-
     public Task<PrivateSecretMetadataSummary> GetPrivateSecretMetadataAsync(
         BrokerWidgetIdentity identity, string slot, CancellationToken cancellationToken) =>
         _privateSecrets.GetPrivateSecretMetadataAsync(identity, slot, cancellationToken);
@@ -316,12 +239,6 @@ public sealed class CompositePlatformBrokerBackend : IPlatformBrokerBackend,
             EventPublished?.Invoke(this, platformEvent);
     }
 
-    private void ForwardSpotifyEvent(object? sender, BrokerPlatformEvent platformEvent)
-    {
-        if (platformEvent.CapabilityId == PlatformCapabilities.SpotifyPlaybackReadV1)
-            EventPublished?.Invoke(this, platformEvent);
-    }
-
     public async ValueTask DisposeAsync()
     {
         if (Interlocked.Exchange(ref _disposed, 1) != 0) return;
@@ -330,7 +247,6 @@ public sealed class CompositePlatformBrokerBackend : IPlatformBrokerBackend,
         _activity.EventPublished -= ForwardActivityEvent;
         _bluetooth.EventPublished -= ForwardBluetoothEvent;
         _media.EventPublished -= ForwardMediaEvent;
-        _spotify.EventPublished -= ForwardSpotifyEvent;
         if (_audio is IAsyncDisposable asyncAudio)
             await asyncAudio.DisposeAsync().ConfigureAwait(false);
         else if (_audio is IDisposable audio)
@@ -365,18 +281,9 @@ public sealed class CompositePlatformBrokerBackend : IPlatformBrokerBackend,
             else if (_media is IDisposable media)
                 media.Dispose();
         }
-        if (!ReferenceEquals(_spotify, _audio) && !ReferenceEquals(_spotify, _network) &&
-            !ReferenceEquals(_spotify, _activity) && !ReferenceEquals(_spotify, _bluetooth) &&
-            !ReferenceEquals(_spotify, _media))
-        {
-            if (_spotify is IAsyncDisposable asyncSpotify)
-                await asyncSpotify.DisposeAsync().ConfigureAwait(false);
-            else if (_spotify is IDisposable spotify)
-                spotify.Dispose();
-        }
         if (!ReferenceEquals(_appLibrary, _audio) && !ReferenceEquals(_appLibrary, _network) &&
             !ReferenceEquals(_appLibrary, _activity) && !ReferenceEquals(_appLibrary, _bluetooth) &&
-            !ReferenceEquals(_appLibrary, _media) && !ReferenceEquals(_appLibrary, _spotify))
+            !ReferenceEquals(_appLibrary, _media))
         {
             if (_appLibrary is IAsyncDisposable asyncAppLibrary)
                 await asyncAppLibrary.DisposeAsync().ConfigureAwait(false);
@@ -388,7 +295,6 @@ public sealed class CompositePlatformBrokerBackend : IPlatformBrokerBackend,
             !ReferenceEquals(_privateSecrets, _activity) &&
             !ReferenceEquals(_privateSecrets, _bluetooth) &&
             !ReferenceEquals(_privateSecrets, _media) &&
-            !ReferenceEquals(_privateSecrets, _spotify) &&
             !ReferenceEquals(_privateSecrets, _appLibrary))
         {
             if (_privateSecrets is IAsyncDisposable asyncPrivateSecrets)
@@ -401,7 +307,6 @@ public sealed class CompositePlatformBrokerBackend : IPlatformBrokerBackend,
             !ReferenceEquals(_loopbackHttp, _activity) &&
             !ReferenceEquals(_loopbackHttp, _bluetooth) &&
             !ReferenceEquals(_loopbackHttp, _media) &&
-            !ReferenceEquals(_loopbackHttp, _spotify) &&
             !ReferenceEquals(_loopbackHttp, _appLibrary) &&
             !ReferenceEquals(_loopbackHttp, _privateSecrets))
         {
@@ -415,7 +320,6 @@ public sealed class CompositePlatformBrokerBackend : IPlatformBrokerBackend,
             !ReferenceEquals(_privateState, _activity) &&
             !ReferenceEquals(_privateState, _bluetooth) &&
             !ReferenceEquals(_privateState, _media) &&
-            !ReferenceEquals(_privateState, _spotify) &&
             !ReferenceEquals(_privateState, _appLibrary) &&
             !ReferenceEquals(_privateState, _privateSecrets) &&
             !ReferenceEquals(_privateState, _loopbackHttp))
@@ -501,12 +405,6 @@ public sealed class CompositePlatformBrokerBackend : IPlatformBrokerBackend,
             CancellationToken cancellationToken) =>
             Task.FromException(
                 new BrokerException("platform_unavailable", "Windows media session control is unavailable."));
-    }
-
-    private sealed class UnavailableSpotifyPlatformBrokerBackend : ISpotifyPlatformBrokerBackend
-    {
-        internal static UnavailableSpotifyPlatformBrokerBackend Instance { get; } = new();
-        public event EventHandler<BrokerPlatformEvent>? EventPublished { add { } remove { } }
     }
 
     private sealed class UnavailablePrivateSecretPlatformBrokerBackend :

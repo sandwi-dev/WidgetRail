@@ -4372,8 +4372,12 @@ public sealed class GameLauncherTests
         Assert.AreEqual(WidgetPagedResourceStatus.NotLoaded, widget.Collection.Status);
     }
 
-    private static LauncherWidget Create(FakeHost host) =>
-        WidgetTestHost.Attach(new LauncherWidget(), host.Services());
+    private static LauncherWidget Create(FakeHost host)
+    {
+        var services = host.Services();
+        return WidgetTestHost.Attach(
+            new LauncherWidget(new TestApplicationService(services)), services);
+    }
 
     private static Task Visible(LauncherWidget widget) => Bounded(
         WidgetTestHost.SetLifecycleStateAsync(widget, WidgetLifecycleState.Visible).AsTask(),
@@ -4529,6 +4533,53 @@ public sealed class GameLauncherTests
                 Artwork = artwork,
             },
         };
+    }
+
+    private sealed class TestApplicationService(WidgetHostServices services) :
+        IGameLauncherApplicationService
+    {
+        public bool OwnsArtworkContent => false;
+
+        public ValueTask<WidgetAppLibraryPage> QueryAsync(
+            WidgetAppLibraryQuery query, WidgetCollectionCursor? cursor,
+            WidgetCursorDirection? direction, int limit, bool refresh,
+            CancellationToken cancellationToken) => services.AppLibrary.QueryAsync(
+                query, cursor, direction, limit, refresh, cancellationToken);
+
+        public ValueTask<IReadOnlyList<WidgetAppLibraryItem>> ResolveSavedAsync(
+            IReadOnlyList<string> savedIds, CancellationToken cancellationToken) =>
+            services.AppLibrary.ResolveSavedAsync(savedIds, cancellationToken);
+
+        public ValueTask<WidgetRunningAppObservation> ObserveRunningAsync(
+            CancellationToken cancellationToken) =>
+            services.AppLibrary.ObserveRunningAsync(cancellationToken);
+
+        public ValueTask<WidgetAppLibraryItem?> ConfirmRunningAsync(
+            string savedId, string revision, CancellationToken cancellationToken) =>
+            services.AppLibrary.ConfirmRunningAsync(
+                savedId, revision, cancellationToken);
+
+        public ValueTask<WidgetAppLaunchObservation> LaunchObservedAsync(
+            string appId, WidgetAppLaunchOverlayBehavior overlayBehavior,
+            CancellationToken cancellationToken) =>
+            services.AppLibrary.LaunchObservedAsync(
+                appId, overlayBehavior, cancellationToken);
+
+        public ValueTask<string?> ResolveArtworkAsync(
+            WidgetAppLibraryArtwork artwork, CancellationToken cancellationToken) =>
+            ValueTask.FromResult<string?>(null);
+
+        public ValueTask<WidgetPrivateStateValue<GameLauncherPrivateState>> ReadStateAsync(
+            CancellationToken cancellationToken) =>
+            services.PrivateState.ReadAsync<GameLauncherPrivateState>(
+                cancellationToken: cancellationToken);
+
+        public ValueTask<WidgetPrivateStateMutation> WriteStateAsync(
+            GameLauncherPrivateState state, long? expectedRevision,
+            CancellationToken cancellationToken) => services.PrivateState.WriteAsync(
+                state, expectedRevision, cancellationToken: cancellationToken);
+
+        public ValueTask DisposeAsync() => ValueTask.CompletedTask;
     }
 
     private sealed class FakeHost

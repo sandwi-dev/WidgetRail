@@ -47,20 +47,9 @@ public sealed record BrokerHostEffect(BrokerHostEffectKind Kind);
 
 internal static class BrokerPipeRequestTimeoutPolicy
 {
-    internal static readonly TimeSpan SpotifyAuthorizationConnectTimeout =
-        TimeSpan.FromMinutes(17);
-
     internal static TimeSpan Resolve(
         BrokerPipeTransportOptions options, BrokerRequestEnvelope request)
     {
-        // The authorization provider owns a bounded fifteen-minute browser callback
-        // window. The remaining two minutes cover bounded HTTP retry/backoff,
-        // token exchange, and vault persistence. Only this exact operation gets
-        // the extended deadline; all other operations retain the short default.
-        if (request.CapabilityId == PlatformCapabilities.SpotifyAuthorizationV1 &&
-            request.Operation == PlatformCapabilities.SpotifyAuthorizationConnect)
-            return SpotifyAuthorizationConnectTimeout;
-
         if (!PlatformCapabilities.TryGetLoopbackPort(request.CapabilityId, out _) ||
             request.Operation is not (PlatformCapabilities.LoopbackHttpGetJson or
                 PlatformCapabilities.LoopbackHttpPostJson) ||

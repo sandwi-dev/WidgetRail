@@ -94,45 +94,15 @@ device function must define a narrower profile/service capability rather than
 inherit authority from enumeration or pairing. Enterprise Wi-Fi provisioning
 is likewise outside the initial expanded network contract.
 
-### Spotify provider foundation
+### Product-owned provider retirement
 
-The broker now defines `external.spotify.configuration.v1`,
-`external.spotify.authorization.v1`, `external.spotify.playback.read.v1`, and
-`external.spotify.playback.control.v1`, with strict configuration,
-authorization, playback, command, restriction, and event DTOs. A focused
-trusted Windows provider implements the exact PKCE callback, protected refresh
-tokens, playback projection/control, bounded rate-limit handling, and sanitized
-errors. Package-scoped public Client IDs can be managed locally through
-`gbar config`; they are not secrets.
-
-`WidgetBridge` composes this provider, and Spotify Community addon 0.2.15 is
-locally packageable through the same public SDK/AppContainer path as an
-independent addon. Its controller setup instructions and player core are
-implemented; editing the Client ID remains a local `gbar config` workflow and
-no live allowlisted-account evidence exists. Authors must not infer Spotify
-authority from `network.loopback`, add arbitrary Internet access, store OAuth
-tokens in private widget state, or bind to provider-internal wire DTOs. Device,
-queue, playlist, and isolated local Web Playback contracts are implemented;
-search, recent, broader library, album, and artist surfaces remain planned. See
-[Spotify Web API
-integration](spotify-integration.md).
-
-Authorization has one exact lifecycle continuation, not background authority.
-A `connect` operation must begin with an explicit action while Interactive. The
-action acknowledges immediately, and its authorization task uses the widget's
-Created-to-Destroying lifetime. If opening the system browser moves the widget
-through Visible/Background, that already-created request lease may continue.
-The package selects `keep-alive` residency so idle unload cannot destroy that
-already-started explicit authorization task while the browser owns foreground;
-this does not keep its active polling or presentation work running. The
-temporary callback listener exists only during this explicit attempt and
-waits at most fifteen minutes. It tolerates at most 16 malformed or early-close
-local probes within that same window, but accepts only loopback origin, the
-exact host/path and GET/HTTP/1.1 shape, and the matching OAuth state. The exact broker Connect deadline is seventeen minutes,
-leaving two minutes for bounded token exchange, retry/backoff, and vault
-persistence. A new Background connect, disconnect, playback control, or other
-provider request is still denied. Destroying, consent revocation, pipe/caller
-cancellation, and provider timeout cancel the retained request.
+Spotify is an autonomous full-trust Community application. Its OAuth, Web API,
+token vault, playback, playlist, device, and local Web Playback contracts are
+package-owned and cross only the generic application runtime. Product core no
+longer declares `external.spotify.*` capabilities, Spotify DTOs, SDK services,
+or a trusted Spotify provider. Generic loopback, private-secret, private-state,
+and application-runtime facilities remain identity-neutral; they do not imply
+Spotify authority or expose package credentials.
 
 ### Host-provided private widget state
 

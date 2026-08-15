@@ -4399,10 +4399,9 @@ The default configuration path and publisher/package identity are unchanged,
 and the package backend uses the same stable Credential Manager target. Existing
 Client ID state and refresh credentials therefore remain available without a
 migration or deletion step. Provider error bodies are reduced to package-owned
-safe messages before reaching the widget. The retired product-core provider and
-playback paths remain intact as the frozen fallback required until DLV-218; the
-autonomous package does not reference them, and the comprehensive provider and
-playback suites now compile against the package-owned source.
+safe messages before reaching the widget. The autonomous package does not
+reference product-core Spotify paths, and the comprehensive provider and
+playback suites compile against package-owned source.
 
 Focused Release evidence passes Spotify widget 50/50, package backend 32/32,
 credential-free application 5/5, playback client 3/3, playback host/protocol
@@ -5184,8 +5183,7 @@ presentation values and generic application bootstrap; the staged payload contai
 neither `PlatformBroker.dll`, `WindowsAppLibraryProvider.dll`, nor
 `PlatformSettings.dll`, and the manifest declares no product capability. The
 package ships `GameLauncherWidget.Core.dll`, which has no dormant
-`system.apps.library.*` or `storage.private-state.v1` adapter; the retained built-in
-host adapter is compiled only into the unshipped legacy assembly. The payload also
+`system.apps.library.*` or `storage.private-state.v1` adapter. The payload also
 includes the required `Microsoft.Windows.SDK.NET.dll` runtime projection. The
 finite archive defaults remain 64 MiB total and 512 entries; the per-entry limit is
 32 MiB so that the 24.9 MiB Windows projection is admitted under the same streamed
@@ -5304,3 +5302,37 @@ Documentation validation remains red only on 13 links in
 reviewer-owned archived delivery-plan snapshots; those excluded records were
 not edited. No Tier 3, native activation/build, package, capture, launch, push,
 or later update-consumer work ran.
+
+### Retired product-owned domains (DLV-218)
+
+Spotify is now exclusively package-owned. Product core no longer contains the
+trusted Spotify provider, playback protocol/host, broker capability domain,
+typed SDK service, Settings permission copy, Bridge construction, or bundled
+build output. The autonomous Community package, its package-owned backend and
+playback projects, stable configuration path, and Credential Manager target are
+unchanged.
+
+Game Launcher is no longer a bundled/private widget. The retired host-service
+adapter, built-in manifest/project, trusted catalog entry, and bundled build
+output are removed. `GameLauncherWidget.Core` and the autonomous Community
+application remain the sole maintained launcher domain. Generic normalized App
+Library contracts, provider composition, opaque SavedId/launch authority, and
+the built-in Games & Apps widget remain unchanged.
+
+An architecture contract scans product core for retired Spotify capability and
+provider markers plus private/community Game Launcher identities and adapters,
+while separately requiring the generic App Library backend contract. This
+milestone performs no migration or deletion of credentials, provider/account
+data, installed Community packages, private package state, or user files.
+
+Focused Release evidence passes WidgetSdk 89/89, WidgetSdk compatibility 12/12,
+PlatformBroker 52/52, WidgetBridge 90/90, Settings 60/60, Game Launcher core
+90/90, autonomous Community Game Launcher 6/6, and Gbar CLI/package 65/65. The
+new core-domain retirement check reports no retirement or App Library failure;
+the documentation executable remains red only on 13 pre-existing links in
+reviewer-owned archived delivery-plan snapshots, which this milestone does not
+edit. The restricted runner denied local named-pipe, NuGet-cache, and child
+worker access; the affected broker, Bridge, compatibility, and CLI cases pass
+through their bounded direct or unrestricted focused invocations. No aggregate,
+native build, package mutation, credential access, user-data migration, push,
+or live-account verification ran.
