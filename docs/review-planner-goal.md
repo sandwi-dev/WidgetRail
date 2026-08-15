@@ -479,21 +479,24 @@ Then repeat the loop.
   `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative`. DLV-240 cumulative
   candidates `c7f9dfa` and `11b0ca6` are accepted and integrated on planner main
   as `485a935` and `cb45a31`. Preserve the clean
-  `codex/impl-widgets-snapshot-update` branch. DLV-218 candidate `8f49e1c` is
-  rejected pending one bounded correction: remove retired generated
-  `runtime\GameLauncher`, `runtime\SpotifyPlaybackHost`, and stale retired
-  Bridge assemblies from an incremental Release, while preserving autonomous
-  Community packages and user data. Return the corrected cumulative commit on
-  exact current main, retaining DLV-241's status and verifier registration.
+  `codex/impl-widgets-snapshot-update` branch. DLV-218 candidate `8f49e1c` plus
+  correction `e0dd517` are accepted and integrated through `d8b8861`; preserve
+  the clean `codex/impl-widgets-retired-domains` branch. The correction removes
+  retired generated runtime/Bridge outputs from incremental Release builds
+  while preserving autonomous Community packages, user data, DLV-241 status,
+  and verifier registration. No later widgets assignment is currently
+  authorized because remaining styling/provider items require fresh user
+  evidence; keep the lane idle rather than manufacturing filler while DLV-242
+  provides the active visible outcome.
   DLV-217 is
   integrated on planner main through
   `1453a4c`; its original branch remains preserved on
   `codex/impl-widgets-community-launcher`. Do not move or rewrite that branch
   while the UI queue proceeds. DLV-246 is integrated on planner main as
   `0e75203`; DLV-240 follows as `485a935` and `cb45a31`, and DLV-241 is
-  integrated as `0c264c5` plus `1ab2e0d`. The coherent Release is running
-  visibly as PID 13680 with executable SHA-256
-  `E2DEDA96D3546FE4C3E18093A8982D1CB4B3D1E96F7027884ED0BF601C7157B1`.
+  integrated as `0c264c5` plus `1ab2e0d`; DLV-218 follows through `d8b8861`.
+  The coherent Release is running visibly as PID 95216 with executable SHA-256
+  `7B2FC45CA5055F9D81660C961F94ECBFECB2B162DCB12F05B63A01E36A9DF2ED`.
 - Active platform implementation uses the clean isolated worktree
   `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative`. Preserve the
   rejected one-HWND correction branch `codex/impl-platform-integration` at
