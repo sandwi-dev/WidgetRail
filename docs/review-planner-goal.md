@@ -634,6 +634,14 @@ Preserve the product direction already recorded in the roadmap:
   complete visible session. Widget envelope changes grow or shrink upward and
   outward; the panel bottom, guide, and tray keep explicit stable offsets.
   Never fix a detached widget with an identity-specific native offset.
+- The authorized production window model uses one tightly bounded content HWND
+  for the active widget and one tightly bounded fixed chrome HWND for the
+  controller guide and tray. They remain subordinate endpoints of one native
+  overlay-session/window owner, graphics-device owner, renderer, GameInput
+  router, logical focus/navigation model, and accessibility policy. Content
+  admission, motion, provider updates, focus, scrolling, and sliders may never
+  move or repaint the chrome HWND. Do not add a third overlay HWND, a second
+  input/focus/semantic authority, or a near-full-work-area transparent host.
 - Keep container child alignment separate from the container's own sizing.
   Centering a Row's children must not make that Row content-width inside a
   stretching parent; explicit generic width/aspect-ratio semantics remain the

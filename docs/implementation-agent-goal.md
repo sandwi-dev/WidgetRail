@@ -274,6 +274,14 @@ Code should demonstrate:
   final layout at the admitted extent. Keep the tray/controller guide at fixed
   absolute screen coordinates and grow/shrink content upward/outward around
   that anchor. Never let live data resize a Preferred view implicitly.
+- The authorized production window model uses one tightly bounded content HWND
+  and one tightly bounded fixed chrome HWND containing the controller guide and
+  tray. Treat them as coordinated endpoints of one native overlay-session/window
+  owner, graphics-device owner, renderer, GameInput router, logical
+  focus/navigation model, and accessibility policy. Widget selection,
+  admission, motion, provider updates, focus, scrolling, and sliders must not
+  move or repaint chrome. Do not add a third overlay HWND, another session/input/
+  focus/semantic owner, or a near-full-work-area transparent host.
 - One authoritative native GameInput/Guide owner behind narrow interop. Never
   duplicate it in C#, and never expose the quarantined legacy compatibility
   mechanism outside its current removable adapter.

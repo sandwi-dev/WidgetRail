@@ -17,7 +17,9 @@ Snapshots are evidence only. This file is the sole authority for current work.
   Widget SDK/protocol, catalog/package/runtime, WidgetBridge transport,
   lifecycle/trust/persistence/providers, Community process boundaries, native
   rendering/accessibility, GameInput, controller focus/navigation, scrolling,
-  clipping, motion, and single-HWND ownership remain authoritative.
+  clipping, motion, and the single logical overlay-session/window owner remain
+  authoritative. DLV-244 is explicitly authorized to give content and fixed
+  host chrome separate coordinated top-level HWNDs beneath that one owner.
 - Accepted DLV-225/228/229/230 correct Settings height, Audio width, Network
   first-page height, and YT Music composition; physical review remains final.
 - DLV-231/233/234/235 were reconstructed after the user-approved merge
@@ -111,18 +113,20 @@ user decision. The native overlay is the sole production presentation path.
   `FillAvailable` axes. Content uses bounded Taffy intrinsic measurement rather
   than guessed page dimensions. Existing provider/list views remain stable
   Preferred surfaces unless directly justified.
-- The tray and controller guide retain fixed bottom-center screen coordinates.
-  Content envelopes grow or shrink upward/outward. The cumulative DLV-238/
-  DLV-236 correction gives persistent host chrome independent child-visual/
-  surface ownership under the sole DirectComposition target without adding
-  another HWND, compositor root, accessibility provider, or focus/input tree.
+- The tray and controller guide retain fixed bottom-center screen coordinates
+  in one dedicated chrome HWND. Widget content uses a separate HWND whose
+  envelope may grow or shrink upward/outward without moving chrome. Both HWNDs
+  remain coordinated by one overlay session, native window/compositor owner,
+  renderer, logical focus model, GameInput router, and accessibility policy;
+  they are not independent overlays.
 - Keep the tray's existing small host-owned layout policy during the current
   correction. Do not migrate its internal tile placement to Taffy merely to
   replace straightforward arithmetic; reconsider that separately only if
   additional tray-layout complexity or repeated defects provide evidence that
   one more declarative layout owner would reduce maintenance cost.
-- One HWND wraps the admitted content-plus-chrome union; the overlay never
-  becomes a monitor-sized desktop surface.
+- One tightly bounded content HWND wraps the admitted widget envelope and one
+  tightly bounded chrome HWND wraps guide/tray chrome. Neither becomes a
+  monitor-sized transparent desktop surface.
 - A complete `WidgetSnapshot` is a last-admitted presentation checkpoint, not
   an expiry cache entry. Ordinary invalidation records refresh demand and does
   not delete it. Hard removal is limited to restart, removal/runtime
@@ -150,7 +154,7 @@ user decision. The native overlay is the sole production presentation path.
 | Lane | Task/worktree | Current state |
 | --- | --- | --- |
 | Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` on `codex/impl-widgets-taffy-ui` | Idle clean. DLV-240 begins only after accepted DLV-239 is integrated and the planner sends the serialized cross-lane baseline. |
-| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` on `codex/impl-platform-integration` | Blocked clean at `4d0a69e`. Native catalog descriptors lack pre-start surface policies, so DLV-244 cannot calculate a minimal stable one-HWND container without a material metadata/window decision. DLV-239 remains paused. |
+| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` on `codex/impl-platform-integration` | Assigned revised DLV-244 after merging the new planner baseline. The user authorized a separate fixed chrome HWND; DLV-239 remains paused until DLV-244 is accepted and physically approved. |
 
 DLV-217 remains accepted through `d57fd06` but unintegrated because its exact
 aggregate is honestly 40/41 with one reviewer-history-link failure. Preserve
@@ -235,10 +239,10 @@ stationarity, and do not resume DLV-239 until DLV-244 is accepted and launched.
 ### Assigned — DLV-244: make tray stationarity externally authoritative
 
 Lane/owner/baseline: platform native placement, presentation-transaction, and
-existing sole DirectComposition owner on integrated main `677d302`. DLV-239 is
-paused and must not be mixed into this correction. Preserve the separate
-content/guide/tray child surfaces and the complete bounded tray repaint for
-tray-owned changes.
+existing sole overlay-session/window/compositor owner on current main. Merge the
+new planner baseline before editing. DLV-239 is paused and must not be mixed
+into this correction. Preserve the separate content/guide/tray retained
+surfaces and complete bounded tray repaint for tray-owned changes.
 
 Visible objective: cycling any sequence of differently sized widgets, hiding
 and reopening on any selected widget, and completing or reversing content
@@ -246,184 +250,85 @@ motion must leave the tray at one identical bottom-center physical screen
 rectangle. No transient jump, flash, one-pixel drift, or widget-derived anchor
 is acceptable.
 
+Architecture decision: the user explicitly selected a separate fixed chrome
+HWND. This supersedes the earlier one-HWND restriction for host chrome only.
+Do not add catalog surface metadata or reserve a near-full-work-area transparent
+host to solve stationarity. The content HWND and chrome HWND are two coordinated
+windows of one overlay, not two independent products or authorities.
+
 Required correction:
 
-- Establish tray/guide geometry from the authoritative monitor work area, DPI,
-  interface/accessibility scale, catalog/order, and host chrome policy. Widget
-  content width, height, surface hints, presented extent, container parity, or
-  selected identity must never seed or recompute the absolute chrome anchor.
-- Retain that anchor across widget selection, admission, motion, cancellation,
-  hide/reopen, and provider/content updates. Change it only for an explicit
-  monitor/work-area/DPI, accessibility/interface-scale, appearance, or
-  catalog/order event whose chrome geometry actually changes; record the typed
-  reason.
-- Remove every externally visible interval in which child-visual offsets refer
-  to a future/past HWND rectangle. The existing sole presentation transaction
-  must admit one coherent screen-space state for HWND geometry, content
-  presentation, tray/guide offsets, hit testing, and UIA. Do not claim atomicity
-  merely because cached desired values are equal.
-- Preserve one HWND, one DirectComposition target/root, one renderer, one
-  accessibility provider/tree, one focus/input owner, and transparent unused
-  client pixels. Do not reintroduce tile damage, a combined content/tray raster,
-  a monitor-sized visible shell, or widget-specific geometry.
+- Keep widget content in the existing tightly bounded content HWND. Give the
+  controller guide and tray one tightly bounded, transparent chrome HWND whose
+  physical bottom-center rectangle is derived only from monitor work area, DPI,
+  interface/accessibility scale, appearance, catalog/order, and chrome policy.
+  Widget identity, content extent, surface hints, admission, or motion must
+  never seed or move that rectangle.
+- Preserve one overlay-session/window owner, one renderer/graphics-device owner,
+  one GameInput router, one logical focus/navigation model, and one
+  accessibility policy. Each HWND may have the DirectComposition target and UIA
+  root required by Windows, but those are subordinate endpoints managed by the
+  existing owners, not competing schedulers, semantic trees, or input systems.
+- Make the chrome HWND an owned, non-taskbar/non-Alt-Tab, non-activating overlay
+  companion with deterministic Z-order relative to the content HWND and game.
+  Show, hide, monitor/DPI transition, device recreation, and shutdown must treat
+  the pair as one session; no orphaned or mismatched window may remain.
+- Widget switches, destination admission, content motion, provider updates,
+  focus, scrolling, and sliders may resize/move/repaint only the content HWND or
+  content surface. They must not call window placement or repaint on the chrome
+  HWND. Tray/order/appearance/accessibility/DPI changes may repaint the complete
+  small chrome surface once and reposition it only for the corresponding typed
+  chrome event.
+- Route pointer/hit testing in each HWND's own applied screen/client coordinate
+  space. Transparent unused regions must not capture the game. Controller
+  actions continue through the sole existing logical focus/router. Keep UIA
+  elements non-duplicated, expose accurate screen bounds for both roots, and
+  publish focus from the shared logical owner.
+- Reuse one graphics-device/recovery owner and rebuild both composition targets
+  coherently on device loss. Retain semantic/focus state where valid; never show
+  stale chrome beside rebuilt content or vice versa.
+- Keep the fixed panel-to-guide and guide-to-tray offsets. The content window
+  grows or shrinks upward/outward above the independently anchored chrome; do
+  not create a monitor-sized transparent window or identity-specific offset.
 
-Acceptance and verification:
+Acceptance and proportional verification:
 
-- Add a deterministic lifecycle matrix that starts the overlay with each of all
-  eight widgets selected, cycles every differently sized widget in both
-  directions, hides/reopens between selections, and covers reduced motion plus
-  compact/tall/wide transitions. It must compare the same absolute tray corners
-  across the complete matrix, including pre-hide versus post-reopen.
-- The oracle must derive externally presented screen coordinates from the
-  applied HWND rectangle plus the actual committed child-visual transaction
-  step. It may not compare `CompositionChromeSession::trayScreenBounds` to a
-  diagnostic reconstructed from that same field. A fake/order seam may record
-  externally observable transaction phases, but no test-only compositor owner
-  or second production scheduler is permitted.
-- Include fractional-DPI and odd/even physical-width cases that reproduce the
-  observed 747/748 width and 2185/2186 left-edge drift. Assert that no
-  intermediate phase exposes different absolute tray or guide corners.
-- Directly prove content-only admission, motion, provider, focus, scroll, and
-  slider work does not repaint the tray; tray selection/order/style changes may
-  replace the whole small tray once.
-- Run only the affected placement, composition, widget-switch, chrome,
-  targeting/UIA, reduced-motion/device-loss tests and one native Release build.
-  Do not add capture tooling or run Tier 3. The planner must review the source
-  transaction sequence independently, then launch the exact corrected Release.
-  Physical user cycling is mandatory acceptance evidence; automated green is
-  not sufficient to close this user-reproduced compositor defect.
+- A deterministic native lifecycle matrix starts on each of all eight widgets,
+  cycles every differently sized widget in both directions, covers delayed
+  admission, forward/reverse/reduced motion, and hides/reopens. It must read the
+  applied chrome HWND `GetWindowRect` (or the platform seam representing that
+  exact applied rectangle) and compare one unchanged set of physical corners
+  across the whole visible session and equal inputs across reopen. The content
+  HWND must demonstrably adopt the distinct authored widget envelopes.
+- Include direct fractional-DPI and odd/even physical-width cases reproducing
+  the observed 747/748 and 2185/2186 drift inputs. No oracle may reconstruct
+  expected chrome bounds from the same cached diagnostic it is testing.
+- Directly cover pair Z-order/ownership, non-activation, taskbar/Alt-Tab policy,
+  show/hide/normal-close, monitor/DPI change, pointer pass-through and target
+  mapping, shared logical focus/UIA bounds/events, device loss, and failure
+  cleanup. Test production policy seams deterministically; do not create a
+  generalized two-window simulator or capture harness.
+- Counters must prove content admission, motion, provider, focus, scroll, and
+  slider work performs zero chrome-window placement and zero tray repaint.
+  Tray-owned changes repaint the complete small tray once; retain no tile-level
+  damage optimization.
+- Run only affected placement/window, composition/chrome, widget-switch,
+  targeting/focus/UIA, reduced-motion/device-loss, and cleanup tests plus one
+  native Release build. No Tier 3, packaged-worker dependency, or screenshot
+  tooling. The planner independently reviews the actual window/target/focus
+  ownership and launches the exact accepted Release. Physical user cycling is
+  mandatory before DLV-244 closes.
 
-Stop for another HWND/compositor/focus/input authority, a monitor-sized visible
-surface, a self-referential stationarity oracle, widget-identity geometry, an
-undocumented composition API, or a material shell/animation choice.
+Stop for a third overlay HWND, a second GameInput/focus/navigation/session
+authority, duplicated semantic state, a monitor-sized transparent host,
+service/widget identity geometry, activation that steals focus from the game,
+an undocumented window/composition API, or a material accessibility/Z-order
+choice not resolved by documented platform behavior.
 
-Independent review disposition for `de3cf47`: rejected; retain as the base for
-one bounded same-lane correction and do not integrate it. The work-area-derived
-tray/guide anchor is directionally correct, but the externally visible
-transaction is still non-atomic. On a visible content-envelope change,
-`SetWindowPos` first moves the HWND and therefore the already committed old
-tray visual; only afterward does `CommitFrames` publish the compensating child
-offset. Reversing the earlier commit-then-move order merely reverses which
-transient is exposed.
-
-The new oracle does not observe that interval. It records `GetWindowRect` only
-after the window move and combines it with `appliedChromePresentation`, which
-is set when `SetOffset*` succeeds before the DirectComposition device commit is
-known to succeed. It therefore represents attempted internal state, not a
-screen state observed after each externally visible phase. The route also
-opens with one initial widget and performs only one hide/reopen on the final
-selection; it does not execute the required all-eight initial-selection and
-cross-reopen matrix, and its 747/748 text is not a direct fractional-DPI/parity
-reproduction.
-
-Bounded correction required atop `de3cf47`:
-
-- Keep the valid work-area-derived absolute chrome anchor, but stop moving the
-  top-level HWND as part of ordinary widget selection. Establish one transparent
-  visible-session host container from the work area plus the maximum admitted
-  catalog content envelope, not from the selected widget. Individual widgets
-  retain their authored content width/height and move only the content child
-  inside that stable host coordinate space. The container is capacity, not a
-  visible bounded shell; unused pixels remain transparent and hit-test inert.
-- Recompute that host container only for a typed monitor/work-area/DPI,
-  appearance/accessibility-scale, or catalog-envelope change. Hide/reopen with
-  unchanged inputs must reconstruct the same HWND and chrome rectangles.
-- If the existing architecture cannot provide stable HWND coordinates without
-  a monitor-sized container, another HWND, or an undocumented synchronization
-  API, stop for the material product/architecture decision instead of swapping
-  operation order again.
-- Replace attempted `applied*` diagnostics with last-successfully-committed
-  transaction state. Publish it only after the DirectComposition device commit
-  succeeds; preserve or restore the previous committed state on failure.
-- Assert the HWND rectangle itself remains identical during forward/reverse
-  cycling of every content extent, then derive tray/guide screen coordinates
-  from that stable applied rectangle and last successful child commit. Exercise
-  each of all eight widgets as the initial selection in a fresh visible
-  lifecycle and compare pre-hide/post-reopen corners. Add direct fractional-DPI
-  odd/even cases that produce the rejected physical rounding inputs.
-
-Run only the same affected focused tests and one native Release build after the
-correction. Do not rerun unchanged green suites while iterating, and do not
-claim physical acceptance until the planner launches the exact integrated
-candidate and the user cycles it.
-
-Independent review disposition for correction `130c105`: rejected; keep the
-cumulative DLV-244 chain unintegrated. It successfully removes ordinary
-selection-time HWND movement and moves attempted coordinate bookkeeping behind
-a successful DirectComposition `Commit`, but two acceptance blockers remain.
-
-First, the decisive eight-widget/fresh-lifecycle route did not execute. The
-changed fixture only compiled because the packaged route stopped at WidgetBridge
-publish. Its production-host matrix, stable-HWND assertion, pre/post-reopen
-comparison, and new committed-coordinate oracle therefore have no runtime
-evidence. A compiled assertion is not a passed regression.
-
-Second, `MaximumCompositionContentPlacement` does not inspect the admitted or
-catalog-authored widget envelopes. It constructs a hard-coded 1600x1200-DIP
-request—the protocol ceiling—and reserves that generic maximum for every
-visible session. On an ordinary work area this can clamp to a nearly
-monitor-sized transparent host. That is not the assigned maximum admitted
-catalog envelope, can regress the user's prior whole-screen-shell concern, and
-crosses the explicit stop condition for a material container choice.
-
-Bounded correction atop `130c105`:
-
-- Extract the stable host/chrome placement calculation into the existing
-  placement/presentation policy layer so a deterministic native test can run it
-  directly without publishing WidgetBridge or launching packaged workers. Feed
-  it all eight real current surface policies as differently sized catalog
-  entries, every initial selection, forward/reverse cycling, hide/reopen,
-  reduced motion, and direct fractional-DPI odd/even work areas. Assert one
-  stable HWND rectangle and exact tray/guide screen corners. Keep one focused
-  production host route when the existing fixture environment is available,
-  but do not make package publication the only oracle for native placement.
-- Size the stable container from the maximum work-area-constrained authored
-  envelope in the current installed catalog, including deterministic fallback
-  policy for an entry whose hints are not yet resident. Do not use the global
-  protocol ceiling merely because it is safe. Keep each widget's visible
-  content at its own requested extent; the stable container remains transparent
-  capacity, not a shared visible shell.
-- Add direct checks that the resulting host is the minimal union of the catalog
-  maximum content placement, guide, and tray and does not expand to the work
-  area unless an installed widget explicitly requests FillAvailable or an
-  equivalent admitted full-area envelope.
-- If native catalog state does not contain enough surface-policy information to
-  calculate that capacity without a public protocol change, or if arbitrary
-  future widget extent inherently requires a near-full-work-area HWND to
-  preserve one-HWND stationarity, stop and report the exact architecture choice
-  to the user. Do not silently add protocol work, reserve the global maximum,
-  or reintroduce selection-time HWND movement.
-
-Run the new deterministic placement test, the changed widget-switch fixture
-when its existing route is available, affected chrome/transition/targeting
-tests, and one native Release compile. Do not rerun unrelated grouped/package
-failures or Tier 3.
-
-Blocked disposition after planner baseline `490c7f4`: the platform lane stopped
-cleanly at `4d0a69e` without another implementation commit. Native
-`WidgetDescriptor` has no surface width/height or FillAvailable policy; the
-current surface request exists only in a worker snapshot after that widget is
-started and admitted. Consequently, before a cold selection the host cannot
-derive the assigned maximum installed-catalog envelope from current native
-authority. The rejected protocol-ceiling reservation is not an acceptable
-fallback.
-
-Unblocking requires one explicit user architecture choice:
-
-1. Recommended: add bounded surface-policy metadata to installed catalog/package
-   authority so native placement can calculate the stable minimal container
-   before worker startup. This is a serialized catalog/protocol contract change
-   and must precede the remaining DLV-244 presentation correction.
-2. Reserve a near-full-work-area transparent one-HWND host. This avoids metadata
-   work but changes shell/resource/hit-test behavior and revives the user's
-   whole-screen-host concern even though unused pixels remain transparent.
-3. Give tray/guide a separate top-level HWND. This avoids container reservation
-   but breaks the durable one-HWND/compositor/accessibility authority and is not
-   authorized by the current architecture.
-
-Do not resume DLV-244 or DLV-239 until the user chooses. Preserve cumulative
-unintegrated commits `de3cf47` and `130c105` as review evidence; neither is an
-accepted production baseline.
+Retained rejected evidence: `de3cf47` still exposed a move/commit interval, and
+`130c105` replaced it with a hard-coded 1600x1200-DIP stable host whose decisive
+route did not execute. Preserve both commits unintegrated; do not use either as
+the production baseline or revive their one-HWND capacity strategy.
 
 Independent review disposition for `3716063`: rejected as the retained base for
 one cumulative correction. The commit correctly separates destination layout
@@ -854,9 +759,11 @@ Do not delete credentials, provider data, accounts, or user files.
 
 1. Main includes physically rejected DLV-238/DLV-236 plus accepted DLV-237
    through `6e2969b`; do not build further work on its false stationarity claim.
-2. Execute DLV-244 as the sole platform assignment, independently review its
-   non-self-referential transaction evidence, integrate only if accepted, and
-   launch the exact corrected Release for mandatory user cycling.
+2. Merge the current planner baseline into the clean platform lane and execute
+   revised DLV-244 as the sole platform assignment using the user-authorized
+   separate fixed chrome HWND. Independently review its real applied-window
+   evidence, integrate only if accepted, and launch the exact corrected Release
+   for mandatory user cycling.
 3. After the user accepts stationary tray behavior, execute and integrate
    DLV-239, then dispatch DLV-240 to the widgets lane as sole
    shared protocol/managed lead. Platform does not edit shared files.
@@ -888,7 +795,6 @@ Do not delete credentials, provider data, accounts, or user files.
 
 | Item | Blocker | Required evidence |
 | --- | --- | --- |
-| DLV-244 tray stationarity | Native catalog lacks pre-start surface policy; one-HWND stable capacity therefore requires catalog metadata, a near-full-work-area host, or a second HWND. | Explicit user architecture choice; recommended bounded installed-catalog surface metadata. |
 | Avalonia migration/cutover | Failed and cancelled by user. | New explicit user decision; never resume old AVP work. |
 | DLV-217 integration | Exact aggregate is 40/41 with one reviewer-history-link red. | Explicit user approval to integrate despite the honest documentation-only red. |
 | DLV-230 visible 0.2.9 | YT Music catalog is at its eight-version ceiling. | Approval to remove only inactive non-selected 0.2.0, then install/enable 0.2.9. |
