@@ -100,6 +100,7 @@ struct ImagePlacement final {
 };
 
 enum class IncrementalPresentationWork {
+    NoRaster,
     PaintOnly,
     LocalLayout,
 };
@@ -191,6 +192,13 @@ public:
         declarative::Rect viewport);
 
     void CancelPresentationUpdatePlan() noexcept;
+
+    /// Advances the existing complete renderer checkpoint after a typed
+    /// semantic-only admission. Geometry and raster state remain unchanged.
+    [[nodiscard]] bool AcceptNoRasterPresentationUpdate(
+        const WidgetSnapshot& snapshot,
+        const WidgetPresentationImpact& impact,
+        declarative::Rect viewport) noexcept;
 
     /// Performs the one bounded intrinsic host pass used only by an explicit
     /// Content surface axis. It shares native style, DirectWrite leaf

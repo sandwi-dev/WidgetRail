@@ -1738,7 +1738,10 @@ WidgetPresentationEffect ImpactForPresentationProperty(
     using Effect = WidgetPresentationEffect;
     if (property == L"activeInputScopeId" || property == L"initialFocusId" ||
         property == L"quickActions") {
-        return Effect::Authority | Effect::Interaction | Effect::Accessibility;
+        // These document authorities can change the visible focus ring or the
+        // host-owned controller guide even though they do not alter a node.
+        return Effect::Paint | Effect::Authority |
+            Effect::Interaction | Effect::Accessibility;
     }
     if (property == L"surface" || property == L"advancedPresentation") {
         return Effect::SurfacePlacement | Effect::MeasureLayout |
@@ -1752,21 +1755,36 @@ WidgetPresentationEffect ImpactForPresentationProperty(
         property == L"textEntryPlaceholder") {
         return Effect::MeasureLayout | Effect::Paint | Effect::Accessibility;
     }
-    if (property == L"accessibilityLabel" ||
-        property == L"accessibilityValue") {
+    if (property == L"accessibilityLabel") {
+        // Label presence determines whether an otherwise empty text node
+        // contributes a renderer accessibility region.
+        return Effect::Paint | Effect::Accessibility;
+    }
+    if (property == L"accessibilityValue") {
         return Effect::Accessibility;
     }
     if (property == L"value")
         return Effect::Paint | Effect::Accessibility;
     if (property == L"imageSource" || property == L"artworkHandle") {
-        return Effect::Resource | Effect::Paint | Effect::Accessibility;
+        // Button intrinsic measurement reserves a leading lane whose size
+        // depends on whether either resource is present.
+        return Effect::Resource | Effect::MeasureLayout |
+            Effect::Paint | Effect::Accessibility;
     }
     if (property == L"isDisabled" || property == L"isSelected" ||
         property == L"isBusy") {
-        return Effect::Paint | Effect::Interaction | Effect::Accessibility;
+        // Button measurement reserves a trailing state-cue lane for each of
+        // these flags.
+        return Effect::MeasureLayout | Effect::Paint |
+            Effect::Interaction | Effect::Accessibility;
+    }
+    if (property == L"inputScopeId" || property == L"shortcuts") {
+        // Scope changes can move visual focus; shortcut changes can alter the
+        // host-owned Back affordance.
+        return Effect::Paint | Effect::Authority |
+            Effect::Interaction | Effect::Accessibility;
     }
     if (property == L"actionId" || property == L"valueChangedActionId" ||
-        property == L"shortcuts" || property == L"inputScopeId" ||
         property == L"focus" || property == L"focusPersistenceId" ||
         property == L"scrollNearStartActionId" ||
         property == L"scrollNearEndActionId") {
@@ -1776,17 +1794,25 @@ WidgetPresentationEffect ImpactForPresentationProperty(
         property == L"gridMinimumColumnWidth" ||
         property == L"gridMaximumColumns" || property == L"minimum" ||
         property == L"maximum" || property == L"step" ||
-        property == L"sliderInteractionMode" || property == L"imageFit" ||
+        property == L"imageFit" ||
         property == L"glyph" || property == L"indicatorSize" ||
         property == L"actionSurfaceOrientation" ||
         property == L"scrollAxis" ||
         property == L"scrollPaginationThreshold" ||
         property == L"collectionAnchorKey" ||
-        property == L"collectionItemKey" ||
-        property == L"advancedPresentationSlot" ||
-        property == L"textEntryMaximumLength") {
+        property == L"collectionItemKey") {
         return Effect::MeasureLayout | Effect::Paint |
             Effect::Interaction | Effect::Accessibility;
+    }
+    if (property == L"advancedPresentationSlot") {
+        return Effect::Structure | Effect::MeasureLayout | Effect::Paint |
+            Effect::Interaction | Effect::Accessibility;
+    }
+    if (property == L"sliderInteractionMode") {
+        return Effect::Paint | Effect::Interaction | Effect::Accessibility;
+    }
+    if (property == L"textEntryMaximumLength") {
+        return Effect::Authority | Effect::Interaction | Effect::Accessibility;
     }
     return Effect::Unknown;
 }

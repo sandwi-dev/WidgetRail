@@ -1250,10 +1250,6 @@ struct DeclarativeRenderer::RenderPass final {
             if (!replacement.valid()) return false;
             for (auto& [id, box] : replacement.boxes)
                 layout.boxes.insert_or_assign(std::move(id), std::move(box));
-            replacement = recompute();
-            if (!replacement.valid()) return false;
-            for (auto& [id, box] : replacement.boxes)
-                layout.boxes.insert_or_assign(std::move(id), std::move(box));
         }
         PrepareAgainstCurrentLayout();
         return true;
@@ -1932,7 +1928,7 @@ DeclarativeRenderer::PlanPresentationUpdate(
     if (!cache || cache->instanceId != snapshot.instanceId ||
         cache->sequence != impact.baseSequence ||
         snapshot.sequence != impact.sequence ||
-        !SameRect(cache->viewport, viewport) || impact.affectedNodeIds.empty() ||
+        !SameRect(cache->viewport, viewport) ||
         HasWidgetPresentationEffect(
             impact.effects, WidgetPresentationEffect::Structure) ||
         HasWidgetPresentationEffect(
@@ -1943,10 +1939,23 @@ DeclarativeRenderer::PlanPresentationUpdate(
     }
     const bool localLayout = HasWidgetPresentationEffect(
         impact.effects, WidgetPresentationEffect::MeasureLayout);
-    if (!localLayout && !HasWidgetPresentationEffect(
-            impact.effects, WidgetPresentationEffect::Paint)) {
-        return std::nullopt;
+    const bool rasterWork = localLayout || HasWidgetPresentationEffect(
+        impact.effects, WidgetPresentationEffect::Paint) ||
+        HasWidgetPresentationEffect(
+            impact.effects, WidgetPresentationEffect::Resource);
+    if (!rasterWork) {
+        pendingIncrementalPlan_ = PendingIncrementalPlan{
+            snapshot.instanceId,
+            impact.baseSequence,
+            impact.sequence,
+            IncrementalPresentationWork::NoRaster,
+            {},
+            {},
+        };
+        return IncrementalPresentationPlan{
+            IncrementalPresentationWork::NoRaster, {}};
     }
+    if (impact.affectedNodeIds.empty()) return std::nullopt;
 
     Rect damage{};
     std::vector<std::wstring> boundaries;
@@ -2004,6 +2013,27 @@ void DeclarativeRenderer::CancelPresentationUpdatePlan() noexcept {
     pendingIncrementalPlan_.reset();
 }
 
+bool DeclarativeRenderer::AcceptNoRasterPresentationUpdate(
+    const WidgetSnapshot& snapshot,
+    const WidgetPresentationImpact& impact,
+    const Rect viewport) noexcept {
+    if (!pendingIncrementalPlan_ || !incrementalLayoutCache_ ||
+        pendingIncrementalPlan_->work != IncrementalPresentationWork::NoRaster ||
+        pendingIncrementalPlan_->instanceId != snapshot.instanceId ||
+        pendingIncrementalPlan_->baseSequence != impact.baseSequence ||
+        pendingIncrementalPlan_->sequence != impact.sequence ||
+        incrementalLayoutCache_->instanceId != snapshot.instanceId ||
+        incrementalLayoutCache_->sequence != impact.baseSequence ||
+        snapshot.sequence != impact.sequence ||
+        !SameRect(incrementalLayoutCache_->viewport, viewport)) {
+        pendingIncrementalPlan_.reset();
+        return false;
+    }
+    incrementalLayoutCache_->sequence = impact.sequence;
+    pendingIncrementalPlan_.reset();
+    return true;
+}
+
 WidgetComputedStyle ResolveDeclarativeComputedStyle(
     const WidgetNode& node,
     const bool focused,
@@ -2059,6 +2089,7 @@ RenderResult DeclarativeRenderer::Render(
         bitmapTarget_ = renderTarget;
     }
     const bool pendingMatches = pendingIncrementalPlan_ &&
+        pendingIncrementalPlan_->work != IncrementalPresentationWork::NoRaster &&
         incrementalLayoutCache_ &&
         pendingIncrementalPlan_->instanceId == snapshot.instanceId &&
         pendingIncrementalPlan_->baseSequence == incrementalLayoutCache_->sequence &&
@@ -2143,23 +2174,25 @@ RenderResult DeclarativeRenderer::Render(
             const auto narrowId = NarrowStableId(node.id);
             const auto prepared = pass.prepared.find(narrowId);
             const auto presented = pass.presentation.find(narrowId);
-            std::wstring boundary{inheritedBoundary};
-            if (node.id == snapshot.root.id) {
-                boundary = node.id;
-            } else if (prepared != pass.prepared.end() &&
-                       prepared->second.baseStyle.widthPx() &&
-                       prepared->second.baseStyle.heightPx() &&
-                       prepared->second.baseStyle.marginPx().top == 0.0F &&
-                       prepared->second.baseStyle.marginPx().right == 0.0F &&
-                       prepared->second.baseStyle.marginPx().bottom == 0.0F &&
-                       prepared->second.baseStyle.marginPx().left == 0.0F) {
-                // Only an explicitly size-contained subtree can relayout
-                // without moving siblings owned by its parent Taffy boundary.
-                boundary = node.id;
+            // A target may use only an already-committed clipping ancestor as
+            // its local relayout boundary. Fixed dimensions alone do not
+            // contain visible-overflow descendants, and the boundary itself
+            // cannot safely relayout against its own old bounds.
+            std::wstring descendantBoundary{inheritedBoundary};
+            if (prepared != pass.prepared.end() &&
+                RenderPass::ClipsDescendants(
+                    node, prepared->second.baseStyle) &&
+                prepared->second.baseStyle.widthPx() &&
+                prepared->second.baseStyle.heightPx() &&
+                prepared->second.baseStyle.marginPx().top == 0.0F &&
+                prepared->second.baseStyle.marginPx().right == 0.0F &&
+                prepared->second.baseStyle.marginPx().bottom == 0.0F &&
+                prepared->second.baseStyle.marginPx().left == 0.0F) {
+                descendantBoundary = node.id;
             }
             IncrementalNodeState state;
             state.parentId = parentId;
-            state.safeBoundaryId = boundary;
+            state.safeBoundaryId = std::wstring{inheritedBoundary};
             if (presented != pass.presentation.end()) {
                 auto paintBounds = presented->second.visibleBox;
                 if (node.id == pass.focusedId &&
@@ -2180,9 +2213,9 @@ RenderResult DeclarativeRenderer::Render(
             }
             cache.nodes.insert_or_assign(node.id, std::move(state));
             for (const auto& child : node.children)
-                self(self, child, node.id, boundary);
+                self(self, child, node.id, descendantBoundary);
         };
-        retain(retain, snapshot.root, std::wstring_view{}, snapshot.root.id);
+        retain(retain, snapshot.root, std::wstring_view{}, std::wstring_view{});
         if (!pass.focusedId.empty()) {
             if (const auto boundary =
                     cache.nodes.find(pass.focusedId);

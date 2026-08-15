@@ -2769,10 +2769,45 @@ private:
                     GetTickCount64(), CurrentAccessibilityPolicy().reducedMotion);
                 AdvanceOverlayTransition(GetTickCount64());
             }
+            const std::wstring priorFocus = focusedElementId_;
             RestoreFocusForActiveSurface(event.widgetId);
-            if (pressedInteraction_.Reconcile(*current, focusedElementId_))
+            const bool pressedVisualChanged =
+                pressedInteraction_.Reconcile(*current, focusedElementId_);
+            if (pressedVisualChanged)
                 InvalidateRect(window_, nullptr, FALSE);
-            RefreshAndApplyPresentation([] {});
+            const bool semanticOnlyImpact = pendingWidgetPresentationImpact_ &&
+                !gba::HasWidgetPresentationEffect(
+                    pendingWidgetPresentationImpact_->effects,
+                    gba::WidgetPresentationEffect::Paint) &&
+                !gba::HasWidgetPresentationEffect(
+                    pendingWidgetPresentationImpact_->effects,
+                    gba::WidgetPresentationEffect::MeasureLayout) &&
+                !gba::HasWidgetPresentationEffect(
+                    pendingWidgetPresentationImpact_->effects,
+                    gba::WidgetPresentationEffect::Resource) &&
+                !gba::HasWidgetPresentationEffect(
+                    pendingWidgetPresentationImpact_->effects,
+                    gba::WidgetPresentationEffect::SurfacePlacement) &&
+                !gba::HasWidgetPresentationEffect(
+                    pendingWidgetPresentationImpact_->effects,
+                    gba::WidgetPresentationEffect::Structure) &&
+                !gba::HasWidgetPresentationEffect(
+                    pendingWidgetPresentationImpact_->effects,
+                    gba::WidgetPresentationEffect::Unknown);
+            const bool noRasterCommitted = semanticOnlyImpact &&
+                TryApplyNoRasterWidgetPresentation(
+                    event.widgetId, *pendingWidgetPresentationImpact_,
+                    priorFocus != focusedElementId_, pressedVisualChanged);
+            if (!noRasterCommitted) {
+                // A semantic-only admission that cannot reuse the committed
+                // frame, or any host visual-state change outside the typed
+                // widget impact, must take the conservative complete path.
+                if (semanticOnlyImpact || priorFocus != focusedElementId_ ||
+                    pressedVisualChanged) {
+                    pendingWidgetPresentationImpact_.reset();
+                }
+                RefreshAndApplyPresentation([] {});
+            }
             if (newerRefreshRequested) {
                 RefreshWidgetSnapshot(event.widgetId, event.correlationId);
             } else {
@@ -3574,6 +3609,134 @@ private:
                 ? std::wstring_view{focusedElementId_}
                 : std::wstring_view{},
             WidgetSurfaceRequestForSnapshot(*snapshot));
+    }
+
+    [[nodiscard]] bool TryApplyNoRasterWidgetPresentation(
+        const std::wstring_view widgetId,
+        const gba::WidgetPresentationImpact& impact,
+        const bool focusChanged,
+        const bool pressedVisualChanged) {
+        if (!window_ || !declarativeRenderer_ || !compositionSurface_.available() ||
+            state_.surface() != gba::Surface::Widget ||
+            state_.activeWidget() != widgetId || focusChanged || pressedVisualChanged ||
+            lastWidgetPresentationUsesProjection_ || declarativeMotionActive_ ||
+            overlayTransition_.active() ||
+            presentationTransaction_.extentTransitionActive() ||
+            compositionPlacementInProgress_ ||
+            IsWindowVisible(window_) == FALSE) {
+            return false;
+        }
+        RECT pendingPaint{};
+        if (GetUpdateRect(window_, &pendingPaint, FALSE) != FALSE) return false;
+
+        const auto* source = SnapshotFor(widgetId);
+        const auto* snapshot = InteractionSnapshotFor(widgetId);
+        if (!source || snapshot != source || !lastWidgetRenderResult_.succeeded)
+            return false;
+        RECT client{};
+        if (!GetClientRect(window_, &client)) return false;
+        const UINT dpi = std::max(1U, GetDpiForWindow(window_));
+        const float interfaceScale = appearanceState_.current()
+            ? static_cast<float>(appearanceState_.current()->interfaceScale)
+            : 1.0F;
+        const auto metrics = gba::ComputeOverlayRenderMetrics(
+            client.right - client.left, client.bottom - client.top,
+            dpi, interfaceScale);
+        const auto geometry = metrics
+            ? gba::ComputePanelLocalSurfaceGeometry(
+                metrics->viewportWidthDip, metrics->viewportHeightDip)
+            : std::nullopt;
+        if (!metrics || !geometry || metrics->physicalPixelsPerDip <= 0.0F)
+            return false;
+        const gba::declarative::Rect viewport{
+            geometry->widgetViewportX,
+            geometry->widgetViewportY,
+            geometry->widgetViewportWidth,
+            geometry->widgetViewportHeight,
+        };
+        const auto plan = declarativeRenderer_->PlanPresentationUpdate(
+            *snapshot, impact, viewport);
+        if (!plan || plan->work != gba::IncrementalPresentationWork::NoRaster) {
+            declarativeRenderer_->CancelPresentationUpdatePlan();
+            return false;
+        }
+
+        const auto* descriptor = sessions_.FindDescriptor(widgetId);
+        const auto trayLayout = CurrentCompositionTrayLayout();
+        if (accessibilityActive_ &&
+            (!descriptor || !trayLayout || !compositionChromeSession_ ||
+             widgetAccessibilityTree_.widgetId != widgetId ||
+             widgetAccessibilityTree_.snapshotSequence != impact.baseSequence)) {
+            declarativeRenderer_->CancelPresentationUpdatePlan();
+            return false;
+        }
+
+        std::optional<gba::accessibility::Tree> semanticTree;
+        std::optional<gba::accessibility::ProjectionKey> projectionKey;
+        std::map<std::wstring, double, std::less<>> sliderValues;
+        if (accessibilityActive_) {
+            const auto presentationTime = GetTickCount64();
+            const auto collectSliderOverrides = [&](const auto& self,
+                                                     const gba::WidgetNode& node) -> void {
+                if (node.kind == L"slider") {
+                    if (const auto value = sliderInteraction_.PresentationValue(
+                            SliderDescriptor(*snapshot, node), presentationTime)) {
+                        sliderValues.emplace(node.id, *value);
+                    }
+                }
+                for (const auto& child : node.children) self(self, child);
+            };
+            collectSliderOverrides(collectSliderOverrides, snapshot->root);
+            const auto policy = appearanceState_.current()
+                ? CurrentAccessibilityPolicy()
+                : gba::NativeAccessibilityPolicy{};
+            projectionKey = gba::accessibility::ProjectionKey{
+                std::wstring{widgetId},
+                descriptor->runtimeGeneration,
+                snapshot->activeInputScopeId,
+                state_.focusRegion() == gba::FocusRegion::Widget
+                    ? focusedElementId_ : std::wstring{},
+                snapshot->sequence,
+                sliderInteraction_.presentationRevision(),
+                appearanceState_.current() ? appearanceState_.current()->revision : 0,
+                viewport.x,
+                viewport.y,
+                viewport.width,
+                viewport.height,
+                geometry->panelWidth,
+                geometry->panelHeight,
+                metrics->physicalPixelsPerDip,
+                policy.textScale,
+                policy.minimumFontWeight,
+                policy.reducedMotion,
+                policy.reducedTransparency,
+            };
+            if (widgetAccessibilityProjection_.ShouldCollect(*projectionKey)) {
+                semanticTree = gba::accessibility::BuildWidgetTree(
+                    std::wstring{widgetId}, descriptor->runtimeGeneration,
+                    *snapshot, lastWidgetRenderResult_,
+                    state_.focusRegion() == gba::FocusRegion::Widget
+                        ? std::wstring_view{focusedElementId_}
+                        : std::wstring_view{},
+                    sliderValues);
+            }
+        }
+
+        if (!declarativeRenderer_->AcceptNoRasterPresentationUpdate(
+                *snapshot, impact, viewport)) {
+            return false;
+        }
+        if (semanticTree && projectionKey) {
+            widgetAccessibilityTree_ = std::move(*semanticTree);
+            ++widgetAccessibilityRevision_;
+            widgetAccessibilityProjection_.Published(*projectionKey);
+            PublishTrayAccessibility(
+                *trayLayout,
+                compositionChromeSession_->trayWidth,
+                compositionChromeSession_->trayHeight);
+        }
+        pendingWidgetPresentationImpact_.reset();
+        return true;
     }
 
     [[nodiscard]] std::optional<gba::WidgetSurfaceRequest>
@@ -6902,7 +7065,9 @@ private:
                         geometry->widgetViewportHeight,
                     })
                 : std::nullopt;
-            if (plan && metrics && metrics->physicalPixelsPerDip > 0.0F) {
+            if (plan &&
+                plan->work != gba::IncrementalPresentationWork::NoRaster &&
+                metrics && metrics->physicalPixelsPerDip > 0.0F) {
                 const auto scale = metrics->physicalPixelsPerDip;
                 RECT update{
                     static_cast<LONG>(std::floor(plan->damage.x * scale)),
@@ -7777,6 +7942,8 @@ private:
                                : std::wstring_view{},
                     renderedWidget,
                     *snapshot, renderedFocusId, viewport, options);
+                lastWidgetPresentationUsesProjection_ =
+                    launcherProjection.presentationActive;
                 auto result = std::move(launcherProjection.render);
                 const auto& semanticSnapshot =
                     launcherExperienceProjection_.InteractionSnapshot(
@@ -8103,6 +8270,7 @@ private:
                         std::wstring(widget), snapshot->sequence);
                 }
             } else {
+                lastWidgetPresentationUsesProjection_ = false;
                 ClearAccessibilityTree();
                 DrawTextLine(sessions_.Failure(widget)
                                  ? std::wstring{L"Widget unavailable. Press A to retry."}
@@ -8239,6 +8407,7 @@ private:
     bool runtimeInitialized_{};
     std::unordered_map<std::wstring, long long> renderedSnapshotSequences_;
     gba::RenderResult lastWidgetRenderResult_;
+    bool lastWidgetPresentationUsesProjection_{};
     std::optional<gba::WidgetPresentationImpact>
         pendingWidgetPresentationImpact_;
     bool declarativeMotionActive_{};
