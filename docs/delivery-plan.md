@@ -297,6 +297,56 @@ Stop for another HWND/compositor/focus/input authority, a monitor-sized visible
 surface, a self-referential stationarity oracle, widget-identity geometry, an
 undocumented composition API, or a material shell/animation choice.
 
+Independent review disposition for `de3cf47`: rejected; retain as the base for
+one bounded same-lane correction and do not integrate it. The work-area-derived
+tray/guide anchor is directionally correct, but the externally visible
+transaction is still non-atomic. On a visible content-envelope change,
+`SetWindowPos` first moves the HWND and therefore the already committed old
+tray visual; only afterward does `CommitFrames` publish the compensating child
+offset. Reversing the earlier commit-then-move order merely reverses which
+transient is exposed.
+
+The new oracle does not observe that interval. It records `GetWindowRect` only
+after the window move and combines it with `appliedChromePresentation`, which
+is set when `SetOffset*` succeeds before the DirectComposition device commit is
+known to succeed. It therefore represents attempted internal state, not a
+screen state observed after each externally visible phase. The route also
+opens with one initial widget and performs only one hide/reopen on the final
+selection; it does not execute the required all-eight initial-selection and
+cross-reopen matrix, and its 747/748 text is not a direct fractional-DPI/parity
+reproduction.
+
+Bounded correction required atop `de3cf47`:
+
+- Keep the valid work-area-derived absolute chrome anchor, but stop moving the
+  top-level HWND as part of ordinary widget selection. Establish one transparent
+  visible-session host container from the work area plus the maximum admitted
+  catalog content envelope, not from the selected widget. Individual widgets
+  retain their authored content width/height and move only the content child
+  inside that stable host coordinate space. The container is capacity, not a
+  visible bounded shell; unused pixels remain transparent and hit-test inert.
+- Recompute that host container only for a typed monitor/work-area/DPI,
+  appearance/accessibility-scale, or catalog-envelope change. Hide/reopen with
+  unchanged inputs must reconstruct the same HWND and chrome rectangles.
+- If the existing architecture cannot provide stable HWND coordinates without
+  a monitor-sized container, another HWND, or an undocumented synchronization
+  API, stop for the material product/architecture decision instead of swapping
+  operation order again.
+- Replace attempted `applied*` diagnostics with last-successfully-committed
+  transaction state. Publish it only after the DirectComposition device commit
+  succeeds; preserve or restore the previous committed state on failure.
+- Assert the HWND rectangle itself remains identical during forward/reverse
+  cycling of every content extent, then derive tray/guide screen coordinates
+  from that stable applied rectangle and last successful child commit. Exercise
+  each of all eight widgets as the initial selection in a fresh visible
+  lifecycle and compare pre-hide/post-reopen corners. Add direct fractional-DPI
+  odd/even cases that produce the rejected physical rounding inputs.
+
+Run only the same affected focused tests and one native Release build after the
+correction. Do not rerun unchanged green suites while iterating, and do not
+claim physical acceptance until the planner launches the exact integrated
+candidate and the user cycles it.
+
 Independent review disposition for `3716063`: rejected as the retained base for
 one cumulative correction. The commit correctly separates destination layout
 from the retained presented extent, renders the admitted widget at its own
