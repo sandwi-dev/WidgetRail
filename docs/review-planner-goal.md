@@ -482,15 +482,17 @@ Then repeat the loop.
   `1453a4c`; its original branch remains preserved on
   `codex/impl-widgets-community-launcher`. Do not move or rewrite that branch
   while the UI queue proceeds. After DLV-240 integration, give the widgets lane
-  current main before DLV-218.
+  current main before DLV-218. The coherent main `c68818b` Release is running
+  visibly as PID 64216 after the approved DLV-217 integration.
 - Active platform implementation uses the clean isolated worktree
   `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative`. Preserve the
   rejected one-HWND correction branch `codex/impl-platform-integration` at
   `4d0a69e`; accepted DLV-244 is integrated on planner main through `94c4873`.
   Preserve completed `codex/impl-platform-fixed-chrome` and
-  `codex/impl-platform-snapshot-cache`; the active worktree now executes
-  DLV-246 on `codex/impl-platform-process-owner` from accepted production
-  baseline `7cc5839`. The original pre-recovery branch remains
+  `codex/impl-platform-snapshot-cache`; DLV-246 is complete as candidate
+  `4210be7` on `codex/impl-platform-process-owner` from accepted production
+  baseline `7cc5839` and awaits independent planner review. The original
+  pre-recovery branch remains
   preserved at `bdf6d88`; do not rewrite it. Its
   prior DLV-220 history remains preserved on `codex/impl-platform-community`.
   The completed

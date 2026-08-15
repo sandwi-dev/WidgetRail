@@ -23,10 +23,11 @@ Snapshots are evidence only. This file is the sole authority for current work.
 - The user physically accepted DLV-244 tray visibility/stationarity and distinct
   widget envelope admission. Its cumulative commits were integrated as
   `bfaa2a1`, `0c071fb`, `f06a7e9`, `61041a5`, and `94c4873`.
-- Exact accepted-main Release PID 27944 is visibly running from `7cc5839`
-  product sources. The bounded log smoke observed all eight installed identities
-  select/admit without startup, worker, protocol, placement, or render errors;
-  guide/tray stayed at `2186,1299,747,141` / `2192,1162,735,77` throughout.
+- Exact accepted-main Release PID 64216 is visibly running from coherent main
+  `c68818b` / product tip `1453a4c`. The bounded launch-session log smoke
+  observed all eight installed identities select/admit without startup, worker,
+  protocol, placement, or render errors; guide/tray stayed at
+  `2186,1299,747,141` / `2192,1162,735,77` throughout.
   Computer control did not enumerate the no-taskbar OverlayHost, so live visual
   inspection remains with the user rather than being claimed from automation.
 - DLV-245 independently dispositioned both unreliable native routes. The
@@ -140,7 +141,7 @@ user decision. The native overlay is the sole production presentation path.
 
 | Lane | Task/worktree | State |
 | --- | --- | --- |
-| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | Assigned DLV-246 from exact accepted main `7cc5839`; move to a clean `codex/impl-platform-process-owner` branch before edits. Preserve completed `codex/impl-platform-snapshot-cache` and `codex/impl-platform-fixed-chrome`. |
+| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | DLV-246 candidate `4210be7` is complete and awaiting independent planner review; do not integrate before acceptance. Preserve completed `codex/impl-platform-snapshot-cache` and `codex/impl-platform-fixed-chrome`. |
 | Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | Assigned DLV-240 from exact accepted main `7cc5839`; move to a clean `codex/impl-widgets-snapshot-update` branch before edits. |
 
 The user explicitly approved the DLV-217 aggregate exception on 2026-08-15.
@@ -148,6 +149,14 @@ The preserved four-commit implementation chain was integrated onto current main
 as `f4c1df3`, `a2c85db`, `9766a6c`, and `1453a4c`. The sole cherry-pick conflict
 was a mechanical append in `docs/implementation-status.md`; both the newer
 production history and DLV-217 record were retained unchanged.
+
+The coherent native Release rebuilt successfully from main `c68818b` and was
+launched visibly as PID 64216. The launch session selected and admitted all
+eight installed widgets, including the autonomous `game-launcher` and Community
+Spotify identities, with no error/failure/denial records. The focused managed
+test rerun was not claimable because this checkout's restore graph failed
+silently before compilation with zero reported errors; the accepted exact-tip
+DLV-217 evidence and explicit aggregate exception remain the acceptance basis.
 
 ## Dispositioned temporary red-test lane
 
