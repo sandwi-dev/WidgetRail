@@ -56,13 +56,13 @@ Snapshots are evidence only. This file is the sole authority for current work.
   remained hung and retained the interop DLL, directly matching the repaired
   teardown defect; only that exact planner-owned PID was then terminated before
   the successful coherent rebuild. Live visual inspection remains with the user.
-- Corrected cumulative DLV-242 candidate `5921ccd` plus `1aa4327` is source-
-  reviewed and visibly running for the user's physical verdict as PID 77500.
+- Corrected cumulative DLV-242 candidate `5921ccd` plus `1aa4327` was source-
+  reviewed and visibly launched for the user's physical verdict as PID 77500.
   Its exact executable SHA-256 is
   `19CA72D2D8B26BA3935412CE9BA954613016A4F20EBC5EFC5EDA629D151C8E3C`.
-  The new session starts cleanly and places fixed chrome exactly; no consent,
-  invalid-payload, provider, or startup error is present. This is an unaccepted
-  branch candidate: no DLV-242 tests have run and nothing is integrated.
+  The user rejected it because paint-only damage copied top-left widget pixels
+  into nonzero update regions. The exact candidate was closed normally with
+  `WM_CLOSE`; no DLV-242 tests ran and nothing is integrated.
 - DLV-245 independently dispositioned both unreliable native routes. The
   process-owner route exposed the production DLV-246 hang. The widget-switch
   route corrected stale authored extents, then exposed an invalid comparison
@@ -180,7 +180,7 @@ user decision. The native overlay is the sole production presentation path.
 
 | Lane | Task/worktree | State |
 | --- | --- | --- |
-| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | DLV-242 cumulative candidate `5921ccd` plus `1aa4327` is source-reviewed and visibly launched as PID 77500. Await the user's physical verdict on Settings focus navigation, offscreen focus-follow scrolling, live Media Sessions updates, press/slider continuity, and general flicker before any tests or integration. Preserve accepted DLV-246 branch `codex/impl-platform-process-owner` and completed `codex/impl-platform-snapshot-cache` / `codex/impl-platform-fixed-chrome`. |
+| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | DLV-242 production-only coordinate correction is Assigned atop rejected candidate `1aa4327`. Map the requested logical update rectangle to DirectComposition's returned `BeginDraw` offset; do not copy scene origin pixels into nonzero damage. Build once, but do not write/run tests or launch. Preserve accepted DLV-246 branch `codex/impl-platform-process-owner` and completed `codex/impl-platform-snapshot-cache` / `codex/impl-platform-fixed-chrome`. |
 | Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | DLV-218 cumulative branch through `d8b8861` is accepted and integrated. No later widgets assignment is authorized: the known styling/provider items require fresh user evidence, so the lane remains idle rather than manufacturing internal filler while visible DLV-242 is active. Preserve the clean DLV-240 and DLV-218 branches. |
 
 The user explicitly approved the DLV-217 aggregate exception on 2026-08-15.
@@ -653,6 +653,19 @@ two-file correction is clean atop `5921ccd`, and its one serialized packaged
 Release build produced the exact hash recorded above. Independent source review
 accepts it only for physical-first launch; behavior remains unaccepted pending
 the user's verdict, and tests remain prohibited until then.
+
+The user physically rejected `1aa4327`. Exact PID 77500 diagnostics show full
+rasters remain correctly placed, while `paint-only` updates submit nonzero
+damage rectangles immediately before the visible origin-copy corruption.
+`RenderCompositionFrames` passes that absolute physical rectangle to
+`IDCompositionSurface::BeginDraw`, but `DrawCurrentFrame` translates the full
+logical scene only by the returned backing-surface offset. It does not subtract
+the requested update origin, so logical `(0,0)` is drawn at the nonzero damage
+destination. The same-lane correction must carry the exact requested origin and
+map it to the returned offset after DPI/interface-scale normalization, preserve
+full-surface behavior, and stay inside the BeginDraw guard rectangle. This is a
+production-only correction; tests remain prohibited until the next physical
+candidate is accepted.
 
 Verification remains physical-first: source review, one serialized full packaged
 Release build, exact artifact/provenance inspection, and visible launch for the
