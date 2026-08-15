@@ -502,6 +502,21 @@ execution, Z-order redesign, HWND-role changes, capture tooling, tray migration
 to Taffy, tile-level damage optimization, public protocol work, DLV-239, or any
 third window/session/input/focus/render authority.
 
+Physical-first candidate `2159e4857ab8cef039365454e3d5fc3828bb2e0f`
+is source-reviewed and awaiting the user's verdict; it is not accepted or
+integrated. The production-only commit changes `src/OverlayHost/main.cpp`,
+replaces the rendering path's screen-to-client chrome round trip with one
+chrome-client layout, anchors content from the actual applied chrome origin,
+and preserves the existing HWND roles, ownership, backdrop, and Z-order code.
+The native Release build succeeded after one compile-only retry for a bounded
+`LONG`/`int` type mismatch. No tests were written, modified, or run. The exact
+unintegrated executable has SHA-256
+`D7777BC2921F4BDEAFB800F5FCF6F008CEF860237980C576DFD4748EDB565484` and was
+visibly launched from the platform worktree as PID `79512` for user cycling.
+Do not add regression tests, integrate the commit, or advance DLV-239 until the
+user accepts tray completeness, stationarity, fixed widget-to-guide spacing,
+motion, pointer/controller behavior, and normal close/reopen on this candidate.
+
 Independent review disposition for `3716063`: rejected as the retained base for
 one cumulative correction. The commit correctly separates destination layout
 from the retained presented extent, renders the admitted widget at its own
