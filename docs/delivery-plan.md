@@ -28,8 +28,10 @@ Snapshots are evidence only. This file is the sole authority for current work.
 - The user physically accepted DLV-244 tray visibility/stationarity and distinct
   widget envelope admission. Its cumulative commits were integrated as
   `bfaa2a1`, `0c071fb`, `f06a7e9`, `61041a5`, and `94c4873`.
-- Exact accepted-main Release PID 93900 is visibly running from coherent main
-  `d8b8861`; `OverlayHost.exe` SHA-256 is
+- Exact unaccepted DLV-242 candidate PID 109328 is visibly running from clean
+  source tip `3bd8c80`; `OverlayHost.exe` SHA-256 is
+  `2B8E95F83329AD83A96B2DB271CAC833DF70794D09404B3BE5E110F2BA00D6AC`.
+  Accepted main remains `d8b8861`; its last coherent executable SHA-256 is
   `7B2FC45CA5055F9D81660C961F94ECBFECB2B162DCB12F05B63A01E36A9DF2ED`.
   Current-session logs show elected production ownership, exact fixed-chrome
   placement, initialized controller routing, and a responsive first frame. The coherent
@@ -158,7 +160,7 @@ user decision. The native overlay is the sole production presentation path.
 
 | Lane | Task/worktree | State |
 | --- | --- | --- |
-| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | DLV-241 cumulative commits `44bd220` and `5ec3905` are accepted and integrated as `0c264c5` and `1ab2e0d`. DLV-242 source correction `3bd8c80` is provisionally source-clean, but its first Release package is rejected as stale/incoherent after retaining retired DLV-218 runtime artifacts and producing a live Settings `get-snapshot` invalid-payload failure. A build-only coherent Release correction is Assigned at the unchanged source tip. No tests precede the user verdict. Preserve accepted DLV-246 branch `codex/impl-platform-process-owner` and completed `codex/impl-platform-snapshot-cache` / `codex/impl-platform-fixed-chrome`. |
+| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | DLV-241 cumulative commits `44bd220` and `5ec3905` are accepted and integrated as `0c264c5` and `1ab2e0d`. DLV-242 source correction `3bd8c80` is provisionally source-clean and its corrected coherent full Release is visibly running as exact unaccepted PID 109328 for the user verdict. No tests or integration precede that verdict. Preserve accepted DLV-246 branch `codex/impl-platform-process-owner` and completed `codex/impl-platform-snapshot-cache` / `codex/impl-platform-fixed-chrome`. |
 | Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | DLV-218 cumulative branch through `d8b8861` is accepted and integrated. No later widgets assignment is authorized: the known styling/provider items require fresh user evidence, so the lane remains idle rather than manufacturing internal filler while visible DLV-242 is active. Preserve the clean DLV-240 and DLV-218 branches. |
 
 The user explicitly approved the DLV-217 aggregate exception on 2026-08-15.
@@ -459,7 +461,7 @@ production commit, one Release build, planner source review and user verdict,
 then focused tests only after acceptance.
 
 Correction `3bd8c80` closes those reviewed source blockers and is provisionally
-source-clean. Its first packaged candidate is nevertheless rejected: the output
+source-clean. Its first packaged candidate was nevertheless rejected: the output
 still contained retired `runtime\GameLauncher`, `SpotifyPlaybackProtocol*`, and
 `WindowsSpotifyProvider*` artifacts, and the exact launched candidate reported
 `Settings failed: Bridge request 'get-snapshot' has an invalid payload.` The
@@ -468,7 +470,20 @@ main was restored visibly as PID 93900 with the unchanged accepted executable
 hash above. The platform lane now owes only a full authoritative Release build
 at unchanged source tip, proof that DLV-218 cleanup removed retired outputs, and
 non-executing managed-runtime provenance. Source edits, tests, launch, and
-integration remain prohibited until planner review of that corrected package.
+integration remained prohibited until planner review of that corrected package.
+
+The build-only correction used the authoritative full packaging path at the
+unchanged source tip. It removed both retired runtime directories and all
+retired Spotify Bridge assemblies, preserved the current Bridge, Settings,
+WidgetWorkerHost, and bundled widget runtimes, and produced exact managed-output
+parity with the fresh branch outputs. The accepted PID 93900 exited normally;
+exact unaccepted candidate PID 109328 is now visibly running with hash
+`2B8E95F83329AD83A96B2DB271CAC833DF70794D09404B3BE5E110F2BA00D6AC`.
+Its startup log shows elected ownership, exact fixed-chrome placement, and
+foreground controller authority without a new failure/error/invalid-payload
+entry. Computer-control window discovery omitted the no-taskbar overlay, so no
+synthetic interaction claim is made. User cycling, scrolling, controller feel,
+and incremental-update verdict remain required before tests or integration.
 
 ### Ready after DLV-242 — DLV-243: bounded optimistic slider feedback damage
 

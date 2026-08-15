@@ -495,7 +495,10 @@ Then repeat the loop.
   while the UI queue proceeds. DLV-246 is integrated on planner main as
   `0e75203`; DLV-240 follows as `485a935` and `cb45a31`, and DLV-241 is
   integrated as `0c264c5` plus `1ab2e0d`; DLV-218 follows through `d8b8861`.
-  The coherent accepted Release is running visibly as PID 93900 with executable SHA-256
+  Exact unaccepted DLV-242 candidate PID 109328 is running visibly from clean
+  source tip `3bd8c80` with executable SHA-256
+  `2B8E95F83329AD83A96B2DB271CAC833DF70794D09404B3BE5E110F2BA00D6AC`.
+  Accepted main remains `d8b8861` with last coherent executable SHA-256
   `7B2FC45CA5055F9D81660C961F94ECBFECB2B162DCB12F05B63A01E36A9DF2ED`.
 - Active platform implementation uses the clean isolated worktree
   `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative`. Preserve the
@@ -514,11 +517,12 @@ Then repeat the loop.
   rejected as stale and incoherent: it retained retired DLV-218 Game Launcher
   and Spotify bridge artifacts and produced a live Settings `get-snapshot`
   invalid-payload failure. Candidate PID 61900 was closed normally, accepted
-  main was restored as PID 93900, and the platform lane now owns only a full
-  authoritative build-only correction at the unchanged source tip with cleanup
-  and managed-runtime provenance evidence. It must not edit source or tests,
-  launch, integrate, or push. After planner package review, launch the exact
-  corrected candidate for the user verdict before tests. The original
+  main was restored as PID 93900. The authoritative build-only correction then
+  removed the retired outputs and proved current managed-runtime parity without
+  changing source. Accepted PID 93900 exited normally and exact unaccepted
+  candidate PID 109328 now runs visibly from `3bd8c80`; startup is clean, but
+  live interaction remains the user's verdict. Do not write or run tests,
+  integrate, or push before that verdict. The original
   pre-recovery branch remains
   preserved at `bdf6d88`; do not rewrite it. Its
   prior DLV-220 history remains preserved on `codex/impl-platform-community`.
