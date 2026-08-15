@@ -22,10 +22,12 @@ Snapshots are evidence only. This file is the sole authority for current work.
 - The user physically accepted DLV-244 tray visibility/stationarity and distinct
   widget envelope admission. Its cumulative commits were integrated as
   `bfaa2a1`, `0c071fb`, `f06a7e9`, `61041a5`, and `94c4873`.
-- The prior exact-main Release PID 86516 remains the visible DLV-244 build until
-  the accepted DLV-239 main Release refresh completes. Its live Network Controls
-  to YT Music transition kept guide/tray at the same applied chrome rectangle
-  while content adopted the destination envelope independently.
+- Exact accepted-main Release PID 27944 is visibly running from `7cc5839`
+  product sources. The bounded log smoke observed all eight installed identities
+  select/admit without startup, worker, protocol, placement, or render errors;
+  guide/tray stayed at `2186,1299,747,141` / `2192,1162,735,77` throughout.
+  Computer control did not enumerate the no-taskbar OverlayHost, so live visual
+  inspection remains with the user rather than being claimed from automation.
 - DLV-244 focused evidence is green. The isolated widget-switch host route stays
   honestly red because the temporary host exited before readiness without logs.
   A later Release refresh also stopped a hung process-owner executable test.
