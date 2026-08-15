@@ -14,7 +14,7 @@ Snapshots are evidence only. This file is the sole authority for current work.
 
 ## Current baseline
 
-- Planner main is `94c4873`. It contains accepted DLV-244 fixed chrome and
+- Accepted production tip `94c4873` contains DLV-244 fixed chrome and
   destination geometry, corrected DLV-237 admission tracing, DLV-232 worker
   isolation, DLV-235 startup recovery, DLV-230 YT Music composition, and the
   Taffy DLV-221 baseline.
@@ -131,7 +131,7 @@ user decision. The native overlay is the sole production presentation path.
 
 | Lane | Task/worktree | State |
 | --- | --- | --- |
-| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` on `codex/impl-platform-snapshot-cache` | Assigned DLV-239 from exact main `94c4873`. Preserve completed `codex/impl-platform-fixed-chrome`. |
+| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` on `codex/impl-platform-snapshot-cache` | Assigned DLV-239 from accepted production `94c4873` plus reviewer-plan baseline `6769954`. Preserve completed `codex/impl-platform-fixed-chrome`. |
 | Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | Idle clean. DLV-240 starts only after accepted DLV-239 is integrated and the planner sends the exact main baseline. |
 
 DLV-217 remains accepted through `d57fd06` but unintegrated because its exact
