@@ -29,14 +29,18 @@ Snapshots are evidence only. This file is the sole authority for current work.
 - The user physically accepted DLV-244 tray visibility/stationarity and distinct
   widget envelope admission. Its cumulative commits were integrated as
   `bfaa2a1`, `0c071fb`, `f06a7e9`, `61041a5`, and `94c4873`.
-- Accepted main Release is visibly running as exact PID 19844;
-  `OverlayHost.exe` SHA-256 is
-  `9B60CAC513AB1E2A0AFDD424A123F7B3EA5ED8443BE82109A6F7C62BF0B87819`.
-  Its exact session contains no `invalid_consent`, consent-unavailable,
-  provider-failure, denied, invalid-payload, error, or failure match, and shows
-  Media Sessions plus Settings selected and admitted. Computer-control window
-  discovery omitted the no-taskbar overlay, so the final visible permission
-  and provider verdict remains with the user. The coherent
+- Refreshed unaccepted DLV-242 candidate `3f44807` is visibly running as exact
+  PID 80464 from the isolated platform worktree; `OverlayHost.exe` SHA-256 is
+  `23257C80A86854053553660717D3E6A9C99C8EC024429DF8CEF9BF9C47E7B49F`.
+  Accepted production main remains `a77182d`. Exact accepted-main PID 19844
+  exposed no enumerable top-level HWND, so the attempted normal `WM_CLOSE`
+  posted to zero windows; only that verified planner-owned PID was then stopped
+  before the candidate launch. The candidate session contains no
+  `invalid_consent`, consent-unavailable, provider-request-failed, or invalid-
+  payload match. It has one non-fatal Settings input diagnostic: Dashboard was
+  not exposed by the cached snapshot; the host continued and admitted later
+  Media Sessions updates. The final visible permission, controller, cycling,
+  scrolling, and incremental-update verdict remains with the user. The coherent
   build used serialized MSBuild project traversal after the default parallel
   restore hit an existing zero-error project-reference-graph failure; no
   product source was changed for that environment workaround. Previous accepted
@@ -556,16 +560,16 @@ at unchanged source tip, proof that DLV-218 cleanup removed retired outputs, and
 non-executing managed-runtime provenance. Source edits, tests, launch, and
 integration remained prohibited until planner review of that corrected package.
 
-The build-only correction used the authoritative full packaging path at the
-unchanged source tip. It removed both retired runtime directories and all
-retired Spotify Bridge assemblies, preserved the current Bridge, Settings,
-WidgetWorkerHost, and bundled widget runtimes, and produced exact managed-output
-parity with the fresh branch outputs. The exact unaccepted candidate PID 109328
-was stopped because it locked its build output while the P0 consent correction
-was produced; the branch and source tip remain preserved unchanged. DLV-242
-must now incorporate accepted main `a77182d`, rebuild, and relaunch before its
-user cycling, scrolling, controller feel, and incremental-update verdict. Tests
-and integration remain after that verdict.
+The refreshed candidate merge `3f44807` brings reviewer main `f58292f`, including
+accepted product DLV-247 `a77182d`, into preserved correction `3bd8c80` without
+conflict. Independent review confirms the branch differs from main only in the
+same seven native DLV-242 files, and those files are unchanged from the
+previously reviewed correction. Its one serialized full packaged Release build
+passed. Both retired runtime directories and all retired Spotify Bridge files
+are absent; current Bridge, Settings, WidgetWorkerHost, bundled widget runtimes,
+and exact managed-output provenance are present. Candidate PID 80464 is visibly
+running for the user verdict. No DLV-242 tests or integration are authorized
+until that verdict.
 
 ### Ready after DLV-242 — DLV-243: bounded optimistic slider feedback damage
 
