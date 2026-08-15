@@ -14,7 +14,8 @@ Snapshots are evidence only. This file is the sole authority for current work.
 
 ## Current baseline
 
-- Accepted production main `d8b8861` contains DLV-218's retirement of the
+- Accepted production main `a77182d` contains DLV-247's exact retired-Spotify
+  consent migration atop DLV-218's retirement of the
   product-owned Spotify and private Game Launcher domains, including safe
   incremental-output cleanup, atop DLV-241's native bounded atomic
   update admission atop DLV-240's managed contract and runtime-protocol-v2
@@ -28,13 +29,14 @@ Snapshots are evidence only. This file is the sole authority for current work.
 - The user physically accepted DLV-244 tray visibility/stationarity and distinct
   widget envelope admission. Its cumulative commits were integrated as
   `bfaa2a1`, `0c071fb`, `f06a7e9`, `61041a5`, and `94c4873`.
-- Exact unaccepted DLV-242 candidate PID 109328 is visibly running from clean
-  source tip `3bd8c80`; `OverlayHost.exe` SHA-256 is
-  `2B8E95F83329AD83A96B2DB271CAC833DF70794D09404B3BE5E110F2BA00D6AC`.
-  Accepted main remains `d8b8861`; its last coherent executable SHA-256 is
-  `7B2FC45CA5055F9D81660C961F94ECBFECB2B162DCB12F05B63A01E36A9DF2ED`.
-  Current-session logs show elected production ownership, exact fixed-chrome
-  placement, initialized controller routing, and a responsive first frame. The coherent
+- Accepted main Release is visibly running as exact PID 19844;
+  `OverlayHost.exe` SHA-256 is
+  `9B60CAC513AB1E2A0AFDD424A123F7B3EA5ED8443BE82109A6F7C62BF0B87819`.
+  Its exact session contains no `invalid_consent`, consent-unavailable,
+  provider-failure, denied, invalid-payload, error, or failure match, and shows
+  Media Sessions plus Settings selected and admitted. Computer-control window
+  discovery omitted the no-taskbar overlay, so the final visible permission
+  and provider verdict remains with the user. The coherent
   build used serialized MSBuild project traversal after the default parallel
   restore hit an existing zero-error project-reference-graph failure; no
   product source was changed for that environment workaround. Previous accepted
@@ -59,16 +61,12 @@ Snapshots are evidence only. This file is the sole authority for current work.
 - DLV-237 correlation identified the admission stall that DLV-239 now closes: a
   selected widget could have no current snapshot while its lifecycle already
   reported current, causing refresh reconciliation to skip indefinitely.
-- The user reproduced a product-wide consent outage after DLV-218: Settings
-  reports `invalid_consent`, capability-backed widgets cannot read their
-  existing decisions, and Audio Mixer/Media Sessions surface provider failures.
-  The overlay-owned consent document still contains 66 decisions for the six
-  intentionally retired `external.spotify.*` capability IDs. `ConsentStore`
-  rejects the complete document because DLV-218 removed those definitions
-  without registering exact retirement tombstones. DLV-247 is the assigned
-  platform P0 correction. It must preserve every current decision, reject
-  arbitrary unknown capability IDs, and must not delete or reset the user's
-  consent store.
+- DLV-247 recovers the product-wide consent outage introduced when DLV-218
+  removed six Spotify capability definitions without registering their exact
+  retirement tombstones. The correction preserves current decisions, rejects
+  arbitrary unknown capability IDs, and does not delete or reset the user's
+  consent store. Focused evidence is PlatformBroker 52/52 and Settings 60/60;
+  the coherent packaged Release build succeeded.
 - The approved checkpoint/update architecture is in
   [`widget-snapshot-cache-design.md`](widget-snapshot-cache-design.md). DLV-239
   through DLV-243 implement it serially.
@@ -170,7 +168,7 @@ user decision. The native overlay is the sole production presentation path.
 
 | Lane | Task/worktree | State |
 | --- | --- | --- |
-| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | DLV-247 is Assigned from exact planner main `45b024c` as the product-wide consent recovery. Preserve DLV-242 source correction `3bd8c80` on `codex/impl-platform-native-impact`; its visual verdict and later tests/integration are paused without rejection while the P0 is repaired. Preserve accepted DLV-246 branch `codex/impl-platform-process-owner` and completed `codex/impl-platform-snapshot-cache` / `codex/impl-platform-fixed-chrome`. |
+| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | DLV-247 is accepted and integrated as `a77182d`. Resume DLV-242 only by bringing accepted main into preserved source correction `3bd8c80` on `codex/impl-platform-native-impact` at a clean boundary, then build and launch the coherent candidate for the still-required user verdict before authoring its regression tests. Preserve accepted DLV-246 branch `codex/impl-platform-process-owner` and completed `codex/impl-platform-snapshot-cache` / `codex/impl-platform-fixed-chrome`. |
 | Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | DLV-218 cumulative branch through `d8b8861` is accepted and integrated. No later widgets assignment is authorized: the known styling/provider items require fresh user evidence, so the lane remains idle rather than manufacturing internal filler while visible DLV-242 is active. Preserve the clean DLV-240 and DLV-218 branches. |
 
 The user explicitly approved the DLV-217 aggregate exception on 2026-08-15.
@@ -255,7 +253,7 @@ cleanup, or overlap with DLV-239 files.
 
 ## Platform lane
 
-### Assigned — DLV-247: migrate intentionally retired consent capabilities
+### Accepted and integrated — DLV-247: migrate intentionally retired consent capabilities
 
 Owner/baseline: platform lane from exact clean planner main `45b024c`. Create a
 new isolated `codex/` branch at that baseline and preserve DLV-242 branch
@@ -320,6 +318,16 @@ Stop for deletion/reset of the whole consent store, migration of unrelated
 state, a new public compatibility promise, a new capability/broker authority,
 scope overlap with DLV-242, destructive cleanup, substantial conflicts,
 credentials, or external publication. Never push.
+
+Accepted implementation `7b63f0c` was cherry-picked to main as `a77182d`.
+It adds only the six exact immutable retirement tombstones to the existing
+`ConsentStore` owner. It does not restore a capability, broker domain, provider,
+SDK contract, manifest declaration, or widget-specific compatibility path.
+All six tombstones, mixed current decisions, next-write retirement, near-match
+unknown rejection, duplicate rejection, malformed rejection, and Settings
+readability are covered by temporary-store tests. PlatformBroker passed 52/52,
+Settings passed 60/60, and the full packaged Release build succeeded. The live
+consent document was not manually edited or reset.
 
 ### Accepted — DLV-244: fixed chrome and destination geometry
 
@@ -552,14 +560,12 @@ The build-only correction used the authoritative full packaging path at the
 unchanged source tip. It removed both retired runtime directories and all
 retired Spotify Bridge assemblies, preserved the current Bridge, Settings,
 WidgetWorkerHost, and bundled widget runtimes, and produced exact managed-output
-parity with the fresh branch outputs. The accepted PID 93900 exited normally;
-exact unaccepted candidate PID 109328 is now visibly running with hash
-`2B8E95F83329AD83A96B2DB271CAC833DF70794D09404B3BE5E110F2BA00D6AC`.
-Its startup log shows elected ownership, exact fixed-chrome placement, and
-foreground controller authority without a new failure/error/invalid-payload
-entry. Computer-control window discovery omitted the no-taskbar overlay, so no
-synthetic interaction claim is made. User cycling, scrolling, controller feel,
-and incremental-update verdict remain required before tests or integration.
+parity with the fresh branch outputs. The exact unaccepted candidate PID 109328
+was stopped because it locked its build output while the P0 consent correction
+was produced; the branch and source tip remain preserved unchanged. DLV-242
+must now incorporate accepted main `a77182d`, rebuild, and relaunch before its
+user cycling, scrolling, controller feel, and incremental-update verdict. Tests
+and integration remain after that verdict.
 
 ### Ready after DLV-242 — DLV-243: bounded optimistic slider feedback damage
 
@@ -596,20 +602,17 @@ sources, or user files.
 
 ## Serialized order
 
-1. DLV-247 preempts the paused DLV-242 verdict because the user-reproduced
-   `invalid_consent` failure blocks permissions across capability-backed
-   widgets. Implement it from exact planner main `45b024c`, review and integrate
-   it independently, rebuild and relaunch the coherent main Release, then
-   return to the preserved DLV-242 candidate flow.
+1. DLV-247 is accepted and integrated as `a77182d`; its coherent main Release
+   is visibly running as PID 19844 for the user's permission/provider verdict.
 2. Accepted DLV-239 is integrated as `7cc5839`.
 3. DLV-246 is accepted and integrated as `0e75203`.
 4. DLV-240 is accepted and integrated as `485a935` plus `cb45a31` with runtime
    protocol 2 preserved for immutable full-trust applications.
 5. DLV-241 is accepted and integrated as `0c264c5` plus `1ab2e0d`; its single
    exact aggregate stopped at the inherited silent managed restore failure.
-6. Platform resumes physical-first DLV-242 and launches for user review only
-   after DLV-247 is accepted, integrated, and visibly relaunched; regression
-   tests remain after the user verdict.
+6. Platform resumes physical-first DLV-242 by bringing accepted main `a77182d`
+   into the preserved correction branch, then builds and launches for user
+   review; regression tests remain after the user verdict.
 7. Platform implements DLV-243 separately and launches for slider review.
 8. DLV-218 is accepted and integrated through `d8b8861`; the widgets lane stays
    idle until fresh user evidence authorizes another visible correction.
