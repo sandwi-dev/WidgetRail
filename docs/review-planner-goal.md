@@ -478,16 +478,18 @@ Then repeat the loop.
 
 - Widgets implementation uses the isolated worktree
   `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` on
-  `codex/impl-widgets-taffy-ui`. The accepted but unintegrated DLV-217 history
+  `codex/impl-widgets-snapshot-update` from accepted production baseline
+  `7cc5839` and executes DLV-240. The accepted but unintegrated DLV-217 history
   remains preserved on `codex/impl-widgets-community-launcher`; never move or
   rewrite that preserved branch while the UI queue proceeds.
 - Active platform implementation uses the clean isolated worktree
   `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative`. Preserve the
   rejected one-HWND correction branch `codex/impl-platform-integration` at
   `4d0a69e`; accepted DLV-244 is integrated on planner main through `94c4873`.
-  Preserve completed `codex/impl-platform-fixed-chrome`; the active worktree now
-  executes DLV-239 on `codex/impl-platform-snapshot-cache` from that exact
-  baseline. The original pre-recovery branch remains
+  Preserve completed `codex/impl-platform-fixed-chrome` and
+  `codex/impl-platform-snapshot-cache`; the active worktree now executes
+  DLV-246 on `codex/impl-platform-process-owner` from accepted production
+  baseline `7cc5839`. The original pre-recovery branch remains
   preserved at `bdf6d88`; do not rewrite it. Its
   prior DLV-220 history remains preserved on `codex/impl-platform-community`.
   The completed
