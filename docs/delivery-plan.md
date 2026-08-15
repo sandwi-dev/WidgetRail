@@ -328,11 +328,17 @@ Required behavior:
 
 Verification is proportional: focused tray/chrome/composition and coordinate
 tests, one native Release compile, and one bounded ordinary selection route.
-The route must compare one absolute tray rectangle across transition
-boundaries, prove widget-only changes do not increment tray paint count, and
-prove each tray-owned change performs one complete tray repaint. Do not build a
-pixel-capture harness or rerun Tier 3; the freshly launched Release and user
-inspection are the final visual verdict.
+The route must capture one absolute tray rectangle once for the visible session
+and compare that same value before selection, immediately after selected
+identity changes, before destination admission, at motion start/midpoint/end,
+and after final HWND settlement across every differently sized widget. The
+oracle must not redeclare or reset its expected tray/guide rectangle when a new
+motion begins. It must also prove widget-only changes do not increment tray
+paint count and each tray-owned change performs one complete tray repaint. Add
+a focused regression that would fail the integrated implementation's observed
+735/736-pixel cross-widget tray-width change. Do not build a pixel-capture
+harness or rerun Tier 3; the freshly launched Release and user inspection are
+the final visual verdict.
 
 ### Assigned — DLV-237: correlate deferred widget admission
 
