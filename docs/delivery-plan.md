@@ -14,8 +14,9 @@ Snapshots are evidence only. This file is the sole authority for current work.
 
 ## Current baseline
 
-- Accepted production tip `7cc5839` contains DLV-239 retained presentation
-  checkpoints and explicit refresh state atop DLV-244 fixed chrome and
+- Accepted production tip `1453a4c` contains the user-approved DLV-217
+  autonomous Community Game Launcher chain atop DLV-239 retained presentation
+  checkpoints and explicit refresh state, DLV-244 fixed chrome and
   destination geometry, corrected DLV-237 admission tracing, DLV-232 worker
   isolation, DLV-235 startup recovery, DLV-230 YT Music composition, and the
   Taffy DLV-221 baseline.
@@ -142,9 +143,11 @@ user decision. The native overlay is the sole production presentation path.
 | Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | Assigned DLV-246 from exact accepted main `7cc5839`; move to a clean `codex/impl-platform-process-owner` branch before edits. Preserve completed `codex/impl-platform-snapshot-cache` and `codex/impl-platform-fixed-chrome`. |
 | Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | Assigned DLV-240 from exact accepted main `7cc5839`; move to a clean `codex/impl-widgets-snapshot-update` branch before edits. |
 
-DLV-217 remains accepted through `d57fd06` but unintegrated because its exact
-aggregate is 40/41 with one reviewer-history-link failure. Preserve the branch;
-integration requires separate explicit user approval.
+The user explicitly approved the DLV-217 aggregate exception on 2026-08-15.
+The preserved four-commit implementation chain was integrated onto current main
+as `f4c1df3`, `a2c85db`, `9766a6c`, and `1453a4c`. The sole cherry-pick conflict
+was a mechanical append in `docs/implementation-status.md`; both the newer
+production history and DLV-217 record were retained unchanged.
 
 ## Dispositioned temporary red-test lane
 
@@ -385,7 +388,7 @@ No widgets milestone is executable before DLV-240. Accepted DLV-225/226/228/
 229/230 remain integrated. New styling/provider work requires fresh user
 evidence rather than speculation.
 
-### Awaiting DLV-217 integration — DLV-218: remove retired domains
+### Ready after DLV-240 integration — DLV-218: remove retired domains
 
 Remove retired product-owned Spotify and private Game Launcher domain paths only
 after DLV-217 integration. Retain generic App Library behavior. Add an
@@ -403,7 +406,8 @@ delete credentials, provider data, accounts, or user files.
 4. Platform implements DLV-242 and launches for physical incremental-behavior
    review.
 5. Platform implements DLV-243 separately and launches for slider review.
-6. DLV-217/218 remains a separate explicit integration decision.
+6. After DLV-240 is integrated and the widgets lane receives current main,
+   execute DLV-218 to remove the retired product-owned Community domains.
 
 ## Manual and packaged evidence
 
@@ -421,8 +425,6 @@ delete credentials, provider data, accounts, or user files.
 | Item | Blocker / required evidence |
 | --- | --- |
 | Avalonia | Failed and cancelled; requires a new explicit user decision. |
-| DLV-217 integration | Exact aggregate 40/41; requires explicit user approval. |
-| DLV-218 | Requires accepted DLV-217 on main. |
 | YT Music catalog cleanup | Eight-version ceiling; approval to remove only inactive non-selected 0.2.0. |
 | Trusted fixed-video/PiP | Paused WebView2 measured about 348.7 MiB private and 4% CPU; requires a changed budget or authorized experiment. |
 | Audio default-device selection | No documented supported Windows setter; requires primary Microsoft API and reversible hardware/provider plan. |
@@ -433,6 +435,7 @@ delete credentials, provider data, accounts, or user files.
 
 | Milestone | Result |
 | --- | --- |
+| DLV-217 | User-approved aggregate exception integrated through `1453a4c`: autonomous full-trust Community Game Launcher, ordinary package lifecycle, public SDK/export path, and registered Community verification. |
 | DLV-239 | Integrated as `7cc5839`: retained per-widget checkpoints, explicit refresh state, current-lifecycle refresh queuing, and inert retained authority. |
 | DLV-244 | Integrated through `94c4873`: stable applied chrome HWND, local guide/tray surfaces, coordinated Z-order, panel-local content, and durable destination authority. |
 | DLV-237 | Correlated selection-to-admission trace integrated; no speculative behavior change. |
