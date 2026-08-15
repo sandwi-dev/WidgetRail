@@ -172,7 +172,7 @@ user decision. The native overlay is the sole production presentation path.
 | Lane | Task/worktree | Current state |
 | --- | --- | --- |
 | Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` on `codex/impl-widgets-taffy-ui` | Idle clean. DLV-240 begins only after accepted DLV-239 is integrated and the planner sends the serialized cross-lane baseline. |
-| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` on `codex/impl-platform-fixed-chrome` | The user physically accepted tray visibility and stationarity in unintegrated candidate `9c1585a`. The lane is adding the deferred bounded regression coverage for the accepted defects and correcting rejected legacy expectations. DLV-239 remains paused until cumulative DLV-244 review and integration. |
+| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` on `codex/impl-platform-fixed-chrome` | Tray visibility/stationarity in `9c1585a` is physically accepted, but destination widget sizing is physically rejected: YT Music remains at Network Controls' presented extent after admission. The lane is correcting committed-destination authority before resuming deferred tests. DLV-239 remains paused. |
 
 DLV-217 remains accepted through `d57fd06` but unintegrated because its exact
 aggregate is honestly 40/41 with one reviewer-history-link failure. Preserve
@@ -628,6 +628,22 @@ through transition start/midpoint/settlement. Correct existing tests that encode
 the rejected combined-shell behavior. Keep verification to directly affected
 focused native targets and use source review for unreliable headless Z-order
 cases; do not run the product aggregate or unrelated suites.
+
+The same physical session rejects `9c1585a` for destination widget sizing.
+Correlated transition 118 selects YT Music from Network Controls and admits the
+YT snapshot in 62 ms. The following paint reports YT's correct desired extent
+`760x385`, but the presentation transaction, content HWND, shell, and viewport
+remain at Network Controls' `560x645`; no placement follows. Closing and
+reopening immediately commits the correct YT extent. The attempted restart
+guard compares `priorExtent` and `nextExtent`, but snapshot admission has already
+updated both reads to the new desired extent before the refresh wrapper captures
+them. It therefore suppresses the one required destination admission while the
+transaction still owns the old committed extent. Correct this by comparing the
+newly resolved identity/extent with a durable admitted destination authority;
+transition from the current presented sample only when that destination changes,
+and treat later same-destination refreshes as repaint-only. Preserve the accepted
+fixed-chrome behavior. Pause test finalization, make one production correction
+and Release build for physical review, then finish tests only after acceptance.
 
 Independent review disposition for `3716063`: rejected as the retained base for
 one cumulative correction. The commit correctly separates destination layout
