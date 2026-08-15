@@ -14,24 +14,26 @@ Snapshots are evidence only. This file is the sole authority for current work.
 
 ## Current baseline
 
-- Accepted production tip `94c4873` contains DLV-244 fixed chrome and
+- Accepted production tip `7cc5839` contains DLV-239 retained presentation
+  checkpoints and explicit refresh state atop DLV-244 fixed chrome and
   destination geometry, corrected DLV-237 admission tracing, DLV-232 worker
   isolation, DLV-235 startup recovery, DLV-230 YT Music composition, and the
   Taffy DLV-221 baseline.
 - The user physically accepted DLV-244 tray visibility/stationarity and distinct
   widget envelope admission. Its cumulative commits were integrated as
   `bfaa2a1`, `0c071fb`, `f06a7e9`, `61041a5`, and `94c4873`.
-- Exact main Release PID 86516 is visibly running. Its live Network Controls to
-  YT Music transition kept guide/tray at the same applied chrome rectangle while
-  content adopted the destination envelope independently.
+- The prior exact-main Release PID 86516 remains the visible DLV-244 build until
+  the accepted DLV-239 main Release refresh completes. Its live Network Controls
+  to YT Music transition kept guide/tray at the same applied chrome rectangle
+  while content adopted the destination envelope independently.
 - DLV-244 focused evidence is green. The isolated widget-switch host route stays
   honestly red because the temporary host exited before readiness without logs.
   A later Release refresh also stopped a hung process-owner executable test.
   Neither result is represented as a pass; direct source review, deterministic
   focused evidence, and the user's physical verdict are the acceptance basis.
-- DLV-237 correlation identified the next bug: a selected widget can have no
-  current snapshot while its lifecycle already reports current, causing refresh
-  reconciliation to skip and leaving retained inert pixels indefinitely.
+- DLV-237 correlation identified the admission stall that DLV-239 now closes: a
+  selected widget could have no current snapshot while its lifecycle already
+  reported current, causing refresh reconciliation to skip indefinitely.
 - The approved checkpoint/update architecture is in
   [`widget-snapshot-cache-design.md`](widget-snapshot-cache-design.md). DLV-239
   through DLV-243 implement it serially.
@@ -133,9 +135,9 @@ user decision. The native overlay is the sole production presentation path.
 
 | Lane | Task/worktree | State |
 | --- | --- | --- |
-| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` on `codex/impl-platform-snapshot-cache` | Assigned DLV-239 from accepted production `94c4873` plus reviewer-plan baseline `6769954`. Preserve completed `codex/impl-platform-fixed-chrome`. |
-| Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | Idle clean. DLV-240 starts only after accepted DLV-239 is integrated and the planner sends the exact main baseline. |
-| Red tests | `Implementation agent — red-test lane`; `C:\Users\dwive\.codex\worktrees\ada5\GameBarAlternative` on `codex/impl-red-tests` | Assigned DLV-245 from planner baseline `9d23bfd`. Investigate only the red isolated widget-switch route and hung process-owner executable test; no production-code edits. |
+| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | Assigned DLV-246 from exact accepted main `7cc5839`; move to a clean `codex/impl-platform-process-owner` branch before edits. Preserve completed `codex/impl-platform-snapshot-cache` and `codex/impl-platform-fixed-chrome`. |
+| Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | Assigned DLV-240 from exact accepted main `7cc5839`; move to a clean `codex/impl-widgets-snapshot-update` branch before edits. |
+| Red tests | `Implementation agent — red-test lane`; `C:\Users\dwive\.codex\worktrees\ada5\GameBarAlternative` on `codex/impl-red-tests` | DLV-245 candidate `c5ac8b5` is under bounded correction: run the final corrected widget-switch geometry case once. The process-owner case remains honestly red and production-owned; no production-code edits here. |
 
 DLV-217 remains accepted through `d57fd06` but unintegrated because its exact
 aggregate is 40/41 with one reviewer-history-link failure. Preserve the branch;
@@ -214,11 +216,14 @@ lifecycle changes by transition/request/generation. It does not log controller
 repeats or replace a file per input. The user and planner use it for joint live
 diagnosis; it is evidence, not a speculative behavior change.
 
-### Assigned — DLV-239: retain checkpoint and separate refresh state
+### Accepted — DLV-239: retain checkpoint and separate refresh state
 
-Owner/baseline: platform native session, bridge adapter, appearance, and current
-presentation-cache owners from exact main `94c4873`. This is the first milestone
-governed by `widget-snapshot-cache-design.md`.
+Integrated as `7cc5839`. The existing native session coordinator now owns
+explicit `Current`, `RefreshRequested`, and `RefreshInFlight` state beside its
+single retained checkpoint map. Ordinary invalidation retains each widget's own
+last-admitted checkpoint and envelope, visible retained content is inert, and
+refresh demand queues even when lifecycle is already current. Hard removal is
+limited to the documented restart/runtime/generation/protocol transitions.
 
 Motivating evidence: transition 23 returned from Games & Apps to Game Launcher
 with `currentSnapshot=false`. The refresh dequeued after 78 ms, but lifecycle
@@ -226,7 +231,7 @@ reconciliation skipped `reason=already-current`, queued no request, crossed the
 250-ms threshold, and left Games & Apps pixels inert. Only closing/reopening
 created a new visible session and admitted Game Launcher.
 
-Required behavior:
+Accepted behavior:
 
 - Introduce explicit `Current`, `RefreshRequested`, and `RefreshInFlight` state
   under the existing sole lifecycle/session owner.
@@ -246,22 +251,58 @@ Required behavior:
 Out of scope: public update protocol, SDK diffing, incremental Taffy/damage,
 new caches, eager waking of unloaded workers, residency changes, or DLV-240+.
 
-Acceptance: focused all-eight state coverage for hidden invalidation,
-resident/suspended/unloaded selection, success/failure/cancellation, rapid
-switching, appearance change, hard-removal transitions, own-envelope retention,
-and exact action authority; measure retained selection latency/background
-wakeups; run Tier 1 affected suites and at most one bounded host route. Stop
-after one diagnosed unreliable route and disclose it. No aggregate.
+Evidence: 19 coordinator scenarios, overlay state/lifecycle, 305 action-feedback
+checks, placement 112,340, targeting 75, transition 83, chrome 119,
+accessibility 165, focus 49, host accessibility 34, renderer 4,851, eight-widget
+extent retention, zero hidden background refresh calls, and the native Release
+build passed. The single permitted linked-host attempt exited while publishing
+its unchanged fixture before host assertions and was not repeated. No aggregate.
 
-Stop for a public schema change, second cache/lifecycle owner, stale interactive
-authority, unbounded retention, or material residency/security choice.
+### Assigned — DLV-246: repair bounded process-owner startup hang
+
+Owner/baseline: platform `OverlayProcessOwner` production authority and its
+direct native executable test from exact accepted main `7cc5839`. This work is
+independent of the DLV-240 managed protocol files.
+
+Motivating evidence: isolated DLV-245 execution passed profile/window setup, then
+the first unique-profile `OverlayProcessOwner::Begin(profile, 3s, error)` did not
+return within the test's 20-second outer bound. The test-owned process was
+terminated and no later scenario executed. Treat this as a production-path
+startup/ownership defect until source evidence proves otherwise.
+
+Required behavior:
+
+- Identify the exact blocking wait or teardown edge in the sole process-owner
+  path; retain per-user/profile ownership and the authenticated bounded local
+  activation channel.
+- Every documented timeout remains a real upper bound even when the activation
+  endpoint cannot start, connect, accept, reply, or stop.
+- Preserve simultaneous-client serialization, malformed-client rejection,
+  orderly replacement, endpoint-squatter failure, stalled-owner timeout,
+  abandoned-owner recovery, and idempotent cleanup.
+- Do not add another singleton, pipe server, process profile, activation
+  transport, undocumented API, polling loop, or broad process termination.
+- Keep changes inside `OverlayProcessOwner.*`, its directly affected test, and
+  the narrow build invocation unless a concrete call edge requires another
+  existing platform-owner file.
+
+Verification: source-review every blocking Win32 call and ownership transition;
+run only `OverlayProcessOwnerTests.exe` under its existing 20-second exact-PID
+outer bound, then compile the native Release. Do not run the aggregate or a
+packaged host route. Report any branch that remains source-reviewed but cannot
+be exercised reliably rather than expanding the harness.
+
+Stop for a new transport/security model, undocumented Windows behavior,
+destructive cleanup, production-profile attachment, shared DLV-240 files, or a
+material change to cross-process activation semantics.
 
 ## Serialized snapshot update program
 
-### Awaiting DLV-239 integration — DLV-240: managed update contract and SDK diff
+### Assigned — DLV-240: managed update contract and SDK diff
 
-Owner: widgets lead for serialized WidgetProtocol, WidgetSdk, WidgetRuntime, and
-WidgetBridge work. Platform must not edit shared protocol/bridge files then.
+Owner/baseline: widgets lead from exact accepted main `7cc5839` for serialized
+WidgetProtocol, WidgetSdk, WidgetRuntime, and WidgetBridge work. Platform DLV-246
+must not edit shared protocol/bridge files.
 
 Version the atomic checkpoint/update contract and automatically produce typed
 property changes, keyed insert/remove/move, subtree replacement, and complete
@@ -327,9 +368,10 @@ delete credentials, provider data, accounts, or user files.
 
 ## Serialized order
 
-1. Platform implements and planner integrates accepted DLV-239 from `94c4873`.
-2. Widgets implements DLV-240 from that exact integrated main; platform does not
-   edit shared protocol/bridge files concurrently.
+1. Accepted DLV-239 is integrated as `7cc5839`.
+2. Widgets implements DLV-240 from exact `7cc5839` while platform independently
+   repairs the isolated process-owner path in DLV-246; platform does not edit
+   shared protocol/bridge files concurrently.
 3. Platform implements DLV-241 after DLV-240 integration and runs the one named
    Tier-3 activation checkpoint.
 4. Platform implements DLV-242 and launches for physical incremental-behavior
@@ -365,6 +407,7 @@ delete credentials, provider data, accounts, or user files.
 
 | Milestone | Result |
 | --- | --- |
+| DLV-239 | Integrated as `7cc5839`: retained per-widget checkpoints, explicit refresh state, current-lifecycle refresh queuing, and inert retained authority. |
 | DLV-244 | Integrated through `94c4873`: stable applied chrome HWND, local guide/tray surfaces, coordinated Z-order, panel-local content, and durable destination authority. |
 | DLV-237 | Correlated selection-to-admission trace integrated; no speculative behavior change. |
 | DLV-232 | `cd378a2` integrated as `ef56bfc`: failed worker retains only its own last-good inert presentation until fresh admission. |
@@ -375,7 +418,6 @@ delete credentials, provider data, accounts, or user files.
 | DLV-230 | `7323468` integrated as `fe2e52c`: responsive YT Music composition. |
 | DLV-229 | `1a8c201` integrated as `1ddedb4`: Network first-page scan state. |
 | DLV-228 | `2784401` integrated as `220a415`: Audio rows/sliders consume width generically. |
-| DLV-226 | `2276b4c` integrated as `9755406`: truthful eight-widget surface-policy audit. |
 
 Do not mark the continuing delivery goal complete. Continue until the user
 pauses/replaces it or all useful lanes are genuinely blocked. Never push.
