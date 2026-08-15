@@ -4891,14 +4891,14 @@ chrome presentations, and commits the existing root once; no HWND, device,
 target, root, renderer, provider/tree, focus graph, hit-test owner, or input
 router was added.
 
-Tray invalidation is retained independently of content. Appearance, size,
-catalog-count, layout, or device recreation rebuilds the bounded tray surface;
-stable selection/reorder compares retained tile identities and damages only
-the changed old/new tile rectangles. Snapshot admission, provider publication,
-slider/scroll/content focus updates, and composition motion retain the tray
-background and unchanged icon pixels. The production diagnostic reports
-per-child paint counters and actual screen rectangles rather than treating
-untransformed local bounds as stationarity evidence.
+Tray invalidation is retained independently of content. Appearance, DPI,
+catalog/order, selection/reorder, layout, access-policy, or device recreation
+rebuilds the complete bounded tray surface exactly once; tile-level
+DirectComposition damage is removed. Snapshot admission, provider publication,
+slider/scroll/content-focus work, and composition motion retain the tray
+background and icons. The production diagnostic reports per-child paint
+counters and actual screen rectangles rather than treating untransformed local
+bounds as stationarity evidence.
 
 The existing UIA provider now projects widget-domain nodes through the animated
 content child and host/tray nodes through identity-scaled chrome coordinates.
@@ -4930,6 +4930,33 @@ root PID 20712, with one bridge and eight fixture workers. The explicit
 geometry-only stop occurs before the inherited DLV-231 close/reconnect tail;
 that unrelated tail was not rerun. No Tier 3, capture, provider/package, or
 public-protocol work was performed.
+
+#### Session-owned tray correction after live inspection (DLV-238 + DLV-236)
+
+Live cycling showed that geometry-only evidence was insufficient: the icon tray
+could disappear even while its logged rectangle stayed fixed. The native host
+now keeps one session-owned tray and guide crop, raster extent, and absolute
+bottom-center screen rectangle for the visible overlay session. The union HWND
+may move around that fixed chrome rectangle, but only the destination content
+child receives the animated transform and clip. Entering or moving within
+widget content changes input and UIA authority only; it cannot repaint or clear
+the retained DirectComposition tray surface. A widget selection remains a
+tray-owned event and replaces the complete small tray surface once, with its
+selection indicator safely inside the retained crop.
+
+The focused Release composition suite passes placement 112,333/112,333,
+targeting 76/76, transition 73/73, chrome 51/51, accessibility provider
+158/158, focus 49/49, host accessibility 34/34, and declarative renderer
+4,851/4,851. The final bounded production eight-widget route passes with seven
+variable-extent motions and zero observed process leaks. It captures one tray
+rectangle for the visible session and compares its exact left, top, right, and
+bottom before selection, after selected identity changes, before admission,
+and at start/mid/end/final motion settlement; an exact one-pixel 735/736 width
+drift fails the fixture. The route separately permits the one complete repaint
+needed for a selection update and requires no further tray paint during the
+ordinary content-motion interval. The native Release host compiles successfully.
+No capture tooling, Tier 3, provider/package change, second HWND, or additional
+renderer/input/focus/UIA authority was introduced.
 
 ### Correlated widget-selection admission observability (DLV-237)
 

@@ -595,9 +595,47 @@ void RunRetentionScenario(const Arguments& arguments) {
             recordAt,
             lineEnd == std::string::npos ? std::string::npos : lineEnd - recordAt);
     };
+    std::optional<std::string> sessionTrayBounds;
+    std::optional<LoggedBounds> sessionTrayCorners;
+    const auto requireSessionTrayBounds = [&](const std::string_view record,
+                                              const std::string_view phase) {
+        const auto bounds = TextField(record, "tray-bounds=");
+        Require(!bounds.empty() && bounds != "missing",
+                "Production paint omitted an absolute tray rectangle at " +
+                    std::string(phase));
+        if (!sessionTrayBounds) {
+            sessionTrayBounds = bounds;
+            sessionTrayCorners = ParseBounds(bounds);
+            return;
+        }
+        const auto current = ParseBounds(bounds);
+        const auto expected = *sessionTrayCorners;
+        Require(current.x == expected.x && current.y == expected.y &&
+                    current.x + current.width == expected.x + expected.width &&
+                    current.y + current.height == expected.y + expected.height,
+                "Tray rectangle changed within one visible session at " +
+                    std::string(phase) + "; expected corners=" +
+                    std::to_string(expected.x) + "," + std::to_string(expected.y) +
+                    "," + std::to_string(expected.x + expected.width) + "," +
+                    std::to_string(expected.y + expected.height) +
+                    " observed corners=" + std::to_string(current.x) + "," +
+                    std::to_string(current.y) + "," +
+                    std::to_string(current.x + current.width) + "," +
+                    std::to_string(current.y + current.height) +
+                    ". This rejects the prior 735/736 cross-widget width drift.");
+    };
     const auto switchTo = [&](const Target& target, const Target& previous) {
         const auto inputStarted = std::chrono::steady_clock::now();
         const auto before = ReadUtf8(logPath).size();
+        const auto beforeSelection = ReadUtf8(logPath);
+        const auto priorPaint = beforeSelection.rfind("Widget presentation paint");
+        if (priorPaint != std::string::npos) {
+            const auto priorEnd = beforeSelection.find('\n', priorPaint);
+            requireSessionTrayBounds(beforeSelection.substr(
+                priorPaint, priorEnd == std::string::npos
+                    ? std::string::npos : priorEnd - priorPaint),
+                "before-selection");
+        }
         const auto signal = installation->StartupSignal(target.id);
         std::error_code ignored;
         fs::remove(signal, ignored);
@@ -607,6 +645,7 @@ void RunRetentionScenario(const Arguments& arguments) {
             SendKey(window, target.key);
         const auto retainedRecord = waitForPaint(
             before, target, previous.id, "retained");
+        requireSessionTrayBounds(retainedRecord, "selected-identity-changed");
         const auto retainedLog = ReadUtf8(logPath);
         const auto retainedAt = retainedLog.find(retainedRecord, before);
         Require(retainedAt != std::string::npos,
@@ -645,12 +684,7 @@ void RunRetentionScenario(const Arguments& arguments) {
         }
         const auto destinationRecord = waitForPaint(
             before, target, target.id, "admitted");
-        Require(SameBottomCenteredScreenBounds(
-                    retainedRecord, destinationRecord, "tray-bounds=") &&
-                    SameBottomCenteredScreenBounds(
-                        retainedRecord, destinationRecord, "tray-selected-bounds="),
-                "Retained and admitted content moved bottom-centered tray geometry for " +
-                    WideToUtf8(target.label));
+        requireSessionTrayBounds(destinationRecord, "before-destination-admission");
         const auto log = ReadUtf8(logPath);
         const auto admittedAt = log.find(admittedNeedle, before);
         Require(admittedAt != std::string::npos,
@@ -731,6 +765,7 @@ void RunRetentionScenario(const Arguments& arguments) {
                 audioAdmittedRecord.find("tray-selected-visible=true") !=
                     std::string::npos,
             "Shared production tray did not retain every identity at its stable capacity");
+    requireSessionTrayBounds(audioAdmittedRecord, "initial-admission");
     Require(TextField(audioAdmittedRecord, "desired-extent=") == "592x698",
             "Audio Mixer did not establish the expected authored source extent");
     recordComposition(
@@ -781,6 +816,10 @@ void RunRetentionScenario(const Arguments& arguments) {
     FenceWindow(window);
     for (std::size_t index = 1; index < kTargets.size(); ++index)
         switchTo(kTargets[index], kTargets[index - 1]);
+    // Geometry proof is the ordinary one-at-a-time cycle above. The
+    // deliberately rapid reversal below is a separate lifecycle scenario
+    // whose second selection is itself allowed one whole-tray repaint.
+    const auto ordinaryCycleGeometryEnd = ReadUtf8(logPath).size();
 
     const auto reversalBefore = ReadUtf8(logPath).size();
     SendKey(window, VK_LEFT);
@@ -816,7 +855,8 @@ void RunRetentionScenario(const Arguments& arguments) {
                     return lastStart == std::string::npos ||
                         (lastFinal != std::string::npos && lastFinal > lastStart);
                 }), "Bounded geometry route did not settle its final content motion");
-        const auto log = ReadUtf8(logPath);
+        const auto completeLog = ReadUtf8(logPath);
+        const auto log = completeLog.substr(0, ordinaryCycleGeometryEnd);
         std::size_t motionAt{};
         std::size_t motionCount{};
         while ((motionAt = log.find("Composition motion start", motionAt)) !=
@@ -825,14 +865,13 @@ void RunRetentionScenario(const Arguments& arguments) {
             Require(finalAt != std::string::npos,
                     "Bounded geometry route found an unterminated composition motion");
             const auto nextMotionAt = log.find("Composition motion start", finalAt);
+            const auto finalEnd = log.find('\n', finalAt);
             const auto segment = log.substr(
-                motionAt, nextMotionAt == std::string::npos
-                    ? std::string::npos : nextMotionAt - motionAt);
+                motionAt, finalEnd == std::string::npos
+                    ? std::string::npos : finalEnd - motionAt);
             std::size_t sampleAt{};
             std::size_t sampleCount{};
             std::string fixedGuide;
-            std::string fixedTray;
-            std::string fixedSelected;
             std::uint64_t fixedTrayPaints{};
             while ((sampleAt = segment.find(
                         "Composition child sample step=", sampleAt)) !=
@@ -843,7 +882,6 @@ void RunRetentionScenario(const Arguments& arguments) {
                         ? std::string::npos : end - sampleAt);
                 const auto guide = TextField(sample, "guide=");
                 const auto tray = TextField(sample, "tray=");
-                const auto selected = TextField(sample, "selected=");
                 const auto paints = TextField(sample, "paints=");
                 const auto trayPaintAt = paints.find("tray:");
                 Require(trayPaintAt != std::string::npos,
@@ -855,25 +893,22 @@ void RunRetentionScenario(const Arguments& arguments) {
                         "Motion sample omitted shared content/UIA coordinate authority");
                 if (sampleCount == 0) {
                     fixedGuide = guide;
-                    fixedTray = tray;
-                    fixedSelected = selected;
                     fixedTrayPaints = trayPaintCount;
                 } else {
-                    Require(guide == fixedGuide && tray == fixedTray,
-                            "Actual screen chrome bounds moved during content motion; "
-                            "guide=" + fixedGuide + " -> " + guide +
-                            " tray=" + fixedTray + " -> " + tray);
-                    if (selected != fixedSelected) {
-                        Require(trayPaintCount > fixedTrayPaints &&
-                                    trayPaintCount - fixedTrayPaints <= 2,
-                                "Selected tile moved without one bounded old/new tile update");
-                        fixedSelected = selected;
-                        fixedTrayPaints = trayPaintCount;
-                    } else {
-                        Require(trayPaintCount == fixedTrayPaints,
-                                "Content motion repainted the retained tray surface");
-                    }
+                    Require(guide == fixedGuide,
+                            "Actual guide bounds moved during content motion; guide=" +
+                                fixedGuide + " -> " + guide);
+                    Require(trayPaintCount == fixedTrayPaints,
+                            "Content motion repainted the retained tray surface; "
+                            "expected=" + std::to_string(fixedTrayPaints) +
+                            " observed=" + std::to_string(trayPaintCount) +
+                            " sample=" + sample);
                 }
+                Require(sessionTrayBounds && tray == *sessionTrayBounds,
+                        "Motion sample changed the session tray rectangle; expected=" +
+                            (sessionTrayBounds ? *sessionTrayBounds : std::string{}) +
+                            " observed=" + tray +
+                            ". This rejects the prior 735/736 cross-widget width drift.");
                 ++sampleCount;
                 sampleAt = end == std::string::npos ? segment.size() : end + 1;
             }

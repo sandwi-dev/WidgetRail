@@ -140,6 +140,10 @@ struct CompositionChildCoordinateSpaces final {
     CompositionMotionPlan content;
     float chromeOffsetX{};
     float chromeOffsetY{};
+    float guideOffsetX{};
+    float guideOffsetY{};
+    float trayOffsetX{};
+    float trayOffsetY{};
 
     [[nodiscard]] friend constexpr bool operator==(
         const CompositionChildCoordinateSpaces&,
@@ -171,6 +175,12 @@ PlanCompositionChildCoordinates(
         (static_cast<float>(content.containerWidth) -
          static_cast<float>(targetWidth)) * 0.5F,
         static_cast<float>(content.containerHeight - targetHeight),
+        (static_cast<float>(content.containerWidth) -
+         static_cast<float>(targetWidth)) * 0.5F,
+        static_cast<float>(content.containerHeight - targetHeight),
+        (static_cast<float>(content.containerWidth) -
+         static_cast<float>(targetWidth)) * 0.5F,
+        static_cast<float>(content.containerHeight - targetHeight),
     };
 }
 
@@ -194,6 +204,10 @@ PlanCompositionChildCoordinates(
             static_cast<float>(content.containerHeight)) return {};
     result.chromeOffsetX = destinationOffsetX;
     result.chromeOffsetY = destinationOffsetY;
+    result.guideOffsetX = destinationOffsetX;
+    result.guideOffsetY = destinationOffsetY;
+    result.trayOffsetX = destinationOffsetX;
+    result.trayOffsetY = destinationOffsetY;
     return result;
 }
 
@@ -227,6 +241,32 @@ PlanCompositionChildCoordinates(
     const CompositionPoint presented) noexcept {
     return {presented.x - spaces.chromeOffsetX,
             presented.y - spaces.chromeOffsetY};
+}
+
+[[nodiscard]] constexpr CompositionPoint ProjectGuidePoint(
+    const CompositionChildCoordinateSpaces& spaces,
+    const CompositionPoint local) noexcept {
+    return {spaces.guideOffsetX + local.x, spaces.guideOffsetY + local.y};
+}
+
+[[nodiscard]] constexpr CompositionPoint InverseGuidePoint(
+    const CompositionChildCoordinateSpaces& spaces,
+    const CompositionPoint presented) noexcept {
+    return {presented.x - spaces.guideOffsetX,
+            presented.y - spaces.guideOffsetY};
+}
+
+[[nodiscard]] constexpr CompositionPoint ProjectTrayPoint(
+    const CompositionChildCoordinateSpaces& spaces,
+    const CompositionPoint local) noexcept {
+    return {spaces.trayOffsetX + local.x, spaces.trayOffsetY + local.y};
+}
+
+[[nodiscard]] constexpr CompositionPoint InverseTrayPoint(
+    const CompositionChildCoordinateSpaces& spaces,
+    const CompositionPoint presented) noexcept {
+    return {presented.x - spaces.trayOffsetX,
+            presented.y - spaces.trayOffsetY};
 }
 
 enum class CompositionVerticalAnchor {

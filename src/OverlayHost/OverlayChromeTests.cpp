@@ -179,9 +179,9 @@ void CheckRetainedTrayInvalidation() {
             {{144, 8, 204, 68}, L"audio", false, false},
         },
     };
-    Check(gba::shell::PlanTrayInvalidation(nullptr, initial).full,
+    Check(gba::shell::RequiresTrayRepaint(nullptr, initial),
           "first tray frame rebuilds its retained child surface");
-    Check(gba::shell::PlanTrayInvalidation(&initial, initial).empty(),
+    Check(!gba::shell::RequiresTrayRepaint(&initial, initial),
           "content-only publication retains tray pixels");
 
     auto selected = initial;
@@ -189,27 +189,21 @@ void CheckRetainedTrayInvalidation() {
     selected.items[0].focused = false;
     selected.items[1].selected = true;
     selected.items[1].focused = true;
-    const auto selection = gba::shell::PlanTrayInvalidation(&initial, selected);
-    Check(!selection.full && selection.dirtyRects.size() == 2,
-          "selection updates only old and new tray tiles");
-    Check(selection.dirtyRects[0].left == 8 &&
-              selection.dirtyRects[1].left == 76,
-          "selection damage retains exact tile rectangles");
+    Check(gba::shell::RequiresTrayRepaint(&initial, selected),
+          "selection replaces the complete retained tray surface");
 
     auto reordered = selected;
     std::swap(reordered.items[1].identity, reordered.items[2].identity);
-    const auto reorder = gba::shell::PlanTrayInvalidation(&selected, reordered);
-    Check(!reorder.full && reorder.dirtyRects.size() == 2,
-          "reorder updates only the two changed icon tiles");
+    Check(gba::shell::RequiresTrayRepaint(&selected, reordered),
+          "reorder replaces the complete retained tray surface");
 
     auto provider = reordered;
-    const auto providerUpdate = gba::shell::PlanTrayInvalidation(&reordered, provider);
-    Check(providerUpdate.empty(),
+    Check(!gba::shell::RequiresTrayRepaint(&reordered, provider),
           "provider, slider, scroll, focus, and motion retain unchanged tray pixels");
 
     auto appearance = provider;
     ++appearance.appearanceRevision;
-    Check(gba::shell::PlanTrayInvalidation(&provider, appearance).full,
+    Check(gba::shell::RequiresTrayRepaint(&provider, appearance),
           "appearance revision rebuilds the tray child surface");
 }
 

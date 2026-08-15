@@ -193,6 +193,7 @@ public:
     void AcceptCompositionAdmission(
         const CompositionAdmissionDirective& directive) noexcept {
         contentPlacement_ = directive.destinationPlacement;
+        settledContainerPlacement_ = directive.containerPlacement;
         if (!directive.animateMotion) {
             finalCompositionPlacement_.reset();
             compositionPresentedExtentDip_.reset();
@@ -221,6 +222,7 @@ public:
     void RejectCompositionAdmission() noexcept {
         finalCompositionPlacement_.reset();
         motionContainerPlacement_.reset();
+        settledContainerPlacement_.reset();
         compositionPresentedExtentDip_.reset();
         contentPlacement_.reset();
         motionCommitCount_ = 0;
@@ -263,17 +265,23 @@ public:
         motionCommitCount_ = 0;
     }
 
+    void SettleCompositionContainer(const OverlayPlacement& placement) noexcept {
+        settledContainerPlacement_ = placement;
+    }
+
     [[nodiscard]] const std::optional<OverlayPlacement>& contentPlacement() const noexcept {
         return contentPlacement_;
     }
 
     [[nodiscard]] CompositionPoint ChromeOffsetWithinContainer() const noexcept {
-        if (!contentPlacement_ || !motionContainerPlacement_) return {};
+        const auto& container = motionContainerPlacement_
+            ? motionContainerPlacement_ : settledContainerPlacement_;
+        if (!contentPlacement_ || !container) return {};
         return {
             static_cast<float>(
-                contentPlacement_->x - motionContainerPlacement_->x),
+                contentPlacement_->x - container->x),
             static_cast<float>(
-                contentPlacement_->y - motionContainerPlacement_->y),
+                contentPlacement_->y - container->y),
         };
     }
 
@@ -283,6 +291,17 @@ public:
         const OverlayPresentationExtent desired) const noexcept {
         if (!contentPlacement_) return std::nullopt;
         const auto& target = *contentPlacement_;
+        if (!finalCompositionPlacement_ && settledContainerPlacement_) {
+            const auto& container = *settledContainerPlacement_;
+            return CompositionMotionPlan{
+                clientWidth, clientHeight,
+                1.0F, 1.0F,
+                static_cast<float>(target.x - container.x),
+                static_cast<float>(target.y - container.y),
+                clientWidth != static_cast<unsigned int>(target.width) ||
+                    clientHeight != static_cast<unsigned int>(target.height),
+            };
+        }
         const auto presented = compositionPresentedExtentDip_.value_or(desired);
         const float pixelsPerDipX = finalCompositionPlacement_
             ? motionPixelsPerDipX_
@@ -309,6 +328,7 @@ public:
         animatedExtentDip_.reset();
         finalCompositionPlacement_.reset();
         motionContainerPlacement_.reset();
+        settledContainerPlacement_.reset();
         contentPlacement_.reset();
         compositionPresentedExtentDip_.reset();
         motionPixelsPerDipX_ = 1.0F;
@@ -325,6 +345,7 @@ private:
     std::optional<OverlayPresentationExtent> animatedExtentDip_;
     std::optional<OverlayPlacement> finalCompositionPlacement_;
     std::optional<OverlayPlacement> motionContainerPlacement_;
+    std::optional<OverlayPlacement> settledContainerPlacement_;
     std::optional<OverlayPlacement> contentPlacement_;
     std::optional<OverlayPresentationExtent> compositionPresentedExtentDip_;
     float motionPixelsPerDipX_{1.0F};

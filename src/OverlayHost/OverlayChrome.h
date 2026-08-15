@@ -19,7 +19,16 @@ struct RetainedTrayItem final {
     bool selected{};
     bool focused{};
 
-    friend bool operator==(const RetainedTrayItem&, const RetainedTrayItem&) = default;
+    friend bool operator==(
+        const RetainedTrayItem& left,
+        const RetainedTrayItem& right) noexcept {
+        return left.bounds.left == right.bounds.left &&
+            left.bounds.top == right.bounds.top &&
+            left.bounds.right == right.bounds.right &&
+            left.bounds.bottom == right.bounds.bottom &&
+            left.identity == right.identity &&
+            left.selected == right.selected && left.focused == right.focused;
+    }
 };
 
 struct RetainedTrayState final {
@@ -27,23 +36,18 @@ struct RetainedTrayState final {
     unsigned int height{};
     std::uint64_t appearanceRevision{};
     std::vector<RetainedTrayItem> items;
+
+    friend bool operator==(
+        const RetainedTrayState&,
+        const RetainedTrayState&) = default;
 };
 
-struct TrayInvalidationPlan final {
-    bool full{};
-    std::vector<RECT> dirtyRects;
-
-    [[nodiscard]] bool empty() const noexcept {
-        return !full && dirtyRects.empty();
-    }
-};
-
-/// Retains the tray surface across content-only commits. A stable layout may
-/// update only tiles whose identity/selection/focus changed; size, appearance,
-/// or item-count changes rebuild the bounded tray surface.
-[[nodiscard]] TrayInvalidationPlan PlanTrayInvalidation(
+/// The small retained tray surface is an all-or-nothing chrome frame. Content
+/// changes leave it untouched; any tray-owned state change replaces the whole
+/// surface once so no cleared tile or clipped focus stroke can remain.
+[[nodiscard]] bool RequiresTrayRepaint(
     const RetainedTrayState* retained,
-    const RetainedTrayState& next);
+    const RetainedTrayState& next) noexcept;
 
 /// A color-keyed layered HWND cannot represent partially transparent pixels at
 /// its outer boundary: antialiasing blends authored chrome into the key color
