@@ -46,7 +46,9 @@ user decision. The native overlay is the sole production presentation path.
 
 ## Execution and review rules
 
-- Operate exactly two production tasks: `widgets` and `platform`.
+- Operate exactly two production tasks: `widgets` and `platform`. The user has
+  additionally authorized one temporary `red-test` investigation task; it is
+  test-only and does not count as a production lane.
 - Each task implements only its single Assigned milestone, then the first Ready
   same-lane milestone whose accepted baseline is present.
 - Shared protocol/architecture work is serialized to the named lead lane.
@@ -133,10 +135,54 @@ user decision. The native overlay is the sole production presentation path.
 | --- | --- | --- |
 | Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` on `codex/impl-platform-snapshot-cache` | Assigned DLV-239 from accepted production `94c4873` plus reviewer-plan baseline `6769954`. Preserve completed `codex/impl-platform-fixed-chrome`. |
 | Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | Idle clean. DLV-240 starts only after accepted DLV-239 is integrated and the planner sends the exact main baseline. |
+| Red tests | `Implementation agent — red-test lane`; isolated worktree/branch created from current planner main | Assigned DLV-245. Investigate only the red isolated widget-switch route and hung process-owner executable test; no production-code edits. |
 
 DLV-217 remains accepted through `d57fd06` but unintegrated because its exact
 aggregate is 40/41 with one reviewer-history-link failure. Preserve the branch;
 integration requires separate explicit user approval.
+
+## Temporary red-test lane
+
+### Assigned — DLV-245: independently disposition unreliable native host tests
+
+Owner/baseline: temporary red-test task from current planner main. This lane may
+edit only directly implicated test sources, test-support/harness code, and their
+build invocation. It must not edit production sources, public protocol/SDK,
+widget packages, providers, runtime behavior, or reviewer-owned documents.
+
+Investigate two exact red cases independently:
+
+1. The DLV-244 isolated widget-switch route whose temporary host exited before
+   authenticated readiness and produced neither `overlay.log` nor
+   `startup-error.log`.
+2. The Release refresh's `OverlayProcessOwnerTests.exe` hang after compilation.
+
+Required process:
+
+- Reproduce each case at most once initially, separately, using a unique
+  process profile, isolated temporary runtime/state, and bounded timeout.
+- Determine whether each failure is a product defect, harness defect, missing
+  adjacent runtime/dependency, environment limitation, or obsolete/duplicated
+  assertion. Do not infer a cause from an empty log.
+- If a production defect is exposed, stop that case and report the exact
+  production path to the planner; do not fix it in this lane.
+- If the harness is repairable, make the smallest deterministic test-only fix
+  and run that exact test once after correction.
+- A test may be removed only when its behavior is obsolete, invalid, or fully
+  duplicated by named retained coverage. The commit must identify the redundant
+  assertions and replacement coverage. Never remove a test merely because it
+  is difficult or red.
+- Preserve unique process profiles, authenticated ownership boundaries, bounded
+  shutdown, last-good logs, and cleanup of only lane-owned temporary processes
+  and files. Never attach to, activate, close, or reuse the production profile.
+- Do not run the product aggregate or unrelated suites. Do not modify tests to
+  bless failed product behavior or weaken a required stationarity, destination,
+  lifecycle, security, or cleanup assertion.
+
+Deliver one committed test-only candidate with exact disposition per case,
+diff, commands, timeout, pass/red result, and residual risk. Stop for production
+code changes, undocumented APIs, a material coverage decision, destructive
+cleanup, or overlap with DLV-239 files.
 
 ## Platform lane
 

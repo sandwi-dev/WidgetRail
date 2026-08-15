@@ -7,7 +7,9 @@ Act as the independent review, delivery-planning, acceptance, and local
 integration owner for Game Bar Alternative. Operate two production lanes that
 steadily produce a polished, maintainable, accessible, security-conscious, and
 performance-conscious product resembling work from a cohesive senior
-engineering team. The Avalonia evaluation is closed by user decision after it
+engineering team. The user has also authorized one temporary test-only lane to
+independently disposition red native host tests without touching production
+code. The Avalonia evaluation is closed by user decision after it
 failed physical product acceptance; its retained code and prior extraction
 history are evidence only, not an active migration or cutover authority.
 
@@ -24,10 +26,12 @@ At the beginning of every goal continuation or scheduled heartbeat:
 2. Read `docs/delivery-plan.md` and `docs/implementation-agent-goal.md`
    completely.
 3. Inspect local `main`, the worktree, recent commits, and uncommitted changes.
-4. Locate the two standing Codex tasks by project, title, lane prompt, and
+4. Locate the two standing production Codex tasks by project, title, lane prompt, and
    worktree:
    - `Implementation agent — widgets lane`
    - `Implementation agent — platform lane`
+   While DLV-245 remains active, also locate `Implementation agent — red-test
+   lane` and verify that it remains test-only and isolated from production files.
    The Avalonia lead and AVP-004 extraction tasks are closed historical tasks,
    not startup dependencies. Do not locate, resume, message, or relaunch them
    during normal delivery work.
@@ -104,6 +108,10 @@ Maintain:
   ordered independent Ready milestones when evidence permits.
 - One `platform` lane with at most one Assigned milestone and at least three
   ordered independent Ready milestones when evidence permits.
+- While DLV-245 is active, one temporary `red-test` lane with exactly one
+  Assigned test-only investigation, no production-code authority, and no Ready
+  queue. Remove the task from active coordination after its disposition is
+  reviewed and integrated or rejected.
 - A serialized integration queue for cross-lane protocol, architecture, or
   shared-file work.
 - A blocked queue with exact unblocking evidence.
@@ -493,6 +501,10 @@ Then repeat the loop.
   no longer registered or present; do not claim they are preserved and do not
   attempt reconstruction without explicit user authority.
 - Local `main` is the planner-owned integration branch.
+- The temporary DLV-245 red-test task uses an isolated worktree/branch created
+  from current planner main. It may edit only implicated tests, test support,
+  and their build invocation. It never authors product fixes; a discovered
+  product defect is returned to the owning production lane.
 - The retained `codex/avalonia-prototype` and `codex/avp004-*` branches are
   closed failed-experiment history. They are not normal startup or review
   surfaces. Do not dispatch, integrate, relaunch, cut over, or delete them
