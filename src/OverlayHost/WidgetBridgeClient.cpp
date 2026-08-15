@@ -1733,9 +1733,116 @@ bool HandleAsyncEvent(
     return false;
 }
 
+WidgetPresentationEffect ImpactForPresentationProperty(
+    const std::wstring_view property) noexcept {
+    using Effect = WidgetPresentationEffect;
+    if (property == L"activeInputScopeId" || property == L"initialFocusId" ||
+        property == L"quickActions") {
+        return Effect::Authority | Effect::Interaction | Effect::Accessibility;
+    }
+    if (property == L"surface" || property == L"advancedPresentation") {
+        return Effect::SurfacePlacement | Effect::MeasureLayout |
+            Effect::Paint | Effect::Accessibility;
+    }
+    if (property == L"visibleWhen") {
+        return Effect::MeasureLayout | Effect::Paint |
+            Effect::Interaction | Effect::Accessibility;
+    }
+    if (property == L"text" || property == L"textEntryValue" ||
+        property == L"textEntryPlaceholder") {
+        return Effect::MeasureLayout | Effect::Paint | Effect::Accessibility;
+    }
+    if (property == L"accessibilityLabel" ||
+        property == L"accessibilityValue") {
+        return Effect::Accessibility;
+    }
+    if (property == L"value")
+        return Effect::Paint | Effect::Accessibility;
+    if (property == L"imageSource" || property == L"artworkHandle") {
+        return Effect::Resource | Effect::Paint | Effect::Accessibility;
+    }
+    if (property == L"isDisabled" || property == L"isSelected" ||
+        property == L"isBusy") {
+        return Effect::Paint | Effect::Interaction | Effect::Accessibility;
+    }
+    if (property == L"actionId" || property == L"valueChangedActionId" ||
+        property == L"shortcuts" || property == L"inputScopeId" ||
+        property == L"focus" || property == L"focusPersistenceId" ||
+        property == L"scrollNearStartActionId" ||
+        property == L"scrollNearEndActionId") {
+        return Effect::Authority | Effect::Interaction | Effect::Accessibility;
+    }
+    if (property == L"styleClasses" ||
+        property == L"gridMinimumColumnWidth" ||
+        property == L"gridMaximumColumns" || property == L"minimum" ||
+        property == L"maximum" || property == L"step" ||
+        property == L"sliderInteractionMode" || property == L"imageFit" ||
+        property == L"glyph" || property == L"indicatorSize" ||
+        property == L"actionSurfaceOrientation" ||
+        property == L"scrollAxis" ||
+        property == L"scrollPaginationThreshold" ||
+        property == L"collectionAnchorKey" ||
+        property == L"collectionItemKey" ||
+        property == L"advancedPresentationSlot" ||
+        property == L"textEntryMaximumLength") {
+        return Effect::MeasureLayout | Effect::Paint |
+            Effect::Interaction | Effect::Accessibility;
+    }
+    return Effect::Unknown;
+}
+
+WidgetPresentationImpact ClassifyPresentationImpact(
+    const WidgetPresentationUpdate& update) {
+    using Effect = WidgetPresentationEffect;
+    WidgetPresentationImpact impact{
+        update.baseSequence, update.sequence, Effect::None, {}};
+    const auto addTarget = [&](const std::wstring_view id) {
+        if (id.empty() ||
+            std::find(impact.affectedNodeIds.begin(),
+                      impact.affectedNodeIds.end(), id) !=
+                impact.affectedNodeIds.end()) {
+            return;
+        }
+        impact.affectedNodeIds.emplace_back(id);
+    };
+    for (const auto& operation : update.operations) {
+        if (operation.kind ==
+            WidgetPresentationUpdateOperationKind::SetProperties) {
+            auto operationEffects = Effect::None;
+            for (const auto& change : operation.properties)
+                operationEffects |= ImpactForPresentationProperty(change.property);
+            impact.effects |= operationEffects;
+            addTarget(operation.targetId);
+            if (operation.targetId.empty() &&
+                HasWidgetPresentationEffect(
+                    operationEffects, Effect::MeasureLayout)) {
+                impact.effects |= Effect::SurfacePlacement;
+            }
+            continue;
+        }
+        impact.effects |= Effect::Structure | Effect::MeasureLayout |
+            Effect::Paint | Effect::Interaction | Effect::Accessibility;
+        switch (operation.kind) {
+        case WidgetPresentationUpdateOperationKind::InsertChild:
+        case WidgetPresentationUpdateOperationKind::RemoveChild:
+        case WidgetPresentationUpdateOperationKind::MoveChild:
+            addTarget(operation.parentId);
+            break;
+        case WidgetPresentationUpdateOperationKind::ReplaceSubtree:
+            addTarget(operation.targetId);
+            break;
+        case WidgetPresentationUpdateOperationKind::SetProperties:
+            break;
+        }
+    }
+    if (impact.effects == Effect::None) impact.effects = Effect::Unknown;
+    return impact;
+}
+
 } // namespace
 
-std::optional<WidgetSnapshot> MaterializeWidgetPresentationUpdate(
+std::optional<WidgetPresentationMaterialization>
+MaterializeWidgetPresentationUpdate(
     const WidgetSnapshot& checkpoint,
     const WidgetPresentationUpdate& update,
     const std::wstring_view expectedPresentationGeneration,
@@ -1878,8 +1985,10 @@ std::optional<WidgetSnapshot> MaterializeWidgetPresentationUpdate(
                 materialized.root,
                 JsonObject::Parse(winrt::hstring(update.renderStylesJson)));
         }
+        auto impact = ClassifyPresentationImpact(update);
         error.clear();
-        return materialized;
+        return WidgetPresentationMaterialization{
+            std::move(materialized), std::move(impact)};
     } catch (const winrt::hresult_error& exception) {
         error = L"The widget presentation update is invalid: " +
             std::wstring(exception.message());

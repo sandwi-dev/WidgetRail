@@ -51,6 +51,13 @@ constexpr NativeColor kDefaultAccent{0.545F, 0.486F, 1.0F, 1.0F};
         std::isfinite(value.width) && std::isfinite(value.height);
 }
 
+[[nodiscard]] bool SameRect(const Rect& left, const Rect& right) noexcept {
+    return std::abs(left.x - right.x) <= 0.01F &&
+        std::abs(left.y - right.y) <= 0.01F &&
+        std::abs(left.width - right.width) <= 0.01F &&
+        std::abs(left.height - right.height) <= 0.01F;
+}
+
 [[nodiscard]] D2D1_RECT_F D2DRect(const Rect& value) noexcept {
     return D2D1::RectF(value.x, value.y, value.x + value.width, value.y + value.height);
 }
@@ -107,6 +114,18 @@ constexpr NativeColor kDefaultAccent{0.545F, 0.486F, 1.0F, 1.0F};
     const float right = std::min(first.x + first.width, second.x + second.width);
     const float bottom = std::min(first.y + first.height, second.y + second.height);
     return {left, top, std::max(0.0F, right - left), std::max(0.0F, bottom - top)};
+}
+
+[[nodiscard]] Rect UnionRect(const Rect& first, const Rect& second) noexcept {
+    if (first.width <= 0.0F || first.height <= 0.0F) return second;
+    if (second.width <= 0.0F || second.height <= 0.0F) return first;
+    const float left = std::min(first.x, second.x);
+    const float top = std::min(first.y, second.y);
+    const float right = std::max(
+        first.x + first.width, second.x + second.width);
+    const float bottom = std::max(
+        first.y + first.height, second.y + second.height);
+    return {left, top, right - left, bottom - top};
 }
 
 [[nodiscard]] NativeColor WithOpacity(
@@ -1170,6 +1189,76 @@ struct DeclarativeRenderer::RenderPass final {
         }
     }
 
+    void PrepareAgainstCurrentLayout() {
+        prepared.clear();
+        (void)PrepareNode(
+            snapshot->root,
+            {},
+            viewport.width,
+            viewport.height,
+            options.rootFontSizePx,
+            options.surfaceBackground);
+    }
+
+    [[nodiscard]] bool BuildLocalLayout(
+        const std::vector<std::wstring>& boundaryIds,
+        const std::map<std::wstring, IncrementalNodeState, std::less<>>& nodes) {
+        if (boundaryIds.empty()) return false;
+        if (std::find(boundaryIds.begin(), boundaryIds.end(), snapshot->root.id) !=
+            boundaryIds.end()) {
+            BuildLayout();
+            return true;
+        }
+        LayoutOptions layoutOptions;
+        layoutOptions.pixelScale = options.pixelScale;
+        layoutOptions.responsiveViewport = options.responsiveViewport.value_or(
+            Size{viewport.width, viewport.height});
+        for (const auto& boundaryId : boundaryIds) {
+            std::vector<const WidgetNode*> path;
+            if (!FindNodePath(snapshot->root, boundaryId, path) || path.empty())
+                return false;
+            const auto* boundary = path.back();
+            const auto narrowBoundary = NarrowStableId(boundaryId);
+            const auto* priorBox = layout.Find(narrowBoundary);
+            if (!priorBox || priorBox->borderBox.width <= 0.0F ||
+                priorBox->borderBox.height <= 0.0F) {
+                return false;
+            }
+            const auto parent = nodes.find(boundaryId);
+            const auto narrowParent = parent == nodes.end()
+                ? std::string{}
+                : NarrowStableId(parent->second.parentId);
+            auto recompute = [&]() {
+                prepared.clear();
+                auto root = PrepareNode(
+                    *boundary,
+                    narrowParent,
+                    priorBox->borderBox.width,
+                    priorBox->borderBox.height,
+                    options.rootFontSizePx,
+                    options.surfaceBackground);
+                return declarative::ComputeLayout(
+                    root,
+                    priorBox->borderBox,
+                    [this](const LayoutElement& element,
+                           const declarative::MeasureConstraints& constraints) {
+                        return MeasureLeaf(element, constraints);
+                    },
+                    layoutOptions);
+            };
+            auto replacement = recompute();
+            if (!replacement.valid()) return false;
+            for (auto& [id, box] : replacement.boxes)
+                layout.boxes.insert_or_assign(std::move(id), std::move(box));
+            replacement = recompute();
+            if (!replacement.valid()) return false;
+            for (auto& [id, box] : replacement.boxes)
+                layout.boxes.insert_or_assign(std::move(id), std::move(box));
+        }
+        PrepareAgainstCurrentLayout();
+        return true;
+    }
+
     void DrawTextContent(
         const WidgetNode& node,
         const NativeRenderStyle& style,
@@ -1833,6 +1922,88 @@ DeclarativeRenderer::DeclarativeRenderer(
       writeFactory_(writeFactory),
       imageCache_(imageCache) {}
 
+std::optional<IncrementalPresentationPlan>
+DeclarativeRenderer::PlanPresentationUpdate(
+    const WidgetSnapshot& snapshot,
+    const WidgetPresentationImpact& impact,
+    const Rect viewport) {
+    pendingIncrementalPlan_.reset();
+    const auto& cache = incrementalLayoutCache_;
+    if (!cache || cache->instanceId != snapshot.instanceId ||
+        cache->sequence != impact.baseSequence ||
+        snapshot.sequence != impact.sequence ||
+        !SameRect(cache->viewport, viewport) || impact.affectedNodeIds.empty() ||
+        HasWidgetPresentationEffect(
+            impact.effects, WidgetPresentationEffect::Structure) ||
+        HasWidgetPresentationEffect(
+            impact.effects, WidgetPresentationEffect::SurfacePlacement) ||
+        HasWidgetPresentationEffect(
+            impact.effects, WidgetPresentationEffect::Unknown)) {
+        return std::nullopt;
+    }
+    const bool localLayout = HasWidgetPresentationEffect(
+        impact.effects, WidgetPresentationEffect::MeasureLayout);
+    if (!localLayout && !HasWidgetPresentationEffect(
+            impact.effects, WidgetPresentationEffect::Paint)) {
+        return std::nullopt;
+    }
+
+    Rect damage{};
+    std::vector<std::wstring> boundaries;
+    for (const auto& targetId : impact.affectedNodeIds) {
+        const auto boundary = localLayout
+            ? cache->nodes.find(targetId)
+            : cache->nodes.end();
+        const auto& damageId = boundary != cache->nodes.end()
+            ? boundary->second.safeBoundaryId
+            : targetId;
+        const auto bounds = cache->nodes.find(damageId);
+        if (bounds == cache->nodes.end()) return std::nullopt;
+        damage = UnionRect(
+            damage, Inset(bounds->second.paintBounds, -8.0F));
+        if (localLayout &&
+            std::find(boundaries.begin(), boundaries.end(), damageId) ==
+                boundaries.end()) {
+            boundaries.push_back(damageId);
+        }
+    }
+    damage = Intersection(damage, viewport);
+    if (damage.width <= 0.0F || damage.height <= 0.0F) return std::nullopt;
+
+    if (localLayout && boundaries.size() > 1) {
+        const auto allBoundaries = boundaries;
+        std::erase_if(boundaries, [&](const std::wstring& candidate) {
+            auto parent = cache->nodes.find(candidate);
+            while (parent != cache->nodes.end() &&
+                   !parent->second.parentId.empty()) {
+                if (std::find(allBoundaries.begin(), allBoundaries.end(),
+                              parent->second.parentId) != allBoundaries.end()) {
+                    return true;
+                }
+                parent = cache->nodes.find(parent->second.parentId);
+            }
+            return false;
+        });
+    }
+
+    const auto work = localLayout
+        ? IncrementalPresentationWork::LocalLayout
+        : IncrementalPresentationWork::PaintOnly;
+    pendingIncrementalPlan_ = PendingIncrementalPlan{
+        snapshot.instanceId,
+        impact.baseSequence,
+        impact.sequence,
+        work,
+        damage,
+        std::move(boundaries),
+    };
+    return IncrementalPresentationPlan{work, damage};
+}
+
+void DeclarativeRenderer::CancelPresentationUpdatePlan() noexcept {
+    pendingIncrementalPlan_.reset();
+}
+
 WidgetComputedStyle ResolveDeclarativeComputedStyle(
     const WidgetNode& node,
     const bool focused,
@@ -1887,7 +2058,26 @@ RenderResult DeclarativeRenderer::Render(
         bitmaps_.clear();
         bitmapTarget_ = renderTarget;
     }
-    pass.BuildLayout();
+    const bool pendingMatches = pendingIncrementalPlan_ &&
+        incrementalLayoutCache_ &&
+        pendingIncrementalPlan_->instanceId == snapshot.instanceId &&
+        pendingIncrementalPlan_->baseSequence == incrementalLayoutCache_->sequence &&
+        pendingIncrementalPlan_->sequence == snapshot.sequence &&
+        SameRect(incrementalLayoutCache_->viewport, viewport);
+    if (pendingMatches) {
+        pass.layout = incrementalLayoutCache_->layout;
+        if (pendingIncrementalPlan_->work ==
+            IncrementalPresentationWork::PaintOnly) {
+            pass.PrepareAgainstCurrentLayout();
+        } else if (!pass.BuildLocalLayout(
+                pendingIncrementalPlan_->layoutBoundaries,
+                incrementalLayoutCache_->nodes)) {
+            pass.BuildLayout();
+        }
+        if (pass.layout.valid()) pass.SynchronizeScrollState();
+    } else {
+        pass.BuildLayout();
+    }
     bool presentationMatchesLayout = false;
     for (std::size_t followPass = 0;
          followPass < kMaximumFocusFollowPasses;
@@ -1940,6 +2130,81 @@ RenderResult DeclarativeRenderer::Render(
             return item.severity == RenderDiagnosticSeverity::Error;
         });
     pass.result.succeeded = !hasErrors && pass.layout.valid() && renderTarget;
+    if (pass.result.succeeded) {
+        IncrementalLayoutCache cache;
+        cache.instanceId = snapshot.instanceId;
+        cache.sequence = snapshot.sequence;
+        cache.viewport = viewport;
+        cache.layout = std::move(pass.layout);
+        const auto retain = [&](const auto& self,
+                                const WidgetNode& node,
+                                const std::wstring_view parentId,
+                                const std::wstring_view inheritedBoundary) -> void {
+            const auto narrowId = NarrowStableId(node.id);
+            const auto prepared = pass.prepared.find(narrowId);
+            const auto presented = pass.presentation.find(narrowId);
+            std::wstring boundary{inheritedBoundary};
+            if (node.id == snapshot.root.id) {
+                boundary = node.id;
+            } else if (prepared != pass.prepared.end() &&
+                       prepared->second.baseStyle.widthPx() &&
+                       prepared->second.baseStyle.heightPx() &&
+                       prepared->second.baseStyle.marginPx().top == 0.0F &&
+                       prepared->second.baseStyle.marginPx().right == 0.0F &&
+                       prepared->second.baseStyle.marginPx().bottom == 0.0F &&
+                       prepared->second.baseStyle.marginPx().left == 0.0F) {
+                // Only an explicitly size-contained subtree can relayout
+                // without moving siblings owned by its parent Taffy boundary.
+                boundary = node.id;
+            }
+            IncrementalNodeState state;
+            state.parentId = parentId;
+            state.safeBoundaryId = boundary;
+            if (presented != pass.presentation.end()) {
+                auto paintBounds = presented->second.visibleBox;
+                if (node.id == pass.focusedId &&
+                    prepared != pass.prepared.end()) {
+                    const auto& style = prepared->second.paintStyle;
+                    const auto width = std::max(
+                        pass.options.accessibility.minimumFocusRingPx,
+                        std::max(2.0F, style.outlineWidthPx()));
+                    auto outline = Inset(
+                        presented->second.borderBox,
+                        -(style.outlineOffsetPx() + width * 0.5F));
+                    if (pass.result.currentFocusOutlineClip)
+                        outline = Intersection(
+                            outline, *pass.result.currentFocusOutlineClip);
+                    paintBounds = UnionRect(paintBounds, outline);
+                }
+                state.paintBounds = paintBounds;
+            }
+            cache.nodes.insert_or_assign(node.id, std::move(state));
+            for (const auto& child : node.children)
+                self(self, child, node.id, boundary);
+        };
+        retain(retain, snapshot.root, std::wstring_view{}, snapshot.root.id);
+        if (!pass.focusedId.empty()) {
+            if (const auto boundary =
+                    cache.nodes.find(pass.focusedId);
+                boundary != cache.nodes.end()) {
+                if (const auto focusedBounds =
+                        cache.nodes.find(pass.focusedId);
+                    focusedBounds != cache.nodes.end()) {
+                    auto boundaryBounds = cache.nodes.find(
+                        boundary->second.safeBoundaryId);
+                    if (boundaryBounds != cache.nodes.end()) {
+                        boundaryBounds->second.paintBounds = UnionRect(
+                            boundaryBounds->second.paintBounds,
+                            focusedBounds->second.paintBounds);
+                    }
+                }
+            }
+        }
+        incrementalLayoutCache_ = std::move(cache);
+    } else {
+        incrementalLayoutCache_.reset();
+    }
+    pendingIncrementalPlan_.reset();
     return pass.result;
 }
 
@@ -1993,6 +2258,8 @@ void DeclarativeRenderer::DiscardTargetResources() noexcept {
     surfaceClipTarget_ = nullptr;
     surfaceClipRect_ = {};
     surfaceClipRadius_ = 0.0F;
+    incrementalLayoutCache_.reset();
+    pendingIncrementalPlan_.reset();
 }
 
 bool DeclarativeRenderer::EnsureSurfaceClip(

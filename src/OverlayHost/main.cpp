@@ -437,9 +437,11 @@ public:
                       auto value = gba::MaterializeWidgetPresentationUpdate(
                           checkpoint, update, presentationGeneration, error);
                       return value
-                          ? gba::WidgetSessionOperationResult<gba::WidgetSnapshot>::Success(
+                          ? gba::WidgetSessionOperationResult<
+                                gba::WidgetPresentationMaterialization>::Success(
                                 std::move(*value))
-                          : gba::WidgetSessionOperationResult<gba::WidgetSnapshot>::Failure(
+                          : gba::WidgetSessionOperationResult<
+                                gba::WidgetPresentationMaterialization>::Failure(
                                 gba::WidgetSessionFailureStage::Protocol,
                                 std::move(error));
                   },
@@ -2758,6 +2760,8 @@ private:
             const bool newerRefreshRequested =
                 sessions_.RefreshState(event.widgetId) ==
                     gba::WidgetRefreshState::RefreshRequested;
+            pendingWidgetPresentationImpact_ =
+                std::move(event.presentationImpact);
             CommitAdmittedWidgetPresentation(event.widgetId);
             if (pendingContentRevealWidget_ == event.widgetId) {
                 pendingContentRevealWidget_.clear();
@@ -6872,10 +6876,63 @@ private:
         const CompositionLayerGeometry contentGeometry{
             width, height,
         };
+        std::optional<RECT> contentUpdate;
+        if (pendingWidgetPresentationImpact_ && declarativeRenderer_ &&
+            state_.surface() == gba::Surface::Widget &&
+            IsBridgeWidget(state_.activeWidget())) {
+            const auto* snapshot = InteractionSnapshotFor(state_.activeWidget());
+            const float interfaceScale = appearanceState_.current()
+                ? static_cast<float>(appearanceState_.current()->interfaceScale)
+                : 1.0F;
+            const auto metrics = gba::ComputeOverlayRenderMetrics(
+                static_cast<int>(width), static_cast<int>(height),
+                dpi != 0 ? dpi : 96U, interfaceScale);
+            const auto geometry = metrics
+                ? gba::ComputePanelLocalSurfaceGeometry(
+                    metrics->viewportWidthDip, metrics->viewportHeightDip)
+                : std::nullopt;
+            const auto plan = snapshot && geometry
+                ? declarativeRenderer_->PlanPresentationUpdate(
+                    *snapshot,
+                    *pendingWidgetPresentationImpact_,
+                    {
+                        geometry->widgetViewportX,
+                        geometry->widgetViewportY,
+                        geometry->widgetViewportWidth,
+                        geometry->widgetViewportHeight,
+                    })
+                : std::nullopt;
+            if (plan && metrics && metrics->physicalPixelsPerDip > 0.0F) {
+                const auto scale = metrics->physicalPixelsPerDip;
+                RECT update{
+                    static_cast<LONG>(std::floor(plan->damage.x * scale)),
+                    static_cast<LONG>(std::floor(plan->damage.y * scale)),
+                    static_cast<LONG>(std::ceil(
+                        (plan->damage.x + plan->damage.width) * scale)),
+                    static_cast<LONG>(std::ceil(
+                        (plan->damage.y + plan->damage.height) * scale)),
+                };
+                update.left = std::clamp<LONG>(
+                    update.left, 0, static_cast<LONG>(width));
+                update.top = std::clamp<LONG>(
+                    update.top, 0, static_cast<LONG>(height));
+                update.right = std::clamp<LONG>(
+                    update.right, update.left, static_cast<LONG>(width));
+                update.bottom = std::clamp<LONG>(
+                    update.bottom, update.top, static_cast<LONG>(height));
+                if (update.right > update.left && update.bottom > update.top)
+                    contentUpdate = update;
+            }
+            if (!contentUpdate)
+                declarativeRenderer_->CancelPresentationUpdatePlan();
+        } else if (declarativeRenderer_) {
+            declarativeRenderer_->CancelPresentationUpdatePlan();
+        }
         if (!RenderCompositionLayer(
                 width, height, dpi,
                 gba::OverlayCompositionSurface::Layer::Content,
-                CompositionPaintLayer::Content, contentGeometry, nullptr, set,
+                CompositionPaintLayer::Content, contentGeometry,
+                contentUpdate ? &*contentUpdate : nullptr, set,
                 &*trayLayout)) {
             return false;
         }
@@ -6933,6 +6990,7 @@ private:
             L"DirectComposition presentation disabled; using HWND fallback: " +
             std::wstring(reason));
         DiscardGraphicsResources();
+        pendingWidgetPresentationImpact_.reset();
         gba::shell::ResetFixedChromeComposition(
             compositionSurface_, chromeWindow_);
         chromeAccessibilityProvider_.Clear();
@@ -7034,6 +7092,7 @@ private:
                 L" geometry=unchanged");
         }
         if (performanceCountersActive_) ++performanceSuccessfulFrames_;
+        pendingWidgetPresentationImpact_.reset();
         BeginOpenAfterSuccessfulPaint();
         return true;
     }
@@ -7089,6 +7148,7 @@ private:
             ReprimeOpenAfterRenderTargetLoss();
         } else if (SUCCEEDED(result)) {
             if (performanceCountersActive_) ++performanceSuccessfulFrames_;
+            pendingWidgetPresentationImpact_.reset();
             BeginOpenAfterSuccessfulPaint();
         }
         EndPaint(window_, &paint);
@@ -8179,6 +8239,8 @@ private:
     bool runtimeInitialized_{};
     std::unordered_map<std::wstring, long long> renderedSnapshotSequences_;
     gba::RenderResult lastWidgetRenderResult_;
+    std::optional<gba::WidgetPresentationImpact>
+        pendingWidgetPresentationImpact_;
     bool declarativeMotionActive_{};
     gba::OverlayTransitionTimeline overlayTransition_;
     gba::OverlayTransitionSample overlayTransitionSample_{};

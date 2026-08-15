@@ -153,6 +153,7 @@ struct WidgetSessionEvent final {
     WidgetLifecycleState lifecycle{WidgetLifecycleState::Background};
     WidgetSessionCompletionDisposition completionDisposition{
         WidgetSessionCompletionDisposition::None};
+    std::optional<WidgetPresentationImpact> presentationImpact;
 };
 
 template <typename Value>
@@ -182,7 +183,7 @@ struct WidgetSessionOperations final {
         std::stop_token, std::wstring_view, WidgetLifecycleState)> setLifecycle;
     std::function<WidgetSessionOperationResult<WidgetPresentationPublication>(
         std::stop_token, std::wstring_view, long long, bool)> getSnapshot;
-    std::function<WidgetSessionOperationResult<WidgetSnapshot>(
+    std::function<WidgetSessionOperationResult<WidgetPresentationMaterialization>(
         const WidgetSnapshot&, const WidgetPresentationUpdate&, std::wstring_view)>
         materializeUpdate;
     std::function<WidgetSessionOperationResult<bool>(
@@ -316,6 +317,7 @@ private:
         std::optional<std::vector<WidgetDescriptor>> descriptors;
         std::optional<WidgetSnapshot> snapshot;
         std::optional<WidgetPresentationUpdate> update;
+        std::optional<WidgetPresentationImpact> presentationImpact;
         std::optional<bool> acknowledged;
         std::uint64_t completedAt{};
         bool cancelled{};

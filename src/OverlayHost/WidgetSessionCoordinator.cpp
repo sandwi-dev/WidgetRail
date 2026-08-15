@@ -235,10 +235,13 @@ std::vector<WidgetSessionEvent> WidgetSessionCoordinator::TakeEvents() {
                 auto materialized = operations_.materializeUpdate(
                     *checkpoint, *completion.update,
                     completionDescriptor->presentationGeneration);
-                if (materialized.value)
-                    candidate = std::move(*materialized.value);
-                else
+                if (materialized.value) {
+                    candidate = std::move(materialized.value->snapshot);
+                    completion.presentationImpact =
+                        std::move(materialized.value->impact);
+                } else {
                     updateError = std::move(materialized.safeError);
+                }
             }
             if (candidate) {
                 completion.snapshot = std::move(*candidate);
@@ -356,6 +359,7 @@ std::vector<WidgetSessionEvent> WidgetSessionCoordinator::TakeEvents() {
                 lifecycleStates_.insert_or_assign(request.widgetId, request.lifecycle);
             auto event = makeEvent(WidgetSessionEventKind::SnapshotAdmitted);
             event.completedRestart = awaitingRestartSnapshot_.erase(request.widgetId) > 0;
+            event.presentationImpact = std::move(completion.presentationImpact);
             events.push_back(std::move(event));
             continue;
         }

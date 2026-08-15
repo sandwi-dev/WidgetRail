@@ -99,6 +99,16 @@ struct ImagePlacement final {
     declarative::Rect source;
 };
 
+enum class IncrementalPresentationWork {
+    PaintOnly,
+    LocalLayout,
+};
+
+struct IncrementalPresentationPlan final {
+    IncrementalPresentationWork work{IncrementalPresentationWork::PaintOnly};
+    declarative::Rect damage;
+};
+
 struct DeclarativeRenderOptions final {
     float pixelScale{1.0F};
     float rootFontSizePx{16.0F};
@@ -171,6 +181,17 @@ public:
         declarative::Rect viewport,
         const DeclarativeRenderOptions& options = {});
 
+    /// Binds one admitted update to the last complete renderer checkpoint.
+    /// A missing plan means the caller must conservatively repaint/re-layout
+    /// the complete content surface. The next matching Render consumes it.
+    [[nodiscard]] std::optional<IncrementalPresentationPlan>
+    PlanPresentationUpdate(
+        const WidgetSnapshot& snapshot,
+        const WidgetPresentationImpact& impact,
+        declarative::Rect viewport);
+
+    void CancelPresentationUpdatePlan() noexcept;
+
     /// Performs the one bounded intrinsic host pass used only by an explicit
     /// Content surface axis. It shares native style, DirectWrite leaf
     /// measurement, responsive visibility, and Taffy tree preparation with
@@ -211,6 +232,26 @@ private:
         Failed,
         TrustedArtworkUnavailable,
     };
+    struct IncrementalNodeState final {
+        declarative::Rect paintBounds;
+        std::wstring safeBoundaryId;
+        std::wstring parentId;
+    };
+    struct IncrementalLayoutCache final {
+        std::wstring instanceId;
+        long long sequence{};
+        declarative::Rect viewport;
+        declarative::LayoutResult layout;
+        std::map<std::wstring, IncrementalNodeState, std::less<>> nodes;
+    };
+    struct PendingIncrementalPlan final {
+        std::wstring instanceId;
+        long long baseSequence{};
+        long long sequence{};
+        IncrementalPresentationWork work{IncrementalPresentationWork::PaintOnly};
+        declarative::Rect damage;
+        std::vector<std::wstring> layoutBoundaries;
+    };
     struct ScrollStateEntry final {
         float offset{};
         std::uint64_t lastAccess{};
@@ -243,6 +284,8 @@ private:
     std::unordered_map<std::wstring, ScrollStateEntry> scrollOffsets_;
     std::uint64_t scrollStateAccessClock_{};
     DeclarativeMotionTimeline motionTimeline_;
+    std::optional<IncrementalLayoutCache> incrementalLayoutCache_;
+    std::optional<PendingIncrementalPlan> pendingIncrementalPlan_;
 };
 
 } // namespace gba

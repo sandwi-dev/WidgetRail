@@ -404,6 +404,53 @@ struct WidgetPresentationUpdate final {
     std::wstring renderStylesJson;
 };
 
+enum class WidgetPresentationEffect : std::uint32_t {
+    None = 0,
+    Authority = 1U << 0,
+    Paint = 1U << 1,
+    MeasureLayout = 1U << 2,
+    Accessibility = 1U << 3,
+    Interaction = 1U << 4,
+    Resource = 1U << 5,
+    SurfacePlacement = 1U << 6,
+    Structure = 1U << 7,
+    Unknown = 1U << 8,
+};
+
+[[nodiscard]] constexpr WidgetPresentationEffect operator|(
+    const WidgetPresentationEffect left,
+    const WidgetPresentationEffect right) noexcept {
+    return static_cast<WidgetPresentationEffect>(
+        static_cast<std::uint32_t>(left) |
+        static_cast<std::uint32_t>(right));
+}
+
+constexpr WidgetPresentationEffect& operator|=(
+    WidgetPresentationEffect& left,
+    const WidgetPresentationEffect right) noexcept {
+    left = left | right;
+    return left;
+}
+
+[[nodiscard]] constexpr bool HasWidgetPresentationEffect(
+    const WidgetPresentationEffect value,
+    const WidgetPresentationEffect effect) noexcept {
+    return (static_cast<std::uint32_t>(value) &
+            static_cast<std::uint32_t>(effect)) != 0;
+}
+
+struct WidgetPresentationImpact final {
+    long long baseSequence{};
+    long long sequence{};
+    WidgetPresentationEffect effects{WidgetPresentationEffect::None};
+    std::vector<std::wstring> affectedNodeIds;
+};
+
+struct WidgetPresentationMaterialization final {
+    WidgetSnapshot snapshot;
+    WidgetPresentationImpact impact;
+};
+
 struct WidgetPresentationPublication final {
     std::optional<WidgetSnapshot> checkpoint;
     std::optional<WidgetPresentationUpdate> update;
@@ -411,7 +458,8 @@ struct WidgetPresentationPublication final {
 
 /// Builds and validates a complete candidate without mutating the admitted
 /// checkpoint. The session owner publishes the returned value atomically.
-[[nodiscard]] std::optional<WidgetSnapshot> MaterializeWidgetPresentationUpdate(
+[[nodiscard]] std::optional<WidgetPresentationMaterialization>
+MaterializeWidgetPresentationUpdate(
     const WidgetSnapshot& checkpoint,
     const WidgetPresentationUpdate& update,
     std::wstring_view expectedPresentationGeneration,
