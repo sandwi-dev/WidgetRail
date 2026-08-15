@@ -529,22 +529,22 @@ public:
         }
         accessibilityProvider_.Bind(window_, kAccessibilityActionMessage);
         chromeWindow_ = CreateWindowExW(
-            WS_EX_TOOLWINDOW | WS_EX_NOREDIRECTIONBITMAP | WS_EX_NOACTIVATE |
-                WS_EX_TOPMOST,
+            gba::shell::FixedChromeWindowExStyle(),
             kChromeWindowClass,
             L"Game Bar Alternative chrome",
-            WS_POPUP,
+            gba::shell::FixedChromeWindowStyle(),
             CW_USEDEFAULT,
             CW_USEDEFAULT,
             1,
             1,
-            nullptr,
+            window_,
             nullptr,
             instance_,
             this);
         if (!chromeWindow_) {
             return FailWin32(L"CreateWindowExW(chrome)", GetLastError());
         }
+        chromeAccessibilityProvider_.Bind(chromeWindow_, kAccessibilityActionMessage);
         backdropWindow_ = CreateWindowExW(
             WS_EX_TOOLWINDOW | WS_EX_LAYERED | WS_EX_NOACTIVATE | WS_EX_TOPMOST,
             kBackdropWindowClass,
@@ -1210,8 +1210,16 @@ private:
         }
         if (!app) return DefWindowProcW(window, message, wParam, lParam);
         switch (message) {
-        case WM_NCHITTEST:
-            return HTTRANSPARENT;
+        case WM_NCHITTEST: {
+            POINT point{static_cast<LONG>(static_cast<short>(LOWORD(lParam))),
+                        static_cast<LONG>(static_cast<short>(HIWORD(lParam)))};
+            if (!app->compositionChromeSession_ ||
+                !gba::shell::IsFixedChromeHit(
+                    point, app->compositionChromeSession_->guideScreenBounds,
+                    app->compositionChromeSession_->trayScreenBounds))
+                return HTTRANSPARENT;
+            return HTCLIENT;
+        }
         case WM_ERASEBKGND:
             return 1;
         case WM_PAINT: {
@@ -1220,8 +1228,30 @@ private:
             EndPaint(window, &paint);
             return 0;
         }
+        case WM_LBUTTONUP: {
+            POINT point{static_cast<LONG>(static_cast<short>(LOWORD(lParam))),
+                        static_cast<LONG>(static_cast<short>(HIWORD(lParam)))};
+            if (ClientToScreen(window, &point) && ScreenToClient(app->window_, &point))
+                app->HandlePointerActivation(static_cast<float>(point.x),
+                                             static_cast<float>(point.y));
+            return 0;
+        }
+        case WM_SHOWWINDOW:
+            app->chromeAccessibilityProvider_.SetWindowVisible(wParam != FALSE);
+            return DefWindowProcW(window, message, wParam, lParam);
         case WM_GETOBJECT:
-            return app->accessibilityProvider_.HandleWmGetObject(wParam, lParam);
+            if (static_cast<LONG>(lParam) == UiaRootObjectId) {
+                if (!app->accessibilityActive_) {
+                    app->accessibilityActive_ = true;
+                    InvalidateRect(app->window_, nullptr, FALSE);
+                    UpdateWindow(app->window_);
+                }
+                return app->chromeAccessibilityProvider_.HandleWmGetObject(wParam, lParam);
+            }
+            return DefWindowProcW(window, message, wParam, lParam);
+        case kAccessibilityActionMessage:
+            app->HandleAccessibilityActions();
+            return 0;
         default:
             return DefWindowProcW(window, message, wParam, lParam);
         }
@@ -1453,6 +1483,7 @@ private:
             return 0;
         case WM_SETFOCUS:
             accessibilityProvider_.SetWindowFocused(true);
+            chromeAccessibilityProvider_.SetWindowFocused(true);
             if (platform_) {
                 (void)GbaOverlayPlatformSetWindowState(
                     platform_,
@@ -1463,6 +1494,7 @@ private:
             return DefWindowProcW(window_, message, wParam, lParam);
         case WM_KILLFOCUS:
             accessibilityProvider_.SetWindowFocused(false);
+            chromeAccessibilityProvider_.SetWindowFocused(false);
             trayYGesture_.Cancel();
             if (platform_) {
                 (void)GbaOverlayPlatformSetWindowState(
@@ -1816,10 +1848,12 @@ private:
                 AppendDiagnostic(L"Performance runtime diagnostics could not be published");
             }
             accessibilityProvider_.Detach();
+            chromeAccessibilityProvider_.Detach();
             DestroyWindow(window_);
             return 0;
         case WM_DESTROY:
             accessibilityProvider_.Detach();
+            chromeAccessibilityProvider_.Detach();
             PostQuitMessage(0);
             return 0;
         default:
@@ -1852,6 +1886,7 @@ private:
         bridge_.Stop();
         if (window_) {
             accessibilityProvider_.Detach();
+            chromeAccessibilityProvider_.Detach();
             KillTimer(window_, kControllerTimer);
             KillTimer(window_, kGuideCompatibilityTimer);
             KillTimer(window_, kZOrderSettleTimer);
@@ -2970,6 +3005,7 @@ private:
     bool PresentCompositionPlacement(
         const gba::OverlayPlacement& placement,
         const gba::OverlayPlacement& containerPlacement,
+        const RECT& workArea,
         const UINT dpi,
         const bool wasVisible) {
         const unsigned int priorWidth = compositionSurface_.width();
@@ -2979,11 +3015,7 @@ private:
             explicit PlacementGuard(bool& value) : active(value) { active = true; }
             ~PlacementGuard() { active = false; }
         } guard(compositionPlacementInProgress_);
-        const HMONITOR chromeMonitor = MonitorFromWindow(
-            window_, MONITOR_DEFAULTTONEAREST);
-        MONITORINFO chromeMonitorInfo{sizeof(chromeMonitorInfo)};
-        if (!chromeMonitor || !GetMonitorInfoW(chromeMonitor, &chromeMonitorInfo) ||
-            !EnsureCompositionChromeSession(dpi, chromeMonitorInfo.rcWork)) {
+        if (!EnsureCompositionChromeSession(dpi, workArea)) {
             DisableCompositionFallback(L"session chrome layout unavailable");
             return false;
         }
@@ -3223,7 +3255,7 @@ private:
         BOOL overlayPlaced = FALSE;
         if (compositionSurface_.available()) {
             overlayPlaced = PresentCompositionPlacement(
-                *placement, *compositionContainer, dpi, wasVisible) ? TRUE : FALSE;
+                *placement, *compositionContainer, work, dpi, wasVisible) ? TRUE : FALSE;
         }
         if (!compositionSurface_.available()) {
             const UINT overlayPlacementFlags = SWP_SHOWWINDOW | SWP_NOACTIVATE |
@@ -3279,7 +3311,8 @@ private:
         if (!wasVisible) {
             ShowWindow(backdropWindow_, SW_SHOWNOACTIVATE);
             ShowWindow(window_, SW_SHOWNORMAL);
-            ShowWindow(chromeWindow_, SW_SHOWNOACTIVATE);
+            ShowWindow(chromeWindow_, compositionSurface_.available()
+                ? SW_SHOWNOACTIVATE : SW_HIDE);
         }
         if (!wasVisible) {
             // Activation is one best-effort show-time request. Controller
@@ -3749,8 +3782,7 @@ private:
         if (spaces.content.containerWidth == 0) return std::nullopt;
         auto result = spaces;
         RECT windowBounds{};
-        if (compositionChromeSession_ && chromeWindow_ &&
-            GetWindowRect(chromeWindow_, &windowBounds)) {
+        if (compositionChromeSession_ && window_ && GetWindowRect(window_, &windowBounds)) {
             result.guideOffsetX = static_cast<float>(
                 compositionChromeSession_->guideScreenBounds.left - windowBounds.left);
             result.guideOffsetY = static_cast<float>(
@@ -4738,7 +4770,12 @@ private:
     }
 
     void HandleAccessibilityActions() {
-        for (const auto& request : accessibilityProvider_.TakeActions()) {
+        auto pendingActions = accessibilityProvider_.TakeActions();
+        auto chromeActions = chromeAccessibilityProvider_.TakeActions();
+        pendingActions.insert(pendingActions.end(),
+                              std::make_move_iterator(chromeActions.begin()),
+                              std::make_move_iterator(chromeActions.end()));
+        for (const auto& request : pendingActions) {
             const auto publishedNode = std::find_if(
                 accessibilityTree_.nodes.begin(), accessibilityTree_.nodes.end(),
                 [&](const gba::accessibility::Node& candidate) {
@@ -4906,14 +4943,35 @@ private:
             }
         }
         accessibilityProvider_.RaisePendingEvents();
+        chromeAccessibilityProvider_.RaisePendingEvents();
     }
 
     void ClearAccessibilityTree() noexcept {
         accessibilityTree_ = {};
         widgetAccessibilityTree_ = {};
         accessibilityProvider_.Clear();
+        chromeAccessibilityProvider_.Clear();
         accessibilityProjection_.Clear();
         widgetAccessibilityProjection_.Clear();
+    }
+
+    [[nodiscard]] gba::accessibility::Tree PartitionAccessibilityTree(
+        const bool chrome) const {
+        if (!compositionChromeSession_) {
+            if (!chrome) return accessibilityTree_;
+            gba::accessibility::Tree empty;
+            empty.widgetId = accessibilityTree_.widgetId;
+            empty.runtimeGeneration = accessibilityTree_.runtimeGeneration;
+            empty.snapshotSequence = accessibilityTree_.snapshotSequence;
+            empty.activeInputScopeId = accessibilityTree_.activeInputScopeId;
+            empty.name = accessibilityTree_.name;
+            return empty;
+        }
+        const auto& session = *compositionChromeSession_;
+        auto partition = gba::accessibility::PartitionForFixedChrome(
+            accessibilityTree_, session.guideBounds.y,
+            session.windowLogicalOriginX, session.windowLogicalOriginY);
+        return chrome ? std::move(partition.chrome) : std::move(partition.content);
     }
 
     bool PublishAccessibilityTree(
@@ -4933,15 +4991,7 @@ private:
         double visualOffsetY = 0.0;
         double presentedWidth = static_cast<double>(client.right - client.left);
         double presentedHeight = static_cast<double>(client.bottom - client.top);
-        double chromeOffsetX = 0.0;
-        double chromeOffsetY = 0.0;
         const auto childSpaces = CurrentCompositionChildCoordinates();
-        const bool independentChrome = childSpaces.has_value() &&
-            state_.surface() == gba::Surface::Widget;
-        if (childSpaces) {
-            chromeOffsetX = childSpaces->chromeOffsetX;
-            chromeOffsetY = childSpaces->chromeOffsetY;
-        }
         if (childSpaces) {
             const auto& motion = childSpaces->content;
             const auto& contentPlacement = presentationTransaction_.contentPlacement();
@@ -4958,12 +5008,8 @@ private:
             presentedHeight = static_cast<double>(
                 contentPlacement->height) * motion.scaleY;
         }
-        if (independentChrome) {
-            presentedWidth = static_cast<double>(client.right - client.left);
-            presentedHeight = static_cast<double>(client.bottom - client.top);
-        }
         accessibilityProvider_.Publish(
-            accessibilityTree_,
+            PartitionAccessibilityTree(false),
             {
                 static_cast<double>(origin.x),
                 static_cast<double>(origin.y),
@@ -4974,10 +5020,28 @@ private:
                 scaleY,
                 visualOffsetX,
                 visualOffsetY,
-                chromeOffsetX,
-                chromeOffsetY,
-                independentChrome,
+                0.0,
+                0.0,
+                false,
             });
+        if (compositionChromeSession_ && chromeWindow_) {
+            POINT chromeOrigin{};
+            RECT chromeClient{};
+            if (!ClientToScreen(chromeWindow_, &chromeOrigin) ||
+                !GetClientRect(chromeWindow_, &chromeClient)) return false;
+            const auto& session = *compositionChromeSession_;
+            chromeAccessibilityProvider_.Publish(
+                PartitionAccessibilityTree(true),
+                {
+                    static_cast<double>(chromeOrigin.x),
+                    static_cast<double>(chromeOrigin.y),
+                    session.pixelsPerDip,
+                    static_cast<double>(chromeClient.right - chromeClient.left),
+                    static_cast<double>(chromeClient.bottom - chromeClient.top),
+                    session.pixelsPerDip,
+                    session.pixelsPerDip,
+                });
+        }
         return true;
     }
 
@@ -6112,6 +6176,10 @@ private:
         RECT trayScreenBounds{};
         RECT guideScreenBounds{};
         RECT windowBounds{};
+        RECT workArea{};
+        gba::shell::FixedChromeSessionKey key;
+        float windowLogicalOriginX{};
+        float windowLogicalOriginY{};
     };
 
     [[nodiscard]] static RECT PhysicalCrop(
@@ -6148,17 +6216,21 @@ private:
         const UINT dpi,
         const RECT& workArea) {
         const UINT effectiveDpi = dpi != 0 ? dpi : 96U;
-        if (compositionChromeSession_ &&
-            compositionChromeSession_->dpi == effectiveDpi &&
-            compositionChromeSession_->appearanceRevision ==
-                static_cast<std::uint64_t>(std::max<long long>(0,
-                    appearanceState_.current()
-                        ? appearanceState_.current()->revision : 0))) {
-            return true;
-        }
         const float interfaceScale = appearanceState_.current()
             ? static_cast<float>(appearanceState_.current()->interfaceScale)
             : 1.0F;
+        gba::shell::FixedChromeSessionKey key{
+            workArea,
+            effectiveDpi,
+            interfaceScale,
+            static_cast<std::uint64_t>(std::max<long long>(0,
+                appearanceState_.current()
+                    ? appearanceState_.current()->revision : 0)),
+            state_.order(),
+        };
+        if (compositionChromeSession_ &&
+            gba::shell::SameFixedChromeSession(
+                compositionChromeSession_->key, key)) return true;
         const auto metrics = gba::ComputeOverlayRenderMetrics(
             workArea.right - workArea.left, workArea.bottom - workArea.top, effectiveDpi,
             interfaceScale);
@@ -6171,9 +6243,8 @@ private:
         session.canvasWidth = static_cast<unsigned int>(workArea.right - workArea.left);
         session.canvasHeight = static_cast<unsigned int>(workArea.bottom - workArea.top);
         session.dpi = effectiveDpi;
-        session.appearanceRevision = static_cast<std::uint64_t>(
-            std::max<long long>(0, appearanceState_.current()
-                ? appearanceState_.current()->revision : 0));
+        session.workArea = workArea;
+        session.key = std::move(key);
         session.pixelsPerDip = metrics->physicalPixelsPerDip;
         session.trayLayout = *layout;
         session.guideBounds = {
@@ -6207,18 +6278,16 @@ private:
             session.trayScreenBounds.left + (trayWidth + guideWidth) / 2,
             session.trayScreenBounds.top,
         };
-        session.windowBounds = {
-            std::min(session.trayScreenBounds.left, session.guideScreenBounds.left),
-            session.guideScreenBounds.top,
-            std::max(session.trayScreenBounds.right, session.guideScreenBounds.right),
-            session.trayScreenBounds.bottom,
-        };
-        if (!chromeWindow_ || !SetWindowPos(
-                chromeWindow_, HWND_TOPMOST, session.windowBounds.left,
-                session.windowBounds.top,
-                session.windowBounds.right - session.windowBounds.left,
-                session.windowBounds.bottom - session.windowBounds.top,
-                SWP_NOACTIVATE | SWP_SHOWWINDOW)) {
+        const LONG chromeWidth = std::max(trayWidth, guideWidth);
+        const LONG chromeHeight = trayHeight + guideHeight;
+        session.windowBounds = gba::shell::ComputeFixedChromeWindowBounds(
+            workArea, chromeWidth, chromeHeight);
+        session.windowLogicalOriginX = static_cast<float>(
+            session.windowBounds.left - workArea.left) / session.pixelsPerDip;
+        session.windowLogicalOriginY = static_cast<float>(
+            session.windowBounds.top - workArea.top) / session.pixelsPerDip;
+        if (!gba::shell::ApplyFixedChromeWindow(
+                window_, chromeWindow_, session.windowBounds, true)) {
             AppendDiagnostic(L"Fixed chrome placement failed error=" +
                              std::to_wstring(GetLastError()));
             return false;
@@ -6405,6 +6474,7 @@ private:
         std::uint64_t& drawMicroseconds) {
         static_cast<void>(destinationOffsetX);
         static_cast<void>(destinationOffsetY);
+        static_cast<void>(containerPlacement);
         const auto started = std::chrono::steady_clock::now();
         set = {};
         const bool replaceContent = !compositionSurface_.hasContent(
@@ -6423,11 +6493,9 @@ private:
             return false;
         }
 
-        const HMONITOR monitor = MonitorFromWindow(window_, MONITOR_DEFAULTTONEAREST);
-        MONITORINFO monitorInfo{sizeof(monitorInfo)};
-        if (!monitor || !GetMonitorInfoW(monitor, &monitorInfo) ||
-            !EnsureCompositionChromeSession(dpi, monitorInfo.rcWork) ||
-            !compositionChromeSession_) return false;
+        if (!compositionChromeSession_ ||
+            !EnsureCompositionChromeSession(
+                dpi, compositionChromeSession_->workArea)) return false;
         const auto& chromeSession = *compositionChromeSession_;
         const float sessionScale = appearanceState_.current()
             ? static_cast<float>(appearanceState_.current()->interfaceScale)
@@ -6509,6 +6577,8 @@ private:
             std::wstring(reason));
         DiscardGraphicsResources();
         compositionSurface_.Reset();
+        ShowWindow(chromeWindow_, SW_HIDE);
+        chromeAccessibilityProvider_.Clear();
         retainedGuidePaintKey_.clear();
         retainedTrayPaintState_.reset();
         compositionChromeSession_.reset();
@@ -7695,6 +7765,7 @@ private:
     gba::accessibility::Tree widgetAccessibilityTree_;
     gba::accessibility::OpenWidgetSemantics openWidgetAccessibility_;
     gba::accessibility::ProviderHost accessibilityProvider_;
+    gba::accessibility::ProviderHost chromeAccessibilityProvider_;
     bool accessibilityActive_{};
     gba::accessibility::ProjectionTracker accessibilityProjection_;
     gba::accessibility::ProjectionTracker widgetAccessibilityProjection_;

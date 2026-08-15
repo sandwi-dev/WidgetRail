@@ -542,6 +542,7 @@ function Invoke-TrayAccessibilityTests {
         (Join-Path $projectDirectory 'AccessibilityProviderTests.cpp'),
         (Join-Path $projectDirectory 'AccessibilityProvider.cpp'),
         (Join-Path $projectDirectory 'AccessibilityEvents.cpp'),
+        (Join-Path $projectDirectory 'AccessibilityTree.cpp'),
         "/Fo:$accessibilityProviderTestObjectDirectory\",
         "/Fe:$outputDirectory\AccessibilityProviderTests.exe",
         '/link', '/SUBSYSTEM:CONSOLE'
@@ -666,7 +667,7 @@ function Invoke-CompositionTests {
         "/Fo:$chromeTestObjectDirectory\",
         "/Fe:$outputDirectory\OverlayChromeTests.exe",
         '/link', '/SUBSYSTEM:CONSOLE'
-    ) + $libraryArguments + @('d2d1.lib', 'windowscodecs.lib', 'ole32.lib')
+    ) + $libraryArguments + @('d2d1.lib', 'windowscodecs.lib', 'ole32.lib', 'user32.lib')
     & $cl $chromeArguments
     if ($LASTEXITCODE -ne 0) {
         throw "OverlayChromeTests build failed with exit code $LASTEXITCODE."
@@ -680,6 +681,7 @@ function Invoke-CompositionTests {
         (Join-Path $projectDirectory 'AccessibilityProviderTests.cpp'),
         (Join-Path $projectDirectory 'AccessibilityProvider.cpp'),
         (Join-Path $projectDirectory 'AccessibilityEvents.cpp'),
+        (Join-Path $projectDirectory 'AccessibilityTree.cpp'),
         "/Fo:$accessibilityProviderTestObjectDirectory\",
         "/Fe:$outputDirectory\AccessibilityProviderTests.exe",
         '/link', '/SUBSYSTEM:CONSOLE'
@@ -2039,7 +2041,7 @@ if (-not $SkipTests) {
         "/Fo:$chromeTestObjectDirectory\",
         "/Fe:$outputDirectory\OverlayChromeTests.exe",
         '/link', '/SUBSYSTEM:CONSOLE'
-    ) + $libraryArguments + @('d2d1.lib', 'windowscodecs.lib', 'ole32.lib')
+    ) + $libraryArguments + @('d2d1.lib', 'windowscodecs.lib', 'ole32.lib', 'user32.lib')
     & $cl $chromeTestArguments
     if ($LASTEXITCODE -ne 0) {
         throw "OverlayChromeTests build failed with exit code $LASTEXITCODE."
@@ -2213,6 +2215,7 @@ if (-not $SkipTests) {
         (Join-Path $projectDirectory 'AccessibilityProviderTests.cpp'),
         (Join-Path $projectDirectory 'AccessibilityProvider.cpp'),
         (Join-Path $projectDirectory 'AccessibilityEvents.cpp'),
+        (Join-Path $projectDirectory 'AccessibilityTree.cpp'),
         "/Fo:$accessibilityProviderTestObjectDirectory\",
         "/Fe:$outputDirectory\AccessibilityProviderTests.exe",
         '/link', '/SUBSYSTEM:CONSOLE'

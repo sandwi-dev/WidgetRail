@@ -7,6 +7,16 @@
 namespace gba::accessibility {
 namespace {
 
+Tree TreeMetadata(const Tree& source) {
+    Tree result;
+    result.widgetId = source.widgetId;
+    result.runtimeGeneration = source.runtimeGeneration;
+    result.snapshotSequence = source.snapshotSequence;
+    result.activeInputScopeId = source.activeInputScopeId;
+    result.name = source.name;
+    return result;
+}
+
 std::optional<Role> ResolveRole(const WidgetNode& node) noexcept {
     if (node.kind == L"button" || node.kind == L"actionSurface" ||
         node.kind == L"textEntry") return Role::Button;
@@ -23,6 +33,57 @@ std::wstring_view AccessibleName(const WidgetNode& node) noexcept {
 }
 
 } // namespace
+
+WindowTreePartition PartitionForFixedChrome(
+    const Tree& source,
+    const float guideTop,
+    const float chromeOriginX,
+    const float chromeOriginY) {
+    WindowTreePartition result{TreeMetadata(source), TreeMetadata(source)};
+    std::vector<std::optional<std::size_t>> contentRemap(source.nodes.size());
+    std::vector<std::optional<std::size_t>> chromeRemap(source.nodes.size());
+
+    for (std::size_t index = 0; index < source.nodes.size(); ++index) {
+        const auto& node = source.nodes[index];
+        const bool chrome = node.domain == ElementDomain::Tray ||
+            (node.domain == ElementDomain::HostShell && node.bounds.y >= guideTop);
+        auto& tree = chrome ? result.chrome : result.content;
+        auto& remap = chrome ? chromeRemap : contentRemap;
+        remap[index] = tree.nodes.size();
+        auto copy = node;
+        copy.parent.reset();
+        copy.children.clear();
+        if (chrome) {
+            copy.bounds.x -= chromeOriginX;
+            copy.bounds.y -= chromeOriginY;
+        }
+        tree.nodes.push_back(std::move(copy));
+    }
+
+    const auto reconnect = [&](Tree& tree,
+                               const std::vector<std::optional<std::size_t>>& remap) {
+        for (std::size_t index = 0; index < source.nodes.size(); ++index) {
+            if (!remap[index]) continue;
+            auto& copy = tree.nodes[*remap[index]];
+            const auto& original = source.nodes[index];
+            if (original.parent && *original.parent < remap.size() &&
+                remap[*original.parent]) {
+                copy.parent = *remap[*original.parent];
+            }
+            for (const auto child : original.children) {
+                if (child < remap.size() && remap[child])
+                    copy.children.push_back(*remap[child]);
+            }
+        }
+        if (source.focusedNode && *source.focusedNode < remap.size() &&
+            remap[*source.focusedNode]) {
+            tree.focusedNode = *remap[*source.focusedNode];
+        }
+    };
+    reconnect(result.content, contentRemap);
+    reconnect(result.chrome, chromeRemap);
+    return result;
+}
 
 Tree BuildWidgetTree(
     std::wstring widgetId,

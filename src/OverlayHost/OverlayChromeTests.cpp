@@ -207,6 +207,125 @@ void CheckRetainedTrayInvalidation() {
           "appearance revision rebuilds the tray child surface");
 }
 
+LRESULT CALLBACK FixedChromeTestWindowProc(
+    HWND window, UINT message, WPARAM wParam, LPARAM lParam) {
+    return DefWindowProcW(window, message, wParam, lParam);
+}
+
+void CheckFixedChromeWindowPolicy() {
+    Check(gba::shell::FixedChromeWindowStyle() == WS_POPUP,
+          "fixed chrome is a popup endpoint");
+    const auto expectedExStyle = WS_EX_TOOLWINDOW | WS_EX_NOREDIRECTIONBITMAP |
+        WS_EX_NOACTIVATE | WS_EX_TOPMOST;
+    Check(gba::shell::FixedChromeWindowExStyle() == expectedExStyle,
+          "fixed chrome is non-activating, topmost, and absent from task switching");
+
+    const RECT oddWork{0, 0, 2185, 1400};
+    const RECT evenWork{0, 0, 2186, 1400};
+    const auto odd747 = gba::shell::ComputeFixedChromeWindowBounds(oddWork, 747, 141);
+    const auto odd748 = gba::shell::ComputeFixedChromeWindowBounds(oddWork, 748, 141);
+    const auto even747 = gba::shell::ComputeFixedChromeWindowBounds(evenWork, 747, 141);
+    const auto even748 = gba::shell::ComputeFixedChromeWindowBounds(evenWork, 748, 141);
+    Check(odd747.right - odd747.left == 747 && odd748.right - odd748.left == 748 &&
+              even747.right - even747.left == 747 && even748.right - even748.left == 748,
+          "fractional-DPI parity keeps the authored physical chrome width exact");
+    Check(odd747.bottom == oddWork.bottom && odd748.bottom == oddWork.bottom &&
+              even747.bottom == evenWork.bottom && even748.bottom == evenWork.bottom,
+          "odd and even work areas retain one physical bottom anchor");
+    const gba::shell::FixedChromeSessionKey session{
+        oddWork, 144, 1.0, 7, {L"settings", L"network"}};
+    Check(gba::shell::SameFixedChromeSession(session, session),
+          "equal applied work-area and catalog authority reuses fixed chrome");
+    auto changedWork = session;
+    changedWork.workArea = {100, 0, 2285, 1400};
+    auto changedCatalog = session;
+    changedCatalog.catalogOrder.push_back(L"audio");
+    auto changedScale = session;
+    changedScale.interfaceScale = 1.25;
+    auto changedAppearance = session;
+    ++changedAppearance.appearanceRevision;
+    Check(!gba::shell::SameFixedChromeSession(session, changedWork) &&
+              !gba::shell::SameFixedChromeSession(session, changedCatalog) &&
+              !gba::shell::SameFixedChromeSession(session, changedScale) &&
+              !gba::shell::SameFixedChromeSession(session, changedAppearance),
+          "work-area, catalog, scale, and appearance changes rebuild fixed chrome");
+
+    const wchar_t className[] = L"GameBarAlternative.FixedChromePolicyTests";
+    WNDCLASSW windowClass{};
+    windowClass.lpfnWndProc = FixedChromeTestWindowProc;
+    windowClass.hInstance = GetModuleHandleW(nullptr);
+    windowClass.lpszClassName = className;
+    Check(RegisterClassW(&windowClass) != 0, "fixed chrome test class registers");
+    HWND content = CreateWindowExW(
+        WS_EX_TOOLWINDOW, className, L"content", WS_POPUP,
+        20, 20, 640, 480, nullptr, nullptr, windowClass.hInstance, nullptr);
+    HWND chrome = CreateWindowExW(
+        gba::shell::FixedChromeWindowExStyle(), className, L"chrome",
+        gba::shell::FixedChromeWindowStyle(), 0, 0, 1, 1,
+        nullptr, nullptr, windowClass.hInstance, nullptr);
+    Check(content && chrome, "content and chrome policy HWNDs are created");
+    ShowWindow(content, SW_SHOWNOACTIVATE);
+    const RECT fixed{720, 900, 1468, 1041};
+    Check(gba::shell::ApplyFixedChromeWindow(content, chrome, fixed, true),
+          "production policy applies the owned chrome rectangle");
+    Check(GetWindow(chrome, GW_OWNER) == content,
+          "chrome HWND has the content session window as its Win32 owner");
+    const auto chromeAboveContent = [&] {
+        for (HWND candidate = GetWindow(content, GW_HWNDPREV);
+             candidate; candidate = GetWindow(candidate, GW_HWNDPREV)) {
+            if (candidate == chrome) return true;
+        }
+        return false;
+    };
+    Check(chromeAboveContent(),
+          "owned chrome remains above its content owner in the real Z order");
+    Check(IsWindowVisible(content) && IsWindowVisible(chrome),
+          "owned content and chrome endpoints are visible as one session");
+    const auto actualExStyle = static_cast<DWORD>(GetWindowLongPtrW(chrome, GWL_EXSTYLE));
+    Check((actualExStyle & expectedExStyle) == expectedExStyle,
+          "applied chrome retains nonactivation and taskbar policy");
+    RECT actual{};
+    Check(GetWindowRect(chrome, &actual) && EqualRect(&actual, &fixed),
+          "applied chrome rectangle equals the external Win32 rectangle");
+
+    constexpr std::array<SIZE, 8> contentExtents{{
+        {592, 698}, {632, 878}, {880, 520}, {760, 440},
+        {1180, 700}, {520, 360}, {978, 466}, {1280, 720},
+    }};
+    for (const auto direction : {1, -1}) {
+        for (int step = 0; step < static_cast<int>(contentExtents.size()); ++step) {
+            const int index = direction > 0 ? step :
+                static_cast<int>(contentExtents.size()) - 1 - step;
+            const auto extent = contentExtents[static_cast<std::size_t>(index)];
+            Check(SetWindowPos(content, HWND_TOPMOST, 40 + step, 50 + step,
+                               extent.cx, extent.cy, SWP_NOACTIVATE) != FALSE,
+                  "content endpoint accepts a distinct authored extent");
+            RECT retained{};
+            Check(GetWindowRect(chrome, &retained) && EqualRect(&retained, &fixed) &&
+                      chromeAboveContent(),
+                  "all eight forward and reverse content extents retain chrome corners");
+        }
+    }
+    ShowWindow(content, SW_HIDE);
+    Check(gba::shell::ApplyFixedChromeWindow(content, chrome, fixed, false) &&
+              !IsWindowVisible(content) && !IsWindowVisible(chrome),
+          "paired hide removes the chrome endpoint");
+    ShowWindow(content, SW_SHOWNOACTIVATE);
+    Check(gba::shell::ApplyFixedChromeWindow(content, chrome, fixed, true) &&
+              GetWindowRect(chrome, &actual) && EqualRect(&actual, &fixed),
+          "reopen with equal inputs restores identical chrome corners");
+    const RECT guide{850, 900, 1338, 950};
+    const RECT tray{720, 950, 1468, 1041};
+    Check(gba::shell::IsFixedChromeHit({900, 920}, guide, tray) &&
+              gba::shell::IsFixedChromeHit({800, 1000}, guide, tray) &&
+              !gba::shell::IsFixedChromeHit({721, 901}, guide, tray),
+          "chrome hit testing admits guide/tray and passes transparent gaps through");
+    DestroyWindow(content);
+    Check(!IsWindow(content) && !IsWindow(chrome),
+          "normal owner close destroys the fixed chrome endpoint");
+    UnregisterClassW(className, windowClass.hInstance);
+}
+
 } // namespace
 
 int main() {
@@ -228,6 +347,7 @@ int main() {
     CheckPremultipliedFrame(d2d.Get(), wic.Get(), 1.0F);
     CheckPremultipliedFrame(d2d.Get(), wic.Get(), 1.5F);
     CheckRetainedTrayInvalidation();
+    CheckFixedChromeWindowPolicy();
     gba::shell::FillColorKeyRoundedRectangle(nullptr, {}, nullptr);
 
     wic.Reset();

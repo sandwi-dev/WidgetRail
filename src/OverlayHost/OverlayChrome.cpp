@@ -2,6 +2,46 @@
 
 namespace gba::shell {
 
+RECT ComputeFixedChromeWindowBounds(
+    const RECT& workArea, const LONG width, const LONG height) noexcept {
+    if (width <= 0 || height <= 0 || workArea.right <= workArea.left ||
+        workArea.bottom <= workArea.top) return {};
+    const LONG availableWidth = workArea.right - workArea.left;
+    const LONG left = workArea.left + (availableWidth - width) / 2;
+    return {left, workArea.bottom - height, left + width, workArea.bottom};
+}
+
+bool IsFixedChromeHit(
+    const POINT screenPoint, const RECT& guideBounds,
+    const RECT& trayBounds) noexcept {
+    return PtInRect(&guideBounds, screenPoint) || PtInRect(&trayBounds, screenPoint);
+}
+
+bool ApplyFixedChromeWindow(
+    const HWND owner, const HWND chrome, const RECT& bounds,
+    const bool show) noexcept {
+    if (!owner || !chrome || !IsWindow(owner) || !IsWindow(chrome) ||
+        bounds.right <= bounds.left || bounds.bottom <= bounds.top) return false;
+    SetLastError(ERROR_SUCCESS);
+    const auto priorOwner = reinterpret_cast<HWND>(SetWindowLongPtrW(
+        chrome, GWLP_HWNDPARENT, reinterpret_cast<LONG_PTR>(owner)));
+    if (!priorOwner && GetLastError() != ERROR_SUCCESS) return false;
+    return SetWindowPos(
+        chrome, HWND_TOPMOST, bounds.left, bounds.top,
+        bounds.right - bounds.left, bounds.bottom - bounds.top,
+        SWP_NOACTIVATE | (show ? SWP_SHOWWINDOW : SWP_HIDEWINDOW)) != FALSE;
+}
+
+bool SameFixedChromeSession(
+    const FixedChromeSessionKey& left,
+    const FixedChromeSessionKey& right) noexcept {
+    return EqualRect(&left.workArea, &right.workArea) &&
+        left.dpi == right.dpi &&
+        left.interfaceScale == right.interfaceScale &&
+        left.appearanceRevision == right.appearanceRevision &&
+        left.catalogOrder == right.catalogOrder;
+}
+
 bool RequiresTrayRepaint(
     const RetainedTrayState* retained,
     const RetainedTrayState& next) noexcept {

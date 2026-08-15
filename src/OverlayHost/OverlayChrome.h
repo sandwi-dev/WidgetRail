@@ -8,6 +8,31 @@
 
 namespace gba::shell {
 
+constexpr DWORD FixedChromeWindowStyle() noexcept { return WS_POPUP; }
+constexpr DWORD FixedChromeWindowExStyle() noexcept {
+    return WS_EX_TOOLWINDOW | WS_EX_NOREDIRECTIONBITMAP |
+        WS_EX_NOACTIVATE | WS_EX_TOPMOST;
+}
+
+[[nodiscard]] RECT ComputeFixedChromeWindowBounds(
+    const RECT& workArea, LONG width, LONG height) noexcept;
+[[nodiscard]] bool IsFixedChromeHit(
+    POINT screenPoint, const RECT& guideBounds, const RECT& trayBounds) noexcept;
+[[nodiscard]] bool ApplyFixedChromeWindow(
+    HWND owner, HWND chrome, const RECT& bounds, bool show) noexcept;
+
+struct FixedChromeSessionKey final {
+    RECT workArea{};
+    UINT dpi{96};
+    double interfaceScale{1.0};
+    std::uint64_t appearanceRevision{};
+    std::vector<std::wstring> catalogOrder;
+};
+
+[[nodiscard]] bool SameFixedChromeSession(
+    const FixedChromeSessionKey& left,
+    const FixedChromeSessionKey& right) noexcept;
+
 enum class OuterChromeBoundary {
     ColorKeyAliased,
     PremultipliedAlpha,
