@@ -1,12 +1,72 @@
 #pragma once
 
-#include <d2d1.h>
+#include <d2d1_1.h>
 
 #include <cstdint>
 #include <string>
 #include <vector>
 
+namespace gba {
+class OverlayCompositionSurface;
+}
+
 namespace gba::shell {
+
+constexpr DWORD FixedChromeWindowStyle() noexcept { return WS_POPUP; }
+constexpr DWORD FixedChromeWindowExStyle() noexcept {
+    return WS_EX_TOOLWINDOW | WS_EX_NOREDIRECTIONBITMAP |
+        WS_EX_NOACTIVATE | WS_EX_TOPMOST;
+}
+
+[[nodiscard]] RECT ComputeFixedChromeWindowBounds(
+    const RECT& workArea, LONG width, LONG height) noexcept;
+[[nodiscard]] bool IsFixedChromeHit(
+    POINT screenPoint, const RECT& guideBounds, const RECT& trayBounds) noexcept;
+[[nodiscard]] bool ApplyFixedChromeWindow(
+    HWND owner, HWND chrome, const RECT& bounds, bool show) noexcept;
+
+using FixedChromeTargetInitializer = bool (*)(
+    OverlayCompositionSurface&, HWND, std::wstring&);
+
+/// Initializes the content and chrome targets as one recoverable endpoint pair.
+/// The optional initializer is an internal policy seam used to deterministically
+/// exercise second-target failure; production passes the default.
+[[nodiscard]] bool InitializeFixedChromeComposition(
+    OverlayCompositionSurface& surface,
+    HWND content,
+    HWND chrome,
+    ID2D1Factory1* factory,
+    std::wstring& error,
+    FixedChromeTargetInitializer initializeChrome = nullptr);
+
+/// Atomically makes the paired composition endpoints unavailable to callers
+/// before hiding the companion chrome HWND during fallback/device recovery.
+void ResetFixedChromeComposition(
+    OverlayCompositionSurface& surface, HWND chrome) noexcept;
+
+using FixedChromePointerActivation = void (*)(
+    void* context, float contentClientX, float contentClientY) noexcept;
+
+/// Maps a real chrome-client pointer release into the content HWND coordinate
+/// space and forwards it to the existing sole activation owner.
+[[nodiscard]] bool RouteFixedChromePointerRelease(
+    HWND chrome,
+    HWND content,
+    LPARAM position,
+    void* context,
+    FixedChromePointerActivation activate) noexcept;
+
+struct FixedChromeSessionKey final {
+    RECT workArea{};
+    UINT dpi{96};
+    double interfaceScale{1.0};
+    std::uint64_t appearanceRevision{};
+    std::vector<std::wstring> catalogOrder;
+};
+
+[[nodiscard]] bool SameFixedChromeSession(
+    const FixedChromeSessionKey& left,
+    const FixedChromeSessionKey& right) noexcept;
 
 enum class OuterChromeBoundary {
     ColorKeyAliased,

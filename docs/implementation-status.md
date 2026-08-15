@@ -5004,3 +5004,70 @@ still emits its one truthful slow marker. The focused Release route also passes
 (305 checks). A native Release compile succeeds. This remains observability
 only: no lifecycle behavior, protocol, rendering, focus, or input authority
 changed.
+
+### Fixed chrome companion correction (DLV-244)
+
+The fixed guide/tray endpoint is now an owned, topmost, non-activating tool
+popup of the existing content/session HWND. The existing window procedure keeps
+the sole pointer owner: guide/tray pixels return `HTCLIENT`, transparent gaps
+pass through, and a tray release is transformed back to the content owner's
+established activation path. Ordinary show, hide, close, initialization
+fallback, composition failure, and shutdown reconcile the content/chrome pair;
+the fallback hides the independent chrome endpoint before legacy content-window
+rendering resumes.
+
+One canonical semantic tree is partitioned into content and chrome endpoint
+trees. Each element is published once, each `ProviderHost` is bound to its real
+HWND, chrome bounds are made local before the chrome root applies its screen
+transform, and both action queues return to the existing logical action/focus
+owner. Content UIA now follows only the animated content transform; fixed tray
+focus and actions remain on the identity-scaled chrome root.
+
+The retained chrome-session key now includes the applied work area, DPI,
+interface/accessibility scale, appearance revision, and exact catalog order.
+Content resize or widget identity alone cannot move it, while same-DPI monitor
+work-area changes and installed/order changes rebuild the crop and placement.
+Direct real-HWND policy evidence covers owned-popup styles and lifecycle, eight
+distinct content extents forward and reverse, hide/reopen, exact odd/even
+fractional-DPI bounds, hit/pass-through regions, and work-area/catalog/scale/
+appearance invalidation. Direct real UIA client evidence proves distinct
+content and chrome roots, exact HWND screen rectangles, single publication of
+tray semantics, and chrome-only logical tray focus.
+
+The final focused Release composition group passes placement 112,333/112,333,
+targeting 76/76, transition 73/73, chrome/window policy 101/101,
+accessibility provider 165/165, focus 49/49, host accessibility 34/34, and
+declarative renderer 4,851/4,851. A native Release build produces
+`OverlayHost.exe` without packaging. No Tier 3, capture, provider/widget,
+public protocol, second session/input/focus/accessibility authority, or push was
+performed. Physical user cycling of the exact accepted candidate remains the
+final pixel-level stationarity verdict.
+
+#### Atomic paired-endpoint recovery correction
+
+Content-target and chrome-target initialization now pass through one private
+fixed-chrome composition policy. If the content target succeeds and the chrome
+target fails, that policy resets the complete DirectComposition surface owner
+and hides the chrome HWND before legacy fallback can become current. Runtime
+composition/device-loss fallback and shutdown use the same paired reset, so
+`available()` cannot advertise a half-session and no independent chrome window
+remains visible. The existing graphics device, session/window owner, renderer,
+input/focus router, and accessibility policy remain unchanged.
+
+The chrome window's production pointer mapping is also a named private policy:
+it maps one real `WM_LBUTTONUP` from chrome-client through screen coordinates
+to content-client coordinates, then calls the existing activation owner. The
+direct HWND test applies the owned chrome rectangle, sends that window message
+at the second authored tray tile, and proves the existing `OverlayState`
+selection/activation authority selects and activates `network` exactly once.
+
+Deterministic recovery evidence forces the second-target failure while the
+content target is observably available and then proves composition unavailable
+plus chrome hidden. A real successful two-target DirectComposition session is
+then forced through the runtime reset and proves the same terminal state. The
+focused Release composition group passes placement 112,333/112,333, targeting
+76/76, transition 73/73, chrome/window/recovery 111/111, accessibility provider
+165/165, focus 49/49, host accessibility 34/34, and declarative renderer
+4,851/4,851. One native Release build produces `OverlayHost.exe` without tests
+or packaging. No launch, Tier 3, capture, provider/widget, or public-protocol
+work was performed; physical user cycling remains the final visual verdict.

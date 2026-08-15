@@ -542,6 +542,7 @@ function Invoke-TrayAccessibilityTests {
         (Join-Path $projectDirectory 'AccessibilityProviderTests.cpp'),
         (Join-Path $projectDirectory 'AccessibilityProvider.cpp'),
         (Join-Path $projectDirectory 'AccessibilityEvents.cpp'),
+        (Join-Path $projectDirectory 'AccessibilityTree.cpp'),
         "/Fo:$accessibilityProviderTestObjectDirectory\",
         "/Fe:$outputDirectory\AccessibilityProviderTests.exe",
         '/link', '/SUBSYSTEM:CONSOLE'
@@ -663,10 +664,15 @@ function Invoke-CompositionTests {
     $chromeArguments = $common + @(
         (Join-Path $projectDirectory 'OverlayChromeTests.cpp'),
         (Join-Path $projectDirectory 'OverlayChrome.cpp'),
+        (Join-Path $projectDirectory 'OverlayCompositionSurface.cpp'),
+        (Join-Path $projectDirectory 'OverlayState.cpp'),
+        (Join-Path $projectDirectory 'TrayLayout.cpp'),
         "/Fo:$chromeTestObjectDirectory\",
         "/Fe:$outputDirectory\OverlayChromeTests.exe",
         '/link', '/SUBSYSTEM:CONSOLE'
-    ) + $libraryArguments + @('d2d1.lib', 'windowscodecs.lib', 'ole32.lib')
+    ) + $libraryArguments + @(
+        'd2d1.lib', 'd3d11.lib', 'dxgi.lib', 'dcomp.lib',
+        'windowscodecs.lib', 'ole32.lib', 'user32.lib')
     & $cl $chromeArguments
     if ($LASTEXITCODE -ne 0) {
         throw "OverlayChromeTests build failed with exit code $LASTEXITCODE."
@@ -680,6 +686,7 @@ function Invoke-CompositionTests {
         (Join-Path $projectDirectory 'AccessibilityProviderTests.cpp'),
         (Join-Path $projectDirectory 'AccessibilityProvider.cpp'),
         (Join-Path $projectDirectory 'AccessibilityEvents.cpp'),
+        (Join-Path $projectDirectory 'AccessibilityTree.cpp'),
         "/Fo:$accessibilityProviderTestObjectDirectory\",
         "/Fe:$outputDirectory\AccessibilityProviderTests.exe",
         '/link', '/SUBSYSTEM:CONSOLE'
@@ -2036,10 +2043,15 @@ if (-not $SkipTests) {
     $chromeTestArguments = $common + @(
         (Join-Path $projectDirectory 'OverlayChromeTests.cpp'),
         (Join-Path $projectDirectory 'OverlayChrome.cpp'),
+        (Join-Path $projectDirectory 'OverlayCompositionSurface.cpp'),
+        (Join-Path $projectDirectory 'OverlayState.cpp'),
+        (Join-Path $projectDirectory 'TrayLayout.cpp'),
         "/Fo:$chromeTestObjectDirectory\",
         "/Fe:$outputDirectory\OverlayChromeTests.exe",
         '/link', '/SUBSYSTEM:CONSOLE'
-    ) + $libraryArguments + @('d2d1.lib', 'windowscodecs.lib', 'ole32.lib')
+    ) + $libraryArguments + @(
+        'd2d1.lib', 'd3d11.lib', 'dxgi.lib', 'dcomp.lib',
+        'windowscodecs.lib', 'ole32.lib', 'user32.lib')
     & $cl $chromeTestArguments
     if ($LASTEXITCODE -ne 0) {
         throw "OverlayChromeTests build failed with exit code $LASTEXITCODE."
@@ -2213,6 +2225,7 @@ if (-not $SkipTests) {
         (Join-Path $projectDirectory 'AccessibilityProviderTests.cpp'),
         (Join-Path $projectDirectory 'AccessibilityProvider.cpp'),
         (Join-Path $projectDirectory 'AccessibilityEvents.cpp'),
+        (Join-Path $projectDirectory 'AccessibilityTree.cpp'),
         "/Fo:$accessibilityProviderTestObjectDirectory\",
         "/Fe:$outputDirectory\AccessibilityProviderTests.exe",
         '/link', '/SUBSYSTEM:CONSOLE'

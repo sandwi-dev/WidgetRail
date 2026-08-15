@@ -50,7 +50,7 @@ LRESULT CALLBACK TestWindowProc(
         return 0;
     }
     if (message == WM_DESTROY) {
-        PostQuitMessage(0);
+        if (!GetWindow(window, GW_OWNER)) PostQuitMessage(0);
         return 0;
     }
     return DefWindowProcW(window, message, wParam, lParam);
@@ -358,7 +358,8 @@ int main() {
     const HRESULT initialized = CoInitializeEx(nullptr, COINIT_MULTITHREADED);
     Check(SUCCEEDED(initialized), "COM initializes for provider coverage");
     gba::accessibility::ProviderHost host;
-    std::promise<HWND> windowPromise;
+    gba::accessibility::ProviderHost chromeHost;
+    std::promise<std::pair<HWND, HWND>> windowPromise;
     auto windowFuture = windowPromise.get_future();
     std::jthread windowThread([&] {
         const HRESULT apartment = CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
@@ -370,8 +371,14 @@ int main() {
         HWND threadWindow = CreateWindowExW(
             0, windowClass.lpszClassName, L"AccessibilityProviderTests", WS_OVERLAPPED,
             0, 0, 400, 300, nullptr, nullptr, windowClass.hInstance, &host);
+        HWND threadChromeWindow = CreateWindowExW(
+            WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE,
+            windowClass.lpszClassName, L"AccessibilityProviderChromeTests", WS_POPUP,
+            100, 400, 300, 100, threadWindow, nullptr, windowClass.hInstance,
+            &chromeHost);
         host.Bind(threadWindow, WM_APP + 42);
-        windowPromise.set_value(threadWindow);
+        chromeHost.Bind(threadChromeWindow, WM_APP + 42);
+        windowPromise.set_value({threadWindow, threadChromeWindow});
         if (threadWindow) {
             MSG message{};
             while (GetMessageW(&message, nullptr, 0, 0) > 0) {
@@ -382,8 +389,9 @@ int main() {
         UnregisterClassW(windowClass.lpszClassName, windowClass.hInstance);
         if (SUCCEEDED(apartment)) CoUninitialize();
     });
-    const HWND window = windowFuture.get();
-    Check(window != nullptr, "test HWND is created on a pumping UI thread");
+    const auto [window, chromeWindow] = windowFuture.get();
+    Check(window != nullptr && chromeWindow != nullptr,
+          "content and owned chrome HWNDs are created on one pumping UI thread");
     host.Publish(Tree(L"generation-1", 9), {100, 200, 2, 800, 600});
 
     ComPtr<IUIAutomation> client;
@@ -419,6 +427,81 @@ int main() {
           std::wstring_view{clientButtonName, SysStringLen(clientButtonName)} == L"Next track",
           "UIA client reads the semantic button name");
     SysFreeString(clientButtonName);
+
+    const auto partition = gba::accessibility::PartitionForFixedChrome(
+        HostTree(true), 200.0F, 0.0F, 200.0F);
+    host.Publish(partition.content, {0, 0, 1, 400, 300});
+    chromeHost.Publish(partition.chrome, {100, 400, 1, 300, 100});
+    SendMessageW(window, WM_APP + 42, 0, 0);
+    SendMessageW(chromeWindow, WM_APP + 42, 0, 0);
+    ComPtr<IUIAutomationElement> chromeClientRoot;
+    Check(SUCCEEDED(client->ElementFromHandle(
+              chromeWindow, chromeClientRoot.GetAddressOf())) && chromeClientRoot,
+          "UIA client obtains a root bound to the fixed chrome HWND");
+    VARIANT trayId{};
+    V_VT(&trayId) = VT_BSTR;
+    V_BSTR(&trayId) = SysAllocString(L"tray:tray.music");
+    ComPtr<IUIAutomationCondition> trayOnlyCondition;
+    Check(SUCCEEDED(client->CreatePropertyCondition(
+              UIA_AutomationIdPropertyId, trayId,
+              trayOnlyCondition.GetAddressOf())) && trayOnlyCondition,
+          "UIA client creates the fixed-chrome partition condition");
+    VariantClear(&trayId);
+    ComPtr<IUIAutomationElement> contentTray;
+    ComPtr<IUIAutomationElement> chromeTray;
+    Check(SUCCEEDED(clientRoot->FindFirst(
+              TreeScope_Descendants, trayOnlyCondition.Get(),
+              contentTray.GetAddressOf())) && !contentTray &&
+          SUCCEEDED(chromeClientRoot->FindFirst(
+              TreeScope_Descendants, trayOnlyCondition.Get(),
+              chromeTray.GetAddressOf())) && chromeTray,
+          "tray semantics are published once by the chrome HWND root");
+    RECT chromeWindowBounds{};
+    RECT contentWindowBounds{};
+    tagRECT chromeRootBounds{};
+    tagRECT contentRootBounds{};
+    Check(GetWindowRect(chromeWindow, &chromeWindowBounds) &&
+          GetWindowRect(window, &contentWindowBounds) &&
+          SUCCEEDED(chromeClientRoot->get_CurrentBoundingRectangle(&chromeRootBounds)) &&
+          SUCCEEDED(clientRoot->get_CurrentBoundingRectangle(&contentRootBounds)) &&
+          chromeRootBounds.left == chromeWindowBounds.left &&
+          chromeRootBounds.top == chromeWindowBounds.top &&
+          chromeRootBounds.right == chromeWindowBounds.right &&
+          chromeRootBounds.bottom == chromeWindowBounds.bottom &&
+          contentRootBounds.left == contentWindowBounds.left &&
+          contentRootBounds.top == contentWindowBounds.top &&
+          contentRootBounds.right == contentWindowBounds.right &&
+          contentRootBounds.bottom == contentWindowBounds.bottom,
+          "each UIA root reports its actual HWND screen rectangle");
+    ComPtr<IRawElementProviderSimple> contentPartitionRoot;
+    ComPtr<IRawElementProviderSimple> chromePartitionRoot;
+    ComPtr<IRawElementProviderFragmentRoot> contentFragmentRoot;
+    ComPtr<IRawElementProviderFragmentRoot> chromeFragmentRoot;
+    ComPtr<IRawElementProviderFragment> contentFocus;
+    ComPtr<IRawElementProviderFragment> chromeFocus;
+    Check(SUCCEEDED(host.GetRootProvider(contentPartitionRoot.GetAddressOf())) &&
+          SUCCEEDED(chromeHost.GetRootProvider(chromePartitionRoot.GetAddressOf())) &&
+          SUCCEEDED(contentPartitionRoot.As(&contentFragmentRoot)) &&
+          SUCCEEDED(chromePartitionRoot.As(&chromeFragmentRoot)) &&
+          SUCCEEDED(contentFragmentRoot->GetFocus(contentFocus.GetAddressOf())) &&
+          !contentFocus &&
+          SUCCEEDED(chromeFragmentRoot->GetFocus(chromeFocus.GetAddressOf())) &&
+          chromeFocus,
+          "logical tray focus is exposed only by the chrome endpoint");
+    ComPtr<IUIAutomationInvokePattern> chromeInvoke;
+    Check(SUCCEEDED(chromeTray->GetCurrentPatternAs(
+              UIA_InvokePatternId, IID_PPV_ARGS(chromeInvoke.GetAddressOf()))) &&
+          chromeInvoke && SUCCEEDED(chromeInvoke->Invoke()),
+          "chrome tray action enters its HWND-bound provider queue");
+    const auto chromeActions = chromeHost.TakeActions();
+    Check(chromeActions.size() == 1 &&
+              chromeActions[0].domain == gba::accessibility::ElementDomain::Tray &&
+              chromeActions[0].hostAction ==
+                  gba::accessibility::HostAction::ActivateTrayItem &&
+              chromeActions[0].hostTargetId == L"music",
+          "chrome action retains exact typed identity for the sole host action owner");
+    host.Publish(Tree(L"generation-1", 9), {100, 200, 2, 800, 600});
+    SendMessageW(window, WM_APP + 42, 0, 0);
 
     ComPtr<IRawElementProviderSimple> root;
     Check(SUCCEEDED(host.GetRootProvider(root.GetAddressOf())) && root,
@@ -795,6 +878,7 @@ int main() {
     finalHostTree.nodes[2].name = L"A Select  B Close  Y Reorder";
     host.Publish(changedHostTree, {100, 200, 2, 800, 600});
     host.Publish(finalHostTree, {100, 200, 2, 800, 600});
+    SendMessageW(window, WM_APP + 43, 0, 0);
     SendMessageW(window, WM_APP + 42, 0, 0);
     Check(eventHandler->WaitForFocus(),
           "real UIA client receives the coalesced logical-focus event");
@@ -977,6 +1061,7 @@ int main() {
           "current-generation fragment is retained for detach coverage");
 
     host.Detach();
+    chromeHost.Detach();
     VARIANT detachedName{};
     Check(root->GetPropertyValue(UIA_NamePropertyId, &detachedName) ==
               UIA_E_ELEMENTNOTAVAILABLE,

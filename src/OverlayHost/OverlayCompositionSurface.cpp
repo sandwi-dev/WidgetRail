@@ -73,14 +73,6 @@ bool OverlayCompositionSurface::Initialize(
     if (SUCCEEDED(result)) {
         result = rootVisual_->AddVisual(content_.visual.Get(), FALSE, nullptr);
     }
-    if (SUCCEEDED(result)) {
-        result = rootVisual_->AddVisual(
-            guide_.visual.Get(), TRUE, content_.visual.Get());
-    }
-    if (SUCCEEDED(result)) {
-        result = rootVisual_->AddVisual(
-            tray_.visual.Get(), TRUE, guide_.visual.Get());
-    }
     if (SUCCEEDED(result)) result = target_->SetRoot(rootVisual_.Get());
     if (SUCCEEDED(result)) result = device_->Commit();
     if (SUCCEEDED(result)) result = device_->WaitForCommitCompletion();
@@ -93,7 +85,41 @@ bool OverlayCompositionSurface::Initialize(
     return true;
 }
 
+bool OverlayCompositionSurface::InitializeChromeTarget(
+    const HWND window, std::wstring& error) {
+    if (!window || !device_ || chromeTarget_ || chromeRootVisual_) {
+        error = L"DirectComposition chrome target initialization received an invalid state";
+        return false;
+    }
+    HRESULT result = desktopDevice_->CreateTargetForHwnd(
+        window, TRUE, chromeTarget_.ReleaseAndGetAddressOf());
+    if (SUCCEEDED(result)) {
+        result = device_->CreateVisual(chromeRootVisual_.ReleaseAndGetAddressOf());
+    }
+    if (SUCCEEDED(result)) {
+        result = chromeRootVisual_->AddVisual(guide_.visual.Get(), FALSE, nullptr);
+    }
+    if (SUCCEEDED(result)) {
+        result = chromeRootVisual_->AddVisual(tray_.visual.Get(), TRUE, guide_.visual.Get());
+    }
+    if (SUCCEEDED(result)) result = chromeTarget_->SetRoot(chromeRootVisual_.Get());
+    if (SUCCEEDED(result)) result = device_->Commit();
+    if (SUCCEEDED(result)) result = device_->WaitForCommitCompletion();
+    if (FAILED(result)) {
+        error = L"DirectComposition chrome target initialization failed hresult=" +
+            std::to_wstring(static_cast<unsigned long>(result));
+        if (chromeTarget_) (void)chromeTarget_->SetRoot(nullptr);
+        chromeRootVisual_.Reset();
+        chromeTarget_.Reset();
+        return false;
+    }
+    return true;
+}
+
 void OverlayCompositionSurface::Reset() noexcept {
+    if (chromeTarget_ && device_) {
+        (void)chromeTarget_->SetRoot(nullptr);
+    }
     if (target_ && device_) {
         (void)target_->SetRoot(nullptr);
         (void)device_->Commit();
@@ -102,7 +128,9 @@ void OverlayCompositionSurface::Reset() noexcept {
     guide_ = {};
     tray_ = {};
     effect_.Reset();
+    chromeRootVisual_.Reset();
     rootVisual_.Reset();
+    chromeTarget_.Reset();
     target_.Reset();
     device_.Reset();
     desktopDevice_.Reset();

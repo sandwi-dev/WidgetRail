@@ -64,6 +64,9 @@ public:
     };
 
     bool Initialize(HWND window, ID2D1Factory1* factory, std::wstring& error);
+    // Adds the fixed chrome endpoint to the existing device. This deliberately
+    // creates a second DirectComposition target, not another graphics owner.
+    bool InitializeChromeTarget(HWND window, std::wstring& error);
     void Reset() noexcept;
 
     [[nodiscard]] bool available() const noexcept { return device_ != nullptr; }
@@ -101,6 +104,7 @@ private:
     Microsoft::WRL::ComPtr<IDCompositionDesktopDevice> desktopDevice_;
     Microsoft::WRL::ComPtr<IDCompositionDevice2> device_;
     Microsoft::WRL::ComPtr<IDCompositionTarget> target_;
+    Microsoft::WRL::ComPtr<IDCompositionTarget> chromeTarget_;
     struct LayerState final {
         Microsoft::WRL::ComPtr<IDCompositionVisual2> visual;
         Microsoft::WRL::ComPtr<IDCompositionSurface> surface;
@@ -109,6 +113,7 @@ private:
     };
 
     Microsoft::WRL::ComPtr<IDCompositionVisual2> rootVisual_;
+    Microsoft::WRL::ComPtr<IDCompositionVisual2> chromeRootVisual_;
     Microsoft::WRL::ComPtr<IDCompositionEffectGroup> effect_;
     LayerState content_;
     LayerState guide_;

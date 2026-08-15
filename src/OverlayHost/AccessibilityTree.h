@@ -94,6 +94,11 @@ struct Tree final {
     std::wstring name;
 };
 
+struct WindowTreePartition final {
+    Tree content;
+    Tree chrome;
+};
+
 [[nodiscard]] inline ElementKey KeyFor(const Node& node) {
     return {node.domain, node.id};
 }
@@ -114,6 +119,15 @@ struct Tree final {
     }
     return true;
 }
+
+/// Splits one canonical semantic tree between the content and fixed-chrome
+/// HWND endpoints. Tray elements and host controls authored in the guide band
+/// belong to chrome; every source element is published by exactly one root.
+[[nodiscard]] WindowTreePartition PartitionForFixedChrome(
+    const Tree& source,
+    float guideTop,
+    float chromeOriginX,
+    float chromeOriginY);
 
 /// Builds a closed immutable accessibility tree from the exact semantic
 /// geometry produced by the completed render pass. Only the active input scope
