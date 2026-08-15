@@ -133,7 +133,7 @@ user decision. The native overlay is the sole production presentation path.
 | Lane | Task/worktree | Current state |
 | --- | --- | --- |
 | Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` on `codex/impl-widgets-taffy-ui` | Idle clean. DLV-240 begins only after accepted DLV-239 is integrated and the planner sends the serialized cross-lane baseline. |
-| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` on `codex/impl-platform-integration` | DLV-238 Assigned; DLV-237, DLV-236, and DLV-239 Ready in that order. DLV-241/242 await DLV-240 integration. |
+| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` on `codex/impl-platform-integration` | DLV-238 commit `3716063` rejected pending the material transition correction below; task idle. DLV-237, DLV-236, and DLV-239 remain Ready but cannot start from the rejected tip. DLV-241/242 await DLV-240 integration. |
 
 DLV-217 remains accepted through `d57fd06` but unintegrated because its exact
 aggregate is honestly 40/41 with one reviewer-history-link failure. Preserve
@@ -202,6 +202,35 @@ Preserve: one HWND/root compositor/focus/input/UIA authority, Taffy as sole decl
 Acceptance: cold and cached switches across all eight widgets, including compact-to-tall, tall-to-wide, rapid selection, delayed admission, late revoked completion, failure/last-good, and provider updates, prove that every `content=admitted rendered=<destination>` frame uses the destination surface request and that final presented equals desired without a later snapshot. The Audio Mixer to Network Controls regression must move from retained `592x698` to Network's admitted `632x878` envelope, lay Network out at its own viewport, and retain stationary tray/guide coordinates with no flash, dark band, seam, stale UIA, or intermediate input mismatch.
 Verification: focused widget-switch, extent-transition, composition-placement, surface-policy/Taffy, focus/UIA, reduced-motion/device-loss cases, one bounded eight-widget host route, and native Release build only; no Tier-3 aggregate, provider/package change, capture-harness work, or unrelated refactor.
 Stop for per-widget sizing logic, destination content rendered against source geometry, non-atomic HWND/content authority, another compositor/window/focus/input owner, or an undocumented platform dependency or material animation decision.
+
+Independent review disposition for `3716063`: rejected. The commit correctly
+separates destination layout from the retained presented extent, renders the
+admitted widget at its own viewport, settles final geometry explicitly, and
+provides a real first-stage `OverlayApp` responsibility reduction. The retained
+evidence and focused suites are otherwise proportional, and the unrelated
+DLV-231 close/reconnect timeout was correctly not rerun.
+
+The remaining blocker is in the actual transition authority, not destination
+layout. `OverlayCompositionSurface::ApplyPresentation` applies the scale and
+offset to the one visual containing widget content, guide, and tray. Therefore
+the admitted destination's tray and guide scale/move with the content envelope
+during every non-reduced-motion transition even though their authored local
+bounds are unchanged. The host-route oracle compares those untransformed local
+bounds and therefore cannot prove fixed absolute screen bounds. The same motion
+steps update the visual transform and inverse pointer mapping, but publish UIA
+only at admission start and final settlement, leaving intermediate UIA bounds
+stale relative to the visible/input geometry.
+
+Do not integrate or begin DLV-237. The correction must retain the accepted
+destination-viewport transaction while proving actual start/mid/end screen
+bounds and matching input/UIA authority. Because the current single transformed
+visual cannot both animate the content envelope and keep its embedded chrome
+stationary, the next implementation choice is material: either snap the whole
+destination envelope immediately until DLV-236 separates retained chrome, or
+bring forward the minimum child-visual/chrome separation that DLV-236 otherwise
+owns. The planner must obtain the user's choice before changing animation or
+surface ownership. No unchanged rerun or local-coordinate assertion can close
+this review.
 
 ### Ready after DLV-238 integration — DLV-237: correlate deferred widget admission
 
