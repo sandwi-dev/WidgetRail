@@ -144,7 +144,7 @@ user decision. The native overlay is the sole production presentation path.
 | Lane | Task/worktree | State |
 | --- | --- | --- |
 | Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | DLV-246 candidate `4210be7` is accepted and integrated as `0e75203`. Preserve its clean branch and wait for DLV-240 integration before DLV-241. Preserve completed `codex/impl-platform-snapshot-cache` and `codex/impl-platform-fixed-chrome`. |
-| Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | Assigned DLV-240 from exact accepted main `7cc5839`; move to a clean `codex/impl-widgets-snapshot-update` branch before edits. |
+| Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | DLV-240 candidate `c7f9dfa` is rejected on one bounded runtime-v2 compatibility blocker; correction is active on clean `codex/impl-widgets-snapshot-update`. Do not integrate before independent acceptance. |
 
 The user explicitly approved the DLV-217 aggregate exception on 2026-08-15.
 The preserved four-commit implementation chain was integrated onto current main
@@ -363,6 +363,15 @@ Verification: validator/JSON/version compatibility, operation/fallback/no-op/
 base-mismatch/malformed/oversized/coalescing cases, compiled public examples,
 and focused managed suites plus one bridge/runtime group. Do not activate update
 traffic or run Tier 3.
+
+Review correction: candidate `c7f9dfa` correctly keeps native callers on full
+checkpoints, but changed the exact-match worker envelope from runtime protocol 2
+to 3. Already-installed immutable full-trust applications, including accepted
+DLV-217 Game Launcher, were built with `WidgetApplicationRuntime` protocol 2 and
+would be rejected during handshake before checkpoint fallback. Preserve v2
+envelope compatibility and prove a frozen-v2 application handshake/render plus
+the new explicitly negotiated update path. Also reject any operation batch that
+can construct an over-limit intermediate tree before final validation.
 
 ### Awaiting DLV-240 integration — DLV-241: native materialized update admission
 

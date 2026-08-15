@@ -478,7 +478,10 @@ Then repeat the loop.
 - Widgets implementation uses the isolated worktree
   `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` on
   `codex/impl-widgets-snapshot-update` from accepted production baseline
-  `7cc5839` and executes DLV-240. DLV-217 is integrated on planner main through
+  `7cc5839` and executes DLV-240. Candidate `c7f9dfa` is rejected on one bounded
+  runtime-v2 compatibility blocker and its correction is active on the same
+  clean branch; do not integrate it before independent acceptance. DLV-217 is
+  integrated on planner main through
   `1453a4c`; its original branch remains preserved on
   `codex/impl-widgets-community-launcher`. Do not move or rewrite that branch
   while the UI queue proceeds. After DLV-240 integration, give the widgets lane
