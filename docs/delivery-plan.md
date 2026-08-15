@@ -525,6 +525,17 @@ Make production-code changes only, build and launch for another user verdict,
 and do not add, modify, or run tests before acceptance. Do not integrate or
 advance DLV-239.
 
+Physical-first correction candidate
+`c92ef11a2a4b529ed1b91539807581f7dc2f798f` is source-reviewed, built, and
+awaiting the user's verdict; it is not accepted or integrated. The commit
+normalizes guide and tray painting to exact-size `(0,0)` child surfaces and
+uses one fixed chrome-client visual offset per child. No tests were written,
+modified, or run. The exact executable has SHA-256
+`5051C933E322476997EA9E0239BCF7E0A68C72DC55FB80CAA7FF24EF701D1DE1` and was
+visibly launched from the platform worktree as PID `92880`. Wait for the user
+to cycle different widget extents and judge tray stationarity, complete focus
+outline/background, clipping, fixed spacing, motion, and controller behavior.
+
 Independent review disposition for `3716063`: rejected as the retained base for
 one cumulative correction. The commit correctly separates destination layout
 from the retained presented extent, renders the admitted widget at its own
