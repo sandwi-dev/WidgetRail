@@ -5,11 +5,12 @@
 #include "NativeStyle.h"
 #include "WidgetBridgeClient.h"
 
-#include <d2d1.h>
+#include <d2d1_1.h>
 #include <dwrite.h>
 #include <wrl/client.h>
 
 #include <cstdint>
+#include <cstddef>
 #include <map>
 #include <optional>
 #include <set>
@@ -97,6 +98,16 @@ struct ContentMeasureResult final {
 struct ImagePlacement final {
     declarative::Rect destination;
     declarative::Rect source;
+};
+
+struct ImageBitmapCacheStats final {
+    std::size_t entries{};
+    std::size_t bytes{};
+    std::uint64_t hits{};
+    std::uint64_t creates{};
+    std::uint64_t evictions{};
+    std::uint64_t resourceInvalidations{};
+    std::uint64_t resourceGeneration{};
 };
 
 enum class IncrementalPresentationWork {
@@ -233,6 +244,12 @@ public:
 
     void DiscardTargetResources() noexcept;
 
+    /// Cumulative bounded GPU-image activity for the existing presentation
+    /// diagnostic. Transient BeginDraw context identity is deliberately absent;
+    /// resource generation advances only when the underlying D2D device domain
+    /// changes (or a non-device render target is replaced).
+    [[nodiscard]] ImageBitmapCacheStats GetImageBitmapCacheStats() const noexcept;
+
     /// Drops host-owned offsets when a widget instance is removed or replaced.
     void ForgetWidgetState(std::wstring_view widgetInstanceId) noexcept;
 
@@ -306,6 +323,11 @@ private:
         float anchorPosition{};
         bool hasAnchorPosition{};
     };
+    struct BitmapCacheEntry final {
+        Microsoft::WRL::ComPtr<ID2D1Bitmap> bitmap;
+        std::size_t bytes{};
+        std::uint64_t lastUse{};
+    };
 
     [[nodiscard]] Microsoft::WRL::ComPtr<ID2D1Bitmap> GetImageBitmap(
         ID2D1RenderTarget* renderTarget,
@@ -317,17 +339,29 @@ private:
         ID2D1RenderTarget* renderTarget,
         declarative::Rect viewport,
         float radius);
+    [[nodiscard]] bool BindBitmapResourceDomain(
+        ID2D1RenderTarget* renderTarget) noexcept;
+    void ClearBitmapCache(bool resourceInvalidation) noexcept;
+    void TrimBitmapCache(std::size_t incomingBytes) noexcept;
 
     ID2D1Factory* d2dFactory_{};
     IDWriteFactory* writeFactory_{};
     RemoteImageCache* imageCache_{};
-    ID2D1RenderTarget* bitmapTarget_{};
+    Microsoft::WRL::ComPtr<IUnknown> bitmapResourceDomain_;
+    bool bitmapResourceDomainIsDevice_{};
     ID2D1RenderTarget* surfaceClipTarget_{};
     declarative::Rect surfaceClipRect_{};
     float surfaceClipRadius_{};
     Microsoft::WRL::ComPtr<ID2D1Layer> surfaceClipLayer_;
     Microsoft::WRL::ComPtr<ID2D1RoundedRectangleGeometry> surfaceClipGeometry_;
-    std::unordered_map<std::wstring, Microsoft::WRL::ComPtr<ID2D1Bitmap>> bitmaps_;
+    std::unordered_map<std::wstring, BitmapCacheEntry> bitmaps_;
+    std::size_t bitmapBytes_{};
+    std::uint64_t bitmapAccessClock_{};
+    std::uint64_t bitmapHits_{};
+    std::uint64_t bitmapCreates_{};
+    std::uint64_t bitmapEvictions_{};
+    std::uint64_t bitmapResourceInvalidations_{};
+    std::uint64_t bitmapResourceGeneration_{};
     std::unordered_map<std::wstring, ScrollStateEntry> scrollOffsets_;
     std::uint64_t scrollStateAccessClock_{};
     DeclarativeMotionTimeline motionTimeline_;

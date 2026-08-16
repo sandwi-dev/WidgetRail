@@ -8878,6 +8878,8 @@ private:
                         const auto damage = activeContentRenderPlan_
                             ? activeContentRenderPlan_->damage
                             : gba::declarative::Rect{};
+                        const auto bitmapCache =
+                            declarativeRenderer_->GetImageBitmapCacheStats();
                         AppendDiagnostic(
                             L"Widget presentation paint target=" + std::wstring(widget) +
                             L" content=" +
@@ -8902,6 +8904,20 @@ private:
                             std::to_wstring(damage.y) + L"," +
                             std::to_wstring(damage.width) + L"," +
                             std::to_wstring(damage.height) +
+                            L" bitmap-entries=" +
+                            std::to_wstring(bitmapCache.entries) +
+                            L" bitmap-bytes=" +
+                            std::to_wstring(bitmapCache.bytes) +
+                            L" bitmap-hits=" +
+                            std::to_wstring(bitmapCache.hits) +
+                            L" bitmap-creates=" +
+                            std::to_wstring(bitmapCache.creates) +
+                            L" bitmap-evictions=" +
+                            std::to_wstring(bitmapCache.evictions) +
+                            L" bitmap-resource-invalidations=" +
+                            std::to_wstring(bitmapCache.resourceInvalidations) +
+                            L" bitmap-resource-generation=" +
+                            std::to_wstring(bitmapCache.resourceGeneration) +
                             L" tray-total=" +
                             std::to_wstring(trayLayout ? trayLayout->totalCount : 0) +
                             L" tray-visible=" +

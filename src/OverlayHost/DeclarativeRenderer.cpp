@@ -25,6 +25,7 @@ using declarative::Size;
 
 constexpr std::size_t kMaximumDiagnostics = 256;
 constexpr std::size_t kMaximumBitmapEntries = 32;
+constexpr std::size_t kMaximumBitmapBytes = 32U * 1024U * 1024U;
 constexpr float kMinimumControlSize = 44.0F;
 constexpr float kButtonIconLabelGap = 8.0F;
 constexpr float kButtonStateCueGap = 8.0F;
@@ -2292,9 +2293,9 @@ RenderResult DeclarativeRenderer::Render(
     pass.options.animationTimestampMilliseconds = animationTimestamp;
     motionTimeline_.BeginFrame(animationTimestamp);
 
-    if (bitmapTarget_ != renderTarget) {
-        bitmaps_.clear();
-        bitmapTarget_ = renderTarget;
+    if (renderTarget && !BindBitmapResourceDomain(renderTarget)) {
+        pass.Add({}, L"image_resource_domain",
+            L"Image bitmap cache could not identify the Direct2D resource domain.");
     }
     const bool pendingMatches = pendingIncrementalPlan_ &&
         pendingIncrementalPlan_->work != IncrementalPresentationWork::NoRaster &&
@@ -2498,8 +2499,10 @@ ContentMeasureResult DeclarativeRenderer::MeasureContent(
 }
 
 void DeclarativeRenderer::DiscardTargetResources() noexcept {
-    bitmaps_.clear();
-    bitmapTarget_ = nullptr;
+    // BeginDraw may return another transient device-context interface for the
+    // same D2D device. Target-local clips/layout are discarded here, while the
+    // bounded bitmap cache remains owned by its explicit resource domain and
+    // is invalidated by BindBitmapResourceDomain when that domain changes.
     surfaceClipLayer_.Reset();
     surfaceClipGeometry_.Reset();
     surfaceClipTarget_ = nullptr;
@@ -2507,6 +2510,70 @@ void DeclarativeRenderer::DiscardTargetResources() noexcept {
     surfaceClipRadius_ = 0.0F;
     incrementalLayoutCache_.reset();
     pendingIncrementalPlan_.reset();
+}
+
+ImageBitmapCacheStats DeclarativeRenderer::GetImageBitmapCacheStats() const noexcept {
+    return {
+        bitmaps_.size(),
+        bitmapBytes_,
+        bitmapHits_,
+        bitmapCreates_,
+        bitmapEvictions_,
+        bitmapResourceInvalidations_,
+        bitmapResourceGeneration_,
+    };
+}
+
+bool DeclarativeRenderer::BindBitmapResourceDomain(
+    ID2D1RenderTarget* renderTarget) noexcept {
+    if (!renderTarget) return false;
+
+    ComPtr<IUnknown> identity;
+    bool isDevice = false;
+    ComPtr<ID2D1DeviceContext> context;
+    if (SUCCEEDED(renderTarget->QueryInterface(IID_PPV_ARGS(&context))) && context) {
+        ComPtr<ID2D1Device> device;
+        context->GetDevice(device.ReleaseAndGetAddressOf());
+        if (device && SUCCEEDED(device.As(&identity))) isDevice = true;
+    }
+    if (!identity && FAILED(renderTarget->QueryInterface(IID_PPV_ARGS(&identity))))
+        return false;
+
+    if (bitmapResourceDomain_ &&
+        (bitmapResourceDomain_.Get() != identity.Get() ||
+         bitmapResourceDomainIsDevice_ != isDevice)) {
+        ClearBitmapCache(true);
+        bitmapResourceDomain_.Reset();
+    }
+    if (!bitmapResourceDomain_) {
+        bitmapResourceDomain_ = std::move(identity);
+        bitmapResourceDomainIsDevice_ = isDevice;
+        ++bitmapResourceGeneration_;
+    }
+    return true;
+}
+
+void DeclarativeRenderer::ClearBitmapCache(
+    const bool resourceInvalidation) noexcept {
+    bitmaps_.clear();
+    bitmapBytes_ = 0;
+    if (resourceInvalidation) ++bitmapResourceInvalidations_;
+}
+
+void DeclarativeRenderer::TrimBitmapCache(
+    const std::size_t incomingBytes) noexcept {
+    while (!bitmaps_.empty() &&
+           (bitmaps_.size() >= kMaximumBitmapEntries ||
+            incomingBytes > kMaximumBitmapBytes - bitmapBytes_)) {
+        const auto oldest = std::min_element(
+            bitmaps_.begin(), bitmaps_.end(),
+            [](const auto& left, const auto& right) {
+                return left.second.lastUse < right.second.lastUse;
+            });
+        bitmapBytes_ -= oldest->second.bytes;
+        bitmaps_.erase(oldest);
+        ++bitmapEvictions_;
+    }
 }
 
 bool DeclarativeRenderer::EnsureSurfaceClip(
@@ -2580,15 +2647,19 @@ ComPtr<ID2D1Bitmap> DeclarativeRenderer::GetImageBitmap(
         const auto separator = source.rfind(L'\x1f');
         const auto identityPrefix = source.substr(0, separator + 1);
         for (auto iterator = bitmaps_.begin(); iterator != bitmaps_.end();) {
-            if (iterator->first != source && iterator->first.starts_with(identityPrefix))
+            if (iterator->first != source && iterator->first.starts_with(identityPrefix)) {
+                bitmapBytes_ -= iterator->second.bytes;
                 iterator = bitmaps_.erase(iterator);
-            else ++iterator;
+                ++bitmapEvictions_;
+            } else ++iterator;
         }
     }
     if (const auto existing = bitmaps_.find(source); existing != bitmaps_.end())
     {
+        existing->second.lastUse = ++bitmapAccessClock_;
+        ++bitmapHits_;
         presentationState = ImagePresentationState::Ready;
-        return existing->second;
+        return existing->second.bitmap;
     }
     const auto state = imageCache_->GetState(source);
     if (state == RemoteImageState::Missing) {
@@ -2628,9 +2699,19 @@ ComPtr<ID2D1Bitmap> DeclarativeRenderer::GetImageBitmap(
         pass.Add(node.id, L"image_bitmap", L"Ready image could not create a render-target bitmap.");
         return {};
     }
+    ++bitmapCreates_;
     presentationState = ImagePresentationState::Ready;
-    if (bitmaps_.size() >= kMaximumBitmapEntries) bitmaps_.clear();
-    bitmaps_.emplace(source, bitmap);
+    const auto pixelSize = bitmap->GetPixelSize();
+    const auto byteCount64 = static_cast<std::uint64_t>(pixelSize.width) *
+        static_cast<std::uint64_t>(pixelSize.height) * 4ULL;
+    if (byteCount64 <= kMaximumBitmapBytes) {
+        const auto byteCount = static_cast<std::size_t>(byteCount64);
+        TrimBitmapCache(byteCount);
+        bitmapBytes_ += byteCount;
+        bitmaps_.emplace(
+            source,
+            BitmapCacheEntry{bitmap, byteCount, ++bitmapAccessClock_});
+    }
     return bitmap;
 }
 
