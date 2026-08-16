@@ -2320,15 +2320,21 @@ void IncrementalPresentationPlanningRetainsBoundedWork() {
     snapshot.root.children = {boundary};
 
     DeclarativeRenderer renderer{d2d.Get(), write.Get(), nullptr};
-    const auto render = [&](const WidgetSnapshot& value,
-                            const std::wstring_view focus) {
+    const auto renderAt = [&](const WidgetSnapshot& value,
+                              const std::wstring_view focus,
+                              const Rect renderViewport) {
         target->BeginDraw();
         target->Clear(D2D1::ColorF(D2D1::ColorF::Black));
-        const auto result = renderer.Render(target.Get(), value, focus, viewport);
+        const auto result = renderer.Render(
+            target.Get(), value, focus, renderViewport);
         Check(SUCCEEDED(target->EndDraw()),
               "incremental presentation draw completes");
         Check(result.succeeded, "incremental presentation render succeeds");
         return result;
+    };
+    const auto render = [&](const WidgetSnapshot& value,
+                            const std::wstring_view focus) {
+        return renderAt(value, focus, viewport);
     };
 
     const auto initial = render(snapshot, L"focus-a");
@@ -2421,6 +2427,79 @@ void IncrementalPresentationPlanningRetainsBoundedWork() {
     Check(!renderer.PlanFocusUpdate(
                local, L"focus-a", L"focus-b", viewport).has_value(),
           "mismatched committed focus proof preserves full-raster fallback");
+
+    WidgetSnapshot anchored;
+    anchored.protocolVersion = 18;
+    anchored.sequence = 1;
+    anchored.instanceId = L"incremental.anchor.runtime";
+    anchored.activeInputScopeId = L"anchor.scope";
+    anchored.root = Node(L"anchor.collection", L"scroll");
+    anchored.root.scrollAxis = L"vertical";
+    anchored.root.inputScopeId = anchored.activeInputScopeId;
+    anchored.root.collectionAnchorKey = L"item.2";
+    const auto appendAnchorItem = [](WidgetSnapshot& target, const int index) {
+        auto item = FixedButton(
+            (L"anchor-item-" + std::to_wstring(index)).c_str());
+        item.collectionItemKey = L"item." + std::to_wstring(index);
+        target.root.children.push_back(std::move(item));
+    };
+    for (int index = 0; index < 8; ++index)
+        appendAnchorItem(anchored, index);
+
+    const Rect anchoredViewport{0.0F, 0.0F, 240.0F, 100.0F};
+    const auto anchoredInitial = renderAt(
+        anchored, L"anchor-item-2", anchoredViewport);
+    const auto initialAnchorOffset =
+        anchoredInitial.scrollOffsets.at(L"anchor.collection");
+    const auto anchoredFocusPlan = renderer.PlanFocusUpdate(
+        anchored,
+        L"anchor-item-2",
+        L"anchor-item-5",
+        anchoredViewport);
+    Check(anchoredFocusPlan.has_value() &&
+              anchoredFocusPlan->work ==
+                  gba::IncrementalPresentationWork::PaintOnly,
+          "offscreen anchored-collection focus retains bounded incremental work");
+    const auto anchoredFocused = renderAt(
+        anchored, L"anchor-item-5", anchoredViewport);
+    Check(anchoredFocused.scrollOffsets.at(L"anchor.collection") >
+              initialAnchorOffset + 80.0F,
+          "focus-follow destination survives the anchored incremental rebuild");
+    Check(anchoredFocused.focusRects.contains(L"anchor-item-5"),
+          "anchored incremental focus exposes the destination target");
+    const auto anchoredFocusRect =
+        anchoredFocused.focusRects.at(L"anchor-item-5");
+    Check(anchoredFocusRect.y >= anchoredViewport.y - 0.01F &&
+              anchoredFocusRect.y + anchoredFocusRect.height <=
+                  anchoredViewport.y + anchoredViewport.height + 0.01F,
+          "anchored incremental focus returns wholly inside its viewport");
+    const auto& focusFollowSummary =
+        anchoredFocused.timing.focusFollowSummary;
+    Check(focusFollowSummary.empty() ||
+              (focusFollowSummary.find(L"passes=1 ") != std::wstring::npos &&
+               focusFollowSummary.find(L"disposition=converged") !=
+                   std::wstring::npos),
+          "anchored incremental focus converges without a cycle or fallback");
+
+    const auto priorAnchorY =
+        anchoredFocused.elementRects.at(L"anchor-item-2").y;
+    auto prependedAnchor = anchored;
+    prependedAnchor.sequence = 2;
+    prependedAnchor.root.children.clear();
+    appendAnchorItem(prependedAnchor, -2);
+    appendAnchorItem(prependedAnchor, -1);
+    prependedAnchor.root.children.insert(
+        prependedAnchor.root.children.end(),
+        anchored.root.children.begin(),
+        anchored.root.children.end());
+    const auto reconciledAnchor = renderAt(
+        prependedAnchor, {}, anchoredViewport);
+    Near(reconciledAnchor.elementRects.at(L"anchor-item-2").y,
+         priorAnchorY,
+         "a genuine collection snapshot change still reconciles its saved anchor");
+    Check(reconciledAnchor.scrollOffsets.at(L"anchor.collection") >
+              anchoredFocused.scrollOffsets.at(L"anchor.collection") + 80.0F,
+          "ordinary full layout retains collection-anchor compensation");
 
     auto structural = local;
     structural.sequence = 5;
