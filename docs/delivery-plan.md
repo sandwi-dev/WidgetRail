@@ -63,6 +63,11 @@ Snapshots are evidence only. This file is the sole authority for current work.
   The user rejected it because paint-only damage copied top-left widget pixels
   into nonzero update regions. The exact candidate was closed normally with
   `WM_CLOSE`; no DLV-242 tests ran and nothing is integrated.
+- Coordinate correction `abeb392` is independently source-reviewed and visibly
+  running as unaccepted PID 99292. Its exact executable SHA-256 is
+  `98DD78A5CE0FD55F40BD437F966979FE616A162DB44EE25EC35EC52820BD81A8`.
+  The new session starts cleanly with exact fixed-chrome placement. Tests and
+  integration remain prohibited until the user accepts the physical behavior.
 - DLV-245 independently dispositioned both unreliable native routes. The
   process-owner route exposed the production DLV-246 hang. The widget-switch
   route corrected stale authored extents, then exposed an invalid comparison
@@ -180,7 +185,7 @@ user decision. The native overlay is the sole production presentation path.
 
 | Lane | Task/worktree | State |
 | --- | --- | --- |
-| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | DLV-242 production-only coordinate correction is Assigned atop rejected candidate `1aa4327`. Map the requested logical update rectangle to DirectComposition's returned `BeginDraw` offset; do not copy scene origin pixels into nonzero damage. Build once, but do not write/run tests or launch. Preserve accepted DLV-246 branch `codex/impl-platform-process-owner` and completed `codex/impl-platform-snapshot-cache` / `codex/impl-platform-fixed-chrome`. |
+| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | DLV-242 cumulative candidate through `abeb392` is source-reviewed and visibly launched as PID 99292. Await the user's physical verdict on partial-update placement, Settings focus navigation, offscreen focus-follow, live Media Sessions updates, press/slider continuity, and flicker before tests or integration. Preserve accepted DLV-246 branch `codex/impl-platform-process-owner` and completed `codex/impl-platform-snapshot-cache` / `codex/impl-platform-fixed-chrome`. |
 | Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | DLV-218 cumulative branch through `d8b8861` is accepted and integrated. No later widgets assignment is authorized: the known styling/provider items require fresh user evidence, so the lane remains idle rather than manufacturing internal filler while visible DLV-242 is active. Preserve the clean DLV-240 and DLV-218 branches. |
 
 The user explicitly approved the DLV-217 aggregate exception on 2026-08-15.
@@ -666,6 +671,17 @@ map it to the returned offset after DPI/interface-scale normalization, preserve
 full-surface behavior, and stay inside the BeginDraw guard rectangle. This is a
 production-only correction; tests remain prohibited until the next physical
 candidate is accepted.
+
+Correction `abeb392` retains the exact physical update rectangle selected by
+`BeginFrame` and carries it beside DirectComposition's returned backing-atlas
+offset. `DrawCurrentFrame` now maps the requested logical origin to that returned
+offset after DPI and interface-scale normalization. It also clips clearing and
+drawing to the requested atlas region. Full-surface and legacy rendering pass a
+zero-origin full rectangle and retain their prior mapping. The three-file diff
+is clean atop `1aa4327`; the one serialized packaged Release build succeeded and
+produced the exact hash recorded above. Independent source review accepts this
+only for physical-first launch; behavior remains unaccepted pending the user's
+verdict, and no tests have run.
 
 Verification remains physical-first: source review, one serialized full packaged
 Release build, exact artifact/provenance inspection, and visible launch for the
