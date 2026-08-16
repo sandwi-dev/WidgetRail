@@ -406,7 +406,9 @@ Closed red-test and accepted platform history through DLV-252 is retained in the
 Owner/baseline: platform lane from the planner assignment commit above accepted
 product tip `68b0de8`; serialize Settings, PlatformSettings, appearance payload,
 and native composition-policy edits in this lane. Add a persisted Appearance
-toggle, default On, named **Animate widget switching**. Off must snap tray-driven
+toggle, now user-directed to default Off, named **Animate widget switching**.
+Absent preference data and older payloads that omit the field resolve to Off;
+an explicitly persisted On remains On. Off must snap tray-driven
 identity/extent switches atomically to destination geometry while tray/guide,
 focus, input, UIA, and destination snapshot authority remain unchanged. Do not
 disable widget-authored/declarative animation, overload Reduced motion, alter
@@ -418,7 +420,8 @@ animation redesign, substantial conflict, or undocumented API; never push.
 Production-only commit `58ae6cc` was independently source-reviewed and its
 coherent packaged Release build passed without tests. It adds the persisted
 Appearance toggle through the existing Settings/PlatformSettings/appearance
-payload owners, defaults omitted schema-v1 data to On, and gates only tray-
+payload owners. Its original omitted-data default of On is superseded by the
+user's 2026-08-16 direction above. The policy gates only tray-
 driven widget content-reveal and extent-transition seams. Reduced motion and
 widget-authored animation remain independent. Exact executable SHA-256 is
 `E985E97E3D827FEB00059A0C78B129DA13C4421B03287C57B05BC39587921A18`.
@@ -457,8 +460,19 @@ packaged Release build passed with tests skipped; exact executable SHA-256 is
 This exact corrected candidate is visibly running as PID 43212. Initial trace
 confirms the production owner, DirectComposition owner, appearance revision,
 fixed guide/tray bounds, and UIA transform were established without a logged
-error. Await the user's animation-Off larger-to-smaller, smaller-to-larger, and
-same-size switch verdict before adding tests or integrating.
+error. The coordinate fix is physically accepted, but the user found that
+first visits after launch still animate with the toggle Off. Exact trace proves
+this is the deferred cold-admission path, not delayed preference loading: Media
+Sessions transition 2 and Games & Apps transition 3 begin with
+`currentSnapshot=false`, retain the prior widget, then start
+`composition-motion` when the matching first snapshot supplies its extent;
+their warm second visits use `composition-immediate`. Preserve a bounded snap
+decision across only that matching cold handoff, invalidate it on newer/stale/
+hidden/failed authority, consume it after the first matching admission, and do
+not suppress later same-widget live extent changes. The same correction changes
+the omitted/new-install default to Off while respecting explicit On. Build a
+new production-only candidate and stop for another verdict before tests or
+integration.
 
 ### Ready next — DLV-256: eliminate Spotify artwork paint stalls
 
