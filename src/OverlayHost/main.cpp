@@ -5595,8 +5595,10 @@ private:
                 ? gba::input::FindNodeInInputScope(
                     *snapshot, resolved->nodeId, snapshot->activeInputScopeId)
                 : nullptr;
+            const bool requestedSliderAction =
+                requestedSlider && requestedSlider->kind == L"slider";
             bool optimisticSliderStarted{};
-            if (requestedSlider && requestedSlider->kind == L"slider") {
+            if (requestedSliderAction) {
                 const auto priorRevision = sliderInteraction_.presentationRevision();
                 optimisticSliderStarted = sliderInteraction_.SetRequestedValue(
                     SliderDescriptor(*snapshot, *requestedSlider),
@@ -5627,9 +5629,14 @@ private:
                 }
                 AppendDiagnostic(L"Accessibility action transport failed for " + request.widgetId);
             } else if (*handled) {
-                RefreshAndApplyPresentation([&] {
-                    RefreshWidgetSnapshot(request.widgetId);
-                });
+                // A requested-value acknowledgement admits work to the widget's
+                // serial action queue; it does not mean OnActionAsync completed.
+                // The widget's post-action invalidation owns authoritative refresh.
+                if (!requestedSliderAction) {
+                    RefreshAndApplyPresentation([&] {
+                        RefreshWidgetSnapshot(request.widgetId);
+                    });
+                }
             } else if (optimisticSliderStarted && requestedSlider &&
                        sliderInteraction_.CancelPending(
                            SliderDescriptor(*snapshot, *requestedSlider),
@@ -6496,6 +6503,8 @@ private:
                 ? gba::input::FindNodeInInputScope(
                     *snapshot, *visibleFocus, snapshot->activeInputScopeId)
                 : nullptr;
+            const bool requestedSliderAction =
+                requestedSlider && requestedSlider->kind == L"slider";
             if (isOpen && visibleFocus && *visibleFocus != focusedElementId_) {
                 const auto cancelledSliders = sliderInteraction_.DeactivateAll();
                 (void)pressedInteraction_.Clear();
@@ -6537,7 +6546,7 @@ private:
             if (!handled) {
                 if (pressedInteraction_.Cancel(protocolButton))
                     InvalidateRect(window_, nullptr, FALSE);
-                if (requestedSlider && requestedSlider->kind == L"slider" &&
+                if (requestedSliderAction &&
                     sliderInteraction_.CancelPending(
                         SliderDescriptor(*snapshot, *requestedSlider),
                         GetTickCount64())) {
@@ -6551,11 +6560,15 @@ private:
             } else if (*handled) {
                 lastActionMessage_ = std::wstring(DisplayWidgetName(widget)) +
                                      L" handled " + std::wstring(button);
-                RefreshAndApplyPresentation([&] { RefreshWidgetSnapshot(widget); });
+                // Slider handling acknowledges queue admission only. Keep the
+                // optimistic pixels until the widget's post-action invalidation
+                // requests the authoritative snapshot.
+                if (!requestedSliderAction)
+                    RefreshAndApplyPresentation([&] { RefreshWidgetSnapshot(widget); });
             } else {
                 lastActionMessage_ = std::wstring(DisplayWidgetName(widget)) +
                                      L" has no " + std::wstring(button) + L" action here";
-                if (requestedSlider && requestedSlider->kind == L"slider" &&
+                if (requestedSliderAction &&
                     sliderInteraction_.CancelPending(
                         SliderDescriptor(*snapshot, *requestedSlider),
                         GetTickCount64())) {
