@@ -223,7 +223,7 @@ user decision. The native overlay is the sole production presentation path.
 
 | Lane | Task/worktree | State |
 | --- | --- | --- |
-| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | DLV-242 is accepted and integrated through `0cf92e2`. DLV-243 correction `1e7a8a7` is source-reviewed and built coherently with current main as temporary candidate `eea8d3f`; PID 47316 is awaiting the user's physical verdict and remains unintegrated and untested. DLV-250 follows it. DLV-248 remains deferred. Preserve accepted DLV-246 branch `codex/impl-platform-process-owner` and completed `codex/impl-platform-snapshot-cache` / `codex/impl-platform-fixed-chrome`. |
+| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | DLV-242 is accepted and integrated through `0cf92e2`. DLV-243 native correction `1e7a8a7` is source-reviewed, but coherent candidate `eea8d3f` is physically rejected because Audio Mixer projects continuous session-volume pending state onto the whole application card. A bounded widgets-lane visual correction is in progress; all DLV-243 work remains unintegrated and untested. DLV-250 follows it. DLV-248 remains deferred. Preserve accepted DLV-246 branch `codex/impl-platform-process-owner` and completed `codex/impl-platform-snapshot-cache` / `codex/impl-platform-fixed-chrome`. |
 | Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | DLV-218 cumulative branch through `d8b8861` is accepted and integrated. DLV-249 is user-accepted and integrated through `62589c5`; focused Games & Apps evidence is 64/64. It preserves the resolved session snapshot across tray switches, keeps manual Refresh as the only post-startup full reconciliation owner, and retains selected-SavedId launch-time revalidation. Preserve the clean DLV-249, DLV-240, and DLV-218 branches. |
 
 The user explicitly approved the DLV-217 aggregate exception on 2026-08-15.
@@ -825,7 +825,10 @@ full fallback remains only for ambiguous or unsafe geometry/paint state. It was
 cherry-picked without integration onto current main as coherent candidate
 `eea8d3f`, built with packaging, and visibly launched as PID 47316 with SHA-256
 `A33F24545C018D644F90A1B004562B74653103896AEA822E699EE172415D9737`.
-No pre-acceptance tests ran; physical slider verdict and integration are pending.
+The user rejected it: application-session volume changes toggle the entire card
+between `is-pending` and `is-ready`, visibly flashing its background; master and
+microphone lack that transition. Remove continuous-volume card styling without
+changing authority, then rebuild coherently. Tests and integration remain pending.
 
 ### Ready after DLV-243 — DLV-250: first-visible Settings and fixed-guide authority
 
@@ -948,8 +951,8 @@ sources, or user files.
 6. DLV-242 is accepted and integrated through `0cf92e2`; coherent integrated
    main is visibly running as PID 47244. DLV-248 item 4 remains explicitly
    deferred.
-7. DLV-243 coherent candidate `eea8d3f` is running as PID 47316 for physical
-   slider review before tests or integration.
+7. Correct physically rejected DLV-243 candidate `eea8d3f`, then launch the
+   coherent correction for slider review before tests or integration.
 8. After the user's DLV-243 verdict, implement DLV-250 and DLV-251 as separate
    physical-first milestones. DLV-248 still requires later explicit promotion.
 9. DLV-218 is accepted and integrated through `d8b8861`.

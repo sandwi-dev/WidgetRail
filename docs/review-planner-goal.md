@@ -544,9 +544,11 @@ Then repeat the loop.
   4 is deferred to DLV-248. Focused test follow-up `22ddfc0` and the complete
   DLV-242 chain are accepted and integrated through `0cf92e2`. DLV-243
   correction `1e7a8a7` retains exact affected slider identities and bounded
-  slider/focus damage. It is source-reviewed and visibly running in coherent
-  current-main candidate `eea8d3f` as PID 47316, without pre-acceptance tests;
-  do not integrate or add tests before the user's physical verdict. The original
+  slider/focus damage. Coherent candidate `eea8d3f` is physically rejected:
+  Audio Mixer maps continuous session-volume pending state to the whole card's
+  `is-pending` background and visibly flashes it. Correct only that authored
+  visual coupling, rebuild coherently, and do not integrate or add tests before
+  the user's next physical verdict. The original
   pre-recovery branch remains
   preserved at `bdf6d88`; do not rewrite it. Its
   prior DLV-220 history remains preserved on `codex/impl-platform-community`.
