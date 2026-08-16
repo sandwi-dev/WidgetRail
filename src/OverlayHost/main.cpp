@@ -1740,6 +1740,27 @@ private:
                             failure.widgetId);
                         continue;
                     }
+                    const auto* failureSnapshot = SnapshotFor(failure.widgetId);
+                    const auto* failureDescriptor =
+                        sessions_.FindDescriptor(failure.widgetId);
+                    if (failureSnapshot && failureDescriptor) {
+                        const auto& presentationSnapshot =
+                            launcherExperienceProjection_.InteractionSnapshot(
+                                failure.widgetId,
+                                failureDescriptor->presentationGeneration,
+                                *failureSnapshot);
+                        const auto* source = gba::input::FindNodeInInputScope(
+                            presentationSnapshot, failure.sourceElementId,
+                            presentationSnapshot.activeInputScopeId);
+                        if (source && source->kind == L"slider" &&
+                            source->valueChangedActionId == failure.actionId &&
+                            sliderInteraction_.CancelPending(
+                                SliderDescriptor(presentationSnapshot, *source),
+                                GetTickCount64())) {
+                            InvalidateWidgetSliderValues(
+                                presentationSnapshot, {source->id}, false);
+                        }
+                    }
                     AppendDiagnostic(
                         L"Widget action failed: widget=" + failure.widgetId +
                         L" generation=" + failure.runtimeGeneration +
@@ -2008,7 +2029,7 @@ private:
         if (trayYGesture_.capturing()) trayYGesture_.Cancel();
         if (priorSurface != state_.surface() || priorActive != state_.activeWidget() ||
             priorFocusRegion != state_.focusRegion()) {
-            sliderInteraction_.DeactivateAll();
+            (void)sliderInteraction_.DeactivateAll();
             if (pressedInteraction_.Clear())
                 InvalidateRect(window_, nullptr, FALSE);
         }
@@ -2567,6 +2588,8 @@ private:
                 sliderInteraction_.ForgetWidget(runtime.previousInstanceId);
             }
         }
+        sliderReconcileAt_ = sliderInteraction_.NextReconcileDeadline()
+            .value_or(0);
         std::erase_if(renderedSnapshotSequences_, [&](const auto& entry) {
             return !sessions_.Contains(entry.first);
         });
@@ -2648,7 +2671,7 @@ private:
             sessions_.RecordFailure(widgetId, stage, message);
         if (state_.surface() == gba::Surface::Widget &&
             state_.activeWidget() == widgetId) {
-            sliderInteraction_.DeactivateAll();
+            (void)sliderInteraction_.DeactivateAll();
             (void)pressedInteraction_.Clear();
             focusedElementId_.clear();
             lastWidgetRenderResult_ = {};
@@ -2760,8 +2783,25 @@ private:
             const bool newerRefreshRequested =
                 sessions_.RefreshState(event.widgetId) ==
                     gba::WidgetRefreshState::RefreshRequested;
+            const auto reconciledSliderNodes =
+                ReconcileSliderPresentations(*current, GetTickCount64());
+            sliderReconcileAt_ = sliderInteraction_.NextReconcileDeadline()
+                .value_or(0);
             pendingWidgetPresentationImpact_ =
                 std::move(event.presentationImpact);
+            if (pendingWidgetPresentationImpact_ &&
+                !reconciledSliderNodes.empty()) {
+                pendingWidgetPresentationImpact_->effects |=
+                    gba::WidgetPresentationEffect::Paint |
+                    gba::WidgetPresentationEffect::Accessibility;
+                for (const auto& nodeId : reconciledSliderNodes) {
+                    auto& affected = pendingWidgetPresentationImpact_->affectedNodeIds;
+                    if (std::find(affected.begin(), affected.end(), nodeId) ==
+                        affected.end()) {
+                        affected.push_back(nodeId);
+                    }
+                }
+            }
             CommitAdmittedWidgetPresentation(event.widgetId);
             if (pendingContentRevealWidget_ == event.widgetId) {
                 pendingContentRevealWidget_.clear();
@@ -3612,7 +3652,8 @@ private:
     }
 
     void InvalidateWidgetFocusChange(
-        const std::wstring_view priorFocusedElementId) {
+        const std::wstring_view priorFocusedElementId,
+        const bool sliderVisualChanged = false) {
         if (!window_) return;
         const auto full = [&] {
             pendingContentRenderPlan_.reset();
@@ -3620,7 +3661,8 @@ private:
                 declarativeRenderer_->CancelPresentationUpdatePlan();
             InvalidateRect(window_, nullptr, FALSE);
         };
-        if (!declarativeRenderer_ || !compositionSurface_.available() ||
+        if (sliderVisualChanged || !declarativeRenderer_ ||
+            !compositionSurface_.available() ||
             state_.surface() != gba::Surface::Widget ||
             state_.focusRegion() != gba::FocusRegion::Widget ||
             lastWidgetPresentationUsesProjection_ || declarativeMotionActive_ ||
@@ -4534,13 +4576,14 @@ private:
                         Dispatch(gba::Command::Activate);
                     }
                     (void)pressedInteraction_.Clear();
-                    sliderInteraction_.DeactivateAll();
+                    const bool sliderVisualChanged =
+                        sliderInteraction_.DeactivateAll();
                     launcherExperienceProjection_.ObserveFocusInput(
                         widget, GetTickCount64());
                     const std::wstring priorFocus = focusedElementId_;
                     focusedElementId_ = hit->id;
                     focusMemory_.Remember(widget, *snapshot, focusedElementId_);
-                    InvalidateWidgetFocusChange(priorFocus);
+                    InvalidateWidgetFocusChange(priorFocus, sliderVisualChanged);
                     if (hit->enabled) DispatchControllerAction(L"A");
                     return;
                 }
@@ -5204,8 +5247,23 @@ private:
         releaseButton(XINPUT_GAMEPAD_START, L"menu");
 
         if (sliderReconcileAt_ != 0 && now >= sliderReconcileAt_) {
-            sliderReconcileAt_ = 0;
-            InvalidateRect(window_, nullptr, FALSE);
+            std::vector<std::wstring> reconciled;
+            if (state_.surface() == gba::Surface::Widget) {
+                if (const auto* snapshot =
+                        InteractionSnapshotFor(state_.activeWidget())) {
+                    reconciled = ReconcileSliderPresentations(*snapshot, now);
+                    if (!reconciled.empty())
+                        InvalidateWidgetSliderValues(*snapshot, reconciled, false);
+                }
+            }
+            if (sliderInteraction_.ExpireTimedOut(now)) {
+                pendingContentRenderPlan_.reset();
+                if (declarativeRenderer_)
+                    declarativeRenderer_->CancelPresentationUpdatePlan();
+                InvalidateRect(window_, nullptr, FALSE);
+            }
+            sliderReconcileAt_ = sliderInteraction_.NextReconcileDeadline()
+                .value_or(0);
         }
         if (const auto direction = DecodeNavigation(frame.stickNavigation)) {
             DispatchStickNavigation(*direction);
@@ -5481,7 +5539,8 @@ private:
                 if (state_.surface() != gba::Surface::Widget ||
                     state_.focusRegion() != gba::FocusRegion::Widget ||
                     state_.activeWidget() != request.widgetId) continue;
-                sliderInteraction_.DeactivateAll();
+                const bool sliderVisualChanged =
+                    sliderInteraction_.DeactivateAll();
                 (void)pressedInteraction_.Clear();
                 launcherExperienceProjection_.ObserveFocusInput(
                     request.widgetId, GetTickCount64());
@@ -5489,7 +5548,7 @@ private:
                 focusedElementId_ = resolved->nodeId;
                 focusMemory_.Remember(request.widgetId, *snapshot, focusedElementId_);
                 (void)SetFocus(window_);
-                InvalidateWidgetFocusChange(priorFocus);
+                InvalidateWidgetFocusChange(priorFocus, sliderVisualChanged);
                 continue;
             }
 
@@ -5514,6 +5573,24 @@ private:
                 continue;
             }
 
+            const auto* requestedSlider = resolved->requestedValue
+                ? gba::input::FindNodeInInputScope(
+                    *snapshot, resolved->nodeId, snapshot->activeInputScopeId)
+                : nullptr;
+            bool optimisticSliderStarted{};
+            if (requestedSlider && requestedSlider->kind == L"slider") {
+                const auto priorRevision = sliderInteraction_.presentationRevision();
+                optimisticSliderStarted = sliderInteraction_.SetRequestedValue(
+                    SliderDescriptor(*snapshot, *requestedSlider),
+                    *resolved->requestedValue, GetTickCount64());
+                sliderReconcileAt_ = sliderInteraction_.NextReconcileDeadline()
+                    .value_or(0);
+                if (sliderInteraction_.presentationRevision() != priorRevision) {
+                    InvalidateWidgetSliderValues(
+                        *snapshot, {requestedSlider->id}, true);
+                }
+            }
+
             const auto handled = bridge_.SendControllerInput(
                 request.widgetId, resolved->protocolButton, L"openWidget", resolved->nodeId,
                 snapshot->activeInputScopeId, snapshot->sequence,
@@ -5521,11 +5598,28 @@ private:
                 L"pressed", resolved->requestedValue,
                 gba::ControllerInputOrigin::AccessibilityAutomation);
             if (!handled) {
+                if (optimisticSliderStarted && requestedSlider &&
+                    sliderInteraction_.CancelPending(
+                        SliderDescriptor(*snapshot, *requestedSlider),
+                        GetTickCount64())) {
+                    sliderReconcileAt_ = sliderInteraction_.NextReconcileDeadline()
+                        .value_or(0);
+                    InvalidateWidgetSliderValues(
+                        *snapshot, {requestedSlider->id}, true);
+                }
                 AppendDiagnostic(L"Accessibility action transport failed for " + request.widgetId);
             } else if (*handled) {
                 RefreshAndApplyPresentation([&] {
                     RefreshWidgetSnapshot(request.widgetId);
                 });
+            } else if (optimisticSliderStarted && requestedSlider &&
+                       sliderInteraction_.CancelPending(
+                           SliderDescriptor(*snapshot, *requestedSlider),
+                           GetTickCount64())) {
+                sliderReconcileAt_ = sliderInteraction_.NextReconcileDeadline()
+                    .value_or(0);
+                InvalidateWidgetSliderValues(
+                    *snapshot, {requestedSlider->id}, true);
             }
         }
         accessibilityProvider_.RaisePendingEvents();
@@ -5779,13 +5873,13 @@ private:
             }));
         if (!target || *target == focusedElementId_) return false;
 
-        sliderInteraction_.DeactivateAll();
+        const bool sliderVisualChanged = sliderInteraction_.DeactivateAll();
         (void)pressedInteraction_.Clear();
         const std::wstring priorFocus = focusedElementId_;
         focusedElementId_ = *target;
         (void)scrollEvidenceProbe_.RecordTarget(*target, L"responsive");
         focusMemory_.Remember(widget, *snapshot, focusedElementId_);
-        InvalidateWidgetFocusChange(priorFocus);
+        InvalidateWidgetFocusChange(priorFocus, sliderVisualChanged);
         return true;
     }
 
@@ -5806,6 +5900,115 @@ private:
             node.isBusy,
             node.sliderInteractionMode == L"activateToAdjust",
         };
+    }
+
+    [[nodiscard]] std::vector<std::wstring> ReconcileSliderPresentations(
+        const gba::WidgetSnapshot& snapshot,
+        const ULONGLONG now) {
+        std::vector<std::wstring> changed;
+        const auto visit = [&](const auto& self, const gba::WidgetNode& node) -> void {
+            if (node.kind == L"slider" &&
+                sliderInteraction_.Reconcile(
+                    SliderDescriptor(snapshot, node), now).visualChanged) {
+                changed.push_back(node.id);
+            }
+            for (const auto& child : node.children) self(self, child);
+        };
+        visit(visit, snapshot.root);
+        return changed;
+    }
+
+    void InvalidateWidgetSliderValues(
+        const gba::WidgetSnapshot& snapshot,
+        const std::vector<std::wstring>& nodeIds,
+        const bool paintImmediately) {
+        if (!window_ || nodeIds.empty()) return;
+        const auto full = [&] {
+            pendingContentRenderPlan_.reset();
+            if (declarativeRenderer_)
+                declarativeRenderer_->CancelPresentationUpdatePlan();
+            InvalidateRect(window_, nullptr, FALSE);
+            if (paintImmediately) UpdateWindow(window_);
+        };
+        const auto* current = InteractionSnapshotFor(state_.activeWidget());
+        if (!declarativeRenderer_ || !compositionSurface_.available() ||
+            state_.surface() != gba::Surface::Widget ||
+            state_.focusRegion() != gba::FocusRegion::Widget || !current ||
+            current->instanceId != snapshot.instanceId ||
+            current->sequence != snapshot.sequence ||
+            lastWidgetPresentationUsesProjection_ || declarativeMotionActive_ ||
+            overlayTransition_.active() ||
+            presentationTransaction_.extentTransitionActive() ||
+            compositionPlacementInProgress_ || pendingWidgetPresentationImpact_ ||
+            pendingContentRenderPlan_) {
+            full();
+            return;
+        }
+        RECT pendingPaint{};
+        RECT client{};
+        if (GetUpdateRect(window_, &pendingPaint, FALSE) != FALSE ||
+            !lastWidgetRenderResult_.succeeded || !GetClientRect(window_, &client)) {
+            full();
+            return;
+        }
+        const UINT dpi = std::max(1U, GetDpiForWindow(window_));
+        const float interfaceScale = appearanceState_.current()
+            ? static_cast<float>(appearanceState_.current()->interfaceScale)
+            : 1.0F;
+        const auto metrics = gba::ComputeOverlayRenderMetrics(
+            client.right - client.left, client.bottom - client.top,
+            dpi, interfaceScale);
+        const auto geometry = metrics
+            ? gba::ComputePanelLocalSurfaceGeometry(
+                metrics->viewportWidthDip, metrics->viewportHeightDip)
+            : std::nullopt;
+        if (!metrics || !geometry || metrics->physicalPixelsPerDip <= 0.0F) {
+            full();
+            return;
+        }
+        const gba::WidgetPresentationImpact impact{
+            snapshot.sequence,
+            snapshot.sequence,
+            gba::WidgetPresentationEffect::Paint |
+                gba::WidgetPresentationEffect::Accessibility,
+            nodeIds,
+        };
+        const auto plan = declarativeRenderer_->PlanPresentationUpdate(
+            snapshot, impact,
+            {
+                geometry->widgetViewportX,
+                geometry->widgetViewportY,
+                geometry->widgetViewportWidth,
+                geometry->widgetViewportHeight,
+            });
+        if (!plan || plan->work != gba::IncrementalPresentationWork::PaintOnly) {
+            full();
+            return;
+        }
+        pendingContentRenderPlan_ = *plan;
+        const auto scale = metrics->physicalPixelsPerDip;
+        RECT update{
+            static_cast<LONG>(std::floor(plan->damage.x * scale)),
+            static_cast<LONG>(std::floor(plan->damage.y * scale)),
+            static_cast<LONG>(std::ceil(
+                (plan->damage.x + plan->damage.width) * scale)),
+            static_cast<LONG>(std::ceil(
+                (plan->damage.y + plan->damage.height) * scale)),
+        };
+        update.left = std::clamp<LONG>(
+            update.left, 0, static_cast<LONG>(client.right));
+        update.top = std::clamp<LONG>(
+            update.top, 0, static_cast<LONG>(client.bottom));
+        update.right = std::clamp<LONG>(
+            update.right, update.left, static_cast<LONG>(client.right));
+        update.bottom = std::clamp<LONG>(
+            update.bottom, update.top, static_cast<LONG>(client.bottom));
+        if (update.right <= update.left || update.bottom <= update.top) {
+            full();
+            return;
+        }
+        InvalidateRect(window_, &update, FALSE);
+        if (paintImmediately) UpdateWindow(window_);
     }
 
     bool DispatchScrollPagination(
@@ -5848,10 +6051,11 @@ private:
             focusedElementId_, snapshot->activeInputScopeId, lastWidgetRenderResult_);
         if (!visible) return;
         if (*visible != focusedElementId_) {
+            const bool sliderVisualChanged = sliderInteraction_.DeactivateAll();
             const std::wstring priorFocus = focusedElementId_;
             focusedElementId_ = *visible;
             focusMemory_.Remember(widgetId, *snapshot, focusedElementId_);
-            InvalidateWidgetFocusChange(priorFocus);
+            InvalidateWidgetFocusChange(priorFocus, sliderVisualChanged);
         }
         const auto projectedDirection =
             direction == gba::input::NavigationDirection::Left ? L"left" :
@@ -5883,20 +6087,17 @@ private:
             const auto adjustment = sliderInteraction_.Adjust(
                 sliderDescriptor, direction, GetTickCount64());
             if (adjustment.requestedValue) {
-                sliderReconcileAt_ = GetTickCount64() +
-                    gba::input::SliderInteractionState::PendingTimeoutMilliseconds + 1;
+                sliderReconcileAt_ = sliderInteraction_.NextReconcileDeadline()
+                    .value_or(0);
                 // Paint the host-owned target before the synchronous worker
                 // acknowledgement so controller feedback never waits on IPC.
-                InvalidateRect(window_, nullptr, FALSE);
-                UpdateWindow(window_);
+                InvalidateWidgetSliderValues(
+                    *snapshot, {focused->id}, true);
                 const auto button = direction == gba::input::NavigationDirection::Left
                     ? std::wstring_view{L"DPadLeft"}
                     : std::wstring_view{L"DPadRight"};
                 DispatchWidgetAction(button, phase, adjustment.requestedValue);
             }
-            // Optimistic value paints on the next frame even when the worker
-            // queue is busy; acknowledgement or timeout reconciles it.
-            InvalidateRect(window_, nullptr, FALSE);
             return;
         }
         if (phase == gba::input::NavigationEventPhase::Repeated && !repeatedCanNavigate)
@@ -5963,6 +6164,8 @@ private:
                 declarativeRenderer_->ForgetWidgetState(descriptor->instanceId);
             sliderInteraction_.ForgetWidget(descriptor->instanceId);
         }
+        sliderReconcileAt_ = sliderInteraction_.NextReconcileDeadline()
+            .value_or(0);
         (void)pressedInteraction_.Clear();
         focusMemory_.Forget(widgetId);
         focusedElementId_.clear();
@@ -6039,14 +6242,14 @@ private:
             return;
         }
         if (*visibleFocus != focusedElementId_) {
-            sliderInteraction_.DeactivateAll();
+            const bool sliderVisualChanged = sliderInteraction_.DeactivateAll();
             (void)pressedInteraction_.Clear();
             launcherExperienceProjection_.ObserveFocusInput(
                 widgetId, GetTickCount64());
             const std::wstring priorFocus = focusedElementId_;
             focusedElementId_ = *visibleFocus;
             focusMemory_.Remember(widgetId, *snapshot, focusedElementId_);
-            InvalidateWidgetFocusChange(priorFocus);
+            InvalidateWidgetFocusChange(priorFocus, sliderVisualChanged);
             return;
         }
         const auto projectedTarget =
@@ -6054,7 +6257,7 @@ private:
                 widgetId, focusedElementId_, direction);
         if (projectedTarget && gba::input::IsEnabledFocusTarget(
                 *projectedTarget, lastWidgetRenderResult_)) {
-            sliderInteraction_.DeactivateAll();
+            const bool sliderVisualChanged = sliderInteraction_.DeactivateAll();
             (void)pressedInteraction_.Clear();
             launcherExperienceProjection_.ObserveFocusInput(
                 widgetId, GetTickCount64());
@@ -6063,7 +6266,7 @@ private:
             (void)scrollEvidenceProbe_.RecordTarget(
                 focusedElementId_, direction);
             focusMemory_.Remember(widgetId, *snapshot, focusedElementId_);
-            InvalidateWidgetFocusChange(priorFocus);
+            InvalidateWidgetFocusChange(priorFocus, sliderVisualChanged);
             DispatchScrollPagination(widgetId, *snapshot, navigationDirection);
             return;
         }
@@ -6089,7 +6292,7 @@ private:
         const bool explicitMoves = explicitTarget && gba::input::IsDistinctFocusMove(
             focusedElementId_, explicitTarget->id, explicitNavigable);
         if (explicitMoves) {
-            sliderInteraction_.DeactivateAll();
+            const bool sliderVisualChanged = sliderInteraction_.DeactivateAll();
             (void)pressedInteraction_.Clear();
             launcherExperienceProjection_.ObserveFocusInput(
                 widgetId, GetTickCount64());
@@ -6097,7 +6300,7 @@ private:
             focusedElementId_ = explicitTarget->id;
             (void)scrollEvidenceProbe_.RecordTarget(explicitTarget->id, direction);
             focusMemory_.Remember(widgetId, *snapshot, focusedElementId_);
-            InvalidateWidgetFocusChange(priorFocus);
+            InvalidateWidgetFocusChange(priorFocus, sliderVisualChanged);
             DispatchScrollPagination(widgetId, *snapshot, navigationDirection);
             return;
         }
@@ -6105,7 +6308,7 @@ private:
         const auto fallback = gba::input::FindGeometricFocusTarget(
             focusedElementId_, navigationDirection, lastWidgetRenderResult_);
         if (fallback) {
-            sliderInteraction_.DeactivateAll();
+            const bool sliderVisualChanged = sliderInteraction_.DeactivateAll();
             (void)pressedInteraction_.Clear();
             launcherExperienceProjection_.ObserveFocusInput(
                 widgetId, GetTickCount64());
@@ -6113,7 +6316,7 @@ private:
             focusedElementId_ = *fallback;
             (void)scrollEvidenceProbe_.RecordTarget(*fallback, direction);
             focusMemory_.Remember(widgetId, *snapshot, focusedElementId_);
-            InvalidateWidgetFocusChange(priorFocus);
+            InvalidateWidgetFocusChange(priorFocus, sliderVisualChanged);
             DispatchScrollPagination(widgetId, *snapshot, navigationDirection);
             return;
         }
@@ -6155,12 +6358,12 @@ private:
             focusedElementId_, snapshot->activeInputScopeId, lastWidgetRenderResult_);
         if (!visible) return false;
         if (*visible != focusedElementId_) {
-            sliderInteraction_.DeactivateAll();
+            const bool sliderVisualChanged = sliderInteraction_.DeactivateAll();
             (void)pressedInteraction_.Clear();
             const std::wstring priorFocus = focusedElementId_;
             focusedElementId_ = *visible;
             focusMemory_.Remember(widget, *snapshot, focusedElementId_);
-            InvalidateWidgetFocusChange(priorFocus);
+            InvalidateWidgetFocusChange(priorFocus, sliderVisualChanged);
         }
         const auto* focused = gba::input::FindNodeInInputScope(
             *snapshot, focusedElementId_, snapshot->activeInputScopeId);
@@ -6268,12 +6471,17 @@ private:
                     focusedElementId_, snapshot->activeInputScopeId,
                     lastWidgetRenderResult_)
                 : std::optional<std::wstring>{};
+            const auto* requestedSlider = requestedValue && isOpen && visibleFocus
+                ? gba::input::FindNodeInInputScope(
+                    *snapshot, *visibleFocus, snapshot->activeInputScopeId)
+                : nullptr;
             if (isOpen && visibleFocus && *visibleFocus != focusedElementId_) {
+                const bool sliderVisualChanged = sliderInteraction_.DeactivateAll();
                 (void)pressedInteraction_.Clear();
                 const std::wstring priorFocus = focusedElementId_;
                 focusedElementId_ = *visibleFocus;
                 focusMemory_.Remember(widget, *snapshot, focusedElementId_);
-                InvalidateWidgetFocusChange(priorFocus);
+                InvalidateWidgetFocusChange(priorFocus, sliderVisualChanged);
             }
             if (physicalPress && isOpen && visibleFocus &&
                 phase == gba::input::NavigationEventPhase::Pressed &&
@@ -6308,6 +6516,15 @@ private:
             if (!handled) {
                 if (pressedInteraction_.Cancel(protocolButton))
                     InvalidateRect(window_, nullptr, FALSE);
+                if (requestedSlider && requestedSlider->kind == L"slider" &&
+                    sliderInteraction_.CancelPending(
+                        SliderDescriptor(*snapshot, *requestedSlider),
+                        GetTickCount64())) {
+                    sliderReconcileAt_ = sliderInteraction_.NextReconcileDeadline()
+                        .value_or(0);
+                    InvalidateWidgetSliderValues(
+                        *snapshot, {requestedSlider->id}, true);
+                }
                 lastActionMessage_ = std::wstring(DisplayWidgetName(widget)) +
                                      L" input failed: " + bridge_.lastError();
             } else if (*handled) {
@@ -6317,6 +6534,15 @@ private:
             } else {
                 lastActionMessage_ = std::wstring(DisplayWidgetName(widget)) +
                                      L" has no " + std::wstring(button) + L" action here";
+                if (requestedSlider && requestedSlider->kind == L"slider" &&
+                    sliderInteraction_.CancelPending(
+                        SliderDescriptor(*snapshot, *requestedSlider),
+                        GetTickCount64())) {
+                    sliderReconcileAt_ = sliderInteraction_.NextReconcileDeadline()
+                        .value_or(0);
+                    InvalidateWidgetSliderValues(
+                        *snapshot, {requestedSlider->id}, true);
+                }
                 snapshot = InteractionSnapshotFor(widget);
                 const auto unhandledContext = snapshot &&
                     std::wstring_view(snapshot->activeInputScopeId) ==
@@ -6332,7 +6558,8 @@ private:
             }
             lastActionExpiresAt_ = GetTickCount64() + 1800;
             AppendDiagnostic(lastActionMessage_);
-            InvalidateRect(window_, nullptr, FALSE);
+            if (!requestedValue)
+                InvalidateRect(window_, nullptr, FALSE);
             return;
         }
 
@@ -6365,7 +6592,7 @@ private:
             widget, descriptor->runtimeGeneration, snapshot, nodeId);
         if (!request) return true;
 
-        sliderInteraction_.DeactivateAll();
+        (void)sliderInteraction_.DeactivateAll();
         (void)pressedInteraction_.Clear();
         focusedElementId_ = request->nodeId;
         focusMemory_.Remember(widget, snapshot, focusedElementId_);

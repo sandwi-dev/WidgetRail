@@ -66,6 +66,37 @@ SliderAdjustment SliderInteractionState::Adjust(
     return {true, *target};
 }
 
+bool SliderInteractionState::SetRequestedValue(
+    const SliderInputDescriptor& slider,
+    const double requestedValue,
+    const std::uint64_t nowMilliseconds) {
+    if (!Valid(slider) || slider.disabled || slider.busy ||
+        !std::isfinite(requestedValue) || requestedValue < slider.minimum ||
+        requestedValue > slider.maximum) {
+        return false;
+    }
+    auto* entry = CreateOrSynchronize(slider, nowMilliseconds);
+    if (!entry) return false;
+    if (entry->pending &&
+        Near(requestedValue, entry->targetValue, entry->maximum - entry->minimum)) {
+        entry->lastAdjustment = nowMilliseconds;
+        entry->lastAccess = ++accessClock_;
+        return true;
+    }
+    if (!entry->pending &&
+        Near(requestedValue, entry->authoritativeValue,
+             entry->maximum - entry->minimum)) {
+        return true;
+    }
+    entry->targetValue = requestedValue;
+    entry->pending = true;
+    entry->adjustmentSnapshotSequence = slider.snapshotSequence;
+    entry->lastAdjustment = nowMilliseconds;
+    entry->lastAccess = ++accessClock_;
+    ++presentationRevision_;
+    return true;
+}
+
 bool SliderInteractionState::EnterAdjustmentMode(
     const SliderInputDescriptor& slider,
     const std::uint64_t nowMilliseconds) {
@@ -107,9 +138,65 @@ std::optional<double> SliderInteractionState::PresentationValue(
         : std::nullopt;
 }
 
-SliderInteractionState::Entry* SliderInteractionState::FindAndSynchronize(
+std::optional<std::uint64_t>
+SliderInteractionState::NextReconcileDeadline() const noexcept {
+    std::optional<std::uint64_t> deadline;
+    for (const auto& [_, entry] : entries_) {
+        if (!entry.pending) continue;
+        const auto candidate = entry.lastAdjustment + PendingTimeoutMilliseconds + 1;
+        if (!deadline || candidate < *deadline) deadline = candidate;
+    }
+    return deadline;
+}
+
+bool SliderInteractionState::ExpireTimedOut(
+    const std::uint64_t nowMilliseconds) noexcept {
+    bool presentationChanged{};
+    for (auto& [_, entry] : entries_) {
+        if (!entry.pending || nowMilliseconds < entry.lastAdjustment ||
+            nowMilliseconds - entry.lastAdjustment <= PendingTimeoutMilliseconds) {
+            continue;
+        }
+        entry.pending = false;
+        entry.targetValue = entry.authoritativeValue;
+        presentationChanged = true;
+    }
+    if (presentationChanged) ++presentationRevision_;
+    return presentationChanged;
+}
+
+SliderReconciliation SliderInteractionState::Reconcile(
     const SliderInputDescriptor& slider,
     const std::uint64_t nowMilliseconds) {
+    SliderReconciliation reconciliation;
+    if (Valid(slider))
+        (void)FindAndSynchronize(slider, nowMilliseconds, &reconciliation);
+    return reconciliation;
+}
+
+bool SliderInteractionState::CancelPending(
+    const SliderInputDescriptor& slider,
+    const std::uint64_t nowMilliseconds) {
+    if (!Valid(slider)) return false;
+    const auto position = entries_.find(Key(slider));
+    if (position == entries_.end()) return false;
+    auto& entry = position->second;
+    if (!entry.pending || entry.actionId != slider.valueChangedActionId ||
+        entry.adjustmentSnapshotSequence != slider.snapshotSequence) {
+        return false;
+    }
+    entry.pending = false;
+    entry.targetValue = entry.authoritativeValue;
+    entry.lastAccess = ++accessClock_;
+    entry.lastAdjustment = nowMilliseconds;
+    ++presentationRevision_;
+    return true;
+}
+
+SliderInteractionState::Entry* SliderInteractionState::FindAndSynchronize(
+    const SliderInputDescriptor& slider,
+    const std::uint64_t nowMilliseconds,
+    SliderReconciliation* const reconciliation) {
     const auto key = Key(slider);
     const auto position = entries_.find(key);
     if (position == entries_.end()) return nullptr;
@@ -125,7 +212,10 @@ SliderInteractionState::Entry* SliderInteractionState::FindAndSynchronize(
             slider.snapshotSequence, 0, std::wstring{slider.valueChangedActionId},
             0, ++accessClock_, false, slider.activationRequired, false,
         };
-        if (presentationChanged) ++presentationRevision_;
+        if (presentationChanged) {
+            ++presentationRevision_;
+            if (reconciliation) *reconciliation = {true, true};
+        }
         return &entry;
     }
     const bool sameContract =
@@ -141,16 +231,23 @@ SliderInteractionState::Entry* SliderInteractionState::FindAndSynchronize(
             slider.snapshotSequence, 0, std::wstring{slider.valueChangedActionId},
             0, ++accessClock_, false, slider.activationRequired, false,
         };
-        if (presentationChanged) ++presentationRevision_;
+        if (presentationChanged) {
+            ++presentationRevision_;
+            if (reconciliation) *reconciliation = {true, true};
+        }
     } else {
-        if (entry.pending &&
-            ((slider.snapshotSequence > entry.adjustmentSnapshotSequence &&
-              Near(slider.value, entry.targetValue, slider.maximum - slider.minimum)) ||
-             (nowMilliseconds >= entry.lastAdjustment &&
-              nowMilliseconds - entry.lastAdjustment > PendingTimeoutMilliseconds))) {
+        const bool authoritativeCompletion = entry.pending &&
+            slider.snapshotSequence > entry.adjustmentSnapshotSequence;
+        const bool timedOut = entry.pending &&
+            nowMilliseconds >= entry.lastAdjustment &&
+            nowMilliseconds - entry.lastAdjustment > PendingTimeoutMilliseconds;
+        if (authoritativeCompletion || timedOut) {
+            const bool visualChanged = !Near(
+                slider.value, entry.targetValue, slider.maximum - slider.minimum);
             entry.pending = false;
             entry.targetValue = slider.value;
-            ++presentationRevision_;
+            if (visualChanged) ++presentationRevision_;
+            if (reconciliation) *reconciliation = {true, visualChanged};
         } else if (!entry.pending) {
             entry.targetValue = slider.value;
         }
@@ -252,8 +349,17 @@ void SliderInteractionState::RetainAdjustmentMode(
     }
 }
 
-void SliderInteractionState::DeactivateAll() noexcept {
-    for (auto& [_, entry] : entries_) entry.adjustmentActive = false;
+bool SliderInteractionState::DeactivateAll() noexcept {
+    bool presentationChanged{};
+    for (auto& [_, entry] : entries_) {
+        entry.adjustmentActive = false;
+        if (!entry.pending) continue;
+        entry.pending = false;
+        entry.targetValue = entry.authoritativeValue;
+        presentationChanged = true;
+    }
+    if (presentationChanged) ++presentationRevision_;
+    return presentationChanged;
 }
 
 } // namespace gba::input
