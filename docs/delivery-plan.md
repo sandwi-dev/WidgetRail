@@ -213,8 +213,8 @@ user decision. The native overlay is the sole production presentation path.
 
 | Lane | Task/worktree | State |
 | --- | --- | --- |
-| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | DLV-250 is physically accepted, focused-tested, and integrated as `6eadfa7` plus `fe25705`. No platform milestone is currently Assigned; DLV-248 remains deliberately deferred and the queue needs user/planner replenishment. Preserve accepted DLV-246 branch `codex/impl-platform-process-owner` and completed `codex/impl-platform-snapshot-cache` / `codex/impl-platform-fixed-chrome`. |
-| Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | DLV-252 is physically accepted and integrated as `868ac4e` plus focused-test commit `68b0de8`; provider evidence is 78/78. Accepted production candidate PID 44872 remains running because the later integrated delta was tests only. No widgets milestone is currently Assigned; the queue needs user/planner replenishment. Preserve the clean DLV-252, DLV-249, DLV-240, DLV-218, and DLV-251 branches. |
+| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | DLV-254 is Assigned from the planner assignment commit above product tip `68b0de8`: add an Appearance toggle that disables only tray-driven widget-switch envelope animation. DLV-248 remains deferred. |
+| Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | DLV-253 is Assigned from the planner assignment commit above product tip `68b0de8`: stop ordinary Games & Apps tray activation from replacing a current retained library with transient/full checkpoints. Preserve clean completed branches. |
 
 The user explicitly approved the DLV-217 aggregate exception on 2026-08-15.
 The preserved four-commit implementation chain was integrated onto current main
@@ -229,6 +229,16 @@ managed DLV-217 test rerun was not claimable because this
 checkout's restore graph failed silently before compilation with zero reported
 errors; the accepted exact-tip DLV-217 evidence and explicit aggregate exception
 remain the DLV-217 acceptance basis.
+
+### Planner analysis deliverable — DLV-255: OverlayHost main refactoring review
+
+The planner will use the exact-main clangd compile database plus manual caller,
+state, and lifetime inspection to produce
+`docs/overlay-host-main-refactoring-review.md`. The document must map
+`OverlayApp` responsibilities and mutable authorities, identify prioritized
+behavior-preserving extraction seams, dependencies, risk, and focused proof,
+and distinguish real ownership reduction from cosmetic file splitting. This is
+analysis only: no production/test edits, build, or relaunch.
 
 ## Dispositioned temporary red-test lane
 
@@ -828,6 +838,20 @@ authority exists; do not expose the legacy dashboard title/guide placeholder.
 The fixed chrome HWND remains the sole guide renderer and screen-position owner.
 Preserve later Guide reopen behavior. A configurable startup widget is deferred. The user physically accepted candidate `7f15f15`; focused state coverage `7110d14` passed. They are integrated as `6eadfa7` and `fe25705`. Exact coherent main Release PID 2152 opened Settings on transition 1 and logged exact first-visible chrome placement with no startup error.
 
+### Assigned — DLV-254: optional widget-switch animation
+
+Owner/baseline: platform lane from the planner assignment commit above accepted
+product tip `68b0de8`; serialize Settings, PlatformSettings, appearance payload,
+and native composition-policy edits in this lane. Add a persisted Appearance
+toggle, default On, named **Animate widget switching**. Off must snap tray-driven
+identity/extent switches atomically to destination geometry while tray/guide,
+focus, input, UIA, and destination snapshot authority remain unchanged. Do not
+disable widget-authored/declarative animation, overload Reduced motion, alter
+transition geometry, or repair existing animation defects. Physical-first:
+production candidate/build and user verdict precede focused tests. Stop for a
+settings schema migration with data-loss risk, another motion owner, broad
+animation redesign, substantial conflict, or undocumented API; never push.
+
 ### Ready later — DLV-248: media optimistic command revision reconciliation
 
 Prevent an older provider publication from overwriting a newer host-projected
@@ -841,6 +865,22 @@ deferred by user decision and must not be mixed into DLV-242.
 
 DLV-240 is integrated. Accepted DLV-225/226/228/229/230 remain integrated. New
 styling/provider work requires fresh user evidence rather than speculation.
+
+### Assigned — DLV-253: retain Games & Apps across ordinary tray activation
+
+Owner/baseline: widgets lane from the planner assignment commit above accepted
+product tip `68b0de8`; own the smallest Games & Apps/runtime lifecycle seam that
+causes the reproduced publications, without changing catalog/launch authority,
+snapshot protocol, native painting, or manual Refresh. In transition 195 the
+host had `currentSnapshot=true`, yet queued Visible Establish generation 47,
+admitted sequence 1 at 820x225, then Background Snapshot sequences 2/3 at
+820x545 with full paints; the same pattern repeats on ordinary activation.
+Preserve the last resolved library and extent without restarting/reconciling;
+only overlay-session initialization and explicit Refresh may perform catalog-
+wide reconciliation. Physical-first production candidate/build and user verdict
+precede focused tests. Stop for a protocol change, permanent worker residency,
+weakened exact-SavedId launch validation, destructive state reset, substantial
+conflict, or external publication; never push.
 
 ### Accepted and integrated — DLV-252: recover modern Steam provider-native game icons
 
