@@ -219,7 +219,7 @@ user decision. The native overlay is the sole production presentation path.
 
 | Lane | Task/worktree | State |
 | --- | --- | --- |
-| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | DLV-256 is physically accepted, focused-tested 4,894 checks, and integrated through `b0d53b0`. DLV-263 diagnostic commit `d0694a5` is source-reviewed and visibly launched as unaccepted PID 51244 for the joint long-list reproduction; no behavior correction or tests are present. DLV-261 and DLV-262 remain Ready behind it; DLV-248 remains deferred. |
+| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | DLV-256 is physically accepted, focused-tested 4,894 checks, and integrated through `b0d53b0`. DLV-263 diagnostic commit `d0694a5` reproduced the long-list jump and the bounded production correction is Assigned; no tests precede the next physical verdict. DLV-261 and DLV-262 remain Ready behind it; DLV-248 remains deferred. |
 | Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | DLV-253 is physically accepted, focused Games & Apps evidence is 65/65, and the cumulative chain is integrated on main as `6a26f08`, `3c63852`, and test-only `91177ec`. The superseded PID 51500 closed normally before the DLV-254 candidate launch; no rebuild/relaunch was performed for the DLV-253 tests alone. Preserve clean completed branches. |
 
 The user explicitly approved the DLV-217 aggregate exception on 2026-08-15.
@@ -787,9 +787,15 @@ build passed with tests skipped; exact executable SHA-256 is
 Accepted PID 2608 was closed by the implementation lane to release its exact
 output lock. The diagnostic candidate is visibly running as unaccepted PID
 51244 with clean process-owner, DirectComposition, fixed-chrome, and first
-Settings admission logs. Joint long-list reproduction remains pending; do not
-correct behavior, write tests, or integrate before the resulting trace is
-reviewed.
+Settings admission logs. The user reproduced the jump at sequences 39, 41, 46,
+and 52. Every event is a 24-to-24 `trim-start+append`: the old declared anchor
+is removed, exact-key reconciliation declines authority, the carried offset is
+clamped from about 1672 to 1056, and correct focus lands exactly at viewport top.
+Correct the generic retained-overlap seam: preserve one retained item's prior
+screen-relative axis position through the shifted window, then let bounded
+focus-follow reveal the newer requested focus minimally. Keep exact-key anchor
+reconciliation and ordinary append/prepend behavior. No provider identity,
+second anchor owner, protocol change, or test before physical acceptance.
 
 ### Ready later — DLV-261: restore Platform Settings focused-suite parity
 
