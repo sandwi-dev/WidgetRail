@@ -215,8 +215,8 @@ user decision. The native overlay is the sole production presentation path.
 
 | Lane | Task/worktree | State |
 | --- | --- | --- |
-| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | DLV-254 production commit `58ae6cc` was source-reviewed and Release-built on its earlier base. With DLV-253 now integrated, refresh that one commit onto current main and rebuild one coherent production candidate before launch. DLV-256 is Ready next after accepted DLV-254 integration. DLV-248 remains deferred. |
-| Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | DLV-253 is physically accepted, focused Games & Apps evidence is 65/65, and the cumulative chain is integrated on main as `6a26f08`, `3c63852`, and test-only `91177ec`. PID 51500 remains the accepted production instance; no rebuild/relaunch was performed for tests alone. Preserve clean completed branches. |
+| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | DLV-254 is refreshed onto current main as production commit `61f59d1`; its patch ID exactly matches reviewed commit `58ae6cc`, the coherent packaged Release build passed with tests skipped, and exact candidate PID 44468 is visibly running for the user's physical verdict. DLV-256 is Ready next only after accepted DLV-254 integration. DLV-248 remains deferred. |
+| Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | DLV-253 is physically accepted, focused Games & Apps evidence is 65/65, and the cumulative chain is integrated on main as `6a26f08`, `3c63852`, and test-only `91177ec`. The superseded PID 51500 closed normally before the DLV-254 candidate launch; no rebuild/relaunch was performed for the DLV-253 tests alone. Preserve clean completed branches. |
 
 The user explicitly approved the DLV-217 aggregate exception on 2026-08-15.
 The preserved four-commit implementation chain was integrated onto current main
@@ -415,18 +415,26 @@ production candidate/build and user verdict precede focused tests. Stop for a
 settings schema migration with data-loss risk, another motion owner, broad
 animation redesign, substantial conflict, or undocumented API; never push.
 
-Production-only candidate `58ae6cc` is independently source-reviewed and its
+Production-only commit `58ae6cc` was independently source-reviewed and its
 coherent packaged Release build passed without tests. It adds the persisted
 Appearance toggle through the existing Settings/PlatformSettings/appearance
 payload owners, defaults omitted schema-v1 data to On, and gates only tray-
 driven widget content-reveal and extent-transition seams. Reduced motion and
 widget-authored animation remain independent. Exact executable SHA-256 is
 `E985E97E3D827FEB00059A0C78B129DA13C4421B03287C57B05BC39587921A18`.
-DLV-253 now frees the visible candidate slot, but that older artifact does not
-contain the integrated DLV-253 chain. Refresh the single reviewed production
-commit onto current main, rebuild one coherent candidate with tests skipped,
-then launch that exact artifact for the user's physical toggle/default/motion
-verdict. Do not launch the stale-base executable.
+That stale-base artifact was not launched. The platform lane created fresh
+branch `codex/impl-platform-widget-switch-animation-refresh` from integrated
+main `a11833c`, reapplied only the reviewed production delta as `61f59d1`, and
+proved the stable patch ID is unchanged at
+`8f03bfcd59901a1f24ae2ee061c652f87dbb0750`. The coherent packaged Release
+build passed with tests skipped; its exact executable SHA-256 is
+`B4D3A354F8E7720FA700689CCBA38D078D9811CFC978A4727EB7D0647531E0C8`.
+The accepted PID 51500 closed normally, and this exact refreshed candidate is
+visibly running as PID 44468. Initial launch trace confirms the production
+process owner, DirectComposition presentation owner, and appearance revision 2
+were established without a logged error. Await the user's physical toggle,
+default-On, tray/guide stationarity, and DLV-253 regression verdict before tests
+or integration.
 
 ### Ready next — DLV-256: eliminate Spotify artwork paint stalls
 
@@ -581,11 +589,11 @@ Closed accepted widgets history through DLV-252 is retained in the
 
 12. DLV-253 is physically accepted from PID 51500, focused evidence is 65/65,
     and the cumulative chain is integrated as `6a26f08`, `3c63852`, and
-    `91177ec`; no rebuild/relaunch was needed for the test-only delta. DLV-254
-    commit `58ae6cc` is source-reviewed and must be refreshed onto current main
-    for one coherent Release candidate before receiving the next physical slot.
-    DLV-256 is Ready next after accepted DLV-254 integration; DLV-248 remains
-    deliberately deferred.
+    `91177ec`; no rebuild/relaunch was needed for the test-only delta. Exact
+    patch-equivalent DLV-254 commit `61f59d1` is refreshed onto integrated main,
+    coherently Release-built, and visibly running as PID 44468 for the next
+    physical verdict. DLV-256 is Ready next after accepted DLV-254 integration;
+    DLV-248 remains deliberately deferred.
 13. DLV-257 through DLV-260 form the blocked serialized rebrand program. They
     begin only after the new identity is user-approved and the active
     DLV-253/DLV-254 cycle reaches clean accepted boundaries. DLV-258 through
