@@ -771,9 +771,16 @@ full build retains the default reconciliation policy. Independent review finds
 the 17-line one-file diff matches the assigned authority boundary. The
 tests-skipped packaged Release build passed with executable SHA-256
 `C867CD535B7FBE4F8E6AA02FD28569D43BE0BD53EB6C8D5311610872DCBA407B`.
-The exact unaccepted candidate is visibly running as PID 2608 for the final
-Spotify boundary-scroll latency and visibility verdict. Do not write tests or
-integrate before that verdict.
+The user physically accepts the exact PID 2608 candidate under their stated
+log-evidence condition. Its 202 retained Spotify `PaintOnly` focus moves emit
+zero focus-follow cycle/fallback/bound summaries; paired draws are 2.104--31.617
+ms, 17.586 ms average, with none at or above 33 ms and no slow-render tags.
+The prior renderer-attributed latency and skipped/offscreen focus are absent;
+the occasional remaining feel has no correlated renderer, worker, or
+composition stall in the session log. The platform lane is adding only focused
+post-acceptance regression tests now. Do not rebuild or relaunch for that
+test-only delta; integrate the reviewed production chain plus test follow-up
+after the focused suite is green.
 
 ### Ready next — DLV-261: restore Platform Settings focused-suite parity
 
