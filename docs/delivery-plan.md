@@ -219,7 +219,7 @@ user decision. The native overlay is the sole production presentation path.
 
 | Lane | Task/worktree | State |
 | --- | --- | --- |
-| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | DLV-256 is physically accepted, focused-tested 4,894 checks, and integrated through `b0d53b0`. DLV-263 diagnostic commit `d0694a5` reproduced the long-list jump and the bounded production correction is Assigned; no tests precede the next physical verdict. DLV-261 and DLV-262 remain Ready behind it; DLV-248 remains deferred. |
+| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | DLV-256 is accepted and integrated through `b0d53b0`. DLV-263 production commit `f2b70af` is source-reviewed and visibly launched as unaccepted PID 28612 for the retained-overlap physical verdict; no tests precede acceptance. DLV-261 and DLV-262 remain Ready behind it; DLV-248 remains deferred. |
 | Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | DLV-253 is physically accepted, focused Games & Apps evidence is 65/65, and the cumulative chain is integrated on main as `6a26f08`, `3c63852`, and test-only `91177ec`. The superseded PID 51500 closed normally before the DLV-254 candidate launch; no rebuild/relaunch was performed for the DLV-253 tests alone. Preserve clean completed branches. |
 
 The user explicitly approved the DLV-217 aggregate exception on 2026-08-15.
@@ -784,18 +784,19 @@ provider behavior unchanged. It retains the prior renderer cache only as the
 comparison authority and uses the existing host log owner. The coherent Release
 build passed with tests skipped; exact executable SHA-256 is
 `D4A738D5EA1BD3F5A092C48E1AFBEFCBB6B7FC01B1FADE22C0A24A90187D6FEF`.
-Accepted PID 2608 was closed by the implementation lane to release its exact
-output lock. The diagnostic candidate is visibly running as unaccepted PID
-51244 with clean process-owner, DirectComposition, fixed-chrome, and first
-Settings admission logs. The user reproduced the jump at sequences 39, 41, 46,
-and 52. Every event is a 24-to-24 `trim-start+append`: the old declared anchor
-is removed, exact-key reconciliation declines authority, the carried offset is
-clamped from about 1672 to 1056, and correct focus lands exactly at viewport top.
-Correct the generic retained-overlap seam: preserve one retained item's prior
-screen-relative axis position through the shifted window, then let bounded
-focus-follow reveal the newer requested focus minimally. Keep exact-key anchor
-reconciliation and ordinary append/prepend behavior. No provider identity,
-second anchor owner, protocol change, or test before physical acceptance.
+The user reproduced the jump at sequences 39, 41, 46, and 52. Each 24-to-24
+`trim-start+append` removed the declared anchor, declined exact-key authority,
+clamped the carried offset from about 1672 to 1056, and put correct focus at
+viewport top. Production-only commit `f2b70af` retains bounded item geometry in
+the existing incremental cache, requires the same instance, viewport, scroll
+axis, content extent, and complete key set, then preserves the closest visible
+overlapping item's screen-relative position before existing focus-follow runs.
+Exact-key behavior and conservative fallback remain. Independent manual caller
+and state review finds no provider identity, protocol, second anchor owner, or
+unbounded state; clangd had no exact-worktree compile database. The tests-skipped
+Release build passed with SHA-256 `4F7A95E391525F718FBFAD945188FC3925916D2E601147D9C813B1ED64D62B5A`.
+It is visibly running as unaccepted PID 28612 with clean startup; physical
+long-list acceptance is pending and tests remain prohibited.
 
 ### Ready later — DLV-261: restore Platform Settings focused-suite parity
 
