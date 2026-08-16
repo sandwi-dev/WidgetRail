@@ -5,6 +5,9 @@ using Windows.Storage.Streams;
 
 internal static class SteamArtworkScenarios
 {
+    private static readonly string ModernHashA = new('a', 40);
+    private static readonly string ModernHashB = new('b', 40);
+
     internal static async Task LocalArtworkIsLazyBoundedAndOpaque()
     {
         if (!OperatingSystem.IsWindows()) return;
@@ -95,6 +98,183 @@ internal static class SteamArtworkScenarios
         var duplicate = (await Query(duplicateProvider)).Items.Single();
         Assert.True((await duplicateProvider.GetAppLibraryIconAsync(
             duplicate.ProviderAppId, CancellationToken.None)).PngBase64 is not null);
+    }
+
+    internal static Task ModernProviderIconsAreDeterministic()
+    {
+        if (!OperatingSystem.IsWindows()) return Task.CompletedTask;
+        const string appId = "3768760";
+        using var layout = SteamLayout.CreateEmpty();
+        var legacy = CreatePng(3, 3, 5);
+        var modernJpeg = CreatePng(3, 3, 11);
+        var modernJpg = CreatePng(3, 3, 17);
+        var modernPng = CreatePng(3, 3, 23);
+        _ = layout.WriteArtwork(appId, ".png", legacy);
+        var jpegPath = layout.WriteModernArtwork(
+            appId, ModernHashA, ".jpeg", modernJpeg);
+        var jpgPath = layout.WriteModernArtwork(
+            appId, ModernHashA, ".jpg", modernJpg);
+        var pngPath = layout.WriteModernArtwork(
+            appId, ModernHashA, ".png", modernPng);
+
+        Assert.Equal(Convert.ToBase64String(modernPng), LoadRaw(layout, appId));
+        File.Delete(pngPath);
+        Assert.Equal(Convert.ToBase64String(modernJpg), LoadRaw(layout, appId));
+        File.Delete(jpgPath);
+        Assert.Equal(Convert.ToBase64String(modernJpeg), LoadRaw(layout, appId));
+
+        var ambiguous = CreatePng(3, 3, 29);
+        _ = layout.WriteModernArtwork(appId, ModernHashB, ".jpeg", ambiguous);
+        Assert.Equal(Convert.ToBase64String(legacy), LoadRaw(layout, appId));
+        File.Delete(jpegPath);
+
+        const string namedId = "3768761";
+        var namedDirectory = layout.ModernDirectory(namedId);
+        foreach (var name in new[]
+                 {
+                     "header.jpg", "library_600x900.jpg", "library_hero.jpg",
+                     "library_hero_blur.jpg", "logo.png",
+                 })
+            File.WriteAllBytes(Path.Combine(namedDirectory, name), CreatePng(2, 2, 31));
+        Assert.Equal<string?>(null, LoadRaw(layout, namedId));
+        var namedLegacy = CreatePng(2, 2, 37);
+        _ = layout.WriteArtwork(namedId, ".jpg", namedLegacy);
+        Assert.Equal(Convert.ToBase64String(namedLegacy), LoadRaw(layout, namedId));
+        return Task.CompletedTask;
+    }
+
+    internal static Task ModernDiscoveryRejectsUnsafeShapes()
+    {
+        if (!OperatingSystem.IsWindows()) return Task.CompletedTask;
+
+        using (var capped = SteamLayout.CreateEmpty())
+        {
+            const string appId = "81001";
+            var directory = capped.ModernDirectory(appId);
+            for (var index = 0;
+                 index < WindowsSteamArtworkSource.MaximumModernDirectoryEntries;
+                 index++)
+                File.WriteAllBytes(Path.Combine(directory, $"header-{index:D3}.jpg"), [1]);
+            _ = capped.WriteModernArtwork(
+                appId, ModernHashA, ".png", CreatePng(2, 2, 41));
+            Assert.Equal<string?>(null, LoadRaw(capped, appId));
+        }
+
+        using (var nested = SteamLayout.CreateEmpty())
+        {
+            const string appId = "81002";
+            var child = Path.Combine(nested.ModernDirectory(appId), "nested");
+            Directory.CreateDirectory(child);
+            File.WriteAllBytes(Path.Combine(child, ModernHashA + ".png"),
+                CreatePng(2, 2, 43));
+            Assert.Equal<string?>(null, LoadRaw(nested, appId));
+        }
+
+        var outsideDirectory = Path.Combine(
+            Path.GetTempPath(), "gba-steam-artwork-outside-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(outsideDirectory);
+        try
+        {
+            var outsideFile = Path.Combine(outsideDirectory, ModernHashA + ".png");
+            File.WriteAllBytes(outsideFile, CreatePng(2, 2, 47));
+            using var linkedDirectory = SteamLayout.CreateEmpty();
+            const string linkedDirectoryId = "81003";
+            var directoryLink = linkedDirectory.ModernDirectoryPath(linkedDirectoryId);
+            Directory.CreateSymbolicLink(directoryLink, outsideDirectory);
+            Assert.Equal<string?>(null, LoadRaw(linkedDirectory, linkedDirectoryId));
+
+            using var linkedFile = SteamLayout.CreateEmpty();
+            const string linkedFileId = "81004";
+            var linkedFileDirectory = linkedFile.ModernDirectory(linkedFileId);
+            var fileLink = Path.Combine(linkedFileDirectory, ModernHashA + ".png");
+            File.CreateSymbolicLink(fileLink, outsideFile);
+            Assert.Equal<string?>(null, LoadRaw(linkedFile, linkedFileId));
+        }
+        finally
+        {
+            Directory.Delete(outsideDirectory, recursive: true);
+        }
+
+        return Task.CompletedTask;
+    }
+
+    internal static async Task ModernReplacementRotatesGeneration()
+    {
+        if (!OperatingSystem.IsWindows()) return;
+        const string appId = "82001";
+        using var layout = SteamLayout.CreateEmpty();
+        var initialBytes = CreatePng(4, 4, 53);
+        var artworkPath = layout.WriteModernArtwork(
+            appId, ModernHashA, ".png", initialBytes);
+        var resolver = RawResolver();
+        var catalog = resolver.StageCatalog([layout.Root], new[] { appId });
+        catalog.Commit();
+        var initial = catalog.Registrations[appId];
+        Assert.Equal(Convert.ToBase64String(initialBytes),
+            resolver.Load(initial, CancellationToken.None));
+
+        // Make file-size evidence differ as well as content so the fixture does
+        // not depend on filesystem identity allocation or timestamp granularity.
+        var replacementBytes = CreatePng(5, 4, 59);
+        var replacementPath = artworkPath + ".replacement";
+        File.WriteAllBytes(replacementPath, replacementBytes);
+        File.Move(replacementPath, artworkPath, overwrite: true);
+        Assert.Equal<string?>(null, resolver.Load(initial, CancellationToken.None));
+        var replaced = resolver.Register([layout.Root], appId)!;
+        Assert.False(initial.Revision == replaced.Revision);
+        Assert.Equal(Convert.ToBase64String(replacementBytes),
+            resolver.Load(replaced, CancellationToken.None));
+
+        using var canceled = new CancellationTokenSource();
+        canceled.Cancel();
+        Assert.Throws<OperationCanceledException>(() =>
+            resolver.Load(replaced, canceled.Token));
+
+        using var pinnedLayout = SteamLayout.CreateEmpty();
+        const string pinnedId = "82002";
+        var pinnedBytes = CreatePng(4, 4, 67);
+        var pinnedPath = pinnedLayout.WriteModernArtwork(
+            pinnedId, ModernHashA, ".png", pinnedBytes);
+        var entered = new TaskCompletionSource(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        using var release = new ManualResetEventSlim();
+        var pinnedResolver = new WindowsSteamArtworkSource((bytes, cancellationToken) =>
+        {
+            entered.TrySetResult();
+            WaitHandle.WaitAny([release.WaitHandle, cancellationToken.WaitHandle]);
+            cancellationToken.ThrowIfCancellationRequested();
+            return Convert.ToBase64String(bytes);
+        });
+        var pinnedRegistration = pinnedResolver.Register([pinnedLayout.Root], pinnedId)!;
+        var demand = Task.Run(() =>
+            pinnedResolver.Load(pinnedRegistration, CancellationToken.None));
+        await entered.Task.WaitAsync(TimeSpan.FromSeconds(2));
+        var fileReplacementRejected = false;
+        var directoryReplacementRejected = false;
+        try
+        {
+            var racePath = pinnedPath + ".replacement";
+            File.WriteAllBytes(racePath, CreatePng(4, 4, 71));
+            try { File.Move(racePath, pinnedPath, overwrite: true); }
+            catch (IOException) { fileReplacementRejected = true; }
+            catch (UnauthorizedAccessException) { fileReplacementRejected = true; }
+            try
+            {
+                Directory.Move(
+                    pinnedLayout.ModernDirectoryPath(pinnedId),
+                    pinnedLayout.ModernDirectoryPath(pinnedId) + ".replacement");
+            }
+            catch (IOException) { directoryReplacementRejected = true; }
+            catch (UnauthorizedAccessException) { directoryReplacementRejected = true; }
+        }
+        finally
+        {
+            release.Set();
+        }
+        Assert.True(fileReplacementRejected);
+        Assert.True(directoryReplacementRejected);
+        Assert.Equal(Convert.ToBase64String(pinnedBytes),
+            await demand.WaitAsync(TimeSpan.FromSeconds(2)));
     }
 
     internal static async Task ReplacementRotatesAndStaleDemandFailsClosed()
@@ -492,6 +672,21 @@ internal static class SteamArtworkScenarios
                 new NoopSteamLauncher()),
         ], ImmediateSta.Instance);
 
+    private static WindowsSteamArtworkSource RawResolver() =>
+        new((bytes, cancellationToken) =>
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            return Convert.ToBase64String(bytes);
+        });
+
+    private static string? LoadRaw(SteamLayout layout, string appId)
+    {
+        var resolver = RawResolver();
+        var registration = resolver.Register([layout.Root], appId);
+        Assert.True(registration is not null);
+        return resolver.Load(registration!, CancellationToken.None);
+    }
+
     private static Task<AppLibraryBackendCursorPage> Query(
         WindowsAppLibraryProvider provider,
         bool refresh = false) =>
@@ -564,6 +759,28 @@ internal static class SteamArtworkScenarios
         {
             var path = Path.Combine(Root, "appcache", "librarycache",
                 appId + "_icon" + extension);
+            File.WriteAllBytes(path, bytes);
+            File.SetLastWriteTimeUtc(path, DateTime.UtcNow.AddSeconds(appId.Length));
+            return path;
+        }
+
+        internal string ModernDirectoryPath(string appId) =>
+            Path.Combine(Root, "appcache", "librarycache", appId);
+
+        internal string ModernDirectory(string appId)
+        {
+            var path = ModernDirectoryPath(appId);
+            Directory.CreateDirectory(path);
+            return path;
+        }
+
+        internal string WriteModernArtwork(
+            string appId,
+            string stem,
+            string extension,
+            byte[] bytes)
+        {
+            var path = Path.Combine(ModernDirectory(appId), stem + extension);
             File.WriteAllBytes(path, bytes);
             File.SetLastWriteTimeUtc(path, DateTime.UtcNow.AddSeconds(appId.Length));
             return path;
