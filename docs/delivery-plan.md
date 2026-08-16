@@ -215,7 +215,7 @@ user decision. The native overlay is the sole production presentation path.
 
 | Lane | Task/worktree | State |
 | --- | --- | --- |
-| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | DLV-256 production commit `005cfc7` improved artwork reuse but is physically rejected as incomplete because warm-cache paint-only stalls remain. A bounded same-lane production correction is Assigned; PID 39972 remains the rejected evidence process until replacement. Tests remain prohibited. Test-recovery DLV-261 and DLV-262 are Ready behind it; DLV-248 remains deferred. |
+| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | DLV-256 production commit `005cfc7` improved artwork reuse but was physically rejected as incomplete because warm-cache paint-only stalls remained. Follow-up `25f31fe` is source-reviewed and visibly launched as unaccepted PID 23628 for another physical latency verdict. Tests remain prohibited. Test-recovery DLV-261 and DLV-262 are Ready behind it; DLV-248 remains deferred. |
 | Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | DLV-253 is physically accepted, focused Games & Apps evidence is 65/65, and the cumulative chain is integrated on main as `6a26f08`, `3c63852`, and test-only `91177ec`. The superseded PID 51500 closed normally before the DLV-254 candidate launch; no rebuild/relaunch was performed for the DLV-253 tests alone. Preserve clean completed branches. |
 
 The user explicitly approved the DLV-217 aggregate exception on 2026-08-15.
@@ -604,6 +604,26 @@ accepted DLV-242 coordinate/damage behavior, fixed chrome, async image loading,
 the single renderer/cache/device owners, and physical-first ordering. Build one
 tests-skipped Release follow-up, then stop for reviewer launch and another user
 verdict; do not write or run post-acceptance tests yet.
+
+Production-only follow-up `25f31fe` changes only `OverlayHost/main.cpp` and
+retains the exact incremental damage rectangles. The implementation identified
+the residual delay as accumulated asynchronous DirectComposition content-
+surface reuse: a later partial `BeginDraw` could absorb prior compositor work
+after `EndDraw` and `Commit`. Content-surface commits now use the existing
+documented `WaitForCommitCompletion` path to keep at most one processed content
+transaction in flight before that same surface is reused; chrome-only commits
+remain independent. Threshold-only diagnostics now divide frames above 100 ms
+into BeginDraw, resource setup, renderer draw, EndDraw, and unaccounted time.
+Independent source review found no new surface, device, renderer, focus, input,
+protocol, or provider owner, and no promotion of partial damage to a full
+raster. The coherent tests-skipped Release build passed with executable SHA-256
+`6F8325980D011029D388DD07B745126BE726E5510F61A7847247CD1D85129E51`.
+Rejected PID 39972 closed normally before the build. This exact cumulative
+candidate is visibly running as unaccepted PID 23628 for the user's Spotify
+Queue, Playlists, playlist-track, artwork, and navigation-latency verdict. Its
+initial session established the production process, DirectComposition, fixed
+chrome, Settings admission, and the completion fence without a logged startup
+error. Do not add or run tests or integrate before the physical verdict.
 
 ### Ready next — DLV-261: restore Platform Settings focused-suite parity
 
