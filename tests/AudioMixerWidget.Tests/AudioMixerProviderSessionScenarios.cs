@@ -23,6 +23,10 @@ internal static class AudioMixerProviderSessionScenarios
 
         AssertPrecedes(fixture.Operations, "open:sessions", "get:sessions");
         AssertPrecedes(fixture.Operations, "open:output", "get:output");
+        AssertPrecedes(fixture.Operations, "get:output", "open:devices");
+        AssertPrecedes(fixture.Operations, "get:sessions", "open:devices");
+        AssertPrecedes(fixture.Operations, "get:output", "open:input");
+        AssertPrecedes(fixture.Operations, "get:sessions", "open:input");
         AssertPrecedes(fixture.Operations, "open:devices", "get:devices");
         AssertPrecedes(fixture.Operations, "open:input", "get:input");
         var required = observations.Single(
@@ -199,6 +203,7 @@ internal static class AudioMixerProviderSessionScenarios
             "Stop completed before the cancellation-ignoring result was observed.");
         resultFixture.ReleaseSessionsGet.TrySetResult();
         await resultStop.WaitAsync(TimeSpan.FromSeconds(2));
+        await resultSession.InitialPublication.WaitAsync(TimeSpan.FromSeconds(2));
         Assert.True(!resultObservations.Any(observation =>
                 observation.Kind == AudioMixerProviderObservationKind.RequiredSnapshot),
             "A canceled late snapshot was published.");

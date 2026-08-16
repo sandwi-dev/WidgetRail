@@ -56,7 +56,7 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Capability failure codes render distinct recovery states", CapabilityFailureStates),
     ("Live provider loss remains distinct from an empty session list", LiveProviderAvailability),
     ("Unavailable host service fails closed without OS fallback", UnavailableService),
-    ("Visible lifetime fetches once subscribes and never polls", LifecycleAndNoPolling),
+    ("First visible activation awaits one typed provider publication without polling", LifecycleAndNoPolling),
     ("Acknowledged subscription closes the snapshot fetch event gap", SubscriptionPrecedesSnapshot),
     ("Lifecycle cancellation rolls back without an error state", CancellationIsNotFailure),
     ("Cancellation-ignoring session completion cannot publish after deactivation", CancellationIgnoringCompletionIsStale),
@@ -1208,32 +1208,66 @@ static async Task UnavailableService()
 
 static async Task LifecycleAndNoPolling()
 {
-    var fake = new FakeCapabilityClient { Sessions = [Session("a", "Game", 0.5)] };
+    var requiredGate = new TaskCompletionSource(
+        TaskCreationOptions.RunContinuationsAsynchronously);
+    var fake = new FakeCapabilityClient
+    {
+        Sessions = [Session("a", "Game", 0.5)],
+        SessionsGetGate = requiredGate.Task,
+    };
     var widget = Create(fake);
     await WidgetTestHost.InitializeAsync(widget);
     Assert.Equal(0, fake.GetCalls);
     Assert.Equal(0, fake.SubscriptionCount);
 
-    await WidgetTestHost.SetLifecycleStateAsync(widget, WidgetLifecycleState.Visible);
+    var firstActivation = WidgetTestHost.SetLifecycleStateAsync(
+        widget, WidgetLifecycleState.Visible).AsTask();
+    await fake.SessionsGetStarted.Task.WaitAsync(TimeSpan.FromSeconds(2));
+    Assert.True(!firstActivation.IsCompleted,
+        "First activation completed before the required provider snapshot.");
+    Assert.Equal(AudioMixerViewState.Loading, widget.ViewState);
+    Assert.Valid(Snapshot(widget, 1));
+
+    requiredGate.TrySetResult();
+    await firstActivation.WaitAsync(TimeSpan.FromSeconds(2));
     await WaitUntil(() => widget.ViewState == AudioMixerViewState.Ready && fake.SubscriptionCount == 4);
     Assert.Equal(1, widget.ActivationCount);
     Assert.Equal(1, widget.FetchCount);
     Assert.Equal(1, fake.GetCalls);
     await WidgetTestHost.SetLifecycleStateAsync(widget, WidgetLifecycleState.Interactive);
-    await Task.Delay(120);
+    Assert.Valid(Snapshot(widget, 2));
+    Assert.Valid(Snapshot(widget, 3));
     Assert.Equal(1, fake.GetCalls);
     Assert.Equal(4, fake.SubscriptionCount);
 
     await Background(widget);
     await WaitUntil(() => fake.CanceledSubscriptions == 4);
-    var calls = fake.GetCalls;
-    await Task.Delay(120);
-    Assert.Equal(calls, fake.GetCalls);
+    Assert.Equal(1, fake.GetCalls);
 
-    await WidgetTestHost.SetLifecycleStateAsync(widget, WidgetLifecycleState.Visible);
-    await WaitUntil(() => fake.GetCalls == 2 && fake.SubscriptionCount == 8);
-    Assert.Equal(2, widget.ActivationCount);
-    await Background(widget);
+    var failureGate = new TaskCompletionSource(
+        TaskCreationOptions.RunContinuationsAsynchronously);
+    var failureFake = new FakeCapabilityClient
+    {
+        SessionsGetGate = failureGate.Task,
+        SessionsGetException = new WidgetCapabilityException(
+            "permission_denied", "private provider detail"),
+    };
+    var failureWidget = Create(failureFake);
+    await WidgetTestHost.InitializeAsync(failureWidget);
+    var failedActivation = WidgetTestHost.SetLifecycleStateAsync(
+        failureWidget, WidgetLifecycleState.Visible).AsTask();
+    await failureFake.SessionsGetStarted.Task.WaitAsync(TimeSpan.FromSeconds(2));
+    Assert.True(!failedActivation.IsCompleted,
+        "First activation completed before the required typed failure.");
+    Assert.Equal(AudioMixerViewState.Loading, failureWidget.ViewState);
+
+    failureGate.TrySetResult();
+    await failedActivation.WaitAsync(TimeSpan.FromSeconds(2));
+    Assert.Equal(AudioMixerViewState.PermissionDenied, failureWidget.ViewState);
+    Assert.Equal(1, failureWidget.ActivationCount);
+    Assert.Equal(1, failureWidget.FetchCount);
+    Assert.Equal(1, failureFake.GetCalls);
+    await Background(failureWidget);
 }
 
 static async Task SubscriptionPrecedesSnapshot()
@@ -1640,12 +1674,16 @@ file sealed class FakeCapabilityClient
     ];
     public WidgetAudioInput Input { get; set; } = new(0.5, false);
     public Exception? GetException { get; set; }
+    public Exception? SessionsGetException { get; set; }
     public Exception? DeviceGetException { get; set; }
     public Exception? InputGetException { get; set; }
     public Exception? DeviceSubscriptionException { get; set; }
     public Exception? InputSubscriptionException { get; set; }
     public Exception? ControlException { get; set; }
     public Task? ControlGate { get; set; }
+    public Task? SessionsGetGate { get; set; }
+    public TaskCompletionSource SessionsGetStarted { get; } =
+        new(TaskCreationOptions.RunContinuationsAsynchronously);
     public Action? OnGet { get; set; }
     public List<SetWidgetAudioSessionVolumeRequest> VolumeRequests { get; } = [];
     public List<SetWidgetAudioSessionMutedRequest> MuteRequests { get; } = [];
@@ -1756,6 +1794,10 @@ file sealed class FakeCapabilityClient
             Interlocked.Increment(ref _getCalls);
             if (GetException is not null) throw GetException;
             var snapshot = Sessions.ToArray();
+            SessionsGetStarted.TrySetResult();
+            if (SessionsGetGate is not null)
+                await SessionsGetGate.WaitAsync(cancellationToken);
+            if (SessionsGetException is not null) throw SessionsGetException;
             OnGet?.Invoke();
             return (TResponse)(object)snapshot;
         }
