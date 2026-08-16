@@ -671,6 +671,34 @@ running as unaccepted PID 30340 for the user's Spotify Queue, Playlists,
 playlist-track, artwork, and navigation-latency verdict. Do not add or run tests
 or integrate before that decision.
 
+The user reports a substantial improvement but still perceives a smaller lag.
+Correlated PID 30340 evidence separates the remaining work cleanly. Across 537
+Spotify frames, draw time is 26,432 microseconds median, 41,062 microseconds at
+the 95th percentile, and 52,487 microseconds maximum, with zero frames above
+100 ms. The remaining 25 frames above 100 ms are Games & Apps focus-navigation
+frames: 101,030–113,381 microseconds, all on unchanged semantic sequence 2 or 8.
+The slow-stage trace attributes approximately 96.8–109.5 ms of each frame to
+renderer preparation while node drawing remains approximately 1.9–3.6 ms and
+commit remains below 0.5 ms.
+
+Source review identifies a bounded coupling defect in `3c6eb3c`: when a large
+incremental damage rectangle is promoted to a full DirectComposition surface
+update, the host also cancels the already-valid declarative incremental plan.
+That second action is not required to change the surface update bounds and
+forces `DeclarativeRenderer` to rebuild the complete Taffy layout. It is most
+visible when Games & Apps focus reveal damages its large scroll viewport.
+Correct only that coupling: promote the DirectComposition update rectangle to
+the full surface while retaining the validated renderer plan/layout cache for
+the same widget instance, snapshot sequence, viewport, and render options.
+The renderer must still fall back to full layout when its existing authority
+checks fail or focus-follow proves that layout-affecting state changed. Retain
+the current 50% measured promotion threshold, bitmap LRU, full-raster fallback,
+exact damage coordinates, and all existing owners. Add one thresholded
+diagnostic that distinguishes full-surface transport with retained renderer
+work from a true full-raster/layout fallback; do not add per-frame logging.
+Build one production-only tests-skipped Release and stop for another user
+verdict. Do not write tests or integrate yet.
+
 ### Ready next — DLV-261: restore Platform Settings focused-suite parity
 
 Owner/baseline: platform lane after DLV-256 reaches its physical-test stop, from
