@@ -16,6 +16,7 @@ internal enum SettingsPreferenceKind
     ContrastHigh,
     BoldText,
     ReducedTransparency,
+    AnimateWidgetSwitching,
     EpicInstalledGames,
     GogInstalledGames,
     Theme,
@@ -132,6 +133,10 @@ internal readonly record struct SettingsPreferenceMutation(
                 ? TransparencyPreference.Full
                 : TransparencyPreference.Reduced,
         },
+        SettingsPreferenceKind.AnimateWidgetSwitching => appearance with
+        {
+            AnimateWidgetSwitching = !appearance.AnimateWidgetSwitching,
+        },
         SettingsPreferenceKind.Theme when ThemeId is not null && ThemeVersion is not null =>
             appearance with { ThemeId = ThemeId, ThemeVersion = ThemeVersion },
         _ => appearance,
@@ -180,6 +185,9 @@ internal static class SettingsPreferencePolicy
             "transparency.reduced" => new(
                 SettingsPreferenceKind.ReducedTransparency,
                 "Transparency preference saved"),
+            "widget-switch-animation.toggle" => new(
+                SettingsPreferenceKind.AnimateWidgetSwitching,
+                "Widget-switch animation preference saved"),
             "app-library.epic.toggle" => new(
                 SettingsPreferenceKind.EpicInstalledGames,
                 "Epic installed-game discovery preference saved"),

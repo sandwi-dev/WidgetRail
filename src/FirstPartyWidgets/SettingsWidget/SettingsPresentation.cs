@@ -154,12 +154,22 @@ internal static class SettingsPresentation
         var label = selected is null
             ? $"Theme: unavailable ({settings.Appearance.ThemeId})"
             : $"Theme: {selected.Descriptor.Name}";
+        var theme = UI.Button(label, "open.themes", "appearance.theme")
+            .FocusDown("appearance.animate-widget-switching")
+            .Busy(busy).Classes("setting-row");
+        var animateWidgetSwitching = UI.ToggleButton(
+                "Animate widget switching",
+                settings.Appearance.AnimateWidgetSwitching,
+                "widget-switch-animation.toggle",
+                "appearance.animate-widget-switching")
+            .FocusUp("appearance.theme")
+            .Busy(busy).Classes("setting-row");
         return View(header,
             PageScope("appearance.page",
                 UI.Text("Appearance", "appearance.heading", "Appearance settings")
                     .Classes("page-heading"),
-                UI.Button(label, "open.themes", "appearance.theme")
-                    .Busy(busy).Classes("setting-row"),
+                theme,
+                animateWidgetSwitching,
                 UI.Text(
                     "Choose a versioned theme package. Invalid packages remain visible but cannot be selected.",
                     "appearance.help", "Theme picker help").Classes("page-help")),

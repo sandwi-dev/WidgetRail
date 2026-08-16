@@ -17,6 +17,7 @@ public sealed record BridgePlatformAppearance
     public required ContrastPreference Contrast { get; init; }
     public required bool BoldText { get; init; }
     public required TransparencyPreference Transparency { get; init; }
+    public required bool AnimateWidgetSwitching { get; init; }
     public required IReadOnlyDictionary<string, IReadOnlyDictionary<string, BridgeComputedStyleValue>> ShellStyles { get; init; }
 }
 
@@ -107,6 +108,7 @@ public sealed class PlatformAppearanceService : IAsyncDisposable
             Contrast = appearance.Contrast,
             BoldText = appearance.BoldText,
             Transparency = appearance.Transparency,
+            AnimateWidgetSwitching = appearance.AnimateWidgetSwitching,
             ShellStyles = ResolveShellStyles(current.Theme),
         };
     }

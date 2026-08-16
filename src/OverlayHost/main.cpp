@@ -2123,8 +2123,18 @@ private:
                 priorSurface == gba::Surface::Widget, priorActive,
                 state_.surface() == gba::Surface::Widget,
                 state_.activeWidget());
+        const bool trayDrivenWidgetSwitch =
+            priorSurface == gba::Surface::Widget &&
+            state_.surface() == gba::Surface::Widget &&
+            priorFocusRegion == gba::FocusRegion::Tray &&
+            priorActive != state_.activeWidget();
+        const bool snapTrayDrivenWidgetSwitch =
+            trayDrivenWidgetSwitch && !WidgetSwitchAnimationEnabled();
         if (revealWidgetContent) {
-            RequestWidgetContentReveal(state_.activeWidget());
+            if (snapTrayDrivenWidgetSwitch)
+                SnapWidgetContentVisible();
+            else
+                RequestWidgetContentReveal(state_.activeWidget());
         }
         if (gba::ShouldSnapWidgetContentVisible(
                 state_.surface() == gba::Surface::Widget,
@@ -2179,8 +2189,11 @@ private:
         const bool animateWidgetExtent =
             priorSurface == gba::Surface::Widget &&
             state_.surface() == gba::Surface::Widget &&
-            priorExtent != nextExtent && destinationSnapshotAdmitted;
-        if (animateWidgetExtent) {
+            priorExtent != nextExtent && destinationSnapshotAdmitted &&
+            !snapTrayDrivenWidgetSwitch;
+        if (snapTrayDrivenWidgetSwitch && destinationSnapshotAdmitted) {
+            presentationTransaction_.SettleExtent(nextExtent, now, true);
+        } else if (animateWidgetExtent) {
             BeginWidgetExtentTransition(priorPresentedExtent, nextExtent);
         } else if (compositionSurface_.available() &&
                    destinationSnapshotAdmitted &&
@@ -2218,7 +2231,11 @@ private:
                         : CurrentAccessibilityPolicy().reducedMotion
                             ? L"resize-in-place"
                             : L"animated-resize-in-place")
-                    : L"retained") +
+                    : snapTrayDrivenWidgetSwitch && destinationSnapshotAdmitted
+                        ? (compositionSurface_.available()
+                            ? L"composition-immediate"
+                            : L"resize-in-place")
+                        : L"retained") +
                 L" content=" +
                 (awaitingIncomingSnapshot &&
                  presentationTransaction_.retainedPresentation()
@@ -4090,6 +4107,11 @@ private:
             DesiredPresentationExtentDip(), compositionSurface_.available());
     }
 
+    [[nodiscard]] bool WidgetSwitchAnimationEnabled() const noexcept {
+        const auto& appearance = appearanceState_.current();
+        return !appearance || appearance->animateWidgetSwitching;
+    }
+
     void BeginWidgetExtentTransition(
         const gba::OverlayPresentationExtent from,
         const gba::OverlayPresentationExtent target) {
@@ -4340,12 +4362,22 @@ private:
             ClearAccessibilityTree();
             return;
         }
+        const auto& retainedPresentation =
+            presentationTransaction_.retainedPresentation();
+        const bool snapTrayWidgetSwitch =
+            priorWidget != nextVisibleWidget && retainedPresentation &&
+            retainedPresentation->widgetId == priorWidget &&
+            !WidgetSwitchAnimationEnabled();
         const bool animateWidgetExtent =
             wasVisible && isVisible &&
             state_.surface() == gba::Surface::Widget &&
-            priorExtent != nextExtent;
-        if (animateWidgetExtent)
+            priorExtent != nextExtent && !snapTrayWidgetSwitch;
+        if (snapTrayWidgetSwitch) {
+            presentationTransaction_.SettleExtent(
+                nextExtent, GetTickCount64(), true);
+        } else if (animateWidgetExtent) {
             BeginWidgetExtentTransition(priorPresentedExtent, nextExtent);
+        }
         const auto presentation = gba::DecideOverlayPresentation(
             wasVisible, isVisible, priorExtent, nextExtent);
         if (wasVisible && isVisible && priorExtent != nextExtent) {
@@ -4364,7 +4396,8 @@ private:
                     ? (animateWidgetExtent && !CurrentAccessibilityPolicy().reducedMotion
                         ? L"composition-motion"
                         : L"composition-surface-commit")
-                    : CurrentAccessibilityPolicy().reducedMotion
+                    : CurrentAccessibilityPolicy().reducedMotion ||
+                      snapTrayWidgetSwitch
                     ? L"resize-in-place"
                     : L"animated-resize-in-place"));
         }

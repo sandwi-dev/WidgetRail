@@ -466,7 +466,7 @@ std::optional<PlatformAppearance> ParsePlatformAppearance(
     if (!HasOnlyProperties(payload,
             {L"revision", L"themeId", L"themeVersion", L"interfaceScale", L"textScale",
              L"backdropOpacity", L"motion", L"contrast", L"boldText",
-             L"transparency", L"shellStyles"})) {
+             L"transparency", L"animateWidgetSwitching", L"shellStyles"})) {
         error = L"Platform appearance payload has missing or unknown properties.";
         return std::nullopt;
     }
@@ -481,6 +481,8 @@ std::optional<PlatformAppearance> ParsePlatformAppearance(
         payload.GetNamedValue(L"contrast").ValueType() != JsonValueType::String ||
         payload.GetNamedValue(L"boldText").ValueType() != JsonValueType::Boolean ||
         payload.GetNamedValue(L"transparency").ValueType() != JsonValueType::String ||
+        payload.GetNamedValue(L"animateWidgetSwitching").ValueType() !=
+            JsonValueType::Boolean ||
         payload.GetNamedValue(L"shellStyles").ValueType() != JsonValueType::Object) {
         error = L"Platform appearance payload has invalid property types.";
         return std::nullopt;
@@ -523,6 +525,8 @@ std::optional<PlatformAppearance> ParsePlatformAppearance(
         return std::nullopt;
     }
     appearance.boldText = payload.GetNamedBoolean(L"boldText");
+    appearance.animateWidgetSwitching =
+        payload.GetNamedBoolean(L"animateWidgetSwitching");
     const std::wstring transparency(
         std::wstring_view(payload.GetNamedString(L"transparency")));
     if (transparency == L"full")

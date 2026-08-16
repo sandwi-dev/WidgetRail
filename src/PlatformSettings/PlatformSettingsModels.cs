@@ -66,6 +66,12 @@ public sealed record AppearanceSettings
     /// <summary>Removes blur, translucent surfaces, and partial node opacity.</summary>
     public TransparencyPreference Transparency { get; init; } = TransparencyPreference.Full;
 
+    /// <summary>
+    /// Controls only host-owned transitions between tray-selected widgets.
+    /// Older schema-v1 settings omit this value and retain the product default.
+    /// </summary>
+    public bool AnimateWidgetSwitching { get; init; } = true;
+
     public static AppearanceSettings Default { get; } = new()
     {
         ThemeId = ThemeIdentity.BuiltInDefault,
@@ -77,6 +83,7 @@ public sealed record AppearanceSettings
         Contrast = ContrastPreference.System,
         BoldText = false,
         Transparency = TransparencyPreference.Full,
+        AnimateWidgetSwitching = true,
     };
 }
 
