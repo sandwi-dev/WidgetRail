@@ -232,15 +232,20 @@ checkout's restore graph failed silently before compilation with zero reported
 errors; the accepted exact-tip DLV-217 evidence and explicit aggregate exception
 remain the DLV-217 acceptance basis.
 
-### Planner analysis deliverable — DLV-255: OverlayHost main refactoring review
+### Completed planner deliverable — DLV-255: OverlayHost main refactoring review
 
-The planner will use the exact-main clangd compile database plus manual caller,
-state, and lifetime inspection to produce
-`docs/overlay-host-main-refactoring-review.md`. The document must map
-`OverlayApp` responsibilities and mutable authorities, identify prioritized
-behavior-preserving extraction seams, dependencies, risk, and focused proof,
-and distinguish real ownership reduction from cosmetic file splitting. This is
-analysis only: no production/test edits, build, or relaunch.
+The planner completed
+`docs/overlay-host-main-refactoring-review.md` from current main using an
+exact-main clangd compile database plus semantic symbol/definition/reference/
+hover queries and manual caller, state, and lifetime inspection. `OverlayApp`
+is confirmed as a genuine hotspot: 8,749 class lines, 307 members, 138 fields,
+and 160 methods/constructors. The review prioritizes independent diagnostics,
+accessibility-publication, interaction-state, fixed-chrome, and widget-painter
+owners in that order; it rejects another session coordinator, resource service
+locator, message-switch-only move, partial/include split, or new HWND/focus/
+transport authority. This was analysis only: no production/test edit, build,
+or relaunch occurred. Future extraction requires a separate assigned DLV and
+does not preempt DLV-254, DLV-256, or the accepted DLV-253 integration boundary.
 
 ## Name-gated product rebrand program
 
