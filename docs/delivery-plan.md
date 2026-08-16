@@ -215,7 +215,7 @@ user decision. The native overlay is the sole production presentation path.
 
 | Lane | Task/worktree | State |
 | --- | --- | --- |
-| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | DLV-254 is physically accepted and integrated on main as `d5e4b0c`, `b86a01f`, `2658b98`, and test-only `57fb469`; accepted production PID 41208 remains running because the post-acceptance delta was tests/docs only. DLV-256 is Assigned from integrated main. Test-recovery DLV-261 and DLV-262 are Ready behind it; DLV-248 remains deferred. |
+| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | DLV-256 production commit `005cfc7` is independently source-reviewed and its exact candidate is visibly running as PID 39972 for the required physical Spotify artwork verdict. Tests remain prohibited until user acceptance. Test-recovery DLV-261 and DLV-262 are Ready behind it; DLV-248 remains deferred. |
 | Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | DLV-253 is physically accepted, focused Games & Apps evidence is 65/65, and the cumulative chain is integrated on main as `6a26f08`, `3c63852`, and test-only `91177ec`. The superseded PID 51500 closed normally before the DLV-254 candidate launch; no rebuild/relaunch was performed for the DLV-253 tests alone. Preserve clean completed branches. |
 
 The user explicitly approved the DLV-217 aggregate exception on 2026-08-15.
@@ -516,7 +516,7 @@ The accepted chain was integrated on main in order as `d5e4b0c`, `b86a01f`,
 test/reviewer-document-only integration delta; accepted PID 41208 remains the
 coherent production candidate.
 
-### Assigned — DLV-256: eliminate Spotify artwork paint stalls
+### Physical verdict pending — DLV-256: eliminate Spotify artwork paint stalls
 
 Owner/baseline: platform lane after accepted DLV-254 integration, from the
 then-current accepted main. Own only the native image-resource/cache/rendering
@@ -572,6 +572,21 @@ Stop for another image-cache/renderer/device owner, synchronous I/O or decode on
 the UI thread, an unbounded GPU/CPU resource cache, provider/paging redesign,
 per-widget native behavior, undocumented APIs, destructive state changes,
 substantial conflict, or external publication. Never push.
+
+Production-only commit `005cfc7` changes only `DeclarativeRenderer.h/.cpp` and
+the existing bounded presentation diagnostic in `main.cpp`. Independent source
+review confirms one renderer-owned 32-entry/32-MiB LRU keyed to the underlying
+Direct2D device resource domain; transient BeginDraw interface changes retain
+compatible bitmaps, while a real device/render-target domain change fails
+closed and invalidates them. Async CPU image loading, provider/paging behavior,
+snapshot admission, focus/scroll damage, and widget identity handling are
+unchanged. The coherent tests-skipped Release build passed with executable
+SHA-256 `3DF52E0FB8631F67E45A7A7A5A2E1F49BB5FA3A162497496B31B9A8C92649BEF`.
+The prior accepted PID 41208 was already closed by the implementation lane to
+release its exact output lock. The reviewed candidate is visibly running as PID
+39972 for the user's Spotify Queue, Playlists, playlist-track, artwork reuse,
+and navigation-latency verdict. Do not write or run the post-acceptance tests or
+integrate until that verdict is explicit.
 
 ### Ready next — DLV-261: restore Platform Settings focused-suite parity
 
