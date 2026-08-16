@@ -752,9 +752,18 @@ review confirms the change remains generic and confined to
 `DeclarativeRenderer.cpp`; the tests-skipped Release build passed with
 executable SHA-256
 `B89AF7B5FB80C3912F5EF50F88EC6A7AE3D9C96CE1FF825E105EC783BC41417C`.
-The exact unaccepted candidate is visibly running as PID 18700 for another
-Spotify Queue/Playlist latency and offscreen-focus verdict. Do not write tests
-or integrate before that verdict.
+The PID 18700 verdict accepts the corrected visibility behavior but rejects the
+remaining intermittent latency. Every 196 recorded Spotify boundary-crossing
+focus frame used four passes with a cycle disposition: 53.886--108.475 ms,
+89.525 ms average, and 26 frames above 100 ms. Ordinary moves which require no
+scroll remain fast. The offset samples alternate from the meaningful new vector
+back to the pre-input vector before the correctness fallback reapplies it.
+Source review identifies collection-anchor reconciliation inside the
+focus-only `BuildLayout(false)` as the conflicting old-viewport authority.
+The assigned correction must skip anchor reconciliation only when rebuilding
+the unchanged collection to realize a focus-follow scroll vector, preserving
+it for real snapshot/tree/collection/layout changes. Do not write tests or
+integrate before the next physical verdict.
 
 ### Ready next — DLV-261: restore Platform Settings focused-suite parity
 
