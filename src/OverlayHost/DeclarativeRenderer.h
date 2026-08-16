@@ -54,11 +54,24 @@ struct ButtonContentPlacement final {
     declarative::Rect trailingStateCue;
 };
 
+struct DeclarativeRenderTiming final {
+    std::uint64_t totalMicroseconds{};
+    std::uint64_t preparationMicroseconds{};
+    std::uint64_t presentationMicroseconds{};
+    std::uint64_t clipSetupMicroseconds{};
+    std::uint64_t nodeDrawMicroseconds{};
+    std::uint64_t deferredFocusMicroseconds{};
+    std::uint64_t finalizationMicroseconds{};
+};
+
 struct RenderResult final {
     bool succeeded{};
     /// True only while at least one paint-only node transition requires a
     /// future frame. The renderer never owns a timer or animation thread.
     bool animationActive{};
+    /// Captured on every call but emitted only by the existing host diagnostic
+    /// when the containing composition frame exceeds its slow threshold.
+    DeclarativeRenderTiming timing;
     std::vector<RenderDiagnostic> diagnostics;
     std::vector<RenderHitRegion> hitRegions;
     /// Visible semantic geometry retained for the immutable Windows

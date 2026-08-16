@@ -2265,6 +2265,7 @@ RenderResult DeclarativeRenderer::Render(
     const std::wstring_view focusedElementId,
     const Rect viewport,
     const DeclarativeRenderOptions& options) {
+    const auto renderStarted = std::chrono::steady_clock::now();
     RenderPass pass;
     pass.owner = this;
     pass.target = renderTarget;
@@ -2319,6 +2320,7 @@ RenderResult DeclarativeRenderer::Render(
     } else {
         pass.BuildLayout();
     }
+    const auto preparationFinished = std::chrono::steady_clock::now();
     bool presentationMatchesLayout = false;
     for (std::size_t followPass = 0;
          followPass < kMaximumFocusFollowPasses;
@@ -2338,6 +2340,7 @@ RenderResult DeclarativeRenderer::Render(
         pass.presentation.clear();
         pass.ResolvePresentation(snapshot.root, 0.0F, 0.0F, viewport);
     }
+    const auto presentationFinished = std::chrono::steady_clock::now();
     const auto cornerRadius = std::isfinite(options.surfaceCornerRadiusPx)
         ? std::clamp(options.surfaceCornerRadiusPx, 0.0F,
                      std::min(viewport.width, viewport.height) * 0.5F)
@@ -2358,8 +2361,11 @@ RenderResult DeclarativeRenderer::Render(
         renderTarget->PushAxisAlignedClip(
             D2DRect(viewport), D2D1_ANTIALIAS_MODE_PER_PRIMITIVE);
     }
+    const auto clipSetupFinished = std::chrono::steady_clock::now();
     pass.DrawNode(snapshot.root);
+    const auto nodeDrawFinished = std::chrono::steady_clock::now();
     pass.DrawDeferredFocus();
+    const auto deferredFocusFinished = std::chrono::steady_clock::now();
     pass.result.animationActive =
         pass.result.animationActive || motionTimeline_.EndFrame();
     if (roundedClip) renderTarget->PopLayer();
@@ -2453,6 +2459,21 @@ RenderResult DeclarativeRenderer::Render(
         incrementalLayoutCache_.reset();
     }
     pendingIncrementalPlan_.reset();
+    const auto finalizationFinished = std::chrono::steady_clock::now();
+    const auto elapsed = [](const auto started, const auto finished) {
+        return static_cast<std::uint64_t>(
+            std::chrono::duration_cast<std::chrono::microseconds>(
+                finished - started).count());
+    };
+    pass.result.timing = DeclarativeRenderTiming{
+        elapsed(renderStarted, finalizationFinished),
+        elapsed(renderStarted, preparationFinished),
+        elapsed(preparationFinished, presentationFinished),
+        elapsed(presentationFinished, clipSetupFinished),
+        elapsed(clipSetupFinished, nodeDrawFinished),
+        elapsed(nodeDrawFinished, deferredFocusFinished),
+        elapsed(deferredFocusFinished, finalizationFinished),
+    };
     return pass.result;
 }
 

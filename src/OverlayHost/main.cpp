@@ -3295,16 +3295,8 @@ private:
         std::vector<gba::OverlayCompositionSurface::Frame*> framePointers;
         framePointers.reserve(frames.frames.size());
         for (auto& frame : frames.frames) framePointers.push_back(&frame);
-        // A non-virtual DirectComposition surface preserves pixels outside a
-        // sub-rectangle update by reusing the prior committed content. Keep
-        // that single content surface at one in-flight transaction: otherwise
-        // a later focus-damage BeginDraw can absorb the accumulated compositor
-        // backlog. Chrome-only commits do not reuse the content surface.
-        const bool waitForContentReuse =
-            ContainsCompositionContentFrame(frames);
         const HRESULT commitResult = compositionSurface_.CommitFrames(
-            framePointers, !wasVisible || waitForContentReuse,
-            commitTiming, &presentation);
+            framePointers, !wasVisible, commitTiming, &presentation);
         if (FAILED(commitResult)) {
             presentationTransaction_.RejectCompositionAdmission();
             DisableCompositionFallback(
@@ -7202,6 +7194,7 @@ private:
             std::uint64_t drawCurrentFrameMicroseconds{};
             std::uint64_t endFrameMicroseconds{};
         } stageTiming;
+        std::optional<gba::DeclarativeRenderTiming> declarativeTiming;
         std::vector<gba::OverlayCompositionSurface::Frame> frames;
         std::optional<gba::shell::RetainedTrayState> trayState;
         std::wstring guideKey;
@@ -7219,7 +7212,7 @@ private:
         const auto other = totalMicroseconds > measured
             ? totalMicroseconds - measured
             : 0;
-        return
+        std::wstring diagnostic =
             L" slow-stage-begin-us=" +
             std::to_wstring(frames.stageTiming.beginFrameMicroseconds) +
             L" slow-stage-resources-us=" +
@@ -7229,16 +7222,44 @@ private:
             L" slow-stage-end-us=" +
             std::to_wstring(frames.stageTiming.endFrameMicroseconds) +
             L" slow-stage-other-us=" + std::to_wstring(other);
+        if (frames.declarativeTiming) {
+            const auto& renderer = *frames.declarativeTiming;
+            diagnostic +=
+                L" slow-render-total-us=" +
+                std::to_wstring(renderer.totalMicroseconds) +
+                L" slow-render-prepare-us=" +
+                std::to_wstring(renderer.preparationMicroseconds) +
+                L" slow-render-presentation-us=" +
+                std::to_wstring(renderer.presentationMicroseconds) +
+                L" slow-render-clip-us=" +
+                std::to_wstring(renderer.clipSetupMicroseconds) +
+                L" slow-render-node-us=" +
+                std::to_wstring(renderer.nodeDrawMicroseconds) +
+                L" slow-render-focus-us=" +
+                std::to_wstring(renderer.deferredFocusMicroseconds) +
+                L" slow-render-finalize-us=" +
+                std::to_wstring(renderer.finalizationMicroseconds);
+        }
+        return diagnostic;
     }
 
-    [[nodiscard]] static bool ContainsCompositionContentFrame(
-        const CompositionFrameSet& frames) noexcept {
-        return std::any_of(
-            frames.frames.begin(), frames.frames.end(),
-            [](const auto& frame) {
-                return frame.layer ==
-                    gba::OverlayCompositionSurface::Layer::Content;
-            });
+    [[nodiscard]] static bool ShouldPromoteLargeCompositionUpdate(
+        const RECT update,
+        const unsigned int surfaceWidth,
+        const unsigned int surfaceHeight) noexcept {
+        if (update.right <= update.left || update.bottom <= update.top ||
+            surfaceWidth == 0 || surfaceHeight == 0) return false;
+        const auto updateArea =
+            static_cast<std::uint64_t>(update.right - update.left) *
+            static_cast<std::uint64_t>(update.bottom - update.top);
+        const auto surfaceArea =
+            static_cast<std::uint64_t>(surfaceWidth) *
+            static_cast<std::uint64_t>(surfaceHeight);
+        // PID 23628's eight renderer stalls all used 52.6-54.3% physical
+        // updates. Small focus/slider damage retains the incremental path;
+        // a half-surface update instead takes the consistently bounded full
+        // DirectComposition allocation/raster path.
+        return updateArea >= (surfaceArea + 1U) / 2U;
     }
 
     // One visible overlay session owns this small chrome raster and its
@@ -7738,10 +7759,16 @@ private:
             static_cast<std::uint64_t>(
                 std::chrono::duration_cast<std::chrono::microseconds>(
                     std::chrono::steady_clock::now() - resourcesStarted).count());
+        currentCompositionRenderTiming_.reset();
         const auto drawStarted = std::chrono::steady_clock::now();
         DrawCurrentFrame(
             fullWidth, fullHeight, dpi, frame.updateOffset, frame.updateArea,
             paintLayer, trayLayout, guideBounds);
+        if (paintLayer == CompositionPaintLayer::Content &&
+            currentCompositionRenderTiming_) {
+            set.declarativeTiming = currentCompositionRenderTiming_;
+        }
+        currentCompositionRenderTiming_.reset();
         set.stageTiming.drawCurrentFrameMicroseconds +=
             static_cast<std::uint64_t>(
                 std::chrono::duration_cast<std::chrono::microseconds>(
@@ -7843,6 +7870,15 @@ private:
                 update.bottom, update.top, static_cast<LONG>(height));
             if (update.right > update.left && update.bottom > update.top)
                 contentUpdate = update;
+        }
+        if (contentUpdate &&
+            ShouldPromoteLargeCompositionUpdate(*contentUpdate, width, height)) {
+            // DirectComposition's partial surface path may defer preservation
+            // work until the first D2D command. The retained production trace
+            // isolates that cost to updates covering at least half the surface,
+            // while full updates remain bounded. Promote only that measured
+            // path; smaller focus/slider damage remains incremental.
+            contentUpdate.reset();
         }
         if (!contentUpdate && declarativeRenderer_)
             declarativeRenderer_->CancelPresentationUpdatePlan();
@@ -8007,13 +8043,8 @@ private:
         framePointers.reserve(frames.frames.size());
         for (auto& frame : frames.frames) framePointers.push_back(&frame);
         gba::OverlayCompositionSurface::CommitTiming timing;
-        // Bound content-surface reuse to the preceding committed transaction.
-        // This retains the exact incremental update rectangle and renderer
-        // plan; it does not promote focus damage to a full raster.
-        const bool waitForContentReuse =
-            ContainsCompositionContentFrame(frames);
         const HRESULT result = compositionSurface_.CommitFrames(
-            framePointers, replacement || waitForContentReuse, timing, nullptr);
+            framePointers, replacement, timing, nullptr);
         if (FAILED(result)) {
             DisableCompositionFallback(
                 L"surface commit failed hresult=" +
@@ -8740,6 +8771,7 @@ private:
                 lastWidgetPresentationUsesProjection_ =
                     launcherProjection.presentationActive;
                 auto result = std::move(launcherProjection.render);
+                currentCompositionRenderTiming_ = result.timing;
                 const auto& semanticSnapshot =
                     launcherExperienceProjection_.InteractionSnapshot(
                         renderedWidget,
@@ -9263,6 +9295,8 @@ private:
     bool runtimeInitialized_{};
     std::unordered_map<std::wstring, long long> renderedSnapshotSequences_;
     gba::RenderResult lastWidgetRenderResult_;
+    std::optional<gba::DeclarativeRenderTiming>
+        currentCompositionRenderTiming_;
     std::optional<CommittedWidgetVisualState> committedWidgetVisualState_;
     bool lastWidgetPresentationUsesProjection_{};
     std::optional<gba::WidgetPresentationImpact>
