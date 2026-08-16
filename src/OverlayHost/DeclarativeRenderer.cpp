@@ -340,6 +340,11 @@ struct DeclarativeRenderer::PreparedNode final {
 };
 
 struct DeclarativeRenderer::RenderPass final {
+    enum class CollectionAnchorPolicy {
+        Reconcile,
+        PreserveFocusFollowOffsets,
+    };
+
     struct PresentationNode final {
         Rect borderBox;
         Rect contentBox;
@@ -1576,7 +1581,9 @@ struct DeclarativeRenderer::RenderPass final {
 
     void BuildLayout(
         const bool followStaticFocus = true,
-        const bool fillAutoRoot = true) {
+        const bool fillAutoRoot = true,
+        const CollectionAnchorPolicy collectionAnchorPolicy =
+            CollectionAnchorPolicy::Reconcile) {
         // First pass gives percentage/em adaptation a deterministic parent estimate.
         prepared.clear();
         textMeasurements.clear();
@@ -1631,7 +1638,8 @@ struct DeclarativeRenderer::RenderPass final {
             }
             return;
         }
-        if (ReconcileCollectionAnchors()) {
+        if (collectionAnchorPolicy == CollectionAnchorPolicy::Reconcile &&
+            ReconcileCollectionAnchors()) {
             prepared.clear();
             textMeasurements.clear();
             auto anchoredRoot = PrepareNode(
@@ -2809,7 +2817,10 @@ RenderResult DeclarativeRenderer::Render(
         // host-owned offset and converge with the same hard bound used by
         // nested static focus follow.
         presentationMatchesLayout = false;
-        pass.BuildLayout(false);
+        pass.BuildLayout(
+            false,
+            true,
+            RenderPass::CollectionAnchorPolicy::PreserveFocusFollowOffsets);
     }
     if (presentationFollowAttempts == kMaximumFocusFollowPasses &&
         (!presentationMatchesLayout ||
