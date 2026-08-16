@@ -815,6 +815,20 @@ public:
     }
 
 private:
+    struct PendingWidgetSwitchSnap final {
+        std::wstring widgetId;
+        std::wstring runtimeGeneration;
+        std::wstring presentationGeneration;
+        std::uint64_t correlationId{};
+    };
+
+    struct WidgetSnapshotAdmissionAuthority final {
+        std::wstring_view widgetId;
+        std::wstring_view runtimeGeneration;
+        std::wstring_view presentationGeneration;
+        std::uint64_t correlationId{};
+    };
+
     bool ParseDevelopmentArguments() {
         auto takeValue = [&](const int& index, std::optional<std::wstring>& target,
                              const wchar_t* label) -> bool {
@@ -2067,6 +2081,10 @@ private:
         const bool selectionAuthorityChanged =
             priorSelected != state_.selectedWidget() ||
             priorActive != state_.activeWidget();
+        if (selectionAuthorityChanged ||
+            state_.surface() == gba::Surface::Hidden) {
+            pendingWidgetSwitchSnap_.reset();
+        }
         const std::wstring traceWidget = state_.surface() == gba::Surface::Widget
             ? std::wstring(state_.activeWidget())
             : std::wstring(state_.selectedWidget());
@@ -2150,6 +2168,18 @@ private:
             state_.surface() == gba::Surface::Widget &&
             IsBridgeWidget(state_.activeWidget()) &&
             SnapshotFor(state_.activeWidget()) == nullptr;
+        if (snapTrayDrivenWidgetSwitch && awaitingIncomingSnapshot &&
+            correlationId != 0) {
+            if (const auto* descriptor =
+                    sessions_.FindDescriptor(state_.activeWidget())) {
+                pendingWidgetSwitchSnap_ = PendingWidgetSwitchSnap{
+                    descriptor->id,
+                    descriptor->runtimeGeneration,
+                    descriptor->presentationGeneration,
+                    correlationId,
+                };
+            }
+        }
 
         if (state_.surface() != gba::Surface::Hidden) {
             const bool enteredBridgeWidget =
@@ -2602,6 +2632,17 @@ private:
 
     void ApplyWidgetCatalogChange(const gba::WidgetSessionCatalogChange& change) {
         const auto& descriptors = sessions_.descriptors();
+        if (pendingWidgetSwitchSnap_) {
+            const auto* descriptor =
+                sessions_.FindDescriptor(pendingWidgetSwitchSnap_->widgetId);
+            if (!descriptor ||
+                descriptor->runtimeGeneration !=
+                    pendingWidgetSwitchSnap_->runtimeGeneration ||
+                descriptor->presentationGeneration !=
+                    pendingWidgetSwitchSnap_->presentationGeneration) {
+                pendingWidgetSwitchSnap_.reset();
+            }
+        }
         pinnedSurfaceCoordinator_.ReconcileCatalog(descriptors);
         if (!actionFailureFeedback_.ReconcileCatalog(descriptors)) {
             AppendDiagnostic(L"Widget action feedback rejected an invalid catalog projection");
@@ -2693,6 +2734,10 @@ private:
         const gba::WidgetSessionFailureStage stage =
             gba::WidgetSessionFailureStage::Snapshot,
         const bool revokeCurrentGeneration = false) {
+        if (pendingWidgetSwitchSnap_ &&
+            pendingWidgetSwitchSnap_->widgetId == widgetId) {
+            pendingWidgetSwitchSnap_.reset();
+        }
         std::wstring message = std::wstring(DisplayWidgetName(widgetId)) +
             L" failed: " + std::wstring(safeFailure) + L" Press A to retry.";
         if (message.size() > 640) message.resize(640);
@@ -2877,7 +2922,18 @@ private:
                     pressedVisualChanged) {
                     pendingWidgetPresentationImpact_.reset();
                 }
-                RefreshAndApplyPresentation([] {});
+                const auto* descriptor = sessions_.FindDescriptor(event.widgetId);
+                const auto admissionAuthority = descriptor
+                    ? std::optional<WidgetSnapshotAdmissionAuthority>{
+                        WidgetSnapshotAdmissionAuthority{
+                            event.widgetId,
+                            descriptor->runtimeGeneration,
+                            descriptor->presentationGeneration,
+                            event.correlationId,
+                        }}
+                    : std::nullopt;
+                RefreshAndApplyPresentation(
+                    [] {}, admissionAuthority ? &*admissionAuthority : nullptr);
             }
             if (newerRefreshRequested) {
                 RefreshWidgetSnapshot(event.widgetId, event.correlationId);
@@ -4109,7 +4165,7 @@ private:
 
     [[nodiscard]] bool WidgetSwitchAnimationEnabled() const noexcept {
         const auto& appearance = appearanceState_.current();
-        return !appearance || appearance->animateWidgetSwitching;
+        return appearance && appearance->animateWidgetSwitching;
     }
 
     void BeginWidgetExtentTransition(
@@ -4300,7 +4356,9 @@ private:
     }
 
     template <typename Refresh>
-    void RefreshAndApplyPresentation(Refresh&& refresh) {
+    void RefreshAndApplyPresentation(
+        Refresh&& refresh,
+        const WidgetSnapshotAdmissionAuthority* admissionAuthority = nullptr) {
         const bool wasVisible = state_.surface() != gba::Surface::Hidden;
         const auto priorSurface = state_.surface();
         const std::wstring priorVisibleWidget = priorSurface == gba::Surface::Widget
@@ -4337,6 +4395,18 @@ private:
             : std::wstring(state_.selectedWidget());
         const auto nextSessionPresentation =
             sessions_.Presentation(nextVisibleWidget);
+        const bool pendingSnapAdmission = admissionAuthority &&
+            pendingWidgetSwitchSnap_ &&
+            state_.surface() == gba::Surface::Widget &&
+            state_.activeWidget() == admissionAuthority->widgetId &&
+            nextVisibleWidget == pendingWidgetSwitchSnap_->widgetId &&
+            admissionAuthority->widgetId == pendingWidgetSwitchSnap_->widgetId &&
+            admissionAuthority->runtimeGeneration ==
+                pendingWidgetSwitchSnap_->runtimeGeneration &&
+            admissionAuthority->presentationGeneration ==
+                pendingWidgetSwitchSnap_->presentationGeneration &&
+            admissionAuthority->correlationId ==
+                pendingWidgetSwitchSnap_->correlationId;
         const bool exactRetainedCheckpoint =
             wasVisible && isVisible && priorSurface == state_.surface() &&
             priorVisibleWidget == nextVisibleWidget &&
@@ -4365,9 +4435,10 @@ private:
         const auto& retainedPresentation =
             presentationTransaction_.retainedPresentation();
         const bool snapTrayWidgetSwitch =
-            priorWidget != nextVisibleWidget && retainedPresentation &&
-            retainedPresentation->widgetId == priorWidget &&
-            !WidgetSwitchAnimationEnabled();
+            pendingSnapAdmission ||
+            (priorWidget != nextVisibleWidget && retainedPresentation &&
+             retainedPresentation->widgetId == priorWidget &&
+             !WidgetSwitchAnimationEnabled());
         const bool animateWidgetExtent =
             wasVisible && isVisible &&
             state_.surface() == gba::Surface::Widget &&
@@ -4402,6 +4473,17 @@ private:
                     : L"animated-resize-in-place"));
         }
         ApplyPresentation(presentation);
+        if (pendingSnapAdmission &&
+            state_.surface() == gba::Surface::Widget &&
+            state_.activeWidget() == nextVisibleWidget) {
+            const auto& committed =
+                presentationTransaction_.committedDestination();
+            if (!compositionSurface_.available() ||
+                (committed && committed->widgetId == nextVisibleWidget &&
+                 committed->extentDip == nextExtent)) {
+                pendingWidgetSwitchSnap_.reset();
+            }
+        }
         (void)ReconcileResponsiveFocusPersistence();
     }
 
@@ -6227,6 +6309,10 @@ private:
             state_.focusRegion() == gba::FocusRegion::Tray,
             state_.selectedWidget(), state_.activeWidget())};
         if (!IsBridgeWidget(widgetId)) return;
+        if (pendingWidgetSwitchSnap_ &&
+            pendingWidgetSwitchSnap_->widgetId == widgetId) {
+            pendingWidgetSwitchSnap_.reset();
+        }
         if (pinnedSurfaceCoordinator_.pinned() &&
             pinnedSurfaceCoordinator_.widgetId() == widgetId) {
             (void)pinnedSurfaceCoordinator_.Unpin(
@@ -9029,6 +9115,7 @@ private:
     ULONGLONG lastActionExpiresAt_{};
     std::wstring admissionTraceWidget_;
     std::uint64_t admissionTraceCorrelationId_{};
+    std::optional<PendingWidgetSwitchSnap> pendingWidgetSwitchSnap_;
     gba::WidgetActionFeedbackHost actionFailureFeedback_;
     gba::WidgetAdmissionTrace admissionTrace_;
     gba::accessibility::Tree accessibilityTree_;

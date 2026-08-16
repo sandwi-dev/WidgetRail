@@ -70,7 +70,7 @@ public sealed record AppearanceSettings
     /// Controls only host-owned transitions between tray-selected widgets.
     /// Older schema-v1 settings omit this value and retain the product default.
     /// </summary>
-    public bool AnimateWidgetSwitching { get; init; } = true;
+    public bool AnimateWidgetSwitching { get; init; }
 
     public static AppearanceSettings Default { get; } = new()
     {
@@ -83,7 +83,7 @@ public sealed record AppearanceSettings
         Contrast = ContrastPreference.System,
         BoldText = false,
         Transparency = TransparencyPreference.Full,
-        AnimateWidgetSwitching = true,
+        AnimateWidgetSwitching = false,
     };
 }
 

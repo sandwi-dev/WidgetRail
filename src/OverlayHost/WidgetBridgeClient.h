@@ -488,7 +488,7 @@ struct PlatformAppearance final {
     PlatformContrastPreference contrast{PlatformContrastPreference::System};
     bool boldText{};
     PlatformTransparencyPreference transparency{PlatformTransparencyPreference::Full};
-    bool animateWidgetSwitching{true};
+    bool animateWidgetSwitching{};
     std::unordered_map<std::wstring, WidgetComputedStyle> shellStyles;
 };
 
