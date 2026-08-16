@@ -2362,7 +2362,7 @@ static async Task PlatformAppearanceIsLazy()
     var response = await harness.Client.RequestAsync(BridgeMessageTypes.GetPlatformAppearance, new { });
     Assert.Equal(BridgeMessageTypes.PlatformAppearance, response.Type);
     Assert.SequenceEqual(
-        ["backdropOpacity", "boldText", "contrast", "interfaceScale", "motion", "revision", "shellStyles", "textScale", "themeId", "themeVersion", "transparency"],
+        ["animateWidgetSwitching", "backdropOpacity", "boldText", "contrast", "interfaceScale", "motion", "revision", "shellStyles", "textScale", "themeId", "themeVersion", "transparency"],
         response.Payload.EnumerateObject().Select(property => property.Name).Order(StringComparer.Ordinal));
     Assert.Equal("dev.example.bridge", response.Payload.GetProperty("themeId").GetString());
     Assert.Equal("1.0.0", response.Payload.GetProperty("themeVersion").GetString());
@@ -2373,6 +2373,7 @@ static async Task PlatformAppearanceIsLazy()
     Assert.Equal("high", response.Payload.GetProperty("contrast").GetString());
     Assert.Equal(true, response.Payload.GetProperty("boldText").GetBoolean());
     Assert.Equal("reduced", response.Payload.GetProperty("transparency").GetString());
+    Assert.Equal(true, response.Payload.GetProperty("animateWidgetSwitching").GetBoolean());
     var shellStyles = response.Payload.GetProperty("shellStyles");
     Assert.Equal(12, shellStyles.EnumerateObject().Count());
     Assert.True(shellStyles.GetProperty("tray-item:focused")
@@ -3907,6 +3908,7 @@ file sealed class TemporaryAppearance : IAsyncDisposable
                 Contrast = ContrastPreference.High,
                 BoldText = true,
                 Transparency = TransparencyPreference.Reduced,
+                AnimateWidgetSwitching = true,
             },
         });
         var service = new PlatformAppearanceService(paths, new ThemeManager(store, new ThemeCatalog(paths)));

@@ -368,6 +368,66 @@ void ReducedMotionAdmissionCommitsDestinationDirectly() {
           "reduced motion retains no source extent after admission");
 }
 
+void AnimationPreferencePathsPreserveContainerGeometry() {
+    constexpr gba::OverlayPresentationExtent sourceExtent{880, 445};
+    constexpr gba::OverlayPresentationExtent destinationExtent{580, 345};
+    constexpr gba::OverlayPlacement destinationPlacement{450, 300, 580, 345};
+    constexpr gba::OverlayPlacement retainedContainer{300, 200, 880, 445};
+
+    gba::OverlayPresentationTransaction snapTransaction;
+    const auto snap = snapTransaction.PrepareCompositionAdmission(
+        sourceExtent.widthDip, sourceExtent.heightDip,
+        destinationPlacement, retainedContainer, destinationExtent,
+        100, false, true);
+    Check(!snap.animateMotion,
+          "animation-off admission bypasses the extent motion path");
+    Near(snap.initialPresentation.scaleX, 1.0F,
+         "animation-off admission keeps destination scale one");
+    Near(snap.initialPresentation.scaleY, 1.0F,
+         "animation-off admission keeps destination scale one vertically");
+    Near(snap.initialPresentation.offsetX,
+         static_cast<float>(destinationPlacement.x - retainedContainer.x),
+         "animation-off admission uses exact destination-to-container x offset");
+    Near(snap.initialPresentation.offsetY,
+         static_cast<float>(destinationPlacement.y - retainedContainer.y),
+         "animation-off admission uses exact destination-to-container y offset");
+    snapTransaction.AcceptCompositionAdmission(snap, L"settings");
+    const auto snapped = snapTransaction.CurrentMotionPlan(
+        retainedContainer.width, retainedContainer.height, destinationExtent);
+    Check(snapped.has_value(),
+          "accepted animation-off admission retains a settled presentation");
+    Near(snapped->offsetX, snap.initialPresentation.offsetX,
+         "settled animation-off x offset matches admission");
+    Near(snapped->offsetY, snap.initialPresentation.offsetY,
+         "settled animation-off y offset matches admission");
+
+    gba::OverlayPresentationTransaction animatedTransaction;
+    animatedTransaction.BeginExtentTransition(
+        sourceExtent, destinationExtent, 200, false, true);
+    const auto animated = animatedTransaction.PrepareCompositionAdmission(
+        sourceExtent.widthDip, sourceExtent.heightDip,
+        destinationPlacement, retainedContainer, destinationExtent,
+        200, false, true);
+    Check(animated.animateMotion,
+          "animation-on admission retains the existing extent motion path");
+    const auto expected = gba::PlanCompositionMotion(
+        static_cast<unsigned int>(retainedContainer.width),
+        static_cast<unsigned int>(retainedContainer.height),
+        static_cast<unsigned int>(destinationPlacement.width),
+        static_cast<unsigned int>(destinationPlacement.height),
+        static_cast<float>(sourceExtent.widthDip),
+        static_cast<float>(sourceExtent.heightDip),
+        gba::CompositionVerticalAnchor::Bottom);
+    Near(animated.initialPresentation.scaleX, expected.scaleX,
+         "animation-on admission preserves existing x scale");
+    Near(animated.initialPresentation.scaleY, expected.scaleY,
+         "animation-on admission preserves existing y scale");
+    Near(animated.initialPresentation.offsetX, expected.offsetX,
+         "animation-on admission preserves existing x motion offset");
+    Near(animated.initialPresentation.offsetY, expected.offsetY,
+         "animation-on admission preserves existing y motion offset");
+}
+
 void ClockAndDecisionsAreStable() {
     gba::OverlayTransitionTimeline timeline;
     timeline.BeginOpen(100, false);
@@ -409,6 +469,7 @@ int main() {
     DestinationAdmissionOwnsLayoutBeforeEnvelopeSettlement();
     CommittedDestinationDrivesLateAdmissionAndStableRefresh();
     ReducedMotionAdmissionCommitsDestinationDirectly();
+    AnimationPreferencePathsPreserveContainerGeometry();
     ClockAndDecisionsAreStable();
     std::cout << "OverlayTransitionTests: " << checks << " checks passed\n";
     return EXIT_SUCCESS;

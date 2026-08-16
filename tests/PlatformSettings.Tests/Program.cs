@@ -61,6 +61,7 @@ static Task DefaultsAreSafe()
         Assert.Equal(ContrastPreference.System, settings.Appearance.Contrast);
         Assert.Equal(false, settings.Appearance.BoldText);
         Assert.Equal(TransparencyPreference.Full, settings.Appearance.Transparency);
+        Assert.Equal(false, settings.Appearance.AnimateWidgetSwitching);
         Assert.Equal(false, settings.AppLibrary.EpicInstalledGamesEnabled);
         Assert.Equal(false, settings.AppLibrary.GogInstalledGamesEnabled);
         Assert.True(!File.Exists(store.Paths.SettingsFile), "Reading defaults must not create a settings file.");
@@ -89,22 +90,31 @@ static async Task SettingsRoundTrip()
             Contrast = ContrastPreference.High,
             BoldText = true,
             Transparency = TransparencyPreference.Reduced,
+            AnimateWidgetSwitching = true,
         },
     });
     Assert.Equal("dev.example.slate", updated.Appearance.ThemeId);
     Assert.Equal("1.2.3", updated.Appearance.ThemeVersion);
     Assert.Equal(true, updated.AppLibrary.EpicInstalledGamesEnabled);
     Assert.Equal(true, updated.AppLibrary.GogInstalledGamesEnabled);
+    Assert.Equal(true, updated.Appearance.AnimateWidgetSwitching);
     var reloaded = await new PlatformSettingsStore(new PlatformSettingsPaths(temp.Path)).LoadAsync();
     Assert.Equal(updated, reloaded);
+    Assert.Equal(true, reloaded.Appearance.AnimateWidgetSwitching);
     var source = await File.ReadAllTextAsync(store.Paths.SettingsFile);
     Assert.Contains("\"schemaVersion\": 1", source);
     Assert.Contains("\"motion\": \"reduced\"", source);
     Assert.Contains("\"contrast\": \"high\"", source);
     Assert.Contains("\"boldText\": true", source);
     Assert.Contains("\"transparency\": \"reduced\"", source);
+    Assert.Contains("\"animateWidgetSwitching\": true", source);
     Assert.True(!Directory.EnumerateFiles(temp.Path, ".platform-settings.*.tmp").Any(),
         "Atomic settings temporary file leaked.");
+
+    var reset = await store.ReplaceAsync(PlatformSettingsDocument.Default);
+    Assert.Equal(false, reset.Appearance.AnimateWidgetSwitching);
+    var resetReloaded = await new PlatformSettingsStore(new PlatformSettingsPaths(temp.Path)).LoadAsync();
+    Assert.Equal(false, resetReloaded.Appearance.AnimateWidgetSwitching);
 }
 
 static async Task LegacyAccessibilityDefaults()
@@ -117,6 +127,7 @@ static async Task LegacyAccessibilityDefaults()
     Assert.Equal(ContrastPreference.System, loaded.Appearance.Contrast);
     Assert.Equal(false, loaded.Appearance.BoldText);
     Assert.Equal(TransparencyPreference.Full, loaded.Appearance.Transparency);
+    Assert.Equal(false, loaded.Appearance.AnimateWidgetSwitching);
 }
 
 static async Task StrictSettingsFailClosed()
