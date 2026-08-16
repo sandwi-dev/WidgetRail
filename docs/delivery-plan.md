@@ -731,9 +731,19 @@ Static/full-layout focus follow, nested scrolling, and the emergency ceiling
 remain intact. The one-file diff and tests-skipped Release build are reviewed;
 the executable SHA-256 is
 `A57F10C0B1503E72B5F93EF2B84248E4A0F1BD575763C84A1EC5256BEE66FFDD`.
-The exact unaccepted candidate is visibly running as PID 27104 for the user's
-Spotify Queue/Playlist physical latency verdict. Do not write tests or
-integrate until that verdict; Win32 error 232 remains separately deferred.
+The exact unaccepted candidate was physically rejected while running as PID
+27104. At 07:14:00.188 a retained `PaintOnly` move focused one Spotify row
+whose bottom lay beyond the viewport; focus-follow computed the correct new
+offset as its peak but returned with the old offset as final. At 07:14:00.308
+the next Down advanced focus one more row while that old viewport remained,
+and only the following full-raster worker frame committed the later offset.
+This explains the user's observed skipped option without an extra input or
+Spotify selection error. The platform lane must preserve and resolve the first
+meaningful destination vector, stop before another mutation when the complete
+focus path is already visible, and use one bounded generic full/static fallback
+if a stable/repeated state remains invisible. Do not return an offscreen focus,
+roll back to the pre-input vector, write tests, or integrate before the next
+physical verdict. Win32 error 232 remains separately deferred.
 
 ### Ready next — DLV-261: restore Platform Settings focused-suite parity
 
