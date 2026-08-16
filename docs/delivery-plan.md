@@ -215,7 +215,7 @@ user decision. The native overlay is the sole production presentation path.
 
 | Lane | Task/worktree | State |
 | --- | --- | --- |
-| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | DLV-256 production commit `005cfc7` is independently source-reviewed and its exact candidate is visibly running as PID 39972 for the required physical Spotify artwork verdict. Tests remain prohibited until user acceptance. Test-recovery DLV-261 and DLV-262 are Ready behind it; DLV-248 remains deferred. |
+| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | DLV-256 production commit `005cfc7` improved artwork reuse but is physically rejected as incomplete because warm-cache paint-only stalls remain. A bounded same-lane production correction is Assigned; PID 39972 remains the rejected evidence process until replacement. Tests remain prohibited. Test-recovery DLV-261 and DLV-262 are Ready behind it; DLV-248 remains deferred. |
 | Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | DLV-253 is physically accepted, focused Games & Apps evidence is 65/65, and the cumulative chain is integrated on main as `6a26f08`, `3c63852`, and test-only `91177ec`. The superseded PID 51500 closed normally before the DLV-254 candidate launch; no rebuild/relaunch was performed for the DLV-253 tests alone. Preserve clean completed branches. |
 
 The user explicitly approved the DLV-217 aggregate exception on 2026-08-15.
@@ -516,7 +516,7 @@ The accepted chain was integrated on main in order as `d5e4b0c`, `b86a01f`,
 test/reviewer-document-only integration delta; accepted PID 41208 remains the
 coherent production candidate.
 
-### Physical verdict pending — DLV-256: eliminate Spotify artwork paint stalls
+### Assigned correction — DLV-256: eliminate Spotify artwork paint stalls
 
 Owner/baseline: platform lane after accepted DLV-254 integration, from the
 then-current accepted main. Own only the native image-resource/cache/rendering
@@ -585,8 +585,25 @@ SHA-256 `3DF52E0FB8631F67E45A7A7A5A2E1F49BB5FA3A162497496B31B9A8C92649BEF`.
 The prior accepted PID 41208 was already closed by the implementation lane to
 release its exact output lock. The reviewed candidate is visibly running as PID
 39972 for the user's Spotify Queue, Playlists, playlist-track, artwork reuse,
-and navigation-latency verdict. Do not write or run the post-acceptance tests or
-integrate until that verdict is explicit.
+and navigation-latency verdict. The user reports that it is better but still
+laggy, so `005cfc7` is not accepted or integration-eligible. Its cache behavior
+is healthy in the correlated 05:29 session: across 173 Spotify frames, bitmap
+hits increased by 705, creates by only 14, with zero eviction or resource-domain
+invalidation. However, 18 warm-cache paint-only frames still took 627,947 to
+702,948 microseconds. The 126 correlated full frames had a 16,709-microsecond
+median and 37,070-microsecond maximum; 123 full frames created no bitmap. This
+proves the long stall is not the bitmap-recreation path alone.
+
+The bounded correction must retain `005cfc7`, add only thresholded stage timing
+to distinguish content BeginFrame/BeginDraw, graphics-resource setup,
+`DrawCurrentFrame`, and EndFrame/EndDraw, then correct the proven blocking stage
+generically. Do not emit ordinary per-frame trace spam or cross into Spotify
+provider, paging, snapshot publication, or protocol work without stopping and
+returning exact evidence that the native renderer is not the owner. Preserve
+accepted DLV-242 coordinate/damage behavior, fixed chrome, async image loading,
+the single renderer/cache/device owners, and physical-first ordering. Build one
+tests-skipped Release follow-up, then stop for reviewer launch and another user
+verdict; do not write or run post-acceptance tests yet.
 
 ### Ready next — DLV-261: restore Platform Settings focused-suite parity
 
