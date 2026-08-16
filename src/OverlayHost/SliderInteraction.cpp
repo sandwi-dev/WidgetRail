@@ -184,7 +184,7 @@ bool SliderInteractionState::CancelPending(
     if (position == entries_.end()) return false;
     auto& entry = position->second;
     if (!entry.pending || entry.actionId != slider.valueChangedActionId ||
-        entry.adjustmentSnapshotSequence != slider.snapshotSequence) {
+        entry.snapshotSequence != slider.snapshotSequence) {
         return false;
     }
     entry.pending = false;
@@ -242,12 +242,24 @@ SliderInteractionState::Entry* SliderInteractionState::FindAndSynchronize(
             if (reconciliation) *reconciliation = {true, true};
         }
     } else {
-        const bool authoritativeCompletion = entry.pending &&
+        const bool newerPendingSnapshot = entry.pending &&
             slider.snapshotSequence > entry.adjustmentSnapshotSequence;
         const bool timedOut = entry.pending &&
             nowMilliseconds >= entry.lastAdjustment &&
             nowMilliseconds - entry.lastAdjustment > PendingTimeoutMilliseconds;
-        if (authoritativeCompletion || timedOut) {
+        const bool matchesOptimisticTarget = newerPendingSnapshot && Near(
+            slider.value, entry.targetValue, slider.maximum - slider.minimum);
+        const bool repeatsPriorAuthority = newerPendingSnapshot && Near(
+            slider.value, entry.authoritativeValue,
+            slider.maximum - slider.minimum);
+        // Snapshot sequence is a render serial, not action acknowledgement.
+        // A newer render that repeats the prior provider value keeps the latest
+        // host-owned target visible. Value evidence settles only when it
+        // confirms that target or provides a genuinely different correction.
+        const bool authoritativeCorrection =
+            newerPendingSnapshot && !matchesOptimisticTarget &&
+            !repeatsPriorAuthority;
+        if (matchesOptimisticTarget || authoritativeCorrection || timedOut) {
             const bool visualChanged = !Near(
                 slider.value, entry.targetValue, slider.maximum - slider.minimum);
             entry.pending = false;
@@ -309,7 +321,7 @@ SliderPresentationIdentity SliderInteractionState::Identity(const Entry& entry) 
         entry.inputScopeId,
         entry.nodeId,
         entry.actionId,
-        entry.adjustmentSnapshotSequence,
+        entry.snapshotSequence,
     };
 }
 
