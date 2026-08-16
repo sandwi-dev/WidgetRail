@@ -167,14 +167,18 @@ public:
             destinationPlacement,
             containerPlacement,
             destinationExtentDip,
-            PlanCompositionMotion(
-                static_cast<unsigned int>(destinationPlacement.width),
-                static_cast<unsigned int>(destinationPlacement.height),
-                static_cast<unsigned int>(destinationPlacement.width),
-                static_cast<unsigned int>(destinationPlacement.height),
-                static_cast<float>(destinationPlacement.width),
-                static_cast<float>(destinationPlacement.height),
-                CompositionVerticalAnchor::Bottom),
+            CompositionMotionPlan{
+                static_cast<unsigned int>(containerPlacement.width),
+                static_cast<unsigned int>(containerPlacement.height),
+                1.0F,
+                1.0F,
+                static_cast<float>(
+                    destinationPlacement.x - containerPlacement.x),
+                static_cast<float>(
+                    destinationPlacement.y - containerPlacement.y),
+                containerPlacement.width != destinationPlacement.width ||
+                    containerPlacement.height != destinationPlacement.height,
+            },
             wasVisible && priorWidth != 0 && priorHeight != 0 &&
                 extentTransition_.active(),
         };
