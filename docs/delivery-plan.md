@@ -215,7 +215,7 @@ user decision. The native overlay is the sole production presentation path.
 
 | Lane | Task/worktree | State |
 | --- | --- | --- |
-| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | DLV-254 candidate `61f59d1` is physically rejected: with widget-switch animation Off, a destination smaller than the retained composition container is committed at local offset `0,0` and appears off-center. A production-only correction is assigned on the same branch; no tests precede the next user verdict. DLV-256 remains blocked behind accepted DLV-254 integration. DLV-248 remains deferred. |
+| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | DLV-254 correction `a594478` replaces the rejected animation-Off `0,0` visual offset with the exact destination-to-container offset at scale 1. The coherent Release build passed with tests skipped, and exact candidate PID 43212 is visibly running for the user's renewed physical verdict. DLV-256 remains blocked behind accepted DLV-254 integration. DLV-248 remains deferred. |
 | Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | DLV-253 is physically accepted, focused Games & Apps evidence is 65/65, and the cumulative chain is integrated on main as `6a26f08`, `3c63852`, and test-only `91177ec`. The superseded PID 51500 closed normally before the DLV-254 candidate launch; no rebuild/relaunch was performed for the DLV-253 tests alone. Preserve clean completed branches. |
 
 The user explicitly approved the DLV-217 aggregate exception on 2026-08-15.
@@ -446,6 +446,20 @@ focus/UIA ownership, and the animated path. Build a production-only candidate
 with tests skipped, then stop for another user verdict before tests or
 integration.
 
+Production-only correction `a594478` changes only
+`OverlayPresentationTransaction.h`: the non-animated admission now uses scale
+1 and the exact destination-placement minus retained-container-placement X/Y
+offset, while the animated branch is unchanged. The rejected PID 44468 ignored
+two normal close requests and was then terminated as the exact planner-launched
+candidate so its locked Release directory could be rebuilt. The coherent
+packaged Release build passed with tests skipped; exact executable SHA-256 is
+`56047ABC26EB73154C4E4F6BA84B224AF5E8D2F54385349E01C8062FDEE4A39C`.
+This exact corrected candidate is visibly running as PID 43212. Initial trace
+confirms the production owner, DirectComposition owner, appearance revision,
+fixed guide/tray bounds, and UIA transform were established without a logged
+error. Await the user's animation-Off larger-to-smaller, smaller-to-larger, and
+same-size switch verdict before adding tests or integrating.
+
 ### Ready next — DLV-256: eliminate Spotify artwork paint stalls
 
 Owner/baseline: platform lane after accepted DLV-254 integration, from the
@@ -602,9 +616,11 @@ Closed accepted widgets history through DLV-252 is retained in the
     `91177ec`; no rebuild/relaunch was needed for the test-only delta. Exact
     patch-equivalent DLV-254 commit `61f59d1` was refreshed onto integrated main
     and coherently Release-built, but its animation-Off coordinate path was
-    physically rejected from PID 44468. A bounded production-only correction is
-    assigned before any tests or integration. DLV-256 is Ready only after
-    accepted DLV-254 integration; DLV-248 remains deliberately deferred.
+    physically rejected from PID 44468. Production-only correction `a594478`
+    now uses the exact destination-to-container visual offset; its coherent
+    Release is visibly running as PID 43212 for renewed physical review before
+    tests or integration. DLV-256 is Ready only after accepted DLV-254
+    integration; DLV-248 remains deliberately deferred.
 13. DLV-257 through DLV-260 form the blocked serialized rebrand program. They
     begin only after the new identity is user-approved and the active
     DLV-253/DLV-254 cycle reaches clean accepted boundaries. DLV-258 through
