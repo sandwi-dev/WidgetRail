@@ -215,7 +215,7 @@ user decision. The native overlay is the sole production presentation path.
 
 | Lane | Task/worktree | State |
 | --- | --- | --- |
-| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | DLV-256 production commit `005cfc7` improved artwork reuse but was physically rejected as incomplete because warm-cache paint-only stalls remained. Follow-up `25f31fe` is source-reviewed and visibly launched as unaccepted PID 23628 for another physical latency verdict. Tests remain prohibited. Test-recovery DLV-261 and DLV-262 are Ready behind it; DLV-248 remains deferred. |
+| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | DLV-256 commits `005cfc7` and `25f31fe` are physically rejected as incomplete. Exact PID 23628 proves the remaining 681–1,114 ms stalls are wholly inside `DrawCurrentFrame` on warm-cache paint-only Spotify focus frames, not BeginDraw, EndDraw, or the completion fence. A bounded same-lane renderer correction is Assigned; tests remain prohibited. Test-recovery DLV-261 and DLV-262 are Ready behind it; DLV-248 remains deferred. |
 | Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | DLV-253 is physically accepted, focused Games & Apps evidence is 65/65, and the cumulative chain is integrated on main as `6a26f08`, `3c63852`, and test-only `91177ec`. The superseded PID 51500 closed normally before the DLV-254 candidate launch; no rebuild/relaunch was performed for the DLV-253 tests alone. Preserve clean completed branches. |
 
 The user explicitly approved the DLV-217 aggregate exception on 2026-08-15.
@@ -624,6 +624,32 @@ Queue, Playlists, playlist-track, artwork, and navigation-latency verdict. Its
 initial session established the production process, DirectComposition, fixed
 chrome, Settings admission, and the completion fence without a logged startup
 error. Do not add or run tests or integrate before the physical verdict.
+
+The user physically rejected this follow-up because lag remains. Exact PID
+23628 stage evidence contains eight frames above 100 ms: four at 681–691 ms and
+four at 1,095–1,114 ms. Every one is a Spotify `paint-only` focus-navigation
+frame with stable resource generation, increasing bitmap hits, unchanged bitmap
+creates, and no eviction. BeginDraw took only 18–41 microseconds, resource setup
+zero, EndDraw 12–35 microseconds, and the waited commit 2.9–4.6 ms; 681–1,114 ms
+is inside `DrawCurrentFrame`, specifically before the renderer returns. Adjacent
+full frames remain approximately 26–40 ms. The completion fence therefore did
+not correct the defect and must not be represented as the owner or accepted
+fix.
+
+The next bounded production-only correction must instrument only slow
+`DeclarativeRenderer::Render` calls deeply enough to distinguish incremental
+preparation/presentation, clip setup, node/image/text drawing, deferred focus,
+and retained-state finalization, then correct the proven renderer/partial-update
+operation in the same coherent candidate. If source inspection confirms that a
+large partial DirectComposition update incurs the preservation stall during its
+first drawing command, use a generic measured full-surface promotion for that
+path rather than disabling incremental rendering globally or branching on
+Spotify. Remove the unconditional content completion fence unless retained
+evidence proves an independent benefit; do not add its 2–7 ms cost to every
+frame merely to move the stall. Preserve the bitmap LRU, exact coordinate
+semantics, small bounded focus damage, fixed chrome, and all existing owners.
+Build one tests-skipped Release and stop for another physical verdict; do not
+write or run tests or integrate yet.
 
 ### Ready next — DLV-261: restore Platform Settings focused-suite parity
 
