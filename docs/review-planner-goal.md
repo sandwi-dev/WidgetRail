@@ -550,9 +550,12 @@ Then repeat the loop.
   was mistaken for provider acknowledgement. Generic correction `8d3dfff`
   retains the optimistic target while newer snapshots repeat prior authority,
   and settles on target match, genuine correction, exact failure, or timeout.
-  Cumulative candidate `922385d` is running as PID 48264 with SHA-256
-  `BAEA356A3C493AACEA164A6B7CCB743E1897455DEEF0B43955DB5F988822A008`.
-  Do not integrate or add tests before the user's physical verdict. The original
+  Cumulative candidate `922385d` is physically rejected: the host mistakes
+  slider `handled=true` queue admission for completion and forces an old-value
+  snapshot before the queued action runs. The bounded correction must preserve
+  optimistic slider damage, defer slider refresh to the widget's post-action
+  invalidation, and retain immediate refresh for non-slider actions. Do not
+  integrate or add tests before the user's physical verdict. The original
   pre-recovery branch remains
   preserved at `bdf6d88`; do not rewrite it. Its
   prior DLV-220 history remains preserved on `codex/impl-platform-community`.
