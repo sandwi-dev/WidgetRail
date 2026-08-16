@@ -26,6 +26,7 @@ internal sealed record GamesAppsPresentationState(
     string? LaunchingAppId,
     bool LoadingMore,
     bool LibraryMutationBusy,
+    bool CatalogRefreshBusy,
     bool HasNextPage,
     bool CanLoadPrevious,
     WidgetLifecycleState LifecycleState,
@@ -81,6 +82,27 @@ internal static class GamesAppsPresentation
             headerChildren.Add(UI.Toast(
                 state.Toast.Title, state.Toast.Message, state.Toast.Tone,
                 "games.toast", state.Toast.Duration));
+        if (state.Page == GamesAppsPage.Library &&
+            state.ViewState == GamesAppsViewState.Ready)
+        {
+            var firstLibraryItem = state.LibrarySavedIds
+                .FirstOrDefault(savedId => state.Items.Any(
+                    item => string.Equals(item.SavedId, savedId, StringComparison.Ordinal)));
+            headerChildren.Add(UI.Button(
+                    "Refresh installed apps",
+                    "games.refresh-catalog",
+                    "games.refresh-catalog")
+                .Icon(WidgetGlyph.Refresh,
+                    "Rescan installed applications and update this library")
+                .Busy(state.CatalogRefreshBusy)
+                .Disabled(state.CatalogRefreshBusy || state.LibraryMutationBusy ||
+                    state.LifecycleState != WidgetLifecycleState.Interactive)
+                .FocusUp("games.refresh-catalog")
+                .FocusDown(firstLibraryItem is null
+                    ? "games.state.action"
+                    : LibraryElementId(firstLibraryItem))
+                .Classes("games-refresh-catalog"));
+        }
         var header = UI.Stack("games.header", headerChildren.ToArray())
             .Classes("games-header");
 
@@ -152,7 +174,7 @@ internal static class GamesAppsPresentation
                     state.LifecycleState != WidgetLifecycleState.Interactive)
                 .Selected(string.Equals(
                     state.SelectedAppId, item.AppId, StringComparison.Ordinal))
-                .FocusUp(index == 0 ? id : elementIds[index - 1])
+                .FocusUp(index == 0 ? "games.refresh-catalog" : elementIds[index - 1])
                 .FocusDown(index + 1 < curated.Length
                     ? elementIds[index + 1]
                     : "games.open-catalog")

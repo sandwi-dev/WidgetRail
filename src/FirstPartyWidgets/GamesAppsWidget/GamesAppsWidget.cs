@@ -30,6 +30,7 @@ public enum GamesAppsPage
 public sealed class GamesAppsWidget : Widget
 {
     private const string RetryActionId = "games.retry";
+    private const string RefreshCatalogActionId = "games.refresh-catalog";
     public const int ColdLoadingDelayMilliseconds = 150;
     public const int PageSize = 32;
     private const int MaximumCuratedItems = GamesAppsLibraryPolicy.MaximumCuratedItems;
@@ -54,6 +55,7 @@ public sealed class GamesAppsWidget : Widget
     private string? _launchingAppId;
     private bool _loadingMore;
     private bool _libraryMutationBusy;
+    private bool _catalogRefreshBusy;
     private bool _hasLibrarySnapshot;
     private GamesAppsCatalogState _catalog = GamesAppsCatalogState.Empty;
     private string? _runningRevision;
@@ -101,6 +103,7 @@ public sealed class GamesAppsWidget : Widget
                 _launchingAppId,
                 _loadingMore || _libraryMutationBusy,
                 _libraryMutationBusy,
+                _catalogRefreshBusy,
                 _catalog.After is not null,
                 _catalog.CanLoadPrevious,
                 LifecycleState,
@@ -196,7 +199,8 @@ public sealed class GamesAppsWidget : Widget
                     await RemoveCuratedAsync(curatedAppId, cancellationToken).ConfigureAwait(false);
                 return;
             case RetryActionId:
-                await RetryActiveRunAsync(cancellationToken).ConfigureAwait(false);
+            case RefreshCatalogActionId:
+                await RefreshCatalogAsync(cancellationToken).ConfigureAwait(false);
                 return;
             case "games.load-more":
                 await LoadMoreAsync(cancellationToken).ConfigureAwait(false);
@@ -458,16 +462,19 @@ public sealed class GamesAppsWidget : Widget
         _ = Operations.RunLatest(
             LibraryLoadOperationKey,
             context => LoadSavedLibraryRunAsync(
-                generation, showColdLoading: !hasLibrarySnapshot, context),
+                generation, showColdLoading: !hasLibrarySnapshot,
+                refreshCatalog: false, context),
             WidgetOperationLifetime.Active);
     }
 
     private async ValueTask LoadSavedLibraryRunAsync(
         long generation,
         bool showColdLoading,
+        bool refreshCatalog,
         WidgetOperationContext context)
     {
-        var load = LoadSavedLibraryAsync(generation, context.CancellationToken);
+        var load = LoadSavedLibraryAsync(
+            generation, refreshCatalog, context.CancellationToken);
         if (!showColdLoading)
         {
             await load.ConfigureAwait(false);
@@ -501,7 +508,7 @@ public sealed class GamesAppsWidget : Widget
         }
     }
 
-    private async Task RetryActiveRunAsync(CancellationToken cancellationToken)
+    private async Task RefreshCatalogAsync(CancellationToken cancellationToken)
     {
         if (!IsActive || ActiveCancellationToken.IsCancellationRequested) return;
 
@@ -525,12 +532,14 @@ public sealed class GamesAppsWidget : Widget
                     : "Reloading your saved library…";
                 _launchingAppId = null;
                 _loadingMore = false;
+                _catalogRefreshBusy = true;
             }
             Invalidate();
             var operation = Operations.RunLatest(
                 LibraryLoadOperationKey,
                 context => LoadSavedLibraryRunAsync(
-                    generation, showColdLoading: false, context),
+                    generation, showColdLoading: false,
+                    refreshCatalog: true, context),
                 WidgetOperationLifetime.Active);
             await operation.Completion.ConfigureAwait(false);
         }
@@ -541,7 +550,9 @@ public sealed class GamesAppsWidget : Widget
         }
         finally
         {
+            lock (_gate) _catalogRefreshBusy = false;
             if (acquired) _commandGate.Release();
+            Invalidate();
         }
     }
 
@@ -555,10 +566,14 @@ public sealed class GamesAppsWidget : Widget
             _launchingAppId = null;
             _loadingMore = false;
             _libraryMutationBusy = false;
+            _catalogRefreshBusy = false;
         }
     }
 
-    private async Task LoadSavedLibraryAsync(long generation, CancellationToken cancellationToken)
+    private async Task LoadSavedLibraryAsync(
+        long generation,
+        bool refreshCatalog,
+        CancellationToken cancellationToken)
     {
         try
         {
@@ -584,7 +599,8 @@ public sealed class GamesAppsWidget : Widget
             IReadOnlyList<WidgetAppLibraryItem> catalog;
             try
             {
-                catalog = await ReadCatalogAsync(cancellationToken).ConfigureAwait(false);
+                catalog = await ReadCatalogAsync(refreshCatalog, cancellationToken)
+                    .ConfigureAwait(false);
             }
             catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
             {
@@ -735,6 +751,7 @@ public sealed class GamesAppsWidget : Widget
     }
 
     private async Task<IReadOnlyList<WidgetAppLibraryItem>> ReadCatalogAsync(
+        bool refresh,
         CancellationToken cancellationToken)
     {
         var items = new List<WidgetAppLibraryItem>(MaximumItems);
@@ -748,7 +765,7 @@ public sealed class GamesAppsWidget : Widget
             var page = await HostServices.AppLibrary.QueryAsync(
                     InstalledGamesQuery, cursor,
                     cursor is null ? null : WidgetCursorDirection.After,
-                    PageSize, refresh: cursor is null, cancellationToken)
+                    PageSize, refresh: cursor is null && refresh, cancellationToken)
                 .ConfigureAwait(false);
             if (page?.Items is null || page.Items.Count > PageSize) throw MalformedCatalog();
             foreach (var item in GamesAppsCatalogPolicy.Normalize(page.Items, PageSize))
@@ -802,7 +819,7 @@ public sealed class GamesAppsWidget : Widget
             }
             Invalidate();
             var page = await HostServices.AppLibrary.QueryAsync(
-                    AllInstalledQuery, limit: PageSize, refresh: true,
+                    AllInstalledQuery, limit: PageSize, refresh: false,
                     cancellationToken: commandLifetime.Token).ConfigureAwait(false);
             ApplyPage(page, GamesAppsCatalogPageTransition.Initial, generation);
         }
@@ -1254,7 +1271,6 @@ public sealed class GamesAppsWidget : Widget
             if (Interlocked.Read(ref _generation) != generation) return;
             if (_hasLibrarySnapshot)
             {
-                ApplyPersistedStateLocked(_persistedLibraryState, _stateRevision, []);
                 _page = GamesAppsPage.Library;
                 _items = _libraryItems;
                 _catalog = GamesAppsCatalogState.Empty;

@@ -223,7 +223,7 @@ internal sealed class AppLibraryCapabilityDomain : IDisposable
                         new AppLibraryBackendQuery(), cursor,
                         cursor is null ? null : AppLibraryCursorDirection.After,
                         PlatformCapabilityBroker.MaximumAppLibraryPageSize,
-                        Refresh: cursor is null),
+                        Refresh: false),
                     cancellationToken).ConfigureAwait(false),
                     PlatformCapabilityBroker.MaximumAppLibraryPageSize);
                 cancellationToken.ThrowIfCancellationRequested();

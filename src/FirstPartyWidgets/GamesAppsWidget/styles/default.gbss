@@ -52,6 +52,15 @@
 .games-status.is-ready { color: var(--success); }
 .games-status.is-error { color: var(--danger, #c98181); }
 
+.games-refresh-catalog {
+  width: 100%;
+  min-width: 0px;
+  min-height: 38px;
+  margin-top: 6px;
+  flex-grow: 0;
+  flex-shrink: 0;
+}
+
 .games-content {
   min-width: 0px;
   min-height: 0px;

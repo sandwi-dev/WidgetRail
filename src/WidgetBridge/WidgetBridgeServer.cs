@@ -188,6 +188,9 @@ public sealed class WidgetBridgeServer : IAsyncDisposable
             Payload = BridgeJson.ToElement(new { }),
         }, cancellationToken).ConfigureAwait(false);
 
+        await RefreshAppLibrarySessionCatalogAsync(sessionCancellation.Token)
+            .ConfigureAwait(false);
+
         if (_appearance is not null) _appearance.Changed += OnAppearanceChanged;
         try
         {
@@ -280,6 +283,36 @@ public sealed class WidgetBridgeServer : IAsyncDisposable
 
         if (requestDispatcher.FatalException is { } fatal)
             ExceptionDispatchInfo.Capture(fatal).Throw();
+    }
+
+    private async Task RefreshAppLibrarySessionCatalogAsync(
+        CancellationToken cancellationToken)
+    {
+        if (_platformBackend is null) return;
+        try
+        {
+            _ = await _platformBackend.QueryAppLibraryAsync(
+                    new AppLibraryBackendCursorRequest(
+                        new AppLibraryBackendQuery(),
+                        Cursor: null,
+                        Direction: null,
+                        Limit: 1,
+                        Refresh: true),
+                    cancellationToken)
+                .ConfigureAwait(false);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception exception) when (exception is BrokerException or IOException or
+            UnauthorizedAccessException or InvalidOperationException or ArgumentException or
+            NotSupportedException)
+        {
+            // App-library availability must not block the overlay session. The
+            // provider retains its last-good snapshot and explicit widget
+            // refresh remains the only later rescan path for this session.
+        }
     }
 
     public async ValueTask DisposeAsync()
