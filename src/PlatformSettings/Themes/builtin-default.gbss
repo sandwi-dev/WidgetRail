@@ -81,7 +81,7 @@ button {
   font-family: var(--font-text);
   font-size: 15px;
   font-weight: 400;
-  scale: 0.99;
+  scale: 1;
   transition-duration: 90ms;
   transition-easing: ease-out;
 }

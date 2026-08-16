@@ -4095,8 +4095,10 @@ private:
         std::uint64_t sliderPresentationRevision{};
         long long appearanceRevision{};
         std::map<std::wstring, float, std::less<>> scrollOffsets;
+        gba::FocusRegion focusRegion{gba::FocusRegion::Tray};
         bool animationActive{};
         bool projectionActive{};
+        std::optional<gba::OverlayPlacement> contentPlacement;
     };
 
     [[nodiscard]] bool CurrentSliderAdjustmentVisualActive(
@@ -4116,29 +4118,93 @@ private:
     [[nodiscard]] bool CanRetainCommittedWidgetPixels(
         const std::wstring_view widgetId,
         const gba::WidgetSnapshot& snapshot) {
-        if (!committedWidgetVisualState_) return false;
+        if (!compositionSurface_.available() || !committedWidgetVisualState_)
+            return false;
         const auto& committed = *committedWidgetVisualState_;
         const auto appearanceRevision = appearanceState_.current()
             ? appearanceState_.current()->revision : 0;
+        std::wstring livePressedElement{
+            pressedInteraction_.ActiveElementId(snapshot, focusedElementId_)};
+        if (livePressedElement.empty() &&
+            CurrentSliderAdjustmentVisualActive(snapshot)) {
+            livePressedElement = focusedElementId_;
+        }
+        const std::wstring_view liveFocus =
+            state_.focusRegion() == gba::FocusRegion::Widget
+                ? std::wstring_view{focusedElementId_}
+                : std::wstring_view{};
+        const auto& placement = presentationTransaction_.contentPlacement();
+        const auto samePlacement = [&] {
+            if (committed.contentPlacement.has_value() != placement.has_value())
+                return false;
+            if (!placement) return true;
+            return committed.contentPlacement->x == placement->x &&
+                committed.contentPlacement->y == placement->y &&
+                committed.contentPlacement->width == placement->width &&
+                committed.contentPlacement->height == placement->height;
+        }();
+        RECT pendingPaint{};
+        const bool hasPendingPaint = window_ &&
+            GetUpdateRect(window_, &pendingPaint, FALSE) != FALSE;
         if (committed.widgetId != widgetId ||
             committed.instanceId != snapshot.instanceId ||
             committed.snapshotSequence != snapshot.sequence ||
+            committed.focusId != liveFocus ||
+            committed.pressedElementId != livePressedElement ||
             committed.sliderPresentationRevision !=
                 sliderInteraction_.presentationRevision() ||
             committed.appearanceRevision != appearanceRevision ||
             committed.scrollOffsets != lastWidgetRenderResult_.scrollOffsets ||
-            !committed.focusId.empty() ||
-            !committed.pressedElementId.empty() ||
-            committed.animationActive || committed.projectionActive ||
-            pressedInteraction_.active() || declarativeMotionActive_ ||
-            lastWidgetPresentationUsesProjection_ || overlayTransition_.active() ||
+            committed.focusRegion != state_.focusRegion() ||
+            committed.animationActive != declarativeMotionActive_ ||
+            committed.projectionActive != lastWidgetPresentationUsesProjection_ ||
+            !samePlacement || overlayTransition_.active() ||
             presentationTransaction_.extentTransitionActive() ||
-            compositionPlacementInProgress_) {
+            compositionPlacementInProgress_ || pendingContentRenderPlan_ ||
+            pendingWidgetPresentationImpact_ || hasPendingPaint) {
             return false;
         }
-        if (CurrentSliderAdjustmentVisualActive(snapshot)) return false;
-        return committed.sliderPresentationRevision ==
-            sliderInteraction_.presentationRevision();
+        return true;
+    }
+
+    [[nodiscard]] bool HasExactRefreshRetainedVisualCheckpoint() {
+        if (state_.surface() != gba::Surface::Widget) return false;
+        const std::wstring_view widgetId = state_.activeWidget();
+        const auto presentation = sessions_.Presentation(widgetId);
+        if (presentation.authority !=
+                gba::WidgetPresentationAuthority::RefreshRetained ||
+            !presentation.snapshot) {
+            return false;
+        }
+        const auto rendered = renderedSnapshotSequences_.find(
+            std::wstring(widgetId));
+        const auto& destination = presentationTransaction_.committedDestination();
+        return rendered != renderedSnapshotSequences_.end() &&
+            rendered->second == presentation.snapshot->sequence &&
+            destination && destination->widgetId == widgetId &&
+            destination->extentDip == DesiredPresentationExtentDip() &&
+            CanRetainCommittedWidgetPixels(widgetId, *presentation.snapshot);
+    }
+
+    [[nodiscard]] const gba::WidgetSnapshot* GuideSnapshotFor(
+        const std::wstring_view widgetId) noexcept {
+        const auto presentation = sessions_.Presentation(widgetId);
+        if (presentation.authority == gba::WidgetPresentationAuthority::Current)
+            return InteractionSnapshotFor(widgetId);
+        if (presentation.authority !=
+                gba::WidgetPresentationAuthority::RefreshRetained ||
+            !presentation.snapshot ||
+            state_.surface() != gba::Surface::Widget ||
+            state_.activeWidget() != widgetId ||
+            !HasExactRefreshRetainedVisualCheckpoint()) {
+            return nullptr;
+        }
+        const auto* descriptor = sessions_.FindDescriptor(widgetId);
+        return descriptor
+            ? &launcherExperienceProjection_.InteractionSnapshot(
+                widgetId, descriptor->presentationGeneration,
+                *presentation.snapshot)
+            : nullptr;
     }
 
     template <typename Refresh>
@@ -4158,9 +4224,6 @@ private:
             priorSessionPresentation.snapshot
                 ? priorSessionPresentation.snapshot->sequence
                 : 0;
-        RECT priorPendingPaint{};
-        const bool hadPendingPaint = window_ &&
-            GetUpdateRect(window_, &priorPendingPaint, FALSE) != FALSE;
         const auto priorDesiredExtent = DesiredPresentationExtentDip();
         const auto priorExtent = compositionSurface_.available()
             ? presentationTransaction_.CommittedDestinationExtent(
@@ -4185,35 +4248,27 @@ private:
         const bool exactRetainedCheckpoint =
             wasVisible && isVisible && priorSurface == state_.surface() &&
             priorVisibleWidget == nextVisibleWidget &&
-            priorSessionPresentation.authority ==
-                gba::WidgetPresentationAuthority::Current &&
+            (priorSessionPresentation.authority ==
+                 gba::WidgetPresentationAuthority::Current ||
+             priorSessionPresentation.authority ==
+                 gba::WidgetPresentationAuthority::RefreshRetained) &&
             nextSessionPresentation.authority ==
                 gba::WidgetPresentationAuthority::RefreshRetained &&
             priorSessionPresentation.snapshot &&
             nextSessionPresentation.snapshot &&
             priorSnapshotInstance == nextSessionPresentation.snapshot->instanceId &&
             priorSnapshotSequence == nextSessionPresentation.snapshot->sequence &&
-            priorExtent == nextExtent && !hadPendingPaint &&
-            !pendingContentRenderPlan_;
+            priorExtent == nextExtent;
         const bool exactRetainedRefresh = exactRetainedCheckpoint &&
             CanRetainCommittedWidgetPixels(
                 nextVisibleWidget, *nextSessionPresentation.snapshot);
         if (exactRetainedRefresh) {
-            // Refresh changes lifecycle/input/UIA authority immediately, but
-            // the complete committed visual-state token is already settled
-            // and exact. Do not mutate host-visible state and then skip the
-            // raster that would have represented that mutation.
+            // Refresh changes lifecycle/input/UIA authority immediately. The
+            // admitted checkpoint remains the sole visual authority until a
+            // current admission arrives: do not clear transient host visuals,
+            // advance declarative motion, or paint a temporary inert frame.
             ClearAccessibilityTree();
             return;
-        }
-        if (exactRetainedCheckpoint) {
-            // The checkpoint pixels are exact, but lifecycle authority would
-            // remove a visible focus/press/adjustment/motion state. Retire the
-            // transient authority only together with the conservative repaint
-            // selected below.
-            (void)pressedInteraction_.Clear();
-            sliderInteraction_.DeactivateAll();
-            declarativeMotionActive_ = false;
         }
         const bool animateWidgetExtent =
             wasVisible && isVisible &&
@@ -5261,7 +5316,8 @@ private:
         // that bounded wakeup rather than owning an animation timer; settled
         // declarative content performs no paint invalidations, and this timer
         // is stopped altogether while the overlay is hidden.
-        if (declarativeMotionActive_)
+        if (declarativeMotionActive_ &&
+            !HasExactRefreshRetainedVisualCheckpoint())
             InvalidateRect(window_, nullptr, FALSE);
     }
 
@@ -7118,7 +7174,7 @@ private:
     [[nodiscard]] std::wstring CurrentGuidePaintKey(
         const unsigned int width,
         const unsigned int height,
-        const UINT dpi) const {
+        const UINT dpi) {
         if (state_.surface() != gba::Surface::Widget) return L"dashboard:none";
         std::wstring key = std::wstring{state_.activeWidget()} + L"\n" +
             std::to_wstring(width) + L"x" + std::to_wstring(height) + L"\n" +
@@ -7132,7 +7188,7 @@ private:
         } else {
             if (const auto status = OpenWidgetStatus()) key += L"\n" + *status;
             key += L"\n" + OpenWidgetPrompt();
-            if (const auto* snapshot = InteractionSnapshotFor(state_.activeWidget()))
+            if (const auto* snapshot = GuideSnapshotFor(state_.activeWidget()))
                 key += L"\n" + snapshot->activeInputScopeId;
         }
         return key;
@@ -7267,26 +7323,8 @@ private:
             compositionSurface_.width() != width ||
             compositionSurface_.height() != height;
         if (replaceContent) DiscardGraphicsResources();
-        const std::wstring_view activeWidget = state_.surface() == gba::Surface::Widget
-            ? state_.activeWidget()
-            : std::wstring_view{};
-        const auto retainedPresentation = sessions_.Presentation(activeWidget);
-        const auto renderedSequence = renderedSnapshotSequences_.find(
-            std::wstring(activeWidget));
-        const auto& committedDestination =
-            presentationTransaction_.committedDestination();
         const bool retainPendingRefreshPixels =
-            !replaceContent && !pendingWidgetPresentationImpact_ &&
-            !pendingContentRenderPlan_ && !activeWidget.empty() &&
-            retainedPresentation.authority ==
-                gba::WidgetPresentationAuthority::RefreshRetained &&
-            retainedPresentation.snapshot &&
-            renderedSequence != renderedSnapshotSequences_.end() &&
-            renderedSequence->second == retainedPresentation.snapshot->sequence &&
-            committedDestination &&
-            committedDestination->widgetId == activeWidget &&
-            CanRetainCommittedWidgetPixels(
-                activeWidget, *retainedPresentation.snapshot);
+            !replaceContent && HasExactRefreshRetainedVisualCheckpoint();
         const CompositionLayerGeometry contentGeometry{
             width, height,
         };
@@ -7735,7 +7773,7 @@ private:
         return std::nullopt;
     }
 
-    std::wstring DashboardHint(const float availableWidth) const {
+    std::wstring DashboardHint(const float availableWidth) {
         if (trayYGesture_.pendingRestart()) {
             return L"Hold Y to restart " +
                 std::wstring(DisplayWidgetName(trayYGesture_.selectedWidget())) +
@@ -7744,7 +7782,7 @@ private:
                 L"%";
         }
         std::vector<gba::ControllerGuideAction> quickActions;
-        const auto* snapshot = InteractionSnapshotFor(state_.selectedWidget());
+        const auto* snapshot = GuideSnapshotFor(state_.selectedWidget());
         if (IsBridgeWidget(state_.selectedWidget()) && snapshot) {
             quickActions.reserve(snapshot->quickActions.size());
             for (const auto& action : snapshot->quickActions) {
@@ -7854,10 +7892,10 @@ private:
         return std::nullopt;
     }
 
-    std::wstring OpenWidgetPrompt() const {
+    std::wstring OpenWidgetPrompt() {
         if (sessions_.Failure(state_.activeWidget()))
             return L"A  Retry    B  Back";
-        const auto* snapshot = InteractionSnapshotFor(state_.activeWidget());
+        const auto* snapshot = GuideSnapshotFor(state_.activeWidget());
         if (!snapshot) return L"A  Select";
         std::vector<std::pair<std::wstring, std::wstring>> prompts;
         CollectShortcutPrompts(snapshot->root, prompts);
@@ -8540,6 +8578,10 @@ private:
                     }
                 }
                 if (inertRetainedSnapshot) {
+                    // A conservative retained-authority raster is deliberately
+                    // not the committed Current visual checkpoint. Prevent a
+                    // later refresh from treating those inert pixels as exact.
+                    committedWidgetVisualState_.reset();
                     ClearAccessibilityTree();
                 } else if (accessibilityActive_ && !result.succeeded) {
                     lastWidgetRenderResult_ = result;
@@ -8558,8 +8600,10 @@ private:
                         appearanceState_.current()
                             ? appearanceState_.current()->revision : 0,
                         result.scrollOffsets,
+                        state_.focusRegion(),
                         result.animationActive,
                         launcherProjection.presentationActive,
+                        presentationTransaction_.contentPlacement(),
                     };
                 }
                 if (!inertRetainedSnapshot && renderedFocusId == focusedElementId_) {
