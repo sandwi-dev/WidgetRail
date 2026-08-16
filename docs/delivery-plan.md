@@ -219,7 +219,7 @@ user decision. The native overlay is the sole production presentation path.
 
 | Lane | Task/worktree | State |
 | --- | --- | --- |
-| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | DLV-256 is physically accepted, focused-tested 4,894 checks, and integrated through `b0d53b0`; accepted production PID 2608 remains running because the final integration delta was tests and planner documents only. DLV-263 is Assigned next to diagnose and correct intermittent long-list viewport re-anchoring. DLV-261 and DLV-262 remain Ready behind it; DLV-248 remains deferred. |
+| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | DLV-256 is physically accepted, focused-tested 4,894 checks, and integrated through `b0d53b0`. DLV-263 diagnostic commit `d0694a5` is source-reviewed and visibly launched as unaccepted PID 51244 for the joint long-list reproduction; no behavior correction or tests are present. DLV-261 and DLV-262 remain Ready behind it; DLV-248 remains deferred. |
 | Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | DLV-253 is physically accepted, focused Games & Apps evidence is 65/65, and the cumulative chain is integrated on main as `6a26f08`, `3c63852`, and test-only `91177ec`. The superseded PID 51500 closed normally before the DLV-254 candidate launch; no rebuild/relaunch was performed for the DLV-253 tests alone. Preserve clean completed branches. |
 
 The user explicitly approved the DLV-217 aggregate exception on 2026-08-15.
@@ -774,6 +774,22 @@ Physical-first: production correction and user verdict precede focused tests.
 Stop for a public SDK/protocol change, a second scroll/anchor owner, unbounded
 logging, provider-specific behavior, virtualization redesign, destructive state
 reset, undocumented API, substantial conflict, or external publication.
+
+Diagnostic-only commit `d0694a5` changes `DeclarativeRenderer.h/.cpp` and the
+existing host diagnostic append seam in `main.cpp`. Independent source review
+confirms that it records at most 256 bounded item keys per collection and 16
+events per frame, emits only for an initial/changed collection, anchor, or
+requested-focus admission, and leaves focus, scrolling, paging, protocol, and
+provider behavior unchanged. It retains the prior renderer cache only as the
+comparison authority and uses the existing host log owner. The coherent Release
+build passed with tests skipped; exact executable SHA-256 is
+`D4A738D5EA1BD3F5A092C48E1AFBEFCBB6B7FC01B1FADE22C0A24A90187D6FEF`.
+Accepted PID 2608 was closed by the implementation lane to release its exact
+output lock. The diagnostic candidate is visibly running as unaccepted PID
+51244 with clean process-owner, DirectComposition, fixed-chrome, and first
+Settings admission logs. Joint long-list reproduction remains pending; do not
+correct behavior, write tests, or integrate before the resulting trace is
+reviewed.
 
 ### Ready later — DLV-261: restore Platform Settings focused-suite parity
 
