@@ -212,8 +212,8 @@ user decision. The native overlay is the sole production presentation path.
 
 | Lane | Task/worktree | State |
 | --- | --- | --- |
-| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | DLV-242 is accepted and integrated through `0cf92e2`; preserve `codex/impl-platform-native-impact` at `22ddfc0`. Assigned next: DLV-243 bounded optimistic slider feedback damage from current planner main, in physical-first mode. DLV-248 remains deferred. Preserve accepted DLV-246 branch `codex/impl-platform-process-owner` and completed `codex/impl-platform-snapshot-cache` / `codex/impl-platform-fixed-chrome`. |
-| Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | DLV-218 cumulative branch through `d8b8861` is accepted and integrated. Assigned next from current planner main: DLV-249 Games & Apps session catalog refresh and application artwork recovery, in physical-first mode while platform DLV-243 continues independently. Preserve the clean DLV-240 and DLV-218 branches. |
+| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | DLV-242 is accepted and integrated through `0cf92e2`; preserve `codex/impl-platform-native-impact` at `22ddfc0`. DLV-243 candidate `1cc4106` is rejected before launch; a bounded same-lane correction must retain exact slider identities through focus and timeout reconciliation instead of repainting the whole content HWND. DLV-248 remains deferred. Preserve accepted DLV-246 branch `codex/impl-platform-process-owner` and completed `codex/impl-platform-snapshot-cache` / `codex/impl-platform-fixed-chrome`. |
+| Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | DLV-218 cumulative branch through `d8b8861` is accepted and integrated. DLV-249 candidate `3fcb740` is rejected before user testing because its unsupported `margin-top` GBSS property makes the packaged WidgetBridge reject Games & Apps and exit before accepting the host pipe. A bounded style-only correction is assigned; the session refresh and artwork work remain unintegrated. Preserve the clean DLV-240 and DLV-218 branches. |
 
 The user explicitly approved the DLV-217 aggregate exception on 2026-08-15.
 The preserved four-commit implementation chain was integrated onto current main
@@ -806,6 +806,18 @@ Damage only the slider value/track/thumb and necessary accessibility value event
 do not relayout or repaint the whole widget. Preserve sequence authority and full
 fallback. Implement separately so DLV-242 scope remains bounded.
 
+Candidate `1cc4106` is rejected at source review and was not launched. Its
+controller and UIA optimistic paths use the existing paint-only planner, but
+ordinary focus movement calls `DeactivateAll`, collapses every pending slider
+to one boolean, and deliberately routes `InvalidateWidgetFocusChange(...,
+true)` to whole-content invalidation. The timeout path similarly collapses
+timed-out entries missing from the current tree to one boolean and repaints the
+unrelated current widget. The bounded correction must return exact affected
+slider identities, submit slider rollback damage together with the existing
+old/new focus damage, and clear no-longer-present timed-out entries without a
+raster. Full fallback remains valid only for the already-documented ambiguous
+or unsafe geometry/paint states. No pre-acceptance tests ran.
+
 ### Ready later — DLV-248: media optimistic command revision reconciliation
 
 Prevent an older provider publication from overwriting a newer host-projected
@@ -861,6 +873,17 @@ Release build, and commit the bounded candidate. Do not add or modify tests
 until the user accepts the launched behavior. Stop after reporting the exact
 commit, changed files, build result, and any remaining reason an item used the
 fallback; do not integrate, launch, push, or edit reviewer documents.
+
+Candidate `3fcb740` is rejected before user testing. Source review accepted the
+single WidgetBridge-session refresh owner, removal of activation/saved-ID
+rescans, top accessible manual Refresh action, last-good failure retention, and
+stable opaque artwork-handle path. Its packaged Bridge nevertheless exits 1
+before opening the host pipe because `styles/default.gbss(59,3)` uses unsupported
+property `margin-top`. Exact OverlayHost PID 71532 consequently reported no
+platform appearance or widget catalog. The invalid candidate was closed and
+accepted integrated main was restored visibly as PID 21044. The correction is
+limited to expressing that spacing with an already-supported generic style;
+do not add another GBSS property or parser feature. No tests ran.
 
 ### Accepted and integrated — DLV-218: remove retired domains
 

@@ -489,7 +489,11 @@ Then repeat the loop.
   session, expose a top manual Refresh action, and recover real application
   icons through the existing opaque artwork path. Run it independently from
   platform DLV-243 in physical-first mode; do not add tests before the user's
-  visible verdict or overlap native OverlayHost files.
+  visible verdict or overlap native OverlayHost files. Candidate `3fcb740` is
+  rejected before user testing because unsupported GBSS property `margin-top`
+  makes the packaged WidgetBridge reject Games & Apps and exit before opening
+  the host pipe. The same lane owns one bounded style-only correction; preserve
+  the reviewed session-refresh and artwork behavior unchanged.
   DLV-217 is
   integrated on planner main through
   `1453a4c`; its original branch remains preserved on
@@ -532,9 +536,11 @@ Then repeat the loop.
   5, and 6 and is physically accepted; media optimistic/provider revision item
   4 is deferred to DLV-248. Focused test follow-up `22ddfc0` and the complete
   DLV-242 chain are accepted and integrated through `0cf92e2`. The platform lane
-  is now assigned DLV-243 bounded optimistic slider feedback damage from current
-  planner main in physical-first mode; it must not mix DLV-248, run the aggregate,
-  integrate, or push. The original
+  is now correcting rejected DLV-243 candidate `1cc4106`: ordinary focus and
+  timeout reconciliation must retain exact affected slider identities and use
+  bounded slider/focus damage instead of whole-content invalidation. It must
+  not mix DLV-248, run tests or the aggregate, integrate, launch, or push before
+  the next source review. The original
   pre-recovery branch remains
   preserved at `bdf6d88`; do not rewrite it. Its
   prior DLV-220 history remains preserved on `codex/impl-platform-community`.
