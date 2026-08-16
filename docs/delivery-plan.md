@@ -64,10 +64,13 @@ Snapshots are evidence only. This file is the sole authority for current work.
   into nonzero update regions. The exact candidate was closed normally with
   `WM_CLOSE`; no DLV-242 tests ran and nothing is integrated.
 - Coordinate correction `abeb392` is independently source-reviewed and visibly
-  running as unaccepted PID 99292. Its exact executable SHA-256 is
+  running as rejected PID 99292. Its exact executable SHA-256 is
   `98DD78A5CE0FD55F40BD437F966979FE616A162DB44EE25EC35EC52820BD81A8`.
-  The new session starts cleanly with exact fixed-chrome placement. Tests and
-  integration remain prohibited until the user accepts the physical behavior.
+  The coordinate mapping is correct, but the user rejected the cumulative
+  candidate because Settings focus, Media Sessions progress/controls, and the
+  controller guide still flicker or move. Tests and integration remain
+  prohibited while the platform lane implements the bounded production-only
+  correction below.
 - DLV-245 independently dispositioned both unreliable native routes. The
   process-owner route exposed the production DLV-246 hang. The widget-switch
   route corrected stale authored extents, then exposed an invalid comparison
@@ -185,7 +188,7 @@ user decision. The native overlay is the sole production presentation path.
 
 | Lane | Task/worktree | State |
 | --- | --- | --- |
-| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | DLV-242 cumulative candidate through `abeb392` is source-reviewed and visibly launched as PID 99292. Await the user's physical verdict on partial-update placement, Settings focus navigation, offscreen focus-follow, live Media Sessions updates, press/slider continuity, and flicker before tests or integration. Preserve accepted DLV-246 branch `codex/impl-platform-process-owner` and completed `codex/impl-platform-snapshot-cache` / `codex/impl-platform-fixed-chrome`. |
+| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | DLV-242 cumulative candidate through `abeb392` is physically rejected. The lane is implementing the user-authorized bounded production-only correction for items 1, 2, 3, 5, and 6 below; item 4 is deferred to DLV-248. No tests or integration before the next user verdict. Preserve accepted DLV-246 branch `codex/impl-platform-process-owner` and completed `codex/impl-platform-snapshot-cache` / `codex/impl-platform-fixed-chrome`. |
 | Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | DLV-218 cumulative branch through `d8b8861` is accepted and integrated. No later widgets assignment is authorized: the known styling/provider items require fresh user evidence, so the lane remains idle rather than manufacturing internal filler while visible DLV-242 is active. Preserve the clean DLV-240 and DLV-218 branches. |
 
 The user explicitly approved the DLV-217 aggregate exception on 2026-08-15.
@@ -683,6 +686,46 @@ produced the exact hash recorded above. Independent source review accepts this
 only for physical-first launch; behavior remains unaccepted pending the user's
 verdict, and no tests have run.
 
+The user rejected the cumulative `abeb392` candidate after log review showed
+that the remaining flicker is not another damage-coordinate defect. The host
+alternates a newly admitted `Current` frame with a `RefreshRetained` inert frame
+for the same semantic sequence, and the guide derives its paint key from the
+temporary interaction authority rather than the last visually committed state.
+Settings also animates text-bearing controls between global button scale `0.99`
+and focused scale `1`, producing repeated text rasterization and apparent
+movement even when the semantic checkpoint is unchanged.
+
+The next DLV-242 correction is exactly the following user-authorized scope:
+
+1. An exact `RefreshRetained` transition may make input and UIA authority inert,
+   but it must retain the last visually committed pixels and must not schedule
+   an inert raster frame when instance, sequence, viewport, appearance, focus,
+   scroll, press, slider, motion, and composition visual state are unchanged.
+   Ongoing declarative motion must not later schedule such an inert frame.
+2. Preserve the accepted incremental path for stable `Current` to `Current`
+   changes: no-op, paint-only damage, safe local layout, and full fallback keep
+   their existing impact-driven ownership and coordinate mapping.
+3. Derive guide visuals and their paint key from the last visually committed
+   presentation during exact retained refresh. Temporary loss of interaction
+   authority may disable activation/UIA without erasing or oscillating the
+   committed quick-action/help copy.
+4. Deferred: do not change media optimistic/provider command revision policy in
+   DLV-242. The play/pause reversal caused by stale provider reconciliation is
+   DLV-248.
+5. Remove the `0.99` to `1` focus-scale transition from text-bearing controls.
+   Preserve the existing focus background, outline, accessibility, and input
+   treatment without making glyphs move or rerasterize merely on focus change.
+6. Preserve conservative `FullRaster` fallback for unknown impact, ambiguous
+   containment, animation or transient visual change, surface/device change,
+   accessibility appearance change, or any visual-state proof failure.
+
+This remains physical-first. Change production code/styles only, make one exact
+DLV-242 commit atop `abeb392`, source-review it, and build one serialized
+packaged Release. Do not author, edit, or run tests until the user accepts the
+next visible candidate. Do not broaden into provider logic, new protocol work,
+another renderer/session/guide owner, sleeps, opacity masking, or widget-
+specific behavior.
+
 Verification remains physical-first: source review, one serialized full packaged
 Release build, exact artifact/provenance inspection, and visible launch for the
 user. Do not author or modify regression tests until the user accepts the
@@ -696,6 +739,15 @@ failure, timeout, focus change, widget switch, restart, or generation change.
 Damage only the slider value/track/thumb and necessary accessibility value event;
 do not relayout or repaint the whole widget. Preserve sequence authority and full
 fallback. Implement separately so DLV-242 scope remains bounded.
+
+### Ready later — DLV-248: media optimistic command revision reconciliation
+
+Prevent an older provider publication from overwriting a newer host-projected
+play/pause command while that command is pending. Use one bounded command
+revision/acknowledgement policy inside the existing media widget owner, preserve
+authoritative provider correction and timeout/failure rollback, and avoid
+special handling in the native host or snapshot protocol. This is deliberately
+deferred by user decision and must not be mixed into DLV-242.
 
 ## Widgets lane
 
@@ -731,11 +783,13 @@ sources, or user files.
    protocol 2 preserved for immutable full-trust applications.
 5. DLV-241 is accepted and integrated as `0c264c5` plus `1ab2e0d`; its single
    exact aggregate stopped at the inherited silent managed restore failure.
-6. Platform resumes physical-first DLV-242 by bringing accepted main `a77182d`
-   into the preserved correction branch, then builds and launches for user
-   review; regression tests remain after the user verdict.
+6. Platform completes the bounded physical-first DLV-242 correction for items
+   1, 2, 3, 5, and 6 above on the preserved branch, then builds and launches for
+   user review; regression tests remain after the user verdict. DLV-248 item 4
+   is explicitly deferred.
 7. Platform implements DLV-243 separately and launches for slider review.
-8. DLV-218 is accepted and integrated through `d8b8861`; the widgets lane stays
+8. Platform implements DLV-248 only after a later explicit queue promotion.
+9. DLV-218 is accepted and integrated through `d8b8861`; the widgets lane stays
    idle until fresh user evidence authorizes another visible correction.
 
 ## Manual and packaged evidence
