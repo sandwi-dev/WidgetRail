@@ -97,6 +97,7 @@ constexpr UINT kDevelopmentTrayYHoldMessage = WM_APP + 14;
 constexpr ULONG_PTR kLauncherExperienceSelectionProof = 0x4742414c;
 
 constexpr BYTE kBackdropOpacity = 164;
+constexpr std::uint64_t kSlowCompositionFrameMicroseconds = 100000;
 constexpr int kDeveloperHotkey = 1;
 constexpr gba::NativeColor kSafeCanvasFallback{
     1.0F / 255.0F, 2.0F / 255.0F, 3.0F / 255.0F, 1.0F};
@@ -3294,8 +3295,16 @@ private:
         std::vector<gba::OverlayCompositionSurface::Frame*> framePointers;
         framePointers.reserve(frames.frames.size());
         for (auto& frame : frames.frames) framePointers.push_back(&frame);
+        // A non-virtual DirectComposition surface preserves pixels outside a
+        // sub-rectangle update by reusing the prior committed content. Keep
+        // that single content surface at one in-flight transaction: otherwise
+        // a later focus-damage BeginDraw can absorb the accumulated compositor
+        // backlog. Chrome-only commits do not reuse the content surface.
+        const bool waitForContentReuse =
+            ContainsCompositionContentFrame(frames);
         const HRESULT commitResult = compositionSurface_.CommitFrames(
-            framePointers, !wasVisible, commitTiming, &presentation);
+            framePointers, !wasVisible || waitForContentReuse,
+            commitTiming, &presentation);
         if (FAILED(commitResult)) {
             presentationTransaction_.RejectCompositionAdmission();
             DisableCompositionFallback(
@@ -3366,6 +3375,7 @@ private:
             std::to_wstring(visibleContentY) + L"," +
             std::to_wstring(visibleContentWidth) + L"," +
             std::to_wstring(visibleContentHeight) +
+            SlowCompositionStageDiagnostic(drawMicroseconds, frames) +
             L" anchor=bottom first-visible=" +
             std::wstring(wasVisible ? L"false" : L"true"));
         if (directive.animateMotion) {
@@ -7186,10 +7196,50 @@ private:
     };
 
     struct CompositionFrameSet final {
+        struct StageTiming final {
+            std::uint64_t beginFrameMicroseconds{};
+            std::uint64_t resourceSetupMicroseconds{};
+            std::uint64_t drawCurrentFrameMicroseconds{};
+            std::uint64_t endFrameMicroseconds{};
+        } stageTiming;
         std::vector<gba::OverlayCompositionSurface::Frame> frames;
         std::optional<gba::shell::RetainedTrayState> trayState;
         std::wstring guideKey;
     };
+
+    [[nodiscard]] static std::wstring SlowCompositionStageDiagnostic(
+        const std::uint64_t totalMicroseconds,
+        const CompositionFrameSet& frames) {
+        if (totalMicroseconds <= kSlowCompositionFrameMicroseconds) return {};
+        const auto measured =
+            frames.stageTiming.beginFrameMicroseconds +
+            frames.stageTiming.resourceSetupMicroseconds +
+            frames.stageTiming.drawCurrentFrameMicroseconds +
+            frames.stageTiming.endFrameMicroseconds;
+        const auto other = totalMicroseconds > measured
+            ? totalMicroseconds - measured
+            : 0;
+        return
+            L" slow-stage-begin-us=" +
+            std::to_wstring(frames.stageTiming.beginFrameMicroseconds) +
+            L" slow-stage-resources-us=" +
+            std::to_wstring(frames.stageTiming.resourceSetupMicroseconds) +
+            L" slow-stage-draw-us=" +
+            std::to_wstring(frames.stageTiming.drawCurrentFrameMicroseconds) +
+            L" slow-stage-end-us=" +
+            std::to_wstring(frames.stageTiming.endFrameMicroseconds) +
+            L" slow-stage-other-us=" + std::to_wstring(other);
+    }
+
+    [[nodiscard]] static bool ContainsCompositionContentFrame(
+        const CompositionFrameSet& frames) noexcept {
+        return std::any_of(
+            frames.frames.begin(), frames.frames.end(),
+            [](const auto& frame) {
+                return frame.layer ==
+                    gba::OverlayCompositionSurface::Layer::Content;
+            });
+    }
 
     // One visible overlay session owns this small chrome raster and its
     // absolute screen anchor. It is intentionally independent of whichever
@@ -7657,9 +7707,14 @@ private:
         const gba::shell::TrayLayout* trayLayout = nullptr,
         const gba::declarative::Rect* guideBounds = nullptr) {
         gba::OverlayCompositionSurface::Frame frame;
+        const auto beginStarted = std::chrono::steady_clock::now();
         HRESULT result = compositionSurface_.BeginFrame(
             layer, geometry.width, geometry.height,
             0.0F, 0.0F, update, frame);
+        set.stageTiming.beginFrameMicroseconds +=
+            static_cast<std::uint64_t>(
+                std::chrono::duration_cast<std::chrono::microseconds>(
+                    std::chrono::steady_clock::now() - beginStarted).count());
         if (FAILED(result)) {
             AppendDiagnostic(
                 L"DirectComposition child BeginDraw failed hresult=" +
@@ -7668,6 +7723,7 @@ private:
         }
 
         renderTarget_ = frame.target;
+        const auto resourcesStarted = std::chrono::steady_clock::now();
         renderTarget_->SetDpi(
             static_cast<float>(dpi != 0 ? dpi : 96U),
             static_cast<float>(dpi != 0 ? dpi : 96U));
@@ -7678,11 +7734,25 @@ private:
                 L"DirectComposition child resources could not be created");
             return false;
         }
+        set.stageTiming.resourceSetupMicroseconds +=
+            static_cast<std::uint64_t>(
+                std::chrono::duration_cast<std::chrono::microseconds>(
+                    std::chrono::steady_clock::now() - resourcesStarted).count());
+        const auto drawStarted = std::chrono::steady_clock::now();
         DrawCurrentFrame(
             fullWidth, fullHeight, dpi, frame.updateOffset, frame.updateArea,
             paintLayer, trayLayout, guideBounds);
+        set.stageTiming.drawCurrentFrameMicroseconds +=
+            static_cast<std::uint64_t>(
+                std::chrono::duration_cast<std::chrono::microseconds>(
+                    std::chrono::steady_clock::now() - drawStarted).count());
         renderTarget_.Reset();
+        const auto endStarted = std::chrono::steady_clock::now();
         result = compositionSurface_.EndFrame(frame);
+        set.stageTiming.endFrameMicroseconds +=
+            static_cast<std::uint64_t>(
+                std::chrono::duration_cast<std::chrono::microseconds>(
+                    std::chrono::steady_clock::now() - endStarted).count());
         if (FAILED(result)) {
             AppendDiagnostic(
                 L"DirectComposition child EndDraw failed hresult=" +
@@ -7937,8 +8007,13 @@ private:
         framePointers.reserve(frames.frames.size());
         for (auto& frame : frames.frames) framePointers.push_back(&frame);
         gba::OverlayCompositionSurface::CommitTiming timing;
+        // Bound content-surface reuse to the preceding committed transaction.
+        // This retains the exact incremental update rectangle and renderer
+        // plan; it does not promote focus damage to a full raster.
+        const bool waitForContentReuse =
+            ContainsCompositionContentFrame(frames);
         const HRESULT result = compositionSurface_.CommitFrames(
-            framePointers, replacement, timing, nullptr);
+            framePointers, replacement || waitForContentReuse, timing, nullptr);
         if (FAILED(result)) {
             DisableCompositionFallback(
                 L"surface commit failed hresult=" +
@@ -7954,7 +8029,8 @@ private:
         AppendCompositionCoordinateSample(0);
         const bool presentationChanged =
             priorPresentationPaintKey != lastWidgetPresentationPaintKey_;
-        if (replacement || presentationChanged || performanceCountersActive_) {
+        if (replacement || presentationChanged || performanceCountersActive_ ||
+            drawMicroseconds > kSlowCompositionFrameMicroseconds) {
             AppendDiagnostic(
                 L"Composition frame committed content=complete size=" +
                 std::to_wstring(width) + L"x" + std::to_wstring(height) +
@@ -7963,7 +8039,8 @@ private:
                 L" commit-us=" + std::to_wstring(timing.commitMicroseconds) +
                 L" geometry-us=0" +
                 L" waited=" + (timing.waitedForCompletion ? L"true" : L"false") +
-                L" geometry=unchanged");
+                L" geometry=unchanged" +
+                SlowCompositionStageDiagnostic(drawMicroseconds, frames));
         }
         if (performanceCountersActive_) ++performanceSuccessfulFrames_;
         pendingWidgetPresentationImpact_.reset();
