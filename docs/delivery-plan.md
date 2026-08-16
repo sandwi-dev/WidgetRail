@@ -216,7 +216,7 @@ user decision. The native overlay is the sole production presentation path.
 | Lane | Task/worktree | State |
 | --- | --- | --- |
 | Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | DLV-254 production-only candidate `58ae6cc` is source-reviewed and Release-built; it remains unaccepted and unlaunched while DLV-253 receives the physical verdict. DLV-256 is Ready next after accepted DLV-254 integration. DLV-248 remains deferred. |
-| Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | Corrected DLV-253 production-only chain through `0a691bc` is source-reviewed, Release-built, and visibly launched as PID 51500 for the user's second physical verdict. Nothing is integrated. Preserve clean completed branches. |
+| Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | Corrected DLV-253 production chain through `0a691bc` is physically accepted from PID 51500. The focused post-acceptance test-only follow-up is in progress; nothing is integrated. Preserve clean completed branches. |
 
 The user explicitly approved the DLV-217 aggregate exception on 2026-08-15.
 The preserved four-commit implementation chain was integrated onto current main
@@ -534,8 +534,11 @@ restore the last in-session row on later tray re-entry. Empty, Catalog, and
 Running focus policy is unchanged. The coherent packaged Release build passed
 without tests; exact executable SHA-256 is
 `1FD1E322CC7D2AFD943C3545B63D7009BE7F8936BB485FE371ED45734CDCC710`.
-It is visibly running as unaccepted PID 51500 for the user's second physical
-verdict. Do not add tests or integrate before acceptance.
+It was visibly launched as unaccepted PID 51500 for the user's second physical
+verdict. The user accepted the first-row cold entry and retained in-session
+focus behavior. PID 51500 remains the accepted production instance while the
+lane adds only focused regression coverage. Do not rebuild or relaunch solely
+for that test-only follow-up.
 
 
 Closed accepted widgets history through DLV-252 is retained in the
@@ -563,11 +566,12 @@ Closed accepted widgets history through DLV-252 is retained in the
     focused provider evidence is 78/78 and accepted candidate PID 44872 remains
     running because the post-acceptance integration delta was tests only.
 
-12. Corrected DLV-253 chain through `0a691bc` is running as unaccepted PID
-    51500 for its second physical verdict. DLV-254 candidate `58ae6cc` is
-    source-reviewed and Release-built but remains queued behind that verdict.
-    DLV-256 is Ready next after accepted DLV-254 integration; DLV-248 remains
-    deliberately deferred.
+12. Corrected DLV-253 production chain through `0a691bc` is physically accepted
+    from PID 51500; its focused test-only follow-up is in progress. DLV-254
+    candidate `58ae6cc` is source-reviewed and Release-built and will receive
+    the next physical candidate slot after DLV-253 integration. DLV-256 is
+    Ready next after accepted DLV-254 integration; DLV-248 remains deliberately
+    deferred.
 13. DLV-257 through DLV-260 form the blocked serialized rebrand program. They
     begin only after the new identity is user-approved and the active
     DLV-253/DLV-254 cycle reaches clean accepted boundaries. DLV-258 through
