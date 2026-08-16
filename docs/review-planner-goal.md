@@ -556,14 +556,15 @@ Then repeat the loop.
   optimistic slider damage, defers controller/UIA slider refresh to the widget's
   post-action invalidation, and retains immediate refresh for non-slider actions.
   Coherent candidate `78b37a3` is physically rejected: Core Audio float-derived
-  values carry residue beyond native `StepTarget`'s `1e-10` grid tolerance, so
-  first Left can target the same displayed percent and Audio Mixer correctly
-  no-ops; second Left then changes it. Correction `0d5c467` recognizes values
-  within four float ULPs of a grid point, capped at 0.0001 step, while retaining
-  meaningful off-grid snapping. Coherent candidate `e59e111` is running as PID
-  48792 with SHA-256
-  `94C38ABECE9220AE3D9254172AD8A85DB638774615E477C99004AC0871C011FB`.
-  Do not integrate or add tests before the user's physical verdict. The original
+  values carry residue beyond native `StepTarget`'s prior grid tolerance, so
+  first Left could target the same displayed percent. Correction `0d5c467`
+  recognizes values within four float ULPs of a grid point, capped at 0.0001
+  step, while retaining meaningful off-grid snapping. The user physically
+  accepted coherent candidate `e59e111`. Focused test follow-up `f89921a` plus
+  lifetime correction `6c722a1` passed 2,096 checks. The complete DLV-243 chain
+  is integrated on main through `3df41b8`; coherent Release PID 36592 is running
+  with SHA-256 `1658E1616AB7DDDE371CEA58AB302ACAD3761E96CFE44E5CC1D431776C79CDAB`.
+  DLV-250 and DLV-251 are the next separate physical-first assignments. The original
   pre-recovery branch remains
   preserved at `bdf6d88`; do not rewrite it. Its
   prior DLV-220 history remains preserved on `codex/impl-platform-community`.
