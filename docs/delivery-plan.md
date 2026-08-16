@@ -764,6 +764,16 @@ The assigned correction must skip anchor reconciliation only when rebuilding
 the unchanged collection to realize a focus-follow scroll vector, preserving
 it for real snapshot/tree/collection/layout changes. Do not write tests or
 integrate before the next physical verdict.
+Correction commit `2f65876` adds one typed internal anchor policy and selects
+`PreserveFocusFollowOffsets` only for the presentation-loop rebuild which
+realizes a focus scroll. Every ordinary, snapshot, collection, fallback, and
+full build retains the default reconciliation policy. Independent review finds
+the 17-line one-file diff matches the assigned authority boundary. The
+tests-skipped packaged Release build passed with executable SHA-256
+`C867CD535B7FBE4F8E6AA02FD28569D43BE0BD53EB6C8D5311610872DCBA407B`.
+The exact unaccepted candidate is visibly running as PID 2608 for the final
+Spotify boundary-scroll latency and visibility verdict. Do not write tests or
+integrate before that verdict.
 
 ### Ready next — DLV-261: restore Platform Settings focused-suite parity
 
