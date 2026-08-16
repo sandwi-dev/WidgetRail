@@ -73,6 +73,7 @@ constexpr wchar_t kChromeWindowClass[] = L"GameBarAlternative.Chrome";
 constexpr int kPanelWidth = 1180;
 constexpr int kDashboardHeight = 180;
 constexpr int kWidgetPanelHeight = 700;
+constexpr std::wstring_view kStartupWidgetId = L"settings";
 constexpr UINT_PTR kControllerTimer = 1;
 constexpr UINT_PTR kGuideCompatibilityTimer = 2;
 constexpr UINT_PTR kZOrderSettleTimer = 3;
@@ -773,7 +774,20 @@ public:
             }
         }
         if (startShown && !developmentProbeOnly_) {
-            Dispatch(gba::Command::ToggleOverlay);
+            if (developmentCatalogRoot_) {
+                Dispatch(gba::Command::ToggleOverlay);
+            } else {
+                bool opened = false;
+                ApplyStateTransition([&] {
+                    opened = state_.OpenWidgetWithTrayFocus(kStartupWidgetId);
+                    return opened;
+                });
+                if (!opened) {
+                    initializationError_ =
+                        L"Settings is unavailable in the admitted widget catalog.";
+                    return false;
+                }
+            }
         }
         if (developmentReadyPath_ && !developmentProbeOnly_) {
             if (!startShown) {

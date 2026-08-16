@@ -152,6 +152,14 @@ bool OverlayState::SetAvailableWidgets(
            priorActive != activeWidget_ || priorSelected != selectedWidget();
 }
 
+bool OverlayState::OpenWidgetWithTrayFocus(
+    const std::wstring_view widgetId) noexcept {
+    if (surface_ != Surface::Hidden || !Contains(widgetId)) return false;
+    selectedSlot_ = FindSlot(widgetId);
+    PresentSelectedWidget(FocusRegion::Tray);
+    return true;
+}
+
 bool OverlayState::TrySelectTrayWidget(const std::wstring_view widgetId) noexcept {
     if (surface_ == Surface::Hidden ||
         (surface_ == Surface::Widget && focusRegion_ != FocusRegion::Tray) ||
