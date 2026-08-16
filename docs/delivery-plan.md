@@ -16,8 +16,12 @@ Snapshots are evidence only. This file is the sole authority for current work.
 
 ## Current baseline
 
-- Accepted production main `68b0de8` contains user-accepted DLV-252 modern Steam
-  provider-icon recovery and focused 78/78 regression evidence atop DLV-250
+- Accepted main `b0d53b0` contains physically accepted DLV-256 bounded artwork
+  reuse, measured full-surface transport promotion, retained incremental render
+  work, and converged focus-scroll authority with 4,894 focused renderer checks.
+  It is based on user-accepted DLV-254 optional widget-switch animation and
+  DLV-253 retained Games & Apps activation, atop DLV-252 modern Steam
+  provider-icon recovery and focused 78/78 regression evidence, DLV-250
   first-visible Settings and DLV-251 first-activation Audio Mixer publication,
   atop DLV-243 bounded optimistic slider presentation and focused regression
   coverage, atop DLV-247's exact retired-Spotify
@@ -215,7 +219,7 @@ user decision. The native overlay is the sole production presentation path.
 
 | Lane | Task/worktree | State |
 | --- | --- | --- |
-| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | DLV-256 commits `005cfc7` and `25f31fe` are physically rejected as incomplete. Production correction `3c6eb3c` is source-reviewed and visibly launched as unaccepted PID 30340; it promotes only measured half-surface partial updates and retains smaller incremental damage. Tests remain prohibited pending the user's latency verdict. Test-recovery DLV-261 and DLV-262 are Ready behind it; DLV-248 remains deferred. |
+| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | DLV-256 is physically accepted, focused-tested 4,894 checks, and integrated through `b0d53b0`; accepted production PID 2608 remains running because the final integration delta was tests and planner documents only. DLV-263 is Assigned next to diagnose and correct intermittent long-list viewport re-anchoring. DLV-261 and DLV-262 remain Ready behind it; DLV-248 remains deferred. |
 | Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | DLV-253 is physically accepted, focused Games & Apps evidence is 65/65, and the cumulative chain is integrated on main as `6a26f08`, `3c63852`, and test-only `91177ec`. The superseded PID 51500 closed normally before the DLV-254 candidate launch; no rebuild/relaunch was performed for the DLV-253 tests alone. Preserve clean completed branches. |
 
 The user explicitly approved the DLV-217 aggregate exception on 2026-08-15.
@@ -516,62 +520,13 @@ The accepted chain was integrated on main in order as `d5e4b0c`, `b86a01f`,
 test/reviewer-document-only integration delta; accepted PID 41208 remains the
 coherent production candidate.
 
-### Assigned correction — DLV-256: eliminate Spotify artwork paint stalls
+### Accepted and integrated — DLV-256: eliminate Spotify artwork paint stalls
 
 Owner/baseline: platform lane after accepted DLV-254 integration, from the
 then-current accepted main. Own only the native image-resource/cache/rendering
 lifetime and directly affected focused diagnostics/tests. Do not change Spotify
 provider, paging, queue/playlist semantics, package identity, snapshot protocol,
 or widget-authored presentation.
-
-Motivating evidence: in the latest accepted live Spotify session, 17 of 32
-paint-only frames exceeded 100 ms and clustered at 675–718 ms. All 95 correlated
-full frames stayed at 15.9–25.4 ms with an 18.4-ms average. The slow frames
-repeated while semantic sequence 785 remained current and no provider failure,
-request timeout, or new snapshot was needed. Source review identifies the
-primary seam: `DeclarativeRenderer` clears its target-bound bitmap map when
-DirectComposition supplies another BeginDraw context, uses a 32-entry
-clear-all capacity cliff, and synchronously recreates Direct2D bitmaps from
-decoded image bytes while painting. Spotify may retain 50 queue entries or 24
-playlist/track entries with artwork, making the defect readily visible without
-making it widget-specific.
-
-Required behavior:
-
-- Confirm the exact bitmap hit/create/eviction pattern with one bounded
-  diagnostic or focused measurement; do not add per-frame permanent trace spam.
-- Reuse device-compatible decoded artwork bitmaps across transient
-  DirectComposition update contexts when Direct2D device-generation rules
-  permit. Invalidate them on actual device/resource-generation loss or proven
-  incompatibility, not merely on another interface pointer.
-- Replace clear-all capacity behavior with bounded entry-and-byte-aware LRU
-  eviction. Do not raise or remove bounds as the fix.
-- Never perform network fetch, file access, image decode, or another blocking
-  provider operation on the paint/input thread. A not-yet-ready image keeps the
-  existing placeholder and completes through the existing asynchronous cache.
-- A focus-only list move must not recreate unchanged visible artwork. Retain
-  bounded old/new focus damage; damage the scroll viewport only when focus
-  reveal actually changes its scroll projection.
-- Keep the correction generic across first-party and Community images. Do not
-  branch on Spotify identity, element IDs, queue/playlist routes, known tree
-  shape, or package trust tier.
-- Preserve the single renderer, RemoteImageCache, DirectComposition device,
-  snapshot/session, focus, and image-admission owners.
-
-Acceptance and verification: physical-first. Produce one production-only
-candidate and coherent packaged Release for the user to exercise through
-Spotify Queue, Playlists, and playlist tracks before tests. Retain before/after
-counts for bitmap hits/creates/evictions and paint latency over a representative
-50-item queue and two 12-item retained collection pages. After user acceptance,
-run only focused renderer/image-cache tests proving device-generation
-invalidation, bounded LRU behavior, async pending/failure fallback, no
-cross-widget identity collision, and no warmed focus frame above 100 ms on the
-same deterministic fixture. Do not run Tier 3.
-
-Stop for another image-cache/renderer/device owner, synchronous I/O or decode on
-the UI thread, an unbounded GPU/CPU resource cache, provider/paging redesign,
-per-widget native behavior, undocumented APIs, destructive state changes,
-substantial conflict, or external publication. Never push.
 
 Production-only commit `005cfc7` changes only `DeclarativeRenderer.h/.cpp` and
 the existing bounded presentation diagnostic in `main.cpp`. Independent source
@@ -771,20 +726,58 @@ full build retains the default reconciliation policy. Independent review finds
 the 17-line one-file diff matches the assigned authority boundary. The
 tests-skipped packaged Release build passed with executable SHA-256
 `C867CD535B7FBE4F8E6AA02FD28569D43BE0BD53EB6C8D5311610872DCBA407B`.
-The user physically accepts the exact PID 2608 candidate under their stated
+The user physically accepted the exact PID 2608 candidate under their stated
 log-evidence condition. Its 202 retained Spotify `PaintOnly` focus moves emit
 zero focus-follow cycle/fallback/bound summaries; paired draws are 2.104--31.617
 ms, 17.586 ms average, with none at or above 33 ms and no slow-render tags.
 The prior renderer-attributed latency and skipped/offscreen focus are absent;
 the occasional remaining feel has no correlated renderer, worker, or
-composition stall in the session log. The platform lane is adding only focused
-post-acceptance regression tests now. Do not rebuild or relaunch for that
-test-only delta; integrate the reviewed production chain plus test follow-up
-after the focused suite is green.
+composition stall in the session log. Test-only commit `85cde71` adds anchored
+focus-boundary, complete visibility, no-cycle/fallback, and genuine collection-
+prepend reconciliation coverage; `DeclarativeRendererTests` passed 4,894
+checks. The accepted chain is integrated on main as `2dbdefb`, `5f00a07`,
+`f0feb90`, `a4a6a49`, `7c507c3`, `3af79e4`, `72c6c50`, `910a555`, and
+`b0d53b0`. PID 2608 already runs the accepted production tip, so the test-only
+and planner-document integration did not require a rebuild or relaunch.
 
-### Ready next — DLV-261: restore Platform Settings focused-suite parity
+### Assigned next — DLV-263: preserve incremental viewport position in long lists
 
-Owner/baseline: platform lane after DLV-256 reaches its physical-test stop, from
+Owner/baseline: platform lane from accepted main after DLV-256 integration.
+Own only the existing generic collection-anchor, pagination-focus, scroll-state,
+and renderer diagnostics/tests needed to explain and correct the reproduced
+viewport jump. Do not add Spotify identity logic or redesign cursor paging.
+
+The reproduced behavior is a viewport-position defect, not a focus-order defect:
+when focus advances from the last visible row to the next logical item, that
+correct item intermittently becomes the first visible row instead of remaining
+at the trailing edge after a minimum one-row reveal. It is likely older than
+DLV-256. Current slow-focus logs do not record ordinary collection-admission
+anchor decisions, so the exact authority conflict is not yet proven.
+
+First add one bounded event-only diagnostic for actual collection snapshot or
+pagination admission. Correlate instance/sequence and scroll ID; append,
+prepend, or trim direction; bounded old/new item count and edge keys; old/new
+anchor key and anchor position; offset before/after reconciliation; focused and
+requested-focus identity; and the final focus rectangle/viewport. Do not log
+item labels, provider payloads, every controller repeat, or ordinary stable
+frames. Build and launch one production-only diagnostic candidate for a joint
+user reproduction. Then correct only the proven shared authority seam.
+
+Acceptance: for an unchanged collection, Down from the trailing visible row
+advances one logical item and changes the scroll offset only enough to reveal it;
+the new focus stays at the trailing edge. Real append, prepend, refresh, and
+bounded retained-window trimming preserve a valid retained viewport anchor and
+current focus without a page-sized jump. A pagination completion cannot replace
+a newer user focus request. Preserve nested scrolling, leading/trailing content
+reveal, bounded host state, and the DLV-256 focus-follow convergence policy.
+Physical-first: production correction and user verdict precede focused tests.
+Stop for a public SDK/protocol change, a second scroll/anchor owner, unbounded
+logging, provider-specific behavior, virtualization redesign, destructive state
+reset, undocumented API, substantial conflict, or external publication.
+
+### Ready later — DLV-261: restore Platform Settings focused-suite parity
+
+Owner/baseline: platform lane after DLV-263 reaches its physical-test stop, from
 the then-current accepted main. This is test-only recovery unless direct review
 proves a current production defect. Own only the two failing Platform Settings
 assertions and the smallest directly shared fixture.
@@ -932,7 +925,10 @@ Closed accepted widgets history through DLV-252 is retained in the
     PID 41208. Focused test-only follow-up `2d4ac54` was reviewed, and the
     accepted chain is integrated as `d5e4b0c`, `b86a01f`, `2658b98`, and
     `57fb469`; no rebuild/relaunch was needed for the non-production delta.
-    DLV-256 is now Assigned; DLV-248 remains deliberately deferred.
+    DLV-256 is physically accepted, focused-tested, and integrated through
+    `b0d53b0`; PID 2608 remains the accepted production runtime. DLV-263 is now
+    Assigned next; DLV-261 and DLV-262 remain Ready behind it, and DLV-248
+    remains deliberately deferred.
 13. DLV-257 through DLV-260 form the blocked serialized rebrand program. They
     begin only after the new identity is user-approved and the active
     DLV-253/DLV-254 cycle reaches clean accepted boundaries. DLV-258 through
@@ -966,6 +962,9 @@ Closed accepted widgets history through DLV-252 is retained in the
 
 | Milestone | Result |
 | --- | --- |
+| DLV-256 | Physically accepted and integrated through `b0d53b0`: bounded device-compatible artwork LRU, measured full-surface transport promotion without discarding valid incremental renderer work, converged focus-scroll authority, 4,894 focused renderer checks, and accepted production PID 2608 retained under the tests-only no-relaunch rule. |
+| DLV-254 | Physically accepted and integrated through `57fb469`: optional widget-switch animation defaults Off, cold and warm Off paths snap to exact destination coordinates, explicit On remains animated, and focused follow-up coverage is retained. |
+| DLV-253 | Physically accepted and integrated through `91177ec`: Games & Apps retains resolved library state across ordinary activation, cold entry starts at the first curated row, in-session focus restores, and focused evidence passes 65/65. |
 | DLV-243 | Integrated through `3df41b8`: bounded optimistic slider damage, authoritative reconciliation/rollback, Audio Mixer card stability, float-safe first-step semantics, and 2,096 focused checks; coherent main Release PID 36592 is running. |
 | DLV-218 | `8f49e1c` plus correction `e0dd517`, integrated through `d8b8861`: retires product-owned Spotify/private Game Launcher domains, preserves autonomous Community packages and generic App Library, and removes stale retired artifacts from incremental Release output. |
 | DLV-241 | `44bd220` plus `5ec3905` integrated as `0c264c5` plus `1ab2e0d`: single native materializer/session admission owner, bounded atomic protocol-v18 update activation, checkpoint fallback, focused native evidence, and one exact aggregate retained red on the inherited silent managed restore failure after verifier self-tests passed. |
@@ -973,9 +972,6 @@ Closed accepted widgets history through DLV-252 is retained in the
 | DLV-246 | `4210be7` integrated as `0e75203`: bounded overlapped activation lifecycle, same authenticated singleton/pipe, 26 direct checks, and successful live second-invocation smoke. |
 | DLV-239 | Integrated as `7cc5839`: retained per-widget checkpoints, explicit refresh state, current-lifecycle refresh queuing, and inert retained authority. |
 | DLV-244 | Integrated through `94c4873`: stable applied chrome HWND, local guide/tray surfaces, coordinated Z-order, panel-local content, and durable destination authority. |
-| DLV-250 | Physically accepted and integrated as `6eadfa7` plus `fe25705`: catalog-gated first-visible Settings with tray focus, ordinary Guide reopen preserved, and exact fixed-chrome startup placement. |
-| DLV-251 | Physically accepted and integrated as `67cf05b`, `261fe01`, and `55ec269`: first activation awaits required typed audio publication/failure, optional work follows required data, and focused Audio Mixer evidence passes 45/45. |
-| DLV-252 | Physically accepted and integrated as `868ac4e` plus `68b0de8`: bounded modern Steam provider-icon discovery with deterministic legacy fallback and 78/78 focused checks; accepted candidate PID 44872 is retained under the tests-only no-relaunch rule. |
 
 Do not mark the continuing delivery goal complete. Continue until the user
 pauses/replaces it or all useful lanes are genuinely blocked. Never push.
