@@ -30,33 +30,9 @@ Snapshots are evidence only. This file is the sole authority for current work.
 - The user physically accepted DLV-244 tray visibility/stationarity and distinct
   widget envelope admission. Its cumulative commits were integrated as
   `bfaa2a1`, `0c071fb`, `f06a7e9`, `61041a5`, and `94c4873`.
-- Refreshed DLV-242 candidate `3f44807` was physically rejected for content
-  flicker and small text movement during Settings focus navigation and live
-  Media Sessions updates. Its exact launched executable SHA-256 was
-  `23257C80A86854053553660717D3E6A9C99C8EC024429DF8CEF9BF9C47E7B49F`.
-  Accepted production main remains `a77182d`. Exact accepted-main PID 19844
-  exposed no enumerable top-level HWND, so the attempted normal `WM_CLOSE`
-  posted to zero windows; only that verified planner-owned PID was then stopped
-  before the candidate launch. The candidate session contains no
-  `invalid_consent`, consent-unavailable, provider-request-failed, or invalid-
-  payload match. It has one non-fatal Settings input diagnostic: Dashboard was
-  not exposed by the cached snapshot; the host continued and admitted later
-  Media Sessions updates. The final visible permission, controller, cycling,
-  scrolling, and incremental-update verdict remains with the user. The coherent
-  build used serialized MSBuild project traversal after the default parallel
-  restore hit an existing zero-error project-reference-graph failure; no
-  product source was changed for that environment workaround. Previous accepted
-  PID 13680 had become non-visible but retained the interop DLL; it rejected
-  `CloseMainWindow` and the non-forced exact-PID termination request, so the
-  exact planner-owned process was force-stopped before this rebuild. Earlier
-  PID 105736 did not exit after `CloseMainWindow`, a non-forced exact-PID
-  termination request, and a final ten-second drain; it retained the interop DLL
-  and blocked the first link attempt, so the exact planner-owned PID was force-
-  stopped before the successful rebuild. The earlier
-  pre-DLV-246 PID 64216 accepted a normal close request but
-  remained hung and retained the interop DLL, directly matching the repaired
-  teardown defect; only that exact planner-owned PID was then terminated before
-  the successful coherent rebuild. Live visual inspection remains with the user.
+- Refreshed DLV-242 candidate `3f44807` was physically rejected for Settings and
+  Media Sessions flicker. Its detailed candidate/process evidence is superseded
+  by the later accepted DLV-242 chain retained below and in Git history.
 - Corrected cumulative DLV-242 candidate `5921ccd` plus `1aa4327` was source-
   reviewed and visibly launched for the user's physical verdict as PID 77500.
   Its exact executable SHA-256 is
@@ -123,6 +99,12 @@ Snapshots are evidence only. This file is the sole authority for current work.
   authority. The user accepted the physical refresh, artwork, and retained-row
   behavior before tests were added. Focused Games & Apps evidence is 64/64 and
   the exact coherent Release build passed with packaging enabled.
+- DLV-252 is Assigned to the widgets lane from exact accepted main `55ec269`.
+  Local evidence proves Steam AppId `3768760` has a valid provider-native icon
+  at `appcache\librarycache\3768760\<40-hex>.jpg`, while the current resolver
+  probes only legacy flat `<appid>_icon.*` names. The correction extends the
+  existing lazy opaque artwork owner to this modern cache shape without a new
+  protocol, raw path exposure, online service, or per-game special case.
 - The approved checkpoint/update architecture is in
   [`widget-snapshot-cache-design.md`](widget-snapshot-cache-design.md). DLV-239
   through DLV-243 implement it serially.
@@ -225,7 +207,7 @@ user decision. The native overlay is the sole production presentation path.
 | Lane | Task/worktree | State |
 | --- | --- | --- |
 | Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | DLV-250 is physically accepted, focused-tested, and integrated as `6eadfa7` plus `fe25705`; coherent main Release PID 2152 is running. No platform milestone is currently Assigned; DLV-248 remains deliberately deferred and the queue needs user/planner replenishment. Preserve accepted DLV-246 branch `codex/impl-platform-process-owner` and completed `codex/impl-platform-snapshot-cache` / `codex/impl-platform-fixed-chrome`. |
-| Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | DLV-251 is physically accepted and integrated as `67cf05b`, `261fe01`, and test-alignment `55ec269`; the focused Audio Mixer suite passes 45/45. No widgets milestone is currently Assigned and the queue needs user/planner replenishment. Preserve the clean DLV-249, DLV-240, DLV-218, and DLV-251 branches. |
+| Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | DLV-252 is Assigned from exact accepted main `55ec269`: recover provider-native Steam game icons from the modern AppId/hash cache layout through the existing opaque artwork path. Physical-first production candidate and coherent packaged Release come before focused tests. Preserve the clean DLV-249, DLV-240, DLV-218, and DLV-251 branches. |
 
 The user explicitly approved the DLV-217 aggregate exception on 2026-08-15.
 The preserved four-commit implementation chain was integrated onto current main
@@ -853,66 +835,73 @@ deferred by user decision and must not be mixed into DLV-242.
 DLV-240 is integrated. Accepted DLV-225/226/228/229/230 remain integrated. New
 styling/provider work requires fresh user evidence rather than speculation.
 
+### Assigned — DLV-252: recover modern Steam provider-native game icons
+
+Owner/baseline: widgets lane from exact clean accepted main `55ec269`. Create a
+fresh `codex/` branch at that baseline and preserve the completed DLV-249,
+DLV-251, DLV-240, and DLV-218 branches. This assignment owns only the existing
+Steam artwork discovery/validation source, its directly affected provider
+documentation after physical acceptance, and post-acceptance focused tests. It
+must not edit Game Launcher layout, WidgetSdk/WidgetProtocol, WidgetBridge,
+native OverlayHost, catalog/lifecycle/launch authority, other store sources,
+reviewer-owned documents, or user/Steam files.
+
+Verified defect: Windows application entries resolve through the existing
+Windows icon source, but Steam games fall back to the Play glyph. The current
+`WindowsSteamArtworkSource` probes only legacy flat files named
+`appcache\librarycache\<appid>_icon.{png,jpg,jpeg}`. On this machine, Steam
+AppId `3768760` (`007 First Light`) has valid artwork at
+`appcache\librarycache\3768760\feccaf73a3bde702d1978afff6ba6540bf5331fe.jpg`.
+The modern AppId directory may also contain named library/header/hero/logo
+assets; the 40-hex provider icon filename is the intended tile-icon candidate,
+not an arbitrary first image.
+
+Required behavior:
+
+- Extend the existing lazy Steam artwork resolver to recognize both the modern
+  `<appid>\<40-hex>.{png,jpg,jpeg}` provider-icon shape and the retained legacy
+  flat `<appid>_icon.*` shape. Do not special-case an AppId, game title, Steam
+  installation path, filename hash, or package identity.
+- Select candidates deterministically and with a documented precedence. Never
+  substitute `header`, `library_600x900`, `library_hero`, blur, logo, or another
+  arbitrary file for the tile icon. Ambiguous or absent provider icons retain
+  the existing Play fallback.
+- Preserve trusted Steam-root authority and validate every traversed directory
+  and final file by handle. Reject reparse points, path escape, non-allowlisted
+  extensions/payloads, replacement races, stale catalog generations,
+  cancellation, oversized bytes/dimensions/pixels, excessive registrations,
+  and decode deadline breaches. Directory enumeration must be bounded; do not
+  recursively scan the cache or eagerly decode artwork during catalog refresh.
+- Keep the existing opaque locator, revision, LRU, lazy decode, PNG projection,
+  Game Launcher registration, and author-facing snapshot path. Add no raw path
+  to snapshots, online metadata/artwork dependency, second image cache/loader,
+  new SDK/protocol message, or Steam-specific host behavior.
+- A valid modern provider-native icon displays for `007 First Light` and other
+  qualifying Steam games in Game Launcher; Windows application icons and game
+  launchability remain unchanged.
+
+Physical-first ordering: implement production code only, directly source-review
+the legacy and modern validation paths, commit one exact `[DLV-252]` candidate,
+and build one coherent packaged Release with tests skipped. Do not author,
+modify, or run tests before the user accepts the launched icon behavior. Report
+the exact commit, files, build command/result, and any deterministic fallback
+reason; do not launch, integrate, push, or edit reviewer documents. After user
+acceptance, add only focused modern/legacy/ambiguous/reparse/race/cancellation/
+bounds regression coverage and run the directly affected provider suite once.
+
+Stop for writing to Steam files, recursive/unbounded enumeration, a new online
+service or credential, raw-path/public-contract change, a second artwork owner,
+undocumented Steam/private API dependence, material ambiguity about icon
+selection, destructive cleanup, substantial conflict, or external publication.
+Never push.
+
 ### Accepted and integrated — DLV-249: Games & Apps session refresh and application artwork recovery
 
-Owner/baseline: widgets lane from exact clean planner main after this assignment.
-Create a new isolated `codex/` branch and preserve the completed DLV-218 and
-DLV-240 branches. This milestone owns the existing managed Games & Apps widget,
-Windows application-library provider/broker projection, and existing artwork
-handle path only. It must not edit native OverlayHost files, DLV-243 slider
-work, reviewer-owned documents, or retired Spotify/Game Launcher domains.
-
-Correct the refresh lifecycle without introducing another catalog or cache:
-
-- Enumerate installed Games & Apps entries once for each overlay/WidgetBridge
-  session at overlay launch. Do not force a provider rescan merely because the
-  Games & Apps widget becomes active again, is hidden and shown, or its retained
-  presentation is requested.
-- Continue serving the provider's single immutable cached catalog throughout
-  that overlay session. Preserve the existing saved-ID, trust, launch,
-  persistence, source-health, and cursor contracts.
-- Add one controller-reachable, accessible `Refresh` button in the top header of
-  Games & Apps. It alone requests an explicit rescan after launch. While that
-  bounded refresh is active, expose clear busy/disabled state, retain the last
-  good catalog and selection, and report failure without replacing usable
-  entries with an empty catalog.
-- Remove the current implicit `refresh: true` first-page query from ordinary
-  widget activation. Manual refresh must still reconcile saved entries and
-  preserve focus by stable saved identity where the entry survives.
-
-Recover real application imagery through the existing authority path. Trace
-provider artwork revision, broker registration, opaque artwork handle,
-Bridge resolution, and tile admission. When a valid application icon exists,
-the Games & Apps tile must display it instead of the generic Play glyph. Retain
-the deterministic existing fallback only when artwork is genuinely unavailable
-or rejected. Do not add per-application special cases, raw filesystem paths in
-widget snapshots, inline unbounded image data, a second image loader, or a new
-wire/schema/provider contract.
-
-This is physical-first. Implement production code only, make one coherent
-Release build, and commit the bounded candidate. Do not add or modify tests
-until the user accepts the launched behavior. Stop after reporting the exact
-commit, changed files, build result, and any remaining reason an item used the
-fallback; do not integrate, launch, push, or edit reviewer documents.
-
-Candidate `3fcb740` was rejected before user testing because unsupported GBSS
-property `margin-top` prevented the packaged Bridge from opening the host pipe.
-Correction `75bfefd` expressed the spacing with existing supported style.
-
-Style correction `75bfefd` passes package validation. The next visible
-candidate still exposed every saved tile as **Checking...** on ordinary widget
-activation because `StartActiveRun` discarded the retained resolved candidate
-set and repopulated it asynchronously. Bounded correction `e1a25e4` removes
-that activation-time reset and reconciliation while retaining initial-session
-resolution, explicit manual Refresh, affected-state library mutations, and
-single-SavedId just-in-time launch validation. The cumulative exact packaged
-Release build passed and was visibly accepted by the user. Only after that
-acceptance, focused test commit `aaf7088` proved 64/64 for initial-session
-reconciliation, retained ordinary reactivation, manual refresh/last-good
-behavior, and exact selected-SavedId launch revalidation. The exact chain is
-integrated on main as `18c4527`, `b307cd0`, `7b36d78`, and `62589c5`. A coherent
-packaged main Release was visibly accepted as PID 47308 with SHA-256
-`3599228CA1E821753203787BCE4D38942B8FD18308EFE36FA2554D05772E10A6`.
+Integrated as `18c4527`, `b307cd0`, `7b36d78`, and `62589c5`. Initial-session
+and manual-Refresh reconciliation, retained ordinary activation, exact selected-
+SavedId launch validation, and Windows application artwork passed 64/64 focused
+checks and the user's physical verdict. Detailed execution history remains in
+Git and the next delivery-plan history snapshot.
 
 ### Accepted and integrated — DLV-251: Audio Mixer first-activation provider publication
 
