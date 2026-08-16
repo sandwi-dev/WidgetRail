@@ -215,7 +215,7 @@ user decision. The native overlay is the sole production presentation path.
 
 | Lane | Task/worktree | State |
 | --- | --- | --- |
-| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | The user physically accepted DLV-254 cumulative production candidate `61f59d1`, `a594478`, and `f376151` from exact PID 41208. The lane is adding only focused post-acceptance regressions before cumulative review and integration; it must not change production, rebuild/relaunch, or run aggregate. DLV-256 remains blocked behind accepted DLV-254 integration. DLV-248 remains deferred. |
+| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | DLV-254 is physically accepted and integrated on main as `d5e4b0c`, `b86a01f`, `2658b98`, and test-only `57fb469`; accepted production PID 41208 remains running because the post-acceptance delta was tests/docs only. DLV-256 is now Assigned from integrated main. DLV-248 remains deferred. |
 | Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | DLV-253 is physically accepted, focused Games & Apps evidence is 65/65, and the cumulative chain is integrated on main as `6a26f08`, `3c63852`, and test-only `91177ec`. The superseded PID 51500 closed normally before the DLV-254 candidate launch; no rebuild/relaunch was performed for the DLV-253 tests alone. Preserve clean completed branches. |
 
 The user explicitly approved the DLV-217 aggregate exception on 2026-08-15.
@@ -401,7 +401,7 @@ Closed red-test and accepted platform history through DLV-252 is retained in the
 [2026-08-16 03:27 snapshot](history/delivery-plan/2026-08-16T03-27-50-07-00.md).
 
 
-### Assigned — DLV-254: optional widget-switch animation
+### Accepted and integrated — DLV-254: optional widget-switch animation
 
 Owner/baseline: platform lane from the planner assignment commit above accepted
 product tip `68b0de8`; serialize Settings, PlatformSettings, appearance payload,
@@ -500,7 +500,23 @@ suites once, and stop for cumulative reviewer integration. Do not rebuild or
 relaunch solely for that test-only delta because PID 41208 already contains the
 accepted production bits.
 
-### Ready next — DLV-256: eliminate Spotify artwork paint stalls
+Focused follow-up commit `2d4ac54` changed only the existing Platform Settings,
+Widget Bridge, and native transition test files. All new DLV-254 assertions
+passed: missing/new/reset settings resolve Off, explicit On round-trips and is
+emitted in the appearance payload, and 96 native transition checks cover exact
+warm-snap placement plus the unchanged animated path. The wider Settings runner
+was 16/18 because two unrelated cases retain the retired pre-DLV-243 `0.99`
+control scale; the wider Bridge runner was 58/89 because unrelated named-pipe
+permission and stale fixture/API failures remain. These inherited failures were
+not rerun or weakened. The private cold deferred marker has no honest unit seam
+without changing accepted production or launching the conflicting host route;
+its evidence remains direct source review plus the user's physical verdict.
+The accepted chain was integrated on main in order as `d5e4b0c`, `b86a01f`,
+`2658b98`, and `57fb469`. No rebuild or relaunch was performed for the
+test/reviewer-document-only integration delta; accepted PID 41208 remains the
+coherent production candidate.
+
+### Assigned — DLV-256: eliminate Spotify artwork paint stalls
 
 Owner/baseline: platform lane after accepted DLV-254 integration, from the
 then-current accepted main. Own only the native image-resource/cache/rendering
@@ -660,9 +676,10 @@ Closed accepted widgets history through DLV-252 is retained in the
     and `f376151` now use the exact destination-to-container visual offset,
     preserve Off across exact matching cold admissions, and make Off the
     omitted/new-install default. The user physically accepted exact candidate
-    PID 41208; the platform lane is adding focused post-acceptance tests before
-    cumulative review and integration. DLV-256 is Ready only after accepted
-    DLV-254 integration; DLV-248 remains deliberately deferred.
+    PID 41208. Focused test-only follow-up `2d4ac54` was reviewed, and the
+    accepted chain is integrated as `d5e4b0c`, `b86a01f`, `2658b98`, and
+    `57fb469`; no rebuild/relaunch was needed for the non-production delta.
+    DLV-256 is now Assigned; DLV-248 remains deliberately deferred.
 13. DLV-257 through DLV-260 form the blocked serialized rebrand program. They
     begin only after the new identity is user-approved and the active
     DLV-253/DLV-254 cycle reaches clean accepted boundaries. DLV-258 through
