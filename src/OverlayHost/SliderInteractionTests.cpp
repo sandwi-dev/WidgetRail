@@ -3,7 +3,6 @@
 #include <cmath>
 #include <cstdlib>
 #include <iostream>
-#include <utility>
 
 namespace {
 int checks{};
@@ -37,9 +36,9 @@ int main() {
     Near(*repeated.requestedValue, 0.5, "repeat advances transient target, not stale snapshot");
     Near(*state.PresentationValue(slider, 25), 0.5, "pending target drives optimistic paint");
 
-    const auto unitSlider = [](std::wstring nodeId, const double value) {
+    const auto unitSlider = [](const std::wstring_view nodeId, const double value) {
         auto result = Slider(value);
-        result.nodeId = std::move(nodeId);
+        result.nodeId = nodeId;
         result.minimum = 0.0;
         result.maximum = 1.0;
         result.step = 0.01;
