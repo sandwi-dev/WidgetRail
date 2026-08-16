@@ -36,7 +36,7 @@ constexpr std::size_t kMaximumScrollStateEntries = 4096;
 constexpr std::size_t kMaximumFocusFollowPasses = 32;
 constexpr std::size_t kMaximumFocusFollowDiagnosticNodes = 32;
 constexpr std::size_t kFocusFollowRetainedSamples = 4;
-constexpr std::size_t kMaximumFocusFollowDiagnosticIdentifierCharacters = 96;
+constexpr std::size_t kMaximumFocusFollowDiagnosticIdentifierCharacters = 128;
 constexpr std::size_t kMaximumFocusFollowSummaryCharacters = 16384;
 constexpr std::uint64_t kSlowFocusFollowMicroseconds = 100000;
 constexpr float kRevealEpsilon = 0.01F;
@@ -370,6 +370,13 @@ struct DeclarativeRenderer::RenderPass final {
         bool allTargetsVisible{true};
     };
 
+    struct FocusFollowAttemptResult final {
+        bool changed{};
+        bool meaningfulOffsetChange{};
+        bool repeatedOffsetState{};
+        FocusFollowSample before;
+    };
+
     struct FocusFollowNodeSummary final {
         std::wstring id;
         declarative::ScrollAxis axis{declarative::ScrollAxis::None};
@@ -394,7 +401,8 @@ struct DeclarativeRenderer::RenderPass final {
         std::vector<FocusFollowNodeSummary> nodes;
         std::vector<std::vector<float>> firstSamples;
         std::vector<std::vector<float>> lastSamples;
-        std::vector<std::vector<float>> seenSamples;
+        std::vector<FocusFollowSample> layoutSeenSamples;
+        std::vector<FocusFollowSample> presentationSeenSamples;
     } focusFollowTrace;
 
     DeclarativeRenderer* owner{};
@@ -942,7 +950,7 @@ struct DeclarativeRenderer::RenderPass final {
         const declarative::ScrollAxis axis,
         const float offset,
         const float maximumOffset,
-        const Rect target,
+        const Rect targetBounds,
         const Rect viewportBounds,
         const bool leadingBoundary,
         const bool trailingBoundary) {
@@ -964,7 +972,7 @@ struct DeclarativeRenderer::RenderPass final {
                 offset,
                 offset,
                 maximumOffset,
-                target,
+                targetBounds,
                 viewportBounds,
                 leadingBoundary,
                 trailingBoundary,
@@ -973,7 +981,7 @@ struct DeclarativeRenderer::RenderPass final {
         }
         found->axis = axis;
         found->maximumOffset = maximumOffset;
-        found->target = target;
+        found->target = targetBounds;
         found->viewport = viewportBounds;
         found->leadingBoundary = leadingBoundary;
         found->trailingBoundary = trailingBoundary;
@@ -1043,12 +1051,16 @@ struct DeclarativeRenderer::RenderPass final {
     }
 
     [[nodiscard]] static bool SameFocusFollowOffsets(
-        const std::vector<float>& left,
-        const std::vector<float>& right) noexcept {
-        if (left.size() != right.size()) return false;
-        for (std::size_t index = 0; index < left.size(); ++index) {
-            if (std::abs(left[index] - right[index]) > kRevealEpsilon)
+        const FocusFollowSample& left,
+        const FocusFollowSample& right) noexcept {
+        if (left.nodes.size() != right.nodes.size()) return false;
+        for (std::size_t index = 0; index < left.nodes.size(); ++index) {
+            if (left.nodes[index].id != right.nodes[index].id ||
+                left.nodes[index].axis != right.nodes[index].axis ||
+                std::abs(left.nodes[index].offset - right.nodes[index].offset) >
+                    kRevealEpsilon) {
                 return false;
+            }
         }
         return true;
     }
@@ -1061,16 +1073,21 @@ struct DeclarativeRenderer::RenderPass final {
         return result;
     }
 
-    void RetainFocusFollowSample(const std::vector<float>& offsets) {
+    void RetainFocusFollowSample(
+        const FocusFollowSample& sample,
+        const bool presentationGeometry) {
+        const auto offsets = FocusFollowOffsets(sample);
         if (focusFollowTrace.firstSamples.size() < kFocusFollowRetainedSamples)
             focusFollowTrace.firstSamples.push_back(offsets);
         focusFollowTrace.lastSamples.push_back(offsets);
         if (focusFollowTrace.lastSamples.size() > kFocusFollowRetainedSamples)
             focusFollowTrace.lastSamples.erase(focusFollowTrace.lastSamples.begin());
-        constexpr auto maximumSeenSamples =
-            kMaximumFocusFollowPasses * 2U + 2U;
-        if (focusFollowTrace.seenSamples.size() < maximumSeenSamples)
-            focusFollowTrace.seenSamples.push_back(offsets);
+        auto& seenSamples = presentationGeometry
+            ? focusFollowTrace.presentationSeenSamples
+            : focusFollowTrace.layoutSeenSamples;
+        constexpr auto maximumSeenSamples = kMaximumFocusFollowPasses + 1U;
+        if (seenSamples.size() < maximumSeenSamples)
+            seenSamples.push_back(sample);
     }
 
     void UpdateFocusFollowNodes(
@@ -1110,27 +1127,32 @@ struct DeclarativeRenderer::RenderPass final {
         }
     }
 
-    void RecordFocusFollowPass(
+    [[nodiscard]] FocusFollowAttemptResult RecordFocusFollowPass(
         const FocusFollowSample& before,
         const FocusFollowSample& after,
-        const bool changed) {
-        if (before.nodes.empty() && after.nodes.empty()) return;
-        const auto beforeOffsets = FocusFollowOffsets(before);
-        const auto afterOffsets = FocusFollowOffsets(after);
+        const bool changed,
+        const bool presentationGeometry) {
+        if (before.nodes.empty() && after.nodes.empty())
+            return FocusFollowAttemptResult{changed, false, false, before};
+        auto& seenSamples = presentationGeometry
+            ? focusFollowTrace.presentationSeenSamples
+            : focusFollowTrace.layoutSeenSamples;
+        if (seenSamples.empty())
+            RetainFocusFollowSample(before, presentationGeometry);
         if (focusFollowTrace.passCount == 0) {
             UpdateFocusFollowNodes(before, true);
-            RetainFocusFollowSample(beforeOffsets);
         }
         ++focusFollowTrace.passCount;
         const bool repeatedWithoutProgress =
-            SameFocusFollowOffsets(beforeOffsets, afterOffsets);
+            SameFocusFollowOffsets(before, after);
         if (changed && repeatedWithoutProgress) focusFollowTrace.noProgress = true;
+        bool seenBefore{};
         if (changed && !repeatedWithoutProgress) {
-            const bool seenBefore = std::any_of(
-                focusFollowTrace.seenSamples.begin(),
-                focusFollowTrace.seenSamples.end(),
-                [&](const std::vector<float>& prior) {
-                    return SameFocusFollowOffsets(prior, afterOffsets);
+            seenBefore = std::any_of(
+                seenSamples.begin(),
+                seenSamples.end(),
+                [&](const FocusFollowSample& prior) {
+                    return SameFocusFollowOffsets(prior, after);
                 });
             if (seenBefore) focusFollowTrace.cycle = true;
         } else if (!changed) {
@@ -1138,16 +1160,29 @@ struct DeclarativeRenderer::RenderPass final {
             else focusFollowTrace.noProgress = true;
         }
         UpdateFocusFollowNodes(after, false);
-        RetainFocusFollowSample(afterOffsets);
+        RetainFocusFollowSample(after, presentationGeometry);
+        return FocusFollowAttemptResult{
+            changed,
+            changed && !repeatedWithoutProgress,
+            changed && seenBefore,
+            before,
+        };
     }
 
-    [[nodiscard]] bool FollowFocusedDescendant(
+    [[nodiscard]] FocusFollowAttemptResult FollowFocusedDescendant(
         const bool usePresentationGeometry) {
         const auto before = CaptureFocusFollowSample(usePresentationGeometry);
         const bool changed = ApplyFocusedDescendantFollow(usePresentationGeometry);
         const auto after = CaptureFocusFollowSample(usePresentationGeometry);
-        RecordFocusFollowPass(before, after, changed);
-        return changed;
+        return RecordFocusFollowPass(
+            before, after, changed, usePresentationGeometry);
+    }
+
+    void RestoreFocusFollowOffsets(const FocusFollowSample& sample) {
+        for (const auto& node : sample.nodes) {
+            StoreScrollOffset(ScrollStateKey(node.id), node.offset);
+        }
+        UpdateFocusFollowNodes(sample, false);
     }
 
     void AddFocusFollowElapsed(
@@ -1613,7 +1648,7 @@ struct DeclarativeRenderer::RenderPass final {
             bool lastFollowChanged{};
             for (std::size_t pass = 0; pass < kMaximumFocusFollowPasses; ++pass) {
                 ++followAttempts;
-                lastFollowChanged = FollowFocusedDescendant(false);
+                lastFollowChanged = FollowFocusedDescendant(false).changed;
                 if (!lastFollowChanged) break;
                 prepared.clear();
                 textMeasurements.clear();
@@ -2735,6 +2770,7 @@ RenderResult DeclarativeRenderer::Render(
     bool presentationMatchesLayout = false;
     std::size_t presentationFollowAttempts{};
     bool lastPresentationFollowChanged{};
+    bool presentationFollowStoppedOnStableState{};
     for (std::size_t followPass = 0;
          followPass < kMaximumFocusFollowPasses;
          ++followPass) {
@@ -2742,8 +2778,19 @@ RenderResult DeclarativeRenderer::Render(
         pass.presentation.clear();
         pass.ResolvePresentation(snapshot.root, 0.0F, 0.0F, viewport);
         presentationMatchesLayout = true;
-        lastPresentationFollowChanged = pass.FollowFocusedDescendant(true);
+        const auto followAttempt = pass.FollowFocusedDescendant(true);
+        lastPresentationFollowChanged = followAttempt.changed;
         if (!lastPresentationFollowChanged) break;
+        if (!followAttempt.meaningfulOffsetChange ||
+            followAttempt.repeatedOffsetState) {
+            // Keep the presentation already resolved for the last meaningful
+            // offset vector. Reapplying a sub-epsilon or previously observed
+            // vector cannot improve focus visibility, and rebuilding from it
+            // caused retained paint-only frames to repeat to the hard bound.
+            pass.RestoreFocusFollowOffsets(followAttempt.before);
+            presentationFollowStoppedOnStableState = true;
+            break;
+        }
         // A translated focused descendant may cross a scroll boundary even
         // when its static layout box was visible. Rebuild against the updated
         // host-owned offset and converge with the same hard bound used by
@@ -2752,7 +2799,8 @@ RenderResult DeclarativeRenderer::Render(
         pass.BuildLayout(false);
     }
     if (presentationFollowAttempts == kMaximumFocusFollowPasses &&
-        lastPresentationFollowChanged) {
+        lastPresentationFollowChanged &&
+        !presentationFollowStoppedOnStableState) {
         pass.focusFollowTrace.boundHit = true;
     }
     if (!presentationMatchesLayout) {
