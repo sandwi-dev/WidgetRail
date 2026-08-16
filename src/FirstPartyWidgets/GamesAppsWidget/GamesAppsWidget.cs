@@ -112,11 +112,8 @@ public sealed class GamesAppsWidget : Widget
         return GamesAppsPresentation.Render(presentation);
     }
 
-    protected override ValueTask OnActivatedAsync(CancellationToken activeLifetime)
-    {
-        StartActiveRun(activeLifetime);
-        return ValueTask.CompletedTask;
-    }
+    protected override ValueTask OnActivatedAsync(CancellationToken activeLifetime) =>
+        StartActiveRunAsync(activeLifetime);
 
     protected override ValueTask OnDeactivatedAsync(CancellationToken transitionToken)
     {
@@ -135,8 +132,14 @@ public sealed class GamesAppsWidget : Widget
         WidgetLifecycleState current,
         CancellationToken stateLifetime)
     {
-        if (previous is WidgetLifecycleState.Visible or WidgetLifecycleState.Interactive ||
-            current is WidgetLifecycleState.Visible or WidgetLifecycleState.Interactive)
+        var wasVisible = previous is
+            WidgetLifecycleState.Visible or WidgetLifecycleState.Interactive;
+        var isVisible = current is
+            WidgetLifecycleState.Visible or WidgetLifecycleState.Interactive;
+        // OnActivated publishes the first entering-visible projection after it
+        // restores retained rows. Publishing here would admit the cold extent
+        // before that ordered restore completes.
+        if (wasVisible || !isVisible)
             Invalidate();
         return ValueTask.CompletedTask;
     }
@@ -429,11 +432,11 @@ public sealed class GamesAppsWidget : Widget
               "games · recent first";
     }
 
-    private void StartActiveRun(CancellationToken activeLifetime)
+    private async ValueTask StartActiveRunAsync(CancellationToken activeLifetime)
     {
         StopActiveRun();
         var generation = Interlocked.Increment(ref _generation);
-        bool startInitialReconciliation;
+        bool restoreRetainedSnapshot;
         lock (_gate)
         {
             _page = GamesAppsPage.Library;
@@ -455,16 +458,69 @@ public sealed class GamesAppsWidget : Widget
             _launchingAppId = null;
             _loadingMore = false;
             _libraryMutationBusy = false;
-            startInitialReconciliation = !_hasLibrarySnapshot;
+            restoreRetainedSnapshot = !_hasLibrarySnapshot;
+        }
+        if (restoreRetainedSnapshot)
+            await RestoreRetainedLibraryAsync(generation, activeLifetime)
+                .ConfigureAwait(false);
+
+        bool hasLibrarySnapshot;
+        lock (_gate)
+        {
+            if (Interlocked.Read(ref _generation) != generation) return;
+            _page = GamesAppsPage.Library;
+            _items = _libraryItems;
+            if (_hasLibrarySnapshot)
+            {
+                if (_selectedAppId is null || !_items.Any(item =>
+                        string.Equals(item.AppId, _selectedAppId, StringComparison.Ordinal)))
+                    _selectedAppId = ResolveCuratedItemsLocked().FirstOrDefault()?.AppId;
+                _viewState = GamesAppsViewState.Ready;
+                _status = LibraryStatusLocked();
+            }
+            hasLibrarySnapshot = _hasLibrarySnapshot;
         }
         Invalidate();
-        if (!startInitialReconciliation) return;
+        if (!restoreRetainedSnapshot) return;
         _ = Operations.RunLatest(
             LibraryLoadOperationKey,
             context => LoadSavedLibraryRunAsync(
-                generation, showColdLoading: true,
+                generation, showColdLoading: !hasLibrarySnapshot,
                 refreshCatalog: false, context),
             WidgetOperationLifetime.Active);
+    }
+
+    private async ValueTask RestoreRetainedLibraryAsync(
+        long generation,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            var persisted = await HostServices.PrivateState.ReadAsync<GamesAppsLibraryState>(
+                    cancellationToken: cancellationToken).ConfigureAwait(false);
+            var state = GamesAppsLibraryPolicy.Normalize(
+                persisted.Exists ? persisted.Value : null);
+            if (state.DisplayItems.Count == 0) return;
+
+            var resolved = await HostServices.AppLibrary.ResolveSavedAsync(
+                    state.SavedIds, cancellationToken).ConfigureAwait(false);
+            var current = GamesAppsLibraryPolicy.NormalizeResolved(
+                resolved, state.SavedIds);
+            lock (_gate)
+            {
+                if (Interlocked.Read(ref _generation) != generation) return;
+                ApplyPersistedStateLocked(state, persisted.Revision, current);
+                _hasLibrarySnapshot = true;
+            }
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception exception) when (exception is not OutOfMemoryException)
+        {
+            // The existing active reconciliation owns typed failure projection.
+        }
     }
 
     private async ValueTask LoadSavedLibraryRunAsync(
