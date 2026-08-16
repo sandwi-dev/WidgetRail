@@ -7188,6 +7188,12 @@ private:
     };
 
     struct CompositionFrameSet final {
+        enum class ContentTransportWork {
+            None,
+            BoundedUpdate,
+            FullSurface,
+        } contentTransportWork{ContentTransportWork::None};
+
         struct StageTiming final {
             std::uint64_t beginFrameMicroseconds{};
             std::uint64_t resourceSetupMicroseconds{};
@@ -7195,6 +7201,7 @@ private:
             std::uint64_t endFrameMicroseconds{};
         } stageTiming;
         std::optional<gba::DeclarativeRenderTiming> declarativeTiming;
+        std::optional<gba::IncrementalPresentationWork> contentRendererWork;
         std::vector<gba::OverlayCompositionSurface::Frame> frames;
         std::optional<gba::shell::RetainedTrayState> trayState;
         std::wstring guideKey;
@@ -7239,6 +7246,37 @@ private:
                 std::to_wstring(renderer.deferredFocusMicroseconds) +
                 L" slow-render-finalize-us=" +
                 std::to_wstring(renderer.finalizationMicroseconds);
+        }
+        diagnostic += L" slow-content-transport=";
+        switch (frames.contentTransportWork) {
+        case CompositionFrameSet::ContentTransportWork::None:
+            diagnostic += L"none";
+            break;
+        case CompositionFrameSet::ContentTransportWork::BoundedUpdate:
+            diagnostic += L"bounded-update";
+            break;
+        case CompositionFrameSet::ContentTransportWork::FullSurface:
+            diagnostic += L"full-surface";
+            break;
+        }
+        diagnostic += L" slow-renderer-work=";
+        if (!frames.contentRendererWork) {
+            diagnostic += L"none";
+        } else {
+            switch (*frames.contentRendererWork) {
+            case gba::IncrementalPresentationWork::NoRaster:
+                diagnostic += L"no-raster";
+                break;
+            case gba::IncrementalPresentationWork::PaintOnly:
+                diagnostic += L"retained-paint-only";
+                break;
+            case gba::IncrementalPresentationWork::LocalLayout:
+                diagnostic += L"retained-local-layout";
+                break;
+            case gba::IncrementalPresentationWork::FullRaster:
+                diagnostic += L"full-raster-fallback";
+                break;
+            }
         }
         return diagnostic;
     }
@@ -7871,15 +7909,14 @@ private:
             if (update.right > update.left && update.bottom > update.top)
                 contentUpdate = update;
         }
-        if (contentUpdate &&
-            ShouldPromoteLargeCompositionUpdate(*contentUpdate, width, height)) {
-            // DirectComposition's partial surface path may defer preservation
-            // work until the first D2D command. The retained production trace
-            // isolates that cost to updates covering at least half the surface,
-            // while full updates remain bounded. Promote only that measured
-            // path; smaller focus/slider damage remains incremental.
-            contentUpdate.reset();
-        }
+        // DirectComposition's partial surface path may defer preservation work
+        // until the first D2D command. The retained production trace isolates
+        // that cost to updates covering at least half the surface, while full
+        // updates remain bounded. Promote only the transport rectangle; the
+        // renderer keeps its independently validated incremental plan and
+        // layout cache for the same presentation.
+        const bool promoteContentTransport = contentUpdate &&
+            ShouldPromoteLargeCompositionUpdate(*contentUpdate, width, height);
         if (!contentUpdate && declarativeRenderer_)
             declarativeRenderer_->CancelPresentationUpdatePlan();
         if (contentUpdate && renderPlan) {
@@ -7899,12 +7936,20 @@ private:
         if (retainPendingRefreshPixels) {
             activeContentRenderPlan_ = gba::IncrementalPresentationPlan{
                 gba::IncrementalPresentationWork::NoRaster, {}};
+            set.contentRendererWork = gba::IncrementalPresentationWork::NoRaster;
         } else {
+            set.contentTransportWork = contentUpdate && !promoteContentTransport
+                ? CompositionFrameSet::ContentTransportWork::BoundedUpdate
+                : CompositionFrameSet::ContentTransportWork::FullSurface;
+            set.contentRendererWork = activeContentRenderPlan_->work;
+            const RECT* transportUpdate = contentUpdate && !promoteContentTransport
+                ? &*contentUpdate
+                : nullptr;
             if (!RenderCompositionLayer(
                     width, height, dpi,
                     gba::OverlayCompositionSurface::Layer::Content,
                     CompositionPaintLayer::Content, contentGeometry,
-                    contentUpdate ? &*contentUpdate : nullptr, set,
+                    transportUpdate, set,
                     &*trayLayout)) {
                 return false;
             }
