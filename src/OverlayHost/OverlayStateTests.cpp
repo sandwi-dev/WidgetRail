@@ -184,6 +184,31 @@ int main() {
         L"settings", L"now-playing", L"games-apps", L"game-launcher",
         L"audio-mixer", L"network-controls", L"yt-music", L"spotify",
     };
+    OverlayState productionStartup({}, {});
+    const auto beforeCatalog = productionStartup.persistent();
+    Check(!productionStartup.OpenWidgetWithTrayFocus(L"settings") &&
+              productionStartup.surface() == Surface::Hidden &&
+              productionStartup.persistent() == beforeCatalog,
+          "production startup waits for catalog authority before opening Settings");
+    (void)productionStartup.SetAvailableWidgets(productionOrder);
+    Check(productionStartup.OpenWidgetWithTrayFocus(L"settings") &&
+              productionStartup.surface() == Surface::Widget &&
+              productionStartup.selectedWidget() == L"settings" &&
+              productionStartup.activeWidget() == L"settings" &&
+              productionStartup.focusRegion() == FocusRegion::Tray,
+          "catalog-gated first visibility opens real Settings with tray focus");
+    Check(productionStartup.surface() != Surface::Dashboard,
+          "production startup never exposes the legacy dashboard placeholder");
+    Send(productionStartup, Command::ToggleOverlay);
+    Check(productionStartup.surface() == Surface::Hidden,
+          "Guide hides the startup Settings surface through the ordinary route");
+    Send(productionStartup, Command::ToggleOverlay);
+    Check(productionStartup.surface() == Surface::Widget &&
+              productionStartup.selectedWidget() == L"settings" &&
+              productionStartup.activeWidget() == L"settings" &&
+              productionStartup.focusRegion() == FocusRegion::Tray,
+          "later Guide reopen preserves Settings and the ordinary tray focus route");
+
     OverlayState catalogTray({}, productionOrder);
     Send(catalogTray, Command::ToggleOverlay);
     for (int index = 0; index < 4; ++index)
