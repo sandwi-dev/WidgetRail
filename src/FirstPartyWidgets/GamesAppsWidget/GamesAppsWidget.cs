@@ -433,12 +433,10 @@ public sealed class GamesAppsWidget : Widget
     {
         StopActiveRun();
         var generation = Interlocked.Increment(ref _generation);
-        bool hasLibrarySnapshot;
+        bool startInitialReconciliation;
         lock (_gate)
         {
             _page = GamesAppsPage.Library;
-            if (_hasLibrarySnapshot)
-                ApplyPersistedStateLocked(_persistedLibraryState, _stateRevision, []);
             _items = _libraryItems;
             _catalog = GamesAppsCatalogState.Empty;
             if (_hasLibrarySnapshot)
@@ -457,12 +455,14 @@ public sealed class GamesAppsWidget : Widget
             _launchingAppId = null;
             _loadingMore = false;
             _libraryMutationBusy = false;
-            hasLibrarySnapshot = _hasLibrarySnapshot;
+            startInitialReconciliation = !_hasLibrarySnapshot;
         }
+        Invalidate();
+        if (!startInitialReconciliation) return;
         _ = Operations.RunLatest(
             LibraryLoadOperationKey,
             context => LoadSavedLibraryRunAsync(
-                generation, showColdLoading: !hasLibrarySnapshot,
+                generation, showColdLoading: true,
                 refreshCatalog: false, context),
             WidgetOperationLifetime.Active);
     }
