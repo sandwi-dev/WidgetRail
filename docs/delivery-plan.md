@@ -242,6 +242,154 @@ behavior-preserving extraction seams, dependencies, risk, and focused proof,
 and distinguish real ownership reduction from cosmetic file splitting. This is
 analysis only: no production/test edits, build, or relaunch.
 
+## Name-gated product rebrand program
+
+The user has identified material trademark/confusion risk in the current
+**Game Bar Alternative** product name. Microsoft publishes guidance that app
+names and collateral should be unique and free of Microsoft Brand Assets, with
+compatibility claims confined to truthful descriptive text. This plan does not
+make a legal conclusion. Final name clearance belongs to the user and qualified
+trademark counsel; Store-name availability is separate from trademark
+clearance.
+
+The current inventory finds 49 spaced display-name references across 32 files.
+The complete clean technical rename reaches approximately 5,939 active
+references across 496 non-Avalonia files, including 5,502 references in 375
+production/tooling files and roughly 100 test files. Most are mechanical C#
+namespace/import changes. The sensitive seams are the public SDK/package name,
+assembly and manifest type identities, persisted local-data root, singleton
+mutex/activation pipe, HWND/UIA identities, runtime publication, templates,
+samples, and active public documentation. Closed Avalonia sources and immutable
+history remain evidence and are not renamed.
+
+This program is blocked until DLV-257 records the exact new name and identifier
+mapping. It does not preempt, reorder, merge, or broaden DLV-253, DLV-254,
+DLV-255, DLV-256, or deferred DLV-248. DLV-258 through DLV-260 are serialized;
+no partial rename may be integrated into main, packaged for user acceptance, or
+launched as the accepted product.
+
+### Blocked planner deliverable — DLV-257: select and freeze the new identity
+
+Owner/baseline: user plus planner, from the then-current accepted main after the
+active DLV-253/DLV-254 candidate cycle reaches a clean boundary. This is a
+decision and inventory deliverable, not implementation authority.
+
+Required output:
+
+- Record the exact display name, technical PascalCase namespace root, lowercase
+  package/repository slug, publisher attribution, and whether the existing
+  `gbar` CLI/config prefix is retained or renamed.
+- Verify basic web, source-repository, Microsoft Store-name, domain, and relevant
+  trademark-search availability. Availability is evidence, not legal clearance.
+- Obtain the user's explicit approval of the final identity. Recommend qualified
+  trademark counsel before public release; do not contact counsel, Microsoft,
+  registrars, or third parties without new authority.
+- Produce an exact old-to-new inventory for visible strings, SDK/NuGet identity,
+  namespaces, assemblies, manifest provider types, package metadata, local-data
+  roots, pipe/mutex/window/UIA identifiers, user-agent strings, templates,
+  samples, active docs, store collateral, repository name, and build outputs.
+- State which legacy identifiers are migration inputs, which are removed at
+  cutover, and which historical records remain intentionally unchanged.
+
+Acceptance: one reviewer-owned identity/migration contract committed locally,
+with the chosen name approved by the user and every DLV-258/DLV-259 input
+unambiguous. No production/test changes, Store reservation, external account
+action, push, publication, directory move, build, or relaunch.
+
+Stop for an unchosen name, meaningful legal ambiguity, unavailable Store or
+repository identity, required third-party account/credential, competing
+migration policies, or external action.
+
+### Blocked serialized deliverable — DLV-258: cut over public managed identity
+
+Owner/baseline: widgets lead after accepted DLV-253 integration and completed
+DLV-257, from the then-current accepted main. This is a serialized cross-lane
+identity milestone: no other lane edits SDK, package, assembly, manifest,
+template, or managed namespace identity concurrently.
+
+Rename the user-facing product brand and public managed identity coherently:
+SDK/NuGet package ID, public namespace root, assembly/root namespaces, manifest
+provider types, managed package metadata, CLI discovery, templates, samples,
+first-party and Community package sources, active public documentation, and
+their directly affected deterministic tests. Use one mechanical mapping from
+DLV-257; do not retain dual public SDK namespaces, compatibility facades, type
+forwarders, duplicated manifests, or old/new package publication paths in this
+pre-release product. Do not touch immutable history, closed Avalonia sources,
+native IPC/HWND identifiers, or local persisted state in this milestone.
+
+Acceptance: all managed projects and public examples compile from the new
+identity, manifests resolve only new provider types, a newly packed SDK exposes
+only the new package/namespace identity, current packages publish without old
+managed assemblies, and a repository scan reports no unexplained old active
+managed identity. Run only focused managed build/package/contract suites; no
+Tier 3 and no launch. Commit one coherent DLV-258 milestone and leave it
+unintegrated/unlaunched pending DLV-259.
+
+Stop for a public compatibility requirement, external package publication,
+third-party credential/account action, generated-output ambiguity, substantial
+conflict, user-data change, native identity change, or a second SDK/package
+owner. Never push.
+
+### Blocked serialized deliverable — DLV-259: migrate native and persisted identity
+
+Owner/baseline: platform lead after accepted DLV-258 is available on its exact
+serialized baseline. Own the native display/accessibility identity, singleton
+activation identity, local product-owned state root, runtime path consumers,
+and directly affected tests. No other lane edits those identities concurrently.
+
+Apply the DLV-257 mapping to native titles, accessibility product names, app
+manifest assembly identity, HWND/text-entry/pinned-surface classes, singleton
+mutex and activation pipe, user agent, startup/log/runtime paths, and the new
+product-owned local-data root. Implement one bounded, atomic and idempotent
+migration from `%LOCALAPPDATA%\\GameBarAlternative` into the new root for current
+settings, consent decisions, installed-widget catalog/packages, trusted private
+state, and other explicitly inventoried overlay-owned data. New code writes only
+the new root after success. Preserve external provider data, credentials,
+accounts, installed applications, and user files. Do not keep dual live
+singleton/pipe/window-class owners; the old names are migration/cleanup inputs,
+not a compatibility runtime.
+
+Acceptance: focused migration cases cover absent old state, clean migration,
+already-migrated restart, collision/incomplete destination, access denial,
+interrupted migration recovery, exact consent/catalog preservation, and no
+external-data movement. Focused native cases prove one new singleton/activation
+owner, expected UIA identity, new paths, bounded failure behavior, and clean
+shutdown. Build the coherent combined DLV-258/DLV-259 Release but do not launch
+or integrate the partial chain before DLV-260 review. Tier 2 is limited to the
+smallest managed/native/package boundary; no Tier 3 yet.
+
+Stop for destructive reset, ambiguous source/destination authority, credential
+or external-provider migration, simultaneous old/new runtime ownership,
+undocumented Windows APIs, substantial conflict, or data-loss risk. Never push.
+
+### Blocked serialized deliverable — DLV-260: audit and accept the complete rebrand
+
+Owner/baseline: serialized lead plus planner review after DLV-258 and DLV-259.
+Complete active tests, scripts, examples, publication metadata, notices, and
+nonhistorical documentation required by the DLV-257 mapping. Remove stale old-
+name artifacts from validated build/package output before republishing the
+coherent Release. Do not rewrite Git history, immutable reviewer snapshots,
+closed Avalonia evidence, third-party notices that accurately quote historical
+names, or external repositories/store listings without explicit user authority.
+Renaming the local checkout directory and saved Codex project is optional and
+performed last by the planner only if the user requests it; no tracked source
+path currently requires that move.
+
+Acceptance: one exact old-name residue audit classifies every retained match;
+focused builds/tests/examples/package checks are green; installed packages and
+the SDK contain only the new active identity; old generated runtime artifacts
+are absent; one narrow local-state migration smoke preserves current settings,
+consent and installed widgets; and the coherent renamed Release launches for
+the user's visible verdict. This is the named Tier-3 integration checkpoint for
+the cumulative DLV-258/DLV-259/DLV-260 chain, run once only after focused
+evidence and exact commits. Integrate and relaunch only after independent review
+accepts the complete chain.
+
+Stop for unresolved old active identity, external Store/repository/domain
+action, credential need, destructive cleanup outside validated generated
+outputs, unexplained package residue, substantial conflict, or legal/product
+name uncertainty. Never push or publish.
+
 ## Platform lane
 
 Closed red-test and accepted platform history through DLV-252 is retained in the
@@ -377,6 +525,11 @@ Closed accepted widgets history through DLV-252 is retained in the
 
 12. DLV-254 is Assigned. DLV-256 is Ready next after its accepted integration;
     DLV-248 remains deliberately deferred.
+13. DLV-257 through DLV-260 form the blocked serialized rebrand program. They
+    begin only after the new identity is user-approved and the active
+    DLV-253/DLV-254 cycle reaches clean accepted boundaries. DLV-258 through
+    DLV-260 integrate and launch only as one complete reviewed chain; DLV-256
+    remains ahead of that program unless the user explicitly reprioritizes it.
 
 ## Manual and packaged evidence
 
@@ -399,6 +552,7 @@ Closed accepted widgets history through DLV-252 is retained in the
 | Audio default-device selection | No documented supported Windows setter; requires primary Microsoft API and reversible hardware/provider plan. |
 | Native uninstall reconciliation | Synthetic removal emitted no managed revision/native event; requires deterministic disabled/nonresident removal evidence. |
 | YouTube authenticated library | Requires approved minimum-scope OAuth/account; Watch Later is unsupported by Data API. |
+| DLV-257 product identity | Requires a user-selected distinctive new name, exact technical identifier mapping, availability evidence, and explicit approval. DLV-258 through DLV-260 remain blocked behind it. |
 
 ## Recent accepted milestones
 
