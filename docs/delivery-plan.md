@@ -14,8 +14,11 @@ Snapshots are evidence only. This file is the sole authority for current work.
 
 ## Current baseline
 
-- Accepted production main `55ec269` contains user-accepted DLV-250 first-visible Settings and DLV-251 first-activation Audio Mixer publication atop DLV-243 bounded
-  optimistic slider presentation and focused regression coverage atop DLV-247's exact retired-Spotify
+- Accepted production main `68b0de8` contains user-accepted DLV-252 modern Steam
+  provider-icon recovery and focused 78/78 regression evidence atop DLV-250
+  first-visible Settings and DLV-251 first-activation Audio Mixer publication,
+  atop DLV-243 bounded optimistic slider presentation and focused regression
+  coverage, atop DLV-247's exact retired-Spotify
   consent migration atop DLV-218's retirement of the
   product-owned Spotify and private Game Launcher domains, including safe
   incremental-output cleanup, atop DLV-241's native bounded atomic
@@ -99,12 +102,12 @@ Snapshots are evidence only. This file is the sole authority for current work.
   authority. The user accepted the physical refresh, artwork, and retained-row
   behavior before tests were added. Focused Games & Apps evidence is 64/64 and
   the exact coherent Release build passed with packaging enabled.
-- DLV-252 is Assigned to the widgets lane from exact accepted main `55ec269`.
-  Local evidence proves Steam AppId `3768760` has a valid provider-native icon
-  at `appcache\librarycache\3768760\<40-hex>.jpg`, while the current resolver
-  probes only legacy flat `<appid>_icon.*` names. The correction extends the
-  existing lazy opaque artwork owner to this modern cache shape without a new
-  protocol, raw path exposure, online service, or per-game special case.
+- DLV-252 is user-accepted and integrated as production commit `868ac4e` plus
+  focused-test commit `68b0de8`. The existing lazy opaque Steam artwork owner
+  now recognizes bounded modern AppId/40-hex provider icons with deterministic
+  extension precedence and legacy fallback; no protocol, raw path, online
+  service, or per-game special case was added. The provider suite passes 78/78.
+  Accepted candidate PID 44872 remains running.
 - The approved checkpoint/update architecture is in
   [`widget-snapshot-cache-design.md`](widget-snapshot-cache-design.md). DLV-239
   through DLV-243 implement it serially.
@@ -144,9 +147,13 @@ user decision. The native overlay is the sole production presentation path.
   harness, retain source review, and disclose residual risk.
 - Do not run the product aggregate except at a named Tier-3 checkpoint. Do not
   build capture tooling for ordinary assignments.
-- After every accepted integrated production milestone, rebuild the coherent
-  main Release, gracefully replace the planner-owned candidate, launch exact
-  `OverlayHost.exe --show`, and perform one bounded live/log smoke.
+- After every accepted integrated milestone that changes production/runtime
+  artifact inputs, rebuild the coherent main Release, gracefully replace the
+  planner-owned candidate, launch exact `OverlayHost.exe --show`, and perform
+  one bounded live/log smoke. If only post-acceptance tests or reviewer-owned
+  documents changed and the running accepted candidate already contains the
+  integrated production commit, do not rebuild or relaunch solely for that
+  non-production delta.
 - Stop for credentials, destructive recovery, substantial merge conflict,
   undocumented input/window APIs, external publication, physical-only evidence,
   or a material product/security decision.
@@ -206,8 +213,8 @@ user decision. The native overlay is the sole production presentation path.
 
 | Lane | Task/worktree | State |
 | --- | --- | --- |
-| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | DLV-250 is physically accepted, focused-tested, and integrated as `6eadfa7` plus `fe25705`; coherent main Release PID 2152 is running. No platform milestone is currently Assigned; DLV-248 remains deliberately deferred and the queue needs user/planner replenishment. Preserve accepted DLV-246 branch `codex/impl-platform-process-owner` and completed `codex/impl-platform-snapshot-cache` / `codex/impl-platform-fixed-chrome`. |
-| Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | DLV-252 is Assigned from exact accepted main `55ec269`: recover provider-native Steam game icons from the modern AppId/hash cache layout through the existing opaque artwork path. Physical-first production candidate and coherent packaged Release come before focused tests. Preserve the clean DLV-249, DLV-240, DLV-218, and DLV-251 branches. |
+| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | DLV-250 is physically accepted, focused-tested, and integrated as `6eadfa7` plus `fe25705`. No platform milestone is currently Assigned; DLV-248 remains deliberately deferred and the queue needs user/planner replenishment. Preserve accepted DLV-246 branch `codex/impl-platform-process-owner` and completed `codex/impl-platform-snapshot-cache` / `codex/impl-platform-fixed-chrome`. |
+| Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | DLV-252 is physically accepted and integrated as `868ac4e` plus focused-test commit `68b0de8`; provider evidence is 78/78. Accepted production candidate PID 44872 remains running because the later integrated delta was tests only. No widgets milestone is currently Assigned; the queue needs user/planner replenishment. Preserve the clean DLV-252, DLV-249, DLV-240, DLV-218, and DLV-251 branches. |
 
 The user explicitly approved the DLV-217 aggregate exception on 2026-08-15.
 The preserved four-commit implementation chain was integrated onto current main
@@ -835,65 +842,20 @@ deferred by user decision and must not be mixed into DLV-242.
 DLV-240 is integrated. Accepted DLV-225/226/228/229/230 remain integrated. New
 styling/provider work requires fresh user evidence rather than speculation.
 
-### Assigned — DLV-252: recover modern Steam provider-native game icons
+### Accepted and integrated — DLV-252: recover modern Steam provider-native game icons
 
-Owner/baseline: widgets lane from exact clean accepted main `55ec269`. Create a
-fresh `codex/` branch at that baseline and preserve the completed DLV-249,
-DLV-251, DLV-240, and DLV-218 branches. This assignment owns only the existing
-Steam artwork discovery/validation source, its directly affected provider
-documentation after physical acceptance, and post-acceptance focused tests. It
-must not edit Game Launcher layout, WidgetSdk/WidgetProtocol, WidgetBridge,
-native OverlayHost, catalog/lifecycle/launch authority, other store sources,
-reviewer-owned documents, or user/Steam files.
-
-Verified defect: Windows application entries resolve through the existing
-Windows icon source, but Steam games fall back to the Play glyph. The current
-`WindowsSteamArtworkSource` probes only legacy flat files named
-`appcache\librarycache\<appid>_icon.{png,jpg,jpeg}`. On this machine, Steam
-AppId `3768760` (`007 First Light`) has valid artwork at
-`appcache\librarycache\3768760\feccaf73a3bde702d1978afff6ba6540bf5331fe.jpg`.
-The modern AppId directory may also contain named library/header/hero/logo
-assets; the 40-hex provider icon filename is the intended tile-icon candidate,
-not an arbitrary first image.
-
-Required behavior:
-
-- Extend the existing lazy Steam artwork resolver to recognize both the modern
-  `<appid>\<40-hex>.{png,jpg,jpeg}` provider-icon shape and the retained legacy
-  flat `<appid>_icon.*` shape. Do not special-case an AppId, game title, Steam
-  installation path, filename hash, or package identity.
-- Select candidates deterministically and with a documented precedence. Never
-  substitute `header`, `library_600x900`, `library_hero`, blur, logo, or another
-  arbitrary file for the tile icon. Ambiguous or absent provider icons retain
-  the existing Play fallback.
-- Preserve trusted Steam-root authority and validate every traversed directory
-  and final file by handle. Reject reparse points, path escape, non-allowlisted
-  extensions/payloads, replacement races, stale catalog generations,
-  cancellation, oversized bytes/dimensions/pixels, excessive registrations,
-  and decode deadline breaches. Directory enumeration must be bounded; do not
-  recursively scan the cache or eagerly decode artwork during catalog refresh.
-- Keep the existing opaque locator, revision, LRU, lazy decode, PNG projection,
-  Game Launcher registration, and author-facing snapshot path. Add no raw path
-  to snapshots, online metadata/artwork dependency, second image cache/loader,
-  new SDK/protocol message, or Steam-specific host behavior.
-- A valid modern provider-native icon displays for `007 First Light` and other
-  qualifying Steam games in Game Launcher; Windows application icons and game
-  launchability remain unchanged.
-
-Physical-first ordering: implement production code only, directly source-review
-the legacy and modern validation paths, commit one exact `[DLV-252]` candidate,
-and build one coherent packaged Release with tests skipped. Do not author,
-modify, or run tests before the user accepts the launched icon behavior. Report
-the exact commit, files, build command/result, and any deterministic fallback
-reason; do not launch, integrate, push, or edit reviewer documents. After user
-acceptance, add only focused modern/legacy/ambiguous/reparse/race/cancellation/
-bounds regression coverage and run the directly affected provider suite once.
-
-Stop for writing to Steam files, recursive/unbounded enumeration, a new online
-service or credential, raw-path/public-contract change, a second artwork owner,
-undocumented Steam/private API dependence, material ambiguity about icon
-selection, destructive cleanup, substantial conflict, or external publication.
-Never push.
+Production commit `868ac4e` extends the existing lazy, opaque Steam artwork
+resolver to bounded modern `<appid>\<40-hex>.{png,jpg,jpeg}` provider icons with
+deterministic precedence, exact handle/path validation, and legacy flat-file
+fallback. The user accepted the live game-icon behavior in candidate PID 44872.
+Focused test commit `68b0de8` passes 78/78 across modern/legacy selection,
+ambiguity, excluded artwork names, bounds, reparse/path escape, replacement
+races, cancellation, generation rotation, and existing decode/cache defenses.
+Both commits are integrated. The tests-only follow-up does not require replacing
+the already accepted production candidate. A redundant main-checkout rebuild
+attempt stopped at the recurring silent WidgetBridge restore/publish failure;
+it was not rerun because production/runtime inputs are unchanged and the exact
+accepted production candidate is already running.
 
 ### Accepted and integrated — DLV-249: Games & Apps session refresh and application artwork recovery
 
@@ -947,6 +909,9 @@ sources, or user files.
 9. DLV-218 is accepted and integrated through `d8b8861`.
 10. DLV-249 is physically accepted, focused-tested 64/64, integrated through
     `62589c5`, rebuilt coherently, and visibly launched as PID 47308.
+11. DLV-252 is physically accepted and integrated as `868ac4e` plus `68b0de8`;
+    focused provider evidence is 78/78 and accepted candidate PID 44872 remains
+    running because the post-acceptance integration delta was tests only.
 
 ## Manual and packaged evidence
 
@@ -979,11 +944,11 @@ sources, or user files.
 | DLV-241 | `44bd220` plus `5ec3905` integrated as `0c264c5` plus `1ab2e0d`: single native materializer/session admission owner, bounded atomic protocol-v18 update activation, checkpoint fallback, focused native evidence, and one exact aggregate retained red on the inherited silent managed restore failure after verifier self-tests passed. |
 | DLV-240 | `c7f9dfa` plus `11b0ca6` integrated as `485a935` plus `cb45a31`: bounded managed checkpoint/update contract, automatic SDK diff, frozen runtime-v2 compatibility, and no native traffic activation before DLV-241. |
 | DLV-246 | `4210be7` integrated as `0e75203`: bounded overlapped activation lifecycle, same authenticated singleton/pipe, 26 direct checks, and successful live second-invocation smoke. |
-| DLV-217 | User-approved aggregate exception integrated through `1453a4c`: autonomous full-trust Community Game Launcher, ordinary package lifecycle, public SDK/export path, and registered Community verification. |
 | DLV-239 | Integrated as `7cc5839`: retained per-widget checkpoints, explicit refresh state, current-lifecycle refresh queuing, and inert retained authority. |
 | DLV-244 | Integrated through `94c4873`: stable applied chrome HWND, local guide/tray surfaces, coordinated Z-order, panel-local content, and durable destination authority. |
 | DLV-250 | Physically accepted and integrated as `6eadfa7` plus `fe25705`: catalog-gated first-visible Settings with tray focus, ordinary Guide reopen preserved, and exact fixed-chrome startup placement. |
 | DLV-251 | Physically accepted and integrated as `67cf05b`, `261fe01`, and `55ec269`: first activation awaits required typed audio publication/failure, optional work follows required data, and focused Audio Mixer evidence passes 45/45. |
+| DLV-252 | Physically accepted and integrated as `868ac4e` plus `68b0de8`: bounded modern Steam provider-icon discovery with deterministic legacy fallback and 78/78 focused checks; accepted candidate PID 44872 is retained under the tests-only no-relaunch rule. |
 
 Do not mark the continuing delivery goal complete. Continue until the user
 pauses/replaces it or all useful lanes are genuinely blocked. Never push.

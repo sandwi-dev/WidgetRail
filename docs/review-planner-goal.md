@@ -65,8 +65,11 @@ You own:
 - Integrating accepted implementation branches or accepted contiguous commit
   prefixes into local `main`.
 - Refreshing and launching the visible local Release overlay after every
-  accepted implementation milestone is integrated so the user can test the
-  latest accepted product state.
+  accepted integrated milestone that changes production/runtime artifact
+  inputs so the user can test the latest accepted product state. When the only
+  post-acceptance delta is tests or reviewer-owned documentation and the
+  running accepted candidate already contains the integrated production
+  commit, do not rebuild or relaunch merely for that non-production delta.
 - For a user-directed physical-first UI correction, source-reviewing and
   visibly launching an exact production-only implementation-branch candidate
   before tests or integration, clearly labelled unaccepted, so the user can
@@ -371,7 +374,15 @@ ordinary safety boundaries. It changes the ordering of physical acceptance and
 automated regression work so tests encode accepted behavior rather than
 legitimizing a visibly wrong implementation.
 
-After every accepted implementation milestone is integrated into local `main`:
+After every accepted implementation milestone that changes production/runtime
+artifact inputs is integrated into local `main`:
+
+If the only newly integrated delta after the user's production acceptance is
+tests or reviewer-owned documentation, and the running accepted candidate was
+built from the same now-integrated production commit, skip this build/relaunch
+procedure. Retain and report the existing accepted instance instead. This
+exception does not apply when any source, package, manifest, generated runtime
+input, or other launched artifact input changed.
 
 1. Ensure the main worktree is clean and identify the exact integrated commit.
 2. Refresh the main worktree's Release artifacts with the smallest documented
@@ -517,6 +528,10 @@ Then repeat the loop.
   main through `0cf92e2`; its coherent integrated Release runs visibly as PID
   47244 with executable SHA-256
   `32FF564BE7C30062227F4C98D9774C6BAC7BAC0F02CCE85E9CD001CD85B84937`.
+  DLV-252 production commit `868ac4e` and focused-test commit `68b0de8` are
+  accepted and integrated. The user accepted exact candidate PID 44872, and
+  the provider suite passes 78/78. Retain that running candidate: the later
+  integrated delta is tests only, so it does not trigger a rebuild/relaunch.
 - Active platform implementation uses the clean isolated worktree
   `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative`. Preserve the
   rejected one-HWND correction branch `codex/impl-platform-integration` at
@@ -850,8 +865,10 @@ manual debt. For rejected work report the concrete gap and correction sent.
 
 At setup or architecture changes, report task identities, branches/worktrees,
 heartbeat state, current assignments, and the next integration checkpoint. For
-every accepted integrated milestone, also report the visible overlay launch
-result so the user knows the latest build is ready to test.
+every accepted integrated production/runtime milestone, also report the visible
+overlay launch result so the user knows the latest build is ready to test. For
+a tests-only or reviewer-doc-only follow-up, report that the accepted production
+instance was intentionally retained under the no-relaunch rule.
 
 Never claim the overall product is polished, secure, accessible, performant, or
 complete without evidence satisfying the ship gates in
