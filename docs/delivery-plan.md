@@ -223,7 +223,7 @@ user decision. The native overlay is the sole production presentation path.
 
 | Lane | Task/worktree | State |
 | --- | --- | --- |
-| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | DLV-242 is accepted and integrated through `0cf92e2`. DLV-243 native correction `1e7a8a7` plus Audio Mixer correction `ed4fd8b` are source-reviewed and running coherently as temporary candidate `a31869b`, PID 41228; the user's next physical verdict is pending and no tests/integration occurred. DLV-250 follows it. DLV-248 remains deferred. Preserve accepted DLV-246 branch `codex/impl-platform-process-owner` and completed `codex/impl-platform-snapshot-cache` / `codex/impl-platform-fixed-chrome`. |
+| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | DLV-242 is accepted and integrated through `0cf92e2`. DLV-243 candidate `a31869b` is physically rejected: a render sequence was mistaken for provider acknowledgement and prematurely cleared optimistic slider state. Implement the bounded same-DLV production-only correction below; no tests/integration before the next user verdict. DLV-250 follows it. DLV-248 remains deferred. Preserve accepted DLV-246 branch `codex/impl-platform-process-owner` and completed `codex/impl-platform-snapshot-cache` / `codex/impl-platform-fixed-chrome`. |
 | Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | DLV-218 cumulative branch through `d8b8861` is accepted and integrated. DLV-249 is user-accepted and integrated through `62589c5`; focused Games & Apps evidence is 64/64. It preserves the resolved session snapshot across tray switches, keeps manual Refresh as the only post-startup full reconciliation owner, and retains selected-SavedId launch-time revalidation. Preserve the clean DLV-249, DLV-240, and DLV-218 branches. |
 
 The user explicitly approved the DLV-217 aggregate exception on 2026-08-15.
@@ -828,7 +828,8 @@ cherry-picked without integration onto current main as coherent candidate
 The user rejected it because application-session volume pending toggled the
 whole card background. Correction `ed4fd8b` limits that card state to discrete
 mute pending while preserving volume command authority. Coherent candidate
-`a31869b` is running as PID 41228; tests, verdict, and integration remain pending.
+`a31869b` was then rejected after live Audio Mixer input: Left was handled but the visible value could remain unchanged until Right then Left. Each handled input was followed 15–30 ms later by a new render snapshot without action failure. Render sequence advances on every requested render and is not provider acknowledgement; the host incorrectly cleared the optimistic target and restored the old authority before the queued result arrived.
+Correct this inside DLV-243's generic `SliderInteraction` owner. Retain pending state when an incoming snapshot still equals prior authority; settle on target match, genuine provider correction, exact typed action failure, or bounded timeout. Preserve latest-target stepping, focus/lifecycle/generation retirement, accessibility value ownership, bounded slider-only damage, and conservative full fallback. Do not add widget-specific logic, change SDK/protocol or Audio Mixer policy, or add/edit/run tests before the next physical verdict.
 
 ### Ready after DLV-243 — DLV-250: first-visible Settings and fixed-guide authority
 
@@ -951,9 +952,8 @@ sources, or user files.
 6. DLV-242 is accepted and integrated through `0cf92e2`; coherent integrated
    main is visibly running as PID 47244. DLV-248 item 4 remains explicitly
    deferred.
-7. DLV-243 corrected coherent candidate `a31869b` is running as PID 41228 for
-   slider review before tests or integration.
-8. After the user's DLV-243 verdict, implement DLV-250 and DLV-251 as separate
+7. DLV-243 candidate `a31869b` is physically rejected for premature optimistic reconciliation; its bounded same-DLV correction precedes tests/integration.
+8. After the user's corrected DLV-243 verdict, implement DLV-250 and DLV-251 as separate
    physical-first milestones. DLV-248 still requires later explicit promotion.
 9. DLV-218 is accepted and integrated through `d8b8861`.
 10. DLV-249 is physically accepted, focused-tested 64/64, integrated through

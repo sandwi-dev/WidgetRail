@@ -546,8 +546,13 @@ Then repeat the loop.
   correction `1e7a8a7` retains exact affected slider identities and bounded
   slider/focus damage. Audio Mixer correction `ed4fd8b` removes continuous
   volume pending from the whole card while retaining discrete mute pending.
-  Coherent candidate `a31869b` is visibly running as PID 41228 without tests;
-  do not integrate or add tests before the user's next physical verdict. The original
+  Coherent candidate `a31869b` is physically rejected: render sequence advanced
+  before the queued provider result and the host mistook that render serial for
+  acknowledgement, clearing the optimistic value back to the old authoritative
+  value. Keep the correction inside DLV-243: retain pending state while incoming
+  snapshots equal the prior authority; settle on target match, genuine provider
+  correction, exact action failure, or bounded timeout. Do not integrate or add
+  tests before the user's next physical verdict. The original
   pre-recovery branch remains
   preserved at `bdf6d88`; do not rewrite it. Its
   prior DLV-220 history remains preserved on `codex/impl-platform-community`.
