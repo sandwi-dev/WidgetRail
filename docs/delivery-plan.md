@@ -223,7 +223,7 @@ user decision. The native overlay is the sole production presentation path.
 
 | Lane | Task/worktree | State |
 | --- | --- | --- |
-| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | DLV-242 is accepted and integrated through `0cf92e2`. DLV-243 correction `8d3dfff` plus Audio Mixer correction `ed4fd8b` are physically rejected as coherent candidate `922385d`: first application-slider Left is admitted, but the host forces an old-authority snapshot before the queued action runs. A bounded production-only correction is assigned; no tests/integration occurred. DLV-250 follows it. DLV-248 remains deferred. Preserve accepted DLV-246 branch `codex/impl-platform-process-owner` and completed `codex/impl-platform-snapshot-cache` / `codex/impl-platform-fixed-chrome`. |
+| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | DLV-242 is accepted and integrated through `0cf92e2`. DLV-243 correction `8139c2b` plus prior platform/Audio Mixer corrections are source-reviewed and running coherently as temporary candidate `78b37a3`, PID 49596, SHA-256 `F7272C5D20A718338F23825A1080C15906C2054967E5FE20F08C0656424C744F`; physical verdict is pending and no tests/integration occurred. DLV-250 follows it. DLV-248 remains deferred. Preserve accepted DLV-246 branch `codex/impl-platform-process-owner` and completed `codex/impl-platform-snapshot-cache` / `codex/impl-platform-fixed-chrome`. |
 | Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | DLV-218 cumulative branch through `d8b8861` is accepted and integrated. DLV-249 is user-accepted and integrated through `62589c5`; focused Games & Apps evidence is 64/64. It preserves the resolved session snapshot across tray switches, keeps manual Refresh as the only post-startup full reconciliation owner, and retains selected-SavedId launch-time revalidation. Preserve the clean DLV-249, DLV-240, and DLV-218 branches. |
 
 The user explicitly approved the DLV-217 aggregate exception on 2026-08-15.
@@ -829,7 +829,7 @@ The user rejected it because application-session volume pending toggled the
 whole card background. Correction `ed4fd8b` limits that card state to discrete
 mute pending while preserving volume command authority. Coherent candidate
 `a31869b` was then rejected after live Audio Mixer input: Left was handled but a newer render serial with the old provider value prematurely cleared the optimistic target. Generic correction `8d3dfff` retains pending state for repeated prior authority and settles only on target match, genuine correction, typed failure, or timeout while keeping current-tree rollback identity.
-Coherent candidate `922385d` is also rejected: `handled=true` means queue admission, but the host immediately forces snapshot 150 before `OnActionAsync` mutates state; the action's later invalidation does not yield a distinct admission, so the second Left exposes the first result. For requested-value controller and UIA slider routes, retain optimistic damage but let post-action widget invalidation request authority; non-slider actions keep their immediate refresh. Tests remain deferred.
+Coherent candidate `922385d` is also rejected: `handled=true` means queue admission, but the host immediately forces snapshot 150 before `OnActionAsync` mutates state; the action's later invalidation does not yield a distinct admission, so the second Left exposes the first result. Correction `8139c2b` guards both controller and UIA requested-value slider refreshes, retaining optimistic pixels until post-action widget invalidation requests authority while non-slider actions keep immediate refresh. Coherent candidate `78b37a3` is running as PID 49596 with SHA-256 `F7272C5D20A718338F23825A1080C15906C2054967E5FE20F08C0656424C744F`; tests/integration await physical verdict.
 
 ### Ready after DLV-243 — DLV-250: first-visible Settings and fixed-guide authority
 
@@ -952,7 +952,7 @@ sources, or user files.
 6. DLV-242 is accepted and integrated through `0cf92e2`; coherent integrated
    main is visibly running as PID 47244. DLV-248 item 4 remains explicitly
    deferred.
-7. DLV-243 candidate `922385d` is physically rejected; its bounded queue-admission refresh correction is assigned before another Release launch, with tests/integration deferred.
+7. DLV-243 corrected coherent candidate `78b37a3` is running as PID 49596 for physical slider review before tests or integration.
 8. After the user's corrected DLV-243 verdict, implement DLV-250 and DLV-251 as separate
    physical-first milestones. DLV-248 still requires later explicit promotion.
 9. DLV-218 is accepted and integrated through `d8b8861`.
