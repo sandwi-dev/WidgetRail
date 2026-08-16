@@ -111,17 +111,17 @@ Snapshots are evidence only. This file is the sole authority for current work.
   arbitrary unknown capability IDs, and does not delete or reset the user's
   consent store. Focused evidence is PlatformBroker 52/52 and Settings 60/60;
   the coherent packaged Release build succeeded.
-- Corrected cumulative DLV-249 candidate `3fcb740`, `75bfefd`, and `e1a25e4`
-  is independently source-reviewed and visibly launched for the user's physical
-  verdict as PID 60920. Its exact executable SHA-256 is
-  `2E0E5FD7A823E815705123B2FE694135578666E52E10CD402823AF5DF04ABB3D`.
+- DLV-249 is user-accepted and integrated on main as `18c4527`, `b307cd0`,
+  `7b36d78`, and focused-test commit `62589c5`. The coherent integrated Release
+  is visibly launched as PID 47308 with executable SHA-256
+  `3599228CA1E821753203787BCE4D38942B8FD18308EFE36FA2554D05772E10A6`.
   The correction retains resolved Games & Apps rows, artwork, selection, and
   launchability across ordinary tray switches; the initial session load and
   top manual Refresh remain the only catalog-wide reconciliation routes, while
   launch still re-resolves exactly the selected SavedId before using current
-  authority. The exact build passed with packaging enabled. No tests ran and
-  nothing is integrated pending the user's visible refresh/icon/checking-state
-  verdict.
+  authority. The user accepted the physical refresh, artwork, and retained-row
+  behavior before tests were added. Focused Games & Apps evidence is 64/64 and
+  the exact coherent Release build passed with packaging enabled.
 - The approved checkpoint/update architecture is in
   [`widget-snapshot-cache-design.md`](widget-snapshot-cache-design.md). DLV-239
   through DLV-243 implement it serially.
@@ -224,7 +224,7 @@ user decision. The native overlay is the sole production presentation path.
 | Lane | Task/worktree | State |
 | --- | --- | --- |
 | Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | DLV-242 is accepted and integrated through `0cf92e2`; preserve `codex/impl-platform-native-impact` at `22ddfc0`. DLV-243 candidate `1cc4106` is rejected before launch; a bounded same-lane correction must retain exact slider identities through focus and timeout reconciliation instead of repainting the whole content HWND. DLV-248 remains deferred. Preserve accepted DLV-246 branch `codex/impl-platform-process-owner` and completed `codex/impl-platform-snapshot-cache` / `codex/impl-platform-fixed-chrome`. |
-| Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | DLV-218 cumulative branch through `d8b8861` is accepted and integrated. Corrected cumulative DLV-249 candidate through `e1a25e4` is source-reviewed and visibly running as PID 60920 for the user's physical verdict. It preserves the resolved session snapshot across tray switches, keeps manual Refresh as the only post-startup full reconciliation owner, and retains selected-SavedId launch-time revalidation. No tests ran and the chain remains unintegrated. Preserve the clean DLV-240 and DLV-218 branches. |
+| Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | DLV-218 cumulative branch through `d8b8861` is accepted and integrated. DLV-249 is user-accepted and integrated through `62589c5`; focused Games & Apps evidence is 64/64. It preserves the resolved session snapshot across tray switches, keeps manual Refresh as the only post-startup full reconciliation owner, and retains selected-SavedId launch-time revalidation. Preserve the clean DLV-249, DLV-240, and DLV-218 branches. |
 
 The user explicitly approved the DLV-217 aggregate exception on 2026-08-15.
 The preserved four-commit implementation chain was integrated onto current main
@@ -843,7 +843,7 @@ deferred by user decision and must not be mixed into DLV-242.
 DLV-240 is integrated. Accepted DLV-225/226/228/229/230 remain integrated. New
 styling/provider work requires fresh user evidence rather than speculation.
 
-### Assigned — DLV-249: Games & Apps session refresh and application artwork recovery
+### Accepted and integrated — DLV-249: Games & Apps session refresh and application artwork recovery
 
 Owner/baseline: widgets lane from exact clean planner main after this assignment.
 Create a new isolated `codex/` branch and preserve the completed DLV-218 and
@@ -903,9 +903,13 @@ set and repopulated it asynchronously. Bounded correction `e1a25e4` removes
 that activation-time reset and reconciliation while retaining initial-session
 resolution, explicit manual Refresh, affected-state library mutations, and
 single-SavedId just-in-time launch validation. The cumulative exact packaged
-Release build passed and is visibly running as PID 60920 with SHA-256
-`2E0E5FD7A823E815705123B2FE694135578666E52E10CD402823AF5DF04ABB3D`.
-No tests ran; user acceptance and integration remain pending.
+Release build passed and was visibly accepted by the user. Only after that
+acceptance, focused test commit `aaf7088` proved 64/64 for initial-session
+reconciliation, retained ordinary reactivation, manual refresh/last-good
+behavior, and exact selected-SavedId launch revalidation. The exact chain is
+integrated on main as `18c4527`, `b307cd0`, `7b36d78`, and `62589c5`. A coherent
+packaged main Release is visibly running as PID 47308 with SHA-256
+`3599228CA1E821753203787BCE4D38942B8FD18308EFE36FA2554D05772E10A6`.
 
 ### Accepted and integrated — DLV-218: remove retired domains
 
@@ -943,10 +947,8 @@ sources, or user files.
    for slider review before tests or integration.
 8. Platform implements DLV-248 only after a later explicit queue promotion.
 9. DLV-218 is accepted and integrated through `d8b8861`.
-10. Widgets implements DLV-249 independently from current planner main in
-    physical-first mode. After independent review, the planner builds and
-    launches the coherent candidate for the user's Games & Apps refresh/icon
-    verdict before any tests or integration.
+10. DLV-249 is physically accepted, focused-tested 64/64, integrated through
+    `62589c5`, rebuilt coherently, and visibly launched as PID 47308.
 
 ## Manual and packaged evidence
 

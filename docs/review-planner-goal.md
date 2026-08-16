@@ -495,11 +495,12 @@ Then repeat the loop.
   the host pipe. Style correction `75bfefd` passes packaging. Bounded lifecycle
   correction `e1a25e4` preserves the resolved session snapshot across ordinary
   activation, keeps initial-session/manual-Refresh reconciliation, and retains
-  exact selected-SavedId launch-time validation. The cumulative candidate is
-  independently source-reviewed and visibly running as PID 60920 with SHA-256
-  `2E0E5FD7A823E815705123B2FE694135578666E52E10CD402823AF5DF04ABB3D`.
-  No tests ran; do not integrate before the user's visible checking-state,
-  Refresh, and artwork verdict.
+  exact selected-SavedId launch-time validation. The user physically accepted
+  the corrected checking-state, Refresh, and artwork behavior before tests were
+  added. Focused Games & Apps evidence is 64/64. The chain is integrated on main
+  as `18c4527`, `b307cd0`, `7b36d78`, and `62589c5`; the coherent packaged
+  Release is visibly running as PID 47308 with SHA-256
+  `3599228CA1E821753203787BCE4D38942B8FD18308EFE36FA2554D05772E10A6`.
   DLV-217 is
   integrated on planner main through
   `1453a4c`; its original branch remains preserved on
