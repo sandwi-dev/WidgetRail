@@ -215,7 +215,7 @@ user decision. The native overlay is the sole production presentation path.
 
 | Lane | Task/worktree | State |
 | --- | --- | --- |
-| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | DLV-256 commits `005cfc7` and `25f31fe` are physically rejected as incomplete. Exact PID 23628 proves the remaining 681–1,114 ms stalls are wholly inside `DrawCurrentFrame` on warm-cache paint-only Spotify focus frames, not BeginDraw, EndDraw, or the completion fence. A bounded same-lane renderer correction is Assigned; tests remain prohibited. Test-recovery DLV-261 and DLV-262 are Ready behind it; DLV-248 remains deferred. |
+| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | DLV-256 commits `005cfc7` and `25f31fe` are physically rejected as incomplete. Production correction `3c6eb3c` is source-reviewed and visibly launched as unaccepted PID 30340; it promotes only measured half-surface partial updates and retains smaller incremental damage. Tests remain prohibited pending the user's latency verdict. Test-recovery DLV-261 and DLV-262 are Ready behind it; DLV-248 remains deferred. |
 | Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | DLV-253 is physically accepted, focused Games & Apps evidence is 65/65, and the cumulative chain is integrated on main as `6a26f08`, `3c63852`, and test-only `91177ec`. The superseded PID 51500 closed normally before the DLV-254 candidate launch; no rebuild/relaunch was performed for the DLV-253 tests alone. Preserve clean completed branches. |
 
 The user explicitly approved the DLV-217 aggregate exception on 2026-08-15.
@@ -650,6 +650,26 @@ frame merely to move the stall. Preserve the bitmap LRU, exact coordinate
 semantics, small bounded focus damage, fixed chrome, and all existing owners.
 Build one tests-skipped Release and stop for another physical verdict; do not
 write or run tests or integrate yet.
+
+Production-only correction `3c6eb3c` removes the disproven unconditional
+completion fence, retains the device-domain bitmap LRU, and promotes a partial
+content update to the full-surface path only when its physical damage covers at
+least half of the surface. This threshold contains all eight measured PID 23628
+stalls at 52.6–54.3%, while smaller focus, slider, and scroll damage remains on
+the incremental path. Threshold-only renderer timing now distinguishes
+preparation, presentation, clip setup, node/image/text drawing, deferred focus,
+and finalization if another frame exceeds 100 ms. Independent source review
+found no widget identity branch, second renderer/device/surface owner, coordinate
+change, provider/protocol change, or global disabling of incremental rendering.
+Deeper subtree draw culling and a retained focus-adornment surface are not part
+of this physical correction: the former requires a separately verified effect/
+overflow safety contract, and the latter adds composition-surface lifecycle.
+The coherent tests-skipped Release build passed with executable SHA-256
+`4FE3F602D5D5857CE136C79F8C91C9F7C2042CD49ABB6419823FBB689980BA03`.
+Rejected PID 23628 closed normally. This exact cumulative candidate is visibly
+running as unaccepted PID 30340 for the user's Spotify Queue, Playlists,
+playlist-track, artwork, and navigation-latency verdict. Do not add or run tests
+or integrate before that decision.
 
 ### Ready next — DLV-261: restore Platform Settings focused-suite parity
 
