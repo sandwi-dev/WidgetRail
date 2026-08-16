@@ -62,6 +62,10 @@ struct DeclarativeRenderTiming final {
     std::uint64_t nodeDrawMicroseconds{};
     std::uint64_t deferredFocusMicroseconds{};
     std::uint64_t finalizationMicroseconds{};
+    /// One bounded, render-local convergence summary. It is populated only
+    /// when focus following is slow, unusually iterative, or non-convergent;
+    /// the existing host slow-frame diagnostic remains the sole log owner.
+    std::wstring focusFollowSummary;
 };
 
 struct RenderResult final {

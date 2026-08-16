@@ -7210,7 +7210,12 @@ private:
     [[nodiscard]] static std::wstring SlowCompositionStageDiagnostic(
         const std::uint64_t totalMicroseconds,
         const CompositionFrameSet& frames) {
-        if (totalMicroseconds <= kSlowCompositionFrameMicroseconds) return {};
+        const bool hasFocusFollowSummary = frames.declarativeTiming &&
+            !frames.declarativeTiming->focusFollowSummary.empty();
+        if (totalMicroseconds <= kSlowCompositionFrameMicroseconds &&
+            !hasFocusFollowSummary) {
+            return {};
+        }
         const auto measured =
             frames.stageTiming.beginFrameMicroseconds +
             frames.stageTiming.resourceSetupMicroseconds +
@@ -7246,6 +7251,8 @@ private:
                 std::to_wstring(renderer.deferredFocusMicroseconds) +
                 L" slow-render-finalize-us=" +
                 std::to_wstring(renderer.finalizationMicroseconds);
+            if (!renderer.focusFollowSummary.empty())
+                diagnostic += L" " + renderer.focusFollowSummary;
         }
         diagnostic += L" slow-content-transport=";
         switch (frames.contentTransportWork) {
@@ -8105,8 +8112,11 @@ private:
         AppendCompositionCoordinateSample(0);
         const bool presentationChanged =
             priorPresentationPaintKey != lastWidgetPresentationPaintKey_;
+        const bool hasFocusFollowSummary = frames.declarativeTiming &&
+            !frames.declarativeTiming->focusFollowSummary.empty();
         if (replacement || presentationChanged || performanceCountersActive_ ||
-            drawMicroseconds > kSlowCompositionFrameMicroseconds) {
+            drawMicroseconds > kSlowCompositionFrameMicroseconds ||
+            hasFocusFollowSummary) {
             AppendDiagnostic(
                 L"Composition frame committed content=complete size=" +
                 std::to_wstring(width) + L"x" + std::to_wstring(height) +

@@ -34,6 +34,11 @@ constexpr float kButtonStateCueMaximumSize = 22.0F;
 constexpr float kButtonStateCueHeightFactor = 0.72F;
 constexpr std::size_t kMaximumScrollStateEntries = 4096;
 constexpr std::size_t kMaximumFocusFollowPasses = 32;
+constexpr std::size_t kMaximumFocusFollowDiagnosticNodes = 32;
+constexpr std::size_t kFocusFollowRetainedSamples = 4;
+constexpr std::size_t kMaximumFocusFollowDiagnosticIdentifierCharacters = 96;
+constexpr std::size_t kMaximumFocusFollowSummaryCharacters = 16384;
+constexpr std::uint64_t kSlowFocusFollowMicroseconds = 100000;
 constexpr float kRevealEpsilon = 0.01F;
 // Native layout and Direct2D rasterization can put a child edge no more than
 // one physical pixel beyond an otherwise matching fixed clip after scale
@@ -342,6 +347,55 @@ struct DeclarativeRenderer::RenderPass final {
         Rect ancestorClip;
         DeclarativeMotionSample motion;
     };
+
+    enum class FocusFollowPhase {
+        Layout,
+        Presentation,
+    };
+
+    struct FocusFollowNodeObservation final {
+        std::wstring id;
+        declarative::ScrollAxis axis{declarative::ScrollAxis::None};
+        float offset{};
+        float maximumOffset{};
+        Rect target;
+        Rect viewport;
+        bool targetVisible{};
+        bool leadingBoundary{};
+        bool trailingBoundary{};
+    };
+
+    struct FocusFollowSample final {
+        std::vector<FocusFollowNodeObservation> nodes;
+        bool allTargetsVisible{true};
+    };
+
+    struct FocusFollowNodeSummary final {
+        std::wstring id;
+        declarative::ScrollAxis axis{declarative::ScrollAxis::None};
+        float initialOffset{};
+        float finalOffset{};
+        float peakOffset{};
+        float maximumOffset{};
+        Rect target;
+        Rect viewport;
+        bool leadingBoundary{};
+        bool trailingBoundary{};
+    };
+
+    struct FocusFollowTrace final {
+        std::size_t passCount{};
+        std::uint64_t layoutMicroseconds{};
+        std::uint64_t presentationMicroseconds{};
+        bool converged{};
+        bool noProgress{};
+        bool cycle{};
+        bool boundHit{};
+        std::vector<FocusFollowNodeSummary> nodes;
+        std::vector<std::vector<float>> firstSamples;
+        std::vector<std::vector<float>> lastSamples;
+        std::vector<std::vector<float>> seenSamples;
+    } focusFollowTrace;
 
     DeclarativeRenderer* owner{};
     ID2D1RenderTarget* target{};
@@ -781,7 +835,7 @@ struct DeclarativeRenderer::RenderPass final {
         };
     }
 
-    [[nodiscard]] bool FollowFocusedDescendant(
+    [[nodiscard]] bool ApplyFocusedDescendantFollow(
         const bool usePresentationGeometry = false) {
         if (focusedId.empty()) return false;
         const auto* focusBox = layout.Find(NarrowStableId(focusedId));
@@ -810,6 +864,15 @@ struct DeclarativeRenderer::RenderPass final {
                 : focusBox->borderBox;
             const auto [atLeadingBoundary, atTrailingBoundary] =
                 FocusedBoundaryOf(scroll);
+            RecordFocusFollowNodeMetadata(
+                scroll.id,
+                scrollBox->scrollAxis,
+                scrollBox->scrollOffset,
+                scrollBox->maximumScrollOffset,
+                targetRect,
+                viewportBox,
+                atLeadingBoundary,
+                atTrailingBoundary);
             const auto focusVisibleAt = [&](const float candidateOffset) {
                 const float delta = scrollBox->scrollOffset - candidateOffset;
                 if (scrollBox->scrollAxis == declarative::ScrollAxis::Vertical) {
@@ -855,6 +918,339 @@ struct DeclarativeRenderer::RenderPass final {
             }
         }
         return changed;
+    }
+
+    [[nodiscard]] static std::wstring BoundedFocusFollowIdentifier(
+        const std::wstring_view value) {
+        std::wstring result;
+        result.reserve(std::min(
+            value.size(), kMaximumFocusFollowDiagnosticIdentifierCharacters));
+        for (const auto character : value) {
+            if (result.size() >=
+                kMaximumFocusFollowDiagnosticIdentifierCharacters) {
+                break;
+            }
+            result.push_back(character >= L' ' && character != 0x7f
+                ? character
+                : L'_');
+        }
+        return result;
+    }
+
+    void RecordFocusFollowNodeMetadata(
+        const std::wstring_view id,
+        const declarative::ScrollAxis axis,
+        const float offset,
+        const float maximumOffset,
+        const Rect target,
+        const Rect viewportBounds,
+        const bool leadingBoundary,
+        const bool trailingBoundary) {
+        const auto boundedId = BoundedFocusFollowIdentifier(id);
+        auto found = std::find_if(
+            focusFollowTrace.nodes.begin(), focusFollowTrace.nodes.end(),
+            [&](const FocusFollowNodeSummary& node) {
+                return node.id == boundedId;
+            });
+        if (found == focusFollowTrace.nodes.end()) {
+            if (focusFollowTrace.nodes.size() >=
+                kMaximumFocusFollowDiagnosticNodes) {
+                return;
+            }
+            focusFollowTrace.nodes.push_back(FocusFollowNodeSummary{
+                boundedId,
+                axis,
+                offset,
+                offset,
+                offset,
+                maximumOffset,
+                target,
+                viewportBounds,
+                leadingBoundary,
+                trailingBoundary,
+            });
+            return;
+        }
+        found->axis = axis;
+        found->maximumOffset = maximumOffset;
+        found->target = target;
+        found->viewport = viewportBounds;
+        found->leadingBoundary = leadingBoundary;
+        found->trailingBoundary = trailingBoundary;
+    }
+
+    [[nodiscard]] FocusFollowSample CaptureFocusFollowSample(
+        const bool usePresentationGeometry) const {
+        FocusFollowSample sample;
+        const auto* focusBox = layout.Find(NarrowStableId(focusedId));
+        const auto presentedFocus = presentation.find(NarrowStableId(focusedId));
+        if (focusedId.empty() || !focusBox ||
+            (usePresentationGeometry && presentedFocus == presentation.end())) {
+            return sample;
+        }
+        const auto path = FocusPath();
+        if (path.empty()) return sample;
+        for (const auto* item : path) {
+            if (sample.nodes.size() >= kMaximumFocusFollowDiagnosticNodes) break;
+            if (!item || item->kind != L"scroll") continue;
+            const auto* scrollBox = layout.Find(NarrowStableId(item->id));
+            if (!scrollBox ||
+                scrollBox->scrollAxis == declarative::ScrollAxis::None) {
+                continue;
+            }
+            const auto presentedScroll = presentation.find(NarrowStableId(item->id));
+            if (usePresentationGeometry && presentedScroll == presentation.end())
+                continue;
+
+            const auto key = ScrollStateKey(item->id);
+            const auto retained = owner->scrollOffsets_.find(key);
+            const float offset = retained != owner->scrollOffsets_.end()
+                ? retained->second.offset
+                : scrollBox->scrollOffset;
+            const auto viewportBox = usePresentationGeometry
+                ? presentedScroll->second.contentBox
+                : scrollBox->contentBox;
+            auto targetRect = usePresentationGeometry
+                ? presentedFocus->second.borderBox
+                : focusBox->borderBox;
+            const float offsetDelta = scrollBox->scrollOffset - offset;
+            if (scrollBox->scrollAxis == declarative::ScrollAxis::Vertical)
+                targetRect.y += offsetDelta;
+            else
+                targetRect.x += offsetDelta;
+            const bool visible = scrollBox->scrollAxis ==
+                    declarative::ScrollAxis::Vertical
+                ? targetRect.y >= viewportBox.y - kRevealEpsilon &&
+                    targetRect.y + targetRect.height <=
+                        viewportBox.y + viewportBox.height + kRevealEpsilon
+                : targetRect.x >= viewportBox.x - kRevealEpsilon &&
+                    targetRect.x + targetRect.width <=
+                        viewportBox.x + viewportBox.width + kRevealEpsilon;
+            sample.nodes.push_back(FocusFollowNodeObservation{
+                BoundedFocusFollowIdentifier(item->id),
+                scrollBox->scrollAxis,
+                offset,
+                scrollBox->maximumScrollOffset,
+                targetRect,
+                viewportBox,
+                visible,
+                false,
+                false,
+            });
+            sample.allTargetsVisible = sample.allTargetsVisible && visible;
+        }
+        return sample;
+    }
+
+    [[nodiscard]] static bool SameFocusFollowOffsets(
+        const std::vector<float>& left,
+        const std::vector<float>& right) noexcept {
+        if (left.size() != right.size()) return false;
+        for (std::size_t index = 0; index < left.size(); ++index) {
+            if (std::abs(left[index] - right[index]) > kRevealEpsilon)
+                return false;
+        }
+        return true;
+    }
+
+    [[nodiscard]] static std::vector<float> FocusFollowOffsets(
+        const FocusFollowSample& sample) {
+        std::vector<float> result;
+        result.reserve(sample.nodes.size());
+        for (const auto& node : sample.nodes) result.push_back(node.offset);
+        return result;
+    }
+
+    void RetainFocusFollowSample(const std::vector<float>& offsets) {
+        if (focusFollowTrace.firstSamples.size() < kFocusFollowRetainedSamples)
+            focusFollowTrace.firstSamples.push_back(offsets);
+        focusFollowTrace.lastSamples.push_back(offsets);
+        if (focusFollowTrace.lastSamples.size() > kFocusFollowRetainedSamples)
+            focusFollowTrace.lastSamples.erase(focusFollowTrace.lastSamples.begin());
+        constexpr auto maximumSeenSamples =
+            kMaximumFocusFollowPasses * 2U + 2U;
+        if (focusFollowTrace.seenSamples.size() < maximumSeenSamples)
+            focusFollowTrace.seenSamples.push_back(offsets);
+    }
+
+    void UpdateFocusFollowNodes(
+        const FocusFollowSample& sample,
+        const bool initial) {
+        for (const auto& observed : sample.nodes) {
+            auto found = std::find_if(
+                focusFollowTrace.nodes.begin(), focusFollowTrace.nodes.end(),
+                [&](const FocusFollowNodeSummary& node) {
+                    return node.id == observed.id;
+                });
+            if (found == focusFollowTrace.nodes.end()) {
+                if (focusFollowTrace.nodes.size() >=
+                    kMaximumFocusFollowDiagnosticNodes) {
+                    continue;
+                }
+                focusFollowTrace.nodes.push_back(FocusFollowNodeSummary{
+                    observed.id,
+                    observed.axis,
+                    observed.offset,
+                    observed.offset,
+                    observed.offset,
+                    observed.maximumOffset,
+                    observed.target,
+                    observed.viewport,
+                    observed.leadingBoundary,
+                    observed.trailingBoundary,
+                });
+                continue;
+            }
+            if (initial) found->initialOffset = observed.offset;
+            found->finalOffset = observed.offset;
+            found->peakOffset = std::max(found->peakOffset, observed.offset);
+            found->maximumOffset = observed.maximumOffset;
+            found->target = observed.target;
+            found->viewport = observed.viewport;
+        }
+    }
+
+    void RecordFocusFollowPass(
+        const FocusFollowSample& before,
+        const FocusFollowSample& after,
+        const bool changed) {
+        if (before.nodes.empty() && after.nodes.empty()) return;
+        const auto beforeOffsets = FocusFollowOffsets(before);
+        const auto afterOffsets = FocusFollowOffsets(after);
+        if (focusFollowTrace.passCount == 0) {
+            UpdateFocusFollowNodes(before, true);
+            RetainFocusFollowSample(beforeOffsets);
+        }
+        ++focusFollowTrace.passCount;
+        const bool repeatedWithoutProgress =
+            SameFocusFollowOffsets(beforeOffsets, afterOffsets);
+        if (changed && repeatedWithoutProgress) focusFollowTrace.noProgress = true;
+        if (changed && !repeatedWithoutProgress) {
+            const bool seenBefore = std::any_of(
+                focusFollowTrace.seenSamples.begin(),
+                focusFollowTrace.seenSamples.end(),
+                [&](const std::vector<float>& prior) {
+                    return SameFocusFollowOffsets(prior, afterOffsets);
+                });
+            if (seenBefore) focusFollowTrace.cycle = true;
+        } else if (!changed) {
+            if (after.allTargetsVisible) focusFollowTrace.converged = true;
+            else focusFollowTrace.noProgress = true;
+        }
+        UpdateFocusFollowNodes(after, false);
+        RetainFocusFollowSample(afterOffsets);
+    }
+
+    [[nodiscard]] bool FollowFocusedDescendant(
+        const bool usePresentationGeometry) {
+        const auto before = CaptureFocusFollowSample(usePresentationGeometry);
+        const bool changed = ApplyFocusedDescendantFollow(usePresentationGeometry);
+        const auto after = CaptureFocusFollowSample(usePresentationGeometry);
+        RecordFocusFollowPass(before, after, changed);
+        return changed;
+    }
+
+    void AddFocusFollowElapsed(
+        const FocusFollowPhase phase,
+        const std::uint64_t microseconds) noexcept {
+        if (phase == FocusFollowPhase::Layout)
+            focusFollowTrace.layoutMicroseconds += microseconds;
+        else
+            focusFollowTrace.presentationMicroseconds += microseconds;
+    }
+
+    [[nodiscard]] static std::wstring FocusFollowRectText(const Rect value) {
+        return std::to_wstring(value.x) + L"," + std::to_wstring(value.y) +
+            L"," + std::to_wstring(value.width) + L"," +
+            std::to_wstring(value.height);
+    }
+
+    [[nodiscard]] static std::wstring FocusFollowOffsetsText(
+        const std::vector<std::vector<float>>& samples) {
+        std::wstring result{L"["};
+        for (std::size_t sampleIndex = 0;
+             sampleIndex < samples.size(); ++sampleIndex) {
+            if (sampleIndex != 0) result += L";";
+            result += L"(";
+            for (std::size_t offsetIndex = 0;
+                 offsetIndex < samples[sampleIndex].size(); ++offsetIndex) {
+                if (offsetIndex != 0) result += L",";
+                result += std::to_wstring(samples[sampleIndex][offsetIndex]);
+            }
+            result += L")";
+        }
+        result += L"]";
+        return result;
+    }
+
+    [[nodiscard]] std::wstring BuildFocusFollowSummary() const {
+        const auto aggregateMicroseconds =
+            focusFollowTrace.layoutMicroseconds +
+            focusFollowTrace.presentationMicroseconds;
+        const bool shouldEmit =
+            aggregateMicroseconds > kSlowFocusFollowMicroseconds ||
+            focusFollowTrace.passCount > 2U ||
+            focusFollowTrace.noProgress ||
+            focusFollowTrace.cycle ||
+            focusFollowTrace.boundHit;
+        if (!shouldEmit || focusFollowTrace.nodes.empty()) return {};
+
+        const std::wstring_view disposition = focusFollowTrace.boundHit
+            ? L"bound-hit"
+            : focusFollowTrace.cycle
+                ? L"cycle"
+                : focusFollowTrace.noProgress
+                    ? L"no-progress"
+                    : L"converged";
+        std::wstring summary =
+            L"focus-follow instance=" + BoundedFocusFollowIdentifier(
+                snapshot ? std::wstring_view{snapshot->instanceId}
+                         : std::wstring_view{}) +
+            L" sequence=" + std::to_wstring(snapshot ? snapshot->sequence : 0) +
+            L" focus=" + BoundedFocusFollowIdentifier(focusedId) +
+            L" passes=" + std::to_wstring(focusFollowTrace.passCount) +
+            L" layout-us=" +
+                std::to_wstring(focusFollowTrace.layoutMicroseconds) +
+            L" presentation-us=" +
+                std::to_wstring(focusFollowTrace.presentationMicroseconds) +
+            L" aggregate-us=" + std::to_wstring(aggregateMicroseconds) +
+            L" disposition=" + std::wstring{disposition} +
+            L" scrolls=[";
+        for (std::size_t index = 0;
+             index < focusFollowTrace.nodes.size(); ++index) {
+            if (index != 0) summary += L";";
+            const auto& node = focusFollowTrace.nodes[index];
+            const std::wstring_view axis =
+                node.axis == declarative::ScrollAxis::Vertical
+                ? L"vertical"
+                : node.axis == declarative::ScrollAxis::Horizontal
+                    ? L"horizontal"
+                    : L"none";
+            summary +=
+                L"{id=" + node.id +
+                L",axis=" + std::wstring{axis} +
+                L",initial=" + std::to_wstring(node.initialOffset) +
+                L",final=" + std::to_wstring(node.finalOffset) +
+                L",peak=" + std::to_wstring(node.peakOffset) +
+                L",maximum=" + std::to_wstring(node.maximumOffset) +
+                L",target=" + FocusFollowRectText(node.target) +
+                L",viewport=" + FocusFollowRectText(node.viewport) +
+                L",leading=" + (node.leadingBoundary ? L"true" : L"false") +
+                L",trailing=" + (node.trailingBoundary ? L"true" : L"false") +
+                L"}";
+        }
+        summary +=
+            L"] first-offsets=" +
+                FocusFollowOffsetsText(focusFollowTrace.firstSamples) +
+            L" last-offsets=" +
+                FocusFollowOffsetsText(focusFollowTrace.lastSamples);
+        if (summary.size() > kMaximumFocusFollowSummaryCharacters) {
+            constexpr std::wstring_view suffix{L"...<bounded>"};
+            summary.resize(
+                kMaximumFocusFollowSummaryCharacters - suffix.size());
+            summary += suffix;
+        }
+        return summary;
     }
 
     [[nodiscard]] bool AxisCanReveal(
@@ -1212,8 +1608,13 @@ struct DeclarativeRenderer::RenderPass final {
         // depth is bounded to 32, so this loop has a matching hard ceiling and
         // performs no relayout once offsets are stable.
         if (followStaticFocus) {
+            const auto followStarted = std::chrono::steady_clock::now();
+            std::size_t followAttempts{};
+            bool lastFollowChanged{};
             for (std::size_t pass = 0; pass < kMaximumFocusFollowPasses; ++pass) {
-                if (!FollowFocusedDescendant()) break;
+                ++followAttempts;
+                lastFollowChanged = FollowFocusedDescendant(false);
+                if (!lastFollowChanged) break;
                 prepared.clear();
                 textMeasurements.clear();
                 auto revealedRoot = PrepareNode(
@@ -1231,6 +1632,15 @@ struct DeclarativeRenderer::RenderPass final {
                     },
                     layoutOptions);
             }
+            if (followAttempts == kMaximumFocusFollowPasses &&
+                lastFollowChanged) {
+                focusFollowTrace.boundHit = true;
+            }
+            AddFocusFollowElapsed(
+                FocusFollowPhase::Layout,
+                static_cast<std::uint64_t>(
+                    std::chrono::duration_cast<std::chrono::microseconds>(
+                        std::chrono::steady_clock::now() - followStarted).count()));
         }
         SynchronizeScrollState();
         for (const auto& issue : layout.issues) {
@@ -2321,14 +2731,19 @@ RenderResult DeclarativeRenderer::Render(
         pass.BuildLayout();
     }
     const auto preparationFinished = std::chrono::steady_clock::now();
+    const auto presentationFollowStarted = preparationFinished;
     bool presentationMatchesLayout = false;
+    std::size_t presentationFollowAttempts{};
+    bool lastPresentationFollowChanged{};
     for (std::size_t followPass = 0;
          followPass < kMaximumFocusFollowPasses;
          ++followPass) {
+        ++presentationFollowAttempts;
         pass.presentation.clear();
         pass.ResolvePresentation(snapshot.root, 0.0F, 0.0F, viewport);
         presentationMatchesLayout = true;
-        if (!pass.FollowFocusedDescendant(true)) break;
+        lastPresentationFollowChanged = pass.FollowFocusedDescendant(true);
+        if (!lastPresentationFollowChanged) break;
         // A translated focused descendant may cross a scroll boundary even
         // when its static layout box was visible. Rebuild against the updated
         // host-owned offset and converge with the same hard bound used by
@@ -2336,11 +2751,20 @@ RenderResult DeclarativeRenderer::Render(
         presentationMatchesLayout = false;
         pass.BuildLayout(false);
     }
+    if (presentationFollowAttempts == kMaximumFocusFollowPasses &&
+        lastPresentationFollowChanged) {
+        pass.focusFollowTrace.boundHit = true;
+    }
     if (!presentationMatchesLayout) {
         pass.presentation.clear();
         pass.ResolvePresentation(snapshot.root, 0.0F, 0.0F, viewport);
     }
     const auto presentationFinished = std::chrono::steady_clock::now();
+    pass.AddFocusFollowElapsed(
+        RenderPass::FocusFollowPhase::Presentation,
+        static_cast<std::uint64_t>(
+            std::chrono::duration_cast<std::chrono::microseconds>(
+                presentationFinished - presentationFollowStarted).count()));
     const auto cornerRadius = std::isfinite(options.surfaceCornerRadiusPx)
         ? std::clamp(options.surfaceCornerRadiusPx, 0.0F,
                      std::min(viewport.width, viewport.height) * 0.5F)
@@ -2474,6 +2898,7 @@ RenderResult DeclarativeRenderer::Render(
         elapsed(nodeDrawFinished, deferredFocusFinished),
         elapsed(deferredFocusFinished, finalizationFinished),
     };
+    pass.result.timing.focusFollowSummary = pass.BuildFocusFollowSummary();
     return pass.result;
 }
 
