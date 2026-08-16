@@ -10,6 +10,8 @@ The complete pre-snapshot-cache plan is in the
 [2026-08-14 15:45 snapshot](history/delivery-plan/2026-08-14T15-45-17-07-00.md).
 The complete DLV-244 physical-recovery and review record is in the
 [2026-08-15 07:30 snapshot](history/delivery-plan/2026-08-15T07-30-00-07-00.md).
+The complete pre-DLV-256 plan is in the
+[2026-08-16 03:27 snapshot](history/delivery-plan/2026-08-16T03-27-50-07-00.md).
 Snapshots are evidence only. This file is the sole authority for current work.
 
 ## Current baseline
@@ -213,7 +215,7 @@ user decision. The native overlay is the sole production presentation path.
 
 | Lane | Task/worktree | State |
 | --- | --- | --- |
-| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | DLV-254 is Assigned from the planner assignment commit above product tip `68b0de8`: add an Appearance toggle that disables only tray-driven widget-switch envelope animation. DLV-248 remains deferred. |
+| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | DLV-254 is Assigned from the planner assignment commit above product tip `68b0de8`. DLV-256 is Ready next for the reproduced Spotify artwork paint stalls. DLV-248 remains deferred. |
 | Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | DLV-253 is Assigned from the planner assignment commit above product tip `68b0de8`: stop ordinary Games & Apps tray activation from replacing a current retained library with transient/full checkpoints. Preserve clean completed branches. |
 
 The user explicitly approved the DLV-217 aggregate exception on 2026-08-15.
@@ -240,603 +242,11 @@ behavior-preserving extraction seams, dependencies, risk, and focused proof,
 and distinguish real ownership reduction from cosmetic file splitting. This is
 analysis only: no production/test edits, build, or relaunch.
 
-## Dispositioned temporary red-test lane
-
-### Rejected for integration — DLV-245: independently disposition unreliable native host tests
-
-The temporary lane is closed and its worktree/branch remain preserved for
-evidence. Candidate `c5ac8b5` and the later uncommitted test-only correction are
-not accepted or integrated:
-
-- `OverlayProcessOwnerTests.exe` reached profile/window setup and then the first
-  `Begin` call exceeded the exact 20-second PID bound. This is production-owned
-  DLV-246, not a test-only repair.
-- The widget-switch route's old stationarity assertion compared screen-space
-  tray coordinates with client-local DIPs. The corrected assertion required an
-  authoritative Composition child sample with an exact applied chrome HWND and
-  preserved guide/tray screen rectangles.
-- The one authorized corrected route passed compilation and initial geometry,
-  but after catalog restoration from nine to eight entries it emitted no such
-  authoritative sample before selection. Proving that extra checkpoint would
-  require further harness synchronization or new production diagnostics. It is
-  not required to accept the already user-verified DLV-244 behavior, and the
-  proportionality stop rule forbids another harness campaign.
-- The existing production-profile OverlayHost remained untouched. No aggregate
-  ran and no production, protocol, SDK, diagnostics, or reviewer files changed.
-
-The original assignment text remains below as the exact scope that was
-dispositioned.
-
-Owner/baseline: temporary red-test task from current planner main. This lane may
-edit only directly implicated test sources, test-support/harness code, and their
-build invocation. It must not edit production sources, public protocol/SDK,
-widget packages, providers, runtime behavior, or reviewer-owned documents.
-
-Investigate two exact red cases independently:
-
-1. The DLV-244 isolated widget-switch route whose temporary host exited before
-   authenticated readiness and produced neither `overlay.log` nor
-   `startup-error.log`.
-2. The Release refresh's `OverlayProcessOwnerTests.exe` hang after compilation.
-
-Required process:
-
-- Reproduce each case at most once initially, separately, using a unique
-  process profile, isolated temporary runtime/state, and bounded timeout.
-- Determine whether each failure is a product defect, harness defect, missing
-  adjacent runtime/dependency, environment limitation, or obsolete/duplicated
-  assertion. Do not infer a cause from an empty log.
-- If a production defect is exposed, stop that case and report the exact
-  production path to the planner; do not fix it in this lane.
-- If the harness is repairable, make the smallest deterministic test-only fix
-  and run that exact test once after correction.
-- A test may be removed only when its behavior is obsolete, invalid, or fully
-  duplicated by named retained coverage. The commit must identify the redundant
-  assertions and replacement coverage. Never remove a test merely because it
-  is difficult or red.
-- Preserve unique process profiles, authenticated ownership boundaries, bounded
-  shutdown, last-good logs, and cleanup of only lane-owned temporary processes
-  and files. Never attach to, activate, close, or reuse the production profile.
-- Do not run the product aggregate or unrelated suites. Do not modify tests to
-  bless failed product behavior or weaken a required stationarity, destination,
-  lifecycle, security, or cleanup assertion.
-
-Deliver one committed test-only candidate with exact disposition per case,
-diff, commands, timeout, pass/red result, and residual risk. Stop for production
-code changes, undocumented APIs, a material coverage decision, destructive
-cleanup, or overlap with DLV-239 files.
-
 ## Platform lane
 
-### Accepted and integrated — DLV-247: migrate intentionally retired consent capabilities
+Closed red-test and accepted platform history through DLV-252 is retained in the
+[2026-08-16 03:27 snapshot](history/delivery-plan/2026-08-16T03-27-50-07-00.md).
 
-Owner/baseline: platform lane from exact clean planner main `45b024c`. Create a
-new isolated `codex/` branch at that baseline and preserve DLV-242 branch
-`codex/impl-platform-native-impact` at `3bd8c80`. This assignment owns only the
-overlay-owned consent persistence boundary, its directly affected focused
-tests, implementation-owned status/public consent documentation when required,
-and the coherent Release build. It must not edit DLV-242 native presentation
-files or any widget implementation.
-
-Motivating evidence: the current consent document is valid JSON and contains
-current grants for Audio Mixer, but it also retains 66 decisions for six
-Spotify capability IDs intentionally removed by DLV-218:
-
-- `external.spotify.authorization.v1`
-- `external.spotify.configuration.v1`
-- `external.spotify.local-playback.v1`
-- `external.spotify.playback.control.v1`
-- `external.spotify.playback.read.v1`
-- `external.spotify.playlists.read.v1`
-
-`ConsentStore.ValidateAndMigrate` currently recognizes only the earlier recent-
-activity tombstone, so any one of those retired entries rejects the complete
-document as `invalid_consent`. Settings consequently blocks every permission;
-Audio Mixer maps the unknown capability failure to generic provider failure;
-Media Sessions logs the same typed code. Native selection, lifecycle, worker,
-snapshot admission, and rendering are not implicated.
-
-Required behavior:
-
-- Register those six exact immutable IDs with the existing retired-capability
-  migration owner. Do not reintroduce them into `PlatformCapabilities`, the SDK,
-  manifests, broker domains, providers, Settings permission rows, or runtime
-  authority.
-- A bounded valid document containing any mixture of those retired entries and
-  current entries loads successfully. Retired decisions never authorize a
-  broker request and are omitted by the existing migration/write path; current
-  decisions, revision semantics, ordering, locking, atomic writes, path safety,
-  and document bounds remain intact.
-- Arbitrary unknown capability IDs, malformed decisions, duplicate live keys,
-  unsafe paths, and oversized documents remain fail-closed with their existing
-  typed errors. Do not bless an `external.spotify.*` prefix or another broad
-  namespace; only the six published retired IDs are compatible tombstones.
-- Preserve all current consent decisions and every external credential,
-  account, provider file, installed package, and package-owned state. Do not
-  delete, reset, rewrite, or manually edit the user's live consent file as part
-  of implementation or verification.
-- Keep the correction inside the existing `ConsentStore` ownership model; do
-  not add another migration service, compatibility registry, broker authority,
-  or per-widget handling.
-
-Verification: compile the affected managed projects and run only the directly
-affected deterministic consent/broker tests using test-owned temporary stores.
-Prove all six exact tombstones across multiple package/publisher identities,
-mixed current grants remaining readable, retirement on the next atomic write,
-arbitrary unknown rejection, and duplicate/malformed rejection. Build one
-coherent Release with packaging enabled. Do not run Tier 2, Tier 3, provider or
-hardware tests, and do not mutate the live consent store. The planner will
-independently review the commit, integrate it, rebuild main, relaunch visibly,
-and inspect Settings plus capability-backed widget logs with the user.
-
-Stop for deletion/reset of the whole consent store, migration of unrelated
-state, a new public compatibility promise, a new capability/broker authority,
-scope overlap with DLV-242, destructive cleanup, substantial conflicts,
-credentials, or external publication. Never push.
-
-Accepted implementation `7b63f0c` was cherry-picked to main as `a77182d`.
-It adds only the six exact immutable retirement tombstones to the existing
-`ConsentStore` owner. It does not restore a capability, broker domain, provider,
-SDK contract, manifest declaration, or widget-specific compatibility path.
-All six tombstones, mixed current decisions, next-write retirement, near-match
-unknown rejection, duplicate rejection, malformed rejection, and Settings
-readability are covered by temporary-store tests. PlatformBroker passed 52/52,
-Settings passed 60/60, and the full packaged Release build succeeded. The live
-consent document was not manually edited or reset.
-
-### Accepted — DLV-244: fixed chrome and destination geometry
-
-Accepted behavior:
-
-- The guide/tray chrome HWND is bottom-centered from monitor work area, DPI,
-  interface/accessibility scale, appearance, and catalog/order only.
-- Widget identity, content extent, admission, provider updates, and motion do not
-  seed or reposition chrome.
-- Guide and tray render in independent `(0,0)` child-local surfaces. Physical
-  DirectComposition update offsets are normalized to the drawing coordinate
-  system before painting.
-- Content renders and transitions in its own panel-local envelope above the
-  guide. The transaction compares new identity/extent with a durable committed
-  destination, so a destination admission moves once and same-destination
-  refresh is repaint-only.
-- Backdrop, content, and chrome Z-order are applied as one operation. Pointer and
-  UIA projection use each HWND's actual applied coordinates.
-- Physical acceptance supersedes rejected historical variants. Full review and
-  failed-attempt detail is retained in the 2026-08-15 07:30 snapshot.
-
-### Accepted — DLV-237: correlated deferred widget admission trace
-
-The bounded in-memory trace correlates tray selection, posted/dequeued refresh,
-lifecycle decision, worker request, completion, admission, and meaningful A
-lifecycle changes by transition/request/generation. It does not log controller
-repeats or replace a file per input. The user and planner use it for joint live
-diagnosis; it is evidence, not a speculative behavior change.
-
-### Accepted — DLV-239: retain checkpoint and separate refresh state
-
-Integrated as `7cc5839`. The existing native session coordinator now owns
-explicit `Current`, `RefreshRequested`, and `RefreshInFlight` state beside its
-single retained checkpoint map. Ordinary invalidation retains each widget's own
-last-admitted checkpoint and envelope, visible retained content is inert, and
-refresh demand queues even when lifecycle is already current. Hard removal is
-limited to the documented restart/runtime/generation/protocol transitions.
-
-Motivating evidence: transition 23 returned from Games & Apps to Game Launcher
-with `currentSnapshot=false`. The refresh dequeued after 78 ms, but lifecycle
-reconciliation skipped `reason=already-current`, queued no request, crossed the
-250-ms threshold, and left Games & Apps pixels inert. Only closing/reopening
-created a new visible session and admitted Game Launcher.
-
-Accepted behavior:
-
-- Introduce explicit `Current`, `RefreshRequested`, and `RefreshInFlight` state
-  under the existing sole lifecycle/session owner.
-- Ordinary hidden/provider/appearance-derived invalidation retains the last
-  admitted semantic checkpoint and records refresh demand.
-- Selecting a widget immediately presents that widget's own retained checkpoint,
-  never another widget's pixels or envelope.
-- Refresh demand queues through the existing request owner even when worker
-  lifecycle is already current; `already-current` is not snapshot freshness.
-- Retained content is inert until current sequence/action authority is admitted.
-- Refresh failure, cancellation, and stale completion preserve last-good inert
-  presentation. Hard removal uses only the durable transitions above.
-- Appearance and derived-resource invalidation remain separate from semantic
-  checkpoint eviction.
-- Preserve bounded cache/resource counts and normal shutdown.
-
-Out of scope: public update protocol, SDK diffing, incremental Taffy/damage,
-new caches, eager waking of unloaded workers, residency changes, or DLV-240+.
-
-Evidence: 19 coordinator scenarios, overlay state/lifecycle, 305 action-feedback
-checks, placement 112,340, targeting 75, transition 83, chrome 119,
-accessibility 165, focus 49, host accessibility 34, renderer 4,851, eight-widget
-extent retention, zero hidden background refresh calls, and the native Release
-build passed. The single permitted linked-host attempt exited while publishing
-its unchanged fixture before host assertions and was not repeated. No aggregate.
-
-### Accepted and integrated — DLV-246: repair bounded process-owner startup hang
-
-Owner/baseline: platform `OverlayProcessOwner` production authority and its
-direct native executable test from exact accepted main `7cc5839`. This work is
-independent of the DLV-240 managed protocol files.
-
-Motivating evidence: isolated DLV-245 execution passed profile/window setup, then
-the first unique-profile `OverlayProcessOwner::Begin(profile, 3s, error)` did not
-return within the test's 20-second outer bound. The test-owned process was
-terminated and no later scenario executed. Treat this as a production-path
-startup/ownership defect until source evidence proves otherwise.
-
-Required behavior:
-
-- Identify the exact blocking wait or teardown edge in the sole process-owner
-  path; retain per-user/profile ownership and the authenticated bounded local
-  activation channel.
-- Every documented timeout remains a real upper bound even when the activation
-  endpoint cannot start, connect, accept, reply, or stop.
-- Preserve simultaneous-client serialization, malformed-client rejection,
-  orderly replacement, endpoint-squatter failure, stalled-owner timeout,
-  abandoned-owner recovery, and idempotent cleanup.
-- Do not add another singleton, pipe server, process profile, activation
-  transport, undocumented API, polling loop, or broad process termination.
-- Keep changes inside `OverlayProcessOwner.*`, its directly affected test, and
-  the narrow build invocation unless a concrete call edge requires another
-  existing platform-owner file.
-
-Verification: source-review every blocking Win32 call and ownership transition;
-run only `OverlayProcessOwnerTests.exe` under its existing 20-second exact-PID
-outer bound, then compile the native Release. Do not run the aggregate or a
-packaged host route. Report any branch that remains source-reviewed but cannot
-be exercised reliably rather than expanding the harness.
-
-Stop for a new transport/security model, undocumented Windows behavior,
-destructive cleanup, production-profile attachment, shared DLV-240 files, or a
-material change to cross-process activation semantics.
-
-Candidate `4210be7` was independently accepted and integrated as `0e75203`.
-The same per-user/profile mutex and authenticated named pipe now use bounded
-overlapped connect/read/write/reply/stop operations. Exact retained evidence
-passes 26 direct Release checks under the 20-second outer bound and a native
-Release build. After integration, a second exact `--show` invocation exited 0
-while visible owner PID 74420 remained resident. The distinct interactive-logon
-session branch remains source-reviewed rather than directly exercised.
-
-## Serialized snapshot update program
-
-### Accepted and integrated — DLV-240: managed update contract and SDK diff
-
-Owner/baseline: widgets lead from exact accepted main `7cc5839` for serialized
-WidgetProtocol, WidgetSdk, WidgetRuntime, and WidgetBridge work. Platform DLV-246
-must not edit shared protocol/bridge files.
-
-Version the atomic checkpoint/update contract and automatically produce typed
-property changes, keyed insert/remove/move, subtree replacement, and complete
-checkpoint fallback. Require base/new sequence plus instance/generation,
-complete-batch validation, stable-ID SDK diffing, property-impact metadata,
-identical-model no-op, deterministic fallback, capability negotiation, and
-bounds for operations/bytes/depth/nodes/queues. Authors do not hand-build
-patches; sandboxed and full-trust fixtures use the same contract.
-
-Verification: validator/JSON/version compatibility, operation/fallback/no-op/
-base-mismatch/malformed/oversized/coalescing cases, compiled public examples,
-and focused managed suites plus one bridge/runtime group. Do not activate update
-traffic or run Tier 3.
-
-Review correction: candidate `c7f9dfa` correctly kept native callers on full
-checkpoints, but changed the exact-match worker envelope from runtime protocol 2
-to 3. Already-installed immutable full-trust applications, including accepted
-DLV-217 Game Launcher, were built with `WidgetApplicationRuntime` protocol 2 and
-would be rejected during handshake before checkpoint fallback. Preserve v2
-envelope compatibility and prove a frozen-v2 application handshake/render plus
-the new explicitly negotiated update path. Also reject any operation batch that
-can construct an over-limit intermediate tree before final validation.
-
-Correction `11b0ca6` is accepted. It preserves runtime envelope protocol 2,
-keeps legacy `{}` rendering as a checkpoint, negotiates optional update fields,
-proves a frozen-v2 peer, and applies iterative depth/node/duplicate-ID bounds
-after every materializer operation before recursive traversal. The cumulative
-commits are integrated as `485a935` and `cb45a31`. Focused evidence passed SDK
-94/94 plus frozen-v2, current-peer negotiation, bridge update/classification,
-and direct affected runtime checks. One broader runtime attempt stalled after
-six passes and is not represented as a pass. Update traffic remains inactive
-until DLV-241.
-
-### Accepted and integrated — DLV-241: native materialized update admission
-
-Owner: platform. Negotiate and consume the bounded operation stream under the
-existing bridge/session/admission owners. Materialize a candidate off the
-presented checkpoint, validate the complete result, then atomically publish
-sequence, semantics, resources, action authority, focus/scroll reconciliation,
-UIA events, paint/layout effects, and fallback. Reject stale/mismatched/partial
-updates without mutating current state. Checkpoint fallback remains mandatory.
-
-This is the one exact Tier-3 protocol activation checkpoint after focused native
-and bridge coverage. Stop for another cache/materializer/session owner, partial
-visible publication, protocol ambiguity, or unbounded work.
-
-Candidate `44bd220` keeps the reviewed single bridge/session/materializer
-ownership and passes its focused native suites. Correction `5ec3905` registers
-the previously omitted managed presentation-session project exactly once. The
-clean exact-commit canonical run at
-`artifacts/verification/20260815T172817Z-f9f4c6ba` stopped in the verifier
-self-test before any product step because `scripts/verification-steps.json`
-omits the already-integrated
-`tests/WidgetPresentationSession.Tests/WidgetPresentationSession.Tests.csproj`.
-The one correction run at `artifacts/verification/20260815T173450Z-92f387c3`
-passes that self-test and the performance self-test, then stops at the inherited
-silent managed `widget-sdk-build` restore failure with zero compiler errors.
-It was not rerun. Focused native protocol/materializer/session evidence and the
-clean Release build are accepted; the cumulative chain is integrated as
-`0c264c5` plus `1ab2e0d`.
-
-### Accepted and integrated — DLV-242: incremental layout, damage, and UIA
-
-Use admitted impact metadata to avoid whole-widget work. Value/paint-only changes
-retain geometry and repaint only affected bounds; local layout changes recompute
-the smallest safe Taffy boundary; structure/surface/device changes fall back to
-larger or full work. Preserve focus, scroll, press, slider continuity, hit-test,
-clip, and UIA correctness. No new UI element requires a new transport operation;
-only effect classification, with conservative fallback for unknown effects.
-
-Measure full-checkpoint versus incremental CPU, allocation, layout, paint area,
-latency, and fallback frequency for Audio slider, Now Playing progress, Network
-status/list changes, launcher/library lists, and media metadata. Build and launch
-the complete candidate for user cycling/scrolling/controller review.
-
-Production candidate `55bea0c`, refreshed without conflict onto accepted main as
-`d7ffcaa`, was rejected at source review and was not integrated.
-Its impact classifier incorrectly treats image/artwork changes and button
-selected/disabled/busy state as non-layout even though those values alter native
-intrinsic measurement. Its local-layout boundary infers paint containment from
-fixed width/height and zero margin without requiring clipping, so overflowed
-descendants can leave stale pixels outside the submitted update rectangle. It
-also converts authority-only and accessibility-only admissions into a full
-content render instead of publishing their non-raster state without layout or
-paint. The same-lane correction must make classification conservative against
-the actual native measure path, use only genuinely paint-contained local
-boundaries or full fallback, and provide a typed no-raster route that cannot
-mask concurrent host visual dirtiness. The duplicated local recomputation must
-be removed or justified. Preserve the physical-first order: corrected
-production commit, one Release build, planner source review and user verdict,
-then focused tests only after acceptance.
-
-Correction `3bd8c80` closes those reviewed source blockers and is provisionally
-source-clean. Its first packaged candidate was nevertheless rejected: the output
-still contained retired `runtime\GameLauncher`, `SpotifyPlaybackProtocol*`, and
-`WindowsSpotifyProvider*` artifacts, and the exact launched candidate reported
-`Settings failed: Bridge request 'get-snapshot' has an invalid payload.` The
-candidate PID 61900 was closed normally without integration. Coherent accepted
-main was restored visibly as PID 93900 with the unchanged accepted executable
-hash above. The platform lane now owes only a full authoritative Release build
-at unchanged source tip, proof that DLV-218 cleanup removed retired outputs, and
-non-executing managed-runtime provenance. Source edits, tests, launch, and
-integration remained prohibited until planner review of that corrected package.
-
-The refreshed candidate merge `3f44807` brings reviewer main `f58292f`, including
-accepted product DLV-247 `a77182d`, into preserved correction `3bd8c80` without
-conflict. Independent review confirms the branch differs from main only in the
-same seven native DLV-242 files, and those files are unchanged from the
-previously reviewed correction. Its one serialized full packaged Release build
-passed. Both retired runtime directories and all retired Spotify Bridge files
-are absent; current Bridge, Settings, WidgetWorkerHost, bundled widget runtimes,
-and exact managed-output provenance are present. Candidate PID 80464 was visibly
-launched and then rejected by the user. No DLV-242 tests or integration are
-authorized until a corrected visible candidate is accepted.
-
-The rejection is a real pre-existing invalidation defect that DLV-242 makes more
-visible, not an HWND or widget-envelope movement. Exact-session evidence keeps
-content, tray, chrome, desired extent, and presented extent stable while:
-
-- every Settings focus move at unchanged snapshot sequence 4 issues another
-  widget presentation paint because controller focus paths call whole-window
-  `InvalidateRect`;
-- live Media Sessions produces 98 `refresh-retained` paints and 95 admitted
-  paints over roughly twenty seconds, so nearly every provider publication
-  redraws old inert pixels before drawing the admitted update; and
-- current diagnostics do not expose the selected no-raster, paint-only, local-
-  layout, or full-fallback decision, preventing direct confirmation of the
-  admitted damage path.
-
-Required bounded correction:
-
-- When refresh-pending authority retains the exact committed instance,
-  sequence, viewport, appearance, focus, scroll, and pressed state, update the
-  lifecycle/input/accessibility authority without scheduling another content
-  raster frame. Do not freeze or reuse pixels after any visual-state change.
-- Replace whole-content invalidation for ordinary widget focus movement with a
-  single host-owned damage request covering the union of old and new focus
-  visuals. If focus-follow changes a scroll offset, include every newly exposed
-  or vacated scroll region. Preserve a conservative full fallback for unknown
-  geometry, animation, surface, device, or accessibility appearance changes.
-- For changed text, measure against its committed allocation. Reuse layout and
-  paint only the bounded node when the new content cannot change wrapping,
-  clipping, baseline, overflow, or adjacent geometry; otherwise use the existing
-  safe local-layout boundary or complete fallback. Do not special-case widget
-  identity, provider, field ID, or playback content.
-- Extend the existing presentation paint diagnostic with the chosen work class
-  and effective damage rectangle. Do not add per-controller-repeat logging or a
-  second trace file.
-- Preserve one HWND set, composition owner, renderer, layout cache, snapshot
-  materializer, focus tree, controller owner, and transport. Do not hide flicker
-  with sleeps, opacity transitions, blanket motion suppression, or widget-
-  authored workarounds.
-
-Correction `5921ccd` is rejected at source review and was not launched. Its
-clean packaged build and artifact provenance do not waive two concrete product
-defects:
-
-- `exactRetainedRefresh` clears pressed interaction, deactivates slider state,
-  and stops declarative motion immediately before returning without raster.
-  Its predicate does not prove those visual states were absent or settled, so
-  the shortcut can retain stale pressed/adjusting or mid-animation pixels. A
-  no-raster decision must compare the complete committed visual-state token;
-  if the authority transition changes visible host state, schedule the bounded
-  damage or conservative full fallback before representing it as current.
-- `PlanFocusUpdate` rejects any old or next target whose committed
-  `visibleBounds` is empty before walking its scroll ancestors. The next target
-  is intentionally offscreen at the exact navigation edge where focus-follow
-  must scroll it into view, so ordinary scrolling still falls back to a full-
-  widget repaint. Resolve a uniquely bounded committed scroll viewport from
-  the logical target/ancestor chain and damage that viewport; use full fallback
-  only when no safe bounded scroll owner exists.
-
-The text proof, work-class diagnostic, single-owner boundaries, no-test rule,
-and generic identity-neutral design remain required. Return one bounded source
-correction atop `5921ccd`; do not broaden the milestone.
-
-Correction `1aa4327` closes both source blockers without broadening scope. The
-retained-refresh no-raster route now compares a complete committed visual-state
-token and refuses pixel reuse for changed or active focus, press, slider,
-scroll, appearance, declarative animation, advanced projection, overlay motion,
-extent transition, or composition placement state. A lifecycle transition that
-would retire visible transient state now repaints conservatively instead of
-mutating state behind retained pixels. Offscreen focus-follow now walks the
-logical target's committed ancestor chain and damages exactly one bounded scroll
-viewport; missing or nested ambiguous owners retain the complete fallback. The
-two-file correction is clean atop `5921ccd`, and its one serialized packaged
-Release build produced the exact hash recorded above. Independent source review
-accepts it only for physical-first launch; behavior remains unaccepted pending
-the user's verdict, and tests remain prohibited until then.
-
-The user physically rejected `1aa4327`. Exact PID 77500 diagnostics show full
-rasters remain correctly placed, while `paint-only` updates submit nonzero
-damage rectangles immediately before the visible origin-copy corruption.
-`RenderCompositionFrames` passes that absolute physical rectangle to
-`IDCompositionSurface::BeginDraw`, but `DrawCurrentFrame` translates the full
-logical scene only by the returned backing-surface offset. It does not subtract
-the requested update origin, so logical `(0,0)` is drawn at the nonzero damage
-destination. The same-lane correction must carry the exact requested origin and
-map it to the returned offset after DPI/interface-scale normalization, preserve
-full-surface behavior, and stay inside the BeginDraw guard rectangle. This is a
-production-only correction; tests remain prohibited until the next physical
-candidate is accepted.
-
-Correction `abeb392` retains the exact physical update rectangle selected by
-`BeginFrame` and carries it beside DirectComposition's returned backing-atlas
-offset. `DrawCurrentFrame` now maps the requested logical origin to that returned
-offset after DPI and interface-scale normalization. It also clips clearing and
-drawing to the requested atlas region. Full-surface and legacy rendering pass a
-zero-origin full rectangle and retain their prior mapping. The three-file diff
-is clean atop `1aa4327`; the one serialized packaged Release build succeeded and
-produced the exact hash recorded above. Independent source review accepts this
-only for physical-first launch; behavior remains unaccepted pending the user's
-verdict, and no tests have run.
-
-The user rejected the cumulative `abeb392` candidate after log review showed
-that the remaining flicker is not another damage-coordinate defect. The host
-alternates a newly admitted `Current` frame with a `RefreshRetained` inert frame
-for the same semantic sequence, and the guide derives its paint key from the
-temporary interaction authority rather than the last visually committed state.
-Settings also animates text-bearing controls between global button scale `0.99`
-and focused scale `1`, producing repeated text rasterization and apparent
-movement even when the semantic checkpoint is unchanged.
-
-The next DLV-242 correction is exactly the following user-authorized scope:
-
-1. An exact `RefreshRetained` transition may make input and UIA authority inert,
-   but it must retain the last visually committed pixels and must not schedule
-   an inert raster frame when instance, sequence, viewport, appearance, focus,
-   scroll, press, slider, motion, and composition visual state are unchanged.
-   Ongoing declarative motion must not later schedule such an inert frame.
-2. Preserve the accepted incremental path for stable `Current` to `Current`
-   changes: no-op, paint-only damage, safe local layout, and full fallback keep
-   their existing impact-driven ownership and coordinate mapping.
-3. Derive guide visuals and their paint key from the last visually committed
-   presentation during exact retained refresh. Temporary loss of interaction
-   authority may disable activation/UIA without erasing or oscillating the
-   committed quick-action/help copy.
-4. Deferred: do not change media optimistic/provider command revision policy in
-   DLV-242. The play/pause reversal caused by stale provider reconciliation is
-   DLV-248.
-5. Remove the `0.99` to `1` focus-scale transition from text-bearing controls.
-   Preserve the existing focus background, outline, accessibility, and input
-   treatment without making glyphs move or rerasterize merely on focus change.
-6. Preserve conservative `FullRaster` fallback for unknown impact, ambiguous
-   containment, animation or transient visual change, surface/device change,
-   accessibility appearance change, or any visual-state proof failure.
-
-This remains physical-first. Change production code/styles only, make one exact
-DLV-242 commit atop `abeb392`, source-review it, and build one serialized
-packaged Release. Do not author, edit, or run tests until the user accepts the
-next visible candidate. Do not broaden into provider logic, new protocol work,
-another renderer/session/guide owner, sleeps, opacity masking, or widget-
-specific behavior.
-
-Correction `61936b8` implements that exact scope in `OverlayHost` and the
-default GBSS theme. Independent source review caught and closed an initial gap:
-pixel reuse now compares live focus ID, pressed ID, slider presentation
-revision, scroll offsets, appearance revision, focus region, animation,
-projection, content placement, overlay/extent/placement motion, and pending
-paint/render work against the committed visual token. Proof failure retains the
-existing render path. Exact retained authority clears UIA only; it does not
-retire the committed transient visual or schedule an inert content frame.
-Guide rendering may read the exact retained visual checkpoint without granting
-input authority. Generic button scale is `1` in both ordinary and focused
-states. The corrected Current-to-Current impact/damage path remains unchanged.
-The full packaged Release build passed at unchanged clean commit `61936b8`; the
-candidate hash and PID are recorded above. No pre-acceptance tests ran and
-nothing is integrated pending the focused test follow-up.
-
-The user physically accepted the exact `61936b8` candidate after exercising
-Settings, Media Sessions, and rapid switches between differently sized widgets.
-The exact PID 105432 session remained free of crashes, provider failures,
-invalid payloads, and rejected lifecycle completions. Its latest Audio Mixer,
-Games & Apps, and Media Sessions switches presented the requested target,
-admitted worker results, settled at each authored destination, and kept guide
-`2192,1162,735,77` plus tray `2186,1299,747,141` unchanged. Games & Apps became
-current before its 422-ms diagnostic threshold, exposing a trace-close
-bookkeeping gap rather than a failed presentation; retain that as low-priority
-observability debt and do not broaden this follow-up into production changes.
-
-Focused test-only follow-up `22ddfc0` changes only DeclarativeRendererTests,
-WidgetSwitchHostTests, and WidgetSwitchFixture. DeclarativeRendererTests passed
-4,881 checks for no-raster, paint-only, local-layout, conservative full fallback,
-bounded focus damage, and scale-one focus. The host fixture and executable
-compiled, but the one allowed route failed before readiness with Win32 5 and a
-missing expected Development package generation; zero scenario assertions ran,
-and the route was not repeated or redesigned. Source review found the assertions
-coherent and no production edits. The residual risk is limited to those compiled
-but unexecuted host assertions for inert RefreshRetained UIA/pixels/guide and
-rapid fixed-chrome switching.
-
-The cumulative production and test chain is accepted and integrated on main as
-`2ea8cce`, `822e17b`, `df52408`, `d4874f2`, `deb19b4`, `9530ca9`, and
-`0cf92e2`. The coherent `Release -SkipTests` build passed, retired generated
-runtime directories remain absent, and exact integrated main launched visibly as
-PID 47244 with hash
-`32FF564BE7C30062227F4C98D9774C6BAC7BAC0F02CCE85E9CD001CD85B84937`.
-Its startup elected the production owner, applied current appearance/catalog,
-placed fixed chrome exactly at guide `2192,1162,735,77` and tray
-`2186,1299,747,141`, and emitted no startup failure diagnostics.
-
-### Accepted and integrated — DLV-243: bounded optimistic slider feedback damage
-
-Give accepted slider input immediate host-owned visual feedback while the
-authoritative widget update is pending. Reconcile on acknowledgement, correction,
-failure, timeout, focus change, widget switch, restart, or generation change.
-Damage only the slider value/track/thumb and necessary accessibility value event;
-do not relayout or repaint the whole widget. Preserve sequence authority and full
-fallback. Implement separately so DLV-242 scope remains bounded.
-
-Candidate `1cc4106` was rejected at source review because focus/timeout rollback
-collapsed affected sliders to a boolean and could invalidate whole content.
-Correction `1e7a8a7` retains exact slider identities, unions rollback with
-bounded old/new focus damage, and retires off-tree timeouts without a raster;
-full fallback remains only for ambiguous or unsafe geometry/paint state. It was
-cherry-picked without integration onto current main as coherent candidate
-`eea8d3f`, built with packaging, and visibly launched as PID 47316 with SHA-256
-`A33F24545C018D644F90A1B004562B74653103896AEA822E699EE172415D9737`.
-The user rejected it because application-session volume pending toggled the
-whole card background. Correction `ed4fd8b` limits that card state to discrete
-mute pending while preserving volume command authority. Coherent candidate
-`a31869b` was then rejected after live Audio Mixer input: Left was handled but a newer render serial with the old provider value prematurely cleared the optimistic target. Generic correction `8d3dfff` retains pending state for repeated prior authority and settles only on target match, genuine correction, typed failure, or timeout while keeping current-tree rollback identity.
-Coherent candidate `922385d` is also rejected: `handled=true` means queue admission, but the host immediately forces snapshot 150 before `OnActionAsync` mutates state. Correction `8139c2b` defers slider refresh to post-action invalidation. Candidate `78b37a3` exposed float-derived on-grid residue; correction `0d5c467` recognizes four float ULPs capped at 0.0001 step while retaining off-grid semantics. The user accepted coherent candidate `e59e111`. Focused test commit `f89921a` plus lifetime correction `6c722a1` passed 2,096 checks, including first Left/Right, genuine off-grid directionality, bounds, reconciliation, rollback, timeout, restart, activation, and cleanup. The exact chain is integrated on main through `3df41b8`; serialized coherent packaging succeeded and launched PID 36592 with SHA-256 `1658E1616AB7DDDE371CEA58AB302ACAD3761E96CFE44E5CC1D431776C79CDAB`.
-
-### Accepted and integrated — DLV-250: first-visible Settings and fixed-guide authority
-
-On process launch, open the real Settings widget with tray focus after catalog
-authority exists; do not expose the legacy dashboard title/guide placeholder.
-The fixed chrome HWND remains the sole guide renderer and screen-position owner.
-Preserve later Guide reopen behavior. A configurable startup widget is deferred. The user physically accepted candidate `7f15f15`; focused state coverage `7110d14` passed. They are integrated as `6eadfa7` and `fe25705`. Exact coherent main Release PID 2152 opened Settings on transition 1 and logged exact first-visible chrome placement with no startup error.
 
 ### Assigned — DLV-254: optional widget-switch animation
 
@@ -851,6 +261,63 @@ transition geometry, or repair existing animation defects. Physical-first:
 production candidate/build and user verdict precede focused tests. Stop for a
 settings schema migration with data-loss risk, another motion owner, broad
 animation redesign, substantial conflict, or undocumented API; never push.
+
+### Ready next — DLV-256: eliminate Spotify artwork paint stalls
+
+Owner/baseline: platform lane after accepted DLV-254 integration, from the
+then-current accepted main. Own only the native image-resource/cache/rendering
+lifetime and directly affected focused diagnostics/tests. Do not change Spotify
+provider, paging, queue/playlist semantics, package identity, snapshot protocol,
+or widget-authored presentation.
+
+Motivating evidence: in the latest accepted live Spotify session, 17 of 32
+paint-only frames exceeded 100 ms and clustered at 675–718 ms. All 95 correlated
+full frames stayed at 15.9–25.4 ms with an 18.4-ms average. The slow frames
+repeated while semantic sequence 785 remained current and no provider failure,
+request timeout, or new snapshot was needed. Source review identifies the
+primary seam: `DeclarativeRenderer` clears its target-bound bitmap map when
+DirectComposition supplies another BeginDraw context, uses a 32-entry
+clear-all capacity cliff, and synchronously recreates Direct2D bitmaps from
+decoded image bytes while painting. Spotify may retain 50 queue entries or 24
+playlist/track entries with artwork, making the defect readily visible without
+making it widget-specific.
+
+Required behavior:
+
+- Confirm the exact bitmap hit/create/eviction pattern with one bounded
+  diagnostic or focused measurement; do not add per-frame permanent trace spam.
+- Reuse device-compatible decoded artwork bitmaps across transient
+  DirectComposition update contexts when Direct2D device-generation rules
+  permit. Invalidate them on actual device/resource-generation loss or proven
+  incompatibility, not merely on another interface pointer.
+- Replace clear-all capacity behavior with bounded entry-and-byte-aware LRU
+  eviction. Do not raise or remove bounds as the fix.
+- Never perform network fetch, file access, image decode, or another blocking
+  provider operation on the paint/input thread. A not-yet-ready image keeps the
+  existing placeholder and completes through the existing asynchronous cache.
+- A focus-only list move must not recreate unchanged visible artwork. Retain
+  bounded old/new focus damage; damage the scroll viewport only when focus
+  reveal actually changes its scroll projection.
+- Keep the correction generic across first-party and Community images. Do not
+  branch on Spotify identity, element IDs, queue/playlist routes, known tree
+  shape, or package trust tier.
+- Preserve the single renderer, RemoteImageCache, DirectComposition device,
+  snapshot/session, focus, and image-admission owners.
+
+Acceptance and verification: physical-first. Produce one production-only
+candidate and coherent packaged Release for the user to exercise through
+Spotify Queue, Playlists, and playlist tracks before tests. Retain before/after
+counts for bitmap hits/creates/evictions and paint latency over a representative
+50-item queue and two 12-item retained collection pages. After user acceptance,
+run only focused renderer/image-cache tests proving device-generation
+invalidation, bounded LRU behavior, async pending/failure fallback, no
+cross-widget identity collision, and no warmed focus frame above 100 ms on the
+same deterministic fixture. Do not run Tier 3.
+
+Stop for another image-cache/renderer/device owner, synchronous I/O or decode on
+the UI thread, an unbounded GPU/CPU resource cache, provider/paging redesign,
+per-widget native behavior, undocumented APIs, destructive state changes,
+substantial conflict, or external publication. Never push.
 
 ### Ready later — DLV-248: media optimistic command revision reconciliation
 
@@ -882,54 +349,9 @@ precede focused tests. Stop for a protocol change, permanent worker residency,
 weakened exact-SavedId launch validation, destructive state reset, substantial
 conflict, or external publication; never push.
 
-### Accepted and integrated — DLV-252: recover modern Steam provider-native game icons
 
-Production commit `868ac4e` extends the existing lazy, opaque Steam artwork
-resolver to bounded modern `<appid>\<40-hex>.{png,jpg,jpeg}` provider icons with
-deterministic precedence, exact handle/path validation, and legacy flat-file
-fallback. The user accepted the live game-icon behavior in candidate PID 44872.
-Focused test commit `68b0de8` passes 78/78 across modern/legacy selection,
-ambiguity, excluded artwork names, bounds, reparse/path escape, replacement
-races, cancellation, generation rotation, and existing decode/cache defenses.
-Both commits are integrated. The tests-only follow-up does not require replacing
-the already accepted production candidate. A redundant main-checkout rebuild
-attempt stopped at the recurring silent WidgetBridge restore/publish failure;
-it was not rerun because production/runtime inputs are unchanged and the exact
-accepted production candidate is already running.
-
-### Accepted and integrated — DLV-249: Games & Apps session refresh and application artwork recovery
-
-Integrated as `18c4527`, `b307cd0`, `7b36d78`, and `62589c5`. Initial-session
-and manual-Refresh reconciliation, retained ordinary activation, exact selected-
-SavedId launch validation, and Windows application artwork passed 64/64 focused
-checks and the user's physical verdict. Detailed execution history remains in
-Git and the next delivery-plan history snapshot.
-
-### Accepted and integrated — DLV-251: Audio Mixer first-activation provider publication
-
-The first visible session admitted Audio Mixer loading sequence 1, then received
-no provider-backed publication before close 3.3 seconds later; reopen admitted
-sequences 2/3 immediately. Make first activation complete and publish its current
-typed audio snapshot while visible, without UI blocking, polling, or warm reopen. The user physically accepted candidate `a0be889`; focused follow-up `162dd5d` plus precise stale-expectation correction `1021894` passed 45/45. The chain is integrated as `67cf05b`, `261fe01`, and `55ec269`.
-
-### Accepted and integrated — DLV-218: remove retired domains
-
-Remove retired product-owned Spotify and private Game Launcher domain paths only
-after DLV-217 integration. Retain generic App Library behavior. Add an
-architecture check rejecting Community identities/domain types in core. Never
-delete credentials, provider data, accounts, or user files.
-
-Candidate `8f49e1c` removes the intended source, capability, SDK, catalog, and
-bundled-build ownership while preserving the autonomous Community applications
-and generic App Library contract. Correction `e0dd517` uses the existing
-output-root/reparse-safe cleanup owner to remove retired
-`runtime\GameLauncher`, `runtime\SpotifyPlaybackHost`, and the prior Bridge
-output before republishing. A seeded pre-retirement incremental Release proves
-the retired outputs absent while current runtime outputs remain and the
-Community artifact aggregate stays byte-identical. The merge chain through
-`d8b8861` preserves DLV-241's status and verifier registration. It never targets
-installed packages, credentials, configuration, private state, package-owned
-sources, or user files.
+Closed accepted widgets history through DLV-252 is retained in the
+[2026-08-16 03:27 snapshot](history/delivery-plan/2026-08-16T03-27-50-07-00.md).
 
 ## Serialized order
 
@@ -952,6 +374,9 @@ sources, or user files.
 11. DLV-252 is physically accepted and integrated as `868ac4e` plus `68b0de8`;
     focused provider evidence is 78/78 and accepted candidate PID 44872 remains
     running because the post-acceptance integration delta was tests only.
+
+12. DLV-254 is Assigned. DLV-256 is Ready next after its accepted integration;
+    DLV-248 remains deliberately deferred.
 
 ## Manual and packaged evidence
 
