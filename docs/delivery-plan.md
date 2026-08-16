@@ -213,7 +213,7 @@ user decision. The native overlay is the sole production presentation path.
 | Lane | Task/worktree | State |
 | --- | --- | --- |
 | Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | DLV-242 is accepted and integrated through `0cf92e2`; preserve `codex/impl-platform-native-impact` at `22ddfc0`. Assigned next: DLV-243 bounded optimistic slider feedback damage from current planner main, in physical-first mode. DLV-248 remains deferred. Preserve accepted DLV-246 branch `codex/impl-platform-process-owner` and completed `codex/impl-platform-snapshot-cache` / `codex/impl-platform-fixed-chrome`. |
-| Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | DLV-218 cumulative branch through `d8b8861` is accepted and integrated. No later widgets assignment is authorized: the known styling/provider items require fresh user evidence, so the lane remains idle rather than manufacturing internal filler while visible DLV-243 is active. Preserve the clean DLV-240 and DLV-218 branches. |
+| Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | DLV-218 cumulative branch through `d8b8861` is accepted and integrated. Assigned next from current planner main: DLV-249 Games & Apps session catalog refresh and application artwork recovery, in physical-first mode while platform DLV-243 continues independently. Preserve the clean DLV-240 and DLV-218 branches. |
 
 The user explicitly approved the DLV-217 aggregate exception on 2026-08-15.
 The preserved four-commit implementation chain was integrated onto current main
@@ -820,6 +820,48 @@ deferred by user decision and must not be mixed into DLV-242.
 DLV-240 is integrated. Accepted DLV-225/226/228/229/230 remain integrated. New
 styling/provider work requires fresh user evidence rather than speculation.
 
+### Assigned — DLV-249: Games & Apps session refresh and application artwork recovery
+
+Owner/baseline: widgets lane from exact clean planner main after this assignment.
+Create a new isolated `codex/` branch and preserve the completed DLV-218 and
+DLV-240 branches. This milestone owns the existing managed Games & Apps widget,
+Windows application-library provider/broker projection, and existing artwork
+handle path only. It must not edit native OverlayHost files, DLV-243 slider
+work, reviewer-owned documents, or retired Spotify/Game Launcher domains.
+
+Correct the refresh lifecycle without introducing another catalog or cache:
+
+- Enumerate installed Games & Apps entries once for each overlay/WidgetBridge
+  session at overlay launch. Do not force a provider rescan merely because the
+  Games & Apps widget becomes active again, is hidden and shown, or its retained
+  presentation is requested.
+- Continue serving the provider's single immutable cached catalog throughout
+  that overlay session. Preserve the existing saved-ID, trust, launch,
+  persistence, source-health, and cursor contracts.
+- Add one controller-reachable, accessible `Refresh` button in the top header of
+  Games & Apps. It alone requests an explicit rescan after launch. While that
+  bounded refresh is active, expose clear busy/disabled state, retain the last
+  good catalog and selection, and report failure without replacing usable
+  entries with an empty catalog.
+- Remove the current implicit `refresh: true` first-page query from ordinary
+  widget activation. Manual refresh must still reconcile saved entries and
+  preserve focus by stable saved identity where the entry survives.
+
+Recover real application imagery through the existing authority path. Trace
+provider artwork revision, broker registration, opaque artwork handle,
+Bridge resolution, and tile admission. When a valid application icon exists,
+the Games & Apps tile must display it instead of the generic Play glyph. Retain
+the deterministic existing fallback only when artwork is genuinely unavailable
+or rejected. Do not add per-application special cases, raw filesystem paths in
+widget snapshots, inline unbounded image data, a second image loader, or a new
+wire/schema/provider contract.
+
+This is physical-first. Implement production code only, make one coherent
+Release build, and commit the bounded candidate. Do not add or modify tests
+until the user accepts the launched behavior. Stop after reporting the exact
+commit, changed files, build result, and any remaining reason an item used the
+fallback; do not integrate, launch, push, or edit reviewer documents.
+
 ### Accepted and integrated — DLV-218: remove retired domains
 
 Remove retired product-owned Spotify and private Game Launcher domain paths only
@@ -855,8 +897,11 @@ sources, or user files.
 7. Platform implements DLV-243 separately in physical-first mode and launches
    for slider review before tests or integration.
 8. Platform implements DLV-248 only after a later explicit queue promotion.
-9. DLV-218 is accepted and integrated through `d8b8861`; the widgets lane stays
-   idle until fresh user evidence authorizes another visible correction.
+9. DLV-218 is accepted and integrated through `d8b8861`.
+10. Widgets implements DLV-249 independently from current planner main in
+    physical-first mode. After independent review, the planner builds and
+    launches the coherent candidate for the user's Games & Apps refresh/icon
+    verdict before any tests or integration.
 
 ## Manual and packaged evidence
 

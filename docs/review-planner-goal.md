@@ -484,10 +484,12 @@ Then repeat the loop.
   the clean `codex/impl-widgets-retired-domains` branch. The correction removes
   retired generated runtime/Bridge outputs from incremental Release builds
   while preserving autonomous Community packages, user data, DLV-241 status,
-  and verifier registration. No later widgets assignment is currently
-  authorized because remaining styling/provider items require fresh user
-  evidence; keep the lane idle rather than manufacturing filler while DLV-242
-  provides the active visible outcome.
+  and verifier registration. Fresh user evidence now authorizes DLV-249 from
+  current planner main: scan the existing Games & Apps catalog once per overlay
+  session, expose a top manual Refresh action, and recover real application
+  icons through the existing opaque artwork path. Run it independently from
+  platform DLV-243 in physical-first mode; do not add tests before the user's
+  visible verdict or overlap native OverlayHost files.
   DLV-217 is
   integrated on planner main through
   `1453a4c`; its original branch remains preserved on
