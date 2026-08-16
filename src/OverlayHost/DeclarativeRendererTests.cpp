@@ -9,6 +9,8 @@
 #include <cmath>
 #include <condition_variable>
 #include <cstdlib>
+#include <filesystem>
+#include <fstream>
 #include <iostream>
 #include <iterator>
 #include <limits>
@@ -2234,6 +2236,239 @@ void DeferredFocusOutlineUsesEffectiveVisibilityClip() {
          "outline clip prevents a partial ring from escaping the scroll viewport");
 }
 
+void IncrementalPresentationPlanningRetainsBoundedWork() {
+    using Microsoft::WRL::ComPtr;
+    ComPtr<ID2D1Factory> d2d;
+    Check(SUCCEEDED(D2D1CreateFactory(
+        D2D1_FACTORY_TYPE_SINGLE_THREADED, d2d.ReleaseAndGetAddressOf())),
+        "incremental planning creates a D2D factory");
+    ComPtr<IDWriteFactory> write;
+    Check(SUCCEEDED(DWriteCreateFactory(
+        DWRITE_FACTORY_TYPE_SHARED, __uuidof(IDWriteFactory),
+        reinterpret_cast<IUnknown**>(write.ReleaseAndGetAddressOf()))),
+        "incremental planning creates a DirectWrite factory");
+    ComPtr<IWICImagingFactory> wic;
+    Check(SUCCEEDED(CoCreateInstance(
+        CLSID_WICImagingFactory, nullptr, CLSCTX_INPROC_SERVER,
+        IID_PPV_ARGS(wic.ReleaseAndGetAddressOf()))),
+        "incremental planning creates a WIC factory");
+    ComPtr<IWICBitmap> canvas;
+    Check(SUCCEEDED(wic->CreateBitmap(
+        640, 480, GUID_WICPixelFormat32bppPBGRA,
+        WICBitmapCacheOnLoad, canvas.ReleaseAndGetAddressOf())),
+        "incremental planning creates a WIC canvas");
+    ComPtr<ID2D1RenderTarget> target;
+    Check(SUCCEEDED(d2d->CreateWicBitmapRenderTarget(
+        canvas.Get(), D2D1::RenderTargetProperties(),
+        target.ReleaseAndGetAddressOf())),
+        "incremental planning creates a WIC render target");
+
+    const Rect viewport{0.0F, 0.0F, 640.0F, 480.0F};
+    WidgetSnapshot snapshot;
+    snapshot.protocolVersion = 18;
+    snapshot.sequence = 1;
+    snapshot.instanceId = L"incremental.runtime";
+    snapshot.activeInputScopeId = L"incremental.root";
+    snapshot.initialFocusId = L"focus-a";
+    snapshot.root = Node(L"incremental.root", L"stack");
+    snapshot.root.inputScopeId = snapshot.activeInputScopeId;
+    snapshot.root.baseStyle = {
+        {L"width", Length(640)},
+        {L"height", Length(480)},
+        {L"padding", LengthList(L"20")},
+    };
+    auto boundary = Node(L"safe-boundary", L"stack");
+    boundary.baseStyle = {
+        {L"width", Length(320)},
+        {L"height", Length(250)},
+        {L"overflow", Keyword(L"clip")},
+        {L"gap", Length(8)},
+    };
+    auto first = FixedButton(L"focus-a");
+    first.text = L"First action";
+    first.focusDown = L"focus-b";
+    first.baseStyle.insert_or_assign(L"scale", Number(1));
+    first.focusedStyle = {
+        {L"scale", Number(1)},
+        {L"background", Color(L"#334455")},
+        {L"outline-color", Color(L"#ffffff")},
+        {L"outline-width", Length(2)},
+    };
+    auto second = FixedButton(L"focus-b");
+    second.text = L"Second action";
+    second.focusUp = L"focus-a";
+    second.baseStyle.insert_or_assign(L"scale", Number(1));
+    second.focusedStyle = first.focusedStyle;
+    auto progress = Node(L"progress", L"progress");
+    progress.hasProgress = true;
+    progress.value = 0.25;
+    progress.minimum = 0.0;
+    progress.maximum = 1.0;
+    progress.baseStyle = {
+        {L"height", Length(12)},
+        {L"min-height", Length(12)},
+        {L"flex-shrink", Number(0)},
+    };
+    auto localTarget = Node(L"local-target", L"spacer");
+    localTarget.baseStyle = {
+        {L"height", Length(24)},
+        {L"min-height", Length(24)},
+        {L"background", Color(L"#556677")},
+        {L"flex-shrink", Number(0)},
+    };
+    boundary.children = {first, second, progress, localTarget};
+    snapshot.root.children = {boundary};
+
+    DeclarativeRenderer renderer{d2d.Get(), write.Get(), nullptr};
+    const auto render = [&](const WidgetSnapshot& value,
+                            const std::wstring_view focus) {
+        target->BeginDraw();
+        target->Clear(D2D1::ColorF(D2D1::ColorF::Black));
+        const auto result = renderer.Render(target.Get(), value, focus, viewport);
+        Check(SUCCEEDED(target->EndDraw()),
+              "incremental presentation draw completes");
+        Check(result.succeeded, "incremental presentation render succeeds");
+        return result;
+    };
+
+    const auto initial = render(snapshot, L"focus-a");
+    const auto initialFirst = initial.elementRects.at(L"focus-a");
+    const auto initialSecond = initial.elementRects.at(L"focus-b");
+
+    auto authority = snapshot;
+    authority.sequence = 2;
+    gba::WidgetPresentationImpact authorityImpact;
+    authorityImpact.baseSequence = 1;
+    authorityImpact.sequence = 2;
+    authorityImpact.effects = gba::WidgetPresentationEffect::Authority |
+        gba::WidgetPresentationEffect::Accessibility;
+    const auto noRaster = renderer.PlanPresentationUpdate(
+        authority, authorityImpact, viewport);
+    Check(noRaster.has_value() &&
+              noRaster->work == gba::IncrementalPresentationWork::NoRaster &&
+              noRaster->damage.width == 0.0F && noRaster->damage.height == 0.0F,
+          "authority/accessibility-only admission performs no raster work");
+    Check(renderer.AcceptNoRasterPresentationUpdate(
+              authority, authorityImpact, viewport),
+          "authority/accessibility-only admission advances the complete checkpoint");
+
+    auto paint = authority;
+    paint.sequence = 3;
+    paint.root.children[0].children[2].value = 0.75;
+    gba::WidgetPresentationImpact paintImpact;
+    paintImpact.baseSequence = 2;
+    paintImpact.sequence = 3;
+    paintImpact.effects = gba::WidgetPresentationEffect::Paint;
+    paintImpact.affectedNodeIds = {L"progress"};
+    const auto paintPlan = renderer.PlanPresentationUpdate(
+        paint, paintImpact, viewport);
+    Check(paintPlan.has_value() &&
+              paintPlan->work == gba::IncrementalPresentationWork::PaintOnly,
+          "stable Current-to-Current value change retains paint-only work");
+    Check(paintPlan->damage.width > 0.0F && paintPlan->damage.height > 0.0F &&
+              paintPlan->damage.width * paintPlan->damage.height <
+                  viewport.width * viewport.height,
+          "paint-only work retains bounded effective damage");
+    (void)render(paint, L"focus-a");
+
+    auto local = paint;
+    local.sequence = 4;
+    local.root.children[0].children[3].baseStyle.insert_or_assign(
+        L"height", Length(32));
+    local.root.children[0].children[3].baseStyle.insert_or_assign(
+        L"min-height", Length(32));
+    gba::WidgetPresentationImpact localImpact;
+    localImpact.baseSequence = 3;
+    localImpact.sequence = 4;
+    localImpact.effects = gba::WidgetPresentationEffect::MeasureLayout |
+        gba::WidgetPresentationEffect::Paint;
+    localImpact.affectedNodeIds = {L"local-target"};
+    localImpact.hasNonTextMeasureLayout = true;
+    const auto localPlan = renderer.PlanPresentationUpdate(
+        local, localImpact, viewport);
+    Check(localPlan.has_value() &&
+              localPlan->work == gba::IncrementalPresentationWork::LocalLayout,
+          "clipped fixed ancestor admits safe local-layout work");
+    Check(localPlan->damage.width > 0.0F && localPlan->damage.height > 0.0F &&
+              localPlan->damage.width * localPlan->damage.height <
+                  viewport.width * viewport.height,
+          "safe local-layout work remains inside the committed boundary");
+    const auto localResult = render(local, L"focus-a");
+
+    const auto focusPlan = renderer.PlanFocusUpdate(
+        local, L"focus-a", L"focus-b", viewport);
+    Check(focusPlan.has_value() &&
+              focusPlan->work == gba::IncrementalPresentationWork::PaintOnly,
+          "ordinary focus movement retains paint-only work");
+    Check(focusPlan->damage.width > 0.0F && focusPlan->damage.height > 0.0F &&
+              focusPlan->damage.width * focusPlan->damage.height <
+                  viewport.width * viewport.height,
+          "ordinary focus movement damages only bounded focus visuals");
+    const auto focusedSecond = render(local, L"focus-b");
+    const auto sameRect = [](const Rect left, const Rect right) {
+        return std::abs(left.x - right.x) <= 0.01F &&
+            std::abs(left.y - right.y) <= 0.01F &&
+            std::abs(left.width - right.width) <= 0.01F &&
+            std::abs(left.height - right.height) <= 0.01F;
+    };
+    Check(sameRect(localResult.elementRects.at(L"focus-a"),
+                   focusedSecond.elementRects.at(L"focus-a")) &&
+              sameRect(localResult.elementRects.at(L"focus-b"),
+                       focusedSecond.elementRects.at(L"focus-b")) &&
+              sameRect(initialFirst, focusedSecond.elementRects.at(L"focus-a")) &&
+              sameRect(initialSecond, focusedSecond.elementRects.at(L"focus-b")),
+          "scale-one focus styling does not move button or text geometry");
+    Check(!renderer.PlanFocusUpdate(
+               local, L"focus-a", L"focus-b", viewport).has_value(),
+          "mismatched committed focus proof preserves full-raster fallback");
+
+    auto structural = local;
+    structural.sequence = 5;
+    gba::WidgetPresentationImpact structuralImpact;
+    structuralImpact.baseSequence = 4;
+    structuralImpact.sequence = 5;
+    structuralImpact.effects = gba::WidgetPresentationEffect::Structure;
+    structuralImpact.affectedNodeIds = {L"safe-boundary"};
+    Check(!renderer.PlanPresentationUpdate(
+               structural, structuralImpact, viewport).has_value(),
+          "structural work preserves conservative full-raster fallback");
+    auto surfaceImpact = structuralImpact;
+    surfaceImpact.effects = gba::WidgetPresentationEffect::SurfacePlacement;
+    Check(!renderer.PlanPresentationUpdate(
+               structural, surfaceImpact, viewport).has_value(),
+          "surface-placement work preserves conservative full-raster fallback");
+    auto unknownImpact = structuralImpact;
+    unknownImpact.effects = gba::WidgetPresentationEffect::Unknown;
+    Check(!renderer.PlanPresentationUpdate(
+               structural, unknownImpact, viewport).has_value(),
+          "unknown work preserves conservative full-raster fallback");
+
+    const auto themePath = std::filesystem::path(__FILE__).parent_path()
+        .parent_path() / "PlatformSettings" / "Themes" / "builtin-default.gbss";
+    std::ifstream themeFile(themePath, std::ios::binary);
+    const std::string theme{
+        std::istreambuf_iterator<char>(themeFile),
+        std::istreambuf_iterator<char>()};
+    Check(!theme.empty(), "default GBSS theme is available to the native regression");
+    const auto buttonStart = theme.find("button {");
+    const auto buttonEnd = theme.find('}', buttonStart);
+    const auto focusedStart = theme.find("button:focused {");
+    const auto focusedEnd = theme.find('}', focusedStart);
+    Check(buttonStart != std::string::npos && buttonEnd != std::string::npos &&
+              focusedStart != std::string::npos && focusedEnd != std::string::npos,
+          "default theme retains button and focused-button rules");
+    const auto buttonRule = theme.substr(buttonStart, buttonEnd - buttonStart);
+    const auto focusedRule = theme.substr(focusedStart, focusedEnd - focusedStart);
+    Check(buttonRule.find("scale: 1;") != std::string::npos &&
+              buttonRule.find("scale: 0.99") == std::string::npos &&
+              focusedRule.find("scale: 1;") != std::string::npos,
+          "text-bearing buttons retain scale one across ordinary focus moves");
+    Check(focusedRule.find("background:") != std::string::npos &&
+              focusedRule.find("outline-color:") != std::string::npos &&
+              focusedRule.find("outline-width:") != std::string::npos,
+          "scale-one focus styling retains background and outline cues");
+}
+
 void RealDirect2DSmoke() {
     using Microsoft::WRL::ComPtr;
     ComPtr<ID2D1Factory> d2d;
@@ -3146,6 +3381,7 @@ int main() {
     IrrevealableClipsDoNotBecomeFocusTraps();
     ScrollStateCapEvictsOnlyInactiveLruEntries();
     DeferredFocusOutlineUsesEffectiveVisibilityClip();
+    IncrementalPresentationPlanningRetainsBoundedWork();
     RealDirect2DSmoke();
     OffscreenScrollArtworkDoesNotEnterRemoteCache();
     TrustedArtworkTerminalFallbackIsStable();

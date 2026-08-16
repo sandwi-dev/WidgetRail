@@ -2,7 +2,9 @@
 
 #include <ole2.h>
 #include <TlHelp32.h>
+#include <UIAutomation.h>
 #include <Windows.h>
+#include <wrl/client.h>
 
 #include <array>
 #include <algorithm>
@@ -32,6 +34,10 @@ using gba::host_testing::WaitUntil;
 using gba::host_testing::WideToUtf8;
 using gba::host_testing::Win32Error;
 using gba::host_testing::WriteUtf8;
+using Microsoft::WRL::ComPtr;
+
+#pragma comment(lib, "oleaut32.lib")
+#pragma comment(lib, "uiautomationcore.lib")
 
 namespace {
 
@@ -400,6 +406,36 @@ LoggedBounds ParseBounds(const std::string& value) {
     return result;
 }
 
+bool QueryAutomationId(
+    IUIAutomation* automation,
+    const HWND window,
+    const wchar_t* automationId,
+    bool& found) {
+    found = false;
+    ComPtr<IUIAutomationElement> root;
+    if (!automation || FAILED(automation->ElementFromHandle(
+            window, root.GetAddressOf())) || !root) {
+        return false;
+    }
+    VARIANT value;
+    VariantInit(&value);
+    value.vt = VT_BSTR;
+    value.bstrVal = SysAllocString(automationId);
+    if (!value.bstrVal) return false;
+    ComPtr<IUIAutomationCondition> condition;
+    const HRESULT conditionResult = automation->CreatePropertyCondition(
+        UIA_AutomationIdPropertyId, value, condition.GetAddressOf());
+    VariantClear(&value);
+    if (FAILED(conditionResult) || !condition) return false;
+    ComPtr<IUIAutomationElement> result;
+    if (FAILED(root->FindFirst(
+            TreeScope_Descendants, condition.Get(), result.GetAddressOf()))) {
+        return false;
+    }
+    found = static_cast<bool>(result);
+    return true;
+}
+
 void RunRetentionScenario(const Arguments& arguments) {
     auto installation = std::make_unique<TemporaryInstallation>(
         arguments.installation, arguments.fixtureWorker);
@@ -443,6 +479,20 @@ void RunRetentionScenario(const Arguments& arguments) {
              std::to_string(exitCode) + " log=" + ReadUtf8(logPath));
     }
     FenceWindow(window);
+    ComPtr<IUIAutomation> automation;
+    Require(SUCCEEDED(CoCreateInstance(
+                CLSID_CUIAutomation, nullptr, CLSCTX_INPROC_SERVER,
+                IID_PPV_ARGS(automation.GetAddressOf()))) && automation,
+            "UI Automation initializes for retained-authority verification");
+    const auto waitForWidgetAutomation = [&](const wchar_t* automationId,
+                                              const bool expected) {
+        return WaitUntil(kOperationTimeoutMilliseconds, [&] {
+            bool found{};
+            return QueryAutomationId(
+                       automation.Get(), window, automationId, found) &&
+                found == expected;
+        });
+    };
     std::vector<std::uint64_t> drawTimings;
     std::vector<std::uint64_t> commitTimings;
     std::vector<std::uint64_t> geometryTimings;
@@ -821,6 +871,61 @@ void RunRetentionScenario(const Arguments& arguments) {
                 return lastStart == std::string::npos ||
                     (lastFinal != std::string::npos && lastFinal > lastStart);
             }), "Rapid reversal did not settle before same-destination refresh proof");
+
+    const auto focusBefore = ReadUtf8(logPath).size();
+    SendKey(window, VK_DOWN);
+    const auto settingsFocused = waitForPaint(
+        focusBefore, kTargets.back(), kTargets.back().id, "admitted");
+    Require(settingsFocused.find("work=paint-only") != std::string::npos,
+            "Ordinary Settings focus movement did not use bounded paint-only work; record=" +
+                settingsFocused);
+    const auto focusDamage = ParseBounds(TextField(settingsFocused, "damage="));
+    const auto focusSurface = ParseBounds(TextField(settingsFocused, "shell-bounds="));
+    Require(focusDamage.width > 0.0F && focusDamage.height > 0.0F &&
+                focusDamage.width * focusDamage.height <
+                    focusSurface.width * focusSurface.height,
+            "Ordinary Settings focus movement damaged the complete content surface; record=" +
+                settingsFocused);
+    Require(waitForWidgetAutomation(L"widget:settings-ready", true),
+            "Current Settings presentation omitted its actionable widget UIA node");
+    std::this_thread::sleep_for(std::chrono::milliseconds(150));
+    FenceWindow(window);
+
+    const auto ordinaryRefreshBefore = ReadUtf8(logPath).size();
+    installation->BlockNextSnapshot();
+    Require(WaitUntil(kOperationTimeoutMilliseconds, [&] {
+                std::error_code ignored;
+                return fs::exists(installation->BlockedSnapshotSignal(), ignored);
+            }), "Ordinary Settings invalidation did not enter its blocked refresh request");
+    FenceWindow(window);
+    Require(waitForWidgetAutomation(L"widget:settings-ready", false),
+            "RefreshRetained exposed stale widget UIA/action authority");
+    RECT pendingRefreshPaint{};
+    Require(GetUpdateRect(window, &pendingRefreshPaint, FALSE) == FALSE,
+            "Exact RefreshRetained scheduled an inert content raster");
+    const auto heldRefreshLog = ReadUtf8(logPath).substr(ordinaryRefreshBefore);
+    Require(heldRefreshLog.find(
+                "Widget presentation paint target=settings content=refresh-retained") ==
+                    std::string::npos &&
+                heldRefreshLog.find("Composition frame committed") ==
+                    std::string::npos &&
+                heldRefreshLog.find("Composition child sample") ==
+                    std::string::npos &&
+                heldRefreshLog.find("Widget presentation extent refresh") ==
+                    std::string::npos,
+            "Exact RefreshRetained repainted content/guide/chrome or changed geometry; log=" +
+                heldRefreshLog);
+    installation->ReleaseBlockedSnapshot();
+    Require(WaitUntil(kOperationTimeoutMilliseconds, [&] {
+                std::error_code ignored;
+                return fs::exists(installation->BlockedSnapshotComplete(), ignored);
+            }), "Ordinary Settings refresh did not complete after release");
+    const auto ordinaryRefreshAdmitted = waitForPaint(
+        ordinaryRefreshBefore, kTargets.back(), kTargets.back().id, "admitted");
+    requireSessionTrayBounds(
+        ordinaryRefreshAdmitted, "ordinary-refresh-admitted");
+    Require(waitForWidgetAutomation(L"widget:settings-ready", true),
+            "Fresh Current admission did not restore Settings UIA/action authority");
 
     const auto restartBefore = ReadUtf8(logPath).size();
     const auto restartSignal = installation->StartupSignal(kTargets.back().id);

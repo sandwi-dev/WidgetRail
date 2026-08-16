@@ -131,6 +131,11 @@ internal static class Program
                     UI.Text("Production host transition fixture", $"{_surface.Id}-detail")
                         .Classes("switch-detail"),
                     UI.Button("Ready", "fixture.ready", $"{_surface.Id}-ready")
+                        .Shortcut(ControllerButton.X, "fixture.ready")
+                        .FocusDown($"{_surface.Id}-more")
+                        .Classes("switch-button"),
+                    UI.Button("More", "fixture.more", $"{_surface.Id}-more")
+                        .FocusUp($"{_surface.Id}-ready")
                         .Classes("switch-button"))
                     .Classes("switch-surface", _surface.ClassName),
                 InitialFocusId: $"{_surface.Id}-ready",
