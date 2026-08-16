@@ -83,8 +83,18 @@ Snapshots are evidence only. This file is the sole authority for current work.
   heterogeneous extent transitions, and bounded destination settlement. A
   low-priority trace-bookkeeping gap can emit `slow-threshold` immediately after
   a current frame is already committed; it did not represent a failed transition.
-  No pre-acceptance tests ran and nothing is integrated. The platform lane now
-  owns the required test-only follow-up before cumulative review and integration.
+  No pre-acceptance tests ran. Focused test follow-up `22ddfc0` is independently
+  accepted: DeclarativeRendererTests passed 4,881 checks; the eight-widget host
+  fixture and native executable compiled, but its single bounded route failed
+  before readiness with Win32 5 and a missing expected Development package
+  generation, so zero scenario assertions executed and it was not rerun. The
+  unexecuted host assertions remain residual test debt rather than a product
+  rejection because the exact production behavior was physically accepted and
+  the deterministic renderer coverage is green. The full cumulative product and
+  test chain is integrated on main as `2ea8cce`, `822e17b`, `df52408`,
+  `d4874f2`, `deb19b4`, `9530ca9`, and `0cf92e2`. A coherent main Release build
+  passed and launched visibly as PID 47244 with executable SHA-256
+  `32FF564BE7C30062227F4C98D9774C6BAC7BAC0F02CCE85E9CD001CD85B84937`.
 - DLV-245 independently dispositioned both unreliable native routes. The
   process-owner route exposed the production DLV-246 hang. The widget-switch
   route corrected stale authored extents, then exposed an invalid comparison
@@ -202,8 +212,8 @@ user decision. The native overlay is the sole production presentation path.
 
 | Lane | Task/worktree | State |
 | --- | --- | --- |
-| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | DLV-242 production correction `61936b8` is source-reviewed and physically accepted. Assigned: test-only regression follow-up for the accepted exact-retained, guide, incremental-work, focus-scale, and heterogeneous-transition invariants. Production edits are prohibited; run only affected bounded suites once and commit tests separately. Item 4 remains deferred to DLV-248. Preserve accepted DLV-246 branch `codex/impl-platform-process-owner` and completed `codex/impl-platform-snapshot-cache` / `codex/impl-platform-fixed-chrome`. |
-| Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | DLV-218 cumulative branch through `d8b8861` is accepted and integrated. No later widgets assignment is authorized: the known styling/provider items require fresh user evidence, so the lane remains idle rather than manufacturing internal filler while visible DLV-242 is active. Preserve the clean DLV-240 and DLV-218 branches. |
+| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | DLV-242 is accepted and integrated through `0cf92e2`; preserve `codex/impl-platform-native-impact` at `22ddfc0`. Assigned next: DLV-243 bounded optimistic slider feedback damage from current planner main, in physical-first mode. DLV-248 remains deferred. Preserve accepted DLV-246 branch `codex/impl-platform-process-owner` and completed `codex/impl-platform-snapshot-cache` / `codex/impl-platform-fixed-chrome`. |
+| Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | DLV-218 cumulative branch through `d8b8861` is accepted and integrated. No later widgets assignment is authorized: the known styling/provider items require fresh user evidence, so the lane remains idle rather than manufacturing internal filler while visible DLV-243 is active. Preserve the clean DLV-240 and DLV-218 branches. |
 
 The user explicitly approved the DLV-217 aggregate exception on 2026-08-15.
 The preserved four-commit implementation chain was integrated onto current main
@@ -547,7 +557,7 @@ It was not rerun. Focused native protocol/materializer/session evidence and the
 clean Release build are accepted; the cumulative chain is integrated as
 `0c264c5` plus `1ab2e0d`.
 
-### Assigned test follow-up — DLV-242: incremental layout, damage, and UIA
+### Accepted and integrated — DLV-242: incremental layout, damage, and UIA
 
 Use admitted impact metadata to avoid whole-widget work. Value/paint-only changes
 retain geometry and repaint only affected bounds; local layout changes recompute
@@ -766,23 +776,28 @@ current before its 422-ms diagnostic threshold, exposing a trace-close
 bookkeeping gap rather than a failed presentation; retain that as low-priority
 observability debt and do not broaden this follow-up into production changes.
 
-The platform lane must now add only focused regression tests for the accepted
-observable invariants: exact retained authority causes no inert content raster
-or guide oscillation when the complete visual token matches; representative
-token mismatches retain conservative full fallback; stable Current-to-Current
-no-op/paint/local-layout/full classification remains intact; ordinary focus
-movement retains scale 1 and bounded damage; and heterogeneous rapid switches
-keep fixed chrome coordinates while presenting the correct destination. Do not
-edit production code. Run each affected native suite at most once under its
-existing bound, do not run the aggregate, and commit the test follow-up
-separately. If a focused test exposes a production defect, stop and report it.
+Focused test-only follow-up `22ddfc0` changes only DeclarativeRendererTests,
+WidgetSwitchHostTests, and WidgetSwitchFixture. DeclarativeRendererTests passed
+4,881 checks for no-raster, paint-only, local-layout, conservative full fallback,
+bounded focus damage, and scale-one focus. The host fixture and executable
+compiled, but the one allowed route failed before readiness with Win32 5 and a
+missing expected Development package generation; zero scenario assertions ran,
+and the route was not repeated or redesigned. Source review found the assertions
+coherent and no production edits. The residual risk is limited to those compiled
+but unexecuted host assertions for inert RefreshRetained UIA/pixels/guide and
+rapid fixed-chrome switching.
 
-Verification remains physical-first: source review, one serialized full packaged
-Release build, exact artifact/provenance inspection, and the accepted visible
-launch are complete. Focused post-acceptance regression work is now assigned as
-described above. Never run the product aggregate merely for this correction.
+The cumulative production and test chain is accepted and integrated on main as
+`2ea8cce`, `822e17b`, `df52408`, `d4874f2`, `deb19b4`, `9530ca9`, and
+`0cf92e2`. The coherent `Release -SkipTests` build passed, retired generated
+runtime directories remain absent, and exact integrated main launched visibly as
+PID 47244 with hash
+`32FF564BE7C30062227F4C98D9774C6BAC7BAC0F02CCE85E9CD001CD85B84937`.
+Its startup elected the production owner, applied current appearance/catalog,
+placed fixed chrome exactly at guide `2192,1162,735,77` and tray
+`2186,1299,747,141`, and emitted no startup failure diagnostics.
 
-### Ready after DLV-242 — DLV-243: bounded optimistic slider feedback damage
+### Assigned — DLV-243: bounded optimistic slider feedback damage
 
 Give accepted slider input immediate host-owned visual feedback while the
 authoritative widget update is pending. Reconcile on acknowledgement, correction,
@@ -834,11 +849,11 @@ sources, or user files.
    protocol 2 preserved for immutable full-trust applications.
 5. DLV-241 is accepted and integrated as `0c264c5` plus `1ab2e0d`; its single
    exact aggregate stopped at the inherited silent managed restore failure.
-6. Platform completes the bounded physical-first DLV-242 correction for items
-   1, 2, 3, 5, and 6 above on the preserved branch, then builds and launches for
-   user review; regression tests remain after the user verdict. DLV-248 item 4
-   is explicitly deferred.
-7. Platform implements DLV-243 separately and launches for slider review.
+6. DLV-242 is accepted and integrated through `0cf92e2`; coherent integrated
+   main is visibly running as PID 47244. DLV-248 item 4 remains explicitly
+   deferred.
+7. Platform implements DLV-243 separately in physical-first mode and launches
+   for slider review before tests or integration.
 8. Platform implements DLV-248 only after a later explicit queue promotion.
 9. DLV-218 is accepted and integrated through `d8b8861`; the widgets lane stays
    idle until fresh user evidence authorizes another visible correction.

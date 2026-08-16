@@ -498,8 +498,12 @@ Then repeat the loop.
   Exact DLV-242 candidate PID 105432 was physically accepted by the user from
   clean source tip `61936b8` with executable SHA-256
   `ACB3F6E6A83DD6FC03A5C8A4E5F87BDED8CD9CE281C2AB7849F1C52CA7224949`.
-  Accepted production main remains `a77182d`; DLV-242 is not integrated until
-  its separately committed focused test follow-up is reviewed.
+  Focused test-only follow-up `22ddfc0` is accepted with 4,881 deterministic
+  renderer checks green and one compiled host route honestly unexecuted after
+  its single bounded pre-readiness failure. DLV-242 is integrated on planner
+  main through `0cf92e2`; its coherent integrated Release runs visibly as PID
+  47244 with executable SHA-256
+  `32FF564BE7C30062227F4C98D9774C6BAC7BAC0F02CCE85E9CD001CD85B84937`.
 - Active platform implementation uses the clean isolated worktree
   `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative`. Preserve the
   rejected one-HWND correction branch `codex/impl-platform-integration` at
@@ -524,9 +528,11 @@ Then repeat the loop.
   rejected for retained-refresh/guide flicker and text-scale movement.
   Correction `61936b8` implements only user-authorized DLV-242 items 1, 2, 3,
   5, and 6 and is physically accepted; media optimistic/provider revision item
-  4 is deferred to DLV-248. The platform lane now owns only the focused
-  post-acceptance regression-test commit. It must not edit production, run the
-  aggregate, integrate, or push. The original
+  4 is deferred to DLV-248. Focused test follow-up `22ddfc0` and the complete
+  DLV-242 chain are accepted and integrated through `0cf92e2`. The platform lane
+  is now assigned DLV-243 bounded optimistic slider feedback damage from current
+  planner main in physical-first mode; it must not mix DLV-248, run the aggregate,
+  integrate, or push. The original
   pre-recovery branch remains
   preserved at `bdf6d88`; do not rewrite it. Its
   prior DLV-220 history remains preserved on `codex/impl-platform-community`.
