@@ -71,13 +71,20 @@ Snapshots are evidence only. This file is the sole authority for current work.
   controller guide still flicker or move. Tests and integration remain
   prohibited while the platform lane implements the bounded production-only
   correction below.
-- Bounded correction `61936b8` is independently source-reviewed and visibly
-  running as unaccepted PID 105432. Its exact executable SHA-256 is
+- Bounded correction `61936b8` is independently source-reviewed and physically
+  accepted by the user after running as PID 105432. Its exact executable
+  SHA-256 is
   `ACB3F6E6A83DD6FC03A5C8A4E5F87BDED8CD9CE281C2AB7849F1C52CA7224949`.
   The serialized packaged Release build passed after the exact rejected PID
   99292, which exposed no enumerable HWND for normal `WM_CLOSE`, was stopped to
-  release its interop DLL. Startup is clean and fixed chrome is exact. No tests
-  ran and nothing is integrated; the user's physical verdict is required.
+  release its interop DLL. Startup is clean and fixed chrome is exact. The
+  accepted session contains 67 selections, no failure or non-admitted completion,
+  correct target presentation, fixed guide/tray coordinates through the latest
+  heterogeneous extent transitions, and bounded destination settlement. A
+  low-priority trace-bookkeeping gap can emit `slow-threshold` immediately after
+  a current frame is already committed; it did not represent a failed transition.
+  No pre-acceptance tests ran and nothing is integrated. The platform lane now
+  owns the required test-only follow-up before cumulative review and integration.
 - DLV-245 independently dispositioned both unreliable native routes. The
   process-owner route exposed the production DLV-246 hang. The widget-switch
   route corrected stale authored extents, then exposed an invalid comparison
@@ -195,7 +202,7 @@ user decision. The native overlay is the sole production presentation path.
 
 | Lane | Task/worktree | State |
 | --- | --- | --- |
-| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | DLV-242 correction `61936b8` is source-reviewed and visibly running as unaccepted PID 105432 for the user's physical verdict on retained-refresh/guide flicker, Settings focus stability, and stable partial updates. Item 4 remains deferred to DLV-248. No tests or integration before acceptance. Preserve accepted DLV-246 branch `codex/impl-platform-process-owner` and completed `codex/impl-platform-snapshot-cache` / `codex/impl-platform-fixed-chrome`. |
+| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | DLV-242 production correction `61936b8` is source-reviewed and physically accepted. Assigned: test-only regression follow-up for the accepted exact-retained, guide, incremental-work, focus-scale, and heterogeneous-transition invariants. Production edits are prohibited; run only affected bounded suites once and commit tests separately. Item 4 remains deferred to DLV-248. Preserve accepted DLV-246 branch `codex/impl-platform-process-owner` and completed `codex/impl-platform-snapshot-cache` / `codex/impl-platform-fixed-chrome`. |
 | Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | DLV-218 cumulative branch through `d8b8861` is accepted and integrated. No later widgets assignment is authorized: the known styling/provider items require fresh user evidence, so the lane remains idle rather than manufacturing internal filler while visible DLV-242 is active. Preserve the clean DLV-240 and DLV-218 branches. |
 
 The user explicitly approved the DLV-217 aggregate exception on 2026-08-15.
@@ -540,7 +547,7 @@ It was not rerun. Focused native protocol/materializer/session evidence and the
 clean Release build are accepted; the cumulative chain is integrated as
 `0c264c5` plus `1ab2e0d`.
 
-### Assigned — DLV-242: incremental layout, damage, and UIA
+### Assigned test follow-up — DLV-242: incremental layout, damage, and UIA
 
 Use admitted impact metadata to avoid whole-widget work. Value/paint-only changes
 retain geometry and repaint only affected bounds; local layout changes recompute
@@ -745,13 +752,35 @@ Guide rendering may read the exact retained visual checkpoint without granting
 input authority. Generic button scale is `1` in both ordinary and focused
 states. The corrected Current-to-Current impact/damage path remains unchanged.
 The full packaged Release build passed at unchanged clean commit `61936b8`; the
-candidate hash and PID are recorded above. No tests ran and nothing is
-integrated pending the user's verdict.
+candidate hash and PID are recorded above. No pre-acceptance tests ran and
+nothing is integrated pending the focused test follow-up.
+
+The user physically accepted the exact `61936b8` candidate after exercising
+Settings, Media Sessions, and rapid switches between differently sized widgets.
+The exact PID 105432 session remained free of crashes, provider failures,
+invalid payloads, and rejected lifecycle completions. Its latest Audio Mixer,
+Games & Apps, and Media Sessions switches presented the requested target,
+admitted worker results, settled at each authored destination, and kept guide
+`2192,1162,735,77` plus tray `2186,1299,747,141` unchanged. Games & Apps became
+current before its 422-ms diagnostic threshold, exposing a trace-close
+bookkeeping gap rather than a failed presentation; retain that as low-priority
+observability debt and do not broaden this follow-up into production changes.
+
+The platform lane must now add only focused regression tests for the accepted
+observable invariants: exact retained authority causes no inert content raster
+or guide oscillation when the complete visual token matches; representative
+token mismatches retain conservative full fallback; stable Current-to-Current
+no-op/paint/local-layout/full classification remains intact; ordinary focus
+movement retains scale 1 and bounded damage; and heterogeneous rapid switches
+keep fixed chrome coordinates while presenting the correct destination. Do not
+edit production code. Run each affected native suite at most once under its
+existing bound, do not run the aggregate, and commit the test follow-up
+separately. If a focused test exposes a production defect, stop and report it.
 
 Verification remains physical-first: source review, one serialized full packaged
-Release build, exact artifact/provenance inspection, and visible launch for the
-user. Do not author or modify regression tests until the user accepts the
-corrected behavior. Never run the product aggregate merely for this correction.
+Release build, exact artifact/provenance inspection, and the accepted visible
+launch are complete. Focused post-acceptance regression work is now assigned as
+described above. Never run the product aggregate merely for this correction.
 
 ### Ready after DLV-242 — DLV-243: bounded optimistic slider feedback damage
 
