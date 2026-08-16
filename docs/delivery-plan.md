@@ -224,8 +224,8 @@ user decision. The native overlay is the sole production presentation path.
 
 | Lane | Task/worktree | State |
 | --- | --- | --- |
-| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | DLV-243 is user-accepted, focused-tested 2,096 checks, and integrated through `3df41b8`; coherent main Release PID 36592 has SHA-256 `1658E1616AB7DDDE371CEA58AB302ACAD3761E96CFE44E5CC1D431776C79CDAB`. DLV-250 is Assigned. DLV-248 remains deferred. Preserve accepted DLV-246 branch `codex/impl-platform-process-owner` and completed `codex/impl-platform-snapshot-cache` / `codex/impl-platform-fixed-chrome`. |
-| Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | DLV-249 is accepted and integrated through `62589c5`; focused Games & Apps evidence is 64/64. DLV-251 is Assigned from accepted main. Preserve the clean DLV-249, DLV-240, and DLV-218 branches. |
+| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | DLV-250 production candidate `7f15f15` is source-reviewed and clean on `codex/impl-platform-settings-startup`; no tests were added or run. It is combined only for physical review with DLV-251 in candidate PID 30804. DLV-248 remains deferred. Preserve accepted DLV-246 branch `codex/impl-platform-process-owner` and completed `codex/impl-platform-snapshot-cache` / `codex/impl-platform-fixed-chrome`. |
+| Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | DLV-251 production candidate `a0be889` is source-reviewed and clean on `codex/impl-widgets-audio-first-activation`; no tests were added or run. It is combined only for physical review with DLV-250 in candidate PID 30804. Preserve the clean DLV-249, DLV-240, and DLV-218 branches. |
 
 The user explicitly approved the DLV-217 aggregate exception on 2026-08-15.
 The preserved four-commit implementation chain was integrated onto current main
@@ -837,7 +837,7 @@ Coherent candidate `922385d` is also rejected: `handled=true` means queue admiss
 On process launch, open the real Settings widget with tray focus after catalog
 authority exists; do not expose the legacy dashboard title/guide placeholder.
 The fixed chrome HWND remains the sole guide renderer and screen-position owner.
-Preserve later Guide reopen behavior. A configurable startup widget is deferred.
+Preserve later Guide reopen behavior. A configurable startup widget is deferred. Source-reviewed candidate `7f15f15` opens catalog-admitted Settings directly from Hidden with tray focus and leaves fixed-chrome ownership unchanged. It is not accepted or integrated; coherent combined physical candidate PID 30804 has SHA-256 `C9DF4C969AB5093EA0B5276BC6EF02A343E958E69A0BEC96A3F66CE217FCE635`, opened Settings on transition 1, and logged exact first-visible chrome placement.
 
 ### Ready later — DLV-248: media optimistic command revision reconciliation
 
@@ -919,7 +919,7 @@ packaged main Release was visibly accepted as PID 47308 with SHA-256
 The first visible session admitted Audio Mixer loading sequence 1, then received
 no provider-backed publication before close 3.3 seconds later; reopen admitted
 sequences 2/3 immediately. Make first activation complete and publish its current
-typed audio snapshot while visible, without UI blocking, polling, or warm reopen.
+typed audio snapshot while visible, without UI blocking, polling, or warm reopen. Source-reviewed candidate `a0be889` waits asynchronously for the existing provider session's first required typed snapshot or typed failure and prioritizes required output/sessions before optional work. It is not accepted or integrated; physical first-activation validation is pending in combined candidate PID 30804.
 
 ### Accepted and integrated — DLV-218: remove retired domains
 
@@ -954,7 +954,7 @@ sources, or user files.
    main is visibly running as PID 47244. DLV-248 item 4 remains explicitly
    deferred.
 7. DLV-243 is physically accepted, focused-tested 2,096 checks, and integrated through `3df41b8`; coherent main Release PID 36592 is running.
-8. DLV-250 and DLV-251 are now separate Assigned physical-first milestones. DLV-248 still requires later explicit promotion.
+8. DLV-250 candidate `7f15f15` and DLV-251 candidate `a0be889` are source-reviewed but unaccepted; coherent combined candidate PID 30804 is running for physical startup/first-audio validation. DLV-248 still requires later explicit promotion.
 9. DLV-218 is accepted and integrated through `d8b8861`.
 10. DLV-249 is physically accepted, focused-tested 64/64, integrated through
     `62589c5`, rebuilt coherently, and visibly launched as PID 47308.

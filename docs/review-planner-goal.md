@@ -564,8 +564,8 @@ Then repeat the loop.
   lifetime correction `6c722a1` passed 2,096 checks. The complete DLV-243 chain
   is integrated on main through `3df41b8`; coherent Release PID 36592 is running
   with SHA-256 `1658E1616AB7DDDE371CEA58AB302ACAD3761E96CFE44E5CC1D431776C79CDAB`.
-  DLV-250 and DLV-251 are the next separate physical-first assignments. The original
-  pre-recovery branch remains
+  DLV-250 candidate `7f15f15` and DLV-251 candidate `a0be889` are source-reviewed
+  but unaccepted; coherent combined physical candidate PID 30804 is running with SHA-256 `C9DF4C969AB5093EA0B5276BC6EF02A343E958E69A0BEC96A3F66CE217FCE635`. The original pre-recovery branch remains
   preserved at `bdf6d88`; do not rewrite it. Its
   prior DLV-220 history remains preserved on `codex/impl-platform-community`.
   The completed
