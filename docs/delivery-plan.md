@@ -708,8 +708,23 @@ transport work and renderer work without ordinary frame spam. The cumulative
 commit descends from `3c6eb3c`, the worktree is clean, and the coherent
 tests-skipped Release build passed with executable SHA-256
 `AD117D8521067D67C25020265283493CBC13D0FA57AB979E1FF86055010E7C11`.
-The exact candidate is visibly running as PID 44428 for another user latency
-verdict. Do not write tests or integrate before that decision.
+The user then reproduced 0.68--1.17-second Spotify focus-navigation frames.
+Threshold timing attributes nearly all of that delay to focus-follow
+presentation convergence while preparation, clipping, node drawing, and commit
+remain small. Diagnostic-only production commit `9bf5470` adds one bounded,
+render-local convergence summary for slow, greater-than-two-pass,
+no-progress/cyclic, or bound-hit focus-follow work. It records aggregate timing,
+scroll identities and axes, initial/final/maximum offsets, bounded first/last
+offset samples, target/viewport rectangles, boundaries, and disposition through
+the existing host slow-frame log owner. It does not change scrolling, layout,
+rendering, protocol, or provider behavior and does not address the separately
+deferred Win32 232 transport failure. The tests-skipped Release build passed
+with executable SHA-256
+`8DF9991F9776F19D8D682ACE0C58DCFEAA36A7754778593F197B26F982B62B54`.
+The exact cumulative candidate is visibly running as PID 8296 for one user
+Spotify Queue/Playlist reproduction, after which the planner will inspect the
+new summary before authorizing a behavioral correction. Do not write tests or
+integrate before that diagnosis and physical verdict.
 
 ### Ready next — DLV-261: restore Platform Settings focused-suite parity
 
