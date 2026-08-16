@@ -215,7 +215,7 @@ user decision. The native overlay is the sole production presentation path.
 
 | Lane | Task/worktree | State |
 | --- | --- | --- |
-| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | DLV-254 is refreshed onto current main as production commit `61f59d1`; its patch ID exactly matches reviewed commit `58ae6cc`, the coherent packaged Release build passed with tests skipped, and exact candidate PID 44468 is visibly running for the user's physical verdict. DLV-256 is Ready next only after accepted DLV-254 integration. DLV-248 remains deferred. |
+| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | DLV-254 candidate `61f59d1` is physically rejected: with widget-switch animation Off, a destination smaller than the retained composition container is committed at local offset `0,0` and appears off-center. A production-only correction is assigned on the same branch; no tests precede the next user verdict. DLV-256 remains blocked behind accepted DLV-254 integration. DLV-248 remains deferred. |
 | Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | DLV-253 is physically accepted, focused Games & Apps evidence is 65/65, and the cumulative chain is integrated on main as `6a26f08`, `3c63852`, and test-only `91177ec`. The superseded PID 51500 closed normally before the DLV-254 candidate launch; no rebuild/relaunch was performed for the DLV-253 tests alone. Preserve clean completed branches. |
 
 The user explicitly approved the DLV-217 aggregate exception on 2026-08-15.
@@ -432,9 +432,19 @@ build passed with tests skipped; its exact executable SHA-256 is
 The accepted PID 51500 closed normally, and this exact refreshed candidate is
 visibly running as PID 44468. Initial launch trace confirms the production
 process owner, DirectComposition presentation owner, and appearance revision 2
-were established without a logged error. Await the user's physical toggle,
-default-On, tray/guide stationarity, and DLV-253 regression verdict before tests
-or integration.
+were established without a logged error. The user physically rejected this
+candidate on 2026-08-16 because animation-Off switches draw destination widget
+content off-center. The trace reports correct authored destination extents and
+`target=composition-immediate`; source review found that the non-animated
+`PrepareCompositionAdmission` plan uses destination dimensions as both its
+container and destination, producing local offset `0,0` when `ShowOverlay`
+retains a larger prior composition container. The animated branch uses the
+actual container and does not have this error. The bounded correction must use
+the exact destination-placement minus container-placement visual offset at
+scale 1 while preserving fixed chrome, authored viewport layout, HWND/input/
+focus/UIA ownership, and the animated path. Build a production-only candidate
+with tests skipped, then stop for another user verdict before tests or
+integration.
 
 ### Ready next — DLV-256: eliminate Spotify artwork paint stalls
 
@@ -590,10 +600,11 @@ Closed accepted widgets history through DLV-252 is retained in the
 12. DLV-253 is physically accepted from PID 51500, focused evidence is 65/65,
     and the cumulative chain is integrated as `6a26f08`, `3c63852`, and
     `91177ec`; no rebuild/relaunch was needed for the test-only delta. Exact
-    patch-equivalent DLV-254 commit `61f59d1` is refreshed onto integrated main,
-    coherently Release-built, and visibly running as PID 44468 for the next
-    physical verdict. DLV-256 is Ready next after accepted DLV-254 integration;
-    DLV-248 remains deliberately deferred.
+    patch-equivalent DLV-254 commit `61f59d1` was refreshed onto integrated main
+    and coherently Release-built, but its animation-Off coordinate path was
+    physically rejected from PID 44468. A bounded production-only correction is
+    assigned before any tests or integration. DLV-256 is Ready only after
+    accepted DLV-254 integration; DLV-248 remains deliberately deferred.
 13. DLV-257 through DLV-260 form the blocked serialized rebrand program. They
     begin only after the new identity is user-approved and the active
     DLV-253/DLV-254 cycle reaches clean accepted boundaries. DLV-258 through
