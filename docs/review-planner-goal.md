@@ -555,9 +555,13 @@ Then repeat the loop.
   snapshot before the queued action runs. Correction `8139c2b` preserves
   optimistic slider damage, defers controller/UIA slider refresh to the widget's
   post-action invalidation, and retains immediate refresh for non-slider actions.
-  Coherent candidate `78b37a3` is running as PID 49596 with SHA-256
-  `F7272C5D20A718338F23825A1080C15906C2054967E5FE20F08C0656424C744F`.
-  Do not integrate or add tests before the user's physical verdict. The original
+  Coherent candidate `78b37a3` is physically rejected: Core Audio float-derived
+  values carry residue beyond native `StepTarget`'s `1e-10` grid tolerance, so
+  first Left can target the same displayed percent and Audio Mixer correctly
+  no-ops; second Left then changes it. Correct only the generic native grid
+  tolerance so a near-grid value moves one requested step while meaningful
+  off-grid values retain directionally safe snapping. Do not integrate or add
+  tests before the user's physical verdict. The original
   pre-recovery branch remains
   preserved at `bdf6d88`; do not rewrite it. Its
   prior DLV-220 history remains preserved on `codex/impl-platform-community`.
