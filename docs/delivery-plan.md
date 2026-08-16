@@ -223,7 +223,7 @@ user decision. The native overlay is the sole production presentation path.
 
 | Lane | Task/worktree | State |
 | --- | --- | --- |
-| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | DLV-242 is accepted and integrated through `0cf92e2`. DLV-243 candidate `78b37a3` is physically rejected: Core Audio float residue is outside the stepper's overly strict grid tolerance, so first Left merely snaps to the displayed step and the second Left changes it. A bounded generic native step-quantization correction is assigned; no tests/integration occurred. DLV-250 follows it. DLV-248 remains deferred. Preserve accepted DLV-246 branch `codex/impl-platform-process-owner` and completed `codex/impl-platform-snapshot-cache` / `codex/impl-platform-fixed-chrome`. |
+| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | DLV-242 is accepted and integrated through `0cf92e2`. DLV-243 correction `0d5c467` plus prior platform/Audio Mixer corrections are source-reviewed and running coherently as temporary candidate `e59e111`, PID 48792, SHA-256 `94C38ABECE9220AE3D9254172AD8A85DB638774615E477C99004AC0871C011FB`; physical verdict is pending and no tests/integration occurred. DLV-250 follows it. DLV-248 remains deferred. Preserve accepted DLV-246 branch `codex/impl-platform-process-owner` and completed `codex/impl-platform-snapshot-cache` / `codex/impl-platform-fixed-chrome`. |
 | Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | DLV-218 cumulative branch through `d8b8861` is accepted and integrated. DLV-249 is user-accepted and integrated through `62589c5`; focused Games & Apps evidence is 64/64. It preserves the resolved session snapshot across tray switches, keeps manual Refresh as the only post-startup full reconciliation owner, and retains selected-SavedId launch-time revalidation. Preserve the clean DLV-249, DLV-240, and DLV-218 branches. |
 
 The user explicitly approved the DLV-217 aggregate exception on 2026-08-15.
@@ -829,7 +829,7 @@ The user rejected it because application-session volume pending toggled the
 whole card background. Correction `ed4fd8b` limits that card state to discrete
 mute pending while preserving volume command authority. Coherent candidate
 `a31869b` was then rejected after live Audio Mixer input: Left was handled but a newer render serial with the old provider value prematurely cleared the optimistic target. Generic correction `8d3dfff` retains pending state for repeated prior authority and settles only on target match, genuine correction, typed failure, or timeout while keeping current-tree rollback identity.
-Coherent candidate `922385d` is also rejected: `handled=true` means queue admission, but the host immediately forces snapshot 150 before `OnActionAsync` mutates state. Correction `8139c2b` correctly defers controller/UIA slider refresh to post-action invalidation, but coherent candidate `78b37a3` is physically rejected on the remaining first-step defect. Core Audio returns float-derived values such as an on-grid 32% with tiny residue; native `StepTarget` tolerance `1e-10` misclassifies it as off-grid, first Left targets 32% again, and Audio Mixer correctly no-ops. Use a small generic float-safe grid tolerance so near-grid values step once in the requested direction; preserve meaningful off-grid semantics and all DLV-243 ownership. Tests remain deferred.
+Coherent candidate `922385d` is also rejected: `handled=true` means queue admission, but the host immediately forces snapshot 150 before `OnActionAsync` mutates state. Correction `8139c2b` correctly defers controller/UIA slider refresh to post-action invalidation, but coherent candidate `78b37a3` is physically rejected on the remaining first-step defect. Core Audio returns float-derived values such as an on-grid 32% with tiny residue; native `StepTarget` tolerance `1e-10` misclassifies it as off-grid, first Left targets 32% again, and Audio Mixer correctly no-ops. Correction `0d5c467` recognizes values within four float ULPs of a grid point, capped at 0.0001 step, while retaining meaningful off-grid semantics. Coherent candidate `e59e111` is running as PID 48792 with SHA-256 `94C38ABECE9220AE3D9254172AD8A85DB638774615E477C99004AC0871C011FB`; tests/integration await physical verdict.
 
 ### Ready after DLV-243 — DLV-250: first-visible Settings and fixed-guide authority
 
@@ -952,7 +952,7 @@ sources, or user files.
 6. DLV-242 is accepted and integrated through `0cf92e2`; coherent integrated
    main is visibly running as PID 47244. DLV-248 item 4 remains explicitly
    deferred.
-7. DLV-243 candidate `78b37a3` is physically rejected; its bounded float-safe step-quantization correction is assigned before another Release launch, with tests/integration deferred.
+7. DLV-243 corrected coherent candidate `e59e111` is running as PID 48792 for physical slider review before tests or integration.
 8. After the user's corrected DLV-243 verdict, implement DLV-250 and DLV-251 as separate
    physical-first milestones. DLV-248 still requires later explicit promotion.
 9. DLV-218 is accepted and integrated through `d8b8861`.

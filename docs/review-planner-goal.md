@@ -558,10 +558,12 @@ Then repeat the loop.
   Coherent candidate `78b37a3` is physically rejected: Core Audio float-derived
   values carry residue beyond native `StepTarget`'s `1e-10` grid tolerance, so
   first Left can target the same displayed percent and Audio Mixer correctly
-  no-ops; second Left then changes it. Correct only the generic native grid
-  tolerance so a near-grid value moves one requested step while meaningful
-  off-grid values retain directionally safe snapping. Do not integrate or add
-  tests before the user's physical verdict. The original
+  no-ops; second Left then changes it. Correction `0d5c467` recognizes values
+  within four float ULPs of a grid point, capped at 0.0001 step, while retaining
+  meaningful off-grid snapping. Coherent candidate `e59e111` is running as PID
+  48792 with SHA-256
+  `94C38ABECE9220AE3D9254172AD8A85DB638774615E477C99004AC0871C011FB`.
+  Do not integrate or add tests before the user's physical verdict. The original
   pre-recovery branch remains
   preserved at `bdf6d88`; do not rewrite it. Its
   prior DLV-220 history remains preserved on `codex/impl-platform-community`.
