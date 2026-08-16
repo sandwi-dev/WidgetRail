@@ -223,7 +223,7 @@ user decision. The native overlay is the sole production presentation path.
 
 | Lane | Task/worktree | State |
 | --- | --- | --- |
-| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | DLV-242 is accepted and integrated through `0cf92e2`; preserve `codex/impl-platform-native-impact` at `22ddfc0`. DLV-243 candidate `1cc4106` is rejected before launch; a bounded same-lane correction must retain exact slider identities through focus and timeout reconciliation instead of repainting the whole content HWND. DLV-248 remains deferred. Preserve accepted DLV-246 branch `codex/impl-platform-process-owner` and completed `codex/impl-platform-snapshot-cache` / `codex/impl-platform-fixed-chrome`. |
+| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | DLV-242 is accepted and integrated through `0cf92e2`. DLV-243 correction `1e7a8a7` remains unreviewed, unlaunched, untested by the user, and unintegrated; it is the next visible milestone. DLV-250 follows it. DLV-248 remains deferred. Preserve accepted DLV-246 branch `codex/impl-platform-process-owner` and completed `codex/impl-platform-snapshot-cache` / `codex/impl-platform-fixed-chrome`. |
 | Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | DLV-218 cumulative branch through `d8b8861` is accepted and integrated. DLV-249 is user-accepted and integrated through `62589c5`; focused Games & Apps evidence is 64/64. It preserves the resolved session snapshot across tray switches, keeps manual Refresh as the only post-startup full reconciliation owner, and retains selected-SavedId launch-time revalidation. Preserve the clean DLV-249, DLV-240, and DLV-218 branches. |
 
 The user explicitly approved the DLV-217 aggregate exception on 2026-08-15.
@@ -829,6 +829,13 @@ old/new focus damage, and clear no-longer-present timed-out entries without a
 raster. Full fallback remains valid only for the already-documented ambiguous
 or unsafe geometry/paint states. No pre-acceptance tests ran.
 
+### Ready after DLV-243 — DLV-250: first-visible Settings and fixed-guide authority
+
+On process launch, open the real Settings widget with tray focus after catalog
+authority exists; do not expose the legacy dashboard title/guide placeholder.
+The fixed chrome HWND remains the sole guide renderer and screen-position owner.
+Preserve later Guide reopen behavior. A configurable startup widget is deferred.
+
 ### Ready later — DLV-248: media optimistic command revision reconciliation
 
 Prevent an older provider publication from overwriting a newer host-projected
@@ -885,16 +892,9 @@ until the user accepts the launched behavior. Stop after reporting the exact
 commit, changed files, build result, and any remaining reason an item used the
 fallback; do not integrate, launch, push, or edit reviewer documents.
 
-Candidate `3fcb740` is rejected before user testing. Source review accepted the
-single WidgetBridge-session refresh owner, removal of activation/saved-ID
-rescans, top accessible manual Refresh action, last-good failure retention, and
-stable opaque artwork-handle path. Its packaged Bridge nevertheless exits 1
-before opening the host pipe because `styles/default.gbss(59,3)` uses unsupported
-property `margin-top`. Exact OverlayHost PID 71532 consequently reported no
-platform appearance or widget catalog. The invalid candidate was closed and
-accepted integrated main was restored visibly as PID 21044. The correction is
-limited to expressing that spacing with an already-supported generic style;
-do not add another GBSS property or parser feature. No tests ran.
+Candidate `3fcb740` was rejected before user testing because unsupported GBSS
+property `margin-top` prevented the packaged Bridge from opening the host pipe.
+Correction `75bfefd` expressed the spacing with existing supported style.
 
 Style correction `75bfefd` passes package validation. The next visible
 candidate still exposed every saved tile as **Checking...** on ordinary widget
@@ -910,6 +910,13 @@ behavior, and exact selected-SavedId launch revalidation. The exact chain is
 integrated on main as `18c4527`, `b307cd0`, `7b36d78`, and `62589c5`. A coherent
 packaged main Release is visibly running as PID 47308 with SHA-256
 `3599228CA1E821753203787BCE4D38942B8FD18308EFE36FA2554D05772E10A6`.
+
+### Ready after DLV-243 — DLV-251: Audio Mixer first-activation provider publication
+
+The first visible session admitted Audio Mixer loading sequence 1, then received
+no provider-backed publication before close 3.3 seconds later; reopen admitted
+sequences 2/3 immediately. Make first activation complete and publish its current
+typed audio snapshot while visible, without UI blocking, polling, or warm reopen.
 
 ### Accepted and integrated — DLV-218: remove retired domains
 
@@ -945,7 +952,8 @@ sources, or user files.
    deferred.
 7. Platform implements DLV-243 separately in physical-first mode and launches
    for slider review before tests or integration.
-8. Platform implements DLV-248 only after a later explicit queue promotion.
+8. After the user's DLV-243 verdict, implement DLV-250 and DLV-251 as separate
+   physical-first milestones. DLV-248 still requires later explicit promotion.
 9. DLV-218 is accepted and integrated through `d8b8861`.
 10. DLV-249 is physically accepted, focused-tested 64/64, integrated through
     `62589c5`, rebuilt coherently, and visibly launched as PID 47308.
