@@ -215,7 +215,7 @@ user decision. The native overlay is the sole production presentation path.
 
 | Lane | Task/worktree | State |
 | --- | --- | --- |
-| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | DLV-254 is physically accepted and integrated on main as `d5e4b0c`, `b86a01f`, `2658b98`, and test-only `57fb469`; accepted production PID 41208 remains running because the post-acceptance delta was tests/docs only. DLV-256 is now Assigned from integrated main. DLV-248 remains deferred. |
+| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | DLV-254 is physically accepted and integrated on main as `d5e4b0c`, `b86a01f`, `2658b98`, and test-only `57fb469`; accepted production PID 41208 remains running because the post-acceptance delta was tests/docs only. DLV-256 is Assigned from integrated main. Test-recovery DLV-261 and DLV-262 are Ready behind it; DLV-248 remains deferred. |
 | Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | DLV-253 is physically accepted, focused Games & Apps evidence is 65/65, and the cumulative chain is integrated on main as `6a26f08`, `3c63852`, and test-only `91177ec`. The superseded PID 51500 closed normally before the DLV-254 candidate launch; no rebuild/relaunch was performed for the DLV-253 tests alone. Preserve clean completed branches. |
 
 The user explicitly approved the DLV-217 aggregate exception on 2026-08-15.
@@ -572,6 +572,50 @@ Stop for another image-cache/renderer/device owner, synchronous I/O or decode on
 the UI thread, an unbounded GPU/CPU resource cache, provider/paging redesign,
 per-widget native behavior, undocumented APIs, destructive state changes,
 substantial conflict, or external publication. Never push.
+
+### Ready next — DLV-261: restore Platform Settings focused-suite parity
+
+Owner/baseline: platform lane after DLV-256 reaches its physical-test stop, from
+the then-current accepted main. This is test-only recovery unless direct review
+proves a current production defect. Own only the two failing Platform Settings
+assertions and the smallest directly shared fixture.
+
+The DLV-254 follow-up ran 16/18 because two existing cases still expect the
+retired `0.99` control scale even though physically accepted DLV-243 established
+`1.0` as the current product contract. Confirm that provenance against accepted
+production and update the stale expected values to the current contract. Do not
+change scale production behavior, broaden assertions, regenerate snapshots, or
+relax unrelated validation. Run the Platform Settings focused suite once with a
+bound and require 18/18. Commit test-only as `[DLV-261]`; do not rebuild or
+relaunch the overlay solely for this delta, run aggregate, edit reviewer docs,
+or push. Stop if either failure is not exactly the stale expectation described.
+
+### Ready later — DLV-262: recover the Widget Bridge focused suite
+
+Owner/baseline: platform lane after DLV-261, from the then-current accepted
+main. Own only Widget Bridge test infrastructure, fixtures, and directly stale
+test dependency/API references. Production changes require a separate planner
+decision after a demonstrated product defect.
+
+The DLV-254 appearance-payload assertion passed, but the wider suite finished
+58/89. Classify every remaining failure before editing: distinguish denied
+named-pipe/environment setup from stale fixture binaries or retired API
+references, and retain an exact failure ledger. Rebuild fixtures against the
+current accepted dependency graph, use unique test-owned bounded IPC resources,
+and repair stale test call sites to current public/internal test contracts. Do
+not weaken authentication, authorization, framing, timeout, lifecycle, or
+failure assertions; do not convert failures to unconditional skips merely to
+make the count green. Environment-inapplicable cases may use a narrowly gated
+explicit inconclusive disposition only when the same behavior has another
+deterministic test seam and the reason is surfaced in results.
+
+Run the smallest restore/build needed, then the Widget Bridge focused suite once
+with a bound. The target is 89/89 or a reviewer-approved explicit split between
+passing deterministic cases and named, genuinely environment-inapplicable
+cases; no unexplained failures remain. Commit test-only as `[DLV-262]`; do not
+rebuild/relaunch the product, run aggregate, edit reviewer docs, or push. Stop
+for a production protocol/security/lifecycle change, credential need,
+undocumented API, destructive cleanup, or substantial conflict.
 
 ### Ready later — DLV-248: media optimistic command revision reconciliation
 
