@@ -215,7 +215,7 @@ user decision. The native overlay is the sole production presentation path.
 
 | Lane | Task/worktree | State |
 | --- | --- | --- |
-| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | DLV-254 cumulative production candidate through `f376151` preserves an animation-Off decision across the exact matching deferred cold-snapshot admission and changes omitted/new-install/reset/native defaults to Off while respecting explicit saved On. Source review and a coherent Release build passed with tests skipped; exact candidate PID 41208 is visibly running for the user's renewed physical verdict. DLV-256 remains blocked behind accepted DLV-254 integration. DLV-248 remains deferred. |
+| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | The user physically accepted DLV-254 cumulative production candidate `61f59d1`, `a594478`, and `f376151` from exact PID 41208. The lane is adding only focused post-acceptance regressions before cumulative review and integration; it must not change production, rebuild/relaunch, or run aggregate. DLV-256 remains blocked behind accepted DLV-254 integration. DLV-248 remains deferred. |
 | Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | DLV-253 is physically accepted, focused Games & Apps evidence is 65/65, and the cumulative chain is integrated on main as `6a26f08`, `3c63852`, and test-only `91177ec`. The superseded PID 51500 closed normally before the DLV-254 candidate launch; no rebuild/relaunch was performed for the DLV-253 tests alone. Preserve clean completed branches. |
 
 The user explicitly approved the DLV-217 aggregate exception on 2026-08-15.
@@ -491,6 +491,15 @@ candidate is visibly running as PID 41208 for the user's first-cold-pass and
 explicit-On persistence verdict. No tests may be added or run before that
 physical decision.
 
+The user physically accepted this exact cumulative candidate on 2026-08-16.
+The platform lane may now add only focused deterministic regressions for the
+accepted Off default, exact cold-admission authority, invalidation/consumption,
+warm snap placement, later same-widget extent behavior, and explicit-On path.
+Commit the test-only follow-up separately, run only the smallest affected
+suites once, and stop for cumulative reviewer integration. Do not rebuild or
+relaunch solely for that test-only delta because PID 41208 already contains the
+accepted production bits.
+
 ### Ready next — DLV-256: eliminate Spotify artwork paint stalls
 
 Owner/baseline: platform lane after accepted DLV-254 integration, from the
@@ -650,10 +659,10 @@ Closed accepted widgets history through DLV-252 is retained in the
     physically rejected from PID 44468. Production-only corrections `a594478`
     and `f376151` now use the exact destination-to-container visual offset,
     preserve Off across exact matching cold admissions, and make Off the
-    omitted/new-install default. Exact candidate PID 41208 is visibly running
-    for renewed physical review before tests or integration. DLV-256 is Ready
-    only after accepted DLV-254 integration; DLV-248 remains deliberately
-    deferred.
+    omitted/new-install default. The user physically accepted exact candidate
+    PID 41208; the platform lane is adding focused post-acceptance tests before
+    cumulative review and integration. DLV-256 is Ready only after accepted
+    DLV-254 integration; DLV-248 remains deliberately deferred.
 13. DLV-257 through DLV-260 form the blocked serialized rebrand program. They
     begin only after the new identity is user-approved and the active
     DLV-253/DLV-254 cycle reaches clean accepted boundaries. DLV-258 through
