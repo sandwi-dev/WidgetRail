@@ -319,8 +319,14 @@ private:
         std::wstring parentId;
         bool scrollBoundary{};
     };
+    struct CollectionDiagnosticItemGeometry final {
+        float position{};
+        float extent{};
+        bool valid{};
+    };
     struct CollectionDiagnosticObservation final {
         std::vector<std::wstring> itemKeys;
+        std::vector<CollectionDiagnosticItemGeometry> itemGeometry;
         bool itemsTruncated{};
         std::wstring anchorKey;
         float anchorPosition{};
@@ -329,6 +335,8 @@ private:
         float reconciliationOffsetBefore{};
         float reconciliationOffsetAfter{};
         bool hasReconciliationOffsets{};
+        std::wstring reconciliationMode;
+        std::wstring reconciliationKey;
         declarative::Rect focusRect;
         bool hasFocusRect{};
         declarative::Rect viewport;

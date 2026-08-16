@@ -414,6 +414,13 @@ struct DeclarativeRenderer::RenderPass final {
         std::vector<FocusFollowSample> presentationSeenSamples;
     } focusFollowTrace;
 
+    struct CollectionReconciliationTrace final {
+        float offsetBefore{};
+        float offsetAfter{};
+        std::wstring mode;
+        std::wstring key;
+    };
+
     DeclarativeRenderer* owner{};
     ID2D1RenderTarget* target{};
     const WidgetSnapshot* snapshot{};
@@ -435,7 +442,7 @@ struct DeclarativeRenderer::RenderPass final {
     float deferredFocusOpacity{1.0F};
     std::optional<Rect> deferredFocusClip;
     std::map<std::wstring, TextMeasurementProof, std::less<>> textMeasurements;
-    std::map<std::wstring, std::pair<float, float>, std::less<>>
+    std::map<std::wstring, CollectionReconciliationTrace, std::less<>>
         collectionReconciliationOffsets;
 
     [[nodiscard]] bool IsResponsiveVisible(const WidgetNode& node) const noexcept {
@@ -769,54 +776,186 @@ struct DeclarativeRenderer::RenderPass final {
         return nullptr;
     }
 
-    [[nodiscard]] bool ReconcileCollectionAnchors() {
-        bool changed{};
-        VisitScrollNodes(snapshot->root, [&](const WidgetNode& scroll) {
-            if (scroll.collectionAnchorKey.empty()) return;
-            const auto key = ScrollStateKey(scroll.id);
-            const auto existing = owner->scrollOffsets_.find(key);
-            if (existing == owner->scrollOffsets_.end() ||
-                !existing->second.hasAnchorPosition ||
-                existing->second.anchorKey != scroll.collectionAnchorKey) return;
-            const auto* item = FindCollectionItem(scroll, scroll.collectionAnchorKey);
-            const auto* scrollBox = layout.Find(NarrowStableId(scroll.id));
-            const auto* itemBox = item ? layout.Find(NarrowStableId(item->id)) : nullptr;
-            if (!scrollBox || !itemBox ||
-                scrollBox->scrollAxis == declarative::ScrollAxis::None) return;
-            const auto position = scrollBox->scrollAxis == declarative::ScrollAxis::Vertical
-                ? itemBox->borderBox.y - scrollBox->contentBox.y
-                : itemBox->borderBox.x - scrollBox->contentBox.x;
-            const auto desired = std::clamp(
-                scrollBox->scrollOffset + position - existing->second.anchorPosition,
-                0.0F, scrollBox->maximumScrollOffset);
-            const auto [trace, inserted] =
-                collectionReconciliationOffsets.try_emplace(
-                    scroll.id,
-                    scrollBox->scrollOffset,
-                    desired);
-            if (!inserted) trace->second.second = desired;
-            if (std::abs(desired - scrollBox->scrollOffset) <= 0.01F) return;
-            StoreScrollOffset(key, desired);
-            changed = true;
-        });
-        return changed;
-    }
-
-    void CollectCollectionItemKeys(
+    void CollectCollectionItems(
         const WidgetNode& node,
         const WidgetNode& collectionRoot,
+        const declarative::LayoutBox* scrollBox,
         CollectionDiagnosticObservation& observation) const {
         if (&node != &collectionRoot && node.kind == L"scroll") return;
         if (!node.collectionItemKey.empty()) {
             if (observation.itemKeys.size() < kMaximumCollectionDiagnosticItems) {
                 observation.itemKeys.push_back(node.collectionItemKey);
+                CollectionDiagnosticItemGeometry geometry;
+                if (scrollBox &&
+                    scrollBox->scrollAxis != declarative::ScrollAxis::None) {
+                    if (const auto* itemBox = layout.Find(NarrowStableId(node.id))) {
+                        if (scrollBox->scrollAxis ==
+                            declarative::ScrollAxis::Vertical) {
+                            geometry.position =
+                                itemBox->borderBox.y - scrollBox->contentBox.y;
+                            geometry.extent = itemBox->borderBox.height;
+                        } else {
+                            geometry.position =
+                                itemBox->borderBox.x - scrollBox->contentBox.x;
+                            geometry.extent = itemBox->borderBox.width;
+                        }
+                        if (std::isfinite(geometry.position) &&
+                            std::isfinite(geometry.extent) &&
+                            geometry.extent >= 0.0F) {
+                            geometry.valid = true;
+                        }
+                    }
+                }
+                observation.itemGeometry.push_back(geometry);
             } else {
                 observation.itemsTruncated = true;
             }
             return;
         }
         for (const auto& child : node.children)
-            CollectCollectionItemKeys(child, collectionRoot, observation);
+            CollectCollectionItems(
+                child, collectionRoot, scrollBox, observation);
+    }
+
+    [[nodiscard]] bool ReconcileCollectionAnchors() {
+        bool changed{};
+        VisitScrollNodes(snapshot->root, [&](const WidgetNode& scroll) {
+            if (scroll.collectionAnchorKey.empty()) return;
+            const auto stateKey = ScrollStateKey(scroll.id);
+            const auto existing = owner->scrollOffsets_.find(stateKey);
+            const auto* scrollBox = layout.Find(NarrowStableId(scroll.id));
+            if (existing == owner->scrollOffsets_.end() ||
+                !existing->second.hasAnchorPosition || !scrollBox ||
+                scrollBox->scrollAxis == declarative::ScrollAxis::None) {
+                return;
+            }
+
+            const auto apply = [&](const float position,
+                                   const float priorPosition,
+                                   const std::wstring_view mode,
+                                   const std::wstring_view retainedKey) {
+                const auto desired = std::clamp(
+                    scrollBox->scrollOffset + position - priorPosition,
+                    0.0F, scrollBox->maximumScrollOffset);
+                const auto [trace, inserted] =
+                    collectionReconciliationOffsets.try_emplace(
+                        scroll.id,
+                        CollectionReconciliationTrace{
+                            scrollBox->scrollOffset,
+                            desired,
+                            std::wstring{mode},
+                            std::wstring{retainedKey},
+                        });
+                if (!inserted) {
+                    trace->second.offsetAfter = desired;
+                    if (trace->second.mode != L"overlap" || mode == L"overlap") {
+                        trace->second.mode = mode;
+                        trace->second.key = retainedKey;
+                    }
+                }
+                if (std::abs(desired - scrollBox->scrollOffset) <= 0.01F)
+                    return;
+                StoreScrollOffset(stateKey, desired);
+                changed = true;
+            };
+
+            if (existing->second.anchorKey == scroll.collectionAnchorKey) {
+                const auto* item = FindCollectionItem(
+                    scroll, scroll.collectionAnchorKey);
+                const auto* itemBox = item
+                    ? layout.Find(NarrowStableId(item->id)) : nullptr;
+                if (!itemBox) return;
+                const auto position = scrollBox->scrollAxis ==
+                        declarative::ScrollAxis::Vertical
+                    ? itemBox->borderBox.y - scrollBox->contentBox.y
+                    : itemBox->borderBox.x - scrollBox->contentBox.x;
+                apply(
+                    position, existing->second.anchorPosition,
+                    L"exact", scroll.collectionAnchorKey);
+                return;
+            }
+
+            // A bounded retained-window shift can remove the declared anchor
+            // while leaving visible keyed rows in both snapshots. Preserve one
+            // such row's prior screen-relative position before focus-follow
+            // minimally reveals the newly requested target. A retained old
+            // anchor, changed viewport/axis, missing geometry, or truncated key
+            // set leaves the established exact-key policy unchanged.
+            const auto* previousCache = owner->incrementalLayoutCache_
+                ? &*owner->incrementalLayoutCache_ : nullptr;
+            if (!previousCache ||
+                previousCache->instanceId != snapshot->instanceId ||
+                !SameRect(previousCache->viewport, viewport)) {
+                return;
+            }
+            const auto previous = previousCache->collections.find(scroll.id);
+            const auto* previousScrollBox = previousCache->layout.Find(
+                NarrowStableId(scroll.id));
+            if (previous == previousCache->collections.end() ||
+                previous->second.itemsTruncated ||
+                previous->second.anchorKey != existing->second.anchorKey ||
+                !previousScrollBox ||
+                previousScrollBox->scrollAxis != scrollBox->scrollAxis) {
+                return;
+            }
+
+            CollectionDiagnosticObservation current;
+            CollectCollectionItems(scroll, scroll, scrollBox, current);
+            if (current.itemsTruncated ||
+                std::ranges::find(
+                    current.itemKeys, existing->second.anchorKey) !=
+                    current.itemKeys.end()) {
+                return;
+            }
+            if (std::abs(previousScrollBox->contentBox.width -
+                          scrollBox->contentBox.width) > 0.01F ||
+                std::abs(previousScrollBox->contentBox.height -
+                         scrollBox->contentBox.height) > 0.01F) {
+                return;
+            }
+
+            const auto viewportExtent = scrollBox->scrollAxis ==
+                    declarative::ScrollAxis::Vertical
+                ? previousScrollBox->contentBox.height
+                : previousScrollBox->contentBox.width;
+            const CollectionDiagnosticItemGeometry* retainedPrior{};
+            const CollectionDiagnosticItemGeometry* retainedCurrent{};
+            std::wstring_view retainedKey;
+            float bestDistance = std::numeric_limits<float>::max();
+            for (std::size_t priorIndex = 0;
+                 priorIndex < previous->second.itemKeys.size(); ++priorIndex) {
+                if (priorIndex >= previous->second.itemGeometry.size()) break;
+                const auto& priorKey = previous->second.itemKeys[priorIndex];
+                const auto& prior = previous->second.itemGeometry[priorIndex];
+                if (!prior.valid ||
+                    prior.position + prior.extent <= kRevealEpsilon ||
+                    prior.position >= viewportExtent - kRevealEpsilon) {
+                    continue;
+                }
+                const auto match = std::ranges::find(
+                    current.itemKeys, priorKey);
+                if (match == current.itemKeys.end()) continue;
+                const auto currentIndex = static_cast<std::size_t>(
+                    match - current.itemKeys.begin());
+                if (currentIndex >= current.itemGeometry.size() ||
+                    !current.itemGeometry[currentIndex].valid) {
+                    continue;
+                }
+                const auto distance = std::abs(prior.position);
+                if (distance >= bestDistance) continue;
+                bestDistance = distance;
+                retainedPrior = &prior;
+                retainedCurrent = &current.itemGeometry[currentIndex];
+                retainedKey = priorKey;
+            }
+            if (!retainedPrior || !retainedCurrent) return;
+            apply(
+                retainedCurrent->position,
+                retainedPrior->position,
+                L"overlap",
+                retainedKey);
+        });
+        return changed;
     }
 
     [[nodiscard]] bool CollectionContainsNode(
@@ -839,7 +978,8 @@ struct DeclarativeRenderer::RenderPass final {
         VisitScrollNodes(snapshot->root, [&](const WidgetNode& scroll) {
             if (scroll.collectionAnchorKey.empty()) return;
             CollectionDiagnosticObservation observation;
-            CollectCollectionItemKeys(scroll, scroll, observation);
+            const auto* scrollBox = layout.Find(NarrowStableId(scroll.id));
+            CollectCollectionItems(scroll, scroll, scrollBox, observation);
             observation.anchorKey = scroll.collectionAnchorKey;
             observation.containsFocusedElement = CollectionContainsNode(
                 scroll, scroll, focusedId);
@@ -859,10 +999,14 @@ struct DeclarativeRenderer::RenderPass final {
                     collectionReconciliationOffsets.find(scroll.id);
                 reconciliation != collectionReconciliationOffsets.end()) {
                 observation.reconciliationOffsetBefore =
-                    reconciliation->second.first;
+                    reconciliation->second.offsetBefore;
                 observation.reconciliationOffsetAfter =
-                    reconciliation->second.second;
+                    reconciliation->second.offsetAfter;
                 observation.hasReconciliationOffsets = true;
+                observation.reconciliationMode =
+                    reconciliation->second.mode;
+                observation.reconciliationKey =
+                    reconciliation->second.key;
             }
 
             if (const auto presented = presentation.find(NarrowStableId(scroll.id));
@@ -1062,6 +1206,18 @@ struct DeclarativeRenderer::RenderPass final {
                 L",new-anchor=" + newAnchor +
                 L",new-anchor-position=" +
                     CollectionPositionText(newObservation) +
+                L",reconciliation=" +
+                    (newObservation &&
+                            !newObservation->reconciliationMode.empty()
+                        ? BoundedDiagnosticIdentifier(
+                            newObservation->reconciliationMode)
+                        : std::wstring{L"none"}) +
+                L",retained-key=" +
+                    (newObservation &&
+                            !newObservation->reconciliationKey.empty()
+                        ? BoundedDiagnosticIdentifier(
+                            newObservation->reconciliationKey)
+                        : std::wstring{L"none"}) +
                 L",offset-before=" +
                     (newObservation &&
                             newObservation->hasReconciliationOffsets
