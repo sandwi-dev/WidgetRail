@@ -274,7 +274,7 @@ internal static class AudioMixerPresentation
     {
         var session = item.Session;
         var controls = item.Controls;
-        var isPending = item.VolumePending || item.MutePending;
+        var isPending = item.MutePending;
         var percent = VolumePercent(session.Volume);
         var mute = UI.Icon(
                 session.IsMuted ? WidgetGlyph.Muted : WidgetGlyph.Volume,
