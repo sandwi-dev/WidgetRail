@@ -721,10 +721,19 @@ rendering, protocol, or provider behavior and does not address the separately
 deferred Win32 232 transport failure. The tests-skipped Release build passed
 with executable SHA-256
 `8DF9991F9776F19D8D682ACE0C58DCFEAA36A7754778593F197B26F982B62B54`.
-The exact cumulative candidate is visibly running as PID 8296 for one user
-Spotify Queue/Playlist reproduction, after which the planner will inspect the
-new summary before authorizing a behavioral correction. Do not write tests or
-integrate before that diagnosis and physical verdict.
+The PID 8296 reproduction proved that retained `PaintOnly` focus navigation
+applied the meaningful destination offset on its first pass, then repeated
+presentation layout up to the 32-pass emergency ceiling for an unchanged or
+sub-epsilon scroll state. Correction commit `b734260` changes only that
+presentation convergence decision: it preserves the first meaningful offset,
+then stops on a sub-epsilon or previously seen complete scroll-offset vector.
+Static/full-layout focus follow, nested scrolling, and the emergency ceiling
+remain intact. The one-file diff and tests-skipped Release build are reviewed;
+the executable SHA-256 is
+`A57F10C0B1503E72B5F93EF2B84248E4A0F1BD575763C84A1EC5256BEE66FFDD`.
+The exact unaccepted candidate is visibly running as PID 27104 for the user's
+Spotify Queue/Playlist physical latency verdict. Do not write tests or
+integrate until that verdict; Win32 error 232 remains separately deferred.
 
 ### Ready next — DLV-261: restore Platform Settings focused-suite parity
 
