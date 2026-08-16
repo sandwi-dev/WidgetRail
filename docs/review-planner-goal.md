@@ -492,8 +492,14 @@ Then repeat the loop.
   visible verdict or overlap native OverlayHost files. Candidate `3fcb740` is
   rejected before user testing because unsupported GBSS property `margin-top`
   makes the packaged WidgetBridge reject Games & Apps and exit before opening
-  the host pipe. The same lane owns one bounded style-only correction; preserve
-  the reviewed session-refresh and artwork behavior unchanged.
+  the host pipe. Style correction `75bfefd` passes packaging. Bounded lifecycle
+  correction `e1a25e4` preserves the resolved session snapshot across ordinary
+  activation, keeps initial-session/manual-Refresh reconciliation, and retains
+  exact selected-SavedId launch-time validation. The cumulative candidate is
+  independently source-reviewed and visibly running as PID 60920 with SHA-256
+  `2E0E5FD7A823E815705123B2FE694135578666E52E10CD402823AF5DF04ABB3D`.
+  No tests ran; do not integrate before the user's visible checking-state,
+  Refresh, and artwork verdict.
   DLV-217 is
   integrated on planner main through
   `1453a4c`; its original branch remains preserved on

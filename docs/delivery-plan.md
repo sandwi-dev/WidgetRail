@@ -111,6 +111,17 @@ Snapshots are evidence only. This file is the sole authority for current work.
   arbitrary unknown capability IDs, and does not delete or reset the user's
   consent store. Focused evidence is PlatformBroker 52/52 and Settings 60/60;
   the coherent packaged Release build succeeded.
+- Corrected cumulative DLV-249 candidate `3fcb740`, `75bfefd`, and `e1a25e4`
+  is independently source-reviewed and visibly launched for the user's physical
+  verdict as PID 60920. Its exact executable SHA-256 is
+  `2E0E5FD7A823E815705123B2FE694135578666E52E10CD402823AF5DF04ABB3D`.
+  The correction retains resolved Games & Apps rows, artwork, selection, and
+  launchability across ordinary tray switches; the initial session load and
+  top manual Refresh remain the only catalog-wide reconciliation routes, while
+  launch still re-resolves exactly the selected SavedId before using current
+  authority. The exact build passed with packaging enabled. No tests ran and
+  nothing is integrated pending the user's visible refresh/icon/checking-state
+  verdict.
 - The approved checkpoint/update architecture is in
   [`widget-snapshot-cache-design.md`](widget-snapshot-cache-design.md). DLV-239
   through DLV-243 implement it serially.
@@ -213,7 +224,7 @@ user decision. The native overlay is the sole production presentation path.
 | Lane | Task/worktree | State |
 | --- | --- | --- |
 | Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | DLV-242 is accepted and integrated through `0cf92e2`; preserve `codex/impl-platform-native-impact` at `22ddfc0`. DLV-243 candidate `1cc4106` is rejected before launch; a bounded same-lane correction must retain exact slider identities through focus and timeout reconciliation instead of repainting the whole content HWND. DLV-248 remains deferred. Preserve accepted DLV-246 branch `codex/impl-platform-process-owner` and completed `codex/impl-platform-snapshot-cache` / `codex/impl-platform-fixed-chrome`. |
-| Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | DLV-218 cumulative branch through `d8b8861` is accepted and integrated. DLV-249 candidate `3fcb740` is rejected before user testing because its unsupported `margin-top` GBSS property makes the packaged WidgetBridge reject Games & Apps and exit before accepting the host pipe. A bounded style-only correction is assigned; the session refresh and artwork work remain unintegrated. Preserve the clean DLV-240 and DLV-218 branches. |
+| Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | DLV-218 cumulative branch through `d8b8861` is accepted and integrated. Corrected cumulative DLV-249 candidate through `e1a25e4` is source-reviewed and visibly running as PID 60920 for the user's physical verdict. It preserves the resolved session snapshot across tray switches, keeps manual Refresh as the only post-startup full reconciliation owner, and retains selected-SavedId launch-time revalidation. No tests ran and the chain remains unintegrated. Preserve the clean DLV-240 and DLV-218 branches. |
 
 The user explicitly approved the DLV-217 aggregate exception on 2026-08-15.
 The preserved four-commit implementation chain was integrated onto current main
@@ -884,6 +895,17 @@ platform appearance or widget catalog. The invalid candidate was closed and
 accepted integrated main was restored visibly as PID 21044. The correction is
 limited to expressing that spacing with an already-supported generic style;
 do not add another GBSS property or parser feature. No tests ran.
+
+Style correction `75bfefd` passes package validation. The next visible
+candidate still exposed every saved tile as **Checking...** on ordinary widget
+activation because `StartActiveRun` discarded the retained resolved candidate
+set and repopulated it asynchronously. Bounded correction `e1a25e4` removes
+that activation-time reset and reconciliation while retaining initial-session
+resolution, explicit manual Refresh, affected-state library mutations, and
+single-SavedId just-in-time launch validation. The cumulative exact packaged
+Release build passed and is visibly running as PID 60920 with SHA-256
+`2E0E5FD7A823E815705123B2FE694135578666E52E10CD402823AF5DF04ABB3D`.
+No tests ran; user acceptance and integration remain pending.
 
 ### Accepted and integrated — DLV-218: remove retired domains
 
