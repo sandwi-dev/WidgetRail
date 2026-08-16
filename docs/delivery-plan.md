@@ -215,8 +215,8 @@ user decision. The native overlay is the sole production presentation path.
 
 | Lane | Task/worktree | State |
 | --- | --- | --- |
-| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | DLV-254 production-only candidate `58ae6cc` is source-reviewed and Release-built; it remains unaccepted and unlaunched while DLV-253 receives the physical verdict. DLV-256 is Ready next after accepted DLV-254 integration. DLV-248 remains deferred. |
-| Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | Corrected DLV-253 production chain through `0a691bc` is physically accepted from PID 51500. The focused post-acceptance test-only follow-up is in progress; nothing is integrated. Preserve clean completed branches. |
+| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | DLV-254 production commit `58ae6cc` was source-reviewed and Release-built on its earlier base. With DLV-253 now integrated, refresh that one commit onto current main and rebuild one coherent production candidate before launch. DLV-256 is Ready next after accepted DLV-254 integration. DLV-248 remains deferred. |
+| Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | DLV-253 is physically accepted, focused Games & Apps evidence is 65/65, and the cumulative chain is integrated on main as `6a26f08`, `3c63852`, and test-only `91177ec`. PID 51500 remains the accepted production instance; no rebuild/relaunch was performed for tests alone. Preserve clean completed branches. |
 
 The user explicitly approved the DLV-217 aggregate exception on 2026-08-15.
 The preserved four-commit implementation chain was integrated onto current main
@@ -245,7 +245,7 @@ owners in that order; it rejects another session coordinator, resource service
 locator, message-switch-only move, partial/include split, or new HWND/focus/
 transport authority. This was analysis only: no production/test edit, build,
 or relaunch occurred. Future extraction requires a separate assigned DLV and
-does not preempt DLV-254, DLV-256, or the accepted DLV-253 integration boundary.
+does not preempt DLV-254, DLV-256, or the completed DLV-253 milestone.
 
 ## Name-gated product rebrand program
 
@@ -422,8 +422,11 @@ payload owners, defaults omitted schema-v1 data to On, and gates only tray-
 driven widget content-reveal and extent-transition seams. Reduced motion and
 widget-authored animation remain independent. Exact executable SHA-256 is
 `E985E97E3D827FEB00059A0C78B129DA13C4421B03287C57B05BC39587921A18`.
-Keep it unaccepted, unintegrated, and unlaunched until the DLV-253 physical
-verdict frees the visible candidate slot.
+DLV-253 now frees the visible candidate slot, but that older artifact does not
+contain the integrated DLV-253 chain. Refresh the single reviewed production
+commit onto current main, rebuild one coherent candidate with tests skipped,
+then launch that exact artifact for the user's physical toggle/default/motion
+verdict. Do not launch the stale-base executable.
 
 ### Ready next — DLV-256: eliminate Spotify artwork paint stalls
 
@@ -496,7 +499,7 @@ deferred by user decision and must not be mixed into DLV-242.
 DLV-240 is integrated. Accepted DLV-225/226/228/229/230 remain integrated. New
 styling/provider work requires fresh user evidence rather than speculation.
 
-### Assigned — DLV-253: retain Games & Apps across ordinary tray activation
+### Accepted and integrated — DLV-253: retain Games & Apps across ordinary tray activation
 
 Owner/baseline: widgets lane from the planner assignment commit above accepted
 product tip `68b0de8`; own the smallest Games & Apps/runtime lifecycle seam that
@@ -541,9 +544,14 @@ without tests; exact executable SHA-256 is
 `1FD1E322CC7D2AFD943C3545B63D7009BE7F8936BB485FE371ED45734CDCC710`.
 It was visibly launched as unaccepted PID 51500 for the user's second physical
 verdict. The user accepted the first-row cold entry and retained in-session
-focus behavior. PID 51500 remains the accepted production instance while the
-lane adds only focused regression coverage. Do not rebuild or relaunch solely
-for that test-only follow-up.
+focus behavior. Post-acceptance commit `8db298a` changes only the existing Games
+& Apps test runner and passes 65/65. It proves later-row persisted selection does
+not replace the first-row entry focus, preserves selection/order/removal/launch-
+recency semantics, and keeps ordinary same-worker activation at zero catalog or
+saved-list reconciliation with one publication. The cumulative chain was
+integrated on main as `6a26f08`, `3c63852`, and test-only `91177ec`. PID 51500
+remains the accepted production instance; no rebuild or relaunch was performed
+for the test-only delta.
 
 
 Closed accepted widgets history through DLV-252 is retained in the
@@ -571,12 +579,13 @@ Closed accepted widgets history through DLV-252 is retained in the
     focused provider evidence is 78/78 and accepted candidate PID 44872 remains
     running because the post-acceptance integration delta was tests only.
 
-12. Corrected DLV-253 production chain through `0a691bc` is physically accepted
-    from PID 51500; its focused test-only follow-up is in progress. DLV-254
-    candidate `58ae6cc` is source-reviewed and Release-built and will receive
-    the next physical candidate slot after DLV-253 integration. DLV-256 is
-    Ready next after accepted DLV-254 integration; DLV-248 remains deliberately
-    deferred.
+12. DLV-253 is physically accepted from PID 51500, focused evidence is 65/65,
+    and the cumulative chain is integrated as `6a26f08`, `3c63852`, and
+    `91177ec`; no rebuild/relaunch was needed for the test-only delta. DLV-254
+    commit `58ae6cc` is source-reviewed and must be refreshed onto current main
+    for one coherent Release candidate before receiving the next physical slot.
+    DLV-256 is Ready next after accepted DLV-254 integration; DLV-248 remains
+    deliberately deferred.
 13. DLV-257 through DLV-260 form the blocked serialized rebrand program. They
     begin only after the new identity is user-approved and the active
     DLV-253/DLV-254 cycle reaches clean accepted boundaries. DLV-258 through
