@@ -215,8 +215,8 @@ user decision. The native overlay is the sole production presentation path.
 
 | Lane | Task/worktree | State |
 | --- | --- | --- |
-| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | DLV-254 is Assigned from the planner assignment commit above product tip `68b0de8`. DLV-256 is Ready next for the reproduced Spotify artwork paint stalls. DLV-248 remains deferred. |
-| Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | DLV-253 is Assigned from the planner assignment commit above product tip `68b0de8`: stop ordinary Games & Apps tray activation from replacing a current retained library with transient/full checkpoints. Preserve clean completed branches. |
+| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | DLV-254 production-only candidate `58ae6cc` is source-reviewed and Release-built; it remains unaccepted and unlaunched while DLV-253 receives the physical verdict. DLV-256 is Ready next after accepted DLV-254 integration. DLV-248 remains deferred. |
+| Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | DLV-253 production-only candidate `718eba7` is source-reviewed, Release-built, and visibly launched as PID 39876 for the user's physical verdict. It remains unaccepted and unintegrated. Preserve clean completed branches. |
 
 The user explicitly approved the DLV-217 aggregate exception on 2026-08-15.
 The preserved four-commit implementation chain was integrated onto current main
@@ -410,6 +410,16 @@ production candidate/build and user verdict precede focused tests. Stop for a
 settings schema migration with data-loss risk, another motion owner, broad
 animation redesign, substantial conflict, or undocumented API; never push.
 
+Production-only candidate `58ae6cc` is independently source-reviewed and its
+coherent packaged Release build passed without tests. It adds the persisted
+Appearance toggle through the existing Settings/PlatformSettings/appearance
+payload owners, defaults omitted schema-v1 data to On, and gates only tray-
+driven widget content-reveal and extent-transition seams. Reduced motion and
+widget-authored animation remain independent. Exact executable SHA-256 is
+`E985E97E3D827FEB00059A0C78B129DA13C4421B03287C57B05BC39587921A18`.
+Keep it unaccepted, unintegrated, and unlaunched until the DLV-253 physical
+verdict frees the visible candidate slot.
+
 ### Ready next — DLV-256: eliminate Spotify artwork paint stalls
 
 Owner/baseline: platform lane after accepted DLV-254 integration, from the
@@ -497,6 +507,16 @@ precede focused tests. Stop for a protocol change, permanent worker residency,
 weakened exact-SavedId launch validation, destructive state reset, substantial
 conflict, or external publication; never push.
 
+Production-only candidate `718eba7` changes only
+`GamesAppsWidget.cs`. The lane's coherent packaged Release build passed without
+tests. Reviewer source inspection found the retained-state restore ordered ahead
+of the first visible publication, while ordinary same-worker tray activation
+reuses `_hasLibrarySnapshot`; manual Refresh and exact selected-SavedId launch
+validation remain unchanged. Exact executable SHA-256 is
+`38002831591A35083F7573A805E62520917198064363F86CA40E5A39A120808D`.
+It is visibly running as unaccepted PID 39876 for repeated Games & Apps tray-
+return checks. Do not add tests or integrate before the user's verdict.
+
 
 Closed accepted widgets history through DLV-252 is retained in the
 [2026-08-16 03:27 snapshot](history/delivery-plan/2026-08-16T03-27-50-07-00.md).
@@ -523,8 +543,10 @@ Closed accepted widgets history through DLV-252 is retained in the
     focused provider evidence is 78/78 and accepted candidate PID 44872 remains
     running because the post-acceptance integration delta was tests only.
 
-12. DLV-254 is Assigned. DLV-256 is Ready next after its accepted integration;
-    DLV-248 remains deliberately deferred.
+12. DLV-253 candidate `718eba7` is running for physical acceptance. DLV-254
+    candidate `58ae6cc` is source-reviewed and Release-built but remains queued
+    behind that verdict. DLV-256 is Ready next after accepted DLV-254
+    integration; DLV-248 remains deliberately deferred.
 13. DLV-257 through DLV-260 form the blocked serialized rebrand program. They
     begin only after the new identity is user-approved and the active
     DLV-253/DLV-254 cycle reaches clean accepted boundaries. DLV-258 through
