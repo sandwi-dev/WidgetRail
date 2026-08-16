@@ -368,13 +368,13 @@ struct DeclarativeRenderer::RenderPass final {
     struct FocusFollowSample final {
         std::vector<FocusFollowNodeObservation> nodes;
         bool allTargetsVisible{true};
+        bool complete{true};
     };
 
     struct FocusFollowAttemptResult final {
         bool changed{};
         bool meaningfulOffsetChange{};
         bool repeatedOffsetState{};
-        FocusFollowSample before;
     };
 
     struct FocusFollowNodeSummary final {
@@ -992,23 +992,31 @@ struct DeclarativeRenderer::RenderPass final {
         FocusFollowSample sample;
         const auto* focusBox = layout.Find(NarrowStableId(focusedId));
         const auto presentedFocus = presentation.find(NarrowStableId(focusedId));
-        if (focusedId.empty() || !focusBox ||
+        if (focusedId.empty()) return sample;
+        if (!focusBox ||
             (usePresentationGeometry && presentedFocus == presentation.end())) {
+            sample.complete = false;
             return sample;
         }
         const auto path = FocusPath();
-        if (path.empty()) return sample;
+        if (path.empty()) {
+            sample.complete = false;
+            return sample;
+        }
         for (const auto* item : path) {
             if (sample.nodes.size() >= kMaximumFocusFollowDiagnosticNodes) break;
             if (!item || item->kind != L"scroll") continue;
             const auto* scrollBox = layout.Find(NarrowStableId(item->id));
-            if (!scrollBox ||
-                scrollBox->scrollAxis == declarative::ScrollAxis::None) {
+            if (!scrollBox) {
+                sample.complete = false;
                 continue;
             }
+            if (scrollBox->scrollAxis == declarative::ScrollAxis::None) continue;
             const auto presentedScroll = presentation.find(NarrowStableId(item->id));
-            if (usePresentationGeometry && presentedScroll == presentation.end())
+            if (usePresentationGeometry && presentedScroll == presentation.end()) {
+                sample.complete = false;
                 continue;
+            }
 
             const auto key = ScrollStateKey(item->id);
             const auto retained = owner->scrollOffsets_.find(key);
@@ -1053,7 +1061,8 @@ struct DeclarativeRenderer::RenderPass final {
     [[nodiscard]] static bool SameFocusFollowOffsets(
         const FocusFollowSample& left,
         const FocusFollowSample& right) noexcept {
-        if (left.nodes.size() != right.nodes.size()) return false;
+        if (!left.complete || !right.complete ||
+            left.nodes.size() != right.nodes.size()) return false;
         for (std::size_t index = 0; index < left.nodes.size(); ++index) {
             if (left.nodes[index].id != right.nodes[index].id ||
                 left.nodes[index].axis != right.nodes[index].axis ||
@@ -1063,6 +1072,12 @@ struct DeclarativeRenderer::RenderPass final {
             }
         }
         return true;
+    }
+
+    [[nodiscard]] bool FocusedTargetVisibleInPresentation() const {
+        if (focusedId.empty()) return true;
+        const auto sample = CaptureFocusFollowSample(true);
+        return sample.complete && sample.allTargetsVisible;
     }
 
     [[nodiscard]] static std::vector<float> FocusFollowOffsets(
@@ -1133,7 +1148,7 @@ struct DeclarativeRenderer::RenderPass final {
         const bool changed,
         const bool presentationGeometry) {
         if (before.nodes.empty() && after.nodes.empty())
-            return FocusFollowAttemptResult{changed, false, false, before};
+            return FocusFollowAttemptResult{changed, false, false};
         auto& seenSamples = presentationGeometry
             ? focusFollowTrace.presentationSeenSamples
             : focusFollowTrace.layoutSeenSamples;
@@ -1165,7 +1180,6 @@ struct DeclarativeRenderer::RenderPass final {
             changed,
             changed && !repeatedWithoutProgress,
             changed && seenBefore,
-            before,
         };
     }
 
@@ -1176,13 +1190,6 @@ struct DeclarativeRenderer::RenderPass final {
         const auto after = CaptureFocusFollowSample(usePresentationGeometry);
         return RecordFocusFollowPass(
             before, after, changed, usePresentationGeometry);
-    }
-
-    void RestoreFocusFollowOffsets(const FocusFollowSample& sample) {
-        for (const auto& node : sample.nodes) {
-            StoreScrollOffset(ScrollStateKey(node.id), node.offset);
-        }
-        UpdateFocusFollowNodes(sample, false);
     }
 
     void AddFocusFollowElapsed(
@@ -2770,7 +2777,7 @@ RenderResult DeclarativeRenderer::Render(
     bool presentationMatchesLayout = false;
     std::size_t presentationFollowAttempts{};
     bool lastPresentationFollowChanged{};
-    bool presentationFollowStoppedOnStableState{};
+    bool presentationCorrectnessFallbackUsed{};
     for (std::size_t followPass = 0;
          followPass < kMaximumFocusFollowPasses;
          ++followPass) {
@@ -2778,18 +2785,24 @@ RenderResult DeclarativeRenderer::Render(
         pass.presentation.clear();
         pass.ResolvePresentation(snapshot.root, 0.0F, 0.0F, viewport);
         presentationMatchesLayout = true;
+        if (pass.FocusedTargetVisibleInPresentation()) {
+            pass.focusFollowTrace.converged = true;
+            break;
+        }
         const auto followAttempt = pass.FollowFocusedDescendant(true);
         lastPresentationFollowChanged = followAttempt.changed;
-        if (!lastPresentationFollowChanged) break;
-        if (!followAttempt.meaningfulOffsetChange ||
-            followAttempt.repeatedOffsetState) {
-            // Keep the presentation already resolved for the last meaningful
-            // offset vector. Reapplying a sub-epsilon or previously observed
-            // vector cannot improve focus visibility, and rebuilding from it
-            // caused retained paint-only frames to repeat to the hard bound.
-            pass.RestoreFocusFollowOffsets(followAttempt.before);
-            presentationFollowStoppedOnStableState = true;
-            break;
+        const bool stableOrRepeated = !lastPresentationFollowChanged ||
+            !followAttempt.meaningfulOffsetChange ||
+            followAttempt.repeatedOffsetState;
+        if (stableOrRepeated && !presentationCorrectnessFallbackUsed) {
+            // The focused target is still outside at least one scroll viewport.
+            // Retain any meaningful destination vector already written by the
+            // presentation pass, then use the existing bounded static/full
+            // focus-follow path once to establish a correctness checkpoint.
+            presentationCorrectnessFallbackUsed = true;
+            presentationMatchesLayout = false;
+            pass.BuildLayout();
+            continue;
         }
         // A translated focused descendant may cross a scroll boundary even
         // when its static layout box was visible. Rebuild against the updated
@@ -2799,8 +2812,8 @@ RenderResult DeclarativeRenderer::Render(
         pass.BuildLayout(false);
     }
     if (presentationFollowAttempts == kMaximumFocusFollowPasses &&
-        lastPresentationFollowChanged &&
-        !presentationFollowStoppedOnStableState) {
+        (!presentationMatchesLayout ||
+         !pass.FocusedTargetVisibleInPresentation())) {
         pass.focusFollowTrace.boundHit = true;
     }
     if (!presentationMatchesLayout) {
