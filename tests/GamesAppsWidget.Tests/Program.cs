@@ -50,13 +50,16 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Failed launch keeps curated order and actionable focus", FailedLaunchKeepsOrder),
     ("Curated membership survives widget lifecycle reactivation", CurationSurvivesReactivation),
     ("First activation performs one saved-library session reconciliation", InitialActivationReconcilesOnce),
+    ("Persisted later selection keeps first curated row as entry focus",
+        PersistedLaterSelectionKeepsFirstEntryFocus),
     ("Reactivation retains the ready session snapshot without broker work", ReactivationReusesCachedLibrary),
     ("Top Refresh exclusively requests full reconciliation and retains last-good", ExplicitRefreshReconcilesCachedLibrary),
     ("Fast cold load completes without publishing loading state", FastColdLoadDoesNotFlashLoading),
     ("Slow cold load publishes an honest delayed loading state", SlowColdLoadShowsDelayedLoading),
     ("Curated SavedIds survive a fresh widget worker instance", CurationSurvivesNewInstance),
     ("Current schema mutations order and selection survive a fresh worker", CurrentStateSurvivesRestart),
-    ("A fresh worker renders persisted display before delayed authority resolves", WarmStartPrecedesAuthorityResolution),
+    ("A fresh worker resolves saved entries before delayed catalog completion",
+        WarmStartPrecedesAuthorityResolution),
     ("A failed fresh-worker refresh retains disabled last-good display", WarmStartSurvivesRefreshFailure),
     ("Background rejects a cancellation-ignoring fresh-worker resolution", WarmStartRejectsLateResolution),
     ("Catalog pages stay bounded and restore focus in both directions", LoadsMore),
@@ -1101,15 +1104,16 @@ static async Task ArtworkSurvivesRefreshAndWarmRestart()
     await Interactive(restarted);
     await WaitUntil(() => restarted.ViewState == GamesAppsViewState.Ready &&
                           restarted.CuratedItems.Count == 3);
-    AssertFallback(Snapshot(restarted, 646), "Trusted Game", disabled: true);
-    AssertFallback(Snapshot(restarted, 647), "Explicit Application", disabled: true);
+    AssertArtwork(Snapshot(restarted, 646), "Trusted Game", gameHandleTwo);
+    AssertArtwork(Snapshot(restarted, 647), "Explicit Application", appHandleTwo);
+    AssertFallback(Snapshot(restarted, 648), "No Artwork", disabled: false);
 
     discovery.SetResult(Page(current, null));
     await WaitUntil(() => restarted.CuratedItems.All(item =>
         !item.AppId.StartsWith("pending.", StringComparison.Ordinal)));
-    AssertArtwork(Snapshot(restarted, 648), "Trusted Game", gameHandleTwo);
-    AssertArtwork(Snapshot(restarted, 649), "Explicit Application", appHandleTwo);
-    AssertFallback(Snapshot(restarted, 650), "No Artwork", disabled: false);
+    AssertArtwork(Snapshot(restarted, 649), "Trusted Game", gameHandleTwo);
+    AssertArtwork(Snapshot(restarted, 650), "Explicit Application", appHandleTwo);
+    AssertFallback(Snapshot(restarted, 651), "No Artwork", disabled: false);
     await Background(restarted);
 
     static void AssertArtwork(ViewSnapshot snapshot, string title, string handle)
@@ -1328,7 +1332,7 @@ static async Task CatalogRemovalPreservesLibraryContinuity()
     var warm = AssertReadyLibrary(delayedWorker, 342, "Alpha", "Beta");
     Assert.True(ActionSurfaces(warm.Root)
         .Where(tile => tile.ActionId == "games.launch")
-        .All(tile => tile.IsDisabled == true));
+        .All(tile => tile.IsDisabled != true));
     delayed.SetResult(Page(freshCatalog, null));
     await WaitUntil(() => delayedWorker.CuratedItems.All(item =>
         item.AppId.StartsWith("fresh-", StringComparison.Ordinal)));
@@ -1445,18 +1449,21 @@ static async Task RemovalSelectsNearestRow()
     await BackToLibrary(widget);
 
     var library = Snapshot(widget, 234);
+    Assert.Equal("opaque-c", widget.SelectedAppId);
     Assert.Equal(ActionSurfaces(library.Root).Single(tile =>
-        TileTitle(tile) == "Gamma").Id, library.InitialFocusId);
+        TileTitle(tile) == "Alpha").Id, library.InitialFocusId);
     var beta = ActionSurfaces(library.Root)
         .Single(tile => TileTitle(tile) == "Beta");
     await widget.OnActionAsync(new("games.remove", beta.Id));
     var afterBeta = Snapshot(widget, 235);
+    Assert.Equal("opaque-c", widget.SelectedAppId);
     Assert.Equal(ActionSurfaces(afterBeta.Root).Single(tile =>
-        TileTitle(tile) == "Gamma").Id, afterBeta.InitialFocusId);
+        TileTitle(tile) == "Alpha").Id, afterBeta.InitialFocusId);
 
     var gamma = ActionSurfaces(afterBeta.Root).Single(tile => TileTitle(tile) == "Gamma");
     await widget.OnActionAsync(new("games.remove", gamma.Id));
     var afterGamma = Snapshot(widget, 236);
+    Assert.Equal("opaque-a", widget.SelectedAppId);
     Assert.Equal(ActionSurfaces(afterGamma.Root).Single(tile =>
         TileTitle(tile) == "Alpha").Id, afterGamma.InitialFocusId);
     Assert.Valid(afterGamma);
@@ -1602,7 +1609,11 @@ static async Task FailedLaunchKeepsOrder()
     Assert.SequenceEqual(["opaque-a", "opaque-b"],
         widget.CuratedItems.Select(item => item.AppId));
     var failed = Snapshot(widget, 48);
-    Assert.Equal(beta.Id, failed.InitialFocusId);
+    var alpha = ActionSurfaces(failed.Root).Single(tile => TileTitle(tile) == "Alpha");
+    var selectedBeta = ActionSurfaces(failed.Root).Single(tile => TileTitle(tile) == "Beta");
+    Assert.Equal(alpha.Id, failed.InitialFocusId);
+    Assert.Equal("opaque-b", widget.SelectedAppId);
+    Assert.True(selectedBeta.IsSelected == true);
     Assert.Contains("App library unavailable", Text(failed.Root, "games.status").Text!);
     Assert.True(Nodes(failed.Root).Single(node => node.Id == "games.toast")
         .StyleClasses.Contains("gbar-toast--danger", StringComparer.Ordinal));
@@ -1657,6 +1668,46 @@ static async Task InitialActivationReconcilesOnce()
     await Background(widget);
 }
 
+static async Task PersistedLaterSelectionKeepsFirstEntryFocus()
+{
+    var fake = new FakeAppLibraryHost
+    {
+        PrivateState = ProjectedState(
+            selectedSavedId: "saved-b",
+            ("saved-a", "Alpha", WidgetAppLibraryKind.Application),
+            ("saved-b", "Beta", WidgetAppLibraryKind.Application)),
+        Pages =
+        {
+            [0] = Page([
+                App("opaque-a", "Alpha") with { SavedId = "saved-a" },
+                App("opaque-b", "Beta") with { SavedId = "saved-b" },
+            ], null),
+        },
+    };
+    var widget = Create(fake);
+    await Interactive(widget);
+    await WaitUntil(() => widget.ViewState == GamesAppsViewState.Ready &&
+                          widget.CuratedItems.Count == 2 &&
+                          widget.CuratedItems.All(item =>
+                              !item.AppId.StartsWith("pending.", StringComparison.Ordinal)));
+
+    var restored = Snapshot(widget, 352);
+    var alpha = ActionSurfaces(restored.Root).Single(tile => TileTitle(tile) == "Alpha");
+    var beta = ActionSurfaces(restored.Root).Single(tile => TileTitle(tile) == "Beta");
+    Assert.SequenceEqual(["saved-a", "saved-b"],
+        widget.CuratedItems.Select(item => item.SavedId));
+    Assert.Equal("opaque-b", widget.SelectedAppId);
+    Assert.True(beta.IsSelected == true);
+    Assert.Equal(alpha.Id, restored.InitialFocusId);
+
+    await widget.OnActionAsync(new("games.launch", beta.Id));
+    Assert.SequenceEqual(["saved-b", "saved-a"],
+        widget.CuratedItems.Select(item => item.SavedId));
+    Assert.Equal(beta.Id, Snapshot(widget, 353).InitialFocusId);
+    Assert.SequenceEqual(["opaque-b"], fake.LaunchedIds);
+    await Background(widget);
+}
+
 static async Task ReactivationReusesCachedLibrary()
 {
     const string artworkHandle = "library.art.66666666666666666666666666666666";
@@ -1681,6 +1732,8 @@ static async Task ReactivationReusesCachedLibrary()
         "Ordinary reactivation must not query the catalog.");
     fake.ResolveHandler = (_, _) => throw new InvalidOperationException(
         "Ordinary reactivation must not resolve the saved list.");
+    var invalidations = 0;
+    widget.Invalidated += (_, _) => invalidations++;
     await Interactive(widget);
     var retained = Snapshot(widget, 53);
     var retainedTile = ActionSurfaces(retained.Root).Single(row => TileTitle(row) == "Alpha");
@@ -1696,6 +1749,7 @@ static async Task ReactivationReusesCachedLibrary()
             .ArtworkHandle);
     Assert.Equal(pageRequestsBefore, fake.CatalogRequests.Count);
     Assert.Equal(resolvesBefore, fake.ResolveRequests.Count);
+    Assert.Equal(1, invalidations);
     Assert.Valid(retained);
     await Background(widget);
 }
@@ -1923,8 +1977,8 @@ static async Task CurrentStateSurvivesRestart()
     var warm = Snapshot(restarted, 322);
     Assert.SequenceEqual(["Gamma", "Beta"],
         restarted.CuratedItems.Select(item => item.Presentation.DisplayName));
-    Assert.True(restarted.CuratedItems.All(item =>
-        item.AppId.StartsWith("pending.", StringComparison.Ordinal)));
+    Assert.SequenceEqual(["fresh-gamma", "fresh-beta"],
+        restarted.CuratedItems.Select(item => item.AppId));
     Assert.Equal(LibraryElementId("saved-gamma"), warm.InitialFocusId);
     Assert.False(ActionSurfaces(warm.Root).Any(tile => TileTitle(tile) == "Alpha"));
     using (var persisted = System.Text.Json.JsonDocument.Parse(sharedState.Json!))
@@ -1971,15 +2025,12 @@ static async Task WarmStartPrecedesAuthorityResolution()
     var warm = Snapshot(widget, 301);
     Assert.SequenceEqual(["Beta", "Alpha"],
         widget.CuratedItems.Select(item => item.Presentation.DisplayName));
-    Assert.True(widget.CuratedItems.All(item =>
-        item.AppId.StartsWith("pending.", StringComparison.Ordinal)));
+    Assert.SequenceEqual(["fresh-b", "fresh-a"],
+        widget.CuratedItems.Select(item => item.AppId));
     var warmBeta = ActionSurfaces(warm.Root).Single(tile => TileTitle(tile) == "Beta");
-    Assert.True(warmBeta.IsDisabled == true);
-    Assert.Equal("Checking…", Text(warm.Root, warmBeta.Id + ".state").Text);
+    Assert.True(warmBeta.IsDisabled != true);
     Assert.Equal(warmBeta.Id, warm.InitialFocusId);
-    Assert.Contains("checking 2 launch entries", Text(warm.Root, "games.status").Text!);
-    await widget.OnActionAsync(new("games.launch", warmBeta.Id));
-    Assert.Equal(0, fake.LaunchedIds.Count);
+    Assert.Contains("2 saved", Text(warm.Root, "games.status").Text!);
 
     discovery.SetResult(Page(resolvedItems, null));
     await WaitUntil(() => widget.CuratedItems.All(item =>
@@ -2032,7 +2083,7 @@ static async Task WarmStartRejectsLateResolution()
         PrivateState = ProjectedState(
             selectedSavedId: "saved-a",
             ("saved-a", "Alpha", WidgetAppLibraryKind.Application)),
-        Pages = { [0] = Page([App("fresh-a", "Changed") with
+        Pages = { [0] = Page([App("fresh-a", "Alpha") with
             { SavedId = "saved-a" }], null) },
         ReadHandler = (_, token) => new ValueTask<WidgetAppLibraryPage>(
             IgnorePageCancellation(token, cancellationObserved, discovery.Task)),
@@ -2049,8 +2100,7 @@ static async Task WarmStartRejectsLateResolution()
 
     Assert.SequenceEqual(["Alpha"], widget.CuratedItems.Select(
         item => item.Presentation.DisplayName));
-    Assert.True(widget.CuratedItems.Single().AppId.StartsWith(
-        "pending.", StringComparison.Ordinal));
+    Assert.Equal("fresh-a", widget.CuratedItems.Single().AppId);
 }
 
 static async Task LoadsMore()
