@@ -215,7 +215,7 @@ user decision. The native overlay is the sole production presentation path.
 
 | Lane | Task/worktree | State |
 | --- | --- | --- |
-| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | DLV-254 correction `a594478` replaces the rejected animation-Off `0,0` visual offset with the exact destination-to-container offset at scale 1. The coherent Release build passed with tests skipped, and exact candidate PID 43212 is visibly running for the user's renewed physical verdict. DLV-256 remains blocked behind accepted DLV-254 integration. DLV-248 remains deferred. |
+| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | DLV-254 cumulative production candidate through `f376151` preserves an animation-Off decision across the exact matching deferred cold-snapshot admission and changes omitted/new-install/reset/native defaults to Off while respecting explicit saved On. Source review and a coherent Release build passed with tests skipped; exact candidate PID 41208 is visibly running for the user's renewed physical verdict. DLV-256 remains blocked behind accepted DLV-254 integration. DLV-248 remains deferred. |
 | Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | DLV-253 is physically accepted, focused Games & Apps evidence is 65/65, and the cumulative chain is integrated on main as `6a26f08`, `3c63852`, and test-only `91177ec`. The superseded PID 51500 closed normally before the DLV-254 candidate launch; no rebuild/relaunch was performed for the DLV-253 tests alone. Preserve clean completed branches. |
 
 The user explicitly approved the DLV-217 aggregate exception on 2026-08-15.
@@ -474,6 +474,23 @@ the omitted/new-install default to Off while respecting explicit On. Build a
 new production-only candidate and stop for another verdict before tests or
 integration.
 
+Production-only correction `f376151` adds an authority-bound pending snap token
+for only the exact widget/runtime generation/presentation generation/correlation
+that began an animation-Off cold tray switch. New selection, hidden state,
+catalog generation change, failure, or restart retires it; only the first
+matching admitted destination consumes it after the presentation handoff, so
+later same-widget live extent changes retain their existing behavior. The
+Settings model default, omitted JSON member behavior, reset document, bridge
+payload, and native missing-appearance fallback now all resolve to Off, while
+an explicitly persisted On remains On. Direct source review found no second
+motion, placement, input, focus, UIA, or lifecycle owner. A coherent Release
+build passed with tests skipped; exact executable SHA-256 is
+`723F5F2F098935264D295B562E83B9A3ECE10D4321DAA571F618E2B5FCCD9F75`.
+The superseded PID 43212 was closed before the build, and this exact unaccepted
+candidate is visibly running as PID 41208 for the user's first-cold-pass and
+explicit-On persistence verdict. No tests may be added or run before that
+physical decision.
+
 ### Ready next — DLV-256: eliminate Spotify artwork paint stalls
 
 Owner/baseline: platform lane after accepted DLV-254 integration, from the
@@ -630,11 +647,13 @@ Closed accepted widgets history through DLV-252 is retained in the
     `91177ec`; no rebuild/relaunch was needed for the test-only delta. Exact
     patch-equivalent DLV-254 commit `61f59d1` was refreshed onto integrated main
     and coherently Release-built, but its animation-Off coordinate path was
-    physically rejected from PID 44468. Production-only correction `a594478`
-    now uses the exact destination-to-container visual offset; its coherent
-    Release is visibly running as PID 43212 for renewed physical review before
-    tests or integration. DLV-256 is Ready only after accepted DLV-254
-    integration; DLV-248 remains deliberately deferred.
+    physically rejected from PID 44468. Production-only corrections `a594478`
+    and `f376151` now use the exact destination-to-container visual offset,
+    preserve Off across exact matching cold admissions, and make Off the
+    omitted/new-install default. Exact candidate PID 41208 is visibly running
+    for renewed physical review before tests or integration. DLV-256 is Ready
+    only after accepted DLV-254 integration; DLV-248 remains deliberately
+    deferred.
 13. DLV-257 through DLV-260 form the blocked serialized rebrand program. They
     begin only after the new identity is user-approved and the active
     DLV-253/DLV-254 cycle reaches clean accepted boundaries. DLV-258 through
