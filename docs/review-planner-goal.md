@@ -542,12 +542,11 @@ Then repeat the loop.
   Correction `61936b8` implements only user-authorized DLV-242 items 1, 2, 3,
   5, and 6 and is physically accepted; media optimistic/provider revision item
   4 is deferred to DLV-248. Focused test follow-up `22ddfc0` and the complete
-  DLV-242 chain are accepted and integrated through `0cf92e2`. The platform lane
-  is now correcting rejected DLV-243 candidate `1cc4106`: ordinary focus and
-  timeout reconciliation must retain exact affected slider identities and use
-  bounded slider/focus damage instead of whole-content invalidation. It must
-  not mix DLV-248, run tests or the aggregate, integrate, launch, or push before
-  the next source review. The original
+  DLV-242 chain are accepted and integrated through `0cf92e2`. DLV-243
+  correction `1e7a8a7` retains exact affected slider identities and bounded
+  slider/focus damage. It is source-reviewed and visibly running in coherent
+  current-main candidate `eea8d3f` as PID 47316, without pre-acceptance tests;
+  do not integrate or add tests before the user's physical verdict. The original
   pre-recovery branch remains
   preserved at `bdf6d88`; do not rewrite it. Its
   prior DLV-220 history remains preserved on `codex/impl-platform-community`.

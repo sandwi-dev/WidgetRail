@@ -223,7 +223,7 @@ user decision. The native overlay is the sole production presentation path.
 
 | Lane | Task/worktree | State |
 | --- | --- | --- |
-| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | DLV-242 is accepted and integrated through `0cf92e2`. DLV-243 correction `1e7a8a7` remains unreviewed, unlaunched, untested by the user, and unintegrated; it is the next visible milestone. DLV-250 follows it. DLV-248 remains deferred. Preserve accepted DLV-246 branch `codex/impl-platform-process-owner` and completed `codex/impl-platform-snapshot-cache` / `codex/impl-platform-fixed-chrome`. |
+| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | DLV-242 is accepted and integrated through `0cf92e2`. DLV-243 correction `1e7a8a7` is source-reviewed and built coherently with current main as temporary candidate `eea8d3f`; PID 47316 is awaiting the user's physical verdict and remains unintegrated and untested. DLV-250 follows it. DLV-248 remains deferred. Preserve accepted DLV-246 branch `codex/impl-platform-process-owner` and completed `codex/impl-platform-snapshot-cache` / `codex/impl-platform-fixed-chrome`. |
 | Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | DLV-218 cumulative branch through `d8b8861` is accepted and integrated. DLV-249 is user-accepted and integrated through `62589c5`; focused Games & Apps evidence is 64/64. It preserves the resolved session snapshot across tray switches, keeps manual Refresh as the only post-startup full reconciliation owner, and retains selected-SavedId launch-time revalidation. Preserve the clean DLV-249, DLV-240, and DLV-218 branches. |
 
 The user explicitly approved the DLV-217 aggregate exception on 2026-08-15.
@@ -817,17 +817,15 @@ Damage only the slider value/track/thumb and necessary accessibility value event
 do not relayout or repaint the whole widget. Preserve sequence authority and full
 fallback. Implement separately so DLV-242 scope remains bounded.
 
-Candidate `1cc4106` is rejected at source review and was not launched. Its
-controller and UIA optimistic paths use the existing paint-only planner, but
-ordinary focus movement calls `DeactivateAll`, collapses every pending slider
-to one boolean, and deliberately routes `InvalidateWidgetFocusChange(...,
-true)` to whole-content invalidation. The timeout path similarly collapses
-timed-out entries missing from the current tree to one boolean and repaints the
-unrelated current widget. The bounded correction must return exact affected
-slider identities, submit slider rollback damage together with the existing
-old/new focus damage, and clear no-longer-present timed-out entries without a
-raster. Full fallback remains valid only for the already-documented ambiguous
-or unsafe geometry/paint states. No pre-acceptance tests ran.
+Candidate `1cc4106` was rejected at source review because focus/timeout rollback
+collapsed affected sliders to a boolean and could invalidate whole content.
+Correction `1e7a8a7` retains exact slider identities, unions rollback with
+bounded old/new focus damage, and retires off-tree timeouts without a raster;
+full fallback remains only for ambiguous or unsafe geometry/paint state. It was
+cherry-picked without integration onto current main as coherent candidate
+`eea8d3f`, built with packaging, and visibly launched as PID 47316 with SHA-256
+`A33F24545C018D644F90A1B004562B74653103896AEA822E699EE172415D9737`.
+No pre-acceptance tests ran; physical slider verdict and integration are pending.
 
 ### Ready after DLV-243 — DLV-250: first-visible Settings and fixed-guide authority
 
@@ -908,7 +906,7 @@ acceptance, focused test commit `aaf7088` proved 64/64 for initial-session
 reconciliation, retained ordinary reactivation, manual refresh/last-good
 behavior, and exact selected-SavedId launch revalidation. The exact chain is
 integrated on main as `18c4527`, `b307cd0`, `7b36d78`, and `62589c5`. A coherent
-packaged main Release is visibly running as PID 47308 with SHA-256
+packaged main Release was visibly accepted as PID 47308 with SHA-256
 `3599228CA1E821753203787BCE4D38942B8FD18308EFE36FA2554D05772E10A6`.
 
 ### Ready after DLV-243 — DLV-251: Audio Mixer first-activation provider publication
@@ -950,8 +948,8 @@ sources, or user files.
 6. DLV-242 is accepted and integrated through `0cf92e2`; coherent integrated
    main is visibly running as PID 47244. DLV-248 item 4 remains explicitly
    deferred.
-7. Platform implements DLV-243 separately in physical-first mode and launches
-   for slider review before tests or integration.
+7. DLV-243 coherent candidate `eea8d3f` is running as PID 47316 for physical
+   slider review before tests or integration.
 8. After the user's DLV-243 verdict, implement DLV-250 and DLV-251 as separate
    physical-first milestones. DLV-248 still requires later explicit promotion.
 9. DLV-218 is accepted and integrated through `d8b8861`.
