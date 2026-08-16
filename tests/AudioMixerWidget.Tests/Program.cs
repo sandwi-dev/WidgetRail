@@ -269,6 +269,7 @@ static async Task WholeListFocusRestoration()
     var fake = new FakeCapabilityClient { Sessions = sessions };
     var widget = Create(fake);
     await ActivateReady(widget);
+    await WaitUntil(() => widget.Input is not null);
     var snapshot = widget.RenderSnapshot("audio.test", 20);
     var expected = new List<string>
     {
@@ -293,6 +294,7 @@ static async Task WholeListFocusRestoration()
         "B should remain host-owned while Audio remembers the focused row.");
     await Background(widget);
     await ActivateReady(widget);
+    await WaitUntil(() => widget.Input is not null);
     var reopened = widget.RenderSnapshot("audio.test", 21);
     Assert.Equal(lastSession, reopened.InitialFocusId);
 
@@ -300,6 +302,7 @@ static async Task WholeListFocusRestoration()
         "B should remain host-owned while Audio remembers the microphone row.");
     await Background(widget);
     await ActivateReady(widget);
+    await WaitUntil(() => widget.Input is not null);
     Assert.Equal("audio.input.volume.slider", Snapshot(widget, 22).InitialFocusId);
     Assert.Valid(snapshot);
     Assert.Valid(reopened);
@@ -481,8 +484,9 @@ static async Task OptimisticVolume()
     await WaitUntil(() => fake.VolumeRequests.Count == 1);
     var optimistic = Snapshot(widget, 1);
     Assert.Equal(0.55D, Node(optimistic.Root, $"{game}.volume.slider").Value);
-    Assert.True(Node(optimistic.Root, $"{game}.row").StyleClasses.Contains("is-pending"),
-        "The optimistic row does not expose bounded pending feedback.");
+    Assert.True(Node(optimistic.Root, $"{game}.row").StyleClasses.Contains("is-ready") &&
+                !Node(optimistic.Root, $"{game}.row").StyleClasses.Contains("is-pending"),
+        "Continuous volume pending state changed the whole application card.");
     Assert.True(Node(optimistic.Root, $"{game}.volume.slider").IsBusy is not true,
         "A pending volume blocked latest-wins slider input.");
 
@@ -493,7 +497,11 @@ static async Task OptimisticVolume()
     await Task.Delay(30);
     Assert.Equal(0.55D, Node(Snapshot(widget, 3).Root, $"{game}.volume.slider").Value);
     fake.Emit([Session("game", "Game", 0.55)]);
-    await WaitUntil(() => !Node(Snapshot(widget, 4).Root, $"{game}.row").StyleClasses.Contains("is-pending"));
+    await widget.DrainCommandWorkersAsync().WaitAsync(TimeSpan.FromSeconds(2));
+    var confirmed = Snapshot(widget, 4);
+    Assert.Equal(0.55D, Node(confirmed.Root, $"{game}.volume.slider").Value);
+    Assert.True(Node(confirmed.Root, $"{game}.row").StyleClasses.Contains("is-ready"),
+        "Provider confirmation did not retain the non-flashing ready card state.");
     await Background(widget);
 }
 
