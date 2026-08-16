@@ -97,6 +97,8 @@ internal sealed class AudioMixerProviderSession
     private readonly CancellationTokenSource _lifetime;
     private readonly SemaphoreSlim _devicesRetrySignal = new(0, 1);
     private readonly SemaphoreSlim _inputRetrySignal = new(0, 1);
+    private readonly TaskCompletionSource _initialPublication = new(
+        TaskCreationOptions.RunContinuationsAsynchronously);
     private CancellationTokenSource? _devicesAttemptLifetime;
     private CancellationTokenSource? _inputAttemptLifetime;
     private Task? _runTask;
@@ -114,6 +116,7 @@ internal sealed class AudioMixerProviderSession
     }
 
     internal CancellationToken CancellationToken => _lifetime.Token;
+    internal Task InitialPublication => _initialPublication.Task;
 
     internal void Start()
     {
@@ -180,6 +183,9 @@ internal sealed class AudioMixerProviderSession
 
     private async Task RunAsync()
     {
+        // Start is admitted while the widget owns its state lock. Always leave
+        // that call stack before publishing observations back to the widget.
+        await Task.Yield();
         try
         {
             await RunCoreAsync(_lifetime.Token).ConfigureAwait(false);
@@ -205,6 +211,10 @@ internal sealed class AudioMixerProviderSession
                 AudioMixerViewState.Error,
                 "Audio provider returned an unexpected error"));
         }
+        finally
+        {
+            _initialPublication.TrySetResult();
+        }
     }
 
     private async Task RunCoreAsync(CancellationToken cancellationToken)
@@ -215,11 +225,7 @@ internal sealed class AudioMixerProviderSession
             .OpenOutputSubscriptionAsync(cancellationToken).ConfigureAwait(false);
 
         using var observers = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-        var observerTasks = new List<Task>(4)
-        {
-            ObserveOptionalDevicesAsync(observers.Token),
-            ObserveOptionalInputAsync(observers.Token),
-        };
+        var observerTasks = new List<Task>(4);
 
         try
         {
@@ -229,6 +235,8 @@ internal sealed class AudioMixerProviderSession
             cancellationToken.ThrowIfCancellationRequested();
             Publish(AudioMixerProviderObservation.RequiredSnapshot(sessions, output));
 
+            observerTasks.Add(ObserveOptionalDevicesAsync(observers.Token));
+            observerTasks.Add(ObserveOptionalInputAsync(observers.Token));
             var sessionObserver = ObserveSessionChangesAsync(
                 sessionSubscription, observers.Token);
             var outputObserver = ObserveOutputChangesAsync(
@@ -451,6 +459,9 @@ internal sealed class AudioMixerProviderSession
     {
         if (_lifetime.IsCancellationRequested) return;
         _publish(this, observation);
+        if (observation.Kind is AudioMixerProviderObservationKind.RequiredSnapshot or
+            AudioMixerProviderObservationKind.RequiredFailed)
+            _initialPublication.TrySetResult();
     }
 
     private static AudioOptionalSectionState MapOptionalFailure(Exception exception)

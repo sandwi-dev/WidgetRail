@@ -302,6 +302,8 @@ public sealed class AudioMixerWidget : Widget
         }
         if (!started)
             await current.StopAsync().ConfigureAwait(false);
+        else
+            await current.InitialPublication.WaitAsync(activeLifetime).ConfigureAwait(false);
     }
 
     private async ValueTask StopActiveRunAsync()
