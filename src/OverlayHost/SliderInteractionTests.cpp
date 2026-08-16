@@ -3,6 +3,7 @@
 #include <cmath>
 #include <cstdlib>
 #include <iostream>
+#include <utility>
 
 namespace {
 int checks{};
@@ -36,6 +37,50 @@ int main() {
     Near(*repeated.requestedValue, 0.5, "repeat advances transient target, not stale snapshot");
     Near(*state.PresentationValue(slider, 25), 0.5, "pending target drives optimistic paint");
 
+    const auto unitSlider = [](std::wstring nodeId, const double value) {
+        auto result = Slider(value);
+        result.nodeId = std::move(nodeId);
+        result.minimum = 0.0;
+        result.maximum = 1.0;
+        result.step = 0.01;
+        return result;
+    };
+    SliderInteractionState gridState;
+    auto floatLeft = gridState.Adjust(
+        unitSlider(L"float-left", static_cast<double>(0.32F)),
+        NavigationDirection::Left, 26);
+    Check(floatLeft.requestedValue.has_value(),
+          "float-derived near-grid value dispatches on first Left");
+    Near(*floatLeft.requestedValue, 0.31,
+         "float-derived near-grid value steps left instead of snapping in place");
+    auto floatRight = gridState.Adjust(
+        unitSlider(L"float-right", static_cast<double>(0.32F)),
+        NavigationDirection::Right, 27);
+    Check(floatRight.requestedValue.has_value(),
+          "float-derived near-grid value dispatches on first Right");
+    Near(*floatRight.requestedValue, 0.33,
+         "float-derived near-grid value steps right instead of snapping in place");
+    auto offGridLeft = gridState.Adjust(
+        unitSlider(L"off-grid-left", 0.325), NavigationDirection::Left, 28);
+    Check(offGridLeft.requestedValue.has_value(),
+          "genuine off-grid value dispatches Left");
+    Near(*offGridLeft.requestedValue, 0.32,
+         "genuine off-grid Left retains directional snap semantics");
+    auto offGridRight = gridState.Adjust(
+        unitSlider(L"off-grid-right", 0.325), NavigationDirection::Right, 29);
+    Check(offGridRight.requestedValue.has_value(),
+          "genuine off-grid value dispatches Right");
+    Near(*offGridRight.requestedValue, 0.33,
+         "genuine off-grid Right retains directional snap semantics");
+    auto atMinimum = gridState.Adjust(
+        unitSlider(L"minimum", 0.0), NavigationDirection::Left, 30);
+    Check(atMinimum.consumed && !atMinimum.requestedValue,
+          "minimum consumes Left without dispatching below the range");
+    auto atMaximum = gridState.Adjust(
+        unitSlider(L"maximum", 1.0), NavigationDirection::Right, 31);
+    Check(atMaximum.consumed && !atMaximum.requestedValue,
+          "maximum consumes Right without dispatching above the range");
+
     auto cancellationSlider = slider;
     cancellationSlider.nodeId = L"cancellation";
     cancellationSlider.minimum = 0.0;
@@ -56,8 +101,8 @@ int main() {
     slider.snapshotSequence = 2;
     presentationRevision = state.presentationRevision();
     Check(!state.PresentationValue(slider, 30), "authoritative acknowledgement clears override");
-    Check(state.presentationRevision() > presentationRevision,
-          "authoritative acknowledgement advances the presentation revision");
+    Check(state.presentationRevision() == presentationRevision,
+          "matching acknowledgement keeps already-presented pixels unchanged");
     slider.value = 1.0;
     slider.snapshotSequence = 3;
     auto saturated = state.Adjust(slider, NavigationDirection::Right, 40);
