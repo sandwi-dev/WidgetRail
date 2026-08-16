@@ -744,6 +744,17 @@ focus path is already visible, and use one bounded generic full/static fallback
 if a stable/repeated state remains invisible. Do not return an offscreen focus,
 roll back to the pre-input vector, write tests, or integrate before the next
 physical verdict. Win32 error 232 remains separately deferred.
+Correction commit `82b8817` removes the rollback, checks the complete current
+presentation path for visibility before another mutation, rebuilds against a
+meaningful destination vector, and invokes the existing bounded static/full
+focus-follow path once if a stable state remains invisible. Independent source
+review confirms the change remains generic and confined to
+`DeclarativeRenderer.cpp`; the tests-skipped Release build passed with
+executable SHA-256
+`B89AF7B5FB80C3912F5EF50F88EC6A7AE3D9C96CE1FF825E105EC783BC41417C`.
+The exact unaccepted candidate is visibly running as PID 18700 for another
+Spotify Queue/Playlist latency and offscreen-focus verdict. Do not write tests
+or integrate before that verdict.
 
 ### Ready next — DLV-261: restore Platform Settings focused-suite parity
 
