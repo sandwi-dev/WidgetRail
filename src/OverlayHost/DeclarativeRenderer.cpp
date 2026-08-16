@@ -2120,6 +2120,17 @@ DeclarativeRenderer::PlanFocusUpdate(
     const std::wstring_view priorFocusedElementId,
     const std::wstring_view nextFocusedElementId,
     const Rect viewport) {
+    return PlanFocusUpdate(
+        snapshot, priorFocusedElementId, nextFocusedElementId, viewport, {});
+}
+
+std::optional<IncrementalPresentationPlan>
+DeclarativeRenderer::PlanFocusUpdate(
+    const WidgetSnapshot& snapshot,
+    const std::wstring_view priorFocusedElementId,
+    const std::wstring_view nextFocusedElementId,
+    const Rect viewport,
+    const std::vector<std::wstring>& additionalPaintNodeIds) {
     pendingIncrementalPlan_.reset();
     const auto& cache = incrementalLayoutCache_;
     if (!cache || cache->instanceId != snapshot.instanceId ||
@@ -2183,6 +2194,13 @@ DeclarativeRenderer::PlanFocusUpdate(
     if (!addNode(priorFocusedElementId, false) ||
         !addNode(nextFocusedElementId, true)) {
         return std::nullopt;
+    }
+    for (const auto& nodeId : additionalPaintNodeIds) {
+        const auto found = cache->nodes.find(nodeId);
+        if (found == cache->nodes.end()) return std::nullopt;
+        const auto bounded = Intersection(found->second.paintBounds, viewport);
+        if (bounded.width > 0.0F && bounded.height > 0.0F)
+            damage = UnionRect(damage, bounded);
     }
     damage = Intersection(damage, viewport);
     if (damage.width <= 0.0F || damage.height <= 0.0F) return std::nullopt;

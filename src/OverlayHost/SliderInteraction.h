@@ -8,6 +8,7 @@
 #include <string>
 #include <string_view>
 #include <unordered_map>
+#include <vector>
 
 namespace gba::input {
 
@@ -34,6 +35,14 @@ struct SliderAdjustment final {
 struct SliderReconciliation final {
     bool stateChanged{};
     bool visualChanged{};
+};
+
+struct SliderPresentationIdentity final {
+    std::wstring widgetInstanceId;
+    std::wstring inputScopeId;
+    std::wstring nodeId;
+    std::wstring valueChangedActionId;
+    long long snapshotSequence{};
 };
 
 /// Host-owned optimistic slider targets. Entries are exact-runtime/scope/node
@@ -76,8 +85,9 @@ public:
         std::wstring_view nodeId) noexcept;
 
     /// Clears edit mode and every optimistic value when focus/lifecycle
-    /// authority moves away. Returns true when committed pixels must reconcile.
-    bool DeactivateAll() noexcept;
+    /// authority moves away. Exact identities let the existing renderer union
+    /// rollback pixels with ordinary bounded focus damage.
+    std::vector<SliderPresentationIdentity> DeactivateAll();
 
     /// Changes whenever the host-visible optimistic value set changes.
     [[nodiscard]] std::uint64_t presentationRevision() const noexcept {
@@ -86,9 +96,10 @@ public:
 
     [[nodiscard]] std::optional<std::uint64_t> NextReconcileDeadline() const noexcept;
 
-    /// Clears timed-out entries that are no longer present in the admitted
-    /// tree (for example after a structural/scope change).
-    [[nodiscard]] bool ExpireTimedOut(std::uint64_t nowMilliseconds) noexcept;
+    /// Clears timed-out entries. Callers paint only identities still present in
+    /// the current admitted tree; retired/off-tree entries need no raster work.
+    [[nodiscard]] std::vector<SliderPresentationIdentity> ExpireTimedOut(
+        std::uint64_t nowMilliseconds);
 
     [[nodiscard]] std::optional<double> PresentationValue(
         const SliderInputDescriptor& slider,
@@ -120,6 +131,9 @@ private:
         long long snapshotSequence{};
         long long adjustmentSnapshotSequence{};
         std::wstring actionId;
+        std::wstring widgetInstanceId;
+        std::wstring inputScopeId;
+        std::wstring nodeId;
         std::uint64_t lastAdjustment{};
         std::uint64_t lastAccess{};
         bool pending{};
@@ -129,6 +143,7 @@ private:
 
     [[nodiscard]] static bool Valid(const SliderInputDescriptor& slider) noexcept;
     [[nodiscard]] static std::wstring Key(const SliderInputDescriptor& slider);
+    [[nodiscard]] static SliderPresentationIdentity Identity(const Entry& entry);
     [[nodiscard]] Entry* FindAndSynchronize(
         const SliderInputDescriptor& slider,
         std::uint64_t nowMilliseconds,

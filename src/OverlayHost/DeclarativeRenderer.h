@@ -202,6 +202,16 @@ public:
         std::wstring_view nextFocusedElementId,
         declarative::Rect viewport);
 
+    /// Unions exact host-owned visual rollbacks into the same committed-layout
+    /// focus plan. Missing cache geometry remains a conservative full fallback.
+    [[nodiscard]] std::optional<IncrementalPresentationPlan>
+    PlanFocusUpdate(
+        const WidgetSnapshot& snapshot,
+        std::wstring_view priorFocusedElementId,
+        std::wstring_view nextFocusedElementId,
+        declarative::Rect viewport,
+        const std::vector<std::wstring>& additionalPaintNodeIds);
+
     void CancelPresentationUpdatePlan() noexcept;
 
     /// Advances the existing complete renderer checkpoint after a typed

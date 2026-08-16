@@ -149,9 +149,9 @@ SliderInteractionState::NextReconcileDeadline() const noexcept {
     return deadline;
 }
 
-bool SliderInteractionState::ExpireTimedOut(
-    const std::uint64_t nowMilliseconds) noexcept {
-    bool presentationChanged{};
+std::vector<SliderPresentationIdentity> SliderInteractionState::ExpireTimedOut(
+    const std::uint64_t nowMilliseconds) {
+    std::vector<SliderPresentationIdentity> changed;
     for (auto& [_, entry] : entries_) {
         if (!entry.pending || nowMilliseconds < entry.lastAdjustment ||
             nowMilliseconds - entry.lastAdjustment <= PendingTimeoutMilliseconds) {
@@ -159,10 +159,12 @@ bool SliderInteractionState::ExpireTimedOut(
         }
         entry.pending = false;
         entry.targetValue = entry.authoritativeValue;
-        presentationChanged = true;
+        changed.push_back(Identity(entry));
     }
-    if (presentationChanged) ++presentationRevision_;
-    return presentationChanged;
+    // The visible/current tree is reconciled first through Reconcile(). What
+    // remains here is private off-tree state, so retiring it must not advance
+    // the host-visible presentation revision or schedule unrelated raster work.
+    return changed;
 }
 
 SliderReconciliation SliderInteractionState::Reconcile(
@@ -210,6 +212,8 @@ SliderInteractionState::Entry* SliderInteractionState::FindAndSynchronize(
         entry = {
             slider.minimum, slider.maximum, slider.step, slider.value, slider.value,
             slider.snapshotSequence, 0, std::wstring{slider.valueChangedActionId},
+            std::wstring{slider.widgetInstanceId},
+            std::wstring{slider.inputScopeId}, std::wstring{slider.nodeId},
             0, ++accessClock_, false, slider.activationRequired, false,
         };
         if (presentationChanged) {
@@ -229,6 +233,8 @@ SliderInteractionState::Entry* SliderInteractionState::FindAndSynchronize(
         entry = {
             slider.minimum, slider.maximum, slider.step, slider.value, slider.value,
             slider.snapshotSequence, 0, std::wstring{slider.valueChangedActionId},
+            std::wstring{slider.widgetInstanceId},
+            std::wstring{slider.inputScopeId}, std::wstring{slider.nodeId},
             0, ++accessClock_, false, slider.activationRequired, false,
         };
         if (presentationChanged) {
@@ -266,6 +272,8 @@ SliderInteractionState::Entry* SliderInteractionState::CreateOrSynchronize(
     auto [position, inserted] = entries_.try_emplace(key, Entry{
         slider.minimum, slider.maximum, slider.step, slider.value, slider.value,
         slider.snapshotSequence, 0, std::wstring{slider.valueChangedActionId},
+        std::wstring{slider.widgetInstanceId},
+        std::wstring{slider.inputScopeId}, std::wstring{slider.nodeId},
         0, ++accessClock_, false, slider.activationRequired, false,
     });
     (void)inserted;
@@ -293,6 +301,16 @@ std::wstring SliderInteractionState::Key(const SliderInputDescriptor& slider) {
     key.push_back(L'\x1f');
     key.append(slider.nodeId);
     return key;
+}
+
+SliderPresentationIdentity SliderInteractionState::Identity(const Entry& entry) {
+    return {
+        entry.widgetInstanceId,
+        entry.inputScopeId,
+        entry.nodeId,
+        entry.actionId,
+        entry.adjustmentSnapshotSequence,
+    };
 }
 
 void SliderInteractionState::Trim(const std::wstring_view protectedKey) {
@@ -349,17 +367,17 @@ void SliderInteractionState::RetainAdjustmentMode(
     }
 }
 
-bool SliderInteractionState::DeactivateAll() noexcept {
-    bool presentationChanged{};
+std::vector<SliderPresentationIdentity> SliderInteractionState::DeactivateAll() {
+    std::vector<SliderPresentationIdentity> changed;
     for (auto& [_, entry] : entries_) {
         entry.adjustmentActive = false;
         if (!entry.pending) continue;
         entry.pending = false;
         entry.targetValue = entry.authoritativeValue;
-        presentationChanged = true;
+        changed.push_back(Identity(entry));
     }
-    if (presentationChanged) ++presentationRevision_;
-    return presentationChanged;
+    if (!changed.empty()) ++presentationRevision_;
+    return changed;
 }
 
 } // namespace gba::input
