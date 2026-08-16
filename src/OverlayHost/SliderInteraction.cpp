@@ -25,10 +25,22 @@ std::optional<double> StepTarget(
         return std::nullopt;
     const auto position = offset / step;
     if (!std::isfinite(position)) return std::nullopt;
-    const auto tolerance = std::max(1.0, std::abs(position)) * 1e-10;
+    constexpr auto floatGridUlps = 4.0;
+    constexpr auto maximumNearGridFraction = 1e-4;
+    // Absorb float-to-double residue without treating a meaningful fraction of
+    // one step as on-grid.
+    const auto gridTolerance = std::min(
+        maximumNearGridFraction,
+        floatGridUlps * static_cast<double>(std::numeric_limits<float>::epsilon()) *
+            std::max(1.0, std::abs(position)));
+    const auto nearestGridPosition = std::round(position);
+    const auto steppedPosition =
+        std::abs(position - nearestGridPosition) <= gridTolerance
+        ? nearestGridPosition
+        : position;
     const auto index = direction == NavigationDirection::Right
-        ? std::floor(position + tolerance) + 1.0
-        : std::ceil(position - tolerance) - 1.0;
+        ? std::floor(steppedPosition) + 1.0
+        : std::ceil(steppedPosition) - 1.0;
     const auto candidate = minimum + index * step;
     if (!std::isfinite(index) || !std::isfinite(candidate)) return std::nullopt;
     const auto rangeTolerance = std::max(1.0, std::abs(range)) * 1e-12;
