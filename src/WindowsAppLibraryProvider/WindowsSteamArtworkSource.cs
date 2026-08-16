@@ -22,6 +22,7 @@ internal sealed class WindowsSteamArtworkSource
     internal const int MaximumCacheEntries = 64;
     internal const int MaximumLocatorRegistrations =
         WindowsSteamApplicationSource.MaximumManifests;
+    internal const int MaximumModernDirectoryEntries = 64;
     internal static readonly TimeSpan DecodeDeadline = TimeSpan.FromMilliseconds(250);
 
     private const uint GenericRead = 0x80000000;
@@ -35,8 +36,9 @@ internal sealed class WindowsSteamArtworkSource
     private const int FileAttributeTagInfoClass = 9;
     private const int FileIdInfoClass = 18;
     private const uint MaximumFinalPathCharacters = 32_767;
+    private const int ModernIconStemLength = 40;
     private static readonly byte[] PngSignature = [137, 80, 78, 71, 13, 10, 26, 10];
-    private static readonly string[] CandidateSuffixes = ["_icon.png", "_icon.jpg", "_icon.jpeg"];
+    private static readonly string[] CandidateExtensions = [".png", ".jpg", ".jpeg"];
 
     private readonly object _cacheGate = new();
     private readonly Func<byte[], CancellationToken, string?> _decode;
@@ -182,11 +184,37 @@ internal sealed class WindowsSteamArtworkSource
                 !PathEquals(finalCache, Path.Combine(finalRoot, "appcache", "librarycache")))
                 return null;
 
+            using var artworkDirectory = current.ArtworkDirectoryPath is null
+                ? null
+                : ProbeDirectory(current.ArtworkDirectoryPath);
+            var finalArtworkDirectory = finalCache;
+            if (current.ArtworkDirectoryPath is not null)
+            {
+                if (artworkDirectory is null ||
+                    current.ArtworkDirectoryIdentity is null ||
+                    !string.Equals(CaptureObjectIdentity(artworkDirectory),
+                        current.ArtworkDirectoryIdentity, StringComparison.Ordinal))
+                    return null;
+                finalArtworkDirectory = GetFinalPath(artworkDirectory);
+                if (finalArtworkDirectory is null ||
+                    !PathEquals(finalArtworkDirectory,
+                        Path.Combine(finalCache, expected.Locator.SteamAppId)))
+                    return null;
+            }
+
             using var file = ProbeArtworkFile(current.FilePath);
             if (file is null) return null;
+            using var confirmedArtworkDirectory = current.ArtworkDirectoryPath is null
+                ? null
+                : ProbeDirectory(current.ArtworkDirectoryPath);
+            if (current.ArtworkDirectoryPath is not null &&
+                (confirmedArtworkDirectory is null ||
+                 !string.Equals(CaptureObjectIdentity(confirmedArtworkDirectory),
+                     current.ArtworkDirectoryIdentity, StringComparison.Ordinal)))
+                return null;
             var finalFile = GetFinalPath(file);
             if (finalFile is null ||
-                !PathEquals(Path.GetDirectoryName(finalFile), finalCache) ||
+                !PathEquals(Path.GetDirectoryName(finalFile), finalArtworkDirectory) ||
                 !IsAllowlistedExtension(finalFile) ||
                 !string.Equals(CaptureRevision(file), current.Revision,
                     StringComparison.Ordinal))
@@ -255,11 +283,20 @@ internal sealed class WindowsSteamArtworkSource
                         Path.Combine(finalRoot, "appcache", "librarycache")))
                     continue;
 
-                foreach (var suffix in CandidateSuffixes)
+                var modern = DiscoverModernArtwork(
+                    trustedRoot,
+                    cacheRoot,
+                    finalCache,
+                    registration.Locator.SteamAppId,
+                    cancellationToken);
+                if (modern is not null) return modern;
+
+                foreach (var extension in CandidateExtensions)
                 {
                     cancellationToken.ThrowIfCancellationRequested();
                     var path = Path.Combine(
-                        cacheRoot, registration.Locator.SteamAppId + suffix);
+                        cacheRoot,
+                        registration.Locator.SteamAppId + "_icon" + extension);
                     using var file = ProbeArtworkFile(path);
                     if (file is null) continue;
                     var finalFile = GetFinalPath(file);
@@ -269,7 +306,7 @@ internal sealed class WindowsSteamArtworkSource
                         continue;
                     var revision = CaptureRevision(file);
                     if (revision is not null)
-                        return new(trustedRoot, path, revision);
+                        return new(trustedRoot, null, null, path, revision);
                 }
             }
         }
@@ -278,6 +315,83 @@ internal sealed class WindowsSteamArtworkSource
         }
         return null;
     }
+
+    private DiscoveredArtwork? DiscoverModernArtwork(
+        string trustedRoot,
+        string cacheRoot,
+        string finalCache,
+        string steamAppId,
+        CancellationToken cancellationToken)
+    {
+        var appDirectoryPath = Path.Combine(cacheRoot, steamAppId);
+        using var appDirectory = ProbeDirectory(appDirectoryPath);
+        if (appDirectory is null) return null;
+        var finalAppDirectory = GetFinalPath(appDirectory);
+        var appDirectoryIdentity = CaptureObjectIdentity(appDirectory);
+        if (finalAppDirectory is null ||
+            appDirectoryIdentity is null ||
+            !PathEquals(finalAppDirectory, Path.Combine(finalCache, steamAppId)))
+            return null;
+
+        var entries = Directory.EnumerateFileSystemEntries(
+                appDirectoryPath, "*", SearchOption.TopDirectoryOnly)
+            .Take(MaximumModernDirectoryEntries + 1)
+            .Select(Path.GetFileName)
+            .Where(name => !string.IsNullOrEmpty(name))
+            .Cast<string>()
+            .ToArray();
+        if (entries.Length > MaximumModernDirectoryEntries) return null;
+
+        // Steam's content-addressed provider icon is preferred over the legacy
+        // flat icon. Within the modern shape, PNG precedes JPG then JPEG; more
+        // than one valid candidate at the same precedence is ambiguous.
+        foreach (var extension in CandidateExtensions)
+        {
+            DiscoveredArtwork? candidate = null;
+            foreach (var fileName in entries
+                         .Where(name => IsModernIconName(name, extension))
+                         .Order(StringComparer.OrdinalIgnoreCase))
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                var path = Path.Combine(appDirectoryPath, fileName);
+                using var file = ProbeArtworkFile(path);
+                if (file is null) continue;
+                var finalFile = GetFinalPath(file);
+                if (finalFile is null ||
+                    !PathEquals(Path.GetDirectoryName(finalFile), finalAppDirectory) ||
+                    !IsModernIconName(Path.GetFileName(finalFile), extension))
+                    continue;
+                var revision = CaptureRevision(file);
+                if (revision is null) continue;
+                if (candidate is not null) return null;
+                candidate = new(
+                    trustedRoot, appDirectoryPath, appDirectoryIdentity, path, revision);
+            }
+            if (candidate is not null)
+            {
+                using var confirmedDirectory = ProbeDirectory(appDirectoryPath);
+                if (confirmedDirectory is null ||
+                    !string.Equals(CaptureObjectIdentity(confirmedDirectory),
+                        appDirectoryIdentity, StringComparison.Ordinal))
+                    return null;
+                return candidate;
+            }
+        }
+        return null;
+    }
+
+    private static bool IsModernIconName(string? fileName, string extension)
+    {
+        if (fileName is null ||
+            !Path.GetExtension(fileName).Equals(extension,
+                StringComparison.OrdinalIgnoreCase))
+            return false;
+        var stem = Path.GetFileNameWithoutExtension(fileName);
+        return stem.Length == ModernIconStemLength && stem.All(IsAsciiHex);
+    }
+
+    private static bool IsAsciiHex(char value) =>
+        value is >= '0' and <= '9' or >= 'a' and <= 'f' or >= 'A' and <= 'F';
 
     private static string LocatorKey(
         IReadOnlyList<string> roots,
@@ -449,6 +563,17 @@ internal sealed class WindowsSteamArtworkSource
         return Convert.ToHexString(SHA256.HashData(Encoding.ASCII.GetBytes(evidence)));
     }
 
+    private static string? CaptureObjectIdentity(SafeFileHandle handle)
+    {
+        if (!GetFileIdInfo(handle, FileIdInfoClass, out var identity,
+                Marshal.SizeOf<FileIdInfo>()))
+            return null;
+        return string.Join(':',
+            identity.VolumeSerialNumber.ToString("X16"),
+            identity.FileId.Low.ToString("X16"),
+            identity.FileId.High.ToString("X16"));
+    }
+
     private static string? GetFinalPath(SafeFileHandle handle)
     {
         var length = GetFinalPathNameByHandle(handle, null, 0, 0);
@@ -484,6 +609,8 @@ internal sealed class WindowsSteamArtworkSource
 
     private sealed record DiscoveredArtwork(
         string TrustedSteamRoot,
+        string? ArtworkDirectoryPath,
+        string? ArtworkDirectoryIdentity,
         string FilePath,
         string Revision);
 
