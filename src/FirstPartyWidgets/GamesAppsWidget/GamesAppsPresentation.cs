@@ -204,8 +204,6 @@ internal static class GamesAppsPresentation
             .FocusLeft("games.open-running")
             .FocusRight("games.open-running")
             .Classes("games-card-action", "games-app-row", "games-load-more"));
-        var selected = curated.FirstOrDefault(item => string.Equals(
-            item.AppId, state.SelectedAppId, StringComparison.Ordinal)) ?? curated[0];
         var count = UI.StatusBadge(
             $"{curated.Length} saved", StatusTone.Info, "games.section.count");
         var section = UI.SectionHeader(
@@ -225,7 +223,8 @@ internal static class GamesAppsPresentation
             .InputScope("games-apps")
             .Shortcut(ControllerButton.Y, RetryActionId)
             .Classes("games-apps-widget");
-        return new WidgetView(root, LibraryElementId(selected.SavedId), Surface: LibrarySurface);
+        return new WidgetView(
+            root, LibraryElementId(curated[0].SavedId), Surface: LibrarySurface);
     }
 
     private static WidgetView RenderCatalog(
