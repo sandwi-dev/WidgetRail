@@ -216,7 +216,7 @@ user decision. The native overlay is the sole production presentation path.
 | Lane | Task/worktree | State |
 | --- | --- | --- |
 | Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | DLV-254 production-only candidate `58ae6cc` is source-reviewed and Release-built; it remains unaccepted and unlaunched while DLV-253 receives the physical verdict. DLV-256 is Ready next after accepted DLV-254 integration. DLV-248 remains deferred. |
-| Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | DLV-253 production-only candidate `718eba7` is physically rejected because first controller entry restored the persisted last library row instead of the first row. A bounded production-only correction is in progress; nothing is integrated. Preserve clean completed branches. |
+| Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | Corrected DLV-253 production-only chain through `0a691bc` is source-reviewed, Release-built, and visibly launched as PID 51500 for the user's second physical verdict. Nothing is integrated. Preserve clean completed branches. |
 
 The user explicitly approved the DLV-217 aggregate exception on 2026-08-15.
 The preserved four-commit implementation chain was integrated onto current main
@@ -526,6 +526,17 @@ re-entry. Keep persisted selection and launch-recency behavior intact. Candidate
 PID 39876 was closed and exited; do not add tests or integrate before the next
 user verdict.
 
+Bounded production-only correction `0a691bc` changes only
+`GamesAppsPresentation.cs`: the library view now publishes the first curated
+row as its stable `InitialFocusId`. Persisted selection/order and launch-recency
+state remain unchanged, so the existing native focus-memory owner can still
+restore the last in-session row on later tray re-entry. Empty, Catalog, and
+Running focus policy is unchanged. The coherent packaged Release build passed
+without tests; exact executable SHA-256 is
+`1FD1E322CC7D2AFD943C3545B63D7009BE7F8936BB485FE371ED45734CDCC710`.
+It is visibly running as unaccepted PID 51500 for the user's second physical
+verdict. Do not add tests or integrate before acceptance.
+
 
 Closed accepted widgets history through DLV-252 is retained in the
 [2026-08-16 03:27 snapshot](history/delivery-plan/2026-08-16T03-27-50-07-00.md).
@@ -552,8 +563,8 @@ Closed accepted widgets history through DLV-252 is retained in the
     focused provider evidence is 78/78 and accepted candidate PID 44872 remains
     running because the post-acceptance integration delta was tests only.
 
-12. DLV-253 candidate `718eba7` is physically rejected and its bounded first-
-    entry focus correction is in progress. DLV-254 candidate `58ae6cc` is
+12. Corrected DLV-253 chain through `0a691bc` is running as unaccepted PID
+    51500 for its second physical verdict. DLV-254 candidate `58ae6cc` is
     source-reviewed and Release-built but remains queued behind that verdict.
     DLV-256 is Ready next after accepted DLV-254 integration; DLV-248 remains
     deliberately deferred.
