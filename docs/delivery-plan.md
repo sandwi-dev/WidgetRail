@@ -699,6 +699,18 @@ work from a true full-raster/layout fallback; do not add per-frame logging.
 Build one production-only tests-skipped Release and stop for another user
 verdict. Do not write tests or integrate yet.
 
+Production-only correction `a220bee` changes only `OverlayHost/main.cpp`.
+Independent review confirms that full-surface transport promotion now passes a
+null DirectComposition update rectangle while retaining the validated
+`PaintOnly` or `LocalLayout` renderer plan; genuine missing/invalid plans still
+cancel and use `FullRaster`. Thresholded slow-frame diagnostics record both
+transport work and renderer work without ordinary frame spam. The cumulative
+commit descends from `3c6eb3c`, the worktree is clean, and the coherent
+tests-skipped Release build passed with executable SHA-256
+`AD117D8521067D67C25020265283493CBC13D0FA57AB979E1FF86055010E7C11`.
+The exact candidate is visibly running as PID 44428 for another user latency
+verdict. Do not write tests or integrate before that decision.
+
 ### Ready next — DLV-261: restore Platform Settings focused-suite parity
 
 Owner/baseline: platform lane after DLV-256 reaches its physical-test stop, from
