@@ -38,6 +38,10 @@ constexpr std::size_t kMaximumFocusFollowDiagnosticNodes = 32;
 constexpr std::size_t kFocusFollowRetainedSamples = 4;
 constexpr std::size_t kMaximumFocusFollowDiagnosticIdentifierCharacters = 128;
 constexpr std::size_t kMaximumFocusFollowSummaryCharacters = 16384;
+constexpr std::size_t kMaximumCollectionDiagnosticItems = 256;
+constexpr std::size_t kMaximumCollectionDiagnosticEvents = 16;
+constexpr std::size_t kCollectionDiagnosticEdgeKeys = 3;
+constexpr std::size_t kMaximumCollectionSummaryCharacters = 16384;
 constexpr std::uint64_t kSlowFocusFollowMicroseconds = 100000;
 constexpr float kRevealEpsilon = 0.01F;
 // Native layout and Direct2D rasterization can put a child edge no more than
@@ -431,6 +435,8 @@ struct DeclarativeRenderer::RenderPass final {
     float deferredFocusOpacity{1.0F};
     std::optional<Rect> deferredFocusClip;
     std::map<std::wstring, TextMeasurementProof, std::less<>> textMeasurements;
+    std::map<std::wstring, std::pair<float, float>, std::less<>>
+        collectionReconciliationOffsets;
 
     [[nodiscard]] bool IsResponsiveVisible(const WidgetNode& node) const noexcept {
         return node.visibleWhen.empty() || node.visibleWhen == L"always" ||
@@ -783,11 +789,343 @@ struct DeclarativeRenderer::RenderPass final {
             const auto desired = std::clamp(
                 scrollBox->scrollOffset + position - existing->second.anchorPosition,
                 0.0F, scrollBox->maximumScrollOffset);
+            const auto [trace, inserted] =
+                collectionReconciliationOffsets.try_emplace(
+                    scroll.id,
+                    scrollBox->scrollOffset,
+                    desired);
+            if (!inserted) trace->second.second = desired;
             if (std::abs(desired - scrollBox->scrollOffset) <= 0.01F) return;
             StoreScrollOffset(key, desired);
             changed = true;
         });
         return changed;
+    }
+
+    void CollectCollectionItemKeys(
+        const WidgetNode& node,
+        const WidgetNode& collectionRoot,
+        CollectionDiagnosticObservation& observation) const {
+        if (&node != &collectionRoot && node.kind == L"scroll") return;
+        if (!node.collectionItemKey.empty()) {
+            if (observation.itemKeys.size() < kMaximumCollectionDiagnosticItems) {
+                observation.itemKeys.push_back(node.collectionItemKey);
+            } else {
+                observation.itemsTruncated = true;
+            }
+            return;
+        }
+        for (const auto& child : node.children)
+            CollectCollectionItemKeys(child, collectionRoot, observation);
+    }
+
+    [[nodiscard]] bool CollectionContainsNode(
+        const WidgetNode& node,
+        const WidgetNode& collectionRoot,
+        const std::wstring_view nodeId) const noexcept {
+        if (nodeId.empty()) return false;
+        if (&node != &collectionRoot && node.kind == L"scroll") return false;
+        if (node.id == nodeId) return true;
+        return std::ranges::any_of(node.children, [&](const WidgetNode& child) {
+            return CollectionContainsNode(child, collectionRoot, nodeId);
+        });
+    }
+
+    [[nodiscard]] std::map<
+        std::wstring, CollectionDiagnosticObservation, std::less<>>
+    CaptureCollectionObservations() const {
+        std::map<std::wstring, CollectionDiagnosticObservation, std::less<>>
+            observations;
+        VisitScrollNodes(snapshot->root, [&](const WidgetNode& scroll) {
+            if (scroll.collectionAnchorKey.empty()) return;
+            CollectionDiagnosticObservation observation;
+            CollectCollectionItemKeys(scroll, scroll, observation);
+            observation.anchorKey = scroll.collectionAnchorKey;
+            observation.containsFocusedElement = CollectionContainsNode(
+                scroll, scroll, focusedId);
+            observation.containsRequestedFocus = CollectionContainsNode(
+                scroll, scroll, snapshot->initialFocusId);
+
+            const auto stateKey = ScrollStateKey(scroll.id);
+            if (const auto state = owner->scrollOffsets_.find(stateKey);
+                state != owner->scrollOffsets_.end()) {
+                observation.offset = state->second.offset;
+                observation.anchorPosition = state->second.anchorPosition;
+                observation.hasAnchorPosition = state->second.hasAnchorPosition;
+            } else if (const auto* box = layout.Find(NarrowStableId(scroll.id))) {
+                observation.offset = box->scrollOffset;
+            }
+            if (const auto reconciliation =
+                    collectionReconciliationOffsets.find(scroll.id);
+                reconciliation != collectionReconciliationOffsets.end()) {
+                observation.reconciliationOffsetBefore =
+                    reconciliation->second.first;
+                observation.reconciliationOffsetAfter =
+                    reconciliation->second.second;
+                observation.hasReconciliationOffsets = true;
+            }
+
+            if (const auto presented = presentation.find(NarrowStableId(scroll.id));
+                presented != presentation.end()) {
+                observation.viewport = presented->second.contentBox;
+                observation.hasViewport = true;
+            } else if (const auto* box = layout.Find(NarrowStableId(scroll.id))) {
+                observation.viewport = box->contentBox;
+                observation.hasViewport = true;
+            }
+
+            if (observation.containsFocusedElement) {
+                if (const auto presentedFocus = presentation.find(
+                        NarrowStableId(focusedId));
+                    presentedFocus != presentation.end()) {
+                    observation.focusRect = presentedFocus->second.borderBox;
+                    observation.hasFocusRect = true;
+                }
+            }
+            observations.insert_or_assign(scroll.id, std::move(observation));
+        });
+        return observations;
+    }
+
+    [[nodiscard]] static std::optional<std::size_t> ContiguousKeyPosition(
+        const std::vector<std::wstring>& needle,
+        const std::vector<std::wstring>& haystack) {
+        if (needle.empty() || needle.size() > haystack.size()) return std::nullopt;
+        for (std::size_t start = 0;
+             start + needle.size() <= haystack.size(); ++start) {
+            if (std::equal(
+                    needle.begin(), needle.end(), haystack.begin() + start)) {
+                return start;
+            }
+        }
+        return std::nullopt;
+    }
+
+    [[nodiscard]] static std::wstring CollectionChangeText(
+        const CollectionDiagnosticObservation* previous,
+        const CollectionDiagnosticObservation* current) {
+        if (!previous) return L"initial";
+        if (!current) return L"removed";
+        const auto& oldKeys = previous->itemKeys;
+        const auto& newKeys = current->itemKeys;
+        if (oldKeys == newKeys) {
+            return previous->anchorKey == current->anchorKey
+                ? L"requested-focus" : L"anchor";
+        }
+        if (oldKeys.empty()) return L"append";
+        if (newKeys.empty()) return L"trim-all";
+        if (const auto oldInNew = ContiguousKeyPosition(oldKeys, newKeys)) {
+            if (*oldInNew == 0) return L"append";
+            if (*oldInNew + oldKeys.size() == newKeys.size()) return L"prepend";
+            return L"prepend+append";
+        }
+        if (const auto newInOld = ContiguousKeyPosition(newKeys, oldKeys)) {
+            if (*newInOld == 0) return L"trim-end";
+            if (*newInOld + newKeys.size() == oldKeys.size()) return L"trim-start";
+            return L"trim-both";
+        }
+        const auto overlapLimit = std::min(oldKeys.size(), newKeys.size());
+        for (std::size_t overlap = overlapLimit; overlap > 0; --overlap) {
+            if (std::equal(
+                    oldKeys.end() - overlap, oldKeys.end(), newKeys.begin())) {
+                return L"trim-start+append";
+            }
+            if (std::equal(
+                    newKeys.end() - overlap, newKeys.end(), oldKeys.begin())) {
+                return L"prepend+trim-end";
+            }
+        }
+        return L"replace";
+    }
+
+    [[nodiscard]] static std::wstring CollectionEdgesText(
+        const CollectionDiagnosticObservation* observation) {
+        if (!observation || observation->itemKeys.empty()) return L"[]";
+        std::wstring result{L"["};
+        const auto& keys = observation->itemKeys;
+        const auto appendKey = [&](const std::wstring_view key) {
+            if (result.size() > 1) result += L",";
+            result += BoundedDiagnosticIdentifier(key);
+        };
+        if (keys.size() <= kCollectionDiagnosticEdgeKeys * 2U) {
+            for (const auto& key : keys) appendKey(key);
+        } else {
+            for (std::size_t index = 0;
+                 index < kCollectionDiagnosticEdgeKeys; ++index) {
+                appendKey(keys[index]);
+            }
+            result += L",...,";
+            for (std::size_t index = keys.size() - kCollectionDiagnosticEdgeKeys;
+                 index < keys.size(); ++index) {
+                if (index != keys.size() - kCollectionDiagnosticEdgeKeys)
+                    result += L",";
+                result += BoundedDiagnosticIdentifier(keys[index]);
+            }
+        }
+        if (observation->itemsTruncated) result += L",truncated";
+        result += L"]";
+        return result;
+    }
+
+    [[nodiscard]] static std::wstring CollectionPositionText(
+        const CollectionDiagnosticObservation* observation) {
+        return observation && observation->hasAnchorPosition
+            ? std::to_wstring(observation->anchorPosition)
+            : std::wstring{L"none"};
+    }
+
+    [[nodiscard]] static std::wstring CollectionCountText(
+        const CollectionDiagnosticObservation* observation) {
+        if (!observation) return L"0";
+        auto result = std::to_wstring(observation->itemKeys.size());
+        if (observation->itemsTruncated) result += L"+";
+        return result;
+    }
+
+    [[nodiscard]] static std::wstring CollectionRectText(
+        const Rect rect,
+        const bool present) {
+        return present ? DiagnosticRectText(rect) : std::wstring{L"none"};
+    }
+
+    [[nodiscard]] std::wstring BuildCollectionAdmissionSummary(
+        const IncrementalLayoutCache* previousCache,
+        const std::map<
+            std::wstring, CollectionDiagnosticObservation, std::less<>>& current)
+        const {
+        const auto* previous = previousCache &&
+                previousCache->instanceId == snapshot->instanceId
+            ? &previousCache->collections
+            : nullptr;
+        std::set<std::wstring, std::less<>> scrollIds;
+        if (previous) {
+            for (const auto& entry : *previous) scrollIds.insert(entry.first);
+        }
+        for (const auto& entry : current) scrollIds.insert(entry.first);
+
+        std::wstring events;
+        std::size_t eventCount{};
+        bool eventsTruncated{};
+        for (const auto& scrollId : scrollIds) {
+            const CollectionDiagnosticObservation* oldObservation{};
+            const CollectionDiagnosticObservation* newObservation{};
+            if (previous) {
+                if (const auto found = previous->find(scrollId);
+                    found != previous->end()) {
+                    oldObservation = &found->second;
+                }
+            }
+            if (const auto found = current.find(scrollId); found != current.end())
+                newObservation = &found->second;
+
+            const bool collectionChanged = !oldObservation || !newObservation ||
+                oldObservation->itemKeys != newObservation->itemKeys ||
+                oldObservation->itemsTruncated != newObservation->itemsTruncated ||
+                oldObservation->anchorKey != newObservation->anchorKey;
+            const bool requestedFocusChanged = previousCache &&
+                previousCache->instanceId == snapshot->instanceId &&
+                previousCache->requestedFocusId != snapshot->initialFocusId &&
+                ((oldObservation && oldObservation->containsRequestedFocus) ||
+                 (newObservation && newObservation->containsRequestedFocus));
+            if (!collectionChanged && !requestedFocusChanged) continue;
+            if (eventCount >= kMaximumCollectionDiagnosticEvents) {
+                eventsTruncated = true;
+                break;
+            }
+
+            const auto oldAnchor = oldObservation &&
+                    !oldObservation->anchorKey.empty()
+                ? BoundedDiagnosticIdentifier(oldObservation->anchorKey)
+                : std::wstring{L"none"};
+            const auto newAnchor = newObservation &&
+                    !newObservation->anchorKey.empty()
+                ? BoundedDiagnosticIdentifier(newObservation->anchorKey)
+                : std::wstring{L"none"};
+            const auto finalFocus = newObservation
+                ? CollectionRectText(
+                    newObservation->focusRect, newObservation->hasFocusRect)
+                : std::wstring{L"none"};
+            const auto finalViewport = newObservation
+                ? CollectionRectText(
+                    newObservation->viewport, newObservation->hasViewport)
+                : std::wstring{L"none"};
+            std::wstring event =
+                L"{scroll=" + BoundedDiagnosticIdentifier(scrollId) +
+                L",change=" + CollectionChangeText(oldObservation, newObservation) +
+                L",old-count=" + CollectionCountText(oldObservation) +
+                L",new-count=" + CollectionCountText(newObservation) +
+                L",old-edges=" + CollectionEdgesText(oldObservation) +
+                L",new-edges=" + CollectionEdgesText(newObservation) +
+                L",old-anchor=" + oldAnchor +
+                L",old-anchor-position=" +
+                    CollectionPositionText(oldObservation) +
+                L",new-anchor=" + newAnchor +
+                L",new-anchor-position=" +
+                    CollectionPositionText(newObservation) +
+                L",offset-before=" +
+                    (newObservation &&
+                            newObservation->hasReconciliationOffsets
+                        ? std::to_wstring(
+                            newObservation->reconciliationOffsetBefore)
+                        : oldObservation
+                        ? std::to_wstring(oldObservation->offset)
+                        : std::wstring{L"none"}) +
+                L",offset-after=" +
+                    (newObservation &&
+                            newObservation->hasReconciliationOffsets
+                        ? std::to_wstring(
+                            newObservation->reconciliationOffsetAfter)
+                        : newObservation
+                        ? std::to_wstring(newObservation->offset)
+                        : std::wstring{L"none"}) +
+                L",final-offset=" +
+                    (newObservation
+                        ? std::to_wstring(newObservation->offset)
+                        : std::wstring{L"none"}) +
+                L",prior-focused=" +
+                    (previousCache && !previousCache->focusedElementId.empty()
+                        ? BoundedDiagnosticIdentifier(
+                            previousCache->focusedElementId)
+                        : std::wstring{L"none"}) +
+                L",focused=" +
+                    (focusedId.empty()
+                        ? std::wstring{L"none"}
+                        : BoundedDiagnosticIdentifier(focusedId)) +
+                L",prior-requested-focus=" +
+                    (previousCache && !previousCache->requestedFocusId.empty()
+                        ? BoundedDiagnosticIdentifier(
+                            previousCache->requestedFocusId)
+                        : std::wstring{L"none"}) +
+                L",requested-focus=" +
+                    (snapshot->initialFocusId.empty()
+                        ? std::wstring{L"none"}
+                        : BoundedDiagnosticIdentifier(snapshot->initialFocusId)) +
+                L",final-focus=" + finalFocus +
+                L",final-viewport=" + finalViewport + L"}";
+            if (events.size() + event.size() + 1U >
+                kMaximumCollectionSummaryCharacters) {
+                eventsTruncated = true;
+                break;
+            }
+            if (!events.empty()) events += L";";
+            events += std::move(event);
+            ++eventCount;
+        }
+        if (events.empty()) return {};
+
+        std::wstring summary =
+            L"collection-admission instance=" +
+            BoundedDiagnosticIdentifier(snapshot->instanceId) +
+            L" sequence=" + std::to_wstring(snapshot->sequence) +
+            L" previous-sequence=" +
+            (previousCache && previousCache->instanceId == snapshot->instanceId
+                ? std::to_wstring(previousCache->sequence)
+                : std::wstring{L"none"}) +
+            L" events=[" + events + L"]";
+        if (eventsTruncated) summary += L" events-truncated=true";
+        if (summary.size() > kMaximumCollectionSummaryCharacters)
+            summary.resize(kMaximumCollectionSummaryCharacters);
+        return summary;
     }
 
     [[nodiscard]] std::vector<const WidgetNode*> FocusPath() const {
@@ -933,7 +1271,7 @@ struct DeclarativeRenderer::RenderPass final {
         return changed;
     }
 
-    [[nodiscard]] static std::wstring BoundedFocusFollowIdentifier(
+    [[nodiscard]] static std::wstring BoundedDiagnosticIdentifier(
         const std::wstring_view value) {
         std::wstring result;
         result.reserve(std::min(
@@ -959,7 +1297,7 @@ struct DeclarativeRenderer::RenderPass final {
         const Rect viewportBounds,
         const bool leadingBoundary,
         const bool trailingBoundary) {
-        const auto boundedId = BoundedFocusFollowIdentifier(id);
+        const auto boundedId = BoundedDiagnosticIdentifier(id);
         auto found = std::find_if(
             focusFollowTrace.nodes.begin(), focusFollowTrace.nodes.end(),
             [&](const FocusFollowNodeSummary& node) {
@@ -1048,7 +1386,7 @@ struct DeclarativeRenderer::RenderPass final {
                     targetRect.x + targetRect.width <=
                         viewportBox.x + viewportBox.width + kRevealEpsilon;
             sample.nodes.push_back(FocusFollowNodeObservation{
-                BoundedFocusFollowIdentifier(item->id),
+                BoundedDiagnosticIdentifier(item->id),
                 scrollBox->scrollAxis,
                 offset,
                 scrollBox->maximumScrollOffset,
@@ -1206,7 +1544,7 @@ struct DeclarativeRenderer::RenderPass final {
             focusFollowTrace.presentationMicroseconds += microseconds;
     }
 
-    [[nodiscard]] static std::wstring FocusFollowRectText(const Rect value) {
+    [[nodiscard]] static std::wstring DiagnosticRectText(const Rect value) {
         return std::to_wstring(value.x) + L"," + std::to_wstring(value.y) +
             L"," + std::to_wstring(value.width) + L"," +
             std::to_wstring(value.height);
@@ -1250,11 +1588,11 @@ struct DeclarativeRenderer::RenderPass final {
                     ? L"no-progress"
                     : L"converged";
         std::wstring summary =
-            L"focus-follow instance=" + BoundedFocusFollowIdentifier(
+            L"focus-follow instance=" + BoundedDiagnosticIdentifier(
                 snapshot ? std::wstring_view{snapshot->instanceId}
                          : std::wstring_view{}) +
             L" sequence=" + std::to_wstring(snapshot ? snapshot->sequence : 0) +
-            L" focus=" + BoundedFocusFollowIdentifier(focusedId) +
+            L" focus=" + BoundedDiagnosticIdentifier(focusedId) +
             L" passes=" + std::to_wstring(focusFollowTrace.passCount) +
             L" layout-us=" +
                 std::to_wstring(focusFollowTrace.layoutMicroseconds) +
@@ -1280,8 +1618,8 @@ struct DeclarativeRenderer::RenderPass final {
                 L",final=" + std::to_wstring(node.finalOffset) +
                 L",peak=" + std::to_wstring(node.peakOffset) +
                 L",maximum=" + std::to_wstring(node.maximumOffset) +
-                L",target=" + FocusFollowRectText(node.target) +
-                L",viewport=" + FocusFollowRectText(node.viewport) +
+                L",target=" + DiagnosticRectText(node.target) +
+                L",viewport=" + DiagnosticRectText(node.viewport) +
                 L",leading=" + (node.leadingBoundary ? L"true" : L"false") +
                 L",trailing=" + (node.trailingBoundary ? L"true" : L"false") +
                 L"}";
@@ -2737,6 +3075,10 @@ RenderResult DeclarativeRenderer::Render(
         Size{viewport.width, viewport.height});
     pass.compactMode = IsCompactResponsiveSurface(responsiveViewport);
     pass.options = options;
+    const auto* previousCollectionCache = incrementalLayoutCache_ &&
+            incrementalLayoutCache_->instanceId == snapshot.instanceId
+        ? &*incrementalLayoutCache_
+        : nullptr;
     if (!FiniteRect(viewport) || viewport.width < 0.0F || viewport.height < 0.0F) {
         pass.Add({}, L"invalid_viewport", L"Viewport must contain finite non-negative geometry.",
             RenderDiagnosticSeverity::Error);
@@ -2873,15 +3215,21 @@ RenderResult DeclarativeRenderer::Render(
             return item.severity == RenderDiagnosticSeverity::Error;
         });
     pass.result.succeeded = !hasErrors && pass.layout.valid() && renderTarget;
+    std::wstring collectionAdmissionSummary;
     if (pass.result.succeeded) {
+        auto collectionObservations = pass.CaptureCollectionObservations();
+        collectionAdmissionSummary = pass.BuildCollectionAdmissionSummary(
+            previousCollectionCache, collectionObservations);
         IncrementalLayoutCache cache;
         cache.instanceId = snapshot.instanceId;
         cache.sequence = snapshot.sequence;
         cache.focusedElementId = std::wstring{focusedElementId};
+        cache.requestedFocusId = snapshot.initialFocusId;
         cache.viewport = viewport;
         cache.layout = std::move(pass.layout);
         cache.options = options;
         cache.textMeasurements = std::move(pass.textMeasurements);
+        cache.collections = std::move(collectionObservations);
         const auto retain = [&](const auto& self,
                                 const WidgetNode& node,
                                 const std::wstring_view parentId,
@@ -2971,6 +3319,8 @@ RenderResult DeclarativeRenderer::Render(
         elapsed(deferredFocusFinished, finalizationFinished),
     };
     pass.result.timing.focusFollowSummary = pass.BuildFocusFollowSummary();
+    pass.result.timing.collectionAdmissionSummary =
+        std::move(collectionAdmissionSummary);
     return pass.result;
 }
 

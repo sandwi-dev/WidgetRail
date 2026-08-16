@@ -8114,10 +8114,12 @@ private:
             priorPresentationPaintKey != lastWidgetPresentationPaintKey_;
         const bool hasFocusFollowSummary = frames.declarativeTiming &&
             !frames.declarativeTiming->focusFollowSummary.empty();
+        const bool hasCollectionAdmissionSummary = frames.declarativeTiming &&
+            !frames.declarativeTiming->collectionAdmissionSummary.empty();
         if (replacement || presentationChanged || performanceCountersActive_ ||
             drawMicroseconds > kSlowCompositionFrameMicroseconds ||
-            hasFocusFollowSummary) {
-            AppendDiagnostic(
+            hasFocusFollowSummary || hasCollectionAdmissionSummary) {
+            std::wstring diagnostic =
                 L"Composition frame committed content=complete size=" +
                 std::to_wstring(width) + L"x" + std::to_wstring(height) +
                 L" order=commit-no-geometry" +
@@ -8126,7 +8128,12 @@ private:
                 L" geometry-us=0" +
                 L" waited=" + (timing.waitedForCompletion ? L"true" : L"false") +
                 L" geometry=unchanged" +
-                SlowCompositionStageDiagnostic(drawMicroseconds, frames));
+                SlowCompositionStageDiagnostic(drawMicroseconds, frames);
+            if (hasCollectionAdmissionSummary) {
+                diagnostic += L" " +
+                    frames.declarativeTiming->collectionAdmissionSummary;
+            }
+            AppendDiagnostic(diagnostic);
         }
         if (performanceCountersActive_) ++performanceSuccessfulFrames_;
         pendingWidgetPresentationImpact_.reset();

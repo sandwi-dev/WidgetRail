@@ -66,6 +66,10 @@ struct DeclarativeRenderTiming final {
     /// when focus following is slow, unusually iterative, or non-convergent;
     /// the existing host slow-frame diagnostic remains the sole log owner.
     std::wstring focusFollowSummary;
+    /// One bounded event record for an admitted cursor-collection change.
+    /// Stable collection paints and controller repeats leave this empty; the
+    /// existing host post-commit diagnostic remains the sole log owner.
+    std::wstring collectionAdmissionSummary;
 };
 
 struct RenderResult final {
@@ -315,15 +319,35 @@ private:
         std::wstring parentId;
         bool scrollBoundary{};
     };
+    struct CollectionDiagnosticObservation final {
+        std::vector<std::wstring> itemKeys;
+        bool itemsTruncated{};
+        std::wstring anchorKey;
+        float anchorPosition{};
+        bool hasAnchorPosition{};
+        float offset{};
+        float reconciliationOffsetBefore{};
+        float reconciliationOffsetAfter{};
+        bool hasReconciliationOffsets{};
+        declarative::Rect focusRect;
+        bool hasFocusRect{};
+        declarative::Rect viewport;
+        bool hasViewport{};
+        bool containsFocusedElement{};
+        bool containsRequestedFocus{};
+    };
     struct IncrementalLayoutCache final {
         std::wstring instanceId;
         long long sequence{};
         std::wstring focusedElementId;
+        std::wstring requestedFocusId;
         declarative::Rect viewport;
         declarative::LayoutResult layout;
         DeclarativeRenderOptions options;
         std::map<std::wstring, IncrementalNodeState, std::less<>> nodes;
         std::map<std::wstring, TextMeasurementProof, std::less<>> textMeasurements;
+        std::map<std::wstring, CollectionDiagnosticObservation, std::less<>>
+            collections;
     };
     struct PendingIncrementalPlan final {
         std::wstring instanceId;
