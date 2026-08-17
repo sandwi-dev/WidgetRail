@@ -25,9 +25,9 @@ evidence only; this file is the sole authority for current work.
   serialized dependency rebuild and two exact stale-reference corrections.
 - DLV-248 remains deliberately deferred by the user.
 - The user selected the new display identity **WidgetRail** and tagline
-  **WidgetRail — a controller-first widget platform for Windows.** DLV-257 is
-  the current planner gate. DLV-258 through DLV-260 remain serialized and
-  blocked until its exact mapping is approved and committed.
+  **WidgetRail — a controller-first widget platform for Windows.** On
+  2026-08-17 the user approved all four remaining DLV-257 naming decisions.
+  The identity contract is frozen and DLV-258 is assigned to the widgets lane.
 
 ## Avalonia disposition
 
@@ -94,9 +94,9 @@ user decision. The native overlay is the sole production presentation path.
 | Lane | Task/worktree | State |
 | --- | --- | --- |
 | Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | Clean and idle at DLV-262 commit `b4acea1`; accepted patch is integrated as `88b21b1`. DLV-248 remains deferred. Do not begin DLV-259 before accepted DLV-258 is supplied on the exact serialized baseline. |
-| Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | Clean and idle after DLV-253 test commit `8db298a`; accepted chain is integrated through `91177ec`. Do not begin DLV-258 before DLV-257 approval/commit. |
+| Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | Assigned DLV-258 after reconciling a fresh branch with current planner main containing the approved DLV-257 contract. Preserve the clean prior DLV-253 branch; do not merge its already-integrated history into the new serialized chain. |
 
-## Assigned planner deliverable — DLV-257: select and freeze WidgetRail identity
+## Completed planner deliverable — DLV-257: select and freeze WidgetRail identity
 
 Owner/baseline: user plus planner from accepted main `1ae21df`. This is a
 decision and inventory deliverable, not implementation authority.
@@ -118,10 +118,11 @@ Required output:
 - State which legacy identifiers are migration inputs, which are removed at
   cutover, and which historical records remain intentionally unchanged.
 
-Current artifact: `docs/widgetrail-identity-migration-contract.md` contains the
-complete proposed mapping and preliminary availability evidence. It awaits the
-user's decision on publisher/technical ID root, archive/style names,
-tool/config prefixes, and existing credential-target disposition.
+Completed artifact: `docs/widgetrail-identity-migration-contract.md` contains
+the complete approved mapping and preliminary availability evidence. On
+2026-08-17 the user approved `WidgetRail Project`/`widgetrail`, all four new
+archive/style names, the `wrail` tool/config family, and re-authentication rather
+than automatic Credential Manager migration.
 
 Acceptance: one reviewer-owned identity/migration contract committed locally,
 with the chosen name approved by the user and every DLV-258/DLV-259 input
@@ -132,12 +133,12 @@ Stop for an unchosen name, meaningful legal ambiguity, unavailable Store or
 repository identity, required third-party account/credential, competing
 migration policies, or external action.
 
-## Blocked serialized deliverable — DLV-258: cut over public managed identity
+## Assigned serialized deliverable — DLV-258: cut over public managed identity
 
-Owner/baseline: widgets lead after DLV-257 completes, from the then-current
-accepted main. This is a serialized cross-lane identity milestone: no other
-lane edits SDK, package, assembly, manifest, template, style, or managed
-namespace identity concurrently.
+Owner/baseline: widgets lead from a fresh branch at planner main containing the
+completed DLV-257 contract. This is a serialized cross-lane identity milestone:
+no other lane edits SDK, package, assembly, manifest, template, style, or
+managed namespace identity concurrently.
 
 Rename the user-facing product brand and public managed identity coherently:
 SDK/NuGet package ID, public namespace root, assembly/root namespaces, manifest
@@ -232,8 +233,9 @@ deliberately deferred by user decision and requires explicit promotion.
 
 ## Serialized order
 
-1. Complete and commit user-approved DLV-257.
-2. Supply accepted current main to the widgets lane for DLV-258.
+1. DLV-257 is complete: the user approved all four decisions on 2026-08-17 and
+   the exact contract is frozen.
+2. Supply current planner main to the widgets lane and complete DLV-258.
 3. Review DLV-258 and supply its exact serialized chain to the platform lane for
    DLV-259; do not integrate or launch the partial rename.
 4. Review cumulative DLV-258/DLV-259, complete DLV-260 residue audit and one
@@ -245,7 +247,7 @@ deliberately deferred by user decision and requires explicit promotion.
 
 | Item | Blocker / required evidence |
 | --- | --- |
-| DLV-257 identity | User approval of the four exact mapping decisions in the draft contract. |
+| DLV-257 identity | Complete: all four exact mapping decisions approved on 2026-08-17. |
 | Microsoft Store name | Partner Center availability/reservation through the user's account; public search is insufficient. |
 | Domain | Live registrar/RDAP availability and optional registration through the user's account. |
 | Trademark | Similar-mark clearance for related software/services; qualified counsel recommended before public release. |

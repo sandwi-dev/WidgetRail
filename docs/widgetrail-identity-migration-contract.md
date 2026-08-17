@@ -1,14 +1,17 @@
 # WidgetRail identity and migration contract
 
-Status: proposed DLV-257 contract; material identifiers require user approval
+Status: approved and frozen DLV-257 contract
 
-Date: 2026-08-16
+Drafted: 2026-08-16
+
+Approved: 2026-08-17
 
 This reviewer-owned document freezes the intended product identity before any
-production rename begins. It is decision and migration authority only after the
-user approves the open choices below. It does not authorize publication,
-account actions, repository moves, Store reservation, domain registration, or
-production/test edits.
+production rename begins. The user approved every material choice in this
+contract on 2026-08-17, so it is the exact mapping authority for DLV-258 through
+DLV-260. It does not authorize publication, account actions, repository moves,
+Store reservation, domain registration, or work outside those assigned
+deliverables.
 
 ## Product identity
 
@@ -22,7 +25,7 @@ The user selected:
 - Lowercase repository/package slug: `widgetrail`
 - Public SDK/NuGet identity: `WidgetRail.WidgetSdk`
 
-The following mechanical extensions are recommended but not yet user-approved:
+The following mechanical extensions are approved and frozen:
 
 | Surface | Current | Proposed |
 | --- | --- | --- |
@@ -40,7 +43,7 @@ The following mechanical extensions are recommended but not yet user-approved:
 | HTTP user agent | `GameBarAlternative/<version>` | `WidgetRail/<version>` |
 | Random/internal prefix | `gba-` / `gbar-` | `wrail-` |
 
-`widgetrail` is recommended as the technical publisher root instead of
+`widgetrail` is the approved technical publisher root instead of
 `org.widgetrail` or `com.widgetrail` because no corresponding domain ownership
 has been established. It remains a dotted-ID-compatible first segment without
 claiming a reverse-DNS namespace the project does not own.
@@ -185,10 +188,9 @@ Migration requirements:
 - After success, all new writes target WidgetRail only.
 - Do not move external provider databases, installed applications, user files,
   account data, or Windows Credential Manager entries.
-- Credential target names that contain `GameBarAlternative` are not silently
-  copied or renamed. New source uses a WidgetRail target and the affected sample
-  may require explicit re-authentication unless the user separately approves a
-  credential migration.
+- Credential target names that contain `GameBarAlternative` are not copied or
+  renamed. New source uses a WidgetRail target and affected Community apps
+  require explicit re-authentication under the new target.
 
 ### Repository, publication, and output identity
 
@@ -230,10 +232,9 @@ Intentionally unchanged historical evidence:
 Every old-name match remaining after DLV-260 must be classified as one of those
 historical/external exceptions. Unexplained active residue blocks acceptance.
 
-## Approval gate
+## Approved decisions
 
-Before DLV-258 may start, the user must approve or replace these four proposed
-choices:
+On 2026-08-17 the user approved all four choices without modification:
 
 1. Publisher display `WidgetRail Project` and technical ID root `widgetrail`.
 2. The complete archive/style mapping: `.wrwidget`, `.wrtheme`, `.wrlauncher`,
@@ -243,6 +244,7 @@ choices:
 4. Existing Windows Credential Manager entries are not migrated; affected
    Community samples re-authenticate under new WidgetRail credential targets.
 
-Store reservation, domain registration, GitHub ownership, and legal clearance
-remain external pre-publication gates and are not required to begin the local
-technical cutover once the identity above is approved.
+This completes DLV-257 and authorizes the assigned local DLV-258 technical
+cutover. Store reservation, domain registration, GitHub ownership, and legal
+clearance remain external pre-publication gates; they are not DLV-258 inputs and
+no external action is authorized here.
