@@ -1,8 +1,8 @@
-using GameBarAlternative.FirstPartyWidgets.Settings;
-using GameBarAlternative.PlatformDiagnostics;
-using GameBarAlternative.WidgetRuntime;
+using WidgetRail.FirstPartyWidgets.Settings;
+using WidgetRail.PlatformDiagnostics;
+using WidgetRail.WidgetRuntime;
 
-namespace GameBarAlternative.FirstPartyWidgets.Settings.Worker;
+namespace WidgetRail.FirstPartyWidgets.Settings.Worker;
 
 internal static class Program
 {
@@ -16,7 +16,7 @@ internal static class Program
                 return new SettingsWidget(
                     widgetCatalog: installedCatalogRoot is null
                         ? null
-                        : new GameBarAlternative.WidgetCatalog.WidgetCatalog(installedCatalogRoot),
+                        : new WidgetRail.WidgetCatalog.WidgetCatalog(installedCatalogRoot),
                     diagnostics: CreateDiagnostics(args),
                     bundledWidgetRoot: OptionalPath(args, "--bundled-widget-root"));
             })

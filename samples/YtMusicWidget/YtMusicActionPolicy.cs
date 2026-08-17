@@ -1,4 +1,4 @@
-namespace GameBarAlternative.Samples.YtMusicWidget;
+namespace WidgetRail.Samples.YtMusicWidget;
 
 internal enum YtMusicActionKind
 {

@@ -18,7 +18,7 @@ logs/
 *.etl
 
 # Widget development packages
-*.gbar-widget
+*.wrail-widget
 
 # Local IDE metadata
 .idea/

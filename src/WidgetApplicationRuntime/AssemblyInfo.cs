@@ -6,7 +6,7 @@ using System.Runtime.CompilerServices;
 [assembly: InternalsVisibleTo("WidgetWorkerHost.Tests")]
 [assembly: InternalsVisibleTo("WidgetBridge")]
 [assembly: InternalsVisibleTo("WidgetBridge.Tests")]
-[assembly: InternalsVisibleTo("gbar")]
+[assembly: InternalsVisibleTo("wrail")]
 [assembly: InternalsVisibleTo("AdvancedActionFailureFixture")]
 [assembly: InternalsVisibleTo("AudioMixerScrollFixture")]
 [assembly: InternalsVisibleTo("WidgetSwitchFixture")]

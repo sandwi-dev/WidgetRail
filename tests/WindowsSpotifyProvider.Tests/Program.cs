@@ -4,11 +4,11 @@ using System.Net.Sockets;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
-using GameBarAlternative.Samples.SpotifyWidget;
-using GameBarAlternative.SpotifyPlayback;
-using GameBarAlternative.WindowsSpotifyProvider;
+using WidgetRail.Samples.SpotifyWidget;
+using WidgetRail.SpotifyPlayback;
+using WidgetRail.WindowsSpotifyProvider;
 using BrokerSpotifyLocalPlaybackState =
-    GameBarAlternative.Samples.SpotifyWidget.SpotifyLocalPlaybackState;
+    WidgetRail.Samples.SpotifyWidget.SpotifyLocalPlaybackState;
 
 var tests = new (string Name, Func<Task> Run)[]
 {
@@ -1218,7 +1218,7 @@ static WindowsSpotifyPlatformBackend Backend(
 
 static string CreateTemporaryPlaybackHost()
 {
-    var path = Path.Combine(Path.GetTempPath(), $"gbar-spotify-host-{Guid.NewGuid():N}.exe");
+    var path = Path.Combine(Path.GetTempPath(), $"wrail-spotify-host-{Guid.NewGuid():N}.exe");
     File.WriteAllBytes(path, [0x4d, 0x5a]);
     return path;
 }

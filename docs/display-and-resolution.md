@@ -92,7 +92,7 @@ later pointer message can target the new slot map.
 
 ## Widget author contract
 
-Use the public declarative layout and GBSS primitives:
+Use the public declarative layout and WRSS primitives:
 
 - flex growth/shrink, minimums, maximums, and intrinsic measurement;
 - `flex-wrap: wrap` on bounded Rows when controls should form additional lines
@@ -250,9 +250,9 @@ physical display testing:
 .\scripts\Capture-OverlayEvidence.ps1 -Configuration Release
 ```
 
-It launches selected retained `.gbarwidget` archives through the generic
+It launches selected retained `.wrwidget` archives through the generic
 AppContainer worker and simulated authenticated broker, exports validated
-semantic snapshots plus production computed GBSS styles, then parses those
+semantic snapshots plus production computed WRSS styles, then parses those
 snapshots through the native bridge model and renders offscreen with a harness
 built from the recorded production Direct2D renderer sources. This is not an
 `OverlayHost.exe` shell/window capture: it excludes backdrop, z-order, tray and

@@ -42,7 +42,7 @@ and display validation remains a separate user-owned ship gate.
 DLV-131 adds a launcher-only `LauncherExperienceCatalog` without changing global
 `ThemeCatalog` semantics. Its strict schema accepts only the eight documented
 host-owned launcher slots, bounded region/grid/stack/overlay/inset recipes,
-closed host parameters, launcher-scoped GBSS, and sealed local static images.
+closed host parameters, launcher-scoped WRSS, and sealed local static images.
 Duplicate/unknown fields, slot reuse, missing critical slots, overlap, geometry
 and focus/Back failures, remote or executable/archive content, unsafe paths,
 reparse points, excessive files/bytes/dimensions, and cross-widget selectors
@@ -200,7 +200,7 @@ open-widget action, protocol-v13 explicit focus persistence, and the responsive
  seams. It adds no task registry, cancellation source, revision counter, lock,
  or mutable owner reference. Focused Release suites pass Widget SDK 84/84, SDK
  Gallery 6/6, YT Music 55/55,
-and Gbar CLI 52/52. Packaged controller/companion evidence remains separate.
+and Wrail CLI 52/52. Packaged controller/companion evidence remains separate.
 
 DLV-037 keeps `WidgetProcessClient` as the only host lifecycle, restart-budget,
 failure-reporting, and public request owner while moving each generation's
@@ -374,7 +374,7 @@ After the final atomic catalog-diagnostics capture edit, focused run
 `20260811T031849Z-591cf5c6` completed in 17.523 seconds and passed WidgetBridge
 68/68 against the final source state.
 
-DLV-046 makes the checked-in ControllerWidget input and `gbar new widget`
+DLV-046 makes the checked-in ControllerWidget input and `wrail new widget`
 transactional. Version-1 `template.json` now owns one closed inventory of at
 most 64 canonical relative files, labels strict UTF-8 replacement templates
 separately from byte-preserved assets, and applies 64-KiB manifest, 1-MiB
@@ -384,7 +384,7 @@ destination collisions, reparse points, missing or undeclared files and
 directories, invalid replacement destinations, unreadable inputs, and size
 overflow before publication. The scaffolder holds an immutable loaded input,
 writes the matching local SDK package and declared files into a private sibling
-directory, runs production manifest/GBSS validation there, and performs one
+directory, runs production manifest/WRSS validation there, and performs one
 directory rename only after the result is complete. Any failure or cancellation
 removes that owned staging tree; an existing author path is refused and never
 deleted or overwritten. The direct failure matrix covers manifest shape and
@@ -396,7 +396,7 @@ renders, replays, produces identical packages, and exercises install/version/
 rollback/remove without checkout paths. No public SDK/protocol, template
 visuals, package trust, external feed, native, or runtime authority changed.
 Focused dirty-worktree Release run `20260811T033333Z-abe40db8` completed in
-44.002 seconds and passed GbarCli/scaffold 54/54 plus documentation validation
+44.002 seconds and passed WrailCli/scaffold 54/54 plus documentation validation
 across 52 Markdown files. It retained one stable dirty-state fingerprint at
 DLV-040 baseline `df304c3`; no aggregate, native, Runtime, or unrelated suite
 ran.
@@ -404,7 +404,7 @@ ran.
 DLV-047 establishes one pre-release WidgetSdk release unit without publishing
 it externally. `eng/WidgetSdkRelease.props` is the canonical
 `0.1.0-dev`/package-ID/template-version source imported by both WidgetSdk and
-GbarCli; both assemblies carry matching metadata, the closed template manifest
+WrailCli; both assemblies carry matching metadata, the closed template manifest
 must use that supported version, and the local package plus generated
 `PackageReference` use one exact `0.1.0-dev.local.<16-hex>` version. The
 deterministic `src/WidgetSdk/PublicApi.txt` baseline currently describes 2,400
@@ -421,16 +421,16 @@ no runtime protocol, external feed/publication, signing, native, or host
 authority changed.
 Focused dirty-worktree run `20260811T034449Z-1daebd3a` retained the first
 DLV-047 attempt: WidgetSdk built cleanly and passed 84/84, and the compatibility
-release-unit check passed all 2,400 symbols, before GbarCli reached 54/55 due to
+release-unit check passed all 2,400 symbols, before WrailCli reached 54/55 due to
 an unrelated timed-out broken-worker dev-session fixture. No product change was
 made for that timeout. The bounded failed-step retry
-`20260811T034611Z-5af856cf` completed in 51.780 seconds and passed GbarCli 55/55
+`20260811T034611Z-5af856cf` completed in 51.780 seconds and passed WrailCli 55/55
 plus documentation validation across 53 Markdown files. No aggregate, native,
 external feed, Runtime, or unrelated suite ran.
 After making the package ID itself flow from the same canonical release
 contract into the nuspec and generated project, focused run
 `20260811T034900Z-0e3b2a40` completed in 48.341 seconds and passed the final
-2,400-symbol compatibility check plus GbarCli 55/55.
+2,400-symbol compatibility check plus WrailCli 55/55.
 
 DLV-050 converts only the newly introduced WidgetSdk compatibility project to
 discoverable `MSTest.Sdk` 4.3.2 tests. Twelve named cases cover the current
@@ -449,16 +449,16 @@ Focused dirty-worktree Release run `20260811T041316Z-596d7304` completed in
 61.527 seconds. The verifier self-test passed, WidgetSdk built with zero
 warnings/errors and retained its unchanged executable 84/84 contract suite,
 the new Microsoft Testing Platform project passed 12/12 named compatibility
-cases with all names retained in JUnit, GbarCli retained its unchanged
+cases with all names retained in JUnit, WrailCli retained its unchanged
 executable 55/55 suite, and documentation validation covered 53 Markdown
 files. This was the assigned mixed-runner proof, not an aggregate; no Runtime,
 native, packaging, or unrelated suite ran.
 
 DLV-194 proves the existing pre-release SDK/template release unit as a portable
-local developer artifact. A focused fixture copies only the built `gbar`
+local developer artifact. A focused fixture copies only the built `wrail`
 distribution, removes the template override, and invokes that executable from
 a fresh repository-shaped directory. The copied tool scaffolds an exact
-content-versioned `GameBarAlternative.WidgetSdk` dependency, builds the basic
+content-versioned `WidgetRail.WidgetSdk` dependency, builds the basic
 widget from its project-local cleared feed into a fresh temporary
 `NUGET_PACKAGES` root, validates its capability-free
 manifest, and creates a catalog-valid package. The SDK nupkg contains only
@@ -466,7 +466,7 @@ manifest, and creates a catalog-valid package. The SDK nupkg contains only
 absolute checkout paths, and source-tree project references do not enter the
 consumer or widget package. This remains a local offline artifact rather than a
 NuGet.org publication, signing claim, or post-1.0 compatibility promise.
-Focused Release evidence passes GbarCli 62/62, WidgetSdk compatibility 12/12,
+Focused Release evidence passes WrailCli 62/62, WidgetSdk compatibility 12/12,
 the isolated external build/validate/package route, and documentation validation
 over 66 Markdown files.
 
@@ -474,22 +474,22 @@ DLV-048 makes the marked quickstart blocks the one canonical offline author
 journey instead of maintaining an uncompiled parallel starter in the larger
 authoring guide. The exact generated `VolumeControl.cs` lifecycle/state/action/
 focus source is embedded once and compared to the temporary scaffold before
-that same file is compiled and executed. One cohesive GbarCli contract parses
+that same file is compiled and executed. One cohesive WrailCli contract parses
 the eight marked source/command fences, rejects missing/duplicate/advanced or
 absolute-path content, and binds their new/build/test, validate, render,
 replay, pack/install, version/select/rollback, and disable/remove claims to the
 external fixture. The fixture asserts public success output, exported snapshot
 semantics, lower/raise/apply replay actions, byte-identical checkout-path-free
 packages, two immutable installed versions, selection/rollback, and complete
-uninstall. An intentionally invalid GBSS file proves failure output names
-`styles/default.gbss` and the validation action before the valid source is
-restored. Advanced `gbar dev`, scenario-provider, custom-worker/capability,
+uninstall. An intentionally invalid WRSS file proves failure output names
+`styles/default.wrss` and the validation action before the valid source is
+restored. Advanced `wrail dev`, scenario-provider, custom-worker/capability,
 AppContainer, credentialed service, and authority-recovery guidance remains
 explicitly outside this credential-free path. No public API, runtime/native
 authority, widget behavior, external publication, live service, or screenshot
 work changed.
 Focused dirty-worktree Release run `20260811T040047Z-d8e6fe07` completed in
-39.912 seconds and passed GbarCli/scaffold 55/55, including the bounded external
+39.912 seconds and passed WrailCli/scaffold 55/55, including the bounded external
 author journey, plus documentation validation across 53 Markdown files. No
 aggregate, native, Runtime, live-service, external-feed, or screenshot suite
 ran.
@@ -582,7 +582,7 @@ nor deleted. Checkout path mapping and bounded NuGet cache reuse remain intact.
 Spotify 0.2.14 is the resulting immutable Community package; the supported
 workflow retains 0.2.11, 0.2.12, and 0.2.13 as inactive rollback generations.
 
-DLV-208 publishes the already-accepted vertical-rail responsive source and GBSS
+DLV-208 publishes the already-accepted vertical-rail responsive source and WRSS
 as new immutable Spotify Community package 0.2.15. The supported package path
 produces a three-file 153,415-byte archive with SHA-256
 `9f3735f454792a4289b7b37c31292043f4ebbb92b1f7e4c8ec0d6a9cb4d65960`.
@@ -590,7 +590,7 @@ An isolated update disables 0.2.14, installs/selects/enables 0.2.15, retains
 0.2.14 as an inactive rollback, and independently reproduces selected content
 digest `0762775563e6e339b035a2d683cca6cb4e8d327834ee7f63220f814a3970264f`.
 The installed payload hash equals the script-owned publish output, installed
-GBSS equals the accepted source, and the generic AppContainer worker returns a
+WRSS equals the accepted source, and the generic AppContainer worker returns a
 valid first snapshot at sequence 2. Spotify's existing responsive, focus,
 navigation, configuration, consent, private-state, and provider behavior is
 unchanged; the focused widget suite passes 50/50.
@@ -620,10 +620,10 @@ copy, closed status codes, and exact opaque 32-character current or 64-character
 legacy confirmation tokens over the private PID- and nonce-authenticated
 Settings channel. Settings starts explicit controller confirmation on Cancel,
 never renders the token, and refreshes authoritative state after every typed
-result. The separate local `gbar authority-recovery list|retry` workflow has no
+result. The separate local `wrail authority-recovery list|retry` workflow has no
 force-clear, caller-selected path, SID, ACL, or replacement-authority input.
 Current focused Release suites pass Runtime 65/65, PlatformDiagnostics 15/15,
-WidgetBridge 47/47, Settings 45/45, and Gbar CLI 52/52; the documentation
+WidgetBridge 47/47, Settings 45/45, and Wrail CLI 52/52; the documentation
 contract passes with the Settings and CLI operator guidance present.
 
 DLV-002 makes Games & Apps reconcile the bounded trusted catalog on initial and
@@ -695,7 +695,7 @@ more before using the newly issued short-lived AppId. Back preserves a curated
 selection, and removal chooses the
 nearest surviving row. Focused Release coverage includes shared loading/empty/
 error surfaces, a 64-entry long-name Library, maximum Catalog traversal,
-bidirectional focus, mutation, lifecycle, and GBSS flex contracts. Retained
+bidirectional focus, mutation, lifecycle, and WRSS flex contracts. Retained
 standalone captures cover automatic, Catalog, and mixed Library surfaces across
 compact, standard, 150%-accessible, and wide/high-contrast profiles. Exact
 focused integration evidence at
@@ -1045,7 +1045,7 @@ Up/Down navigation.
   SegmentedTabs, Switch, ScopedDialog, SettingsRow, and bounded nested
   ActionSheet plus single-select Picker, Scrubber, MediaTile, AppTile, and Toast
   composites with stable semantic
-  `gbar-*` theme hooks; button glyphs; focus/shortcut/state helpers; scoped
+  `wrail-*` theme hooks; button glyphs; focus/shortcut/state helpers; scoped
   shortcut routing; bounded latest-wins Slider coalescing; invalidation;
   runtime-integrated immutable `WidgetModel<TState>` snapshots/updates,
   non-paged resources, model-backed SingleFlight/Latest/Serial optimistic
@@ -1087,7 +1087,7 @@ Up/Down navigation.
   bound broker companions, single-use exact-operation dashboard gesture
   authority, per-session verified-content lease handoff, aggregate resident-worker/count admission with a separate Settings
   control-plane slot, invalidation/failure events, no-poll platform-appearance revisions,
-  globally layered widget themes, bounded shell appearance, and computed GBSS
+  globally layered widget themes, bounded shell appearance, and computed WRSS
   styles.
   Request scheduling is now isolated behind one internal dispatcher that owns
   unique request IDs, the global admitted-request bound, per-widget FIFO tails,
@@ -1126,12 +1126,12 @@ Up/Down navigation.
   dependencies inside the mandatory package AppContainer, authenticates an
   optional broker channel, attaches typed host services before creation, then
   serves the standard isolated snapshot/action/lifecycle protocol.
-- `WidgetStyling`: single-handle consumed-byte bounds, strict UTF-8 GBSS
+- `WidgetStyling`: single-handle consumed-byte bounds, strict UTF-8 WRSS
   decoding, optional exact per-file SHA-256 inventories, closed typed source-
   failure results with stable sanitized diagnostics, safe package-relative
   imports, variables, explicit trusted cascade layers, typed allowlisted values,
   independent top/right/bottom/left border width/color overrides, and
-  diagnostics. The built-in theme provides bounded `.gbar-code-text` wrapping
+  diagnostics. The built-in theme provides bounded `.wrail-code-text` wrapping
   with one Windows-baseline `Consolas` family; CSS-style font fallback stacks
   and packaged font loading are not claimed.
 - `PlatformSettings`: strict atomic/cross-process appearance persistence,
@@ -1139,7 +1139,7 @@ Up/Down navigation.
   layer composition, last-good snapshots, and bounded declared-
   publisher/package-scoped public widget configuration under `widget-config`,
   with unambiguous owning-namespace resolution for unsigned runtime authorities.
-- `WidgetCatalog`: safe `.gbarwidget` inspection/extraction, host-sealed content-
+- `WidgetCatalog`: safe `.wrwidget` inspection/extraction, host-sealed content-
   tree integrity with single-handle bounded metadata reads and exact-length
   file hashing plus manifest bytes captured from the verified tree, complete
   relative-path/length/SHA-256 inventories, and bounded per-session launch
@@ -1224,17 +1224,17 @@ Up/Down navigation.
   canonical 64 KiB JSON document/tombstone per authenticated publisher/package,
   cross-process serialization, atomic replacement, revision/CAS, persistent
   mutation throttling, and corruption/reparse failure closed.
-- `GbarCli`: working `new`, `validate`, `render`, `replay`, deterministic
+- `WrailCli`: working `new`, `validate`, `render`, `replay`, deterministic
   `pack`, bounded local/HTTPS/GitHub Release `install`, and catalog `list`,
   `enable`, `disable`, and `version list|select|rollback` commands. Local and
   remote updates share an exact-stream pre-publish enabled-ID guard. Remote
   acquisition requires SHA-256 pinning, reports the actual digest, and installs
-  disabled pending explicit review. `gbar new` emits the matching SDK as a
+  disabled pending explicit review. `wrail new` emits the matching SDK as a
   project-local offline NuGet package, clears external feeds, and generates a
   lifecycle/state/action snapshot test without an absolute checkout reference.
-  Source-aware `gbar pack` reuses the bounded isolated dev build/validation
+  Source-aware `wrail pack` reuses the bounded isolated dev build/validation
   path, stages only runtime output without compiler symbols, and preserves the
-  raw deterministic directory packer for advanced staging. `gbar dev` provides a bounded unsigned
+  raw deterministic directory packer for advanced staging. `wrail dev` provides a bounded unsigned
   source/package watch-build-run loop through the production generic worker,
   AppContainer, broker, lifecycle, renderer, and Settings permission path. A
   controller/hotkey-free candidate must authenticate its exact catalog/widget/
@@ -1250,7 +1250,7 @@ presentation identity and package location. A Windows Release conformance suite
 packages, installs, enables, resolves, launches, renders, and acts through that
 same public path for all four. YT Music is a separately installable Community
 package on that same generic AppContainer path; its conformance case builds the
-real `.gbarwidget`, installs/enables it through the public catalog, drives
+real `.wrwidget`, installs/enables it through the public catalog, drives
 pairing and dashboard transport through the broker, and asserts there is no
 trusted catalog/worker fallback. Settings is the only temporary trusted Job-
 only exception. The Clock sample also exercises the public package path.
@@ -1728,7 +1728,7 @@ Normal declaration, consent, payload, and provider checks still apply.
 YT Music is the first Community addon integration reference. It is absent from
 the trusted/bundled host catalog and runtime-copy list, and its retired custom
 desktop worker/Credential Manager adapter are removed. The build helper stages
-the real manifest, assembly, and GBSS, then uses public `gbar validate`, `pack`,
+the real manifest, assembly, and WRSS, then uses public `wrail validate`, `pack`,
 `install`, and `enable` commands. The generic package AppContainer accesses
 YTMDesktop2 only through declared `network.loopback:13091`; optional
 `storage.private-secrets.v1` persists pairing without returning a token to the
@@ -2081,7 +2081,7 @@ without launching widget workers.
 The native client consumes the initial shell appearance and live revision
 events, rejects stale revisions, retains its last good state on failure, and
 applies supported shell styles and the complete bounded appearance record. The
-host-owned policy runs after every shell/widget GBSS layer: text scale
+host-owned policy runs after every shell/widget WRSS layer: text scale
 remeasures/reflows without compounding inherited `em`, reduced motion removes
 transitions, reduced transparency removes blur and makes node surfaces opaque,
 bold text enforces minimum weight 600, and System/forced high contrast corrects
@@ -2104,8 +2104,8 @@ accessibility evidence remain open. The embedded selectable
 Cool Slate theme exercises the same token and renderer pipeline with a visibly
 distinct palette rather than a hard-coded widget skin.
 
-The CLI provides `gbar theme new|validate|preview|pack|inspect|install|list|remove`.
-Schema-version-2 `.gbartheme` packages are data-only, deterministic, bounded,
+The CLI provides `wrail theme new|validate|preview|pack|inspect|install|list|remove`.
+Schema-version-2 `.wrtheme` packages are data-only, deterministic, bounded,
 publisher-namespaced, digest-addressable, revalidated through the production
 compiler, and installed as immutable ID/version directories through staged
 atomic moves. Remote HTTPS/GitHub release installs require a pinned SHA-256.
@@ -2141,13 +2141,13 @@ are active, closing the initial load-to-watch race.
 Catalog-state schema 2 adds an optional exact active-version pin while retaining
 schema-1 reads. Without a pin, discovery selects the greatest installed
 `System.Version`; the next successful mutation migrates legacy state to schema
-2. `gbar version list|select|rollback` exposes immutable installed versions.
+2. `wrail version list|select|rollback` exposes immutable installed versions.
 Selection and rollback require a disabled widget, keep it disabled for review,
 and never rewrite package bytes. A missing pinned directory fails discovery
 closed with `active_version_missing` rather than silently executing another
 version.
 
-`gbar uninstall <widget-id>` is implemented as a disabled-only catalog
+`wrail uninstall <widget-id>` is implemented as a disabled-only catalog
 operation. It removes the exact ID's state, atomically retires its complete
 package directory from discovery, deletes all immutable versions, and
 reindexes remaining order. Locked retired files are reported honestly and a
@@ -2163,7 +2163,7 @@ loading code. It identifies ID, per-widget-version, and total-version quota
 breaches and marks the selected generation as protected, including when it is
 enabled. Settings presents only inactive, non-selected candidates behind an
 exact confirmation page;
-`gbar repair list|remove` provides the same workflow. Exact-version removal
+`wrail repair list|remove` provides the same workflow. Exact-version removal
 runs under the catalog operation lock, rejects reparse/path ambiguity, checks
 cancellation before the atomic staging move, and never exposes a force or
 caller-selected recursive deletion path. Normal discovery is re-run after
@@ -2654,7 +2654,7 @@ Network Controls and its Windows provider retain their focused 17/17 and 31/31
 coverage for controller/focus, lifecycle/no-poll subscription ordering,
 privacy/explicit state, optimistic command reconciliation, opaque identity,
 native churn, cancellation, bounded failure, owner-thread disposal, responsive
-GBSS, and privacy-safe real Windows read smoke.
+WRSS, and privacy-safe real Windows read smoke.
 
 Clean all-lane run `20260809T141527Z-8946c731` is the current authoritative
 local `scripts/Verify.ps1 -Configuration Release` evidence. It passed all 41
@@ -2706,14 +2706,14 @@ with C++ installed:
   and a controller-first Community addon core for public Client-ID configuration, PKCE with the exact
   `http://127.0.0.1:43827/callback/`, Windows credential-vault refresh tokens,
   player snapshots/controls, restrictions, playback events, bounded
-  `Retry-After`, and sanitized errors. The local `gbar config` workflow is
+  `Retry-After`, and sanitized errors. The local `wrail config` workflow is
   implemented and tested. The provider is composed by `WidgetBridge`; the
   addon is packaged locally through the public SDK/AppContainer path and shows
   setup guidance without opening OAuth automatically. Community package 0.2.13
   uses a compact responsive layout, puts the complete setup instructions in a
   controller VerticalScroll, and uses shared centered icon/label button
   placement rather than widget-specific offsets. Setup now shows the
-  source-tree-runnable `dotnet run --project .\tools\GbarCli\GbarCli.csproj -- config ...`
+  source-tree-runnable `dotnet run --project .\tools\WrailCli\WrailCli.csproj -- config ...`
   command; every explicit setup entry receives a fresh Scroll identity so a
   restored bottom offset cannot hide the heading, and **Check configuration** performs one bounded fresh configuration and
   authorization read so a newly saved Client ID takes effect without restarting
@@ -2819,11 +2819,11 @@ with C++ installed:
   general desktop token; direct resource access is limited to the generic
   runtime plus exact session-verified package files. OS capability APIs remain
   brokered.
-- `gbar render` accepts only bounded data-only snapshots. Named credential-free
+- `wrail render` accepts only bounded data-only snapshots. Named credential-free
   scenarios now execute in a dedicated AppContainer/Job worker with an exact
   pinned content lease, typed fake services, normal lifecycle, deterministic
   repeated-snapshot validation, sanitized diagnostics, and bounded teardown;
-  the CLI process never loads author assemblies. `gbar dev` remains the
+  the CLI process never loads author assemblies. `wrail dev` remains the
   interactive production-host integration path.
 
   The DLV-108 focused Release evidence passes the new discoverable
@@ -2865,7 +2865,7 @@ with C++ installed:
   blocks delivery and activation and cancels in-flight broker requests, but
   immediately stopping provider-side observation and clearing its bounded
   in-memory history on read-consent revoke is future hardening.
-- GBSS compilation and bridge-global layering are implemented. `selected`,
+- WRSS compilation and bridge-global layering are implemented. `selected`,
   `disabled`, and `busy` snapshot state participates in the complete
   `base`/`focused` maps. The bridge also publishes a transient `pressed` map;
   the native host applies it only while the exact physical controller action
@@ -2960,7 +2960,7 @@ with C++ installed:
 
 - DLV-100 closes the protocol-v15 TextEntry bridge-style admission gap at the
   canonical computed-style role switch. `textEntry` now resolves as a distinct
-  closed GBSS role, null/default themes still emit an empty style entry keyed by
+  closed WRSS role, null/default themes still emit an empty style entry keyed by
   the stable node ID, and unknown node kinds retain an exact fail-closed bridge
   diagnostic. The production-shaped installed AppContainer route admits both
   the Game Launcher search entry and Network Controls protected entry, then
@@ -3060,7 +3060,7 @@ with C++ installed:
   100/125/150 percent, including first/middle/last collection reachability and
   deterministic reopen. The unchanged native renderer and shared-component
   geometry dependencies pass 4,777 and 589 checks respectively. The public
-  `gbar pack` path also produced the unchanged Game Launcher 0.6.0 package (10
+  `wrail pack` path also produced the unchanged Game Launcher 0.6.0 package (10
   files, 803,117 bytes). No native layout semantics, preferred-height increase,
   provider behavior, or screenshot acceptance was introduced.
 
@@ -3137,7 +3137,7 @@ with C++ installed:
   | Concern | Before DLV-112/116 | After DLV-112/116 |
   | --- | --- | --- |
   | Visible action admission | No native consumer could distinguish a future Settings install action from ordinary worker input. | One private `LocalWidgetPackageImport` contract claims only `host.install-local-widget` from `installed.install-local` in `installed.widgets`, bound to the current rendered node, snapshot instance, bundled package/publisher identity, runtime/presentation generations, and Interactive lifecycle. Controller, pointer, and UIA use that same admission seam. |
-  | Picker and operation lifetime | No host-owned local package picker or exact operation owner existed. | The native owner serializes one `.gbarwidget` picker and one submitted operation, revalidates origin after the modal interval, cancels on overlay close/shutdown, ignores stale completions, and exposes only path-free status. |
+  | Picker and operation lifetime | No host-owned local package picker or exact operation owner existed. | The native owner serializes one `.wrwidget` picker and one submitted operation, revalidates origin after the modal interval, cancels on overlay close/shutdown, ignores stale completions, and exposes only path-free status. |
   | Package publication | Local installation was available only through CLI flows. | The bridge opens one locked non-reparse regular-file stream and uses the existing `WidgetCatalog` installer and catalog lock; successful publication remains disabled and emits one catalog revision. No worker receives the selected path. |
   | Verification | Native completion assertions added with DLV-112 used `assert` and disappeared under Release `/DNDEBUG`; no production caller seam was exercised. | Release-hard checks cover exact action admission, forged identities, generations, scope/action/source, lifecycle, repeat/cancel/stale operation handling, malformed/wrong-operation/path-bearing completion frames, and path-free results. Managed import-prefix and catalog scenarios cover invalid, duplicate, stale, cancellation, locked-source, reparse, disabled publication, and revision behavior. |
 
@@ -3162,13 +3162,13 @@ and [troubleshooting](troubleshooting.md).
 
 ### Advanced scaffold profiles (DLV-110)
 
-`gbar new widget --template` now selects one strict version-2 inventory entry:
+`wrail new widget --template` now selects one strict version-2 inventory entry:
 `basic`, `data`, `media`, or `multipage` (with `basic` as the compatible
 default). The generated sources demonstrate the public lifecycle/state,
 `WidgetResource`, `WidgetOptimisticCommand`, and responsive
 `WidgetNavigator`/`NavigationShell` paths without credentials, repository
 references, or first-party-sized classes. Every profile includes a sibling
-`MSTest.Sdk` 4.3.2 semantic test and the matching isolated `gbar preview`
+`MSTest.Sdk` 4.3.2 semantic test and the matching isolated `wrail preview`
 scenario declaration. Selection and generation remain one bounded staging-and-
 rename transaction; invalid selection and malformed inventory input publish no
 partial target. Focused Release evidence exercises all four external-directory
@@ -3284,9 +3284,9 @@ adaptive bodies; it records zero widget-shell motion commits, live placement
 re-resolution, contained `rcWork` bounds, and maxima of 3,023 us draw, 1,339 us
 commit, and 1,510 us coordinated geometry.
 
-### Deterministic Gbar dev cancellation fixture (DLV-129)
+### Deterministic Wrail dev cancellation fixture (DLV-129)
 
-The retained clean aggregate `20260812T074036Z-37ce8dc0` passed 57/58 Gbar CLI
+The retained clean aggregate `20260812T074036Z-37ce8dc0` passed 57/58 Wrail CLI
 cases and timed out only while the dev retention fixture waited 30 seconds for a
 cold nested Release generation after preceding dev/process-tree cases. An exact
 isolated run passed without production changes, identifying cross-test build
@@ -3473,14 +3473,14 @@ generic public addition is sanitized launch observation state/result plus
 `WidgetAppLibraryService.LaunchObservedAsync`; raw provider and OS identities
 remain unavailable. `Export-CommunityReference.ps1` copies the one maintained
 managed implementation into a self-contained non-first-party repository created
-by the supported `gbar` scaffold, retaining no checkout path, project reference,
+by the supported `wrail` scaffold, retaining no checkout path, project reference,
 friend declaration, or unpublished assembly dependency. The currently bundled
 package and tray entry remain unchanged pending the generic native contract and
 atomic Community cutover.
 
 Focused Release evidence passes Widget SDK 89/89 and Game Launcher 90/90. The
 dedicated CLI path restores from a fresh NuGet cache, builds, validates, packs,
-and installs `org.gbar.community.reference.game-launcher` disabled as Community.
+and installs `widgetrail.community.reference.game-launcher` disabled as Community.
 The resulting four-file 222,523-byte archive then runs through the ordinary
 generic AppContainer worker with declared app-library permissions and exercises
 the 10,000-item cursor page, Search, collection navigation, details/Back,
@@ -3564,7 +3564,7 @@ URL, package record, action, or game/provider identity crosses into a worker.
 
 | Responsibility | Before | After |
 | --- | --- | --- |
-| Catalog and package safety | `LauncherExperienceCatalog` validated immutable recipes, GBSS files, asset headers, identity, digest, and package bounds. | It remains the only package-selection/validation authority; native presentation accepts only an opaque revision and sealed bytes/styles. |
+| Catalog and package safety | `LauncherExperienceCatalog` validated immutable recipes, WRSS files, asset headers, identity, digest, and package bounds. | It remains the only package-selection/validation authority; native presentation accepts only an opaque revision and sealed bytes/styles. |
 | Responsive layout and semantics | `LauncherExperienceLayout` and `LauncherExperienceAdapter` owned slot bounds, orientation, renderer projection, focus, pointer, and UIA geometry. | Those owners are unchanged; the adapter consumes an optional immutable presentation frame and paints its decoded background through the existing D2D target before rendering the same host-owned slots. |
 | Style, artwork, and recovery | No native launcher-only cascade, decode-before-crossfade state, revision quarantine, or safe-start owner existed. | `LauncherExperiencePresentation` exclusively owns pack/user overrides, bounded PNG/JPEG/WebP decode, selected-art revision matching, last-good background retention, effect timing/degradation, accessibility overrides, three-failure revision isolation, and built-in safe-start recovery. |
 | Domain/actions/compositor | Fixed host proof content supplied exact action IDs; live Game Launcher projection and composition lifetime were deliberately absent. | They remain absent. Presentation cannot create content/actions, change focus identity, change window/compositor ownership, or project live launcher state. |
@@ -3702,14 +3702,14 @@ fallback. The named suites ran without aggregate or capture evidence.
 
 ### Launcher Experience deterministic authoring toolchain (DLV-135)
 
-`gbar launcher-theme` now owns one focused data-only command surface for
+`wrail launcher-theme` now owns one focused data-only command surface for
 `new`, `validate`, `preview`, `pack`, `inspect`, `install`, `list`, and
 `remove`. `CliApplication` retains dispatch/error ownership; the command owner
 handles author workflow and deterministic preview composition; and the
 `LauncherExperienceCatalog` assembly owns archive capture, package safety,
 content validation, digest, immutable installation, exact removal, and the
 catalog mutation lock. No validation schema or validator was copied into the
-Gbar root; its starter document is accepted only after production validation.
+Wrail root; its starter document is accepted only after production validation.
 
 | Responsibility | Before DLV-135 | After DLV-135 |
 | --- | --- | --- |
@@ -3720,7 +3720,7 @@ Gbar root; its starter document is accepted only after production validation.
 
 Scaffolding publishes a complete valid project atomically. Packing uses ordinal
 entries and fixed ZIP metadata, and two independent identical projects produce
-byte-identical `.gbarlauncher` archives and digests. Archive inspection captures
+byte-identical `.wrlauncher` archives and digests. Archive inspection captures
 bounded bytes and materializes them privately through the existing production
 validator. Local installation grants presentation data only, never actions,
 SavedIds, provider bindings, paths, game authority, or content authority.
@@ -3733,7 +3733,7 @@ large fixture retains only 64 rows. This is offscreen authoring evidence, not a
 claim that the ordinary overlay applies the pack. Production adoption remains
 owned by platform DLV-145.
 
-Focused Release evidence passes 61/61 Gbar CLI cases, 17/17 Platform
+Focused Release evidence passes 61/61 Wrail CLI cases, 17/17 Platform
 Settings/catalog cases, the existing native offscreen Launcher Experience
 fixture's 1,361 checks, and the documentation contract across 66 Markdown
 files. No canonical aggregate is required.
@@ -3801,7 +3801,7 @@ was made.
 6. Add native graphical theme preview, package update discovery,
    editor schemas, controller/focus inspection, and scenario-based Gallery
    preview/capture coverage. The public SDK Gallery is implemented. Complete
-   packaged author-workflow evidence for the implemented `gbar dev` loop.
+   packaged author-workflow evidence for the implemented `wrail dev` loop.
 7. Implement publisher signing/revocation, crash quarantine, CPU and disk/
    profile quotas/cleanup, and security audit UI before public community
    distribution; migrate trusted built-ins as their desktop dependencies become
@@ -3914,7 +3914,7 @@ Focused Release evidence passes PlatformSettings 18/18 and Settings 59/59.
 
 The ordinary native host now consumes the exact trusted PlatformSettings
 selection through one private WidgetBridge boundary. The managed boundary loads
-only the accepted immutable catalog ID/version, resolves launcher-scoped GBSS,
+only the accepted immutable catalog ID/version, resolves launcher-scoped WRSS,
 and publishes the recipe, closed presentation parameters, and optional sealed
 static art as one complete revision. The native projection validates every
 representative responsive profile and decodes sealed art before replacing its
@@ -3933,7 +3933,7 @@ presentation degradation owner are unchanged.
 
 Focused Release evidence passes PlatformSettings/catalog 18/18 and native
 Launcher Experience 1,691 checks. The ordinary production-host fixture admits
-an exact local pack with recipe, GBSS, and sealed art; switches global
+an exact local pack with recipe, WRSS, and sealed art; switches global
 appearance; atomically replaces the exact version; retains it after removal
 with one diagnostic; and activates built-in recovery. Its inherited DLV-148
 motion window remains the separate timing/degradation assertion.
@@ -4188,7 +4188,7 @@ Platform Broker 56/56, and the installed media-session lifecycle/retry route.
 
 The supported CLI scaffold now emits bottom-rail compact, standard, and wide
 geometry that passes the production native compatibility matrix at 100% and
-150% text scale. One isolated conditional Gbar CLI test owns the complete
+150% text scale. One isolated conditional Wrail CLI test owns the complete
 author path: scaffold and validate bottom-rail v1 plus left-rail/glass v2,
 generate path-free previews, pack, inspect, install into the real catalog, and
 select through `LauncherExperienceSelectionPolicy`.
@@ -4250,7 +4250,7 @@ snapshots through the protocol validator, and the generic AppContainer route
 passes unchanged.
 
 DLV-196 exercises that reference pattern from a clean temporary Git-repository
-shape using the copied DLV-194 `gbar` distribution. A fresh local NuGet cache
+shape using the copied DLV-194 `wrail` distribution. A fresh local NuGet cache
 restores only from the generated cleared feed; the external project then builds,
 validates, packages, installs into an isolated catalog, runs its deterministic
 scenario in the AppContainer preview worker, and uninstalls every isolated
@@ -4261,19 +4261,19 @@ or production-catalog operation.
 DLV-202 replaces that fixture's undocumented checkout copying, scaffold-source
 deletion, manifest replacement, and scenario authoring with the same bounded
 `Export-ExternalReference.ps1` command documented for developers. The exporter
-uses the copied `gbar` release unit to create the offline SDK scaffold and writes
+uses the copied `wrail` release unit to create the offline SDK scaffold and writes
 the complete application-scale source, manifest, styles, and scenario before the
 external repository runs the documented restore/build/validate/pack/install/
 scenario/remove sequence. The exact onboarding case passes 1/1 and the
 documentation contract passes over 68 Markdown files.
 
 DLV-198 records a bounded executable compatibility report for the current
-versioned SDK/gbar/template release unit and a planner-ready migration and
+versioned SDK/wrail/template release unit and a planner-ready migration and
 deprecation proposal. DLV-203 refreshes that report from exact corrected DLV-202
 commit `5fbf690bcfa8f20cb4eaff8012a6c7df17a0817f`: the rebuilt SDK and CLI share
 that product-version provenance, the reviewed API contains 2,997 symbols, SDK
 SHA-256 is `2392741C815C604BA29CFEABF6843EF3033907E4CC5901774E0D4C6B5AD26193`,
-and gbar SHA-256 is
+and wrail SHA-256 is
 `E081DE4D0FF1D018BA3422074F68168F046B8528FBFAB950581195643BE70981`.
 The focused release-unit run passes WidgetSdk 89/89 and compatibility 12/12.
 These milestones change no API baseline, protocol, template, version, resolver,
@@ -4366,7 +4366,7 @@ or tree-shape special case is present.
 
 Pre-commit focused Release evidence passed Widget SDK 92/92, Widget Catalog
 35/35, Widget Runtime 75/75, sandbox WorkerHost 10/10, Widget Bridge 86/86,
-gbar CLI 65/65, Settings 61/61, and the native WidgetBridgeCatalog fixture. The
+wrail CLI 65/65, Settings 61/61, and the native WidgetBridgeCatalog fixture. The
 clean exact-commit Tier 3 run for `ed39a70` stopped at Widget Runtime 74/75:
 the cancellation-ignoring retired gesture-grant case observed two permitted
 idempotent revocations and its invalid `.Single()` assertion failed. The
@@ -4405,7 +4405,7 @@ playback suites compile against package-owned source.
 
 Focused Release evidence passes Spotify widget 50/50, package backend 32/32,
 credential-free application 5/5, playback client 3/3, playback host/protocol
-10/10, gbar CLI 65/65, and ordinary Widget Bridge 87/87. The documentation
+10/10, wrail CLI 65/65, and ordinary Widget Bridge 87/87. The documentation
 contract reaches only unchanged reviewer-owned delivery-plan history links and
 remains blocked there; the DLV-216 documentation diff passes `git diff --check`.
 The isolated package path emits 23 files / 3,271,094 bytes, requires explicit
@@ -4464,7 +4464,7 @@ it is not claimed as DLV-210 passing evidence and was not weakened or removed.
 
 ### Native Taffy stretch and stationary variable surfaces (DLV-222)
 
-The native declarative translation now treats GBSS `align` only as a
+The native declarative translation now treats WRSS `align` only as a
 container's child alignment (`align-items`). An ordinary auto-width Row or Stack
 continues to inherit its parent's Taffy stretch even when it centers its own
 children; definite dimensions, aspect ratio, and the existing generic bounds
@@ -4601,7 +4601,7 @@ scope, explicit focus graph, Reset styling, scoped B navigation, and the host's
 single surface/tray/guide placement authority are unchanged.
 
 Focused Release evidence passes Settings 61/61 and Widget SDK 93/93. The exact
-managed Settings snapshot and compiled production GBSS pass through the
+managed Settings snapshot and compiled production WRSS pass through the
 production native bridge parser and Taffy renderer for 44 checks: preferred
 content measures to 372 DIPs, compact one-column content grows to 580 DIPs and
 is clamped to the authored 520-DIP ceiling, Reset has no material trailing fill,
@@ -4643,7 +4643,7 @@ identity rule.
 
 Focused Release evidence passes Audio Mixer 45/45 and the generic native
 renderer's 4,851 checks. A dedicated real managed snapshot plus production
-GBSS/bridge/Taffy scenario passes 41 checks at 320- and 520-DIP widths: root,
+WRSS/bridge/Taffy scenario passes 41 checks at 320- and 520-DIP widths: root,
 cards, headings, session list, and control rows consume their exact admitted
 inner widths; master, microphone, and session sliders take the exact remainder;
 and the focused session remains scroll-revealed.
@@ -4658,7 +4658,7 @@ no list uses Content sizing, and no Network identity rule was added to native
 placement.
 
 Focused Release evidence passes Network Controls 24/24. A real NotScanned
-managed snapshot plus production GBSS/bridge/Taffy scenario passes 12 checks:
+managed snapshot plus production WRSS/bridge/Taffy scenario passes 12 checks:
 the 700-DIP authored panel's 644-DIP content viewport shows the complete
 `Ready to scan` title/help and primary Scan action at zero body-scroll offset,
 while the 320x420 minimum envelope's constrained 364-DIP content viewport
@@ -4676,7 +4676,7 @@ authentication, and Community isolation remain unchanged. No native identity
 rule, host offset, second page tree, or provider behavior was added.
 
 Focused Release evidence passes YT Music 60/60 and a real managed snapshot plus
-compiled production GBSS through the production native parser and Taffy
+compiled production WRSS through the production native parser and Taffy
 renderer for 82 checks at the preferred and compact budgets. The isolated
 validate/pack/install/consent/AppContainer/update/rollback/remove lifecycle
 passes for immutable package 0.2.9 with archive SHA-256
@@ -5174,7 +5174,7 @@ host continuity route and physical retained-selection latency remain residual
 planner/user verification.
 ### Autonomous full-trust Community Game Launcher (DLV-217)
 
-Game Launcher now ships as `org.gbar.community.reference.game-launcher` through
+Game Launcher now ships as `widgetrail.community.reference.game-launcher` through
 the generic `full-trust-application-v1` runtime. The package executable owns its
 Windows/Xbox and opt-in installed-store source composition, source health, bounded
 cursor queries, opaque SavedId key, organization-state CAS file, running-app
@@ -5327,7 +5327,7 @@ data, installed Community packages, private package state, or user files.
 
 Focused Release evidence passes WidgetSdk 89/89, WidgetSdk compatibility 12/12,
 PlatformBroker 52/52, WidgetBridge 90/90, Settings 60/60, Game Launcher core
-90/90, autonomous Community Game Launcher 6/6, and Gbar CLI/package 65/65. The
+90/90, autonomous Community Game Launcher 6/6, and Wrail CLI/package 65/65. The
 new core-domain retirement check reports no retirement or App Library failure;
 the documentation executable remains red only on 13 pre-existing links in
 reviewer-owned archived delivery-plan snapshots, which this milestone does not
@@ -5419,3 +5419,30 @@ the four existing `C4244` warnings remain in unrelated native `main.cpp`.
 No Tier 2, Tier 3, provider, hardware, launch, credential, installed-package,
 or live-consent route ran. Every consent fixture used a test-owned temporary
 store, and the user's live consent file was not inspected or modified.
+
+### DLV-258 — WidgetRail public managed identity cutover
+
+The public managed product identity is now `WidgetRail`: the SDK package and
+namespace root are `WidgetRail.WidgetSdk`, the developer CLI is `wrail`, widget,
+theme, and Launcher Experience archives use `.wrwidget`, `.wrtheme`, and
+`.wrlauncher`, styles use WRSS/`.wrss`, and controller templates publish
+`widgetrail.scenarios.json` under `.widgetrail`. First-party, built-in, sample,
+and Community-reference package IDs use only their approved `widgetrail.*`
+roots; unrelated third-party and `org.gbar.tests.*` identities remain opaque.
+The old public namespace and publication paths are not retained as facades,
+forwarders, duplicate manifests, or parallel outputs.
+
+This milestone intentionally leaves native IPC/HWND/mutex/pipe/UIA identifiers,
+AppContainer profile names, existing Local Application Data roots, exact
+consent tombstones, Credential Manager migration, and immutable history on
+their pre-cutover identities for DLV-259/DLV-260. Exact stale template files
+are removed from incremental Wrail CLI outputs without accepting them as input.
+
+Focused Release evidence passes the serialized managed/conformance build with
+zero warnings and errors, WRSS 23/23, Wrail CLI and external package flow 65/65,
+WidgetSdk compatibility 12/12, Widget Catalog 35/35, WidgetBridge 90/90,
+first-party/community package conformance 6/6, and the active documentation
+contract across 75 Markdown files. The restricted runner initially denied
+MSTest and Bridge named-pipe access; the exact focused binaries passed when run
+with the required local pipe permission. No Tier 3, native suite, launch,
+publication, integration, push, credential access, or user-state migration ran.

@@ -1,16 +1,16 @@
 using System.IO.Compression;
 using System.Text;
-using GameBarAlternative.WidgetBridge;
-using GameBarAlternative.WidgetCatalog;
-using GameBarAlternative.WidgetProtocol;
-using GameBarAlternative.WidgetRuntime;
-using GameBarAlternative.WidgetSdk;
-using CatalogService = GameBarAlternative.WidgetCatalog.WidgetCatalog;
+using WidgetRail.WidgetBridge;
+using WidgetRail.WidgetCatalog;
+using WidgetRail.WidgetProtocol;
+using WidgetRail.WidgetRuntime;
+using WidgetRail.WidgetSdk;
+using CatalogService = WidgetRail.WidgetCatalog.WidgetCatalog;
 
 internal static class FullTrustCommunityScenarios
 {
     private const string SpotifyConfigurationRootEnvironmentVariable =
-        "GBA_SPOTIFY_CONFIGURATION_ROOT";
+        "WRAIL_SPOTIFY_CONFIGURATION_ROOT";
 
     internal static async Task TwoApplicationsUseTheOrdinaryRuntime()
     {
@@ -114,7 +114,7 @@ internal static class FullTrustCommunityScenarios
     internal static async Task MissingEntrypointAndManifestPromotionFailClosed()
     {
         using var temporary = new ScenarioDirectory();
-        var package = Path.Combine(temporary.Path, "missing.gbarwidget");
+        var package = Path.Combine(temporary.Path, "missing.wrwidget");
         var manifest = Manifest(
             "net.example.missing-application", "1.0.0", "payload/missing.exe");
         await using (var stream = new FileStream(
@@ -237,7 +237,7 @@ internal static class FullTrustCommunityScenarios
               configured.WorkerArguments.Count == 0,
             "Game Launcher retained a product capability or special host argument.");
 
-        var variable = "GBA_GAME_LAUNCHER_DATA_ROOT";
+        var variable = "WRAIL_GAME_LAUNCHER_DATA_ROOT";
         var previousRoot = Environment.GetEnvironmentVariable(variable);
         Environment.SetEnvironmentVariable(variable, Path.Combine(temporary.Path, "data"));
         try
@@ -328,7 +328,7 @@ internal static class FullTrustCommunityScenarios
         string id,
         string version)
     {
-        var package = Path.Combine(destination, $"{id}-{version}.gbarwidget");
+        var package = Path.Combine(destination, $"{id}-{version}.wrwidget");
         var manifest = Manifest(id, version, $"payload/{executable}");
         using var stream = new FileStream(
             package, FileMode.CreateNew, FileAccess.ReadWrite, FileShare.None);
@@ -347,14 +347,14 @@ internal static class FullTrustCommunityScenarios
         string playbackHostOutput,
         string destination)
     {
-        var package = Path.Combine(destination, "org.gbar.samples.spotify-0.3.0.gbarwidget");
+        var package = Path.Combine(destination, "widgetrail.samples.spotify-0.3.0.wrwidget");
         using var stream = new FileStream(
             package, FileMode.CreateNew, FileAccess.ReadWrite, FileShare.None);
         using var archive = new ZipArchive(stream, ZipArchiveMode.Create);
         Write(archive, "manifest.json", File.ReadAllBytes(Path.Combine(
             repositoryRoot, "samples", "SpotifyWidget", "manifest.json")));
-        Write(archive, "styles/default.gbss", File.ReadAllBytes(Path.Combine(
-            repositoryRoot, "samples", "SpotifyWidget", "styles", "default.gbss")));
+        Write(archive, "styles/default.wrss", File.ReadAllBytes(Path.Combine(
+            repositoryRoot, "samples", "SpotifyWidget", "styles", "default.wrss")));
         var payload = new SortedDictionary<string, byte[]>(StringComparer.Ordinal);
         AddGraph(applicationOutput);
         AddGraph(playbackHostOutput);
@@ -391,7 +391,7 @@ internal static class FullTrustCommunityScenarios
         string destination)
     {
         var package = Path.Combine(
-            destination, "org.gbar.community.reference.game-launcher-0.2.0.gbarwidget");
+            destination, "widgetrail.community.reference.game-launcher-0.2.0.wrwidget");
         using var stream = new FileStream(
             package, FileMode.CreateNew, FileAccess.ReadWrite, FileShare.None);
         using var archive = new ZipArchive(stream, ZipArchiveMode.Create);
@@ -399,8 +399,8 @@ internal static class FullTrustCommunityScenarios
             repositoryRoot, "src", "FirstPartyWidgets", "GameLauncherWidget");
         Write(archive, "manifest.json", File.ReadAllBytes(Path.Combine(
             widgetRoot, "community-manifest.json")));
-        Write(archive, "styles/default.gbss", File.ReadAllBytes(Path.Combine(
-            widgetRoot, "styles", "default.gbss")));
+        Write(archive, "styles/default.wrss", File.ReadAllBytes(Path.Combine(
+            widgetRoot, "styles", "default.wrss")));
         foreach (var file in Directory.EnumerateFiles(
                      applicationOutput, "*", SearchOption.AllDirectories)
                  .Where(path => !path.EndsWith(".pdb", StringComparison.OrdinalIgnoreCase) &&

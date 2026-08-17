@@ -2,11 +2,11 @@ using System.Runtime.CompilerServices;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Threading.Channels;
-using GameBarAlternative.FirstPartyWidgets.NetworkControls;
-using GameBarAlternative.WidgetBridge;
-using GameBarAlternative.WidgetProtocol;
-using GameBarAlternative.WidgetSdk;
-using GameBarAlternative.WidgetStyling;
+using WidgetRail.FirstPartyWidgets.NetworkControls;
+using WidgetRail.WidgetBridge;
+using WidgetRail.WidgetProtocol;
+using WidgetRail.WidgetSdk;
+using WidgetRail.WidgetStyling;
 
 if (args is ["--export-renderer-fixture", var rendererFixturePath])
 {
@@ -39,7 +39,7 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Action routing is an exact closed policy", ActionRoutingIsExact),
     ("Pure presentation repeats the same semantic snapshot", PresentationIsDeterministic),
     ("Responsibility split retains one lifecycle and committed-state owner", ResponsibilityBoundariesAreSingular),
-    ("Manifest catalog and responsive GBSS ship the Wi-Fi capabilities", ShippedAssetsValidate),
+    ("Manifest catalog and responsive WRSS ship the Wi-Fi capabilities", ShippedAssetsValidate),
 };
 
 var failures = new List<string>();
@@ -72,10 +72,10 @@ static async Task ExportRendererFixture(string outputPath)
     var snapshot = Snapshot(widget, 1);
     Assert.Valid(snapshot);
     var project = ProjectDirectory();
-    var package = GbssPackageLoader.LoadFile(
-        Path.Combine(project, "styles", "default.gbss"),
+    var package = WrssPackageLoader.LoadFile(
+        Path.Combine(project, "styles", "default.wrss"),
         Path.Combine(project, "styles"));
-    var compiled = GbssThemeCompiler.Compile(package);
+    var compiled = WrssThemeCompiler.Compile(package);
     Assert.True(compiled.IsValid, string.Join(Environment.NewLine, compiled.Diagnostics));
     var renderStyles = BridgeRenderStyleResolver.Resolve(snapshot, compiled.Theme);
     using var snapshotDocument = JsonDocument.Parse(SnapshotJson.Serialize(snapshot));
@@ -1120,7 +1120,7 @@ static async Task ShippedAssetsValidate()
     var manifest = ManifestJson.Deserialize(await File.ReadAllBytesAsync(Path.Combine(project, "manifest.json")));
     var errors = WidgetManifestValidator.Validate(manifest);
     Assert.True(errors.Count == 0, string.Join(Environment.NewLine, errors));
-    Assert.Equal("org.gbar.firstparty.network-controls", manifest.Id);
+    Assert.Equal("widgetrail.firstparty.network-controls", manifest.Id);
     Assert.SequenceEqual([
         "system.network.read.v1",
         "system.network.wifi.read.v1",
@@ -1140,12 +1140,12 @@ static async Task ShippedAssetsValidate()
     Assert.Equal(64, manifest.ResourceRequest.MemoryMb);
     Assert.Equal(10, manifest.ResourceRequest.UpdateHz);
 
-    var package = GbssPackageLoader.LoadFile(
-        Path.Combine(project, "styles", "default.gbss"), Path.Combine(project, "styles"));
-    var compiled = GbssThemeCompiler.Compile(package);
+    var package = WrssPackageLoader.LoadFile(
+        Path.Combine(project, "styles", "default.wrss"), Path.Combine(project, "styles"));
+    var compiled = WrssThemeCompiler.Compile(package);
     Assert.True(compiled.IsValid, string.Join(Environment.NewLine, compiled.Diagnostics));
     AssertResponsiveLayoutBudget(compiled.Theme!);
-    var style = await File.ReadAllTextAsync(Path.Combine(project, "styles", "default.gbss"));
+    var style = await File.ReadAllTextAsync(Path.Combine(project, "styles", "default.wrss"));
     Assert.Contains("width: 100vw", style);
     Assert.Contains("min-width: 0px", style);
     Assert.Contains("max-width: 560px", style);
@@ -1167,16 +1167,16 @@ static async Task ShippedAssetsValidate()
         "Bundled runtime authority must be derived from manifest.json, not duplicated in shell metadata.");
 }
 
-static void AssertResponsiveLayoutBudget(GbssTheme theme)
+static void AssertResponsiveLayoutBudget(WrssTheme theme)
 {
     var root = Resolve(theme, "stack", "network.root", "network-controls-widget");
     var list = Resolve(theme, "scroll", "network.wifi.body.scroll", "network-view-scroll");
     var row = Resolve(theme, "stack", "network.wifi.test.row", "network-profile-row");
     var button = Resolve(theme, "button", "network.wifi.test", "network-profile-button");
     var scan = Resolve(theme, "button", "network.wifi.scan", "network-scan-action");
-    var focused = theme.Resolve(new GbssElement("button", "network.wifi.test",
+    var focused = theme.Resolve(new WrssElement("button", "network.wifi.test",
         new HashSet<string>(["network-profile-button"], StringComparer.Ordinal),
-        new HashSet<GbssPseudoState>([GbssPseudoState.Focused])));
+        new HashSet<WrssPseudoState>([WrssPseudoState.Focused])));
     Assert.True(Pixels(button.Get("min-height")!, 320) >= 44);
     Assert.True(Pixels(scan.Get("min-height")!, 320) >= 44);
     Assert.True(Pixels(list.Get("min-height")!, 560) >= 120);
@@ -1193,11 +1193,11 @@ static void AssertResponsiveLayoutBudget(GbssTheme theme)
     }
 }
 
-static GbssResolvedStyle Resolve(GbssTheme theme, string role, string id, string styleClass) =>
-    theme.Resolve(new GbssElement(role, id,
+static WrssResolvedStyle Resolve(WrssTheme theme, string role, string id, string styleClass) =>
+    theme.Resolve(new WrssElement(role, id,
         new HashSet<string>([styleClass], StringComparer.Ordinal)));
 
-static double Pixels(GbssComputedValue value, double viewport)
+static double Pixels(WrssComputedValue value, double viewport)
 {
     var unit = value.Unit;
     var number = value.Number;
@@ -1216,16 +1216,16 @@ static double Pixels(GbssComputedValue value, double viewport)
     };
 }
 
-static double HorizontalSpacing(GbssComputedValue value, double viewport)
+static double HorizontalSpacing(WrssComputedValue value, double viewport)
 {
     var parts = value.Text.Split(' ', StringSplitOptions.RemoveEmptyEntries);
-    GbssComputedValue Part(string text)
+    WrssComputedValue Part(string text)
     {
         var unit = text.EndsWith("px", StringComparison.Ordinal) ? "px" :
             text.EndsWith("vw", StringComparison.Ordinal) ? "vw" : null;
         if (unit is null || !double.TryParse(text[..^unit.Length], out var number))
             throw new InvalidOperationException($"Unsupported spacing '{text}'.");
-        return new GbssComputedValue(GbssValueKind.Length, text, number, unit);
+        return new WrssComputedValue(WrssValueKind.Length, text, number, unit);
     }
     return parts.Length switch
     {

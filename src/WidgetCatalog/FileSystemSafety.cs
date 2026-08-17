@@ -1,4 +1,4 @@
-namespace GameBarAlternative.WidgetCatalog;
+namespace WidgetRail.WidgetCatalog;
 
 internal static class FileSystemSafety
 {

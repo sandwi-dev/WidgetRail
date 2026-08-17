@@ -2,7 +2,7 @@ using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Runtime.InteropServices;
 
-namespace GameBarAlternative.WindowsAudioProvider;
+namespace WidgetRail.WindowsAudioProvider;
 
 public sealed class CoreAudioNativeAdapterFactory : IWindowsAudioNativeAdapterFactory
 {

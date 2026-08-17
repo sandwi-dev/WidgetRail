@@ -410,7 +410,7 @@ healthy empty and sanitized failure states, Catalog add/remove,
 confirmed recent-first ordering, nearest-row removal focus, opaque selected
 launch, bidirectional 32-row Catalog cursor paging,
 64-entry long-name Library snapshots, shared component classes, and responsive
-GBSS contracts. Provider tests cover
+WRSS contracts. Provider tests cover
 lazy refresh, sanitization and bounds, opaque-ID lifetime, payload privacy,
 on-demand icon caching and bounds, exact shortcut/AUMID revalidation,
 constrained Shell/packaged/Steam activation, STA queue cancellation,

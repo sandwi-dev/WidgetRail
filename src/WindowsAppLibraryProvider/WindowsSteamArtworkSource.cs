@@ -1,12 +1,12 @@
 using System.Runtime.InteropServices;
 using System.Security.Cryptography;
 using System.Text;
-using GameBarAlternative.PlatformBroker;
+using WidgetRail.PlatformBroker;
 using Microsoft.Win32.SafeHandles;
 using Windows.Graphics.Imaging;
 using Windows.Storage.Streams;
 
-namespace GameBarAlternative.WindowsAppLibraryProvider;
+namespace WidgetRail.WindowsAppLibraryProvider;
 
 /// <summary>
 /// Resolves only allowlisted Steam library-cache files beneath an already

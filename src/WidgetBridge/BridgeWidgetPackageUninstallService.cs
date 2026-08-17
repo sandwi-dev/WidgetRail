@@ -1,7 +1,7 @@
-using GameBarAlternative.PlatformDiagnostics;
-using GameBarAlternative.WidgetCatalog;
+using WidgetRail.PlatformDiagnostics;
+using WidgetRail.WidgetCatalog;
 
-namespace GameBarAlternative.WidgetBridge;
+namespace WidgetRail.WidgetBridge;
 
 /// <summary>
 /// Path-free uninstall authority for the exact trusted Settings companion.

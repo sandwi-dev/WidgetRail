@@ -18,7 +18,7 @@ planned. A structurally valid package is not necessarily trustworthy.
   v6 additionally accepts a canonical RGBA8 PNG data source capped at 12 KiB
   and 64 by 64 pixels for broker-sanitized artwork; it is decoded locally and
   cannot contain a native file or executable path.
-- GBSS is an allowlisted data language. It rejects scripts, URLs, expressions,
+- WRSS is an allowlisted data language. It rejects scripts, URLs, expressions,
   arbitrary functions, traversal, reparse-point escapes, and oversized input.
 - Native rendering uses semantic elements and a closed icon set; widgets
   cannot supply native handles, SVG, font glyphs, or arbitrary paths.
@@ -92,7 +92,7 @@ planned. A structurally valid package is not necessarily trustworthy.
   state](private-widget-state.md).
 - Public widget configuration is a separate bounded settings store keyed by
   declared publisher/package identity. It is intentionally readable JSON for
-  values such as an OAuth Client ID and is managed locally through `gbar config`
+  values such as an OAuth Client ID and is managed locally through `wrail config`
   until a controller-native editor exists. An unsigned digest authority can
   resolve only one unambiguous document whose publisher namespace owns its
   package ID; this convenience never applies to consent, private state, OAuth
@@ -140,8 +140,8 @@ planned. A structurally valid package is not necessarily trustworthy.
   integrity instead publishes a trusted-only revision, synchronously removes
   Community registrations, retires their workers, and prevents relaunch by the
   old ID. Conflicts, unsupported capability declarations, and invalid per-
-  package GBSS omit the affected package with bounded diagnostics. Installed
-  GBSS entries and imports are strict UTF-8 read through one restrictively
+  package WRSS omit the affected package with bounded diagnostics. Installed
+  WRSS entries and imports are strict UTF-8 read through one restrictively
   shared consumed-byte-bounded handle and must match the exact per-file SHA-256
   inventory produced with the sealed tree digest; modified or late-added style
   files cannot compile under that authority.
@@ -254,13 +254,13 @@ the user supplies explicit full-trust approval, and the package then runs with
 ordinary current-user authority through the narrow application bootstrap.
 
 The managed theme catalog has strict manifests, version-pinned directories,
-package-relative GBSS imports, bounds, reparse/containment checks, and sanitized
-diagnostics. The implemented data-only `.gbartheme` workflow scaffolds,
+package-relative WRSS imports, bounds, reparse/containment checks, and sanitized
+diagnostics. The implemented data-only `.wrtheme` workflow scaffolds,
 validates, previews computed styles, deterministically packs/inspects, and
 atomically installs local or SHA-256-pinned HTTPS/GitHub Release packages. The
 bridge watches only the settings file and current-user theme tree, debounces
 notifications, and republishes only a fully valid last-good snapshot. It only
-reads data consumed by the allowlisted GBSS compiler; executable content,
+reads data consumed by the allowlisted WRSS compiler; executable content,
 scripts, remote resources, fonts, shaders, and arbitrary assets are rejected.
 Theme publisher signing, revocation, removal/update/rollback, gallery, and
 graphical preview remain unimplemented. See [theme packaging and
@@ -269,8 +269,8 @@ distribution](theme-packaging.md).
 ## Trust decision today
 
 Only run widgets that you wrote, reviewed, or obtained from a developer you
-already trust. Prefer building from source. `gbar render` is now data-only and
-rejects DLL input without loading it. Use `gbar dev` for sandboxed executable
+already trust. Prefer building from source. `wrail render` is now data-only and
+rejects DLL input without loading it. Use `wrail dev` for sandboxed executable
 integration; it routes author code through the same generic AppContainer worker
 boundary as sandboxed installed Community widgets. Full-trust application
 packages must instead be reviewed, packed, installed, and enabled with the
@@ -283,7 +283,7 @@ does not authenticate the manifest publisher or acquisition source. Compare a
 digest through an independent authenticated channel. Publisher signing,
 rotation/revocation, and host-owned acquisition receipts remain unimplemented.
 
-`gbar validate` proves syntax and bounded declarative resources. Package
+`wrail validate` proves syntax and bounded declarative resources. Package
 validation proves archive containment and identity consistency. HTTPS protects
 transport to the resolved servers, and `--sha256` can pin exact bytes. None of
 these proves publisher identity or benign executable behavior. A digest is a

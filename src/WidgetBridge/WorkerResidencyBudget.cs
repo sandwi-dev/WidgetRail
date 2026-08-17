@@ -1,6 +1,6 @@
-using GameBarAlternative.WidgetRuntime;
+using WidgetRail.WidgetRuntime;
 
-namespace GameBarAlternative.WidgetBridge;
+namespace WidgetRail.WidgetBridge;
 
 public sealed record WorkerResidencyBudgetOptions
 {

@@ -1,4 +1,4 @@
-namespace GameBarAlternative.WidgetSdk;
+namespace WidgetRail.WidgetSdk;
 
 /// <summary>Observable loading state for one non-paged resource.</summary>
 public enum WidgetResourceStatus

@@ -1,4 +1,4 @@
-# Game Bar Alternative
+# WidgetRail
 
 Working title for a lightweight, controller-first Windows overlay with a modular widget platform.
 
@@ -20,7 +20,7 @@ This repository contains an integrated Phase 0 platform prototype. It is not a p
 
 - A native Win32/D2D overlay shell with Guide toggle, controller navigation, reorder mode, last-widget restoration, and hidden-state resource teardown
 - A versioned declarative widget protocol, typed C# SDK, lazy worker runtime, and managed native bridge
-- Safe GBSS compilation, typed computed styles, deterministic data-only theme
+- Safe WRSS compilation, typed computed styles, deterministic data-only theme
   packages/tooling, HTTPS images, semantic icons, and controller-aware state
 - A verified controller Settings worker plus strict appearance store,
   version-pinned themes, platform/widget/user cascade, no-poll reload, and live
@@ -30,7 +30,7 @@ This repository contains an integrated Phase 0 platform prototype. It is not a p
   Now Playing workers in the runnable catalog; an installable YT Music
   Community addon; an installable Spotify Community-addon core; and a separate
   Clock SDK sample plus a capability-free, installable SDK Gallery reference
-- A strict `.gbarwidget` package/catalog library and `gbar` developer CLI with
+- A strict `.wrwidget` package/catalog library and `wrail` developer CLI with
   bounded HTTPS/GitHub Release installation and required remote SHA-256 pinning;
   immutable version pin/rollback commands; accepted catalog changes reconcile
   live and workers still start lazily
@@ -91,7 +91,7 @@ and physical-display gates remain explicit manual release evidence.
 - [Retired Recent Apps reference](docs/recent-apps.md)
 - [Platform architecture](docs/platform-architecture.md)
 - [Widget quickstart](docs/widget-quickstart.md)
-- [Declarative UI](docs/declarative-ui.md) and [GBSS](docs/gbss.md)
+- [Declarative UI](docs/declarative-ui.md) and [WRSS](docs/wrss.md)
 - [Settings and global themes](docs/settings-and-themes.md)
 - [Theme packaging and distribution](docs/theme-packaging.md)
 - [Controller input](docs/controller-input.md)

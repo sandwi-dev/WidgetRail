@@ -1,14 +1,14 @@
 using System.IO.Compression;
 using System.Reflection;
-using GameBarAlternative.WidgetCatalog;
-using GameBarAlternative.WidgetProtocol;
-using GameBarAlternative.WidgetSdk;
+using WidgetRail.WidgetCatalog;
+using WidgetRail.WidgetProtocol;
+using WidgetRail.WidgetSdk;
 
-namespace GameBarAlternative.Tests.TrayRefreshCommunityFixture;
+namespace WidgetRail.Tests.TrayRefreshCommunityFixture;
 
 internal static class Program
 {
-    private const string PackageId = "dev.gbar.tests.tray-refresh-community";
+    private const string PackageId = "dev.widgetrail.tests.tray-refresh-community";
     private const string PackageVersion = "1.0.0";
 
     public static async Task<int> Main(string[] args)
@@ -25,21 +25,21 @@ internal static class Program
         Directory.CreateDirectory(temporaryRoot);
         try
         {
-            var packagePath = Path.Combine(temporaryRoot, "community.gbarwidget");
+            var packagePath = Path.Combine(temporaryRoot, "community.wrwidget");
             using (var archive = ZipFile.Open(packagePath, ZipArchiveMode.Create))
             {
                 WriteText(archive, "manifest.json", $$"""
                     {
                       "manifestVersion": 1,
                       "id": "{{PackageId}}",
-                      "publisher": "dev.gbar.tests",
+                      "publisher": "dev.widgetrail.tests",
                       "name": "Community Refresh Fixture",
                       "version": "{{PackageVersion}}",
                       "hostApi": { "minimum": "1.0", "maximumMajor": 1 },
                       "entrypoint": {
                         "runtime": "dotnet-worker",
                         "assembly": "payload/TrayRefreshCommunityFixture.dll",
-                        "type": "GameBarAlternative.Tests.TrayRefreshCommunityFixture.CommunityRefreshWidget"
+                        "type": "WidgetRail.Tests.TrayRefreshCommunityFixture.CommunityRefreshWidget"
                       },
                       "permissions": [],
                       "optionalPermissions": [],
@@ -62,10 +62,10 @@ internal static class Program
                     typeof(WidgetSurfaceHints).Assembly.Location);
                 AddRuntimeAssembly(
                     archive,
-                    typeof(GameBarAlternative.WidgetCatalog.WidgetCatalog).Assembly.Location);
+                    typeof(WidgetRail.WidgetCatalog.WidgetCatalog).Assembly.Location);
             }
 
-            var catalog = new GameBarAlternative.WidgetCatalog.WidgetCatalog(catalogRoot);
+            var catalog = new WidgetRail.WidgetCatalog.WidgetCatalog(catalogRoot);
             await catalog.InstallAsync(packagePath).ConfigureAwait(false);
             await catalog.SetEnabledAsync(PackageId, true).ConfigureAwait(false);
             return 0;

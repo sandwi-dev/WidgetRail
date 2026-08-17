@@ -1,9 +1,9 @@
-using GameBarAlternative.Samples.SpotifyWidget;
-using GameBarAlternative.WidgetRuntime;
-using GameBarAlternative.WindowsSpotifyProvider;
+using WidgetRail.Samples.SpotifyWidget;
+using WidgetRail.WidgetRuntime;
+using WidgetRail.WindowsSpotifyProvider;
 
-const string publisherId = "org.gbar.samples";
-const string packageId = "org.gbar.samples.spotify";
+const string publisherId = "widgetrail.samples";
+const string packageId = "widgetrail.samples.spotify";
 
 return await WidgetApplicationBootstrap.RunAsync(args, () =>
 {

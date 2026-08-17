@@ -1,6 +1,6 @@
 using System.Diagnostics;
 
-namespace GameBarAlternative.WindowsAppLibraryProvider;
+namespace WidgetRail.WindowsAppLibraryProvider;
 
 internal sealed class WindowsEpicLauncher : IWindowsEpicLauncher
 {

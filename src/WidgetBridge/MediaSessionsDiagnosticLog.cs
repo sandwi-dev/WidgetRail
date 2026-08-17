@@ -1,8 +1,8 @@
 using System.Text;
 using System.Threading.Channels;
-using GameBarAlternative.PlatformBroker;
+using WidgetRail.PlatformBroker;
 
-namespace GameBarAlternative.WidgetBridge;
+namespace WidgetRail.WidgetBridge;
 
 /// <summary>
 /// Records only transition-owned, correlation-safe Media Sessions failures.

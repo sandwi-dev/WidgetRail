@@ -1,7 +1,7 @@
-using GameBarAlternative.PlatformDiagnostics;
-using GameBarAlternative.WidgetCatalog;
+using WidgetRail.PlatformDiagnostics;
+using WidgetRail.WidgetCatalog;
 
-namespace GameBarAlternative.FirstPartyWidgets.Settings;
+namespace WidgetRail.FirstPartyWidgets.Settings;
 
 /// <summary>
 /// Value-only admission and result policy for package-only uninstall. The

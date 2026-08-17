@@ -1,4 +1,4 @@
-namespace GameBarAlternative.WidgetSdk;
+namespace WidgetRail.WidgetSdk;
 
 /// <summary>
 /// One credential-free semantic preview definition. A declared static scenario
@@ -34,7 +34,7 @@ public sealed record WidgetScenarioResult
     public WidgetScenarioResult(
         int version,
         string scenario,
-        GameBarAlternative.WidgetProtocol.ViewSnapshot snapshot,
+        WidgetRail.WidgetProtocol.ViewSnapshot snapshot,
         IReadOnlyList<WidgetScenarioDiagnostic> diagnostics)
     {
         if (version != CurrentVersion)
@@ -57,7 +57,7 @@ public sealed record WidgetScenarioResult
 
     public int Version { get; }
     public string Scenario { get; }
-    public GameBarAlternative.WidgetProtocol.ViewSnapshot Snapshot { get; }
+    public WidgetRail.WidgetProtocol.ViewSnapshot Snapshot { get; }
     public IReadOnlyList<WidgetScenarioDiagnostic> Diagnostics { get; }
 }
 

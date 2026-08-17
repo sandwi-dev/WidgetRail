@@ -1,6 +1,6 @@
 using System.Diagnostics;
 
-namespace GameBarAlternative.WindowsAppLibraryProvider;
+namespace WidgetRail.WindowsAppLibraryProvider;
 
 internal interface IWindowsShellLauncher
 {

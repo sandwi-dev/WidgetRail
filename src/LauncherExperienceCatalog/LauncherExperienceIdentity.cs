@@ -1,6 +1,6 @@
 using System.Text.RegularExpressions;
 
-namespace GameBarAlternative.LauncherExperienceCatalog;
+namespace WidgetRail.LauncherExperienceCatalog;
 
 public static partial class LauncherExperienceIdentity
 {

@@ -1,8 +1,8 @@
-using GameBarAlternative.PlatformBroker;
-using GameBarAlternative.WidgetRuntime;
-using GameBarAlternative.WidgetSdk;
+using WidgetRail.PlatformBroker;
+using WidgetRail.WidgetRuntime;
+using WidgetRail.WidgetSdk;
 
-namespace GameBarAlternative.WidgetBridge;
+namespace WidgetRail.WidgetBridge;
 
 /// <summary>
 /// Bridge-owned capability channel created once per worker process. Identity,

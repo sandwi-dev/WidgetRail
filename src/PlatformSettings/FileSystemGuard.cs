@@ -1,4 +1,4 @@
-namespace GameBarAlternative.PlatformSettings;
+namespace WidgetRail.PlatformSettings;
 
 internal static class FileSystemGuard
 {

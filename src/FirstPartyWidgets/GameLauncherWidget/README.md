@@ -8,22 +8,22 @@ lifecycle and presentation channel; there is no Game Launcher capability,
 product-specific host API, or dependency on `PlatformBroker.dll` or
 `WindowsAppLibraryProvider.dll` in the package payload.
 
-Create a self-contained Community candidate from a built `gbar` distribution:
+Create a self-contained Community candidate from a built `wrail` distribution:
 
 ```powershell
 pwsh -NoProfile -File .\src\FirstPartyWidgets\GameLauncherWidget\Export-CommunityReference.ps1 `
-  -Gbar .\artifacts\gbar\gbar.exe `
+  -Wrail .\artifacts\wrail\wrail.exe `
   -Output C:\temp\GameLauncherCommunity
 ```
 
 The generated project contains no checkout `ProjectReference` or friend access.
-It restores the exact locally packaged `GameBarAlternative.WidgetSdk`, declares
+It restores the exact locally packaged `WidgetRail.WidgetSdk`, declares
 the reviewed `full-trust-application-v1` executable with no product capabilities,
-and packages as `org.gbar.community.reference.game-launcher`. Installation and
+and packages as `widgetrail.community.reference.game-launcher`. Installation and
 enablement require the normal explicit full-trust disclosure.
 
 Package-local files under
-`%LOCALAPPDATA%\GameBarAlternative\community-apps\org.gbar.community.reference.game-launcher`
+`%LOCALAPPDATA%\GameBarAlternative\community-apps\widgetrail.community.reference.game-launcher`
 own the SavedId key, organization state, and source opt-ins. On first run the
 package imports only the existing Epic/GOG opt-in booleans and then owns its
 bounded `sources.json`. The retired overlay-host private-state representation is

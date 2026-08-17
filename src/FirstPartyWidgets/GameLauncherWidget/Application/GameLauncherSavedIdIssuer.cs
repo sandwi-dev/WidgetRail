@@ -1,7 +1,7 @@
 using System.Security.Cryptography;
 using System.Text;
 
-namespace GameBarAlternative.FirstPartyWidgets.GameLauncher;
+namespace WidgetRail.FirstPartyWidgets.GameLauncher;
 
 internal sealed class GameLauncherSavedIdIssuer
 {

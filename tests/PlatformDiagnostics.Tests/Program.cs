@@ -2,7 +2,7 @@ using System.Buffers.Binary;
 using System.IO.Pipes;
 using System.Text.Json;
 using System.Text.Json.Serialization;
-using GameBarAlternative.PlatformDiagnostics;
+using WidgetRail.PlatformDiagnostics;
 
 var tests = new (string Name, Func<Task> Run)[]
 {

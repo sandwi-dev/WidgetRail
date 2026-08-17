@@ -1,7 +1,7 @@
-using GameBarAlternative.PlatformBroker;
-using GameBarAlternative.WidgetProtocol;
+using WidgetRail.PlatformBroker;
+using WidgetRail.WidgetProtocol;
 
-namespace GameBarAlternative.FirstPartyWidgets.Settings;
+namespace WidgetRail.FirstPartyWidgets.Settings;
 
 internal sealed record SettingsDeclaredCapability(string Id, bool IsRequired);
 

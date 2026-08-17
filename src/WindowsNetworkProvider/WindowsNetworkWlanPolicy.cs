@@ -2,9 +2,9 @@ using System.ComponentModel;
 using System.Runtime.InteropServices;
 using System.Security.Cryptography;
 using System.Text;
-using GameBarAlternative.PlatformBroker;
+using WidgetRail.PlatformBroker;
 
-namespace GameBarAlternative.WindowsNetworkProvider;
+namespace WidgetRail.WindowsNetworkProvider;
 
 internal readonly record struct NativeWlanNotificationProjection(
     NativeNetworkConnectionOutcome? ConnectionOutcome,

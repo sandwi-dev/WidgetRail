@@ -1,4 +1,4 @@
-namespace GameBarAlternative.PlatformBroker;
+namespace WidgetRail.PlatformBroker;
 
 /// <summary>Joins independently owned host providers without exposing either one to widgets.</summary>
 public sealed class CompositePlatformBrokerBackend : IPlatformBrokerBackend,

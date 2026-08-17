@@ -1,9 +1,9 @@
-using GameBarAlternative.Samples.FullApplicationWidget;
-using GameBarAlternative.WidgetProtocol;
-using GameBarAlternative.WidgetSdk;
+using WidgetRail.Samples.FullApplicationWidget;
+using WidgetRail.WidgetProtocol;
+using WidgetRail.WidgetSdk;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 
-namespace GameBarAlternative.Tests.FullApplicationWidget;
+namespace WidgetRail.Tests.FullApplicationWidget;
 
 [TestClass]
 public sealed class FullApplicationWidgetTests

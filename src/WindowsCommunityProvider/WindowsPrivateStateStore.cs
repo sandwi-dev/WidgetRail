@@ -3,9 +3,9 @@ using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
-using GameBarAlternative.PlatformBroker;
+using WidgetRail.PlatformBroker;
 
-namespace GameBarAlternative.WindowsCommunityProvider;
+namespace WidgetRail.WindowsCommunityProvider;
 
 internal interface IPrivateStateStore
 {

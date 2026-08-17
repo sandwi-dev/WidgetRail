@@ -1,9 +1,9 @@
 using System.Collections.Concurrent;
 using System.Collections.ObjectModel;
-using GameBarAlternative.PlatformSettings;
-using GameBarAlternative.WidgetStyling;
+using WidgetRail.PlatformSettings;
+using WidgetRail.WidgetStyling;
 
-namespace GameBarAlternative.WidgetBridge;
+namespace WidgetRail.WidgetBridge;
 
 public sealed record BridgePlatformAppearance
 {
@@ -46,7 +46,7 @@ public sealed class PlatformAppearanceService : IAsyncDisposable
 
     public ThemeSnapshot Current => _themes.Current;
 
-    public IReadOnlyList<GbssDiagnostic> LastReloadDiagnostics =>
+    public IReadOnlyList<WrssDiagnostic> LastReloadDiagnostics =>
         _themes.LastReloadDiagnostics;
 
     public async Task StartAsync(CancellationToken cancellationToken = default)
@@ -70,7 +70,7 @@ public sealed class PlatformAppearanceService : IAsyncDisposable
         return result;
     }
 
-    public GbssTheme ResolveWidgetTheme(string widgetId, GbssPackageResult widgetPackage)
+    public WrssTheme ResolveWidgetTheme(string widgetId, WrssPackageResult widgetPackage)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(widgetId);
         ArgumentNullException.ThrowIfNull(widgetPackage);
@@ -82,7 +82,7 @@ public sealed class PlatformAppearanceService : IAsyncDisposable
         if (!compiled.IsValid)
         {
             var diagnostic = compiled.Diagnostics.First(item =>
-                item.Severity == GbssDiagnosticSeverity.Error);
+                item.Severity == WrssDiagnosticSeverity.Error);
             throw new BridgeProtocolException(
                 $"Layered style for widget '{widgetId}' is invalid: {SafeDiagnostic(diagnostic.Code)}: " +
                 SafeDiagnostic(diagnostic.Message));
@@ -211,18 +211,18 @@ public sealed class PlatformAppearanceService : IAsyncDisposable
     }
 
     private static IReadOnlyDictionary<string, IReadOnlyDictionary<string, BridgeComputedStyleValue>>
-        ResolveShellStyles(GbssTheme theme)
+        ResolveShellStyles(WrssTheme theme)
     {
-        var definitions = new (string Key, string Role, IReadOnlySet<GbssPseudoState> States)[]
+        var definitions = new (string Key, string Role, IReadOnlySet<WrssPseudoState> States)[]
         {
             ("canvas", "canvas", EmptyStates()),
             ("backdrop", "backdrop", EmptyStates()),
             ("panel", "panel", EmptyStates()),
             ("tray", "tray", EmptyStates()),
             ("tray-item", "tray-item", EmptyStates()),
-            ("tray-item:selected", "tray-item", States(GbssPseudoState.Selected)),
-            ("tray-item:focused", "tray-item", States(GbssPseudoState.Focused)),
-            ("tray-item:selected:focused", "tray-item", States(GbssPseudoState.Selected, GbssPseudoState.Focused)),
+            ("tray-item:selected", "tray-item", States(WrssPseudoState.Selected)),
+            ("tray-item:focused", "tray-item", States(WrssPseudoState.Focused)),
+            ("tray-item:selected:focused", "tray-item", States(WrssPseudoState.Selected, WrssPseudoState.Focused)),
             ("title", "title", EmptyStates()),
             ("body", "body", EmptyStates()),
             ("hint", "hint", EmptyStates()),
@@ -232,7 +232,7 @@ public sealed class PlatformAppearanceService : IAsyncDisposable
         var total = 0;
         foreach (var definition in definitions)
         {
-            var resolved = theme.Resolve(new GbssElement(
+            var resolved = theme.Resolve(new WrssElement(
                 definition.Role,
                 $"shell.{definition.Key.Replace(':', '.')}",
                 new HashSet<string>(StringComparer.Ordinal),
@@ -263,11 +263,11 @@ public sealed class PlatformAppearanceService : IAsyncDisposable
         return new ReadOnlyDictionary<string, IReadOnlyDictionary<string, BridgeComputedStyleValue>>(result);
     }
 
-    private static IReadOnlySet<GbssPseudoState> EmptyStates() =>
-        new HashSet<GbssPseudoState>();
+    private static IReadOnlySet<WrssPseudoState> EmptyStates() =>
+        new HashSet<WrssPseudoState>();
 
-    private static IReadOnlySet<GbssPseudoState> States(params GbssPseudoState[] states) =>
-        new HashSet<GbssPseudoState>(states);
+    private static IReadOnlySet<WrssPseudoState> States(params WrssPseudoState[] states) =>
+        new HashSet<WrssPseudoState>(states);
 
     private static void RejectReparsePoint(string path)
     {
@@ -282,5 +282,5 @@ public sealed class PlatformAppearanceService : IAsyncDisposable
         return singleLine.Length <= 256 ? singleLine : singleLine[..256];
     }
 
-    private sealed record WidgetThemeCacheEntry(long Revision, GbssTheme Theme);
+    private sealed record WidgetThemeCacheEntry(long Revision, WrssTheme Theme);
 }

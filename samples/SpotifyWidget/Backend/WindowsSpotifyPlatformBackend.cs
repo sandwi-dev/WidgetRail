@@ -2,10 +2,10 @@ using System.Collections.Concurrent;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
-using GameBarAlternative.Samples.SpotifyWidget;
+using WidgetRail.Samples.SpotifyWidget;
 
 
-namespace GameBarAlternative.WindowsSpotifyProvider;
+namespace WidgetRail.WindowsSpotifyProvider;
 
 /// <summary>
 /// Trusted, typed Spotify integration. It never exposes OAuth tokens or generic

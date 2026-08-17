@@ -1,7 +1,7 @@
 {
   "manifestVersion": 1,
-  "id": "org.gbar.firstparty.network-controls",
-  "publisher": "org.gbar.firstparty",
+  "id": "widgetrail.firstparty.network-controls",
+  "publisher": "widgetrail.firstparty",
   "name": "Network Controls",
   "version": "0.1.0",
   "hostApi": {
@@ -11,7 +11,7 @@
   "entrypoint": {
     "runtime": "dotnet-worker",
     "assembly": "payload/NetworkControlsWidget.dll",
-    "type": "GameBarAlternative.FirstPartyWidgets.NetworkControls.NetworkControlsWidget"
+    "type": "WidgetRail.FirstPartyWidgets.NetworkControls.NetworkControlsWidget"
   },
   "presentation": { "icon": "wifi" },
   "permissions": [

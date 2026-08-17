@@ -1,6 +1,6 @@
 using System.Runtime.ExceptionServices;
 
-namespace GameBarAlternative.WidgetRuntime;
+namespace WidgetRail.WidgetRuntime;
 
 internal enum AppContainerAuthorityTargetKind
 {

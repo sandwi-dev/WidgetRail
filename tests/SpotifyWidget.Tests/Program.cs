@@ -1,8 +1,8 @@
-using GameBarAlternative.Samples.SpotifyWidget;
-using GameBarAlternative.GbarCli;
-using GameBarAlternative.WidgetProtocol;
-using GameBarAlternative.WidgetSdk;
-using GameBarAlternative.WidgetStyling;
+using WidgetRail.Samples.SpotifyWidget;
+using WidgetRail.WrailCli;
+using WidgetRail.WidgetProtocol;
+using WidgetRail.WidgetSdk;
+using WidgetRail.WidgetStyling;
 using System.Security.Cryptography;
 using System.Text;
 
@@ -110,17 +110,17 @@ static async Task DisconnectedLayoutContract()
     Assert.Equal(400d, snapshot.Surface?.MinimumHeight);
 
     var source = File.ReadAllText(Path.Combine(
-        AppContext.BaseDirectory, "styles", "default.gbss"));
-    var parsed = GbssParser.Parse(source, "styles/default.gbss");
+        AppContext.BaseDirectory, "styles", "default.wrss"));
+    var parsed = WrssParser.Parse(source, "styles/default.wrss");
     Assert.True(parsed.IsValid, string.Join(Environment.NewLine, parsed.Diagnostics));
     Assert.True(source.Contains(".spotify-primary { background: var(--accent);", StringComparison.Ordinal),
         "Primary actions must derive their fill from the active theme accent.");
     Assert.True(source.Contains("outline-color: var(--focus)", StringComparison.Ordinal),
         "Focused primary actions must derive their outline from the active theme focus token.");
-    var compiled = GbssThemeCompiler.Compile([parsed.Document]);
+    var compiled = WrssThemeCompiler.Compile([parsed.Document]);
     Assert.True(compiled.IsValid, string.Join(Environment.NewLine, compiled.Diagnostics));
     var theme = compiled.Theme!;
-    var detailStyle = theme.Resolve(new GbssElement(
+    var detailStyle = theme.Resolve(new WrssElement(
         "text", StyleClasses: new HashSet<string>(["spotify-state-detail"])))!;
     Assert.Equal("100%", detailStyle.Get("width")?.Text);
     Assert.Equal("0px", detailStyle.Get("min-width")?.Text);
@@ -130,12 +130,12 @@ static async Task DisconnectedLayoutContract()
     Assert.Equal("1.35", detailStyle.Get("line-height")?.Text);
     Assert.Equal("center", detailStyle.Get("text-align")?.Text);
 
-    var actionRow = theme.Resolve(new GbssElement(
+    var actionRow = theme.Resolve(new WrssElement(
         "row", StyleClasses: new HashSet<string>(["spotify-connect-actions"])))!;
     Assert.Equal("100%", actionRow.Get("width")?.Text);
     Assert.Equal("wrap", actionRow.Get("flex-wrap")?.Text);
     Assert.Equal("0", actionRow.Get("flex-shrink")?.Text);
-    var button = theme.Resolve(new GbssElement(
+    var button = theme.Resolve(new WrssElement(
         "button", StyleClasses: new HashSet<string>(
             ["spotify-primary", "spotify-responsive-action"])))!;
     Assert.Equal("center", button.Get("text-align")?.Text);
@@ -167,16 +167,16 @@ static async Task PrimaryActionContrast()
         "Check configuration lost the shared primary-action style.");
 
     var source = File.ReadAllText(Path.Combine(
-        AppContext.BaseDirectory, "styles", "default.gbss"));
-    var parsed = GbssParser.Parse(source, "styles/default.gbss");
+        AppContext.BaseDirectory, "styles", "default.wrss"));
+    var parsed = WrssParser.Parse(source, "styles/default.wrss");
     Assert.True(parsed.IsValid, string.Join(Environment.NewLine, parsed.Diagnostics));
-    var compiled = GbssThemeCompiler.Compile([parsed.Document]);
+    var compiled = WrssThemeCompiler.Compile([parsed.Document]);
     Assert.True(compiled.IsValid, string.Join(Environment.NewLine, compiled.Diagnostics));
     var classes = new HashSet<string>(["spotify-primary"]);
-    var normal = compiled.Theme!.Resolve(new GbssElement("button", null, classes, null))!;
-    var focused = compiled.Theme.Resolve(new GbssElement(
+    var normal = compiled.Theme!.Resolve(new WrssElement("button", null, classes, null))!;
+    var focused = compiled.Theme.Resolve(new WrssElement(
         "button", null, classes,
-        new HashSet<GbssPseudoState> { GbssPseudoState.Focused }))!;
+        new HashSet<WrssPseudoState> { WrssPseudoState.Focused }))!;
     Assert.Equal("#8f80ff", normal.Get("background")?.Text);
     Assert.Equal("#090908", normal.Get("color")?.Text);
     Assert.Equal("#ff7898", focused.Get("outline-color")?.Text);
@@ -209,9 +209,9 @@ static async Task NestedSetupBack()
         SpotifyApplicationContract.ExactRedirectUri, StringComparison.Ordinal),
         "Exact redirect URI was not rendered.");
     Assert.True(Find(setup.Root, "spotify.setup-command").Text!.Contains(
-        @"dotnet run --project .\tools\GbarCli\GbarCli.csproj -- config set",
+        @"dotnet run --project .\tools\WrailCli\WrailCli.csproj -- config set",
         StringComparison.Ordinal),
-        "Setup assumed that gbar was already installed on PATH.");
+        "Setup assumed that wrail was already installed on PATH.");
     var captured = await widget.OnControllerInputAsync(new ControllerInputEvent(
         ControllerButton.B, ControllerEventPhase.Pressed, ControllerInputContext.OpenWidget,
         "spotify.setup.done", ActiveInputScopeId: setup.ActiveInputScopeId,
@@ -268,7 +268,7 @@ static async Task SetupUsesVerticalScroll()
     Assert.NotNull(Find(scroll, "spotify.setup-step-2"));
     Assert.NotNull(Find(scroll, "spotify.setup-step-3"));
     var command = Find(scroll, "spotify.setup-command");
-    Assert.True(command.StyleClasses.Contains("gbar-code-text"),
+    Assert.True(command.StyleClasses.Contains("wrail-code-text"),
         "Setup command no longer uses the semantic CodeText component.");
     Assert.True(command.StyleClasses.Contains("spotify-setup-command"),
         "Setup command lost its bounded widget style class.");
@@ -284,17 +284,17 @@ static async Task SetupUsesVerticalScroll()
 static Task SetupCodeAndTextAreBounded()
 {
     var source = File.ReadAllText(Path.Combine(
-        AppContext.BaseDirectory, "styles", "default.gbss"));
-    var parsed = GbssParser.Parse(source, "styles/default.gbss");
+        AppContext.BaseDirectory, "styles", "default.wrss"));
+    var parsed = WrssParser.Parse(source, "styles/default.wrss");
     Assert.True(parsed.IsValid, string.Join(Environment.NewLine, parsed.Diagnostics));
-    var compiled = GbssThemeCompiler.Compile([parsed.Document]);
+    var compiled = WrssThemeCompiler.Compile([parsed.Document]);
     Assert.True(compiled.IsValid, string.Join(Environment.NewLine, compiled.Diagnostics));
 
-    var step = compiled.Theme!.Resolve(new GbssElement(
+    var step = compiled.Theme!.Resolve(new WrssElement(
         "text", StyleClasses: new HashSet<string>(["spotify-setup-step"])))!;
-    var command = compiled.Theme.Resolve(new GbssElement(
+    var command = compiled.Theme.Resolve(new WrssElement(
         "text", StyleClasses: new HashSet<string>(
-            ["gbar-code-text", "spotify-setup-command"])))!;
+            ["wrail-code-text", "spotify-setup-command"])))!;
     Assert.Equal<string?>(null, step.Get("max-lines")?.Text);
     Assert.Equal("1.3", step.Get("line-height")?.Text);
     Assert.Equal<string?>(null, command.Get("max-lines")?.Text);
@@ -1867,8 +1867,8 @@ static Task ManifestContract()
         Path.Combine(AppContext.BaseDirectory, "manifest.json")));
     var errors = WidgetManifestValidator.Validate(manifest);
     Assert.Equal(0, errors.Count);
-    Assert.Equal("org.gbar.samples.spotify", manifest.Id);
-    Assert.Equal("org.gbar.samples", manifest.Publisher);
+    Assert.Equal("widgetrail.samples.spotify", manifest.Id);
+    Assert.Equal("widgetrail.samples", manifest.Publisher);
     Assert.Equal(WidgetEntrypointRuntimes.FullTrustApplicationV1,
         manifest.Entrypoint.Runtime);
     Assert.Equal("payload/SpotifyApplication.exe", manifest.Entrypoint.Executable);
@@ -2177,12 +2177,12 @@ file sealed class SpotifyHarness : ISpotifyApplicationService
         ValueTask<SpotifyPlaylistItemsSummary>>? PlaylistDetailHandler { get; set; }
     public List<SpotifyPlaylistItemsRequest> PlaylistDetailRequests { get; } = [];
     public SpotifyDevicesSummary Devices { get; set; } = new(
-        [new SpotifyDeviceSummary("local-placeholder", "Game Bar Alternative",
+        [new SpotifyDeviceSummary("local-placeholder", "WidgetRail",
             "Computer", false, false, true, 60, true),
          new SpotifyDeviceSummary("remote-device", "Living Room", "Speaker",
             true, false, true, 45, false)]);
     public SpotifyLocalPlaybackSummary LocalPlayback { get; set; } = new(
-        SpotifyLocalPlaybackState.Ready, "Game Bar Alternative", 60, "Ready to play here");
+        SpotifyLocalPlaybackState.Ready, "WidgetRail", 60, "Ready to play here");
     public ValueTask<SpotifyConfigurationSummary> GetConfigurationAsync(
         CancellationToken cancellationToken = default)
     {

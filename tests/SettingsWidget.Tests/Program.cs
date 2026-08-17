@@ -1,15 +1,15 @@
 using System.Buffers.Binary;
 using System.Text.Json;
 using System.Text.Json.Serialization;
-using GameBarAlternative.FirstPartyWidgets.Settings;
-using GameBarAlternative.PlatformBroker;
-using GameBarAlternative.PlatformDiagnostics;
-using GameBarAlternative.PlatformSettings;
-using GameBarAlternative.WidgetBridge;
-using GameBarAlternative.WidgetCatalog;
-using GameBarAlternative.WidgetProtocol;
-using GameBarAlternative.WidgetSdk;
-using GameBarAlternative.WidgetStyling;
+using WidgetRail.FirstPartyWidgets.Settings;
+using WidgetRail.PlatformBroker;
+using WidgetRail.PlatformDiagnostics;
+using WidgetRail.PlatformSettings;
+using WidgetRail.WidgetBridge;
+using WidgetRail.WidgetCatalog;
+using WidgetRail.WidgetProtocol;
+using WidgetRail.WidgetSdk;
+using WidgetRail.WidgetStyling;
 
 if (args is ["--export-renderer-fixture", var rendererFixturePath])
 {
@@ -78,7 +78,7 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Bundled first-party capability manifests join permission review", BundledPermissionsAreDiscovered),
     ("First-party packages are never auto-granted", FirstPartyIsNotAutoGranted),
     ("Explicit refresh reloads themes catalog and permissions while visible", ExplicitRefresh),
-    ("Manifest and default GBSS validate", ShippedAssetsValidate),
+    ("Manifest and default WRSS validate", ShippedAssetsValidate),
 };
 
 var failures = new List<string>();
@@ -148,7 +148,7 @@ static async Task ControllerScrollSurface()
     Assert.Equal(ScrollAxis.Vertical, page.ScrollAxis);
     Assert.Equal("diagnostics.page", page.InputScopeId);
     Assert.True(Nodes(diagnostics.Root).Single(node => node.Id == "diagnostics.schema")
-            .StyleClasses.Contains("gbar-code-text", StringComparer.Ordinal),
+            .StyleClasses.Contains("wrail-code-text", StringComparer.Ordinal),
         "Diagnostics schema should use semantic code text styling.");
     Assert.Valid(diagnostics);
 }
@@ -1116,16 +1116,16 @@ static async Task BuiltInWidgetInventory()
     WriteBundledWidget(
         bundledRoot,
         "AudioMixer",
-        "org.gbar.firstparty.audio-mixer",
-        "org.gbar.firstparty",
+        "widgetrail.firstparty.audio-mixer",
+        "widgetrail.firstparty",
         "Audio Mixer",
         [PlatformCapabilities.AudioSessionsReadV1],
         [PlatformCapabilities.AudioSessionsControlV1]);
     WriteBundledWidget(
         bundledRoot,
         "MediaSessions",
-        "org.gbar.firstparty.media-sessions",
-        "org.gbar.firstparty",
+        "widgetrail.firstparty.media-sessions",
+        "widgetrail.firstparty",
         "Now Playing",
         [PlatformCapabilities.MediaSessionsReadV1],
         [PlatformCapabilities.MediaSessionsControlV1]);
@@ -2077,7 +2077,7 @@ static async Task RetiredConsentMigration()
         {"schemaVersion":1,"revision":8,"entries":[
           {"packageId":"{{packageId}}","publisherId":"{{authorityPublisher}}","capabilityId":"system.audio.sessions.read.v1","decision":"grant"},
           {{retiredEntries}},
-          {"packageId":"org.gbar.firstparty.recent-apps","publisherId":"org.gbar.firstparty","capabilityId":"system.activity.recent.activate.v1","decision":"grant"}
+          {"packageId":"widgetrail.firstparty.recent-apps","publisherId":"widgetrail.firstparty","capabilityId":"system.activity.recent.activate.v1","decision":"grant"}
         ]}
         """);
 
@@ -2128,7 +2128,7 @@ static async Task FirstPartyIsNotAutoGranted()
     using var temp = new TemporaryDirectory();
     var catalogRoot = Path.Combine(temp.Path, "catalog");
     var consent = new ConsentStore(Path.Combine(temp.Path, "consent"));
-    WriteInstalledWidget(catalogRoot, "org.gbar.firstparty.example", "org.gbar.firstparty", "First party",
+    WriteInstalledWidget(catalogRoot, "widgetrail.firstparty.example", "widgetrail.firstparty", "First party",
         [PlatformCapabilities.AudioSessionsReadV1], []);
     var widget = CreateWithPermissions(temp.Path, catalogRoot, consent);
     await Activate(widget);
@@ -2161,16 +2161,16 @@ static async Task BundledPermissionsAreDiscovered()
     WriteBundledWidget(
         bundledRoot,
         "AudioMixer",
-        "org.gbar.firstparty.audiomixer",
-        "org.gbar.firstparty",
+        "widgetrail.firstparty.audiomixer",
+        "widgetrail.firstparty",
         "Audio Mixer",
         [PlatformCapabilities.AudioSessionsReadV1],
         [PlatformCapabilities.AudioSessionsControlV1]);
     WriteBundledWidget(
         bundledRoot,
         "NetworkControls",
-        "org.gbar.firstparty.network-controls",
-        "org.gbar.firstparty",
+        "widgetrail.firstparty.network-controls",
+        "widgetrail.firstparty",
         "Network Controls",
         [PlatformCapabilities.NetworkReadV1],
         [PlatformCapabilities.NetworkSavedProfileSwitchV1]);
@@ -2268,7 +2268,7 @@ static async Task LauncherExperienceManagement()
     await Action(widget, "launcher-experience.recover");
     var recovered = await Store(temp.Path).LoadAsync();
     Assert.Equal(false, recovered.LauncherExperience.UseGlobalAppearance);
-    Assert.Equal("org.gbar.builtin.hero-rail", recovered.LauncherExperience.SelectedId);
+    Assert.Equal("widgetrail.builtin.hero-rail", recovered.LauncherExperience.SelectedId);
     Assert.Equal("1.0.0", recovered.LauncherExperience.SelectedVersion);
 
     var afterRecovery = Snapshot(widget);
@@ -2304,17 +2304,17 @@ static async Task ShippedAssetsValidate()
     var manifest = ManifestJson.Deserialize(await File.ReadAllBytesAsync(Path.Combine(project, "manifest.json")));
     var errors = WidgetManifestValidator.Validate(manifest);
     Assert.True(errors.Count == 0, string.Join(Environment.NewLine, errors));
-    var package = GbssPackageLoader.LoadFile(
-        Path.Combine(project, "styles", "default.gbss"),
+    var package = WrssPackageLoader.LoadFile(
+        Path.Combine(project, "styles", "default.wrss"),
         Path.Combine(project, "styles"));
-    var compiled = GbssThemeCompiler.Compile(package);
+    var compiled = WrssThemeCompiler.Compile(package);
     Assert.True(compiled.IsValid, string.Join(Environment.NewLine, compiled.Diagnostics));
-    var rootCategories = compiled.Theme!.Resolve(new GbssElement(
+    var rootCategories = compiled.Theme!.Resolve(new WrssElement(
         "scroll", "settings.categories",
         new HashSet<string>(["root-category-list"], StringComparer.Ordinal)));
     Assert.Equal(null, rootCategories.Get("flex-grow"));
     Assert.Equal(null, rootCategories.Get("flex-basis"));
-    var nestedPage = compiled.Theme.Resolve(new GbssElement(
+    var nestedPage = compiled.Theme.Resolve(new WrssElement(
         "scroll", "diagnostics.page",
         new HashSet<string>(["settings-page"], StringComparer.Ordinal)));
     Assert.Equal(1d, nestedPage.Get("flex-grow")?.Number);
@@ -2328,10 +2328,10 @@ static async Task ExportRendererFixture(string outputPath)
     var validation = ViewSnapshotValidator.Validate(snapshot);
     Assert.Equal(0, validation.Count);
     var project = ProjectDirectory();
-    var package = GbssPackageLoader.LoadFile(
-        Path.Combine(project, "styles", "default.gbss"),
+    var package = WrssPackageLoader.LoadFile(
+        Path.Combine(project, "styles", "default.wrss"),
         Path.Combine(project, "styles"));
-    var compiled = GbssThemeCompiler.Compile(package);
+    var compiled = WrssThemeCompiler.Compile(package);
     Assert.True(compiled.IsValid, string.Join(Environment.NewLine, compiled.Diagnostics));
     var renderStyles = BridgeRenderStyleResolver.Resolve(snapshot, compiled.Theme);
     using var snapshotDocument = JsonDocument.Parse(SnapshotJson.Serialize(snapshot));
@@ -2423,8 +2423,8 @@ static void WriteTheme(string root, string id, string name, string version, bool
     Directory.CreateDirectory(directory);
     var manifestId = valid ? id : "dev.test.wrong";
     File.WriteAllText(Path.Combine(directory, "theme.json"),
-        $$"""{"schemaVersion":1,"id":"{{manifestId}}","name":"{{name}}","version":"{{version}}","entryFile":"theme.gbss"}""");
-    File.WriteAllText(Path.Combine(directory, "theme.gbss"), "button { color: #ffffff; }");
+        $$"""{"schemaVersion":1,"id":"{{manifestId}}","name":"{{name}}","version":"{{version}}","entryFile":"theme.wrss"}""");
+    File.WriteAllText(Path.Combine(directory, "theme.wrss"), "button { color: #ffffff; }");
 }
 
 static void WriteLauncherExperience(string root, string id, string version, string name)
@@ -2439,7 +2439,7 @@ static void WriteLauncherExperience(string root, string id, string version, stri
         "\",\"publisher\":\"dev.test\",\"name\":\"" + name +
         "\",\"version\":\"" + version +
         "\",\"layoutPreset\":\"hero-rail\",\"compositionFile\":\"layouts/launcher-layout.json\"," +
-        "\"styleFile\":\"styles/launcher.gbss\",\"previewFile\":\"assets/preview.png\",\"parameters\":{}}");
+        "\"styleFile\":\"styles/launcher.wrss\",\"previewFile\":\"assets/preview.png\",\"parameters\":{}}");
     const string rootNode = "{\"type\":\"overlay\",\"children\":[" +
         "{\"type\":\"region\",\"slot\":\"hero-background\",\"region\":{\"x\":0,\"y\":0,\"width\":1,\"height\":1}}," +
         "{\"type\":\"region\",\"slot\":\"game-rail\",\"orientation\":\"horizontal\",\"region\":{\"x\":0.08,\"y\":0.62,\"width\":0.84,\"height\":0.24}}," +
@@ -2449,7 +2449,7 @@ static void WriteLauncherExperience(string root, string id, string version, stri
     File.WriteAllText(Path.Combine(directory, "layouts", "launcher-layout.json"),
         "{\"schemaVersion\":1,\"branches\":{\"compact\":{\"root\":" + rootNode +
         "},\"standard\":{\"root\":" + rootNode + "},\"wide\":{\"root\":" + rootNode + "}}}");
-    File.WriteAllText(Path.Combine(directory, "styles", "launcher.gbss"),
+    File.WriteAllText(Path.Combine(directory, "styles", "launcher.wrss"),
         "launcher-game-rail { color: #ffffff; } launcher-details-panel { background: rgba(0, 0, 0, 0.5); }");
     var png = new byte[24];
     new byte[] { 137, 80, 78, 71, 13, 10, 26, 10 }.CopyTo(png, 0);

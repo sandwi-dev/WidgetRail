@@ -1,9 +1,9 @@
 using System.Security.Cryptography;
 using System.Text;
 using System.Buffers.Binary;
-using GameBarAlternative.WidgetStyling;
+using WidgetRail.WidgetStyling;
 
-namespace GameBarAlternative.LauncherExperienceCatalog;
+namespace WidgetRail.LauncherExperienceCatalog;
 
 public sealed class LauncherExperienceValidator
 {
@@ -17,7 +17,7 @@ public sealed class LauncherExperienceValidator
     public const int MaximumRecipeBytes = 256 * 1024;
 
     private static readonly HashSet<string> AllowedExtensions =
-        [".json", ".gbss", ".png", ".jpg", ".jpeg", ".webp"];
+        [".json", ".wrss", ".png", ".jpg", ".jpeg", ".webp"];
     private static readonly HashSet<string> LauncherStyleRoles =
         ["launcher", "launcher-hero-background", "launcher-game-rail", "launcher-details-panel", "launcher-collection-tabs", "launcher-source-status", "launcher-operation-status", "launcher-system-status", "launcher-controller-hints"];
     private static readonly LauncherSlot[] CriticalSlots =
@@ -65,7 +65,7 @@ public sealed class LauncherExperienceValidator
             ValidateReferencedFile(files, manifest.StyleFile, "$.styleFile", errors);
             ValidateReferencedFile(files, manifest.PreviewFile, "$.previewFile", errors);
             ValidateFileRoles(files.Keys, manifest, errors);
-            ValidateGbss(fullRoot, files, manifest.StyleFile, errors);
+            ValidateWrss(fullRoot, files, manifest.StyleFile, errors);
             ValidateImages(files, errors);
 
             if (errors.Count != 0) return LauncherExperienceValidationResult.Invalid(errors);
@@ -181,27 +181,27 @@ public sealed class LauncherExperienceValidator
             errors.Add(new(diagnosticPath, "missing_file", "Referenced package file is missing or case-mismatched."));
     }
 
-    private static void ValidateGbss(
+    private static void ValidateWrss(
         string root,
         IReadOnlyDictionary<string, string> files,
         string entryFile,
         List<LauncherExperienceDiagnostic> errors)
     {
         if (ResolveExact(files, entryFile) is null) return;
-        var package = GbssPackageLoader.Load(entryFile, new GbssFileSourceProvider(root));
-        foreach (var diagnostic in package.Diagnostics.Where(item => item.Severity == GbssDiagnosticSeverity.Error))
-            errors.Add(new(diagnostic.Source, $"gbss_{diagnostic.Code}", diagnostic.Message));
+        var package = WrssPackageLoader.Load(entryFile, new WrssFileSourceProvider(root));
+        foreach (var diagnostic in package.Diagnostics.Where(item => item.Severity == WrssDiagnosticSeverity.Error))
+            errors.Add(new(diagnostic.Source, $"wrss_{diagnostic.Code}", diagnostic.Message));
         if (!package.IsValid) return;
-        var compiled = GbssThemeCompiler.Compile(package);
-        foreach (var diagnostic in compiled.Diagnostics.Where(item => item.Severity == GbssDiagnosticSeverity.Error))
-            errors.Add(new(diagnostic.Source, $"gbss_{diagnostic.Code}", diagnostic.Message));
+        var compiled = WrssThemeCompiler.Compile(package);
+        foreach (var diagnostic in compiled.Diagnostics.Where(item => item.Severity == WrssDiagnosticSeverity.Error))
+            errors.Add(new(diagnostic.Source, $"wrss_{diagnostic.Code}", diagnostic.Message));
         foreach (var selector in package.Documents.SelectMany(document => document.Statements)
-                     .OfType<GbssRule>().SelectMany(rule => rule.Selectors))
+                     .OfType<WrssRule>().SelectMany(rule => rule.Selectors))
         {
             if (selector.Id is not null ||
                 (!selector.IsRoot && (selector.Role is null || !LauncherStyleRoles.Contains(selector.Role))))
                 errors.Add(new(selector.Text, "cross_widget_selector",
-                    "Launcher experience GBSS may target only launcher semantic roles and cannot use ID selectors."));
+                    "Launcher experience WRSS may target only launcher semantic roles and cannot use ID selectors."));
         }
     }
 
@@ -217,8 +217,8 @@ public sealed class LauncherExperienceValidator
                 !string.Equals(relative, "launcher.json", StringComparison.Ordinal) &&
                 !string.Equals(relative, manifest.CompositionFile, StringComparison.Ordinal))
                 errors.Add(new(relative, "unexpected_data_file", "Package contains an unreferenced JSON document."));
-            else if (extension == ".gbss" && !relative.StartsWith("styles/", StringComparison.Ordinal))
-                errors.Add(new(relative, "unexpected_style_file", "GBSS files must remain under styles/."));
+            else if (extension == ".wrss" && !relative.StartsWith("styles/", StringComparison.Ordinal))
+                errors.Add(new(relative, "unexpected_style_file", "WRSS files must remain under styles/."));
             else if (extension is ".png" or ".jpg" or ".jpeg" or ".webp" &&
                      !relative.StartsWith("assets/", StringComparison.Ordinal))
                 errors.Add(new(relative, "unexpected_asset_file", "Images must remain under assets/."));

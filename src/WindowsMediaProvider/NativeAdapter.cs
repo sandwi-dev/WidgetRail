@@ -1,4 +1,4 @@
-namespace GameBarAlternative.WindowsMediaProvider;
+namespace WidgetRail.WindowsMediaProvider;
 
 internal enum NativeMediaPlaybackStatus
 {

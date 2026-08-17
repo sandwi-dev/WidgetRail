@@ -2,11 +2,11 @@ using System.Runtime.CompilerServices;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Threading.Channels;
-using GameBarAlternative.FirstPartyWidgets.AudioMixer;
-using GameBarAlternative.WidgetBridge;
-using GameBarAlternative.WidgetProtocol;
-using GameBarAlternative.WidgetSdk;
-using GameBarAlternative.WidgetStyling;
+using WidgetRail.FirstPartyWidgets.AudioMixer;
+using WidgetRail.WidgetBridge;
+using WidgetRail.WidgetProtocol;
+using WidgetRail.WidgetSdk;
+using WidgetRail.WidgetStyling;
 
 if (args is ["--export-renderer-fixture", var rendererFixturePath])
 {
@@ -60,7 +60,7 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Acknowledged subscription closes the snapshot fetch event gap", SubscriptionPrecedesSnapshot),
     ("Lifecycle cancellation rolls back without an error state", CancellationIsNotFailure),
     ("Cancellation-ignoring session completion cannot publish after deactivation", CancellationIgnoringCompletionIsStale),
-    ("Manifest permissions and polished GBSS validate", ShippedAssetsValidate),
+    ("Manifest permissions and polished WRSS validate", ShippedAssetsValidate),
 };
 
 var failures = new List<string>();
@@ -1362,13 +1362,13 @@ static async Task ShippedAssetsValidate()
         WidgetResidencyPolicies.Resolve(manifest).Mode);
     Assert.Equal(64, manifest.ResourceRequest.MemoryMb);
     Assert.SequenceEqual(["x64"], manifest.Architectures);
-    var package = GbssPackageLoader.LoadFile(
-        Path.Combine(project, "styles", "default.gbss"),
+    var package = WrssPackageLoader.LoadFile(
+        Path.Combine(project, "styles", "default.wrss"),
         Path.Combine(project, "styles"));
-    var compiled = GbssThemeCompiler.Compile(package);
+    var compiled = WrssThemeCompiler.Compile(package);
     Assert.True(compiled.IsValid, string.Join(Environment.NewLine, compiled.Diagnostics));
     AssertResponsiveLayoutBudget(compiled.Theme!);
-    var style = await File.ReadAllTextAsync(Path.Combine(project, "styles", "default.gbss"));
+    var style = await File.ReadAllTextAsync(Path.Combine(project, "styles", "default.wrss"));
     Assert.Contains("width: 100%", style);
     Assert.Contains("max-width: 560px", style);
     Assert.Contains(".audio-session-list", style);
@@ -1397,7 +1397,7 @@ static async Task ShippedAssetsValidate()
         "Bundled runtime authority must be derived from manifest.json, not duplicated in shell metadata.");
 }
 
-static void AssertResponsiveLayoutBudget(GbssTheme theme)
+static void AssertResponsiveLayoutBudget(WrssTheme theme)
 {
     var root = Resolve(theme, "scroll", "audio.root", "audio-mixer-widget");
     var card = Resolve(theme, "stack", "audio.session.test.row", "audio-session-card");
@@ -1450,11 +1450,11 @@ static void AssertResponsiveLayoutBudget(GbssTheme theme)
     }
 }
 
-static GbssResolvedStyle Resolve(GbssTheme theme, string role, string id, string styleClass) =>
-    theme.Resolve(new GbssElement(role, id,
+static WrssResolvedStyle Resolve(WrssTheme theme, string role, string id, string styleClass) =>
+    theme.Resolve(new WrssElement(role, id,
         new HashSet<string>([styleClass], StringComparer.Ordinal)));
 
-static double Pixels(GbssComputedValue value, double viewport)
+static double Pixels(WrssComputedValue value, double viewport)
 {
     var unit = value.Unit;
     var number = value.Number;
@@ -1474,16 +1474,16 @@ static double Pixels(GbssComputedValue value, double viewport)
     };
 }
 
-static double HorizontalSpacing(GbssComputedValue value, double viewport)
+static double HorizontalSpacing(WrssComputedValue value, double viewport)
 {
     var parts = value.Text.Split(' ', StringSplitOptions.RemoveEmptyEntries);
-    static GbssComputedValue Part(string text)
+    static WrssComputedValue Part(string text)
     {
         var unit = text.EndsWith("px", StringComparison.Ordinal) ? "px" :
             text.EndsWith("vw", StringComparison.Ordinal) ? "vw" : null;
         if (unit is null || !double.TryParse(text[..^unit.Length], out var number))
             throw new InvalidOperationException($"Unsupported spacing '{text}'.");
-        return new GbssComputedValue(GbssValueKind.Length, text, number, unit);
+        return new WrssComputedValue(WrssValueKind.Length, text, number, unit);
     }
     return parts.Length switch
     {
@@ -1520,10 +1520,10 @@ static async Task ExportRendererFixture(string outputPath)
         .CreateSnapshot("audio.renderer", 1);
     Assert.Valid(snapshot);
     var project = ProjectDirectory();
-    var package = GbssPackageLoader.LoadFile(
-        Path.Combine(project, "styles", "default.gbss"),
+    var package = WrssPackageLoader.LoadFile(
+        Path.Combine(project, "styles", "default.wrss"),
         Path.Combine(project, "styles"));
-    var compiled = GbssThemeCompiler.Compile(package);
+    var compiled = WrssThemeCompiler.Compile(package);
     Assert.True(compiled.IsValid, string.Join(Environment.NewLine, compiled.Diagnostics));
     var renderStyles = BridgeRenderStyleResolver.Resolve(snapshot, compiled.Theme);
     using var snapshotDocument = JsonDocument.Parse(SnapshotJson.Serialize(snapshot));

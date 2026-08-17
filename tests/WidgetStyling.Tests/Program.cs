@@ -1,6 +1,6 @@
 using System.Security.Cryptography;
 using System.Text;
-using GameBarAlternative.WidgetStyling;
+using WidgetRail.WidgetStyling;
 
 var tests = new (string Name, Action Run)[]
 {
@@ -59,15 +59,15 @@ static void ParserAndLocations()
           outline-color: var(--accent);
         }
         """;
-    var result = GbssParser.Parse(source, "styles/default.gbss");
+    var result = WrssParser.Parse(source, "styles/default.wrss");
     Assert.EmptyErrors(result.Diagnostics);
-    var rules = result.Document.Statements.OfType<GbssRule>().ToArray();
+    var rules = result.Document.Statements.OfType<WrssRule>().ToArray();
     Assert.Equal(2, rules.Length);
     var selector = rules[1].Selectors[0];
     Assert.Equal("button", selector.Role);
     Assert.Equal("play", selector.Id);
     Assert.True(selector.Classes.Contains("primary"), "Expected primary class.");
-    Assert.True(selector.States.Contains(GbssPseudoState.Focused), "Expected focused state.");
+    Assert.True(selector.States.Contains(WrssPseudoState.Focused), "Expected focused state.");
     Assert.Equal(121, selector.Specificity);
     Assert.Equal(5, rules[1].Location.Line);
     Assert.Equal(7, rules[1].Declarations[0].Location.Line);
@@ -84,7 +84,7 @@ static void UnsafeValues()
           opacity: script(evil);
         }
         """;
-    var result = GbssParser.Parse(source, "unsafe.gbss");
+    var result = WrssParser.Parse(source, "unsafe.wrss");
     var unsafeDiagnostics = result.Diagnostics.Where(item => item.Code == "unsafe_value").ToArray();
     Assert.Equal(5, unsafeDiagnostics.Length);
     Assert.Equal(2, unsafeDiagnostics[0].Line);
@@ -98,24 +98,24 @@ static void ErrorRecovery()
         text { color #fff; }
         row { opacity: 0.5; }
         """;
-    var result = GbssParser.Parse(source, "errors.gbss");
+    var result = WrssParser.Parse(source, "errors.wrss");
     Assert.HasCode(result.Diagnostics, "invalid_selector");
     Assert.HasCode(result.Diagnostics, "unknown_property");
     Assert.HasCode(result.Diagnostics, "invalid_declaration");
-    Assert.True(result.Document.Statements.OfType<GbssRule>().Any(rule => rule.Selectors.Any(selector => selector.Role == "row")),
+    Assert.True(result.Document.Statements.OfType<WrssRule>().Any(rule => rule.Selectors.Any(selector => selector.Role == "row")),
         "Parser did not recover to the final valid rule.");
 }
 
 static void ParserLimits()
 {
-    var oversized = new string(' ', GbssLimits.MaximumSourceCharacters + 1);
-    var result = GbssParser.Parse(oversized, "oversized.gbss");
+    var oversized = new string(' ', WrssLimits.MaximumSourceCharacters + 1);
+    var result = WrssParser.Parse(oversized, "oversized.wrss");
     Assert.HasCode(result.Diagnostics, "source_too_large");
     Assert.Equal(0, result.Document.Statements.Count);
 
-    var declarations = string.Join(';', Enumerable.Range(0, GbssLimits.MaximumDeclarationsPerRule + 1)
+    var declarations = string.Join(';', Enumerable.Range(0, WrssLimits.MaximumDeclarationsPerRule + 1)
         .Select(index => $"--v{index}: {index}"));
-    result = GbssParser.Parse($":root {{ {declarations}; }}", "declarations.gbss");
+    result = WrssParser.Parse($":root {{ {declarations}; }}", "declarations.wrss");
     Assert.HasCode(result.Diagnostics, "too_many_declarations");
 }
 
@@ -123,13 +123,13 @@ static void SafeImports()
 {
     var provider = new DictionaryProvider(new Dictionary<string, string>(StringComparer.Ordinal)
     {
-        ["styles/default.gbss"] = "@import \"tokens.gbss\"; button { color: var(--brand); }",
-        ["styles/tokens.gbss"] = ":root { --brand: #123456; } button { opacity: 0.8; }",
+        ["styles/default.wrss"] = "@import \"tokens.wrss\"; button { color: var(--brand); }",
+        ["styles/tokens.wrss"] = ":root { --brand: #123456; } button { opacity: 0.8; }",
     });
-    var package = GbssPackageLoader.Load("styles/default.gbss", provider);
+    var package = WrssPackageLoader.Load("styles/default.wrss", provider);
     Assert.EmptyErrors(package.Diagnostics);
-    Assert.SequenceEqual(["styles/tokens.gbss", "styles/default.gbss"], package.Documents.Select(item => item.Source));
-    var compile = GbssThemeCompiler.Compile(package);
+    Assert.SequenceEqual(["styles/tokens.wrss", "styles/default.wrss"], package.Documents.Select(item => item.Source));
+    var compile = WrssThemeCompiler.Compile(package);
     Assert.True(compile.IsValid, Describe(compile.Diagnostics));
     var style = compile.Theme!.Resolve(Element("button"));
     Assert.Equal("#123456", style.Get("color")!.Text);
@@ -138,88 +138,88 @@ static void SafeImports()
 
 static void UnsafeImports()
 {
-    var traversal = GbssParser.Parse("@import \"../secret.gbss\";", "default.gbss");
+    var traversal = WrssParser.Parse("@import \"../secret.wrss\";", "default.wrss");
     Assert.HasCode(traversal.Diagnostics, "unsafe_import");
 
-    var missing = GbssPackageLoader.Load("default.gbss", new DictionaryProvider(new Dictionary<string, string>
+    var missing = WrssPackageLoader.Load("default.wrss", new DictionaryProvider(new Dictionary<string, string>
     {
-        ["default.gbss"] = "@import \"missing.gbss\";",
+        ["default.wrss"] = "@import \"missing.wrss\";",
     }));
     Assert.HasCode(missing.Diagnostics, "missing_import");
-    var missingCompile = GbssThemeCompiler.Compile(missing);
+    var missingCompile = WrssThemeCompiler.Compile(missing);
     Assert.True(!missingCompile.IsValid && missingCompile.Theme is null, "A package with a missing import published a theme.");
 
-    var cycle = GbssPackageLoader.Load("a.gbss", new DictionaryProvider(new Dictionary<string, string>
+    var cycle = WrssPackageLoader.Load("a.wrss", new DictionaryProvider(new Dictionary<string, string>
     {
-        ["a.gbss"] = "@import \"b.gbss\";",
-        ["b.gbss"] = "@import \"a.gbss\";",
+        ["a.wrss"] = "@import \"b.wrss\";",
+        ["b.wrss"] = "@import \"a.wrss\";",
     }));
     Assert.HasCode(cycle.Diagnostics, "import_cycle");
 }
 
 static void VerifiedFileSources()
 {
-    Assert.Equal(0, typeof(GbssSourceReadResult).GetConstructors().Length);
+    Assert.Equal(0, typeof(WrssSourceReadResult).GetConstructors().Length);
     _ = Assert.Throws<ArgumentOutOfRangeException>(() =>
-        GbssSourceReadResult.Failure(GbssSourceReadStatus.Success));
+        WrssSourceReadResult.Failure(WrssSourceReadStatus.Success));
 
     using var temporary = new TemporaryDirectory();
     var styles = Path.Combine(temporary.Path, "styles");
     Directory.CreateDirectory(styles);
-    var path = Path.Combine(styles, "default.gbss");
+    var path = Path.Combine(styles, "default.wrss");
     var bytes = Encoding.UTF8.GetBytes("button { color: #123456; }");
     File.WriteAllBytes(path, bytes);
     var digest = Convert.ToHexString(SHA256.HashData(bytes)).ToLowerInvariant();
 
-    var verified = new GbssFileSourceProvider(
+    var verified = new WrssFileSourceProvider(
         temporary.Path,
         new Dictionary<string, string>(StringComparer.Ordinal)
         {
-            ["styles/default.gbss"] = digest,
+            ["styles/default.wrss"] = digest,
         });
-    var verifiedRead = verified.Read("styles/default.gbss");
-    Assert.Equal(GbssSourceReadStatus.Success, verifiedRead.Status);
+    var verifiedRead = verified.Read("styles/default.wrss");
+    Assert.Equal(WrssSourceReadStatus.Success, verifiedRead.Status);
     Assert.True(verifiedRead.Source is not null,
-        "Exact verified GBSS was rejected.");
+        "Exact verified WRSS was rejected.");
     Assert.Equal("button { color: #123456; }", verifiedRead.Source!);
 
-    var mismatched = new GbssFileSourceProvider(
+    var mismatched = new WrssFileSourceProvider(
         temporary.Path,
         new Dictionary<string, string>(StringComparer.Ordinal)
         {
-            ["styles/default.gbss"] = new string('0', 64),
+            ["styles/default.wrss"] = new string('0', 64),
         });
     Assert.Equal(
-        GbssSourceReadStatus.DigestMismatch,
-        mismatched.Read("styles/default.gbss").Status);
+        WrssSourceReadStatus.DigestMismatch,
+        mismatched.Read("styles/default.wrss").Status);
 
     var importedBytes = Encoding.UTF8.GetBytes("button { opacity: 0.5; }");
-    var entryWithImportBytes = Encoding.UTF8.GetBytes("@import \"tokens.gbss\";");
+    var entryWithImportBytes = Encoding.UTF8.GetBytes("@import \"tokens.wrss\";");
     File.WriteAllBytes(path, entryWithImportBytes);
-    File.WriteAllBytes(Path.Combine(styles, "tokens.gbss"), importedBytes);
-    var verifiedImports = GbssPackageLoader.Load(
-        "styles/default.gbss",
-        new GbssFileSourceProvider(
+    File.WriteAllBytes(Path.Combine(styles, "tokens.wrss"), importedBytes);
+    var verifiedImports = WrssPackageLoader.Load(
+        "styles/default.wrss",
+        new WrssFileSourceProvider(
             temporary.Path,
             new Dictionary<string, string>(StringComparer.Ordinal)
             {
-                ["styles/default.gbss"] = Convert.ToHexString(
+                ["styles/default.wrss"] = Convert.ToHexString(
                     SHA256.HashData(entryWithImportBytes)).ToLowerInvariant(),
-                ["styles/tokens.gbss"] = Convert.ToHexString(
+                ["styles/tokens.wrss"] = Convert.ToHexString(
                     SHA256.HashData(importedBytes)).ToLowerInvariant(),
             }));
     Assert.EmptyErrors(verifiedImports.Diagnostics);
 
-    var entryBytes = Encoding.UTF8.GetBytes("@import \"late.gbss\";");
+    var entryBytes = Encoding.UTF8.GetBytes("@import \"late.wrss\";");
     File.WriteAllBytes(path, entryBytes);
-    File.WriteAllText(Path.Combine(styles, "late.gbss"), "button { opacity: 0.5; }");
+    File.WriteAllText(Path.Combine(styles, "late.wrss"), "button { opacity: 0.5; }");
     var inventory = new Dictionary<string, string>(StringComparer.Ordinal)
     {
-        ["styles/default.gbss"] = Convert.ToHexString(SHA256.HashData(entryBytes)).ToLowerInvariant(),
+        ["styles/default.wrss"] = Convert.ToHexString(SHA256.HashData(entryBytes)).ToLowerInvariant(),
     };
-    var lateImport = GbssPackageLoader.Load(
-        "styles/default.gbss",
-        new GbssFileSourceProvider(temporary.Path, inventory));
+    var lateImport = WrssPackageLoader.Load(
+        "styles/default.wrss",
+        new WrssFileSourceProvider(temporary.Path, inventory));
     Assert.HasCode(lateImport.Diagnostics, "digest_mismatch");
 
     var bomBytes = new byte[] { 0xef, 0xbb, 0xbf }
@@ -227,54 +227,54 @@ static void VerifiedFileSources()
     File.WriteAllBytes(path, bomBytes);
     Assert.Equal(
         "button { color: #abcdef; }",
-        new GbssFileSourceProvider(temporary.Path).Read("styles/default.gbss").Source!);
+        new WrssFileSourceProvider(temporary.Path).Read("styles/default.wrss").Source!);
 
     File.WriteAllBytes(path, [0xff]);
     Assert.Equal(
-        GbssSourceReadStatus.InvalidEncoding,
-        new GbssFileSourceProvider(temporary.Path).Read("styles/default.gbss").Status);
+        WrssSourceReadStatus.InvalidEncoding,
+        new WrssFileSourceProvider(temporary.Path).Read("styles/default.wrss").Status);
 
-    File.WriteAllBytes(path, new byte[(int)GbssLimits.MaximumSourceBytes + 1]);
+    File.WriteAllBytes(path, new byte[(int)WrssLimits.MaximumSourceBytes + 1]);
     Assert.Equal(
-        GbssSourceReadStatus.TooLarge,
-        new GbssFileSourceProvider(temporary.Path).Read("styles/default.gbss").Status);
+        WrssSourceReadStatus.TooLarge,
+        new WrssFileSourceProvider(temporary.Path).Read("styles/default.wrss").Status);
 
     using var misleading = new MisreportedLengthStream(
-        new byte[(int)GbssLimits.MaximumSourceBytes + 1], reportedLength: 1);
+        new byte[(int)WrssLimits.MaximumSourceBytes + 1], reportedLength: 1);
     Assert.Equal(
-        GbssSourceReadStatus.TooLarge,
-        Assert.Throws<GbssSourceReadException>(() =>
-            GbssFileSourceProvider.ReadBounded(misleading)).Status);
+        WrssSourceReadStatus.TooLarge,
+        Assert.Throws<WrssSourceReadException>(() =>
+            WrssFileSourceProvider.ReadBounded(misleading)).Status);
 
     using var changing = new MisreportedLengthStream(
         [0x20], reportedLength: 1, lengthAfterRead: 2);
     Assert.Equal(
-        GbssSourceReadStatus.ChangedDuringRead,
-        Assert.Throws<GbssSourceReadException>(() =>
-            GbssFileSourceProvider.ReadBounded(changing)).Status);
+        WrssSourceReadStatus.ChangedDuringRead,
+        Assert.Throws<WrssSourceReadException>(() =>
+            WrssFileSourceProvider.ReadBounded(changing)).Status);
 
     foreach (var (status, code) in new[]
     {
-        (GbssSourceReadStatus.Missing, "missing_import"),
-        (GbssSourceReadStatus.UnsafePath, "unsafe_import"),
-        (GbssSourceReadStatus.TooLarge, "source_too_large"),
-        (GbssSourceReadStatus.ChangedDuringRead, "source_changed"),
-        (GbssSourceReadStatus.InvalidEncoding, "invalid_encoding"),
-        (GbssSourceReadStatus.DigestMismatch, "digest_mismatch"),
-        (GbssSourceReadStatus.IoUnavailable, "source_unavailable"),
+        (WrssSourceReadStatus.Missing, "missing_import"),
+        (WrssSourceReadStatus.UnsafePath, "unsafe_import"),
+        (WrssSourceReadStatus.TooLarge, "source_too_large"),
+        (WrssSourceReadStatus.ChangedDuringRead, "source_changed"),
+        (WrssSourceReadStatus.InvalidEncoding, "invalid_encoding"),
+        (WrssSourceReadStatus.DigestMismatch, "digest_mismatch"),
+        (WrssSourceReadStatus.IoUnavailable, "source_unavailable"),
     })
         Assert.HasCode(
-            GbssPackageLoader.Load(
-                "styles/default.gbss", new ResultProvider(GbssSourceReadResult.Failure(status)))
+            WrssPackageLoader.Load(
+                "styles/default.wrss", new ResultProvider(WrssSourceReadResult.Failure(status)))
                 .Diagnostics,
             code);
 
-    var throwing = GbssPackageLoader.Load(
-        "styles/default.gbss", new ThrowingProvider());
+    var throwing = WrssPackageLoader.Load(
+        "styles/default.wrss", new ThrowingProvider());
     Assert.HasCode(throwing.Diagnostics, "source_unavailable");
     Assert.True(
         throwing.Diagnostics.All(item => !item.Message.Contains("provider-secret", StringComparison.Ordinal)),
-        "A provider exception escaped into a GBSS diagnostic.");
+        "A provider exception escaped into a WRSS diagnostic.");
 }
 
 static void Variables()
@@ -312,34 +312,34 @@ static void Cascade()
         #play { color: #555555; }
         """);
     Assert.True(compile.IsValid, Describe(compile.Diagnostics));
-    var focused = new GbssElement(
+    var focused = new WrssElement(
         "button",
         "play",
         new HashSet<string>(["primary"], StringComparer.Ordinal),
-        new HashSet<GbssPseudoState> { GbssPseudoState.Focused });
+        new HashSet<WrssPseudoState> { WrssPseudoState.Focused });
     var style = compile.Theme!.Resolve(focused);
     Assert.Equal("#555555", style.Get("color")!.Text);
     Assert.Equal("1.1", style.Get("scale")!.Text);
 
-    var unfocused = compile.Theme.Resolve(new GbssElement("button", null, new HashSet<string>(["primary"]), null));
+    var unfocused = compile.Theme.Resolve(new WrssElement("button", null, new HashSet<string>(["primary"]), null));
     Assert.Equal("#222222", unfocused.Get("color")!.Text);
     Assert.Equal("1", unfocused.Get("scale")!.Text);
 }
 
 static void LayerPrecedence()
 {
-    var platform = GbssParser.Parse("#play { color: #111111; }", "platform.gbss");
-    var widget = GbssParser.Parse("#play { color: #222222; }", "widget.gbss");
-    var user = GbssParser.Parse("button { color: #333333; }", "user.gbss");
+    var platform = WrssParser.Parse("#play { color: #111111; }", "platform.wrss");
+    var widget = WrssParser.Parse("#play { color: #222222; }", "widget.wrss");
+    var user = WrssParser.Parse("button { color: #333333; }", "user.wrss");
     Assert.EmptyErrors(platform.Diagnostics.Concat(widget.Diagnostics).Concat(user.Diagnostics));
-    var compile = GbssThemeCompiler.Compile(
+    var compile = WrssThemeCompiler.Compile(
     [
-        new GbssThemeLayer(0, [platform.Document]),
-        new GbssThemeLayer(100, [widget.Document]),
-        new GbssThemeLayer(200, [user.Document]),
+        new WrssThemeLayer(0, [platform.Document]),
+        new WrssThemeLayer(100, [widget.Document]),
+        new WrssThemeLayer(200, [user.Document]),
     ]);
     Assert.True(compile.IsValid, Describe(compile.Diagnostics));
-    var style = compile.Theme!.Resolve(new GbssElement("button", "play"));
+    var style = compile.Theme!.Resolve(new WrssElement("button", "play"));
     Assert.Equal("#333333", style.Get("color")!.Text);
 }
 
@@ -373,16 +373,16 @@ static void InteractionStateComposition()
         .primary:selected:focused { scale: 1.1; }
         """);
     Assert.True(compile.IsValid, Describe(compile.Diagnostics));
-    var element = new GbssElement(
+    var element = new WrssElement(
         "button",
         "play",
         new HashSet<string>(["primary"], StringComparer.Ordinal),
-        new HashSet<GbssPseudoState>
+        new HashSet<WrssPseudoState>
         {
-            GbssPseudoState.Selected,
-            GbssPseudoState.Disabled,
-            GbssPseudoState.Busy,
-            GbssPseudoState.Focused,
+            WrssPseudoState.Selected,
+            WrssPseudoState.Disabled,
+            WrssPseudoState.Busy,
+            WrssPseudoState.Focused,
         });
     var style = compile.Theme!.Resolve(element);
     Assert.Equal("3px", style.Get("border-width")!.Text);
@@ -453,18 +453,18 @@ static void MediaCardValues()
         }
         """);
     Assert.True(compile.IsValid, Describe(compile.Diagnostics));
-    var art = compile.Theme!.Resolve(new GbssElement("image", null, new HashSet<string>(["album-art"]), null));
-    Assert.Equal(GbssValueKind.Length, art.Get("width")!.Kind);
+    var art = compile.Theme!.Resolve(new WrssElement("image", null, new HashSet<string>(["album-art"]), null));
+    Assert.Equal(WrssValueKind.Length, art.Get("width")!.Kind);
     Assert.Equal("24vw", art.Get("width")!.Text);
-    Assert.Equal(GbssValueKind.Ratio, art.Get("aspect-ratio")!.Kind);
+    Assert.Equal(WrssValueKind.Ratio, art.Get("aspect-ratio")!.Kind);
     Assert.Equal("1", art.Get("aspect-ratio")!.Text);
     Assert.Equal("cover", art.Get("object-fit")!.Text);
     Assert.Equal("rounded", art.Get("shape")!.Text);
     Assert.Equal("184px", art.Get("flex-basis")!.Text);
     Assert.Equal("0", art.Get("flex-shrink")!.Text);
 
-    var title = compile.Theme.Resolve(new GbssElement("text", null, new HashSet<string>(["track-title"]), null));
-    Assert.Equal(GbssValueKind.Integer, title.Get("max-lines")!.Kind);
+    var title = compile.Theme.Resolve(new WrssElement("text", null, new HashSet<string>(["track-title"]), null));
+    Assert.Equal(WrssValueKind.Integer, title.Get("max-lines")!.Kind);
     Assert.Equal("2", title.Get("max-lines")!.Text);
     Assert.Equal("1.2", title.Get("line-height")!.Text);
     Assert.Equal("ellipsis", title.Get("text-overflow")!.Text);
@@ -497,12 +497,12 @@ static void TranslationValues()
         """);
     Assert.True(compile.IsValid, Describe(compile.Diagnostics));
     var baseStyle = compile.Theme!.Resolve(Element("card"));
-    Assert.Equal(GbssValueKind.Length, baseStyle.Get("translate-x")!.Kind);
+    Assert.Equal(WrssValueKind.Length, baseStyle.Get("translate-x")!.Kind);
     Assert.Equal("-12.5vw", baseStyle.Get("translate-x")!.Text);
     Assert.Equal("25%", baseStyle.Get("translate-y")!.Text);
 
-    var focused = compile.Theme.Resolve(new GbssElement(
-        "card", null, null, new HashSet<GbssPseudoState> { GbssPseudoState.Focused }));
+    var focused = compile.Theme.Resolve(new WrssElement(
+        "card", null, null, new HashSet<WrssPseudoState> { WrssPseudoState.Focused }));
     Assert.Equal("1.5em", focused.Get("translate-x")!.Text);
     Assert.Equal("25%", focused.Get("translate-y")!.Text);
 
@@ -514,9 +514,9 @@ static void TranslationValues()
 
     var invalid = CompileExpectingErrors("card { translate-x: auto; translate-y: 10deg; }");
     Assert.Equal(2, invalid.Diagnostics.Count(item => item.Code == "invalid_value"));
-    Assert.True(GbssPropertyCatalog.AllowedProperties.Contains("translate-x"),
+    Assert.True(WrssPropertyCatalog.AllowedProperties.Contains("translate-x"),
         "translate-x is missing from the public allowlist.");
-    Assert.True(GbssPropertyCatalog.AllowedProperties.Contains("translate-y"),
+    Assert.True(WrssPropertyCatalog.AllowedProperties.Contains("translate-y"),
         "translate-y is missing from the public allowlist.");
 }
 
@@ -525,7 +525,7 @@ static void ResponsiveWrapValues()
     var compile = Compile("row { flex-wrap: wrap; gap: 8px 12px; }");
     Assert.True(compile.IsValid, Describe(compile.Diagnostics));
     var style = compile.Theme!.Resolve(Element("row"));
-    Assert.Equal(GbssValueKind.Keyword, style.Get("flex-wrap")!.Kind);
+    Assert.Equal(WrssValueKind.Keyword, style.Get("flex-wrap")!.Kind);
     Assert.Equal("wrap", style.Get("flex-wrap")!.Text);
     Assert.Equal("8px 12px", style.Get("gap")!.Text);
 
@@ -549,7 +549,7 @@ static void PerEdgeBorders()
         #play { border-bottom-width: 5px; border-bottom-color: #abcdef80; }
         """);
     Assert.True(compile.IsValid, Describe(compile.Diagnostics));
-    var style = compile.Theme!.Resolve(new GbssElement(
+    var style = compile.Theme!.Resolve(new WrssElement(
         "button", "play", new HashSet<string>(["primary"]), null));
     Assert.Equal("2px", style.Get("border-width")!.Text);
     Assert.Equal("#112233", style.Get("border-color")!.Text);
@@ -562,13 +562,13 @@ static void PerEdgeBorders()
     Assert.Equal("#abcdef80", style.Get("border-bottom-color")!.Text);
     Assert.Equal("transparent", style.Get("border-left-color")!.Text);
 
-    var layeredBase = GbssParser.Parse("#play { border-top-width: 7px; }", "base.gbss");
-    var layeredUser = GbssParser.Parse("button { border-top-width: 1px; }", "user.gbss");
-    var layered = GbssThemeCompiler.Compile([
-        new GbssThemeLayer(0, [layeredBase.Document]),
-        new GbssThemeLayer(100, [layeredUser.Document]),
+    var layeredBase = WrssParser.Parse("#play { border-top-width: 7px; }", "base.wrss");
+    var layeredUser = WrssParser.Parse("button { border-top-width: 1px; }", "user.wrss");
+    var layered = WrssThemeCompiler.Compile([
+        new WrssThemeLayer(0, [layeredBase.Document]),
+        new WrssThemeLayer(100, [layeredUser.Document]),
     ]);
-    Assert.Equal("1px", layered.Theme!.Resolve(new GbssElement("button", "play")).Get("border-top-width")!.Text);
+    Assert.Equal("1px", layered.Theme!.Resolve(new WrssElement("button", "play")).Get("border-top-width")!.Text);
 
     var bounded = Compile("button { border-left-width: 999px; border-right-width: -2px; }");
     Assert.Equal(2, bounded.Diagnostics.Count(item => item.Code == "value_clamped"));
@@ -578,13 +578,13 @@ static void PerEdgeBorders()
 
     var invalid = CompileExpectingErrors("button { border-top-width: thick; border-right-color: red; }");
     Assert.Equal(2, invalid.Diagnostics.Count(item => item.Code == "invalid_value"));
-    var unsafeColor = GbssParser.Parse("button { border-bottom-color: url(evil); }", "unsafe-edge.gbss");
+    var unsafeColor = WrssParser.Parse("button { border-bottom-color: url(evil); }", "unsafe-edge.wrss");
     Assert.Equal(1, unsafeColor.Diagnostics.Count(item => item.Code == "unsafe_value"));
 
     foreach (var edge in new[] { "top", "right", "bottom", "left" })
     {
-        Assert.True(GbssPropertyCatalog.AllowedProperties.Contains($"border-{edge}-width"), $"Missing {edge} width.");
-        Assert.True(GbssPropertyCatalog.AllowedProperties.Contains($"border-{edge}-color"), $"Missing {edge} color.");
+        Assert.True(WrssPropertyCatalog.AllowedProperties.Contains($"border-{edge}-width"), $"Missing {edge} width.");
+        Assert.True(WrssPropertyCatalog.AllowedProperties.Contains($"border-{edge}-color"), $"Missing {edge} color.");
     }
 }
 
@@ -596,9 +596,9 @@ static void MediaSafety()
         "text-overflow", "text-transform", "image-tint", "scrim-color", "outline-offset", "transition-easing",
         "flex-grow", "flex-shrink", "flex-basis", "flex-wrap",
     })
-        Assert.True(GbssPropertyCatalog.AllowedProperties.Contains(property), $"Missing property {property}.");
+        Assert.True(WrssPropertyCatalog.AllowedProperties.Contains(property), $"Missing property {property}.");
 
-    var parsed = GbssParser.Parse("image { object-fit: url(file:///cover); image-tint: shader(evil); }", "media.gbss");
+    var parsed = WrssParser.Parse("image { object-fit: url(file:///cover); image-tint: shader(evil); }", "media.wrss");
     Assert.Equal(2, parsed.Diagnostics.Count(item => item.Code == "unsafe_value"));
 
     var invalid = CompileExpectingErrors("image { object-fit: stretch-crop; shape: star; aspect-ratio: 0/1; max-lines: 2.5; }");
@@ -621,10 +621,10 @@ static void CoolSlateSource()
     var source = File.ReadAllText(Path.Combine(
         AppContext.BaseDirectory,
         "Themes",
-        "builtin-cool-slate.gbss"));
-    var palette = GbssParser.Parse(source, "builtin-cool-slate/theme.gbss");
+        "builtin-cool-slate.wrss"));
+    var palette = WrssParser.Parse(source, "builtin-cool-slate/theme.wrss");
     Assert.EmptyErrors(palette.Diagnostics);
-    var probe = GbssParser.Parse("""
+    var probe = WrssParser.Parse("""
         canvas { background: var(--canvas); color: var(--text); }
         button {
           min-height: 44px;
@@ -633,9 +633,9 @@ static void CoolSlateSource()
           outline-color: var(--focus);
           border-color: var(--border);
         }
-        """, "cool-slate-probe.gbss");
+        """, "cool-slate-probe.wrss");
     Assert.EmptyErrors(probe.Diagnostics);
-    var compiled = GbssThemeCompiler.Compile([palette.Document, probe.Document]);
+    var compiled = WrssThemeCompiler.Compile([palette.Document, probe.Document]);
     Assert.True(compiled.IsValid, Describe(compiled.Diagnostics));
     var canvas = compiled.Theme!.Resolve(Element("canvas"));
     Assert.Equal("#080d14", canvas.Get("background")!.Text);
@@ -648,39 +648,39 @@ static void CoolSlateSource()
     Assert.True(button.Get("shadow-blur") is null, "Cool Slate must not introduce a component shadow.");
 }
 
-static GbssCompileResult Compile(string source)
+static WrssCompileResult Compile(string source)
 {
-    var parsed = GbssParser.Parse(source, "test.gbss");
+    var parsed = WrssParser.Parse(source, "test.wrss");
     Assert.EmptyErrors(parsed.Diagnostics);
-    return GbssThemeCompiler.Compile([parsed.Document]);
+    return WrssThemeCompiler.Compile([parsed.Document]);
 }
 
-static GbssCompileResult CompileExpectingErrors(string source)
+static WrssCompileResult CompileExpectingErrors(string source)
 {
-    var parsed = GbssParser.Parse(source, "test.gbss");
+    var parsed = WrssParser.Parse(source, "test.wrss");
     Assert.EmptyErrors(parsed.Diagnostics);
-    return GbssThemeCompiler.Compile([parsed.Document]);
+    return WrssThemeCompiler.Compile([parsed.Document]);
 }
 
-static GbssElement Element(string role) => new(role);
-static string Describe(IEnumerable<GbssDiagnostic> diagnostics) => string.Join(Environment.NewLine, diagnostics);
+static WrssElement Element(string role) => new(role);
+static string Describe(IEnumerable<WrssDiagnostic> diagnostics) => string.Join(Environment.NewLine, diagnostics);
 
-file sealed class DictionaryProvider(IReadOnlyDictionary<string, string> files) : IGbssSourceProvider
+file sealed class DictionaryProvider(IReadOnlyDictionary<string, string> files) : IWrssSourceProvider
 {
-    public GbssSourceReadResult Read(string packageRelativePath) =>
+    public WrssSourceReadResult Read(string packageRelativePath) =>
         files.TryGetValue(packageRelativePath, out var source)
-            ? GbssSourceReadResult.FromSource(source)
-            : GbssSourceReadResult.Failure(GbssSourceReadStatus.Missing);
+            ? WrssSourceReadResult.FromSource(source)
+            : WrssSourceReadResult.Failure(WrssSourceReadStatus.Missing);
 }
 
-file sealed class ResultProvider(GbssSourceReadResult result) : IGbssSourceProvider
+file sealed class ResultProvider(WrssSourceReadResult result) : IWrssSourceProvider
 {
-    public GbssSourceReadResult Read(string packageRelativePath) => result;
+    public WrssSourceReadResult Read(string packageRelativePath) => result;
 }
 
-file sealed class ThrowingProvider : IGbssSourceProvider
+file sealed class ThrowingProvider : IWrssSourceProvider
 {
-    public GbssSourceReadResult Read(string packageRelativePath) =>
+    public WrssSourceReadResult Read(string packageRelativePath) =>
         throw new InvalidOperationException("provider-secret");
 }
 
@@ -761,17 +761,17 @@ file static class Assert
         throw new InvalidOperationException($"Expected {typeof(T).Name}.");
     }
 
-    public static void EmptyErrors(IEnumerable<GbssDiagnostic> diagnostics)
+    public static void EmptyErrors(IEnumerable<WrssDiagnostic> diagnostics)
     {
-        var errors = diagnostics.Where(item => item.Severity == GbssDiagnosticSeverity.Error).ToArray();
+        var errors = diagnostics.Where(item => item.Severity == WrssDiagnosticSeverity.Error).ToArray();
         if (errors.Length != 0) throw new InvalidOperationException(Describe(errors));
     }
 
-    public static void HasCode(IEnumerable<GbssDiagnostic> diagnostics, string code)
+    public static void HasCode(IEnumerable<WrssDiagnostic> diagnostics, string code)
     {
         if (!diagnostics.Any(item => item.Code == code))
             throw new InvalidOperationException($"Expected diagnostic '{code}'. Actual: {Describe(diagnostics)}");
     }
 
-    private static string Describe(IEnumerable<GbssDiagnostic> diagnostics) => string.Join(Environment.NewLine, diagnostics);
+    private static string Describe(IEnumerable<WrssDiagnostic> diagnostics) => string.Join(Environment.NewLine, diagnostics);
 }

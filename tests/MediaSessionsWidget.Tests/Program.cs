@@ -1,8 +1,8 @@
 using System.Threading.Channels;
-using GameBarAlternative.FirstPartyWidgets.MediaSessions;
-using GameBarAlternative.WidgetProtocol;
-using GameBarAlternative.WidgetSdk;
-using GameBarAlternative.WidgetStyling;
+using WidgetRail.FirstPartyWidgets.MediaSessions;
+using WidgetRail.WidgetProtocol;
+using WidgetRail.WidgetSdk;
+using WidgetRail.WidgetStyling;
 
 var tests = new (string Name, Func<Task> Run)[]
 {
@@ -32,7 +32,7 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Active cancellation rejects a cancellation-ignoring stale snapshot", StaleSnapshotCannotPublishAfterDeactivation),
     ("A successful empty snapshot remains an empty state without live updates", EmptySnapshotIsSuccessful),
     ("Capability and channel failures render recoverable states", FailureStates),
-    ("Manifest permissions and GBSS package validate", PackageValidates),
+    ("Manifest permissions and WRSS package validate", PackageValidates),
 };
 
 var failures = 0;
@@ -748,8 +748,8 @@ static Task PackageValidates()
     Assert.Equal(0, WidgetManifestValidator.Validate(manifest).Count);
     Assert.True(manifest.Permissions.Contains("system.media.sessions.read.v1"));
     Assert.True(manifest.OptionalPermissions.Contains("system.media.sessions.control.v1"));
-    var package = GbssPackageLoader.Load("styles/default.gbss", new GbssFileSourceProvider(root));
-    Assert.True(GbssThemeCompiler.Compile(package).IsValid);
+    var package = WrssPackageLoader.Load("styles/default.wrss", new WrssFileSourceProvider(root));
+    Assert.True(WrssThemeCompiler.Compile(package).IsValid);
     return Task.CompletedTask;
 }
 

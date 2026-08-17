@@ -1,7 +1,7 @@
 using System.Threading.Channels;
-using GameBarAlternative.PlatformBroker;
+using WidgetRail.PlatformBroker;
 
-namespace GameBarAlternative.WindowsActivityProvider;
+namespace WidgetRail.WindowsActivityProvider;
 
 /// <summary>
 /// Lazily starts when the broker forwards the first authorized read, then stays
@@ -157,7 +157,7 @@ public sealed class WindowsActivityPlatformBackend : IActivityPlatformBrokerBack
     private static bool IsExcluded(NativeActivityCandidate candidate) =>
         ExcludedProcessKeys.Contains(candidate.ProcessKey) ||
         candidate.ProcessKey.EndsWith("WIDGET.WORKER", StringComparison.Ordinal) ||
-        candidate.DisplayName.StartsWith("Game Bar Alternative", StringComparison.OrdinalIgnoreCase);
+        candidate.DisplayName.StartsWith("WidgetRail", StringComparison.OrdinalIgnoreCase);
 
     private void PruneUnavailable()
     {

@@ -1,4 +1,4 @@
-namespace GameBarAlternative.WidgetCatalog;
+namespace WidgetRail.WidgetCatalog;
 
 /// <summary>
 /// Derives the host-side authority identity for one exact unsigned installed

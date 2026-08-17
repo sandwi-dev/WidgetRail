@@ -3,7 +3,7 @@
 Status: approved architecture and staged implementation design
 
 This document defines how widget presentation state is retained, refreshed,
-updated, laid out, rendered, and admitted by the Game Bar Alternative host. It
+updated, laid out, rendered, and admitted by the WidgetRail host. It
 is the durable design companion to the DLV assignments in
 [`delivery-plan.md`](delivery-plan.md). The delivery plan remains the sole
 implementation authority.

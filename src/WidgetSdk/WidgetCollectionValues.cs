@@ -1,4 +1,4 @@
-namespace GameBarAlternative.WidgetSdk;
+namespace WidgetRail.WidgetSdk;
 
 /// <summary>Stable logical identity for one cursor-collection item.</summary>
 public readonly record struct WidgetCollectionItemKey

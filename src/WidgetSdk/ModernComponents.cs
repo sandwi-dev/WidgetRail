@@ -1,7 +1,7 @@
 using System.Globalization;
-using GameBarAlternative.WidgetProtocol;
+using WidgetRail.WidgetProtocol;
 
-namespace GameBarAlternative.WidgetSdk;
+namespace WidgetRail.WidgetSdk;
 
 public enum IconButtonVariant { Default, Primary, Danger, Quiet }
 public enum IconButtonSize { Small, Medium, Large }
@@ -90,7 +90,7 @@ public sealed record ScrubberElement : WidgetElement
         ElapsedLabel = elapsedLabel;
         DurationLabel = durationLabel;
         ActivationActionId = activationActionId;
-        StyleClasses = ["gbar-scrubber"];
+        StyleClasses = ["wrail-scrubber"];
     }
 
     public TimeSpan Position { get; init; }
@@ -184,7 +184,7 @@ public sealed record ScrubberElement : WidgetElement
             FocusPersistenceId = FocusPersistenceId,
             ControllerInteractionMode = ControllerInteractionMode,
             FocusNeighbors = FocusNeighbors,
-            StyleClasses = ["gbar-scrubber__slider"],
+            StyleClasses = ["wrail-scrubber__slider"],
         };
 
         return new StackElement(Id,
@@ -194,15 +194,15 @@ public sealed record ScrubberElement : WidgetElement
             [
                 new TextElement(StableIdentifier.Child(Id, "elapsed"), elapsed, $"Elapsed {elapsed}")
                 {
-                    StyleClasses = ["gbar-scrubber__elapsed"],
+                    StyleClasses = ["wrail-scrubber__elapsed"],
                 },
                 new TextElement(StableIdentifier.Child(Id, "duration"), duration, $"Duration {duration}")
                 {
-                    StyleClasses = ["gbar-scrubber__duration"],
+                    StyleClasses = ["wrail-scrubber__duration"],
                 },
             ])
             {
-                StyleClasses = ["gbar-scrubber__times"],
+                StyleClasses = ["wrail-scrubber__times"],
             },
         ])
         {
@@ -224,7 +224,7 @@ public sealed record ScrubberElement : WidgetElement
 
 /// <summary>
 /// Original controller-first composites built only from stable public protocol
-/// nodes. Their gbar-* classes are semantic theme hooks, not fixed colors.
+/// nodes. Their wrail-* classes are semantic theme hooks, not fixed colors.
 /// </summary>
 public static partial class UI
 {
@@ -292,7 +292,7 @@ public static partial class UI
             content.Add(new IconElement(
                 StableIdentifier.Child(id, "icon"), semanticGlyph, label)
             {
-                StyleClasses = ["gbar-settings-row__icon"],
+                StyleClasses = ["wrail-settings-row__icon"],
             });
         }
 
@@ -300,7 +300,7 @@ public static partial class UI
         {
             new TextElement(StableIdentifier.Child(id, "label"), label, label)
             {
-                StyleClasses = ["gbar-settings-row__label"],
+                StyleClasses = ["wrail-settings-row__label"],
             },
         };
         if (!string.IsNullOrWhiteSpace(description))
@@ -308,12 +308,12 @@ public static partial class UI
             copy.Add(new TextElement(
                 StableIdentifier.Child(id, "description"), description, description)
             {
-                StyleClasses = ["gbar-settings-row__description"],
+                StyleClasses = ["wrail-settings-row__description"],
             });
         }
         content.Add(new StackElement(StableIdentifier.Child(id, "copy"), copy)
         {
-            StyleClasses = ["gbar-settings-row__copy"],
+            StyleClasses = ["wrail-settings-row__copy"],
         });
 
         var metadata = new List<WidgetElement>();
@@ -322,7 +322,7 @@ public static partial class UI
             metadata.Add(new TextElement(
                 StableIdentifier.Child(id, "value"), value, $"{label}: {value}")
             {
-                StyleClasses = ["gbar-settings-row__value"],
+                StyleClasses = ["wrail-settings-row__value"],
             });
         }
         if (!string.IsNullOrWhiteSpace(status))
@@ -331,7 +331,7 @@ public static partial class UI
                 status,
                 statusTone,
                 StableIdentifier.Child(id, "status"))
-                .AddClasses("gbar-settings-row__status"));
+                .AddClasses("wrail-settings-row__status"));
         }
 
         var accessibleParts = new List<string> { label };
@@ -346,14 +346,14 @@ public static partial class UI
         {
             new RowElement(StableIdentifier.Child(id, "content"), content)
             {
-                StyleClasses = ["gbar-settings-row__content"],
+                StyleClasses = ["wrail-settings-row__content"],
             },
         };
         if (metadata.Count > 0)
         {
             children.Add(new StackElement(StableIdentifier.Child(id, "metadata"), metadata)
             {
-                StyleClasses = ["gbar-settings-row__metadata"],
+                StyleClasses = ["wrail-settings-row__metadata"],
             });
         }
         children.Add(new ButtonElement(
@@ -363,12 +363,12 @@ public static partial class UI
             Glyph = action.Glyph,
             IsDisabled = isDisabled ? true : null,
             IsBusy = isBusy ? true : null,
-            StyleClasses = ["gbar-settings-row__action"],
+            StyleClasses = ["wrail-settings-row__action"],
         });
 
         return new StackElement(id, children)
         {
-            StyleClasses = ["gbar-settings-row"],
+            StyleClasses = ["wrail-settings-row"],
         };
     }
 
@@ -428,10 +428,10 @@ public static partial class UI
                 IsBusy = item.IsBusy ? true : null,
                 StyleClasses =
                 [
-                    "gbar-action-sheet__item",
+                    "wrail-action-sheet__item",
                     item.Tone == ActionSheetItemTone.Danger
-                        ? "gbar-action-sheet__item--danger"
-                        : "gbar-action-sheet__item--default",
+                        ? "wrail-action-sheet__item--danger"
+                        : "wrail-action-sheet__item--default",
                 ],
             };
             if (index > 0) button = button.FocusUp(items[index - 1].Id);
@@ -443,7 +443,7 @@ public static partial class UI
         {
             new TextElement(StableIdentifier.Child(id, "title"), title, title)
             {
-                StyleClasses = ["gbar-action-sheet__title"],
+                StyleClasses = ["wrail-action-sheet__title"],
             },
         };
         if (!string.IsNullOrWhiteSpace(description))
@@ -451,20 +451,20 @@ public static partial class UI
             children.Add(new TextElement(
                 StableIdentifier.Child(id, "description"), description, description)
             {
-                StyleClasses = ["gbar-action-sheet__description"],
+                StyleClasses = ["wrail-action-sheet__description"],
             });
         }
         children.Add(new ScrollElement(
             StableIdentifier.Child(id, "list"), ScrollAxis.Vertical, buttons)
         {
-            StyleClasses = ["gbar-action-sheet__list"],
+            StyleClasses = ["wrail-action-sheet__list"],
         });
 
         return new StackElement(id, children)
         {
             InputScopeId = scopeId,
             Shortcuts = [new ControllerShortcut(ControllerButton.B, backAction)],
-            StyleClasses = ["gbar-action-sheet"],
+            StyleClasses = ["wrail-action-sheet"],
         };
     }
 
@@ -526,10 +526,10 @@ public static partial class UI
                 IsBusy = option.IsBusy ? true : null,
                 StyleClasses =
                 [
-                    "gbar-picker__option",
+                    "wrail-picker__option",
                     option.IsSelected
-                        ? "gbar-picker__option--selected"
-                        : "gbar-picker__option--idle",
+                        ? "wrail-picker__option--selected"
+                        : "wrail-picker__option--idle",
                 ],
             };
             if (index > 0) button = button.FocusUp(options[index - 1].Id);
@@ -541,7 +541,7 @@ public static partial class UI
         {
             new TextElement(StableIdentifier.Child(id, "title"), title, title)
             {
-                StyleClasses = ["gbar-picker__title"],
+                StyleClasses = ["wrail-picker__title"],
             },
         };
         if (!string.IsNullOrWhiteSpace(description))
@@ -549,20 +549,20 @@ public static partial class UI
             children.Add(new TextElement(
                 StableIdentifier.Child(id, "description"), description, description)
             {
-                StyleClasses = ["gbar-picker__description"],
+                StyleClasses = ["wrail-picker__description"],
             });
         }
         children.Add(new ScrollElement(
             StableIdentifier.Child(id, "options"), ScrollAxis.Vertical, buttons)
         {
-            StyleClasses = ["gbar-picker__options"],
+            StyleClasses = ["wrail-picker__options"],
         });
 
         return new StackElement(id, children)
         {
             InputScopeId = scopeId,
             Shortcuts = [new ControllerShortcut(ControllerButton.B, backAction)],
-            StyleClasses = ["gbar-picker"],
+            StyleClasses = ["wrail-picker"],
         };
     }
 
@@ -589,7 +589,7 @@ public static partial class UI
                 semanticGlyph,
                 label)
             {
-                StyleClasses = ["gbar-value-row__icon"],
+                StyleClasses = ["wrail-value-row__icon"],
             });
         }
 
@@ -597,7 +597,7 @@ public static partial class UI
         {
             new TextElement(StableIdentifier.Child(id, "label"), label, label)
             {
-                StyleClasses = ["gbar-value-row__label"],
+                StyleClasses = ["wrail-value-row__label"],
             },
         };
         if (!string.IsNullOrWhiteSpace(description))
@@ -607,13 +607,13 @@ public static partial class UI
                 description,
                 description)
             {
-                StyleClasses = ["gbar-value-row__description"],
+                StyleClasses = ["wrail-value-row__description"],
             });
         }
 
         children.Add(new StackElement(StableIdentifier.Child(id, "text"), textChildren)
         {
-            StyleClasses = ["gbar-value-row__text"],
+            StyleClasses = ["wrail-value-row__text"],
         });
         children.Add(new TextElement(
             StableIdentifier.Child(id, "value"),
@@ -622,12 +622,12 @@ public static partial class UI
                 ? $"{label}: {value}"
                 : valueAccessibilityLabel)
         {
-            StyleClasses = ["gbar-value-row__value"],
+            StyleClasses = ["wrail-value-row__value"],
         });
 
         return new RowElement(id, children)
         {
-            StyleClasses = ["gbar-value-row"],
+            StyleClasses = ["wrail-value-row"],
         };
     }
 
@@ -666,8 +666,8 @@ public static partial class UI
             IsBusy = isBusy ? true : null,
             StyleClasses =
             [
-                "gbar-choice-row",
-                isSelected ? "gbar-choice-row--selected" : "gbar-choice-row--idle",
+                "wrail-choice-row",
+                isSelected ? "wrail-choice-row--selected" : "wrail-choice-row--idle",
             ],
         };
     }
@@ -689,15 +689,15 @@ public static partial class UI
         [
             new TextElement(StableIdentifier.Child(id, "key"), shortName, spokenName)
             {
-                StyleClasses = ["gbar-controller-hint__key"],
+                StyleClasses = ["wrail-controller-hint__key"],
             },
             new TextElement(StableIdentifier.Child(id, "label"), label, label)
             {
-                StyleClasses = ["gbar-controller-hint__label"],
+                StyleClasses = ["wrail-controller-hint__label"],
             },
         ])
         {
-            StyleClasses = ["gbar-controller-hint"],
+            StyleClasses = ["wrail-controller-hint"],
         };
     }
 
@@ -718,9 +718,9 @@ public static partial class UI
             AccessibilityLabel = accessibilityLabel,
             StyleClasses =
             [
-                "gbar-icon-button",
-                $"gbar-icon-button--{Token(size)}",
-                $"gbar-icon-button--{Token(variant)}",
+                "wrail-icon-button",
+                $"wrail-icon-button--{Token(size)}",
+                $"wrail-icon-button--{Token(variant)}",
             ],
         };
     }
@@ -736,7 +736,7 @@ public static partial class UI
         EnsureDefined(variant, nameof(variant));
         return new StackElement(id, CopyChildren(children))
         {
-            StyleClasses = ["gbar-card", $"gbar-card--{Token(variant)}"],
+            StyleClasses = ["wrail-card", $"wrail-card--{Token(variant)}"],
         };
     }
 
@@ -756,43 +756,43 @@ public static partial class UI
         {
             text.Add(new TextElement(StableIdentifier.Child(id, "eyebrow"), eyebrow, eyebrow)
             {
-                StyleClasses = ["gbar-section-header__eyebrow"],
+                StyleClasses = ["wrail-section-header__eyebrow"],
             });
         }
         text.Add(new TextElement(titleId, title, title)
         {
-            StyleClasses = ["gbar-section-header__title"],
+            StyleClasses = ["wrail-section-header__title"],
         });
         if (!string.IsNullOrWhiteSpace(description))
         {
             text.Add(new TextElement(StableIdentifier.Child(id, "description"), description, description)
             {
-                StyleClasses = ["gbar-section-header__description"],
+                StyleClasses = ["wrail-section-header__description"],
             });
         }
         var content = new List<WidgetElement>
         {
             new StackElement(textId, text)
             {
-                StyleClasses = ["gbar-section-header__text"],
+                StyleClasses = ["wrail-section-header__text"],
             },
         };
         if (trailing is not null)
         {
             content.Add(new RowElement(StableIdentifier.Child(id, "trailing"), [trailing])
             {
-                StyleClasses = ["gbar-section-header__trailing"],
+                StyleClasses = ["wrail-section-header__trailing"],
             });
         }
         return new StackElement(id,
         [
             new RowElement(contentId, content)
             {
-                StyleClasses = ["gbar-section-header__content"],
+                StyleClasses = ["wrail-section-header__content"],
             },
         ])
         {
-            StyleClasses = ["gbar-section-header"],
+            StyleClasses = ["wrail-section-header"],
         };
     }
 
@@ -816,22 +816,22 @@ public static partial class UI
         {
             children.Add(new IconElement(StableIdentifier.Child(id, "icon"), resolved, $"{tone} status")
             {
-                StyleClasses = ["gbar-badge__icon", $"gbar-badge__icon--{Token(tone)}"],
+                StyleClasses = ["wrail-badge__icon", $"wrail-badge__icon--{Token(tone)}"],
             });
         }
         children.Add(new TextElement(labelId, label, label)
         {
-            StyleClasses = ["gbar-badge__label", $"gbar-badge__label--{Token(tone)}"],
+            StyleClasses = ["wrail-badge__label", $"wrail-badge__label--{Token(tone)}"],
         });
         return new RowElement(id, children)
         {
-            StyleClasses = ["gbar-badge", $"gbar-badge--{Token(tone)}"],
+            StyleClasses = ["wrail-badge", $"wrail-badge--{Token(tone)}"],
         };
     }
 
     public static SpacerElement Divider(string id) => new(id)
     {
-        StyleClasses = ["gbar-divider"],
+        StyleClasses = ["wrail-divider"],
     };
 
     public static StackElement Alert(
@@ -852,7 +852,7 @@ public static partial class UI
             _ => (WidgetGlyph?)null,
         };
         return MessageSurface(
-            "gbar-alert",
+            "wrail-alert",
             title,
             message,
             id,
@@ -872,7 +872,7 @@ public static partial class UI
         ArgumentException.ThrowIfNullOrWhiteSpace(title);
         ArgumentException.ThrowIfNullOrWhiteSpace(message);
         return MessageSurface(
-            "gbar-empty-state",
+            "wrail-empty-state",
             title,
             message,
             id,
@@ -921,8 +921,8 @@ public static partial class UI
                 IsDisabled = tab.IsDisabled ? true : null,
                 StyleClasses =
                 [
-                    "gbar-segmented-tabs__tab",
-                    selected ? "gbar-segmented-tabs__tab--selected" : "gbar-segmented-tabs__tab--idle",
+                    "wrail-segmented-tabs__tab",
+                    selected ? "wrail-segmented-tabs__tab--selected" : "wrail-segmented-tabs__tab--idle",
                 ],
             };
             button = button
@@ -933,7 +933,7 @@ public static partial class UI
 
         return new RowElement(id, buttons)
         {
-            StyleClasses = ["gbar-segmented-tabs"],
+            StyleClasses = ["wrail-segmented-tabs"],
         };
     }
 
@@ -957,7 +957,7 @@ public static partial class UI
             Glyph = isOn ? WidgetGlyph.Check : null,
             IsSelected = isOn ? true : null,
             IsDisabled = isDisabled ? true : null,
-            StyleClasses = ["gbar-switch", isOn ? "gbar-switch--on" : "gbar-switch--off"],
+            StyleClasses = ["wrail-switch", isOn ? "wrail-switch--on" : "wrail-switch--off"],
         };
     }
 
@@ -981,17 +981,17 @@ public static partial class UI
         [
             new TextElement(StableIdentifier.Child(id, "title"), title, title)
             {
-                StyleClasses = ["gbar-dialog__title"],
+                StyleClasses = ["wrail-dialog__title"],
             },
             new StackElement(StableIdentifier.Child(id, "content"), content)
             {
-                StyleClasses = ["gbar-dialog__content"],
+                StyleClasses = ["wrail-dialog__content"],
             },
         ])
         {
             InputScopeId = scopeId,
             Shortcuts = [new ControllerShortcut(ControllerButton.B, backAction)],
-            StyleClasses = ["gbar-dialog"],
+            StyleClasses = ["wrail-dialog"],
         };
     }
 

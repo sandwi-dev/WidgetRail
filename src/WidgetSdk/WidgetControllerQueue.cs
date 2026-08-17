@@ -1,4 +1,4 @@
-namespace GameBarAlternative.WidgetSdk;
+namespace WidgetRail.WidgetSdk;
 
 public record WidgetActionFailedEventArgs(
     WidgetActionEvent Action,

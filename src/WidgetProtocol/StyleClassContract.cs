@@ -1,8 +1,8 @@
-namespace GameBarAlternative.WidgetProtocol;
+namespace WidgetRail.WidgetProtocol;
 
 /// <summary>
 /// Defines the portable identifier grammar shared by declarative snapshots and
-/// GBSS class selectors. The grammar intentionally excludes CSS escapes and
+/// WRSS class selectors. The grammar intentionally excludes CSS escapes and
 /// Unicode so every renderer can match classes ordinally and deterministically.
 /// </summary>
 public static class StyleClassContract

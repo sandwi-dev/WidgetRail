@@ -209,7 +209,7 @@ theme caches, and emits:
 }
 ```
 
-Invalid settings, missing/invalid theme versions, unsafe imports, or GBSS
+Invalid settings, missing/invalid theme versions, unsafe imports, or WRSS
 errors retain the last valid appearance and revision. A client retrieves the
 complete current value with `get-platform-appearance`; the response includes
 the exact theme ID/version, finite bounded interface/text scale and backdrop
@@ -234,7 +234,7 @@ widget's next snapshot.
 
 ## Computed render styles
 
-Native code never reads or parses GBSS. The bridge loads each configured widget
+Native code never reads or parses WRSS. The bridge loads each configured widget
 style package, layers it with the current platform/user theme, and compiles
 typed results per global revision. Every `snapshot` response has
 this exact additional shape:
@@ -296,7 +296,7 @@ strings, and the negotiated length-prefixed message ceiling.
   "widgets": [],
   "bundledWidgets": [{
     "id": "media-sessions",
-    "packageId": "org.gbar.firstparty.media-sessions",
+    "packageId": "widgetrail.firstparty.media-sessions",
     "instanceId": "media-sessions.default",
     "packageRoot": "runtime/MediaSessions",
     "icon": "music",
@@ -306,11 +306,11 @@ strings, and the negotiated length-prefixed message ceiling.
 ```
 
 For a trusted `widgets` entry, `styleFile` is optional and must be a normalized
-package-relative `.gbss` path under the catalog directory. For a
+package-relative `.wrss` path under the catalog directory. For a
 `bundledWidgets` or installed package, the bridge discovers
-`styles/default.gbss` under its immutable package root. The styling package
+`styles/default.wrss` under its immutable package root. The styling package
 loader rejects absolute paths, schemes, backslashes, `.`/`..` traversal,
-reparse-point escapes, oversized sources, unsafe imports, and invalid GBSS. A
+reparse-point escapes, oversized sources, unsafe imports, and invalid WRSS. A
 configured invalid style prevents that entry from publishing, with bounded
 relative-file, line, column, code, and single-line diagnostics; absolute
 package paths are not disclosed. Widgets without a style file receive empty
@@ -339,7 +339,7 @@ AppContainer identity, and the packaged
 packages stay inert. Invalid installed state or package integrity publishes a
 trusted-only catalog revision; Community registrations are removed
 synchronously and running workers retire before a stale ID can relaunch. A
-conflicting, incompatible, unsupported-capability, or invalid-GBSS installed
+conflicting, incompatible, unsupported-capability, or invalid-WRSS installed
 package is skipped with a bounded warning. Supported
 required and optional manifest declarations are combined into the broker
 declaration set; neither kind is auto-granted.
@@ -371,7 +371,7 @@ Audio Mixer, Network Controls, Games & Apps, and Now Playing are
 builds and installs those same four package layouts, merges them through
 `WidgetCatalog`/`BridgeCatalog`, launches the generic worker in the package
 AppContainer, drives lifecycle, validates a snapshot, and observes a simulated
-brokered action. `gbar dev` points `--installed-catalog-root` at a unique
+brokered action. `wrail dev` points `--installed-catalog-root` at a unique
 session catalog, so local author builds traverse this same bridge path without
 mutating the user's installed catalog. YT Music adds a fifth Community-package
 conformance case built and installed by the public CLI rather than appearing in

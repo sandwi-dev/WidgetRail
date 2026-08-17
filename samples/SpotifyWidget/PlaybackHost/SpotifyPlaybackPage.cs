@@ -1,8 +1,8 @@
-namespace GameBarAlternative.SpotifyPlaybackHost;
+namespace WidgetRail.SpotifyPlaybackHost;
 
 internal static class SpotifyPlaybackPage
 {
-    internal const string TopLevelUri = "https://spotify-playback.gbar.internal/index.html";
+    internal const string TopLevelUri = "https://spotify-playback.widgetrail.internal/index.html";
 
     internal const string Html = """
         <!doctype html>

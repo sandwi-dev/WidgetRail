@@ -2,10 +2,10 @@ using System.Runtime.CompilerServices;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Threading.Channels;
-using GameBarAlternative.PlatformBroker;
-using GameBarAlternative.WidgetSdk;
+using WidgetRail.PlatformBroker;
+using WidgetRail.WidgetSdk;
 
-namespace GameBarAlternative.WidgetRuntime;
+namespace WidgetRail.WidgetRuntime;
 
 /// <summary>
 /// Keeps broker transport details behind the transport-neutral SDK contract.

@@ -12,13 +12,13 @@ commit changes documentation only.
 | Field | Current evidence |
 |---|---|
 | Release unit | `0.1.0-dev` |
-| Package | `GameBarAlternative.WidgetSdk` |
+| Package | `WidgetRail.WidgetSdk` |
 | Controller template | version 2 |
 | Reviewed public API | 2,997 symbols |
 | `WidgetSdk.dll` product version | `0.1.0-dev+5fbf690bcfa8f20cb4eaff8012a6c7df17a0817f` |
-| `gbar.dll` product version | `0.1.0-dev+5fbf690bcfa8f20cb4eaff8012a6c7df17a0817f` |
+| `wrail.dll` product version | `0.1.0-dev+5fbf690bcfa8f20cb4eaff8012a6c7df17a0817f` |
 | `WidgetSdk.dll` SHA-256 | `2392741C815C604BA29CFEABF6843EF3033907E4CC5901774E0D4C6B5AD26193` |
-| `gbar.dll` SHA-256 | `E081DE4D0FF1D018BA3422074F68168F046B8528FBFAB950581195643BE70981` |
+| `wrail.dll` SHA-256 | `E081DE4D0FF1D018BA3422074F68168F046B8528FBFAB950581195643BE70981` |
 
 Reproduce the bounded report after a Release rebuild:
 
@@ -28,18 +28,18 @@ $p = [xml]$propsText
 $api = @(Get-Content .\src\WidgetSdk\PublicApi.txt |
   Where-Object { $_ -and -not $_.StartsWith('#') })
 $sdk = Get-Item .\src\WidgetSdk\bin\Release\net8.0\WidgetSdk.dll
-$gbar = Get-Item .\tools\GbarCli\bin\Release\net8.0\gbar.dll
+$wrail = Get-Item .\tools\WrailCli\bin\Release\net8.0\wrail.dll
 $sdkHash = Get-FileHash $sdk.FullName -Algorithm SHA256
-$gbarHash = Get-FileHash $gbar.FullName -Algorithm SHA256
+$gbarHash = Get-FileHash $wrail.FullName -Algorithm SHA256
 [pscustomobject]@{
   ReleaseVersion = $p.Project.PropertyGroup.WidgetSdkReleaseVersion
   PackageId = $p.Project.PropertyGroup.WidgetSdkPackageId
   TemplateVersion = $p.Project.PropertyGroup.ControllerWidgetTemplateVersion
   PublicApiSymbols = $api.Count
   WidgetSdkProductVersion = $sdk.VersionInfo.ProductVersion
-  GbarProductVersion = $gbar.VersionInfo.ProductVersion
+  WrailProductVersion = $wrail.VersionInfo.ProductVersion
   WidgetSdkSha256 = $sdkHash.Hash
-  GbarSha256 = $gbarHash.Hash
+  WrailSha256 = $gbarHash.Hash
 } | ConvertTo-Json
 ```
 
@@ -54,7 +54,7 @@ SDK nupkg whose `lib/net8.0` DLL set is exactly `WidgetSdk.dll` and
 This proposal should become policy only through a separately assigned planner
 decision and implementation milestone.
 
-1. Treat the SDK package, `gbar` distribution, controller template, API
+1. Treat the SDK package, `wrail` distribution, controller template, API
    baseline, and protocol range as one reviewed release unit. Publish or retain
    evidence for them together; never infer compatibility from an assembly
    version alone.

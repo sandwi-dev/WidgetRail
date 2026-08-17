@@ -1,6 +1,6 @@
 using Windows.System;
 
-namespace GameBarAlternative.WindowsBluetoothProvider;
+namespace WidgetRail.WindowsBluetoothProvider;
 
 internal sealed class WindowsBluetoothSettingsLauncher : IWindowsBluetoothSettingsLauncher
 {

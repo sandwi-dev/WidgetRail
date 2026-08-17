@@ -1,6 +1,6 @@
-using GameBarAlternative.WindowsSpotifyProvider;
+using WidgetRail.WindowsSpotifyProvider;
 
-namespace GameBarAlternative.Samples.SpotifyWidget;
+namespace WidgetRail.Samples.SpotifyWidget;
 
 internal sealed class SpotifyApplicationService(
     WindowsSpotifyPlatformBackend backend,

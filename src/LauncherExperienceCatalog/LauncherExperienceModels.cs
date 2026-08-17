@@ -1,6 +1,6 @@
 using System.Collections.ObjectModel;
 
-namespace GameBarAlternative.LauncherExperienceCatalog;
+namespace WidgetRail.LauncherExperienceCatalog;
 
 public enum LauncherLayoutPreset
 {

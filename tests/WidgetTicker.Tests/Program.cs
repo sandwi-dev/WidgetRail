@@ -1,4 +1,4 @@
-using GameBarAlternative.WidgetSdk;
+using WidgetRail.WidgetSdk;
 
 var tests = new (string Name, Func<Task> Run)[]
 {

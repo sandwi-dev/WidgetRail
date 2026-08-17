@@ -24,7 +24,7 @@ flowchart LR
     Controller["Controller"] --> Input["GameInput + input router"]
     Input --> Host["Native overlay host"]
     Host --> Renderer["D3D11 + D2D/DWrite + DirectComposition"]
-    Host --> Theme["GBSS theme engine"]
+    Host --> Theme["WRSS theme engine"]
     Host --> State["Atomic host state"]
     Host --> Supervisor["Widget supervisor"]
     Supervisor --> Builtins["Trusted first-party modules"]

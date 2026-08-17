@@ -7,9 +7,9 @@ using System.Runtime.InteropServices;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
-using GameBarAlternative.PlatformBroker;
+using WidgetRail.PlatformBroker;
 
-namespace GameBarAlternative.WindowsCommunityProvider;
+namespace WidgetRail.WindowsCommunityProvider;
 
 /// <summary>
 /// Trusted host provider for constrained loopback JSON and package-scoped
@@ -384,7 +384,7 @@ internal sealed class WindowsCredentialPrivateSecretStore : IPrivateSecretStore
     private const int GenericCredential = 1;
     private const int PersistLocalMachine = 2;
     private const int ErrorNotFound = 1168;
-    private const string TargetPrefix = "GameBarAlternative/private-secret/v1/";
+    private const string TargetPrefix = "WidgetRail/private-secret/v1/";
     private static readonly UTF8Encoding StrictUtf8 = new(false, true);
 
     public Task<PrivateSecretMetadataSummary> GetMetadataAsync(
@@ -437,7 +437,7 @@ internal sealed class WindowsCredentialPrivateSecretStore : IPrivateSecretStore
                 CredentialBlobSize = (uint)bytes.Length,
                 CredentialBlob = blob,
                 Persist = PersistLocalMachine,
-                UserName = "GameBarAlternative",
+                UserName = "WidgetRail",
             };
             cancellationToken.ThrowIfCancellationRequested();
             if (!NativeMethods.CredWrite(ref credential, 0))

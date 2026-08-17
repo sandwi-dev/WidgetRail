@@ -1,8 +1,8 @@
 using System.Runtime.CompilerServices;
 using System.Reflection;
 using System.Threading.Channels;
-using GameBarAlternative.FirstPartyWidgets.AudioMixer;
-using GameBarAlternative.WidgetSdk;
+using WidgetRail.FirstPartyWidgets.AudioMixer;
+using WidgetRail.WidgetSdk;
 
 internal static class AudioMixerProviderSessionScenarios
 {

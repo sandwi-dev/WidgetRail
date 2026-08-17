@@ -1,6 +1,6 @@
 using System.Collections.ObjectModel;
 
-namespace GameBarAlternative.WidgetSdk;
+namespace WidgetRail.WidgetSdk;
 
 public enum WidgetCursorDirection { Before, After }
 
@@ -106,7 +106,7 @@ public sealed class WidgetCursorResource<TItem> where TItem : notnull
             options.MaximumRetainedItems < Math.Min(MaximumRetainedItems, options.PageSize * 2))
             throw new ArgumentOutOfRangeException(nameof(options.MaximumRetainedItems));
         if (options.PaginationThreshold is < 1 or >
-            GameBarAlternative.WidgetProtocol.ProtocolConstants.MaximumScrollPaginationThreshold)
+            WidgetRail.WidgetProtocol.ProtocolConstants.MaximumScrollPaginationThreshold)
             throw new ArgumentOutOfRangeException(nameof(options.PaginationThreshold));
         if (!Enum.IsDefined(options.Lifetime))
             throw new ArgumentOutOfRangeException(nameof(options.Lifetime));

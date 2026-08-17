@@ -1,7 +1,7 @@
-using GameBarAlternative.FirstPartyWidgets.GamesApps;
-using GameBarAlternative.WidgetProtocol;
-using GameBarAlternative.WidgetSdk;
-using GameBarAlternative.WidgetStyling;
+using WidgetRail.FirstPartyWidgets.GamesApps;
+using WidgetRail.WidgetProtocol;
+using WidgetRail.WidgetSdk;
+using WidgetRail.WidgetStyling;
 
 var tests = new (string Name, Func<Task> Run)[]
 {
@@ -73,7 +73,7 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Manual refresh failure retains last-good order authority and focus", SubsequentFailureKeepsLastGood),
     ("Try again performs a fresh provider load and recovers transient failures", RetryRecoversTransientFailure),
     ("Leaving during retry cancels and drains the runtime-owned library load", BackgroundCancelsRetry),
-    ("Manifest and GBSS package validate", PackageValidates),
+    ("Manifest and WRSS package validate", PackageValidates),
     ("Games and Apps internals remain split by stable responsibility", ResponsibilitySplitContract),
     ("Pure presentation serializes identically for repeated immutable input", PurePresentationIsDeterministic),
 };
@@ -830,7 +830,7 @@ static async Task FullExclusionSetRefusesRemoval()
     var snapshot = Snapshot(widget, 214);
     Assert.Contains("previously excluded", Text(snapshot.Root, "games.toast.message").Text!);
     Assert.True(Nodes(snapshot.Root).Single(node => node.Id == "games.toast")
-        .StyleClasses.Contains("gbar-toast--warning", StringComparer.Ordinal));
+        .StyleClasses.Contains("wrail-toast--warning", StringComparer.Ordinal));
     await Background(widget);
 }
 
@@ -897,7 +897,7 @@ static async Task SharedStateSurfaces()
     var loadingWidget = Create(loadingHost);
     var initial = Snapshot(loadingWidget, 230);
     Assert.True(Nodes(initial.Root).Single(node => node.Id == "games.state")
-        .StyleClasses.Contains("gbar-card", StringComparer.Ordinal));
+        .StyleClasses.Contains("wrail-card", StringComparer.Ordinal));
     Assert.Equal<string?>(null, initial.InitialFocusId);
 
     await Interactive(loadingWidget);
@@ -910,7 +910,7 @@ static async Task SharedStateSurfaces()
     await WaitUntil(() => loadingWidget.ViewState == GamesAppsViewState.Ready);
     var empty = Snapshot(loadingWidget, 232);
     var emptySurface = Nodes(empty.Root).Single(node => node.Id == "games.state");
-    Assert.True(emptySurface.StyleClasses.Contains("gbar-empty-state", StringComparer.Ordinal));
+    Assert.True(emptySurface.StyleClasses.Contains("wrail-empty-state", StringComparer.Ordinal));
     var add = Buttons(emptySurface).Single(button => button.ActionId == "games.open-catalog");
     Assert.Equal(add.Id, empty.InitialFocusId);
     Assert.Equal("Add applications", add.Text);
@@ -927,7 +927,7 @@ static async Task SharedStateSurfaces()
     await WaitUntil(() => failureWidget.ViewState == GamesAppsViewState.ServiceUnavailable);
     var failure = Snapshot(failureWidget, 233);
     var alert = Nodes(failure.Root).Single(node => node.Id == "games.state");
-    Assert.True(alert.StyleClasses.Contains("gbar-alert", StringComparer.Ordinal));
+    Assert.True(alert.StyleClasses.Contains("wrail-alert", StringComparer.Ordinal));
     var retry = Buttons(alert).Single(button => button.ActionId == "games.retry");
     Assert.Equal(retry.Id, failure.InitialFocusId);
     Assert.False(System.Text.Json.JsonSerializer.Serialize(failure)
@@ -1616,7 +1616,7 @@ static async Task FailedLaunchKeepsOrder()
     Assert.True(selectedBeta.IsSelected == true);
     Assert.Contains("App library unavailable", Text(failed.Root, "games.status").Text!);
     Assert.True(Nodes(failed.Root).Single(node => node.Id == "games.toast")
-        .StyleClasses.Contains("gbar-toast--danger", StringComparer.Ordinal));
+        .StyleClasses.Contains("wrail-toast--danger", StringComparer.Ordinal));
     await Background(widget);
 }
 
@@ -2676,18 +2676,18 @@ static Task PackageValidates()
         "system.apps.library.launch.v1",
         "system.apps.running.read.v1",
     ], manifest.OptionalPermissions);
-    var package = GbssPackageLoader.Load("styles/default.gbss", new GbssFileSourceProvider(root));
-    var compiled = GbssThemeCompiler.Compile(package);
+    var package = WrssPackageLoader.Load("styles/default.wrss", new WrssFileSourceProvider(root));
+    var compiled = WrssThemeCompiler.Compile(package);
     Assert.True(compiled.IsValid, string.Join(Environment.NewLine, compiled.Diagnostics));
-    var stateTitle = compiled.Theme!.Resolve(new GbssElement(
+    var stateTitle = compiled.Theme!.Resolve(new WrssElement(
         "text", StyleClasses: new HashSet<string>(["games-state-title"])))!;
-    var stateHelp = compiled.Theme.Resolve(new GbssElement(
+    var stateHelp = compiled.Theme.Resolve(new WrssElement(
         "text", StyleClasses: new HashSet<string>(["games-state-help"])))!;
-    var rootStyle = compiled.Theme.Resolve(new GbssElement(
+    var rootStyle = compiled.Theme.Resolve(new WrssElement(
         "stack", StyleClasses: new HashSet<string>(["games-apps-widget"])))!;
-    var contentStyle = compiled.Theme.Resolve(new GbssElement(
+    var contentStyle = compiled.Theme.Resolve(new WrssElement(
         "stack", StyleClasses: new HashSet<string>(["games-content"])))!;
-    var scrollStyle = compiled.Theme.Resolve(new GbssElement(
+    var scrollStyle = compiled.Theme.Resolve(new WrssElement(
         "scroll", StyleClasses: new HashSet<string>(["games-library-scroll"])))!;
     Assert.Equal("0", stateTitle.Get("flex-shrink")?.Text);
     Assert.Equal("center", stateTitle.Get("text-align")?.Text);

@@ -40,8 +40,8 @@ a fresh private diagnostics companion only when all of these trusted catalog
 facts match:
 
 - widget ID `settings`;
-- package ID `org.gbar.firstparty.settings`;
-- publisher ID `org.gbar.firstparty`;
+- package ID `widgetrail.firstparty.settings`;
+- publisher ID `widgetrail.firstparty`;
 - trusted Job-only worker policy;
 - no declared platform capabilities.
 

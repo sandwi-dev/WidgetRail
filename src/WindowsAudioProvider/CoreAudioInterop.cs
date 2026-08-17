@@ -1,6 +1,6 @@
 using System.Runtime.InteropServices;
 
-namespace GameBarAlternative.WindowsAudioProvider;
+namespace WidgetRail.WindowsAudioProvider;
 
 internal static class CoreAudioInterop
 {

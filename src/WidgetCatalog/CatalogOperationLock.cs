@@ -1,4 +1,4 @@
-namespace GameBarAlternative.WidgetCatalog;
+namespace WidgetRail.WidgetCatalog;
 
 internal sealed class CatalogOperationLock
 {

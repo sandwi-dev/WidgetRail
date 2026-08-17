@@ -1,8 +1,8 @@
-using GameBarAlternative.WidgetCatalog;
-using GameBarAlternative.WidgetProtocol;
-using GameBarAlternative.WidgetSdk;
+using WidgetRail.WidgetCatalog;
+using WidgetRail.WidgetProtocol;
+using WidgetRail.WidgetSdk;
 
-namespace GameBarAlternative.FirstPartyWidgets.Settings;
+namespace WidgetRail.FirstPartyWidgets.Settings;
 
 /// <summary>Pure snapshot-only composition for installed-widget Settings pages.</summary>
 internal static class SettingsInstalledWidgetPresentation
@@ -41,7 +41,7 @@ internal static class SettingsInstalledWidgetPresentation
                 .Disabled(!valid).Busy(busy)
                 .Classes("setting-row", "primary-button"),
             UI.Text(
-                    "Choose one local .gbarwidget in the host picker. Successful packages are installed disabled for review; the selected path is never shared with this widget.",
+                    "Choose one local .wrwidget in the host picker. Successful packages are installed disabled for review; the selected path is never shared with this widget.",
                     "installed.install-local.help",
                     "Local widget installation safety")
                 .Classes("page-help"),
@@ -253,7 +253,7 @@ internal static class SettingsInstalledWidgetPresentation
                         "installed.details.optional-permissions", "Optional capabilities")
                         .Classes("page-help"),
                     UI.Text(
-                        "Included with Game Bar Alternative. Built-in widgets are updated with the app and cannot be disabled or version-managed here.",
+                        "Included with WidgetRail. Built-in widgets are updated with the app and cannot be disabled or version-managed here.",
                         "installed.details.status", "Built-in widget management status")
                         .Classes("page-help"),
                     UI.Button(

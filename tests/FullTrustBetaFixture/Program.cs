@@ -1,5 +1,5 @@
-using GameBarAlternative.WidgetRuntime;
-using GameBarAlternative.WidgetSdk;
+using WidgetRail.WidgetRuntime;
+using WidgetRail.WidgetSdk;
 
 return await WidgetApplicationBootstrap.RunAsync(args, () => new BetaWidget());
 

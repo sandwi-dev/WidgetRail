@@ -1,6 +1,6 @@
 using System.Text.Json;
 
-namespace GameBarAlternative.SpotifyPlayback;
+namespace WidgetRail.SpotifyPlayback;
 
 public static class SpotifyPlaybackProtocol
 {

@@ -1,7 +1,7 @@
-using GameBarAlternative.WidgetProtocol;
-using GameBarAlternative.WidgetSdk;
+using WidgetRail.WidgetProtocol;
+using WidgetRail.WidgetSdk;
 
-namespace GameBarAlternative.Samples.SpotifyWidget;
+namespace WidgetRail.Samples.SpotifyWidget;
 
 internal static class SpotifyPresentation
 {
@@ -145,7 +145,7 @@ internal static class SpotifyPresentation
                                 "spotify.setup-step-2").Classes("spotify-setup-step"),
                         UI.Text("3. Save only the public Client ID; never enter a Client Secret.",
                                 "spotify.setup-step-3").Classes("spotify-setup-step"),
-                        UI.CodeText("dotnet run --project .\\tools\\GbarCli\\GbarCli.csproj -- config set org.gbar.samples.spotify client-id YOUR_CLIENT_ID --publisher org.gbar.samples",
+                        UI.CodeText("dotnet run --project .\\tools\\WrailCli\\WrailCli.csproj -- config set widgetrail.samples.spotify client-id YOUR_CLIENT_ID --publisher widgetrail.samples",
                                 "spotify.setup-command", "Client ID configuration command")
                             .AddClasses("spotify-setup-command"))
                     .Classes("spotify-setup-card");

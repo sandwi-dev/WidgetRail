@@ -2,14 +2,14 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Security.Cryptography;
 using System.Text;
-using GameBarAlternative.PlatformBroker;
-using GameBarAlternative.WidgetCatalog;
-using GameBarAlternative.WidgetProtocol;
-using GameBarAlternative.WidgetRuntime;
-using GameBarAlternative.WidgetStyling;
-using CatalogService = GameBarAlternative.WidgetCatalog.WidgetCatalog;
+using WidgetRail.PlatformBroker;
+using WidgetRail.WidgetCatalog;
+using WidgetRail.WidgetProtocol;
+using WidgetRail.WidgetRuntime;
+using WidgetRail.WidgetStyling;
+using CatalogService = WidgetRail.WidgetCatalog.WidgetCatalog;
 
-namespace GameBarAlternative.WidgetBridge;
+namespace WidgetRail.WidgetBridge;
 
 public sealed record BridgeQuickActionDescriptor
 {
@@ -99,9 +99,9 @@ internal sealed record ConfiguredWidget
     public WidgetResidencyPolicy ResidencyPolicy { get; init; } = new();
     public IReadOnlyList<BridgeQuickActionDescriptor> QuickActions { get; init; } = [];
     [JsonIgnore]
-    public GbssTheme? CompiledTheme { get; init; }
+    public WrssTheme? CompiledTheme { get; init; }
     [JsonIgnore]
-    public GbssPackageResult StylePackage { get; init; } = new([], []);
+    public WrssPackageResult StylePackage { get; init; } = new([], []);
     [JsonIgnore]
     public string WorkerFingerprint { get; init; } = string.Empty;
     [JsonIgnore]
@@ -118,8 +118,8 @@ internal sealed record ConfiguredWidget
         PinningSupported = PinningSupported,
         AdvancedPresentation = AdvancedPresentation,
         ProtectedWifiPromptSupported =
-            string.Equals(PackageId, "org.gbar.firstparty.network-controls", StringComparison.Ordinal) &&
-            string.Equals(PublisherId, "org.gbar.firstparty", StringComparison.Ordinal) &&
+            string.Equals(PackageId, "widgetrail.firstparty.network-controls", StringComparison.Ordinal) &&
+            string.Equals(PublisherId, "widgetrail.firstparty", StringComparison.Ordinal) &&
             DeclaredCapabilities.Contains(
                 PlatformCapabilities.NetworkWifiConnectV1, StringComparer.Ordinal),
         QuickActions = QuickActions,
@@ -361,9 +361,9 @@ public sealed class BridgeCatalog
                 WidgetEntrypointRuntimes.ResolvePackagePath(manifest.Entrypoint)
                     .Replace('/', Path.DirectorySeparatorChar),
                 packageRoot);
-            var styleFile = widget.ActiveVersion.VerifiedGbssDigests.ContainsKey(
-                "styles/default.gbss")
-                ? "styles/default.gbss"
+            var styleFile = widget.ActiveVersion.VerifiedWrssDigests.ContainsKey(
+                "styles/default.wrss")
+                ? "styles/default.wrss"
                 : null;
             CompiledWidgetStyle style;
             try
@@ -379,7 +379,7 @@ public sealed class BridgeCatalog
                     WorkerExecutable = workerHost,
                     WorkerArguments = [],
                     StyleFile = styleFile,
-                }, packageRoot, widget.ActiveVersion.VerifiedGbssDigests);
+                }, packageRoot, widget.ActiveVersion.VerifiedWrssDigests);
             }
             catch (Exception exception) when (exception is BridgeCatalogException or IOException or UnauthorizedAccessException)
             {
@@ -444,8 +444,8 @@ public sealed class BridgeCatalog
         {
             if (widget.RequiresAppContainer ||
                 !string.Equals(widget.Id, "settings", StringComparison.Ordinal) ||
-                !string.Equals(widget.PackageId, "org.gbar.firstparty.settings", StringComparison.Ordinal) ||
-                !string.Equals(widget.PublisherId, "org.gbar.firstparty", StringComparison.Ordinal))
+                !string.Equals(widget.PackageId, "widgetrail.firstparty.settings", StringComparison.Ordinal) ||
+                !string.Equals(widget.PublisherId, "widgetrail.firstparty", StringComparison.Ordinal))
                 return widget;
             return WithFingerprints(widget with
             {
@@ -512,7 +512,7 @@ public sealed class BridgeCatalog
         };
     }
 
-    private static IEnumerable<string> CanonicalStyle(GbssPackageResult package)
+    private static IEnumerable<string> CanonicalStyle(WrssPackageResult package)
     {
         foreach (var document in package.Documents)
         {
@@ -521,11 +521,11 @@ public sealed class BridgeCatalog
             {
                 switch (statement)
                 {
-                case GbssImport import:
+                case WrssImport import:
                     yield return "import";
                     yield return import.Path;
                     break;
-                case GbssRule rule:
+                case WrssRule rule:
                     yield return "rule";
                     foreach (var selector in rule.Selectors) yield return selector.Text;
                     foreach (var declaration in rule.Declarations)
@@ -642,8 +642,8 @@ public sealed class BridgeCatalog
                 $"Bundled widget '{source.Id}' entrypoint is missing.");
         EnsureNoReparsePoints(packageRoot, assembly, "bundled entrypoint");
 
-        var styleFile = File.Exists(Path.Combine(packageRoot, "styles", "default.gbss"))
-            ? "styles/default.gbss"
+        var styleFile = File.Exists(Path.Combine(packageRoot, "styles", "default.wrss"))
+            ? "styles/default.wrss"
             : null;
         var style = CompileTheme(new ConfiguredWidget
         {
@@ -781,29 +781,29 @@ public sealed class BridgeCatalog
         string packageRoot,
         IReadOnlyDictionary<string, string>? expectedContentDigests = null)
     {
-        if (source.StyleFile is null) return new(new GbssPackageResult([], []), null);
-        if (!GbssPackageLoader.IsSafePackagePath(source.StyleFile))
+        if (source.StyleFile is null) return new(new WrssPackageResult([], []), null);
+        if (!WrssPackageLoader.IsSafePackagePath(source.StyleFile))
             throw new BridgeCatalogException(
-                $"Widget '{source.Id}' styleFile must be a normalized package-relative .gbss path.");
-        var package = GbssPackageLoader.Load(
+                $"Widget '{source.Id}' styleFile must be a normalized package-relative .wrss path.");
+        var package = WrssPackageLoader.Load(
             source.StyleFile,
-            new GbssFileSourceProvider(packageRoot, expectedContentDigests));
-        var compiled = GbssThemeCompiler.Compile(package);
+            new WrssFileSourceProvider(packageRoot, expectedContentDigests));
+        var compiled = WrssThemeCompiler.Compile(package);
         if (compiled.IsValid) return new(package, compiled.Theme!);
 
         var diagnostics = compiled.Diagnostics
-            .Where(item => item.Severity == GbssDiagnosticSeverity.Error)
+            .Where(item => item.Severity == WrssDiagnosticSeverity.Error)
             .Take(8)
             .Select(item =>
                 $"{SafeDiagnostic(item.Source)}({item.Line},{item.Column}) {item.Code}: {SafeDiagnostic(item.Message)}")
             .ToArray();
         var summary = diagnostics.Length == 0
-            ? "unknown GBSS compilation error"
+            ? "unknown WRSS compilation error"
             : string.Join("; ", diagnostics);
         throw new BridgeCatalogException($"Widget '{source.Id}' style is invalid: {summary}");
     }
 
-    private sealed record CompiledWidgetStyle(GbssPackageResult Package, GbssTheme? Theme);
+    private sealed record CompiledWidgetStyle(WrssPackageResult Package, WrssTheme? Theme);
 
     private sealed class BridgeContentLease(InstalledPackageLaunchLease lease)
         : IWidgetProcessContentLease

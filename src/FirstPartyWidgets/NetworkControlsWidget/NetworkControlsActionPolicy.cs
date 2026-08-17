@@ -1,4 +1,4 @@
-namespace GameBarAlternative.FirstPartyWidgets.NetworkControls;
+namespace WidgetRail.FirstPartyWidgets.NetworkControls;
 
 internal enum NetworkControlsAction
 {

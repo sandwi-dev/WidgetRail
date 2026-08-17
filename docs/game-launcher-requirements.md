@@ -10,7 +10,7 @@ behaviors remain the compatibility baseline described in the
 [current Game Launcher reference](game-launcher.md).
 
 The expanded product is a console-like home for a Windows game collection that
-opens inside Game Bar Alternative. It should make a large, mixed-store library
+opens inside WidgetRail. It should make a large, mixed-store library
 feel coherent without turning a sandboxed widget into a desktop store client or
 giving themes code execution.
 
@@ -27,7 +27,7 @@ giving themes code execution.
   behind separately reviewed broker contracts.
 - Add first-class, per-launcher **Launcher Experience Packs**. A pack may
   compose host-owned semantic launcher slots inside a validated responsive
-  layout, supply typed GBSS, sealed local presentation assets, and bounded
+  layout, supply typed WRSS, sealed local presentation assets, and bounded
   parameters. It cannot define actions or data access, nor contain HTML,
   JavaScript, native code, arbitrary shaders, or remote scripts.
 - Treat One Game Launcher's MYUI as evidence that users value complete layout
@@ -107,7 +107,7 @@ Heroic also demonstrates several operational behaviors worth carrying forward:
 | Persistent sequential download queue with pause/resume/cancel and automatic offline pause ([`downloadqueue.ts`](https://github.com/Heroic-Games-Launcher/HeroicGamesLauncher/blob/37a9bef678a837240477e97b708069dab4517666/src/backend/downloadmanager/downloadqueue.ts)) | Provide one host-owned operations queue that survives overlay close/restart and reconciles source truth. | The widget is a projection of queue state, not its durable owner. |
 | Console Mode and install overlay | Make controller navigation the primary UI contract for every launcher route. | Use the existing native declarative renderer, input scopes, UI Automation, and host focus ownership instead of browser focus/gamepad emulation. |
 | `heroic://launch` protocol and shortcuts ([`protocol.ts`](https://github.com/Heroic-Games-Launcher/HeroicGamesLauncher/blob/37a9bef678a837240477e97b708069dab4517666/src/backend/protocol.ts)) | Allow host-owned dashboard shortcuts and future deep links to resolve one exact SavedId. | Never accept a theme-authored URL or launch based on title-only lookup. External protocol activation is a separate security review. |
-| Built-in theme variables plus user-selected CSS files ([`ThemeSelector`](https://github.com/Heroic-Games-Launcher/HeroicGamesLauncher/blob/37a9bef678a837240477e97b708069dab4517666/src/frontend/components/UI/ThemeSelector/index.tsx)) | Expose semantic launcher roles, variables, layout parameters, and deterministic preview tooling. | Retain typed GBSS and sealed packages; do not load arbitrary CSS or browser content. |
+| Built-in theme variables plus user-selected CSS files ([`ThemeSelector`](https://github.com/Heroic-Games-Launcher/HeroicGamesLauncher/blob/37a9bef678a837240477e97b708069dab4517666/src/frontend/components/UI/ThemeSelector/index.tsx)) | Expose semantic launcher roles, variables, layout parameters, and deterministic preview tooling. | Retain typed WRSS and sealed packages; do not load arbitrary CSS or browser content. |
 | Windows disk-space and writable-location checks ([`windows.ts`](https://github.com/Heroic-Games-Launcher/HeroicGamesLauncher/blob/37a9bef678a837240477e97b708069dab4517666/src/backend/utils/filesystem/windows.ts)) | Validate space, target support, and permissions before admitting an install or move. | The trusted operation owner performs checks and returns a sanitized result; PowerShell text is not a public provider contract. |
 
 Heroic's current README summarizes the mature feature envelope—login, install,
@@ -493,9 +493,9 @@ from focus, actions, hit testing, and accessibility rather than merely hidden.
 ## Launcher Experience Packs
 
 A Launcher Experience Pack is a new, launcher-specific data package. It is not
-the existing global `.gbartheme`, and installing one must not change the shell,
+the existing global `.wrtheme`, and installing one must not change the shell,
 Settings, or another widget. The implemented local archive extension is
-`.gbarlauncher` with an
+`.wrlauncher` with an
 exact ID/version selection stored under Game Launcher's public configuration.
 
 ### Pack composition
@@ -505,7 +505,7 @@ An initial pack contains:
 ```text
 launcher.json
 layouts/launcher-layout.json
-styles/launcher.gbss
+styles/launcher.wrss
 assets/preview.png
 assets/background.png        # optional
 assets/background-poster.png # required if motion media is added later
@@ -523,7 +523,7 @@ and equivalent to this closed shape:
   "version": "1.0.0",
   "layoutPreset": "hero-rail",
   "compositionFile": "layouts/launcher-layout.json",
-  "styleFile": "styles/launcher.gbss",
+  "styleFile": "styles/launcher.wrss",
   "previewFile": "assets/preview.png",
   "parameters": {
     "tileSize": "large",
@@ -615,9 +615,9 @@ remove product authority.
 The required launcher cascade, from lowest to highest, is:
 
 1. built-in platform baseline;
-2. Game Launcher authored GBSS;
+2. Game Launcher authored WRSS;
 3. selected global user theme;
-4. selected Launcher Experience Pack GBSS;
+4. selected Launcher Experience Pack WRSS;
 5. launcher user adjustments such as accent/background override; and
 6. host accessibility policy.
 
@@ -667,9 +667,9 @@ accepted; raising package limits is not implicit permission to add media.
 
 ### Authoring and recovery
 
-- **GL-THEME-007 (M1):** `gbar launcher-theme new`, `validate`, `preview`,
+- **GL-THEME-007 (M1):** `wrail launcher-theme new`, `validate`, `preview`,
   `pack`, `inspect`, `install`, `list`, and `remove` must share the production
-  manifest, GBSS, asset, digest, and catalog validators.
+  manifest, WRSS, asset, digest, and catalog validators.
 - **GL-THEME-008 (M1):** Packing is deterministic; installed ID/version content
   is immutable; remote install requires an exact release asset and independently
   obtained SHA-256 as the current theme workflow does.

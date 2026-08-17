@@ -6,6 +6,6 @@
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
   </PropertyGroup>
   <ItemGroup>
-    <ProjectReference Include="..\..\tools\GbarCli\GbarCli.csproj" />
+    <ProjectReference Include="..\..\tools\WrailCli\WrailCli.csproj" />
   </ItemGroup>
 </Project>

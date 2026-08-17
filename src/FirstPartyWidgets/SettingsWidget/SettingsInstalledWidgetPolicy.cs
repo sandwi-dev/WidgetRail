@@ -1,9 +1,9 @@
-using GameBarAlternative.WidgetCatalog;
-using GameBarAlternative.WidgetProtocol;
-using GameBarAlternative.WidgetSdk;
-using GameBarAlternative.PlatformDiagnostics;
+using WidgetRail.WidgetCatalog;
+using WidgetRail.WidgetProtocol;
+using WidgetRail.WidgetSdk;
+using WidgetRail.PlatformDiagnostics;
 
-namespace GameBarAlternative.FirstPartyWidgets.Settings;
+namespace WidgetRail.FirstPartyWidgets.Settings;
 
 internal sealed record SettingsInstalledWidgetState(
     WidgetCatalogSnapshot Catalog,

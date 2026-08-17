@@ -1,9 +1,9 @@
-using GameBarAlternative.Samples.SpotifyWidget;
-using GameBarAlternative.SpotifyPlayback;
+using WidgetRail.Samples.SpotifyWidget;
+using WidgetRail.SpotifyPlayback;
 using SpotifyLocalPlaybackState =
-    GameBarAlternative.Samples.SpotifyWidget.SpotifyLocalPlaybackState;
+    WidgetRail.Samples.SpotifyWidget.SpotifyLocalPlaybackState;
 
-namespace GameBarAlternative.WindowsSpotifyProvider;
+namespace WidgetRail.WindowsSpotifyProvider;
 
 internal sealed record SpotifyLocalPlaybackStartResult(
     string SpotifyDeviceId,
@@ -15,7 +15,7 @@ internal sealed record SpotifyLocalPlaybackStartResult(
 /// </summary>
 internal sealed class SpotifyLocalPlaybackManager : IAsyncDisposable
 {
-    internal const string PublicDeviceId = "gbar-local-playback";
+    internal const string PublicDeviceId = "wrail-local-playback";
     internal const string DeviceName = "Spotify on Game Bar";
 
     private static readonly IReadOnlyCollection<string> RequiredScopes =
@@ -337,7 +337,7 @@ internal sealed class SpotifyLocalPlaybackManager : IAsyncDisposable
                 break;
             case "player_state_changed":
                 var playback = SpotifyPlaybackProtocolCodec
-                    .DecodePayload<GameBarAlternative.SpotifyPlayback.SpotifyLocalPlaybackState>(
+                    .DecodePayload<WidgetRail.SpotifyPlayback.SpotifyLocalPlaybackState>(
                         value.Payload);
                 if (playback.IsAvailable)
                     SetState(_owner, SpotifyLocalPlaybackState.Active,

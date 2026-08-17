@@ -41,7 +41,7 @@ while ($directories.Count -ne 0) {
             $directories.Push($entryPath)
             continue
         }
-        if ([IO.Path]::GetExtension($entryPath).Equals('.gbarwidget', [StringComparison]::OrdinalIgnoreCase)) {
+        if ([IO.Path]::GetExtension($entryPath).Equals('.wrwidget', [StringComparison]::OrdinalIgnoreCase)) {
             if ($packages.Count -eq $MaximumFiles) {
                 throw "Package provenance exceeds the $MaximumFiles-file evidence limit."
             }

@@ -1,7 +1,7 @@
 {
   "manifestVersion": 1,
-  "id": "org.gbar.firstparty.audio-mixer",
-  "publisher": "org.gbar.firstparty",
+  "id": "widgetrail.firstparty.audio-mixer",
+  "publisher": "widgetrail.firstparty",
   "name": "Audio Mixer",
   "version": "0.1.0",
   "hostApi": {
@@ -11,7 +11,7 @@
   "entrypoint": {
     "runtime": "dotnet-worker",
     "assembly": "payload/AudioMixerWidget.dll",
-    "type": "GameBarAlternative.FirstPartyWidgets.AudioMixer.AudioMixerWidget"
+    "type": "WidgetRail.FirstPartyWidgets.AudioMixer.AudioMixerWidget"
   },
   "presentation": { "icon": "volume" },
   "permissions": [

@@ -1,6 +1,6 @@
 using System.Threading.Channels;
-using GameBarAlternative.WidgetProtocol;
-using GameBarAlternative.WidgetSdk;
+using WidgetRail.WidgetProtocol;
+using WidgetRail.WidgetSdk;
 
 internal static class TileComponentTests
 {
@@ -37,7 +37,7 @@ internal static class TileComponentTests
         True(node.IsFocusable, "Busy tiles must remain controller-focusable.");
         Equal("app.discord", node.Focus!.Down);
         Equal("toggle-playback", node.Shortcuts.Single().ActionId);
-        True(new[] { "gbar-action-surface", "gbar-tile", "gbar-media-tile" }
+        True(new[] { "wrail-action-surface", "wrail-tile", "wrail-media-tile" }
                 .SequenceEqual(node.StyleClasses),
             "Media tile root classes changed.");
         True(new[] { "media.current.artwork", "media.current.content" }
@@ -82,7 +82,7 @@ internal static class TileComponentTests
         Equal(ViewNodeKind.Image, remoteArt.Kind);
         Equal("https://cdn.example.test/icons/disaster-crew.png", remoteArt.ImageSource);
         Equal(ImageFit.Cover, remoteArt.ImageFit);
-        True(remoteArt.StyleClasses.Contains("gbar-app-tile__artwork"),
+        True(remoteArt.StyleClasses.Contains("wrail-app-tile__artwork"),
             "App artwork lacks its semantic class.");
 
         var inlineArt = Find(snapshot.Root, "app.terminal.artwork");

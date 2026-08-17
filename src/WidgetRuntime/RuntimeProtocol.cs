@@ -1,10 +1,10 @@
 using System.Buffers.Binary;
 using System.Text.Json;
 using System.Text.Json.Serialization;
-using GameBarAlternative.WidgetProtocol;
-using GameBarAlternative.WidgetSdk;
+using WidgetRail.WidgetProtocol;
+using WidgetRail.WidgetSdk;
 
-namespace GameBarAlternative.WidgetRuntime;
+namespace WidgetRail.WidgetRuntime;
 
 internal static class WidgetRuntimeProtocol
 {
@@ -51,8 +51,8 @@ internal sealed record RenderPayload
     public bool RequireCheckpoint { get; init; } = true;
 }
 internal sealed record WidgetRuntimePresentation(
-    GameBarAlternative.WidgetProtocol.ViewSnapshot Snapshot,
-    GameBarAlternative.WidgetProtocol.PresentationUpdateBatch? Update);
+    WidgetRail.WidgetProtocol.ViewSnapshot Snapshot,
+    WidgetRail.WidgetProtocol.PresentationUpdateBatch? Update);
 internal sealed record InvalidationPayload(long Revision);
 internal sealed record ActionAdmissionPayload(WidgetOperationAdmission Admission);
 internal sealed record ControllerActionFailurePayload(

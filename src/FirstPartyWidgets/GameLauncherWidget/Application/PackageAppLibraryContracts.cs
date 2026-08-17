@@ -1,6 +1,6 @@
 using System.Text.Json.Serialization;
 
-namespace GameBarAlternative.PlatformBroker;
+namespace WidgetRail.PlatformBroker;
 
 public sealed class BrokerException(
     string code,

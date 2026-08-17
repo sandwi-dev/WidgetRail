@@ -25,9 +25,9 @@ $publishRoot = Join-Path $artifactsRoot 'application-publish'
 $buildGraphRoot = Join-Path $artifactsRoot 'build-graph'
 $manifestPath = Join-Path $widgetRoot 'community-manifest.json'
 $manifest = Get-Content -LiteralPath $manifestPath -Raw | ConvertFrom-Json
-$packagePath = Join-Path $artifactsRoot "$($manifest.id)-$($manifest.version).gbarwidget"
+$packagePath = Join-Path $artifactsRoot "$($manifest.id)-$($manifest.version).wrwidget"
 $applicationProject = Join-Path $widgetRoot 'Application\GameLauncherApplication.csproj'
-$cliProject = Join-Path $repositoryRoot 'tools\GbarCli\GbarCli.csproj'
+$cliProject = Join-Path $repositoryRoot 'tools\WrailCli\WrailCli.csproj'
 $deterministicPathMap = "$buildGraphRoot=/_/build%2C$repositoryRoot=/_/"
 
 function Assert-ChildPath {
@@ -97,8 +97,8 @@ Get-ChildItem -LiteralPath $publishRoot -File -Recurse | Where-Object {
 }
 Copy-Item -LiteralPath $manifestPath `
     -Destination (Join-Path $stagingRoot 'manifest.json')
-Copy-Item -LiteralPath (Join-Path $widgetRoot 'styles\default.gbss') `
-    -Destination (Join-Path $stagingRoot 'styles\default.gbss')
+Copy-Item -LiteralPath (Join-Path $widgetRoot 'styles\default.wrss') `
+    -Destination (Join-Path $stagingRoot 'styles\default.wrss')
 
 $stagingPrefix = $stagingRoot.TrimEnd(
     [System.IO.Path]::DirectorySeparatorChar) +
@@ -114,7 +114,7 @@ $required = @(
     'payload\WidgetSdk.dll',
     'payload\WidgetProtocol.dll',
     'payload\Microsoft.Windows.SDK.NET.dll',
-    'styles\default.gbss'
+    'styles\default.wrss'
 )
 $missing = @($required | Where-Object { $_ -notin $stagedFiles })
 if ($missing.Count -ne 0) {
@@ -135,12 +135,12 @@ if (Test-Path -LiteralPath $packagePath) {
 & dotnet run --project $cliProject --configuration $Configuration `
     --no-launch-profile --property:UseSharedCompilation=false `
     --property:BuildInParallel=false -- validate $stagingRoot
-if ($LASTEXITCODE -ne 0) { throw 'gbar validate rejected Game Launcher.' }
+if ($LASTEXITCODE -ne 0) { throw 'wrail validate rejected Game Launcher.' }
 & dotnet run --project $cliProject --configuration $Configuration `
     --no-launch-profile --property:UseSharedCompilation=false `
     --property:BuildInParallel=false -- pack $stagingRoot --output $packagePath
 if ($LASTEXITCODE -ne 0 -or -not (Test-Path -LiteralPath $packagePath)) {
-    throw 'gbar pack did not produce Game Launcher.'
+    throw 'wrail pack did not produce Game Launcher.'
 }
 
 if ($Install) {

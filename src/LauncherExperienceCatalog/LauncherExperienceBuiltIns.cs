@@ -1,10 +1,10 @@
 using System.Collections.ObjectModel;
 
-namespace GameBarAlternative.LauncherExperienceCatalog;
+namespace WidgetRail.LauncherExperienceCatalog;
 
 public static class LauncherExperienceBuiltIns
 {
-    public const string Publisher = "org.gbar.builtin";
+    public const string Publisher = "widgetrail.builtin";
     public const string Version = "1.0.0";
 
     public static IReadOnlyList<LauncherExperiencePackage> RecoveryPackages { get; } =
@@ -32,7 +32,7 @@ public static class LauncherExperienceBuiltIns
         var descriptor = new LauncherExperienceDescriptor(id, Publisher, name, new Version(1, 0, 0), preset, true, $"builtin:{suffix}:1");
         var manifest = new LauncherExperienceManifest(
             1, id, Publisher, name, descriptor.Version, preset, null,
-            "styles/launcher.gbss", "assets/preview.png", LauncherExperienceParameters.Empty);
+            "styles/launcher.wrss", "assets/preview.png", LauncherExperienceParameters.Empty);
         return new LauncherExperiencePackage(
             descriptor, manifest, recipe, "builtin", Array.AsReadOnly(Array.Empty<string>()));
     }

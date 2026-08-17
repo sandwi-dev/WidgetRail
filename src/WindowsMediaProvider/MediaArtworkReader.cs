@@ -1,7 +1,7 @@
 using Windows.Graphics.Imaging;
 using Windows.Storage.Streams;
 
-namespace GameBarAlternative.WindowsMediaProvider;
+namespace WidgetRail.WindowsMediaProvider;
 
 /// <summary>
 /// Converts an untrusted GSMTC thumbnail into the bounded inline-PNG profile

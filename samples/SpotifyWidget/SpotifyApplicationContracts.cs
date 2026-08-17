@@ -1,4 +1,4 @@
-namespace GameBarAlternative.Samples.SpotifyWidget;
+namespace WidgetRail.Samples.SpotifyWidget;
 
 public static class SpotifyApplicationContract
 {

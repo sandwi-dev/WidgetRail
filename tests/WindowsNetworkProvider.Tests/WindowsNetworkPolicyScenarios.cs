@@ -1,5 +1,5 @@
-using GameBarAlternative.PlatformBroker;
-using GameBarAlternative.WindowsNetworkProvider;
+using WidgetRail.PlatformBroker;
+using WidgetRail.WindowsNetworkProvider;
 using System.Threading.Channels;
 
 internal static class WindowsNetworkPolicyScenarios

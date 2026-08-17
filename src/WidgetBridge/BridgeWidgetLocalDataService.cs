@@ -1,10 +1,10 @@
 using System.Security.Cryptography;
 using System.Text;
-using GameBarAlternative.PlatformBroker;
-using GameBarAlternative.PlatformDiagnostics;
-using GameBarAlternative.WidgetCatalog;
+using WidgetRail.PlatformBroker;
+using WidgetRail.PlatformDiagnostics;
+using WidgetRail.WidgetCatalog;
 
-namespace GameBarAlternative.WidgetBridge;
+namespace WidgetRail.WidgetBridge;
 
 /// <summary>
 /// Trusted, document-blind management projection for the Settings companion.
@@ -177,7 +177,7 @@ internal sealed class BridgeWidgetLocalDataService(
         }
         catch (BridgeProtocolException) when (catalogMonitor is not null)
         {
-            var snapshot = await new GameBarAlternative.WidgetCatalog.WidgetCatalog(
+            var snapshot = await new WidgetRail.WidgetCatalog.WidgetCatalog(
                     catalogMonitor.InstalledCatalogRoot)
                 .DiscoverAsync(cancellationToken).ConfigureAwait(false);
             var installed = snapshot.Widgets.SingleOrDefault(widget => string.Equals(

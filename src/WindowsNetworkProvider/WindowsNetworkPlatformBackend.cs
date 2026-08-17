@@ -1,8 +1,8 @@
 using System.Collections.Concurrent;
 using System.Threading.Channels;
-using GameBarAlternative.PlatformBroker;
+using WidgetRail.PlatformBroker;
 
-namespace GameBarAlternative.WindowsNetworkProvider;
+namespace WidgetRail.WindowsNetworkProvider;
 
 /// <summary>
 /// Event-driven Windows network provider. A dedicated MTA thread owns all native resources;
@@ -464,7 +464,7 @@ public sealed class WindowsNetworkPlatformBackend : INetworkPlatformBrokerBacken
             _ownerThread = new Thread(OwnerThreadMain)
             {
                 IsBackground = true,
-                Name = "GameBarAlternative.Network.MTA",
+                Name = "WidgetRail.Network.MTA",
             };
             Volatile.Write(ref _started, 1);
             _ownerThread.Start();

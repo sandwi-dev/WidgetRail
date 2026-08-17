@@ -1,5 +1,5 @@
 using System.Buffers.Binary;
-using GameBarAlternative.WidgetBridge;
+using WidgetRail.WidgetBridge;
 
 internal static class BridgeEventWriteBoundaryScenarios
 {

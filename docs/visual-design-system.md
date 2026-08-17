@@ -20,7 +20,7 @@ stone accent, small regular-weight type, 10–12 DIP rounding, thin separators,
 and compact controller-safe rhythm. Service widgets may use a scoped brand
 accent—YT Music uses coral-pink—but focus remains a host-owned neutral warm
 white. The goal is familiar interaction, not visual cloning. This shared
-default is implemented in the built-in platform theme and first-party GBSS;
+default is implemented in the built-in platform theme and first-party WRSS;
 the composition blueprints below still include product targets that need
 packaged physical evidence.
 
@@ -112,7 +112,7 @@ cannot replace error/success semantics or the focus ring.
 
 Use `Segoe UI Variable Display` for 24 logical pixels and above, and
 `Segoe UI Variable Text` below 24. Fall back to `Segoe UI`, then the host
-sans-serif. Never package or load a font through GBSS.
+sans-serif. Never package or load a font through WRSS.
 
 | Style | Size / line | Weight | Tracking | Maximum |
 | --- | --- | ---: | ---: | --- |
@@ -142,7 +142,7 @@ immutable, licensed, bounded host asset contract exists.
 `ActionSurface`/`MediaTile`/`AppTile` now have shared public contracts. Games &
 Apps uses the public AppTile and Toast APIs rather than private geometry. Rows
 can wrap responsively without widget-specific layout hacks. Protocol-v8
-`ResponsiveGrid` provides bounded row-major reflow, GBSS supports independent
+`ResponsiveGrid` provides bounded row-major reflow, WRSS supports independent
 per-edge border colors/widths, and `UI.CodeText` supplies controller-neutral
 monospace diagnostics; Settings uses Grid for root categories and CodeText for
 schema/worker failures. The default CodeText family is the single Windows-
@@ -264,7 +264,7 @@ semantic label.
 ## Motion
 
 The implemented declarative renderer animates bounded opacity, scale, and true
-subtree translation for stable nodes from GBSS transition declarations. The
+subtree translation for stable nodes from WRSS transition declarations. The
 host also owns bounded shell/content opacity tracks: open is 140 ms ease-out,
 close is 100 ms ease-in, and a new/replaced widget identity reveals from 0.78
 to 1 over 100 ms ease-out. These tracks retarget without a visible jump, reuse
@@ -296,7 +296,7 @@ opacity fade must not be inferred from the current zero-duration shell path.
 
 ## Accessibility overrides
 
-The host applies these after GBSS, so themes cannot defeat them:
+The host applies these after WRSS, so themes cannot defeat them:
 
 - Text scales: 100%, 115%, 130%, 150%. At 130% and above, media art steps down
   one size; at 150%, metadata/controls may stack and flyouts may use stage
@@ -320,7 +320,7 @@ The host applies these after GBSS, so themes cannot defeat them:
 - All animation and text layout is tested at 720p, 150% text, high contrast,
   reduced motion, and reduced transparency together.
 
-## GBSS expression
+## WRSS expression
 
 The typed property catalog can express the media surfaces without arbitrary
 CSS or asset access:
@@ -362,7 +362,7 @@ button.transport:focused {
 }
 ```
 
-GBSS controls presentation only. The widget protocol supplies verified image
+WRSS controls presentation only. The widget protocol supplies verified image
 content; `object-fit` and `object-position` control already-brokered pixels.
 There is still no `url()`, file path, network fetch, shader, arbitrary
 function, or script value.
@@ -378,5 +378,5 @@ function, or script value.
 - 21:9 and 32:9 keep interaction within the centered 16:9 stage.
 - 150% text produces reflow rather than overlap or silent truncation.
 - Reduced motion/transparency require no alternate widget implementation.
-- Every renderer-used visual value comes from a typed, bounded GBSS value or a
+- Every renderer-used visual value comes from a typed, bounded WRSS value or a
   host-enforced design token.

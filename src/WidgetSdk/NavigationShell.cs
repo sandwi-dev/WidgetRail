@@ -1,6 +1,6 @@
-using GameBarAlternative.WidgetProtocol;
+using WidgetRail.WidgetProtocol;
 
-namespace GameBarAlternative.WidgetSdk;
+namespace WidgetRail.WidgetSdk;
 
 /// <summary>
 /// One logical destination rendered as a compact tab and an expanded rail item.
@@ -134,10 +134,10 @@ public static partial class UI
                     Right: compactIds[(index + 1) % destinations.Count]),
                 StyleClasses =
                 [
-                    "gbar-navigation-shell__compact-item",
+                    "wrail-navigation-shell__compact-item",
                     selected
-                        ? "gbar-navigation-shell__item--selected"
-                        : "gbar-navigation-shell__item--idle",
+                        ? "wrail-navigation-shell__item--selected"
+                        : "wrail-navigation-shell__item--idle",
                 ],
             };
             railButtons[index] = new ButtonElement(
@@ -154,21 +154,21 @@ public static partial class UI
                     Right: expandedEntry),
                 StyleClasses =
                 [
-                    "gbar-navigation-shell__rail-item",
+                    "wrail-navigation-shell__rail-item",
                     selected
-                        ? "gbar-navigation-shell__item--selected"
-                        : "gbar-navigation-shell__item--idle",
+                        ? "wrail-navigation-shell__item--selected"
+                        : "wrail-navigation-shell__item--idle",
                 ],
             };
         }
 
         var compact = new RowElement(ids.Id("compact"), compactButtons)
         {
-            StyleClasses = ["gbar-navigation-shell__compact"],
+            StyleClasses = ["wrail-navigation-shell__compact"],
         }.VisibleWhen(ResponsiveVisibility.CompactOnly);
         var rail = new StackElement(ids.Id("rail"), railButtons)
         {
-            StyleClasses = ["gbar-navigation-shell__rail"],
+            StyleClasses = ["wrail-navigation-shell__rail"],
         }.VisibleWhen(ResponsiveVisibility.ExpandedOnly);
 
         var bodyChildren = new List<WidgetElement> { rail };
@@ -176,12 +176,12 @@ public static partial class UI
         {
             bodyChildren.Add(new StackElement(ids.Id("persistent"), [expandedPane])
             {
-                StyleClasses = ["gbar-navigation-shell__persistent"],
+                StyleClasses = ["wrail-navigation-shell__persistent"],
             }.VisibleWhen(ResponsiveVisibility.ExpandedOnly));
         }
         bodyChildren.Add(new StackElement(ids.Id("content"), [content])
         {
-            StyleClasses = ["gbar-navigation-shell__content"],
+            StyleClasses = ["wrail-navigation-shell__content"],
         });
 
         return new StackElement(id,
@@ -189,11 +189,11 @@ public static partial class UI
             compact,
             new RowElement(ids.Id("body"), bodyChildren)
             {
-                StyleClasses = ["gbar-navigation-shell__body"],
+                StyleClasses = ["wrail-navigation-shell__body"],
             },
         ])
         {
-            StyleClasses = ["gbar-navigation-shell"],
+            StyleClasses = ["wrail-navigation-shell"],
         };
     }
 }

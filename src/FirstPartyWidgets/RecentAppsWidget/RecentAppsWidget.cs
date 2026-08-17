@@ -1,9 +1,9 @@
 using System.Security.Cryptography;
 using System.Text;
-using GameBarAlternative.WidgetProtocol;
-using GameBarAlternative.WidgetSdk;
+using WidgetRail.WidgetProtocol;
+using WidgetRail.WidgetSdk;
 
-namespace GameBarAlternative.FirstPartyWidgets.RecentApps;
+namespace WidgetRail.FirstPartyWidgets.RecentApps;
 
 public enum RecentAppsViewState
 {

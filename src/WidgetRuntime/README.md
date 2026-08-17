@@ -6,7 +6,7 @@ Custom workers must use `WidgetWorkerBootstrap`; do not parse the host command
 line or open runtime/broker pipes directly. A complete executable entrypoint is:
 
 ```csharp
-using GameBarAlternative.WidgetRuntime;
+using WidgetRail.WidgetRuntime;
 
 return await WidgetWorkerBootstrap.RunAsync(args, () => new MyWidget());
 ```
@@ -40,7 +40,7 @@ An explicitly approved full-trust Community application uses the separate
 `WidgetRuntime` assembly or `PlatformBroker`:
 
 ```csharp
-using GameBarAlternative.WidgetRuntime;
+using WidgetRail.WidgetRuntime;
 
 return await WidgetApplicationBootstrap.RunAsync(args, () => new MyWidget());
 ```

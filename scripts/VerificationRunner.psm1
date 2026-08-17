@@ -1,6 +1,6 @@
 Set-StrictMode -Version Latest
 
-if ($null -eq ('GameBarAlternative.Verification.CappedStreamPump' -as [type])) {
+if ($null -eq ('WidgetRail.Verification.CappedStreamPump' -as [type])) {
     Add-Type -TypeDefinition @'
 using System;
 using System.IO;
@@ -8,7 +8,7 @@ using System.Runtime.InteropServices;
 using System.Text;
 using System.Threading.Tasks;
 
-namespace GameBarAlternative.Verification
+namespace WidgetRail.Verification
 {
     public sealed class PumpResult
     {
@@ -198,7 +198,7 @@ function Invoke-BoundedVerificationProcess {
     $startInfo.CreateNoWindow = $true
     $startInfo.RedirectStandardOutput = $true
     $startInfo.RedirectStandardError = $true
-    $startInfo.Environment['GBA_VERIFICATION_JOB'] = $jobName
+    $startInfo.Environment['WRAIL_VERIFICATION_JOB'] = $jobName
     foreach ($argument in @('-NoProfile', '-File', $launcherPath, '-RequestPath', $requestPath,
             '-StartEventName', $startEventName)) {
         [void]$startInfo.ArgumentList.Add($argument)
@@ -214,10 +214,10 @@ function Invoke-BoundedVerificationProcess {
     try {
         if (-not $process.Start()) { throw "Verification step '$Id' did not start." }
         $started = $true
-        $job = [GameBarAlternative.Verification.ProcessJob]::new($process, $jobName)
-        $stdoutTask = [GameBarAlternative.Verification.CappedStreamPump]::PumpAsync(
+        $job = [WidgetRail.Verification.ProcessJob]::new($process, $jobName)
+        $stdoutTask = [WidgetRail.Verification.CappedStreamPump]::PumpAsync(
             $process.StandardOutput, $stdoutPath, $MaximumOutputBytes)
-        $stderrTask = [GameBarAlternative.Verification.CappedStreamPump]::PumpAsync(
+        $stderrTask = [WidgetRail.Verification.CappedStreamPump]::PumpAsync(
             $process.StandardError, $stderrPath, $MaximumOutputBytes)
         [void]$startEvent.Set()
         if (-not $process.WaitForExit($TimeoutSeconds * 1000)) {

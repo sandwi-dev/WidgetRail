@@ -1,9 +1,9 @@
 using System.IO.Compression;
 using System.Reflection;
-using GameBarAlternative.WidgetProtocol;
-using GameBarAlternative.WidgetSdk;
+using WidgetRail.WidgetProtocol;
+using WidgetRail.WidgetSdk;
 
-namespace GameBarAlternative.Tests.AdvancedPresentationCommunityFixture;
+namespace WidgetRail.Tests.AdvancedPresentationCommunityFixture;
 
 internal static class Program
 {
@@ -19,7 +19,7 @@ internal static class Program
         new(
             "net.unrelated.bravo.deck", "net.unrelated", "Bravo Deck",
             "BravoDeck.dll",
-            "GameBarAlternative.Tests.AdvancedPresentationCommunityFixture.BravoDeckWidget"),
+            "WidgetRail.Tests.AdvancedPresentationCommunityFixture.BravoDeckWidget"),
     ];
 
     public static async Task<int> Main(string[] args)
@@ -41,18 +41,18 @@ internal static class Program
         Directory.CreateDirectory(temporaryRoot);
         try
         {
-            var catalog = new GameBarAlternative.WidgetCatalog.WidgetCatalog(catalogRoot);
+            var catalog = new WidgetRail.WidgetCatalog.WidgetCatalog(catalogRoot);
             var candidate = await catalog.InstallAsync(candidatePackage)
                 .ConfigureAwait(false);
             if (candidate.Manifest.Id !=
-                "org.gbar.community.reference.game-launcher")
+                "widgetrail.community.reference.game-launcher")
                 throw new InvalidOperationException(
                     "The supplied candidate was not the supported Game Launcher export.");
             await catalog.SetEnabledAsync(candidate.Manifest.Id, true)
                 .ConfigureAwait(false);
             foreach (var package in Packages)
             {
-                var archivePath = Path.Combine(temporaryRoot, $"{package.Id}.gbarwidget");
+                var archivePath = Path.Combine(temporaryRoot, $"{package.Id}.wrwidget");
                 using (var archive = ZipFile.Open(archivePath, ZipArchiveMode.Create))
                 {
                     WriteText(archive, "manifest.json", $$"""
@@ -89,7 +89,7 @@ internal static class Program
                     AddRuntimeAssembly(archive, typeof(WidgetSurfaceHints).Assembly.Location);
                     AddRuntimeAssembly(
                         archive,
-                        typeof(GameBarAlternative.WidgetCatalog.WidgetCatalog).Assembly.Location);
+                        typeof(WidgetRail.WidgetCatalog.WidgetCatalog).Assembly.Location);
                 }
                 await catalog.InstallAsync(archivePath).ConfigureAwait(false);
                 await catalog.SetEnabledAsync(package.Id, true).ConfigureAwait(false);

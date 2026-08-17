@@ -1,7 +1,7 @@
 {
   "manifestVersion": 1,
-  "id": "org.gbar.firstparty.games-apps",
-  "publisher": "org.gbar.firstparty",
+  "id": "widgetrail.firstparty.games-apps",
+  "publisher": "widgetrail.firstparty",
   "name": "Games & Apps",
   "version": "0.1.0",
   "hostApi": {
@@ -11,7 +11,7 @@
   "entrypoint": {
     "runtime": "dotnet-worker",
     "assembly": "payload/GamesAppsWidget.dll",
-    "type": "GameBarAlternative.FirstPartyWidgets.GamesApps.GamesAppsWidget"
+    "type": "WidgetRail.FirstPartyWidgets.GamesApps.GamesAppsWidget"
   },
   "presentation": { "icon": "play" },
   "permissions": [

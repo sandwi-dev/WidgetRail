@@ -4,7 +4,7 @@ using System.Runtime.InteropServices;
 using System.Security.Principal;
 using Microsoft.Win32.SafeHandles;
 
-namespace GameBarAlternative.PlatformBroker;
+namespace WidgetRail.PlatformBroker;
 
 /// <summary>
 /// Creates a single-client Windows pipe whose discretionary ACL names only the

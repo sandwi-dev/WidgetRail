@@ -4,12 +4,12 @@ Status: **controller Settings, data-only theme distribution, and the global
 appearance pipeline are implemented**. The first-party Settings worker, strict
 settings store, versioned theme catalog, explicit cascade layers, no-poll
 watcher, last-good revisions, globally layered widget styles, and safe
-`.gbartheme` tooling are covered by Release tests. The native host consumes
+`.wrtheme` tooling are covered by Release tests. The native host consumes
 live shell styles and host-owned interface scale, text scale, backdrop,
 motion, contrast, bold-text, and transparency preferences. The shipped
 `builtin.default` is the shared minimalist warm-graphite baseline for shell,
 SDK semantic components, and first-party widget styles. The embedded selectable
-`org.gbar.builtin.cool-slate` theme exercises the same path with a distinct
+`widgetrail.builtin.cool-slate` theme exercises the same path with a distinct
 navy/slate palette and desaturated blue accent while preserving controller-safe
 geometry and host accessibility policy. Native graphical
 theme preview, signing/revocation, theme removal/update UI, auto-scroll, and
@@ -19,8 +19,8 @@ This page separates three concerns that must not be conflated:
 
 1. A widget supplies semantic UI through the [declarative UI
    contract](declarative-ui.md).
-2. A widget may ship package-relative GBSS for its own nodes through the
-   currently implemented [GBSS styling contract](gbss.md).
+2. A widget may ship package-relative WRSS for its own nodes through the
+   currently implemented [WRSS styling contract](wrss.md).
 3. The global-theme pipeline composes platform, widget, and user layers for
    widget snapshots and publishes a bounded shell appearance consumed by the
    native host.
@@ -31,24 +31,24 @@ Accessibility policy remains host-owned and wins after every theme layer.
 
 | Capability | Status now | Author action today |
 | --- | --- | --- |
-| Validate a widget `.gbss` file | Implemented | Run `gbar validate <style.gbss>`. |
-| Package-relative imports and variables | Implemented | Keep imports inside the widget package and use the GBSS allowlist. |
+| Validate a widget `.wrss` file | Implemented | Run `wrail validate <style.wrss>`. |
+| Package-relative imports and variables | Implemented | Keep imports inside the widget package and use the WRSS allowlist. |
 | Widget-computed `base` and `focused` styles | Implemented | Use semantic roles, stable IDs, and classes; see current renderer limits. |
 | Controller toggle and stepper composites | Implemented | Use `UI.ToggleButton` and `UI.Stepper`; state and persistence remain the caller's responsibility. |
 | Strict appearance settings store | Implemented | The first-party Settings worker persists through it and the shell consumes its bounded appearance revision. |
-| Versioned theme discovery and immutable install | Implemented | Use `gbar theme install`; an existing ID/version is never overwritten. |
-| Exact installed-version management | Implemented | Settings groups versions by theme ID; select a valid exact version or confirm removal of an inactive user version. `gbar theme remove <id> <version>` uses the same policy. |
+| Versioned theme discovery and immutable install | Implemented | Use `wrail theme install`; an existing ID/version is never overwritten. |
+| Exact installed-version management | Implemented | Settings groups versions by theme ID; select a valid exact version or confirm removal of an inactive user version. `wrail theme remove <id> <version>` uses the same policy. |
 | Platform → widget → user cascade | Implemented in bridge snapshots | Explicit user-layer priority beats widget selector specificity. |
 | No-poll reload and last-good revision | Implemented in bridge | `FileSystemWatcher` events are debounced; invalid reloads retain the prior snapshot. |
 | Controller Settings widget | Implemented | Open the first-party Settings card; it uses the generic worker/SDK/renderer path. |
 | Installed widget review/enablement | Implemented | Review read-only Built-in widgets separately from CLI-installed Community packages; only Community packages expose enablement and version management, and enablement remains separate from consent. |
-| Scaffold, validate, preview, pack, inspect, install, list, and remove themes | Implemented | Use the `gbar theme` command group and the data-only `.gbartheme` format. |
+| Scaffold, validate, preview, pack, inspect, install, list, and remove themes | Implemented | Use the `wrail theme` command group and the data-only `.wrtheme` format. |
 | Select a discovered theme | Implemented | Settings pins an exact valid ID/version after controller review. |
 | Native shell appearance | Implemented | `OverlayHost` applies live shell styles, interface scale, shell DirectWrite text scale, backdrop opacity, and motion. Stable declarative nodes interpolate bounded opacity/scale changes only. |
-| Declarative widget text scale | Implemented | The host applies bounded text scale after GBSS resolution and remeasures/reflows generic widget content without compounding inherited `em` sizes. |
+| Declarative widget text scale | Implemented | The host applies bounded text scale after WRSS resolution and remeasures/reflows generic widget content without compounding inherited `em` sizes. |
 | Accessibility preferences UI | Implemented subset | Text scale, motion, System/Standard/High contrast, bold text, and reduced transparency are available; auto-scroll is not. |
 
-## Current contract: widget GBSS
+## Current contract: widget WRSS
 
 The current bridge loads the trusted `styleFile` configured for a widget,
 resolves package-relative imports, compiles the bounded language, and returns
@@ -59,7 +59,7 @@ The native host applies `pressed` only to the exact physically held action and
 cancels/reconciles it across focus, surface, and snapshot changes. Future
 dynamic semantic-state families remain incomplete.
 
-GBSS is deliberately not CSS. It cannot fetch a URL, load a font or file by
+WRSS is deliberately not CSS. It cannot fetch a URL, load a font or file by
 path, execute a script, invoke a command, provide a shader, or create native
 controls. Widget authors should use:
 
@@ -69,7 +69,7 @@ controls. Widget authors should use:
 - host semantic variables with safe fallbacks; and
 - logical, bounded dimensions that can reflow across monitor sizes.
 
-`gbar validate` validates the language and imports. It does not preview the
+`wrail validate` validates the language and imports. It does not preview the
 managed global cascade or prove that every computed state is rendered by the
 current native host.
 
@@ -136,14 +136,14 @@ invalid keys/values, oversize data, and reparse-point paths. It is suitable for
 public integration settings such as an OAuth Client ID; passwords, client
 secrets, refresh/access tokens, and credentials belong in a host-owned vault.
 
-The current local/test workflow is the `gbar config` CLI:
+The current local/test workflow is the `wrail config` CLI:
 
 ```powershell
-gbar config set <package-id> <key> <value> --publisher <publisher-id>
-gbar config get <package-id> <key> --publisher <publisher-id>
-gbar config list <package-id> --publisher <publisher-id>
-gbar config remove <package-id> <key> --publisher <publisher-id>
-gbar config clear <package-id> --publisher <publisher-id>
+wrail config set <package-id> <key> <value> --publisher <publisher-id>
+wrail config get <package-id> <key> --publisher <publisher-id>
+wrail config list <package-id> --publisher <publisher-id>
+wrail config remove <package-id> <key> --publisher <publisher-id>
+wrail config clear <package-id> --publisher <publisher-id>
 ```
 
 `--settings-root <path>` isolates tests. The CLI rejects key names that look
@@ -335,20 +335,20 @@ separate platform limitation; the widget itself performs no background loop.
 
 ## Theme authoring and distribution
 
-`gbar theme` is the supported data-only theme workflow:
+`wrail theme` is the supported data-only theme workflow:
 
 ```powershell
-gbar theme new "Slate" --id dev.example.slate --publisher dev.example
-gbar theme validate .\Slate
-gbar theme preview .\Slate
-gbar theme pack .\Slate --output .\dev.example.slate-1.2.3.gbartheme
-gbar theme inspect .\dev.example.slate-1.2.3.gbartheme
-gbar theme install .\dev.example.slate-1.2.3.gbartheme
-gbar theme list
-gbar theme remove dev.example.slate 1.2.3
+wrail theme new "Slate" --id dev.example.slate --publisher dev.example
+wrail theme validate .\Slate
+wrail theme preview .\Slate
+wrail theme pack .\Slate --output .\dev.example.slate-1.2.3.wrtheme
+wrail theme inspect .\dev.example.slate-1.2.3.wrtheme
+wrail theme install .\dev.example.slate-1.2.3.wrtheme
+wrail theme list
+wrail theme remove dev.example.slate 1.2.3
 ```
 
-A public package has exact-case root `theme.json` plus only the UTF-8 `.gbss`
+A public package has exact-case root `theme.json` plus only the UTF-8 `.wrss`
 files reachable from its entry file. Its strict schema-version-2 manifest is:
 
 ```json
@@ -358,13 +358,13 @@ files reachable from its entry file. Its strict schema-version-2 manifest is:
   "publisher": "dev.example",
   "name": "Slate",
   "version": "1.2.3",
-  "entryFile": "theme.gbss"
+  "entryFile": "theme.wrss"
 }
 ```
 
 The publisher is a lowercase reverse-DNS claim. The theme ID must belong to
 that namespace, the version must use canonical dotted numeric notation, and
-the entry must be a normalized package-relative `.gbss` path. Runtime discovery
+the entry must be a normalized package-relative `.wrss` path. Runtime discovery
 continues to read legacy schema-version-1 local directories, but public packing
 accepts schema version 2 only.
 
@@ -380,7 +380,7 @@ Installation revalidates through the production catalog/compiler, stages on
 the settings volume under a random path while holding a bounded cross-process
 lock, and atomically publishes `%LOCALAPPDATA%\GameBarAlternative\themes\<id>\<version>`.
 An existing version is never overwritten. Remote installation accepts absolute
-HTTPS or `github:owner/repository@tag/asset.gbartheme` and requires a pinned
+HTTPS or `github:owner/repository@tag/asset.wrtheme` and requires a pinned
 SHA-256 digest; the GitHub shorthand names one exact release asset and never
 uses `latest`, clones source, or builds a repository. Select the installed
 version through Settings → Appearance. Settings and `theme remove` share the
@@ -393,10 +393,10 @@ content or the appearance record.
 The package boundary rejects traversal, unsafe Windows names, backslashes,
 non-NFC or case-colliding paths, explicit directory and symlink entries,
 reparse-point source/install paths, malformed/duplicate/unknown JSON, orphan
-GBSS, invalid imports/types/variables, and any script, assembly, executable,
+WRSS, invalid imports/types/variables, and any script, assembly, executable,
 font, image, or arbitrary asset. Current package limits are 65 files, 240
 characters per path, 4 MiB per entry, 4 MiB expanded total, and a 4 MiB
-archive; tighter GBSS compiler limits still apply.
+archive; tighter WRSS compiler limits still apply.
 
 Validation establishes bounded data and a digest establishes exact bytes.
 Neither authenticates the publisher. There is no signature, revocation,
@@ -411,7 +411,7 @@ plain import order. The implemented managed precedence, from lowest to highest,
 is:
 
 1. built-in platform theme;
-2. the widget package's own GBSS; and
+2. the widget package's own WRSS; and
 3. the selected user theme.
 
 Layer precedence must be deterministic and stronger than selector specificity:
@@ -431,7 +431,7 @@ style policy, and applies supported colors, typography, radii, and focus
 outlines.
 
 The native resolver applies host-owned accessibility policy after computed
-styles for both shell and generic widget nodes. No GBSS selector can bypass
+styles for both shell and generic widget nodes. No WRSS selector can bypass
 text scale, reduced motion/transparency, bold-text minimum weight, or the
 high-contrast focus/text correction.
 
@@ -468,7 +468,7 @@ and combined localization/visual evidence are also open.
 `ThemeManager.ReloadAsync` serializes a reload, reads the version-
 pinned selection, compiles a complete platform/user snapshot, and publishes it
 with a monotonically increasing revision only when valid. Missing/invalid
-settings, theme lookup failure, unsafe imports, or GBSS errors retain the prior
+settings, theme lookup failure, unsafe imports, or WRSS errors retain the prior
 snapshot and revision while updating bounded diagnostics. `CompileForWidget`
 adds the widget layer using the same priorities.
 
@@ -511,7 +511,7 @@ mutating an installed release in place.
 
 ## Accessibility overrides
 
-The final host layer enforces these guarantees after every GBSS layer:
+The final host layer enforces these guarantees after every WRSS layer:
 
 - bounded text scaling with native remeasurement/reflow;
 - reduced motion forces widget transition durations to zero; System motion
@@ -552,7 +552,7 @@ and deterministic containment/compact tests from pathological tiny and portrait
 inputs through 4K/wide clients at varied DPI and interface scale. Physical
 mixed-DPI migration/hot-plug screenshots, long localization, combined
 accessibility, and broad on-hardware visual evidence remain gaps. A successful
-GBSS compile is not proof of that matrix. See [display and
+WRSS compile is not proof of that matrix. See [display and
 resolution](display-and-resolution.md) for the exact contract and evidence.
 
 ## Authoring and test workflow
@@ -562,11 +562,11 @@ resolution](display-and-resolution.md) for the exact contract and evidence.
 For widget-local styles:
 
 ```powershell
-gbar validate .\styles\default.gbss
-gbar validate .\MyWidgetPackage
+wrail validate .\styles\default.wrss
+wrail validate .\MyWidgetPackage
 ```
 
-For a global theme, use the complete `gbar theme` workflow shown in
+For a global theme, use the complete `wrail theme` workflow shown in
 [theme packaging and distribution](theme-packaging.md). `theme preview`
 exercises the production compiler/cascade in a terminal; use native screenshots
 and physical display/accessibility checks for pixel evidence.
@@ -617,7 +617,7 @@ tooling/evidence includes:
   Settings, and representative widgets;
 - remove/update/rollback commands and controller UI;
 - publisher signing, revocation, and a curated gallery;
-- `gbar dev` live authoring orchestration;
+- `wrail dev` live authoring orchestration;
 - deterministic screenshot regression and the full 150% text-scale/reflow
   matrix; and
 - the physical mixed-monitor/DPI/accessibility matrix with retained evidence.

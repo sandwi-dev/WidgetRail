@@ -85,7 +85,7 @@ physical-controller retest with live Spotify data remains part of the manual
 release checklist.
 
 ```powershell
-dotnet run --project .\tools\GbarCli\GbarCli.csproj -- config set org.gbar.samples.spotify client-id YOUR_CLIENT_ID --publisher org.gbar.samples
+dotnet run --project .\tools\WrailCli\WrailCli.csproj -- config set widgetrail.samples.spotify client-id YOUR_CLIENT_ID --publisher widgetrail.samples
 ```
 
 The manifest declares no product capabilities. Network, browser, credential,

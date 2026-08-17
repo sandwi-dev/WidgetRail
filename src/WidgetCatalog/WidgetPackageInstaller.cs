@@ -1,9 +1,9 @@
 using System.IO.Compression;
 using System.Text;
 using System.Text.Json;
-using GameBarAlternative.WidgetProtocol;
+using WidgetRail.WidgetProtocol;
 
-namespace GameBarAlternative.WidgetCatalog;
+namespace WidgetRail.WidgetCatalog;
 
 public sealed class WidgetPackageInstaller
 {
@@ -138,8 +138,8 @@ public sealed class WidgetPackageInstaller
         var fullPath = Path.GetFullPath(packagePath);
         if (!File.Exists(fullPath))
             throw new WidgetPackageException("package_not_found", $"Package does not exist: {fullPath}");
-        if (!Path.GetExtension(fullPath).Equals(".gbarwidget", StringComparison.OrdinalIgnoreCase))
-            throw new WidgetPackageException("invalid_extension", "Widget packages must use the .gbarwidget extension.");
+        if (!Path.GetExtension(fullPath).Equals(".wrwidget", StringComparison.OrdinalIgnoreCase))
+            throw new WidgetPackageException("invalid_extension", "Widget packages must use the .wrwidget extension.");
         try
         {
             return ZipFile.OpenRead(fullPath);

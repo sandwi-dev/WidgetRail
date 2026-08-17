@@ -1,4 +1,4 @@
-namespace GameBarAlternative.WidgetBridge;
+namespace WidgetRail.WidgetBridge;
 
 internal enum BridgeRequestDispatchStatus
 {

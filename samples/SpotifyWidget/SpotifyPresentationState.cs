@@ -1,6 +1,6 @@
-using GameBarAlternative.WidgetSdk;
+using WidgetRail.WidgetSdk;
 
-namespace GameBarAlternative.Samples.SpotifyWidget;
+namespace WidgetRail.Samples.SpotifyWidget;
 
 internal readonly record struct SpotifyPlaylistSelectionKey(
     string PlaylistId,

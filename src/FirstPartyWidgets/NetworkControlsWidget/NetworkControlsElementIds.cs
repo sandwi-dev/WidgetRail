@@ -1,7 +1,7 @@
 using System.Security.Cryptography;
 using System.Text;
 
-namespace GameBarAlternative.FirstPartyWidgets.NetworkControls;
+namespace WidgetRail.FirstPartyWidgets.NetworkControls;
 
 internal static class NetworkControlsElementIds
 {

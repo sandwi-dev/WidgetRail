@@ -199,7 +199,7 @@ public static extern bool IsProcessInJob(System.IntPtr process, System.IntPtr jo
 [System.Runtime.InteropServices.DllImport("kernel32.dll")]
 public static extern bool CloseHandle(System.IntPtr handle);
 "@
-$job = [GbaVerificationFixture.NativeJob]::OpenJobObject(0x0004, $false, $env:GBA_VERIFICATION_JOB)
+$job = [GbaVerificationFixture.NativeJob]::OpenJobObject(0x0004, $false, $env:WRAIL_VERIFICATION_JOB)
 $isMember = $false
 try {
     if ($job -eq [IntPtr]::Zero -or
@@ -237,7 +237,7 @@ Write-Output 'PASS bounded success'
 
     $packageRoot = Join-Path $temporary 'packages'
     New-Item -ItemType Directory -Path $packageRoot | Out-Null
-    [IO.File]::WriteAllBytes((Join-Path $packageRoot 'fixture.gbarwidget'), [byte[]](1, 2, 3, 4))
+    [IO.File]::WriteAllBytes((Join-Path $packageRoot 'fixture.wrwidget'), [byte[]](1, 2, 3, 4))
     $packageEvidence = Invoke-BoundedVerificationProcess -Id package-evidence -Description 'package evidence' `
         -FilePath pwsh -ArgumentList @('-NoProfile', '-File', $packageProvenancePath,
             '-Root', $packageRoot, '-RelativeTo', $temporary,
@@ -258,7 +258,7 @@ Write-Output 'PASS bounded success'
     if ($oversizeEvidence.status -ne 'failed') {
         throw 'Package provenance did not reject an oversized artifact.'
     }
-    [IO.File]::WriteAllBytes((Join-Path $packageRoot 'second.gbarwidget'), [byte[]](5, 6, 7, 8))
+    [IO.File]::WriteAllBytes((Join-Path $packageRoot 'second.wrwidget'), [byte[]](5, 6, 7, 8))
     $totalEvidence = Invoke-BoundedVerificationProcess -Id package-total -Description 'package total' `
         -FilePath pwsh -ArgumentList @('-NoProfile', '-File', $packageProvenancePath,
             '-Root', $packageRoot, '-RelativeTo', $temporary,

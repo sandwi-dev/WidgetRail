@@ -1,7 +1,7 @@
-using GameBarAlternative.WidgetProtocol;
-using GameBarAlternative.WidgetSdk;
+using WidgetRail.WidgetProtocol;
+using WidgetRail.WidgetSdk;
 
-namespace GameBarAlternative.Samples.FullApplicationWidget;
+namespace WidgetRail.Samples.FullApplicationWidget;
 
 internal enum ReferenceRoute { Library, Details }
 

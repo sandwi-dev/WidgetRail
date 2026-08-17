@@ -1,6 +1,6 @@
 using System.Buffers.Binary;
 
-namespace GameBarAlternative.PlatformBroker;
+namespace WidgetRail.PlatformBroker;
 
 internal static class BrokerInlinePngPolicy
 {

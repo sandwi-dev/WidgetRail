@@ -11,8 +11,8 @@
     <ProjectReference Include="..\..\src\WidgetProtocol\WidgetProtocol.csproj" />
   </ItemGroup>
   <ItemGroup>
-    <None Include="..\..\src\FirstPartyWidgets\GameLauncherWidget\styles\default.gbss"
-          Link="styles\default.gbss"
+    <None Include="..\..\src\FirstPartyWidgets\GameLauncherWidget\styles\default.wrss"
+          Link="styles\default.wrss"
           CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 </Project>

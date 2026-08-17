@@ -1,6 +1,6 @@
 using System.IO.Pipes;
 
-namespace GameBarAlternative.PlatformBroker;
+namespace WidgetRail.PlatformBroker;
 
 internal static class BrokerPipeNames
 {

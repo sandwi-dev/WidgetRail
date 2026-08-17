@@ -1,5 +1,5 @@
 using System.Text.Json;
-using GameBarAlternative.WindowsAppLibraryProvider;
+using WidgetRail.WindowsAppLibraryProvider;
 
 internal static class GameLibrarySourceScenarios
 {
@@ -93,14 +93,14 @@ internal static class GameLibrarySourceScenarios
         Assert.Equal(2L, steam.Snapshot.SourceVersion);
 
         var partial = await provider.QueryAppLibraryAsync(
-            new(new(Kind: GameBarAlternative.PlatformBroker.AppLibraryKind.Game),
+            new(new(Kind: WidgetRail.PlatformBroker.AppLibraryKind.Game),
                 null, null, 64), CancellationToken.None);
         Assert.Equal(2, partial.Sources.Count);
         var windowsHealth = partial.Sources.Single(source => source.DisplayName == "Windows");
         var steamHealth = partial.Sources.Single(source => source.DisplayName == "Steam");
-        Assert.Equal(GameBarAlternative.PlatformBroker.AppLibrarySourceHealth.Healthy,
+        Assert.Equal(WidgetRail.PlatformBroker.AppLibrarySourceHealth.Healthy,
             windowsHealth.Health);
-        Assert.Equal(GameBarAlternative.PlatformBroker.AppLibrarySourceHealth.Unavailable,
+        Assert.Equal(WidgetRail.PlatformBroker.AppLibrarySourceHealth.Unavailable,
             steamHealth.Health);
         Assert.Equal("source_unavailable", steamHealth.StatusCode);
         Assert.Equal(2L, steamHealth.Revision);
@@ -109,19 +109,19 @@ internal static class GameLibrarySourceScenarios
 
         steamComponent.Fail = false;
         var recovered = await provider.QueryAppLibraryAsync(
-            new(new(Kind: GameBarAlternative.PlatformBroker.AppLibraryKind.Game),
+            new(new(Kind: WidgetRail.PlatformBroker.AppLibraryKind.Game),
                 null, null, 64, Refresh: true), CancellationToken.None);
-        Assert.Equal(GameBarAlternative.PlatformBroker.AppLibrarySourceHealth.Healthy,
+        Assert.Equal(WidgetRail.PlatformBroker.AppLibrarySourceHealth.Healthy,
             recovered.Sources.Single(source => source.DisplayName == "Steam").Health);
         Assert.Equal(3L,
             recovered.Sources.Single(source => source.DisplayName == "Steam").Revision);
 
         steamComponent.Items = [];
         var disappeared = await provider.QueryAppLibraryAsync(
-            new(new(Kind: GameBarAlternative.PlatformBroker.AppLibraryKind.Game),
+            new(new(Kind: WidgetRail.PlatformBroker.AppLibraryKind.Game),
                 null, null, 64, Refresh: true), CancellationToken.None);
         Assert.Equal(0, disappeared.Items.Count);
-        Assert.Equal(GameBarAlternative.PlatformBroker.AppLibrarySourceHealth.Healthy,
+        Assert.Equal(WidgetRail.PlatformBroker.AppLibrarySourceHealth.Healthy,
             disappeared.Sources.Single(source => source.DisplayName == "Steam").Health);
     }
 

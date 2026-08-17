@@ -1,6 +1,6 @@
 using System.Threading.Channels;
 
-namespace GameBarAlternative.PlatformBroker;
+namespace WidgetRail.PlatformBroker;
 
 /// <summary>
 /// Coalesces cross-process consent file changes into broker reconciliation.

@@ -1,11 +1,11 @@
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
-using GameBarAlternative.Samples.YtMusicWidget;
-using GameBarAlternative.WidgetBridge;
-using GameBarAlternative.WidgetProtocol;
-using GameBarAlternative.WidgetSdk;
-using GameBarAlternative.WidgetStyling;
+using WidgetRail.Samples.YtMusicWidget;
+using WidgetRail.WidgetBridge;
+using WidgetRail.WidgetProtocol;
+using WidgetRail.WidgetSdk;
+using WidgetRail.WidgetStyling;
 
 if (args is ["--export-renderer-fixture", var rendererFixturePath])
 {
@@ -2134,26 +2134,26 @@ static Task PackageAssetsAreValid()
     Assert.Equal(YtmDesktopApiClient.PackageVersion, manifest.Version);
 
     var stylesRoot = Path.Combine(AppContext.BaseDirectory, "styles");
-    var styles = GbssPackageLoader.Load(
-        "default.gbss",
-        new GbssFileSourceProvider(stylesRoot));
-    var compiled = GbssThemeCompiler.Compile(styles);
+    var styles = WrssPackageLoader.Load(
+        "default.wrss",
+        new WrssFileSourceProvider(stylesRoot));
+    var compiled = WrssThemeCompiler.Compile(styles);
     Assert.True(compiled.IsValid,
         string.Join(Environment.NewLine, compiled.Diagnostics.Select(item => item.Message)));
-    var mediaLayout = compiled.Theme!.Resolve(new GbssElement("row", "media-layout"));
+    var mediaLayout = compiled.Theme!.Resolve(new WrssElement("row", "media-layout"));
     Assert.Equal("wrap", mediaLayout.Get("flex-wrap")?.Text);
     Assert.Equal("start", mediaLayout.Get("justify")?.Text);
     Assert.Equal("100%", mediaLayout.Get("width")?.Text);
     Assert.Equal(1D, mediaLayout.Get("flex-grow")?.Number);
     Assert.Equal("12px", mediaLayout.Get("padding")?.Text);
     Assert.Equal("1px", mediaLayout.Get("border-width")?.Text);
-    var mediaDetails = compiled.Theme.Resolve(new GbssElement("stack", "media-details"));
+    var mediaDetails = compiled.Theme.Resolve(new WrssElement("stack", "media-details"));
     Assert.Equal("320px", mediaDetails.Get("min-width")?.Text);
     Assert.Equal("320px", mediaDetails.Get("flex-basis")?.Text);
     Assert.Equal(1D, mediaDetails.Get("flex-grow")?.Number);
     foreach (var id in new[] { "progress-row", "primary-actions", "secondary-actions" })
     {
-        var row = compiled.Theme.Resolve(new GbssElement("row", id));
+        var row = compiled.Theme.Resolve(new WrssElement("row", id));
         Assert.Equal("100%", row.Get("width")?.Text);
         Assert.Equal("0px", row.Get("min-width")?.Text);
     }
@@ -2176,10 +2176,10 @@ static async Task ExportRendererFixture(string outputPath)
     Assert.Equal(0, validation.Count);
 
     var stylesRoot = Path.Combine(AppContext.BaseDirectory, "styles");
-    var package = GbssPackageLoader.Load(
-        "default.gbss",
-        new GbssFileSourceProvider(stylesRoot));
-    var compiled = GbssThemeCompiler.Compile(package);
+    var package = WrssPackageLoader.Load(
+        "default.wrss",
+        new WrssFileSourceProvider(stylesRoot));
+    var compiled = WrssThemeCompiler.Compile(package);
     Assert.True(compiled.IsValid,
         string.Join(Environment.NewLine, compiled.Diagnostics.Select(item => item.Message)));
     var renderStyles = BridgeRenderStyleResolver.Resolve(snapshot, compiled.Theme);

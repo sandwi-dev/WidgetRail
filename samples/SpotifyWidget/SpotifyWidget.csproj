@@ -16,7 +16,7 @@
   </ItemGroup>
   <ItemGroup>
     <None Include="manifest.json" CopyToOutputDirectory="PreserveNewest" />
-    <None Include="styles\default.gbss" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="styles\default.wrss" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
   <Import Project="..\..\eng\CommunityPackage.props" />
 </Project>

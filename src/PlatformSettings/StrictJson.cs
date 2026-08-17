@@ -1,6 +1,6 @@
 using System.Text.Json;
 
-namespace GameBarAlternative.PlatformSettings;
+namespace WidgetRail.PlatformSettings;
 
 internal static class StrictJson
 {

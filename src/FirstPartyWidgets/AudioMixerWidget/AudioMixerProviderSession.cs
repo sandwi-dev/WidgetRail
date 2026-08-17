@@ -1,6 +1,6 @@
-using GameBarAlternative.WidgetSdk;
+using WidgetRail.WidgetSdk;
 
-namespace GameBarAlternative.FirstPartyWidgets.AudioMixer;
+namespace WidgetRail.FirstPartyWidgets.AudioMixer;
 
 internal enum AudioMixerProviderSection
 {

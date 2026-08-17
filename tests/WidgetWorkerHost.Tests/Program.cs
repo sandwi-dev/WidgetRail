@@ -1,8 +1,8 @@
-using GameBarAlternative.Samples.ClockWidget;
-using GameBarAlternative.PlatformBroker;
-using GameBarAlternative.WidgetRuntime;
-using GameBarAlternative.WidgetSdk;
-using GameBarAlternative.WidgetWorkerHost;
+using WidgetRail.Samples.ClockWidget;
+using WidgetRail.PlatformBroker;
+using WidgetRail.WidgetRuntime;
+using WidgetRail.WidgetSdk;
+using WidgetRail.WidgetWorkerHost;
 
 var tests = new (string Name, Func<Task> Run)[]
 {

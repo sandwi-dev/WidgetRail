@@ -3,7 +3,7 @@ using System.Diagnostics;
 using System.Runtime.InteropServices;
 using System.Text;
 
-namespace GameBarAlternative.WindowsActivityProvider;
+namespace WidgetRail.WindowsActivityProvider;
 
 internal sealed class WindowsActivityNativeAdapter : IWindowsActivityNativeAdapter
 {
@@ -170,7 +170,7 @@ internal sealed class WindowsActivityNativeAdapter : IWindowsActivityNativeAdapt
             _thread = new Thread(Run)
             {
                 IsBackground = true,
-                Name = "GameBarAlternative.ActivityWinEvent",
+                Name = "WidgetRail.ActivityWinEvent",
             };
             _thread.Start();
             _ready.Task.GetAwaiter().GetResult();

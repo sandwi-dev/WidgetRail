@@ -1,4 +1,4 @@
-namespace GameBarAlternative.WindowsBluetoothProvider;
+namespace WidgetRail.WindowsBluetoothProvider;
 
 public enum NativeBluetoothRadioState
 {

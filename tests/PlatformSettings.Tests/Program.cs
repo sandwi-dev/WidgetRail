@@ -1,7 +1,7 @@
 using System.Text;
 using System.Text.Json;
-using GameBarAlternative.PlatformSettings;
-using GameBarAlternative.WidgetStyling;
+using WidgetRail.PlatformSettings;
+using WidgetRail.WidgetStyling;
 
 var tests = new (string Name, Func<Task> Run)[]
 {
@@ -242,15 +242,15 @@ static Task ThemeDiscovery()
     Assert.True(catalog.BuiltInThemes.All(theme => theme.Descriptor.IsBuiltIn && theme.IsValid),
         Describe(catalog.BuiltInThemes.SelectMany(item => item.Diagnostics)));
     var builtIn = catalog.BuiltInDefault;
-    var compiled = GbssThemeCompiler.Compile(builtIn.Package);
+    var compiled = WrssThemeCompiler.Compile(builtIn.Package);
     Assert.True(compiled.IsValid, Describe(compiled.Diagnostics));
-    var canvas = compiled.Theme!.Resolve(new GbssElement("canvas"));
+    var canvas = compiled.Theme!.Resolve(new WrssElement("canvas"));
     Assert.Equal("#090908", canvas.Get("background")!.Text);
     Assert.Equal("Segoe UI Variable Text, Segoe UI", canvas.Get("font-family")!.Text);
-    var panel = compiled.Theme.Resolve(new GbssElement("panel"));
+    var panel = compiled.Theme.Resolve(new WrssElement("panel"));
     Assert.Equal("1px", panel.Get("border-width")!.Text);
     Assert.Equal("12px", panel.Get("corner-radius")!.Text);
-    var button = compiled.Theme.Resolve(new GbssElement("button"));
+    var button = compiled.Theme.Resolve(new WrssElement("button"));
     Assert.Equal("44px", button.Get("min-height")!.Text);
     Assert.Equal("10px", button.Get("corner-radius")!.Text);
     Assert.Equal("400", button.Get("font-weight")!.Text);
@@ -259,89 +259,89 @@ static Task ThemeDiscovery()
     Assert.Equal("ease-out", button.Get("transition-easing")!.Text);
     Assert.True(button.Get("shadow-blur") is null,
         "The minimalist default must not add a heavy component shadow.");
-    var primaryIconButton = compiled.Theme.Resolve(new GbssElement(
+    var primaryIconButton = compiled.Theme.Resolve(new WrssElement(
         "button",
         null,
-        new HashSet<string>(["gbar-icon-button", "gbar-icon-button--primary"]),
-        new HashSet<GbssPseudoState>()));
+        new HashSet<string>(["wrail-icon-button", "wrail-icon-button--primary"]),
+        new HashSet<WrssPseudoState>()));
     Assert.Equal("44px", primaryIconButton.Get("min-width")!.Text);
     Assert.Equal("44px", primaryIconButton.Get("min-height")!.Text);
     Assert.Equal("10px", primaryIconButton.Get("corner-radius")!.Text);
     Assert.Equal("#b8ae92", primaryIconButton.Get("background")!.Text);
-    var slider = compiled.Theme.Resolve(new GbssElement("slider"));
+    var slider = compiled.Theme.Resolve(new WrssElement("slider"));
     Assert.Equal("44px", slider.Get("min-height")!.Text);
     Assert.Equal("1px", slider.Get("border-width")!.Text);
     Assert.Equal("0.99", slider.Get("scale")!.Text);
     Assert.Equal("90ms", slider.Get("transition-duration")!.Text);
-    var segmentedTabs = compiled.Theme.Resolve(new GbssElement(
+    var segmentedTabs = compiled.Theme.Resolve(new WrssElement(
         "row",
         null,
-        new HashSet<string>(["gbar-segmented-tabs"]),
-        new HashSet<GbssPseudoState>()));
+        new HashSet<string>(["wrail-segmented-tabs"]),
+        new HashSet<WrssPseudoState>()));
     Assert.Equal("50px", segmentedTabs.Get("min-height")!.Text);
     Assert.Equal("0", segmentedTabs.Get("flex-shrink")!.Text);
     Assert.Equal("1px", segmentedTabs.Get("border-width")!.Text);
-    var navigationRail = compiled.Theme.Resolve(new GbssElement(
+    var navigationRail = compiled.Theme.Resolve(new WrssElement(
         "stack",
         null,
-        new HashSet<string>(["gbar-navigation-shell__rail"]),
-        new HashSet<GbssPseudoState>()));
+        new HashSet<string>(["wrail-navigation-shell__rail"]),
+        new HashSet<WrssPseudoState>()));
     Assert.Equal("156px", navigationRail.Get("width")!.Text);
     Assert.Equal("0", navigationRail.Get("flex-shrink")!.Text);
     Assert.Equal("clip", navigationRail.Get("overflow")!.Text);
-    var navigationItem = compiled.Theme.Resolve(new GbssElement(
+    var navigationItem = compiled.Theme.Resolve(new WrssElement(
         "button",
         null,
-        new HashSet<string>(["gbar-navigation-shell__compact-item"]),
-        new HashSet<GbssPseudoState>()));
+        new HashSet<string>(["wrail-navigation-shell__compact-item"]),
+        new HashSet<WrssPseudoState>()));
     Assert.Equal("44px", navigationItem.Get("min-height")!.Text);
     Assert.Equal("0", navigationItem.Get("min-width")!.Text);
-    var settingsRowAction = compiled.Theme.Resolve(new GbssElement(
+    var settingsRowAction = compiled.Theme.Resolve(new WrssElement(
         "button",
         null,
-        new HashSet<string>(["gbar-settings-row__action"]),
-        new HashSet<GbssPseudoState>()));
+        new HashSet<string>(["wrail-settings-row__action"]),
+        new HashSet<WrssPseudoState>()));
     Assert.Equal("44px", settingsRowAction.Get("min-height")!.Text);
     Assert.Equal("start", settingsRowAction.Get("text-align")!.Text);
-    var actionSheetItem = compiled.Theme.Resolve(new GbssElement(
+    var actionSheetItem = compiled.Theme.Resolve(new WrssElement(
         "button",
         null,
-        new HashSet<string>(["gbar-action-sheet__item"]),
-        new HashSet<GbssPseudoState>()));
+        new HashSet<string>(["wrail-action-sheet__item"]),
+        new HashSet<WrssPseudoState>()));
     Assert.Equal("44px", actionSheetItem.Get("min-height")!.Text);
     Assert.Equal("0", actionSheetItem.Get("flex-shrink")!.Text);
-    var settingsDescription = compiled.Theme.Resolve(new GbssElement(
+    var settingsDescription = compiled.Theme.Resolve(new WrssElement(
         "text",
         null,
-        new HashSet<string>(["gbar-settings-row__description"]),
-        new HashSet<GbssPseudoState>()));
+        new HashSet<string>(["wrail-settings-row__description"]),
+        new HashSet<WrssPseudoState>()));
     Assert.Equal("4", settingsDescription.Get("max-lines")!.Text);
-    var focusedButton = compiled.Theme.Resolve(new GbssElement(
+    var focusedButton = compiled.Theme.Resolve(new WrssElement(
         "button",
         null,
         new HashSet<string>(),
-        new HashSet<GbssPseudoState>([GbssPseudoState.Focused])));
+        new HashSet<WrssPseudoState>([WrssPseudoState.Focused])));
     Assert.Equal("1", focusedButton.Get("scale")!.Text);
     Assert.Equal("#f4f0e8", focusedButton.Get("outline-color")!.Text);
     Assert.Equal("-2px", focusedButton.Get("outline-offset")!.Text);
     Assert.Equal("90ms", focusedButton.Get("transition-duration")!.Text);
     Assert.Equal("ease-out", focusedButton.Get("transition-easing")!.Text);
-    var eyebrow = compiled.Theme.Resolve(new GbssElement(
+    var eyebrow = compiled.Theme.Resolve(new WrssElement(
         "text",
         null,
-        new HashSet<string>(["gbar-section-header__eyebrow"]),
-        new HashSet<GbssPseudoState>()));
+        new HashSet<string>(["wrail-section-header__eyebrow"]),
+        new HashSet<WrssPseudoState>()));
     Assert.Equal("none", eyebrow.Get("text-transform")!.Text);
     Assert.Equal("500", eyebrow.Get("font-weight")!.Text);
     foreach (var role in new[] { "button", "slider" })
     {
-        foreach (var state in new[] { GbssPseudoState.Disabled, GbssPseudoState.Busy })
+        foreach (var state in new[] { WrssPseudoState.Disabled, WrssPseudoState.Busy })
         {
-            var stateStyle = compiled.Theme.Resolve(new GbssElement(
+            var stateStyle = compiled.Theme.Resolve(new WrssElement(
                 role,
                 null,
                 new HashSet<string>(),
-                new HashSet<GbssPseudoState>([state])));
+                new HashSet<WrssPseudoState>([state])));
             Assert.True(stateStyle.Get("opacity") is null,
                 $"Built-in {role}:{state} opacity would compound the native accessibility factor.");
         }
@@ -369,7 +369,7 @@ static async Task BuiltInCoolSlateSelection()
     Assert.True(slatePackage.IsValid, Describe(slatePackage.Diagnostics));
     Assert.Equal("Cool Slate", slatePackage.Descriptor.Name);
     Assert.Equal(true, slatePackage.Descriptor.IsBuiltIn);
-    Assert.Equal("org.gbar.builtin", slatePackage.Descriptor.Publisher);
+    Assert.Equal("widgetrail.builtin", slatePackage.Descriptor.Publisher);
     Assert.Equal(new Version(1, 0, 0), slatePackage.Descriptor.Version);
 
     using var manager = new ThemeManager(store, catalog);
@@ -378,35 +378,35 @@ static async Task BuiltInCoolSlateSelection()
     Assert.Equal(ThemeIdentity.BuiltInCoolSlate, reload.Current.ActiveTheme.Id);
     Assert.Equal(ThemeIdentity.BuiltInCoolSlateVersion, reload.Current.ActiveTheme.Version.ToString());
 
-    var canvas = reload.Current.Theme.Resolve(new GbssElement("canvas"));
+    var canvas = reload.Current.Theme.Resolve(new WrssElement("canvas"));
     Assert.Equal("#080d14", canvas.Get("background")!.Text);
     Assert.Equal("#edf2f7", canvas.Get("color")!.Text);
-    var button = reload.Current.Theme.Resolve(new GbssElement("button"));
+    var button = reload.Current.Theme.Resolve(new WrssElement("button"));
     Assert.Equal("rgba(22, 32, 45, 0.98)", button.Get("background")!.Text);
     Assert.Equal("44px", button.Get("min-height")!.Text);
     Assert.Equal("10px", button.Get("corner-radius")!.Text);
     Assert.Equal("1", button.Get("scale")!.Text);
     Assert.Equal("90ms", button.Get("transition-duration")!.Text);
     Assert.Equal("ease-out", button.Get("transition-easing")!.Text);
-    var focused = reload.Current.Theme.Resolve(new GbssElement(
+    var focused = reload.Current.Theme.Resolve(new WrssElement(
         "button",
         null,
         new HashSet<string>(),
-        new HashSet<GbssPseudoState>([GbssPseudoState.Focused])));
+        new HashSet<WrssPseudoState>([WrssPseudoState.Focused])));
     Assert.Equal("#f1f4f7", focused.Get("outline-color")!.Text);
     Assert.Equal("-2px", focused.Get("outline-offset")!.Text);
     Assert.Equal("1", focused.Get("scale")!.Text);
 
-    var defaultCanvas = GbssThemeCompiler.Compile(catalog.BuiltInDefault.Package)
-        .Theme!.Resolve(new GbssElement("canvas"));
+    var defaultCanvas = WrssThemeCompiler.Compile(catalog.BuiltInDefault.Package)
+        .Theme!.Resolve(new WrssElement("canvas"));
     Assert.True(defaultCanvas.Get("background")!.Text != canvas.Get("background")!.Text,
         "Cool Slate must be visibly distinct from the warm graphite default.");
 
     var layeredWidget = reload.Current.CompileForWidget(Package(
-        "widget.gbss",
+        "widget.wrss",
         "button { min-height: 44px; color: var(--text); }"));
     Assert.True(layeredWidget.IsValid, Describe(layeredWidget.Diagnostics));
-    Assert.Equal("#edf2f7", layeredWidget.Theme!.Resolve(new GbssElement("button")).Get("color")!.Text);
+    Assert.Equal("#edf2f7", layeredWidget.Theme!.Resolve(new WrssElement("button")).Get("color")!.Text);
 }
 
 static async Task ThemeManifestSafety()
@@ -416,14 +416,14 @@ static async Task ThemeManifestSafety()
     var manifest = Path.Combine(theme, "theme.json");
     var catalog = Catalog(temp.Path);
 
-    await File.WriteAllTextAsync(manifest, ThemeManifest("dev.example.other", "Bad", "1.0.0", "theme.gbss"));
+    await File.WriteAllTextAsync(manifest, ThemeManifest("dev.example.other", "Bad", "1.0.0", "theme.wrss"));
     Assert.HasCode(catalog.Load("dev.example.bad", "1.0.0").Diagnostics, "theme_identity_mismatch");
 
-    await File.WriteAllTextAsync(manifest, ThemeManifest("dev.example.bad", "Bad", "1.0.0", "../outside.gbss"));
+    await File.WriteAllTextAsync(manifest, ThemeManifest("dev.example.bad", "Bad", "1.0.0", "../outside.wrss"));
     Assert.HasCode(catalog.Load("dev.example.bad", "1.0.0").Diagnostics, "invalid_theme_entry");
 
     await File.WriteAllTextAsync(manifest,
-        ThemeManifest("dev.example.bad", "Bad", "1.0.0", "theme.gbss", ",\"unknown\":true"));
+        ThemeManifest("dev.example.bad", "Bad", "1.0.0", "theme.wrss", ",\"unknown\":true"));
     Assert.HasCode(catalog.Load("dev.example.bad", "1.0.0").Diagnostics, "invalid_theme_manifest");
 
     await File.WriteAllBytesAsync(
@@ -446,9 +446,9 @@ static Task ThemeSourceSafety()
 {
     using var temp = new TemporaryDirectory();
     var theme = WriteTheme(temp.Path, "dev.example.link", "Link", "1.0.0", "button { color: #ffffff; }");
-    var outside = Path.Combine(temp.Path, "outside.gbss");
+    var outside = Path.Combine(temp.Path, "outside.wrss");
     File.WriteAllText(outside, "button { color: #000000; }");
-    var entry = Path.Combine(theme, "theme.gbss");
+    var entry = Path.Combine(theme, "theme.wrss");
     File.Delete(entry);
     try
     {
@@ -490,7 +490,7 @@ static async Task ThemeVersionMutation()
     Assert.Equal("dev.example.family", selected.Appearance.ThemeId);
     Assert.Equal("2.0.0", selected.Appearance.ThemeVersion);
     Assert.SequenceEqual("button { color: #222222; }"u8.ToArray(),
-        await File.ReadAllBytesAsync(Path.Combine(second, "theme.gbss")));
+        await File.ReadAllBytesAsync(Path.Combine(second, "theme.wrss")));
 
     var protectedSelection = await Assert.ThrowsAsync<PlatformSettingsException>(() =>
         policy.RetireAsync("dev.example.family", "2.0.0"));
@@ -543,7 +543,7 @@ static async Task ThemeVersionMutation()
         "button { color: #555555; }");
     var outside = Path.Combine(temp.Path, "outside-theme-data.txt");
     await File.WriteAllTextAsync(outside, "must survive");
-    var link = Path.Combine(linked, "linked.gbss");
+    var link = Path.Combine(linked, "linked.wrss");
     try
     {
         File.CreateSymbolicLink(link, outside);
@@ -563,21 +563,21 @@ static async Task ThemeVersionMutation()
 
 static Task ThemeLayerPrecedence()
 {
-    var platform = Package("platform.gbss", """
+    var platform = Package("platform.wrss", """
         :root { --choice: #111111; }
         button { color: var(--choice); background: #010101; }
         """);
-    var widget = Package("widget.gbss", """
+    var widget = Package("widget.wrss", """
         :root { --choice: #222222; }
         #special { color: var(--choice); background: #020202; }
         """);
-    var user = Package("user.gbss", """
+    var user = Package("user.wrss", """
         :root { --choice: #333333; }
         button { color: var(--choice); }
         """);
     var compiled = ThemeLayerCompiler.Compile(platform, widget, user);
     Assert.True(compiled.IsValid, Describe(compiled.Diagnostics));
-    var style = compiled.Theme!.Resolve(new GbssElement("button", "special"));
+    var style = compiled.Theme!.Resolve(new WrssElement("button", "special"));
     Assert.Equal("#333333", style.Get("color")!.Text);
     Assert.Equal("#020202", style.Get("background")!.Text);
     return Task.CompletedTask;
@@ -602,25 +602,25 @@ static async Task InvalidReloadRetainsLastGood()
     var valid = await manager.ReloadAsync();
     Assert.True(valid.Published, Describe(valid.Diagnostics));
     var revision = valid.Current.Revision;
-    Assert.Equal("#123456", valid.Current.Theme.Resolve(new GbssElement("button")).Get("color")!.Text);
+    Assert.Equal("#123456", valid.Current.Theme.Resolve(new WrssElement("button")).Get("color")!.Text);
 
-    await File.WriteAllTextAsync(Path.Combine(themeDirectory, "theme.gbss"), "button { color: definitely-not-a-color; }");
+    await File.WriteAllTextAsync(Path.Combine(themeDirectory, "theme.wrss"), "button { color: definitely-not-a-color; }");
     var invalid = await manager.ReloadAsync();
     Assert.True(!invalid.Published, "Invalid theme reload unexpectedly published.");
     Assert.Equal(revision, invalid.Current.Revision);
-    Assert.Equal("#123456", manager.Current.Theme.Resolve(new GbssElement("button")).Get("color")!.Text);
+    Assert.Equal("#123456", manager.Current.Theme.Resolve(new WrssElement("button")).Get("color")!.Text);
     Assert.HasCode(manager.LastReloadDiagnostics, "invalid_value");
 
-    await File.WriteAllTextAsync(Path.Combine(themeDirectory, "theme.gbss"), "button { color: #abcdef; }");
+    await File.WriteAllTextAsync(Path.Combine(themeDirectory, "theme.wrss"), "button { color: #abcdef; }");
     var recovered = await manager.ReloadAsync();
     Assert.True(recovered.Published, Describe(recovered.Diagnostics));
     Assert.True(recovered.Current.Revision > revision, "Successful reload did not advance revision.");
-    Assert.Equal("#abcdef", recovered.Current.Theme.Resolve(new GbssElement("button")).Get("color")!.Text);
+    Assert.Equal("#abcdef", recovered.Current.Theme.Resolve(new WrssElement("button")).Get("color")!.Text);
 
-    var widget = Package("widget.gbss", "button { background: #0a0b0c; color: #000000; }");
+    var widget = Package("widget.wrss", "button { background: #0a0b0c; color: #000000; }");
     var layered = recovered.Current.CompileForWidget(widget);
     Assert.True(layered.IsValid, Describe(layered.Diagnostics));
-    var style = layered.Theme!.Resolve(new GbssElement("button"));
+    var style = layered.Theme!.Resolve(new WrssElement("button"));
     Assert.Equal("#abcdef", style.Get("color")!.Text);
     Assert.Equal("#0a0b0c", style.Get("background")!.Text);
 }
@@ -631,12 +631,12 @@ static PlatformSettingsStore Store(string root) =>
 static ThemeCatalog Catalog(string root) =>
     new(new PlatformSettingsPaths(root));
 
-static string WriteTheme(string root, string id, string name, string version, string gbss)
+static string WriteTheme(string root, string id, string name, string version, string wrss)
 {
     var directory = Path.Combine(new PlatformSettingsPaths(root).ThemesDirectory, id, version);
     Directory.CreateDirectory(directory);
-    File.WriteAllText(Path.Combine(directory, "theme.json"), ThemeManifest(id, name, version, "theme.gbss"));
-    File.WriteAllText(Path.Combine(directory, "theme.gbss"), gbss);
+    File.WriteAllText(Path.Combine(directory, "theme.json"), ThemeManifest(id, name, version, "theme.wrss"));
+    File.WriteAllText(Path.Combine(directory, "theme.wrss"), wrss);
     return directory;
 }
 
@@ -664,13 +664,13 @@ static string SettingsJson(
       {"schemaVersion":{{schemaVersion}},"appearance":{"themeId":"{{themeId}}","themeVersion":"{{themeVersion}}","interfaceScale":{{interfaceScale}},"textScale":{{textScale}},"backdropOpacity":{{backdropOpacity}},"motion":"{{motion}}"{{appearanceExtra}}}{{extra}}}
       """;
 
-static GbssPackageResult Package(string sourceName, string source)
+static WrssPackageResult Package(string sourceName, string source)
 {
-    var parsed = GbssParser.Parse(source, sourceName);
-    return new GbssPackageResult([parsed.Document], parsed.Diagnostics);
+    var parsed = WrssParser.Parse(source, sourceName);
+    return new WrssPackageResult([parsed.Document], parsed.Diagnostics);
 }
 
-static string Describe(IEnumerable<GbssDiagnostic> diagnostics) =>
+static string Describe(IEnumerable<WrssDiagnostic> diagnostics) =>
     string.Join(Environment.NewLine, diagnostics);
 
 file sealed class TemporaryDirectory : IDisposable
@@ -722,7 +722,7 @@ file static class Assert
                 $"Expected [{string.Join(", ", expected)}], got [{string.Join(", ", actual)}].");
     }
 
-    public static void HasCode(IEnumerable<GbssDiagnostic> diagnostics, string code)
+    public static void HasCode(IEnumerable<WrssDiagnostic> diagnostics, string code)
     {
         if (!diagnostics.Any(item => item.Code == code))
             throw new InvalidOperationException(

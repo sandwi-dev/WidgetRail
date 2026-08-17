@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\\..\\tools\\WrailCli\\WrailCli.csproj" />
+  </ItemGroup>
+  <Target Name="RemoveRetiredControllerWidgetTemplateOutput"
+          AfterTargets="CopyFilesToOutputDirectory">
+    <Delete Files="$(OutDir)templates\ControllerWidget\gbar.scenarios.json.template;
+                   $(OutDir)templates\ControllerWidget\styles\default.gbss" />
+  </Target>
+</Project>

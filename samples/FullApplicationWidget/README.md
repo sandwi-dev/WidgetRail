@@ -12,11 +12,11 @@ safe load error, retry, explicit refresh, and Active-lifetime cancellation and
 drain. It requests no capabilities and performs no filesystem, network, or
 process operations.
 
-Export a self-contained external repository from a complete `gbar` distribution:
+Export a self-contained external repository from a complete `wrail` distribution:
 
 ```powershell
 pwsh -NoProfile -File .\samples\FullApplicationWidget\Export-ExternalReference.ps1 `
-  -Gbar .\tools\GbarCli\bin\Release\net8.0\gbar.exe `
+  -Wrail .\tools\WrailCli\bin\Release\net8.0\wrail.exe `
   -Output .\scratch\ExternalFullApplication
 ```
 
@@ -39,8 +39,8 @@ New-Item -ItemType Directory -Force .\artifacts\full-application\payload | Out-N
 Copy-Item .\samples\FullApplicationWidget\bin\Release\net8.0\FullApplicationWidget.dll .\artifacts\full-application\payload\
 Copy-Item .\samples\FullApplicationWidget\manifest.json .\artifacts\full-application\
 Copy-Item .\samples\FullApplicationWidget\styles .\artifacts\full-application\styles -Recurse
-dotnet run --project .\tools\GbarCli\GbarCli.csproj -c Release -- validate .\artifacts\full-application
-dotnet run --project .\tools\GbarCli\GbarCli.csproj -c Release -- pack .\artifacts\full-application --output .\artifacts\FullApplicationReference.gbarwidget
+dotnet run --project .\tools\WrailCli\WrailCli.csproj -c Release -- validate .\artifacts\full-application
+dotnet run --project .\tools\WrailCli\WrailCli.csproj -c Release -- pack .\artifacts\full-application --output .\artifacts\FullApplicationReference.wrwidget
 ```
 
 The installed acceptance route uses the same manifest and assembly through the

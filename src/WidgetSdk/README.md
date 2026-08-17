@@ -81,11 +81,11 @@ action IDs remain independent routing intent. `UI.NavigationShell` generates
 the keys automatically for its compact and expanded controls.
 
 Use `UI.CodeText(text, id, accessibilityLabel?)` for bounded diagnostics or
-commands. It emits one nonfocusable Text node with `.gbar-code-text`, preserves
+commands. It emits one nonfocusable Text node with `.wrail-code-text`, preserves
 whitespace, and caps content/accessibility text at 4,096 characters. It does
 not create selection, a copy command, scope, shortcut, or background work;
 provide a separate explicit Button when copying matters. The built-in theme
-uses single-family `Consolas` with up to eight wrapped lines. Native GBSS does
+uses single-family `Consolas` with up to eight wrapped lines. Native WRSS does
 not yet implement CSS font fallback stacks or packaged font loading.
 
 For indeterminate work that lasts long enough to be visible, use
@@ -106,8 +106,8 @@ HTTPS image, or bounded inline PNG. Custom rich actions may use
 descendants, and four relative levels and cannot contain actions, focus,
 scopes, shortcuts, scrolling, interaction state, Buttons, Sliders, or another
 ActionSurface. Preserve generated `id.artwork`, `id.content`, `id.title`,
-`id.subtitle`, `id.metadata`, and `id.state` suffixes and `gbar-action-surface`/
-`gbar-tile` classes when adding widget-specific classes.
+`id.subtitle`, `id.metadata`, and `id.state` suffixes and `wrail-action-surface`/
+`wrail-tile` classes when adding widget-specific classes.
 
 Use `UI.Toast` for brief feedback that must not steal focus. Tone is paired
 with visible text, duration is bounded to 2–30 seconds (five by default), and
@@ -384,7 +384,7 @@ Its lifecycle helpers call the same host-validated transitions as production;
 
 For a credential-free CLI preview, expose one public static parameterless
 factory returning `WidgetScenarioDefinition` and declare it in
-`gbar.scenarios.json`. `gbar preview <directory> --scenario <name>` invokes it
+`widgetrail.scenarios.json`. `wrail preview <directory> --scenario <name>` invokes it
 only in the capability-free AppContainer/Job worker. The returned
 `WidgetHostServices` supplies typed fakes; the output is a validated,
 deterministic `WidgetScenarioResult`, not native pixels.

@@ -1,6 +1,6 @@
-using GameBarAlternative.WidgetSdk;
+using WidgetRail.WidgetSdk;
 
-namespace GameBarAlternative.Samples.YtMusicWidget;
+namespace WidgetRail.Samples.YtMusicWidget;
 
 public enum YtMusicCommand
 {

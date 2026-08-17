@@ -1,13 +1,13 @@
 using System.Text.Json;
 using System.Text;
 using System.Globalization;
-using GameBarAlternative.FirstPartyWidgets.GameLauncher;
-using GameBarAlternative.WidgetProtocol;
-using GameBarAlternative.WidgetSdk;
+using WidgetRail.FirstPartyWidgets.GameLauncher;
+using WidgetRail.WidgetProtocol;
+using WidgetRail.WidgetSdk;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
-using LauncherWidget = GameBarAlternative.FirstPartyWidgets.GameLauncher.GameLauncherWidget;
+using LauncherWidget = WidgetRail.FirstPartyWidgets.GameLauncher.GameLauncherWidget;
 
-namespace GameBarAlternative.Tests.GameLauncher;
+namespace WidgetRail.Tests.GameLauncher;
 
 [TestClass]
 public sealed class GameLauncherTests

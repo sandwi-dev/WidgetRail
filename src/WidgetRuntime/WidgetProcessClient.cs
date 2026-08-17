@@ -3,11 +3,11 @@ using System.IO.Pipes;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
-using GameBarAlternative.PlatformBroker;
-using GameBarAlternative.WidgetProtocol;
-using GameBarAlternative.WidgetSdk;
+using WidgetRail.PlatformBroker;
+using WidgetRail.WidgetProtocol;
+using WidgetRail.WidgetSdk;
 
-namespace GameBarAlternative.WidgetRuntime;
+namespace WidgetRail.WidgetRuntime;
 
 /// <summary>
 /// Host-side lifecycle and IPC client. Constructing it is inert; the worker is

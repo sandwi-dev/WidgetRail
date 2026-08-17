@@ -1,7 +1,7 @@
 using System.Text.Json;
 using System.Buffers.Binary;
-using GameBarAlternative.PlatformBroker;
-using GameBarAlternative.WindowsMediaProvider;
+using WidgetRail.PlatformBroker;
+using WidgetRail.WindowsMediaProvider;
 using Windows.Storage.Streams;
 
 var tests = new (string Name, Func<Task> Run)[]

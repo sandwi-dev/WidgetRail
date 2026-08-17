@@ -1,7 +1,7 @@
 {
   "manifestVersion": 1,
-  "id": "org.gbar.samples.clock",
-  "publisher": "org.gbar.samples",
+  "id": "widgetrail.samples.clock",
+  "publisher": "widgetrail.samples",
   "name": "Clock",
   "version": "0.1.0",
   "hostApi": {
@@ -11,7 +11,7 @@
   "entrypoint": {
     "runtime": "dotnet-worker",
     "assembly": "payload/ClockWidget.dll",
-    "type": "GameBarAlternative.Samples.ClockWidget.ClockWidget"
+    "type": "WidgetRail.Samples.ClockWidget.ClockWidget"
   },
   "permissions": [],
   "optionalPermissions": [],

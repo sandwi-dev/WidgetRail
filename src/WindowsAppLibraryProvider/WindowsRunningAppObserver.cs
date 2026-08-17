@@ -3,7 +3,7 @@ using System.Security.Cryptography;
 using System.Text;
 using Microsoft.Win32.SafeHandles;
 
-namespace GameBarAlternative.WindowsAppLibraryProvider;
+namespace WidgetRail.WindowsAppLibraryProvider;
 
 internal sealed record WindowsRunningAppObservation(
     string RegistrationIdentity,
@@ -30,7 +30,7 @@ internal sealed class WindowsRunningAppObserver : IWindowsRunningAppObserver
     private const int DwmwaCloaked = 14;
     private const int ErrorInsufficientBuffer = 122;
     private static readonly HashSet<string> ExcludedProcesses = new(
-        ["OverlayHost.exe", "WidgetWorkerHost.exe", "WidgetBridge.exe", "gbar.exe"],
+        ["OverlayHost.exe", "WidgetWorkerHost.exe", "WidgetBridge.exe", "wrail.exe"],
         StringComparer.OrdinalIgnoreCase);
     private readonly IWindowsRunningWindowReader _windows;
 

@@ -2,40 +2,40 @@
 
 Status: implemented data-only theme authoring and installation workflow
 
-This guide is the distribution contract for global Game Bar Alternative
-themes. Widget-local styling uses the same [GBSS language](gbss.md), but a
-global theme is a separate immutable `.gbartheme` package selected by exact ID
+This guide is the distribution contract for global WidgetRail
+themes. Widget-local styling uses the same [WRSS language](wrss.md), but a
+global theme is a separate immutable `.wrtheme` package selected by exact ID
 and version in Settings.
 
 ## Command reference
 
-Build `gbar` from the repository root, then use the theme command group:
+Build `wrail` from the repository root, then use the theme command group:
 
 ```powershell
-dotnet build .\tools\GbarCli\GbarCli.csproj -c Release
-$gbar = '.\tools\GbarCli\bin\Release\net8.0\gbar.exe'
+dotnet build .\tools\WrailCli\WrailCli.csproj -c Release
+$wrail = '.\tools\WrailCli\bin\Release\net8.0\wrail.exe'
 
-& $gbar theme new "Ocean Night" `
+& $wrail theme new "Ocean Night" `
   --output .\scratch\OceanNight `
   --id dev.example.ocean-night `
   --publisher dev.example `
   --version 1.0.0
-& $gbar theme validate .\scratch\OceanNight
-& $gbar theme preview .\scratch\OceanNight
-& $gbar theme pack .\scratch\OceanNight `
-  --output .\scratch\dev.example.ocean-night-1.0.0.gbartheme
-& $gbar theme inspect .\scratch\dev.example.ocean-night-1.0.0.gbartheme
-& $gbar theme install .\scratch\dev.example.ocean-night-1.0.0.gbartheme
-& $gbar theme list
-& $gbar theme remove dev.example.ocean-night 1.0.0
+& $wrail theme validate .\scratch\OceanNight
+& $wrail theme preview .\scratch\OceanNight
+& $wrail theme pack .\scratch\OceanNight `
+  --output .\scratch\dev.example.ocean-night-1.0.0.wrtheme
+& $wrail theme inspect .\scratch\dev.example.ocean-night-1.0.0.wrtheme
+& $wrail theme install .\scratch\dev.example.ocean-night-1.0.0.wrtheme
+& $wrail theme list
+& $wrail theme remove dev.example.ocean-night 1.0.0
 ```
 
 | Command | Contract |
 | --- | --- |
-| `theme new <Name>` | Creates strict `theme.json` and safe starter `theme.gbss`. Optional: `--output`, `--id`, `--publisher`, `--version`. |
-| `theme validate <directory-or-package>` | Validates the manifest, closed package contents, imports, variables, selectors, and typed GBSS. |
+| `theme new <Name>` | Creates strict `theme.json` and safe starter `theme.wrss`. Optional: `--output`, `--id`, `--publisher`, `--version`. |
+| `theme validate <directory-or-package>` | Validates the manifest, closed package contents, imports, variables, selectors, and typed WRSS. |
 | `theme preview <directory-or-package>` | Prints deterministic computed styles for supported semantic roles using the real built-in-plus-user cascade. |
-| `theme pack <directory>` | Revalidates and writes deterministic `.gbartheme` bytes. Optional: `--output`. |
+| `theme pack <directory>` | Revalidates and writes deterministic `.wrtheme` bytes. Optional: `--output`. |
 | `theme inspect <package>` | Reports identity, publisher claim, entry, counts/sizes, SHA-256, and trust caveat without executing content. |
 | `theme install <source>` | Revalidates and atomically installs a local or pinned remote package. Optional: `--sha256`, `--settings-root`. |
 | `theme list` | Lists built-in and installed versions, publisher claims, validity, and a bounded error diagnostic. Optional: `--settings-root`. |
@@ -64,7 +64,7 @@ shape:
   "publisher": "dev.example",
   "name": "Ocean Night",
   "version": "1.0.0",
-  "entryFile": "theme.gbss"
+  "entryFile": "theme.wrss"
 }
 ```
 
@@ -74,7 +74,7 @@ shape:
   verified identity.
 - `name` contains 1–80 printable characters.
 - `version` uses canonical dotted numeric notation.
-- `entryFile` is a normalized package-relative `.gbss` path.
+- `entryFile` is a normalized package-relative `.wrss` path.
 
 Unknown, duplicate, missing, or wrong-case JSON members are errors. The runtime
 continues to discover legacy schema-version-1 local theme directories, but
@@ -82,8 +82,8 @@ public `theme pack` accepts schema version 2 only.
 
 ## Package contents and limits
 
-A `.gbartheme` is a deterministic ZIP containing only `theme.json` and the
-UTF-8 `.gbss` closure reachable from `entryFile`. `theme pack` orders paths
+A `.wrtheme` is a deterministic ZIP containing only `theme.json` and the
+UTF-8 `.wrss` closure reachable from `entryFile`. `theme pack` orders paths
 ordinally, fixes timestamps and metadata, and prints a SHA-256 digest so the
 same source produces the same package bytes.
 
@@ -93,7 +93,7 @@ The validator rejects:
   or case-colliding paths;
 - explicit directory entries, archive symlinks, and reparse points in source
   or installation paths;
-- GBSS files that are not reachable from the entry file;
+- WRSS files that are not reachable from the entry file;
 - invalid or escaping imports, malformed variables/selectors/types, scripts,
   URLs, expressions, and unsupported properties; and
 - assemblies, executables, scripts, browser content, images, fonts, and any
@@ -108,24 +108,24 @@ The validator rejects:
 | Compressed archive | 4 MiB |
 | Installed user-theme versions | 128 |
 
-The GBSS compiler applies additional source, statement, import-depth,
+The WRSS compiler applies additional source, statement, import-depth,
 selector, declaration, and expanded-variable limits documented in the
-[GBSS reference](gbss.md).
+[WRSS reference](wrss.md).
 
 ## Local and GitHub installation
 
 Install a local package directly:
 
 ```powershell
-& $gbar theme install .\dev.example.ocean-night-1.0.0.gbartheme
+& $wrail theme install .\dev.example.ocean-night-1.0.0.wrtheme
 ```
 
-For GitHub Releases, publish the `.gbartheme` and its digest, then name the
+For GitHub Releases, publish the `.wrtheme` and its digest, then name the
 exact tag and asset:
 
 ```powershell
-& $gbar theme install `
-  github:example/themes@v1.0.0/dev.example.ocean-night-1.0.0.gbartheme `
+& $wrail theme install `
+  github:example/themes@v1.0.0/dev.example.ocean-night-1.0.0.wrtheme `
   --sha256 <64-hex-digest>
 ```
 

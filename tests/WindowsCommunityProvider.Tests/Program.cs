@@ -2,8 +2,8 @@ using System.Net;
 using System.Net.Sockets;
 using System.Diagnostics;
 using System.Text;
-using GameBarAlternative.PlatformBroker;
-using GameBarAlternative.WindowsCommunityProvider;
+using WidgetRail.PlatformBroker;
+using WidgetRail.WindowsCommunityProvider;
 
 if (args is ["--private-state-write", var stateRoot, var publisher, var package])
 {

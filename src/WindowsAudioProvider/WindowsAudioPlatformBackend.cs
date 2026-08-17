@@ -1,9 +1,9 @@
 using System.Collections.Concurrent;
 using System.Text;
 using System.Threading.Channels;
-using GameBarAlternative.PlatformBroker;
+using WidgetRail.PlatformBroker;
 
-namespace GameBarAlternative.WindowsAudioProvider;
+namespace WidgetRail.WindowsAudioProvider;
 
 /// <summary>
 /// Event-driven Core Audio provider. A single dedicated MTA thread owns every native object;
@@ -316,7 +316,7 @@ public sealed class WindowsAudioPlatformBackend : IAudioPlatformBrokerBackend, I
             _ownerThread = new Thread(OwnerThreadMain)
             {
                 IsBackground = true,
-                Name = "GameBarAlternative.CoreAudio.MTA",
+                Name = "WidgetRail.CoreAudio.MTA",
             };
             Volatile.Write(ref _started, 1);
             _ownerThread.Start();

@@ -1,7 +1,7 @@
-using GameBarAlternative.Samples.ClockWidget;
-using GameBarAlternative.WidgetRuntime;
+using WidgetRail.Samples.ClockWidget;
+using WidgetRail.WidgetRuntime;
 
-namespace GameBarAlternative.Samples.ClockWidget.Worker;
+namespace WidgetRail.Samples.ClockWidget.Worker;
 
 public static class WorkerMarker;
 

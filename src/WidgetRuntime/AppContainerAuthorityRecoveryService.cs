@@ -1,4 +1,4 @@
-namespace GameBarAlternative.WidgetRuntime;
+namespace WidgetRail.WidgetRuntime;
 
 internal interface IAppContainerAuthorityRecoveryService
 {

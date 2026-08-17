@@ -2,25 +2,25 @@
 
 This is the smallest compileable widget-author reference. It demonstrates a
 deterministic `Widget.Render()`, stable IDs, explicit controller focus, an `X`
-shortcut, an action handler, semantic GBSS classes, and a strict package
+shortcut, an action handler, semantic WRSS classes, and a strict package
 manifest without platform capabilities.
 
 Build and validate it from the repository root:
 
 ```powershell
 dotnet build .\samples\ClockWidget\ClockWidget.csproj -c Release
-dotnet build .\tools\GbarCli\GbarCli.csproj -c Release
+dotnet build .\tools\WrailCli\WrailCli.csproj -c Release
 
-$gbar = '.\tools\GbarCli\bin\Release\net8.0\gbar.exe'
-& $gbar validate .\samples\ClockWidget
+$wrail = '.\tools\WrailCli\bin\Release\net8.0\wrail.exe'
+& $wrail validate .\samples\ClockWidget
 ```
 
-Use `gbar dev .\samples\ClockWidget --configuration Release` for executable
-integration through the generic AppContainer worker. `gbar render` accepts only
+Use `wrail dev .\samples\ClockWidget --configuration Release` for executable
+integration through the generic AppContainer worker. `wrail render` accepts only
 an existing data-only `snapshot.json`; it never loads this sample's DLL.
 
 The separate `ClockWidget.Worker` project demonstrates the public custom-worker
-runtime boundary. Installed `.gbarwidget` packages normally use the platform's
+runtime boundary. Installed `.wrwidget` packages normally use the platform's
 generic worker host and need only name this public Widget type in their
 manifest.
 

@@ -1,7 +1,7 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
 
-namespace GameBarAlternative.WidgetProtocol;
+namespace WidgetRail.WidgetProtocol;
 
 [Flags]
 [JsonConverter(typeof(JsonStringEnumConverter<PresentationPropertyImpact>))]

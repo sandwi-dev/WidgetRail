@@ -1,5 +1,5 @@
-using GameBarAlternative.PlatformBroker;
-using GameBarAlternative.WindowsAppLibraryProvider;
+using WidgetRail.PlatformBroker;
+using WidgetRail.WindowsAppLibraryProvider;
 using Windows.Graphics.Imaging;
 using Windows.Storage.Streams;
 

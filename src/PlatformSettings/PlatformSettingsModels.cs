@@ -1,8 +1,8 @@
 using System.Text.Json.Serialization;
 using System.Text.RegularExpressions;
-using GameBarAlternative.LauncherExperienceCatalog;
+using WidgetRail.LauncherExperienceCatalog;
 
-namespace GameBarAlternative.PlatformSettings;
+namespace WidgetRail.PlatformSettings;
 
 [JsonConverter(typeof(JsonStringEnumConverter<MotionPreference>))]
 public enum MotionPreference
@@ -60,7 +60,7 @@ public sealed record AppearanceSettings
     /// </summary>
     public ContrastPreference Contrast { get; init; } = ContrastPreference.System;
 
-    /// <summary>Raises rendered text to at least semibold after GBSS resolution.</summary>
+    /// <summary>Raises rendered text to at least semibold after WRSS resolution.</summary>
     public bool BoldText { get; init; }
 
     /// <summary>Removes blur, translucent surfaces, and partial node opacity.</summary>
@@ -140,7 +140,7 @@ public static partial class ThemeIdentity
 {
     public const string BuiltInDefault = "builtin.default";
     public const string BuiltInDefaultVersion = "1.0.0";
-    public const string BuiltInCoolSlate = "org.gbar.builtin.cool-slate";
+    public const string BuiltInCoolSlate = "widgetrail.builtin.cool-slate";
     public const string BuiltInCoolSlateVersion = "1.0.0";
     public const int MaximumLength = 128;
 

@@ -1,7 +1,7 @@
 [CmdletBinding()]
 param(
     [Parameter(Mandatory = $true)]
-    [string]$Gbar,
+    [string]$Wrail,
 
     [Parameter(Mandatory = $true)]
     [string]$Output
@@ -9,22 +9,22 @@ param(
 
 $ErrorActionPreference = 'Stop'
 
-$gbarPath = [System.IO.Path]::GetFullPath($Gbar)
+$wrailPath = [System.IO.Path]::GetFullPath($Wrail)
 $outputPath = [System.IO.Path]::GetFullPath($Output)
-if (-not [System.IO.File]::Exists($gbarPath)) {
-    throw "gbar executable was not found: $gbarPath"
+if (-not [System.IO.File]::Exists($wrailPath)) {
+    throw "wrail executable was not found: $wrailPath"
 }
 if ([System.IO.Directory]::Exists($outputPath) -or [System.IO.File]::Exists($outputPath)) {
     throw "Output already exists: $outputPath"
 }
 
-& $gbarPath new widget ExternalFullApplication `
+& $wrailPath new widget ExternalFullApplication `
     --output $outputPath `
     --id dev.external.full-application `
     --publisher dev.external `
     --template multipage
 if ($LASTEXITCODE -ne 0) {
-    throw "gbar new failed with exit code $LASTEXITCODE."
+    throw "wrail new failed with exit code $LASTEXITCODE."
 }
 
 $sampleRoot = $PSScriptRoot
@@ -32,8 +32,8 @@ $sourceRoot = Join-Path $outputPath 'src'
 Remove-Item -LiteralPath (Join-Path $sourceRoot 'ExternalFullApplication.cs')
 Copy-Item -LiteralPath (Join-Path $sampleRoot 'FullApplicationReferenceWidget.cs') -Destination $sourceRoot
 Copy-Item -LiteralPath (Join-Path $sampleRoot 'ReferenceLibrary.cs') -Destination $sourceRoot
-Copy-Item -LiteralPath (Join-Path $sampleRoot 'styles\default.gbss') `
-    -Destination (Join-Path $outputPath 'styles\default.gbss') -Force
+Copy-Item -LiteralPath (Join-Path $sampleRoot 'styles\default.wrss') `
+    -Destination (Join-Path $outputPath 'styles\default.wrss') -Force
 
 @'
 {
@@ -46,7 +46,7 @@ Copy-Item -LiteralPath (Join-Path $sampleRoot 'styles\default.gbss') `
   "entrypoint": {
     "runtime": "dotnet-worker",
     "assembly": "payload/ExternalFullApplication.dll",
-    "type": "GameBarAlternative.Samples.FullApplicationWidget.FullApplicationReferenceWidget"
+    "type": "WidgetRail.Samples.FullApplicationWidget.FullApplicationReferenceWidget"
   },
   "presentation": { "icon": "settings" },
   "permissions": [],
@@ -58,9 +58,9 @@ Copy-Item -LiteralPath (Join-Path $sampleRoot 'styles\default.gbss') `
 '@ | Set-Content -LiteralPath (Join-Path $outputPath 'manifest.json') -Encoding utf8
 
 @'
-using GameBarAlternative.WidgetSdk;
+using WidgetRail.WidgetSdk;
 
-namespace GameBarAlternative.Samples.FullApplicationWidget;
+namespace WidgetRail.Samples.FullApplicationWidget;
 
 public static class ExternalScenarios
 {
@@ -74,11 +74,11 @@ public static class ExternalScenarios
 {
   "version": 1,
   "assembly": "bin/Release/net8.0/ExternalFullApplication.dll",
-  "providerType": "GameBarAlternative.Samples.FullApplicationWidget.ExternalScenarios",
+  "providerType": "WidgetRail.Samples.FullApplicationWidget.ExternalScenarios",
   "scenarios": [
     { "name": "ready", "factory": "Ready", "description": "Bounded application-scale library" }
   ]
 }
-'@ | Set-Content -LiteralPath (Join-Path $outputPath 'gbar.scenarios.json') -Encoding utf8
+'@ | Set-Content -LiteralPath (Join-Path $outputPath 'widgetrail.scenarios.json') -Encoding utf8
 
 Write-Host "Exported the self-contained Full Application reference to $outputPath"

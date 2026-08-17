@@ -1,7 +1,7 @@
 {
   "manifestVersion": 1,
-  "id": "org.gbar.samples.ytmusic",
-  "publisher": "org.gbar.samples",
+  "id": "widgetrail.samples.ytmusic",
+  "publisher": "widgetrail.samples",
   "name": "YT Music",
   "version": "0.2.9",
   "hostApi": {
@@ -11,7 +11,7 @@
   "entrypoint": {
     "runtime": "dotnet-worker",
     "assembly": "payload/YtMusicWidget.dll",
-    "type": "GameBarAlternative.Samples.YtMusicWidget.YtMusicWidget"
+    "type": "WidgetRail.Samples.YtMusicWidget.YtMusicWidget"
   },
   "presentation": { "icon": "music" },
   "permissions": [

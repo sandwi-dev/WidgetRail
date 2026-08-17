@@ -233,7 +233,7 @@ the exact scoped slot before the response and that widget code does not perform
 a second delete. Provider tests should use a bounded local listener and fake
 secret store; remove real Credential Manager test values in `finally`.
 
-Package acceptance must still use `gbar pack`, install into a Community
+Package acceptance must still use `wrail pack`, install into a Community
 catalog, grant both declarations through Settings, start the generic worker in
 its package AppContainer, and exercise the authenticated broker. A direct
 `HttpClient` unit test does not prove the Community isolation boundary.

@@ -1,8 +1,8 @@
-using GameBarAlternative.PlatformBroker;
-using GameBarAlternative.WidgetProtocol;
-using GameBarAlternative.WidgetSdk;
+using WidgetRail.PlatformBroker;
+using WidgetRail.WidgetProtocol;
+using WidgetRail.WidgetSdk;
 
-namespace GameBarAlternative.WidgetRuntime;
+namespace WidgetRail.WidgetRuntime;
 
 internal sealed class WidgetDashboardGestureReservations(
     TimeProvider timeProvider,

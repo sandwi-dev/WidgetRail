@@ -1,9 +1,9 @@
 using System.Collections.ObjectModel;
-using GameBarAlternative.LauncherExperienceCatalog;
-using GameBarAlternative.PlatformSettings;
-using GameBarAlternative.WidgetStyling;
+using WidgetRail.LauncherExperienceCatalog;
+using WidgetRail.PlatformSettings;
+using WidgetRail.WidgetStyling;
 
-namespace GameBarAlternative.WidgetBridge;
+namespace WidgetRail.WidgetBridge;
 
 public sealed record BridgeLauncherSealedAsset(
     string OpaqueAssetId,
@@ -323,19 +323,19 @@ public sealed class LauncherExperienceSelectionService : IAsyncDisposable
     private static IReadOnlyDictionary<string, IReadOnlyDictionary<string, BridgeComputedStyleValue>>
         CompileStyles(LauncherExperiencePackage package)
     {
-        var loaded = GbssPackageLoader.Load(
+        var loaded = WrssPackageLoader.Load(
             package.Manifest.StyleFile,
-            new GbssFileSourceProvider(package.PackageRoot));
-        var compiled = GbssThemeCompiler.Compile(loaded);
+            new WrssFileSourceProvider(package.PackageRoot));
+        var compiled = WrssThemeCompiler.Compile(loaded);
         if (!compiled.IsValid || compiled.Theme is null)
             throw new LauncherExperiencePackageException(
-                "gbss_invalid", "Launcher Experience styles could not be compiled.");
+                "wrss_invalid", "Launcher Experience styles could not be compiled.");
         var result = new SortedDictionary<string, IReadOnlyDictionary<string, BridgeComputedStyleValue>>(
             StringComparer.Ordinal);
         var total = 0;
         foreach (var (slot, role) in StyledSlots)
         {
-            var resolved = compiled.Theme.Resolve(new GbssElement(role));
+            var resolved = compiled.Theme.Resolve(new WrssElement(role));
             total += resolved.Properties.Count;
             if (resolved.Properties.Count > BridgeRenderStyleLimits.MaximumPropertiesPerState ||
                 total > BridgeRenderStyleLimits.MaximumTotalProperties)

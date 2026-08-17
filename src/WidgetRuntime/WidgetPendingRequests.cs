@@ -1,6 +1,6 @@
 using System.Collections.Concurrent;
 
-namespace GameBarAlternative.WidgetRuntime;
+namespace WidgetRail.WidgetRuntime;
 
 internal sealed class WidgetPendingRequests
 {

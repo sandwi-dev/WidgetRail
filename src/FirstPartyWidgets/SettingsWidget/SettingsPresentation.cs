@@ -1,11 +1,11 @@
 using System.Globalization;
-using GameBarAlternative.PlatformDiagnostics;
-using GameBarAlternative.PlatformSettings;
-using GameBarAlternative.WidgetProtocol;
-using GameBarAlternative.WidgetSdk;
-using GameBarAlternative.WidgetStyling;
+using WidgetRail.PlatformDiagnostics;
+using WidgetRail.PlatformSettings;
+using WidgetRail.WidgetProtocol;
+using WidgetRail.WidgetSdk;
+using WidgetRail.WidgetStyling;
 
-namespace GameBarAlternative.FirstPartyWidgets.Settings;
+namespace WidgetRail.FirstPartyWidgets.Settings;
 
 internal sealed record SettingsThemeSelection(string ThemeId, string Version);
 

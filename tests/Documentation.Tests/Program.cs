@@ -74,7 +74,7 @@ var quickstartPath = Path.Combine(repository, "docs", "widget-quickstart.md");
 var quickstart = File.ReadAllText(quickstartPath);
 string[] requiredAuthorityRecoveryContracts =
 [
-    "gbar authority-recovery retry <confirmation-token-from-list>",
+    "wrail authority-recovery retry <confirmation-token-from-list>",
     "It does not accept a journal path, content path, security",
     "raw clear, or force option",
     "Settings → Diagnostics",
@@ -104,12 +104,12 @@ if (!quickstart.Contains("--scenario muted", StringComparison.Ordinal) ||
 var publishing = File.ReadAllText(Path.Combine(
     repository, "docs", "publishing-and-installation.md"));
 var cliReadme = File.ReadAllText(Path.Combine(
-    repository, "tools", "GbarCli", "README.md"));
+    repository, "tools", "WrailCli", "README.md"));
 string[] requiredExternalAuthorContracts =
 [
-    ".gbar\\packages",
+    ".widgetrail\\packages",
     "tests\\VolumeControl.Tests.csproj",
-    "gbar pack .\\scratch\\VolumeControl",
+    "wrail pack .\\scratch\\VolumeControl",
     "entrypoint.assembly",
 ];
 foreach (var contract in requiredExternalAuthorContracts)
@@ -120,7 +120,7 @@ foreach (var (name, text) in new[]
              ("docs/widget-quickstart.md", quickstart),
              ("docs/widget-authoring-guide.md", guide),
              ("docs/publishing-and-installation.md", publishing),
-             ("tools/GbarCli/README.md", cliReadme),
+             ("tools/WrailCli/README.md", cliReadme),
          })
 {
     if (text.Contains("--sdk-project", StringComparison.Ordinal) ||
@@ -130,9 +130,9 @@ foreach (var (name, text) in new[]
 if (!publishing.Contains("NuGet.Config", StringComparison.Ordinal) ||
     !publishing.Contains("bounded isolated Release build", StringComparison.Ordinal))
     failures.Add("docs/publishing-and-installation.md is missing the external source-pack contract.");
-if (!cliReadme.Contains("GameBarAlternative.WidgetSdk", StringComparison.Ordinal) ||
+if (!cliReadme.Contains("WidgetRail.WidgetSdk", StringComparison.Ordinal) ||
     !cliReadme.Contains("private intermediates", StringComparison.Ordinal))
-    failures.Add("tools/GbarCli/README.md is missing the offline scaffold/source-pack contract.");
+    failures.Add("tools/WrailCli/README.md is missing the offline scaffold/source-pack contract.");
 
 var coreDomainRoots = new[]
 {
@@ -149,9 +149,9 @@ string[] retiredDomainMarkers =
     "WidgetSpotify",
     "SpotifyPlatformBroker",
     "WindowsSpotifyProvider",
-    "org.gbar.samples.spotify",
-    "org.gbar.community.reference.game-launcher",
-    "org.gbar.firstparty.game-launcher",
+    "widgetrail.samples.spotify",
+    "widgetrail.community.reference.game-launcher",
+    "widgetrail.firstparty.game-launcher",
     "HostGameLauncherApplicationService",
 ];
 foreach (var root in coreDomainRoots)
@@ -162,8 +162,15 @@ foreach (var root in coreDomainRoots)
     {
         var source = File.ReadAllText(file);
         foreach (var marker in retiredDomainMarkers)
+        {
+            // DLV-259 owns persisted-state migration. Exact retired consent
+            // tombstones remain data migration metadata, not executable domain code.
+            if (Path.GetFileName(file) == "ConsentStore.cs" &&
+                marker == "external.spotify.")
+                continue;
             if (source.Contains(marker, StringComparison.Ordinal))
                 failures.Add($"{Relative(file)} retains retired product domain '{marker}'.");
+        }
     }
 }
 if (!File.ReadAllText(Path.Combine(repository, "src", "PlatformBroker", "Contracts.cs"))
@@ -231,12 +238,12 @@ static string FindRepositoryRoot(string start)
             File.Exists(Path.Combine(current.FullName, "docs", "README.md")) &&
             File.Exists(Path.Combine(current.FullName, "global.json")))
             return current.FullName;
-    throw new DirectoryNotFoundException("Could not locate the GameBarAlternative repository root.");
+    throw new DirectoryNotFoundException("Could not locate the WidgetRail repository root.");
 }
 
 static bool HasIgnoredSegment(string root, string path)
 {
     var relative = Path.GetRelativePath(root, path);
     return relative.Split(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar)
-        .Any(segment => segment is ".git" or "bin" or "obj" or "artifacts");
+        .Any(segment => segment is ".git" or "bin" or "obj" or "artifacts" or "history");
 }

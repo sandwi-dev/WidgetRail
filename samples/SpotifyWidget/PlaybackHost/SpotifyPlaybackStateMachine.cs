@@ -1,6 +1,6 @@
-using GameBarAlternative.SpotifyPlayback;
+using WidgetRail.SpotifyPlayback;
 
-namespace GameBarAlternative.SpotifyPlaybackHost;
+namespace WidgetRail.SpotifyPlaybackHost;
 
 /// <summary>Pure deterministic lifecycle for the single SDK player instance.</summary>
 public sealed class SpotifyPlaybackStateMachine

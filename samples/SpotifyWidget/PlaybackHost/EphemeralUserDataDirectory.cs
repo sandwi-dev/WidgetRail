@@ -1,8 +1,8 @@
-namespace GameBarAlternative.SpotifyPlaybackHost;
+namespace WidgetRail.SpotifyPlaybackHost;
 
 internal sealed class EphemeralUserDataDirectory : IDisposable
 {
-    private const string DirectoryPrefix = "GameBarAlternative.SpotifyPlayback.";
+    private const string DirectoryPrefix = "WidgetRail.SpotifyPlayback.";
     private static readonly TimeSpan StaleAge = TimeSpan.FromDays(1);
     private readonly string _path;
 

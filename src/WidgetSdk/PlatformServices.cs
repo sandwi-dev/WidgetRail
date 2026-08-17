@@ -2,7 +2,7 @@ using System.Text.Json.Serialization;
 using System.Text.Json;
 using System.Text;
 
-namespace GameBarAlternative.WidgetSdk;
+namespace WidgetRail.WidgetSdk;
 
 public sealed record WidgetCapabilityQuery;
 

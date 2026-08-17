@@ -1,7 +1,7 @@
-using GameBarAlternative.WidgetProtocol;
-using GameBarAlternative.WidgetSdk;
+using WidgetRail.WidgetProtocol;
+using WidgetRail.WidgetSdk;
 
-namespace GameBarAlternative.FirstPartyWidgets.NetworkControls;
+namespace WidgetRail.FirstPartyWidgets.NetworkControls;
 
 internal static class NetworkControlsPresentation
 {

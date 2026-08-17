@@ -1,4 +1,4 @@
-namespace GameBarAlternative.WidgetSdk;
+namespace WidgetRail.WidgetSdk;
 
 /// <summary>Deterministic range stepping anchored at the slider minimum.</summary>
 public static class SliderMath

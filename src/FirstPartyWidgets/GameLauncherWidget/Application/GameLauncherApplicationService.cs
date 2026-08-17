@@ -1,10 +1,10 @@
-using GameBarAlternative.PlatformBroker;
-using GameBarAlternative.WidgetSdk;
-using GameBarAlternative.WindowsAppLibraryProvider;
+using WidgetRail.PlatformBroker;
+using WidgetRail.WidgetSdk;
+using WidgetRail.WindowsAppLibraryProvider;
 using PackageAppLibraryProvider =
-    GameBarAlternative.WindowsAppLibraryProvider.WindowsAppLibraryProvider;
+    WidgetRail.WindowsAppLibraryProvider.WindowsAppLibraryProvider;
 
-namespace GameBarAlternative.FirstPartyWidgets.GameLauncher;
+namespace WidgetRail.FirstPartyWidgets.GameLauncher;
 
 internal sealed class GameLauncherApplicationService(
     PackageAppLibraryProvider provider,

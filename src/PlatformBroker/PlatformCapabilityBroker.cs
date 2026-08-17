@@ -1,7 +1,7 @@
 using System.Text.Json;
 using System.Threading.Channels;
 
-namespace GameBarAlternative.PlatformBroker;
+namespace WidgetRail.PlatformBroker;
 
 public sealed class BrokerEventSubscription : IAsyncDisposable
 {

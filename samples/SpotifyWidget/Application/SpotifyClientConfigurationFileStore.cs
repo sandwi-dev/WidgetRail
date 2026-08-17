@@ -2,9 +2,9 @@ using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
-using GameBarAlternative.WindowsSpotifyProvider;
+using WidgetRail.WindowsSpotifyProvider;
 
-namespace GameBarAlternative.Samples.SpotifyWidget;
+namespace WidgetRail.Samples.SpotifyWidget;
 
 /// <summary>
 /// Package-owned reader/writer for the existing package-scoped public client-ID
@@ -15,7 +15,7 @@ internal sealed class SpotifyClientConfigurationFileStore(string root) :
     ISpotifyClientConfigurationStore
 {
     internal const string ConfigurationRootEnvironmentVariable =
-        "GBA_SPOTIFY_CONFIGURATION_ROOT";
+        "WRAIL_SPOTIFY_CONFIGURATION_ROOT";
     private const int MaximumDocumentBytes = 32 * 1024;
     private const string ClientIdKey = "client-id";
     private static readonly TimeSpan LockTimeout = TimeSpan.FromSeconds(10);

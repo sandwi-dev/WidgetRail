@@ -1,7 +1,7 @@
 using System.Text;
 using System.Text.Json;
 
-namespace GameBarAlternative.PlatformBroker;
+namespace WidgetRail.PlatformBroker;
 
 /// <summary>Shared distrust boundary for the host-side private-state transport.</summary>
 internal static class PrivateStateJsonCodec

@@ -2,8 +2,8 @@ using System.Diagnostics;
 using System.IO.Compression;
 using System.Security.Cryptography;
 using System.Text;
-using GameBarAlternative.WidgetCatalog;
-using GameBarAlternative.WidgetProtocol;
+using WidgetRail.WidgetCatalog;
+using WidgetRail.WidgetProtocol;
 
 var tests = new (string Name, Func<Task> Run)[]
 {
@@ -731,7 +731,7 @@ static async Task TamperedContentFailsClosed()
     var metadataInstalled = await metadataCatalog.InstallAsync(
         CreatePackage(metadataTemp.Path, "dev.test.metadata-tamper", "dev.test", "1.0.0"));
     await File.WriteAllTextAsync(
-        Path.Combine(metadataInstalled.InstallPath, ".gbar-integrity.json"),
+        Path.Combine(metadataInstalled.InstallPath, ".wrail-integrity.json"),
         "{\"schemaVersion\":1,\"algorithm\":\"sha256-content-tree-v1\",\"contentDigest\":\"00\"}");
     var metadata = await Assert.ThrowsAsync<WidgetPackageException>(
         () => metadataCatalog.DiscoverAsync());
@@ -756,7 +756,7 @@ static async Task InstalledMetadataBoundsFailClosed()
     var metadataInstalled = await metadataCatalog.InstallAsync(
         CreatePackage(metadataTemp.Path, "dev.test.metadata-bound", "dev.test", "1.0.0"));
     await File.WriteAllBytesAsync(
-        Path.Combine(metadataInstalled.InstallPath, ".gbar-integrity.json"),
+        Path.Combine(metadataInstalled.InstallPath, ".wrail-integrity.json"),
         new byte[(4 * 1024) + 1]);
     var metadata = await Assert.ThrowsAsync<WidgetPackageException>(
         () => metadataCatalog.DiscoverAsync());
@@ -771,7 +771,7 @@ static async Task ReservedIntegrityPathIsRejected()
         "dev.test.integrity-reserved",
         "dev.test",
         "1.0.0",
-        extras: [new ExtraEntry(".gbar-integrity.json", "attacker supplied")]);
+        extras: [new ExtraEntry(".wrail-integrity.json", "attacker supplied")]);
     var exception = await Assert.ThrowsAsync<WidgetPackageException>(() =>
         new WidgetCatalog(Path.Combine(temp.Path, "catalog")).CreateInstaller()
             .ValidateAsync(package));
@@ -845,18 +845,18 @@ static async Task VerificationReturnsHashedManifest()
             "dev.test.manifest-pair",
             "dev.test",
             "1.0.0",
-            extras: [new ExtraEntry("styles/default.gbss", "button { color: #123456; }")]));
+            extras: [new ExtraEntry("styles/default.wrss", "button { color: #123456; }")]));
 
     var verification = InstalledPackageIntegrity.Verify(
         root, installed.InstallPath, new WidgetCatalogOptions());
     Assert.Equal(installed.ContentDigest, verification.ContentDigest);
     Assert.Equal(installed.Manifest.Id, verification.Manifest.Id);
     Assert.Equal(installed.Manifest.Version, verification.Manifest.Version);
-    Assert.Equal(1, verification.GbssDigests.Count);
+    Assert.Equal(1, verification.WrssDigests.Count);
     Assert.Equal(
         Convert.ToHexString(SHA256.HashData(await File.ReadAllBytesAsync(
-            Path.Combine(installed.InstallPath, "styles", "default.gbss")))).ToLowerInvariant(),
-        verification.GbssDigests["styles/default.gbss"]);
+            Path.Combine(installed.InstallPath, "styles", "default.wrss")))).ToLowerInvariant(),
+        verification.WrssDigests["styles/default.wrss"]);
 
     await File.WriteAllTextAsync(
         Path.Combine(installed.InstallPath, "manifest.json"), "{}");
@@ -1097,7 +1097,7 @@ static string CreatePackage(
     Action<ZipArchive>? configure = null,
     bool includeEntrypoint = true)
 {
-    var path = Path.Combine(root, $"{id}-{version}-{Guid.NewGuid():N}.gbarwidget");
+    var path = Path.Combine(root, $"{id}-{version}-{Guid.NewGuid():N}.wrwidget");
     using var archive = ZipFile.Open(path, ZipArchiveMode.Create);
     var manifest = new WidgetManifest
     {

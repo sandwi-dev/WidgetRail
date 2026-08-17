@@ -1,16 +1,16 @@
 using System.Globalization;
 using System.Text.Json;
-using GameBarAlternative.PlatformSettings;
-using GameBarAlternative.PlatformBroker;
-using GameBarAlternative.PlatformDiagnostics;
-using GameBarAlternative.LauncherExperienceCatalog;
-using GameBarAlternative.WidgetProtocol;
-using GameBarAlternative.WidgetSdk;
-using GameBarAlternative.WidgetStyling;
-using GameBarAlternative.WidgetCatalog;
-using CatalogService = GameBarAlternative.WidgetCatalog.WidgetCatalog;
+using WidgetRail.PlatformSettings;
+using WidgetRail.PlatformBroker;
+using WidgetRail.PlatformDiagnostics;
+using WidgetRail.LauncherExperienceCatalog;
+using WidgetRail.WidgetProtocol;
+using WidgetRail.WidgetSdk;
+using WidgetRail.WidgetStyling;
+using WidgetRail.WidgetCatalog;
+using CatalogService = WidgetRail.WidgetCatalog.WidgetCatalog;
 
-namespace GameBarAlternative.FirstPartyWidgets.Settings;
+namespace WidgetRail.FirstPartyWidgets.Settings;
 
 public enum SettingsPage
 {

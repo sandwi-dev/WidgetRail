@@ -1,6 +1,6 @@
 using System.Text.Json;
-using GameBarAlternative.PlatformBroker;
-using GameBarAlternative.WindowsAppLibraryProvider;
+using WidgetRail.PlatformBroker;
+using WidgetRail.WindowsAppLibraryProvider;
 
 internal static class EpicInstalledGameScenarios
 {
@@ -172,7 +172,7 @@ internal static class EpicInstalledGameScenarios
     {
         internal EpicFixture()
         {
-            Root = Path.Combine(Path.GetTempPath(), "gbar-epic-" + Guid.NewGuid().ToString("N"));
+            Root = Path.Combine(Path.GetTempPath(), "wrail-epic-" + Guid.NewGuid().ToString("N"));
             Manifests = Path.Combine(Root, "manifests");
             Directory.CreateDirectory(Manifests);
         }

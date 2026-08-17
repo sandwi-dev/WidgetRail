@@ -1,6 +1,6 @@
 using Microsoft.Win32;
 
-namespace GameBarAlternative.WindowsAppLibraryProvider;
+namespace WidgetRail.WindowsAppLibraryProvider;
 
 /// <summary>
 /// Reads only GOG's machine-wide installed-game registration roots. Registry

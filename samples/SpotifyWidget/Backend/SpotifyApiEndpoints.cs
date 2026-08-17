@@ -1,8 +1,8 @@
 using System.Globalization;
 using System.Text.Json;
-using GameBarAlternative.Samples.SpotifyWidget;
+using WidgetRail.Samples.SpotifyWidget;
 
-namespace GameBarAlternative.WindowsSpotifyProvider;
+namespace WidgetRail.WindowsSpotifyProvider;
 
 internal sealed record SpotifyAuthorizedRequest(
     HttpMethod Method,

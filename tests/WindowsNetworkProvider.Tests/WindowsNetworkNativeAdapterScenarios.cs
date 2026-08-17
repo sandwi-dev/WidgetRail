@@ -1,8 +1,8 @@
 using System.Net.NetworkInformation;
 using System.Runtime.InteropServices;
 using System.Text;
-using GameBarAlternative.PlatformBroker;
-using GameBarAlternative.WindowsNetworkProvider;
+using WidgetRail.PlatformBroker;
+using WidgetRail.WindowsNetworkProvider;
 
 internal static class WindowsNetworkNativeAdapterScenarios
 {
@@ -390,7 +390,7 @@ internal static class WindowsNetworkNativeAdapterScenarios
         Assert.Equal(calls.InterfaceId, profile.InterfaceId);
         Assert.Equal("WPA2PSK", profile.Authentication);
         Assert.Equal(expectedSentinel, profile.SecretSentinel);
-        Assert.True(profile.ProfileName.StartsWith("GameBarAlternative-", StringComparison.Ordinal));
+        Assert.True(profile.ProfileName.StartsWith("WidgetRail-", StringComparison.Ordinal));
         Assert.Equal(profile.ProfileName, calls.ConnectRequests[^1].Request.Profile);
         var ownership = Assert.Single(calls.SetProfileCustomDataRequests);
         Assert.Equal(profile.ProfileName, ownership.ProfileName);

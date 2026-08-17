@@ -6,7 +6,7 @@ For the current GitHub sharing workflow and missing user-facing commands, see
 [publishing and installation](publishing-and-installation.md). For the trust
 boundary, see [security and trust](security-and-trust.md).
 
-Executable community widgets are distributed as immutable `.gbarwidget`
+Executable community widgets are distributed as immutable `.wrwidget`
 packages. The format is ZIP-compatible for tooling convenience, but the
 installer treats every archive and every extracted path as untrusted.
 
@@ -18,7 +18,7 @@ payload/
   Example.Widget.dll
   supporting-library.dll
 styles/
-  default.gbss
+  default.wrss
 assets/
   metadata.png           # packaged content; general asset brokering is planned
 signature.json          # reserved for the planned signing phase
@@ -112,7 +112,7 @@ identity-mismatched. Widget IDs use ordinal ordering; versions use descending
 
 After validation and extraction, installation computes a bounded SHA-256 digest
 over the normalized relative path, length, and bytes of every package file, then
-writes host-owned `.gbar-integrity.json`. That path is reserved and rejected if
+writes host-owned `.wrail-integrity.json`. That path is reserved and rejected if
 the archive supplies it. Discovery recomputes the digest in fixed ordinal path
 order and rejects missing/malformed metadata or any changed content. The
 integrity file is excluded from the digest it records.
@@ -158,8 +158,8 @@ These files are strict host state, not a user-editing API. Use the CLI or
 in force.
 
 The separate AppContainer authority journal is also host-owned state. When a
-crash leaves an exact DACL transaction pending, use `gbar authority-recovery
-list` and then `gbar authority-recovery retry <confirmation-token>`. Listing is
+crash leaves an exact DACL transaction pending, use `wrail authority-recovery
+list` and then `wrail authority-recovery retry <confirmation-token>`. Listing is
 bounded and exposes only a confirmation token, validated profile name, target
 count, and current/legacy format. Retry compares the current transaction before
 restoring and verifying it. There is no caller-selected journal root, raw
@@ -206,8 +206,8 @@ selection is accepted only while the widget is disabled and does not enable it.
 var catalog = new WidgetCatalog(userCatalogRoot);
 var installer = catalog.CreateInstaller();
 
-var inspection = await installer.ValidateAsync("Clock.gbarwidget");
-var installed = await catalog.InstallAsync("Clock.gbarwidget");
+var inspection = await installer.ValidateAsync("Clock.wrwidget");
+var installed = await catalog.InstallAsync("Clock.wrwidget");
 
 await catalog.SetActiveVersionAsync(installed.Id, new Version(1, 0, 0));
 await catalog.SetOrderAsync(["dev.example.clock", "dev.example.audio"]);
@@ -356,15 +356,15 @@ ms for the same 512-file exact-grant path and passes Runtime 55/55; the earlier
 clean number remains the release-eligible baseline until an exact clean commit
 is retained.
 
-A focused exact-shape fixture uses the public `gbar pack`, `install`, and
+A focused exact-shape fixture uses the public `wrail pack`, `install`, and
 `enable` workflow for 258 verified files reached through exactly 1,024 authority
 directories, then renders a real first-party widget in its AppContainer. On the
 current machine packing takes 376.140 ms and activation through first validated
 render takes 2,528.883 ms. Clean retained selected run
 `20260809T155221Z-ae6e5d8d` passed CLI 50/50, Documentation 1/1, and First-Party
 Conformance 6/6 for documentation commit `b2956ab` over implementation
-`4f903b0`. A paired 1,025-directory case proves `gbar pack` leaves no output and
-`gbar install` publishes no package bytes. The measured edge remains under a
+`4f903b0`. A paired 1,025-directory case proves `wrail pack` leaves no output and
+`wrail install` publishes no package bytes. The measured edge remains under a
 ten-second regression ceiling; this selected run is neither a complete
 all-manifest gate nor the missing aggregate production start deadline.
 
@@ -409,7 +409,7 @@ identity or benign behavior.
 
 ## Remote acquisition
 
-The `gbar install` command can acquire an exact package from an absolute HTTPS
+The `wrail install` command can acquire an exact package from an absolute HTTPS
 URL or a deterministic GitHub Release shorthand before calling this same
 installer. The downloader adds transport, redirect, compressed-size, timeout,
 temporary-file, and required remote SHA-256 controls; it does not weaken or replace
@@ -428,7 +428,7 @@ publishes the staged version.
 
 The native local-import prerequisite uses this same catalog-owned operation
 lock and installer. Its host picker accepts only one existing filesystem
-`.gbarwidget`; the bridge opens it without following a reparse point and without
+`.wrwidget`; the bridge opens it without following a reparse point and without
 write sharing, keeps that handle through validation/extraction/publication, and
 revalidates the exact current `Interactive` bundled Settings generation before
 publication. Success remains disabled and produces a semantic catalog reload.
@@ -444,11 +444,11 @@ disabled for explicit review.
 The CLI exposes the same catalog contract without deleting package bytes:
 
 ```powershell
-gbar version list dev.example.clock
-gbar disable dev.example.clock
-gbar version select dev.example.clock 1.1.0
-gbar version rollback dev.example.clock
-gbar version rollback dev.example.clock --to 1.0.0
+wrail version list dev.example.clock
+wrail disable dev.example.clock
+wrail version select dev.example.clock 1.1.0
+wrail version rollback dev.example.clock
+wrail version rollback dev.example.clock --to 1.0.0
 ```
 
 `list` reports every installed path and marks the active version. `select`
@@ -456,7 +456,7 @@ accepts any installed canonical dotted numeric version. `rollback` without
 `--to` chooses the greatest installed version strictly older than the active
 one; an explicit target must also be installed and older. Selection and
 rollback require a disabled widget, preserve that disabled state, and require a
-separate review and `gbar enable` action afterward. There is no history stack:
+separate review and `wrail enable` action afterward. There is no history stack:
 use `version select` to move forward to a newer installed version.
 
 For local packages, Settings → Installed widgets exposes the implemented

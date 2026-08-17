@@ -1,9 +1,9 @@
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
-using GameBarAlternative.Samples.ClockWidget;
-using GameBarAlternative.WidgetProtocol;
-using GameBarAlternative.WidgetSdk;
+using WidgetRail.Samples.ClockWidget;
+using WidgetRail.WidgetProtocol;
+using WidgetRail.WidgetSdk;
 
 var tests = new (string Name, Func<Task> Run)[]
 {
@@ -50,8 +50,8 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Code text preserves bounded non-focusable monospace semantics", CodeTextTests.Run),
     ("Minimalist rows and controller hints preserve public focus and accessibility contracts", MinimalistRowsAreSemantic),
     ("Composite child IDs enforce protocol boundaries eagerly", CompositeChildIdsValidateEagerly),
-    ("Protocol rejects unsafe or unbounded GBSS style classes", RawStyleClassesAreValidated),
-    ("Style helpers eagerly enforce GBSS class contracts", StyleExtensionsValidateClasses),
+    ("Protocol rejects unsafe or unbounded WRSS style classes", RawStyleClassesAreValidated),
+    ("Style helpers eagerly enforce WRSS class contracts", StyleExtensionsValidateClasses),
     ("Undefined protocol enums are rejected before renderer transport", UndefinedProtocolEnumsAreRejected),
     ("Interaction states reject invalid node combinations", InvalidInteractionStatesAreRejected),
     ("Unknown protocol JSON fields are rejected", UnknownFieldsAreRejected),
@@ -1751,7 +1751,7 @@ static Task ModernComponentsAreSemantic()
             "Open settings",
             IconButtonVariant.Quiet,
             IconButtonSize.Large)
-        .AddClasses("widget-accent", "gbar-icon-button");
+        .AddClasses("widget-accent", "wrail-icon-button");
     var view = new WidgetView(
         UI.Stack("modern.root",
             iconButton,
@@ -1783,22 +1783,22 @@ static Task ModernComponentsAreSemantic()
     Assert.Equal("Open settings", button.AccessibilityLabel);
     Assert.Equal(WidgetGlyph.Settings, button.Glyph);
     Assert.True(
-        new[] { "gbar-icon-button", "gbar-icon-button--large", "gbar-icon-button--quiet", "widget-accent" }
+        new[] { "wrail-icon-button", "wrail-icon-button--large", "wrail-icon-button--quiet", "widget-accent" }
             .SequenceEqual(button.StyleClasses),
         "AddClasses must preserve ordered semantic component classes and remove duplicates.");
-    Assert.True(Find(snapshot.Root, "modern.card").StyleClasses.Contains("gbar-card--subtle"),
+    Assert.True(Find(snapshot.Root, "modern.card").StyleClasses.Contains("wrail-card--subtle"),
         "Card variant class was omitted.");
     Assert.Equal("Connections", Find(snapshot.Root, "modern.header.title").Text);
     var headerContent = Find(snapshot.Root, "modern.header.content");
     Assert.Equal(ViewNodeKind.Row, headerContent.Kind);
     Assert.Equal("modern.header.text", headerContent.Children[0].Id);
     Assert.Equal(ViewNodeKind.Stack, headerContent.Children[0].Kind);
-    Assert.True(headerContent.Children[0].StyleClasses.Contains("gbar-section-header__text"),
+    Assert.True(headerContent.Children[0].StyleClasses.Contains("wrail-section-header__text"),
         "Section-header text must remain a vertical stack beside optional trailing content.");
     Assert.Equal("modern.header.trailing", headerContent.Children[1].Id);
     Assert.Equal(WidgetGlyph.Check, Find(snapshot.Root, "modern.status.icon").Glyph);
     Assert.Equal("Success status", Find(snapshot.Root, "modern.status.icon").AccessibilityLabel);
-    Assert.True(Find(snapshot.Root, "modern.status.label").StyleClasses.Contains("gbar-badge__label--success"),
+    Assert.True(Find(snapshot.Root, "modern.status.label").StyleClasses.Contains("wrail-badge__label--success"),
         "Badge tone did not reach its semantic label.");
     Assert.Equal(ViewNodeKind.Spacer, Find(snapshot.Root, "modern.divider").Kind);
     Assert.Equal("retry-network", Find(snapshot.Root, "modern.alert.action").ActionId);
@@ -1927,7 +1927,7 @@ static Task SettingsRowsAndActionSheetsAreSemantic()
 
     var settingNode = Find(snapshot.Root, "settings.vibration");
     Assert.Equal(ViewNodeKind.Stack, settingNode.Kind);
-    Assert.True(settingNode.StyleClasses.Contains("gbar-settings-row"),
+    Assert.True(settingNode.StyleClasses.Contains("wrail-settings-row"),
         "SettingsRow must publish its semantic theme hook.");
     Assert.Equal(longDescription,
         Find(snapshot.Root, "settings.vibration.description").Text);
@@ -1964,7 +1964,7 @@ static Task SettingsRowsAndActionSheetsAreSemantic()
     Assert.Equal("Medium vibration, Busy", medium.AccessibilityLabel);
     Assert.Equal(true, reset.IsDisabled);
     Assert.Equal("Reset custom profile, Destructive action, Unavailable", reset.AccessibilityLabel);
-    Assert.True(reset.StyleClasses.Contains("gbar-action-sheet__item--danger"),
+    Assert.True(reset.StyleClasses.Contains("wrail-action-sheet__item--danger"),
         "Destructive actions must expose a semantic theme class.");
 
     Assert.Throws<ArgumentOutOfRangeException>(() => UI.ActionSheet(
@@ -2077,7 +2077,7 @@ static Task PickersAreSemantic()
     Assert.Equal("Wireless gaming headset, Selected", headset.AccessibilityLabel);
     Assert.Equal(true, speakers.IsDisabled);
     Assert.Equal("Desk speakers, Not selected, Unavailable", speakers.AccessibilityLabel);
-    Assert.True(headset.StyleClasses.Contains("gbar-picker__option--selected"),
+    Assert.True(headset.StyleClasses.Contains("wrail-picker__option--selected"),
         "Selected picker options must expose a semantic theme hook.");
 
     Assert.Throws<ArgumentOutOfRangeException>(() => UI.Picker(
@@ -2129,7 +2129,7 @@ static Task ScrubbersAreSemantic()
     Assert.Equal(0, ViewSnapshotValidator.Validate(snapshot).Count);
     var root = Find(snapshot.Root, "media.timeline");
     Assert.Equal(ViewNodeKind.Stack, root.Kind);
-    Assert.True(root.StyleClasses.Contains("gbar-scrubber"),
+    Assert.True(root.StyleClasses.Contains("wrail-scrubber"),
         "Scrubber must publish its semantic theme hook.");
     Assert.True(new[] { "media.timeline.slider", "media.timeline.times" }
         .SequenceEqual(root.Children.Select(child => child.Id)),
@@ -2148,7 +2148,7 @@ static Task ScrubbersAreSemantic()
     Assert.Equal(true, slider.IsBusy);
     Assert.Equal("Track position, Unavailable, Busy", slider.AccessibilityLabel);
     Assert.Equal("1:02:03 of 2:03:04", slider.AccessibilityValue);
-    Assert.True(slider.StyleClasses.Contains("gbar-scrubber__slider"),
+    Assert.True(slider.StyleClasses.Contains("wrail-scrubber__slider"),
         "Scrubber Slider must publish its semantic theme hook.");
     Assert.Equal("1:02:03", Find(snapshot.Root, "media.timeline.elapsed").Text);
     Assert.Equal("2:03:04", Find(snapshot.Root, "media.timeline.duration").Text);
@@ -2237,7 +2237,7 @@ static Task ToastsAreNonInteractive()
     var root = Find(snapshot.Root, "network.toast");
     Assert.Equal(ViewNodeKind.Row, root.Kind);
     Assert.True(
-        new[] { "gbar-toast", "gbar-toast--success", "widget-toast" }
+        new[] { "wrail-toast", "wrail-toast--success", "widget-toast" }
             .SequenceEqual(root.StyleClasses),
         "Toast tone and author classes must remain stable theme hooks.");
     Assert.True(!root.IsFocusable, "A Toast root must never enter controller focus.");
@@ -2352,7 +2352,7 @@ static Task MinimalistRowsAreSemantic()
 
     var valueNode = Find(snapshot.Root, "minimal.output");
     Assert.Equal(ViewNodeKind.Row, valueNode.Kind);
-    Assert.True(valueNode.StyleClasses.Contains("gbar-value-row"),
+    Assert.True(valueNode.StyleClasses.Contains("wrail-value-row"),
         "ValueRow must publish its semantic theme hook.");
     Assert.True(new[]
     {
@@ -2372,7 +2372,7 @@ static Task MinimalistRowsAreSemantic()
     Assert.Equal(true, selectedNode.IsSelected);
     Assert.Equal(WidgetGlyph.Check, selectedNode.Glyph);
     Assert.Equal("Living room TV, Selected", selectedNode.AccessibilityLabel);
-    Assert.True(selectedNode.StyleClasses.Contains("gbar-choice-row--selected"),
+    Assert.True(selectedNode.StyleClasses.Contains("wrail-choice-row--selected"),
         "Selected ChoiceRow did not expose its state theme hook.");
 
     var unavailableNode = Find(snapshot.Root, "minimal.choice.unavailable");
@@ -2443,10 +2443,10 @@ static Task CompositeChildIdsValidateEagerly()
 
 static Task RawStyleClassesAreValidated()
 {
-    var valid = RawStyleSnapshot(["gbar-icon-button--large", "_private2"]);
+    var valid = RawStyleSnapshot(["wrail-icon-button--large", "_private2"]);
     Assert.Equal(0, ViewSnapshotValidator.Validate(valid).Count);
-    Assert.True(StyleClassContract.IsValidIdentifier("gbar-icon-button--large"),
-        "The shared style-class grammar rejected a valid GBSS identifier.");
+    Assert.True(StyleClassContract.IsValidIdentifier("wrail-icon-button--large"),
+        "The shared style-class grammar rejected a valid WRSS identifier.");
 
     var invalidCases = new (IReadOnlyList<string> Classes, string Code)[]
     {
@@ -2479,10 +2479,10 @@ static Task RawStyleClassesAreValidated()
 static Task StyleExtensionsValidateClasses()
 {
     var explicitClasses = UI.Stack("classes.explicit")
-        .Classes("gbar-icon-button--large", "_private2");
+        .Classes("wrail-icon-button--large", "_private2");
     Assert.True(
         explicitClasses.StyleClasses.SequenceEqual(
-            new[] { "gbar-icon-button--large", "_private2" }, StringComparer.Ordinal),
+            new[] { "wrail-icon-button--large", "_private2" }, StringComparer.Ordinal),
         "Classes must preserve explicit class order.");
 
     var appended = UI.Stack("classes.appended")
@@ -2638,7 +2638,7 @@ static Task LoadingIndicatorRoundTrip()
     var indicator = Find(snapshot.Root, "loading");
     Assert.Equal(ViewNodeKind.LoadingIndicator, indicator.Kind);
     Assert.Equal("Loading saved applications", indicator.AccessibilityLabel);
-    Assert.Equal(GameBarAlternative.WidgetProtocol.LoadingIndicatorSize.Compact,
+    Assert.Equal(WidgetRail.WidgetProtocol.LoadingIndicatorSize.Compact,
         indicator.IndicatorSize);
     Assert.True(!indicator.IsFocusable, "A loading indicator must never enter controller focus.");
     Assert.True(indicator.StyleClasses.SequenceEqual(
@@ -3396,8 +3396,8 @@ static ControllerInputEvent SliderInput(
 
 static WidgetManifest ValidManifest() => new()
 {
-    Id = "org.gbar.samples.clock",
-    Publisher = "org.gbar.samples",
+    Id = "widgetrail.samples.clock",
+    Publisher = "widgetrail.samples",
     Name = "Clock",
     Version = "0.1.0",
     HostApi = new HostApiRange("1.0", 1),

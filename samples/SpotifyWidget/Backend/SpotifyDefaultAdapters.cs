@@ -5,7 +5,7 @@ using System.Net.Sockets;
 using System.Text;
 using System.Threading.Channels;
 
-namespace GameBarAlternative.WindowsSpotifyProvider;
+namespace WidgetRail.WindowsSpotifyProvider;
 
 internal sealed class SpotifyHttpTransport : ISpotifyHttpTransport
 {
@@ -417,7 +417,7 @@ internal sealed class LoopbackSpotifyAuthorizationCallbackReceiver :
     {
         var escaped = WebUtility.HtmlEncode(message);
         var bytes = Encoding.UTF8.GetBytes(
-            "<!doctype html><html><head><meta charset=utf-8><title>Game Bar Alternative</title>" +
+            "<!doctype html><html><head><meta charset=utf-8><title>WidgetRail</title>" +
             "</head><body><p>" + escaped + "</p></body></html>");
         var headers = Encoding.ASCII.GetBytes(
             "HTTP/1.1 200 OK\r\nContent-Type: text/html; charset=utf-8\r\n" +

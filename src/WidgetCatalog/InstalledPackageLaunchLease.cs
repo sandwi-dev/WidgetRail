@@ -4,7 +4,7 @@ using System.Security.Cryptography;
 using System.Text;
 using Microsoft.Win32.SafeHandles;
 
-namespace GameBarAlternative.WidgetCatalog;
+namespace WidgetRail.WidgetCatalog;
 
 internal readonly record struct InstalledPackageObjectIdentity(
     ulong VolumeSerialNumber,

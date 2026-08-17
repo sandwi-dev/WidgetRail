@@ -50,48 +50,48 @@ review or release record, then remove only that exact run directory after any
 needed evidence has been copied.
 
 Community-package provenance is also bounded: it skips reparse points, traverses
-at most 4,096 entries, hashes at most 256 `.gbarwidget` files of at most 72 MiB
+at most 4,096 entries, hashes at most 256 `.wrwidget` files of at most 72 MiB
 each and 2 GiB total, and runs in its own 30-second supervised process. Exceeding
 any bound fails the gate instead of silently omitting evidence.
 
-## `gbar` is not found
+## `wrail` is not found
 
 Build and invoke the repository-local executable:
 
 ```powershell
-dotnet build .\tools\GbarCli\GbarCli.csproj -c Release
-.\tools\GbarCli\bin\Release\net8.0\gbar.exe help
+dotnet build .\tools\WrailCli\WrailCli.csproj -c Release
+.\tools\WrailCli\bin\Release\net8.0\wrail.exe help
 ```
 
-The repository does not add `gbar` to PATH; invoke the built executable or add
+The repository does not add `wrail` to PATH; invoke the built executable or add
 that directory to your development shell explicitly.
 
-## `gbar new` cannot find the template
+## `wrail new` cannot find the template
 
 Run it from this checkout, use the built executable with its copied templates,
-or set `GBAR_TEMPLATE_ROOT` to the directory containing
+or set `WRAIL_TEMPLATE_ROOT` to the directory containing
 `templates/ControllerWidget/template.json`.
 
-## `gbar new` reports that its bundled SDK is unavailable
+## `wrail new` reports that its bundled SDK is unavailable
 
-The CLI creates a project-local offline `GameBarAlternative.WidgetSdk` package;
+The CLI creates a project-local offline `WidgetRail.WidgetSdk` package;
 it does not search for a source project or use an external feed. Rebuild or
-reinstall the complete `gbar` distribution so `gbar.exe`, `WidgetSdk.dll`,
+reinstall the complete `wrail` distribution so `wrail.exe`, `WidgetSdk.dll`,
 `WidgetProtocol.dll`, and the controller template come from the same build,
-then rerun `gbar new`. The command validates those bounded inputs before it
+then rerun `wrail new`. The command validates those bounded inputs before it
 publishes the target directory and never leaves a partial scaffold. The
 ControllerWidget `template.json` must be supported version 2 and declare every
 input as bounded `text` or `binary`; the error identifies a missing,
 undeclared, unsafe, unreadable, or oversized file and the correction. The
-requested output path must not already exist, because `gbar new` never removes
+requested output path must not already exist, because `wrail new` never removes
 or overwrites an author-owned destination.
 
 If an external scaffold succeeds only on a previously used machine, repeat the
 documented restore with `NUGET_PACKAGES` pointed at a new empty directory. A
 successful clean restore must populate the exact content-versioned
-`GameBarAlternative.WidgetSdk` from the generated `.gbar\packages` feed. Do not
+`WidgetRail.WidgetSdk` from the generated `.widgetrail\packages` feed. Do not
 add nuget.org or a checkout-relative source to work around a missing local
-artifact; reinstall the complete matching `gbar` distribution instead.
+artifact; reinstall the complete matching `wrail` distribution instead.
 
 ## Spotify Connect returns `ERR_CONNECTION_REFUSED`
 
@@ -142,16 +142,16 @@ without exposing which application is playing media.
   `updateHz` is 1–60 Hz metadata.
 - Architectures are `x64` and/or `arm64`.
 
-Run `gbar validate <manifest.json>` for the precise JSON path and diagnostic.
+Run `wrail validate <manifest.json>` for the precise JSON path and diagnostic.
 
-## GBSS fails or a theme does not appear
+## WRSS fails or a theme does not appear
 
-For widget-local GBSS, run `gbar validate <style.gbss>`. For a global theme,
+For widget-local WRSS, run `wrail validate <style.wrss>`. For a global theme,
 run:
 
 ```powershell
-gbar theme validate <directory-or-file.gbartheme>
-gbar theme preview <directory-or-file.gbartheme>
+wrail theme validate <directory-or-file.wrtheme>
+wrail theme preview <directory-or-file.wrtheme>
 ```
 
 Check that:
@@ -167,7 +167,7 @@ The bridge publishes typed `base`, `focused`, and transient `pressed` maps.
 Static snapshot `selected`, `disabled`, and `busy` state participates while
 those maps are computed. If a pressed style appears stuck, capture diagnostics
 for the physical button-up, focus transition, and snapshot generation; the host
-is required to cancel or reconcile it at each boundary. See [GBSS](gbss.md).
+is required to cancel or reconcile it at each boundary. See [WRSS](wrss.md).
 
 For `translate-x`/`translate-y`, remember that translation changes presentation
 geometry, not layout allocation. Unexpected sibling gaps are therefore a
@@ -192,25 +192,25 @@ themes, and bridge watcher are connected. Check these boundaries:
   it safely rather than editing while the overlay is open.
 - Installed themes live under
   `%LOCALAPPDATA%\GameBarAlternative\themes\<id>\<version>\` with exact-case
-  `theme.json` and its package-relative GBSS entry. The manifest ID/version must
+  `theme.json` and its package-relative WRSS entry. The manifest ID/version must
   exactly match both directories. Invalid themes remain visible but disabled
   in the picker and diagnostics.
 - The bridge uses file notifications with a 200 ms debounce, retains the
   last-good revision after an invalid edit, and does not poll. Correct the
-  reported manifest/GBSS diagnostic; do not repeatedly touch files to force a
+  reported manifest/WRSS diagnostic; do not repeatedly touch files to force a
   fallback.
 - Theme shell styles and appearance/accessibility preferences should update
   after the bridge publishes a valid newer revision; the host ignores stale
   revisions and retains the last good appearance after an invalid edit.
   `textScale`, contrast, bold text, reduced transparency, and motion are applied
-  after GBSS; globally layered widget styles update when a new snapshot is
+  after WRSS; globally layered widget styles update when a new snapshot is
   requested. Windows setting changes also reapply System contrast/motion.
 - If a valid shell change does not appear, inspect the host diagnostic log for
   `Applied platform appearance revision` or a retained-last-good refresh error,
   then verify the settings/theme diagnostic rather than restarting workers.
   The host log is `%LOCALAPPDATA%\GameBarAlternative\overlay.log`.
 
-If install fails, run `gbar theme inspect <file.gbartheme>` and compare the
+If install fails, run `wrail theme inspect <file.wrtheme>` and compare the
 reported digest. Remote installs require `--sha256`, existing versions are not
 overwritten, and the installed catalog is capped at 128 user-theme versions.
 Publisher signing is not implemented. Track exact commands and limits in
@@ -227,24 +227,24 @@ Shortcut bindings must also be unique for the same button and event phase
 inside one input scope. The root is the default scope. Use `.InputScope(id)` on
 a Stack or Row only when a nested surface needs to reuse bindings independently.
 
-Use `gbar render <snapshot.json>` to inspect an existing bounded data-only
-snapshot. DLL input fails closed; use `gbar dev` for isolated widget execution.
+Use `wrail render <snapshot.json>` to inspect an existing bounded data-only
+snapshot. DLL input fails closed; use `wrail dev` for isolated widget execution.
 
 ## Package, download, or catalog command fails
 
-- For a source directory or `.csproj`, `gbar pack` performs the bounded build,
+- For a source directory or `.csproj`, `wrail pack` performs the bounded build,
   isolated staging, and package validation itself. A successful build that
   misses `entrypoint.assembly` means `AssemblyName` and the manifest disagree;
   the diagnostic names the missing entry and no archive is published.
-- For an already-staged package directory, `gbar pack` requires exact-case root
+- For an already-staged package directory, `wrail pack` requires exact-case root
   `manifest.json` and the manifest's entrypoint at that relative path/casing.
   It recursively includes the complete bounded directory, so stage only
   intended release files and never source, `obj`, or secrets.
-- Output must end in `.gbarwidget`.
+- Output must end in `.wrwidget`.
 - Installed versions are immutable. Bump the canonical dotted manifest version
   instead of reinstalling or overwriting the same `<id>/<version>`.
-- `gbar install` accepts a local `.gbarwidget`, an absolute HTTPS URL, or
-  `github:<owner>/<repository>@<tag>/<asset.gbarwidget>`.
+- `wrail install` accepts a local `.wrwidget`, an absolute HTTPS URL, or
+  `github:<owner>/<repository>@<tag>/<asset.wrwidget>`.
 - GitHub shorthand identifies one exact Release asset. It cannot use `latest`,
   query the GitHub API, clone a repository, or build a widget from source.
 - Remote URLs cannot contain embedded credentials or fragments. HTTP and any
@@ -262,18 +262,18 @@ snapshot. DLL input fails closed; use `gbar dev` for isolated widget execution.
   mismatch diagnostic also reports the received digest. For other failures,
   inspect the network/redirect diagnostic. Temporary download files are removed
   on success and failure.
-- `gbar list`, `enable`, `disable`, and every `gbar version` command must use
+- `wrail list`, `enable`, `disable`, and every `wrail version` command must use
   the same `--catalog` value as install. The default is
   `%LOCALAPPDATA%\GameBarAlternative\widgets`.
 - The packaged native host and Settings widget discover and watch the default
   current-user catalog. A custom `--catalog` path is an isolated CLI/test
   catalog and does not appear in the packaged overlay.
 - Newly discovered widget IDs are disabled. Local and remote updates refuse to
-  add a version while that ID is enabled; run `gbar disable <widget-id>`, retry
-  installation, run `gbar version list <widget-id>` and `gbar version select
-  <widget-id> <version>`, review the result, then run `gbar enable <widget-id>`
+  add a version while that ID is enabled; run `wrail disable <widget-id>`, retry
+  installation, run `wrail version list <widget-id>` and `wrail version select
+  <widget-id> <version>`, review the result, then run `wrail enable <widget-id>`
   with the same `--catalog`.
-- Version selection and rollback are disabled-only. `gbar version rollback
+- Version selection and rollback are disabled-only. `wrail version rollback
   <widget-id>` chooses the greatest installed version older than the active
   version; `--to <version>` must name a specific installed older version. Use
   `version select` to move forward.

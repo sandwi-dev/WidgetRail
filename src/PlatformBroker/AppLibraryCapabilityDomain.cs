@@ -1,7 +1,7 @@
 using System.Text.Json;
 using System.Text;
 
-namespace GameBarAlternative.PlatformBroker;
+namespace WidgetRail.PlatformBroker;
 
 internal sealed class AppLibraryCapabilityDomain : IDisposable
 {

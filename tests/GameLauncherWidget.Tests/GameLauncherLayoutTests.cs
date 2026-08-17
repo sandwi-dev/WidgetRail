@@ -1,10 +1,10 @@
-using GameBarAlternative.FirstPartyWidgets.GameLauncher;
-using GameBarAlternative.WidgetProtocol;
-using GameBarAlternative.WidgetSdk;
+using WidgetRail.FirstPartyWidgets.GameLauncher;
+using WidgetRail.WidgetProtocol;
+using WidgetRail.WidgetSdk;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 using System.Text.Json;
 
-namespace GameBarAlternative.Tests.GameLauncher;
+namespace WidgetRail.Tests.GameLauncher;
 
 [TestClass]
 public sealed class GameLauncherLayoutTests
@@ -243,7 +243,7 @@ public sealed class GameLauncherLayoutTests
                     $"{profile.Name}: {secondaryId} responsive ownership is wrong");
         }
 
-        var stylePath = Path.Combine(AppContext.BaseDirectory, "styles", "default.gbss");
+        var stylePath = Path.Combine(AppContext.BaseDirectory, "styles", "default.wrss");
         var styles = File.ReadAllText(stylePath);
         StringAssert.Contains(styles,
             ".game-launcher-fixed { flex-shrink: 0; }");

@@ -6,7 +6,7 @@ using System.Security.Principal;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 
-namespace GameBarAlternative.PlatformDiagnostics;
+namespace WidgetRail.PlatformDiagnostics;
 
 public sealed class PlatformDiagnosticsPipeServer : IAsyncDisposable
 {

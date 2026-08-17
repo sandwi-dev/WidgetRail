@@ -1,9 +1,9 @@
 # Launcher Experience Pack format
 
 Launcher Experience Packs are launcher-only, presentation-only data packages.
-They are separate from global `.gbartheme` packages and never change the shell,
+They are separate from global `.wrtheme` packages and never change the shell,
 Settings, or another widget. The production schema/catalog validates expanded
-package directories and deterministic `.gbarlauncher` archives, and the native
+package directories and deterministic `.wrlauncher` archives, and the native
 host maps validated recipes to host-owned semantic slots. The CLI owns the
 complete local authoring/package/catalog workflow. The ordinary overlay reads
 the exact local Settings selection through one private bridge boundary; the
@@ -12,23 +12,23 @@ data-only preview remains an authoring aid rather than a production bypass.
 ## Authoring workflow
 
 ```powershell
-gbar launcher-theme new "Deep Space" `
+wrail launcher-theme new "Deep Space" `
   --id dev.example.deep-space `
   --publisher dev.example `
   --preset hero-rail
-gbar launcher-theme validate .\DeepSpace
-gbar launcher-theme preview .\DeepSpace --output .\deep-space.preview.json
-gbar launcher-theme pack .\DeepSpace `
-  --output .\dev.example.deep-space-1.0.0.gbarlauncher
-gbar launcher-theme inspect .\dev.example.deep-space-1.0.0.gbarlauncher
-gbar launcher-theme install .\dev.example.deep-space-1.0.0.gbarlauncher
-gbar launcher-theme list
-gbar launcher-theme remove dev.example.deep-space 1.0.0
+wrail launcher-theme validate .\DeepSpace
+wrail launcher-theme preview .\DeepSpace --output .\deep-space.preview.json
+wrail launcher-theme pack .\DeepSpace `
+  --output .\dev.example.deep-space-1.0.0.wrlauncher
+wrail launcher-theme inspect .\dev.example.deep-space-1.0.0.wrlauncher
+wrail launcher-theme install .\dev.example.deep-space-1.0.0.wrlauncher
+wrail launcher-theme list
+wrail launcher-theme remove dev.example.deep-space 1.0.0
 ```
 
 Every command uses the same production directory validator. Archive inspection
 materializes captured bounded bytes into a private directory and reuses that
-validator rather than approximating the manifest, recipe, GBSS, image, or
+validator rather than approximating the manifest, recipe, WRSS, image, or
 digest contract. `new` and preview output publish by one rename and never
 overwrite an existing path. Packing sorts entries ordinally and fixes ZIP
 timestamps and metadata, so identical source bytes produce identical archives
@@ -71,7 +71,7 @@ The initial shape is:
 ```text
 launcher.json
 layouts/launcher-layout.json  # optional custom recipe
-styles/launcher.gbss
+styles/launcher.wrss
 assets/preview.png
 assets/background.png         # optional sealed presentation asset
 ```
@@ -87,7 +87,7 @@ assets/background.png         # optional sealed presentation asset
   "version": "1.0.0",
   "layoutPreset": "hero-rail",
   "compositionFile": "layouts/launcher-layout.json",
-  "styleFile": "styles/launcher.gbss",
+  "styleFile": "styles/launcher.wrss",
   "previewFile": "assets/preview.png",
   "parameters": {
     "backgroundMode": "selected-game-artwork",
@@ -159,7 +159,7 @@ Example bottom-rail root:
 ## Authority and recovery
 
 Recipes never contain widget content, game IDs, SavedIds, actions, provider
-bindings, expressions, URLs, scripts, shaders, or custom elements. GBSS can
+bindings, expressions, URLs, scripts, shaders, or custom elements. WRSS can
 target only launcher semantic roles and cannot use ID or cross-widget selectors.
 The catalog is a distinct `LauncherExperienceCatalog`; it does not register with
 or alter global `ThemeCatalog` behavior.
@@ -209,7 +209,7 @@ rejected atomically; its content never supplies fallback actions or semantics.
 
 The private selection boundary publishes one complete immutable revision: exact
 package ID/version/content digest, validated recipe, resolved launcher-only
-GBSS values, closed presentation parameters, and optional sealed static art.
+WRSS values, closed presentation parameters, and optional sealed static art.
 The native host stages and validates the whole revision before replacing the
 last good presentation. Missing, removed, tampered, incompatible, or partially
 rewritten package state therefore keeps the prior admitted pixels and semantics

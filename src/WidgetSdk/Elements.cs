@@ -1,6 +1,6 @@
-using GameBarAlternative.WidgetProtocol;
+using WidgetRail.WidgetProtocol;
 
-namespace GameBarAlternative.WidgetSdk;
+namespace WidgetRail.WidgetSdk;
 
 public abstract record WidgetElement(string Id)
 {

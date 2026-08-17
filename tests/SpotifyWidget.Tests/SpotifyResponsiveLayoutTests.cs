@@ -1,7 +1,7 @@
-using GameBarAlternative.Samples.SpotifyWidget;
-using GameBarAlternative.WidgetProtocol;
-using GameBarAlternative.WidgetSdk;
-using GameBarAlternative.WidgetStyling;
+using WidgetRail.Samples.SpotifyWidget;
+using WidgetRail.WidgetProtocol;
+using WidgetRail.WidgetSdk;
+using WidgetRail.WidgetStyling;
 
 internal static class SpotifyResponsiveLayoutTests
 {
@@ -55,7 +55,7 @@ internal static class SpotifyResponsiveLayoutTests
     }
 
     private static void AssertEnvelope(
-        GbssTheme theme, ViewSnapshot snapshot, Envelope envelope, double scale)
+        WrssTheme theme, ViewSnapshot snapshot, Envelope envelope, double scale)
     {
         var compact = IsCompact(envelope.Width, envelope.Height);
         Equal(envelope.Compact, compact);
@@ -88,7 +88,7 @@ internal static class SpotifyResponsiveLayoutTests
             var details = Resolve(theme, "stack", "spotify.player.compact.details",
                 "spotify-details", "spotify-compact-details");
             var scrubber = Resolve(theme, "scrubber", "spotify.player.compact.seek",
-                "gbar-scrubber", "spotify-scrubber", "spotify-compact-scrubber");
+                "wrail-scrubber", "spotify-scrubber", "spotify-compact-scrubber");
             var controls = Resolve(theme, "row", "spotify.player.compact.controls",
                 "spotify-primary-controls", "spotify-compact-primary-controls");
             var attribution = Resolve(theme, "text", "spotify.player.compact.attribution",
@@ -137,29 +137,29 @@ internal static class SpotifyResponsiveLayoutTests
     private static WidgetCursorResourceSnapshot<T> EmptyCursor<T>() where T : notnull =>
         new(WidgetPagedResourceStatus.Ready, [], null, null, null, null, null, 0);
 
-    private static GbssTheme CompileTheme()
+    private static WrssTheme CompileTheme()
     {
         var source = File.ReadAllText(Path.Combine(
-            AppContext.BaseDirectory, "styles", "default.gbss"));
-        var parsed = GbssParser.Parse(source, "styles/default.gbss");
+            AppContext.BaseDirectory, "styles", "default.wrss"));
+        var parsed = WrssParser.Parse(source, "styles/default.wrss");
         True(parsed.IsValid, string.Join(Environment.NewLine, parsed.Diagnostics));
-        var compiled = GbssThemeCompiler.Compile([parsed.Document]);
+        var compiled = WrssThemeCompiler.Compile([parsed.Document]);
         True(compiled.IsValid, string.Join(Environment.NewLine, compiled.Diagnostics));
         return compiled.Theme!;
     }
 
-    private static GbssResolvedStyle Resolve(
-        GbssTheme theme, string role, string id, params string[] classes) =>
-        theme.Resolve(new GbssElement(role, id,
+    private static WrssResolvedStyle Resolve(
+        WrssTheme theme, string role, string id, params string[] classes) =>
+        theme.Resolve(new WrssElement(role, id,
             new HashSet<string>(classes, StringComparer.Ordinal)));
 
-    private static double Pixels(GbssComputedValue? value)
+    private static double Pixels(WrssComputedValue? value)
     {
         if (value?.Unit == "px" && value.Number is { } number) return number;
         throw new InvalidOperationException($"Expected a pixel length; got '{value?.Text}'.");
     }
 
-    private static double Number(GbssComputedValue? value) =>
+    private static double Number(WrssComputedValue? value) =>
         value?.Number ?? throw new InvalidOperationException(
             $"Expected a numeric value; got '{value?.Text}'.");
 

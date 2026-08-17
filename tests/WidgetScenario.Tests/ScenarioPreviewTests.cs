@@ -1,10 +1,10 @@
 using System.Diagnostics;
 using System.Text.Json;
-using GameBarAlternative.GbarCli;
-using GameBarAlternative.WidgetSdk;
+using WidgetRail.WrailCli;
+using WidgetRail.WidgetSdk;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 
-namespace GameBarAlternative.WidgetScenario.Tests;
+namespace WidgetRail.WidgetScenario.Tests;
 
 [TestClass]
 [DoNotParallelize]
@@ -133,7 +133,7 @@ public sealed class ScenarioPreviewTests
     public async Task OutputInputsAreRejectedBeforeFactoryExecution()
     {
         var fixture = Required(_basic);
-        var manifest = Path.Combine(fixture.Path, "gbar.scenarios.json");
+        var manifest = Path.Combine(fixture.Path, "widgetrail.scenarios.json");
         var before = await File.ReadAllBytesAsync(manifest);
 
         var result = await RunCliAsync(
@@ -193,7 +193,7 @@ public sealed class ScenarioPreviewTests
             string scenarioSource)
         {
             var parent = System.IO.Path.Combine(
-                System.IO.Path.GetTempPath(), "gbar-external-scenarios", Guid.NewGuid().ToString("N"));
+                System.IO.Path.GetTempPath(), "wrail-external-scenarios", Guid.NewGuid().ToString("N"));
             Directory.CreateDirectory(parent);
             var path = System.IO.Path.Combine(parent, name);
             try
@@ -206,7 +206,7 @@ public sealed class ScenarioPreviewTests
                 await File.WriteAllTextAsync(
                     System.IO.Path.Combine(path, "src", "Scenarios.cs"), scenarioSource);
                 await File.WriteAllTextAsync(
-                    System.IO.Path.Combine(path, "gbar.scenarios.json"), Manifest(name));
+                    System.IO.Path.Combine(path, "widgetrail.scenarios.json"), Manifest(name));
                 await RunProcessAsync("dotnet",
                     ["restore", name + ".csproj", "--configfile", "NuGet.Config"], path);
                 await RunProcessAsync("dotnet",
@@ -272,8 +272,8 @@ public sealed class ScenarioPreviewTests
     }
 
     private const string BasicSource = """
-        using GameBarAlternative.WidgetProtocol;
-        using GameBarAlternative.WidgetSdk;
+        using WidgetRail.WidgetProtocol;
+        using WidgetRail.WidgetSdk;
 
         namespace dev.preview;
 
@@ -336,8 +336,8 @@ public sealed class ScenarioPreviewTests
         """;
 
     private const string CapabilitySource = """
-        using GameBarAlternative.WidgetProtocol;
-        using GameBarAlternative.WidgetSdk;
+        using WidgetRail.WidgetProtocol;
+        using WidgetRail.WidgetSdk;
 
         namespace dev.preview;
 

@@ -2,7 +2,7 @@ using System.Globalization;
 using System.Collections.ObjectModel;
 using System.Text.Json;
 
-namespace GameBarAlternative.LauncherExperienceCatalog;
+namespace WidgetRail.LauncherExperienceCatalog;
 
 internal static class LauncherExperienceDocumentParser
 {
@@ -57,7 +57,7 @@ internal static class LauncherExperienceDocumentParser
             errors.Add(new("$.version", "invalid_version", "Version must use canonical dotted numeric notation."));
         if (!TryEnum(presetText, Presets, out LauncherLayoutPreset preset))
             errors.Add(new("$.layoutPreset", "invalid_preset", "Preset must be hero-rail, cover-wall, carousel, or compact-grid."));
-        ValidatePath(styleFile, "$.styleFile", ".gbss", required: true, errors);
+        ValidatePath(styleFile, "$.styleFile", ".wrss", required: true, errors);
         ValidateImagePath(previewFile, "$.previewFile", required: true, errors);
         ValidatePath(compositionFile, "$.compositionFile", ".json", required: false, errors);
 

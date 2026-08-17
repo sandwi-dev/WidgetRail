@@ -66,7 +66,7 @@ Themes, layouts, and static widgets contain no executable code. They are validat
 
 ## Package shape
 
-The current local tooling uses a `.gbarwidget` ZIP-compatible bundle. Signing is
+The current local tooling uses a `.wrwidget` ZIP-compatible bundle. Signing is
 a production requirement, not current enforcement:
 
 ```text
@@ -222,7 +222,7 @@ SectionHeader, StatusBadge, Divider, Alert, EmptyState, SegmentedTabs, Switch,
 ScopedDialog, SettingsRow, ActionSheet, Picker, Scrubber, MediaTile, AppTile,
 lifecycle-owned Toast, and semantic CodeText helpers. These helpers publish stable focus behavior,
 accessibility labels, selected/disabled semantics, nested B handling, and
-documented `gbar-*` theme hooks; only Grid requires the protocol-v8 native
+documented `wrail-*` theme hooks; only Grid requires the protocol-v8 native
 layout contract. Separator, List, Chart, Toolbar, virtualized grids, and richer
 primitives in the target list above remain future contract work.
 
@@ -334,9 +334,9 @@ implemented.
 
 The first community SDK should omit capabilities that cannot yet be sandboxed and audited safely.
 
-## GBSS
+## WRSS
 
-GBSS borrows familiar CSS syntax without becoming a browser engine:
+WRSS borrows familiar CSS syntax without becoming a browser engine:
 
 ```css
 :root {
@@ -376,18 +376,18 @@ The SDK succeeds only if the safe path is also the easiest path.
 
 Available now:
 
-- `gbar new widget` scaffolds a strict manifest, typed lifecycle-aware C#
-  widget, executable state/action snapshot test, replay, safe starter GBSS,
+- `wrail new widget` scaffolds a strict manifest, typed lifecycle-aware C#
+  widget, executable state/action snapshot test, replay, safe starter WRSS,
   and a matching SDK package in a relative offline feed;
-- `gbar validate`, `render`, and `replay` exercise manifests, styles,
+- `wrail validate`, `render`, and `replay` exercise manifests, styles,
   snapshots, focus, and controller actions;
-- `gbar pack` owns the bounded build/stage/validate path for source projects
+- `wrail pack` owns the bounded build/stage/validate path for source projects
   and retains deterministic low-level packing for staged directories;
 - local/HTTPS/GitHub Release install, catalog list/enable/disable, and immutable
-  `gbar version list|select|rollback` commands;
-- `gbar theme new|validate|preview|pack|inspect|install|list` for deterministic,
+  `wrail version list|select|rollback` commands;
+- `wrail theme new|validate|preview|pack|inspect|install|list` for deterministic,
   bounded, data-only global themes;
-- `gbar dev` for an unsigned, session-only source/project/package edit loop.
+- `wrail dev` for an unsigned, session-only source/project/package edit loop.
   It watches the complete bounded pack input, builds with a deadline, and uses
   the normal generic worker/AppContainer/broker/lifecycle/renderer path. A
   controller/hotkey-free candidate must authenticate its exact catalog, widget,
@@ -411,7 +411,7 @@ Remaining tooling:
 - native graphical theme preview plus package remove/update discovery; and
 - an SDK Gallery widget covering the complete public primitive/state matrix.
 
-`gbar dev` is local development tooling, not an install, signature, or publisher
+`wrail dev` is local development tooling, not an install, signature, or publisher
 trust decision. It does not mutate the user's installed catalog, grant consent,
 or weaken AppContainer policy. A persistent shell warning and richer controller
 diagnostics remain UX work.

@@ -4,8 +4,8 @@ Status: checked-in pre-release API baseline and discoverable local release-unit 
 
 `eng/WidgetSdkRelease.props` is the canonical local release-unit contract. It
 sets the pre-release SDK version, package ID, and supported ControllerWidget
-template version stamped into both `WidgetSdk.dll` and `gbar.dll`. The
-version-2 template manifest must match that metadata. `gbar new widget` writes
+template version stamped into both `WidgetSdk.dll` and `wrail.dll`. The
+version-2 template manifest must match that metadata. `wrail new widget` writes
 an exact content-addressed package version such as
 `0.1.0-dev.local.<16-hex>` into the generated project and uses that exact value
 in its `PackageReference`. A CLI, SDK assembly, template, or generated
@@ -79,7 +79,7 @@ dotnet run --project .\tools\WidgetSdkApiBaseline\WidgetSdkApiBaseline.csproj `
 ```
 
 Review `src/WidgetSdk/PublicApi.txt` as a normal source change, then rerun the
-compatibility, WidgetSdk, and GbarCli scaffold checks. The update command does
+compatibility, WidgetSdk, and WrailCli scaffold checks. The update command does
 not edit the release-unit properties, template, package, docs, or protocol; it
 only makes the reviewed public-surface decision explicit. Tests never invoke
 this command against the checked-in baseline.

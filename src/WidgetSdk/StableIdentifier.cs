@@ -1,4 +1,4 @@
-namespace GameBarAlternative.WidgetSdk;
+namespace WidgetRail.WidgetSdk;
 
 /// <summary>
 /// Mirrors the declarative protocol's stable-identifier contract for IDs that

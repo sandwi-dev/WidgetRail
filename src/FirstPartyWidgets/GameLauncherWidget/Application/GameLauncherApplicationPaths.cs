@@ -1,7 +1,7 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
 
-namespace GameBarAlternative.FirstPartyWidgets.GameLauncher;
+namespace WidgetRail.FirstPartyWidgets.GameLauncher;
 
 internal sealed record GameLauncherApplicationPaths(
     string Root,
@@ -10,7 +10,7 @@ internal sealed record GameLauncherApplicationPaths(
     string SourceConfigurationFile,
     string LegacyPlatformSettingsFile)
 {
-    private const string RootOverride = "GBA_GAME_LAUNCHER_DATA_ROOT";
+    private const string RootOverride = "WRAIL_GAME_LAUNCHER_DATA_ROOT";
 
     internal static GameLauncherApplicationPaths CreateDefault()
     {
@@ -24,7 +24,7 @@ internal sealed record GameLauncherApplicationPaths(
             ? Path.Combine(local, "GameBarAlternative")
             : Path.GetFullPath(local);
         var root = Path.Combine(productRoot, "community-apps",
-            "org.gbar.community.reference.game-launcher");
+            "widgetrail.community.reference.game-launcher");
         return new(
             root,
             Path.Combine(root, "organization.json"),

@@ -1,8 +1,8 @@
 using System.Security.Cryptography;
 using System.Text;
-using GameBarAlternative.PlatformBroker;
+using WidgetRail.PlatformBroker;
 
-namespace GameBarAlternative.WindowsAppLibraryProvider;
+namespace WidgetRail.WindowsAppLibraryProvider;
 
 [Flags]
 internal enum GameLibrarySourceActions

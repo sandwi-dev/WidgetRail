@@ -1,6 +1,6 @@
-using GameBarAlternative.WidgetProtocol;
+using WidgetRail.WidgetProtocol;
 
-namespace GameBarAlternative.WidgetSdk;
+namespace WidgetRail.WidgetSdk;
 
 /// <summary>Result of a bounded navigation request.</summary>
 public enum WidgetNavigationResult

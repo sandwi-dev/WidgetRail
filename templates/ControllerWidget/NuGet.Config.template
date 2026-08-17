@@ -2,11 +2,11 @@
 <configuration>
   <packageSources>
     <clear />
-    <add key="gbar-local-sdk" value=".gbar/packages" />
+    <add key="wrail-local-sdk" value=".widgetrail/packages" />
   </packageSources>
   <packageSourceMapping>
-    <packageSource key="gbar-local-sdk">
-      <package pattern="GameBarAlternative.WidgetSdk" />
+    <packageSource key="wrail-local-sdk">
+      <package pattern="WidgetRail.WidgetSdk" />
     </packageSource>
   </packageSourceMapping>
 </configuration>

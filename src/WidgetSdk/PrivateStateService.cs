@@ -1,7 +1,7 @@
 using System.Text;
 using System.Text.Json;
 
-namespace GameBarAlternative.WidgetSdk;
+namespace WidgetRail.WidgetSdk;
 
 /// <summary>
 /// Durable, readable JSON state scoped by the trusted host to the authenticated

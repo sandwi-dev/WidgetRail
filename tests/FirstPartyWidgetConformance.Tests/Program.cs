@@ -2,24 +2,24 @@ using System.IO.Compression;
 using System.Diagnostics;
 using System.Globalization;
 using System.Text.Json;
-using GameBarAlternative.FirstPartyWidgets.AudioMixer;
-using GameBarAlternative.FirstPartyWidgets.GamesApps;
-using GameBarAlternative.FirstPartyWidgets.GameLauncher;
-using GameBarAlternative.FirstPartyWidgets.MediaSessions;
-using GameBarAlternative.FirstPartyWidgets.NetworkControls;
-using GameBarAlternative.FirstPartyWidgets.Settings;
-using GameBarAlternative.Tests.FullApplicationWidgetFixture;
-using SpotifySampleWidget = GameBarAlternative.Samples.SpotifyWidget.SpotifyWidget;
-using GameBarAlternative.Samples.YtMusicWidget;
-using GameBarAlternative.Samples.FullApplicationWidget;
-using GameBarAlternative.GbarCli;
-using GameBarAlternative.PlatformBroker;
-using GameBarAlternative.WidgetBridge;
-using GameBarAlternative.WidgetCatalog;
-using GameBarAlternative.WidgetProtocol;
-using GameBarAlternative.WidgetRuntime;
-using GameBarAlternative.WidgetSdk;
-using GameBarAlternative.WindowsAppLibraryProvider;
+using WidgetRail.FirstPartyWidgets.AudioMixer;
+using WidgetRail.FirstPartyWidgets.GamesApps;
+using WidgetRail.FirstPartyWidgets.GameLauncher;
+using WidgetRail.FirstPartyWidgets.MediaSessions;
+using WidgetRail.FirstPartyWidgets.NetworkControls;
+using WidgetRail.FirstPartyWidgets.Settings;
+using WidgetRail.Tests.FullApplicationWidgetFixture;
+using SpotifySampleWidget = WidgetRail.Samples.SpotifyWidget.SpotifyWidget;
+using WidgetRail.Samples.YtMusicWidget;
+using WidgetRail.Samples.FullApplicationWidget;
+using WidgetRail.WrailCli;
+using WidgetRail.PlatformBroker;
+using WidgetRail.WidgetBridge;
+using WidgetRail.WidgetCatalog;
+using WidgetRail.WidgetProtocol;
+using WidgetRail.WidgetRuntime;
+using WidgetRail.WidgetSdk;
+using WidgetRail.WindowsAppLibraryProvider;
 using System.Security.Cryptography;
 using System.Text.Json.Serialization;
 
@@ -109,7 +109,7 @@ if (args.Contains("--game-launcher-launch-acceptance", StringComparer.Ordinal))
         deployment.InstalledCatalogRoot,
         deployment.WorkerHostPath);
     var package = deployment.Packages.Single(candidate =>
-        candidate.Manifest.Id == "org.gbar.firstparty.game-launcher");
+        candidate.Manifest.Id == "widgetrail.firstparty.game-launcher");
     await RunCatalogAsync(
         installed.Catalog,
         [package],
@@ -129,8 +129,8 @@ if (args.Contains("--game-launcher-community-acceptance", StringComparer.Ordinal
     using var deployment = await Deployment.CreateAsync(installAsCommunity: false);
     var packageCatalog = new WidgetCatalog(deployment.InstalledCatalogRoot);
     var installedVersion = await packageCatalog.InstallAsync(packagePath);
-    Assert.Equal("org.gbar.community.reference.game-launcher", installedVersion.Id);
-    Assert.Equal("org.gbar.community.reference", installedVersion.Manifest.Publisher);
+    Assert.Equal("widgetrail.community.reference.game-launcher", installedVersion.Id);
+    Assert.Equal("widgetrail.community.reference", installedVersion.Manifest.Publisher);
     await packageCatalog.SetEnabledAsync(installedVersion.Id, true);
     var installed = await BridgeCatalog.LoadWithInstalledAsync(
         deployment.EmptyTrustedCatalogPath,
@@ -203,8 +203,8 @@ if (args.Contains("--text-entry-acceptance", StringComparer.Ordinal))
         deployment.WorkerHostPath);
     var packages = deployment.Packages
         .Where(package => package.Manifest.Id is
-            "org.gbar.firstparty.game-launcher" or
-            "org.gbar.firstparty.network-controls")
+            "widgetrail.firstparty.game-launcher" or
+            "widgetrail.firstparty.network-controls")
         .ToArray();
     Assert.Equal(2, packages.Length);
     await RunCatalogAsync(
@@ -246,7 +246,7 @@ if (args.Contains("--full-application-reference-acceptance", StringComparer.Ordi
         "Full Application reference installed catalog was rejected: " +
         string.Join(" | ", installed.Warnings));
     Assert.True(installed.Catalog.Widgets.Any(widget =>
-            string.Equals(widget.Id, "org.gbar.samples.full-application", StringComparison.Ordinal)),
+            string.Equals(widget.Id, "widgetrail.samples.full-application", StringComparison.Ordinal)),
         "Full Application reference was not admitted: " +
         string.Join(" | ", installed.Warnings));
     await RunCatalogAsync(
@@ -282,7 +282,7 @@ if (args.Contains("--games-apps-installed-acceptance", StringComparer.Ordinal))
         deployment.InstalledCatalogRoot,
         deployment.WorkerHostPath);
     var package = deployment.Packages.Single(candidate =>
-        candidate.Manifest.Id == "org.gbar.firstparty.games-apps");
+        candidate.Manifest.Id == "widgetrail.firstparty.games-apps");
     var backend = CreateBackend();
     await RunCatalogAsync(
         installed.Catalog,
@@ -333,7 +333,7 @@ static async Task BundledCatalogUsesManifests()
     using var deployment = await Deployment.CreateAsync(installAsCommunity: false);
     var catalog = BridgeCatalog.Load(deployment.BundledCatalogPath);
     Assert.SequenceEqual(
-        new[] { "media-sessions", "games-apps", "game-launcher", "audio-mixer", "network-controls", "spotify" },
+        new[] { "media-sessions", "games-apps", "audio-mixer", "network-controls" },
         catalog.Widgets.Select(widget => widget.Id));
 
     foreach (var package in deployment.Packages)
@@ -403,7 +403,7 @@ static async Task BundledCatalogRejectsUnsafeSources()
         identityMismatch,
         relativePackage,
         "runtime/WidgetWorkerHost/WidgetWorkerHost.exe",
-        "org.gbar.firstparty.wrong-package");
+        "widgetrail.firstparty.wrong-package");
     Assert.Throws<BridgeCatalogException>(() => BridgeCatalog.Load(identityMismatch));
 }
 
@@ -440,7 +440,7 @@ static async Task InstalledPackagesMerge()
         deployment.WorkerHostPath);
     Assert.True(load.InstalledCatalogValid, "Installed first-party catalog was rejected.");
     Assert.Equal(0, load.Warnings.Count);
-    Assert.Equal(7, load.Catalog.Widgets.Count);
+    Assert.Equal(5, load.Catalog.Widgets.Count);
     var installedSnapshot = await new WidgetCatalog(deployment.InstalledCatalogRoot)
         .DiscoverAsync();
 
@@ -563,7 +563,7 @@ static async Task InstalledSteamArtworkRunsIsolated(BridgeCatalog catalog)
         privateSecrets: simulator,
         loopbackHttp: simulator,
         privateState: simulator);
-    var configured = catalog.GetConfigured("org.gbar.firstparty.game-launcher");
+    var configured = catalog.GetConfigured("widgetrail.firstparty.game-launcher");
     Assert.True(configured.RequiresAppContainer,
         "Installed Steam artwork did not use the generic AppContainer route.");
     using var consentRoot = new TemporaryDirectory("gba-installed-steam-artwork-consent");
@@ -711,7 +711,7 @@ static async Task InstalledGogRunsIsolated(BridgeCatalog catalog)
         privateSecrets: simulator,
         loopbackHttp: simulator,
         privateState: simulator);
-    var configured = catalog.GetConfigured("org.gbar.firstparty.game-launcher");
+    var configured = catalog.GetConfigured("widgetrail.firstparty.game-launcher");
     using var consentRoot = new TemporaryDirectory("gba-installed-gog-consent");
     var consent = new ConsentStore(consentRoot.Path);
     var identity = new BrokerWidgetIdentity(
@@ -799,7 +799,7 @@ static async Task InstalledGameLauncherCategoryRunsIsolated(BridgeCatalog catalo
             "source-empty-store", "Empty Store", AppLibrarySourceHealth.Healthy,
             1, "healthy"),
     ];
-    var configured = catalog.GetConfigured("org.gbar.firstparty.game-launcher");
+    var configured = catalog.GetConfigured("widgetrail.firstparty.game-launcher");
     using var consentRoot = new TemporaryDirectory("gba-installed-category-consent");
     var consent = new ConsentStore(consentRoot.Path);
     var identity = new BrokerWidgetIdentity(
@@ -1302,7 +1302,7 @@ static async Task InstalledGameLauncherOwnedRunsIsolated(BridgeCatalog catalog)
                 new AppLibraryCapabilitySet([AppLibraryAction.Install]),
                 ActiveOperation: null)),
     ]);
-    var configured = catalog.GetConfigured("org.gbar.firstparty.game-launcher");
+    var configured = catalog.GetConfigured("widgetrail.firstparty.game-launcher");
     using var consentRoot = new TemporaryDirectory("gba-installed-owned-consent");
     var consent = new ConsentStore(consentRoot.Path);
     var identity = new BrokerWidgetIdentity(
@@ -1403,7 +1403,7 @@ static async Task InstalledGameLauncherOfflineRunsIsolated(BridgeCatalog catalog
         privateSecrets: simulated,
         loopbackHttp: simulated,
         privateState: simulated);
-    var configured = catalog.GetConfigured("org.gbar.firstparty.game-launcher");
+    var configured = catalog.GetConfigured("widgetrail.firstparty.game-launcher");
     using var consentRoot = new TemporaryDirectory("gba-installed-offline-consent");
     var consent = new ConsentStore(consentRoot.Path);
     var identity = new BrokerWidgetIdentity(
@@ -1492,7 +1492,7 @@ static async Task InstalledRunningAppRunsIsolated(BridgeCatalog catalog)
         new("stable-manual-app", "fixture-instance", "A Conformance Manual App",
             AppLibraryKind.Application, "Windows"),
     ]);
-    var configured = catalog.GetConfigured("org.gbar.firstparty.game-launcher");
+    var configured = catalog.GetConfigured("widgetrail.firstparty.game-launcher");
     Assert.True(configured.RequiresAppContainer,
         "Installed running-app route did not use the generic AppContainer worker.");
     using var consentRoot = new TemporaryDirectory("gba-installed-running-app-consent");
@@ -1559,7 +1559,7 @@ static async Task MaximumDirectoryPackageRunsIsolated()
         await File.WriteAllTextAsync(Path.Combine(directory, "asset.txt"), "x");
     }
 
-    var packagePath = Path.Combine(deployment.RootPath, "maximum-directory.gbarwidget");
+    var packagePath = Path.Combine(deployment.RootPath, "maximum-directory.wrwidget");
     var packStopwatch = Stopwatch.StartNew();
     var pack = await RunCliAsync("pack", source, "--output", packagePath);
     packStopwatch.Stop();
@@ -1613,14 +1613,14 @@ static async Task YtMusicCommunityPackageRunsIsolated(string? acceptanceOutput =
     var package = deployment.YtMusicPackage ??
         throw new InvalidOperationException("YT Music community package was not produced.");
     Assert.True(File.Exists(package.PackagePath),
-        "The public gbar pack workflow did not publish a .gbarwidget archive.");
+        "The public wrail pack workflow did not publish a .wrwidget archive.");
     var packageInspection = await new WidgetCatalog(
             Path.Combine(deployment.RootPath, "validation-only"))
         .CreateInstaller().ValidateAsync(package.PackagePath);
     Assert.Equal(package.Manifest.Id, packageInspection.Id);
     Assert.Equal(package.Manifest.Version, packageInspection.Version.ToString());
     Assert.SequenceEqual(
-        ["manifest.json", "payload/YtMusicWidget.dll", "styles/default.gbss"],
+        ["manifest.json", "payload/YtMusicWidget.dll", "styles/default.wrss"],
         ReadPackagePaths(package.PackagePath));
     phases.Add("clean-public-validate-pack-install");
 
@@ -2049,7 +2049,7 @@ static async Task CommunityRecoveryPackagesRunIsolated(string? acceptanceOutput 
         "YT Music source package must use a version newer than 0.2.6.");
     var previousVersions = new Dictionary<string, string>(StringComparer.Ordinal)
     {
-        ["org.gbar.samples.ytmusic"] = "0.2.6",
+        ["widgetrail.samples.ytmusic"] = "0.2.6",
     };
 
     var catalog = new WidgetCatalog(deployment.InstalledCatalogRoot);
@@ -2093,7 +2093,7 @@ static async Task CommunityRecoveryPackagesRunIsolated(string? acceptanceOutput 
             $"{package.Manifest.Name} bypassed the generic Community AppContainer route.");
         Assert.Equal(deployment.WorkerHostPath, configured.WorkerExecutable);
         var backend = CreateBackend();
-        if (package.Manifest.Id == "org.gbar.samples.ytmusic")
+        if (package.Manifest.Id == "widgetrail.samples.ytmusic")
         {
             backend.LoopbackHandler = (_, port, isPost, request, cancellationToken) =>
             {
@@ -2238,9 +2238,9 @@ static async Task ExportEvidenceAsync(string outputDirectory)
     var gaps = new List<EvidenceGapDescriptor>();
     foreach (var package in deployment.Packages.Where(package =>
                  package.Manifest.Id is
-                    "org.gbar.firstparty.games-apps" or
-                    "org.gbar.firstparty.settings" or
-                    "org.gbar.samples.spotify"))
+                    "widgetrail.firstparty.games-apps" or
+                    "widgetrail.firstparty.settings" or
+                    "widgetrail.samples.spotify"))
     {
         try
         {
@@ -2278,14 +2278,14 @@ static async Task ExportEvidenceAsync(string outputDirectory)
         });
 
         await client.SetLifecycleStateAsync(WidgetLifecycleState.Visible);
-        var expectedInitialText = package.Manifest.Id == "org.gbar.samples.spotify"
+        var expectedInitialText = package.Manifest.Id == "widgetrail.samples.spotify"
             ? "Client ID required"
             : package.ExpectedText;
         var initial = await WaitForSnapshotAsync(client, expectedInitialText);
         await ExportSnapshotAsync(package, configured, "initial", initial);
         await client.SetLifecycleStateAsync(WidgetLifecycleState.Interactive);
 
-        if (package.Manifest.Id == "org.gbar.firstparty.games-apps")
+        if (package.Manifest.Id == "widgetrail.firstparty.games-apps")
         {
             Assert.True(Nodes(initial.Root).Any(node =>
                 string.Equals(node.ActionId, "games.launch", StringComparison.Ordinal) &&
@@ -2294,7 +2294,7 @@ static async Task ExportEvidenceAsync(string outputDirectory)
                 "The trusted Game was not auto-curated in the real package path.");
             Assert.True(Nodes(initial.Root).Any(node =>
                 string.Equals(node.ActionId, "games.launch", StringComparison.Ordinal) &&
-                node.StyleClasses.Contains("gbar-app-tile", StringComparer.Ordinal)),
+                node.StyleClasses.Contains("wrail-app-tile", StringComparer.Ordinal)),
                 "Games & Apps did not retain the shared AppTile geometry classes.");
             Assert.True(!Nodes(initial.Root).Any(node =>
                 (node.Text ?? string.Empty).Contains(
@@ -2307,7 +2307,7 @@ static async Task ExportEvidenceAsync(string outputDirectory)
                 client, "games.toggle-curation", "Conformance Library App");
             Assert.True(Nodes(catalog.Root).Any(node =>
                 string.Equals(node.Id, "games.section", StringComparison.Ordinal) &&
-                node.StyleClasses.Contains("gbar-section-header", StringComparer.Ordinal)),
+                node.StyleClasses.Contains("wrail-section-header", StringComparer.Ordinal)),
                 "The Catalog did not retain the shared section hierarchy.");
             Assert.True(Nodes(catalog.Root).Count() < ProtocolConstants.MaximumNodeCount,
                 "The bounded Catalog page exceeded the protocol node budget.");
@@ -2403,9 +2403,9 @@ static async Task ExportEvidenceAsync(string outputDirectory)
 
     var packageEvidence = deployment.Packages
         .Where(package => package.Manifest.Id is
-            "org.gbar.firstparty.games-apps" or
-            "org.gbar.firstparty.settings" or
-            "org.gbar.samples.spotify")
+            "widgetrail.firstparty.games-apps" or
+            "widgetrail.firstparty.settings" or
+            "widgetrail.samples.spotify")
         .Select(package => PreservePackageArchive(package, packageDirectory))
         .OrderBy(package => package.Id, StringComparer.Ordinal)
         .ToArray();
@@ -2413,7 +2413,7 @@ static async Task ExportEvidenceAsync(string outputDirectory)
     {
         schemaVersion = 1,
         generatedUtc = DateTimeOffset.UtcNow,
-        evidenceAuthority = "standalone widget-body harness: retained installed .gbarwidget archive -> generic AppContainer worker -> simulated broker companion -> production bridge style resolver",
+        evidenceAuthority = "standalone widget-body harness: retained installed .wrwidget archive -> generic AppContainer worker -> simulated broker companion -> production bridge style resolver",
         packages = packageEvidence,
         snapshots = exported,
         traces,
@@ -2421,7 +2421,7 @@ static async Task ExportEvidenceAsync(string outputDirectory)
         limitations = new[]
         {
             "The backend is deterministic and simulated; no external accounts, radio hardware, or process launch is used.",
-            "PNG rendering is a separate standalone widget-body stage built from production renderer sources; this index contains authoritative semantic snapshots and computed GBSS styles.",
+            "PNG rendering is a separate standalone widget-body stage built from production renderer sources; this index contains authoritative semantic snapshots and computed WRSS styles.",
             "This harness does not exercise the OverlayHost window, shell/tray/footer composition, z-order, focus ownership, input routing, or shell/widget transition fidelity.",
             "Settings permission-detail and Spotify OAuth completion are not claimed by this first slice.",
         },
@@ -2475,7 +2475,7 @@ static EvidencePackageDescriptor PreservePackageArchive(
     PackageFixture package,
     string packageDirectory)
 {
-    var fileName = $"{package.Manifest.Id}-{package.Manifest.Version}.gbarwidget";
+    var fileName = $"{package.Manifest.Id}-{package.Manifest.Version}.wrwidget";
     var destination = Path.Combine(packageDirectory, fileName);
     File.Copy(package.PackagePath, destination, overwrite: false);
     return new EvidencePackageDescriptor(
@@ -2539,8 +2539,8 @@ static async Task RunCatalogAsync(
             var configured = catalog.GetConfigured(widgetId(package));
             backend = sharedBackend ?? CreateBackend(
                 gameLibraryCount: package.Manifest.Id is
-                    "org.gbar.firstparty.game-launcher" or
-                    "org.gbar.community.reference.game-launcher"
+                    "widgetrail.firstparty.game-launcher" or
+                    "widgetrail.community.reference.game-launcher"
                     ? 10_000 : 2);
             using var consentRoot = new TemporaryDirectory("gba-firstparty-consent");
             var consent = new ConsentStore(consentRoot.Path);
@@ -2580,9 +2580,9 @@ static async Task RunCatalogAsync(
                 verifyGamesAppsRestart ? "Conformance Library App" : package.ExpectedText);
             Assert.Equal(0, ViewSnapshotValidator.Validate(snapshot).Count);
             if (package.Manifest.Id is
-                "org.gbar.firstparty.game-launcher" or
-                "org.gbar.community.reference.game-launcher" or
-                "org.gbar.firstparty.network-controls")
+                "widgetrail.firstparty.game-launcher" or
+                "widgetrail.community.reference.game-launcher" or
+                "widgetrail.firstparty.network-controls")
             {
                 var entry = Nodes(snapshot.Root).Single(node =>
                     node.Kind == ViewNodeKind.TextEntry);
@@ -2596,7 +2596,7 @@ static async Task RunCatalogAsync(
             firstRenderObserved?.Invoke(activationStopwatch.Elapsed);
             Assert.True(client.IsRunning,
                 $"{package.Manifest.Name} {route} worker exited after render.");
-            if (package.Manifest.Id == "org.gbar.firstparty.network-controls")
+            if (package.Manifest.Id == "widgetrail.firstparty.network-controls")
             {
                 var protectedEntry = Nodes(snapshot.Root).Single(node =>
                     node.Kind == ViewNodeKind.TextEntry &&
@@ -2609,7 +2609,7 @@ static async Task RunCatalogAsync(
             await client.SetLifecycleStateAsync(WidgetLifecycleState.Interactive);
             if (verifyGamesAppsRestart)
             {
-                Assert.Equal("org.gbar.firstparty.games-apps", package.Manifest.Id);
+                Assert.Equal("widgetrail.firstparty.games-apps", package.Manifest.Id);
                 Assert.True(Nodes(snapshot.Root).Any(node =>
                         string.Equals(node.ActionId, "games.launch", StringComparison.Ordinal) &&
                         (node.AccessibilityLabel ?? string.Empty).Contains(
@@ -2777,7 +2777,7 @@ static async Task ExerciseTextEntryAsync(
     WidgetProcessClient client,
     ViewSnapshot snapshot)
 {
-    if (package.Manifest.Id == "org.gbar.firstparty.network-controls")
+    if (package.Manifest.Id == "widgetrail.firstparty.network-controls")
     {
         Assert.True(Nodes(snapshot.Root).Any(node =>
                 node.Kind == ViewNodeKind.TextEntry &&
@@ -2786,7 +2786,7 @@ static async Task ExerciseTextEntryAsync(
         return;
     }
 
-    Assert.Equal("org.gbar.firstparty.game-launcher", package.Manifest.Id);
+    Assert.Equal("widgetrail.firstparty.game-launcher", package.Manifest.Id);
     var search = Nodes(snapshot.Root).Single(node =>
         node.Kind == ViewNodeKind.TextEntry &&
         node.ActionId == "game-launcher.search.commit");
@@ -2873,7 +2873,7 @@ static async Task ExerciseControlAsync(
     SimulatedPlatformBrokerBackend backend,
     string route)
 {
-    if (package.Manifest.Id == "org.gbar.samples.full-application")
+    if (package.Manifest.Id == "widgetrail.samples.full-application")
     {
         var first = Nodes(snapshot.Root).First(node => node.ActionId == "full-app.open");
         await client.SendActionAsync(new WidgetActionEvent(first.ActionId!, first.Id));
@@ -2892,12 +2892,12 @@ static async Task ExerciseControlAsync(
         Assert.Equal(first.Id, returned.InitialFocusId);
         return;
     }
-    if (package.Manifest.Id == "org.gbar.firstparty.audio-mixer")
+    if (package.Manifest.Id == "widgetrail.firstparty.audio-mixer")
     {
         await ExerciseAudioDashboardControlsAsync(client, snapshot, backend);
         return;
     }
-    if (package.Manifest.Id == "org.gbar.firstparty.network-controls")
+    if (package.Manifest.Id == "widgetrail.firstparty.network-controls")
     {
         await ExerciseNetworkControlsUnpairAsync(client, snapshot, backend);
         return;
@@ -2908,7 +2908,7 @@ static async Task ExerciseControlAsync(
     Func<int> calls;
     switch (package.Manifest.Id)
     {
-        case "org.gbar.firstparty.games-apps":
+        case "widgetrail.firstparty.games-apps":
             var openCatalog = Nodes(snapshot.Root).Single(node =>
                 string.Equals(node.ActionId, "games.open-catalog", StringComparison.Ordinal));
             await client.SendActionAsync(new WidgetActionEvent(
@@ -2929,8 +2929,8 @@ static async Task ExerciseControlAsync(
             actionId = "games.launch";
             calls = () => backend.AppLibraryLaunchCalls;
             break;
-        case "org.gbar.firstparty.game-launcher":
-        case "org.gbar.community.reference.game-launcher":
+        case "widgetrail.firstparty.game-launcher":
+        case "widgetrail.community.reference.game-launcher":
             Assert.Equal(64, Nodes(snapshot.Root).Count(node =>
                 node.ActionId == "game-launcher.launch"));
             Assert.True(Nodes(snapshot.Root).Count() < 1_024,
@@ -3039,7 +3039,7 @@ static async Task ExerciseControlAsync(
             actionId = "game-launcher.launch";
             calls = () => backend.AppLibraryLaunchCalls;
             break;
-        case "org.gbar.firstparty.media-sessions":
+        case "widgetrail.firstparty.media-sessions":
             actionId = "media.toggle";
             calls = () => backend.MediaControlCalls;
             break;
@@ -3604,8 +3604,8 @@ file sealed class Deployment : IDisposable
                 Directory.CreateDirectory(Path.Combine(bundleRoot, "styles"));
                 File.Copy(Path.Combine(projectRoot, "manifest.json"),
                     Path.Combine(bundleRoot, "manifest.json"));
-                File.Copy(Path.Combine(projectRoot, "styles", "default.gbss"),
-                    Path.Combine(bundleRoot, "styles", "default.gbss"));
+                File.Copy(Path.Combine(projectRoot, "styles", "default.wrss"),
+                    Path.Combine(bundleRoot, "styles", "default.wrss"));
                 var assembly = manifest.Entrypoint?.Assembly ??
                     throw new InvalidOperationException(
                         $"{manifest.Id} does not declare a managed-worker assembly.");
@@ -3623,7 +3623,7 @@ file sealed class Deployment : IDisposable
                             Path.Combine(bundleRoot, "payload", name));
                     }
                 }
-                var packagePath = Path.Combine(temporary.Path, $"{manifest.Id}.gbarwidget");
+                var packagePath = Path.Combine(temporary.Path, $"{manifest.Id}.wrwidget");
                 ZipFile.CreateFromDirectory(bundleRoot, packagePath, CompressionLevel.NoCompression, false);
                 fixtures.Add(new PackageFixture(
                     spec.ShellId,
@@ -3708,7 +3708,7 @@ file sealed class Deployment : IDisposable
                         spotifyManifest,
                         installedSpotify.InstallPath,
                         Path.Combine(spotifyOutput,
-                            $"{spotifyManifest.Id}-{spotifyManifest.Version}.gbarwidget"),
+                            $"{spotifyManifest.Id}-{spotifyManifest.Version}.wrwidget"),
                         spotifyManifest.Permissions.Concat(spotifyManifest.OptionalPermissions)
                             .Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal).ToArray());
                 }
@@ -3748,7 +3748,7 @@ file sealed class Deployment : IDisposable
                     communityRecoveryOnly ? "Pair device" : "Conformance Song",
                     ytManifest,
                     installedYt.InstallPath,
-                    Path.Combine(ytOutput, $"{ytManifest.Id}-{ytManifest.Version}.gbarwidget"),
+                    Path.Combine(ytOutput, $"{ytManifest.Id}-{ytManifest.Version}.wrwidget"),
                     ytManifest.Permissions.Concat(ytManifest.OptionalPermissions)
                         .Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal).ToArray());
             }
@@ -3787,7 +3787,7 @@ file sealed class Deployment : IDisposable
             install: false);
         var manifest = ManifestJson.Deserialize(
             await File.ReadAllBytesAsync(Path.Combine(output, "package-root", "manifest.json")));
-        return Path.Combine(output, $"{manifest.Id}-{manifest.Version}.gbarwidget");
+        return Path.Combine(output, $"{manifest.Id}-{manifest.Version}.wrwidget");
     }
 
     private static void CopyWorkerHostDeployment(

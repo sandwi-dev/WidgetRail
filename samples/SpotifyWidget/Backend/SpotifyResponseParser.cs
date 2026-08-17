@@ -1,8 +1,8 @@
 using System.Text.Json;
 using System.Text;
-using GameBarAlternative.Samples.SpotifyWidget;
+using WidgetRail.Samples.SpotifyWidget;
 
-namespace GameBarAlternative.WindowsSpotifyProvider;
+namespace WidgetRail.WindowsSpotifyProvider;
 
 /// <summary>
 /// Strict bounded parsing for Spotify Web API responses. This owner has no

@@ -32,8 +32,8 @@ if (-not [string]::IsNullOrWhiteSpace($Version)) {
     }
     $manifest.version = $Version
 }
-$packagePath = Join-Path $artifactsRoot "$($manifest.id)-$($manifest.version).gbarwidget"
-$cliProject = Join-Path $repositoryRoot 'tools\GbarCli\GbarCli.csproj'
+$packagePath = Join-Path $artifactsRoot "$($manifest.id)-$($manifest.version).wrwidget"
+$cliProject = Join-Path $repositoryRoot 'tools\WrailCli\WrailCli.csproj'
 $applicationProject = Join-Path $sampleRoot 'Application\SpotifyApplication.csproj'
 $playbackHostProject = Join-Path $sampleRoot 'PlaybackHost\SpotifyPlaybackHost.csproj'
 $buildGraphRoot = Join-Path $artifactsRoot 'build-graph'
@@ -171,8 +171,8 @@ if ([string]::IsNullOrWhiteSpace($Version)) {
         $generatedManifest,
         [System.Text.UTF8Encoding]::new($false))
 }
-Copy-Item -LiteralPath (Join-Path $sampleRoot 'styles\default.gbss') `
-    -Destination (Join-Path $stagingRoot 'styles\default.gbss') -Force
+Copy-Item -LiteralPath (Join-Path $sampleRoot 'styles\default.wrss') `
+    -Destination (Join-Path $stagingRoot 'styles\default.wrss') -Force
 
 $stagingPrefix = $stagingRoot.TrimEnd(
     [System.IO.Path]::DirectorySeparatorChar,
@@ -197,7 +197,7 @@ $requiredFiles = @(
     'payload\WidgetSdk.dll',
     'payload\WidgetProtocol.dll',
     'payload\WebView2Loader.dll',
-    'styles\default.gbss'
+    'styles\default.wrss'
 )
 $missingFiles = @($requiredFiles | Where-Object { $_ -notin $stagedFiles })
 if ($missingFiles.Count -ne 0) {
@@ -220,13 +220,13 @@ if (Test-Path -LiteralPath $packagePath) {
     --property:UseSharedCompilation=false --property:BuildInParallel=false -- `
     validate $stagingRoot
 if ($LASTEXITCODE -ne 0) {
-    throw "gbar validate rejected the staged Spotify addon."
+    throw "wrail validate rejected the staged Spotify addon."
 }
 & dotnet run --project $cliProject --configuration $Configuration --no-launch-profile `
     --property:UseSharedCompilation=false --property:BuildInParallel=false -- `
     pack $stagingRoot --output $packagePath
 if ($LASTEXITCODE -ne 0 -or -not (Test-Path -LiteralPath $packagePath)) {
-    throw "gbar pack did not produce the Spotify addon package."
+    throw "wrail pack did not produce the Spotify addon package."
 }
 
 if ($Install) {
@@ -247,26 +247,26 @@ if ($Install) {
             --property:UseSharedCompilation=false --property:BuildInParallel=false -- `
             disable $manifest.id @catalogArguments
         if ($LASTEXITCODE -ne 0) {
-            throw "gbar disable failed for the installed $($manifest.id) update."
+            throw "wrail disable failed for the installed $($manifest.id) update."
         }
     }
     & dotnet run --project $cliProject --configuration $Configuration --no-launch-profile `
         --property:UseSharedCompilation=false --property:BuildInParallel=false -- `
         install $packagePath --accept-full-trust @catalogArguments
     if ($LASTEXITCODE -ne 0) {
-        throw "gbar install failed. Installed versions are immutable; bump manifest.json when replacing an existing version."
+        throw "wrail install failed. Installed versions are immutable; bump manifest.json when replacing an existing version."
     }
     & dotnet run --project $cliProject --configuration $Configuration --no-launch-profile `
         --property:UseSharedCompilation=false --property:BuildInParallel=false -- `
         version select $manifest.id $manifest.version @catalogArguments
     if ($LASTEXITCODE -ne 0) {
-        throw "gbar version select failed for $($manifest.id) $($manifest.version)."
+        throw "wrail version select failed for $($manifest.id) $($manifest.version)."
     }
     & dotnet run --project $cliProject --configuration $Configuration --no-launch-profile `
         --property:UseSharedCompilation=false --property:BuildInParallel=false -- `
         enable $manifest.id --accept-full-trust @catalogArguments
     if ($LASTEXITCODE -ne 0) {
-        throw "gbar enable failed for $($manifest.id)."
+        throw "wrail enable failed for $($manifest.id)."
     }
 }
 

@@ -1,8 +1,8 @@
 using System.Collections.Concurrent;
 using System.Diagnostics;
-using GameBarAlternative.SpotifyPlayback;
+using WidgetRail.SpotifyPlayback;
 
-namespace GameBarAlternative.WindowsSpotifyProvider;
+namespace WidgetRail.WindowsSpotifyProvider;
 
 internal sealed record SpotifyPlaybackHostClientOptions(
     string ExecutablePath,

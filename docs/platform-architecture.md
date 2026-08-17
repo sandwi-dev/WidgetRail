@@ -24,7 +24,7 @@ flowchart LR
     Host <-->|"bounded local IPC"| Bridge["Managed WidgetBridge"]
     Bridge <-->|"PID-bound authenticated IPC"| Worker["Widget worker<br/>AppContainer for installed/community packages"]
     Worker --> SDK["WidgetSdk + WidgetProtocol"]
-    Bridge --> Styling["WidgetStyling / GBSS"]
+    Bridge --> Styling["WidgetStyling / WRSS"]
     Worker <-->|"typed authenticated capability IPC"| Broker["PlatformBroker"]
     Broker --> Audio["Core Audio session provider"]
     Broker --> Network["IP Helper/WLAN provider"]
@@ -37,22 +37,22 @@ flowchart LR
 
 | Component | Implemented responsibility |
 | --- | --- |
-| `src/OverlayHost` | Per-Monitor-V2 Win32/Direct2D panel/backdrop shell, active-monitor/work-area/DPI retargeting, responsive logical viewport, GameInput-first Guide handling plus a quarantined compatibility adapter, visible controller polling, spatial focus plus explicit protocol-v13 cross-presentation focus persistence, dashboard/reorder state, last-widget persistence, managed-bridge client, live catalog/appearance revisions, a private exact-Settings modal `.gbarwidget` picker/import prerequisite, and generic reference-widget rendering. |
-| `src/WidgetBridge` | Disposable managed sidecar with a current-user-only host pipe. `WidgetBridgeServer` owns the pipe session, framing, request routing, reserved Stop lane, replies, and serialized writes; one internal client registry owns catalog revisions, worker generations, residency admission, idle unload, restart, replacement/removal, and terminal client disposal. The bridge also owns trusted mandatory community AppContainer selection, exact current-Settings local-package admission plus locked-stream catalog publication, per-session verified-content lease handoff, controller forwarding, PID-bound capability companion creation, invalidation/failure events, no-poll platform appearance/revisions, and globally layered computed GBSS styles. |
+| `src/OverlayHost` | Per-Monitor-V2 Win32/Direct2D panel/backdrop shell, active-monitor/work-area/DPI retargeting, responsive logical viewport, GameInput-first Guide handling plus a quarantined compatibility adapter, visible controller polling, spatial focus plus explicit protocol-v13 cross-presentation focus persistence, dashboard/reorder state, last-widget persistence, managed-bridge client, live catalog/appearance revisions, a private exact-Settings modal `.wrwidget` picker/import prerequisite, and generic reference-widget rendering. |
+| `src/WidgetBridge` | Disposable managed sidecar with a current-user-only host pipe. `WidgetBridgeServer` owns the pipe session, framing, request routing, reserved Stop lane, replies, and serialized writes; one internal client registry owns catalog revisions, worker generations, residency admission, idle unload, restart, replacement/removal, and terminal client disposal. The bridge also owns trusted mandatory community AppContainer selection, exact current-Settings local-package admission plus locked-stream catalog publication, per-session verified-content lease handoff, controller forwarding, PID-bound capability companion creation, invalidation/failure events, no-poll platform appearance/revisions, and globally layered computed WRSS styles. |
 | `src/WidgetRuntime` | Lazy worker process client/server, host-derived content-generation AppContainer profiles for installed/community packages, exact non-inheriting verified-file grants, stripped environments, Low-integrity/capability-free token verification, random PID-bound pipes, bounded length-prefixed JSON, lifecycle/timeouts/restarts, and pre-launch content/residency leases plus Job Object process-tree accounting/UI/cleanup policy. |
 | `src/WidgetWorkerHost` | Generic installed-package worker executable. It loads one public concrete SDK `Widget` entrypoint and package-contained managed/native dependencies inside the mandatory AppContainer, connects an authenticated broker client when declared, attaches typed host services before creation, then serves the normal runtime protocol. |
 | `src/WidgetProtocol` | Strict manifest and snapshot models, deterministic JSON, tree/focus/action validation, nested input scopes, images, semantic icons, quick actions, and interaction state. |
 | `src/WidgetSdk` | Typed authoring API, scoped controller routing, render invalidation, activity lifecycle/tickers, focus helpers, shortcuts, state helpers, transport-neutral capability client, and typed audio/network/Bluetooth/recent-activity/app-library/media services/DTOs. |
-| `src/WidgetStyling` | Safe GBSS parser, imports, variable/cascade resolution, explicit trusted layer priority, bounded typed properties, and source-located diagnostics. |
+| `src/WidgetStyling` | Safe WRSS parser, imports, variable/cascade resolution, explicit trusted layer priority, bounded typed properties, and source-located diagnostics. |
 | `src/PlatformSettings` | Strict atomic appearance and trusted app-library source settings, version-pinned development theme discovery, built-in theme, platform/widget/user layer composition, last-good reload, and bounded publisher/package-scoped public widget configuration. The bridge/native shell consume live appearance revisions; credentials never belong in `widget-config`. |
-| `src/WidgetCatalog` | Safe `.gbarwidget` inspection, version-addressed no-overwrite extraction, full verified path/length/hash inventories, session-scoped byte-pinning launch leases, catalog-owned pre-publication policy under the cross-process operation lock, discovery, enablement/order persistence, schema-1 migration, and fail-closed exact active-version pins. The bridge consumes enabled compatible packages through complete validated live revisions. |
+| `src/WidgetCatalog` | Safe `.wrwidget` inspection, version-addressed no-overwrite extraction, full verified path/length/hash inventories, session-scoped byte-pinning launch leases, catalog-owned pre-publication policy under the cross-process operation lock, discovery, enablement/order persistence, schema-1 migration, and fail-closed exact active-version pins. The bridge consumes enabled compatible packages through complete validated live revisions. |
 | `src/PlatformBroker` | Version-1 audio/network/Bluetooth/recent-activity/app-library/media/companion capability contracts plus the separate host-granted private-state service; nonce/identity-bound named-pipe transport, declaration/consent/lifecycle enforcement, strict bounded DTOs/events, atomic consent persistence, coalesced subscription/revocation, composable provider interfaces, and a deterministic simulator. |
 | `src/WindowsAudioProvider` | Lazy event-driven Core Audio integration for master/per-session volume/mute, sanitized default-device visibility, and current default-microphone volume/mute. It does not switch default devices or capture audio samples. |
 | `src/WindowsNetworkProvider` | Lazy event-driven IP Helper/Native Wi-Fi integration for coarse state, explicit nearby scans, opaque saved/open connection, software-radio control, and attempt-unique host-owned WPA2/WPA3 Personal profile creation. Password/profile XML never enters a widget worker; mutable password owners are zeroed, and rollback requires matching per-profile custom ownership data before deletion. Current SSID/signal is not queried automatically. |
 | `src/WindowsBluetoothProvider` | Lazy WinRT software-radio and sanitized bounded device discovery, explicit association pairing/removal for one current opaque ID, and a separately granted Windows Settings management fallback. Native IDs remain host-only. It does not offer generic/profile-agnostic device connection. |
 | `src/WindowsActivityProvider` | Lazy WinEvent foreground/destroy observation with bounded opaque read-only running-app summaries; no polling, registry history, public process identifiers, switching, or relaunch. |
 | `src/WindowsAppLibraryProvider` | Lazy bounded Start Menu, current-user AppsFolder, supported installed Microsoft/Xbox package-game, Steam, and opt-in local Epic installed-game sources behind one normalized private source contract. Epic reads only the fixed ProgramData manifest root and performs no sign-in or network access. Package paths, AUMIDs, configuration/manifest data, launcher identifiers, arguments, PIDs, and raw identities never enter widget payloads. Short-lived launch IDs and authority-scoped durable SavedIds remain opaque. Launch revalidates the owning shortcut/package/AUMID/manifest immediately before constrained activation. |
-| `tools/GbarCli` | Widget scaffolding/validation/render/replay, deterministic package creation, bounded HTTPS/GitHub Release acquisition, catalog install/list/enable/disable, and immutable version list/select/rollback commands. It is not a production sandbox or signed marketplace client. |
+| `tools/WrailCli` | Widget scaffolding/validation/render/replay, deterministic package creation, bounded HTTPS/GitHub Release acquisition, catalog install/list/enable/disable, and immutable version list/select/rollback commands. It is not a production sandbox or signed marketplace client. |
 
 ## Snapshot flow
 
@@ -61,7 +61,7 @@ flowchart LR
    installed-package worker host if necessary.
 3. The worker calls `Widget.Render()` and validates the resulting semantic
    tree before serializing it.
-4. The bridge resolves the widget's trusted GBSS file and returns typed render
+4. The bridge resolves the widget's trusted WRSS file and returns typed render
    styles beside the validated snapshot.
 5. The native host renders known semantic nodes and routes controller events
    using stable IDs and declared focus/action metadata.
@@ -409,7 +409,7 @@ heuristic. Policy enforcement is not implemented in the current prototype.
 
 The host owns appearance selection, accessibility policy, persistence, and the
 final style presented by the renderer. The Settings worker, strict store,
-immutable versioned theme catalog, data-only `.gbartheme` installer/tooling,
+immutable versioned theme catalog, data-only `.wrtheme` installer/tooling,
 and bridge are
 connected through the generic public widget path. The bridge watches the
 settings file/theme tree without polling, debounces events, retains last-good
@@ -493,8 +493,8 @@ accessible focus. Existing widget flex/grid/scroll behavior is unchanged.
 
 - The native renderer is still a reference/prototype implementation. The YT
   Music path is integrated; complete generic rendering of every SDK node and
-  every computed GBSS state is still being finished.
-- `.gbarwidget` pack/install/list/enable/disable and disabled-only version
+  every computed WRSS state is still being finished.
+- `.wrwidget` pack/install/list/enable/disable and disabled-only version
   list/select/rollback work with the current-user
   catalog. The bridge watches bounded catalog inputs, publishes complete
   last-good semantic revisions, and launches enabled compatible packages lazily

@@ -1,6 +1,6 @@
-# Game Bar Alternative documentation
+# WidgetRail documentation
 
-Game Bar Alternative is a controller-first Windows overlay and declarative
+WidgetRail is a controller-first Windows overlay and declarative
 widget platform. This documentation describes the repository as it exists
 today. Pages marked **planned** describe direction, not commands or security
 guarantees that are available now.
@@ -43,7 +43,7 @@ planner and implementation turns do not spend context on closed evidence.
   adapter, and reuse the production native GameInput/Guide platform owner.
 - [Widget quickstart](widget-quickstart.md) — scaffold, build, validate, list
   bounded scenario declarations, render trusted code, replay, and run a
-  controller widget through the isolated `gbar dev` watch loop with
+  controller widget through the isolated `wrail dev` watch loop with
   authenticated readiness and last-good recovery.
 - [Widget SDK compatibility and release unit](widget-sdk-compatibility.md) —
   checked-in public API baseline, exact CLI/template/package version contract,
@@ -64,17 +64,17 @@ planner and implementation turns do not spend context on closed evidence.
   ActionSurface/MediaTile/AppTile compositions, plus protocol-v8 ResponsiveGrid
   and semantic CodeText. Settings uses Picker, Grid, and CodeText; Spotify uses
   Scrubber; Games & Apps uses AppTile and lifecycle-safe Toast feedback.
-  Responsive Row wrapping and per-edge GBSS borders are implemented. The full
+  Responsive Row wrapping and per-edge WRSS borders are implemented. The full
   Release gate is green; hands-on packaged visual/controller/accessibility
   evidence remains open.
-- [GBSS styling reference](gbss.md) — safe selectors, variables, typed
+- [WRSS styling reference](wrss.md) — safe selectors, variables, typed
   properties, independent per-edge borders, semantic CodeText typography,
   imports, diagnostics, and bounded native opacity/scale transitions.
 - [Settings and global themes](settings-and-themes.md) — the controller Settings
   widget, persisted appearance, live bridge/native cascade, host-owned
   accessibility overrides, and authoring requirements.
 - [Theme packaging and distribution](theme-packaging.md) — scaffold,
-  validate, computed preview, deterministic `.gbartheme` packaging, GitHub/
+  validate, computed preview, deterministic `.wrtheme` packaging, GitHub/
   HTTPS installation, format limits, and trust semantics.
 - [Display and resolution](display-and-resolution.md) — active-monitor
   targeting, Per-Monitor-V2/DIP behavior, responsive widget rules,
@@ -142,14 +142,14 @@ planner and implementation turns do not spend context on closed evidence.
 ## Distribution and operations
 
 - [Publishing and installation](publishing-and-installation.md) — sharing
-  source and `.gbarwidget` releases through GitHub, deterministic packing,
+  source and `.wrwidget` releases through GitHub, deterministic packing,
   SHA-256 pinning, bounded remote acquisition, disabled-only version
   selection/rollback, and catalog management.
 - [Security and trust](security-and-trust.md) — package validation, mandatory
   installed/community AppContainer isolation, remaining publisher/resource
   boundaries, and the current trust decision.
 - [Troubleshooting](troubleshooting.md) — CLI, worker, bridge, controller,
-  rendering, image, and GBSS diagnostics.
+  rendering, image, and WRSS diagnostics.
 - [Diagnostics and recovery](diagnostics-and-recovery.md) — sanitized runtime
   health, the private Settings channel, controller behavior, and safe recovery
   boundaries.
@@ -180,5 +180,5 @@ planner and implementation turns do not spend context on closed evidence.
 - [Product roadmap](roadmap.md)
 
 The source of truth wins if a document and code disagree. Protocol types live
-under `src/WidgetProtocol`, the author-facing SDK under `src/WidgetSdk`, GBSS
-under `src/WidgetStyling`, and developer commands under `tools/GbarCli`.
+under `src/WidgetProtocol`, the author-facing SDK under `src/WidgetSdk`, WRSS
+under `src/WidgetStyling`, and developer commands under `tools/WrailCli`.

@@ -1,7 +1,7 @@
 using System.Text;
 using System.Text.Json;
-using GameBarAlternative.WidgetProtocol;
-using GameBarAlternative.WidgetSdk;
+using WidgetRail.WidgetProtocol;
+using WidgetRail.WidgetSdk;
 
 internal static class WidgetPresentationUpdateTests
 {

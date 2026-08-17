@@ -1,14 +1,14 @@
 {
   "manifestVersion": 1,
-  "id": "dev.gbar.tests.full-application",
-  "publisher": "dev.gbar.tests",
+  "id": "dev.widgetrail.tests.full-application",
+  "publisher": "dev.widgetrail.tests",
   "name": "Full Application Fixture",
   "version": "1.0.0",
   "hostApi": { "minimum": "1.0", "maximumMajor": 1 },
   "entrypoint": {
     "runtime": "dotnet-worker",
     "assembly": "payload/FullApplicationWidgetFixture.dll",
-    "type": "GameBarAlternative.Tests.FullApplicationWidgetFixture.FullApplicationWidget"
+    "type": "WidgetRail.Tests.FullApplicationWidgetFixture.FullApplicationWidget"
   },
   "presentation": { "icon": "play" },
   "permissions": [],

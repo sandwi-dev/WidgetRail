@@ -1,6 +1,6 @@
-using GameBarAlternative.WidgetProtocol;
+using WidgetRail.WidgetProtocol;
 
-namespace GameBarAlternative.WidgetSdk;
+namespace WidgetRail.WidgetSdk;
 
 public static partial class UI
 {
@@ -40,7 +40,7 @@ public static partial class UI
 
         return new TextElement(id, text, accessibilityLabel ?? text)
         {
-            StyleClasses = ["gbar-code-text"],
+            StyleClasses = ["wrail-code-text"],
         };
     }
 }

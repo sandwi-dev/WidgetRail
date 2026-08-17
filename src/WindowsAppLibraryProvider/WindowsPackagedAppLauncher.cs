@@ -1,6 +1,6 @@
 using System.Runtime.InteropServices;
 
-namespace GameBarAlternative.WindowsAppLibraryProvider;
+namespace WidgetRail.WindowsAppLibraryProvider;
 
 [Flags]
 internal enum ActivateOptions : uint

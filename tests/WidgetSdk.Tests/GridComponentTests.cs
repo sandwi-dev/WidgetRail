@@ -1,5 +1,5 @@
-using GameBarAlternative.WidgetProtocol;
-using GameBarAlternative.WidgetSdk;
+using WidgetRail.WidgetProtocol;
+using WidgetRail.WidgetSdk;
 
 internal static class GridComponentTests
 {
@@ -27,7 +27,7 @@ internal static class GridComponentTests
         Equal("library.scope", snapshot.Root.InputScopeId);
         Equal("library.back", snapshot.Root.Shortcuts.Single().ActionId);
         True(snapshot.Root.StyleClasses.SequenceEqual(
-                new[] { "gbar-responsive-grid", "library-grid" }),
+                new[] { "wrail-responsive-grid", "library-grid" }),
             "Responsive grid semantic classes changed.");
 
         var restored = SnapshotJson.Deserialize(SnapshotJson.Serialize(snapshot));

@@ -2,7 +2,7 @@
 
 This is a source port of `YtMusicGameBar`, rewritten as a controller-first
 community addon for the declarative `WidgetSdk`. It uses the same immutable
-`.gbarwidget` package, generic worker, AppContainer, consent, lifecycle, and
+`.wrwidget` package, generic worker, AppContainer, consent, lifecycle, and
 broker path available to an independent developer. It has no bundled-worker or
 trusted-catalog fallback and does not attempt binary compatibility with Xbox
 Game Bar.
@@ -178,11 +178,11 @@ Build a deterministic community package through the public CLI:
 ```
 
 The helper publishes only `payload/YtMusicWidget.dll`, `manifest.json`, and
-`styles/default.gbss` into a clean staging root, then runs `gbar validate` and
-`gbar pack`. By default the package is written to:
+`styles/default.wrss` into a clean staging root, then runs `wrail validate` and
+`wrail pack`. By default the package is written to:
 
 ```text
-artifacts/community-addons/ytmusic/org.gbar.samples.ytmusic-0.2.9.gbarwidget
+artifacts/community-addons/ytmusic/widgetrail.samples.ytmusic-0.2.9.wrwidget
 ```
 
 To install and enable it for the current user through the same public catalog
@@ -195,11 +195,11 @@ commands used by any addon publisher:
 `-Install` runs the equivalent public catalog operations:
 
 ```powershell
-$gbar = '.\tools\GbarCli\bin\Release\net8.0\gbar.exe'
-& $gbar install `
-  .\artifacts\community-addons\ytmusic\org.gbar.samples.ytmusic-0.2.9.gbarwidget
-& $gbar enable org.gbar.samples.ytmusic
-& $gbar list
+$wrail = '.\tools\WrailCli\bin\Release\net8.0\wrail.exe'
+& $wrail install `
+  .\artifacts\community-addons\ytmusic\widgetrail.samples.ytmusic-0.2.9.wrwidget
+& $wrail enable widgetrail.samples.ytmusic
+& $wrail list
 ```
 
 Installation/enablement does not grant capabilities. Open overlay Settings →
@@ -233,13 +233,13 @@ the public validator and packer:
 To review or test version behavior with the public CLI:
 
 ```powershell
-& $gbar disable org.gbar.samples.ytmusic
-& $gbar version list org.gbar.samples.ytmusic
-& $gbar version select org.gbar.samples.ytmusic 0.2.8
-& $gbar enable org.gbar.samples.ytmusic
+& $wrail disable widgetrail.samples.ytmusic
+& $wrail version list widgetrail.samples.ytmusic
+& $wrail version select widgetrail.samples.ytmusic 0.2.8
+& $wrail enable widgetrail.samples.ytmusic
 ```
 
-`gbar uninstall org.gbar.samples.ytmusic --catalog <directory>` is
+`wrail uninstall widgetrail.samples.ytmusic --catalog <directory>` is
 disabled-only and removes every immutable YT Music package version plus its
 catalog state. Unsigned authority is derived from the host-verified package
 content tree, so changed package bytes use a new secret namespace and require

@@ -1,11 +1,11 @@
 # {{WidgetName}}
 
-`{{WidgetId}}` is a controller-first Game Bar Alternative widget generated from
+`{{WidgetId}}` is a controller-first WidgetRail widget generated from
 the `{{TemplateProfile}}` starter. Its source stays deliberately small and uses
 public SDK helpers for the profile's state, lifecycle, and controller policy.
 
-The scaffold carries its matching `GameBarAlternative.WidgetSdk` dependency in
-the project-local `.gbar/packages` feed. Restore is offline, requires no source
+The scaffold carries its matching `WidgetRail.WidgetSdk` dependency in
+the project-local `.widgetrail/packages` feed. Restore is offline, requires no source
 checkout or absolute machine path, and `NuGet.Config` clears external feeds.
 
 ## Build, exercise, and validate
@@ -13,10 +13,10 @@ checkout or absolute machine path, and `NuGet.Config` clears external feeds.
 ```powershell
 dotnet build .\{{WidgetName}}.csproj --configuration Release
 dotnet run --project .\tests\{{WidgetName}}.Tests.csproj --configuration Release
-gbar preview . --scenario ready --output .\fixtures\ready.snapshot.json
-gbar validate .
-gbar render .\fixtures\ready.snapshot.json --output .\fixtures\ready.canonical.json
-gbar replay .\fixtures\ready.snapshot.json .\replays\smoke.json
+wrail preview . --scenario ready --output .\fixtures\ready.snapshot.json
+wrail validate .
+wrail render .\fixtures\ready.snapshot.json --output .\fixtures\ready.canonical.json
+wrail replay .\fixtures\ready.snapshot.json .\replays\smoke.json
 ```
 
 The sibling `MSTest.Sdk` 4.3.2 project drives the same semantic scenario used by
@@ -27,7 +27,7 @@ reserved by the shell.
 Run the compiled widget through the production AppContainer worker boundary:
 
 ```powershell
-gbar dev .
+wrail dev .
 ```
 
 ## Package and install locally
@@ -38,12 +38,12 @@ paths are not published. Raw, already-staged package directories remain valid
 inputs for advanced workflows.
 
 ```powershell
-gbar pack . --configuration Release --output .\{{WidgetName}}-0.1.0.gbarwidget
-gbar install .\{{WidgetName}}-0.1.0.gbarwidget
-gbar list
-gbar enable {{WidgetId}}
-gbar disable {{WidgetId}}
-gbar uninstall {{WidgetId}}
+wrail pack . --configuration Release --output .\{{WidgetName}}-0.1.0.wrwidget
+wrail install .\{{WidgetName}}-0.1.0.wrwidget
+wrail list
+wrail enable {{WidgetId}}
+wrail disable {{WidgetId}}
+wrail uninstall {{WidgetId}}
 ```
 
 To exercise explicit version selection and rollback, change `version` in
@@ -51,9 +51,9 @@ To exercise explicit version selection and rollback, change `version` in
 then run:
 
 ```powershell
-gbar version list {{WidgetId}}
-gbar version select {{WidgetId}} 0.2.0
-gbar version rollback {{WidgetId}}
+wrail version list {{WidgetId}}
+wrail version select {{WidgetId}} 0.2.0
+wrail version rollback {{WidgetId}}
 ```
 
 Locally generated community packages are unsigned development artifacts. The
@@ -76,5 +76,5 @@ contracts; this workflow does not grant additional trust or capabilities.
 - Request no capability until the widget needs it.
 - Treat manifest resource requests as budgets, not entitlements.
 
-GBSS is declarative. It cannot execute scripts or load network/file URLs.
+WRSS is declarative. It cannot execute scripts or load network/file URLs.
 Accessibility rules applied by the host always override widget styles.

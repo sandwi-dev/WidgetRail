@@ -1,6 +1,6 @@
-using GameBarAlternative.WidgetRuntime;
+using WidgetRail.WidgetRuntime;
 
-namespace GameBarAlternative.WidgetWorkerHost;
+namespace WidgetRail.WidgetWorkerHost;
 
 internal static class Program
 {

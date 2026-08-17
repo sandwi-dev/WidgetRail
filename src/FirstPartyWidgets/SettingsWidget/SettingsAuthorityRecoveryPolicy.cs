@@ -1,6 +1,6 @@
-using GameBarAlternative.PlatformDiagnostics;
+using WidgetRail.PlatformDiagnostics;
 
-namespace GameBarAlternative.FirstPartyWidgets.Settings;
+namespace WidgetRail.FirstPartyWidgets.Settings;
 
 internal readonly record struct SettingsAuthorityRecoveryRequest(
     string RecoveryId,

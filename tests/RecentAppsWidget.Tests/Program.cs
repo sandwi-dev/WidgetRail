@@ -1,8 +1,8 @@
 using System.Threading.Channels;
-using GameBarAlternative.FirstPartyWidgets.RecentApps;
-using GameBarAlternative.WidgetProtocol;
-using GameBarAlternative.WidgetSdk;
-using GameBarAlternative.WidgetStyling;
+using WidgetRail.FirstPartyWidgets.RecentApps;
+using WidgetRail.WidgetProtocol;
+using WidgetRail.WidgetSdk;
+using WidgetRail.WidgetStyling;
 
 var tests = new (string Name, Func<Task> Run)[]
 {
@@ -12,7 +12,7 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Events reconcile ordering and remove stale selections", EventsReconcile),
     ("Most-recent metadata never creates a second controller selection", RecencyIsNotSelection),
     ("Permission and channel failures render recoverable states", FailuresAreRecoverable),
-    ("Manifest and GBSS package validate", PackageValidates),
+    ("Manifest and WRSS package validate", PackageValidates),
 };
 
 var failures = 0;
@@ -165,8 +165,8 @@ static Task PackageValidates()
     Assert.Equal(0, WidgetManifestValidator.Validate(manifest).Count);
     Assert.True(manifest.Permissions.Contains("system.activity.recent.read.v1"));
     Assert.Equal(0, manifest.OptionalPermissions.Count);
-    var package = GbssPackageLoader.Load("styles/default.gbss", new GbssFileSourceProvider(root));
-    var compiled = GbssThemeCompiler.Compile(package);
+    var package = WrssPackageLoader.Load("styles/default.wrss", new WrssFileSourceProvider(root));
+    var compiled = WrssThemeCompiler.Compile(package);
     Assert.True(compiled.IsValid);
     return Task.CompletedTask;
 }
