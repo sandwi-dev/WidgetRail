@@ -219,7 +219,7 @@ user decision. The native overlay is the sole production presentation path.
 
 | Lane | Task/worktree | State |
 | --- | --- | --- |
-| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | DLV-256 is accepted and integrated through `b0d53b0`. DLV-263 production commit `f2b70af` is source-reviewed and visibly launched as unaccepted PID 28612 for the retained-overlap physical verdict; no tests precede acceptance. DLV-261 and DLV-262 remain Ready behind it; DLV-248 remains deferred. |
+| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | DLV-256 is accepted and integrated through `b0d53b0`. The user physically accepted DLV-263 production commit `f2b70af` on PID 28612 after a clean retained-overlap trace; the lane now owns the focused regression-test follow-up before cumulative review and integration. DLV-261 and DLV-262 remain Ready behind it; DLV-248 remains deferred. |
 | Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | DLV-253 is physically accepted, focused Games & Apps evidence is 65/65, and the cumulative chain is integrated on main as `6a26f08`, `3c63852`, and test-only `91177ec`. The superseded PID 51500 closed normally before the DLV-254 candidate launch; no rebuild/relaunch was performed for the DLV-253 tests alone. Preserve clean completed branches. |
 
 The user explicitly approved the DLV-217 aggregate exception on 2026-08-15.
@@ -795,8 +795,15 @@ Exact-key behavior and conservative fallback remain. Independent manual caller
 and state review finds no provider identity, protocol, second anchor owner, or
 unbounded state; clangd had no exact-worktree compile database. The tests-skipped
 Release build passed with SHA-256 `4F7A95E391525F718FBFAD945188FC3925916D2E601147D9C813B1ED64D62B5A`.
-It is visibly running as unaccepted PID 28612 with clean startup; physical
-long-list acceptance is pending and tests remain prohibited.
+It is visibly running as PID 28612 with clean startup. The user physically
+accepted the long-list behavior on 2026-08-16. The acceptance trace contained
+zero error, failure, stale, timeout, rejection, or Win32 lines. Exact-anchor and
+retained-overlap admissions both completed; the latter preserved overlap during
+`prepend+trim-end`, and final focus remained inside the viewport. Across 33
+composition frames the average draw time was 26.9 ms, one frame reached 52.0 ms,
+and none exceeded 100 ms. The platform lane now adds only focused regression
+coverage for the accepted generic overlap behavior, runs the affected suite
+once, and commits the test follow-up separately. Do not broaden production code.
 
 ### Ready later — DLV-261: restore Platform Settings focused-suite parity
 
@@ -949,9 +956,11 @@ Closed accepted widgets history through DLV-252 is retained in the
     accepted chain is integrated as `d5e4b0c`, `b86a01f`, `2658b98`, and
     `57fb469`; no rebuild/relaunch was needed for the non-production delta.
     DLV-256 is physically accepted, focused-tested, and integrated through
-    `b0d53b0`; PID 2608 remains the accepted production runtime. DLV-263 is now
-    Assigned next; DLV-261 and DLV-262 remain Ready behind it, and DLV-248
-    remains deliberately deferred.
+    `b0d53b0`. The user physically accepted DLV-263 production commit `f2b70af`
+    on PID 28612 after a clean exact-anchor and retained-overlap trace; its
+    focused regression-test follow-up is active before cumulative review and
+    integration. DLV-261 and DLV-262 remain Ready behind it, and DLV-248 remains
+    deliberately deferred.
 13. DLV-257 through DLV-260 form the blocked serialized rebrand program. They
     begin only after the new identity is user-approved and the active
     DLV-253/DLV-254 cycle reaches clean accepted boundaries. DLV-258 through
