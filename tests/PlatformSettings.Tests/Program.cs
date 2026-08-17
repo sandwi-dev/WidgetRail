@@ -254,7 +254,7 @@ static Task ThemeDiscovery()
     Assert.Equal("44px", button.Get("min-height")!.Text);
     Assert.Equal("10px", button.Get("corner-radius")!.Text);
     Assert.Equal("400", button.Get("font-weight")!.Text);
-    Assert.Equal("0.99", button.Get("scale")!.Text);
+    Assert.Equal("1", button.Get("scale")!.Text);
     Assert.Equal("90ms", button.Get("transition-duration")!.Text);
     Assert.Equal("ease-out", button.Get("transition-easing")!.Text);
     Assert.True(button.Get("shadow-blur") is null,
@@ -385,7 +385,7 @@ static async Task BuiltInCoolSlateSelection()
     Assert.Equal("rgba(22, 32, 45, 0.98)", button.Get("background")!.Text);
     Assert.Equal("44px", button.Get("min-height")!.Text);
     Assert.Equal("10px", button.Get("corner-radius")!.Text);
-    Assert.Equal("0.99", button.Get("scale")!.Text);
+    Assert.Equal("1", button.Get("scale")!.Text);
     Assert.Equal("90ms", button.Get("transition-duration")!.Text);
     Assert.Equal("ease-out", button.Get("transition-easing")!.Text);
     var focused = reload.Current.Theme.Resolve(new GbssElement(
