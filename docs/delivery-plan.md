@@ -219,7 +219,7 @@ user decision. The native overlay is the sole production presentation path.
 
 | Lane | Task/worktree | State |
 | --- | --- | --- |
-| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | DLV-256 is accepted and integrated through `b0d53b0`. The user physically accepted DLV-263 production commit `f2b70af` on PID 28612 after a clean retained-overlap trace; the lane now owns the focused regression-test follow-up before cumulative review and integration. DLV-261 and DLV-262 remain Ready behind it; DLV-248 remains deferred. |
+| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | DLV-263 is accepted, focused-tested, and integrated as `39d787a`, `a181731`, and `110b42b`; accepted PID 28612 already contains the same production commit, so no rebuild or relaunch followed the test/document-only delta. DLV-261 is assigned next; DLV-262 remains Ready behind it and DLV-248 remains deferred. |
 | Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | DLV-253 is physically accepted, focused Games & Apps evidence is 65/65, and the cumulative chain is integrated on main as `6a26f08`, `3c63852`, and test-only `91177ec`. The superseded PID 51500 closed normally before the DLV-254 candidate launch; no rebuild/relaunch was performed for the DLV-253 tests alone. Preserve clean completed branches. |
 
 The user explicitly approved the DLV-217 aggregate exception on 2026-08-15.
@@ -805,10 +805,18 @@ and none exceeded 100 ms. The platform lane now adds only focused regression
 coverage for the accepted generic overlap behavior, runs the affected suite
 once, and commits the test follow-up separately. Do not broaden production code.
 
-### Ready later — DLV-261: restore Platform Settings focused-suite parity
+Test-only commit `765020d` added retained-row position preservation before
+minimal focus reveal plus conservative viewport-mismatch and no-overlap fallback
+coverage; `DeclarativeRendererTests` passed 4,915 checks. Independent review
+found no relaxed or deleted assertions and no production change. The accepted
+chain is integrated on main as `39d787a`, `a181731`, and `110b42b`. PID 28612
+already runs the exact accepted production commit, so the test-only and planner-
+document integration does not require a rebuild or relaunch.
 
-Owner/baseline: platform lane after DLV-263 reaches its physical-test stop, from
-the then-current accepted main. This is test-only recovery unless direct review
+### Assigned next — DLV-261: restore Platform Settings focused-suite parity
+
+Owner/baseline: platform lane from accepted main after DLV-263 integration. This
+is test-only recovery unless direct review
 proves a current production defect. Own only the two failing Platform Settings
 assertions and the smallest directly shared fixture.
 
@@ -956,11 +964,11 @@ Closed accepted widgets history through DLV-252 is retained in the
     accepted chain is integrated as `d5e4b0c`, `b86a01f`, `2658b98`, and
     `57fb469`; no rebuild/relaunch was needed for the non-production delta.
     DLV-256 is physically accepted, focused-tested, and integrated through
-    `b0d53b0`. The user physically accepted DLV-263 production commit `f2b70af`
-    on PID 28612 after a clean exact-anchor and retained-overlap trace; its
-    focused regression-test follow-up is active before cumulative review and
-    integration. DLV-261 and DLV-262 remain Ready behind it, and DLV-248 remains
-    deliberately deferred.
+    `b0d53b0`. DLV-263 is physically accepted, focused-tested, and integrated as
+    `39d787a`, `a181731`, and `110b42b`; PID 28612 already contains the same
+    accepted production commit, so no rebuild or relaunch followed the test-only
+    and planner-document delta. DLV-261 is Assigned next, DLV-262 remains Ready
+    behind it, and DLV-248 remains deliberately deferred.
 13. DLV-257 through DLV-260 form the blocked serialized rebrand program. They
     begin only after the new identity is user-approved and the active
     DLV-253/DLV-254 cycle reaches clean accepted boundaries. DLV-258 through
