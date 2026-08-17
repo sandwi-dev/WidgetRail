@@ -298,7 +298,7 @@ internal static class FullTrustCommunityScenarios
         WidgetInstanceId = configured.InstanceId,
         ConnectTimeout = TimeSpan.FromSeconds(5),
         RequestTimeout = TimeSpan.FromSeconds(5),
-        MaximumMessageBytes = 64 * 1024,
+        MaximumMessageBytes = WidgetRuntimeProtocol.DefaultMaximumMessageBytes,
         MaximumRestartAttempts = 2,
         ContentLeaseFactory = configured.ContentLeaseFactory,
         IsolationPolicy = WidgetWorkerIsolationPolicy.FullTrustCommunity,

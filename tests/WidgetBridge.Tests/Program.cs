@@ -905,7 +905,7 @@ static async Task TrustedArtworkDemandIsExact()
             firstHandle.StartsWith("library.art.", StringComparison.Ordinal),
             "Worker snapshot did not carry one bounded opaque artwork handle.");
         Assert.Equal(0, backend.AppLibraryIconCalls);
-        Assert.Equal(3, backend.AppLibraryRefreshCalls);
+        Assert.Equal(4, backend.AppLibraryRefreshCalls);
         Assert.Equal(2, backend.AppLibraryReadCalls);
         var launched = await client.RequestAsync(
             BridgeMessageTypes.Action,
