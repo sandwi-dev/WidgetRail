@@ -219,7 +219,7 @@ user decision. The native overlay is the sole production presentation path.
 
 | Lane | Task/worktree | State |
 | --- | --- | --- |
-| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | DLV-263 is accepted, focused-tested, and integrated as `39d787a`, `a181731`, and `110b42b`. DLV-261 is test-only integrated as `c519df4` with Platform Settings 18/18; no rebuild or relaunch was needed. DLV-262 is assigned next and DLV-248 remains deferred. |
+| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | DLV-263 is accepted and integrated through `110b42b`; DLV-261 is test-only integrated as `c519df4` with Platform Settings 18/18; DLV-262 is test-only integrated as `88b21b1` with Widget Bridge 90/90. No rebuild or relaunch was needed for either test-only milestone. The lane is clean and idle; DLV-248 remains deferred. |
 | Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | DLV-253 is physically accepted, focused Games & Apps evidence is 65/65, and the cumulative chain is integrated on main as `6a26f08`, `3c63852`, and test-only `91177ec`. The superseded PID 51500 closed normally before the DLV-254 candidate launch; no rebuild/relaunch was performed for the DLV-253 tests alone. Preserve clean completed branches. |
 
 The user explicitly approved the DLV-217 aggregate exception on 2026-08-15.
@@ -840,7 +840,7 @@ theme provenance and no weakened assertions. The commit is integrated on main
 as `c519df4`; no product build or relaunch was performed for this test-only
 milestone.
 
-### Assigned next — DLV-262: recover the Widget Bridge focused suite
+### Completed — DLV-262: recover the Widget Bridge focused suite
 
 Owner/baseline: platform lane from accepted main after DLV-261 integration. Own
 only Widget Bridge test infrastructure, fixtures, and directly stale
@@ -866,6 +866,21 @@ cases; no unexplained failures remain. Commit test-only as `[DLV-262]`; do not
 rebuild/relaunch the product, run aggregate, edit reviewer docs, or push. Stop
 for a production protocol/security/lifecycle change, credential need,
 undocumented API, destructive cleanup, or substantial conflict.
+
+The exact 31-case ledger classified 29 failures as the same restricted-token
+named-pipe denial and two as stale/unbuilt Community fixture outputs. A
+serialized 29-project restore/build refreshed the current dependency graph; the
+29 pipe cases then passed through the unchanged authenticated pipe path. The
+current suite contains 90 cases and exposed two additional stale test references:
+DLV-249 intentionally added one catalog refresh, making the exact artwork count
+four, and the full-trust Game Launcher fixture retained a test-only 64-KiB frame
+ceiling while accepted production/runtime use the bounded 1-MiB default. Test-
+only commit `b4acea1` updates those two references; dedicated oversize/security
+assertions, production framing, authentication, and lifecycle code are unchanged.
+The serialized Release build completed with zero warnings/errors and the final
+bounded Widget Bridge run passed 90/90. Independent review confirmed the two-
+line scope and current production constants. The commit is integrated on main as
+`88b21b1`; no product rebuild or relaunch was performed.
 
 ### Ready later — DLV-248: media optimistic command revision reconciliation
 
@@ -978,8 +993,9 @@ Closed accepted widgets history through DLV-252 is retained in the
     `39d787a`, `a181731`, and `110b42b`; PID 28612 already contains the same
     accepted production commit, so no rebuild or relaunch followed the test-only
     and planner-document delta. DLV-261 is test-only integrated as `c519df4`
-    with Platform Settings 18/18 and no relaunch. DLV-262 is Assigned next, and
-    DLV-248 remains deliberately deferred.
+    with Platform Settings 18/18, and DLV-262 is test-only integrated as
+    `88b21b1` with Widget Bridge 90/90; neither required a relaunch. The platform
+    queue is clean and idle, and DLV-248 remains deliberately deferred.
 13. DLV-257 through DLV-260 form the blocked serialized rebrand program. They
     begin only after the new identity is user-approved and the active
     DLV-253/DLV-254 cycle reaches clean accepted boundaries. DLV-258 through
