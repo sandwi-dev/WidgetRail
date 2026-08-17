@@ -1,6 +1,6 @@
 using System.Text.Json;
-using GameBarAlternative.PlatformBroker;
-using GameBarAlternative.WindowsAppLibraryProvider;
+using WidgetRail.PlatformBroker;
+using WidgetRail.WindowsAppLibraryProvider;
 
 internal static class GogInstalledGameScenarios
 {
@@ -220,7 +220,7 @@ internal static class GogInstalledGameScenarios
     {
         internal GogFixture()
         {
-            Root = Path.Combine(Path.GetTempPath(), "gbar-gog-" + Guid.NewGuid().ToString("N"));
+            Root = Path.Combine(Path.GetTempPath(), "wrail-gog-" + Guid.NewGuid().ToString("N"));
             Directory.CreateDirectory(Root);
         }
 

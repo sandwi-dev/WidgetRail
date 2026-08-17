@@ -1,6 +1,6 @@
-using GameBarAlternative.WidgetProtocol;
+using WidgetRail.WidgetProtocol;
 
-namespace GameBarAlternative.WidgetSdk;
+namespace WidgetRail.WidgetSdk;
 
 /// <summary>The closed visual and accessibility tones supported by <see cref="UI.Toast"/>.</summary>
 public enum ToastTone
@@ -49,7 +49,7 @@ public sealed record ToastElement : WidgetElement
         Tone = tone;
         Duration = duration;
         Glyph = glyph;
-        StyleClasses = ["gbar-toast", $"gbar-toast--{Token(tone)}"];
+        StyleClasses = ["wrail-toast", $"wrail-toast--{Token(tone)}"];
     }
 
     public string Title { get; }
@@ -85,7 +85,7 @@ public sealed record ToastElement : WidgetElement
                 resolvedGlyph,
                 $"{Tone} notification")
             {
-                StyleClasses = ["gbar-toast__icon", $"gbar-toast__icon--{tone}"],
+                StyleClasses = ["wrail-toast__icon", $"wrail-toast__icon--{tone}"],
             });
         }
 
@@ -94,15 +94,15 @@ public sealed record ToastElement : WidgetElement
             [
                 new TextElement(StableIdentifier.Child(Id, "title"), Title, Title)
                 {
-                    StyleClasses = ["gbar-toast__title"],
+                    StyleClasses = ["wrail-toast__title"],
                 },
                 new TextElement(StableIdentifier.Child(Id, "message"), Message, Message)
                 {
-                    StyleClasses = ["gbar-toast__message"],
+                    StyleClasses = ["wrail-toast__message"],
                 },
             ])
         {
-            StyleClasses = ["gbar-toast__copy"],
+            StyleClasses = ["wrail-toast__copy"],
         });
 
         return new RowElement(Id, children)

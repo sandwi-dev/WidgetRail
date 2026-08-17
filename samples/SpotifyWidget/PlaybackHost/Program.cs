@@ -1,10 +1,10 @@
-using GameBarAlternative.SpotifyPlayback;
+using WidgetRail.SpotifyPlayback;
 
-namespace GameBarAlternative.SpotifyPlaybackHost;
+namespace WidgetRail.SpotifyPlaybackHost;
 
 internal static class Program
 {
-    private const string SingletonName = "Local\\GameBarAlternative.SpotifyPlaybackHost.v1";
+    private const string SingletonName = "Local\\WidgetRail.SpotifyPlaybackHost.v1";
 
     [STAThread]
     private static int Main(string[] args)

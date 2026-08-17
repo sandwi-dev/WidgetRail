@@ -1,6 +1,6 @@
 using System.Buffers.Binary;
 
-namespace GameBarAlternative.LauncherExperienceCatalog;
+namespace WidgetRail.LauncherExperienceCatalog;
 
 internal static class LauncherExperienceFileGuard
 {

@@ -31,8 +31,8 @@ if (-not [string]::IsNullOrWhiteSpace($Version)) {
     }
     $manifest.version = $Version
 }
-$packagePath = Join-Path $artifactsRoot "$($manifest.id)-$($manifest.version).gbarwidget"
-$cliProject = Join-Path $repositoryRoot 'tools\GbarCli\GbarCli.csproj'
+$packagePath = Join-Path $artifactsRoot "$($manifest.id)-$($manifest.version).wrwidget"
+$cliProject = Join-Path $repositoryRoot 'tools\WrailCli\WrailCli.csproj'
 $widgetProject = Join-Path $sampleRoot 'YtMusicWidget.csproj'
 $publishRoot = Join-Path $artifactsRoot 'publish'
 
@@ -109,15 +109,15 @@ if ([string]::IsNullOrWhiteSpace($Version)) {
         $generatedManifest,
         [System.Text.UTF8Encoding]::new($false))
 }
-Copy-Item -LiteralPath (Join-Path $sampleRoot 'styles\default.gbss') `
-    -Destination (Join-Path $stagingRoot 'styles\default.gbss') -Force
+Copy-Item -LiteralPath (Join-Path $sampleRoot 'styles\default.wrss') `
+    -Destination (Join-Path $stagingRoot 'styles\default.wrss') -Force
 
 # Keep the public archive closed over the reviewed runtime payload. Host-owned
 # companion state and secrets must never become package inputs.
 $expectedFiles = @(
     'manifest.json',
     'payload\YtMusicWidget.dll',
-    'styles\default.gbss'
+    'styles\default.wrss'
 )
 $stagingPrefix = $stagingRoot.TrimEnd(
     [System.IO.Path]::DirectorySeparatorChar,
@@ -143,12 +143,12 @@ if (Test-Path -LiteralPath $packagePath) {
 & dotnet run --project $cliProject --configuration $Configuration --no-launch-profile -- `
     validate $stagingRoot
 if ($LASTEXITCODE -ne 0) {
-    throw "gbar validate rejected the staged YT Music addon."
+    throw "wrail validate rejected the staged YT Music addon."
 }
 & dotnet run --project $cliProject --configuration $Configuration --no-launch-profile -- `
     pack $stagingRoot --output $packagePath
 if ($LASTEXITCODE -ne 0 -or -not (Test-Path -LiteralPath $packagePath)) {
-    throw "gbar pack did not produce the YT Music addon package."
+    throw "wrail pack did not produce the YT Music addon package."
 }
 
 if ($Install) {
@@ -168,23 +168,23 @@ if ($Install) {
         & dotnet run --project $cliProject --configuration $Configuration --no-launch-profile -- `
             disable $manifest.id @catalogArguments
         if ($LASTEXITCODE -ne 0) {
-            throw "gbar disable failed for the installed $($manifest.id) update."
+            throw "wrail disable failed for the installed $($manifest.id) update."
         }
     }
     & dotnet run --project $cliProject --configuration $Configuration --no-launch-profile -- `
         install $packagePath @catalogArguments
     if ($LASTEXITCODE -ne 0) {
-        throw "gbar install failed. Installed versions are immutable; bump manifest.json when replacing an existing version."
+        throw "wrail install failed. Installed versions are immutable; bump manifest.json when replacing an existing version."
     }
     & dotnet run --project $cliProject --configuration $Configuration --no-launch-profile -- `
         version select $manifest.id $manifest.version @catalogArguments
     if ($LASTEXITCODE -ne 0) {
-        throw "gbar version select failed for $($manifest.id) $($manifest.version)."
+        throw "wrail version select failed for $($manifest.id) $($manifest.version)."
     }
     & dotnet run --project $cliProject --configuration $Configuration --no-launch-profile -- `
         enable $manifest.id @catalogArguments
     if ($LASTEXITCODE -ne 0) {
-        throw "gbar enable failed for $($manifest.id)."
+        throw "wrail enable failed for $($manifest.id)."
     }
 }
 

@@ -1,7 +1,7 @@
 using System.Text.Json;
-using GameBarAlternative.WidgetSdk;
+using WidgetRail.WidgetSdk;
 
-namespace GameBarAlternative.Samples.YtMusicWidget;
+namespace WidgetRail.Samples.YtMusicWidget;
 
 /// <summary>
 /// YTMDesktop2 client implemented exclusively with public, typed host services.
@@ -109,8 +109,8 @@ public sealed class YtmDesktopApiClient : IYtMusicClient, IDisposable
     {
         var body = JsonSerializer.Serialize(new
         {
-            appId = "gamebaralternative.ytmusic",
-            appName = "Game Bar Alternative YT Music",
+            appId = "widgetrail.ytmusic",
+            appName = "WidgetRail YT Music",
             appVersion = PackageVersion,
         });
         using var document = await SendAsync(
@@ -129,7 +129,7 @@ public sealed class YtmDesktopApiClient : IYtMusicClient, IDisposable
         ArgumentException.ThrowIfNullOrWhiteSpace(code);
         var body = JsonSerializer.Serialize(new
         {
-            appId = "gamebaralternative.ytmusic",
+            appId = "widgetrail.ytmusic",
             code = code.Trim(),
         });
         using var document = await SendAsync(

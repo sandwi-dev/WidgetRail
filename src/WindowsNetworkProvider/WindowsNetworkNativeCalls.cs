@@ -1,7 +1,7 @@
 using System.Net.NetworkInformation;
 using System.Runtime.InteropServices;
 
-namespace GameBarAlternative.WindowsNetworkProvider;
+namespace WidgetRail.WindowsNetworkProvider;
 
 [UnmanagedFunctionPointer(CallingConvention.Winapi)]
 internal delegate void NativeWifiNotificationCallback(

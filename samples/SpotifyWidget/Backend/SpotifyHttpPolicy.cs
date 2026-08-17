@@ -1,6 +1,6 @@
 using System.Globalization;
 
-namespace GameBarAlternative.WindowsSpotifyProvider;
+namespace WidgetRail.WindowsSpotifyProvider;
 
 /// <summary>
 /// Owns bounded Spotify HTTP retry and retained rate-limit policy. Transport

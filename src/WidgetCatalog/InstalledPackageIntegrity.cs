@@ -4,9 +4,9 @@ using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
-using GameBarAlternative.WidgetProtocol;
+using WidgetRail.WidgetProtocol;
 
-namespace GameBarAlternative.WidgetCatalog;
+namespace WidgetRail.WidgetCatalog;
 
 /// <summary>
 /// Host-owned integrity metadata for an extracted unsigned widget package.
@@ -15,7 +15,7 @@ namespace GameBarAlternative.WidgetCatalog;
 /// </summary>
 internal static class InstalledPackageIntegrity
 {
-    internal const string MetadataFileName = ".gbar-integrity.json";
+    internal const string MetadataFileName = ".wrail-integrity.json";
     internal const string Algorithm = "sha256-content-tree-v1";
     internal const int MaximumMetadataBytes = 4 * 1024;
     private static readonly UTF8Encoding StrictUtf8 = new(false, true);
@@ -34,7 +34,7 @@ internal static class InstalledPackageIntegrity
     {
         var digest = Compute(
             catalogRoot, packageRoot, options,
-            capturedManifestBytes: null, gbssDigests: null, verifiedFiles: null,
+            capturedManifestBytes: null, wrssDigests: null, verifiedFiles: null,
             entryCount: out _, totalBytes: out _);
         var path = Path.Combine(packageRoot, MetadataFileName);
         if (File.Exists(path) || Directory.Exists(path))
@@ -107,10 +107,10 @@ internal static class InstalledPackageIntegrity
                 "invalid_integrity_metadata",
                 $"Installed widget integrity metadata is invalid: {packageRoot}");
 
-        var gbssDigests = new Dictionary<string, string>(StringComparer.Ordinal);
+        var wrssDigests = new Dictionary<string, string>(StringComparer.Ordinal);
         var verifiedFiles = new Dictionary<string, VerifiedPackageFile>(StringComparer.Ordinal);
         var actualText = Compute(
-            catalogRoot, packageRoot, options, manifestBytes, gbssDigests, verifiedFiles,
+            catalogRoot, packageRoot, options, manifestBytes, wrssDigests, verifiedFiles,
             out var entryCount, out var totalBytes, checkpoint);
         _ = TryDecodeDigest(actualText, out var actual);
         var matches = CryptographicOperations.FixedTimeEquals(expected, actual);
@@ -123,7 +123,7 @@ internal static class InstalledPackageIntegrity
         return new InstalledPackageVerification(
             actualText,
             manifest,
-            gbssDigests.ToFrozenDictionary(StringComparer.Ordinal),
+            wrssDigests.ToFrozenDictionary(StringComparer.Ordinal),
             verifiedFiles.ToFrozenDictionary(StringComparer.Ordinal),
             checked(entryCount + 1),
             checked(totalBytes + MaximumMetadataBytes));
@@ -134,7 +134,7 @@ internal static class InstalledPackageIntegrity
         string packageRoot,
         WidgetCatalogOptions options,
         byte[]? capturedManifestBytes,
-        IDictionary<string, string>? gbssDigests,
+        IDictionary<string, string>? wrssDigests,
         IDictionary<string, VerifiedPackageFile>? verifiedFiles,
         out int entryCount,
         out long totalBytes,
@@ -223,9 +223,9 @@ internal static class InstalledPackageIntegrity
                 }
 
                 var trackFileDigest = verifiedFiles is not null ||
-                    (gbssDigests is not null &&
+                    (wrssDigests is not null &&
                     Path.GetExtension(file.RelativePath).Equals(
-                        ".gbss", StringComparison.OrdinalIgnoreCase));
+                        ".wrss", StringComparison.OrdinalIgnoreCase));
                 using var fileHash = !trackFileDigest
                     ? null
                     : IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
@@ -250,10 +250,10 @@ internal static class InstalledPackageIntegrity
                             file.RelativePath,
                             new VerifiedPackageFile(
                                 file.RelativePath, expectedLength, fileDigest));
-                    if (gbssDigests is not null &&
+                    if (wrssDigests is not null &&
                         Path.GetExtension(file.RelativePath).Equals(
-                            ".gbss", StringComparison.OrdinalIgnoreCase))
-                        gbssDigests.Add(file.RelativePath, fileDigest);
+                            ".wrss", StringComparison.OrdinalIgnoreCase))
+                        wrssDigests.Add(file.RelativePath, fileDigest);
                 }
             }
             return Convert.ToHexString(hash.GetHashAndReset()).ToLowerInvariant();
@@ -323,7 +323,7 @@ internal static class InstalledPackageIntegrity
 internal sealed record InstalledPackageVerification(
     string ContentDigest,
     WidgetManifest Manifest,
-    IReadOnlyDictionary<string, string> GbssDigests,
+    IReadOnlyDictionary<string, string> WrssDigests,
     IReadOnlyDictionary<string, VerifiedPackageFile> VerifiedFiles,
     int EntryCount,
     long TotalBytes);

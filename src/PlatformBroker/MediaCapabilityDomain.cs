@@ -1,6 +1,6 @@
 using System.Text.Json;
 
-namespace GameBarAlternative.PlatformBroker;
+namespace WidgetRail.PlatformBroker;
 
 internal sealed class MediaCapabilityDomain(IPlatformBrokerBackend backend)
 {

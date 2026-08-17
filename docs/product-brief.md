@@ -104,7 +104,7 @@ handles in the native host.
 
 Normal customization is controller-accessible: presets, colors, density, animation, layout, and previews.
 
-Advanced users can edit a text-based stylesheet, provisionally called GBSS. It supports variables, a constrained cascade, semantic selectors, package-contained assets, and states such as `:focused`, `:pressed`, `:selected`, and `:disabled`. It does not support scripts, remote resources, commands, arbitrary shaders, or unrestricted local file paths.
+Advanced users can edit a text-based stylesheet, provisionally called WRSS. It supports variables, a constrained cascade, semantic selectors, package-contained assets, and states such as `:focused`, `:pressed`, `:selected`, and `:disabled`. It does not support scripts, remote resources, commands, arbitrary shaders, or unrestricted local file paths.
 
 Accessibility rules override themes where necessary, including visible focus, minimum contrast, text scaling, and reduced motion.
 
@@ -150,6 +150,6 @@ a Background widget merely because a generic idle timer elapsed.
 - Activating a widget transfers every widget action to its context; B is
   offered to the active scope before the root-level Back fallback.
 - Closing and reopening restores the active widget and stable focus ID.
-- A minimal GBSS file can change tokens and focused-state treatment with live reload.
+- A minimal WRSS file can change tokens and focused-state treatment with live reload.
 - A deliberately crashing sample widget does not terminate the overlay.
 - Resource and latency measurements are captured automatically.

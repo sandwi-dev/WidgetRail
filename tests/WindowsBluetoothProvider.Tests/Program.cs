@@ -1,6 +1,6 @@
 using System.Text.Json;
-using GameBarAlternative.PlatformBroker;
-using GameBarAlternative.WindowsBluetoothProvider;
+using WidgetRail.PlatformBroker;
+using WidgetRail.WindowsBluetoothProvider;
 using Windows.Devices.Enumeration;
 
 var tests = new (string Name, Func<Task> Run)[]

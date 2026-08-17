@@ -2,7 +2,7 @@ using System.ComponentModel;
 using System.Runtime.InteropServices;
 using System.Threading.Channels;
 
-namespace GameBarAlternative.WindowsAppLibraryProvider;
+namespace WidgetRail.WindowsAppLibraryProvider;
 
 /// <summary>
 /// Process-wide bounded, message-pumped STA lane for Shell namespace COM.
@@ -51,7 +51,7 @@ internal sealed class ShellStaExecutor : IShellStaExecutor
         var thread = new Thread(Run)
         {
             IsBackground = true,
-            Name = "GameBarAlternative Shell STA",
+            Name = "WidgetRail Shell STA",
         };
         if (OperatingSystem.IsWindows()) thread.SetApartmentState(ApartmentState.STA);
         thread.Start();

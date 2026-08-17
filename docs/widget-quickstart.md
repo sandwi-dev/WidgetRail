@@ -3,7 +3,7 @@
 Status: implemented offline scaffold and local package workflow
 
 This guide creates a controller-first C# widget, validates its manifest and
-GBSS, executes a bounded credential-free semantic scenario in the isolated
+WRSS, executes a bounded credential-free semantic scenario in the isolated
 worker, renders a protocol snapshot, and replays input without opening the
 native overlay.
 
@@ -11,10 +11,10 @@ native overlay.
 
 - Windows and PowerShell
 - .NET 8 SDK
-- A `gbar` build or installation that includes the controller template
+- A `wrail` build or installation that includes the controller template
 
 The scaffold contains a matching local SDK package and a `NuGet.Config` that
-clears external feeds. Once `gbar new` has created the project, its build and
+clears external feeds. Once `wrail new` has created the project, its build and
 generated tests are offline and do not require this repository.
 
 ## Build the developer CLI
@@ -22,18 +22,18 @@ generated tests are offline and do not require this repository.
 From the repository root:
 
 ```powershell
-dotnet build .\tools\GbarCli\GbarCli.csproj -c Release
-$gbar = '.\tools\GbarCli\bin\Release\net8.0\gbar.exe'
-& $gbar help
+dotnet build .\tools\WrailCli\WrailCli.csproj -c Release
+$wrail = '.\tools\WrailCli\bin\Release\net8.0\wrail.exe'
+& $wrail help
 ```
 
 The complete `net8.0` output directory is the local versioned developer
 artifact. It can be copied to another directory or machine with the same .NET 8
-runtime and invoked from an unrelated repository; keep `gbar.exe`, its sibling
+runtime and invoked from an unrelated repository; keep `wrail.exe`, its sibling
 DLL/runtime files, and `templates\ControllerWidget` together. The executable
-then scaffolds its content-addressed `GameBarAlternative.WidgetSdk` package and
+then scaffolds its content-addressed `WidgetRail.WidgetSdk` package and
 version-2 template without consulting this checkout or an unpublished package
-feed. Copying only `gbar.exe` is not a valid installation.
+feed. Copying only `wrail.exe` is not a valid installation.
 
 The widget commands are `new`, `validate`, `dev`, `preview`, `render`, `replay`,
 `pack`, `install`, `list`, `enable`, `disable`, and the
@@ -53,13 +53,13 @@ The blocks marked as the **canonical offline author journey** in this guide are
 kept in lockstep with one external temporary-directory fixture. That fixture
 generates the project from the checked-in release unit, compiles and executes
 the source shown below, and runs every marked CLI phase through removal. The
-`gbar dev`, capability, AppContainer, and authority-recovery sections are
+`wrail dev`, capability, AppContainer, and authority-recovery sections are
 advanced or host-integration guidance. Scenario preview has its own two-fixture
 external-directory AppContainer proof.
 
 <!-- canonical-author-journey:create-build-test -->
 ```powershell
-& $gbar new widget VolumeControl `
+& $wrail new widget VolumeControl `
   --output .\scratch\VolumeControl `
   --id dev.example.volume-control `
   --publisher dev.example `
@@ -68,21 +68,21 @@ external-directory AppContainer proof.
 dotnet build .\scratch\VolumeControl\VolumeControl.csproj -c Release
 dotnet run --project .\scratch\VolumeControl\tests\VolumeControl.Tests.csproj `
   -c Release
-& $gbar preview .\scratch\VolumeControl --scenario ready `
+& $wrail preview .\scratch\VolumeControl --scenario ready `
   --output .\scratch\VolumeControl\fixtures\ready.scenario.json
 (Get-Content .\scratch\VolumeControl\fixtures\ready.scenario.json | ConvertFrom-Json).snapshot |
   ConvertTo-Json -Depth 100 |
   Set-Content .\scratch\VolumeControl\fixtures\ready.snapshot.json
 ```
 
-`gbar new` writes `GameBarAlternative.WidgetSdk` to the relative
-`.gbar\packages` feed and never writes an absolute checkout path. The generated
+`wrail new` writes `WidgetRail.WidgetSdk` to the relative
+`.widgetrail\packages` feed and never writes an absolute checkout path. The generated
 MSTest scenario proves activation, a state-changing action, stable focus, and
 the same semantic scenario exported for the snapshot used below. This local
 dependency bundle is an offline scaffold contract, not a public NuGet release
 or a publisher-trust claim. The bundled version-2 inventory declares the closed
 `basic`, `data`, `media`, and `multipage` profiles plus every bounded text or
-binary input. `gbar new` builds and validates the
+binary input. `wrail new` builds and validates the
 complete result in a private sibling staging directory, then publishes it with
 one rename. The requested output path must not already exist; malformed or
 unreadable template input, validation failure, cancellation, and destination
@@ -100,16 +100,16 @@ before intentionally changing the public SDK surface.
 The optional [Full Application reference](../samples/FullApplicationWidget/README.md)
 uses the same public dependency and command path at application scale. Export it
 into a new repository-shaped directory with one bounded setup command; the
-exporter invokes the copied `gbar` release unit and writes the complete source,
+exporter invokes the copied `wrail` release unit and writes the complete source,
 manifest, styles, and scenario declaration, so no undocumented source copying,
 deletion, or string replacement is required:
 
 ```powershell
 New-Item -ItemType Directory .\external-full-application | Out-Null
 New-Item -ItemType Directory .\external-full-application\.git | Out-Null
-$gbar = (Resolve-Path $gbar).Path
+$wrail = (Resolve-Path $wrail).Path
 pwsh -NoProfile -File .\samples\FullApplicationWidget\Export-ExternalReference.ps1 `
-  -Gbar $gbar `
+  -Wrail $wrail `
   -Output .\external-full-application\ExternalFullApplication
 Set-Location .\external-full-application
 ```
@@ -122,15 +122,15 @@ owned only by the fixture:
 $env:NUGET_PACKAGES = (Join-Path $PWD '.nuget-packages')
 dotnet restore .\ExternalFullApplication\ExternalFullApplication.csproj --force --no-cache
 dotnet build .\ExternalFullApplication\ExternalFullApplication.csproj -c Release --no-restore
-& $gbar validate .\ExternalFullApplication
-& $gbar pack .\ExternalFullApplication --configuration Release --output .\ExternalFullApplication.gbarwidget
-& $gbar install .\ExternalFullApplication.gbarwidget --catalog .\.catalog
-& $gbar preview .\ExternalFullApplication --scenario ready --output .\ready.scenario.json
-& $gbar uninstall dev.external.full-application --catalog .\.catalog
+& $wrail validate .\ExternalFullApplication
+& $wrail pack .\ExternalFullApplication --configuration Release --output .\ExternalFullApplication.wrwidget
+& $wrail install .\ExternalFullApplication.wrwidget --catalog .\.catalog
+& $wrail preview .\ExternalFullApplication --scenario ready --output .\ready.scenario.json
+& $wrail uninstall dev.external.full-application --catalog .\.catalog
 ```
 
 The generated `NuGet.Config` clears all external sources, so restore consumes
-only the scaffold's relative `.gbar\packages` feed. `--catalog` is mandatory in
+only the scaffold's relative `.widgetrail\packages` feed. `--catalog` is mandatory in
 this proof: it prevents test installation or removal from mutating the normal
 user catalog. This route performs no publication, signing, account, or network
 operation. The automated onboarding fixture executes the same exporter and
@@ -151,17 +151,17 @@ if ($updated -eq $text) { throw 'The documented presentation edit target was abs
 Set-Content -LiteralPath $source -Value $updated -NoNewline -Encoding utf8
 
 dotnet build .\ExternalFullApplication\ExternalFullApplication.csproj -c Release --no-restore
-& $gbar validate .\ExternalFullApplication
-& $gbar preview .\ExternalFullApplication
-& $gbar preview .\ExternalFullApplication --scenario ready `
+& $wrail validate .\ExternalFullApplication
+& $wrail preview .\ExternalFullApplication
+& $wrail preview .\ExternalFullApplication --scenario ready `
   --output .\ready.edited.scenario.json
 $result = Get-Content -LiteralPath .\ready.edited.scenario.json -Raw |
   ConvertFrom-Json
 if ($result.snapshot.root.children[0].text -ne 'Reference Library · Edited') {
   throw 'The isolated scenario did not contain the edited heading.'
 }
-& $gbar pack .\ExternalFullApplication --configuration Release `
-  --output .\ExternalFullApplication-edited.gbarwidget
+& $wrail pack .\ExternalFullApplication --configuration Release `
+  --output .\ExternalFullApplication-edited.wrwidget
 ```
 
 The first preview validates and lists the bounded declaration without loading
@@ -174,23 +174,23 @@ publish, sign, access an account, or contact a remote service.
 For the normal edit/build/overlay loop, replace the manual build with:
 
 ```powershell
-& $gbar dev .\scratch\VolumeControl
+& $wrail dev .\scratch\VolumeControl
 ```
 
-`gbar dev` validates the manifest and entry GBSS, runs a bounded child
+`wrail dev` validates the manifest and entry WRSS, runs a bounded child
 `dotnet build`, creates an immutable package generation, and launches it through
 the packaged native overlay. It does not load the widget DLL in the CLI. The
 bridge treats the temporary package exactly like an installed community widget:
 the generic worker host runs it in a package-specific AppContainer and the
-normal lifecycle, consent broker, controller routing, GBSS compiler, and native
+normal lifecycle, consent broker, controller routing, WRSS compiler, and native
 renderer remain in effect. Settings reads the same session catalog, so declared
 capabilities can be reviewed from the exact Installed widget's **Permissions &
 configuration** page.
 
 Project mode watches the root manifest/project, bounded C# sources outside
-`bin`/`obj`/`.git`, nearest `Directory.Build.props/targets`, and GBSS sources.
+`bin`/`obj`/`.git`, nearest `Directory.Build.props/targets`, and WRSS sources.
 Package-directory mode watches the complete bounded, reparse-safe input tree
-that `gbar pack` consumes, including supporting payload files, assets, and
+that `wrail pack` consumes, including supporting payload files, assets, and
 initially empty/new style directories. Handles are non-recursive per directory;
 new source directories are adopted through a bounded recapture, and events are
 debounced/coalesced.
@@ -204,7 +204,7 @@ failure to construct the worker or render a valid snapshot rejects the
 generation. Only then may the candidate atomically return its session nonce in
 a private readiness record. The last-good overlay is stopped only after that
 bounded handshake succeeds; the interactive replacement authenticates the same
-generation before `gbar dev` prints `Ready`. Missing or forged readiness fails
+generation before `wrail dev` prints `Ready`. Missing or forged readiness fails
 closed, while validation/compilation/startup failure retains or restarts the
 last-good generation. Ctrl+C verifies that the overlay/bridge/worker process
 tree exited and retries temporary-catalog removal. Any unreclaimed process or
@@ -215,7 +215,7 @@ If automatic host discovery is not appropriate, select a complete packaged
 build explicitly:
 
 ```powershell
-& $gbar dev .\scratch\VolumeControl `
+& $wrail dev .\scratch\VolumeControl `
   --host .\src\OverlayHost\out\Release\OverlayHost.exe `
   --configuration Release `
   --build-timeout-seconds 180
@@ -228,7 +228,7 @@ The starter contains:
 - stable element IDs and focus neighbors;
 - controller shortcuts and bounded disabled states;
 - optional closed semantic button icons through `.Icon(WidgetGlyph.Refresh)`;
-- a safe `styles/default.gbss` file; and
+- a safe `styles/default.wrss` file; and
 - a deterministic controller replay; and
 - a sibling lifecycle/state/action test that exports a bounded snapshot.
 
@@ -265,8 +265,8 @@ journey, not a parallel illustrative snippet:
 
 <!-- canonical-author-journey:widget-source -->
 ```csharp
-using GameBarAlternative.WidgetProtocol;
-using GameBarAlternative.WidgetSdk;
+using WidgetRail.WidgetProtocol;
+using WidgetRail.WidgetSdk;
 
 namespace dev.example.VolumeControl;
 
@@ -317,7 +317,7 @@ Custom worker executables should delegate host startup to the public runtime
 bootstrap instead of parsing pipe or broker arguments:
 
 ```csharp
-using GameBarAlternative.WidgetRuntime;
+using WidgetRail.WidgetRuntime;
 
 return await WidgetWorkerBootstrap.RunAsync(args, () => new VolumeControl());
 ```
@@ -332,11 +332,11 @@ private runtime APIs. See the SDK and runtime READMEs for complete examples.
 
 <!-- canonical-author-journey:validate -->
 ```powershell
-& $gbar validate .\scratch\VolumeControl
+& $wrail validate .\scratch\VolumeControl
 ```
 
-Directory validation checks the strict manifest and every `.gbss` file. You
-can also validate a single `manifest.json` or `.gbss` file. Warnings such as
+Directory validation checks the strict manifest and every `.wrss` file. You
+can also validate a single `manifest.json` or `.wrss` file. Warnings such as
 safe numeric clamping do not fail validation; malformed or unsafe input does.
 
 ## Inspect a data-only snapshot
@@ -346,20 +346,20 @@ Inspect or canonicalize only that data file:
 
 <!-- canonical-author-journey:render -->
 ```powershell
-& $gbar render `
+& $wrail render `
   .\scratch\VolumeControl\fixtures\ready.snapshot.json `
   --output .\scratch\VolumeControl\fixtures\ready.canonical.json
 ```
 
-`gbar render` bounds and validates snapshot JSON; it never loads a widget DLL.
-DLL input fails closed before type resolution or output handling. Use `gbar dev`
+`wrail render` bounds and validates snapshot JSON; it never loads a widget DLL.
+DLL input fails closed before type resolution or output handling. Use `wrail dev`
 for executable integration through the AppContainer worker. Run the test-based
 export only for code you authored and control; a test process is not a sandbox
 for downloaded repository code.
 
 ## List named scenario declarations
 
-Create `scratch\VolumeControl\gbar.scenarios.json` to describe a bounded set of
+Create `scratch\VolumeControl\widgetrail.scenarios.json` to describe a bounded set of
 credential-free semantic states:
 
 ```json
@@ -376,7 +376,7 @@ credential-free semantic states:
 Validate and list the declarations:
 
 ```powershell
-& $gbar preview .\scratch\VolumeControl
+& $wrail preview .\scratch\VolumeControl
 ```
 
 The listing path validates manifest syntax and limits but does not load the
@@ -384,7 +384,7 @@ assembly, resolve `providerType`, invoke `factory`, or prove that the referenced
 code exists. Build the widget, then execute exactly one declared scenario:
 
 ```powershell
-& $gbar preview .\scratch\VolumeControl `
+& $wrail preview .\scratch\VolumeControl `
   --scenario muted `
   --output .\scratch\VolumeControl\fixtures\muted.scenario.json
 ```
@@ -414,7 +414,7 @@ lifecycle ownership.
 
 <!-- canonical-author-journey:replay -->
 ```powershell
-& $gbar replay `
+& $wrail replay `
   .\scratch\VolumeControl\fixtures\ready.snapshot.json `
   .\scratch\VolumeControl\replays\smoke.json
 ```
@@ -436,24 +436,24 @@ errors before host integration.
 8. Rebuild, validate, run credential-free scenarios, inspect data-only
    snapshots, and replay.
 
-Author in logical DIPs and responsive GBSS. Do not assume a fixed physical
+Author in logical DIPs and responsive WRSS. Do not assume a fixed physical
 resolution, DPI, aspect ratio, widget width, or positive desktop coordinates.
 The host supplies the current viewport and owns monitor placement. See
 [display and resolution behavior](display-and-resolution.md).
 
 ## Install and review locally
 
-Pack the source project directly. Source mode validates manifest and GBSS,
+Pack the source project directly. Source mode validates manifest and WRSS,
 runs a bounded Release build with private intermediates, omits compiler symbols
 and machine-specific PDB paths, stages the declared entrypoint and dependencies,
 and then applies the deterministic package contract:
 
 <!-- canonical-author-journey:pack-install -->
 ```powershell
-& $gbar pack .\scratch\VolumeControl `
+& $wrail pack .\scratch\VolumeControl `
   --configuration Release `
-  --output .\scratch\dev.example.volume-control-0.1.0.gbarwidget
-& $gbar install .\scratch\dev.example.volume-control-0.1.0.gbarwidget
+  --output .\scratch\dev.example.volume-control-0.1.0.wrwidget
+& $wrail install .\scratch\dev.example.volume-control-0.1.0.wrwidget
 ```
 
 An already-staged package directory remains a supported low-level `pack`
@@ -530,14 +530,14 @@ scope. The equivalent CLI flow is:
 
 <!-- canonical-author-journey:version-lifecycle -->
 ```powershell
-& $gbar disable dev.example.volume-control
-& $gbar version list dev.example.volume-control
-& $gbar version select dev.example.volume-control 0.2.0
+& $wrail disable dev.example.volume-control
+& $wrail version list dev.example.volume-control
+& $wrail version select dev.example.volume-control 0.2.0
 # Review Settings → Installed widgets, then:
-& $gbar enable dev.example.volume-control
-& $gbar disable dev.example.volume-control
-& $gbar version rollback dev.example.volume-control
-& $gbar version select dev.example.volume-control 0.2.0
+& $wrail enable dev.example.volume-control
+& $wrail disable dev.example.volume-control
+& $wrail version rollback dev.example.volume-control
+& $wrail version select dev.example.volume-control 0.2.0
 ```
 
 `version rollback` without `--to` chooses the greatest installed version older
@@ -550,8 +550,8 @@ running another version.
 If accumulated rollback versions exceed the catalog quota, open
 **Settings → Installed widgets → Catalog recovery**, choose an inactive,
 non-selected version, and confirm its exact removal. The CLI equivalent is
-`gbar repair list` followed by
-`gbar repair remove <widget-id> <version>`. Recovery reads bounded canonical
+`wrail repair list` followed by
+`wrail repair remove <widget-id> <version>`. Recovery reads bounded canonical
 directory names and catalog state only; it never executes or trusts candidate
 package contents, never removes the selected generation, and can retire inactive
 history while that selected version remains enabled. It has no force or
@@ -570,16 +570,16 @@ versions:
 
 <!-- canonical-author-journey:remove -->
 ```powershell
-& $gbar disable dev.example.volume-control
-& $gbar uninstall dev.example.volume-control
+& $wrail disable dev.example.volume-control
+& $wrail uninstall dev.example.volume-control
 ```
 
 If worker admission reports that AppContainer content authority is quarantined,
 inspect the local host journal and retry one exact transaction:
 
 ```powershell
-& $gbar authority-recovery list
-& $gbar authority-recovery retry <confirmation-token-from-list>
+& $wrail authority-recovery list
+& $wrail authority-recovery retry <confirmation-token-from-list>
 ```
 
 Listing exposes only the confirmation token, validated AppContainer profile,
@@ -605,7 +605,7 @@ stick clicks, Menu, or View.
 
 Continue with the [declarative UI reference](declarative-ui.md), [controller
 input model](controller-input.md), [widget capabilities](capabilities.md), and
-[GBSS reference](gbss.md). For packaging, GitHub Release publishing, hash
+[WRSS reference](wrss.md). For packaging, GitHub Release publishing, hash
 pinning, and local or remote installation, read [publishing and
 installation](publishing-and-installation.md). Theme authors should instead use
 the dedicated [theme packaging and distribution](theme-packaging.md) workflow.

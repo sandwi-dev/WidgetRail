@@ -3,7 +3,7 @@ using System.IO.Compression;
 using System.Security.Cryptography;
 using System.Text;
 
-namespace GameBarAlternative.LauncherExperienceCatalog;
+namespace WidgetRail.LauncherExperienceCatalog;
 
 internal sealed record LauncherExperienceSourceFile(string RelativePath, byte[] Content);
 
@@ -24,7 +24,7 @@ internal sealed record LauncherExperiencePackResult(
 /// </summary>
 internal static class LauncherExperienceArchive
 {
-    public const string Extension = ".gbarlauncher";
+    public const string Extension = ".wrlauncher";
     public const long MaximumArchiveBytes = 33L * 1024 * 1024;
     private const int MaximumArchiveEntries = LauncherExperienceValidator.MaximumFiles;
     private static readonly DateTimeOffset ReproducibleTimestamp =
@@ -171,7 +171,7 @@ internal static class LauncherExperienceArchive
         }
 
         var temporary = Path.Combine(
-            Path.GetTempPath(), "gbar-launcher-inspect", Guid.NewGuid().ToString("N"));
+            Path.GetTempPath(), "wrail-launcher-inspect", Guid.NewGuid().ToString("N"));
         try
         {
             Materialize(temporary, files);

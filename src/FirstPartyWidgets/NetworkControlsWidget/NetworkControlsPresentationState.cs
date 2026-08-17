@@ -1,6 +1,6 @@
-using GameBarAlternative.WidgetSdk;
+using WidgetRail.WidgetSdk;
 
-namespace GameBarAlternative.FirstPartyWidgets.NetworkControls;
+namespace WidgetRail.FirstPartyWidgets.NetworkControls;
 
 internal sealed record NetworkControlsPresentationState(
     NetworkControlsViewState ViewState,

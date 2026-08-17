@@ -3,7 +3,7 @@ using System.Text;
 using System.Runtime.Versioning;
 using Microsoft.Win32;
 
-namespace GameBarAlternative.WindowsAppLibraryProvider;
+namespace WidgetRail.WindowsAppLibraryProvider;
 
 /// <summary>
 /// Reads bounded Steam app manifests from registered library roots. It never

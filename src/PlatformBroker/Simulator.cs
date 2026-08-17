@@ -1,4 +1,4 @@
-namespace GameBarAlternative.PlatformBroker;
+namespace WidgetRail.PlatformBroker;
 
 /// <summary>Deterministic seam for tests and development; owns no OS resource.</summary>
 public sealed class SimulatedPlatformBrokerBackend : IPlatformBrokerBackend

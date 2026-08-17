@@ -1,9 +1,9 @@
 using System.Collections.ObjectModel;
 using System.Text.Json.Serialization;
-using GameBarAlternative.WidgetProtocol;
-using GameBarAlternative.WidgetStyling;
+using WidgetRail.WidgetProtocol;
+using WidgetRail.WidgetStyling;
 
-namespace GameBarAlternative.WidgetBridge;
+namespace WidgetRail.WidgetBridge;
 
 public static class BridgeRenderStyleLimits
 {
@@ -16,7 +16,7 @@ public static class BridgeRenderStyleLimits
 
 public sealed record BridgeComputedStyleValue
 {
-    public required GbssValueKind Kind { get; init; }
+    public required WrssValueKind Kind { get; init; }
     public required string Text { get; init; }
     [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
     public double? Number { get; init; }
@@ -35,7 +35,7 @@ internal static class BridgeRenderStyleResolver
 {
     public static IReadOnlyDictionary<string, BridgeNodeRenderStyles> Resolve(
         ViewSnapshot snapshot,
-        GbssTheme? theme)
+        WrssTheme? theme)
     {
         ArgumentNullException.ThrowIfNull(snapshot);
         var nodes = new SortedDictionary<string, BridgeNodeRenderStyles>(StringComparer.Ordinal);
@@ -50,13 +50,13 @@ internal static class BridgeRenderStyleResolver
                     $"Computed style map exceeds {BridgeRenderStyleLimits.MaximumNodes} nodes.");
             var classes = new HashSet<string>(node.StyleClasses, StringComparer.Ordinal);
             var baseStates = SemanticStates(node);
-            var focusedStates = new HashSet<GbssPseudoState>(baseStates)
+            var focusedStates = new HashSet<WrssPseudoState>(baseStates)
             {
-                GbssPseudoState.Focused,
+                WrssPseudoState.Focused,
             };
-            var pressedStates = new HashSet<GbssPseudoState>(focusedStates)
+            var pressedStates = new HashSet<WrssPseudoState>(focusedStates)
             {
-                GbssPseudoState.Pressed,
+                WrssPseudoState.Pressed,
             };
             var baseStyle = ResolveState(node, classes, baseStates);
             var focusedStyle = ResolveState(node, classes, focusedStates);
@@ -74,24 +74,24 @@ internal static class BridgeRenderStyleResolver
             foreach (var child in node.Children) Visit(child);
         }
 
-        static HashSet<GbssPseudoState> SemanticStates(ViewNode node)
+        static HashSet<WrssPseudoState> SemanticStates(ViewNode node)
         {
-            var states = new HashSet<GbssPseudoState>();
-            if (node.IsSelected is true) states.Add(GbssPseudoState.Selected);
-            if (node.IsDisabled is true) states.Add(GbssPseudoState.Disabled);
-            if (node.IsBusy is true) states.Add(GbssPseudoState.Busy);
+            var states = new HashSet<WrssPseudoState>();
+            if (node.IsSelected is true) states.Add(WrssPseudoState.Selected);
+            if (node.IsDisabled is true) states.Add(WrssPseudoState.Disabled);
+            if (node.IsBusy is true) states.Add(WrssPseudoState.Busy);
             return states;
         }
 
         IReadOnlyDictionary<string, BridgeComputedStyleValue> ResolveState(
             ViewNode node,
             IReadOnlySet<string> classes,
-            IReadOnlySet<GbssPseudoState> states)
+            IReadOnlySet<WrssPseudoState> states)
         {
             if (theme is null)
                 return new ReadOnlyDictionary<string, BridgeComputedStyleValue>(
                     new SortedDictionary<string, BridgeComputedStyleValue>(StringComparer.Ordinal));
-            var resolved = theme.Resolve(new GbssElement(RoleFor(node.Kind), node.Id, classes, states));
+            var resolved = theme.Resolve(new WrssElement(RoleFor(node.Kind), node.Id, classes, states));
             if (resolved.Properties.Count > BridgeRenderStyleLimits.MaximumPropertiesPerState)
                 throw new BridgeProtocolException(
                     $"Node '{node.Id}' has too many computed style properties.");

@@ -1,11 +1,11 @@
 using System.Globalization;
 using System.Text.Json;
 using System.Threading.Channels;
-using GameBarAlternative.FirstPartyWidgets.AudioMixer;
-using GameBarAlternative.WidgetRuntime;
-using GameBarAlternative.WidgetSdk;
+using WidgetRail.FirstPartyWidgets.AudioMixer;
+using WidgetRail.WidgetRuntime;
+using WidgetRail.WidgetSdk;
 
-namespace GameBarAlternative.Tests.AudioMixerScrollFixture;
+namespace WidgetRail.Tests.AudioMixerScrollFixture;
 
 internal static class Program
 {

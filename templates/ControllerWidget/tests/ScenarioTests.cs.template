@@ -1,4 +1,4 @@
-using GameBarAlternative.WidgetSdk;
+using WidgetRail.WidgetSdk;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 
 namespace {{Publisher}}.{{WidgetName}}.Tests;

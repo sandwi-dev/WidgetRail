@@ -2,9 +2,9 @@ using System.Buffers.Binary;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Security.Cryptography;
-using GameBarAlternative.WidgetProtocol;
+using WidgetRail.WidgetProtocol;
 
-namespace GameBarAlternative.WidgetBridge;
+namespace WidgetRail.WidgetBridge;
 
 public static class BridgeProtocol
 {
@@ -67,11 +67,11 @@ internal sealed record BridgePresentationRequest(
 internal sealed record BridgeArtworkRequest(string WidgetId, string ArtworkHandle);
 internal sealed record BridgeWidgetLifecycleRequest(
     string WidgetId,
-    GameBarAlternative.WidgetSdk.WidgetLifecycleState State,
+    WidgetRail.WidgetSdk.WidgetLifecycleState State,
     bool AdmitSnapshot = false);
-internal sealed record BridgeActionRequest(string WidgetId, GameBarAlternative.WidgetSdk.WidgetActionEvent Action);
+internal sealed record BridgeActionRequest(string WidgetId, WidgetRail.WidgetSdk.WidgetActionEvent Action);
 internal sealed record BridgeQuickActionRequest(string WidgetId, string QuickActionId, long Sequence = 0, long MonotonicTimestampMicroseconds = 0);
-internal sealed record BridgeControllerInputRequest(string WidgetId, GameBarAlternative.WidgetSdk.ControllerInputEvent Input);
+internal sealed record BridgeControllerInputRequest(string WidgetId, WidgetRail.WidgetSdk.ControllerInputEvent Input);
 internal sealed record BridgeProtectedWifiRequest(
     string WidgetId,
     string RuntimeGeneration,

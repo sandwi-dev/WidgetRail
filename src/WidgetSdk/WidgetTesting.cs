@@ -1,6 +1,6 @@
 using System.Runtime.CompilerServices;
 
-namespace GameBarAlternative.WidgetSdk;
+namespace WidgetRail.WidgetSdk;
 
 /// <summary>
 /// Builds deterministic, transport-free host services for widget unit tests.

@@ -1,6 +1,6 @@
 using System.Diagnostics;
 
-namespace GameBarAlternative.SpotifyPlaybackHost;
+namespace WidgetRail.SpotifyPlaybackHost;
 
 internal static class ParentLifetime
 {

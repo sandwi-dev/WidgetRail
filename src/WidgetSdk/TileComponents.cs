@@ -1,6 +1,6 @@
-using GameBarAlternative.WidgetProtocol;
+using WidgetRail.WidgetProtocol;
 
-namespace GameBarAlternative.WidgetSdk;
+namespace WidgetRail.WidgetSdk;
 
 /// <summary>
 /// One safe leading visual for a rich tile. A tile can use either a closed
@@ -127,7 +127,7 @@ public sealed record ActionSurfaceElement : WidgetElement
         AccessibilityLabel = accessibilityLabel;
         Orientation = orientation;
         Children = children.ToArray();
-        StyleClasses = ["gbar-action-surface"];
+        StyleClasses = ["wrail-action-surface"];
     }
 
     public string ActionId { get; init; }
@@ -319,23 +319,23 @@ public static partial class UI
         {
             new TextElement(StableIdentifier.Child(id, "title"), title, title)
             {
-                StyleClasses = ["gbar-tile__title", $"gbar-{kind}-tile__title"],
+                StyleClasses = ["wrail-tile__title", $"wrail-{kind}-tile__title"],
             },
         };
         if (subtitle is not null)
             copy.Add(new TextElement(StableIdentifier.Child(id, "subtitle"), subtitle, subtitle)
             {
-                StyleClasses = ["gbar-tile__subtitle", $"gbar-{kind}-tile__subtitle"],
+                StyleClasses = ["wrail-tile__subtitle", $"wrail-{kind}-tile__subtitle"],
             });
         if (metadata is not null)
             copy.Add(new TextElement(StableIdentifier.Child(id, "metadata"), metadata, metadata)
             {
-                StyleClasses = ["gbar-tile__metadata", $"gbar-{kind}-tile__metadata"],
+                StyleClasses = ["wrail-tile__metadata", $"wrail-{kind}-tile__metadata"],
             });
         copy.Add(new TextElement(
             StableIdentifier.Child(id, "state"), stateLabel, $"State: {stateLabel}")
         {
-            StyleClasses = ["gbar-tile__state", $"gbar-{kind}-tile__state"],
+            StyleClasses = ["wrail-tile__state", $"wrail-{kind}-tile__state"],
         });
 
         var children = new List<WidgetElement>();
@@ -353,12 +353,12 @@ public static partial class UI
                     artwork.AccessibilityLabel, artwork.ImageFit);
             children.Add(leading with
             {
-                StyleClasses = ["gbar-tile__artwork", $"gbar-{kind}-tile__artwork"],
+                StyleClasses = ["wrail-tile__artwork", $"wrail-{kind}-tile__artwork"],
             });
         }
         children.Add(new StackElement(StableIdentifier.Child(id, "content"), copy)
         {
-            StyleClasses = ["gbar-tile__content", $"gbar-{kind}-tile__content"],
+            StyleClasses = ["wrail-tile__content", $"wrail-{kind}-tile__content"],
         });
 
         var spoken = accessibilityLabel ?? string.Join(", ",
@@ -367,7 +367,7 @@ public static partial class UI
         ValidateTileText(spoken, nameof(accessibilityLabel), ProtocolConstants.MaximumStringLength);
         return new ActionSurfaceElement(id, action, spoken, orientation, children)
         {
-            StyleClasses = ["gbar-action-surface", "gbar-tile", $"gbar-{kind}-tile"],
+            StyleClasses = ["wrail-action-surface", "wrail-tile", $"wrail-{kind}-tile"],
         };
     }
 

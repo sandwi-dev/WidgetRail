@@ -1,8 +1,8 @@
-using GameBarAlternative.WidgetBridge;
-using GameBarAlternative.WidgetProtocol;
-using GameBarAlternative.WidgetRuntime;
+using WidgetRail.WidgetBridge;
+using WidgetRail.WidgetProtocol;
+using WidgetRail.WidgetRuntime;
 
-namespace GameBarAlternative.WidgetPresentationSession;
+namespace WidgetRail.WidgetPresentationSession;
 
 public sealed record WidgetPresentationSessionOptions
 {

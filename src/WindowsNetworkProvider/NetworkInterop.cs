@@ -1,6 +1,6 @@
 using System.Runtime.InteropServices;
 
-namespace GameBarAlternative.WindowsNetworkProvider;
+namespace WidgetRail.WindowsNetworkProvider;
 
 internal static class NetworkInterop
 {

@@ -1,6 +1,6 @@
 using System.Text.Json.Serialization;
 
-namespace GameBarAlternative.WidgetProtocol;
+namespace WidgetRail.WidgetProtocol;
 
 [JsonConverter(typeof(JsonStringEnumConverter<ViewNodeKind>))]
 public enum ViewNodeKind

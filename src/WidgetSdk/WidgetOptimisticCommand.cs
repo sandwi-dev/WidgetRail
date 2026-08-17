@@ -1,4 +1,4 @@
-namespace GameBarAlternative.WidgetSdk;
+namespace WidgetRail.WidgetSdk;
 
 /// <summary>Coordination policy for one optimistic command key.</summary>
 public enum WidgetCommandPolicy

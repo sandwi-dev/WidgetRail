@@ -1,6 +1,6 @@
-using GameBarAlternative.WidgetSdk;
+using WidgetRail.WidgetSdk;
 
-namespace GameBarAlternative.FirstPartyWidgets.GamesApps;
+namespace WidgetRail.FirstPartyWidgets.GamesApps;
 
 internal enum GamesAppsCatalogPageTransition
 {

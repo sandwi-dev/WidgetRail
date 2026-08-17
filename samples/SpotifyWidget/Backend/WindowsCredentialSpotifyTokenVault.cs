@@ -3,7 +3,7 @@ using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 
-namespace GameBarAlternative.WindowsSpotifyProvider;
+namespace WidgetRail.WindowsSpotifyProvider;
 
 internal sealed class WindowsCredentialSpotifyTokenVault : ISpotifyTokenVault
 {
@@ -93,7 +93,7 @@ internal sealed class WindowsCredentialSpotifyTokenVault : ISpotifyTokenVault
                 CredentialBlobSize = bytes.Length,
                 CredentialBlob = blob,
                 Persist = 2,
-                UserName = "Game Bar Alternative Spotify",
+                UserName = "WidgetRail Spotify",
             };
             if (!NativeMethods.CredWrite(ref nativeCredential, 0))
                 throw CredentialFailure("save", Marshal.GetLastWin32Error());
@@ -128,7 +128,7 @@ internal sealed class WindowsCredentialSpotifyTokenVault : ISpotifyTokenVault
         var authority = Encoding.UTF8.GetBytes(identity.Authority);
         try
         {
-            return "GameBarAlternative/Spotify/v1/" +
+            return "WidgetRail/Spotify/v1/" +
                 Convert.ToHexString(SHA256.HashData(authority)).ToLowerInvariant();
         }
         finally { CryptographicOperations.ZeroMemory(authority); }

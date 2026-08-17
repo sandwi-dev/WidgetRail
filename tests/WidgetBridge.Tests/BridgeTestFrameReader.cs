@@ -1,4 +1,4 @@
-using GameBarAlternative.WidgetBridge;
+using WidgetRail.WidgetBridge;
 
 internal sealed class BridgeTestFrameReader
 {

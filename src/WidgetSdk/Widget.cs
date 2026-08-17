@@ -1,7 +1,7 @@
 using System.Text.Json.Serialization;
-using GameBarAlternative.WidgetProtocol;
+using WidgetRail.WidgetProtocol;
 
-namespace GameBarAlternative.WidgetSdk;
+namespace WidgetRail.WidgetSdk;
 
 public sealed record WidgetView(
     WidgetElement Root,

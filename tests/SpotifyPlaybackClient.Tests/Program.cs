@@ -1,7 +1,7 @@
 using System.Text;
 using System.Threading.Channels;
-using GameBarAlternative.SpotifyPlayback;
-using GameBarAlternative.WindowsSpotifyProvider;
+using WidgetRail.SpotifyPlayback;
+using WidgetRail.WindowsSpotifyProvider;
 
 var tests = new (string Name, Func<Task> Run)[]
 {

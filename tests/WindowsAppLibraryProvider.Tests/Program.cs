@@ -1,6 +1,6 @@
 using System.Text.Json;
-using GameBarAlternative.PlatformBroker;
-using GameBarAlternative.WindowsAppLibraryProvider;
+using WidgetRail.PlatformBroker;
+using WidgetRail.WindowsAppLibraryProvider;
 
 var tests = new (string Name, Func<Task> Run)[]
 {

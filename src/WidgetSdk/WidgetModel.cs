@@ -1,4 +1,4 @@
-namespace GameBarAlternative.WidgetSdk;
+namespace WidgetRail.WidgetSdk;
 
 /// <summary>An immutable point-in-time view of widget-owned model state.</summary>
 public readonly record struct WidgetModelSnapshot<TState>(TState Value, long Revision)

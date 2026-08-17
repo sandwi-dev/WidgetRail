@@ -1,9 +1,9 @@
 using System.Globalization;
-using GameBarAlternative.WidgetProtocol;
-using GameBarAlternative.WidgetRuntime;
-using GameBarAlternative.WidgetSdk;
+using WidgetRail.WidgetProtocol;
+using WidgetRail.WidgetRuntime;
+using WidgetRail.WidgetSdk;
 
-namespace GameBarAlternative.Tests.WidgetSwitchFixture;
+namespace WidgetRail.Tests.WidgetSwitchFixture;
 
 internal static class Program
 {

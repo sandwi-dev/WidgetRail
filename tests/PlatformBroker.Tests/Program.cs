@@ -1,7 +1,7 @@
 using System.Text;
 using System.Text.Json;
 using System.Buffers.Binary;
-using GameBarAlternative.PlatformBroker;
+using WidgetRail.PlatformBroker;
 
 var tests = new (string Name, Func<Task> Run)[]
 {
@@ -2532,7 +2532,7 @@ static async Task RetiredConsentMigratesSafely()
         {"schemaVersion":1,"revision":7,"entries":[
           {"packageId":"dev.test.widget","publisherId":"dev.test.publisher","capabilityId":"system.audio.sessions.read.v1","decision":"grant"},
           {{retiredEntries}},
-          {"packageId":"org.gbar.firstparty.recent-apps","publisherId":"org.gbar.firstparty","capabilityId":"system.activity.recent.activate.v1","decision":"grant"},
+          {"packageId":"widgetrail.firstparty.recent-apps","publisherId":"widgetrail.firstparty","capabilityId":"system.activity.recent.activate.v1","decision":"grant"},
           {"packageId":"dev.test.widget","publisherId":"dev.test.publisher","capabilityId":"system.audio.sessions.control.v1","decision":"deny"}
         ]}
         """);

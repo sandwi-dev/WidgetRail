@@ -1,4 +1,4 @@
-namespace GameBarAlternative.WindowsActivityProvider;
+namespace WidgetRail.WindowsActivityProvider;
 
 internal enum NativeActivityEventKind
 {

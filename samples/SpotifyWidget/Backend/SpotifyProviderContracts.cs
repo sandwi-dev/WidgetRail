@@ -1,4 +1,4 @@
-namespace GameBarAlternative.WindowsSpotifyProvider;
+namespace WidgetRail.WindowsSpotifyProvider;
 
 public readonly record struct SpotifyIntegrationIdentity(string PublisherId, string PackageId)
 {

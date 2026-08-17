@@ -310,7 +310,7 @@ Visible and Interactive modes deliberately display and focus the overlay. The
 host-owned startup seam establishes the exact selected widget and lifecycle
 before returning from initialization; the script never uses global synthetic
 controller or keyboard input. Readiness additionally requires the bridge and
-the exact `GameBarAlternative.OverlayHost` window class. Hidden establishes no
+the exact `WidgetRail.OverlayHost` window class. Hidden establishes no
 widget worker, while Visible/Interactive lazily start only the selected widget.
 
 The report compares observations with relevant engineering targets, but labels

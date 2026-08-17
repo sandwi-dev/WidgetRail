@@ -2,11 +2,11 @@ using System.Reflection;
 using System.Security.Cryptography;
 using System.Text.Json;
 using System.Xml.Linq;
-using GameBarAlternative.GbarCli;
-using GameBarAlternative.WidgetSdk;
+using WidgetRail.WrailCli;
+using WidgetRail.WidgetSdk;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 
-namespace GameBarAlternative.WidgetSdk.Compatibility.Tests;
+namespace WidgetRail.WidgetSdk.Compatibility.Tests;
 
 [TestClass]
 public sealed class CompatibilityTests
@@ -92,7 +92,7 @@ public sealed class CompatibilityTests
         var packageId = Required(properties, "WidgetSdkPackageId");
         var templateVersion = Required(
             properties, "ControllerWidgetTemplateVersion");
-        Assert.AreEqual("GameBarAlternative.WidgetSdk", packageId);
+        Assert.AreEqual("WidgetRail.WidgetSdk", packageId);
         Assert.IsTrue(
             int.TryParse(templateVersion, out var parsedTemplateVersion) &&
             parsedTemplateVersion > 0,

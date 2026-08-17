@@ -9,7 +9,7 @@ using System.Text.Json.Serialization;
 
 #pragma warning disable CA1416 // Created only by the WindowsAppContainer admission path.
 
-namespace GameBarAlternative.WidgetRuntime;
+namespace WidgetRail.WidgetRuntime;
 
 internal interface IAppContainerAuthorityJournal
 {

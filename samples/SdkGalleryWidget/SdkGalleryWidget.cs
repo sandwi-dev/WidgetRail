@@ -1,7 +1,7 @@
-using GameBarAlternative.WidgetProtocol;
-using GameBarAlternative.WidgetSdk;
+using WidgetRail.WidgetProtocol;
+using WidgetRail.WidgetSdk;
 
-namespace GameBarAlternative.Samples.SdkGalleryWidget;
+namespace WidgetRail.Samples.SdkGalleryWidget;
 
 public enum GalleryPage { Overview, Controls, Tiles, Utilities }
 public enum GalleryModal { None, Picker, ActionSheet }
@@ -290,7 +290,7 @@ public sealed class SdkGalleryWidget : Widget
         UI.Card("gallery.utilities.code-card", CardVariant.Subtle,
             UI.Text("Copyable command", "gallery.utilities.code-title"),
             UI.CodeText(
-                "dotnet run --project tools/GbarCli/GbarCli.csproj -- render <assembly> --type <widget-type>",
+                "dotnet run --project tools/WrailCli/WrailCli.csproj -- render <assembly> --type <widget-type>",
                 "gallery.utilities.code",
                 "Example gallery render command"))
             .AddClasses("gallery-utilities-code-card"),

@@ -1,6 +1,6 @@
-using GameBarAlternative.WidgetStyling;
+using WidgetRail.WidgetStyling;
 
-namespace GameBarAlternative.PlatformSettings;
+namespace WidgetRail.PlatformSettings;
 
 public sealed class ThemeSnapshot
 {
@@ -8,10 +8,10 @@ public sealed class ThemeSnapshot
         long revision,
         ThemeDescriptor activeTheme,
         AppearanceSettings appearance,
-        GbssTheme theme,
-        IReadOnlyList<GbssDocument> platformDocuments,
-        IReadOnlyList<GbssDocument> userDocuments,
-        IReadOnlyList<GbssDiagnostic> diagnostics)
+        WrssTheme theme,
+        IReadOnlyList<WrssDocument> platformDocuments,
+        IReadOnlyList<WrssDocument> userDocuments,
+        IReadOnlyList<WrssDiagnostic> diagnostics)
     {
         Revision = revision;
         ActiveTheme = activeTheme;
@@ -25,25 +25,25 @@ public sealed class ThemeSnapshot
     public long Revision { get; }
     public ThemeDescriptor ActiveTheme { get; }
     public AppearanceSettings Appearance { get; }
-    public GbssTheme Theme { get; }
-    public IReadOnlyList<GbssDiagnostic> Diagnostics { get; }
-    internal IReadOnlyList<GbssDocument> PlatformDocuments { get; }
-    internal IReadOnlyList<GbssDocument> UserDocuments { get; }
+    public WrssTheme Theme { get; }
+    public IReadOnlyList<WrssDiagnostic> Diagnostics { get; }
+    internal IReadOnlyList<WrssDocument> PlatformDocuments { get; }
+    internal IReadOnlyList<WrssDocument> UserDocuments { get; }
 
-    public GbssCompileResult CompileForWidget(GbssPackageResult widgetPackage)
+    public WrssCompileResult CompileForWidget(WrssPackageResult widgetPackage)
     {
         ArgumentNullException.ThrowIfNull(widgetPackage);
         return ThemeLayerCompiler.Compile(
-            new GbssPackageResult(PlatformDocuments, []),
+            new WrssPackageResult(PlatformDocuments, []),
             widgetPackage,
-            new GbssPackageResult(UserDocuments, []));
+            new WrssPackageResult(UserDocuments, []));
     }
 }
 
 public sealed record ThemeReloadResult(
     bool Published,
     ThemeSnapshot Current,
-    IReadOnlyList<GbssDiagnostic> Diagnostics);
+    IReadOnlyList<WrssDiagnostic> Diagnostics);
 
 public sealed class ThemeManager : IDisposable
 {
@@ -52,7 +52,7 @@ public sealed class ThemeManager : IDisposable
     private readonly SemaphoreSlim _reloadGate = new(1, 1);
     private readonly object _stateLock = new();
     private ThemeSnapshot _current;
-    private IReadOnlyList<GbssDiagnostic> _lastReloadDiagnostics;
+    private IReadOnlyList<WrssDiagnostic> _lastReloadDiagnostics;
     private bool _disposed;
 
     public ThemeManager(PlatformSettingsStore settings, ThemeCatalog catalog)
@@ -80,7 +80,7 @@ public sealed class ThemeManager : IDisposable
         get { lock (_stateLock) return _current; }
     }
 
-    public IReadOnlyList<GbssDiagnostic> LastReloadDiagnostics
+    public IReadOnlyList<WrssDiagnostic> LastReloadDiagnostics
     {
         get { lock (_stateLock) return _lastReloadDiagnostics; }
     }
@@ -145,7 +145,7 @@ public sealed class ThemeManager : IDisposable
         _reloadGate.Dispose();
     }
 
-    private ThemeReloadResult Retain(IReadOnlyList<GbssDiagnostic> diagnostics)
+    private ThemeReloadResult Retain(IReadOnlyList<WrssDiagnostic> diagnostics)
     {
         ThemeSnapshot current;
         lock (_stateLock)
@@ -156,10 +156,10 @@ public sealed class ThemeManager : IDisposable
         return new ThemeReloadResult(false, current, diagnostics);
     }
 
-    private static GbssPackageResult EmptyPackage() => new([], []);
+    private static WrssPackageResult EmptyPackage() => new([], []);
 
-    private static GbssDiagnostic Diagnostic(string code, string message, string source) =>
-        new(source, 1, 1, GbssDiagnosticSeverity.Error, code, SafeMessage(message));
+    private static WrssDiagnostic Diagnostic(string code, string message, string source) =>
+        new(source, 1, 1, WrssDiagnosticSeverity.Error, code, SafeMessage(message));
 
     private static string SafeMessage(string value)
     {
@@ -170,26 +170,26 @@ public sealed class ThemeManager : IDisposable
 
 public static class ThemeLayerCompiler
 {
-    public static GbssCompileResult Compile(
-        GbssPackageResult platform,
-        GbssPackageResult widget,
-        GbssPackageResult user)
+    public static WrssCompileResult Compile(
+        WrssPackageResult platform,
+        WrssPackageResult widget,
+        WrssPackageResult user)
     {
         ArgumentNullException.ThrowIfNull(platform);
         ArgumentNullException.ThrowIfNull(widget);
         ArgumentNullException.ThrowIfNull(user);
-        var compiled = GbssThemeCompiler.Compile(
+        var compiled = WrssThemeCompiler.Compile(
         [
-            new GbssThemeLayer(0, platform.Documents),
-            new GbssThemeLayer(100, widget.Documents),
-            new GbssThemeLayer(200, user.Documents),
+            new WrssThemeLayer(0, platform.Documents),
+            new WrssThemeLayer(100, widget.Documents),
+            new WrssThemeLayer(200, user.Documents),
         ]);
         var diagnostics = platform.Diagnostics
             .Concat(widget.Diagnostics)
             .Concat(user.Diagnostics)
             .Concat(compiled.Diagnostics)
             .ToArray();
-        var hasErrors = diagnostics.Any(item => item.Severity == GbssDiagnosticSeverity.Error);
-        return new GbssCompileResult(hasErrors ? null : compiled.Theme, diagnostics);
+        var hasErrors = diagnostics.Any(item => item.Severity == WrssDiagnosticSeverity.Error);
+        return new WrssCompileResult(hasErrors ? null : compiled.Theme, diagnostics);
     }
 }

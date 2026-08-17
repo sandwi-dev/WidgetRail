@@ -1,4 +1,4 @@
-namespace GameBarAlternative.WindowsAudioProvider;
+namespace WidgetRail.WindowsAudioProvider;
 
 /// <summary>
 /// Host-internal snapshot. NativeSessionKey is never returned across the broker boundary.

@@ -5,7 +5,7 @@ using System.Xml.Linq;
 using Windows.ApplicationModel;
 using Windows.Management.Deployment;
 
-namespace GameBarAlternative.WindowsAppLibraryProvider;
+namespace WidgetRail.WindowsAppLibraryProvider;
 
 /// <summary>
 /// Enumerates registered Windows packages through PackageManager and admits

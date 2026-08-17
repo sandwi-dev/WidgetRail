@@ -1,7 +1,7 @@
 using System.Globalization;
-using GameBarAlternative.WidgetSdk;
+using WidgetRail.WidgetSdk;
 
-namespace GameBarAlternative.WidgetRuntime;
+namespace WidgetRail.WidgetRuntime;
 
 /// <summary>
 /// Narrow worker-side bootstrap for an explicitly approved full-trust Community

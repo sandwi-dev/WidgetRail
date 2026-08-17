@@ -5,12 +5,12 @@ using System.Security.AccessControl;
 using System.Security.Cryptography;
 using System.Security.Principal;
 using System.Text;
-using GameBarAlternative.PlatformBroker;
+using WidgetRail.PlatformBroker;
 using Microsoft.Win32.SafeHandles;
 
 #pragma warning disable CA1416 // Every entrypoint is internal and OpenOrCreate fails before use off Windows.
 
-namespace GameBarAlternative.WidgetRuntime;
+namespace WidgetRail.WidgetRuntime;
 
 /// <summary>Capability-free AppContainer derived from a host-owned package identity.</summary>
 internal sealed class WindowsAppContainer : IDisposable

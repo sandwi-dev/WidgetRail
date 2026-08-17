@@ -24,8 +24,8 @@ $publishRoot = Join-Path $artifactsRoot 'publish'
 $payloadRoot = Join-Path $stagingRoot 'payload'
 $manifestPath = Join-Path $sampleRoot 'manifest.json'
 $manifest = Get-Content -LiteralPath $manifestPath -Raw | ConvertFrom-Json
-$packagePath = Join-Path $artifactsRoot "$($manifest.id)-$($manifest.version).gbarwidget"
-$cliProject = Join-Path $repositoryRoot 'tools\GbarCli\GbarCli.csproj'
+$packagePath = Join-Path $artifactsRoot "$($manifest.id)-$($manifest.version).wrwidget"
+$cliProject = Join-Path $repositoryRoot 'tools\WrailCli\WrailCli.csproj'
 $widgetProject = Join-Path $sampleRoot 'SdkGalleryWidget.csproj'
 
 function Assert-ChildPath {
@@ -79,10 +79,10 @@ if ($LASTEXITCODE -ne 0) { throw "SDK Gallery publish failed with exit code $LAS
 Copy-Item -LiteralPath (Join-Path $publishRoot 'SdkGalleryWidget.dll') `
     -Destination (Join-Path $payloadRoot 'SdkGalleryWidget.dll') -Force
 Copy-Item -LiteralPath $manifestPath -Destination (Join-Path $stagingRoot 'manifest.json') -Force
-Copy-Item -LiteralPath (Join-Path $sampleRoot 'styles\default.gbss') `
-    -Destination (Join-Path $stagingRoot 'styles\default.gbss') -Force
+Copy-Item -LiteralPath (Join-Path $sampleRoot 'styles\default.wrss') `
+    -Destination (Join-Path $stagingRoot 'styles\default.wrss') -Force
 
-$expectedFiles = @('manifest.json', 'payload\SdkGalleryWidget.dll', 'styles\default.gbss')
+$expectedFiles = @('manifest.json', 'payload\SdkGalleryWidget.dll', 'styles\default.wrss')
 $stagedFiles = @(Get-ChildItem -LiteralPath $stagingRoot -File -Recurse | ForEach-Object {
     [System.IO.Path]::GetRelativePath($stagingRoot, $_.FullName)
 })
@@ -99,12 +99,12 @@ if (Test-Path -LiteralPath $packagePath) {
 
 & dotnet run --project $cliProject --configuration $Configuration --no-launch-profile `
     --property:UseSharedCompilation=false --property:BuildInParallel=false -- validate $stagingRoot
-if ($LASTEXITCODE -ne 0) { throw 'gbar validate rejected the staged SDK Gallery addon.' }
+if ($LASTEXITCODE -ne 0) { throw 'wrail validate rejected the staged SDK Gallery addon.' }
 & dotnet run --project $cliProject --configuration $Configuration --no-launch-profile `
     --property:UseSharedCompilation=false --property:BuildInParallel=false -- `
     pack $stagingRoot --output $packagePath
 if ($LASTEXITCODE -ne 0 -or -not (Test-Path -LiteralPath $packagePath)) {
-    throw 'gbar pack did not produce the SDK Gallery addon package.'
+    throw 'wrail pack did not produce the SDK Gallery addon package.'
 }
 
 if ($Install) {
@@ -117,12 +117,12 @@ if ($Install) {
         --property:UseSharedCompilation=false --property:BuildInParallel=false -- `
         install $packagePath @catalogArguments
     if ($LASTEXITCODE -ne 0) {
-        throw 'gbar install failed. Installed versions are immutable; bump manifest.json before replacing one.'
+        throw 'wrail install failed. Installed versions are immutable; bump manifest.json before replacing one.'
     }
     & dotnet run --project $cliProject --configuration $Configuration --no-launch-profile `
         --property:UseSharedCompilation=false --property:BuildInParallel=false -- `
         enable $manifest.id @catalogArguments
-    if ($LASTEXITCODE -ne 0) { throw "gbar enable failed for $($manifest.id)." }
+    if ($LASTEXITCODE -ne 0) { throw "wrail enable failed for $($manifest.id)." }
 }
 
 Write-Host "Community addon package: $packagePath"

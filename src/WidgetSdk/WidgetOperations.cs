@@ -1,4 +1,4 @@
-namespace GameBarAlternative.WidgetSdk;
+namespace WidgetRail.WidgetSdk;
 
 /// <summary>Runtime lifetime that owns an admitted widget operation.</summary>
 public enum WidgetOperationLifetime

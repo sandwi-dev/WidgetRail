@@ -1,4 +1,4 @@
-using GameBarAlternative.PlatformSettings;
+using WidgetRail.PlatformSettings;
 
 var tests = new (string Name, Func<Task> Run)[]
 {
@@ -30,11 +30,11 @@ static async Task IdentityIsolation()
 {
     using var temp = new TemporaryDirectory();
     var store = new WidgetConfigurationStore(new PlatformSettingsPaths(temp.Path));
-    await store.SetAsync("org.gbar.samples.spotify", "org.gbar.samples", "client-id", "alpha");
-    await store.SetAsync("org.gbar.samples.spotify", "org.another.publisher", "client-id", "beta");
+    await store.SetAsync("widgetrail.samples.spotify", "widgetrail.samples", "client-id", "alpha");
+    await store.SetAsync("widgetrail.samples.spotify", "org.another.publisher", "client-id", "beta");
 
-    var first = await store.ReadAsync("org.gbar.samples.spotify", "org.gbar.samples");
-    var second = await store.ReadAsync("org.gbar.samples.spotify", "org.another.publisher");
+    var first = await store.ReadAsync("widgetrail.samples.spotify", "widgetrail.samples");
+    var second = await store.ReadAsync("widgetrail.samples.spotify", "org.another.publisher");
     Assert.Equal("alpha", first.Values["client-id"]);
     Assert.Equal("beta", second.Values["client-id"]);
     Assert.Equal(2, Directory.EnumerateFiles(
@@ -46,19 +46,19 @@ static async Task DurableMutation()
     using var temp = new TemporaryDirectory();
     var paths = new PlatformSettingsPaths(temp.Path);
     var store = new WidgetConfigurationStore(paths);
-    await store.SetAsync("org.gbar.samples.spotify", "org.gbar.samples", "client-id", "first");
-    await store.SetAsync("org.gbar.samples.spotify", "org.gbar.samples", "client-id", "second");
-    await store.SetAsync("org.gbar.samples.spotify", "org.gbar.samples", "region", "US");
+    await store.SetAsync("widgetrail.samples.spotify", "widgetrail.samples", "client-id", "first");
+    await store.SetAsync("widgetrail.samples.spotify", "widgetrail.samples", "client-id", "second");
+    await store.SetAsync("widgetrail.samples.spotify", "widgetrail.samples", "region", "US");
 
     var reloaded = await new WidgetConfigurationStore(paths)
-        .ReadAsync("org.gbar.samples.spotify", "org.gbar.samples");
+        .ReadAsync("widgetrail.samples.spotify", "widgetrail.samples");
     Assert.Equal("second", reloaded.Values["client-id"]);
     Assert.Equal("US", reloaded.Values["region"]);
 
     var removed = await store.RemoveAsync(
-        "org.gbar.samples.spotify", "org.gbar.samples", "region");
+        "widgetrail.samples.spotify", "widgetrail.samples", "region");
     Assert.True(!removed.Values.ContainsKey("region"), "Removed value was retained.");
-    var cleared = await store.ClearAsync("org.gbar.samples.spotify", "org.gbar.samples");
+    var cleared = await store.ClearAsync("widgetrail.samples.spotify", "widgetrail.samples");
     Assert.Equal(0, cleared.Values.Count);
 }
 
@@ -67,24 +67,24 @@ static async Task UnsignedRuntimeResolution()
     using var temp = new TemporaryDirectory();
     var store = new WidgetConfigurationStore(new PlatformSettingsPaths(temp.Path));
     await store.SetAsync(
-        "org.gbar.samples.spotify", "org.gbar.samples", "client-id", "public-client");
+        "widgetrail.samples.spotify", "widgetrail.samples", "client-id", "public-client");
 
     var resolved = await store.ReadForRuntimeAuthorityAsync(
-        "org.gbar.samples.spotify", "unsigned." + new string('a', 64));
+        "widgetrail.samples.spotify", "unsigned." + new string('a', 64));
     Assert.Equal("public-client", resolved.Values["client-id"]);
-    Assert.Equal("org.gbar.samples", resolved.PublisherId);
+    Assert.Equal("widgetrail.samples", resolved.PublisherId);
 
     await store.SetAsync(
-        "org.gbar.samples.spotify", "org.gbar", "client-id", "ambiguous-client");
+        "widgetrail.samples.spotify", "org.widgetrail", "client-id", "ambiguous-client");
     var ambiguous = await store.ReadForRuntimeAuthorityAsync(
-        "org.gbar.samples.spotify", "unsigned." + new string('b', 64));
+        "widgetrail.samples.spotify", "unsigned." + new string('b', 64));
     Assert.Equal(0, ambiguous.Values.Count);
 
     await store.SetAsync(
-        "org.gbar.samples.spotify", "unsigned." + new string('c', 64),
+        "widgetrail.samples.spotify", "unsigned." + new string('c', 64),
         "client-id", "exact-client");
     var exact = await store.ReadForRuntimeAuthorityAsync(
-        "org.gbar.samples.spotify", "unsigned." + new string('c', 64));
+        "widgetrail.samples.spotify", "unsigned." + new string('c', 64));
     Assert.Equal("exact-client", exact.Values["client-id"]);
 }
 
@@ -93,13 +93,13 @@ static async Task Validation()
     using var temp = new TemporaryDirectory();
     var store = new WidgetConfigurationStore(new PlatformSettingsPaths(temp.Path));
     await Assert.ThrowsAsync<PlatformSettingsException>(() =>
-        store.SetAsync("../spotify", "org.gbar.samples", "client-id", "value"));
+        store.SetAsync("../spotify", "widgetrail.samples", "client-id", "value"));
     await Assert.ThrowsAsync<PlatformSettingsException>(() =>
-        store.SetAsync("org.gbar.samples.spotify", "org.gbar.samples", "../secret", "value"));
+        store.SetAsync("widgetrail.samples.spotify", "widgetrail.samples", "../secret", "value"));
     await Assert.ThrowsAsync<PlatformSettingsException>(() =>
-        store.SetAsync("org.gbar.samples.spotify", "org.gbar.samples", "client-id", "bad\rvalue"));
+        store.SetAsync("widgetrail.samples.spotify", "widgetrail.samples", "client-id", "bad\rvalue"));
     await Assert.ThrowsAsync<PlatformSettingsException>(() =>
-        store.SetAsync("org.gbar.samples.spotify", "org.gbar.samples", "client-id",
+        store.SetAsync("widgetrail.samples.spotify", "widgetrail.samples", "client-id",
             new string('x', WidgetConfigurationStore.MaximumValueCharacters + 1)));
 }
 
@@ -108,15 +108,15 @@ static async Task InvalidDocuments()
     using var temp = new TemporaryDirectory();
     var paths = new PlatformSettingsPaths(temp.Path);
     var store = new WidgetConfigurationStore(paths);
-    await store.SetAsync("org.gbar.samples.spotify", "org.gbar.samples", "client-id", "valid");
+    await store.SetAsync("widgetrail.samples.spotify", "widgetrail.samples", "client-id", "valid");
     var file = Directory.EnumerateFiles(paths.WidgetConfigurationDirectory, "*.json").Single();
     await File.WriteAllTextAsync(file, "{\"schemaVersion\":1,\"schemaVersion\":1}");
     await Assert.ThrowsAsync<PlatformSettingsException>(() =>
-        store.ReadAsync("org.gbar.samples.spotify", "org.gbar.samples"));
+        store.ReadAsync("widgetrail.samples.spotify", "widgetrail.samples"));
 
     await File.WriteAllBytesAsync(file, new byte[WidgetConfigurationStore.MaximumDocumentBytes + 1]);
     var oversized = await Assert.ThrowsAsync<PlatformSettingsException>(() =>
-        store.ReadAsync("org.gbar.samples.spotify", "org.gbar.samples"));
+        store.ReadAsync("widgetrail.samples.spotify", "widgetrail.samples"));
     Assert.Equal("widget_configuration_too_large", oversized.Code);
 }
 
@@ -125,7 +125,7 @@ sealed class TemporaryDirectory : IDisposable
     public TemporaryDirectory()
     {
         Path = System.IO.Path.Combine(
-            System.IO.Path.GetTempPath(), "gbar-widget-config-tests", Guid.NewGuid().ToString("N"));
+            System.IO.Path.GetTempPath(), "wrail-widget-config-tests", Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(Path);
     }
 

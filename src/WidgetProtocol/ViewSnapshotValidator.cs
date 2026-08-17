@@ -1,7 +1,7 @@
 using System.Text.RegularExpressions;
 using System.Buffers.Binary;
 
-namespace GameBarAlternative.WidgetProtocol;
+namespace WidgetRail.WidgetProtocol;
 
 public sealed record ProtocolValidationError(string Path, string Code, string Message);
 

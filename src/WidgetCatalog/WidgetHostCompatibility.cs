@@ -1,7 +1,7 @@
 using System.Runtime.InteropServices;
-using GameBarAlternative.WidgetProtocol;
+using WidgetRail.WidgetProtocol;
 
-namespace GameBarAlternative.WidgetCatalog;
+namespace WidgetRail.WidgetCatalog;
 
 public sealed record WidgetHostContext(int HostApiMajor, string Architecture)
 {

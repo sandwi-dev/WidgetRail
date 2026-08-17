@@ -1,7 +1,7 @@
 using System.Text;
 using System.Security.Cryptography;
 
-namespace GameBarAlternative.WindowsNetworkProvider;
+namespace WidgetRail.WindowsNetworkProvider;
 
 internal sealed class ProtectedWifiProfile : IDisposable
 {
@@ -45,7 +45,7 @@ internal sealed class ProtectedWifiProfile : IDisposable
 
         var ssidName = Encoding.UTF8.GetString(ssid);
         if (string.IsNullOrWhiteSpace(ssidName) || ssidName.Any(char.IsControl)) return false;
-        var name = $"GameBarAlternative-{Guid.NewGuid():N}";
+        var name = $"WidgetRail-{Guid.NewGuid():N}";
         byte[] ownershipToken = [];
         char[] xml = [];
         var offset = 0;

@@ -1,6 +1,6 @@
-using GameBarAlternative.PlatformSettings;
+using WidgetRail.PlatformSettings;
 
-namespace GameBarAlternative.FirstPartyWidgets.Settings;
+namespace WidgetRail.FirstPartyWidgets.Settings;
 
 internal enum SettingsPreferenceKind
 {

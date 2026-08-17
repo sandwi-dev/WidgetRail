@@ -6,7 +6,7 @@ app-library providers implemented; automated packaged Release verification
 passes, while hardware/privacy and performance verification remains open**. This note uses
 Microsoft documentation as the API authority. Items labeled **Documented
 fact** describe published Windows behavior. Items labeled **Platform design**
-are Game Bar Alternative decisions; their implementation status is called out
+are WidgetRail decisions; their implementation status is called out
 where it matters.
 
 Audio Mixer, Network Controls, and Games & Apps must remain ordinary

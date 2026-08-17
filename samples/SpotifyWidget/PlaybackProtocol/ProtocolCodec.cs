@@ -1,7 +1,7 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
 
-namespace GameBarAlternative.SpotifyPlayback;
+namespace WidgetRail.SpotifyPlayback;
 
 public static class SpotifyPlaybackProtocolCodec
 {

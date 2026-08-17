@@ -1,6 +1,6 @@
-using GameBarAlternative.WidgetProtocol;
+using WidgetRail.WidgetProtocol;
 
-namespace GameBarAlternative.WidgetSdk;
+namespace WidgetRail.WidgetSdk;
 
 /// <summary>
 /// A resolution-independent responsive grid. The host derives the column
@@ -34,7 +34,7 @@ public sealed record GridElement : WidgetElement
         MinimumColumnWidth = minimumColumnWidth;
         MaximumColumns = maximumColumns;
         Children = children.ToArray();
-        StyleClasses = ["gbar-responsive-grid"];
+        StyleClasses = ["wrail-responsive-grid"];
     }
 
     public double MinimumColumnWidth { get; init; }

@@ -1,7 +1,7 @@
 using Windows.Media.Control;
 using System.Diagnostics;
 
-namespace GameBarAlternative.WindowsMediaProvider;
+namespace WidgetRail.WindowsMediaProvider;
 
 internal sealed class WindowsMediaNativeAdapterFactory : IWindowsMediaNativeAdapterFactory
 {

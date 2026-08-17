@@ -1,7 +1,7 @@
 using System.Collections.Concurrent;
-using GameBarAlternative.WidgetProtocol;
+using WidgetRail.WidgetProtocol;
 
-namespace GameBarAlternative.WidgetSdk;
+namespace WidgetRail.WidgetSdk;
 
 /// <summary>A deterministic typed fake-operation barrier for semantic scenarios.</summary>
 public sealed class WidgetScenarioOperationBarrier<TRequest, TResponse>

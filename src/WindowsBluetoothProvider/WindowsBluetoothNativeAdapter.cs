@@ -1,7 +1,7 @@
 using Windows.Devices.Enumeration;
 using Windows.Devices.Radios;
 
-namespace GameBarAlternative.WindowsBluetoothProvider;
+namespace WidgetRail.WindowsBluetoothProvider;
 
 internal sealed class WindowsBluetoothNativeAdapterFactory : IWindowsBluetoothNativeAdapterFactory
 {

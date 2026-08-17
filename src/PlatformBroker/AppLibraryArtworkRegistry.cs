@@ -1,4 +1,4 @@
-namespace GameBarAlternative.PlatformBroker;
+namespace WidgetRail.PlatformBroker;
 
 internal sealed class AppLibraryArtworkRegistry
 {

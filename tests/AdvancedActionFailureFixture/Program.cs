@@ -1,8 +1,8 @@
 using System.Globalization;
-using GameBarAlternative.Samples.YtMusicWidget;
-using GameBarAlternative.WidgetRuntime;
+using WidgetRail.Samples.YtMusicWidget;
+using WidgetRail.WidgetRuntime;
 
-namespace GameBarAlternative.Tests.AdvancedActionFailureFixture;
+namespace WidgetRail.Tests.AdvancedActionFailureFixture;
 
 internal static class Program
 {

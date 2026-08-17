@@ -1,6 +1,6 @@
 using System.Buffers.Binary;
-using GameBarAlternative.LauncherExperienceCatalog;
-using GameBarAlternative.PlatformSettings;
+using WidgetRail.LauncherExperienceCatalog;
+using WidgetRail.PlatformSettings;
 
 internal static class LauncherExperienceSelectionTests
 {
@@ -45,7 +45,7 @@ internal static class LauncherExperienceSelectionTests
 
         var recovered = await policy.RecoverBuiltInAsync();
         Equal(false, recovered.LauncherExperience.UseGlobalAppearance);
-        Equal("org.gbar.builtin.hero-rail", recovered.LauncherExperience.SelectedId);
+        Equal("widgetrail.builtin.hero-rail", recovered.LauncherExperience.SelectedId);
         Equal("1.0.0", recovered.LauncherExperience.SelectedVersion);
         Equal(recovered.LauncherExperience.SelectedId, recovered.LauncherExperience.LastGoodId);
         Equal(recovered.LauncherExperience.SelectedVersion, recovered.LauncherExperience.LastGoodVersion);
@@ -74,11 +74,11 @@ internal static class LauncherExperienceSelectionTests
             "\",\"publisher\":\"dev.example\",\"name\":\"" + name +
             "\",\"version\":\"" + version +
             "\",\"layoutPreset\":\"hero-rail\",\"compositionFile\":\"layouts/launcher-layout.json\"," +
-            "\"styleFile\":\"styles/launcher.gbss\",\"previewFile\":\"assets/preview.png\",\"parameters\":{}}");
+            "\"styleFile\":\"styles/launcher.wrss\",\"previewFile\":\"assets/preview.png\",\"parameters\":{}}");
         File.WriteAllText(Path.Combine(directory, "layouts", "launcher-layout.json"),
             "{\"schemaVersion\":1,\"branches\":{\"compact\":{\"root\":" + Root() +
             "},\"standard\":{\"root\":" + Root() + "},\"wide\":{\"root\":" + Root() + "}}}");
-        File.WriteAllText(Path.Combine(directory, "styles", "launcher.gbss"),
+        File.WriteAllText(Path.Combine(directory, "styles", "launcher.wrss"),
             "launcher-game-rail { color: #ffffff; } launcher-details-panel { background: rgba(0, 0, 0, 0.5); }");
         var png = new byte[24];
         new byte[] { 137, 80, 78, 71, 13, 10, 26, 10 }.CopyTo(png, 0);
@@ -117,7 +117,7 @@ internal static class LauncherExperienceSelectionTests
     private sealed class SelectionTempDirectory : IDisposable
     {
         public string Path { get; } = System.IO.Path.Combine(
-            System.IO.Path.GetTempPath(), "gbar-launcher-selection-" + Guid.NewGuid().ToString("N"));
+            System.IO.Path.GetTempPath(), "wrail-launcher-selection-" + Guid.NewGuid().ToString("N"));
         public SelectionTempDirectory() => Directory.CreateDirectory(Path);
         public void Dispose()
         {

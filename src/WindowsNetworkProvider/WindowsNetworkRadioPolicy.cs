@@ -1,7 +1,7 @@
 using System.Runtime.InteropServices;
-using GameBarAlternative.PlatformBroker;
+using WidgetRail.PlatformBroker;
 
-namespace GameBarAlternative.WindowsNetworkProvider;
+namespace WidgetRail.WindowsNetworkProvider;
 
 internal sealed record WirelessInterface(Guid InterfaceId, int State);
 internal sealed record PhyRadioState(uint PhyIndex, int SoftwareState, int HardwareState);

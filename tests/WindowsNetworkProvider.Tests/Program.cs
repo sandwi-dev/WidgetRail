@@ -1,6 +1,6 @@
 using System.Threading.Channels;
-using GameBarAlternative.PlatformBroker;
-using GameBarAlternative.WindowsNetworkProvider;
+using WidgetRail.PlatformBroker;
+using WidgetRail.WindowsNetworkProvider;
 
 var tests = new (string Name, Func<Task> Run)[]
 {

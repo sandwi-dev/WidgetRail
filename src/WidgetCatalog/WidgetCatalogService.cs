@@ -1,9 +1,9 @@
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
-using GameBarAlternative.WidgetProtocol;
+using WidgetRail.WidgetProtocol;
 
-namespace GameBarAlternative.WidgetCatalog;
+namespace WidgetRail.WidgetCatalog;
 
 public sealed class WidgetCatalog
 {
@@ -815,7 +815,7 @@ public sealed class WidgetCatalog
                 result.Add(new InstalledWidgetVersion(
                     manifest.Id, version, versionDirectory, manifest, verification.ContentDigest)
                 {
-                    VerifiedGbssDigests = verification.GbssDigests,
+                    VerifiedWrssDigests = verification.WrssDigests,
                     VerifiedFiles = verification.VerifiedFiles,
                     VerificationOptions = _options,
                     VerifiedEntryCount = verification.EntryCount,

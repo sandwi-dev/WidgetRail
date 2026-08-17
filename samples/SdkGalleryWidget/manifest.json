@@ -1,7 +1,7 @@
 {
   "manifestVersion": 1,
-  "id": "org.gbar.samples.sdk-gallery",
-  "publisher": "org.gbar.samples",
+  "id": "widgetrail.samples.sdk-gallery",
+  "publisher": "widgetrail.samples",
   "name": "SDK Gallery",
   "version": "0.1.2",
   "pinningSupported": true,
@@ -12,7 +12,7 @@
   "entrypoint": {
     "runtime": "dotnet-worker",
     "assembly": "payload/SdkGalleryWidget.dll",
-    "type": "GameBarAlternative.Samples.SdkGalleryWidget.SdkGalleryWidget"
+    "type": "WidgetRail.Samples.SdkGalleryWidget.SdkGalleryWidget"
   },
   "presentation": { "icon": "settings" },
   "permissions": [],

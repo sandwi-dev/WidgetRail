@@ -4,8 +4,8 @@ using System.Net;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
-using GameBarAlternative.WidgetRuntime;
-using GameBarAlternative.WidgetSdk;
+using WidgetRail.WidgetRuntime;
+using WidgetRail.WidgetSdk;
 
 if (args.Length == 2 && args[0] == "--fixture-child")
 {

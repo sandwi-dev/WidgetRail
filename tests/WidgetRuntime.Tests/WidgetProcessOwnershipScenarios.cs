@@ -1,8 +1,8 @@
 using System.Collections.Concurrent;
-using GameBarAlternative.PlatformBroker;
-using GameBarAlternative.WidgetProtocol;
-using GameBarAlternative.WidgetRuntime;
-using GameBarAlternative.WidgetSdk;
+using WidgetRail.PlatformBroker;
+using WidgetRail.WidgetProtocol;
+using WidgetRail.WidgetRuntime;
+using WidgetRail.WidgetSdk;
 
 internal static class WidgetProcessOwnershipScenarios
 {

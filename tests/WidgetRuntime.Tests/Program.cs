@@ -8,10 +8,10 @@ using System.Security.AccessControl;
 using System.Security.Principal;
 using System.Text.Json;
 using Microsoft.Win32.SafeHandles;
-using GameBarAlternative.PlatformBroker;
-using GameBarAlternative.WidgetProtocol;
-using GameBarAlternative.WidgetRuntime;
-using GameBarAlternative.WidgetSdk;
+using WidgetRail.PlatformBroker;
+using WidgetRail.WidgetProtocol;
+using WidgetRail.WidgetRuntime;
+using WidgetRail.WidgetSdk;
 
 #pragma warning disable CA1416 // Windows ACL fixtures return early on other platforms.
 
@@ -631,7 +631,7 @@ static Task ContentAuthorityJournalRejectsUnsafeState()
 {
     if (!OperatingSystem.IsWindows()) return Task.CompletedTask;
     using var temp = new TemporaryDirectory();
-    var profile = $"GameBarAlternative.Widget.{Guid.NewGuid():N}";
+    var profile = $"WidgetRail.Widget.{Guid.NewGuid():N}";
     var target = Path.Combine(temp.Path, "target.txt");
     File.WriteAllText(target, "target");
     var snapshot = new AppContainerAuthoritySnapshot(
@@ -646,11 +646,11 @@ static Task ContentAuthorityJournalRejectsUnsafeState()
     {
         _ = Assert.Throws<AppContainerAuthorityJournalException>(
             () => journal.Acquire(
-                $"GameBarAlternative.Widget.{Guid.NewGuid():N}"));
+                $"WidgetRail.Widget.{Guid.NewGuid():N}"));
         lease.WritePending([snapshot]);
     }
     using (var lease = journal.Acquire(
-               $"GameBarAlternative.Widget.{Guid.NewGuid():N}"))
+               $"WidgetRail.Widget.{Guid.NewGuid():N}"))
         Assert.True(lease.ReadPending() is null,
             "A disjoint profile observed another profile's pending transaction.");
     using (var lease = journal.Acquire(profile))
@@ -1114,7 +1114,7 @@ static async Task AlternateAppContainerAuthorityFailsClosed()
             Assert.Equal(0, client.Starts);
             Assert.Equal(1, released);
             using var lease = journal.Acquire(
-                $"GameBarAlternative.Widget.{Guid.NewGuid():N}");
+                $"WidgetRail.Widget.{Guid.NewGuid():N}");
             Assert.True(lease.ReadPending() is null,
                 "Alternate authority failure wrote a pending mutation record.");
         }
@@ -1229,7 +1229,7 @@ static async Task ContentLeaseIdentityMismatchFailsClosed()
         replacement.GetAccessControl(AccessControlSections.Access)
             .GetSecurityDescriptorSddlForm(AccessControlSections.Access));
     using var lease = journal.Acquire(
-        $"GameBarAlternative.Widget.{Guid.NewGuid():N}");
+        $"WidgetRail.Widget.{Guid.NewGuid():N}");
     Assert.True(lease.ReadPending() is null,
         "Catalog identity mismatch published a pending authority record.");
 }
@@ -1382,7 +1382,7 @@ static async Task AppContainerIsolation()
     var readableA = Path.Combine(packageA, "payload.txt");
     var readableB = Path.Combine(packageB, "payload.txt");
     var authorityJournal = FileAppContainerAuthorityJournal.Default;
-    var journalProbeProfile = $"GameBarAlternative.Widget.{Guid.NewGuid():N}";
+    var journalProbeProfile = $"WidgetRail.Widget.{Guid.NewGuid():N}";
     using (authorityJournal.Acquire(journalProbeProfile)) { }
     var privateUserFile = Path.Combine(
         authorityJournal.RootPath, $".isolation-probe-{Guid.NewGuid():N}.txt");
@@ -1390,7 +1390,7 @@ static async Task AppContainerIsolation()
     await File.WriteAllTextAsync(readableB, "package-b");
     await File.WriteAllTextAsync(privateUserFile, "host-private");
 
-    const string secretName = "GBA_ISOLATION_TEST_SECRET";
+    const string secretName = "WRAIL_ISOLATION_TEST_SECRET";
     var priorSecret = Environment.GetEnvironmentVariable(secretName);
     Environment.SetEnvironmentVariable(secretName, "must-not-cross-token-boundary");
     var listener = new TcpListener(IPAddress.Loopback, 0);
@@ -1470,7 +1470,7 @@ static async Task ExactContentAuthority()
             late,
             null,
             ((IPEndPoint)listener.LocalEndpoint).Port,
-            "GBA_EXACT_CONTENT_UNUSED",
+            "WRAIL_EXACT_CONTENT_UNUSED",
             _ => new TestContentLease(
                 temp.Path,
                 [temp.Path],
@@ -1541,7 +1541,7 @@ static async Task StaleContentRootIsIsolated()
             staleFile,
             null,
             ((IPEndPoint)listener.LocalEndpoint).Port,
-            "GBA_STALE_CONTENT_UNUSED",
+            "WRAIL_STALE_CONTENT_UNUSED",
             _ => new TestContentLease(
                 current.Path,
                 [current.Path],

@@ -1,5 +1,5 @@
 using System.Buffers.Binary;
-using GameBarAlternative.LauncherExperienceCatalog;
+using WidgetRail.LauncherExperienceCatalog;
 
 internal static class LauncherExperienceCatalogTests
 {
@@ -70,7 +70,7 @@ internal static class LauncherExperienceCatalogTests
         File.WriteAllText(manifestPath, baseline.Replace("\"parameters\":{}", "\"parameters\":{\"tileSize\":\"enormous\"}", StringComparison.Ordinal));
         HasPathCode(validator.ValidateDirectory(package).Diagnostics, "$.parameters.tileSize", "invalid_parameter");
 
-        File.WriteAllText(manifestPath, baseline.Replace("\"styleFile\":\"styles/launcher.gbss\"", "\"styleFile\":\"https://evil.example/theme.gbss\"", StringComparison.Ordinal));
+        File.WriteAllText(manifestPath, baseline.Replace("\"styleFile\":\"styles/launcher.wrss\"", "\"styleFile\":\"https://evil.example/theme.wrss\"", StringComparison.Ordinal));
         HasPathCode(validator.ValidateDirectory(package).Diagnostics, "$.styleFile", "unsafe_path");
 
         File.WriteAllText(manifestPath, baseline);
@@ -139,10 +139,10 @@ internal static class LauncherExperienceCatalogTests
         HasPathCode(validator.ValidateDirectory(package).Diagnostics, "payload.js", "forbidden_content");
         File.Delete(Path.Combine(package, "payload.js"));
 
-        File.WriteAllText(Path.Combine(package, "styles", "launcher.gbss"), "button { color: #ffffff; }");
+        File.WriteAllText(Path.Combine(package, "styles", "launcher.wrss"), "button { color: #ffffff; }");
         HasCode(validator.ValidateDirectory(package).Diagnostics, "cross_widget_selector");
 
-        File.WriteAllText(Path.Combine(package, "styles", "launcher.gbss"), "#launch { color: #ffffff; }");
+        File.WriteAllText(Path.Combine(package, "styles", "launcher.wrss"), "#launch { color: #ffffff; }");
         HasCode(validator.ValidateDirectory(package).Diagnostics, "cross_widget_selector");
 
         File.WriteAllBytes(Path.Combine(package, "assets", "preview.png"), Png(5000, 32));
@@ -314,7 +314,7 @@ internal static class LauncherExperienceCatalogTests
         using var temp = new TempDirectory();
         var catalog = new LauncherExperienceCatalog(temp.Path);
         var recovery = catalog.ResolveOrRecovery("dev.missing.pack", "1.0.0", LauncherLayoutPreset.CompactGrid);
-        Equal("org.gbar.builtin.compact-grid", recovery.Descriptor.Id);
+        Equal("widgetrail.builtin.compact-grid", recovery.Descriptor.Id);
         True(recovery.Descriptor.IsBuiltIn, "Missing selection did not resolve to a built-in recovery descriptor.");
     }
 
@@ -323,8 +323,8 @@ internal static class LauncherExperienceCatalogTests
         using var temp = new TempDirectory();
         var source = WritePackage(
             Path.Combine(temp.Path, "source"), "dev.example.archive", "1.0.0", BottomRecipe());
-        var firstPath = Path.Combine(temp.Path, "first.gbarlauncher");
-        var secondPath = Path.Combine(temp.Path, "second.gbarlauncher");
+        var firstPath = Path.Combine(temp.Path, "first.wrlauncher");
+        var secondPath = Path.Combine(temp.Path, "second.wrlauncher");
         var first = await LauncherExperienceArchive.PackAsync(source, firstPath, CancellationToken.None);
         var second = await LauncherExperienceArchive.PackAsync(source, secondPath, CancellationToken.None);
         Equal(first.Sha256, second.Sha256);
@@ -357,7 +357,7 @@ internal static class LauncherExperienceCatalogTests
         Directory.CreateDirectory(Path.Combine(directory, "assets"));
         File.WriteAllText(Path.Combine(directory, "launcher.json"), Manifest(id, version));
         File.WriteAllText(Path.Combine(directory, "layouts", "launcher-layout.json"), recipe);
-        File.WriteAllText(Path.Combine(directory, "styles", "launcher.gbss"),
+        File.WriteAllText(Path.Combine(directory, "styles", "launcher.wrss"),
             "launcher-game-rail { color: #ffffff; } launcher-details-panel { background: rgba(0, 0, 0, 0.5); }");
         File.WriteAllBytes(Path.Combine(directory, "assets", "preview.png"), Png(64, 36));
         return directory;
@@ -367,7 +367,7 @@ internal static class LauncherExperienceCatalogTests
         "{\"schemaVersion\":1,\"id\":\"" + id +
         "\",\"publisher\":\"dev.example\",\"name\":\"Strict\",\"version\":\"" + version +
         "\",\"layoutPreset\":\"hero-rail\",\"compositionFile\":\"layouts/launcher-layout.json\"," +
-        "\"styleFile\":\"styles/launcher.gbss\",\"previewFile\":\"assets/preview.png\",\"parameters\":{}}";
+        "\"styleFile\":\"styles/launcher.wrss\",\"previewFile\":\"assets/preview.png\",\"parameters\":{}}";
 
     private static string BottomRecipe() =>
         "{\"schemaVersion\":1,\"branches\":{" +

@@ -1,6 +1,6 @@
 using System.Threading.Channels;
 
-namespace GameBarAlternative.WidgetBridge;
+namespace WidgetRail.WidgetBridge;
 
 public sealed record BridgeCatalogChanged(
     long Revision,
@@ -320,7 +320,7 @@ public sealed class BridgeCatalogMonitor : IAsyncDisposable
 
     private static string SafeCode(Exception exception) => exception switch
     {
-        GameBarAlternative.WidgetCatalog.WidgetPackageException package => package.Code,
+        WidgetRail.WidgetCatalog.WidgetPackageException package => package.Code,
         BridgeCatalogException => "invalid_trusted_catalog",
         UnauthorizedAccessException => "access_denied",
         IOException => "io_error",

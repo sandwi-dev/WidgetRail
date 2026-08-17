@@ -1,7 +1,7 @@
 using System.Text;
-using GameBarAlternative.PlatformBroker;
+using WidgetRail.PlatformBroker;
 
-namespace GameBarAlternative.WindowsNetworkProvider;
+namespace WidgetRail.WindowsNetworkProvider;
 
 internal sealed record NetworkStateProjection(
     NetworkStatusSummary Status,

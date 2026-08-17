@@ -1,7 +1,7 @@
-using GameBarAlternative.WidgetProtocol;
-using GameBarAlternative.WidgetSdk;
+using WidgetRail.WidgetProtocol;
+using WidgetRail.WidgetSdk;
 
-namespace GameBarAlternative.FirstPartyWidgets.AudioMixer;
+namespace WidgetRail.FirstPartyWidgets.AudioMixer;
 
 internal enum AudioMixerPreferredFocusTarget
 {

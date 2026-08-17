@@ -1,4 +1,4 @@
-namespace GameBarAlternative.WindowsNetworkProvider;
+namespace WidgetRail.WindowsNetworkProvider;
 
 internal interface INetworkDeadlineScheduler
 {

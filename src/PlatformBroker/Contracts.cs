@@ -1,7 +1,7 @@
 using System.Text.RegularExpressions;
 using System.Text.Json.Serialization;
 
-namespace GameBarAlternative.PlatformBroker;
+namespace WidgetRail.PlatformBroker;
 
 public sealed record BrokerWidgetIdentity(
     [property: JsonRequired] string PackageId,

@@ -1,6 +1,6 @@
 using System.Security.Cryptography;
 
-namespace GameBarAlternative.WidgetCatalog;
+namespace WidgetRail.WidgetCatalog;
 
 internal static class BoundedFileReader
 {

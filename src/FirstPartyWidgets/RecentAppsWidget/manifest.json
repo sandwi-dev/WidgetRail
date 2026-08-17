@@ -1,7 +1,7 @@
 {
   "manifestVersion": 1,
-  "id": "org.gbar.firstparty.recent-apps",
-  "publisher": "org.gbar.firstparty",
+  "id": "widgetrail.firstparty.recent-apps",
+  "publisher": "widgetrail.firstparty",
   "name": "Recent Apps",
   "version": "0.1.0",
   "hostApi": {
@@ -11,7 +11,7 @@
   "entrypoint": {
     "runtime": "dotnet-worker",
     "assembly": "payload/RecentAppsWidget.dll",
-    "type": "GameBarAlternative.FirstPartyWidgets.RecentApps.RecentAppsWidget"
+    "type": "WidgetRail.FirstPartyWidgets.RecentApps.RecentAppsWidget"
   },
   "presentation": { "icon": "play" },
   "permissions": [

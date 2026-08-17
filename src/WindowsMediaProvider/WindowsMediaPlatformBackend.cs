@@ -1,6 +1,6 @@
-using GameBarAlternative.PlatformBroker;
+using WidgetRail.PlatformBroker;
 
-namespace GameBarAlternative.WindowsMediaProvider;
+namespace WidgetRail.WindowsMediaProvider;
 
 /// <summary>
 /// Lazy, event-driven GSMTC provider. It retains a bounded opaque-ID map and

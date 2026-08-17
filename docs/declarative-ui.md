@@ -184,7 +184,7 @@ arc, preserving the honest "work is in progress" meaning without movement.
 Prefer keeping cached content in place for fast refreshes; do not flash a
 single-frame indicator when work normally finishes before the next paint.
 The bridge maps this node to the distinct `loadingIndicator` render role, not a
-container role, so GBSS role selectors and native activity geometry agree.
+container role, so WRSS role selectors and native activity geometry agree.
 
 ## Rich action surfaces and tiles (protocol v7)
 
@@ -217,11 +217,11 @@ title, visible state label, action, and stable base ID; subtitle and metadata
 are optional. Horizontal is the default orientation and Vertical is available
 for tall compositions.
 
-The generated root classes are `.gbar-action-surface`, `.gbar-tile`, and
-`.gbar-media-tile` or `.gbar-app-tile`. Generated child IDs are
+The generated root classes are `.wrail-action-surface`, `.wrail-tile`, and
+`.wrail-media-tile` or `.wrail-app-tile`. Generated child IDs are
 `id.artwork` when present, `id.content`, `id.title`, optional `id.subtitle`,
 optional `id.metadata`, and `id.state`; matching generic and media/app-specific
-`gbar-*` classes are stable theme hooks. Keep the base ID stable because it is
+`wrail-*` classes are stable theme hooks. Keep the base ID stable because it is
 the only focus/action identity.
 
 ActionSurface content is intentionally bounded to 1–8 direct children, at most
@@ -245,7 +245,7 @@ Do not start a worker, ticker, or hidden-background residency solely to dismiss
 or animate it. Persistent errors belong in the owning surface. Themes may use
 short appearance/removal motion, but reduced motion must suppress or shorten it.
 Generated IDs are `id.icon` when a semantic icon is present, `id.copy`,
-`id.title`, and `id.message`; stable classes include `.gbar-toast`, the tone
+`id.title`, and `id.message`; stable classes include `.wrail-toast`, the tone
 modifier, and matching `__icon`, `__copy`, `__title`, and `__message` hooks.
 
 ## Controller scroll containers
@@ -283,8 +283,8 @@ its prior tree position and the Scroll container reveals it. Runtime
 replacement clears both focus and scroll state.
 
 Scroll containers may start an input scope and declare scope shortcuts exactly
-like Stack/Row. GBSS can target their `scroll` role or a stable ID/class. The
-axis is semantic and cannot be changed by GBSS; this prevents a theme from
+like Stack/Row. WRSS can target their `scroll` role or a stable ID/class. The
+axis is semantic and cannot be changed by WRSS; this prevents a theme from
 breaking controller navigation. Non-finite, negative, or excessive internal
 offsets are clamped by the native layout engine, and an unknown/missing axis is
 rejected before publication.
@@ -414,7 +414,7 @@ their earlier protocol version and exact-ID then deterministic fallback behavior
 
 ### Responsive row wrapping
 
-GBSS can reflow a semantic Row without publishing a different widget tree:
+WRSS can reflow a semantic Row without publishing a different widget tree:
 
 ```css
 row.quick-actions {
@@ -446,7 +446,7 @@ unbounded collection; `wrap-reverse`, column wrapping, and browser-style
 
 ### Presentation translation
 
-GBSS `translate-x` and `translate-y` apply bounded presentation offsets without
+WRSS `translate-x` and `translate-y` apply bounded presentation offsets without
 changing a node's static layout allocation:
 
 ```css
@@ -502,12 +502,12 @@ protocol v8; v7 hosts reject it rather than treating it as a Stack or Row.
 ### Semantic code and diagnostic text
 
 `UI.CodeText(text, id, accessibilityLabel?)` emits one ordinary, nonfocusable
-Text node with the stable `.gbar-code-text` class. It preserves whitespace and
+Text node with the stable `.wrail-code-text` class. It preserves whitespace and
 eagerly bounds content/accessibility text to 4,096 characters. It owns no
 action, selection, copy command, scope, or shortcut; add a separate explicit
 Button when copying is a required workflow. The built-in theme uses the single
 Windows-baseline `Consolas` family, `min-width: 0`, and up to eight wrapped
-lines. GBSS currently passes one resolved family to DirectWrite, so comma-
+lines. WRSS currently passes one resolved family to DirectWrite, so comma-
 separated browser-style fallback stacks must not be presented as native font
 fallback support.
 
@@ -598,7 +598,7 @@ Glyphs are valid only on `icon` and `button` nodes.
 
 `ToggleButton` and `Stepper` are SDK composition helpers, not new protocol node
 kinds. They produce the same bounded semantic nodes as hand-authored UI, so
-focus, validation, GBSS, accessibility, and controller dispatch do not need a
+focus, validation, WRSS, accessibility, and controller dispatch do not need a
 special renderer path.
 
 ```csharp
@@ -640,7 +640,7 @@ Validate the domain in widget/host logic, then rebuild the composite from that
 authoritative value. A remains the activation button; D-pad and analog focus
 navigation continue through the normal host routing.
 
-The modern component helpers and their stable `gbar-*` class contracts are
+The modern component helpers and their stable `wrail-*` class contracts are
 documented in [Controller UI component patterns](controller-ui-components.md).
 Use `.AddClasses(...)` to augment those semantic classes. `.Classes(...)`
 deliberately replaces the complete class list and is intended for primitives
@@ -1049,11 +1049,11 @@ cleanup bounded.
 
 ## Styling
 
-Use `.Classes("primary", "danger")` to replace the semantic GBSS classes on a
+Use `.Classes("primary", "danger")` to replace the semantic WRSS classes on a
 primitive. Use `.AddClasses("widget-accent")` for SDK composites so required
-`gbar-*` hooks are preserved. Both APIs enforce the GBSS identifier grammar,
+`wrail-*` hooks are preserved. Both APIs enforce the WRSS identifier grammar,
 64-character class limit, 32-class node limit, and deterministic duplicate
 policy before snapshot publication; the protocol independently revalidates
-raw workers. The host parses no CSS; the managed bridge compiles safe GBSS and
-returns typed computed values. Read the [GBSS reference](gbss.md) for selectors,
+raw workers. The host parses no CSS; the managed bridge compiles safe WRSS and
+returns typed computed values. Read the [WRSS reference](wrss.md) for selectors,
 allowed properties, imports, safety limits, and renderer-state behavior.

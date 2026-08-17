@@ -1,8 +1,8 @@
-using GameBarAlternative.WidgetProtocol;
-using GameBarAlternative.WidgetSdk;
+using WidgetRail.WidgetProtocol;
+using WidgetRail.WidgetSdk;
 using System.Text;
 
-namespace GameBarAlternative.FirstPartyWidgets.GameLauncher;
+namespace WidgetRail.FirstPartyWidgets.GameLauncher;
 
 /// <summary>
 /// Controller-first complete installed game library. The trusted provider owns

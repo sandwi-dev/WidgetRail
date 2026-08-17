@@ -1,6 +1,6 @@
 using System.Text.Json;
-using GameBarAlternative.PlatformBroker;
-using GameBarAlternative.WindowsActivityProvider;
+using WidgetRail.PlatformBroker;
+using WidgetRail.WindowsActivityProvider;
 
 var tests = new (string Name, Func<Task> Run)[]
 {
@@ -72,7 +72,7 @@ static async Task FiltersPrivateProcesses()
     var native = new FakeNative();
     await using var provider = new WindowsActivityPlatformBackend(native);
     await provider.GetRecentActivitiesAsync(default);
-    native.Add(1, 11, "OverlayHost", "Game Bar Alternative");
+    native.Add(1, 11, "OverlayHost", "WidgetRail");
     native.Add(2, 12, "RecentAppsWidget.Worker", "Recent Apps Worker");
     native.Add(3, 13, "Dwm", "Desktop Window Manager");
     native.Add(4, 14, "RealApp", "Real Application");

@@ -1,4 +1,4 @@
-namespace GameBarAlternative.WidgetSdk;
+namespace WidgetRail.WidgetSdk;
 
 internal sealed class WidgetCapabilityGestureContext(
     long inputSequence,

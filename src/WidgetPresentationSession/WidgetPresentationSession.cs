@@ -1,10 +1,10 @@
 using System.Collections.ObjectModel;
 using System.Text.Json;
-using GameBarAlternative.WidgetBridge;
-using GameBarAlternative.WidgetProtocol;
-using GameBarAlternative.WidgetSdk;
+using WidgetRail.WidgetBridge;
+using WidgetRail.WidgetProtocol;
+using WidgetRail.WidgetSdk;
 
-namespace GameBarAlternative.WidgetPresentationSession;
+namespace WidgetRail.WidgetPresentationSession;
 
 public sealed class WidgetPresentationSession : IAsyncDisposable
 {

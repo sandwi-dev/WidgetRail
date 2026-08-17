@@ -1,15 +1,15 @@
-using GameBarAlternative.PlatformBroker;
-using GameBarAlternative.WidgetProtocol;
-using GameBarAlternative.WidgetSdk;
+using WidgetRail.PlatformBroker;
+using WidgetRail.WidgetProtocol;
+using WidgetRail.WidgetSdk;
 using System.Globalization;
 using System.Security.Cryptography;
 using System.Text;
-using PermissionPackage = GameBarAlternative.FirstPartyWidgets.Settings.SettingsPermissionPackage;
-using DeclaredCapability = GameBarAlternative.FirstPartyWidgets.Settings.SettingsDeclaredCapability;
-using UnknownDeclaration = GameBarAlternative.FirstPartyWidgets.Settings.SettingsUnknownDeclaration;
-using HiddenConsentDecision = GameBarAlternative.FirstPartyWidgets.Settings.SettingsHiddenConsentDecision;
+using PermissionPackage = WidgetRail.FirstPartyWidgets.Settings.SettingsPermissionPackage;
+using DeclaredCapability = WidgetRail.FirstPartyWidgets.Settings.SettingsDeclaredCapability;
+using UnknownDeclaration = WidgetRail.FirstPartyWidgets.Settings.SettingsUnknownDeclaration;
+using HiddenConsentDecision = WidgetRail.FirstPartyWidgets.Settings.SettingsHiddenConsentDecision;
 
-namespace GameBarAlternative.FirstPartyWidgets.Settings;
+namespace WidgetRail.FirstPartyWidgets.Settings;
 
 /// <summary>Pure snapshot-only composition for permission and consent Settings pages.</summary>
 internal static class SettingsPermissionPresentation

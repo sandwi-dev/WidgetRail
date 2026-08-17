@@ -1,8 +1,8 @@
 {
   "schemaVersion": 2,
-  "id": "org.gbar.builtin.cool-slate",
-  "publisher": "org.gbar.builtin",
+  "id": "widgetrail.builtin.cool-slate",
+  "publisher": "widgetrail.builtin",
   "name": "Cool Slate",
   "version": "1.0.0",
-  "entryFile": "theme.gbss"
+  "entryFile": "theme.wrss"
 }

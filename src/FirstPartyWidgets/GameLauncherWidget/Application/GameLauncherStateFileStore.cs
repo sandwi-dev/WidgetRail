@@ -1,8 +1,8 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
-using GameBarAlternative.WidgetSdk;
+using WidgetRail.WidgetSdk;
 
-namespace GameBarAlternative.FirstPartyWidgets.GameLauncher;
+namespace WidgetRail.FirstPartyWidgets.GameLauncher;
 
 internal sealed class GameLauncherStateFileStore
 {

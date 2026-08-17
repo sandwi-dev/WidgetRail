@@ -1,8 +1,8 @@
-using GameBarAlternative.PlatformDiagnostics;
-using GameBarAlternative.WidgetRuntime;
-using GameBarAlternative.WidgetSdk;
+using WidgetRail.PlatformDiagnostics;
+using WidgetRail.WidgetRuntime;
+using WidgetRail.WidgetSdk;
 
-namespace GameBarAlternative.WidgetBridge;
+namespace WidgetRail.WidgetBridge;
 
 /// <summary>
 /// Bridge-owned diagnostics and bounded management channel for the exact trusted

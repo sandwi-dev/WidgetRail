@@ -1,7 +1,7 @@
-using GameBarAlternative.WidgetSdk;
+using WidgetRail.WidgetSdk;
 using System.Text.Json;
 
-namespace GameBarAlternative.FirstPartyWidgets.GameLauncher;
+namespace WidgetRail.FirstPartyWidgets.GameLauncher;
 
 internal sealed record GameLauncherVariantGroup(
     string Id,

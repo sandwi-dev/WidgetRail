@@ -1,6 +1,6 @@
 using System.Text.Json;
 
-namespace GameBarAlternative.WidgetProtocol;
+namespace WidgetRail.WidgetProtocol;
 
 public static class PresentationUpdateValidator
 {

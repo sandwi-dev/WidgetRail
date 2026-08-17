@@ -1,14 +1,14 @@
 {
   "manifestVersion": 1,
-  "id": "org.gbar.samples.full-application",
-  "publisher": "org.gbar.samples",
+  "id": "widgetrail.samples.full-application",
+  "publisher": "widgetrail.samples",
   "name": "Full Application Reference",
   "version": "0.1.0",
   "hostApi": { "minimum": "1.0", "maximumMajor": 1 },
   "entrypoint": {
     "runtime": "dotnet-worker",
     "assembly": "payload/FullApplicationWidget.dll",
-    "type": "GameBarAlternative.Samples.FullApplicationWidget.FullApplicationReferenceWidget"
+    "type": "WidgetRail.Samples.FullApplicationWidget.FullApplicationReferenceWidget"
   },
   "presentation": { "icon": "settings" },
   "permissions": [],

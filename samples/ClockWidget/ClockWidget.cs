@@ -1,8 +1,8 @@
 using System.Globalization;
-using GameBarAlternative.WidgetProtocol;
-using GameBarAlternative.WidgetSdk;
+using WidgetRail.WidgetProtocol;
+using WidgetRail.WidgetSdk;
 
-namespace GameBarAlternative.Samples.ClockWidget;
+namespace WidgetRail.Samples.ClockWidget;
 
 public sealed class ClockWidget : Widget
 {

@@ -1,9 +1,9 @@
 using System.ComponentModel;
 using System.Runtime.InteropServices;
 using Microsoft.Win32.SafeHandles;
-using GameBarAlternative.WidgetCatalog;
+using WidgetRail.WidgetCatalog;
 
-namespace GameBarAlternative.WidgetBridge;
+namespace WidgetRail.WidgetBridge;
 
 internal sealed class BridgeLocalWidgetPackageImportService : IAsyncDisposable
 {
@@ -202,7 +202,7 @@ internal sealed class BridgeLocalWidgetPackageImportService : IAsyncDisposable
             request.PackagePath.IndexOf('\0') >= 0 ||
             !Path.IsPathFullyQualified(request.PackagePath) ||
             !Path.GetExtension(request.PackagePath).Equals(
-                ".gbarwidget", StringComparison.OrdinalIgnoreCase))
+                ".wrwidget", StringComparison.OrdinalIgnoreCase))
             throw new BridgeProtocolException("Local widget package selection is invalid.");
     }
 

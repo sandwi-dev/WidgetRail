@@ -1,7 +1,7 @@
 using System.Text.Json;
-using GameBarAlternative.PlatformBroker;
+using WidgetRail.PlatformBroker;
 
-namespace GameBarAlternative.WidgetBridge;
+namespace WidgetRail.WidgetBridge;
 
 internal enum BridgeRequestKind
 {

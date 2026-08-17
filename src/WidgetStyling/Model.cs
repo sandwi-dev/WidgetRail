@@ -1,8 +1,8 @@
 using System.Collections.ObjectModel;
 
-namespace GameBarAlternative.WidgetStyling;
+namespace WidgetRail.WidgetStyling;
 
-public static class GbssLimits
+public static class WrssLimits
 {
     public const int MaximumSourceCharacters = 1_048_576;
     public const long MaximumSourceBytes = MaximumSourceCharacters * 4L;
@@ -15,7 +15,7 @@ public static class GbssLimits
     public const int MaximumExpandedValueCharacters = 16_384;
 }
 
-public enum GbssSourceReadStatus
+public enum WrssSourceReadStatus
 {
     Success,
     Missing,
@@ -27,45 +27,45 @@ public enum GbssSourceReadStatus
     IoUnavailable,
 }
 
-public sealed record GbssSourceReadResult
+public sealed record WrssSourceReadResult
 {
-    private GbssSourceReadResult(GbssSourceReadStatus status, string? source = null)
+    private WrssSourceReadResult(WrssSourceReadStatus status, string? source = null)
     {
         Status = status;
         Source = source;
     }
 
-    public GbssSourceReadStatus Status { get; }
+    public WrssSourceReadStatus Status { get; }
 
     public string? Source { get; }
 
-    public static GbssSourceReadResult FromSource(string source)
+    public static WrssSourceReadResult FromSource(string source)
     {
         ArgumentNullException.ThrowIfNull(source);
-        return new(GbssSourceReadStatus.Success, source);
+        return new(WrssSourceReadStatus.Success, source);
     }
 
-    public static GbssSourceReadResult Failure(GbssSourceReadStatus status)
+    public static WrssSourceReadResult Failure(WrssSourceReadStatus status)
     {
-        if (status == GbssSourceReadStatus.Success || !Enum.IsDefined(status))
+        if (status == WrssSourceReadStatus.Success || !Enum.IsDefined(status))
             throw new ArgumentOutOfRangeException(nameof(status));
         return new(status);
     }
 }
 
-public enum GbssDiagnosticSeverity
+public enum WrssDiagnosticSeverity
 {
     Warning,
     Error,
 }
 
-public sealed record GbssSourceLocation(string Source, int Line, int Column);
+public sealed record WrssSourceLocation(string Source, int Line, int Column);
 
-public sealed record GbssDiagnostic(
+public sealed record WrssDiagnostic(
     string Source,
     int Line,
     int Column,
-    GbssDiagnosticSeverity Severity,
+    WrssDiagnosticSeverity Severity,
     string Code,
     string Message)
 {
@@ -73,22 +73,22 @@ public sealed record GbssDiagnostic(
         $"{Source}({Line},{Column}): {Severity.ToString().ToLowerInvariant()} {Code}: {Message}";
 }
 
-public abstract record GbssStatement(GbssSourceLocation Location);
+public abstract record WrssStatement(WrssSourceLocation Location);
 
-public sealed record GbssImport(string Path, GbssSourceLocation Location) : GbssStatement(Location);
+public sealed record WrssImport(string Path, WrssSourceLocation Location) : WrssStatement(Location);
 
-public sealed record GbssRule(
-    IReadOnlyList<GbssSelector> Selectors,
-    IReadOnlyList<GbssDeclaration> Declarations,
-    GbssSourceLocation Location) : GbssStatement(Location);
+public sealed record WrssRule(
+    IReadOnlyList<WrssSelector> Selectors,
+    IReadOnlyList<WrssDeclaration> Declarations,
+    WrssSourceLocation Location) : WrssStatement(Location);
 
-public sealed record GbssDeclaration(
+public sealed record WrssDeclaration(
     string Property,
     string Value,
-    GbssSourceLocation Location,
+    WrssSourceLocation Location,
     int Order);
 
-public enum GbssPseudoState
+public enum WrssPseudoState
 {
     Focused,
     Pressed,
@@ -97,16 +97,16 @@ public enum GbssPseudoState
     Busy,
 }
 
-public sealed record GbssSelector(
+public sealed record WrssSelector(
     string? Role,
     string? Id,
     IReadOnlyList<string> Classes,
-    IReadOnlySet<GbssPseudoState> States,
+    IReadOnlySet<WrssPseudoState> States,
     bool IsRoot,
     int Specificity,
     string Text)
 {
-    public bool Matches(GbssElement element)
+    public bool Matches(WrssElement element)
     {
         ArgumentNullException.ThrowIfNull(element);
         if (IsRoot) return false;
@@ -117,35 +117,35 @@ public sealed record GbssSelector(
     }
 }
 
-public sealed record GbssDocument(
+public sealed record WrssDocument(
     string Source,
-    IReadOnlyList<GbssStatement> Statements);
+    IReadOnlyList<WrssStatement> Statements);
 
-public sealed record GbssParseResult(
-    GbssDocument Document,
-    IReadOnlyList<GbssDiagnostic> Diagnostics)
+public sealed record WrssParseResult(
+    WrssDocument Document,
+    IReadOnlyList<WrssDiagnostic> Diagnostics)
 {
-    public bool IsValid => Diagnostics.All(item => item.Severity != GbssDiagnosticSeverity.Error);
+    public bool IsValid => Diagnostics.All(item => item.Severity != WrssDiagnosticSeverity.Error);
 }
 
-public sealed record GbssPackageResult(
-    IReadOnlyList<GbssDocument> Documents,
-    IReadOnlyList<GbssDiagnostic> Diagnostics)
+public sealed record WrssPackageResult(
+    IReadOnlyList<WrssDocument> Documents,
+    IReadOnlyList<WrssDiagnostic> Diagnostics)
 {
-    public bool IsValid => Diagnostics.All(item => item.Severity != GbssDiagnosticSeverity.Error);
+    public bool IsValid => Diagnostics.All(item => item.Severity != WrssDiagnosticSeverity.Error);
 }
 
-public sealed record GbssElement(
+public sealed record WrssElement(
     string Role,
     string? Id = null,
     IReadOnlySet<string>? StyleClasses = null,
-    IReadOnlySet<GbssPseudoState>? PseudoStates = null)
+    IReadOnlySet<WrssPseudoState>? PseudoStates = null)
 {
     public IReadOnlySet<string> Classes { get; } = StyleClasses ?? new HashSet<string>(StringComparer.Ordinal);
-    public IReadOnlySet<GbssPseudoState> States { get; } = PseudoStates ?? new HashSet<GbssPseudoState>();
+    public IReadOnlySet<WrssPseudoState> States { get; } = PseudoStates ?? new HashSet<WrssPseudoState>();
 }
 
-public enum GbssValueKind
+public enum WrssValueKind
 {
     Color,
     Length,
@@ -158,24 +158,24 @@ public enum GbssValueKind
     FontFamily,
 }
 
-public sealed record GbssComputedValue(
-    GbssValueKind Kind,
+public sealed record WrssComputedValue(
+    WrssValueKind Kind,
     string Text,
     double? Number = null,
     string? Unit = null);
 
-public sealed class GbssResolvedStyle
+public sealed class WrssResolvedStyle
 {
-    internal GbssResolvedStyle(SortedDictionary<string, GbssComputedValue> properties) =>
-        Properties = new ReadOnlyDictionary<string, GbssComputedValue>(properties);
+    internal WrssResolvedStyle(SortedDictionary<string, WrssComputedValue> properties) =>
+        Properties = new ReadOnlyDictionary<string, WrssComputedValue>(properties);
 
-    public IReadOnlyDictionary<string, GbssComputedValue> Properties { get; }
+    public IReadOnlyDictionary<string, WrssComputedValue> Properties { get; }
 
-    public GbssComputedValue? Get(string property) =>
+    public WrssComputedValue? Get(string property) =>
         Properties.TryGetValue(property, out var value) ? value : null;
 }
 
-public sealed record GbssCompileOptions
+public sealed record WrssCompileOptions
 {
     public IReadOnlyDictionary<string, string> BuiltinVariables { get; init; } = DefaultBuiltinVariables;
 
@@ -203,24 +203,24 @@ public sealed record GbssCompileOptions
 /// A trusted cascade layer. Rules in a higher-priority layer override rules in a
 /// lower-priority layer before selector specificity is considered.
 /// </summary>
-public sealed record GbssThemeLayer(
+public sealed record WrssThemeLayer(
     int Priority,
-    IReadOnlyList<GbssDocument> Documents);
+    IReadOnlyList<WrssDocument> Documents);
 
-public sealed record GbssCompileResult(
-    GbssTheme? Theme,
-    IReadOnlyList<GbssDiagnostic> Diagnostics)
+public sealed record WrssCompileResult(
+    WrssTheme? Theme,
+    IReadOnlyList<WrssDiagnostic> Diagnostics)
 {
-    public bool IsValid => Theme is not null && Diagnostics.All(item => item.Severity != GbssDiagnosticSeverity.Error);
+    public bool IsValid => Theme is not null && Diagnostics.All(item => item.Severity != WrssDiagnosticSeverity.Error);
 }
 
-public sealed class GbssTheme
+public sealed class WrssTheme
 {
     private readonly IReadOnlyList<CompiledRule> _rules;
 
-    internal GbssTheme(IReadOnlyList<CompiledRule> rules) => _rules = rules;
+    internal WrssTheme(IReadOnlyList<CompiledRule> rules) => _rules = rules;
 
-    public GbssResolvedStyle Resolve(GbssElement element)
+    public WrssResolvedStyle Resolve(WrssElement element)
     {
         ArgumentNullException.ThrowIfNull(element);
         ArgumentException.ThrowIfNullOrWhiteSpace(element.Role);
@@ -245,19 +245,19 @@ public sealed class GbssTheme
             }
         }
 
-        var sorted = new SortedDictionary<string, GbssComputedValue>(StringComparer.Ordinal);
+        var sorted = new SortedDictionary<string, WrssComputedValue>(StringComparer.Ordinal);
         foreach (var (property, winner) in winners) sorted[property] = winner.Value;
-        return new GbssResolvedStyle(sorted);
+        return new WrssResolvedStyle(sorted);
     }
 
-    internal sealed record CompiledDeclaration(string Property, GbssComputedValue Value, int Order);
+    internal sealed record CompiledDeclaration(string Property, WrssComputedValue Value, int Order);
     internal sealed record CompiledRule(
-        IReadOnlyList<GbssSelector> Selectors,
+        IReadOnlyList<WrssSelector> Selectors,
         IReadOnlyList<CompiledDeclaration> Declarations,
         int LayerPriority,
         int CascadeOrder);
     private sealed record Winner(
-        GbssComputedValue Value,
+        WrssComputedValue Value,
         int LayerPriority,
         int Specificity,
         int RuleOrder,

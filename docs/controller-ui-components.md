@@ -5,7 +5,7 @@ composition, SettingsRow, ActionSheet, Picker, Scrubber, CodeText, and the
 modern SDK composite set are implemented; the inventory below distinguishes
 current public helpers from later semantic candidates.
 
-Game Bar Alternative components are semantic, controller-first contracts. A
+WidgetRail components are semantic, controller-first contracts. A
 widget publishes intent and state; the host owns rendering, accessibility,
 focus, animation, DPI, and work-area adaptation. Components are not miniature
 web views and cannot introduce HTML, JavaScript, arbitrary SVG, or their own
@@ -24,7 +24,7 @@ Those sites are taxonomy and interaction inspiration only. This project does
 not copy Tailwind Plus component source, layouts, assets, or styles; does not
 ship Tailwind or Headless UI; and does not derive a competing web UI kit from
 commercial examples. Every component here is an original native protocol/SDK/
-GBSS design constrained by controller navigation and overlay performance.
+WRSS design constrained by controller navigation and overlay performance.
 
 ## Current foundation
 
@@ -70,7 +70,7 @@ content or transition directly without a one-frame loading flash.
 The helpers now ship with a restrained warm-graphite default: regular-weight
 type, fewer nested surfaces, 10–12 DIP radii, thin dividers/tracks, compact
 controller-safe spacing, and one inset neutral focus treatment. First-party
-widget styles consume the same semantic `gbar-*` contract available to
+widget styles consume the same semantic `wrail-*` contract available to
 Community authors. Physical packaged screenshots across the supported display,
 text-scale, high-contrast, and reduced-transparency matrix remain the evidence
 gate tracked by
@@ -79,13 +79,13 @@ gate tracked by
 The separately installable
 [SDK Gallery Community addon](../samples/SdkGalleryWidget/README.md) is the
 executable reference for this inventory. It exercises these helpers using only
-public SDK APIs, package-local GBSS, the generic AppContainer worker, stable
+public SDK APIs, package-local WRSS, the generic AppContainer worker, stable
 controller IDs, and nested input scopes; it has no permissions or host-only
 integration.
 
 ### Modern composite helpers
 
-The implemented helpers emit baseline protocol nodes and add stable `gbar-*`
+The implemented helpers emit baseline protocol nodes and add stable `wrail-*`
 semantic classes. They do not add worker code, polling, or a new native node:
 
 - `UI.IconButton(...)` provides Default, Primary, Danger, and Quiet variants
@@ -174,7 +174,7 @@ semantic classes. They do not add worker code, polling, or a new native node:
   shortcut metadata. The host derives row-major columns from current logical
   width, so focusable children keep their IDs while compact/wide layouts reflow.
 - `UI.CodeText(...)` emits one presentational Text node with the stable
-  `.gbar-code-text` class. Content and accessibility text are bounded to 4,096
+  `.wrail-code-text` class. Content and accessibility text are bounded to 4,096
   characters, whitespace is preserved, and the helper owns no action, focus,
   scope, shortcut, timer, or implicit copy behavior. Pair it with a separate
   explicit copy Button when copying is required. The default uses the single
@@ -367,7 +367,7 @@ tested composition helpers or native semantics before authors depend on names:
    rather than browser-style CSS behavior.
 
 Per-edge border widths/colors and semantic `CodeText` monospace are implemented
-in the bounded GBSS/default-theme contract. CSS font fallback stacks are not:
+in the bounded WRSS/default-theme contract. CSS font fallback stacks are not:
 the native field currently accepts one resolved family, so the default uses
 the Windows-baseline `Consolas` family rather than pretending that a comma-
 separated browser stack has native fallback semantics.
@@ -380,7 +380,7 @@ staggered entrances, ambient loops, editorial-serif or faux-macOS styling, and
 decorative density that conflicts with fast controller scanning.
 
 Each candidate must ship with protocol/SDK validation, controller routing,
-screen-reader semantics, GBSS roles/classes, compact and wide layouts, 720p and
+screen-reader semantics, WRSS roles/classes, compact and wide layouts, 720p and
 high-DPI evidence, high-contrast/reduced-motion behavior, and regression tests.
 Visual polish alone is not a component contract.
 
@@ -403,5 +403,5 @@ Visual polish alone is not a component contract.
   loading/error state, dynamic item removal, and rapid repeated input.
 
 See [Declarative UI](declarative-ui.md), [Controller input](controller-input.md),
-[GBSS](gbss.md), [Visual design system](visual-design-system.md), and
+[WRSS](wrss.md), [Visual design system](visual-design-system.md), and
 [Performance](performance.md) for the underlying contracts.

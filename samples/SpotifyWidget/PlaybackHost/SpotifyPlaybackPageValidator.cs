@@ -1,6 +1,6 @@
-using GameBarAlternative.SpotifyPlayback;
+using WidgetRail.SpotifyPlayback;
 
-namespace GameBarAlternative.SpotifyPlaybackHost;
+namespace WidgetRail.SpotifyPlaybackHost;
 
 internal static class SpotifyPlaybackPageValidator
 {

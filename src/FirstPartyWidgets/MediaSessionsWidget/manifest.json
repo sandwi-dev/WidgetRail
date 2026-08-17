@@ -1,7 +1,7 @@
 {
   "manifestVersion": 1,
-  "id": "org.gbar.firstparty.media-sessions",
-  "publisher": "org.gbar.firstparty",
+  "id": "widgetrail.firstparty.media-sessions",
+  "publisher": "widgetrail.firstparty",
   "name": "Now Playing",
   "version": "0.1.0",
   "hostApi": {
@@ -11,7 +11,7 @@
   "entrypoint": {
     "runtime": "dotnet-worker",
     "assembly": "payload/MediaSessionsWidget.dll",
-    "type": "GameBarAlternative.FirstPartyWidgets.MediaSessions.MediaSessionsWidget"
+    "type": "WidgetRail.FirstPartyWidgets.MediaSessions.MediaSessionsWidget"
   },
   "presentation": { "icon": "music" },
   "permissions": [

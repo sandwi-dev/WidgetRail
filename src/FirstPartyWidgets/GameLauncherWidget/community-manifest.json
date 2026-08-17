@@ -1,7 +1,7 @@
 {
   "manifestVersion": 1,
-  "id": "org.gbar.community.reference.game-launcher",
-  "publisher": "org.gbar.community.reference",
+  "id": "widgetrail.community.reference.game-launcher",
+  "publisher": "widgetrail.community.reference",
   "name": "Game Launcher Community",
   "version": "0.2.0",
   "hostApi": { "minimum": "1.0", "maximumMajor": 1 },

@@ -1,8 +1,8 @@
 using System.Reflection;
 using System.Runtime.Loader;
-using GameBarAlternative.WidgetSdk;
+using WidgetRail.WidgetSdk;
 
-namespace GameBarAlternative.WidgetWorkerHost;
+namespace WidgetRail.WidgetWorkerHost;
 
 internal static class WidgetAssemblyLoader
 {
@@ -93,13 +93,13 @@ internal static class WidgetAssemblyLoader
     }
 
     private sealed class PackageLoadContext(string packageRoot, string entrypoint)
-        : AssemblyLoadContext($"gbar-widget-{Guid.NewGuid():N}", isCollectible: false)
+        : AssemblyLoadContext($"wrail-widget-{Guid.NewGuid():N}", isCollectible: false)
     {
         private static readonly HashSet<string> SharedAssemblies =
         [
             typeof(Widget).Assembly.GetName().Name!,
-            typeof(GameBarAlternative.WidgetProtocol.ManifestJson).Assembly.GetName().Name!,
-            typeof(GameBarAlternative.WidgetRuntime.WidgetWorkerServer).Assembly.GetName().Name!,
+            typeof(WidgetRail.WidgetProtocol.ManifestJson).Assembly.GetName().Name!,
+            typeof(WidgetRail.WidgetRuntime.WidgetWorkerServer).Assembly.GetName().Name!,
         ];
         private readonly AssemblyDependencyResolver _resolver = new(entrypoint);
         private readonly string _root = packageRoot;

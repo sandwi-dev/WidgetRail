@@ -10,11 +10,11 @@
     <ProjectReference Include="..\..\samples\SpotifyWidget\SpotifyWidget.csproj" />
     <ProjectReference Include="..\..\src\WidgetProtocol\WidgetProtocol.csproj" />
     <ProjectReference Include="..\..\src\WidgetStyling\WidgetStyling.csproj" />
-    <ProjectReference Include="..\..\tools\GbarCli\GbarCli.csproj" />
+    <ProjectReference Include="..\..\tools\WrailCli\WrailCli.csproj" />
   </ItemGroup>
   <ItemGroup>
     <None Include="..\..\samples\SpotifyWidget\manifest.json" Link="manifest.json" CopyToOutputDirectory="PreserveNewest" />
-    <None Include="..\..\samples\SpotifyWidget\styles\default.gbss" Link="styles\default.gbss" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="..\..\samples\SpotifyWidget\styles\default.wrss" Link="styles\default.wrss" CopyToOutputDirectory="PreserveNewest" />
     <None Include="..\..\samples\SpotifyWidget\SpotifyWidget.cs" Link="source\SpotifyWidget.cs" CopyToOutputDirectory="PreserveNewest" />
     <None Include="..\..\samples\SpotifyWidget\SpotifyWidget.Routes.cs" Link="source\SpotifyWidget.Routes.cs" CopyToOutputDirectory="PreserveNewest" />
     <None Include="..\..\samples\SpotifyWidget\SpotifyWidget.Playback.cs" Link="source\SpotifyWidget.Playback.cs" CopyToOutputDirectory="PreserveNewest" />

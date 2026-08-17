@@ -1,7 +1,7 @@
 using System.Collections.ObjectModel;
-using GameBarAlternative.WidgetProtocol;
+using WidgetRail.WidgetProtocol;
 
-namespace GameBarAlternative.WidgetSdk;
+namespace WidgetRail.WidgetSdk;
 
 /// <summary>Observable loading state for one bounded page window.</summary>
 public enum WidgetPagedResourceStatus

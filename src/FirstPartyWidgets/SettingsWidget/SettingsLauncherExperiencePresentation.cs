@@ -1,9 +1,9 @@
-using GameBarAlternative.LauncherExperienceCatalog;
-using GameBarAlternative.PlatformSettings;
-using GameBarAlternative.WidgetProtocol;
-using GameBarAlternative.WidgetSdk;
+using WidgetRail.LauncherExperienceCatalog;
+using WidgetRail.PlatformSettings;
+using WidgetRail.WidgetProtocol;
+using WidgetRail.WidgetSdk;
 
-namespace GameBarAlternative.FirstPartyWidgets.Settings;
+namespace WidgetRail.FirstPartyWidgets.Settings;
 
 internal sealed record SettingsLauncherExperienceSelection(string Id, string Version);
 

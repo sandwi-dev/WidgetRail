@@ -3,9 +3,9 @@ using System.Reflection;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
-using GameBarAlternative.WidgetStyling;
+using WidgetRail.WidgetStyling;
 
-namespace GameBarAlternative.PlatformSettings;
+namespace WidgetRail.PlatformSettings;
 
 public sealed record ThemeDescriptor(
     string Id,
@@ -17,7 +17,7 @@ public sealed record ThemeDescriptor(
 public sealed record ThemeCatalogEntry(
     ThemeDescriptor Descriptor,
     bool IsValid,
-    IReadOnlyList<GbssDiagnostic> Diagnostics,
+    IReadOnlyList<WrssDiagnostic> Diagnostics,
     string? InstalledId = null,
     string? InstalledVersion = null)
 {
@@ -29,10 +29,10 @@ public sealed record ThemeCatalogSnapshot(IReadOnlyList<ThemeCatalogEntry> Theme
 
 public sealed record ThemeLoadResult(
     ThemeDescriptor Descriptor,
-    GbssPackageResult Package)
+    WrssPackageResult Package)
 {
     public bool IsValid => Package.IsValid;
-    public IReadOnlyList<GbssDiagnostic> Diagnostics => Package.Diagnostics;
+    public IReadOnlyList<WrssDiagnostic> Diagnostics => Package.Diagnostics;
 }
 
 public sealed record ThemeManifestDocument
@@ -64,11 +64,11 @@ public sealed class ThemeCatalog
     public const int MaximumManifestBytes = 64 * 1024;
     private const string ManifestFileName = "theme.json";
     private const string BuiltInDefaultResource =
-        "GameBarAlternative.PlatformSettings.Themes.builtin-default.gbss";
+        "WidgetRail.PlatformSettings.Themes.builtin-default.wrss";
     private const string BuiltInCoolSlateManifestResource =
-        "GameBarAlternative.PlatformSettings.Themes.builtin-cool-slate.theme.json";
+        "WidgetRail.PlatformSettings.Themes.builtin-cool-slate.theme.json";
     private const string BuiltInCoolSlateSourceResource =
-        "GameBarAlternative.PlatformSettings.Themes.builtin-cool-slate.theme.gbss";
+        "WidgetRail.PlatformSettings.Themes.builtin-cool-slate.theme.wrss";
     private static readonly JsonSerializerOptions JsonOptions = CreateJsonOptions();
 
     private readonly PlatformSettingsPaths _paths;
@@ -85,7 +85,7 @@ public sealed class ThemeCatalog
             BuiltInCoolSlateSourceResource,
             ThemeIdentity.BuiltInCoolSlate,
             ThemeIdentity.BuiltInCoolSlateVersion,
-            "org.gbar.builtin");
+            "widgetrail.builtin");
         _builtIns = Array.AsReadOnly<ThemeLoadResult>([_builtIn, coolSlate]);
         _builtInsById = new ReadOnlyDictionary<string, ThemeLoadResult>(
             _builtIns.ToDictionary(item => item.Descriptor.Id, StringComparer.Ordinal));
@@ -219,9 +219,9 @@ public sealed class ThemeCatalog
             if (manifestError is not null)
                 return Invalid(descriptor, manifestError.Value.Code, manifestError.Value.Message);
 
-            var package = GbssPackageLoader.Load(
+            var package = WrssPackageLoader.Load(
                 document.EntryFile,
-                new GbssFileSourceProvider(directory));
+                new WrssFileSourceProvider(directory));
             return new ThemeLoadResult(descriptor, SanitizePackage(package));
         }
         catch (PlatformSettingsException exception)
@@ -266,8 +266,8 @@ public sealed class ThemeCatalog
             return ("invalid_theme_version", "Theme version must use canonical dotted numeric notation.");
         if (!string.Equals(document.Version, directoryVersion, StringComparison.Ordinal))
             return ("theme_identity_mismatch", "Theme manifest version must exactly match its version directory.");
-        if (!GbssPackageLoader.IsSafePackagePath(document.EntryFile))
-            return ("invalid_theme_entry", "Theme entry must be a normalized package-relative .gbss path.");
+        if (!WrssPackageLoader.IsSafePackagePath(document.EntryFile))
+            return ("invalid_theme_entry", "Theme entry must be a normalized package-relative .wrss path.");
         return null;
     }
 
@@ -278,16 +278,16 @@ public sealed class ThemeCatalog
                 "missing_builtin_theme", "The built-in default theme resource is missing.");
         using var reader = new StreamReader(stream);
         var source = reader.ReadToEnd();
-        var parsed = GbssParser.Parse(source, "builtin/default.gbss");
-        var package = new GbssPackageResult([parsed.Document], parsed.Diagnostics);
-        var compiled = GbssThemeCompiler.Compile(package);
+        var parsed = WrssParser.Parse(source, "builtin/default.wrss");
+        var package = new WrssPackageResult([parsed.Document], parsed.Diagnostics);
+        var compiled = WrssThemeCompiler.Compile(package);
         if (!compiled.IsValid)
         {
             var diagnostic = compiled.Diagnostics.First(item =>
-                item.Severity == GbssDiagnosticSeverity.Error);
+                item.Severity == WrssDiagnosticSeverity.Error);
             throw new PlatformSettingsException(
                 "invalid_builtin_theme",
-                $"The built-in default theme failed GBSS validation: " +
+                $"The built-in default theme failed WRSS validation: " +
                 $"{SafeMessage(diagnostic.Code)}: {SafeMessage(diagnostic.Message)}");
         }
         return new ThemeLoadResult(
@@ -328,7 +328,7 @@ public sealed class ThemeCatalog
             document.Name.Any(char.IsControl) ||
             !string.Equals(document.Version, expectedVersion, StringComparison.Ordinal) ||
             !ThemeIdentity.TryParseCanonicalVersion(document.Version, out var version) ||
-            !string.Equals(document.EntryFile, "theme.gbss", StringComparison.Ordinal) ||
+            !string.Equals(document.EntryFile, "theme.wrss", StringComparison.Ordinal) ||
             !string.Equals(document.Publisher, expectedPublisher, StringComparison.Ordinal) ||
             !ThemeIdentity.IsValidPublisher(document.Publisher) ||
             !document.Id.StartsWith(document.Publisher + ".", StringComparison.Ordinal))
@@ -341,19 +341,19 @@ public sealed class ThemeCatalog
         var sourceBytes = ReadEmbeddedResource(
             assembly,
             sourceResource,
-            checked((int)GbssLimits.MaximumSourceBytes));
+            checked((int)WrssLimits.MaximumSourceBytes));
         var source = Encoding.UTF8.GetString(sourceBytes);
-        var package = GbssPackageLoader.Load(
+        var package = WrssPackageLoader.Load(
             document.EntryFile,
             new EmbeddedThemeSourceProvider(document.EntryFile, source));
-        var compiled = GbssThemeCompiler.Compile(package);
+        var compiled = WrssThemeCompiler.Compile(package);
         if (!compiled.IsValid)
         {
             var diagnostic = compiled.Diagnostics.First(item =>
-                item.Severity == GbssDiagnosticSeverity.Error);
+                item.Severity == WrssDiagnosticSeverity.Error);
             throw new PlatformSettingsException(
                 "invalid_builtin_theme",
-                $"The built-in theme '{expectedId}' failed GBSS validation: " +
+                $"The built-in theme '{expectedId}' failed WRSS validation: " +
                 $"{SafeMessage(diagnostic.Code)}: {SafeMessage(diagnostic.Message)}");
         }
 
@@ -388,12 +388,12 @@ public sealed class ThemeCatalog
         return output.ToArray();
     }
 
-    private sealed class EmbeddedThemeSourceProvider(string path, string source) : IGbssSourceProvider
+    private sealed class EmbeddedThemeSourceProvider(string path, string source) : IWrssSourceProvider
     {
-        public GbssSourceReadResult Read(string packageRelativePath) =>
+        public WrssSourceReadResult Read(string packageRelativePath) =>
             string.Equals(packageRelativePath, path, StringComparison.Ordinal)
-                ? GbssSourceReadResult.FromSource(source)
-                : GbssSourceReadResult.Failure(GbssSourceReadStatus.Missing);
+                ? WrssSourceReadResult.FromSource(source)
+                : WrssSourceReadResult.Failure(WrssSourceReadStatus.Missing);
     }
 
     private static ThemeLoadResult Invalid(string id, string code, string message) =>
@@ -413,12 +413,12 @@ public sealed class ThemeCatalog
         string code,
         string message) => new(
             descriptor,
-            new GbssPackageResult(
+            new WrssPackageResult(
                 [],
-                [new GbssDiagnostic(
-                    "theme.json", 1, 1, GbssDiagnosticSeverity.Error, code, message)]));
+                [new WrssDiagnostic(
+                    "theme.json", 1, 1, WrssDiagnosticSeverity.Error, code, message)]));
 
-    private static GbssPackageResult SanitizePackage(GbssPackageResult package) => new(
+    private static WrssPackageResult SanitizePackage(WrssPackageResult package) => new(
         package.Documents,
         package.Diagnostics.Select(item => item with
         {
@@ -449,7 +449,7 @@ public sealed class ThemeCatalog
         var normalized = value.Replace('\\', '/');
         return normalized.Length <= 256 && !Path.IsPathRooted(normalized)
             ? normalized
-            : "theme.gbss";
+            : "theme.wrss";
     }
 
     private static string SafeMessage(string value)

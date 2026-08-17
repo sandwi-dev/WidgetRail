@@ -531,7 +531,7 @@ it.
 
 The implemented first-party package contract is:
 
-- package ID `org.gbar.firstparty.network-controls`;
+- package ID `widgetrail.firstparty.network-controls`;
 - source `src/FirstPartyWidgets/NetworkControlsWidget`;
 - required `system.network.read.v1`, `system.network.wifi.read.v1`, and
   `system.network.wifi.radio.read.v1`; optional connection, Wi-Fi radio control,
@@ -757,7 +757,7 @@ Do not call Network Controls shipped or production-ready until all of these are
 present and passing in the current worktree. Items 1–7 pass in the current
 2026-08-07 worktree; item 8 remains open:
 
-1. first-party widget, worker, strict manifest, GBSS, and public-SDK-only tests;
+1. first-party widget, worker, strict manifest, WRSS, and public-SDK-only tests;
 2. real Windows network provider with deterministic adapter tests;
 3. production bridge composition using the real provider instead of the
    simulator;

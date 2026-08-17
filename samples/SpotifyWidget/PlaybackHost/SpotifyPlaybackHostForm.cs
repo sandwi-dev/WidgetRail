@@ -1,10 +1,10 @@
 using System.Text;
 using System.Text.Json;
-using GameBarAlternative.SpotifyPlayback;
+using WidgetRail.SpotifyPlayback;
 using Microsoft.Web.WebView2.Core;
 using Microsoft.Web.WebView2.WinForms;
 
-namespace GameBarAlternative.SpotifyPlaybackHost;
+namespace WidgetRail.SpotifyPlaybackHost;
 
 internal sealed class SpotifyPlaybackHostForm : Form
 {

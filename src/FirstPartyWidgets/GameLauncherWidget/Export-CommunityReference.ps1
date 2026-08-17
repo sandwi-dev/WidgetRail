@@ -1,7 +1,7 @@
 [CmdletBinding()]
 param(
     [Parameter(Mandatory = $true)]
-    [string]$Gbar,
+    [string]$Wrail,
 
     [Parameter(Mandatory = $true)]
     [string]$Output
@@ -9,22 +9,22 @@ param(
 
 $ErrorActionPreference = 'Stop'
 
-$gbarPath = [System.IO.Path]::GetFullPath($Gbar)
+$wrailPath = [System.IO.Path]::GetFullPath($Wrail)
 $outputPath = [System.IO.Path]::GetFullPath($Output)
-if (-not [System.IO.File]::Exists($gbarPath)) {
-    throw "gbar executable was not found: $gbarPath"
+if (-not [System.IO.File]::Exists($wrailPath)) {
+    throw "wrail executable was not found: $wrailPath"
 }
 if ([System.IO.Directory]::Exists($outputPath) -or [System.IO.File]::Exists($outputPath)) {
     throw "Output already exists: $outputPath"
 }
 
-& $gbarPath new widget GameLauncherCommunity `
+& $wrailPath new widget GameLauncherCommunity `
     --output $outputPath `
-    --id org.gbar.community.reference.game-launcher `
-    --publisher org.gbar.community.reference `
+    --id widgetrail.community.reference.game-launcher `
+    --publisher widgetrail.community.reference `
     --template multipage
 if ($LASTEXITCODE -ne 0) {
-    throw "gbar new failed with exit code $LASTEXITCODE."
+    throw "wrail new failed with exit code $LASTEXITCODE."
 }
 
 $sourceRoot = Join-Path $outputPath 'src'
@@ -40,12 +40,12 @@ if (-not (Test-Path -LiteralPath $windowsSdkPackage -PathType Leaf)) {
     throw "The Windows SDK reference package $windowsSdkVersion is unavailable in the local NuGet cache. Restore the Game Launcher application once, then retry."
 }
 Copy-Item -LiteralPath $windowsSdkPackage `
-    -Destination (Join-Path $outputPath '.gbar\packages')
+    -Destination (Join-Path $outputPath '.widgetrail\packages')
 $nugetConfiguration = Join-Path $outputPath 'NuGet.Config'
 $nugetText = Get-Content -LiteralPath $nugetConfiguration -Raw
 $nugetText = $nugetText.Replace(
-    '<package pattern="GameBarAlternative.WidgetSdk" />',
-    "<package pattern=`"GameBarAlternative.WidgetSdk`" />`r`n      <package pattern=`"Microsoft.Windows.SDK.NET.Ref`" />")
+    '<package pattern="WidgetRail.WidgetSdk" />',
+    "<package pattern=`"WidgetRail.WidgetSdk`" />`r`n      <package pattern=`"Microsoft.Windows.SDK.NET.Ref`" />")
 $nugetText | Set-Content -LiteralPath $nugetConfiguration -Encoding utf8
 Get-ChildItem -LiteralPath $PSScriptRoot -Filter '*.cs' |
     Where-Object { $_.Name -ne 'AssemblyInfo.cs' } |
@@ -57,8 +57,8 @@ Get-ChildItem -LiteralPath (Join-Path $PSScriptRoot '..\..\WindowsAppLibraryProv
     -Filter '*.cs' |
     Where-Object { $_.Name -ne 'AssemblyInfo.cs' } |
     Copy-Item -Destination $backendRoot
-Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'styles\default.gbss') `
-    -Destination (Join-Path $outputPath 'styles\default.gbss') -Force
+Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'styles\default.wrss') `
+    -Destination (Join-Path $outputPath 'styles\default.wrss') -Force
 
 $projectPath = Join-Path $outputPath 'GameLauncherCommunity.csproj'
 $projectText = Get-Content -LiteralPath $projectPath -Raw
@@ -82,7 +82,7 @@ if (-not $sdkVersion.Success) {
     <PathMap>`$(MSBuildProjectDirectory)=/_/source</PathMap>
   </PropertyGroup>
   <ItemGroup>
-    <PackageReference Include="GameBarAlternative.WidgetSdk" Version="$($sdkVersion.Groups[1].Value)" />
+    <PackageReference Include="WidgetRail.WidgetSdk" Version="$($sdkVersion.Groups[1].Value)" />
   </ItemGroup>
   <ItemGroup>
     <Compile Remove="tests\**\*.cs" />
@@ -93,8 +93,8 @@ if (-not $sdkVersion.Success) {
 @'
 {
   "manifestVersion": 1,
-  "id": "org.gbar.community.reference.game-launcher",
-  "publisher": "org.gbar.community.reference",
+  "id": "widgetrail.community.reference.game-launcher",
+  "publisher": "widgetrail.community.reference",
   "name": "Game Launcher Community",
   "version": "0.2.0",
   "hostApi": { "minimum": "1.0", "maximumMajor": 1 },

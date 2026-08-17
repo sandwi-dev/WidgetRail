@@ -1,20 +1,20 @@
 using System.Globalization;
 using System.Security.Cryptography;
 using System.Text;
-using GameBarAlternative.PlatformBroker;
-using GameBarAlternative.PlatformSettings;
-using GameBarAlternative.WidgetCatalog;
-using GameBarAlternative.WidgetBridge;
-using GameBarAlternative.WidgetRuntime;
+using WidgetRail.PlatformBroker;
+using WidgetRail.PlatformSettings;
+using WidgetRail.WidgetCatalog;
+using WidgetRail.WidgetBridge;
+using WidgetRail.WidgetRuntime;
 
-namespace GameBarAlternative.LauncherExperienceBridgeFixture;
+namespace WidgetRail.LauncherExperienceBridgeFixture;
 
 internal static class Program
 {
     private const string ControlFileName = "launcher-experience-provider-fixture.txt";
     private static readonly BrokerWidgetIdentity GameLauncherIdentity = new(
-        "org.gbar.firstparty.game-launcher",
-        "org.gbar.firstparty",
+        "widgetrail.firstparty.game-launcher",
+        "widgetrail.firstparty",
         "game-launcher.default");
     private static string InstalledIdentity(string packageId, string version)
     {
@@ -109,11 +109,11 @@ internal static class Program
                 ConsentDecision.Grant,
                 shutdown.Token).ConfigureAwait(false);
             var installedSnapshot = await new
-                GameBarAlternative.WidgetCatalog.WidgetCatalog(installedCatalogRoot)
+                WidgetRail.WidgetCatalog.WidgetCatalog(installedCatalogRoot)
                 .DiscoverAsync(shutdown.Token).ConfigureAwait(false);
             var communityCandidate = installedSnapshot.Widgets.SingleOrDefault(widget =>
                 widget.ActiveVersion.Manifest.Id ==
-                    "org.gbar.community.reference.game-launcher");
+                    "widgetrail.community.reference.game-launcher");
             if (communityCandidate is not null)
             {
                 var manifest = communityCandidate.ActiveVersion.Manifest;

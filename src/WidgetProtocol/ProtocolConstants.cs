@@ -1,4 +1,4 @@
-namespace GameBarAlternative.WidgetProtocol;
+namespace WidgetRail.WidgetProtocol;
 
 public static class ProtocolConstants
 {

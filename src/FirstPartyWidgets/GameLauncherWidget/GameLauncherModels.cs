@@ -1,8 +1,8 @@
 using System.Security.Cryptography;
 using System.Text;
-using GameBarAlternative.WidgetSdk;
+using WidgetRail.WidgetSdk;
 
-namespace GameBarAlternative.FirstPartyWidgets.GameLauncher;
+namespace WidgetRail.FirstPartyWidgets.GameLauncher;
 
 internal sealed record GameLauncherItem(
     WidgetAppLibraryItem Value,

@@ -1,10 +1,10 @@
 using System.Threading.Channels;
-using GameBarAlternative.WidgetBridge;
-using GameBarAlternative.WidgetProtocol;
-using GameBarAlternative.WidgetRuntime;
-using GameBarAlternative.WidgetSdk;
-using GameBarAlternative.PlatformBroker;
-using GameBarAlternative.PlatformDiagnostics;
+using WidgetRail.WidgetBridge;
+using WidgetRail.WidgetProtocol;
+using WidgetRail.WidgetRuntime;
+using WidgetRail.WidgetSdk;
+using WidgetRail.PlatformBroker;
+using WidgetRail.PlatformDiagnostics;
 
 internal static class BridgeClientRegistryScenarios
 {
@@ -712,8 +712,8 @@ internal static class BridgeClientRegistryScenarios
     {
         var settings = Widget("settings", worker: 'a', catalog: 'a') with
         {
-            PackageId = "org.gbar.firstparty.settings",
-            PublisherId = "org.gbar.firstparty",
+            PackageId = "widgetrail.firstparty.settings",
+            PublisherId = "widgetrail.firstparty",
             InstanceId = "settings.default",
             RequiresAppContainer = false,
             DeclaredCapabilities = [],

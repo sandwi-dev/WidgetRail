@@ -1,6 +1,6 @@
 using System.Diagnostics;
 
-namespace GameBarAlternative.WindowsAppLibraryProvider;
+namespace WidgetRail.WindowsAppLibraryProvider;
 
 /// <summary>Launches one provider-revalidated numeric Steam application ID.</summary>
 internal sealed class WindowsSteamLauncher : IWindowsSteamLauncher

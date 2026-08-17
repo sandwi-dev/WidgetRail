@@ -1389,7 +1389,7 @@ function Invoke-LauncherExperienceHostTests {
             $env:GBA_LAUNCHER_LIFECYCLE_HOST_TEST = Join-Path $outputDirectory 'LauncherExperienceHostTests.exe'
             $env:GBA_LAUNCHER_LIFECYCLE_FIXTURE_BRIDGE = $fixtureBridge
             & dotnet run `
-                --project (Join-Path $projectDirectory '..\..\tests\GbarCli.Tests\GbarCli.Tests.csproj') `
+                --project (Join-Path $projectDirectory '..\..\tests\WrailCli.Tests\WrailCli.Tests.csproj') `
                 --configuration $Configuration -- `
                 --test 'Launcher Experience author-to-production lifecycle is exact'
             if ($LASTEXITCODE -ne 0) {
@@ -1420,15 +1420,15 @@ function Invoke-AdvancedPresentationHostTests {
     if (-not (Test-Path -LiteralPath $fixture)) {
         throw 'AdvancedPresentationCommunityFixture publish omitted its executable.'
     }
-    $gbarOutput = Join-Path $advancedPresentationCommunityFixtureOutput 'gbar'
+    $wrailOutput = Join-Path $advancedPresentationCommunityFixtureOutput 'wrail'
     & dotnet publish `
-        (Join-Path $projectDirectory '..\..\tools\GbarCli\GbarCli.csproj') `
+        (Join-Path $projectDirectory '..\..\tools\WrailCli\WrailCli.csproj') `
         --configuration $Configuration --no-self-contained --nologo `
-        --output $gbarOutput
+        --output $wrailOutput
     if ($LASTEXITCODE -ne 0) {
-        throw "gbar publish for the DLV-212 export failed with exit code $LASTEXITCODE."
+        throw "wrail publish for the DLV-212 export failed with exit code $LASTEXITCODE."
     }
-    $gbar = Join-Path $gbarOutput 'gbar.exe'
+    $wrail = Join-Path $wrailOutput 'wrail.exe'
     & dotnet publish `
         (Join-Path $projectDirectory '..\..\tests\LauncherExperienceBridgeFixture\LauncherExperienceBridgeFixture.csproj') `
         --configuration $Configuration --no-self-contained --nologo `
@@ -1437,9 +1437,9 @@ function Invoke-AdvancedPresentationHostTests {
         throw "LauncherExperienceBridgeFixture publish failed with exit code $LASTEXITCODE."
     }
     $fixtureBridge = Join-Path $launcherExperienceBridgeFixtureOutput 'LauncherExperienceBridgeFixture.exe'
-    if (-not (Test-Path -LiteralPath $gbar) -or
+    if (-not (Test-Path -LiteralPath $wrail) -or
         -not (Test-Path -LiteralPath $fixtureBridge)) {
-        throw 'The exported-candidate host fixture omitted gbar or its seeded bridge.'
+        throw 'The exported-candidate host fixture omitted wrail or its seeded bridge.'
     }
     $arguments = $common + @(
         (Join-Path $projectDirectory 'AdvancedPresentationHostTests.cpp'),
@@ -1457,15 +1457,15 @@ function Invoke-AdvancedPresentationHostTests {
     $temporaryRoot = [System.IO.Path]::GetFullPath([System.IO.Path]::GetTempPath())
     $runRoot = Join-Path $temporaryRoot ("gba-dlv213-export-" + [Guid]::NewGuid().ToString('N'))
     $candidateSource = Join-Path $runRoot 'GameLauncherCommunity'
-    $candidatePackage = Join-Path $runRoot 'org.gbar.community.reference.game-launcher-0.1.0.gbarwidget'
+    $candidatePackage = Join-Path $runRoot 'widgetrail.community.reference.game-launcher-0.1.0.wrwidget'
     New-Item -ItemType Directory -Path $runRoot | Out-Null
     try {
         & (Join-Path $projectDirectory '..\FirstPartyWidgets\GameLauncherWidget\Export-CommunityReference.ps1') `
-            -Gbar $gbar -Output $candidateSource
+            -Wrail $wrail -Output $candidateSource
         if ($LASTEXITCODE -ne 0) {
             throw "Game Launcher Community export failed with exit code $LASTEXITCODE."
         }
-        & $gbar pack $candidateSource --configuration $Configuration --output $candidatePackage
+        & $wrail pack $candidateSource --configuration $Configuration --output $candidatePackage
         if ($LASTEXITCODE -ne 0 -or -not (Test-Path -LiteralPath $candidatePackage)) {
             throw "Game Launcher Community pack failed with exit code $LASTEXITCODE."
         }
@@ -1681,11 +1681,11 @@ if (-not $SkipPackaging) {
         }
         Copy-Item -LiteralPath (Join-Path $WidgetProject 'manifest.json') `
             -Destination (Join-Path $resolvedPackageRoot 'manifest.json') -Force
-        Copy-Item -LiteralPath (Join-Path $WidgetProject 'styles\default.gbss') `
-            -Destination (Join-Path $stylesOutput 'default.gbss') -Force
+        Copy-Item -LiteralPath (Join-Path $WidgetProject 'styles\default.wrss') `
+            -Destination (Join-Path $stylesOutput 'default.wrss') -Force
         foreach ($requiredFile in @(
             'manifest.json',
-            'styles\default.gbss',
+            'styles\default.wrss',
             "payload\$AssemblyName.dll"
         )) {
             if (-not (Test-Path -LiteralPath (Join-Path $resolvedPackageRoot $requiredFile))) {
@@ -1732,14 +1732,14 @@ if (-not $SkipPackaging) {
     New-Item -ItemType Directory -Force -Path $settingsStylesOutput, $settingsPayloadOutput | Out-Null
     Copy-Item -LiteralPath (Join-Path $settingsProject 'manifest.json') `
         -Destination (Join-Path $settingsOutput 'manifest.json') -Force
-    Copy-Item -LiteralPath (Join-Path $settingsProject 'styles\default.gbss') `
-        -Destination (Join-Path $settingsStylesOutput 'default.gbss') -Force
+    Copy-Item -LiteralPath (Join-Path $settingsProject 'styles\default.wrss') `
+        -Destination (Join-Path $settingsStylesOutput 'default.wrss') -Force
     Copy-Item -LiteralPath (Join-Path $settingsOutput 'SettingsWidget.dll') `
         -Destination (Join-Path $settingsPayloadOutput 'SettingsWidget.dll') -Force
     foreach ($requiredSettingsFile in @(
         'SettingsWidget.Worker.exe',
         'manifest.json',
-        'styles\default.gbss',
+        'styles\default.wrss',
         'payload\SettingsWidget.dll'
     )) {
         if (-not (Test-Path -LiteralPath (Join-Path $settingsOutput $requiredSettingsFile))) {

@@ -1,14 +1,14 @@
 using System.IO.Pipes;
 using System.Runtime.ExceptionServices;
 using System.Text.Json;
-using GameBarAlternative.PlatformBroker;
-using GameBarAlternative.PlatformDiagnostics;
-using GameBarAlternative.PlatformSettings;
-using GameBarAlternative.WidgetProtocol;
-using GameBarAlternative.WidgetRuntime;
-using GameBarAlternative.WidgetSdk;
+using WidgetRail.PlatformBroker;
+using WidgetRail.PlatformDiagnostics;
+using WidgetRail.PlatformSettings;
+using WidgetRail.WidgetProtocol;
+using WidgetRail.WidgetRuntime;
+using WidgetRail.WidgetSdk;
 
-namespace GameBarAlternative.WidgetBridge;
+namespace WidgetRail.WidgetBridge;
 
 public sealed class WidgetBridgeServer : IAsyncDisposable
 {
@@ -97,14 +97,14 @@ public sealed class WidgetBridgeServer : IAsyncDisposable
         _packageUninstall = new BridgeWidgetPackageUninstallService(
             _catalogMonitor is null
                 ? null
-                : new GameBarAlternative.WidgetCatalog.WidgetCatalog(
+                : new WidgetRail.WidgetCatalog.WidgetCatalog(
                     _catalogMonitor.InstalledCatalogRoot),
             _catalogMonitor);
         _localPackageImport = _catalogMonitor is null
             ? null
             : new BridgeLocalWidgetPackageImportService(
                 _registry,
-                new GameBarAlternative.WidgetCatalog.WidgetCatalog(
+                new WidgetRail.WidgetCatalog.WidgetCatalog(
                     _catalogMonitor.InstalledCatalogRoot),
                 _catalogMonitor,
                 result => SendEventAsync(
@@ -672,8 +672,8 @@ public sealed class WidgetBridgeServer : IAsyncDisposable
         !configured.RequiresAppContainer &&
         configured.DeclaredCapabilities.Count == 0 &&
         string.Equals(configured.Id, "settings", StringComparison.Ordinal) &&
-        string.Equals(configured.PackageId, "org.gbar.firstparty.settings", StringComparison.Ordinal) &&
-        string.Equals(configured.PublisherId, "org.gbar.firstparty", StringComparison.Ordinal);
+        string.Equals(configured.PackageId, "widgetrail.firstparty.settings", StringComparison.Ordinal) &&
+        string.Equals(configured.PublisherId, "widgetrail.firstparty", StringComparison.Ordinal);
 
     private IBridgeWidgetClient CreateWidgetClient(
         ConfiguredWidget configured,

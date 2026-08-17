@@ -1,9 +1,9 @@
-using GameBarAlternative.WidgetProtocol;
-using GameBarAlternative.WidgetSdk;
+using WidgetRail.WidgetProtocol;
+using WidgetRail.WidgetSdk;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
-using ScenarioRunner = GameBarAlternative.WidgetSdk.WidgetScenario;
+using ScenarioRunner = WidgetRail.WidgetSdk.WidgetScenario;
 
-namespace GameBarAlternative.WidgetScenario.Tests;
+namespace WidgetRail.WidgetScenario.Tests;
 
 [TestClass]
 public sealed class ScenarioHelperTests

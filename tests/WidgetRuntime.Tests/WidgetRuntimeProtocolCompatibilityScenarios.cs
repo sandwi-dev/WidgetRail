@@ -1,8 +1,8 @@
 using System.Text;
 using System.Text.Json;
-using GameBarAlternative.WidgetProtocol;
-using GameBarAlternative.WidgetRuntime;
-using GameBarAlternative.WidgetSdk;
+using WidgetRail.WidgetProtocol;
+using WidgetRail.WidgetRuntime;
+using WidgetRail.WidgetSdk;
 
 internal static class WidgetRuntimeProtocolCompatibilityScenarios
 {
@@ -23,7 +23,7 @@ internal static class WidgetRuntimeProtocolCompatibilityScenarios
                 "A legacy empty render payload must produce a complete checkpoint.");
         }
 
-        var pipeName = $"gbar-runtime-v2-{Guid.NewGuid():N}";
+        var pipeName = $"wrail-runtime-v2-{Guid.NewGuid():N}";
         const string instance = "runtime.test";
         var sessionNonce = new string('C', 64);
         const int maximumBytes = 64 * 1024;

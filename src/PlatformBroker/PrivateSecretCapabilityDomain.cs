@@ -1,7 +1,7 @@
 using System.Text;
 using System.Text.Json;
 
-namespace GameBarAlternative.PlatformBroker;
+namespace WidgetRail.PlatformBroker;
 
 internal sealed class PrivateSecretCapabilityDomain(
     IPlatformBrokerBackend backend,

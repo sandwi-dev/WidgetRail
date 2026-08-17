@@ -1,5 +1,5 @@
-using GameBarAlternative.PlatformSettings;
-using GameBarAlternative.WidgetStyling;
+using WidgetRail.PlatformSettings;
+using WidgetRail.WidgetStyling;
 
 internal static class CodeTextThemeTests
 {
@@ -7,14 +7,14 @@ internal static class CodeTextThemeTests
     {
         var root = Path.Combine(Path.GetTempPath(), "gba-code-text-theme-test");
         var catalog = new ThemeCatalog(new PlatformSettingsPaths(root));
-        var compiled = GbssThemeCompiler.Compile(catalog.BuiltInDefault.Package);
+        var compiled = WrssThemeCompiler.Compile(catalog.BuiltInDefault.Package);
         True(compiled.IsValid, string.Join(Environment.NewLine,
             compiled.Diagnostics.Select(item => $"{item.Code}: {item.Message}")));
-        var style = compiled.Theme!.Resolve(new GbssElement(
+        var style = compiled.Theme!.Resolve(new WrssElement(
             "text",
             null,
-            new HashSet<string>(["gbar-code-text"], StringComparer.Ordinal),
-            new HashSet<GbssPseudoState>()));
+            new HashSet<string>(["wrail-code-text"], StringComparer.Ordinal),
+            new HashSet<WrssPseudoState>()));
 
         Equal("Consolas", style.Get("font-family")?.Text);
         Equal("0", style.Get("min-width")?.Text);

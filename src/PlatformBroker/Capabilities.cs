@@ -1,4 +1,4 @@
-namespace GameBarAlternative.PlatformBroker;
+namespace WidgetRail.PlatformBroker;
 
 public enum BrokerCapabilityKind
 {

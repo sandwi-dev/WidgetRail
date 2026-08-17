@@ -1,14 +1,14 @@
 using System.Globalization;
-using GameBarAlternative.PlatformSettings;
-using GameBarAlternative.PlatformBroker;
-using GameBarAlternative.WindowsAudioProvider;
-using GameBarAlternative.WindowsNetworkProvider;
-using GameBarAlternative.WindowsActivityProvider;
-using GameBarAlternative.WindowsBluetoothProvider;
-using GameBarAlternative.WindowsMediaProvider;
-using GameBarAlternative.WindowsCommunityProvider;
+using WidgetRail.PlatformSettings;
+using WidgetRail.PlatformBroker;
+using WidgetRail.WindowsAudioProvider;
+using WidgetRail.WindowsNetworkProvider;
+using WidgetRail.WindowsActivityProvider;
+using WidgetRail.WindowsBluetoothProvider;
+using WidgetRail.WindowsMediaProvider;
+using WidgetRail.WindowsCommunityProvider;
 
-namespace GameBarAlternative.WidgetBridge;
+namespace WidgetRail.WidgetBridge;
 
 internal static class Program
 {
@@ -73,7 +73,7 @@ internal static class Program
                 new WindowsActivityPlatformBackend(),
                 new WindowsBluetoothPlatformBackend(),
                 new WindowsMediaPlatformBackend(),
-                new GameBarAlternative.WindowsAppLibraryProvider.WindowsAppLibraryProvider(
+                new WidgetRail.WindowsAppLibraryProvider.WindowsAppLibraryProvider(
                     cancellationToken => settingsStore.LoadAsync(cancellationToken)
                         .GetAwaiter().GetResult().AppLibrary.EpicInstalledGamesEnabled,
                     cancellationToken => settingsStore.LoadAsync(cancellationToken)

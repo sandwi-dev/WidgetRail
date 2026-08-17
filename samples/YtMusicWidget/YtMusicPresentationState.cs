@@ -1,6 +1,6 @@
 using System.Collections.Immutable;
 
-namespace GameBarAlternative.Samples.YtMusicWidget;
+namespace WidgetRail.Samples.YtMusicWidget;
 
 internal sealed record YtMusicPendingOptimisticState(
     YtMusicCommand Command,

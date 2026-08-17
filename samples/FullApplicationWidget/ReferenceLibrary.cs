@@ -1,7 +1,7 @@
 using System.Globalization;
-using GameBarAlternative.WidgetSdk;
+using WidgetRail.WidgetSdk;
 
-namespace GameBarAlternative.Samples.FullApplicationWidget;
+namespace WidgetRail.Samples.FullApplicationWidget;
 
 internal sealed record ReferenceDocument(
     string Id,

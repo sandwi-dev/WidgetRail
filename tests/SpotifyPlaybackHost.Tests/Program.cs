@@ -1,6 +1,6 @@
 using System.Text.Json;
-using GameBarAlternative.SpotifyPlaybackHost;
-using GameBarAlternative.SpotifyPlayback;
+using WidgetRail.SpotifyPlaybackHost;
+using WidgetRail.SpotifyPlayback;
 
 var tests = new (string Name, Func<Task> Run)[]
 {
@@ -196,7 +196,7 @@ static SpotifyLocalPlaybackState PlaybackState(string artworkUrl, string name = 
 static Task PageSourceContract()
 {
     Assert.True(SpotifyPlaybackPageValidator.IsTrustedSource(
-        "https://spotify-playback.gbar.internal/index.html"));
+        "https://spotify-playback.widgetrail.internal/index.html"));
     Assert.True(!SpotifyPlaybackPageValidator.IsTrustedSource("about:blank"));
     Assert.True(!SpotifyPlaybackPageValidator.IsTrustedSource("https://sdk.scdn.co/"));
     Assert.True(!SpotifyPlaybackPageValidator.IsTrustedSource(null));

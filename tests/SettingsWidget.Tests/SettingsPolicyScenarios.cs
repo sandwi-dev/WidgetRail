@@ -1,11 +1,11 @@
 using System.Text.Json;
-using GameBarAlternative.FirstPartyWidgets.Settings;
-using GameBarAlternative.PlatformBroker;
-using GameBarAlternative.PlatformDiagnostics;
-using GameBarAlternative.PlatformSettings;
-using GameBarAlternative.WidgetCatalog;
-using GameBarAlternative.WidgetProtocol;
-using GameBarAlternative.WidgetSdk;
+using WidgetRail.FirstPartyWidgets.Settings;
+using WidgetRail.PlatformBroker;
+using WidgetRail.PlatformDiagnostics;
+using WidgetRail.PlatformSettings;
+using WidgetRail.WidgetCatalog;
+using WidgetRail.WidgetProtocol;
+using WidgetRail.WidgetSdk;
 
 internal static class SettingsPolicyScenarios
 {
@@ -403,7 +403,7 @@ internal static class SettingsPolicyScenarios
         public PolicyTemporaryDirectory()
         {
             Path = System.IO.Path.Combine(
-                System.IO.Path.GetTempPath(), $"gbar-settings-policy-{Guid.NewGuid():N}");
+                System.IO.Path.GetTempPath(), $"wrail-settings-policy-{Guid.NewGuid():N}");
             Directory.CreateDirectory(Path);
         }
 

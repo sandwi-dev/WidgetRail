@@ -1,8 +1,8 @@
-using GameBarAlternative.FirstPartyWidgets.GameLauncher;
-using GameBarAlternative.PlatformBroker;
-using GameBarAlternative.WidgetProtocol;
-using GameBarAlternative.WidgetSdk;
-using GameBarAlternative.WindowsAppLibraryProvider;
+using WidgetRail.FirstPartyWidgets.GameLauncher;
+using WidgetRail.PlatformBroker;
+using WidgetRail.WidgetProtocol;
+using WidgetRail.WidgetSdk;
+using WidgetRail.WindowsAppLibraryProvider;
 
 namespace GameLauncherCommunityApplication.Tests;
 

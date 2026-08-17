@@ -1,6 +1,6 @@
 using System.Collections.Concurrent;
 
-namespace GameBarAlternative.WindowsNetworkProvider;
+namespace WidgetRail.WindowsNetworkProvider;
 
 /// <summary>
 /// Bounded admission and terminal draining for the provider's single owner-thread queue.

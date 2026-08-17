@@ -1,8 +1,8 @@
 using System.Text.Json;
-using GameBarAlternative.PlatformBroker;
-using GameBarAlternative.PlatformDiagnostics;
-using GameBarAlternative.WidgetBridge;
-using GameBarAlternative.WidgetRuntime;
+using WidgetRail.PlatformBroker;
+using WidgetRail.PlatformDiagnostics;
+using WidgetRail.WidgetBridge;
+using WidgetRail.WidgetRuntime;
 
 internal static class BridgeDiagnosticsScenarios
 {
@@ -207,8 +207,8 @@ internal static class BridgeDiagnosticsScenarios
     {
         var settings = Candidate("settings", "Settings") with
         {
-            PackageId = "org.gbar.firstparty.settings",
-            PublisherId = "org.gbar.firstparty",
+            PackageId = "widgetrail.firstparty.settings",
+            PublisherId = "widgetrail.firstparty",
         };
         if (isolationKey is null) return new BridgeCatalog([settings]);
         return new BridgeCatalog(

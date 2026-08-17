@@ -1,4 +1,4 @@
-using GameBarAlternative.WidgetSdk;
+using WidgetRail.WidgetSdk;
 
 internal sealed record ApiDiff(
     IReadOnlyList<string> Removed,

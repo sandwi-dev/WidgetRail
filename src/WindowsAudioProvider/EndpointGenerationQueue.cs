@@ -1,6 +1,6 @@
 using System.Collections.Concurrent;
 
-namespace GameBarAlternative.WindowsAudioProvider;
+namespace WidgetRail.WindowsAudioProvider;
 
 /// <summary>
 /// Separates callback-owned values by endpoint generation so a late callback from an

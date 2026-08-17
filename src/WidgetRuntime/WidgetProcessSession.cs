@@ -1,7 +1,7 @@
 using System.Diagnostics;
 using System.IO.Pipes;
 
-namespace GameBarAlternative.WidgetRuntime;
+namespace WidgetRail.WidgetRuntime;
 
 internal sealed class WidgetProcessSession(
     TimeProvider timeProvider,

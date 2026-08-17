@@ -1,6 +1,6 @@
 using System.Threading.Channels;
-using GameBarAlternative.PlatformBroker;
-using GameBarAlternative.WindowsAudioProvider;
+using WidgetRail.PlatformBroker;
+using WidgetRail.WindowsAudioProvider;
 
 var tests = new (string Name, Func<Task> Run)[]
 {
@@ -381,7 +381,7 @@ static async Task ProductionAdapterSmoke()
 static async Task ProductionSessionControlSmoke()
 {
     if (!OperatingSystem.IsWindows() ||
-        !string.Equals(Environment.GetEnvironmentVariable("GBA_TEST_LIVE_AUDIO_CONTROL"), "1",
+        !string.Equals(Environment.GetEnvironmentVariable("WRAIL_TEST_LIVE_AUDIO_CONTROL"), "1",
             StringComparison.Ordinal)) return;
     await using var backend = new WindowsAudioPlatformBackend();
     var sessions = await backend.GetAudioSessionsAsync(CancellationToken.None)

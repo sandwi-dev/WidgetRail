@@ -1,7 +1,7 @@
 using System.Diagnostics;
-using GameBarAlternative.WidgetSdk;
+using WidgetRail.WidgetSdk;
 
-namespace GameBarAlternative.Tests.FullApplicationWidgetFixture;
+namespace WidgetRail.Tests.FullApplicationWidgetFixture;
 
 public sealed class FullApplicationWidget : Widget
 {
@@ -12,7 +12,7 @@ public sealed class FullApplicationWidget : Widget
     {
         var privateRoot = Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-            "GameBarAlternative.FullApplicationFixture");
+            "WidgetRail.FullApplicationFixture");
         Directory.CreateDirectory(privateRoot);
         var privateDatabase = Path.Combine(privateRoot, "catalog.bin");
         var bytes = new byte[128 * 1024];

@@ -66,8 +66,8 @@ if (-not (Test-Path -LiteralPath $evidence -PathType Leaf)) {
 }
 $result = Get-Content -LiteralPath $evidence -Raw | ConvertFrom-Json
 if (@($result.packages).Count -ne 2 -or
-    @($result.packages.id) -notcontains 'org.gbar.samples.spotify' -or
-    @($result.packages.id) -notcontains 'org.gbar.samples.ytmusic') {
+    @($result.packages.id) -notcontains 'widgetrail.samples.spotify' -or
+    @($result.packages.id) -notcontains 'widgetrail.samples.ytmusic') {
     throw 'Community-addon recovery evidence did not cover both exact current addons.'
 }
 

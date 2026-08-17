@@ -31,7 +31,7 @@ Accessibility is a system concern above individual content. PS5 offers text sizi
 8. **Opening deepens; it does not reset.** `A` opens the selected card's widget at its last stable focus and state. Closing and reopening resumes the last-used card/widget unless that state is no longer valid.
 9. **Reorder is a visible mode.** On dashboard `Y` enters reorder mode; D-pad moves the card, `A` confirms, `B` cancels. Persist order and hidden status. Do not overload ordinary navigation with accidental rearrangement.
 10. **Stable system controls stay available.** Reserve a small host-owned set for essentials such as settings, notifications, sound, controller battery, and exit. Community widgets cannot replace or hide safety-critical host controls.
-11. **Accessibility overrides themes.** Focus must remain visible without relying only on color. Text scale, bold/high-contrast state, reduced motion, screen-reader labels, and “show an enabled mark” semantics override GBSS styling.
+11. **Accessibility overrides themes.** Focus must remain visible without relying only on color. Text scale, bold/high-contrast state, reduced motion, screen-reader labels, and “show an enabled mark” semantics override WRSS styling.
 12. **Design for interruption.** Opening is fast, card content is glanceable, animations are brief or disabled, and returning to the game is one Guide press from any widget depth.
 
 ## YT Music dashboard contract

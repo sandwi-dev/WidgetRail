@@ -1,8 +1,8 @@
 using System.Security.Cryptography;
 using System.Text;
-using GameBarAlternative.PlatformBroker;
+using WidgetRail.PlatformBroker;
 
-namespace GameBarAlternative.WindowsAppLibraryProvider;
+namespace WidgetRail.WindowsAppLibraryProvider;
 
 /// <summary>
 /// Owns the installed Microsoft/Xbox game source generation and exact launch

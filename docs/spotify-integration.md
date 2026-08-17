@@ -26,7 +26,7 @@ Premium eligibility, and terms remain external requirements.
 
 | Area | Current status |
 | --- | --- |
-| Public configuration | `WidgetConfigurationStore` persists bounded non-secret values under `widget-config`, isolated by publisher and package; `gbar config` provides the current local workflow. |
+| Public configuration | `WidgetConfigurationStore` persists bounded non-secret values under `widget-config`, isolated by publisher and package; `wrail config` provides the current local workflow. |
 | Application contract | Package-private bounded DTOs connect the widget to its package-owned backend; no Spotify DTO or capability is added to product core. |
 | Package backend | Implemented PKCE, exact loopback callback, Credential Manager refresh-token storage, player snapshot/control projection, bounded `Retry-After` handling, scope allowlist, and sanitized application errors. |
 | Product composition | Generic catalog, full-trust supervisor, authenticated overlay IPC, lifecycle, restart, and presentation only; no Spotify construction or authorization. |
@@ -126,13 +126,13 @@ vault.
 Until the controller-native Settings editor lands, the local workflow is:
 
 ```powershell
-dotnet run --project .\tools\GbarCli\GbarCli.csproj -- config set org.gbar.samples.spotify client-id <spotify-client-id> --publisher org.gbar.samples
-dotnet run --project .\tools\GbarCli\GbarCli.csproj -- config get org.gbar.samples.spotify client-id --publisher org.gbar.samples
-dotnet run --project .\tools\GbarCli\GbarCli.csproj -- config list org.gbar.samples.spotify --publisher org.gbar.samples
-dotnet run --project .\tools\GbarCli\GbarCli.csproj -- config remove org.gbar.samples.spotify client-id --publisher org.gbar.samples
+dotnet run --project .\tools\WrailCli\WrailCli.csproj -- config set widgetrail.samples.spotify client-id <spotify-client-id> --publisher widgetrail.samples
+dotnet run --project .\tools\WrailCli\WrailCli.csproj -- config get widgetrail.samples.spotify client-id --publisher widgetrail.samples
+dotnet run --project .\tools\WrailCli\WrailCli.csproj -- config list widgetrail.samples.spotify --publisher widgetrail.samples
+dotnet run --project .\tools\WrailCli\WrailCli.csproj -- config remove widgetrail.samples.spotify client-id --publisher widgetrail.samples
 ```
 
-`gbar config clear` removes every public configuration value for the selected
+`wrail config clear` removes every public configuration value for the selected
 publisher/package authority. `--settings-root <path>` is available for isolated
 local tests. The CLI rejects secret/password/token/credential-like keys. This
 workflow configures the provider used by the overlay. Connecting still requires
@@ -285,7 +285,7 @@ Spotify host API.
 - Store access/refresh tokens in package-owned use of Windows protected storage
   (Credential Manager and/or DPAPI with publisher/package/user scoping). Tokens
   and token metadata needed for replay never cross widget IPC, snapshots,
-  diagnostics, crash reports, or GBSS.
+  diagnostics, crash reports, or WRSS.
 - Authentication and enabled feature scopes remain explicit package policy.
   Revoke/disconnect cancels work and deletes only this package identity's token.
 - Current playback reads may use bounded adaptive polling only while Visible or

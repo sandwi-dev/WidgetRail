@@ -13,7 +13,7 @@
   </ItemGroup>
   <ItemGroup>
     <None Include="..\..\samples\SdkGalleryWidget\manifest.json" Link="manifest.json" CopyToOutputDirectory="PreserveNewest" />
-    <None Include="..\..\samples\SdkGalleryWidget\styles\default.gbss" Link="styles\default.gbss" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="..\..\samples\SdkGalleryWidget\styles\default.wrss" Link="styles\default.wrss" CopyToOutputDirectory="PreserveNewest" />
     <None Include="..\..\samples\SdkGalleryWidget\SdkGalleryWidget.csproj" Link="sample\SdkGalleryWidget.csproj" CopyToOutputDirectory="PreserveNewest" />
     <None Include="..\..\samples\SdkGalleryWidget\Build-CommunityPackage.ps1" Link="sample\Build-CommunityPackage.ps1" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>

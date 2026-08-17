@@ -20,7 +20,7 @@ share one protocol-v13 focus-persistence identity per logical destination. The
 host uses only that explicit identity to preserve focus across responsive
 presentation changes; action IDs remain routing intent and may be shared. The
 built-in theme owns the standard shell dimensions and focus/selected/pressed
-treatment; the sample does not rebuild those rules in local GBSS.
+treatment; the sample does not rebuild those rules in local WRSS.
 
 `WidgetIds.Scope("gallery")` builds the validated navigation ID. One
 `WidgetNavigator<GalleryRoute>` owns root destinations, nested
@@ -34,7 +34,7 @@ leaving a route cancels its token before the replacement view is published.
 The sample has no permissions, custom executable worker, native provider, or
 host-only escape hatch. Its manifest selects `dotnet-worker`, so an installed
 package is loaded by the host's generic Community AppContainer worker. The
-GBSS uses semantic `gbar-*` hooks plus local `gallery-*` classes and no fixed
+WRSS uses semantic `wrail-*` hooks plus local `gallery-*` classes and no fixed
 pixel window assumptions. Copy the relevant method and its related rules rather
 than copying the entire gallery into a production widget.
 
@@ -48,15 +48,15 @@ dotnet run --project .\tests\SdkGalleryWidget.Tests\SdkGalleryWidget.Tests.cspro
 ```
 
 The focused suite constructs and validates the sample's semantic snapshots in
-an author-controlled test process. `gbar render <snapshot.json>` can inspect a
-persisted data-only fixture but never loads the sample DLL; use `gbar dev` for
-executable AppContainer integration. The separate `gbar preview` manifest
+an author-controlled test process. `wrail render <snapshot.json>` can inspect a
+persisted data-only fixture but never loads the sample DLL; use `wrail dev` for
+executable AppContainer integration. The separate `wrail preview` manifest
 workflow currently validates and lists scenario declarations without loading
 their provider assembly. Selected scenario execution fails closed until an
 AppContainer preview worker exists. See the
 [widget authoring guide](../../docs/widget-authoring-guide.md#validate-list-scenarios-render-replay-and-test).
 
-Build a deterministic `.gbarwidget` with the same public CLI available to
+Build a deterministic `.wrwidget` with the same public CLI available to
 community authors:
 
 ```powershell
@@ -92,7 +92,7 @@ version, or pass `-Catalog <directory>` to test against an isolated catalog.
 
 The focused Gallery suite currently passes 6/6 tests, including complete page
 coverage, control state, route-owned nested scopes, non-focus-stealing Toast,
-generic package isolation, and responsive/theme-safe GBSS.
+generic package isolation, and responsive/theme-safe WRSS.
 
 See the [widget authoring guide](../../docs/widget-authoring-guide.md),
 [declarative UI reference](../../docs/declarative-ui.md), and

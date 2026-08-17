@@ -1,6 +1,6 @@
-using GameBarAlternative.PlatformBroker;
+using WidgetRail.PlatformBroker;
 
-namespace GameBarAlternative.WindowsBluetoothProvider;
+namespace WidgetRail.WindowsBluetoothProvider;
 
 /// <summary>
 /// Sanitizing broker backend for Bluetooth radio and association-endpoint state.

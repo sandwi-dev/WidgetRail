@@ -12,14 +12,14 @@ collection are not
 Until publisher signing and a curated production distribution flow exist,
 publish widget source in a dedicated GitHub repository:
 
-1. Include source, `manifest.json`, GBSS, assets, replay files, and a license.
-2. Document the required Game Bar Alternative commit or protocol/SDK version.
-3. Run `dotnet build`, typed-fake tests, `gbar validate`, data-only
-   `gbar render`/`gbar replay` fixtures, and `gbar pack` in CI. Do not load the
+1. Include source, `manifest.json`, WRSS, assets, replay files, and a license.
+2. Document the required WidgetRail commit or protocol/SDK version.
+3. Run `dotnet build`, typed-fake tests, `wrail validate`, data-only
+   `wrail render`/`wrail replay` fixtures, and `wrail pack` in CI. Do not load the
    built DLL into a full-trust CI helper.
 4. Treat repository code and GitHub Actions as reviewable source, not proof of
    publisher identity.
-5. Attach the deterministic `.gbarwidget` to a versioned GitHub Release and
+5. Attach the deterministic `.wrwidget` to a versioned GitHub Release and
    publish its SHA-256 digest through a channel users can authenticate.
 6. Label the release **developer preview / unsigned** until publisher signing
    is implemented.
@@ -32,49 +32,49 @@ the author. Share the expected digest through an independent authenticated
 channel.
 
 The SDK does not yet have an externally published NuGet feed. Instead,
-`gbar new widget` writes the matching `GameBarAlternative.WidgetSdk` package to
-the generated repository's `.gbar/packages` directory and a `NuGet.Config`
+`wrail new widget` writes the matching `WidgetRail.WidgetSdk` package to
+the generated repository's `.widgetrail/packages` directory and a `NuGet.Config`
 that clears external sources. The repository therefore builds offline without
-a Game Bar Alternative checkout or absolute project reference. Commit that
+a WidgetRail checkout or absolute project reference. Commit that
 small local dependency with the generated source when sharing the repository;
-it identifies the `gbar` SDK build used by the scaffold but is not a signature
+it identifies the `wrail` SDK build used by the scaffold but is not a signature
 or publisher-trust assertion. The matching version-2 template manifest is a
-closed bounded file inventory. `gbar new` stages the declared template files
+closed bounded file inventory. `wrail new` stages the declared template files
 and SDK package beside the requested target, validates the complete scaffold,
 and atomically renames it into place. It refuses every pre-existing target and
 removes its private staging directory on failure.
 
-## `.gbarwidget` packages
+## `.wrwidget` packages
 
 The implemented package contract is a ZIP-compatible archive with the
-`.gbarwidget` extension and root `manifest.json`. Typical contents are:
+`.wrwidget` extension and root `manifest.json`. Typical contents are:
 
 ```text
 manifest.json
 payload/Widget.dll
 payload/supporting-library.dll
-styles/default.gbss
+styles/default.wrss
 assets/...
 ```
 
-The `gbar` CLI and `WidgetCatalog` library can deterministically pack, validate,
+The `wrail` CLI and `WidgetCatalog` library can deterministically pack, validate,
 extract, discover, pin, roll back, enable, and order these packages.
 Installation is immutable by `<id>/<version>` and fails if the same version
 already exists. See the
 complete [packaging contract](widget-packaging.md).
 
-For the standard scaffold, source-aware `gbar pack` is the supported high-level
-operation. It validates manifest/GBSS, runs a bounded isolated Release build,
+For the standard scaffold, source-aware `wrail pack` is the supported high-level
+operation. It validates manifest/WRSS, runs a bounded isolated Release build,
 omits compiler symbols and machine-specific debug paths, stages the declared
 payload, and then applies the same deterministic catalog validation used for
 installation:
 
 ```powershell
-gbar validate .\VolumeControl
-gbar pack .\VolumeControl `
+wrail validate .\VolumeControl
+wrail pack .\VolumeControl `
   --configuration Release `
-  --output .\artifacts\dev.example.volume-control-0.1.0.gbarwidget
-Get-FileHash .\artifacts\dev.example.volume-control-0.1.0.gbarwidget -Algorithm SHA256
+  --output .\artifacts\dev.example.volume-control-0.1.0.wrwidget
+Get-FileHash .\artifacts\dev.example.volume-control-0.1.0.wrwidget -Algorithm SHA256
 ```
 
 Advanced build systems may still pass an already-staged package directory.
@@ -86,7 +86,7 @@ source build or missing entrypoint leaves no output and reports whether to
 correct `AssemblyName` or `entrypoint.assembly`.
 
 Packing uses ordinal entry order, fixed timestamps/metadata, bounded content,
-and the same installer inspection used later by `gbar install`, so identical
+and the same installer inspection used later by `wrail install`, so identical
 staged content produces identical package bytes.
 
 ## Publish a GitHub Release asset
@@ -95,12 +95,12 @@ Publish an immutable asset rather than asking users to install a branch or a
 repository archive:
 
 1. Choose a versioned tag. Do not reuse a tag for different package bytes.
-2. Run the Release build, validation, render/replay checks, and `gbar pack`
+2. Run the Release build, validation, render/replay checks, and `wrail pack`
    from a clean checkout or CI job.
-3. Compute SHA-256 over the final `.gbarwidget` asset, not its staging folder:
+3. Compute SHA-256 over the final `.wrwidget` asset, not its staging folder:
 
    ```powershell
-   $package = '.\artifacts\dev.example.volume-control-0.1.0.gbarwidget'
+   $package = '.\artifacts\dev.example.volume-control-0.1.0.wrwidget'
    $digest = (Get-FileHash $package -Algorithm SHA256).Hash.ToLowerInvariant()
    $digest
    ```
@@ -120,15 +120,15 @@ artifact.
 The shortest supported source is a deterministic GitHub Release reference:
 
 ```powershell
-gbar install `
-  github:example/volume-control@v0.1.0/dev.example.volume-control-0.1.0.gbarwidget `
+wrail install `
+  github:example/volume-control@v0.1.0/dev.example.volume-control-0.1.0.wrwidget `
   --sha256 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
 ```
 
 Its grammar is:
 
 ```text
-github:<owner>/<repository>@<tag>/<asset.gbarwidget>
+github:<owner>/<repository>@<tag>/<asset.wrwidget>
 ```
 
 All four components are required. The CLI converts the reference directly to
@@ -136,13 +136,13 @@ All four components are required. The CLI converts the reference directly to
 It does not query the GitHub API, infer a latest release, clone the repository,
 build source, or execute repository scripts. Owner, repository, tag, and asset
 must be conservative single path segments; path separators and unsafe segment
-characters are rejected. Name the asset with a `.gbarwidget` suffix.
+characters are rejected. Name the asset with a `.wrwidget` suffix.
 
 The same package can be installed from its complete HTTPS URL:
 
 ```powershell
-gbar install `
-  https://github.com/example/volume-control/releases/download/v0.1.0/dev.example.volume-control-0.1.0.gbarwidget `
+wrail install `
+  https://github.com/example/volume-control/releases/download/v0.1.0/dev.example.volume-control-0.1.0.wrwidget `
   --sha256 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
 ```
 
@@ -167,17 +167,17 @@ The preferred controller flow is Settings → Installed widgets; the CLI remains
 available for scripted/test catalogs:
 
 ```powershell
-gbar list
-gbar disable dev.example.volume-control
+wrail list
+wrail disable dev.example.volume-control
 # Run the remote install command again when updating an enabled widget.
 # Inspect every installed version and make the intended version explicit.
-gbar version list dev.example.volume-control
-gbar version select dev.example.volume-control 0.2.0
+wrail version list dev.example.volume-control
+wrail version select dev.example.volume-control 0.2.0
 # Prefer reviewing/enabling the result in Settings. CLI equivalent:
-gbar enable dev.example.volume-control
+wrail enable dev.example.volume-control
 # Removal is also an explicit disabled-only operation:
-gbar disable dev.example.volume-control
-gbar uninstall dev.example.volume-control
+wrail disable dev.example.volume-control
+wrail uninstall dev.example.volume-control
 ```
 
 The complete update review sequence is therefore:
@@ -186,8 +186,8 @@ The complete update review sequence is therefore:
 2. Install the exact new GitHub Release asset with its independently obtained
    SHA-256 pin. The old immutable version remains installed.
 3. In Settings → Installed widgets, open the package and choose **Manage
-   versions**. Select the exact new version. For scripted catalogs, use `gbar
-   version list <widget-id>` followed by `gbar version select <widget-id>
+   versions**. Select the exact new version. For scripted catalogs, use `wrail
+   version list <widget-id>` followed by `wrail version select <widget-id>
    <new-version>`.
 4. Review the selected identity, version, compatibility, and capabilities on
    the package details page.
@@ -198,7 +198,7 @@ An ID without an explicit active-version pin uses the greatest installed
 implicit choice from later discovery. If an older version was already pinned,
 installing a new release preserves that pin and prints the exact `version
 select` command needed to choose the new package. If the update fails after
-enablement, disable the widget and run `gbar version rollback <widget-id>` to
+enablement, disable the widget and run `wrail version rollback <widget-id>` to
 select the greatest installed version older than the active one, or add `--to
 <version>` for a specific installed older version. Rollback leaves the widget
 disabled so the selected package can be reviewed before re-enabling it. Use
@@ -217,7 +217,7 @@ opaque catalog token before mutation. Built-in and enabled packages remain
 protected. On success Settings returns to the installed list, where **Install
 local widget** remains available.
 
-`gbar uninstall <widget-id>` is the scripted equivalent. Both paths remove
+`wrail uninstall <widget-id>` is the scripted equivalent. Both paths remove
 every installed immutable version and the ID's catalog-state entry only after
 the widget is disabled. Package discovery
 is retired with an atomic directory move before bounded deletion, so no
@@ -234,12 +234,12 @@ settings, or user files.
 Local files use the same command and package validator:
 
 ```powershell
-gbar install .\dev.example.volume-control-0.1.0.gbarwidget
-gbar list
-gbar disable dev.example.volume-control
-gbar version list dev.example.volume-control
-gbar version select dev.example.volume-control 0.1.0
-gbar enable dev.example.volume-control
+wrail install .\dev.example.volume-control-0.1.0.wrwidget
+wrail list
+wrail disable dev.example.volume-control
+wrail version list dev.example.volume-control
+wrail version select dev.example.volume-control 0.1.0
+wrail enable dev.example.volume-control
 ```
 
 A newly discovered widget ID is disabled by default. Explicitly enable it after
@@ -262,7 +262,7 @@ Remote installation applies the same pre-publish policy to its already locked,
 digest-verified temporary-file stream.
 
 Settings → Installed widgets now exposes **Install local widget**, backed by the
-native host's private `.gbarwidget` picker/import boundary. It admits one modal
+native host's private `.wrwidget` picker/import boundary. It admits one modal
 `IFileOpenDialog` only while the exact bundled Settings instance is current and
 `Interactive`, revalidates instance plus runtime/presentation generations after
 selection and immediately before catalog publication, and cancels with the
@@ -290,13 +290,13 @@ The default catalog is
 same explicit override:
 
 ```powershell
-gbar install .\widget.gbarwidget --catalog .\artifacts\test-catalog
-gbar list --catalog .\artifacts\test-catalog
-gbar disable dev.example.widget --catalog .\artifacts\test-catalog
-gbar version list dev.example.widget --catalog .\artifacts\test-catalog
+wrail install .\widget.wrwidget --catalog .\artifacts\test-catalog
+wrail list --catalog .\artifacts\test-catalog
+wrail disable dev.example.widget --catalog .\artifacts\test-catalog
+wrail version list dev.example.widget --catalog .\artifacts\test-catalog
 ```
 
-Settings → Installed widgets provides one host-owned local `.gbarwidget` file
+Settings → Installed widgets provides one host-owned local `.wrwidget` file
 picker and installs the selected package disabled for review. There is no
 remote graphical acquisition, automatic updater, signature verification, or
 marketplace client. The bridge watches the default current-user catalog without
@@ -344,7 +344,7 @@ than opened component-by-component relative to a pinned catalog-root handle.
 
 For installed widget styles, the catalog also carries an exact relative-path/
 SHA-256 inventory computed in the same tree-hash pass. The bridge reads each
-GBSS entry/import through one consumed-byte-bounded handle, decodes strict
+WRSS entry/import through one consumed-byte-bounded handle, decodes strict
 UTF-8, and compares its bytes with that inventory before parsing. Modified and
 late-added style sources fail closed. Executable assemblies, lazy dependencies,
 and general package assets use the same verified-content lease described above.
@@ -428,8 +428,8 @@ Applications and tests can also use the same implemented library API:
 var catalog = new WidgetCatalog(currentUserCatalogRoot);
 var installer = catalog.CreateInstaller();
 
-var inspection = await installer.ValidateAsync("Example.gbarwidget");
-var installed = await catalog.InstallAsync("Example.gbarwidget");
+var inspection = await installer.ValidateAsync("Example.wrwidget");
+var installed = await catalog.InstallAsync("Example.wrwidget");
 await catalog.SetActiveVersionAsync(installed.Id, installed.Version);
 var snapshot = await catalog.DiscoverAsync();
 ```
@@ -454,7 +454,7 @@ reload path is not publisher proof; do not enable code you do not already trust.
 
 The intended flow is explicitly **planned**:
 
-1. A publisher builds and signs an immutable `.gbarwidget`.
+1. A publisher builds and signs an immutable `.wrwidget`.
 2. GitHub Releases or another HTTPS source hosts the exact bytes plus signed
    metadata; the current bounded downloader acquires the package.
 3. A future trust layer verifies publisher identity, host compatibility,

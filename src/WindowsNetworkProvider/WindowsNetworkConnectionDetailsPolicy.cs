@@ -1,7 +1,7 @@
 using System.Net.NetworkInformation;
-using GameBarAlternative.PlatformBroker;
+using WidgetRail.PlatformBroker;
 
-namespace GameBarAlternative.WindowsNetworkProvider;
+namespace WidgetRail.WindowsNetworkProvider;
 
 internal static class WindowsNetworkConnectionDetailsPolicy
 {

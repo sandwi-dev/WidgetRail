@@ -1,4 +1,4 @@
-namespace GameBarAlternative.PlatformDiagnostics;
+namespace WidgetRail.PlatformDiagnostics;
 
 public enum PlatformDiagnosticState
 {

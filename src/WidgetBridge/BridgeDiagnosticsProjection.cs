@@ -1,10 +1,10 @@
 using System.Security.Cryptography;
 using System.Text;
-using GameBarAlternative.PlatformBroker;
-using GameBarAlternative.PlatformDiagnostics;
-using GameBarAlternative.WidgetRuntime;
+using WidgetRail.PlatformBroker;
+using WidgetRail.PlatformDiagnostics;
+using WidgetRail.WidgetRuntime;
 
-namespace GameBarAlternative.WidgetBridge;
+namespace WidgetRail.WidgetBridge;
 
 internal readonly record struct BridgeAppearanceDiagnostic(
     bool IsConfigured,
@@ -44,7 +44,7 @@ internal sealed class WidgetBridgeDiagnosticsSource(
         var catalog = catalogMonitor?.DiagnosticsSnapshot() ?? new(
             registrySnapshot.CatalogRevision, 0, RetainedLastGood: false);
         var appearanceErrors = appearance?.LastReloadDiagnostics.Count(item =>
-            item.Severity == GameBarAlternative.WidgetStyling.GbssDiagnosticSeverity.Error) ?? 0;
+            item.Severity == WidgetRail.WidgetStyling.WrssDiagnosticSeverity.Error) ?? 0;
         return new BridgeDiagnosticsReadModel(
             registrySnapshot,
             catalog.Revision,

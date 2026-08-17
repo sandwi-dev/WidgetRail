@@ -1,5 +1,5 @@
-using GameBarAlternative.FirstPartyWidgets.GameLauncher;
-using GameBarAlternative.WidgetSdk;
+using WidgetRail.FirstPartyWidgets.GameLauncher;
+using WidgetRail.WidgetSdk;
 
 namespace GameLauncherCommunityApplication.Tests;
 

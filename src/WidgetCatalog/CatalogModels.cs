@@ -1,6 +1,6 @@
-using GameBarAlternative.WidgetProtocol;
+using WidgetRail.WidgetProtocol;
 
-namespace GameBarAlternative.WidgetCatalog;
+namespace WidgetRail.WidgetCatalog;
 
 public sealed record WidgetCatalogOptions
 {
@@ -50,7 +50,7 @@ public sealed record InstalledWidgetVersion(
     WidgetManifest Manifest,
     string ContentDigest)
 {
-    internal IReadOnlyDictionary<string, string> VerifiedGbssDigests { get; init; } =
+    internal IReadOnlyDictionary<string, string> VerifiedWrssDigests { get; init; } =
         new Dictionary<string, string>(StringComparer.Ordinal);
     internal IReadOnlyDictionary<string, VerifiedPackageFile> VerifiedFiles { get; init; } =
         new Dictionary<string, VerifiedPackageFile>(StringComparer.Ordinal);

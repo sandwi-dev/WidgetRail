@@ -1,6 +1,6 @@
-using GameBarAlternative.PlatformBroker;
+using WidgetRail.PlatformBroker;
 
-namespace GameBarAlternative.WindowsNetworkProvider;
+namespace WidgetRail.WindowsNetworkProvider;
 
 internal readonly record struct NetworkConnectionAttempt(
     NetworkConnectionAttemptState State,

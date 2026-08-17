@@ -1,6 +1,6 @@
-using GameBarAlternative.LauncherExperienceCatalog;
+using WidgetRail.LauncherExperienceCatalog;
 
-namespace GameBarAlternative.PlatformSettings;
+namespace WidgetRail.PlatformSettings;
 
 public sealed record LauncherExperienceRetirementResult(
     string Id,
@@ -33,7 +33,7 @@ public sealed class LauncherExperienceSelectionPolicy
             async (root, token) =>
             {
                 var entry = RequireValid(
-                    new GameBarAlternative.LauncherExperienceCatalog.LauncherExperienceCatalog(root)
+                    new WidgetRail.LauncherExperienceCatalog.LauncherExperienceCatalog(root)
                         .Load(id, version));
                 return await _settings.UpdateAsync(current => current with
                 {
@@ -84,7 +84,7 @@ public sealed class LauncherExperienceSelectionPolicy
                         "selected_launcher_experience_protected",
                         "The selected Launcher Experience version cannot be removed.");
                 var entry = RequireValid(
-                    new GameBarAlternative.LauncherExperienceCatalog.LauncherExperienceCatalog(root)
+                    new WidgetRail.LauncherExperienceCatalog.LauncherExperienceCatalog(root)
                         .Load(id, version));
                 if (entry.Descriptor.IsBuiltIn)
                     throw new PlatformSettingsException(

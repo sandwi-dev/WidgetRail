@@ -1,7 +1,7 @@
 using System.Text.Json;
-using GameBarAlternative.WidgetProtocol;
+using WidgetRail.WidgetProtocol;
 
-namespace GameBarAlternative.WidgetSdk;
+namespace WidgetRail.WidgetSdk;
 
 internal sealed record WidgetPresentationPublication(
     ViewSnapshot Snapshot,

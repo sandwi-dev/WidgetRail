@@ -1,4 +1,4 @@
-namespace GameBarAlternative.WindowsAppLibraryProvider;
+namespace WidgetRail.WindowsAppLibraryProvider;
 
 /// <summary>
 /// Conservative classification for one application registered with Windows.

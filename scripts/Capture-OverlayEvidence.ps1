@@ -229,22 +229,22 @@ $profiles = @(
     [ordered]@{ id = 'wide-high-contrast'; logicalWidth = 1120; logicalHeight = 620; dpi = 144; textScale = 1.5; reducedTransparency = $false; highContrast = $true }
 )
 $cases = @(
-    [ordered]@{ id = 'games-auto-library-compact'; packageId = 'org.gbar.firstparty.games-apps'; state = 'initial'; profile = 'compact-default' },
-    [ordered]@{ id = 'games-auto-library-accessible'; packageId = 'org.gbar.firstparty.games-apps'; state = 'initial'; profile = 'compact-accessible' },
-    [ordered]@{ id = 'games-catalog-standard'; packageId = 'org.gbar.firstparty.games-apps'; state = 'catalog'; profile = 'standard-default' },
-    [ordered]@{ id = 'games-catalog-wide'; packageId = 'org.gbar.firstparty.games-apps'; state = 'catalog'; profile = 'wide-high-contrast' },
-    [ordered]@{ id = 'games-populated-standard'; packageId = 'org.gbar.firstparty.games-apps'; state = 'populated'; profile = 'standard-default' },
-    [ordered]@{ id = 'games-populated-wide'; packageId = 'org.gbar.firstparty.games-apps'; state = 'populated'; profile = 'wide-high-contrast' },
-    [ordered]@{ id = 'games-removing-standard'; packageId = 'org.gbar.firstparty.games-apps'; state = 'removing'; profile = 'standard-default' },
-    [ordered]@{ id = 'games-removed-compact'; packageId = 'org.gbar.firstparty.games-apps'; state = 'removed'; profile = 'compact-default' },
-    [ordered]@{ id = 'games-removed-accessible'; packageId = 'org.gbar.firstparty.games-apps'; state = 'removed'; profile = 'compact-accessible' },
-    [ordered]@{ id = 'games-removed-wide'; packageId = 'org.gbar.firstparty.games-apps'; state = 'removed'; profile = 'wide-high-contrast' },
-    [ordered]@{ id = 'spotify-client-id-compact'; packageId = 'org.gbar.samples.spotify'; state = 'initial'; profile = 'compact-default' },
-    [ordered]@{ id = 'spotify-client-id-accessible'; packageId = 'org.gbar.samples.spotify'; state = 'initial'; profile = 'compact-accessible' },
-    [ordered]@{ id = 'spotify-setup-compact'; packageId = 'org.gbar.samples.spotify'; state = 'setup'; profile = 'compact-default' },
-    [ordered]@{ id = 'spotify-setup-standard'; packageId = 'org.gbar.samples.spotify'; state = 'setup'; profile = 'standard-default' },
-    [ordered]@{ id = 'spotify-setup-accessible'; packageId = 'org.gbar.samples.spotify'; state = 'setup'; profile = 'compact-accessible' },
-    [ordered]@{ id = 'spotify-setup-wide'; packageId = 'org.gbar.samples.spotify'; state = 'setup'; profile = 'wide-high-contrast' }
+    [ordered]@{ id = 'games-auto-library-compact'; packageId = 'widgetrail.firstparty.games-apps'; state = 'initial'; profile = 'compact-default' },
+    [ordered]@{ id = 'games-auto-library-accessible'; packageId = 'widgetrail.firstparty.games-apps'; state = 'initial'; profile = 'compact-accessible' },
+    [ordered]@{ id = 'games-catalog-standard'; packageId = 'widgetrail.firstparty.games-apps'; state = 'catalog'; profile = 'standard-default' },
+    [ordered]@{ id = 'games-catalog-wide'; packageId = 'widgetrail.firstparty.games-apps'; state = 'catalog'; profile = 'wide-high-contrast' },
+    [ordered]@{ id = 'games-populated-standard'; packageId = 'widgetrail.firstparty.games-apps'; state = 'populated'; profile = 'standard-default' },
+    [ordered]@{ id = 'games-populated-wide'; packageId = 'widgetrail.firstparty.games-apps'; state = 'populated'; profile = 'wide-high-contrast' },
+    [ordered]@{ id = 'games-removing-standard'; packageId = 'widgetrail.firstparty.games-apps'; state = 'removing'; profile = 'standard-default' },
+    [ordered]@{ id = 'games-removed-compact'; packageId = 'widgetrail.firstparty.games-apps'; state = 'removed'; profile = 'compact-default' },
+    [ordered]@{ id = 'games-removed-accessible'; packageId = 'widgetrail.firstparty.games-apps'; state = 'removed'; profile = 'compact-accessible' },
+    [ordered]@{ id = 'games-removed-wide'; packageId = 'widgetrail.firstparty.games-apps'; state = 'removed'; profile = 'wide-high-contrast' },
+    [ordered]@{ id = 'spotify-client-id-compact'; packageId = 'widgetrail.samples.spotify'; state = 'initial'; profile = 'compact-default' },
+    [ordered]@{ id = 'spotify-client-id-accessible'; packageId = 'widgetrail.samples.spotify'; state = 'initial'; profile = 'compact-accessible' },
+    [ordered]@{ id = 'spotify-setup-compact'; packageId = 'widgetrail.samples.spotify'; state = 'setup'; profile = 'compact-default' },
+    [ordered]@{ id = 'spotify-setup-standard'; packageId = 'widgetrail.samples.spotify'; state = 'setup'; profile = 'standard-default' },
+    [ordered]@{ id = 'spotify-setup-accessible'; packageId = 'widgetrail.samples.spotify'; state = 'setup'; profile = 'compact-accessible' },
+    [ordered]@{ id = 'spotify-setup-wide'; packageId = 'widgetrail.samples.spotify'; state = 'setup'; profile = 'wide-high-contrast' }
 )
 
 if ($VerifyManifest) {

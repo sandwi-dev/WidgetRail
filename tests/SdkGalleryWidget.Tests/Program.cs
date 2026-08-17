@@ -1,7 +1,7 @@
-using GameBarAlternative.Samples.SdkGalleryWidget;
-using GameBarAlternative.WidgetProtocol;
-using GameBarAlternative.WidgetSdk;
-using GameBarAlternative.WidgetStyling;
+using WidgetRail.Samples.SdkGalleryWidget;
+using WidgetRail.WidgetProtocol;
+using WidgetRail.WidgetSdk;
+using WidgetRail.WidgetStyling;
 
 var tests = new (string Name, Func<Task> Run)[]
 {
@@ -10,7 +10,7 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Picker and action sheet own nested B scopes", NestedScopes),
     ("Toast feedback adds no focus or action target", ToastDoesNotTakeFocus),
     ("Manifest and project use the generic capability-free community path", PackageContract),
-    ("Gallery GBSS is valid, responsive, and theme-token based", StyleContract),
+    ("Gallery WRSS is valid, responsive, and theme-token based", StyleContract),
 };
 
 var failures = new List<string>();
@@ -44,12 +44,12 @@ static async Task PageCoverage()
     Assert.Equal(widget.Navigation.InputScopeId, overview.ActiveInputScopeId);
     Assert.Equal(WidgetSurfaceMode.Standard, overview.Surface!.Mode);
     Assert.Equal(320d, overview.Surface.MinimumWidth);
-    Assert.ContainsClass(overview, "gbar-card");
-    Assert.ContainsClass(overview, "gbar-alert");
-    Assert.ContainsClass(overview, "gbar-empty-state");
-    Assert.ContainsClass(overview, "gbar-icon-button");
-    Assert.ContainsClass(overview, "gbar-badge");
-    Assert.ContainsClass(overview, "gbar-navigation-shell");
+    Assert.ContainsClass(overview, "wrail-card");
+    Assert.ContainsClass(overview, "wrail-alert");
+    Assert.ContainsClass(overview, "wrail-empty-state");
+    Assert.ContainsClass(overview, "wrail-icon-button");
+    Assert.ContainsClass(overview, "wrail-badge");
+    Assert.ContainsClass(overview, "wrail-navigation-shell");
     var compactNavigation = Find(overview, "gallery.shell.compact");
     var expandedNavigation = Find(overview, "gallery.shell.rail");
     Assert.Equal(ResponsiveVisibility.CompactOnly, compactNavigation.VisibleWhen);
@@ -67,21 +67,21 @@ static async Task PageCoverage()
 
     await Act(widget, "gallery.tab.controls");
     var controls = Snapshot(widget, 2);
-    Assert.ContainsClass(controls, "gbar-settings-row");
-    Assert.ContainsClass(controls, "gbar-switch");
-    Assert.ContainsClass(controls, "gbar-scrubber");
+    Assert.ContainsClass(controls, "wrail-settings-row");
+    Assert.ContainsClass(controls, "wrail-switch");
+    Assert.ContainsClass(controls, "wrail-scrubber");
     Assert.Equal(ViewNodeKind.Slider, Find(controls, "gallery.scrubber.slider").Kind);
 
     await Act(widget, "gallery.tab.tiles");
     var tiles = Snapshot(widget, 3);
     Assert.Equal(2, Nodes(tiles.Root).Count(node => node.Kind == ViewNodeKind.ActionSurface));
-    Assert.ContainsClass(tiles, "gbar-media-tile");
-    Assert.ContainsClass(tiles, "gbar-app-tile");
+    Assert.ContainsClass(tiles, "wrail-media-tile");
+    Assert.ContainsClass(tiles, "wrail-app-tile");
     Assert.Equal(ViewNodeKind.Grid, Find(tiles, "gallery.tiles.grid").Kind);
 
     await Act(widget, "gallery.tab.utilities");
     var utilities = Snapshot(widget, 4);
-    Assert.ContainsClass(utilities, "gbar-code-text");
+    Assert.ContainsClass(utilities, "wrail-code-text");
     Assert.Equal(ViewNodeKind.LoadingIndicator, Find(utilities, "gallery.utilities.loading").Kind);
     Assert.Equal(LoadingIndicatorSize.Compact, Find(utilities, "gallery.utilities.loading").IndicatorSize);
 }
@@ -173,8 +173,8 @@ static Task PackageContract()
     var manifest = ManifestJson.Deserialize(File.ReadAllBytes(
         Path.Combine(AppContext.BaseDirectory, "manifest.json")));
     Assert.Equal(0, WidgetManifestValidator.Validate(manifest).Count);
-    Assert.Equal("org.gbar.samples.sdk-gallery", manifest.Id);
-    Assert.Equal("org.gbar.samples", manifest.Publisher);
+    Assert.Equal("widgetrail.samples.sdk-gallery", manifest.Id);
+    Assert.Equal("widgetrail.samples", manifest.Publisher);
     Assert.Equal("0.1.2", manifest.Version);
     Assert.Equal("dotnet-worker", manifest.Entrypoint.Runtime);
     Assert.Equal("payload/SdkGalleryWidget.dll", manifest.Entrypoint.Assembly);
@@ -205,23 +205,23 @@ static Task PackageContract()
 static Task StyleContract()
 {
     var source = File.ReadAllText(Path.Combine(
-        AppContext.BaseDirectory, "styles", "default.gbss"));
-    var parsed = GbssParser.Parse(source, "styles/default.gbss");
+        AppContext.BaseDirectory, "styles", "default.wrss"));
+    var parsed = WrssParser.Parse(source, "styles/default.wrss");
     Assert.True(parsed.IsValid, string.Join(Environment.NewLine,
         parsed.Diagnostics.Select(item => item.Message)));
-    var compiled = GbssThemeCompiler.Compile([parsed.Document]);
+    var compiled = WrssThemeCompiler.Compile([parsed.Document]);
     Assert.True(compiled.IsValid, string.Join(Environment.NewLine,
         compiled.Diagnostics.Select(item => item.Message)));
 
-    var root = compiled.Theme!.Resolve(new GbssElement(
+    var root = compiled.Theme!.Resolve(new WrssElement(
         "stack", StyleClasses: new HashSet<string>(["gallery-root"])))!;
     Assert.Equal("100vw", root.Get("width")?.Text);
     Assert.Equal("100vh", root.Get("height")?.Text);
     Assert.Equal("clip", root.Get("overflow")?.Text);
-    var grid = compiled.Theme.Resolve(new GbssElement(
-        "grid", StyleClasses: new HashSet<string>(["gbar-responsive-grid"])))!;
+    var grid = compiled.Theme.Resolve(new WrssElement(
+        "grid", StyleClasses: new HashSet<string>(["wrail-responsive-grid"])))!;
     Assert.Equal("100%", grid.Get("width")?.Text);
-    Assert.False(source.Contains("gbar-navigation-shell", StringComparison.Ordinal),
+    Assert.False(source.Contains("wrail-navigation-shell", StringComparison.Ordinal),
         "The sample must inherit the platform navigation recipe instead of rebuilding it.");
     Assert.True(source.Contains("var(--surface)", StringComparison.Ordinal));
     Assert.True(source.Contains(":pressed", StringComparison.Ordinal));
@@ -247,7 +247,7 @@ static IEnumerable<ViewNode> Nodes(ViewNode root)
         yield return nested;
 }
 
-static string ActionSheetItemToneClass(string tone) => $"gbar-action-sheet__item--{tone}";
+static string ActionSheetItemToneClass(string tone) => $"wrail-action-sheet__item--{tone}";
 
 static async Task WaitUntil(Func<bool> predicate)
 {

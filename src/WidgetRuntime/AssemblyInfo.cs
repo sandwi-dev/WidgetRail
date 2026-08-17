@@ -5,4 +5,4 @@ using System.Runtime.CompilerServices;
 [assembly: InternalsVisibleTo("FirstPartyWidgetConformance.Tests")]
 [assembly: InternalsVisibleTo("WidgetBridge")]
 [assembly: InternalsVisibleTo("WidgetBridge.Tests")]
-[assembly: InternalsVisibleTo("gbar")]
+[assembly: InternalsVisibleTo("wrail")]

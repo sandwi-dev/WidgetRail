@@ -1,9 +1,9 @@
 using System.IO.Pipes;
-using GameBarAlternative.WidgetBridge;
-using GameBarAlternative.WidgetPresentationSession;
-using GameBarAlternative.WidgetProtocol;
+using WidgetRail.WidgetBridge;
+using WidgetRail.WidgetPresentationSession;
+using WidgetRail.WidgetProtocol;
 
-namespace GameBarAlternative.WidgetPresentationSession.Tests;
+namespace WidgetRail.WidgetPresentationSession.Tests;
 
 [TestClass]
 public sealed class SessionTransportTests
@@ -183,7 +183,7 @@ public sealed class SessionTransportTests
             _ = await session.ListWidgetsAsync().WaitAsync(TestDeadline);
             var frame = await session.EstablishPresentationAsync(
                 session.GetTarget("session-widget"),
-                GameBarAlternative.WidgetSdk.WidgetLifecycleState.Visible)
+                WidgetRail.WidgetSdk.WidgetLifecycleState.Visible)
                 .WaitAsync(TestDeadline);
             var artwork = await session.ResolveArtworkAsync(
                 frame.Authority, "app-library.test-artwork")
@@ -228,7 +228,7 @@ public sealed class SessionTransportTests
                 Payload = BridgeJson.ToElement(new
                 {
                     widgetId = "session-widget",
-                    state = GameBarAlternative.WidgetSdk.WidgetLifecycleState.Interactive,
+                    state = WidgetRail.WidgetSdk.WidgetLifecycleState.Interactive,
                 }),
             }, CancellationToken.None);
             await ReplyRefreshErrorAsync(channel, refresh.RequestId);
@@ -240,7 +240,7 @@ public sealed class SessionTransportTests
             _ = await session.ListWidgetsAsync().WaitAsync(TestDeadline);
             var target = session.GetTarget("session-widget");
             _ = await session.EstablishPresentationAsync(
-                target, GameBarAlternative.WidgetSdk.WidgetLifecycleState.Interactive)
+                target, WidgetRail.WidgetSdk.WidgetLifecycleState.Interactive)
                 .WaitAsync(TestDeadline);
             established.TrySetResult();
             await refreshReceived.Task.WaitAsync(TestDeadline);
@@ -314,7 +314,7 @@ public sealed class SessionTransportTests
             _ = await session.ListWidgetsAsync().WaitAsync(TestDeadline);
             var initial = await session.EstablishPresentationAsync(
                 session.GetTarget("session-widget"),
-                GameBarAlternative.WidgetSdk.WidgetLifecycleState.Interactive)
+                WidgetRail.WidgetSdk.WidgetLifecycleState.Interactive)
                 .WaitAsync(TestDeadline);
             established.TrySetResult();
             await refreshReceived.Task.WaitAsync(TestDeadline);
@@ -382,7 +382,7 @@ public sealed class SessionTransportTests
             _ = await session.ListWidgetsAsync().WaitAsync(TestDeadline);
             var initial = await session.EstablishPresentationAsync(
                 session.GetTarget("session-widget"),
-                GameBarAlternative.WidgetSdk.WidgetLifecycleState.Interactive)
+                WidgetRail.WidgetSdk.WidgetLifecycleState.Interactive)
                 .WaitAsync(TestDeadline);
             var initialPublication = session.GetState("session-widget")!.PublicationRevision;
             established.TrySetResult();
@@ -457,7 +457,7 @@ public sealed class SessionTransportTests
                     Payload = BridgeJson.ToElement(new
                     {
                         widgetId = "session-widget",
-                        state = GameBarAlternative.WidgetSdk.WidgetLifecycleState.Interactive,
+                        state = WidgetRail.WidgetSdk.WidgetLifecycleState.Interactive,
                     }),
                 }, CancellationToken.None);
                 break;
@@ -506,7 +506,7 @@ public sealed class SessionTransportTests
             _ = await session.ListWidgetsAsync().WaitAsync(TestDeadline);
             var target = session.GetTarget("session-widget");
             var initial = await session.EstablishPresentationAsync(
-                target, GameBarAlternative.WidgetSdk.WidgetLifecycleState.Interactive)
+                target, WidgetRail.WidgetSdk.WidgetLifecycleState.Interactive)
                 .WaitAsync(TestDeadline);
             established.TrySetResult();
             await failurePublicationEntered.Task.WaitAsync(TestDeadline);
@@ -596,7 +596,7 @@ public sealed class SessionTransportTests
                     Payload = BridgeJson.ToElement(new
                     {
                         widgetId = "session-widget",
-                        state = GameBarAlternative.WidgetSdk.WidgetLifecycleState.Interactive,
+                        state = WidgetRail.WidgetSdk.WidgetLifecycleState.Interactive,
                     }),
                 }, CancellationToken.None);
                 break;
@@ -652,7 +652,7 @@ public sealed class SessionTransportTests
             _ = await session.ListWidgetsAsync().WaitAsync(TestDeadline);
             var target = session.GetTarget("session-widget");
             var initial = await session.EstablishPresentationAsync(
-                target, GameBarAlternative.WidgetSdk.WidgetLifecycleState.Interactive)
+                target, WidgetRail.WidgetSdk.WidgetLifecycleState.Interactive)
                 .WaitAsync(TestDeadline);
             established.TrySetResult();
             await failureCaptured.Task.WaitAsync(TestDeadline);
@@ -755,7 +755,7 @@ public sealed class SessionTransportTests
             _ = await session.ListWidgetsAsync().WaitAsync(TestDeadline);
             _ = await session.EstablishPresentationAsync(
                 session.GetTarget("session-widget"),
-                GameBarAlternative.WidgetSdk.WidgetLifecycleState.Interactive)
+                WidgetRail.WidgetSdk.WidgetLifecycleState.Interactive)
                 .WaitAsync(TestDeadline);
             established.TrySetResult();
             await refreshReceived.Task.WaitAsync(TestDeadline);

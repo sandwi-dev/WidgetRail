@@ -1,8 +1,8 @@
-using GameBarAlternative.FirstPartyWidgets.GameLauncher;
-using GameBarAlternative.WidgetRuntime;
-using GameBarAlternative.WindowsAppLibraryProvider;
+using WidgetRail.FirstPartyWidgets.GameLauncher;
+using WidgetRail.WidgetRuntime;
+using WidgetRail.WindowsAppLibraryProvider;
 using PackageAppLibraryProvider =
-    GameBarAlternative.WindowsAppLibraryProvider.WindowsAppLibraryProvider;
+    WidgetRail.WindowsAppLibraryProvider.WindowsAppLibraryProvider;
 
 var paths = GameLauncherApplicationPaths.CreateDefault();
 var sources = await GameLauncherSourceConfiguration.LoadAsync(paths);

@@ -1,7 +1,7 @@
 using System.IO.Pipes;
-using GameBarAlternative.WidgetBridge;
+using WidgetRail.WidgetBridge;
 
-namespace GameBarAlternative.WidgetPresentationSession;
+namespace WidgetRail.WidgetPresentationSession;
 
 internal sealed class BridgePresentationTransport : IAsyncDisposable
 {

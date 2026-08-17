@@ -1,8 +1,8 @@
-using GameBarAlternative.WidgetSdk;
+using WidgetRail.WidgetSdk;
 using System.Security.Cryptography;
 using System.Text;
 
-namespace GameBarAlternative.FirstPartyWidgets.GamesApps;
+namespace WidgetRail.FirstPartyWidgets.GamesApps;
 
 internal sealed record GamesAppsLibraryState(
     int Version,

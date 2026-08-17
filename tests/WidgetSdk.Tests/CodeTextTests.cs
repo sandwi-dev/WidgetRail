@@ -1,11 +1,11 @@
-using GameBarAlternative.WidgetProtocol;
-using GameBarAlternative.WidgetSdk;
+using WidgetRail.WidgetProtocol;
+using WidgetRail.WidgetSdk;
 
 internal static class CodeTextTests
 {
     public static Task Run()
     {
-        const string command = "  gbar diagnostics --format json\n  status: ready  ";
+        const string command = "  wrail diagnostics --format json\n  status: ready  ";
         var element = UI.CodeText(command, "diagnostics.command", "Diagnostic command and result")
             .AddClasses("diagnostics-command");
         var snapshot = new CodeTextWidget(element).RenderSnapshot("code-text.test", 1);
@@ -15,7 +15,7 @@ internal static class CodeTextTests
         Equal("diagnostics.command", node.Id);
         Equal(command, node.Text);
         Equal("Diagnostic command and result", node.AccessibilityLabel);
-        True(node.StyleClasses.SequenceEqual(["gbar-code-text", "diagnostics-command"]));
+        True(node.StyleClasses.SequenceEqual(["wrail-code-text", "diagnostics-command"]));
         True(!node.IsFocusable);
         True(node.ActionId is null && node.ValueChangedActionId is null);
         True(node.Focus is null && node.InputScopeId is null && node.Shortcuts.Count == 0);

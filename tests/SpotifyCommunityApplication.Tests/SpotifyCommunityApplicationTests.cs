@@ -2,23 +2,23 @@ using System.Collections.Concurrent;
 using System.Net;
 using System.Text;
 using System.Text.Json;
-using GameBarAlternative.Samples.SpotifyWidget;
-using GameBarAlternative.WindowsSpotifyProvider;
+using WidgetRail.Samples.SpotifyWidget;
+using WidgetRail.WindowsSpotifyProvider;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 
-namespace GameBarAlternative.SpotifyCommunityApplication.Tests;
+namespace WidgetRail.SpotifyCommunityApplication.Tests;
 
 [TestClass]
 public sealed class SpotifyCommunityApplicationTests
 {
     private static readonly SpotifyIntegrationIdentity Identity =
-        new("org.gbar.samples", "org.gbar.samples.spotify");
+        new("widgetrail.samples", "widgetrail.samples.spotify");
 
     [TestMethod]
     public async Task ExistingPackageConfigurationFormatSurvivesApplicationRestart()
     {
         var root = Path.Combine(Path.GetTempPath(),
-            "gbar-spotify-community-config-" + Guid.NewGuid().ToString("N"));
+            "wrail-spotify-community-config-" + Guid.NewGuid().ToString("N"));
         try
         {
             var first = new SpotifyClientConfigurationFileStore(root);
@@ -29,8 +29,8 @@ public sealed class SpotifyCommunityApplicationTests
                 (await second.ReadAsync(Identity, default))?.ClientId);
             var document = Directory.GetFiles(root, "*.json").Single();
             var json = await File.ReadAllTextAsync(document);
-            StringAssert.Contains(json, "\"packageId\": \"org.gbar.samples.spotify\"");
-            StringAssert.Contains(json, "\"publisherId\": \"org.gbar.samples\"");
+            StringAssert.Contains(json, "\"packageId\": \"widgetrail.samples.spotify\"");
+            StringAssert.Contains(json, "\"publisherId\": \"widgetrail.samples\"");
             Assert.IsFalse(json.Contains("refresh", StringComparison.OrdinalIgnoreCase));
         }
         finally
@@ -392,18 +392,18 @@ internal sealed class ManualTimeProvider : TimeProvider
 
 internal sealed class NullPlaybackHostClient : ISpotifyPlaybackHostClient
 {
-    public event EventHandler<GameBarAlternative.SpotifyPlayback.SpotifyPlaybackEventEnvelope>?
+    public event EventHandler<WidgetRail.SpotifyPlayback.SpotifyPlaybackEventEnvelope>?
         EventReceived { add { } remove { } }
     public bool IsRunning => false;
     public Task StartAsync(CancellationToken cancellationToken) => Task.CompletedTask;
-    public Task<GameBarAlternative.SpotifyPlayback.SpotifyPlaybackEventEnvelope> ConnectAsync(
-        GameBarAlternative.SpotifyPlayback.SpotifyPlaybackConnectOptions options,
+    public Task<WidgetRail.SpotifyPlayback.SpotifyPlaybackEventEnvelope> ConnectAsync(
+        WidgetRail.SpotifyPlayback.SpotifyPlaybackConnectOptions options,
         CancellationToken cancellationToken) => throw new AssertFailedException();
-    public Task<GameBarAlternative.SpotifyPlayback.SpotifyPlaybackEventEnvelope> ProvideTokenAsync(
+    public Task<WidgetRail.SpotifyPlayback.SpotifyPlaybackEventEnvelope> ProvideTokenAsync(
         string tokenRequestId,
         TrustedHostSpotifyAccessToken token,
         CancellationToken cancellationToken) => throw new AssertFailedException();
-    public Task<GameBarAlternative.SpotifyPlayback.SpotifyPlaybackEventEnvelope> SendAsync(
+    public Task<WidgetRail.SpotifyPlayback.SpotifyPlaybackEventEnvelope> SendAsync(
         string type,
         object? payload,
         CancellationToken cancellationToken) => throw new AssertFailedException();

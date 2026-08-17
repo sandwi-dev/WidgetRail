@@ -4,13 +4,13 @@
   "widgets": [
     {
       "id": "settings",
-      "packageId": "org.gbar.firstparty.settings",
-      "publisherId": "org.gbar.firstparty",
+      "packageId": "widgetrail.firstparty.settings",
+      "publisherId": "widgetrail.firstparty",
       "name": "Settings",
       "instanceId": "settings.default",
       "icon": "settings",
       "workerExecutable": "runtime/Settings/SettingsWidget.Worker.exe",
-      "styleFile": "runtime/Settings/styles/default.gbss",
+      "styleFile": "runtime/Settings/styles/default.wrss",
       "memoryLimitMb": 48,
       "residencyPolicy": { "schemaVersion": 1, "mode": "suspend-when-hidden" },
       "workerArguments": [
@@ -24,7 +24,7 @@
   "bundledWidgets": [
     {
       "id": "media-sessions",
-      "packageId": "org.gbar.firstparty.media-sessions",
+      "packageId": "widgetrail.firstparty.media-sessions",
       "instanceId": "media-sessions.default",
       "packageRoot": "runtime/MediaSessions",
       "icon": "music",
@@ -32,7 +32,7 @@
     },
     {
       "id": "games-apps",
-      "packageId": "org.gbar.firstparty.games-apps",
+      "packageId": "widgetrail.firstparty.games-apps",
       "instanceId": "games-apps.default",
       "packageRoot": "runtime/GamesApps",
       "icon": "play",
@@ -40,7 +40,7 @@
     },
     {
       "id": "audio-mixer",
-      "packageId": "org.gbar.firstparty.audio-mixer",
+      "packageId": "widgetrail.firstparty.audio-mixer",
       "instanceId": "audio-mixer.default",
       "packageRoot": "runtime/AudioMixer",
       "icon": "volume",
@@ -48,7 +48,7 @@
     },
     {
       "id": "network-controls",
-      "packageId": "org.gbar.firstparty.network-controls",
+      "packageId": "widgetrail.firstparty.network-controls",
       "instanceId": "network-controls.default",
       "packageRoot": "runtime/NetworkControls",
       "icon": "wifi",

@@ -13,8 +13,8 @@
         { "source": "profiles/basic.cs.template", "destination": "src/{{WidgetName}}.cs", "kind": "text" },
         { "source": "tests/WidgetName.Tests.csproj.template", "destination": "tests/{{WidgetName}}.Tests.csproj", "kind": "text" },
         { "source": "tests/ScenarioTests.cs.template", "destination": "tests/ScenarioTests.cs", "kind": "text" },
-        { "source": "gbar.scenarios.json.template", "destination": "gbar.scenarios.json", "kind": "text" },
-        { "source": "styles/default.gbss", "destination": "styles/default.gbss", "kind": "binary" },
+        { "source": "widgetrail.scenarios.json.template", "destination": "widgetrail.scenarios.json", "kind": "text" },
+        { "source": "styles/default.wrss", "destination": "styles/default.wrss", "kind": "binary" },
         { "source": "replays/smoke.json", "destination": "replays/smoke.json", "kind": "binary" }
       ]
     },
@@ -30,8 +30,8 @@
         { "source": "profiles/data.cs.template", "destination": "src/{{WidgetName}}.cs", "kind": "text" },
         { "source": "tests/WidgetName.Tests.csproj.template", "destination": "tests/{{WidgetName}}.Tests.csproj", "kind": "text" },
         { "source": "tests/ScenarioTests.cs.template", "destination": "tests/ScenarioTests.cs", "kind": "text" },
-        { "source": "gbar.scenarios.json.template", "destination": "gbar.scenarios.json", "kind": "text" },
-        { "source": "styles/default.gbss", "destination": "styles/default.gbss", "kind": "binary" },
+        { "source": "widgetrail.scenarios.json.template", "destination": "widgetrail.scenarios.json", "kind": "text" },
+        { "source": "styles/default.wrss", "destination": "styles/default.wrss", "kind": "binary" },
         { "source": "replays/smoke.json", "destination": "replays/smoke.json", "kind": "binary" }
       ]
     },
@@ -47,8 +47,8 @@
         { "source": "profiles/media.cs.template", "destination": "src/{{WidgetName}}.cs", "kind": "text" },
         { "source": "tests/WidgetName.Tests.csproj.template", "destination": "tests/{{WidgetName}}.Tests.csproj", "kind": "text" },
         { "source": "tests/ScenarioTests.cs.template", "destination": "tests/ScenarioTests.cs", "kind": "text" },
-        { "source": "gbar.scenarios.json.template", "destination": "gbar.scenarios.json", "kind": "text" },
-        { "source": "styles/default.gbss", "destination": "styles/default.gbss", "kind": "binary" },
+        { "source": "widgetrail.scenarios.json.template", "destination": "widgetrail.scenarios.json", "kind": "text" },
+        { "source": "styles/default.wrss", "destination": "styles/default.wrss", "kind": "binary" },
         { "source": "replays/smoke.json", "destination": "replays/smoke.json", "kind": "binary" }
       ]
     },
@@ -64,8 +64,8 @@
         { "source": "profiles/multipage.cs.template", "destination": "src/{{WidgetName}}.cs", "kind": "text" },
         { "source": "tests/WidgetName.Tests.csproj.template", "destination": "tests/{{WidgetName}}.Tests.csproj", "kind": "text" },
         { "source": "tests/ScenarioTests.cs.template", "destination": "tests/ScenarioTests.cs", "kind": "text" },
-        { "source": "gbar.scenarios.json.template", "destination": "gbar.scenarios.json", "kind": "text" },
-        { "source": "styles/default.gbss", "destination": "styles/default.gbss", "kind": "binary" },
+        { "source": "widgetrail.scenarios.json.template", "destination": "widgetrail.scenarios.json", "kind": "text" },
+        { "source": "styles/default.wrss", "destination": "styles/default.wrss", "kind": "binary" },
         { "source": "replays/smoke.json", "destination": "replays/smoke.json", "kind": "binary" }
       ]
     }

@@ -1,9 +1,9 @@
 using System.Globalization;
 using System.Collections.Frozen;
-using GameBarAlternative.PlatformBroker;
-using GameBarAlternative.WidgetSdk;
+using WidgetRail.PlatformBroker;
+using WidgetRail.WidgetSdk;
 
-namespace GameBarAlternative.WidgetRuntime;
+namespace WidgetRail.WidgetRuntime;
 
 /// <summary>
 /// Closed process-exit vocabulary for the production generic package loader.

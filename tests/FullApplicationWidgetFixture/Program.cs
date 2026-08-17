@@ -1,4 +1,4 @@
-namespace GameBarAlternative.Tests.FullApplicationWidgetFixture;
+namespace WidgetRail.Tests.FullApplicationWidgetFixture;
 
 internal static class Program
 {
