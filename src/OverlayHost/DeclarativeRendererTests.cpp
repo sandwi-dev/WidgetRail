@@ -2501,6 +2501,117 @@ void IncrementalPresentationPlanningRetainsBoundedWork() {
               anchoredFocused.scrollOffsets.at(L"anchor.collection") + 80.0F,
           "ordinary full layout retains collection-anchor compensation");
 
+    const auto collectionWindow = [&](const std::uint64_t sequence,
+                                      const int firstIndex,
+                                      const std::wstring_view anchorKey,
+                                      const std::wstring_view requestedFocus) {
+        WidgetSnapshot value;
+        value.protocolVersion = 18;
+        value.sequence = sequence;
+        value.instanceId = L"retained-overlap.runtime";
+        value.activeInputScopeId = L"retained-overlap.scope";
+        value.initialFocusId = requestedFocus;
+        value.root = Node(L"retained-overlap.collection", L"scroll");
+        value.root.scrollAxis = L"vertical";
+        value.root.inputScopeId = value.activeInputScopeId;
+        value.root.collectionAnchorKey = anchorKey;
+        for (int index = firstIndex; index < firstIndex + 8; ++index) {
+            auto item = FixedButton(
+                (L"retained-overlap-item-" + std::to_wstring(index)).c_str());
+            item.collectionItemKey = L"item." + std::to_wstring(index);
+            value.root.children.push_back(std::move(item));
+        }
+        return value;
+    };
+    const auto summaryFloat = [](const std::wstring_view summary,
+                                 const std::wstring_view field) {
+        const auto fieldStart = summary.find(field);
+        Check(fieldStart != std::wstring_view::npos,
+              "collection diagnostic contains the requested numeric field");
+        if (fieldStart == std::wstring_view::npos) return 0.0F;
+        const auto valueStart = fieldStart + field.size();
+        const auto valueEnd = summary.find_first_of(L",}", valueStart);
+        return std::stof(std::wstring{
+            summary.substr(valueStart, valueEnd - valueStart)});
+    };
+    const auto renderCollection = [&](DeclarativeRenderer& collectionRenderer,
+                                      const WidgetSnapshot& value,
+                                      const std::wstring_view focus,
+                                      const Rect renderViewport) {
+        target->BeginDraw();
+        target->Clear(D2D1::ColorF(D2D1::ColorF::Black));
+        const auto result = collectionRenderer.Render(
+            target.Get(), value, focus, renderViewport);
+        Check(SUCCEEDED(target->EndDraw()),
+              "retained-overlap collection draw completes");
+        Check(result.succeeded,
+              "retained-overlap collection render succeeds");
+        return result;
+    };
+
+    DeclarativeRenderer overlapRenderer{d2d.Get(), write.Get(), nullptr};
+    const auto overlapInitialSnapshot = collectionWindow(
+        1, 0, L"item.4", L"retained-overlap-item-7");
+    const auto overlapInitial = renderCollection(
+        overlapRenderer, overlapInitialSnapshot,
+        L"retained-overlap-item-7", anchoredViewport);
+    Near(overlapInitial.scrollOffsets.at(L"retained-overlap.collection"),
+         252.0F,
+         "trailing focus establishes the retained-window fixture offset");
+    const auto priorRetainedY =
+        overlapInitial.elementRects.at(L"retained-overlap-item-6").y;
+
+    const auto shiftedSnapshot = collectionWindow(
+        2, 5, L"item.9", L"retained-overlap-item-12");
+    const auto shifted = renderCollection(
+        overlapRenderer, shiftedSnapshot,
+        L"retained-overlap-item-12", anchoredViewport);
+    const auto& shiftedSummary = shifted.timing.collectionAdmissionSummary;
+    Check(shiftedSummary.find(L"change=trim-start+append") !=
+              std::wstring::npos &&
+              shiftedSummary.find(L"reconciliation=overlap") !=
+                  std::wstring::npos &&
+              shiftedSummary.find(L"retained-key=item.6") !=
+                  std::wstring::npos,
+          "bounded retained-window churn selects a visible overlapping row");
+    const auto overlapOffset = summaryFloat(
+        shiftedSummary, L"offset-after=");
+    Near(44.0F - overlapOffset, priorRetainedY,
+         "overlap reconciliation preserves the retained row screen position before focus-follow");
+    const auto shiftedFocus =
+        shifted.focusRects.at(L"retained-overlap-item-12");
+    Near(shiftedFocus.y + shiftedFocus.height,
+         anchoredViewport.y + anchoredViewport.height,
+         "focus-follow minimally reveals the newly requested trailing item");
+    Check(summaryFloat(shiftedSummary, L"final-offset=") > overlapOffset,
+          "focus-follow runs after retained-overlap reconciliation");
+
+    DeclarativeRenderer changedViewportRenderer{
+        d2d.Get(), write.Get(), nullptr};
+    (void)renderCollection(
+        changedViewportRenderer, overlapInitialSnapshot,
+        L"retained-overlap-item-7", anchoredViewport);
+    const Rect changedViewport{0.0F, 0.0F, 240.0F, 120.0F};
+    const auto changedViewportResult = renderCollection(
+        changedViewportRenderer, shiftedSnapshot,
+        L"retained-overlap-item-12", changedViewport);
+    Check(changedViewportResult.timing.collectionAdmissionSummary.find(
+              L"reconciliation=none") != std::wstring::npos,
+          "changed viewport conservatively declines retained-overlap reconciliation");
+
+    DeclarativeRenderer noOverlapRenderer{d2d.Get(), write.Get(), nullptr};
+    (void)renderCollection(
+        noOverlapRenderer, overlapInitialSnapshot,
+        L"retained-overlap-item-7", anchoredViewport);
+    const auto replacedSnapshot = collectionWindow(
+        2, 20, L"item.24", L"retained-overlap-item-27");
+    const auto replaced = renderCollection(
+        noOverlapRenderer, replacedSnapshot,
+        L"retained-overlap-item-27", anchoredViewport);
+    Check(replaced.timing.collectionAdmissionSummary.find(
+              L"reconciliation=none") != std::wstring::npos,
+          "missing retained overlap preserves conservative fallback");
+
     auto structural = local;
     structural.sequence = 5;
     gba::WidgetPresentationImpact structuralImpact;
