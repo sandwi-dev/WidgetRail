@@ -2759,6 +2759,19 @@ struct DeclarativeRenderer::RenderPass final {
 #endif
 
         const auto visibleRect = presented.visibleBox;
+        if (node.kind == L"scroll") {
+            if (const auto* box = layout.Find(narrowId);
+                box && box->scrollAxis != declarative::ScrollAxis::None) {
+                result.scrollViewports.insert_or_assign(
+                    node.id,
+                    RenderScrollViewport{
+                        box->scrollAxis,
+                        Intersection(presented.contentBox, presented.ancestorClip),
+                        box->scrollOffset,
+                        box->maximumScrollOffset,
+                    });
+            }
+        }
         const bool semanticNode =
             node.kind == L"button" || node.kind == L"slider" ||
             node.kind == L"actionSurface" || node.kind == L"image" ||
@@ -3172,6 +3185,78 @@ DeclarativeRenderer::PlanFocusUpdate(
         IncrementalPresentationWork::PaintOnly, damage};
 }
 
+std::optional<FocusedFreeScrollPlan>
+DeclarativeRenderer::PlanFocusedFreeScroll(
+    const WidgetSnapshot& snapshot,
+    const std::wstring_view focusedElementId,
+    const declarative::ScrollAxis axis,
+    const float deltaDip,
+    const Rect viewport) {
+    pendingIncrementalPlan_.reset();
+    const auto& cache = incrementalLayoutCache_;
+    if (!cache || cache->instanceId != snapshot.instanceId ||
+        cache->sequence != snapshot.sequence ||
+        cache->focusedElementId != focusedElementId ||
+        axis == declarative::ScrollAxis::None || !std::isfinite(deltaDip) ||
+        std::abs(deltaDip) <= 0.001F || !SameRect(cache->viewport, viewport)) {
+        return std::nullopt;
+    }
+
+    std::vector<const WidgetNode*> path;
+    if (!FindNodePath(snapshot.root, focusedElementId, path))
+        return std::nullopt;
+
+    for (auto item = path.rbegin(); item != path.rend(); ++item) {
+        const WidgetNode& candidate = **item;
+        if (candidate.kind != L"scroll") continue;
+        const auto visible = cache->scrollViewports.find(candidate.id);
+        const auto* box = cache->layout.Find(NarrowStableId(candidate.id));
+        if (visible == cache->scrollViewports.end() || !box ||
+            box->scrollAxis != axis ||
+            visible->second.rect.width <= 0.0F ||
+            visible->second.rect.height <= 0.0F) {
+            continue;
+        }
+        const float next = std::clamp(
+            box->scrollOffset + deltaDip, 0.0F, box->maximumScrollOffset);
+        if (std::abs(next - box->scrollOffset) <= 0.001F) continue;
+
+        std::wstring stateKey(snapshot.instanceId);
+        stateKey.push_back(L'\x1f');
+        stateKey.append(snapshot.activeInputScopeId);
+        stateKey.push_back(L'\x1f');
+        stateKey.append(candidate.id);
+        auto& state = scrollOffsets_[stateKey];
+        state.offset = next;
+        state.lastAccess = ++scrollStateAccessClock_;
+
+        const auto damage = Intersection(visible->second.rect, viewport);
+        if (damage.width <= 0.0F || damage.height <= 0.0F) {
+            state.offset = box->scrollOffset;
+            return std::nullopt;
+        }
+        pendingIncrementalPlan_ = PendingIncrementalPlan{
+            snapshot.instanceId,
+            snapshot.sequence,
+            snapshot.sequence,
+            IncrementalPresentationWork::LocalLayout,
+            damage,
+            {candidate.id},
+        };
+        return FocusedFreeScrollPlan{
+            IncrementalPresentationPlan{
+                IncrementalPresentationWork::LocalLayout, damage},
+            candidate.id,
+            axis,
+            visible->second.rect,
+            box->scrollOffset,
+            next,
+            box->maximumScrollOffset,
+        };
+    }
+    return std::nullopt;
+}
+
 void DeclarativeRenderer::CancelPresentationUpdatePlan() noexcept {
     pendingIncrementalPlan_.reset();
 }
@@ -3272,11 +3357,11 @@ RenderResult DeclarativeRenderer::Render(
         } else if (!pass.BuildLocalLayout(
                 pendingIncrementalPlan_->layoutBoundaries,
                 incrementalLayoutCache_->nodes)) {
-            pass.BuildLayout();
+            pass.BuildLayout(!options.suppressFocusedDescendantFollow);
         }
         if (pass.layout.valid()) pass.SynchronizeScrollState();
     } else {
-        pass.BuildLayout();
+        pass.BuildLayout(!options.suppressFocusedDescendantFollow);
     }
     const auto preparationFinished = std::chrono::steady_clock::now();
     const auto presentationFollowStarted = preparationFinished;
@@ -3285,7 +3370,8 @@ RenderResult DeclarativeRenderer::Render(
     bool lastPresentationFollowChanged{};
     bool presentationCorrectnessFallbackUsed{};
     for (std::size_t followPass = 0;
-         followPass < kMaximumFocusFollowPasses;
+         !options.suppressFocusedDescendantFollow &&
+             followPass < kMaximumFocusFollowPasses;
          ++followPass) {
         ++presentationFollowAttempts;
         pass.presentation.clear();
@@ -3319,6 +3405,11 @@ RenderResult DeclarativeRenderer::Render(
             false,
             true,
             RenderPass::CollectionAnchorPolicy::PreserveFocusFollowOffsets);
+    }
+    if (options.suppressFocusedDescendantFollow) {
+        pass.presentation.clear();
+        pass.ResolvePresentation(snapshot.root, 0.0F, 0.0F, viewport);
+        presentationMatchesLayout = true;
     }
     if (presentationFollowAttempts == kMaximumFocusFollowPasses &&
         (!presentationMatchesLayout ||
@@ -3386,6 +3477,7 @@ RenderResult DeclarativeRenderer::Render(
         cache.options = options;
         cache.textMeasurements = std::move(pass.textMeasurements);
         cache.collections = std::move(collectionObservations);
+        cache.scrollViewports = pass.result.scrollViewports;
         const auto retain = [&](const auto& self,
                                 const WidgetNode& node,
                                 const std::wstring_view parentId,

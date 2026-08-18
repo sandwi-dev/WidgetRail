@@ -73,6 +73,32 @@ struct StickNavigationEvent final {
     NavigationEventPhase phase{NavigationEventPhase::Pressed};
 };
 
+enum class FreeScrollAxis { None, Horizontal, Vertical };
+
+struct RightStickScrollUpdate final {
+    FreeScrollAxis axis{FreeScrollAxis::None};
+    float deltaDip{};
+    bool moving{};
+    bool returnedToDeadZone{};
+};
+
+/// Converts the raw right stick into bounded continuous host-scroll movement.
+/// It owns only dead-zone/rate sampling; retained offsets and viewport choice
+/// remain with the declarative renderer's existing scroll authority.
+class RightStickScrollKinetics final {
+public:
+    [[nodiscard]] RightStickScrollUpdate Update(
+        short x,
+        short y,
+        std::uint64_t now) noexcept;
+    void Reset() noexcept;
+
+private:
+    FreeScrollAxis axis_{FreeScrollAxis::None};
+    std::uint64_t lastSampleAt_{};
+    bool moving_{};
+};
+
 /// Converts an opposing pair of digital buttons to a signed navigation axis.
 /// Simultaneous opposites are neutral so malformed hardware state cannot pick
 /// an arbitrary direction.
