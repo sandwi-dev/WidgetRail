@@ -111,10 +111,13 @@ evidence only; this file is the sole authority for current work.
   PID 81628 was first surfaced through authenticated `--show`, then closed
   normally through its exact verified `WidgetRail.OverlayHost` HWND. Corrected
   PID 69904 is visibly running from the exact platform-lane artifact. Fresh
-  startup elected one production owner, activated DirectComposition, logged no
-  startup error, and records zero raster-origin error for initial full frames
-  at 125% DPI. Spotify bounded-update physical verification remains pending;
-  no DLV-267 tests or integration are authorized before the user's verdict.
+  startup elected one production owner, activated DirectComposition, and logged
+  no startup error. The user physically accepted stationary Spotify playback
+  updates on 2026-08-18. The exact PID 69904 session contains 422 Spotify paint
+  records, 97 bounded composition commits, and 430 raster-origin records with
+  zero nonzero origin errors and no real error/failure/rejection line. Focused
+  DLV-267 regression coverage is now authorized; integration remains pending
+  that separate test follow-up and independent review.
 - DLV-264 production candidate `75f1c96` changed only
   `WidgetSessionCoordinator.{h,cpp}`. Its coherent tests-skipped Release has
   SHA-256 `502720EA82F5764CCD52DD36036D18EF8531D73044063D600568357305692737`
@@ -213,7 +216,7 @@ user decision. The native overlay is the sole production presentation path.
 
 | Lane | Task/worktree | State |
 | --- | --- | --- |
-| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | DLV-267 production tip `7e46f7e` is clean and idle. Tests-skipped PID 69904 is visibly running against installed Spotify 0.3.3 for the user's stationary-progress-update verdict; do not add/run tests or integrate yet. |
+| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | DLV-267 production tip `7e46f7e` is clean and physically accepted. PID 69904 remains the accepted candidate. Add and run only focused full/bounded raster-origin mapping regression coverage, commit the test-only follow-up separately, and stop for review; do not integrate or relaunch. |
 | Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | Corrected DLV-265 commit `13bd971` is clean and idle. Spotify 0.3.3 remains installed with user state intact; its remaining Setup verdict and tests are paused behind DLV-267. DLV-248 remains deferred. |
 
 ## Completed planner deliverable — DLV-257: select and freeze WidgetRail identity
@@ -564,11 +567,16 @@ Candidate status: commits `3f1a09e` and `7e46f7e` change only
 `OverlayCompositionSurface.h` and `main.cpp`. The tests-skipped Release built
 successfully and exact PID 69904 is visibly running with OverlayHost SHA-256
 `A56A8656030F41CE61FAFFBD3A544E41937718AEC46E55E3BA49C6234CEC94AB`.
-Initial full frames at 125% DPI report `raster-origin-error=0,0`. Physically
-select Spotify, keep a song playing long enough to produce repeated bounded
-player-strip updates, and confirm that the navigation rail, artwork, metadata,
-scrubber, and controls remain stationary. The planner must then inspect the
-bounded-update raster records before authorizing tests.
+The user physically accepted stationary Spotify playback updates on 2026-08-18.
+The exact PID 69904 trace contains 422 Spotify paints, 97 bounded composition
+commits, and 430 full/bounded raster-origin records at 125% DPI; every record
+reports `raster-origin-error=0,0`, and the session contains no real error,
+failure, or rejection line. Add focused deterministic coverage proving that
+full and bounded DirectComposition requests share one raster space and scene
+origin across the supported DPI/interface-scale mapping. Keep production files
+unchanged, run only the directly affected renderer/composition suite once,
+commit the test-only follow-up separately, and stop for planner review. Do not
+integrate, rebuild, relaunch, broaden into Spotify behavior, or run Tier 3.
 
 ## Assigned platform deliverable — DLV-266: reconcile invisible resident Show activation
 
@@ -640,10 +648,10 @@ deliberately deferred by user decision and requires explicit promotion.
 4. DLV-265 packages 0.3.1 and 0.3.2 are physically rejected. Spotify 0.3.3
    corrects their package defects and remains installed with user state intact,
    but cumulative PID 81628 is rejected for the DLV-267 update-origin defect.
-5. DLV-267 tests-skipped PID 69904 is visibly running against installed Spotify
-   0.3.3. Verify stationary song-progress updates, then inspect its bounded
-   raster-origin evidence before authorizing tests. Resume the remaining
-   DLV-265 Setup verdict only after this physical acceptance.
+5. DLV-267 tests-skipped PID 69904 is physically accepted against installed
+   Spotify 0.3.3, with zero raster-origin error across full and bounded updates.
+   Complete the focused test-only follow-up and independent review before
+   integration. The remaining DLV-265 Setup verdict may resume afterward.
 6. DLV-248 remains outside this sequence until the user promotes it.
 
 ## Manual, external, and blocked evidence
@@ -657,7 +665,7 @@ deliberately deferred by user decision and requires explicit promotion.
 | GitHub identity | User-selected owner plus repository/organization availability and optional rename/creation. |
 | DLV-264 | Complete: physically accepted on PID 17212, focused-tested, and integrated through main `15a26b9`. |
 | DLV-265 | Spotify 0.3.3 preserves the current Client ID and corrects the two package rejections, but its remaining Setup/account verdict is paused behind DLV-267; do not reset configuration or run tests yet. |
-| DLV-267 | Corrected tests-skipped PID 69904 is visibly running from exact tip `7e46f7e`; requires stationary Spotify song-progress verdict plus bounded-update raster-origin log review before tests. |
+| DLV-267 | Physical verdict and bounded-update log review are complete on PID 69904: 422 Spotify paints, 97 bounded commits, 430 zero-error raster-origin records, and no real session failure. Focused test-only follow-up is authorized before integration. |
 | DLV-266 | Complete: physical Guide, already-visible `--show`, and external-foreground activation accepted on PID 40292; focused tests passed and the chain is integrated through main `cd83b3a`. |
 | DLV-248 | Deliberately deferred until explicit user promotion. |
 | Avalonia | Failed/cancelled; requires a new explicit user decision. |
