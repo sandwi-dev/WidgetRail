@@ -226,7 +226,7 @@ user decision. The native overlay is the sole production presentation path.
 
 | Lane | Task/worktree | State |
 | --- | --- | --- |
-| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | DLV-268 is in progress from clean planner tip `7dfa4de`, which contains accepted DLV-267 integration `a552cbf`; no DLV-268 candidate commit exists yet. |
+| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | DLV-268 production candidate `63105f7` is clean and source-reviewed. Its coherent tests-skipped Release (SHA-256 `BDFA1254D3A36784B70325A16434A6111F083EBB92E9CF5C55169B42C736F85D`) is visibly running as PID 42628 for the required physical controller verdict; do not add tests, accept, integrate, or start DLV-269 before that verdict. |
 | Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | DLV-265 is saved at clean tip `13bd971` plus reconciliation `5fd1a06` and explicitly deferred until immediately after DLV-271. Preserve installed Spotify 0.3.3 and the unchanged Client ID/account state; do not resume, test, integrate, reinstall, or reset it early. DLV-270 follows accepted DLV-265; DLV-248 remains deferred. |
 
 ## Completed planner deliverable — DLV-257: select and freeze WidgetRail identity
@@ -880,12 +880,13 @@ deliberately deferred by user decision and requires explicit promotion.
    corrects their package defects and remains installed with user state intact,
    but cumulative PID 81628 is rejected for the DLV-267 update-origin defect.
 5. DLV-267 is accepted and integrated through main `a552cbf`; retained PID
-   69904 already contains the accepted production commit, so its test/docs-only
-   integration does not trigger a rebuild or relaunch. The remaining DLV-265
-   Setup verdict is unblocked on that running build.
-6. DLV-268 is Assigned to the platform lane from accepted main `a552cbf`:
-   right-stick free scrolling plus deterministic visible-leading focus re-entry
-   in physical-first mode.
+   69904 contained the accepted production commit without a redundant rebuild
+   for its test/docs-only integration, then was gracefully closed to stage the
+   DLV-268 physical candidate. DLV-265 remains saved/deferred as ordered below.
+6. DLV-268 production candidate `63105f7` passed planner source review. The
+   coherent tests-skipped Release is visibly running as PID 42628 for the
+   required right-stick/focus-re-entry physical verdict; accepted PID 69904 was
+   gracefully closed during that replacement. No tests have run.
 7. DLV-269 is Ready for the platform lane only after accepted DLV-268 is
    integrated: generic viewport-driven, focus-independent adjacent prefetch with
    Spotify as the physical proof.
@@ -913,7 +914,7 @@ deliberately deferred by user decision and requires explicit promotion.
 | DLV-264 | Complete: physically accepted on PID 17212, focused-tested, and integrated through main `15a26b9`. |
 | DLV-265 | Saved/deferred by user until immediately after accepted DLV-271. Preserve clean tip `13bd971`, reconciliation `5fd1a06`, installed Spotify 0.3.3, and the unchanged Client ID/account state; do not resume, test, integrate, reinstall, replace configuration, or reset it early. |
 | DLV-267 | Complete: accepted physical evidence on PID 69904, 422 Spotify paints, 97 bounded commits, 430 zero-error raster-origin records, OverlayChrome 131/131, integrated through main `a552cbf`. |
-| DLV-268 | Assigned from accepted main `a552cbf`; requires a tests-skipped physical controller candidate, then vertical/horizontal, nested-scroll, boundary, and one-event focus re-entry verdict before tests. |
+| DLV-268 | Candidate `63105f7` is source-reviewed and its coherent tests-skipped Release is running as PID 42628. Await the user's vertical/horizontal, nested-scroll, boundary, focus-stationarity, and one-event visible-leading re-entry verdict before tests. |
 | DLV-269 | Ready after accepted DLV-268 integration; requires a tests-skipped physical Spotify long-list verdict proving viewport-driven prefetch across right-stick and directional navigation without consumed input or forced focus. |
 | DLV-270 | Ready after resumed DLV-265 is accepted following DLV-271; requires an immutable Spotify candidate, bounded provider-call/timing and snapshot evidence, then user long-list/Queue physical acceptance before tests. |
 | DLV-271 | Ready for the platform lane as serialized cross-layer work after accepted DLV-269; shared protocol work requires focused Tier 1 plus the smallest linked Tier 2 evidence and a bounded 10,000-item reference scenario before physical acceptance. |
