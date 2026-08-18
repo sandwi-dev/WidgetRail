@@ -69,6 +69,13 @@ void PumpUntil(const int expected, const std::chrono::milliseconds timeout = 3s)
 
 int main() {
     try {
+        widgetrail::process::OverlayProcessOwner invalidOwner;
+        std::wstring invalidError;
+        Check(invalidOwner.Begin(L"", 3s, invalidError) ==
+                  widgetrail::process::OwnershipResult::ClientFailed &&
+                  invalidError == L"Overlay process ownership options are invalid.",
+              "invalid activation options fail closed with an exact diagnostic");
+
         Check(!widgetrail::process::ValidProcessProfile(L"") &&
                   !widgetrail::process::ValidProcessProfile(L"bad/profile") &&
                   widgetrail::process::ValidProcessProfile(L"fixture.Profile-1"),
@@ -103,14 +110,23 @@ int main() {
               "binding the owner window forwards the pending Show exactly once");
         Completed("hidden-owner-activation");
 
+        auto alreadyBoundClient = std::async(std::launch::async, Client, profile, 3s);
+        Check(alreadyBoundClient.get() ==
+                  widgetrail::process::OwnershipResult::ClientAcknowledged,
+              "already-bound resident acknowledges a later Show activation");
+        PumpUntil(2);
+        Check(showMessages.load() == 2,
+              "acknowledged already-visible Show posts one new activation decision");
+        Completed("already-bound-owner-activation");
+
         std::vector<std::future<widgetrail::process::OwnershipResult>> clients;
         for (int index = 0; index < 4; ++index)
             clients.push_back(std::async(std::launch::async, Client, profile, 3s));
         for (auto& client : clients)
             Check(client.get() == widgetrail::process::OwnershipResult::ClientAcknowledged,
                   "simultaneous later launch is only an acknowledged client");
-        PumpUntil(5);
-        Check(showMessages.load() == 5,
+        PumpUntil(6);
+        Check(showMessages.load() == 6,
               "each simultaneous launch contributes exactly one bounded Show");
         Completed("simultaneous-clients");
 
@@ -128,8 +144,8 @@ int main() {
                   names.pipe.c_str(), &bad, sizeof(bad), &reply, sizeof(reply),
                   &read, 1000) && read == sizeof(reply) && reply == 0,
               "malformed client receives a bounded rejection");
-        PumpUntil(6, 100ms);
-        Check(showMessages.load() == 5,
+        PumpUntil(7, 100ms);
+        Check(showMessages.load() == 6,
               "rejected client cannot activate the owner window");
         Completed("malformed-client-rejection");
 
@@ -195,8 +211,15 @@ int main() {
         });
         HANDLE held = heldPromise.get_future().get();
         Check(held != nullptr, "stalled-owner fixture owns the exact profile mutex");
-        auto timedClient = std::async(std::launch::async, Client, stalledProfile, 150ms);
-        Check(timedClient.get() == widgetrail::process::OwnershipResult::ClientFailed,
+        widgetrail::process::OverlayProcessOwner timedClientOwner;
+        std::wstring timedClientError;
+        auto timedClient = std::async(std::launch::async, [&] {
+            return timedClientOwner.Begin(
+                stalledProfile, 150ms, timedClientError);
+        });
+        Check(timedClient.get() == widgetrail::process::OwnershipResult::ClientFailed &&
+                  timedClientError ==
+                      L"The resident OverlayHost did not acknowledge activation in time.",
               "client timeout is bounded when an owner has no activation transport");
         releasePromise.set_value();
         holder.join();
@@ -251,6 +274,8 @@ int main() {
         Check(stalledReplyClient.Begin(replyProfile, 150ms, error) ==
                   widgetrail::process::OwnershipResult::ClientFailed,
               "client fails when the resident endpoint withholds its reply");
+        Check(error == L"The resident OverlayHost did not acknowledge activation in time.",
+              "withheld acknowledgement reports the exact bounded activation failure");
         Check(std::chrono::steady_clock::now() - replyStarted < 1s,
               "client request and reply share the advertised activation deadline");
         releaseReplyServerPromise.set_value();
