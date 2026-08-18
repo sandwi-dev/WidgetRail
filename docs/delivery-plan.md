@@ -30,16 +30,27 @@ evidence only; this file is the sole authority for current work.
   DirectComposition, and logged no startup error/failure/rejection. User
   Guide/second-invocation/external-foreground testing is pending; no DLV-266
   tests or integration are authorized before that verdict.
+- DLV-265 production/docs commit `869dc7d` is reconciled with current planner
+  main by clean merge `b52c07e`. Independent source review confirmed that the
+  Spotify package reuses the bounded host text-entry contract, validates and
+  atomically writes only the public Client ID, and deletes the prior OAuth
+  refresh credential before activating a replacement ID. Its coherent
+  tests-skipped Release has OverlayHost SHA-256
+  `4429E83E747BD345EED867CB3B5346A371B9823296E4C2828772C152E603D032`;
+  Spotify package 0.3.1 has SHA-256
+  `65EF8BE722CE26122BCAA93EAC28D58B9FEE620BD140862976D6543E2F32C33E`.
+  It remains staged behind the running DLV-266 physical candidate and must not
+  be launched, tested, or integrated before that serialized verdict.
 - DLV-264 production candidate `75f1c96` changed only
   `WidgetSessionCoordinator.{h,cpp}`. Its coherent tests-skipped Release has
   SHA-256 `502720EA82F5764CCD52DD36036D18EF8531D73044063D600568357305692737`
-  and is visibly running as PID 17212. The user physically accepted repeated
-  rapid Now Playing -> Settings -> Now Playing switching on 2026-08-18. The
-  exact session retained visible lifecycle authority and valid checkpoints
-  without publishing a hidden/suspended failure. Test follow-up `fb4fc85`
-  passed 20 coordinator scenarios, OverlayState, WidgetLifecycle, and 305
-  action-feedback checks. Independent review accepted the cumulative chain and
-  integrated it through main `15a26b9`.
+  and was physically accepted as PID 17212 after repeated rapid Now Playing ->
+  Settings -> Now Playing switching on 2026-08-18. The exact session retained
+  visible lifecycle authority and valid checkpoints without publishing a
+  hidden/suspended failure. Test follow-up `fb4fc85` passed 20 coordinator
+  scenarios, OverlayState, WidgetLifecycle, and 305 action-feedback checks.
+  Independent review accepted the cumulative chain and integrated it through
+  main `15a26b9`; PID 17212 was later gracefully closed to stage DLV-266.
 - DLV-263 acceptance evidence: zero logged error/failure/stale/timeout/rejection
   lines; exact-anchor and retained-overlap admissions; focus remained inside
   the viewport; 33 frames averaged 26.9 ms, one reached 52.0 ms, none exceeded
@@ -129,7 +140,7 @@ user decision. The native overlay is the sole production presentation path.
 | Lane | Task/worktree | State |
 | --- | --- | --- |
 | Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | Clean and idle at cumulative DLV-266 merge `510e01c`. Exact production candidate PID 40292 is visibly running for the user's physical verdict; do not add/run tests or integrate before acceptance. The platform queue intentionally contains one evidenced item rather than filler and requires replenishment after its diagnosis. |
-| Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | DLV-264 is accepted and integrated through main `15a26b9`. DLV-265 production/docs work is active after reconciliation to current planner main; its coherent tests-skipped build is in progress. DLV-248 remains deferred. |
+| Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | Clean and idle at DLV-265 production/docs commit `869dc7d`, reconciled by `b52c07e`. Independent source review and the coherent tests-skipped build are complete; launch and physical setup testing wait behind the running DLV-266 verdict. DLV-248 remains deferred. |
 
 ## Completed planner deliverable — DLV-257: select and freeze WidgetRail identity
 
@@ -487,10 +498,12 @@ deliberately deferred by user decision and requires explicit promotion.
 
 1. DLV-257 through DLV-260 are accepted and integrated through main `1ff96ba`.
 2. DLV-264 is accepted and integrated through main `15a26b9`; accepted PID
-   17212 remains running because the final delta was tests/docs.
-3. Reconcile DLV-266 onto main `15a26b9`, then review and physically test it.
-4. Run DLV-265 from main `15a26b9` so ordinary Spotify setup no longer requires a
-   repository-local terminal command.
+   17212 was later gracefully closed to stage DLV-266.
+3. DLV-266 is reconciled and source-reviewed; physically test the running
+   candidate, then add focused tests and integrate only after acceptance.
+4. DLV-265 is implemented, reconciled, source-reviewed, and built. After the
+   DLV-266 verdict, launch it so ordinary Spotify setup can be physically
+   verified without a repository-local terminal command.
 5. DLV-248 remains outside this sequence until the user promotes it.
 
 ## Manual, external, and blocked evidence
@@ -503,7 +516,7 @@ deliberately deferred by user decision and requires explicit promotion.
 | Trademark | Similar-mark clearance for related software/services; qualified counsel recommended before public release. |
 | GitHub identity | User-selected owner plus repository/organization availability and optional rename/creation. |
 | DLV-264 | Complete: physically accepted on PID 17212, focused-tested, and integrated through main `15a26b9`. |
-| DLV-265 | Assigned from accepted main `15a26b9`; real Spotify authorization remains a user-owned manual check. |
+| DLV-265 | Production/docs candidate `869dc7d` is source-reviewed and built behind DLV-266; controller onboarding and real Spotify authorization remain user-owned physical checks. |
 | DLV-266 | Unaccepted cumulative PID 40292 is running from merge `510e01c`; physical Guide, already-visible `--show`, and external-foreground verdict required before tests. |
 | DLV-248 | Deliberately deferred until explicit user promotion. |
 | Avalonia | Failed/cancelled; requires a new explicit user decision. |
