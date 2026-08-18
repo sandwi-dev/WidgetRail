@@ -136,7 +136,7 @@ fixture—not a fallback or screenshot—is the adoption proof.
 ### Launcher Experience authoring toolchain accepted
 
 DLV-135 widgets commit `3c93abb` is independently integrated as `e6dc10e`.
-`gbar launcher-theme` now provides atomic scaffold, production-validator reuse,
+`wrail launcher-theme` now provides atomic scaffold, production-validator reuse,
 deterministic semantic preview, reproducible archive packing, non-executing
 inspection, and immutable install/list/remove. The root CLI retains only
 dispatch/error mapping; archive/catalog authority remains in the focused
@@ -286,7 +286,7 @@ one class automatically.
 | `GamesAppsWidget` | 1,376-line root | **Conditional exception.** Sole lifecycle/provider-effect/action/committed-state adapter over separate presentation, catalog, persistence, reconciliation, and app-library projection policies. Reopen for store/domain growth. |
 | `AudioMixerWidget` | 1,702-line root | **Conditional exception.** One state/action/effect/selection/status/invalidation transaction owner over separate provider session, command transition, and presenter. Reopen for another coordination domain. |
 | `SettingsWidget` | 1,503-line root | **Conditional exception.** One lifecycle/service-effect/committed-state adapter over separate section, permission, installed-package, and theme policies. Reopen for another service lifecycle or material unrelated growth. |
-| `SpotifyWidget` | 1,275-line non-partial root plus focused presentation owner | **Active conditional exception.** DLV-144 must keep responsive composition in `SpotifyPresentation`/GBSS, provide a before/after responsibility map, and add no layout or responsive policy to the root. Reopen if another coordination owner returns. |
+| `SpotifyWidget` | 1,275-line non-partial root plus focused presentation owner | **Active conditional exception.** DLV-144 must keep responsive composition in `SpotifyPresentation`/WRSS, provide a before/after responsibility map, and add no layout or responsive policy to the root. Reopen if another coordination owner returns. |
 | `NetworkControlsWidget` | approximately 1,500 lines at last focused audit | **Conditional exception.** Singular lifecycle/host-command/committed-state/invalidation adapter over separate provider, command, identity, action, and presenter seams. Remeasure on next touch. |
 | `UI` SDK facade | approximately 1,471 lines across component-family partials | **Cohesive stateless exception.** No lifecycle, task, lock, resource, or mutable model. Reopen if component families share hidden state. |
 | `WidgetBridgeServer` | 887-line file; focused registry/dispatcher/recovery owners exist | **Conditional exception.** Retain session/framing/routing/write ownership only; reopen if catalog/residency/diagnostics policy returns. |
