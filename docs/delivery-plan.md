@@ -9,15 +9,23 @@ evidence only; this file is the sole authority for current work.
 
 ## Current baseline
 
-- Accepted main is `1ff96ba`. It integrates DLV-258 as `e5e5643`, DLV-259 as
+- Accepted production/test integration baseline on main is `1ff96ba`; later
+  main commits are reviewer-only. It integrates DLV-258 as `e5e5643`, DLV-259 as
   `45d75cf`, DLV-260 production/residue work as `74c6ca1`, and the accepted
   test-only Phase B follow-ups as `7297197` plus `1ff96ba`.
 - Exact accepted production PID 33088 was built from the DLV-260 Phase A
   production tree through implementation commit `85a021a`, with SHA-256
   `1E816334FD5B48ABB9449CB66FEA66CE0A93E14E8DFECEB259FE6C1753BE503D`.
-  Main now contains that accepted production content; the later delta is tests
-  and reviewer documentation only, so PID 33088 is intentionally retained
-  without rebuild or relaunch.
+  Main contains that accepted production content. PID 33088 was retained
+  through the tests/docs-only integration, then closed only to launch the
+  reviewed physical-first DLV-264 candidate.
+- DLV-264 production candidate `75f1c96` changes only
+  `WidgetSessionCoordinator.{h,cpp}`. Its coherent tests-skipped Release has
+  SHA-256 `502720EA82F5764CCD52DD36036D18EF8531D73044063D600568357305692737`
+  and is visibly running as PID 17212. Fresh startup elected one owner, applied
+  platform appearance, selected Settings, admitted a visible lifecycle request,
+  and confirmed foreground acquisition. Physical rapid-switch verdict is
+  pending; no DLV-264 tests have run.
 - DLV-263 acceptance evidence: zero logged error/failure/stale/timeout/rejection
   lines; exact-anchor and retained-overlap admissions; focus remained inside
   the viewport; 33 frames averaged 26.9 ms, one reached 52.0 ms, none exceeded
@@ -106,8 +114,8 @@ user decision. The native overlay is the sole production presentation path.
 
 | Lane | Task/worktree | State |
 | --- | --- | --- |
-| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | Clean at accepted DLV-260 correction `473f95f`. Integrate accepted main `1ff96ba`, then take assigned visible DLV-266. PID 33088 remains the accepted Release and must not be replaced until a reviewed DLV-266 candidate is ready. The platform queue intentionally contains one evidenced item rather than filler and requires replenishment after its diagnosis. |
-| Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | Clean at accepted DLV-258 commit `5b924f4`. Integrate accepted main `1ff96ba`, then take assigned visible DLV-264 in physical-first mode. DLV-265 is Ready immediately after accepted DLV-264. DLV-248 remains deferred. |
+| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | Clean and idle at unreviewed DLV-266 production candidate `7235849`; reported coherent Release SHA-256 `1A0C7F5D7EC09F1C6DC3851060F17E638C5E74F0ADE510197777D82C1ADBADFB`. Hold unlaunched until DLV-264 receives its isolated physical verdict, then source-review and launch for DLV-266 testing. The platform queue intentionally contains one evidenced item rather than filler and requires replenishment after its diagnosis. |
+| Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | Clean and idle at reviewed DLV-264 production candidate `75f1c96`; exact Release is running as PID 17212 for physical rapid-switch testing. No tests are authorized before the user's verdict. DLV-265 is Ready immediately after accepted DLV-264. DLV-248 remains deferred. |
 
 ## Completed planner deliverable — DLV-257: select and freeze WidgetRail identity
 
@@ -335,6 +343,16 @@ failure; only after that visible acceptance add focused lifecycle sequencing,
 supersession, stale-failure rejection, and checkpoint-retention tests. Integrate
 only the user-accepted production change and its accepted test follow-up.
 
+Candidate result: merge `f6fcf6c` reconciled the widgets lane to accepted main
+with a byte-identical tree, then production commit `75f1c96` changed only the
+existing session coordinator. Source review confirms lifecycle-stamped snapshot
+requests, bounded supersession of mismatched queued/in-flight snapshots, typed
+wrong-lifecycle rejection, and retention of the last valid checkpoint. The
+coherent tests-skipped Release is visibly running as PID 17212 with SHA-256
+`502720EA82F5764CCD52DD36036D18EF8531D73044063D600568357305692737`.
+Await the user's rapid Now Playing -> Settings -> Now Playing verdict before
+authoring or running focused tests.
+
 Stop for a protocol redesign, renderer changes, loss of authoritative provider
 failure reporting, destructive state action, substantial conflict, or evidence
 that the incident has a different owner. Never push.
@@ -415,6 +433,13 @@ visible/hidden and external-foreground transitions. After visible acceptance,
 add focused deterministic state-decision, idempotent recovery, failure-reporting,
 and no-focus-while-hidden coverage. Inspect the exact candidate log; no Tier 3
 unless the implementation changes a shared protocol or process boundary.
+
+Candidate status: the platform lane reports clean production-only commit
+`7235849`, changing `main.cpp`, with coherent tests-skipped Release SHA-256
+`1A0C7F5D7EC09F1C6DC3851060F17E638C5E74F0ADE510197777D82C1ADBADFB`.
+It remains unreviewed and unlaunched while the independent DLV-264 physical
+verdict is active. Review and launch it only after that verdict so observations
+cannot be attributed to two simultaneous production changes.
 
 Stop for inability to distinguish a product defect from external z-order state,
 an undocumented Windows API, a new watchdog/process/window/input authority,
