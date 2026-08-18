@@ -5529,3 +5529,33 @@ accepted DLV-263 process was not stopped or relaunched. No live local state,
 credentials, provider data, installed applications, or the old
 `%LOCALAPPDATA%\GameBarAlternative` root was inspected or modified, and no
 launch, Tier 3, publication, integration, or push was performed.
+
+### DLV-260 Phase B — always-on catalog checks and bounded runtime disposition
+
+`WidgetBridgeCatalogTests` no longer relies on Release-disabled `assert(...)`.
+All 214 former assertions now use one test-local always-on check that retains
+the failed expression in its diagnostic. Executing those checks exposed and
+corrected only stale fixture expectations: the authored advanced-presentation
+slot had shifted the loading, action-surface, grid, cursor-list, and text-entry
+child indices, and the appearance fixture omitted the required persisted
+`animateWidgetSwitching` field. No parser, bridge, runtime, or other production
+code changed. The focused Release `WidgetBridgeCatalogTestsOnly` route passes.
+
+The existing Widget Runtime seventh case was diagnosed once in isolation under
+a 25-second process-tree bound. It is the first real worker-process/named-pipe
+case after six in-memory ownership cases and timed out without stdout or stderr;
+the exact test-owned process tree was stopped. The harness emits a result only
+after all three retired-notification subcases complete and provides no bounded
+launch/pipe/publication stage oracle, so this run cannot safely identify a
+deterministic test-only repair. Production and test support remain unchanged,
+and the route is retained as inconclusive rather than weakened or repeatedly
+rerun.
+
+The focused Wrail CLI/package executable passes 65/65 with its required local
+test-cache permission. Its restricted run passed 55/65; all ten failures derive
+from one denied test-owned temporary WidgetRail SDK entry in the user NuGet
+cache, and the exact unrestricted rerun passed every case. The Widget Runtime
+test project builds Release with zero warnings and errors. PID 33088 and the
+physically accepted Phase A Release were not rebuilt, relaunched, or stopped.
+The one required clean exact-commit Tier-3 result is retained and reported
+separately after this test follow-up commit.
