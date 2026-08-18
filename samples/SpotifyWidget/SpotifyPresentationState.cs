@@ -35,6 +35,7 @@ internal sealed record SpotifyPresentationState(
     SpotifyRefreshWarning? RefreshWarning,
     bool ShowSetup,
     long SetupViewGeneration,
+    bool SetupBusy,
     SpotifyDestination Destination,
     WidgetCursorResourceSnapshot<SpotifyMediaCollectionItem> Queue,
     WidgetCursorResourceSnapshot<SpotifyPlaylistCollectionItem> Playlists,

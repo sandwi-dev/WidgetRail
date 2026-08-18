@@ -5567,3 +5567,30 @@ generic ambiguity fixture uses the nested test package
 `widgetrail.samples.spotify.preview` with the two valid owning namespaces
 `widgetrail.samples` and `widgetrail.samples.spotify`. The focused Release
 `WidgetConfiguration.Tests` route now passes 5/5. Tier 3 was not rerun.
+
+### DLV-265 — controller-first Spotify onboarding
+
+Spotify Community package 0.3.1 replaces its terminal-required Client-ID setup
+with one package-owned controller flow. The authored setup route opens Spotify's
+developer dashboard, copies the exact non-secret loopback redirect URI, and
+uses the existing public host-owned `UI.TextEntry` modal to commit a bounded
+public Client ID. The full-trust application validates and atomically writes
+that value through its existing package-scoped configuration store, then
+performs a fresh configuration check. Replacing Client ID preserves the backend
+ordering that deletes the old OAuth refresh credential and clears cached access
+authority before the new identity is written.
+
+No Client Secret, refresh credential, intermediate text, raw key, or token is
+published in snapshots, logs, or public configuration. PKCE and the existing
+Credential Manager vault remain unchanged. Dashboard and clipboard actions are
+ordinary package-owned full-trust behavior; WidgetSdk, WidgetProtocol,
+WidgetBridge, PlatformBroker, OverlayHost, and Settings gain no Spotify-specific
+contract. The CLI remains available only as a developer/diagnostic route.
+
+The tests-skipped Release build completed from one isolated coherent source
+graph. Its `OverlayHost.exe` SHA-256 is
+`4429E83E747BD345EED867CB3B5346A371B9823296E4C2828772C152E603D032`.
+The package-owned builder validated and packed Spotify 0.3.1 as a 1,152,916-byte
+archive with SHA-256
+`65EF8BE722CE26122BCAA93EAC28D58B9FEE620BD140862976D6543E2F32C33E`.
+Automated tests intentionally await the physical setup verdict.
