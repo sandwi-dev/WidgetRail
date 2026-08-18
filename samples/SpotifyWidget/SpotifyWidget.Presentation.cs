@@ -156,7 +156,7 @@ internal static class SpotifyPresentation
                                 "spotify.setup-step-3").Classes("spotify-setup-step"),
                         UI.TextEntry(string.Empty, "Enter public Spotify Client ID",
                                 "spotify.setup.client-id", "spotify.setup.client-id",
-                                SpotifyApplicationContract.MaximumClientIdCharacters)
+                                SpotifyApplicationContract.MaximumClientIdInputCharacters)
                             .Disabled(setupBusy)
                             .FocusUp("spotify.setup.copy-redirect")
                             .FocusDown("spotify.setup.done")

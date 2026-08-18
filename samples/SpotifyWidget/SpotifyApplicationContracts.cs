@@ -4,6 +4,7 @@ public static class SpotifyApplicationContract
 {
     public const string ExactRedirectUri = "http://127.0.0.1:43827/callback/";
     public const string DeveloperDashboardUri = "https://developer.spotify.com/dashboard";
+    public const int MaximumClientIdInputCharacters = 96;
     public const int MaximumClientIdCharacters = 128;
     public const int MaximumCollectionPageSize = 50;
     public const int MaximumCollectionOffset = 100_000;

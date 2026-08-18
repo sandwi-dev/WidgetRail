@@ -18,10 +18,11 @@ the public Client ID through the host-owned text-entry modal. No terminal or
 Client Secret is required. Choose **Connect** afterward; authorization remains
 explicit, and merely opening the widget never launches a browser.
 
-Version 0.3.2 keeps controller-first Client-ID onboarding available from the
+Version 0.3.3 keeps controller-first Client-ID onboarding available from the
 configured Ready navigation rail, so an existing Client ID can be replaced
-without disconnecting or using a terminal. It retains the accepted vertical-rail
-responsive layout and its four
+without disconnecting or using a terminal. Its Client-ID field stays within the
+public host text-entry limit while the backend independently revalidates the
+committed value. It retains the accepted vertical-rail responsive layout and its four
 controller-first destinations:
 
 The project imports the shared Community-package deterministic path map, so the

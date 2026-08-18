@@ -5604,3 +5604,12 @@ the current Client ID or account state. Existing Ready destinations, shortcuts,
 initial focus, unconfigured/disconnected routes, and PKCE behavior are
 unchanged. Automated regression coverage continues to await the user's
 physical verdict.
+
+Physical review of 0.3.2 exposed a package-owned bound mismatch before setup
+could render: the package supplied its independent 128-character backend
+validation ceiling to a public text-entry contract capped at 96. Immutable
+package 0.3.3 gives the setup field an explicit 96-character input maximum and
+retains the separate 128-character backend validation ceiling as defense in
+depth. Shared protocol, SDK, runtime, host validation, configuration, account,
+PKCE, and credential ordering remain unchanged. Tests continue to await the
+user's physical verdict.
