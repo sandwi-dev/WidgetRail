@@ -230,7 +230,7 @@ user decision. The native overlay is the sole production presentation path.
 
 | Lane | Task/worktree | State |
 | --- | --- | --- |
-| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | DLV-268 correction `b217358` is source-reviewed and built tests-skipped with SHA-256 `01802A0E114C32EB15568B9450D3A17D946EF4028E797443F7B111DE070A8853`; it is unaccepted and unintegrated. Physical launch is pending because exact accepted PID 74176 remains alive but exposes no top-level owner HWND for the authorized graceful-close path; do not force-kill it. After accepted DLV-268 integration, DLV-272 precedes DLV-269. |
+| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | DLV-268 correction `b217358` is source-reviewed and visibly running tests-skipped as unaccepted PID 71216 with SHA-256 `01802A0E114C32EB15568B9450D3A17D946EF4028E797443F7B111DE070A8853`. Exact accepted PID 74176 had no owner HWND and was terminated only after explicit user approval. Await the Spotify/Games & Apps physical verdict; no tests, integration, or later milestone. |
 | Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | DLV-265 is saved at clean tip `13bd971` plus reconciliation `5fd1a06` and explicitly deferred until immediately after DLV-271. Preserve installed Spotify 0.3.3 and the unchanged Client ID/account state; do not resume, test, integrate, reinstall, or reset it early. DLV-270 follows accepted DLV-265; DLV-248 remains deferred. |
 
 DLV-257 is closed. Its approved identity decisions and evidence are preserved
@@ -636,6 +636,9 @@ through `RefreshRetained`, forbids inert input/focus actions, and revalidates th
 next current snapshot. Its exact tests-skipped artifact hash is
 `01802A0E114C32EB15568B9450D3A17D946EF4028E797443F7B111DE070A8853`.
 Source review accepted it for physical testing, not behavior acceptance.
+After explicit user approval to terminate ownerless-window accepted PID 74176,
+the exact candidate launched as visible unaccepted PID 71216 with clean startup,
+DirectComposition, foreground input, and current Settings admission diagnostics.
 
 ## Ready platform deliverable — DLV-272: extract committed widget interaction session
 
@@ -956,7 +959,7 @@ deliberately deferred by user decision and requires explicit promotion.
 | DLV-264 | Complete: physically accepted on PID 17212, focused-tested, and integrated through main `15a26b9`. |
 | DLV-265 | Saved/deferred by user until immediately after accepted DLV-271. Preserve clean tip `13bd971`, reconciliation `5fd1a06`, installed Spotify 0.3.3, and the unchanged Client ID/account state; do not resume, test, integrate, reinstall, replace configuration, or reset it early. |
 | DLV-267 | Complete: accepted physical evidence on PID 69904, 422 Spotify paints, 97 bounded commits, 430 zero-error raster-origin records, OverlayChrome 131/131, integrated through main `a552cbf`. |
-| DLV-268 | Correction `b217358` is source-reviewed and built tests-skipped; physical launch awaits graceful replacement of ownerless-window PID 74176. Verify Spotify retained-refresh scrolling plus Games & Apps focus/re-entry before tests. |
+| DLV-268 | Correction `b217358` is visibly running tests-skipped as unaccepted PID 71216. Verify Spotify retained-refresh scrolling plus Games & Apps focus/re-entry before tests. |
 | DLV-272 | Ready after accepted DLV-268 integration; requires a behavior-preserving interaction-session extraction, before/after authority map, tests-skipped physical verdict, then focused lifecycle coverage. |
 | DLV-269 | Ready after accepted DLV-272 integration; requires a tests-skipped physical Spotify long-list verdict proving viewport-driven prefetch across right-stick and directional navigation without consumed input or forced focus. |
 | DLV-273 | Ready after accepted DLV-269 integration; requires an atomic committed presenter extraction, tests-skipped multi-widget/full-bounded physical verdict, then focused renderer/lifecycle coverage. |
