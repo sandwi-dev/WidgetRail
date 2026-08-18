@@ -98,9 +98,15 @@ bool WidgetSessionCoordinator::RequestSnapshot(
         ++generations_[id];
     }
     if (HasPending(RequestKind::Establish, id)) return true;
+    const auto target = lifecycleTargets_.find(id);
+    const auto current = lifecycleStates_.find(id);
+    const auto lifecycle = target != lifecycleTargets_.end()
+        ? target->second
+        : current != lifecycleStates_.end()
+            ? current->second
+            : WidgetLifecycleState::Background;
     const auto queued = Queue(MakeRequest(
-        RequestKind::Snapshot, id,
-        WidgetLifecycleState::Background, correlationId));
+        RequestKind::Snapshot, id, lifecycle, correlationId));
     if (queued.accepted() &&
         queued.action != WidgetSessionTraceAction::Deduplicated) {
         MarkRefreshInFlight(id, queued.requestId);
@@ -152,6 +158,7 @@ void WidgetSessionCoordinator::SetLifecycleTargets(
             continue;
         }
         lifecycleTargets_.insert_or_assign(widgetId, state);
+        SupersedeSnapshotRequests(widgetId, state);
         if (failures_.contains(widgetId) &&
             !awaitingRestartSnapshot_.contains(widgetId)) {
             EmitLifecycleDecision(
@@ -607,6 +614,52 @@ bool WidgetSessionCoordinator::HasPending(
     }) || (inFlight_ && inFlight_->kind == kind && inFlight_->widgetId == widgetId);
 }
 
+void WidgetSessionCoordinator::SupersedeSnapshotRequests(
+    const std::wstring_view widgetId,
+    const WidgetLifecycleState lifecycle) noexcept {
+    const auto id = std::wstring(widgetId);
+    bool cancelInFlight = false;
+    std::optional<std::uint64_t> cancelledInFlightId;
+    std::vector<Request> cancelled;
+    {
+        std::scoped_lock lock(queueMutex_);
+        for (const auto& request : pending_) {
+            if (request.kind == RequestKind::Snapshot &&
+                request.widgetId == id && request.lifecycle != lifecycle) {
+                cancelled.push_back(request);
+            }
+        }
+        std::erase_if(pending_, [&](const Request& request) {
+            return request.kind == RequestKind::Snapshot &&
+                   request.widgetId == id && request.lifecycle != lifecycle;
+        });
+        if (inFlight_ && inFlight_->kind == RequestKind::Snapshot &&
+            inFlight_->widgetId == id && inFlight_->lifecycle != lifecycle) {
+            cancelInFlight = true;
+            cancelledInFlightId = inFlight_->id;
+            if (inFlightStop_) inFlightStop_->request_stop();
+        }
+    }
+    const auto refreshRequest = refreshRequestIds_.find(id);
+    const bool supersededRefresh = refreshRequest != refreshRequestIds_.end() &&
+        (std::any_of(cancelled.begin(), cancelled.end(), [&](const Request& request) {
+            return request.id == refreshRequest->second;
+        }) || cancelledInFlightId == refreshRequest->second);
+    if (supersededRefresh) {
+        refreshStates_.insert_or_assign(id, WidgetRefreshState::RefreshRequested);
+        refreshRequestIds_.erase(id);
+    }
+    for (const auto& request : cancelled) {
+        EmitTrace(
+            request, WidgetSessionTraceStage::RequestCompleted,
+            WidgetSessionTraceAction::None,
+            WidgetSessionTraceReason::NewerTarget,
+            WidgetSessionCompletionDisposition::Cancelled);
+    }
+    if (cancelInFlight && worker_.joinable())
+        (void)CancelSynchronousIo(worker_.native_handle());
+}
+
 void WidgetSessionCoordinator::RevokeRequests(
     const std::wstring_view widgetId) noexcept {
     const auto id = std::wstring(widgetId);
@@ -914,6 +967,14 @@ bool WidgetSessionCoordinator::CompletionRuntimeIsCurrent(
 bool WidgetSessionCoordinator::CompletionIsCurrent(const Request& request) const noexcept {
     if (!CompletionRuntimeIsCurrent(request)) return false;
     if (request.widgetId.empty()) return true;
+    if (request.kind == RequestKind::Snapshot) {
+        const auto target = lifecycleTargets_.find(request.widgetId);
+        return request.lifecycle == WidgetLifecycleState::Background
+            ? target == lifecycleTargets_.end() ||
+                target->second == WidgetLifecycleState::Background
+            : target != lifecycleTargets_.end() &&
+                target->second == request.lifecycle;
+    }
     if (request.kind == RequestKind::Establish ||
         request.kind == RequestKind::Lifecycle) {
         const auto target = lifecycleTargets_.find(request.widgetId);
