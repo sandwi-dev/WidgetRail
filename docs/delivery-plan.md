@@ -59,6 +59,26 @@ evidence only; this file is the sole authority for current work.
   incorrectly hides the only replacement route. Keep the user's configuration
   intact. No DLV-265 tests or integration are authorized before a corrected
   production-only candidate is physically accepted.
+  Correction commit `672c8c1`, based on clean reconciliation `920b78a`, adds
+  one Ready-navigation Setup button that reuses the existing setup action and
+  increments the immutable package to 0.3.2. Independent source review found
+  no configuration, credential, PKCE, shared-host, shortcut, or existing
+  destination change. The coherent tests-skipped OverlayHost has SHA-256
+  `2E708ED155069E5D6C433C00DB98151B67908A6BE1E4B2F9CD7F9D2E1B73F9B0`;
+  Spotify 0.3.2 has SHA-256
+  `63609CB6C0FECDE87DC7B25487E9F71AA38CC461F3F1D734749CEB9D57B7B01B`.
+  Version 0.3.2 is installed, selected, and enabled without changing the
+  existing Client ID. Corrected candidate PID 75884 is visibly running; fresh
+  startup elected one process owner, activated DirectComposition, and logged no
+  startup issue. Physical review then rejected 0.3.2: activating Setup at
+  07:15:43 produced `worker_request_failed` before any configuration or Spotify
+  operation. The package passed its 128-character Client-ID backend maximum to
+  `UI.TextEntry`, whose public protocol maximum is 96, so element construction
+  threw `ArgumentOutOfRangeException` for `maximumLength` and rejected the
+  snapshot. The existing Client ID remains unchanged. Correct this package-
+  owned limit mismatch in a new immutable version; do not weaken the shared
+  text-entry bound, reset configuration, run tests, or integrate before another
+  physical verdict.
 - DLV-264 production candidate `75f1c96` changed only
   `WidgetSessionCoordinator.{h,cpp}`. Its coherent tests-skipped Release has
   SHA-256 `502720EA82F5764CCD52DD36036D18EF8531D73044063D600568357305692737`
@@ -158,7 +178,7 @@ user decision. The native overlay is the sole production presentation path.
 | Lane | Task/worktree | State |
 | --- | --- | --- |
 | Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | DLV-266 is physically accepted, focused-tested, independently reviewed, and integrated through main `cd83b3a`. PID 40292 was gracefully closed to stage DLV-265; the lane is clean and idle. |
-| Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | DLV-265 package 0.3.1 is physically rejected because configured/Ready Spotify has no Setup entry. Add one controller-reachable route to the existing Setup page without resetting configuration or changing shared contracts; produce a new immutable package version and production-only candidate. Do not add/run tests or integrate before acceptance. DLV-248 remains deferred. |
+| Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | DLV-265 Spotify 0.3.2 is physically rejected: its 128-character package limit violates the existing 96-character `UI.TextEntry` bound and Setup snapshot construction fails. Correct only that package-owned mismatch in immutable 0.3.3 and produce another tests-skipped candidate. Do not reset configuration, change shared bounds, add/run tests, or integrate before acceptance. DLV-248 remains deferred. |
 
 ## Completed planner deliverable — DLV-257: select and freeze WidgetRail identity
 
@@ -462,6 +482,18 @@ and publish a new immutable package version for another production-only
 physical candidate. Do not reset configuration, duplicate the setup UI, add a
 shared settings surface, run tests, or integrate before the user's verdict.
 
+Correction candidate status: commit `672c8c1` changes one Ready presentation
+route plus immutable version/public documentation. Spotify 0.3.2 is installed,
+selected, and enabled with the prior Client ID preserved. Tests-skipped PID
+75884 remains running, but physical activation of Setup is rejected because the
+package supplies maximum length 128 to a text-entry contract bounded at 96.
+Produce immutable 0.3.3 using a package-owned input bound within the existing
+public contract while retaining the stricter backend validation as defense in
+depth. Then physically verify that Setup opens/cancels in configured Ready wide
+and compact layouts and leaves Player, Queue, Playlists, Devices, account state,
+and existing shortcuts intact. Do not test replacement with a different Client
+ID unless the user chooses to perform that account action.
+
 ## Assigned platform deliverable — DLV-266: reconcile invisible resident Show activation
 
 Owner/baseline: platform lane after reconciling accepted main `15a26b9` onto
@@ -529,10 +561,10 @@ deliberately deferred by user decision and requires explicit promotion.
 2. DLV-264 is accepted and integrated through main `15a26b9`; accepted PID
    17212 was later gracefully closed to stage DLV-266.
 3. DLV-266 is accepted, focused-tested, and integrated through main `cd83b3a`.
-4. DLV-265 package 0.3.1 is physically rejected because configured Spotify
-   hides Setup. Produce a corrected immutable package with a configured-state
-   Setup entry, then physically verify replacement without deleting the current
-   Client ID or using a terminal; add focused tests only after acceptance.
+4. DLV-265 packages 0.3.1 and 0.3.2 are physically rejected. Correct the 0.3.2
+   text-entry maximum mismatch in immutable 0.3.3, then verify configured-state
+   Setup without deleting the current Client ID or using a terminal; add focused
+   tests only after acceptance.
 5. DLV-248 remains outside this sequence until the user promotes it.
 
 ## Manual, external, and blocked evidence
