@@ -1,6 +1,83 @@
 #include "ControllerNavigation.h"
 
+#include <algorithm>
+#include <cmath>
+
 namespace widgetrail::input {
+
+namespace {
+
+constexpr int kRightStickScrollDeadZone = 8'000;
+constexpr float kRightStickMaximumScrollRateDipPerSecond = 2'200.0F;
+constexpr std::uint64_t kRightStickInitialSampleMilliseconds = 16;
+constexpr std::uint64_t kRightStickMaximumSampleMilliseconds = 50;
+constexpr float kRightStickAxisSwitchRatio = 1.25F;
+
+} // namespace
+
+RightStickScrollUpdate RightStickScrollKinetics::Update(
+    const short x,
+    const short y,
+    const std::uint64_t now) noexcept {
+    const int horizontal = std::abs(static_cast<int>(x));
+    const int vertical = std::abs(static_cast<int>(y));
+    if (horizontal <= kRightStickScrollDeadZone &&
+        vertical <= kRightStickScrollDeadZone) {
+        const bool returnedToDeadZone = moving_;
+        moving_ = false;
+        axis_ = FreeScrollAxis::None;
+        lastSampleAt_ = now;
+        return {FreeScrollAxis::None, 0.0F, false, returnedToDeadZone};
+    }
+
+    FreeScrollAxis candidate = horizontal >= vertical
+        ? FreeScrollAxis::Horizontal
+        : FreeScrollAxis::Vertical;
+    if (axis_ == FreeScrollAxis::Horizontal &&
+        static_cast<float>(vertical) <
+            static_cast<float>(horizontal) * kRightStickAxisSwitchRatio) {
+        candidate = axis_;
+    } else if (axis_ == FreeScrollAxis::Vertical &&
+               static_cast<float>(horizontal) <
+                   static_cast<float>(vertical) * kRightStickAxisSwitchRatio) {
+        candidate = axis_;
+    }
+    axis_ = candidate;
+
+    const int magnitude = axis_ == FreeScrollAxis::Horizontal
+        ? horizontal
+        : vertical;
+    const float strength = std::clamp(
+        static_cast<float>(magnitude - kRightStickScrollDeadZone) /
+            static_cast<float>(32'767 - kRightStickScrollDeadZone),
+        0.0F,
+        1.0F);
+    const std::uint64_t elapsed = !moving_ || lastSampleAt_ == 0 ||
+            now <= lastSampleAt_
+        ? kRightStickInitialSampleMilliseconds
+        : std::min(now - lastSampleAt_, kRightStickMaximumSampleMilliseconds);
+    lastSampleAt_ = now;
+    moving_ = true;
+
+    float direction = 1.0F;
+    if ((axis_ == FreeScrollAxis::Horizontal && x < 0) ||
+        (axis_ == FreeScrollAxis::Vertical && y > 0)) {
+        direction = -1.0F;
+    }
+    return {
+        axis_,
+        direction * strength * kRightStickMaximumScrollRateDipPerSecond *
+            static_cast<float>(elapsed) / 1000.0F,
+        true,
+        false,
+    };
+}
+
+void RightStickScrollKinetics::Reset() noexcept {
+    axis_ = FreeScrollAxis::None;
+    lastSampleAt_ = 0;
+    moving_ = false;
+}
 
 void TrayYGesture::Press(
     const std::wstring_view selectedWidget,

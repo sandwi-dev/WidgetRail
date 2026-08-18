@@ -39,6 +39,16 @@ bool IsResponsiveVisible(const WidgetNode& node, const bool compactMode) noexcep
         (!compactMode && node.visibleWhen == L"expandedOnly");
 }
 
+const WidgetNode* FindNode(
+    const WidgetNode& node,
+    const std::wstring_view nodeId) noexcept {
+    if (node.id == nodeId) return &node;
+    for (const auto& child : node.children) {
+        if (const auto* found = FindNode(child, nodeId)) return found;
+    }
+    return nullptr;
+}
+
 void CollectCollectionItems(
     const WidgetNode& node,
     const WidgetNode& collectionRoot,
@@ -299,6 +309,83 @@ std::optional<std::wstring> FindGeometricFocusTarget(
         }
     }
     return best;
+}
+
+std::optional<std::wstring> FindFreeScrollReentryTarget(
+    const WidgetNode& root,
+    const std::wstring_view scrollId,
+    const declarative::ScrollAxis axis,
+    const std::wstring_view activeScopeId,
+    const RenderResult& renderResult) {
+    if (axis == declarative::ScrollAxis::None || scrollId.empty())
+        return std::nullopt;
+    const auto viewport = renderResult.scrollViewports.find(scrollId);
+    const auto* scroll = FindNode(root, scrollId);
+    if (!scroll || viewport == renderResult.scrollViewports.end() ||
+        viewport->second.axis != axis || viewport->second.rect.width <= 0.0F ||
+        viewport->second.rect.height <= 0.0F) {
+        return std::nullopt;
+    }
+
+    constexpr float epsilon = 0.5F;
+    const auto& clip = viewport->second.rect;
+    struct Candidate final {
+        std::wstring id;
+        Rect rect;
+        bool fullyVisible{};
+    };
+    std::vector<Candidate> candidates;
+    const auto collect = [&](const auto& self, const WidgetNode& node) -> void {
+        const auto geometry = renderResult.navigationRects.find(node.id);
+        const auto scope = renderResult.focusScopes.find(node.id);
+        const auto hit = std::ranges::find_if(
+            renderResult.hitRegions,
+            [&](const RenderHitRegion& region) {
+                return region.nodeId == node.id;
+            });
+        if (geometry != renderResult.navigationRects.end() &&
+            scope != renderResult.focusScopes.end() &&
+            scope->second == activeScopeId &&
+            hit != renderResult.hitRegions.end() && hit->enabled) {
+            const auto& rect = geometry->second;
+            const bool intersects = rect.x < clip.x + clip.width - epsilon &&
+                rect.x + rect.width > clip.x + epsilon &&
+                rect.y < clip.y + clip.height - epsilon &&
+                rect.y + rect.height > clip.y + epsilon;
+            if (intersects) {
+                const bool fullyVisible =
+                    rect.x >= clip.x - epsilon &&
+                    rect.y >= clip.y - epsilon &&
+                    rect.x + rect.width <= clip.x + clip.width + epsilon &&
+                    rect.y + rect.height <= clip.y + clip.height + epsilon;
+                candidates.push_back({node.id, rect, fullyVisible});
+            }
+        }
+        for (const auto& child : node.children) self(self, child);
+    };
+    collect(collect, *scroll);
+    const bool hasFullyVisible = std::ranges::any_of(
+        candidates, [](const Candidate& candidate) {
+            return candidate.fullyVisible;
+        });
+    std::erase_if(candidates, [&](const Candidate& candidate) {
+        return hasFullyVisible && !candidate.fullyVisible;
+    });
+    if (candidates.empty()) return std::nullopt;
+    std::ranges::sort(candidates, [axis](const Candidate& left,
+                                        const Candidate& right) {
+        const auto primary = [axis](const Rect& rect) {
+            return axis == declarative::ScrollAxis::Vertical ? rect.y : rect.x;
+        };
+        const auto secondary = [axis](const Rect& rect) {
+            return axis == declarative::ScrollAxis::Vertical ? rect.x : rect.y;
+        };
+        return std::tuple{
+                   primary(left.rect), secondary(left.rect), left.id} <
+            std::tuple{
+                   primary(right.rect), secondary(right.rect), right.id};
+    });
+    return candidates.front().id;
 }
 
 } // namespace widgetrail::input

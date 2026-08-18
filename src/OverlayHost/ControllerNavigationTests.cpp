@@ -1,6 +1,7 @@
 #include "ControllerNavigation.h"
 
 #include <array>
+#include <cmath>
 #include <cstdlib>
 #include <iostream>
 #include <string_view>
@@ -134,6 +135,50 @@ int main() {
     navigator.Reset();
     navigator.Prime(-20'000, 0, 700);
     Check(!navigator.Update(-20'000, 0, 710), "priming prevents an opening ghost move");
+
+    using widgetrail::input::FreeScrollAxis;
+    using widgetrail::input::RightStickScrollKinetics;
+    RightStickScrollKinetics freeScroll;
+    const auto quiet = freeScroll.Update(8'000, -8'000, 1'000);
+    Check(!quiet.moving && quiet.axis == FreeScrollAxis::None &&
+              !quiet.returnedToDeadZone,
+          "right-stick dead zone does not create free-scroll state");
+    const auto verticalFull = freeScroll.Update(0, -32'767, 1'016);
+    Check(verticalFull.moving && verticalFull.axis == FreeScrollAxis::Vertical &&
+              std::abs(verticalFull.deltaDip - 35.2F) < 0.01F,
+          "full vertical deflection uses the bounded initial sample rate");
+    const auto verticalBounded = freeScroll.Update(0, -32'767, 1'200);
+    Check(verticalBounded.moving && verticalBounded.deltaDip > verticalFull.deltaDip &&
+              verticalBounded.deltaDip <= 110.01F,
+          "long sampling gaps are capped at the bounded maximum delta");
+    const auto verticalProportional = freeScroll.Update(0, -20'000, 1'216);
+    Check(verticalProportional.moving && verticalProportional.deltaDip > 0.0F &&
+              verticalProportional.deltaDip < verticalFull.deltaDip,
+          "partial deflection produces a smaller proportional scroll delta");
+    const auto verticalHysteresis = freeScroll.Update(18'000, -20'000, 1'232);
+    Check(verticalHysteresis.axis == FreeScrollAxis::Vertical,
+          "diagonal noise retains the engaged free-scroll axis");
+    const auto horizontalSwitch = freeScroll.Update(26'000, -20'000, 1'248);
+    Check(horizontalSwitch.axis == FreeScrollAxis::Horizontal &&
+              horizontalSwitch.deltaDip > 0.0F,
+          "a clearly dominant orthogonal deflection changes free-scroll axis");
+    const auto horizontalReverse = freeScroll.Update(-26'000, -20'000, 1'264);
+    Check(horizontalReverse.axis == FreeScrollAxis::Horizontal &&
+              horizontalReverse.deltaDip < 0.0F,
+          "horizontal free scroll preserves direction after axis selection");
+    const auto releasedFreeScroll = freeScroll.Update(0, 0, 1'280);
+    Check(!releasedFreeScroll.moving && releasedFreeScroll.returnedToDeadZone &&
+              releasedFreeScroll.axis == FreeScrollAxis::None,
+          "returning to the dead zone reports one pending re-entry boundary");
+    const auto stillReleased = freeScroll.Update(0, 0, 1'296);
+    Check(!stillReleased.returnedToDeadZone,
+          "a held dead-zone sample cannot create a second re-entry boundary");
+    freeScroll.Reset();
+    const auto afterReset = freeScroll.Update(0, 32'767, 2'000);
+    Check(afterReset.moving && afterReset.axis == FreeScrollAxis::Vertical &&
+              afterReset.deltaDip < 0.0F &&
+              std::abs(afterReset.deltaDip) <= 35.21F,
+          "lifecycle reset retires prior timing and direction state");
 
     widgetrail::input::StickNavigator phased;
     phased.Prime(0, 0, 0);

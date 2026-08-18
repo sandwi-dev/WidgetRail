@@ -50,6 +50,16 @@ struct ScrollPaginationAction final {
     NavigationDirection direction,
     const RenderResult& renderResult);
 
+/// Re-enters ordinary focus navigation after right-stick free scroll. The
+/// exact scroll subtree and its real rendered viewport remain authoritative;
+/// fully visible enabled descendants win before the first partial fallback.
+[[nodiscard]] std::optional<std::wstring> FindFreeScrollReentryTarget(
+    const WidgetNode& root,
+    std::wstring_view scrollId,
+    declarative::ScrollAxis axis,
+    std::wstring_view activeScopeId,
+    const RenderResult& renderResult);
+
 [[nodiscard]] bool IsEnabledFocusTarget(
     std::wstring_view id,
     const RenderResult& renderResult) noexcept;
