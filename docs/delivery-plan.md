@@ -230,7 +230,7 @@ user decision. The native overlay is the sole production presentation path.
 
 | Lane | Task/worktree | State |
 | --- | --- | --- |
-| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | DLV-272 is Assigned from integrated main `1cc9be8`: extract one behavior-preserving `WidgetInteractionSession`, provide the required before/after authority map, build one tests-skipped Release, and stop for planner review/physical verdict. Do not start DLV-269. |
+| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | DLV-272 tip `0536d433` is source-rejected before launch: it moves fields but exposes mutable slider/pressed subowners back to `OverlayApp` at 43 call sites. Correct the boundary so the session owns coherent interaction transitions and returns typed outcomes; rebuild tests-skipped and stop. Do not start DLV-269. |
 | Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | DLV-265 is saved at clean tip `13bd971` plus reconciliation `5fd1a06` and explicitly deferred until immediately after DLV-271. Preserve installed Spotify 0.3.3 and the unchanged Client ID/account state; do not resume, test, integrate, reinstall, or reset it early. DLV-270 follows accepted DLV-265; DLV-248 remains deferred. |
 
 DLV-257 is closed. Its approved identity decisions and evidence are preserved
@@ -633,6 +633,20 @@ and invalidation coverage. No Tier 3 or public protocol change.
 Stop for another mutable-authority cluster, a back-reference/service-locator
 design, changed widget contract, new HWND/input/render owner, broad `main.cpp`
 rewrite, substantial conflict, or behavior beyond the named invariants. Never push.
+
+Review disposition: production tip `0536d433` is rejected before launch. It
+does consolidate eight fields and the focus/free-scroll lifecycle, but public
+non-const `sliders()` and `pressed()` accessors leave 27 slider mutations and
+16 pressed mutations distributed through `OverlayApp`; `main.cpp` loses only
+46 lines while the wrapper adds 335. This does not satisfy the required typed
+interaction boundary or reduce shared mutable knowledge enough to stage the
+later scroll/render work. Preserve the commit and correct it in the same lane:
+keep `SliderInteractionState` and `PressedInteractionState` private, group their
+existing lifecycle, input, action-feedback, reconciliation, timeout, and
+presentation transitions behind a small set of coherent session operations,
+and return typed rollback/damage, presentation revision/override, deadline, and
+widget-action requests for `OverlayApp` to arbitrate. Do not create a mirrored
+one-method-per-subowner facade, duplicate policy, or change accepted behavior.
 
 ## Ready platform deliverable — DLV-269: viewport-driven paged-scroll prefetch
 
