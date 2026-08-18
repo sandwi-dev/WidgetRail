@@ -226,7 +226,7 @@ user decision. The native overlay is the sole production presentation path.
 
 | Lane | Task/worktree | State |
 | --- | --- | --- |
-| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | DLV-268 cumulative production tip `9d5a236` is physically accepted on PID 100176. Add only the focused deterministic tests required below, commit them separately, and stop for review; do not change production, integrate, or start DLV-269. |
+| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | DLV-268 cumulative production tip `9d5a236` is physically rejected: Spotify's frequent retained/inert snapshot refresh clears free-scroll as `missing-authority`, re-enables focused-descendant follow, and jumps the viewport back to the locked row. Correct the generic retained-authority lifecycle only; no tests, integration, or DLV-269. Exact accepted DLV-267 Release PID 74176 is restored meanwhile. |
 | Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | DLV-265 is saved at clean tip `13bd971` plus reconciliation `5fd1a06` and explicitly deferred until immediately after DLV-271. Preserve installed Spotify 0.3.3 and the unchanged Client ID/account state; do not resume, test, integrate, reinstall, or reset it early. DLV-270 follows accepted DLV-265; DLV-248 remains deferred. |
 
 ## Completed planner deliverable — DLV-257: select and freeze WidgetRail identity
@@ -679,12 +679,15 @@ the correction generic rather than special-casing Spotify or implementing
 DLV-269 pagination early. No tests ran. Rejected PID 70012 was gracefully
 closed and exact accepted DLV-267 Release PID 33732 was restored.
 
-Physical acceptance evidence for cumulative production tip `9d5a236`: the user
-accepted right-stick scrolling and re-entry in Games & Apps and Spotify on PID
-100176. The exact session records successful Spotify Playlists free-scroll begin,
-pending, and visible-target re-entry at 10:34:22-23, additional Queue movement,
-and 60 total Spotify free-scroll transitions. The candidate remains running;
-production is frozen while the platform lane adds the required focused tests.
+The user's provisional acceptance of cumulative production tip `9d5a236` is
+rescinded. PID 100176 proves Spotify repeatedly admits free scroll, then renders
+`refresh-retained` with inert semantics and no current interaction snapshot,
+clears the binding as `missing-authority`, and restores focused-descendant
+follow. At 10:40:39-40 Playlists repeatedly moved `0->35.2` then snapped to zero;
+Playlist Detail shows the same cycle across sequences 93-226. This is generic
+retained-refresh lifecycle work, not Spotify-specific scrolling or DLV-269
+pagination. No tests ran; PID 100176 was gracefully closed and exact accepted
+DLV-267 Release PID 74176 was restored.
 
 ## Ready platform deliverable — DLV-269: viewport-driven paged-scroll prefetch
 
@@ -917,10 +920,10 @@ deliberately deferred by user decision and requires explicit promotion.
    69904 contained the accepted production commit without a redundant rebuild
    for its test/docs-only integration, then was gracefully closed to stage the
    DLV-268 physical candidate. DLV-265 remains saved/deferred as ordered below.
-6. DLV-268 cumulative production tip `9d5a236` is physically accepted on PID
-   100176 after the two rejected precursors. Production is frozen; the platform
-   lane now owns only the focused deterministic test phase. DLV-269 remains
-   gated until those tests are reviewed and DLV-268 is integrated.
+6. DLV-268 cumulative production tip `9d5a236` is physically rejected after its
+   provisional acceptance: retained/inert Spotify refresh clears the pending
+   binding and lets focus-follow snap the viewport back. The test phase stopped
+   cleanly without edits or runs; platform owns the bounded lifecycle correction.
 7. DLV-269 is Ready for the platform lane only after accepted DLV-268 is
    integrated: generic viewport-driven, focus-independent adjacent prefetch with
    Spotify as the physical proof.
@@ -948,7 +951,7 @@ deliberately deferred by user decision and requires explicit promotion.
 | DLV-264 | Complete: physically accepted on PID 17212, focused-tested, and integrated through main `15a26b9`. |
 | DLV-265 | Saved/deferred by user until immediately after accepted DLV-271. Preserve clean tip `13bd971`, reconciliation `5fd1a06`, installed Spotify 0.3.3, and the unchanged Client ID/account state; do not resume, test, integrate, reinstall, replace configuration, or reset it early. |
 | DLV-267 | Complete: accepted physical evidence on PID 69904, 422 Spotify paints, 97 bounded commits, 430 zero-error raster-origin records, OverlayChrome 131/131, integrated through main `a552cbf`. |
-| DLV-268 | Cumulative production tip `9d5a236` is physically accepted on PID 100176. Await a separate focused-test commit covering kinetics, exact retained focus, nested/boundary ownership, one-event re-entry, invalidation, and accessibility before integration. |
+| DLV-268 | Cumulative tip `9d5a236` is physically rejected: Spotify retained/inert refresh repeatedly clears the binding as `missing-authority` and snaps to the focused row. Preserve pending free-scroll across same-widget retained refresh, validate it against the next current snapshot, then launch another tests-skipped candidate before tests. |
 | DLV-269 | Ready after accepted DLV-268 integration; requires a tests-skipped physical Spotify long-list verdict proving viewport-driven prefetch across right-stick and directional navigation without consumed input or forced focus. |
 | DLV-270 | Ready after resumed DLV-265 is accepted following DLV-271; requires an immutable Spotify candidate, bounded provider-call/timing and snapshot evidence, then user long-list/Queue physical acceptance before tests. |
 | DLV-271 | Ready for the platform lane as serialized cross-layer work after accepted DLV-269; shared protocol work requires focused Tier 1 plus the smallest linked Tier 2 evidence and a bounded 10,000-item reference scenario before physical acceptance. |
@@ -965,7 +968,7 @@ deliberately deferred by user decision and requires explicit promotion.
 
 | Milestone | Result |
 | --- | --- |
-| DLV-267 | Physically accepted and integrated through `a552cbf`: one physical-pixel DirectComposition raster space for full/bounded updates, 430 zero-error origin records, 131/131 focused checks; restored PID 33732 was gracefully closed to stage DLV-268 PID 100176. |
+| DLV-267 | Physically accepted and integrated through `a552cbf`: one physical-pixel DirectComposition raster space for full/bounded updates, 430 zero-error origin records, 131/131 focused checks; exact accepted Release restored as PID 74176 after DLV-268 rejection. |
 | DLV-264 | Physically accepted and integrated through `15a26b9`: lifecycle-owned snapshot supersession, stale wrong-lifecycle failure rejection, retained valid checkpoints, 20 coordinator scenarios, OverlayState, WidgetLifecycle, and 305 action-feedback checks; PID 17212 retained. |
 | DLV-260 | Physically accepted and integrated through `1ff96ba`: complete active WidgetRail cutover, always-on catalog checks, focused configuration 5/5, retained one-shot Tier-3 evidence with 14 passed steps and the corrected stale-fixture red; PID 33088 retained. |
 | DLV-259 | Accepted and integrated as `45d75cf`: complete native WidgetRail identity and fresh-root cutover with no old-root reader or compatibility bridge. |
