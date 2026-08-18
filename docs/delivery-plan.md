@@ -212,6 +212,10 @@ user decision. The native overlay is the sole production presentation path.
 - Complete snapshots are retained last-admitted checkpoints. Generic typed
   operations update them; semantic, resolved-resource, focus, scroll, press,
   slider, layout, UIA, composition, and placement authority remain separate.
+- Input, focus, free-scroll, and re-entry decisions bind to one fully admitted
+  interaction generation. The prior committed generation remains authoritative
+  until its replacement is complete; an ordinary same-widget refresh must not
+  expose a temporary interaction-authority gap or let rendering reacquire focus.
 - Sandboxed and full-trust widgets share the bounded host-admission protocol.
   Full trust grants no overlay HWND/render/input/focus authority.
 - No second GameInput reader, bridge transport, semantic schema,
@@ -226,46 +230,12 @@ user decision. The native overlay is the sole production presentation path.
 
 | Lane | Task/worktree | State |
 | --- | --- | --- |
-| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | DLV-268 cumulative production tip `9d5a236` is physically rejected: Spotify's frequent retained/inert snapshot refresh clears free-scroll as `missing-authority`, re-enables focused-descendant follow, and jumps the viewport back to the locked row. Correct the generic retained-authority lifecycle only; no tests, integration, or DLV-269. Exact accepted DLV-267 Release PID 74176 is restored meanwhile. |
+| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | DLV-268 production through `b217358` is physically accepted on PID 71216. Freeze production, merge current planner main, add/run only the focused DLV-268 tests, and stop; no integration or later milestone. After accepted test review/integration, DLV-272 precedes DLV-269. |
 | Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | DLV-265 is saved at clean tip `13bd971` plus reconciliation `5fd1a06` and explicitly deferred until immediately after DLV-271. Preserve installed Spotify 0.3.3 and the unchanged Client ID/account state; do not resume, test, integrate, reinstall, or reset it early. DLV-270 follows accepted DLV-265; DLV-248 remains deferred. |
 
-## Completed planner deliverable — DLV-257: select and freeze WidgetRail identity
-
-Owner/baseline: user plus planner from accepted main `1ae21df`. This is a
-decision and inventory deliverable, not implementation authority.
-
-Required output:
-
-- Record the exact display name, technical PascalCase namespace root, lowercase
-  package/repository slug, publisher attribution, and whether the existing
-  `gbar` CLI/config prefix is retained or renamed.
-- Verify basic web, source-repository, Microsoft Store-name, domain, and relevant
-  trademark-search availability. Availability is evidence, not legal clearance.
-- Obtain the user's explicit approval of the final identity. Recommend qualified
-  trademark counsel before public release; do not contact counsel, Microsoft,
-  registrars, or third parties without new authority.
-- Produce an exact old-to-new inventory for visible strings, SDK/NuGet identity,
-  namespaces, assemblies, manifest provider types, package metadata, local-data
-  roots, pipe/mutex/window/UIA identifiers, user-agent strings, templates,
-  samples, active docs, store collateral, repository name, and build outputs.
-- State whether any legacy identifiers are migration inputs, which are removed
-  at cutover, and which historical records remain intentionally unchanged. The
-  later user-approved amendment sets the active answer to no migration inputs.
-
-Completed artifact: `docs/widgetrail-identity-migration-contract.md` contains
-the complete approved mapping and preliminary availability evidence. On
-2026-08-17 the user approved `WidgetRail Project`/`widgetrail`, all four new
-archive/style names, the `wrail` tool/config family, and re-authentication rather
-than automatic Credential Manager migration.
-
-Acceptance: one reviewer-owned identity/migration contract committed locally,
-with the chosen name approved by the user and every DLV-258/DLV-259 input
-unambiguous. No production/test changes, Store reservation, external account
-action, push, publication, directory move, build, or relaunch.
-
-Stop for an unchosen name, meaningful legal ambiguity, unavailable Store or
-repository identity, required third-party account/credential, competing
-migration policies, or external action.
+DLV-257 is closed. Its approved identity decisions and evidence are preserved
+in `docs/widgetrail-identity-migration-contract.md` and the linked delivery-plan
+snapshot; it is not active implementation authority.
 
 ## Accepted serialized deliverable — DLV-258: cut over public managed identity
 
@@ -652,47 +622,46 @@ owner, ambiguous nested-surface authority that the existing ancestor graph
 cannot resolve, undocumented controller APIs, substantial conflict, or
 evidence that a non-host-rendered application surface is in scope. Never push.
 
-Physical rejection evidence for initial candidate `63105f7`: with semantic
-focus on the first Games & Apps list entry, right-stick movement began at
-offset `0.000000->5.476061` at 09:52:28.210, then the next paint changed visual
-and semantic focus to `games.refresh-catalog` and cleared the pending binding as
-`render-authority-changed`. The source correlation is the ordinary
-post-render `ResolveVisibleFocusTarget` reconciliation still running while
-focused-descendant follow is deliberately suppressed; once the first row is
-clipped, that reconciliation chooses the unrelated visible Refresh button.
-The correction must preserve the bound semantic focus for the entire free-
-scroll/pending-re-entry interval and leave the visible-target move exclusively
-to `ConsumeFreeScrollReentry`. No tests ran. Rejected PID 42628 was gracefully
-closed and exact accepted DLV-267 Release PID 67516 was restored.
+Physical acceptance: earlier tips `63105f7`, `0e558b1`, and `9d5a236` were
+rejected before tests. Correction `b217358` preserves only the matching binding
+and focus-follow suppression through `RefreshRetained`, keeps inert semantics
+non-actionable, and revalidates the next current snapshot. The exact tests-
+skipped artifact (SHA-256 `01802A0E114C32EB15568B9450D3A17D946EF4028E797443F7B111DE070A8853`)
+is accepted by the user on PID 71216. The physical session recorded 13 scroll
+starts/re-entries and 52 retained-refresh deferrals paired with 52 restorations,
+with zero missing/stale/render/geometry authority clear and zero real issue
+lines. Freeze production and proceed only to focused post-verdict tests.
 
-Second physical rejection evidence for corrected tip `0e558b1`: Games & Apps
-now preserves focus and re-enters correctly, but Spotify does not right-stick
-scroll even within its already-loaded playlist entries. Between 10:08:45 and
-10:08:59 the trace records semantic focus traversing multiple
-`spotify.playlist.item.*` descendants while no `Free scroll began` transition
-is admitted. The host currently consumes right-stick motion before planning an
-offset whenever global declarative motion or a pending presentation impact is
-active; Spotify's live presentation can exercise those global states even when
-the focused collection and its retained scroll authority are valid. Treat that
-as the leading source hypothesis, prove the exact blocking predicate, and keep
-the correction generic rather than special-casing Spotify or implementing
-DLV-269 pagination early. No tests ran. Rejected PID 70012 was gracefully
-closed and exact accepted DLV-267 Release PID 33732 was restored.
+## Ready platform deliverable — DLV-272: extract committed widget interaction session
 
-The user's provisional acceptance of cumulative production tip `9d5a236` is
-rescinded. PID 100176 proves Spotify repeatedly admits free scroll, then renders
-`refresh-retained` with inert semantics and no current interaction snapshot,
-clears the binding as `missing-authority`, and restores focused-descendant
-follow. At 10:40:39-40 Playlists repeatedly moved `0->35.2` then snapped to zero;
-Playlist Detail shows the same cycle across sequences 93-226. This is generic
-retained-refresh lifecycle work, not Spotify-specific scrolling or DLV-269
-pagination. No tests ran; PID 100176 was gracefully closed and exact accepted
-DLV-267 Release PID 74176 was restored.
+Owner/baseline: platform lane after DLV-268 is physically accepted, focused-
+tested, and integrated. Before DLV-269, extract the existing focus, free-scroll,
+pending re-entry, slider, and pressed-presentation state into one
+`WidgetInteractionSession`; provide a before/after field, method, and authority
+map. It accepts immutable admitted semantics, runtime/presentation generation,
+viewport/focus geometry, current scroll authority, and time, and returns typed
+focus, follow-suppression, scroll/re-entry, presentation-override, damage, and
+widget-action requests. `OverlayApp` retains controller polling, lifecycle,
+bridge dispatch, text-entry authorization, retained offset mutation, and final
+action arbitration. Add no second focus tree, scroll owner, cache, or coordinator.
+
+This is behavior-preserving hotspot reduction except for closing any proven
+authority gap required to preserve already accepted DLV-268 behavior. Follow
+physical-first ordering: source review, one tests-skipped Release, then the
+user verifies Games & Apps and live-refreshing Spotify right-stick scrolling,
+stationary focus, one-event re-entry, sliders/pressed feedback, route changes,
+hide/show, and restart. After acceptance run focused focus-navigation, widget-
+surface-focus, slider, pressed, text-entry, retained-refresh, stale-generation,
+and invalidation coverage. No Tier 3 or public protocol change.
+
+Stop for another mutable-authority cluster, a back-reference/service-locator
+design, changed widget contract, new HWND/input/render owner, broad `main.cpp`
+rewrite, substantial conflict, or behavior beyond the named invariants. Never push.
 
 ## Ready platform deliverable — DLV-269: viewport-driven paged-scroll prefetch
 
-Owner/baseline: platform lane only after DLV-268 production and focused tests
-are physically accepted and integrated on planner main. This is a generic
+Owner/baseline: platform lane only after DLV-272 is physically accepted,
+focused-tested, and integrated on planner main. This is a generic
 native-host paged-Scroll correction using the existing public pagination action
 IDs, threshold, retained offset, rendered geometry, focus graph, and bridge
 action route. Spotify playlists and playlist tracks are the required physical
@@ -736,7 +705,7 @@ latency before and after; no Tier 3 is required.
 Stop for a required public SDK/protocol change, inability to derive a stable
 visible range from the existing renderer result, a second scroll/focus/action
 owner, widget-specific native behavior, destructive state action, substantial
-conflict, or evidence that DLV-268 is not accepted and integrated. Never push.
+conflict, or missing accepted DLV-268/DLV-272 baseline. Never push.
 
 ## Ready widgets deliverable — DLV-270: Spotify collection paging efficiency
 
@@ -788,9 +757,38 @@ shared host/SDK/protocol change, destructive configuration or credential action,
 unbounded retention, substantial conflict, or missing accepted DLV-265/DLV-271
 baseline. Never push.
 
+## Ready platform deliverable — DLV-273: extract committed widget content presenter
+
+Owner/baseline: platform lane after DLV-269 is accepted and integrated and
+before DLV-271 changes collection presentation. Extract the declarative widget-
+body painter, renderer/cache lifetime, committed visual checkpoint, incremental
+damage plan, last render result, and declarative-motion state into one
+`WidgetContentPresenter`, with a before/after authority map. It receives one
+immutable, already-admitted `WidgetPaintFrame` containing exact presentation
+and interaction generation, geometry, appearance, focus/slider/pressed
+overrides, retained offset, and layer target; it returns one typed paint outcome
+containing render result, accessibility regions, committed checkpoint, motion,
+damage, and diagnostics. Keep lifecycle, session admission, focus mutation,
+input, chrome, placement, HWND, and device-recovery arbitration in their
+existing owners.
+
+The previous complete frame remains authoritative until the replacement frame
+is admitted and committed atomically; no ordinary same-widget refresh may
+publish half-old geometry/semantics or a transient inert interaction gap.
+Follow physical-first ordering with Settings, Audio, Games & Apps, and live
+Spotify full/bounded updates, device/resource refresh, focus/scroll continuity,
+and no flicker/stale pixels. After acceptance run focused renderer, semantic-
+churn, shared-geometry, incremental/no-raster, retained/failure-retained,
+accessibility-projection, and device-loss coverage. No Tier 3 or protocol change.
+
+Stop for direct `OverlayState`/session/HWND back-references, a graphics service
+locator, second render checkpoint, protocol work, interaction-state ownership,
+broad `main.cpp` rewrite, substantial conflict, or changed product behavior
+beyond atomic committed-frame handoff. Never push.
+
 ## Ready serialized deliverable — DLV-271: virtualized collection presentation windows
 
-Owner/baseline: platform lane as the serialized cross-layer lead after DLV-269
+Owner/baseline: platform lane as the serialized cross-layer lead after DLV-273
 is accepted and integrated on main. This is deliberate public
 architecture work spanning the generic managed SDK/cursor resource, versioned
 protocol and admission, bridge/runtime publication, native semantic/layout/
@@ -844,7 +842,7 @@ unbounded or author-controlled native allocation, a second semantic/scroll/
 focus authority, raw author-authored wire mutations, service-specific core
 behavior, silent truncation, incompatibility that requires preserving an unused
 pre-release protocol generation, substantial conflict, or missing accepted
-DLV-269 baseline. Never push.
+DLV-269/DLV-273 baseline. Never push.
 
 ## Accepted integrated platform deliverable — DLV-266: reconcile invisible resident Show activation
 
@@ -920,24 +918,24 @@ deliberately deferred by user decision and requires explicit promotion.
    69904 contained the accepted production commit without a redundant rebuild
    for its test/docs-only integration, then was gracefully closed to stage the
    DLV-268 physical candidate. DLV-265 remains saved/deferred as ordered below.
-6. DLV-268 cumulative production tip `9d5a236` is physically rejected after its
-   provisional acceptance: retained/inert Spotify refresh clears the pending
-   binding and lets focus-follow snap the viewport back. The test phase stopped
-   cleanly without edits or runs; platform owns the bounded lifecycle correction.
-7. DLV-269 is Ready for the platform lane only after accepted DLV-268 is
-   integrated: generic viewport-driven, focus-independent adjacent prefetch with
-   Spotify as the physical proof.
-8. DLV-271 is Ready for the platform lane as serialized cross-layer architecture
-   after DLV-269 is accepted and integrated: bounded
-   virtualized collection windows with a provider-free 10,000-item scale proof.
-9. DLV-265 remains saved at clean correction tip `13bd971` and resumes in the
+6. DLV-268 production through correction `b217358` is physically accepted on
+   PID 71216; production is frozen while the platform lane adds focused tests.
+7. DLV-272 is Ready immediately after accepted DLV-268 integration: extract one
+   committed interaction session before adding more scroll behavior.
+8. DLV-269 follows accepted DLV-272: generic viewport-driven, focus-independent
+   adjacent prefetch with Spotify as the physical proof.
+9. DLV-273 follows accepted DLV-269: extract one atomic committed widget-content
+   presenter before virtualized collection architecture.
+10. DLV-271 follows accepted DLV-273: bounded virtualized collection windows
+   with a provider-free 10,000-item scale proof.
+11. DLV-265 remains saved at clean correction tip `13bd971` and resumes in the
    widgets lane immediately after accepted DLV-271 integration for its configured-
    Ready Setup/cancel verdict, focused tests, review, and integration.
-10. DLV-270 is Ready for the widgets lane only after resumed DLV-265 is accepted
+12. DLV-270 is Ready for the widgets lane only after resumed DLV-265 is accepted
     and integrated: eliminate redundant Spotify collection requests, measure/
     tune page retention, and reconcile the Queue bound against the accepted
     generic prefetch and virtualization contracts.
-11. DLV-248 remains outside this sequence until the user promotes it.
+13. DLV-248 remains outside this sequence until the user promotes it.
 
 ## Manual, external, and blocked evidence
 
@@ -951,10 +949,12 @@ deliberately deferred by user decision and requires explicit promotion.
 | DLV-264 | Complete: physically accepted on PID 17212, focused-tested, and integrated through main `15a26b9`. |
 | DLV-265 | Saved/deferred by user until immediately after accepted DLV-271. Preserve clean tip `13bd971`, reconciliation `5fd1a06`, installed Spotify 0.3.3, and the unchanged Client ID/account state; do not resume, test, integrate, reinstall, replace configuration, or reset it early. |
 | DLV-267 | Complete: accepted physical evidence on PID 69904, 422 Spotify paints, 97 bounded commits, 430 zero-error raster-origin records, OverlayChrome 131/131, integrated through main `a552cbf`. |
-| DLV-268 | Cumulative tip `9d5a236` is physically rejected: Spotify retained/inert refresh repeatedly clears the binding as `missing-authority` and snaps to the focused row. Preserve pending free-scroll across same-widget retained refresh, validate it against the next current snapshot, then launch another tests-skipped candidate before tests. |
-| DLV-269 | Ready after accepted DLV-268 integration; requires a tests-skipped physical Spotify long-list verdict proving viewport-driven prefetch across right-stick and directional navigation without consumed input or forced focus. |
+| DLV-268 | Production through `b217358` is physically accepted on PID 71216 with paired retained-refresh defer/restore evidence and no authority clear. Focused tests and integration remain. |
+| DLV-272 | Ready after accepted DLV-268 integration; requires a behavior-preserving interaction-session extraction, before/after authority map, tests-skipped physical verdict, then focused lifecycle coverage. |
+| DLV-269 | Ready after accepted DLV-272 integration; requires a tests-skipped physical Spotify long-list verdict proving viewport-driven prefetch across right-stick and directional navigation without consumed input or forced focus. |
+| DLV-273 | Ready after accepted DLV-269 integration; requires an atomic committed presenter extraction, tests-skipped multi-widget/full-bounded physical verdict, then focused renderer/lifecycle coverage. |
 | DLV-270 | Ready after resumed DLV-265 is accepted following DLV-271; requires an immutable Spotify candidate, bounded provider-call/timing and snapshot evidence, then user long-list/Queue physical acceptance before tests. |
-| DLV-271 | Ready for the platform lane as serialized cross-layer work after accepted DLV-269; shared protocol work requires focused Tier 1 plus the smallest linked Tier 2 evidence and a bounded 10,000-item reference scenario before physical acceptance. |
+| DLV-271 | Ready for the platform lane as serialized cross-layer work after accepted DLV-273; shared protocol work requires focused Tier 1 plus the smallest linked Tier 2 evidence and a bounded 10,000-item reference scenario before physical acceptance. |
 | DLV-266 | Complete: physical Guide, already-visible `--show`, and external-foreground activation accepted on PID 40292; focused tests passed and the chain is integrated through main `cd83b3a`. |
 | DLV-248 | Deliberately deferred until explicit user promotion. |
 | Avalonia | Failed/cancelled; requires a new explicit user decision. |
