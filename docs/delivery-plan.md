@@ -9,12 +9,14 @@ evidence only; this file is the sole authority for current work.
 
 ## Current baseline
 
-- Accepted production/test integration baseline on main is `cd83b3a`. It
-  integrates DLV-258 as `e5e5643`, DLV-259 as
+- Accepted production/test integration baseline on main is `a552cbf`. Its
+  prior `cd83b3a` baseline integrates DLV-258 as `e5e5643`, DLV-259 as
   `45d75cf`, DLV-260 production/residue work as `74c6ca1`, and the accepted
   test-only Phase B follow-ups as `7297197` plus `1ff96ba`. DLV-264 is
   integrated as production `7cdcc31` plus focused tests `15a26b9`. DLV-266 is
   integrated as accepted production `795e24d` plus focused tests `cd83b3a`.
+  DLV-267 is integrated through main `a552cbf` as accepted production commits
+  `3f1a09e` plus `7e46f7e` and focused test follow-up `d9c186b`.
 - Exact accepted production PID 17212 was built from DLV-264 implementation
   commit `75f1c96`, with SHA-256
   `502720EA82F5764CCD52DD36036D18EF8531D73044063D600568357305692737`.
@@ -116,8 +118,12 @@ evidence only; this file is the sole authority for current work.
   updates on 2026-08-18. The exact PID 69904 session contains 422 Spotify paint
   records, 97 bounded composition commits, and 430 raster-origin records with
   zero nonzero origin errors and no real error/failure/rejection line. Focused
-  DLV-267 regression coverage is now authorized; integration remains pending
-  that separate test follow-up and independent review.
+  Focused follow-up `d9c186b` adds 12 deterministic full/bounded mapping checks
+  across four scale profiles; the exact OverlayChrome suite passed 131/131
+  within its 20-second bound. Independent review accepted the three-file
+  cumulative scope and integrated it through main `a552cbf`. PID 69904 is
+  intentionally retained because the post-verdict delta is tests and reviewer
+  documents only.
 - DLV-264 production candidate `75f1c96` changed only
   `WidgetSessionCoordinator.{h,cpp}`. Its coherent tests-skipped Release has
   SHA-256 `502720EA82F5764CCD52DD36036D18EF8531D73044063D600568357305692737`
@@ -216,8 +222,8 @@ user decision. The native overlay is the sole production presentation path.
 
 | Lane | Task/worktree | State |
 | --- | --- | --- |
-| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | DLV-267 production tip `7e46f7e` is clean and physically accepted. PID 69904 remains the accepted candidate. Add and run only focused full/bounded raster-origin mapping regression coverage, commit the test-only follow-up separately, and stop for review; do not integrate or relaunch. DLV-268 right-stick free scrolling is Ready next after accepted DLV-267 integration. |
-| Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | Corrected DLV-265 commit `13bd971` is clean and idle. Spotify 0.3.3 remains installed with user state intact; its remaining Setup verdict and tests are paused behind DLV-267. DLV-248 remains deferred. |
+| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | DLV-267 test tip `d9c186b` is clean and integrated through main `a552cbf`. Reconcile that exact main at the clean boundary, then execute Assigned DLV-268 in physical-first mode. |
+| Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | Corrected DLV-265 commit `13bd971` is clean and idle. Spotify 0.3.3 remains installed with user state intact; its configured Ready Setup/cancel physical verdict is unblocked on retained PID 69904. Do not add tests or integrate DLV-265 before that verdict. DLV-248 remains deferred. |
 
 ## Completed planner deliverable — DLV-257: select and freeze WidgetRail identity
 
@@ -534,7 +540,7 @@ Queue, Playlists, Devices, account state, and existing shortcuts intact. Do not
 test replacement with a different Client ID unless the user chooses to perform
 that account action.
 
-## Assigned platform deliverable — DLV-267: identical scene origin for bounded updates
+## Accepted integrated platform deliverable — DLV-267: identical scene origin for bounded updates
 
 Owner/baseline: platform lane from accepted main `cd83b3a`. The installed
 Spotify Community package 0.3.3 remains the physical reproducer and must not be
@@ -573,12 +579,14 @@ commits, and 430 full/bounded raster-origin records at 125% DPI; every record
 reports `raster-origin-error=0,0`, and the session contains no real error,
 failure, or rejection line. Add focused deterministic coverage proving that
 full and bounded DirectComposition requests share one raster space and scene
-origin across the supported DPI/interface-scale mapping. Keep production files
-unchanged, run only the directly affected renderer/composition suite once,
-commit the test-only follow-up separately, and stop for planner review. Do not
-integrate, rebuild, relaunch, broaden into Spotify behavior, or run Tier 3.
+origin across the supported DPI/interface-scale mapping. Focused test-only
+follow-up `d9c186b` adds 12 checks across 100%, 125%, 150%, and combined
+fractional scaling; OverlayChrome passed 131/131 within its 20-second bound.
+Independent review accepted the cumulative chain and integrated it through main
+`a552cbf`. PID 69904 remains the accepted running candidate under the
+tests/docs-only no-relaunch rule.
 
-## Ready platform deliverable — DLV-268: right-stick free scrolling and focus re-entry
+## Assigned platform deliverable — DLV-268: right-stick free scrolling and focus re-entry
 
 Owner/baseline: platform lane after accepted DLV-267 production and focused
 tests are integrated. Keep the feature inside the existing controller-input,
@@ -701,12 +709,13 @@ deliberately deferred by user decision and requires explicit promotion.
 4. DLV-265 packages 0.3.1 and 0.3.2 are physically rejected. Spotify 0.3.3
    corrects their package defects and remains installed with user state intact,
    but cumulative PID 81628 is rejected for the DLV-267 update-origin defect.
-5. DLV-267 tests-skipped PID 69904 is physically accepted against installed
-   Spotify 0.3.3, with zero raster-origin error across full and bounded updates.
-   Complete the focused test-only follow-up and independent review before
-   integration. The remaining DLV-265 Setup verdict may resume afterward.
-6. DLV-268 is Ready for the platform lane after accepted DLV-267 integration:
-   right-stick free scrolling plus deterministic visible-leading focus re-entry.
+5. DLV-267 is accepted and integrated through main `a552cbf`; retained PID
+   69904 already contains the accepted production commit, so its test/docs-only
+   integration does not trigger a rebuild or relaunch. The remaining DLV-265
+   Setup verdict is unblocked on that running build.
+6. DLV-268 is Assigned to the platform lane from accepted main `a552cbf`:
+   right-stick free scrolling plus deterministic visible-leading focus re-entry
+   in physical-first mode.
 7. DLV-248 remains outside this sequence until the user promotes it.
 
 ## Manual, external, and blocked evidence
@@ -719,9 +728,9 @@ deliberately deferred by user decision and requires explicit promotion.
 | Trademark | Similar-mark clearance for related software/services; qualified counsel recommended before public release. |
 | GitHub identity | User-selected owner plus repository/organization availability and optional rename/creation. |
 | DLV-264 | Complete: physically accepted on PID 17212, focused-tested, and integrated through main `15a26b9`. |
-| DLV-265 | Spotify 0.3.3 preserves the current Client ID and corrects the two package rejections, but its remaining Setup/account verdict is paused behind DLV-267; do not reset configuration or run tests yet. |
-| DLV-267 | Physical verdict and bounded-update log review are complete on PID 69904: 422 Spotify paints, 97 bounded commits, 430 zero-error raster-origin records, and no real session failure. Focused test-only follow-up is authorized before integration. |
-| DLV-268 | Requires a tests-skipped physical controller candidate after DLV-267 integration, then vertical/horizontal, nested-scroll, boundary, and one-event focus re-entry verdict before tests. |
+| DLV-265 | Spotify 0.3.3 preserves the current Client ID and corrects both package rejections. Its configured Ready Setup/cancel physical verdict is unblocked on retained PID 69904; do not reset configuration, replace Client ID, add tests, or integrate before that verdict. |
+| DLV-267 | Complete: accepted physical evidence on PID 69904, 422 Spotify paints, 97 bounded commits, 430 zero-error raster-origin records, OverlayChrome 131/131, integrated through main `a552cbf`. |
+| DLV-268 | Assigned from accepted main `a552cbf`; requires a tests-skipped physical controller candidate, then vertical/horizontal, nested-scroll, boundary, and one-event focus re-entry verdict before tests. |
 | DLV-266 | Complete: physical Guide, already-visible `--show`, and external-foreground activation accepted on PID 40292; focused tests passed and the chain is integrated through main `cd83b3a`. |
 | DLV-248 | Deliberately deferred until explicit user promotion. |
 | Avalonia | Failed/cancelled; requires a new explicit user decision. |
@@ -735,6 +744,7 @@ deliberately deferred by user decision and requires explicit promotion.
 
 | Milestone | Result |
 | --- | --- |
+| DLV-267 | Physically accepted and integrated through `a552cbf`: one physical-pixel DirectComposition raster space for full/bounded updates, 430 zero-error origin records, 131/131 focused checks; accepted PID 69904 retained. |
 | DLV-264 | Physically accepted and integrated through `15a26b9`: lifecycle-owned snapshot supersession, stale wrong-lifecycle failure rejection, retained valid checkpoints, 20 coordinator scenarios, OverlayState, WidgetLifecycle, and 305 action-feedback checks; PID 17212 retained. |
 | DLV-260 | Physically accepted and integrated through `1ff96ba`: complete active WidgetRail cutover, always-on catalog checks, focused configuration 5/5, retained one-shot Tier-3 evidence with 14 passed steps and the corrected stale-fixture red; PID 33088 retained. |
 | DLV-259 | Accepted and integrated as `45d75cf`: complete native WidgetRail identity and fresh-root cutover with no old-root reader or compatibility bridge. |
@@ -744,7 +754,6 @@ deliberately deferred by user decision and requires explicit promotion.
 | DLV-261 | Test-only integrated as `c519df4`: exactly two stale button-scale expectations corrected, Platform Settings 18/18. |
 | DLV-256 | Physically accepted and integrated through `b0d53b0`: bounded artwork LRU, measured full-surface transport promotion, retained renderer work, focus-scroll convergence, 4,894 checks. |
 | DLV-254 | Physically accepted and integrated through `57fb469`: optional widget-switch animation defaults Off; cold and warm Off paths snap to exact destination; explicit On remains animated. |
-| DLV-253 | Physically accepted and integrated through `91177ec`: Games & Apps retains resolved state, cold entry starts first row, in-session focus restores, 65/65. |
 
 Do not mark the continuing delivery goal complete. Continue until the user
 pauses/replaces it or all useful lanes are genuinely blocked. Never push.
