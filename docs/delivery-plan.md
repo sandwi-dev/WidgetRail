@@ -9,26 +9,53 @@ evidence only; this file is the sole authority for current work.
 
 ## Current baseline
 
-- Accepted production/test integration baseline on main is `15a26b9`. It
+- Accepted production/test integration baseline on main is `cd83b3a`. It
   integrates DLV-258 as `e5e5643`, DLV-259 as
   `45d75cf`, DLV-260 production/residue work as `74c6ca1`, and the accepted
   test-only Phase B follow-ups as `7297197` plus `1ff96ba`. DLV-264 is
-  integrated as production `7cdcc31` plus focused tests `15a26b9`.
+  integrated as production `7cdcc31` plus focused tests `15a26b9`. DLV-266 is
+  integrated as accepted production `795e24d` plus focused tests `cd83b3a`.
 - Exact accepted production PID 17212 was built from DLV-264 implementation
   commit `75f1c96`, with SHA-256
   `502720EA82F5764CCD52DD36036D18EF8531D73044063D600568357305692737`.
-  Main contains that accepted production tree. PID 17212 remains running under
-  the tests/docs-only no-relaunch rule.
+  Main contains that accepted production tree. PID 17212 was gracefully closed
+  after exact path verification to stage the unaccepted cumulative DLV-266
+  physical candidate described below.
+- DLV-266 production commit `7235849` is reconciled with current planner main
+  by clean merge `510e01c`. Independent source review found one existing
+  activation channel, window/session owner, placement/composition owner, and
+  bounded foreground-acquisition path. Its tests-skipped Release is visibly
+  running as unaccepted PID 40292 with SHA-256
+  `8AD2AC19CF2E5FE6D27F4EC4F3CE3DA243E4F908A8D7E63B6D8438DFCBAA1847`.
+  Fresh startup elected one production process owner, initialized
+  DirectComposition, and logged no startup error/failure/rejection. The user
+  physically accepted Guide open/close, already-visible second invocation, and
+  external-foreground activation on 2026-08-18. Focused follow-up `d085cd1`
+  passed 109 transition checks, 17 foreground/input ownership checks, and 32
+  process-owner checks. Independent review accepted the two-test-file diff and
+  integrated the chain through main `cd83b3a`. PID 40292 remains running
+  because the post-verdict delta is tests and reviewer-owned documents only.
+- DLV-265 production/docs commit `869dc7d` is reconciled with current planner
+  main by clean merge `b52c07e`. Independent source review confirmed that the
+  Spotify package reuses the bounded host text-entry contract, validates and
+  atomically writes only the public Client ID, and deletes the prior OAuth
+  refresh credential before activating a replacement ID. Its coherent
+  tests-skipped Release has OverlayHost SHA-256
+  `4429E83E747BD345EED867CB3B5346A371B9823296E4C2828772C152E603D032`;
+  Spotify package 0.3.1 has SHA-256
+  `65EF8BE722CE26122BCAA93EAC28D58B9FEE620BD140862976D6543E2F32C33E`.
+  It now requires reconciliation onto accepted main `cd83b3a` and one coherent
+  tests-skipped rebuild before planner launch and physical setup testing.
 - DLV-264 production candidate `75f1c96` changed only
   `WidgetSessionCoordinator.{h,cpp}`. Its coherent tests-skipped Release has
   SHA-256 `502720EA82F5764CCD52DD36036D18EF8531D73044063D600568357305692737`
-  and is visibly running as PID 17212. The user physically accepted repeated
-  rapid Now Playing -> Settings -> Now Playing switching on 2026-08-18. The
-  exact session retained visible lifecycle authority and valid checkpoints
-  without publishing a hidden/suspended failure. Test follow-up `fb4fc85`
-  passed 20 coordinator scenarios, OverlayState, WidgetLifecycle, and 305
-  action-feedback checks. Independent review accepted the cumulative chain and
-  integrated it through main `15a26b9`.
+  and was physically accepted as PID 17212 after repeated rapid Now Playing ->
+  Settings -> Now Playing switching on 2026-08-18. The exact session retained
+  visible lifecycle authority and valid checkpoints without publishing a
+  hidden/suspended failure. Test follow-up `fb4fc85` passed 20 coordinator
+  scenarios, OverlayState, WidgetLifecycle, and 305 action-feedback checks.
+  Independent review accepted the cumulative chain and integrated it through
+  main `15a26b9`; PID 17212 was later gracefully closed to stage DLV-266.
 - DLV-263 acceptance evidence: zero logged error/failure/stale/timeout/rejection
   lines; exact-anchor and retained-overlap admissions; focus remained inside
   the viewport; 33 frames averaged 26.9 ms, one reached 52.0 ms, none exceeded
@@ -117,8 +144,8 @@ user decision. The native overlay is the sole production presentation path.
 
 | Lane | Task/worktree | State |
 | --- | --- | --- |
-| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | Clean and idle at source-review-in-progress DLV-266 production candidate `7235849`. Reconcile accepted main `15a26b9` onto the preserved candidate, rebuild one coherent tests-skipped Release, and stop for planner launch. The previously reported pre-DLV-264 artifact hash is superseded by that required coherent rebuild. The platform queue intentionally contains one evidenced item rather than filler and requires replenishment after its diagnosis. |
-| Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | DLV-264 is accepted and integrated through main `15a26b9`; exact accepted production PID 17212 remains running. Reconcile accepted main and execute assigned DLV-265 in physical-first mode. DLV-248 remains deferred. |
+| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | DLV-266 is physically accepted, focused-tested, independently reviewed, and integrated through main `cd83b3a`. Exact accepted production PID 40292 remains running; the lane is clean and idle. |
+| Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | DLV-265 production/docs commit `869dc7d` passed independent source review. Reconcile accepted main `cd83b3a`, rebuild one coherent tests-skipped Release, and stop for planner launch and physical onboarding testing. DLV-248 remains deferred. |
 
 ## Completed planner deliverable — DLV-257: select and freeze WidgetRail identity
 
@@ -446,13 +473,17 @@ add focused deterministic state-decision, idempotent recovery, failure-reporting
 and no-focus-while-hidden coverage. Inspect the exact candidate log; no Tier 3
 unless the implementation changes a shared protocol or process boundary.
 
-Candidate status: the platform lane reports clean production-only commit
-`7235849`, changing `main.cpp`. Its earlier tests-skipped Release SHA-256
-`1A0C7F5D7EC09F1C6DC3851060F17E638C5E74F0ADE510197777D82C1ADBADFB`
-predates accepted DLV-264 and is no longer eligible for launch. Source review is
-in progress. Reconcile accepted main `15a26b9` onto the preserved candidate,
-build one coherent cumulative tests-skipped Release, and stop for planner
-launch/user testing.
+Candidate status: the platform lane produced clean production-only commit
+`7235849`, changing only `main.cpp`, then reconciled current planner main by
+merge `510e01c`. Independent source review found typed before/after diagnostics
+and one idempotent visible-recovery path through the existing placement,
+composition/fallback, transition, and foreground-input owners. The coherent
+tests-skipped Release is visibly running as unaccepted PID 40292 with SHA-256
+`8AD2AC19CF2E5FE6D27F4EC4F3CE3DA243E4F908A8D7E63B6D8438DFCBAA1847`.
+Its fresh session elected one process owner, initialized DirectComposition, and
+logged no startup error/failure/rejection. The user must now verify repeated
+Guide open/close, already-visible second-invocation `--show`, and external
+foreground transitions. Do not add/run tests or integrate before that verdict.
 
 Stop for inability to distinguish a product defect from external z-order state,
 an undocumented Windows API, a new watchdog/process/window/input authority,
@@ -472,10 +503,11 @@ deliberately deferred by user decision and requires explicit promotion.
 
 1. DLV-257 through DLV-260 are accepted and integrated through main `1ff96ba`.
 2. DLV-264 is accepted and integrated through main `15a26b9`; accepted PID
-   17212 remains running because the final delta was tests/docs.
-3. Reconcile DLV-266 onto main `15a26b9`, then review and physically test it.
-4. Run DLV-265 from main `15a26b9` so ordinary Spotify setup no longer requires a
-   repository-local terminal command.
+   17212 was later gracefully closed to stage DLV-266.
+3. DLV-266 is accepted, focused-tested, and integrated through main `cd83b3a`.
+4. Reconcile DLV-265 onto `cd83b3a`, rebuild and launch its coherent Release,
+   then physically verify ordinary Spotify setup without a repository-local
+   terminal command.
 5. DLV-248 remains outside this sequence until the user promotes it.
 
 ## Manual, external, and blocked evidence
@@ -488,8 +520,8 @@ deliberately deferred by user decision and requires explicit promotion.
 | Trademark | Similar-mark clearance for related software/services; qualified counsel recommended before public release. |
 | GitHub identity | User-selected owner plus repository/organization availability and optional rename/creation. |
 | DLV-264 | Complete: physically accepted on PID 17212, focused-tested, and integrated through main `15a26b9`. |
-| DLV-265 | Assigned from accepted main `15a26b9`; real Spotify authorization remains a user-owned manual check. |
-| DLV-266 | Reconcile candidate `7235849` onto accepted main `15a26b9`; physical user verdict required before tests. |
+| DLV-265 | Production/docs candidate `869dc7d` is source-reviewed; reconcile/build from integrated main `cd83b3a`, then controller onboarding and real Spotify authorization require user-owned physical checks. |
+| DLV-266 | Complete: physical Guide, already-visible `--show`, and external-foreground activation accepted on PID 40292; focused tests passed and the chain is integrated through main `cd83b3a`. |
 | DLV-248 | Deliberately deferred until explicit user promotion. |
 | Avalonia | Failed/cancelled; requires a new explicit user decision. |
 | YT Music catalog cleanup | Approval to remove only inactive, non-selected 0.2.0. |

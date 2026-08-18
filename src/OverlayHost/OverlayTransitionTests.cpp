@@ -90,6 +90,54 @@ void InitialOpenWaitsForCommittedPaint() {
          "paint-primed initial open reaches full opacity");
 }
 
+void ResidentShowRecoveryIsIdempotent() {
+    widgetrail::OverlayTransitionTimeline timeline;
+    timeline.BeginOpen(0, true);
+    auto frame = timeline.Sample(0, true);
+    Near(frame.shellOpacity, 1.0F,
+         "resident surface starts from a fully committed presentation");
+
+    timeline.BeginOpen(10, false);
+    frame = timeline.Sample(10, false);
+    Near(frame.shellOpacity, 1.0F,
+         "Show on an already-presented surface is an opacity no-op");
+    Check(!frame.shellActive,
+          "idempotent visible Show schedules no unnecessary transition frames");
+    Check(!timeline.TakeHideCompletion(),
+          "idempotent visible Show cannot acknowledge a stale hide");
+
+    timeline.BeginClose(20, false);
+    const auto closing = timeline.Sample(70, false);
+    Check(closing.shellOpacity > 0.0F && closing.shellOpacity < 1.0F,
+          "resident fixture reaches a physically incomplete close");
+    timeline.BeginOpen(70, false);
+    frame = timeline.Sample(70, false);
+    Near(frame.shellOpacity, closing.shellOpacity,
+         "real resident recovery resumes from the physically presented opacity");
+    Check(frame.shellActive,
+          "partially closed resident Show performs bounded recovery work");
+    Check(!timeline.TakeHideCompletion(),
+          "resident recovery revokes pending hide completion before settlement");
+    frame = timeline.Sample(
+        70 + widgetrail::OverlayTransitionTimeline::OpenDurationMilliseconds,
+        false);
+    Near(frame.shellOpacity, 1.0F,
+         "resident recovery settles at a fully visible presentation");
+    Check(!frame.shellActive,
+          "settled resident recovery owns no polling or watchdog cadence");
+
+    timeline.BeginClose(300, true);
+    Check(timeline.TakeHideCompletion(),
+          "fixture proves a completed close would normally hide the HWNDs");
+    timeline.BeginClose(310, true);
+    timeline.BeginOpen(310, true);
+    frame = timeline.Sample(310, true);
+    Near(frame.shellOpacity, 1.0F,
+         "resident Show restores a zero-opacity completed close immediately");
+    Check(!timeline.TakeHideCompletion(),
+          "recovery clears a ready hide acknowledgement before it can run");
+}
+
 void ReducedMotionSnapsAtStartAndMidFlight() {
     widgetrail::OverlayTransitionTimeline timeline;
     timeline.BeginOpen(0, true);
@@ -460,6 +508,7 @@ int main() {
     OpensAndClosesWithinBounds();
     ReversesWithoutOpacityDiscontinuity();
     InitialOpenWaitsForCommittedPaint();
+    ResidentShowRecoveryIsIdempotent();
     ReducedMotionSnapsAtStartAndMidFlight();
     ContentRevealIsBoundedAndSnappable();
     RepeatedContentRevealIsContinuous();
