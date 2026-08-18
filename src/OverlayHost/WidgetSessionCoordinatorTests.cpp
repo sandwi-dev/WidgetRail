@@ -77,6 +77,7 @@ struct FakeBridge final {
     bool stallStart{};
     bool releaseStart{};
     int startFailuresRemaining{};
+    int snapshotFailuresRemaining{};
     bool protocolMismatch{};
     bool publishUpdate{};
     bool rejectPublishedUpdate{};
@@ -166,14 +167,18 @@ struct FakeBridge final {
                     checkpoint.sequence != update.baseSequence ||
                     update.presentationGeneration != generation ||
                     update.sequence <= update.baseSequence) {
-                    return WidgetSessionOperationResult<WidgetSnapshot>::Failure(
+                    return WidgetSessionOperationResult<
+                        widgetrail::WidgetPresentationMaterialization>::Failure(
                         WidgetSessionFailureStage::Protocol,
                         L"update base mismatch");
                 }
                 auto candidate = checkpoint;
                 candidate.sequence = update.sequence;
-                return WidgetSessionOperationResult<WidgetSnapshot>::Success(
-                    std::move(candidate));
+                widgetrail::WidgetPresentationMaterialization materialization;
+                materialization.snapshot = std::move(candidate);
+                return WidgetSessionOperationResult<
+                    widgetrail::WidgetPresentationMaterialization>::Success(
+                        std::move(materialization));
             },
             [this](std::stop_token, std::wstring_view) {
                 std::scoped_lock lock(mutex);
@@ -199,6 +204,11 @@ struct FakeBridge final {
         if (token.stop_requested() && widgetId != ignoreCancellationWidget) {
             return WidgetSessionOperationResult<WidgetSnapshot>::Failure(
                 WidgetSessionFailureStage::Snapshot, L"snapshot cancelled");
+        }
+        if (snapshotFailuresRemaining > 0) {
+            --snapshotFailuresRemaining;
+            return WidgetSessionOperationResult<WidgetSnapshot>::Failure(
+                WidgetSessionFailureStage::Snapshot, L"delayed snapshot failed");
         }
         if (widgetId == failingWidget) {
             return WidgetSessionOperationResult<WidgetSnapshot>::Failure(
@@ -1031,6 +1041,122 @@ void CancellationIgnoringLateResultsAreStale() {
     }
 }
 
+void VisibleTargetSupersedesBackgroundSnapshotAndRetainsCheckpoint() {
+    FakeBridge bridge;
+    bridge.catalog = {
+        Descriptor(L"alpha", L"alpha.one", L"runtime-1", L"view-1"),
+    };
+    bridge.snapshots[L"alpha"] = Snapshot(L"alpha.one", 1, 592.0, 698.0);
+    WidgetSessionCoordinator coordinator(bridge.Operations());
+    assert(coordinator.EstablishCatalog());
+    assert(coordinator.RequestSnapshot(L"alpha"));
+    (void)WaitEvents(coordinator, [](const auto& events) {
+        return std::any_of(events.begin(), events.end(), [](const auto& event) {
+            return event.widgetId == L"alpha" &&
+                   event.kind == WidgetSessionEventKind::SnapshotAdmitted;
+        });
+    });
+    bridge.snapshots[L"alpha"] = Snapshot(L"alpha.one", 2, 760.0, 385.0);
+    bridge.stalledWidget = L"alpha";
+    bridge.ignoreCancellationWidget = L"alpha";
+    bridge.snapshotFailuresRemaining = 1;
+    assert(coordinator.RequestSnapshot(L"alpha"));
+    {
+        std::unique_lock lock(bridge.mutex);
+        assert(bridge.changed.wait_for(lock, 1s, [&] {
+            return bridge.snapshotCalls == 2;
+        }));
+    }
+
+    coordinator.SetLifecycleTargets({
+        {L"alpha", WidgetLifecycleState::Visible},
+    });
+    assert(coordinator.Snapshot(L"alpha") &&
+           coordinator.Snapshot(L"alpha")->sequence == 1 &&
+           coordinator.Snapshot(L"alpha")->surface->preferredWidth == 592.0);
+    {
+        std::scoped_lock lock(bridge.mutex);
+        bridge.releaseStall = true;
+    }
+    bridge.changed.notify_all();
+    const auto events = WaitEvents(coordinator, [](const auto& value) {
+        return std::any_of(value.begin(), value.end(), [](const auto& event) {
+            return event.widgetId == L"alpha" &&
+                   event.kind == WidgetSessionEventKind::SnapshotAdmitted &&
+                   event.lifecycle == WidgetLifecycleState::Visible;
+        });
+    });
+    assert(std::count_if(events.begin(), events.end(), [](const auto& event) {
+        return event.widgetId == L"alpha" &&
+               event.kind == WidgetSessionEventKind::StaleCompletionRejected &&
+               event.requestKind == widgetrail::WidgetSessionRequestKind::Snapshot &&
+               event.lifecycle == WidgetLifecycleState::Background &&
+               event.completionDisposition ==
+                   widgetrail::WidgetSessionCompletionDisposition::Cancelled;
+    }) == 1);
+    assert(std::none_of(events.begin(), events.end(), [](const auto& event) {
+        return event.widgetId == L"alpha" &&
+               event.kind == WidgetSessionEventKind::Failed;
+    }));
+    assert(coordinator.Lifecycle(L"alpha") == WidgetLifecycleState::Visible);
+    assert(coordinator.Snapshot(L"alpha") &&
+           coordinator.Snapshot(L"alpha")->sequence == 2 &&
+           coordinator.Snapshot(L"alpha")->surface->preferredWidth == 760.0);
+    assert(!coordinator.Failure(L"alpha"));
+}
+
+void WrongLifecycleFailureCannotReplaceNewerVisibleIntent() {
+    FakeBridge bridge;
+    bridge.catalog = {
+        Descriptor(L"alpha", L"alpha.one", L"runtime-1", L"view-1"),
+    };
+    bridge.snapshots[L"alpha"] = Snapshot(L"alpha.one", 9, 760.0, 385.0);
+    bridge.stalledWidget = L"alpha";
+    bridge.snapshotFailuresRemaining = 1;
+    WidgetSessionCoordinator coordinator(bridge.Operations());
+    assert(coordinator.EstablishCatalog());
+    coordinator.SetLifecycleTargets({
+        {L"alpha", WidgetLifecycleState::Visible},
+    });
+    {
+        std::unique_lock lock(bridge.mutex);
+        assert(bridge.changed.wait_for(lock, 1s, [&] {
+            return bridge.snapshotCalls == 1;
+        }));
+    }
+
+    coordinator.SetLifecycleTargets({
+        {L"alpha", WidgetLifecycleState::Interactive},
+    });
+    {
+        std::scoped_lock lock(bridge.mutex);
+        bridge.releaseStall = true;
+    }
+    bridge.changed.notify_all();
+    const auto events = WaitEvents(coordinator, [](const auto& value) {
+        return std::any_of(value.begin(), value.end(), [](const auto& event) {
+            return event.widgetId == L"alpha" &&
+                   event.kind == WidgetSessionEventKind::SnapshotAdmitted &&
+                   event.lifecycle == WidgetLifecycleState::Interactive;
+        });
+    });
+    assert(std::count_if(events.begin(), events.end(), [](const auto& event) {
+        return event.widgetId == L"alpha" &&
+               event.kind == WidgetSessionEventKind::StaleCompletionRejected &&
+               event.lifecycle == WidgetLifecycleState::Visible &&
+               event.completionDisposition ==
+                   widgetrail::WidgetSessionCompletionDisposition::WrongLifecycle;
+    }) == 1);
+    assert(std::none_of(events.begin(), events.end(), [](const auto& event) {
+        return event.widgetId == L"alpha" &&
+               event.kind == WidgetSessionEventKind::Failed;
+    }));
+    assert(coordinator.Lifecycle(L"alpha") == WidgetLifecycleState::Interactive);
+    assert(coordinator.Snapshot(L"alpha") &&
+           coordinator.Snapshot(L"alpha")->sequence == 9);
+    assert(!coordinator.Failure(L"alpha"));
+}
+
 void CorrelatedAdmissionTraceIsBoundedAndSanitized() {
     std::mutex diagnosticMutex;
     std::vector<std::wstring> diagnostics;
@@ -1326,6 +1452,8 @@ int main() {
     EightWidgetRetentionDoesNotWakeBackgroundWorkers();
     HideAndWorkerExitRevokePendingSnapshots();
     CancellationIgnoringLateResultsAreStale();
+    VisibleTargetSupersedesBackgroundSnapshotAndRetainsCheckpoint();
+    WrongLifecycleFailureCannotReplaceNewerVisibleIntent();
     CorrelatedAdmissionTraceIsBoundedAndSanitized();
     CoordinatorEmitsCorrelatedLifecycleAndRequestStages();
     SelectedTraceRejectsPinnedAndSupersededAdmissions();
