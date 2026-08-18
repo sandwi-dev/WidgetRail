@@ -30,8 +30,9 @@ evidence only; this file is the sole authority for current work.
   commit `188cc64`; its native cutover and coherent tests-skipped Release build
   are complete. DLV-260 Phase A is independently source/output reviewed as the
   corrected two-commit implementation `70af468` plus `85a021a`. Its exact
-  tests-skipped Release is visibly running as PID 33088 for the user's verdict;
-  the cumulative chain remains unintegrated.
+  tests-skipped Release is visibly running as PID 33088 and was physically
+  accepted by the user on 2026-08-17; the cumulative chain remains
+  unintegrated while the post-acceptance test phase runs.
 - DLV-248 remains deliberately deferred by the user.
 - The user selected the new display identity **WidgetRail** and tagline
   **WidgetRail — a controller-first widget platform for Windows.** On
@@ -108,7 +109,7 @@ user decision. The native overlay is the sole production presentation path.
 
 | Lane | Task/worktree | State |
 | --- | --- | --- |
-| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | Clean at corrected DLV-260 Phase A commits `70af468` plus `85a021a`. Exact reviewed Release SHA-256 `1E816334FD5B48ABB9449CB66FEA66CE0A93E14E8DFECEB259FE6C1753BE503D` is visibly running as PID 33088 for the user's verdict. Spotify 0.3.0 and YT Music 0.2.9 are installed/enabled in the fresh WidgetRail catalog. Do not run or repair tests before acceptance. DLV-248 remains deferred. |
+| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | Clean at corrected DLV-260 Phase A commits `70af468` plus `85a021a`. Exact reviewed Release SHA-256 `1E816334FD5B48ABB9449CB66FEA66CE0A93E14E8DFECEB259FE6C1753BE503D` is visibly running as PID 33088 and physically accepted. Spotify 0.3.0 and YT Music 0.2.9 are installed/enabled in the fresh WidgetRail catalog. Proceed only with the assigned post-acceptance catalog/runtime test repairs, focused routes, and one Tier-3 checkpoint. DLV-248 remains deferred. |
 | Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | Clean at accepted DLV-258 commit `5b924f4` on `codex/impl-widgets-widgetrail-managed-identity`. Hold this exact accepted evidence; the platform lane is the single serialized DLV-260 lead. Do not start new work. |
 
 ## Completed planner deliverable — DLV-257: select and freeze WidgetRail identity
@@ -285,7 +286,8 @@ confirms `OverlayHost.exe` SHA-256
 `1E816334FD5B48ABB9449CB66FEA66CE0A93E14E8DFECEB259FE6C1753BE503D`.
 The exact candidate is visibly running as PID 33088 from the isolated Phase A
 Release root. Fresh `%LOCALAPPDATA%\WidgetRail` startup elected one process
-owner, admitted Settings, and logged no startup error. The prior candidate PID
+owner, admitted Settings, and logged no startup error. The user physically
+accepted this exact current Release on 2026-08-17. The prior candidate PID
 34364 later accepted an authenticated `Show` activation while its logical and
 Win32 visibility state still treated the overlay as already visible, even
 though the user could not see it. The host reapplied placement but did not
@@ -297,7 +299,11 @@ earlier DirectComposition fallback is not a demonstrated cause because many
 successful open/close transitions followed it. Await the user's visible verdict
 before any test repair, Tier 3, or integration; retain the reopening observation
 and its presentation-state observability gap unless the user confirms it was
-environmental.
+environmental. Phase B is now authorized: replace disabled/unsafe catalog-test
+assertions with always-on checks without weakening coverage, disposition the
+bounded Widget Runtime seventh-case hang, run the smallest affected package and
+runtime routes, then run the single named Tier-3 checkpoint from the coherent
+exact commit. Do not change accepted production behavior during this phase.
 
 Stop for unresolved old active identity, external Store/repository/domain
 action, credential need, destructive cleanup outside validated generated
@@ -391,9 +397,9 @@ deliberately deferred by user decision and requires explicit promotion.
 2. DLV-258 is accepted at `5b924f4` and DLV-259 is accepted at `188cc64`; both
    remain unintegrated and are included in the running DLV-260 candidate.
 3. DLV-260 Phase A is source/output reviewed at corrected commits `70af468` plus
-   `85a021a`; exact Release PID 33088 is awaiting the user's visible verdict.
-4. After that verdict, repair/disposition the two disclosed test routes and run
-   the one exact Tier-3 checkpoint.
+   `85a021a`; exact Release PID 33088 was physically accepted on 2026-08-17.
+4. Repair/disposition the two disclosed test routes and run the one exact
+   Tier-3 checkpoint without changing accepted production behavior.
 5. Integrate the complete accepted chain only after that evidence.
 6. Run DLV-264 next from the accepted complete WidgetRail rename baseline.
 7. Run DLV-265 after DLV-264 so ordinary Spotify setup no longer requires a
