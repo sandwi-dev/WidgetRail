@@ -1565,6 +1565,7 @@ $hostArguments = $common + @(
     (Join-Path $projectDirectory 'LauncherExperienceHostProof.cpp'),
     (Join-Path $projectDirectory 'ControllerNavigation.cpp'),
     (Join-Path $projectDirectory 'SliderInteraction.cpp'),
+    (Join-Path $projectDirectory 'WidgetInteractionSession.cpp'),
     (Join-Path $projectDirectory 'TextEntryActionAdmission.cpp'),
     (Join-Path $projectDirectory 'TextEntryModal.cpp'),
     (Join-Path $projectDirectory 'FocusNavigation.cpp'),
