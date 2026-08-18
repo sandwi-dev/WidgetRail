@@ -22,10 +22,11 @@ evidence only; this file is the sole authority for current work.
 - DLV-264 production candidate `75f1c96` changes only
   `WidgetSessionCoordinator.{h,cpp}`. Its coherent tests-skipped Release has
   SHA-256 `502720EA82F5764CCD52DD36036D18EF8531D73044063D600568357305692737`
-  and is visibly running as PID 17212. Fresh startup elected one owner, applied
-  platform appearance, selected Settings, admitted a visible lifecycle request,
-  and confirmed foreground acquisition. Physical rapid-switch verdict is
-  pending; no DLV-264 tests have run.
+  and is visibly running as PID 17212. The user physically accepted repeated
+  rapid Now Playing -> Settings -> Now Playing switching on 2026-08-18. The
+  exact session retained visible lifecycle authority and valid checkpoints
+  without publishing a hidden/suspended failure. Focused post-verdict tests are
+  now authorized and in progress; no DLV-264 test result is accepted yet.
 - DLV-263 acceptance evidence: zero logged error/failure/stale/timeout/rejection
   lines; exact-anchor and retained-overlap admissions; focus remained inside
   the viewport; 33 frames averaged 26.9 ms, one reached 52.0 ms, none exceeded
@@ -114,8 +115,8 @@ user decision. The native overlay is the sole production presentation path.
 
 | Lane | Task/worktree | State |
 | --- | --- | --- |
-| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | Clean and idle at unreviewed DLV-266 production candidate `7235849`; reported coherent Release SHA-256 `1A0C7F5D7EC09F1C6DC3851060F17E638C5E74F0ADE510197777D82C1ADBADFB`. Hold unlaunched until DLV-264 receives its isolated physical verdict, then source-review and launch for DLV-266 testing. The platform queue intentionally contains one evidenced item rather than filler and requires replenishment after its diagnosis. |
-| Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | Clean and idle at reviewed DLV-264 production candidate `75f1c96`; exact Release is running as PID 17212 for physical rapid-switch testing. No tests are authorized before the user's verdict. DLV-265 is Ready immediately after accepted DLV-264. DLV-248 remains deferred. |
+| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | Clean and idle at unreviewed DLV-266 production candidate `7235849`; reported coherent Release SHA-256 `1A0C7F5D7EC09F1C6DC3851060F17E638C5E74F0ADE510197777D82C1ADBADFB`. The DLV-264 physical verdict is accepted; keep DLV-266 unlaunched until cumulative DLV-264 is integrated and supplied as its baseline so the next candidate retains the accepted lifecycle fix. The platform queue intentionally contains one evidenced item rather than filler and requires replenishment after its diagnosis. |
+| Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | DLV-264 production candidate `75f1c96` is physically accepted and remains running as PID 17212. The lane is adding only the authorized focused lifecycle/supersession/stale-failure/checkpoint-retention tests; DLV-265 remains held until cumulative DLV-264 is reviewed and integrated. DLV-248 remains deferred. |
 
 ## Completed planner deliverable — DLV-257: select and freeze WidgetRail identity
 
@@ -350,8 +351,11 @@ requests, bounded supersession of mismatched queued/in-flight snapshots, typed
 wrong-lifecycle rejection, and retention of the last valid checkpoint. The
 coherent tests-skipped Release is visibly running as PID 17212 with SHA-256
 `502720EA82F5764CCD52DD36036D18EF8531D73044063D600568357305692737`.
-Await the user's rapid Now Playing -> Settings -> Now Playing verdict before
-authoring or running focused tests.
+The user physically accepted repeated rapid Now Playing -> Settings -> Now
+Playing switching on 2026-08-18. Exact session traces kept the returning widget
+on visible lifecycle requests, retained current/valid presentations, and
+contained no persistent hidden/suspended failure. Focused post-verdict tests are
+authorized and in progress; integrate only after their independent review.
 
 Stop for a protocol redesign, renderer changes, loss of authoritative provider
 failure reporting, destructive state action, substantial conflict, or evidence
@@ -473,7 +477,7 @@ deliberately deferred by user decision and requires explicit promotion.
 | Domain | Live registrar/RDAP availability and optional registration through the user's account. |
 | Trademark | Similar-mark clearance for related software/services; qualified counsel recommended before public release. |
 | GitHub identity | User-selected owner plus repository/organization availability and optional rename/creation. |
-| DLV-264 | Assigned to widgets from accepted main `1ff96ba`; physical user verdict required before tests. |
+| DLV-264 | Physical behavior accepted on PID 17212; focused post-verdict tests and cumulative review/integration remain. |
 | DLV-265 | Ready after accepted DLV-264; real Spotify authorization remains a user-owned manual check. |
 | DLV-266 | Assigned to platform from accepted main `1ff96ba`; physical user verdict required before tests. |
 | DLV-248 | Deliberately deferred until explicit user promotion. |
