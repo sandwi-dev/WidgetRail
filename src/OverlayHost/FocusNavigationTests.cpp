@@ -332,6 +332,85 @@ int main() {
     Check(ResolveVisibleFocusTarget(L"session-1", L"root", scrolled) == L"session-1",
           "preferred offscreen scroll focus survives until the reveal render pass");
 
+    using widgetrail::input::FindFreeScrollReentryTarget;
+    widgetrail::WidgetNode reentryRoot{
+        .id = L"reentry.root",
+        .kind = L"stack",
+        .children = {
+            widgetrail::WidgetNode{
+                .id = L"outer.scroll",
+                .kind = L"scroll",
+                .scrollAxis = L"vertical",
+                .children = {
+                    widgetrail::WidgetNode{
+                        .id = L"inner.scroll",
+                        .kind = L"scroll",
+                        .scrollAxis = L"vertical",
+                        .children = {
+                            widgetrail::WidgetNode{.id = L"partial-leading", .kind = L"button"},
+                            widgetrail::WidgetNode{.id = L"fully-second", .kind = L"button"},
+                            widgetrail::WidgetNode{.id = L"fully-first", .kind = L"button"},
+                            widgetrail::WidgetNode{.id = L"disabled-leading", .kind = L"button"},
+                            widgetrail::WidgetNode{.id = L"other-scope", .kind = L"button"},
+                        },
+                    },
+                },
+            },
+        },
+    };
+    widgetrail::RenderResult reentry;
+    reentry.scrollViewports.emplace(
+        L"inner.scroll",
+        widgetrail::RenderScrollViewport{
+            widgetrail::declarative::ScrollAxis::Vertical,
+            {10.0F, 20.0F, 200.0F, 120.0F}, 80.0F, 300.0F});
+    Add(reentry, L"partial-leading", {10.0F, 8.0F, 200.0F, 44.0F});
+    Add(reentry, L"fully-second", {10.0F, 72.0F, 200.0F, 44.0F});
+    Add(reentry, L"fully-first", {10.0F, 24.0F, 200.0F, 44.0F});
+    Add(reentry, L"disabled-leading", {10.0F, 20.0F, 200.0F, 44.0F}, false);
+    Add(reentry, L"other-scope", {10.0F, 21.0F, 200.0F, 44.0F}, true, L"modal");
+    Check(FindFreeScrollReentryTarget(
+              reentryRoot, L"inner.scroll",
+              widgetrail::declarative::ScrollAxis::Vertical,
+              L"root", reentry) == L"fully-first",
+          "vertical re-entry chooses the topmost fully visible enabled descendant");
+
+    reentry.navigationRects[L"fully-first"] = {10.0F, 126.0F, 200.0F, 44.0F};
+    reentry.hitRegions[2].rect = reentry.navigationRects[L"fully-first"];
+    reentry.navigationRects[L"fully-second"] = {10.0F, 130.0F, 200.0F, 44.0F};
+    reentry.hitRegions[1].rect = reentry.navigationRects[L"fully-second"];
+    Check(FindFreeScrollReentryTarget(
+              reentryRoot, L"inner.scroll",
+              widgetrail::declarative::ScrollAxis::Vertical,
+              L"root", reentry) == L"partial-leading",
+          "vertical re-entry falls back to the leading partially visible target");
+
+    reentry.scrollViewports[L"inner.scroll"] = {
+        widgetrail::declarative::ScrollAxis::Horizontal,
+        {20.0F, 10.0F, 120.0F, 100.0F}, 60.0F, 240.0F};
+    reentryRoot.children[0].children[0].scrollAxis = L"horizontal";
+    reentry.navigationRects[L"partial-leading"] = {8.0F, 10.0F, 44.0F, 100.0F};
+    reentry.hitRegions[0].rect = reentry.navigationRects[L"partial-leading"];
+    reentry.navigationRects[L"fully-first"] = {72.0F, 10.0F, 44.0F, 100.0F};
+    reentry.hitRegions[2].rect = reentry.navigationRects[L"fully-first"];
+    reentry.navigationRects[L"fully-second"] = {24.0F, 10.0F, 44.0F, 100.0F};
+    reentry.hitRegions[1].rect = reentry.navigationRects[L"fully-second"];
+    Check(FindFreeScrollReentryTarget(
+              reentryRoot, L"inner.scroll",
+              widgetrail::declarative::ScrollAxis::Horizontal,
+              L"root", reentry) == L"fully-second",
+          "horizontal re-entry chooses the leading-most fully visible target");
+    Check(!FindFreeScrollReentryTarget(
+              reentryRoot, L"missing.scroll",
+              widgetrail::declarative::ScrollAxis::Vertical,
+              L"root", reentry),
+          "missing scroll geometry clears re-entry without inventing focus");
+    Check(!FindFreeScrollReentryTarget(
+              reentryRoot, L"inner.scroll",
+              widgetrail::declarative::ScrollAxis::Vertical,
+              L"root", reentry),
+          "axis mismatch clears re-entry instead of crossing scroll authority");
+
     std::cout << "FocusNavigationTests passed (" << checks << " checks)\n";
     return EXIT_SUCCESS;
 }

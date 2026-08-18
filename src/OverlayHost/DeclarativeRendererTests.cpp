@@ -2612,6 +2612,146 @@ void IncrementalPresentationPlanningRetainsBoundedWork() {
               L"reconciliation=none") != std::wstring::npos,
           "missing retained overlap preserves conservative fallback");
 
+    WidgetSnapshot freeScroll;
+    freeScroll.protocolVersion = 18;
+    freeScroll.sequence = 41;
+    freeScroll.instanceId = L"free-scroll.runtime";
+    freeScroll.activeInputScopeId = L"free-scroll.scope";
+    freeScroll.root = Node(L"outer-scroll", L"scroll");
+    freeScroll.root.inputScopeId = freeScroll.activeInputScopeId;
+    freeScroll.root.scrollAxis = L"vertical";
+    freeScroll.root.baseStyle = {{L"gap", Length(4)}};
+    auto innerScroll = Node(L"inner-scroll", L"scroll");
+    innerScroll.scrollAxis = L"vertical";
+    innerScroll.baseStyle = {
+        {L"height", Length(100)},
+        {L"min-height", Length(100)},
+        {L"flex-shrink", Number(0)},
+        {L"gap", Length(4)},
+    };
+    for (int index = 0; index < 8; ++index) {
+        innerScroll.children.push_back(FixedButton(
+            (L"free-scroll-item-" + std::to_wstring(index)).c_str()));
+    }
+    auto activeIndicator = Node(L"free-scroll-motion", L"loadingIndicator");
+    activeIndicator.baseStyle = {
+        {L"height", Length(24)},
+        {L"min-height", Length(24)},
+        {L"flex-shrink", Number(0)},
+    };
+    freeScroll.root.children = {
+        std::move(innerScroll), std::move(activeIndicator),
+        FixedSpacer(L"outer-tail", 320),
+    };
+    const Rect freeScrollViewport{0.0F, 0.0F, 320.0F, 180.0F};
+    DeclarativeRenderer freeScrollRenderer{d2d.Get(), write.Get(), nullptr};
+    const auto renderFreeScroll = [&](
+        const widgetrail::DeclarativeRenderOptions& options) {
+        target->BeginDraw();
+        target->Clear(D2D1::ColorF(D2D1::ColorF::Black));
+        const auto result = freeScrollRenderer.Render(
+            target.Get(), freeScroll, L"free-scroll-item-0",
+            freeScrollViewport, options);
+        Check(SUCCEEDED(target->EndDraw()),
+              "free-scroll renderer draw completes");
+        Check(result.succeeded, "free-scroll renderer succeeds");
+        return result;
+    };
+    widgetrail::DeclarativeRenderOptions freeScrollOptions;
+    freeScrollOptions.collectAccessibility = true;
+    freeScrollOptions.animationTimestampMilliseconds = 100;
+    const auto freeScrollInitial = renderFreeScroll(freeScrollOptions);
+    Check(freeScrollInitial.animationActive,
+          "renderer-local declarative motion coexists with the retained scroll cache");
+
+    const auto deepestPlan = freeScrollRenderer.PlanFocusedFreeScroll(
+        freeScroll, L"free-scroll-item-0",
+        widgetrail::declarative::ScrollAxis::Vertical,
+        10'000.0F, freeScrollViewport);
+    Check(deepestPlan.has_value() && deepestPlan->scrollId == L"inner-scroll" &&
+              deepestPlan->render.work ==
+                  widgetrail::IncrementalPresentationWork::LocalLayout &&
+              deepestPlan->offset == deepestPlan->maximumOffset,
+          "right-stick free scroll selects the deepest eligible scroll owner");
+    Check(deepestPlan && deepestPlan->render.damage.width > 0.0F &&
+              deepestPlan->render.damage.height > 0.0F &&
+              deepestPlan->render.damage.width * deepestPlan->render.damage.height <
+                  freeScrollViewport.width * freeScrollViewport.height,
+          "right-stick free scroll invalidates only the selected nested viewport");
+    freeScrollOptions.suppressFocusedDescendantFollow = true;
+    freeScrollOptions.animationTimestampMilliseconds = 116;
+    const auto innerScrolled = renderFreeScroll(freeScrollOptions);
+    Near(innerScrolled.scrollOffsets.at(L"inner-scroll"), deepestPlan->offset,
+         "free-scroll render commits the deepest scroll offset");
+    Check(innerScrolled.navigationRects.contains(L"free-scroll-item-0") &&
+              !innerScrolled.focusRects.contains(L"free-scroll-item-0") &&
+              !std::ranges::any_of(
+                  innerScrolled.hitRegions,
+                  [](const widgetrail::RenderHitRegion& region) {
+                      return region.nodeId == L"free-scroll-item-0";
+                  }) &&
+              !std::ranges::any_of(
+                  innerScrolled.accessibilityRegions,
+                  [](const widgetrail::RenderAccessibilityRegion& region) {
+                      return region.nodeId == L"free-scroll-item-0";
+                  }),
+          "suppressed focus-follow retains semantic navigation identity without stale visible hit/UIA geometry");
+
+    freeScrollOptions.animationTimestampMilliseconds = 132;
+    const auto retainedRefresh = renderFreeScroll(freeScrollOptions);
+    Near(retainedRefresh.scrollOffsets.at(L"inner-scroll"), deepestPlan->offset,
+         "an exact retained refresh cannot pull the viewport back to semantic focus");
+    Check(!retainedRefresh.focusRects.contains(L"free-scroll-item-0"),
+          "an exact retained refresh does not republish an offscreen focus visual");
+
+    const auto ancestorFallback = freeScrollRenderer.PlanFocusedFreeScroll(
+        freeScroll, L"free-scroll-item-0",
+        widgetrail::declarative::ScrollAxis::Vertical,
+        10'000.0F, freeScrollViewport);
+    Check(ancestorFallback.has_value() &&
+              ancestorFallback->scrollId == L"outer-scroll" &&
+              ancestorFallback->offset > ancestorFallback->priorOffset,
+          "a nested scroll boundary falls back through the existing ancestor chain");
+    freeScrollOptions.animationTimestampMilliseconds = 148;
+    const auto outerScrolled = renderFreeScroll(freeScrollOptions);
+    Near(outerScrolled.scrollOffsets.at(L"outer-scroll"), ancestorFallback->offset,
+         "ancestor fallback commits through the sole renderer scroll authority");
+
+    const auto restoredCurrent = freeScrollRenderer.PlanFocusedFreeScroll(
+        freeScroll, L"free-scroll-item-0",
+        widgetrail::declarative::ScrollAxis::Vertical,
+        -24.0F, freeScrollViewport);
+    Check(restoredCurrent.has_value() &&
+              restoredCurrent->offset < restoredCurrent->priorOffset,
+          "a matching current checkpoint restores movement from retained scroll state");
+    freeScrollOptions.animationTimestampMilliseconds = 164;
+    (void)renderFreeScroll(freeScrollOptions);
+
+    auto pendingImpactSnapshot = freeScroll;
+    ++pendingImpactSnapshot.sequence;
+    Check(!freeScrollRenderer.PlanFocusedFreeScroll(
+              pendingImpactSnapshot, L"free-scroll-item-0",
+              widgetrail::declarative::ScrollAxis::Vertical,
+              24.0F, freeScrollViewport),
+          "a real pending snapshot impact cannot scroll against a stale retained cache");
+    Check(!freeScrollRenderer.PlanFocusedFreeScroll(
+              freeScroll, L"free-scroll-item-1",
+              widgetrail::declarative::ScrollAxis::Vertical,
+              24.0F, freeScrollViewport),
+          "focus authority mismatch clears free-scroll admission");
+    auto replacedRuntime = freeScroll;
+    replacedRuntime.instanceId = L"free-scroll.runtime.replaced";
+    Check(!freeScrollRenderer.PlanFocusedFreeScroll(
+              replacedRuntime, L"free-scroll-item-0",
+              widgetrail::declarative::ScrollAxis::Vertical,
+              24.0F, freeScrollViewport),
+          "runtime replacement clears free-scroll admission");
+    Check(!freeScrollRenderer.PlanFocusedFreeScroll(
+              freeScroll, L"free-scroll-item-0",
+              widgetrail::declarative::ScrollAxis::Vertical,
+              24.0F, {0.0F, 0.0F, 321.0F, 180.0F}),
+          "viewport replacement clears free-scroll admission");
+
     auto structural = local;
     structural.sequence = 5;
     widgetrail::WidgetPresentationImpact structuralImpact;
