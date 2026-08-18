@@ -8385,8 +8385,8 @@ private:
                     static_cast<float>(mapping.atlasOffsetPixels.x);
                 const float errorY = mapping.mappedRequestedOriginPixels.y -
                     static_cast<float>(mapping.atlasOffsetPixels.y);
+                diagnostic += L" raster-space=physical-pixels";
                 diagnostic +=
-                    L" raster-space=physical-pixels" +
                     L" raster-request=" +
                     std::to_wstring(mapping.requestedPixels.left) + L"," +
                     std::to_wstring(mapping.requestedPixels.top) + L"," +
