@@ -286,11 +286,17 @@ confirms `OverlayHost.exe` SHA-256
 The exact candidate is visibly running as PID 33088 from the isolated Phase A
 Release root. Fresh `%LOCALAPPDATA%\WidgetRail` startup elected one process
 owner, admitted Settings, and logged no startup error. The prior candidate PID
-34364 later accepted an authenticated `Show` activation without recording the
-expected foreground transition after an external-foreground close; restarting
-the same artifact restored foreground activation and loaded all seven tray
-entries. Await the user's visible verdict before any test repair, Tier 3, or
-integration; retain the reopening observation unless the user confirms it was
+34364 later accepted an authenticated `Show` activation while its logical and
+Win32 visibility state still treated the overlay as already visible, even
+though the user could not see it. The host reapplied placement but did not
+produce an observable fresh foreground transition; the confirmation diagnostic
+is edge-triggered, so its absence alone does not prove foreground acquisition
+was skipped. Restarting the same artifact recreated the window/presentation
+state, restored foreground activation, and loaded all seven tray entries. The
+earlier DirectComposition fallback is not a demonstrated cause because many
+successful open/close transitions followed it. Await the user's visible verdict
+before any test repair, Tier 3, or integration; retain the reopening observation
+and its presentation-state observability gap unless the user confirms it was
 environmental.
 
 Stop for unresolved old active identity, external Store/repository/domain
@@ -326,6 +332,49 @@ Stop for a protocol redesign, renderer changes, loss of authoritative provider
 failure reporting, destructive state action, substantial conflict, or evidence
 that the incident has a different owner. Never push.
 
+## Ready after DLV-264 — DLV-265: controller-first Spotify onboarding
+
+Owner/baseline: widgets lane from accepted main containing the complete
+DLV-258/DLV-259/DLV-260 rename and accepted DLV-264. Keep the work inside the
+Spotify Community full-trust package and the existing public `UI.TextEntry`
+contract; do not add service-specific behavior to WidgetSdk, WidgetProtocol,
+WidgetBridge, PlatformBroker, OverlayHost, or Settings.
+
+Replace the terminal-only Client ID setup route with an in-widget,
+controller-first flow. The setup page must explain the Spotify developer-app
+step, provide package-owned actions to open the developer dashboard and copy
+the exact non-secret redirect URI, and let the user enter or replace the public
+Client ID through the existing bounded host text-entry modal. The committed
+value is validated by the Spotify application owner, saved atomically to the
+existing package-scoped non-secret WidgetRail configuration store, and followed
+by a fresh configuration check. Changing Client ID must retain the existing
+fail-closed behavior that removes an OAuth refresh credential belonging to the
+old client before the new identity becomes active.
+
+The Spotify Client ID is public configuration, not a secret. Never request or
+store a Spotify Client Secret. Browser authorization continues to use PKCE;
+actual refresh credentials remain in the package-owned Windows Credential
+Manager vault and never enter snapshots, ordinary text-entry state, logs, or
+the non-secret JSON configuration document. The `wrail config` command may
+remain a documented developer/diagnostic route, but the product UI must not
+require a terminal, repository checkout, source directory, or copyable command
+to complete ordinary setup. Do not create a new generic clipboard, secret-
+entry, configuration, or credential protocol in this milestone.
+
+Acceptance follows physical-first ordering. Build one coherent Release and let
+the user complete setup from the overlay using controller plus keyboard text
+entry, with no terminal command. Verify the dashboard-open and redirect-copy actions,
+valid and invalid Client IDs, replacement behavior, immediate configured-state
+refresh, browser PKCE connection, cancellation, and readable controller focus.
+Only after the user's visible verdict add focused Spotify presentation/action,
+configuration-write, old-credential invalidation, and failure/cancellation
+tests. No Tier 3 is required unless the assignment changes a shared boundary.
+
+Stop for a new shared protocol or capability, a request for Client Secret,
+Credential Manager migration, third-party authentication needed for automated
+evidence, provider-dashboard automation, substantial conflict, or behavior
+outside the Spotify Community package. Never push.
+
 ## Ready later — DLV-248: media optimistic command revision reconciliation
 
 Prevent an older provider publication from overwriting a newer host-projected
@@ -347,7 +396,9 @@ deliberately deferred by user decision and requires explicit promotion.
    the one exact Tier-3 checkpoint.
 5. Integrate the complete accepted chain only after that evidence.
 6. Run DLV-264 next from the accepted complete WidgetRail rename baseline.
-7. DLV-248 remains outside this sequence until the user promotes it.
+7. Run DLV-265 after DLV-264 so ordinary Spotify setup no longer requires a
+   repository-local terminal command.
+8. DLV-248 remains outside this sequence until the user promotes it.
 
 ## Manual, external, and blocked evidence
 
@@ -359,6 +410,7 @@ deliberately deferred by user decision and requires explicit promotion.
 | Trademark | Similar-mark clearance for related software/services; qualified counsel recommended before public release. |
 | GitHub identity | User-selected owner plus repository/organization availability and optional rename/creation. |
 | DLV-264 | Ready immediately after the complete WidgetRail rename is accepted and integrated. |
+| DLV-265 | Ready after accepted DLV-264; real Spotify authorization remains a user-owned manual check. |
 | DLV-248 | Deliberately deferred until explicit user promotion. |
 | Avalonia | Failed/cancelled; requires a new explicit user decision. |
 | YT Music catalog cleanup | Approval to remove only inactive, non-selected 0.2.0. |
