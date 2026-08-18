@@ -5594,3 +5594,13 @@ The package-owned builder validated and packed Spotify 0.3.1 as a 1,152,916-byte
 archive with SHA-256
 `65EF8BE722CE26122BCAA93EAC28D58B9FEE620BD140862976D6543E2F32C33E`.
 Automated tests intentionally await the physical setup verdict.
+
+Physical review of 0.3.1 found that configured Ready sessions did not expose
+the existing setup route. The corrected immutable 0.3.2 package adds one
+controller-reachable **Setup** button to the shared wide/compact Ready
+navigation rail. It reuses the same setup page, bounded text-entry action, and
+package-owned configuration/credential ordering; it does not reset or expose
+the current Client ID or account state. Existing Ready destinations, shortcuts,
+initial focus, unconfigured/disconnected routes, and PKCE behavior are
+unchanged. Automated regression coverage continues to await the user's
+physical verdict.

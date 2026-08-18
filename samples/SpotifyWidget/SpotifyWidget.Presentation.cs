@@ -290,7 +290,8 @@ internal static class SpotifyPresentation
                 NavigationButton(SpotifyDestination.Player, selected, mode, WidgetGlyph.Music),
                 NavigationButton(SpotifyDestination.Queue, selected, mode, WidgetGlyph.Next),
                 NavigationButton(SpotifyDestination.Playlists, selected, mode, WidgetGlyph.Music),
-                NavigationButton(SpotifyDestination.Devices, selected, mode, WidgetGlyph.Connection))
+                NavigationButton(SpotifyDestination.Devices, selected, mode, WidgetGlyph.Connection),
+                SetupNavigationButton(mode))
             .Classes("spotify-navigation", "spotify-navigation-rail",
                 $"spotify-navigation-{mode}");
 
@@ -304,6 +305,12 @@ internal static class SpotifyPresentation
             .Icon(glyph, $"Open {DestinationLabel(destination)}")
             .Selected(destination == selected)
             .PersistFocusAs($"spotify.destination.{DestinationToken(destination)}")
+            .Classes("spotify-nav-button");
+
+    private static ButtonElement SetupNavigationButton(string mode) =>
+        UI.Button("Setup", "spotify.setup.open", $"spotify.setup.open.{mode}")
+            .Icon(WidgetGlyph.Settings, "Change Spotify Client ID")
+            .PersistFocusAs("spotify.setup")
             .Classes("spotify-nav-button");
 
     private static WidgetElement PlayerPanel(

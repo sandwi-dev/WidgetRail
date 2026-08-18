@@ -18,8 +18,9 @@ the public Client ID through the host-owned text-entry modal. No terminal or
 Client Secret is required. Choose **Connect** afterward; authorization remains
 explicit, and merely opening the widget never launches a browser.
 
-Version 0.3.1 adds controller-first Client-ID onboarding to the autonomous
-Community package introduced in 0.3.0. It retains the accepted vertical-rail
+Version 0.3.2 keeps controller-first Client-ID onboarding available from the
+configured Ready navigation rail, so an existing Client ID can be replaced
+without disconnecting or using a terminal. It retains the accepted vertical-rail
 responsive layout and its four
 controller-first destinations:
 

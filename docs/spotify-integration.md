@@ -1,6 +1,6 @@
 # Spotify Web API integration
 
-Status: **autonomous full-trust Community application 0.3.1 implemented;
+Status: **autonomous full-trust Community application 0.3.2 implemented;
 live-account and WebView2 playback proof remains manual as of 2026-08-13**.
 
 The shipped reference is a separately installable Community application. Its
@@ -30,8 +30,8 @@ Premium eligibility, and terms remain external requirements.
 | Application contract | Package-private bounded DTOs connect the widget to its package-owned backend; no Spotify DTO or capability is added to product core. |
 | Package backend | Implemented PKCE, exact loopback callback, Credential Manager refresh-token storage, player snapshot/control projection, bounded `Retry-After` handling, scope allowlist, and sanitized application errors. |
 | Product composition | Generic catalog, full-trust supervisor, authenticated overlay IPC, lifecycle, restart, and presentation only; no Spotify construction or authorization. |
-| Community application | Version 0.3.1 publishes the accepted responsive Player, Queue, continuous occurrence-keyed Queue/Playlist/detail collections, Devices surfaces, and controller-first Client-ID onboarding through the generic full-trust package path. Wide and compact branches retain the same controller-first vertical-rail hierarchy and focus identities. |
-| Setup UI | The controller setup route opens Spotify's developer dashboard, copies the exact non-secret redirect URI, and invokes the host-owned bounded text-entry modal for Client ID entry or replacement. The CLI remains a developer/diagnostic route, not an ordinary setup requirement. |
+| Community application | Version 0.3.2 publishes the accepted responsive Player, Queue, continuous occurrence-keyed Queue/Playlist/detail collections, Devices surfaces, and controller-first Client-ID onboarding through the generic full-trust package path. Wide and compact branches retain the same controller-first vertical-rail hierarchy and focus identities. |
+| Setup UI | The controller setup route opens Spotify's developer dashboard, copies the exact non-secret redirect URI, and invokes the host-owned bounded text-entry modal for Client ID entry or replacement. A visible Setup action on the configured Ready navigation rail keeps replacement reachable without disconnecting. The CLI remains a developer/diagnostic route, not an ordinary setup requirement. |
 | Live evidence | No allowlisted-account login/playback evidence has been captured yet. |
 | Local Web Playback SDK audio | Isolated singleton WebView2 host, lifecycle/token orchestration, sanitized local-device projection, and offline protocol/process tests implemented; live account/device proof remains. |
 
@@ -123,7 +123,8 @@ developer dashboard, copy/register the exact redirect URI, and enter or replace
 the public Client ID through the bounded host-owned text-entry modal. The
 package validates and atomically stores the committed value, then immediately
 rechecks configuration. Replacing it deletes the old client's refresh
-credential before the new identity becomes active.
+credential before the new identity becomes active. The same Setup route remains
+visible in the configured Ready navigation rail.
 
 The following CLI remains available for developer diagnostics and automation:
 
