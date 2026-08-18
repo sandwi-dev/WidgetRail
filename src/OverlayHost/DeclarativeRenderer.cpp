@@ -2214,7 +2214,7 @@ struct DeclarativeRenderer::RenderPass final {
         if (boundaryIds.empty()) return false;
         if (std::find(boundaryIds.begin(), boundaryIds.end(), snapshot->root.id) !=
             boundaryIds.end()) {
-            BuildLayout();
+            BuildLayout(!options.suppressFocusedDescendantFollow);
             return true;
         }
         LayoutOptions layoutOptions;
