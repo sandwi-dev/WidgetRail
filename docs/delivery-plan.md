@@ -27,9 +27,10 @@ evidence only; this file is the sole authority for current work.
   running as unaccepted PID 40292 with SHA-256
   `8AD2AC19CF2E5FE6D27F4EC4F3CE3DA243E4F908A8D7E63B6D8438DFCBAA1847`.
   Fresh startup elected one production process owner, initialized
-  DirectComposition, and logged no startup error/failure/rejection. User
-  Guide/second-invocation/external-foreground testing is pending; no DLV-266
-  tests or integration are authorized before that verdict.
+  DirectComposition, and logged no startup error/failure/rejection. The user
+  physically accepted Guide open/close, already-visible second invocation, and
+  external-foreground activation on 2026-08-18. Focused post-verdict tests are
+  now authorized; integration still waits for their review.
 - DLV-265 production/docs commit `869dc7d` is reconciled with current planner
   main by clean merge `b52c07e`. Independent source review confirmed that the
   Spotify package reuses the bounded host text-entry contract, validates and
@@ -139,7 +140,7 @@ user decision. The native overlay is the sole production presentation path.
 
 | Lane | Task/worktree | State |
 | --- | --- | --- |
-| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | Clean and idle at cumulative DLV-266 merge `510e01c`. Exact production candidate PID 40292 is visibly running for the user's physical verdict; do not add/run tests or integrate before acceptance. The platform queue intentionally contains one evidenced item rather than filler and requires replenishment after its diagnosis. |
+| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | DLV-266 cumulative merge `510e01c` is physically accepted on exact PID 40292. Focused deterministic post-verdict tests are assigned; do not integrate or replace the running production candidate until their review completes. |
 | Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | Clean and idle at DLV-265 production/docs commit `869dc7d`, reconciled by `b52c07e`. Independent source review and the coherent tests-skipped build are complete; launch and physical setup testing wait behind the running DLV-266 verdict. DLV-248 remains deferred. |
 
 ## Completed planner deliverable — DLV-257: select and freeze WidgetRail identity
@@ -499,8 +500,8 @@ deliberately deferred by user decision and requires explicit promotion.
 1. DLV-257 through DLV-260 are accepted and integrated through main `1ff96ba`.
 2. DLV-264 is accepted and integrated through main `15a26b9`; accepted PID
    17212 was later gracefully closed to stage DLV-266.
-3. DLV-266 is reconciled and source-reviewed; physically test the running
-   candidate, then add focused tests and integrate only after acceptance.
+3. DLV-266 is reconciled, source-reviewed, and physically accepted; add and
+   review its focused deterministic tests, then integrate the accepted chain.
 4. DLV-265 is implemented, reconciled, source-reviewed, and built. After the
    DLV-266 verdict, launch it so ordinary Spotify setup can be physically
    verified without a repository-local terminal command.
@@ -517,7 +518,7 @@ deliberately deferred by user decision and requires explicit promotion.
 | GitHub identity | User-selected owner plus repository/organization availability and optional rename/creation. |
 | DLV-264 | Complete: physically accepted on PID 17212, focused-tested, and integrated through main `15a26b9`. |
 | DLV-265 | Production/docs candidate `869dc7d` is source-reviewed and built behind DLV-266; controller onboarding and real Spotify authorization remain user-owned physical checks. |
-| DLV-266 | Unaccepted cumulative PID 40292 is running from merge `510e01c`; physical Guide, already-visible `--show`, and external-foreground verdict required before tests. |
+| DLV-266 | Physical Guide, already-visible `--show`, and external-foreground activation accepted on cumulative PID 40292; focused post-verdict tests and integration remain. |
 | DLV-248 | Deliberately deferred until explicit user promotion. |
 | Avalonia | Failed/cancelled; requires a new explicit user decision. |
 | YT Music catalog cleanup | Approval to remove only inactive, non-selected 0.2.0. |
