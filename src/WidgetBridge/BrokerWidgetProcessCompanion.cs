@@ -31,7 +31,7 @@ internal sealed class BrokerWidgetProcessCompanion : IWidgetProcessCompanionSess
         if (_isolated && string.IsNullOrWhiteSpace(context.AppContainerSid))
             throw new InvalidOperationException(
                 "An isolated widget broker requires the runtime AppContainer SID.");
-        var pipeName = $"gba-broker-{Environment.ProcessId}-{Guid.NewGuid():N}";
+        var pipeName = $"wrail-broker-{Environment.ProcessId}-{Guid.NewGuid():N}";
         _server = new BrokerPipeServer(
             pipeName,
             identity,

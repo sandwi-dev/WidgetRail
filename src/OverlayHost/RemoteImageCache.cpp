@@ -260,7 +260,7 @@ RemoteImageRequestResult RemoteImageCache::Request(std::wstring url) {
 }
 
 RemoteImageRequestResult RemoteImageCache::RequestTrustedArtwork(std::wstring key) {
-    constexpr std::wstring_view prefix = L"gbar-artwork\x1f";
+    constexpr std::wstring_view prefix = L"wrail-artwork\x1f";
     if (!key.starts_with(prefix) || key.size() > 384) return RemoteImageRequestResult::InvalidUrl;
     if (!artworkRequest_) {
         std::scoped_lock lock(mutex_);
@@ -323,7 +323,7 @@ bool RemoteImageCache::SupplyTrustedArtwork(
     if (pngBase64.empty() || pngBase64.size() > 16'384) return false;
     std::scoped_lock lock(mutex_);
     if (shuttingDown_) return false;
-    const auto prefix = L"gbar-artwork\x1f" + std::wstring(widgetId) + L"\x1f";
+    const auto prefix = L"wrail-artwork\x1f" + std::wstring(widgetId) + L"\x1f";
     const auto suffix = L"\x1f" + std::wstring(artworkHandle);
     bool supplied = false;
     for (auto& [key, entry] : entries_) {
@@ -347,7 +347,7 @@ bool RemoteImageCache::FailTrustedArtwork(
     {
         std::scoped_lock lock(mutex_);
         if (shuttingDown_) return false;
-        const auto prefix = L"gbar-artwork\x1f" + std::wstring(widgetId) + L"\x1f";
+        const auto prefix = L"wrail-artwork\x1f" + std::wstring(widgetId) + L"\x1f";
         const auto suffix = L"\x1f" + std::wstring(artworkHandle);
         bool failed = false;
         for (auto& [key, entry] : entries_) {
@@ -415,7 +415,7 @@ std::wstring RemoteImageCache::TrustedArtworkKey(
     const std::wstring_view nodeId,
     const std::wstring_view artworkHandle) {
     if (widgetId.empty() || nodeId.empty() || artworkHandle.empty()) return {};
-    std::wstring result = L"gbar-artwork\x1f";
+    std::wstring result = L"wrail-artwork\x1f";
     result.append(widgetId);
     result.push_back(L'\x1f');
     result.append(nodeId);
@@ -624,7 +624,7 @@ RemoteImageFetchResult RemoteImageCache::FetchAndDecodeSource(
     if (!parsed) return Failure(E_INVALIDARG, L"Only credential-free HTTPS URLs are allowed.");
 
     InternetHandle session(WinHttpOpen(
-        L"GameBarAlternative/0.1",
+        L"WidgetRail/0.1",
         WINHTTP_ACCESS_TYPE_NO_PROXY,
         WINHTTP_NO_PROXY_NAME,
         WINHTTP_NO_PROXY_BYPASS,

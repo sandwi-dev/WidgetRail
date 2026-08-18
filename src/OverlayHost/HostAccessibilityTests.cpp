@@ -135,7 +135,7 @@ int main() {
     Check(openTree.widgetId == L"music" &&
           openTree.runtimeGeneration == L"music-v1" &&
           openTree.snapshotSequence == 42 &&
-          openTree.name == L"YT Music · Game Bar Alternative",
+          openTree.name == L"YT Music · WidgetRail",
           "open shell retains widget authority and publishes page context on the root");
     Check(openTree.focusedNode == 0 && openTree.nodes[0].focused,
           "widget focus remains the singular composite focus owner");

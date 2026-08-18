@@ -7,7 +7,7 @@ param(
 $ErrorActionPreference = 'Stop'
 $repositoryRoot = Split-Path -Parent $PSScriptRoot
 $overlayPath = Resolve-Path (Join-Path $repositoryRoot "src\OverlayHost\out\$Configuration\OverlayHost.exe")
-$startupError = Join-Path $env:LOCALAPPDATA 'GameBarAlternative\startup-error.log'
+$startupError = Join-Path $env:LOCALAPPDATA 'WidgetRail\startup-error.log'
 $startupErrorTimestamp = if (Test-Path -LiteralPath $startupError) {
     (Get-Item -LiteralPath $startupError).LastWriteTimeUtc
 } else { $null }

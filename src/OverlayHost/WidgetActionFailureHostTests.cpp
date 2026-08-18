@@ -34,7 +34,7 @@ using Microsoft::WRL::RuntimeClass;
 using Microsoft::WRL::RuntimeClassFlags;
 namespace fs = std::filesystem;
 
-constexpr wchar_t kHostWindowClass[] = L"GameBarAlternative.OverlayHost";
+constexpr wchar_t kHostWindowClass[] = L"WidgetRail.OverlayHost";
 constexpr wchar_t kWidgetId[] = L"ytmusic-fixture";
 constexpr wchar_t kPlayPauseAutomationId[] = L"widget:play-pause";
 constexpr wchar_t kOpenStatusAutomationId[] = L"host:host.open.status";
@@ -183,7 +183,7 @@ public:
         wchar_t guidText[64]{};
         Require(StringFromGUID2(guid, guidText, 64) > 0, "StringFromGUID2 failed");
         root_ = fs::path(temporaryRoot) /
-            (L"gba-action-failure-host-" + std::wstring(guidText));
+            (L"wrail-action-failure-host-" + std::wstring(guidText));
         processProfile_ = L"action-failure-host-";
         for (const wchar_t character : std::wstring_view(guidText)) {
             if (std::iswalnum(character))
@@ -198,7 +198,7 @@ public:
         localAppData_ = root_ / L"local-app-data";
         fs::create_directories(localAppData_);
 
-        const fs::path style = root_ / L"runtime" / L"action-failure-fixture.gbss";
+        const fs::path style = root_ / L"runtime" / L"action-failure-fixture.wrss";
         WriteUtf8(style,
                   ".ytmusic-fixture { padding: 16px; gap: 8px; }\n"
                   "button:focused { outline-width: 3px; }\n");
@@ -209,13 +209,13 @@ public:
             "  \"genericWorkerExecutable\": \"runtime/WidgetWorkerHost/WidgetWorkerHost.exe\",\n"
             "  \"widgets\": [{\n"
             "    \"id\": \"ytmusic-fixture\",\n"
-            "    \"packageId\": \"org.gbar.tests.ytmusic-fixture\",\n"
-            "    \"publisherId\": \"org.gbar.tests\",\n"
+            "    \"packageId\": \"widgetrail.tests.ytmusic-fixture\",\n"
+            "    \"publisherId\": \"widgetrail.tests\",\n"
             "    \"name\": \"YT Music\",\n"
             "    \"instanceId\": \"ytmusic-fixture.default\",\n"
             "    \"icon\": \"music\",\n"
             "    \"workerExecutable\": \"" + JsonEscape(fs::absolute(fixtureWorker).wstring()) + "\",\n"
-            "    \"styleFile\": \"runtime/action-failure-fixture.gbss\",\n"
+            "    \"styleFile\": \"runtime/action-failure-fixture.wrss\",\n"
             "    \"memoryLimitMb\": 64,\n"
             "    \"residencyPolicy\": { \"schemaVersion\": 1, \"mode\": \"keep-alive\" },\n"
             "    \"workerArguments\": [\"--fail-once\", \"" +
@@ -573,7 +573,7 @@ void Run(const Arguments& arguments) {
                         automation.Get(), currentRoot.Get(), kTrayAutomationId);
                 }), "The fixture did not appear in the production dashboard.");
         const fs::path logPath = installation.LocalAppData() /
-            L"GameBarAlternative" / L"overlay.log";
+            L"WidgetRail" / L"overlay.log";
         const auto activationLogBoundary = ReadLog(logPath).size();
         PostKey(window, VK_RETURN);
         if (!WaitUntil(kOperationTimeoutMilliseconds, [&] {

@@ -491,7 +491,7 @@ public sealed class WidgetProcessClient : IAsyncDisposable
                         _options.ContentAuthorityOperations,
                         _options.ContentAuthorityJournal);
             }
-            var pipeSuffix = $"gba-widget-{Environment.ProcessId}-{Guid.NewGuid():N}";
+            var pipeSuffix = $"wrail-widget-{Environment.ProcessId}-{Guid.NewGuid():N}";
             var pipeName = pipeSuffix;
             var sessionNonce = Convert.ToHexString(
                 RandomNumberGenerator.GetBytes(32)).ToLowerInvariant();

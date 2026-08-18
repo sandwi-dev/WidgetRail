@@ -303,7 +303,7 @@ gba::accessibility::Tree OpenHostTree() {
     tree.runtimeGeneration = L"generation-open";
     tree.snapshotSequence = 30;
     tree.activeInputScopeId = L"music.sheet";
-    tree.name = L"YT Music · Game Bar Alternative";
+    tree.name = L"YT Music · WidgetRail";
     gba::accessibility::Node back;
     back.id = L"host.open.back";
     back.domain = gba::accessibility::ElementDomain::HostShell;
@@ -366,7 +366,7 @@ int main() {
         WNDCLASSW windowClass{};
         windowClass.lpfnWndProc = TestWindowProc;
         windowClass.hInstance = GetModuleHandleW(nullptr);
-        windowClass.lpszClassName = L"GameBarAlternative.AccessibilityProviderTests";
+        windowClass.lpszClassName = L"WidgetRail.AccessibilityProviderTests";
         RegisterClassW(&windowClass);
         HWND threadWindow = CreateWindowExW(
             0, windowClass.lpszClassName, L"AccessibilityProviderTests", WS_OVERLAPPED,
@@ -405,7 +405,7 @@ int main() {
     BSTR clientRootName{};
     Check(SUCCEEDED(clientRoot->get_CurrentName(&clientRootName)) &&
           std::wstring_view{clientRootName, SysStringLen(clientRootName)} ==
-              L"Game Bar Alternative",
+              L"WidgetRail",
           "UIA client reads the custom root name");
     SysFreeString(clientRootName);
     VARIANT automationId{};
@@ -506,8 +506,10 @@ int main() {
     ComPtr<IRawElementProviderSimple> root;
     Check(SUCCEEDED(host.GetRootProvider(root.GetAddressOf())) && root,
           "root provider is available");
-    Check(StringProperty(root.Get(), UIA_NamePropertyId) == L"Game Bar Alternative",
+    Check(StringProperty(root.Get(), UIA_NamePropertyId) == L"WidgetRail",
           "root provider has a stable accessible name");
+    Check(StringProperty(root.Get(), UIA_AutomationIdPropertyId) == L"WidgetRail.Overlay",
+          "root provider has the WidgetRail automation identity");
     SendMessageW(window, WM_APP + 43, 0, 0);
     VARIANT rootFocus{};
     BOOL clientRootFocused{};
@@ -700,7 +702,7 @@ int main() {
     BSTR openRootName{};
     Check(SUCCEEDED(clientRoot->get_CurrentName(&openRootName)) &&
           std::wstring_view{openRootName, SysStringLen(openRootName)} ==
-              L"YT Music · Game Bar Alternative",
+              L"YT Music · WidgetRail",
           "real UIA client reads open-widget page context from the composite root");
     SysFreeString(openRootName);
     ComPtr<IRawElementProviderFragment> backFragment;
@@ -1080,7 +1082,7 @@ int main() {
     SendMessageW(window, WM_APP + 42, 0, 0);
     ComPtr<IRawElementProviderSimple> reboundRoot;
     Check(SUCCEEDED(host.GetRootProvider(reboundRoot.GetAddressOf())) && reboundRoot &&
-          StringProperty(reboundRoot.Get(), UIA_NamePropertyId) == L"Game Bar Alternative",
+          StringProperty(reboundRoot.Get(), UIA_NamePropertyId) == L"WidgetRail",
           "same-HWND rebind creates a new provider generation");
     ComPtr<IUIAutomationElement> reboundClientRoot;
     Check(SUCCEEDED(client->ElementFromHandle(

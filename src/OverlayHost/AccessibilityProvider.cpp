@@ -326,10 +326,10 @@ public:
                 return StringVariant(
                     published && !published->tree.name.empty()
                         ? std::wstring_view{published->tree.name}
-                        : std::wstring_view{L"Game Bar Alternative"},
+                        : std::wstring_view{L"WidgetRail"},
                     result);
             case UIA_AutomationIdPropertyId:
-                return StringVariant(L"GameBarAlternative.Overlay", result);
+                return StringVariant(L"WidgetRail.Overlay", result);
             case UIA_IsControlElementPropertyId:
             case UIA_IsContentElementPropertyId:
             case UIA_IsEnabledPropertyId: BoolVariant(true, result); break;

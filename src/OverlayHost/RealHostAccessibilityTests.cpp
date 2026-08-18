@@ -895,7 +895,7 @@ int wmain(const int argc, wchar_t** argv) {
             WNDCLASSW windowClass{};
             windowClass.lpfnWndProc = WindowProc;
             windowClass.hInstance = GetModuleHandleW(nullptr);
-            windowClass.lpszClassName = L"GameBarAlternative.RealHostAccessibilityTests";
+            windowClass.lpszClassName = L"WidgetRail.RealHostAccessibilityTests";
             RegisterClassW(&windowClass);
             HWND window = CreateWindowExW(
                 0, windowClass.lpszClassName, L"RealHostAccessibilityTests",

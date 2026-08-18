@@ -316,10 +316,10 @@ void CommittedDestinationDrivesLateAdmissionAndStableRefresh() {
     Near(visibleBottom(ytAdmission.initialPresentation),
          static_cast<float>(guideTop - authoredGap),
          "transition start keeps panel above the fixed guide gap");
-    transaction.AcceptCompositionAdmission(ytAdmission, L"org.gbar.samples.ytmusic");
+    transaction.AcceptCompositionAdmission(ytAdmission, L"widgetrail.samples.ytmusic");
     Check(transaction.committedDestination() &&
               transaction.committedDestination()->widgetId ==
-                  L"org.gbar.samples.ytmusic" &&
+                  L"widgetrail.samples.ytmusic" &&
               transaction.CommittedDestinationExtent(retainedNetwork) == admittedYtMusic,
           "successful admission atomically advances identity and destination extent");
 
@@ -339,7 +339,7 @@ void CommittedDestinationDrivesLateAdmissionAndStableRefresh() {
                   transaction.CommittedDestinationExtent(admittedYtMusic),
                   admittedYtMusic) == gba::OverlayPresentationDirective::Repaint,
           "same-destination lifecycle refresh repaints without restarting motion");
-    transaction.AcceptCompositionRepaint(L"org.gbar.samples.ytmusic");
+    transaction.AcceptCompositionRepaint(L"widgetrail.samples.ytmusic");
     const auto final = transaction.PrepareCompositionStep(240, false);
     Check(final && final->finalFrame && final->index == midpoint->index + 1,
           "same-destination refresh preserves the original motion sequence");

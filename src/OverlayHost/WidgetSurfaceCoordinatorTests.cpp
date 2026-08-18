@@ -187,7 +187,7 @@ gba::WidgetSnapshot Snapshot(const long long sequence = 1) {
 
 gba::pinned::WidgetSurfaceAdmission Admission(const bool supported = true) {
     return {
-        L"org.gbar.samples.sdk-gallery",
+        L"widgetrail.samples.sdk-gallery",
         L"gallery.instance",
         L"runtime-1",
         L"presentation-1",
@@ -201,7 +201,7 @@ gba::WidgetDescriptor Descriptor(
     const std::wstring_view runtime = L"runtime-1",
     const bool supported = true) {
     gba::WidgetDescriptor descriptor;
-    descriptor.id = L"org.gbar.samples.sdk-gallery";
+    descriptor.id = L"widgetrail.samples.sdk-gallery";
     descriptor.name = L"SDK Gallery";
     descriptor.instanceId = L"gallery.instance";
     descriptor.runtimeGeneration = runtime;
@@ -231,7 +231,7 @@ int main() {
         gba::pinned::WidgetSurfaceCoordinator coordinator;
         std::wstring error;
         const auto placementRoot = std::filesystem::temp_directory_path() /
-            (L"gba-widget-surface-" + std::to_wstring(GetCurrentProcessId()));
+            (L"wrail-widget-surface-" + std::to_wstring(GetCurrentProcessId()));
         Check(coordinator.Initialize(
                   GetModuleHandleW(nullptr), nullptr, WM_APP + 0x410,
                   d2d.Get(), write.Get(), nullptr, error,
@@ -282,7 +282,7 @@ int main() {
                   error.find(L"already pinned") != std::wstring::npos,
               "duplicate pin is bounded");
         auto other = Admission();
-        other.widgetId = L"org.gbar.samples.other";
+        other.widgetId = L"widgetrail.samples.other";
         Check(!coordinator.Pin(std::move(other), error) &&
                   error.find(L"Only one") != std::wstring::npos,
               "simultaneous pin cap is enforced");

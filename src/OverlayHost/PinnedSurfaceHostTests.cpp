@@ -144,7 +144,7 @@ LRESULT CALLBACK FixtureWindowProc(
     tree.widgetId = L"host.pinned.feasibility";
     tree.runtimeGeneration = L"host-owned";
     tree.snapshotSequence = 1;
-    tree.name = L"Game Bar Alternative pinned surface";
+    tree.name = L"WidgetRail pinned surface";
     for (const auto& semantic : policy.ProjectSemantics()) {
         gba::accessibility::Node node;
         node.id = semantic.id;
@@ -399,7 +399,7 @@ Measurement TestRealHostWindow(const fs::path& evidencePath) {
         WS_EX_LAYERED | WS_EX_NOACTIVATE | WS_EX_TRANSPARENT;
     HWND pinned = CreateWindowExW(
         clickThroughStyles, kFixtureClass,
-        L"Game Bar Alternative pinned feasibility surface", WS_POPUP,
+        L"WidgetRail pinned feasibility surface", WS_POPUP,
         placement->bounds.left, placement->bounds.top,
         placement->bounds.right - placement->bounds.left,
         placement->bounds.bottom - placement->bounds.top,
@@ -431,7 +431,7 @@ Measurement TestRealHostWindow(const fs::path& evidencePath) {
     VariantInit(&name);
     Check(SUCCEEDED(root->GetPropertyValue(UIA_NamePropertyId, &name)) &&
           name.vt == VT_BSTR && name.bstrVal &&
-          std::wstring_view{name.bstrVal} == L"Game Bar Alternative pinned surface",
+          std::wstring_view{name.bstrVal} == L"WidgetRail pinned surface",
           "UI Automation root exposes the host-owned accessible name");
     VariantClear(&name);
     root->Release();

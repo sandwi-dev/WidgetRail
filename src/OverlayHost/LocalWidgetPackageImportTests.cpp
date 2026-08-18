@@ -16,7 +16,7 @@ void Require(const bool condition, const char* message) {
 
 LocalWidgetPackageOrigin SettingsOrigin() {
     return {
-        L"settings", L"org.gbar.firstparty.settings", L"org.gbar.firstparty",
+        L"settings", L"widgetrail.firstparty.settings", L"widgetrail.firstparty",
         L"settings.default", L"runtime-one", L"presentation-one",
         gba::WidgetLifecycleState::Interactive};
 }
@@ -37,7 +37,7 @@ LocalWidgetPackageActionInvocation SettingsInvocation() {
 
 struct FakePicker final : ILocalWidgetPackagePicker {
     LocalWidgetPackagePickerResult result{
-        LocalWidgetPackagePickerStatus::Selected, L"C:\\fixture.gbarwidget", {}};
+        LocalWidgetPackagePickerStatus::Selected, L"C:\\fixture.wrwidget", {}};
     std::function<void()> duringSelect;
     bool open{};
     bool cancelled{};
@@ -104,7 +104,7 @@ void StaleGenerationAndSubmissionAreBounded() {
         picker, [&] { return std::optional{origin}; },
         [&](const std::wstring_view path, const auto& admitted,
             const std::wstring_view operationId) {
-            Require(path == L"C:\\fixture.gbarwidget", "selected path changed");
+            Require(path == L"C:\\fixture.wrwidget", "selected path changed");
             Require(admitted.runtimeGeneration == L"runtime-one",
                     "wrong runtime generation submitted");
             Require(!operationId.empty(), "operation ID was empty");

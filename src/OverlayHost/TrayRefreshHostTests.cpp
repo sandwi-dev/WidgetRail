@@ -134,7 +134,7 @@ public:
         wchar_t guidText[64]{};
         Require(StringFromGUID2(guid, guidText, 64) > 0, "StringFromGUID2 failed");
         root_ = fs::path(temporaryRoot) /
-            (L"gba-tray-refresh-" + std::wstring(guidText));
+            (L"wrail-tray-refresh-" + std::wstring(guidText));
         fs::create_directories(root_);
         fs::copy_file(source / L"OverlayHost.exe", root_ / L"OverlayHost.exe");
         fs::copy_file(
@@ -142,7 +142,7 @@ public:
         fs::copy(source / L"runtime", root_ / L"runtime",
             fs::copy_options::recursive | fs::copy_options::copy_symlinks);
         localAppData_ = root_ / L"local-app-data";
-        catalogRoot_ = localAppData_ / L"GameBarAlternative" / L"widgets";
+        catalogRoot_ = localAppData_ / L"WidgetRail" / L"widgets";
         fs::create_directories(catalogRoot_);
         readyPath_ = root_ / L"host-ready.txt";
         RunCommunityInstaller(communityFixture, catalogRoot_);
@@ -196,7 +196,7 @@ void RunWidgetScenario(
     HostProcess host(
         installation.Root(), installation.LocalAppData(), hostArguments);
     const auto logPath = installation.LocalAppData() /
-        L"GameBarAlternative" / L"overlay.log";
+        L"WidgetRail" / L"overlay.log";
     Require(WaitUntil(kStartupTimeoutMilliseconds, [&] {
         return ReadUtf8(installation.ReadyPath()).find(kDevelopmentNonceUtf8) !=
             std::string::npos;

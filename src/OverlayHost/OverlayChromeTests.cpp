@@ -342,7 +342,7 @@ void CheckFixedChromeWindowPolicy() {
               !gba::shell::SameFixedChromeSession(session, changedAppearance),
           "work-area, catalog, scale, and appearance changes rebuild fixed chrome");
 
-    const wchar_t className[] = L"GameBarAlternative.FixedChromePolicyTests";
+    const wchar_t className[] = L"WidgetRail.FixedChromePolicyTests";
     WNDCLASSW windowClass{};
     windowClass.lpfnWndProc = FixedChromeTestWindowProc;
     windowClass.hInstance = GetModuleHandleW(nullptr);
