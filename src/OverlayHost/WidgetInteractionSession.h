@@ -85,7 +85,10 @@ struct InteractionReconciliation final {
 };
 
 struct WidgetInteractionActionRequest final {
+    std::wstring widgetId;
     std::wstring widgetInstanceId;
+    std::wstring runtimeGeneration;
+    std::wstring presentationGeneration;
     std::wstring inputScopeId;
     std::wstring sourceElementId;
     std::wstring actionId;
@@ -182,21 +185,29 @@ public:
         std::uint64_t now);
 
     [[nodiscard]] SliderInputOutcome AdjustSlider(
-        const SliderInputDescriptor& slider,
+        const WidgetInteractionAuthority& authority,
+        const WidgetNode& node,
         NavigationDirection direction,
         std::uint64_t now);
     [[nodiscard]] SliderInputOutcome RequestSliderValue(
-        const SliderInputDescriptor& slider,
+        const WidgetInteractionAuthority& authority,
+        const WidgetNode& node,
         double value,
         std::uint64_t now);
     [[nodiscard]] SliderInputOutcome CancelSliderAction(
-        const SliderInputDescriptor& slider,
+        const WidgetInteractionAuthority& authority,
+        const WidgetNode& node,
+        std::uint64_t now);
+    [[nodiscard]] SliderInputOutcome CancelSliderAction(
+        const WidgetInteractionActionRequest& request,
         std::uint64_t now);
     [[nodiscard]] bool SliderAdjustmentModeActive(
-        const SliderInputDescriptor& slider,
+        const WidgetInteractionAuthority& authority,
+        const WidgetNode& node,
         std::uint64_t now);
     [[nodiscard]] bool TransitionSliderAdjustmentMode(
-        const SliderInputDescriptor& slider,
+        const WidgetInteractionAuthority& authority,
+        const WidgetNode& node,
         SliderAdjustmentModeTransition transition,
         std::uint64_t now);
     [[nodiscard]] bool TransitionPressedPresentation(
@@ -223,6 +234,9 @@ private:
         const WidgetInteractionAuthority& authority) const noexcept;
     [[nodiscard]] static SliderInputDescriptor SliderDescriptor(
         const WidgetSnapshot& snapshot,
+        const WidgetNode& node) noexcept;
+    [[nodiscard]] static const WidgetNode* ExactSliderNode(
+        const WidgetInteractionAuthority& authority,
         const WidgetNode& node) noexcept;
     [[nodiscard]] static std::vector<std::wstring> CurrentSliderNodeIds(
         const WidgetSnapshot& snapshot,

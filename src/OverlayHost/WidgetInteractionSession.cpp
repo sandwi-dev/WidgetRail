@@ -190,6 +190,15 @@ SliderInputDescriptor WidgetInteractionSession::SliderDescriptor(
     };
 }
 
+const WidgetNode* WidgetInteractionSession::ExactSliderNode(
+    const WidgetInteractionAuthority& authority,
+    const WidgetNode& node) noexcept {
+    if (!authority.semantics || node.kind != L"slider") return nullptr;
+    const auto* admitted = FindNodeInInputScope(
+        *authority.semantics, node.id, authority.semantics->activeInputScopeId);
+    return admitted == &node ? admitted : nullptr;
+}
+
 std::vector<std::wstring> WidgetInteractionSession::CurrentSliderNodeIds(
     const WidgetSnapshot& snapshot,
     const std::vector<SliderPresentationIdentity>& identities) {
@@ -271,16 +280,23 @@ InteractionReconciliation WidgetInteractionSession::Tick(
 }
 
 SliderInputOutcome WidgetInteractionSession::AdjustSlider(
-    const SliderInputDescriptor& slider,
+    const WidgetInteractionAuthority& authority,
+    const WidgetNode& node,
     const NavigationDirection direction,
     const std::uint64_t now) {
+    const auto* exactNode = ExactSliderNode(authority, node);
+    if (!exactNode) return {};
+    const auto slider = SliderDescriptor(*authority.semantics, *exactNode);
     const auto priorRevision = sliders_.presentationRevision();
     const auto adjustment = sliders_.Adjust(slider, direction, now);
     RefreshSliderDeadline();
     const auto request = adjustment.requestedValue
         ? std::optional<WidgetInteractionActionRequest>{
             WidgetInteractionActionRequest{
+                std::wstring{authority.widgetId},
                 std::wstring{slider.widgetInstanceId},
+                std::wstring{authority.runtimeGeneration},
+                std::wstring{authority.presentationGeneration},
                 std::wstring{slider.inputScopeId},
                 std::wstring{slider.nodeId},
                 std::wstring{slider.valueChangedActionId},
@@ -298,16 +314,23 @@ SliderInputOutcome WidgetInteractionSession::AdjustSlider(
 }
 
 SliderInputOutcome WidgetInteractionSession::RequestSliderValue(
-    const SliderInputDescriptor& slider,
+    const WidgetInteractionAuthority& authority,
+    const WidgetNode& node,
     const double value,
     const std::uint64_t now) {
+    const auto* exactNode = ExactSliderNode(authority, node);
+    if (!exactNode) return {};
+    const auto slider = SliderDescriptor(*authority.semantics, *exactNode);
     const auto priorRevision = sliders_.presentationRevision();
     const bool consumed = sliders_.SetRequestedValue(slider, value, now);
     RefreshSliderDeadline();
     const auto request = consumed
         ? std::optional<WidgetInteractionActionRequest>{
             WidgetInteractionActionRequest{
+                std::wstring{authority.widgetId},
                 std::wstring{slider.widgetInstanceId},
+                std::wstring{authority.runtimeGeneration},
+                std::wstring{authority.presentationGeneration},
                 std::wstring{slider.inputScopeId},
                 std::wstring{slider.nodeId},
                 std::wstring{slider.valueChangedActionId},
@@ -325,8 +348,12 @@ SliderInputOutcome WidgetInteractionSession::RequestSliderValue(
 }
 
 SliderInputOutcome WidgetInteractionSession::CancelSliderAction(
-    const SliderInputDescriptor& slider,
+    const WidgetInteractionAuthority& authority,
+    const WidgetNode& node,
     const std::uint64_t now) {
+    const auto* exactNode = ExactSliderNode(authority, node);
+    if (!exactNode) return {};
+    const auto slider = SliderDescriptor(*authority.semantics, *exactNode);
     const auto priorRevision = sliders_.presentationRevision();
     const bool consumed = sliders_.CancelPending(slider, now);
     RefreshSliderDeadline();
@@ -339,16 +366,45 @@ SliderInputOutcome WidgetInteractionSession::CancelSliderAction(
     };
 }
 
-bool WidgetInteractionSession::SliderAdjustmentModeActive(
-    const SliderInputDescriptor& slider,
+SliderInputOutcome WidgetInteractionSession::CancelSliderAction(
+    const WidgetInteractionActionRequest& request,
     const std::uint64_t now) {
+    const auto priorRevision = sliders_.presentationRevision();
+    const bool consumed = sliders_.CancelPending(SliderPresentationIdentity{
+        request.widgetInstanceId,
+        request.inputScopeId,
+        request.sourceElementId,
+        request.actionId,
+        request.snapshotSequence,
+    }, now);
+    RefreshSliderDeadline();
+    return {
+        consumed,
+        sliders_.presentationRevision() != priorRevision,
+        std::nullopt,
+        sliders_.presentationRevision(),
+        sliderReconcileAt_,
+    };
+}
+
+bool WidgetInteractionSession::SliderAdjustmentModeActive(
+    const WidgetInteractionAuthority& authority,
+    const WidgetNode& node,
+    const std::uint64_t now) {
+    const auto* exactNode = ExactSliderNode(authority, node);
+    if (!exactNode) return false;
+    const auto slider = SliderDescriptor(*authority.semantics, *exactNode);
     return sliders_.AdjustmentModeActive(slider, now);
 }
 
 bool WidgetInteractionSession::TransitionSliderAdjustmentMode(
-    const SliderInputDescriptor& slider,
+    const WidgetInteractionAuthority& authority,
+    const WidgetNode& node,
     const SliderAdjustmentModeTransition transition,
     const std::uint64_t now) {
+    const auto* exactNode = ExactSliderNode(authority, node);
+    if (!exactNode) return false;
+    const auto slider = SliderDescriptor(*authority.semantics, *exactNode);
     const bool changed = transition == SliderAdjustmentModeTransition::Enter
         ? sliders_.EnterAdjustmentMode(slider, now)
         : sliders_.ExitAdjustmentMode(slider, now);

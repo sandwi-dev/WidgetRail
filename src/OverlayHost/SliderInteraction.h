@@ -117,6 +117,9 @@ public:
     [[nodiscard]] bool CancelPending(
         const SliderInputDescriptor& slider,
         std::uint64_t nowMilliseconds);
+    [[nodiscard]] bool CancelPending(
+        const SliderPresentationIdentity& identity,
+        std::uint64_t nowMilliseconds);
 
     void ForgetWidget(std::wstring_view widgetInstanceId) noexcept;
     [[nodiscard]] std::size_t size() const noexcept { return entries_.size(); }
