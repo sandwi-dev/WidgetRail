@@ -9670,7 +9670,8 @@ private:
                     }
                 }
                 declarativeMotionActive_ = !inertRetainedSnapshot && result.animationActive;
-                if (!inertRetainedSnapshot) {
+                if (!inertRetainedSnapshot &&
+                    !options.suppressFocusedDescendantFollow) {
                     if (const auto visibleFocus = widgetrail::input::ResolveVisibleFocusTarget(
                         focusedElementId_, semanticSnapshot.activeInputScopeId, result);
                         visibleFocus && *visibleFocus != focusedElementId_) {
