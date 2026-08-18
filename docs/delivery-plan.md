@@ -230,7 +230,7 @@ user decision. The native overlay is the sole production presentation path.
 
 | Lane | Task/worktree | State |
 | --- | --- | --- |
-| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | DLV-272 correction `b0c9f49b` closes all 43 mutable subowner calls but remains source-rejected before launch: slider-descriptor policy is duplicated and the exact typed action request is discarded before final dispatch. Make the bounded exact-request handoff correction, rebuild tests-skipped, and stop. Do not start DLV-269. |
+| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | DLV-272 correction `1feaa92b` is source- and physically accepted on PID 86532. Add only the assigned focused regression coverage, run the bounded focused suites, commit, and stop for review. Do not start DLV-269. |
 | Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | DLV-265 is saved at clean tip `13bd971` plus reconciliation `5fd1a06` and explicitly deferred until immediately after DLV-271. Preserve installed Spotify 0.3.3 and the unchanged Client ID/account state; do not resume, test, integrate, reinstall, or reset it early. DLV-270 follows accepted DLV-265; DLV-248 remains deferred. |
 
 DLV-257 is closed. Its approved identity decisions and evidence are preserved
@@ -648,18 +648,22 @@ and return typed rollback/damage, presentation revision/override, deadline, and
 widget-action requests for `OverlayApp` to arbitrate. Do not create a mirrored
 one-method-per-subowner facade, duplicate policy, or change accepted behavior.
 
-Correction review: `b0c9f49b` removes all direct mutable slider/pressed access
-and replaces it with 28 typed session calls, but it introduces a second
-`SliderDescriptor` builder inside the session while retaining the same builder
-in `OverlayApp`. More importantly, `AdjustSlider` returns an exact typed action
-request, then `OverlayApp` discards its instance/scope/node/action/sequence
-authority and passes only `requestedValue` into the old current-state resolver.
-That re-resolution race defeats the transaction seam DLV-272 is establishing.
-Keep exact descriptor construction in one owner; have session input operations
-capture it from immutable snapshot/node input, and make final host arbitration
-validate and dispatch the returned exact request rather than reconstructing it
-from mutable current focus. Preserve optimistic feedback, bridge ownership, and
-all accepted behavior; do not broaden the correction or add another dispatcher.
+Candidate review: `1feaa92b` closes the `b0c9f49b` rejection. Slider descriptor
+construction now has one owner in `WidgetInteractionSession`; controller and
+accessibility slider paths carry one typed request containing exact widget,
+instance, runtime/presentation generation, scope, node, action, sequence, and
+value authority through final host validation and dispatch. Stale authority
+retires that exact request and optimistic presentation rather than re-resolving
+mutable focus. All 43 direct mutable slider/pressed subowner calls remain
+removed. The tests-skipped Release artifact SHA-256 is
+`3D7D0FFC370AF411250DDDA15077A038C013A552541D522F85B115F8BCEE9384`.
+The accepted DLV-268 PID 85924 exposed no enumerable owner HWND, so after exact
+path verification and a graceful-close attempt it was stopped; unaccepted
+DLV-272 PID 86532 is visibly running from the platform worktree with clean
+DirectComposition startup, foreground confirmation, and Settings admission.
+The user physically accepted the complete DLV-272 interaction-session candidate
+on 2026-08-18; its session stayed responsive and recorded exercised free-scroll
+authority without a real failure, rejection, fatal, or exception diagnostic.
 
 ## Ready platform deliverable — DLV-269: viewport-driven paged-scroll prefetch
 
@@ -953,7 +957,7 @@ deliberately deferred by user decision and requires explicit promotion.
 | DLV-265 | Saved/deferred by user until immediately after accepted DLV-271. Preserve clean tip `13bd971`, reconciliation `5fd1a06`, installed Spotify 0.3.3, and the unchanged Client ID/account state; do not resume, test, integrate, reinstall, replace configuration, or reset it early. |
 | DLV-267 | Complete: accepted physical evidence on PID 69904, 422 Spotify paints, 97 bounded commits, 430 zero-error raster-origin records, OverlayChrome 131/131, integrated through main `a552cbf`. |
 | DLV-268 | Complete: correction `e46af735` is physically accepted on PID 85924, focused coverage is green through `05ce5eba`, and the chain is integrated through main `1cc9be8`. |
-| DLV-272 | Assigned from `1cc9be8`; requires a behavior-preserving interaction-session extraction, before/after authority map, tests-skipped physical verdict, then focused lifecycle coverage. |
+| DLV-272 | Production `1feaa92b` is physically accepted on PID 86532; bounded focused lifecycle/authority coverage is assigned before integration. |
 | DLV-269 | Ready after accepted DLV-272 integration; requires a tests-skipped physical Spotify long-list verdict proving viewport-driven prefetch across right-stick and directional navigation without consumed input or forced focus. |
 | DLV-273 | Ready after accepted DLV-269 integration; requires an atomic committed presenter extraction, tests-skipped multi-widget/full-bounded physical verdict, then focused renderer/lifecycle coverage. |
 | DLV-270 | Ready after resumed DLV-265 is accepted following DLV-271; requires an immutable Spotify candidate, bounded provider-call/timing and snapshot evidence, then user long-list/Queue physical acceptance before tests. |
