@@ -230,7 +230,7 @@ user decision. The native overlay is the sole production presentation path.
 
 | Lane | Task/worktree | State |
 | --- | --- | --- |
-| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | DLV-268 root-Scroll correction `e46af735` is physically accepted on PID 85924. Merge current planner main, rerun only the previously red DeclarativeRenderer suite, commit the three preserved focused test files separately if green, and stop; no integration or later work. After accepted test review/integration, DLV-272 precedes DLV-269. |
+| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | DLV-272 is Assigned from integrated main `1cc9be8`: extract one behavior-preserving `WidgetInteractionSession`, provide the required before/after authority map, build one tests-skipped Release, and stop for planner review/physical verdict. Do not start DLV-269. |
 | Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | DLV-265 is saved at clean tip `13bd971` plus reconciliation `5fd1a06` and explicitly deferred until immediately after DLV-271. Preserve installed Spotify 0.3.3 and the unchanged Client ID/account state; do not resume, test, integrate, reinstall, or reset it early. DLV-270 follows accepted DLV-265; DLV-248 remains deferred. |
 
 DLV-257 is closed. Its approved identity decisions and evidence are preserved
@@ -569,58 +569,13 @@ Independent review accepted the cumulative chain and integrated it through main
 `a552cbf`. PID 69904 remains the accepted running candidate under the
 tests/docs-only no-relaunch rule.
 
-## Assigned platform deliverable — DLV-268: right-stick free scrolling and focus re-entry
+## Accepted integrated platform deliverable — DLV-268: right-stick free scrolling and focus re-entry
 
-Owner/baseline: platform lane after accepted DLV-267 production and focused
-tests are integrated. Keep the feature inside the existing controller-input,
-declarative Scroll, retained offset, clipping, focus graph, and accessibility
-owners. Do not add widget-specific handling, a second focus/scroll authority,
-or a public snapshot/protocol change.
-
-For every host-rendered scrollable interface, use the right analog stick to
-scroll the active viewport quickly without changing the selected/focused
-element. Apply a dead zone and bounded continuous rate proportional to stick
-deflection so a held full deflection traverses long collections quickly while
-small intentional movement remains controllable. Vertical stick movement owns
-vertical Scroll nodes; horizontal movement owns horizontal Scroll nodes. For a
-nested surface, the deepest eligible scroll ancestor of the current focus owns
-the gesture. If that ancestor cannot scroll farther in the requested direction,
-fall back only through the existing ancestor chain; do not move focus or route
-the gesture to widget actions.
-
-When right-stick scrolling actually changes an offset, retain semantic focus
-on its prior element, clip any offscreen focus visual normally, and mark only
-that scroll viewport for one-time focus re-entry. Suppress focused-descendant
-follow while the right stick is moving. Returning the stick to its dead zone
-ends free scrolling but must not immediately re-enable focus-follow, because
-the old offscreen focus would pull the viewport back to its starting position.
-Instead, retain a pending re-entry state without moving focus or viewport. The
-next directional D-pad or left-stick navigation event is consumed to move focus
-to the first fully visible enabled focus target in that viewport: topmost for a
-vertical surface and leading-most for a horizontal surface. If no target is
-fully visible, use the first partially visible enabled target. That successful
-re-entry clears the pending state and restores ordinary directional navigation
-and focus-follow. Clear pending re-entry without moving focus when the
-view/widget/input scope changes, the scroll container disappears, a pointer/UIA
-action establishes focus, or no offset change occurred. Do not let provider
-refresh, responsive reflow, collection-anchor reconciliation, or an unrelated
-nested viewport redirect the pending target.
-
-Acceptance follows physical-first ordering. Implement production behavior and
-bounded diagnostics, source-review the generic ownership/lifecycle paths, and
-build one coherent tests-skipped Release. The user verifies fast vertical and
-horizontal scrolling, focus stationarity during the right-stick gesture,
-one-event re-entry at the visible leading item, ordinary navigation afterward,
-nested viewport ownership, scroll boundaries, and compact/wide layouts. Only
-after the user's visible/controller verdict add focused deterministic input,
-dead-zone/rate, retained-offset, nested-owner, re-entry, invalidation, and
-accessibility coverage. No Tier 3 is required unless the implementation changes
-a shared ABI or protocol.
-
-Stop for a required public widget contract change, a second input/focus/scroll
-owner, ambiguous nested-surface authority that the existing ancestor graph
-cannot resolve, undocumented controller APIs, substantial conflict, or
-evidence that a non-host-rendered application surface is in scope. Never push.
+Disposition: complete and integrated through main `1cc9be8`. The generic native
+host now provides bounded proportional right-stick free scroll, deepest eligible
+nested/ancestor ownership, retained semantic focus with suppressed focus-follow,
+and one-event visible-target re-entry without widget-specific behavior or a new
+protocol/input/focus/scroll authority.
 
 Physical acceptance: earlier tips `63105f7`, `0e558b1`, and `9d5a236` were
 rejected before tests. Correction `b217358` preserves only the matching binding
@@ -646,13 +601,17 @@ PID 85924 is visibly running after clean DirectComposition startup and Settings
 admission. The user physically accepted nested/ancestor Spotify free scroll on
 2026-08-18. Its session records five free-scroll starts and five one-event
 re-entries, zero missing/stale/render/geometry authority clears, and no real
-error/failure/rejection line. Rerun only the previously red renderer suite, then
-commit and review the three preserved focused test files before integration.
+error/failure/rejection line. Focused test commit `05ce5eba` passed
+DeclarativeRenderer 4,939 checks; the earlier unchanged ControllerNavigation
+122/122 and FocusNavigation 54/54 results remain valid. Independent review
+accepted the production/test chain and integrated it through main `1cc9be8`.
+PID 85924 remains the accepted running artifact under the tests/docs-only
+no-relaunch rule.
 
-## Ready platform deliverable — DLV-272: extract committed widget interaction session
+## Assigned platform deliverable — DLV-272: extract committed widget interaction session
 
-Owner/baseline: platform lane after DLV-268 is physically accepted, focused-
-tested, and integrated. Before DLV-269, extract the existing focus, free-scroll,
+Owner/baseline: platform lane from integrated main `1cc9be8`. Before DLV-269,
+extract the existing focus, free-scroll,
 pending re-entry, slider, and pressed-presentation state into one
 `WidgetInteractionSession`; provide a before/after field, method, and authority
 map. It accepts immutable admitted semantics, runtime/presentation generation,
@@ -935,10 +894,10 @@ deliberately deferred by user decision and requires explicit promotion.
    69904 contained the accepted production commit without a redundant rebuild
    for its test/docs-only integration, then was gracefully closed to stage the
    DLV-268 physical candidate. DLV-265 remains saved/deferred as ordered below.
-6. DLV-268 production through correction `b217358` is physically accepted on
-   PID 71216; production is frozen while the platform lane adds focused tests.
-7. DLV-272 is Ready immediately after accepted DLV-268 integration: extract one
-   committed interaction session before adding more scroll behavior.
+6. DLV-268 is accepted, focused-tested, and integrated through main `1cc9be8`;
+   accepted production remains visibly running as PID 85924.
+7. DLV-272 is Assigned from `1cc9be8`: extract one committed interaction
+   session before adding more scroll behavior.
 8. DLV-269 follows accepted DLV-272: generic viewport-driven, focus-independent
    adjacent prefetch with Spotify as the physical proof.
 9. DLV-273 follows accepted DLV-269: extract one atomic committed widget-content
@@ -966,8 +925,8 @@ deliberately deferred by user decision and requires explicit promotion.
 | DLV-264 | Complete: physically accepted on PID 17212, focused-tested, and integrated through main `15a26b9`. |
 | DLV-265 | Saved/deferred by user until immediately after accepted DLV-271. Preserve clean tip `13bd971`, reconciliation `5fd1a06`, installed Spotify 0.3.3, and the unchanged Client ID/account state; do not resume, test, integrate, reinstall, replace configuration, or reset it early. |
 | DLV-267 | Complete: accepted physical evidence on PID 69904, 422 Spotify paints, 97 bounded commits, 430 zero-error raster-origin records, OverlayChrome 131/131, integrated through main `a552cbf`. |
-| DLV-268 | Production through `b217358` is physically accepted on PID 71216 with paired retained-refresh defer/restore evidence and no authority clear. Focused tests and integration remain. |
-| DLV-272 | Ready after accepted DLV-268 integration; requires a behavior-preserving interaction-session extraction, before/after authority map, tests-skipped physical verdict, then focused lifecycle coverage. |
+| DLV-268 | Complete: correction `e46af735` is physically accepted on PID 85924, focused coverage is green through `05ce5eba`, and the chain is integrated through main `1cc9be8`. |
+| DLV-272 | Assigned from `1cc9be8`; requires a behavior-preserving interaction-session extraction, before/after authority map, tests-skipped physical verdict, then focused lifecycle coverage. |
 | DLV-269 | Ready after accepted DLV-272 integration; requires a tests-skipped physical Spotify long-list verdict proving viewport-driven prefetch across right-stick and directional navigation without consumed input or forced focus. |
 | DLV-273 | Ready after accepted DLV-269 integration; requires an atomic committed presenter extraction, tests-skipped multi-widget/full-bounded physical verdict, then focused renderer/lifecycle coverage. |
 | DLV-270 | Ready after resumed DLV-265 is accepted following DLV-271; requires an immutable Spotify candidate, bounded provider-call/timing and snapshot evidence, then user long-list/Queue physical acceptance before tests. |
