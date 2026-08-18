@@ -230,7 +230,7 @@ user decision. The native overlay is the sole production presentation path.
 
 | Lane | Task/worktree | State |
 | --- | --- | --- |
-| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | DLV-268 root-Scroll correction `e46af735` is source-reviewed and visibly running tests-skipped as PID 85924. Await the renewed Spotify nested/ancestor free-scroll verdict; preserve the three uncommitted focused test files and do not rerun them, integrate, or start later work before acceptance. After accepted correction and focused-test review/integration, DLV-272 precedes DLV-269. |
+| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | DLV-268 root-Scroll correction `e46af735` is physically accepted on PID 85924. Merge current planner main, rerun only the previously red DeclarativeRenderer suite, commit the three preserved focused test files separately if green, and stop; no integration or later work. After accepted test review/integration, DLV-272 precedes DLV-269. |
 | Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | DLV-265 is saved at clean tip `13bd971` plus reconciliation `5fd1a06` and explicitly deferred until immediately after DLV-271. Preserve installed Spotify 0.3.3 and the unchanged Client ID/account state; do not resume, test, integrate, reinstall, or reset it early. DLV-270 follows accepted DLV-265; DLV-248 remains deferred. |
 
 DLV-257 is closed. Its approved identity decisions and evidence are preserved
@@ -641,10 +641,13 @@ its generic scope and unchanged ordinary focus-follow semantics. A coherent
 isolated Release built from the exact commit with 22/22 required runtime files,
 OverlayHost SHA-256
 `1B8902910799E743F76F93530B8E247188C2FEC4973F243E242CB2CBA52C84F5`.
-The prior PID 71216 exited normally through its exact owner HWND; unaccepted
-corrected PID 85924 is visibly running after clean DirectComposition startup
-and Settings admission. Await the renewed Spotify nested/ancestor free-scroll
-verdict before rerunning or committing the preserved focused tests.
+The prior PID 71216 exited normally through its exact owner HWND; corrected
+PID 85924 is visibly running after clean DirectComposition startup and Settings
+admission. The user physically accepted nested/ancestor Spotify free scroll on
+2026-08-18. Its session records five free-scroll starts and five one-event
+re-entries, zero missing/stale/render/geometry authority clears, and no real
+error/failure/rejection line. Rerun only the previously red renderer suite, then
+commit and review the three preserved focused test files before integration.
 
 ## Ready platform deliverable — DLV-272: extract committed widget interaction session
 
