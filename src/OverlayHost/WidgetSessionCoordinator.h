@@ -325,6 +325,9 @@ private:
 
     [[nodiscard]] QueueResult Queue(Request request);
     [[nodiscard]] bool HasPending(RequestKind kind, std::wstring_view widgetId) const noexcept;
+    void SupersedeSnapshotRequests(
+        std::wstring_view widgetId,
+        WidgetLifecycleState lifecycle) noexcept;
     void RevokeRequests(std::wstring_view widgetId) noexcept;
     [[nodiscard]] Request MakeRequest(
         RequestKind kind,
