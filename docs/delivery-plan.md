@@ -9,26 +9,108 @@ evidence only; this file is the sole authority for current work.
 
 ## Current baseline
 
-- Accepted production/test integration baseline on main is `15a26b9`. It
+- Accepted production/test integration baseline on main is `cd83b3a`. It
   integrates DLV-258 as `e5e5643`, DLV-259 as
   `45d75cf`, DLV-260 production/residue work as `74c6ca1`, and the accepted
   test-only Phase B follow-ups as `7297197` plus `1ff96ba`. DLV-264 is
-  integrated as production `7cdcc31` plus focused tests `15a26b9`.
+  integrated as production `7cdcc31` plus focused tests `15a26b9`. DLV-266 is
+  integrated as accepted production `795e24d` plus focused tests `cd83b3a`.
 - Exact accepted production PID 17212 was built from DLV-264 implementation
   commit `75f1c96`, with SHA-256
   `502720EA82F5764CCD52DD36036D18EF8531D73044063D600568357305692737`.
-  Main contains that accepted production tree. PID 17212 remains running under
-  the tests/docs-only no-relaunch rule.
+  Main contains that accepted production tree. PID 17212 was gracefully closed
+  after exact path verification to stage the unaccepted cumulative DLV-266
+  physical candidate described below.
+- DLV-266 production commit `7235849` is reconciled with current planner main
+  by clean merge `510e01c`. Independent source review found one existing
+  activation channel, window/session owner, placement/composition owner, and
+  bounded foreground-acquisition path. Its tests-skipped Release is visibly
+  running as unaccepted PID 40292 with SHA-256
+  `8AD2AC19CF2E5FE6D27F4EC4F3CE3DA243E4F908A8D7E63B6D8438DFCBAA1847`.
+  Fresh startup elected one production process owner, initialized
+  DirectComposition, and logged no startup error/failure/rejection. The user
+  physically accepted Guide open/close, already-visible second invocation, and
+  external-foreground activation on 2026-08-18. Focused follow-up `d085cd1`
+  passed 109 transition checks, 17 foreground/input ownership checks, and 32
+  process-owner checks. Independent review accepted the two-test-file diff and
+  integrated the chain through main `cd83b3a`. PID 40292 was later gracefully
+  closed through its exact owner window to stage DLV-265.
+- DLV-265 production/docs commit `869dc7d` is reconciled with current planner
+  main by clean merge `b52c07e`. Independent source review confirmed that the
+  Spotify package reuses the bounded host text-entry contract, validates and
+  atomically writes only the public Client ID, and deletes the prior OAuth
+  refresh credential before activating a replacement ID. Its coherent
+  tests-skipped Release has OverlayHost SHA-256
+  `4429E83E747BD345EED867CB3B5346A371B9823296E4C2828772C152E603D032`;
+  Spotify package 0.3.1 has SHA-256
+  `65EF8BE722CE26122BCAA93EAC28D58B9FEE620BD140862976D6543E2F32C33E`.
+  Reconciliation merge `47aedbf` combines that unchanged candidate with
+  accepted main `de87693`. The exact tests-skipped Release is visibly running
+  as unaccepted PID 48768 with SHA-256
+  `F987126966CA83919F3168F4EC737696BF445FFBFAA08EE4C079FEBB57BC9C85`.
+  Exact Spotify package 0.3.1 has SHA-256
+  `CF34807C746AAB07F68C5EA10719423CAD5E42931DA16DF8EBE3E096B6A62907`;
+  it is installed, selected, and enabled. Fresh startup elected one production
+  process owner, initialized DirectComposition, and logged no startup issue.
+  Physical review rejected this candidate on 2026-08-18: the existing Setup
+  page is reachable while unconfigured or disconnected, but the configured
+  Ready surface exposes no controller-reachable Setup action. The running log
+  confirms the user's widget is in that Ready state, so an existing Client ID
+  incorrectly hides the only replacement route. Keep the user's configuration
+  intact. No DLV-265 tests or integration are authorized before a corrected
+  production-only candidate is physically accepted.
+  Correction commit `672c8c1`, based on clean reconciliation `920b78a`, adds
+  one Ready-navigation Setup button that reuses the existing setup action and
+  increments the immutable package to 0.3.2. Independent source review found
+  no configuration, credential, PKCE, shared-host, shortcut, or existing
+  destination change. The coherent tests-skipped OverlayHost has SHA-256
+  `2E708ED155069E5D6C433C00DB98151B67908A6BE1E4B2F9CD7F9D2E1B73F9B0`;
+  Spotify 0.3.2 has SHA-256
+  `63609CB6C0FECDE87DC7B25487E9F71AA38CC461F3F1D734749CEB9D57B7B01B`.
+  Version 0.3.2 is installed, selected, and enabled without changing the
+  existing Client ID. Corrected candidate PID 75884 is visibly running; fresh
+  startup elected one process owner, activated DirectComposition, and logged no
+  startup issue. Physical review then rejected 0.3.2: activating Setup at
+  07:15:43 produced `worker_request_failed` before any configuration or Spotify
+  operation. The package passed its 128-character Client-ID backend maximum to
+  `UI.TextEntry`, whose public protocol maximum is 96, so element construction
+  threw `ArgumentOutOfRangeException` for `maximumLength` and rejected the
+  snapshot. The existing Client ID remains unchanged. Correct this package-
+  owned limit mismatch in a new immutable version; do not weaken the shared
+  text-entry bound, reset configuration, run tests, or integrate before another
+  physical verdict.
+  Correction commit `13bd971`, based on clean reconciliation `5fd1a06`, adds a
+  distinct 96-character package input bound while leaving the 128-character
+  backend validator and every shared contract unchanged. Independent review
+  accepted the six-file scope for another physical candidate. The coherent
+  tests-skipped OverlayHost has SHA-256
+  `A8530B3CEA1357ECFBFF0C349E8942B7C27B8DD1DC1748850373FD31EB017A37`;
+  Spotify 0.3.3 has SHA-256
+  `C8367B13A82996F5FE17AC2D4EEB44AB31DD860EAE30E6DB04D0B66FAB534A4E`.
+  Version 0.3.3 is installed, selected, and enabled with the existing Client ID
+  verified unchanged. PID 75884 closed normally through its exact owner window;
+  corrected candidate PID 81628 is visibly running. Fresh startup elected one
+  process owner, activated DirectComposition, and logged no startup issue.
+  Physical review then exposed a separate visible renderer defect while a song
+  is playing: repeated Spotify updates make the widget content move a few
+  pixels vertically. The PID 81628 trace keeps the outer content window fixed
+  at `1947,541,1225,631`, the logical shell/body fixed at `980x504.8`, the
+  presented extent fixed at `980x505`, and the guide/tray chrome fixed. The same
+  trace alternates full frames with bounded paint-only damage at
+  `155.2,235.2,806.4,76.0`. Treat this as DLV-267 renderer work, not Spotify
+  setup reflow. Keep 0.3.3, the Client ID, and all account state intact; do not
+  integrate or add DLV-265 tests until a corrected cumulative candidate is
+  physically accepted.
 - DLV-264 production candidate `75f1c96` changed only
   `WidgetSessionCoordinator.{h,cpp}`. Its coherent tests-skipped Release has
   SHA-256 `502720EA82F5764CCD52DD36036D18EF8531D73044063D600568357305692737`
-  and is visibly running as PID 17212. The user physically accepted repeated
-  rapid Now Playing -> Settings -> Now Playing switching on 2026-08-18. The
-  exact session retained visible lifecycle authority and valid checkpoints
-  without publishing a hidden/suspended failure. Test follow-up `fb4fc85`
-  passed 20 coordinator scenarios, OverlayState, WidgetLifecycle, and 305
-  action-feedback checks. Independent review accepted the cumulative chain and
-  integrated it through main `15a26b9`.
+  and was physically accepted as PID 17212 after repeated rapid Now Playing ->
+  Settings -> Now Playing switching on 2026-08-18. The exact session retained
+  visible lifecycle authority and valid checkpoints without publishing a
+  hidden/suspended failure. Test follow-up `fb4fc85` passed 20 coordinator
+  scenarios, OverlayState, WidgetLifecycle, and 305 action-feedback checks.
+  Independent review accepted the cumulative chain and integrated it through
+  main `15a26b9`; PID 17212 was later gracefully closed to stage DLV-266.
 - DLV-263 acceptance evidence: zero logged error/failure/stale/timeout/rejection
   lines; exact-anchor and retained-overlap admissions; focus remained inside
   the viewport; 33 frames averaged 26.9 ms, one reached 52.0 ms, none exceeded
@@ -117,8 +199,8 @@ user decision. The native overlay is the sole production presentation path.
 
 | Lane | Task/worktree | State |
 | --- | --- | --- |
-| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | Clean and idle at source-review-in-progress DLV-266 production candidate `7235849`. Reconcile accepted main `15a26b9` onto the preserved candidate, rebuild one coherent tests-skipped Release, and stop for planner launch. The previously reported pre-DLV-264 artifact hash is superseded by that required coherent rebuild. The platform queue intentionally contains one evidenced item rather than filler and requires replenishment after its diagnosis. |
-| Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | DLV-264 is accepted and integrated through main `15a26b9`; exact accepted production PID 17212 remains running. Reconcile accepted main and execute assigned DLV-265 in physical-first mode. DLV-248 remains deferred. |
+| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | DLV-266 is physically accepted and integrated through main `cd83b3a`. DLV-267 now owns the reproduced full-versus-bounded Spotify update alignment defect; preserve installed Spotify 0.3.3 and do not add/run tests before the user's corrected physical verdict. |
+| Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | Corrected DLV-265 commit `13bd971` is clean and idle. Spotify 0.3.3 remains installed with user state intact; its remaining Setup verdict and tests are paused behind DLV-267. DLV-248 remains deferred. |
 
 ## Completed planner deliverable — DLV-257: select and freeze WidgetRail identity
 
@@ -411,6 +493,59 @@ Credential Manager migration, third-party authentication needed for automated
 evidence, provider-dashboard automation, substantial conflict, or behavior
 outside the Spotify Community package. Never push.
 
+Physical rejection and bounded correction: package 0.3.1 exposes
+`spotify.setup.open` only from the Unconfigured and Disconnected surfaces.
+When a valid Client ID and account are already active, the Ready surface has no
+controller-reachable Setup or Change Client ID action, contradicting the
+required replacement behavior. Preserve the current Client ID and account
+state. Reuse the existing setup route and text-entry flow from a visible
+configured-state action, retain all existing Ready navigation and shortcuts,
+and publish a new immutable package version for another production-only
+physical candidate. Do not reset configuration, duplicate the setup UI, add a
+shared settings surface, run tests, or integrate before the user's verdict.
+
+Correction candidate status: commit `672c8c1` changes one Ready presentation
+route plus immutable version/public documentation. Spotify 0.3.2 is installed,
+selected, and enabled with the prior Client ID preserved. Tests-skipped PID
+75884 exposed that physical activation of Setup was rejected because the
+package supplied maximum length 128 to a text-entry contract bounded at 96.
+Immutable 0.3.3 correction `13bd971` now uses a package-owned 96-character
+input bound while retaining the stricter backend validation as defense in
+depth. It is selected in visible PID 81628. Physically verify that Setup opens
+and cancels in configured Ready wide and compact layouts and leaves Player,
+Queue, Playlists, Devices, account state, and existing shortcuts intact. Do not
+test replacement with a different Client ID unless the user chooses to perform
+that account action.
+
+## Assigned platform deliverable — DLV-267: identical scene origin for bounded updates
+
+Owner/baseline: platform lane from accepted main `cd83b3a`. The installed
+Spotify Community package 0.3.3 remains the physical reproducer and must not be
+modified, reinstalled, reset, or used as the location for a host-renderer fix.
+
+Correct the visible few-pixel vertical movement that occurs while Spotify is
+playing and publishing progress updates. Current PID 81628 evidence rules out
+window or shell placement: content HWND, logical body/viewport, desired and
+presented extent, fixed guide, and tray coordinates remain unchanged. The
+renderer alternates full frames with bounded paint-only damage for the player
+strip. Establish whether the difference is in DirectComposition requested-
+area/backing-atlas mapping or retained declarative paint coordinates, then make
+full and bounded updates rasterize the same logical scene origin at 125% DPI
+with interface scale 1.0 and animations Off. The correction must be generic to
+the existing composition/declarative renderer authority; do not add Spotify-
+specific host behavior, suppress progress publications, force every update to
+a full frame as a permanent workaround, or create another placement owner.
+
+Follow physical-first ordering. Add only bounded diagnostics needed to prove
+the two update paths, build a coherent tests-skipped Release, and return the
+exact commit, artifact path, hash, changed-file scope, and reproduction
+evidence to the planner. The planner will launch it against the already
+installed 0.3.3 package. Only after the user confirms the movement is gone may
+focused mapping/renderer coverage be added and reviewed. Stop for a protocol or
+snapshot redesign, widget-package changes, a second composition authority,
+substantial conflict, or evidence that the outer surface really moves. Never
+push.
+
 ## Assigned platform deliverable — DLV-266: reconcile invisible resident Show activation
 
 Owner/baseline: platform lane after reconciling accepted main `15a26b9` onto
@@ -446,13 +581,17 @@ add focused deterministic state-decision, idempotent recovery, failure-reporting
 and no-focus-while-hidden coverage. Inspect the exact candidate log; no Tier 3
 unless the implementation changes a shared protocol or process boundary.
 
-Candidate status: the platform lane reports clean production-only commit
-`7235849`, changing `main.cpp`. Its earlier tests-skipped Release SHA-256
-`1A0C7F5D7EC09F1C6DC3851060F17E638C5E74F0ADE510197777D82C1ADBADFB`
-predates accepted DLV-264 and is no longer eligible for launch. Source review is
-in progress. Reconcile accepted main `15a26b9` onto the preserved candidate,
-build one coherent cumulative tests-skipped Release, and stop for planner
-launch/user testing.
+Candidate status: the platform lane produced clean production-only commit
+`7235849`, changing only `main.cpp`, then reconciled current planner main by
+merge `510e01c`. Independent source review found typed before/after diagnostics
+and one idempotent visible-recovery path through the existing placement,
+composition/fallback, transition, and foreground-input owners. The coherent
+tests-skipped Release is visibly running as unaccepted PID 40292 with SHA-256
+`8AD2AC19CF2E5FE6D27F4EC4F3CE3DA243E4F908A8D7E63B6D8438DFCBAA1847`.
+Its fresh session elected one process owner, initialized DirectComposition, and
+logged no startup error/failure/rejection. The user must now verify repeated
+Guide open/close, already-visible second-invocation `--show`, and external
+foreground transitions. Do not add/run tests or integrate before that verdict.
 
 Stop for inability to distinguish a product defect from external z-order state,
 an undocumented Windows API, a new watchdog/process/window/input authority,
@@ -472,11 +611,15 @@ deliberately deferred by user decision and requires explicit promotion.
 
 1. DLV-257 through DLV-260 are accepted and integrated through main `1ff96ba`.
 2. DLV-264 is accepted and integrated through main `15a26b9`; accepted PID
-   17212 remains running because the final delta was tests/docs.
-3. Reconcile DLV-266 onto main `15a26b9`, then review and physically test it.
-4. Run DLV-265 from main `15a26b9` so ordinary Spotify setup no longer requires a
-   repository-local terminal command.
-5. DLV-248 remains outside this sequence until the user promotes it.
+   17212 was later gracefully closed to stage DLV-266.
+3. DLV-266 is accepted, focused-tested, and integrated through main `cd83b3a`.
+4. DLV-265 packages 0.3.1 and 0.3.2 are physically rejected. Spotify 0.3.3
+   corrects their package defects and remains installed with user state intact,
+   but cumulative PID 81628 is rejected for the DLV-267 update-origin defect.
+5. DLV-267 now produces the next tests-skipped host candidate against installed
+   Spotify 0.3.3. Resume the remaining DLV-265 Setup verdict only after the
+   widget remains stationary during song-progress updates.
+6. DLV-248 remains outside this sequence until the user promotes it.
 
 ## Manual, external, and blocked evidence
 
@@ -488,8 +631,9 @@ deliberately deferred by user decision and requires explicit promotion.
 | Trademark | Similar-mark clearance for related software/services; qualified counsel recommended before public release. |
 | GitHub identity | User-selected owner plus repository/organization availability and optional rename/creation. |
 | DLV-264 | Complete: physically accepted on PID 17212, focused-tested, and integrated through main `15a26b9`. |
-| DLV-265 | Assigned from accepted main `15a26b9`; real Spotify authorization remains a user-owned manual check. |
-| DLV-266 | Reconcile candidate `7235849` onto accepted main `15a26b9`; physical user verdict required before tests. |
+| DLV-265 | Spotify 0.3.3 preserves the current Client ID and corrects the two package rejections, but its remaining Setup/account verdict is paused behind DLV-267; do not reset configuration or run tests yet. |
+| DLV-267 | PID 81628 reproduces vertical content movement while fixed outer geometry alternates full and bounded player-strip updates; requires a corrected tests-skipped host and user physical verdict. |
+| DLV-266 | Complete: physical Guide, already-visible `--show`, and external-foreground activation accepted on PID 40292; focused tests passed and the chain is integrated through main `cd83b3a`. |
 | DLV-248 | Deliberately deferred until explicit user promotion. |
 | Avalonia | Failed/cancelled; requires a new explicit user decision. |
 | YT Music catalog cleanup | Approval to remove only inactive, non-selected 0.2.0. |
