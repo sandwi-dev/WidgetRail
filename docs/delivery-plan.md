@@ -230,7 +230,7 @@ user decision. The native overlay is the sole production presentation path.
 
 | Lane | Task/worktree | State |
 | --- | --- | --- |
-| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | DLV-272 correction `1feaa92b` is source-accepted and visibly running as unaccepted PID 86532. Hold for the physical interaction-session verdict; do not test, integrate, or start DLV-269. |
+| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | DLV-272 correction `1feaa92b` is source- and physically accepted on PID 86532. Add only the assigned focused regression coverage, run the bounded focused suites, commit, and stop for review. Do not start DLV-269. |
 | Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | DLV-265 is saved at clean tip `13bd971` plus reconciliation `5fd1a06` and explicitly deferred until immediately after DLV-271. Preserve installed Spotify 0.3.3 and the unchanged Client ID/account state; do not resume, test, integrate, reinstall, or reset it early. DLV-270 follows accepted DLV-265; DLV-248 remains deferred. |
 
 DLV-257 is closed. Its approved identity decisions and evidence are preserved
@@ -661,6 +661,9 @@ The accepted DLV-268 PID 85924 exposed no enumerable owner HWND, so after exact
 path verification and a graceful-close attempt it was stopped; unaccepted
 DLV-272 PID 86532 is visibly running from the platform worktree with clean
 DirectComposition startup, foreground confirmation, and Settings admission.
+The user physically accepted the complete DLV-272 interaction-session candidate
+on 2026-08-18; its session stayed responsive and recorded exercised free-scroll
+authority without a real failure, rejection, fatal, or exception diagnostic.
 
 ## Ready platform deliverable — DLV-269: viewport-driven paged-scroll prefetch
 
@@ -954,7 +957,7 @@ deliberately deferred by user decision and requires explicit promotion.
 | DLV-265 | Saved/deferred by user until immediately after accepted DLV-271. Preserve clean tip `13bd971`, reconciliation `5fd1a06`, installed Spotify 0.3.3, and the unchanged Client ID/account state; do not resume, test, integrate, reinstall, replace configuration, or reset it early. |
 | DLV-267 | Complete: accepted physical evidence on PID 69904, 422 Spotify paints, 97 bounded commits, 430 zero-error raster-origin records, OverlayChrome 131/131, integrated through main `a552cbf`. |
 | DLV-268 | Complete: correction `e46af735` is physically accepted on PID 85924, focused coverage is green through `05ce5eba`, and the chain is integrated through main `1cc9be8`. |
-| DLV-272 | Source-accepted candidate `1feaa92b` is awaiting the tests-skipped physical verdict on PID 86532; focused lifecycle coverage and integration follow acceptance. |
+| DLV-272 | Production `1feaa92b` is physically accepted on PID 86532; bounded focused lifecycle/authority coverage is assigned before integration. |
 | DLV-269 | Ready after accepted DLV-272 integration; requires a tests-skipped physical Spotify long-list verdict proving viewport-driven prefetch across right-stick and directional navigation without consumed input or forced focus. |
 | DLV-273 | Ready after accepted DLV-269 integration; requires an atomic committed presenter extraction, tests-skipped multi-widget/full-bounded physical verdict, then focused renderer/lifecycle coverage. |
 | DLV-270 | Ready after resumed DLV-265 is accepted following DLV-271; requires an immutable Spotify candidate, bounded provider-call/timing and snapshot evidence, then user long-list/Queue physical acceptance before tests. |
