@@ -816,6 +816,32 @@ public:
     }
 
 private:
+    enum class ResidentShowAction {
+        HiddenDispatch,
+        VisibleRecovery,
+    };
+
+    struct ResidentShowWindowState final {
+        bool valid{};
+        bool visible{};
+        bool topmost{};
+        bool hasBounds{};
+        RECT bounds{};
+    };
+
+    struct ResidentShowPresentationState final {
+        widgetrail::Surface logicalSurface{widgetrail::Surface::Hidden};
+        ResidentShowWindowState content;
+        ResidentShowWindowState chrome;
+        ResidentShowWindowState backdrop;
+        bool foregroundOwned{};
+        bool compositionAvailable{};
+        bool transitionActive{};
+        float shellOpacity{};
+        bool chromeAboveContent{};
+        bool contentAboveBackdrop{};
+    };
+
     struct PendingWidgetSwitchSnap final {
         std::wstring widgetId;
         std::wstring runtimeGeneration;
@@ -1522,14 +1548,7 @@ private:
             InvalidateRect(window_, nullptr, FALSE);
             return 0;
         case kProcessActivationMessage:
-            AppendDiagnostic(L"Resident process received an authenticated Show activation");
-            if (state_.surface() == widgetrail::Surface::Hidden) {
-                Dispatch(widgetrail::Command::ToggleOverlay);
-            } else {
-                (void)ShowOverlay();
-                (void)AcquireOverlayForegroundInput();
-                InvalidateRect(window_, nullptr, FALSE);
-            }
+            HandleAuthenticatedShowActivation();
             return 0;
         case kDevelopmentTrayYHoldMessage:
             // Authenticated development fixtures exercise the same host-owned
@@ -3574,6 +3593,203 @@ private:
         }
         pinnedSurfaceCoordinator_.OnOverlayShown();
         return OverlayShowResult::Shown;
+    }
+
+    [[nodiscard]] static ResidentShowWindowState CaptureResidentShowWindowState(
+        const HWND window) noexcept {
+        ResidentShowWindowState result;
+        result.valid = window && IsWindow(window) != FALSE;
+        if (!result.valid) return result;
+        result.visible = IsWindowVisible(window) != FALSE;
+        result.topmost =
+            (GetWindowLongPtrW(window, GWL_EXSTYLE) & WS_EX_TOPMOST) != 0;
+        result.hasBounds = GetWindowRect(window, &result.bounds) != FALSE;
+        return result;
+    }
+
+    [[nodiscard]] ResidentShowPresentationState CaptureResidentShowPresentationState()
+        const noexcept {
+        ResidentShowPresentationState result;
+        result.logicalSurface = state_.surface();
+        result.content = CaptureResidentShowWindowState(window_);
+        result.chrome = CaptureResidentShowWindowState(chromeWindow_);
+        result.backdrop = CaptureResidentShowWindowState(backdropWindow_);
+        result.foregroundOwned = IsOverlayProcessForeground();
+        result.compositionAvailable = compositionSurface_.available();
+        result.transitionActive = overlayTransition_.active();
+        result.shellOpacity = overlayTransitionSample_.shellOpacity;
+        result.chromeAboveContent =
+            result.chrome.valid && result.content.valid &&
+            GetWindow(window_, GW_HWNDPREV) == chromeWindow_;
+        result.contentAboveBackdrop =
+            result.content.valid && result.backdrop.valid &&
+            GetWindow(backdropWindow_, GW_HWNDPREV) == window_;
+        return result;
+    }
+
+    [[nodiscard]] static std::wstring ResidentShowSurfaceName(
+        const widgetrail::Surface surface) {
+        switch (surface) {
+        case widgetrail::Surface::Dashboard:
+            return L"dashboard";
+        case widgetrail::Surface::Widget:
+            return L"widget";
+        case widgetrail::Surface::Hidden:
+        default:
+            return L"hidden";
+        }
+    }
+
+    [[nodiscard]] static std::wstring ResidentShowResultName(
+        const OverlayShowResult result) {
+        switch (result) {
+        case OverlayShowResult::Shown:
+            return L"shown";
+        case OverlayShowResult::Deferred:
+            return L"deferred";
+        case OverlayShowResult::Failed:
+        default:
+            return L"failed";
+        }
+    }
+
+    [[nodiscard]] static std::wstring ResidentShowWindowText(
+        const ResidentShowWindowState& state) {
+        std::wstring value = state.valid ? L"valid" : L"invalid";
+        value += L"/visible=" + std::wstring(state.visible ? L"true" : L"false");
+        value += L"/topmost=" + std::wstring(state.topmost ? L"true" : L"false");
+        value += L"/bounds=";
+        if (!state.hasBounds) return value + L"unavailable";
+        return value + std::to_wstring(state.bounds.left) + L"," +
+            std::to_wstring(state.bounds.top) + L"," +
+            std::to_wstring(state.bounds.right - state.bounds.left) + L"," +
+            std::to_wstring(state.bounds.bottom - state.bounds.top);
+    }
+
+    void AppendResidentShowDiagnostic(
+        const ResidentShowAction action,
+        const ResidentShowPresentationState& before,
+        const ResidentShowPresentationState& after,
+        const OverlayShowResult showResult,
+        const bool presentationCommitted,
+        const bool transitionReopened,
+        const bool foregroundAttempted,
+        const bool foregroundConfirmed) {
+        AppendDiagnostic(
+            L"Authenticated resident Show action=" +
+            std::wstring(action == ResidentShowAction::HiddenDispatch
+                ? L"hidden-dispatch" : L"visible-recovery") +
+            L" logical=" + ResidentShowSurfaceName(before.logicalSurface) +
+            L"->" + ResidentShowSurfaceName(after.logicalSurface) +
+            L" show=" + ResidentShowResultName(showResult) +
+            L" presentation=" +
+            std::wstring(before.compositionAvailable
+                ? L"direct-composition" : L"layered-hwnd") +
+            L"->" + std::wstring(after.compositionAvailable
+                ? L"direct-composition" : L"layered-hwnd") +
+            L" committed=" +
+            std::wstring(presentationCommitted ? L"true" : L"false") +
+            L" transition-reopened=" +
+            std::wstring(transitionReopened ? L"true" : L"false") +
+            L" foreground-attempted=" +
+            std::wstring(foregroundAttempted ? L"true" : L"false") +
+            L" foreground=" +
+            std::wstring(before.foregroundOwned ? L"owned" : L"external") +
+            L"->" + std::wstring(!foregroundAttempted
+                ? (foregroundConfirmed ? L"owned" : L"not-attempted")
+                : (foregroundConfirmed ? L"owned" : L"denied")) +
+            L" shell=" + std::to_wstring(before.shellOpacity) + L"->" +
+            std::to_wstring(after.shellOpacity) +
+            L" transition-active=" +
+            std::wstring(before.transitionActive ? L"true" : L"false") +
+            L"->" + std::wstring(after.transitionActive ? L"true" : L"false") +
+            L" content-before=" + ResidentShowWindowText(before.content) +
+            L" content-after=" + ResidentShowWindowText(after.content) +
+            L" chrome-before=" + ResidentShowWindowText(before.chrome) +
+            L" chrome-after=" + ResidentShowWindowText(after.chrome) +
+            L" backdrop-before=" + ResidentShowWindowText(before.backdrop) +
+            L" backdrop-after=" + ResidentShowWindowText(after.backdrop) +
+            L" z-order-before=" +
+            std::wstring(before.chromeAboveContent ? L"chrome>content" : L"other") +
+            L"/" +
+            std::wstring(before.contentAboveBackdrop ? L"content>backdrop" : L"other") +
+            L" z-order-after=" +
+            std::wstring(after.chromeAboveContent ? L"chrome>content" : L"other") +
+            L"/" +
+            std::wstring(after.contentAboveBackdrop ? L"content>backdrop" : L"other"));
+    }
+
+    void HandleAuthenticatedShowActivation() {
+        const auto before = CaptureResidentShowPresentationState();
+        const bool logicallyHidden =
+            before.logicalSurface == widgetrail::Surface::Hidden;
+        OverlayShowResult showResult = OverlayShowResult::Deferred;
+        bool presentationCommitted = false;
+        bool transitionReopened = false;
+        bool foregroundAttempted = false;
+        bool foregroundConfirmed = before.foregroundOwned;
+
+        if (logicallyHidden) {
+            // Hidden activation retains the ordinary state-machine route. It
+            // may request foreground only after the surface is logically and
+            // physically shown; this handler never focuses a hidden HWND.
+            Dispatch(widgetrail::Command::ToggleOverlay);
+            presentationCommitted =
+                state_.surface() != widgetrail::Surface::Hidden &&
+                IsWindowVisible(window_) != FALSE &&
+                !awaitingSuccessfulOpenPaint_;
+            showResult = state_.surface() == widgetrail::Surface::Hidden
+                ? OverlayShowResult::Failed
+                : presentationCommitted
+                    ? OverlayShowResult::Shown
+                    : OverlayShowResult::Deferred;
+            foregroundAttempted =
+                state_.surface() != widgetrail::Surface::Hidden;
+            foregroundConfirmed = IsOverlayProcessForeground();
+        } else {
+            // WS_VISIBLE is not a physical presentation contract. Recommit
+            // the existing placement/content once, then cancel a stale close
+            // or zero-opacity shell through the sole transition owner.
+            showResult = ShowOverlay(true);
+            if (showResult != OverlayShowResult::Failed) {
+                presentationCommitted = showResult == OverlayShowResult::Shown;
+                if (presentationCommitted && !compositionSurface_.available()) {
+                    presentationCommitted = RedrawWindow(
+                        window_, nullptr, nullptr,
+                        RDW_INVALIDATE | RDW_UPDATENOW | RDW_ALLCHILDREN) != FALSE;
+                }
+
+                const auto now = GetTickCount64();
+                overlayTransition_.BeginOpen(
+                    now, CurrentAccessibilityPolicy().reducedMotion);
+                AdvanceOverlayTransition(now);
+                transitionReopened = true;
+                if (overlayTransition_.active()) {
+                    SetTimer(window_, kControllerTimer, 16, nullptr);
+                }
+
+                // ShowOverlay already performs the one acquisition attempt
+                // when it changes a hidden HWND to visible. An already-visible
+                // resident activation needs exactly one attempt here.
+                foregroundConfirmed = before.content.visible
+                    ? AcquireOverlayForegroundInput()
+                    : IsOverlayProcessForeground();
+                foregroundAttempted = true;
+                if (showResult == OverlayShowResult::Deferred) {
+                    // The existing placement gate will post its one coalesced
+                    // refresh. Keep the current pixels eligible for that pass.
+                    InvalidateRect(window_, nullptr, FALSE);
+                }
+            }
+        }
+
+        const auto after = CaptureResidentShowPresentationState();
+        AppendResidentShowDiagnostic(
+            logicallyHidden
+                ? ResidentShowAction::HiddenDispatch
+                : ResidentShowAction::VisibleRecovery,
+            before, after, showResult, presentationCommitted,
+            transitionReopened, foregroundAttempted, foregroundConfirmed);
     }
 
     void HideOverlay() {
