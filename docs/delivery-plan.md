@@ -230,7 +230,7 @@ user decision. The native overlay is the sole production presentation path.
 
 | Lane | Task/worktree | State |
 | --- | --- | --- |
-| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | DLV-268 correction `b217358` is source-reviewed and visibly running tests-skipped as unaccepted PID 71216 with SHA-256 `01802A0E114C32EB15568B9450D3A17D946EF4028E797443F7B111DE070A8853`. Exact accepted PID 74176 had no owner HWND and was terminated only after explicit user approval. Await the Spotify/Games & Apps physical verdict; no tests, integration, or later milestone. |
+| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | DLV-268 production through `b217358` is physically accepted on PID 71216. Freeze production, merge current planner main, add/run only the focused DLV-268 tests, and stop; no integration or later milestone. After accepted test review/integration, DLV-272 precedes DLV-269. |
 | Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | DLV-265 is saved at clean tip `13bd971` plus reconciliation `5fd1a06` and explicitly deferred until immediately after DLV-271. Preserve installed Spotify 0.3.3 and the unchanged Client ID/account state; do not resume, test, integrate, reinstall, or reset it early. DLV-270 follows accepted DLV-265; DLV-248 remains deferred. |
 
 DLV-257 is closed. Its approved identity decisions and evidence are preserved
@@ -622,23 +622,15 @@ owner, ambiguous nested-surface authority that the existing ancestor graph
 cannot resolve, undocumented controller APIs, substantial conflict, or
 evidence that a non-host-rendered application surface is in scope. Never push.
 
-Physical status: `63105f7` wrongly moved focus to Games & Apps Refresh;
-`0e558b1` preserved focus there but globally blocked valid Spotify motion; and
-provisionally accepted `9d5a236` is rejected because Spotify's same-widget
-`refresh-retained` inert frame temporarily removes the interaction snapshot,
-clears free scroll as `missing-authority`, and lets focused-descendant follow
-snap the viewport back. No candidate reached tests. Preserve the bound focus
-and pending free-scroll authority across only that transient retained refresh,
-validate against the next current snapshot, and clear on real authority change.
-All rejected PIDs were closed; exact accepted DLV-267 PID 74176 was restored.
-Correction `b217358` preserves only the matching binding and follow suppression
-through `RefreshRetained`, forbids inert input/focus actions, and revalidates the
-next current snapshot. Its exact tests-skipped artifact hash is
-`01802A0E114C32EB15568B9450D3A17D946EF4028E797443F7B111DE070A8853`.
-Source review accepted it for physical testing, not behavior acceptance.
-After explicit user approval to terminate ownerless-window accepted PID 74176,
-the exact candidate launched as visible unaccepted PID 71216 with clean startup,
-DirectComposition, foreground input, and current Settings admission diagnostics.
+Physical acceptance: earlier tips `63105f7`, `0e558b1`, and `9d5a236` were
+rejected before tests. Correction `b217358` preserves only the matching binding
+and focus-follow suppression through `RefreshRetained`, keeps inert semantics
+non-actionable, and revalidates the next current snapshot. The exact tests-
+skipped artifact (SHA-256 `01802A0E114C32EB15568B9450D3A17D946EF4028E797443F7B111DE070A8853`)
+is accepted by the user on PID 71216. The physical session recorded 13 scroll
+starts/re-entries and 52 retained-refresh deferrals paired with 52 restorations,
+with zero missing/stale/render/geometry authority clear and zero real issue
+lines. Freeze production and proceed only to focused post-verdict tests.
 
 ## Ready platform deliverable — DLV-272: extract committed widget interaction session
 
@@ -926,10 +918,8 @@ deliberately deferred by user decision and requires explicit promotion.
    69904 contained the accepted production commit without a redundant rebuild
    for its test/docs-only integration, then was gracefully closed to stage the
    DLV-268 physical candidate. DLV-265 remains saved/deferred as ordered below.
-6. DLV-268 cumulative production tip `9d5a236` is physically rejected after its
-   provisional acceptance: retained/inert Spotify refresh clears the pending
-   binding and lets focus-follow snap the viewport back. The test phase stopped
-   cleanly without edits or runs; platform owns the bounded lifecycle correction.
+6. DLV-268 production through correction `b217358` is physically accepted on
+   PID 71216; production is frozen while the platform lane adds focused tests.
 7. DLV-272 is Ready immediately after accepted DLV-268 integration: extract one
    committed interaction session before adding more scroll behavior.
 8. DLV-269 follows accepted DLV-272: generic viewport-driven, focus-independent
@@ -959,7 +949,7 @@ deliberately deferred by user decision and requires explicit promotion.
 | DLV-264 | Complete: physically accepted on PID 17212, focused-tested, and integrated through main `15a26b9`. |
 | DLV-265 | Saved/deferred by user until immediately after accepted DLV-271. Preserve clean tip `13bd971`, reconciliation `5fd1a06`, installed Spotify 0.3.3, and the unchanged Client ID/account state; do not resume, test, integrate, reinstall, replace configuration, or reset it early. |
 | DLV-267 | Complete: accepted physical evidence on PID 69904, 422 Spotify paints, 97 bounded commits, 430 zero-error raster-origin records, OverlayChrome 131/131, integrated through main `a552cbf`. |
-| DLV-268 | Correction `b217358` is visibly running tests-skipped as unaccepted PID 71216. Verify Spotify retained-refresh scrolling plus Games & Apps focus/re-entry before tests. |
+| DLV-268 | Production through `b217358` is physically accepted on PID 71216 with paired retained-refresh defer/restore evidence and no authority clear. Focused tests and integration remain. |
 | DLV-272 | Ready after accepted DLV-268 integration; requires a behavior-preserving interaction-session extraction, before/after authority map, tests-skipped physical verdict, then focused lifecycle coverage. |
 | DLV-269 | Ready after accepted DLV-272 integration; requires a tests-skipped physical Spotify long-list verdict proving viewport-driven prefetch across right-stick and directional navigation without consumed input or forced focus. |
 | DLV-273 | Ready after accepted DLV-269 integration; requires an atomic committed presenter extraction, tests-skipped multi-widget/full-bounded physical verdict, then focused renderer/lifecycle coverage. |
