@@ -59,6 +59,18 @@ evidence only; this file is the sole authority for current work.
   incorrectly hides the only replacement route. Keep the user's configuration
   intact. No DLV-265 tests or integration are authorized before a corrected
   production-only candidate is physically accepted.
+  Correction commit `672c8c1`, based on clean reconciliation `920b78a`, adds
+  one Ready-navigation Setup button that reuses the existing setup action and
+  increments the immutable package to 0.3.2. Independent source review found
+  no configuration, credential, PKCE, shared-host, shortcut, or existing
+  destination change. The coherent tests-skipped OverlayHost has SHA-256
+  `2E708ED155069E5D6C433C00DB98151B67908A6BE1E4B2F9CD7F9D2E1B73F9B0`;
+  Spotify 0.3.2 has SHA-256
+  `63609CB6C0FECDE87DC7B25487E9F71AA38CC461F3F1D734749CEB9D57B7B01B`.
+  Version 0.3.2 is installed, selected, and enabled without changing the
+  existing Client ID. Corrected candidate PID 75884 is visibly running; fresh
+  startup elected one process owner, activated DirectComposition, and logged no
+  startup issue. The configured-state Setup verdict remains pending.
 - DLV-264 production candidate `75f1c96` changed only
   `WidgetSessionCoordinator.{h,cpp}`. Its coherent tests-skipped Release has
   SHA-256 `502720EA82F5764CCD52DD36036D18EF8531D73044063D600568357305692737`
@@ -158,7 +170,7 @@ user decision. The native overlay is the sole production presentation path.
 | Lane | Task/worktree | State |
 | --- | --- | --- |
 | Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | DLV-266 is physically accepted, focused-tested, independently reviewed, and integrated through main `cd83b3a`. PID 40292 was gracefully closed to stage DLV-265; the lane is clean and idle. |
-| Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | DLV-265 package 0.3.1 is physically rejected because configured/Ready Spotify has no Setup entry. Add one controller-reachable route to the existing Setup page without resetting configuration or changing shared contracts; produce a new immutable package version and production-only candidate. Do not add/run tests or integrate before acceptance. DLV-248 remains deferred. |
+| Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | Corrected DLV-265 commit `672c8c1` is clean and idle. Spotify 0.3.2 is selected in visible tests-skipped candidate PID 75884 for the user's configured-state Setup verdict. Do not add/run tests or integrate before acceptance. DLV-248 remains deferred. |
 
 ## Completed planner deliverable — DLV-257: select and freeze WidgetRail identity
 
@@ -462,6 +474,15 @@ and publish a new immutable package version for another production-only
 physical candidate. Do not reset configuration, duplicate the setup UI, add a
 shared settings surface, run tests, or integrate before the user's verdict.
 
+Correction candidate status: commit `672c8c1` changes one Ready presentation
+route plus immutable version/public documentation. Spotify 0.3.2 is installed,
+selected, and enabled with the prior Client ID preserved. Tests-skipped PID
+75884 is visibly running from the coherent correction build. Physically verify
+that Setup is reachable in configured Ready wide and compact layouts, opens and
+cancels without changing account/configuration, and leaves Player, Queue,
+Playlists, Devices, and existing shortcuts intact. Do not test replacement with
+a different Client ID unless the user chooses to perform that account action.
+
 ## Assigned platform deliverable — DLV-266: reconcile invisible resident Show activation
 
 Owner/baseline: platform lane after reconciling accepted main `15a26b9` onto
@@ -529,10 +550,10 @@ deliberately deferred by user decision and requires explicit promotion.
 2. DLV-264 is accepted and integrated through main `15a26b9`; accepted PID
    17212 was later gracefully closed to stage DLV-266.
 3. DLV-266 is accepted, focused-tested, and integrated through main `cd83b3a`.
-4. DLV-265 package 0.3.1 is physically rejected because configured Spotify
-   hides Setup. Produce a corrected immutable package with a configured-state
-   Setup entry, then physically verify replacement without deleting the current
-   Client ID or using a terminal; add focused tests only after acceptance.
+4. DLV-265 package 0.3.1 is physically rejected. Corrected Spotify 0.3.2 is
+   visibly running as PID 75884; verify configured-state Setup without deleting
+   the current Client ID or using a terminal, then add focused tests only after
+   acceptance.
 5. DLV-248 remains outside this sequence until the user promotes it.
 
 ## Manual, external, and blocked evidence
