@@ -33,7 +33,7 @@ void SecureTextBuffer::clear() noexcept {
 }
 namespace {
 
-constexpr wchar_t kClassName[] = L"GameBarAlternative.TextEntryModal";
+constexpr wchar_t kClassName[] = L"WidgetRail.TextEntryModal";
 constexpr int kEditId = 100;
 constexpr int kBackspaceId = 101;
 constexpr int kClearId = 102;

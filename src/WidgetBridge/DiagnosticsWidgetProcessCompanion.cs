@@ -78,7 +78,7 @@ internal sealed class DiagnosticsWidgetProcessCompanion : IWidgetProcessCompanio
         if (context.IsolationPolicy != WidgetWorkerIsolationPolicy.HostTrustedJobOnly)
             throw new InvalidOperationException(
                 "The private diagnostics companion is limited to a trusted platform worker.");
-        var pipeName = $"gba-diagnostics-{Environment.ProcessId}-{Guid.NewGuid():N}";
+        var pipeName = $"wrail-diagnostics-{Environment.ProcessId}-{Guid.NewGuid():N}";
         _server = new PlatformDiagnosticsPipeServer(
             pipeName, snapshotProvider,
             authorityRecoveryRetry: authorityRecoveryRetry,

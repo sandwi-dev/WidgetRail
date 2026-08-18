@@ -171,7 +171,7 @@ Tree BuildTrayTree(
     tree.runtimeGeneration = L"host";
     tree.snapshotSequence = sequence;
     tree.activeInputScopeId = L"host.tray";
-    tree.name = L"Game Bar Alternative";
+    tree.name = L"WidgetRail";
     tree.nodes.reserve(
         layout.tiles.size() + (layout.previousOverflow ? 1U : 0U) +
         (layout.nextOverflow ? 1U : 0U) + (dashboard ? 3U : 0U));
@@ -238,8 +238,8 @@ Tree BuildOpenWidgetTree(
     const bool trayFocused,
     const OpenWidgetSemantics& semantics) {
     widgetTree.name = semantics.title.empty()
-        ? L"Game Bar Alternative"
-        : semantics.title + L" · Game Bar Alternative";
+        ? L"WidgetRail"
+        : semantics.title + L" · WidgetRail";
     if (trayFocused) {
         for (auto& node : widgetTree.nodes) node.focused = false;
         widgetTree.focusedNode.reset();

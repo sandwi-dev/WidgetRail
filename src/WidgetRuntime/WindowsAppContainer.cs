@@ -15,7 +15,7 @@ namespace WidgetRail.WidgetRuntime;
 /// <summary>Capability-free AppContainer derived from a host-owned package identity.</summary>
 internal sealed class WindowsAppContainer : IDisposable
 {
-    private const string ProfilePrefix = "GameBarAlternative.Widget.";
+    private const string ProfilePrefix = "WidgetRail.Widget.";
     private const int ErrorAlreadyExistsHResult = unchecked((int)0x800700B7);
     private readonly SafeSidHandle _sid;
     private readonly SecurityIdentifier _identity;
@@ -50,7 +50,7 @@ internal sealed class WindowsAppContainer : IDisposable
 
         var result = NativeMethods.CreateAppContainerProfile(
             profileName,
-            "Game Bar Alternative community widgets",
+            "WidgetRail community widgets",
             "Capability-free worker isolation for community widgets",
             IntPtr.Zero,
             0,
@@ -260,7 +260,7 @@ internal sealed class WindowsAppContainer : IDisposable
         // path would virtualize it a second time.
         var localAppData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
         var temporary = Path.GetTempPath().TrimEnd(Path.DirectorySeparatorChar);
-        var bundleExtraction = Path.Combine(temporary, "GameBarAlternative", "WidgetRuntime", ".net");
+        var bundleExtraction = Path.Combine(temporary, "WidgetRail", "WidgetRuntime", ".net");
         variables["LOCALAPPDATA"] = localAppData;
         variables["TEMP"] = temporary;
         variables["TMP"] = temporary;

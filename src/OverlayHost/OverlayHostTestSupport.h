@@ -85,7 +85,7 @@ private:
 
 [[nodiscard]] HWND LocateHostWindow(
     DWORD processId,
-    const wchar_t* windowClass = L"GameBarAlternative.OverlayHost");
+    const wchar_t* windowClass = L"WidgetRail.OverlayHost");
 void PostKey(HWND window, WPARAM virtualKey);
 void SendKey(HWND window, WPARAM virtualKey);
 void SendKeyDownAndPostRelease(HWND window, WPARAM virtualKey);

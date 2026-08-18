@@ -133,7 +133,7 @@ void Run(const std::filesystem::path& fixturePath) {
           "renderer scenario uses the exact authored preferred and compact budgets");
     Check(Find(snapshot.root, L"media-details").baseStyle.contains(L"min-width") &&
               Find(snapshot.root, L"artwork-frame").baseStyle.contains(L"width"),
-          "production bridge parsing retains compiled YT Music GBSS values");
+          "production bridge parsing retains compiled YT Music WRSS values");
 
     CheckEdge(snapshot, L"previous", L"right", L"play-pause");
     CheckEdge(snapshot, L"previous", L"down", L"shuffle");
@@ -169,7 +169,7 @@ void Run(const std::filesystem::path& fixturePath) {
          "preferred cohesive media panel consumes the root inner width");
     Check(Find(snapshot.root, L"media-layout").baseStyle.contains(L"background") &&
               Find(snapshot.root, L"media-layout").baseStyle.contains(L"border-width"),
-          "production GBSS gives the unified media panel one bounded surface");
+          "production WRSS gives the unified media panel one bounded surface");
     Check(preferredArtwork.x + preferredArtwork.width <= preferredDetails.x + 0.01F,
           "preferred YT Music surface keeps artwork beside details");
     Check(preferredArtwork.y < preferredDetails.y + preferredDetails.height &&

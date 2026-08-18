@@ -160,7 +160,7 @@ void CopyNativeRuntimeDependencies(
 
 void VerifyNativeRuntimeDependencyPolicy(
     const std::filesystem::path& installation) {
-    TemporaryDirectory copied(L"gba-native-dependency-copy-");
+    TemporaryDirectory copied(L"wrail-native-dependency-copy-");
     CopyNativeRuntimeDependencies(installation, copied.Path());
     for (const auto dependency : kNativeRuntimeDependencies) {
         Require(std::filesystem::is_regular_file(copied.Path() / dependency),
@@ -172,7 +172,7 @@ void VerifyNativeRuntimeDependencyPolicy(
                     WideToUtf8(dependency));
     }
 
-    TemporaryDirectory omitted(L"gba-native-dependency-omission-");
+    TemporaryDirectory omitted(L"wrail-native-dependency-omission-");
     bool rejected{};
     try {
         CopyNativeRuntimeDependencies(omitted.Path(), copied.Path());

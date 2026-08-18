@@ -99,7 +99,7 @@ public:
         wchar_t guidText[64]{};
         Require(StringFromGUID2(guid, guidText, 64) > 0, "StringFromGUID2 failed");
         root_ = fs::path(temporaryRoot) /
-            (L"gba-widget-switch-retention-" + std::wstring(guidText));
+            (L"wrail-widget-switch-retention-" + std::wstring(guidText));
         processProfile_ = L"widget-switch-";
         for (const wchar_t character : std::wstring_view(guidText)) {
             if (std::iswalnum(character))
@@ -112,7 +112,7 @@ public:
         fs::copy(source / L"runtime", root_ / L"runtime",
                  fs::copy_options::recursive | fs::copy_options::copy_symlinks);
         localAppData_ = root_ / L"local-app-data";
-        fs::create_directories(localAppData_ / L"GameBarAlternative");
+        fs::create_directories(localAppData_ / L"WidgetRail");
         readyPath_ = root_ / L"host-ready.txt";
         startupSignalRoot_ = root_ / L"startup-signals";
         fs::create_directories(startupSignalRoot_);
@@ -121,7 +121,7 @@ public:
         blockedSnapshotRelease_ = root_ / L"block-snapshot.release";
         blockedSnapshotComplete_ = root_ / L"block-snapshot.completed";
 
-        WriteUtf8(root_ / L"runtime" / L"switch-fixture.gbss",
+        WriteUtf8(root_ / L"runtime" / L"switch-fixture.wrss",
             ".switch-surface { padding: 28px; gap: 18px; corner-radius: 18px; }\n"
             ".switch-title { color: #ffffff; font-size: 28px; font-weight: 700; }\n"
             ".switch-detail { color: #ffffff; font-size: 17px; }\n"
@@ -153,10 +153,10 @@ public:
                 : "";
             return std::string(
                 "    {\"id\":\"") + id + "\",\"packageId\":\"" + packageId +
-                "\",\"publisherId\":\"org.gbar.tests\",\"name\":\"" + name +
+                "\",\"publisherId\":\"widgetrail.tests\",\"name\":\"" + name +
                 "\",\"instanceId\":\"" + instanceId + "\",\"icon\":\"" + icon +
                 "\",\"workerExecutable\":\"" + worker +
-                "\",\"styleFile\":\"runtime/switch-fixture.gbss\","
+                "\",\"styleFile\":\"runtime/switch-fixture.wrss\","
                 "\"memoryLimitMb\":64,\"residencyPolicy\":{\"schemaVersion\":1,"
                 "\"mode\":\"suspend-when-hidden\"},\"workerArguments\":["
                 "\"--first-snapshot-signal\",\"" + startupSignal + "\"" +
@@ -167,26 +167,26 @@ public:
             "{\n  \"catalogVersion\":1,\n"
             "  \"genericWorkerExecutable\":\"runtime/WidgetWorkerHost/WidgetWorkerHost.exe\",\n"
             "  \"widgets\":[\n" +
-            widget("audio-mixer", "org.gbar.tests.audio", "Audio Mixer",
+            widget("audio-mixer", "widgetrail.tests.audio", "Audio Mixer",
                    "audio-mixer.default", "volume") + ",\n" +
-            widget("game-launcher", "org.gbar.tests.launcher", "Game Launcher",
+            widget("game-launcher", "widgetrail.tests.launcher", "Game Launcher",
                    "game-launcher.default", "play") + ",\n" +
-            widget("now-playing", "org.gbar.tests.now-playing", "Now Playing",
+            widget("now-playing", "widgetrail.tests.now-playing", "Now Playing",
                    "now-playing.default", "music") + ",\n" +
-            widget("games-apps", "org.gbar.tests.games", "Games & Apps",
+            widget("games-apps", "widgetrail.tests.games", "Games & Apps",
                    "games-apps.default", "play") + ",\n" +
-            widget("network-controls", "org.gbar.tests.network", "Network Controls",
+            widget("network-controls", "widgetrail.tests.network", "Network Controls",
                    "network-controls.default", "wifi") + ",\n" +
-            widget("yt-music", "org.gbar.tests.yt-music", "YT Music",
+            widget("yt-music", "widgetrail.tests.yt-music", "YT Music",
                    "yt-music.default", "music") + ",\n" +
-            widget("spotify", "org.gbar.tests.spotify", "Spotify",
+            widget("spotify", "widgetrail.tests.spotify", "Spotify",
                    "spotify.default", "music") + ",\n" +
-            widget("settings", "org.gbar.tests.settings", "Settings",
+            widget("settings", "widgetrail.tests.settings", "Settings",
                    "settings.default", "settings", true) +
             "\n  ],\n  \"bundledWidgets\":[]\n}\n";
         catalogWithProbe_ =
             catalog_.substr(0, catalog_.find("\n  ],\n")) + ",\n" +
-            widget("catalog-probe", "org.gbar.tests.catalog-probe", "Catalog Probe",
+            widget("catalog-probe", "widgetrail.tests.catalog-probe", "Catalog Probe",
                    "catalog-probe.default", "settings") +
             "\n  ],\n  \"bundledWidgets\":[]\n}\n";
         WriteUtf8(root_ / L"widget-catalog.json", catalog_);
@@ -453,7 +453,7 @@ void RunRetentionScenario(const Arguments& arguments) {
         installation->Root(), installation->LocalAppData(), hostArguments);
     std::vector<DWORD> recoveryProcessIds;
     const auto logPath = installation->LocalAppData() /
-        L"GameBarAlternative" / L"overlay.log";
+        L"WidgetRail" / L"overlay.log";
     const bool ready = WaitUntil(kStartupTimeoutMilliseconds, [&] {
         return ReadUtf8(installation->ReadyPath()).find(kDevelopmentNonceUtf8) !=
             std::string::npos;
@@ -465,7 +465,7 @@ void RunRetentionScenario(const Arguments& arguments) {
              std::to_string(exitCode) + " log=" + ReadUtf8(logPath) +
              " startup-error=" +
              ReadUtf8(installation->LocalAppData() /
-                 L"GameBarAlternative" / L"startup-error.log"));
+                 L"WidgetRail" / L"startup-error.log"));
     }
     HWND window{};
     const bool visible = WaitUntil(kStartupTimeoutMilliseconds, [&] {

@@ -21,7 +21,7 @@ internal sealed record GameLauncherApplicationPaths(
         if (string.IsNullOrWhiteSpace(local) || !Path.IsPathFullyQualified(local))
             throw new InvalidOperationException("Game Launcher local state is unavailable.");
         var productRoot = string.IsNullOrWhiteSpace(overrideRoot)
-            ? Path.Combine(local, "GameBarAlternative")
+            ? Path.Combine(local, "WidgetRail")
             : Path.GetFullPath(local);
         var root = Path.Combine(productRoot, "community-apps",
             "widgetrail.community.reference.game-launcher");

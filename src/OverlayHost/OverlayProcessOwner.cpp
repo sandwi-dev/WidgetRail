@@ -171,8 +171,8 @@ OverlayProcessOwner::ObjectNamesForTests OverlayProcessOwner::NamesForTests(
     const auto sid = CurrentUserSid();
     const auto identity = Hex(Hash(SidText(sid))) + L"." + Hex(Hash(profile));
     return {
-        L"Global\\GameBarAlternative.OverlayHost.Owner." + identity,
-        L"\\\\.\\pipe\\GameBarAlternative.OverlayHost.Activation." + identity,
+        L"Global\\WidgetRail.OverlayHost.Owner." + identity,
+        L"\\\\.\\pipe\\WidgetRail.OverlayHost.Activation." + identity,
     };
 }
 #endif
@@ -198,8 +198,8 @@ OwnershipResult OverlayProcessOwner::Begin(
     }
     profile_ = profile;
     const auto identity = Hex(Hash(SidText(userSid_))) + L"." + Hex(Hash(profile_));
-    mutexName_ = L"Global\\GameBarAlternative.OverlayHost.Owner." + identity;
-    pipeName_ = L"\\\\.\\pipe\\GameBarAlternative.OverlayHost.Activation." + identity;
+    mutexName_ = L"Global\\WidgetRail.OverlayHost.Owner." + identity;
+    pipeName_ = L"\\\\.\\pipe\\WidgetRail.OverlayHost.Activation." + identity;
 
     PSECURITY_DESCRIPTOR descriptor{};
     auto security = UserOnlySecurity(logonSid_, L"0x00100001", descriptor);

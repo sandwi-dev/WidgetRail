@@ -36,7 +36,7 @@ public:
         const auto length = GetTempPathW(MAX_PATH, buffer);
         if (length == 0 || length > MAX_PATH) throw std::runtime_error("GetTempPathW failed");
         path_ = fs::path(buffer) /
-            (L"gbar-scroll-evidence-probe-" + std::to_wstring(GetCurrentProcessId()) +
+            (L"wrail-scroll-evidence-probe-" + std::to_wstring(GetCurrentProcessId()) +
              L"-" + std::to_wstring(GetTickCount64()));
         fs::create_directory(path_);
     }

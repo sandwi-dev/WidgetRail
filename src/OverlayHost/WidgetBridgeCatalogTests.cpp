@@ -178,12 +178,13 @@ void VerifyAtomicPresentationUpdateMaterialization() {
     auto materialized = gba::MaterializeWidgetPresentationUpdate(
         *checkpoint, *update, L"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", error);
     Require(materialized && error.empty(), "Could not materialize the atomic update");
-    Require(materialized->protocolVersion == 18 && materialized->sequence == 10 &&
-                materialized->root.children.size() == 2 &&
-                materialized->root.children[0].id == L"c" &&
-                materialized->root.children[1].id == L"a" &&
-                materialized->root.children[1].text == L"Replaced" &&
-                materialized->root.children[1].baseStyle.at(L"opacity").number == 0.75,
+    const auto& materializedSnapshot = materialized->snapshot;
+    Require(materializedSnapshot.protocolVersion == 18 && materializedSnapshot.sequence == 10 &&
+                materializedSnapshot.root.children.size() == 2 &&
+                materializedSnapshot.root.children[0].id == L"c" &&
+                materializedSnapshot.root.children[1].id == L"a" &&
+                materializedSnapshot.root.children[1].text == L"Replaced" &&
+                materializedSnapshot.root.children[1].baseStyle.at(L"opacity").number == 0.75,
             "Atomic update did not publish the complete candidate and styles");
 
     auto stale = *update;
@@ -731,7 +732,7 @@ int main() {
     error.clear();
     Require(!gba::testing::ParseLocalWidgetPackageInstallResultEvent(R"json({
         "type":"local-widget-package-install-completed","requestId":0,
-        "payload":{"operationId":"11111111-2222-3333-4444-555555555555","status":"failed","widgetId":null,"version":null,"message":"C:\\\\private\\\\package.gbarwidget","path":"C:\\\\private\\\\package.gbarwidget"}
+        "payload":{"operationId":"11111111-2222-3333-4444-555555555555","status":"failed","widgetId":null,"version":null,"message":"C:\\\\private\\\\package.wrwidget","path":"C:\\\\private\\\\package.wrwidget"}
     })json", error),
             "path-bearing local package completion was admitted");
     Require(!error.empty(),

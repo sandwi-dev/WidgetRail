@@ -865,7 +865,7 @@ void FocusMotionUsesStableSnapshotIdentity() {
     const auto focused = renderer.Render(
         nullptr, snapshot, L"play", {0.0F, 0.0F, 320.0F, 100.0F}, options);
     Check(focused.animationActive,
-          "focused opacity and scale state starts its GBSS transition");
+          "focused opacity and scale state starts its WRSS transition");
 
     // Snapshot sequence changes do not reset motion. Runtime instance + exact
     // node ID are the stable identity across worker publication revisions.
@@ -1740,7 +1740,7 @@ void SpotifyStateAndSetupCardsPreserveWrappedTextHeight() {
     };
     auto setupCommand = Node(L"spotify.setup-command", L"text");
     setupCommand.text =
-        L"CLI: gbar config set org.gbar.samples.spotify client-id YOUR_CLIENT_ID --publisher org.gbar.samples";
+        L"CLI: wrail config set widgetrail.samples.spotify client-id YOUR_CLIENT_ID --publisher widgetrail.samples";
     setupCommand.baseStyle = {
         {L"width", Length(100, L"%")}, {L"padding", LengthList(L"11px 13px")},
         {L"font-size", Length(11)}, {L"max-lines", Number(2)},
@@ -1838,13 +1838,13 @@ void ResponsiveRowWrapFlowsThroughGbssAndNativePlanning() {
         nullptr, snapshot, L"wrap.action.0", {0.0F, 0.0F, 250.0F, 120.0F});
     Check(narrow.elementRects.contains(L"wrap.root") &&
               narrow.elementRects.contains(L"wrap.action.2"),
-          "GBSS wrapped row reaches native layout planning");
+          "WRSS wrapped row reaches native layout planning");
     Near(narrow.elementRects.at(L"wrap.action.1").x, 124.0F,
-         "GBSS column gap reaches native row geometry");
+         "WRSS column gap reaches native row geometry");
     Near(narrow.elementRects.at(L"wrap.action.2").x, 0.0F,
          "third action starts the second responsive line");
     Near(narrow.elementRects.at(L"wrap.action.2").y, 52.0F,
-         "GBSS row gap reaches native wrapped-line geometry");
+         "WRSS row gap reaches native wrapped-line geometry");
     Check(narrow.navigationRects.contains(L"wrap.action.2"),
           "wrapped actions remain controller navigation candidates");
 
@@ -2634,12 +2634,12 @@ void IncrementalPresentationPlanningRetainsBoundedWork() {
           "unknown work preserves conservative full-raster fallback");
 
     const auto themePath = std::filesystem::path(__FILE__).parent_path()
-        .parent_path() / "PlatformSettings" / "Themes" / "builtin-default.gbss";
+        .parent_path() / "PlatformSettings" / "Themes" / "builtin-default.wrss";
     std::ifstream themeFile(themePath, std::ios::binary);
     const std::string theme{
         std::istreambuf_iterator<char>(themeFile),
         std::istreambuf_iterator<char>()};
-    Check(!theme.empty(), "default GBSS theme is available to the native regression");
+    Check(!theme.empty(), "default WRSS theme is available to the native regression");
     const auto buttonStart = theme.find("button {");
     const auto buttonEnd = theme.find('}', buttonStart);
     const auto focusedStart = theme.find("button:focused {");

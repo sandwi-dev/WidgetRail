@@ -38,9 +38,9 @@ public:
         wchar_t guidText[64]{};
         Require(StringFromGUID2(guid, guidText, 64) > 0, "StringFromGUID2 failed");
         root_ = fs::path(temporaryRoot) /
-            (L"gba-cold-dashboard-" + std::wstring(guidText));
+            (L"wrail-cold-dashboard-" + std::wstring(guidText));
         localAppData_ = root_ / L"local-app-data";
-        fs::create_directories(localAppData_ / L"GameBarAlternative");
+        fs::create_directories(localAppData_ / L"WidgetRail");
         profile_ = L"cold-dashboard-";
         for (const wchar_t character : std::wstring_view(guidText)) {
             if (std::iswalnum(character))
@@ -58,7 +58,7 @@ public:
     }
     [[nodiscard]] const std::wstring& profile() const noexcept { return profile_; }
     [[nodiscard]] fs::path logPath() const {
-        return localAppData_ / L"GameBarAlternative" / L"overlay.log";
+        return localAppData_ / L"WidgetRail" / L"overlay.log";
     }
 
 private:

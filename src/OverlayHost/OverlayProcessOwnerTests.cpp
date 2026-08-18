@@ -115,6 +115,12 @@ int main() {
         Completed("simultaneous-clients");
 
         const auto names = gba::process::OverlayProcessOwner::NamesForTests(profile);
+        Check(names.mutex.starts_with(L"Global\\WidgetRail.OverlayHost.Owner.") &&
+                  names.pipe.starts_with(L"\\\\.\\pipe\\WidgetRail.OverlayHost.Activation."),
+              "the only live singleton and activation endpoints use WidgetRail identity");
+        Check(names.mutex.find(L"GameBarAlternative") == std::wstring::npos &&
+                  names.pipe.find(L"GameBarAlternative") == std::wstring::npos,
+              "singleton and activation endpoints expose no legacy authority");
         struct BadRequest final { std::uint32_t magic{}; std::uint32_t payload{}; } bad;
         std::uint32_t reply = 1;
         DWORD read{};

@@ -2250,7 +2250,7 @@ bool WidgetBridgeClient::Launch(
         return false;
     }
 
-    pipeName_ = L"gba-host-" + std::to_wstring(GetCurrentProcessId()) + L"-" +
+    pipeName_ = L"wrail-host-" + std::to_wstring(GetCurrentProcessId()) + L"-" +
                 std::to_wstring(GetTickCount64());
     std::wstring command = Quote(executable) + L" --host-pipe " + pipeName_ +
                            L" --catalog " + Quote(catalog) + L" --accept-timeout-ms 10000";
@@ -2264,7 +2264,7 @@ bool WidgetBridgeClient::Launch(
             return false;
         }
         const auto settingsRoot =
-            std::filesystem::path(localAppData) / L"GameBarAlternative";
+            std::filesystem::path(localAppData) / L"WidgetRail";
         command += L" --settings-root " + Quote(settingsRoot);
     }
     STARTUPINFOW startup{sizeof(startup)};

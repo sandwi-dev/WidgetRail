@@ -167,7 +167,7 @@ ScrollEvidencePublishResult ScrollEvidenceProbe::Publish(
     }
 
     std::wstring payload =
-        L"gbar-scroll-evidence-v1\nwidget=" + std::wstring(widgetId) +
+        L"wrail-scroll-evidence-v1\nwidget=" + std::wstring(widgetId) +
         L"\ninstance=" + snapshot.instanceId +
         L"\nsequence=" + std::to_wstring(snapshot.sequence) +
         L"\nscope=" + snapshot.activeInputScopeId +

@@ -358,7 +358,7 @@ public sealed class WindowsCommunityPlatformBackend :
 
     private static string DefaultPrivateStateRoot() => Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-        "GameBarAlternative", "widget-state");
+        "WidgetRail", "widget-state");
 
     private static class CommunityPlatformLimitsForProvider
     {
@@ -504,7 +504,7 @@ internal sealed class WindowsCredentialPrivateSecretStore : IPrivateSecretStore
         // instance IDs. Unsigned installations receive a content-derived
         // publisher authority, so replacement bytes cannot inherit a secret.
         var material = StrictUtf8.GetBytes(
-            $"gba-private-secret-v1\0{identity.PublisherId}\0{identity.PackageId}\0{slot}");
+            $"wrail-private-secret-v1\0{identity.PublisherId}\0{identity.PackageId}\0{slot}");
         try { return TargetPrefix + Convert.ToHexString(SHA256.HashData(material)); }
         finally { CryptographicOperations.ZeroMemory(material); }
     }

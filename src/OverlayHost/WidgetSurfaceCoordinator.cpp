@@ -14,8 +14,8 @@
 namespace gba::pinned {
 namespace {
 
-constexpr wchar_t kWindowClass[] = L"GameBarAlternativePinnedSurface";
-constexpr wchar_t kWindowTitle[] = L"Game Bar Alternative pinned surface";
+constexpr wchar_t kWindowClass[] = L"WidgetRail.PinnedSurface";
+constexpr wchar_t kWindowTitle[] = L"WidgetRail pinned surface";
 constexpr UINT kAccessibilityActionMessage = WM_APP + 0x316;
 constexpr float kChromeHeightDip = 72.0F;
 constexpr float kSideInsetDip = 14.0F;
@@ -29,7 +29,7 @@ constexpr std::size_t kMaximumFeedbackCharacters = 160;
     if (length == 0 || length >= localAppData.size()) return {};
     return std::filesystem::path(
                std::wstring_view(localAppData.data(), length)) /
-        L"GameBarAlternative" / L"pinned-surface-placement.ini";
+        L"WidgetRail" / L"pinned-surface-placement.ini";
 }
 
 [[nodiscard]] DWORD ExtendedStyle(const InteractionMode mode) noexcept {

@@ -67,9 +67,9 @@ using Microsoft::WRL::ComPtr;
 
 namespace {
 
-constexpr wchar_t kWindowClass[] = L"GameBarAlternative.OverlayHost";
-constexpr wchar_t kBackdropWindowClass[] = L"GameBarAlternative.Backdrop";
-constexpr wchar_t kChromeWindowClass[] = L"GameBarAlternative.Chrome";
+constexpr wchar_t kWindowClass[] = L"WidgetRail.OverlayHost";
+constexpr wchar_t kBackdropWindowClass[] = L"WidgetRail.Backdrop";
+constexpr wchar_t kChromeWindowClass[] = L"WidgetRail.Chrome";
 constexpr int kPanelWidth = 1180;
 constexpr int kDashboardHeight = 180;
 constexpr int kWidgetPanelHeight = 700;
@@ -229,7 +229,7 @@ gba::PersistentState LoadPersistentState() {
     }
 
     const std::filesystem::path path =
-        std::filesystem::path(localAppData) / L"GameBarAlternative" / L"overlay-state.ini";
+        std::filesystem::path(localAppData) / L"WidgetRail" / L"overlay-state.ini";
     std::wifstream input(path);
     std::wstring first;
     if (!(input >> first)) return {};
@@ -277,7 +277,7 @@ void SavePersistentState(const gba::PersistentState& state) {
         return;
     }
 
-    const auto directory = std::filesystem::path(localAppData) / L"GameBarAlternative";
+    const auto directory = std::filesystem::path(localAppData) / L"WidgetRail";
     std::error_code error;
     std::filesystem::create_directories(directory, error);
     if (error) {
@@ -306,7 +306,7 @@ void SaveStartupError(const std::wstring& message) {
         return;
     }
 
-    const auto directory = std::filesystem::path(localAppData) / L"GameBarAlternative";
+    const auto directory = std::filesystem::path(localAppData) / L"WidgetRail";
     std::error_code error;
     std::filesystem::create_directories(directory, error);
     if (error) {
@@ -326,7 +326,7 @@ void ClearStartupError() {
     }
     std::error_code error;
     std::filesystem::remove(
-        std::filesystem::path(localAppData) / L"GameBarAlternative" / L"startup-error.log",
+        std::filesystem::path(localAppData) / L"WidgetRail" / L"startup-error.log",
         error);
 }
 
@@ -338,7 +338,7 @@ void AppendDiagnostic(const std::wstring_view message) {
     if (GetEnvironmentVariableW(L"LOCALAPPDATA", localAppData, MAX_PATH) == 0) {
         return;
     }
-    const auto directory = std::filesystem::path(localAppData) / L"GameBarAlternative";
+    const auto directory = std::filesystem::path(localAppData) / L"WidgetRail";
     std::error_code error;
     std::filesystem::create_directories(directory, error);
     if (error) {
@@ -560,7 +560,7 @@ public:
         window_ = CreateWindowExW(
             WS_EX_TOOLWINDOW | WS_EX_NOREDIRECTIONBITMAP | WS_EX_TOPMOST,
             kWindowClass,
-            L"Game Bar Alternative",
+            L"WidgetRail",
             WS_POPUP,
             CW_USEDEFAULT,
             CW_USEDEFAULT,
@@ -577,7 +577,7 @@ public:
         chromeWindow_ = CreateWindowExW(
             gba::shell::FixedChromeWindowExStyle(),
             kChromeWindowClass,
-            L"Game Bar Alternative chrome",
+            L"WidgetRail chrome",
             gba::shell::FixedChromeWindowStyle(),
             CW_USEDEFAULT,
             CW_USEDEFAULT,
@@ -594,7 +594,7 @@ public:
         backdropWindow_ = CreateWindowExW(
             WS_EX_TOOLWINDOW | WS_EX_LAYERED | WS_EX_NOACTIVATE | WS_EX_TOPMOST,
             kBackdropWindowClass,
-            L"Game Bar Alternative backdrop",
+            L"WidgetRail backdrop",
             WS_POPUP,
             0,
             0,
@@ -681,7 +681,7 @@ public:
         imageCache_ = std::make_unique<gba::RemoteImageCache>(
             gba::RemoteImageLimits{},
             [this](const std::wstring_view source, const gba::RemoteImageState state) {
-                constexpr std::wstring_view prefix = L"gbar-artwork\x1f";
+                constexpr std::wstring_view prefix = L"wrail-artwork\x1f";
                 if (state == gba::RemoteImageState::Failed && source.starts_with(prefix)) {
                     const auto widgetEnd = source.find(L'\x1f', prefix.size());
                     const auto handleStart = source.rfind(L'\x1f');
@@ -700,7 +700,7 @@ public:
             },
             gba::RemoteImageCache::FetchFunction{},
             [this](std::wstring_view source) {
-                constexpr std::wstring_view prefix = L"gbar-artwork\x1f";
+                constexpr std::wstring_view prefix = L"wrail-artwork\x1f";
                 const auto widgetSeparator = source.find(L'\x1f', prefix.size());
                 const auto handleSeparator = source.rfind(L'\x1f');
                 if (!source.starts_with(prefix) || widgetSeparator == std::wstring_view::npos ||
@@ -1077,7 +1077,7 @@ private:
             return result;
         };
         const std::string payload =
-            "gbar-performance-runtime-v2\n" +
+            "wrail-performance-runtime-v2\n" +
             ascii(*performanceDiagnosticsNonce_) + "\n" +
             ascii(*performanceState_) + "\n" +
             ascii(*performanceWidgetId_) + "\n" +
@@ -1166,7 +1166,7 @@ private:
 
     bool PublishDevelopmentReady() {
         const std::wstring widePayload =
-            L"gbar-dev-ready-v1\n" + *developmentReadyNonce_ + L"\n" +
+            L"wrail-dev-ready-v1\n" + *developmentReadyNonce_ + L"\n" +
             *developmentCatalogRoot_ + L"\n" + *developmentWidgetId_ + L"\n" +
             *developmentWidgetInstance_ + L"\n";
         if (widePayload.size() > static_cast<std::size_t>(INT_MAX)) {
@@ -2571,7 +2571,7 @@ private:
                 cursor = end + 1;
             }
         }
-        if (cursor != payload.size() || fields[0] != L"gba-launcher-selection-v1" ||
+        if (cursor != payload.size() || fields[0] != L"wrail-launcher-selection-v1" ||
             fields[1] != *performanceDiagnosticsNonce_) return false;
 
         gba::LauncherExperienceSelectionRequest request;
@@ -2962,8 +2962,8 @@ private:
             return std::nullopt;
         return gba::packages::LocalWidgetPackageOrigin{
             descriptor->id,
-            L"org.gbar.firstparty.settings",
-            L"org.gbar.firstparty",
+            L"widgetrail.firstparty.settings",
+            L"widgetrail.firstparty",
             descriptor->instanceId,
             descriptor->runtimeGeneration,
             descriptor->presentationGeneration,
@@ -9465,7 +9465,7 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int showCommand) {
                                      app.initializationError();
         SaveStartupError(message);
         MessageBoxW(nullptr, message.c_str(),
-                    L"Game Bar Alternative", MB_OK | MB_ICONERROR);
+                    L"WidgetRail", MB_OK | MB_ICONERROR);
         return EXIT_FAILURE;
     }
     app.BindProcessActivation(processOwner);

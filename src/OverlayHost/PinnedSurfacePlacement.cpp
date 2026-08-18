@@ -236,7 +236,7 @@ std::map<std::wstring, DurablePinnedPlacement> PinnedPlacementStore::LoadAll() c
     std::wifstream input(path_);
     std::wstring header;
     std::size_t count{};
-    if (!(input >> header >> count) || header != L"gbar-pinned-placement-v1" ||
+    if (!(input >> header >> count) || header != L"wrail-pinned-placement-v1" ||
         count > kMaximumStoredWidgets) return {};
     for (std::size_t index = 0; index < count; ++index) {
         std::wstring widgetId;
@@ -288,7 +288,7 @@ bool PinnedPlacementStore::Save(
             error = L"Pinned placement temporary file could not be created.";
             return false;
         }
-        output << L"gbar-pinned-placement-v1 " << all.size() << L'\n'
+        output << L"wrail-pinned-placement-v1 " << all.size() << L'\n'
                << std::setprecision(17);
         for (const auto& [id, value] : all) {
             output << std::quoted(id) << L' ' << value.schemaVersion << L' '

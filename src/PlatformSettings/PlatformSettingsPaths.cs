@@ -30,6 +30,6 @@ public sealed class PlatformSettingsPaths
             throw new PlatformSettingsException(
                 "local_app_data_unavailable",
                 "The current user's Local Application Data directory is unavailable.");
-        return new PlatformSettingsPaths(Path.Combine(local, "GameBarAlternative"));
+        return new PlatformSettingsPaths(Path.Combine(local, "WidgetRail"));
     }
 }

@@ -5446,3 +5446,44 @@ contract across 75 Markdown files. The restricted runner initially denied
 MSTest and Bridge named-pipe access; the exact focused binaries passed when run
 with the required local pipe permission. No Tier 3, native suite, launch,
 publication, integration, push, credential access, or user-state migration ran.
+
+### DLV-259 — WidgetRail native identity and clean local-state cutover
+
+The sole native host now uses the frozen WidgetRail operating-system identity:
+`WidgetRail.OverlayHost`, `WidgetRail.Backdrop`, `WidgetRail.Chrome`,
+`WidgetRail.TextEntryModal`, and `WidgetRail.PinnedSurface` window classes;
+`WidgetRail` / `WidgetRail.Overlay` UIA identity; one
+`Global\WidgetRail.OverlayHost.Owner.*` singleton and one authenticated
+`WidgetRail.OverlayHost.Activation.*` pipe; and the WidgetRail manifest, display
+titles, AppContainer profile, user agent, internal pipe prefixes, resource keys,
+and retained-version persisted headers. Native package/style/import consumers
+now agree with DLV-258's `widgetrail.*`, `.wrwidget`, and WRSS identities.
+
+This is the user-approved clean pre-release cutover, not a migration. Default
+production paths read and write only `%LOCALAPPDATA%\WidgetRail`. There is no
+old-root reader, probe, copy, move, merge, staging directory, marker, fallback,
+legacy package importer, version bridge, or old singleton/activation endpoint.
+The existing `%LOCALAPPDATA%\GameBarAlternative` root and external provider,
+credential, application, account, and user-file state were not inspected or
+modified; settings, consent, packages, and credentials start fresh under the
+new identity and affected Community applications reauthenticate.
+
+Focused Release evidence passes Overlay Process Owner 28 checks, local package
+import 4 scenarios, pinned placement 16 checks, widget surface coordination 80
+checks, Accessibility Provider 168 checks, Host Accessibility 34 checks,
+Remote Image Cache plus Declarative Renderer 4,915 checks, and Platform Settings
+19/19. The accepted-baseline Widget Runtime executable passed its first six
+lifecycle/process cases before stalling at the seventh retired-notification
+case; the native Widget Bridge catalog binary compiled after correcting one
+stale materialization-result assertion but then produced no test output. Both
+bounded hung invocations were stopped once and were not weakened or repeated.
+
+One coherent combined DLV-258/DLV-259 Release was built with tests skipped in
+an isolated exact-source worktree because retained accepted PID 28612 held the
+primary output directory. `OverlayHost.exe` SHA-256 is
+`16D5BE7CC2D831BA72D701A8C5C63086C4EFCB790FF6ABAFAC69CAE6056A46F8`;
+the six existing `C4244` warnings remain in `main.cpp`. Bridge, protocol,
+Settings-worker, and generic-worker outputs are present and exact build-output
+hashes match the packaged copies. Retired Game Launcher, Spotify playback-host,
+and YT Music runtime directories are absent. No launch, Tier 3, live-state
+access, publication, integration, or push was performed.

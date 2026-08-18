@@ -18,7 +18,7 @@ $evidence = if ([string]::IsNullOrWhiteSpace($OutputFile)) {
     [System.IO.Path]::GetFullPath($OutputFile)
 }
 $realCatalog = Join-Path ([Environment]::GetFolderPath(
-    [Environment+SpecialFolder]::LocalApplicationData)) 'GameBarAlternative\widgets'
+    [Environment+SpecialFolder]::LocalApplicationData)) 'WidgetRail\widgets'
 
 function Get-RealCatalogFingerprint {
     $statePath = Join-Path $realCatalog 'catalog-state.json'

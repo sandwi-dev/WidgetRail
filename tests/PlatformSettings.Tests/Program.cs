@@ -6,6 +6,7 @@ using WidgetRail.WidgetStyling;
 var tests = new (string Name, Func<Task> Run)[]
 {
     ("Missing settings use safe appearance defaults", DefaultsAreSafe),
+    ("Default paths use only the WidgetRail local state root", DefaultPathsUseWidgetRail),
     ("Settings round trip through strict canonical JSON", SettingsRoundTrip),
     ("Legacy schema-one settings receive additive accessibility defaults", LegacyAccessibilityDefaults),
     ("Malformed duplicate unknown and oversized settings fail closed", StrictSettingsFailClosed),
@@ -24,6 +25,16 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Launcher experience selection recovery and removal are exact", LauncherExperienceSelectionTests.Run),
     ("Built-in theme gives CodeText bounded Windows monospace wrapping", CodeTextThemeTests.Run),
 };
+
+static Task DefaultPathsUseWidgetRail()
+{
+    var paths = PlatformSettingsPaths.CreateDefault();
+    Assert.Equal("WidgetRail", Path.GetFileName(paths.RootDirectory));
+    Assert.True(
+        !paths.RootDirectory.Contains("GameBarAlternative", StringComparison.Ordinal),
+        "Default settings path retained the retired local state root.");
+    return Task.CompletedTask;
+}
 
 var failures = new List<string>();
 foreach (var test in tests)

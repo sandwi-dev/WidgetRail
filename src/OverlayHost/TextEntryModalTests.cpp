@@ -188,7 +188,7 @@ int wmain() {
         HWND edit{};
         Check(WaitUntil([&] {
             window = FindWindowW(
-                L"GameBarAlternative.TextEntryModal", L"Search installed games");
+                L"WidgetRail.TextEntryModal", L"Search installed games");
             edit = window ? FindWindowExW(window, nullptr, L"EDIT", nullptr) : nullptr;
             return window && edit;
         }), "modal controls complete creation before controller input");
@@ -260,7 +260,7 @@ int wmain() {
         HWND window{};
         Check(WaitUntil([&] {
             window = FindWindowW(
-                L"GameBarAlternative.TextEntryModal", L"Edit installed games");
+                L"WidgetRail.TextEntryModal", L"Edit installed games");
             return window && FindWindowExW(window, nullptr, L"EDIT", nullptr);
         }), "action-row controls finish creation");
         Check(modal.PostController(L"A"), "controller enters the keyboard for action-row test");
@@ -317,7 +317,7 @@ int wmain() {
         HWND window{};
         Check(WaitUntil([&] {
             window = FindWindowW(
-                L"GameBarAlternative.TextEntryModal", L"Search installed games");
+                L"WidgetRail.TextEntryModal", L"Search installed games");
             return window != nullptr;
         }), "close modal window completes creation");
         Check(PostMessageW(window, WM_CLOSE, 0, 0) != FALSE,
@@ -338,7 +338,7 @@ int wmain() {
         HWND edit{};
         Check(WaitUntil([&] {
             window = FindWindowW(
-                L"GameBarAlternative.TextEntryModal", L"Password for test network");
+                L"WidgetRail.TextEntryModal", L"Password for test network");
             edit = window ? FindWindowExW(window, nullptr, L"EDIT", nullptr) : nullptr;
             return window && edit;
         }), "password modal exposes one native edit control");

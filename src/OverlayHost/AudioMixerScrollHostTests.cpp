@@ -78,9 +78,9 @@ public:
         Require(fs::is_regular_file(fixtureWorker),
                 "--fixture-worker does not name a file");
         ValidateNativeRuntimeDependencies(source);
-        const auto productionStyle = fixtureWorker.parent_path() / L"styles" / L"default.gbss";
+        const auto productionStyle = fixtureWorker.parent_path() / L"styles" / L"default.wrss";
         Require(fs::is_regular_file(productionStyle),
-                "Audio Mixer fixture output omitted production default.gbss");
+                "Audio Mixer fixture output omitted production default.wrss");
 
         wchar_t temporaryRoot[MAX_PATH + 1]{};
         const DWORD length = GetTempPathW(MAX_PATH, temporaryRoot);
@@ -90,7 +90,7 @@ public:
         wchar_t guidText[64]{};
         Require(StringFromGUID2(guid, guidText, 64) > 0, "StringFromGUID2 failed");
         root_ = fs::path(temporaryRoot) /
-            (L"gba-audio-scroll-host-" + std::wstring(guidText));
+            (L"wrail-audio-scroll-host-" + std::wstring(guidText));
         processProfile_ = L"audio-scroll-";
         for (const wchar_t character : std::wstring_view(guidText)) {
             if (std::iswalnum(character))
@@ -103,11 +103,11 @@ public:
         fs::copy(source / L"runtime", root_ / L"runtime",
                  fs::copy_options::recursive | fs::copy_options::copy_symlinks);
         fs::copy_file(
-            productionStyle, root_ / L"runtime" / L"audio-mixer-scroll.gbss",
+            productionStyle, root_ / L"runtime" / L"audio-mixer-scroll.wrss",
             fs::copy_options::overwrite_existing);
 
         localAppData_ = root_ / L"local-app-data";
-        fs::create_directories(localAppData_ / L"GameBarAlternative");
+        fs::create_directories(localAppData_ / L"WidgetRail");
         controlPath_ = root_ / L"fixture-control.txt";
         snapshotPath_ = root_ / L"fixture-snapshot.json";
         readyPath_ = root_ / L"host-ready.txt";
@@ -116,13 +116,13 @@ public:
 
         std::ostringstream settings;
         settings << "{\"schemaVersion\":1,\"appearance\":{"
-                 << "\"themeId\":\"org.gbar.builtin.cool-slate\","
+                 << "\"themeId\":\"widgetrail.builtin.cool-slate\","
                  << "\"themeVersion\":\"1.0.0\","
                  << "\"interfaceScale\":" << interfaceScale << ','
                  << "\"textScale\":" << textScale << ','
                  << "\"backdropOpacity\":0.64,\"motion\":\"full\"}}\n";
         WriteUtf8(
-            localAppData_ / L"GameBarAlternative" / L"platform-settings.json",
+            localAppData_ / L"WidgetRail" / L"platform-settings.json",
             settings.str());
 
         const std::string catalog =
@@ -131,14 +131,14 @@ public:
             "  \"genericWorkerExecutable\": \"runtime/WidgetWorkerHost/WidgetWorkerHost.exe\",\n"
             "  \"widgets\": [{\n"
             "    \"id\": \"audio-mixer\",\n"
-            "    \"packageId\": \"org.gbar.firstparty.audio-mixer\",\n"
-            "    \"publisherId\": \"org.gbar.firstparty\",\n"
+            "    \"packageId\": \"widgetrail.firstparty.audio-mixer\",\n"
+            "    \"publisherId\": \"widgetrail.firstparty\",\n"
             "    \"name\": \"Audio Mixer\",\n"
             "    \"instanceId\": \"audio-mixer.default\",\n"
             "    \"icon\": \"volume\",\n"
             "    \"workerExecutable\": \"" +
                 JsonEscape(fs::absolute(fixtureWorker).wstring()) + "\",\n"
-            "    \"styleFile\": \"runtime/audio-mixer-scroll.gbss\",\n"
+            "    \"styleFile\": \"runtime/audio-mixer-scroll.wrss\",\n"
             "    \"memoryLimitMb\": 64,\n"
             "    \"residencyPolicy\": { \"schemaVersion\": 1, \"mode\": \"keep-alive\" },\n"
             "    \"workerArguments\": ["
@@ -298,7 +298,7 @@ std::optional<std::array<float, 4>> ParseRect(const std::string_view value) {
 }
 
 std::optional<ScrollEvidence> ParseScrollEvidence(const std::string_view payload) {
-    if (!payload.starts_with("gbar-scroll-evidence-v1\n")) return std::nullopt;
+    if (!payload.starts_with("wrail-scroll-evidence-v1\n")) return std::nullopt;
     ScrollEvidence result;
     bool hasOffset{};
     bool hasNavigation{};
@@ -795,13 +795,13 @@ void RunScenario(
         evidence.Diagnostic(
             L"live-four",
             ReadUtf8(installation.LocalAppData() /
-                L"GameBarAlternative" / L"overlay.log"));
+                L"WidgetRail" / L"overlay.log"));
         throw;
     }
     evidence.Semantic(
         L"live-four", L"emitted", ReadUtf8(installation.SnapshotPath()));
     const auto overlayLog = ReadUtf8(
-        installation.LocalAppData() / L"GameBarAlternative" / L"overlay.log");
+        installation.LocalAppData() / L"WidgetRail" / L"overlay.log");
     Require(overlayLog.find("value_clamped [audio.root]") == std::string::npos,
             "Audio Mixer cycling still normalized a stale retained root offset.");
     evidence.Diagnostic(

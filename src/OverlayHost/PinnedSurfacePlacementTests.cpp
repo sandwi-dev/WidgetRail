@@ -106,7 +106,7 @@ int main() {
               "pointer-sized proposal is finite and work-area constrained");
 
         const auto storeRoot = std::filesystem::temp_directory_path() /
-            (L"gba-dlv068-" + std::to_wstring(GetCurrentProcessId()));
+            (L"wrail-dlv068-" + std::to_wstring(GetCurrentProcessId()));
         const auto storePath = storeRoot / L"placement.ini";
         gba::pinned::PinnedPlacementStore store(storePath);
         std::wstring error;
@@ -118,7 +118,7 @@ int main() {
               "placement store restores the exact schema-1 record");
         {
             std::wofstream malformed(storePath, std::ios::trunc);
-            malformed << L"gbar-pinned-placement-v1 1\n\"bad\" 99 \"DISPLAY-A\" 0 0 480 270\n";
+            malformed << L"wrail-pinned-placement-v1 1\n\"bad\" 99 \"DISPLAY-A\" 0 0 480 270\n";
         }
         Check(!store.Load(L"bad"), "malformed or incompatible persistence resets closed");
         std::error_code cleanup;
