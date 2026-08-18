@@ -26,7 +26,10 @@ evidence only; this file is the sole authority for current work.
 - DLV-258 is independently reviewed and accepted as the unintegrated commit
   `5b924f4`. Its 544-file public managed cutover passed the focused managed,
   SDK, CLI/package, WRSS, catalog, Bridge, conformance, and documentation
-  evidence. It remains unlaunched and must stay serialized with DLV-259.
+  evidence. DLV-259 is independently reviewed and accepted as unintegrated
+  commit `188cc64`; its native cutover and coherent tests-skipped Release build
+  are complete. The cumulative chain remains unlaunched and must stay
+  serialized through DLV-260.
 - DLV-248 remains deliberately deferred by the user.
 - The user selected the new display identity **WidgetRail** and tagline
   **WidgetRail — a controller-first widget platform for Windows.** On
@@ -34,7 +37,8 @@ evidence only; this file is the sole authority for current work.
   The identity contract is frozen. The user subsequently approved a clean
   local-state break: WidgetRail uses only `%LOCALAPPDATA%\WidgetRail`; it does
   not read or migrate the old root or carry compatibility code. DLV-258 is
-  accepted and DLV-259 is assigned to the platform lane under that amendment.
+  accepted, DLV-259 is accepted under that amendment, and production-first
+  DLV-260 Phase A is assigned to the platform lane.
 
 ## Avalonia disposition
 
@@ -102,8 +106,8 @@ user decision. The native overlay is the sole production presentation path.
 
 | Lane | Task/worktree | State |
 | --- | --- | --- |
-| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | Assigned corrected clean-break DLV-259 from accepted DLV-258 commit `5b924f4` plus the planner assignment/amendment commits. Preserve the clean prior DLV-262 branch; create a fresh serialized branch and do not merge its already-integrated history. No old-root migration or compatibility work. DLV-248 remains deferred. |
-| Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | Clean at accepted DLV-258 commit `5b924f4` on `codex/impl-widgets-widgetrail-managed-identity`. Hold this exact unintegrated/unlaunched chain for DLV-259; do not start new work. |
+| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | DLV-259 accepted at `188cc64` on the clean serialized WidgetRail branch. Assigned production-first DLV-260 Phase A on that exact cumulative chain: residue/output cleanup and coherent tests-skipped Release only. Do not run or repair tests before the user's visible verdict. DLV-248 remains deferred. |
+| Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | Clean at accepted DLV-258 commit `5b924f4` on `codex/impl-widgets-widgetrail-managed-identity`. Hold this exact accepted evidence; the platform lane is the single serialized DLV-260 lead. Do not start new work. |
 
 ## Completed planner deliverable — DLV-257: select and freeze WidgetRail identity
 
@@ -185,7 +189,7 @@ third-party credential/account action, generated-output ambiguity, substantial
 conflict, user-data change, native identity change, or a second SDK/package
 owner. Never push.
 
-## Assigned serialized deliverable — DLV-259: cut over native identity and fresh local state
+## Accepted serialized deliverable — DLV-259: cut over native identity and fresh local state
 
 Owner/baseline: platform lead after accepted DLV-258 is supplied on its exact
 serialized baseline. Own native display/accessibility identity, singleton
@@ -220,7 +224,26 @@ the old root, credential/external-provider handling, simultaneous old/new
 runtime ownership, undocumented Windows APIs, substantial conflict, or
 data-loss risk. Never push.
 
-## Blocked serialized deliverable — DLV-260: audit and accept complete rebrand
+Accepted result: implementation commit `188cc64` changes 52 files with 254
+insertions and 194 deletions. Independent review confirms a mechanical native
+cutover for UIA/window/singleton/pipe/AppContainer identity, runtime/local paths,
+package/style consumers, persisted headers, and current scripts. Active
+production source contains no old-root reader or compatibility bridge. The
+coherent tests-skipped Release built successfully with `OverlayHost.exe`
+SHA-256 `16D5BE7CC2D831BA72D701A8C5C63086C4EFCB790FF6ABAFAC69CAE6056A46F8`.
+Focused native evidence passed for process ownership, package import, pinned
+placement, surface coordination, accessibility, renderer, and settings.
+
+Two disclosed verification routes are inconclusive rather than production
+failures. Widget Runtime stopped after six cases at its existing seventh-case
+hang. `WidgetBridgeCatalogTests.exe` appeared to hang but actually opened a
+native null-read dialog: the Release build defines `NDEBUG`, while the fixture
+uses disabled `assert(...)` guards around values later dereferenced outside the
+guards. This test-harness defect predates DLV-259; the DLV-259 test diff only
+adapts an already-changed result wrapper and `.wrwidget` spelling. Repair it
+after the user's visible DLV-260 verdict, not before.
+
+## Assigned serialized deliverable — DLV-260: audit and accept complete rebrand
 
 Owner/baseline: serialized lead plus planner review after DLV-258 and DLV-259.
 Complete active tests, scripts, examples, publication metadata, notices, and
@@ -232,17 +255,23 @@ names, or external repositories/store listings without explicit user authority.
 Renaming the local checkout directory and saved Codex project is optional and
 performed last by the planner only if the user requests it.
 
-Acceptance: one exact old-name residue audit classifies every retained match;
-focused builds/tests/examples/package checks are green; installed packages and
-the SDK contain only the new active identity; old generated runtime artifacts
-are absent; one narrow fresh-state smoke proves the Release uses only the new
-WidgetRail root and leaves the old root untouched; and the coherent renamed
-Release launches for the user's visible verdict. The user will reconfigure
-settings/consent/packages and re-authenticate as needed. This is the named
-Tier-3 integration checkpoint for
-the cumulative DLV-258/DLV-259/DLV-260 chain, run once only after focused
-evidence and exact commits. Integrate and relaunch only after independent review
-accepts the complete chain.
+Execution and acceptance are explicitly physical-first:
+
+1. Phase A classifies every active old-name residue, corrects only active
+   production/public identity and validated generated outputs, proves the SDK
+   and installed packages expose only WidgetRail, and builds one coherent
+   tests-skipped renamed Release. Do not run or repair tests in this phase.
+2. After independent source/output review, launch that Release for the user's
+   visible verdict. The user will configure fresh settings/consent/packages and
+   re-authenticate as needed. The old local-data root remains untouched.
+3. Only after the user accepts the visible Release, replace disabled/unsafe
+   `assert(...)` use in `WidgetBridgeCatalogTests` with always-on checks without
+   weakening coverage, disposition the existing Widget Runtime seventh-case
+   hang, and run the smallest focused package/runtime routes plus the one named
+   Tier-3 integration checkpoint.
+4. Integrate the complete accepted DLV-258/DLV-259/DLV-260 chain after that
+   evidence. If the only final delta is tests/docs, retain the already accepted
+   running Release rather than rebuilding or relaunching it.
 
 Stop for unresolved old active identity, external Store/repository/domain
 action, credential need, destructive cleanup outside validated generated
@@ -290,12 +319,13 @@ deliberately deferred by user decision and requires explicit promotion.
 
 1. DLV-257 is complete: the user approved all four decisions on 2026-08-17 and
    the exact contract is frozen.
-2. DLV-258 is accepted at `5b924f4` and remains unintegrated/unlaunched.
-3. Supply that exact chain plus the planner assignment commit to the platform
-   lane for DLV-259; do not integrate or launch the partial rename.
-4. Review cumulative DLV-258/DLV-259, complete DLV-260 residue audit and one
-   exact Tier-3 checkpoint, then launch for the user's visible verdict.
-5. Integrate the complete accepted chain only after that verdict.
+2. DLV-258 is accepted at `5b924f4` and DLV-259 is accepted at `188cc64`; the
+   cumulative chain remains unintegrated/unlaunched.
+3. Complete DLV-260 Phase A residue/output work and one coherent tests-skipped
+   Release, then launch it for the user's visible verdict.
+4. After that verdict, repair/disposition the two disclosed test routes and run
+   the one exact Tier-3 checkpoint.
+5. Integrate the complete accepted chain only after that evidence.
 6. Run DLV-264 next from the accepted complete WidgetRail rename baseline.
 7. DLV-248 remains outside this sequence until the user promotes it.
 
@@ -321,6 +351,7 @@ deliberately deferred by user decision and requires explicit promotion.
 
 | Milestone | Result |
 | --- | --- |
+| DLV-259 | Accepted but deliberately unintegrated/unlaunched as `188cc64`: complete native WidgetRail identity and fresh-root cutover, coherent tests-skipped Release green; two pre-existing test-harness routes disclosed for post-visible-acceptance repair/disposition. |
 | DLV-258 | Accepted but deliberately unintegrated/unlaunched as `5b924f4`: complete public managed WidgetRail cutover, focused managed suites green, residue classified for DLV-259/DLV-260. |
 | DLV-263 | Physically accepted and integrated through `110b42b`: retained-overlap viewport position, exact-anchor behavior, conservative fallback, 4,915 renderer checks, accepted PID 28612 retained. |
 | DLV-262 | Test-only integrated as `88b21b1`: exact failure ledger, current dependency graph, unchanged authenticated named-pipe path, Widget Bridge 90/90. |
