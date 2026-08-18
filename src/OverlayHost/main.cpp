@@ -5471,16 +5471,35 @@ private:
                 std::wstring{reason});
             pendingFreeScrollReentry_.reset();
         }
+        freeScrollRefreshDeferred_ = false;
         rightStickScrollKinetics_.Reset();
     }
 
-    [[nodiscard]] bool FreeScrollSuppressesFocusFollow(
+    [[nodiscard]] bool FreeScrollBindingMatchesRetainedRefresh(
         const std::wstring_view widgetId,
-        const widgetrail::WidgetSnapshot& snapshot,
         const widgetrail::WidgetDescriptor* descriptor) const noexcept {
-        return pendingFreeScrollReentry_ &&
+        if (!pendingFreeScrollReentry_) return false;
+        const auto presentation = sessions_.Presentation(widgetId);
+        return presentation.authority ==
+                widgetrail::WidgetPresentationAuthority::RefreshRetained &&
+            presentation.snapshot &&
             FreeScrollBindingMatches(
-                *pendingFreeScrollReentry_, widgetId, snapshot, descriptor);
+                *pendingFreeScrollReentry_, widgetId,
+                *presentation.snapshot, descriptor);
+    }
+
+    void SetFreeScrollRefreshDeferred(const bool deferred) {
+        if (freeScrollRefreshDeferred_ == deferred ||
+            !pendingFreeScrollReentry_) {
+            return;
+        }
+        freeScrollRefreshDeferred_ = deferred;
+        AppendDiagnostic(
+            std::wstring{deferred
+                ? L"Free scroll retained during refresh widget="
+                : L"Free scroll refresh authority restored widget="} +
+            pendingFreeScrollReentry_->widgetId + L" scroll=" +
+            pendingFreeScrollReentry_->scrollId);
     }
 
     [[nodiscard]] bool HandleRightStickFreeScroll(
@@ -5502,8 +5521,18 @@ private:
         const std::wstring widget{state_.activeWidget()};
         const auto* snapshot = InteractionSnapshotFor(widget);
         const auto* descriptor = sessions_.FindDescriptor(widget);
-        if (!snapshot || !descriptor || sessions_.Failure(widget) ||
-            focusedElementId_.empty()) {
+        if (!descriptor || sessions_.Failure(widget) || focusedElementId_.empty()) {
+            ClearFreeScrollReentry(L"missing-authority");
+            return false;
+        }
+        if (!snapshot) {
+            if (FreeScrollBindingMatchesRetainedRefresh(widget, descriptor)) {
+                SetFreeScrollRefreshDeferred(true);
+                // RefreshRetained is visual-only authority. Preserve the
+                // binding and consume held-stick motion, but never scroll or
+                // re-enter focus until a Current snapshot validates it again.
+                return sample.moving;
+            }
             ClearFreeScrollReentry(L"missing-authority");
             return false;
         }
@@ -5512,6 +5541,8 @@ private:
                 *pendingFreeScrollReentry_, widget, *snapshot, descriptor)) {
             ClearFreeScrollReentry(L"authority-changed");
         }
+        if (pendingFreeScrollReentry_)
+            SetFreeScrollRefreshDeferred(false);
         if (!sample.moving) {
             if (sample.returnedToDeadZone && pendingFreeScrollReentry_) {
                 AppendDiagnostic(
@@ -5597,11 +5628,23 @@ private:
         const std::wstring widget{state_.activeWidget()};
         const auto* snapshot = InteractionSnapshotFor(widget);
         const auto* descriptor = sessions_.FindDescriptor(widget);
-        if (!snapshot || !FreeScrollBindingMatches(
+        if (!snapshot) {
+            if (FreeScrollBindingMatchesRetainedRefresh(widget, descriptor)) {
+                SetFreeScrollRefreshDeferred(true);
+                // Do not execute the directional event against inert retained
+                // semantics. Keep the pending target for the next Current
+                // snapshot and consume this event without moving focus.
+                return true;
+            }
+            ClearFreeScrollReentry(L"stale-reentry");
+            return false;
+        }
+        if (!FreeScrollBindingMatches(
                 *pendingFreeScrollReentry_, widget, *snapshot, descriptor)) {
             ClearFreeScrollReentry(L"stale-reentry");
             return false;
         }
+        SetFreeScrollRefreshDeferred(false);
         const auto binding = *pendingFreeScrollReentry_;
         const auto target = widgetrail::input::FindFreeScrollReentryTarget(
             snapshot->root, binding.scrollId, binding.axis,
@@ -9313,17 +9356,33 @@ private:
                 options.animationTimestampMilliseconds = presentationTime;
                 options.sliderValueOverrides = presentedSliderValues;
                 options.artworkWidgetId = std::wstring{renderedWidget};
-                if (!inertRetainedSnapshot && pendingFreeScrollReentry_ &&
+                const bool matchingFreeScrollBinding =
+                    pendingFreeScrollReentry_ &&
                     renderedWidget == state_.activeWidget() &&
-                    !FreeScrollBindingMatches(
+                    FreeScrollBindingMatches(
                         *pendingFreeScrollReentry_, renderedWidget,
-                        *snapshot, descriptor)) {
+                        *snapshot, descriptor);
+                const bool retainedRefreshFreeScroll =
+                    sessionRetainedSnapshot &&
+                    sessionPresentation.authority ==
+                        widgetrail::WidgetPresentationAuthority::RefreshRetained &&
+                    matchingFreeScrollBinding;
+                if (pendingFreeScrollReentry_ &&
+                    renderedWidget == state_.activeWidget() &&
+                    ((!inertRetainedSnapshot && !matchingFreeScrollBinding) ||
+                     (sessionRetainedSnapshot &&
+                      sessionPresentation.authority ==
+                          widgetrail::WidgetPresentationAuthority::RefreshRetained &&
+                      !matchingFreeScrollBinding))) {
                     ClearFreeScrollReentry(L"render-authority-changed");
                 }
+                if (retainedRefreshFreeScroll)
+                    SetFreeScrollRefreshDeferred(true);
+                else if (!inertRetainedSnapshot && matchingFreeScrollBinding)
+                    SetFreeScrollRefreshDeferred(false);
                 options.suppressFocusedDescendantFollow =
-                    !inertRetainedSnapshot &&
-                    FreeScrollSuppressesFocusFollow(
-                        renderedWidget, *snapshot, descriptor);
+                    matchingFreeScrollBinding &&
+                    (!inertRetainedSnapshot || retainedRefreshFreeScroll);
                 if (!inertRetainedSnapshot) {
                     sliderInteraction_.RetainAdjustmentMode(
                         snapshot->instanceId,
@@ -9828,6 +9887,7 @@ private:
     widgetrail::input::TrayYGesture trayYGesture_;
     widgetrail::input::RightStickScrollKinetics rightStickScrollKinetics_;
     std::optional<PendingFreeScrollReentry> pendingFreeScrollReentry_;
+    bool freeScrollRefreshDeferred_{};
     std::optional<bool> lastForegroundOwnership_;
     long long controllerSequence_{};
     std::wstring lastActionMessage_;
