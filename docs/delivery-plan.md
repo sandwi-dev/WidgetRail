@@ -17,8 +17,19 @@ evidence only; this file is the sole authority for current work.
 - Exact accepted production PID 17212 was built from DLV-264 implementation
   commit `75f1c96`, with SHA-256
   `502720EA82F5764CCD52DD36036D18EF8531D73044063D600568357305692737`.
-  Main contains that accepted production tree. PID 17212 remains running under
-  the tests/docs-only no-relaunch rule.
+  Main contains that accepted production tree. PID 17212 was gracefully closed
+  after exact path verification to stage the unaccepted cumulative DLV-266
+  physical candidate described below.
+- DLV-266 production commit `7235849` is reconciled with current planner main
+  by clean merge `510e01c`. Independent source review found one existing
+  activation channel, window/session owner, placement/composition owner, and
+  bounded foreground-acquisition path. Its tests-skipped Release is visibly
+  running as unaccepted PID 40292 with SHA-256
+  `8AD2AC19CF2E5FE6D27F4EC4F3CE3DA243E4F908A8D7E63B6D8438DFCBAA1847`.
+  Fresh startup elected one production process owner, initialized
+  DirectComposition, and logged no startup error/failure/rejection. User
+  Guide/second-invocation/external-foreground testing is pending; no DLV-266
+  tests or integration are authorized before that verdict.
 - DLV-264 production candidate `75f1c96` changed only
   `WidgetSessionCoordinator.{h,cpp}`. Its coherent tests-skipped Release has
   SHA-256 `502720EA82F5764CCD52DD36036D18EF8531D73044063D600568357305692737`
@@ -117,8 +128,8 @@ user decision. The native overlay is the sole production presentation path.
 
 | Lane | Task/worktree | State |
 | --- | --- | --- |
-| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | Clean and idle at source-review-in-progress DLV-266 production candidate `7235849`. Reconcile accepted main `15a26b9` onto the preserved candidate, rebuild one coherent tests-skipped Release, and stop for planner launch. The previously reported pre-DLV-264 artifact hash is superseded by that required coherent rebuild. The platform queue intentionally contains one evidenced item rather than filler and requires replenishment after its diagnosis. |
-| Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | DLV-264 is accepted and integrated through main `15a26b9`; exact accepted production PID 17212 remains running. Reconcile accepted main and execute assigned DLV-265 in physical-first mode. DLV-248 remains deferred. |
+| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | Clean and idle at cumulative DLV-266 merge `510e01c`. Exact production candidate PID 40292 is visibly running for the user's physical verdict; do not add/run tests or integrate before acceptance. The platform queue intentionally contains one evidenced item rather than filler and requires replenishment after its diagnosis. |
+| Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | DLV-264 is accepted and integrated through main `15a26b9`. DLV-265 production/docs work is active after reconciliation to current planner main; its coherent tests-skipped build is in progress. DLV-248 remains deferred. |
 
 ## Completed planner deliverable — DLV-257: select and freeze WidgetRail identity
 
@@ -446,13 +457,17 @@ add focused deterministic state-decision, idempotent recovery, failure-reporting
 and no-focus-while-hidden coverage. Inspect the exact candidate log; no Tier 3
 unless the implementation changes a shared protocol or process boundary.
 
-Candidate status: the platform lane reports clean production-only commit
-`7235849`, changing `main.cpp`. Its earlier tests-skipped Release SHA-256
-`1A0C7F5D7EC09F1C6DC3851060F17E638C5E74F0ADE510197777D82C1ADBADFB`
-predates accepted DLV-264 and is no longer eligible for launch. Source review is
-in progress. Reconcile accepted main `15a26b9` onto the preserved candidate,
-build one coherent cumulative tests-skipped Release, and stop for planner
-launch/user testing.
+Candidate status: the platform lane produced clean production-only commit
+`7235849`, changing only `main.cpp`, then reconciled current planner main by
+merge `510e01c`. Independent source review found typed before/after diagnostics
+and one idempotent visible-recovery path through the existing placement,
+composition/fallback, transition, and foreground-input owners. The coherent
+tests-skipped Release is visibly running as unaccepted PID 40292 with SHA-256
+`8AD2AC19CF2E5FE6D27F4EC4F3CE3DA243E4F908A8D7E63B6D8438DFCBAA1847`.
+Its fresh session elected one process owner, initialized DirectComposition, and
+logged no startup error/failure/rejection. The user must now verify repeated
+Guide open/close, already-visible second-invocation `--show`, and external
+foreground transitions. Do not add/run tests or integrate before that verdict.
 
 Stop for inability to distinguish a product defect from external z-order state,
 an undocumented Windows API, a new watchdog/process/window/input authority,
@@ -489,7 +504,7 @@ deliberately deferred by user decision and requires explicit promotion.
 | GitHub identity | User-selected owner plus repository/organization availability and optional rename/creation. |
 | DLV-264 | Complete: physically accepted on PID 17212, focused-tested, and integrated through main `15a26b9`. |
 | DLV-265 | Assigned from accepted main `15a26b9`; real Spotify authorization remains a user-owned manual check. |
-| DLV-266 | Reconcile candidate `7235849` onto accepted main `15a26b9`; physical user verdict required before tests. |
+| DLV-266 | Unaccepted cumulative PID 40292 is running from merge `510e01c`; physical Guide, already-visible `--show`, and external-foreground verdict required before tests. |
 | DLV-248 | Deliberately deferred until explicit user promotion. |
 | Avalonia | Failed/cancelled; requires a new explicit user decision. |
 | YT Music catalog cleanup | Approval to remove only inactive, non-selected 0.2.0. |
