@@ -101,6 +101,20 @@ evidence only; this file is the sole authority for current work.
   setup reflow. Keep 0.3.3, the Client ID, and all account state intact; do not
   integrate or add DLV-265 tests until a corrected cumulative candidate is
   physically accepted.
+- DLV-267 production commits `3f1a09e` plus compiler-only correction `7e46f7e`
+  normalize the DirectComposition draw boundary to one physical-pixel raster
+  space while retaining the existing logical scene, incremental renderer, and
+  composition owner. Independent review accepted the two-file production
+  scope (`OverlayCompositionSurface.h`, `main.cpp`). Its coherent tests-skipped
+  Release built successfully with OverlayHost SHA-256
+  `A56A8656030F41CE61FAFFBD3A544E41937718AEC46E55E3BA49C6234CEC94AB`.
+  PID 81628 was first surfaced through authenticated `--show`, then closed
+  normally through its exact verified `WidgetRail.OverlayHost` HWND. Corrected
+  PID 69904 is visibly running from the exact platform-lane artifact. Fresh
+  startup elected one production owner, activated DirectComposition, logged no
+  startup error, and records zero raster-origin error for initial full frames
+  at 125% DPI. Spotify bounded-update physical verification remains pending;
+  no DLV-267 tests or integration are authorized before the user's verdict.
 - DLV-264 production candidate `75f1c96` changed only
   `WidgetSessionCoordinator.{h,cpp}`. Its coherent tests-skipped Release has
   SHA-256 `502720EA82F5764CCD52DD36036D18EF8531D73044063D600568357305692737`
@@ -199,7 +213,7 @@ user decision. The native overlay is the sole production presentation path.
 
 | Lane | Task/worktree | State |
 | --- | --- | --- |
-| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | DLV-266 is physically accepted and integrated through main `cd83b3a`. DLV-267 now owns the reproduced full-versus-bounded Spotify update alignment defect; preserve installed Spotify 0.3.3 and do not add/run tests before the user's corrected physical verdict. |
+| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | DLV-267 production tip `7e46f7e` is clean and idle. Tests-skipped PID 69904 is visibly running against installed Spotify 0.3.3 for the user's stationary-progress-update verdict; do not add/run tests or integrate yet. |
 | Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | Corrected DLV-265 commit `13bd971` is clean and idle. Spotify 0.3.3 remains installed with user state intact; its remaining Setup verdict and tests are paused behind DLV-267. DLV-248 remains deferred. |
 
 ## Completed planner deliverable — DLV-257: select and freeze WidgetRail identity
@@ -546,6 +560,16 @@ snapshot redesign, widget-package changes, a second composition authority,
 substantial conflict, or evidence that the outer surface really moves. Never
 push.
 
+Candidate status: commits `3f1a09e` and `7e46f7e` change only
+`OverlayCompositionSurface.h` and `main.cpp`. The tests-skipped Release built
+successfully and exact PID 69904 is visibly running with OverlayHost SHA-256
+`A56A8656030F41CE61FAFFBD3A544E41937718AEC46E55E3BA49C6234CEC94AB`.
+Initial full frames at 125% DPI report `raster-origin-error=0,0`. Physically
+select Spotify, keep a song playing long enough to produce repeated bounded
+player-strip updates, and confirm that the navigation rail, artwork, metadata,
+scrubber, and controls remain stationary. The planner must then inspect the
+bounded-update raster records before authorizing tests.
+
 ## Assigned platform deliverable — DLV-266: reconcile invisible resident Show activation
 
 Owner/baseline: platform lane after reconciling accepted main `15a26b9` onto
@@ -616,9 +640,10 @@ deliberately deferred by user decision and requires explicit promotion.
 4. DLV-265 packages 0.3.1 and 0.3.2 are physically rejected. Spotify 0.3.3
    corrects their package defects and remains installed with user state intact,
    but cumulative PID 81628 is rejected for the DLV-267 update-origin defect.
-5. DLV-267 now produces the next tests-skipped host candidate against installed
-   Spotify 0.3.3. Resume the remaining DLV-265 Setup verdict only after the
-   widget remains stationary during song-progress updates.
+5. DLV-267 tests-skipped PID 69904 is visibly running against installed Spotify
+   0.3.3. Verify stationary song-progress updates, then inspect its bounded
+   raster-origin evidence before authorizing tests. Resume the remaining
+   DLV-265 Setup verdict only after this physical acceptance.
 6. DLV-248 remains outside this sequence until the user promotes it.
 
 ## Manual, external, and blocked evidence
@@ -632,7 +657,7 @@ deliberately deferred by user decision and requires explicit promotion.
 | GitHub identity | User-selected owner plus repository/organization availability and optional rename/creation. |
 | DLV-264 | Complete: physically accepted on PID 17212, focused-tested, and integrated through main `15a26b9`. |
 | DLV-265 | Spotify 0.3.3 preserves the current Client ID and corrects the two package rejections, but its remaining Setup/account verdict is paused behind DLV-267; do not reset configuration or run tests yet. |
-| DLV-267 | PID 81628 reproduces vertical content movement while fixed outer geometry alternates full and bounded player-strip updates; requires a corrected tests-skipped host and user physical verdict. |
+| DLV-267 | Corrected tests-skipped PID 69904 is visibly running from exact tip `7e46f7e`; requires stationary Spotify song-progress verdict plus bounded-update raster-origin log review before tests. |
 | DLV-266 | Complete: physical Guide, already-visible `--show`, and external-foreground activation accepted on PID 40292; focused tests passed and the chain is integrated through main `cd83b3a`. |
 | DLV-248 | Deliberately deferred until explicit user promotion. |
 | Avalonia | Failed/cancelled; requires a new explicit user decision. |
