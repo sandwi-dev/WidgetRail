@@ -28,8 +28,10 @@ evidence only; this file is the sole authority for current work.
   SDK, CLI/package, WRSS, catalog, Bridge, conformance, and documentation
   evidence. DLV-259 is independently reviewed and accepted as unintegrated
   commit `188cc64`; its native cutover and coherent tests-skipped Release build
-  are complete. The cumulative chain remains unlaunched and must stay
-  serialized through DLV-260.
+  are complete. DLV-260 Phase A is independently source/output reviewed as the
+  corrected two-commit implementation `70af468` plus `85a021a`. Its exact
+  tests-skipped Release is visibly running as PID 34364 for the user's verdict;
+  the cumulative chain remains unintegrated.
 - DLV-248 remains deliberately deferred by the user.
 - The user selected the new display identity **WidgetRail** and tagline
   **WidgetRail — a controller-first widget platform for Windows.** On
@@ -106,7 +108,7 @@ user decision. The native overlay is the sole production presentation path.
 
 | Lane | Task/worktree | State |
 | --- | --- | --- |
-| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | DLV-259 accepted at `188cc64` on the clean serialized WidgetRail branch. Assigned production-first DLV-260 Phase A on that exact cumulative chain: residue/output cleanup and coherent tests-skipped Release only. Do not run or repair tests before the user's visible verdict. DLV-248 remains deferred. |
+| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | Clean at corrected DLV-260 Phase A commits `70af468` plus `85a021a`. Exact reviewed Release SHA-256 `1E816334FD5B48ABB9449CB66FEA66CE0A93E14E8DFECEB259FE6C1753BE503D` is visibly running as PID 34364 for the user's verdict. Do not run or repair tests before acceptance. DLV-248 remains deferred. |
 | Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | Clean at accepted DLV-258 commit `5b924f4` on `codex/impl-widgets-widgetrail-managed-identity`. Hold this exact accepted evidence; the platform lane is the single serialized DLV-260 lead. Do not start new work. |
 
 ## Completed planner deliverable — DLV-257: select and freeze WidgetRail identity
@@ -273,6 +275,19 @@ Execution and acceptance are explicitly physical-first:
    evidence. If the only final delta is tests/docs, retain the already accepted
    running Release rather than rebuilding or relaunching it.
 
+Phase A candidate result: implementation commit `70af468` completed the active
+production/public residue and generated-output cleanup and built one coherent
+tests-skipped Release. It was initially rejected for also editing two
+reviewer-owned documents; correction commit `85a021a` restores those paths
+exactly without changing production. Independent cumulative review passes
+`git diff --check`, finds no retired identity in active production source, and
+confirms `OverlayHost.exe` SHA-256
+`1E816334FD5B48ABB9449CB66FEA66CE0A93E14E8DFECEB259FE6C1753BE503D`.
+The exact candidate is visibly running as PID 34364 from the isolated Phase A
+Release root. Fresh `%LOCALAPPDATA%\WidgetRail` startup elected one process
+owner, admitted Settings, and logged no startup error. Await the user's visible
+verdict before any test repair, Tier 3, or integration.
+
 Stop for unresolved old active identity, external Store/repository/domain
 action, credential need, destructive cleanup outside validated generated
 outputs, any old-root access, unexplained package residue, substantial conflict,
@@ -319,10 +334,10 @@ deliberately deferred by user decision and requires explicit promotion.
 
 1. DLV-257 is complete: the user approved all four decisions on 2026-08-17 and
    the exact contract is frozen.
-2. DLV-258 is accepted at `5b924f4` and DLV-259 is accepted at `188cc64`; the
-   cumulative chain remains unintegrated/unlaunched.
-3. Complete DLV-260 Phase A residue/output work and one coherent tests-skipped
-   Release, then launch it for the user's visible verdict.
+2. DLV-258 is accepted at `5b924f4` and DLV-259 is accepted at `188cc64`; both
+   remain unintegrated and are included in the running DLV-260 candidate.
+3. DLV-260 Phase A is source/output reviewed at corrected commits `70af468` plus
+   `85a021a`; exact Release PID 34364 is awaiting the user's visible verdict.
 4. After that verdict, repair/disposition the two disclosed test routes and run
    the one exact Tier-3 checkpoint.
 5. Integrate the complete accepted chain only after that evidence.
