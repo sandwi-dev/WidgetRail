@@ -216,7 +216,7 @@ user decision. The native overlay is the sole production presentation path.
 
 | Lane | Task/worktree | State |
 | --- | --- | --- |
-| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | DLV-267 production tip `7e46f7e` is clean and physically accepted. PID 69904 remains the accepted candidate. Add and run only focused full/bounded raster-origin mapping regression coverage, commit the test-only follow-up separately, and stop for review; do not integrate or relaunch. |
+| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | DLV-267 production tip `7e46f7e` is clean and physically accepted. PID 69904 remains the accepted candidate. Add and run only focused full/bounded raster-origin mapping regression coverage, commit the test-only follow-up separately, and stop for review; do not integrate or relaunch. DLV-268 right-stick free scrolling is Ready next after accepted DLV-267 integration. |
 | Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | Corrected DLV-265 commit `13bd971` is clean and idle. Spotify 0.3.3 remains installed with user state intact; its remaining Setup verdict and tests are paused behind DLV-267. DLV-248 remains deferred. |
 
 ## Completed planner deliverable — DLV-257: select and freeze WidgetRail identity
@@ -578,6 +578,59 @@ unchanged, run only the directly affected renderer/composition suite once,
 commit the test-only follow-up separately, and stop for planner review. Do not
 integrate, rebuild, relaunch, broaden into Spotify behavior, or run Tier 3.
 
+## Ready platform deliverable — DLV-268: right-stick free scrolling and focus re-entry
+
+Owner/baseline: platform lane after accepted DLV-267 production and focused
+tests are integrated. Keep the feature inside the existing controller-input,
+declarative Scroll, retained offset, clipping, focus graph, and accessibility
+owners. Do not add widget-specific handling, a second focus/scroll authority,
+or a public snapshot/protocol change.
+
+For every host-rendered scrollable interface, use the right analog stick to
+scroll the active viewport quickly without changing the selected/focused
+element. Apply a dead zone and bounded continuous rate proportional to stick
+deflection so a held full deflection traverses long collections quickly while
+small intentional movement remains controllable. Vertical stick movement owns
+vertical Scroll nodes; horizontal movement owns horizontal Scroll nodes. For a
+nested surface, the deepest eligible scroll ancestor of the current focus owns
+the gesture. If that ancestor cannot scroll farther in the requested direction,
+fall back only through the existing ancestor chain; do not move focus or route
+the gesture to widget actions.
+
+When right-stick scrolling actually changes an offset, retain semantic focus
+on its prior element, clip any offscreen focus visual normally, and mark only
+that scroll viewport for one-time focus re-entry. Suppress focused-descendant
+follow while the right stick is moving. Returning the stick to its dead zone
+ends free scrolling but must not immediately re-enable focus-follow, because
+the old offscreen focus would pull the viewport back to its starting position.
+Instead, retain a pending re-entry state without moving focus or viewport. The
+next directional D-pad or left-stick navigation event is consumed to move focus
+to the first fully visible enabled focus target in that viewport: topmost for a
+vertical surface and leading-most for a horizontal surface. If no target is
+fully visible, use the first partially visible enabled target. That successful
+re-entry clears the pending state and restores ordinary directional navigation
+and focus-follow. Clear pending re-entry without moving focus when the
+view/widget/input scope changes, the scroll container disappears, a pointer/UIA
+action establishes focus, or no offset change occurred. Do not let provider
+refresh, responsive reflow, collection-anchor reconciliation, or an unrelated
+nested viewport redirect the pending target.
+
+Acceptance follows physical-first ordering. Implement production behavior and
+bounded diagnostics, source-review the generic ownership/lifecycle paths, and
+build one coherent tests-skipped Release. The user verifies fast vertical and
+horizontal scrolling, focus stationarity during the right-stick gesture,
+one-event re-entry at the visible leading item, ordinary navigation afterward,
+nested viewport ownership, scroll boundaries, and compact/wide layouts. Only
+after the user's visible/controller verdict add focused deterministic input,
+dead-zone/rate, retained-offset, nested-owner, re-entry, invalidation, and
+accessibility coverage. No Tier 3 is required unless the implementation changes
+a shared ABI or protocol.
+
+Stop for a required public widget contract change, a second input/focus/scroll
+owner, ambiguous nested-surface authority that the existing ancestor graph
+cannot resolve, undocumented controller APIs, substantial conflict, or
+evidence that a non-host-rendered application surface is in scope. Never push.
+
 ## Assigned platform deliverable — DLV-266: reconcile invisible resident Show activation
 
 Owner/baseline: platform lane after reconciling accepted main `15a26b9` onto
@@ -652,7 +705,9 @@ deliberately deferred by user decision and requires explicit promotion.
    Spotify 0.3.3, with zero raster-origin error across full and bounded updates.
    Complete the focused test-only follow-up and independent review before
    integration. The remaining DLV-265 Setup verdict may resume afterward.
-6. DLV-248 remains outside this sequence until the user promotes it.
+6. DLV-268 is Ready for the platform lane after accepted DLV-267 integration:
+   right-stick free scrolling plus deterministic visible-leading focus re-entry.
+7. DLV-248 remains outside this sequence until the user promotes it.
 
 ## Manual, external, and blocked evidence
 
@@ -666,6 +721,7 @@ deliberately deferred by user decision and requires explicit promotion.
 | DLV-264 | Complete: physically accepted on PID 17212, focused-tested, and integrated through main `15a26b9`. |
 | DLV-265 | Spotify 0.3.3 preserves the current Client ID and corrects the two package rejections, but its remaining Setup/account verdict is paused behind DLV-267; do not reset configuration or run tests yet. |
 | DLV-267 | Physical verdict and bounded-update log review are complete on PID 69904: 422 Spotify paints, 97 bounded commits, 430 zero-error raster-origin records, and no real session failure. Focused test-only follow-up is authorized before integration. |
+| DLV-268 | Requires a tests-skipped physical controller candidate after DLV-267 integration, then vertical/horizontal, nested-scroll, boundary, and one-event focus re-entry verdict before tests. |
 | DLV-266 | Complete: physical Guide, already-visible `--show`, and external-foreground activation accepted on PID 40292; focused tests passed and the chain is integrated through main `cd83b3a`. |
 | DLV-248 | Deliberately deferred until explicit user promotion. |
 | Avalonia | Failed/cancelled; requires a new explicit user decision. |
