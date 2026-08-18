@@ -5522,7 +5522,10 @@ private:
             }
             return false;
         }
-        if (declarativeMotionActive_ || pendingWidgetPresentationImpact_)
+        // Renderer-local motion can coexist with an exact retained scroll
+        // plan. A pending widget impact cannot: its snapshot/layout authority
+        // has not reached the retained cache that PlanFocusedFreeScroll checks.
+        if (pendingWidgetPresentationImpact_)
             return true;
 
         RECT pendingPaint{};
