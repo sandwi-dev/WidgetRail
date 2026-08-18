@@ -7318,7 +7318,9 @@ private:
         const RECT updateArea,
         const CompositionPaintLayer layer = CompositionPaintLayer::Combined,
         const widgetrail::shell::TrayLayout* trayLayout = nullptr,
-        const widgetrail::declarative::Rect* guideBounds = nullptr) {
+        const widgetrail::declarative::Rect* guideBounds = nullptr,
+        std::optional<widgetrail::CompositionUpdateRasterMapping>*
+            rasterMapping = nullptr) {
         const float interfaceScale = appearanceState_.current()
             ? static_cast<float>(appearanceState_.current()->interfaceScale)
             : 1.0F;
@@ -7327,39 +7329,63 @@ private:
             dpi != 0 ? dpi : 96U, interfaceScale);
         if (!metrics) return;
 
-        // BeginDraw reports both the requested surface rectangle and the
-        // backing-atlas offset in physical pixels. Direct2D draws in DIPs after
-        // SetDpi, while the widget scene is additionally scaled by the host
-        // interface scale. Translate by the difference of those two physical
-        // origins after DPI normalization: the scene coordinate represented
-        // by updateArea.left/top then lands exactly at updateOffset. For a full
-        // update the requested origin is zero, preserving the settled path.
-        const auto updateOffsetDip = widgetrail::NormalizeCompositionUpdateOffset(
-            updateOffset, dpi);
-        const auto requestedOriginDip = widgetrail::NormalizeCompositionUpdateOffset(
-            POINT{updateArea.left, updateArea.top}, dpi);
-        const auto requestedExtentDip = widgetrail::NormalizeCompositionUpdateOffset(
-            POINT{
-                updateArea.right - updateArea.left,
-                updateArea.bottom - updateArea.top},
-            dpi);
-        renderTarget_->SetTransform(D2D1::Matrix3x2F::Identity());
-        renderTarget_->PushAxisAlignedClip(
-            D2D1::RectF(
+        const bool compositionRaster = compositionSurface_.available();
+        std::optional<widgetrail::CompositionUpdateRasterMapping> mapping;
+        D2D1_RECT_F updateClip{};
+        D2D1_POINT_2F sceneTranslation{};
+        float sceneScale = metrics->interfaceScale;
+        if (compositionRaster) {
+            // BeginDraw's guard and atlas offset are physical pixels. Draw the
+            // complete logical scene in a 96-DPI pixel target so full and
+            // bounded updates share one exact raster origin; monitor DPI and
+            // interface scale are represented only by scenePixelsPerDip.
+            mapping = widgetrail::PlanCompositionUpdateRasterMapping(
+                updateArea, updateOffset, metrics->physicalPixelsPerDip);
+            renderTarget_->SetDpi(96.0F, 96.0F);
+            updateClip = D2D1::RectF(
+                static_cast<float>(updateOffset.x),
+                static_cast<float>(updateOffset.y),
+                static_cast<float>(updateOffset.x +
+                    updateArea.right - updateArea.left),
+                static_cast<float>(updateOffset.y +
+                    updateArea.bottom - updateArea.top));
+            sceneScale = mapping->scenePixelsPerDip;
+            sceneTranslation = mapping->sceneTranslationPixels;
+        } else {
+            const auto updateOffsetDip =
+                widgetrail::NormalizeCompositionUpdateOffset(updateOffset, dpi);
+            const auto requestedOriginDip =
+                widgetrail::NormalizeCompositionUpdateOffset(
+                    POINT{updateArea.left, updateArea.top}, dpi);
+            const auto requestedExtentDip =
+                widgetrail::NormalizeCompositionUpdateOffset(
+                    POINT{
+                        updateArea.right - updateArea.left,
+                        updateArea.bottom - updateArea.top},
+                    dpi);
+            updateClip = D2D1::RectF(
                 updateOffsetDip.x,
                 updateOffsetDip.y,
                 updateOffsetDip.x + requestedExtentDip.x,
-                updateOffsetDip.y + requestedExtentDip.y),
+                updateOffsetDip.y + requestedExtentDip.y);
+            sceneTranslation = {
+                updateOffsetDip.x - requestedOriginDip.x,
+                updateOffsetDip.y - requestedOriginDip.y,
+            };
+        }
+        if (rasterMapping) *rasterMapping = mapping;
+        renderTarget_->SetTransform(D2D1::Matrix3x2F::Identity());
+        renderTarget_->PushAxisAlignedClip(
+            updateClip,
             D2D1_ANTIALIAS_MODE_ALIASED);
         renderTarget_->Clear(compositionSurface_.available()
             ? D2D1::ColorF(0.0F, 0.0F, 0.0F, 0.0F)
             : D2DColor(kSafeCanvasFallback));
         renderTarget_->SetTransform(
             D2D1::Matrix3x2F::Scale(
-                metrics->interfaceScale, metrics->interfaceScale) *
+                sceneScale, sceneScale) *
             D2D1::Matrix3x2F::Translation(
-                updateOffsetDip.x - requestedOriginDip.x,
-                updateOffsetDip.y - requestedOriginDip.y));
+                sceneTranslation.x, sceneTranslation.y));
 
         const auto finishUpdate = [&] {
             renderTarget_->SetTransform(D2D1::Matrix3x2F::Identity());
@@ -7418,6 +7444,8 @@ private:
         } stageTiming;
         std::optional<widgetrail::DeclarativeRenderTiming> declarativeTiming;
         std::optional<widgetrail::IncrementalPresentationWork> contentRendererWork;
+        std::optional<widgetrail::CompositionUpdateRasterMapping>
+            contentRasterMapping;
         std::vector<widgetrail::OverlayCompositionSurface::Frame> frames;
         std::optional<widgetrail::shell::RetainedTrayState> trayState;
         std::wstring guideKey;
@@ -8022,9 +8050,15 @@ private:
                     std::chrono::steady_clock::now() - resourcesStarted).count());
         currentCompositionRenderTiming_.reset();
         const auto drawStarted = std::chrono::steady_clock::now();
+        std::optional<widgetrail::CompositionUpdateRasterMapping> rasterMapping;
         DrawCurrentFrame(
             fullWidth, fullHeight, dpi, frame.updateOffset, frame.updateArea,
-            paintLayer, trayLayout, guideBounds);
+            paintLayer, trayLayout, guideBounds,
+            paintLayer == CompositionPaintLayer::Content
+                ? &rasterMapping
+                : nullptr);
+        if (paintLayer == CompositionPaintLayer::Content)
+            set.contentRasterMapping = rasterMapping;
         if (paintLayer == CompositionPaintLayer::Content &&
             currentCompositionRenderTiming_) {
             set.declarativeTiming = currentCompositionRenderTiming_;
@@ -8345,6 +8379,33 @@ private:
                 L" waited=" + (timing.waitedForCompletion ? L"true" : L"false") +
                 L" geometry=unchanged" +
                 SlowCompositionStageDiagnostic(drawMicroseconds, frames);
+            if (frames.contentRasterMapping) {
+                const auto& mapping = *frames.contentRasterMapping;
+                const float errorX = mapping.mappedRequestedOriginPixels.x -
+                    static_cast<float>(mapping.atlasOffsetPixels.x);
+                const float errorY = mapping.mappedRequestedOriginPixels.y -
+                    static_cast<float>(mapping.atlasOffsetPixels.y);
+                diagnostic += L" raster-space=physical-pixels";
+                diagnostic +=
+                    L" raster-request=" +
+                    std::to_wstring(mapping.requestedPixels.left) + L"," +
+                    std::to_wstring(mapping.requestedPixels.top) + L"," +
+                    std::to_wstring(mapping.requestedPixels.right) + L"," +
+                    std::to_wstring(mapping.requestedPixels.bottom) +
+                    L" raster-atlas=" +
+                    std::to_wstring(mapping.atlasOffsetPixels.x) + L"," +
+                    std::to_wstring(mapping.atlasOffsetPixels.y) +
+                    L" raster-scale=" +
+                    std::to_wstring(mapping.scenePixelsPerDip) +
+                    L" raster-logical-origin=" +
+                    std::to_wstring(mapping.requestedLogicalOriginDip.x) + L"," +
+                    std::to_wstring(mapping.requestedLogicalOriginDip.y) +
+                    L" raster-scene-translation=" +
+                    std::to_wstring(mapping.sceneTranslationPixels.x) + L"," +
+                    std::to_wstring(mapping.sceneTranslationPixels.y) +
+                    L" raster-origin-error=" +
+                    std::to_wstring(errorX) + L"," + std::to_wstring(errorY);
+            }
             if (hasCollectionAdmissionSummary) {
                 diagnostic += L" " +
                     frames.declarativeTiming->collectionAdmissionSummary;
