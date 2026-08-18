@@ -544,7 +544,7 @@ static async Task WriteTestFrame<T>(
 
 static async Task FakeServerRejectedBeforeNonce()
 {
-    var pipeName = $"gba-diagnostics-fake-{Guid.NewGuid():N}";
+    var pipeName = $"wrail-diagnostics-fake-{Guid.NewGuid():N}";
     await using var fake = new System.IO.Pipes.NamedPipeServerStream(
         pipeName, System.IO.Pipes.PipeDirection.InOut, 1,
         System.IO.Pipes.PipeTransmissionMode.Byte,
@@ -567,7 +567,7 @@ static async Task FakeServerRejectedBeforeNonce()
 
 static Task SquattedEndpointFailsClosed()
 {
-    var pipeName = $"gba-diagnostics-squatted-{Guid.NewGuid():N}";
+    var pipeName = $"wrail-diagnostics-squatted-{Guid.NewGuid():N}";
     using var squatter = new System.IO.Pipes.NamedPipeServerStream(
         pipeName, System.IO.Pipes.PipeDirection.InOut, 1,
         System.IO.Pipes.PipeTransmissionMode.Byte,
@@ -584,7 +584,7 @@ static Task SquattedEndpointFailsClosed()
 
 static Task ClientTimeoutValidation()
 {
-    const string pipeName = "gba-diagnostics-timeout-validation";
+    const string pipeName = "wrail-diagnostics-timeout-validation";
     var nonce = new string('A', 64);
     Assert.Throws<ArgumentOutOfRangeException>(() =>
         _ = new PlatformDiagnosticsPipeClient(
@@ -689,7 +689,7 @@ file sealed class DiagnosticsHarness : IAsyncDisposable
         Func<string, string, string, string, CancellationToken,
             ValueTask<PlatformWidgetPackageUninstallResult>>? uninstall = null)
     {
-        PipeName = $"gba-diagnostics-test-{Guid.NewGuid():N}";
+        PipeName = $"wrail-diagnostics-test-{Guid.NewGuid():N}";
         _server = new PlatformDiagnosticsPipeServer(
             PipeName, provider, serverTimeout, retry, inspect, clear,
             uninstallInspect, uninstall);

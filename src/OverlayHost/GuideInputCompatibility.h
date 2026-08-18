@@ -8,7 +8,7 @@
 #include <cstdint>
 #include <set>
 
-namespace gba::input {
+namespace widgetrail::input {
 
 /// Pure rising-edge tracker shared by the compatibility adapter and tests.
 class GuideEdgeTracker final {
@@ -62,4 +62,4 @@ private:
     GuideEdgeTracker edges_;
 };
 
-} // namespace gba::input
+} // namespace widgetrail::input

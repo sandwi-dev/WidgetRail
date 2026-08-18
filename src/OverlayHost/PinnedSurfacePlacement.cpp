@@ -9,7 +9,7 @@
 #include <limits>
 #include <utility>
 
-namespace gba::pinned {
+namespace widgetrail::pinned {
 namespace {
 
 constexpr std::size_t kMaximumStoredWidgets = 64;
@@ -314,4 +314,4 @@ bool PinnedPlacementStore::Save(
     return true;
 }
 
-} // namespace gba::pinned
+} // namespace widgetrail::pinned

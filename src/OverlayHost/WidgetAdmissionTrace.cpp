@@ -3,7 +3,7 @@
 #include <algorithm>
 #include <cwctype>
 
-namespace gba {
+namespace widgetrail {
 namespace {
 
 std::wstring_view LifecycleValue(const WidgetLifecycleState value) noexcept {
@@ -407,4 +407,4 @@ void WidgetAdmissionTrace::WriterLoop(const std::stop_token stopToken) {
     }
 }
 
-} // namespace gba
+} // namespace widgetrail

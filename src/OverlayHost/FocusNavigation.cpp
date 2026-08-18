@@ -7,7 +7,7 @@
 #include <tuple>
 #include <vector>
 
-namespace gba::input {
+namespace widgetrail::input {
 namespace {
 
 using declarative::Rect;
@@ -301,4 +301,4 @@ std::optional<std::wstring> FindGeometricFocusTarget(
     return best;
 }
 
-} // namespace gba::input
+} // namespace widgetrail::input

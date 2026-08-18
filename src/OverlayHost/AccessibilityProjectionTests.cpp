@@ -15,7 +15,7 @@ void Check(const bool condition, const char* message) {
     }
 }
 
-gba::accessibility::ProjectionKey Key() {
+widgetrail::accessibility::ProjectionKey Key() {
     return {
         L"music", L"generation-1", L"root", L"play", 9, 0, 3,
         20, 30, 600, 400, 720, 540, 1.5F, 1.0F, 400, false, false,
@@ -25,7 +25,7 @@ gba::accessibility::ProjectionKey Key() {
 } // namespace
 
 int main() {
-    gba::accessibility::ProjectionTracker tracker;
+    widgetrail::accessibility::ProjectionTracker tracker;
     auto key = Key();
     Check(tracker.ShouldCollect(key), "first UIA frame collects");
     tracker.Published(key);

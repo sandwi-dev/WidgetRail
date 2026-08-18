@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.24)
 
-project(GameBarAlternativeOverlayHost LANGUAGES CXX)
+project(WidgetRailOverlayHost LANGUAGES CXX)
 
 set(GAMEINPUT_VERSION "3.5.262")
 set(GAMEINPUT_ROOT "$ENV{USERPROFILE}/.nuget/packages/microsoft.gameinput/${GAMEINPUT_VERSION}")
@@ -8,20 +8,20 @@ if(NOT EXISTS "${GAMEINPUT_ROOT}/native/include/GameInput.h")
     message(FATAL_ERROR "Restore NativeDependencies.csproj before configuring CMake")
 endif()
 
-option(GBA_BUILD_TESTS "Build the dependency-free state-machine tests" ON)
+option(WRAIL_BUILD_TESTS "Build the dependency-free state-machine tests" ON)
 
-set(GBA_TAFFY_MANIFEST "${CMAKE_CURRENT_SOURCE_DIR}/taffy_bridge/Cargo.toml")
-set(GBA_TAFFY_LOCK "${CMAKE_CURRENT_SOURCE_DIR}/taffy_bridge/Cargo.lock")
-set(GBA_TAFFY_TARGET_DIR "${CMAKE_CURRENT_BINARY_DIR}/cargo")
-find_program(GBA_CARGO_EXECUTABLE cargo
+set(WRAIL_TAFFY_MANIFEST "${CMAKE_CURRENT_SOURCE_DIR}/taffy_bridge/Cargo.toml")
+set(WRAIL_TAFFY_LOCK "${CMAKE_CURRENT_SOURCE_DIR}/taffy_bridge/Cargo.lock")
+set(WRAIL_TAFFY_TARGET_DIR "${CMAKE_CURRENT_BINARY_DIR}/cargo")
+find_program(WRAIL_CARGO_EXECUTABLE cargo
     HINTS "$ENV{USERPROFILE}/.cargo/bin"
     REQUIRED)
 
-add_custom_target(GbaTaffyRust
+add_custom_target(WidgetRailTaffyRust
     COMMAND "${CMAKE_COMMAND}" -E env
-        "CARGO_TARGET_DIR=${GBA_TAFFY_TARGET_DIR}"
-        "${GBA_CARGO_EXECUTABLE}" build --locked
-        --manifest-path "${GBA_TAFFY_MANIFEST}"
+        "CARGO_TARGET_DIR=${WRAIL_TAFFY_TARGET_DIR}"
+        "${WRAIL_CARGO_EXECUTABLE}" build --locked
+        --manifest-path "${WRAIL_TAFFY_MANIFEST}"
         --target x86_64-pc-windows-msvc
         $<$<NOT:$<CONFIG:Debug>>:--release>
     WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/taffy_bridge"
@@ -29,20 +29,20 @@ add_custom_target(GbaTaffyRust
     VERBATIM
     COMMAND_EXPAND_LISTS)
 
-add_library(GbaTaffyLayout STATIC IMPORTED GLOBAL)
-set_target_properties(GbaTaffyLayout PROPERTIES
+add_library(WidgetRailTaffyLayout STATIC IMPORTED GLOBAL)
+set_target_properties(WidgetRailTaffyLayout PROPERTIES
     IMPORTED_LOCATION_DEBUG
-        "${GBA_TAFFY_TARGET_DIR}/x86_64-pc-windows-msvc/debug/gba_taffy_layout.lib"
+        "${WRAIL_TAFFY_TARGET_DIR}/x86_64-pc-windows-msvc/debug/wrail_taffy_layout.lib"
     IMPORTED_LOCATION_RELEASE
-        "${GBA_TAFFY_TARGET_DIR}/x86_64-pc-windows-msvc/release/gba_taffy_layout.lib"
+        "${WRAIL_TAFFY_TARGET_DIR}/x86_64-pc-windows-msvc/release/wrail_taffy_layout.lib"
     IMPORTED_LOCATION_RELWITHDEBINFO
-        "${GBA_TAFFY_TARGET_DIR}/x86_64-pc-windows-msvc/release/gba_taffy_layout.lib"
+        "${WRAIL_TAFFY_TARGET_DIR}/x86_64-pc-windows-msvc/release/wrail_taffy_layout.lib"
     IMPORTED_LOCATION_MINSIZEREL
-        "${GBA_TAFFY_TARGET_DIR}/x86_64-pc-windows-msvc/release/gba_taffy_layout.lib")
+        "${WRAIL_TAFFY_TARGET_DIR}/x86_64-pc-windows-msvc/release/wrail_taffy_layout.lib")
 
-function(gba_link_taffy target_name)
-    add_dependencies(${target_name} GbaTaffyRust)
-    target_link_libraries(${target_name} PRIVATE GbaTaffyLayout ntdll userenv ws2_32)
+function(widgetrail_link_taffy target_name)
+    add_dependencies(${target_name} WidgetRailTaffyRust)
+    target_link_libraries(${target_name} PRIVATE WidgetRailTaffyLayout ntdll userenv ws2_32)
 endfunction()
 
 # Widget labels and controller guides intentionally contain non-ASCII source
@@ -126,9 +126,9 @@ target_link_libraries(OverlayHost PRIVATE
     uiautomationcore
     advapi32
 )
-gba_link_taffy(OverlayHost)
+widgetrail_link_taffy(OverlayHost)
 
-if(GBA_BUILD_TESTS)
+if(WRAIL_BUILD_TESTS)
     enable_testing()
     add_executable(WidgetSessionCoordinatorTests
         WidgetSessionCoordinatorTests.cpp WidgetSessionCoordinator.cpp
@@ -145,7 +145,7 @@ if(GBA_BUILD_TESTS)
     target_compile_features(OverlayProcessOwnerTests PRIVATE cxx_std_20)
     target_compile_options(OverlayProcessOwnerTests PRIVATE /W4 /permissive- /EHsc)
     target_compile_definitions(OverlayProcessOwnerTests PRIVATE
-        GBA_OVERLAY_PROCESS_OWNER_TESTING UNICODE _UNICODE WIN32_LEAN_AND_MEAN NOMINMAX)
+        WRAIL_OVERLAY_PROCESS_OWNER_TESTING UNICODE _UNICODE WIN32_LEAN_AND_MEAN NOMINMAX)
     target_link_libraries(OverlayProcessOwnerTests PRIVATE user32 advapi32)
     add_test(NAME OverlayProcessOwnerTests COMMAND OverlayProcessOwnerTests)
 
@@ -168,7 +168,7 @@ if(GBA_BUILD_TESTS)
     add_executable(DeclarativeLayoutTests DeclarativeLayoutTests.cpp DeclarativeLayout.cpp)
     target_compile_features(DeclarativeLayoutTests PRIVATE cxx_std_20)
     target_compile_options(DeclarativeLayoutTests PRIVATE /W4 /permissive- /EHsc)
-    gba_link_taffy(DeclarativeLayoutTests)
+    widgetrail_link_taffy(DeclarativeLayoutTests)
     add_test(NAME DeclarativeLayoutTests COMMAND DeclarativeLayoutTests)
 
     add_executable(NativeIconsTests NativeIconsTests.cpp NativeIcons.cpp)
@@ -226,11 +226,11 @@ if(GBA_BUILD_TESTS)
     target_compile_options(WidgetSurfaceCoordinatorTests PRIVATE /W4 /permissive- /EHsc)
     target_compile_definitions(WidgetSurfaceCoordinatorTests PRIVATE
         UNICODE _UNICODE WIN32_LEAN_AND_MEAN NOMINMAX
-        GBA_WIDGET_SURFACE_COORDINATOR_TESTING)
+        WRAIL_WIDGET_SURFACE_COORDINATOR_TESTING)
     target_link_libraries(WidgetSurfaceCoordinatorTests PRIVATE
         user32 gdi32 d2d1 dwrite shcore winhttp windowscodecs psapi
         ole32 oleaut32 uiautomationcore)
-    gba_link_taffy(WidgetSurfaceCoordinatorTests)
+    widgetrail_link_taffy(WidgetSurfaceCoordinatorTests)
     add_test(NAME WidgetSurfaceCoordinatorTests COMMAND WidgetSurfaceCoordinatorTests)
 
     add_executable(PinnedSurfacePlacementTests
@@ -303,7 +303,7 @@ if(GBA_BUILD_TESTS)
     target_compile_features(WidgetBridgeCatalogTests PRIVATE cxx_std_20)
     target_compile_options(WidgetBridgeCatalogTests PRIVATE /W4 /permissive- /EHsc)
     target_compile_definitions(WidgetBridgeCatalogTests PRIVATE
-        GBA_WIDGET_BRIDGE_CLIENT_TESTING UNICODE _UNICODE WIN32_LEAN_AND_MEAN NOMINMAX)
+        WRAIL_WIDGET_BRIDGE_CLIENT_TESTING UNICODE _UNICODE WIN32_LEAN_AND_MEAN NOMINMAX)
     target_link_libraries(WidgetBridgeCatalogTests PRIVATE windowsapp user32)
     add_test(NAME WidgetBridgeCatalogTests COMMAND WidgetBridgeCatalogTests)
 
@@ -372,10 +372,10 @@ if(GBA_BUILD_TESTS)
     target_compile_features(RealHostAccessibilityTests PRIVATE cxx_std_20)
     target_compile_options(RealHostAccessibilityTests PRIVATE /W4 /permissive- /EHsc)
     target_compile_definitions(RealHostAccessibilityTests PRIVATE
-        GBA_WIDGET_BRIDGE_CLIENT_TESTING UNICODE _UNICODE WIN32_LEAN_AND_MEAN NOMINMAX)
+        WRAIL_WIDGET_BRIDGE_CLIENT_TESTING UNICODE _UNICODE WIN32_LEAN_AND_MEAN NOMINMAX)
     target_link_libraries(RealHostAccessibilityTests PRIVATE
         windowsapp user32 ole32 oleaut32 uiautomationcore d2d1 dwrite winhttp windowscodecs)
-    gba_link_taffy(RealHostAccessibilityTests)
+    widgetrail_link_taffy(RealHostAccessibilityTests)
     add_test(NAME RealHostAccessibilityTests COMMAND RealHostAccessibilityTests)
 
     # Cross-process production-host coverage. This target is invoked by
@@ -470,13 +470,13 @@ if(GBA_BUILD_TESTS)
     target_compile_features(DeclarativeRendererTests PRIVATE cxx_std_20)
     target_compile_options(DeclarativeRendererTests PRIVATE /W4 /permissive- /EHsc)
     target_compile_definitions(DeclarativeRendererTests PRIVATE
-        GBA_DECLARATIVE_RENDERER_TESTING UNICODE _UNICODE WIN32_LEAN_AND_MEAN NOMINMAX)
+        WRAIL_DECLARATIVE_RENDERER_TESTING UNICODE _UNICODE WIN32_LEAN_AND_MEAN NOMINMAX)
     target_link_libraries(DeclarativeRendererTests PRIVATE d2d1 dwrite winhttp windowscodecs ole32)
-    gba_link_taffy(DeclarativeRendererTests)
+    widgetrail_link_taffy(DeclarativeRendererTests)
     add_test(NAME DeclarativeRendererTests COMMAND DeclarativeRendererTests)
 
     # Identity-neutral real-widget responsive coverage: a managed YT Music
-    # fixture supplies its semantic snapshot and bridge-computed GBSS styles.
+    # fixture supplies its semantic snapshot and bridge-computed WRSS styles.
     add_executable(YtMusicResponsiveRendererTests
         YtMusicResponsiveRendererTests.cpp WidgetBridgeClient.cpp
         DeclarativeRenderer.cpp DeclarativeLayout.cpp NativeStyle.cpp
@@ -484,11 +484,11 @@ if(GBA_BUILD_TESTS)
     target_compile_features(YtMusicResponsiveRendererTests PRIVATE cxx_std_20)
     target_compile_options(YtMusicResponsiveRendererTests PRIVATE /W4 /permissive- /EHsc)
     target_compile_definitions(YtMusicResponsiveRendererTests PRIVATE
-        GBA_WIDGET_BRIDGE_CLIENT_TESTING GBA_DECLARATIVE_RENDERER_TESTING
+        WRAIL_WIDGET_BRIDGE_CLIENT_TESTING WRAIL_DECLARATIVE_RENDERER_TESTING
         UNICODE _UNICODE WIN32_LEAN_AND_MEAN NOMINMAX)
     target_link_libraries(YtMusicResponsiveRendererTests PRIVATE
         windowsapp user32 d2d1 dwrite winhttp windowscodecs ole32)
-    gba_link_taffy(YtMusicResponsiveRendererTests)
+    widgetrail_link_taffy(YtMusicResponsiveRendererTests)
 
     # Real managed Settings root coverage for the public Preferred-by-Content
     # surface contract. The target consumes a test-generated bridge response.
@@ -499,11 +499,11 @@ if(GBA_BUILD_TESTS)
     target_compile_features(SettingsContentRendererTests PRIVATE cxx_std_20)
     target_compile_options(SettingsContentRendererTests PRIVATE /W4 /permissive- /EHsc)
     target_compile_definitions(SettingsContentRendererTests PRIVATE
-        GBA_WIDGET_BRIDGE_CLIENT_TESTING GBA_DECLARATIVE_RENDERER_TESTING
+        WRAIL_WIDGET_BRIDGE_CLIENT_TESTING WRAIL_DECLARATIVE_RENDERER_TESTING
         UNICODE _UNICODE WIN32_LEAN_AND_MEAN NOMINMAX)
     target_link_libraries(SettingsContentRendererTests PRIVATE
         windowsapp user32 d2d1 dwrite winhttp windowscodecs ole32)
-    gba_link_taffy(SettingsContentRendererTests)
+    widgetrail_link_taffy(SettingsContentRendererTests)
 
     # Real managed Audio Mixer first-page coverage for generic stretch/flex
     # width consumption. The target consumes a test-generated bridge response.
@@ -514,11 +514,11 @@ if(GBA_BUILD_TESTS)
     target_compile_features(AudioMixerWidthRendererTests PRIVATE cxx_std_20)
     target_compile_options(AudioMixerWidthRendererTests PRIVATE /W4 /permissive- /EHsc)
     target_compile_definitions(AudioMixerWidthRendererTests PRIVATE
-        GBA_WIDGET_BRIDGE_CLIENT_TESTING GBA_DECLARATIVE_RENDERER_TESTING
+        WRAIL_WIDGET_BRIDGE_CLIENT_TESTING WRAIL_DECLARATIVE_RENDERER_TESTING
         UNICODE _UNICODE WIN32_LEAN_AND_MEAN NOMINMAX)
     target_link_libraries(AudioMixerWidthRendererTests PRIVATE
         windowsapp user32 d2d1 dwrite winhttp windowscodecs ole32)
-    gba_link_taffy(AudioMixerWidthRendererTests)
+    widgetrail_link_taffy(AudioMixerWidthRendererTests)
 
     # Real managed Network NotScanned first-page coverage for authored vertical
     # admission and constrained focus reveal.
@@ -529,11 +529,11 @@ if(GBA_BUILD_TESTS)
     target_compile_features(NetworkFirstPageRendererTests PRIVATE cxx_std_20)
     target_compile_options(NetworkFirstPageRendererTests PRIVATE /W4 /permissive- /EHsc)
     target_compile_definitions(NetworkFirstPageRendererTests PRIVATE
-        GBA_WIDGET_BRIDGE_CLIENT_TESTING GBA_DECLARATIVE_RENDERER_TESTING
+        WRAIL_WIDGET_BRIDGE_CLIENT_TESTING WRAIL_DECLARATIVE_RENDERER_TESTING
         UNICODE _UNICODE WIN32_LEAN_AND_MEAN NOMINMAX)
     target_link_libraries(NetworkFirstPageRendererTests PRIVATE
         windowsapp user32 d2d1 dwrite winhttp windowscodecs ole32)
-    gba_link_taffy(NetworkFirstPageRendererTests)
+    widgetrail_link_taffy(NetworkFirstPageRendererTests)
 
     add_executable(LauncherExperienceTests
         LauncherExperienceTests.cpp LauncherExperienceLayout.cpp LauncherExperienceAdapter.cpp
@@ -545,10 +545,10 @@ if(GBA_BUILD_TESTS)
     target_compile_features(LauncherExperienceTests PRIVATE cxx_std_20)
     target_compile_options(LauncherExperienceTests PRIVATE /W4 /permissive- /EHsc)
     target_compile_definitions(LauncherExperienceTests PRIVATE
-        GBA_DECLARATIVE_RENDERER_TESTING UNICODE _UNICODE WIN32_LEAN_AND_MEAN NOMINMAX)
+        WRAIL_DECLARATIVE_RENDERER_TESTING UNICODE _UNICODE WIN32_LEAN_AND_MEAN NOMINMAX)
     target_link_libraries(LauncherExperienceTests PRIVATE
         d2d1 dwrite winhttp windowscodecs ole32)
-    gba_link_taffy(LauncherExperienceTests)
+    widgetrail_link_taffy(LauncherExperienceTests)
     add_test(NAME LauncherExperienceTests COMMAND LauncherExperienceTests)
 
     add_executable(SemanticChurnPerformanceTests
@@ -558,10 +558,10 @@ if(GBA_BUILD_TESTS)
     target_compile_features(SemanticChurnPerformanceTests PRIVATE cxx_std_20)
     target_compile_options(SemanticChurnPerformanceTests PRIVATE /W4 /permissive- /EHsc)
     target_compile_definitions(SemanticChurnPerformanceTests PRIVATE
-        GBA_DECLARATIVE_RENDERER_TESTING UNICODE _UNICODE WIN32_LEAN_AND_MEAN NOMINMAX)
+        WRAIL_DECLARATIVE_RENDERER_TESTING UNICODE _UNICODE WIN32_LEAN_AND_MEAN NOMINMAX)
     target_link_libraries(SemanticChurnPerformanceTests PRIVATE
         d2d1 dwrite winhttp windowscodecs ole32 psapi)
-    gba_link_taffy(SemanticChurnPerformanceTests)
+    widgetrail_link_taffy(SemanticChurnPerformanceTests)
     add_test(NAME SemanticChurnPerformanceTests COMMAND SemanticChurnPerformanceTests)
 
     add_executable(SharedComponentGeometryTests
@@ -570,10 +570,10 @@ if(GBA_BUILD_TESTS)
     target_compile_features(SharedComponentGeometryTests PRIVATE cxx_std_20)
     target_compile_options(SharedComponentGeometryTests PRIVATE /W4 /permissive- /EHsc)
     target_compile_definitions(SharedComponentGeometryTests PRIVATE
-        GBA_DECLARATIVE_RENDERER_TESTING UNICODE _UNICODE WIN32_LEAN_AND_MEAN NOMINMAX)
+        WRAIL_DECLARATIVE_RENDERER_TESTING UNICODE _UNICODE WIN32_LEAN_AND_MEAN NOMINMAX)
     target_link_libraries(SharedComponentGeometryTests PRIVATE
         d2d1 dwrite winhttp windowscodecs ole32)
-    gba_link_taffy(SharedComponentGeometryTests)
+    widgetrail_link_taffy(SharedComponentGeometryTests)
     add_test(NAME SharedComponentGeometryTests COMMAND SharedComponentGeometryTests)
 
     add_executable(RemoteImageCacheTests

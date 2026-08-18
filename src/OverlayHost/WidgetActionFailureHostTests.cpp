@@ -172,7 +172,7 @@ public:
                 "--installation does not contain runtime");
         Require(fs::is_regular_file(fixtureWorker),
                 "--fixture-worker does not name a file");
-        gba::host_testing::ValidateNativeRuntimeDependencies(source);
+        widgetrail::host_testing::ValidateNativeRuntimeDependencies(source);
 
         wchar_t temporaryRoot[MAX_PATH + 1]{};
         const DWORD temporaryRootLength = GetTempPathW(MAX_PATH, temporaryRoot);
@@ -192,7 +192,7 @@ public:
         }
         fs::create_directories(root_);
         fs::copy_file(source / L"OverlayHost.exe", root_ / L"OverlayHost.exe");
-        gba::host_testing::CopyNativeRuntimeDependencies(source, root_);
+        widgetrail::host_testing::CopyNativeRuntimeDependencies(source, root_);
         fs::copy(source / L"runtime", root_ / L"runtime",
                  fs::copy_options::recursive | fs::copy_options::copy_symlinks);
         localAppData_ = root_ / L"local-app-data";
@@ -535,9 +535,9 @@ Arguments ParseArguments(const int argc, wchar_t** argv) {
 }
 
 void Run(const Arguments& arguments) {
-    Require(!gba::host_testing::PathContainsDirectory(arguments.installation),
+    Require(!widgetrail::host_testing::PathContainsDirectory(arguments.installation),
             "Fixture PATH must not contain the admitted installation directory");
-    gba::host_testing::VerifyNativeRuntimeDependencyPolicy(arguments.installation);
+    widgetrail::host_testing::VerifyNativeRuntimeDependencyPolicy(arguments.installation);
     TemporaryInstallation installation(arguments.installation, arguments.fixtureWorker);
     HostProcess host(
         installation.Root(), installation.LocalAppData(), installation.ProcessProfile());

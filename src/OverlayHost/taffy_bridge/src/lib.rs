@@ -94,7 +94,7 @@ pub struct NodeOutput {
 }
 
 #[unsafe(no_mangle)]
-pub extern "C" fn gba_taffy_abi_version() -> u32 {
+pub extern "C" fn wrail_taffy_abi_version() -> u32 {
     ABI_VERSION
 }
 
@@ -435,7 +435,7 @@ fn compute_impl(
 /// aligned ABI records and remain valid for this synchronous call. `outputs`
 /// must be uniquely writable. The callback and its context, when supplied,
 /// must remain valid and must not unwind across the C ABI.
-pub unsafe extern "C" fn gba_taffy_compute(
+pub unsafe extern "C" fn wrail_taffy_compute(
     nodes: *const NodeInput,
     node_count: usize,
     children: *const u32,
@@ -492,7 +492,7 @@ mod tests {
         assert_eq!(core::mem::size_of::<MeasureInput>(), 32);
         assert_eq!(core::mem::size_of::<MeasuredSize>(), 8);
         assert_eq!(core::mem::size_of::<NodeOutput>(), 40);
-        assert_eq!(gba_taffy_abi_version(), 2);
+        assert_eq!(wrail_taffy_abi_version(), 2);
     }
 
     #[test]

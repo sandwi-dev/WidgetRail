@@ -25,8 +25,8 @@ namespace fs = std::filesystem;
 
 namespace {
 
-constexpr wchar_t kFixtureClass[] = L"GbaPinnedSurfaceFeasibilityFixture";
-constexpr wchar_t kMainClass[] = L"GbaPinnedSurfaceMainOverlayFixture";
+constexpr wchar_t kFixtureClass[] = L"WidgetRailPinnedSurfaceFeasibilityFixture";
+constexpr wchar_t kMainClass[] = L"WidgetRailPinnedSurfaceMainOverlayFixture";
 constexpr UINT kAccessibilityActionMessage = WM_APP + 0x115;
 constexpr auto kIdleObservation = std::chrono::milliseconds(750);
 constexpr std::size_t kSemanticUpdates = 256;
@@ -46,7 +46,7 @@ void Check(const bool condition, const std::string_view message) {
 struct FixtureWindowState final {
     bool clickThrough{true};
     HBRUSH background{};
-    gba::accessibility::ProviderHost* provider{};
+    widgetrail::accessibility::ProviderHost* provider{};
 };
 
 LRESULT CALLBACK MainWindowProc(
@@ -138,35 +138,35 @@ LRESULT CALLBACK FixtureWindowProc(
     return count == 0 ? 1 : count;
 }
 
-[[nodiscard]] gba::accessibility::Tree BuildAccessibilityTree(
-    const gba::pinned::SurfacePolicy& policy) {
-    gba::accessibility::Tree tree;
+[[nodiscard]] widgetrail::accessibility::Tree BuildAccessibilityTree(
+    const widgetrail::pinned::SurfacePolicy& policy) {
+    widgetrail::accessibility::Tree tree;
     tree.widgetId = L"host.pinned.feasibility";
     tree.runtimeGeneration = L"host-owned";
     tree.snapshotSequence = 1;
     tree.name = L"WidgetRail pinned surface";
     for (const auto& semantic : policy.ProjectSemantics()) {
-        gba::accessibility::Node node;
+        widgetrail::accessibility::Node node;
         node.id = semantic.id;
         node.name = semantic.name;
         node.value = semantic.value;
-        node.domain = gba::accessibility::ElementDomain::HostShell;
+        node.domain = widgetrail::accessibility::ElementDomain::HostShell;
         node.role = node.id.ends_with(L"heading")
-            ? gba::accessibility::Role::Heading
-            : gba::accessibility::Role::Status;
+            ? widgetrail::accessibility::Role::Heading
+            : widgetrail::accessibility::Role::Status;
         node.keyboardFocusable = semantic.keyboardFocusable;
-        node.bounds = node.role == gba::accessibility::Role::Heading
-            ? gba::declarative::Rect{16.0F, 16.0F, 448.0F, 64.0F}
-            : gba::declarative::Rect{16.0F, 96.0F, 448.0F, 48.0F};
+        node.bounds = node.role == widgetrail::accessibility::Role::Heading
+            ? widgetrail::declarative::Rect{16.0F, 16.0F, 448.0F, 64.0F}
+            : widgetrail::declarative::Rect{16.0F, 96.0F, 448.0F, 48.0F};
         tree.nodes.push_back(std::move(node));
     }
     return tree;
 }
 
 void PublishAccessibility(
-    gba::accessibility::ProviderHost& provider,
-    const gba::pinned::SurfacePolicy& policy,
-    const gba::pinned::ResolvedPlacement& placement) {
+    widgetrail::accessibility::ProviderHost& provider,
+    const widgetrail::pinned::SurfacePolicy& policy,
+    const widgetrail::pinned::ResolvedPlacement& placement) {
     const auto width = placement.bounds.right - placement.bounds.left;
     const auto height = placement.bounds.bottom - placement.bounds.top;
     provider.Publish(
@@ -241,56 +241,56 @@ void WriteEvidence(const fs::path& destination, const Measurement& result) {
 }
 
 void TestPolicyAndPlacement() {
-    using gba::pinned::ControllerCommand;
-    gba::pinned::ControllerInputContext controller;
-    Check(gba::pinned::ResolveControllerCommand(controller) == ControllerCommand::None,
+    using widgetrail::pinned::ControllerCommand;
+    widgetrail::pinned::ControllerInputContext controller;
+    Check(widgetrail::pinned::ResolveControllerCommand(controller) == ControllerCommand::None,
           "unpinned controller input has no pinned-surface route");
     controller.pinned = true;
     controller.sameWidgetOpen = true;
     controller.rightStickPressed = true;
-    Check(gba::pinned::ResolveControllerCommand(controller) == ControllerCommand::Enter,
+    Check(widgetrail::pinned::ResolveControllerCommand(controller) == ControllerCommand::Enter,
           "right-stick click explicitly enters the current pinned surface");
     controller.controllerFocused = true;
     controller.rightStickPressed = false;
     controller.aPressed = true;
-    Check(gba::pinned::ResolveControllerCommand(controller) == ControllerCommand::Activate,
+    Check(widgetrail::pinned::ResolveControllerCommand(controller) == ControllerCommand::Activate,
           "A activates only through the focused pinned owner");
     controller.aPressed = false;
     controller.bPressed = true;
-    Check(gba::pinned::ResolveControllerCommand(controller) == ControllerCommand::Exit,
+    Check(widgetrail::pinned::ResolveControllerCommand(controller) == ControllerCommand::Exit,
           "B deterministically returns pinned focus to the overlay");
     controller.bPressed = false;
     controller.xPressed = true;
-    Check(gba::pinned::ResolveControllerCommand(controller) == ControllerCommand::Close,
+    Check(widgetrail::pinned::ResolveControllerCommand(controller) == ControllerCommand::Close,
           "X closes only while the pinned surface owns controller focus");
     controller.leftShoulderDown = true;
     controller.rightShoulderDown = true;
-    Check(gba::pinned::ResolveControllerCommand(controller) ==
+    Check(widgetrail::pinned::ResolveControllerCommand(controller) ==
               ControllerCommand::EmergencyHide,
           "LB plus RB plus X resolves to the global emergency hide authority");
     controller.placementActive = true;
     controller.xPressed = false;
     controller.bPressed = true;
-    Check(gba::pinned::ResolveControllerCommand(controller) == ControllerCommand::None,
+    Check(widgetrail::pinned::ResolveControllerCommand(controller) == ControllerCommand::None,
           "placement mode retains exclusive A/B controller ownership");
 
     const auto clickThroughPresentation =
-        gba::pinned::ResolveSurfacePresentationPolicy(
-            gba::pinned::InteractionMode::ClickThrough);
+        widgetrail::pinned::ResolveSurfacePresentationPolicy(
+            widgetrail::pinned::InteractionMode::ClickThrough);
     const auto interactivePresentation =
-        gba::pinned::ResolveSurfacePresentationPolicy(
-            gba::pinned::InteractionMode::Focusable);
+        widgetrail::pinned::ResolveSurfacePresentationPolicy(
+            widgetrail::pinned::InteractionMode::Focusable);
     Check(clickThroughPresentation.content ==
-              gba::pinned::ContentPresentation::AdmittedWidget &&
+              widgetrail::pinned::ContentPresentation::AdmittedWidget &&
               !clickThroughPresentation.exposeInteractiveSemantics,
           "click-through preserves admitted content while withholding actions");
     Check(interactivePresentation.content ==
-              gba::pinned::ContentPresentation::AdmittedWidget &&
+              widgetrail::pinned::ContentPresentation::AdmittedWidget &&
               interactivePresentation.exposeInteractiveSemantics,
           "interactive mode preserves the same content and exposes actions");
 
-    gba::pinned::SurfacePolicy policy;
-    Check(policy.state() == gba::pinned::LifecycleState::Unpinned,
+    widgetrail::pinned::SurfacePolicy policy;
+    Check(policy.state() == widgetrail::pinned::LifecycleState::Unpinned,
           "policy begins unpinned");
     Check(!policy.Pin({}), "empty declarative descriptor is rejected");
     Check(policy.Pin({L"feasibility.surface", L"Pinned feasibility surface"}),
@@ -298,53 +298,53 @@ void TestPolicyAndPlacement() {
     Check(policy.descriptor()->reducedMotion,
           "placeholder defaults to reduced motion with no ambient animation");
     policy.OnMainOverlayHidden();
-    Check(policy.state() == gba::pinned::LifecycleState::Pinned,
+    Check(policy.state() == widgetrail::pinned::LifecycleState::Pinned,
           "hiding the main overlay does not destroy the pinned policy");
-    policy.SetInteractionMode(gba::pinned::InteractionMode::Focusable);
+    policy.SetInteractionMode(widgetrail::pinned::InteractionMode::Focusable);
     Check(policy.ProjectSemantics()[1].keyboardFocusable,
           "focusable mode is exposed by host-owned semantics");
-    policy.Stop(gba::pinned::StopReason::Unpin);
-    Check(policy.state() == gba::pinned::LifecycleState::Unpinned &&
+    policy.Stop(widgetrail::pinned::StopReason::Unpin);
+    Check(policy.state() == widgetrail::pinned::LifecycleState::Unpinned &&
           !policy.descriptor(), "unpin converges on no surface authority");
     Check(policy.Pin({L"feasibility.surface", L"Pinned feasibility surface"}),
           "surface may be pinned again");
-    policy.Stop(gba::pinned::StopReason::HostExit);
-    Check(policy.state() == gba::pinned::LifecycleState::Stopped &&
+    policy.Stop(widgetrail::pinned::StopReason::HostExit);
+    Check(policy.state() == widgetrail::pinned::LifecycleState::Stopped &&
           !policy.descriptor(), "host exit converges on stopped cleanup");
     Check(policy.Pin({L"feasibility.surface", L"Pinned feasibility surface"}),
           "surface may be recreated by a live host");
-    policy.Stop(gba::pinned::StopReason::CrashRecovery);
-    Check(policy.state() == gba::pinned::LifecycleState::Stopped &&
+    policy.Stop(widgetrail::pinned::StopReason::CrashRecovery);
+    Check(policy.state() == widgetrail::pinned::LifecycleState::Stopped &&
           !policy.descriptor(), "crash recovery never restores stale window authority");
 
-    const std::vector<gba::pinned::MonitorWorkArea> landscape{
+    const std::vector<widgetrail::pinned::MonitorWorkArea> landscape{
         {L"primary", {0, 0, 1920, 1040}, 96, true},
         {L"secondary", {-2560, 0, 0, 1400}, 144, false},
     };
-    const auto saved = gba::pinned::ResolvePlacement(
-        landscape, gba::pinned::PersistedPlacement{L"secondary", 80, 90, 480, 270});
+    const auto saved = widgetrail::pinned::ResolvePlacement(
+        landscape, widgetrail::pinned::PersistedPlacement{L"secondary", 80, 90, 480, 270});
     Check(saved && saved->monitorId == L"secondary" && !saved->usedFallback,
           "persisted placement resolves on its current monitor and DPI");
     Check(saved->bounds.left >= -2560 && saved->bounds.right <= 0 &&
           saved->bounds.top >= 0 && saved->bounds.bottom <= 1400,
           "mixed-DPI persisted placement stays inside its work area");
 
-    const std::vector<gba::pinned::MonitorWorkArea> rotated{
+    const std::vector<widgetrail::pinned::MonitorWorkArea> rotated{
         {L"primary", {0, 0, 1080, 1880}, 120, true},
     };
-    const auto missing = gba::pinned::ResolvePlacement(
-        rotated, gba::pinned::PersistedPlacement{L"secondary", 2200, -50, 4000, 1});
+    const auto missing = widgetrail::pinned::ResolvePlacement(
+        rotated, widgetrail::pinned::PersistedPlacement{L"secondary", 2200, -50, 4000, 1});
     Check(missing && missing->usedFallback && missing->monitorId == L"primary",
           "monitor loss falls back to the primary work area");
     Check(missing->bounds.left >= 0 && missing->bounds.right <= 1080 &&
           missing->bounds.top >= 0 && missing->bounds.bottom <= 1880,
           "rotation and hot-plug fallback remains fully bounded");
-    const auto malformed = gba::pinned::ResolvePlacement(
-        rotated, gba::pinned::PersistedPlacement{
+    const auto malformed = widgetrail::pinned::ResolvePlacement(
+        rotated, widgetrail::pinned::PersistedPlacement{
             L"primary", std::numeric_limits<float>::quiet_NaN(), 0, -1, 0});
     Check(malformed && malformed->usedFallback,
           "invalid persisted coordinates converge on the host default");
-    Check(!gba::pinned::ResolvePlacement({}, std::nullopt),
+    Check(!widgetrail::pinned::ResolvePlacement({}, std::nullopt),
           "no valid monitor fails closed without inventing a rectangle");
 }
 
@@ -376,19 +376,19 @@ Measurement TestRealHostWindow(const fs::path& evidencePath) {
     Check(monitor && GetMonitorInfoW(monitor, &monitorInfo),
           "primary monitor work area is available");
     const UINT dpi = GetDpiForWindow(mainWindow);
-    const std::vector<gba::pinned::MonitorWorkArea> monitors{
+    const std::vector<widgetrail::pinned::MonitorWorkArea> monitors{
         {L"fixture-primary",
          {monitorInfo.rcWork.left, monitorInfo.rcWork.top,
           monitorInfo.rcWork.right, monitorInfo.rcWork.bottom},
          dpi == 0 ? 96U : dpi, true},
     };
-    const auto placement = gba::pinned::ResolvePlacement(monitors, std::nullopt);
+    const auto placement = widgetrail::pinned::ResolvePlacement(monitors, std::nullopt);
     Check(placement.has_value(), "live work-area placement resolves");
 
-    gba::pinned::SurfacePolicy policy;
+    widgetrail::pinned::SurfacePolicy policy;
     Check(policy.Pin({L"feasibility.surface", L"Pinned feasibility surface"}),
           "live fixture pins the data-only surface");
-    gba::accessibility::ProviderHost provider;
+    widgetrail::accessibility::ProviderHost provider;
     FixtureWindowState state;
     state.background = CreateSolidBrush(RGB(36, 65, 90));
     state.provider = &provider;
@@ -444,7 +444,7 @@ Measurement TestRealHostWindow(const fs::path& evidencePath) {
     mainWindow = nullptr;
     Check(IsWindow(pinned), "destroying the transient main fixture does not orphan ownership");
 
-    policy.SetInteractionMode(gba::pinned::InteractionMode::Focusable);
+    policy.SetInteractionMode(widgetrail::pinned::InteractionMode::Focusable);
     state.clickThrough = false;
     const auto focusableStyles = static_cast<LONG_PTR>(styles &
         ~(WS_EX_NOACTIVATE | WS_EX_TRANSPARENT));
@@ -465,8 +465,8 @@ Measurement TestRealHostWindow(const fs::path& evidencePath) {
     for (std::size_t index = 0; index < kSemanticUpdates; ++index) {
         const auto started = std::chrono::steady_clock::now();
         policy.SetInteractionMode(index % 2 == 0
-            ? gba::pinned::InteractionMode::ClickThrough
-            : gba::pinned::InteractionMode::Focusable);
+            ? widgetrail::pinned::InteractionMode::ClickThrough
+            : widgetrail::pinned::InteractionMode::Focusable);
         const auto semantics = policy.ProjectSemantics();
         const auto ended = std::chrono::steady_clock::now();
         Check(semantics.size() == 2 && semantics[0].id == L"host.pinned.heading" &&
@@ -497,7 +497,7 @@ Measurement TestRealHostWindow(const fs::path& evidencePath) {
     Check(privateDelta <= static_cast<long long>(kMaterialPrivateWorkingSetBytes),
           "pinned window increment remains within the DLV-016 material memory gate");
 
-    policy.Stop(gba::pinned::StopReason::Unpin);
+    policy.Stop(widgetrail::pinned::StopReason::Unpin);
     provider.Clear();
     provider.Detach();
     DestroyWindow(pinned);

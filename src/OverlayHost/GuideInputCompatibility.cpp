@@ -3,7 +3,7 @@
 #include <array>
 #include <filesystem>
 
-namespace gba::input {
+namespace widgetrail::input {
 namespace {
 
 constexpr WORD kGuideButtonBit = 0x0400;
@@ -93,4 +93,4 @@ std::uint8_t XInputGuideCompatibility::PollRisingEdges() noexcept {
     return edges_.Update(pressed);
 }
 
-} // namespace gba::input
+} // namespace widgetrail::input

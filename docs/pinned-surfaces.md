@@ -112,7 +112,7 @@ its own deployment/runtime contract; adopting it requires planner authority.
 Persisted placement is data, not window authority: schema version, monitor
 stable ID, normalized work-area X/Y anchors, and logical width/height in DIPs.
 The host atomically replaces
-`%LOCALAPPDATA%\GameBarAlternative\pinned-surface-placement.ini`; at most 64
+`%LOCALAPPDATA%\WidgetRail\pinned-surface-placement.ini`; at most 64
 bounded widget records are accepted. Resolution follows one deterministic rule:
 
 1. use the recorded monitor only when its work area and effective DPI are

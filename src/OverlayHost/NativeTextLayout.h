@@ -7,7 +7,7 @@
 
 #include <string_view>
 
-namespace gba {
+namespace widgetrail {
 
 enum class NativeTextVerticalAlignment {
     Start,
@@ -46,4 +46,4 @@ struct NativeTextLayoutPlan final {
     float maximumWidth,
     float maximumHeight);
 
-} // namespace gba
+} // namespace widgetrail

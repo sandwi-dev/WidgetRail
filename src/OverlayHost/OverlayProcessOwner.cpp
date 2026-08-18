@@ -11,7 +11,7 @@
 #include <utility>
 #include <vector>
 
-namespace gba::process {
+namespace widgetrail::process {
 namespace {
 
 constexpr std::uint32_t kRequestMagic = 0x41424747;
@@ -165,7 +165,7 @@ bool ValidProcessProfile(const std::wstring_view profile) noexcept {
         });
 }
 
-#ifdef GBA_OVERLAY_PROCESS_OWNER_TESTING
+#ifdef WRAIL_OVERLAY_PROCESS_OWNER_TESTING
 OverlayProcessOwner::ObjectNamesForTests OverlayProcessOwner::NamesForTests(
     const std::wstring_view profile) {
     const auto sid = CurrentUserSid();
@@ -515,4 +515,4 @@ void OverlayProcessOwner::Stop() noexcept {
     serverReadyOk_.store(false);
 }
 
-} // namespace gba::process
+} // namespace widgetrail::process

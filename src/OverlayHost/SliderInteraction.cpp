@@ -4,7 +4,7 @@
 #include <cmath>
 #include <limits>
 
-namespace gba::input {
+namespace widgetrail::input {
 namespace {
 
 bool Near(const double first, const double second, const double scale) noexcept {
@@ -404,4 +404,4 @@ std::vector<SliderPresentationIdentity> SliderInteractionState::DeactivateAll() 
     return changed;
 }
 
-} // namespace gba::input
+} // namespace widgetrail::input

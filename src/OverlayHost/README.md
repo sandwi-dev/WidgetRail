@@ -41,7 +41,7 @@ Visible controls:
   toggles and F5 restarts the current tray/open widget through its recovery path
 
 The widget order and last activated widget are atomically persisted under
-`%LOCALAPPDATA%\GameBarAlternative`. B returning from the placeholder widget is
+`%LOCALAPPDATA%\WidgetRail`. B returning from the placeholder widget is
 the widget's own sample action, not a host-reserved binding. Normal controller
 buttons use a visibility-scoped GameInput read lease while the overlay is open.
 Confirmed foreground ownership adds GameInput exclusivity; denied activation

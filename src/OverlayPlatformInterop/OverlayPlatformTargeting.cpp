@@ -1,6 +1,6 @@
 #include "../OverlayHost/OverlayTargeting.h"
 
-namespace gba {
+namespace widgetrail {
 
 void ForegroundTargetTracker::SetOwnedWindows(
     const std::uintptr_t overlay,
@@ -30,4 +30,4 @@ std::uintptr_t ForegroundTargetTracker::Resolve(
         : fallback;
 }
 
-} // namespace gba
+} // namespace widgetrail

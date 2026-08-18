@@ -13,14 +13,14 @@ void Check(bool condition, const char* message) {
 void Near(double actual, double expected, const char* message) {
     Check(std::abs(actual - expected) < 1e-9, message);
 }
-gba::input::SliderInputDescriptor Slider(double value = 0.0) {
+widgetrail::input::SliderInputDescriptor Slider(double value = 0.0) {
     return {L"runtime-1", L"root", L"volume", L"volume.changed", 1,
             -1.0, 1.0, value, 0.3, false, false};
 }
 }
 
 int main() {
-    using namespace gba::input;
+    using namespace widgetrail::input;
     SliderInteractionState state;
     auto slider = Slider();
     auto presentationRevision = state.presentationRevision();

@@ -243,7 +243,7 @@ static Task StrictCatalogRejectsUnknownProperties()
 
 static Task DevelopmentCatalogRootIsScoped()
 {
-    using var temporary = new TemporaryDirectory("gba-bridge-dev-root");
+    using var temporary = new TemporaryDirectory("wrail-bridge-dev-root");
     var settings = Path.Combine(temporary.Path, "settings");
     var development = Path.Combine(temporary.Path, "development-catalog");
     Assert.Equal(Path.GetFullPath(development),
@@ -308,7 +308,7 @@ static async Task SettingsUsesSelectedCatalog()
         id: "settings",
         packageId: "widgetrail.firstparty.settings",
         publisherId: "widgetrail.firstparty");
-    using var temporary = new TemporaryDirectory("gba-settings-selected-catalog");
+    using var temporary = new TemporaryDirectory("wrail-settings-selected-catalog");
     var selected = Path.Combine(temporary.Path, "selected-widgets");
     var load = await BridgeCatalog.LoadWithInstalledAsync(
         trusted.Path, selected, Environment.ProcessPath!);
@@ -408,7 +408,7 @@ static async Task ProtectedWifiProductionDispatchIsZeroed()
     var network = new ProtectedWifiNetworkBackend();
     var simulator = new SimulatedPlatformBrokerBackend();
     await using var composite = new CompositePlatformBrokerBackend(simulator, network);
-    var pipeName = $"gba-bridge-protected-{Guid.NewGuid():N}";
+    var pipeName = $"wrail-bridge-protected-{Guid.NewGuid():N}";
     await using var server = new WidgetBridgeServer(
         pipeName, catalog, 64 * 1024, platformBackend: composite);
     var serverTask = server.RunAsync(TimeSpan.FromSeconds(3));
@@ -483,7 +483,7 @@ static async Task DiagnosticsAreSettingsOnly()
 
 static async Task MediaSessionDiagnosticsAreBounded()
 {
-    using var temporary = new TemporaryDirectory("gba-media-diagnostics");
+    using var temporary = new TemporaryDirectory("wrail-media-diagnostics");
     var path = System.IO.Path.Combine(temporary.Path, "overlay.log");
     await using (var diagnostics = new MediaSessionsDiagnosticLog(path))
     {
@@ -854,7 +854,7 @@ static async Task TrustedArtworkDemandIsExact()
             PlatformCapabilities.AppLibraryReadV1,
             PlatformCapabilities.AppLibraryLaunchV1,
         ]);
-    using var consentFiles = new TemporaryDirectory("gba-artwork-consent");
+    using var consentFiles = new TemporaryDirectory("wrail-artwork-consent");
     var identity = new BrokerWidgetIdentity(
         "dev.test.widget", "dev.test", "artwork.instance");
     var consent = new ConsentStore(consentFiles.Path);
@@ -881,7 +881,7 @@ static async Task TrustedArtworkDemandIsExact()
         return new AppLibraryIconSummary(png);
     };
     var catalog = BridgeCatalog.Load(catalogFiles.Path);
-    var pipeName = $"gba-bridge-artwork-{Guid.NewGuid():N}";
+    var pipeName = $"wrail-bridge-artwork-{Guid.NewGuid():N}";
     await using var server = new WidgetBridgeServer(
         pipeName, catalog, 64 * 1024, consentStore: consent, platformBackend: backend);
     var serverTask = server.RunAsync(TimeSpan.FromSeconds(3));
@@ -1224,7 +1224,7 @@ static async Task StalledAdmissionKeepsControlPlaneResponsive()
 {
     if (!OperatingSystem.IsWindows()) return;
     var fixture = new StalledAdmissionFixture();
-    var pipeName = $"gba-bridge-stalled-{Guid.NewGuid():N}";
+    var pipeName = $"wrail-bridge-stalled-{Guid.NewGuid():N}";
     await using var server = new WidgetBridgeServer(pipeName, fixture.Catalog, 64 * 1024);
     using var serverShutdown = new CancellationTokenSource();
     var serverTask = server.RunAsync(TimeSpan.FromSeconds(3), serverShutdown.Token);
@@ -1306,7 +1306,7 @@ static async Task DuplicatePendingRequestIdsFailClosed()
 {
     if (!OperatingSystem.IsWindows()) return;
     var fixture = new StalledAdmissionFixture();
-    var pipeName = $"gba-bridge-duplicate-{Guid.NewGuid():N}";
+    var pipeName = $"wrail-bridge-duplicate-{Guid.NewGuid():N}";
     await using var server = new WidgetBridgeServer(pipeName, fixture.Catalog, 64 * 1024);
     var serverTask = server.RunAsync(TimeSpan.FromSeconds(3));
     await using var connection = await RawBridgeConnection.ConnectAsync(pipeName);
@@ -1364,7 +1364,7 @@ static async Task PipelinedWidgetRequestsStayOrdered()
 static async Task InstalledWidgetsJoinCatalog()
 {
     using var trusted = TemporaryCatalog.Create();
-    using var temporary = new TemporaryDirectory("gba-bridge-installed");
+    using var temporary = new TemporaryDirectory("wrail-bridge-installed");
     var catalogRoot = Path.Combine(temporary.Path, "catalog");
     var catalog = new WidgetRail.WidgetCatalog.WidgetCatalog(catalogRoot);
     await InstallWidgetAsync(
@@ -1448,7 +1448,7 @@ static async Task InstalledWidgetsJoinCatalog()
 
 static async Task InstalledAdvancedPresentationDeclarationsAreGeneric()
 {
-    using var temporary = new TemporaryDirectory("gba-advanced-presentation");
+    using var temporary = new TemporaryDirectory("wrail-advanced-presentation");
     using var trusted = TemporaryCatalog.Create();
     var installedRoot = Path.Combine(temporary.Path, "installed");
     var catalog = new WidgetRail.WidgetCatalog.WidgetCatalog(installedRoot);
@@ -1489,7 +1489,7 @@ static async Task InstalledAdvancedPresentationDeclarationsAreGeneric()
 static async Task InstalledLaunchAdmissionRejectsRace()
 {
     using var trusted = TemporaryCatalog.Create();
-    using var temporary = new TemporaryDirectory("gba-bridge-launch-race");
+    using var temporary = new TemporaryDirectory("wrail-bridge-launch-race");
     var catalogRoot = Path.Combine(temporary.Path, "catalog");
     var catalog = new WidgetRail.WidgetCatalog.WidgetCatalog(catalogRoot);
     await InstallWidgetAsync(
@@ -1514,7 +1514,7 @@ static async Task InstalledLaunchAdmissionRejectsRace()
 static async Task InstalledContentGenerationIsIsolated()
 {
     using var trusted = TemporaryCatalog.Create();
-    using var temporary = new TemporaryDirectory("gba-bridge-content-generation");
+    using var temporary = new TemporaryDirectory("wrail-bridge-content-generation");
     var catalogRoot = Path.Combine(temporary.Path, "catalog");
     var catalog = new WidgetRail.WidgetCatalog.WidgetCatalog(catalogRoot);
     await InstallWidgetAsync(
@@ -1550,7 +1550,7 @@ static async Task InstalledContentGenerationIsIsolated()
 static async Task InstalledResidencyPolicyIsCarried()
 {
     using var trusted = TemporaryCatalog.Create();
-    using var temporary = new TemporaryDirectory("gba-bridge-installed-residency");
+    using var temporary = new TemporaryDirectory("wrail-bridge-installed-residency");
     var catalogRoot = Path.Combine(temporary.Path, "catalog");
     var catalog = new WidgetRail.WidgetCatalog.WidgetCatalog(catalogRoot);
     await InstallWidgetAsync(
@@ -1575,7 +1575,7 @@ static async Task InstalledResidencyPolicyIsCarried()
 static async Task InstalledCapabilityDeclarationsAreClosed()
 {
     using var trusted = TemporaryCatalog.Create();
-    using var temporary = new TemporaryDirectory("gba-bridge-capabilities");
+    using var temporary = new TemporaryDirectory("wrail-bridge-capabilities");
     var catalogRoot = Path.Combine(temporary.Path, "catalog");
     var catalog = new WidgetRail.WidgetCatalog.WidgetCatalog(catalogRoot);
     await InstallWidgetAsync(
@@ -1640,7 +1640,7 @@ static async Task InstalledCapabilityDeclarationsAreClosed()
 
 static async Task PrivateStateAuthorityIsHostSynthesized()
 {
-    using var temporary = new TemporaryDirectory("gba-bridge-state-authority");
+    using var temporary = new TemporaryDirectory("wrail-bridge-state-authority");
     var context = new WidgetProcessCompanionContext(
         WidgetWorkerIsolationPolicy.HostTrustedJobOnly, null, null);
     await using var companion = new BrokerWidgetProcessCompanion(
@@ -1662,7 +1662,7 @@ static async Task PrivateStateAuthorityIsHostSynthesized()
 static async Task InstalledWorkerLocalDataClearIsExact()
 {
     using var trusted = TemporaryCatalog.Create();
-    using var temporary = new TemporaryDirectory("gba-bridge-local-data");
+    using var temporary = new TemporaryDirectory("wrail-bridge-local-data");
     var catalogRoot = Path.Combine(temporary.Path, "catalog");
     var catalog = new WidgetRail.WidgetCatalog.WidgetCatalog(catalogRoot);
     var selected = await InstallWidgetAsync(
@@ -1695,7 +1695,7 @@ static async Task InstalledWorkerLocalDataClearIsExact()
     await backend.WritePrivateStateAsync(
         neighborIdentity, new WritePrivateStateRequest(encoded, null), CancellationToken.None);
 
-    var pipeName = $"gba-bridge-local-data-{Guid.NewGuid():N}";
+    var pipeName = $"wrail-bridge-local-data-{Guid.NewGuid():N}";
     await using var monitor = new BridgeCatalogMonitor(
         trusted.Path, catalogRoot, Environment.ProcessPath!, load.Catalog);
     await using var server = new WidgetBridgeServer(
@@ -1775,7 +1775,7 @@ static async Task InstalledWorkerLocalDataClearIsExact()
 static async Task InstalledPackageUninstallIsExact()
 {
     using var trusted = TemporaryCatalog.Create();
-    using var temporary = new TemporaryDirectory("gba-bridge-uninstall");
+    using var temporary = new TemporaryDirectory("wrail-bridge-uninstall");
     var catalogRoot = Path.Combine(temporary.Path, "catalog");
     var catalog = new WidgetRail.WidgetCatalog.WidgetCatalog(catalogRoot);
     var selected = await InstallWidgetAsync(
@@ -1794,7 +1794,7 @@ static async Task InstalledPackageUninstallIsExact()
     await using var monitor = new BridgeCatalogMonitor(
         trusted.Path, catalogRoot, Environment.ProcessPath!, load.Catalog);
     await using var server = new WidgetBridgeServer(
-        $"gba-bridge-uninstall-{Guid.NewGuid():N}", load.Catalog, 64 * 1024,
+        $"wrail-bridge-uninstall-{Guid.NewGuid():N}", load.Catalog, 64 * 1024,
         catalogMonitor: monitor);
 
     var inspection = await server.InspectWidgetPackageUninstallAsync(selected.Manifest.Id);
@@ -1846,7 +1846,7 @@ static async Task InstalledPackageUninstallIsExact()
 static async Task TamperedInstalledCatalogFailsSoft()
 {
     using var trusted = TemporaryCatalog.Create();
-    using var temporary = new TemporaryDirectory("gba-bridge-tampered");
+    using var temporary = new TemporaryDirectory("wrail-bridge-tampered");
     var catalogRoot = Path.Combine(temporary.Path, "catalog");
     var catalog = new WidgetRail.WidgetCatalog.WidgetCatalog(catalogRoot);
     var installed = await InstallWidgetAsync(
@@ -1864,7 +1864,7 @@ static async Task TamperedInstalledCatalogFailsSoft()
 static async Task InvalidInstalledStyleFailsSoft()
 {
     using var trusted = TemporaryCatalog.Create();
-    using var temporary = new TemporaryDirectory("gba-bridge-invalid-style");
+    using var temporary = new TemporaryDirectory("wrail-bridge-invalid-style");
     var catalogRoot = Path.Combine(temporary.Path, "catalog");
     var catalog = new WidgetRail.WidgetCatalog.WidgetCatalog(catalogRoot);
     await InstallWidgetAsync(
@@ -1882,7 +1882,7 @@ static async Task InvalidInstalledStyleFailsSoft()
 static async Task CatalogMonitorIsRevisionedAndLastGood()
 {
     using var trusted = TemporaryCatalog.Create();
-    using var temporary = new TemporaryDirectory("gba-bridge-live-catalog");
+    using var temporary = new TemporaryDirectory("wrail-bridge-live-catalog");
     var catalogRoot = Path.Combine(temporary.Path, "catalog");
     var catalog = new WidgetRail.WidgetCatalog.WidgetCatalog(catalogRoot);
     await InstallWidgetAsync(catalog, temporary.Path, "dev.example.alpha", enabled: true);
@@ -1959,7 +1959,7 @@ static async Task CatalogMonitorIsRevisionedAndLastGood()
 static async Task InstalledPackageTamperRetiresLiveWorker()
 {
     using var trusted = TemporaryCatalog.Create();
-    using var temporary = new TemporaryDirectory("gba-bridge-tamper-retire");
+    using var temporary = new TemporaryDirectory("wrail-bridge-tamper-retire");
     var catalogRoot = Path.Combine(temporary.Path, "catalog");
     var catalog = new WidgetRail.WidgetCatalog.WidgetCatalog(catalogRoot);
     var installed = await InstallWidgetAsync(
@@ -1968,7 +1968,7 @@ static async Task InstalledPackageTamperRetiresLiveWorker()
         trusted.Path, catalogRoot, Environment.ProcessPath!);
     await using var monitor = new BridgeCatalogMonitor(
         trusted.Path, catalogRoot, Environment.ProcessPath!, initial.Catalog);
-    var pipeName = $"gba-bridge-tamper-{Guid.NewGuid():N}";
+    var pipeName = $"wrail-bridge-tamper-{Guid.NewGuid():N}";
     await using var server = new WidgetBridgeServer(
         pipeName, initial.Catalog, 64 * 1024, catalogMonitor: monitor);
     var serverTask = server.RunAsync(TimeSpan.FromSeconds(3));
@@ -2039,7 +2039,7 @@ static async Task CatalogMonitorStartupCatchUp()
 {
     using var trusted = TemporaryCatalog.Create(name: "Before Watch");
     using var changed = TemporaryCatalog.Create(name: "Changed Before Watch");
-    using var temporary = new TemporaryDirectory("gba-bridge-catalog-catch-up");
+    using var temporary = new TemporaryDirectory("wrail-bridge-catalog-catch-up");
     var catalogRoot = Path.Combine(temporary.Path, "catalog");
     var initial = await BridgeCatalog.LoadWithInstalledAsync(
         trusted.Path, catalogRoot, Environment.ProcessPath!);
@@ -2114,7 +2114,7 @@ static async Task CatalogReconciliationPreservesCompatibleWorkers()
 
 static async Task LocalPackageImportIsDisabledRevisionedAndPathFree()
 {
-    using var root = new TemporaryDirectory("gba-local-package-import");
+    using var root = new TemporaryDirectory("wrail-local-package-import");
     using var trusted = TemporaryCatalog.Create(
         id: "settings",
         packageId: "widgetrail.firstparty.settings",
@@ -2163,7 +2163,7 @@ static async Task LocalPackageImportIsDisabledRevisionedAndPathFree()
 
 static async Task LocalPackageImportFailuresPreserveCatalog()
 {
-    using var root = new TemporaryDirectory("gba-local-package-failures");
+    using var root = new TemporaryDirectory("wrail-local-package-failures");
     var installedRoot = Path.Combine(root.Path, "catalog");
     var catalog = new WidgetRail.WidgetCatalog.WidgetCatalog(installedRoot);
     var origin = new BridgeLocalWidgetPackageOrigin(
@@ -2866,7 +2866,7 @@ static async Task ManagedPresentationSessionPreservesSandboxedAuthority()
 {
     using var temporary = TemporaryCatalog.Create();
     var catalog = BridgeCatalog.Load(temporary.Path);
-    var pipeName = $"gba-session-sandboxed-{Guid.NewGuid():N}";
+    var pipeName = $"wrail-session-sandboxed-{Guid.NewGuid():N}";
     await using var server = new WidgetBridgeServer(pipeName, catalog, 64 * 1024);
     var serverTask = server.RunAsync(TimeSpan.FromSeconds(3));
     var session = await WidgetPresentationSession.ConnectAsync(
@@ -2987,7 +2987,7 @@ static async Task ManagedPresentationSessionPreservesSandboxedAuthority()
 
 static async Task ManagedPresentationSessionPreservesFullTrustRuntime()
 {
-    using var temporary = new TemporaryDirectory("gba-session-full-trust");
+    using var temporary = new TemporaryDirectory("wrail-session-full-trust");
     var repositoryRoot = FindRepositoryRoot();
     var fixtureOutput = Path.Combine(
         repositoryRoot,
@@ -3026,7 +3026,7 @@ static async Task ManagedPresentationSessionPreservesFullTrustRuntime()
     var configured = load.Catalog.GetConfigured(installed.Id);
     Assert.Equal(WidgetExecutionTrust.FullTrustCurrentUser, configured.ExecutionTrust);
 
-    var pipeName = $"gba-session-full-trust-{Guid.NewGuid():N}";
+    var pipeName = $"wrail-session-full-trust-{Guid.NewGuid():N}";
     await using var server = new WidgetBridgeServer(pipeName, load.Catalog, 64 * 1024);
     var serverTask = server.RunAsync(TimeSpan.FromSeconds(3));
     var session = await WidgetPresentationSession.ConnectAsync(
@@ -3714,7 +3714,7 @@ file sealed class TemporaryCatalog : IDisposable
     {
         if (widgets.Count == 0) throw new ArgumentException("At least one widget is required.", nameof(widgets));
         var directory = System.IO.Path.Combine(
-            System.IO.Path.GetTempPath(), $"gba-bridge-tests-{Guid.NewGuid():N}");
+            System.IO.Path.GetTempPath(), $"wrail-bridge-tests-{Guid.NewGuid():N}");
         Directory.CreateDirectory(directory);
         var path = System.IO.Path.Combine(directory, "widgets.json");
         var stylesDirectory = System.IO.Path.Combine(directory, "styles");
@@ -3804,7 +3804,7 @@ file sealed class BridgeHarness : IAsyncDisposable
         {
             if (withAppearance) appearance = await TemporaryAppearance.CreateAsync();
             var catalog = BridgeCatalog.Load(temporary.Path);
-            var pipeName = $"gba-bridge-test-{Guid.NewGuid():N}";
+            var pipeName = $"wrail-bridge-test-{Guid.NewGuid():N}";
             var server = new WidgetBridgeServer(pipeName, catalog, 64 * 1024, appearance?.Service);
             var serverTask = server.RunAsync(TimeSpan.FromSeconds(3));
             var client = await BridgeTestClient.ConnectAsync(pipeName, 64 * 1024);
@@ -3826,7 +3826,7 @@ file sealed class BridgeHarness : IAsyncDisposable
         try
         {
             var catalog = BridgeCatalog.Load(temporary.Path);
-            var pipeName = $"gba-bridge-budget-{Guid.NewGuid():N}";
+            var pipeName = $"wrail-bridge-budget-{Guid.NewGuid():N}";
             var server = new WidgetBridgeServer(
                 pipeName,
                 catalog,
@@ -3884,7 +3884,7 @@ file sealed class TemporaryAppearance : IAsyncDisposable
 
     public static async Task<TemporaryAppearance> CreateAsync()
     {
-        var directory = Path.Combine(Path.GetTempPath(), $"gba-bridge-appearance-{Guid.NewGuid():N}");
+        var directory = Path.Combine(Path.GetTempPath(), $"wrail-bridge-appearance-{Guid.NewGuid():N}");
         var paths = new PlatformSettingsPaths(directory);
         var themeDirectory = Path.Combine(paths.ThemesDirectory, "dev.example.bridge", "1.0.0");
         Directory.CreateDirectory(themeDirectory);

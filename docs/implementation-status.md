@@ -3151,9 +3151,9 @@ with C++ installed:
   82/82, and the documentation contract across 59 Markdown files.
 
 - Latest overlay initialization error:
-  `%LOCALAPPDATA%\GameBarAlternative\startup-error.log`
+  `%LOCALAPPDATA%\WidgetRail\startup-error.log`
 - Overlay order/last-widget state:
-  `%LOCALAPPDATA%\GameBarAlternative\overlay-state.ini`
+  `%LOCALAPPDATA%\WidgetRail\overlay-state.ini`
 - Input-probe logs: timestamped in the launch directory by default, or the
   explicit `--log` path.
 
@@ -5487,3 +5487,45 @@ Settings-worker, and generic-worker outputs are present and exact build-output
 hashes match the packaged copies. Retired Game Launcher, Spotify playback-host,
 and YT Music runtime directories are absent. No launch, Tier 3, live-state
 access, publication, integration, or push was performed.
+
+### DLV-260 Phase A — active WidgetRail residue and generated-output closure
+
+The active production, developer-tool, script, example, notice, publication,
+and nonhistorical documentation surfaces now use the frozen WidgetRail identity.
+The private native namespace is now `widgetrail::`; native/private build
+identities were completed as `WidgetRailOverlayPlatform*` and
+`wrail_taffy_layout`. Current verification and test-owned random pipe, scratch,
+and temporary-directory prefixes use `wrail-`. Current sample and CLI paths use
+`%LOCALAPPDATA%\WidgetRail`, and active style-language references use WRSS.
+These are identity-only cutovers: no compatibility endpoint, legacy reader,
+migration, public protocol, provider, or runtime behavior was added.
+
+The remaining tracked old-name matches are classified and retained deliberately:
+immutable history and the closed Avalonia experiment; reviewer-owned control
+documents and the frozen identity contract; stable `GBA-###` issue identifiers;
+accurate negative assertions and the explicit record that the untouched old
+local-data root must never be accessed; opaque third-party/test package IDs such
+as `org.gbar.tests.*`; and deletion-only sentinels that remove stale generated
+`gbar.scenarios.json.template` and `default.gbss` files. No unexplained active
+production or public identity remains.
+
+One coherent isolated Release build ran with
+`src\OverlayHost\build.ps1 -Configuration Release -SkipTests`, serialized
+MSBuild node reuse disabled, and tests skipped. It exited zero and produced
+`OverlayHost.exe` SHA-256
+`1E816334FD5B48ABB9449CB66FEA66CE0A93E14E8DFECEB259FE6C1753BE503D`.
+The packaged Bridge, protocol, Settings worker, and generic worker exactly match
+their fresh build outputs. Runtime groups are Audio Mixer, Bridge, Games & Apps,
+Media Sessions, Network Controls, Settings, and Widget Worker Host; retired Game
+Launcher, Spotify playback-host, and YT Music runtime directories are absent,
+as are old-name strings and retired provider assemblies. The renamed Taffy
+output is `wrail_taffy_layout.lib`. The six existing native `C4244` warnings in
+`main.cpp` remain.
+
+No tests ran in Phase A. The pre-existing Release-only unchecked-assert defect
+in `WidgetBridgeCatalogTests` and the disclosed Widget Runtime seventh-case hang
+remain deferred to the post-visible-acceptance phase exactly as assigned. The
+accepted DLV-263 process was not stopped or relaunched. No live local state,
+credentials, provider data, installed applications, or the old
+`%LOCALAPPDATA%\GameBarAlternative` root was inspected or modified, and no
+launch, Tier 3, publication, integration, or push was performed.

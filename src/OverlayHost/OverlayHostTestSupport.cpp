@@ -10,7 +10,7 @@
 #include <iterator>
 #include <stdexcept>
 
-namespace gba::host_testing {
+namespace widgetrail::host_testing {
 
 void Handle::Reset(HANDLE value) noexcept {
     if (*this) CloseHandle(value_);
@@ -364,4 +364,4 @@ void SendKeyDownAndPostRelease(HWND window, const WPARAM virtualKey) {
             Win32Error("PostMessageW(WM_KEYUP)"));
 }
 
-} // namespace gba::host_testing
+} // namespace widgetrail::host_testing

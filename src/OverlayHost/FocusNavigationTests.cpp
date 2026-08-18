@@ -16,7 +16,7 @@ void Check(const bool condition, const char* message) {
     }
 }
 
-void Add(gba::RenderResult& result, std::wstring id, gba::declarative::Rect rect,
+void Add(widgetrail::RenderResult& result, std::wstring id, widgetrail::declarative::Rect rect,
          const bool enabled = true, std::wstring scope = L"root") {
     result.focusScopes[id] = std::move(scope);
     result.focusRects[id] = rect;
@@ -28,11 +28,11 @@ void Add(gba::RenderResult& result, std::wstring id, gba::declarative::Rect rect
 } // namespace
 
 int main() {
-    using gba::input::FindGeometricFocusTarget;
-    using gba::input::NavigationDirection;
-    using gba::input::ResolveResponsiveFocusPersistenceTarget;
-    using gba::input::ResolveVisibleFocusTarget;
-    gba::RenderResult result;
+    using widgetrail::input::FindGeometricFocusTarget;
+    using widgetrail::input::NavigationDirection;
+    using widgetrail::input::ResolveResponsiveFocusPersistenceTarget;
+    using widgetrail::input::ResolveVisibleFocusTarget;
+    widgetrail::RenderResult result;
     Add(result, L"play", {100, 50, 60, 60});
     Add(result, L"previous", {30, 55, 48, 48});
     Add(result, L"next", {182, 55, 48, 48});
@@ -41,18 +41,18 @@ int main() {
     Add(result, L"far-down", {300, 210, 42, 42});
     Add(result, L"modal-button", {109, 100, 42, 42}, true, L"modal");
 
-    Check(gba::input::FindPointerHitTarget(120, 70, L"root", result)->id == L"play",
+    Check(widgetrail::input::FindPointerHitTarget(120, 70, L"root", result)->id == L"play",
           "pointer hit resolves visible control in active scope");
-    Check(!gba::input::FindPointerHitTarget(120, 202, L"root", result)->enabled,
+    Check(!widgetrail::input::FindPointerHitTarget(120, 202, L"root", result)->enabled,
           "pointer can select a disabled control without activating it");
-    Check(!gba::input::FindPointerHitTarget(120, 110, L"root", result) ||
-              gba::input::FindPointerHitTarget(120, 110, L"root", result)->id !=
+    Check(!widgetrail::input::FindPointerHitTarget(120, 110, L"root", result) ||
+              widgetrail::input::FindPointerHitTarget(120, 110, L"root", result)->id !=
                   L"modal-button",
           "pointer cannot cross into a nested inactive scope");
-    Check(gba::input::FindPointerHitTarget(120, 110, L"modal", result)->id ==
+    Check(widgetrail::input::FindPointerHitTarget(120, 110, L"modal", result)->id ==
               L"modal-button",
           "pointer resolves the active nested scope");
-    Check(!gba::input::FindPointerHitTarget(800, 800, L"root", result),
+    Check(!widgetrail::input::FindPointerHitTarget(800, 800, L"root", result),
           "pointer outside all visible geometry is ignored");
 
     Check(FindGeometricFocusTarget(L"play", NavigationDirection::Left, result) == L"previous",
@@ -65,7 +65,7 @@ int main() {
           "non-navigable target is skipped");
     Check(FindGeometricFocusTarget(L"previous", NavigationDirection::Up, result) == std::nullopt,
           "missing direction stays put");
-    Check(!gba::input::IsEnabledFocusTarget(L"non-navigable", result),
+    Check(!widgetrail::input::IsEnabledFocusTarget(L"non-navigable", result),
           "host-excluded component is not focusable");
     Check(FindGeometricFocusTarget(L"play", NavigationDirection::Down, result) != L"modal-button",
           "geometric fallback cannot cross nested input scopes");
@@ -73,7 +73,7 @@ int main() {
           "visible preferred focus survives responsive layout");
 
     result.focusRects.erase(L"play");
-    Check(!gba::input::IsEnabledFocusTarget(L"play", result),
+    Check(!widgetrail::input::IsEnabledFocusTarget(L"play", result),
           "clipped control is never an enabled focus target");
     Check(ResolveVisibleFocusTarget(L"play", L"root", result) == L"previous",
           "clipped preferred focus recovers in deterministic tree order");
@@ -92,33 +92,33 @@ int main() {
     Check(!ResolveVisibleFocusTarget({}, L"modal", result),
           "focusless fully clipped scope remains explicitly unavailable");
 
-    gba::RenderResult focuslessRoot;
+    widgetrail::RenderResult focuslessRoot;
     Add(focuslessRoot, L"first-visible", {0, 0, 160, 44});
     Check(ResolveVisibleFocusTarget({}, L"root", focuslessRoot) == L"first-visible",
           "focusless responsive recovery selects the first visible root target");
 
-    gba::WidgetSnapshot responsiveSnapshot;
+    widgetrail::WidgetSnapshot responsiveSnapshot;
     responsiveSnapshot.activeInputScopeId = L"root";
     responsiveSnapshot.root.id = L"root";
     responsiveSnapshot.root.kind = L"stack";
-    gba::WidgetNode compact;
+    widgetrail::WidgetNode compact;
     compact.id = L"compact";
     compact.kind = L"row";
     compact.visibleWhen = L"compactOnly";
     compact.children = {
-        gba::WidgetNode{.id = L"compact-home", .kind = L"button",
+        widgetrail::WidgetNode{.id = L"compact-home", .kind = L"button",
             .actionId = L"shared-action", .focusPersistenceId = L"nav.home"},
-        gba::WidgetNode{.id = L"compact-library", .kind = L"button",
+        widgetrail::WidgetNode{.id = L"compact-library", .kind = L"button",
             .actionId = L"shared-action", .focusPersistenceId = L"nav.library"},
     };
-    gba::WidgetNode rail;
+    widgetrail::WidgetNode rail;
     rail.id = L"rail";
     rail.kind = L"stack";
     rail.visibleWhen = L"expandedOnly";
     rail.children = {
-        gba::WidgetNode{.id = L"rail-home", .kind = L"button",
+        widgetrail::WidgetNode{.id = L"rail-home", .kind = L"button",
             .actionId = L"shared-action", .focusPersistenceId = L"nav.home"},
-        gba::WidgetNode{.id = L"rail-library", .kind = L"button",
+        widgetrail::WidgetNode{.id = L"rail-library", .kind = L"button",
             .actionId = L"shared-action", .focusPersistenceId = L"nav.library"},
     };
     responsiveSnapshot.root.children = {compact, rail};
@@ -143,7 +143,7 @@ int main() {
               ambiguousPersistence, L"compact-library", L"root", false),
           "ambiguous explicit focus persistence fails closed");
 
-    gba::RenderResult twoColumnGrid;
+    widgetrail::RenderResult twoColumnGrid;
     Add(twoColumnGrid, L"grid-0", {0, 0, 100, 44});
     Add(twoColumnGrid, L"grid-1", {110, 0, 100, 44});
     Add(twoColumnGrid, L"grid-2", {0, 52, 100, 44});
@@ -162,7 +162,7 @@ int main() {
               L"grid-4", NavigationDirection::Down, twoColumnGrid),
           "last responsive grid control exposes the root Down boundary to the tray");
 
-    gba::RenderResult oneColumnGrid;
+    widgetrail::RenderResult oneColumnGrid;
     for (int index = 0; index < 5; ++index)
         Add(oneColumnGrid, L"grid-" + std::to_wstring(index),
             {0, static_cast<float>(index * 52), 210, 44});
@@ -172,7 +172,7 @@ int main() {
     Check(ResolveVisibleFocusTarget(L"grid-3", L"root", oneColumnGrid) == L"grid-3",
           "responsive resize retains the same stable focus ID");
 
-    gba::RenderResult scaledGrid;
+    widgetrail::RenderResult scaledGrid;
     Add(scaledGrid, L"grid-0", {0, 0, 150, 66});
     Add(scaledGrid, L"grid-1", {165, 0, 150, 66});
     Add(scaledGrid, L"grid-2", {0, 78, 150, 66});
@@ -182,7 +182,7 @@ int main() {
     Check(ResolveVisibleFocusTarget(L"grid-2", L"root", scaledGrid) == L"grid-2",
           "DPI-scaled reflow retains the same stable focus ID");
 
-    gba::WidgetNode pagedScroll{
+    widgetrail::WidgetNode pagedScroll{
         .id = L"library.scroll",
         .kind = L"scroll",
         .scrollAxis = L"vertical",
@@ -190,30 +190,30 @@ int main() {
         .scrollNearEndActionId = L"library.next",
         .scrollPaginationThreshold = 1,
         .children = {
-            gba::WidgetNode{.id = L"library.first", .kind = L"button"},
-            gba::WidgetNode{
+            widgetrail::WidgetNode{.id = L"library.first", .kind = L"button"},
+            widgetrail::WidgetNode{
                 .id = L"library.last",
                 .kind = L"actionSurface",
                 .children = {
-                    gba::WidgetNode{.id = L"library.last.label", .kind = L"text"},
+                    widgetrail::WidgetNode{.id = L"library.last.label", .kind = L"text"},
                 },
             },
         },
     };
-    const auto nextPage = gba::input::FindScrollPaginationAction(
+    const auto nextPage = widgetrail::input::FindScrollPaginationAction(
         pagedScroll, L"library.last.label", NavigationDirection::Down);
     Check(nextPage && nextPage->actionId == L"library.next" &&
               nextPage->sourceElementId == L"library.scroll",
           "Down on an already-focused last row resolves pagination before tray fallback");
-    const auto previousPage = gba::input::FindScrollPaginationAction(
+    const auto previousPage = widgetrail::input::FindScrollPaginationAction(
         pagedScroll, L"library.first", NavigationDirection::Up);
     Check(previousPage && previousPage->actionId == L"library.previous",
           "Up on an already-focused first row resolves previous-page pagination");
-    Check(!gba::input::FindScrollPaginationAction(
+    Check(!widgetrail::input::FindScrollPaginationAction(
               pagedScroll, L"library.first", NavigationDirection::Down),
           "A non-boundary direction preserves ordinary focus navigation");
 
-    gba::WidgetNode cursorGrid{
+    widgetrail::WidgetNode cursorGrid{
         .id = L"library.cursor",
         .kind = L"scroll",
         .scrollAxis = L"vertical",
@@ -222,50 +222,50 @@ int main() {
         .scrollPaginationThreshold = 1,
         .collectionAnchorKey = L"game.41",
         .children = {
-            gba::WidgetNode{
+            widgetrail::WidgetNode{
                 .id = L"library.grid",
                 .kind = L"grid",
                 .children = {
-                    gba::WidgetNode{.id = L"game.40.button", .kind = L"button",
+                    widgetrail::WidgetNode{.id = L"game.40.button", .kind = L"button",
                                     .collectionItemKey = L"game.40"},
-                    gba::WidgetNode{.id = L"game.41.button", .kind = L"button",
+                    widgetrail::WidgetNode{.id = L"game.41.button", .kind = L"button",
                                     .collectionItemKey = L"game.41"},
                 },
             },
         },
     };
-    gba::WidgetNode cursorRoot{
+    widgetrail::WidgetNode cursorRoot{
         .id = L"library.root",
         .kind = L"stack",
         .children = {
-            gba::WidgetNode{.id = L"library.header.play", .kind = L"button"},
+            widgetrail::WidgetNode{.id = L"library.header.play", .kind = L"button"},
             cursorGrid,
         },
     };
-    const auto cursorEnd = gba::input::FindScrollPaginationAction(
+    const auto cursorEnd = widgetrail::input::FindScrollPaginationAction(
         cursorRoot, L"game.41.button", NavigationDirection::Down);
     Check(cursorEnd && cursorEnd->actionId == L"library.cursor.after",
           "a keyed Grid descendant paginates at the collection edge");
-    const auto cursorStart = gba::input::FindScrollPaginationAction(
+    const auto cursorStart = widgetrail::input::FindScrollPaginationAction(
         cursorRoot, L"game.40.button", NavigationDirection::Up);
     Check(cursorStart && cursorStart->actionId == L"library.cursor.before",
           "a keyed List/Grid reverse edge paginates before a fixed header can oscillate");
 
-    gba::WidgetNode singleItemScroll = pagedScroll;
+    widgetrail::WidgetNode singleItemScroll = pagedScroll;
     singleItemScroll.children.resize(1);
     singleItemScroll.children[0].id = L"library.only";
-    const auto singleItemNext = gba::input::FindScrollPaginationAction(
+    const auto singleItemNext = widgetrail::input::FindScrollPaginationAction(
         singleItemScroll, L"library.only", NavigationDirection::Down);
     Check(singleItemNext && singleItemNext->actionId == L"library.next",
           "A one-row page can paginate when no ordinary focus move exists");
 
     for (const auto mode : {std::wstring(L"wide"), std::wstring(L"compact")}) {
-        gba::WidgetNode spotifyRoot{.id = L"spotify.root", .kind = L"stack"};
-        spotifyRoot.children.push_back(gba::WidgetNode{
+        widgetrail::WidgetNode spotifyRoot{.id = L"spotify.root", .kind = L"stack"};
+        spotifyRoot.children.push_back(widgetrail::WidgetNode{
             .id = L"spotify.nav." + mode,
             .kind = L"button",
         });
-        gba::WidgetNode spotifyPage{
+        widgetrail::WidgetNode spotifyPage{
             .id = L"spotify.playlists.scroll." + mode,
             .kind = L"scroll",
             .scrollAxis = L"vertical",
@@ -273,14 +273,14 @@ int main() {
             .scrollPaginationThreshold = 1,
         };
         for (int index = 0; index < 12; ++index) {
-            spotifyPage.children.push_back(gba::WidgetNode{
+            spotifyPage.children.push_back(widgetrail::WidgetNode{
                 .id = L"spotify.playlist.item." + mode + L"." +
                     std::to_wstring(index),
                 .kind = L"actionSurface",
             });
         }
         spotifyRoot.children.push_back(spotifyPage);
-        const auto forward = gba::input::FindScrollPaginationAction(
+        const auto forward = widgetrail::input::FindScrollPaginationAction(
             spotifyRoot,
             L"spotify.playlist.item." + mode + L".11",
             NavigationDirection::Down);
@@ -294,19 +294,19 @@ int main() {
         finalSpotifyPage.scrollNearEndActionId.clear();
         finalSpotifyPage.scrollNearStartActionId = L"spotify.playlists.page.previous";
         for (int index = 24; index < 29; ++index) {
-            finalSpotifyPage.children.push_back(gba::WidgetNode{
+            finalSpotifyPage.children.push_back(widgetrail::WidgetNode{
                 .id = L"spotify.playlist.item." + mode + L"." +
                     std::to_wstring(index),
                 .kind = L"actionSurface",
             });
         }
-        const auto reverse = gba::input::FindScrollPaginationAction(
+        const auto reverse = widgetrail::input::FindScrollPaginationAction(
             spotifyRoot,
             L"spotify.playlist.item." + mode + L".24",
             NavigationDirection::Up);
         Check(reverse && reverse->actionId == L"spotify.playlists.page.previous",
               "Spotify five-row final page admits reverse pagination at its first row");
-        Check(!gba::input::FindScrollPaginationAction(
+        Check(!widgetrail::input::FindScrollPaginationAction(
                   spotifyRoot,
                   L"spotify.playlist.item." + mode + L".28",
                   NavigationDirection::Down),
@@ -314,11 +314,11 @@ int main() {
     }
 
     pagedScroll.scrollNearEndActionId.clear();
-    Check(!gba::input::FindScrollPaginationAction(
+    Check(!widgetrail::input::FindScrollPaginationAction(
               pagedScroll, L"library.last", NavigationDirection::Down),
           "A boundary without a configured action remains available to tray fallback");
 
-    gba::RenderResult scrolled;
+    widgetrail::RenderResult scrolled;
     Add(scrolled, L"session-0", {0, 0, 200, 44});
     scrolled.focusScopes[L"session-1"] = L"root";
     scrolled.navigationRects[L"session-1"] = {0, 48, 200, 44};
@@ -327,7 +327,7 @@ int main() {
     Check(FindGeometricFocusTarget(
               L"session-0", NavigationDirection::Down, scrolled) == L"session-1",
           "offscreen scroll descendant participates in geometric navigation");
-    Check(gba::input::IsEnabledFocusTarget(L"session-1", scrolled),
+    Check(widgetrail::input::IsEnabledFocusTarget(L"session-1", scrolled),
           "host-revealable descendant is an enabled focus target");
     Check(ResolveVisibleFocusTarget(L"session-1", L"root", scrolled) == L"session-1",
           "preferred offscreen scroll focus survives until the reveal render pass");

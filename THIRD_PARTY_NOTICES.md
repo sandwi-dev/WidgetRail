@@ -1,6 +1,6 @@
 # Third-party notices
 
-The native Game Bar Alternative overlay statically links the components below.
+The native WidgetRail overlay statically links the components below.
 
 ## Taffy 0.12.2
 

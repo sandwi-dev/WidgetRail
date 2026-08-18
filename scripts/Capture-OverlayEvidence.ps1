@@ -184,7 +184,7 @@ function Test-EvidenceBundle {
 }
 
 function Invoke-EvidenceVerifierSelfTest {
-    $root = Join-Path ([System.IO.Path]::GetTempPath()) "gba-evidence-verifier-$([Guid]::NewGuid().ToString('N'))"
+    $root = Join-Path ([System.IO.Path]::GetTempPath()) "wrail-evidence-verifier-$([Guid]::NewGuid().ToString('N'))"
     try {
         $semantic = Join-Path $root 'semantic'
         New-Item -ItemType Directory -Path $semantic | Out-Null
@@ -283,7 +283,7 @@ $resolvedOutputRoot = if ([System.IO.Path]::IsPathFullyQualified($OutputRoot)) {
 $buildDirectory = Join-Path $resolvedOutputRoot $BuildId
 if (Test-Path -LiteralPath $buildDirectory) { throw "Evidence build directory already exists: $buildDirectory" }
 
-$scratchRoot = Join-Path ([System.IO.Path]::GetTempPath()) "gba-overlay-evidence-$([Guid]::NewGuid().ToString('N'))"
+$scratchRoot = Join-Path ([System.IO.Path]::GetTempPath()) "wrail-overlay-evidence-$([Guid]::NewGuid().ToString('N'))"
 $stagedBundle = Join-Path $scratchRoot 'bundle'
 $semanticDirectory = Join-Path $stagedBundle 'semantic'
 $pngDirectory = Join-Path $stagedBundle 'png'
@@ -345,7 +345,7 @@ try {
     $taffyEnvironment = @{ CARGO_TARGET_DIR = $taffyTarget }
     $null = Invoke-BoundedProcess -Stage 'taffy-static-library-build' -FilePath $cargo -TimeoutSeconds 300 -EnvironmentVariables $taffyEnvironment -ArgumentList $taffyArguments
     $taffyProfile = if ($Configuration -eq 'Release') { 'release' } else { 'debug' }
-    $taffyLibrary = Join-Path $taffyTarget "x86_64-pc-windows-msvc/$taffyProfile/gba_taffy_layout.lib"
+    $taffyLibrary = Join-Path $taffyTarget "x86_64-pc-windows-msvc/$taffyProfile/wrail_taffy_layout.lib"
     if (-not (Test-Path -LiteralPath $taffyLibrary)) {
         throw "Pinned Taffy evidence library was not produced at '$taffyLibrary'."
     }
@@ -359,7 +359,7 @@ try {
     $compilerArguments = @(
         '/nologo', '/std:c++20', '/utf-8', '/EHsc', '/W4', '/permissive-',
         '/DUNICODE', '/D_UNICODE', '/DWIN32_LEAN_AND_MEAN', '/DNOMINMAX',
-        '/DGBA_WIDGET_BRIDGE_CLIENT_TESTING') + $optimization + $includeArguments +
+        '/DWRAIL_WIDGET_BRIDGE_CLIENT_TESTING') + $optimization + $includeArguments +
         @($rendererSourceNames | ForEach-Object { Join-Path $overlaySource $_ }) + @(
             "/Fo:$objectDirectory/", "/Fe:$captureExecutable", '/link', '/SUBSYSTEM:CONSOLE') +
         $libraryArguments + @($taffyLibrary, 'ntdll.lib', 'userenv.lib', 'ws2_32.lib', 'd2d1.lib', 'dwrite.lib', 'windowsapp.lib', 'winhttp.lib', 'windowscodecs.lib', 'ole32.lib')

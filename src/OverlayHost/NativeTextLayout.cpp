@@ -7,7 +7,7 @@
 #include <cwctype>
 #include <string>
 
-namespace gba {
+namespace widgetrail {
 namespace {
 
 using Microsoft::WRL::ComPtr;
@@ -185,4 +185,4 @@ NativeTextLayoutPlan CreateNativeTextLayoutPlan(
     return result;
 }
 
-} // namespace gba
+} // namespace widgetrail

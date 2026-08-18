@@ -4,7 +4,7 @@
 #include <map>
 #include <string_view>
 
-namespace gba::accessibility {
+namespace widgetrail::accessibility {
 namespace {
 
 Tree TreeMetadata(const Tree& source) {
@@ -155,4 +155,4 @@ Tree BuildWidgetTree(
     return tree;
 }
 
-} // namespace gba::accessibility
+} // namespace widgetrail::accessibility

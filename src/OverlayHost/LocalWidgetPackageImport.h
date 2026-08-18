@@ -10,7 +10,7 @@
 #include <string>
 #include <string_view>
 
-namespace gba::packages {
+namespace widgetrail::packages {
 
 struct LocalWidgetPackageOrigin final {
     std::wstring widgetId;
@@ -138,4 +138,4 @@ private:
     std::wstring activeOperationId_;
 };
 
-} // namespace gba::packages
+} // namespace widgetrail::packages

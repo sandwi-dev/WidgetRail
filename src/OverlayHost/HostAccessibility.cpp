@@ -3,7 +3,7 @@
 #include <algorithm>
 #include <cstdint>
 
-namespace gba::accessibility {
+namespace widgetrail::accessibility {
 namespace {
 
 const WidgetNode* FindDeclaredScopeRoot(
@@ -318,4 +318,4 @@ Tree BuildOpenWidgetTree(
     return widgetTree;
 }
 
-} // namespace gba::accessibility
+} // namespace widgetrail::accessibility

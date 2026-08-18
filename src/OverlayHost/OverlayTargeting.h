@@ -2,7 +2,7 @@
 
 #include <cstdint>
 
-namespace gba {
+namespace widgetrail {
 
 struct OverlayPresentationExtent final {
     int widthDip{};
@@ -438,4 +438,4 @@ private:
     bool pending_{};
 };
 
-} // namespace gba
+} // namespace widgetrail

@@ -739,7 +739,7 @@ static async Task PipeLoopbackTimeoutIsOperationSpecific()
         MaximumInFlightRequests = 4,
         MaximumSubscriptions = 2,
     };
-    var pipeName = $"gba-broker-community-{Guid.NewGuid():N}";
+    var pipeName = $"wrail-broker-community-{Guid.NewGuid():N}";
     await using var server = new BrokerPipeServer(
         pipeName, identity, [capability], store, backend,
         options, new string('T', 64));
@@ -791,7 +791,7 @@ static async Task PipeLoopbackNearLimitResponse()
         MaximumInFlightRequests = 4,
         MaximumSubscriptions = 2,
     };
-    var pipeName = $"gba-broker-near-limit-{Guid.NewGuid():N}";
+    var pipeName = $"wrail-broker-near-limit-{Guid.NewGuid():N}";
     await using var server = new BrokerPipeServer(
         pipeName, identity, [capability], store, backend,
         options, new string('L', 64));
@@ -818,13 +818,13 @@ static async Task PipeLoopbackNearLimitResponse()
 
 static async Task BrokerPipeScopesAreClosed()
 {
-    BrokerPipeNames.Validate("gba-broker-test");
+    BrokerPipeNames.Validate("wrail-broker-test");
     BrokerPipeNames.ValidateAppContainerSid("S-1-15-2-1-2-3-4-5-6-7");
 
     Assert.Throws<ArgumentException>(() =>
         BrokerPipeNames.Validate(@"LOCAL\nested\pipe"));
-    Assert.Throws<ArgumentException>(() => BrokerPipeNames.Validate("gba-broker\nested"));
-    Assert.Throws<ArgumentException>(() => BrokerPipeNames.Validate("gba-broker\ncontrol"));
+    Assert.Throws<ArgumentException>(() => BrokerPipeNames.Validate("wrail-broker\nested"));
+    Assert.Throws<ArgumentException>(() => BrokerPipeNames.Validate("wrail-broker\ncontrol"));
     Assert.Throws<ArgumentException>(() =>
         BrokerPipeNames.ValidateAppContainerSid("S-1-5-21-1"));
     Assert.Throws<ArgumentException>(() =>
@@ -832,7 +832,7 @@ static async Task BrokerPipeScopesAreClosed()
 
     using var temporary = new TemporaryDirectory();
     await using var isolated = new BrokerPipeServer(
-        $"gba-isolated-unbound-{Guid.NewGuid():N}",
+        $"wrail-isolated-unbound-{Guid.NewGuid():N}",
         Identity(),
         [PlatformCapabilities.AudioSessionsReadV1],
         new ConsentStore(temporary.Path),
@@ -1395,7 +1395,7 @@ static async Task AppLaunchHostEffectIsSuccessBound()
         HandshakeTimeout = TimeSpan.FromSeconds(1),
         RequestTimeout = TimeSpan.FromSeconds(2),
     };
-    var pipeName = $"gba-broker-host-effect-{Guid.NewGuid():N}";
+    var pipeName = $"wrail-broker-host-effect-{Guid.NewGuid():N}";
     await using var server = new BrokerPipeServer(
         pipeName,
         identity,
@@ -2798,7 +2798,7 @@ static async Task PipeHandshakeIsBound()
     using var temp = new TemporaryDirectory();
     var identity = Identity();
     var store = new ConsentStore(temp.Path);
-    var pipeName = $"gba-broker-auth-{Guid.NewGuid():N}";
+    var pipeName = $"wrail-broker-auth-{Guid.NewGuid():N}";
     await using var server = new BrokerPipeServer(
         pipeName, identity, [PlatformCapabilities.AudioSessionsReadV1], store, AudioBackend(),
         TransportOptions(), channelNonce: new string('A', 64));
@@ -2853,7 +2853,7 @@ static async Task PipeMediaDiagnosticsAreTyped()
             1_000, 10_000, 1, 1, true, true, true, true, true, true),
     ]);
     var diagnostics = new List<BrokerCapabilityDiagnostic>();
-    var pipeName = $"gba-broker-media-diagnostic-{Guid.NewGuid():N}";
+    var pipeName = $"wrail-broker-media-diagnostic-{Guid.NewGuid():N}";
     await using var server = new BrokerPipeServer(
         pipeName,
         identity,
@@ -2925,7 +2925,7 @@ static async Task PipeCancellationIsObserved()
     await store.SetDecisionAsync(identity, PlatformCapabilities.AudioSessionsReadV1,
         ConsentDecision.Grant);
     var backend = new BlockingBrokerBackend();
-    var pipeName = $"gba-broker-cancel-{Guid.NewGuid():N}";
+    var pipeName = $"wrail-broker-cancel-{Guid.NewGuid():N}";
     await using var server = new BrokerPipeServer(
         pipeName, identity, [PlatformCapabilities.AudioSessionsReadV1], store, backend,
         TransportOptions(requestTimeout: TimeSpan.FromSeconds(2)), new string('C', 64));
@@ -2970,7 +2970,7 @@ static async Task PipeLifecycleCancelsLeasedRequests()
     await store.SetDecisionAsync(identity, PlatformCapabilities.AudioSessionsControlV1,
         ConsentDecision.Grant);
     var backend = new LeaseBlockingBrokerBackend(blockRead: true, blockControl: true);
-    var pipeName = $"gba-broker-lease-lifecycle-{Guid.NewGuid():N}";
+    var pipeName = $"wrail-broker-lease-lifecycle-{Guid.NewGuid():N}";
     await using var server = new BrokerPipeServer(
         pipeName, identity,
         [PlatformCapabilities.AudioSessionsReadV1, PlatformCapabilities.AudioSessionsControlV1],
@@ -3014,7 +3014,7 @@ static async Task PipeConsentCancelsLeasedControl()
     await store.SetDecisionAsync(identity, PlatformCapabilities.AudioSessionsControlV1,
         ConsentDecision.Grant);
     var backend = new LeaseBlockingBrokerBackend(blockRead: false, blockControl: true);
-    var pipeName = $"gba-broker-lease-consent-{Guid.NewGuid():N}";
+    var pipeName = $"wrail-broker-lease-consent-{Guid.NewGuid():N}";
     await using var server = new BrokerPipeServer(
         pipeName, identity, [PlatformCapabilities.AudioSessionsControlV1], store, backend,
         TransportOptions(requestTimeout: TimeSpan.FromSeconds(5)), new string('R', 64));
@@ -3209,7 +3209,7 @@ sealed class TemporaryDirectory : IDisposable
     public TemporaryDirectory()
     {
         Path = System.IO.Path.Combine(System.IO.Path.GetTempPath(),
-            "gba-platform-broker-tests", Guid.NewGuid().ToString("N"));
+            "wrail-platform-broker-tests", Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(Path);
     }
 
@@ -3262,7 +3262,7 @@ sealed class BrokerPipeHarness : IAsyncDisposable
             MaximumInFlightRequests = 4,
             MaximumSubscriptions = 4,
         };
-        var pipeName = $"gba-broker-test-{Guid.NewGuid():N}";
+        var pipeName = $"wrail-broker-test-{Guid.NewGuid():N}";
         var server = new BrokerPipeServer(
             pipeName, identity,
             [PlatformCapabilities.AudioSessionsReadV1], store, backend,

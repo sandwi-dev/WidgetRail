@@ -149,7 +149,7 @@ internal static class WindowsPackageGameScenarios
     private sealed class PackageFixture : IDisposable
     {
         private readonly string _root = Path.Combine(Path.GetTempPath(),
-            "gba-windows-package-games", Guid.NewGuid().ToString("N"));
+            "wrail-windows-package-games", Guid.NewGuid().ToString("N"));
 
         internal PackageFixture() => Directory.CreateDirectory(_root);
         internal PackageCatalog Catalog { get; } = new();

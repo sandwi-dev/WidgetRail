@@ -5,7 +5,7 @@
 #include <string>
 #include <utility>
 
-namespace gba::accessibility {
+namespace widgetrail::accessibility {
 
 struct ProjectionKey final {
     std::wstring widgetId;
@@ -71,4 +71,4 @@ private:
     bool animationPending_{};
 };
 
-} // namespace gba::accessibility
+} // namespace widgetrail::accessibility

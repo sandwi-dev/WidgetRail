@@ -5,7 +5,7 @@
 #include <string>
 #include <string_view>
 
-namespace gba::input {
+namespace widgetrail::input {
 
 /// Host-owned visual state for one physical controller press. It is keyed to
 /// the immutable widget snapshot that resolved the action, so focus changes,
@@ -130,4 +130,4 @@ private:
     std::wstring button_;
 };
 
-} // namespace gba::input
+} // namespace widgetrail::input

@@ -5,7 +5,7 @@
 #include <string>
 #include <string_view>
 
-namespace gba::input {
+namespace widgetrail::input {
 
 enum class NavigationDirection { None, Left, Right, Up, Down };
 
@@ -266,4 +266,4 @@ private:
     std::uint64_t nextRepeat_{};
 };
 
-} // namespace gba::input
+} // namespace widgetrail::input

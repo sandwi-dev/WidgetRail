@@ -45,10 +45,10 @@ std::wstring UniqueProfile(const std::wstring_view label) {
         std::to_wstring(GetTickCount64());
 }
 
-gba::process::OwnershipResult Client(
+widgetrail::process::OwnershipResult Client(
     const std::wstring profile,
     const std::chrono::milliseconds timeout = 3s) {
-    gba::process::OverlayProcessOwner client;
+    widgetrail::process::OverlayProcessOwner client;
     std::wstring error;
     return client.Begin(profile, timeout, error);
 }
@@ -69,15 +69,15 @@ void PumpUntil(const int expected, const std::chrono::milliseconds timeout = 3s)
 
 int main() {
     try {
-        Check(!gba::process::ValidProcessProfile(L"") &&
-                  !gba::process::ValidProcessProfile(L"bad/profile") &&
-                  gba::process::ValidProcessProfile(L"fixture.Profile-1"),
+        Check(!widgetrail::process::ValidProcessProfile(L"") &&
+                  !widgetrail::process::ValidProcessProfile(L"bad/profile") &&
+                  widgetrail::process::ValidProcessProfile(L"fixture.Profile-1"),
               "process profiles are closed and path-free");
 
         WNDCLASSEXW windowClass{sizeof(windowClass)};
         windowClass.lpfnWndProc = TestWindowProc;
         windowClass.hInstance = GetModuleHandleW(nullptr);
-        windowClass.lpszClassName = L"GbaOverlayProcessOwnerTests";
+        windowClass.lpszClassName = L"WidgetRailOverlayProcessOwnerTests";
         Check(RegisterClassExW(&windowClass) != 0, "test window class registers");
         const HWND window = CreateWindowExW(
             0, windowClass.lpszClassName, L"", 0, 0, 0, 1, 1,
@@ -86,15 +86,15 @@ int main() {
         Completed("profile-and-window-validation");
 
         const auto profile = UniqueProfile(L"hidden-visible");
-        gba::process::OverlayProcessOwner owner;
+        widgetrail::process::OverlayProcessOwner owner;
         std::wstring error;
         const auto ownerBeginStarted = std::chrono::steady_clock::now();
-        Check(owner.Begin(profile, 3s, error) == gba::process::OwnershipResult::Owner,
+        Check(owner.Begin(profile, 3s, error) == widgetrail::process::OwnershipResult::Owner,
               "first launch wins per-user profile ownership");
         Check(std::chrono::steady_clock::now() - ownerBeginStarted < 3s,
               "first-owner startup returns inside its readiness bound");
         auto hiddenClient = std::async(std::launch::async, Client, profile, 3s);
-        Check(hiddenClient.get() == gba::process::OwnershipResult::ClientAcknowledged,
+        Check(hiddenClient.get() == widgetrail::process::OwnershipResult::ClientAcknowledged,
               "hidden no-HWND owner acknowledges one Show client");
         Check(owner.WaitForShow(0ms), "hidden owner retains the pending Show signal");
         owner.BindNotificationWindow(window, kShowMessage);
@@ -103,18 +103,18 @@ int main() {
               "binding the owner window forwards the pending Show exactly once");
         Completed("hidden-owner-activation");
 
-        std::vector<std::future<gba::process::OwnershipResult>> clients;
+        std::vector<std::future<widgetrail::process::OwnershipResult>> clients;
         for (int index = 0; index < 4; ++index)
             clients.push_back(std::async(std::launch::async, Client, profile, 3s));
         for (auto& client : clients)
-            Check(client.get() == gba::process::OwnershipResult::ClientAcknowledged,
+            Check(client.get() == widgetrail::process::OwnershipResult::ClientAcknowledged,
                   "simultaneous later launch is only an acknowledged client");
         PumpUntil(5);
         Check(showMessages.load() == 5,
               "each simultaneous launch contributes exactly one bounded Show");
         Completed("simultaneous-clients");
 
-        const auto names = gba::process::OverlayProcessOwner::NamesForTests(profile);
+        const auto names = widgetrail::process::OverlayProcessOwner::NamesForTests(profile);
         Check(names.mutex.starts_with(L"Global\\WidgetRail.OverlayHost.Owner.") &&
                   names.pipe.starts_with(L"\\\\.\\pipe\\WidgetRail.OverlayHost.Activation."),
               "the only live singleton and activation endpoints use WidgetRail identity");
@@ -134,12 +134,12 @@ int main() {
         Completed("malformed-client-rejection");
 
         const auto stalledReadProfile = UniqueProfile(L"stalled-read");
-        gba::process::OverlayProcessOwner stalledReadOwner;
+        widgetrail::process::OverlayProcessOwner stalledReadOwner;
         Check(stalledReadOwner.Begin(stalledReadProfile, 3s, error) ==
-                  gba::process::OwnershipResult::Owner,
+                  widgetrail::process::OwnershipResult::Owner,
               "stalled-read fixture owns its isolated profile");
         const auto stalledReadNames =
-            gba::process::OverlayProcessOwner::NamesForTests(stalledReadProfile);
+            widgetrail::process::OverlayProcessOwner::NamesForTests(stalledReadProfile);
         HANDLE stalledReader = CreateFileW(
             stalledReadNames.pipe.c_str(), GENERIC_READ | GENERIC_WRITE, 0,
             nullptr, OPEN_EXISTING, 0, nullptr);
@@ -157,32 +157,32 @@ int main() {
         owner.Stop();
         owner.Stop();
 
-        gba::process::OverlayProcessOwner replacement;
+        widgetrail::process::OverlayProcessOwner replacement;
         Check(replacement.Begin(profile, 3s, error) ==
-                  gba::process::OwnershipResult::Owner,
+                  widgetrail::process::OwnershipResult::Owner,
               "orderly shutdown releases ownership exactly once");
         replacement.Stop();
         Completed("orderly-owner-replacement");
 
         const auto squattedProfile = UniqueProfile(L"squatted");
         const auto squattedNames =
-            gba::process::OverlayProcessOwner::NamesForTests(squattedProfile);
+            widgetrail::process::OverlayProcessOwner::NamesForTests(squattedProfile);
         HANDLE squatter = CreateNamedPipeW(
             squattedNames.pipe.c_str(), PIPE_ACCESS_DUPLEX | FILE_FLAG_FIRST_PIPE_INSTANCE,
             PIPE_TYPE_MESSAGE | PIPE_READMODE_MESSAGE | PIPE_WAIT | PIPE_REJECT_REMOTE_CLIENTS,
             1, 64, 64, 100, nullptr);
         Check(squatter != INVALID_HANDLE_VALUE,
               "endpoint-squatter fixture claims only its isolated profile");
-        gba::process::OverlayProcessOwner refusedOwner;
+        widgetrail::process::OverlayProcessOwner refusedOwner;
         Check(refusedOwner.Begin(squattedProfile, 3s, error) ==
-                  gba::process::OwnershipResult::ClientFailed,
+                  widgetrail::process::OwnershipResult::ClientFailed,
               "owner fails closed when its activation endpoint is already claimed");
         CloseHandle(squatter);
         Completed("endpoint-squatter-rejection");
 
         const auto stalledProfile = UniqueProfile(L"timeout");
         const auto stalledNames =
-            gba::process::OverlayProcessOwner::NamesForTests(stalledProfile);
+            widgetrail::process::OverlayProcessOwner::NamesForTests(stalledProfile);
         std::promise<HANDLE> heldPromise;
         std::promise<void> releasePromise;
         auto release = releasePromise.get_future();
@@ -196,14 +196,14 @@ int main() {
         HANDLE held = heldPromise.get_future().get();
         Check(held != nullptr, "stalled-owner fixture owns the exact profile mutex");
         auto timedClient = std::async(std::launch::async, Client, stalledProfile, 150ms);
-        Check(timedClient.get() == gba::process::OwnershipResult::ClientFailed,
+        Check(timedClient.get() == widgetrail::process::OwnershipResult::ClientFailed,
               "client timeout is bounded when an owner has no activation transport");
         releasePromise.set_value();
         holder.join();
         Completed("stalled-owner-timeout");
 
         const auto replyProfile = UniqueProfile(L"stalled-reply");
-        const auto replyNames = gba::process::OverlayProcessOwner::NamesForTests(replyProfile);
+        const auto replyNames = widgetrail::process::OverlayProcessOwner::NamesForTests(replyProfile);
         std::promise<void> replyServerReadyPromise;
         auto replyServerReady = replyServerReadyPromise.get_future();
         std::promise<void> releaseReplyServerPromise;
@@ -246,10 +246,10 @@ int main() {
             }
         });
         replyServerReady.wait();
-        gba::process::OverlayProcessOwner stalledReplyClient;
+        widgetrail::process::OverlayProcessOwner stalledReplyClient;
         const auto replyStarted = std::chrono::steady_clock::now();
         Check(stalledReplyClient.Begin(replyProfile, 150ms, error) ==
-                  gba::process::OwnershipResult::ClientFailed,
+                  widgetrail::process::OwnershipResult::ClientFailed,
               "client fails when the resident endpoint withholds its reply");
         Check(std::chrono::steady_clock::now() - replyStarted < 1s,
               "client request and reply share the advertised activation deadline");
@@ -258,7 +258,7 @@ int main() {
         Completed("stalled-owner-reply-timeout");
 
         const auto staleProfile = UniqueProfile(L"stale");
-        const auto staleNames = gba::process::OverlayProcessOwner::NamesForTests(staleProfile);
+        const auto staleNames = widgetrail::process::OverlayProcessOwner::NamesForTests(staleProfile);
         std::promise<HANDLE> abandonedPromise;
         std::thread abandoned([&] {
             HANDLE stale = CreateMutexW(nullptr, TRUE, staleNames.mutex.c_str());
@@ -267,9 +267,9 @@ int main() {
         });
         HANDLE staleHandle = abandonedPromise.get_future().get();
         abandoned.join();
-        gba::process::OverlayProcessOwner recovered;
+        widgetrail::process::OverlayProcessOwner recovered;
         Check(recovered.Begin(staleProfile, 3s, error) ==
-                  gba::process::OwnershipResult::Owner,
+                  widgetrail::process::OwnershipResult::Owner,
               "abandoned owner lease is recovered without destructive cleanup");
         recovered.Stop();
         CloseHandle(staleHandle);

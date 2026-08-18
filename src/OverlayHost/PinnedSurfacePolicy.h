@@ -5,7 +5,7 @@
 #include <string>
 #include <vector>
 
-namespace gba::pinned {
+namespace widgetrail::pinned {
 
 enum class InteractionMode {
     ClickThrough,
@@ -136,4 +136,4 @@ struct ResolvedPlacement final {
     const std::vector<MonitorWorkArea>& monitors,
     const std::optional<PersistedPlacement>& persisted) noexcept;
 
-} // namespace gba::pinned
+} // namespace widgetrail::pinned

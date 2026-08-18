@@ -77,10 +77,10 @@ void VerifyCancelledFrameRead(const std::size_t publishedBytes) {
         WriteBytes(writer, frame.data(), static_cast<DWORD>(publishedBytes));
 
     std::atomic_bool started{};
-    std::optional<gba::testing::BridgeFrameReadResult> result;
+    std::optional<widgetrail::testing::BridgeFrameReadResult> result;
     std::jthread readThread([&] {
         started = true;
-        result = gba::testing::ReadBridgeFrame(reader);
+        result = widgetrail::testing::ReadBridgeFrame(reader);
     });
     const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(2);
     bool readPending{};
@@ -120,7 +120,7 @@ void VerifyFrameSafeCancellationRecovery() {
             "Could not create replacement bridge frame pipe");
     WriteBytes(writer, &length, sizeof(length));
     WriteBytes(writer, body.data(), static_cast<DWORD>(body.size()));
-    const auto recovered = gba::testing::ReadBridgeFrame(reader);
+    const auto recovered = widgetrail::testing::ReadBridgeFrame(reader);
     CloseHandle(writer);
     CloseHandle(reader);
     Require(recovered.frame && *recovered.frame == body &&
@@ -130,7 +130,7 @@ void VerifyFrameSafeCancellationRecovery() {
 
 void VerifyAtomicPresentationUpdateMaterialization() {
     std::wstring error;
-    const auto checkpoint = gba::testing::ParseWidgetSnapshotResponse(R"json({
+    const auto checkpoint = widgetrail::testing::ParseWidgetSnapshotResponse(R"json({
         "snapshot": {
             "protocolVersion":17,
             "sequence":9,
@@ -148,7 +148,7 @@ void VerifyAtomicPresentationUpdateMaterialization() {
     Require(checkpoint && error.empty() && !checkpoint->documentJson.empty(),
             "Could not parse the retained update checkpoint");
 
-    const auto update = gba::testing::ParseWidgetPresentationUpdateResponse(R"json({
+    const auto update = widgetrail::testing::ParseWidgetPresentationUpdateResponse(R"json({
         "widgetId":"sample",
         "update":{
             "protocolVersion":18,
@@ -175,7 +175,7 @@ void VerifyAtomicPresentationUpdateMaterialization() {
         "renderStyles":{"a":{"base":{"opacity":{"kind":"number","text":"0.75","number":0.75,"unit":null}}}}
     })json", error);
     Require(update && error.empty(), "Could not parse the bounded update batch");
-    auto materialized = gba::MaterializeWidgetPresentationUpdate(
+    auto materialized = widgetrail::MaterializeWidgetPresentationUpdate(
         *checkpoint, *update, L"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", error);
     Require(materialized && error.empty(), "Could not materialize the atomic update");
     const auto& materializedSnapshot = materialized->snapshot;
@@ -190,13 +190,13 @@ void VerifyAtomicPresentationUpdateMaterialization() {
     auto stale = *update;
     stale.baseSequence = 8;
     error.clear();
-    Require(!gba::MaterializeWidgetPresentationUpdate(
+    Require(!widgetrail::MaterializeWidgetPresentationUpdate(
                 *checkpoint, stale,
                 L"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", error) &&
                 checkpoint->sequence == 9 && checkpoint->root.children[0].text == L"Before",
             "Stale update mutated the retained checkpoint");
 
-    const auto partial = gba::testing::ParseWidgetPresentationUpdateResponse(R"json({
+    const auto partial = widgetrail::testing::ParseWidgetPresentationUpdateResponse(R"json({
         "update":{
             "protocolVersion":18,
             "widgetInstanceId":"update.sample",
@@ -215,14 +215,14 @@ void VerifyAtomicPresentationUpdateMaterialization() {
     Require(partial.has_value(),
             "Could not parse the deterministic partial-failure batch");
     error.clear();
-    Require(!gba::MaterializeWidgetPresentationUpdate(
+    Require(!widgetrail::MaterializeWidgetPresentationUpdate(
                 *checkpoint, *partial,
                 L"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", error) &&
                 checkpoint->root.children[0].text == L"Before",
             "A later operation failure partially mutated the checkpoint");
 
     error.clear();
-    Require(!gba::testing::ParseWidgetPresentationUpdateResponse(R"json({
+    Require(!widgetrail::testing::ParseWidgetPresentationUpdateResponse(R"json({
         "update":{
             "protocolVersion":18,"widgetInstanceId":"update.sample",
             "presentationGeneration":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
@@ -232,7 +232,7 @@ void VerifyAtomicPresentationUpdateMaterialization() {
             "Unknown update fields did not fail closed");
 
     error.clear();
-    Require(!gba::testing::ParseWidgetPresentationUpdateResponse(R"json({
+    Require(!widgetrail::testing::ParseWidgetPresentationUpdateResponse(R"json({
         "update":{
             "protocolVersion":18,"widgetInstanceId":"update.sample",
             "presentationGeneration":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
@@ -251,7 +251,7 @@ int main() {
     std::vector<wchar_t> secret(14);
     for (std::size_t index = 0; index < secret.size(); ++index)
         secret[index] = static_cast<wchar_t>(L'!' + index);
-    auto protectedFrame = gba::ProtectedWifiSecretFrame::Create(secret);
+    auto protectedFrame = widgetrail::ProtectedWifiSecretFrame::Create(secret);
     assert(protectedFrame && protectedFrame->bytes().size() == secret.size());
     assert(std::equal(
         protectedFrame->bytes().begin(),
@@ -263,9 +263,9 @@ int main() {
     protectedFrame->clear();
     assert(protectedFrame->bytes().empty());
     secret[0] = L'\n';
-    assert(!gba::ProtectedWifiSecretFrame::Create(secret));
+    assert(!widgetrail::ProtectedWifiSecretFrame::Create(secret));
     std::wstring error;
-    const auto valid = gba::testing::ParseWidgetDescriptors(R"json({
+    const auto valid = widgetrail::testing::ParseWidgetDescriptors(R"json({
         "widgets": [{
             "id": "dev.test.music",
             "name": "Music controls",
@@ -310,12 +310,12 @@ int main() {
     assert((*valid)[0].quickActions.size() == 2);
     assert((*valid)[0].quickActions[0].controllerButton == L"x");
     assert(!(*valid)[0].quickActions[1].controllerButton);
-    assert(gba::FindDescriptorQuickAction((*valid)[0], L"refresh") ==
+    assert(widgetrail::FindDescriptorQuickAction((*valid)[0], L"refresh") ==
            &(*valid)[0].quickActions[0]);
-    assert(gba::FindDescriptorQuickAction((*valid)[0], L"missing") == nullptr);
+    assert(widgetrail::FindDescriptorQuickAction((*valid)[0], L"missing") == nullptr);
 
     error.clear();
-    const auto defaultPinning = gba::testing::ParseWidgetDescriptors(R"json({
+    const auto defaultPinning = widgetrail::testing::ParseWidgetDescriptors(R"json({
         "widgets": [{
             "id": "dev.test.default",
             "name": "Default",
@@ -330,7 +330,7 @@ int main() {
     assert(defaultPinning && !(*defaultPinning)[0].protectedWifiPromptSupported);
 
     error.clear();
-    const auto incompatiblePresentation = gba::testing::ParseWidgetDescriptors(R"json({
+    const auto incompatiblePresentation = widgetrail::testing::ParseWidgetDescriptors(R"json({
         "widgets": [{
             "id": "dev.test.future",
             "name": "Future",
@@ -345,7 +345,7 @@ int main() {
            (*incompatiblePresentation)[0].advancedPresentation->schemaVersion == 99);
 
     error.clear();
-    assert(!gba::testing::ParseWidgetDescriptors(R"json({
+    assert(!widgetrail::testing::ParseWidgetDescriptors(R"json({
         "widgets": [{
             "id": "dev.test.invalid-protected",
             "name": "Invalid protected",
@@ -357,7 +357,7 @@ int main() {
         }]
     })json", error));
     error.clear();
-    assert(!gba::testing::ParseWidgetDescriptors(R"json({
+    assert(!widgetrail::testing::ParseWidgetDescriptors(R"json({
         "widgets": [{
             "id": "dev.test.bad",
             "name": "Bad",
@@ -370,7 +370,7 @@ int main() {
     })json", error));
 
     error.clear();
-    const auto styledSnapshot = gba::testing::ParseWidgetSnapshotResponse(R"json({
+    const auto styledSnapshot = widgetrail::testing::ParseWidgetSnapshotResponse(R"json({
         "snapshot": {
             "sequence": 9,
             "widgetInstanceId": "music.runtime.v1",
@@ -483,7 +483,7 @@ int main() {
     assert(textEntry.textEntryMaximumLength == 96U);
 
     error.clear();
-    const auto invalidGrid = gba::testing::ParseWidgetSnapshotResponse(R"json({
+    const auto invalidGrid = widgetrail::testing::ParseWidgetSnapshotResponse(R"json({
         "snapshot": {
             "sequence": 1,
             "widgetInstanceId": "grid.invalid",
@@ -498,7 +498,7 @@ int main() {
     assert(!invalidGrid && !error.empty());
 
     error.clear();
-    const auto invalidTextEntry = gba::testing::ParseWidgetSnapshotResponse(R"json({
+    const auto invalidTextEntry = widgetrail::testing::ParseWidgetSnapshotResponse(R"json({
         "snapshot": {
             "sequence": 1,
             "widgetInstanceId": "text.invalid",
@@ -513,7 +513,7 @@ int main() {
     assert(!invalidTextEntry && !error.empty());
 
     error.clear();
-    const auto invalidVisibility = gba::testing::ParseWidgetSnapshotResponse(R"json({
+    const auto invalidVisibility = widgetrail::testing::ParseWidgetSnapshotResponse(R"json({
         "snapshot": {
             "sequence": 1,
             "widgetInstanceId": "visibility.invalid",
@@ -529,25 +529,25 @@ int main() {
     assert(!invalidVisibility && !error.empty());
 
     error.clear();
-    const auto fallbackIcon = gba::testing::ParseWidgetDescriptors(
+    const auto fallbackIcon = widgetrail::testing::ParseWidgetDescriptors(
         R"json({"widgets":[{"id":"fallback","name":"Fallback","instanceId":"fallback","runtimeGeneration":"runtime","presentationGeneration":"presentation","quickActions":[]}]})json",
         error);
     assert(fallbackIcon && (*fallbackIcon)[0].icon == L"connection");
 
     error.clear();
-    assert(!gba::testing::ParseWidgetDescriptors(
+    assert(!widgetrail::testing::ParseWidgetDescriptors(
         R"json({"widgets":[{"id":"one","name":"One","instanceId":"one","runtimeGeneration":"runtime","presentationGeneration":"presentation","icon":"arbitrary-svg","quickActions":[]}]})json",
         error));
     assert(error.find(L"WidgetGlyph") != std::wstring::npos);
 
     error.clear();
-    assert(!gba::testing::ParseWidgetDescriptors(
+    assert(!widgetrail::testing::ParseWidgetDescriptors(
         R"json({"widgets":[{"id":"one","name":"One","instanceId":"one","runtimeGeneration":"runtime","presentationGeneration":"presentation","icon":42,"quickActions":[]}]})json",
         error));
     assert(error.find(L"'icon'") != std::wstring::npos);
 
     error.clear();
-    const auto duplicate = gba::testing::ParseWidgetDescriptors(R"json({"widgets":[
+    const auto duplicate = widgetrail::testing::ParseWidgetDescriptors(R"json({"widgets":[
         {"id":"same","name":"One","instanceId":"one","runtimeGeneration":"runtime-one","presentationGeneration":"presentation-one","quickActions":[]},
         {"id":"same","name":"Two","instanceId":"two","runtimeGeneration":"runtime-two","presentationGeneration":"presentation-two","quickActions":[]}
     ]})json", error);
@@ -560,7 +560,7 @@ int main() {
     }
     tooMany += "]}";
     error.clear();
-    assert(!gba::testing::ParseWidgetDescriptors(tooMany, error));
+    assert(!widgetrail::testing::ParseWidgetDescriptors(tooMany, error));
     assert(error.find(L"256") != std::wstring::npos);
 
     std::string tooManyActions = "{\"widgets\":[{\"id\":\"one\",\"name\":\"One\","
@@ -574,38 +574,38 @@ int main() {
     }
     tooManyActions += "]}]}";
     error.clear();
-    assert(!gba::testing::ParseWidgetDescriptors(tooManyActions, error));
+    assert(!widgetrail::testing::ParseWidgetDescriptors(tooManyActions, error));
     assert(error.find(L"16") != std::wstring::npos);
 
     error.clear();
-    assert(!gba::testing::ParseWidgetDescriptors(
+    assert(!widgetrail::testing::ParseWidgetDescriptors(
         R"json({"widgets":[{"id":"bad/id","name":"Bad","instanceId":"one","runtimeGeneration":"runtime","presentationGeneration":"presentation","quickActions":[]}]})json",
         error));
     assert(error.find(L"'id'") != std::wstring::npos);
 
     error.clear();
-    assert(!gba::testing::ParseWidgetDescriptors(
+    assert(!widgetrail::testing::ParseWidgetDescriptors(
         R"json({"widgets":[{"id":"one","name":"Bad\nLabel","instanceId":"one","runtimeGeneration":"runtime","presentationGeneration":"presentation","quickActions":[]}]})json",
         error));
     assert(error.find(L"'name'") != std::wstring::npos);
 
-    gba::WidgetInvalidationQueue invalidations;
+    widgetrail::WidgetInvalidationQueue invalidations;
     assert(invalidations.Push(L"widget-0"));
     assert(invalidations.Push(L"widget-0"));
     assert(invalidations.size() == 1);
     for (int index = 1; index <= 256; ++index) {
         assert(invalidations.Push(L"widget-" + std::to_wstring(index)));
     }
-    assert(invalidations.size() == gba::WidgetInvalidationQueue::MaximumWidgetIds);
+    assert(invalidations.size() == widgetrail::WidgetInvalidationQueue::MaximumWidgetIds);
     assert(!invalidations.Push(L"bad/widget"));
     const auto pending = invalidations.Take();
-    assert(pending.size() == gba::WidgetInvalidationQueue::MaximumWidgetIds);
+    assert(pending.size() == widgetrail::WidgetInvalidationQueue::MaximumWidgetIds);
     assert(pending.front() == L"widget-1");
     assert(pending.back() == L"widget-256");
     assert(invalidations.size() == 0);
 
     error.clear();
-    const auto hostEffect = gba::testing::ParseWidgetHostEffectEvent(R"json({
+    const auto hostEffect = widgetrail::testing::ParseWidgetHostEffectEvent(R"json({
         "protocolVersion":1,
         "type":"widget-host-effect",
         "requestId":0,
@@ -615,28 +615,28 @@ int main() {
     assert(hostEffect->sequence == 7);
     assert(hostEffect->widgetId == L"games-apps");
     assert(hostEffect->runtimeGeneration == L"runtime-1");
-    assert(hostEffect->kind == gba::WidgetHostEffectKind::CloseOverlayAfterAppLaunch);
+    assert(hostEffect->kind == widgetrail::WidgetHostEffectKind::CloseOverlayAfterAppLaunch);
 
-    gba::WidgetHostEffectQueue hostEffects;
+    widgetrail::WidgetHostEffectQueue hostEffects;
     assert(hostEffects.Push(*hostEffect));
     assert(hostEffects.Push(*hostEffect)); // replay is accepted and ignored
     assert(hostEffects.size() == 1);
     assert(hostEffects.lastSequence() == 7);
     assert(!hostEffects.Push({8, L"bad/widget", L"runtime-1",
-        gba::WidgetHostEffectKind::CloseOverlayAfterAppLaunch}));
+        widgetrail::WidgetHostEffectKind::CloseOverlayAfterAppLaunch}));
     const auto pendingEffects = hostEffects.Take();
     assert(pendingEffects.size() == 1);
     assert(hostEffects.size() == 0);
 
     error.clear();
-    assert(!gba::testing::ParseWidgetHostEffectEvent(R"json({
+    assert(!widgetrail::testing::ParseWidgetHostEffectEvent(R"json({
         "protocolVersion":1,"type":"widget-host-effect","requestId":0,
         "payload":{"widgetId":"games-apps","runtimeGeneration":"runtime-1","effect":"closeOverlayAfterAppLaunch","sequence":7,"extra":true}
     })json", error));
     assert(!error.empty());
 
     error.clear();
-    const auto actionFailure = gba::testing::ParseWidgetActionFailureEvent(R"json({
+    const auto actionFailure = widgetrail::testing::ParseWidgetActionFailureEvent(R"json({
         "protocolVersion":1,
         "type":"widget-failed",
         "requestId":0,
@@ -647,13 +647,13 @@ int main() {
     assert(actionFailure->runtimeGeneration == L"runtime-2");
     assert(actionFailure->actionId == L"playback.next");
     assert(actionFailure->sourceElementId == L"player.next");
-    assert(actionFailure->code == gba::WidgetActionFailureCode::ControllerActionFailed);
-    assert(gba::WidgetActionFailureCodeValue(actionFailure->code) ==
+    assert(actionFailure->code == widgetrail::WidgetActionFailureCode::ControllerActionFailed);
+    assert(widgetrail::WidgetActionFailureCodeValue(actionFailure->code) ==
         L"controllerActionFailed");
 
     error.clear();
     const auto workerStartFailure =
-        gba::testing::ParseWidgetRuntimeFailureEvent(R"json({
+        widgetrail::testing::ParseWidgetRuntimeFailureEvent(R"json({
         "protocolVersion":1,
         "type":"widget-failed",
         "requestId":0,
@@ -662,13 +662,13 @@ int main() {
     assert(workerStartFailure && error.empty());
     assert(workerStartFailure->widgetId == L"music");
     assert(workerStartFailure->category ==
-        gba::WidgetBridgeRuntimeFailureCategory::WorkerStart);
+        widgetrail::WidgetBridgeRuntimeFailureCategory::WorkerStart);
     assert(workerStartFailure->safeMessage ==
         L"Widget worker failed to start (exit_65).");
 
     error.clear();
     const auto runtimeFailure =
-        gba::testing::ParseWidgetRuntimeFailureEvent(R"json({
+        widgetrail::testing::ParseWidgetRuntimeFailureEvent(R"json({
         "protocolVersion":1,
         "type":"widget-failed",
         "requestId":0,
@@ -676,18 +676,18 @@ int main() {
     })json", error);
     assert(runtimeFailure && error.empty());
     assert(runtimeFailure->category ==
-        gba::WidgetBridgeRuntimeFailureCategory::WorkerExited);
+        widgetrail::WidgetBridgeRuntimeFailureCategory::WorkerExited);
     assert(runtimeFailure->safeMessage == L"Widget worker exited unexpectedly.");
 
     error.clear();
-    assert(!gba::testing::ParseWidgetActionFailureEvent(R"json({
+    assert(!widgetrail::testing::ParseWidgetActionFailureEvent(R"json({
         "protocolVersion":1,"type":"widget-failed","requestId":0,
         "payload":{"widgetId":"music","runtimeGeneration":"runtime-2","reason":"providerFailure","actionId":"playback.next","sourceElementId":"player.next","message":"failed","canRestart":false}
     })json", error));
     assert(!error.empty());
 
     error.clear();
-    const auto artwork = gba::testing::ParseWidgetArtworkResultEvent(R"json({
+    const auto artwork = widgetrail::testing::ParseWidgetArtworkResultEvent(R"json({
         "type":"artwork","requestId":0,
         "payload":{"widgetId":"games-apps","artworkHandle":"library.art.0123456789abcdef0123456789abcdef","pngBase64":"AAAA"}
     })json", error);
@@ -699,14 +699,14 @@ int main() {
 
     error.clear();
     const auto localPackage =
-        gba::testing::ParseLocalWidgetPackageInstallResultEvent(R"json({
+        widgetrail::testing::ParseLocalWidgetPackageInstallResultEvent(R"json({
         "type":"local-widget-package-install-completed","requestId":0,
         "payload":{"operationId":"11111111-2222-3333-4444-555555555555","status":"installed-disabled","widgetId":"fixture","version":"1.2.3","message":"Local widget package installed disabled. Review it before enabling."}
     })json", error);
     Require(localPackage && error.empty(),
             "valid local package completion framing was rejected");
     Require(localPackage->status ==
-                gba::LocalWidgetPackageInstallStatus::InstalledDisabled,
+                widgetrail::LocalWidgetPackageInstallStatus::InstalledDisabled,
             "installed-disabled completion status changed");
     Require(localPackage->widgetId == L"fixture" &&
                 localPackage->version == L"1.2.3",
@@ -716,21 +716,21 @@ int main() {
 
     error.clear();
     const auto cancelledPackage =
-        gba::testing::ParseLocalWidgetPackageInstallResultEvent(R"json({
+        widgetrail::testing::ParseLocalWidgetPackageInstallResultEvent(R"json({
         "type":"local-widget-package-install-completed","requestId":0,
         "payload":{"operationId":"aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee","status":"cancelled","widgetId":"","version":"","message":"Local widget package install was cancelled."}
     })json", error);
     Require(cancelledPackage && error.empty(),
             "valid local package cancellation framing was rejected");
     Require(cancelledPackage->status ==
-                gba::LocalWidgetPackageInstallStatus::Cancelled,
+                widgetrail::LocalWidgetPackageInstallStatus::Cancelled,
             "cancelled completion status changed");
     Require(cancelledPackage->widgetId.empty() &&
                 cancelledPackage->version.empty(),
             "cancelled completion carried package identity");
 
     error.clear();
-    Require(!gba::testing::ParseLocalWidgetPackageInstallResultEvent(R"json({
+    Require(!widgetrail::testing::ParseLocalWidgetPackageInstallResultEvent(R"json({
         "type":"local-widget-package-install-completed","requestId":0,
         "payload":{"operationId":"11111111-2222-3333-4444-555555555555","status":"failed","widgetId":null,"version":null,"message":"C:\\\\private\\\\package.wrwidget","path":"C:\\\\private\\\\package.wrwidget"}
     })json", error),
@@ -739,7 +739,7 @@ int main() {
             "path-bearing completion rejection omitted its diagnostic");
 
     error.clear();
-    Require(!gba::testing::ParseLocalWidgetPackageInstallResultEvent(R"json({
+    Require(!widgetrail::testing::ParseLocalWidgetPackageInstallResultEvent(R"json({
         "type":"widget-invalidated","requestId":0,
         "payload":{"operationId":"11111111-2222-3333-4444-555555555555","status":"failed","widgetId":"","version":"","message":"Install failed"}
     })json", error),
@@ -748,16 +748,16 @@ int main() {
             "wrong-operation rejection omitted its diagnostic");
 
     error.clear();
-    Require(!gba::testing::ParseLocalWidgetPackageInstallResultEvent(R"json({
+    Require(!widgetrail::testing::ParseLocalWidgetPackageInstallResultEvent(R"json({
         "type":"local-widget-package-install-completed","requestId":0,
         "payload":{"operationId":"11111111-2222-3333-4444-555555555555","status":"failed","widgetId":"","version":"","message":"Install failed","extra":"malformed"}
     })json", error),
             "malformed local package completion was admitted");
     Require(!error.empty(),
             "malformed completion rejection omitted its diagnostic");
-    gba::WidgetArtworkResultQueue artworkResults;
+    widgetrail::WidgetArtworkResultQueue artworkResults;
     for (std::size_t index = 0;
-         index < gba::WidgetArtworkResultQueue::MaximumResults; ++index) {
+         index < widgetrail::WidgetArtworkResultQueue::MaximumResults; ++index) {
         auto suffix = std::to_wstring(index);
         suffix.insert(suffix.begin(), 32 - suffix.size(), L'0');
         assert(artworkResults.Push({
@@ -766,36 +766,36 @@ int main() {
     assert(artworkResults.Push({
         L"games-apps", L"library.art.00000000000000000000000000000000", L"BBBB"}));
     assert(artworkResults.size() ==
-           gba::WidgetArtworkResultQueue::MaximumResults);
+           widgetrail::WidgetArtworkResultQueue::MaximumResults);
     assert(!artworkResults.Push({
         L"games-apps", L"library.art.ffffffffffffffffffffffffffffffff", L"CCCC"}));
 
-    gba::WidgetActionFailureQueue actionFailures;
+    widgetrail::WidgetActionFailureQueue actionFailures;
     for (int index = 0; index <= 16; ++index) {
         assert(actionFailures.Push({
             L"music", L"runtime-2", L"action-" + std::to_wstring(index), L"source"}));
     }
-    assert(actionFailures.size() == gba::WidgetActionFailureQueue::MaximumFailures);
+    assert(actionFailures.size() == widgetrail::WidgetActionFailureQueue::MaximumFailures);
     const auto pendingFailures = actionFailures.Take();
     assert(pendingFailures.front().actionId == L"action-1");
     assert(pendingFailures.back().actionId == L"action-16");
 
     error.clear();
-    assert(!gba::testing::ParseWidgetActionFailureEvent(R"json({
+    assert(!widgetrail::testing::ParseWidgetActionFailureEvent(R"json({
         "protocolVersion":1,"type":"widget-failed","requestId":0,
         "payload":{"widgetId":"music","runtimeGeneration":"runtime-2","reason":"controllerActionFailed","actionId":"playback.next","sourceElementId":"player.next","message":"secret\u000aresponse","canRestart":false}
     })json", error));
     assert(!error.empty());
 
     error.clear();
-    assert(!gba::testing::ParseWidgetActionFailureEvent(R"json({
+    assert(!widgetrail::testing::ParseWidgetActionFailureEvent(R"json({
         "protocolVersion":1,"type":"widget-failed","requestId":0,
         "payload":{"widgetId":"music","runtimeGeneration":"runtime-2","reason":"controllerActionFailed","actionId":"playback.next","sourceElementId":"player.next","message":"failed","canRestart":true}
     })json", error));
     assert(!error.empty());
 
     error.clear();
-    const auto appearance = gba::testing::ParsePlatformAppearance(ValidAppearance, error);
+    const auto appearance = widgetrail::testing::ParsePlatformAppearance(ValidAppearance, error);
     assert(appearance && error.empty());
     assert(appearance->revision == 7);
     assert(appearance->themeId == L"midnight-blue");
@@ -803,17 +803,17 @@ int main() {
     assert(appearance->interfaceScale == 1.1);
     assert(appearance->textScale == 1.25);
     assert(appearance->backdropOpacity == 0.62);
-    assert(appearance->motion == gba::PlatformMotionPreference::Reduced);
-    assert(appearance->contrast == gba::PlatformContrastPreference::High);
+    assert(appearance->motion == widgetrail::PlatformMotionPreference::Reduced);
+    assert(appearance->contrast == widgetrail::PlatformContrastPreference::High);
     assert(appearance->boldText);
-    assert(appearance->transparency == gba::PlatformTransparencyPreference::Reduced);
+    assert(appearance->transparency == widgetrail::PlatformTransparencyPreference::Reduced);
     assert(appearance->shellStyles.size() == 3);
     assert(appearance->shellStyles.at(L"panel").at(L"corner-radius").number == 18.0);
     assert(appearance->shellStyles.at(L"title").at(L"font-family").text ==
            L"Segoe UI Variable");
 
     error.clear();
-    assert(!gba::testing::ParsePlatformAppearance(R"json({
+    assert(!widgetrail::testing::ParsePlatformAppearance(R"json({
         "revision":0,"themeId":"default","themeVersion":"1.0.0",
         "interfaceScale":1,"textScale":1,"backdropOpacity":0.64,
         "motion":"cinematic","contrast":"system","boldText":false,"transparency":"full","shellStyles":{}
@@ -821,7 +821,7 @@ int main() {
     assert(error.find(L"motion") != std::wstring::npos);
 
     error.clear();
-    assert(!gba::testing::ParsePlatformAppearance(R"json({
+    assert(!widgetrail::testing::ParsePlatformAppearance(R"json({
         "revision":0,"themeId":"default","themeVersion":"1.0.0",
         "interfaceScale":1,"textScale":1,"backdropOpacity":0.64,
         "motion":"system","contrast":"extreme","boldText":false,"transparency":"full","shellStyles":{}
@@ -829,7 +829,7 @@ int main() {
     assert(error.find(L"contrast") != std::wstring::npos);
 
     error.clear();
-    assert(!gba::testing::ParsePlatformAppearance(R"json({
+    assert(!widgetrail::testing::ParsePlatformAppearance(R"json({
         "revision":0,"themeId":"default","themeVersion":"1.0.0",
         "interfaceScale":1,"textScale":1,"backdropOpacity":0.64,
         "motion":"system","contrast":"system","boldText":false,"transparency":"blurred","shellStyles":{}
@@ -837,7 +837,7 @@ int main() {
     assert(error.find(L"transparency") != std::wstring::npos);
 
     error.clear();
-    assert(!gba::testing::ParsePlatformAppearance(R"json({
+    assert(!widgetrail::testing::ParsePlatformAppearance(R"json({
         "revision":0,"themeId":"default","themeVersion":"1.0.0",
         "interfaceScale":1,"textScale":1,"backdropOpacity":0.64,
         "motion":"system","contrast":"system","boldText":"yes","transparency":"full","shellStyles":{}
@@ -845,7 +845,7 @@ int main() {
     assert(error.find(L"types") != std::wstring::npos);
 
     error.clear();
-    assert(!gba::testing::ParsePlatformAppearance(R"json({
+    assert(!widgetrail::testing::ParsePlatformAppearance(R"json({
         "revision":0,"themeId":"default","themeVersion":"1.0.0",
         "interfaceScale":2,"textScale":1,"backdropOpacity":0.64,
         "motion":"system","contrast":"system","boldText":false,"transparency":"full","shellStyles":{}
@@ -853,7 +853,7 @@ int main() {
     assert(error.find(L"bounds") != std::wstring::npos);
 
     error.clear();
-    assert(!gba::testing::ParsePlatformAppearance(R"json({
+    assert(!widgetrail::testing::ParsePlatformAppearance(R"json({
         "revision":0,"themeId":"default","themeVersion":"1.0.0",
         "interfaceScale":1,"textScale":1,"backdropOpacity":0.64,
         "motion":"system","contrast":"system","boldText":false,"transparency":"full","shellStyles":{"unknown":{}}
@@ -861,7 +861,7 @@ int main() {
     assert(error.find(L"unknown") != std::wstring::npos);
 
     error.clear();
-    assert(!gba::testing::ParsePlatformAppearance(R"json({
+    assert(!widgetrail::testing::ParsePlatformAppearance(R"json({
         "revision":0,"themeId":"default","themeVersion":"1.0.0",
         "interfaceScale":1,"textScale":1,"backdropOpacity":0.64,
         "motion":"system","contrast":"system","boldText":false,"transparency":"full","shellStyles":{"canvas":{
@@ -871,7 +871,7 @@ int main() {
     assert(error.find(L"computed value") != std::wstring::npos);
 
     error.clear();
-    assert(!gba::testing::ParsePlatformAppearance(R"json({
+    assert(!widgetrail::testing::ParsePlatformAppearance(R"json({
         "revision":0,"themeId":"default","themeVersion":"1.0.0",
         "interfaceScale":1,"textScale":1,"backdropOpacity":0.64,
         "motion":"system","contrast":"system","boldText":false,"transparency":"full","shellStyles":{},"unexpected":true
@@ -890,10 +890,10 @@ int main() {
     }
     tooManyStyleProperties += "}}}";
     error.clear();
-    assert(!gba::testing::ParsePlatformAppearance(tooManyStyleProperties, error));
+    assert(!widgetrail::testing::ParsePlatformAppearance(tooManyStyleProperties, error));
     assert(error.find(L"property count") != std::wstring::npos);
 
-    gba::PlatformAppearanceRevisionTracker revisions;
+    widgetrail::PlatformAppearanceRevisionTracker revisions;
     assert(revisions.Notify(3));
     assert(revisions.Notify(2));
     assert(revisions.Notify(5));
@@ -903,7 +903,7 @@ int main() {
     assert(revisions.Take() == 5);
     assert(!revisions.pending());
 
-    gba::WidgetCatalogRevisionTracker catalogRevisions;
+    widgetrail::WidgetCatalogRevisionTracker catalogRevisions;
     assert(catalogRevisions.ObserveSnapshot(2));
     assert(catalogRevisions.observed() == 2);
     assert(catalogRevisions.Notify(2));
@@ -934,26 +934,26 @@ int main() {
     assert(catalogRevisions.Notify(1));
     assert(catalogRevisions.pending() == 1);
 
-    std::vector<gba::WidgetDescriptor> beforeRuntimes{
+    std::vector<widgetrail::WidgetDescriptor> beforeRuntimes{
         {.id = L"evicted", .instanceId = L"instance-1", .runtimeGeneration = L"runtime-1"},
         {.id = L"stable", .instanceId = L"instance-2", .runtimeGeneration = L"runtime-2"},
         {.id = L"removed", .instanceId = L"instance-3", .runtimeGeneration = L"runtime-3"},
     };
-    std::vector<gba::WidgetDescriptor> afterRuntimes{
+    std::vector<widgetrail::WidgetDescriptor> afterRuntimes{
         {.id = L"evicted", .instanceId = L"instance-1", .runtimeGeneration = L"runtime-new"},
         {.id = L"stable", .instanceId = L"instance-2", .runtimeGeneration = L"runtime-2"},
     };
-    const auto changedRuntimes = gba::ChangedWidgetRuntimeIds(beforeRuntimes, afterRuntimes);
+    const auto changedRuntimes = widgetrail::ChangedWidgetRuntimeIds(beforeRuntimes, afterRuntimes);
     assert((changedRuntimes == std::vector<std::wstring>{L"evicted", L"removed"}));
 
-    gba::PlatformAppearanceState appearanceState;
+    widgetrail::PlatformAppearanceState appearanceState;
     assert(appearanceState.Publish(*appearance));
     assert(appearanceState.current() && appearanceState.current()->revision == 7);
-    gba::PlatformAppearance replay = *appearance;
+    widgetrail::PlatformAppearance replay = *appearance;
     replay.themeId = L"same-revision-replay";
     assert(!appearanceState.Publish(std::move(replay)));
     assert(appearanceState.current()->themeId == L"midnight-blue");
-    gba::PlatformAppearance stale = *appearance;
+    widgetrail::PlatformAppearance stale = *appearance;
     stale.revision = 6;
     stale.themeId = L"stale";
     assert(!appearanceState.Publish(std::move(stale)));
@@ -961,7 +961,7 @@ int main() {
     assert(appearanceState.current()->themeId == L"midnight-blue");
 
     error.clear();
-    const auto malformed = gba::testing::ParsePlatformAppearance("{}", error);
+    const auto malformed = widgetrail::testing::ParsePlatformAppearance("{}", error);
     assert(!malformed);
     assert(appearanceState.current()->themeId == L"midnight-blue");
 

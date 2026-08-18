@@ -10,7 +10,7 @@
 #include <unordered_map>
 #include <vector>
 
-namespace gba::input {
+namespace widgetrail::input {
 
 struct SliderInputDescriptor final {
     std::wstring_view widgetInstanceId;
@@ -158,4 +158,4 @@ private:
     std::uint64_t presentationRevision_{};
 };
 
-} // namespace gba::input
+} // namespace widgetrail::input

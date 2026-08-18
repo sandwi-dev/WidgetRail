@@ -11,7 +11,7 @@
 #include <thread>
 #include <vector>
 
-namespace gba::process {
+namespace widgetrail::process {
 
 enum class OwnershipResult {
     Owner,
@@ -37,7 +37,7 @@ public:
     [[nodiscard]] bool owner() const noexcept { return owner_; }
     [[nodiscard]] std::wstring_view profile() const noexcept { return profile_; }
 
-#ifdef GBA_OVERLAY_PROCESS_OWNER_TESTING
+#ifdef WRAIL_OVERLAY_PROCESS_OWNER_TESTING
     struct ObjectNamesForTests final {
         std::wstring mutex;
         std::wstring pipe;
@@ -74,4 +74,4 @@ private:
 
 [[nodiscard]] bool ValidProcessProfile(std::wstring_view profile) noexcept;
 
-} // namespace gba::process
+} // namespace widgetrail::process

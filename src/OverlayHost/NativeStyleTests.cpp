@@ -8,15 +8,15 @@
 
 namespace {
 
-gba::WidgetStyleValue Length(double number, std::wstring unit) {
+widgetrail::WidgetStyleValue Length(double number, std::wstring unit) {
     return {L"length", std::to_wstring(number) + unit, number, std::move(unit)};
 }
 
-gba::WidgetStyleValue Number(std::wstring kind, double number) {
+widgetrail::WidgetStyleValue Number(std::wstring kind, double number) {
     return {std::move(kind), std::to_wstring(number), number, {}};
 }
 
-gba::WidgetStyleValue Color(std::wstring value) {
+widgetrail::WidgetStyleValue Color(std::wstring value) {
     return {L"color", std::move(value), std::nullopt, {}};
 }
 
@@ -30,7 +30,7 @@ void Near(float expected, float actual) {
 } // namespace
 
 int main() {
-    using namespace gba;
+    using namespace widgetrail;
 
     WidgetComputedStyle responsive{
         {L"width", Length(50, L"vw")},
@@ -279,7 +279,7 @@ int main() {
         std::nullopt, effectivePanel, 0.0F);
     assert(unchangedSurface == effectivePanel);
 
-    // Shell roles that share one GBSS selector still adapt separately for
+    // Shell roles that share one WRSS selector still adapt separately for
     // their real paint surfaces: dashboard/canvas, tray, and widget/panel.
     const auto canvasText = NativeStyleAdapter::Adapt(
         {}, NativeStyleContext{1920, 1080, 800, 400, 16, 16, false,

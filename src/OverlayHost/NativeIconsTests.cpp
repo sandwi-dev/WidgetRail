@@ -14,11 +14,11 @@
 
 namespace {
 
-using gba::icons::DrawNativeIcon;
-using gba::icons::ComputeLoadingIndicatorArc;
-using gba::icons::DrawLoadingIndicator;
-using gba::icons::NativeIcon;
-using gba::icons::TryParseNativeIcon;
+using widgetrail::icons::DrawNativeIcon;
+using widgetrail::icons::ComputeLoadingIndicatorArc;
+using widgetrail::icons::DrawLoadingIndicator;
+using widgetrail::icons::NativeIcon;
+using widgetrail::icons::TryParseNativeIcon;
 
 int checks = 0;
 

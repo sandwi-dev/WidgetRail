@@ -7,7 +7,7 @@
 #include <map>
 #include <utility>
 
-namespace gba::launcher {
+namespace widgetrail::launcher {
 namespace {
 
 constexpr int kDeclarationSchemaVersion = 1;
@@ -81,7 +81,7 @@ void OffsetRenderResult(RenderResult& result, const float x, const float y) {
     if (result.currentFocusRect) OffsetRect(*result.currentFocusRect, x, y);
     if (result.currentFocusOutlineClip)
         OffsetRect(*result.currentFocusOutlineClip, x, y);
-#ifdef GBA_DECLARATIVE_RENDERER_TESTING
+#ifdef WRAIL_DECLARATIVE_RENDERER_TESTING
     for (auto& [_, rect] : result.elementRects) OffsetRect(rect, x, y);
     for (auto& [_, rect] : result.elementVisibleRects) OffsetRect(rect, x, y);
     for (auto& [_, placement] : result.buttonContentPlacements) {
@@ -506,7 +506,7 @@ ProductionProjectionResult LauncherExperienceProjection::Render(
             ? GameRailPresentation::EqualWidthNoArtwork
             : GameRailPresentation::Authored);
     const HRESULT endResult = stagingTarget_->EndDraw();
-#ifdef GBA_DECLARATIVE_RENDERER_TESTING
+#ifdef WRAIL_DECLARATIVE_RENDERER_TESTING
     const bool forcedFailure = std::exchange(failNextAdapterFrameForTesting_, false);
 #else
     constexpr bool forcedFailure = false;
@@ -667,4 +667,4 @@ void LauncherExperienceProjection::ClearCanonical() noexcept {
     canonicalSnapshot_.reset();
 }
 
-} // namespace gba::launcher
+} // namespace widgetrail::launcher

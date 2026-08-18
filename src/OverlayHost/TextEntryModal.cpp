@@ -5,7 +5,7 @@
 #include <cmath>
 #include <limits>
 
-namespace gba::input {
+namespace widgetrail::input {
 
 SecureTextBuffer::SecureTextBuffer(std::vector<wchar_t>&& value) noexcept
     : value_(std::move(value)) {}
@@ -409,4 +409,4 @@ LRESULT TextEntryModal::HandleMessage(
     }
 }
 
-} // namespace gba::input
+} // namespace widgetrail::input

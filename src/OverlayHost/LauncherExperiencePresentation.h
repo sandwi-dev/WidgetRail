@@ -14,9 +14,9 @@
 #include <vector>
 
 struct IWICImagingFactory;
-namespace gba { struct RemoteDecodedImage; }
+namespace widgetrail { struct RemoteDecodedImage; }
 
-namespace gba::launcher {
+namespace widgetrail::launcher {
 
 constexpr std::size_t MaximumLauncherAssetBytes = 16U * 1024U * 1024U;
 constexpr std::uint32_t MaximumLauncherAssetDimension = 4096;
@@ -50,7 +50,7 @@ struct DecodedLauncherAsset final {
     /// Ordinary trusted app artwork remains owned by RemoteImageCache. The
     /// launcher presentation frame may share that immutable decoded payload
     /// without copying it into a second native image cache.
-    std::shared_ptr<const gba::RemoteDecodedImage> sharedDecodedImage;
+    std::shared_ptr<const widgetrail::RemoteDecodedImage> sharedDecodedImage;
 
     [[nodiscard]] const std::uint8_t* pixels() const noexcept;
     [[nodiscard]] std::size_t pixelBytes() const noexcept;
@@ -169,4 +169,4 @@ void ApplyLauncherPresentationStyles(
     const LauncherPresentationFrame& presentation,
     std::wstring_view focusedElementId);
 
-} // namespace gba::launcher
+} // namespace widgetrail::launcher

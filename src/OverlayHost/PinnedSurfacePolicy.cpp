@@ -5,7 +5,7 @@
 #include <limits>
 #include <utility>
 
-namespace gba::pinned {
+namespace widgetrail::pinned {
 namespace {
 
 constexpr float kDefaultWidthDip = 480.0F;
@@ -167,4 +167,4 @@ std::optional<ResolvedPlacement> ResolvePlacement(
     };
 }
 
-} // namespace gba::pinned
+} // namespace widgetrail::pinned

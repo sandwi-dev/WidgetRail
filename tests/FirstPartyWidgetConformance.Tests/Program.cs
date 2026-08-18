@@ -566,7 +566,7 @@ static async Task InstalledSteamArtworkRunsIsolated(BridgeCatalog catalog)
     var configured = catalog.GetConfigured("widgetrail.firstparty.game-launcher");
     Assert.True(configured.RequiresAppContainer,
         "Installed Steam artwork did not use the generic AppContainer route.");
-    using var consentRoot = new TemporaryDirectory("gba-installed-steam-artwork-consent");
+    using var consentRoot = new TemporaryDirectory("wrail-installed-steam-artwork-consent");
     var consent = new ConsentStore(consentRoot.Path);
     var identity = new BrokerWidgetIdentity(
         configured.PackageId, configured.PublisherId, configured.InstanceId);
@@ -712,7 +712,7 @@ static async Task InstalledGogRunsIsolated(BridgeCatalog catalog)
         loopbackHttp: simulator,
         privateState: simulator);
     var configured = catalog.GetConfigured("widgetrail.firstparty.game-launcher");
-    using var consentRoot = new TemporaryDirectory("gba-installed-gog-consent");
+    using var consentRoot = new TemporaryDirectory("wrail-installed-gog-consent");
     var consent = new ConsentStore(consentRoot.Path);
     var identity = new BrokerWidgetIdentity(
         configured.PackageId, configured.PublisherId, configured.InstanceId);
@@ -800,7 +800,7 @@ static async Task InstalledGameLauncherCategoryRunsIsolated(BridgeCatalog catalo
             1, "healthy"),
     ];
     var configured = catalog.GetConfigured("widgetrail.firstparty.game-launcher");
-    using var consentRoot = new TemporaryDirectory("gba-installed-category-consent");
+    using var consentRoot = new TemporaryDirectory("wrail-installed-category-consent");
     var consent = new ConsentStore(consentRoot.Path);
     var identity = new BrokerWidgetIdentity(
         configured.PackageId, configured.PublisherId, configured.InstanceId);
@@ -1303,7 +1303,7 @@ static async Task InstalledGameLauncherOwnedRunsIsolated(BridgeCatalog catalog)
                 ActiveOperation: null)),
     ]);
     var configured = catalog.GetConfigured("widgetrail.firstparty.game-launcher");
-    using var consentRoot = new TemporaryDirectory("gba-installed-owned-consent");
+    using var consentRoot = new TemporaryDirectory("wrail-installed-owned-consent");
     var consent = new ConsentStore(consentRoot.Path);
     var identity = new BrokerWidgetIdentity(
         configured.PackageId, configured.PublisherId, configured.InstanceId);
@@ -1404,7 +1404,7 @@ static async Task InstalledGameLauncherOfflineRunsIsolated(BridgeCatalog catalog
         loopbackHttp: simulated,
         privateState: simulated);
     var configured = catalog.GetConfigured("widgetrail.firstparty.game-launcher");
-    using var consentRoot = new TemporaryDirectory("gba-installed-offline-consent");
+    using var consentRoot = new TemporaryDirectory("wrail-installed-offline-consent");
     var consent = new ConsentStore(consentRoot.Path);
     var identity = new BrokerWidgetIdentity(
         configured.PackageId, configured.PublisherId, configured.InstanceId);
@@ -1495,7 +1495,7 @@ static async Task InstalledRunningAppRunsIsolated(BridgeCatalog catalog)
     var configured = catalog.GetConfigured("widgetrail.firstparty.game-launcher");
     Assert.True(configured.RequiresAppContainer,
         "Installed running-app route did not use the generic AppContainer worker.");
-    using var consentRoot = new TemporaryDirectory("gba-installed-running-app-consent");
+    using var consentRoot = new TemporaryDirectory("wrail-installed-running-app-consent");
     var consent = new ConsentStore(consentRoot.Path);
     var identity = new BrokerWidgetIdentity(
         configured.PackageId, configured.PublisherId, configured.InstanceId);
@@ -1725,7 +1725,7 @@ static async Task YtMusicCommunityPackageRunsIsolated(string? acceptanceOutput =
         }
     };
 
-    using var consentRoot = new TemporaryDirectory("gba-ytmusic-community-consent");
+    using var consentRoot = new TemporaryDirectory("wrail-ytmusic-community-consent");
     var consent = new ConsentStore(consentRoot.Path);
     var identity = new BrokerWidgetIdentity(
         configured.PackageId,
@@ -2106,7 +2106,7 @@ static async Task CommunityRecoveryPackagesRunIsolated(string? acceptanceOutput 
             };
         }
 
-        using var consentRoot = new TemporaryDirectory("gba-community-recovery-consent");
+        using var consentRoot = new TemporaryDirectory("wrail-community-recovery-consent");
         var consent = new ConsentStore(consentRoot.Path);
         var identity = new BrokerWidgetIdentity(
             configured.PackageId, configured.PublisherId, configured.InstanceId);
@@ -2246,7 +2246,7 @@ static async Task ExportEvidenceAsync(string outputDirectory)
         {
         var configured = installed.Catalog.GetConfigured(package.Manifest.Id);
         var backend = CreateBackend();
-        using var consentRoot = new TemporaryDirectory("gba-evidence-consent");
+        using var consentRoot = new TemporaryDirectory("wrail-evidence-consent");
         var consent = new ConsentStore(consentRoot.Path);
         var identity = new BrokerWidgetIdentity(
             configured.PackageId,
@@ -2542,7 +2542,7 @@ static async Task RunCatalogAsync(
                     "widgetrail.firstparty.game-launcher" or
                     "widgetrail.community.reference.game-launcher"
                     ? 10_000 : 2);
-            using var consentRoot = new TemporaryDirectory("gba-firstparty-consent");
+            using var consentRoot = new TemporaryDirectory("wrail-firstparty-consent");
             var consent = new ConsentStore(consentRoot.Path);
             var identity = new BrokerWidgetIdentity(
                 configured.PackageId,
@@ -2642,7 +2642,7 @@ static async Task MediaSessionsPackageRunsIsolated(
 {
     var configured = catalog.GetConfigured(package.Manifest.Id);
     var backend = CreateBackend();
-    using var consentRoot = new TemporaryDirectory("gba-media-installed-consent");
+    using var consentRoot = new TemporaryDirectory("wrail-media-installed-consent");
     var consent = new ConsentStore(consentRoot.Path);
     var identity = new BrokerWidgetIdentity(
         configured.PackageId,
@@ -3527,7 +3527,7 @@ file sealed class Deployment : IDisposable
         bool fullApplicationReferenceOnly = false,
         bool mediaSessionsOnly = false)
     {
-        var temporary = new TemporaryDirectory("gba-firstparty-conformance");
+        var temporary = new TemporaryDirectory("wrail-firstparty-conformance");
         try
         {
             var repo = FindRepositoryRoot();
@@ -3980,7 +3980,7 @@ file sealed record EvidenceGapDescriptor(
 file sealed class InstalledSteamArtworkFixture : IDisposable
 {
     private readonly TemporaryDirectory _directory =
-        new("gba-installed-steam-artwork");
+        new("wrail-installed-steam-artwork");
 
     internal InstalledSteamArtworkFixture()
     {
@@ -4040,7 +4040,7 @@ file sealed class InstalledArtworkSteamLauncher : IWindowsSteamLauncher
 
 file sealed class InstalledGogFixture : IDisposable
 {
-    private readonly TemporaryDirectory _directory = new("gba-installed-gog");
+    private readonly TemporaryDirectory _directory = new("wrail-installed-gog");
 
     internal InstalledGogFixture()
     {

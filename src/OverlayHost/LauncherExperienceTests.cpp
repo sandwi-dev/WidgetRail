@@ -17,10 +17,10 @@
 namespace {
 
 using Microsoft::WRL::ComPtr;
-using gba::WidgetNode;
-using gba::WidgetSnapshot;
-using gba::declarative::Rect;
-using namespace gba::launcher;
+using widgetrail::WidgetNode;
+using widgetrail::WidgetSnapshot;
+using widgetrail::declarative::Rect;
+using namespace widgetrail::launcher;
 
 int checks{};
 
@@ -51,15 +51,15 @@ WidgetNode Node(const wchar_t* id, const wchar_t* kind, const wchar_t* label = L
     return result;
 }
 
-gba::WidgetStyleValue Length(const double value) {
+widgetrail::WidgetStyleValue Length(const double value) {
     return {L"length", std::to_wstring(value) + L"px", value, L"px"};
 }
 
-gba::WidgetStyleValue Number(const double value) {
+widgetrail::WidgetStyleValue Number(const double value) {
     return {L"number", std::to_wstring(value), value, {}};
 }
 
-gba::WidgetStyleValue Color(const wchar_t* value) {
+widgetrail::WidgetStyleValue Color(const wchar_t* value) {
     return {L"color", value, {}, {}};
 }
 
@@ -213,7 +213,7 @@ WidgetSnapshot ProjectedProductionSnapshot(
     result.instanceId = L"game-launcher.instance.exact";
     result.activeInputScopeId = L"game-launcher.scope.exact";
     result.initialFocusId = L"launcher.game.0";
-    gba::WidgetSurfaceHints surface;
+    widgetrail::WidgetSurfaceHints surface;
     surface.mode = L"wide";
     surface.preferredWidth = 1180;
     surface.preferredHeight = 700;
@@ -310,9 +310,9 @@ WidgetSnapshot ProjectedArtworkMatrixSnapshot(const std::size_t count = 32) {
     return result;
 }
 
-std::optional<gba::WidgetAdvancedPresentationDeclaration>
+std::optional<widgetrail::WidgetAdvancedPresentationDeclaration>
 AdvancedPresentationDeclaration(const int schemaVersion = 1) {
-    return gba::WidgetAdvancedPresentationDeclaration{
+    return widgetrail::WidgetAdvancedPresentationDeclaration{
         schemaVersion, L"launcherExperience"};
 }
 
@@ -587,7 +587,7 @@ void RenderedSlotsSharePaintPointerFocusAndUiaGeometry() {
         canvas.Get(), D2D1::RenderTargetProperties(), target.ReleaseAndGetAddressOf())),
         "create WIC render target");
 
-    gba::DeclarativeRenderer renderer{d2d.Get(), write.Get(), nullptr};
+    widgetrail::DeclarativeRenderer renderer{d2d.Get(), write.Get(), nullptr};
     auto contents = FixtureContents();
     const std::array profiles{
         std::pair{Rect{0, 0, 854, 480}, 1.0F},
@@ -599,7 +599,7 @@ void RenderedSlotsSharePaintPointerFocusAndUiaGeometry() {
     };
     const auto verify = [&](const Recipe* recipe, const Preset preset,
                             const Rect workArea, const float textScale) {
-        gba::DeclarativeRenderOptions options;
+        widgetrail::DeclarativeRenderOptions options;
         options.collectAccessibility = true;
         options.accessibility.textScale = textScale;
         target->BeginDraw();
@@ -636,20 +636,20 @@ void RenderedSlotsSharePaintPointerFocusAndUiaGeometry() {
             Check(Contains(workArea, region.rect), "pointer target stays in work area");
         for (const auto& region : experience.render.accessibilityRegions)
             Check(Contains(workArea, region.rect), "UIA target stays in work area");
-        const auto pointer = gba::input::FindPointerHitTarget(
+        const auto pointer = widgetrail::input::FindPointerHitTarget(
             focus.x + focus.width / 2, focus.y + focus.height / 2,
             L"launcher-root", experience.render);
         Check(pointer && pointer->id == L"launcher.game.0" && pointer->enabled,
               "pointer resolves the same host-owned exact game action");
         const auto rail = experience.layout.Find(Slot::GameRail);
         const auto direction = rail->orientation == Orientation::Vertical
-            ? gba::input::NavigationDirection::Down
-            : gba::input::NavigationDirection::Right;
-        Check(gba::input::FindGeometricFocusTarget(
+            ? widgetrail::input::NavigationDirection::Down
+            : widgetrail::input::NavigationDirection::Right;
+        Check(widgetrail::input::FindGeometricFocusTarget(
                   L"launcher.game.0", direction, experience.render) == L"launcher.game.1",
               "controller and keyboard traverse the recipe rail orientation");
 
-        const auto tree = gba::accessibility::BuildWidgetTree(
+        const auto tree = widgetrail::accessibility::BuildWidgetTree(
             L"game-launcher", L"fixture-generation", experience.semanticSnapshot,
             experience.render, L"launcher.game.0");
         Check(tree.focusedNode && tree.nodes[*tree.focusedNode].id == L"launcher.game.0",
@@ -696,10 +696,10 @@ void RenderedSlotsSharePaintPointerFocusAndUiaGeometry() {
     Near(second.render.focusRects.at(L"launcher.game.0").x,
          first.render.focusRects.at(L"launcher.game.0").x,
          "z-order does not change semantic focus geometry");
-    const auto firstTree = gba::accessibility::BuildWidgetTree(
+    const auto firstTree = widgetrail::accessibility::BuildWidgetTree(
         L"game-launcher", L"fixture-generation", first.semanticSnapshot,
         first.render, L"launcher.game.0");
-    const auto secondTree = gba::accessibility::BuildWidgetTree(
+    const auto secondTree = widgetrail::accessibility::BuildWidgetTree(
         L"game-launcher", L"fixture-generation", second.semanticSnapshot,
         second.render, L"launcher.game.0");
     Check(firstTree.nodes.size() == secondTree.nodes.size(),
@@ -735,7 +735,7 @@ void ProductionProjectionAdmitsOnlyTheDeclaredSemanticContract() {
         target.ReleaseAndGetAddressOf())),
         "create projection render target");
 
-    gba::DeclarativeRenderer renderer{d2d.Get(), write.Get(), nullptr};
+    widgetrail::DeclarativeRenderer renderer{d2d.Get(), write.Get(), nullptr};
     LauncherExperienceProjection projection;
     const std::array profiles{
         std::pair{L"hero-rail", Preset::HeroRail},
@@ -752,7 +752,7 @@ void ProductionProjectionAdmitsOnlyTheDeclaredSemanticContract() {
     for (const auto& [profile, expectedPreset] : profiles) {
         for (const auto& [viewport, textScale] : viewports) {
             auto snapshot = ProjectedProductionSnapshot(profile);
-            gba::DeclarativeRenderOptions options;
+            widgetrail::DeclarativeRenderOptions options;
             options.collectAccessibility = true;
             options.pixelScale = 1.25F;
             options.accessibility.textScale = textScale;
@@ -832,7 +832,7 @@ void ProductionProjectionAdmitsOnlyTheDeclaredSemanticContract() {
                 "production paint pointer focus and UIA share viewport-bounded geometry");
             Near(focus.x, hit->rect.x, "projection focus and pointer x agree");
             Near(focus.y, uia->rect.y, "projection focus and UIA y agree");
-            const auto tree = gba::accessibility::BuildWidgetTree(
+            const auto tree = widgetrail::accessibility::BuildWidgetTree(
                 L"game-launcher", L"production-generation", semantic,
                 adopted.render, L"launcher.game.0");
             Check(tree.focusedNode &&
@@ -842,7 +842,7 @@ void ProductionProjectionAdmitsOnlyTheDeclaredSemanticContract() {
     }
 
     const auto renderFallback = [&](WidgetSnapshot snapshot) {
-        gba::DeclarativeRenderOptions options;
+        widgetrail::DeclarativeRenderOptions options;
         options.collectAccessibility = true;
         target->BeginDraw();
         auto result = projection.Render(
@@ -983,16 +983,16 @@ void ProductionProjectionUsesOneAtomicPresentationFrame() {
     constexpr std::wstring_view png =
         L"iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJ"
         L"AAAADUlEQVR42mP8z8BQDwAFgwJ/lK3xWQAAAABJRU5ErkJggg==";
-    gba::RemoteImageCache cache(
+    widgetrail::RemoteImageCache cache(
         {}, {}, {}, [](std::wstring_view) { return true; });
-    gba::DeclarativeRenderer renderer{d2d.Get(), write.Get(), &cache};
+    widgetrail::DeclarativeRenderer renderer{d2d.Get(), write.Get(), &cache};
     LauncherExperienceProjection projection;
     const auto draw = [&](const std::wstring_view profile,
                           const std::wstring_view focus,
                           const std::uint64_t now,
-                          const gba::NativeAccessibilityPolicy accessibility = {}) {
+                          const widgetrail::NativeAccessibilityPolicy accessibility = {}) {
         auto snapshot = ProjectedProductionSnapshot(profile);
-        gba::DeclarativeRenderOptions options;
+        widgetrail::DeclarativeRenderOptions options;
         options.collectAccessibility = true;
         options.artworkWidgetId = L"game-launcher";
         options.animationTimestampMilliseconds = now;
@@ -1009,7 +1009,7 @@ void ProductionProjectionUsesOneAtomicPresentationFrame() {
 
     for (const auto profile : {L"hero-rail", L"cover-wall", L"carousel", L"compact-grid"}) {
         const auto first = draw(profile, L"launcher.game.0", 100);
-        const auto firstKey = gba::RemoteImageCache::TrustedArtworkKey(
+        const auto firstKey = widgetrail::RemoteImageCache::TrustedArtworkKey(
             L"game-launcher", L"launcher.game.0.artwork",
             L"library.art.00000000000000000000000000000000");
         Check(first.presentationActive &&
@@ -1031,7 +1031,7 @@ void ProductionProjectionUsesOneAtomicPresentationFrame() {
                        ready.currentBackgroundOpacity - 1.0F) <= 0.01F,
             "decoded background enters one complete adopted frame");
 
-        const auto secondKey = gba::RemoteImageCache::TrustedArtworkKey(
+        const auto secondKey = widgetrail::RemoteImageCache::TrustedArtworkKey(
             L"game-launcher", L"launcher.game.1.artwork",
             L"library.art.11111111111111111111111111111111");
         const bool secondWasReady = cache.GetReadyImage(secondKey) != nullptr;
@@ -1071,7 +1071,7 @@ void ProductionProjectionUsesOneAtomicPresentationFrame() {
         Near(focus.y, uia->rect.y, "motion frame focus and UIA y agree");
     }
 
-    gba::NativeAccessibilityPolicy reduced;
+    widgetrail::NativeAccessibilityPolicy reduced;
     reduced.reducedMotion = true;
     reduced.reducedTransparency = true;
     const auto accessible = draw(
@@ -1093,7 +1093,7 @@ void ProductionProjectionUsesOneAtomicPresentationFrame() {
           immediate.presentationMetrics.degradedFrameCount >= 2,
         "input-to-focus budget makes effects immediate and retains p95 evidence");
 
-    gba::LauncherExperienceSelection installed;
+    widgetrail::LauncherExperienceSelection installed;
     installed.revision = 1;
     installed.id = L"dev.example.installed";
     installed.version = L"1.0.0";
@@ -1112,7 +1112,7 @@ void ProductionProjectionUsesOneAtomicPresentationFrame() {
     Check(selected.preset == Preset::CoverWall && selected.presentationActive,
         "installed exact selection overrides only the private presentation preset");
 
-    gba::LauncherExperienceSelection invalid;
+    widgetrail::LauncherExperienceSelection invalid;
     invalid.revision = 2;
     invalid.id = L"dev.example.invalid";
     invalid.version = L"2.0.0";
@@ -1152,11 +1152,11 @@ void NoArtworkHeroRailRetainsOneBoundedSemanticRail() {
         L"AAAADUlEQVR42mP8z8BQDwAFgwJ/lK3xWQAAAABJRU5ErkJggg==";
     enum class State { Available, Mixed, AllTerminal };
     const auto render = [&](const Rect viewport, const State requested) {
-        gba::RemoteImageLimits limits;
+        widgetrail::RemoteImageLimits limits;
         limits.maximumEntries = 64;
-        gba::RemoteImageCache cache(
+        widgetrail::RemoteImageCache cache(
             limits, {}, {}, [](std::wstring_view) { return true; });
-        gba::DeclarativeRenderer renderer{d2d.Get(), write.Get(), &cache};
+        widgetrail::DeclarativeRenderer renderer{d2d.Get(), write.Get(), &cache};
         LauncherExperienceProjection projection;
         const auto snapshot = ProjectedArtworkMatrixSnapshot();
         ComPtr<IWICBitmap> canvas;
@@ -1168,7 +1168,7 @@ void NoArtworkHeroRailRetainsOneBoundedSemanticRail() {
         Check(SUCCEEDED(d2d->CreateWicBitmapRenderTarget(
             canvas.Get(), D2D1::RenderTargetProperties(),
             target.ReleaseAndGetAddressOf())), "create no-artwork target");
-        gba::DeclarativeRenderOptions options;
+        widgetrail::DeclarativeRenderOptions options;
         options.collectAccessibility = true;
         options.artworkWidgetId = L"generic-community-launcher";
         options.accessibility.reducedMotion = true;
@@ -1184,17 +1184,17 @@ void NoArtworkHeroRailRetainsOneBoundedSemanticRail() {
         std::size_t tracked{};
         for (const auto& game : snapshot.root.children[1].children) {
             const auto& artwork = game.children[0];
-            const auto key = gba::RemoteImageCache::TrustedArtworkKey(
+            const auto key = widgetrail::RemoteImageCache::TrustedArtworkKey(
                 L"generic-community-launcher", artwork.id, artwork.artworkHandle);
-            if (cache.GetState(key) != gba::RemoteImageState::Missing) ++tracked;
+            if (cache.GetState(key) != widgetrail::RemoteImageState::Missing) ++tracked;
         }
         Check(tracked >= 6, "artwork matrix admits at least six visible handles");
         std::size_t index{};
         for (const auto& game : snapshot.root.children[1].children) {
             const auto& artwork = game.children[0];
-            const auto key = gba::RemoteImageCache::TrustedArtworkKey(
+            const auto key = widgetrail::RemoteImageCache::TrustedArtworkKey(
                 L"generic-community-launcher", artwork.id, artwork.artworkHandle);
-            if (cache.GetState(key) == gba::RemoteImageState::Missing) {
+            if (cache.GetState(key) == widgetrail::RemoteImageState::Missing) {
                 ++index;
                 continue;
             }
@@ -1213,9 +1213,9 @@ void NoArtworkHeroRailRetainsOneBoundedSemanticRail() {
         if (requested != State::AllTerminal) {
             for (int attempt = 0; attempt < 200; ++attempt) {
                 const auto& artwork = snapshot.root.children[1].children[0].children[0];
-                const auto key = gba::RemoteImageCache::TrustedArtworkKey(
+                const auto key = widgetrail::RemoteImageCache::TrustedArtworkKey(
                     L"generic-community-launcher", artwork.id, artwork.artworkHandle);
-                if (cache.GetState(key) == gba::RemoteImageState::Ready) break;
+                if (cache.GetState(key) == widgetrail::RemoteImageState::Ready) break;
                 Sleep(5);
             }
         }

@@ -286,7 +286,7 @@ This naming contract exists solely for the built-in Settings view;
 it is not a public widget action or package capability.
 
 The default catalog is
-`%LOCALAPPDATA%\GameBarAlternative\widgets`. Every catalog command accepts the
+`%LOCALAPPDATA%\WidgetRail\widgets`. Every catalog command accepts the
 same explicit override:
 
 ```powershell

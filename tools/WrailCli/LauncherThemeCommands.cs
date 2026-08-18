@@ -334,7 +334,7 @@ internal static class LauncherThemeCatalogRoot
         if (string.IsNullOrWhiteSpace(local))
             throw new LauncherExperiencePackageException(
                 "local_app_data_unavailable", "Local Application Data is unavailable.");
-        return Path.Combine(local, "GameBarAlternative", "launcher-experiences");
+        return Path.Combine(local, "WidgetRail", "launcher-experiences");
     }
 }
 

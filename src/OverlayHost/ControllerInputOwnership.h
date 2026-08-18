@@ -2,7 +2,7 @@
 
 #include <cstdint>
 
-namespace gba::input {
+namespace widgetrail::input {
 
 // The strongest controller ownership a normal desktop process can request is
 // GameInput's foreground-exclusive policy. It is deliberately not described
@@ -108,4 +108,4 @@ enum class BasicKeyboardAction {
     }
 }
 
-} // namespace gba::input
+} // namespace widgetrail::input

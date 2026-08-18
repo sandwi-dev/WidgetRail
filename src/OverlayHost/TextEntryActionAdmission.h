@@ -6,7 +6,7 @@
 #include <string>
 #include <string_view>
 
-namespace gba::input {
+namespace widgetrail::input {
 
 // Immutable authority captured before the host enters the text modal's nested
 // message loop. It contains no snapshot or node references.
@@ -44,4 +44,4 @@ struct TextEntryActionTarget final {
     std::wstring_view runtimeGeneration,
     const WidgetSnapshot& snapshot);
 
-} // namespace gba::input
+} // namespace widgetrail::input

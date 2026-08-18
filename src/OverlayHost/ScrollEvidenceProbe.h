@@ -4,7 +4,7 @@
 #include <string>
 #include <string_view>
 
-namespace gba {
+namespace widgetrail {
 
 struct RenderResult;
 struct WidgetSnapshot;
@@ -41,4 +41,4 @@ private:
     std::wstring direction_;
 };
 
-} // namespace gba
+} // namespace widgetrail

@@ -3,7 +3,7 @@
 #include <cstdint>
 #include <string_view>
 
-namespace gba {
+namespace widgetrail {
 
 struct OverlayTransitionSample final {
     float shellOpacity{};
@@ -139,4 +139,4 @@ private:
     bool wasWidgetFocused,
     bool isWidgetFocused) noexcept;
 
-} // namespace gba
+} // namespace widgetrail

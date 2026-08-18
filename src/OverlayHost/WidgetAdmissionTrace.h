@@ -14,7 +14,7 @@
 #include <thread>
 #include <vector>
 
-namespace gba {
+namespace widgetrail {
 
 enum class WidgetAdmissionTraceStage {
     Selection,
@@ -133,4 +133,4 @@ private:
     std::jthread writer_;
 };
 
-} // namespace gba
+} // namespace widgetrail

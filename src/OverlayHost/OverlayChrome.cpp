@@ -4,7 +4,7 @@
 
 #include <algorithm>
 
-namespace gba::shell {
+namespace widgetrail::shell {
 
 RECT ComputeFixedChromeWindowBounds(
     const RECT& workArea, const LONG width, const LONG height) noexcept {
@@ -141,4 +141,4 @@ void FillColorKeyRoundedRectangle(
     target->SetAntialiasMode(previous);
 }
 
-} // namespace gba::shell
+} // namespace widgetrail::shell

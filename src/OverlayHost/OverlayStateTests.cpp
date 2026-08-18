@@ -16,18 +16,18 @@ void Check(const bool condition, const std::string_view message) {
     }
 }
 
-void Send(gba::OverlayState& state, const gba::Command command) {
+void Send(widgetrail::OverlayState& state, const widgetrail::Command command) {
     (void)state.Dispatch(command);
 }
 
 } // namespace
 
 int main() {
-    using gba::Command;
-    using gba::FocusRegion;
-    using gba::OverlayState;
-    using gba::PersistentState;
-    using gba::Surface;
+    using widgetrail::Command;
+    using widgetrail::FocusRegion;
+    using widgetrail::OverlayState;
+    using widgetrail::PersistentState;
+    using widgetrail::Surface;
 
     OverlayState firstRun;
     Check(firstRun.surface() == Surface::Hidden, "starts hidden");

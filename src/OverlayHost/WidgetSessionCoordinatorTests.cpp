@@ -20,19 +20,19 @@
 namespace {
 
 using namespace std::chrono_literals;
-using gba::WidgetDescriptor;
-using gba::WidgetAdmissionTrace;
-using gba::WidgetAdmissionTraceStage;
-using gba::WidgetLifecycleState;
-using gba::WidgetPresentationAuthority;
-using gba::WidgetPresentationPublication;
-using gba::WidgetRefreshState;
-using gba::WidgetSessionCoordinator;
-using gba::WidgetSessionEventKind;
-using gba::WidgetSessionFailureStage;
-using gba::WidgetSessionOperationResult;
-using gba::WidgetSessionOperations;
-using gba::WidgetSnapshot;
+using widgetrail::WidgetDescriptor;
+using widgetrail::WidgetAdmissionTrace;
+using widgetrail::WidgetAdmissionTraceStage;
+using widgetrail::WidgetLifecycleState;
+using widgetrail::WidgetPresentationAuthority;
+using widgetrail::WidgetPresentationPublication;
+using widgetrail::WidgetRefreshState;
+using widgetrail::WidgetSessionCoordinator;
+using widgetrail::WidgetSessionEventKind;
+using widgetrail::WidgetSessionFailureStage;
+using widgetrail::WidgetSessionOperationResult;
+using widgetrail::WidgetSessionOperations;
+using widgetrail::WidgetSnapshot;
 
 WidgetDescriptor Descriptor(
     const wchar_t* id,
@@ -133,7 +133,7 @@ struct FakeBridge final {
                                     WidgetSessionFailureStage::Snapshot,
                                     L"snapshot unavailable");
                         }
-                        gba::WidgetPresentationUpdate update;
+                        widgetrail::WidgetPresentationUpdate update;
                         update.protocolVersion = 18;
                         update.widgetInstanceId = found->second.instanceId;
                         update.presentationGeneration = catalog.front().presentationGeneration;
@@ -160,7 +160,7 @@ struct FakeBridge final {
                         std::move(publication));
             },
             [](const WidgetSnapshot& checkpoint,
-               const gba::WidgetPresentationUpdate& update,
+               const widgetrail::WidgetPresentationUpdate& update,
                const std::wstring_view generation) {
                 if (checkpoint.instanceId != update.widgetInstanceId ||
                     checkpoint.sequence != update.baseSequence ||
@@ -216,11 +216,11 @@ struct FakeBridge final {
 };
 
 template <typename Predicate>
-std::vector<gba::WidgetSessionEvent> WaitEvents(
+std::vector<widgetrail::WidgetSessionEvent> WaitEvents(
     WidgetSessionCoordinator& coordinator,
     Predicate predicate) {
     const auto deadline = std::chrono::steady_clock::now() + 2s;
-    std::vector<gba::WidgetSessionEvent> collected;
+    std::vector<widgetrail::WidgetSessionEvent> collected;
     while (std::chrono::steady_clock::now() < deadline) {
         auto events = coordinator.TakeEvents();
         collected.insert(
@@ -1044,13 +1044,13 @@ void CorrelatedAdmissionTraceIsBoundedAndSanitized() {
     trace.RecordRefreshDequeued(correlation, L"network", 1020);
     trace.RecordSession({
         correlation,
-        gba::WidgetSessionTraceStage::LifecycleDecision,
-        gba::WidgetSessionTraceAction::Queued,
-        gba::WidgetSessionTraceReason::None,
-        gba::WidgetSessionCompletionDisposition::None,
+        widgetrail::WidgetSessionTraceStage::LifecycleDecision,
+        widgetrail::WidgetSessionTraceAction::Queued,
+        widgetrail::WidgetSessionTraceReason::None,
+        widgetrail::WidgetSessionCompletionDisposition::None,
         7,
         3,
-        gba::WidgetSessionRequestKind::Establish,
+        widgetrail::WidgetSessionRequestKind::Establish,
         WidgetLifecycleState::Visible,
         L"network",
         1021,
@@ -1112,11 +1112,11 @@ void CoordinatorEmitsCorrelatedLifecycleAndRequestStages() {
     };
     bridge.snapshots[L"alpha"] = Snapshot(L"alpha.one", 5);
     std::mutex traceMutex;
-    std::vector<gba::WidgetSessionTraceEvent> trace;
+    std::vector<widgetrail::WidgetSessionTraceEvent> trace;
     std::atomic<std::uint64_t> now{100};
     WidgetSessionCoordinator coordinator(
         bridge.Operations(), {},
-        [&](const gba::WidgetSessionTraceEvent& event) {
+        [&](const widgetrail::WidgetSessionTraceEvent& event) {
             std::scoped_lock lock(traceMutex);
             trace.push_back(event);
         },
@@ -1135,26 +1135,26 @@ void CoordinatorEmitsCorrelatedLifecycleAndRequestStages() {
     assert(events.size() == 1);
     assert(events.front().correlationId == 41);
     assert(events.front().completionDisposition ==
-           gba::WidgetSessionCompletionDisposition::Admitted);
+           widgetrail::WidgetSessionCompletionDisposition::Admitted);
 
     std::scoped_lock lock(traceMutex);
     assert(std::any_of(trace.begin(), trace.end(), [](const auto& event) {
         return event.correlationId == 40 &&
-               event.stage == gba::WidgetSessionTraceStage::LifecycleDecision &&
-               event.action == gba::WidgetSessionTraceAction::Skipped &&
-               event.reason == gba::WidgetSessionTraceReason::Deferred;
+               event.stage == widgetrail::WidgetSessionTraceStage::LifecycleDecision &&
+               event.action == widgetrail::WidgetSessionTraceAction::Skipped &&
+               event.reason == widgetrail::WidgetSessionTraceReason::Deferred;
     }));
     const auto queued = std::find_if(trace.begin(), trace.end(), [](const auto& event) {
         return event.correlationId == 41 &&
-               event.stage == gba::WidgetSessionTraceStage::RequestQueued;
+               event.stage == widgetrail::WidgetSessionTraceStage::RequestQueued;
     });
     const auto started = std::find_if(trace.begin(), trace.end(), [](const auto& event) {
         return event.correlationId == 41 &&
-               event.stage == gba::WidgetSessionTraceStage::RequestStarted;
+               event.stage == widgetrail::WidgetSessionTraceStage::RequestStarted;
     });
     const auto completed = std::find_if(trace.begin(), trace.end(), [](const auto& event) {
         return event.correlationId == 41 &&
-               event.stage == gba::WidgetSessionTraceStage::RequestCompleted;
+               event.stage == widgetrail::WidgetSessionTraceStage::RequestCompleted;
     });
     assert(queued != trace.end() && started != trace.end() && completed != trace.end());
     assert(queued->requestId == started->requestId &&
@@ -1163,7 +1163,7 @@ void CoordinatorEmitsCorrelatedLifecycleAndRequestStages() {
     assert(queued->queuedAt <= started->startedAt &&
            started->startedAt <= completed->completedAt);
     assert(completed->disposition ==
-           gba::WidgetSessionCompletionDisposition::Admitted);
+           widgetrail::WidgetSessionCompletionDisposition::Admitted);
 }
 
 void SelectedTraceRejectsPinnedAndSupersededAdmissions() {
@@ -1172,11 +1172,11 @@ void SelectedTraceRejectsPinnedAndSupersededAdmissions() {
         L"selected", L"selected", true, false, 1000);
     trace.RecordSession({
         selected,
-        gba::WidgetSessionTraceStage::RequestCompleted,
-        gba::WidgetSessionTraceAction::None,
-        gba::WidgetSessionTraceReason::None,
-        gba::WidgetSessionCompletionDisposition::Failed,
-        1, 1, gba::WidgetSessionRequestKind::Establish,
+        widgetrail::WidgetSessionTraceStage::RequestCompleted,
+        widgetrail::WidgetSessionTraceAction::None,
+        widgetrail::WidgetSessionTraceReason::None,
+        widgetrail::WidgetSessionCompletionDisposition::Failed,
+        1, 1, widgetrail::WidgetSessionRequestKind::Establish,
         WidgetLifecycleState::Visible, L"pinned", 1001, 1002, 1003,
     });
     trace.RecordAdmissionPresentation(selected, L"pinned", false, 1004);
@@ -1194,11 +1194,11 @@ void SelectedTraceRejectsPinnedAndSupersededAdmissions() {
         L"replacement", L"replacement", true, false, 2000);
     trace.RecordSession({
         selected,
-        gba::WidgetSessionTraceStage::RequestCompleted,
-        gba::WidgetSessionTraceAction::None,
-        gba::WidgetSessionTraceReason::NewerTarget,
-        gba::WidgetSessionCompletionDisposition::Cancelled,
-        2, 2, gba::WidgetSessionRequestKind::Snapshot,
+        widgetrail::WidgetSessionTraceStage::RequestCompleted,
+        widgetrail::WidgetSessionTraceAction::None,
+        widgetrail::WidgetSessionTraceReason::NewerTarget,
+        widgetrail::WidgetSessionCompletionDisposition::Cancelled,
+        2, 2, widgetrail::WidgetSessionRequestKind::Snapshot,
         WidgetLifecycleState::Visible, L"selected", 2001, 2002, 2003,
     });
     trace.RecordAdmissionPresentation(current, L"selected", false, 2004);
@@ -1226,10 +1226,10 @@ void SelectedLifecycleCorrelationExcludesPinnedTarget() {
     bridge.snapshots[L"selected"] = Snapshot(L"selected.one", 1);
     bridge.snapshots[L"pinned"] = Snapshot(L"pinned.one", 2);
     std::mutex traceMutex;
-    std::vector<gba::WidgetSessionTraceEvent> trace;
+    std::vector<widgetrail::WidgetSessionTraceEvent> trace;
     WidgetSessionCoordinator coordinator(
         bridge.Operations(), {},
-        [&](const gba::WidgetSessionTraceEvent& event) {
+        [&](const widgetrail::WidgetSessionTraceEvent& event) {
             std::scoped_lock lock(traceMutex);
             trace.push_back(event);
         });

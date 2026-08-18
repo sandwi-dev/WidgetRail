@@ -11,7 +11,7 @@
 #include <string_view>
 #include <vector>
 
-namespace gba::accessibility {
+namespace widgetrail::accessibility {
 
 enum class Role {
     Button,
@@ -140,4 +140,4 @@ struct WindowTreePartition final {
     std::wstring_view focusedElementId,
     const std::map<std::wstring, double, std::less<>>& presentedSliderValues = {});
 
-} // namespace gba::accessibility
+} // namespace widgetrail::accessibility

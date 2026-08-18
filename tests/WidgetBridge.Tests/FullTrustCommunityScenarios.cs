@@ -509,7 +509,7 @@ internal static class FullTrustCommunityScenarios
         internal ScenarioDirectory()
         {
             Path = System.IO.Path.Combine(
-                System.IO.Path.GetTempPath(), $"gba-full-trust-{Guid.NewGuid():N}");
+                System.IO.Path.GetTempPath(), $"wrail-full-trust-{Guid.NewGuid():N}");
             Directory.CreateDirectory(Path);
         }
 

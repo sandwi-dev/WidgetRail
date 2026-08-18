@@ -30,7 +30,7 @@ struct CallbackProbe final {
     bool releaseHeldEvent{};
 };
 
-void GBA_OVERLAY_PLATFORM_CALL OnEventAvailable(void* context) noexcept {
+void WRAIL_OVERLAY_PLATFORM_CALL OnEventAvailable(void* context) noexcept {
     auto& probe = *static_cast<CallbackProbe*>(context);
     {
         std::unique_lock lock(probe.holdMutex);
@@ -49,7 +49,7 @@ void GBA_OVERLAY_PLATFORM_CALL OnEventAvailable(void* context) noexcept {
     probe.eventSignals.fetch_add(1, std::memory_order_relaxed);
 }
 
-void GBA_OVERLAY_PLATFORM_CALL OnDiagnostic(
+void WRAIL_OVERLAY_PLATFORM_CALL OnDiagnostic(
     void* context,
     const wchar_t*) noexcept {
     auto& probe = *static_cast<CallbackProbe*>(context);
@@ -70,47 +70,47 @@ void Check(const bool condition, const char* message) {
 } // namespace
 
 int main() {
-    Check(GbaOverlayPlatformGetAbiVersion() ==
-              GBA_OVERLAY_PLATFORM_ABI_VERSION,
+    Check(WidgetRailOverlayPlatformGetAbiVersion() ==
+              WRAIL_OVERLAY_PLATFORM_ABI_VERSION,
           "the exported ABI reports the version compiled into the caller");
     const HMODULE importedModule =
         GetModuleHandleW(L"OverlayPlatformInterop.dll");
     Check(importedModule != nullptr &&
               GetProcAddress(importedModule,
-                  "GbaOverlayPlatformGetAbiVersion") != nullptr,
+                  "WidgetRailOverlayPlatformGetAbiVersion") != nullptr,
           "the focused executable imports the built public DLL ABI");
-    Check(sizeof(GbaOverlayPlatformControllerFrame) == 76 &&
-              offsetof(GbaOverlayPlatformControllerFrame, state) == 20 &&
+    Check(sizeof(WidgetRailOverlayPlatformControllerFrame) == 76 &&
+              offsetof(WidgetRailOverlayPlatformControllerFrame, state) == 20 &&
               offsetof(
-                  GbaOverlayPlatformControllerFrame,
+                  WidgetRailOverlayPlatformControllerFrame,
                   stickNavigation) == 60 &&
-              sizeof(GbaOverlayPlatformCreateOptions) == 32,
+              sizeof(WidgetRailOverlayPlatformCreateOptions) == 32,
           "the managed-facing version-1 layouts match the fixed-width contract");
 
-    GbaOverlayPlatformCreateOptions invalidOptions;
-    invalidOptions.abiVersion = GBA_OVERLAY_PLATFORM_ABI_VERSION + 1;
-    GbaOverlayPlatformHandle* invalidHandle{};
-    Check(GbaOverlayPlatformCreate(&invalidOptions, &invalidHandle) ==
-              GbaOverlayPlatformStatus::InvalidVersion &&
+    WidgetRailOverlayPlatformCreateOptions invalidOptions;
+    invalidOptions.abiVersion = WRAIL_OVERLAY_PLATFORM_ABI_VERSION + 1;
+    WidgetRailOverlayPlatformHandle* invalidHandle{};
+    Check(WidgetRailOverlayPlatformCreate(&invalidOptions, &invalidHandle) ==
+              WidgetRailOverlayPlatformStatus::InvalidVersion &&
               invalidHandle == nullptr,
           "a mismatched caller version is rejected before native ownership starts");
 
-    gba::platform::GuideToggleDebouncer guide;
-    gba::OverlayState overlay({}, {L"widget"});
+    widgetrail::platform::GuideToggleDebouncer guide;
+    widgetrail::OverlayState overlay({}, {L"widget"});
     Check(guide.Accept(1'000) &&
-              overlay.Dispatch(gba::Command::ToggleOverlay) &&
-              overlay.surface() == gba::Surface::Dashboard,
+              overlay.Dispatch(widgetrail::Command::ToggleOverlay) &&
+              overlay.surface() == widgetrail::Surface::Dashboard,
           "the first Guide edge shows the hidden overlay");
     Check(!guide.Accept(1'149) &&
-              overlay.surface() == gba::Surface::Dashboard,
+              overlay.surface() == widgetrail::Surface::Dashboard,
           "a duplicate Guide source inside the debounce window cannot double toggle");
     Check(guide.Accept(1'150) &&
-              overlay.Dispatch(gba::Command::ToggleOverlay) &&
-              overlay.surface() == gba::Surface::Hidden,
+              overlay.Dispatch(widgetrail::Command::ToggleOverlay) &&
+              overlay.surface() == widgetrail::Surface::Hidden,
           "a later Guide edge hides through the same host command");
 
-    gba::platform::ControllerFrameTracker tracker;
-    GbaOverlayPlatformRawControllerState state;
+    widgetrail::platform::ControllerFrameTracker tracker;
+    WidgetRailOverlayPlatformRawControllerState state;
     auto frame = tracker.Update(true, state, 0);
     Check(frame.primed && frame.pressedButtons == 0,
           "the first connected sample establishes a neutral baseline");
@@ -119,26 +119,26 @@ int main() {
     frame = tracker.Update(true, state, 10);
     Check(frame.pressedButtons == XINPUT_GAMEPAD_DPAD_RIGHT &&
               frame.dpadNavigation.direction ==
-                  GbaOverlayPlatformNavigationDirection::Right &&
+                  WidgetRailOverlayPlatformNavigationDirection::Right &&
               frame.dpadNavigation.phase ==
-                  GbaOverlayPlatformNavigationPhase::Pressed,
+                  WidgetRailOverlayPlatformNavigationPhase::Pressed,
           "a D-pad edge produces one pressed navigation event");
     frame = tracker.Update(true, state, 369);
     Check(frame.dpadNavigation.direction ==
-              GbaOverlayPlatformNavigationDirection::None,
+              WidgetRailOverlayPlatformNavigationDirection::None,
           "held navigation waits for the bounded initial repeat");
     frame = tracker.Update(true, state, 370);
     Check(frame.dpadNavigation.direction ==
-              GbaOverlayPlatformNavigationDirection::Right &&
+              WidgetRailOverlayPlatformNavigationDirection::Right &&
               frame.dpadNavigation.phase ==
-                  GbaOverlayPlatformNavigationPhase::Repeated,
+                  WidgetRailOverlayPlatformNavigationPhase::Repeated,
           "held navigation repeats on the production cadence");
 
     frame = tracker.Update(false, {}, 400);
     Check(!frame.connected &&
               frame.releasedButtons == XINPUT_GAMEPAD_DPAD_RIGHT &&
               frame.dpadNavigation.direction ==
-                  GbaOverlayPlatformNavigationDirection::None,
+                  WidgetRailOverlayPlatformNavigationDirection::None,
           "device loss releases held buttons and clears repeat direction");
 
     tracker.Reset();
@@ -180,7 +180,7 @@ int main() {
     Check(!frame.recoveryChordPressed,
           "the held recovery chord cannot retrigger");
 
-    GbaOverlayPlatformPlacementInput placementInput;
+    WidgetRailOverlayPlatformPlacementInput placementInput;
     placementInput.workLeft = -1'920;
     placementInput.workTop = 0;
     placementInput.workRight = 0;
@@ -188,12 +188,12 @@ int main() {
     placementInput.dpi = 144;
     placementInput.desiredWidthDip = 1'180.0F;
     placementInput.desiredHeightDip = 700.0F;
-    GbaOverlayPlatformPlacement placement;
-    std::uint32_t hasPlacement = GBA_OVERLAY_PLATFORM_FALSE;
-    Check(GbaOverlayPlatformComputePlacement(
+    WidgetRailOverlayPlatformPlacement placement;
+    std::uint32_t hasPlacement = WRAIL_OVERLAY_PLATFORM_FALSE;
+    Check(WidgetRailOverlayPlatformComputePlacement(
               &placementInput, &placement, &hasPlacement) ==
-              GbaOverlayPlatformStatus::Ok &&
-              hasPlacement != GBA_OVERLAY_PLATFORM_FALSE,
+              WidgetRailOverlayPlatformStatus::Ok &&
+              hasPlacement != WRAIL_OVERLAY_PLATFORM_FALSE,
           "the versioned placement entrypoint resolves a valid PMv2 work area");
     Check(placement.x >= placementInput.workLeft &&
               placement.y >= placementInput.workTop &&
@@ -202,91 +202,91 @@ int main() {
           "resolved placement is contained by a negative-origin monitor work area");
 
     CallbackProbe callbackProbe;
-    GbaOverlayPlatformCreateOptions options;
+    WidgetRailOverlayPlatformCreateOptions options;
     options.callbackContext = &callbackProbe;
     options.eventAvailable = OnEventAvailable;
     options.diagnostic = OnDiagnostic;
-    GbaOverlayPlatformHandle* handle{};
-    Check(GbaOverlayPlatformCreate(&options, &handle) ==
-              GbaOverlayPlatformStatus::Ok &&
+    WidgetRailOverlayPlatformHandle* handle{};
+    Check(WidgetRailOverlayPlatformCreate(&options, &handle) ==
+              WidgetRailOverlayPlatformStatus::Ok &&
               handle != nullptr,
           "a version-matched caller creates one opaque platform owner");
-    Check(GbaOverlayPlatformSetOwnedWindows(handle, 10, 20) ==
-              GbaOverlayPlatformStatus::Ok &&
-              GbaOverlayPlatformObserveForegroundTarget(
-                  handle, 10, GBA_OVERLAY_PLATFORM_TRUE) ==
-                  GBA_OVERLAY_PLATFORM_FALSE &&
-              GbaOverlayPlatformObserveForegroundTarget(
-                  handle, 30, GBA_OVERLAY_PLATFORM_TRUE) ==
-                  GBA_OVERLAY_PLATFORM_TRUE &&
-              GbaOverlayPlatformRememberedForegroundTarget(handle) == 30,
+    Check(WidgetRailOverlayPlatformSetOwnedWindows(handle, 10, 20) ==
+              WidgetRailOverlayPlatformStatus::Ok &&
+              WidgetRailOverlayPlatformObserveForegroundTarget(
+                  handle, 10, WRAIL_OVERLAY_PLATFORM_TRUE) ==
+                  WRAIL_OVERLAY_PLATFORM_FALSE &&
+              WidgetRailOverlayPlatformObserveForegroundTarget(
+                  handle, 30, WRAIL_OVERLAY_PLATFORM_TRUE) ==
+                  WRAIL_OVERLAY_PLATFORM_TRUE &&
+              WidgetRailOverlayPlatformRememberedForegroundTarget(handle) == 30,
           "foreground targeting rejects owned windows and remembers one external target");
-    Check(GbaOverlayPlatformResolveForegroundTarget(
-              handle, 10, GBA_OVERLAY_PLATFORM_TRUE) == 30 &&
-              GbaOverlayPlatformResolveForegroundTarget(
-                  handle, 10, GBA_OVERLAY_PLATFORM_FALSE) == 10,
+    Check(WidgetRailOverlayPlatformResolveForegroundTarget(
+              handle, 10, WRAIL_OVERLAY_PLATFORM_TRUE) == 30 &&
+              WidgetRailOverlayPlatformResolveForegroundTarget(
+                  handle, 10, WRAIL_OVERLAY_PLATFORM_FALSE) == 10,
           "target resolution uses valid remembered authority and bounded fallback");
 
-    Check(GbaOverlayPlatformInitialize(handle) ==
-              GbaOverlayPlatformStatus::Ok,
+    Check(WidgetRailOverlayPlatformInitialize(handle) ==
+              WidgetRailOverlayPlatformStatus::Ok,
           "native initialization remains usable with GameInput or its existing fallback");
     Check(callbackProbe.diagnosticSignals.load(std::memory_order_acquire) > 0,
           "the imported DLL invokes the registered diagnostic callback");
 
-    Check(GbaOverlayPlatformSetWindowState(
+    Check(WidgetRailOverlayPlatformSetWindowState(
               handle,
-              GBA_OVERLAY_PLATFORM_TRUE,
-              GBA_OVERLAY_PLATFORM_TRUE) == GbaOverlayPlatformStatus::Ok &&
+              WRAIL_OVERLAY_PLATFORM_TRUE,
+              WRAIL_OVERLAY_PLATFORM_TRUE) == WidgetRailOverlayPlatformStatus::Ok &&
               callbackProbe.eventSignals.load(std::memory_order_acquire) >= 2,
           "visibility and focus changes signal the registered event callback");
-    GbaOverlayPlatformControllerFrame visibleFrame;
-    Check(GbaOverlayPlatformReadController(
+    WidgetRailOverlayPlatformControllerFrame visibleFrame;
+    Check(WidgetRailOverlayPlatformReadController(
               handle,
-              GBA_OVERLAY_PLATFORM_TRUE,
+              WRAIL_OVERLAY_PLATFORM_TRUE,
               1'000,
-              &visibleFrame) == GbaOverlayPlatformStatus::Ok &&
-              visibleFrame.readPath != GbaOverlayPlatformReadPath::None,
+              &visibleFrame) == WidgetRailOverlayPlatformStatus::Ok &&
+              visibleFrame.readPath != WidgetRailOverlayPlatformReadPath::None,
           "a visible platform lease owns a controller read path");
 
-    Check(GbaOverlayPlatformSetWindowState(
+    Check(WidgetRailOverlayPlatformSetWindowState(
               handle,
-              GBA_OVERLAY_PLATFORM_FALSE,
-              GBA_OVERLAY_PLATFORM_FALSE) == GbaOverlayPlatformStatus::Ok,
+              WRAIL_OVERLAY_PLATFORM_FALSE,
+              WRAIL_OVERLAY_PLATFORM_FALSE) == WidgetRailOverlayPlatformStatus::Ok,
           "close-animation begin retires the visible platform lease immediately");
-    GbaOverlayPlatformControllerFrame closingFrame;
-    Check(GbaOverlayPlatformReadController(
+    WidgetRailOverlayPlatformControllerFrame closingFrame;
+    Check(WidgetRailOverlayPlatformReadController(
               handle,
-              GBA_OVERLAY_PLATFORM_FALSE,
+              WRAIL_OVERLAY_PLATFORM_FALSE,
               1'010,
-              &closingFrame) == GbaOverlayPlatformStatus::Ok &&
-              closingFrame.readPath == GbaOverlayPlatformReadPath::None,
+              &closingFrame) == WidgetRailOverlayPlatformStatus::Ok &&
+              closingFrame.readPath == WidgetRailOverlayPlatformReadPath::None,
           "controller ownership is dormant during the closing interval");
 
-    Check(GbaOverlayPlatformSetWindowState(
+    Check(WidgetRailOverlayPlatformSetWindowState(
               handle,
-              GBA_OVERLAY_PLATFORM_TRUE,
-              GBA_OVERLAY_PLATFORM_TRUE) == GbaOverlayPlatformStatus::Ok,
+              WRAIL_OVERLAY_PLATFORM_TRUE,
+              WRAIL_OVERLAY_PLATFORM_TRUE) == WidgetRailOverlayPlatformStatus::Ok,
           "rapid reopen restores the platform lease while the HWND is still visible");
-    GbaOverlayPlatformControllerFrame reopenedFrame;
-    Check(GbaOverlayPlatformReadController(
+    WidgetRailOverlayPlatformControllerFrame reopenedFrame;
+    Check(WidgetRailOverlayPlatformReadController(
               handle,
-              GBA_OVERLAY_PLATFORM_TRUE,
+              WRAIL_OVERLAY_PLATFORM_TRUE,
               1'011,
-              &reopenedFrame) == GbaOverlayPlatformStatus::Ok &&
-              reopenedFrame.readPath != GbaOverlayPlatformReadPath::None,
+              &reopenedFrame) == WidgetRailOverlayPlatformStatus::Ok &&
+              reopenedFrame.readPath != WidgetRailOverlayPlatformReadPath::None,
           "rapid reopen returns controller read ownership on the next deterministic sample");
 
-    GbaOverlayPlatformEvent event;
-    std::uint32_t hasEvent = GBA_OVERLAY_PLATFORM_FALSE;
-    Check(GbaOverlayPlatformDrainEvent(handle, 1'020, &event, &hasEvent) ==
-              GbaOverlayPlatformStatus::Ok &&
-              hasEvent == GBA_OVERLAY_PLATFORM_TRUE,
+    WidgetRailOverlayPlatformEvent event;
+    std::uint32_t hasEvent = WRAIL_OVERLAY_PLATFORM_FALSE;
+    Check(WidgetRailOverlayPlatformDrainEvent(handle, 1'020, &event, &hasEvent) ==
+              WidgetRailOverlayPlatformStatus::Ok &&
+              hasEvent == WRAIL_OVERLAY_PLATFORM_TRUE,
           "the callback signal corresponds to a drainable public-ABI event");
 
-    Check(GbaOverlayPlatformSetWindowState(
+    Check(WidgetRailOverlayPlatformSetWindowState(
               handle,
-              GBA_OVERLAY_PLATFORM_FALSE,
-              GBA_OVERLAY_PLATFORM_FALSE) == GbaOverlayPlatformStatus::Ok,
+              WRAIL_OVERLAY_PLATFORM_FALSE,
+              WRAIL_OVERLAY_PLATFORM_FALSE) == WidgetRailOverlayPlatformStatus::Ok,
           "the callback-race fixture starts from a closed visible lease");
 
     {
@@ -296,13 +296,13 @@ int main() {
         callbackProbe.releaseHeldEvent = false;
     }
     std::atomic_uint32_t producerStatus{
-        static_cast<std::uint32_t>(GbaOverlayPlatformStatus::InvalidArgument)};
+        static_cast<std::uint32_t>(WidgetRailOverlayPlatformStatus::InvalidArgument)};
     std::thread producer([&] {
         producerStatus.store(
-            static_cast<std::uint32_t>(GbaOverlayPlatformSetWindowState(
+            static_cast<std::uint32_t>(WidgetRailOverlayPlatformSetWindowState(
                 handle,
-                GBA_OVERLAY_PLATFORM_TRUE,
-                GBA_OVERLAY_PLATFORM_TRUE)),
+                WRAIL_OVERLAY_PLATFORM_TRUE,
+                WRAIL_OVERLAY_PLATFORM_TRUE)),
             std::memory_order_release);
     });
     {
@@ -317,15 +317,15 @@ int main() {
     }
 
     std::thread shutdown([&] {
-        GbaOverlayPlatformShutdown(handle);
+        WidgetRailOverlayPlatformShutdown(handle);
         callbackProbe.shutdownReturned.store(true, std::memory_order_release);
     });
     bool callbackAdmissionClosed = false;
     const auto closeDeadline =
         std::chrono::steady_clock::now() + std::chrono::seconds(2);
     while (std::chrono::steady_clock::now() < closeDeadline) {
-        if (GbaOverlayPlatformInitialize(handle) ==
-            GbaOverlayPlatformStatus::ShutDown) {
+        if (WidgetRailOverlayPlatformInitialize(handle) ==
+            WidgetRailOverlayPlatformStatus::ShutDown) {
             callbackAdmissionClosed = true;
             break;
         }
@@ -337,15 +337,15 @@ int main() {
 
     std::atomic_bool secondShutdownReturned{};
     std::thread secondShutdown([&] {
-        GbaOverlayPlatformShutdown(handle);
+        WidgetRailOverlayPlatformShutdown(handle);
         secondShutdownReturned.store(true, std::memory_order_release);
     });
     const auto signalsWhileHeld =
         callbackProbe.eventSignals.load(std::memory_order_acquire);
-    Check(GbaOverlayPlatformSetWindowState(
+    Check(WidgetRailOverlayPlatformSetWindowState(
               handle,
-              GBA_OVERLAY_PLATFORM_TRUE,
-              GBA_OVERLAY_PLATFORM_TRUE) == GbaOverlayPlatformStatus::ShutDown &&
+              WRAIL_OVERLAY_PLATFORM_TRUE,
+              WRAIL_OVERLAY_PLATFORM_TRUE) == WidgetRailOverlayPlatformStatus::ShutDown &&
               callbackProbe.eventSignals.load(std::memory_order_acquire) ==
                   signalsWhileHeld &&
               !secondShutdownReturned.load(std::memory_order_acquire),
@@ -360,7 +360,7 @@ int main() {
     shutdown.join();
     secondShutdown.join();
     Check(producerStatus.load(std::memory_order_acquire) ==
-              static_cast<std::uint32_t>(GbaOverlayPlatformStatus::Ok) &&
+              static_cast<std::uint32_t>(WidgetRailOverlayPlatformStatus::Ok) &&
               callbackProbe.shutdownReturned.load(std::memory_order_acquire) &&
               secondShutdownReturned.load(std::memory_order_acquire),
           "the accounted callback leaves before both shutdown callers return");
@@ -369,17 +369,17 @@ int main() {
         callbackProbe.eventSignals.load(std::memory_order_acquire);
     const auto diagnosticSignalsAfterShutdown =
         callbackProbe.diagnosticSignals.load(std::memory_order_acquire);
-    GbaOverlayPlatformShutdown(handle);
-    Check(GbaOverlayPlatformInitialize(handle) ==
-              GbaOverlayPlatformStatus::ShutDown &&
-              GbaOverlayPlatformSetWindowState(
+    WidgetRailOverlayPlatformShutdown(handle);
+    Check(WidgetRailOverlayPlatformInitialize(handle) ==
+              WidgetRailOverlayPlatformStatus::ShutDown &&
+              WidgetRailOverlayPlatformSetWindowState(
                   handle,
-                  GBA_OVERLAY_PLATFORM_TRUE,
-                  GBA_OVERLAY_PLATFORM_TRUE) ==
-                  GbaOverlayPlatformStatus::ShutDown &&
-              GbaOverlayPlatformDrainEvent(
+                  WRAIL_OVERLAY_PLATFORM_TRUE,
+                  WRAIL_OVERLAY_PLATFORM_TRUE) ==
+                  WidgetRailOverlayPlatformStatus::ShutDown &&
+              WidgetRailOverlayPlatformDrainEvent(
                   handle, 1'030, &event, &hasEvent) ==
-                  GbaOverlayPlatformStatus::ShutDown &&
+                  WidgetRailOverlayPlatformStatus::ShutDown &&
               callbackProbe.eventSignals.load(std::memory_order_acquire) ==
                   eventSignalsAfterShutdown &&
               callbackProbe.diagnosticSignals.load(std::memory_order_acquire) ==
@@ -387,7 +387,7 @@ int main() {
               callbackProbe.postShutdownSignals.load(
                   std::memory_order_acquire) == 0,
           "no callback is admitted or invoked after shutdown returns");
-    GbaOverlayPlatformDestroy(handle);
+    WidgetRailOverlayPlatformDestroy(handle);
     Check(callbackProbe.eventSignals.load(std::memory_order_acquire) ==
               eventSignalsAfterShutdown &&
               callbackProbe.diagnosticSignals.load(std::memory_order_acquire) ==

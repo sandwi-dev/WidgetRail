@@ -341,7 +341,7 @@ static async Task SteamLaunchRevalidatesManifest()
 static async Task SteamSourceReadsLibraries()
 {
     if (!OperatingSystem.IsWindows()) return;
-    var root = Path.Combine(Path.GetTempPath(), "gba-steam-source-" + Guid.NewGuid().ToString("N"));
+    var root = Path.Combine(Path.GetTempPath(), "wrail-steam-source-" + Guid.NewGuid().ToString("N"));
     var extra = Path.Combine(root, "extra-library");
     try
     {

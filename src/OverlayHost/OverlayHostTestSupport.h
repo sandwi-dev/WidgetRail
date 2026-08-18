@@ -9,7 +9,7 @@
 #include <utility>
 #include <vector>
 
-namespace gba::host_testing {
+namespace widgetrail::host_testing {
 
 class Handle final {
 public:
@@ -90,4 +90,4 @@ void PostKey(HWND window, WPARAM virtualKey);
 void SendKey(HWND window, WPARAM virtualKey);
 void SendKeyDownAndPostRelease(HWND window, WPARAM virtualKey);
 
-} // namespace gba::host_testing
+} // namespace widgetrail::host_testing

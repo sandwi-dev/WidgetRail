@@ -11,16 +11,16 @@
 #include <vector>
 
 namespace fs = std::filesystem;
-using gba::host_testing::Handle;
-using gba::host_testing::HostProcess;
-using gba::host_testing::LocateHostWindow;
-using gba::host_testing::QuoteArgument;
-using gba::host_testing::ReadUtf8;
-using gba::host_testing::Require;
-using gba::host_testing::SendKey;
-using gba::host_testing::WaitUntil;
-using gba::host_testing::WideToUtf8;
-using gba::host_testing::Win32Error;
+using widgetrail::host_testing::Handle;
+using widgetrail::host_testing::HostProcess;
+using widgetrail::host_testing::LocateHostWindow;
+using widgetrail::host_testing::QuoteArgument;
+using widgetrail::host_testing::ReadUtf8;
+using widgetrail::host_testing::Require;
+using widgetrail::host_testing::SendKey;
+using widgetrail::host_testing::WaitUntil;
+using widgetrail::host_testing::WideToUtf8;
+using widgetrail::host_testing::Win32Error;
 
 namespace {
 
@@ -48,7 +48,7 @@ Arguments ParseArguments(const int argc, wchar_t** argv) {
             if (argument == L"--installation") result.installation = argv[++index];
             else result.communityFixture = argv[++index];
         } else {
-            gba::host_testing::Fail(
+            widgetrail::host_testing::Fail(
                 "Usage: TrayRefreshHostTests --installation <dir> "
                 "--community-fixture <exe>");
         }

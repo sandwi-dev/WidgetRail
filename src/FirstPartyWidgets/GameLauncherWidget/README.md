@@ -23,7 +23,7 @@ and packages as `widgetrail.community.reference.game-launcher`. Installation and
 enablement require the normal explicit full-trust disclosure.
 
 Package-local files under
-`%LOCALAPPDATA%\GameBarAlternative\community-apps\widgetrail.community.reference.game-launcher`
+`%LOCALAPPDATA%\WidgetRail\community-apps\widgetrail.community.reference.game-launcher`
 own the SavedId key, organization state, and source opt-ins. On first run the
 package imports only the existing Epic/GOG opt-in booleans and then owns its
 bounded `sources.json`. The retired overlay-host private-state representation is
