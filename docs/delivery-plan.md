@@ -33,8 +33,8 @@ evidence only; this file is the sole authority for current work.
   external-foreground activation on 2026-08-18. Focused follow-up `d085cd1`
   passed 109 transition checks, 17 foreground/input ownership checks, and 32
   process-owner checks. Independent review accepted the two-test-file diff and
-  integrated the chain through main `cd83b3a`. PID 40292 remains running
-  because the post-verdict delta is tests and reviewer-owned documents only.
+  integrated the chain through main `cd83b3a`. PID 40292 was later gracefully
+  closed through its exact owner window to stage DLV-265.
 - DLV-265 production/docs commit `869dc7d` is reconciled with current planner
   main by clean merge `b52c07e`. Independent source review confirmed that the
   Spotify package reuses the bounded host text-entry contract, validates and
@@ -44,8 +44,21 @@ evidence only; this file is the sole authority for current work.
   `4429E83E747BD345EED867CB3B5346A371B9823296E4C2828772C152E603D032`;
   Spotify package 0.3.1 has SHA-256
   `65EF8BE722CE26122BCAA93EAC28D58B9FEE620BD140862976D6543E2F32C33E`.
-  It now requires reconciliation onto accepted main `cd83b3a` and one coherent
-  tests-skipped rebuild before planner launch and physical setup testing.
+  Reconciliation merge `47aedbf` combines that unchanged candidate with
+  accepted main `de87693`. The exact tests-skipped Release is visibly running
+  as unaccepted PID 48768 with SHA-256
+  `F987126966CA83919F3168F4EC737696BF445FFBFAA08EE4C079FEBB57BC9C85`.
+  Exact Spotify package 0.3.1 has SHA-256
+  `CF34807C746AAB07F68C5EA10719423CAD5E42931DA16DF8EBE3E096B6A62907`;
+  it is installed, selected, and enabled. Fresh startup elected one production
+  process owner, initialized DirectComposition, and logged no startup issue.
+  Physical review rejected this candidate on 2026-08-18: the existing Setup
+  page is reachable while unconfigured or disconnected, but the configured
+  Ready surface exposes no controller-reachable Setup action. The running log
+  confirms the user's widget is in that Ready state, so an existing Client ID
+  incorrectly hides the only replacement route. Keep the user's configuration
+  intact. No DLV-265 tests or integration are authorized before a corrected
+  production-only candidate is physically accepted.
 - DLV-264 production candidate `75f1c96` changed only
   `WidgetSessionCoordinator.{h,cpp}`. Its coherent tests-skipped Release has
   SHA-256 `502720EA82F5764CCD52DD36036D18EF8531D73044063D600568357305692737`
@@ -144,8 +157,8 @@ user decision. The native overlay is the sole production presentation path.
 
 | Lane | Task/worktree | State |
 | --- | --- | --- |
-| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | DLV-266 is physically accepted, focused-tested, independently reviewed, and integrated through main `cd83b3a`. Exact accepted production PID 40292 remains running; the lane is clean and idle. |
-| Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | DLV-265 production/docs commit `869dc7d` passed independent source review. Reconcile accepted main `cd83b3a`, rebuild one coherent tests-skipped Release, and stop for planner launch and physical onboarding testing. DLV-248 remains deferred. |
+| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | DLV-266 is physically accepted, focused-tested, independently reviewed, and integrated through main `cd83b3a`. PID 40292 was gracefully closed to stage DLV-265; the lane is clean and idle. |
+| Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | DLV-265 package 0.3.1 is physically rejected because configured/Ready Spotify has no Setup entry. Add one controller-reachable route to the existing Setup page without resetting configuration or changing shared contracts; produce a new immutable package version and production-only candidate. Do not add/run tests or integrate before acceptance. DLV-248 remains deferred. |
 
 ## Completed planner deliverable — DLV-257: select and freeze WidgetRail identity
 
@@ -438,6 +451,17 @@ Credential Manager migration, third-party authentication needed for automated
 evidence, provider-dashboard automation, substantial conflict, or behavior
 outside the Spotify Community package. Never push.
 
+Physical rejection and bounded correction: package 0.3.1 exposes
+`spotify.setup.open` only from the Unconfigured and Disconnected surfaces.
+When a valid Client ID and account are already active, the Ready surface has no
+controller-reachable Setup or Change Client ID action, contradicting the
+required replacement behavior. Preserve the current Client ID and account
+state. Reuse the existing setup route and text-entry flow from a visible
+configured-state action, retain all existing Ready navigation and shortcuts,
+and publish a new immutable package version for another production-only
+physical candidate. Do not reset configuration, duplicate the setup UI, add a
+shared settings surface, run tests, or integrate before the user's verdict.
+
 ## Assigned platform deliverable — DLV-266: reconcile invisible resident Show activation
 
 Owner/baseline: platform lane after reconciling accepted main `15a26b9` onto
@@ -505,9 +529,10 @@ deliberately deferred by user decision and requires explicit promotion.
 2. DLV-264 is accepted and integrated through main `15a26b9`; accepted PID
    17212 was later gracefully closed to stage DLV-266.
 3. DLV-266 is accepted, focused-tested, and integrated through main `cd83b3a`.
-4. Reconcile DLV-265 onto `cd83b3a`, rebuild and launch its coherent Release,
-   then physically verify ordinary Spotify setup without a repository-local
-   terminal command.
+4. DLV-265 package 0.3.1 is physically rejected because configured Spotify
+   hides Setup. Produce a corrected immutable package with a configured-state
+   Setup entry, then physically verify replacement without deleting the current
+   Client ID or using a terminal; add focused tests only after acceptance.
 5. DLV-248 remains outside this sequence until the user promotes it.
 
 ## Manual, external, and blocked evidence
@@ -520,7 +545,7 @@ deliberately deferred by user decision and requires explicit promotion.
 | Trademark | Similar-mark clearance for related software/services; qualified counsel recommended before public release. |
 | GitHub identity | User-selected owner plus repository/organization availability and optional rename/creation. |
 | DLV-264 | Complete: physically accepted on PID 17212, focused-tested, and integrated through main `15a26b9`. |
-| DLV-265 | Production/docs candidate `869dc7d` is source-reviewed; reconcile/build from integrated main `cd83b3a`, then controller onboarding and real Spotify authorization require user-owned physical checks. |
+| DLV-265 | Unaccepted PID 48768 runs reconciled merge `47aedbf` with Spotify 0.3.1 selected; dashboard/copy, invalid and valid Client IDs, replacement, cancellation/focus, immediate refresh, and PKCE require user-owned physical checks. |
 | DLV-266 | Complete: physical Guide, already-visible `--show`, and external-foreground activation accepted on PID 40292; focused tests passed and the chain is integrated through main `cd83b3a`. |
 | DLV-248 | Deliberately deferred until explicit user promotion. |
 | Avalonia | Failed/cancelled; requires a new explicit user decision. |
