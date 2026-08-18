@@ -19,7 +19,7 @@
 #include <thread>
 #include <utility>
 
-namespace gba {
+namespace widgetrail {
 
 const WidgetDescriptorQuickAction* FindDescriptorQuickAction(
     const WidgetDescriptor& descriptor,
@@ -2250,7 +2250,7 @@ bool WidgetBridgeClient::Launch(
         return false;
     }
 
-    pipeName_ = L"gba-host-" + std::to_wstring(GetCurrentProcessId()) + L"-" +
+    pipeName_ = L"wrail-host-" + std::to_wstring(GetCurrentProcessId()) + L"-" +
                 std::to_wstring(GetTickCount64());
     std::wstring command = Quote(executable) + L" --host-pipe " + pipeName_ +
                            L" --catalog " + Quote(catalog) + L" --accept-timeout-ms 10000";
@@ -2264,7 +2264,7 @@ bool WidgetBridgeClient::Launch(
             return false;
         }
         const auto settingsRoot =
-            std::filesystem::path(localAppData) / L"GameBarAlternative";
+            std::filesystem::path(localAppData) / L"WidgetRail";
         command += L" --settings-root " + Quote(settingsRoot);
     }
     STARTUPINFOW startup{sizeof(startup)};
@@ -3558,10 +3558,10 @@ bool WidgetBridgeClient::HasWidgetCatalogChangedRevisionInFlight() const noexcep
     return catalogChanges_.hasInFlight();
 }
 
-} // namespace gba
+} // namespace widgetrail
 
-#ifdef GBA_WIDGET_BRIDGE_CLIENT_TESTING
-namespace gba::testing {
+#ifdef WRAIL_WIDGET_BRIDGE_CLIENT_TESTING
+namespace widgetrail::testing {
 
 BridgeFrameReadResult ReadBridgeFrame(const HANDLE pipe) {
     auto result = ReadFrameFromPipe(pipe);
@@ -3573,7 +3573,7 @@ std::optional<std::vector<WidgetDescriptor>> ParseWidgetDescriptors(
     std::wstring& error) {
     try {
         const auto payload = JsonObject::Parse(winrt::to_hstring(payloadUtf8));
-        return gba::ParseWidgetDescriptors(payload, error);
+        return widgetrail::ParseWidgetDescriptors(payload, error);
     } catch (const winrt::hresult_error& exception) {
         error = L"Invalid widget descriptor JSON: " + std::wstring(exception.message());
         return std::nullopt;
@@ -3585,7 +3585,7 @@ std::optional<PlatformAppearance> ParsePlatformAppearance(
     std::wstring& error) {
     try {
         const auto payload = JsonObject::Parse(winrt::to_hstring(payloadUtf8));
-        return gba::ParsePlatformAppearance(payload, error);
+        return widgetrail::ParsePlatformAppearance(payload, error);
     } catch (const winrt::hresult_error& exception) {
         error = L"Invalid platform appearance JSON: " +
                 std::wstring(exception.message());
@@ -3598,7 +3598,7 @@ std::optional<LauncherExperienceSelection> ParseLauncherExperience(
     std::wstring& error) {
     try {
         const auto payload = JsonObject::Parse(winrt::to_hstring(payloadUtf8));
-        return gba::ParseLauncherExperience(payload, error);
+        return widgetrail::ParseLauncherExperience(payload, error);
     } catch (const winrt::hresult_error& exception) {
         error = L"Invalid Launcher Experience JSON: " +
                 std::wstring(exception.message());
@@ -3795,5 +3795,5 @@ ParseLocalWidgetPackageInstallResultEvent(
     }
 }
 
-} // namespace gba::testing
+} // namespace widgetrail::testing
 #endif

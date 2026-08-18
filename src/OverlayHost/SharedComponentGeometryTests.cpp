@@ -18,11 +18,11 @@
 namespace {
 
 using Microsoft::WRL::ComPtr;
-using gba::WidgetComputedStyle;
-using gba::WidgetNode;
-using gba::WidgetSnapshot;
-using gba::WidgetStyleValue;
-using gba::declarative::Rect;
+using widgetrail::WidgetComputedStyle;
+using widgetrail::WidgetNode;
+using widgetrail::WidgetSnapshot;
+using widgetrail::WidgetStyleValue;
+using widgetrail::declarative::Rect;
 
 std::size_t checks{};
 
@@ -328,7 +328,7 @@ Fixture MakeFixture(const std::string_view name) {
 }
 
 void AssertCompleteRect(
-    const gba::RenderResult& render,
+    const widgetrail::RenderResult& render,
     const std::wstring& id,
     const std::string_view message) {
     Check(render.elementRects.contains(id) && render.elementVisibleRects.contains(id), message);
@@ -375,23 +375,23 @@ void ProductMatrixUsesSharedGeometry(
              std::string_view{"sdk-gallery"}}) {
         const auto fixture = MakeFixture(fixtureName);
         for (const auto& profile : profiles) {
-            gba::DeclarativeRenderOptions options;
+            widgetrail::DeclarativeRenderOptions options;
             options.pixelScale = profile.pixelScale;
             options.accessibility.textScale = profile.textScale;
             options.accessibility.reducedTransparency = profile.reducedTransparency;
             if (profile.highContrast) {
                 options.accessibility.minimumFontWeight = 600;
-                options.accessibility.contrastHook = [](gba::NativeColor, gba::NativeColor) {
-                    return gba::NativeColor{1.0F, 1.0F, 1.0F, 1.0F};
+                options.accessibility.contrastHook = [](widgetrail::NativeColor, widgetrail::NativeColor) {
+                    return widgetrail::NativeColor{1.0F, 1.0F, 1.0F, 1.0F};
                 };
             }
-            gba::DeclarativeRenderer renderer{d2d, write, nullptr};
+            widgetrail::DeclarativeRenderer renderer{d2d, write, nullptr};
             const auto layoutOnly = renderer.Render(
                 nullptr, fixture.snapshot, {},
                 {0.0F, 0.0F, profile.width, profile.height}, options);
             const auto unexpected = std::find_if(
                 layoutOnly.diagnostics.begin(), layoutOnly.diagnostics.end(),
-                [](const gba::RenderDiagnostic& diagnostic) {
+                [](const widgetrail::RenderDiagnostic& diagnostic) {
                     return diagnostic.code != L"missing_render_target";
                 });
             if (unexpected != layoutOnly.diagnostics.end()) {
@@ -444,7 +444,7 @@ void ProductMatrixUsesSharedGeometry(
                 }
             }
             if (target && profile.width <= 1120.0F && profile.height <= 620.0F) {
-                gba::DeclarativeRenderer painter{d2d, write, nullptr};
+                widgetrail::DeclarativeRenderer painter{d2d, write, nullptr};
                 target->BeginDraw();
                 target->Clear(D2D1::ColorF(0.02F, 0.02F, 0.03F, 1.0F));
                 const auto painted = painter.Render(
@@ -467,7 +467,7 @@ void ProductMatrixUsesSharedGeometry(
     }
 
     auto states = MakeFixture("games");
-    gba::DeclarativeRenderer stateRenderer{d2d, write, nullptr};
+    widgetrail::DeclarativeRenderer stateRenderer{d2d, write, nullptr};
     target->BeginDraw();
     target->Clear(D2D1::ColorF(0.02F, 0.02F, 0.03F, 1.0F));
     const auto stateResult = stateRenderer.Render(

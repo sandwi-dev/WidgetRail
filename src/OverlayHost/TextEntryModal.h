@@ -10,7 +10,7 @@
 #include <string_view>
 #include <vector>
 
-namespace gba::input {
+namespace widgetrail::input {
 
 class SecureTextBuffer final {
 public:
@@ -108,4 +108,4 @@ private:
     bool password_{};
 };
 
-} // namespace gba::input
+} // namespace widgetrail::input

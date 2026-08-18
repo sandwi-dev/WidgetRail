@@ -38,7 +38,7 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 $script:SchemaVersion = 3
 $script:HarnessVersion = '2.1.0'
-$script:OverlayWindowClass = 'GameBarAlternative.OverlayHost'
+$script:OverlayWindowClass = 'WidgetRail.OverlayHost'
 $script:PerformanceResetMessage = 0x8008
 
 function Get-NearestRankPercentile {
@@ -260,7 +260,7 @@ function ConvertFrom-PerformanceRuntimeRecord {
     if ($lines.Count -eq 13 -and $lines[-1] -eq '') {
         $lines = @($lines[0..11])
     }
-    if ($lines.Count -ne 12 -or $lines[0] -ne 'gbar-performance-runtime-v2') {
+    if ($lines.Count -ne 12 -or $lines[0] -ne 'wrail-performance-runtime-v2') {
         throw 'OverlayHost returned an invalid performance runtime record shape.'
     }
     if ($lines[1] -cne $ExpectedNonce -or
@@ -1062,12 +1062,12 @@ function Invoke-SelfTest {
     Assert-Equal $false $comparison.releaseGate 'Diagnostic thresholds must never become release gates.'
     Assert-Equal 'insufficient-samples' $comparison.status 'Short p95 samples must not produce a target verdict.'
     $runtimePath = Join-Path ([IO.Path]::GetTempPath()) `
-        ("gbar-performance-selftest-{0}.txt" -f [Guid]::NewGuid().ToString('N'))
+        ("wrail-performance-selftest-{0}.txt" -f [Guid]::NewGuid().ToString('N'))
     $nonce = 'a' * 64
     try {
         [IO.File]::WriteAllText(
             $runtimePath,
-            "gbar-performance-runtime-v2`n$nonce`ninteractive`nsettings`n100`n1100`n1000`n100`n60`n40`n2`n1`n",
+            "wrail-performance-runtime-v2`n$nonce`ninteractive`nsettings`n100`n1100`n1000`n100`n60`n40`n2`n1`n",
             [Text.UTF8Encoding]::new($false))
         $runtime = ConvertFrom-PerformanceRuntimeRecord -Path $runtimePath `
             -ExpectedNonce $nonce -ExpectedState Interactive -ExpectedWidgetId settings
@@ -1131,7 +1131,7 @@ $machine = Get-MachineMetadata
 $null = Get-CimInstance Win32_Process `
     -OperationTimeoutSec $CimOperationTimeoutSeconds | Select-Object -First 1
 $build = Get-BuildMetadata -ExecutablePath $OverlayPath -RepositoryRoot $repositoryRoot
-$startupError = Join-Path ([Environment]::GetFolderPath('LocalApplicationData')) 'GameBarAlternative\startup-error.log'
+$startupError = Join-Path ([Environment]::GetFolderPath('LocalApplicationData')) 'WidgetRail\startup-error.log'
 $results = [System.Collections.Generic.List[object]]::new()
 
 foreach ($scenarioName in @($Scenario | Select-Object -Unique)) {

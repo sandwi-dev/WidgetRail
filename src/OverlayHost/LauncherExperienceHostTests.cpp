@@ -20,7 +20,7 @@
 
 namespace fs = std::filesystem;
 using Microsoft::WRL::ComPtr;
-using namespace gba::host_testing;
+using namespace widgetrail::host_testing;
 
 namespace {
 
@@ -173,7 +173,7 @@ bool SendLauncherExperienceSelection(
     const std::wstring_view operation,
     const std::wstring_view id = {},
     const std::wstring_view version = {}) {
-    const std::wstring payload = L"gba-launcher-selection-v1\n" +
+    const std::wstring payload = L"wrail-launcher-selection-v1\n" +
         std::wstring(kEvidenceNonce) + L"\n" + std::wstring(operation) + L"\n" +
         std::wstring(id) + L"\n" + std::wstring(version);
     COPYDATASTRUCT message{
@@ -287,7 +287,7 @@ public:
         wchar_t guidText[64]{};
         Require(StringFromGUID2(guid, guidText, 64) > 0, "StringFromGUID2 failed");
         root_ = fs::path(temporaryRoot) /
-            (L"gba-launcher-experience-host-" + std::wstring(guidText));
+            (L"wrail-launcher-experience-host-" + std::wstring(guidText));
         profile_ = L"launcher-experience-";
         for (const wchar_t character : std::wstring_view(guidText)) {
             if (std::iswalnum(character))
@@ -319,11 +319,11 @@ public:
         const bool usesExternalSettings = !externalSettingsRoot.empty();
         const auto settings = usesExternalSettings
             ? fs::absolute(externalSettingsRoot)
-            : root_ / L"local-app-data" / L"GameBarAlternative";
+            : root_ / L"local-app-data" / L"WidgetRail";
         if (usesExternalSettings) {
-            Require(settings.filename() == L"GameBarAlternative" &&
+            Require(settings.filename() == L"WidgetRail" &&
                     fs::is_directory(settings),
-                "--lifecycle-settings-root must name an existing GameBarAlternative settings directory");
+                "--lifecycle-settings-root must name an existing WidgetRail settings directory");
             localAppData_ = settings.parent_path();
         } else {
             localAppData_ = root_ / L"local-app-data";
@@ -374,17 +374,17 @@ public:
     }
     [[nodiscard]] const std::wstring& Profile() const noexcept { return profile_; }
     [[nodiscard]] fs::path LogPath() const {
-        return localAppData_ / L"GameBarAlternative" / L"overlay.log";
+        return localAppData_ / L"WidgetRail" / L"overlay.log";
     }
     [[nodiscard]] fs::path BackendDiagnosticPath() const {
-        return localAppData_ / L"GameBarAlternative" /
+        return localAppData_ / L"WidgetRail" /
             L"launcher-experience-backend.txt";
     }
     [[nodiscard]] fs::path RemovalDenialPath() const {
         return SettingsRoot() / L"launcher-experience-removal-denial.txt";
     }
     [[nodiscard]] fs::path SettingsRoot() const {
-        return localAppData_ / L"GameBarAlternative";
+        return localAppData_ / L"WidgetRail";
     }
     [[nodiscard]] fs::path ExperienceVersion(const std::wstring_view version) const {
         return SettingsRoot() / L"launcher-experiences" /
@@ -421,14 +421,14 @@ public:
             "\"interfaceScale\":1,\"textScale\":1,\"backdropOpacity\":0.64,"
             "\"motion\":\"system\"},\"launcherExperience\":{"
             "\"useGlobalAppearance\":false,"
-            "\"selectedId\":\"org.gbar.builtin.hero-rail\","
+            "\"selectedId\":\"widgetrail.builtin.hero-rail\","
             "\"selectedVersion\":\"1.0.0\","
-            "\"lastGoodId\":\"org.gbar.builtin.hero-rail\","
+            "\"lastGoodId\":\"widgetrail.builtin.hero-rail\","
             "\"lastGoodVersion\":\"1.0.0\"}}");
     }
     void RewriteExperienceStyle(const std::wstring_view version) const {
         WriteUtf8(
-            ExperienceVersion(version) / L"styles" / L"launcher.gbss",
+            ExperienceVersion(version) / L"styles" / L"launcher.wrss",
             "launcher-game-rail { color: #80ff80; } "
             "launcher-details-panel { background: rgba(0, 0, 0, 0.5); }");
     }
@@ -458,7 +458,7 @@ private:
             "\"version\":\"" + std::string(version) + "\",\"layoutPreset\":\"" +
             std::string(preset) +
             "\",\"compositionFile\":\"layouts/layout.json\","
-            "\"styleFile\":\"styles/launcher.gbss\","
+            "\"styleFile\":\"styles/launcher.wrss\","
             "\"previewFile\":\"assets/background.png\",\"parameters\":{"
             "\"backgroundMode\":\"" +
             std::string(packAsset ? "pack-asset" : "selected-game-artwork") +
@@ -520,7 +520,7 @@ private:
             "\"compact\":{\"root\":" + compact + "},"
             "\"standard\":{\"root\":" + regular + "},"
             "\"wide\":{\"root\":" + regular + "}}}");
-        WriteUtf8(directory / L"styles" / L"launcher.gbss",
+        WriteUtf8(directory / L"styles" / L"launcher.wrss",
             "launcher-game-rail { color: #ffffff; } "
             "launcher-details-panel { background: rgba(0, 0, 0, 0.5); }");
         constexpr unsigned char png[]{
@@ -1117,13 +1117,13 @@ void RunInstalledSelection(
         "Private host route rejected code-owned built-in recovery.");
     Require(WaitUntil(kStepTimeoutMilliseconds, [&] {
         const auto log = ReadUtf8(running.installation.LogPath());
-        return log.find("selection=org.gbar.builtin.hero-rail@1.0.0") !=
+        return log.find("selection=widgetrail.builtin.hero-rail@1.0.0") !=
             std::string::npos;
     }), "Built-in controller-complete recovery selection did not activate.");
     const auto recoveryRecords = ProjectionRecords(running.installation.LogPath());
     Require(!recoveryRecords.empty() &&
             recoveryRecords.back().selection ==
-                "org.gbar.builtin.hero-rail@1.0.0" &&
+                "widgetrail.builtin.hero-rail@1.0.0" &&
             recoveryRecords.back().instance == beforeSwitch.back().instance &&
             recoveryRecords.back().scope == beforeSwitch.back().scope &&
             recoveryRecords.back().focus == beforeSwitch.back().focus,
@@ -1240,7 +1240,7 @@ void RunAuthorLifecycle(
     Require(WaitUntil(kStepTimeoutMilliseconds, [&] {
         const auto records = ProjectionRecords(running.installation.LogPath());
         return !records.empty() && records.back().selection ==
-                "org.gbar.builtin.hero-rail@1.0.0" &&
+                "widgetrail.builtin.hero-rail@1.0.0" &&
             records.back().rail == "horizontal";
     }), "Built-in Hero Rail did not replace the recovered authored selection.");
     running.Stop();
@@ -1329,7 +1329,7 @@ void RunCustomPackMatrix(
     Require(WaitUntil(kStepTimeoutMilliseconds, [&] {
         const auto records = ProjectionRecords(running.installation.LogPath());
         return !records.empty() &&
-            records.back().selection == "org.gbar.builtin.hero-rail@1.0.0" &&
+            records.back().selection == "widgetrail.builtin.hero-rail@1.0.0" &&
             records.back().rail == "horizontal";
     }), "Exact built-in recovery did not replace the rejected custom pack.");
     running.Stop();
@@ -1363,7 +1363,7 @@ void RunTextEntryCancel(
         HWND modal{};
         Require(WaitUntil(kStepTimeoutMilliseconds, [&] {
             modal = LocateHostWindow(
-                running.host.Id(), L"GameBarAlternative.TextEntryModal");
+                running.host.Id(), L"WidgetRail.TextEntryModal");
             return modal && IsWindowVisible(modal) &&
                 FindWindowExW(modal, nullptr, L"EDIT", nullptr);
         }), "The focused installed Game Launcher search did not open the production modal.");

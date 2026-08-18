@@ -2,7 +2,6 @@
 
 #include <algorithm>
 #include <atomic>
-#include <cassert>
 #include <chrono>
 #include <cstdint>
 #include <cstdlib>
@@ -19,6 +18,8 @@ void Require(const bool condition, const char* message) {
     std::cerr << "WidgetBridgeCatalogTests failed: " << message << '\n';
     std::exit(EXIT_FAILURE);
 }
+
+#define CHECK(condition) Require(static_cast<bool>(condition), #condition)
 
 std::string Descriptor(const int index) {
     return "{\"id\":\"widget-" + std::to_string(index) +
@@ -39,6 +40,7 @@ constexpr std::string_view ValidAppearance = R"json({
     "contrast": "high",
     "boldText": true,
     "transparency": "reduced",
+    "animateWidgetSwitching": false,
     "shellStyles": {
         "canvas": {
             "background": {"kind":"color","text":"#101820","number":null,"unit":null}
@@ -77,10 +79,10 @@ void VerifyCancelledFrameRead(const std::size_t publishedBytes) {
         WriteBytes(writer, frame.data(), static_cast<DWORD>(publishedBytes));
 
     std::atomic_bool started{};
-    std::optional<gba::testing::BridgeFrameReadResult> result;
+    std::optional<widgetrail::testing::BridgeFrameReadResult> result;
     std::jthread readThread([&] {
         started = true;
-        result = gba::testing::ReadBridgeFrame(reader);
+        result = widgetrail::testing::ReadBridgeFrame(reader);
     });
     const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(2);
     bool readPending{};
@@ -120,7 +122,7 @@ void VerifyFrameSafeCancellationRecovery() {
             "Could not create replacement bridge frame pipe");
     WriteBytes(writer, &length, sizeof(length));
     WriteBytes(writer, body.data(), static_cast<DWORD>(body.size()));
-    const auto recovered = gba::testing::ReadBridgeFrame(reader);
+    const auto recovered = widgetrail::testing::ReadBridgeFrame(reader);
     CloseHandle(writer);
     CloseHandle(reader);
     Require(recovered.frame && *recovered.frame == body &&
@@ -130,7 +132,7 @@ void VerifyFrameSafeCancellationRecovery() {
 
 void VerifyAtomicPresentationUpdateMaterialization() {
     std::wstring error;
-    const auto checkpoint = gba::testing::ParseWidgetSnapshotResponse(R"json({
+    const auto checkpoint = widgetrail::testing::ParseWidgetSnapshotResponse(R"json({
         "snapshot": {
             "protocolVersion":17,
             "sequence":9,
@@ -148,7 +150,7 @@ void VerifyAtomicPresentationUpdateMaterialization() {
     Require(checkpoint && error.empty() && !checkpoint->documentJson.empty(),
             "Could not parse the retained update checkpoint");
 
-    const auto update = gba::testing::ParseWidgetPresentationUpdateResponse(R"json({
+    const auto update = widgetrail::testing::ParseWidgetPresentationUpdateResponse(R"json({
         "widgetId":"sample",
         "update":{
             "protocolVersion":18,
@@ -175,27 +177,28 @@ void VerifyAtomicPresentationUpdateMaterialization() {
         "renderStyles":{"a":{"base":{"opacity":{"kind":"number","text":"0.75","number":0.75,"unit":null}}}}
     })json", error);
     Require(update && error.empty(), "Could not parse the bounded update batch");
-    auto materialized = gba::MaterializeWidgetPresentationUpdate(
+    auto materialized = widgetrail::MaterializeWidgetPresentationUpdate(
         *checkpoint, *update, L"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", error);
     Require(materialized && error.empty(), "Could not materialize the atomic update");
-    Require(materialized->protocolVersion == 18 && materialized->sequence == 10 &&
-                materialized->root.children.size() == 2 &&
-                materialized->root.children[0].id == L"c" &&
-                materialized->root.children[1].id == L"a" &&
-                materialized->root.children[1].text == L"Replaced" &&
-                materialized->root.children[1].baseStyle.at(L"opacity").number == 0.75,
+    const auto& materializedSnapshot = materialized->snapshot;
+    Require(materializedSnapshot.protocolVersion == 18 && materializedSnapshot.sequence == 10 &&
+                materializedSnapshot.root.children.size() == 2 &&
+                materializedSnapshot.root.children[0].id == L"c" &&
+                materializedSnapshot.root.children[1].id == L"a" &&
+                materializedSnapshot.root.children[1].text == L"Replaced" &&
+                materializedSnapshot.root.children[1].baseStyle.at(L"opacity").number == 0.75,
             "Atomic update did not publish the complete candidate and styles");
 
     auto stale = *update;
     stale.baseSequence = 8;
     error.clear();
-    Require(!gba::MaterializeWidgetPresentationUpdate(
+    Require(!widgetrail::MaterializeWidgetPresentationUpdate(
                 *checkpoint, stale,
                 L"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", error) &&
                 checkpoint->sequence == 9 && checkpoint->root.children[0].text == L"Before",
             "Stale update mutated the retained checkpoint");
 
-    const auto partial = gba::testing::ParseWidgetPresentationUpdateResponse(R"json({
+    const auto partial = widgetrail::testing::ParseWidgetPresentationUpdateResponse(R"json({
         "update":{
             "protocolVersion":18,
             "widgetInstanceId":"update.sample",
@@ -214,14 +217,14 @@ void VerifyAtomicPresentationUpdateMaterialization() {
     Require(partial.has_value(),
             "Could not parse the deterministic partial-failure batch");
     error.clear();
-    Require(!gba::MaterializeWidgetPresentationUpdate(
+    Require(!widgetrail::MaterializeWidgetPresentationUpdate(
                 *checkpoint, *partial,
                 L"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", error) &&
                 checkpoint->root.children[0].text == L"Before",
             "A later operation failure partially mutated the checkpoint");
 
     error.clear();
-    Require(!gba::testing::ParseWidgetPresentationUpdateResponse(R"json({
+    Require(!widgetrail::testing::ParseWidgetPresentationUpdateResponse(R"json({
         "update":{
             "protocolVersion":18,"widgetInstanceId":"update.sample",
             "presentationGeneration":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
@@ -231,7 +234,7 @@ void VerifyAtomicPresentationUpdateMaterialization() {
             "Unknown update fields did not fail closed");
 
     error.clear();
-    Require(!gba::testing::ParseWidgetPresentationUpdateResponse(R"json({
+    Require(!widgetrail::testing::ParseWidgetPresentationUpdateResponse(R"json({
         "update":{
             "protocolVersion":18,"widgetInstanceId":"update.sample",
             "presentationGeneration":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
@@ -250,9 +253,9 @@ int main() {
     std::vector<wchar_t> secret(14);
     for (std::size_t index = 0; index < secret.size(); ++index)
         secret[index] = static_cast<wchar_t>(L'!' + index);
-    auto protectedFrame = gba::ProtectedWifiSecretFrame::Create(secret);
-    assert(protectedFrame && protectedFrame->bytes().size() == secret.size());
-    assert(std::equal(
+    auto protectedFrame = widgetrail::ProtectedWifiSecretFrame::Create(secret);
+    CHECK(protectedFrame && protectedFrame->bytes().size() == secret.size());
+    CHECK(std::equal(
         protectedFrame->bytes().begin(),
         protectedFrame->bytes().end(),
         secret.begin(),
@@ -260,11 +263,11 @@ int main() {
             return encoded == static_cast<unsigned char>(source);
         }));
     protectedFrame->clear();
-    assert(protectedFrame->bytes().empty());
+    CHECK(protectedFrame->bytes().empty());
     secret[0] = L'\n';
-    assert(!gba::ProtectedWifiSecretFrame::Create(secret));
+    CHECK(!widgetrail::ProtectedWifiSecretFrame::Create(secret));
     std::wstring error;
-    const auto valid = gba::testing::ParseWidgetDescriptors(R"json({
+    const auto valid = widgetrail::testing::ParseWidgetDescriptors(R"json({
         "widgets": [{
             "id": "dev.test.music",
             "name": "Music controls",
@@ -293,28 +296,28 @@ int main() {
             }]
         }]
     })json", error);
-    assert(valid && error.empty());
-    assert(valid->size() == 1);
-    assert((*valid)[0].id == L"dev.test.music");
-    assert((*valid)[0].name == L"Music controls");
-    assert((*valid)[0].instanceId == L"music.default");
-    assert((*valid)[0].runtimeGeneration == L"runtime-1");
-    assert((*valid)[0].presentationGeneration == L"presentation-1");
-    assert((*valid)[0].icon == L"music");
-    assert((*valid)[0].pinningSupported);
-    assert((*valid)[0].advancedPresentation);
-    assert((*valid)[0].advancedPresentation->schemaVersion == 1);
-    assert((*valid)[0].advancedPresentation->kind == L"launcherExperience");
-    assert((*valid)[0].protectedWifiPromptSupported);
-    assert((*valid)[0].quickActions.size() == 2);
-    assert((*valid)[0].quickActions[0].controllerButton == L"x");
-    assert(!(*valid)[0].quickActions[1].controllerButton);
-    assert(gba::FindDescriptorQuickAction((*valid)[0], L"refresh") ==
+    CHECK(valid && error.empty());
+    CHECK(valid->size() == 1);
+    CHECK((*valid)[0].id == L"dev.test.music");
+    CHECK((*valid)[0].name == L"Music controls");
+    CHECK((*valid)[0].instanceId == L"music.default");
+    CHECK((*valid)[0].runtimeGeneration == L"runtime-1");
+    CHECK((*valid)[0].presentationGeneration == L"presentation-1");
+    CHECK((*valid)[0].icon == L"music");
+    CHECK((*valid)[0].pinningSupported);
+    CHECK((*valid)[0].advancedPresentation);
+    CHECK((*valid)[0].advancedPresentation->schemaVersion == 1);
+    CHECK((*valid)[0].advancedPresentation->kind == L"launcherExperience");
+    CHECK((*valid)[0].protectedWifiPromptSupported);
+    CHECK((*valid)[0].quickActions.size() == 2);
+    CHECK((*valid)[0].quickActions[0].controllerButton == L"x");
+    CHECK(!(*valid)[0].quickActions[1].controllerButton);
+    CHECK(widgetrail::FindDescriptorQuickAction((*valid)[0], L"refresh") ==
            &(*valid)[0].quickActions[0]);
-    assert(gba::FindDescriptorQuickAction((*valid)[0], L"missing") == nullptr);
+    CHECK(widgetrail::FindDescriptorQuickAction((*valid)[0], L"missing") == nullptr);
 
     error.clear();
-    const auto defaultPinning = gba::testing::ParseWidgetDescriptors(R"json({
+    const auto defaultPinning = widgetrail::testing::ParseWidgetDescriptors(R"json({
         "widgets": [{
             "id": "dev.test.default",
             "name": "Default",
@@ -324,12 +327,12 @@ int main() {
             "quickActions": []
         }]
     })json", error);
-    assert(defaultPinning && !(*defaultPinning)[0].pinningSupported);
-    assert(defaultPinning && !(*defaultPinning)[0].advancedPresentation);
-    assert(defaultPinning && !(*defaultPinning)[0].protectedWifiPromptSupported);
+    CHECK(defaultPinning && !(*defaultPinning)[0].pinningSupported);
+    CHECK(defaultPinning && !(*defaultPinning)[0].advancedPresentation);
+    CHECK(defaultPinning && !(*defaultPinning)[0].protectedWifiPromptSupported);
 
     error.clear();
-    const auto incompatiblePresentation = gba::testing::ParseWidgetDescriptors(R"json({
+    const auto incompatiblePresentation = widgetrail::testing::ParseWidgetDescriptors(R"json({
         "widgets": [{
             "id": "dev.test.future",
             "name": "Future",
@@ -340,11 +343,11 @@ int main() {
             "quickActions": []
         }]
     })json", error);
-    assert(incompatiblePresentation &&
+    CHECK(incompatiblePresentation &&
            (*incompatiblePresentation)[0].advancedPresentation->schemaVersion == 99);
 
     error.clear();
-    assert(!gba::testing::ParseWidgetDescriptors(R"json({
+    CHECK(!widgetrail::testing::ParseWidgetDescriptors(R"json({
         "widgets": [{
             "id": "dev.test.invalid-protected",
             "name": "Invalid protected",
@@ -356,7 +359,7 @@ int main() {
         }]
     })json", error));
     error.clear();
-    assert(!gba::testing::ParseWidgetDescriptors(R"json({
+    CHECK(!widgetrail::testing::ParseWidgetDescriptors(R"json({
         "widgets": [{
             "id": "dev.test.bad",
             "name": "Bad",
@@ -369,7 +372,7 @@ int main() {
     })json", error));
 
     error.clear();
-    const auto styledSnapshot = gba::testing::ParseWidgetSnapshotResponse(R"json({
+    const auto styledSnapshot = widgetrail::testing::ParseWidgetSnapshotResponse(R"json({
         "snapshot": {
             "sequence": 9,
             "widgetInstanceId": "music.runtime.v1",
@@ -431,58 +434,58 @@ int main() {
             }
         }
     })json", error);
-    assert(styledSnapshot && error.empty());
-    assert(styledSnapshot->root.children.size() == 7);
-    assert(styledSnapshot->advancedPresentationKind == L"launcherExperience");
-    assert(styledSnapshot->advancedPresentationPreset == L"heroRail");
-    assert(styledSnapshot->root.children[1].advancedPresentationSlot == L"detailsPanel");
+    CHECK(styledSnapshot && error.empty());
+    CHECK(styledSnapshot->root.children.size() == 7);
+    CHECK(styledSnapshot->advancedPresentationKind == L"launcherExperience");
+    CHECK(styledSnapshot->advancedPresentationPreset == L"heroRail");
+    CHECK(styledSnapshot->root.children[1].advancedPresentationSlot == L"detailsPanel");
     const auto& styledButton = styledSnapshot->root.children.front();
     (void)styledButton;
-    assert(styledButton.baseStyle.at(L"opacity").number == 0.5);
-    assert(styledButton.focusedStyle.at(L"scale").number == 1.05);
-    assert(styledButton.pressedStyle.at(L"scale").number == 0.97);
-    const auto& loadingIndicator = styledSnapshot->root.children[1];
-    assert(styledSnapshot->root.children[0].focusPersistenceId == L"transport.play");
+    CHECK(styledButton.baseStyle.at(L"opacity").number == 0.5);
+    CHECK(styledButton.focusedStyle.at(L"scale").number == 1.05);
+    CHECK(styledButton.pressedStyle.at(L"scale").number == 0.97);
+    const auto& loadingIndicator = styledSnapshot->root.children[2];
+    CHECK(styledSnapshot->root.children[0].focusPersistenceId == L"transport.play");
     (void)loadingIndicator;
-    assert(loadingIndicator.kind == L"loadingIndicator");
-    assert(loadingIndicator.accessibilityLabel == L"Loading music");
-    assert(loadingIndicator.indicatorSize == L"compact");
-    assert(loadingIndicator.visibleWhen == L"compactOnly");
-    const auto& actionSurface = styledSnapshot->root.children[2];
+    CHECK(loadingIndicator.kind == L"loadingIndicator");
+    CHECK(loadingIndicator.accessibilityLabel == L"Loading music");
+    CHECK(loadingIndicator.indicatorSize == L"compact");
+    CHECK(loadingIndicator.visibleWhen == L"compactOnly");
+    const auto& actionSurface = styledSnapshot->root.children[3];
     (void)actionSurface;
-    assert(actionSurface.kind == L"actionSurface");
-    assert(actionSurface.actionId == L"open-album");
-    assert(actionSurface.accessibilityLabel == L"Open album");
-    assert(actionSurface.actionSurfaceOrientation == L"horizontal");
-    assert(actionSurface.children.size() == 2);
-    assert(actionSurface.children[0].kind == L"image");
-    assert(actionSurface.children[0].imageFit == L"cover");
-    assert(actionSurface.children[1].kind == L"stack");
-    assert(actionSurface.children[1].children.size() == 2);
-    assert(actionSurface.children[1].children[0].text == L"Album title");
-    const auto& cursorList = styledSnapshot->root.children[4];
+    CHECK(actionSurface.kind == L"actionSurface");
+    CHECK(actionSurface.actionId == L"open-album");
+    CHECK(actionSurface.accessibilityLabel == L"Open album");
+    CHECK(actionSurface.actionSurfaceOrientation == L"horizontal");
+    CHECK(actionSurface.children.size() == 2);
+    CHECK(actionSurface.children[0].kind == L"image");
+    CHECK(actionSurface.children[0].imageFit == L"cover");
+    CHECK(actionSurface.children[1].kind == L"stack");
+    CHECK(actionSurface.children[1].children.size() == 2);
+    CHECK(actionSurface.children[1].children[0].text == L"Album title");
+    const auto& cursorList = styledSnapshot->root.children[5];
     (void)cursorList;
-    assert(cursorList.collectionAnchorKey == L"game.2");
-    assert(cursorList.children[0].collectionItemKey == L"game.2");
-    assert(cursorList.children[0].artworkHandle == L"library.art.2");
-    assert(cursorList.children[0].imageSource.empty());
-    const auto& grid = styledSnapshot->root.children[3];
+    CHECK(cursorList.collectionAnchorKey == L"game.2");
+    CHECK(cursorList.children[0].collectionItemKey == L"game.2");
+    CHECK(cursorList.children[0].artworkHandle == L"library.art.2");
+    CHECK(cursorList.children[0].imageSource.empty());
+    const auto& grid = styledSnapshot->root.children[4];
     (void)grid;
-    assert(grid.kind == L"grid");
-    assert(grid.gridMinimumColumnWidth == 180.0);
-    assert(grid.gridMaximumColumns == 3U);
-    assert(grid.children.size() == 2);
-    assert(grid.children[1].id == L"grid-two");
-    const auto& textEntry = styledSnapshot->root.children[5];
+    CHECK(grid.kind == L"grid");
+    CHECK(grid.gridMinimumColumnWidth == 180.0);
+    CHECK(grid.gridMaximumColumns == 3U);
+    CHECK(grid.children.size() == 2);
+    CHECK(grid.children[1].id == L"grid-two");
+    const auto& textEntry = styledSnapshot->root.children[6];
     (void)textEntry;
-    assert(textEntry.kind == L"button");
-    assert(textEntry.isTextEntry);
-    assert(textEntry.textEntryValue == L"Halo");
-    assert(textEntry.textEntryPlaceholder == L"Search installed games");
-    assert(textEntry.textEntryMaximumLength == 96U);
+    CHECK(textEntry.kind == L"button");
+    CHECK(textEntry.isTextEntry);
+    CHECK(textEntry.textEntryValue == L"Halo");
+    CHECK(textEntry.textEntryPlaceholder == L"Search installed games");
+    CHECK(textEntry.textEntryMaximumLength == 96U);
 
     error.clear();
-    const auto invalidGrid = gba::testing::ParseWidgetSnapshotResponse(R"json({
+    const auto invalidGrid = widgetrail::testing::ParseWidgetSnapshotResponse(R"json({
         "snapshot": {
             "sequence": 1,
             "widgetInstanceId": "grid.invalid",
@@ -494,10 +497,10 @@ int main() {
             }
         }
     })json", error);
-    assert(!invalidGrid && !error.empty());
+    CHECK(!invalidGrid && !error.empty());
 
     error.clear();
-    const auto invalidTextEntry = gba::testing::ParseWidgetSnapshotResponse(R"json({
+    const auto invalidTextEntry = widgetrail::testing::ParseWidgetSnapshotResponse(R"json({
         "snapshot": {
             "sequence": 1,
             "widgetInstanceId": "text.invalid",
@@ -509,10 +512,10 @@ int main() {
             }
         }
     })json", error);
-    assert(!invalidTextEntry && !error.empty());
+    CHECK(!invalidTextEntry && !error.empty());
 
     error.clear();
-    const auto invalidVisibility = gba::testing::ParseWidgetSnapshotResponse(R"json({
+    const auto invalidVisibility = widgetrail::testing::ParseWidgetSnapshotResponse(R"json({
         "snapshot": {
             "sequence": 1,
             "widgetInstanceId": "visibility.invalid",
@@ -525,32 +528,32 @@ int main() {
             }
         }
     })json", error);
-    assert(!invalidVisibility && !error.empty());
+    CHECK(!invalidVisibility && !error.empty());
 
     error.clear();
-    const auto fallbackIcon = gba::testing::ParseWidgetDescriptors(
+    const auto fallbackIcon = widgetrail::testing::ParseWidgetDescriptors(
         R"json({"widgets":[{"id":"fallback","name":"Fallback","instanceId":"fallback","runtimeGeneration":"runtime","presentationGeneration":"presentation","quickActions":[]}]})json",
         error);
-    assert(fallbackIcon && (*fallbackIcon)[0].icon == L"connection");
+    CHECK(fallbackIcon && (*fallbackIcon)[0].icon == L"connection");
 
     error.clear();
-    assert(!gba::testing::ParseWidgetDescriptors(
+    CHECK(!widgetrail::testing::ParseWidgetDescriptors(
         R"json({"widgets":[{"id":"one","name":"One","instanceId":"one","runtimeGeneration":"runtime","presentationGeneration":"presentation","icon":"arbitrary-svg","quickActions":[]}]})json",
         error));
-    assert(error.find(L"WidgetGlyph") != std::wstring::npos);
+    CHECK(error.find(L"WidgetGlyph") != std::wstring::npos);
 
     error.clear();
-    assert(!gba::testing::ParseWidgetDescriptors(
+    CHECK(!widgetrail::testing::ParseWidgetDescriptors(
         R"json({"widgets":[{"id":"one","name":"One","instanceId":"one","runtimeGeneration":"runtime","presentationGeneration":"presentation","icon":42,"quickActions":[]}]})json",
         error));
-    assert(error.find(L"'icon'") != std::wstring::npos);
+    CHECK(error.find(L"'icon'") != std::wstring::npos);
 
     error.clear();
-    const auto duplicate = gba::testing::ParseWidgetDescriptors(R"json({"widgets":[
+    const auto duplicate = widgetrail::testing::ParseWidgetDescriptors(R"json({"widgets":[
         {"id":"same","name":"One","instanceId":"one","runtimeGeneration":"runtime-one","presentationGeneration":"presentation-one","quickActions":[]},
         {"id":"same","name":"Two","instanceId":"two","runtimeGeneration":"runtime-two","presentationGeneration":"presentation-two","quickActions":[]}
     ]})json", error);
-    assert(!duplicate && error.find(L"duplicate") != std::wstring::npos);
+    CHECK(!duplicate && error.find(L"duplicate") != std::wstring::npos);
 
     std::string tooMany = "{\"widgets\":[";
     for (int index = 0; index < 257; ++index) {
@@ -559,8 +562,8 @@ int main() {
     }
     tooMany += "]}";
     error.clear();
-    assert(!gba::testing::ParseWidgetDescriptors(tooMany, error));
-    assert(error.find(L"256") != std::wstring::npos);
+    CHECK(!widgetrail::testing::ParseWidgetDescriptors(tooMany, error));
+    CHECK(error.find(L"256") != std::wstring::npos);
 
     std::string tooManyActions = "{\"widgets\":[{\"id\":\"one\",\"name\":\"One\","
         "\"instanceId\":\"one\",\"runtimeGeneration\":\"runtime\","
@@ -573,139 +576,139 @@ int main() {
     }
     tooManyActions += "]}]}";
     error.clear();
-    assert(!gba::testing::ParseWidgetDescriptors(tooManyActions, error));
-    assert(error.find(L"16") != std::wstring::npos);
+    CHECK(!widgetrail::testing::ParseWidgetDescriptors(tooManyActions, error));
+    CHECK(error.find(L"16") != std::wstring::npos);
 
     error.clear();
-    assert(!gba::testing::ParseWidgetDescriptors(
+    CHECK(!widgetrail::testing::ParseWidgetDescriptors(
         R"json({"widgets":[{"id":"bad/id","name":"Bad","instanceId":"one","runtimeGeneration":"runtime","presentationGeneration":"presentation","quickActions":[]}]})json",
         error));
-    assert(error.find(L"'id'") != std::wstring::npos);
+    CHECK(error.find(L"'id'") != std::wstring::npos);
 
     error.clear();
-    assert(!gba::testing::ParseWidgetDescriptors(
+    CHECK(!widgetrail::testing::ParseWidgetDescriptors(
         R"json({"widgets":[{"id":"one","name":"Bad\nLabel","instanceId":"one","runtimeGeneration":"runtime","presentationGeneration":"presentation","quickActions":[]}]})json",
         error));
-    assert(error.find(L"'name'") != std::wstring::npos);
+    CHECK(error.find(L"'name'") != std::wstring::npos);
 
-    gba::WidgetInvalidationQueue invalidations;
-    assert(invalidations.Push(L"widget-0"));
-    assert(invalidations.Push(L"widget-0"));
-    assert(invalidations.size() == 1);
+    widgetrail::WidgetInvalidationQueue invalidations;
+    CHECK(invalidations.Push(L"widget-0"));
+    CHECK(invalidations.Push(L"widget-0"));
+    CHECK(invalidations.size() == 1);
     for (int index = 1; index <= 256; ++index) {
-        assert(invalidations.Push(L"widget-" + std::to_wstring(index)));
+        CHECK(invalidations.Push(L"widget-" + std::to_wstring(index)));
     }
-    assert(invalidations.size() == gba::WidgetInvalidationQueue::MaximumWidgetIds);
-    assert(!invalidations.Push(L"bad/widget"));
+    CHECK(invalidations.size() == widgetrail::WidgetInvalidationQueue::MaximumWidgetIds);
+    CHECK(!invalidations.Push(L"bad/widget"));
     const auto pending = invalidations.Take();
-    assert(pending.size() == gba::WidgetInvalidationQueue::MaximumWidgetIds);
-    assert(pending.front() == L"widget-1");
-    assert(pending.back() == L"widget-256");
-    assert(invalidations.size() == 0);
+    CHECK(pending.size() == widgetrail::WidgetInvalidationQueue::MaximumWidgetIds);
+    CHECK(pending.front() == L"widget-1");
+    CHECK(pending.back() == L"widget-256");
+    CHECK(invalidations.size() == 0);
 
     error.clear();
-    const auto hostEffect = gba::testing::ParseWidgetHostEffectEvent(R"json({
+    const auto hostEffect = widgetrail::testing::ParseWidgetHostEffectEvent(R"json({
         "protocolVersion":1,
         "type":"widget-host-effect",
         "requestId":0,
         "payload":{"widgetId":"games-apps","runtimeGeneration":"runtime-1","effect":"closeOverlayAfterAppLaunch","sequence":7}
     })json", error);
-    assert(hostEffect && error.empty());
-    assert(hostEffect->sequence == 7);
-    assert(hostEffect->widgetId == L"games-apps");
-    assert(hostEffect->runtimeGeneration == L"runtime-1");
-    assert(hostEffect->kind == gba::WidgetHostEffectKind::CloseOverlayAfterAppLaunch);
+    CHECK(hostEffect && error.empty());
+    CHECK(hostEffect->sequence == 7);
+    CHECK(hostEffect->widgetId == L"games-apps");
+    CHECK(hostEffect->runtimeGeneration == L"runtime-1");
+    CHECK(hostEffect->kind == widgetrail::WidgetHostEffectKind::CloseOverlayAfterAppLaunch);
 
-    gba::WidgetHostEffectQueue hostEffects;
-    assert(hostEffects.Push(*hostEffect));
-    assert(hostEffects.Push(*hostEffect)); // replay is accepted and ignored
-    assert(hostEffects.size() == 1);
-    assert(hostEffects.lastSequence() == 7);
-    assert(!hostEffects.Push({8, L"bad/widget", L"runtime-1",
-        gba::WidgetHostEffectKind::CloseOverlayAfterAppLaunch}));
+    widgetrail::WidgetHostEffectQueue hostEffects;
+    CHECK(hostEffects.Push(*hostEffect));
+    CHECK(hostEffects.Push(*hostEffect)); // replay is accepted and ignored
+    CHECK(hostEffects.size() == 1);
+    CHECK(hostEffects.lastSequence() == 7);
+    CHECK(!hostEffects.Push({8, L"bad/widget", L"runtime-1",
+        widgetrail::WidgetHostEffectKind::CloseOverlayAfterAppLaunch}));
     const auto pendingEffects = hostEffects.Take();
-    assert(pendingEffects.size() == 1);
-    assert(hostEffects.size() == 0);
+    CHECK(pendingEffects.size() == 1);
+    CHECK(hostEffects.size() == 0);
 
     error.clear();
-    assert(!gba::testing::ParseWidgetHostEffectEvent(R"json({
+    CHECK(!widgetrail::testing::ParseWidgetHostEffectEvent(R"json({
         "protocolVersion":1,"type":"widget-host-effect","requestId":0,
         "payload":{"widgetId":"games-apps","runtimeGeneration":"runtime-1","effect":"closeOverlayAfterAppLaunch","sequence":7,"extra":true}
     })json", error));
-    assert(!error.empty());
+    CHECK(!error.empty());
 
     error.clear();
-    const auto actionFailure = gba::testing::ParseWidgetActionFailureEvent(R"json({
+    const auto actionFailure = widgetrail::testing::ParseWidgetActionFailureEvent(R"json({
         "protocolVersion":1,
         "type":"widget-failed",
         "requestId":0,
         "payload":{"widgetId":"music","runtimeGeneration":"runtime-2","reason":"controllerActionFailed","actionId":"playback.next","sourceElementId":"player.next","message":"Provider command failed","canRestart":false}
     })json", error);
-    assert(actionFailure && error.empty());
-    assert(actionFailure->widgetId == L"music");
-    assert(actionFailure->runtimeGeneration == L"runtime-2");
-    assert(actionFailure->actionId == L"playback.next");
-    assert(actionFailure->sourceElementId == L"player.next");
-    assert(actionFailure->code == gba::WidgetActionFailureCode::ControllerActionFailed);
-    assert(gba::WidgetActionFailureCodeValue(actionFailure->code) ==
+    CHECK(actionFailure && error.empty());
+    CHECK(actionFailure->widgetId == L"music");
+    CHECK(actionFailure->runtimeGeneration == L"runtime-2");
+    CHECK(actionFailure->actionId == L"playback.next");
+    CHECK(actionFailure->sourceElementId == L"player.next");
+    CHECK(actionFailure->code == widgetrail::WidgetActionFailureCode::ControllerActionFailed);
+    CHECK(widgetrail::WidgetActionFailureCodeValue(actionFailure->code) ==
         L"controllerActionFailed");
 
     error.clear();
     const auto workerStartFailure =
-        gba::testing::ParseWidgetRuntimeFailureEvent(R"json({
+        widgetrail::testing::ParseWidgetRuntimeFailureEvent(R"json({
         "protocolVersion":1,
         "type":"widget-failed",
         "requestId":0,
         "payload":{"widgetId":"music","reason":"connectionFailed","exitCode":65,"diagnosticCode":"exit_65","restartsUsed":0,"canRestart":true}
     })json", error);
-    assert(workerStartFailure && error.empty());
-    assert(workerStartFailure->widgetId == L"music");
-    assert(workerStartFailure->category ==
-        gba::WidgetBridgeRuntimeFailureCategory::WorkerStart);
-    assert(workerStartFailure->safeMessage ==
+    CHECK(workerStartFailure && error.empty());
+    CHECK(workerStartFailure->widgetId == L"music");
+    CHECK(workerStartFailure->category ==
+        widgetrail::WidgetBridgeRuntimeFailureCategory::WorkerStart);
+    CHECK(workerStartFailure->safeMessage ==
         L"Widget worker failed to start (exit_65).");
 
     error.clear();
     const auto runtimeFailure =
-        gba::testing::ParseWidgetRuntimeFailureEvent(R"json({
+        widgetrail::testing::ParseWidgetRuntimeFailureEvent(R"json({
         "protocolVersion":1,
         "type":"widget-failed",
         "requestId":0,
         "payload":{"widgetId":"music","reason":"processExited","exitCode":1,"restartsUsed":2,"canRestart":false}
     })json", error);
-    assert(runtimeFailure && error.empty());
-    assert(runtimeFailure->category ==
-        gba::WidgetBridgeRuntimeFailureCategory::WorkerExited);
-    assert(runtimeFailure->safeMessage == L"Widget worker exited unexpectedly.");
+    CHECK(runtimeFailure && error.empty());
+    CHECK(runtimeFailure->category ==
+        widgetrail::WidgetBridgeRuntimeFailureCategory::WorkerExited);
+    CHECK(runtimeFailure->safeMessage == L"Widget worker exited unexpectedly.");
 
     error.clear();
-    assert(!gba::testing::ParseWidgetActionFailureEvent(R"json({
+    CHECK(!widgetrail::testing::ParseWidgetActionFailureEvent(R"json({
         "protocolVersion":1,"type":"widget-failed","requestId":0,
         "payload":{"widgetId":"music","runtimeGeneration":"runtime-2","reason":"providerFailure","actionId":"playback.next","sourceElementId":"player.next","message":"failed","canRestart":false}
     })json", error));
-    assert(!error.empty());
+    CHECK(!error.empty());
 
     error.clear();
-    const auto artwork = gba::testing::ParseWidgetArtworkResultEvent(R"json({
+    const auto artwork = widgetrail::testing::ParseWidgetArtworkResultEvent(R"json({
         "type":"artwork","requestId":0,
         "payload":{"widgetId":"games-apps","artworkHandle":"library.art.0123456789abcdef0123456789abcdef","pngBase64":"AAAA"}
     })json", error);
-    assert(artwork && error.empty());
-    assert(artwork->widgetId == L"games-apps");
-    assert(artwork->artworkHandle ==
+    CHECK(artwork && error.empty());
+    CHECK(artwork->widgetId == L"games-apps");
+    CHECK(artwork->artworkHandle ==
            L"library.art.0123456789abcdef0123456789abcdef");
-    assert(artwork->pngBase64 == L"AAAA");
+    CHECK(artwork->pngBase64 == L"AAAA");
 
     error.clear();
     const auto localPackage =
-        gba::testing::ParseLocalWidgetPackageInstallResultEvent(R"json({
+        widgetrail::testing::ParseLocalWidgetPackageInstallResultEvent(R"json({
         "type":"local-widget-package-install-completed","requestId":0,
         "payload":{"operationId":"11111111-2222-3333-4444-555555555555","status":"installed-disabled","widgetId":"fixture","version":"1.2.3","message":"Local widget package installed disabled. Review it before enabling."}
     })json", error);
     Require(localPackage && error.empty(),
             "valid local package completion framing was rejected");
     Require(localPackage->status ==
-                gba::LocalWidgetPackageInstallStatus::InstalledDisabled,
+                widgetrail::LocalWidgetPackageInstallStatus::InstalledDisabled,
             "installed-disabled completion status changed");
     Require(localPackage->widgetId == L"fixture" &&
                 localPackage->version == L"1.2.3",
@@ -715,30 +718,30 @@ int main() {
 
     error.clear();
     const auto cancelledPackage =
-        gba::testing::ParseLocalWidgetPackageInstallResultEvent(R"json({
+        widgetrail::testing::ParseLocalWidgetPackageInstallResultEvent(R"json({
         "type":"local-widget-package-install-completed","requestId":0,
         "payload":{"operationId":"aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee","status":"cancelled","widgetId":"","version":"","message":"Local widget package install was cancelled."}
     })json", error);
     Require(cancelledPackage && error.empty(),
             "valid local package cancellation framing was rejected");
     Require(cancelledPackage->status ==
-                gba::LocalWidgetPackageInstallStatus::Cancelled,
+                widgetrail::LocalWidgetPackageInstallStatus::Cancelled,
             "cancelled completion status changed");
     Require(cancelledPackage->widgetId.empty() &&
                 cancelledPackage->version.empty(),
             "cancelled completion carried package identity");
 
     error.clear();
-    Require(!gba::testing::ParseLocalWidgetPackageInstallResultEvent(R"json({
+    Require(!widgetrail::testing::ParseLocalWidgetPackageInstallResultEvent(R"json({
         "type":"local-widget-package-install-completed","requestId":0,
-        "payload":{"operationId":"11111111-2222-3333-4444-555555555555","status":"failed","widgetId":null,"version":null,"message":"C:\\\\private\\\\package.gbarwidget","path":"C:\\\\private\\\\package.gbarwidget"}
+        "payload":{"operationId":"11111111-2222-3333-4444-555555555555","status":"failed","widgetId":null,"version":null,"message":"C:\\\\private\\\\package.wrwidget","path":"C:\\\\private\\\\package.wrwidget"}
     })json", error),
             "path-bearing local package completion was admitted");
     Require(!error.empty(),
             "path-bearing completion rejection omitted its diagnostic");
 
     error.clear();
-    Require(!gba::testing::ParseLocalWidgetPackageInstallResultEvent(R"json({
+    Require(!widgetrail::testing::ParseLocalWidgetPackageInstallResultEvent(R"json({
         "type":"widget-invalidated","requestId":0,
         "payload":{"operationId":"11111111-2222-3333-4444-555555555555","status":"failed","widgetId":"","version":"","message":"Install failed"}
     })json", error),
@@ -747,141 +750,142 @@ int main() {
             "wrong-operation rejection omitted its diagnostic");
 
     error.clear();
-    Require(!gba::testing::ParseLocalWidgetPackageInstallResultEvent(R"json({
+    Require(!widgetrail::testing::ParseLocalWidgetPackageInstallResultEvent(R"json({
         "type":"local-widget-package-install-completed","requestId":0,
         "payload":{"operationId":"11111111-2222-3333-4444-555555555555","status":"failed","widgetId":"","version":"","message":"Install failed","extra":"malformed"}
     })json", error),
             "malformed local package completion was admitted");
     Require(!error.empty(),
             "malformed completion rejection omitted its diagnostic");
-    gba::WidgetArtworkResultQueue artworkResults;
+    widgetrail::WidgetArtworkResultQueue artworkResults;
     for (std::size_t index = 0;
-         index < gba::WidgetArtworkResultQueue::MaximumResults; ++index) {
+         index < widgetrail::WidgetArtworkResultQueue::MaximumResults; ++index) {
         auto suffix = std::to_wstring(index);
         suffix.insert(suffix.begin(), 32 - suffix.size(), L'0');
-        assert(artworkResults.Push({
+        CHECK(artworkResults.Push({
             L"games-apps", L"library.art." + suffix, L"AAAA"}));
     }
-    assert(artworkResults.Push({
+    CHECK(artworkResults.Push({
         L"games-apps", L"library.art.00000000000000000000000000000000", L"BBBB"}));
-    assert(artworkResults.size() ==
-           gba::WidgetArtworkResultQueue::MaximumResults);
-    assert(!artworkResults.Push({
+    CHECK(artworkResults.size() ==
+           widgetrail::WidgetArtworkResultQueue::MaximumResults);
+    CHECK(!artworkResults.Push({
         L"games-apps", L"library.art.ffffffffffffffffffffffffffffffff", L"CCCC"}));
 
-    gba::WidgetActionFailureQueue actionFailures;
+    widgetrail::WidgetActionFailureQueue actionFailures;
     for (int index = 0; index <= 16; ++index) {
-        assert(actionFailures.Push({
+        CHECK(actionFailures.Push({
             L"music", L"runtime-2", L"action-" + std::to_wstring(index), L"source"}));
     }
-    assert(actionFailures.size() == gba::WidgetActionFailureQueue::MaximumFailures);
+    CHECK(actionFailures.size() == widgetrail::WidgetActionFailureQueue::MaximumFailures);
     const auto pendingFailures = actionFailures.Take();
-    assert(pendingFailures.front().actionId == L"action-1");
-    assert(pendingFailures.back().actionId == L"action-16");
+    CHECK(pendingFailures.front().actionId == L"action-1");
+    CHECK(pendingFailures.back().actionId == L"action-16");
 
     error.clear();
-    assert(!gba::testing::ParseWidgetActionFailureEvent(R"json({
+    CHECK(!widgetrail::testing::ParseWidgetActionFailureEvent(R"json({
         "protocolVersion":1,"type":"widget-failed","requestId":0,
         "payload":{"widgetId":"music","runtimeGeneration":"runtime-2","reason":"controllerActionFailed","actionId":"playback.next","sourceElementId":"player.next","message":"secret\u000aresponse","canRestart":false}
     })json", error));
-    assert(!error.empty());
+    CHECK(!error.empty());
 
     error.clear();
-    assert(!gba::testing::ParseWidgetActionFailureEvent(R"json({
+    CHECK(!widgetrail::testing::ParseWidgetActionFailureEvent(R"json({
         "protocolVersion":1,"type":"widget-failed","requestId":0,
         "payload":{"widgetId":"music","runtimeGeneration":"runtime-2","reason":"controllerActionFailed","actionId":"playback.next","sourceElementId":"player.next","message":"failed","canRestart":true}
     })json", error));
-    assert(!error.empty());
+    CHECK(!error.empty());
 
     error.clear();
-    const auto appearance = gba::testing::ParsePlatformAppearance(ValidAppearance, error);
-    assert(appearance && error.empty());
-    assert(appearance->revision == 7);
-    assert(appearance->themeId == L"midnight-blue");
-    assert(appearance->themeVersion == L"1.2.0");
-    assert(appearance->interfaceScale == 1.1);
-    assert(appearance->textScale == 1.25);
-    assert(appearance->backdropOpacity == 0.62);
-    assert(appearance->motion == gba::PlatformMotionPreference::Reduced);
-    assert(appearance->contrast == gba::PlatformContrastPreference::High);
-    assert(appearance->boldText);
-    assert(appearance->transparency == gba::PlatformTransparencyPreference::Reduced);
-    assert(appearance->shellStyles.size() == 3);
-    assert(appearance->shellStyles.at(L"panel").at(L"corner-radius").number == 18.0);
-    assert(appearance->shellStyles.at(L"title").at(L"font-family").text ==
+    const auto appearance = widgetrail::testing::ParsePlatformAppearance(ValidAppearance, error);
+    CHECK(appearance && error.empty());
+    CHECK(appearance->revision == 7);
+    CHECK(appearance->themeId == L"midnight-blue");
+    CHECK(appearance->themeVersion == L"1.2.0");
+    CHECK(appearance->interfaceScale == 1.1);
+    CHECK(appearance->textScale == 1.25);
+    CHECK(appearance->backdropOpacity == 0.62);
+    CHECK(appearance->motion == widgetrail::PlatformMotionPreference::Reduced);
+    CHECK(appearance->contrast == widgetrail::PlatformContrastPreference::High);
+    CHECK(appearance->boldText);
+    CHECK(appearance->transparency == widgetrail::PlatformTransparencyPreference::Reduced);
+    CHECK(!appearance->animateWidgetSwitching);
+    CHECK(appearance->shellStyles.size() == 3);
+    CHECK(appearance->shellStyles.at(L"panel").at(L"corner-radius").number == 18.0);
+    CHECK(appearance->shellStyles.at(L"title").at(L"font-family").text ==
            L"Segoe UI Variable");
 
     error.clear();
-    assert(!gba::testing::ParsePlatformAppearance(R"json({
+    CHECK(!widgetrail::testing::ParsePlatformAppearance(R"json({
         "revision":0,"themeId":"default","themeVersion":"1.0.0",
         "interfaceScale":1,"textScale":1,"backdropOpacity":0.64,
-        "motion":"cinematic","contrast":"system","boldText":false,"transparency":"full","shellStyles":{}
+        "motion":"cinematic","contrast":"system","boldText":false,"transparency":"full","animateWidgetSwitching":false,"shellStyles":{}
     })json", error));
-    assert(error.find(L"motion") != std::wstring::npos);
+    CHECK(error.find(L"motion") != std::wstring::npos);
 
     error.clear();
-    assert(!gba::testing::ParsePlatformAppearance(R"json({
+    CHECK(!widgetrail::testing::ParsePlatformAppearance(R"json({
         "revision":0,"themeId":"default","themeVersion":"1.0.0",
         "interfaceScale":1,"textScale":1,"backdropOpacity":0.64,
-        "motion":"system","contrast":"extreme","boldText":false,"transparency":"full","shellStyles":{}
+        "motion":"system","contrast":"extreme","boldText":false,"transparency":"full","animateWidgetSwitching":false,"shellStyles":{}
     })json", error));
-    assert(error.find(L"contrast") != std::wstring::npos);
+    CHECK(error.find(L"contrast") != std::wstring::npos);
 
     error.clear();
-    assert(!gba::testing::ParsePlatformAppearance(R"json({
+    CHECK(!widgetrail::testing::ParsePlatformAppearance(R"json({
         "revision":0,"themeId":"default","themeVersion":"1.0.0",
         "interfaceScale":1,"textScale":1,"backdropOpacity":0.64,
-        "motion":"system","contrast":"system","boldText":false,"transparency":"blurred","shellStyles":{}
+        "motion":"system","contrast":"system","boldText":false,"transparency":"blurred","animateWidgetSwitching":false,"shellStyles":{}
     })json", error));
-    assert(error.find(L"transparency") != std::wstring::npos);
+    CHECK(error.find(L"transparency") != std::wstring::npos);
 
     error.clear();
-    assert(!gba::testing::ParsePlatformAppearance(R"json({
+    CHECK(!widgetrail::testing::ParsePlatformAppearance(R"json({
         "revision":0,"themeId":"default","themeVersion":"1.0.0",
         "interfaceScale":1,"textScale":1,"backdropOpacity":0.64,
-        "motion":"system","contrast":"system","boldText":"yes","transparency":"full","shellStyles":{}
+        "motion":"system","contrast":"system","boldText":"yes","transparency":"full","animateWidgetSwitching":false,"shellStyles":{}
     })json", error));
-    assert(error.find(L"types") != std::wstring::npos);
+    CHECK(error.find(L"types") != std::wstring::npos);
 
     error.clear();
-    assert(!gba::testing::ParsePlatformAppearance(R"json({
+    CHECK(!widgetrail::testing::ParsePlatformAppearance(R"json({
         "revision":0,"themeId":"default","themeVersion":"1.0.0",
         "interfaceScale":2,"textScale":1,"backdropOpacity":0.64,
-        "motion":"system","contrast":"system","boldText":false,"transparency":"full","shellStyles":{}
+        "motion":"system","contrast":"system","boldText":false,"transparency":"full","animateWidgetSwitching":false,"shellStyles":{}
     })json", error));
-    assert(error.find(L"bounds") != std::wstring::npos);
+    CHECK(error.find(L"bounds") != std::wstring::npos);
 
     error.clear();
-    assert(!gba::testing::ParsePlatformAppearance(R"json({
+    CHECK(!widgetrail::testing::ParsePlatformAppearance(R"json({
         "revision":0,"themeId":"default","themeVersion":"1.0.0",
         "interfaceScale":1,"textScale":1,"backdropOpacity":0.64,
-        "motion":"system","contrast":"system","boldText":false,"transparency":"full","shellStyles":{"unknown":{}}
+        "motion":"system","contrast":"system","boldText":false,"transparency":"full","animateWidgetSwitching":false,"shellStyles":{"unknown":{}}
     })json", error));
-    assert(error.find(L"unknown") != std::wstring::npos);
+    CHECK(error.find(L"unknown") != std::wstring::npos);
 
     error.clear();
-    assert(!gba::testing::ParsePlatformAppearance(R"json({
+    CHECK(!widgetrail::testing::ParsePlatformAppearance(R"json({
         "revision":0,"themeId":"default","themeVersion":"1.0.0",
         "interfaceScale":1,"textScale":1,"backdropOpacity":0.64,
-        "motion":"system","contrast":"system","boldText":false,"transparency":"full","shellStyles":{"canvas":{
+        "motion":"system","contrast":"system","boldText":false,"transparency":"full","animateWidgetSwitching":false,"shellStyles":{"canvas":{
             "background":{"kind":"script","text":"unsafe","number":null,"unit":null}
         }}
     })json", error));
-    assert(error.find(L"computed value") != std::wstring::npos);
+    CHECK(error.find(L"computed value") != std::wstring::npos);
 
     error.clear();
-    assert(!gba::testing::ParsePlatformAppearance(R"json({
+    CHECK(!widgetrail::testing::ParsePlatformAppearance(R"json({
         "revision":0,"themeId":"default","themeVersion":"1.0.0",
         "interfaceScale":1,"textScale":1,"backdropOpacity":0.64,
-        "motion":"system","contrast":"system","boldText":false,"transparency":"full","shellStyles":{},"unexpected":true
+        "motion":"system","contrast":"system","boldText":false,"transparency":"full","animateWidgetSwitching":false,"shellStyles":{},"unexpected":true
     })json", error));
-    assert(error.find(L"unknown properties") != std::wstring::npos);
+    CHECK(error.find(L"unknown properties") != std::wstring::npos);
 
     std::string tooManyStyleProperties =
         "{\"revision\":0,\"themeId\":\"default\",\"themeVersion\":\"1.0.0\","
         "\"interfaceScale\":1,\"textScale\":1,\"backdropOpacity\":0.64,"
         "\"motion\":\"system\",\"contrast\":\"system\",\"boldText\":false,"
-        "\"transparency\":\"full\",\"shellStyles\":{\"canvas\":{";
+        "\"transparency\":\"full\",\"animateWidgetSwitching\":false,\"shellStyles\":{\"canvas\":{";
     for (int index = 0; index < 65; ++index) {
         if (index != 0) tooManyStyleProperties += ',';
         tooManyStyleProperties += "\"property-" + std::to_string(index) +
@@ -889,80 +893,80 @@ int main() {
     }
     tooManyStyleProperties += "}}}";
     error.clear();
-    assert(!gba::testing::ParsePlatformAppearance(tooManyStyleProperties, error));
-    assert(error.find(L"property count") != std::wstring::npos);
+    CHECK(!widgetrail::testing::ParsePlatformAppearance(tooManyStyleProperties, error));
+    CHECK(error.find(L"property count") != std::wstring::npos);
 
-    gba::PlatformAppearanceRevisionTracker revisions;
-    assert(revisions.Notify(3));
-    assert(revisions.Notify(2));
-    assert(revisions.Notify(5));
-    assert(revisions.pending() == 5);
-    assert(!revisions.Notify(-1));
-    assert(revisions.pending() == 5);
-    assert(revisions.Take() == 5);
-    assert(!revisions.pending());
+    widgetrail::PlatformAppearanceRevisionTracker revisions;
+    CHECK(revisions.Notify(3));
+    CHECK(revisions.Notify(2));
+    CHECK(revisions.Notify(5));
+    CHECK(revisions.pending() == 5);
+    CHECK(!revisions.Notify(-1));
+    CHECK(revisions.pending() == 5);
+    CHECK(revisions.Take() == 5);
+    CHECK(!revisions.pending());
 
-    gba::WidgetCatalogRevisionTracker catalogRevisions;
-    assert(catalogRevisions.ObserveSnapshot(2));
-    assert(catalogRevisions.observed() == 2);
-    assert(catalogRevisions.Notify(2));
-    assert(!catalogRevisions.pending());
-    assert(catalogRevisions.Notify(4));
-    assert(catalogRevisions.Notify(3));
-    assert(catalogRevisions.pending() == 4);
-    assert(catalogRevisions.Take() == 4);
-    assert(catalogRevisions.observed() == 2);
-    assert(!catalogRevisions.Take());
-    assert(catalogRevisions.Notify(4));
-    assert(!catalogRevisions.pending());
+    widgetrail::WidgetCatalogRevisionTracker catalogRevisions;
+    CHECK(catalogRevisions.ObserveSnapshot(2));
+    CHECK(catalogRevisions.observed() == 2);
+    CHECK(catalogRevisions.Notify(2));
+    CHECK(!catalogRevisions.pending());
+    CHECK(catalogRevisions.Notify(4));
+    CHECK(catalogRevisions.Notify(3));
+    CHECK(catalogRevisions.pending() == 4);
+    CHECK(catalogRevisions.Take() == 4);
+    CHECK(catalogRevisions.observed() == 2);
+    CHECK(!catalogRevisions.Take());
+    CHECK(catalogRevisions.Notify(4));
+    CHECK(!catalogRevisions.pending());
     catalogRevisions.Retry();
-    assert(catalogRevisions.pending() == 4);
-    assert(catalogRevisions.Take() == 4);
-    assert(!catalogRevisions.ObserveSnapshot(3));
-    assert(catalogRevisions.ObserveSnapshot(4));
-    assert(catalogRevisions.observed() == 4);
-    assert(catalogRevisions.Notify(4));
-    assert(!catalogRevisions.pending());
-    assert(!catalogRevisions.Notify(-1));
+    CHECK(catalogRevisions.pending() == 4);
+    CHECK(catalogRevisions.Take() == 4);
+    CHECK(!catalogRevisions.ObserveSnapshot(3));
+    CHECK(catalogRevisions.ObserveSnapshot(4));
+    CHECK(catalogRevisions.observed() == 4);
+    CHECK(catalogRevisions.Notify(4));
+    CHECK(!catalogRevisions.pending());
+    CHECK(!catalogRevisions.Notify(-1));
     catalogRevisions.Reset();
-    assert(catalogRevisions.observed() == 0);
-    assert(catalogRevisions.ObserveSnapshot(0));
-    assert(catalogRevisions.Notify(1));
-    assert(catalogRevisions.Take() == 1);
+    CHECK(catalogRevisions.observed() == 0);
+    CHECK(catalogRevisions.ObserveSnapshot(0));
+    CHECK(catalogRevisions.Notify(1));
+    CHECK(catalogRevisions.Take() == 1);
     catalogRevisions.Abandon();
-    assert(catalogRevisions.Notify(1));
-    assert(catalogRevisions.pending() == 1);
+    CHECK(catalogRevisions.Notify(1));
+    CHECK(catalogRevisions.pending() == 1);
 
-    std::vector<gba::WidgetDescriptor> beforeRuntimes{
+    std::vector<widgetrail::WidgetDescriptor> beforeRuntimes{
         {.id = L"evicted", .instanceId = L"instance-1", .runtimeGeneration = L"runtime-1"},
         {.id = L"stable", .instanceId = L"instance-2", .runtimeGeneration = L"runtime-2"},
         {.id = L"removed", .instanceId = L"instance-3", .runtimeGeneration = L"runtime-3"},
     };
-    std::vector<gba::WidgetDescriptor> afterRuntimes{
+    std::vector<widgetrail::WidgetDescriptor> afterRuntimes{
         {.id = L"evicted", .instanceId = L"instance-1", .runtimeGeneration = L"runtime-new"},
         {.id = L"stable", .instanceId = L"instance-2", .runtimeGeneration = L"runtime-2"},
     };
-    const auto changedRuntimes = gba::ChangedWidgetRuntimeIds(beforeRuntimes, afterRuntimes);
-    assert((changedRuntimes == std::vector<std::wstring>{L"evicted", L"removed"}));
+    const auto changedRuntimes = widgetrail::ChangedWidgetRuntimeIds(beforeRuntimes, afterRuntimes);
+    CHECK((changedRuntimes == std::vector<std::wstring>{L"evicted", L"removed"}));
 
-    gba::PlatformAppearanceState appearanceState;
-    assert(appearanceState.Publish(*appearance));
-    assert(appearanceState.current() && appearanceState.current()->revision == 7);
-    gba::PlatformAppearance replay = *appearance;
+    widgetrail::PlatformAppearanceState appearanceState;
+    CHECK(appearanceState.Publish(*appearance));
+    CHECK(appearanceState.current() && appearanceState.current()->revision == 7);
+    widgetrail::PlatformAppearance replay = *appearance;
     replay.themeId = L"same-revision-replay";
-    assert(!appearanceState.Publish(std::move(replay)));
-    assert(appearanceState.current()->themeId == L"midnight-blue");
-    gba::PlatformAppearance stale = *appearance;
+    CHECK(!appearanceState.Publish(std::move(replay)));
+    CHECK(appearanceState.current()->themeId == L"midnight-blue");
+    widgetrail::PlatformAppearance stale = *appearance;
     stale.revision = 6;
     stale.themeId = L"stale";
-    assert(!appearanceState.Publish(std::move(stale)));
-    assert(appearanceState.current()->revision == 7);
-    assert(appearanceState.current()->themeId == L"midnight-blue");
+    CHECK(!appearanceState.Publish(std::move(stale)));
+    CHECK(appearanceState.current()->revision == 7);
+    CHECK(appearanceState.current()->themeId == L"midnight-blue");
 
     error.clear();
-    const auto malformed = gba::testing::ParsePlatformAppearance("{}", error);
-    assert(!malformed);
-    assert(appearanceState.current()->themeId == L"midnight-blue");
+    const auto malformed = widgetrail::testing::ParsePlatformAppearance("{}", error);
+    CHECK(!malformed);
+    CHECK(appearanceState.current()->themeId == L"midnight-blue");
 
     std::cout << "WidgetBridgeCatalogTests passed\n";
 }

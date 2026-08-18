@@ -171,7 +171,7 @@ internal static class SteamArtworkScenarios
         }
 
         var outsideDirectory = Path.Combine(
-            Path.GetTempPath(), "gba-steam-artwork-outside-" + Guid.NewGuid().ToString("N"));
+            Path.GetTempPath(), "wrail-steam-artwork-outside-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(outsideDirectory);
         try
         {
@@ -753,7 +753,7 @@ internal static class SteamArtworkScenarios
         }
 
         internal static SteamLayout CreateEmpty() => new(Path.Combine(
-            Path.GetTempPath(), "gba-steam-artwork-" + Guid.NewGuid().ToString("N")));
+            Path.GetTempPath(), "wrail-steam-artwork-" + Guid.NewGuid().ToString("N")));
 
         internal string WriteArtwork(string appId, string extension, byte[] bytes)
         {

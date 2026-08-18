@@ -22,13 +22,13 @@ void Near(const float actual, const float expected, const std::string_view messa
     Check(std::abs(actual - expected) <= 0.015F, message);
 }
 
-gba::DeclarativeMotionSample Resolve(
-    gba::DeclarativeMotionTimeline& timeline,
+widgetrail::DeclarativeMotionSample Resolve(
+    widgetrail::DeclarativeMotionTimeline& timeline,
     const std::uint64_t now,
     const std::wstring_view key,
-    const gba::DeclarativeMotionValue target,
+    const widgetrail::DeclarativeMotionValue target,
     const float duration = 100.0F,
-    const gba::NativeTransitionEasing easing = gba::NativeTransitionEasing::Linear,
+    const widgetrail::NativeTransitionEasing easing = widgetrail::NativeTransitionEasing::Linear,
     const bool reducedMotion = false) {
     timeline.BeginFrame(now);
     const auto sample = timeline.Resolve(
@@ -38,7 +38,7 @@ gba::DeclarativeMotionSample Resolve(
 }
 
 void InterpolatesAndSettlesWithoutIdleWork() {
-    gba::DeclarativeMotionTimeline timeline;
+    widgetrail::DeclarativeMotionTimeline timeline;
     auto sample = Resolve(timeline, 0, L"widget\x1fplay", {0.5F, 1.0F, -12.0F, 8.0F});
     Near(sample.value.opacity, 0.5F, "first observation snaps to target");
     Check(!sample.active, "first observation does not manufacture an animation");
@@ -66,7 +66,7 @@ void InterpolatesAndSettlesWithoutIdleWork() {
 }
 
 void RetargetsFromPresentedValue() {
-    gba::DeclarativeMotionTimeline timeline;
+    widgetrail::DeclarativeMotionTimeline timeline;
     (void)Resolve(timeline, 0, L"widget\x1fitem", {0.0F, 1.0F});
     (void)Resolve(timeline, 10, L"widget\x1fitem", {1.0F, 1.2F});
     auto sample = Resolve(timeline, 60, L"widget\x1fitem", {0.0F, 0.8F});
@@ -80,18 +80,18 @@ void RetargetsFromPresentedValue() {
 }
 
 void RemovesMissingNodesAtFrameBoundary() {
-    gba::DeclarativeMotionTimeline timeline;
+    widgetrail::DeclarativeMotionTimeline timeline;
     timeline.BeginFrame(0);
     (void)timeline.Resolve(L"widget\x1fone", {1.0F, 1.0F}, 100.0F,
-                           gba::NativeTransitionEasing::Linear);
+                           widgetrail::NativeTransitionEasing::Linear);
     (void)timeline.Resolve(L"widget\x1ftwo", {1.0F, 1.0F}, 100.0F,
-                           gba::NativeTransitionEasing::Linear);
+                           widgetrail::NativeTransitionEasing::Linear);
     (void)timeline.EndFrame();
     Check(timeline.trackedNodeCount() == 2, "complete tree is tracked");
 
     timeline.BeginFrame(16);
     (void)timeline.Resolve(L"widget\x1ftwo", {1.0F, 1.0F}, 100.0F,
-                           gba::NativeTransitionEasing::Linear);
+                           widgetrail::NativeTransitionEasing::Linear);
     (void)timeline.EndFrame();
     Check(timeline.trackedNodeCount() == 1, "removed node is swept after frame");
 
@@ -100,11 +100,11 @@ void RemovesMissingNodesAtFrameBoundary() {
 }
 
 void ReducedMotionSnapsAndCancels() {
-    gba::DeclarativeMotionTimeline timeline;
+    widgetrail::DeclarativeMotionTimeline timeline;
     (void)Resolve(timeline, 0, L"widget\x1fbutton", {0.4F, 1.0F});
     auto sample = Resolve(
         timeline, 10, L"widget\x1fbutton", {1.0F, 1.1F, 30.0F, -20.0F}, 2000.0F,
-        gba::NativeTransitionEasing::Spring, true);
+        widgetrail::NativeTransitionEasing::Spring, true);
     Near(sample.value.opacity, 1.0F, "reduced motion snaps opacity");
     Near(sample.value.scale, 1.1F, "reduced motion snaps scale");
     Near(sample.value.translationX, 30.0F, "reduced motion snaps x translation");
@@ -113,11 +113,11 @@ void ReducedMotionSnapsAndCancels() {
 
     sample = Resolve(
         timeline, 20, L"widget\x1fbutton", {0.2F, 0.9F, -16.0F, 24.0F}, 100.0F,
-        gba::NativeTransitionEasing::Linear, false);
+        widgetrail::NativeTransitionEasing::Linear, false);
     Check(sample.active, "normal motion can restart after preference change");
     sample = Resolve(
         timeline, 30, L"widget\x1fbutton", {0.2F, 0.9F, -16.0F, 24.0F}, 100.0F,
-        gba::NativeTransitionEasing::Linear, true);
+        widgetrail::NativeTransitionEasing::Linear, true);
     Near(sample.value.opacity, 0.2F, "enabling reduced motion cancels active opacity");
     Near(sample.value.scale, 0.9F, "enabling reduced motion cancels active scale");
     Near(sample.value.translationX, -16.0F, "enabling reduced motion cancels to target x");
@@ -126,28 +126,28 @@ void ReducedMotionSnapsAndCancels() {
 }
 
 void BoundsUntrustedInputsAndCapacity() {
-    gba::DeclarativeMotionTimeline timeline;
+    widgetrail::DeclarativeMotionTimeline timeline;
     timeline.BeginFrame(0);
     for (std::size_t index = 0;
-         index < gba::DeclarativeMotionTimeline::MaximumTrackedNodes + 20;
+         index < widgetrail::DeclarativeMotionTimeline::MaximumTrackedNodes + 20;
          ++index) {
         (void)timeline.Resolve(
             L"widget\x1f" + std::to_wstring(index),
             {NAN, INFINITY, INFINITY, -INFINITY}, 999999.0F,
-            gba::NativeTransitionEasing::Spring);
+            widgetrail::NativeTransitionEasing::Spring);
     }
     (void)timeline.EndFrame();
     Check(timeline.trackedNodeCount() ==
-              gba::DeclarativeMotionTimeline::MaximumTrackedNodes,
+              widgetrail::DeclarativeMotionTimeline::MaximumTrackedNodes,
           "untrusted tree cannot grow timeline beyond capacity");
 
     auto bounded = Resolve(
         timeline, 1, L"bounded", {1.0F, 1.0F, 999999.0F, -999999.0F});
     Near(bounded.value.translationX,
-         gba::DeclarativeMotionTimeline::MaximumTranslationDips,
+         widgetrail::DeclarativeMotionTimeline::MaximumTranslationDips,
          "positive translation is bounded");
     Near(bounded.value.translationY,
-         -gba::DeclarativeMotionTimeline::MaximumTranslationDips,
+         -widgetrail::DeclarativeMotionTimeline::MaximumTranslationDips,
          "negative translation is bounded");
 }
 

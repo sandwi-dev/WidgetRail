@@ -19,7 +19,7 @@
 #include <unordered_map>
 #include <vector>
 
-namespace gba {
+namespace widgetrail {
 
 class RemoteImageCache;
 
@@ -85,7 +85,7 @@ struct RenderResult final {
     /// Visible semantic geometry retained for the immutable Windows
     /// accessibility snapshot. Decorative layout nodes are deliberately absent.
     std::vector<RenderAccessibilityRegion> accessibilityRegions;
-#ifdef GBA_DECLARATIVE_RENDERER_TESTING
+#ifdef WRAIL_DECLARATIVE_RENDERER_TESTING
     // Test-only exact geometry seam. Production results intentionally retain
     // only interactive geometry so ordinary paints do not allocate two maps
     // for every decorative and structural node.
@@ -418,4 +418,4 @@ private:
     std::optional<PendingIncrementalPlan> pendingIncrementalPlan_;
 };
 
-} // namespace gba
+} // namespace widgetrail

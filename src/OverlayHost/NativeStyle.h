@@ -8,7 +8,7 @@
 #include <string>
 #include <vector>
 
-namespace gba {
+namespace widgetrail {
 
 struct NativeColor final {
     float red{};
@@ -34,7 +34,7 @@ struct NativeBorderEdgeStyle final {
 
 /// Resolved physical-edge border values. Each edge falls back to the uniform
 /// border-width/border-color contract unless its corresponding edge-specific
-/// GBSS property is present.
+/// WRSS property is present.
 struct NativeBorderStyle final {
     NativeBorderEdgeStyle top;
     NativeBorderEdgeStyle right;
@@ -69,7 +69,7 @@ struct NativeStyleContext final {
     /// does not declare its own background.
     std::optional<NativeColor> effectiveBackground;
     /// Renderer-owned background used when a semantic control paints a
-    /// built-in surface without declaring `background` in GBSS (for example,
+    /// built-in surface without declaring `background` in WRSS (for example,
     /// the default button fill). Accessibility contrast is resolved against
     /// this painted fallback, not the inherited surface behind it.
     std::optional<NativeColor> fallbackBackground;
@@ -104,7 +104,7 @@ struct NativeAccessibilityPolicy final {
 
 /// Resolves persisted preferences together with documented Windows system
 /// accessibility state into the renderer-owned policy that is applied after
-/// GBSS. The boolean inputs keep OS querying out of render/layout tests.
+/// WRSS. The boolean inputs keep OS querying out of render/layout tests.
 [[nodiscard]] NativeAccessibilityPolicy CreateNativeAccessibilityPolicy(
     const PlatformAppearance& appearance,
     bool systemHighContrast,
@@ -115,7 +115,7 @@ struct NativeStyleDiagnostic final {
     std::wstring message;
 };
 
-/// Immutable, fully resolved style. It contains no GBSS strings except the
+/// Immutable, fully resolved style. It contains no WRSS strings except the
 /// validated font family; all lengths are device-independent pixels.
 class NativeRenderStyle final {
 public:
@@ -200,4 +200,4 @@ public:
         const NativeAccessibilityPolicy& accessibility = {});
 };
 
-} // namespace gba
+} // namespace widgetrail

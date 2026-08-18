@@ -7,7 +7,7 @@
 #include <set>
 #include <utility>
 
-namespace gba::declarative {
+namespace widgetrail::declarative {
 namespace {
 
 constexpr float kMaximumCoordinate = 1'000'000.0F;
@@ -122,7 +122,7 @@ public:
         std::size_t nodeCount{};
         Preflight(root, 1, ids, nodeCount);
         if (!result_.valid()) return std::move(result_);
-        if (gba_taffy_abi_version() != GBA_TAFFY_ABI_VERSION) {
+        if (wrail_taffy_abi_version() != WRAIL_TAFFY_ABI_VERSION) {
             AddIssue({}, "taffy_abi_mismatch",
                 "The native host and Taffy static library use different ABI versions.",
                 LayoutIssueSeverity::Error);
@@ -150,16 +150,16 @@ public:
 
         outputs_.resize(inputs_.size());
         const auto compute = [&]() {
-            return gba_taffy_compute(
+            return wrail_taffy_compute(
                 inputs_.data(), inputs_.size(), childIndices_.data(),
                 childIndices_.size(), rootIndex, availableWidth, availableHeight,
                 options_.intrinsicRootHeight
-                    ? GBA_TAFFY_AVAILABLE_MAX_CONTENT
-                    : GBA_TAFFY_AVAILABLE_DEFINITE,
+                    ? WRAIL_TAFFY_AVAILABLE_MAX_CONTENT
+                    : WRAIL_TAFFY_AVAILABLE_DEFINITE,
                 &MeasureThunk, this, outputs_.data(), outputs_.size());
         };
         auto status = compute();
-        if (status == GBA_TAFFY_OK && !fillAutoRootWidth && !root.width &&
+        if (status == WRAIL_TAFFY_OK && !fillAutoRootWidth && !root.width &&
             root.layoutMode != LayoutMode::ResponsiveGrid) {
             const auto& first = outputs_[rootIndex];
             const auto shrinkWidth = std::clamp(
@@ -171,7 +171,7 @@ public:
                 status = compute();
             }
         }
-        if (status != GBA_TAFFY_OK) {
+        if (status != WRAIL_TAFFY_OK) {
             AddIssue(root.id, "taffy_layout_failed",
                 "Taffy rejected or failed the validated semantic layout tree (code " +
                     std::to_string(status) + ").",
@@ -277,11 +277,11 @@ private:
             Preflight(child, depth + 1, ids, nodes);
     }
 
-    [[nodiscard]] static GbaTaffyOptionalFloat Present(const float value) noexcept {
+    [[nodiscard]] static WidgetRailTaffyOptionalFloat Present(const float value) noexcept {
         return {1U, value};
     }
 
-    [[nodiscard]] GbaTaffyOptionalFloat ResolveOptionalForBridge(
+    [[nodiscard]] WidgetRailTaffyOptionalFloat ResolveOptionalForBridge(
         const std::optional<float> value,
         const std::string_view id,
         const std::string_view name,
@@ -291,7 +291,7 @@ private:
         return Present(ResolveNumber(*value, id, name, minimum, maximum, minimum));
     }
 
-    [[nodiscard]] static GbaTaffyEdges ToBridge(const Edges value) noexcept {
+    [[nodiscard]] static WidgetRailTaffyEdges ToBridge(const Edges value) noexcept {
         return {value.top, value.right, value.bottom, value.left};
     }
 
@@ -328,16 +328,16 @@ private:
         childIndices_.insert(
             childIndices_.end(), directChildren.begin(), directChildren.end());
         input.layoutMode = element.layoutMode == LayoutMode::ResponsiveGrid
-            ? GBA_TAFFY_GRID : GBA_TAFFY_FLEX;
+            ? WRAIL_TAFFY_GRID : WRAIL_TAFFY_FLEX;
         input.direction = element.direction == LayoutDirection::Row
-            ? GBA_TAFFY_ROW : GBA_TAFFY_COLUMN;
+            ? WRAIL_TAFFY_ROW : WRAIL_TAFFY_COLUMN;
         input.wrap = element.wrap == WrapBehavior::Wrap
-            ? GBA_TAFFY_WRAP : GBA_TAFFY_NO_WRAP;
+            ? WRAIL_TAFFY_WRAP : WRAIL_TAFFY_NO_WRAP;
         input.mainAlignment = static_cast<std::uint32_t>(element.mainAxisAlignment);
         input.crossAlignment = static_cast<std::uint32_t>(element.crossAxisAlignment);
         input.overflow = (element.overflow == OverflowBehavior::Clip ||
                           element.scrollAxis != ScrollAxis::None)
-            ? GBA_TAFFY_OVERFLOW_CLIP : GBA_TAFFY_OVERFLOW_VISIBLE;
+            ? WRAIL_TAFFY_OVERFLOW_CLIP : WRAIL_TAFFY_OVERFLOW_VISIBLE;
         input.width = ResolveOptionalForBridge(
             element.width, element.id, "width", 0.0F, kMaximumCoordinate);
         input.height = ResolveOptionalForBridge(
@@ -414,27 +414,27 @@ private:
         return index;
     }
 
-    [[nodiscard]] static GbaTaffyMeasuredSize MeasureThunk(
+    [[nodiscard]] static WidgetRailTaffyMeasuredSize MeasureThunk(
         void* context,
         const std::uint32_t nodeIndex,
-        const GbaTaffyMeasureInput input) noexcept {
+        const WidgetRailTaffyMeasureInput input) noexcept {
         return static_cast<Engine*>(context)->Measure(nodeIndex, input);
     }
 
-    [[nodiscard]] GbaTaffyMeasuredSize Measure(
+    [[nodiscard]] WidgetRailTaffyMeasuredSize Measure(
         const std::uint32_t nodeIndex,
-        const GbaTaffyMeasureInput input) noexcept {
+        const WidgetRailTaffyMeasureInput input) noexcept {
         if (nodeIndex >= elements_.size()) return {};
         const auto& element = *elements_[nodeIndex];
         if (!element.children.empty() || !measureIntrinsic_) return {};
         const auto maximumWidth = input.knownWidth.present
             ? input.knownWidth.value
-            : (input.availableWidthMode == GBA_TAFFY_AVAILABLE_DEFINITE
+            : (input.availableWidthMode == WRAIL_TAFFY_AVAILABLE_DEFINITE
                 ? input.availableWidth : measurementMaximumWidths_[nodeIndex]);
         const auto maximumHeight =
             (input.knownHeight.present && element.height)
             ? input.knownHeight.value
-            : (input.availableHeightMode == GBA_TAFFY_AVAILABLE_DEFINITE
+            : (input.availableHeightMode == WRAIL_TAFFY_AVAILABLE_DEFINITE
                 ? input.availableHeight : kMaximumCoordinate);
         try {
             const auto measured = measureIntrinsic_(element, {
@@ -650,9 +650,9 @@ private:
     Rect viewport_;
     std::vector<const LayoutElement*> elements_;
     std::vector<float> measurementMaximumWidths_;
-    std::vector<GbaTaffyNodeInput> inputs_;
+    std::vector<WidgetRailTaffyNodeInput> inputs_;
     std::vector<std::uint32_t> childIndices_;
-    std::vector<GbaTaffyNodeOutput> outputs_;
+    std::vector<WidgetRailTaffyNodeOutput> outputs_;
     std::vector<RawBox> raw_;
 };
 
@@ -703,4 +703,4 @@ LayoutResult ComputeLayout(
     return Engine{measureIntrinsic, options, viewport}.Run(root);
 }
 
-} // namespace gba::declarative
+} // namespace widgetrail::declarative

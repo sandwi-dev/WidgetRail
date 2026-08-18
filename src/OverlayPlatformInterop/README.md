@@ -10,7 +10,7 @@ The boundary never creates a window, renderer, focus tree, widget transport, or
 managed input reader. Its caller supplies the one presentation HWND lifecycle,
 marshals event-availability callbacks onto that window's UI thread, and retains
 shell action and semantic focus policy. All ABI structures carry `structSize`
-and `abiVersion`; callers must require `GBA_OVERLAY_PLATFORM_ABI_VERSION`.
+and `abiVersion`; callers must require `WRAIL_OVERLAY_PLATFORM_ABI_VERSION`.
 The version-1 managed ABI uses only fixed-width `uint32_t` scalars for Boolean
 fields, parameters, return values, and out values (`0` is false; `1` is true),
 and the public header asserts every managed-facing structure size and critical

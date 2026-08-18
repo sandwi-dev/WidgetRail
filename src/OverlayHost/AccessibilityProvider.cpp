@@ -15,7 +15,7 @@
 #include <type_traits>
 #include <utility>
 
-namespace gba::accessibility {
+namespace widgetrail::accessibility {
 namespace {
 
 using Microsoft::WRL::ClassicCom;
@@ -326,10 +326,10 @@ public:
                 return StringVariant(
                     published && !published->tree.name.empty()
                         ? std::wstring_view{published->tree.name}
-                        : std::wstring_view{L"Game Bar Alternative"},
+                        : std::wstring_view{L"WidgetRail"},
                     result);
             case UIA_AutomationIdPropertyId:
-                return StringVariant(L"GameBarAlternative.Overlay", result);
+                return StringVariant(L"WidgetRail.Overlay", result);
             case UIA_IsControlElementPropertyId:
             case UIA_IsContentElementPropertyId:
             case UIA_IsEnabledPropertyId: BoolVariant(true, result); break;
@@ -1136,4 +1136,4 @@ std::optional<ResolvedAction> ResolveActionRequest(
     return std::nullopt;
 }
 
-} // namespace gba::accessibility
+} // namespace widgetrail::accessibility

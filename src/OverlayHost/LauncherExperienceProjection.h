@@ -10,7 +10,7 @@
 #include <string>
 #include <string_view>
 
-namespace gba::launcher {
+namespace widgetrail::launcher {
 
 enum class ProductionProjectionDisposition {
     Ordinary,
@@ -104,7 +104,7 @@ public:
 
     void DiscardTargetResources() noexcept;
 
-#ifdef GBA_DECLARATIVE_RENDERER_TESTING
+#ifdef WRAIL_DECLARATIVE_RENDERER_TESTING
     void FailNextAdapterFrameForTesting() noexcept {
         failNextAdapterFrameForTesting_ = true;
     }
@@ -170,9 +170,9 @@ private:
     bool safeStartActivation_{};
     std::wstring activePresentationKey_;
     std::optional<std::uint64_t> pendingFocusInputMilliseconds_;
-#ifdef GBA_DECLARATIVE_RENDERER_TESTING
+#ifdef WRAIL_DECLARATIVE_RENDERER_TESTING
     bool failNextAdapterFrameForTesting_{};
 #endif
 };
 
-} // namespace gba::launcher
+} // namespace widgetrail::launcher

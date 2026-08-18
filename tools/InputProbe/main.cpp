@@ -160,7 +160,7 @@ public:
         windowClass.hInstance = instance;
         windowClass.hCursor = LoadCursorW(nullptr, IDC_ARROW);
         windowClass.hbrBackground = reinterpret_cast<HBRUSH>(COLOR_WINDOW + 1);
-        windowClass.lpszClassName = L"GameBarAlternative.InputProbe";
+        windowClass.lpszClassName = L"WidgetRail.InputProbe";
         if (!RegisterClassExW(&windowClass)) return 3;
 
         const DWORD exStyle = options_.mode == Mode::Overlay ? WS_EX_TOPMOST : 0;
@@ -270,7 +270,7 @@ private:
         const bool foreground = GetForegroundWindow() == hwnd_;
         const auto elapsed = std::chrono::duration_cast<std::chrono::seconds>(std::chrono::steady_clock::now() - started_).count();
         std::wostringstream text;
-        text << L"Game Bar Alternative - controller/input feasibility probe\n\n"
+        text << L"WidgetRail - controller/input feasibility probe\n\n"
              << L"Mode: " << (options_.mode == Mode::Overlay ? L"OVERLAY (topmost focus target)" : L"BACKGROUND OBSERVER") << L"\n"
              << L"Probe foreground: " << (foreground ? L"YES" : L"NO") << L"\n"
              << L"GameInput: " << (gameInputReady_ ? L"active" : L"unavailable") << L"; policy: " << Utf8ToWide(PolicyName()) << L"\n"

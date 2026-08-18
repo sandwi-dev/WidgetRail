@@ -19,11 +19,11 @@ void Check(const bool condition, const char* message) {
 } // namespace
 
 int main() {
-    using gba::input::NavigationDirection;
+    using widgetrail::input::NavigationDirection;
 
-    using gba::input::TrayYGesture;
-    using gba::input::TrayYGestureAction;
-    constexpr auto hold = gba::input::kTrayWidgetRestartHoldMilliseconds;
+    using widgetrail::input::TrayYGesture;
+    using widgetrail::input::TrayYGestureAction;
+    constexpr auto hold = widgetrail::input::kTrayWidgetRestartHoldMilliseconds;
     TrayYGesture trayY;
     trayY.Press(L"spotify", true, 1'000);
     Check(trayY.capturing() && trayY.pendingRestart(),
@@ -104,7 +104,7 @@ int main() {
     trayY.Reset();
     Check(!trayY.capturing(), "lifecycle reset releases all gesture state");
 
-    using gba::input::ResolveCurrentWidgetReloadTarget;
+    using widgetrail::input::ResolveCurrentWidgetReloadTarget;
     Check(ResolveCurrentWidgetReloadTarget(
               true, true, L"selected", L"active") == L"selected",
           "tray F5 resolves the selected widget");
@@ -115,7 +115,7 @@ int main() {
               false, true, L"selected", L"active").empty(),
           "hidden overlay has no reload target");
 
-    gba::input::StickNavigator navigator;
+    widgetrail::input::StickNavigator navigator;
     navigator.Prime(0, 0, 0);
     Check(!navigator.Update(8'000, 7'000, 10), "dead zone is quiet");
     Check(navigator.Update(0, -20'000, 20) == NavigationDirection::Down,
@@ -135,42 +135,42 @@ int main() {
     navigator.Prime(-20'000, 0, 700);
     Check(!navigator.Update(-20'000, 0, 710), "priming prevents an opening ghost move");
 
-    gba::input::StickNavigator phased;
+    widgetrail::input::StickNavigator phased;
     phased.Prime(0, 0, 0);
     const auto pressedDirection = phased.UpdateEvent(20'000, 0, 10);
     Check(pressedDirection && pressedDirection->phase ==
-              gba::input::NavigationEventPhase::Pressed,
+              widgetrail::input::NavigationEventPhase::Pressed,
           "new stick direction is a pressed event");
     const auto repeatedDirection = phased.UpdateEvent(20'000, 0, 370);
     Check(repeatedDirection && repeatedDirection->phase ==
-              gba::input::NavigationEventPhase::Repeated,
+              widgetrail::input::NavigationEventPhase::Repeated,
           "held stick direction preserves repeat phase");
 
     constexpr std::uint16_t left = 0x0001;
     constexpr std::uint16_t right = 0x0002;
-    Check(gba::input::DigitalNavigationAxis(left, left, right) < 0,
+    Check(widgetrail::input::DigitalNavigationAxis(left, left, right) < 0,
           "digital negative button maps to a negative axis");
-    Check(gba::input::DigitalNavigationAxis(right, left, right) > 0,
+    Check(widgetrail::input::DigitalNavigationAxis(right, left, right) > 0,
           "digital positive button maps to a positive axis");
-    Check(gba::input::DigitalNavigationAxis(left | right, left, right) == 0,
+    Check(widgetrail::input::DigitalNavigationAxis(left | right, left, right) == 0,
           "opposing digital directions fail neutral");
-    gba::input::StickNavigator dpad{
-        gba::input::StickNavigationOptions{1, 0, 360, 125}};
+    widgetrail::input::StickNavigator dpad{
+        widgetrail::input::StickNavigationOptions{1, 0, 360, 125}};
     dpad.Prime(0, 0, 0);
     const auto dpadPressed = dpad.UpdateEvent(
-        gba::input::DigitalNavigationAxis(right, left, right), 0, 10);
-    Check(dpadPressed && dpadPressed->phase == gba::input::NavigationEventPhase::Pressed,
+        widgetrail::input::DigitalNavigationAxis(right, left, right), 0, 10);
+    Check(dpadPressed && dpadPressed->phase == widgetrail::input::NavigationEventPhase::Pressed,
           "D-pad direction emits one pressed event");
     Check(!dpad.UpdateEvent(
-              gba::input::DigitalNavigationAxis(right, left, right), 0, 369),
+              widgetrail::input::DigitalNavigationAxis(right, left, right), 0, 369),
           "D-pad hold waits for bounded initial repeat delay");
     const auto dpadRepeated = dpad.UpdateEvent(
-        gba::input::DigitalNavigationAxis(right, left, right), 0, 370);
-    Check(dpadRepeated && dpadRepeated->phase == gba::input::NavigationEventPhase::Repeated,
+        widgetrail::input::DigitalNavigationAxis(right, left, right), 0, 370);
+    Check(dpadRepeated && dpadRepeated->phase == widgetrail::input::NavigationEventPhase::Repeated,
           "D-pad hold shares the bounded navigation repeat cadence");
 
-    using gba::input::FocusedDirectionRoute;
-    using gba::input::RouteFocusedDirection;
+    using widgetrail::input::FocusedDirectionRoute;
+    using widgetrail::input::RouteFocusedDirection;
     Check(RouteFocusedDirection(
               L"slider", false, false, false, false, NavigationDirection::Left) ==
               FocusedDirectionRoute::SliderAdjustment,
@@ -204,8 +204,8 @@ int main() {
               FocusedDirectionRoute::Consume,
           "active activation-first slider contains vertical navigation");
 
-    using gba::input::FocusedSliderButtonRoute;
-    using gba::input::RouteFocusedSliderButton;
+    using widgetrail::input::FocusedSliderButtonRoute;
+    using widgetrail::input::RouteFocusedSliderButton;
     Check(RouteFocusedSliderButton(L"slider", true, false, L"A") ==
               FocusedSliderButtonRoute::EnterAdjustment,
           "inactive activation-first slider uses A to enter adjustment");
@@ -222,12 +222,12 @@ int main() {
               FocusedSliderButtonRoute::Widget,
           "direct slider preserves A activation actions");
 
-    using gba::input::ControllerActionContext;
-    using gba::input::ControllerActionRoute;
-    using gba::input::FailedWidgetActionRoute;
-    using gba::input::RouteControllerAction;
-    using gba::input::RouteFailedWidgetAction;
-    using gba::input::RouteUnhandledControllerAction;
+    using widgetrail::input::ControllerActionContext;
+    using widgetrail::input::ControllerActionRoute;
+    using widgetrail::input::FailedWidgetActionRoute;
+    using widgetrail::input::RouteControllerAction;
+    using widgetrail::input::RouteFailedWidgetAction;
+    using widgetrail::input::RouteUnhandledControllerAction;
     Check(RouteControllerAction(ControllerActionContext::Tray, L"A") ==
               ControllerActionRoute::HostActivate,
           "dashboard A remains the host open action");
@@ -267,27 +267,27 @@ int main() {
               ControllerActionRoute::None,
           "unhandled non-Back actions never become host navigation");
     Check(RouteFailedWidgetAction(
-              true, gba::input::NavigationEventPhase::Pressed, L"A") ==
+              true, widgetrail::input::NavigationEventPhase::Pressed, L"A") ==
               FailedWidgetActionRoute::Retry,
           "failed open-widget A retains the explicit recovery action");
     Check(RouteFailedWidgetAction(
-              true, gba::input::NavigationEventPhase::Pressed, L"B") ==
+              true, widgetrail::input::NavigationEventPhase::Pressed, L"B") ==
               FailedWidgetActionRoute::HostBackToDashboard,
           "failed open-widget B remains host-owned Back navigation");
     Check(RouteFailedWidgetAction(
-              false, gba::input::NavigationEventPhase::Pressed, L"B") ==
+              false, widgetrail::input::NavigationEventPhase::Pressed, L"B") ==
               FailedWidgetActionRoute::Inert,
           "failed dashboard B is not redirected through widget input authority");
     Check(RouteFailedWidgetAction(
-              true, gba::input::NavigationEventPhase::Repeated, L"A") ==
+              true, widgetrail::input::NavigationEventPhase::Repeated, L"A") ==
               FailedWidgetActionRoute::Inert,
           "a held recovery button cannot start a second worker generation");
     Check(RouteFailedWidgetAction(
-              true, gba::input::NavigationEventPhase::Pressed, L"X") ==
+              true, widgetrail::input::NavigationEventPhase::Pressed, L"X") ==
               FailedWidgetActionRoute::Inert,
           "all other failed-widget actions remain inert");
 
-    using gba::input::ShouldTransferFocusToTray;
+    using widgetrail::input::ShouldTransferFocusToTray;
     Check(ShouldTransferFocusToTray(NavigationDirection::Down, true, false, false),
           "Down after the last root control transfers focus to the tray");
     Check(!ShouldTransferFocusToTray(NavigationDirection::Up, true, false, false),
@@ -298,20 +298,20 @@ int main() {
           "an explicit Down edge wins before the tray");
     Check(!ShouldTransferFocusToTray(NavigationDirection::Down, true, false, true),
           "a geometric Down target wins before the tray");
-    using gba::input::ShouldEnterWidgetFromTray;
+    using widgetrail::input::ShouldEnterWidgetFromTray;
     Check(ShouldEnterWidgetFromTray(
               NavigationDirection::Up,
-              gba::input::NavigationEventPhase::Pressed),
+              widgetrail::input::NavigationEventPhase::Pressed),
           "tray Up enters the already visible widget controls");
     Check(!ShouldEnterWidgetFromTray(
               NavigationDirection::Up,
-              gba::input::NavigationEventPhase::Repeated),
+              widgetrail::input::NavigationEventPhase::Repeated),
           "held tray Up cannot spill a repeated move into widget controls");
     Check(!ShouldEnterWidgetFromTray(
               NavigationDirection::Down,
-              gba::input::NavigationEventPhase::Pressed),
+              widgetrail::input::NavigationEventPhase::Pressed),
           "tray Down does not invent a second entry direction");
-    using gba::input::IsDistinctFocusMove;
+    using widgetrail::input::IsDistinctFocusMove;
     Check(IsDistinctFocusMove(L"current", L"next", true),
           "a distinct enabled explicit target is a real focus move");
     Check(!IsDistinctFocusMove(L"current", L"current", true),

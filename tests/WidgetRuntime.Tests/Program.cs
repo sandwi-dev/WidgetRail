@@ -2206,7 +2206,7 @@ static async Task BrokerAdapterBindsGestureContext()
             0, 1_000, DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(), 1, true,
             true, true, true, true, true),
     ]);
-    var pipeName = $"gba-runtime-gesture-{Guid.NewGuid():N}";
+    var pipeName = $"wrail-runtime-gesture-{Guid.NewGuid():N}";
     await using var server = new BrokerPipeServer(
         pipeName, identity, [PlatformCapabilities.MediaSessionsControlV1], store, backend);
     var serverTask = server.RunAsync();
@@ -3375,7 +3375,7 @@ file sealed class PrecreatedPipeCompanionSession : IWidgetProcessCompanionSessio
 
     public PrecreatedPipeCompanionSession()
     {
-        var pipeName = $"gba-companion-prelaunch-{Guid.NewGuid():N}";
+        var pipeName = $"wrail-companion-prelaunch-{Guid.NewGuid():N}";
         _endpoint = new System.IO.Pipes.NamedPipeServerStream(
             pipeName, System.IO.Pipes.PipeDirection.InOut, 1,
             System.IO.Pipes.PipeTransmissionMode.Byte,
@@ -3409,7 +3409,7 @@ file sealed class TemporaryDirectory : IDisposable
     public TemporaryDirectory()
     {
         Path = System.IO.Path.Combine(
-            System.IO.Path.GetTempPath(), $"gba-runtime-tests-{Guid.NewGuid():N}");
+            System.IO.Path.GetTempPath(), $"wrail-runtime-tests-{Guid.NewGuid():N}");
         Directory.CreateDirectory(Path);
     }
 

@@ -22,7 +22,7 @@ void Check(const bool condition, const char* message) {
 } // namespace
 
 int main() {
-    gba::WidgetActionFeedbackController feedback;
+    widgetrail::WidgetActionFeedbackController feedback;
     Check(!feedback.Publish(
               L"music", L"music.g1", L"Hidden failure", 900, 4000).shouldInvalidate,
           "hidden bridge events cannot publish feedback");
@@ -69,7 +69,7 @@ int main() {
           "catalog cleanup is idempotent");
     Check(!feedback.NextExpiry(), "no timer remains after catalog cleanup");
 
-    for (std::size_t index = 0; index < gba::WidgetActionFeedbackStore::MaximumWidgets; ++index) {
+    for (std::size_t index = 0; index < widgetrail::WidgetActionFeedbackStore::MaximumWidgets; ++index) {
         const auto suffix = std::to_wstring(index);
         Check(feedback.Publish(
                   L"widget." + suffix, L"generation." + suffix, L"Action failed", 0, 1)
@@ -94,7 +94,7 @@ int main() {
     bool timerAvailable = true;
     int scheduleRequests = 0;
     int invalidations = 0;
-    gba::WidgetActionFeedbackHost host({
+    widgetrail::WidgetActionFeedbackHost host({
         [&] { return now; },
         [&](const std::optional<std::uint64_t> deadline) {
             ++scheduleRequests;
@@ -102,7 +102,7 @@ int main() {
         },
         [&] { ++invalidations; },
     });
-    const std::vector<gba::WidgetDescriptor> initialCatalog{
+    const std::vector<widgetrail::WidgetDescriptor> initialCatalog{
         {L"music", L"Music", L"music.instance", L"music.g1", L"music.p1"},
         {L"chat", L"Chat", L"chat.instance", L"chat.g1", L"chat.p1"},
     };
@@ -115,19 +115,19 @@ int main() {
         {L"chat", L"chat.g1", L"chat.send", L"chat.send.button"},
     });
     Check(firstBatch.count == 2 &&
-              firstBatch.OutcomeAt(0) == gba::WidgetActionFeedbackOutcome::Published &&
-              firstBatch.OutcomeAt(1) == gba::WidgetActionFeedbackOutcome::Published,
+              firstBatch.OutcomeAt(0) == widgetrail::WidgetActionFeedbackOutcome::Published &&
+              firstBatch.OutcomeAt(1) == widgetrail::WidgetActionFeedbackOutcome::Published,
           "one drained bridge batch publishes both generation-owned failures");
     Check(invalidations == 1,
           "one bridge batch emits exactly one host invalidation");
     Check(scheduleRequests == schedulesBeforeBatch + 1 && scheduledDeadline == 14'000,
           "one bridge batch schedules exactly one earliest deadline");
     Check(host.MessageForSurface(
-              gba::WidgetActionFeedbackSurface::Dashboard, L"music", L"chat") ==
+              widgetrail::WidgetActionFeedbackSurface::Dashboard, L"music", L"chat") ==
               L"Music action failed; try again",
           "dashboard selects feedback for its exact catalog widget");
     Check(host.MessageForSurface(
-              gba::WidgetActionFeedbackSurface::OpenWidget, L"music", L"chat") ==
+              widgetrail::WidgetActionFeedbackSurface::OpenWidget, L"music", L"chat") ==
               L"Chat action failed; try again",
           "open-widget surface selects feedback independently");
 
@@ -135,10 +135,10 @@ int main() {
     const auto offscreenBatch = host.PublishBridgeFailures({
         {L"chat", L"chat.g1", L"chat.retry", L"chat.retry.button"},
     });
-    Check(offscreenBatch.OutcomeAt(0) == gba::WidgetActionFeedbackOutcome::Published,
+    Check(offscreenBatch.OutcomeAt(0) == widgetrail::WidgetActionFeedbackOutcome::Published,
           "later offscreen failure remains independently presentable");
     Check(host.MessageForSurface(
-              gba::WidgetActionFeedbackSurface::Dashboard, L"music", L"chat") ==
+              widgetrail::WidgetActionFeedbackSurface::Dashboard, L"music", L"chat") ==
               L"Music action failed; try again",
           "offscreen failure cannot erase active dashboard feedback");
 
@@ -148,7 +148,7 @@ int main() {
     Check(invalidations == invalidationsBeforeExpiry + 1,
           "dedicated deadline removes painted copy with one invalidation");
     Check(!host.MessageForSurface(
-              gba::WidgetActionFeedbackSurface::Dashboard, L"music", L"chat"),
+              widgetrail::WidgetActionFeedbackSurface::Dashboard, L"music", L"chat"),
           "expired dashboard copy is no longer selectable");
     host.OnDeadlineTimer();
     Check(invalidations == invalidationsBeforeExpiry + 1,
@@ -158,7 +158,7 @@ int main() {
     now = 15'000;
     Check(host.PublishBridgeFailures({
               {L"music", L"music.g1", L"music.pause", L"music.pause.button"},
-          }).OutcomeAt(0) == gba::WidgetActionFeedbackOutcome::Published,
+          }).OutcomeAt(0) == widgetrail::WidgetActionFeedbackOutcome::Published,
           "feedback remains admitted when Win32 timer creation is unavailable");
     Check(!scheduledDeadline,
           "failed dedicated timer registration leaves no false scheduled deadline");
@@ -177,7 +177,7 @@ int main() {
         {L"music", L"music.g1", L"music.next", L"music.next.button"},
     });
     const int invalidationsBeforeReplacement = invalidations;
-    const std::vector<gba::WidgetDescriptor> replacedCatalog{
+    const std::vector<widgetrail::WidgetDescriptor> replacedCatalog{
         {L"music", L"Music", L"music.instance.2", L"music.g2", L"music.p2"},
         {L"chat", L"Chat", L"chat.instance", L"chat.g1", L"chat.p1"},
     };
@@ -185,18 +185,18 @@ int main() {
           "runtime replacement atomically reconciles the catalog projection");
     Check(invalidations == invalidationsBeforeReplacement + 1 &&
               !host.MessageForSurface(
-                  gba::WidgetActionFeedbackSurface::Dashboard, L"music", L"chat"),
+                  widgetrail::WidgetActionFeedbackSurface::Dashboard, L"music", L"chat"),
           "runtime replacement removes old-generation painted feedback once");
     Check(host.PublishBridgeFailures({
               {L"music", L"music.g1", L"music.next", L"music.next.button"},
-          }).OutcomeAt(0) == gba::WidgetActionFeedbackOutcome::Stale,
+          }).OutcomeAt(0) == widgetrail::WidgetActionFeedbackOutcome::Stale,
           "late bridge failure cannot cross a reconciled runtime generation");
 
     now = 21'000;
     (void)host.PublishBridgeFailures({
         {L"chat", L"chat.g1", L"chat.send", L"chat.send.button"},
     });
-    const std::vector<gba::WidgetDescriptor> removedCatalog{
+    const std::vector<widgetrail::WidgetDescriptor> removedCatalog{
         {L"music", L"Music", L"music.instance.2", L"music.g2", L"music.p2"},
     };
     Check(host.ReconcileCatalog(removedCatalog) && host.size() == 0,
@@ -211,12 +211,12 @@ int main() {
           "hide clears presentation state and cancels its deadline");
     host.Show();
     Check(!host.MessageForSurface(
-              gba::WidgetActionFeedbackSurface::Dashboard, L"music", L""),
+              widgetrail::WidgetActionFeedbackSurface::Dashboard, L"music", L""),
           "show never resurrects hidden feedback");
     host.Stop();
     Check(host.PublishBridgeFailures({
               {L"music", L"music.g2", L"music.play", L"music.play.button"},
-          }).OutcomeAt(0) == gba::WidgetActionFeedbackOutcome::Stale,
+          }).OutcomeAt(0) == widgetrail::WidgetActionFeedbackOutcome::Stale,
           "bridge stop retires the catalog authority used by late failures");
 
     std::cout << "WidgetActionFeedbackTests passed (" << checks << " checks)\n";

@@ -9,7 +9,7 @@
 #include <string_view>
 #include <vector>
 
-namespace gba::pinned {
+namespace widgetrail::pinned {
 
 enum class PlacementMode {
     None,
@@ -101,4 +101,4 @@ private:
     std::filesystem::path path_;
 };
 
-} // namespace gba::pinned
+} // namespace widgetrail::pinned

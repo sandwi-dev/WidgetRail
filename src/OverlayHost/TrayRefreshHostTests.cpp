@@ -11,16 +11,16 @@
 #include <vector>
 
 namespace fs = std::filesystem;
-using gba::host_testing::Handle;
-using gba::host_testing::HostProcess;
-using gba::host_testing::LocateHostWindow;
-using gba::host_testing::QuoteArgument;
-using gba::host_testing::ReadUtf8;
-using gba::host_testing::Require;
-using gba::host_testing::SendKey;
-using gba::host_testing::WaitUntil;
-using gba::host_testing::WideToUtf8;
-using gba::host_testing::Win32Error;
+using widgetrail::host_testing::Handle;
+using widgetrail::host_testing::HostProcess;
+using widgetrail::host_testing::LocateHostWindow;
+using widgetrail::host_testing::QuoteArgument;
+using widgetrail::host_testing::ReadUtf8;
+using widgetrail::host_testing::Require;
+using widgetrail::host_testing::SendKey;
+using widgetrail::host_testing::WaitUntil;
+using widgetrail::host_testing::WideToUtf8;
+using widgetrail::host_testing::Win32Error;
 
 namespace {
 
@@ -48,7 +48,7 @@ Arguments ParseArguments(const int argc, wchar_t** argv) {
             if (argument == L"--installation") result.installation = argv[++index];
             else result.communityFixture = argv[++index];
         } else {
-            gba::host_testing::Fail(
+            widgetrail::host_testing::Fail(
                 "Usage: TrayRefreshHostTests --installation <dir> "
                 "--community-fixture <exe>");
         }
@@ -134,7 +134,7 @@ public:
         wchar_t guidText[64]{};
         Require(StringFromGUID2(guid, guidText, 64) > 0, "StringFromGUID2 failed");
         root_ = fs::path(temporaryRoot) /
-            (L"gba-tray-refresh-" + std::wstring(guidText));
+            (L"wrail-tray-refresh-" + std::wstring(guidText));
         fs::create_directories(root_);
         fs::copy_file(source / L"OverlayHost.exe", root_ / L"OverlayHost.exe");
         fs::copy_file(
@@ -142,7 +142,7 @@ public:
         fs::copy(source / L"runtime", root_ / L"runtime",
             fs::copy_options::recursive | fs::copy_options::copy_symlinks);
         localAppData_ = root_ / L"local-app-data";
-        catalogRoot_ = localAppData_ / L"GameBarAlternative" / L"widgets";
+        catalogRoot_ = localAppData_ / L"WidgetRail" / L"widgets";
         fs::create_directories(catalogRoot_);
         readyPath_ = root_ / L"host-ready.txt";
         RunCommunityInstaller(communityFixture, catalogRoot_);
@@ -196,7 +196,7 @@ void RunWidgetScenario(
     HostProcess host(
         installation.Root(), installation.LocalAppData(), hostArguments);
     const auto logPath = installation.LocalAppData() /
-        L"GameBarAlternative" / L"overlay.log";
+        L"WidgetRail" / L"overlay.log";
     Require(WaitUntil(kStartupTimeoutMilliseconds, [&] {
         return ReadUtf8(installation.ReadyPath()).find(kDevelopmentNonceUtf8) !=
             std::string::npos;

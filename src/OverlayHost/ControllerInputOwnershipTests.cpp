@@ -18,7 +18,7 @@ void Check(const bool condition, const char* message) {
 } // namespace
 
 int main() {
-    using namespace gba::input;
+    using namespace widgetrail::input;
 
     Check(DecideControllerInputOwnership(false, false, false, true) ==
               ControllerInputOwnershipDecision{},

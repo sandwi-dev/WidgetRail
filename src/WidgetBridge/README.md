@@ -6,7 +6,7 @@ current-user-only named-pipe server and exits after the native connection ends.
 The native host never loads the runtime, SDK, or third-party widget assemblies.
 
 ```powershell
-WidgetBridge.exe --host-pipe gba-host-<random> --catalog widgets.json
+WidgetBridge.exe --host-pipe wrail-host-<random> --catalog widgets.json
 ```
 
 The bridge waits 10 seconds for its native client by default. Configure

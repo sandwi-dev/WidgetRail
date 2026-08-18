@@ -9,7 +9,7 @@
 #include <cmath>
 #include <limits>
 
-namespace gba::launcher {
+namespace widgetrail::launcher {
 namespace {
 
 using Microsoft::WRL::ComPtr;
@@ -399,4 +399,4 @@ void ApplyLauncherPresentationStyles(
         ApplyToFocusedNode(snapshot.root, focusedElementId, presentation.focusedGameStyle);
 }
 
-} // namespace gba::launcher
+} // namespace widgetrail::launcher

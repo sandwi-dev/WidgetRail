@@ -121,7 +121,7 @@ try {
 } finally {
     $env:CARGO_TARGET_DIR = $previousCargoTargetDirectory
 }
-$taffyLibrary = Join-Path $taffyTargetDirectory "x86_64-pc-windows-msvc\$taffyProfile\gba_taffy_layout.lib"
+$taffyLibrary = Join-Path $taffyTargetDirectory "x86_64-pc-windows-msvc\$taffyProfile\wrail_taffy_layout.lib"
 if (-not (Test-Path -LiteralPath $taffyLibrary)) {
     throw "Pinned Taffy static library was not produced at '$taffyLibrary'."
 }
@@ -214,7 +214,7 @@ $common = @('/nologo', '/std:c++20', '/utf-8', '/EHsc', '/W4', '/permissive-', '
 
 function Invoke-OverlayPlatformInteropBuild {
     $arguments = $common + @(
-        '/DGBA_OVERLAY_PLATFORM_EXPORTS',
+        '/DWRAIL_OVERLAY_PLATFORM_EXPORTS',
         '/LD',
         (Join-Path $platformDirectory 'OverlayPlatformInterop.cpp'),
         (Join-Path $platformDirectory 'OverlayPlatformPolicy.cpp'),
@@ -237,7 +237,7 @@ function Invoke-OverlayPlatformInteropBuild {
 
 function Invoke-OverlayPlatformInteropTests {
     $arguments = $common + @(
-        '/DGBA_OVERLAY_PLATFORM_IMPORTS',
+        '/DWRAIL_OVERLAY_PLATFORM_IMPORTS',
         (Join-Path $platformTestDirectory 'OverlayPlatformInteropTests.cpp'),
         (Join-Path $platformDirectory 'OverlayPlatformPolicy.cpp'),
         (Join-Path $projectDirectory 'OverlayState.cpp'),
@@ -325,7 +325,7 @@ function Invoke-OverlayPlatformParityTests {
 
 function Invoke-SemanticChurnPerformanceTests {
     $arguments = $common + @(
-        '/DGBA_DECLARATIVE_RENDERER_TESTING',
+        '/DWRAIL_DECLARATIVE_RENDERER_TESTING',
         (Join-Path $projectDirectory 'SemanticChurnPerformanceTests.cpp'),
         (Join-Path $projectDirectory 'AccessibilityTree.cpp'),
         (Join-Path $projectDirectory 'DeclarativeRenderer.cpp'),
@@ -372,7 +372,7 @@ function Invoke-DeclarativeLayoutTests {
 
 function Invoke-DeclarativeRendererTests {
     $arguments = $common + @(
-        '/DGBA_DECLARATIVE_RENDERER_TESTING',
+        '/DWRAIL_DECLARATIVE_RENDERER_TESTING',
         (Join-Path $projectDirectory 'DeclarativeRendererTests.cpp'),
         (Join-Path $projectDirectory 'DeclarativeRenderer.cpp'),
         (Join-Path $projectDirectory 'DeclarativeLayout.cpp'),
@@ -458,7 +458,7 @@ function Invoke-WidgetSurfaceCoordinatorTests {
         (Join-Path $projectDirectory 'DeclarativeMotion.cpp'),
         (Join-Path $projectDirectory 'NativeIcons.cpp'),
         (Join-Path $projectDirectory 'RemoteImageCache.cpp'),
-        '/DGBA_WIDGET_SURFACE_COORDINATOR_TESTING',
+        '/DWRAIL_WIDGET_SURFACE_COORDINATOR_TESTING',
         "/Fo:$widgetSurfaceTestObjectDirectory\",
         "/Fe:$outputDirectory\WidgetSurfaceCoordinatorTests.exe",
         '/link', '/SUBSYSTEM:CONSOLE'
@@ -479,7 +479,7 @@ function Invoke-WidgetSurfaceCoordinatorTests {
 
 function Invoke-WidgetBridgeCatalogTests {
     $arguments = $common + @(
-        '/DGBA_WIDGET_BRIDGE_CLIENT_TESTING',
+        '/DWRAIL_WIDGET_BRIDGE_CLIENT_TESTING',
         (Join-Path $projectDirectory 'WidgetBridgeCatalogTests.cpp'),
         (Join-Path $projectDirectory 'WidgetBridgeClient.cpp'),
         "/Fo:$bridgeCatalogTestObjectDirectory\",
@@ -736,7 +736,7 @@ function Invoke-CompositionTests {
     }
 
     $rendererArguments = $common + @(
-        '/DGBA_DECLARATIVE_RENDERER_TESTING',
+        '/DWRAIL_DECLARATIVE_RENDERER_TESTING',
         (Join-Path $projectDirectory 'DeclarativeRendererTests.cpp'),
         (Join-Path $projectDirectory 'DeclarativeRenderer.cpp'),
         (Join-Path $projectDirectory 'DeclarativeLayout.cpp'),
@@ -1082,7 +1082,7 @@ function Invoke-ColdDashboardTests {
 function Invoke-OverlayProcessOwnerTests {
     param([switch]$DirectOnly)
     $arguments = $common + @(
-        '/DGBA_OVERLAY_PROCESS_OWNER_TESTING',
+        '/DWRAIL_OVERLAY_PROCESS_OWNER_TESTING',
         (Join-Path $projectDirectory 'OverlayProcessOwnerTests.cpp'),
         (Join-Path $projectDirectory 'OverlayProcessOwner.cpp'),
         "/Fo:$processOwnerTestObjectDirectory\",
@@ -1217,7 +1217,7 @@ function Invoke-TrustedArtworkTests {
     }
 
     $rendererArguments = $common + @(
-        '/DGBA_DECLARATIVE_RENDERER_TESTING',
+        '/DWRAIL_DECLARATIVE_RENDERER_TESTING',
         (Join-Path $projectDirectory 'DeclarativeRendererTests.cpp'),
         (Join-Path $projectDirectory 'DeclarativeRenderer.cpp'),
         (Join-Path $projectDirectory 'DeclarativeLayout.cpp'),
@@ -1311,7 +1311,7 @@ function Invoke-WidgetSessionTests {
 
 function Invoke-LauncherExperienceTests {
     $arguments = $common + @(
-        '/DGBA_DECLARATIVE_RENDERER_TESTING',
+        '/DWRAIL_DECLARATIVE_RENDERER_TESTING',
         (Join-Path $projectDirectory 'LauncherExperienceTests.cpp'),
         (Join-Path $projectDirectory 'LauncherExperienceLayout.cpp'),
         (Join-Path $projectDirectory 'LauncherExperienceAdapter.cpp'),
@@ -1381,13 +1381,13 @@ function Invoke-LauncherExperienceHostTests {
     } elseif ($TrayInvokeOnly) {
         $testArguments += '--tray-invoke-only'
     } elseif ($LifecycleOnly) {
-        $previousInstallation = $env:GBA_LAUNCHER_LIFECYCLE_INSTALLATION
-        $previousHostTest = $env:GBA_LAUNCHER_LIFECYCLE_HOST_TEST
-        $previousFixtureBridge = $env:GBA_LAUNCHER_LIFECYCLE_FIXTURE_BRIDGE
+        $previousInstallation = $env:WRAIL_LAUNCHER_LIFECYCLE_INSTALLATION
+        $previousHostTest = $env:WRAIL_LAUNCHER_LIFECYCLE_HOST_TEST
+        $previousFixtureBridge = $env:WRAIL_LAUNCHER_LIFECYCLE_FIXTURE_BRIDGE
         try {
-            $env:GBA_LAUNCHER_LIFECYCLE_INSTALLATION = $outputDirectory
-            $env:GBA_LAUNCHER_LIFECYCLE_HOST_TEST = Join-Path $outputDirectory 'LauncherExperienceHostTests.exe'
-            $env:GBA_LAUNCHER_LIFECYCLE_FIXTURE_BRIDGE = $fixtureBridge
+            $env:WRAIL_LAUNCHER_LIFECYCLE_INSTALLATION = $outputDirectory
+            $env:WRAIL_LAUNCHER_LIFECYCLE_HOST_TEST = Join-Path $outputDirectory 'LauncherExperienceHostTests.exe'
+            $env:WRAIL_LAUNCHER_LIFECYCLE_FIXTURE_BRIDGE = $fixtureBridge
             & dotnet run `
                 --project (Join-Path $projectDirectory '..\..\tests\WrailCli.Tests\WrailCli.Tests.csproj') `
                 --configuration $Configuration -- `
@@ -1396,9 +1396,9 @@ function Invoke-LauncherExperienceHostTests {
                 throw "Launcher Experience lifecycle coordinator failed with exit code $LASTEXITCODE."
             }
         } finally {
-            $env:GBA_LAUNCHER_LIFECYCLE_INSTALLATION = $previousInstallation
-            $env:GBA_LAUNCHER_LIFECYCLE_HOST_TEST = $previousHostTest
-            $env:GBA_LAUNCHER_LIFECYCLE_FIXTURE_BRIDGE = $previousFixtureBridge
+            $env:WRAIL_LAUNCHER_LIFECYCLE_INSTALLATION = $previousInstallation
+            $env:WRAIL_LAUNCHER_LIFECYCLE_HOST_TEST = $previousHostTest
+            $env:WRAIL_LAUNCHER_LIFECYCLE_FIXTURE_BRIDGE = $previousFixtureBridge
         }
         return
     }
@@ -1455,7 +1455,7 @@ function Invoke-AdvancedPresentationHostTests {
         throw "AdvancedPresentationHostTests build failed with exit code $LASTEXITCODE."
     }
     $temporaryRoot = [System.IO.Path]::GetFullPath([System.IO.Path]::GetTempPath())
-    $runRoot = Join-Path $temporaryRoot ("gba-dlv213-export-" + [Guid]::NewGuid().ToString('N'))
+    $runRoot = Join-Path $temporaryRoot ("wrail-dlv213-export-" + [Guid]::NewGuid().ToString('N'))
     $candidateSource = Join-Path $runRoot 'GameLauncherCommunity'
     $candidatePackage = Join-Path $runRoot 'widgetrail.community.reference.game-launcher-0.1.0.wrwidget'
     New-Item -ItemType Directory -Path $runRoot | Out-Null
@@ -1534,7 +1534,7 @@ if ($PlatformInteropTestsOnly) {
 Invoke-OverlayPlatformInteropBuild
 
 $hostArguments = $common + @(
-    '/DGBA_OVERLAY_PLATFORM_IMPORTS',
+    '/DWRAIL_OVERLAY_PLATFORM_IMPORTS',
     (Join-Path $projectDirectory 'main.cpp'),
     (Join-Path $projectDirectory 'OverlayCompositionSurface.cpp'),
     (Join-Path $projectDirectory 'OverlayProcessOwner.cpp'),
@@ -2244,7 +2244,7 @@ if (-not $SkipTests) {
     }
 
     $realHostAccessibilityTestArguments = $common + @(
-        '/DGBA_WIDGET_BRIDGE_CLIENT_TESTING',
+        '/DWRAIL_WIDGET_BRIDGE_CLIENT_TESTING',
         (Join-Path $projectDirectory 'RealHostAccessibilityTests.cpp'),
         (Join-Path $projectDirectory 'AccessibilityTree.cpp'),
         (Join-Path $projectDirectory 'HostAccessibility.cpp'),
@@ -2420,7 +2420,7 @@ if (-not $SkipTests) {
     }
 
     $rendererTestArguments = $common + @(
-        '/DGBA_DECLARATIVE_RENDERER_TESTING',
+        '/DWRAIL_DECLARATIVE_RENDERER_TESTING',
         (Join-Path $projectDirectory 'DeclarativeRendererTests.cpp'),
         (Join-Path $projectDirectory 'DeclarativeRenderer.cpp'),
         (Join-Path $projectDirectory 'DeclarativeLayout.cpp'),
@@ -2447,7 +2447,7 @@ if (-not $SkipTests) {
     Invoke-SemanticChurnPerformanceTests
 
     $componentGeometryTestArguments = $common + @(
-        '/DGBA_DECLARATIVE_RENDERER_TESTING',
+        '/DWRAIL_DECLARATIVE_RENDERER_TESTING',
         (Join-Path $projectDirectory 'SharedComponentGeometryTests.cpp'),
         (Join-Path $projectDirectory 'DeclarativeRenderer.cpp'),
         (Join-Path $projectDirectory 'DeclarativeLayout.cpp'),

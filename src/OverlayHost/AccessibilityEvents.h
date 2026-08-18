@@ -7,7 +7,7 @@
 #include <variant>
 #include <vector>
 
-namespace gba::accessibility {
+namespace widgetrail::accessibility {
 
 enum class PropertyKind {
     Name,
@@ -47,4 +47,4 @@ struct EventPlan final {
     const Tree* previous,
     const Tree* current);
 
-} // namespace gba::accessibility
+} // namespace widgetrail::accessibility

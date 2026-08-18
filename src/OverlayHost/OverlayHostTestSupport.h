@@ -9,7 +9,7 @@
 #include <utility>
 #include <vector>
 
-namespace gba::host_testing {
+namespace widgetrail::host_testing {
 
 class Handle final {
 public:
@@ -85,9 +85,9 @@ private:
 
 [[nodiscard]] HWND LocateHostWindow(
     DWORD processId,
-    const wchar_t* windowClass = L"GameBarAlternative.OverlayHost");
+    const wchar_t* windowClass = L"WidgetRail.OverlayHost");
 void PostKey(HWND window, WPARAM virtualKey);
 void SendKey(HWND window, WPARAM virtualKey);
 void SendKeyDownAndPostRelease(HWND window, WPARAM virtualKey);
 
-} // namespace gba::host_testing
+} // namespace widgetrail::host_testing

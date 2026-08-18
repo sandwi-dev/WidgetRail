@@ -1,6 +1,6 @@
 #include "ControllerNavigation.h"
 
-namespace gba::input {
+namespace widgetrail::input {
 
 void TrayYGesture::Press(
     const std::wstring_view selectedWidget,
@@ -100,4 +100,4 @@ TrayYGestureAction TrayYGesture::CrossThreshold(const std::uint64_t now) noexcep
     return TrayYGestureAction::RestartSelectedWidget;
 }
 
-} // namespace gba::input
+} // namespace widgetrail::input

@@ -36,7 +36,7 @@ public:
         const auto length = GetTempPathW(MAX_PATH, buffer);
         if (length == 0 || length > MAX_PATH) throw std::runtime_error("GetTempPathW failed");
         path_ = fs::path(buffer) /
-            (L"gbar-scroll-evidence-probe-" + std::to_wstring(GetCurrentProcessId()) +
+            (L"wrail-scroll-evidence-probe-" + std::to_wstring(GetCurrentProcessId()) +
              L"-" + std::to_wstring(GetTickCount64()));
         fs::create_directory(path_);
     }
@@ -49,22 +49,22 @@ private:
     fs::path path_;
 };
 
-gba::WidgetSnapshot Snapshot(const long long sequence = 1) {
-    gba::WidgetSnapshot snapshot;
+widgetrail::WidgetSnapshot Snapshot(const long long sequence = 1) {
+    widgetrail::WidgetSnapshot snapshot;
     snapshot.instanceId = L"audio-mixer.default";
     snapshot.activeInputScopeId = L"audio-mixer";
     snapshot.sequence = sequence;
     return snapshot;
 }
 
-gba::RenderResult Result(
+widgetrail::RenderResult Result(
     const std::wstring_view focus,
     const float coordinate = 1.0F) {
-    gba::RenderResult result;
+    widgetrail::RenderResult result;
     result.navigationRects.emplace(
-        std::wstring(focus), gba::declarative::Rect{coordinate, 2.0F, 44.0F, 44.0F});
+        std::wstring(focus), widgetrail::declarative::Rect{coordinate, 2.0F, 44.0F, 44.0F});
     result.focusRects.emplace(
-        std::wstring(focus), gba::declarative::Rect{coordinate, 3.0F, 44.0F, 43.5F});
+        std::wstring(focus), widgetrail::declarative::Rect{coordinate, 3.0F, 44.0F, 43.5F});
     result.revealableFocusIds.emplace(focus);
     result.scrollOffsets.emplace(L"audio.root", coordinate * 10.0F);
     return result;
@@ -73,13 +73,13 @@ gba::RenderResult Result(
 void DisabledProbeDoesNotWrite() {
     TemporaryDirectory temporary;
     const auto destination = temporary.path() / L"disabled.txt";
-    gba::ScrollEvidenceProbe probe;
+    widgetrail::ScrollEvidenceProbe probe;
     const auto snapshot = Snapshot();
     const auto result = Result(L"audio.master.volume.slider");
     Check(probe.Publish(
               L"audio-mixer", snapshot, result,
               L"audio.master.volume.slider", 1.0F, 1.0F) ==
-              gba::ScrollEvidencePublishResult::Disabled,
+              widgetrail::ScrollEvidencePublishResult::Disabled,
           "disabled probe reports disabled publication");
     Check(!fs::exists(destination), "disabled probe creates no evidence file");
     Check(!probe.RecordTarget(L"audio.master.volume.slider", L"restore"),
@@ -92,7 +92,7 @@ void DisabledProbeDoesNotWrite() {
 
 void InvalidAndUnavailableFramesFailClosed() {
     TemporaryDirectory temporary;
-    gba::ScrollEvidenceProbe unavailable;
+    widgetrail::ScrollEvidenceProbe unavailable;
     const auto missing = temporary.path() / L"missing" / L"evidence.txt";
     Check(unavailable.Enable(missing), "absolute unavailable destination is admitted");
     const auto snapshot = Snapshot();
@@ -100,11 +100,11 @@ void InvalidAndUnavailableFramesFailClosed() {
     Check(unavailable.Publish(
               L"audio-mixer", snapshot, result,
               L"audio.master.volume.slider", 1.0F, 1.0F) ==
-              gba::ScrollEvidencePublishResult::UnavailablePath,
+              widgetrail::ScrollEvidencePublishResult::UnavailablePath,
           "unavailable parent fails publication without creating directories");
     Check(!fs::exists(missing), "unavailable publication leaves no destination");
 
-    gba::ScrollEvidenceProbe bounded;
+    widgetrail::ScrollEvidenceProbe bounded;
     const auto destination = temporary.path() / L"bounded.txt";
     Check(bounded.Enable(destination), "valid absolute evidence path is admitted");
     auto oversized = snapshot;
@@ -112,13 +112,13 @@ void InvalidAndUnavailableFramesFailClosed() {
     Check(bounded.Publish(
               L"audio-mixer", oversized, result,
               L"audio.master.volume.slider", 1.0F, 1.0F) ==
-              gba::ScrollEvidencePublishResult::InvalidFrame,
+              widgetrail::ScrollEvidencePublishResult::InvalidFrame,
           "oversized field fails closed");
     Check(bounded.Publish(
               L"audio-mixer", snapshot, result,
               L"audio.master.volume.slider",
               std::numeric_limits<float>::quiet_NaN(), 1.0F) ==
-              gba::ScrollEvidencePublishResult::InvalidFrame,
+              widgetrail::ScrollEvidencePublishResult::InvalidFrame,
           "non-finite scale fails closed");
     Check(!fs::exists(destination), "invalid frames never create the destination");
 }
@@ -126,7 +126,7 @@ void InvalidAndUnavailableFramesFailClosed() {
 void AtomicReplacementSerializesCurrentTarget() {
     TemporaryDirectory temporary;
     const auto destination = temporary.path() / L"current.txt";
-    gba::ScrollEvidenceProbe probe;
+    widgetrail::ScrollEvidenceProbe probe;
     Check(probe.Enable(destination), "valid evidence destination enables probe");
 
     const auto focus = std::wstring(L"audio.session.01.volume.slider");
@@ -134,7 +134,7 @@ void AtomicReplacementSerializesCurrentTarget() {
     auto result = Result(focus, 1.0F);
     Check(probe.Publish(
               L"audio-mixer", snapshot, result, focus, 1.25F, 1.0F) ==
-              gba::ScrollEvidencePublishResult::Published,
+              widgetrail::ScrollEvidencePublishResult::Published,
           "first current frame publishes");
     const auto first = ReadUtf8(destination);
     Check(first.find("sequence=1\n") != std::string::npos,
@@ -149,7 +149,7 @@ void AtomicReplacementSerializesCurrentTarget() {
     result = Result(focus, 9.0F);
     Check(probe.Publish(
               L"audio-mixer", snapshot, result, focus, 1.5F, 1.25F) ==
-              gba::ScrollEvidencePublishResult::Published,
+              widgetrail::ScrollEvidencePublishResult::Published,
           "replacement current frame publishes");
     const auto second = ReadUtf8(destination);
     Check(second.find("sequence=2\n") != std::string::npos &&
@@ -168,7 +168,7 @@ void AtomicReplacementSerializesCurrentTarget() {
     invalid.instanceId.assign(4'097, L'y');
     Check(probe.Publish(
               L"audio-mixer", invalid, result, focus, 1.5F, 1.25F) ==
-              gba::ScrollEvidencePublishResult::InvalidFrame,
+              widgetrail::ScrollEvidencePublishResult::InvalidFrame,
           "invalid replacement is rejected");
     Check(ReadUtf8(destination) == second,
           "failed replacement preserves the last complete current frame");
@@ -181,7 +181,7 @@ void AtomicReplacementSerializesCurrentTarget() {
     snapshot.sequence = 3;
     Check(probe.Publish(
               L"audio-mixer", snapshot, result, focus, 1.5F, 1.25F) ==
-              gba::ScrollEvidencePublishResult::Published,
+              widgetrail::ScrollEvidencePublishResult::Published,
           "reverse target frame publishes");
     const auto third = ReadUtf8(destination);
     Check(third.find("explicitTarget=audio.session.01.volume.slider\n") !=
@@ -192,27 +192,27 @@ void AtomicReplacementSerializesCurrentTarget() {
 void AuthoredUpTargetSerializesBeforeInput() {
     TemporaryDirectory temporary;
     const auto destination = temporary.path() / L"edge.txt";
-    gba::ScrollEvidenceProbe probe;
+    widgetrail::ScrollEvidenceProbe probe;
     Check(probe.Enable(destination), "edge evidence destination enables probe");
     auto snapshot = Snapshot();
     snapshot.root.id = L"audio.root";
     snapshot.root.kind = L"scroll";
-    gba::WidgetNode microphone;
+    widgetrail::WidgetNode microphone;
     microphone.id = L"audio.input.volume.slider";
     microphone.kind = L"slider";
     microphone.focusUp = L"audio.master.volume.slider";
-    gba::WidgetNode master;
+    widgetrail::WidgetNode master;
     master.id = L"audio.master.volume.slider";
     master.kind = L"slider";
     snapshot.root.children = {master, microphone};
     auto result = Result(microphone.id, 4.0F);
     result.navigationRects.emplace(
-        master.id, gba::declarative::Rect{4.0F, -52.0F, 44.0F, 44.0F});
+        master.id, widgetrail::declarative::Rect{4.0F, -52.0F, 44.0F, 44.0F});
     result.navigationEnabled.emplace(master.id, true);
     result.revealableFocusIds.emplace(master.id);
     Check(probe.Publish(
               L"audio-mixer", snapshot, result, microphone.id, 1.25F, 1.0F) ==
-              gba::ScrollEvidencePublishResult::Published,
+              widgetrail::ScrollEvidencePublishResult::Published,
           "authored edge frame publishes before input");
     const auto payload = ReadUtf8(destination);
     Check(payload.find("upTarget=audio.master.volume.slider\n") !=

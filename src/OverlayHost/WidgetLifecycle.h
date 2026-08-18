@@ -6,7 +6,7 @@
 #include <string>
 #include <string_view>
 
-namespace gba {
+namespace widgetrail {
 
 enum class WidgetLifecycleState {
     Background,
@@ -35,4 +35,4 @@ struct WidgetLifecycleTarget final {
     bool selectedWidgetIsBridge,
     bool activeWidgetIsBridge);
 
-} // namespace gba
+} // namespace widgetrail

@@ -67,9 +67,9 @@ using Microsoft::WRL::ComPtr;
 
 namespace {
 
-constexpr wchar_t kWindowClass[] = L"GameBarAlternative.OverlayHost";
-constexpr wchar_t kBackdropWindowClass[] = L"GameBarAlternative.Backdrop";
-constexpr wchar_t kChromeWindowClass[] = L"GameBarAlternative.Chrome";
+constexpr wchar_t kWindowClass[] = L"WidgetRail.OverlayHost";
+constexpr wchar_t kBackdropWindowClass[] = L"WidgetRail.Backdrop";
+constexpr wchar_t kChromeWindowClass[] = L"WidgetRail.Chrome";
 constexpr int kPanelWidth = 1180;
 constexpr int kDashboardHeight = 180;
 constexpr int kWidgetPanelHeight = 700;
@@ -99,14 +99,14 @@ constexpr ULONG_PTR kLauncherExperienceSelectionProof = 0x4742414c;
 constexpr BYTE kBackdropOpacity = 164;
 constexpr std::uint64_t kSlowCompositionFrameMicroseconds = 100000;
 constexpr int kDeveloperHotkey = 1;
-constexpr gba::NativeColor kSafeCanvasFallback{
+constexpr widgetrail::NativeColor kSafeCanvasFallback{
     1.0F / 255.0F, 2.0F / 255.0F, 3.0F / 255.0F, 1.0F};
-constexpr gba::NativeColor kDefaultCanvas{
+constexpr widgetrail::NativeColor kDefaultCanvas{
     0x10 / 255.0F, 0x13 / 255.0F, 0x1A / 255.0F, 1.0F};
-constexpr gba::NativeColor kDefaultPanel{
+constexpr widgetrail::NativeColor kDefaultPanel{
     0x1B / 255.0F, 0x1F / 255.0F, 0x29 / 255.0F, 1.0F};
 
-constexpr gba::NativeColor kDefaultAccent{
+constexpr widgetrail::NativeColor kDefaultAccent{
     0xFC / 255.0F, 0x3F / 255.0F, 0x6C / 255.0F, 1.0F};
 
 enum class OverlayShowResult {
@@ -142,16 +142,16 @@ constexpr std::wstring_view FixedChromePlacementReasonName(
 
 constexpr std::uint32_t PlatformBoolean(const bool value) noexcept {
     return value
-        ? GBA_OVERLAY_PLATFORM_TRUE
-        : GBA_OVERLAY_PLATFORM_FALSE;
+        ? WRAIL_OVERLAY_PLATFORM_TRUE
+        : WRAIL_OVERLAY_PLATFORM_FALSE;
 }
 
-[[nodiscard]] std::optional<gba::OverlayPlacement> ComputePlatformPlacement(
+[[nodiscard]] std::optional<widgetrail::OverlayPlacement> ComputePlatformPlacement(
     const RECT& workArea,
     const UINT dpi,
     const float desiredWidthDip,
     const float desiredHeightDip) noexcept {
-    GbaOverlayPlatformPlacementInput input;
+    WidgetRailOverlayPlatformPlacementInput input;
     input.workLeft = workArea.left;
     input.workTop = workArea.top;
     input.workRight = workArea.right;
@@ -159,23 +159,23 @@ constexpr std::uint32_t PlatformBoolean(const bool value) noexcept {
     input.dpi = dpi;
     input.desiredWidthDip = desiredWidthDip;
     input.desiredHeightDip = desiredHeightDip;
-    GbaOverlayPlatformPlacement placement;
-    std::uint32_t hasPlacement = GBA_OVERLAY_PLATFORM_FALSE;
-    if (GbaOverlayPlatformComputePlacement(
+    WidgetRailOverlayPlatformPlacement placement;
+    std::uint32_t hasPlacement = WRAIL_OVERLAY_PLATFORM_FALSE;
+    if (WidgetRailOverlayPlatformComputePlacement(
             &input, &placement, &hasPlacement) !=
-            GbaOverlayPlatformStatus::Ok ||
-        hasPlacement == GBA_OVERLAY_PLATFORM_FALSE) {
+            WidgetRailOverlayPlatformStatus::Ok ||
+        hasPlacement == WRAIL_OVERLAY_PLATFORM_FALSE) {
         return std::nullopt;
     }
-    return gba::OverlayPlacement{
+    return widgetrail::OverlayPlacement{
         placement.x, placement.y, placement.width, placement.height};
 }
 
-D2D1_COLOR_F D2DColor(const gba::NativeColor& color) noexcept {
+D2D1_COLOR_F D2DColor(const widgetrail::NativeColor& color) noexcept {
     return D2D1::ColorF(color.red, color.green, color.blue, color.alpha);
 }
 
-COLORREF GdiColor(const gba::NativeColor& color) noexcept {
+COLORREF GdiColor(const widgetrail::NativeColor& color) noexcept {
     const auto channel = [](const float value) {
         return static_cast<BYTE>(std::lround(std::clamp(value, 0.0F, 1.0F) * 255.0F));
     };
@@ -185,13 +185,13 @@ COLORREF GdiColor(const gba::NativeColor& color) noexcept {
 struct BuiltInWidget final {
     std::wstring_view id;
     std::wstring_view name;
-    gba::icons::NativeIcon icon;
+    widgetrail::icons::NativeIcon icon;
 };
 
 constexpr std::array<BuiltInWidget, 3> kBuiltInWidgets{{
-    {L"audio-mixer", L"Audio Mixer", gba::icons::NativeIcon::Connection},
-    {L"yt-music", L"YT Music", gba::icons::NativeIcon::Music},
-    {L"performance", L"Performance", gba::icons::NativeIcon::Warning},
+    {L"audio-mixer", L"Audio Mixer", widgetrail::icons::NativeIcon::Connection},
+    {L"yt-music", L"YT Music", widgetrail::icons::NativeIcon::Music},
+    {L"performance", L"Performance", widgetrail::icons::NativeIcon::Warning},
 }};
 
 const BuiltInWidget* FindBuiltInWidget(const std::wstring_view id) noexcept {
@@ -205,9 +205,9 @@ std::wstring_view WidgetName(const std::wstring_view id) noexcept {
     return widget ? widget->name : id;
 }
 
-gba::icons::NativeIcon WidgetIcon(const std::wstring_view id) noexcept {
+widgetrail::icons::NativeIcon WidgetIcon(const std::wstring_view id) noexcept {
     const auto* widget = FindBuiltInWidget(id);
-    return widget ? widget->icon : gba::icons::NativeIcon::Connection;
+    return widget ? widget->icon : widgetrail::icons::NativeIcon::Connection;
 }
 
 std::wstring InstallationDirectory() {
@@ -221,15 +221,15 @@ std::wstring InstallationDirectory() {
         .parent_path().wstring();
 }
 
-gba::PersistentState LoadPersistentState() {
-    gba::PersistentState state;
+widgetrail::PersistentState LoadPersistentState() {
+    widgetrail::PersistentState state;
     wchar_t localAppData[MAX_PATH]{};
     if (GetEnvironmentVariableW(L"LOCALAPPDATA", localAppData, MAX_PATH) == 0) {
         return state;
     }
 
     const std::filesystem::path path =
-        std::filesystem::path(localAppData) / L"GameBarAlternative" / L"overlay-state.ini";
+        std::filesystem::path(localAppData) / L"WidgetRail" / L"overlay-state.ini";
     std::wifstream input(path);
     std::wstring first;
     if (!(input >> first)) return {};
@@ -271,13 +271,13 @@ gba::PersistentState LoadPersistentState() {
     return state;
 }
 
-void SavePersistentState(const gba::PersistentState& state) {
+void SavePersistentState(const widgetrail::PersistentState& state) {
     wchar_t localAppData[MAX_PATH]{};
     if (GetEnvironmentVariableW(L"LOCALAPPDATA", localAppData, MAX_PATH) == 0) {
         return;
     }
 
-    const auto directory = std::filesystem::path(localAppData) / L"GameBarAlternative";
+    const auto directory = std::filesystem::path(localAppData) / L"WidgetRail";
     std::error_code error;
     std::filesystem::create_directories(directory, error);
     if (error) {
@@ -306,7 +306,7 @@ void SaveStartupError(const std::wstring& message) {
         return;
     }
 
-    const auto directory = std::filesystem::path(localAppData) / L"GameBarAlternative";
+    const auto directory = std::filesystem::path(localAppData) / L"WidgetRail";
     std::error_code error;
     std::filesystem::create_directories(directory, error);
     if (error) {
@@ -326,7 +326,7 @@ void ClearStartupError() {
     }
     std::error_code error;
     std::filesystem::remove(
-        std::filesystem::path(localAppData) / L"GameBarAlternative" / L"startup-error.log",
+        std::filesystem::path(localAppData) / L"WidgetRail" / L"startup-error.log",
         error);
 }
 
@@ -338,7 +338,7 @@ void AppendDiagnostic(const std::wstring_view message) {
     if (GetEnvironmentVariableW(L"LOCALAPPDATA", localAppData, MAX_PATH) == 0) {
         return;
     }
-    const auto directory = std::filesystem::path(localAppData) / L"GameBarAlternative";
+    const auto directory = std::filesystem::path(localAppData) / L"WidgetRail";
     std::error_code error;
     std::filesystem::create_directories(directory, error);
     if (error) {
@@ -374,49 +374,49 @@ public:
               AppendDiagnostic(message);
           }),
           sessions_(
-              gba::WidgetSessionOperations{
+              widgetrail::WidgetSessionOperations{
                   [this](std::stop_token) {
                       return bridge_.EnsureStarted(
                                  installationDirectory_,
                                  developmentCatalogRoot_.value_or(L""))
-                          ? gba::WidgetSessionOperationResult<bool>::Success(true)
-                          : gba::WidgetSessionOperationResult<bool>::Failure(
-                                gba::WidgetSessionFailureStage::Start,
+                          ? widgetrail::WidgetSessionOperationResult<bool>::Success(true)
+                          : widgetrail::WidgetSessionOperationResult<bool>::Failure(
+                                widgetrail::WidgetSessionFailureStage::Start,
                                 bridge_.lastError());
                   },
                   [this](std::stop_token) {
                       auto value = bridge_.ListWidgets();
                       return value
-                          ? gba::WidgetSessionOperationResult<
-                                std::vector<gba::WidgetDescriptor>>::Success(
+                          ? widgetrail::WidgetSessionOperationResult<
+                                std::vector<widgetrail::WidgetDescriptor>>::Success(
                                     std::move(*value))
-                          : gba::WidgetSessionOperationResult<
-                                std::vector<gba::WidgetDescriptor>>::Failure(
-                                    gba::WidgetSessionFailureStage::Catalog,
+                          : widgetrail::WidgetSessionOperationResult<
+                                std::vector<widgetrail::WidgetDescriptor>>::Failure(
+                                    widgetrail::WidgetSessionFailureStage::Catalog,
                                     bridge_.lastError());
                   },
                   [this](std::stop_token, const std::wstring_view widgetId,
-                         const gba::WidgetLifecycleState state) {
+                         const widgetrail::WidgetLifecycleState state) {
                       auto value = bridge_.EstablishWidgetPresentation(
-                          widgetId, gba::WidgetLifecycleProtocolValue(state));
+                          widgetId, widgetrail::WidgetLifecycleProtocolValue(state));
                       return value
-                          ? gba::WidgetSessionOperationResult<gba::WidgetSnapshot>::Success(
+                          ? widgetrail::WidgetSessionOperationResult<widgetrail::WidgetSnapshot>::Success(
                                 std::move(*value))
-                          : gba::WidgetSessionOperationResult<gba::WidgetSnapshot>::Failure(
+                          : widgetrail::WidgetSessionOperationResult<widgetrail::WidgetSnapshot>::Failure(
                                 bridge_.lastRuntimeFailureCategory(widgetId) ==
-                                        gba::WidgetBridgeRuntimeFailureCategory::WorkerStart
-                                    ? gba::WidgetSessionFailureStage::Start
-                                    : gba::WidgetSessionFailureStage::Snapshot,
+                                        widgetrail::WidgetBridgeRuntimeFailureCategory::WorkerStart
+                                    ? widgetrail::WidgetSessionFailureStage::Start
+                                    : widgetrail::WidgetSessionFailureStage::Snapshot,
                                 bridge_.lastError());
                   },
                   [this](std::stop_token, const std::wstring_view widgetId,
-                         const gba::WidgetLifecycleState state) {
+                         const widgetrail::WidgetLifecycleState state) {
                       auto value = bridge_.SetWidgetLifecycle(
-                          widgetId, gba::WidgetLifecycleProtocolValue(state));
+                          widgetId, widgetrail::WidgetLifecycleProtocolValue(state));
                       return value
-                          ? gba::WidgetSessionOperationResult<bool>::Success(*value)
-                          : gba::WidgetSessionOperationResult<bool>::Failure(
-                                gba::WidgetSessionFailureStage::Lifecycle,
+                          ? widgetrail::WidgetSessionOperationResult<bool>::Success(*value)
+                          : widgetrail::WidgetSessionOperationResult<bool>::Failure(
+                                widgetrail::WidgetSessionFailureStage::Lifecycle,
                                 bridge_.lastError());
                   },
                   [this](std::stop_token, const std::wstring_view widgetId,
@@ -424,35 +424,35 @@ public:
                       auto value = bridge_.GetSnapshot(
                           widgetId, baseSequence, allowUpdate);
                       return value
-                          ? gba::WidgetSessionOperationResult<
-                                gba::WidgetPresentationPublication>::Success(
+                          ? widgetrail::WidgetSessionOperationResult<
+                                widgetrail::WidgetPresentationPublication>::Success(
                                 std::move(*value))
-                          : gba::WidgetSessionOperationResult<
-                                gba::WidgetPresentationPublication>::Failure(
-                                gba::WidgetSessionFailureStage::Snapshot,
+                          : widgetrail::WidgetSessionOperationResult<
+                                widgetrail::WidgetPresentationPublication>::Failure(
+                                widgetrail::WidgetSessionFailureStage::Snapshot,
                                 bridge_.lastError());
                   },
-                  [](const gba::WidgetSnapshot& checkpoint,
-                     const gba::WidgetPresentationUpdate& update,
+                  [](const widgetrail::WidgetSnapshot& checkpoint,
+                     const widgetrail::WidgetPresentationUpdate& update,
                      const std::wstring_view presentationGeneration) {
                       std::wstring error;
-                      auto value = gba::MaterializeWidgetPresentationUpdate(
+                      auto value = widgetrail::MaterializeWidgetPresentationUpdate(
                           checkpoint, update, presentationGeneration, error);
                       return value
-                          ? gba::WidgetSessionOperationResult<
-                                gba::WidgetPresentationMaterialization>::Success(
+                          ? widgetrail::WidgetSessionOperationResult<
+                                widgetrail::WidgetPresentationMaterialization>::Success(
                                 std::move(*value))
-                          : gba::WidgetSessionOperationResult<
-                                gba::WidgetPresentationMaterialization>::Failure(
-                                gba::WidgetSessionFailureStage::Protocol,
+                          : widgetrail::WidgetSessionOperationResult<
+                                widgetrail::WidgetPresentationMaterialization>::Failure(
+                                widgetrail::WidgetSessionFailureStage::Protocol,
                                 std::move(error));
                   },
                   [this](std::stop_token, const std::wstring_view widgetId) {
                       auto value = bridge_.RestartWidget(widgetId);
                       return value
-                          ? gba::WidgetSessionOperationResult<bool>::Success(*value)
-                          : gba::WidgetSessionOperationResult<bool>::Failure(
-                                gba::WidgetSessionFailureStage::Restart,
+                          ? widgetrail::WidgetSessionOperationResult<bool>::Success(*value)
+                          : widgetrail::WidgetSessionOperationResult<bool>::Failure(
+                                widgetrail::WidgetSessionFailureStage::Restart,
                                 bridge_.lastError());
                   },
               },
@@ -460,7 +460,7 @@ public:
                   if (window_)
                       PostMessageW(window_, kWidgetSessionCompletionMessage, 0, 0);
               },
-              [this](const gba::WidgetSessionTraceEvent& event) {
+              [this](const widgetrail::WidgetSessionTraceEvent& event) {
                   admissionTrace_.RecordSession(event);
               },
               [] { return static_cast<std::uint64_t>(GetTickCount64()); }),
@@ -468,9 +468,9 @@ public:
               localWidgetPackagePicker_,
               [this] { return CurrentLocalWidgetPackageImportOrigin(); },
               [this](const std::wstring_view path,
-                     const gba::packages::LocalWidgetPackageOrigin& origin,
+                     const widgetrail::packages::LocalWidgetPackageOrigin& origin,
                      const std::wstring_view operationId) {
-                  gba::LocalWidgetPackageInstallOrigin requestOrigin{
+                  widgetrail::LocalWidgetPackageInstallOrigin requestOrigin{
                       origin.widgetId,
                       origin.packageId,
                       origin.publisherId,
@@ -500,7 +500,7 @@ public:
             // last-open widget, tray order, or reopen preference. The catalog
             // is still the real installed catalog; only presentation state is
             // ephemeral for this process.
-            state_ = gba::OverlayState({}, {});
+            state_ = widgetrail::OverlayState({}, {});
         }
         const HRESULT runtimeResult = RoInitialize(RO_INIT_SINGLETHREADED);
         if (FAILED(runtimeResult) && runtimeResult != RPC_E_CHANGED_MODE) {
@@ -560,7 +560,7 @@ public:
         window_ = CreateWindowExW(
             WS_EX_TOOLWINDOW | WS_EX_NOREDIRECTIONBITMAP | WS_EX_TOPMOST,
             kWindowClass,
-            L"Game Bar Alternative",
+            L"WidgetRail",
             WS_POPUP,
             CW_USEDEFAULT,
             CW_USEDEFAULT,
@@ -575,10 +575,10 @@ public:
         }
         accessibilityProvider_.Bind(window_, kAccessibilityActionMessage);
         chromeWindow_ = CreateWindowExW(
-            gba::shell::FixedChromeWindowExStyle(),
+            widgetrail::shell::FixedChromeWindowExStyle(),
             kChromeWindowClass,
-            L"Game Bar Alternative chrome",
-            gba::shell::FixedChromeWindowStyle(),
+            L"WidgetRail chrome",
+            widgetrail::shell::FixedChromeWindowStyle(),
             CW_USEDEFAULT,
             CW_USEDEFAULT,
             1,
@@ -594,7 +594,7 @@ public:
         backdropWindow_ = CreateWindowExW(
             WS_EX_TOOLWINDOW | WS_EX_LAYERED | WS_EX_NOACTIVATE | WS_EX_TOPMOST,
             kBackdropWindowClass,
-            L"Game Bar Alternative backdrop",
+            L"WidgetRail backdrop",
             WS_POPUP,
             0,
             0,
@@ -607,17 +607,17 @@ public:
         if (!backdropWindow_) {
             return FailWin32(L"CreateWindowExW(backdrop)", GetLastError());
         }
-        GbaOverlayPlatformCreateOptions platformOptions;
+        WidgetRailOverlayPlatformCreateOptions platformOptions;
         platformOptions.callbackContext = this;
         platformOptions.eventAvailable = OnPlatformEventAvailable;
         platformOptions.diagnostic = OnPlatformDiagnostic;
-        if (GbaOverlayPlatformCreate(&platformOptions, &platform_) !=
-            GbaOverlayPlatformStatus::Ok) {
+        if (WidgetRailOverlayPlatformCreate(&platformOptions, &platform_) !=
+            WidgetRailOverlayPlatformStatus::Ok) {
             initializationError_ =
                 L"Unable to create the versioned native platform boundary.";
             return false;
         }
-        (void)GbaOverlayPlatformSetOwnedWindows(
+        (void)WidgetRailOverlayPlatformSetOwnedWindows(
             platform_,
             reinterpret_cast<std::uintptr_t>(window_),
             reinterpret_cast<std::uintptr_t>(backdropWindow_));
@@ -653,7 +653,7 @@ public:
             return FailHresult(L"D2D1CreateFactory", d2dResult);
         }
         std::wstring compositionError;
-        if (gba::shell::InitializeFixedChromeComposition(
+        if (widgetrail::shell::InitializeFixedChromeComposition(
                 compositionSurface_, window_, chromeWindow_,
                 d2dFactory_.Get(), compositionError)) {
             // A premultiplied composition target carries transparency in its
@@ -678,11 +678,11 @@ public:
             return FailHresult(L"DWriteCreateFactory", dwriteResult);
         }
 
-        imageCache_ = std::make_unique<gba::RemoteImageCache>(
-            gba::RemoteImageLimits{},
-            [this](const std::wstring_view source, const gba::RemoteImageState state) {
-                constexpr std::wstring_view prefix = L"gbar-artwork\x1f";
-                if (state == gba::RemoteImageState::Failed && source.starts_with(prefix)) {
+        imageCache_ = std::make_unique<widgetrail::RemoteImageCache>(
+            widgetrail::RemoteImageLimits{},
+            [this](const std::wstring_view source, const widgetrail::RemoteImageState state) {
+                constexpr std::wstring_view prefix = L"wrail-artwork\x1f";
+                if (state == widgetrail::RemoteImageState::Failed && source.starts_with(prefix)) {
                     const auto widgetEnd = source.find(L'\x1f', prefix.size());
                     const auto handleStart = source.rfind(L'\x1f');
                     if (widgetEnd != std::wstring_view::npos &&
@@ -698,9 +698,9 @@ public:
                 }
                 if (window_) PostMessageW(window_, kImageReadyMessage, 0, 0);
             },
-            gba::RemoteImageCache::FetchFunction{},
+            widgetrail::RemoteImageCache::FetchFunction{},
             [this](std::wstring_view source) {
-                constexpr std::wstring_view prefix = L"gbar-artwork\x1f";
+                constexpr std::wstring_view prefix = L"wrail-artwork\x1f";
                 const auto widgetSeparator = source.find(L'\x1f', prefix.size());
                 const auto handleSeparator = source.rfind(L'\x1f');
                 if (!source.starts_with(prefix) || widgetSeparator == std::wstring_view::npos ||
@@ -711,7 +711,7 @@ public:
                 const auto handle = source.substr(handleSeparator + 1);
                 return bridge_.RequestArtwork(widgetId, handle).value_or(false);
             });
-        declarativeRenderer_ = std::make_unique<gba::DeclarativeRenderer>(
+        declarativeRenderer_ = std::make_unique<widgetrail::DeclarativeRenderer>(
             d2dFactory_.Get(), writeFactory_.Get(), imageCache_.get());
         std::wstring pinnedSurfaceError;
         if (!pinnedSurfaceCoordinator_.Initialize(
@@ -723,14 +723,14 @@ public:
         }
         if (!developmentProbeOnly_) {
             RegisterHotKey(window_, kDeveloperHotkey, MOD_NOREPEAT, VK_F1);
-            if (GbaOverlayPlatformInitialize(platform_) !=
-                GbaOverlayPlatformStatus::Ok) {
+            if (WidgetRailOverlayPlatformInitialize(platform_) !=
+                WidgetRailOverlayPlatformStatus::Ok) {
                 initializationError_ =
                     L"Unable to initialize the native platform boundary.";
                 return false;
             }
-            if (GbaOverlayPlatformRequiresLegacyGuidePolling(platform_) !=
-                GBA_OVERLAY_PLATFORM_FALSE) {
+            if (WidgetRailOverlayPlatformRequiresLegacyGuidePolling(platform_) !=
+                WRAIL_OVERLAY_PLATFORM_FALSE) {
                 SetTimer(window_, kGuideCompatibilityTimer, 25, nullptr);
             }
         }
@@ -776,7 +776,7 @@ public:
         }
         if (startShown && !developmentProbeOnly_) {
             if (developmentCatalogRoot_) {
-                Dispatch(gba::Command::ToggleOverlay);
+                Dispatch(widgetrail::Command::ToggleOverlay);
             } else {
                 bool opened = false;
                 ApplyStateTransition([&] {
@@ -811,7 +811,7 @@ public:
         return static_cast<int>(message.wParam);
     }
 
-    void BindProcessActivation(gba::process::OverlayProcessOwner& owner) noexcept {
+    void BindProcessActivation(widgetrail::process::OverlayProcessOwner& owner) noexcept {
         owner.BindNotificationWindow(window_, kProcessActivationMessage);
     }
 
@@ -997,15 +997,15 @@ private:
             return false;
         }
 
-        Dispatch(gba::Command::ToggleOverlay);
-        if (state_.surface() == gba::Surface::Widget &&
-            state_.focusRegion() == gba::FocusRegion::Widget) {
-            Dispatch(gba::Command::SampleWidgetBack);
+        Dispatch(widgetrail::Command::ToggleOverlay);
+        if (state_.surface() == widgetrail::Surface::Widget &&
+            state_.focusRegion() == widgetrail::FocusRegion::Widget) {
+            Dispatch(widgetrail::Command::SampleWidgetBack);
         }
         for (std::size_t remaining = state_.order().size();
              remaining > 0 && state_.selectedWidget() != *performanceWidgetId_;
              --remaining) {
-            Dispatch(gba::Command::NavigateRight);
+            Dispatch(widgetrail::Command::NavigateRight);
         }
         if (state_.selectedWidget() != *performanceWidgetId_) {
             initializationError_ = L"The requested performance widget is not installed and enabled.";
@@ -1017,13 +1017,13 @@ private:
             // one-shot activation state as the physical LT+RT+A gesture. It
             // does not change selection or add an action/protocol route.
             launcherSafeStartPending_ = *performanceState_ == L"safe-start";
-            Dispatch(gba::Command::Activate);
+            Dispatch(widgetrail::Command::Activate);
         }
 
         const auto expected = *performanceState_ == L"interactive" ||
                               *performanceState_ == L"safe-start"
-            ? gba::WidgetLifecycleState::Interactive
-            : gba::WidgetLifecycleState::Visible;
+            ? widgetrail::WidgetLifecycleState::Interactive
+            : widgetrail::WidgetLifecycleState::Visible;
         const auto deadline = std::chrono::steady_clock::now() +
             std::chrono::seconds(5);
         do {
@@ -1077,7 +1077,7 @@ private:
             return result;
         };
         const std::string payload =
-            "gbar-performance-runtime-v2\n" +
+            "wrail-performance-runtime-v2\n" +
             ascii(*performanceDiagnosticsNonce_) + "\n" +
             ascii(*performanceState_) + "\n" +
             ascii(*performanceWidgetId_) + "\n" +
@@ -1116,7 +1116,7 @@ private:
     bool ExpectedDevelopmentWidgetPresent() const noexcept {
         if (!developmentWidgetId_ || !developmentWidgetInstance_) return false;
         return std::any_of(sessions_.descriptors().begin(), sessions_.descriptors().end(),
-                           [&](const gba::WidgetDescriptor& descriptor) {
+                           [&](const widgetrail::WidgetDescriptor& descriptor) {
                                return descriptor.id == *developmentWidgetId_ &&
                                       descriptor.instanceId == *developmentWidgetInstance_;
                            });
@@ -1125,7 +1125,7 @@ private:
     bool ProbeExpectedDevelopmentWidget() {
         if (!developmentWidgetId_ || !developmentWidgetInstance_) return false;
         auto snapshot = sessions_.EstablishPresentationForProbe(
-            *developmentWidgetId_, gba::WidgetLifecycleState::Visible);
+            *developmentWidgetId_, widgetrail::WidgetLifecycleState::Visible);
         if (!snapshot) {
             initializationError_ =
                 L"Development widget worker did not complete the visible snapshot probe.";
@@ -1140,7 +1140,7 @@ private:
     }
 
     bool InteractiveDevelopmentHostReady() {
-        if (state_.surface() == gba::Surface::Hidden || !IsWindow(window_) ||
+        if (state_.surface() == widgetrail::Surface::Hidden || !IsWindow(window_) ||
             !IsWindow(backdropWindow_) || !IsWindowVisible(window_) ||
             !IsWindowVisible(backdropWindow_)) {
             initializationError_ =
@@ -1153,7 +1153,7 @@ private:
             return false;
         }
         if (!std::any_of(sessions_.descriptors().begin(), sessions_.descriptors().end(),
-                         [&](const gba::WidgetDescriptor& descriptor) {
+                         [&](const widgetrail::WidgetDescriptor& descriptor) {
                              return descriptor.id == *developmentWidgetId_ &&
                                     descriptor.instanceId == *developmentWidgetInstance_;
                          })) {
@@ -1166,7 +1166,7 @@ private:
 
     bool PublishDevelopmentReady() {
         const std::wstring widePayload =
-            L"gbar-dev-ready-v1\n" + *developmentReadyNonce_ + L"\n" +
+            L"wrail-dev-ready-v1\n" + *developmentReadyNonce_ + L"\n" +
             *developmentCatalogRoot_ + L"\n" + *developmentWidgetId_ + L"\n" +
             *developmentWidgetInstance_ + L"\n";
         if (widePayload.size() > static_cast<std::size_t>(INT_MAX)) {
@@ -1251,8 +1251,8 @@ private:
         switch (message) {
         case WM_LBUTTONDOWN:
         case WM_LBUTTONUP:
-            if (message == WM_LBUTTONUP && app->state_.surface() != gba::Surface::Hidden) {
-                app->Dispatch(gba::Command::ToggleOverlay);
+            if (message == WM_LBUTTONUP && app->state_.surface() != widgetrail::Surface::Hidden) {
+                app->Dispatch(widgetrail::Command::ToggleOverlay);
             }
             return 0;
         case WM_ERASEBKGND:
@@ -1293,7 +1293,7 @@ private:
             const auto tray = app->ProjectChromeClientBoundsToScreen(
                 app->compositionChromeSession_->trayClientBounds);
             if (!guide || !tray ||
-                !gba::shell::IsFixedChromeHit(point, *guide, *tray))
+                !widgetrail::shell::IsFixedChromeHit(point, *guide, *tray))
                 return HTTRANSPARENT;
             return HTCLIENT;
         }
@@ -1306,7 +1306,7 @@ private:
             return 0;
         }
         case WM_LBUTTONUP: {
-            (void)gba::shell::RouteFixedChromePointerRelease(
+            (void)widgetrail::shell::RouteFixedChromePointerRelease(
                 window, app->window_, lParam, app,
                 [](void* context, const float x, const float y) noexcept {
                     static_cast<OverlayApp*>(context)->HandlePointerActivation(x, y);
@@ -1334,7 +1334,7 @@ private:
         }
     }
 
-    static void GBA_OVERLAY_PLATFORM_CALL OnPlatformEventAvailable(
+    static void WRAIL_OVERLAY_PLATFORM_CALL OnPlatformEventAvailable(
         void* context) noexcept {
         const auto app = static_cast<OverlayApp*>(context);
         if (app && app->window_) {
@@ -1342,25 +1342,25 @@ private:
         }
     }
 
-    static void GBA_OVERLAY_PLATFORM_CALL OnPlatformDiagnostic(
+    static void WRAIL_OVERLAY_PLATFORM_CALL OnPlatformDiagnostic(
         void*,
         const wchar_t* message) noexcept {
         if (message) AppendDiagnostic(message);
     }
 
-    void HandlePlatformEvent(const GbaOverlayPlatformEvent& event) {
+    void HandlePlatformEvent(const WidgetRailOverlayPlatformEvent& event) {
         switch (event.kind) {
-        case GbaOverlayPlatformEventKind::GuideToggleRequested:
+        case WidgetRailOverlayPlatformEventKind::GuideToggleRequested:
             if (event.guideSource ==
-                GbaOverlayPlatformGuideSource::LegacyCompatibility) {
+                WidgetRailOverlayPlatformGuideSource::LegacyCompatibility) {
                 AppendDiagnostic(
                     L"Guide press received from quarantined XInput compatibility adapter; slots=" +
                     std::to_wstring(event.value));
             }
             AppendDiagnostic(L"Guide toggle dispatched on window thread");
-            Dispatch(gba::Command::ToggleOverlay);
+            Dispatch(widgetrail::Command::ToggleOverlay);
             break;
-        case GbaOverlayPlatformEventKind::LegacyGuidePollingChanged:
+        case WidgetRailOverlayPlatformEventKind::LegacyGuidePollingChanged:
             if (event.value != 0) {
                 SetTimer(window_, kGuideCompatibilityTimer, 25, nullptr);
                 AppendDiagnostic(
@@ -1371,9 +1371,9 @@ private:
                     L"XInput Guide compatibility polling stopped after the last Xbox 360-family device disconnected");
             }
             break;
-        case GbaOverlayPlatformEventKind::VisibilityChanged:
-        case GbaOverlayPlatformEventKind::FocusChanged:
-        case GbaOverlayPlatformEventKind::None:
+        case WidgetRailOverlayPlatformEventKind::VisibilityChanged:
+        case WidgetRailOverlayPlatformEventKind::FocusChanged:
+        case WidgetRailOverlayPlatformEventKind::None:
             break;
         }
     }
@@ -1381,12 +1381,12 @@ private:
     void HandlePlatformEvents() {
         if (!platform_) return;
         for (;;) {
-            GbaOverlayPlatformEvent event;
-            std::uint32_t hasEvent = GBA_OVERLAY_PLATFORM_FALSE;
-            if (GbaOverlayPlatformDrainEvent(
+            WidgetRailOverlayPlatformEvent event;
+            std::uint32_t hasEvent = WRAIL_OVERLAY_PLATFORM_FALSE;
+            if (WidgetRailOverlayPlatformDrainEvent(
                     platform_, GetTickCount64(), &event, &hasEvent) !=
-                    GbaOverlayPlatformStatus::Ok ||
-                hasEvent == GBA_OVERLAY_PLATFORM_FALSE) {
+                    WidgetRailOverlayPlatformStatus::Ok ||
+                hasEvent == WRAIL_OVERLAY_PLATFORM_FALSE) {
                 return;
             }
             HandlePlatformEvent(event);
@@ -1413,7 +1413,7 @@ private:
         case WM_HOTKEY:
             if (wParam == kDeveloperHotkey) {
                 AppendDiagnostic(L"F1 fallback toggle received");
-                Dispatch(gba::Command::ToggleOverlay);
+                Dispatch(widgetrail::Command::ToggleOverlay);
             }
             return 0;
         case WM_COPYDATA:
@@ -1426,7 +1426,7 @@ private:
             InvalidateRect(window_, nullptr, FALSE);
             return 0;
         case kCatalogRefreshMessage: {
-            if (state_.surface() == gba::Surface::Hidden &&
+            if (state_.surface() == widgetrail::Surface::Hidden &&
                 !pinnedSurfaceCoordinator_.pinned()) {
                 KillTimer(window_, kCatalogRetryTimer);
                 bridge_.AbandonWidgetCatalogChangedRevision();
@@ -1443,13 +1443,13 @@ private:
             ProcessWidgetSessionEvents();
             return 0;
         case kSnapshotRefreshMessage:
-            if (state_.surface() == gba::Surface::Hidden &&
+            if (state_.surface() == widgetrail::Surface::Hidden &&
                 !pinnedSurfaceCoordinator_.pinned()) return 0;
             {
                 const auto correlationId = static_cast<std::uint64_t>(wParam);
-                const std::wstring widgetId = state_.surface() == gba::Surface::Hidden
+                const std::wstring widgetId = state_.surface() == widgetrail::Surface::Hidden
                     ? std::wstring(pinnedSurfaceCoordinator_.widgetId())
-                    : state_.surface() == gba::Surface::Widget
+                    : state_.surface() == widgetrail::Surface::Widget
                     ? std::wstring(state_.activeWidget())
                     : std::wstring(state_.selectedWidget());
                 admissionTrace_.RecordRefreshDequeued(
@@ -1477,26 +1477,26 @@ private:
             }
             return 0;
         case kForegroundChangedMessage:
-            if (state_.surface() != gba::Surface::Hidden) {
+            if (state_.surface() != widgetrail::Surface::Hidden) {
                 const HWND foreground = reinterpret_cast<HWND>(lParam);
                 const bool valid = foreground && IsWindow(foreground);
                 DWORD processId = 0;
                 if (valid) (void)GetWindowThreadProcessId(foreground, &processId);
-                if (gba::input::DecideVisibleForegroundTransition(
+                if (widgetrail::input::DecideVisibleForegroundTransition(
                         true, valid, processId == GetCurrentProcessId()) ==
-                    gba::input::VisibleForegroundTransition::CloseOverlay) {
-                    (void)GbaOverlayPlatformObserveForegroundTarget(
+                    widgetrail::input::VisibleForegroundTransition::CloseOverlay) {
+                    (void)WidgetRailOverlayPlatformObserveForegroundTarget(
                         platform_,
                         reinterpret_cast<std::uintptr_t>(foreground),
-                        GBA_OVERLAY_PLATFORM_TRUE);
+                        WRAIL_OVERLAY_PLATFORM_TRUE);
                     AppendDiagnostic(
                         L"External foreground activation closed the overlay");
-                    Dispatch(gba::Command::CloseOverlay);
+                    Dispatch(widgetrail::Command::CloseOverlay);
                 }
             }
             return 0;
         case kPlacementRefreshMessage:
-            if (state_.surface() != gba::Surface::Hidden) {
+            if (state_.surface() != widgetrail::Surface::Hidden) {
                 ShowOverlay();
                 InvalidateRect(window_, nullptr, FALSE);
             }
@@ -1512,7 +1512,7 @@ private:
             return 0;
         case kPinnedSurfaceChangedMessage:
             DrainPinnedSurfaceInputs();
-            if (state_.surface() == gba::Surface::Hidden) {
+            if (state_.surface() == widgetrail::Surface::Hidden) {
                 if (pinnedSurfaceCoordinator_.pinned())
                     SetTimer(window_, kPinnedSurfaceTimer, 100, nullptr);
                 else
@@ -1523,8 +1523,8 @@ private:
             return 0;
         case kProcessActivationMessage:
             AppendDiagnostic(L"Resident process received an authenticated Show activation");
-            if (state_.surface() == gba::Surface::Hidden) {
-                Dispatch(gba::Command::ToggleOverlay);
+            if (state_.surface() == widgetrail::Surface::Hidden) {
+                Dispatch(widgetrail::Command::ToggleOverlay);
             } else {
                 (void)ShowOverlay();
                 (void)AcquireOverlayForegroundInput();
@@ -1552,7 +1552,7 @@ private:
                 const auto now = GetTickCount64();
                 trayYGesture_.Press(
                     state_.selectedWidget(), TrayYRestartEligible(),
-                    now - gba::input::kTrayWidgetRestartHoldMilliseconds);
+                    now - widgetrail::input::kTrayWidgetRestartHoldMilliseconds);
                 ApplyTrayYGestureAction(trayYGesture_.Update(
                     state_.selectedWidget(), TrayYRestartEligible(), now));
             }
@@ -1562,11 +1562,11 @@ private:
             accessibilityProvider_.SetWindowFocused(true);
             chromeAccessibilityProvider_.SetWindowFocused(true);
             if (platform_) {
-                (void)GbaOverlayPlatformSetWindowState(
+                (void)WidgetRailOverlayPlatformSetWindowState(
                     platform_,
                     PlatformBoolean(
-                        state_.surface() != gba::Surface::Hidden),
-                    GBA_OVERLAY_PLATFORM_TRUE);
+                        state_.surface() != widgetrail::Surface::Hidden),
+                    WRAIL_OVERLAY_PLATFORM_TRUE);
             }
             return DefWindowProcW(window_, message, wParam, lParam);
         case WM_KILLFOCUS:
@@ -1574,11 +1574,11 @@ private:
             chromeAccessibilityProvider_.SetWindowFocused(false);
             trayYGesture_.Cancel();
             if (platform_) {
-                (void)GbaOverlayPlatformSetWindowState(
+                (void)WidgetRailOverlayPlatformSetWindowState(
                     platform_,
                     PlatformBoolean(
-                        state_.surface() != gba::Surface::Hidden),
-                    GBA_OVERLAY_PLATFORM_FALSE);
+                        state_.surface() != widgetrail::Surface::Hidden),
+                    WRAIL_OVERLAY_PLATFORM_FALSE);
             }
             InvalidateRect(window_, nullptr, FALSE);
             return DefWindowProcW(window_, message, wParam, lParam);
@@ -1586,7 +1586,7 @@ private:
             accessibilityProvider_.SetWindowVisible(wParam != FALSE);
             if (wParam == FALSE) trayYGesture_.Reset();
             if (platform_) {
-                (void)GbaOverlayPlatformSetWindowState(
+                (void)WidgetRailOverlayPlatformSetWindowState(
                     platform_,
                     PlatformBoolean(wParam != FALSE),
                     PlatformBoolean(GetFocus() == window_));
@@ -1604,7 +1604,7 @@ private:
             return DefWindowProcW(window_, message, wParam, lParam);
         case WM_NCHITTEST:
             if (compositionSurface_.available() &&
-                state_.surface() != gba::Surface::Hidden) {
+                state_.surface() != widgetrail::Surface::Hidden) {
                 POINT point{
                     static_cast<LONG>(static_cast<short>(LOWORD(lParam))),
                     static_cast<LONG>(static_cast<short>(HIWORD(lParam))),
@@ -1658,7 +1658,7 @@ private:
                 // controller timer is retained only long enough to finish the
                 // bounded physical fade; no input or worker work runs behind
                 // the hidden surface.
-                if (state_.surface() == gba::Surface::Hidden &&
+                if (state_.surface() == widgetrail::Surface::Hidden &&
                     !pinnedSurfaceCoordinator_.pinned()) return 0;
                 // A newly shown or device-lost HWND is deliberately alpha-zero
                 // until D2D commits a complete frame. Do not let an invisible
@@ -1677,17 +1677,17 @@ private:
                         failure.widgetId,
                         failure.safeMessage,
                         failure.category ==
-                                gba::WidgetBridgeRuntimeFailureCategory::WorkerStart
-                            ? gba::WidgetSessionFailureStage::Start
-                            : gba::WidgetSessionFailureStage::Lifecycle,
+                                widgetrail::WidgetBridgeRuntimeFailureCategory::WorkerStart
+                            ? widgetrail::WidgetSessionFailureStage::Start
+                            : widgetrail::WidgetSessionFailureStage::Lifecycle,
                         true);
                     if (pinnedSurfaceCoordinator_.pinned() &&
                         pinnedSurfaceCoordinator_.widgetId() == failure.widgetId) {
                         (void)pinnedSurfaceCoordinator_.Unpin(
-                            gba::pinned::WidgetSurfaceStopReason::WorkerUnavailable);
+                            widgetrail::pinned::WidgetSurfaceStopReason::WorkerUnavailable);
                     }
                 }
-                if (controllerTick && state_.surface() != gba::Surface::Hidden)
+                if (controllerTick && state_.surface() != widgetrail::Surface::Hidden)
                     PollController();
                 for (auto& artwork : bridge_.TakeArtworkResults()) {
                     if (artwork.pngBase64.empty())
@@ -1706,7 +1706,7 @@ private:
                         continue;
                     }
                     lastLocalWidgetPackageInstallResult_ = result;
-                    if (result.status != gba::LocalWidgetPackageInstallStatus::Cancelled) {
+                    if (result.status != widgetrail::LocalWidgetPackageInstallStatus::Cancelled) {
                         lastActionWidgetId_ = L"settings";
                         lastActionMessage_ = result.safeMessage;
                         lastActionExpiresAt_ = GetTickCount64() + 5000;
@@ -1733,13 +1733,13 @@ private:
                 }
                 for (auto& invalidatedWidget : bridge_.TakeInvalidatedWidgetIds()) {
                     sessions_.MarkRefreshRequested(invalidatedWidget);
-                    const auto currentWidget = state_.surface() == gba::Surface::Widget
+                    const auto currentWidget = state_.surface() == widgetrail::Surface::Widget
                         ? state_.activeWidget()
                         : state_.selectedWidget();
                     const bool pinnedInvalidation =
                         pinnedSurfaceCoordinator_.pinned() &&
                         pinnedSurfaceCoordinator_.widgetId() == invalidatedWidget;
-                    if ((state_.surface() != gba::Surface::Hidden &&
+                    if ((state_.surface() != widgetrail::Surface::Hidden &&
                          currentWidget == invalidatedWidget) || pinnedInvalidation) {
                         RefreshAndApplyPresentation([&] {
                             RefreshWidgetSnapshot(invalidatedWidget);
@@ -1758,12 +1758,12 @@ private:
                 for (std::size_t index = 0; index < actionFeedback.count; ++index) {
                     const auto& failure = actionFailures[index];
                     const auto outcome = actionFeedback.OutcomeAt(index);
-                    if (outcome == gba::WidgetActionFeedbackOutcome::Stale) {
+                    if (outcome == widgetrail::WidgetActionFeedbackOutcome::Stale) {
                         AppendDiagnostic(
                             L"Dropped stale widget action failure for " + failure.widgetId);
                         continue;
                     }
-                    if (outcome == gba::WidgetActionFeedbackOutcome::Refused) {
+                    if (outcome == widgetrail::WidgetActionFeedbackOutcome::Refused) {
                         AppendDiagnostic(
                             L"Dropped widget action feedback at the bounded presentation seam for " +
                             failure.widgetId);
@@ -1778,7 +1778,7 @@ private:
                                 failure.widgetId,
                                 failureDescriptor->presentationGeneration,
                                 *failureSnapshot);
-                        const auto* source = gba::input::FindNodeInInputScope(
+                        const auto* source = widgetrail::input::FindNodeInInputScope(
                             presentationSnapshot, failure.sourceElementId,
                             presentationSnapshot.activeInputScopeId);
                         if (source && source->kind == L"slider" &&
@@ -1794,15 +1794,15 @@ private:
                         L"Widget action failed: widget=" + failure.widgetId +
                         L" generation=" + failure.runtimeGeneration +
                         L" code=" +
-                        std::wstring(gba::WidgetActionFailureCodeValue(failure.code)) +
+                        std::wstring(widgetrail::WidgetActionFailureCodeValue(failure.code)) +
                         L" action=" + failure.actionId +
                         L" source=" + failure.sourceElementId);
                 }
                 for (const auto& effect : bridge_.TakeHostEffects()) {
                     const auto* descriptor = sessions_.FindDescriptor(effect.widgetId);
                     const bool currentInteractiveWidget =
-                        state_.surface() == gba::Surface::Widget &&
-                        state_.focusRegion() == gba::FocusRegion::Widget &&
+                        state_.surface() == widgetrail::Surface::Widget &&
+                        state_.focusRegion() == widgetrail::FocusRegion::Widget &&
                         state_.activeWidget() == effect.widgetId &&
                         descriptor &&
                         descriptor->runtimeGeneration == effect.runtimeGeneration;
@@ -1813,21 +1813,21 @@ private:
                         continue;
                     }
                     if (effect.kind ==
-                        gba::WidgetHostEffectKind::CloseOverlayAfterAppLaunch) {
+                        widgetrail::WidgetHostEffectKind::CloseOverlayAfterAppLaunch) {
                         AppendDiagnostic(
                             L"Closing overlay after confirmed app launch from " +
                             effect.widgetId);
-                        Dispatch(gba::Command::CloseOverlay);
+                        Dispatch(widgetrail::Command::CloseOverlay);
                         break;
                     }
                 }
             } else if (wParam == kGuideCompatibilityTimer) {
-                GbaOverlayPlatformEvent event;
-                std::uint32_t hasEvent = GBA_OVERLAY_PLATFORM_FALSE;
-                if (GbaOverlayPlatformPollLegacyGuide(
+                WidgetRailOverlayPlatformEvent event;
+                std::uint32_t hasEvent = WRAIL_OVERLAY_PLATFORM_FALSE;
+                if (WidgetRailOverlayPlatformPollLegacyGuide(
                         platform_, GetTickCount64(), &event, &hasEvent) ==
-                        GbaOverlayPlatformStatus::Ok &&
-                    hasEvent != GBA_OVERLAY_PLATFORM_FALSE) {
+                        WidgetRailOverlayPlatformStatus::Ok &&
+                    hasEvent != WRAIL_OVERLAY_PLATFORM_FALSE) {
                     HandlePlatformEvent(event);
                 }
             } else if (wParam == kZOrderSettleTimer) {
@@ -1841,21 +1841,21 @@ private:
                 }
             } else if (wParam == kForegroundLossTimer) {
                 KillTimer(window_, kForegroundLossTimer);
-                if (state_.surface() != gba::Surface::Hidden) {
+                if (state_.surface() != widgetrail::Surface::Hidden) {
                     const HWND foreground = GetForegroundWindow();
                     const bool valid = foreground && IsWindow(foreground);
                     DWORD processId = 0;
                     if (valid) (void)GetWindowThreadProcessId(foreground, &processId);
-                    if (gba::input::DecideVisibleForegroundTransition(
+                    if (widgetrail::input::DecideVisibleForegroundTransition(
                             true, valid, processId == GetCurrentProcessId()) ==
-                        gba::input::VisibleForegroundTransition::CloseOverlay) {
-                        (void)GbaOverlayPlatformObserveForegroundTarget(
+                        widgetrail::input::VisibleForegroundTransition::CloseOverlay) {
+                        (void)WidgetRailOverlayPlatformObserveForegroundTarget(
                             platform_,
                             reinterpret_cast<std::uintptr_t>(foreground),
-                            GBA_OVERLAY_PLATFORM_TRUE);
+                            WRAIL_OVERLAY_PLATFORM_TRUE);
                         AppendDiagnostic(
                             L"Application deactivation closed the overlay");
-                        Dispatch(gba::Command::CloseOverlay);
+                        Dispatch(widgetrail::Command::CloseOverlay);
                     }
                 }
             } else if (wParam == kActionFeedbackTimer) {
@@ -1864,7 +1864,7 @@ private:
             }
             return 0;
         case WM_ACTIVATEAPP:
-            if (state_.surface() != gba::Surface::Hidden) {
+            if (state_.surface() != widgetrail::Surface::Hidden) {
                 if (wParam == FALSE) {
                     // Foreground assignment can lag WM_ACTIVATEAPP. Defer one
                     // bounded check and close only with a valid external HWND.
@@ -1882,7 +1882,7 @@ private:
         {
             const auto width = static_cast<unsigned int>(LOWORD(lParam));
             const auto height = static_cast<unsigned int>(HIWORD(lParam));
-            const auto resize = gba::PlanRenderTargetResize(
+            const auto resize = widgetrail::PlanRenderTargetResize(
                 static_cast<bool>(hwndRenderTarget_), wParam == SIZE_MINIMIZED,
                 width, height);
             if (!compositionSurface_.available() && resize.resizeInPlace) {
@@ -1914,20 +1914,20 @@ private:
         }
         case WM_DPICHANGED:
             if (accessibilityActive_) ClearAccessibilityTree();
-            QueueDisplayEnvironmentRefresh(gba::DisplayEnvironmentChange::Dpi);
+            QueueDisplayEnvironmentRefresh(widgetrail::DisplayEnvironmentChange::Dpi);
             return 0;
         case WM_DISPLAYCHANGE:
             // Display topology may change without a DPI transition. Recreate
             // the target so viewport-relative shell styles use fresh metrics.
             if (accessibilityActive_) ClearAccessibilityTree();
-            QueueDisplayEnvironmentRefresh(gba::DisplayEnvironmentChange::Topology);
+            QueueDisplayEnvironmentRefresh(widgetrail::DisplayEnvironmentChange::Topology);
             return 0;
         case WM_SETTINGCHANGE:
             // SPI_SETWORKAREA/taskbar changes and accessibility/theme changes
             // share this notification. Always re-read monitor work-area data,
             // even when the bridge has not supplied an appearance revision.
             if (accessibilityActive_) ClearAccessibilityTree();
-            QueueDisplayEnvironmentRefresh(gba::DisplayEnvironmentChange::SystemSettings);
+            QueueDisplayEnvironmentRefresh(widgetrail::DisplayEnvironmentChange::SystemSettings);
             return 0;
         case WM_WINDOWPOSCHANGED:
             if (accessibilityActive_ &&
@@ -1935,7 +1935,7 @@ private:
                 !accessibilityTree_.widgetId.empty())
                 (void)PublishAccessibilityTree(
                     static_cast<double>(std::max(1U, GetDpiForWindow(window_))) / 96.0);
-            if (state_.surface() != gba::Surface::Hidden &&
+            if (state_.surface() != widgetrail::Surface::Hidden &&
                 (GetWindowLongPtrW(window_, GWL_EXSTYLE) & WS_EX_TOPMOST) == 0) {
                 SetTimer(window_, kZOrderSettleTimer, 80, nullptr);
             }
@@ -1969,7 +1969,7 @@ private:
         }
         pinnedSurfaceCoordinator_.Dispose();
         DiscardGraphicsResources();
-        gba::shell::ResetFixedChromeComposition(
+        widgetrail::shell::ResetFixedChromeComposition(
             compositionSurface_, chromeWindow_);
         retainedGuidePaintKey_.clear();
         retainedTrayPaintState_.reset();
@@ -1997,7 +1997,7 @@ private:
             UnregisterHotKey(window_, kDeveloperHotkey);
         }
         if (platform_) {
-            GbaOverlayPlatformShutdown(platform_);
+            WidgetRailOverlayPlatformShutdown(platform_);
         }
         if (foregroundHook_) {
             UnhookWinEvent(foregroundHook_);
@@ -2017,7 +2017,7 @@ private:
             backdropBrush_ = nullptr;
         }
         if (platform_) {
-            GbaOverlayPlatformDestroy(platform_);
+            WidgetRailOverlayPlatformDestroy(platform_);
             platform_ = nullptr;
         }
         if (runtimeInitialized_) {
@@ -2029,7 +2029,7 @@ private:
     template <typename Mutation>
     void ApplyStateTransition(
         Mutation mutation,
-        const std::optional<gba::Command> command = std::nullopt) {
+        const std::optional<widgetrail::Command> command = std::nullopt) {
         const auto priorSurface = state_.surface();
         const auto priorFocusRegion = state_.focusRegion();
         const auto priorDesiredExtent = DesiredPresentationExtentDip();
@@ -2040,12 +2040,12 @@ private:
         const auto priorPresentedExtent = PresentedPresentationExtentDip();
         const std::wstring priorSelected(state_.selectedWidget());
         const std::wstring priorActive(state_.activeWidget());
-        const auto priorDesiredLifecycle = gba::DesiredWidgetLifecycle(
+        const auto priorDesiredLifecycle = widgetrail::DesiredWidgetLifecycle(
             priorSurface, priorFocusRegion, priorSelected, priorActive,
             IsBridgeWidget(priorSelected), IsBridgeWidget(priorActive));
-        if (priorSurface == gba::Surface::Widget)
+        if (priorSurface == widgetrail::Surface::Widget)
             CommitAdmittedWidgetPresentation(priorActive);
-        if (priorSurface == gba::Surface::Widget && IsBridgeWidget(priorActive)) {
+        if (priorSurface == widgetrail::Surface::Widget && IsBridgeWidget(priorActive)) {
             RememberCurrentFocus(priorActive);
         }
         const auto before = state_.persistent();
@@ -2074,8 +2074,8 @@ private:
             ClearAccessibilityTree();
         }
         const bool deferColdWidgetStart =
-            priorSurface == gba::Surface::Widget &&
-            state_.surface() == gba::Surface::Widget &&
+            priorSurface == widgetrail::Surface::Widget &&
+            state_.surface() == widgetrail::Surface::Widget &&
             priorActive != state_.activeWidget() &&
             IsBridgeWidget(state_.activeWidget()) &&
             SnapshotFor(state_.activeWidget()) == nullptr;
@@ -2083,49 +2083,49 @@ private:
             priorSelected != state_.selectedWidget() ||
             priorActive != state_.activeWidget();
         if (selectionAuthorityChanged ||
-            state_.surface() == gba::Surface::Hidden) {
+            state_.surface() == widgetrail::Surface::Hidden) {
             pendingWidgetSwitchSnap_.reset();
         }
-        const std::wstring traceWidget = state_.surface() == gba::Surface::Widget
+        const std::wstring traceWidget = state_.surface() == widgetrail::Surface::Widget
             ? std::wstring(state_.activeWidget())
             : std::wstring(state_.selectedWidget());
         const auto now = GetTickCount64();
         std::uint64_t correlationId{};
         if (selectionAuthorityChanged &&
-            state_.surface() != gba::Surface::Hidden &&
+            state_.surface() != widgetrail::Surface::Hidden &&
             IsBridgeWidget(traceWidget)) {
             correlationId = admissionTrace_.BeginSelection(
                 state_.selectedWidget(), state_.activeWidget(),
                 deferColdWidgetStart, SnapshotFor(traceWidget) != nullptr, now);
             admissionTraceWidget_ = traceWidget;
             admissionTraceCorrelationId_ = correlationId;
-        } else if (command == gba::Command::Activate &&
+        } else if (command == widgetrail::Command::Activate &&
                    admissionTraceWidget_ == traceWidget) {
             correlationId = admissionTraceCorrelationId_;
         }
         SyncWidgetActivity(
             deferColdWidgetStart, correlationId,
             correlationId != 0 ? traceWidget : std::wstring_view{});
-        const auto nextDesiredLifecycle = gba::DesiredWidgetLifecycle(
+        const auto nextDesiredLifecycle = widgetrail::DesiredWidgetLifecycle(
             state_.surface(), state_.focusRegion(),
             state_.selectedWidget(), state_.activeWidget(),
             IsBridgeWidget(state_.selectedWidget()),
             IsBridgeWidget(state_.activeWidget()));
-        if (command == gba::Command::Activate && correlationId != 0 &&
+        if (command == widgetrail::Command::Activate && correlationId != 0 &&
             priorDesiredLifecycle && nextDesiredLifecycle &&
             priorDesiredLifecycle->widgetId == nextDesiredLifecycle->widgetId) {
             admissionTrace_.RecordMeaningfulInteractive(
                 correlationId, nextDesiredLifecycle->widgetId,
                 priorDesiredLifecycle->state, nextDesiredLifecycle->state, now);
         }
-        if (state_.surface() == gba::Surface::Widget &&
+        if (state_.surface() == widgetrail::Surface::Widget &&
             priorFocusRegion != state_.focusRegion() &&
-            state_.focusRegion() == gba::FocusRegion::Widget) {
+            state_.focusRegion() == widgetrail::FocusRegion::Widget) {
             RestoreFocusForActiveSurface(state_.activeWidget());
         }
 
-        if (priorSurface == gba::Surface::Hidden &&
-            state_.surface() != gba::Surface::Hidden) {
+        if (priorSurface == widgetrail::Surface::Hidden &&
+            state_.surface() != widgetrail::Surface::Hidden) {
             RequestFixedChromeAnchorRefresh(
                 FixedChromePlacementReason::NewVisibleSession);
             if (awaitingSuccessfulOpenPaint_ || !IsWindowVisible(window_)) {
@@ -2138,14 +2138,14 @@ private:
             }
             AdvanceOverlayTransition(now);
         }
-        const bool revealWidgetContent = gba::ShouldRevealWidgetContent(
-                priorSurface == gba::Surface::Widget, priorActive,
-                state_.surface() == gba::Surface::Widget,
+        const bool revealWidgetContent = widgetrail::ShouldRevealWidgetContent(
+                priorSurface == widgetrail::Surface::Widget, priorActive,
+                state_.surface() == widgetrail::Surface::Widget,
                 state_.activeWidget());
         const bool trayDrivenWidgetSwitch =
-            priorSurface == gba::Surface::Widget &&
-            state_.surface() == gba::Surface::Widget &&
-            priorFocusRegion == gba::FocusRegion::Tray &&
+            priorSurface == widgetrail::Surface::Widget &&
+            state_.surface() == widgetrail::Surface::Widget &&
+            priorFocusRegion == widgetrail::FocusRegion::Tray &&
             priorActive != state_.activeWidget();
         const bool snapTrayDrivenWidgetSwitch =
             trayDrivenWidgetSwitch && !WidgetSwitchAnimationEnabled();
@@ -2155,18 +2155,18 @@ private:
             else
                 RequestWidgetContentReveal(state_.activeWidget());
         }
-        if (gba::ShouldSnapWidgetContentVisible(
-                state_.surface() == gba::Surface::Widget,
-                priorFocusRegion == gba::FocusRegion::Widget,
-                state_.focusRegion() == gba::FocusRegion::Widget)) {
+        if (widgetrail::ShouldSnapWidgetContentVisible(
+                state_.surface() == widgetrail::Surface::Widget,
+                priorFocusRegion == widgetrail::FocusRegion::Widget,
+                state_.focusRegion() == widgetrail::FocusRegion::Widget)) {
             SnapWidgetContentVisible();
         }
-        if (state_.surface() == gba::Surface::Hidden) {
+        if (state_.surface() == widgetrail::Surface::Hidden) {
             pendingContentRevealWidget_.clear();
         }
 
         const bool awaitingIncomingSnapshot =
-            state_.surface() == gba::Surface::Widget &&
+            state_.surface() == widgetrail::Surface::Widget &&
             IsBridgeWidget(state_.activeWidget()) &&
             SnapshotFor(state_.activeWidget()) == nullptr;
         if (snapTrayDrivenWidgetSwitch && awaitingIncomingSnapshot &&
@@ -2182,20 +2182,20 @@ private:
             }
         }
 
-        if (state_.surface() != gba::Surface::Hidden) {
+        if (state_.surface() != widgetrail::Surface::Hidden) {
             const bool enteredBridgeWidget =
-                state_.surface() == gba::Surface::Widget && IsBridgeWidget(state_.activeWidget()) &&
-                (priorSurface != gba::Surface::Widget || priorActive != state_.activeWidget());
+                state_.surface() == widgetrail::Surface::Widget && IsBridgeWidget(state_.activeWidget()) &&
+                (priorSurface != widgetrail::Surface::Widget || priorActive != state_.activeWidget());
             const bool hoveredBridgeWidget =
-                state_.surface() == gba::Surface::Dashboard && IsBridgeWidget(state_.selectedWidget()) &&
-                (priorSurface != gba::Surface::Dashboard || priorSelected != state_.selectedWidget());
+                state_.surface() == widgetrail::Surface::Dashboard && IsBridgeWidget(state_.selectedWidget()) &&
+                (priorSurface != widgetrail::Surface::Dashboard || priorSelected != state_.selectedWidget());
             const bool startupFailureBlocksSnapshot =
                 (enteredBridgeWidget && sessions_.Failure(state_.activeWidget())) ||
                 (hoveredBridgeWidget && sessions_.Failure(state_.selectedWidget()));
-            if (priorSurface == gba::Surface::Hidden) {
+            if (priorSurface == widgetrail::Surface::Hidden) {
                 PostMessageW(window_, kCatalogRefreshMessage, 0, 0);
             }
-            if (priorSurface != gba::Surface::Hidden &&
+            if (priorSurface != widgetrail::Surface::Hidden &&
                 (enteredBridgeWidget || hoveredBridgeWidget) &&
                 !startupFailureBlocksSnapshot) {
                 const bool posted = PostMessageW(
@@ -2207,19 +2207,19 @@ private:
         }
         const auto nextExtent = DesiredPresentationExtentDip();
         if (compositionSurface_.available() &&
-            priorSurface == gba::Surface::Widget &&
-            state_.surface() == gba::Surface::Widget &&
+            priorSurface == widgetrail::Surface::Widget &&
+            state_.surface() == widgetrail::Surface::Widget &&
             priorActive != state_.activeWidget() &&
             awaitingIncomingSnapshot) {
             presentationTransaction_.HoldPresentedExtent(priorPresentedExtent);
         }
         const bool destinationSnapshotAdmitted =
-            state_.surface() == gba::Surface::Widget &&
+            state_.surface() == widgetrail::Surface::Widget &&
             (!IsBridgeWidget(state_.activeWidget()) ||
              SnapshotFor(state_.activeWidget()) != nullptr);
         const bool animateWidgetExtent =
-            priorSurface == gba::Surface::Widget &&
-            state_.surface() == gba::Surface::Widget &&
+            priorSurface == widgetrail::Surface::Widget &&
+            state_.surface() == widgetrail::Surface::Widget &&
             priorExtent != nextExtent && destinationSnapshotAdmitted &&
             !snapTrayDrivenWidgetSwitch;
         if (snapTrayDrivenWidgetSwitch && destinationSnapshotAdmitted) {
@@ -2230,16 +2230,16 @@ private:
                    destinationSnapshotAdmitted &&
                    priorPresentedExtent == nextExtent) {
             presentationTransaction_.ReleasePresentedExtent();
-        } else if (state_.surface() != gba::Surface::Widget) {
+        } else if (state_.surface() != widgetrail::Surface::Widget) {
             presentationTransaction_.SettleExtent(nextExtent, now, true);
         }
-        const auto presentation = gba::DecideOverlayPresentation(
-            priorSurface != gba::Surface::Hidden,
-            state_.surface() != gba::Surface::Hidden,
+        const auto presentation = widgetrail::DecideOverlayPresentation(
+            priorSurface != widgetrail::Surface::Hidden,
+            state_.surface() != widgetrail::Surface::Hidden,
             priorExtent,
             nextExtent);
-        if (priorSurface == gba::Surface::Widget &&
-            state_.surface() == gba::Surface::Widget &&
+        if (priorSurface == widgetrail::Surface::Widget &&
+            state_.surface() == widgetrail::Surface::Widget &&
             (priorActive != state_.activeWidget() || priorExtent != nextExtent)) {
             const bool identityChanged = priorActive != state_.activeWidget();
             const bool extentChanged = priorExtent != nextExtent;
@@ -2293,13 +2293,13 @@ private:
         (void)ReconcileResponsiveFocusPersistence();
     }
 
-    void Dispatch(const gba::Command command) {
-        if (command == gba::Command::Activate &&
-            state_.focusRegion() == gba::FocusRegion::Tray &&
+    void Dispatch(const widgetrail::Command command) {
+        if (command == widgetrail::Command::Activate &&
+            state_.focusRegion() == widgetrail::FocusRegion::Tray &&
             UsesLauncherExperiencePresentation(state_.selectedWidget())) {
             launcherExperienceProjection_.BeginActivation(
                 std::exchange(launcherSafeStartPending_, false));
-        } else if (command == gba::Command::Activate) {
+        } else if (command == widgetrail::Command::Activate) {
             launcherSafeStartPending_ = false;
         }
         ApplyStateTransition(
@@ -2316,16 +2316,16 @@ private:
         return accepted;
     }
 
-    const gba::WidgetComputedStyle& ShellComputedStyle(
+    const widgetrail::WidgetComputedStyle& ShellComputedStyle(
         const std::wstring_view key) const noexcept {
-        static const gba::WidgetComputedStyle empty;
+        static const widgetrail::WidgetComputedStyle empty;
         const auto& current = appearanceState_.current();
         if (!current) return empty;
         const auto found = current->shellStyles.find(std::wstring(key));
         return found == current->shellStyles.end() ? empty : found->second;
     }
 
-    gba::NativeAccessibilityPolicy CurrentAccessibilityPolicy() const {
+    widgetrail::NativeAccessibilityPolicy CurrentAccessibilityPolicy() const {
         const auto& current = appearanceState_.current();
         if (!current) return {};
 
@@ -2339,18 +2339,18 @@ private:
                                    &animationsEnabled, 0)) {
             animationsEnabled = TRUE;
         }
-        return gba::CreateNativeAccessibilityPolicy(
+        return widgetrail::CreateNativeAccessibilityPolicy(
             *current, systemHighContrast, animationsEnabled != FALSE);
     }
 
-    gba::NativeRenderStyle AdaptShellStyle(
+    widgetrail::NativeRenderStyle AdaptShellStyle(
         const std::wstring_view key,
         const bool focused = false,
         const float viewportWidth = static_cast<float>(kPanelWidth),
         const float viewportHeight = static_cast<float>(kWidgetPanelHeight),
-        const std::optional<gba::NativeColor>& inheritedBackground = std::nullopt,
-        const std::optional<gba::NativeColor>& fallbackBackground = std::nullopt) const {
-        gba::NativeStyleContext context;
+        const std::optional<widgetrail::NativeColor>& inheritedBackground = std::nullopt,
+        const std::optional<widgetrail::NativeColor>& fallbackBackground = std::nullopt) const {
+        widgetrail::NativeStyleContext context;
         context.viewportWidthPx = viewportWidth;
         context.viewportHeightPx = viewportHeight;
         context.parentWidthPx = context.viewportWidthPx;
@@ -2361,7 +2361,7 @@ private:
         context.effectiveBackground = inheritedBackground;
         context.fallbackBackground = fallbackBackground;
         const auto accessibility = CurrentAccessibilityPolicy();
-        auto result = gba::NativeStyleAdapter::Adapt(
+        auto result = widgetrail::NativeStyleAdapter::Adapt(
             ShellComputedStyle(key), context, accessibility);
         for (const auto& diagnostic : result.diagnostics) {
             AppendDiagnostic(L"Platform shell style " + std::wstring(key) + L" " +
@@ -2376,20 +2376,20 @@ private:
         canvasStyle_ = AdaptShellStyle(
             L"canvas", false, viewportWidth, viewportHeight,
             kSafeCanvasFallback, kDefaultCanvas);
-        effectiveCanvasBackground_ = gba::ResolveNativeSurfaceColor(
+        effectiveCanvasBackground_ = widgetrail::ResolveNativeSurfaceColor(
             canvasStyle_.background().has_value()
                 ? canvasStyle_.background()
-                : std::optional<gba::NativeColor>{kDefaultCanvas},
+                : std::optional<widgetrail::NativeColor>{kDefaultCanvas},
             kSafeCanvasFallback,
             canvasStyle_.opacity());
         backdropStyle_ = AdaptShellStyle(L"backdrop", false, viewportWidth, viewportHeight);
         panelStyle_ = AdaptShellStyle(
             L"panel", false, viewportWidth, viewportHeight,
             effectiveCanvasBackground_, kDefaultPanel);
-        effectivePanelBackground_ = gba::ResolveNativeSurfaceColor(
+        effectivePanelBackground_ = widgetrail::ResolveNativeSurfaceColor(
             panelStyle_.background().has_value()
                 ? panelStyle_.background()
-                : std::optional<gba::NativeColor>{kDefaultPanel},
+                : std::optional<widgetrail::NativeColor>{kDefaultPanel},
             effectiveCanvasBackground_,
             panelStyle_.opacity());
         trayStyle_ = AdaptShellStyle(
@@ -2397,8 +2397,8 @@ private:
             effectiveCanvasBackground_, effectiveCanvasBackground_);
         const auto trayLayer = trayStyle_.background().has_value()
             ? trayStyle_.background()
-            : std::optional<gba::NativeColor>{effectiveCanvasBackground_};
-        effectiveTrayBackground_ = gba::ResolveNativeSurfaceColor(
+            : std::optional<widgetrail::NativeColor>{effectiveCanvasBackground_};
+        effectiveTrayBackground_ = widgetrail::ResolveNativeSurfaceColor(
             trayLayer, effectiveCanvasBackground_, trayStyle_.opacity());
         trayItemStyle_ = AdaptShellStyle(
             L"tray-item", false, viewportWidth, viewportHeight,
@@ -2435,7 +2435,7 @@ private:
         RebuildShellStyles();
 
         const auto backdropColor = backdropStyle_.background().value_or(
-            gba::NativeColor{0, 0, 0, 1});
+            widgetrail::NativeColor{0, 0, 0, 1});
         if (HBRUSH replacement = CreateSolidBrush(GdiColor(backdropColor))) {
             if (backdropBrush_) DeleteObject(backdropBrush_);
             backdropBrush_ = replacement;
@@ -2460,24 +2460,24 @@ private:
             // from the same platform revision. Appearance invalidates those
             // derived projections and requests a refresh; it does not erase
             // the last admitted semantic checkpoint or wake hidden workers.
-            const std::wstring visibleWidget = state_.surface() == gba::Surface::Widget
+            const std::wstring visibleWidget = state_.surface() == widgetrail::Surface::Widget
                 ? std::wstring(state_.activeWidget())
                 : std::wstring(state_.selectedWidget());
             const bool hadVisibleSnapshot = SnapshotFor(visibleWidget) != nullptr;
             sessions_.MarkAllRefreshRequested();
             renderedSnapshotSequences_.clear();
-            if (state_.surface() != gba::Surface::Hidden && hadVisibleSnapshot &&
+            if (state_.surface() != widgetrail::Surface::Hidden && hadVisibleSnapshot &&
                 IsBridgeWidget(visibleWidget)) {
                 RefreshWidgetSnapshot(visibleWidget);
             }
         }
 
-        if (applyPresentation && state_.surface() != gba::Surface::Hidden) {
+        if (applyPresentation && state_.surface() != widgetrail::Surface::Hidden) {
             RequestFixedChromeAnchorRefresh(
                 FixedChromePlacementReason::Appearance);
         }
         DiscardGraphicsResources();
-        if (applyPresentation && state_.surface() != gba::Surface::Hidden) {
+        if (applyPresentation && state_.surface() != widgetrail::Surface::Hidden) {
             ShowOverlay();
             InvalidateRect(window_, nullptr, FALSE);
         }
@@ -2514,7 +2514,7 @@ private:
     }
 
     bool SelectLauncherExperience(
-        const gba::LauncherExperienceSelectionRequest& request) {
+        const widgetrail::LauncherExperienceSelectionRequest& request) {
         auto selection = bridge_.SelectLauncherExperience(request);
         if (!selection) {
             AppendDiagnostic(
@@ -2525,7 +2525,7 @@ private:
         return PublishLauncherExperience(std::move(*selection));
     }
 
-    bool PublishLauncherExperience(gba::LauncherExperienceSelection selection) {
+    bool PublishLauncherExperience(widgetrail::LauncherExperienceSelection selection) {
         const long long revision = selection.revision;
         std::wstring diagnostic;
         if (!launcherExperienceProjection_.PublishSelection(
@@ -2539,7 +2539,7 @@ private:
             L"Applied Launcher Experience revision " + std::to_wstring(revision) +
             L" validated=compact@100%,compact@150%,standard@100%,standard@150%,wide@100%,wide@150%" +
             (diagnostic.empty() ? L"" : L" retained-diagnostic=" + diagnostic));
-        if (state_.surface() != gba::Surface::Hidden)
+        if (state_.surface() != widgetrail::Surface::Hidden)
             InvalidateRect(window_, nullptr, FALSE);
         return true;
     }
@@ -2571,20 +2571,20 @@ private:
                 cursor = end + 1;
             }
         }
-        if (cursor != payload.size() || fields[0] != L"gba-launcher-selection-v1" ||
+        if (cursor != payload.size() || fields[0] != L"wrail-launcher-selection-v1" ||
             fields[1] != *performanceDiagnosticsNonce_) return false;
 
-        gba::LauncherExperienceSelectionRequest request;
+        widgetrail::LauncherExperienceSelectionRequest request;
         if (fields[2] == L"select-exact" && !fields[3].empty() &&
             !fields[4].empty()) {
             request.operation =
-                gba::LauncherExperienceSelectionOperation::SelectExact;
+                widgetrail::LauncherExperienceSelectionOperation::SelectExact;
             request.id = fields[3];
             request.version = fields[4];
         } else if (fields[2] == L"recover-built-in" && fields[3].empty() &&
                    fields[4].empty()) {
             request.operation =
-                gba::LauncherExperienceSelectionOperation::RecoverBuiltIn;
+                widgetrail::LauncherExperienceSelectionOperation::RecoverBuiltIn;
         } else {
             return false;
         }
@@ -2593,9 +2593,9 @@ private:
         return SelectLauncherExperience(request);
     }
 
-    void QueueDisplayEnvironmentRefresh(const gba::DisplayEnvironmentChange change) {
+    void QueueDisplayEnvironmentRefresh(const widgetrail::DisplayEnvironmentChange change) {
         if (displayRefresh_.Enqueue(
-                state_.surface() != gba::Surface::Hidden, change)) {
+                state_.surface() != widgetrail::Surface::Hidden, change)) {
             if (!PostMessageW(window_, kDisplayRefreshMessage, 0, 0)) {
                 // A live HWND should accept its private message, but never
                 // strand the accumulator if the queue is temporarily full.
@@ -2609,7 +2609,7 @@ private:
     void ApplyPendingDisplayEnvironmentRefresh() {
         const auto plan = displayRefresh_.Take();
         pinnedSurfaceCoordinator_.ReconcileDisplayEnvironment();
-        if (state_.surface() == gba::Surface::Hidden) return;
+        if (state_.surface() == widgetrail::Surface::Hidden) return;
         if (!plan.repositionWindows) return;
 
         RequestFixedChromeAnchorRefresh(
@@ -2631,7 +2631,7 @@ private:
         InvalidateRect(window_, nullptr, FALSE);
     }
 
-    void ApplyWidgetCatalogChange(const gba::WidgetSessionCatalogChange& change) {
+    void ApplyWidgetCatalogChange(const widgetrail::WidgetSessionCatalogChange& change) {
         const auto& descriptors = sessions_.descriptors();
         if (pendingWidgetSwitchSnap_) {
             const auto* descriptor =
@@ -2667,10 +2667,10 @@ private:
             return !sessions_.Contains(entry.first);
         });
         const std::wstring runtimeRevealWidget =
-            state_.surface() == gba::Surface::Widget &&
+            state_.surface() == widgetrail::Surface::Widget &&
                     std::any_of(
                         change.runtimeChanges.begin(), change.runtimeChanges.end(),
-                        [&](const gba::WidgetSessionRuntimeChange& runtime) {
+                        [&](const widgetrail::WidgetSessionRuntimeChange& runtime) {
                             return runtime.widgetId == state_.activeWidget();
                         })
                 ? std::wstring(state_.activeWidget())
@@ -2682,7 +2682,7 @@ private:
         const bool catalogOrderChanged =
             change.availableWidgetIds != state_.order();
         if (catalogOrderChanged &&
-            state_.surface() != gba::Surface::Hidden) {
+            state_.surface() != widgetrail::Surface::Hidden) {
             RequestFixedChromeAnchorRefresh(
                 FixedChromePlacementReason::CatalogOrder);
         }
@@ -2697,17 +2697,17 @@ private:
             // publish the new catalog even when stable IDs and selection did
             // not move.
             SyncWidgetActivity();
-            if (state_.surface() != gba::Surface::Hidden && window_)
+            if (state_.surface() != widgetrail::Surface::Hidden && window_)
                 InvalidateRect(window_, nullptr, FALSE);
         }
-        if (state_.surface() != gba::Surface::Hidden && window_) {
+        if (state_.surface() != widgetrail::Surface::Hidden && window_) {
             // Catalog events and pointer messages share this UI thread. Commit
             // the replacement tray before returning to the message queue so
             // old pixels can never dispatch through new slot geometry.
             UpdateWindow(window_);
         }
         if (!runtimeRevealWidget.empty() &&
-            state_.surface() == gba::Surface::Widget &&
+            state_.surface() == widgetrail::Surface::Widget &&
             state_.activeWidget() == runtimeRevealWidget) {
             AppendDiagnostic(
                 L"Widget presentation transition from=" + runtimeRevealWidget +
@@ -2732,8 +2732,8 @@ private:
     void RecordWidgetStartupFailure(
         const std::wstring_view widgetId,
         const std::wstring_view safeFailure,
-        const gba::WidgetSessionFailureStage stage =
-            gba::WidgetSessionFailureStage::Snapshot,
+        const widgetrail::WidgetSessionFailureStage stage =
+            widgetrail::WidgetSessionFailureStage::Snapshot,
         const bool revokeCurrentGeneration = false) {
         if (pendingWidgetSwitchSnap_ &&
             pendingWidgetSwitchSnap_->widgetId == widgetId) {
@@ -2746,7 +2746,7 @@ private:
             sessions_.RecordRuntimeFailure(widgetId, stage, message);
         else
             sessions_.RecordFailure(widgetId, stage, message);
-        if (state_.surface() == gba::Surface::Widget &&
+        if (state_.surface() == widgetrail::Surface::Widget &&
             state_.activeWidget() == widgetId) {
             (void)sliderInteraction_.DeactivateAll();
             (void)pressedInteraction_.Clear();
@@ -2762,8 +2762,8 @@ private:
         const bool deferColdWidgetStart = false,
         const std::uint64_t correlationId = 0,
         const std::wstring_view correlationWidgetId = {}) {
-        std::map<std::wstring, gba::WidgetLifecycleState, std::less<>> desiredStates;
-        const auto overlayDesired = gba::DesiredWidgetLifecycle(
+        std::map<std::wstring, widgetrail::WidgetLifecycleState, std::less<>> desiredStates;
+        const auto overlayDesired = widgetrail::DesiredWidgetLifecycle(
             state_.surface(), state_.focusRegion(),
             state_.selectedWidget(), state_.activeWidget(),
             IsBridgeWidget(state_.selectedWidget()),
@@ -2775,13 +2775,13 @@ private:
             const std::wstring pinnedId(pinnedSurfaceCoordinator_.widgetId());
             const auto pinnedState =
                 pinnedSurfaceCoordinator_.interactionMode() ==
-                        gba::pinned::InteractionMode::Focusable
-                    ? gba::WidgetLifecycleState::Interactive
-                    : gba::WidgetLifecycleState::Visible;
+                        widgetrail::pinned::InteractionMode::Focusable
+                    ? widgetrail::WidgetLifecycleState::Interactive
+                    : widgetrail::WidgetLifecycleState::Visible;
             const auto existing = desiredStates.find(pinnedId);
             if (existing == desiredStates.end() ||
-                (existing->second == gba::WidgetLifecycleState::Visible &&
-                 pinnedState == gba::WidgetLifecycleState::Interactive)) {
+                (existing->second == widgetrail::WidgetLifecycleState::Visible &&
+                 pinnedState == widgetrail::WidgetLifecycleState::Interactive)) {
                 desiredStates.insert_or_assign(pinnedId, pinnedState);
             }
         }
@@ -2793,17 +2793,17 @@ private:
 
     void ProcessWidgetSessionEvents() {
         for (auto& event : sessions_.TakeEvents()) {
-            if (event.kind == gba::WidgetSessionEventKind::CatalogChanged && event.catalog) {
+            if (event.kind == widgetrail::WidgetSessionEventKind::CatalogChanged && event.catalog) {
                 KillTimer(window_, kCatalogRetryTimer);
                 sessions_.ResetCatalogRetry();
                 ApplyWidgetCatalogChange(*event.catalog);
                 RefreshCurrentBridgeSnapshot();
                 continue;
             }
-            if (event.kind == gba::WidgetSessionEventKind::Failed) {
+            if (event.kind == widgetrail::WidgetSessionEventKind::Failed) {
                 if (event.widgetId.empty()) {
                     AppendDiagnostic(L"Widget catalog failed: " + event.failure.safeMessage);
-                    const bool active = state_.surface() != gba::Surface::Hidden ||
+                    const bool active = state_.surface() != widgetrail::Surface::Hidden ||
                                         pinnedSurfaceCoordinator_.pinned();
                     const auto delay = sessions_.NextCatalogRetryDelay(
                         false, bridge_.HasWidgetCatalogChangedRevisionInFlight(), active);
@@ -2819,20 +2819,20 @@ private:
                 if (pinnedSurfaceCoordinator_.pinned() &&
                     pinnedSurfaceCoordinator_.widgetId() == event.widgetId) {
                     (void)pinnedSurfaceCoordinator_.Unpin(
-                        gba::pinned::WidgetSurfaceStopReason::WorkerUnavailable);
+                        widgetrail::pinned::WidgetSurfaceStopReason::WorkerUnavailable);
                 }
                 continue;
             }
-            if (event.kind == gba::WidgetSessionEventKind::StaleCompletionRejected) {
+            if (event.kind == widgetrail::WidgetSessionEventKind::StaleCompletionRejected) {
                 AppendDiagnostic(
                     L"Dropped stale widget session completion for " + event.widgetId);
                 continue;
             }
-            if (event.kind == gba::WidgetSessionEventKind::Restarted) {
+            if (event.kind == widgetrail::WidgetSessionEventKind::Restarted) {
                 RefreshAndApplyPresentation([&] { SyncWidgetActivity(); });
                 continue;
             }
-            if (event.kind != gba::WidgetSessionEventKind::SnapshotAdmitted) continue;
+            if (event.kind != widgetrail::WidgetSessionEventKind::SnapshotAdmitted) continue;
             const auto* current = SnapshotFor(event.widgetId);
             if (!current) continue;
             if (event.completedRestart) {
@@ -2849,7 +2849,7 @@ private:
                     pinnedSurfaceCoordinator_.runtimeGeneration(),
                     *current);
             }
-            const auto currentWidget = state_.surface() == gba::Surface::Widget
+            const auto currentWidget = state_.surface() == widgetrail::Surface::Widget
                 ? state_.activeWidget()
                 : state_.selectedWidget();
             if (currentWidget != event.widgetId) {
@@ -2859,7 +2859,7 @@ private:
             }
             const bool newerRefreshRequested =
                 sessions_.RefreshState(event.widgetId) ==
-                    gba::WidgetRefreshState::RefreshRequested;
+                    widgetrail::WidgetRefreshState::RefreshRequested;
             const auto reconciledSliderNodes =
                 ReconcileSliderPresentations(*current, GetTickCount64());
             sliderReconcileAt_ = sliderInteraction_.NextReconcileDeadline()
@@ -2869,8 +2869,8 @@ private:
             if (pendingWidgetPresentationImpact_ &&
                 !reconciledSliderNodes.empty()) {
                 pendingWidgetPresentationImpact_->effects |=
-                    gba::WidgetPresentationEffect::Paint |
-                    gba::WidgetPresentationEffect::Accessibility;
+                    widgetrail::WidgetPresentationEffect::Paint |
+                    widgetrail::WidgetPresentationEffect::Accessibility;
                 for (const auto& nodeId : reconciledSliderNodes) {
                     auto& affected = pendingWidgetPresentationImpact_->affectedNodeIds;
                     if (std::find(affected.begin(), affected.end(), nodeId) ==
@@ -2893,24 +2893,24 @@ private:
             if (pressedVisualChanged)
                 InvalidateRect(window_, nullptr, FALSE);
             const bool semanticOnlyImpact = pendingWidgetPresentationImpact_ &&
-                !gba::HasWidgetPresentationEffect(
+                !widgetrail::HasWidgetPresentationEffect(
                     pendingWidgetPresentationImpact_->effects,
-                    gba::WidgetPresentationEffect::Paint) &&
-                !gba::HasWidgetPresentationEffect(
+                    widgetrail::WidgetPresentationEffect::Paint) &&
+                !widgetrail::HasWidgetPresentationEffect(
                     pendingWidgetPresentationImpact_->effects,
-                    gba::WidgetPresentationEffect::MeasureLayout) &&
-                !gba::HasWidgetPresentationEffect(
+                    widgetrail::WidgetPresentationEffect::MeasureLayout) &&
+                !widgetrail::HasWidgetPresentationEffect(
                     pendingWidgetPresentationImpact_->effects,
-                    gba::WidgetPresentationEffect::Resource) &&
-                !gba::HasWidgetPresentationEffect(
+                    widgetrail::WidgetPresentationEffect::Resource) &&
+                !widgetrail::HasWidgetPresentationEffect(
                     pendingWidgetPresentationImpact_->effects,
-                    gba::WidgetPresentationEffect::SurfacePlacement) &&
-                !gba::HasWidgetPresentationEffect(
+                    widgetrail::WidgetPresentationEffect::SurfacePlacement) &&
+                !widgetrail::HasWidgetPresentationEffect(
                     pendingWidgetPresentationImpact_->effects,
-                    gba::WidgetPresentationEffect::Structure) &&
-                !gba::HasWidgetPresentationEffect(
+                    widgetrail::WidgetPresentationEffect::Structure) &&
+                !widgetrail::HasWidgetPresentationEffect(
                     pendingWidgetPresentationImpact_->effects,
-                    gba::WidgetPresentationEffect::Unknown);
+                    widgetrail::WidgetPresentationEffect::Unknown);
             const bool noRasterCommitted = semanticOnlyImpact &&
                 TryApplyNoRasterWidgetPresentation(
                     event.widgetId, *pendingWidgetPresentationImpact_,
@@ -2950,20 +2950,20 @@ private:
         return descriptor ? descriptor->name : WidgetName(id);
     }
 
-    [[nodiscard]] std::optional<gba::packages::LocalWidgetPackageOrigin>
+    [[nodiscard]] std::optional<widgetrail::packages::LocalWidgetPackageOrigin>
     CurrentLocalWidgetPackageImportOrigin() const {
-        if (state_.surface() != gba::Surface::Widget ||
-            state_.focusRegion() != gba::FocusRegion::Widget ||
+        if (state_.surface() != widgetrail::Surface::Widget ||
+            state_.focusRegion() != widgetrail::FocusRegion::Widget ||
             state_.activeWidget() != L"settings") return std::nullopt;
         const auto* descriptor = sessions_.FindDescriptor(L"settings");
         const auto lifecycle = sessions_.Lifecycle(L"settings");
         if (!descriptor || !lifecycle ||
-            *lifecycle != gba::WidgetLifecycleState::Interactive)
+            *lifecycle != widgetrail::WidgetLifecycleState::Interactive)
             return std::nullopt;
-        return gba::packages::LocalWidgetPackageOrigin{
+        return widgetrail::packages::LocalWidgetPackageOrigin{
             descriptor->id,
-            L"org.gbar.firstparty.settings",
-            L"org.gbar.firstparty",
+            L"widgetrail.firstparty.settings",
+            L"widgetrail.firstparty",
             descriptor->instanceId,
             descriptor->runtimeGeneration,
             descriptor->presentationGeneration,
@@ -2971,10 +2971,10 @@ private:
     }
 
     [[nodiscard]] bool TryInvokeLocalWidgetPackageImport(
-        const gba::WidgetSnapshot& snapshot,
-        const gba::WidgetNode& node,
+        const widgetrail::WidgetSnapshot& snapshot,
+        const widgetrail::WidgetNode& node,
         const std::wstring_view protocolButton,
-        const gba::input::NavigationEventPhase phase) {
+        const widgetrail::input::NavigationEventPhase phase) {
         const auto action = localWidgetPackageImport_.Invoke(
             window_,
             {
@@ -2984,14 +2984,14 @@ private:
                 node.actionId,
                 node.id,
                 std::wstring(protocolButton),
-                phase == gba::input::NavigationEventPhase::Pressed,
+                phase == widgetrail::input::NavigationEventPhase::Pressed,
                 !node.isDisabled,
                 node.isBusy,
             });
         if (!action.claimed) return false;
         lastActionWidgetId_ = L"settings";
         if (action.import.status !=
-            gba::packages::LocalWidgetPackageImportStatus::Cancelled) {
+            widgetrail::packages::LocalWidgetPackageImportStatus::Cancelled) {
             lastActionMessage_ = action.import.safeMessage;
             lastActionExpiresAt_ = GetTickCount64() + 4000;
             if (!lastActionMessage_.empty())
@@ -3002,11 +3002,11 @@ private:
         return true;
     }
 
-    gba::icons::NativeIcon DisplayWidgetIcon(const std::wstring_view id) const noexcept {
+    widgetrail::icons::NativeIcon DisplayWidgetIcon(const std::wstring_view id) const noexcept {
         const auto* descriptor = sessions_.FindDescriptor(id);
         if (descriptor) {
-            gba::icons::NativeIcon icon{};
-            if (gba::icons::TryParseNativeIcon(descriptor->icon, icon)) return icon;
+            widgetrail::icons::NativeIcon icon{};
+            if (widgetrail::icons::TryParseNativeIcon(descriptor->icon, icon)) return icon;
         }
         return WidgetIcon(id);
     }
@@ -3023,7 +3023,7 @@ private:
             const bool composed = compositionSurface_.available();
             bool applied = false;
             if (composed) {
-                gba::OverlayCompositionSurface::CommitTiming timing;
+                widgetrail::OverlayCompositionSurface::CommitTiming timing;
                 applied = SUCCEEDED(compositionSurface_.CommitOpacity(
                     static_cast<float>(overlayOpacity) / 255.0F, timing));
             } else {
@@ -3051,7 +3051,7 @@ private:
     }
 
     void ReprimeOpenAfterRenderTargetLoss() {
-        if (state_.surface() == gba::Surface::Hidden) return;
+        if (state_.surface() == widgetrail::Surface::Hidden) return;
         awaitingSuccessfulOpenPaint_ = true;
         nextOpenPaintRetryAt_ = GetTickCount64() + 100;
         overlayTransition_.PrepareInitialOpen();
@@ -3063,7 +3063,7 @@ private:
 
     void BeginOpenAfterSuccessfulPaint() {
         if (!awaitingSuccessfulOpenPaint_ ||
-            state_.surface() == gba::Surface::Hidden) return;
+            state_.surface() == widgetrail::Surface::Hidden) return;
         awaitingSuccessfulOpenPaint_ = false;
         nextOpenPaintRetryAt_ = 0;
         const auto now = GetTickCount64();
@@ -3083,7 +3083,7 @@ private:
                 const auto step = presentationTransaction_.PrepareCompositionStep(
                     timestamp, CurrentAccessibilityPolicy().reducedMotion);
                 if (step) {
-                    const gba::OverlayCompositionSurface::VisualPresentation
+                    const widgetrail::OverlayCompositionSurface::VisualPresentation
                         presentation{
                             step->presentation.scaleX,
                             step->presentation.scaleY,
@@ -3092,7 +3092,7 @@ private:
                             static_cast<float>(step->destinationPlacement.width),
                             static_cast<float>(step->destinationPlacement.height),
                         };
-                    gba::OverlayCompositionSurface::CommitTiming timing;
+                    widgetrail::OverlayCompositionSurface::CommitTiming timing;
                     const HRESULT result = compositionSurface_.CommitPresentation(
                         presentation, timing);
                     if (FAILED(result)) {
@@ -3119,7 +3119,7 @@ private:
                         bool transactionAccepted = false;
                         if (step->finalFrame) {
                         const auto settledContainer = step->destinationPlacement;
-                        const gba::OverlayCompositionSurface::VisualPresentation
+                        const widgetrail::OverlayCompositionSurface::VisualPresentation
                             settledPresentation{
                                 1.0F, 1.0F,
                                 static_cast<float>(step->destinationPlacement.x -
@@ -3129,7 +3129,7 @@ private:
                                 static_cast<float>(step->destinationPlacement.width),
                                 static_cast<float>(step->destinationPlacement.height),
                             };
-                        gba::OverlayCompositionSurface::CommitTiming settleTiming;
+                        widgetrail::OverlayCompositionSurface::CommitTiming settleTiming;
                         const HRESULT settleResult =
                             compositionSurface_.CommitPresentation(
                                 settledPresentation, settleTiming);
@@ -3200,7 +3200,7 @@ private:
                 (void)presentationTransaction_.AdvanceFallbackExtent(
                     timestamp, CurrentAccessibilityPolicy().reducedMotion);
                 const auto nextExtent = PresentedPresentationExtentDip();
-                if (state_.surface() != gba::Surface::Hidden &&
+                if (state_.surface() != widgetrail::Surface::Hidden &&
                     previousExtent != nextExtent) {
                     const auto result = ShowOverlay(true);
                     if (result == OverlayShowResult::Shown) {
@@ -3211,13 +3211,13 @@ private:
             }
         }
         ApplyTransitionWindowOpacity(overlayTransitionSample_.shellOpacity);
-        if (state_.surface() != gba::Surface::Hidden &&
+        if (state_.surface() != widgetrail::Surface::Hidden &&
             std::abs(previousContentOpacity -
                      overlayTransitionSample_.contentOpacity) > 0.0001F) {
             InvalidateRect(window_, nullptr, FALSE);
         }
         if (overlayTransition_.TakeHideCompletion() &&
-            state_.surface() == gba::Surface::Hidden) {
+            state_.surface() == widgetrail::Surface::Hidden) {
             HideOverlay();
         }
     }
@@ -3245,8 +3245,8 @@ private:
     }
 
     bool PresentCompositionPlacement(
-        const gba::OverlayPlacement& placement,
-        const gba::OverlayPlacement& containerPlacement,
+        const widgetrail::OverlayPlacement& placement,
+        const widgetrail::OverlayPlacement& containerPlacement,
         const UINT dpi,
         const bool wasVisible) {
         const unsigned int priorWidth = compositionSurface_.width();
@@ -3286,13 +3286,13 @@ private:
                 DesiredPresentationExtentDip(), GetTickCount64(),
                 CurrentAccessibilityPolicy().reducedMotion, wasVisible);
         const auto& motion = directive.initialPresentation;
-        gba::OverlayCompositionSurface::VisualPresentation presentation{
+        widgetrail::OverlayCompositionSurface::VisualPresentation presentation{
             motion.scaleX, motion.scaleY, motion.offsetX, motion.offsetY,
             static_cast<float>(placement.width),
             static_cast<float>(placement.height),
         };
-        gba::OverlayCompositionSurface::CommitTiming commitTiming;
-        std::vector<gba::OverlayCompositionSurface::Frame*> framePointers;
+        widgetrail::OverlayCompositionSurface::CommitTiming commitTiming;
+        std::vector<widgetrail::OverlayCompositionSurface::Frame*> framePointers;
         framePointers.reserve(frames.frames.size());
         for (auto& frame : frames.frames) framePointers.push_back(&frame);
         const HRESULT commitResult = compositionSurface_.CommitFrames(
@@ -3327,7 +3327,7 @@ private:
         retainedTrayPaintState_ = std::move(frames.trayState);
         presentationTransaction_.AcceptCompositionAdmission(
             directive,
-            state_.surface() == gba::Surface::Widget
+            state_.surface() == widgetrail::Surface::Widget
                 ? state_.activeWidget()
                 : state_.selectedWidget());
         if (accessibilityActive_ && !accessibilityTree_.widgetId.empty()) {
@@ -3394,7 +3394,7 @@ private:
     OverlayShowResult ShowOverlay(const bool atomicVisibleTransition = false) {
         if (!placementRefreshGate_.TryEnter()) return OverlayShowResult::Deferred;
         struct PlacementScope final {
-            gba::PlacementRefreshGate& gate;
+            widgetrail::PlacementRefreshGate& gate;
             HWND notifyWindow;
             ~PlacementScope() {
                 if (gate.Complete() && notifyWindow) {
@@ -3406,7 +3406,7 @@ private:
         const bool wasVisible = IsWindowVisible(window_) != FALSE;
         if (!wasVisible) {
             const HWND foreground = GetForegroundWindow();
-            (void)GbaOverlayPlatformObserveForegroundTarget(
+            (void)WidgetRailOverlayPlatformObserveForegroundTarget(
                 platform_,
                 reinterpret_cast<std::uintptr_t>(foreground),
                 PlatformBoolean(foreground && IsWindow(foreground)));
@@ -3425,7 +3425,7 @@ private:
         const auto bodyTarget = DesiredWidgetSurfaceTarget();
         float desiredWidthDip = static_cast<float>(kPanelWidth);
         float desiredHeightDip = static_cast<float>(kDashboardHeight);
-        if (state_.surface() == gba::Surface::Widget) {
+        if (state_.surface() == widgetrail::Surface::Widget) {
             // A composition admission renders the complete destination once
             // at its authored viewport. Only its visual envelope interpolates
             // from the retained source; the destination layout never does.
@@ -3504,11 +3504,11 @@ private:
             return OverlayShowResult::Failed;
         }
         const auto surfaceRequest = CurrentWidgetSurfaceRequest();
-        const auto axisName = [](const gba::WidgetSurfaceAxisMode mode) {
+        const auto axisName = [](const widgetrail::WidgetSurfaceAxisMode mode) {
             switch (mode) {
-            case gba::WidgetSurfaceAxisMode::Content: return L"content";
-            case gba::WidgetSurfaceAxisMode::FillAvailable: return L"fillAvailable";
-            case gba::WidgetSurfaceAxisMode::Preferred:
+            case widgetrail::WidgetSurfaceAxisMode::Content: return L"content";
+            case widgetrail::WidgetSurfaceAxisMode::FillAvailable: return L"fillAvailable";
+            case widgetrail::WidgetSurfaceAxisMode::Preferred:
             default: return L"preferred";
             }
         };
@@ -3527,19 +3527,19 @@ private:
             L" dpi=" + std::to_wstring(dpi) +
             L" interface-scale=" + std::to_wstring(interfaceScale) +
             L" surface=" +
-            (state_.surface() == gba::Surface::Widget ? L"widget" : L"dashboard") +
+            (state_.surface() == widgetrail::Surface::Widget ? L"widget" : L"dashboard") +
             L" shell=" +
-            (state_.surface() == gba::Surface::Widget ? L"shared" : L"dashboard") +
+            (state_.surface() == widgetrail::Surface::Widget ? L"shared" : L"dashboard") +
             L" body-preferred=" + std::to_wstring(bodyTarget.panelWidthDip) + L"x" +
             std::to_wstring(bodyTarget.panelHeightDip) +
             L" intrinsic-passes=" +
             std::to_wstring(bodyTarget.intrinsicMeasurementPasses) +
             L" surface-axis=" + axisName(surfaceRequest
                 ? surfaceRequest->widthMode
-                : gba::WidgetSurfaceAxisMode::Preferred) + L"/" +
+                : widgetrail::WidgetSurfaceAxisMode::Preferred) + L"/" +
             axisName(surfaceRequest
                 ? surfaceRequest->heightMode
-                : gba::WidgetSurfaceAxisMode::Preferred));
+                : widgetrail::WidgetSurfaceAxisMode::Preferred));
         if (!wasVisible) {
             ShowWindow(backdropWindow_, SW_SHOWNOACTIVATE);
             ShowWindow(window_, SW_SHOWNORMAL);
@@ -3562,9 +3562,9 @@ private:
         // visible. Successful placement always reacquires the platform's
         // visible input lease; only first-show presentation work is gated by
         // the HWND's prior visibility.
-        (void)GbaOverlayPlatformSetWindowState(
+        (void)WidgetRailOverlayPlatformSetWindowState(
             platform_,
-            GBA_OVERLAY_PLATFORM_TRUE,
+            WRAIL_OVERLAY_PLATFORM_TRUE,
             PlatformBoolean(IsOverlayProcessForeground()));
         if (!wasVisible) {
             actionFailureFeedback_.Show();
@@ -3590,10 +3590,10 @@ private:
             SetTimer(window_, kPinnedSurfaceTimer, 100, nullptr);
         trayYGesture_.Reset();
         if (platform_) {
-            (void)GbaOverlayPlatformSetWindowState(
+            (void)WidgetRailOverlayPlatformSetWindowState(
                 platform_,
-                GBA_OVERLAY_PLATFORM_FALSE,
-                GBA_OVERLAY_PLATFORM_FALSE);
+                WRAIL_OVERLAY_PLATFORM_FALSE,
+                WRAIL_OVERLAY_PLATFORM_FALSE);
         }
         actionFailureFeedback_.Hide();
         ClearAccessibilityTree();
@@ -3617,7 +3617,7 @@ private:
                      SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
         DiscardGraphicsResources();
         const HWND restoreTarget = reinterpret_cast<HWND>(
-            GbaOverlayPlatformRememberedForegroundTarget(platform_));
+            WidgetRailOverlayPlatformRememberedForegroundTarget(platform_));
         if (restoreTarget && IsWindow(restoreTarget)) {
             SetForegroundWindow(restoreTarget);
         }
@@ -3648,7 +3648,7 @@ private:
 
     [[nodiscard]] bool ApplyOverlayZOrder() {
         if (!window_ || !chromeWindow_ || !backdropWindow_ ||
-            state_.surface() == gba::Surface::Hidden) return false;
+            state_.surface() == widgetrail::Surface::Hidden) return false;
         const auto flags = SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE | SWP_SHOWWINDOW;
         HDWP positions = BeginDeferWindowPos(3);
         if (!positions) return false;
@@ -3666,7 +3666,7 @@ private:
     }
 
     void ReassertOverlayZOrder() {
-        if (state_.surface() == gba::Surface::Hidden) return;
+        if (state_.surface() == widgetrail::Surface::Hidden) return;
         if (!ApplyOverlayZOrder()) {
             AppendDiagnostic(L"Topmost reassertion failed error=" +
                              std::to_wstring(GetLastError()));
@@ -3682,36 +3682,36 @@ private:
     struct WidgetSurfaceResolutionCache final {
         std::wstring instanceId;
         long long sequence{};
-        gba::WidgetSurfaceRequest request;
-        gba::WidgetSurfaceConstraints constraints;
-        gba::ResolvedWidgetSurface resolved;
+        widgetrail::WidgetSurfaceRequest request;
+        widgetrail::WidgetSurfaceConstraints constraints;
+        widgetrail::ResolvedWidgetSurface resolved;
     };
 
-    [[nodiscard]] std::optional<gba::WidgetSurfaceRequest>
-    WidgetSurfaceRequestForSnapshot(const gba::WidgetSnapshot& snapshot) const {
+    [[nodiscard]] std::optional<widgetrail::WidgetSurfaceRequest>
+    WidgetSurfaceRequestForSnapshot(const widgetrail::WidgetSnapshot& snapshot) const {
         if (!snapshot.surface) return std::nullopt;
 
-        gba::WidgetSurfaceRequest request;
+        widgetrail::WidgetSurfaceRequest request;
         if (snapshot.surface->mode == L"compact") {
-            request.mode = gba::WidgetSurfaceMode::Compact;
+            request.mode = widgetrail::WidgetSurfaceMode::Compact;
         } else if (snapshot.surface->mode == L"standard") {
-            request.mode = gba::WidgetSurfaceMode::Standard;
+            request.mode = widgetrail::WidgetSurfaceMode::Standard;
         } else if (snapshot.surface->mode == L"wide") {
-            request.mode = gba::WidgetSurfaceMode::Wide;
+            request.mode = widgetrail::WidgetSurfaceMode::Wide;
         } else {
             // Unknown and empty values fail safely to Adaptive. The managed
             // validator rejects them earlier, but native parsing is still an
             // untrusted transport boundary.
-            request.mode = gba::WidgetSurfaceMode::Adaptive;
+            request.mode = widgetrail::WidgetSurfaceMode::Adaptive;
         }
         const auto widthMode = snapshot.surface->widthMode
-            ? gba::ParseWidgetSurfaceAxisMode(
+            ? widgetrail::ParseWidgetSurfaceAxisMode(
                 *snapshot.surface->widthMode, snapshot.protocolVersion)
-            : std::optional{gba::WidgetSurfaceAxisMode::Preferred};
+            : std::optional{widgetrail::WidgetSurfaceAxisMode::Preferred};
         const auto heightMode = snapshot.surface->heightMode
-            ? gba::ParseWidgetSurfaceAxisMode(
+            ? widgetrail::ParseWidgetSurfaceAxisMode(
                 *snapshot.surface->heightMode, snapshot.protocolVersion)
-            : std::optional{gba::WidgetSurfaceAxisMode::Preferred};
+            : std::optional{widgetrail::WidgetSurfaceAxisMode::Preferred};
         if (!widthMode || !heightMode) return std::nullopt;
         request.widthMode = *widthMode;
         request.heightMode = *heightMode;
@@ -3734,14 +3734,14 @@ private:
         presentationTransaction_.RetainAdmittedWidget(
             widgetId,
             *snapshot,
-            state_.focusRegion() == gba::FocusRegion::Widget
+            state_.focusRegion() == widgetrail::FocusRegion::Widget
                 ? std::wstring_view{focusedElementId_}
                 : std::wstring_view{},
             WidgetSurfaceRequestForSnapshot(*snapshot));
     }
 
     [[nodiscard]] bool SubmitWidgetContentDamage(
-        const gba::IncrementalPresentationPlan& plan,
+        const widgetrail::IncrementalPresentationPlan& plan,
         const float physicalPixelsPerDip,
         const RECT client,
         const bool paintImmediately = false) {
@@ -3775,7 +3775,7 @@ private:
 
     void InvalidateWidgetFocusChange(
         const std::wstring_view priorFocusedElementId,
-        const std::vector<gba::input::SliderPresentationIdentity>&
+        const std::vector<widgetrail::input::SliderPresentationIdentity>&
             cancelledSliders = {}) {
         if (!window_) return;
         const auto full = [&] {
@@ -3785,8 +3785,8 @@ private:
             InvalidateRect(window_, nullptr, FALSE);
         };
         if (!declarativeRenderer_ || !compositionSurface_.available() ||
-            state_.surface() != gba::Surface::Widget ||
-            state_.focusRegion() != gba::FocusRegion::Widget ||
+            state_.surface() != widgetrail::Surface::Widget ||
+            state_.focusRegion() != widgetrail::FocusRegion::Widget ||
             lastWidgetPresentationUsesProjection_ || declarativeMotionActive_ ||
             overlayTransition_.active() ||
             presentationTransaction_.extentTransitionActive() ||
@@ -3811,18 +3811,18 @@ private:
         const float interfaceScale = appearanceState_.current()
             ? static_cast<float>(appearanceState_.current()->interfaceScale)
             : 1.0F;
-        const auto metrics = gba::ComputeOverlayRenderMetrics(
+        const auto metrics = widgetrail::ComputeOverlayRenderMetrics(
             client.right - client.left, client.bottom - client.top,
             dpi, interfaceScale);
         const auto geometry = metrics
-            ? gba::ComputePanelLocalSurfaceGeometry(
+            ? widgetrail::ComputePanelLocalSurfaceGeometry(
                 metrics->viewportWidthDip, metrics->viewportHeightDip)
             : std::nullopt;
         if (!metrics || !geometry || metrics->physicalPixelsPerDip <= 0.0F) {
             full();
             return;
         }
-        const gba::declarative::Rect viewport{
+        const widgetrail::declarative::Rect viewport{
             geometry->widgetViewportX,
             geometry->widgetViewportY,
             geometry->widgetViewportWidth,
@@ -3842,11 +3842,11 @@ private:
 
     [[nodiscard]] bool TryApplyNoRasterWidgetPresentation(
         const std::wstring_view widgetId,
-        const gba::WidgetPresentationImpact& impact,
+        const widgetrail::WidgetPresentationImpact& impact,
         const bool focusChanged,
         const bool pressedVisualChanged) {
         if (!window_ || !declarativeRenderer_ || !compositionSurface_.available() ||
-            state_.surface() != gba::Surface::Widget ||
+            state_.surface() != widgetrail::Surface::Widget ||
             state_.activeWidget() != widgetId || focusChanged || pressedVisualChanged ||
             lastWidgetPresentationUsesProjection_ || declarativeMotionActive_ ||
             overlayTransition_.active() ||
@@ -3868,16 +3868,16 @@ private:
         const float interfaceScale = appearanceState_.current()
             ? static_cast<float>(appearanceState_.current()->interfaceScale)
             : 1.0F;
-        const auto metrics = gba::ComputeOverlayRenderMetrics(
+        const auto metrics = widgetrail::ComputeOverlayRenderMetrics(
             client.right - client.left, client.bottom - client.top,
             dpi, interfaceScale);
         const auto geometry = metrics
-            ? gba::ComputePanelLocalSurfaceGeometry(
+            ? widgetrail::ComputePanelLocalSurfaceGeometry(
                 metrics->viewportWidthDip, metrics->viewportHeightDip)
             : std::nullopt;
         if (!metrics || !geometry || metrics->physicalPixelsPerDip <= 0.0F)
             return false;
-        const gba::declarative::Rect viewport{
+        const widgetrail::declarative::Rect viewport{
             geometry->widgetViewportX,
             geometry->widgetViewportY,
             geometry->widgetViewportWidth,
@@ -3885,7 +3885,7 @@ private:
         };
         const auto plan = declarativeRenderer_->PlanPresentationUpdate(
             *snapshot, impact, viewport);
-        if (!plan || plan->work != gba::IncrementalPresentationWork::NoRaster) {
+        if (!plan || plan->work != widgetrail::IncrementalPresentationWork::NoRaster) {
             declarativeRenderer_->CancelPresentationUpdatePlan();
             return false;
         }
@@ -3900,13 +3900,13 @@ private:
             return false;
         }
 
-        std::optional<gba::accessibility::Tree> semanticTree;
-        std::optional<gba::accessibility::ProjectionKey> projectionKey;
+        std::optional<widgetrail::accessibility::Tree> semanticTree;
+        std::optional<widgetrail::accessibility::ProjectionKey> projectionKey;
         std::map<std::wstring, double, std::less<>> sliderValues;
         if (accessibilityActive_) {
             const auto presentationTime = GetTickCount64();
             const auto collectSliderOverrides = [&](const auto& self,
-                                                     const gba::WidgetNode& node) -> void {
+                                                     const widgetrail::WidgetNode& node) -> void {
                 if (node.kind == L"slider") {
                     if (const auto value = sliderInteraction_.PresentationValue(
                             SliderDescriptor(*snapshot, node), presentationTime)) {
@@ -3918,12 +3918,12 @@ private:
             collectSliderOverrides(collectSliderOverrides, snapshot->root);
             const auto policy = appearanceState_.current()
                 ? CurrentAccessibilityPolicy()
-                : gba::NativeAccessibilityPolicy{};
-            projectionKey = gba::accessibility::ProjectionKey{
+                : widgetrail::NativeAccessibilityPolicy{};
+            projectionKey = widgetrail::accessibility::ProjectionKey{
                 std::wstring{widgetId},
                 descriptor->runtimeGeneration,
                 snapshot->activeInputScopeId,
-                state_.focusRegion() == gba::FocusRegion::Widget
+                state_.focusRegion() == widgetrail::FocusRegion::Widget
                     ? focusedElementId_ : std::wstring{},
                 snapshot->sequence,
                 sliderInteraction_.presentationRevision(),
@@ -3941,10 +3941,10 @@ private:
                 policy.reducedTransparency,
             };
             if (widgetAccessibilityProjection_.ShouldCollect(*projectionKey)) {
-                semanticTree = gba::accessibility::BuildWidgetTree(
+                semanticTree = widgetrail::accessibility::BuildWidgetTree(
                     std::wstring{widgetId}, descriptor->runtimeGeneration,
                     *snapshot, lastWidgetRenderResult_,
-                    state_.focusRegion() == gba::FocusRegion::Widget
+                    state_.focusRegion() == widgetrail::FocusRegion::Widget
                         ? std::wstring_view{focusedElementId_}
                         : std::wstring_view{},
                     sliderValues);
@@ -3968,29 +3968,29 @@ private:
         return true;
     }
 
-    [[nodiscard]] std::optional<gba::WidgetSurfaceRequest>
+    [[nodiscard]] std::optional<widgetrail::WidgetSurfaceRequest>
     CurrentWidgetSurfaceRequest() const {
         if (!IsBridgeWidget(state_.activeWidget())) return std::nullopt;
         const auto* snapshot = SnapshotFor(state_.activeWidget());
-        switch (gba::ResolveWidgetExtentAuthority(
+        switch (widgetrail::ResolveWidgetExtentAuthority(
             snapshot != nullptr,
             presentationTransaction_.retainedSurfaceAvailable())) {
-        case gba::WidgetExtentAuthority::AdmittedSnapshot:
+        case widgetrail::WidgetExtentAuthority::AdmittedSnapshot:
             return WidgetSurfaceRequestForSnapshot(*snapshot);
-        case gba::WidgetExtentAuthority::RetainedCommittedSurface:
+        case widgetrail::WidgetExtentAuthority::RetainedCommittedSurface:
             return presentationTransaction_.retainedSurfaceRequest();
-        case gba::WidgetExtentAuthority::CompactStartupFallback:
-            return gba::WidgetSurfaceRequest{gba::WidgetSurfaceMode::Compact};
+        case widgetrail::WidgetExtentAuthority::CompactStartupFallback:
+            return widgetrail::WidgetSurfaceRequest{widgetrail::WidgetSurfaceMode::Compact};
         }
-        return gba::WidgetSurfaceRequest{gba::WidgetSurfaceMode::Compact};
+        return widgetrail::WidgetSurfaceRequest{widgetrail::WidgetSurfaceMode::Compact};
     }
 
-    [[nodiscard]] gba::ResolvedWidgetSurface DesiredWidgetSurfaceTarget() const {
+    [[nodiscard]] widgetrail::ResolvedWidgetSurface DesiredWidgetSurfaceTarget() const {
         const auto request = CurrentWidgetSurfaceRequest();
         if (!request ||
-            (request->widthMode == gba::WidgetSurfaceAxisMode::Preferred &&
-             request->heightMode == gba::WidgetSurfaceAxisMode::Preferred)) {
-            return gba::ResolveWidgetSurfaceTarget(request, CurrentTextScale());
+            (request->widthMode == widgetrail::WidgetSurfaceAxisMode::Preferred &&
+             request->heightMode == widgetrail::WidgetSurfaceAxisMode::Preferred)) {
+            return widgetrail::ResolveWidgetSurfaceTarget(request, CurrentTextScale());
         }
 
         RECT workArea{};
@@ -4004,9 +4004,9 @@ private:
             HWND monitorTarget = window_;
             if (platform_) {
                 const HWND remembered = reinterpret_cast<HWND>(
-                    GbaOverlayPlatformRememberedForegroundTarget(platform_));
+                    WidgetRailOverlayPlatformRememberedForegroundTarget(platform_));
                 monitorTarget = reinterpret_cast<HWND>(
-                    GbaOverlayPlatformResolveForegroundTarget(
+                    WidgetRailOverlayPlatformResolveForegroundTarget(
                         platform_, reinterpret_cast<std::uintptr_t>(window_),
                         PlatformBoolean(remembered && IsWindow(remembered))));
             }
@@ -4014,7 +4014,7 @@ private:
                 monitorTarget, MONITOR_DEFAULTTONEAREST);
             MONITORINFO monitorInfo{sizeof(monitorInfo)};
             if (!monitor || !GetMonitorInfoW(monitor, &monitorInfo))
-                return gba::ResolveWidgetSurfaceTarget(request, CurrentTextScale());
+                return widgetrail::ResolveWidgetSurfaceTarget(request, CurrentTextScale());
             workArea = monitorInfo.rcWork;
             UINT dpiY = 96;
             if (FAILED(GetDpiForMonitor(
@@ -4026,7 +4026,7 @@ private:
                 ? static_cast<float>(appearanceState_.current()->interfaceScale)
                 : 1.0F;
         }
-        const gba::WidgetSurfaceConstraints constraints{
+        const widgetrail::WidgetSurfaceConstraints constraints{
             {workArea.left, workArea.top, workArea.right, workArea.bottom},
             dpi,
             interfaceScale,
@@ -4035,8 +4035,8 @@ private:
                 : CurrentTextScale(),
         };
 
-        const gba::WidgetSnapshot* measurementSnapshot{};
-        if (state_.surface() == gba::Surface::Widget) {
+        const widgetrail::WidgetSnapshot* measurementSnapshot{};
+        if (state_.surface() == widgetrail::Surface::Widget) {
             const auto* admitted = SnapshotFor(state_.activeWidget());
             measurementSnapshot = admitted
                 ? InteractionSnapshotFor(state_.activeWidget())
@@ -4044,8 +4044,8 @@ private:
                     ? &presentationTransaction_.retainedPresentation()->snapshot
                     : nullptr;
         }
-        const auto sameRequest = [](const gba::WidgetSurfaceRequest& left,
-                                    const gba::WidgetSurfaceRequest& right) {
+        const auto sameRequest = [](const widgetrail::WidgetSurfaceRequest& left,
+                                    const widgetrail::WidgetSurfaceRequest& right) {
             return left.mode == right.mode &&
                 left.widthMode == right.widthMode &&
                 left.heightMode == right.heightMode &&
@@ -4054,8 +4054,8 @@ private:
                 left.minimumWidthDip == right.minimumWidthDip &&
                 left.minimumHeightDip == right.minimumHeightDip;
         };
-        const auto sameConstraints = [](const gba::WidgetSurfaceConstraints& left,
-                                        const gba::WidgetSurfaceConstraints& right) {
+        const auto sameConstraints = [](const widgetrail::WidgetSurfaceConstraints& left,
+                                        const widgetrail::WidgetSurfaceConstraints& right) {
             return left.workArea.left == right.workArea.left &&
                 left.workArea.top == right.workArea.top &&
                 left.workArea.right == right.workArea.right &&
@@ -4080,17 +4080,17 @@ private:
             sameConstraints(widgetSurfaceResolutionCache_->constraints, constraints)) {
             return widgetSurfaceResolutionCache_->resolved;
         }
-        gba::WidgetSurfaceIntrinsicMeasure measure;
+        widgetrail::WidgetSurfaceIntrinsicMeasure measure;
         if (measurementSnapshot && declarativeRenderer_ &&
-            (request->widthMode == gba::WidgetSurfaceAxisMode::Content ||
-             request->heightMode == gba::WidgetSurfaceAxisMode::Content)) {
+            (request->widthMode == widgetrail::WidgetSurfaceAxisMode::Content ||
+             request->heightMode == widgetrail::WidgetSurfaceAxisMode::Content)) {
             const bool intrinsicWidth =
-                request->widthMode == gba::WidgetSurfaceAxisMode::Content;
+                request->widthMode == widgetrail::WidgetSurfaceAxisMode::Content;
             measure = [this, measurementSnapshot, dpi, interfaceScale, intrinsicWidth](
                 const float maximumWidthDip,
                 const float maximumHeightDip)
-                -> std::optional<gba::WidgetSurfaceIntrinsicExtent> {
-                gba::DeclarativeRenderOptions options;
+                -> std::optional<widgetrail::WidgetSurfaceIntrinsicExtent> {
+                widgetrail::DeclarativeRenderOptions options;
                 options.pixelScale = static_cast<float>(dpi) / 96.0F * interfaceScale;
                 options.accessibility = CurrentAccessibilityPolicy();
                 options.surfaceBackground = effectivePanelBackground_;
@@ -4100,22 +4100,22 @@ private:
                     intrinsicWidth,
                     options);
                 if (!measured.succeeded) return std::nullopt;
-                return gba::WidgetSurfaceIntrinsicExtent{
+                return widgetrail::WidgetSurfaceIntrinsicExtent{
                     measured.extent.width, measured.extent.height};
             };
         }
-        const auto resolved = gba::ResolveWidgetSurface(
+        const auto resolved = widgetrail::ResolveWidgetSurface(
             request, constraints, measure).value_or(
-            gba::ResolveWidgetSurfaceTarget(request, CurrentTextScale()));
+            widgetrail::ResolveWidgetSurfaceTarget(request, CurrentTextScale()));
         widgetSurfaceResolutionCache_ = WidgetSurfaceResolutionCache{
             std::wstring{instanceId}, sequence, *request, constraints, resolved};
         return resolved;
     }
 
-    [[nodiscard]] gba::OverlayPresentationExtent
+    [[nodiscard]] widgetrail::OverlayPresentationExtent
     DesiredContentPanelExtentDip() const {
         const auto target = DesiredWidgetSurfaceTarget();
-        const auto shellGeometry = gba::ComputeOverlaySurfaceGeometry(
+        const auto shellGeometry = widgetrail::ComputeOverlaySurfaceGeometry(
             target.windowWidthDip, target.windowHeightDip,
             target.panelWidthDip, target.panelHeightDip);
         if (!shellGeometry) {
@@ -4131,22 +4131,22 @@ private:
         };
     }
 
-    [[nodiscard]] std::optional<gba::OverlaySurfaceGeometry>
+    [[nodiscard]] std::optional<widgetrail::OverlaySurfaceGeometry>
     ComputeCurrentWidgetSurfaceGeometry(
         const float viewportWidthDip,
         const float viewportHeightDip) const {
         if (compositionSurface_.available()) {
-            return gba::ComputePanelLocalSurfaceGeometry(
+            return widgetrail::ComputePanelLocalSurfaceGeometry(
                 viewportWidthDip, viewportHeightDip);
         }
         const auto target = DesiredWidgetSurfaceTarget();
-        return gba::ComputeOverlaySurfaceGeometry(
+        return widgetrail::ComputeOverlaySurfaceGeometry(
             viewportWidthDip, viewportHeightDip,
             target.panelWidthDip, target.panelHeightDip);
     }
 
-    [[nodiscard]] gba::OverlayPresentationExtent DesiredPresentationExtentDip() const {
-        if (state_.surface() != gba::Surface::Widget) {
+    [[nodiscard]] widgetrail::OverlayPresentationExtent DesiredPresentationExtentDip() const {
+        if (state_.surface() != widgetrail::Surface::Widget) {
             return {kPanelWidth, kDashboardHeight};
         }
         const auto target = DesiredWidgetSurfaceTarget();
@@ -4159,7 +4159,7 @@ private:
         };
     }
 
-    [[nodiscard]] gba::OverlayPresentationExtent
+    [[nodiscard]] widgetrail::OverlayPresentationExtent
     PresentedPresentationExtentDip() const {
         return presentationTransaction_.PresentedExtent(
             DesiredPresentationExtentDip(), compositionSurface_.available());
@@ -4171,27 +4171,27 @@ private:
     }
 
     void BeginWidgetExtentTransition(
-        const gba::OverlayPresentationExtent from,
-        const gba::OverlayPresentationExtent target) {
+        const widgetrail::OverlayPresentationExtent from,
+        const widgetrail::OverlayPresentationExtent target) {
         presentationTransaction_.BeginExtentTransition(
             from, target, GetTickCount64(),
             CurrentAccessibilityPolicy().reducedMotion,
             compositionSurface_.available());
     }
 
-    void ApplyPresentation(const gba::OverlayPresentationDirective directive) {
+    void ApplyPresentation(const widgetrail::OverlayPresentationDirective directive) {
         switch (directive) {
-        case gba::OverlayPresentationDirective::None:
+        case widgetrail::OverlayPresentationDirective::None:
             return;
-        case gba::OverlayPresentationDirective::Hide:
+        case widgetrail::OverlayPresentationDirective::Hide:
             // Lifecycle/background state was committed before presentation.
             // Shut down semantic input immediately, then defer only HWND
             // hiding, resource discard, and foreground restoration.
             if (platform_) {
-                (void)GbaOverlayPlatformSetWindowState(
+                (void)WidgetRailOverlayPlatformSetWindowState(
                     platform_,
-                    GBA_OVERLAY_PLATFORM_FALSE,
-                    GBA_OVERLAY_PLATFORM_FALSE);
+                    WRAIL_OVERLAY_PLATFORM_FALSE,
+                    WRAIL_OVERLAY_PLATFORM_FALSE);
             }
             lastForegroundOwnership_.reset();
             RetireCompositionMotionForHiddenState();
@@ -4200,15 +4200,15 @@ private:
             SetTimer(window_, kControllerTimer, 16, nullptr);
             AdvanceOverlayTransition(GetTickCount64());
             return;
-        case gba::OverlayPresentationDirective::Place:
+        case widgetrail::OverlayPresentationDirective::Place:
         {
             const bool wasWindowVisible = IsWindowVisible(window_) != FALSE;
             const auto result = ShowOverlay(wasWindowVisible);
             if (result == OverlayShowResult::Failed && !wasWindowVisible &&
-                state_.surface() != gba::Surface::Hidden) {
+                state_.surface() != widgetrail::Surface::Hidden) {
                 AppendDiagnostic(
                     L"Initial overlay presentation failed; restoring hidden state");
-                Dispatch(gba::Command::CloseOverlay);
+                Dispatch(widgetrail::Command::CloseOverlay);
                 return;
             }
             if (result == OverlayShowResult::Shown &&
@@ -4223,14 +4223,14 @@ private:
                 result == OverlayShowResult::Shown &&
                 !wasWindowVisible && awaitingSuccessfulOpenPaint_;
             if (initialFrameCommitRequired ||
-                gba::ShouldCommitVisiblePlacementSynchronously(
+                widgetrail::ShouldCommitVisiblePlacementSynchronously(
                     wasWindowVisible, directive)) {
                 RedrawWindow(window_, nullptr, nullptr,
                     RDW_INVALIDATE | RDW_UPDATENOW | RDW_ALLCHILDREN);
             }
             return;
         }
-        case gba::OverlayPresentationDirective::Repaint:
+        case widgetrail::OverlayPresentationDirective::Repaint:
             InvalidateRect(window_, nullptr, FALSE);
             return;
         }
@@ -4245,19 +4245,19 @@ private:
         std::uint64_t sliderPresentationRevision{};
         long long appearanceRevision{};
         std::map<std::wstring, float, std::less<>> scrollOffsets;
-        gba::FocusRegion focusRegion{gba::FocusRegion::Tray};
+        widgetrail::FocusRegion focusRegion{widgetrail::FocusRegion::Tray};
         bool animationActive{};
         bool projectionActive{};
-        std::optional<gba::OverlayPlacement> contentPlacement;
+        std::optional<widgetrail::OverlayPlacement> contentPlacement;
     };
 
     [[nodiscard]] bool CurrentSliderAdjustmentVisualActive(
-        const gba::WidgetSnapshot& snapshot) {
-        if (state_.focusRegion() != gba::FocusRegion::Widget ||
+        const widgetrail::WidgetSnapshot& snapshot) {
+        if (state_.focusRegion() != widgetrail::FocusRegion::Widget ||
             focusedElementId_.empty()) {
             return false;
         }
-        const auto* focused = gba::input::FindNodeInInputScope(
+        const auto* focused = widgetrail::input::FindNodeInInputScope(
             snapshot, focusedElementId_, snapshot.activeInputScopeId);
         return focused && focused->kind == L"slider" &&
             focused->sliderInteractionMode == L"activateToAdjust" &&
@@ -4267,7 +4267,7 @@ private:
 
     [[nodiscard]] bool CanRetainCommittedWidgetPixels(
         const std::wstring_view widgetId,
-        const gba::WidgetSnapshot& snapshot) {
+        const widgetrail::WidgetSnapshot& snapshot) {
         if (!compositionSurface_.available() || !committedWidgetVisualState_)
             return false;
         const auto& committed = *committedWidgetVisualState_;
@@ -4280,7 +4280,7 @@ private:
             livePressedElement = focusedElementId_;
         }
         const std::wstring_view liveFocus =
-            state_.focusRegion() == gba::FocusRegion::Widget
+            state_.focusRegion() == widgetrail::FocusRegion::Widget
                 ? std::wstring_view{focusedElementId_}
                 : std::wstring_view{};
         const auto& placement = presentationTransaction_.contentPlacement();
@@ -4318,11 +4318,11 @@ private:
     }
 
     [[nodiscard]] bool HasExactRefreshRetainedVisualCheckpoint() {
-        if (state_.surface() != gba::Surface::Widget) return false;
+        if (state_.surface() != widgetrail::Surface::Widget) return false;
         const std::wstring_view widgetId = state_.activeWidget();
         const auto presentation = sessions_.Presentation(widgetId);
         if (presentation.authority !=
-                gba::WidgetPresentationAuthority::RefreshRetained ||
+                widgetrail::WidgetPresentationAuthority::RefreshRetained ||
             !presentation.snapshot) {
             return false;
         }
@@ -4336,15 +4336,15 @@ private:
             CanRetainCommittedWidgetPixels(widgetId, *presentation.snapshot);
     }
 
-    [[nodiscard]] const gba::WidgetSnapshot* GuideSnapshotFor(
+    [[nodiscard]] const widgetrail::WidgetSnapshot* GuideSnapshotFor(
         const std::wstring_view widgetId) noexcept {
         const auto presentation = sessions_.Presentation(widgetId);
-        if (presentation.authority == gba::WidgetPresentationAuthority::Current)
+        if (presentation.authority == widgetrail::WidgetPresentationAuthority::Current)
             return InteractionSnapshotFor(widgetId);
         if (presentation.authority !=
-                gba::WidgetPresentationAuthority::RefreshRetained ||
+                widgetrail::WidgetPresentationAuthority::RefreshRetained ||
             !presentation.snapshot ||
-            state_.surface() != gba::Surface::Widget ||
+            state_.surface() != widgetrail::Surface::Widget ||
             state_.activeWidget() != widgetId ||
             !HasExactRefreshRetainedVisualCheckpoint()) {
             return nullptr;
@@ -4361,9 +4361,9 @@ private:
     void RefreshAndApplyPresentation(
         Refresh&& refresh,
         const WidgetSnapshotAdmissionAuthority* admissionAuthority = nullptr) {
-        const bool wasVisible = state_.surface() != gba::Surface::Hidden;
+        const bool wasVisible = state_.surface() != widgetrail::Surface::Hidden;
         const auto priorSurface = state_.surface();
-        const std::wstring priorVisibleWidget = priorSurface == gba::Surface::Widget
+        const std::wstring priorVisibleWidget = priorSurface == widgetrail::Surface::Widget
             ? std::wstring(state_.activeWidget())
             : std::wstring(state_.selectedWidget());
         const auto priorSessionPresentation =
@@ -4386,20 +4386,20 @@ private:
             presentationTransaction_.committedDestination();
         const std::wstring priorWidget = committedDestination
             ? committedDestination->widgetId
-            : state_.surface() == gba::Surface::Widget
+            : state_.surface() == widgetrail::Surface::Widget
                 ? std::wstring(state_.activeWidget())
                 : std::wstring(state_.selectedWidget());
         std::forward<Refresh>(refresh)();
-        const bool isVisible = state_.surface() != gba::Surface::Hidden;
+        const bool isVisible = state_.surface() != widgetrail::Surface::Hidden;
         const auto nextExtent = DesiredPresentationExtentDip();
-        const std::wstring nextVisibleWidget = state_.surface() == gba::Surface::Widget
+        const std::wstring nextVisibleWidget = state_.surface() == widgetrail::Surface::Widget
             ? std::wstring(state_.activeWidget())
             : std::wstring(state_.selectedWidget());
         const auto nextSessionPresentation =
             sessions_.Presentation(nextVisibleWidget);
         const bool pendingSnapAdmission = admissionAuthority &&
             pendingWidgetSwitchSnap_ &&
-            state_.surface() == gba::Surface::Widget &&
+            state_.surface() == widgetrail::Surface::Widget &&
             state_.activeWidget() == admissionAuthority->widgetId &&
             nextVisibleWidget == pendingWidgetSwitchSnap_->widgetId &&
             admissionAuthority->widgetId == pendingWidgetSwitchSnap_->widgetId &&
@@ -4413,11 +4413,11 @@ private:
             wasVisible && isVisible && priorSurface == state_.surface() &&
             priorVisibleWidget == nextVisibleWidget &&
             (priorSessionPresentation.authority ==
-                 gba::WidgetPresentationAuthority::Current ||
+                 widgetrail::WidgetPresentationAuthority::Current ||
              priorSessionPresentation.authority ==
-                 gba::WidgetPresentationAuthority::RefreshRetained) &&
+                 widgetrail::WidgetPresentationAuthority::RefreshRetained) &&
             nextSessionPresentation.authority ==
-                gba::WidgetPresentationAuthority::RefreshRetained &&
+                widgetrail::WidgetPresentationAuthority::RefreshRetained &&
             priorSessionPresentation.snapshot &&
             nextSessionPresentation.snapshot &&
             priorSnapshotInstance == nextSessionPresentation.snapshot->instanceId &&
@@ -4443,7 +4443,7 @@ private:
              !WidgetSwitchAnimationEnabled());
         const bool animateWidgetExtent =
             wasVisible && isVisible &&
-            state_.surface() == gba::Surface::Widget &&
+            state_.surface() == widgetrail::Surface::Widget &&
             priorExtent != nextExtent && !snapTrayWidgetSwitch;
         if (snapTrayWidgetSwitch) {
             presentationTransaction_.SettleExtent(
@@ -4451,10 +4451,10 @@ private:
         } else if (animateWidgetExtent) {
             BeginWidgetExtentTransition(priorPresentedExtent, nextExtent);
         }
-        const auto presentation = gba::DecideOverlayPresentation(
+        const auto presentation = widgetrail::DecideOverlayPresentation(
             wasVisible, isVisible, priorExtent, nextExtent);
         if (wasVisible && isVisible && priorExtent != nextExtent) {
-            const std::wstring currentWidget = state_.surface() == gba::Surface::Widget
+            const std::wstring currentWidget = state_.surface() == widgetrail::Surface::Widget
                 ? std::wstring(state_.activeWidget())
                 : std::wstring(state_.selectedWidget());
             AppendDiagnostic(
@@ -4476,7 +4476,7 @@ private:
         }
         ApplyPresentation(presentation);
         if (pendingSnapAdmission &&
-            state_.surface() == gba::Surface::Widget &&
+            state_.surface() == widgetrail::Surface::Widget &&
             state_.activeWidget() == nextVisibleWidget) {
             const auto& committed =
                 presentationTransaction_.committedDestination();
@@ -4494,7 +4494,7 @@ private:
         bool activate{};
     };
 
-    [[nodiscard]] std::optional<gba::CompositionMotionPlan>
+    [[nodiscard]] std::optional<widgetrail::CompositionMotionPlan>
     CurrentCompositionMotionPlan() const {
         if (!compositionSurface_.available()) return std::nullopt;
         RECT client{};
@@ -4505,14 +4505,14 @@ private:
             DesiredPresentationExtentDip());
     }
 
-    [[nodiscard]] std::optional<gba::CompositionChildCoordinateSpaces>
+    [[nodiscard]] std::optional<widgetrail::CompositionChildCoordinateSpaces>
     CurrentCompositionChildCoordinates() const {
         const auto motion = CurrentCompositionMotionPlan();
         const auto& placement = presentationTransaction_.contentPlacement();
         if (!motion || !placement) return std::nullopt;
         const auto chromeOffset =
             presentationTransaction_.ChromeOffsetWithinContainer();
-        const auto spaces = gba::PlanCompositionChildCoordinates(
+        const auto spaces = widgetrail::PlanCompositionChildCoordinates(
             *motion,
             static_cast<unsigned int>(placement->width),
             static_cast<unsigned int>(placement->height),
@@ -4526,7 +4526,7 @@ private:
             const auto tray = ProjectChromeClientBoundsToScreen(
                 compositionChromeSession_->trayClientBounds);
             if (!guide || !tray) return std::nullopt;
-            result = gba::ApplyFixedChromeChildOffsets(
+            result = widgetrail::ApplyFixedChromeChildOffsets(
                 result,
                 {static_cast<float>(guide->left - windowBounds.left),
                  static_cast<float>(guide->top - windowBounds.top)},
@@ -4542,14 +4542,14 @@ private:
         if (!spaces || !window_ || !GetWindowRect(window_, &windowBounds)) return;
         const auto contentSize = presentationTransaction_.contentPlacement();
         if (!contentSize) return;
-        const auto screenPoint = [&](const gba::CompositionPoint local) {
-            return gba::CompositionPoint{
+        const auto screenPoint = [&](const widgetrail::CompositionPoint local) {
+            return widgetrail::CompositionPoint{
                 static_cast<float>(windowBounds.left) + local.x,
                 static_cast<float>(windowBounds.top) + local.y,
             };
         };
         const auto contentOrigin = screenPoint(
-            gba::ProjectContentPoint(*spaces, {0.0F, 0.0F}));
+            widgetrail::ProjectContentPoint(*spaces, {0.0F, 0.0F}));
         const auto actualGuide = compositionChromeSession_
             ? ProjectChromeClientBoundsToScreen(
                 compositionChromeSession_->guideClientBounds)
@@ -4578,11 +4578,11 @@ private:
                             fixedChromeAnchor_->reason)));
             }
         }
-        const gba::CompositionPoint guideOrigin{
+        const widgetrail::CompositionPoint guideOrigin{
             static_cast<float>(actualGuide->left),
             static_cast<float>(actualGuide->top),
         };
-        const gba::CompositionPoint trayOrigin{
+        const widgetrail::CompositionPoint trayOrigin{
             static_cast<float>(actualTray->left),
             static_cast<float>(actualTray->top),
         };
@@ -4591,7 +4591,7 @@ private:
             const auto selected = std::find_if(
                 retainedTrayPaintState_->items.begin(),
                 retainedTrayPaintState_->items.end(),
-                [](const gba::shell::RetainedTrayItem& item) {
+                [](const widgetrail::shell::RetainedTrayItem& item) {
                     return item.selected;
                 });
             if (selected != retainedTrayPaintState_->items.end()) {
@@ -4605,12 +4605,12 @@ private:
                     std::to_wstring(selected->bounds.bottom - selected->bounds.top);
             }
         }
-        const auto localProbe = gba::CompositionPoint{
+        const auto localProbe = widgetrail::CompositionPoint{
             static_cast<float>(contentSize->width) * 0.5F,
             static_cast<float>(contentSize->height) * 0.5F,
         };
-        const auto presentedProbe = gba::ProjectContentPoint(*spaces, localProbe);
-        const auto inverseProbe = gba::InverseContentPoint(*spaces, presentedProbe);
+        const auto presentedProbe = widgetrail::ProjectContentPoint(*spaces, localProbe);
+        const auto inverseProbe = widgetrail::InverseContentPoint(*spaces, presentedProbe);
         const auto counters = compositionSurface_.paintCounters();
         AppendDiagnostic(
             L"Composition child sample step=" + std::to_wstring(stepIndex) +
@@ -4652,19 +4652,19 @@ private:
         const float y,
         const float width,
         const float height,
-        const gba::OverlaySurfaceGeometry* surfaceGeometry) const {
-        const auto layout = gba::shell::ComputeTrayLayout(
+        const widgetrail::OverlaySurfaceGeometry* surfaceGeometry) const {
+        const auto layout = widgetrail::shell::ComputeTrayLayout(
             width, height, state_.order().size(), state_.selectedSlot(),
             surfaceGeometry
-                ? std::optional<gba::shell::TrayBand>{gba::shell::TrayBand{
+                ? std::optional<widgetrail::shell::TrayBand>{widgetrail::shell::TrayBand{
                     surfaceGeometry->trayY,
                     surfaceGeometry->trayY + surfaceGeometry->trayHeight,
                 }}
                 : std::nullopt);
         if (!layout) return std::nullopt;
-        const auto* hit = gba::shell::HitTestTray(*layout, x, y);
+        const auto* hit = widgetrail::shell::HitTestTray(*layout, x, y);
         if (hit) return TrayPointerTarget{hit->slot, true};
-        const auto* overflow = gba::shell::HitTestTrayOverflow(*layout, x, y);
+        const auto* overflow = widgetrail::shell::HitTestTrayOverflow(*layout, x, y);
         return overflow
             ? std::optional<TrayPointerTarget>{TrayPointerTarget{
                 overflow->targetSlot, false}}
@@ -4672,7 +4672,7 @@ private:
     }
 
     void HandlePointerActivation(const float clientX, const float clientY) {
-        if (state_.surface() == gba::Surface::Hidden || !window_) return;
+        if (state_.surface() == widgetrail::Surface::Hidden || !window_) return;
         RECT client{};
         if (!GetClientRect(window_, &client)) return;
         const UINT dpi = std::max(1U, GetDpiForWindow(window_));
@@ -4686,7 +4686,7 @@ private:
         const int renderHeight = contentPlacement
             ? contentPlacement->height
             : client.bottom - client.top;
-        const auto metrics = gba::ComputeOverlayRenderMetrics(
+        const auto metrics = widgetrail::ComputeOverlayRenderMetrics(
             renderWidth, renderHeight,
             dpi, interfaceScale);
         if (!metrics) return;
@@ -4694,7 +4694,7 @@ private:
         float localX = clientX;
         float localY = clientY;
         if (childSpaces) {
-            const auto local = gba::InverseContentPoint(
+            const auto local = widgetrail::InverseContentPoint(
                 *childSpaces, {localX, localY});
             localX = local.x;
             localY = local.y;
@@ -4702,23 +4702,23 @@ private:
         const float x = localX / metrics->physicalPixelsPerDip;
         const float y = localY / metrics->physicalPixelsPerDip;
         const auto trayPoint = childSpaces
-            ? gba::InverseTrayPoint(*childSpaces, {clientX, clientY})
-            : gba::CompositionPoint{clientX, clientY};
+            ? widgetrail::InverseTrayPoint(*childSpaces, {clientX, clientY})
+            : widgetrail::CompositionPoint{clientX, clientY};
         const float trayPixelsPerDip = compositionChromeSession_
             ? compositionChromeSession_->pixelsPerDip
             : metrics->physicalPixelsPerDip;
         const float trayX = trayPoint.x / trayPixelsPerDip;
         const float trayY = trayPoint.y / trayPixelsPerDip;
 
-        if (state_.surface() == gba::Surface::Widget) {
+        if (state_.surface() == widgetrail::Surface::Widget) {
             const std::wstring widget{state_.activeWidget()};
             const auto* snapshot = InteractionSnapshotFor(widget);
             if (snapshot) {
-                const auto hit = gba::input::FindPointerHitTarget(
+                const auto hit = widgetrail::input::FindPointerHitTarget(
                     x, y, snapshot->activeInputScopeId, lastWidgetRenderResult_);
                 if (hit) {
-                    if (state_.focusRegion() == gba::FocusRegion::Tray) {
-                        Dispatch(gba::Command::Activate);
+                    if (state_.focusRegion() == widgetrail::FocusRegion::Tray) {
+                        Dispatch(widgetrail::Command::Activate);
                     }
                     (void)pressedInteraction_.Clear();
                     const auto cancelledSliders =
@@ -4735,16 +4735,16 @@ private:
             }
         }
 
-        std::optional<gba::OverlaySurfaceGeometry> surfaceGeometry;
-        if (state_.surface() == gba::Surface::Widget) {
+        std::optional<widgetrail::OverlaySurfaceGeometry> surfaceGeometry;
+        if (state_.surface() == widgetrail::Surface::Widget) {
             surfaceGeometry = ComputeCurrentWidgetSurfaceGeometry(
                 metrics->viewportWidthDip, metrics->viewportHeightDip);
         }
         std::optional<TrayPointerTarget> trayTarget;
         if (const auto sessionTray = CurrentCompositionTrayLayout()) {
-            if (const auto* hit = gba::shell::HitTestTray(*sessionTray, trayX, trayY)) {
+            if (const auto* hit = widgetrail::shell::HitTestTray(*sessionTray, trayX, trayY)) {
                 trayTarget = TrayPointerTarget{hit->slot, true};
-            } else if (const auto* overflow = gba::shell::HitTestTrayOverflow(
+            } else if (const auto* overflow = widgetrail::shell::HitTestTrayOverflow(
                            *sessionTray, trayX, trayY)) {
                 trayTarget = TrayPointerTarget{overflow->targetSlot, false};
             }
@@ -4755,15 +4755,15 @@ private:
                 surfaceGeometry ? &*surfaceGeometry : nullptr);
         }
         if (!trayTarget || trayTarget->slot >= state_.order().size()) return;
-        if (state_.surface() == gba::Surface::Widget &&
-            state_.focusRegion() == gba::FocusRegion::Widget) {
-            Dispatch(gba::Command::SampleWidgetBack);
+        if (state_.surface() == widgetrail::Surface::Widget &&
+            state_.focusRegion() == widgetrail::FocusRegion::Widget) {
+            Dispatch(widgetrail::Command::SampleWidgetBack);
         }
-        if (state_.reorderMode()) Dispatch(gba::Command::Cancel);
+        if (state_.reorderMode()) Dispatch(widgetrail::Command::Cancel);
         const std::wstring targetWidget = state_.order()[trayTarget->slot];
         if (!SelectTrayWidget(targetWidget)) return;
         if (trayTarget->activate && state_.selectedSlot() == trayTarget->slot) {
-            Dispatch(gba::Command::Activate);
+            Dispatch(widgetrail::Command::Activate);
         }
     }
 
@@ -4783,14 +4783,14 @@ private:
         const float interfaceScale = appearanceState_.current()
             ? static_cast<float>(appearanceState_.current()->interfaceScale)
             : 1.0F;
-        const auto metrics = gba::ComputeOverlayRenderMetrics(
+        const auto metrics = widgetrail::ComputeOverlayRenderMetrics(
             renderWidth, renderHeight, dpi, interfaceScale);
         if (!metrics) return false;
         float contentX = clientX;
         float contentY = clientY;
         const auto spaces = CurrentCompositionChildCoordinates();
         if (spaces) {
-            const auto local = gba::InverseContentPoint(
+            const auto local = widgetrail::InverseContentPoint(
                 *spaces, {contentX, contentY});
             contentX = local.x;
             contentY = local.y;
@@ -4798,11 +4798,11 @@ private:
         contentX /= metrics->physicalPixelsPerDip;
         contentY /= metrics->physicalPixelsPerDip;
         const auto guidePoint = spaces
-            ? gba::InverseGuidePoint(*spaces, {clientX, clientY})
-            : gba::CompositionPoint{clientX, clientY};
+            ? widgetrail::InverseGuidePoint(*spaces, {clientX, clientY})
+            : widgetrail::CompositionPoint{clientX, clientY};
         const auto trayPoint = spaces
-            ? gba::InverseTrayPoint(*spaces, {clientX, clientY})
-            : gba::CompositionPoint{clientX, clientY};
+            ? widgetrail::InverseTrayPoint(*spaces, {clientX, clientY})
+            : widgetrail::CompositionPoint{clientX, clientY};
         const float chromePixelsPerDip = compositionChromeSession_
             ? compositionChromeSession_->pixelsPerDip
             : metrics->physicalPixelsPerDip;
@@ -4811,14 +4811,14 @@ private:
         const float trayX = trayPoint.x / chromePixelsPerDip;
         const float trayY = trayPoint.y / chromePixelsPerDip;
         const auto contains = [](const float x, const float y,
-                                 const gba::declarative::Rect& bounds) {
+                                 const widgetrail::declarative::Rect& bounds) {
             return x >= bounds.x && y >= bounds.y &&
                 x <= bounds.x + bounds.width &&
                 y <= bounds.y + bounds.height;
         };
 
-        std::optional<gba::OverlaySurfaceGeometry> surface;
-        if (state_.surface() == gba::Surface::Widget) {
+        std::optional<widgetrail::OverlaySurfaceGeometry> surface;
+        if (state_.surface() == widgetrail::Surface::Widget) {
             surface = ComputeCurrentWidgetSurfaceGeometry(
                 metrics->viewportWidthDip, metrics->viewportHeightDip);
             if (surface && contains(contentX, contentY, {
@@ -4832,11 +4832,11 @@ private:
         }
         const auto tray = CurrentCompositionTrayLayout();
         if (tray) return contains(trayX, trayY, tray->stripBounds);
-        const auto fallbackTray = gba::shell::ComputeTrayLayout(
+        const auto fallbackTray = widgetrail::shell::ComputeTrayLayout(
             metrics->viewportWidthDip, metrics->viewportHeightDip,
             state_.order().size(), state_.selectedSlot(),
             surface
-                ? std::optional<gba::shell::TrayBand>{gba::shell::TrayBand{
+                ? std::optional<widgetrail::shell::TrayBand>{widgetrail::shell::TrayBand{
                     surface->trayY, surface->trayY + surface->trayHeight}}
                 : std::nullopt);
         return fallbackTray && contains(trayX, trayY, fallbackTray->stripBounds);
@@ -4845,7 +4845,7 @@ private:
     void ToggleCurrentPinnedSurface() {
         if (pinnedSurfaceCoordinator_.pinned()) {
             const std::wstring widgetId(pinnedSurfaceCoordinator_.widgetId());
-            if (state_.surface() != gba::Surface::Widget ||
+            if (state_.surface() != widgetrail::Surface::Widget ||
                 state_.activeWidget() != widgetId) {
                 lastActionWidgetId_ = widgetId;
                 lastActionMessage_ = L"Only one pinned surface is currently supported. Press U to unpin it.";
@@ -4855,12 +4855,12 @@ private:
             }
             if (pinnedSurfaceCoordinator_.ToggleInteractionMode()) {
                 if (pinnedSurfaceCoordinator_.interactionMode() ==
-                    gba::pinned::InteractionMode::Focusable)
+                    widgetrail::pinned::InteractionMode::Focusable)
                     (void)pinnedSurfaceCoordinator_.EnterControllerFocus();
                 lastActionWidgetId_ = widgetId;
                 lastActionMessage_ =
                     pinnedSurfaceCoordinator_.interactionMode() ==
-                            gba::pinned::InteractionMode::Focusable
+                            widgetrail::pinned::InteractionMode::Focusable
                         ? L"Pinned surface is interactive"
                         : L"Pinned surface is click-through";
                 lastActionExpiresAt_ = GetTickCount64() + 2400;
@@ -4869,7 +4869,7 @@ private:
             }
             return;
         }
-        if (state_.surface() != gba::Surface::Widget) {
+        if (state_.surface() != widgetrail::Surface::Widget) {
             lastActionWidgetId_.clear();
             lastActionMessage_ = L"Open a pinnable widget before pressing P";
             lastActionExpiresAt_ = GetTickCount64() + 3000;
@@ -4920,13 +4920,13 @@ private:
             const auto* snapshot = SnapshotFor(request.widgetId);
             const auto* descriptor = sessions_.FindDescriptor(request.widgetId);
             const auto* node = snapshot
-                ? gba::input::FindNodeInInputScope(
+                ? widgetrail::input::FindNodeInInputScope(
                       *snapshot, request.nodeId, request.activeInputScopeId)
                 : nullptr;
             if (!pinnedSurfaceCoordinator_.pinned() ||
-                state_.surface() == gba::Surface::Hidden ||
+                state_.surface() == widgetrail::Surface::Hidden ||
                 pinnedSurfaceCoordinator_.interactionMode() !=
-                    gba::pinned::InteractionMode::Focusable ||
+                    widgetrail::pinned::InteractionMode::Focusable ||
                 !descriptor || !snapshot || !node ||
                 node->isDisabled || node->isBusy ||
                 descriptor->runtimeGeneration != request.runtimeGeneration ||
@@ -4974,7 +4974,7 @@ private:
     }
 
     void HandleKey(const UINT key, const bool repeated) {
-        if (state_.surface() == gba::Surface::Hidden) return;
+        if (state_.surface() == widgetrail::Surface::Hidden) return;
         if (!repeated && key == 'H' &&
             (GetKeyState(VK_CONTROL) & 0x8000) != 0 &&
             (GetKeyState(VK_SHIFT) & 0x8000) != 0) {
@@ -4982,20 +4982,20 @@ private:
             return;
         }
         if (pinnedSurfaceCoordinator_.placementMode() !=
-            gba::pinned::PlacementMode::None) {
+            widgetrail::pinned::PlacementMode::None) {
             bool changed = false;
             if (key == VK_LEFT)
                 changed = pinnedSurfaceCoordinator_.StepPlacement(
-                    gba::pinned::PlacementDirection::Left);
+                    widgetrail::pinned::PlacementDirection::Left);
             else if (key == VK_RIGHT)
                 changed = pinnedSurfaceCoordinator_.StepPlacement(
-                    gba::pinned::PlacementDirection::Right);
+                    widgetrail::pinned::PlacementDirection::Right);
             else if (key == VK_UP)
                 changed = pinnedSurfaceCoordinator_.StepPlacement(
-                    gba::pinned::PlacementDirection::Up);
+                    widgetrail::pinned::PlacementDirection::Up);
             else if (key == VK_DOWN)
                 changed = pinnedSurfaceCoordinator_.StepPlacement(
-                    gba::pinned::PlacementDirection::Down);
+                    widgetrail::pinned::PlacementDirection::Down);
             else if (!repeated && key == VK_RETURN) {
                 std::wstring error;
                 changed = pinnedSurfaceCoordinator_.CommitPlacement(error);
@@ -5011,11 +5011,11 @@ private:
         }
         if (!repeated && (key == 'M' || key == 'R') &&
             pinnedSurfaceCoordinator_.pinned() &&
-            state_.surface() == gba::Surface::Widget &&
+            state_.surface() == widgetrail::Surface::Widget &&
             state_.activeWidget() == pinnedSurfaceCoordinator_.widgetId()) {
             const auto mode = key == 'M'
-                ? gba::pinned::PlacementMode::Move
-                : gba::pinned::PlacementMode::Resize;
+                ? widgetrail::pinned::PlacementMode::Move
+                : widgetrail::pinned::PlacementMode::Resize;
             if (pinnedSurfaceCoordinator_.BeginPlacement(mode)) {
                 (void)pressedInteraction_.Clear();
                 lastActionWidgetId_ = std::wstring(pinnedSurfaceCoordinator_.widgetId());
@@ -5028,8 +5028,8 @@ private:
             return;
         }
         const auto phase = repeated
-            ? gba::input::NavigationEventPhase::Repeated
-            : gba::input::NavigationEventPhase::Pressed;
+            ? widgetrail::input::NavigationEventPhase::Repeated
+            : widgetrail::input::NavigationEventPhase::Pressed;
         if (key == 'P') {
             if (!repeated) ToggleCurrentPinnedSurface();
             return;
@@ -5038,7 +5038,7 @@ private:
             if (!repeated && pinnedSurfaceCoordinator_.pinned()) {
                 const std::wstring widgetId(pinnedSurfaceCoordinator_.widgetId());
                 (void)pinnedSurfaceCoordinator_.Unpin(
-                    gba::pinned::WidgetSurfaceStopReason::Unpin);
+                    widgetrail::pinned::WidgetSurfaceStopReason::Unpin);
                 lastActionWidgetId_ = widgetId;
                 lastActionMessage_ = L"Pinned surface removed";
                 lastActionExpiresAt_ = GetTickCount64() + 2400;
@@ -5050,47 +5050,47 @@ private:
             if (!repeated) RestartCurrentWidget();
             return;
         }
-        switch (gba::input::ResolveBasicKeyboardAction(key)) {
-        case gba::input::BasicKeyboardAction::NavigateLeft:
-            if (state_.surface() == gba::Surface::Widget &&
-                state_.focusRegion() == gba::FocusRegion::Widget) {
-                HandleWidgetDirection(gba::input::NavigationDirection::Left, phase, false);
+        switch (widgetrail::input::ResolveBasicKeyboardAction(key)) {
+        case widgetrail::input::BasicKeyboardAction::NavigateLeft:
+            if (state_.surface() == widgetrail::Surface::Widget &&
+                state_.focusRegion() == widgetrail::FocusRegion::Widget) {
+                HandleWidgetDirection(widgetrail::input::NavigationDirection::Left, phase, false);
             } else if (!repeated) {
-                Dispatch(gba::Command::NavigateLeft);
+                Dispatch(widgetrail::Command::NavigateLeft);
             }
             break;
-        case gba::input::BasicKeyboardAction::NavigateRight:
-            if (state_.surface() == gba::Surface::Widget &&
-                state_.focusRegion() == gba::FocusRegion::Widget) {
-                HandleWidgetDirection(gba::input::NavigationDirection::Right, phase, false);
+        case widgetrail::input::BasicKeyboardAction::NavigateRight:
+            if (state_.surface() == widgetrail::Surface::Widget &&
+                state_.focusRegion() == widgetrail::FocusRegion::Widget) {
+                HandleWidgetDirection(widgetrail::input::NavigationDirection::Right, phase, false);
             } else if (!repeated) {
-                Dispatch(gba::Command::NavigateRight);
+                Dispatch(widgetrail::Command::NavigateRight);
             }
             break;
-        case gba::input::BasicKeyboardAction::NavigateUp:
-            if (!repeated && state_.surface() == gba::Surface::Widget) {
-                if (state_.focusRegion() == gba::FocusRegion::Tray) {
-                    Dispatch(gba::Command::Activate);
+        case widgetrail::input::BasicKeyboardAction::NavigateUp:
+            if (!repeated && state_.surface() == widgetrail::Surface::Widget) {
+                if (state_.focusRegion() == widgetrail::FocusRegion::Tray) {
+                    Dispatch(widgetrail::Command::Activate);
                 } else {
                     HandleWidgetDirection(
-                        gba::input::NavigationDirection::Up, phase, false);
+                        widgetrail::input::NavigationDirection::Up, phase, false);
                 }
             }
             break;
-        case gba::input::BasicKeyboardAction::NavigateDown:
-            if (!repeated && state_.surface() == gba::Surface::Widget &&
-                state_.focusRegion() == gba::FocusRegion::Widget) {
+        case widgetrail::input::BasicKeyboardAction::NavigateDown:
+            if (!repeated && state_.surface() == widgetrail::Surface::Widget &&
+                state_.focusRegion() == widgetrail::FocusRegion::Widget) {
                 HandleWidgetDirection(
-                    gba::input::NavigationDirection::Down, phase, false);
+                    widgetrail::input::NavigationDirection::Down, phase, false);
             }
             break;
-        case gba::input::BasicKeyboardAction::Activate:
+        case widgetrail::input::BasicKeyboardAction::Activate:
             if (!repeated) DispatchControllerAction(L"A");
             break;
-        case gba::input::BasicKeyboardAction::Back:
+        case widgetrail::input::BasicKeyboardAction::Back:
             if (!repeated) DispatchControllerAction(L"B");
             break;
-        case gba::input::BasicKeyboardAction::None:
+        case widgetrail::input::BasicKeyboardAction::None:
         default:
             break;
         }
@@ -5113,7 +5113,7 @@ private:
             ? GetWindowThreadProcessId(foreground, &foregroundProcess)
             : 0;
         const DWORD overlayThread = GetCurrentThreadId();
-        const auto plan = gba::input::PlanForegroundAcquisition(
+        const auto plan = widgetrail::input::PlanForegroundAcquisition(
             foregroundProcess == GetCurrentProcessId(), overlayThread, foregroundThread);
 
         if (plan.attemptDirect) {
@@ -5144,8 +5144,8 @@ private:
             lastForegroundOwnership_ = confirmed;
             if (confirmed) {
                 AppendDiagnostic(
-                    GbaOverlayPlatformHasGameInput(platform_) !=
-                            GBA_OVERLAY_PLATFORM_FALSE
+                    WidgetRailOverlayPlatformHasGameInput(platform_) !=
+                            WRAIL_OVERLAY_PLATFORM_FALSE
                         ? L"Overlay foreground confirmed; ordinary controller input is "
                           L"GameInput foreground-exclusive"
                         : L"Overlay foreground confirmed; GameInput unavailable, ordinary "
@@ -5161,56 +5161,56 @@ private:
 
     void PrimeControllerState() {
         if (!platform_) return;
-        (void)GbaOverlayPlatformPrimeController(
+        (void)WidgetRailOverlayPlatformPrimeController(
             platform_,
             PlatformBoolean(IsOverlayProcessForeground()),
             GetTickCount64());
     }
 
-    [[nodiscard]] static std::optional<gba::input::StickNavigationEvent>
+    [[nodiscard]] static std::optional<widgetrail::input::StickNavigationEvent>
     DecodeNavigation(
-        const GbaOverlayPlatformNavigationEvent event) noexcept {
-        gba::input::NavigationDirection direction{};
+        const WidgetRailOverlayPlatformNavigationEvent event) noexcept {
+        widgetrail::input::NavigationDirection direction{};
         switch (event.direction) {
-        case GbaOverlayPlatformNavigationDirection::Left:
-            direction = gba::input::NavigationDirection::Left;
+        case WidgetRailOverlayPlatformNavigationDirection::Left:
+            direction = widgetrail::input::NavigationDirection::Left;
             break;
-        case GbaOverlayPlatformNavigationDirection::Right:
-            direction = gba::input::NavigationDirection::Right;
+        case WidgetRailOverlayPlatformNavigationDirection::Right:
+            direction = widgetrail::input::NavigationDirection::Right;
             break;
-        case GbaOverlayPlatformNavigationDirection::Up:
-            direction = gba::input::NavigationDirection::Up;
+        case WidgetRailOverlayPlatformNavigationDirection::Up:
+            direction = widgetrail::input::NavigationDirection::Up;
             break;
-        case GbaOverlayPlatformNavigationDirection::Down:
-            direction = gba::input::NavigationDirection::Down;
+        case WidgetRailOverlayPlatformNavigationDirection::Down:
+            direction = widgetrail::input::NavigationDirection::Down;
             break;
-        case GbaOverlayPlatformNavigationDirection::None:
+        case WidgetRailOverlayPlatformNavigationDirection::None:
         default:
             return std::nullopt;
         }
         const auto phase = event.phase ==
-                GbaOverlayPlatformNavigationPhase::Repeated
-            ? gba::input::NavigationEventPhase::Repeated
-            : gba::input::NavigationEventPhase::Pressed;
-        return gba::input::StickNavigationEvent{direction, phase};
+                WidgetRailOverlayPlatformNavigationPhase::Repeated
+            ? widgetrail::input::NavigationEventPhase::Repeated
+            : widgetrail::input::NavigationEventPhase::Pressed;
+        return widgetrail::input::StickNavigationEvent{direction, phase};
     }
 
-    void DispatchStickNavigation(const gba::input::StickNavigationEvent event) {
-        using gba::input::NavigationDirection;
+    void DispatchStickNavigation(const widgetrail::input::StickNavigationEvent event) {
+        using widgetrail::input::NavigationDirection;
         const auto direction = event.direction;
-        if (state_.focusRegion() == gba::FocusRegion::Tray) {
+        if (state_.focusRegion() == widgetrail::FocusRegion::Tray) {
             if (direction == NavigationDirection::Left) {
-                Dispatch(gba::Command::NavigateLeft);
+                Dispatch(widgetrail::Command::NavigateLeft);
             } else if (direction == NavigationDirection::Right) {
-                Dispatch(gba::Command::NavigateRight);
-            } else if (gba::input::ShouldEnterWidgetFromTray(
+                Dispatch(widgetrail::Command::NavigateRight);
+            } else if (widgetrail::input::ShouldEnterWidgetFromTray(
                            direction, event.phase)) {
-                Dispatch(gba::Command::Activate);
+                Dispatch(widgetrail::Command::Activate);
             }
             return;
         }
-        if (state_.surface() != gba::Surface::Widget ||
-            state_.focusRegion() != gba::FocusRegion::Widget) return;
+        if (state_.surface() != widgetrail::Surface::Widget ||
+            state_.focusRegion() != widgetrail::FocusRegion::Widget) return;
         switch (direction) {
         case NavigationDirection::Left:
         case NavigationDirection::Right:
@@ -5224,26 +5224,26 @@ private:
 
     void PollController() {
         const ULONGLONG now = GetTickCount64();
-        GbaOverlayPlatformControllerFrame frame;
-        if (GbaOverlayPlatformReadController(
+        WidgetRailOverlayPlatformControllerFrame frame;
+        if (WidgetRailOverlayPlatformReadController(
                 platform_,
                 PlatformBoolean(IsOverlayProcessForeground()),
                 now,
                 &frame) !=
-            GbaOverlayPlatformStatus::Ok) {
+            WidgetRailOverlayPlatformStatus::Ok) {
             return;
         }
         const bool connected =
-            frame.connected != GBA_OVERLAY_PLATFORM_FALSE;
+            frame.connected != WRAIL_OVERLAY_PLATFORM_FALSE;
         const WORD buttons = frame.state.buttons;
         const WORD pressed = frame.pressedButtons;
         const WORD released = frame.releasedButtons;
-        const auto pinnedControllerCommand = gba::pinned::ResolveControllerCommand({
+        const auto pinnedControllerCommand = widgetrail::pinned::ResolveControllerCommand({
             pinnedSurfaceCoordinator_.pinned(),
             pinnedSurfaceCoordinator_.placementMode() !=
-                gba::pinned::PlacementMode::None,
+                widgetrail::pinned::PlacementMode::None,
             pinnedSurfaceCoordinator_.pinned() &&
-                state_.surface() == gba::Surface::Widget &&
+                state_.surface() == widgetrail::Surface::Widget &&
                 state_.activeWidget() == pinnedSurfaceCoordinator_.widgetId(),
             pinnedSurfaceCoordinator_.controllerFocused(),
             (pressed & XINPUT_GAMEPAD_A) != 0,
@@ -5254,40 +5254,40 @@ private:
             (buttons & XINPUT_GAMEPAD_RIGHT_SHOULDER) != 0,
         });
         if (pinnedControllerCommand ==
-            gba::pinned::ControllerCommand::EmergencyHide) {
+            widgetrail::pinned::ControllerCommand::EmergencyHide) {
             EmergencyHidePinnedSurfaces();
             return;
         }
         constexpr WORD recoveryChord = XINPUT_GAMEPAD_BACK | XINPUT_GAMEPAD_START;
         const bool recoveryChordDown = (buttons & recoveryChord) == recoveryChord;
-        if (frame.recoveryChordPressed != GBA_OVERLAY_PLATFORM_FALSE) {
+        if (frame.recoveryChordPressed != WRAIL_OVERLAY_PLATFORM_FALSE) {
             RestartCurrentWidget();
         }
 
-        const auto stepPinnedPlacement = [&](const gba::input::StickNavigationEvent& event) {
-            using gba::input::NavigationDirection;
+        const auto stepPinnedPlacement = [&](const widgetrail::input::StickNavigationEvent& event) {
+            using widgetrail::input::NavigationDirection;
             switch (event.direction) {
             case NavigationDirection::Left:
                 (void)pinnedSurfaceCoordinator_.StepPlacement(
-                    gba::pinned::PlacementDirection::Left);
+                    widgetrail::pinned::PlacementDirection::Left);
                 break;
             case NavigationDirection::Right:
                 (void)pinnedSurfaceCoordinator_.StepPlacement(
-                    gba::pinned::PlacementDirection::Right);
+                    widgetrail::pinned::PlacementDirection::Right);
                 break;
             case NavigationDirection::Up:
                 (void)pinnedSurfaceCoordinator_.StepPlacement(
-                    gba::pinned::PlacementDirection::Up);
+                    widgetrail::pinned::PlacementDirection::Up);
                 break;
             case NavigationDirection::Down:
                 (void)pinnedSurfaceCoordinator_.StepPlacement(
-                    gba::pinned::PlacementDirection::Down);
+                    widgetrail::pinned::PlacementDirection::Down);
                 break;
             default: break;
             }
         };
         if (pinnedSurfaceCoordinator_.placementMode() !=
-            gba::pinned::PlacementMode::None) {
+            widgetrail::pinned::PlacementMode::None) {
             if (const auto direction = DecodeNavigation(frame.stickNavigation))
                 stepPinnedPlacement(*direction);
             if (const auto direction = DecodeNavigation(frame.dpadNavigation))
@@ -5307,18 +5307,18 @@ private:
         }
         const bool placementEligible = !recoveryChordDown &&
             pinnedSurfaceCoordinator_.pinned() &&
-            state_.surface() == gba::Surface::Widget &&
+            state_.surface() == widgetrail::Surface::Widget &&
             state_.activeWidget() == pinnedSurfaceCoordinator_.widgetId();
-        gba::pinned::PlacementMode requestedPlacement = gba::pinned::PlacementMode::None;
+        widgetrail::pinned::PlacementMode requestedPlacement = widgetrail::pinned::PlacementMode::None;
         if (placementEligible && (pressed & XINPUT_GAMEPAD_START) != 0)
-            requestedPlacement = gba::pinned::PlacementMode::Move;
+            requestedPlacement = widgetrail::pinned::PlacementMode::Move;
         else if (placementEligible && (pressed & XINPUT_GAMEPAD_BACK) != 0)
-            requestedPlacement = gba::pinned::PlacementMode::Resize;
-        if (requestedPlacement != gba::pinned::PlacementMode::None &&
+            requestedPlacement = widgetrail::pinned::PlacementMode::Resize;
+        if (requestedPlacement != widgetrail::pinned::PlacementMode::None &&
             pinnedSurfaceCoordinator_.BeginPlacement(requestedPlacement)) {
             (void)pressedInteraction_.Clear();
             lastActionWidgetId_ = std::wstring(pinnedSurfaceCoordinator_.widgetId());
-            lastActionMessage_ = requestedPlacement == gba::pinned::PlacementMode::Move
+            lastActionMessage_ = requestedPlacement == widgetrail::pinned::PlacementMode::Move
                 ? L"Move pinned surface: D-pad/stick, A commit, B cancel"
                 : L"Resize pinned surface: D-pad/stick, A commit, B cancel";
             lastActionExpiresAt_ = now + 5000;
@@ -5326,11 +5326,11 @@ private:
             return;
         }
 
-        if (pinnedControllerCommand == gba::pinned::ControllerCommand::Enter) {
+        if (pinnedControllerCommand == widgetrail::pinned::ControllerCommand::Enter) {
             if (pinnedSurfaceCoordinator_.interactionMode() !=
-                gba::pinned::InteractionMode::Focusable)
+                widgetrail::pinned::InteractionMode::Focusable)
                 (void)pinnedSurfaceCoordinator_.SetInteractionMode(
-                    gba::pinned::InteractionMode::Focusable);
+                    widgetrail::pinned::InteractionMode::Focusable);
             if (pinnedSurfaceCoordinator_.EnterControllerFocus()) {
                 (void)pressedInteraction_.Clear();
                 lastActionWidgetId_ =
@@ -5344,30 +5344,30 @@ private:
         }
 
         if (pinnedSurfaceCoordinator_.controllerFocused()) {
-            const auto movePinnedFocus = [&](const gba::input::StickNavigationEvent& event) {
+            const auto movePinnedFocus = [&](const widgetrail::input::StickNavigationEvent& event) {
                 (void)pinnedSurfaceCoordinator_.MoveControllerFocus(event.direction);
             };
             if (const auto direction = DecodeNavigation(frame.stickNavigation))
                 movePinnedFocus(*direction);
             if (const auto direction = DecodeNavigation(frame.dpadNavigation))
                 movePinnedFocus(*direction);
-            if (pinnedControllerCommand == gba::pinned::ControllerCommand::Activate) {
+            if (pinnedControllerCommand == widgetrail::pinned::ControllerCommand::Activate) {
                 if (!pinnedSurfaceCoordinator_.QueueFocusedInput(
-                        L"a", gba::ControllerInputOrigin::PhysicalController))
+                        L"a", widgetrail::ControllerInputOrigin::PhysicalController))
                     pinnedSurfaceCoordinator_.SetActionFeedback(
                         L"The focused pinned item is unavailable.", false);
             } else if (pinnedControllerCommand ==
-                       gba::pinned::ControllerCommand::Exit) {
+                       widgetrail::pinned::ControllerCommand::Exit) {
                 (void)pinnedSurfaceCoordinator_.ExitControllerFocus();
                 (void)pinnedSurfaceCoordinator_.SetInteractionMode(
-                    gba::pinned::InteractionMode::ClickThrough);
+                    widgetrail::pinned::InteractionMode::ClickThrough);
                 lastActionMessage_ = L"Controller focus returned to the overlay";
                 lastActionExpiresAt_ = now + 2400;
             } else if (pinnedControllerCommand ==
-                       gba::pinned::ControllerCommand::Close) {
+                       widgetrail::pinned::ControllerCommand::Close) {
                 const std::wstring widgetId(pinnedSurfaceCoordinator_.widgetId());
                 (void)pinnedSurfaceCoordinator_.Unpin(
-                    gba::pinned::WidgetSurfaceStopReason::Close);
+                    widgetrail::pinned::WidgetSurfaceStopReason::Close);
                 lastActionWidgetId_ = widgetId;
                 lastActionMessage_ = L"Pinned surface closed";
                 lastActionExpiresAt_ = now + 2400;
@@ -5393,8 +5393,8 @@ private:
 
         if (sliderReconcileAt_ != 0 && now >= sliderReconcileAt_) {
             std::vector<std::wstring> reconciled;
-            const gba::WidgetSnapshot* currentSnapshot{};
-            if (state_.surface() == gba::Surface::Widget) {
+            const widgetrail::WidgetSnapshot* currentSnapshot{};
+            if (state_.surface() == widgetrail::Surface::Widget) {
                 currentSnapshot = InteractionSnapshotFor(state_.activeWidget());
                 if (currentSnapshot)
                     reconciled = ReconcileSliderPresentations(*currentSnapshot, now);
@@ -5423,7 +5423,7 @@ private:
 
         const bool launcherSafeStartGesture =
             (pressed & XINPUT_GAMEPAD_A) != 0 &&
-            state_.focusRegion() == gba::FocusRegion::Tray &&
+            state_.focusRegion() == widgetrail::FocusRegion::Tray &&
             UsesLauncherExperiencePresentation(state_.selectedWidget()) &&
             frame.state.leftTrigger >= 30 &&
             frame.state.rightTrigger >= 30;
@@ -5463,17 +5463,17 @@ private:
             DispatchControllerAction(L"Menu", true);
         }
         if (!launcherSafeStartGesture &&
-            frame.leftTriggerPressed != GBA_OVERLAY_PLATFORM_FALSE) {
+            frame.leftTriggerPressed != WRAIL_OVERLAY_PLATFORM_FALSE) {
             DispatchControllerAction(L"LT", true);
         }
         if (!launcherSafeStartGesture &&
-            frame.rightTriggerPressed != GBA_OVERLAY_PLATFORM_FALSE) {
+            frame.rightTriggerPressed != WRAIL_OVERLAY_PLATFORM_FALSE) {
             DispatchControllerAction(L"RT", true);
         }
-        if (frame.leftTriggerReleased != GBA_OVERLAY_PLATFORM_FALSE &&
+        if (frame.leftTriggerReleased != WRAIL_OVERLAY_PLATFORM_FALSE &&
             pressedInteraction_.Release(L"leftTrigger"))
             InvalidateRect(window_, nullptr, FALSE);
-        if (frame.rightTriggerReleased != GBA_OVERLAY_PLATFORM_FALSE &&
+        if (frame.rightTriggerReleased != WRAIL_OVERLAY_PLATFORM_FALSE &&
             pressedInteraction_.Release(L"rightTrigger"))
             InvalidateRect(window_, nullptr, FALSE);
 
@@ -5488,7 +5488,7 @@ private:
             if (trayYGesture_.capturing()) {
                 // Device reconnect while a canceled capture is waiting for its
                 // physical release must not create a second gesture.
-            } else if (state_.focusRegion() == gba::FocusRegion::Tray) {
+            } else if (state_.focusRegion() == widgetrail::FocusRegion::Tray) {
                 trayYGesture_.Press(
                     state_.selectedWidget(), TrayYRestartEligible(), now);
                 InvalidateRect(window_, nullptr, FALSE);
@@ -5528,14 +5528,14 @@ private:
             InvalidateRect(window_, nullptr, FALSE);
     }
 
-    const gba::WidgetSnapshot* SnapshotFor(const std::wstring_view widgetId) const noexcept {
+    const widgetrail::WidgetSnapshot* SnapshotFor(const std::wstring_view widgetId) const noexcept {
         return sessions_.Snapshot(widgetId);
     }
 
-    const gba::WidgetSnapshot* InteractionSnapshotFor(
+    const widgetrail::WidgetSnapshot* InteractionSnapshotFor(
         const std::wstring_view widgetId) const noexcept {
         const auto presentation = sessions_.Presentation(widgetId);
-        if (presentation.authority != gba::WidgetPresentationAuthority::Current)
+        if (presentation.authority != widgetrail::WidgetPresentationAuthority::Current)
             return nullptr;
         const auto* source = presentation.snapshot;
         const auto* descriptor = sessions_.FindDescriptor(widgetId);
@@ -5570,11 +5570,11 @@ private:
         for (const auto& request : pendingActions) {
             const auto publishedNode = std::find_if(
                 accessibilityTree_.nodes.begin(), accessibilityTree_.nodes.end(),
-                [&](const gba::accessibility::Node& candidate) {
+                [&](const widgetrail::accessibility::Node& candidate) {
                     return candidate.domain == request.domain &&
                         candidate.id == request.nodeId;
                 });
-            if (request.hostAction != gba::accessibility::HostAction::None) {
+            if (request.hostAction != widgetrail::accessibility::HostAction::None) {
                 if (request.widgetId != accessibilityTree_.widgetId ||
                     request.runtimeGeneration != accessibilityTree_.runtimeGeneration ||
                     request.snapshotSequence != accessibilityTree_.snapshotSequence ||
@@ -5587,32 +5587,32 @@ private:
                     continue;
                 }
                 if (request.hostAction ==
-                    gba::accessibility::HostAction::ActivateTrayItem) {
-                    if (request.kind != gba::accessibility::ActionKind::Invoke &&
-                        request.kind != gba::accessibility::ActionKind::Focus)
+                    widgetrail::accessibility::HostAction::ActivateTrayItem) {
+                    if (request.kind != widgetrail::accessibility::ActionKind::Invoke &&
+                        request.kind != widgetrail::accessibility::ActionKind::Focus)
                         continue;
-                    if (state_.surface() == gba::Surface::Widget &&
-                        state_.focusRegion() == gba::FocusRegion::Widget)
-                        Dispatch(gba::Command::SampleWidgetBack);
-                    if (state_.focusRegion() != gba::FocusRegion::Tray) continue;
-                    if (state_.reorderMode()) Dispatch(gba::Command::Cancel);
+                    if (state_.surface() == widgetrail::Surface::Widget &&
+                        state_.focusRegion() == widgetrail::FocusRegion::Widget)
+                        Dispatch(widgetrail::Command::SampleWidgetBack);
+                    if (state_.focusRegion() != widgetrail::FocusRegion::Tray) continue;
+                    if (state_.reorderMode()) Dispatch(widgetrail::Command::Cancel);
                     if (!SelectTrayWidget(request.hostTargetId)) continue;
-                    if (request.kind == gba::accessibility::ActionKind::Invoke)
-                        Dispatch(gba::Command::Activate);
+                    if (request.kind == widgetrail::accessibility::ActionKind::Invoke)
+                        Dispatch(widgetrail::Command::Activate);
                 } else if (request.hostAction ==
-                               gba::accessibility::HostAction::SelectTrayOverflow) {
-                    if (request.kind != gba::accessibility::ActionKind::Invoke ||
-                        state_.focusRegion() != gba::FocusRegion::Tray ||
+                               widgetrail::accessibility::HostAction::SelectTrayOverflow) {
+                    if (request.kind != widgetrail::accessibility::ActionKind::Invoke ||
+                        state_.focusRegion() != widgetrail::FocusRegion::Tray ||
                         state_.reorderMode())
                         continue;
                     if (!SelectTrayWidget(request.hostTargetId)) continue;
                 } else if (request.hostAction ==
-                               gba::accessibility::HostAction::BackToTray ||
+                               widgetrail::accessibility::HostAction::BackToTray ||
                            request.hostAction ==
-                               gba::accessibility::HostAction::BackWithinWidget) {
-                    if (request.kind != gba::accessibility::ActionKind::Invoke ||
-                        state_.surface() != gba::Surface::Widget ||
-                        state_.focusRegion() != gba::FocusRegion::Widget ||
+                               widgetrail::accessibility::HostAction::BackWithinWidget) {
+                    if (request.kind != widgetrail::accessibility::ActionKind::Invoke ||
+                        state_.surface() != widgetrail::Surface::Widget ||
+                        state_.focusRegion() != widgetrail::FocusRegion::Widget ||
                         state_.activeWidget() != request.widgetId ||
                         !IsBridgeWidget(request.widgetId))
                         continue;
@@ -5625,12 +5625,12 @@ private:
                         AppendDiagnostic(L"Dropped stale Back accessibility action");
                         continue;
                     }
-                    if (!gba::accessibility::IsCurrentBackAction(
+                    if (!widgetrail::accessibility::IsCurrentBackAction(
                             request.hostAction, request.hostTargetId, *snapshot,
                             focusedElementId_))
                         continue;
-                    if (request.hostAction == gba::accessibility::HostAction::BackToTray) {
-                        Dispatch(gba::Command::SampleWidgetBack);
+                    if (request.hostAction == widgetrail::accessibility::HostAction::BackToTray) {
+                        Dispatch(widgetrail::Command::SampleWidgetBack);
                     } else {
                         const auto handled = bridge_.SendControllerInput(
                             request.widgetId, L"b", L"openWidget", focusedElementId_,
@@ -5638,7 +5638,7 @@ private:
                             ++controllerSequence_,
                             static_cast<long long>(GetTickCount64() * 1000),
                             L"pressed", std::nullopt,
-                            gba::ControllerInputOrigin::AccessibilityAutomation);
+                            widgetrail::ControllerInputOrigin::AccessibilityAutomation);
                         if (!handled) {
                             AppendDiagnostic(
                                 L"Accessibility Back transport failed for " +
@@ -5650,11 +5650,11 @@ private:
                         }
                     }
                 } else if (request.hostAction ==
-                           gba::accessibility::HostAction::CloseOverlay) {
-                    if (request.kind != gba::accessibility::ActionKind::Invoke ||
-                        state_.surface() == gba::Surface::Hidden)
+                           widgetrail::accessibility::HostAction::CloseOverlay) {
+                    if (request.kind != widgetrail::accessibility::ActionKind::Invoke ||
+                        state_.surface() == widgetrail::Surface::Hidden)
                         continue;
-                    Dispatch(gba::Command::CloseOverlay);
+                    Dispatch(widgetrail::Command::CloseOverlay);
                 } else {
                     continue;
                 }
@@ -5662,7 +5662,7 @@ private:
                 InvalidateRect(window_, nullptr, FALSE);
                 continue;
             }
-            if (state_.surface() != gba::Surface::Widget ||
+            if (state_.surface() != widgetrail::Surface::Widget ||
                 state_.activeWidget() != request.widgetId ||
                 !IsBridgeWidget(request.widgetId)) {
                 AppendDiagnostic(L"Dropped accessibility action outside the active widget");
@@ -5674,7 +5674,7 @@ private:
                 AppendDiagnostic(L"Dropped stale accessibility action for " + request.widgetId);
                 continue;
             }
-            const auto resolved = gba::accessibility::ResolveActionRequest(
+            const auto resolved = widgetrail::accessibility::ResolveActionRequest(
                 request, state_.activeWidget(), descriptor->runtimeGeneration, *snapshot);
             if (!resolved) {
                 AppendDiagnostic(L"Dropped stale or unavailable accessibility action for " +
@@ -5682,11 +5682,11 @@ private:
                 continue;
             }
 
-            if (resolved->kind == gba::accessibility::ActionKind::Focus) {
-                if (state_.focusRegion() == gba::FocusRegion::Tray)
-                    Dispatch(gba::Command::Activate);
-                if (state_.surface() != gba::Surface::Widget ||
-                    state_.focusRegion() != gba::FocusRegion::Widget ||
+            if (resolved->kind == widgetrail::accessibility::ActionKind::Focus) {
+                if (state_.focusRegion() == widgetrail::FocusRegion::Tray)
+                    Dispatch(widgetrail::Command::Activate);
+                if (state_.surface() != widgetrail::Surface::Widget ||
+                    state_.focusRegion() != widgetrail::FocusRegion::Widget ||
                     state_.activeWidget() != request.widgetId) continue;
                 const auto cancelledSliders =
                     sliderInteraction_.DeactivateAll();
@@ -5705,25 +5705,25 @@ private:
             // physical controller gesture. Enter the widget's interactive
             // lifecycle for ordinary action routing while retaining the same
             // generation/snapshot checks and explicit origin below.
-            if (state_.focusRegion() == gba::FocusRegion::Tray)
-                Dispatch(gba::Command::Activate);
-            if (state_.surface() != gba::Surface::Widget ||
-                state_.focusRegion() != gba::FocusRegion::Widget ||
+            if (state_.focusRegion() == widgetrail::FocusRegion::Tray)
+                Dispatch(widgetrail::Command::Activate);
+            if (state_.surface() != widgetrail::Surface::Widget ||
+                state_.focusRegion() != widgetrail::FocusRegion::Widget ||
                 state_.activeWidget() != request.widgetId) continue;
 
             if (resolved->protocolButton == L"A" &&
                 OpenTextEntryModal(request.widgetId, *snapshot, resolved->nodeId))
                 continue;
-            if (const auto* node = gba::input::FindNodeInInputScope(
+            if (const auto* node = widgetrail::input::FindNodeInInputScope(
                     *snapshot, resolved->nodeId, snapshot->activeInputScopeId);
                 node && TryInvokeLocalWidgetPackageImport(
                     *snapshot, *node, resolved->protocolButton,
-                    gba::input::NavigationEventPhase::Pressed)) {
+                    widgetrail::input::NavigationEventPhase::Pressed)) {
                 continue;
             }
 
             const auto* requestedSlider = resolved->requestedValue
-                ? gba::input::FindNodeInInputScope(
+                ? widgetrail::input::FindNodeInInputScope(
                     *snapshot, resolved->nodeId, snapshot->activeInputScopeId)
                 : nullptr;
             const bool requestedSliderAction =
@@ -5747,7 +5747,7 @@ private:
                 snapshot->activeInputScopeId, snapshot->sequence,
                 ++controllerSequence_, static_cast<long long>(GetTickCount64() * 1000),
                 L"pressed", resolved->requestedValue,
-                gba::ControllerInputOrigin::AccessibilityAutomation);
+                widgetrail::ControllerInputOrigin::AccessibilityAutomation);
             if (!handled) {
                 if (optimisticSliderStarted && requestedSlider &&
                     sliderInteraction_.CancelPending(
@@ -5791,11 +5791,11 @@ private:
         widgetAccessibilityProjection_.Clear();
     }
 
-    [[nodiscard]] gba::accessibility::Tree PartitionAccessibilityTree(
+    [[nodiscard]] widgetrail::accessibility::Tree PartitionAccessibilityTree(
         const bool chrome) const {
         if (!compositionChromeSession_) {
             if (!chrome) return accessibilityTree_;
-            gba::accessibility::Tree empty;
+            widgetrail::accessibility::Tree empty;
             empty.widgetId = accessibilityTree_.widgetId;
             empty.runtimeGeneration = accessibilityTree_.runtimeGeneration;
             empty.snapshotSequence = accessibilityTree_.snapshotSequence;
@@ -5804,14 +5804,14 @@ private:
             return empty;
         }
         const auto& session = *compositionChromeSession_;
-        const float guideThreshold = state_.surface() == gba::Surface::Widget
+        const float guideThreshold = state_.surface() == widgetrail::Surface::Widget
             ? -std::numeric_limits<float>::infinity()
             : std::numeric_limits<float>::infinity();
-        auto partition = gba::accessibility::PartitionForFixedChrome(
+        auto partition = widgetrail::accessibility::PartitionForFixedChrome(
             accessibilityTree_, guideThreshold, 0.0F, 0.0F);
         for (auto& node : partition.chrome.nodes) {
             const RECT& childBounds =
-                node.domain == gba::accessibility::ElementDomain::Tray
+                node.domain == widgetrail::accessibility::ElementDomain::Tray
                 ? session.trayClientBounds
                 : session.guideClientBounds;
             node.bounds.x += static_cast<float>(childBounds.left) /
@@ -5894,27 +5894,27 @@ private:
     }
 
     void PublishTrayAccessibility(
-        const gba::shell::TrayLayout& layout,
+        const widgetrail::shell::TrayLayout& layout,
         const float width,
         const float height,
-        const gba::accessibility::DashboardSemantics* dashboard = nullptr) {
+        const widgetrail::accessibility::DashboardSemantics* dashboard = nullptr) {
         if (!accessibilityActive_) return;
-        std::vector<gba::accessibility::TrayItem> items;
+        std::vector<widgetrail::accessibility::TrayItem> items;
         items.reserve(state_.order().size());
         for (const auto& widgetId : state_.order()) {
             const std::wstring name{DisplayWidgetName(widgetId)};
             items.push_back({widgetId, name});
         }
-        if (state_.surface() == gba::Surface::Widget) {
+        if (state_.surface() == widgetrail::Surface::Widget) {
             const bool currentWidgetSemantics =
                 widgetAccessibilityTree_.widgetId == state_.activeWidget();
             if ((!currentWidgetSemantics &&
-                 state_.focusRegion() != gba::FocusRegion::Tray) ||
+                 state_.focusRegion() != widgetrail::FocusRegion::Tray) ||
                 openWidgetAccessibility_.title.empty())
                 return;
-            gba::accessibility::Tree semanticTree = currentWidgetSemantics
+            widgetrail::accessibility::Tree semanticTree = currentWidgetSemantics
                 ? widgetAccessibilityTree_
-                : gba::accessibility::Tree{};
+                : widgetrail::accessibility::Tree{};
             if (!currentWidgetSemantics) {
                 semanticTree.widgetId = state_.activeWidget();
                 semanticTree.activeInputScopeId = L"host.tray";
@@ -5924,16 +5924,16 @@ private:
                 }
             }
             const auto semanticRevision =
-                gba::accessibility::ComputeOpenWidgetSemanticRevision(
+                widgetrail::accessibility::ComputeOpenWidgetSemanticRevision(
                     items, openWidgetAccessibility_);
             const auto policy = appearanceState_.current()
                 ? CurrentAccessibilityPolicy()
-                : gba::NativeAccessibilityPolicy{};
-            gba::accessibility::ProjectionKey key{
+                : widgetrail::NativeAccessibilityPolicy{};
+            widgetrail::accessibility::ProjectionKey key{
                 semanticTree.widgetId,
                 semanticTree.runtimeGeneration,
                 semanticTree.activeInputScopeId,
-                state_.focusRegion() == gba::FocusRegion::Tray
+                state_.focusRegion() == widgetrail::FocusRegion::Tray
                     ? std::wstring{state_.selectedWidget()}
                     : focusedElementId_,
                 semanticTree.snapshotSequence,
@@ -5953,21 +5953,21 @@ private:
             };
             key.hostSemanticRevision = semanticRevision;
             if (!accessibilityProjection_.ShouldCollect(key)) return;
-            accessibilityTree_ = gba::accessibility::BuildOpenWidgetTree(
+            accessibilityTree_ = widgetrail::accessibility::BuildOpenWidgetTree(
                 std::move(semanticTree), items, layout, state_.selectedSlot(),
-                state_.focusRegion() == gba::FocusRegion::Tray,
+                state_.focusRegion() == widgetrail::FocusRegion::Tray,
                 openWidgetAccessibility_);
             if (PublishAccessibilityTree(key.pixelsPerDip))
                 accessibilityProjection_.Published(std::move(key));
             return;
         }
-        if (state_.focusRegion() != gba::FocusRegion::Tray) return;
+        if (state_.focusRegion() != widgetrail::FocusRegion::Tray) return;
         const auto semanticRevision =
-            gba::accessibility::ComputeTraySemanticRevision(items, dashboard);
+            widgetrail::accessibility::ComputeTraySemanticRevision(items, dashboard);
         const auto policy = appearanceState_.current()
             ? CurrentAccessibilityPolicy()
-            : gba::NativeAccessibilityPolicy{};
-        const gba::accessibility::ProjectionKey key{
+            : widgetrail::NativeAccessibilityPolicy{};
+        const widgetrail::accessibility::ProjectionKey key{
             L"host.tray",
             L"host",
             L"host.tray",
@@ -5988,15 +5988,15 @@ private:
             policy.reducedTransparency,
         };
         if (!accessibilityProjection_.ShouldCollect(key)) return;
-        accessibilityTree_ = gba::accessibility::BuildTrayTree(
+        accessibilityTree_ = widgetrail::accessibility::BuildTrayTree(
             items, layout, state_.selectedSlot(), ++hostAccessibilitySequence_, dashboard);
         if (PublishAccessibilityTree(key.pixelsPerDip))
             accessibilityProjection_.Published(key);
     }
 
     bool ReconcileResponsiveFocusPersistence() {
-        if (!window_ || state_.surface() != gba::Surface::Widget ||
-            state_.focusRegion() != gba::FocusRegion::Widget) {
+        if (!window_ || state_.surface() != widgetrail::Surface::Widget ||
+            state_.focusRegion() != widgetrail::FocusRegion::Widget) {
             return false;
         }
         const std::wstring widget{state_.activeWidget()};
@@ -6009,7 +6009,7 @@ private:
         const float interfaceScale = appearanceState_.current()
             ? static_cast<float>(appearanceState_.current()->interfaceScale)
             : 1.0F;
-        const auto metrics = gba::ComputeOverlayRenderMetrics(
+        const auto metrics = widgetrail::ComputeOverlayRenderMetrics(
             client.right - client.left,
             client.bottom - client.top,
             dpi,
@@ -6019,11 +6019,11 @@ private:
             metrics->viewportWidthDip, metrics->viewportHeightDip);
         if (!geometry) return false;
 
-        const auto target = gba::input::ResolveResponsiveFocusPersistenceTarget(
+        const auto target = widgetrail::input::ResolveResponsiveFocusPersistenceTarget(
             *snapshot,
             focusedElementId_,
             snapshot->activeInputScopeId,
-            gba::IsCompactResponsiveSurface({
+            widgetrail::IsCompactResponsiveSurface({
                 geometry->panelWidth,
                 geometry->panelHeight,
             }));
@@ -6039,9 +6039,9 @@ private:
         return true;
     }
 
-    static gba::input::SliderInputDescriptor SliderDescriptor(
-        const gba::WidgetSnapshot& snapshot,
-        const gba::WidgetNode& node) noexcept {
+    static widgetrail::input::SliderInputDescriptor SliderDescriptor(
+        const widgetrail::WidgetSnapshot& snapshot,
+        const widgetrail::WidgetNode& node) noexcept {
         return {
             snapshot.instanceId,
             snapshot.activeInputScopeId,
@@ -6059,10 +6059,10 @@ private:
     }
 
     [[nodiscard]] std::vector<std::wstring> ReconcileSliderPresentations(
-        const gba::WidgetSnapshot& snapshot,
+        const widgetrail::WidgetSnapshot& snapshot,
         const ULONGLONG now) {
         std::vector<std::wstring> changed;
-        const auto visit = [&](const auto& self, const gba::WidgetNode& node) -> void {
+        const auto visit = [&](const auto& self, const widgetrail::WidgetNode& node) -> void {
             if (node.kind == L"slider" &&
                 sliderInteraction_.Reconcile(
                     SliderDescriptor(snapshot, node), now).visualChanged) {
@@ -6075,8 +6075,8 @@ private:
     }
 
     [[nodiscard]] static std::vector<std::wstring> CurrentSliderNodeIds(
-        const gba::WidgetSnapshot& snapshot,
-        const std::vector<gba::input::SliderPresentationIdentity>& identities) {
+        const widgetrail::WidgetSnapshot& snapshot,
+        const std::vector<widgetrail::input::SliderPresentationIdentity>& identities) {
         std::vector<std::wstring> nodeIds;
         for (const auto& identity : identities) {
             if (identity.widgetInstanceId != snapshot.instanceId ||
@@ -6084,7 +6084,7 @@ private:
                 identity.snapshotSequence != snapshot.sequence) {
                 continue;
             }
-            const auto* node = gba::input::FindNodeInInputScope(
+            const auto* node = widgetrail::input::FindNodeInInputScope(
                 snapshot, identity.nodeId, snapshot.activeInputScopeId);
             if (!node || node->kind != L"slider" ||
                 node->valueChangedActionId != identity.valueChangedActionId ||
@@ -6097,7 +6097,7 @@ private:
     }
 
     void InvalidateWidgetSliderValues(
-        const gba::WidgetSnapshot& snapshot,
+        const widgetrail::WidgetSnapshot& snapshot,
         const std::vector<std::wstring>& nodeIds,
         const bool paintImmediately) {
         if (!window_ || nodeIds.empty()) return;
@@ -6110,8 +6110,8 @@ private:
         };
         const auto* current = InteractionSnapshotFor(state_.activeWidget());
         if (!declarativeRenderer_ || !compositionSurface_.available() ||
-            state_.surface() != gba::Surface::Widget ||
-            state_.focusRegion() != gba::FocusRegion::Widget || !current ||
+            state_.surface() != widgetrail::Surface::Widget ||
+            state_.focusRegion() != widgetrail::FocusRegion::Widget || !current ||
             current->instanceId != snapshot.instanceId ||
             current->sequence != snapshot.sequence ||
             lastWidgetPresentationUsesProjection_ || declarativeMotionActive_ ||
@@ -6133,22 +6133,22 @@ private:
         const float interfaceScale = appearanceState_.current()
             ? static_cast<float>(appearanceState_.current()->interfaceScale)
             : 1.0F;
-        const auto metrics = gba::ComputeOverlayRenderMetrics(
+        const auto metrics = widgetrail::ComputeOverlayRenderMetrics(
             client.right - client.left, client.bottom - client.top,
             dpi, interfaceScale);
         const auto geometry = metrics
-            ? gba::ComputePanelLocalSurfaceGeometry(
+            ? widgetrail::ComputePanelLocalSurfaceGeometry(
                 metrics->viewportWidthDip, metrics->viewportHeightDip)
             : std::nullopt;
         if (!metrics || !geometry || metrics->physicalPixelsPerDip <= 0.0F) {
             full();
             return;
         }
-        const gba::WidgetPresentationImpact impact{
+        const widgetrail::WidgetPresentationImpact impact{
             snapshot.sequence,
             snapshot.sequence,
-            gba::WidgetPresentationEffect::Paint |
-                gba::WidgetPresentationEffect::Accessibility,
+            widgetrail::WidgetPresentationEffect::Paint |
+                widgetrail::WidgetPresentationEffect::Accessibility,
             nodeIds,
         };
         const auto plan = declarativeRenderer_->PlanPresentationUpdate(
@@ -6159,7 +6159,7 @@ private:
                 geometry->widgetViewportWidth,
                 geometry->widgetViewportHeight,
             });
-        if (!plan || plan->work != gba::IncrementalPresentationWork::PaintOnly) {
+        if (!plan || plan->work != widgetrail::IncrementalPresentationWork::PaintOnly) {
             full();
             return;
         }
@@ -6172,9 +6172,9 @@ private:
 
     bool DispatchScrollPagination(
         const std::wstring_view widgetId,
-        const gba::WidgetSnapshot& snapshot,
-        const gba::input::NavigationDirection direction) {
-        const auto action = gba::input::FindScrollPaginationAction(
+        const widgetrail::WidgetSnapshot& snapshot,
+        const widgetrail::input::NavigationDirection direction) {
+        const auto action = widgetrail::input::FindScrollPaginationAction(
             snapshot.root, focusedElementId_, direction);
         if (!action) return false;
         const auto handled = bridge_.SendAction(
@@ -6191,22 +6191,22 @@ private:
     }
 
     void HandleWidgetDirection(
-        const gba::input::NavigationDirection direction,
-        const gba::input::NavigationEventPhase phase,
+        const widgetrail::input::NavigationDirection direction,
+        const widgetrail::input::NavigationEventPhase phase,
         const bool repeatedCanNavigate) {
         if (textEntryModal_.active()) {
-            const auto button = direction == gba::input::NavigationDirection::Left ? L"DPadLeft" :
-                direction == gba::input::NavigationDirection::Right ? L"DPadRight" :
-                direction == gba::input::NavigationDirection::Up ? L"DPadUp" : L"DPadDown";
+            const auto button = direction == widgetrail::input::NavigationDirection::Left ? L"DPadLeft" :
+                direction == widgetrail::input::NavigationDirection::Right ? L"DPadRight" :
+                direction == widgetrail::input::NavigationDirection::Up ? L"DPadUp" : L"DPadDown";
             textEntryModal_.HandleController(button);
             return;
         }
-        if (state_.surface() != gba::Surface::Widget ||
-            state_.focusRegion() != gba::FocusRegion::Widget) return;
+        if (state_.surface() != widgetrail::Surface::Widget ||
+            state_.focusRegion() != widgetrail::FocusRegion::Widget) return;
         const std::wstring_view widgetId = state_.activeWidget();
         const auto* snapshot = InteractionSnapshotFor(widgetId);
         if (!snapshot) return;
-        const auto visible = gba::input::ResolveVisibleFocusTarget(
+        const auto visible = widgetrail::input::ResolveVisibleFocusTarget(
             focusedElementId_, snapshot->activeInputScopeId, lastWidgetRenderResult_);
         if (!visible) return;
         if (*visible != focusedElementId_) {
@@ -6217,19 +6217,19 @@ private:
             InvalidateWidgetFocusChange(priorFocus, cancelledSliders);
         }
         const auto projectedDirection =
-            direction == gba::input::NavigationDirection::Left ? L"left" :
-            direction == gba::input::NavigationDirection::Right ? L"right" :
-            direction == gba::input::NavigationDirection::Up ? L"up" : L"down";
+            direction == widgetrail::input::NavigationDirection::Left ? L"left" :
+            direction == widgetrail::input::NavigationDirection::Right ? L"right" :
+            direction == widgetrail::input::NavigationDirection::Up ? L"up" : L"down";
         const auto projectedFocusTarget =
             launcherExperienceProjection_.ProjectedFocusTarget(
                 widgetId, focusedElementId_, projectedDirection);
-        if ((phase != gba::input::NavigationEventPhase::Repeated ||
+        if ((phase != widgetrail::input::NavigationEventPhase::Repeated ||
              repeatedCanNavigate) &&
             projectedFocusTarget) {
             MoveWidgetFocus(projectedDirection);
             return;
         }
-        const auto* focused = gba::input::FindNodeInInputScope(
+        const auto* focused = widgetrail::input::FindNodeInInputScope(
             *snapshot, focusedElementId_, snapshot->activeInputScopeId);
         if (!focused) return;
         const auto sliderDescriptor = SliderDescriptor(*snapshot, *focused);
@@ -6238,11 +6238,11 @@ private:
         const bool adjustmentActive = activationRequired &&
             sliderInteraction_.AdjustmentModeActive(
                 sliderDescriptor, GetTickCount64());
-        const auto route = gba::input::RouteFocusedDirection(
+        const auto route = widgetrail::input::RouteFocusedDirection(
             focused->kind, focused->isDisabled, focused->isBusy,
             activationRequired, adjustmentActive, direction);
-        if (route == gba::input::FocusedDirectionRoute::Consume) return;
-        if (route == gba::input::FocusedDirectionRoute::SliderAdjustment) {
+        if (route == widgetrail::input::FocusedDirectionRoute::Consume) return;
+        if (route == widgetrail::input::FocusedDirectionRoute::SliderAdjustment) {
             const auto adjustment = sliderInteraction_.Adjust(
                 sliderDescriptor, direction, GetTickCount64());
             if (adjustment.requestedValue) {
@@ -6252,30 +6252,30 @@ private:
                 // acknowledgement so controller feedback never waits on IPC.
                 InvalidateWidgetSliderValues(
                     *snapshot, {focused->id}, true);
-                const auto button = direction == gba::input::NavigationDirection::Left
+                const auto button = direction == widgetrail::input::NavigationDirection::Left
                     ? std::wstring_view{L"DPadLeft"}
                     : std::wstring_view{L"DPadRight"};
                 DispatchWidgetAction(button, phase, adjustment.requestedValue);
             }
             return;
         }
-        if (phase == gba::input::NavigationEventPhase::Repeated && !repeatedCanNavigate)
+        if (phase == widgetrail::input::NavigationEventPhase::Repeated && !repeatedCanNavigate)
             return;
         switch (direction) {
-        case gba::input::NavigationDirection::Left: MoveWidgetFocus(L"left"); break;
-        case gba::input::NavigationDirection::Right: MoveWidgetFocus(L"right"); break;
-        case gba::input::NavigationDirection::Up: MoveWidgetFocus(L"up"); break;
-        case gba::input::NavigationDirection::Down: MoveWidgetFocus(L"down"); break;
+        case widgetrail::input::NavigationDirection::Left: MoveWidgetFocus(L"left"); break;
+        case widgetrail::input::NavigationDirection::Right: MoveWidgetFocus(L"right"); break;
+        case widgetrail::input::NavigationDirection::Up: MoveWidgetFocus(L"up"); break;
+        case widgetrail::input::NavigationDirection::Down: MoveWidgetFocus(L"down"); break;
         default: break;
         }
     }
 
     void RefreshCurrentBridgeSnapshot(const std::uint64_t correlationId = 0) {
-        if (state_.surface() == gba::Surface::Hidden &&
+        if (state_.surface() == widgetrail::Surface::Hidden &&
             !pinnedSurfaceCoordinator_.pinned()) return;
-        const std::wstring_view widgetId = state_.surface() == gba::Surface::Hidden
+        const std::wstring_view widgetId = state_.surface() == widgetrail::Surface::Hidden
             ? pinnedSurfaceCoordinator_.widgetId()
-            : state_.surface() == gba::Surface::Widget
+            : state_.surface() == widgetrail::Surface::Widget
             ? state_.activeWidget()
             : state_.selectedWidget();
         if (IsBridgeWidget(widgetId))
@@ -6283,32 +6283,32 @@ private:
     }
 
     [[nodiscard]] bool TrayYRestartEligible() const noexcept {
-        return state_.surface() != gba::Surface::Hidden &&
-               state_.focusRegion() == gba::FocusRegion::Tray &&
+        return state_.surface() != widgetrail::Surface::Hidden &&
+               state_.focusRegion() == widgetrail::FocusRegion::Tray &&
                !state_.reorderMode() &&
                IsBridgeWidget(state_.selectedWidget());
     }
 
-    void ApplyTrayYGestureAction(const gba::input::TrayYGestureAction action) {
+    void ApplyTrayYGestureAction(const widgetrail::input::TrayYGestureAction action) {
         switch (action) {
-        case gba::input::TrayYGestureAction::ToggleReorder:
-            Dispatch(gba::Command::ToggleReorder);
+        case widgetrail::input::TrayYGestureAction::ToggleReorder:
+            Dispatch(widgetrail::Command::ToggleReorder);
             break;
-        case gba::input::TrayYGestureAction::RestartSelectedWidget:
+        case widgetrail::input::TrayYGestureAction::RestartSelectedWidget:
             // The recognizer revalidated the exact selected bridge widget and
             // tray context. Resolve it once more through the same restart
             // authority as F5; tray Y never depends on a widget-authored action.
             RestartCurrentWidget();
             break;
-        case gba::input::TrayYGestureAction::None:
+        case widgetrail::input::TrayYGestureAction::None:
             break;
         }
     }
 
     void RestartCurrentWidget() {
-        const std::wstring widgetId{gba::input::ResolveCurrentWidgetReloadTarget(
-            state_.surface() != gba::Surface::Hidden,
-            state_.focusRegion() == gba::FocusRegion::Tray,
+        const std::wstring widgetId{widgetrail::input::ResolveCurrentWidgetReloadTarget(
+            state_.surface() != widgetrail::Surface::Hidden,
+            state_.focusRegion() == widgetrail::FocusRegion::Tray,
             state_.selectedWidget(), state_.activeWidget())};
         if (!IsBridgeWidget(widgetId)) return;
         if (pendingWidgetSwitchSnap_ &&
@@ -6318,7 +6318,7 @@ private:
         if (pinnedSurfaceCoordinator_.pinned() &&
             pinnedSurfaceCoordinator_.widgetId() == widgetId) {
             (void)pinnedSurfaceCoordinator_.Unpin(
-                gba::pinned::WidgetSurfaceStopReason::RuntimeReplaced);
+                widgetrail::pinned::WidgetSurfaceStopReason::RuntimeReplaced);
         }
         const auto* descriptor = sessions_.FindDescriptor(widgetId);
         CommitAdmittedWidgetPresentation(widgetId);
@@ -6337,7 +6337,7 @@ private:
         pendingContentRevealWidget_ = widgetId;
         overlayTransition_.SnapContentVisible();
         ClearAccessibilityTree();
-        if (state_.surface() == gba::Surface::Widget &&
+        if (state_.surface() == widgetrail::Surface::Widget &&
             state_.activeWidget() == widgetId && IsWindowVisible(window_)) {
             RedrawWindow(window_, nullptr, nullptr,
                 RDW_INVALIDATE | RDW_UPDATENOW | RDW_ALLCHILDREN);
@@ -6364,7 +6364,7 @@ private:
         // Fetching a snapshot from the still-background registration would
         // replace the actionable startup diagnostic with a missing-cache error.
         if (sessions_.Failure(widgetId)) return;
-        const auto currentWidget = state_.surface() == gba::Surface::Widget
+        const auto currentWidget = state_.surface() == widgetrail::Surface::Widget
             ? state_.activeWidget()
             : state_.selectedWidget();
         if (currentWidget == widgetId) RememberCurrentFocus(widgetId);
@@ -6374,33 +6374,33 @@ private:
     }
 
     void MoveWidgetFocus(const std::wstring_view direction) {
-        if (state_.surface() != gba::Surface::Widget ||
-            state_.focusRegion() != gba::FocusRegion::Widget) {
+        if (state_.surface() != widgetrail::Surface::Widget ||
+            state_.focusRegion() != widgetrail::FocusRegion::Widget) {
             return;
         }
         const std::wstring_view widgetId = state_.activeWidget();
         const auto* snapshot = InteractionSnapshotFor(widgetId);
         if (!snapshot) return;
         const auto activeScope = std::wstring_view(snapshot->activeInputScopeId);
-        gba::input::NavigationDirection navigationDirection =
-            gba::input::NavigationDirection::None;
-        if (direction == L"left") navigationDirection = gba::input::NavigationDirection::Left;
-        else if (direction == L"right") navigationDirection = gba::input::NavigationDirection::Right;
-        else if (direction == L"up") navigationDirection = gba::input::NavigationDirection::Up;
-        else if (direction == L"down") navigationDirection = gba::input::NavigationDirection::Down;
-        const auto visibleFocus = gba::input::ResolveVisibleFocusTarget(
+        widgetrail::input::NavigationDirection navigationDirection =
+            widgetrail::input::NavigationDirection::None;
+        if (direction == L"left") navigationDirection = widgetrail::input::NavigationDirection::Left;
+        else if (direction == L"right") navigationDirection = widgetrail::input::NavigationDirection::Right;
+        else if (direction == L"up") navigationDirection = widgetrail::input::NavigationDirection::Up;
+        else if (direction == L"down") navigationDirection = widgetrail::input::NavigationDirection::Down;
+        const auto visibleFocus = widgetrail::input::ResolveVisibleFocusTarget(
             focusedElementId_, activeScope, lastWidgetRenderResult_);
         if (!visibleFocus) {
             // A constrained viewport or responsive branch can leave a valid
             // root snapshot with no currently reachable control. Preserve the
             // same lower-boundary contract as an ordinary last row instead of
             // trapping controller focus in invisible widget geometry.
-            if (gba::input::ShouldTransferFocusToTray(
+            if (widgetrail::input::ShouldTransferFocusToTray(
                     navigationDirection,
-                    activeScope == gba::input::RootInputScope(*snapshot),
+                    activeScope == widgetrail::input::RootInputScope(*snapshot),
                     false,
                     false)) {
-                Dispatch(gba::Command::SampleWidgetBack);
+                Dispatch(widgetrail::Command::SampleWidgetBack);
             }
             return;
         }
@@ -6418,7 +6418,7 @@ private:
         const auto projectedTarget =
             launcherExperienceProjection_.ProjectedFocusTarget(
                 widgetId, focusedElementId_, direction);
-        if (projectedTarget && gba::input::IsEnabledFocusTarget(
+        if (projectedTarget && widgetrail::input::IsEnabledFocusTarget(
                 *projectedTarget, lastWidgetRenderResult_)) {
             const auto cancelledSliders = sliderInteraction_.DeactivateAll();
             (void)pressedInteraction_.Clear();
@@ -6433,7 +6433,7 @@ private:
             DispatchScrollPagination(widgetId, *snapshot, navigationDirection);
             return;
         }
-        const auto* focused = gba::input::FindNodeInInputScope(
+        const auto* focused = widgetrail::input::FindNodeInInputScope(
             *snapshot, focusedElementId_, activeScope);
         if (!focused) return;
         // Ordinary collection prefetch remains authoritative unless the exact
@@ -6448,11 +6448,11 @@ private:
         else if (direction == L"left") target = &focused->focusLeft;
         else if (direction == L"right") target = &focused->focusRight;
         const auto* explicitTarget = target && !target->empty()
-            ? gba::input::FindNodeInInputScope(*snapshot, *target, activeScope)
+            ? widgetrail::input::FindNodeInInputScope(*snapshot, *target, activeScope)
             : nullptr;
         const bool explicitNavigable = explicitTarget &&
-            gba::input::IsEnabledFocusTarget(explicitTarget->id, lastWidgetRenderResult_);
-        const bool explicitMoves = explicitTarget && gba::input::IsDistinctFocusMove(
+            widgetrail::input::IsEnabledFocusTarget(explicitTarget->id, lastWidgetRenderResult_);
+        const bool explicitMoves = explicitTarget && widgetrail::input::IsDistinctFocusMove(
             focusedElementId_, explicitTarget->id, explicitNavigable);
         if (explicitMoves) {
             const auto cancelledSliders = sliderInteraction_.DeactivateAll();
@@ -6468,7 +6468,7 @@ private:
             return;
         }
 
-        const auto fallback = gba::input::FindGeometricFocusTarget(
+        const auto fallback = widgetrail::input::FindGeometricFocusTarget(
             focusedElementId_, navigationDirection, lastWidgetRenderResult_);
         if (fallback) {
             const auto cancelledSliders = sliderInteraction_.DeactivateAll();
@@ -6483,12 +6483,12 @@ private:
             DispatchScrollPagination(widgetId, *snapshot, navigationDirection);
             return;
         }
-        if (gba::input::ShouldTransferFocusToTray(
+        if (widgetrail::input::ShouldTransferFocusToTray(
                 navigationDirection,
-                activeScope == gba::input::RootInputScope(*snapshot),
+                activeScope == widgetrail::input::RootInputScope(*snapshot),
                 explicitMoves,
                 fallback.has_value())) {
-            Dispatch(gba::Command::SampleWidgetBack);
+            Dispatch(widgetrail::Command::SampleWidgetBack);
         }
     }
 
@@ -6512,12 +6512,12 @@ private:
 
     bool HandleFocusedSliderModeButton(const std::wstring_view button) {
         if (button != L"A" && button != L"B") return false;
-        if (state_.surface() != gba::Surface::Widget ||
-            state_.focusRegion() != gba::FocusRegion::Widget) return false;
+        if (state_.surface() != widgetrail::Surface::Widget ||
+            state_.focusRegion() != widgetrail::FocusRegion::Widget) return false;
         const std::wstring_view widget = state_.activeWidget();
         const auto* snapshot = InteractionSnapshotFor(widget);
         if (!snapshot) return false;
-        const auto visible = gba::input::ResolveVisibleFocusTarget(
+        const auto visible = widgetrail::input::ResolveVisibleFocusTarget(
             focusedElementId_, snapshot->activeInputScopeId, lastWidgetRenderResult_);
         if (!visible) return false;
         if (*visible != focusedElementId_) {
@@ -6528,7 +6528,7 @@ private:
             focusMemory_.Remember(widget, *snapshot, focusedElementId_);
             InvalidateWidgetFocusChange(priorFocus, cancelledSliders);
         }
-        const auto* focused = gba::input::FindNodeInInputScope(
+        const auto* focused = widgetrail::input::FindNodeInInputScope(
             *snapshot, focusedElementId_, snapshot->activeInputScopeId);
         if (!focused) return false;
         const auto descriptor = SliderDescriptor(*snapshot, *focused);
@@ -6537,8 +6537,8 @@ private:
         const bool adjustmentActive = activationRequired &&
             sliderInteraction_.AdjustmentModeActive(
                 descriptor, GetTickCount64());
-        using gba::input::FocusedSliderButtonRoute;
-        switch (gba::input::RouteFocusedSliderButton(
+        using widgetrail::input::FocusedSliderButtonRoute;
+        switch (widgetrail::input::RouteFocusedSliderButton(
             focused->kind, activationRequired, adjustmentActive, button)) {
         case FocusedSliderButtonRoute::EnterAdjustment:
             (void)sliderInteraction_.EnterAdjustmentMode(
@@ -6566,25 +6566,25 @@ private:
             return;
         }
         if (HandleFocusedSliderModeButton(button)) return;
-        using gba::input::ControllerActionContext;
-        using gba::input::ControllerActionRoute;
-        const auto context = state_.focusRegion() == gba::FocusRegion::Tray
+        using widgetrail::input::ControllerActionContext;
+        using widgetrail::input::ControllerActionRoute;
+        const auto context = state_.focusRegion() == widgetrail::FocusRegion::Tray
             ? ControllerActionContext::Tray
             : ControllerActionContext::RootWidgetScope;
-        switch (gba::input::RouteControllerAction(context, button)) {
+        switch (widgetrail::input::RouteControllerAction(context, button)) {
         case ControllerActionRoute::HostActivate:
-            Dispatch(gba::Command::Activate);
+            Dispatch(widgetrail::Command::Activate);
             return;
         case ControllerActionRoute::HostToggleReorder:
-            Dispatch(gba::Command::ToggleReorder);
+            Dispatch(widgetrail::Command::ToggleReorder);
             return;
         case ControllerActionRoute::HostCloseOverlay:
-            Dispatch(gba::Command::ToggleOverlay);
+            Dispatch(widgetrail::Command::ToggleOverlay);
             return;
         case ControllerActionRoute::Widget:
             DispatchWidgetAction(
                 button,
-                gba::input::NavigationEventPhase::Pressed,
+                widgetrail::input::NavigationEventPhase::Pressed,
                 std::nullopt,
                 physicalPress);
             return;
@@ -6596,29 +6596,29 @@ private:
 
     void DispatchWidgetAction(
         const std::wstring_view button,
-        const gba::input::NavigationEventPhase phase =
-            gba::input::NavigationEventPhase::Pressed,
+        const widgetrail::input::NavigationEventPhase phase =
+            widgetrail::input::NavigationEventPhase::Pressed,
         const std::optional<double> requestedValue = std::nullopt,
         const bool physicalPress = false) {
-        if (state_.surface() == gba::Surface::Hidden) {
+        if (state_.surface() == widgetrail::Surface::Hidden) {
             return;
         }
 
-        const bool interactiveWidget = state_.surface() == gba::Surface::Widget &&
-            state_.focusRegion() == gba::FocusRegion::Widget;
+        const bool interactiveWidget = state_.surface() == widgetrail::Surface::Widget &&
+            state_.focusRegion() == widgetrail::FocusRegion::Widget;
         const std::wstring_view widget = interactiveWidget
             ? state_.activeWidget()
             : state_.selectedWidget();
 
         if (IsBridgeWidget(widget)) {
             if (sessions_.Failure(widget)) {
-                const auto route = gba::input::RouteFailedWidgetAction(
+                const auto route = widgetrail::input::RouteFailedWidgetAction(
                     interactiveWidget, phase, button);
-                if (route == gba::input::FailedWidgetActionRoute::Retry) {
+                if (route == widgetrail::input::FailedWidgetActionRoute::Retry) {
                     RestartCurrentWidget();
                 } else if (route ==
-                           gba::input::FailedWidgetActionRoute::HostBackToDashboard) {
-                    Dispatch(gba::Command::SampleWidgetBack);
+                           widgetrail::input::FailedWidgetActionRoute::HostBackToDashboard) {
+                    Dispatch(widgetrail::Command::SampleWidgetBack);
                 }
                 return;
             }
@@ -6630,12 +6630,12 @@ private:
             if (protocolButton.empty() || !snapshot) return;
             const bool isOpen = interactiveWidget;
             const auto visibleFocus = isOpen
-                ? gba::input::ResolveVisibleFocusTarget(
+                ? widgetrail::input::ResolveVisibleFocusTarget(
                     focusedElementId_, snapshot->activeInputScopeId,
                     lastWidgetRenderResult_)
                 : std::optional<std::wstring>{};
             const auto* requestedSlider = requestedValue && isOpen && visibleFocus
-                ? gba::input::FindNodeInInputScope(
+                ? widgetrail::input::FindNodeInInputScope(
                     *snapshot, *visibleFocus, snapshot->activeInputScopeId)
                 : nullptr;
             const bool requestedSliderAction =
@@ -6649,17 +6649,17 @@ private:
                 InvalidateWidgetFocusChange(priorFocus, cancelledSliders);
             }
             if (physicalPress && isOpen && visibleFocus &&
-                phase == gba::input::NavigationEventPhase::Pressed &&
+                phase == widgetrail::input::NavigationEventPhase::Pressed &&
                 pressedInteraction_.Begin(
                     *snapshot, *visibleFocus, protocolButton)) {
                 InvalidateRect(window_, nullptr, FALSE);
                 UpdateWindow(window_);
             }
             if (isOpen && visibleFocus && protocolButton == L"a" &&
-                phase == gba::input::NavigationEventPhase::Pressed &&
+                phase == widgetrail::input::NavigationEventPhase::Pressed &&
                 OpenTextEntryModal(widget, *snapshot, *visibleFocus)) return;
             if (isOpen && visibleFocus) {
-                const auto* focusedNode = gba::input::FindNodeInInputScope(
+                const auto* focusedNode = widgetrail::input::FindNodeInInputScope(
                     *snapshot, *visibleFocus, snapshot->activeInputScopeId);
                 if (focusedNode && TryInvokeLocalWidgetPackageImport(
                         *snapshot, *focusedNode, protocolButton, phase)) return;
@@ -6673,10 +6673,10 @@ private:
                 snapshot->activeInputScopeId,
                 snapshot->sequence,
                 ++controllerSequence_, static_cast<long long>(GetTickCount64() * 1000),
-                phase == gba::input::NavigationEventPhase::Repeated
+                phase == widgetrail::input::NavigationEventPhase::Repeated
                     ? std::wstring_view{L"repeated"}
                     : std::wstring_view{L"pressed"},
-                requestedValue, gba::ControllerInputOrigin::PhysicalController);
+                requestedValue, widgetrail::ControllerInputOrigin::PhysicalController);
             lastActionWidgetId_ = widget;
             if (!handled) {
                 if (pressedInteraction_.Cancel(protocolButton))
@@ -6715,13 +6715,13 @@ private:
                 snapshot = InteractionSnapshotFor(widget);
                 const auto unhandledContext = snapshot &&
                     std::wstring_view(snapshot->activeInputScopeId) ==
-                        gba::input::RootInputScope(*snapshot)
-                    ? gba::input::ControllerActionContext::RootWidgetScope
-                    : gba::input::ControllerActionContext::NestedWidgetScope;
-                if (isOpen && gba::input::RouteUnhandledControllerAction(
+                        widgetrail::input::RootInputScope(*snapshot)
+                    ? widgetrail::input::ControllerActionContext::RootWidgetScope
+                    : widgetrail::input::ControllerActionContext::NestedWidgetScope;
+                if (isOpen && widgetrail::input::RouteUnhandledControllerAction(
                         unhandledContext, button) ==
-                        gba::input::ControllerActionRoute::HostBackToDashboard) {
-                    Dispatch(gba::Command::SampleWidgetBack);
+                        widgetrail::input::ControllerActionRoute::HostBackToDashboard) {
+                    Dispatch(widgetrail::Command::SampleWidgetBack);
                     return;
                 }
             }
@@ -6733,10 +6733,10 @@ private:
         }
 
         if (interactiveWidget &&
-            gba::input::RouteUnhandledControllerAction(
-                gba::input::ControllerActionContext::RootWidgetScope, button) ==
-                gba::input::ControllerActionRoute::HostBackToDashboard) {
-            Dispatch(gba::Command::SampleWidgetBack);
+            widgetrail::input::RouteUnhandledControllerAction(
+                widgetrail::input::ControllerActionContext::RootWidgetScope, button) ==
+                widgetrail::input::ControllerActionRoute::HostBackToDashboard) {
+            Dispatch(widgetrail::Command::SampleWidgetBack);
             return;
         }
 
@@ -6750,14 +6750,14 @@ private:
 
     bool OpenTextEntryModal(
         const std::wstring_view widget,
-        const gba::WidgetSnapshot& snapshot,
+        const widgetrail::WidgetSnapshot& snapshot,
         const std::wstring_view nodeId) {
-        const auto* node = gba::input::FindNodeInInputScope(
+        const auto* node = widgetrail::input::FindNodeInInputScope(
             snapshot, nodeId, snapshot.activeInputScopeId);
         if (!node || !node->isTextEntry) return false;
         const auto* descriptor = sessions_.FindDescriptor(widget);
         if (!descriptor) return true;
-        const auto request = gba::input::CaptureTextEntryActionRequest(
+        const auto request = widgetrail::input::CaptureTextEntryActionRequest(
             widget, descriptor->runtimeGeneration, snapshot, nodeId);
         if (!request) return true;
 
@@ -6774,15 +6774,15 @@ private:
             instance_, window_, request->value,
             modalTitle, request->maximumLength, protectedWifi);
         bool actionDispatched{};
-        if (modalResult.outcome == gba::input::TextEntryModalOutcome::Committed &&
+        if (modalResult.outcome == widgetrail::input::TextEntryModalOutcome::Committed &&
             modalResult.committedText) {
             const auto* currentDescriptor = sessions_.FindDescriptor(request->widgetId);
             const auto* currentSnapshot = InteractionSnapshotFor(request->widgetId);
             const auto target = currentDescriptor && currentSnapshot
-                ? gba::input::ResolveTextEntryActionTarget(
+                ? widgetrail::input::ResolveTextEntryActionTarget(
                     *request,
-                    state_.surface() == gba::Surface::Widget &&
-                        state_.focusRegion() == gba::FocusRegion::Widget,
+                    state_.surface() == widgetrail::Surface::Widget &&
+                        state_.focusRegion() == widgetrail::FocusRegion::Widget,
                     state_.activeWidget(),
                     currentDescriptor->runtimeGeneration, *currentSnapshot)
                 : std::nullopt;
@@ -6817,22 +6817,22 @@ private:
             }
             modalResult.committedText->clear();
         }
-        if (state_.surface() == gba::Surface::Widget)
+        if (state_.surface() == widgetrail::Surface::Widget)
             RestoreFocusForActiveSurface(state_.activeWidget());
         const auto outcome = [&] {
             switch (modalResult.outcome) {
-            case gba::input::TextEntryModalOutcome::Failed: return L"failed";
-            case gba::input::TextEntryModalOutcome::Cancelled: return L"cancel";
-            case gba::input::TextEntryModalOutcome::Closed: return L"close";
-            case gba::input::TextEntryModalOutcome::Committed: return L"commit";
+            case widgetrail::input::TextEntryModalOutcome::Failed: return L"failed";
+            case widgetrail::input::TextEntryModalOutcome::Cancelled: return L"cancel";
+            case widgetrail::input::TextEntryModalOutcome::Closed: return L"close";
+            case widgetrail::input::TextEntryModalOutcome::Committed: return L"commit";
             }
             return L"unknown";
         }();
         std::wstring preservation{L"not-applicable"};
-        if (modalResult.outcome != gba::input::TextEntryModalOutcome::Committed) {
+        if (modalResult.outcome != widgetrail::input::TextEntryModalOutcome::Committed) {
             const auto* currentSnapshot = InteractionSnapshotFor(request->widgetId);
             const auto* currentNode = currentSnapshot
-                ? gba::input::FindNodeInInputScope(
+                ? widgetrail::input::FindNodeInInputScope(
                     *currentSnapshot, request->nodeId,
                     currentSnapshot->activeInputScopeId)
                 : nullptr;
@@ -6890,25 +6890,25 @@ private:
         const float interfaceScale = appearanceState_.current()
             ? static_cast<float>(appearanceState_.current()->interfaceScale)
             : 1.0F;
-        if (const auto metrics = gba::ComputeOverlayRenderMetrics(
+        if (const auto metrics = widgetrail::ComputeOverlayRenderMetrics(
                 static_cast<int>(size.width), static_cast<int>(size.height),
                 windowDpi > 0 ? static_cast<UINT>(windowDpi) : 96U,
                 interfaceScale)) {
             RebuildShellStyles(metrics->viewportWidthDip, metrics->viewportHeightDip);
         }
 
-        const auto colorOr = [](const std::optional<gba::NativeColor>& value,
-                                const gba::NativeColor fallback) {
+        const auto colorOr = [](const std::optional<widgetrail::NativeColor>& value,
+                                const widgetrail::NativeColor fallback) {
             return value.value_or(fallback);
         };
-        const gba::NativeColor defaultText{0xF7 / 255.0F, 0xF7 / 255.0F,
+        const widgetrail::NativeColor defaultText{0xF7 / 255.0F, 0xF7 / 255.0F,
                                             0xFA / 255.0F, 1};
-        const gba::NativeColor defaultSecondary{0x9B / 255.0F, 0xA3 / 255.0F,
+        const widgetrail::NativeColor defaultSecondary{0x9B / 255.0F, 0xA3 / 255.0F,
                                                  0xB3 / 255.0F, 1};
-        const gba::NativeColor defaultSuccess{0x45 / 255.0F, 0xD4 / 255.0F,
+        const widgetrail::NativeColor defaultSuccess{0x45 / 255.0F, 0xD4 / 255.0F,
                                                0x83 / 255.0F, 1};
-        const auto PaintedLayer = [](const std::optional<gba::NativeColor>& configured,
-                                     const gba::NativeColor fallback,
+        const auto PaintedLayer = [](const std::optional<widgetrail::NativeColor>& configured,
+                                     const widgetrail::NativeColor fallback,
                                      const float opacity) {
             auto result = configured.value_or(fallback);
             result.alpha *= std::isfinite(opacity)
@@ -6983,18 +6983,18 @@ private:
             ? static_cast<float>(appearanceState_.current()->textScale)
             : 1.0F;
         const auto fontSize = [&](const std::wstring_view role,
-                                  const gba::NativeRenderStyle& style,
+                                  const widgetrail::NativeRenderStyle& style,
                                   const float fallback) {
             return (hasProperty(role, L"font-size") ? style.fontSizePx() : fallback) *
                    textScale;
         };
         const auto fontFamily = [&](const std::wstring_view role,
-                                    const gba::NativeRenderStyle& style,
+                                    const widgetrail::NativeRenderStyle& style,
                                     const wchar_t* fallback) -> const wchar_t* {
             return hasProperty(role, L"font-family") ? style.fontFamily().c_str() : fallback;
         };
         const auto fontWeight = [&](const std::wstring_view role,
-                                    const gba::NativeRenderStyle& style,
+                                    const widgetrail::NativeRenderStyle& style,
                                     const DWRITE_FONT_WEIGHT fallback) {
             return hasProperty(role, L"font-weight")
                 ? static_cast<DWRITE_FONT_WEIGHT>(std::clamp(style.fontWeight(), 100, 950))
@@ -7101,12 +7101,12 @@ private:
         const POINT updateOffset,
         const RECT updateArea,
         const CompositionPaintLayer layer = CompositionPaintLayer::Combined,
-        const gba::shell::TrayLayout* trayLayout = nullptr,
-        const gba::declarative::Rect* guideBounds = nullptr) {
+        const widgetrail::shell::TrayLayout* trayLayout = nullptr,
+        const widgetrail::declarative::Rect* guideBounds = nullptr) {
         const float interfaceScale = appearanceState_.current()
             ? static_cast<float>(appearanceState_.current()->interfaceScale)
             : 1.0F;
-        const auto metrics = gba::ComputeOverlayRenderMetrics(
+        const auto metrics = widgetrail::ComputeOverlayRenderMetrics(
             static_cast<int>(width), static_cast<int>(height),
             dpi != 0 ? dpi : 96U, interfaceScale);
         if (!metrics) return;
@@ -7118,11 +7118,11 @@ private:
         // origins after DPI normalization: the scene coordinate represented
         // by updateArea.left/top then lands exactly at updateOffset. For a full
         // update the requested origin is zero, preserving the settled path.
-        const auto updateOffsetDip = gba::NormalizeCompositionUpdateOffset(
+        const auto updateOffsetDip = widgetrail::NormalizeCompositionUpdateOffset(
             updateOffset, dpi);
-        const auto requestedOriginDip = gba::NormalizeCompositionUpdateOffset(
+        const auto requestedOriginDip = widgetrail::NormalizeCompositionUpdateOffset(
             POINT{updateArea.left, updateArea.top}, dpi);
-        const auto requestedExtentDip = gba::NormalizeCompositionUpdateOffset(
+        const auto requestedExtentDip = widgetrail::NormalizeCompositionUpdateOffset(
             POINT{
                 updateArea.right - updateArea.left,
                 updateArea.bottom - updateArea.top},
@@ -7157,8 +7157,8 @@ private:
             return;
         }
         if (layer == CompositionPaintLayer::Guide && guideBounds) {
-            if (state_.surface() == gba::Surface::Widget) {
-                gba::OverlaySurfaceGeometry localGuideGeometry;
+            if (state_.surface() == widgetrail::Surface::Widget) {
+                widgetrail::OverlaySurfaceGeometry localGuideGeometry;
                 localGuideGeometry.panelWidth = guideBounds->width;
                 localGuideGeometry.footerHeight = guideBounds->height;
                 DrawWidgetFooter(localGuideGeometry, guideBounds);
@@ -7170,7 +7170,7 @@ private:
             return;
         }
 
-        if (state_.surface() == gba::Surface::Widget) {
+        if (state_.surface() == widgetrail::Surface::Widget) {
             DrawWidget(metrics->viewportWidthDip, metrics->viewportHeightDip,
                        metrics->physicalPixelsPerDip, layer,
                        trayLayout, guideBounds);
@@ -7200,10 +7200,10 @@ private:
             std::uint64_t drawCurrentFrameMicroseconds{};
             std::uint64_t endFrameMicroseconds{};
         } stageTiming;
-        std::optional<gba::DeclarativeRenderTiming> declarativeTiming;
-        std::optional<gba::IncrementalPresentationWork> contentRendererWork;
-        std::vector<gba::OverlayCompositionSurface::Frame> frames;
-        std::optional<gba::shell::RetainedTrayState> trayState;
+        std::optional<widgetrail::DeclarativeRenderTiming> declarativeTiming;
+        std::optional<widgetrail::IncrementalPresentationWork> contentRendererWork;
+        std::vector<widgetrail::OverlayCompositionSurface::Frame> frames;
+        std::optional<widgetrail::shell::RetainedTrayState> trayState;
         std::wstring guideKey;
     };
 
@@ -7271,16 +7271,16 @@ private:
             diagnostic += L"none";
         } else {
             switch (*frames.contentRendererWork) {
-            case gba::IncrementalPresentationWork::NoRaster:
+            case widgetrail::IncrementalPresentationWork::NoRaster:
                 diagnostic += L"no-raster";
                 break;
-            case gba::IncrementalPresentationWork::PaintOnly:
+            case widgetrail::IncrementalPresentationWork::PaintOnly:
                 diagnostic += L"retained-paint-only";
                 break;
-            case gba::IncrementalPresentationWork::LocalLayout:
+            case widgetrail::IncrementalPresentationWork::LocalLayout:
                 diagnostic += L"retained-local-layout";
                 break;
-            case gba::IncrementalPresentationWork::FullRaster:
+            case widgetrail::IncrementalPresentationWork::FullRaster:
                 diagnostic += L"full-raster-fallback";
                 break;
             }
@@ -7335,11 +7335,11 @@ private:
         UINT dpi{};
         std::uint64_t appearanceRevision{};
         float pixelsPerDip{};
-        gba::declarative::Rect guideBounds;
+        widgetrail::declarative::Rect guideBounds;
         RECT trayClientBounds{};
         RECT guideClientBounds{};
         RECT windowBounds{};
-        gba::shell::FixedChromeSessionKey key;
+        widgetrail::shell::FixedChromeSessionKey key;
     };
 
     void RequestFixedChromeAnchorRefresh(
@@ -7397,9 +7397,9 @@ private:
         }
 
         const HWND remembered = reinterpret_cast<HWND>(
-            GbaOverlayPlatformRememberedForegroundTarget(platform_));
+            WidgetRailOverlayPlatformRememberedForegroundTarget(platform_));
         const HWND targetWindow = reinterpret_cast<HWND>(
-            GbaOverlayPlatformResolveForegroundTarget(
+            WidgetRailOverlayPlatformResolveForegroundTarget(
                 platform_, reinterpret_cast<std::uintptr_t>(window_),
                 PlatformBoolean(remembered && IsWindow(remembered))));
         const HMONITOR monitor = MonitorFromWindow(
@@ -7438,7 +7438,7 @@ private:
     }
 
     [[nodiscard]] static RECT PhysicalCrop(
-        const gba::declarative::Rect& logical,
+        const widgetrail::declarative::Rect& logical,
         const float pixelsPerDip,
         const unsigned int fullWidth,
         const unsigned int fullHeight) noexcept {
@@ -7474,18 +7474,18 @@ private:
             static_cast<unsigned int>(workArea.right - workArea.left);
         const unsigned int workHeight =
             static_cast<unsigned int>(workArea.bottom - workArea.top);
-        gba::shell::FixedChromeSessionKey key{
+        widgetrail::shell::FixedChromeSessionKey key{
             workArea,
             effectiveDpi,
             interfaceScale,
             anchor.appearanceRevision,
             anchor.catalogOrder,
         };
-        const auto metrics = gba::ComputeOverlayRenderMetrics(
+        const auto metrics = widgetrail::ComputeOverlayRenderMetrics(
             static_cast<int>(workWidth), static_cast<int>(workHeight),
             effectiveDpi, interfaceScale);
         if (!metrics) return false;
-        const auto policyLayout = gba::shell::ComputeTrayLayout(
+        const auto policyLayout = widgetrail::shell::ComputeTrayLayout(
             metrics->viewportWidthDip, metrics->viewportHeightDip,
             state_.order().size(), state_.selectedSlot());
         if (!policyLayout) return false;
@@ -7545,9 +7545,9 @@ private:
             static_cast<float>(guideWidth) / session.pixelsPerDip,
             static_cast<float>(guideHeight) / session.pixelsPerDip,
         };
-        session.windowBounds = gba::shell::ComputeFixedChromeWindowBounds(
+        session.windowBounds = widgetrail::shell::ComputeFixedChromeWindowBounds(
             workArea, chromeWidth, chromeHeight);
-        if (!gba::shell::ApplyFixedChromeWindow(
+        if (!widgetrail::shell::ApplyFixedChromeWindow(
                 window_, chromeWindow_, session.windowBounds, true)) {
             AppendDiagnostic(L"Fixed chrome placement failed error=" +
                              std::to_wstring(GetLastError()));
@@ -7573,13 +7573,13 @@ private:
                 L"Fixed chrome client layout did not fit its applied HWND");
             return false;
         }
-        const gba::OverlayCompositionSurface::ChromePresentation chrome{
+        const widgetrail::OverlayCompositionSurface::ChromePresentation chrome{
             static_cast<float>(session.guideClientBounds.left),
             static_cast<float>(session.guideClientBounds.top),
             static_cast<float>(session.trayClientBounds.left),
             static_cast<float>(session.trayClientBounds.top),
         };
-        gba::OverlayCompositionSurface::CommitTiming chromeTiming;
+        widgetrail::OverlayCompositionSurface::CommitTiming chromeTiming;
         const HRESULT chromeResult =
             compositionSurface_.CommitChromePresentation(chrome, chromeTiming);
         if (FAILED(chromeResult)) {
@@ -7618,9 +7618,9 @@ private:
         return true;
     }
 
-    [[nodiscard]] std::optional<gba::OverlayPlacement>
+    [[nodiscard]] std::optional<widgetrail::OverlayPlacement>
     AnchorContentPlacementToChrome(
-        gba::OverlayPlacement placement) const {
+        widgetrail::OverlayPlacement placement) const {
         if (!fixedChromeAnchor_ || !compositionChromeSession_ ||
             placement.width <= 0 || placement.height <= 0) {
             return std::nullopt;
@@ -7633,7 +7633,7 @@ private:
         const int panelToGuideGap = static_cast<int>(std::lround(
             kPanelToGuideGapDip * fixedChromeAnchor_->dpi / 96.0F *
             fixedChromeAnchor_->interfaceScale));
-        const auto bounds = gba::shell::ComputeContentWindowBoundsAboveGuide(
+        const auto bounds = widgetrail::shell::ComputeContentWindowBoundsAboveGuide(
             fixedChromeAnchor_->workArea, guide->top,
             placement.width, placement.height, panelToGuideGap);
         if (!bounds) return std::nullopt;
@@ -7642,7 +7642,7 @@ private:
         return placement;
     }
 
-    [[nodiscard]] std::optional<gba::shell::TrayLayout>
+    [[nodiscard]] std::optional<widgetrail::shell::TrayLayout>
     ComputeCompositionTrayLayout(
         const CompositionChromeSession& session) const {
         const float interfaceScale =
@@ -7652,18 +7652,18 @@ private:
         const unsigned int contentHeight = session.trayHeight -
             std::min(session.trayHeight, session.trayFocusPadding * 2U);
         if (contentWidth == 0 || contentHeight == 0) return std::nullopt;
-        const auto metrics = gba::ComputeOverlayRenderMetrics(
+        const auto metrics = widgetrail::ComputeOverlayRenderMetrics(
             static_cast<int>(contentWidth), static_cast<int>(contentHeight),
             session.dpi, interfaceScale);
         if (!metrics) return std::nullopt;
-        auto layout = gba::shell::ComputeTrayLayout(
+        auto layout = widgetrail::shell::ComputeTrayLayout(
             metrics->viewportWidthDip, metrics->viewportHeightDip,
             state_.order().size(), state_.selectedSlot(),
-            gba::shell::TrayBand{0.0F, metrics->viewportHeightDip});
+            widgetrail::shell::TrayBand{0.0F, metrics->viewportHeightDip});
         if (!layout) return std::nullopt;
         const float inset = static_cast<float>(session.trayFocusPadding) /
             session.pixelsPerDip;
-        const auto offset = [inset](gba::declarative::Rect& bounds) {
+        const auto offset = [inset](widgetrail::declarative::Rect& bounds) {
             bounds.x += inset;
             bounds.y += inset;
         };
@@ -7674,7 +7674,7 @@ private:
         return layout;
     }
 
-    [[nodiscard]] std::optional<gba::shell::TrayLayout>
+    [[nodiscard]] std::optional<widgetrail::shell::TrayLayout>
     CurrentCompositionTrayLayout() const {
         return compositionChromeSession_
             ? ComputeCompositionTrayLayout(*compositionChromeSession_)
@@ -7685,14 +7685,14 @@ private:
         const unsigned int width,
         const unsigned int height,
         const UINT dpi) {
-        if (state_.surface() != gba::Surface::Widget) return L"dashboard:none";
+        if (state_.surface() != widgetrail::Surface::Widget) return L"dashboard:none";
         std::wstring key = std::wstring{state_.activeWidget()} + L"\n" +
             std::to_wstring(width) + L"x" + std::to_wstring(height) + L"\n" +
             std::to_wstring(dpi) + L"\n" +
             std::to_wstring(appearanceState_.current()
                 ? appearanceState_.current()->revision : 0) + L"\n" +
             std::to_wstring(static_cast<int>(state_.focusRegion()));
-        if (state_.focusRegion() == gba::FocusRegion::Tray) {
+        if (state_.focusRegion() == widgetrail::FocusRegion::Tray) {
             if (const auto status = DashboardStatus()) key += L"\n" + *status;
             key += L"\n" + DashboardHint(static_cast<float>(width));
         } else {
@@ -7704,18 +7704,18 @@ private:
         return key;
     }
 
-    [[nodiscard]] std::optional<gba::shell::RetainedTrayState>
+    [[nodiscard]] std::optional<widgetrail::shell::RetainedTrayState>
     CurrentTrayPaintState(
-        const gba::shell::TrayLayout& layout,
+        const widgetrail::shell::TrayLayout& layout,
         const unsigned int width,
         const unsigned int height,
         const float pixelsPerDip) const {
-        gba::shell::RetainedTrayState state;
+        widgetrail::shell::RetainedTrayState state;
         state.width = width;
         state.height = height;
         state.appearanceRevision = static_cast<std::uint64_t>(std::max<long long>(
             0, appearanceState_.current() ? appearanceState_.current()->revision : 0));
-        const auto relative = [&](const gba::declarative::Rect& bounds) {
+        const auto relative = [&](const widgetrail::declarative::Rect& bounds) {
             RECT result = PhysicalCrop(
                 bounds, pixelsPerDip,
                 state.width, state.height);
@@ -7765,14 +7765,14 @@ private:
         const unsigned int fullWidth,
         const unsigned int fullHeight,
         const UINT dpi,
-        const gba::OverlayCompositionSurface::Layer layer,
+        const widgetrail::OverlayCompositionSurface::Layer layer,
         const CompositionPaintLayer paintLayer,
         const CompositionLayerGeometry& geometry,
         const RECT* update,
         CompositionFrameSet& set,
-        const gba::shell::TrayLayout* trayLayout = nullptr,
-        const gba::declarative::Rect* guideBounds = nullptr) {
-        gba::OverlayCompositionSurface::Frame frame;
+        const widgetrail::shell::TrayLayout* trayLayout = nullptr,
+        const widgetrail::declarative::Rect* guideBounds = nullptr) {
+        widgetrail::OverlayCompositionSurface::Frame frame;
         const auto beginStarted = std::chrono::steady_clock::now();
         HRESULT result = compositionSurface_.BeginFrame(
             layer, geometry.width, geometry.height,
@@ -7841,7 +7841,7 @@ private:
         const UINT dpi,
         const float destinationOffsetX,
         const float destinationOffsetY,
-        const gba::OverlayPlacement& containerPlacement,
+        const widgetrail::OverlayPlacement& containerPlacement,
         CompositionFrameSet& set,
         std::uint64_t& drawMicroseconds) {
         static_cast<void>(destinationOffsetX);
@@ -7855,7 +7855,7 @@ private:
         if (!trayLayout) return false;
 
         const bool replaceContent = !compositionSurface_.hasContent(
-            gba::OverlayCompositionSurface::Layer::Content) ||
+            widgetrail::OverlayCompositionSurface::Layer::Content) ||
             compositionSurface_.width() != width ||
             compositionSurface_.height() != height;
         if (replaceContent) DiscardGraphicsResources();
@@ -7865,20 +7865,20 @@ private:
             width, height,
         };
         std::optional<RECT> contentUpdate;
-        std::optional<gba::IncrementalPresentationPlan> renderPlan =
+        std::optional<widgetrail::IncrementalPresentationPlan> renderPlan =
             pendingContentRenderPlan_;
         const float interfaceScale = appearanceState_.current()
             ? static_cast<float>(appearanceState_.current()->interfaceScale)
             : 1.0F;
-        const auto metrics = gba::ComputeOverlayRenderMetrics(
+        const auto metrics = widgetrail::ComputeOverlayRenderMetrics(
             static_cast<int>(width), static_cast<int>(height),
             dpi != 0 ? dpi : 96U, interfaceScale);
         const auto geometry = metrics
-            ? gba::ComputePanelLocalSurfaceGeometry(
+            ? widgetrail::ComputePanelLocalSurfaceGeometry(
                 metrics->viewportWidthDip, metrics->viewportHeightDip)
             : std::nullopt;
         if (pendingWidgetPresentationImpact_ && declarativeRenderer_ &&
-            state_.surface() == gba::Surface::Widget &&
+            state_.surface() == widgetrail::Surface::Widget &&
             IsBridgeWidget(state_.activeWidget())) {
             const auto* snapshot = InteractionSnapshotFor(state_.activeWidget());
             renderPlan = snapshot && geometry
@@ -7894,7 +7894,7 @@ private:
                 : std::nullopt;
         }
         if (renderPlan &&
-            renderPlan->work != gba::IncrementalPresentationWork::NoRaster &&
+            renderPlan->work != widgetrail::IncrementalPresentationWork::NoRaster &&
             metrics && metrics->physicalPixelsPerDip > 0.0F) {
             const auto scale = metrics->physicalPixelsPerDip;
             RECT update{
@@ -7929,21 +7929,21 @@ private:
         if (contentUpdate && renderPlan) {
             activeContentRenderPlan_ = *renderPlan;
         } else {
-            const gba::declarative::Rect fullDamage = geometry
-                ? gba::declarative::Rect{
+            const widgetrail::declarative::Rect fullDamage = geometry
+                ? widgetrail::declarative::Rect{
                     0.0F, 0.0F,
                     metrics->viewportWidthDip,
                     metrics->viewportHeightDip}
-                : gba::declarative::Rect{
+                : widgetrail::declarative::Rect{
                     0.0F, 0.0F,
                     static_cast<float>(width), static_cast<float>(height)};
-            activeContentRenderPlan_ = gba::IncrementalPresentationPlan{
-                gba::IncrementalPresentationWork::FullRaster, fullDamage};
+            activeContentRenderPlan_ = widgetrail::IncrementalPresentationPlan{
+                widgetrail::IncrementalPresentationWork::FullRaster, fullDamage};
         }
         if (retainPendingRefreshPixels) {
-            activeContentRenderPlan_ = gba::IncrementalPresentationPlan{
-                gba::IncrementalPresentationWork::NoRaster, {}};
-            set.contentRendererWork = gba::IncrementalPresentationWork::NoRaster;
+            activeContentRenderPlan_ = widgetrail::IncrementalPresentationPlan{
+                widgetrail::IncrementalPresentationWork::NoRaster, {}};
+            set.contentRendererWork = widgetrail::IncrementalPresentationWork::NoRaster;
         } else {
             set.contentTransportWork = contentUpdate && !promoteContentTransport
                 ? CompositionFrameSet::ContentTransportWork::BoundedUpdate
@@ -7954,7 +7954,7 @@ private:
                 : nullptr;
             if (!RenderCompositionLayer(
                     width, height, dpi,
-                    gba::OverlayCompositionSurface::Layer::Content,
+                    widgetrail::OverlayCompositionSurface::Layer::Content,
                     CompositionPaintLayer::Content, contentGeometry,
                     transportUpdate, set,
                     &*trayLayout)) {
@@ -7966,7 +7966,7 @@ private:
             chromeSession.guideWidth, chromeSession.guideHeight, chromeSession.dpi);
         const bool guideDirty =
             !compositionSurface_.hasContent(
-                gba::OverlayCompositionSurface::Layer::Guide) ||
+                widgetrail::OverlayCompositionSurface::Layer::Guide) ||
             guideKey != retainedGuidePaintKey_;
         const CompositionLayerGeometry guideGeometry{
             chromeSession.guideWidth, chromeSession.guideHeight,
@@ -7974,7 +7974,7 @@ private:
         if (guideDirty && !RenderCompositionLayer(
                 chromeSession.guideWidth, chromeSession.guideHeight,
                 chromeSession.dpi,
-                gba::OverlayCompositionSurface::Layer::Guide,
+                widgetrail::OverlayCompositionSurface::Layer::Guide,
                 CompositionPaintLayer::Guide, guideGeometry, nullptr, set,
                 &*trayLayout, &chromeSession.guideBounds)) {
             return false;
@@ -7985,11 +7985,11 @@ private:
             *trayLayout, chromeSession.trayWidth, chromeSession.trayHeight,
             chromeSession.pixelsPerDip);
         if (!nextTrayState) return false;
-        const bool trayDirty = gba::shell::RequiresTrayRepaint(
+        const bool trayDirty = widgetrail::shell::RequiresTrayRepaint(
             retainedTrayPaintState_ ? &*retainedTrayPaintState_ : nullptr,
             *nextTrayState);
         const bool repaintTray = trayDirty || !compositionSurface_.hasContent(
-            gba::OverlayCompositionSurface::Layer::Tray);
+            widgetrail::OverlayCompositionSurface::Layer::Tray);
         const CompositionLayerGeometry trayGeometry{
             chromeSession.trayWidth, chromeSession.trayHeight,
         };
@@ -7997,7 +7997,7 @@ private:
             if (!RenderCompositionLayer(
                     chromeSession.trayWidth, chromeSession.trayHeight,
                     chromeSession.dpi,
-                    gba::OverlayCompositionSurface::Layer::Tray,
+                    widgetrail::OverlayCompositionSurface::Layer::Tray,
                     CompositionPaintLayer::Tray, trayGeometry, nullptr, set,
                     &*trayLayout)) {
                 return false;
@@ -8016,7 +8016,7 @@ private:
             std::wstring(reason));
         DiscardGraphicsResources();
         pendingWidgetPresentationImpact_.reset();
-        gba::shell::ResetFixedChromeComposition(
+        widgetrail::shell::ResetFixedChromeComposition(
             compositionSurface_, chromeWindow_);
         chromeAccessibilityProvider_.Clear();
         retainedGuidePaintKey_.clear();
@@ -8029,7 +8029,7 @@ private:
         EnableLegacyLayeredFallback();
         appliedOverlayOpacity_.reset();
         ApplyTransitionWindowOpacity(overlayTransitionSample_.shellOpacity);
-        if (window_ && state_.surface() != gba::Surface::Hidden)
+        if (window_ && state_.surface() != widgetrail::Surface::Hidden)
             InvalidateRect(window_, nullptr, FALSE);
     }
 
@@ -8061,12 +8061,12 @@ private:
             compositionSurface_.height() != height;
         RECT client{};
         GetClientRect(window_, &client);
-        const auto settledMotion = gba::PlanCompositionMotion(
+        const auto settledMotion = widgetrail::PlanCompositionMotion(
             static_cast<unsigned int>(client.right - client.left),
             static_cast<unsigned int>(client.bottom - client.top),
             width, height, static_cast<float>(width), static_cast<float>(height),
-            gba::CompositionVerticalAnchor::Bottom);
-        const auto settledSpaces = gba::PlanCompositionChildCoordinates(
+            widgetrail::CompositionVerticalAnchor::Bottom);
+        const auto settledSpaces = widgetrail::PlanCompositionChildCoordinates(
             settledMotion, width, height);
         const float destinationOffsetX = settledSpaces.chromeOffsetX;
         const float destinationOffsetY = settledSpaces.chromeOffsetY;
@@ -8074,7 +8074,7 @@ private:
         std::uint64_t drawMicroseconds{};
         RECT windowBounds{};
         if (!GetWindowRect(window_, &windowBounds)) return false;
-        const gba::OverlayPlacement containerPlacement{
+        const widgetrail::OverlayPlacement containerPlacement{
             windowBounds.left, windowBounds.top,
             client.right - client.left, client.bottom - client.top};
         if (!RenderCompositionFrames(
@@ -8091,10 +8091,10 @@ private:
             BeginOpenAfterSuccessfulPaint();
             return true;
         }
-        std::vector<gba::OverlayCompositionSurface::Frame*> framePointers;
+        std::vector<widgetrail::OverlayCompositionSurface::Frame*> framePointers;
         framePointers.reserve(frames.frames.size());
         for (auto& frame : frames.frames) framePointers.push_back(&frame);
-        gba::OverlayCompositionSurface::CommitTiming timing;
+        widgetrail::OverlayCompositionSurface::CommitTiming timing;
         const HRESULT result = compositionSurface_.CommitFrames(
             framePointers, replacement, timing, nullptr);
         if (FAILED(result)) {
@@ -8106,7 +8106,7 @@ private:
         retainedGuidePaintKey_ = std::move(frames.guideKey);
         retainedTrayPaintState_ = std::move(frames.trayState);
         presentationTransaction_.AcceptCompositionRepaint(
-            state_.surface() == gba::Surface::Widget
+            state_.surface() == widgetrail::Surface::Widget
                 ? state_.activeWidget()
                 : state_.selectedWidget());
         AppendCompositionCoordinateSample(0);
@@ -8146,7 +8146,7 @@ private:
     void Paint() {
         PAINTSTRUCT paint{};
         BeginPaint(window_, &paint);
-        if (state_.surface() == gba::Surface::Hidden) {
+        if (state_.surface() == widgetrail::Surface::Hidden) {
             declarativeMotionActive_ = false;
             EndPaint(window_, &paint);
             return;
@@ -8177,8 +8177,8 @@ private:
         float dpiY = 96.0F;
         renderTarget_->GetDpi(&dpiX, &dpiY);
         renderTarget_->BeginDraw();
-        activeContentRenderPlan_ = gba::IncrementalPresentationPlan{
-            gba::IncrementalPresentationWork::FullRaster,
+        activeContentRenderPlan_ = widgetrail::IncrementalPresentationPlan{
+            widgetrail::IncrementalPresentationWork::FullRaster,
             {0.0F, 0.0F, static_cast<float>(width), static_cast<float>(height)}};
         // The HWND is a color-keyed layered window above a separately dimmed
         // full-screen backdrop. Only the authored panel/tray surfaces belong
@@ -8210,16 +8210,16 @@ private:
     void DrawIconStrip(
         const float width,
         const float height,
-        const gba::OverlaySurfaceGeometry* surfaceGeometry = nullptr,
-        const gba::accessibility::DashboardSemantics* dashboard = nullptr,
-        const gba::shell::TrayLayout* frameLayout = nullptr,
+        const widgetrail::OverlaySurfaceGeometry* surfaceGeometry = nullptr,
+        const widgetrail::accessibility::DashboardSemantics* dashboard = nullptr,
+        const widgetrail::shell::TrayLayout* frameLayout = nullptr,
         const bool publishAccessibility = true) {
         const auto computedLayout = frameLayout
-            ? std::optional<gba::shell::TrayLayout>{}
-            : gba::shell::ComputeTrayLayout(
+            ? std::optional<widgetrail::shell::TrayLayout>{}
+            : widgetrail::shell::ComputeTrayLayout(
                 width, height, state_.order().size(), state_.selectedSlot(),
                 surfaceGeometry
-                    ? std::optional<gba::shell::TrayBand>{gba::shell::TrayBand{
+                    ? std::optional<widgetrail::shell::TrayBand>{widgetrail::shell::TrayBand{
                         surfaceGeometry->trayY,
                         surfaceGeometry->trayY + surfaceGeometry->trayHeight,
                     }}
@@ -8235,13 +8235,13 @@ private:
                 stripBounds.x + stripBounds.width,
                 stripBounds.y + stripBounds.height),
             trayCornerRadius_, trayCornerRadius_};
-        gba::shell::FillColorKeyRoundedRectangle(
+        widgetrail::shell::FillColorKeyRoundedRectangle(
             renderTarget_.Get(), strip, backgroundBrush_.Get(),
             compositionSurface_.available()
-                ? gba::shell::OuterChromeBoundary::PremultipliedAlpha
-                : gba::shell::OuterChromeBoundary::ColorKeyAliased);
+                ? widgetrail::shell::OuterChromeBoundary::PremultipliedAlpha
+                : widgetrail::shell::OuterChromeBoundary::ColorKeyAliased);
 
-        const auto drawOverflow = [&](const gba::shell::TrayOverflowLayout& overflow) {
+        const auto drawOverflow = [&](const widgetrail::shell::TrayOverflowLayout& overflow) {
             const auto& bounds = overflow.bounds;
             const D2D1_ROUNDED_RECT control{
                 D2D1::RectF(
@@ -8251,11 +8251,11 @@ private:
                 std::min(trayItemCornerRadius_, bounds.height * 0.35F)};
             renderTarget_->FillRoundedRectangle(control, trayItemBrush_.Get());
             const float inset = std::max(5.0F, bounds.width * 0.22F);
-            (void)gba::icons::DrawNativeIcon(
+            (void)widgetrail::icons::DrawNativeIcon(
                 renderTarget_.Get(),
-                overflow.direction == gba::shell::TrayOverflowDirection::Previous
-                    ? gba::icons::NativeIcon::Previous
-                    : gba::icons::NativeIcon::Next,
+                overflow.direction == widgetrail::shell::TrayOverflowDirection::Previous
+                    ? widgetrail::icons::NativeIcon::Previous
+                    : widgetrail::icons::NativeIcon::Next,
                 D2D1::RectF(
                     bounds.x + inset, bounds.y + inset,
                     bounds.x + bounds.width - inset,
@@ -8284,7 +8284,7 @@ private:
                     2.0F, 2.0F};
                 renderTarget_->FillRoundedRectangle(indicator, selectedTextBrush_.Get());
                 if (!compositionSurface_.available() &&
-                    state_.focusRegion() == gba::FocusRegion::Tray) {
+                    state_.focusRegion() == widgetrail::FocusRegion::Tray) {
                     renderTarget_->DrawRoundedRectangle(
                         tile, focusBrush_.Get(), focusOutlineWidth_);
                 }
@@ -8292,7 +8292,7 @@ private:
 
             const std::wstring_view widget = state_.order()[slot];
             const float iconInset = std::min(15.0F, tileSize * 0.24F);
-            (void)gba::icons::DrawNativeIcon(
+            (void)widgetrail::icons::DrawNativeIcon(
                 renderTarget_.Get(), DisplayWidgetIcon(widget),
                 D2D1::RectF(x + iconInset, top + iconInset,
                             x + tileSize - iconInset, top + tileSize - iconInset),
@@ -8327,7 +8327,7 @@ private:
         if (const auto* startup = sessions_.Failure(state_.selectedWidget()))
             return startup->safeMessage;
         if (const auto failure = actionFailureFeedback_.MessageForSurface(
-                gba::WidgetActionFeedbackSurface::Dashboard,
+                widgetrail::WidgetActionFeedbackSurface::Dashboard,
                 state_.selectedWidget(),
                 state_.activeWidget())) return std::wstring{*failure};
         if (lastActionExpiresAt_ > now && !lastActionMessage_.empty() &&
@@ -8345,7 +8345,7 @@ private:
                 std::to_wstring(trayYGesture_.progressPercent(GetTickCount64())) +
                 L"%";
         }
-        std::vector<gba::ControllerGuideAction> quickActions;
+        std::vector<widgetrail::ControllerGuideAction> quickActions;
         const auto* snapshot = GuideSnapshotFor(state_.selectedWidget());
         if (IsBridgeWidget(state_.selectedWidget()) && snapshot) {
             quickActions.reserve(snapshot->quickActions.size());
@@ -8356,8 +8356,8 @@ private:
                 quickActions.push_back({DisplayButton(action.button), action.label});
             }
         }
-        return gba::BuildTrayControllerGuide(
-            gba::ResolveControllerGuideDensity(
+        return widgetrail::BuildTrayControllerGuide(
+            widgetrail::ResolveControllerGuideDensity(
                 availableWidth, CurrentTextScale()),
             state_.reorderMode(), TrayYRestartEligible(), quickActions);
     }
@@ -8373,7 +8373,7 @@ private:
     void DrawDashboard(
         const float width, const float height,
         const CompositionPaintLayer layer = CompositionPaintLayer::Combined,
-        const gba::shell::TrayLayout* frameTrayLayout = nullptr) {
+        const widgetrail::shell::TrayLayout* frameTrayLayout = nullptr) {
         if (!accessibilityActive_) {
             if (!accessibilityTree_.widgetId.empty()) ClearAccessibilityTree();
         }
@@ -8392,10 +8392,10 @@ private:
         const std::wstring help = DashboardHint(contentRight - contentLeft);
         const std::wstring accessibleHelp = DashboardAccessibilityHint(help);
         const std::wstring displayedHint = status ? *status : help;
-        const gba::declarative::Rect hintBounds{
+        const widgetrail::declarative::Rect hintBounds{
             contentLeft, hintTop, contentRight - contentLeft, hintBottom - hintTop,
         };
-        const gba::accessibility::DashboardSemantics dashboard{
+        const widgetrail::accessibility::DashboardSemantics dashboard{
             std::wstring{title},
             {contentLeft, titleTop, contentRight - contentLeft, titleBottom - titleTop},
             status ? std::wstring{} : accessibleHelp,
@@ -8417,15 +8417,15 @@ private:
             DrawIconStrip(width, height, nullptr, &dashboard, frameTrayLayout);
         } else if (accessibilityActive_) {
             const auto layout = frameTrayLayout
-                ? std::optional<gba::shell::TrayLayout>{*frameTrayLayout}
-                : gba::shell::ComputeTrayLayout(
+                ? std::optional<widgetrail::shell::TrayLayout>{*frameTrayLayout}
+                : widgetrail::shell::ComputeTrayLayout(
                     width, height, state_.order().size(), state_.selectedSlot());
             if (layout) PublishTrayAccessibility(*layout, width, height, &dashboard);
         }
     }
 
     static void CollectShortcutPrompts(
-        const gba::WidgetNode& node,
+        const widgetrail::WidgetNode& node,
         std::vector<std::pair<std::wstring, std::wstring>>& prompts) {
         for (const auto& shortcut : node.shortcuts) {
             const std::wstring_view label = !node.text.empty()
@@ -8446,7 +8446,7 @@ private:
         if (const auto* startup = sessions_.Failure(state_.activeWidget()))
             return startup->safeMessage;
         if (const auto failure = actionFailureFeedback_.MessageForSurface(
-                gba::WidgetActionFeedbackSurface::OpenWidget,
+                widgetrail::WidgetActionFeedbackSurface::OpenWidget,
                 state_.selectedWidget(),
                 state_.activeWidget())) return std::wstring{*failure};
         if (lastActionExpiresAt_ > now && !lastActionMessage_.empty() &&
@@ -8485,8 +8485,8 @@ private:
     }
 
     void DrawWidgetFooter(
-        const gba::OverlaySurfaceGeometry& geometry,
-        const gba::declarative::Rect* fixedGuideBounds = nullptr) {
+        const widgetrail::OverlaySurfaceGeometry& geometry,
+        const widgetrail::declarative::Rect* fixedGuideBounds = nullptr) {
         openWidgetAccessibility_ = {};
         if (geometry.footerHeight <= 0.0F || geometry.panelWidth <= 0.0F) return;
         const float panelLeft = fixedGuideBounds
@@ -8510,12 +8510,12 @@ private:
         const float textBottom = panelBottom -
             std::min(12.0F, guideHeight * 0.25F);
         if (textBottom <= textTop + 1.0F) return;
-        const gba::declarative::Rect footerBounds{
+        const widgetrail::declarative::Rect footerBounds{
             contentLeft, textTop, contentRight - contentLeft, textBottom - textTop,
         };
         openWidgetAccessibility_.title =
             std::wstring{DisplayWidgetName(state_.activeWidget())};
-        if (state_.focusRegion() == gba::FocusRegion::Tray) {
+        if (state_.focusRegion() == widgetrail::FocusRegion::Tray) {
             const auto status = DashboardStatus();
             const std::wstring help = DashboardHint(contentRight - contentLeft);
             const std::wstring accessibleHelp = DashboardAccessibilityHint(help);
@@ -8539,9 +8539,9 @@ private:
         const auto* snapshot = InteractionSnapshotFor(state_.activeWidget());
         const bool rootScope = snapshot &&
             std::wstring_view(snapshot->activeInputScopeId) ==
-                gba::input::RootInputScope(*snapshot);
+                widgetrail::input::RootInputScope(*snapshot);
         const bool nestedBack = snapshot && !rootScope &&
-            gba::accessibility::HasActiveScopeBackShortcut(
+            widgetrail::accessibility::HasActiveScopeBackShortcut(
                 *snapshot, focusedElementId_);
         const bool hasBack = rootScope || nestedBack;
         const std::wstring hostPrompt = hasBack
@@ -8549,14 +8549,14 @@ private:
             : L"Guide  Close";
         if (hasBack) {
             openWidgetAccessibility_.backAction = rootScope
-                ? gba::accessibility::HostAction::BackToTray
-                : gba::accessibility::HostAction::BackWithinWidget;
+                ? widgetrail::accessibility::HostAction::BackToTray
+                : widgetrail::accessibility::HostAction::BackWithinWidget;
             openWidgetAccessibility_.backTargetId = snapshot->activeInputScopeId;
         }
         if (contentRight - contentLeft >= 300.0F) {
             const float hostPromptWidth = hasBack ? 180.0F : 106.0F;
             const float hostPromptLeft = contentRight - hostPromptWidth;
-            const gba::declarative::Rect promptBounds{
+            const widgetrail::declarative::Rect promptBounds{
                 contentLeft, textTop,
                 std::max(0.0F, hostPromptLeft - 14.0F - contentLeft),
                 textBottom - textTop,
@@ -8615,17 +8615,17 @@ private:
         const float height,
         const float physicalPixelsPerDip,
         const CompositionPaintLayer layer = CompositionPaintLayer::Combined,
-        const gba::shell::TrayLayout* frameTrayLayout = nullptr,
-        const gba::declarative::Rect* frameGuideBounds = nullptr) {
+        const widgetrail::shell::TrayLayout* frameTrayLayout = nullptr,
+        const widgetrail::declarative::Rect* frameGuideBounds = nullptr) {
         declarativeMotionActive_ = false;
         const std::wstring_view widget = state_.activeWidget();
         const bool bridgeWidget = IsBridgeWidget(widget);
         const auto geometry = layer == CompositionPaintLayer::Content &&
                 compositionSurface_.available()
-            ? gba::ComputePanelLocalSurfaceGeometry(width, height)
+            ? widgetrail::ComputePanelLocalSurfaceGeometry(width, height)
             : [&]() {
                 const auto widgetSurface = DesiredWidgetSurfaceTarget();
-                return gba::ComputeOverlaySurfaceGeometry(
+                return widgetrail::ComputeOverlaySurfaceGeometry(
                     width, height,
                     bridgeWidget ? widgetSurface.panelWidthDip : 720.0F,
                     bridgeWidget
@@ -8635,12 +8635,12 @@ private:
         if (!geometry) return;
         const auto sessionTrayLayout = !frameTrayLayout && compositionSurface_.available()
             ? CurrentCompositionTrayLayout()
-            : std::optional<gba::shell::TrayLayout>{};
+            : std::optional<widgetrail::shell::TrayLayout>{};
         const auto computedTrayLayout = frameTrayLayout || sessionTrayLayout
-            ? std::optional<gba::shell::TrayLayout>{}
-            : gba::shell::ComputeTrayLayout(
+            ? std::optional<widgetrail::shell::TrayLayout>{}
+            : widgetrail::shell::ComputeTrayLayout(
                 width, height, state_.order().size(), state_.selectedSlot(),
-                gba::shell::TrayBand{
+                widgetrail::shell::TrayBand{
                     geometry->trayY, geometry->trayY + geometry->trayHeight});
         const auto* trayLayout = frameTrayLayout
             ? frameTrayLayout
@@ -8655,10 +8655,10 @@ private:
             layer == CompositionPaintLayer::Guide;
         const bool drawTray = layer == CompositionPaintLayer::Combined ||
             layer == CompositionPaintLayer::Tray;
-        const std::optional<gba::declarative::Rect> fixedGuideBounds = frameGuideBounds
-            ? std::optional<gba::declarative::Rect>{*frameGuideBounds}
+        const std::optional<widgetrail::declarative::Rect> fixedGuideBounds = frameGuideBounds
+            ? std::optional<widgetrail::declarative::Rect>{*frameGuideBounds}
             : trayLayout
-            ? std::optional<gba::declarative::Rect>{gba::declarative::Rect{
+            ? std::optional<widgetrail::declarative::Rect>{widgetrail::declarative::Rect{
                 trayLayout->stripBounds.x,
                 geometry->footerY,
                 trayLayout->stripBounds.width,
@@ -8685,11 +8685,11 @@ private:
         const D2D1_ROUNDED_RECT panel{
             D2D1::RectF(panelLeft, panelTop, panelLeft + panelWidth, visualPanelBottom),
             panelCornerRadius_, panelCornerRadius_};
-        gba::shell::FillColorKeyRoundedRectangle(
+        widgetrail::shell::FillColorKeyRoundedRectangle(
             renderTarget_.Get(), panel, cardBrush_.Get(),
             compositionSurface_.available()
-                ? gba::shell::OuterChromeBoundary::PremultipliedAlpha
-                : gba::shell::OuterChromeBoundary::ColorKeyAliased);
+                ? widgetrail::shell::OuterChromeBoundary::PremultipliedAlpha
+                : widgetrail::shell::OuterChromeBoundary::ColorKeyAliased);
 
         if (bridgeWidget) {
             ComPtr<ID2D1Layer> contentLayer;
@@ -8711,15 +8711,15 @@ private:
             const auto sessionPresentation = sessions_.Presentation(widget);
             const auto& retainedPresentation =
                 presentationTransaction_.retainedPresentation();
-            const auto contentAuthority = gba::ResolveWidgetContentAuthority(
+            const auto contentAuthority = widgetrail::ResolveWidgetContentAuthority(
                 sessionPresentation.snapshot != nullptr,
                 sessionPresentation.authority ==
-                    gba::WidgetPresentationAuthority::Current,
+                    widgetrail::WidgetPresentationAuthority::Current,
                 retainedPresentation.has_value());
             const bool sessionRetainedSnapshot =
-                contentAuthority == gba::WidgetContentAuthority::InertRetainedSnapshot;
+                contentAuthority == widgetrail::WidgetContentAuthority::InertRetainedSnapshot;
             const bool transitionRetainedSnapshot =
-                contentAuthority == gba::WidgetContentAuthority::RetainedCommittedSnapshot;
+                contentAuthority == widgetrail::WidgetContentAuthority::RetainedCommittedSnapshot;
             const bool inertRetainedSnapshot =
                 sessionRetainedSnapshot || transitionRetainedSnapshot;
             const auto* snapshot = sessionRetainedSnapshot
@@ -8734,11 +8734,11 @@ private:
                 ? std::wstring_view{retainedPresentation->focusId}
                 : sessionRetainedSnapshot
                     ? std::wstring_view{}
-                    : state_.focusRegion() == gba::FocusRegion::Widget
+                    : state_.focusRegion() == widgetrail::FocusRegion::Widget
                         ? std::wstring_view{focusedElementId_}
                         : std::wstring_view{};
             if (snapshot && declarativeRenderer_) {
-                const gba::declarative::Rect viewport{
+                const widgetrail::declarative::Rect viewport{
                     geometry->widgetViewportX,
                     geometry->widgetViewportY,
                     geometry->widgetViewportWidth,
@@ -8747,11 +8747,11 @@ private:
                 const auto* descriptor = sessions_.FindDescriptor(renderedWidget);
                 const auto accessibilityPolicy = appearanceState_.current()
                     ? CurrentAccessibilityPolicy()
-                    : gba::NativeAccessibilityPolicy{};
+                    : widgetrail::NativeAccessibilityPolicy{};
                 const auto presentationTime = GetTickCount64();
                 std::map<std::wstring, double, std::less<>> presentedSliderValues;
                 const auto collectSliderOverrides = [&](const auto& self,
-                                                        const gba::WidgetNode& node) -> void {
+                                                        const widgetrail::WidgetNode& node) -> void {
                     if (node.kind == L"slider") {
                         if (const auto value = sliderInteraction_.PresentationValue(
                                 SliderDescriptor(*snapshot, node), presentationTime)) {
@@ -8761,7 +8761,7 @@ private:
                     for (const auto& child : node.children) self(self, child);
                 };
                 collectSliderOverrides(collectSliderOverrides, snapshot->root);
-                const gba::accessibility::ProjectionKey projectionKey{
+                const widgetrail::accessibility::ProjectionKey projectionKey{
                     std::wstring{renderedWidget},
                     descriptor
                         ? descriptor->runtimeGeneration
@@ -8787,10 +8787,10 @@ private:
                     accessibilityActive_ &&
                     descriptor &&
                     widgetAccessibilityProjection_.ShouldCollect(projectionKey);
-                gba::DeclarativeRenderOptions options;
+                widgetrail::DeclarativeRenderOptions options;
                 options.pixelScale = physicalPixelsPerDip;
                 options.collectAccessibility = collectAccessibility;
-                options.responsiveViewport = gba::declarative::Size{
+                options.responsiveViewport = widgetrail::declarative::Size{
                     geometry->panelWidth,
                     geometry->panelHeight,
                 };
@@ -8813,8 +8813,8 @@ private:
                         *snapshot, renderedFocusId);
                 }
                 if (!inertRetainedSnapshot && options.pressedElementId.empty() &&
-                    state_.focusRegion() == gba::FocusRegion::Widget) {
-                    if (const auto* focused = gba::input::FindNodeInInputScope(
+                    state_.focusRegion() == widgetrail::FocusRegion::Widget) {
+                    if (const auto* focused = widgetrail::input::FindNodeInInputScope(
                             *snapshot, focusedElementId_, snapshot->activeInputScopeId);
                         focused && focused->sliderInteractionMode == L"activateToAdjust" &&
                         sliderInteraction_.AdjustmentModeActive(
@@ -8825,7 +8825,7 @@ private:
                 auto launcherProjection = launcherExperienceProjection_.Render(
                     *declarativeRenderer_, renderTarget_.Get(), imageCache_.get(),
                     descriptor ? descriptor->advancedPresentation
-                               : std::optional<gba::WidgetAdvancedPresentationDeclaration>{},
+                               : std::optional<widgetrail::WidgetAdvancedPresentationDeclaration>{},
                     descriptor ? std::wstring_view{descriptor->presentationGeneration}
                                : std::wstring_view{},
                     renderedWidget,
@@ -8848,14 +8848,14 @@ private:
                     std::wstring launcherRailNext;
                     if (launcherProjection.preset) {
                         if (const auto* focusedLauncherNode =
-                                gba::input::FindNodeInInputScope(
+                                widgetrail::input::FindNodeInInputScope(
                                     semanticSnapshot, renderedFocusId,
                                     semanticSnapshot.activeInputScopeId)) {
                             const bool verticalRail =
                                 *launcherProjection.preset ==
-                                    gba::launcher::Preset::CoverWall ||
+                                    widgetrail::launcher::Preset::CoverWall ||
                                 *launcherProjection.preset ==
-                                    gba::launcher::Preset::CompactGrid;
+                                    widgetrail::launcher::Preset::CompactGrid;
                             launcherRailPrevious = verticalRail
                                 ? focusedLauncherNode->focusUp
                                 : focusedLauncherNode->focusLeft;
@@ -8865,11 +8865,11 @@ private:
                         }
                     }
                     const std::wstring inputOwner =
-                        state_.focusRegion() == gba::FocusRegion::Tray
+                        state_.focusRegion() == widgetrail::FocusRegion::Tray
                             ? L"tray"
                             : L"widget";
                     const std::wstring semanticFocus =
-                        state_.focusRegion() == gba::FocusRegion::Tray
+                        state_.focusRegion() == widgetrail::FocusRegion::Tray
                             ? L"tray:" + std::wstring(state_.selectedWidget())
                             : inertRetainedSnapshot || focusedElementId_.empty()
                                 ? L"none"
@@ -8877,14 +8877,14 @@ private:
                     const bool selectedTrayItemVisible = trayLayout &&
                         std::any_of(
                             trayLayout->tiles.begin(), trayLayout->tiles.end(),
-                            [&](const gba::shell::TrayTileLayout& tile) {
+                            [&](const widgetrail::shell::TrayTileLayout& tile) {
                                 return tile.slot == state_.selectedSlot();
                             });
-                    const gba::shell::TrayTileLayout* selectedTrayItem = nullptr;
+                    const widgetrail::shell::TrayTileLayout* selectedTrayItem = nullptr;
                     if (trayLayout) {
                         const auto selected = std::find_if(
                             trayLayout->tiles.begin(), trayLayout->tiles.end(),
-                            [&](const gba::shell::TrayTileLayout& tile) {
+                            [&](const widgetrail::shell::TrayTileLayout& tile) {
                                 return tile.slot == state_.selectedSlot();
                             });
                         if (selected != trayLayout->tiles.end()) {
@@ -8907,7 +8907,7 @@ private:
                     const std::wstring launcherPresentationKey =
                         launcherProjection.presentationActive
                             ? L"\nlauncher-presentation\n" +
-                                std::wstring(gba::launcher::EffectQualityName(
+                                std::wstring(widgetrail::launcher::EffectQualityName(
                                     launcherProjection.effectQuality)) + L"\n" +
                                 (launcherProjection.backgroundIsFallback
                                     ? L"fallback"
@@ -8941,7 +8941,7 @@ private:
                         L"\n" + std::to_wstring(snapshot->sequence) + L"\n" +
                         (sessionRetainedSnapshot
                             ? (sessionPresentation.authority ==
-                                    gba::WidgetPresentationAuthority::FailureRetained
+                                    widgetrail::WidgetPresentationAuthority::FailureRetained
                                 ? L"failure-retained" : L"refresh-retained")
                             : transitionRetainedSnapshot ? L"retained" : L"admitted") +
                         L"\n" + inputOwner + L"\n" + std::wstring(renderedFocusId) +
@@ -8949,11 +8949,11 @@ private:
                     if (paintKey != lastWidgetPresentationPaintKey_) {
                         lastWidgetPresentationPaintKey_ = paintKey;
                         if (launcherProjection.disposition ==
-                            gba::launcher::ProductionProjectionDisposition::Adopted) {
+                            widgetrail::launcher::ProductionProjectionDisposition::Adopted) {
                             AppendDiagnostic(
                                 L"Launcher Experience projection adopted widget=" +
                                 std::wstring(renderedWidget) + L" preset=" +
-                                std::wstring(gba::launcher::PresetName(
+                                std::wstring(widgetrail::launcher::PresetName(
                                     *launcherProjection.preset)) +
                                 L" sequence=" + std::to_wstring(snapshot->sequence) +
                                 L" instance=" + snapshot->instanceId +
@@ -9000,7 +9000,7 @@ private:
                                 L" high-contrast=" +
                                 (launcherProjection.highContrast ? L"true" : L"false") +
                                 L" effect=" + std::wstring(
-                                    gba::launcher::EffectQualityName(
+                                    widgetrail::launcher::EffectQualityName(
                                         launcherProjection.effectQuality)) +
                                 L" background=" +
                                 (launcherProjection.backgroundIsFallback
@@ -9035,20 +9035,20 @@ private:
                         const auto workClass = [&]() -> std::wstring_view {
                             if (!activeContentRenderPlan_) return L"full";
                             switch (activeContentRenderPlan_->work) {
-                            case gba::IncrementalPresentationWork::NoRaster:
+                            case widgetrail::IncrementalPresentationWork::NoRaster:
                                 return L"none";
-                            case gba::IncrementalPresentationWork::PaintOnly:
+                            case widgetrail::IncrementalPresentationWork::PaintOnly:
                                 return L"paint-only";
-                            case gba::IncrementalPresentationWork::LocalLayout:
+                            case widgetrail::IncrementalPresentationWork::LocalLayout:
                                 return L"local-layout";
-                            case gba::IncrementalPresentationWork::FullRaster:
+                            case widgetrail::IncrementalPresentationWork::FullRaster:
                                 return L"full";
                             }
                             return L"full";
                         }();
                         const auto damage = activeContentRenderPlan_
                             ? activeContentRenderPlan_->damage
-                            : gba::declarative::Rect{};
+                            : widgetrail::declarative::Rect{};
                         const auto bitmapCache =
                             declarativeRenderer_->GetImageBitmapCacheStats();
                         AppendDiagnostic(
@@ -9056,7 +9056,7 @@ private:
                             L" content=" +
                             (sessionRetainedSnapshot
                                 ? (sessionPresentation.authority ==
-                                        gba::WidgetPresentationAuthority::FailureRetained
+                                        widgetrail::WidgetPresentationAuthority::FailureRetained
                                     ? L"failure-retained" : L"refresh-retained")
                                 : transitionRetainedSnapshot ? L"retained" : L"admitted") +
                             L" rendered=" + std::wstring(renderedWidget) +
@@ -9144,7 +9144,7 @@ private:
                 }
                 declarativeMotionActive_ = !inertRetainedSnapshot && result.animationActive;
                 if (!inertRetainedSnapshot) {
-                    if (const auto visibleFocus = gba::input::ResolveVisibleFocusTarget(
+                    if (const auto visibleFocus = widgetrail::input::ResolveVisibleFocusTarget(
                         focusedElementId_, semanticSnapshot.activeInputScopeId, result);
                         visibleFocus && *visibleFocus != focusedElementId_) {
                         (void)pressedInteraction_.Clear();
@@ -9193,10 +9193,10 @@ private:
                         options.pixelScale, options.accessibility.textScale);
                 }
                 if (!inertRetainedSnapshot && collectAccessibility) {
-                    widgetAccessibilityTree_ = gba::accessibility::BuildWidgetTree(
+                    widgetAccessibilityTree_ = widgetrail::accessibility::BuildWidgetTree(
                         std::wstring{widget}, descriptor->runtimeGeneration,
                         semanticSnapshot, result,
-                        state_.focusRegion() == gba::FocusRegion::Widget
+                        state_.focusRegion() == widgetrail::FocusRegion::Widget
                             ? std::wstring_view{focusedElementId_}
                             : std::wstring_view{},
                         options.sliderValueOverrides);
@@ -9265,9 +9265,9 @@ private:
     HINSTANCE instance_{};
     HWND window_{};
     HWND chromeWindow_{};
-    GbaOverlayPlatformHandle* platform_{};
-    gba::PlacementRefreshGate placementRefreshGate_;
-    gba::DisplayRefreshAccumulator displayRefresh_;
+    WidgetRailOverlayPlatformHandle* platform_{};
+    widgetrail::PlacementRefreshGate placementRefreshGate_;
+    widgetrail::DisplayRefreshAccumulator displayRefresh_;
     HWND backdropWindow_{};
     HBRUSH backdropBrush_{};
     HWINEVENTHOOK foregroundHook_{};
@@ -9285,7 +9285,7 @@ private:
     std::optional<std::wstring> performanceDiagnosticsPath_;
     std::optional<std::wstring> performanceDiagnosticsNonce_;
     std::optional<std::wstring> scrollEvidencePath_;
-    gba::ScrollEvidenceProbe scrollEvidenceProbe_;
+    widgetrail::ScrollEvidenceProbe scrollEvidenceProbe_;
     bool performanceCountersActive_{};
     unsigned long long performanceCounterStarted_{};
     unsigned long long performanceTimerMessages_{};
@@ -9293,8 +9293,8 @@ private:
     unsigned long long performanceGuideCompatibilityTimerMessages_{};
     unsigned long long performancePaintMessages_{};
     unsigned long long performanceSuccessfulFrames_{};
-    gba::OverlayState state_;
-    gba::input::TrayYGesture trayYGesture_;
+    widgetrail::OverlayState state_;
+    widgetrail::input::TrayYGesture trayYGesture_;
     std::optional<bool> lastForegroundOwnership_;
     long long controllerSequence_{};
     std::wstring lastActionMessage_;
@@ -9303,76 +9303,76 @@ private:
     std::wstring admissionTraceWidget_;
     std::uint64_t admissionTraceCorrelationId_{};
     std::optional<PendingWidgetSwitchSnap> pendingWidgetSwitchSnap_;
-    gba::WidgetActionFeedbackHost actionFailureFeedback_;
-    gba::WidgetAdmissionTrace admissionTrace_;
-    gba::accessibility::Tree accessibilityTree_;
-    gba::accessibility::Tree widgetAccessibilityTree_;
-    gba::accessibility::OpenWidgetSemantics openWidgetAccessibility_;
-    gba::accessibility::ProviderHost accessibilityProvider_;
-    gba::accessibility::ProviderHost chromeAccessibilityProvider_;
+    widgetrail::WidgetActionFeedbackHost actionFailureFeedback_;
+    widgetrail::WidgetAdmissionTrace admissionTrace_;
+    widgetrail::accessibility::Tree accessibilityTree_;
+    widgetrail::accessibility::Tree widgetAccessibilityTree_;
+    widgetrail::accessibility::OpenWidgetSemantics openWidgetAccessibility_;
+    widgetrail::accessibility::ProviderHost accessibilityProvider_;
+    widgetrail::accessibility::ProviderHost chromeAccessibilityProvider_;
     bool accessibilityActive_{};
-    gba::accessibility::ProjectionTracker accessibilityProjection_;
-    gba::accessibility::ProjectionTracker widgetAccessibilityProjection_;
+    widgetrail::accessibility::ProjectionTracker accessibilityProjection_;
+    widgetrail::accessibility::ProjectionTracker widgetAccessibilityProjection_;
     std::uint64_t widgetAccessibilityRevision_{};
     long long hostAccessibilitySequence_{};
     ULONGLONG sliderReconcileAt_{};
     std::wstring focusedElementId_;
-    gba::input::WidgetSurfaceFocusMemory focusMemory_;
-    gba::input::SliderInteractionState sliderInteraction_;
-    gba::input::PressedInteractionState pressedInteraction_;
-    gba::input::TextEntryModal textEntryModal_;
-    gba::WidgetBridgeClient bridge_;
-    gba::WidgetSessionCoordinator sessions_;
-    gba::packages::FileOpenDialogWidgetPackagePicker localWidgetPackagePicker_;
-    gba::packages::LocalWidgetPackageImport localWidgetPackageImport_;
-    std::optional<gba::LocalWidgetPackageInstallResult>
+    widgetrail::input::WidgetSurfaceFocusMemory focusMemory_;
+    widgetrail::input::SliderInteractionState sliderInteraction_;
+    widgetrail::input::PressedInteractionState pressedInteraction_;
+    widgetrail::input::TextEntryModal textEntryModal_;
+    widgetrail::WidgetBridgeClient bridge_;
+    widgetrail::WidgetSessionCoordinator sessions_;
+    widgetrail::packages::FileOpenDialogWidgetPackagePicker localWidgetPackagePicker_;
+    widgetrail::packages::LocalWidgetPackageImport localWidgetPackageImport_;
+    std::optional<widgetrail::LocalWidgetPackageInstallResult>
         lastLocalWidgetPackageInstallResult_;
-    gba::PlatformAppearanceState appearanceState_;
-    gba::NativeRenderStyle canvasStyle_;
-    gba::NativeRenderStyle backdropStyle_;
-    gba::NativeRenderStyle panelStyle_;
-    gba::NativeRenderStyle trayStyle_;
-    gba::NativeColor effectiveCanvasBackground_{kDefaultCanvas};
-    gba::NativeColor effectivePanelBackground_{kDefaultPanel};
-    gba::NativeColor effectiveTrayBackground_{kDefaultCanvas};
-    gba::NativeRenderStyle trayItemStyle_;
-    gba::NativeRenderStyle trayItemSelectedStyle_;
-    gba::NativeRenderStyle trayItemFocusedStyle_;
-    gba::NativeRenderStyle trayItemSelectedFocusedStyle_;
-    gba::NativeRenderStyle titleStyle_;
-    gba::NativeRenderStyle bodyStyle_;
-    gba::NativeRenderStyle hintStyle_;
-    gba::NativeRenderStyle statusStyle_;
-    gba::NativeRenderStyle dashboardTitleStyle_;
-    gba::NativeRenderStyle dashboardHintStyle_;
+    widgetrail::PlatformAppearanceState appearanceState_;
+    widgetrail::NativeRenderStyle canvasStyle_;
+    widgetrail::NativeRenderStyle backdropStyle_;
+    widgetrail::NativeRenderStyle panelStyle_;
+    widgetrail::NativeRenderStyle trayStyle_;
+    widgetrail::NativeColor effectiveCanvasBackground_{kDefaultCanvas};
+    widgetrail::NativeColor effectivePanelBackground_{kDefaultPanel};
+    widgetrail::NativeColor effectiveTrayBackground_{kDefaultCanvas};
+    widgetrail::NativeRenderStyle trayItemStyle_;
+    widgetrail::NativeRenderStyle trayItemSelectedStyle_;
+    widgetrail::NativeRenderStyle trayItemFocusedStyle_;
+    widgetrail::NativeRenderStyle trayItemSelectedFocusedStyle_;
+    widgetrail::NativeRenderStyle titleStyle_;
+    widgetrail::NativeRenderStyle bodyStyle_;
+    widgetrail::NativeRenderStyle hintStyle_;
+    widgetrail::NativeRenderStyle statusStyle_;
+    widgetrail::NativeRenderStyle dashboardTitleStyle_;
+    widgetrail::NativeRenderStyle dashboardHintStyle_;
     float panelCornerRadius_{18.0F};
     float trayCornerRadius_{22.0F};
     float trayItemCornerRadius_{16.0F};
     float focusOutlineWidth_{2.0F};
-    std::unique_ptr<gba::RemoteImageCache> imageCache_;
-    std::unique_ptr<gba::DeclarativeRenderer> declarativeRenderer_;
-    gba::launcher::LauncherExperienceProjection launcherExperienceProjection_;
+    std::unique_ptr<widgetrail::RemoteImageCache> imageCache_;
+    std::unique_ptr<widgetrail::DeclarativeRenderer> declarativeRenderer_;
+    widgetrail::launcher::LauncherExperienceProjection launcherExperienceProjection_;
     bool launcherSafeStartPending_{};
-    gba::pinned::WidgetSurfaceCoordinator pinnedSurfaceCoordinator_;
+    widgetrail::pinned::WidgetSurfaceCoordinator pinnedSurfaceCoordinator_;
     bool runtimeInitialized_{};
     std::unordered_map<std::wstring, long long> renderedSnapshotSequences_;
-    gba::RenderResult lastWidgetRenderResult_;
-    std::optional<gba::DeclarativeRenderTiming>
+    widgetrail::RenderResult lastWidgetRenderResult_;
+    std::optional<widgetrail::DeclarativeRenderTiming>
         currentCompositionRenderTiming_;
     std::optional<CommittedWidgetVisualState> committedWidgetVisualState_;
     bool lastWidgetPresentationUsesProjection_{};
-    std::optional<gba::WidgetPresentationImpact>
+    std::optional<widgetrail::WidgetPresentationImpact>
         pendingWidgetPresentationImpact_;
-    std::optional<gba::IncrementalPresentationPlan>
+    std::optional<widgetrail::IncrementalPresentationPlan>
         pendingContentRenderPlan_;
-    std::optional<gba::IncrementalPresentationPlan>
+    std::optional<widgetrail::IncrementalPresentationPlan>
         activeContentRenderPlan_;
     bool declarativeMotionActive_{};
-    gba::OverlayTransitionTimeline overlayTransition_;
-    gba::OverlayTransitionSample overlayTransitionSample_{};
-    gba::OverlayPresentationTransaction presentationTransaction_;
+    widgetrail::OverlayTransitionTimeline overlayTransition_;
+    widgetrail::OverlayTransitionSample overlayTransitionSample_{};
+    widgetrail::OverlayPresentationTransaction presentationTransaction_;
     std::wstring retainedGuidePaintKey_;
-    std::optional<gba::shell::RetainedTrayState> retainedTrayPaintState_;
+    std::optional<widgetrail::shell::RetainedTrayState> retainedTrayPaintState_;
     std::optional<FixedChromeAnchor> fixedChromeAnchor_;
     std::optional<CompositionChromeSession> compositionChromeSession_;
     FixedChromePlacementReason pendingFixedChromePlacementReason_{
@@ -9391,7 +9391,7 @@ private:
 
     ComPtr<ID2D1Factory1> d2dFactory_;
     ComPtr<IDWriteFactory> writeFactory_;
-    gba::OverlayCompositionSurface compositionSurface_;
+    widgetrail::OverlayCompositionSurface compositionSurface_;
     bool compositionPlacementInProgress_{};
     ComPtr<ID2D1HwndRenderTarget> hwndRenderTarget_;
     ComPtr<ID2D1RenderTarget> renderTarget_;
@@ -9431,21 +9431,21 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int showCommand) {
     }
     if (launcherExperienceSemanticProof) {
         std::wstring diagnostic;
-        const bool passed = gba::launcher::RunProductionHostSemanticProof(diagnostic);
+        const bool passed = widgetrail::launcher::RunProductionHostSemanticProof(diagnostic);
         AppendDiagnostic(L"Launcher Experience production-host semantic proof " + diagnostic);
         return passed ? EXIT_SUCCESS : EXIT_FAILURE;
     }
-    gba::process::OverlayProcessOwner processOwner;
+    widgetrail::process::OverlayProcessOwner processOwner;
     std::wstring ownershipError;
     const auto ownership = processOwner.Begin(
         processProfile, std::chrono::milliseconds(3000), ownershipError);
-    if (ownership == gba::process::OwnershipResult::ClientAcknowledged) {
+    if (ownership == widgetrail::process::OwnershipResult::ClientAcknowledged) {
         AppendDiagnostic(
             L"Activation client forwarded Show and exited profile=" + processProfile +
             L" pid=" + std::to_wstring(GetCurrentProcessId()));
         return EXIT_SUCCESS;
     }
-    if (ownership != gba::process::OwnershipResult::Owner) {
+    if (ownership != widgetrail::process::OwnershipResult::Owner) {
         AppendDiagnostic(L"Activation client failed: " + ownershipError);
         return EXIT_FAILURE;
     }
@@ -9465,7 +9465,7 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int showCommand) {
                                      app.initializationError();
         SaveStartupError(message);
         MessageBoxW(nullptr, message.c_str(),
-                    L"Game Bar Alternative", MB_OK | MB_ICONERROR);
+                    L"WidgetRail", MB_OK | MB_ICONERROR);
         return EXIT_FAILURE;
     }
     app.BindProcessActivation(processOwner);

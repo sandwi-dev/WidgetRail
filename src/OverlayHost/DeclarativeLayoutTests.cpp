@@ -9,20 +9,20 @@
 
 namespace {
 
-using gba::declarative::BoxSpacing;
-using gba::declarative::ComputeLayout;
-using gba::declarative::CrossAxisAlignment;
-using gba::declarative::IntrinsicMeasureCallback;
-using gba::declarative::LayoutDirection;
-using gba::declarative::LayoutElement;
-using gba::declarative::LayoutIssueSeverity;
-using gba::declarative::LayoutMode;
-using gba::declarative::MainAxisAlignment;
-using gba::declarative::OverflowBehavior;
-using gba::declarative::Rect;
-using gba::declarative::Size;
-using gba::declarative::ScrollAxis;
-using gba::declarative::WrapBehavior;
+using widgetrail::declarative::BoxSpacing;
+using widgetrail::declarative::ComputeLayout;
+using widgetrail::declarative::CrossAxisAlignment;
+using widgetrail::declarative::IntrinsicMeasureCallback;
+using widgetrail::declarative::LayoutDirection;
+using widgetrail::declarative::LayoutElement;
+using widgetrail::declarative::LayoutIssueSeverity;
+using widgetrail::declarative::LayoutMode;
+using widgetrail::declarative::MainAxisAlignment;
+using widgetrail::declarative::OverflowBehavior;
+using widgetrail::declarative::Rect;
+using widgetrail::declarative::Size;
+using widgetrail::declarative::ScrollAxis;
+using widgetrail::declarative::WrapBehavior;
 
 int checks = 0;
 
@@ -145,7 +145,7 @@ void FlexedRowRemeasuresWrappedCrossSize() {
     auto root = Element("root");
     root.children = {header};
     const auto measure = [](const LayoutElement& element,
-                            const gba::declarative::MeasureConstraints& constraints) {
+                            const widgetrail::declarative::MeasureConstraints& constraints) {
         if (element.id == "header-text") {
             return Size{360.0F, constraints.maximumWidth < 300.0F ? 76.0F : 59.0F};
         }
@@ -273,11 +273,11 @@ void ResponsiveViewports() {
     rail.gap = 16.0F;
     rail.children = {card, info};
 
-    gba::declarative::LayoutOptions at720Options;
+    widgetrail::declarative::LayoutOptions at720Options;
     at720Options.responsiveViewport = Size{1280.0F, 720.0F};
-    gba::declarative::LayoutOptions at1080Options;
+    widgetrail::declarative::LayoutOptions at1080Options;
     at1080Options.responsiveViewport = Size{1920.0F, 1080.0F};
-    gba::declarative::LayoutOptions ultrawideOptions;
+    widgetrail::declarative::LayoutOptions ultrawideOptions;
     ultrawideOptions.responsiveViewport = Size{3440.0F, 1440.0F};
     const auto at720 = ComputeLayout(rail, {0.0F, 0.0F, 1280.0F, 230.0F}, {}, at720Options);
     const auto at1080 = ComputeLayout(rail, {0.0F, 0.0F, 1920.0F, 230.0F}, {}, at1080Options);
@@ -308,7 +308,7 @@ void ResponsiveRowsWrapAtStableItemBoundaries() {
     row.crossAxisAlignment = CrossAxisAlignment::Start;
     row.children = {first, second, third};
 
-    gba::declarative::LayoutOptions measuredOptions;
+    widgetrail::declarative::LayoutOptions measuredOptions;
     measuredOptions.fillAutoRoot = false;
     const auto narrow = ComputeLayout(
         row, {0.0F, 0.0F, 250.0F, 200.0F}, {}, measuredOptions);
@@ -406,14 +406,14 @@ void ResponsiveGridMeasuresMixedIntrinsicRows() {
     };
     const IntrinsicMeasureCallback measure = [](
         const LayoutElement& element,
-        const gba::declarative::MeasureConstraints& constraints) {
+        const widgetrail::declarative::MeasureConstraints& constraints) {
         if (element.id == "intrinsic-short") return Size{constraints.maximumWidth, 20.0F};
         if (element.id == "intrinsic-tall") return Size{constraints.maximumWidth, 50.0F};
         if (element.id == "intrinsic-wrapped")
             return Size{constraints.maximumWidth, constraints.maximumWidth <= 150.01F ? 60.0F : 30.0F};
         return Size{};
     };
-    gba::declarative::LayoutOptions options;
+    widgetrail::declarative::LayoutOptions options;
     options.fillAutoRoot = false;
     const auto result = ComputeLayout(grid, {0, 0, 320, 500}, measure, options);
     Check(result.valid(), "mixed intrinsic grid remains valid");
@@ -465,9 +465,9 @@ void ResponsiveGridHandlesEmptyLargeAndScaledSurfaces() {
         child.height = 44.0F;
         scaled.children.push_back(std::move(child));
     }
-    gba::declarative::LayoutOptions oneX;
+    widgetrail::declarative::LayoutOptions oneX;
     oneX.pixelScale = 1.0F;
-    gba::declarative::LayoutOptions twoX;
+    widgetrail::declarative::LayoutOptions twoX;
     twoX.pixelScale = 2.0F;
     const auto dipOne = ComputeLayout(scaled, {0, 0, 320, 100}, {}, oneX);
     const auto dipTwo = ComputeLayout(scaled, {0, 0, 320, 100}, {}, twoX);
@@ -543,7 +543,7 @@ void IntrinsicAndCompactMode() {
     root.children = {text};
     bool sawCompact = false;
     const IntrinsicMeasureCallback measure =
-        [&sawCompact](const LayoutElement& element, const gba::declarative::MeasureConstraints& constraints) {
+        [&sawCompact](const LayoutElement& element, const widgetrail::declarative::MeasureConstraints& constraints) {
             if (element.id == "text") {
                 sawCompact |= constraints.compactMode;
                 return Size{std::min(300.0F, constraints.maximumWidth), constraints.compactMode ? 48.0F : 24.0F};
@@ -572,7 +572,7 @@ void WrappedIntrinsicLeavesDoNotCollapseOrOverlap() {
 
     const IntrinsicMeasureCallback measure = [](
         const LayoutElement& element,
-        const gba::declarative::MeasureConstraints& constraints) {
+        const widgetrail::declarative::MeasureConstraints& constraints) {
         if (element.id == "state-title")
             return Size{constraints.maximumWidth,
                 constraints.maximumWidth <= 160.01F ? 40.0F : 20.0F};
@@ -620,7 +620,7 @@ void ScrollExtentIncludesWrappedIntrinsicParagraphs() {
 
     const IntrinsicMeasureCallback measure = [](
         const LayoutElement& element,
-        const gba::declarative::MeasureConstraints& constraints) {
+        const widgetrail::declarative::MeasureConstraints& constraints) {
         if (element.id == "paragraph-one")
             return Size{constraints.maximumWidth, 72.0F};
         if (element.id == "paragraph-two")
@@ -680,7 +680,7 @@ void TinyAndPortraitWidgetContainment() {
              Rect{0, 0, 718, 78},
              Rect{0, 0, 878, 446},
          }) {
-        gba::declarative::LayoutOptions options;
+        widgetrail::declarative::LayoutOptions options;
         options.pixelScale = 1.875F;
         const float snapTolerance = 0.5F / options.pixelScale + 0.001F;
         const auto result = ComputeLayout(root, viewport, {}, options);
@@ -739,7 +739,7 @@ void PixelSnapAndSafeMath() {
     child.padding = BoxSpacing::One(std::numeric_limits<float>::infinity());
     auto root = Element("root", LayoutDirection::Row);
     root.children = {child};
-    gba::declarative::LayoutOptions options;
+    widgetrail::declarative::LayoutOptions options;
     options.pixelScale = 2.0F;
     const auto result = ComputeLayout(root, {0.25F, 0.25F, 100.25F, 50.25F}, {}, options);
     Check(result.valid(), "bad numeric inputs degrade to warnings");
@@ -770,7 +770,7 @@ void OutputIsDeterministicAndOrdinal() {
     auto root = Element("root", LayoutDirection::Row);
     root.gap = 3.0F;
     root.children = {zebra, alpha};
-    gba::declarative::LayoutOptions options;
+    widgetrail::declarative::LayoutOptions options;
     options.pixelScale = 1.5F;
     const auto first = ComputeLayout(root, {1.0F, 2.0F, 601.0F, 101.0F}, {}, options);
     const auto second = ComputeLayout(root, {1.0F, 2.0F, 601.0F, 101.0F}, {}, options);

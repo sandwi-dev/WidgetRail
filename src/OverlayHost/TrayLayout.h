@@ -6,7 +6,7 @@
 #include <optional>
 #include <vector>
 
-namespace gba::shell {
+namespace widgetrail::shell {
 
 struct TrayBand final {
     float top{};
@@ -53,4 +53,4 @@ struct TrayLayout final {
 [[nodiscard]] const TrayOverflowLayout* HitTestTrayOverflow(
     const TrayLayout& layout, float x, float y) noexcept;
 
-} // namespace gba::shell
+} // namespace widgetrail::shell

@@ -15,11 +15,11 @@
 
 namespace {
 
-using gba::DeclarativeRenderer;
-using gba::RenderResult;
-using gba::WidgetNode;
-using gba::WidgetSnapshot;
-using gba::declarative::Rect;
+using widgetrail::DeclarativeRenderer;
+using widgetrail::RenderResult;
+using widgetrail::WidgetNode;
+using widgetrail::WidgetSnapshot;
+using widgetrail::declarative::Rect;
 
 int checks{};
 
@@ -88,8 +88,8 @@ RenderResult RenderAt(
     const std::wstring_view focused,
     const float width,
     const float height) {
-    gba::DeclarativeRenderOptions options;
-    options.responsiveViewport = gba::declarative::Size{width, height};
+    widgetrail::DeclarativeRenderOptions options;
+    options.responsiveViewport = widgetrail::declarative::Size{width, height};
     return renderer.Render(
         nullptr, snapshot, focused, {0.0F, 0.0F, width, height}, options);
 }
@@ -118,7 +118,7 @@ void CheckControlsReachable(
 
 void Run(const std::filesystem::path& fixturePath) {
     std::wstring error;
-    const auto parsed = gba::testing::ParseWidgetSnapshotResponse(
+    const auto parsed = widgetrail::testing::ParseWidgetSnapshotResponse(
         ReadUtf8(fixturePath), error);
     Check(parsed.has_value(), "production native bridge parses the managed YT Music fixture");
     const auto& snapshot = *parsed;
@@ -133,7 +133,7 @@ void Run(const std::filesystem::path& fixturePath) {
           "renderer scenario uses the exact authored preferred and compact budgets");
     Check(Find(snapshot.root, L"media-details").baseStyle.contains(L"min-width") &&
               Find(snapshot.root, L"artwork-frame").baseStyle.contains(L"width"),
-          "production bridge parsing retains compiled YT Music GBSS values");
+          "production bridge parsing retains compiled YT Music WRSS values");
 
     CheckEdge(snapshot, L"previous", L"right", L"play-pause");
     CheckEdge(snapshot, L"previous", L"down", L"shuffle");
@@ -169,7 +169,7 @@ void Run(const std::filesystem::path& fixturePath) {
          "preferred cohesive media panel consumes the root inner width");
     Check(Find(snapshot.root, L"media-layout").baseStyle.contains(L"background") &&
               Find(snapshot.root, L"media-layout").baseStyle.contains(L"border-width"),
-          "production GBSS gives the unified media panel one bounded surface");
+          "production WRSS gives the unified media panel one bounded surface");
     Check(preferredArtwork.x + preferredArtwork.width <= preferredDetails.x + 0.01F,
           "preferred YT Music surface keeps artwork beside details");
     Check(preferredArtwork.y < preferredDetails.y + preferredDetails.height &&

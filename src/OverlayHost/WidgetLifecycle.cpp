@@ -1,6 +1,6 @@
 #include "WidgetLifecycle.h"
 
-namespace gba {
+namespace widgetrail {
 
 std::wstring_view WidgetLifecycleProtocolValue(
     const WidgetLifecycleState state) noexcept {
@@ -35,4 +35,4 @@ std::optional<WidgetLifecycleTarget> DesiredWidgetLifecycle(
     return std::nullopt;
 }
 
-} // namespace gba
+} // namespace widgetrail

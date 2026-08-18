@@ -1,10 +1,12 @@
-# WidgetRail identity and migration contract
+# WidgetRail identity and clean-cutover contract
 
 Status: approved and frozen DLV-257 contract
 
 Drafted: 2026-08-16
 
 Approved: 2026-08-17
+
+Clean-break amendment approved: 2026-08-17
 
 This reviewer-owned document freezes the intended product identity before any
 production rename begins. The user approved every material choice in this
@@ -88,7 +90,7 @@ A current non-Avalonia, non-history, non-generated scan at accepted main
 - 14 `GBAR_` and 334 `GBA_` occurrences.
 
 Most changes are mechanical namespace/import/test/document updates. The
-identity-sensitive seams below require explicit migration or residue review.
+identity-sensitive seams below require explicit clean cutover or residue review.
 
 ## Exact old-to-new mapping
 
@@ -121,7 +123,7 @@ merely because it begins with `org.gbar`.
 - `org.gbar.community.reference.*` ->
   `widgetrail.community.reference.*`
 
-The migration inventory must enumerate the exact known IDs at implementation
+The identity inventory must enumerate the exact known IDs at implementation
 time. Built-in Settings, bundled widgets, sample packages, the Community Game
 Launcher reference, themes, consent definitions, catalog fixtures, and package
 metadata must agree on the new exact IDs. Third-party IDs such as
@@ -137,10 +139,10 @@ metadata must agree on the new exact IDs. Third-party IDs such as
 - `.gbar` local feed/config root -> `.widgetrail`
 - `gbar` help text, examples, scripts and environment names -> `wrail`
 
-Old archive extensions are removed from the new-install/public path. They may
-be accepted only by a one-time local migration/import step if implementation
-review proves that current installed package preservation requires it; they do
-not remain supported public formats after cutover.
+Old archive extensions are removed from the new-install/public path. New code
+does not import old archive formats or retain a legacy-format fallback. This is
+a pre-release clean break; packages needed after cutover are installed again in
+the new format.
 
 ### Native and operating-system identity
 
@@ -163,34 +165,30 @@ Use the exact `WidgetRail` root for:
   runtime, scroll evidence, and launcher selection: `wrail-...` with their
   existing schema version retained unless the payload itself changes.
 
-There must be one new singleton/window/pipe authority. Old names are migration
-or cleanup inputs, never a simultaneously live compatibility runtime.
+There must be one new singleton/window/pipe authority. Old names are residue
+audit or generated-output cleanup inputs, never a simultaneously live
+compatibility runtime.
 
 ### Local state and secrets
 
-Atomically and idempotently migrate only product-owned state from
-`%LOCALAPPDATA%\GameBarAlternative` to `%LOCALAPPDATA%\WidgetRail`, including:
+WidgetRail starts with a fresh `%LOCALAPPDATA%\WidgetRail` product-owned store.
+New code reads and writes only that root. It must not probe, read, copy, move,
+merge, reinterpret, stage, delete, or otherwise touch the old
+`%LOCALAPPDATA%\GameBarAlternative` root.
 
-- Platform settings and appearance choices.
-- Overlay/pinned placement state.
-- Consent decisions and capability tombstones.
-- Installed-widget catalog, packages, enablement, ordering and selected
-  versions.
-- Themes, launcher experiences, diagnostics configuration, and explicitly
-  inventoried trusted private state.
+There is no automatic compatibility or migration path for old settings,
+appearance or placement state, consent decisions, package catalogs, installed
+packages, enablement/order/selection state, themes, launcher experiences,
+diagnostics configuration, or trusted private state. The sole current user may
+reconfigure settings, grant consent, and install current `.wrwidget` packages
+again after cutover. The old root remains untouched as recoverable legacy data
+unless the user later gives explicit authority for a separate manual action.
 
-Migration requirements:
-
-- Detect absent source, clean source, already-migrated destination, collision,
-  interrupted staging, and access-denied states deterministically.
-- Stage and validate before committing the destination; never partly reinterpret
-  an old store.
-- After success, all new writes target WidgetRail only.
-- Do not move external provider databases, installed applications, user files,
-  account data, or Windows Credential Manager entries.
-- Credential target names that contain `GameBarAlternative` are not copied or
-  renamed. New source uses a WidgetRail target and affected Community apps
-  require explicit re-authentication under the new target.
+External provider databases, installed applications, user files, account data,
+and Windows Credential Manager entries remain untouched. Credential targets
+containing `GameBarAlternative` are not copied, renamed, or reused; new source
+uses WidgetRail targets and affected Community apps require explicit
+re-authentication.
 
 ### Repository, publication, and output identity
 
@@ -205,21 +203,21 @@ Migration requirements:
 
 ## Legacy disposition
 
-Migration inputs retained temporarily:
+Untouched legacy data outside the active product path:
 
-- The old `%LOCALAPPDATA%\GameBarAlternative` root and exact current persisted
-  schema/header names, read only by the bounded migration owner.
-- Exact known project-owned package IDs needed to preserve catalog, consent and
-  selection state.
-- Current package archive bytes only for local-state migration where required.
+- The old `%LOCALAPPDATA%\GameBarAlternative` root is not a migration input and
+  is never opened by WidgetRail. It remains untouched unless the user later
+  authorizes a separate manual action.
+- Old settings, consent, catalog, package, and persisted-schema data receive no
+  runtime reader or compatibility bridge.
 
 Removed at cutover:
 
 - Active old namespaces, assemblies, package IDs, CLI/config names, archive
   extensions, UI strings, native identifiers, user agents, templates, samples,
   active documentation, generated runtime artifacts, and publication metadata.
-- Dual live state roots, singleton/pipe owners, public package formats, or SDK
-  compatibility layers.
+- Dual live state roots, old-root readers, singleton/pipe owners, legacy public
+  package formats, importers, or SDK compatibility layers.
 
 Intentionally unchanged historical evidence:
 
@@ -243,6 +241,10 @@ On 2026-08-17 the user approved all four choices without modification:
    `widgetrail.scenarios.json`.
 4. Existing Windows Credential Manager entries are not migrated; affected
    Community samples re-authenticate under new WidgetRail credential targets.
+
+The user additionally approved a clean local-state break on 2026-08-17:
+WidgetRail does not contain old-version migration or compatibility logic, uses
+only its new local-data root, and leaves the old root untouched.
 
 This completes DLV-257 and authorizes the assigned local DLV-258 technical
 cutover. Store reservation, domain registration, GitHub ownership, and legal

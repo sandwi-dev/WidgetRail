@@ -4,7 +4,7 @@
 #include <cmath>
 #include <limits>
 
-namespace gba {
+namespace widgetrail {
 namespace {
 
 constexpr float kMinimumPanelWidthDip = 240.0F;
@@ -512,4 +512,4 @@ std::wstring BuildTrayControllerGuide(
     return std::wstring{suffix};
 }
 
-} // namespace gba
+} // namespace widgetrail

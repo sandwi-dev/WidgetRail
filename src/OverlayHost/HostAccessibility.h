@@ -6,7 +6,7 @@
 #include <string>
 #include <vector>
 
-namespace gba::accessibility {
+namespace widgetrail::accessibility {
 
 struct TrayItem final {
     std::wstring widgetId;
@@ -76,4 +76,4 @@ struct OpenWidgetSemantics final {
     bool trayFocused,
     const OpenWidgetSemantics& semantics);
 
-} // namespace gba::accessibility
+} // namespace widgetrail::accessibility

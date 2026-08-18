@@ -10,7 +10,7 @@
 #include <string_view>
 #include <vector>
 
-namespace gba::declarative {
+namespace widgetrail::declarative {
 
 struct Size {
     float width{};
@@ -185,4 +185,4 @@ struct LayoutResult {
     const IntrinsicMeasureCallback& measureIntrinsic = {},
     LayoutOptions options = {});
 
-} // namespace gba::declarative
+} // namespace widgetrail::declarative

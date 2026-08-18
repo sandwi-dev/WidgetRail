@@ -118,7 +118,7 @@ press Connect or launch a second worker while one attempt is active.
 
 If refusal occurs immediately, confirm the overlay/bridge/provider and Spotify
 Community package 0.1.7 were rebuilt and installed together, then inspect
-`%LOCALAPPDATA%\GameBarAlternative\overlay.log` for lifecycle, port-collision,
+`%LOCALAPPDATA%\WidgetRail\overlay.log` for lifecycle, port-collision,
 state, timeout, or provider diagnostics. Never paste authorization codes,
 verifiers, access/refresh tokens, or credential-vault contents into logs or an
 issue. A successful local Client-ID write is public configuration; it is not
@@ -187,11 +187,11 @@ themes, and bridge watcher are connected. Check these boundaries:
   stale page after an external edit should refresh when the widget next enters
   a new active lifetime.
 - The store is
-  `%LOCALAPPDATA%\GameBarAlternative\platform-settings.json`. Invalid JSON
+  `%LOCALAPPDATA%\WidgetRail\platform-settings.json`. Invalid JSON
   displays safe defaults and an error; use the confirmed Reset page to replace
   it safely rather than editing while the overlay is open.
 - Installed themes live under
-  `%LOCALAPPDATA%\GameBarAlternative\themes\<id>\<version>\` with exact-case
+  `%LOCALAPPDATA%\WidgetRail\themes\<id>\<version>\` with exact-case
   `theme.json` and its package-relative WRSS entry. The manifest ID/version must
   exactly match both directories. Invalid themes remain visible but disabled
   in the picker and diagnostics.
@@ -208,7 +208,7 @@ themes, and bridge watcher are connected. Check these boundaries:
 - If a valid shell change does not appear, inspect the host diagnostic log for
   `Applied platform appearance revision` or a retained-last-good refresh error,
   then verify the settings/theme diagnostic rather than restarting workers.
-  The host log is `%LOCALAPPDATA%\GameBarAlternative\overlay.log`.
+  The host log is `%LOCALAPPDATA%\WidgetRail\overlay.log`.
 
 If install fails, run `wrail theme inspect <file.wrtheme>` and compare the
 reported digest. Remote installs require `--sha256`, existing versions are not
@@ -264,7 +264,7 @@ snapshot. DLL input fails closed; use `wrail dev` for isolated widget execution.
   on success and failure.
 - `wrail list`, `enable`, `disable`, and every `wrail version` command must use
   the same `--catalog` value as install. The default is
-  `%LOCALAPPDATA%\GameBarAlternative\widgets`.
+  `%LOCALAPPDATA%\WidgetRail\widgets`.
 - The packaged native host and Settings widget discover and watch the default
   current-user catalog. A custom `--catalog` path is an isolated CLI/test
   catalog and does not appear in the packaged overlay.
@@ -334,7 +334,7 @@ or remapping software.
 - Test with Xbox Game Bar and Steam enabled and disabled; they may also claim or
   react to Guide.
 - Use `--show` or F1 to separate Guide discovery from overlay rendering.
-- Inspect `%LOCALAPPDATA%\GameBarAlternative\overlay.log` for the reported Guide
+- Inspect `%LOCALAPPDATA%\WidgetRail\overlay.log` for the reported Guide
   source and compatibility-adapter availability.
 
 For Game Bar, Steam, game, or device conflicts, run the bounded
@@ -358,7 +358,7 @@ failure can therefore mean the host could not open/create the stable package
 AppContainer profile, grant read/execute access to the generic runtime and
 exact package root, verify the Low-integrity exact-SID/zero-capability token, or
 establish the SID/Low-label/PID-bound main or broker pipe. Inspect the bounded
-worker failure and `%LOCALAPPDATA%\GameBarAlternative\overlay.log`; do not work
+worker failure and `%LOCALAPPDATA%\WidgetRail\overlay.log`; do not work
 around the failure by launching the package DLL directly.
 
 Direct sockets and arbitrary desktop-user files are intentionally unavailable
@@ -449,9 +449,9 @@ reference](network-controls.md) for the full privacy and test contract.
   startup log distinguishes `process owner elected`, `activation client`, and
   rejected/timed-out activation paths.
 - F1 is the developer visibility fallback.
-- Read `%LOCALAPPDATA%\GameBarAlternative\startup-error.log` for the latest
+- Read `%LOCALAPPDATA%\WidgetRail\startup-error.log` for the latest
   initialization failure.
-- `%LOCALAPPDATA%\GameBarAlternative\overlay-state.ini` is state, not a log.
+- `%LOCALAPPDATA%\WidgetRail\overlay-state.ini` is state, not a log.
 
 True Fullscreen Exclusive is not a current target. Test in a windowed or
 borderless presentation mode first.

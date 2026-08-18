@@ -33,7 +33,7 @@ file static class FullTrustProbe
     {
         var identity = Convert.ToHexString(SHA256.HashData(
             Encoding.UTF8.GetBytes(instanceId)))[..20].ToLowerInvariant();
-        var root = Path.Combine(Path.GetTempPath(), "gba-full-trust-alpha", identity);
+        var root = Path.Combine(Path.GetTempPath(), "wrail-full-trust-alpha", identity);
         Directory.CreateDirectory(root);
 
         var filePath = Path.Combine(root, "ordinary-file.txt");

@@ -5,7 +5,7 @@
 
 #include <wrl/client.h>
 
-namespace gba::launcher {
+namespace widgetrail::launcher {
 namespace {
 
 WidgetStyleValue Length(const double value) {
@@ -176,7 +176,7 @@ void Append(RenderResult& destination, RenderResult source) {
     if (source.currentFocusRect) destination.currentFocusRect = source.currentFocusRect;
     if (source.currentFocusOutlineClip)
         destination.currentFocusOutlineClip = source.currentFocusOutlineClip;
-#ifdef GBA_DECLARATIVE_RENDERER_TESTING
+#ifdef WRAIL_DECLARATIVE_RENDERER_TESTING
     destination.elementRects.insert(source.elementRects.begin(), source.elementRects.end());
     destination.elementVisibleRects.insert(
         source.elementVisibleRects.begin(), source.elementVisibleRects.end());
@@ -299,4 +299,4 @@ RenderedExperience RenderExperience(
     return result;
 }
 
-} // namespace gba::launcher
+} // namespace widgetrail::launcher

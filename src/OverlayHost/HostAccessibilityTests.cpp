@@ -18,16 +18,16 @@ void Check(const bool condition, const char* message) {
 } // namespace
 
 int main() {
-    const std::vector<gba::accessibility::TrayItem> items{
+    const std::vector<widgetrail::accessibility::TrayItem> items{
         {L"audio", L"Audio Mixer"},
         {L"music", L"YT Music"},
         {L"performance", L"Performance", false},
         {L"gallery", L"SDK Gallery"},
     };
-    const auto layout = gba::shell::ComputeTrayLayout(240, 500, items.size(), 2);
+    const auto layout = widgetrail::shell::ComputeTrayLayout(240, 500, items.size(), 2);
     Check(layout && layout->tiles.size() == 1 && layout->previousOverflow &&
           layout->nextOverflow, "fixture exposes one tile between explicit overflow controls");
-    const auto tree = gba::accessibility::BuildTrayTree(items, *layout, 2, 17);
+    const auto tree = widgetrail::accessibility::BuildTrayTree(items, *layout, 2, 17);
     Check(tree.widgetId == L"host.tray" && tree.runtimeGeneration == L"host" &&
           tree.snapshotSequence == 17 && tree.activeInputScopeId == L"host.tray",
           "host tree retains closed shell authority");
@@ -36,15 +36,15 @@ int main() {
           tree.nodes[2].hostTargetId == L"gallery",
           "overflow controls and visible tile preserve catalog reachability order");
     Check(tree.nodes[0].hostAction ==
-              gba::accessibility::HostAction::SelectTrayOverflow &&
+              widgetrail::accessibility::HostAction::SelectTrayOverflow &&
           tree.nodes[0].name == L"2 previous widgets" &&
           tree.nodes[2].name == L"1 more widgets",
           "overflow controls announce direction and hidden count without activation");
     Check(tree.nodes[1].name == L"Performance" &&
-          tree.nodes[1].role == gba::accessibility::Role::ListItem &&
-          tree.nodes[1].domain == gba::accessibility::ElementDomain::Tray,
+          tree.nodes[1].role == widgetrail::accessibility::Role::ListItem &&
+          tree.nodes[1].domain == widgetrail::accessibility::ElementDomain::Tray,
           "tray item exposes its accessible list-item name");
-    Check(tree.nodes[1].hostAction == gba::accessibility::HostAction::ActivateTrayItem,
+    Check(tree.nodes[1].hostAction == widgetrail::accessibility::HostAction::ActivateTrayItem,
           "tray activation is a closed typed action");
     Check(tree.nodes[1].selected && tree.nodes[1].focused && !tree.nodes[1].enabled &&
           tree.focusedNode == 1 && tree.nodes[1].positionInSet == 3 &&
@@ -56,18 +56,18 @@ int main() {
           tree.nodes[1].bounds.height == layout->tiles[0].bounds.height,
           "accessibility uses the exact shared paint/hit-test rectangle");
 
-    const gba::accessibility::DashboardSemantics dashboard{
+    const widgetrail::accessibility::DashboardSemantics dashboard{
         L"Reorder widgets", {24, 10, 192, 34},
         L"A Select  B Done", {24, 44, 192, 22},
         L"", {24, 44, 192, 22},
     };
-    const auto dashboardTree = gba::accessibility::BuildTrayTree(
+    const auto dashboardTree = widgetrail::accessibility::BuildTrayTree(
         items, *layout, 2, 18, &dashboard);
     Check(dashboardTree.nodes.size() == 5 &&
           dashboardTree.nodes[0].id == L"host.dashboard.title" &&
-          dashboardTree.nodes[0].domain == gba::accessibility::ElementDomain::HostShell &&
-          dashboardTree.nodes[0].role == gba::accessibility::Role::Heading &&
-          dashboardTree.nodes[0].headingLevel == gba::accessibility::HeadingLevel::Level1,
+          dashboardTree.nodes[0].domain == widgetrail::accessibility::ElementDomain::HostShell &&
+          dashboardTree.nodes[0].role == widgetrail::accessibility::Role::Heading &&
+          dashboardTree.nodes[0].headingLevel == widgetrail::accessibility::HeadingLevel::Level1,
           "dashboard title is a level-one heading with exact host-owned text");
     Check(dashboardTree.nodes[0].bounds.x == dashboard.titleBounds.x &&
           dashboardTree.nodes[0].bounds.y == dashboard.titleBounds.y &&
@@ -76,86 +76,86 @@ int main() {
           "dashboard semantic text uses the exact paint rectangles");
     Check(dashboardTree.nodes[4].id == L"host.dashboard.help" &&
           dashboardTree.nodes[4].name == dashboard.help &&
-          dashboardTree.nodes[4].role == gba::accessibility::Role::Text &&
-          dashboardTree.nodes[4].liveSetting == gba::accessibility::LiveSetting::Off,
+          dashboardTree.nodes[4].role == widgetrail::accessibility::Role::Text &&
+          dashboardTree.nodes[4].liveSetting == widgetrail::accessibility::LiveSetting::Off,
           "routine dashboard guidance is discoverable without becoming live");
     Check(dashboardTree.focusedNode == 2 && dashboardTree.nodes[2].hostTargetId == L"performance",
           "non-focusable dashboard text does not disturb tray focus identity");
-    const auto revision = gba::accessibility::ComputeTraySemanticRevision(items, &dashboard);
+    const auto revision = widgetrail::accessibility::ComputeTraySemanticRevision(items, &dashboard);
     auto changedDashboard = dashboard;
     changedDashboard.help.clear();
     changedDashboard.status = L"Playback command failed";
-    Check(revision != gba::accessibility::ComputeTraySemanticRevision(
+    Check(revision != widgetrail::accessibility::ComputeTraySemanticRevision(
               items, &changedDashboard),
           "dashboard status changes invalidate the host projection revision");
-    const auto statusTree = gba::accessibility::BuildTrayTree(
+    const auto statusTree = widgetrail::accessibility::BuildTrayTree(
         items, *layout, 2, 19, &changedDashboard);
     Check(statusTree.nodes.size() == 5 &&
           statusTree.nodes[4].id == L"host.dashboard.status" &&
-          statusTree.nodes[4].role == gba::accessibility::Role::Status &&
-          statusTree.nodes[4].liveSetting == gba::accessibility::LiveSetting::Polite,
+          statusTree.nodes[4].role == widgetrail::accessibility::Role::Status &&
+          statusTree.nodes[4].liveSetting == widgetrail::accessibility::LiveSetting::Polite,
           "transient dashboard feedback replaces help with one polite status region");
     auto renamedItems = items;
     renamedItems[1].name = L"YouTube Music";
-    Check(revision != gba::accessibility::ComputeTraySemanticRevision(
+    Check(revision != widgetrail::accessibility::ComputeTraySemanticRevision(
               renamedItems, &dashboard),
           "catalog display-name changes invalidate the host projection revision");
 
-    gba::accessibility::Tree widgetTree;
+    widgetrail::accessibility::Tree widgetTree;
     widgetTree.widgetId = L"music";
     widgetTree.runtimeGeneration = L"music-v1";
     widgetTree.snapshotSequence = 42;
     widgetTree.activeInputScopeId = L"music.root";
-    gba::accessibility::Node play;
+    widgetrail::accessibility::Node play;
     play.id = L"host.open.back";
     play.name = L"Play";
     play.actionId = L"music.play";
     play.bounds = {20, 80, 120, 44};
-    play.role = gba::accessibility::Role::Button;
+    play.role = widgetrail::accessibility::Role::Button;
     play.focused = true;
     widgetTree.nodes.push_back(play);
     widgetTree.focusedNode = 0;
-    const gba::accessibility::OpenWidgetSemantics open{
-        L"YT Music", gba::accessibility::HostAction::BackToTray, L"music.root",
+    const widgetrail::accessibility::OpenWidgetSemantics open{
+        L"YT Music", widgetrail::accessibility::HostAction::BackToTray, L"music.root",
         {320, 440, 80, 30}, {400, 440, 100, 30},
         L"X Play  LB Previous  RB Next", {20, 440, 286, 30},
         L"", {20, 440, 286, 30},
     };
-    const auto openLayout = gba::shell::ComputeTrayLayout(240, 500, items.size(), 1);
+    const auto openLayout = widgetrail::shell::ComputeTrayLayout(240, 500, items.size(), 1);
     Check(openLayout && openLayout->tiles.front().slot == 1,
           "open fixture keeps its selected tray identity visible");
-    const auto openTree = gba::accessibility::BuildOpenWidgetTree(
+    const auto openTree = widgetrail::accessibility::BuildOpenWidgetTree(
         widgetTree, items, *openLayout, 1, false, open);
     auto nestedOpen = open;
-    nestedOpen.backAction = gba::accessibility::HostAction::BackWithinWidget;
+    nestedOpen.backAction = widgetrail::accessibility::HostAction::BackWithinWidget;
     nestedOpen.backTargetId = L"music.sheet";
-    Check(gba::accessibility::ComputeOpenWidgetSemanticRevision(items, open) !=
-          gba::accessibility::ComputeOpenWidgetSemanticRevision(items, nestedOpen),
+    Check(widgetrail::accessibility::ComputeOpenWidgetSemanticRevision(items, open) !=
+          widgetrail::accessibility::ComputeOpenWidgetSemanticRevision(items, nestedOpen),
           "Back action and target participate in composite projection revision");
     Check(openTree.widgetId == L"music" &&
           openTree.runtimeGeneration == L"music-v1" &&
           openTree.snapshotSequence == 42 &&
-          openTree.name == L"YT Music · Game Bar Alternative",
+          openTree.name == L"YT Music · WidgetRail",
           "open shell retains widget authority and publishes page context on the root");
     Check(openTree.focusedNode == 0 && openTree.nodes[0].focused,
           "widget focus remains the singular composite focus owner");
     Check(openTree.nodes[1].id == L"host.open.back" &&
-          openTree.nodes[0].domain == gba::accessibility::ElementDomain::Widget &&
-          openTree.nodes[1].domain == gba::accessibility::ElementDomain::HostShell &&
-          openTree.nodes[1].hostAction == gba::accessibility::HostAction::BackToTray &&
+          openTree.nodes[0].domain == widgetrail::accessibility::ElementDomain::Widget &&
+          openTree.nodes[1].domain == widgetrail::accessibility::ElementDomain::HostShell &&
+          openTree.nodes[1].hostAction == widgetrail::accessibility::HostAction::BackToTray &&
           !openTree.nodes[1].keyboardFocusable &&
           openTree.nodes[2].id == L"host.open.close" &&
-          openTree.nodes[2].hostAction == gba::accessibility::HostAction::CloseOverlay &&
+          openTree.nodes[2].hostAction == widgetrail::accessibility::HostAction::CloseOverlay &&
           !openTree.nodes[2].keyboardFocusable,
           "open shell exposes closed non-focus-stealing Back and Close commands");
-    Check(gba::accessibility::HasUniqueElementKeys(openTree) &&
-          gba::accessibility::AutomationId(openTree.nodes[0]) ==
+    Check(widgetrail::accessibility::HasUniqueElementKeys(openTree) &&
+          widgetrail::accessibility::AutomationId(openTree.nodes[0]) ==
               L"widget:host.open.back" &&
-          gba::accessibility::AutomationId(openTree.nodes[1]) ==
+          widgetrail::accessibility::AutomationId(openTree.nodes[1]) ==
               L"host:host.open.back",
           "widget and host elements may share raw IDs without identity collision");
     Check(openTree.nodes[3].id == L"host.open.help" &&
-          openTree.nodes[3].liveSetting == gba::accessibility::LiveSetting::Off &&
+          openTree.nodes[3].liveSetting == widgetrail::accessibility::LiveSetting::Off &&
           openTree.nodes[3].bounds.width == open.helpBounds.width,
           "visible widget shortcut guidance is readable non-live text with exact bounds");
     Check(openTree.nodes.size() == 7 &&
@@ -169,89 +169,89 @@ int main() {
     auto statusOpen = open;
     statusOpen.help.clear();
     statusOpen.status = L"Playback command failed";
-    const auto trayFocusedTree = gba::accessibility::BuildOpenWidgetTree(
+    const auto trayFocusedTree = widgetrail::accessibility::BuildOpenWidgetTree(
         widgetTree, items, *layout, 2, true, statusOpen);
     Check(trayFocusedTree.focusedNode == 5 &&
           !trayFocusedTree.nodes[0].focused && trayFocusedTree.nodes[5].focused,
           "tray focus clears widget focus and selects exactly one visible tray item");
     Check(trayFocusedTree.nodes[3].id == L"host.open.status" &&
-          trayFocusedTree.nodes[3].role == gba::accessibility::Role::Status &&
-          trayFocusedTree.nodes[3].liveSetting == gba::accessibility::LiveSetting::Polite,
+          trayFocusedTree.nodes[3].role == widgetrail::accessibility::Role::Status &&
+          trayFocusedTree.nodes[3].liveSetting == widgetrail::accessibility::LiveSetting::Polite,
           "transient open-widget feedback replaces static help with one polite status");
 
-    gba::WidgetSnapshot nested;
+    widgetrail::WidgetSnapshot nested;
     nested.sequence = 43;
     nested.activeInputScopeId = L"music.sheet";
     nested.root.id = L"music.root";
     nested.root.inputScopeId = L"music.root";
-    gba::WidgetNode sheet;
+    widgetrail::WidgetNode sheet;
     sheet.id = L"sheet";
     sheet.inputScopeId = L"music.sheet";
     sheet.shortcuts.push_back({L"b", L"sheet.back", L"pressed"});
-    gba::WidgetNode sheetAction;
+    widgetrail::WidgetNode sheetAction;
     sheetAction.id = L"sheet.action";
     sheetAction.kind = L"button";
     sheet.children.push_back(sheetAction);
     nested.root.children.push_back(sheet);
-    Check(gba::accessibility::HasActiveScopeBackShortcut(nested, {}) &&
-          gba::accessibility::HasActiveScopeBackShortcut(
+    Check(widgetrail::accessibility::HasActiveScopeBackShortcut(nested, {}) &&
+          widgetrail::accessibility::HasActiveScopeBackShortcut(
               nested, L"sheet.action") &&
-          gba::accessibility::IsCurrentBackAction(
-              gba::accessibility::HostAction::BackWithinWidget,
+          widgetrail::accessibility::IsCurrentBackAction(
+              widgetrail::accessibility::HostAction::BackWithinWidget,
               L"music.sheet", nested, L"sheet.action") &&
-          !gba::accessibility::IsCurrentBackAction(
-              gba::accessibility::HostAction::BackToTray,
+          !widgetrail::accessibility::IsCurrentBackAction(
+              widgetrail::accessibility::HostAction::BackToTray,
               L"music.sheet", nested, L"sheet.action") &&
-          !gba::accessibility::IsCurrentBackAction(
-              gba::accessibility::HostAction::BackWithinWidget,
+          !widgetrail::accessibility::IsCurrentBackAction(
+              widgetrail::accessibility::HostAction::BackWithinWidget,
               L"music.stale", nested, L"sheet.action"),
           "focusless and descendant focus resolve the active scope's B shortcut");
 
     nested.root.children[0].children[0].shortcuts.push_back(
         {L"b", L"action.back", L"pressed"});
-    Check(gba::accessibility::HasActiveScopeBackShortcut(
+    Check(widgetrail::accessibility::HasActiveScopeBackShortcut(
               nested, L"sheet.action"),
           "an enabled focused B shortcut publishes nested Back");
     nested.root.children[0].children[0].isDisabled = true;
-    Check(!gba::accessibility::HasActiveScopeBackShortcut(
+    Check(!widgetrail::accessibility::HasActiveScopeBackShortcut(
               nested, L"sheet.action"),
           "a disabled focused B shortcut suppresses ancestor fallback");
     nested.root.children[0].children[0].isDisabled = false;
     nested.root.children[0].children[0].isBusy = true;
-    Check(!gba::accessibility::HasActiveScopeBackShortcut(
+    Check(!widgetrail::accessibility::HasActiveScopeBackShortcut(
               nested, L"sheet.action"),
           "a busy focused B shortcut suppresses ancestor fallback");
     nested.root.children[0].children[0].isBusy = false;
     nested.root.children[0].children[0].shortcuts.clear();
     nested.root.children[0].children[0].isDisabled = true;
-    Check(gba::accessibility::HasActiveScopeBackShortcut(
+    Check(widgetrail::accessibility::HasActiveScopeBackShortcut(
               nested, L"sheet.action"),
           "a disabled focus without its own B still resolves the ancestor shortcut");
     nested.root.children[0].children[0].isDisabled = false;
-    Check(!gba::accessibility::HasActiveScopeBackShortcut(
+    Check(!widgetrail::accessibility::HasActiveScopeBackShortcut(
               nested, L"sheet.missing"),
           "stale focused identity suppresses nested Back publication");
 
-    gba::WidgetNode innerScope;
+    widgetrail::WidgetNode innerScope;
     innerScope.id = L"inner";
     innerScope.inputScopeId = L"music.inner";
-    gba::WidgetNode innerAction;
+    widgetrail::WidgetNode innerAction;
     innerAction.id = L"inner.action";
     innerAction.kind = L"button";
     innerScope.children.push_back(innerAction);
     nested.root.children[0].children.push_back(innerScope);
-    Check(!gba::accessibility::HasActiveScopeBackShortcut(
+    Check(!widgetrail::accessibility::HasActiveScopeBackShortcut(
               nested, L"inner.action"),
           "focus in another input scope cannot authorize the active scope's Back");
 
     nested.root.children[0].isBusy = true;
-    Check(!gba::accessibility::HasActiveScopeBackShortcut(nested, {}),
+    Check(!widgetrail::accessibility::HasActiveScopeBackShortcut(nested, {}),
           "a focusless busy scope root does not publish Back");
     nested.root.children[0].isBusy = false;
     nested.root.children[0].shortcuts[0].phase = L"released";
-    Check(!gba::accessibility::HasActiveScopeBackShortcut(nested, {}) &&
-          !gba::accessibility::IsCurrentBackAction(
-              gba::accessibility::HostAction::BackWithinWidget,
+    Check(!widgetrail::accessibility::HasActiveScopeBackShortcut(nested, {}) &&
+          !widgetrail::accessibility::IsCurrentBackAction(
+              widgetrail::accessibility::HostAction::BackWithinWidget,
               L"music.sheet", nested, {}),
           "missing pressed-B authority suppresses nested Back without tray fallback");
 

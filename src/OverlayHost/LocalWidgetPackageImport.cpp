@@ -7,7 +7,7 @@
 #include <filesystem>
 #include <utility>
 
-namespace gba::packages {
+namespace widgetrail::packages {
 namespace {
 
 using Microsoft::WRL::ComPtr;
@@ -40,10 +40,10 @@ LocalWidgetPackagePickerResult FileOpenDialogWidgetPackagePicker::Select(HWND ow
             FOS_PATHMUSTEXIST | FOS_NOCHANGEDIR | FOS_DONTADDTORECENT);
     }
     const COMDLG_FILTERSPEC filter{
-        L"Game Bar widget packages (*.gbarwidget)", L"*.gbarwidget"};
+        L"WidgetRail widget packages (*.wrwidget)", L"*.wrwidget"};
     if (SUCCEEDED(result)) result = dialog->SetFileTypes(1, &filter);
     if (SUCCEEDED(result)) result = dialog->SetFileTypeIndex(1);
-    if (SUCCEEDED(result)) result = dialog->SetDefaultExtension(L"gbarwidget");
+    if (SUCCEEDED(result)) result = dialog->SetDefaultExtension(L"wrwidget");
     if (FAILED(result))
         return {LocalWidgetPackagePickerStatus::Failed, {},
                 L"The local widget package picker could not be configured."};
@@ -77,9 +77,9 @@ LocalWidgetPackagePickerResult FileOpenDialogWidgetPackagePicker::Select(HWND ow
     if (path.empty() || path.size() > 32'767 ||
         CompareStringOrdinal(
             extension.c_str(), static_cast<int>(extension.size()),
-            L".gbarwidget", -1, TRUE) != CSTR_EQUAL) {
+            L".wrwidget", -1, TRUE) != CSTR_EQUAL) {
         return {LocalWidgetPackagePickerStatus::Failed, {},
-                L"Select one .gbarwidget package."};
+                L"Select one .wrwidget package."};
     }
     return {LocalWidgetPackagePickerStatus::Selected, std::move(path), {}};
 }
@@ -169,8 +169,8 @@ bool LocalWidgetPackageImport::Complete(
 bool LocalWidgetPackageImport::Admit(const LocalWidgetPackageOrigin& origin) noexcept {
     return origin.lifecycle == WidgetLifecycleState::Interactive &&
            origin.widgetId == L"settings" &&
-           origin.packageId == L"org.gbar.firstparty.settings" &&
-           origin.publisherId == L"org.gbar.firstparty" &&
+           origin.packageId == L"widgetrail.firstparty.settings" &&
+           origin.publisherId == L"widgetrail.firstparty" &&
            origin.instanceId == L"settings.default" &&
            !origin.runtimeGeneration.empty() &&
            !origin.presentationGeneration.empty();
@@ -214,4 +214,4 @@ std::wstring LocalWidgetPackageImport::NewOperationId() {
     return result;
 }
 
-} // namespace gba::packages
+} // namespace widgetrail::packages

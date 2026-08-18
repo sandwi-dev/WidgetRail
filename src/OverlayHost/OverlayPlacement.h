@@ -6,7 +6,7 @@
 #include <string>
 #include <string_view>
 
-namespace gba {
+namespace widgetrail {
 
 struct PhysicalRect final {
     int left{};
@@ -30,7 +30,7 @@ struct OverlayPlacement final {
 
 struct OverlayRenderMetrics final {
     // Layout viewport in host design DIPs. This becomes smaller when the
-    // monitor cannot fit the preferred surface, allowing GBSS/layout to
+    // monitor cannot fit the preferred surface, allowing WRSS/layout to
     // respond instead of scaling a fixed common-resolution canvas.
     float viewportWidthDip{};
     float viewportHeightDip{};
@@ -202,4 +202,4 @@ ComputePanelLocalSurfaceGeometry(
     float viewportWidthDip,
     float viewportHeightDip) noexcept;
 
-} // namespace gba
+} // namespace widgetrail

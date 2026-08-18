@@ -3,7 +3,7 @@
 #include <algorithm>
 #include <vector>
 
-namespace gba::input {
+namespace widgetrail::input {
 namespace {
 
 const WidgetNode* FindNode(
@@ -146,4 +146,4 @@ std::wstring WidgetSurfaceFocusMemory::Key(
     return key;
 }
 
-} // namespace gba::input
+} // namespace widgetrail::input

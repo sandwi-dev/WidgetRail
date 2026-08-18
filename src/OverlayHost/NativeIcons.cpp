@@ -7,7 +7,7 @@
 
 #include <d2d1helper.h>
 
-namespace gba::icons {
+namespace widgetrail::icons {
 namespace {
 
 constexpr float kMaximumCoordinate = 1'000'000.0F;
@@ -518,4 +518,4 @@ bool DrawNativeIcon(
         brush, strokeWidth);
 }
 
-} // namespace gba::icons
+} // namespace widgetrail::icons

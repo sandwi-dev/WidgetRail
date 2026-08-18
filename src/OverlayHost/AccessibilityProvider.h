@@ -11,7 +11,7 @@
 #include <string>
 #include <vector>
 
-namespace gba::accessibility {
+namespace widgetrail::accessibility {
 
 enum class ActionKind {
     Invoke,
@@ -92,4 +92,4 @@ private:
     std::shared_ptr<ProviderState> state_;
 };
 
-} // namespace gba::accessibility
+} // namespace widgetrail::accessibility

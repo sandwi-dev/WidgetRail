@@ -47,7 +47,7 @@ internal sealed class SpotifyClientConfigurationFileStore(string root) :
             throw new SpotifyApplicationException(
                 "configuration_unavailable",
                 "The current user's Local Application Data directory is unavailable.");
-        return new(Path.Combine(local, "GameBarAlternative", "widget-config"));
+        return new(Path.Combine(local, "WidgetRail", "widget-config"));
     }
 
     public async Task<SpotifyClientConfiguration?> ReadAsync(

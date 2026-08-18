@@ -437,7 +437,7 @@ internal static class CatalogPath
         var local = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
         if (string.IsNullOrWhiteSpace(local))
             throw new CliOperationException("The current user's Local Application Data directory is unavailable; pass --catalog explicitly.");
-        return Path.Combine(local, "GameBarAlternative", "widgets");
+        return Path.Combine(local, "WidgetRail", "widgets");
     }
 }
 

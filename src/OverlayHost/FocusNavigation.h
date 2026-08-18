@@ -7,12 +7,12 @@
 #include <string>
 #include <string_view>
 
-namespace gba {
+namespace widgetrail {
 struct WidgetNode;
 struct WidgetSnapshot;
 }
 
-namespace gba::input {
+namespace widgetrail::input {
 
 struct PointerHitTarget final {
     std::wstring id;
@@ -75,4 +75,4 @@ struct ScrollPaginationAction final {
     std::wstring_view activeScopeId,
     const RenderResult& renderResult);
 
-} // namespace gba::input
+} // namespace widgetrail::input

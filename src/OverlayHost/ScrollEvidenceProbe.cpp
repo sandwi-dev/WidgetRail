@@ -11,7 +11,7 @@
 #include <limits>
 #include <string>
 
-namespace gba {
+namespace widgetrail {
 namespace {
 
 constexpr std::size_t kMaximumPathCharacters = 32'767;
@@ -167,7 +167,7 @@ ScrollEvidencePublishResult ScrollEvidenceProbe::Publish(
     }
 
     std::wstring payload =
-        L"gbar-scroll-evidence-v1\nwidget=" + std::wstring(widgetId) +
+        L"wrail-scroll-evidence-v1\nwidget=" + std::wstring(widgetId) +
         L"\ninstance=" + snapshot.instanceId +
         L"\nsequence=" + std::to_wstring(snapshot.sequence) +
         L"\nscope=" + snapshot.activeInputScopeId +
@@ -199,4 +199,4 @@ ScrollEvidencePublishResult ScrollEvidenceProbe::Publish(
         : ScrollEvidencePublishResult::UnavailablePath;
 }
 
-} // namespace gba
+} // namespace widgetrail

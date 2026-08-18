@@ -4,7 +4,7 @@
 #include <cmath>
 #include <utility>
 
-namespace gba {
+namespace widgetrail {
 namespace {
 
 [[nodiscard]] float SanitizeOpacity(const float value) noexcept {
@@ -229,4 +229,4 @@ bool ShouldSnapWidgetContentVisible(
     return isWidgetSurface && !wasWidgetFocused && isWidgetFocused;
 }
 
-} // namespace gba
+} // namespace widgetrail

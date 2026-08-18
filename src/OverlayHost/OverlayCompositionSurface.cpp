@@ -9,7 +9,7 @@
 
 using Microsoft::WRL::ComPtr;
 
-namespace gba {
+namespace widgetrail {
 
 bool OverlayCompositionSurface::Initialize(
     const HWND window, ID2D1Factory1* factory, std::wstring& error) {
@@ -390,4 +390,4 @@ void OverlayCompositionSurface::AbandonFrame(Frame& frame) noexcept {
     frame = {};
 }
 
-} // namespace gba
+} // namespace widgetrail

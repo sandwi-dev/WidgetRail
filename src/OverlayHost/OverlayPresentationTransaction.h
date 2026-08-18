@@ -13,7 +13,7 @@
 #include <string_view>
 #include <utility>
 
-namespace gba {
+namespace widgetrail {
 
 struct RetainedWidgetPresentation final {
     std::wstring widgetId;
@@ -391,4 +391,4 @@ private:
     std::uint64_t motionCommitCount_{};
 };
 
-} // namespace gba
+} // namespace widgetrail

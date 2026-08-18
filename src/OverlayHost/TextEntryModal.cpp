@@ -5,7 +5,7 @@
 #include <cmath>
 #include <limits>
 
-namespace gba::input {
+namespace widgetrail::input {
 
 SecureTextBuffer::SecureTextBuffer(std::vector<wchar_t>&& value) noexcept
     : value_(std::move(value)) {}
@@ -33,7 +33,7 @@ void SecureTextBuffer::clear() noexcept {
 }
 namespace {
 
-constexpr wchar_t kClassName[] = L"GameBarAlternative.TextEntryModal";
+constexpr wchar_t kClassName[] = L"WidgetRail.TextEntryModal";
 constexpr int kEditId = 100;
 constexpr int kBackspaceId = 101;
 constexpr int kClearId = 102;
@@ -409,4 +409,4 @@ LRESULT TextEntryModal::HandleMessage(
     }
 }
 
-} // namespace gba::input
+} // namespace widgetrail::input

@@ -37,7 +37,7 @@ internal static class Program
                 candidatePackage);
         Directory.CreateDirectory(catalogRoot);
         var temporaryRoot = Path.Combine(
-            Path.GetTempPath(), $"gba-dlv213-community-{Guid.NewGuid():N}");
+            Path.GetTempPath(), $"wrail-dlv213-community-{Guid.NewGuid():N}");
         Directory.CreateDirectory(temporaryRoot);
         try
         {

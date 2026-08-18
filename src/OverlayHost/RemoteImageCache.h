@@ -18,7 +18,7 @@
 #include <unordered_map>
 #include <vector>
 
-namespace gba {
+namespace widgetrail {
 
 enum class RemoteImageState {
     Missing,
@@ -177,4 +177,4 @@ private:
     bool shuttingDown_{};
 };
 
-} // namespace gba
+} // namespace widgetrail

@@ -163,6 +163,6 @@ internal sealed class AppLibrarySavedIdIssuer : IAppLibrarySavedIdIssuer
             throw new BrokerException(
                 "platform_unavailable", "Durable app-library identity is unavailable.");
         return Path.Combine(
-            localData, "GameBarAlternative", "broker", "app-library-saved-id.key");
+            localData, "WidgetRail", "broker", "app-library-saved-id.key");
     }
 }

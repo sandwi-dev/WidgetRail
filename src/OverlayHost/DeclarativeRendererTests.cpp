@@ -22,13 +22,13 @@
 
 namespace {
 
-using gba::DeclarativeRenderer;
-using gba::NativeImageFit;
-using gba::NativeObjectPosition;
-using gba::WidgetNode;
-using gba::WidgetSnapshot;
-using gba::declarative::Rect;
-using gba::declarative::Size;
+using widgetrail::DeclarativeRenderer;
+using widgetrail::NativeImageFit;
+using widgetrail::NativeObjectPosition;
+using widgetrail::WidgetNode;
+using widgetrail::WidgetSnapshot;
+using widgetrail::declarative::Rect;
+using widgetrail::declarative::Size;
 
 int checks = 0;
 
@@ -61,28 +61,28 @@ WidgetNode Node(const wchar_t* id, const wchar_t* kind) {
     return result;
 }
 
-gba::WidgetStyleValue Length(const double number, std::wstring unit = L"px") {
+widgetrail::WidgetStyleValue Length(const double number, std::wstring unit = L"px") {
     return {L"length", std::to_wstring(number) + unit, number, std::move(unit)};
 }
 
-gba::WidgetStyleValue LengthList(const wchar_t* value) {
+widgetrail::WidgetStyleValue LengthList(const wchar_t* value) {
     return {L"lengthList", value, std::nullopt, {}};
 }
 
-gba::WidgetStyleValue Number(const double number) {
+widgetrail::WidgetStyleValue Number(const double number) {
     return {L"number", std::to_wstring(number), number, {}};
 }
 
-gba::WidgetStyleValue Duration(const double milliseconds) {
+widgetrail::WidgetStyleValue Duration(const double milliseconds) {
     return {L"duration", std::to_wstring(milliseconds) + L"ms",
             milliseconds, L"ms"};
 }
 
-gba::WidgetStyleValue Keyword(const wchar_t* value) {
+widgetrail::WidgetStyleValue Keyword(const wchar_t* value) {
     return {L"keyword", value, std::nullopt, {}};
 }
 
-gba::WidgetStyleValue Color(const wchar_t* value) {
+widgetrail::WidgetStyleValue Color(const wchar_t* value) {
     return {L"color", value, std::nullopt, {}};
 }
 
@@ -158,18 +158,18 @@ void ButtonContentPlacementUsesSharedOpticalGeometry() {
     Near(textOnly.text.width, 40.0F, "text-only button keeps measured label width");
 
     const auto start = DeclarativeRenderer::ComputeButtonContentPlacement(
-        content, 28.0F, 56.0F, true, true, false, gba::NativeTextAlign::Start);
+        content, 28.0F, 56.0F, true, true, false, widgetrail::NativeTextAlign::Start);
     Near(start.leading.x, 0.0F, "explicit start aligns the complete visual group");
     const auto selectedStart = DeclarativeRenderer::ComputeButtonContentPlacement(
-        content, 28.0F, 56.0F, true, true, true, gba::NativeTextAlign::Start);
+        content, 28.0F, 56.0F, true, true, true, widgetrail::NativeTextAlign::Start);
     Near(selectedStart.leading.x, start.leading.x,
          "trailing state does not move start-aligned selection-row content");
     const auto end = DeclarativeRenderer::ComputeButtonContentPlacement(
-        content, 28.0F, 56.0F, true, true, false, gba::NativeTextAlign::End);
+        content, 28.0F, 56.0F, true, true, false, widgetrail::NativeTextAlign::End);
     Near(end.text.x + end.text.width, 170.0F,
          "explicit end aligns the complete visual group");
     const auto busyEnd = DeclarativeRenderer::ComputeButtonContentPlacement(
-        content, 28.0F, 56.0F, true, true, true, gba::NativeTextAlign::End);
+        content, 28.0F, 56.0F, true, true, true, widgetrail::NativeTextAlign::End);
     Near(busyEnd.text.x + busyEnd.text.width, 140.0F,
          "end-aligned busy content clears the shared trailing cue lane");
     Near(busyEnd.trailingStateCue.x - (busyEnd.text.x + busyEnd.text.width), 8.0F,
@@ -190,28 +190,28 @@ void ButtonContentPlacementUsesSharedOpticalGeometry() {
 }
 
 void AccessibleStatePresentation() {
-    gba::NativeAccessibilityPolicy normal;
-    Near(gba::DeclarativeStateOpacityFactor(true, false, normal), 0.45F,
+    widgetrail::NativeAccessibilityPolicy normal;
+    Near(widgetrail::DeclarativeStateOpacityFactor(true, false, normal), 0.45F,
          "standard disabled content remains muted");
-    Near(gba::DeclarativeStateOpacityFactor(false, true, normal), 0.72F,
+    Near(widgetrail::DeclarativeStateOpacityFactor(false, true, normal), 0.72F,
          "standard busy content remains muted");
-    Check(!gba::UseAccessibleDeclarativeStateCue(normal),
+    Check(!widgetrail::UseAccessibleDeclarativeStateCue(normal),
           "standard presentation retains muted disabled cue");
 
-    gba::NativeAccessibilityPolicy reducedTransparency;
+    widgetrail::NativeAccessibilityPolicy reducedTransparency;
     reducedTransparency.reducedTransparency = true;
-    Near(gba::DeclarativeStateOpacityFactor(true, false, reducedTransparency), 1.0F,
+    Near(widgetrail::DeclarativeStateOpacityFactor(true, false, reducedTransparency), 1.0F,
          "reduced transparency does not fade disabled content");
-    Check(gba::UseAccessibleDeclarativeStateCue(reducedTransparency),
+    Check(widgetrail::UseAccessibleDeclarativeStateCue(reducedTransparency),
           "reduced transparency uses resolved disabled cue foreground");
 
-    gba::NativeAccessibilityPolicy highContrast;
-    highContrast.contrastHook = [](gba::NativeColor color, gba::NativeColor) {
+    widgetrail::NativeAccessibilityPolicy highContrast;
+    highContrast.contrastHook = [](widgetrail::NativeColor color, widgetrail::NativeColor) {
         return color;
     };
-    Near(gba::DeclarativeStateOpacityFactor(false, true, highContrast), 1.0F,
+    Near(widgetrail::DeclarativeStateOpacityFactor(false, true, highContrast), 1.0F,
          "high contrast does not fade busy content");
-    Check(gba::UseAccessibleDeclarativeStateCue(highContrast),
+    Check(widgetrail::UseAccessibleDeclarativeStateCue(highContrast),
           "high contrast uses policy-owned disabled cue foreground");
 }
 
@@ -229,21 +229,21 @@ void PressedComputedStyleLayersOnFocusedState() {
         {L"opacity", Number(1.0)},
     };
 
-    const auto base = gba::ResolveDeclarativeComputedStyle(button, false, false);
+    const auto base = widgetrail::ResolveDeclarativeComputedStyle(button, false, false);
     Near(static_cast<float>(*base.at(L"opacity").number), 0.4F,
          "base state is unchanged");
 
-    const auto focused = gba::ResolveDeclarativeComputedStyle(button, true, false);
+    const auto focused = widgetrail::ResolveDeclarativeComputedStyle(button, true, false);
     Near(static_cast<float>(*focused.at(L"opacity").number), 0.7F,
          "focused state overrides base");
 
-    const auto pressed = gba::ResolveDeclarativeComputedStyle(button, true, true);
+    const auto pressed = widgetrail::ResolveDeclarativeComputedStyle(button, true, true);
     Near(static_cast<float>(*pressed.at(L"opacity").number), 1.0F,
          "pressed state overrides focused");
     Near(static_cast<float>(*pressed.at(L"scale").number), 1.08F,
          "pressed state retains focused properties");
 
-    const auto invalid = gba::ResolveDeclarativeComputedStyle(button, false, true);
+    const auto invalid = widgetrail::ResolveDeclarativeComputedStyle(button, false, true);
     Near(static_cast<float>(*invalid.at(L"opacity").number), 0.4F,
          "pressed cannot style a non-focused node");
 }
@@ -282,7 +282,7 @@ void PlanningMetadataAndKinds() {
     snapshot.root.children = {row, label, progress, spacer, image, icon};
 
     DeclarativeRenderer renderer{nullptr, nullptr, nullptr};
-    gba::DeclarativeRenderOptions accessibilityOptions;
+    widgetrail::DeclarativeRenderOptions accessibilityOptions;
     accessibilityOptions.collectAccessibility = true;
     const auto first = renderer.Render(
         nullptr, snapshot, L"play", {0.0F, 0.0F, 960.0F, 540.0F},
@@ -349,7 +349,7 @@ void ResponsiveVisibilityExcludesInactiveSubtrees() {
     snapshot.root.children = {compact, expanded};
 
     DeclarativeRenderer renderer{nullptr, nullptr, nullptr};
-    gba::DeclarativeRenderOptions accessibilityOptions;
+    widgetrail::DeclarativeRenderOptions accessibilityOptions;
     accessibilityOptions.collectAccessibility = true;
     const auto expandedResult = renderer.Render(
         nullptr, snapshot, L"expanded.action", {0.0F, 0.0F, 960.0F, 540.0F},
@@ -396,7 +396,7 @@ void ResponsiveVisibilityExcludesInactiveSubtrees() {
           !compactByHeight.focusRects.contains(L"expanded.action"),
           "height uses the same existing 540-DIP compact breakpoint");
 
-    gba::DeclarativeRenderOptions surfaceOptions;
+    widgetrail::DeclarativeRenderOptions surfaceOptions;
     surfaceOptions.responsiveViewport = Size{980.0F, 560.0F};
     const auto footerReducedContent = renderer.Render(
         nullptr, snapshot, L"expanded.action",
@@ -528,7 +528,7 @@ void ResponsiveNavigationShellFitsBoundedSurfaces() {
         {{960.0F, 540.0F}, 1.5F, false},
     };
     for (const auto& scenario : scenarios) {
-        gba::DeclarativeRenderOptions options;
+        widgetrail::DeclarativeRenderOptions options;
         options.responsiveViewport = scenario.viewport;
         options.accessibility.textScale = scenario.textScale;
         const auto focused = scenario.compact
@@ -587,7 +587,7 @@ void SliderPlanningAndAccessibilityTargets() {
     snapshot.root.children = {slider};
 
     DeclarativeRenderer renderer{nullptr, nullptr, nullptr};
-    gba::DeclarativeRenderOptions options;
+    widgetrail::DeclarativeRenderOptions options;
     options.pixelScale = 1.25F;
     options.sliderValueOverrides.emplace(L"volume", 0.8);
     const auto normal = renderer.Render(
@@ -854,7 +854,7 @@ void FocusMotionUsesStableSnapshotIdentity() {
     snapshot.root.children = {button};
 
     DeclarativeRenderer renderer{nullptr, nullptr, nullptr};
-    gba::DeclarativeRenderOptions options;
+    widgetrail::DeclarativeRenderOptions options;
     options.animationTimestampMilliseconds = 0;
     const auto initial = renderer.Render(
         nullptr, snapshot, {}, {0.0F, 0.0F, 320.0F, 100.0F}, options);
@@ -865,7 +865,7 @@ void FocusMotionUsesStableSnapshotIdentity() {
     const auto focused = renderer.Render(
         nullptr, snapshot, L"play", {0.0F, 0.0F, 320.0F, 100.0F}, options);
     Check(focused.animationActive,
-          "focused opacity and scale state starts its GBSS transition");
+          "focused opacity and scale state starts its WRSS transition");
 
     // Snapshot sequence changes do not reset motion. Runtime instance + exact
     // node ID are the stable identity across worker publication revisions.
@@ -928,7 +928,7 @@ void SubtreeTranslationKeepsPresentationGeometryAligned() {
     snapshot.root.children = {button};
 
     DeclarativeRenderer renderer{nullptr, nullptr, nullptr};
-    gba::DeclarativeRenderOptions options;
+    widgetrail::DeclarativeRenderOptions options;
     options.animationTimestampMilliseconds = 0;
     const auto initial = renderer.Render(
         nullptr, snapshot, L"translated.button",
@@ -981,7 +981,7 @@ void TranslationRetargetsAndSnapsDeterministically() {
     snapshot.root.children = {button};
 
     DeclarativeRenderer renderer{nullptr, nullptr, nullptr};
-    gba::DeclarativeRenderOptions options;
+    widgetrail::DeclarativeRenderOptions options;
     options.animationTimestampMilliseconds = 0;
     auto result = renderer.Render(
         nullptr, snapshot, L"moving.button",
@@ -1065,7 +1065,7 @@ void TranslatedFocusConvergesInsideScrollViewport() {
     snapshot.root.children = {scroll};
 
     DeclarativeRenderer renderer{nullptr, nullptr, nullptr};
-    gba::DeclarativeRenderOptions options;
+    widgetrail::DeclarativeRenderOptions options;
     options.animationTimestampMilliseconds = 0;
     const auto result = renderer.Render(
         nullptr, snapshot, L"translated.focus",
@@ -1177,7 +1177,7 @@ void ControllerScrollFollowsFocusAndRestoresState() {
         nullptr, invalid, L"session-0", {0.0F, 0.0F, 240.0F, 100.0F});
     Check(std::any_of(failed.diagnostics.begin(), failed.diagnostics.end(), [](const auto& item) {
         return item.code == L"invalid_scroll_axis" &&
-            item.severity == gba::RenderDiagnosticSeverity::Error;
+            item.severity == widgetrail::RenderDiagnosticSeverity::Error;
     }), "invalid native scroll axis fails closed with an error");
 }
 
@@ -1443,7 +1443,7 @@ void SegmentedTabsSurviveConstrainedNetworkSurfaces() {
              Scenario{300.0F, 1.25F, 1.5F},
          }) {
         DeclarativeRenderer renderer{nullptr, nullptr, nullptr};
-        gba::DeclarativeRenderOptions options;
+        widgetrail::DeclarativeRenderOptions options;
         options.pixelScale = scenario.pixelScale;
         options.accessibility.textScale = scenario.textScale;
         for (const auto* focused : {L"network.tab.wifi", L"network.tab.bluetooth"}) {
@@ -1633,7 +1633,7 @@ void CenteredWrappedStatePreservesTextFlowAndControllerTarget() {
              Scenario{760.0F, 540.0F, 1.5F},
          }) {
         DeclarativeRenderer renderer{nullptr, nullptr, nullptr};
-        gba::DeclarativeRenderOptions options;
+        widgetrail::DeclarativeRenderOptions options;
         options.accessibility.textScale = scenario.textScale;
         const auto result = renderer.Render(
             nullptr, snapshot, L"state-action",
@@ -1673,12 +1673,12 @@ void CenteredWrappedStatePreservesTextFlowAndControllerTarget() {
 }
 
 void SpotifyStateAndSetupCardsPreserveWrappedTextHeight() {
-    const gba::WidgetComputedStyle rootStyle{
+    const widgetrail::WidgetComputedStyle rootStyle{
         {L"gap", LengthList(L"10px")},
         {L"padding", LengthList(L"18px 20px")},
         {L"overflow", Keyword(L"clip")},
     };
-    const gba::WidgetComputedStyle cardStyle{
+    const widgetrail::WidgetComputedStyle cardStyle{
         {L"min-height", Length(300)},
         {L"gap", LengthList(L"9px")},
         {L"padding", LengthList(L"28px")},
@@ -1740,7 +1740,7 @@ void SpotifyStateAndSetupCardsPreserveWrappedTextHeight() {
     };
     auto setupCommand = Node(L"spotify.setup-command", L"text");
     setupCommand.text =
-        L"CLI: gbar config set org.gbar.samples.spotify client-id YOUR_CLIENT_ID --publisher org.gbar.samples";
+        L"CLI: wrail config set widgetrail.samples.spotify client-id YOUR_CLIENT_ID --publisher widgetrail.samples";
     setupCommand.baseStyle = {
         {L"width", Length(100, L"%")}, {L"padding", LengthList(L"11px 13px")},
         {L"font-size", Length(11)}, {L"max-lines", Number(2)},
@@ -1761,7 +1761,7 @@ void SpotifyStateAndSetupCardsPreserveWrappedTextHeight() {
              Scenario{420.0F, 430.0F, 1.0F},
              Scenario{760.0F, 540.0F, 1.5F},
          }) {
-        gba::DeclarativeRenderOptions options;
+        widgetrail::DeclarativeRenderOptions options;
         options.accessibility.textScale = scenario.textScale;
         DeclarativeRenderer stateRenderer{nullptr, nullptr, nullptr};
         const auto stateResult = stateRenderer.Render(
@@ -1838,13 +1838,13 @@ void ResponsiveRowWrapFlowsThroughGbssAndNativePlanning() {
         nullptr, snapshot, L"wrap.action.0", {0.0F, 0.0F, 250.0F, 120.0F});
     Check(narrow.elementRects.contains(L"wrap.root") &&
               narrow.elementRects.contains(L"wrap.action.2"),
-          "GBSS wrapped row reaches native layout planning");
+          "WRSS wrapped row reaches native layout planning");
     Near(narrow.elementRects.at(L"wrap.action.1").x, 124.0F,
-         "GBSS column gap reaches native row geometry");
+         "WRSS column gap reaches native row geometry");
     Near(narrow.elementRects.at(L"wrap.action.2").x, 0.0F,
          "third action starts the second responsive line");
     Near(narrow.elementRects.at(L"wrap.action.2").y, 52.0F,
-         "GBSS row gap reaches native wrapped-line geometry");
+         "WRSS row gap reaches native wrapped-line geometry");
     Check(narrow.navigationRects.contains(L"wrap.action.2"),
           "wrapped actions remain controller navigation candidates");
 
@@ -2044,7 +2044,7 @@ void IrrevealableClipsDoNotBecomeFocusTraps() {
                 std::move(fixedClip),
                 FixedSpacer(L"raster-boundary-tail", 100),
             };
-            gba::DeclarativeRenderOptions options;
+            widgetrail::DeclarativeRenderOptions options;
             options.pixelScale = pixelScale;
             options.accessibility.reducedMotion = true;
             DeclarativeRenderer boundaryRenderer{nullptr, nullptr, nullptr};
@@ -2067,7 +2067,7 @@ void IrrevealableClipsDoNotBecomeFocusTraps() {
     displaced.baseStyle.insert_or_assign(L"width", Length(44));
     displaced.baseStyle.insert_or_assign(L"min-width", Length(44));
     displaced.baseStyle.insert_or_assign(
-        L"margin", gba::WidgetStyleValue{
+        L"margin", widgetrail::WidgetStyleValue{
             L"lengthList", L"0px 0px 0px 140px", std::nullopt, {}});
     crossAxis.root.children.push_back(std::move(displaced));
 
@@ -2343,15 +2343,15 @@ void IncrementalPresentationPlanningRetainsBoundedWork() {
 
     auto authority = snapshot;
     authority.sequence = 2;
-    gba::WidgetPresentationImpact authorityImpact;
+    widgetrail::WidgetPresentationImpact authorityImpact;
     authorityImpact.baseSequence = 1;
     authorityImpact.sequence = 2;
-    authorityImpact.effects = gba::WidgetPresentationEffect::Authority |
-        gba::WidgetPresentationEffect::Accessibility;
+    authorityImpact.effects = widgetrail::WidgetPresentationEffect::Authority |
+        widgetrail::WidgetPresentationEffect::Accessibility;
     const auto noRaster = renderer.PlanPresentationUpdate(
         authority, authorityImpact, viewport);
     Check(noRaster.has_value() &&
-              noRaster->work == gba::IncrementalPresentationWork::NoRaster &&
+              noRaster->work == widgetrail::IncrementalPresentationWork::NoRaster &&
               noRaster->damage.width == 0.0F && noRaster->damage.height == 0.0F,
           "authority/accessibility-only admission performs no raster work");
     Check(renderer.AcceptNoRasterPresentationUpdate(
@@ -2361,15 +2361,15 @@ void IncrementalPresentationPlanningRetainsBoundedWork() {
     auto paint = authority;
     paint.sequence = 3;
     paint.root.children[0].children[2].value = 0.75;
-    gba::WidgetPresentationImpact paintImpact;
+    widgetrail::WidgetPresentationImpact paintImpact;
     paintImpact.baseSequence = 2;
     paintImpact.sequence = 3;
-    paintImpact.effects = gba::WidgetPresentationEffect::Paint;
+    paintImpact.effects = widgetrail::WidgetPresentationEffect::Paint;
     paintImpact.affectedNodeIds = {L"progress"};
     const auto paintPlan = renderer.PlanPresentationUpdate(
         paint, paintImpact, viewport);
     Check(paintPlan.has_value() &&
-              paintPlan->work == gba::IncrementalPresentationWork::PaintOnly,
+              paintPlan->work == widgetrail::IncrementalPresentationWork::PaintOnly,
           "stable Current-to-Current value change retains paint-only work");
     Check(paintPlan->damage.width > 0.0F && paintPlan->damage.height > 0.0F &&
               paintPlan->damage.width * paintPlan->damage.height <
@@ -2383,17 +2383,17 @@ void IncrementalPresentationPlanningRetainsBoundedWork() {
         L"height", Length(32));
     local.root.children[0].children[3].baseStyle.insert_or_assign(
         L"min-height", Length(32));
-    gba::WidgetPresentationImpact localImpact;
+    widgetrail::WidgetPresentationImpact localImpact;
     localImpact.baseSequence = 3;
     localImpact.sequence = 4;
-    localImpact.effects = gba::WidgetPresentationEffect::MeasureLayout |
-        gba::WidgetPresentationEffect::Paint;
+    localImpact.effects = widgetrail::WidgetPresentationEffect::MeasureLayout |
+        widgetrail::WidgetPresentationEffect::Paint;
     localImpact.affectedNodeIds = {L"local-target"};
     localImpact.hasNonTextMeasureLayout = true;
     const auto localPlan = renderer.PlanPresentationUpdate(
         local, localImpact, viewport);
     Check(localPlan.has_value() &&
-              localPlan->work == gba::IncrementalPresentationWork::LocalLayout,
+              localPlan->work == widgetrail::IncrementalPresentationWork::LocalLayout,
           "clipped fixed ancestor admits safe local-layout work");
     Check(localPlan->damage.width > 0.0F && localPlan->damage.height > 0.0F &&
               localPlan->damage.width * localPlan->damage.height <
@@ -2404,7 +2404,7 @@ void IncrementalPresentationPlanningRetainsBoundedWork() {
     const auto focusPlan = renderer.PlanFocusUpdate(
         local, L"focus-a", L"focus-b", viewport);
     Check(focusPlan.has_value() &&
-              focusPlan->work == gba::IncrementalPresentationWork::PaintOnly,
+              focusPlan->work == widgetrail::IncrementalPresentationWork::PaintOnly,
           "ordinary focus movement retains paint-only work");
     Check(focusPlan->damage.width > 0.0F && focusPlan->damage.height > 0.0F &&
               focusPlan->damage.width * focusPlan->damage.height <
@@ -2458,7 +2458,7 @@ void IncrementalPresentationPlanningRetainsBoundedWork() {
         anchoredViewport);
     Check(anchoredFocusPlan.has_value() &&
               anchoredFocusPlan->work ==
-                  gba::IncrementalPresentationWork::PaintOnly,
+                  widgetrail::IncrementalPresentationWork::PaintOnly,
           "offscreen anchored-collection focus retains bounded incremental work");
     const auto anchoredFocused = renderAt(
         anchored, L"anchor-item-5", anchoredViewport);
@@ -2614,32 +2614,32 @@ void IncrementalPresentationPlanningRetainsBoundedWork() {
 
     auto structural = local;
     structural.sequence = 5;
-    gba::WidgetPresentationImpact structuralImpact;
+    widgetrail::WidgetPresentationImpact structuralImpact;
     structuralImpact.baseSequence = 4;
     structuralImpact.sequence = 5;
-    structuralImpact.effects = gba::WidgetPresentationEffect::Structure;
+    structuralImpact.effects = widgetrail::WidgetPresentationEffect::Structure;
     structuralImpact.affectedNodeIds = {L"safe-boundary"};
     Check(!renderer.PlanPresentationUpdate(
                structural, structuralImpact, viewport).has_value(),
           "structural work preserves conservative full-raster fallback");
     auto surfaceImpact = structuralImpact;
-    surfaceImpact.effects = gba::WidgetPresentationEffect::SurfacePlacement;
+    surfaceImpact.effects = widgetrail::WidgetPresentationEffect::SurfacePlacement;
     Check(!renderer.PlanPresentationUpdate(
                structural, surfaceImpact, viewport).has_value(),
           "surface-placement work preserves conservative full-raster fallback");
     auto unknownImpact = structuralImpact;
-    unknownImpact.effects = gba::WidgetPresentationEffect::Unknown;
+    unknownImpact.effects = widgetrail::WidgetPresentationEffect::Unknown;
     Check(!renderer.PlanPresentationUpdate(
                structural, unknownImpact, viewport).has_value(),
           "unknown work preserves conservative full-raster fallback");
 
     const auto themePath = std::filesystem::path(__FILE__).parent_path()
-        .parent_path() / "PlatformSettings" / "Themes" / "builtin-default.gbss";
+        .parent_path() / "PlatformSettings" / "Themes" / "builtin-default.wrss";
     std::ifstream themeFile(themePath, std::ios::binary);
     const std::string theme{
         std::istreambuf_iterator<char>(themeFile),
         std::istreambuf_iterator<char>()};
-    Check(!theme.empty(), "default GBSS theme is available to the native regression");
+    Check(!theme.empty(), "default WRSS theme is available to the native regression");
     const auto buttonStart = theme.find("button {");
     const auto buttonEnd = theme.find('}', buttonStart);
     const auto focusedStart = theme.find("button:focused {");
@@ -2711,7 +2711,7 @@ void RealDirect2DSmoke() {
     DeclarativeRenderer renderer{d2d.Get(), write.Get(), nullptr};
     target->BeginDraw();
     target->Clear(D2D1::ColorF(0.02F, 0.02F, 0.03F, 1.0F));
-    gba::DeclarativeRenderOptions options;
+    widgetrail::DeclarativeRenderOptions options;
     options.sliderValueOverrides.emplace(L"volume", 75.0);
     const auto result = renderer.Render(
         target.Get(), snapshot, L"volume", {0.0F, 0.0F, 640.0F, 360.0F}, options);
@@ -2736,7 +2736,7 @@ void RealDirect2DSmoke() {
     loading.accessibilityLabel = L"Loading applications";
     loading.indicatorSize = L"standard";
     loadingSnapshot.root.children = {loading};
-    gba::DeclarativeRenderOptions loadingOptions;
+    widgetrail::DeclarativeRenderOptions loadingOptions;
     loadingOptions.animationTimestampMilliseconds = 225;
     target->BeginDraw();
     target->Clear(D2D1::ColorF(D2D1::ColorF::Black));
@@ -2781,7 +2781,7 @@ void RealDirect2DSmoke() {
     roundedSurface.root.baseStyle = {
         {L"background", Color(L"#00ff00")},
     };
-    gba::DeclarativeRenderOptions roundedOptions;
+    widgetrail::DeclarativeRenderOptions roundedOptions;
     roundedOptions.surfaceCornerRadiusPx = 18.0F;
     target->BeginDraw();
     target->Clear(D2D1::ColorF(D2D1::ColorF::Black));
@@ -2935,7 +2935,7 @@ void RealDirect2DSmoke() {
         };
         return result;
     };
-    const auto geometryCenter = [](const gba::ButtonContentPlacement& placement) {
+    const auto geometryCenter = [](const widgetrail::ButtonContentPlacement& placement) {
         const auto left = placement.leading.width > 0.0F
             ? placement.leading.x
             : placement.text.x;
@@ -2968,7 +2968,7 @@ void RealDirect2DSmoke() {
             std::move(disabled), std::move(wrapped),
         };
 
-        gba::DeclarativeRenderOptions matrixOptions;
+        widgetrail::DeclarativeRenderOptions matrixOptions;
         matrixOptions.pixelScale = pixelScale;
         matrixOptions.accessibility.textScale = textScale;
         target->BeginDraw();
@@ -3098,19 +3098,19 @@ void OffscreenScrollArtworkDoesNotEnterRemoteCache() {
         target.ReleaseAndGetAddressOf())),
         "create render target for artwork culling");
 
-    gba::RemoteImageLimits limits;
+    widgetrail::RemoteImageLimits limits;
     limits.maximumEntries = 32;
-    gba::RemoteImageCache cache(
+    widgetrail::RemoteImageCache cache(
         limits,
         {},
-        [](std::wstring_view, std::stop_token, const gba::RemoteImageLimits&) {
-            gba::RemoteDecodedImage image;
+        [](std::wstring_view, std::stop_token, const widgetrail::RemoteImageLimits&) {
+            widgetrail::RemoteDecodedImage image;
             image.width = 1;
             image.height = 1;
             image.stride = 4;
             image.premultipliedBgra = {0x10, 0x20, 0x30, 0xFF};
             image.mimeType = L"image/fake";
-            return gba::RemoteImageFetchResult{S_OK, std::move(image), {}};
+            return widgetrail::RemoteImageFetchResult{S_OK, std::move(image), {}};
         });
 
     WidgetSnapshot snapshot;
@@ -3156,10 +3156,10 @@ void OffscreenScrollArtworkDoesNotEnterRemoteCache() {
         const bool isVisible = visible.width > 0.5F && visible.height > 0.5F;
         if (isVisible) {
             ++visibleArtwork;
-            Check(cache.GetState(url) != gba::RemoteImageState::Missing,
+            Check(cache.GetState(url) != widgetrail::RemoteImageState::Missing,
                 "visible artwork enters the remote cache");
         } else {
-            Check(cache.GetState(url) == gba::RemoteImageState::Missing,
+            Check(cache.GetState(url) == widgetrail::RemoteImageState::Missing,
                 "fully offscreen artwork never enters the remote cache");
         }
     }
@@ -3201,30 +3201,30 @@ void TrustedArtworkTerminalFallbackIsStable() {
 
     struct Transition final {
         std::wstring key;
-        gba::RemoteImageState state{};
+        widgetrail::RemoteImageState state{};
     };
     std::mutex transitionMutex;
     std::condition_variable transitionCompleted;
     std::vector<Transition> transitions;
     std::vector<std::wstring> requested;
-    gba::RemoteImageLimits limits;
+    widgetrail::RemoteImageLimits limits;
     limits.maximumEntries = 16;
     limits.maximumDecodedBytes = 16U * 64U * 4U;
-    gba::RemoteImageCache cache(
+    widgetrail::RemoteImageCache cache(
         limits,
-        [&](const std::wstring_view key, const gba::RemoteImageState state) {
+        [&](const std::wstring_view key, const widgetrail::RemoteImageState state) {
             {
                 std::scoped_lock lock(transitionMutex);
                 transitions.push_back({std::wstring(key), state});
             }
             transitionCompleted.notify_all();
         },
-        [](std::wstring_view source, std::stop_token, const gba::RemoteImageLimits&) {
+        [](std::wstring_view source, std::stop_token, const widgetrail::RemoteImageLimits&) {
             if (!source.starts_with(L"data:image/png;base64,")) {
-                return gba::RemoteImageFetchResult{
+                return widgetrail::RemoteImageFetchResult{
                     E_INVALIDARG, {}, L"Trusted artwork source lost bounded decode routing."};
             }
-            gba::RemoteDecodedImage image;
+            widgetrail::RemoteDecodedImage image;
             image.width = 8;
             image.height = 8;
             image.stride = 32;
@@ -3236,7 +3236,7 @@ void TrustedArtworkTerminalFallbackIsStable() {
                 image.premultipliedBgra[offset + 3] = 0xFF;
             }
             image.mimeType = L"image/png";
-            return gba::RemoteImageFetchResult{S_OK, std::move(image), {}};
+            return widgetrail::RemoteImageFetchResult{S_OK, std::move(image), {}};
         },
         [&](const std::wstring_view key) {
             requested.emplace_back(key);
@@ -3302,7 +3302,7 @@ void TrustedArtworkTerminalFallbackIsStable() {
     DeclarativeRenderer renderer{d2d.Get(), write.Get(), &cache};
     const Rect viewport{0.0F, 0.0F, 420.0F, 360.0F};
     const auto render = [&](WidgetSnapshot& snapshot, const std::wstring_view widgetId) {
-        gba::DeclarativeRenderOptions options;
+        widgetrail::DeclarativeRenderOptions options;
         options.collectAccessibility = true;
         options.artworkWidgetId = widgetId;
         target->BeginDraw();
@@ -3338,7 +3338,7 @@ void TrustedArtworkTerminalFallbackIsStable() {
     const auto terminalTransitions = [&] {
         std::scoped_lock lock(transitionMutex);
         return std::count_if(transitions.begin(), transitions.end(), [](const Transition& item) {
-            return item.state == gba::RemoteImageState::Failed;
+            return item.state == widgetrail::RemoteImageState::Failed;
         });
     };
     Check(terminalTransitions() == 2,
@@ -3364,7 +3364,7 @@ void TrustedArtworkTerminalFallbackIsStable() {
         std::size_t pendingBright{};
         std::size_t unavailableBright{};
     };
-    const auto rasterEvidence = [&](const gba::RenderResult& result, const std::wstring_view widgetId) {
+    const auto rasterEvidence = [&](const widgetrail::RenderResult& result, const std::wstring_view widgetId) {
         ComPtr<IWICBitmapLock> lock;
         const WICRect lockArea{0, 0, 420, 360};
         Check(SUCCEEDED(canvas->Lock(
@@ -3405,7 +3405,7 @@ void TrustedArtworkTerminalFallbackIsStable() {
     };
     const auto verifyFixture = [&](WidgetSnapshot& snapshot,
                                    const std::wstring_view widgetId,
-                                   const gba::RenderResult& pendingResult) {
+                                   const widgetrail::RenderResult& pendingResult) {
         auto result = render(snapshot, widgetId);
         const auto pixels = rasterEvidence(result, widgetId);
         Check(pixels.availableBlue > 1'000,
@@ -3420,7 +3420,7 @@ void TrustedArtworkTerminalFallbackIsStable() {
               result.accessibilityRegions.size() == pendingResult.accessibilityRegions.size(),
             "artwork transitions preserve focus hit testing layout and accessibility semantics");
         Check(std::none_of(result.diagnostics.begin(), result.diagnostics.end(),
-            [](const gba::RenderDiagnostic& diagnostic) {
+            [](const widgetrail::RenderDiagnostic& diagnostic) {
                 return diagnostic.code == L"image_failed";
             }), "terminal trusted artwork does not emit a repaint diagnostic");
         const auto repaint = render(snapshot, widgetId);
@@ -3531,7 +3531,7 @@ void ContentMeasurementUsesResponsiveTaffyGeometry() {
         snapshot, {std::numeric_limits<float>::infinity(), 700.0F}, true);
     Check(!invalid.succeeded && std::any_of(
             invalid.diagnostics.begin(), invalid.diagnostics.end(),
-            [](const gba::RenderDiagnostic& diagnostic) {
+            [](const widgetrail::RenderDiagnostic& diagnostic) {
                 return diagnostic.code == L"invalid_measure_extent";
             }),
         "invalid measurement bounds fail closed before Taffy allocation");

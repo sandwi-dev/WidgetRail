@@ -12,7 +12,7 @@
 
 namespace fs = std::filesystem;
 using Microsoft::WRL::ComPtr;
-using namespace gba::host_testing;
+using namespace widgetrail::host_testing;
 
 namespace {
 
@@ -102,7 +102,7 @@ public:
         wchar_t guidText[64]{};
         Require(StringFromGUID2(guid, guidText, 64) > 0, "StringFromGUID2 failed");
         root_ = fs::path(temporaryRoot) /
-            (L"gba-advanced-presentation-" + std::wstring(guidText));
+            (L"wrail-advanced-presentation-" + std::wstring(guidText));
         fs::create_directories(root_);
         fs::copy_file(source / L"OverlayHost.exe", root_ / L"OverlayHost.exe");
         fs::copy_file(
@@ -127,14 +127,14 @@ public:
         fs::copy_file(fixtureBridge, bridgeRoot / L"WidgetBridge.exe",
             fs::copy_options::overwrite_existing);
         localAppData_ = root_ / L"local-app-data";
-        catalogRoot_ = localAppData_ / L"GameBarAlternative" / L"widgets";
+        catalogRoot_ = localAppData_ / L"WidgetRail" / L"widgets";
         fs::create_directories(catalogRoot_);
         readyPath_ = root_ / L"host-ready.txt";
         InstallPackages(communityFixture, catalogRoot_, candidatePackage);
         WriteUtf8(
             bridgeRoot / L"launcher-experience-provider-fixture.txt",
             "adoption\n" + WideToUtf8(
-                (localAppData_ / L"GameBarAlternative").wstring()) + "\n");
+                (localAppData_ / L"WidgetRail").wstring()) + "\n");
     }
 
     ~TemporaryInstallation() {
@@ -148,7 +148,7 @@ public:
                 std::cerr << "AdvancedPresentationHostTests backend diagnostic:\n" <<
                     backend << '\n';
             const auto fixtureError = ReadUtf8(
-                localAppData_ / L"GameBarAlternative" /
+                localAppData_ / L"WidgetRail" /
                 L"launcher-experience-fixture-error.txt");
             if (!fixtureError.empty())
                 std::cerr << "AdvancedPresentationHostTests bridge diagnostic:\n" <<
@@ -163,10 +163,10 @@ public:
     const fs::path& CatalogRoot() const noexcept { return catalogRoot_; }
     const fs::path& ReadyPath() const noexcept { return readyPath_; }
     fs::path LogPath() const {
-        return localAppData_ / L"GameBarAlternative" / L"overlay.log";
+        return localAppData_ / L"WidgetRail" / L"overlay.log";
     }
     fs::path BackendDiagnosticPath() const {
-        return localAppData_ / L"GameBarAlternative" /
+        return localAppData_ / L"WidgetRail" /
             L"launcher-experience-backend.txt";
     }
 
@@ -315,7 +315,7 @@ void ExerciseExportedCandidate(
     const fs::path& logPath,
     const fs::path& backendDiagnosticPath) {
     constexpr std::wstring_view widgetId =
-        L"org.gbar.community.reference.game-launcher";
+        L"widgetrail.community.reference.game-launcher";
     const auto trayId = L"tray:tray." + std::wstring(widgetId);
     auto tray = WaitForElement(automation, window, trayId);
     FocusAndActivate(tray.Get(), window, WideToUtf8(trayId));

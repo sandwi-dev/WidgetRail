@@ -6,7 +6,7 @@
 
 namespace {
 
-using namespace gba::packages;
+using namespace widgetrail::packages;
 
 void Require(const bool condition, const char* message) {
     if (condition) return;
@@ -16,9 +16,9 @@ void Require(const bool condition, const char* message) {
 
 LocalWidgetPackageOrigin SettingsOrigin() {
     return {
-        L"settings", L"org.gbar.firstparty.settings", L"org.gbar.firstparty",
+        L"settings", L"widgetrail.firstparty.settings", L"widgetrail.firstparty",
         L"settings.default", L"runtime-one", L"presentation-one",
-        gba::WidgetLifecycleState::Interactive};
+        widgetrail::WidgetLifecycleState::Interactive};
 }
 
 LocalWidgetPackageActionInvocation SettingsInvocation() {
@@ -37,7 +37,7 @@ LocalWidgetPackageActionInvocation SettingsInvocation() {
 
 struct FakePicker final : ILocalWidgetPackagePicker {
     LocalWidgetPackagePickerResult result{
-        LocalWidgetPackagePickerStatus::Selected, L"C:\\fixture.gbarwidget", {}};
+        LocalWidgetPackagePickerStatus::Selected, L"C:\\fixture.wrwidget", {}};
     std::function<void()> duringSelect;
     bool open{};
     bool cancelled{};
@@ -57,7 +57,7 @@ struct FakePicker final : ILocalWidgetPackagePicker {
 void ExactOriginAndQuietCancel() {
     auto origin = SettingsOrigin();
     Require(LocalWidgetPackageImport::Admit(origin), "exact Settings origin refused");
-    origin.lifecycle = gba::WidgetLifecycleState::Visible;
+    origin.lifecycle = widgetrail::WidgetLifecycleState::Visible;
     Require(!LocalWidgetPackageImport::Admit(origin), "non-Interactive origin admitted");
     origin = SettingsOrigin();
     origin.packageId = L"community.settings";
@@ -104,7 +104,7 @@ void StaleGenerationAndSubmissionAreBounded() {
         picker, [&] { return std::optional{origin}; },
         [&](const std::wstring_view path, const auto& admitted,
             const std::wstring_view operationId) {
-            Require(path == L"C:\\fixture.gbarwidget", "selected path changed");
+            Require(path == L"C:\\fixture.wrwidget", "selected path changed");
             Require(admitted.runtimeGeneration == L"runtime-one",
                     "wrong runtime generation submitted");
             Require(!operationId.empty(), "operation ID was empty");
@@ -200,10 +200,10 @@ void ExactPrivateActionOwnsTheCompleteOperation() {
     forged.sourceElementId = L"installed.other";
     Require(refused(forged), "wrong reserved source pair was admitted");
     forged = SettingsInvocation();
-    forged.origin->lifecycle = gba::WidgetLifecycleState::Visible;
+    forged.origin->lifecycle = widgetrail::WidgetLifecycleState::Visible;
     Require(refused(forged), "Visible Settings action was admitted");
     forged = SettingsInvocation();
-    forged.origin->lifecycle = gba::WidgetLifecycleState::Background;
+    forged.origin->lifecycle = widgetrail::WidgetLifecycleState::Background;
     Require(refused(forged), "Background Settings action was admitted");
     forged = SettingsInvocation();
     forged.busy = true;

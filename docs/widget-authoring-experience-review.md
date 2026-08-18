@@ -116,11 +116,11 @@ full application-scale widget. Accepted DLV-212 (`5a6ce0b`) now proves the
 managed implementation can be exported to a self-contained Community
 repository, restored from the exact packaged public SDK without project/friend
 access, packed, installed, and run through the generic AppContainer worker.
-The shipped implementation still lives under `src/FirstPartyWidgets`, uses
-`org.gbar.firstparty.game-launcher`, is copied into the built-in runtime
-catalog, and reaches a native Launcher Experience path designed around its
-known first-party projection. Managed portability is proven; product trust-tier
-parity is not yet complete.
+The source remains under `src/FirstPartyWidgets`, but the shipped reference now
+uses `widgetrail.community.reference.game-launcher`, enters the ordinary
+Community catalog, and reaches Launcher Experience presentation through the
+generic host projection. Managed portability and product trust-tier parity are
+complete; the retained source location is not runtime authority.
 
 The accepted AppContainer proof is also insufficient for the clarified product
 goal. A developer must be able to ship an application-scale Community package

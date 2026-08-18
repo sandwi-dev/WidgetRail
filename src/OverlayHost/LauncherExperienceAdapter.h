@@ -7,7 +7,7 @@
 #include <string>
 #include <vector>
 
-namespace gba::launcher {
+namespace widgetrail::launcher {
 
 struct SlotContent final {
     Slot slot{Slot::GameRail};
@@ -41,4 +41,4 @@ enum class GameRailPresentation {
     const WidgetSnapshot* semanticEnvelope = nullptr,
     GameRailPresentation railPresentation = GameRailPresentation::Authored);
 
-} // namespace gba::launcher
+} // namespace widgetrail::launcher

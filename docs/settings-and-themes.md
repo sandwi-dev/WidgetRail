@@ -76,7 +76,7 @@ current native host.
 ## Current managed settings foundation
 
 `PlatformSettingsStore` persists strict schema-version-1 JSON at
-`%LOCALAPPDATA%\GameBarAlternative\platform-settings.json` by default. Missing
+`%LOCALAPPDATA%\WidgetRail\platform-settings.json` by default. Missing
 settings return safe defaults without creating a file. Updates validate the
 whole document, serialize through in-process and bounded cross-process locks,
 flush a uniquely named sibling temporary file, and atomically replace the
@@ -128,7 +128,7 @@ experience.
 ### Public per-widget configuration
 
 `WidgetConfigurationStore` separately persists bounded **non-secret** values in
-`%LOCALAPPDATA%\GameBarAlternative\widget-config` by default. Each document is
+`%LOCALAPPDATA%\WidgetRail\widget-config` by default. Each document is
 isolated by the authenticated publisher and package IDs, capped at 32 entries/
 32 KiB, written atomically under bounded process and cross-process locking, and
 validated against duplicate fields, unknown fields, identity mismatches,
@@ -378,7 +378,7 @@ DPI behavior.
 
 Installation revalidates through the production catalog/compiler, stages on
 the settings volume under a random path while holding a bounded cross-process
-lock, and atomically publishes `%LOCALAPPDATA%\GameBarAlternative\themes\<id>\<version>`.
+lock, and atomically publishes `%LOCALAPPDATA%\WidgetRail\themes\<id>\<version>`.
 An existing version is never overwritten. Remote installation accepts absolute
 HTTPS or `github:owner/repository@tag/asset.wrtheme` and requires a pinned
 SHA-256 digest; the GitHub shorthand names one exact release asset and never

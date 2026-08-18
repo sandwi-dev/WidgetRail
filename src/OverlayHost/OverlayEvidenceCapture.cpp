@@ -133,7 +133,7 @@ int wmain(const int argc, wchar_t** argv) {
         winrt::init_apartment(winrt::apartment_type::single_threaded);
 
         std::wstring parseError;
-        auto snapshot = gba::testing::ParseWidgetSnapshotResponse(
+        auto snapshot = widgetrail::testing::ParseWidgetSnapshotResponse(
             ReadUtf8(arguments.input), parseError);
         if (!snapshot) Fail(parseError.empty() ? L"Snapshot parsing failed." : parseError);
 
@@ -168,22 +168,22 @@ int wmain(const int argc, wchar_t** argv) {
             canvas.Get(), targetProperties, target.ReleaseAndGetAddressOf()),
             L"Create WIC render target");
 
-        gba::PlatformAppearance appearance;
+        widgetrail::PlatformAppearance appearance;
         appearance.textScale = arguments.textScale;
         appearance.transparency = arguments.reducedTransparency
-            ? gba::PlatformTransparencyPreference::Reduced
-            : gba::PlatformTransparencyPreference::Full;
+            ? widgetrail::PlatformTransparencyPreference::Reduced
+            : widgetrail::PlatformTransparencyPreference::Full;
         appearance.contrast = arguments.highContrast
-            ? gba::PlatformContrastPreference::High
-            : gba::PlatformContrastPreference::Standard;
-        appearance.motion = gba::PlatformMotionPreference::Reduced;
+            ? widgetrail::PlatformContrastPreference::High
+            : widgetrail::PlatformContrastPreference::Standard;
+        appearance.motion = widgetrail::PlatformMotionPreference::Reduced;
 
-        gba::DeclarativeRenderOptions options;
+        widgetrail::DeclarativeRenderOptions options;
         options.pixelScale = arguments.dpi / 96.0F;
-        options.surfaceBackground = gba::NativeColor{0.035F, 0.043F, 0.063F, 1.0F};
+        options.surfaceBackground = widgetrail::NativeColor{0.035F, 0.043F, 0.063F, 1.0F};
         options.surfaceCornerRadiusPx = 18.0F;
         options.animationTimestampMilliseconds = 1'000;
-        options.accessibility = gba::CreateNativeAccessibilityPolicy(
+        options.accessibility = widgetrail::CreateNativeAccessibilityPolicy(
             appearance, arguments.highContrast, false);
 
         const auto focusId = arguments.focusId.empty()
@@ -191,7 +191,7 @@ int wmain(const int argc, wchar_t** argv) {
             : arguments.focusId;
         const float logicalWidth = static_cast<float>(arguments.width) * 96.0F / arguments.dpi;
         const float logicalHeight = static_cast<float>(arguments.height) * 96.0F / arguments.dpi;
-        gba::DeclarativeRenderer renderer{d2d.Get(), write.Get(), nullptr};
+        widgetrail::DeclarativeRenderer renderer{d2d.Get(), write.Get(), nullptr};
         target->BeginDraw();
         target->Clear(D2D1::ColorF(0.035F, 0.043F, 0.063F, 1.0F));
         const auto render = renderer.Render(

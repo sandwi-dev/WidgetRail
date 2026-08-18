@@ -78,7 +78,7 @@ internal sealed class FileAppContainerAuthorityJournal : IAppContainerAuthorityJ
 
     internal IReadOnlyList<AppContainerAuthorityPendingTransaction> ListPending()
     {
-        using var lease = (Lease)Acquire("GameBarAlternative.AuthorityInspection");
+        using var lease = (Lease)Acquire("WidgetRail.AuthorityInspection");
         return lease.ListPending();
     }
 
@@ -398,7 +398,7 @@ internal sealed class FileAppContainerAuthorityJournal : IAppContainerAuthorityJ
             throw new AppContainerAuthorityJournalException(
                 "The host Local Application Data directory is unavailable.");
         return new FileAppContainerAuthorityJournal(
-            Path.Combine(localAppData, "GameBarAlternative", "AuthorityTransactions"));
+            Path.Combine(localAppData, "WidgetRail", "AuthorityTransactions"));
     }
 
     private sealed class Lease(

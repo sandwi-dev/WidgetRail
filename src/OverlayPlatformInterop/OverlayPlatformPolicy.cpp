@@ -11,8 +11,8 @@ namespace {
 
 constexpr std::uint32_t ToAbiBoolean(const bool value) noexcept {
     return value
-        ? GBA_OVERLAY_PLATFORM_TRUE
-        : GBA_OVERLAY_PLATFORM_FALSE;
+        ? WRAIL_OVERLAY_PLATFORM_TRUE
+        : WRAIL_OVERLAY_PLATFORM_FALSE;
 }
 
 int Magnitude(const short value) noexcept {
@@ -20,58 +20,58 @@ int Magnitude(const short value) noexcept {
 }
 
 bool SameDirection(
-    const gba::input::NavigationDirection direction,
+    const widgetrail::input::NavigationDirection direction,
     const short x,
     const short y) noexcept {
     switch (direction) {
-    case gba::input::NavigationDirection::Left: return x < 0;
-    case gba::input::NavigationDirection::Right: return x > 0;
-    case gba::input::NavigationDirection::Up: return y > 0;
-    case gba::input::NavigationDirection::Down: return y < 0;
+    case widgetrail::input::NavigationDirection::Left: return x < 0;
+    case widgetrail::input::NavigationDirection::Right: return x > 0;
+    case widgetrail::input::NavigationDirection::Up: return y > 0;
+    case widgetrail::input::NavigationDirection::Down: return y < 0;
     default: return false;
     }
 }
 
-bool Horizontal(const gba::input::NavigationDirection direction) noexcept {
-    return direction == gba::input::NavigationDirection::Left ||
-           direction == gba::input::NavigationDirection::Right;
+bool Horizontal(const widgetrail::input::NavigationDirection direction) noexcept {
+    return direction == widgetrail::input::NavigationDirection::Left ||
+           direction == widgetrail::input::NavigationDirection::Right;
 }
 
-GbaOverlayPlatformNavigationDirection ConvertDirection(
-    const gba::input::NavigationDirection direction) noexcept {
+WidgetRailOverlayPlatformNavigationDirection ConvertDirection(
+    const widgetrail::input::NavigationDirection direction) noexcept {
     switch (direction) {
-    case gba::input::NavigationDirection::Left:
-        return GbaOverlayPlatformNavigationDirection::Left;
-    case gba::input::NavigationDirection::Right:
-        return GbaOverlayPlatformNavigationDirection::Right;
-    case gba::input::NavigationDirection::Up:
-        return GbaOverlayPlatformNavigationDirection::Up;
-    case gba::input::NavigationDirection::Down:
-        return GbaOverlayPlatformNavigationDirection::Down;
-    case gba::input::NavigationDirection::None:
+    case widgetrail::input::NavigationDirection::Left:
+        return WidgetRailOverlayPlatformNavigationDirection::Left;
+    case widgetrail::input::NavigationDirection::Right:
+        return WidgetRailOverlayPlatformNavigationDirection::Right;
+    case widgetrail::input::NavigationDirection::Up:
+        return WidgetRailOverlayPlatformNavigationDirection::Up;
+    case widgetrail::input::NavigationDirection::Down:
+        return WidgetRailOverlayPlatformNavigationDirection::Down;
+    case widgetrail::input::NavigationDirection::None:
     default:
-        return GbaOverlayPlatformNavigationDirection::None;
+        return WidgetRailOverlayPlatformNavigationDirection::None;
     }
 }
 
-GbaOverlayPlatformNavigationPhase ConvertPhase(
-    const gba::input::NavigationEventPhase phase) noexcept {
-    return phase == gba::input::NavigationEventPhase::Repeated
-        ? GbaOverlayPlatformNavigationPhase::Repeated
-        : GbaOverlayPlatformNavigationPhase::Pressed;
+WidgetRailOverlayPlatformNavigationPhase ConvertPhase(
+    const widgetrail::input::NavigationEventPhase phase) noexcept {
+    return phase == widgetrail::input::NavigationEventPhase::Repeated
+        ? WidgetRailOverlayPlatformNavigationPhase::Repeated
+        : WidgetRailOverlayPlatformNavigationPhase::Pressed;
 }
 
-GbaOverlayPlatformNavigationEvent ConvertNavigation(
-    const std::optional<gba::input::StickNavigationEvent>& event) noexcept {
+WidgetRailOverlayPlatformNavigationEvent ConvertNavigation(
+    const std::optional<widgetrail::input::StickNavigationEvent>& event) noexcept {
     return event
-        ? GbaOverlayPlatformNavigationEvent{
+        ? WidgetRailOverlayPlatformNavigationEvent{
               ConvertDirection(event->direction), ConvertPhase(event->phase)}
-        : GbaOverlayPlatformNavigationEvent{};
+        : WidgetRailOverlayPlatformNavigationEvent{};
 }
 
 } // namespace
 
-namespace gba::input {
+namespace widgetrail::input {
 
 StickNavigator::StickNavigator(StickNavigationOptions options) noexcept
     : options_(options) {
@@ -152,9 +152,9 @@ NavigationDirection StickNavigator::Resolve(
     return x < 0 ? NavigationDirection::Left : NavigationDirection::Right;
 }
 
-} // namespace gba::input
+} // namespace widgetrail::input
 
-namespace gba::platform {
+namespace widgetrail::platform {
 
 bool GuideToggleDebouncer::Accept(
     const std::uint64_t nowMilliseconds) noexcept {
@@ -174,11 +174,11 @@ void GuideToggleDebouncer::Reset() noexcept {
 
 void ControllerFrameTracker::Prime(
     const bool connected,
-    const GbaOverlayPlatformRawControllerState& state,
+    const WidgetRailOverlayPlatformRawControllerState& state,
     const std::uint64_t nowMilliseconds) noexcept {
     const auto effective = connected
         ? state
-        : GbaOverlayPlatformRawControllerState{};
+        : WidgetRailOverlayPlatformRawControllerState{};
     previousButtons_ = effective.buttons;
     leftTriggerPressed_ = connected && effective.leftTrigger >= 30;
     rightTriggerPressed_ = connected && effective.rightTrigger >= 30;
@@ -189,11 +189,11 @@ void ControllerFrameTracker::Prime(
     stickNavigator_.Prime(
         effective.leftThumbX, effective.leftThumbY, nowMilliseconds);
     dpadNavigator_.Prime(
-        gba::input::DigitalNavigationAxis(
+        widgetrail::input::DigitalNavigationAxis(
             effective.buttons,
             XINPUT_GAMEPAD_DPAD_LEFT,
             XINPUT_GAMEPAD_DPAD_RIGHT),
-        gba::input::DigitalNavigationAxis(
+        widgetrail::input::DigitalNavigationAxis(
             effective.buttons,
             XINPUT_GAMEPAD_DPAD_DOWN,
             XINPUT_GAMEPAD_DPAD_UP),
@@ -201,16 +201,16 @@ void ControllerFrameTracker::Prime(
     primed_ = true;
 }
 
-GbaOverlayPlatformControllerFrame ControllerFrameTracker::Update(
+WidgetRailOverlayPlatformControllerFrame ControllerFrameTracker::Update(
     const bool connected,
-    const GbaOverlayPlatformRawControllerState& state,
+    const WidgetRailOverlayPlatformRawControllerState& state,
     const std::uint64_t nowMilliseconds) noexcept {
-    GbaOverlayPlatformControllerFrame frame;
+    WidgetRailOverlayPlatformControllerFrame frame;
     frame.connected = ToAbiBoolean(connected);
-    frame.state = connected ? state : GbaOverlayPlatformRawControllerState{};
+    frame.state = connected ? state : WidgetRailOverlayPlatformRawControllerState{};
     if (!primed_) {
         Prime(connected, state, nowMilliseconds);
-        frame.primed = GBA_OVERLAY_PLATFORM_TRUE;
+        frame.primed = WRAIL_OVERLAY_PLATFORM_TRUE;
         return frame;
     }
 
@@ -244,11 +244,11 @@ GbaOverlayPlatformControllerFrame ControllerFrameTracker::Update(
     frame.stickNavigation = ConvertNavigation(stickNavigator_.UpdateEvent(
         frame.state.leftThumbX, frame.state.leftThumbY, nowMilliseconds));
     frame.dpadNavigation = ConvertNavigation(dpadNavigator_.UpdateEvent(
-        gba::input::DigitalNavigationAxis(
+        widgetrail::input::DigitalNavigationAxis(
             frame.state.buttons,
             XINPUT_GAMEPAD_DPAD_LEFT,
             XINPUT_GAMEPAD_DPAD_RIGHT),
-        gba::input::DigitalNavigationAxis(
+        widgetrail::input::DigitalNavigationAxis(
             frame.state.buttons,
             XINPUT_GAMEPAD_DPAD_DOWN,
             XINPUT_GAMEPAD_DPAD_UP),
@@ -266,4 +266,4 @@ void ControllerFrameTracker::Reset() noexcept {
     dpadNavigator_.Reset();
 }
 
-} // namespace gba::platform
+} // namespace widgetrail::platform

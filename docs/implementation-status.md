@@ -3151,9 +3151,9 @@ with C++ installed:
   82/82, and the documentation contract across 59 Markdown files.
 
 - Latest overlay initialization error:
-  `%LOCALAPPDATA%\GameBarAlternative\startup-error.log`
+  `%LOCALAPPDATA%\WidgetRail\startup-error.log`
 - Overlay order/last-widget state:
-  `%LOCALAPPDATA%\GameBarAlternative\overlay-state.ini`
+  `%LOCALAPPDATA%\WidgetRail\overlay-state.ini`
 - Input-probe logs: timestamped in the launch directory by default, or the
   explicit `--log` path.
 
@@ -5446,3 +5446,124 @@ contract across 75 Markdown files. The restricted runner initially denied
 MSTest and Bridge named-pipe access; the exact focused binaries passed when run
 with the required local pipe permission. No Tier 3, native suite, launch,
 publication, integration, push, credential access, or user-state migration ran.
+
+### DLV-259 — WidgetRail native identity and clean local-state cutover
+
+The sole native host now uses the frozen WidgetRail operating-system identity:
+`WidgetRail.OverlayHost`, `WidgetRail.Backdrop`, `WidgetRail.Chrome`,
+`WidgetRail.TextEntryModal`, and `WidgetRail.PinnedSurface` window classes;
+`WidgetRail` / `WidgetRail.Overlay` UIA identity; one
+`Global\WidgetRail.OverlayHost.Owner.*` singleton and one authenticated
+`WidgetRail.OverlayHost.Activation.*` pipe; and the WidgetRail manifest, display
+titles, AppContainer profile, user agent, internal pipe prefixes, resource keys,
+and retained-version persisted headers. Native package/style/import consumers
+now agree with DLV-258's `widgetrail.*`, `.wrwidget`, and WRSS identities.
+
+This is the user-approved clean pre-release cutover, not a migration. Default
+production paths read and write only `%LOCALAPPDATA%\WidgetRail`. There is no
+old-root reader, probe, copy, move, merge, staging directory, marker, fallback,
+legacy package importer, version bridge, or old singleton/activation endpoint.
+The existing `%LOCALAPPDATA%\GameBarAlternative` root and external provider,
+credential, application, account, and user-file state were not inspected or
+modified; settings, consent, packages, and credentials start fresh under the
+new identity and affected Community applications reauthenticate.
+
+Focused Release evidence passes Overlay Process Owner 28 checks, local package
+import 4 scenarios, pinned placement 16 checks, widget surface coordination 80
+checks, Accessibility Provider 168 checks, Host Accessibility 34 checks,
+Remote Image Cache plus Declarative Renderer 4,915 checks, and Platform Settings
+19/19. The accepted-baseline Widget Runtime executable passed its first six
+lifecycle/process cases before stalling at the seventh retired-notification
+case; the native Widget Bridge catalog binary compiled after correcting one
+stale materialization-result assertion but then produced no test output. Both
+bounded hung invocations were stopped once and were not weakened or repeated.
+
+One coherent combined DLV-258/DLV-259 Release was built with tests skipped in
+an isolated exact-source worktree because retained accepted PID 28612 held the
+primary output directory. `OverlayHost.exe` SHA-256 is
+`16D5BE7CC2D831BA72D701A8C5C63086C4EFCB790FF6ABAFAC69CAE6056A46F8`;
+the six existing `C4244` warnings remain in `main.cpp`. Bridge, protocol,
+Settings-worker, and generic-worker outputs are present and exact build-output
+hashes match the packaged copies. Retired Game Launcher, Spotify playback-host,
+and YT Music runtime directories are absent. No launch, Tier 3, live-state
+access, publication, integration, or push was performed.
+
+### DLV-260 Phase A — active WidgetRail residue and generated-output closure
+
+The active production, developer-tool, script, example, notice, publication,
+and nonhistorical documentation surfaces now use the frozen WidgetRail identity.
+The private native namespace is now `widgetrail::`; native/private build
+identities were completed as `WidgetRailOverlayPlatform*` and
+`wrail_taffy_layout`. Current verification and test-owned random pipe, scratch,
+and temporary-directory prefixes use `wrail-`. Current sample and CLI paths use
+`%LOCALAPPDATA%\WidgetRail`, and active style-language references use WRSS.
+These are identity-only cutovers: no compatibility endpoint, legacy reader,
+migration, public protocol, provider, or runtime behavior was added.
+
+The remaining tracked old-name matches are classified and retained deliberately:
+immutable history and the closed Avalonia experiment; reviewer-owned control
+documents and the frozen identity contract; stable `GBA-###` issue identifiers;
+accurate negative assertions and the explicit record that the untouched old
+local-data root must never be accessed; opaque third-party/test package IDs such
+as `org.gbar.tests.*`; and deletion-only sentinels that remove stale generated
+`gbar.scenarios.json.template` and `default.gbss` files. No unexplained active
+production or public identity remains.
+
+One coherent isolated Release build ran with
+`src\OverlayHost\build.ps1 -Configuration Release -SkipTests`, serialized
+MSBuild node reuse disabled, and tests skipped. It exited zero and produced
+`OverlayHost.exe` SHA-256
+`1E816334FD5B48ABB9449CB66FEA66CE0A93E14E8DFECEB259FE6C1753BE503D`.
+The packaged Bridge, protocol, Settings worker, and generic worker exactly match
+their fresh build outputs. Runtime groups are Audio Mixer, Bridge, Games & Apps,
+Media Sessions, Network Controls, Settings, and Widget Worker Host; retired Game
+Launcher, Spotify playback-host, and YT Music runtime directories are absent,
+as are old-name strings and retired provider assemblies. The renamed Taffy
+output is `wrail_taffy_layout.lib`. The six existing native `C4244` warnings in
+`main.cpp` remain.
+
+No tests ran in Phase A. The pre-existing Release-only unchecked-assert defect
+in `WidgetBridgeCatalogTests` and the disclosed Widget Runtime seventh-case hang
+remain deferred to the post-visible-acceptance phase exactly as assigned. The
+accepted DLV-263 process was not stopped or relaunched. No live local state,
+credentials, provider data, installed applications, or the old
+`%LOCALAPPDATA%\GameBarAlternative` root was inspected or modified, and no
+launch, Tier 3, publication, integration, or push was performed.
+
+### DLV-260 Phase B — always-on catalog checks and bounded runtime disposition
+
+`WidgetBridgeCatalogTests` no longer relies on Release-disabled `assert(...)`.
+All 214 former assertions now use one test-local always-on check that retains
+the failed expression in its diagnostic. Executing those checks exposed and
+corrected only stale fixture expectations: the authored advanced-presentation
+slot had shifted the loading, action-surface, grid, cursor-list, and text-entry
+child indices, and the appearance fixture omitted the required persisted
+`animateWidgetSwitching` field. No parser, bridge, runtime, or other production
+code changed. The focused Release `WidgetBridgeCatalogTestsOnly` route passes.
+
+The existing Widget Runtime seventh case was diagnosed once in isolation under
+a 25-second process-tree bound. It is the first real worker-process/named-pipe
+case after six in-memory ownership cases and timed out without stdout or stderr;
+the exact test-owned process tree was stopped. The harness emits a result only
+after all three retired-notification subcases complete and provides no bounded
+launch/pipe/publication stage oracle, so this run cannot safely identify a
+deterministic test-only repair. Production and test support remain unchanged,
+and the route is retained as inconclusive rather than weakened or repeatedly
+rerun.
+
+The focused Wrail CLI/package executable passes 65/65 with its required local
+test-cache permission. Its restricted run passed 55/65; all ten failures derive
+from one denied test-owned temporary WidgetRail SDK entry in the user NuGet
+cache, and the exact unrestricted rerun passed every case. The Widget Runtime
+test project builds Release with zero warnings and errors. PID 33088 and the
+physically accepted Phase A Release were not rebuilt, relaunched, or stopped.
+
+The one clean exact-commit Tier-3 run passed 14 steps and stopped at
+`WidgetConfiguration.Tests` with 4/5. That failure was directly caused by a
+stale rename fixture, not unrelated state: `org.widgetrail` did not own the
+renamed package. The initially proposed single-segment `widgetrail` publisher
+is rejected by the accepted reverse-DNS identity grammar, so the corrected
+generic ambiguity fixture uses the nested test package
+`widgetrail.samples.spotify.preview` with the two valid owning namespaces
+`widgetrail.samples` and `widgetrail.samples.spotify`. The focused Release
+`WidgetConfiguration.Tests` route now passes 5/5. Tier 3 was not rerun.

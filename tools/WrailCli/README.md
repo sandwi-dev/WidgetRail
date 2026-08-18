@@ -159,7 +159,7 @@ wrail launcher-theme remove dev.example.deep-space 1.0.0
   is an error.
 - `list`, `enable`, and `disable` inspect or update persistent catalog state.
   `--catalog <root>` overrides the default
-  `%LOCALAPPDATA%\\GameBarAlternative\\widgets` location for every catalog
+  `%LOCALAPPDATA%\\WidgetRail\\widgets` location for every catalog
   command.
 - `uninstall <widget-id>` requires the widget to be disabled, atomically
   retires the package ID from discovery, removes all of its immutable versions,
@@ -228,7 +228,7 @@ preview do not approximate WRSS with a browser or a second parser.
 - `theme list` reports built-in and installed versions, publisher claims,
   validity, and the first safe diagnostic. `--settings-root <root>` gives all
   theme catalog commands an isolated root for testing; otherwise they use
-  `%LOCALAPPDATA%\GameBarAlternative`.
+  `%LOCALAPPDATA%\WidgetRail`.
 - `theme remove <exact-id> <exact-version>` uses the same exact-version mutation
   policy as Settings. It removes only an inactive user-installed version after
   revalidation under the catalog lock. Built-in and selected versions are
@@ -285,7 +285,7 @@ digest schema.
   semantic window. The document contains no actions, SavedIds, provider
   bindings, paths, or game/content authority.
 - `install`, `list`, and `remove` use the production catalog under
-  `%LOCALAPPDATA%\GameBarAlternative\launcher-experiences`, or an isolated
+  `%LOCALAPPDATA%\WidgetRail\launcher-experiences`, or an isolated
   `--catalog <root>`. Installed `<id>/<version>` content is immutable; removal
   requires an exact canonical ID/version and cannot remove built-in recovery
   presets.

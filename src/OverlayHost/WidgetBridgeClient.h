@@ -16,7 +16,7 @@
 #include <unordered_set>
 #include <vector>
 
-namespace gba {
+namespace widgetrail {
 
 class ProtectedWifiSecretFrame final {
 public:
@@ -663,10 +663,10 @@ private:
     mutable std::recursive_mutex requestMutex_;
 };
 
-} // namespace gba
+} // namespace widgetrail
 
-#ifdef GBA_WIDGET_BRIDGE_CLIENT_TESTING
-namespace gba::testing {
+#ifdef WRAIL_WIDGET_BRIDGE_CLIENT_TESTING
+namespace widgetrail::testing {
 struct BridgeFrameReadResult final {
     std::optional<std::string> frame;
     bool transportTainted{};

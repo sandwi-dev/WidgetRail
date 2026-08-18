@@ -3,7 +3,7 @@
 #include "TextEntryModal.h"
 #include "WidgetSurfaceFocus.h"
 
-namespace gba::input {
+namespace widgetrail::input {
 
 std::optional<TextEntryActionRequest> CaptureTextEntryActionRequest(
     const std::wstring_view widgetId,
@@ -58,4 +58,4 @@ std::optional<TextEntryActionTarget> ResolveTextEntryActionTarget(
     };
 }
 
-} // namespace gba::input
+} // namespace widgetrail::input

@@ -9,7 +9,7 @@
 #include <sstream>
 #include <utility>
 
-namespace gba {
+namespace widgetrail {
 namespace {
 
 constexpr std::size_t kMaximumProperties = 64;
@@ -243,61 +243,61 @@ struct NativeRenderStyle::Data final {
 
 NativeRenderStyle::NativeRenderStyle() : data_(std::make_shared<const Data>()) {}
 NativeRenderStyle::NativeRenderStyle(std::shared_ptr<const Data> data) : data_(std::move(data)) {}
-#define GBA_STYLE_GETTER(type, name, field) type NativeRenderStyle::name() const noexcept { return data_->field; }
-GBA_STYLE_GETTER(const std::optional<NativeColor>&, background, background)
-GBA_STYLE_GETTER(const std::optional<NativeColor>&, foreground, foreground)
-GBA_STYLE_GETTER(const std::optional<NativeColor>&, borderColor, borderColor)
-GBA_STYLE_GETTER(const std::optional<NativeColor>&, outlineColor, outlineColor)
-GBA_STYLE_GETTER(const std::optional<NativeColor>&, shadowColor, shadowColor)
-GBA_STYLE_GETTER(const std::optional<NativeColor>&, imageTint, imageTint)
-GBA_STYLE_GETTER(const std::optional<NativeColor>&, scrimColor, scrimColor)
-GBA_STYLE_GETTER(const std::optional<float>&, widthPx, width)
-GBA_STYLE_GETTER(const std::optional<float>&, heightPx, height)
-GBA_STYLE_GETTER(const std::optional<float>&, minWidthPx, minWidth)
-GBA_STYLE_GETTER(const std::optional<float>&, minHeightPx, minHeight)
-GBA_STYLE_GETTER(const std::optional<float>&, maxWidthPx, maxWidth)
-GBA_STYLE_GETTER(const std::optional<float>&, maxHeightPx, maxHeight)
-GBA_STYLE_GETTER(float, fontSizePx, fontSize)
-GBA_STYLE_GETTER(float, letterSpacingPx, letterSpacing)
-GBA_STYLE_GETTER(float, cornerRadiusPx, cornerRadius)
-GBA_STYLE_GETTER(float, outlineWidthPx, outlineWidth)
-GBA_STYLE_GETTER(float, outlineOffsetPx, outlineOffset)
-GBA_STYLE_GETTER(float, borderWidthPx, borderWidth)
-GBA_STYLE_GETTER(const NativeBorderStyle&, borderEdges, borderEdges)
-GBA_STYLE_GETTER(float, backgroundBlurPx, backgroundBlur)
-GBA_STYLE_GETTER(float, shadowBlurPx, shadowBlur)
-GBA_STYLE_GETTER(float, shadowOffsetXPx, shadowOffsetX)
-GBA_STYLE_GETTER(float, shadowOffsetYPx, shadowOffsetY)
-GBA_STYLE_GETTER(const NativeEdges&, gapPx, gap)
-GBA_STYLE_GETTER(const NativeEdges&, paddingPx, padding)
-GBA_STYLE_GETTER(const NativeEdges&, marginPx, margin)
-GBA_STYLE_GETTER(float, opacity, opacity)
-GBA_STYLE_GETTER(float, scale, scale)
-GBA_STYLE_GETTER(float, translateXPx, translateX)
-GBA_STYLE_GETTER(float, translateYPx, translateY)
-GBA_STYLE_GETTER(float, transitionDurationMilliseconds, transitionDuration)
-GBA_STYLE_GETTER(const std::optional<float>&, aspectRatio, aspectRatio)
-GBA_STYLE_GETTER(NativeImageFit, imageFit, imageFit)
-GBA_STYLE_GETTER(NativeObjectPosition, objectPosition, objectPosition)
-GBA_STYLE_GETTER(NativeShape, shape, shape)
-GBA_STYLE_GETTER(int, fontWeight, fontWeight)
-GBA_STYLE_GETTER(const std::wstring&, fontFamily, fontFamily)
-GBA_STYLE_GETTER(float, lineHeight, lineHeight)
-GBA_STYLE_GETTER(int, maxLines, maxLines)
-GBA_STYLE_GETTER(NativeTextOverflow, textOverflow, textOverflow)
-GBA_STYLE_GETTER(NativeTextTransform, textTransform, textTransform)
-GBA_STYLE_GETTER(NativeTransitionEasing, transitionEasing, transitionEasing)
-GBA_STYLE_GETTER(float, flexGrow, flexGrow)
-GBA_STYLE_GETTER(float, flexShrink, flexShrink)
-GBA_STYLE_GETTER(const std::optional<float>&, flexBasisPx, flexBasis)
-GBA_STYLE_GETTER(bool, flexBasisAuto, flexBasisAuto)
-GBA_STYLE_GETTER(NativeFlexWrap, flexWrap, flexWrap)
-GBA_STYLE_GETTER(NativeAlign, align, align)
-GBA_STYLE_GETTER(NativeJustify, justify, justify)
-GBA_STYLE_GETTER(NativeDirection, direction, direction)
-GBA_STYLE_GETTER(NativeOverflow, overflow, overflow)
-GBA_STYLE_GETTER(NativeTextAlign, textAlign, textAlign)
-#undef GBA_STYLE_GETTER
+#define WRAIL_STYLE_GETTER(type, name, field) type NativeRenderStyle::name() const noexcept { return data_->field; }
+WRAIL_STYLE_GETTER(const std::optional<NativeColor>&, background, background)
+WRAIL_STYLE_GETTER(const std::optional<NativeColor>&, foreground, foreground)
+WRAIL_STYLE_GETTER(const std::optional<NativeColor>&, borderColor, borderColor)
+WRAIL_STYLE_GETTER(const std::optional<NativeColor>&, outlineColor, outlineColor)
+WRAIL_STYLE_GETTER(const std::optional<NativeColor>&, shadowColor, shadowColor)
+WRAIL_STYLE_GETTER(const std::optional<NativeColor>&, imageTint, imageTint)
+WRAIL_STYLE_GETTER(const std::optional<NativeColor>&, scrimColor, scrimColor)
+WRAIL_STYLE_GETTER(const std::optional<float>&, widthPx, width)
+WRAIL_STYLE_GETTER(const std::optional<float>&, heightPx, height)
+WRAIL_STYLE_GETTER(const std::optional<float>&, minWidthPx, minWidth)
+WRAIL_STYLE_GETTER(const std::optional<float>&, minHeightPx, minHeight)
+WRAIL_STYLE_GETTER(const std::optional<float>&, maxWidthPx, maxWidth)
+WRAIL_STYLE_GETTER(const std::optional<float>&, maxHeightPx, maxHeight)
+WRAIL_STYLE_GETTER(float, fontSizePx, fontSize)
+WRAIL_STYLE_GETTER(float, letterSpacingPx, letterSpacing)
+WRAIL_STYLE_GETTER(float, cornerRadiusPx, cornerRadius)
+WRAIL_STYLE_GETTER(float, outlineWidthPx, outlineWidth)
+WRAIL_STYLE_GETTER(float, outlineOffsetPx, outlineOffset)
+WRAIL_STYLE_GETTER(float, borderWidthPx, borderWidth)
+WRAIL_STYLE_GETTER(const NativeBorderStyle&, borderEdges, borderEdges)
+WRAIL_STYLE_GETTER(float, backgroundBlurPx, backgroundBlur)
+WRAIL_STYLE_GETTER(float, shadowBlurPx, shadowBlur)
+WRAIL_STYLE_GETTER(float, shadowOffsetXPx, shadowOffsetX)
+WRAIL_STYLE_GETTER(float, shadowOffsetYPx, shadowOffsetY)
+WRAIL_STYLE_GETTER(const NativeEdges&, gapPx, gap)
+WRAIL_STYLE_GETTER(const NativeEdges&, paddingPx, padding)
+WRAIL_STYLE_GETTER(const NativeEdges&, marginPx, margin)
+WRAIL_STYLE_GETTER(float, opacity, opacity)
+WRAIL_STYLE_GETTER(float, scale, scale)
+WRAIL_STYLE_GETTER(float, translateXPx, translateX)
+WRAIL_STYLE_GETTER(float, translateYPx, translateY)
+WRAIL_STYLE_GETTER(float, transitionDurationMilliseconds, transitionDuration)
+WRAIL_STYLE_GETTER(const std::optional<float>&, aspectRatio, aspectRatio)
+WRAIL_STYLE_GETTER(NativeImageFit, imageFit, imageFit)
+WRAIL_STYLE_GETTER(NativeObjectPosition, objectPosition, objectPosition)
+WRAIL_STYLE_GETTER(NativeShape, shape, shape)
+WRAIL_STYLE_GETTER(int, fontWeight, fontWeight)
+WRAIL_STYLE_GETTER(const std::wstring&, fontFamily, fontFamily)
+WRAIL_STYLE_GETTER(float, lineHeight, lineHeight)
+WRAIL_STYLE_GETTER(int, maxLines, maxLines)
+WRAIL_STYLE_GETTER(NativeTextOverflow, textOverflow, textOverflow)
+WRAIL_STYLE_GETTER(NativeTextTransform, textTransform, textTransform)
+WRAIL_STYLE_GETTER(NativeTransitionEasing, transitionEasing, transitionEasing)
+WRAIL_STYLE_GETTER(float, flexGrow, flexGrow)
+WRAIL_STYLE_GETTER(float, flexShrink, flexShrink)
+WRAIL_STYLE_GETTER(const std::optional<float>&, flexBasisPx, flexBasis)
+WRAIL_STYLE_GETTER(bool, flexBasisAuto, flexBasisAuto)
+WRAIL_STYLE_GETTER(NativeFlexWrap, flexWrap, flexWrap)
+WRAIL_STYLE_GETTER(NativeAlign, align, align)
+WRAIL_STYLE_GETTER(NativeJustify, justify, justify)
+WRAIL_STYLE_GETTER(NativeDirection, direction, direction)
+WRAIL_STYLE_GETTER(NativeOverflow, overflow, overflow)
+WRAIL_STYLE_GETTER(NativeTextAlign, textAlign, textAlign)
+#undef WRAIL_STYLE_GETTER
 
 NativeAccessibilityPolicy CreateNativeAccessibilityPolicy(
     const PlatformAppearance& appearance,
@@ -320,7 +320,7 @@ NativeAccessibilityPolicy CreateNativeAccessibilityPolicy(
     if (highContrast) {
         // Retain a geometric focus cue and choose the extreme luminance that
         // maximizes contrast against the resolved surface. The policy runs
-        // after every GBSS layer, so widgets cannot style around it.
+        // after every WRSS layer, so widgets cannot style around it.
         policy.minimumFocusRingPx = 3.0F;
         policy.contrastHook = [](NativeColor, const NativeColor background) {
             const auto Linearize = [](const float channel) {
@@ -644,7 +644,7 @@ NativeStyleResult NativeStyleAdapter::Adapt(
         } catch (...) { Add(property, L"Contrast hook failed; the computed color was retained."); }
     };
     // High contrast must own implicit renderer colors as well as explicit
-    // GBSS colors. Materializing the foreground here prevents the renderer's
+    // WRSS colors. Materializing the foreground here prevents the renderer's
     // normal-mode text/icon fallback from bypassing the accessibility layer.
     ApplyContrast(data->foreground, L"color", true);
     if (context.focused) {
@@ -658,4 +658,4 @@ NativeStyleResult NativeStyleAdapter::Adapt(
             std::move(diagnostics)};
 }
 
-} // namespace gba
+} // namespace widgetrail

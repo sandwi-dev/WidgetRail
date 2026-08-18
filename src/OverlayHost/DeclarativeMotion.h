@@ -8,7 +8,7 @@
 #include <string_view>
 #include <unordered_map>
 
-namespace gba {
+namespace widgetrail {
 
 /// Bounded presentation values that change without invalidating declarative
 /// layout. Translation is consumed by the renderer's presentation-geometry
@@ -86,4 +86,4 @@ private:
     bool frameActive_{};
 };
 
-} // namespace gba
+} // namespace widgetrail

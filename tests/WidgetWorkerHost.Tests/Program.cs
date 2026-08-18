@@ -64,7 +64,7 @@ static async Task BrokerServicesPrecedeWidgetCreation()
     using var temporary = new TemporaryDirectory();
     const string instanceId = "worker-host.broker";
     var identity = new BrokerWidgetIdentity("dev.test.widget", "dev.test", instanceId);
-    var pipeName = $"gba-worker-bootstrap-{Guid.NewGuid():N}";
+    var pipeName = $"wrail-worker-bootstrap-{Guid.NewGuid():N}";
     await using var server = new BrokerPipeServer(
         pipeName,
         identity,
@@ -256,7 +256,7 @@ static void BrokerArgumentsAreAtomic()
 
 static string[] RuntimeArguments() =>
 [
-    "--widget-pipe", "gba-runtime-test",
+    "--widget-pipe", "wrail-runtime-test",
     "--widget-instance", "widget-1",
     "--widget-session-nonce", new string('B', 64),
     "--max-message-bytes", "65536",
@@ -264,7 +264,7 @@ static string[] RuntimeArguments() =>
 
 static string[] BrokerArguments(string instanceId) =>
 [
-    "--broker-pipe", "gba-worker-test",
+    "--broker-pipe", "wrail-worker-test",
     "--broker-package", "dev.test.widget",
     "--broker-publisher", "dev.test",
     "--broker-instance", instanceId,
@@ -288,7 +288,7 @@ static async Task TypedCapabilityAdapter()
         HandshakeTimeout = TimeSpan.FromSeconds(1),
         RequestTimeout = TimeSpan.FromSeconds(1),
     };
-    var pipeName = $"gba-worker-capability-{Guid.NewGuid():N}";
+    var pipeName = $"wrail-worker-capability-{Guid.NewGuid():N}";
     await using var server = new BrokerPipeServer(
         pipeName, identity,
         [PlatformCapabilities.AudioSessionsReadV1, PlatformCapabilities.AudioSessionsControlV1],
@@ -342,7 +342,7 @@ static async Task TypedCapabilityAdapter()
 file sealed class TemporaryDirectory : IDisposable
 {
     public string Path { get; } = System.IO.Path.Combine(
-        System.IO.Path.GetTempPath(), $"gba-worker-host-{Guid.NewGuid():N}");
+        System.IO.Path.GetTempPath(), $"wrail-worker-host-{Guid.NewGuid():N}");
     public TemporaryDirectory() => Directory.CreateDirectory(Path);
     public void Dispose() { try { Directory.Delete(Path, true); } catch (IOException) { } }
 }
@@ -360,7 +360,7 @@ file sealed class IsolatedBrokerCompanion : IWidgetProcessCompanionSession
         if (context.IsolationPolicy != WidgetWorkerIsolationPolicy.RequireAppContainer ||
             string.IsNullOrWhiteSpace(context.AppContainerSid))
             throw new InvalidOperationException("The test broker requires an AppContainer SID.");
-        var pipeName = $"gba-worker-isolated-broker-{Guid.NewGuid():N}";
+        var pipeName = $"wrail-worker-isolated-broker-{Guid.NewGuid():N}";
         _server = new BrokerPipeServer(
             pipeName,
             identity,

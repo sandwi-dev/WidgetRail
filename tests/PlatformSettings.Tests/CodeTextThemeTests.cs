@@ -5,7 +5,7 @@ internal static class CodeTextThemeTests
 {
     public static Task Run()
     {
-        var root = Path.Combine(Path.GetTempPath(), "gba-code-text-theme-test");
+        var root = Path.Combine(Path.GetTempPath(), "wrail-code-text-theme-test");
         var catalog = new ThemeCatalog(new PlatformSettingsPaths(root));
         var compiled = WrssThemeCompiler.Compile(catalog.BuiltInDefault.Package);
         True(compiled.IsValid, string.Join(Environment.NewLine,

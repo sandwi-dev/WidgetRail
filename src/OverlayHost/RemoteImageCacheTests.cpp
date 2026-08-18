@@ -12,7 +12,7 @@
 #include <string>
 
 int main() {
-    using namespace gba;
+    using namespace widgetrail;
     assert(RemoteImageCache::IsAllowedHttpsUrl(L"https://example.test/image.png"));
     assert(!RemoteImageCache::IsAllowedHttpsUrl(L"http://example.test/image.png"));
     assert(!RemoteImageCache::IsAllowedHttpsUrl(L"https://user:secret@example.test/image.png"));
@@ -106,8 +106,8 @@ int main() {
             return RemoteImageFetchResult{S_OK, std::move(image), {}};
         },
         [&](std::wstring_view key) {
-            assert(key.starts_with(L"gbar-artwork\x1f"));
-            constexpr std::wstring_view prefix = L"gbar-artwork\x1f";
+            assert(key.starts_with(L"wrail-artwork\x1f"));
+            constexpr std::wstring_view prefix = L"wrail-artwork\x1f";
             const auto widgetEnd = key.find(L'\x1f', prefix.size());
             const auto handleStart = key.rfind(L'\x1f');
             return artworkCacheOwner->SupplyTrustedArtwork(
@@ -123,7 +123,7 @@ int main() {
         for (int index = 0; index < batch; ++index) {
             auto suffix = std::to_wstring(base + index);
             suffix.insert(suffix.begin(), 32 - suffix.size(), L'0');
-            const auto key = L"gbar-artwork\x1fgames-apps\x1frow-" +
+            const auto key = L"wrail-artwork\x1fgames-apps\x1frow-" +
                 std::to_wstring(base + index) + L"\x1flibrary.art." + suffix;
             assert(artworkCache.RequestTrustedArtwork(key) ==
                    RemoteImageRequestResult::Queued);
@@ -140,10 +140,10 @@ int main() {
     }
     assert(artworkFetches == largeCollectionItems);
     const auto oldRevision =
-        L"gbar-artwork\x1fgames-apps\x1frow-revision\x1f"
+        L"wrail-artwork\x1fgames-apps\x1frow-revision\x1f"
         L"library.art.aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
     const auto newRevision =
-        L"gbar-artwork\x1fgames-apps\x1frow-revision\x1f"
+        L"wrail-artwork\x1fgames-apps\x1frow-revision\x1f"
         L"library.art.bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
     assert(artworkCache.RequestTrustedArtwork(oldRevision) ==
            RemoteImageRequestResult::Queued);
@@ -192,10 +192,10 @@ int main() {
         },
         [](std::wstring_view) { return true; });
     const auto failedRevision =
-        L"gbar-artwork\x1fgame-launcher\x1ftile.artwork\x1f"
+        L"wrail-artwork\x1fgame-launcher\x1ftile.artwork\x1f"
         L"library.art.11111111111111111111111111111111";
     const auto recoveredRevision =
-        L"gbar-artwork\x1fgame-launcher\x1ftile.artwork\x1f"
+        L"wrail-artwork\x1fgame-launcher\x1ftile.artwork\x1f"
         L"library.art.22222222222222222222222222222222";
     assert(failureCache.RequestTrustedArtwork(failedRevision) ==
            RemoteImageRequestResult::Queued);
@@ -208,7 +208,7 @@ int main() {
     assert(!failureCache.SupplyTrustedArtwork(
         L"game-launcher", L"library.art.11111111111111111111111111111111", L"AAAA"));
     const auto sharedFailedRevision =
-        L"gbar-artwork\x1fgame-launcher\x1fsecond-tile.artwork\x1f"
+        L"wrail-artwork\x1fgame-launcher\x1fsecond-tile.artwork\x1f"
         L"library.art.11111111111111111111111111111111";
     assert(failureCache.RequestTrustedArtwork(sharedFailedRevision) ==
            RemoteImageRequestResult::AlreadyTracked);

@@ -187,8 +187,8 @@ function Invoke-BoundedVerificationProcess {
         $requestPath,
         ([ordered]@{ file = $FilePath; arguments = @($ArgumentList) } | ConvertTo-Json -Depth 4 -Compress),
         [Text.UTF8Encoding]::new($false))
-    $startEventName = "Local\GbaVerification-$([Guid]::NewGuid().ToString('N'))"
-    $jobName = "Local\GbaVerificationJob-$([Guid]::NewGuid().ToString('N'))"
+    $startEventName = "Local\WidgetRailVerification-$([Guid]::NewGuid().ToString('N'))"
+    $jobName = "Local\WidgetRailVerificationJob-$([Guid]::NewGuid().ToString('N'))"
     $startEvent = [Threading.EventWaitHandle]::new(
         $false, [Threading.EventResetMode]::ManualReset, $startEventName)
     $startInfo = [System.Diagnostics.ProcessStartInfo]::new()

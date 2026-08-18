@@ -149,8 +149,8 @@ bool IsAssertiveLiveRegion(const HWND window, const wchar_t* automationId) {
     throw std::runtime_error("private working-set query exceeded its bounded buffer");
 }
 
-gba::WidgetSnapshot Snapshot(const long long sequence = 1) {
-    gba::WidgetSnapshot snapshot;
+widgetrail::WidgetSnapshot Snapshot(const long long sequence = 1) {
+    widgetrail::WidgetSnapshot snapshot;
     snapshot.sequence = sequence;
     snapshot.instanceId = L"gallery.instance";
     snapshot.activeInputScopeId = L"root";
@@ -158,13 +158,13 @@ gba::WidgetSnapshot Snapshot(const long long sequence = 1) {
     snapshot.root.id = L"root";
     snapshot.root.kind = L"stack";
     snapshot.root.inputScopeId = L"root";
-    gba::WidgetNode heading;
+    widgetrail::WidgetNode heading;
     heading.id = L"pin.fixture.heading";
     heading.kind = L"text";
     heading.text = L"Pinned declarative fixture";
     heading.accessibilityLabel = heading.text;
     heading.inputScopeId = L"root";
-    gba::WidgetNode action;
+    widgetrail::WidgetNode action;
     action.id = L"pin.fixture.action";
     action.kind = L"button";
     action.text = L"Deterministic action";
@@ -172,7 +172,7 @@ gba::WidgetSnapshot Snapshot(const long long sequence = 1) {
     action.actionId = L"fixture-action";
     action.inputScopeId = L"root";
     action.focusRight = L"pin.fixture.second";
-    gba::WidgetNode second;
+    widgetrail::WidgetNode second;
     second.id = L"pin.fixture.second";
     second.kind = L"button";
     second.text = L"Second deterministic action";
@@ -185,9 +185,9 @@ gba::WidgetSnapshot Snapshot(const long long sequence = 1) {
     return snapshot;
 }
 
-gba::pinned::WidgetSurfaceAdmission Admission(const bool supported = true) {
+widgetrail::pinned::WidgetSurfaceAdmission Admission(const bool supported = true) {
     return {
-        L"org.gbar.samples.sdk-gallery",
+        L"widgetrail.samples.sdk-gallery",
         L"gallery.instance",
         L"runtime-1",
         L"presentation-1",
@@ -197,11 +197,11 @@ gba::pinned::WidgetSurfaceAdmission Admission(const bool supported = true) {
     };
 }
 
-gba::WidgetDescriptor Descriptor(
+widgetrail::WidgetDescriptor Descriptor(
     const std::wstring_view runtime = L"runtime-1",
     const bool supported = true) {
-    gba::WidgetDescriptor descriptor;
-    descriptor.id = L"org.gbar.samples.sdk-gallery";
+    widgetrail::WidgetDescriptor descriptor;
+    descriptor.id = L"widgetrail.samples.sdk-gallery";
     descriptor.name = L"SDK Gallery";
     descriptor.instanceId = L"gallery.instance";
     descriptor.runtimeGeneration = runtime;
@@ -228,10 +228,10 @@ int main() {
                   reinterpret_cast<IUnknown**>(write.ReleaseAndGetAddressOf()))),
               "DWrite factory initializes");
 
-        gba::pinned::WidgetSurfaceCoordinator coordinator;
+        widgetrail::pinned::WidgetSurfaceCoordinator coordinator;
         std::wstring error;
         const auto placementRoot = std::filesystem::temp_directory_path() /
-            (L"gba-widget-surface-" + std::to_wstring(GetCurrentProcessId()));
+            (L"wrail-widget-surface-" + std::to_wstring(GetCurrentProcessId()));
         Check(coordinator.Initialize(
                   GetModuleHandleW(nullptr), nullptr, WM_APP + 0x410,
                   d2d.Get(), write.Get(), nullptr, error,
@@ -249,9 +249,9 @@ int main() {
         Check(surface && IsWindow(surface) && IsWindowVisible(surface),
               "real pinned HWND is visible");
         Check(coordinator.presentationState() ==
-                  gba::pinned::WidgetSurfacePresentationState::PinnedClickThrough,
+                  widgetrail::pinned::WidgetSurfacePresentationState::PinnedClickThrough,
               "new pin has typed nonactivating presentation state");
-        Check(gba::pinned::WidgetSurfacePresentationStateValue(
+        Check(widgetrail::pinned::WidgetSurfacePresentationStateValue(
                   coordinator.presentationState()) == L"pinnedClickThrough",
               "typed click-through state has a closed protocol value");
         const auto styles = static_cast<DWORD>(GetWindowLongPtrW(surface, GWL_EXSTYLE));
@@ -261,16 +261,16 @@ int main() {
               "real pinned HWND uses the accepted tool-window/topmost contract");
         RECT originalBounds{};
         GetWindowRect(surface, &originalBounds);
-        Check(coordinator.BeginPlacement(gba::pinned::PlacementMode::Move) &&
-                  coordinator.StepPlacement(gba::pinned::PlacementDirection::Left) &&
+        Check(coordinator.BeginPlacement(widgetrail::pinned::PlacementMode::Move) &&
+                  coordinator.StepPlacement(widgetrail::pinned::PlacementDirection::Left) &&
                   coordinator.CancelPlacement(),
               "controller move and cancel share one bounded placement session");
         RECT canceledBounds{};
         GetWindowRect(surface, &canceledBounds);
         Check(EqualRect(&originalBounds, &canceledBounds),
               "cancel restores the exact pre-gesture real-HWND rectangle");
-        Check(coordinator.BeginPlacement(gba::pinned::PlacementMode::Resize) &&
-                  coordinator.StepPlacement(gba::pinned::PlacementDirection::Left),
+        Check(coordinator.BeginPlacement(widgetrail::pinned::PlacementMode::Resize) &&
+                  coordinator.StepPlacement(widgetrail::pinned::PlacementDirection::Left),
               "controller resize changes the real HWND through the placement state machine");
         Check(coordinator.CommitPlacement(error),
               "current generation atomically commits real-HWND geometry");
@@ -282,20 +282,20 @@ int main() {
                   error.find(L"already pinned") != std::wstring::npos,
               "duplicate pin is bounded");
         auto other = Admission();
-        other.widgetId = L"org.gbar.samples.other";
+        other.widgetId = L"widgetrail.samples.other";
         Check(!coordinator.Pin(std::move(other), error) &&
                   error.find(L"Only one") != std::wstring::npos,
               "simultaneous pin cap is enforced");
 
-        Check(coordinator.SetInteractionMode(gba::pinned::InteractionMode::ClickThrough),
+        Check(coordinator.SetInteractionMode(widgetrail::pinned::InteractionMode::ClickThrough),
               "fixture returns to closed click-through mode after placement setup");
         UpdateWindow(surface);
         const auto initialClickThroughPaint = coordinator.PaintTraceForTesting();
         Check(initialClickThroughPaint.snapshotSequence == 1 &&
                   coordinator.interactionMode() ==
-                      gba::pinned::InteractionMode::ClickThrough &&
+                      widgetrail::pinned::InteractionMode::ClickThrough &&
                   initialClickThroughPaint.contentPresentation ==
-                      gba::pinned::ContentPresentation::AdmittedWidget &&
+                      widgetrail::pinned::ContentPresentation::AdmittedWidget &&
                   initialClickThroughPaint.declarativeRenderSucceeded &&
                   initialClickThroughPaint.admittedContentPresented &&
                   initialClickThroughPaint.navigationNodeCount >= 2,
@@ -322,7 +322,7 @@ int main() {
         Check(coordinator.pinned() && IsWindowVisible(surface),
               "main overlay hide preserves the visible pinned HWND");
         Check(coordinator.presentationState() ==
-                  gba::pinned::WidgetSurfacePresentationState::PinnedClickThrough,
+                  widgetrail::pinned::WidgetSurfacePresentationState::PinnedClickThrough,
               "overlay hide releases interaction into typed click-through state");
         const auto clickThrough = static_cast<DWORD>(
             GetWindowLongPtrW(surface, GWL_EXSTYLE));
@@ -338,9 +338,9 @@ int main() {
         const auto hiddenReplacementPaint = coordinator.PaintTraceForTesting();
         Check(hiddenReplacementPaint.snapshotSequence == 3 &&
                   coordinator.interactionMode() ==
-                      gba::pinned::InteractionMode::ClickThrough &&
+                      widgetrail::pinned::InteractionMode::ClickThrough &&
                   hiddenReplacementPaint.contentPresentation ==
-                      gba::pinned::ContentPresentation::AdmittedWidget &&
+                      widgetrail::pinned::ContentPresentation::AdmittedWidget &&
                   hiddenReplacementPaint.declarativeRenderSucceeded &&
                   hiddenReplacementPaint.admittedContentPresented &&
                   hiddenReplacementPaint.navigationNodeCount >= 2,
@@ -355,7 +355,7 @@ int main() {
         coordinator.OnOverlayShown();
         Check(coordinator.ToggleInteractionMode() &&
                   coordinator.presentationState() ==
-                      gba::pinned::WidgetSurfacePresentationState::PinnedInteractive,
+                      widgetrail::pinned::WidgetSurfacePresentationState::PinnedInteractive,
               "reopened overlay can explicitly restore one interactive pin");
         UpdateWindow(surface);
         Check(coordinator.EnterControllerFocus() && coordinator.controllerFocused() &&
@@ -367,14 +367,14 @@ int main() {
                   FindAutomationId(surface, L"host:pinned.emergency"),
               "interactive UIA composes widget content with Close and emergency host actions");
         Check(coordinator.MoveControllerFocus(
-                  gba::input::NavigationDirection::Right) &&
+                  widgetrail::input::NavigationDirection::Right) &&
                   coordinator.focusedElementId() == L"pin.fixture.second" &&
                   coordinator.MoveControllerFocus(
-                      gba::input::NavigationDirection::Left) &&
+                      widgetrail::input::NavigationDirection::Left) &&
                   coordinator.focusedElementId() == L"pin.fixture.action",
               "controller focus uses the shared authored and geometric navigation owner");
         Check(coordinator.QueueFocusedInput(
-                  L"a", gba::ControllerInputOrigin::PhysicalController),
+                  L"a", widgetrail::ControllerInputOrigin::PhysicalController),
               "focused controller activation enters the bounded pinned input queue");
         auto controllerInputs = coordinator.TakeInputRequests();
         Check(controllerInputs.size() == 1 &&
@@ -384,7 +384,7 @@ int main() {
                   controllerInputs[0].nodeId == L"pin.fixture.action" &&
                   controllerInputs[0].protocolButton == L"a" &&
                   controllerInputs[0].origin ==
-                      gba::ControllerInputOrigin::PhysicalController,
+                      widgetrail::ControllerInputOrigin::PhysicalController,
               "queued pinned controller input retains exact current generation and focus");
         coordinator.SetActionFeedback(
             L"Pinned action failed. Reopen the overlay and try again.", true);
@@ -421,14 +421,14 @@ int main() {
         auto automationInputs = coordinator.TakeInputRequests();
         Check(automationInputs.size() == 1 &&
                   automationInputs[0].origin ==
-                      gba::ControllerInputOrigin::AccessibilityAutomation &&
+                      widgetrail::ControllerInputOrigin::AccessibilityAutomation &&
                   automationInputs[0].nodeId == L"pin.fixture.action",
               "UI Automation action uses the same current bounded input queue");
         Check(ActionBoundsInsideWindow(surface, L"host:pinned.move") &&
                   ActionBoundsInsideWindow(surface, L"host:pinned.resize"),
               "Move and Resize UIA action bounds remain inside the pinned HWND");
         Check(InvokeAutomationId(surface, L"host:pinned.move") &&
-                  coordinator.placementMode() == gba::pinned::PlacementMode::Move,
+                  coordinator.placementMode() == widgetrail::pinned::PlacementMode::Move,
               "real UI Automation Move action enters the shared placement state machine");
         Check(ActionBoundsInsideWindow(surface, L"host:pinned.commit") &&
                   ActionBoundsInsideWindow(surface, L"host:pinned.cancel"),
@@ -436,11 +436,11 @@ int main() {
         Check(coordinator.CancelPlacement(),
               "UI Automation placement can be canceled through the same authority");
 
-        Check(coordinator.BeginPlacement(gba::pinned::PlacementMode::Resize),
+        Check(coordinator.BeginPlacement(widgetrail::pinned::PlacementMode::Resize),
               "minimum-size UIA fixture enters the production resize state machine");
         for (int step = 0; step < 40; ++step) {
-            (void)coordinator.StepPlacement(gba::pinned::PlacementDirection::Left);
-            (void)coordinator.StepPlacement(gba::pinned::PlacementDirection::Up);
+            (void)coordinator.StepPlacement(widgetrail::pinned::PlacementDirection::Left);
+            (void)coordinator.StepPlacement(widgetrail::pinned::PlacementDirection::Up);
         }
         Check(coordinator.CommitPlacement(error),
               "minimum-size real-HWND placement commits through the production store");
@@ -511,7 +511,7 @@ int main() {
         Check(!coordinator.pinned() && coordinator.teardownCount() == 1 &&
                   !coordinator.controllerFocused() &&
                   coordinator.lastStopReason() ==
-                      gba::pinned::WidgetSurfaceStopReason::RuntimeReplaced,
+                      widgetrail::pinned::WidgetSurfaceStopReason::RuntimeReplaced,
               "runtime replacement tears down exactly once");
         Check(!IsWindow(surface), "replaced runtime leaves no orphaned HWND");
 
@@ -526,16 +526,16 @@ int main() {
         coordinator.ReconcileCatalog({});
         Check(!coordinator.pinned() && coordinator.teardownCount() == 2 &&
                   coordinator.lastStopReason() ==
-                      gba::pinned::WidgetSurfaceStopReason::WidgetRemoved,
+                      widgetrail::pinned::WidgetSurfaceStopReason::WidgetRemoved,
               "catalog removal tears down exactly once");
 
         Check(coordinator.Pin(Admission(), error), "surface can be pinned for worker loss");
         const HWND failedWorkerSurface = coordinator.window();
         Check(coordinator.Unpin(
-                  gba::pinned::WidgetSurfaceStopReason::WorkerUnavailable) &&
+                  widgetrail::pinned::WidgetSurfaceStopReason::WorkerUnavailable) &&
                   coordinator.teardownCount() == 3 &&
                   coordinator.lastStopReason() ==
-                      gba::pinned::WidgetSurfaceStopReason::WorkerUnavailable,
+                      widgetrail::pinned::WidgetSurfaceStopReason::WorkerUnavailable,
               "worker loss tears down exactly once with its primary reason");
         Check(!IsWindow(failedWorkerSurface), "worker loss leaves no orphaned HWND");
 
@@ -550,7 +550,7 @@ int main() {
                   !coordinator.pinned() && !IsWindow(closeSurface) &&
                   coordinator.teardownCount() == 4 &&
                   coordinator.lastStopReason() ==
-                      gba::pinned::WidgetSurfaceStopReason::Close,
+                      widgetrail::pinned::WidgetSurfaceStopReason::Close,
               "real UI Automation Close performs exact paired teardown");
 
         Check(coordinator.Pin(Admission(), error),
@@ -564,15 +564,15 @@ int main() {
                   !coordinator.pinned() && !IsWindow(emergencySurface) &&
                   coordinator.teardownCount() == 5 &&
                   coordinator.lastStopReason() ==
-                      gba::pinned::WidgetSurfaceStopReason::EmergencyHide,
+                      widgetrail::pinned::WidgetSurfaceStopReason::EmergencyHide,
               "accessible host emergency action removes every bounded pin and interaction");
 
         Check(coordinator.Pin(Admission(), error), "surface can be pinned for host exit");
         const auto privatePinned = PrivateWorkingSetBytes();
         std::this_thread::sleep_for(std::chrono::milliseconds(750));
-        Check(coordinator.Unpin(gba::pinned::WidgetSurfaceStopReason::HostExit),
+        Check(coordinator.Unpin(widgetrail::pinned::WidgetSurfaceStopReason::HostExit),
               "host exit performs terminal teardown");
-        Check(!coordinator.Unpin(gba::pinned::WidgetSurfaceStopReason::HostExit) &&
+        Check(!coordinator.Unpin(widgetrail::pinned::WidgetSurfaceStopReason::HostExit) &&
                   coordinator.teardownCount() == 6,
               "terminal teardown is idempotent");
         coordinator.Dispose();
