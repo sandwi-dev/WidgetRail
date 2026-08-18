@@ -230,7 +230,7 @@ user decision. The native overlay is the sole production presentation path.
 
 | Lane | Task/worktree | State |
 | --- | --- | --- |
-| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | DLV-272 tip `0536d433` is source-rejected before launch: it moves fields but exposes mutable slider/pressed subowners back to `OverlayApp` at 43 call sites. Correct the boundary so the session owns coherent interaction transitions and returns typed outcomes; rebuild tests-skipped and stop. Do not start DLV-269. |
+| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | DLV-272 correction `b0c9f49b` closes all 43 mutable subowner calls but remains source-rejected before launch: slider-descriptor policy is duplicated and the exact typed action request is discarded before final dispatch. Make the bounded exact-request handoff correction, rebuild tests-skipped, and stop. Do not start DLV-269. |
 | Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | DLV-265 is saved at clean tip `13bd971` plus reconciliation `5fd1a06` and explicitly deferred until immediately after DLV-271. Preserve installed Spotify 0.3.3 and the unchanged Client ID/account state; do not resume, test, integrate, reinstall, or reset it early. DLV-270 follows accepted DLV-265; DLV-248 remains deferred. |
 
 DLV-257 is closed. Its approved identity decisions and evidence are preserved
@@ -647,6 +647,19 @@ presentation transitions behind a small set of coherent session operations,
 and return typed rollback/damage, presentation revision/override, deadline, and
 widget-action requests for `OverlayApp` to arbitrate. Do not create a mirrored
 one-method-per-subowner facade, duplicate policy, or change accepted behavior.
+
+Correction review: `b0c9f49b` removes all direct mutable slider/pressed access
+and replaces it with 28 typed session calls, but it introduces a second
+`SliderDescriptor` builder inside the session while retaining the same builder
+in `OverlayApp`. More importantly, `AdjustSlider` returns an exact typed action
+request, then `OverlayApp` discards its instance/scope/node/action/sequence
+authority and passes only `requestedValue` into the old current-state resolver.
+That re-resolution race defeats the transaction seam DLV-272 is establishing.
+Keep exact descriptor construction in one owner; have session input operations
+capture it from immutable snapshot/node input, and make final host arbitration
+validate and dispatch the returned exact request rather than reconstructing it
+from mutable current focus. Preserve optimistic feedback, bridge ownership, and
+all accepted behavior; do not broaden the correction or add another dispatcher.
 
 ## Ready platform deliverable — DLV-269: viewport-driven paged-scroll prefetch
 
