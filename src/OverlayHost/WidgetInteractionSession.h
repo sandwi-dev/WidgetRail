@@ -7,6 +7,7 @@
 #include "WidgetSurfaceFocus.h"
 
 #include <cstdint>
+#include <map>
 #include <optional>
 #include <string>
 #include <string_view>
@@ -60,7 +61,7 @@ struct FreeScrollReentryRequest final {
 struct FocusMutation final {
     std::wstring priorFocus;
     std::wstring focusedElementId;
-    std::vector<SliderPresentationIdentity> sliderRollbacks;
+    std::vector<std::wstring> sliderDamageNodeIds;
     bool pressedPresentationChanged{};
     bool changed{};
 };
@@ -70,6 +71,52 @@ struct WidgetInteractionPresentation final {
     std::wstring_view pressedElementId;
     std::uint64_t sliderPresentationRevision{};
     bool suppressFocusedDescendantFollow{};
+};
+
+struct InteractionVisualRetirement final {
+    std::vector<SliderPresentationIdentity> sliderRollbacks;
+    bool pressedPresentationChanged{};
+};
+
+struct InteractionReconciliation final {
+    std::vector<std::wstring> sliderDamageNodeIds;
+    bool pressedPresentationChanged{};
+    std::uint64_t nextDeadline{};
+};
+
+struct WidgetInteractionActionRequest final {
+    std::wstring widgetInstanceId;
+    std::wstring inputScopeId;
+    std::wstring sourceElementId;
+    std::wstring actionId;
+    long long snapshotSequence{};
+    std::optional<double> requestedValue;
+};
+
+struct SliderInputOutcome final {
+    bool consumed{};
+    bool visualChanged{};
+    std::optional<WidgetInteractionActionRequest> actionRequest;
+    std::uint64_t presentationRevision{};
+    std::uint64_t nextDeadline{};
+};
+
+enum class PressedInputTransition {
+    Begin,
+    End,
+    Cancel,
+    Clear,
+};
+
+enum class SliderAdjustmentModeTransition {
+    Enter,
+    Exit,
+};
+
+struct InteractionRenderPresentation final {
+    std::map<std::wstring, double, std::less<>> sliderValueOverrides;
+    std::wstring pressedElementId;
+    std::uint64_t sliderPresentationRevision{};
 };
 
 /// Owns mutable interaction presentation for the admitted widget surface.
@@ -123,25 +170,64 @@ public:
     [[nodiscard]] WidgetInteractionPresentation Presentation(
         const WidgetInteractionAuthority& authority) const noexcept;
 
-    // Existing focused subowners stay typed and private to this session. These
-    // narrow accessors avoid duplicating their validation/reconciliation rules
-    // while OverlayApp remains the final dispatch and damage authority.
-    [[nodiscard]] SliderInteractionState& sliders() noexcept { return sliders_; }
-    [[nodiscard]] const SliderInteractionState& sliders() const noexcept {
-        return sliders_;
-    }
-    [[nodiscard]] PressedInteractionState& pressed() noexcept { return pressed_; }
-    [[nodiscard]] const PressedInteractionState& pressed() const noexcept {
-        return pressed_;
-    }
+    [[nodiscard]] InteractionVisualRetirement RetirePresentations();
+    void ForgetRuntime(std::wstring_view widgetInstanceId) noexcept;
+    [[nodiscard]] InteractionReconciliation ReconcileAdmission(
+        const WidgetSnapshot& snapshot,
+        std::uint64_t now);
+    [[nodiscard]] bool ReconcilePressedPresentation(
+        const WidgetSnapshot& snapshot) noexcept;
+    [[nodiscard]] InteractionReconciliation Tick(
+        const WidgetSnapshot* snapshot,
+        std::uint64_t now);
 
-    void RefreshSliderDeadline() noexcept;
+    [[nodiscard]] SliderInputOutcome AdjustSlider(
+        const SliderInputDescriptor& slider,
+        NavigationDirection direction,
+        std::uint64_t now);
+    [[nodiscard]] SliderInputOutcome RequestSliderValue(
+        const SliderInputDescriptor& slider,
+        double value,
+        std::uint64_t now);
+    [[nodiscard]] SliderInputOutcome CancelSliderAction(
+        const SliderInputDescriptor& slider,
+        std::uint64_t now);
+    [[nodiscard]] bool SliderAdjustmentModeActive(
+        const SliderInputDescriptor& slider,
+        std::uint64_t now);
+    [[nodiscard]] bool TransitionSliderAdjustmentMode(
+        const SliderInputDescriptor& slider,
+        SliderAdjustmentModeTransition transition,
+        std::uint64_t now);
+    [[nodiscard]] bool TransitionPressedPresentation(
+        PressedInputTransition transition,
+        const WidgetSnapshot* snapshot = nullptr,
+        std::wstring_view focusedElementId = {},
+        std::wstring_view protocolButton = {});
+    [[nodiscard]] InteractionRenderPresentation PrepareRenderPresentation(
+        const WidgetSnapshot& snapshot,
+        std::wstring_view renderedFocusId,
+        std::uint64_t now,
+        bool retainAdjustmentMode,
+        bool allowPressedPresentation,
+        bool allowAdjustmentModePresentation);
+
+    [[nodiscard]] std::uint64_t sliderPresentationRevision() const noexcept {
+        return sliders_.presentationRevision();
+    }
     [[nodiscard]] bool SliderReconcileDue(std::uint64_t now) const noexcept;
 
 private:
     [[nodiscard]] bool BindingMatches(
         const FreeScrollBinding& binding,
         const WidgetInteractionAuthority& authority) const noexcept;
+    [[nodiscard]] static SliderInputDescriptor SliderDescriptor(
+        const WidgetSnapshot& snapshot,
+        const WidgetNode& node) noexcept;
+    [[nodiscard]] static std::vector<std::wstring> CurrentSliderNodeIds(
+        const WidgetSnapshot& snapshot,
+        const std::vector<SliderPresentationIdentity>& identities);
+    void RefreshSliderDeadline() noexcept;
 
     RightStickScrollKinetics rightStickKinetics_;
     std::optional<FreeScrollBinding> freeScrollBinding_;

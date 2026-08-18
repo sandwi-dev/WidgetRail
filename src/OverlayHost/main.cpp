@@ -1803,9 +1803,9 @@ private:
                             presentationSnapshot.activeInputScopeId);
                         if (source && source->kind == L"slider" &&
                             source->valueChangedActionId == failure.actionId &&
-                            interactionSession_.sliders().CancelPending(
+                            interactionSession_.CancelSliderAction(
                                 SliderDescriptor(presentationSnapshot, *source),
-                                GetTickCount64())) {
+                                GetTickCount64()).visualChanged) {
                             InvalidateWidgetSliderValues(
                                 presentationSnapshot, {source->id}, false);
                         }
@@ -2084,8 +2084,8 @@ private:
         if (priorSurface != state_.surface() || priorActive != state_.activeWidget() ||
             priorFocusRegion != state_.focusRegion()) {
             ClearFreeScrollReentry(L"shell-authority-changed");
-            (void)interactionSession_.sliders().DeactivateAll();
-            if (interactionSession_.pressed().Clear())
+            const auto retired = interactionSession_.RetirePresentations();
+            if (retired.pressedPresentationChanged)
                 InvalidateRect(window_, nullptr, FALSE);
         }
         if (!performanceState_ &&
@@ -2684,10 +2684,9 @@ private:
                 // focus memory. Never let a replacement package inherit native
                 // renderer state merely because it reused public node IDs.
                 declarativeRenderer_->ForgetWidgetState(runtime.previousInstanceId);
-                interactionSession_.sliders().ForgetWidget(runtime.previousInstanceId);
+                interactionSession_.ForgetRuntime(runtime.previousInstanceId);
             }
         }
-        interactionSession_.RefreshSliderDeadline();
         std::erase_if(renderedSnapshotSequences_, [&](const auto& entry) {
             return !sessions_.Contains(entry.first);
         });
@@ -2775,8 +2774,7 @@ private:
         if (state_.surface() == widgetrail::Surface::Widget &&
             state_.activeWidget() == widgetId) {
             ClearFreeScrollReentry(L"widget-failed");
-            (void)interactionSession_.sliders().DeactivateAll();
-            (void)interactionSession_.pressed().Clear();
+            (void)interactionSession_.RetirePresentations();
             interactionSession_.ClearFocus();
             lastWidgetRenderResult_ = {};
             ClearAccessibilityTree();
@@ -2887,9 +2885,10 @@ private:
             const bool newerRefreshRequested =
                 sessions_.RefreshState(event.widgetId) ==
                     widgetrail::WidgetRefreshState::RefreshRequested;
-            const auto reconciledSliderNodes =
-                ReconcileSliderPresentations(*current, GetTickCount64());
-            interactionSession_.RefreshSliderDeadline();
+            const auto interactionReconciliation =
+                interactionSession_.ReconcileAdmission(*current, GetTickCount64());
+            const auto& reconciledSliderNodes =
+                interactionReconciliation.sliderDamageNodeIds;
             pendingWidgetPresentationImpact_ =
                 std::move(event.presentationImpact);
             if (pendingWidgetPresentationImpact_ &&
@@ -2915,7 +2914,7 @@ private:
             const std::wstring priorFocus = interactionSession_.focusedElementId();
             RestoreFocusForActiveSurface(event.widgetId);
             const bool pressedVisualChanged =
-                interactionSession_.pressed().Reconcile(*current, interactionSession_.focusedElementId());
+                interactionSession_.ReconcilePressedPresentation(*current);
             if (pressedVisualChanged)
                 InvalidateRect(window_, nullptr, FALSE);
             const bool semanticOnlyImpact = pendingWidgetPresentationImpact_ &&
@@ -3998,8 +3997,7 @@ private:
 
     void InvalidateWidgetFocusChange(
         const std::wstring_view priorFocusedElementId,
-        const std::vector<widgetrail::input::SliderPresentationIdentity>&
-            cancelledSliders = {}) {
+        const std::vector<std::wstring>& sliderDamageNodeIds = {}) {
         if (!window_) return;
         const auto full = [&] {
             pendingContentRenderPlan_.reset();
@@ -4051,11 +4049,9 @@ private:
             geometry->widgetViewportWidth,
             geometry->widgetViewportHeight,
         };
-        const auto sliderNodeIds = CurrentSliderNodeIds(
-            *snapshot, cancelledSliders);
         const auto plan = declarativeRenderer_->PlanFocusUpdate(
             *snapshot, priorFocusedElementId, interactionSession_.focusedElementId(), viewport,
-            sliderNodeIds);
+            sliderDamageNodeIds);
         if (!plan || !SubmitWidgetContentDamage(
                 *plan, metrics->physicalPixelsPerDip, client)) {
             full();
@@ -4125,20 +4121,12 @@ private:
 
         std::optional<widgetrail::accessibility::Tree> semanticTree;
         std::optional<widgetrail::accessibility::ProjectionKey> projectionKey;
-        std::map<std::wstring, double, std::less<>> sliderValues;
+        widgetrail::input::InteractionRenderPresentation interactionPresentation;
         if (accessibilityActive_) {
             const auto presentationTime = GetTickCount64();
-            const auto collectSliderOverrides = [&](const auto& self,
-                                                     const widgetrail::WidgetNode& node) -> void {
-                if (node.kind == L"slider") {
-                    if (const auto value = interactionSession_.sliders().PresentationValue(
-                            SliderDescriptor(*snapshot, node), presentationTime)) {
-                        sliderValues.emplace(node.id, *value);
-                    }
-                }
-                for (const auto& child : node.children) self(self, child);
-            };
-            collectSliderOverrides(collectSliderOverrides, snapshot->root);
+            interactionPresentation = interactionSession_.PrepareRenderPresentation(
+                *snapshot, interactionSession_.focusedElementId(),
+                presentationTime, false, false, false);
             const auto policy = appearanceState_.current()
                 ? CurrentAccessibilityPolicy()
                 : widgetrail::NativeAccessibilityPolicy{};
@@ -4149,7 +4137,7 @@ private:
                 state_.focusRegion() == widgetrail::FocusRegion::Widget
                     ? interactionSession_.focusedElementId() : std::wstring{},
                 snapshot->sequence,
-                interactionSession_.sliders().presentationRevision(),
+                interactionPresentation.sliderPresentationRevision,
                 appearanceState_.current() ? appearanceState_.current()->revision : 0,
                 viewport.x,
                 viewport.y,
@@ -4170,7 +4158,7 @@ private:
                     state_.focusRegion() == widgetrail::FocusRegion::Widget
                         ? std::wstring_view{interactionSession_.focusedElementId()}
                         : std::wstring_view{},
-                    sliderValues);
+                    interactionPresentation.sliderValueOverrides);
             }
         }
 
@@ -4484,7 +4472,7 @@ private:
             snapshot, interactionSession_.focusedElementId(), snapshot.activeInputScopeId);
         return focused && focused->kind == L"slider" &&
             focused->sliderInteractionMode == L"activateToAdjust" &&
-            interactionSession_.sliders().AdjustmentModeActive(
+            interactionSession_.SliderAdjustmentModeActive(
                 SliderDescriptor(snapshot, *focused), GetTickCount64());
     }
 
@@ -4958,7 +4946,7 @@ private:
                     const auto focus = interactionSession_.MoveFocus(
                         widget, *snapshot, hit->id);
                     InvalidateWidgetFocusChange(
-                        focus.priorFocus, focus.sliderRollbacks);
+                        focus.priorFocus, focus.sliderDamageNodeIds);
                     if (hit->enabled) DispatchControllerAction(L"A");
                     return;
                 }
@@ -5192,7 +5180,8 @@ private:
     void EmergencyHidePinnedSurfaces() {
         if (!pinnedSurfaceCoordinator_.pinned()) return;
         const std::wstring widgetId(pinnedSurfaceCoordinator_.widgetId());
-        (void)interactionSession_.pressed().Clear();
+        (void)interactionSession_.TransitionPressedPresentation(
+            widgetrail::input::PressedInputTransition::Clear);
         if (pinnedSurfaceCoordinator_.EmergencyHideAll()) {
             lastActionWidgetId_ = widgetId;
             lastActionMessage_ = L"Emergency hide removed all pinned surfaces";
@@ -5247,7 +5236,8 @@ private:
                 ? widgetrail::pinned::PlacementMode::Move
                 : widgetrail::pinned::PlacementMode::Resize;
             if (pinnedSurfaceCoordinator_.BeginPlacement(mode)) {
-                (void)interactionSession_.pressed().Clear();
+                (void)interactionSession_.TransitionPressedPresentation(
+                    widgetrail::input::PressedInputTransition::Clear);
                 lastActionWidgetId_ = std::wstring(pinnedSurfaceCoordinator_.widgetId());
                 lastActionMessage_ = key == 'M'
                     ? L"Move pinned surface: arrows, Enter commit, Esc cancel"
@@ -5646,7 +5636,7 @@ private:
         launcherExperienceProjection_.ObserveFocusInput(widget, GetTickCount64());
         widgetAccessibilityProjection_.Clear();
         if (focus.changed)
-            InvalidateWidgetFocusChange(focus.priorFocus, focus.sliderRollbacks);
+            InvalidateWidgetFocusChange(focus.priorFocus, focus.sliderDamageNodeIds);
         else
             InvalidateRect(window_, nullptr, FALSE);
         AppendDiagnostic(
@@ -5778,7 +5768,8 @@ private:
             requestedPlacement = widgetrail::pinned::PlacementMode::Resize;
         if (requestedPlacement != widgetrail::pinned::PlacementMode::None &&
             pinnedSurfaceCoordinator_.BeginPlacement(requestedPlacement)) {
-            (void)interactionSession_.pressed().Clear();
+            (void)interactionSession_.TransitionPressedPresentation(
+                widgetrail::input::PressedInputTransition::Clear);
             lastActionWidgetId_ = std::wstring(pinnedSurfaceCoordinator_.widgetId());
             lastActionMessage_ = requestedPlacement == widgetrail::pinned::PlacementMode::Move
                 ? L"Move pinned surface: D-pad/stick, A commit, B cancel"
@@ -5794,7 +5785,8 @@ private:
                 (void)pinnedSurfaceCoordinator_.SetInteractionMode(
                     widgetrail::pinned::InteractionMode::Focusable);
             if (pinnedSurfaceCoordinator_.EnterControllerFocus()) {
-                (void)interactionSession_.pressed().Clear();
+                (void)interactionSession_.TransitionPressedPresentation(
+                    widgetrail::input::PressedInputTransition::Clear);
                 lastActionWidgetId_ =
                     std::wstring(pinnedSurfaceCoordinator_.widgetId());
                 lastActionMessage_ =
@@ -5840,7 +5832,10 @@ private:
         }
 
         const auto releaseButton = [&](const WORD mask, const std::wstring_view protocolButton) {
-            if ((released & mask) != 0 && interactionSession_.pressed().Release(protocolButton))
+            if ((released & mask) != 0 &&
+                interactionSession_.TransitionPressedPresentation(
+                    widgetrail::input::PressedInputTransition::End,
+                    nullptr, {}, protocolButton))
                 InvalidateRect(window_, nullptr, FALSE);
         };
         releaseButton(XINPUT_GAMEPAD_A, L"a");
@@ -5854,26 +5849,15 @@ private:
         releaseButton(XINPUT_GAMEPAD_START, L"menu");
 
         if (interactionSession_.SliderReconcileDue(now)) {
-            std::vector<std::wstring> reconciled;
             const widgetrail::WidgetSnapshot* currentSnapshot{};
             if (state_.surface() == widgetrail::Surface::Widget) {
                 currentSnapshot = InteractionSnapshotFor(state_.activeWidget());
-                if (currentSnapshot)
-                    reconciled = ReconcileSliderPresentations(*currentSnapshot, now);
             }
-            const auto expired = interactionSession_.sliders().ExpireTimedOut(now);
-            if (currentSnapshot) {
-                for (auto& nodeId : CurrentSliderNodeIds(*currentSnapshot, expired)) {
-                    if (std::find(reconciled.begin(), reconciled.end(), nodeId) ==
-                        reconciled.end()) {
-                        reconciled.push_back(std::move(nodeId));
-                    }
-                }
-                if (!reconciled.empty())
+            const auto tick = interactionSession_.Tick(currentSnapshot, now);
+            if (currentSnapshot && !tick.sliderDamageNodeIds.empty()) {
                     InvalidateWidgetSliderValues(
-                        *currentSnapshot, reconciled, false);
+                        *currentSnapshot, tick.sliderDamageNodeIds, false);
             }
-            interactionSession_.RefreshSliderDeadline();
         }
         const auto stickDirection = DecodeNavigation(frame.stickNavigation);
         const auto dpadDirection = DecodeNavigation(frame.dpadNavigation);
@@ -5936,10 +5920,14 @@ private:
             DispatchControllerAction(L"RT", true);
         }
         if (frame.leftTriggerReleased != WRAIL_OVERLAY_PLATFORM_FALSE &&
-            interactionSession_.pressed().Release(L"leftTrigger"))
+            interactionSession_.TransitionPressedPresentation(
+                widgetrail::input::PressedInputTransition::End,
+                nullptr, {}, L"leftTrigger"))
             InvalidateRect(window_, nullptr, FALSE);
         if (frame.rightTriggerReleased != WRAIL_OVERLAY_PLATFORM_FALSE &&
-            interactionSession_.pressed().Release(L"rightTrigger"))
+            interactionSession_.TransitionPressedPresentation(
+                widgetrail::input::PressedInputTransition::End,
+                nullptr, {}, L"rightTrigger"))
             InvalidateRect(window_, nullptr, FALSE);
 
         // Resolve every other button and direction first. If one changes tray
@@ -6161,7 +6149,7 @@ private:
                     request.widgetId, *snapshot, resolved->nodeId);
                 (void)SetFocus(window_);
                 InvalidateWidgetFocusChange(
-                    focus.priorFocus, focus.sliderRollbacks);
+                    focus.priorFocus, focus.sliderDamageNodeIds);
                 continue;
             }
 
@@ -6194,12 +6182,11 @@ private:
                 requestedSlider && requestedSlider->kind == L"slider";
             bool optimisticSliderStarted{};
             if (requestedSliderAction) {
-                const auto priorRevision = interactionSession_.sliders().presentationRevision();
-                optimisticSliderStarted = interactionSession_.sliders().SetRequestedValue(
+                const auto requestOutcome = interactionSession_.RequestSliderValue(
                     SliderDescriptor(*snapshot, *requestedSlider),
                     *resolved->requestedValue, GetTickCount64());
-                interactionSession_.RefreshSliderDeadline();
-                if (interactionSession_.sliders().presentationRevision() != priorRevision) {
+                optimisticSliderStarted = requestOutcome.consumed;
+                if (requestOutcome.visualChanged) {
                     InvalidateWidgetSliderValues(
                         *snapshot, {requestedSlider->id}, true);
                 }
@@ -6213,10 +6200,9 @@ private:
                 widgetrail::ControllerInputOrigin::AccessibilityAutomation);
             if (!handled) {
                 if (optimisticSliderStarted && requestedSlider &&
-                    interactionSession_.sliders().CancelPending(
+                    interactionSession_.CancelSliderAction(
                         SliderDescriptor(*snapshot, *requestedSlider),
-                        GetTickCount64())) {
-                    interactionSession_.RefreshSliderDeadline();
+                        GetTickCount64()).visualChanged) {
                     InvalidateWidgetSliderValues(
                         *snapshot, {requestedSlider->id}, true);
                 }
@@ -6231,10 +6217,9 @@ private:
                     });
                 }
             } else if (optimisticSliderStarted && requestedSlider &&
-                       interactionSession_.sliders().CancelPending(
+                       interactionSession_.CancelSliderAction(
                            SliderDescriptor(*snapshot, *requestedSlider),
-                           GetTickCount64())) {
-                interactionSession_.RefreshSliderDeadline();
+                           GetTickCount64()).visualChanged) {
                 InvalidateWidgetSliderValues(
                     *snapshot, {requestedSlider->id}, true);
             }
@@ -6494,7 +6479,7 @@ private:
         const auto focus = interactionSession_.MoveFocus(
             widget, *snapshot, *target);
         (void)scrollEvidenceProbe_.RecordTarget(*target, L"responsive");
-        InvalidateWidgetFocusChange(focus.priorFocus, focus.sliderRollbacks);
+        InvalidateWidgetFocusChange(focus.priorFocus, focus.sliderDamageNodeIds);
         return true;
     }
 
@@ -6515,44 +6500,6 @@ private:
             node.isBusy,
             node.sliderInteractionMode == L"activateToAdjust",
         };
-    }
-
-    [[nodiscard]] std::vector<std::wstring> ReconcileSliderPresentations(
-        const widgetrail::WidgetSnapshot& snapshot,
-        const ULONGLONG now) {
-        std::vector<std::wstring> changed;
-        const auto visit = [&](const auto& self, const widgetrail::WidgetNode& node) -> void {
-            if (node.kind == L"slider" &&
-                interactionSession_.sliders().Reconcile(
-                    SliderDescriptor(snapshot, node), now).visualChanged) {
-                changed.push_back(node.id);
-            }
-            for (const auto& child : node.children) self(self, child);
-        };
-        visit(visit, snapshot.root);
-        return changed;
-    }
-
-    [[nodiscard]] static std::vector<std::wstring> CurrentSliderNodeIds(
-        const widgetrail::WidgetSnapshot& snapshot,
-        const std::vector<widgetrail::input::SliderPresentationIdentity>& identities) {
-        std::vector<std::wstring> nodeIds;
-        for (const auto& identity : identities) {
-            if (identity.widgetInstanceId != snapshot.instanceId ||
-                identity.inputScopeId != snapshot.activeInputScopeId ||
-                identity.snapshotSequence != snapshot.sequence) {
-                continue;
-            }
-            const auto* node = widgetrail::input::FindNodeInInputScope(
-                snapshot, identity.nodeId, snapshot.activeInputScopeId);
-            if (!node || node->kind != L"slider" ||
-                node->valueChangedActionId != identity.valueChangedActionId ||
-                std::find(nodeIds.begin(), nodeIds.end(), node->id) != nodeIds.end()) {
-                continue;
-            }
-            nodeIds.push_back(node->id);
-        }
-        return nodeIds;
     }
 
     void InvalidateWidgetSliderValues(
@@ -6672,7 +6619,7 @@ private:
             const auto focus = interactionSession_.MoveFocus(
                 widgetId, *snapshot, *visible, true, false);
             InvalidateWidgetFocusChange(
-                focus.priorFocus, focus.sliderRollbacks);
+                focus.priorFocus, focus.sliderDamageNodeIds);
         }
         const auto projectedDirection =
             direction == widgetrail::input::NavigationDirection::Left ? L"left" :
@@ -6694,17 +6641,16 @@ private:
         const bool activationRequired =
             focused->sliderInteractionMode == L"activateToAdjust";
         const bool adjustmentActive = activationRequired &&
-            interactionSession_.sliders().AdjustmentModeActive(
+            interactionSession_.SliderAdjustmentModeActive(
                 sliderDescriptor, GetTickCount64());
         const auto route = widgetrail::input::RouteFocusedDirection(
             focused->kind, focused->isDisabled, focused->isBusy,
             activationRequired, adjustmentActive, direction);
         if (route == widgetrail::input::FocusedDirectionRoute::Consume) return;
         if (route == widgetrail::input::FocusedDirectionRoute::SliderAdjustment) {
-            const auto adjustment = interactionSession_.sliders().Adjust(
+            const auto adjustment = interactionSession_.AdjustSlider(
                 sliderDescriptor, direction, GetTickCount64());
-            if (adjustment.requestedValue) {
-                interactionSession_.RefreshSliderDeadline();
+            if (adjustment.actionRequest) {
                 // Paint the host-owned target before the synchronous worker
                 // acknowledgement so controller feedback never waits on IPC.
                 InvalidateWidgetSliderValues(
@@ -6712,7 +6658,8 @@ private:
                 const auto button = direction == widgetrail::input::NavigationDirection::Left
                     ? std::wstring_view{L"DPadLeft"}
                     : std::wstring_view{L"DPadRight"};
-                DispatchWidgetAction(button, phase, adjustment.requestedValue);
+                DispatchWidgetAction(
+                    button, phase, adjustment.actionRequest->requestedValue);
             }
             return;
         }
@@ -6782,10 +6729,10 @@ private:
         if (descriptor) {
             if (declarativeRenderer_ && !descriptor->instanceId.empty())
                 declarativeRenderer_->ForgetWidgetState(descriptor->instanceId);
-            interactionSession_.sliders().ForgetWidget(descriptor->instanceId);
+            interactionSession_.ForgetRuntime(descriptor->instanceId);
         }
-        interactionSession_.RefreshSliderDeadline();
-        (void)interactionSession_.pressed().Clear();
+        (void)interactionSession_.TransitionPressedPresentation(
+            widgetrail::input::PressedInputTransition::Clear);
         ClearFreeScrollReentry(L"widget-restart");
         interactionSession_.ForgetWidget(widgetId);
         interactionSession_.ClearFocus();
@@ -6867,7 +6814,7 @@ private:
             const auto focus = interactionSession_.MoveFocus(
                 widgetId, *snapshot, *visibleFocus);
             InvalidateWidgetFocusChange(
-                focus.priorFocus, focus.sliderRollbacks);
+                focus.priorFocus, focus.sliderDamageNodeIds);
             return;
         }
         const auto projectedTarget =
@@ -6882,7 +6829,7 @@ private:
             (void)scrollEvidenceProbe_.RecordTarget(
                 interactionSession_.focusedElementId(), direction);
             InvalidateWidgetFocusChange(
-                focus.priorFocus, focus.sliderRollbacks);
+                focus.priorFocus, focus.sliderDamageNodeIds);
             DispatchScrollPagination(widgetId, *snapshot, navigationDirection);
             return;
         }
@@ -6914,7 +6861,7 @@ private:
                 widgetId, *snapshot, explicitTarget->id);
             (void)scrollEvidenceProbe_.RecordTarget(explicitTarget->id, direction);
             InvalidateWidgetFocusChange(
-                focus.priorFocus, focus.sliderRollbacks);
+                focus.priorFocus, focus.sliderDamageNodeIds);
             DispatchScrollPagination(widgetId, *snapshot, navigationDirection);
             return;
         }
@@ -6928,7 +6875,7 @@ private:
                 widgetId, *snapshot, *fallback);
             (void)scrollEvidenceProbe_.RecordTarget(*fallback, direction);
             InvalidateWidgetFocusChange(
-                focus.priorFocus, focus.sliderRollbacks);
+                focus.priorFocus, focus.sliderDamageNodeIds);
             DispatchScrollPagination(widgetId, *snapshot, navigationDirection);
             return;
         }
@@ -6973,7 +6920,7 @@ private:
             const auto focus = interactionSession_.MoveFocus(
                 widget, *snapshot, *visible);
             InvalidateWidgetFocusChange(
-                focus.priorFocus, focus.sliderRollbacks);
+                focus.priorFocus, focus.sliderDamageNodeIds);
         }
         const auto* focused = widgetrail::input::FindNodeInInputScope(
             *snapshot, interactionSession_.focusedElementId(), snapshot->activeInputScopeId);
@@ -6982,21 +6929,23 @@ private:
         const bool activationRequired =
             focused->sliderInteractionMode == L"activateToAdjust";
         const bool adjustmentActive = activationRequired &&
-            interactionSession_.sliders().AdjustmentModeActive(
+            interactionSession_.SliderAdjustmentModeActive(
                 descriptor, GetTickCount64());
         using widgetrail::input::FocusedSliderButtonRoute;
         switch (widgetrail::input::RouteFocusedSliderButton(
             focused->kind, activationRequired, adjustmentActive, button)) {
         case FocusedSliderButtonRoute::EnterAdjustment:
-            (void)interactionSession_.sliders().EnterAdjustmentMode(
-                descriptor, GetTickCount64());
-            (void)interactionSession_.pressed().Clear();
+            (void)interactionSession_.TransitionSliderAdjustmentMode(
+                descriptor,
+                widgetrail::input::SliderAdjustmentModeTransition::Enter,
+                GetTickCount64());
             InvalidateRect(window_, nullptr, FALSE);
             return true;
         case FocusedSliderButtonRoute::ExitAdjustment:
-            (void)interactionSession_.sliders().ExitAdjustmentMode(
-                descriptor, GetTickCount64());
-            (void)interactionSession_.pressed().Clear();
+            (void)interactionSession_.TransitionSliderAdjustmentMode(
+                descriptor,
+                widgetrail::input::SliderAdjustmentModeTransition::Exit,
+                GetTickCount64());
             InvalidateRect(window_, nullptr, FALSE);
             return true;
         case FocusedSliderButtonRoute::Widget:
@@ -7091,12 +7040,13 @@ private:
                 const auto focus = interactionSession_.MoveFocus(
                     widget, *snapshot, *visibleFocus);
                 InvalidateWidgetFocusChange(
-                    focus.priorFocus, focus.sliderRollbacks);
+                    focus.priorFocus, focus.sliderDamageNodeIds);
             }
             if (physicalPress && isOpen && visibleFocus &&
                 phase == widgetrail::input::NavigationEventPhase::Pressed &&
-                interactionSession_.pressed().Begin(
-                    *snapshot, *visibleFocus, protocolButton)) {
+                interactionSession_.TransitionPressedPresentation(
+                    widgetrail::input::PressedInputTransition::Begin,
+                    snapshot, *visibleFocus, protocolButton)) {
                 InvalidateRect(window_, nullptr, FALSE);
                 UpdateWindow(window_);
             }
@@ -7124,13 +7074,14 @@ private:
                 requestedValue, widgetrail::ControllerInputOrigin::PhysicalController);
             lastActionWidgetId_ = widget;
             if (!handled) {
-                if (interactionSession_.pressed().Cancel(protocolButton))
+                if (interactionSession_.TransitionPressedPresentation(
+                        widgetrail::input::PressedInputTransition::Cancel,
+                        nullptr, {}, protocolButton))
                     InvalidateRect(window_, nullptr, FALSE);
                 if (requestedSliderAction &&
-                    interactionSession_.sliders().CancelPending(
+                    interactionSession_.CancelSliderAction(
                         SliderDescriptor(*snapshot, *requestedSlider),
-                        GetTickCount64())) {
-                    interactionSession_.RefreshSliderDeadline();
+                        GetTickCount64()).visualChanged) {
                     InvalidateWidgetSliderValues(
                         *snapshot, {requestedSlider->id}, true);
                 }
@@ -7148,10 +7099,9 @@ private:
                 lastActionMessage_ = std::wstring(DisplayWidgetName(widget)) +
                                      L" has no " + std::wstring(button) + L" action here";
                 if (requestedSliderAction &&
-                    interactionSession_.sliders().CancelPending(
+                    interactionSession_.CancelSliderAction(
                         SliderDescriptor(*snapshot, *requestedSlider),
-                        GetTickCount64())) {
-                    interactionSession_.RefreshSliderDeadline();
+                        GetTickCount64()).visualChanged) {
                     InvalidateWidgetSliderValues(
                         *snapshot, {requestedSlider->id}, true);
                 }
@@ -9251,18 +9201,12 @@ private:
                     ? CurrentAccessibilityPolicy()
                     : widgetrail::NativeAccessibilityPolicy{};
                 const auto presentationTime = GetTickCount64();
-                std::map<std::wstring, double, std::less<>> presentedSliderValues;
-                const auto collectSliderOverrides = [&](const auto& self,
-                                                        const widgetrail::WidgetNode& node) -> void {
-                    if (node.kind == L"slider") {
-                        if (const auto value = interactionSession_.sliders().PresentationValue(
-                                SliderDescriptor(*snapshot, node), presentationTime)) {
-                            presentedSliderValues.emplace(node.id, *value);
-                        }
-                    }
-                    for (const auto& child : node.children) self(self, child);
-                };
-                collectSliderOverrides(collectSliderOverrides, snapshot->root);
+                auto interactionPresentation =
+                    interactionSession_.PrepareRenderPresentation(
+                        *snapshot, renderedFocusId, presentationTime,
+                        !inertRetainedSnapshot, !inertRetainedSnapshot,
+                        !inertRetainedSnapshot &&
+                            state_.focusRegion() == widgetrail::FocusRegion::Widget);
                 const widgetrail::accessibility::ProjectionKey projectionKey{
                     std::wstring{renderedWidget},
                     descriptor
@@ -9271,7 +9215,7 @@ private:
                     snapshot->activeInputScopeId,
                     std::wstring{renderedFocusId},
                     snapshot->sequence,
-                    interactionSession_.sliders().presentationRevision(),
+                    interactionPresentation.sliderPresentationRevision,
                     appearanceState_.current() ? appearanceState_.current()->revision : 0,
                     viewport.x,
                     viewport.y,
@@ -9304,7 +9248,10 @@ private:
                 if (appearanceState_.current())
                     options.accessibility = accessibilityPolicy;
                 options.animationTimestampMilliseconds = presentationTime;
-                options.sliderValueOverrides = presentedSliderValues;
+                options.sliderValueOverrides =
+                    interactionPresentation.sliderValueOverrides;
+                options.pressedElementId =
+                    interactionPresentation.pressedElementId;
                 options.artworkWidgetId = std::wstring{renderedWidget};
                 const bool retainedRefresh = sessionRetainedSnapshot &&
                     sessionPresentation.authority ==
@@ -9341,24 +9288,6 @@ private:
                 options.suppressFocusedDescendantFollow =
                     freeScrollDecision.followSuppressed &&
                     (!inertRetainedSnapshot || retainedRefreshFreeScroll);
-                if (!inertRetainedSnapshot) {
-                    interactionSession_.sliders().RetainAdjustmentMode(
-                        snapshot->instanceId,
-                        snapshot->activeInputScopeId,
-                        renderedFocusId);
-                    options.pressedElementId = interactionSession_.pressed().ActiveElementId(
-                        *snapshot, renderedFocusId);
-                }
-                if (!inertRetainedSnapshot && options.pressedElementId.empty() &&
-                    state_.focusRegion() == widgetrail::FocusRegion::Widget) {
-                    if (const auto* focused = widgetrail::input::FindNodeInInputScope(
-                            *snapshot, interactionSession_.focusedElementId(), snapshot->activeInputScopeId);
-                        focused && focused->sliderInteractionMode == L"activateToAdjust" &&
-                        interactionSession_.sliders().AdjustmentModeActive(
-                            SliderDescriptor(*snapshot, *focused), GetTickCount64())) {
-                        options.pressedElementId = focused->id;
-                    }
-                }
                 auto launcherProjection = launcherExperienceProjection_.Render(
                     *declarativeRenderer_, renderTarget_.Get(), imageCache_.get(),
                     descriptor ? descriptor->advancedPresentation
@@ -9704,7 +9633,7 @@ private:
                         // The completed pass used the old focus state. Schedule one
                         // more paint so the recovered target receives its ring.
                         InvalidateWidgetFocusChange(
-                            focus.priorFocus, focus.sliderRollbacks);
+                            focus.priorFocus, focus.sliderDamageNodeIds);
                     }
                 }
                 if (inertRetainedSnapshot) {
@@ -9726,7 +9655,7 @@ private:
                         std::wstring{renderedFocusId},
                         options.pressedElementId,
                         snapshot->sequence,
-                        interactionSession_.sliders().presentationRevision(),
+                        interactionPresentation.sliderPresentationRevision,
                         appearanceState_.current()
                             ? appearanceState_.current()->revision : 0,
                         result.scrollOffsets,
