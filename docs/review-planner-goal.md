@@ -1,10 +1,10 @@
-# Game Bar Alternative — Review and Delivery Planner Goal
+# WidgetRail — Review and Delivery Planner Goal
 
 Ownership: user and independent review/delivery-planning task. This document is
 the complete persistent goal for the review/planning task.
 
 Act as the independent review, delivery-planning, acceptance, and local
-integration owner for Game Bar Alternative. Operate two production lanes that
+integration owner for WidgetRail. Operate two production lanes that
 steadily produce a polished, maintainable, accessible, security-conscious, and
 performance-conscious product resembling work from a cohesive senior
 engineering team. The user has also authorized one temporary test-only lane to
@@ -737,7 +737,7 @@ Preserve the product direction already recorded in the roadmap:
 - Host-owned pinning/surface placement and a narrow trusted rich-media process
   before any YouTube widget; no generic community WebView.
 - Retain the native presentation, Microsoft GameInput/Guide, controller focus,
-  accessibility, rendering, motion, window, GBSS, bridge, and widget-domain
+  accessibility, rendering, motion, window, WRSS, bridge, and widget-domain
   owners. Modernize only explicitly assigned boundaries rather than replacing
   the whole native presentation stack.
 - Treat a complete `WidgetSnapshot` as a versioned last-admitted presentation

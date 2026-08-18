@@ -1,10 +1,10 @@
-# Game Bar Alternative — Implementation Agent Goal
+# WidgetRail — Implementation Agent Goal
 
 Ownership: user and independent review/delivery-planning agent. The
 implementation agent treats this file as read-only and must not edit, stage, or
 commit it.
 
-Act as the implementation agent for Game Bar Alternative.
+Act as the implementation agent for WidgetRail.
 
 Build a polished, maintainable, secure, accessible, and performance-conscious
 overlay platform, professional first-party widgets, and a public widget
