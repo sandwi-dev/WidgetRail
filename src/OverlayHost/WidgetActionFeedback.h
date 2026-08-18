@@ -11,7 +11,7 @@
 #include <unordered_map>
 #include <vector>
 
-namespace gba {
+namespace widgetrail {
 
 struct WidgetActionFailure;
 struct WidgetDescriptor;
@@ -182,4 +182,4 @@ private:
     std::map<std::wstring, CatalogEntry, std::less<>> catalog_;
 };
 
-} // namespace gba
+} // namespace widgetrail

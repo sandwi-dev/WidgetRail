@@ -29,9 +29,9 @@ void Check(const bool condition, const char* message) {
 }
 
 void CheckCompositionCoordinatePolicies() {
-    const auto dpi120 = gba::NormalizeCompositionUpdateOffset({5, -10}, 120);
-    const auto dpi144 = gba::NormalizeCompositionUpdateOffset({3, 9}, 144);
-    const auto fallback = gba::NormalizeCompositionUpdateOffset({7, -4}, 0);
+    const auto dpi120 = widgetrail::NormalizeCompositionUpdateOffset({5, -10}, 120);
+    const auto dpi144 = widgetrail::NormalizeCompositionUpdateOffset({3, 9}, 144);
+    const auto fallback = widgetrail::NormalizeCompositionUpdateOffset({7, -4}, 0);
     Check(std::abs(dpi120.x - 4.0F) < 0.001F &&
               std::abs(dpi120.y + 8.0F) < 0.001F,
           "125-percent BeginDraw pixels normalize to DIPs");
@@ -41,31 +41,31 @@ void CheckCompositionCoordinatePolicies() {
     Check(fallback.x == 7.0F && fallback.y == -4.0F,
           "missing DPI uses the 96-DPI update-offset contract");
 
-    gba::OverlayCompositionSurface::Frame content;
-    content.layer = gba::OverlayCompositionSurface::Layer::Content;
+    widgetrail::OverlayCompositionSurface::Frame content;
+    content.layer = widgetrail::OverlayCompositionSurface::Layer::Content;
     content.replacement = false;
-    gba::OverlayCompositionSurface::Frame guide;
-    guide.layer = gba::OverlayCompositionSurface::Layer::Guide;
+    widgetrail::OverlayCompositionSurface::Frame guide;
+    guide.layer = widgetrail::OverlayCompositionSurface::Layer::Guide;
     guide.replacement = false;
-    gba::OverlayCompositionSurface::Frame tray;
-    tray.layer = gba::OverlayCompositionSurface::Layer::Tray;
+    widgetrail::OverlayCompositionSurface::Frame tray;
+    tray.layer = widgetrail::OverlayCompositionSurface::Layer::Tray;
     tray.replacement = true;
-    Check(gba::OverlayCompositionSurface::FrameOwnsVisualOffset(content),
+    Check(widgetrail::OverlayCompositionSurface::FrameOwnsVisualOffset(content),
           "ordinary content repaint owns its visual offset");
-    Check(!gba::OverlayCompositionSurface::FrameOwnsVisualOffset(guide),
+    Check(!widgetrail::OverlayCompositionSurface::FrameOwnsVisualOffset(guide),
           "ordinary guide repaint preserves its latched chrome offset");
-    Check(!gba::OverlayCompositionSurface::FrameOwnsVisualOffset(tray),
+    Check(!widgetrail::OverlayCompositionSurface::FrameOwnsVisualOffset(tray),
           "tray surface replacement preserves its latched chrome offset");
 
     constexpr RECT work{0, 0, 1920, 1080};
-    const auto panel = gba::shell::ComputeContentWindowBoundsAboveGuide(
+    const auto panel = widgetrail::shell::ComputeContentWindowBoundsAboveGuide(
         work, 900, 760, 385, 5);
     Check(panel && panel->left == 580 && panel->right == 1340 &&
               panel->top == 510 && panel->bottom == 895,
           "panel-local content is centered and ends at the authored guide gap");
-    Check(!gba::shell::ComputeContentWindowBoundsAboveGuide(
+    Check(!widgetrail::shell::ComputeContentWindowBoundsAboveGuide(
               work, 900, 0, 385, 5) &&
-              !gba::shell::ComputeContentWindowBoundsAboveGuide(
+              !widgetrail::shell::ComputeContentWindowBoundsAboveGuide(
                   work, 900, 760, 385, -1),
           "invalid panel-local content placement fails closed");
 }
@@ -96,7 +96,7 @@ void CheckFrame(
     target->Clear(D2D1::ColorF(1 / 255.0F, 2 / 255.0F, 3 / 255.0F, 1.0F));
     target->SetTransform(D2D1::Matrix3x2F::Scale(scale, scale));
     target->SetAntialiasMode(D2D1_ANTIALIAS_MODE_PER_PRIMITIVE);
-    gba::shell::FillColorKeyRoundedRectangle(
+    widgetrail::shell::FillColorKeyRoundedRectangle(
         target.Get(),
         D2D1::RoundedRect(D2D1::RectF(8.0F, 8.0F, 88.0F, 56.0F), 12.0F, 12.0F),
         surface.Get());
@@ -173,10 +173,10 @@ void CheckPremultipliedFrame(
     target->Clear(D2D1::ColorF(0.0F, 0.0F, 0.0F, 0.0F));
     target->SetTransform(D2D1::Matrix3x2F::Scale(scale, scale));
     target->SetAntialiasMode(D2D1_ANTIALIAS_MODE_PER_PRIMITIVE);
-    gba::shell::FillColorKeyRoundedRectangle(
+    widgetrail::shell::FillColorKeyRoundedRectangle(
         target.Get(),
         D2D1::RoundedRect(D2D1::RectF(8.0F, 8.0F, 88.0F, 56.0F), 12.0F, 12.0F),
-        surface.Get(), gba::shell::OuterChromeBoundary::PremultipliedAlpha);
+        surface.Get(), widgetrail::shell::OuterChromeBoundary::PremultipliedAlpha);
     Check(target->GetAntialiasMode() == D2D1_ANTIALIAS_MODE_PER_PRIMITIVE,
           "premultiplied chrome retains antialiasing");
     target->SetTransform(D2D1::Matrix3x2F::Identity());
@@ -217,7 +217,7 @@ void CheckPremultipliedFrame(
 }
 
 void CheckRetainedTrayInvalidation() {
-    gba::shell::RetainedTrayState initial{
+    widgetrail::shell::RetainedTrayState initial{
         420, 84, 7,
         {
             {{8, 8, 68, 68}, L"settings", true, true},
@@ -225,9 +225,9 @@ void CheckRetainedTrayInvalidation() {
             {{144, 8, 204, 68}, L"audio", false, false},
         },
     };
-    Check(gba::shell::RequiresTrayRepaint(nullptr, initial),
+    Check(widgetrail::shell::RequiresTrayRepaint(nullptr, initial),
           "first tray frame rebuilds its retained child surface");
-    Check(!gba::shell::RequiresTrayRepaint(&initial, initial),
+    Check(!widgetrail::shell::RequiresTrayRepaint(&initial, initial),
           "content-only publication retains tray pixels");
 
     auto selected = initial;
@@ -235,42 +235,42 @@ void CheckRetainedTrayInvalidation() {
     selected.items[0].focused = false;
     selected.items[1].selected = true;
     selected.items[1].focused = true;
-    Check(gba::shell::RequiresTrayRepaint(&initial, selected),
+    Check(widgetrail::shell::RequiresTrayRepaint(&initial, selected),
           "selection replaces the complete retained tray surface");
 
     auto reordered = selected;
     std::swap(reordered.items[1].identity, reordered.items[2].identity);
-    Check(gba::shell::RequiresTrayRepaint(&selected, reordered),
+    Check(widgetrail::shell::RequiresTrayRepaint(&selected, reordered),
           "reorder replaces the complete retained tray surface");
 
     auto provider = reordered;
-    Check(!gba::shell::RequiresTrayRepaint(&reordered, provider),
+    Check(!widgetrail::shell::RequiresTrayRepaint(&reordered, provider),
           "provider, slider, scroll, focus, and motion retain unchanged tray pixels");
 
     auto appearance = provider;
     ++appearance.appearanceRevision;
-    Check(gba::shell::RequiresTrayRepaint(&provider, appearance),
+    Check(widgetrail::shell::RequiresTrayRepaint(&provider, appearance),
           "appearance revision rebuilds the tray child surface");
 }
 
 struct FixedChromePointerTestContext final {
     HWND content{};
-    gba::OverlayState state{
+    widgetrail::OverlayState state{
         {}, {L"settings", L"network", L"audio"}};
-    gba::shell::TrayLayout layout;
+    widgetrail::shell::TrayLayout layout;
     unsigned int activationCount{};
 };
 
 void ActivateFixedChromeTray(
     void* opaque, const float x, const float y) noexcept {
     auto& context = *static_cast<FixedChromePointerTestContext*>(opaque);
-    const auto* hit = gba::shell::HitTestTray(context.layout, x, y);
+    const auto* hit = widgetrail::shell::HitTestTray(context.layout, x, y);
     if (!hit || hit->slot >= context.state.order().size()) return;
     ++context.activationCount;
     const auto& widget = context.state.order()[hit->slot];
     if (context.state.TrySelectTrayWidget(widget) &&
         context.state.selectedSlot() == hit->slot) {
-        (void)context.state.Dispatch(gba::Command::Activate);
+        (void)context.state.Dispatch(widgetrail::Command::Activate);
     }
 }
 
@@ -285,7 +285,7 @@ LRESULT CALLBACK FixedChromeTestWindowProc(
         auto* context = reinterpret_cast<FixedChromePointerTestContext*>(
             GetWindowLongPtrW(window, GWLP_USERDATA));
         if (context) {
-            (void)gba::shell::RouteFixedChromePointerRelease(
+            (void)widgetrail::shell::RouteFixedChromePointerRelease(
                 window, context->content, lParam, context,
                 ActivateFixedChromeTray);
             return 0;
@@ -295,7 +295,7 @@ LRESULT CALLBACK FixedChromeTestWindowProc(
 }
 
 bool RejectChromeTarget(
-    gba::OverlayCompositionSurface& surface,
+    widgetrail::OverlayCompositionSurface& surface,
     HWND,
     std::wstring& error) {
     Check(surface.available(),
@@ -305,28 +305,28 @@ bool RejectChromeTarget(
 }
 
 void CheckFixedChromeWindowPolicy() {
-    Check(gba::shell::FixedChromeWindowStyle() == WS_POPUP,
+    Check(widgetrail::shell::FixedChromeWindowStyle() == WS_POPUP,
           "fixed chrome is a popup endpoint");
     const auto expectedExStyle = WS_EX_TOOLWINDOW | WS_EX_NOREDIRECTIONBITMAP |
         WS_EX_NOACTIVATE | WS_EX_TOPMOST;
-    Check(gba::shell::FixedChromeWindowExStyle() == expectedExStyle,
+    Check(widgetrail::shell::FixedChromeWindowExStyle() == expectedExStyle,
           "fixed chrome is non-activating, topmost, and absent from task switching");
 
     const RECT oddWork{0, 0, 2185, 1400};
     const RECT evenWork{0, 0, 2186, 1400};
-    const auto odd747 = gba::shell::ComputeFixedChromeWindowBounds(oddWork, 747, 141);
-    const auto odd748 = gba::shell::ComputeFixedChromeWindowBounds(oddWork, 748, 141);
-    const auto even747 = gba::shell::ComputeFixedChromeWindowBounds(evenWork, 747, 141);
-    const auto even748 = gba::shell::ComputeFixedChromeWindowBounds(evenWork, 748, 141);
+    const auto odd747 = widgetrail::shell::ComputeFixedChromeWindowBounds(oddWork, 747, 141);
+    const auto odd748 = widgetrail::shell::ComputeFixedChromeWindowBounds(oddWork, 748, 141);
+    const auto even747 = widgetrail::shell::ComputeFixedChromeWindowBounds(evenWork, 747, 141);
+    const auto even748 = widgetrail::shell::ComputeFixedChromeWindowBounds(evenWork, 748, 141);
     Check(odd747.right - odd747.left == 747 && odd748.right - odd748.left == 748 &&
               even747.right - even747.left == 747 && even748.right - even748.left == 748,
           "fractional-DPI parity keeps the authored physical chrome width exact");
     Check(odd747.bottom == oddWork.bottom && odd748.bottom == oddWork.bottom &&
               even747.bottom == evenWork.bottom && even748.bottom == evenWork.bottom,
           "odd and even work areas retain one physical bottom anchor");
-    const gba::shell::FixedChromeSessionKey session{
+    const widgetrail::shell::FixedChromeSessionKey session{
         oddWork, 144, 1.0, 7, {L"settings", L"network"}};
-    Check(gba::shell::SameFixedChromeSession(session, session),
+    Check(widgetrail::shell::SameFixedChromeSession(session, session),
           "equal applied work-area and catalog authority reuses fixed chrome");
     auto changedWork = session;
     changedWork.workArea = {100, 0, 2285, 1400};
@@ -336,10 +336,10 @@ void CheckFixedChromeWindowPolicy() {
     changedScale.interfaceScale = 1.25;
     auto changedAppearance = session;
     ++changedAppearance.appearanceRevision;
-    Check(!gba::shell::SameFixedChromeSession(session, changedWork) &&
-              !gba::shell::SameFixedChromeSession(session, changedCatalog) &&
-              !gba::shell::SameFixedChromeSession(session, changedScale) &&
-              !gba::shell::SameFixedChromeSession(session, changedAppearance),
+    Check(!widgetrail::shell::SameFixedChromeSession(session, changedWork) &&
+              !widgetrail::shell::SameFixedChromeSession(session, changedCatalog) &&
+              !widgetrail::shell::SameFixedChromeSession(session, changedScale) &&
+              !widgetrail::shell::SameFixedChromeSession(session, changedAppearance),
           "work-area, catalog, scale, and appearance changes rebuild fixed chrome");
 
     const wchar_t className[] = L"WidgetRail.FixedChromePolicyTests";
@@ -354,13 +354,13 @@ void CheckFixedChromeWindowPolicy() {
         640, 600, 1000, 500, nullptr, nullptr, windowClass.hInstance, nullptr);
     pointerContext.content = content;
     HWND chrome = CreateWindowExW(
-        gba::shell::FixedChromeWindowExStyle(), className, L"chrome",
-        gba::shell::FixedChromeWindowStyle(), 0, 0, 1, 1,
+        widgetrail::shell::FixedChromeWindowExStyle(), className, L"chrome",
+        widgetrail::shell::FixedChromeWindowStyle(), 0, 0, 1, 1,
         nullptr, nullptr, windowClass.hInstance, &pointerContext);
     Check(content && chrome, "content and chrome policy HWNDs are created");
     ShowWindow(content, SW_SHOWNOACTIVATE);
     const RECT fixed{720, 900, 1468, 1041};
-    Check(gba::shell::ApplyFixedChromeWindow(content, chrome, fixed, true),
+    Check(widgetrail::shell::ApplyFixedChromeWindow(content, chrome, fixed, true),
           "production policy applies the owned chrome rectangle");
     Check(GetWindow(chrome, GW_OWNER) == content,
           "chrome HWND has the content session window as its Win32 owner");
@@ -401,29 +401,29 @@ void CheckFixedChromeWindowPolicy() {
         }
     }
     ShowWindow(content, SW_HIDE);
-    Check(gba::shell::ApplyFixedChromeWindow(content, chrome, fixed, false) &&
+    Check(widgetrail::shell::ApplyFixedChromeWindow(content, chrome, fixed, false) &&
               !IsWindowVisible(content) && !IsWindowVisible(chrome),
           "paired hide removes the chrome endpoint");
     ShowWindow(content, SW_SHOWNOACTIVATE);
-    Check(gba::shell::ApplyFixedChromeWindow(content, chrome, fixed, true) &&
+    Check(widgetrail::shell::ApplyFixedChromeWindow(content, chrome, fixed, true) &&
               GetWindowRect(chrome, &actual) && EqualRect(&actual, &fixed),
           "reopen with equal inputs restores identical chrome corners");
     const RECT guide{850, 900, 1338, 950};
     const RECT tray{720, 950, 1468, 1041};
-    Check(gba::shell::IsFixedChromeHit({900, 920}, guide, tray) &&
-              gba::shell::IsFixedChromeHit({800, 1000}, guide, tray) &&
-              !gba::shell::IsFixedChromeHit({721, 901}, guide, tray),
+    Check(widgetrail::shell::IsFixedChromeHit({900, 920}, guide, tray) &&
+              widgetrail::shell::IsFixedChromeHit({800, 1000}, guide, tray) &&
+              !widgetrail::shell::IsFixedChromeHit({721, 901}, guide, tray),
           "chrome hit testing admits guide/tray and passes transparent gaps through");
 
     Check(SetWindowPos(
               content, HWND_TOPMOST, 640, 600, 1000, 500,
               SWP_NOACTIVATE) != FALSE,
           "content endpoint is placed for the applied chrome pointer route");
-    Check(pointerContext.state.Dispatch(gba::Command::ToggleOverlay),
+    Check(pointerContext.state.Dispatch(widgetrail::Command::ToggleOverlay),
           "existing overlay state activation owner becomes visible");
-    const auto trayLayout = gba::shell::ComputeTrayLayout(
+    const auto trayLayout = widgetrail::shell::ComputeTrayLayout(
         1000.0F, 500.0F, pointerContext.state.order().size(),
-        pointerContext.state.selectedSlot(), gba::shell::TrayBand{300.0F, 400.0F});
+        pointerContext.state.selectedSlot(), widgetrail::shell::TrayBand{300.0F, 400.0F});
     Check(trayLayout.has_value() && trayLayout->tiles.size() == 3,
           "production tray layout exposes the target tile");
     pointerContext.layout = *trayLayout;
@@ -440,7 +440,7 @@ void CheckFixedChromeWindowPolicy() {
     Check(pointerContext.activationCount == 1 &&
               pointerContext.state.selectedWidget() == L"network" &&
               pointerContext.state.activeWidget() == L"network" &&
-              pointerContext.state.focusRegion() == gba::FocusRegion::Widget,
+              pointerContext.state.focusRegion() == widgetrail::FocusRegion::Widget,
           "real chrome HWND release maps once through the existing tray selection and activation owner");
 
     ComPtr<ID2D1Factory1> compositionFactory;
@@ -448,21 +448,21 @@ void CheckFixedChromeWindowPolicy() {
               D2D1_FACTORY_TYPE_SINGLE_THREADED,
               IID_PPV_ARGS(compositionFactory.ReleaseAndGetAddressOf()))),
           "Direct2D factory is created for paired endpoint recovery");
-    gba::OverlayCompositionSurface composition;
+    widgetrail::OverlayCompositionSurface composition;
     std::wstring compositionError;
     ShowWindow(chrome, SW_SHOWNOACTIVATE);
-    Check(!gba::shell::InitializeFixedChromeComposition(
+    Check(!widgetrail::shell::InitializeFixedChromeComposition(
               composition, content, chrome, compositionFactory.Get(),
               compositionError, RejectChromeTarget) &&
               !composition.available() && !IsWindowVisible(chrome) &&
               compositionError == L"deterministic second-target failure",
           "second-target initialization failure resets the half-session and hides chrome");
-    Check(gba::shell::InitializeFixedChromeComposition(
+    Check(widgetrail::shell::InitializeFixedChromeComposition(
               composition, content, chrome, compositionFactory.Get(),
               compositionError),
           "real paired composition endpoints initialize for runtime recovery");
     ShowWindow(chrome, SW_SHOWNOACTIVATE);
-    gba::shell::ResetFixedChromeComposition(composition, chrome);
+    widgetrail::shell::ResetFixedChromeComposition(composition, chrome);
     Check(!composition.available() && !IsWindowVisible(chrome),
           "runtime composition or device failure resets and hides both endpoints");
 
@@ -495,7 +495,7 @@ int main() {
     CheckCompositionCoordinatePolicies();
     CheckRetainedTrayInvalidation();
     CheckFixedChromeWindowPolicy();
-    gba::shell::FillColorKeyRoundedRectangle(nullptr, {}, nullptr);
+    widgetrail::shell::FillColorKeyRoundedRectangle(nullptr, {}, nullptr);
 
     wic.Reset();
     d2d.Reset();

@@ -19,7 +19,7 @@ void Check(const bool condition, const char* message) {
 } // namespace
 
 int main() {
-    gba::input::GuideEdgeTracker tracker;
+    widgetrail::input::GuideEdgeTracker tracker;
     std::array<bool, XUSER_MAX_COUNT> state{};
     Check(tracker.Update(state) == 0, "initial neutral state is only a baseline");
     state[0] = true;
@@ -33,9 +33,9 @@ int main() {
     state = {};
     Check(tracker.Update(state) == 0, "multi-slot release is quiet");
 
-    gba::input::GuideCompatibilityActivation activation;
-    gba::input::GuideCompatibilityActivation::DeviceId first{};
-    gba::input::GuideCompatibilityActivation::DeviceId second{};
+    widgetrail::input::GuideCompatibilityActivation activation;
+    widgetrail::input::GuideCompatibilityActivation::DeviceId first{};
+    widgetrail::input::GuideCompatibilityActivation::DeviceId second{};
     first[0] = 1;
     second[0] = 2;
     Check(!activation.active() && activation.deviceCount() == 0,

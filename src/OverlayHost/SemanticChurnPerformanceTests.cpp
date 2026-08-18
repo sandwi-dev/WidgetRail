@@ -114,8 +114,8 @@ struct Clock final {
     return count == 0 ? 1 : count;
 }
 
-gba::WidgetNode MakeButton(const std::size_t index) {
-    gba::WidgetNode node;
+widgetrail::WidgetNode MakeButton(const std::size_t index) {
+    widgetrail::WidgetNode node;
     node.id = L"performance.action." + std::to_wstring(index);
     node.kind = L"button";
     node.text = L"Representative action " + std::to_wstring(index);
@@ -135,8 +135,8 @@ gba::WidgetNode MakeButton(const std::size_t index) {
     return node;
 }
 
-gba::WidgetSnapshot RepresentativeSnapshot() {
-    gba::WidgetSnapshot snapshot;
+widgetrail::WidgetSnapshot RepresentativeSnapshot() {
+    widgetrail::WidgetSnapshot snapshot;
     snapshot.sequence = 1;
     snapshot.instanceId = L"performance.synthetic.instance";
     snapshot.activeInputScopeId = L"performance.root";
@@ -145,7 +145,7 @@ gba::WidgetSnapshot RepresentativeSnapshot() {
     snapshot.root.kind = L"stack";
     snapshot.root.inputScopeId = snapshot.activeInputScopeId;
     for (std::size_t rowIndex = 0; rowIndex < kRowCount; ++rowIndex) {
-        gba::WidgetNode row;
+        widgetrail::WidgetNode row;
         row.id = L"performance.row." + std::to_wstring(rowIndex);
         row.kind = L"row";
         row.inputScopeId = snapshot.activeInputScopeId;
@@ -156,11 +156,11 @@ gba::WidgetSnapshot RepresentativeSnapshot() {
     return snapshot;
 }
 
-gba::WidgetNode& ActionAt(gba::WidgetSnapshot& snapshot, const std::size_t index) {
+widgetrail::WidgetNode& ActionAt(widgetrail::WidgetSnapshot& snapshot, const std::size_t index) {
     return snapshot.root.children[index / kColumnCount].children[index % kColumnCount];
 }
 
-[[nodiscard]] std::size_t SnapshotNodeCount(const gba::WidgetNode& root) {
+[[nodiscard]] std::size_t SnapshotNodeCount(const widgetrail::WidgetNode& root) {
     std::size_t count = 1;
     for (const auto& child : root.children) count += SnapshotNodeCount(child);
     return count;
@@ -204,8 +204,8 @@ gba::WidgetNode& ActionAt(gba::WidgetSnapshot& snapshot, const std::size_t index
 }
 
 [[nodiscard]] bool SameSemanticNode(
-    const gba::accessibility::Node& left,
-    const gba::accessibility::Node& right) noexcept {
+    const widgetrail::accessibility::Node& left,
+    const widgetrail::accessibility::Node& right) noexcept {
     return left.id == right.id && left.name == right.name && left.value == right.value &&
         left.actionId == right.actionId && left.role == right.role &&
         left.enabled == right.enabled && left.selected == right.selected &&
@@ -215,8 +215,8 @@ gba::WidgetNode& ActionAt(gba::WidgetSnapshot& snapshot, const std::size_t index
 }
 
 [[nodiscard]] std::size_t ChangedSemanticNodes(
-    const gba::accessibility::Tree& previous,
-    const gba::accessibility::Tree& current) {
+    const widgetrail::accessibility::Tree& previous,
+    const widgetrail::accessibility::Tree& current) {
     Check(previous.nodes.size() == current.nodes.size(),
           "representative semantic projection keeps a stable node count");
     std::size_t changed{};
@@ -228,9 +228,9 @@ gba::WidgetNode& ActionAt(gba::WidgetSnapshot& snapshot, const std::size_t index
     return changed;
 }
 
-[[nodiscard]] bool HasUnexpectedRenderError(const gba::RenderResult& result) noexcept {
+[[nodiscard]] bool HasUnexpectedRenderError(const widgetrail::RenderResult& result) noexcept {
     return std::ranges::any_of(result.diagnostics, [](const auto& diagnostic) {
-        return diagnostic.severity == gba::RenderDiagnosticSeverity::Error &&
+        return diagnostic.severity == widgetrail::RenderDiagnosticSeverity::Error &&
             diagnostic.code != L"missing_render_target";
     });
 }
@@ -300,23 +300,23 @@ Measurement RunMeasurement() {
     const auto hidden = MeasurePhase(clock, [] { std::this_thread::sleep_for(kIdleObservation); });
 
     auto snapshot = RepresentativeSnapshot();
-    gba::DeclarativeRenderer renderer{nullptr, nullptr, nullptr};
-    gba::DeclarativeRenderOptions options;
+    widgetrail::DeclarativeRenderer renderer{nullptr, nullptr, nullptr};
+    widgetrail::DeclarativeRenderOptions options;
     options.collectAccessibility = true;
-    constexpr gba::declarative::Rect viewport{0, 0, 980, 720};
+    constexpr widgetrail::declarative::Rect viewport{0, 0, 980, 720};
 
     auto initialRender = renderer.Render(
         nullptr, snapshot, snapshot.initialFocusId, viewport, options);
     Check(!HasUnexpectedRenderError(initialRender),
           "representative snapshot completes null-target native layout without product errors");
-    auto previousTree = gba::accessibility::BuildWidgetTree(
+    auto previousTree = widgetrail::accessibility::BuildWidgetTree(
         L"performance", L"synthetic-generation", snapshot, initialRender,
         snapshot.initialFocusId);
     Check(initialRender.accessibilityRegions.size() == kActionCount,
           "representative render exposes every action region");
     Check(previousTree.nodes.size() == kActionCount,
           "representative projection exposes every action exactly once");
-    Check(gba::accessibility::HasUniqueElementKeys(previousTree),
+    Check(widgetrail::accessibility::HasUniqueElementKeys(previousTree),
           "representative projection has unique stable semantic keys");
 
     const auto visibleIdle = MeasurePhase(
@@ -333,7 +333,7 @@ Measurement RunMeasurement() {
         snapshot.sequence++;
         const auto focus = L"performance.action." + std::to_wstring(selectedIndex);
         const auto render = renderer.Render(nullptr, snapshot, focus, viewport, options);
-        previousTree = gba::accessibility::BuildWidgetTree(
+        previousTree = widgetrail::accessibility::BuildWidgetTree(
             L"performance", L"synthetic-generation", snapshot, render, focus);
         Check(previousTree.focusedNode.has_value(), "warmup projection retains focus");
     }
@@ -356,7 +356,7 @@ Measurement RunMeasurement() {
             const auto render = renderer.Render(nullptr, snapshot, focus, viewport, options);
             Check(!HasUnexpectedRenderError(render),
                   "input update completes null-target native layout without product errors");
-            auto currentTree = gba::accessibility::BuildWidgetTree(
+            auto currentTree = widgetrail::accessibility::BuildWidgetTree(
                 L"performance", L"synthetic-generation", snapshot, render, focus);
             Check(currentTree.focusedNode &&
                       currentTree.nodes[*currentTree.focusedNode].id == focus,

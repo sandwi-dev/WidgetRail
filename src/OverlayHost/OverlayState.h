@@ -6,7 +6,7 @@
 #include <string_view>
 #include <vector>
 
-namespace gba {
+namespace widgetrail {
 
 enum class Surface {
     Hidden,
@@ -87,4 +87,4 @@ private:
     bool reorderMode_{false};
 };
 
-} // namespace gba
+} // namespace widgetrail

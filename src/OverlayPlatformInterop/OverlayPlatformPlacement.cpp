@@ -5,7 +5,7 @@
 #include <limits>
 #include <optional>
 
-namespace gba {
+namespace widgetrail {
 namespace {
 
 std::optional<int> ScalePlacementDip(
@@ -80,4 +80,4 @@ std::optional<OverlayPlacement> ComputeOverlayPlacement(
         static_cast<int>(x), static_cast<int>(y), width, height};
 }
 
-} // namespace gba
+} // namespace widgetrail

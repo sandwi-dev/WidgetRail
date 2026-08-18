@@ -23,14 +23,14 @@ void Near(const float actual, const float expected, const char* message) {
 }
 
 void OpensAndClosesWithinBounds() {
-    gba::OverlayTransitionTimeline timeline;
+    widgetrail::OverlayTransitionTimeline timeline;
     timeline.BeginOpen(10, false);
     auto frame = timeline.Sample(10, false);
     Near(frame.shellOpacity, 0.0F, "open starts transparent");
     Check(frame.shellActive, "open requests bounded follow-up work");
 
     frame = timeline.Sample(
-        10 + gba::OverlayTransitionTimeline::OpenDurationMilliseconds, false);
+        10 + widgetrail::OverlayTransitionTimeline::OpenDurationMilliseconds, false);
     Near(frame.shellOpacity, 1.0F, "open reaches opaque terminal state");
     Check(!frame.shellActive, "settled open owns no idle frames");
     Check(!timeline.TakeHideCompletion(), "open cannot request a physical hide");
@@ -40,7 +40,7 @@ void OpensAndClosesWithinBounds() {
     Near(frame.shellOpacity, 1.0F, "close starts from visible alpha");
     Check(frame.shellActive, "close requests bounded follow-up work");
     frame = timeline.Sample(
-        200 + gba::OverlayTransitionTimeline::CloseDurationMilliseconds, false);
+        200 + widgetrail::OverlayTransitionTimeline::CloseDurationMilliseconds, false);
     Near(frame.shellOpacity, 0.0F, "close reaches transparent terminal state");
     Check(!frame.active, "settled close owns no idle frames");
     Check(timeline.TakeHideCompletion(), "close completes one physical hide");
@@ -48,7 +48,7 @@ void OpensAndClosesWithinBounds() {
 }
 
 void ReversesWithoutOpacityDiscontinuity() {
-    gba::OverlayTransitionTimeline timeline;
+    widgetrail::OverlayTransitionTimeline timeline;
     timeline.BeginOpen(0, false);
     const auto opening = timeline.Sample(70, false);
     timeline.BeginClose(70, false);
@@ -65,7 +65,7 @@ void ReversesWithoutOpacityDiscontinuity() {
 }
 
 void InitialOpenWaitsForCommittedPaint() {
-    gba::OverlayTransitionTimeline timeline;
+    widgetrail::OverlayTransitionTimeline timeline;
     timeline.BeginOpen(0, false);
     (void)timeline.Sample(50, false);
     timeline.BeginClose(50, false);
@@ -85,13 +85,13 @@ void InitialOpenWaitsForCommittedPaint() {
     Near(frame.shellOpacity, 0.0F,
          "successful paint begins open from transparent");
     frame = timeline.Sample(
-        500 + gba::OverlayTransitionTimeline::OpenDurationMilliseconds, false);
+        500 + widgetrail::OverlayTransitionTimeline::OpenDurationMilliseconds, false);
     Near(frame.shellOpacity, 1.0F,
          "paint-primed initial open reaches full opacity");
 }
 
 void ReducedMotionSnapsAtStartAndMidFlight() {
-    gba::OverlayTransitionTimeline timeline;
+    widgetrail::OverlayTransitionTimeline timeline;
     timeline.BeginOpen(0, true);
     auto frame = timeline.Sample(0, true);
     Near(frame.shellOpacity, 1.0F, "reduced-motion open snaps visible");
@@ -114,12 +114,12 @@ void ReducedMotionSnapsAtStartAndMidFlight() {
 }
 
 void ContentRevealIsBoundedAndSnappable() {
-    gba::OverlayTransitionTimeline timeline;
+    widgetrail::OverlayTransitionTimeline timeline;
     timeline.BeginOpen(0, true);
     timeline.BeginContentReveal(10, false);
     auto frame = timeline.Sample(10, false);
     Near(frame.contentOpacity,
-         gba::OverlayTransitionTimeline::ContentRevealStartOpacity,
+         widgetrail::OverlayTransitionTimeline::ContentRevealStartOpacity,
          "replacement reveal starts from subtle nonzero opacity");
     Check(frame.contentActive, "replacement reveal requests a frame");
     timeline.SnapContentVisible();
@@ -129,7 +129,7 @@ void ContentRevealIsBoundedAndSnappable() {
 }
 
 void RepeatedContentRevealIsContinuous() {
-    gba::OverlayTransitionTimeline timeline;
+    widgetrail::OverlayTransitionTimeline timeline;
     timeline.BeginOpen(0, true);
     timeline.BeginContentReveal(10, false);
     const auto first = timeline.Sample(55, false);
@@ -144,7 +144,7 @@ void RepeatedContentRevealIsContinuous() {
 }
 
 void ExtentTransitionIsBoundedAndRetargetable() {
-    gba::OverlayExtentTransitionTimeline timeline;
+    widgetrail::OverlayExtentTransitionTimeline timeline;
     timeline.Begin(10, 620.0F, 520.0F, 980.0F, 560.0F, false);
     auto frame = timeline.Sample(10, false);
     Near(frame.widthDip, 620.0F, "extent transition starts at committed width");
@@ -165,14 +165,14 @@ void ExtentTransitionIsBoundedAndRetargetable() {
          "rapid reversal retargets from the presented height");
 
     frame = timeline.Sample(
-        80 + gba::OverlayExtentTransitionTimeline::DurationMilliseconds, false);
+        80 + widgetrail::OverlayExtentTransitionTimeline::DurationMilliseconds, false);
     Near(frame.widthDip, 820.0F, "retargeted extent reaches final width");
     Near(frame.heightDip, 430.0F, "retargeted extent reaches final height");
     Check(!frame.active, "settled extent owns no idle frames");
 }
 
 void ReducedMotionExtentSnapsImmediately() {
-    gba::OverlayExtentTransitionTimeline timeline;
+    widgetrail::OverlayExtentTransitionTimeline timeline;
     timeline.Begin(0, 520.0F, 520.0F, 980.0F, 560.0F, true);
     auto frame = timeline.Sample(0, true);
     Near(frame.widthDip, 980.0F, "reduced motion snaps destination width");
@@ -189,7 +189,7 @@ void ReducedMotionExtentSnapsImmediately() {
 }
 
 void HiddenExtentRetiresWithoutTerminalFrameWork() {
-    gba::OverlayExtentTransitionTimeline timeline;
+    widgetrail::OverlayExtentTransitionTimeline timeline;
     timeline.Begin(10, 980.0F, 700.0F, 540.0F, 620.0F, false);
     const auto presented = timeline.Sample(55, false);
     Check(presented.active,
@@ -215,11 +215,11 @@ void HiddenExtentRetiresWithoutTerminalFrameWork() {
 }
 
 void DestinationAdmissionOwnsLayoutBeforeEnvelopeSettlement() {
-    gba::OverlayPresentationTransaction transaction;
-    gba::WidgetSnapshot audioSnapshot;
+    widgetrail::OverlayPresentationTransaction transaction;
+    widgetrail::WidgetSnapshot audioSnapshot;
     audioSnapshot.instanceId = L"audio-mixer.default";
-    gba::WidgetSurfaceRequest audioRequest;
-    audioRequest.mode = gba::WidgetSurfaceMode::Compact;
+    widgetrail::WidgetSurfaceRequest audioRequest;
+    audioRequest.mode = widgetrail::WidgetSurfaceMode::Compact;
     audioRequest.preferredWidthDip = 520.0F;
     audioRequest.preferredHeightDip = 520.0F;
     transaction.RetainAdmittedWidget(
@@ -229,10 +229,10 @@ void DestinationAdmissionOwnsLayoutBeforeEnvelopeSettlement() {
               transaction.retainedSurfaceRequest(),
           "transaction exclusively retains the admitted source presentation");
 
-    constexpr gba::OverlayPresentationExtent audioExtent{592, 698};
-    constexpr gba::OverlayPresentationExtent networkExtent{632, 878};
-    constexpr gba::OverlayPlacement networkPlacement{484, 22, 632, 878};
-    constexpr gba::OverlayPlacement sharedContainer{484, 22, 632, 878};
+    constexpr widgetrail::OverlayPresentationExtent audioExtent{592, 698};
+    constexpr widgetrail::OverlayPresentationExtent networkExtent{632, 878};
+    constexpr widgetrail::OverlayPlacement networkPlacement{484, 22, 632, 878};
+    constexpr widgetrail::OverlayPlacement sharedContainer{484, 22, 632, 878};
     transaction.BeginExtentTransition(
         audioExtent, networkExtent, 100, false, true);
     const auto directive = transaction.PrepareCompositionAdmission(
@@ -254,7 +254,7 @@ void DestinationAdmissionOwnsLayoutBeforeEnvelopeSettlement() {
           "source extent remains only the visual envelope before settlement");
 
     const auto final = transaction.PrepareCompositionStep(
-        100 + gba::OverlayExtentTransitionTimeline::DurationMilliseconds,
+        100 + widgetrail::OverlayExtentTransitionTimeline::DurationMilliseconds,
         false);
     Check(final && final->finalFrame &&
               final->presentedExtentDip == networkExtent &&
@@ -275,11 +275,11 @@ void DestinationAdmissionOwnsLayoutBeforeEnvelopeSettlement() {
 }
 
 void CommittedDestinationDrivesLateAdmissionAndStableRefresh() {
-    gba::OverlayPresentationTransaction transaction;
-    constexpr gba::OverlayPresentationExtent retainedNetwork{560, 645};
-    constexpr gba::OverlayPresentationExtent admittedYtMusic{760, 385};
-    constexpr gba::OverlayPlacement networkPlacement{680, 250, 560, 645};
-    constexpr gba::OverlayPlacement networkContainer = networkPlacement;
+    widgetrail::OverlayPresentationTransaction transaction;
+    constexpr widgetrail::OverlayPresentationExtent retainedNetwork{560, 645};
+    constexpr widgetrail::OverlayPresentationExtent admittedYtMusic{760, 385};
+    constexpr widgetrail::OverlayPlacement networkPlacement{680, 250, 560, 645};
+    constexpr widgetrail::OverlayPlacement networkContainer = networkPlacement;
     const auto network = transaction.PrepareCompositionAdmission(
         0, 0, networkPlacement, networkContainer, retainedNetwork,
         10, false, false);
@@ -289,18 +289,18 @@ void CommittedDestinationDrivesLateAdmissionAndStableRefresh() {
               transaction.CommittedDestinationExtent(admittedYtMusic) == retainedNetwork &&
               transaction.PresentedExtent(admittedYtMusic, true) == retainedNetwork,
           "late provider model changes cannot replace committed destination authority");
-    Check(gba::DecideOverlayPresentation(
+    Check(widgetrail::DecideOverlayPresentation(
               true, true,
               transaction.CommittedDestinationExtent(admittedYtMusic),
-              admittedYtMusic) == gba::OverlayPresentationDirective::Place,
+              admittedYtMusic) == widgetrail::OverlayPresentationDirective::Place,
           "YT admission requests placement against the retained Network destination");
 
     constexpr int guideTop = 900;
     constexpr int authoredGap = 5;
-    constexpr gba::OverlayPlacement ytPlacement{
+    constexpr widgetrail::OverlayPlacement ytPlacement{
         580, guideTop - authoredGap - admittedYtMusic.heightDip,
         admittedYtMusic.widthDip, admittedYtMusic.heightDip};
-    constexpr gba::OverlayPlacement motionContainer{
+    constexpr widgetrail::OverlayPlacement motionContainer{
         580, guideTop - authoredGap - retainedNetwork.heightDip,
         admittedYtMusic.widthDip, retainedNetwork.heightDip};
     transaction.BeginExtentTransition(
@@ -309,7 +309,7 @@ void CommittedDestinationDrivesLateAdmissionAndStableRefresh() {
         retainedNetwork.widthDip, retainedNetwork.heightDip,
         ytPlacement, motionContainer, admittedYtMusic,
         100, false, true);
-    const auto visibleBottom = [&](const gba::CompositionMotionPlan& motion) {
+    const auto visibleBottom = [&](const widgetrail::CompositionMotionPlan& motion) {
         return static_cast<float>(motionContainer.y) + motion.offsetY +
             static_cast<float>(ytPlacement.height) * motion.scaleY;
     };
@@ -334,10 +334,10 @@ void CommittedDestinationDrivesLateAdmissionAndStableRefresh() {
     const auto presentedMidpoint = transaction.PresentedExtent(
         admittedYtMusic, true);
     Check(presentedMidpoint != admittedYtMusic &&
-              gba::DecideOverlayPresentation(
+              widgetrail::DecideOverlayPresentation(
                   true, true,
                   transaction.CommittedDestinationExtent(admittedYtMusic),
-                  admittedYtMusic) == gba::OverlayPresentationDirective::Repaint,
+                  admittedYtMusic) == widgetrail::OverlayPresentationDirective::Repaint,
           "same-destination lifecycle refresh repaints without restarting motion");
     transaction.AcceptCompositionRepaint(L"widgetrail.samples.ytmusic");
     const auto final = transaction.PrepareCompositionStep(240, false);
@@ -352,10 +352,10 @@ void CommittedDestinationDrivesLateAdmissionAndStableRefresh() {
 }
 
 void ReducedMotionAdmissionCommitsDestinationDirectly() {
-    gba::OverlayPresentationTransaction transaction;
-    constexpr gba::OverlayPresentationExtent compact{592, 698};
-    constexpr gba::OverlayPresentationExtent wide{1052, 878};
-    constexpr gba::OverlayPlacement placement{274, 22, 1052, 878};
+    widgetrail::OverlayPresentationTransaction transaction;
+    constexpr widgetrail::OverlayPresentationExtent compact{592, 698};
+    constexpr widgetrail::OverlayPresentationExtent wide{1052, 878};
+    constexpr widgetrail::OverlayPlacement placement{274, 22, 1052, 878};
     transaction.BeginExtentTransition(compact, wide, 400, true, true);
     const auto directive = transaction.PrepareCompositionAdmission(
         592, 698, placement, placement, wide, 400, true, true);
@@ -369,12 +369,12 @@ void ReducedMotionAdmissionCommitsDestinationDirectly() {
 }
 
 void AnimationPreferencePathsPreserveContainerGeometry() {
-    constexpr gba::OverlayPresentationExtent sourceExtent{880, 445};
-    constexpr gba::OverlayPresentationExtent destinationExtent{580, 345};
-    constexpr gba::OverlayPlacement destinationPlacement{450, 300, 580, 345};
-    constexpr gba::OverlayPlacement retainedContainer{300, 200, 880, 445};
+    constexpr widgetrail::OverlayPresentationExtent sourceExtent{880, 445};
+    constexpr widgetrail::OverlayPresentationExtent destinationExtent{580, 345};
+    constexpr widgetrail::OverlayPlacement destinationPlacement{450, 300, 580, 345};
+    constexpr widgetrail::OverlayPlacement retainedContainer{300, 200, 880, 445};
 
-    gba::OverlayPresentationTransaction snapTransaction;
+    widgetrail::OverlayPresentationTransaction snapTransaction;
     const auto snap = snapTransaction.PrepareCompositionAdmission(
         sourceExtent.widthDip, sourceExtent.heightDip,
         destinationPlacement, retainedContainer, destinationExtent,
@@ -401,7 +401,7 @@ void AnimationPreferencePathsPreserveContainerGeometry() {
     Near(snapped->offsetY, snap.initialPresentation.offsetY,
          "settled animation-off y offset matches admission");
 
-    gba::OverlayPresentationTransaction animatedTransaction;
+    widgetrail::OverlayPresentationTransaction animatedTransaction;
     animatedTransaction.BeginExtentTransition(
         sourceExtent, destinationExtent, 200, false, true);
     const auto animated = animatedTransaction.PrepareCompositionAdmission(
@@ -410,14 +410,14 @@ void AnimationPreferencePathsPreserveContainerGeometry() {
         200, false, true);
     Check(animated.animateMotion,
           "animation-on admission retains the existing extent motion path");
-    const auto expected = gba::PlanCompositionMotion(
+    const auto expected = widgetrail::PlanCompositionMotion(
         static_cast<unsigned int>(retainedContainer.width),
         static_cast<unsigned int>(retainedContainer.height),
         static_cast<unsigned int>(destinationPlacement.width),
         static_cast<unsigned int>(destinationPlacement.height),
         static_cast<float>(sourceExtent.widthDip),
         static_cast<float>(sourceExtent.heightDip),
-        gba::CompositionVerticalAnchor::Bottom);
+        widgetrail::CompositionVerticalAnchor::Bottom);
     Near(animated.initialPresentation.scaleX, expected.scaleX,
          "animation-on admission preserves existing x scale");
     Near(animated.initialPresentation.scaleY, expected.scaleY,
@@ -429,28 +429,28 @@ void AnimationPreferencePathsPreserveContainerGeometry() {
 }
 
 void ClockAndDecisionsAreStable() {
-    gba::OverlayTransitionTimeline timeline;
+    widgetrail::OverlayTransitionTimeline timeline;
     timeline.BeginOpen(100, false);
     const auto forward = timeline.Sample(120, false);
     const auto reversedClock = timeline.Sample(90, false);
     Near(reversedClock.shellOpacity, forward.shellOpacity,
          "reversed clocks cannot rewind a transition");
 
-    Check(gba::ShouldRevealWidgetContent(
+    Check(widgetrail::ShouldRevealWidgetContent(
               false, {}, true, L"music"),
           "dashboard to widget starts content reveal");
-    Check(gba::ShouldRevealWidgetContent(
+    Check(widgetrail::ShouldRevealWidgetContent(
               true, L"audio", true, L"network"),
           "active widget identity change starts content reveal");
-    Check(gba::ShouldRevealWidgetContent(
+    Check(widgetrail::ShouldRevealWidgetContent(
               true, L"audio", true, L"audio", true),
           "same public ID with replaced runtime starts content reveal");
-    Check(!gba::ShouldRevealWidgetContent(
+    Check(!widgetrail::ShouldRevealWidgetContent(
               true, L"audio", true, L"audio", false),
           "same identity snapshot update never flashes content");
-    Check(gba::ShouldSnapWidgetContentVisible(true, false, true),
+    Check(widgetrail::ShouldSnapWidgetContentVisible(true, false, true),
           "entering widget focus snaps content visible");
-    Check(!gba::ShouldSnapWidgetContentVisible(true, true, true),
+    Check(!widgetrail::ShouldSnapWidgetContentVisible(true, true, true),
           "ordinary focused snapshot update does not alter transition");
 }
 

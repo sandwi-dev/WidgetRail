@@ -11,7 +11,7 @@
 #include <limits>
 #include <string>
 
-namespace gba {
+namespace widgetrail {
 namespace {
 
 constexpr std::size_t kMaximumPathCharacters = 32'767;
@@ -199,4 +199,4 @@ ScrollEvidencePublishResult ScrollEvidenceProbe::Publish(
         : ScrollEvidencePublishResult::UnavailablePath;
 }
 
-} // namespace gba
+} // namespace widgetrail

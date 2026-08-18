@@ -15,9 +15,9 @@
 namespace {
 
 using Microsoft::WRL::ComPtr;
-using gba::DeclarativeRenderer;
-using gba::WidgetSnapshot;
-using gba::declarative::Rect;
+using widgetrail::DeclarativeRenderer;
+using widgetrail::WidgetSnapshot;
+using widgetrail::declarative::Rect;
 
 int checks{};
 
@@ -40,21 +40,21 @@ bool Contains(const Rect& outer, const Rect& inner) {
         inner.y + inner.height <= outer.y + outer.height + 0.01F;
 }
 
-gba::RenderResult RenderAt(
+widgetrail::RenderResult RenderAt(
     DeclarativeRenderer& renderer,
     const WidgetSnapshot& snapshot,
     const std::wstring_view focused,
     const float width,
     const float height) {
-    gba::DeclarativeRenderOptions options;
-    options.responsiveViewport = gba::declarative::Size{width, height};
+    widgetrail::DeclarativeRenderOptions options;
+    options.responsiveViewport = widgetrail::declarative::Size{width, height};
     return renderer.Render(
         nullptr, snapshot, focused, {0.0F, 0.0F, width, height}, options);
 }
 
 void Run(const std::filesystem::path& fixturePath) {
     std::wstring error;
-    const auto parsed = gba::testing::ParseWidgetSnapshotResponse(
+    const auto parsed = widgetrail::testing::ParseWidgetSnapshotResponse(
         ReadUtf8(fixturePath), error);
     Check(parsed.has_value(), "production bridge parses the managed Network fixture");
     const auto& snapshot = *parsed;

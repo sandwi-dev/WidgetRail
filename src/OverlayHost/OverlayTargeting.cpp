@@ -1,6 +1,6 @@
 #include "OverlayTargeting.h"
 
-namespace gba {
+namespace widgetrail {
 
 bool DisplayRefreshAccumulator::Enqueue(
     const bool visible,
@@ -41,4 +41,4 @@ bool PlacementRefreshGate::Complete() noexcept {
     return result;
 }
 
-} // namespace gba
+} // namespace widgetrail

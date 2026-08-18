@@ -20,7 +20,7 @@
 
 namespace fs = std::filesystem;
 using Microsoft::WRL::ComPtr;
-using namespace gba::host_testing;
+using namespace widgetrail::host_testing;
 
 namespace {
 

@@ -3,7 +3,7 @@
 #include <algorithm>
 #include <cmath>
 
-namespace gba {
+namespace widgetrail {
 namespace {
 
 constexpr float kTargetEpsilon = 0.0001F;
@@ -187,4 +187,4 @@ DeclarativeMotionSample DeclarativeMotionTimeline::Sample(
     }, true};
 }
 
-} // namespace gba
+} // namespace widgetrail

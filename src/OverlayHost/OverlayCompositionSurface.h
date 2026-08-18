@@ -10,7 +10,7 @@
 #include <span>
 #include <string>
 
-namespace gba {
+namespace widgetrail {
 
 /// BeginDraw returns a backing-surface offset in physical pixels. Direct2D
 /// drawing uses DIPs after SetDpi, so normalize before composing the offset
@@ -148,4 +148,4 @@ private:
     [[nodiscard]] const LayerState& StateFor(Layer layer) const noexcept;
 };
 
-} // namespace gba
+} // namespace widgetrail

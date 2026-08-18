@@ -5,7 +5,7 @@
 
 #include <cstdint>
 
-namespace gba::platform {
+namespace widgetrail::platform {
 
 inline constexpr std::uint64_t kGuideDebounceMilliseconds = 150;
 
@@ -23,11 +23,11 @@ class ControllerFrameTracker final {
 public:
     void Prime(
         bool connected,
-        const GbaOverlayPlatformRawControllerState& state,
+        const WidgetRailOverlayPlatformRawControllerState& state,
         std::uint64_t nowMilliseconds) noexcept;
-    [[nodiscard]] GbaOverlayPlatformControllerFrame Update(
+    [[nodiscard]] WidgetRailOverlayPlatformControllerFrame Update(
         bool connected,
-        const GbaOverlayPlatformRawControllerState& state,
+        const WidgetRailOverlayPlatformRawControllerState& state,
         std::uint64_t nowMilliseconds) noexcept;
     void Reset() noexcept;
     [[nodiscard]] bool primed() const noexcept { return primed_; }
@@ -38,9 +38,9 @@ private:
     bool leftTriggerPressed_{};
     bool rightTriggerPressed_{};
     bool recoveryChordHeld_{};
-    gba::input::StickNavigator stickNavigator_;
-    gba::input::StickNavigator dpadNavigator_{
-        gba::input::StickNavigationOptions{1, 0, 360, 125}};
+    widgetrail::input::StickNavigator stickNavigator_;
+    widgetrail::input::StickNavigator dpadNavigator_{
+        widgetrail::input::StickNavigationOptions{1, 0, 360, 125}};
 };
 
-} // namespace gba::platform
+} // namespace widgetrail::platform

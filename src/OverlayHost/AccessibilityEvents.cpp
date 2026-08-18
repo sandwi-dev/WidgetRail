@@ -2,7 +2,7 @@
 
 #include <algorithm>
 
-namespace gba::accessibility {
+namespace widgetrail::accessibility {
 namespace {
 
 bool SameRect(const declarative::Rect& left, const declarative::Rect& right) noexcept {
@@ -126,4 +126,4 @@ EventPlan PlanEvents(const Tree* previous, const Tree* current) {
     return plan;
 }
 
-} // namespace gba::accessibility
+} // namespace widgetrail::accessibility

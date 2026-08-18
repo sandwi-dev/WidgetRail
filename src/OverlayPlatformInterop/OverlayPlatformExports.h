@@ -1,15 +1,15 @@
 #pragma once
 
 #if defined(_WIN32)
-#define GBA_OVERLAY_PLATFORM_CALL __stdcall
-#if defined(GBA_OVERLAY_PLATFORM_EXPORTS)
-#define GBA_OVERLAY_PLATFORM_API __declspec(dllexport)
-#elif defined(GBA_OVERLAY_PLATFORM_IMPORTS)
-#define GBA_OVERLAY_PLATFORM_API __declspec(dllimport)
+#define WRAIL_OVERLAY_PLATFORM_CALL __stdcall
+#if defined(WRAIL_OVERLAY_PLATFORM_EXPORTS)
+#define WRAIL_OVERLAY_PLATFORM_API __declspec(dllexport)
+#elif defined(WRAIL_OVERLAY_PLATFORM_IMPORTS)
+#define WRAIL_OVERLAY_PLATFORM_API __declspec(dllimport)
 #else
-#define GBA_OVERLAY_PLATFORM_API
+#define WRAIL_OVERLAY_PLATFORM_API
 #endif
 #else
-#define GBA_OVERLAY_PLATFORM_CALL
-#define GBA_OVERLAY_PLATFORM_API
+#define WRAIL_OVERLAY_PLATFORM_CALL
+#define WRAIL_OVERLAY_PLATFORM_API
 #endif

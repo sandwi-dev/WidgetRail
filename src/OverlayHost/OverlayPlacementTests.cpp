@@ -27,7 +27,7 @@ void CheckNear(
     Check(std::abs(actual - expected) <= tolerance, message);
 }
 
-void FullyContained(const gba::OverlayPlacement& value, const gba::PhysicalRect& work) {
+void FullyContained(const widgetrail::OverlayPlacement& value, const widgetrail::PhysicalRect& work) {
     Check(value.width > 0 && value.height > 0, "placement has positive size");
     Check(value.x >= work.left && value.y >= work.top, "placement starts inside work area");
     Check(value.x + value.width <= work.right, "placement right edge is contained");
@@ -35,7 +35,7 @@ void FullyContained(const gba::OverlayPlacement& value, const gba::PhysicalRect&
 }
 
 void SurfaceContained(
-    const gba::OverlaySurfaceGeometry& geometry,
+    const widgetrail::OverlaySurfaceGeometry& geometry,
     const float width,
     const float height) {
     constexpr float tolerance = 0.002F;
@@ -78,7 +78,7 @@ void SurfaceContained(
 
 void ColdDashboardProfilesUseOneBottomAnchor() {
     struct Profile final {
-        gba::PhysicalRect work;
+        widgetrail::PhysicalRect work;
         unsigned int dpi;
         float interfaceScale;
     };
@@ -93,11 +93,11 @@ void ColdDashboardProfilesUseOneBottomAnchor() {
         Profile{{-3440, -200, 0, 1240}, 144, 1.0F},
     };
     for (const auto& profile : profiles) {
-        const auto dashboard = gba::ComputeOverlayPlacement(
+        const auto dashboard = widgetrail::ComputeOverlayPlacement(
             profile.work, profile.dpi,
             1180.0F * profile.interfaceScale,
             180.0F * profile.interfaceScale);
-        const auto host = gba::ComputeOverlayPlacement(
+        const auto host = widgetrail::ComputeOverlayPlacement(
             profile.work, profile.dpi,
             1180.0F * profile.interfaceScale,
             700.0F * profile.interfaceScale);
@@ -105,14 +105,14 @@ void ColdDashboardProfilesUseOneBottomAnchor() {
               "cold dashboard and shared host placements resolve");
         FullyContained(*dashboard, profile.work);
         FullyContained(*host, profile.work);
-        const auto presentation = gba::PlanCompositionMotion(
+        const auto presentation = widgetrail::PlanCompositionMotion(
             static_cast<unsigned int>(host->width),
             static_cast<unsigned int>(host->height),
             static_cast<unsigned int>(dashboard->width),
             static_cast<unsigned int>(dashboard->height),
             static_cast<float>(dashboard->width),
             static_cast<float>(dashboard->height),
-            gba::CompositionVerticalAnchor::Bottom);
+            widgetrail::CompositionVerticalAnchor::Bottom);
         const float visibleLeft = static_cast<float>(host->x) + presentation.offsetX;
         const float visibleTop = static_cast<float>(host->y) + presentation.offsetY;
         const float visibleRight = visibleLeft + dashboard->width * presentation.scaleX;
@@ -144,24 +144,24 @@ void ColdDashboardProfilesUseOneBottomAnchor() {
               trayBottom > titleTop,
               "dashboard title and tray UIA transforms share visible content bounds");
 
-        const auto widget = gba::PlanCompositionMotion(
+        const auto widget = widgetrail::PlanCompositionMotion(
             static_cast<unsigned int>(host->width),
             static_cast<unsigned int>(host->height),
             static_cast<unsigned int>(host->width),
             static_cast<unsigned int>(host->height),
             static_cast<float>(host->width),
             static_cast<float>(host->height),
-            gba::CompositionVerticalAnchor::Bottom);
+            widgetrail::CompositionVerticalAnchor::Bottom);
         Check(widget.offsetY == 0.0F,
               "first full widget retains the same shared-host bottom anchor");
-        const auto reshown = gba::PlanCompositionMotion(
+        const auto reshown = widgetrail::PlanCompositionMotion(
             static_cast<unsigned int>(host->width),
             static_cast<unsigned int>(host->height),
             static_cast<unsigned int>(dashboard->width),
             static_cast<unsigned int>(dashboard->height),
             static_cast<float>(dashboard->width),
             static_cast<float>(dashboard->height),
-            gba::CompositionVerticalAnchor::Bottom);
+            widgetrail::CompositionVerticalAnchor::Bottom);
         Check(reshown.offsetY == presentation.offsetY,
               "dashboard re-show restores the exact cold bottom anchor");
     }
@@ -169,7 +169,7 @@ void ColdDashboardProfilesUseOneBottomAnchor() {
 
 void VariableWidgetSurfacesKeepHostChromeStationary() {
     struct Profile final {
-        gba::PhysicalRect work;
+        widgetrail::PhysicalRect work;
         unsigned int dpi;
         float interfaceScale;
     };
@@ -181,9 +181,9 @@ void VariableWidgetSurfacesKeepHostChromeStationary() {
         Profile{{-3440, -200, 0, 1240}, 144U, 1.0F},
     };
 
-    gba::WidgetSurfaceRequest compact{gba::WidgetSurfaceMode::Compact};
-    gba::WidgetSurfaceRequest standard{gba::WidgetSurfaceMode::Standard};
-    gba::WidgetSurfaceRequest wide{gba::WidgetSurfaceMode::Wide};
+    widgetrail::WidgetSurfaceRequest compact{widgetrail::WidgetSurfaceMode::Compact};
+    widgetrail::WidgetSurfaceRequest standard{widgetrail::WidgetSurfaceMode::Standard};
+    widgetrail::WidgetSurfaceRequest wide{widgetrail::WidgetSurfaceMode::Wide};
     auto heightOnly = compact;
     heightOnly.preferredWidthDip = 560.0F;
     heightOnly.preferredHeightDip = 700.0F;
@@ -198,25 +198,25 @@ void VariableWidgetSurfacesKeepHostChromeStationary() {
         };
         std::optional<ChromeBounds> reference;
         for (const auto& request : {compact, standard, wide, heightOnly}) {
-            const auto surface = gba::ResolveWidgetSurface(
+            const auto surface = widgetrail::ResolveWidgetSurface(
                 request,
-                gba::WidgetSurfaceConstraints{
+                widgetrail::WidgetSurfaceConstraints{
                     profile.work, profile.dpi, profile.interfaceScale, textScale});
             Check(surface.has_value(),
                   "variable widget surface resolves against live work area");
-            const auto placement = gba::ComputeOverlayPlacement(
+            const auto placement = widgetrail::ComputeOverlayPlacement(
                 profile.work, profile.dpi,
                 surface->windowWidthDip * profile.interfaceScale,
                 surface->windowHeightDip * profile.interfaceScale);
             Check(placement.has_value(),
                   "variable widget surface receives a physical placement");
             FullyContained(*placement, profile.work);
-            const auto metrics = gba::ComputeOverlayRenderMetrics(
+            const auto metrics = widgetrail::ComputeOverlayRenderMetrics(
                 placement->width, placement->height,
                 profile.dpi, profile.interfaceScale);
             Check(metrics.has_value(),
                   "variable widget placement produces render metrics");
-            const auto geometry = gba::ComputeOverlaySurfaceGeometry(
+            const auto geometry = widgetrail::ComputeOverlaySurfaceGeometry(
                 metrics->viewportWidthDip, metrics->viewportHeightDip,
                 surface->panelWidthDip, surface->panelHeightDip);
             Check(geometry.has_value(),
@@ -268,7 +268,7 @@ void VariableWidgetSurfacesKeepHostChromeStationary() {
 int main() {
     ColdDashboardProfilesUseOneBottomAnchor();
     VariableWidgetSurfacesKeepHostChromeStationary();
-    using namespace gba;
+    using namespace widgetrail;
 
     Check(ResolveControllerGuideDensity(800.0F, 1.0F) ==
               ControllerGuideDensity::Full,

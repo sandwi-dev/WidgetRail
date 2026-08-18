@@ -7,7 +7,7 @@
 #include <filesystem>
 #include <utility>
 
-namespace gba::packages {
+namespace widgetrail::packages {
 namespace {
 
 using Microsoft::WRL::ComPtr;
@@ -214,4 +214,4 @@ std::wstring LocalWidgetPackageImport::NewOperationId() {
     return result;
 }
 
-} // namespace gba::packages
+} // namespace widgetrail::packages

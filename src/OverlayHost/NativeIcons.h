@@ -4,7 +4,7 @@
 #include <d2d1.h>
 #include <string_view>
 
-namespace gba::icons {
+namespace widgetrail::icons {
 
 // Keep this closed set in lockstep with WidgetProtocol.WidgetGlyph. Widgets
 // select a semantic ID; they never provide geometry, fonts, SVG, or paths.
@@ -76,4 +76,4 @@ struct LoadingIndicatorArc final {
     ID2D1Brush* brush,
     float strokeWidth = 2.0F) noexcept;
 
-} // namespace gba::icons
+} // namespace widgetrail::icons

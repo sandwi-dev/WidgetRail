@@ -46,8 +46,8 @@ bool WaitUntil(const auto& predicate) {
     return predicate();
 }
 
-gba::WidgetSnapshot TextEntrySnapshot() {
-    gba::WidgetNode entry{};
+widgetrail::WidgetSnapshot TextEntrySnapshot() {
+    widgetrail::WidgetNode entry{};
     entry.id = L"search";
     entry.kind = L"textEntry";
     entry.actionId = L"search.commit";
@@ -55,7 +55,7 @@ gba::WidgetSnapshot TextEntrySnapshot() {
     entry.textEntryPlaceholder = L"Search installed games";
     entry.textEntryMaximumLength = 64;
     entry.isTextEntry = true;
-    gba::WidgetSnapshot snapshot{};
+    widgetrail::WidgetSnapshot snapshot{};
     snapshot.sequence = 17;
     snapshot.activeInputScopeId = L"root";
     snapshot.root.id = L"root";
@@ -66,74 +66,74 @@ gba::WidgetSnapshot TextEntrySnapshot() {
 
 void CheckAdmission() {
     auto snapshot = TextEntrySnapshot();
-    const auto request = gba::input::CaptureTextEntryActionRequest(
+    const auto request = widgetrail::input::CaptureTextEntryActionRequest(
         L"game-launcher", L"generation-a", snapshot, L"search");
     Check(request.has_value(), "current text entry captures bounded immutable authority");
     if (!request) return;
-    const auto current = gba::input::ResolveTextEntryActionTarget(
+    const auto current = widgetrail::input::ResolveTextEntryActionTarget(
         *request, true, L"game-launcher", L"generation-a", snapshot);
     Check(current && current->actionId == L"search.commit" &&
         current->sourceElementId == L"search" &&
         current->activeInputScopeId == L"root",
         "unchanged current request re-resolves one exact action");
-    const gba::accessibility::ActionRequest focusRequest{
-        gba::accessibility::ActionKind::Focus,
+    const widgetrail::accessibility::ActionRequest focusRequest{
+        widgetrail::accessibility::ActionKind::Focus,
         L"game-launcher", L"generation-a", snapshot.sequence,
         snapshot.activeInputScopeId,
-        gba::accessibility::ElementDomain::Widget,
+        widgetrail::accessibility::ElementDomain::Widget,
         L"search", L"search.commit",
     };
-    const auto focused = gba::accessibility::ResolveActionRequest(
+    const auto focused = widgetrail::accessibility::ResolveActionRequest(
         focusRequest, L"game-launcher", L"generation-a", snapshot);
-    Check(focused && focused->kind == gba::accessibility::ActionKind::Focus &&
+    Check(focused && focused->kind == widgetrail::accessibility::ActionKind::Focus &&
         focused->nodeId == L"search",
         "current TextEntry admits exact UIA focus through the existing action owner");
     auto invokeRequest = focusRequest;
-    invokeRequest.kind = gba::accessibility::ActionKind::Invoke;
-    const auto invoked = gba::accessibility::ResolveActionRequest(
+    invokeRequest.kind = widgetrail::accessibility::ActionKind::Invoke;
+    const auto invoked = widgetrail::accessibility::ResolveActionRequest(
         invokeRequest, L"game-launcher", L"generation-a", snapshot);
     Check(invoked && invoked->protocolButton == L"A" &&
         invoked->nodeId == L"search",
         "current TextEntry Invoke resolves to the existing modal-opening A action");
-    Check(!gba::input::ResolveTextEntryActionTarget(
+    Check(!widgetrail::input::ResolveTextEntryActionTarget(
         *request, false, L"game-launcher", L"generation-a", snapshot),
         "hidden or inactive widget rejects modal commit");
-    Check(!gba::input::ResolveTextEntryActionTarget(
+    Check(!widgetrail::input::ResolveTextEntryActionTarget(
         *request, true, L"replacement", L"generation-a", snapshot),
         "active widget replacement rejects modal commit");
-    Check(!gba::input::ResolveTextEntryActionTarget(
+    Check(!widgetrail::input::ResolveTextEntryActionTarget(
         *request, true, L"game-launcher", L"generation-b", snapshot),
         "runtime replacement rejects modal commit");
 
     auto changed = snapshot;
     ++changed.sequence;
-    Check(!gba::input::ResolveTextEntryActionTarget(
+    Check(!widgetrail::input::ResolveTextEntryActionTarget(
         *request, true, L"game-launcher", L"generation-a", changed),
         "snapshot refresh rejects authority retained across the modal loop");
     changed = snapshot;
     changed.activeInputScopeId = L"replacement-scope";
-    Check(!gba::input::ResolveTextEntryActionTarget(
+    Check(!widgetrail::input::ResolveTextEntryActionTarget(
         *request, true, L"game-launcher", L"generation-a", changed),
         "input-scope replacement rejects modal commit");
     changed = snapshot;
     changed.root.children.clear();
-    Check(!gba::input::ResolveTextEntryActionTarget(
+    Check(!widgetrail::input::ResolveTextEntryActionTarget(
         *request, true, L"game-launcher", L"generation-a", changed),
         "removed source node rejects modal commit");
     changed = snapshot;
     changed.root.children[0].isDisabled = true;
-    Check(!gba::input::ResolveTextEntryActionTarget(
+    Check(!widgetrail::input::ResolveTextEntryActionTarget(
         *request, true, L"game-launcher", L"generation-a", changed),
         "disabled source node rejects modal commit");
     changed = snapshot;
     changed.root.children[0].actionId = L"replacement.action";
-    Check(!gba::input::ResolveTextEntryActionTarget(
+    Check(!widgetrail::input::ResolveTextEntryActionTarget(
         *request, true, L"game-launcher", L"generation-a", changed),
         "replaced source action rejects modal commit");
 }
 
 void CheckLayout(const RECT workArea, const UINT dpi, const char* name) {
-    const auto layout = gba::input::CalculateTextEntryModalLayout(workArea, dpi);
+    const auto layout = widgetrail::input::CalculateTextEntryModalLayout(workArea, dpi);
     Check(IsInside(layout.windowBounds, workArea), name);
     const RECT client{0, 0,
         layout.windowBounds.right - layout.windowBounds.left,
@@ -152,7 +152,7 @@ BOOL CALLBACK CollectChildren(const HWND child, const LPARAM value) {
 }
 
 int wmain() {
-    Check(gba::input::TextEntryModal::MaximumLength == 96,
+    Check(widgetrail::input::TextEntryModal::MaximumLength == 96,
         "host text entry uses the protocol bound");
     CheckAdmission();
     CheckLayout({0, 0, 640, 480}, 96, "compact modal fits the active work area");
@@ -162,19 +162,19 @@ int wmain() {
     std::vector<wchar_t> ownedSecret(12);
     for (std::size_t index = 0; index < ownedSecret.size(); ++index)
         ownedSecret[index] = static_cast<wchar_t>(L'!' + index);
-    gba::input::SecureTextBuffer secureBuffer(std::move(ownedSecret));
+    widgetrail::input::SecureTextBuffer secureBuffer(std::move(ownedSecret));
     Check(secureBuffer.view().size() == 12,
         "secure modal result owns one bounded mutable character buffer");
     secureBuffer.clear();
     Check(secureBuffer.empty(), "secure modal result clears its terminal buffer");
 
-    gba::input::TextEntryModal modal;
+    widgetrail::input::TextEntryModal modal;
     Check(!modal.active(), "modal starts inactive");
     Check(modal.Show(GetModuleHandleW(nullptr), nullptr, L"", L"Search", 96).outcome ==
-            gba::input::TextEntryModalOutcome::Failed,
+            widgetrail::input::TextEntryModalOutcome::Failed,
         "missing owner fails closed without entering a modal loop");
     Check(modal.Show(GetModuleHandleW(nullptr), GetDesktopWindow(), L"", L"Search", 97)
-            .outcome == gba::input::TextEntryModalOutcome::Failed,
+            .outcome == widgetrail::input::TextEntryModalOutcome::Failed,
         "oversized maximum fails closed");
 
     const auto owner = CreateWindowExW(
@@ -248,7 +248,7 @@ int wmain() {
         GetModuleHandleW(nullptr), owner, L"A", L"Search installed games", 8);
     driver.join();
     const auto expectedCommitted = std::wstring_view(L"AI");
-    Check(committed.outcome == gba::input::TextEntryModalOutcome::Committed &&
+    Check(committed.outcome == widgetrail::input::TextEntryModalOutcome::Committed &&
         committed.committedText && std::equal(
         committed.committedText->view().begin(), committed.committedText->view().end(),
         expectedCommitted.begin(), expectedCommitted.end()),
@@ -295,7 +295,7 @@ int wmain() {
     const auto cleared = modal.Show(
         GetModuleHandleW(nullptr), owner, L"retained", L"Edit installed games", 8);
     actionDriver.join();
-    Check(cleared.outcome == gba::input::TextEntryModalOutcome::Committed &&
+    Check(cleared.outcome == widgetrail::input::TextEntryModalOutcome::Committed &&
         cleared.committedText && cleared.committedText->empty(),
         "Clear and Commit produce one empty value");
 
@@ -306,7 +306,7 @@ int wmain() {
     const auto cancelled = modal.Show(
         GetModuleHandleW(nullptr), owner, L"retained", L"Search installed games", 8);
     cancelDriver.join();
-    Check(cancelled.outcome == gba::input::TextEntryModalOutcome::Cancelled &&
+    Check(cancelled.outcome == widgetrail::input::TextEntryModalOutcome::Cancelled &&
         !cancelled.committedText,
         "controller cancel returns one typed outcome and no committed text");
     Check(GetFocus() == owner, "modal restores focus to its owner after cancellation");
@@ -326,7 +326,7 @@ int wmain() {
     const auto closed = modal.Show(
         GetModuleHandleW(nullptr), owner, L"retained", L"Search installed games", 8);
     closeDriver.join();
-    Check(closed.outcome == gba::input::TextEntryModalOutcome::Closed &&
+    Check(closed.outcome == widgetrail::input::TextEntryModalOutcome::Closed &&
         !closed.committedText,
         "window close remains distinct from controller cancel and commit");
     Check(GetFocus() == owner, "window close restores focus to its owner");
@@ -370,7 +370,7 @@ int wmain() {
     const auto protectedCancelled = modal.Show(
         GetModuleHandleW(nullptr), owner, L"", L"Password for test network", 63, true);
     passwordDriver.join();
-    Check(protectedCancelled.outcome == gba::input::TextEntryModalOutcome::Cancelled &&
+    Check(protectedCancelled.outcome == widgetrail::input::TextEntryModalOutcome::Cancelled &&
         !protectedCancelled.committedText,
         "cancelled protected input publishes no secret");
     Check(!modal.active(), "protected modal releases its window");

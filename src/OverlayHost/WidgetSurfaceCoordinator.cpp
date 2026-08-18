@@ -11,7 +11,7 @@
 #include <cmath>
 #include <utility>
 
-namespace gba::pinned {
+namespace widgetrail::pinned {
 namespace {
 
 constexpr wchar_t kWindowClass[] = L"WidgetRail.PinnedSurface";
@@ -459,7 +459,7 @@ void WidgetSurfaceCoordinator::ReconcileDisplayEnvironment(
     PublishAccessibility();
 }
 
-#ifdef GBA_WIDGET_SURFACE_COORDINATOR_TESTING
+#ifdef WRAIL_WIDGET_SURFACE_COORDINATOR_TESTING
 void WidgetSurfaceCoordinator::ReconcileDisplayEnvironmentForTesting(
     const std::vector<MonitorWorkArea>& monitors) noexcept {
     ReconcileDisplayEnvironment(monitors);
@@ -1185,4 +1185,4 @@ void WidgetSurfaceCoordinator::OnWindowDestroyed() noexcept {
     window_ = nullptr;
 }
 
-} // namespace gba::pinned
+} // namespace widgetrail::pinned

@@ -3,7 +3,7 @@
 #include <algorithm>
 #include <cmath>
 
-namespace gba::shell {
+namespace widgetrail::shell {
 
 std::optional<TrayLayout> ComputeTrayLayout(
     const float width,
@@ -157,4 +157,4 @@ const TrayOverflowLayout* HitTestTrayOverflow(
     return nullptr;
 }
 
-} // namespace gba::shell
+} // namespace widgetrail::shell

@@ -2005,7 +2005,7 @@ New widget IDs install disabled. In Overlay Settings:
    and independently grant only the capabilities you accept.
 
 The default catalog is
-`%LOCALAPPDATA%\GameBarAlternative\widgets`. The bridge watches accepted
+`%LOCALAPPDATA%\WidgetRail\widgets`. The bridge watches accepted
 changes and refreshes the dashboard without eagerly launching the worker. A
 custom CLI `--catalog` root is isolated test state and does not appear in the
 packaged overlay.
@@ -2154,8 +2154,8 @@ During local development:
 - `wrail replay` isolates focus/action contract failures without the overlay.
 - Overlay Settings → **Diagnostics** reports bounded bridge, catalog,
   appearance, consent, and worker status for local troubleshooting.
-- `%LOCALAPPDATA%\GameBarAlternative\overlay.log` is the host diagnostic log;
-  `%LOCALAPPDATA%\GameBarAlternative\startup-error.log` records the latest host
+- `%LOCALAPPDATA%\WidgetRail\overlay.log` is the host diagnostic log;
+  `%LOCALAPPDATA%\WidgetRail\startup-error.log` records the latest host
   initialization failure.
 
 Runtime diagnostics are intentionally not a community capability. Widget code

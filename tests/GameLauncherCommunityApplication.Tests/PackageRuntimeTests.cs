@@ -327,7 +327,7 @@ public sealed class PackageRuntimeTests
         {
             Path = System.IO.Path.Combine(
                 System.IO.Path.GetTempPath(),
-                "gba-game-launcher-runtime-" + Guid.NewGuid().ToString("N"));
+                "wrail-game-launcher-runtime-" + Guid.NewGuid().ToString("N"));
             Directory.CreateDirectory(Path);
         }
 

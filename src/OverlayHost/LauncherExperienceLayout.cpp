@@ -5,7 +5,7 @@
 #include <cmath>
 #include <set>
 
-namespace gba::launcher {
+namespace widgetrail::launcher {
 namespace {
 
 using declarative::Rect;
@@ -314,4 +314,4 @@ std::string_view SlotName(const Slot slot) noexcept {
     return "unknown";
 }
 
-} // namespace gba::launcher
+} // namespace widgetrail::launcher

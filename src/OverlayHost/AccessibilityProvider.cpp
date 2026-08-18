@@ -15,7 +15,7 @@
 #include <type_traits>
 #include <utility>
 
-namespace gba::accessibility {
+namespace widgetrail::accessibility {
 namespace {
 
 using Microsoft::WRL::ClassicCom;
@@ -1136,4 +1136,4 @@ std::optional<ResolvedAction> ResolveActionRequest(
     return std::nullopt;
 }
 
-} // namespace gba::accessibility
+} // namespace widgetrail::accessibility

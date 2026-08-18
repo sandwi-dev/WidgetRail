@@ -415,7 +415,7 @@ file sealed class TemporaryDirectory : IDisposable
     public TemporaryDirectory(string name)
     {
         Path = System.IO.Path.Combine(System.IO.Path.GetTempPath(),
-            "gba-community-provider-tests", name, Guid.NewGuid().ToString("N"));
+            "wrail-community-provider-tests", name, Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(Path);
     }
 

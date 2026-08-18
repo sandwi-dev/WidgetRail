@@ -86,7 +86,7 @@ public sealed class PackageStateTests
         internal TestDirectory()
         {
             Path = System.IO.Path.Combine(
-                System.IO.Path.GetTempPath(), "gba-game-launcher-app-" + Guid.NewGuid().ToString("N"));
+                System.IO.Path.GetTempPath(), "wrail-game-launcher-app-" + Guid.NewGuid().ToString("N"));
             Directory.CreateDirectory(Path);
         }
 

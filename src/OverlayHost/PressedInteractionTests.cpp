@@ -17,18 +17,18 @@ void Check(const bool condition, const std::string_view message) {
     }
 }
 
-gba::WidgetNode Button(
+widgetrail::WidgetNode Button(
     const wchar_t* id,
     const wchar_t* action = L"activate") {
-    gba::WidgetNode node;
+    widgetrail::WidgetNode node;
     node.id = id;
     node.kind = L"button";
     node.actionId = action;
     return node;
 }
 
-gba::WidgetSnapshot Snapshot(const long long sequence = 1) {
-    gba::WidgetSnapshot snapshot;
+widgetrail::WidgetSnapshot Snapshot(const long long sequence = 1) {
+    widgetrail::WidgetSnapshot snapshot;
     snapshot.sequence = sequence;
     snapshot.instanceId = L"player.runtime.v1";
     snapshot.activeInputScopeId = L"root";
@@ -46,7 +46,7 @@ gba::WidgetSnapshot Snapshot(const long long sequence = 1) {
     slider.hasSliderRange = true;
     snapshot.root.children.push_back(std::move(slider));
 
-    auto dialog = gba::WidgetNode{};
+    auto dialog = widgetrail::WidgetNode{};
     dialog.id = L"dialog";
     dialog.kind = L"stack";
     dialog.inputScopeId = L"dialog";
@@ -57,7 +57,7 @@ gba::WidgetSnapshot Snapshot(const long long sequence = 1) {
 
 void ExactPhysicalPressLifecycle() {
     auto snapshot = Snapshot();
-    gba::input::PressedInteractionState state;
+    widgetrail::input::PressedInteractionState state;
     Check(state.Begin(snapshot, L"play", L"a"), "A begins focused button state");
     Check(state.ActiveElementId(snapshot, L"play") == L"play",
           "exact snapshot and focus expose pressed element");
@@ -68,7 +68,7 @@ void ExactPhysicalPressLifecycle() {
 
 void ActionabilityAndScopeFailClosed() {
     auto snapshot = Snapshot();
-    gba::input::PressedInteractionState state;
+    widgetrail::input::PressedInteractionState state;
     snapshot.root.children[0].isDisabled = true;
     Check(!state.Begin(snapshot, L"play", L"a"), "disabled button cannot press");
     snapshot.root.children[0].isDisabled = false;
@@ -86,7 +86,7 @@ void ActionabilityAndScopeFailClosed() {
 
 void ShortcutsAndSlidersAreNativePressedComponents() {
     auto snapshot = Snapshot();
-    gba::input::PressedInteractionState state;
+    widgetrail::input::PressedInteractionState state;
     Check(state.Begin(snapshot, L"previous", L"leftBumper"),
           "focused exact shortcut begins press");
     Check(state.Cancel(L"leftBumper"), "dispatch failure cancels exact shortcut press");
@@ -101,14 +101,14 @@ void ActionSurfacesUseTheNativePressLifecycle() {
     auto snapshot = Snapshot();
     auto tile = Button(L"album", L"open-album");
     tile.kind = L"actionSurface";
-    auto title = gba::WidgetNode{};
+    auto title = widgetrail::WidgetNode{};
     title.id = L"album.title";
     title.kind = L"text";
     title.text = L"Album title";
     tile.children.push_back(std::move(title));
     snapshot.root.children.insert(snapshot.root.children.begin(), std::move(tile));
 
-    gba::input::PressedInteractionState state;
+    widgetrail::input::PressedInteractionState state;
     Check(state.Begin(snapshot, L"album", L"a"),
           "A begins the full ActionSurface press target");
     Check(state.ActiveElementId(snapshot, L"album") == L"album",
@@ -129,7 +129,7 @@ void ActionSurfacesUseTheNativePressLifecycle() {
 
 void SnapshotAndFocusReplacementClearState() {
     auto snapshot = Snapshot();
-    gba::input::PressedInteractionState state;
+    widgetrail::input::PressedInteractionState state;
     Check(state.Begin(snapshot, L"play", L"a"), "precondition press begins");
     auto replacement = Snapshot(2);
     Check(state.Reconcile(replacement, L"play"), "new snapshot clears transient press");

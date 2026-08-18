@@ -4,11 +4,11 @@
 #include <iostream>
 
 int main() {
-    using gba::DesiredWidgetLifecycle;
-    using gba::FocusRegion;
-    using gba::Surface;
-    using gba::WidgetLifecycleProtocolValue;
-    using gba::WidgetLifecycleState;
+    using widgetrail::DesiredWidgetLifecycle;
+    using widgetrail::FocusRegion;
+    using widgetrail::Surface;
+    using widgetrail::WidgetLifecycleProtocolValue;
+    using widgetrail::WidgetLifecycleState;
 
     assert(WidgetLifecycleProtocolValue(WidgetLifecycleState::Background) == L"background");
     assert(WidgetLifecycleProtocolValue(WidgetLifecycleState::Visible) == L"visible");
@@ -20,17 +20,17 @@ int main() {
 
     const auto visible = DesiredWidgetLifecycle(
         Surface::Dashboard, FocusRegion::Tray, L"music", L"", true, false);
-    assert((visible == gba::WidgetLifecycleTarget{
+    assert((visible == widgetrail::WidgetLifecycleTarget{
         L"music", WidgetLifecycleState::Visible}));
 
     const auto interactive = DesiredWidgetLifecycle(
         Surface::Widget, FocusRegion::Widget, L"music", L"music", true, true);
-    assert((interactive == gba::WidgetLifecycleTarget{
+    assert((interactive == widgetrail::WidgetLifecycleTarget{
         L"music", WidgetLifecycleState::Interactive}));
 
     const auto visiblePanel = DesiredWidgetLifecycle(
         Surface::Widget, FocusRegion::Tray, L"music", L"music", true, true);
-    assert((visiblePanel == gba::WidgetLifecycleTarget{
+    assert((visiblePanel == widgetrail::WidgetLifecycleTarget{
         L"music", WidgetLifecycleState::Visible}));
 
     std::cout << "WidgetLifecycleTests passed\n";

@@ -12,7 +12,7 @@
 #include <string>
 
 int main() {
-    using namespace gba;
+    using namespace widgetrail;
     assert(RemoteImageCache::IsAllowedHttpsUrl(L"https://example.test/image.png"));
     assert(!RemoteImageCache::IsAllowedHttpsUrl(L"http://example.test/image.png"));
     assert(!RemoteImageCache::IsAllowedHttpsUrl(L"https://user:secret@example.test/image.png"));

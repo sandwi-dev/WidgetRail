@@ -10,7 +10,7 @@
 #include <stdexcept>
 #include <utility>
 
-namespace gba {
+namespace widgetrail {
 namespace {
 
 using Microsoft::WRL::ComPtr;
@@ -719,4 +719,4 @@ RemoteImageFetchResult RemoteImageCache::FetchAndDecodeSource(
     return DecodeWithWic(std::move(bytes), std::move(mime), limits);
 }
 
-} // namespace gba
+} // namespace widgetrail

@@ -20,7 +20,7 @@
 #include <unordered_set>
 #include <vector>
 
-namespace gba {
+namespace widgetrail {
 
 enum class WidgetSessionFailureStage {
     None,
@@ -384,4 +384,4 @@ private:
     unsigned int catalogRetryAttempts_{};
 };
 
-} // namespace gba
+} // namespace widgetrail

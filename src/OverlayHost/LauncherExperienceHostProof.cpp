@@ -11,7 +11,7 @@
 #include <algorithm>
 #include <array>
 
-namespace gba::launcher {
+namespace widgetrail::launcher {
 namespace {
 
 using Microsoft::WRL::ComPtr;
@@ -210,4 +210,4 @@ bool RunProductionHostSemanticProof(std::wstring& diagnostic) {
     return finish(true, L"presentation lifecycle passed");
 }
 
-} // namespace gba::launcher
+} // namespace widgetrail::launcher

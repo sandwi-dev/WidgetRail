@@ -172,7 +172,7 @@ resolve to one of four code-owned recovery descriptors (`hero-rail`,
 content. Packs do not receive action or provider authority through recovery.
 
 The default installed catalog is
-`%LOCALAPPDATA%\GameBarAlternative\launcher-experiences`; `--catalog <root>`
+`%LOCALAPPDATA%\WidgetRail\launcher-experiences`; `--catalog <root>`
 creates isolated author/test state. `list` includes the four code-owned recovery
 presets and installed versions. `remove` accepts only an exact canonical
 package ID/version, revalidates it under the catalog mutation lock, and refuses

@@ -946,7 +946,7 @@ internal sealed class ScriptedBridgeServer : IAsyncDisposable
 
     internal ScriptedBridgeServer()
     {
-        PipeName = $"gba-presentation-session-test-{Guid.NewGuid():N}";
+        PipeName = $"wrail-presentation-session-test-{Guid.NewGuid():N}";
         _pipe = new NamedPipeServerStream(
             PipeName,
             PipeDirection.InOut,

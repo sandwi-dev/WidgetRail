@@ -7,7 +7,7 @@
 #include <string>
 #include <vector>
 
-namespace gba::launcher {
+namespace widgetrail::launcher {
 
 enum class Preset { HeroRail, CoverWall, Carousel, CompactGrid };
 enum class Branch { Compact, Standard, Wide };
@@ -101,4 +101,4 @@ struct LayoutResult final {
 
 [[nodiscard]] std::string_view SlotName(Slot slot) noexcept;
 
-} // namespace gba::launcher
+} // namespace widgetrail::launcher

@@ -11,7 +11,7 @@
 #include <set>
 #include <utility>
 
-namespace gba {
+namespace widgetrail {
 namespace {
 
 using Microsoft::WRL::ComPtr;
@@ -2278,7 +2278,7 @@ struct DeclarativeRenderer::RenderPass final {
             Add(node.id, L"text_layout", L"DirectWrite could not create a text layout.");
             return;
         }
-#ifdef GBA_DECLARATIVE_RENDERER_TESTING
+#ifdef WRAIL_DECLARATIVE_RENDERER_TESTING
         DWRITE_TEXT_METRICS textMetrics{};
         if (SUCCEEDED(plan.layout->GetMetrics(&textMetrics)))
             result.textLineCounts[node.id] = textMetrics.lineCount;
@@ -2622,7 +2622,7 @@ struct DeclarativeRenderer::RenderPass final {
             {D2DRect(track), trackHeight * 0.5F, trackHeight * 0.5F},
             trackBrush.Get());
         const auto thumbX = track.x + track.width * static_cast<float>(ratio);
-#ifdef GBA_DECLARATIVE_RENDERER_TESTING
+#ifdef WRAIL_DECLARATIVE_RENDERER_TESTING
         result.sliderThumbXs[node.id] = thumbX;
 #endif
         const Rect fill{track.x, track.y, std::max(0.0F, thumbX - track.x), track.height};
@@ -2753,7 +2753,7 @@ struct DeclarativeRenderer::RenderPass final {
         const auto opacity = presented.motion.value.opacity;
         const auto paintRect = ScaleRect(
             presented.borderBox, presented.motion.value.scale);
-#ifdef GBA_DECLARATIVE_RENDERER_TESTING
+#ifdef WRAIL_DECLARATIVE_RENDERER_TESTING
         result.elementRects[node.id] = presented.borderBox;
         result.elementVisibleRects[node.id] = presented.visibleBox;
 #endif
@@ -2833,7 +2833,7 @@ struct DeclarativeRenderer::RenderPass final {
             const auto placement = DeclarativeRenderer::ComputeButtonContentPlacement(
                 textRect, iconSize, measured.width, hasLeading, hasText,
                 reserveStateCue, alignment);
-#ifdef GBA_DECLARATIVE_RENDERER_TESTING
+#ifdef WRAIL_DECLARATIVE_RENDERER_TESTING
             result.buttonContentPlacements[node.id] = placement;
 #endif
             textRect = placement.text;
@@ -3865,4 +3865,4 @@ ButtonContentPlacement DeclarativeRenderer::ComputeButtonContentPlacement(
     return {leading, text, trailingStateCue};
 }
 
-} // namespace gba
+} // namespace widgetrail

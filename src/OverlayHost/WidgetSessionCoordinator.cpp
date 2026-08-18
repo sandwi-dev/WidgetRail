@@ -7,7 +7,7 @@
 #include <unordered_set>
 #include <utility>
 
-namespace gba {
+namespace widgetrail {
 namespace {
 
 [[nodiscard]] WidgetSessionFailure FailureFrom(
@@ -963,4 +963,4 @@ void WidgetSessionCoordinator::FailCompletion(
         completion.acknowledged = true;
 }
 
-} // namespace gba
+} // namespace widgetrail

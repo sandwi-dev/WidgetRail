@@ -20,7 +20,7 @@
 #include <string_view>
 #include <vector>
 
-namespace gba::pinned {
+namespace widgetrail::pinned {
 
 enum class WidgetSurfacePresentationState {
     Hidden,
@@ -64,7 +64,7 @@ struct WidgetSurfaceAdmission final {
     PlacementLimits placementLimits{};
 };
 
-#ifdef GBA_WIDGET_SURFACE_COORDINATOR_TESTING
+#ifdef WRAIL_WIDGET_SURFACE_COORDINATOR_TESTING
 struct WidgetSurfacePaintTrace final {
     long long snapshotSequence{};
     ContentPresentation contentPresentation{ContentPresentation::AdmittedWidget};
@@ -116,7 +116,7 @@ public:
     [[nodiscard]] bool CommitPlacement(std::wstring& error);
     [[nodiscard]] bool CancelPlacement() noexcept;
     void ReconcileDisplayEnvironment() noexcept;
-#ifdef GBA_WIDGET_SURFACE_COORDINATOR_TESTING
+#ifdef WRAIL_WIDGET_SURFACE_COORDINATOR_TESTING
     void ReconcileDisplayEnvironmentForTesting(
         const std::vector<MonitorWorkArea>& monitors) noexcept;
     [[nodiscard]] std::optional<POINT> PointerPointForTesting(
@@ -225,4 +225,4 @@ private:
     return L"hidden";
 }
 
-} // namespace gba::pinned
+} // namespace widgetrail::pinned

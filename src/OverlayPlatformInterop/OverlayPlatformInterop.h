@@ -6,11 +6,11 @@
 #include <cstdint>
 #include <type_traits>
 
-inline constexpr std::uint32_t GBA_OVERLAY_PLATFORM_ABI_VERSION = 1;
-inline constexpr std::uint32_t GBA_OVERLAY_PLATFORM_FALSE = 0;
-inline constexpr std::uint32_t GBA_OVERLAY_PLATFORM_TRUE = 1;
+inline constexpr std::uint32_t WRAIL_OVERLAY_PLATFORM_ABI_VERSION = 1;
+inline constexpr std::uint32_t WRAIL_OVERLAY_PLATFORM_FALSE = 0;
+inline constexpr std::uint32_t WRAIL_OVERLAY_PLATFORM_TRUE = 1;
 
-enum class GbaOverlayPlatformStatus : std::uint32_t {
+enum class WidgetRailOverlayPlatformStatus : std::uint32_t {
     Ok = 0,
     InvalidArgument = 1,
     InvalidVersion = 2,
@@ -19,7 +19,7 @@ enum class GbaOverlayPlatformStatus : std::uint32_t {
     AllocationFailed = 5,
 };
 
-enum class GbaOverlayPlatformEventKind : std::uint32_t {
+enum class WidgetRailOverlayPlatformEventKind : std::uint32_t {
     None = 0,
     GuideToggleRequested = 1,
     LegacyGuidePollingChanged = 2,
@@ -27,13 +27,13 @@ enum class GbaOverlayPlatformEventKind : std::uint32_t {
     FocusChanged = 4,
 };
 
-enum class GbaOverlayPlatformGuideSource : std::uint32_t {
+enum class WidgetRailOverlayPlatformGuideSource : std::uint32_t {
     None = 0,
     GameInput = 1,
     LegacyCompatibility = 2,
 };
 
-enum class GbaOverlayPlatformNavigationDirection : std::uint32_t {
+enum class WidgetRailOverlayPlatformNavigationDirection : std::uint32_t {
     None = 0,
     Left = 1,
     Right = 2,
@@ -41,29 +41,29 @@ enum class GbaOverlayPlatformNavigationDirection : std::uint32_t {
     Down = 4,
 };
 
-enum class GbaOverlayPlatformNavigationPhase : std::uint32_t {
+enum class WidgetRailOverlayPlatformNavigationPhase : std::uint32_t {
     None = 0,
     Pressed = 1,
     Repeated = 2,
 };
 
-enum class GbaOverlayPlatformReadPath : std::uint32_t {
+enum class WidgetRailOverlayPlatformReadPath : std::uint32_t {
     None = 0,
     GameInputVisibleLease = 1,
     XInputCompatibility = 2,
 };
 
-struct GbaOverlayPlatformEvent final {
-    std::uint32_t structSize{sizeof(GbaOverlayPlatformEvent)};
-    std::uint32_t abiVersion{GBA_OVERLAY_PLATFORM_ABI_VERSION};
-    GbaOverlayPlatformEventKind kind{GbaOverlayPlatformEventKind::None};
-    GbaOverlayPlatformGuideSource guideSource{
-        GbaOverlayPlatformGuideSource::None};
+struct WidgetRailOverlayPlatformEvent final {
+    std::uint32_t structSize{sizeof(WidgetRailOverlayPlatformEvent)};
+    std::uint32_t abiVersion{WRAIL_OVERLAY_PLATFORM_ABI_VERSION};
+    WidgetRailOverlayPlatformEventKind kind{WidgetRailOverlayPlatformEventKind::None};
+    WidgetRailOverlayPlatformGuideSource guideSource{
+        WidgetRailOverlayPlatformGuideSource::None};
     std::uint64_t timestampMilliseconds{};
     std::uint32_t value{};
 };
 
-struct GbaOverlayPlatformRawControllerState final {
+struct WidgetRailOverlayPlatformRawControllerState final {
     std::uint16_t buttons{};
     std::uint8_t leftTrigger{};
     std::uint8_t rightTrigger{};
@@ -73,20 +73,20 @@ struct GbaOverlayPlatformRawControllerState final {
     std::int16_t rightThumbY{};
 };
 
-struct GbaOverlayPlatformNavigationEvent final {
-    GbaOverlayPlatformNavigationDirection direction{
-        GbaOverlayPlatformNavigationDirection::None};
-    GbaOverlayPlatformNavigationPhase phase{
-        GbaOverlayPlatformNavigationPhase::None};
+struct WidgetRailOverlayPlatformNavigationEvent final {
+    WidgetRailOverlayPlatformNavigationDirection direction{
+        WidgetRailOverlayPlatformNavigationDirection::None};
+    WidgetRailOverlayPlatformNavigationPhase phase{
+        WidgetRailOverlayPlatformNavigationPhase::None};
 };
 
-struct GbaOverlayPlatformControllerFrame final {
-    std::uint32_t structSize{sizeof(GbaOverlayPlatformControllerFrame)};
-    std::uint32_t abiVersion{GBA_OVERLAY_PLATFORM_ABI_VERSION};
+struct WidgetRailOverlayPlatformControllerFrame final {
+    std::uint32_t structSize{sizeof(WidgetRailOverlayPlatformControllerFrame)};
+    std::uint32_t abiVersion{WRAIL_OVERLAY_PLATFORM_ABI_VERSION};
     std::uint32_t connected{};
     std::uint32_t foregroundExclusive{};
-    GbaOverlayPlatformReadPath readPath{GbaOverlayPlatformReadPath::None};
-    GbaOverlayPlatformRawControllerState state{};
+    WidgetRailOverlayPlatformReadPath readPath{WidgetRailOverlayPlatformReadPath::None};
+    WidgetRailOverlayPlatformRawControllerState state{};
     std::uint16_t pressedButtons{};
     std::uint16_t releasedButtons{};
     std::uint32_t leftTriggerPressed{};
@@ -95,13 +95,13 @@ struct GbaOverlayPlatformControllerFrame final {
     std::uint32_t rightTriggerReleased{};
     std::uint32_t recoveryChordPressed{};
     std::uint32_t primed{};
-    GbaOverlayPlatformNavigationEvent stickNavigation{};
-    GbaOverlayPlatformNavigationEvent dpadNavigation{};
+    WidgetRailOverlayPlatformNavigationEvent stickNavigation{};
+    WidgetRailOverlayPlatformNavigationEvent dpadNavigation{};
 };
 
-struct GbaOverlayPlatformPlacementInput final {
-    std::uint32_t structSize{sizeof(GbaOverlayPlatformPlacementInput)};
-    std::uint32_t abiVersion{GBA_OVERLAY_PLATFORM_ABI_VERSION};
+struct WidgetRailOverlayPlatformPlacementInput final {
+    std::uint32_t structSize{sizeof(WidgetRailOverlayPlatformPlacementInput)};
+    std::uint32_t abiVersion{WRAIL_OVERLAY_PLATFORM_ABI_VERSION};
     std::int32_t workLeft{};
     std::int32_t workTop{};
     std::int32_t workRight{};
@@ -114,135 +114,135 @@ struct GbaOverlayPlatformPlacementInput final {
     float bottomMarginDip{32.0F};
 };
 
-struct GbaOverlayPlatformPlacement final {
-    std::uint32_t structSize{sizeof(GbaOverlayPlatformPlacement)};
-    std::uint32_t abiVersion{GBA_OVERLAY_PLATFORM_ABI_VERSION};
+struct WidgetRailOverlayPlatformPlacement final {
+    std::uint32_t structSize{sizeof(WidgetRailOverlayPlatformPlacement)};
+    std::uint32_t abiVersion{WRAIL_OVERLAY_PLATFORM_ABI_VERSION};
     std::int32_t x{};
     std::int32_t y{};
     std::int32_t width{};
     std::int32_t height{};
 };
 
-using GbaOverlayPlatformEventAvailable = void(GBA_OVERLAY_PLATFORM_CALL*)(
+using WidgetRailOverlayPlatformEventAvailable = void(WRAIL_OVERLAY_PLATFORM_CALL*)(
     void* context) noexcept;
-using GbaOverlayPlatformDiagnostic = void(GBA_OVERLAY_PLATFORM_CALL*)(
+using WidgetRailOverlayPlatformDiagnostic = void(WRAIL_OVERLAY_PLATFORM_CALL*)(
     void* context,
     const wchar_t* message) noexcept;
 
-struct GbaOverlayPlatformCreateOptions final {
-    std::uint32_t structSize{sizeof(GbaOverlayPlatformCreateOptions)};
-    std::uint32_t abiVersion{GBA_OVERLAY_PLATFORM_ABI_VERSION};
+struct WidgetRailOverlayPlatformCreateOptions final {
+    std::uint32_t structSize{sizeof(WidgetRailOverlayPlatformCreateOptions)};
+    std::uint32_t abiVersion{WRAIL_OVERLAY_PLATFORM_ABI_VERSION};
     void* callbackContext{};
-    GbaOverlayPlatformEventAvailable eventAvailable{};
-    GbaOverlayPlatformDiagnostic diagnostic{};
+    WidgetRailOverlayPlatformEventAvailable eventAvailable{};
+    WidgetRailOverlayPlatformDiagnostic diagnostic{};
 };
 
-struct GbaOverlayPlatformHandle;
+struct WidgetRailOverlayPlatformHandle;
 
 extern "C" {
 
-GBA_OVERLAY_PLATFORM_API std::uint32_t GBA_OVERLAY_PLATFORM_CALL
-GbaOverlayPlatformGetAbiVersion() noexcept;
+WRAIL_OVERLAY_PLATFORM_API std::uint32_t WRAIL_OVERLAY_PLATFORM_CALL
+WidgetRailOverlayPlatformGetAbiVersion() noexcept;
 
-GBA_OVERLAY_PLATFORM_API GbaOverlayPlatformStatus GBA_OVERLAY_PLATFORM_CALL
-GbaOverlayPlatformCreate(
-    const GbaOverlayPlatformCreateOptions* options,
-    GbaOverlayPlatformHandle** handle) noexcept;
+WRAIL_OVERLAY_PLATFORM_API WidgetRailOverlayPlatformStatus WRAIL_OVERLAY_PLATFORM_CALL
+WidgetRailOverlayPlatformCreate(
+    const WidgetRailOverlayPlatformCreateOptions* options,
+    WidgetRailOverlayPlatformHandle** handle) noexcept;
 
-GBA_OVERLAY_PLATFORM_API GbaOverlayPlatformStatus GBA_OVERLAY_PLATFORM_CALL
-GbaOverlayPlatformInitialize(GbaOverlayPlatformHandle* handle) noexcept;
+WRAIL_OVERLAY_PLATFORM_API WidgetRailOverlayPlatformStatus WRAIL_OVERLAY_PLATFORM_CALL
+WidgetRailOverlayPlatformInitialize(WidgetRailOverlayPlatformHandle* handle) noexcept;
 
-GBA_OVERLAY_PLATFORM_API void GBA_OVERLAY_PLATFORM_CALL
-GbaOverlayPlatformShutdown(GbaOverlayPlatformHandle* handle) noexcept;
+WRAIL_OVERLAY_PLATFORM_API void WRAIL_OVERLAY_PLATFORM_CALL
+WidgetRailOverlayPlatformShutdown(WidgetRailOverlayPlatformHandle* handle) noexcept;
 
-GBA_OVERLAY_PLATFORM_API void GBA_OVERLAY_PLATFORM_CALL
-GbaOverlayPlatformDestroy(GbaOverlayPlatformHandle* handle) noexcept;
+WRAIL_OVERLAY_PLATFORM_API void WRAIL_OVERLAY_PLATFORM_CALL
+WidgetRailOverlayPlatformDestroy(WidgetRailOverlayPlatformHandle* handle) noexcept;
 
-GBA_OVERLAY_PLATFORM_API std::uint32_t GBA_OVERLAY_PLATFORM_CALL
-GbaOverlayPlatformHasGameInput(const GbaOverlayPlatformHandle* handle) noexcept;
+WRAIL_OVERLAY_PLATFORM_API std::uint32_t WRAIL_OVERLAY_PLATFORM_CALL
+WidgetRailOverlayPlatformHasGameInput(const WidgetRailOverlayPlatformHandle* handle) noexcept;
 
-GBA_OVERLAY_PLATFORM_API std::uint32_t GBA_OVERLAY_PLATFORM_CALL
-GbaOverlayPlatformRequiresLegacyGuidePolling(
-    const GbaOverlayPlatformHandle* handle) noexcept;
+WRAIL_OVERLAY_PLATFORM_API std::uint32_t WRAIL_OVERLAY_PLATFORM_CALL
+WidgetRailOverlayPlatformRequiresLegacyGuidePolling(
+    const WidgetRailOverlayPlatformHandle* handle) noexcept;
 
-GBA_OVERLAY_PLATFORM_API GbaOverlayPlatformStatus GBA_OVERLAY_PLATFORM_CALL
-GbaOverlayPlatformSetWindowState(
-    GbaOverlayPlatformHandle* handle,
+WRAIL_OVERLAY_PLATFORM_API WidgetRailOverlayPlatformStatus WRAIL_OVERLAY_PLATFORM_CALL
+WidgetRailOverlayPlatformSetWindowState(
+    WidgetRailOverlayPlatformHandle* handle,
     std::uint32_t visible,
     std::uint32_t focused) noexcept;
 
-GBA_OVERLAY_PLATFORM_API GbaOverlayPlatformStatus GBA_OVERLAY_PLATFORM_CALL
-GbaOverlayPlatformDrainEvent(
-    GbaOverlayPlatformHandle* handle,
+WRAIL_OVERLAY_PLATFORM_API WidgetRailOverlayPlatformStatus WRAIL_OVERLAY_PLATFORM_CALL
+WidgetRailOverlayPlatformDrainEvent(
+    WidgetRailOverlayPlatformHandle* handle,
     std::uint64_t nowMilliseconds,
-    GbaOverlayPlatformEvent* event,
+    WidgetRailOverlayPlatformEvent* event,
     std::uint32_t* hasEvent) noexcept;
 
-GBA_OVERLAY_PLATFORM_API GbaOverlayPlatformStatus GBA_OVERLAY_PLATFORM_CALL
-GbaOverlayPlatformPollLegacyGuide(
-    GbaOverlayPlatformHandle* handle,
+WRAIL_OVERLAY_PLATFORM_API WidgetRailOverlayPlatformStatus WRAIL_OVERLAY_PLATFORM_CALL
+WidgetRailOverlayPlatformPollLegacyGuide(
+    WidgetRailOverlayPlatformHandle* handle,
     std::uint64_t nowMilliseconds,
-    GbaOverlayPlatformEvent* event,
+    WidgetRailOverlayPlatformEvent* event,
     std::uint32_t* hasEvent) noexcept;
 
-GBA_OVERLAY_PLATFORM_API GbaOverlayPlatformStatus GBA_OVERLAY_PLATFORM_CALL
-GbaOverlayPlatformPrimeController(
-    GbaOverlayPlatformHandle* handle,
+WRAIL_OVERLAY_PLATFORM_API WidgetRailOverlayPlatformStatus WRAIL_OVERLAY_PLATFORM_CALL
+WidgetRailOverlayPlatformPrimeController(
+    WidgetRailOverlayPlatformHandle* handle,
     std::uint32_t foregroundConfirmed,
     std::uint64_t nowMilliseconds) noexcept;
 
-GBA_OVERLAY_PLATFORM_API GbaOverlayPlatformStatus GBA_OVERLAY_PLATFORM_CALL
-GbaOverlayPlatformReadController(
-    GbaOverlayPlatformHandle* handle,
+WRAIL_OVERLAY_PLATFORM_API WidgetRailOverlayPlatformStatus WRAIL_OVERLAY_PLATFORM_CALL
+WidgetRailOverlayPlatformReadController(
+    WidgetRailOverlayPlatformHandle* handle,
     std::uint32_t foregroundConfirmed,
     std::uint64_t nowMilliseconds,
-    GbaOverlayPlatformControllerFrame* frame) noexcept;
+    WidgetRailOverlayPlatformControllerFrame* frame) noexcept;
 
-GBA_OVERLAY_PLATFORM_API GbaOverlayPlatformStatus GBA_OVERLAY_PLATFORM_CALL
-GbaOverlayPlatformSetOwnedWindows(
-    GbaOverlayPlatformHandle* handle,
+WRAIL_OVERLAY_PLATFORM_API WidgetRailOverlayPlatformStatus WRAIL_OVERLAY_PLATFORM_CALL
+WidgetRailOverlayPlatformSetOwnedWindows(
+    WidgetRailOverlayPlatformHandle* handle,
     std::uintptr_t overlay,
     std::uintptr_t backdrop) noexcept;
 
-GBA_OVERLAY_PLATFORM_API std::uint32_t GBA_OVERLAY_PLATFORM_CALL
-GbaOverlayPlatformObserveForegroundTarget(
-    GbaOverlayPlatformHandle* handle,
+WRAIL_OVERLAY_PLATFORM_API std::uint32_t WRAIL_OVERLAY_PLATFORM_CALL
+WidgetRailOverlayPlatformObserveForegroundTarget(
+    WidgetRailOverlayPlatformHandle* handle,
     std::uintptr_t candidate,
     std::uint32_t candidateIsValid) noexcept;
 
-GBA_OVERLAY_PLATFORM_API std::uintptr_t GBA_OVERLAY_PLATFORM_CALL
-GbaOverlayPlatformRememberedForegroundTarget(
-    const GbaOverlayPlatformHandle* handle) noexcept;
+WRAIL_OVERLAY_PLATFORM_API std::uintptr_t WRAIL_OVERLAY_PLATFORM_CALL
+WidgetRailOverlayPlatformRememberedForegroundTarget(
+    const WidgetRailOverlayPlatformHandle* handle) noexcept;
 
-GBA_OVERLAY_PLATFORM_API std::uintptr_t GBA_OVERLAY_PLATFORM_CALL
-GbaOverlayPlatformResolveForegroundTarget(
-    const GbaOverlayPlatformHandle* handle,
+WRAIL_OVERLAY_PLATFORM_API std::uintptr_t WRAIL_OVERLAY_PLATFORM_CALL
+WidgetRailOverlayPlatformResolveForegroundTarget(
+    const WidgetRailOverlayPlatformHandle* handle,
     std::uintptr_t fallback,
     std::uint32_t rememberedTargetIsValid) noexcept;
 
-GBA_OVERLAY_PLATFORM_API GbaOverlayPlatformStatus GBA_OVERLAY_PLATFORM_CALL
-GbaOverlayPlatformComputePlacement(
-    const GbaOverlayPlatformPlacementInput* input,
-    GbaOverlayPlatformPlacement* placement,
+WRAIL_OVERLAY_PLATFORM_API WidgetRailOverlayPlatformStatus WRAIL_OVERLAY_PLATFORM_CALL
+WidgetRailOverlayPlatformComputePlacement(
+    const WidgetRailOverlayPlatformPlacementInput* input,
+    WidgetRailOverlayPlatformPlacement* placement,
     std::uint32_t* hasPlacement) noexcept;
 
 }
 
-static_assert(std::is_standard_layout_v<GbaOverlayPlatformEvent>);
-static_assert(std::is_standard_layout_v<GbaOverlayPlatformRawControllerState>);
-static_assert(std::is_standard_layout_v<GbaOverlayPlatformNavigationEvent>);
-static_assert(std::is_standard_layout_v<GbaOverlayPlatformControllerFrame>);
-static_assert(std::is_standard_layout_v<GbaOverlayPlatformPlacementInput>);
-static_assert(std::is_standard_layout_v<GbaOverlayPlatformPlacement>);
-static_assert(std::is_standard_layout_v<GbaOverlayPlatformCreateOptions>);
-static_assert(sizeof(GbaOverlayPlatformEvent) == 32);
-static_assert(sizeof(GbaOverlayPlatformRawControllerState) == 12);
-static_assert(sizeof(GbaOverlayPlatformNavigationEvent) == 8);
-static_assert(sizeof(GbaOverlayPlatformControllerFrame) == 76);
-static_assert(sizeof(GbaOverlayPlatformPlacementInput) == 48);
-static_assert(sizeof(GbaOverlayPlatformPlacement) == 24);
-static_assert(sizeof(GbaOverlayPlatformCreateOptions) == 32);
-static_assert(offsetof(GbaOverlayPlatformEvent, timestampMilliseconds) == 16);
-static_assert(offsetof(GbaOverlayPlatformControllerFrame, state) == 20);
-static_assert(offsetof(GbaOverlayPlatformControllerFrame, stickNavigation) == 60);
-static_assert(offsetof(GbaOverlayPlatformCreateOptions, callbackContext) == 8);
+static_assert(std::is_standard_layout_v<WidgetRailOverlayPlatformEvent>);
+static_assert(std::is_standard_layout_v<WidgetRailOverlayPlatformRawControllerState>);
+static_assert(std::is_standard_layout_v<WidgetRailOverlayPlatformNavigationEvent>);
+static_assert(std::is_standard_layout_v<WidgetRailOverlayPlatformControllerFrame>);
+static_assert(std::is_standard_layout_v<WidgetRailOverlayPlatformPlacementInput>);
+static_assert(std::is_standard_layout_v<WidgetRailOverlayPlatformPlacement>);
+static_assert(std::is_standard_layout_v<WidgetRailOverlayPlatformCreateOptions>);
+static_assert(sizeof(WidgetRailOverlayPlatformEvent) == 32);
+static_assert(sizeof(WidgetRailOverlayPlatformRawControllerState) == 12);
+static_assert(sizeof(WidgetRailOverlayPlatformNavigationEvent) == 8);
+static_assert(sizeof(WidgetRailOverlayPlatformControllerFrame) == 76);
+static_assert(sizeof(WidgetRailOverlayPlatformPlacementInput) == 48);
+static_assert(sizeof(WidgetRailOverlayPlatformPlacement) == 24);
+static_assert(sizeof(WidgetRailOverlayPlatformCreateOptions) == 32);
+static_assert(offsetof(WidgetRailOverlayPlatformEvent, timestampMilliseconds) == 16);
+static_assert(offsetof(WidgetRailOverlayPlatformControllerFrame, state) == 20);
+static_assert(offsetof(WidgetRailOverlayPlatformControllerFrame, stickNavigation) == 60);
+static_assert(offsetof(WidgetRailOverlayPlatformCreateOptions, callbackContext) == 8);

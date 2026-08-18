@@ -31,25 +31,25 @@ void Near(
     Check(std::abs(actual - expected) <= tolerance, message);
 }
 
-gba::WidgetStyleValue Length(const double value) {
+widgetrail::WidgetStyleValue Length(const double value) {
     return {L"length", std::to_wstring(value) + L"px", value, L"px"};
 }
 
-gba::WidgetStyleValue Number(const double value) {
+widgetrail::WidgetStyleValue Number(const double value) {
     return {L"number", std::to_wstring(value), value, {}};
 }
 
-gba::WidgetStyleValue Keyword(std::wstring value) {
+widgetrail::WidgetStyleValue Keyword(std::wstring value) {
     return {L"keyword", std::move(value), std::nullopt, {}};
 }
 
-gba::NativeRenderStyle Style(
+widgetrail::NativeRenderStyle Style(
     const float fontSize,
     const float lineHeight,
     const int maximumLines,
     const float textScale = 1.0F,
-    const gba::NativeTextAlign alignment = gba::NativeTextAlign::Start) {
-    gba::WidgetComputedStyle computed{
+    const widgetrail::NativeTextAlign alignment = widgetrail::NativeTextAlign::Start) {
+    widgetrail::WidgetComputedStyle computed{
         {L"font-family", {L"fontFamily", L"Segoe UI Variable Text", std::nullopt, {}}},
         {L"font-size", Length(fontSize)},
         {L"font-weight", Number(500)},
@@ -59,17 +59,17 @@ gba::NativeRenderStyle Style(
         {L"text-overflow", Keyword(L"ellipsis")},
     };
     computed[L"text-align"] = Keyword(
-        alignment == gba::NativeTextAlign::Center ? L"center" :
-        alignment == gba::NativeTextAlign::End ? L"end" : L"start");
-    gba::NativeAccessibilityPolicy accessibility;
+        alignment == widgetrail::NativeTextAlign::Center ? L"center" :
+        alignment == widgetrail::NativeTextAlign::End ? L"end" : L"start");
+    widgetrail::NativeAccessibilityPolicy accessibility;
     accessibility.textScale = textScale;
-    return gba::NativeStyleAdapter::Adapt(
-        computed, gba::NativeStyleContext{}, accessibility).style;
+    return widgetrail::NativeStyleAdapter::Adapt(
+        computed, widgetrail::NativeStyleContext{}, accessibility).style;
 }
 
 void SectionHeaderPlanUsesFontMetricsAndContainsInk(IDWriteFactory* factory) {
     const auto style = Style(11.0F, 1.0F, 1);
-    const auto plan = gba::CreateNativeTextLayoutPlan(
+    const auto plan = widgetrail::CreateNativeTextLayoutPlan(
         factory, L"LIBRARY", style, 180.0F, 30.0F);
     Check(plan.IsValid(), "SectionHeader eyebrow creates a DirectWrite plan");
     Check(plan.baseline > 0.0F && plan.baseline <= 11.0F,
@@ -80,7 +80,7 @@ void SectionHeaderPlanUsesFontMetricsAndContainsInk(IDWriteFactory* factory) {
         "eyebrow height includes the complete authored line and ink overhang");
     Near(
         plan.LayoutOriginY(0.0F, plan.measuredHeight,
-            gba::NativeTextVerticalAlignment::Start),
+            widgetrail::NativeTextVerticalAlignment::Start),
         plan.inkInsetTop,
         "start placement offsets the DirectWrite box by its top ink inset");
 
@@ -101,11 +101,11 @@ void SectionHeaderPlanUsesFontMetricsAndContainsInk(IDWriteFactory* factory) {
 
 void ControlPlacementCentersTheCompletePlan(IDWriteFactory* factory) {
     const auto style = Style(15.0F, 1.3F, 2);
-    const auto plan = gba::CreateNativeTextLayoutPlan(
+    const auto plan = widgetrail::CreateNativeTextLayoutPlan(
         factory, L"Refresh library", style, 160.0F, 39.0F);
     Check(plan.IsValid(), "Button label creates a DirectWrite plan");
     const auto origin = plan.LayoutOriginY(
-        0.0F, 44.0F, gba::NativeTextVerticalAlignment::Center);
+        0.0F, 44.0F, widgetrail::NativeTextVerticalAlignment::Center);
     const auto outerTop = origin - plan.inkInsetTop;
     Near(outerTop, (44.0F - plan.measuredHeight) * 0.5F,
         "Button label centers the complete measured ink box");
@@ -116,8 +116,8 @@ void ControlPlacementCentersTheCompletePlan(IDWriteFactory* factory) {
 void WrappingScaleAndAlignmentStayBounded(IDWriteFactory* factory) {
     for (const auto scale : {1.0F, 1.5F}) {
         const auto style = Style(
-            13.0F, 1.35F, 2, scale, gba::NativeTextAlign::Center);
-        const auto plan = gba::CreateNativeTextLayoutPlan(
+            13.0F, 1.35F, 2, scale, widgetrail::NativeTextAlign::Center);
+        const auto plan = widgetrail::CreateNativeTextLayoutPlan(
             factory,
             L"A long shared component description that wraps without changing paint metrics",
             style,
@@ -135,13 +135,13 @@ void WrappingScaleAndAlignmentStayBounded(IDWriteFactory* factory) {
 
 void InvalidInputsFailClosed(IDWriteFactory* factory) {
     const auto style = Style(13.0F, 1.2F, 1);
-    Check(!gba::CreateNativeTextLayoutPlan(
+    Check(!widgetrail::CreateNativeTextLayoutPlan(
         nullptr, L"Text", style, 100.0F, 20.0F).IsValid(),
         "missing DirectWrite factory fails closed");
-    Check(!gba::CreateNativeTextLayoutPlan(
+    Check(!widgetrail::CreateNativeTextLayoutPlan(
         factory, L"Text", style, 0.0F, 20.0F).IsValid(),
         "zero width fails closed");
-    Check(!gba::CreateNativeTextLayoutPlan(
+    Check(!widgetrail::CreateNativeTextLayoutPlan(
         factory, L"Text", style, 100.0F, INFINITY).IsValid(),
         "non-finite height fails closed");
 }

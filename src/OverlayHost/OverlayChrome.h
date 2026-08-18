@@ -7,11 +7,11 @@
 #include <string>
 #include <vector>
 
-namespace gba {
+namespace widgetrail {
 class OverlayCompositionSurface;
 }
 
-namespace gba::shell {
+namespace widgetrail::shell {
 
 constexpr DWORD FixedChromeWindowStyle() noexcept { return WS_POPUP; }
 constexpr DWORD FixedChromeWindowExStyle() noexcept {
@@ -127,4 +127,4 @@ void FillColorKeyRoundedRectangle(
     ID2D1Brush* brush,
     OuterChromeBoundary boundary = OuterChromeBoundary::ColorKeyAliased) noexcept;
 
-} // namespace gba::shell
+} // namespace widgetrail::shell

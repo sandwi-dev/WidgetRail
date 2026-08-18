@@ -21,11 +21,11 @@ void Check(const bool condition, const std::string_view message) {
     if (!condition) throw std::runtime_error(std::string(message));
 }
 
-gba::pinned::MonitorWorkArea Primary() {
+widgetrail::pinned::MonitorWorkArea Primary() {
     return {L"DISPLAY-A", {-1920, 0, 0, 1040}, 96, true};
 }
 
-gba::pinned::MonitorWorkArea Secondary() {
+widgetrail::pinned::MonitorWorkArea Secondary() {
     return {L"DISPLAY-B", {0, -200, 2560, 1240}, 144, false};
 }
 
@@ -34,22 +34,22 @@ gba::pinned::MonitorWorkArea Secondary() {
 int main() {
     try {
         const std::vector monitors{Primary(), Secondary()};
-        const auto fallback = gba::pinned::ResolveDurablePlacement(monitors, std::nullopt);
+        const auto fallback = widgetrail::pinned::ResolveDurablePlacement(monitors, std::nullopt);
         Check(fallback && fallback->monitorId == L"DISPLAY-A" &&
                   fallback->bounds.left < fallback->bounds.right &&
                   fallback->bounds.top >= Primary().workArea.top &&
                   fallback->bounds.right <= Primary().workArea.right,
               "default placement is fully contained on the primary work area");
 
-        const gba::pinned::DurablePinnedPlacement persisted{
+        const widgetrail::pinned::DurablePinnedPlacement persisted{
             1, L"DISPLAY-B", 0.25, 0.75, 640.0F, 360.0F};
-        const auto mixedDpi = gba::pinned::ResolveDurablePlacement(monitors, persisted);
+        const auto mixedDpi = widgetrail::pinned::ResolveDurablePlacement(monitors, persisted);
         Check(mixedDpi && mixedDpi->monitorId == L"DISPLAY-B" &&
                   mixedDpi->dpi == 144 && !mixedDpi->usedFallback &&
                   mixedDpi->bounds.right - mixedDpi->bounds.left == 960 &&
                   mixedDpi->bounds.bottom - mixedDpi->bounds.top == 540,
               "normalized placement restores logical size on mixed DPI");
-        const auto captured = gba::pinned::CaptureDurablePlacement(
+        const auto captured = widgetrail::pinned::CaptureDurablePlacement(
             Secondary(), mixedDpi->bounds);
         Check(captured && std::abs(captured->anchorX - 0.25) < 0.001 &&
                   std::abs(captured->anchorY - 0.75) < 0.001 &&
@@ -58,46 +58,46 @@ int main() {
 
         auto invalid = persisted;
         invalid.anchorX = std::numeric_limits<double>::quiet_NaN();
-        const auto invalidReset = gba::pinned::ResolveDurablePlacement(monitors, invalid);
+        const auto invalidReset = widgetrail::pinned::ResolveDurablePlacement(monitors, invalid);
         Check(invalidReset && invalidReset->monitorId == L"DISPLAY-A" &&
                   invalidReset->usedFallback,
               "invalid persisted placement resets as one whole record");
 
-        const auto monitorLoss = gba::pinned::ResolveDurablePlacement({Primary()}, persisted);
+        const auto monitorLoss = widgetrail::pinned::ResolveDurablePlacement({Primary()}, persisted);
         Check(monitorLoss && monitorLoss->monitorId == L"DISPLAY-A" &&
                   monitorLoss->usedFallback && monitorLoss->bounds.left >= -1920 &&
                   monitorLoss->bounds.right <= 0,
               "missing monitor reflows the durable logical placement fully on-screen");
-        const gba::pinned::MonitorWorkArea tooSmall{
+        const widgetrail::pinned::MonitorWorkArea tooSmall{
             L"TINY", {0, 0, 120, 80}, 96, true};
-        Check(!gba::pinned::ResolveDurablePlacement({tooSmall}, std::nullopt),
+        Check(!widgetrail::pinned::ResolveDurablePlacement({tooSmall}, std::nullopt),
               "work area below the declared minimum fails closed");
 
-        auto session = gba::pinned::BeginPlacementSession(
-            gba::pinned::PlacementMode::Move, fallback->bounds, L"runtime-1", L"view-1");
+        auto session = widgetrail::pinned::BeginPlacementSession(
+            widgetrail::pinned::PlacementMode::Move, fallback->bounds, L"runtime-1", L"view-1");
         Check(session.has_value(), "move gesture captures exact generation and original bounds");
         const auto original = session->original;
-        Check(gba::pinned::StepPlacementSession(
-                  *session, gba::pinned::PlacementDirection::Left, Primary()) &&
+        Check(widgetrail::pinned::StepPlacementSession(
+                  *session, widgetrail::pinned::PlacementDirection::Left, Primary()) &&
                   session->current.left < original.left,
               "controller move step changes one constrained logical position");
-        Check(!gba::pinned::CommitPlacementSession(
+        Check(!widgetrail::pinned::CommitPlacementSession(
                   *session, L"stale", L"view-1", Primary()),
               "stale runtime cannot commit placement");
-        const auto committed = gba::pinned::CommitPlacementSession(
+        const auto committed = widgetrail::pinned::CommitPlacementSession(
             *session, L"runtime-1", L"view-1", Primary());
         Check(committed.has_value(), "current exact generation commits normalized placement");
         Check(session->original.left == original.left &&
                   session->original.top == original.top,
               "cancel authority retains the exact pre-gesture rectangle");
 
-        auto resize = gba::pinned::BeginPlacementSession(
-            gba::pinned::PlacementMode::Resize, fallback->bounds, L"runtime-1", L"view-1");
-        Check(gba::pinned::StepPlacementSession(
-                  *resize, gba::pinned::PlacementDirection::Left, Primary(), {}, 10000.0F) &&
+        auto resize = widgetrail::pinned::BeginPlacementSession(
+            widgetrail::pinned::PlacementMode::Resize, fallback->bounds, L"runtime-1", L"view-1");
+        Check(widgetrail::pinned::StepPlacementSession(
+                  *resize, widgetrail::pinned::PlacementDirection::Left, Primary(), {}, 10000.0F) &&
                   resize->current.right - resize->current.left >= 240,
               "resize clamps at the injected minimum");
-        Check(gba::pinned::SetPlacementSessionBounds(
+        Check(widgetrail::pinned::SetPlacementSessionBounds(
                   *resize, {-99999, -99999, 99999, 99999}, Primary()) &&
                   resize->current.left >= Primary().workArea.left &&
                   resize->current.top >= Primary().workArea.top &&
@@ -108,7 +108,7 @@ int main() {
         const auto storeRoot = std::filesystem::temp_directory_path() /
             (L"wrail-dlv068-" + std::to_wstring(GetCurrentProcessId()));
         const auto storePath = storeRoot / L"placement.ini";
-        gba::pinned::PinnedPlacementStore store(storePath);
+        widgetrail::pinned::PinnedPlacementStore store(storePath);
         std::wstring error;
         Check(store.Save(L"dev.example.widget", *committed, error),
               "placement store commits atomically");

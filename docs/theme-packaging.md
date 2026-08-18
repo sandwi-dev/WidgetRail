@@ -143,7 +143,7 @@ volume, holds a five-second bounded cross-process lock, and atomically moves
 the result to:
 
 ```text
-%LOCALAPPDATA%\GameBarAlternative\themes\<id>\<version>\
+%LOCALAPPDATA%\WidgetRail\themes\<id>\<version>\
 ```
 
 An existing ID/version is never overwritten. A new ID is published by an

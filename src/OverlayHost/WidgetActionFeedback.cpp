@@ -6,7 +6,7 @@
 #include <limits>
 #include <utility>
 
-namespace gba {
+namespace widgetrail {
 
 bool WidgetActionFeedbackStore::Publish(
     const std::wstring_view widgetId,
@@ -233,4 +233,4 @@ void WidgetActionFeedbackHost::Apply(const bool shouldInvalidate) {
     if (shouldInvalidate && callbacks_.invalidate) callbacks_.invalidate();
 }
 
-} // namespace gba
+} // namespace widgetrail

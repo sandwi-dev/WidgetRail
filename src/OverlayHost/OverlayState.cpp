@@ -4,7 +4,7 @@
 #include <unordered_set>
 #include <utility>
 
-namespace gba {
+namespace widgetrail {
 namespace {
 
 constexpr std::size_t kMaximumWidgets = 256;
@@ -250,4 +250,4 @@ bool OverlayState::Contains(const std::wstring_view widget) const noexcept {
            persistent_.order.end();
 }
 
-} // namespace gba
+} // namespace widgetrail

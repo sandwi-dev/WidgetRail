@@ -21,19 +21,19 @@
 #include <vector>
 
 namespace fs = std::filesystem;
-using gba::host_testing::Fail;
-using gba::host_testing::HostProcess;
-using gba::host_testing::JsonEscape;
-using gba::host_testing::LocateHostWindow;
-using gba::host_testing::PostKey;
-using gba::host_testing::ReadUtf8;
-using gba::host_testing::Require;
-using gba::host_testing::SendKey;
-using gba::host_testing::SendKeyDownAndPostRelease;
-using gba::host_testing::WaitUntil;
-using gba::host_testing::WideToUtf8;
-using gba::host_testing::Win32Error;
-using gba::host_testing::WriteUtf8;
+using widgetrail::host_testing::Fail;
+using widgetrail::host_testing::HostProcess;
+using widgetrail::host_testing::JsonEscape;
+using widgetrail::host_testing::LocateHostWindow;
+using widgetrail::host_testing::PostKey;
+using widgetrail::host_testing::ReadUtf8;
+using widgetrail::host_testing::Require;
+using widgetrail::host_testing::SendKey;
+using widgetrail::host_testing::SendKeyDownAndPostRelease;
+using widgetrail::host_testing::WaitUntil;
+using widgetrail::host_testing::WideToUtf8;
+using widgetrail::host_testing::Win32Error;
+using widgetrail::host_testing::WriteUtf8;
 using Microsoft::WRL::ComPtr;
 
 #pragma comment(lib, "oleaut32.lib")

@@ -744,7 +744,7 @@ static async Task ExternalVersionedSdkConsumer()
     var externalIdentity = Convert.ToHexString(SHA256.HashData(
         Encoding.UTF8.GetBytes(externalInstance)))[..20].ToLowerInvariant();
     var externalState = Path.Combine(
-        Path.GetTempPath(), "gba-full-trust-alpha", externalIdentity);
+        Path.GetTempPath(), "wrail-full-trust-alpha", externalIdentity);
     try
     {
         await using var client = new WidgetProcessClient(new WidgetProcessOptions

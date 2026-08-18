@@ -93,7 +93,7 @@ if ($actionReferences.Count -eq 0 -or
     @($actionReferences | Where-Object { $_.Groups[1].Value -notmatch '^[0-9a-f]{40}$' }).Count -ne 0) {
     throw 'Windows verification workflow actions must use immutable 40-character commit IDs.'
 }
-$temporary = Join-Path ([IO.Path]::GetTempPath()) ("gba-verification-runner-" + [Guid]::NewGuid().ToString('N'))
+$temporary = Join-Path ([IO.Path]::GetTempPath()) ("wrail-verification-runner-" + [Guid]::NewGuid().ToString('N'))
 New-Item -ItemType Directory -Path $temporary | Out-Null
 try {
     $leaseRoot = Join-Path $temporary 'lease-repository'
@@ -191,7 +191,7 @@ finally { Exit-RepositoryVerificationLease -Lease $lease }
     Exit-RepositoryVerificationLease -Lease $afterCrash
 
     $jobMembershipCommand = @'
-Add-Type -Namespace GbaVerificationFixture -Name NativeJob -MemberDefinition @"
+Add-Type -Namespace WidgetRailVerificationFixture -Name NativeJob -MemberDefinition @"
 [System.Runtime.InteropServices.DllImport("kernel32.dll", CharSet=System.Runtime.InteropServices.CharSet.Unicode, SetLastError=true)]
 public static extern System.IntPtr OpenJobObject(uint desiredAccess, bool inheritHandle, string name);
 [System.Runtime.InteropServices.DllImport("kernel32.dll", SetLastError=true)]
@@ -199,17 +199,17 @@ public static extern bool IsProcessInJob(System.IntPtr process, System.IntPtr jo
 [System.Runtime.InteropServices.DllImport("kernel32.dll")]
 public static extern bool CloseHandle(System.IntPtr handle);
 "@
-$job = [GbaVerificationFixture.NativeJob]::OpenJobObject(0x0004, $false, $env:WRAIL_VERIFICATION_JOB)
+$job = [WidgetRailVerificationFixture.NativeJob]::OpenJobObject(0x0004, $false, $env:WRAIL_VERIFICATION_JOB)
 $isMember = $false
 try {
     if ($job -eq [IntPtr]::Zero -or
-        -not [GbaVerificationFixture.NativeJob]::IsProcessInJob(
+        -not [WidgetRailVerificationFixture.NativeJob]::IsProcessInJob(
             [Diagnostics.Process]::GetCurrentProcess().Handle, $job, [ref]$isMember) -or
         -not $isMember) {
         throw 'User command executed before verification Job membership.'
     }
 }
-finally { if ($job -ne [IntPtr]::Zero) { [void][GbaVerificationFixture.NativeJob]::CloseHandle($job) } }
+finally { if ($job -ne [IntPtr]::Zero) { [void][WidgetRailVerificationFixture.NativeJob]::CloseHandle($job) } }
 Write-Output 'PASS bounded success'
 '@
     $success = Invoke-BoundedVerificationProcess -Id success -Description 'success' `

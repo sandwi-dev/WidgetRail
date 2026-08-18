@@ -6,7 +6,7 @@
 #include <string_view>
 #include <unordered_map>
 
-namespace gba::input {
+namespace widgetrail::input {
 
 [[nodiscard]] std::wstring_view RootInputScope(const WidgetSnapshot& snapshot) noexcept;
 
@@ -51,4 +51,4 @@ private:
     std::unordered_map<std::wstring, Entry> entries_;
 };
 
-} // namespace gba::input
+} // namespace widgetrail::input

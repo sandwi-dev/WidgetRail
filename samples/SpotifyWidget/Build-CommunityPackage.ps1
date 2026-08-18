@@ -232,7 +232,7 @@ if ($LASTEXITCODE -ne 0 -or -not (Test-Path -LiteralPath $packagePath)) {
 if ($Install) {
     $catalogRoot = if ([string]::IsNullOrWhiteSpace($Catalog)) {
         Join-Path ([Environment]::GetFolderPath(
-            [Environment+SpecialFolder]::LocalApplicationData)) 'GameBarAlternative\widgets'
+            [Environment+SpecialFolder]::LocalApplicationData)) 'WidgetRail\widgets'
     } else {
         [System.IO.Path]::GetFullPath($Catalog)
     }
