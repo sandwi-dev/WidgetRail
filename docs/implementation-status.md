@@ -5557,5 +5557,13 @@ from one denied test-owned temporary WidgetRail SDK entry in the user NuGet
 cache, and the exact unrestricted rerun passed every case. The Widget Runtime
 test project builds Release with zero warnings and errors. PID 33088 and the
 physically accepted Phase A Release were not rebuilt, relaunched, or stopped.
-The one required clean exact-commit Tier-3 result is retained and reported
-separately after this test follow-up commit.
+
+The one clean exact-commit Tier-3 run passed 14 steps and stopped at
+`WidgetConfiguration.Tests` with 4/5. That failure was directly caused by a
+stale rename fixture, not unrelated state: `org.widgetrail` did not own the
+renamed package. The initially proposed single-segment `widgetrail` publisher
+is rejected by the accepted reverse-DNS identity grammar, so the corrected
+generic ambiguity fixture uses the nested test package
+`widgetrail.samples.spotify.preview` with the two valid owning namespaces
+`widgetrail.samples` and `widgetrail.samples.spotify`. The focused Release
+`WidgetConfiguration.Tests` route now passes 5/5. Tier 3 was not rerun.

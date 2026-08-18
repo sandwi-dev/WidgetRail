@@ -74,10 +74,13 @@ static async Task UnsignedRuntimeResolution()
     Assert.Equal("public-client", resolved.Values["client-id"]);
     Assert.Equal("widgetrail.samples", resolved.PublisherId);
 
+    const string ambiguousPackageId = "widgetrail.samples.spotify.preview";
     await store.SetAsync(
-        "widgetrail.samples.spotify", "org.widgetrail", "client-id", "ambiguous-client");
+        ambiguousPackageId, "widgetrail.samples", "client-id", "public-client");
+    await store.SetAsync(
+        ambiguousPackageId, "widgetrail.samples.spotify", "client-id", "ambiguous-client");
     var ambiguous = await store.ReadForRuntimeAuthorityAsync(
-        "widgetrail.samples.spotify", "unsigned." + new string('b', 64));
+        ambiguousPackageId, "unsigned." + new string('b', 64));
     Assert.Equal(0, ambiguous.Values.Count);
 
     await store.SetAsync(
