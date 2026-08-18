@@ -230,7 +230,7 @@ user decision. The native overlay is the sole production presentation path.
 
 | Lane | Task/worktree | State |
 | --- | --- | --- |
-| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | DLV-268 production through `b217358` is physically accepted on PID 71216. Freeze production, merge current planner main, add/run only the focused DLV-268 tests, and stop; no integration or later milestone. After accepted test review/integration, DLV-272 precedes DLV-269. |
+| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | DLV-268 post-verdict coverage found one remaining generic root-Scroll fallback that re-enables focus-follow and returns Spotify to the old focused row. Preserve the three uncommitted focused test files, correct only that production suppression handoff, build one tests-skipped Release candidate, and stop for review/physical verdict. No integration, test rerun, or later milestone. After accepted correction and focused-test review/integration, DLV-272 precedes DLV-269. |
 | Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | DLV-265 is saved at clean tip `13bd971` plus reconciliation `5fd1a06` and explicitly deferred until immediately after DLV-271. Preserve installed Spotify 0.3.3 and the unchanged Client ID/account state; do not resume, test, integrate, reinstall, or reset it early. DLV-270 follows accepted DLV-265; DLV-248 remains deferred. |
 
 DLV-257 is closed. Its approved identity decisions and evidence are preserved
@@ -631,6 +631,20 @@ is accepted by the user on PID 71216. The physical session recorded 13 scroll
 starts/re-entries and 52 retained-refresh deferrals paired with 52 restorations,
 with zero missing/stale/render/geometry authority clear and zero real issue
 lines. Freeze production and proceed only to focused post-verdict tests.
+
+Post-verdict test disposition: ControllerNavigation passed 122/122 and
+FocusNavigation passed 54/54. DeclarativeRenderer stopped red before a test
+commit: after nested free scroll reached its boundary, the planned ancestor
+offset was 264 DIP but the render committed 0. Independent source review
+confirmed that the root-boundary path in `BuildLocalLayout` calls the default
+full `BuildLayout`, which enables focused-descendant follow even when the
+current render options explicitly suppress it for free scroll. This is the
+generic production mechanism behind the previously reported Spotify snap-back,
+not a test expectation problem. Preserve the uncommitted focused tests exactly;
+correct only propagation of the existing suppression policy through that
+root-Scroll fallback, source-review it, build one tests-skipped Release, and
+stop for planner review and a renewed physical verdict. Do not run the red
+renderer test until the user accepts the corrected production candidate.
 
 ## Ready platform deliverable — DLV-272: extract committed widget interaction session
 
