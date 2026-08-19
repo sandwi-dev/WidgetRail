@@ -183,140 +183,112 @@ int main() {
           "DPI-scaled reflow retains the same stable focus ID");
 
     widgetrail::WidgetNode pagedScroll{
-        .id = L"library.scroll",
+        .id = L"collection.scroll",
         .kind = L"scroll",
         .scrollAxis = L"vertical",
-        .scrollNearStartActionId = L"library.previous",
-        .scrollNearEndActionId = L"library.next",
+        .scrollNearStartActionId = L"collection.before",
+        .scrollNearEndActionId = L"collection.after",
         .scrollPaginationThreshold = 1,
-        .children = {
-            widgetrail::WidgetNode{.id = L"library.first", .kind = L"button"},
-            widgetrail::WidgetNode{
-                .id = L"library.last",
-                .kind = L"actionSurface",
-                .children = {
-                    widgetrail::WidgetNode{.id = L"library.last.label", .kind = L"text"},
-                },
-            },
-        },
+        .collectionAnchorKey = L"key.2",
     };
-    const auto nextPage = widgetrail::input::FindScrollPaginationAction(
-        pagedScroll, L"library.last.label", NavigationDirection::Down);
-    Check(nextPage && nextPage->actionId == L"library.next" &&
-              nextPage->sourceElementId == L"library.scroll",
-          "Down on an already-focused last row resolves pagination before tray fallback");
-    const auto previousPage = widgetrail::input::FindScrollPaginationAction(
-        pagedScroll, L"library.first", NavigationDirection::Up);
-    Check(previousPage && previousPage->actionId == L"library.previous",
-          "Up on an already-focused first row resolves previous-page pagination");
-    Check(!widgetrail::input::FindScrollPaginationAction(
-              pagedScroll, L"library.first", NavigationDirection::Down),
-          "A non-boundary direction preserves ordinary focus navigation");
-
-    widgetrail::WidgetNode cursorGrid{
-        .id = L"library.cursor",
-        .kind = L"scroll",
-        .scrollAxis = L"vertical",
-        .scrollNearStartActionId = L"library.cursor.before",
-        .scrollNearEndActionId = L"library.cursor.after",
-        .scrollPaginationThreshold = 1,
-        .collectionAnchorKey = L"game.41",
-        .children = {
-            widgetrail::WidgetNode{
-                .id = L"library.grid",
-                .kind = L"grid",
-                .children = {
-                    widgetrail::WidgetNode{.id = L"game.40.button", .kind = L"button",
-                                    .collectionItemKey = L"game.40"},
-                    widgetrail::WidgetNode{.id = L"game.41.button", .kind = L"button",
-                                    .collectionItemKey = L"game.41"},
-                },
-            },
-        },
-    };
-    widgetrail::WidgetNode cursorRoot{
-        .id = L"library.root",
-        .kind = L"stack",
-        .children = {
-            widgetrail::WidgetNode{.id = L"library.header.play", .kind = L"button"},
-            cursorGrid,
-        },
-    };
-    const auto cursorEnd = widgetrail::input::FindScrollPaginationAction(
-        cursorRoot, L"game.41.button", NavigationDirection::Down);
-    Check(cursorEnd && cursorEnd->actionId == L"library.cursor.after",
-          "a keyed Grid descendant paginates at the collection edge");
-    const auto cursorStart = widgetrail::input::FindScrollPaginationAction(
-        cursorRoot, L"game.40.button", NavigationDirection::Up);
-    Check(cursorStart && cursorStart->actionId == L"library.cursor.before",
-          "a keyed List/Grid reverse edge paginates before a fixed header can oscillate");
-
-    widgetrail::WidgetNode singleItemScroll = pagedScroll;
-    singleItemScroll.children.resize(1);
-    singleItemScroll.children[0].id = L"library.only";
-    const auto singleItemNext = widgetrail::input::FindScrollPaginationAction(
-        singleItemScroll, L"library.only", NavigationDirection::Down);
-    Check(singleItemNext && singleItemNext->actionId == L"library.next",
-          "A one-row page can paginate when no ordinary focus move exists");
-
-    for (const auto mode : {std::wstring(L"wide"), std::wstring(L"compact")}) {
-        widgetrail::WidgetNode spotifyRoot{.id = L"spotify.root", .kind = L"stack"};
-        spotifyRoot.children.push_back(widgetrail::WidgetNode{
-            .id = L"spotify.nav." + mode,
+    for (int index = 0; index < 5; ++index) {
+        pagedScroll.children.push_back(widgetrail::WidgetNode{
+            .id = L"item." + std::to_wstring(index),
             .kind = L"button",
+            .collectionItemKey = L"key." + std::to_wstring(index),
         });
-        widgetrail::WidgetNode spotifyPage{
-            .id = L"spotify.playlists.scroll." + mode,
+    }
+    const auto verticalPage = [&](const float viewportY) {
+        widgetrail::RenderResult page;
+        page.scrollViewports.emplace(
+            L"collection.scroll",
+            widgetrail::RenderScrollViewport{
+                widgetrail::declarative::ScrollAxis::Vertical,
+                {0.0F, viewportY, 200.0F, 80.0F}, viewportY, 140.0F});
+        for (int index = 0; index < 5; ++index) {
+            Add(page, L"item." + std::to_wstring(index),
+                {0.0F, static_cast<float>(index * 44), 200.0F, 40.0F});
+        }
+        return page;
+    };
+    const auto middleActions = widgetrail::input::FindScrollPaginationActions(
+        pagedScroll, L"root", verticalPage(44.0F));
+    Check(middleActions.empty(),
+          "a viewport outside both authored thresholds does not prefetch");
+    const auto beforeActions = widgetrail::input::FindScrollPaginationActions(
+        pagedScroll, L"root", verticalPage(0.0F));
+    Check(beforeActions.size() == 1 &&
+              beforeActions.front().edge ==
+                  widgetrail::input::ScrollPaginationEdge::Before &&
+              beforeActions.front().actionId == L"collection.before" &&
+              beforeActions.front().edgeKey == L"key.0" &&
+              beforeActions.front().anchorKey == L"key.2",
+          "the rendered leading viewport threshold preserves cursor and anchor authority");
+    const auto afterActions = widgetrail::input::FindScrollPaginationActions(
+        pagedScroll, L"root", verticalPage(136.0F));
+    Check(afterActions.size() == 1 &&
+              afterActions.front().edge ==
+                  widgetrail::input::ScrollPaginationEdge::After &&
+              afterActions.front().actionId == L"collection.after" &&
+              afterActions.front().edgeKey == L"key.4",
+          "the rendered trailing viewport threshold—not focused-row identity—prefetches");
+
+    auto horizontalScroll = pagedScroll;
+    horizontalScroll.id = L"horizontal.scroll";
+    horizontalScroll.scrollAxis = L"horizontal";
+    for (int index = 0; index < 5; ++index)
+        horizontalScroll.children[index].id = L"horizontal." + std::to_wstring(index);
+    widgetrail::RenderResult horizontalPage;
+    horizontalPage.scrollViewports.emplace(
+        L"horizontal.scroll",
+        widgetrail::RenderScrollViewport{
+            widgetrail::declarative::ScrollAxis::Horizontal,
+            {136.0F, 0.0F, 80.0F, 120.0F}, 136.0F, 140.0F});
+    for (int index = 0; index < 5; ++index) {
+        Add(horizontalPage, L"horizontal." + std::to_wstring(index),
+            {static_cast<float>(index * 44), 0.0F, 40.0F, 120.0F});
+    }
+    const auto horizontalActions = widgetrail::input::FindScrollPaginationActions(
+        horizontalScroll, L"root", horizontalPage);
+    Check(horizontalActions.size() == 1 &&
+              horizontalActions.front().axis ==
+                  widgetrail::declarative::ScrollAxis::Horizontal &&
+              horizontalActions.front().edge ==
+                  widgetrail::input::ScrollPaginationEdge::After,
+          "horizontal viewport thresholds use the same generic pagination contract");
+
+    widgetrail::WidgetNode nestedRoot{
+        .id = L"nested.root",
+        .kind = L"stack",
+        .children = {widgetrail::WidgetNode{
+            .id = L"outer.scroll",
             .kind = L"scroll",
             .scrollAxis = L"vertical",
-            .scrollNearEndActionId = L"spotify.playlists.page.next",
-            .scrollPaginationThreshold = 1,
-        };
-        for (int index = 0; index < 12; ++index) {
-            spotifyPage.children.push_back(widgetrail::WidgetNode{
-                .id = L"spotify.playlist.item." + mode + L"." +
-                    std::to_wstring(index),
-                .kind = L"actionSurface",
-            });
-        }
-        spotifyRoot.children.push_back(spotifyPage);
-        const auto forward = widgetrail::input::FindScrollPaginationAction(
-            spotifyRoot,
-            L"spotify.playlist.item." + mode + L".11",
-            NavigationDirection::Down);
-        Check(forward && forward->actionId == L"spotify.playlists.page.next" &&
-                  forward->sourceElementId ==
-                      L"spotify.playlists.scroll." + mode,
-              "Spotify 12-row edge paginates before focus can escape to its navigation rail");
-
-        auto& finalSpotifyPage = spotifyRoot.children.back();
-        finalSpotifyPage.children.clear();
-        finalSpotifyPage.scrollNearEndActionId.clear();
-        finalSpotifyPage.scrollNearStartActionId = L"spotify.playlists.page.previous";
-        for (int index = 24; index < 29; ++index) {
-            finalSpotifyPage.children.push_back(widgetrail::WidgetNode{
-                .id = L"spotify.playlist.item." + mode + L"." +
-                    std::to_wstring(index),
-                .kind = L"actionSurface",
-            });
-        }
-        const auto reverse = widgetrail::input::FindScrollPaginationAction(
-            spotifyRoot,
-            L"spotify.playlist.item." + mode + L".24",
-            NavigationDirection::Up);
-        Check(reverse && reverse->actionId == L"spotify.playlists.page.previous",
-              "Spotify five-row final page admits reverse pagination at its first row");
-        Check(!widgetrail::input::FindScrollPaginationAction(
-                  spotifyRoot,
-                  L"spotify.playlist.item." + mode + L".28",
-                  NavigationDirection::Down),
-              "Spotify final row does not invent a forward page or escape action");
-    }
-
-    pagedScroll.scrollNearEndActionId.clear();
-    Check(!widgetrail::input::FindScrollPaginationAction(
-              pagedScroll, L"library.last", NavigationDirection::Down),
-          "A boundary without a configured action remains available to tray fallback");
+            .children = {horizontalScroll},
+        }},
+    };
+    auto nestedRender = horizontalPage;
+    nestedRender.scrollViewports.emplace(
+        L"outer.scroll",
+        widgetrail::RenderScrollViewport{
+            widgetrail::declarative::ScrollAxis::Vertical,
+            {0.0F, 0.0F, 240.0F, 180.0F}, 0.0F, 400.0F});
+    const auto horizontalOwner = widgetrail::input::ResolveFocusedScrollOwner(
+        nestedRoot, L"horizontal.4",
+        widgetrail::declarative::ScrollAxis::Horizontal,
+        L"root", nestedRender);
+    const auto verticalOwner = widgetrail::input::ResolveFocusedScrollOwner(
+        nestedRoot, L"horizontal.4",
+        widgetrail::declarative::ScrollAxis::Vertical,
+        L"root", nestedRender);
+    Check(horizontalOwner.disposition ==
+              widgetrail::input::FocusedScrollResolutionDisposition::Resolved &&
+              horizontalOwner.scrollId == L"horizontal.scroll",
+          "exact ancestry selects the deepest eligible horizontal Scroll");
+    Check(verticalOwner.disposition ==
+              widgetrail::input::FocusedScrollResolutionDisposition::Resolved &&
+              verticalOwner.scrollId == L"outer.scroll",
+          "exact ancestry falls back to the eligible vertical ancestor without axis guessing");
 
     widgetrail::RenderResult scrolled;
     Add(scrolled, L"session-0", {0, 0, 200, 44});

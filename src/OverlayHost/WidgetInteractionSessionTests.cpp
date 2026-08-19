@@ -83,6 +83,59 @@ widgetrail::WidgetSnapshot Snapshot(
     return snapshot;
 }
 
+widgetrail::WidgetSnapshot PagedSnapshot(
+    const int firstKey = 0,
+    const long long sequence = 100,
+    const wchar_t* scope = L"root") {
+    widgetrail::WidgetSnapshot snapshot;
+    snapshot.sequence = sequence;
+    snapshot.instanceId = L"paged.instance";
+    snapshot.activeInputScopeId = scope;
+    snapshot.initialFocusId = L"page.row.2";
+    snapshot.root.id = L"root";
+    snapshot.root.kind = L"stack";
+
+    widgetrail::WidgetNode scroll;
+    scroll.id = L"page.scroll";
+    scroll.kind = L"scroll";
+    scroll.scrollAxis = L"vertical";
+    scroll.scrollNearStartActionId = L"page.before";
+    scroll.scrollNearEndActionId = L"page.after";
+    scroll.scrollPaginationThreshold = 1;
+    scroll.collectionAnchorKey = L"key.2";
+    for (int index = firstKey; index < firstKey + 5; ++index) {
+        auto row = Button(
+            (L"page.row." + std::to_wstring(index)).c_str(),
+            L"page.activate");
+        row.collectionItemKey = L"key." + std::to_wstring(index);
+        scroll.children.push_back(std::move(row));
+    }
+    snapshot.root.children.push_back(std::move(scroll));
+    return snapshot;
+}
+
+widgetrail::RenderResult PagedRender(
+    const int firstKey,
+    const float viewportY) {
+    widgetrail::RenderResult result;
+    result.scrollViewports.emplace(
+        L"page.scroll",
+        widgetrail::RenderScrollViewport{
+            widgetrail::declarative::ScrollAxis::Vertical,
+            {0.0F, viewportY, 200.0F, 80.0F}, viewportY, 140.0F});
+    for (int local = 0; local < 5; ++local) {
+        auto id = L"page.row." + std::to_wstring(firstKey + local);
+        const widgetrail::declarative::Rect rect{
+            0.0F, static_cast<float>(local * 44), 200.0F, 40.0F};
+        result.focusScopes[id] = L"root";
+        result.focusRects[id] = rect;
+        result.navigationRects[id] = rect;
+        result.navigationEnabled[id] = true;
+        result.hitRegions.push_back({std::move(id), rect, true});
+    }
+    return result;
+}
+
 const widgetrail::WidgetNode& Node(
     const widgetrail::WidgetSnapshot& snapshot,
     const std::wstring_view id) {
@@ -379,6 +432,192 @@ void PressedAndAdmissionReconciliation() {
           "idempotent lifecycle cleanup returns no unrelated damage");
 }
 
+void PaginationPrefetchLifecycle() {
+    using namespace widgetrail::input;
+    auto snapshot = PagedSnapshot();
+    auto authority = Authority(snapshot, L"paged.widget");
+    const auto middle = PagedRender(0, 44.0F);
+    const auto trailing = PagedRender(0, 136.0F);
+
+    WidgetInteractionSession session;
+    session.SetFocus(L"paged.widget", snapshot, L"page.row.3");
+    auto outcome = session.ReconcileScrollPagination(authority, trailing, 100);
+    Check(outcome.dispatchReady && outcome.diagnostics.size() == 1 &&
+              outcome.diagnostics.front().kind ==
+                  ScrollPaginationDiagnosticKind::Queued &&
+              outcome.diagnostics.front().request.demandReason ==
+                  ScrollPaginationDemandReason::Initial &&
+              outcome.diagnostics.front().request.action.anchorKey == L"key.2",
+          "one unambiguous initial viewport edge queues with retained-anchor authority");
+    auto [request, acquire] = session.AcquireScrollPaginationDispatch(
+        authority, trailing, 105);
+    Check(request && acquire.diagnostics.empty(),
+          "the queued viewport demand admits one adjacent action");
+    const auto [duplicate, duplicateOutcome] =
+        session.AcquireScrollPaginationDispatch(authority, trailing, 106);
+    Check(!duplicate && duplicateOutcome.diagnostics.empty(),
+          "an in-flight edge cannot dispatch twice");
+
+    outcome = session.CompleteScrollPaginationDispatch({
+        *request, ScrollPaginationDispatchDisposition::Admitted, {}, 106});
+    Check(outcome.diagnostics.size() == 1 &&
+              outcome.diagnostics.front().kind ==
+                  ScrollPaginationDiagnosticKind::Admitted &&
+              outcome.diagnostics.front().adjacentActionCount == 1 &&
+              outcome.diagnostics.front().queueLatencyMilliseconds == 5,
+          "admission records one adjacent action and bounded queue latency");
+    outcome = session.ReconcileScrollPagination(authority, trailing, 110);
+    Check(!outcome.dispatchReady && outcome.diagnostics.size() == 1 &&
+              outcome.diagnostics.front().kind ==
+                  ScrollPaginationDiagnosticKind::Suppressed &&
+              outcome.diagnostics.front().reason == L"in-flight",
+          "repeated retained geometry is deduplicated while the page is in flight");
+
+    auto shiftedSnapshot = PagedSnapshot(1, 101);
+    auto shiftedAuthority = Authority(shiftedSnapshot, L"paged.widget");
+    const auto shiftedTrailing = PagedRender(1, 136.0F);
+    outcome = session.ReconcileScrollPagination(
+        shiftedAuthority, shiftedTrailing, 145);
+    Check(!outcome.dispatchReady && outcome.diagnostics.size() == 1 &&
+              outcome.diagnostics.front().kind ==
+                  ScrollPaginationDiagnosticKind::Completed &&
+              outcome.diagnostics.front().reason ==
+                  L"requested-edge-changed" &&
+              outcome.diagnostics.front().adjacentActionCount == 1 &&
+              outcome.diagnostics.front().visibleCompletionCount == 1 &&
+              outcome.diagnostics.front().thresholdToVisibleMilliseconds == 45 &&
+              outcome.diagnostics.front().averageVisibleLatencyMilliseconds == 45 &&
+              session.focusedElementId() == L"page.row.3",
+          "a visible page completes once with measured latency and retained focus/anchor");
+    outcome = session.ReconcileScrollPagination(
+        shiftedAuthority, shiftedTrailing, 146);
+    Check(!outcome.dispatchReady,
+          "page completion and retained-anchor reconciliation cannot mint another demand");
+
+    const auto checkDirectIntent = [&](const ScrollPaginationIntentSource source,
+                                       const char* message) {
+        WidgetInteractionSession inputSession;
+        auto inputSnapshot = PagedSnapshot();
+        auto inputAuthority = Authority(inputSnapshot, L"paged.widget");
+        Check(!inputSession.ReconcileScrollPagination(
+                   inputAuthority, middle, 200).dispatchReady,
+              "a middle viewport establishes residence without prefetch");
+        (void)inputSession.ObserveScrollPaginationIntent(
+            inputAuthority, L"page.scroll",
+            widgetrail::declarative::ScrollAxis::Vertical,
+            ScrollPaginationEdge::After, source, 201);
+        const auto queued = inputSession.ReconcileScrollPagination(
+            inputAuthority, trailing, 202);
+        Check(queued.dispatchReady && queued.diagnostics.size() == 1 &&
+                  queued.diagnostics.front().request.intentSource == source &&
+                  queued.diagnostics.front().request.demandReason ==
+                      ScrollPaginationDemandReason::ThresholdReentry,
+              message);
+        const auto acquired = inputSession.AcquireScrollPaginationDispatch(
+            inputAuthority, trailing, 203);
+        Check(acquired.first.has_value(),
+              "each exact input demand reaches the existing final dispatcher");
+    };
+    checkDirectIntent(
+        ScrollPaginationIntentSource::RightStick,
+        "right-stick viewport intent rearms on a genuine threshold entry");
+    checkDirectIntent(
+        ScrollPaginationIntentSource::Pointer,
+        "pointer scrolling uses the same exact viewport demand");
+    checkDirectIntent(
+        ScrollPaginationIntentSource::Accessibility,
+        "accessibility scrolling uses the same exact viewport demand");
+
+    WidgetInteractionSession directionalSession;
+    directionalSession.SetFocus(L"paged.widget", snapshot, L"page.row.2");
+    Check(!directionalSession.ReconcileScrollPagination(
+               authority, middle, 300).dispatchReady,
+          "directional fixture initializes outside the threshold");
+    (void)directionalSession.ObserveScrollPaginationFocusIntent(
+        authority, trailing, L"page.row.2", L"page.row.3",
+        ScrollPaginationIntentSource::DirectionalNavigation, 301);
+    const auto focusMove = directionalSession.MoveFocus(
+        L"paged.widget", snapshot, L"page.row.3");
+    Check(focusMove.changed && focusMove.focusedElementId == L"page.row.3",
+          "D-pad/left-stick movement is never consumed by pagination admission");
+    outcome = directionalSession.ReconcileScrollPagination(
+        authority, trailing, 302);
+    Check(outcome.dispatchReady && outcome.diagnostics.size() == 1 &&
+              outcome.diagnostics.front().request.intentSource ==
+                  ScrollPaginationIntentSource::DirectionalNavigation,
+          "focus-follow movement independently records its viewport prefetch intent");
+
+    WidgetInteractionSession failureSession;
+    Check(!failureSession.ReconcileScrollPagination(
+               authority, middle, 400).dispatchReady,
+          "failure fixture initializes outside the threshold");
+    (void)failureSession.ObserveScrollPaginationIntent(
+        authority, L"page.scroll",
+        widgetrail::declarative::ScrollAxis::Vertical,
+        ScrollPaginationEdge::After,
+        ScrollPaginationIntentSource::RightStick, 401);
+    Check(failureSession.ReconcileScrollPagination(
+              authority, trailing, 402).dispatchReady,
+          "failure fixture queues one exact demand");
+    auto failedAcquire = failureSession.AcquireScrollPaginationDispatch(
+        authority, trailing, 403);
+    auto& failedRequest = failedAcquire.first;
+    outcome = failureSession.CompleteScrollPaginationDispatch({
+        *failedRequest, ScrollPaginationDispatchDisposition::TransportFailure,
+        L"bounded transport failure", 404});
+    Check(outcome.diagnostics.size() == 1 &&
+              outcome.diagnostics.front().kind ==
+                  ScrollPaginationDiagnosticKind::TerminalFailure,
+          "a dispatch error terminates the exact single-flight authority");
+    Check(!failureSession.ReconcileScrollPagination(
+               authority, trailing, 405).dispatchReady,
+          "terminal failure cannot retry without new viewport intent");
+    outcome = failureSession.ObserveScrollPaginationIntent(
+        authority, L"page.scroll",
+        widgetrail::declarative::ScrollAxis::Vertical,
+        ScrollPaginationEdge::After,
+        ScrollPaginationIntentSource::RightStick, 406);
+    Check(outcome.diagnostics.size() == 1 &&
+              outcome.diagnostics.front().kind ==
+                  ScrollPaginationDiagnosticKind::Retired &&
+              outcome.diagnostics.front().reason == L"new-user-intent",
+          "a new same-direction user intent explicitly clears terminal failure");
+    Check(failureSession.ReconcileScrollPagination(
+              authority, trailing, 407).dispatchReady,
+          "the explicit retry can queue exactly once");
+    auto retryAcquire = failureSession.AcquireScrollPaginationDispatch(
+        authority, trailing, 408);
+    auto& retryRequest = retryAcquire.first;
+    Check(retryRequest &&
+              retryRequest->demandGeneration > failedRequest->demandGeneration,
+          "retry carries a newer bounded demand generation");
+    outcome = failureSession.ObserveScrollPaginationFailure({
+        L"paged.widget", L"runtime-7", retryRequest->action.actionId,
+        retryRequest->action.sourceElementId,
+        widgetrail::WidgetActionFailureCode::ControllerActionFailed}, 409);
+    Check(outcome.diagnostics.size() == 1 &&
+              outcome.diagnostics.front().kind ==
+                  ScrollPaginationDiagnosticKind::TerminalFailure &&
+              outcome.diagnostics.front().reason == L"worker-action-failure",
+          "typed worker failure clears only the matching in-flight edge");
+
+    auto replacementScope = PagedSnapshot(0, 102, L"dialog");
+    outcome = failureSession.ReconcileScrollPagination(
+        Authority(replacementScope, L"paged.widget"), trailing, 410);
+    Check(!outcome.dispatchReady &&
+              std::ranges::any_of(outcome.diagnostics, [](const auto& item) {
+                  return item.kind == ScrollPaginationDiagnosticKind::Retired &&
+                      item.reason == L"route-changed";
+              }),
+          "scope replacement deterministically retires pagination authority");
+    Check(failureSession.RetireScrollPagination(
+              L"paged.widget", L"widget-hidden").diagnostics.empty(),
+          "route retirement is idempotent after scope invalidation");
+
+    std::cout << "DLV-269 corrected measurement: adjacent-actions=1 "
+                 "input-to-visible-page-ms=45\n";
+}
+
 } // namespace
 
 int main() {
@@ -386,6 +625,7 @@ int main() {
     FreeScrollAndRetainedRefreshLifecycle();
     ExactSliderRequestAuthorityAndRollback();
     PressedAndAdmissionReconciliation();
+    PaginationPrefetchLifecycle();
     std::cout << "WidgetInteractionSessionTests passed (" << checks
               << " checks)\n";
     return EXIT_SUCCESS;
