@@ -29,7 +29,7 @@ evidence only; this file is the sole authority for current work.
 
 | Lane | Task/worktree | State |
 | --- | --- | --- |
-| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | DLV-273 remains retired. DLV-274 production `bf6d524` is physically rejected as insufficient: it fixes count pressure but not the inherited cross-widget artwork reload under the unchanged aggregate byte budgets; right-stick scrolling was also intermittently unavailable during candidate churn. Preserve `bf6d524`; produce one bounded cache-budget correction only, then stop before tests. Do not change lifecycle/scroll code, integrate, or start DLV-271 before acceptance. Never push. |
+| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | DLV-273 remains retired. DLV-274 correction `4645f40` is source-reviewed, built, and coherently staged for a second physical verdict. It raises only the decoded/GPU aggregate LRU budgets to 96 MiB while preserving 32 MiB per-image limits and all count/security/lifecycle/scroll boundaries. Accepted DLV-269 remains visibly running as PID 78428. Await explicit user approval before launching the unaccepted candidate; do not test, integrate, or start DLV-271 first. Never push. |
 | Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | Preserve saved DLV-265 and installed Spotify state. Do not resume, test, integrate, reinstall, replace configuration, or reset before accepted DLV-271 integration. DLV-270 follows accepted DLV-265; DLV-248 remains deferred. |
 
 ## Execution, review, and architecture rules
@@ -337,6 +337,33 @@ another cache owner, or unbounded retention. Build once, commit production only,
 and stop for source review and another physical verdict; no tests, launch,
 integration, or DLV-271 in the lane.
 
+Corrected production candidate: commit `4645f40` changes the same five
+production files with 22 insertions and 8 deletions atop preserved `bf6d524`.
+`RemoteImageCache` now names the unchanged 32 MiB per-decoded-image admission
+ceiling separately from its bounded 96 MiB process-wide decoded LRU budget.
+The declarative renderer likewise preserves a 32 MiB per-bitmap ceiling while
+raising only its process-wide GPU bitmap LRU budget to 96 MiB. Metadata remains
+320 entries, ready decoded images and GPU bitmaps remain 256 entries, and
+pending requests remain 32. Existing download, dimension, pixel/overflow,
+resource-generation, invalidation, and LRU boundaries are unchanged. The diff
+contains no lifecycle/session, checkpoint/input/right-stick, protocol,
+package-specific, DLV-273, or additional cache-owner changes. Independent
+source review and `git diff --check` passed.
+
+The exact-commit native Release build succeeded with tests and packaging
+skipped. A coherent stage at
+`C:\Users\dwive\AppData\Local\Temp\gba-dlv274-4645f40\src\OverlayHost\out\Release`
+contains `OverlayHost.exe` SHA-256
+`2862540B62A47905CD4693C817595ECCF45B1BEF90858B165E980D1320140DC1`,
+`OverlayPlatformInterop.dll` SHA-256
+`200D887A7DF62F878F79968FD2D10AB84BC3398F2FECBC3A3792EE1EF89A6B93`,
+102/102 runtime files byte-identical to the accepted graph, and identical
+catalog/notices. No tests, packaging, launch, integration, or push occurred.
+Accepted DLV-269 remains visibly running and responding as PID 78428 from its
+immutable accepted path. Obtain explicit user approval before replacing it
+with this unaccepted candidate for the Spotify/Games & Apps revisit and
+right-stick physical verdict.
+
 ## Ready serialized deliverable — DLV-271: virtualized collection presentation windows
 
 Owner/baseline: platform lane as serialized cross-layer lead after DLV-274 is
@@ -460,7 +487,7 @@ missing accepted DLV-265/DLV-271 baseline. Never push.
 ## Serialized order
 
 1. DLV-269 is accepted and integrated through main `683af77`; its immutable
-   accepted build is visibly restored as PID 36780 after DLV-273 retirement.
+   accepted build is visibly restored as responding PID 78428.
 2. Preserve rejected DLV-273 commits only as failed branch history; do not
    continue, test, integrate, or base later work on the presenter refactor.
 3. Run respecified DLV-274 directly from accepted main `683af77` and obtain
@@ -485,8 +512,8 @@ missing accepted DLV-265/DLV-271 baseline. Never push.
 | Trademark | Similar-mark clearance; qualified counsel recommended before public release. |
 | GitHub identity | User-selected owner plus repository/organization availability and optional rename/creation. |
 | DLV-269 | Complete: physical correction accepted on PID 98812, focused evidence passed, and the chain is integrated through main `683af77`. |
-| DLV-273 | Retired failed refactor by user decision. Production `b54e1e2` and corrections `e98566e`/`dcd58e0` remain rejected branch history and must not be resumed or integrated. Accepted DLV-269 PID 36780 is restored; no production revert was necessary because main never contained DLV-273. |
-| DLV-274 | Production `bf6d524` is rejected as insufficient, not as the source of the inherited reload: unchanged 32 MiB aggregate budgets caused 73 decoded and 68 bitmap byte-pressure evictions, visible cross-widget artwork reloads, and checkpoint-related right-stick drops. Accepted DLV-269 PID 78428 is restored. Preserve `bf6d524`; one bounded 96 MiB aggregate-budget correction is authorized with all per-image safety, count, ownership, lifecycle, and scroll boundaries unchanged. |
+| DLV-273 | Retired failed refactor by user decision. Production `b54e1e2` and corrections `e98566e`/`dcd58e0` remain rejected branch history and must not be resumed or integrated. Accepted DLV-269 PID 78428 is restored; no production revert was necessary because main never contained DLV-273. |
+| DLV-274 | Production `bf6d524` is rejected as insufficient, not as the source of the inherited reload. Correction `4645f40` preserves 32 MiB per-image limits and all count/security/ownership/lifecycle/scroll boundaries while raising only decoded/GPU aggregate LRU budgets to 96 MiB. It is source-reviewed, built, and coherently staged with exact hashes and 102/102 accepted runtime files; tests, packaging, launch, integration, and push remain undone. Accepted PID 78428 remains running; explicit user approval is required before candidate launch. |
 | DLV-265 | Saved until immediately after accepted DLV-271; preserve installed 0.3.3 and existing configuration/account state. |
 | DLV-248 | Deliberately deferred until explicit user promotion. |
 
