@@ -25,7 +25,8 @@ using declarative::Size;
 
 constexpr std::size_t kMaximumDiagnostics = 256;
 constexpr std::size_t kMaximumBitmapEntries = 256;
-constexpr std::size_t kMaximumBitmapBytes = 32U * 1024U * 1024U;
+constexpr std::size_t kMaximumBitmapEntryBytes = 32U * 1024U * 1024U;
+constexpr std::size_t kMaximumBitmapBytes = 96U * 1024U * 1024U;
 constexpr float kMinimumControlSize = 44.0F;
 constexpr float kButtonIconLabelGap = 8.0F;
 constexpr float kButtonStateCueGap = 8.0F;
@@ -3647,6 +3648,7 @@ ImageBitmapCacheStats DeclarativeRenderer::GetImageBitmapCacheStats() const noex
         bitmapResourceInvalidations_,
         bitmapResourceGeneration_,
         kMaximumBitmapEntries,
+        kMaximumBitmapEntryBytes,
         kMaximumBitmapBytes,
         !bitmapResourceDomain_
             ? ImageBitmapResourceDomain::None
@@ -3841,7 +3843,7 @@ ComPtr<ID2D1Bitmap> DeclarativeRenderer::GetImageBitmap(
     const auto pixelSize = bitmap->GetPixelSize();
     const auto byteCount64 = static_cast<std::uint64_t>(pixelSize.width) *
         static_cast<std::uint64_t>(pixelSize.height) * 4ULL;
-    if (byteCount64 <= kMaximumBitmapBytes) {
+    if (byteCount64 <= kMaximumBitmapEntryBytes) {
         const auto byteCount = static_cast<std::size_t>(byteCount64);
         TrimBitmapCache(byteCount);
         bitmapBytes_ += byteCount;

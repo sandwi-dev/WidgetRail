@@ -43,7 +43,10 @@ struct RemoteImageLimits {
     std::size_t maximumEntries{320};
     std::size_t maximumReadyEntries{256};
     std::size_t maximumPendingEntries{32};
-    std::size_t maximumDecodedBytes{32U * 1024U * 1024U};
+    // Each untrusted decoded image remains capped independently from the
+    // bounded process-wide retention budget.
+    std::size_t maximumDecodedImageBytes{32U * 1024U * 1024U};
+    std::size_t maximumDecodedBytes{96U * 1024U * 1024U};
     std::size_t maximumDownloadBytes{5U * 1024U * 1024U};
     DWORD resolveTimeoutMilliseconds{2'000};
     DWORD connectTimeoutMilliseconds{3'000};

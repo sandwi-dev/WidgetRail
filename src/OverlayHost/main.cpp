@@ -719,11 +719,15 @@ public:
             std::to_wstring(imageLimits.maximumEntries) + L" ready-limit=" +
             std::to_wstring(imageLimits.maximumReadyEntries) + L" pending-limit=" +
             std::to_wstring(imageLimits.maximumPendingEntries) +
-            L" decoded-byte-limit=" +
+            L" decoded-entry-byte-limit=" +
+            std::to_wstring(imageLimits.maximumDecodedImageBytes) +
+            L" decoded-cache-byte-limit=" +
             std::to_wstring(imageLimits.maximumDecodedBytes) +
             L" bitmap-entry-limit=" +
             std::to_wstring(bitmapLimits.maximumEntries) +
-            L" bitmap-byte-limit=" +
+            L" bitmap-entry-byte-limit=" +
+            std::to_wstring(bitmapLimits.maximumEntryBytes) +
+            L" bitmap-cache-byte-limit=" +
             std::to_wstring(bitmapLimits.maximumBytes));
         std::wstring pinnedSurfaceError;
         if (!pinnedSurfaceCoordinator_.Initialize(
@@ -10080,7 +10084,9 @@ private:
                             std::to_wstring(bitmapCache.supersededArtworkEvictions) +
                             L" bitmap-entry-limit=" +
                             std::to_wstring(bitmapCache.maximumEntries) +
-                            L" bitmap-byte-limit=" +
+                            L" bitmap-entry-byte-limit=" +
+                            std::to_wstring(bitmapCache.maximumEntryBytes) +
+                            L" bitmap-cache-byte-limit=" +
                             std::to_wstring(bitmapCache.maximumBytes) +
                             L" bitmap-resource-domain=" + std::wstring(bitmapDomain) +
                             L" bitmap-resource-invalidations=" +

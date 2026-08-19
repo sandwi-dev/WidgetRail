@@ -147,6 +147,7 @@ struct ImageBitmapCacheStats final {
     std::uint64_t resourceInvalidations{};
     std::uint64_t resourceGeneration{};
     std::size_t maximumEntries{};
+    std::size_t maximumEntryBytes{};
     std::size_t maximumBytes{};
     ImageBitmapResourceDomain resourceDomain{ImageBitmapResourceDomain::None};
 };

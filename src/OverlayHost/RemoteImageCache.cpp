@@ -147,7 +147,7 @@ struct ParsedUrl {
     const std::uint64_t decoded64 = stride64 * height;
     if (SUCCEEDED(result) &&
         (width == 0 || height == 0 || stride64 > std::numeric_limits<UINT>::max() ||
-         decoded64 > limits.maximumDecodedBytes ||
+         decoded64 > limits.maximumDecodedImageBytes ||
          decoded64 > std::numeric_limits<UINT>::max())) {
         result = HRESULT_FROM_WIN32(ERROR_FILE_TOO_LARGE);
     }
@@ -237,6 +237,8 @@ RemoteImageCache::RemoteImageCache(
     if (limits_.maximumEntries == 0 || limits_.maximumEntries > 1'024 ||
         limits_.maximumReadyEntries == 0 || limits_.maximumReadyEntries > 1'024 ||
         limits_.maximumPendingEntries == 0 || limits_.maximumPendingEntries > 1'024 ||
+        limits_.maximumDecodedImageBytes < 4 ||
+        limits_.maximumDecodedImageBytes > 32U * 1024U * 1024U ||
         limits_.maximumDecodedBytes < 4 ||
         limits_.maximumDecodedBytes > 256U * 1024U * 1024U ||
         limits_.maximumDownloadBytes == 0 ||
@@ -644,7 +646,7 @@ void RemoteImageCache::CompleteLocked(const std::wstring& url, RemoteImageFetchR
         (result.image.width == 0 || result.image.height == 0 ||
          result.image.stride != expectedStride ||
          expectedBytes != result.image.premultipliedBgra.size() ||
-         expectedBytes > limits_.maximumDecodedBytes)) {
+         expectedBytes > limits_.maximumDecodedImageBytes)) {
         result = Failure(E_INVALIDARG, L"Fetcher returned invalid decoded image data.");
     }
     if (result.succeeded()) {
