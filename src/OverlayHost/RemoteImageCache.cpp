@@ -235,6 +235,8 @@ RemoteImageCache::RemoteImageCache(
       fetch_(fetch ? std::move(fetch) : FetchAndDecodeSource),
       artworkRequest_(std::move(artworkRequest)) {
     if (limits_.maximumEntries == 0 || limits_.maximumEntries > 1'024 ||
+        limits_.maximumReadyEntries == 0 || limits_.maximumReadyEntries > 1'024 ||
+        limits_.maximumPendingEntries == 0 || limits_.maximumPendingEntries > 1'024 ||
         limits_.maximumDecodedBytes < 4 ||
         limits_.maximumDecodedBytes > 256U * 1024U * 1024U ||
         limits_.maximumDownloadBytes == 0 ||
@@ -282,6 +284,8 @@ RemoteImageRequestResult RemoteImageCache::RequestTrustedArtwork(std::wstring ke
                 if (iterator->second.image)
                     decodedBytes_ -= iterator->second.image->premultipliedBgra.size();
                 iterator = entries_.erase(iterator);
+                ++evictions_;
+                ++supersededEntries_;
             } else ++iterator;
         }
         const auto widgetEnd = key.find(L'\x1f', prefix.size());
@@ -293,8 +297,17 @@ RemoteImageRequestResult RemoteImageCache::RequestTrustedArtwork(std::wstring ke
                     item.first.ends_with(handleSuffix) &&
                     item.second.state == RemoteImageState::Failed;
             });
+        if (!handleIsTerminal &&
+            PendingCountLocked() >=
+                std::min(limits_.maximumPendingEntries, limits_.maximumEntries)) {
+            ++pendingCapacityRejections_;
+            return RemoteImageRequestResult::CapacityExceeded;
+        }
         while (entries_.size() >= limits_.maximumEntries) {
-            if (!EvictOneLocked(key)) return RemoteImageRequestResult::CapacityExceeded;
+            if (!EvictOneLocked(key, EvictionReason::CountPressure)) {
+                ++countCapacityRejections_;
+                return RemoteImageRequestResult::CapacityExceeded;
+            }
         }
         if (handleIsTerminal) {
             entries_.emplace(key, Entry{
@@ -392,11 +405,25 @@ std::wstring RemoteImageCache::GetError(std::wstring_view url) const {
 RemoteImageCacheStats RemoteImageCache::GetStats() const {
     std::scoped_lock lock(mutex_);
     std::size_t pending = 0;
+    std::size_t ready = 0;
+    std::size_t failed = 0;
+    std::size_t https = 0;
+    std::size_t inlineImages = 0;
+    std::size_t trustedArtwork = 0;
     for (const auto& [url, entry] : entries_) {
-        (void)url;
         if (entry.state == RemoteImageState::Queued || entry.state == RemoteImageState::Loading) ++pending;
+        else if (entry.state == RemoteImageState::Ready) ++ready;
+        else if (entry.state == RemoteImageState::Failed) ++failed;
+        if (url.starts_with(L"wrail-artwork\x1f")) ++trustedArtwork;
+        else if (url.starts_with(inlinePngPrefix)) ++inlineImages;
+        else ++https;
     }
-    return {entries_.size(), decodedBytes_, pending};
+    return {
+        entries_.size(), decodedBytes_, pending, ready, failed,
+        https, inlineImages, trustedArtwork, evictions_,
+        countPressureEvictions_, bytePressureEvictions_, supersededEntries_,
+        countCapacityRejections_, pendingCapacityRejections_,
+    };
 }
 
 std::shared_ptr<const RemoteDecodedImage> RemoteImageCache::GetReadyImage(
@@ -499,14 +526,27 @@ RemoteImageRequestResult RemoteImageCache::QueueLocked(std::wstring url, bool re
         found->second.lastUse = ++useCounter_;
         if (!retry || found->second.state != RemoteImageState::Failed)
             return RemoteImageRequestResult::AlreadyTracked;
+        if (PendingCountLocked() >=
+            std::min(limits_.maximumPendingEntries, limits_.maximumEntries)) {
+            ++pendingCapacityRejections_;
+            return RemoteImageRequestResult::CapacityExceeded;
+        }
         found->second.state = RemoteImageState::Queued;
         found->second.error.clear();
         queue_.push_back(std::move(url));
         condition_.notify_one();
         return RemoteImageRequestResult::Queued;
     }
+    if (PendingCountLocked() >=
+        std::min(limits_.maximumPendingEntries, limits_.maximumEntries)) {
+        ++pendingCapacityRejections_;
+        return RemoteImageRequestResult::CapacityExceeded;
+    }
     while (entries_.size() >= limits_.maximumEntries) {
-        if (!EvictOneLocked(url)) return RemoteImageRequestResult::CapacityExceeded;
+        if (!EvictOneLocked(url, EvictionReason::CountPressure)) {
+            ++countCapacityRejections_;
+            return RemoteImageRequestResult::CapacityExceeded;
+        }
     }
     entries_.emplace(url, Entry{RemoteImageState::Queued, {}, {}, {}, ++useCounter_});
     queue_.push_back(std::move(url));
@@ -514,12 +554,31 @@ RemoteImageRequestResult RemoteImageCache::QueueLocked(std::wstring url, bool re
     return RemoteImageRequestResult::Queued;
 }
 
-bool RemoteImageCache::EvictOneLocked(std::wstring_view protectedUrl) {
+std::size_t RemoteImageCache::PendingCountLocked() const noexcept {
+    return static_cast<std::size_t>(std::count_if(
+        entries_.begin(), entries_.end(), [](const auto& item) {
+            return item.second.state == RemoteImageState::Queued ||
+                item.second.state == RemoteImageState::Loading;
+        }));
+}
+
+std::size_t RemoteImageCache::ReadyCountLocked() const noexcept {
+    return static_cast<std::size_t>(std::count_if(
+        entries_.begin(), entries_.end(), [](const auto& item) {
+            return item.second.state == RemoteImageState::Ready;
+        }));
+}
+
+bool RemoteImageCache::EvictOneLocked(
+    const std::wstring_view protectedUrl,
+    const EvictionReason reason,
+    const bool readyOnly) {
     auto candidate = entries_.end();
     for (auto iterator = entries_.begin(); iterator != entries_.end(); ++iterator) {
         if (iterator->first == protectedUrl ||
             iterator->second.state == RemoteImageState::Queued ||
             iterator->second.state == RemoteImageState::Loading) continue;
+        if (readyOnly && iterator->second.state != RemoteImageState::Ready) continue;
         if (candidate == entries_.end() || iterator->second.lastUse < candidate->second.lastUse)
             candidate = iterator;
     }
@@ -527,6 +586,9 @@ bool RemoteImageCache::EvictOneLocked(std::wstring_view protectedUrl) {
     if (candidate->second.image)
         decodedBytes_ -= candidate->second.image->premultipliedBgra.size();
     entries_.erase(candidate);
+    ++evictions_;
+    if (reason == EvictionReason::BytePressure) ++bytePressureEvictions_;
+    else ++countPressureEvictions_;
     return true;
 }
 
@@ -587,8 +649,17 @@ void RemoteImageCache::CompleteLocked(const std::wstring& url, RemoteImageFetchR
     }
     if (result.succeeded()) {
         const auto bytes = result.image.premultipliedBgra.size();
-        while (decodedBytes_ + bytes > limits_.maximumDecodedBytes) {
-            if (!EvictOneLocked(url)) {
+        while (ReadyCountLocked() >=
+               std::min(limits_.maximumReadyEntries, limits_.maximumEntries)) {
+            if (!EvictOneLocked(url, EvictionReason::CountPressure, true)) {
+                result = Failure(HRESULT_FROM_WIN32(ERROR_NOT_ENOUGH_MEMORY),
+                                 L"Ready image exceeds the cache entry budget.");
+                break;
+            }
+        }
+        while (result.succeeded() &&
+               decodedBytes_ + bytes > limits_.maximumDecodedBytes) {
+            if (!EvictOneLocked(url, EvictionReason::BytePressure, true)) {
                 result = Failure(HRESULT_FROM_WIN32(ERROR_NOT_ENOUGH_MEMORY),
                                  L"Decoded image exceeds the available cache budget.");
                 break;

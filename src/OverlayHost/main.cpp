@@ -677,8 +677,9 @@ public:
             return FailHresult(L"DWriteCreateFactory", dwriteResult);
         }
 
+        const widgetrail::RemoteImageLimits imageLimits;
         imageCache_ = std::make_unique<widgetrail::RemoteImageCache>(
-            widgetrail::RemoteImageLimits{},
+            imageLimits,
             [this](const std::wstring_view source, const widgetrail::RemoteImageState state) {
                 constexpr std::wstring_view prefix = L"wrail-artwork\x1f";
                 if (state == widgetrail::RemoteImageState::Failed && source.starts_with(prefix)) {
@@ -712,6 +713,18 @@ public:
             });
         declarativeRenderer_ = std::make_unique<widgetrail::DeclarativeRenderer>(
             d2dFactory_.Get(), writeFactory_.Get(), imageCache_.get());
+        const auto bitmapLimits = declarativeRenderer_->GetImageBitmapCacheStats();
+        AppendDiagnostic(
+            L"Image cache policy lifetime=process metadata-limit=" +
+            std::to_wstring(imageLimits.maximumEntries) + L" ready-limit=" +
+            std::to_wstring(imageLimits.maximumReadyEntries) + L" pending-limit=" +
+            std::to_wstring(imageLimits.maximumPendingEntries) +
+            L" decoded-byte-limit=" +
+            std::to_wstring(imageLimits.maximumDecodedBytes) +
+            L" bitmap-entry-limit=" +
+            std::to_wstring(bitmapLimits.maximumEntries) +
+            L" bitmap-byte-limit=" +
+            std::to_wstring(bitmapLimits.maximumBytes));
         std::wstring pinnedSurfaceError;
         if (!pinnedSurfaceCoordinator_.Initialize(
                 instance_, window_, kPinnedSurfaceChangedMessage,
@@ -10013,6 +10026,18 @@ private:
                             : widgetrail::declarative::Rect{};
                         const auto bitmapCache =
                             declarativeRenderer_->GetImageBitmapCacheStats();
+                        const auto decodedCache = imageCache_->GetStats();
+                        const auto bitmapDomain = [&]() -> std::wstring_view {
+                            switch (bitmapCache.resourceDomain) {
+                            case widgetrail::ImageBitmapResourceDomain::Device:
+                                return L"device";
+                            case widgetrail::ImageBitmapResourceDomain::RenderTarget:
+                                return L"render-target";
+                            case widgetrail::ImageBitmapResourceDomain::None:
+                            default:
+                                return L"none";
+                            }
+                        }();
                         AppendDiagnostic(
                             L"Widget presentation paint target=" + std::wstring(widget) +
                             L" content=" +
@@ -10047,10 +10072,49 @@ private:
                             std::to_wstring(bitmapCache.creates) +
                             L" bitmap-evictions=" +
                             std::to_wstring(bitmapCache.evictions) +
+                            L" bitmap-count-evictions=" +
+                            std::to_wstring(bitmapCache.countPressureEvictions) +
+                            L" bitmap-byte-evictions=" +
+                            std::to_wstring(bitmapCache.bytePressureEvictions) +
+                            L" bitmap-superseded-evictions=" +
+                            std::to_wstring(bitmapCache.supersededArtworkEvictions) +
+                            L" bitmap-entry-limit=" +
+                            std::to_wstring(bitmapCache.maximumEntries) +
+                            L" bitmap-byte-limit=" +
+                            std::to_wstring(bitmapCache.maximumBytes) +
+                            L" bitmap-resource-domain=" + std::wstring(bitmapDomain) +
                             L" bitmap-resource-invalidations=" +
                             std::to_wstring(bitmapCache.resourceInvalidations) +
                             L" bitmap-resource-generation=" +
                             std::to_wstring(bitmapCache.resourceGeneration) +
+                            L" decoded-entries=" +
+                            std::to_wstring(decodedCache.entries) +
+                            L" decoded-ready=" +
+                            std::to_wstring(decodedCache.readyEntries) +
+                            L" decoded-pending=" +
+                            std::to_wstring(decodedCache.queuedOrLoading) +
+                            L" decoded-failed=" +
+                            std::to_wstring(decodedCache.failedEntries) +
+                            L" decoded-bytes=" +
+                            std::to_wstring(decodedCache.decodedBytes) +
+                            L" decoded-https=" +
+                            std::to_wstring(decodedCache.httpsEntries) +
+                            L" decoded-inline=" +
+                            std::to_wstring(decodedCache.inlineEntries) +
+                            L" decoded-trusted=" +
+                            std::to_wstring(decodedCache.trustedArtworkEntries) +
+                            L" decoded-evictions=" +
+                            std::to_wstring(decodedCache.evictions) +
+                            L" decoded-count-evictions=" +
+                            std::to_wstring(decodedCache.countPressureEvictions) +
+                            L" decoded-byte-evictions=" +
+                            std::to_wstring(decodedCache.bytePressureEvictions) +
+                            L" decoded-superseded=" +
+                            std::to_wstring(decodedCache.supersededEntries) +
+                            L" decoded-count-rejections=" +
+                            std::to_wstring(decodedCache.countCapacityRejections) +
+                            L" decoded-pending-rejections=" +
+                            std::to_wstring(decodedCache.pendingCapacityRejections) +
                             L" tray-total=" +
                             std::to_wstring(trayLayout ? trayLayout->totalCount : 0) +
                             L" tray-visible=" +

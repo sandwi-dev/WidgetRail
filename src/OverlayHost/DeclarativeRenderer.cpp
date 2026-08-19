@@ -24,7 +24,7 @@ using declarative::Rect;
 using declarative::Size;
 
 constexpr std::size_t kMaximumDiagnostics = 256;
-constexpr std::size_t kMaximumBitmapEntries = 32;
+constexpr std::size_t kMaximumBitmapEntries = 256;
 constexpr std::size_t kMaximumBitmapBytes = 32U * 1024U * 1024U;
 constexpr float kMinimumControlSize = 44.0F;
 constexpr float kButtonIconLabelGap = 8.0F;
@@ -3641,8 +3641,18 @@ ImageBitmapCacheStats DeclarativeRenderer::GetImageBitmapCacheStats() const noex
         bitmapHits_,
         bitmapCreates_,
         bitmapEvictions_,
+        bitmapCountPressureEvictions_,
+        bitmapBytePressureEvictions_,
+        bitmapSupersededArtworkEvictions_,
         bitmapResourceInvalidations_,
         bitmapResourceGeneration_,
+        kMaximumBitmapEntries,
+        kMaximumBitmapBytes,
+        !bitmapResourceDomain_
+            ? ImageBitmapResourceDomain::None
+            : bitmapResourceDomainIsDevice_
+                ? ImageBitmapResourceDomain::Device
+                : ImageBitmapResourceDomain::RenderTarget,
     };
 }
 
@@ -3684,9 +3694,11 @@ void DeclarativeRenderer::ClearBitmapCache(
 
 void DeclarativeRenderer::TrimBitmapCache(
     const std::size_t incomingBytes) noexcept {
-    while (!bitmaps_.empty() &&
-           (bitmaps_.size() >= kMaximumBitmapEntries ||
-            incomingBytes > kMaximumBitmapBytes - bitmapBytes_)) {
+    while (!bitmaps_.empty()) {
+        const bool countPressure = bitmaps_.size() >= kMaximumBitmapEntries;
+        const bool bytePressure = incomingBytes > kMaximumBitmapBytes ||
+            bitmapBytes_ > kMaximumBitmapBytes - incomingBytes;
+        if (!countPressure && !bytePressure) break;
         const auto oldest = std::min_element(
             bitmaps_.begin(), bitmaps_.end(),
             [](const auto& left, const auto& right) {
@@ -3695,6 +3707,8 @@ void DeclarativeRenderer::TrimBitmapCache(
         bitmapBytes_ -= oldest->second.bytes;
         bitmaps_.erase(oldest);
         ++bitmapEvictions_;
+        if (bytePressure) ++bitmapBytePressureEvictions_;
+        else ++bitmapCountPressureEvictions_;
     }
 }
 
@@ -3773,6 +3787,7 @@ ComPtr<ID2D1Bitmap> DeclarativeRenderer::GetImageBitmap(
                 bitmapBytes_ -= iterator->second.bytes;
                 iterator = bitmaps_.erase(iterator);
                 ++bitmapEvictions_;
+                ++bitmapSupersededArtworkEvictions_;
             } else ++iterator;
         }
     }
