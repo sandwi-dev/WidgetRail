@@ -10,9 +10,10 @@ evidence only; this file is the sole authority for current work.
 
 ## Current baseline and active task map
 
-- Accepted production/test integration baseline on main is `8100bd7`, which
-  includes accepted DLV-272 production `1feaa92` and focused tests `0b84a5d`.
-  Later main commits through `cf2dde2` are reviewer-owned planning records only.
+- Accepted production/test integration baseline on main is `683af77`. It
+  integrates DLV-269 production as `0fc3c2d`, `32b6cea`, `f79ebba`, and
+  `bb4ee08`, plus focused tests `683af77`, over accepted DLV-272 baseline
+  `8100bd7`.
 - Platform correction `2d09fb6` is source-reviewed and physically accepted on
   PID 98812. The executable at
   `C:\Users\dwive\AppData\Local\Temp\gba-dlv269-2d09fb6\src\OverlayHost\out\Release\OverlayHost.exe`
@@ -28,7 +29,7 @@ evidence only; this file is the sole authority for current work.
 
 | Lane | Task/worktree | State |
 | --- | --- | --- |
-| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | Add only DLV-269 focused post-verdict regression coverage and measurements, commit separately, and stop for cumulative review. Do not start DLV-273 or push. |
+| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | DLV-269 is accepted and integrated through main `683af77`. Reconcile at the clean boundary, then execute DLV-273 physical-first from current main; stop at its exact production/build candidate for planner review and launch. Never push. |
 | Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | Preserve saved DLV-265 and installed Spotify state. Do not resume, test, integrate, reinstall, replace configuration, or reset before accepted DLV-271 integration. DLV-270 follows accepted DLV-265; DLV-248 remains deferred. |
 
 ## Execution, review, and architecture rules
@@ -63,7 +64,7 @@ evidence only; this file is the sole authority for current work.
   compatibility code without a later explicit user decision. Preserve external
   provider data, credentials, accounts, applications, and user files.
 
-## Assigned platform deliverable — DLV-269: viewport-driven paged-scroll prefetch
+## Accepted integrated platform deliverable — DLV-269: viewport-driven paged-scroll prefetch
 
 Owner/baseline: platform lane from integrated main `8100bd7`. This is a generic
 native-host paged-Scroll correction using the existing public pagination action
@@ -98,11 +99,15 @@ focus through refresh, accepts first-current-render input, and diagnoses every
 drop/focus change. Source review found no new authority or widget-specific
 behavior. The user physically accepted PID 98812.
 
-Now add only focused deterministic coverage for viewport thresholds, all scroll
-input sources, in-flight deduplication, success/error/retry clearing, route/scope
-invalidation, retained anchors, accessibility, and non-consumed directional
-input. Measure adjacent-action count and input-to-visible-page latency before
-and after. Commit tests separately and stop for cumulative review; no Tier 3.
+Focused test commit `7641b45` passed WidgetInteractionSession 84,
+ControllerNavigation 122, FocusNavigation 47, WidgetSurfaceFocus 24,
+SliderInteraction 2,096, PressedInteraction 29, AccessibilityProvider 168, and
+TextEntryModal. Deterministic evidence improved the rejected nine actions in
+about 12 seconds with no completion to one adjacent action and 45 ms threshold-
+to-visible completion. The accepted chain is integrated on main as production
+`0fc3c2d`, `32b6cea`, `f79ebba`, and `bb4ee08` plus tests `683af77`. PID 98812
+already contains the integrated production tree, so it is intentionally retained
+without a tests-only rebuild/relaunch. No Tier 3 or packaged-host route was run.
 
 Stop for a required public SDK/protocol change, inability to derive a stable
 visible range from the existing renderer result, a second scroll/focus/action
@@ -111,8 +116,8 @@ conflict, or missing accepted DLV-268/DLV-272 baseline. Never push.
 
 ## Ready platform deliverable — DLV-273: extract committed widget content presenter
 
-Owner/baseline: platform lane after DLV-269 is accepted and integrated and
-before DLV-271 changes collection presentation. Extract the declarative widget-
+Owner/baseline: platform lane from accepted DLV-269 main `683af77` and before
+DLV-271 changes collection presentation. Extract the declarative widget-
 body painter, renderer/cache lifetime, committed visual checkpoint, incremental
 damage plan, last render result, and declarative-motion state into one
 `WidgetContentPresenter`, with a before/after authority map. It receives one
@@ -292,9 +297,9 @@ missing accepted DLV-265/DLV-271 baseline. Never push.
 
 ## Serialized order
 
-1. Complete DLV-269 focused post-verdict tests/measurements; cumulatively review
-   and integrate accepted production `2d09fb6` plus its separate test commit.
-2. Run DLV-273 in the platform lane and obtain production/build, multi-widget
+1. DLV-269 is accepted and integrated through main `683af77`; retain PID 98812
+   because the post-candidate delta is tests/reviewer documents only.
+2. Run DLV-273 in the platform lane from current main and obtain production/build, multi-widget
    physical acceptance, focused tests, review, and integration.
 3. Run DLV-274 in the platform lane and obtain measured production/build,
    stable-process Games & Apps physical acceptance, focused tests, review, and
@@ -316,7 +321,7 @@ missing accepted DLV-265/DLV-271 baseline. Never push.
 | Domain | Live registrar/RDAP availability and optional registration through the user's account. |
 | Trademark | Similar-mark clearance; qualified counsel recommended before public release. |
 | GitHub identity | User-selected owner plus repository/organization availability and optional rename/creation. |
-| DLV-269 | Physical verdict accepted; focused tests/measurements and cumulative integration remain. |
+| DLV-269 | Complete: physical correction accepted on PID 98812, focused evidence passed, and the chain is integrated through main `683af77`. |
 | DLV-265 | Saved until immediately after accepted DLV-271; preserve installed 0.3.3 and existing configuration/account state. |
 | DLV-248 | Deliberately deferred until explicit user promotion. |
 
@@ -330,3 +335,4 @@ missing accepted DLV-265/DLV-271 baseline. Never push.
 | DLV-267 | Identical scene-origin correction accepted and integrated through `a552cbf`. |
 | DLV-268 | Right-stick free-scroll/focus re-entry accepted and integrated through `1cc9be8`. |
 | DLV-272 | Interaction-session extraction accepted and integrated through `8100bd7`. |
+| DLV-269 | Viewport-driven paging accepted and integrated through `683af77`; PID 98812 retained under the no-relaunch rule. |
