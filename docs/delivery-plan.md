@@ -29,7 +29,7 @@ evidence only; this file is the sole authority for current work.
 
 | Lane | Task/worktree | State |
 | --- | --- | --- |
-| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | DLV-273 production `b54e1e2` is source-reviewed and visibly running as unaccepted PID 86140 from a coherent 106-file launch graph. Await the user's multi-widget/full-bounded update, focus/scroll, retained-frame, and device/resource-refresh verdict; do not test, integrate, or start DLV-274 before acceptance. Never push. |
+| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | DLV-273 production `b54e1e2` is physically rejected. After returning from a Settings submenu, the next Down remained tray-owned instead of moving below the restored Settings row. Preserve `b54e1e2`; produce one production-only correction and stop before tests. Do not integrate or start DLV-274 before acceptance. Never push. |
 | Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | Preserve saved DLV-265 and installed Spotify state. Do not resume, test, integrate, reinstall, replace configuration, or reset before accepted DLV-271 integration. DLV-270 follows accepted DLV-265; DLV-248 remains deferred. |
 
 ## Execution, review, and architecture rules
@@ -143,7 +143,7 @@ locator, second render checkpoint, protocol work, interaction-state ownership,
 broad `main.cpp` rewrite, substantial conflict, or changed product behavior
 beyond atomic committed-frame handoff. Never push.
 
-Candidate status: production commit `b54e1e2` introduces
+Rejected candidate status: production commit `b54e1e2` introduces
 `WidgetContentPresenter` as the sole renderer, image-cache, last-render-result,
 committed-checkpoint, incremental-plan, and declarative-motion owner. The host
 retains lifecycle/session, focus/input, accessibility-provider, placement/HWND,
@@ -160,7 +160,32 @@ the accepted `OverlayPlatformInterop.dll` SHA-256
 and all 104 accepted non-native launch files byte-identical. Exact prior PID
 98812 was gracefully closed after path/class verification; PID 86140 launched
 visibly with DirectComposition, foreground input, and successful Settings
-admission/commits. Do not test or integrate before the user's physical verdict.
+admission/commits. The user then reproduced a focus-authority failure: enter any
+Settings submenu such as Overlay, press Back to restore the Settings root, then
+press Down. The root remained visibly presented but the host returned to tray
+navigation instead of moving to the option below Overlay. The log captured
+Settings presentation sequences 6 and 7 with `input-owner=tray`,
+`visual-focus=none`, and `semantic-focus=tray:settings`, proving that restored
+Settings content and controller focus authority diverged. PID 86140 was
+gracefully closed after exact path/class verification. The last accepted
+DLV-269 executable was restored visibly as PID 69660 from its immutable stage;
+its SHA-256 is
+`6683DAED8AA6941689A15B77BBCFDCEC6906B166E11B832805C4E4CD94673295`.
+The user repeated the same submenu-Back-then-Down sequence on restored PID
+69660 and confirmed the older accepted build does not have the issue. This is
+therefore an exact DLV-273 regression rather than inherited Settings behavior.
+
+Correct only the focus handoff exposed by submenu Back under the extracted
+committed-frame path. Preserve the presenter extraction and its single renderer,
+cache, render-result, checkpoint, plan, and motion authority. After a handled
+nested-scope Back restores a committed Settings root, keep the widget as input
+owner and restore the prior/root visible focus so the next D-pad/left-stick
+direction is resolved inside Settings. Do not add Settings/package-specific host
+behavior, mutate focus before the replacement frame commits, publish staged
+focus/accessibility state on a failed graphics commit, or fall back to the tray
+merely because the prior nested-scope element is absent from the replacement
+scope. Build once, commit the production-only correction, and stop for source
+review and a physical A/B verdict; do not run tests or integrate yet.
 
 ## Ready platform deliverable — DLV-274: image-cache retention without icon churn
 
@@ -316,10 +341,12 @@ missing accepted DLV-265/DLV-271 baseline. Never push.
 
 ## Serialized order
 
-1. DLV-269 is accepted and integrated through main `683af77`; its retained PID
-   98812 was later closed only to stage the DLV-273 production candidate.
-2. DLV-273 production `b54e1e2` is visibly running as unaccepted PID 86140;
-   obtain the required multi-widget/full-bounded physical verdict before tests.
+1. DLV-269 is accepted and integrated through main `683af77`; its immutable
+   accepted build is visibly restored as PID 69660 after DLV-273 rejection.
+2. Preserve rejected DLV-273 production `b54e1e2`, correct the Settings
+   submenu-Back focus handoff in one production-only commit, and obtain the
+   required focused Settings plus multi-widget/full-bounded physical verdict
+   before tests.
 3. Run DLV-274 in the platform lane and obtain measured production/build,
    stable-process Games & Apps physical acceptance, focused tests, review, and
    integration.
@@ -341,7 +368,7 @@ missing accepted DLV-265/DLV-271 baseline. Never push.
 | Trademark | Similar-mark clearance; qualified counsel recommended before public release. |
 | GitHub identity | User-selected owner plus repository/organization availability and optional rename/creation. |
 | DLV-269 | Complete: physical correction accepted on PID 98812, focused evidence passed, and the chain is integrated through main `683af77`. |
-| DLV-273 | Production `b54e1e2` is source-reviewed and visibly running as PID 86140; requires multi-widget/full-bounded update, focus/scroll, retained-frame, and device/resource-refresh physical acceptance before tests. |
+| DLV-273 | Production `b54e1e2` rejected: Settings submenu Back restored visible root content with tray-owned input (`visual-focus=none`, `semantic-focus=tray:settings`), so Down returned to the tray. The user confirmed restored accepted PID 69660 does not reproduce it, proving an exact DLV-273 regression. A production-only correction is required before retest. |
 | DLV-265 | Saved until immediately after accepted DLV-271; preserve installed 0.3.3 and existing configuration/account state. |
 | DLV-248 | Deliberately deferred until explicit user promotion. |
 
