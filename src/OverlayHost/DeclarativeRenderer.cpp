@@ -3191,24 +3191,30 @@ DeclarativeRenderer::PlanFocusedFreeScroll(
     const std::wstring_view focusedElementId,
     const declarative::ScrollAxis axis,
     const float deltaDip,
-    const Rect viewport) {
+    const Rect viewport,
+    const std::wstring_view exactScrollId) {
     pendingIncrementalPlan_.reset();
     const auto& cache = incrementalLayoutCache_;
     if (!cache || cache->instanceId != snapshot.instanceId ||
         cache->sequence != snapshot.sequence ||
-        cache->focusedElementId != focusedElementId ||
+        (exactScrollId.empty() && cache->focusedElementId != focusedElementId) ||
         axis == declarative::ScrollAxis::None || !std::isfinite(deltaDip) ||
         std::abs(deltaDip) <= 0.001F || !SameRect(cache->viewport, viewport)) {
         return std::nullopt;
     }
 
     std::vector<const WidgetNode*> path;
-    if (!FindNodePath(snapshot.root, focusedElementId, path))
+    if (!FindNodePath(
+            snapshot.root,
+            exactScrollId.empty() ? focusedElementId : exactScrollId,
+            path)) {
         return std::nullopt;
+    }
 
     for (auto item = path.rbegin(); item != path.rend(); ++item) {
         const WidgetNode& candidate = **item;
         if (candidate.kind != L"scroll") continue;
+        if (!exactScrollId.empty() && candidate.id != exactScrollId) continue;
         const auto visible = cache->scrollViewports.find(candidate.id);
         const auto* box = cache->layout.Find(NarrowStableId(candidate.id));
         if (visible == cache->scrollViewports.end() || !box ||

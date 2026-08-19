@@ -274,7 +274,8 @@ public:
         std::wstring_view focusedElementId,
         declarative::ScrollAxis axis,
         float deltaDip,
-        declarative::Rect viewport);
+        declarative::Rect viewport,
+        std::wstring_view exactScrollId = {});
 
     void CancelPresentationUpdatePlan() noexcept;
 

@@ -40,6 +40,19 @@ const WidgetNode* FindNode(
     return nullptr;
 }
 
+bool FindNodePath(
+    const WidgetNode& node,
+    const std::wstring_view nodeId,
+    std::vector<const WidgetNode*>& path) {
+    path.push_back(&node);
+    if (node.id == nodeId) return true;
+    for (const auto& child : node.children) {
+        if (FindNodePath(child, nodeId, path)) return true;
+    }
+    path.pop_back();
+    return false;
+}
+
 void CollectCollectionItems(
     const WidgetNode& node,
     const WidgetNode& collectionRoot,
@@ -167,6 +180,63 @@ void CollectScrollPaginationActions(
 }
 
 } // namespace
+
+FocusedScrollResolution ResolveFocusedScrollOwner(
+    const WidgetNode& root,
+    const std::wstring_view focusedElementId,
+    const declarative::ScrollAxis axis,
+    const std::wstring_view activeScopeId,
+    const RenderResult& renderResult) {
+    if (focusedElementId.empty() || axis == declarative::ScrollAxis::None)
+        return {FocusedScrollResolutionDisposition::MissingFocus};
+    std::vector<const WidgetNode*> path;
+    if (!FindNodePath(root, focusedElementId, path))
+        return {FocusedScrollResolutionDisposition::MissingFocus};
+    const auto scope = renderResult.focusScopes.find(focusedElementId);
+    if (scope == renderResult.focusScopes.end() ||
+        scope->second != activeScopeId) {
+        return {FocusedScrollResolutionDisposition::ScopeMismatch};
+    }
+
+    bool foundSemanticScroll{};
+    for (auto item = path.rbegin(); item != path.rend(); ++item) {
+        if ((*item)->kind != L"scroll") continue;
+        foundSemanticScroll = true;
+        const auto viewport = renderResult.scrollViewports.find((*item)->id);
+        if (viewport == renderResult.scrollViewports.end() ||
+            viewport->second.axis != axis ||
+            viewport->second.rect.width <= 0.0F ||
+            viewport->second.rect.height <= 0.0F) {
+            continue;
+        }
+        return {
+            FocusedScrollResolutionDisposition::Resolved,
+            (*item)->id,
+            axis,
+        };
+    }
+    return {
+        foundSemanticScroll
+            ? FocusedScrollResolutionDisposition::StaleGeometry
+            : FocusedScrollResolutionDisposition::NoEligibleScroll,
+    };
+}
+
+bool IsExactScrollAuthorityCurrent(
+    const WidgetNode& root,
+    const std::wstring_view scrollId,
+    const declarative::ScrollAxis axis,
+    const RenderResult& renderResult) noexcept {
+    if (scrollId.empty() || axis == declarative::ScrollAxis::None)
+        return false;
+    const auto* scroll = FindNode(root, scrollId);
+    const auto viewport = renderResult.scrollViewports.find(scrollId);
+    return scroll && scroll->kind == L"scroll" &&
+        viewport != renderResult.scrollViewports.end() &&
+        viewport->second.axis == axis &&
+        viewport->second.rect.width > 0.0F &&
+        viewport->second.rect.height > 0.0F;
+}
 
 std::vector<ScrollPaginationAction> FindScrollPaginationActions(
     const WidgetNode& root,

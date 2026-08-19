@@ -38,6 +38,39 @@ struct ScrollPaginationAction final {
     std::size_t itemCount{};
 };
 
+enum class FocusedScrollResolutionDisposition {
+    Resolved,
+    MissingFocus,
+    ScopeMismatch,
+    NoEligibleScroll,
+    StaleGeometry,
+};
+
+struct FocusedScrollResolution final {
+    FocusedScrollResolutionDisposition disposition{
+        FocusedScrollResolutionDisposition::MissingFocus};
+    std::wstring scrollId;
+    declarative::ScrollAxis axis{declarative::ScrollAxis::None};
+};
+
+/// Resolves the deepest rendered Scroll ancestor of one exact focused node.
+/// This is the shared owner lookup for vertical and horizontal free scrolling
+/// and pagination intent; callers must not guess from axis alone.
+[[nodiscard]] FocusedScrollResolution ResolveFocusedScrollOwner(
+    const WidgetNode& root,
+    std::wstring_view focusedElementId,
+    declarative::ScrollAxis axis,
+    std::wstring_view activeScopeId,
+    const RenderResult& renderResult);
+
+/// Validates that a previously bound Scroll still exists in the current
+/// semantic tree and the committed renderer geometry with the same axis.
+[[nodiscard]] bool IsExactScrollAuthorityCurrent(
+    const WidgetNode& root,
+    std::wstring_view scrollId,
+    declarative::ScrollAxis axis,
+    const RenderResult& renderResult) noexcept;
+
 /// Resolves pagination actions from each rendered Scroll viewport's visible
 /// collection range. Focus identity and input source are deliberately absent:
 /// right-stick, pointer/UIA, focus-follow, and retained-anchor movement all

@@ -148,6 +148,12 @@ std::wstring WidgetInteractionSession::RestoreFocus(
     return focusedElementId_;
 }
 
+std::wstring WidgetInteractionSession::FocusRestoreCandidate(
+    const std::wstring_view widgetId,
+    const WidgetSnapshot& snapshot) const {
+    return focusMemory_.Restore(widgetId, snapshot);
+}
+
 void WidgetInteractionSession::ForgetWidget(const std::wstring_view widgetId) {
     focusMemory_.Forget(widgetId);
     sliders_.ForgetWidget(widgetId);
@@ -650,30 +656,13 @@ WidgetInteractionSession::ObserveScrollPaginationIntent(
     if (!authority.semantics || axis == declarative::ScrollAxis::None)
         return outcome;
 
-    auto latch = scrollPaginationLatches_.end();
-    if (!scrollId.empty()) {
-        latch = std::ranges::find_if(
-            scrollPaginationLatches_, [&](const auto& candidate) {
-                return SameScrollPaginationRoute(candidate, authority) &&
-                    candidate.scrollId == scrollId;
-            });
-    } else {
-        latch = std::ranges::find_if(
-            scrollPaginationLatches_, [&](const auto& candidate) {
-                if (!SameScrollPaginationRoute(candidate, authority) ||
-                    candidate.axis != axis) return false;
-                return edge == ScrollPaginationEdge::Before
-                    ? candidate.beforeResident : candidate.afterResident;
-            });
-        if (latch == scrollPaginationLatches_.end()) {
-            latch = std::ranges::find_if(
-                scrollPaginationLatches_, [&](const auto& candidate) {
-                    return SameScrollPaginationRoute(candidate, authority) &&
-                        candidate.axis == axis;
-                });
-        }
-    }
-    if (latch == scrollPaginationLatches_.end() && !scrollId.empty() &&
+    if (scrollId.empty()) return outcome;
+    auto latch = std::ranges::find_if(
+        scrollPaginationLatches_, [&](const auto& candidate) {
+            return SameScrollPaginationRoute(candidate, authority) &&
+                candidate.scrollId == scrollId && candidate.axis == axis;
+        });
+    if (latch == scrollPaginationLatches_.end() &&
         scrollPaginationLatches_.size() < maximumLatches) {
         scrollPaginationLatches_.push_back({
             std::wstring{authority.widgetId},
@@ -730,11 +719,16 @@ WidgetInteractionSession::ObserveScrollPaginationFocusIntent(
     if (std::abs(deltaX) <= intentEpsilon &&
         std::abs(deltaY) <= intentEpsilon) return {};
     const bool horizontal = std::abs(deltaX) > std::abs(deltaY);
+    const auto axis = horizontal
+        ? declarative::ScrollAxis::Horizontal
+        : declarative::ScrollAxis::Vertical;
+    const auto owner = ResolveFocusedScrollOwner(
+        authority.semantics->root, nextFocus, axis,
+        authority.semantics->activeInputScopeId, renderResult);
+    if (owner.disposition != FocusedScrollResolutionDisposition::Resolved)
+        return {};
     return ObserveScrollPaginationIntent(
-        authority, {},
-        horizontal
-            ? declarative::ScrollAxis::Horizontal
-            : declarative::ScrollAxis::Vertical,
+        authority, owner.scrollId, axis,
         (horizontal ? deltaX : deltaY) < 0.0F
             ? ScrollPaginationEdge::Before
             : ScrollPaginationEdge::After,

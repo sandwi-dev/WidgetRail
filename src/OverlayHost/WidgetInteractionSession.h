@@ -221,6 +221,9 @@ public:
     [[nodiscard]] std::wstring RestoreFocus(
         std::wstring_view widgetId,
         const WidgetSnapshot& snapshot);
+    [[nodiscard]] std::wstring FocusRestoreCandidate(
+        std::wstring_view widgetId,
+        const WidgetSnapshot& snapshot) const;
     void ForgetWidget(std::wstring_view widgetId);
 
     [[nodiscard]] RightStickScrollUpdate SampleRightStick(
