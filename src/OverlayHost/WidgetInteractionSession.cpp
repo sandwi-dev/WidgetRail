@@ -1,6 +1,7 @@
 #include "WidgetInteractionSession.h"
 
 #include <algorithm>
+#include <cmath>
 #include <utility>
 
 namespace widgetrail::input {
@@ -9,6 +10,30 @@ namespace {
 std::wstring_view ScrollPaginationEdgeName(
     const ScrollPaginationEdge edge) noexcept {
     return edge == ScrollPaginationEdge::Before ? L"before" : L"after";
+}
+
+std::wstring_view ScrollPaginationDemandName(
+    const ScrollPaginationDemandReason reason) noexcept {
+    switch (reason) {
+    case ScrollPaginationDemandReason::Initial: return L"initial";
+    case ScrollPaginationDemandReason::Intent: return L"intent";
+    case ScrollPaginationDemandReason::ThresholdReentry:
+        return L"threshold-reentry";
+    }
+    return L"unknown";
+}
+
+std::wstring_view ScrollPaginationIntentName(
+    const ScrollPaginationIntentSource source) noexcept {
+    switch (source) {
+    case ScrollPaginationIntentSource::None: return L"none";
+    case ScrollPaginationIntentSource::RightStick: return L"right-stick";
+    case ScrollPaginationIntentSource::DirectionalNavigation:
+        return L"directional-navigation";
+    case ScrollPaginationIntentSource::Pointer: return L"pointer";
+    case ScrollPaginationIntentSource::Accessibility: return L"accessibility";
+    }
+    return L"unknown";
 }
 
 bool SameScrollPaginationRequest(
@@ -22,7 +47,8 @@ bool SameScrollPaginationRequest(
         left.action.scrollId == right.action.scrollId &&
         left.action.actionId == right.action.actionId &&
         left.action.edge == right.action.edge &&
-        left.action.edgeKey == right.action.edgeKey;
+        left.action.edgeKey == right.action.edgeKey &&
+        left.demandGeneration == right.demandGeneration;
 }
 
 } // namespace
@@ -48,7 +74,13 @@ std::wstring FormatScrollPaginationDiagnostic(
         std::to_wstring(action.itemCount) + L" direction=" +
         std::wstring{ScrollPaginationEdgeName(action.edge)} + L" edge=" +
         action.edgeKey + L" anchor=" +
-        (action.anchorKey.empty() ? L"none" : action.anchorKey);
+        (action.anchorKey.empty() ? L"none" : action.anchorKey) +
+        L" demand=" +
+        std::wstring{ScrollPaginationDemandName(request.demandReason)} +
+        L" intent-source=" +
+        std::wstring{ScrollPaginationIntentName(request.intentSource)} +
+        L" demand-generation=" +
+        std::to_wstring(request.demandGeneration);
     if (!diagnostic.replacementEdgeKey.empty())
         message += L" replacement-edge=" + diagnostic.replacementEdgeKey;
     if (!diagnostic.reason.empty()) message += L" reason=" + diagnostic.reason;
@@ -551,7 +583,10 @@ bool WidgetInteractionSession::SliderReconcileDue(
 ScrollPaginationPrefetchRequest
 WidgetInteractionSession::MakeScrollPaginationRequest(
     const WidgetInteractionAuthority& authority,
-    const ScrollPaginationAction& action) {
+    const ScrollPaginationAction& action,
+    const ScrollPaginationDemandReason reason,
+    const ScrollPaginationIntentSource source,
+    const std::uint64_t demandGeneration) {
     return {
         std::wstring{authority.widgetId},
         authority.semantics ? authority.semantics->instanceId : std::wstring{},
@@ -560,120 +595,397 @@ WidgetInteractionSession::MakeScrollPaginationRequest(
         authority.semantics
             ? authority.semantics->activeInputScopeId : std::wstring{},
         action,
+        reason,
+        source,
+        demandGeneration,
     };
 }
 
+bool WidgetInteractionSession::SameScrollPaginationRoute(
+    const ScrollPaginationDemandLatch& latch,
+    const WidgetInteractionAuthority& authority) noexcept {
+    return authority.semantics &&
+        latch.widgetId == authority.widgetId &&
+        latch.widgetInstanceId == authority.semantics->instanceId &&
+        latch.runtimeGeneration == authority.runtimeGeneration &&
+        latch.presentationGeneration == authority.presentationGeneration &&
+        latch.inputScopeId == authority.semantics->activeInputScopeId;
+}
+
 bool WidgetInteractionSession::SameScrollPaginationAuthority(
-    const ScrollPaginationPrefetchAuthority& authority,
+    const ScrollPaginationDemandLatch& latch,
     const WidgetInteractionAuthority& current,
     const ScrollPaginationAction& action) noexcept {
-    return current.semantics &&
-        authority.request.widgetId == current.widgetId &&
-        authority.request.widgetInstanceId == current.semantics->instanceId &&
-        authority.request.runtimeGeneration == current.runtimeGeneration &&
-        authority.request.presentationGeneration == current.presentationGeneration &&
-        authority.request.inputScopeId == current.semantics->activeInputScopeId &&
-        authority.request.action.scrollId == action.scrollId &&
-        authority.request.action.actionId == action.actionId &&
-        authority.request.action.edge == action.edge &&
-        authority.request.action.edgeKey == action.edgeKey;
+    if (!latch.prefetch || !SameScrollPaginationRoute(latch, current))
+        return false;
+    const auto& request = latch.prefetch->request;
+    return request.action.scrollId == action.scrollId &&
+        request.action.actionId == action.actionId &&
+        request.action.edge == action.edge &&
+        request.action.edgeKey == action.edgeKey;
 }
 
 bool WidgetInteractionSession::SameScrollPaginationRouteEdge(
-    const ScrollPaginationPrefetchAuthority& authority,
+    const ScrollPaginationDemandLatch& latch,
     const WidgetInteractionAuthority& current,
     const ScrollPaginationAction& action) noexcept {
-    return current.semantics &&
-        authority.request.widgetId == current.widgetId &&
-        authority.request.widgetInstanceId == current.semantics->instanceId &&
-        authority.request.runtimeGeneration == current.runtimeGeneration &&
-        authority.request.presentationGeneration == current.presentationGeneration &&
-        authority.request.inputScopeId == current.semantics->activeInputScopeId &&
-        authority.request.action.scrollId == action.scrollId &&
-        authority.request.action.actionId == action.actionId &&
-        authority.request.action.edge == action.edge;
+    if (!latch.prefetch || !SameScrollPaginationRoute(latch, current))
+        return false;
+    const auto& request = latch.prefetch->request;
+    return request.action.scrollId == action.scrollId &&
+        request.action.actionId == action.actionId &&
+        request.action.edge == action.edge;
+}
+
+ScrollPaginationSessionOutcome
+WidgetInteractionSession::ObserveScrollPaginationIntent(
+    const WidgetInteractionAuthority& authority,
+    const std::wstring_view scrollId,
+    const declarative::ScrollAxis axis,
+    const ScrollPaginationEdge edge,
+    const ScrollPaginationIntentSource source,
+    const std::uint64_t) {
+    constexpr std::size_t maximumLatches = 16;
+    ScrollPaginationSessionOutcome outcome;
+    if (!authority.semantics || axis == declarative::ScrollAxis::None)
+        return outcome;
+
+    auto latch = scrollPaginationLatches_.end();
+    if (!scrollId.empty()) {
+        latch = std::ranges::find_if(
+            scrollPaginationLatches_, [&](const auto& candidate) {
+                return SameScrollPaginationRoute(candidate, authority) &&
+                    candidate.scrollId == scrollId;
+            });
+    } else {
+        latch = std::ranges::find_if(
+            scrollPaginationLatches_, [&](const auto& candidate) {
+                if (!SameScrollPaginationRoute(candidate, authority) ||
+                    candidate.axis != axis) return false;
+                return edge == ScrollPaginationEdge::Before
+                    ? candidate.beforeResident : candidate.afterResident;
+            });
+        if (latch == scrollPaginationLatches_.end()) {
+            latch = std::ranges::find_if(
+                scrollPaginationLatches_, [&](const auto& candidate) {
+                    return SameScrollPaginationRoute(candidate, authority) &&
+                        candidate.axis == axis;
+                });
+        }
+    }
+    if (latch == scrollPaginationLatches_.end() && !scrollId.empty() &&
+        scrollPaginationLatches_.size() < maximumLatches) {
+        scrollPaginationLatches_.push_back({
+            std::wstring{authority.widgetId},
+            authority.semantics->instanceId,
+            std::wstring{authority.runtimeGeneration},
+            std::wstring{authority.presentationGeneration},
+            authority.semantics->activeInputScopeId,
+            std::wstring{scrollId},
+            axis,
+        });
+        latch = std::prev(scrollPaginationLatches_.end());
+    }
+    if (latch == scrollPaginationLatches_.end()) return outcome;
+
+    latch->pendingIntentEdge = edge;
+    latch->pendingIntentSource = source;
+    latch->pendingIntentGeneration = ++scrollPaginationDemandGeneration_;
+    if (latch->prefetch &&
+        latch->prefetch->status == ScrollPaginationPrefetchStatus::TerminalFailure &&
+        latch->prefetch->request.action.edge == edge) {
+        outcome.diagnostics.push_back({
+            ScrollPaginationDiagnosticKind::Retired,
+            latch->prefetch->request,
+            L"new-user-intent",
+        });
+        latch->prefetch.reset();
+    }
+    return outcome;
+}
+
+ScrollPaginationSessionOutcome
+WidgetInteractionSession::ObserveScrollPaginationFocusIntent(
+    const WidgetInteractionAuthority& authority,
+    const RenderResult& renderResult,
+    const std::wstring_view priorFocus,
+    const std::wstring_view nextFocus,
+    const ScrollPaginationIntentSource source,
+    const std::uint64_t now) {
+    if (priorFocus.empty() || nextFocus.empty() || priorFocus == nextFocus)
+        return {};
+    const auto prior = renderResult.navigationRects.find(
+        std::wstring{priorFocus});
+    const auto next = renderResult.navigationRects.find(
+        std::wstring{nextFocus});
+    if (prior == renderResult.navigationRects.end() ||
+        next == renderResult.navigationRects.end()) return {};
+    const float deltaX =
+        (next->second.x + next->second.width * 0.5F) -
+        (prior->second.x + prior->second.width * 0.5F);
+    const float deltaY =
+        (next->second.y + next->second.height * 0.5F) -
+        (prior->second.y + prior->second.height * 0.5F);
+    constexpr float intentEpsilon = 0.5F;
+    if (std::abs(deltaX) <= intentEpsilon &&
+        std::abs(deltaY) <= intentEpsilon) return {};
+    const bool horizontal = std::abs(deltaX) > std::abs(deltaY);
+    return ObserveScrollPaginationIntent(
+        authority, {},
+        horizontal
+            ? declarative::ScrollAxis::Horizontal
+            : declarative::ScrollAxis::Vertical,
+        (horizontal ? deltaX : deltaY) < 0.0F
+            ? ScrollPaginationEdge::Before
+            : ScrollPaginationEdge::After,
+        source, now);
 }
 
 ScrollPaginationSessionOutcome WidgetInteractionSession::ReconcileScrollPagination(
     const WidgetInteractionAuthority& authority,
     const RenderResult& renderResult,
     const std::uint64_t now) {
-    constexpr std::size_t maximumAuthorities = 16;
+    constexpr std::size_t maximumLatches = 16;
     ScrollPaginationSessionOutcome outcome;
     if (!authority.semantics) return outcome;
     const auto actions = FindScrollPaginationActions(
         authority.semantics->root,
         authority.semantics->activeInputScopeId,
         renderResult);
-    std::erase_if(scrollPaginationPrefetch_, [&](const auto& entry) {
-        const auto exact = std::ranges::find_if(actions, [&](const auto& action) {
-            return SameScrollPaginationAuthority(entry, authority, action);
-        });
-        if (exact != actions.end()) return false;
-        const auto replacement = std::ranges::find_if(actions, [&](const auto& action) {
-            return SameScrollPaginationRouteEdge(entry, authority, action);
-        });
-        ScrollPaginationDiagnostic diagnostic;
-        diagnostic.request = entry.request;
-        if (replacement != actions.end() &&
-            entry.status == ScrollPaginationPrefetchStatus::InFlight) {
-            const auto latency = now - entry.thresholdAt;
-            ++scrollPaginationVisibleCompletionCount_;
-            scrollPaginationVisibleLatencyTotalMs_ += latency;
-            diagnostic.kind = ScrollPaginationDiagnosticKind::Completed;
-            diagnostic.replacementEdgeKey = replacement->edgeKey;
-            diagnostic.adjacentActionCount = scrollPaginationAdjacentActionCount_;
-            diagnostic.visibleCompletionCount =
-                scrollPaginationVisibleCompletionCount_;
-            diagnostic.thresholdToVisibleMilliseconds = latency;
-            diagnostic.averageVisibleLatencyMilliseconds =
-                scrollPaginationVisibleLatencyTotalMs_ /
-                scrollPaginationVisibleCompletionCount_;
-        } else {
-            diagnostic.kind = ScrollPaginationDiagnosticKind::Retired;
-            diagnostic.reason = replacement != actions.end()
-                ? L"cursor-changed"
-                : entry.request.widgetId == authority.widgetId
-                    ? L"threshold-exit" : L"route-changed";
+    bool routeChanged{};
+    std::erase_if(scrollPaginationLatches_, [&](const auto& latch) {
+        const bool currentRoute = SameScrollPaginationRoute(latch, authority);
+        const bool currentScroll = currentRoute &&
+            renderResult.scrollViewports.contains(latch.scrollId);
+        if (currentScroll) return false;
+        if (latch.prefetch) {
+            outcome.diagnostics.push_back({
+                ScrollPaginationDiagnosticKind::Retired,
+                latch.prefetch->request,
+                currentRoute ? L"scroll-removed" : L"route-changed",
+            });
         }
-        outcome.diagnostics.push_back(std::move(diagnostic));
+        routeChanged = routeChanged || !currentRoute;
         return true;
     });
+    if (routeChanged && scrollPaginationLatches_.empty())
+        scrollPaginationRouteObserved_ = false;
 
+    // Establish one latch per rendered Scroll, never one per changing cursor.
     for (const auto& action : actions) {
         const auto existing = std::ranges::find_if(
-            scrollPaginationPrefetch_, [&](const auto& entry) {
-                return SameScrollPaginationAuthority(entry, authority, action);
+            scrollPaginationLatches_, [&](const auto& latch) {
+                return SameScrollPaginationRoute(latch, authority) &&
+                    latch.scrollId == action.scrollId;
             });
-        if (existing != scrollPaginationPrefetch_.end()) {
-            existing->request.action = action;
-            if (existing->status != ScrollPaginationPrefetchStatus::Queued &&
-                !existing->suppressionReported) {
-                outcome.diagnostics.push_back({
-                    ScrollPaginationDiagnosticKind::Suppressed,
-                    existing->request,
-                    existing->status == ScrollPaginationPrefetchStatus::InFlight
-                        ? L"in-flight" : L"terminal-failure",
-                });
-                existing->suppressionReported = true;
-            }
-            continue;
-        }
-        if (scrollPaginationPrefetch_.size() >= maximumAuthorities) {
+        if (existing != scrollPaginationLatches_.end()) continue;
+        if (scrollPaginationLatches_.size() >= maximumLatches) {
             outcome.diagnostics.push_back({
                 ScrollPaginationDiagnosticKind::Suppressed,
-                MakeScrollPaginationRequest(authority, action),
+                MakeScrollPaginationRequest(
+                    authority, action, ScrollPaginationDemandReason::Initial,
+                    ScrollPaginationIntentSource::None, 0),
                 L"authority-bound",
             });
             continue;
         }
-        auto request = MakeScrollPaginationRequest(authority, action);
-        scrollPaginationPrefetch_.push_back({
-            request, ScrollPaginationPrefetchStatus::Queued, now, 0, false});
-        outcome.diagnostics.push_back({
-            ScrollPaginationDiagnosticKind::Queued, std::move(request)});
-        outcome.dispatchReady = true;
+        scrollPaginationLatches_.push_back({
+            std::wstring{authority.widgetId},
+            authority.semantics->instanceId,
+            std::wstring{authority.runtimeGeneration},
+            std::wstring{authority.presentationGeneration},
+            authority.semantics->activeInputScopeId,
+            action.scrollId,
+            action.axis,
+        });
     }
+    for (const auto& [scrollId, viewport] : renderResult.scrollViewports) {
+        if (viewport.axis == declarative::ScrollAxis::None ||
+            scrollPaginationLatches_.size() >= maximumLatches) continue;
+        const auto existing = std::ranges::find_if(
+            scrollPaginationLatches_, [&](const auto& latch) {
+                return SameScrollPaginationRoute(latch, authority) &&
+                    latch.scrollId == scrollId;
+            });
+        if (existing != scrollPaginationLatches_.end()) continue;
+        scrollPaginationLatches_.push_back({
+            std::wstring{authority.widgetId},
+            authority.semantics->instanceId,
+            std::wstring{authority.runtimeGeneration},
+            std::wstring{authority.presentationGeneration},
+            authority.semantics->activeInputScopeId,
+            scrollId,
+            viewport.axis,
+        });
+    }
+
+    const bool initialRouteObservation = !scrollPaginationRouteObserved_;
+    bool initialQueued{};
+    for (auto& latch : scrollPaginationLatches_) {
+        if (!SameScrollPaginationRoute(latch, authority)) continue;
+        const auto before = std::ranges::find_if(actions, [&](const auto& action) {
+            return action.scrollId == latch.scrollId &&
+                action.edge == ScrollPaginationEdge::Before;
+        });
+        const auto after = std::ranges::find_if(actions, [&](const auto& action) {
+            return action.scrollId == latch.scrollId &&
+                action.edge == ScrollPaginationEdge::After;
+        });
+        const bool beforeResident = before != actions.end();
+        const bool afterResident = after != actions.end();
+        const bool firstObservation = !latch.initialized;
+        const bool residenceChanged = latch.initialized &&
+            (latch.beforeResident != beforeResident ||
+             latch.afterResident != afterResident);
+        const auto actionFor = [&](const ScrollPaginationEdge edge)
+            -> const ScrollPaginationAction* {
+            const auto found = edge == ScrollPaginationEdge::Before
+                ? before : after;
+            return found == actions.end() ? nullptr : &*found;
+        };
+        const auto wasResident = [&](const ScrollPaginationEdge edge) {
+            return edge == ScrollPaginationEdge::Before
+                ? latch.beforeResident : latch.afterResident;
+        };
+        const auto isResident = [&](const ScrollPaginationEdge edge) {
+            return edge == ScrollPaginationEdge::Before
+                ? beforeResident : afterResident;
+        };
+
+        if (latch.prefetch) {
+            const auto exact = std::ranges::find_if(actions, [&](const auto& action) {
+                return SameScrollPaginationAuthority(latch, authority, action);
+            });
+            if (exact == actions.end()) {
+                const auto replacement = std::ranges::find_if(
+                    actions, [&](const auto& action) {
+                        return SameScrollPaginationRouteEdge(
+                            latch, authority, action);
+                    });
+                ScrollPaginationDiagnostic diagnostic;
+                diagnostic.request = latch.prefetch->request;
+                if (latch.prefetch->status ==
+                    ScrollPaginationPrefetchStatus::InFlight) {
+                    const auto latency = now - latch.prefetch->thresholdAt;
+                    ++scrollPaginationVisibleCompletionCount_;
+                    scrollPaginationVisibleLatencyTotalMs_ += latency;
+                    diagnostic.kind = ScrollPaginationDiagnosticKind::Completed;
+                    if (replacement != actions.end())
+                        diagnostic.replacementEdgeKey = replacement->edgeKey;
+                    diagnostic.reason = replacement != actions.end()
+                        ? L"requested-edge-changed"
+                        : L"requested-edge-unavailable";
+                    diagnostic.adjacentActionCount =
+                        scrollPaginationAdjacentActionCount_;
+                    diagnostic.visibleCompletionCount =
+                        scrollPaginationVisibleCompletionCount_;
+                    diagnostic.thresholdToVisibleMilliseconds = latency;
+                    diagnostic.averageVisibleLatencyMilliseconds =
+                        scrollPaginationVisibleLatencyTotalMs_ /
+                        scrollPaginationVisibleCompletionCount_;
+                } else {
+                    diagnostic.kind = ScrollPaginationDiagnosticKind::Suppressed;
+                    diagnostic.reason = L"viewport-changed-before-dispatch";
+                }
+                outcome.diagnostics.push_back(std::move(diagnostic));
+                latch.prefetch.reset();
+            } else if (latch.prefetch->status !=
+                           ScrollPaginationPrefetchStatus::Queued &&
+                       !latch.prefetch->suppressionReported) {
+                outcome.diagnostics.push_back({
+                    ScrollPaginationDiagnosticKind::Suppressed,
+                    latch.prefetch->request,
+                    latch.prefetch->status ==
+                            ScrollPaginationPrefetchStatus::InFlight
+                        ? L"in-flight" : L"terminal-failure",
+                });
+                latch.prefetch->suppressionReported = true;
+            }
+        }
+
+        const auto queue = [&](const ScrollPaginationAction& action,
+                               const ScrollPaginationDemandReason reason,
+                               const ScrollPaginationIntentSource source,
+                               const std::uint64_t generation) {
+            auto request = MakeScrollPaginationRequest(
+                authority, action, reason, source, generation);
+            latch.prefetch = ScrollPaginationPrefetchAuthority{
+                request, ScrollPaginationPrefetchStatus::Queued,
+                now, 0, false};
+            latch.latchedEdge = action.edge;
+            latch.lastDemandGeneration = generation;
+            if (latch.pendingIntentGeneration <= generation) {
+                latch.pendingIntentEdge.reset();
+                latch.pendingIntentGeneration = 0;
+            }
+            latch.reconciliationSuppressionReported = false;
+            outcome.diagnostics.push_back({
+                ScrollPaginationDiagnosticKind::Queued, std::move(request)});
+            outcome.dispatchReady = true;
+        };
+
+        if (!latch.prefetch && latch.pendingIntentEdge &&
+            latch.pendingIntentGeneration > latch.lastDemandGeneration) {
+            const auto intentEdge = *latch.pendingIntentEdge;
+            const auto* candidate = actionFor(intentEdge);
+            const bool sameDirection = !latch.latchedEdge ||
+                *latch.latchedEdge == intentEdge ||
+                !isResident(*latch.latchedEdge);
+            if (candidate && sameDirection) {
+                queue(
+                    *candidate,
+                    wasResident(intentEdge)
+                        ? ScrollPaginationDemandReason::Intent
+                        : ScrollPaginationDemandReason::ThresholdReentry,
+                    latch.pendingIntentSource,
+                    latch.pendingIntentGeneration);
+            }
+        }
+
+        if (!latch.prefetch && firstObservation && initialRouteObservation &&
+            !initialQueued &&
+            !latch.pendingIntentEdge) {
+            if (beforeResident != afterResident) {
+                const auto* candidate = beforeResident ? &*before : &*after;
+                queue(
+                    *candidate,
+                    ScrollPaginationDemandReason::Initial,
+                    ScrollPaginationIntentSource::None,
+                    ++scrollPaginationDemandGeneration_);
+                initialQueued = true;
+            } else if (beforeResident && afterResident) {
+                outcome.diagnostics.push_back({
+                    ScrollPaginationDiagnosticKind::Suppressed,
+                    MakeScrollPaginationRequest(
+                        authority, *before,
+                        ScrollPaginationDemandReason::Initial,
+                        ScrollPaginationIntentSource::None, 0),
+                    L"ambiguous-initial",
+                });
+            }
+        } else if (!latch.prefetch && residenceChanged &&
+                   !latch.pendingIntentEdge &&
+                   !latch.reconciliationSuppressionReported) {
+            const auto* diagnosticAction = beforeResident
+                ? &*before : afterResident ? &*after : nullptr;
+            if (diagnosticAction) {
+                outcome.diagnostics.push_back({
+                    ScrollPaginationDiagnosticKind::Suppressed,
+                    MakeScrollPaginationRequest(
+                        authority, *diagnosticAction,
+                        ScrollPaginationDemandReason::Initial,
+                        ScrollPaginationIntentSource::None, 0),
+                    L"reconciliation-no-rearm",
+                });
+                latch.reconciliationSuppressionReported = true;
+            }
+        }
+        if (!residenceChanged) latch.reconciliationSuppressionReported = false;
+        latch.initialized = true;
+        latch.beforeResident = beforeResident;
+        latch.afterResident = afterResident;
+    }
+    scrollPaginationRouteObserved_ = true;
     return outcome;
 }
 
@@ -689,10 +1001,12 @@ WidgetInteractionSession::AcquireScrollPaginationDispatch(
         authority.semantics->root,
         authority.semantics->activeInputScopeId,
         renderResult);
-    for (auto& entry : scrollPaginationPrefetch_) {
-        if (entry.status != ScrollPaginationPrefetchStatus::Queued) continue;
+    for (auto& latch : scrollPaginationLatches_) {
+        if (!latch.prefetch || latch.prefetch->status !=
+            ScrollPaginationPrefetchStatus::Queued) continue;
+        auto& entry = *latch.prefetch;
         const bool current = std::ranges::any_of(actions, [&](const auto& action) {
-            return SameScrollPaginationAuthority(entry, authority, action);
+            return SameScrollPaginationAuthority(latch, authority, action);
         });
         if (!current) {
             entry.status = ScrollPaginationPrefetchStatus::TerminalFailure;
@@ -715,20 +1029,24 @@ ScrollPaginationSessionOutcome
 WidgetInteractionSession::CompleteScrollPaginationDispatch(
     const ScrollPaginationDispatchOutcome& dispatch) {
     ScrollPaginationSessionOutcome outcome;
-    const auto entry = std::ranges::find_if(
-        scrollPaginationPrefetch_, [&](const auto& candidate) {
-            return candidate.status == ScrollPaginationPrefetchStatus::InFlight &&
-                SameScrollPaginationRequest(candidate.request, dispatch.request);
+    const auto latch = std::ranges::find_if(
+        scrollPaginationLatches_, [&](const auto& candidate) {
+            return candidate.prefetch &&
+                candidate.prefetch->status ==
+                    ScrollPaginationPrefetchStatus::InFlight &&
+                SameScrollPaginationRequest(
+                    candidate.prefetch->request, dispatch.request);
         });
-    if (entry == scrollPaginationPrefetch_.end()) return outcome;
+    if (latch == scrollPaginationLatches_.end()) return outcome;
+    auto& entry = *latch->prefetch;
     ScrollPaginationDiagnostic diagnostic;
-    diagnostic.request = entry->request;
+    diagnostic.request = entry.request;
     diagnostic.adjacentActionCount = scrollPaginationAdjacentActionCount_;
-    diagnostic.queueLatencyMilliseconds = entry->admittedAt - entry->thresholdAt;
+    diagnostic.queueLatencyMilliseconds = entry.admittedAt - entry.thresholdAt;
     if (dispatch.disposition == ScrollPaginationDispatchDisposition::Admitted) {
         diagnostic.kind = ScrollPaginationDiagnosticKind::Admitted;
     } else {
-        entry->status = ScrollPaginationPrefetchStatus::TerminalFailure;
+        entry.status = ScrollPaginationPrefetchStatus::TerminalFailure;
         diagnostic.kind = dispatch.disposition ==
                 ScrollPaginationDispatchDisposition::StaleAuthority
             ? ScrollPaginationDiagnosticKind::Suppressed
@@ -744,19 +1062,24 @@ WidgetInteractionSession::ObserveScrollPaginationFailure(
     const WidgetActionFailure& failure,
     const std::uint64_t) {
     ScrollPaginationSessionOutcome outcome;
-    const auto entry = std::ranges::find_if(
-        scrollPaginationPrefetch_, [&](const auto& candidate) {
-            return candidate.status == ScrollPaginationPrefetchStatus::InFlight &&
-                candidate.request.widgetId == failure.widgetId &&
-                candidate.request.runtimeGeneration == failure.runtimeGeneration &&
-                candidate.request.action.actionId == failure.actionId &&
-                candidate.request.action.sourceElementId == failure.sourceElementId;
+    const auto latch = std::ranges::find_if(
+        scrollPaginationLatches_, [&](const auto& candidate) {
+            return candidate.prefetch &&
+                candidate.prefetch->status ==
+                    ScrollPaginationPrefetchStatus::InFlight &&
+                candidate.prefetch->request.widgetId == failure.widgetId &&
+                candidate.prefetch->request.runtimeGeneration ==
+                    failure.runtimeGeneration &&
+                candidate.prefetch->request.action.actionId == failure.actionId &&
+                candidate.prefetch->request.action.sourceElementId ==
+                    failure.sourceElementId;
         });
-    if (entry == scrollPaginationPrefetch_.end()) return outcome;
-    entry->status = ScrollPaginationPrefetchStatus::TerminalFailure;
+    if (latch == scrollPaginationLatches_.end()) return outcome;
+    auto& entry = *latch->prefetch;
+    entry.status = ScrollPaginationPrefetchStatus::TerminalFailure;
     outcome.diagnostics.push_back({
         ScrollPaginationDiagnosticKind::TerminalFailure,
-        entry->request,
+        entry.request,
         L"worker-action-failure",
     });
     return outcome;
@@ -766,15 +1089,19 @@ ScrollPaginationSessionOutcome WidgetInteractionSession::RetireScrollPagination(
     const std::wstring_view widgetId,
     const std::wstring_view reason) {
     ScrollPaginationSessionOutcome outcome;
-    std::erase_if(scrollPaginationPrefetch_, [&](const auto& entry) {
-        if (!widgetId.empty() && entry.request.widgetId != widgetId) return false;
-        outcome.diagnostics.push_back({
-            ScrollPaginationDiagnosticKind::Retired,
-            entry.request,
-            std::wstring{reason},
-        });
+    std::erase_if(scrollPaginationLatches_, [&](const auto& latch) {
+        if (!widgetId.empty() && latch.widgetId != widgetId) return false;
+        if (latch.prefetch) {
+            outcome.diagnostics.push_back({
+                ScrollPaginationDiagnosticKind::Retired,
+                latch.prefetch->request,
+                std::wstring{reason},
+            });
+        }
         return true;
     });
+    if (scrollPaginationLatches_.empty())
+        scrollPaginationRouteObserved_ = false;
     return outcome;
 }
 

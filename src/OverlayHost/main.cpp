@@ -4959,6 +4959,10 @@ private:
                     ClearFreeScrollReentry(L"pointer-focus");
                     launcherExperienceProjection_.ObserveFocusInput(
                         widget, GetTickCount64());
+                    ObserveScrollPaginationFocusIntent(
+                        widget, *snapshot,
+                        interactionSession_.focusedElementId(), hit->id,
+                        widgetrail::input::ScrollPaginationIntentSource::Pointer);
                     const auto focus = interactionSession_.MoveFocus(
                         widget, *snapshot, hit->id);
                     InvalidateWidgetFocusChange(
@@ -5585,6 +5589,13 @@ private:
             return true;
         }
 
+        ObserveScrollPaginationIntent(
+            widget, *snapshot, plan->scrollId, plan->axis,
+            plan->offset < plan->priorOffset
+                ? widgetrail::input::ScrollPaginationEdge::Before
+                : widgetrail::input::ScrollPaginationEdge::After,
+            widgetrail::input::ScrollPaginationIntentSource::RightStick);
+
         const bool newBinding = interactionSession_.BindFreeScroll(
             authority, plan->scrollId, plan->axis);
         committedWidgetVisualState_.reset();
@@ -6161,6 +6172,11 @@ private:
                 ClearFreeScrollReentry(L"accessibility-focus");
                 launcherExperienceProjection_.ObserveFocusInput(
                     request.widgetId, GetTickCount64());
+                ObserveScrollPaginationFocusIntent(
+                    request.widgetId, *snapshot,
+                    interactionSession_.focusedElementId(), resolved->nodeId,
+                    widgetrail::input::ScrollPaginationIntentSource::
+                        Accessibility);
                 const auto focus = interactionSession_.MoveFocus(
                     request.widgetId, *snapshot, resolved->nodeId);
                 (void)SetFocus(window_);
@@ -6687,6 +6703,36 @@ private:
         }
     }
 
+    void ObserveScrollPaginationIntent(
+        const std::wstring_view widgetId,
+        const widgetrail::WidgetSnapshot& snapshot,
+        const std::wstring_view scrollId,
+        const widgetrail::declarative::ScrollAxis axis,
+        const widgetrail::input::ScrollPaginationEdge edge,
+        const widgetrail::input::ScrollPaginationIntentSource source) {
+        const auto authority = InteractionAuthority(widgetId, snapshot);
+        if (!authority) return;
+        PublishScrollPaginationOutcome(
+            interactionSession_.ObserveScrollPaginationIntent(
+                *authority,
+                scrollId, axis, edge, source, GetTickCount64()));
+    }
+
+    void ObserveScrollPaginationFocusIntent(
+        const std::wstring_view widgetId,
+        const widgetrail::WidgetSnapshot& snapshot,
+        const std::wstring_view priorFocus,
+        const std::wstring_view nextFocus,
+        const widgetrail::input::ScrollPaginationIntentSource source) {
+        const auto authority = InteractionAuthority(widgetId, snapshot);
+        if (!authority) return;
+        PublishScrollPaginationOutcome(
+            interactionSession_.ObserveScrollPaginationFocusIntent(
+                *authority,
+                lastWidgetRenderResult_, priorFocus, nextFocus, source,
+                GetTickCount64()));
+    }
+
     void ClearScrollPaginationPrefetch(
         const std::wstring_view reason,
         const std::wstring_view widgetId = {}) {
@@ -7002,6 +7048,22 @@ private:
         else if (direction == L"right") navigationDirection = widgetrail::input::NavigationDirection::Right;
         else if (direction == L"up") navigationDirection = widgetrail::input::NavigationDirection::Up;
         else if (direction == L"down") navigationDirection = widgetrail::input::NavigationDirection::Down;
+        if (navigationDirection != widgetrail::input::NavigationDirection::None) {
+            const bool horizontal =
+                navigationDirection == widgetrail::input::NavigationDirection::Left ||
+                navigationDirection == widgetrail::input::NavigationDirection::Right;
+            ObserveScrollPaginationIntent(
+                widgetId, *snapshot, {},
+                horizontal
+                    ? widgetrail::declarative::ScrollAxis::Horizontal
+                    : widgetrail::declarative::ScrollAxis::Vertical,
+                navigationDirection == widgetrail::input::NavigationDirection::Left ||
+                        navigationDirection == widgetrail::input::NavigationDirection::Up
+                    ? widgetrail::input::ScrollPaginationEdge::Before
+                    : widgetrail::input::ScrollPaginationEdge::After,
+                widgetrail::input::ScrollPaginationIntentSource::
+                    DirectionalNavigation);
+        }
         const auto visibleFocus = widgetrail::input::ResolveVisibleFocusTarget(
             interactionSession_.focusedElementId(), activeScope, lastWidgetRenderResult_);
         if (!visibleFocus) {

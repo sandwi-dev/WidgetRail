@@ -149,6 +149,7 @@ void CollectScrollPaginationActions(
                 ? boundary.id
                 : boundary.collectionItemKey,
             node.collectionAnchorKey,
+            viewport->second.axis,
             edge,
             *firstVisible,
             *lastVisible,

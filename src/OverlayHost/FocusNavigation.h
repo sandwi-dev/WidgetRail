@@ -31,6 +31,7 @@ struct ScrollPaginationAction final {
     std::wstring sourceElementId;
     std::wstring edgeKey;
     std::wstring anchorKey;
+    declarative::ScrollAxis axis{declarative::ScrollAxis::None};
     ScrollPaginationEdge edge{ScrollPaginationEdge::Before};
     std::size_t firstVisibleIndex{};
     std::size_t lastVisibleIndex{};

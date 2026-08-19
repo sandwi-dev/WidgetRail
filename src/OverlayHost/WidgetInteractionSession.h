@@ -139,6 +139,20 @@ enum class ScrollPaginationDispatchDisposition {
     StaleAuthority,
 };
 
+enum class ScrollPaginationDemandReason {
+    Initial,
+    Intent,
+    ThresholdReentry,
+};
+
+enum class ScrollPaginationIntentSource {
+    None,
+    RightStick,
+    DirectionalNavigation,
+    Pointer,
+    Accessibility,
+};
+
 struct ScrollPaginationPrefetchRequest final {
     std::wstring widgetId;
     std::wstring widgetInstanceId;
@@ -146,6 +160,11 @@ struct ScrollPaginationPrefetchRequest final {
     std::wstring presentationGeneration;
     std::wstring inputScopeId;
     ScrollPaginationAction action;
+    ScrollPaginationDemandReason demandReason{
+        ScrollPaginationDemandReason::Initial};
+    ScrollPaginationIntentSource intentSource{
+        ScrollPaginationIntentSource::None};
+    std::uint64_t demandGeneration{};
 };
 
 struct ScrollPaginationDiagnostic final {
@@ -286,6 +305,20 @@ public:
         const WidgetInteractionAuthority& authority,
         const RenderResult& renderResult,
         std::uint64_t now);
+    [[nodiscard]] ScrollPaginationSessionOutcome ObserveScrollPaginationIntent(
+        const WidgetInteractionAuthority& authority,
+        std::wstring_view scrollId,
+        declarative::ScrollAxis axis,
+        ScrollPaginationEdge edge,
+        ScrollPaginationIntentSource source,
+        std::uint64_t now);
+    [[nodiscard]] ScrollPaginationSessionOutcome ObserveScrollPaginationFocusIntent(
+        const WidgetInteractionAuthority& authority,
+        const RenderResult& renderResult,
+        std::wstring_view priorFocus,
+        std::wstring_view nextFocus,
+        ScrollPaginationIntentSource source,
+        std::uint64_t now);
     [[nodiscard]] std::pair<
         std::optional<ScrollPaginationPrefetchRequest>,
         ScrollPaginationSessionOutcome> AcquireScrollPaginationDispatch(
@@ -329,17 +362,43 @@ private:
         std::uint64_t admittedAt{};
         bool suppressionReported{};
     };
+    struct ScrollPaginationDemandLatch final {
+        std::wstring widgetId;
+        std::wstring widgetInstanceId;
+        std::wstring runtimeGeneration;
+        std::wstring presentationGeneration;
+        std::wstring inputScopeId;
+        std::wstring scrollId;
+        declarative::ScrollAxis axis{declarative::ScrollAxis::None};
+        bool initialized{};
+        bool beforeResident{};
+        bool afterResident{};
+        std::optional<ScrollPaginationEdge> latchedEdge;
+        std::optional<ScrollPaginationEdge> pendingIntentEdge;
+        ScrollPaginationIntentSource pendingIntentSource{
+            ScrollPaginationIntentSource::None};
+        std::uint64_t pendingIntentGeneration{};
+        std::uint64_t lastDemandGeneration{};
+        std::optional<ScrollPaginationPrefetchAuthority> prefetch;
+        bool reconciliationSuppressionReported{};
+    };
     [[nodiscard]] static bool SameScrollPaginationAuthority(
-        const ScrollPaginationPrefetchAuthority& authority,
+        const ScrollPaginationDemandLatch& latch,
         const WidgetInteractionAuthority& current,
         const ScrollPaginationAction& action) noexcept;
     [[nodiscard]] static bool SameScrollPaginationRouteEdge(
-        const ScrollPaginationPrefetchAuthority& authority,
+        const ScrollPaginationDemandLatch& latch,
         const WidgetInteractionAuthority& current,
         const ScrollPaginationAction& action) noexcept;
     [[nodiscard]] static ScrollPaginationPrefetchRequest MakeScrollPaginationRequest(
         const WidgetInteractionAuthority& authority,
-        const ScrollPaginationAction& action);
+        const ScrollPaginationAction& action,
+        ScrollPaginationDemandReason reason,
+        ScrollPaginationIntentSource source,
+        std::uint64_t demandGeneration);
+    [[nodiscard]] static bool SameScrollPaginationRoute(
+        const ScrollPaginationDemandLatch& latch,
+        const WidgetInteractionAuthority& authority) noexcept;
 
     RightStickScrollKinetics rightStickKinetics_;
     std::optional<FreeScrollBinding> freeScrollBinding_;
@@ -349,7 +408,9 @@ private:
     SliderInteractionState sliders_;
     PressedInteractionState pressed_;
     std::uint64_t sliderReconcileAt_{};
-    std::vector<ScrollPaginationPrefetchAuthority> scrollPaginationPrefetch_;
+    std::vector<ScrollPaginationDemandLatch> scrollPaginationLatches_;
+    bool scrollPaginationRouteObserved_{};
+    std::uint64_t scrollPaginationDemandGeneration_{};
     std::uint64_t scrollPaginationAdjacentActionCount_{};
     std::uint64_t scrollPaginationVisibleCompletionCount_{};
     std::uint64_t scrollPaginationVisibleLatencyTotalMs_{};
