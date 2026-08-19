@@ -763,9 +763,41 @@ locator, second render checkpoint, protocol work, interaction-state ownership,
 broad `main.cpp` rewrite, substantial conflict, or changed product behavior
 beyond atomic committed-frame handoff. Never push.
 
+## Ready platform deliverable — DLV-274: image-cache retention without icon churn
+
+Owner/baseline: platform lane after DLV-273 is accepted and integrated and
+before DLV-271. Keep policy and lifetime in the extracted
+`WidgetContentPresenter`, `RemoteImageCache`, and declarative renderer; do not
+add Games & Apps branches or widget-owned native caches.
+
+Correct the reproduced global 32-entry bottleneck. On accepted PID 56240,
+Games & Apps used only about 141 KiB for 32 small icons, yet revisiting and
+scrolling the list raised bitmap creates from 32 to 48 and evictions from 0 to
+16 with no resource-domain invalidation. Retain explicit decoded-byte and GPU
+byte budgets, but decouple retained ready entries from pending/request
+admission. Bound concurrent fetch/decode work and metadata/object count
+separately; select measured entry and byte limits that retain ordinary visible
+app grids plus shared chrome/widget artwork without unbounded URL, COM, CPU, or
+GPU growth.
+
+Follow physical-first ordering. Build a tests-skipped Release with cache stats
+that distinguish ready entries, pending work, byte pressure, count pressure,
+eviction reason, widget/resource domain, and cold process/resource restart.
+The user must open Games & Apps, wait for icons, switch across image-bearing
+widgets, return, fast-scroll away/back, and confirm that a stable resident host
+does not visibly reload the complete icon grid. Record before/after creates,
+evictions, decoded/GPU bytes, host memory, and activation latency. After the
+verdict add focused LRU, request-backpressure, byte/count-pressure, trusted-
+artwork revision, device-loss, shutdown, and multi-widget retention coverage.
+
+Stop for unbounded retention, per-widget native cache authority, weakened
+untrusted-image bounds, a public SDK/protocol change, device/resource lifetime
+regression, substantial conflict, or missing accepted DLV-273 baseline. Never
+push.
+
 ## Ready serialized deliverable — DLV-271: virtualized collection presentation windows
 
-Owner/baseline: platform lane as the serialized cross-layer lead after DLV-273
+Owner/baseline: platform lane as the serialized cross-layer lead after DLV-274
 is accepted and integrated on main. This is deliberate public
 architecture work spanning the generic managed SDK/cursor resource, versioned
 protocol and admission, bridge/runtime publication, native semantic/layout/
@@ -902,17 +934,19 @@ deliberately deferred by user decision and requires explicit promotion.
 8. DLV-269 is Assigned from `8100bd7`: generic viewport-driven,
    focus-independent adjacent prefetch with Spotify as the physical proof.
 9. DLV-273 follows accepted DLV-269: extract one atomic committed widget-content
-   presenter before virtualized collection architecture.
-10. DLV-271 follows accepted DLV-273: bounded virtualized collection windows
+   presenter before cache-policy and virtualized collection work.
+10. DLV-274 follows accepted DLV-273: remove the reproduced global 32-entry
+    icon-cache bottleneck while preserving measured byte and request bounds.
+11. DLV-271 follows accepted DLV-274: bounded virtualized collection windows
    with a provider-free 10,000-item scale proof.
-11. DLV-265 remains saved at clean correction tip `13bd971` and resumes in the
+12. DLV-265 remains saved at clean correction tip `13bd971` and resumes in the
    widgets lane immediately after accepted DLV-271 integration for its configured-
    Ready Setup/cancel verdict, focused tests, review, and integration.
-12. DLV-270 is Ready for the widgets lane only after resumed DLV-265 is accepted
+13. DLV-270 is Ready for the widgets lane only after resumed DLV-265 is accepted
     and integrated: eliminate redundant Spotify collection requests, measure/
     tune page retention, and reconcile the Queue bound against the accepted
     generic prefetch and virtualization contracts.
-13. DLV-248 remains outside this sequence until the user promotes it.
+14. DLV-248 remains outside this sequence until the user promotes it.
 
 ## Manual, external, and blocked evidence
 
@@ -930,8 +964,9 @@ deliberately deferred by user decision and requires explicit promotion.
 | DLV-272 | Complete: production `1feaa92b` was physically accepted on PID 86532; test commit `0b84a5d` passed 2,548 focused checks plus TextEntryModal, and the chain is integrated through main `8100bd7`. |
 | DLV-269 | Correction Assigned after runtime rejection of `f860da5d` for a nine-action no-input paging loop; requires a tests-skipped physical Spotify long-list verdict proving bounded viewport-driven prefetch without consumed input or forced focus. |
 | DLV-273 | Ready after accepted DLV-269 integration; requires an atomic committed presenter extraction, tests-skipped multi-widget/full-bounded physical verdict, then focused renderer/lifecycle coverage. |
+| DLV-274 | Ready after accepted DLV-273 integration; requires measured separation of ready-entry retention, byte budgets, and pending request bounds plus a stable-process Games & Apps no-full-icon-reload physical verdict. |
 | DLV-270 | Ready after resumed DLV-265 is accepted following DLV-271; requires an immutable Spotify candidate, bounded provider-call/timing and snapshot evidence, then user long-list/Queue physical acceptance before tests. |
-| DLV-271 | Ready for the platform lane as serialized cross-layer work after accepted DLV-273; shared protocol work requires focused Tier 1 plus the smallest linked Tier 2 evidence and a bounded 10,000-item reference scenario before physical acceptance. |
+| DLV-271 | Ready for the platform lane as serialized cross-layer work after accepted DLV-274; shared protocol work requires focused Tier 1 plus the smallest linked Tier 2 evidence and a bounded 10,000-item reference scenario before physical acceptance. |
 | DLV-266 | Complete: physical Guide, already-visible `--show`, and external-foreground activation accepted on PID 40292; focused tests passed and the chain is integrated through main `cd83b3a`. |
 | DLV-248 | Deliberately deferred until explicit user promotion. |
 | Avalonia | Failed/cancelled; requires a new explicit user decision. |
