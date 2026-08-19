@@ -29,7 +29,7 @@ evidence only; this file is the sole authority for current work.
 
 | Lane | Task/worktree | State |
 | --- | --- | --- |
-| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | DLV-273 production `b54e1e2` and correction `e98566e` are physically rejected. The correction restores root focus after commit, but the next directional input can silently transfer ownership back to the tray: Up has no visible effect, the first Down only returns ownership to the widget, and the second Down finally moves. Preserve both commits as rejected history; produce one narrower production-only correction and stop before tests. Do not integrate or start DLV-274 before acceptance. Never push. |
+| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | Preserve physically rejected DLV-273 production `b54e1e2` and correction `e98566e`. Narrow correction `dcd58e0` is source-reviewed, built, and visibly launched as PID 105876 for the focused Settings physical verdict. Do not test, integrate, or start DLV-274 before acceptance. Never push. |
 | Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | Preserve saved DLV-265 and installed Spotify state. Do not resume, test, integrate, reinstall, replace configuration, or reset before accepted DLV-271 integration. DLV-270 follows accepted DLV-265; DLV-248 remains deferred. |
 
 ## Execution, review, and architecture rules
@@ -216,6 +216,30 @@ nested-scope element is absent from the replacement scope. Build once, commit
 the production-only correction, and stop for source review and a physical A/B
 verdict; do not run tests or integrate yet.
 
+Current correction candidate: production-only commit `dcd58e0` changes
+`src/OverlayHost/main.cpp` only. It extends the exact Back handoff authority with
+one optional direction plus committed-root sequence/focus state. A direction
+arriving before the matching root commit is retained once while repeats are
+dropped; after the exact successful commit, or for the first direction arriving
+after it, the token is retired before the existing navigation path applies that
+direction. Existing lifecycle and authority invalidations discard the token.
+Source review found no general input queue, second input/focus owner,
+package-specific branch, presenter authority leak, or change to the renderer,
+checkpoint, session, accessibility, HWND, or device-recovery owners. Release
+build succeeded; tests and packaging were skipped. The candidate at
+`C:\Users\dwive\AppData\Local\Temp\gba-dlv273-dcd58e0\src\OverlayHost\out\Release`
+has `OverlayHost.exe` SHA-256
+`7A845F0B5C03A3887E1B72457FC92A179795927F3E8F5BE09F76959FB62C8E66`,
+rebuilt `OverlayPlatformInterop.dll` SHA-256
+`9C04A1730F84249EECF688915F7D30D916B2F8DA4F9FB22742A8B4B52BAFC906`,
+102/102 runtime files byte-identical to the accepted graph, and identical
+catalog/notices. Exact accepted PID 38672 had no enumerable HWND while hidden
+and was boundedly stopped after path/hash verification. The candidate launched
+visibly as responding PID 105876. Required verdict: Settings -> Overlay or any
+submenu -> Back, then the first Down must advance immediately; first Up must
+execute and may remain only at a genuine boundary. Repeat with another submenu
+and confirm ordinary Settings, tray, and multi-widget navigation remain intact.
+
 ## Ready platform deliverable — DLV-274: image-cache retention without icon churn
 
 Owner/baseline: platform lane after DLV-273 is accepted and integrated and
@@ -372,9 +396,8 @@ missing accepted DLV-265/DLV-271 baseline. Never push.
 
 1. DLV-269 is accepted and integrated through main `683af77`; its immutable
    accepted build is visibly restored as PID 38672 after both DLV-273 rejections.
-2. Preserve rejected DLV-273 production `b54e1e2` and correction `e98566e`,
-   correct the Settings submenu-Back first-direction handoff in one narrower
-   production-only commit, and obtain the
+2. Preserve rejected DLV-273 production `b54e1e2` and correction `e98566e`;
+   obtain the focused physical verdict on narrow correction `dcd58e0`, then the
    required focused Settings plus multi-widget/full-bounded physical verdict
    before tests.
 3. Run DLV-274 in the platform lane and obtain measured production/build,
@@ -398,7 +421,7 @@ missing accepted DLV-265/DLV-271 baseline. Never push.
 | Trademark | Similar-mark clearance; qualified counsel recommended before public release. |
 | GitHub identity | User-selected owner plus repository/organization availability and optional rename/creation. |
 | DLV-269 | Complete: physical correction accepted on PID 98812, focused evidence passed, and the chain is integrated through main `683af77`. |
-| DLV-273 | Production `b54e1e2` rejected because submenu Back restored visible root content with tray-owned input. Correction `e98566e` also rejected: it restored widget focus after the matching commit, but the next direction transferred ownership back to the tray, so Up was invisible and Down required a second press. Accepted DLV-269 PID 38672 is restored. A narrower exact-authority, single-direction production correction is required before retest. |
+| DLV-273 | Production `b54e1e2` and correction `e98566e` remain rejected. Narrow exact-authority correction `dcd58e0` is source-reviewed, built, and running visibly as PID 105876. Await the first-Up/first-Down Settings submenu-Back verdict; no tests or integration before acceptance. |
 | DLV-265 | Saved until immediately after accepted DLV-271; preserve installed 0.3.3 and existing configuration/account state. |
 | DLV-248 | Deliberately deferred until explicit user promotion. |
 
