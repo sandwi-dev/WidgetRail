@@ -29,7 +29,7 @@ evidence only; this file is the sole authority for current work.
 
 | Lane | Task/worktree | State |
 | --- | --- | --- |
-| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | DLV-273 remains retired. DLV-274 production `bf6d524` is source-reviewed, built, and visibly running as PID 59388 after explicit user launch approval. Await the Games & Apps cache-retention physical verdict. Do not test, integrate, or start DLV-271 before acceptance. Never push. |
+| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | DLV-273 remains retired. DLV-274 production `bf6d524` is physically rejected as insufficient: it fixes count pressure but not the inherited cross-widget artwork reload under the unchanged aggregate byte budgets; right-stick scrolling was also intermittently unavailable during candidate churn. Preserve `bf6d524`; produce one bounded cache-budget correction only, then stop before tests. Do not change lifecycle/scroll code, integrate, or start DLV-271 before acceptance. Never push. |
 | Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | Preserve saved DLV-265 and installed Spotify state. Do not resume, test, integrate, reinstall, replace configuration, or reset before accepted DLV-271 integration. DLV-270 follows accepted DLV-265; DLV-248 remains deferred. |
 
 ## Execution, review, and architecture rules
@@ -307,6 +307,36 @@ byte limit 33,554,432, bitmap-entry limit 256, and unchanged bitmap-byte limit
 33,554,432. Await the physical Games & Apps revisit/fast-scroll verdict and
 before/after cache counters; do not run tests or integrate first.
 
+Rejected physical verdict: switching between Spotify and Games & Apps made each
+surface visibly reload artwork, and right-stick scrolling was often unavailable.
+The user confirmed the visible reloading also occurs on the currently accepted
+DLV-269 build, so it is inherited behavior that `bf6d524` failed to correct, not
+a new reload regression introduced by the candidate.
+The worker was not destroyed: Spotify retained the same runtime-generation token
+across switches and its keep-alive Background lifecycle remained intact. The
+candidate instead exhausted both unchanged 32 MiB aggregate image budgets with
+large Spotify artwork. Logs reached 73 decoded byte-pressure evictions and 68
+GPU bitmap byte-pressure evictions, with zero count-pressure evictions; repeated
+image completions produced full/checkpoint refresh churn and right-stick drops
+such as `retained-refresh-gated` and `renderer-checkpoint-or-boundary`. This
+proves `bf6d524` fixed the 32-entry ceiling but retained an aggregate byte ceiling
+below the measured cross-widget working set. PID 59388 was boundedly stopped
+after exact path/hash verification, and accepted DLV-269 was restored visibly as
+responding PID 78428 with its accepted executable hash.
+
+Correct only the measured aggregate cache budgets while preserving the accepted
+owners and security bounds. Keep the existing untrusted download, dimension,
+pixel, and per-image decoded safety ceilings unchanged; separate them explicitly
+from bounded process-wide decoded/GPU retention budgets. The measured Spotify
+working set is about 59 MiB for 36 full-size images before Games & Apps and shared
+artwork, so use a documented bounded 96 MiB total decoded budget and 96 MiB total
+GPU bitmap budget with the existing 320 metadata, 256 ready/bitmap, and 32
+pending/request limits and LRU eviction. Do not add size-aware protocol, package-
+specific behavior, lifecycle/session changes, checkpoint/input/scroll changes,
+another cache owner, or unbounded retention. Build once, commit production only,
+and stop for source review and another physical verdict; no tests, launch,
+integration, or DLV-271 in the lane.
+
 ## Ready serialized deliverable — DLV-271: virtualized collection presentation windows
 
 Owner/baseline: platform lane as serialized cross-layer lead after DLV-274 is
@@ -456,7 +486,7 @@ missing accepted DLV-265/DLV-271 baseline. Never push.
 | GitHub identity | User-selected owner plus repository/organization availability and optional rename/creation. |
 | DLV-269 | Complete: physical correction accepted on PID 98812, focused evidence passed, and the chain is integrated through main `683af77`. |
 | DLV-273 | Retired failed refactor by user decision. Production `b54e1e2` and corrections `e98566e`/`dcd58e0` remain rejected branch history and must not be resumed or integrated. Accepted DLV-269 PID 36780 is restored; no production revert was necessary because main never contained DLV-273. |
-| DLV-274 | Production `bf6d524` is source-reviewed, built, and running visibly as PID 59388 after explicit user approval. Await the Games & Apps stable-process cache-retention verdict and measured counters; no tests or integration before acceptance. |
+| DLV-274 | Production `bf6d524` is rejected as insufficient, not as the source of the inherited reload: unchanged 32 MiB aggregate budgets caused 73 decoded and 68 bitmap byte-pressure evictions, visible cross-widget artwork reloads, and checkpoint-related right-stick drops. Accepted DLV-269 PID 78428 is restored. Preserve `bf6d524`; one bounded 96 MiB aggregate-budget correction is authorized with all per-image safety, count, ownership, lifecycle, and scroll boundaries unchanged. |
 | DLV-265 | Saved until immediately after accepted DLV-271; preserve installed 0.3.3 and existing configuration/account state. |
 | DLV-248 | Deliberately deferred until explicit user promotion. |
 
