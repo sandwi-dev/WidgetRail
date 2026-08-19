@@ -19,15 +19,6 @@ bool Overlaps(const float a0, const float a1, const float b0, const float b1) no
     return std::min(a1, b1) >= std::max(a0, b0);
 }
 
-bool ContainsWidgetNode(
-    const WidgetNode& node,
-    const std::wstring_view nodeId) noexcept {
-    if (node.id == nodeId) return true;
-    return std::ranges::any_of(node.children, [&](const WidgetNode& child) {
-        return ContainsWidgetNode(child, nodeId);
-    });
-}
-
 bool IsFocusableNode(const WidgetNode& node) noexcept {
     return node.kind == L"button" || node.kind == L"slider" ||
         node.kind == L"actionSurface";
@@ -62,52 +53,128 @@ void CollectCollectionItems(
         CollectCollectionItems(child, collectionRoot, items);
 }
 
+std::optional<Rect> CollectionItemBounds(
+    const WidgetNode& item,
+    const std::wstring_view activeScopeId,
+    const RenderResult& renderResult) {
+    std::optional<Rect> bounds;
+    const auto visit = [&](const auto& self, const WidgetNode& node,
+                           const bool root) -> void {
+        if (!root && node.kind == L"scroll") return;
+        const auto geometry = renderResult.navigationRects.find(node.id);
+        const auto scope = renderResult.focusScopes.find(node.id);
+        if (geometry != renderResult.navigationRects.end() &&
+            scope != renderResult.focusScopes.end() &&
+            scope->second == activeScopeId && geometry->second.width > 0.0F &&
+            geometry->second.height > 0.0F) {
+            if (!bounds) {
+                bounds = geometry->second;
+            } else {
+                const float left = std::min(bounds->x, geometry->second.x);
+                const float top = std::min(bounds->y, geometry->second.y);
+                const float right = std::max(
+                    bounds->x + bounds->width,
+                    geometry->second.x + geometry->second.width);
+                const float bottom = std::max(
+                    bounds->y + bounds->height,
+                    geometry->second.y + geometry->second.height);
+                *bounds = Rect{left, top, right - left, bottom - top};
+            }
+        }
+        for (const auto& child : node.children) self(self, child, false);
+    };
+    visit(visit, item, true);
+    return bounds;
+}
+
+bool Intersects(const Rect& item, const Rect& viewport) noexcept {
+    constexpr float epsilon = 0.5F;
+    return item.x < viewport.x + viewport.width - epsilon &&
+        item.x + item.width > viewport.x + epsilon &&
+        item.y < viewport.y + viewport.height - epsilon &&
+        item.y + item.height > viewport.y + epsilon;
+}
+
+void CollectScrollPaginationActions(
+    const WidgetNode& node,
+    const std::wstring_view activeScopeId,
+    const RenderResult& renderResult,
+    std::vector<ScrollPaginationAction>& actions) {
+    for (const auto& child : node.children) {
+        CollectScrollPaginationActions(
+            child, activeScopeId, renderResult, actions);
+    }
+    if (node.kind != L"scroll" || node.scrollPaginationThreshold == 0 ||
+        node.children.empty()) {
+        return;
+    }
+    const auto viewport = renderResult.scrollViewports.find(node.id);
+    if (viewport == renderResult.scrollViewports.end() ||
+        viewport->second.axis == declarative::ScrollAxis::None ||
+        viewport->second.rect.width <= 0.0F ||
+        viewport->second.rect.height <= 0.0F) {
+        return;
+    }
+
+    std::vector<const WidgetNode*> items;
+    if (!node.collectionAnchorKey.empty()) {
+        CollectCollectionItems(node, node, items);
+    } else {
+        items.reserve(node.children.size());
+        for (const auto& child : node.children) items.push_back(&child);
+    }
+    if (items.empty()) return;
+
+    std::optional<std::size_t> firstVisible;
+    std::optional<std::size_t> lastVisible;
+    for (std::size_t index = 0; index < items.size(); ++index) {
+        const auto bounds = CollectionItemBounds(
+            *items[index], activeScopeId, renderResult);
+        if (!bounds || !Intersects(*bounds, viewport->second.rect)) continue;
+        if (!firstVisible) firstVisible = index;
+        lastVisible = index;
+    }
+    if (!firstVisible || !lastVisible) return;
+
+    const auto append = [&](const ScrollPaginationEdge edge,
+                            const std::wstring& actionId,
+                            const std::size_t boundaryIndex) {
+        if (actionId.empty()) return;
+        const auto& boundary = *items[boundaryIndex];
+        actions.push_back(ScrollPaginationAction{
+            node.id,
+            actionId,
+            node.id,
+            boundary.collectionItemKey.empty()
+                ? boundary.id
+                : boundary.collectionItemKey,
+            node.collectionAnchorKey,
+            edge,
+            *firstVisible,
+            *lastVisible,
+            items.size(),
+        });
+    };
+    if (*firstVisible < node.scrollPaginationThreshold) {
+        append(ScrollPaginationEdge::Before,
+               node.scrollNearStartActionId, 0);
+    }
+    if (items.size() - *lastVisible <= node.scrollPaginationThreshold) {
+        append(ScrollPaginationEdge::After,
+               node.scrollNearEndActionId, items.size() - 1);
+    }
+}
+
 } // namespace
 
-std::optional<ScrollPaginationAction> FindScrollPaginationAction(
+std::vector<ScrollPaginationAction> FindScrollPaginationActions(
     const WidgetNode& root,
-    const std::wstring_view focusedId,
-    const NavigationDirection direction) {
-    for (const auto& child : root.children) {
-        if (const auto nested = FindScrollPaginationAction(
-                child, focusedId, direction))
-            return nested;
-    }
-    if (root.kind != L"scroll" || root.scrollPaginationThreshold == 0 ||
-        root.children.empty())
-        return std::nullopt;
-    const bool towardStart =
-        (root.scrollAxis == L"vertical" && direction == NavigationDirection::Up) ||
-        (root.scrollAxis == L"horizontal" && direction == NavigationDirection::Left);
-    const bool towardEnd =
-        (root.scrollAxis == L"vertical" && direction == NavigationDirection::Down) ||
-        (root.scrollAxis == L"horizontal" && direction == NavigationDirection::Right);
-    if (!towardStart && !towardEnd) return std::nullopt;
-    if (!root.collectionAnchorKey.empty()) {
-        std::vector<const WidgetNode*> items;
-        CollectCollectionItems(root, root, items);
-        for (std::size_t index = 0; index < items.size(); ++index) {
-            if (!ContainsWidgetNode(*items[index], focusedId)) continue;
-            if (towardStart && !root.scrollNearStartActionId.empty() &&
-                index < root.scrollPaginationThreshold)
-                return ScrollPaginationAction{root.scrollNearStartActionId, root.id};
-            if (towardEnd && !root.scrollNearEndActionId.empty() &&
-                items.size() - index <= root.scrollPaginationThreshold)
-                return ScrollPaginationAction{root.scrollNearEndActionId, root.id};
-            return std::nullopt;
-        }
-    }
-    for (std::size_t index = 0; index < root.children.size(); ++index) {
-        if (!ContainsWidgetNode(root.children[index], focusedId)) continue;
-        if (towardStart && !root.scrollNearStartActionId.empty() &&
-            index < root.scrollPaginationThreshold)
-            return ScrollPaginationAction{root.scrollNearStartActionId, root.id};
-        if (towardEnd && !root.scrollNearEndActionId.empty() &&
-            root.children.size() - index <= root.scrollPaginationThreshold)
-            return ScrollPaginationAction{root.scrollNearEndActionId, root.id};
-        break;
-    }
-    return std::nullopt;
+    const std::wstring_view activeScopeId,
+    const RenderResult& renderResult) {
+    std::vector<ScrollPaginationAction> actions;
+    CollectScrollPaginationActions(
+        root, activeScopeId, renderResult, actions);
+    return actions;
 }
 
 std::optional<PointerHitTarget> FindPointerHitTarget(

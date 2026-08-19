@@ -6,6 +6,7 @@
 #include <optional>
 #include <string>
 #include <string_view>
+#include <vector>
 
 namespace widgetrail {
 struct WidgetNode;
@@ -19,19 +20,31 @@ struct PointerHitTarget final {
     bool enabled{};
 };
 
-struct ScrollPaginationAction final {
-    std::wstring actionId;
-    std::wstring sourceElementId;
+enum class ScrollPaginationEdge {
+    Before,
+    After,
 };
 
-/// Resolves the configured pagination action for a focused descendant that is
-/// already inside a scroll viewport's leading or trailing threshold. This is
-/// independent of whether ordinary focus navigation found another target, so
-/// the host can paginate before falling through to its root/tray boundary.
-[[nodiscard]] std::optional<ScrollPaginationAction> FindScrollPaginationAction(
+struct ScrollPaginationAction final {
+    std::wstring scrollId;
+    std::wstring actionId;
+    std::wstring sourceElementId;
+    std::wstring edgeKey;
+    std::wstring anchorKey;
+    ScrollPaginationEdge edge{ScrollPaginationEdge::Before};
+    std::size_t firstVisibleIndex{};
+    std::size_t lastVisibleIndex{};
+    std::size_t itemCount{};
+};
+
+/// Resolves pagination actions from each rendered Scroll viewport's visible
+/// collection range. Focus identity and input source are deliberately absent:
+/// right-stick, pointer/UIA, focus-follow, and retained-anchor movement all
+/// converge on the same committed renderer geometry.
+[[nodiscard]] std::vector<ScrollPaginationAction> FindScrollPaginationActions(
     const WidgetNode& root,
-    std::wstring_view focusedId,
-    NavigationDirection direction);
+    std::wstring_view activeScopeId,
+    const RenderResult& renderResult);
 
 /// Resolves the topmost visible pointer region in the active input scope.
 /// Disabled/busy controls remain selectable but report enabled=false so the
