@@ -29,7 +29,7 @@ evidence only; this file is the sole authority for current work.
 
 | Lane | Task/worktree | State |
 | --- | --- | --- |
-| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | DLV-273 is retired failed work; preserve `b54e1e2`, `e98566e`, and `dcd58e0` as rejected history and do not continue or integrate that refactor. Reconcile cleanly to accepted main `683af77` without destructive history rewriting, then start respecified DLV-274. Never push. |
+| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | DLV-273 remains retired. DLV-274 production `bf6d524` is source-reviewed and built from a fresh branch based on accepted main. Its coherent runtime stage is ready, but the accepted PID remains running because automation permits relaunch only after accepted integration; await explicit user launch authority for the physical verdict. Do not test, integrate, or start DLV-271 before acceptance. Never push. |
 | Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | Preserve saved DLV-265 and installed Spotify state. Do not resume, test, integrate, reinstall, replace configuration, or reset before accepted DLV-271 integration. DLV-270 follows accepted DLV-265; DLV-248 remains deferred. |
 
 ## Execution, review, and architecture rules
@@ -280,6 +280,29 @@ untrusted-image bounds, a public SDK/protocol change, device/resource lifetime
 regression, substantial conflict, or missing accepted DLV-269 baseline. Never
 push.
 
+Current production candidate: commit `bf6d524` changes only the two existing
+cache owners and their typed diagnostics across five production files. Decoded
+image policy is 320 bounded metadata entries, 256 ready entries, 32 pending
+requests, and the unchanged 32 MiB decoded-byte budget. Device-compatible bitmap
+policy is 256 entries under the unchanged 32 MiB GPU budget. Count, byte,
+superseded-artwork, capacity-rejection, resource-domain, and generation counters
+remain reported through the existing paint diagnostic; no cache/lifetime owner,
+widget-specific branch, presenter dependency, protocol change, or DLV-273 code
+was introduced. Source review and `git diff --check` passed. The exact-commit
+native Release build succeeded with tests and packaging skipped. A coherent
+stage at
+`C:\Users\dwive\AppData\Local\Temp\gba-dlv274-bf6d524\src\OverlayHost\out\Release`
+contains `OverlayHost.exe` SHA-256
+`B29F724F9497C23EA44E36926613A0D5B231667B471DC8D8B8A195F9E158DBF2`,
+`OverlayPlatformInterop.dll` SHA-256
+`E9EEB28E3F13277E83D8478316FAA78D303F79939AAC663A8E1D7697D1098FAE`,
+102/102 runtime files byte-identical to the accepted graph, and identical
+catalog/notices. No tests, packaging, launch, integration, or push occurred.
+Accepted DLV-269 PID 36780 remains responding with its exact accepted path/hash.
+The attempted candidate launch was rejected before execution because the
+heartbeat permits relaunch only after accepted integration; explicit user launch
+authority is required before the physical-first verdict can proceed.
+
 ## Ready serialized deliverable — DLV-271: virtualized collection presentation windows
 
 Owner/baseline: platform lane as serialized cross-layer lead after DLV-274 is
@@ -429,6 +452,7 @@ missing accepted DLV-265/DLV-271 baseline. Never push.
 | GitHub identity | User-selected owner plus repository/organization availability and optional rename/creation. |
 | DLV-269 | Complete: physical correction accepted on PID 98812, focused evidence passed, and the chain is integrated through main `683af77`. |
 | DLV-273 | Retired failed refactor by user decision. Production `b54e1e2` and corrections `e98566e`/`dcd58e0` remain rejected branch history and must not be resumed or integrated. Accepted DLV-269 PID 36780 is restored; no production revert was necessary because main never contained DLV-273. |
+| DLV-274 | Production `bf6d524` is source-reviewed, built, and coherently staged. Explicit user authority to replace accepted PID 36780 with the unaccepted candidate is required before the Games & Apps cache-retention verdict; no tests or integration before acceptance. |
 | DLV-265 | Saved until immediately after accepted DLV-271; preserve installed 0.3.3 and existing configuration/account state. |
 | DLV-248 | Deliberately deferred until explicit user promotion. |
 
