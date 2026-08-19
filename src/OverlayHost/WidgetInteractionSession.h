@@ -11,6 +11,7 @@
 #include <optional>
 #include <string>
 #include <string_view>
+#include <utility>
 #include <vector>
 
 namespace widgetrail::input {
@@ -122,6 +123,59 @@ struct InteractionRenderPresentation final {
     std::uint64_t sliderPresentationRevision{};
 };
 
+enum class ScrollPaginationDiagnosticKind {
+    Queued,
+    Suppressed,
+    Admitted,
+    Completed,
+    Retired,
+    TerminalFailure,
+};
+
+enum class ScrollPaginationDispatchDisposition {
+    Admitted,
+    NotHandled,
+    TransportFailure,
+    StaleAuthority,
+};
+
+struct ScrollPaginationPrefetchRequest final {
+    std::wstring widgetId;
+    std::wstring widgetInstanceId;
+    std::wstring runtimeGeneration;
+    std::wstring presentationGeneration;
+    std::wstring inputScopeId;
+    ScrollPaginationAction action;
+};
+
+struct ScrollPaginationDiagnostic final {
+    ScrollPaginationDiagnosticKind kind{ScrollPaginationDiagnosticKind::Retired};
+    ScrollPaginationPrefetchRequest request;
+    std::wstring reason;
+    std::wstring replacementEdgeKey;
+    std::uint64_t adjacentActionCount{};
+    std::uint64_t visibleCompletionCount{};
+    std::uint64_t queueLatencyMilliseconds{};
+    std::uint64_t thresholdToVisibleMilliseconds{};
+    std::uint64_t averageVisibleLatencyMilliseconds{};
+};
+
+struct ScrollPaginationSessionOutcome final {
+    std::vector<ScrollPaginationDiagnostic> diagnostics;
+    bool dispatchReady{};
+};
+
+struct ScrollPaginationDispatchOutcome final {
+    ScrollPaginationPrefetchRequest request;
+    ScrollPaginationDispatchDisposition disposition{
+        ScrollPaginationDispatchDisposition::StaleAuthority};
+    std::wstring safeDiagnostic;
+    std::uint64_t now{};
+};
+
+[[nodiscard]] std::wstring FormatScrollPaginationDiagnostic(
+    const ScrollPaginationDiagnostic& diagnostic);
+
 /// Owns mutable interaction presentation for the admitted widget surface.
 /// It does not poll controllers, mutate renderer scroll offsets, dispatch bridge
 /// actions, authorize text entry, or arbitrate final host/widget commands.
@@ -228,6 +282,25 @@ public:
     }
     [[nodiscard]] bool SliderReconcileDue(std::uint64_t now) const noexcept;
 
+    [[nodiscard]] ScrollPaginationSessionOutcome ReconcileScrollPagination(
+        const WidgetInteractionAuthority& authority,
+        const RenderResult& renderResult,
+        std::uint64_t now);
+    [[nodiscard]] std::pair<
+        std::optional<ScrollPaginationPrefetchRequest>,
+        ScrollPaginationSessionOutcome> AcquireScrollPaginationDispatch(
+            const WidgetInteractionAuthority& authority,
+            const RenderResult& renderResult,
+            std::uint64_t now);
+    [[nodiscard]] ScrollPaginationSessionOutcome CompleteScrollPaginationDispatch(
+        const ScrollPaginationDispatchOutcome& outcome);
+    [[nodiscard]] ScrollPaginationSessionOutcome ObserveScrollPaginationFailure(
+        const WidgetActionFailure& failure,
+        std::uint64_t now);
+    [[nodiscard]] ScrollPaginationSessionOutcome RetireScrollPagination(
+        std::wstring_view widgetId,
+        std::wstring_view reason);
+
 private:
     [[nodiscard]] bool BindingMatches(
         const FreeScrollBinding& binding,
@@ -243,6 +316,31 @@ private:
         const std::vector<SliderPresentationIdentity>& identities);
     void RefreshSliderDeadline() noexcept;
 
+    enum class ScrollPaginationPrefetchStatus {
+        Queued,
+        InFlight,
+        TerminalFailure,
+    };
+    struct ScrollPaginationPrefetchAuthority final {
+        ScrollPaginationPrefetchRequest request;
+        ScrollPaginationPrefetchStatus status{
+            ScrollPaginationPrefetchStatus::Queued};
+        std::uint64_t thresholdAt{};
+        std::uint64_t admittedAt{};
+        bool suppressionReported{};
+    };
+    [[nodiscard]] static bool SameScrollPaginationAuthority(
+        const ScrollPaginationPrefetchAuthority& authority,
+        const WidgetInteractionAuthority& current,
+        const ScrollPaginationAction& action) noexcept;
+    [[nodiscard]] static bool SameScrollPaginationRouteEdge(
+        const ScrollPaginationPrefetchAuthority& authority,
+        const WidgetInteractionAuthority& current,
+        const ScrollPaginationAction& action) noexcept;
+    [[nodiscard]] static ScrollPaginationPrefetchRequest MakeScrollPaginationRequest(
+        const WidgetInteractionAuthority& authority,
+        const ScrollPaginationAction& action);
+
     RightStickScrollKinetics rightStickKinetics_;
     std::optional<FreeScrollBinding> freeScrollBinding_;
     bool freeScrollRefreshDeferred_{};
@@ -251,6 +349,10 @@ private:
     SliderInteractionState sliders_;
     PressedInteractionState pressed_;
     std::uint64_t sliderReconcileAt_{};
+    std::vector<ScrollPaginationPrefetchAuthority> scrollPaginationPrefetch_;
+    std::uint64_t scrollPaginationAdjacentActionCount_{};
+    std::uint64_t scrollPaginationVisibleCompletionCount_{};
+    std::uint64_t scrollPaginationVisibleLatencyTotalMs_{};
 };
 
 } // namespace widgetrail::input

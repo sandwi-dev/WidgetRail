@@ -848,26 +848,6 @@ private:
         std::uint64_t correlationId{};
     };
 
-    enum class ScrollPaginationPrefetchStatus {
-        Queued,
-        InFlight,
-        TerminalFailure,
-    };
-
-    struct ScrollPaginationPrefetchAuthority final {
-        std::wstring widgetId;
-        std::wstring instanceId;
-        std::wstring runtimeGeneration;
-        std::wstring presentationGeneration;
-        std::wstring inputScopeId;
-        widgetrail::input::ScrollPaginationAction action;
-        ScrollPaginationPrefetchStatus status{
-            ScrollPaginationPrefetchStatus::Queued};
-        ULONGLONG thresholdAt{};
-        ULONGLONG admittedAt{};
-        bool suppressionLogged{};
-    };
-
     struct WidgetSnapshotAdmissionAuthority final {
         std::wstring_view widgetId;
         std::wstring_view runtimeGeneration;
@@ -2709,12 +2689,8 @@ private:
         // retention. Clear every replaced/removed runtime even if it never
         // admitted a checkpoint in this visible session.
         for (const auto& runtime : change.runtimeChanges) {
-            if (std::ranges::any_of(
-                    scrollPaginationPrefetch_, [&](const auto& authority) {
-                        return authority.widgetId == runtime.widgetId;
-                    })) {
-                ClearScrollPaginationPrefetch(L"runtime-replaced");
-            }
+            ClearScrollPaginationPrefetch(
+                L"runtime-replaced", runtime.widgetId);
             interactionSession_.ForgetWidget(runtime.widgetId);
             if (declarativeRenderer_ && !runtime.previousInstanceId.empty()) {
                 // Scroll offsets belong to the exact worker runtime, just like
@@ -2801,12 +2777,7 @@ private:
             pendingWidgetSwitchSnap_->widgetId == widgetId) {
             pendingWidgetSwitchSnap_.reset();
         }
-        if (std::ranges::any_of(
-                scrollPaginationPrefetch_, [&](const auto& authority) {
-                    return authority.widgetId == widgetId;
-                })) {
-            ClearScrollPaginationPrefetch(L"widget-failed");
-        }
+        ClearScrollPaginationPrefetch(L"widget-failed", widgetId);
         std::wstring message = std::wstring(DisplayWidgetName(widgetId)) +
             L" failed: " + std::wstring(safeFailure) + L" Press A to retry.";
         if (message.size() > 640) message.resize(640);
@@ -6704,52 +6675,23 @@ private:
         }
     }
 
-    [[nodiscard]] static std::wstring_view ScrollPaginationEdgeName(
-        const widgetrail::input::ScrollPaginationEdge edge) noexcept {
-        return edge == widgetrail::input::ScrollPaginationEdge::Before
-            ? L"before" : L"after";
+    void PublishScrollPaginationOutcome(
+        const widgetrail::input::ScrollPaginationSessionOutcome& outcome) {
+        for (const auto& diagnostic : outcome.diagnostics) {
+            AppendDiagnostic(
+                widgetrail::input::FormatScrollPaginationDiagnostic(diagnostic));
+        }
+        if (outcome.dispatchReady) {
+            (void)PostMessageW(
+                window_, kScrollPaginationPrefetchMessage, 0, 0);
+        }
     }
 
-    [[nodiscard]] static bool SameScrollPaginationAuthority(
-        const ScrollPaginationPrefetchAuthority& authority,
-        const std::wstring_view widgetId,
-        const widgetrail::WidgetSnapshot& snapshot,
-        const widgetrail::WidgetDescriptor& descriptor,
-        const widgetrail::input::ScrollPaginationAction& action) noexcept {
-        return authority.widgetId == widgetId &&
-            authority.instanceId == snapshot.instanceId &&
-            authority.runtimeGeneration == descriptor.runtimeGeneration &&
-            authority.presentationGeneration == descriptor.presentationGeneration &&
-            authority.inputScopeId == snapshot.activeInputScopeId &&
-            authority.action.scrollId == action.scrollId &&
-            authority.action.actionId == action.actionId &&
-            authority.action.edge == action.edge &&
-            authority.action.edgeKey == action.edgeKey;
-    }
-
-    [[nodiscard]] static bool SameScrollPaginationRouteEdge(
-        const ScrollPaginationPrefetchAuthority& authority,
-        const std::wstring_view widgetId,
-        const widgetrail::WidgetSnapshot& snapshot,
-        const widgetrail::WidgetDescriptor& descriptor,
-        const widgetrail::input::ScrollPaginationAction& action) noexcept {
-        return authority.widgetId == widgetId &&
-            authority.instanceId == snapshot.instanceId &&
-            authority.runtimeGeneration == descriptor.runtimeGeneration &&
-            authority.presentationGeneration == descriptor.presentationGeneration &&
-            authority.inputScopeId == snapshot.activeInputScopeId &&
-            authority.action.scrollId == action.scrollId &&
-            authority.action.actionId == action.actionId &&
-            authority.action.edge == action.edge;
-    }
-
-    void ClearScrollPaginationPrefetch(const std::wstring_view reason) {
-        if (scrollPaginationPrefetch_.empty()) return;
-        AppendDiagnostic(
-            L"Scroll pagination cleared count=" +
-            std::to_wstring(scrollPaginationPrefetch_.size()) + L" reason=" +
-            std::wstring{reason});
-        scrollPaginationPrefetch_.clear();
+    void ClearScrollPaginationPrefetch(
+        const std::wstring_view reason,
+        const std::wstring_view widgetId = {}) {
+        PublishScrollPaginationOutcome(
+            interactionSession_.RetireScrollPagination(widgetId, reason));
     }
 
     void ReconcileScrollPaginationPrefetch(
@@ -6757,187 +6699,111 @@ private:
         const widgetrail::WidgetSnapshot& snapshot,
         const widgetrail::WidgetDescriptor& descriptor,
         const widgetrail::RenderResult& renderResult) {
-        constexpr std::size_t maximumAuthorities = 16;
-        const auto actions = widgetrail::input::FindScrollPaginationActions(
-            snapshot.root, snapshot.activeInputScopeId, renderResult);
-        const auto now = GetTickCount64();
-        std::erase_if(scrollPaginationPrefetch_, [&](const auto& authority) {
-            const auto exact = std::ranges::find_if(actions, [&](const auto& action) {
-                return SameScrollPaginationAuthority(
-                    authority, widgetId, snapshot, descriptor, action);
-            });
-            if (exact != actions.end()) return false;
-            const auto replacement = std::ranges::find_if(actions, [&](const auto& action) {
-                return SameScrollPaginationRouteEdge(
-                    authority, widgetId, snapshot, descriptor, action);
-            });
-            if (replacement != actions.end() &&
-                authority.status == ScrollPaginationPrefetchStatus::InFlight) {
-                const auto latency = now - authority.thresholdAt;
-                ++scrollPaginationVisibleCompletionCount_;
-                scrollPaginationVisibleLatencyTotalMs_ += latency;
-                AppendDiagnostic(
-                    L"Scroll pagination completed widget=" + authority.widgetId +
-                    L" scroll=" + authority.action.scrollId + L" direction=" +
-                    std::wstring{ScrollPaginationEdgeName(authority.action.edge)} +
-                    L" edge=" + authority.action.edgeKey + L"->" +
-                    replacement->edgeKey + L" threshold-to-visible-page-ms=" +
-                    std::to_wstring(latency) + L" actions=" +
-                    std::to_wstring(scrollPaginationAdjacentActionCount_) +
-                    L" visible-completions=" +
-                    std::to_wstring(scrollPaginationVisibleCompletionCount_) +
-                    L" average-visible-latency-ms=" +
-                    std::to_wstring(
-                        scrollPaginationVisibleLatencyTotalMs_ /
-                        scrollPaginationVisibleCompletionCount_));
-            } else {
-                AppendDiagnostic(
-                    L"Scroll pagination authority retired widget=" + authority.widgetId +
-                    L" scroll=" + authority.action.scrollId + L" direction=" +
-                    std::wstring{ScrollPaginationEdgeName(authority.action.edge)} +
-                    L" edge=" + authority.action.edgeKey + L" reason=" +
-                    (replacement != actions.end() ? L"cursor-changed" :
-                     authority.widgetId == widgetId ? L"threshold-exit" :
-                     L"route-changed"));
-            }
-            return true;
-        });
+        PublishScrollPaginationOutcome(
+            interactionSession_.ReconcileScrollPagination(
+                {
+                    widgetId,
+                    &snapshot,
+                    descriptor.runtimeGeneration,
+                    descriptor.presentationGeneration,
+                    false,
+                },
+                renderResult,
+                GetTickCount64()));
+    }
 
-        bool queued{};
-        for (const auto& action : actions) {
-            const auto existing = std::ranges::find_if(
-                scrollPaginationPrefetch_, [&](const auto& authority) {
-                    return SameScrollPaginationAuthority(
-                        authority, widgetId, snapshot, descriptor, action);
-                });
-            if (existing != scrollPaginationPrefetch_.end()) {
-                existing->action = action;
-                if (existing->status != ScrollPaginationPrefetchStatus::Queued &&
-                    !existing->suppressionLogged) {
-                    AppendDiagnostic(
-                        L"Scroll pagination suppressed widget=" + std::wstring(widgetId) +
-                        L" scroll=" + action.scrollId + L" visible=" +
-                        std::to_wstring(action.firstVisibleIndex) + L"-" +
-                        std::to_wstring(action.lastVisibleIndex) + L"/" +
-                        std::to_wstring(action.itemCount) + L" direction=" +
-                        std::wstring{ScrollPaginationEdgeName(action.edge)} +
-                        L" edge=" + action.edgeKey + L" anchor=" +
-                        (action.anchorKey.empty() ? L"none" : action.anchorKey) +
-                        L" reason=" +
-                        (existing->status == ScrollPaginationPrefetchStatus::InFlight
-                            ? L"in-flight" : L"terminal-failure"));
-                    existing->suppressionLogged = true;
-                }
-                continue;
-            }
-            if (scrollPaginationPrefetch_.size() >= maximumAuthorities) {
-                AppendDiagnostic(
-                    L"Scroll pagination suppressed widget=" + std::wstring(widgetId) +
-                    L" scroll=" + action.scrollId + L" reason=authority-bound");
-                continue;
-            }
-            scrollPaginationPrefetch_.push_back({
-                std::wstring{widgetId}, snapshot.instanceId,
-                descriptor.runtimeGeneration, descriptor.presentationGeneration,
-                snapshot.activeInputScopeId, action,
-                ScrollPaginationPrefetchStatus::Queued, now, 0, false});
-            queued = true;
-            AppendDiagnostic(
-                L"Scroll pagination queued widget=" + std::wstring(widgetId) +
-                L" scroll=" + action.scrollId + L" visible=" +
-                std::to_wstring(action.firstVisibleIndex) + L"-" +
-                std::to_wstring(action.lastVisibleIndex) + L"/" +
-                std::to_wstring(action.itemCount) + L" direction=" +
-                std::wstring{ScrollPaginationEdgeName(action.edge)} + L" edge=" +
-                action.edgeKey + L" anchor=" +
-                (action.anchorKey.empty() ? L"none" : action.anchorKey));
+    [[nodiscard]] bool IsCurrentScrollPaginationRequest(
+        const widgetrail::input::ScrollPaginationPrefetchRequest& request,
+        const widgetrail::WidgetSnapshot& snapshot,
+        const widgetrail::WidgetDescriptor& descriptor) const {
+        if (request.widgetId != state_.activeWidget() ||
+            request.widgetInstanceId != snapshot.instanceId ||
+            request.runtimeGeneration != descriptor.runtimeGeneration ||
+            request.presentationGeneration != descriptor.presentationGeneration ||
+            request.inputScopeId != snapshot.activeInputScopeId) {
+            return false;
         }
-        if (queued) (void)PostMessageW(
-            window_, kScrollPaginationPrefetchMessage, 0, 0);
+        const auto actions = widgetrail::input::FindScrollPaginationActions(
+            snapshot.root, snapshot.activeInputScopeId, lastWidgetRenderResult_);
+        return std::ranges::any_of(actions, [&](const auto& action) {
+            return action.scrollId == request.action.scrollId &&
+                action.actionId == request.action.actionId &&
+                action.sourceElementId == request.action.sourceElementId &&
+                action.edge == request.action.edge &&
+                action.edgeKey == request.action.edgeKey;
+        });
     }
 
     void DispatchQueuedScrollPaginationPrefetch() {
-        for (auto& authority : scrollPaginationPrefetch_) {
-            if (authority.status != ScrollPaginationPrefetchStatus::Queued) continue;
-            const auto* snapshot = InteractionSnapshotFor(authority.widgetId);
-            const auto* descriptor = sessions_.FindDescriptor(authority.widgetId);
-            if (!snapshot || !descriptor ||
-                state_.surface() != widgetrail::Surface::Widget ||
-                state_.activeWidget() != authority.widgetId ||
-                sessions_.Failure(authority.widgetId)) {
-                authority.status = ScrollPaginationPrefetchStatus::TerminalFailure;
-                AppendDiagnostic(
-                    L"Scroll pagination suppressed widget=" + authority.widgetId +
-                    L" scroll=" + authority.action.scrollId +
-                    L" reason=stale-route");
-                continue;
+        constexpr std::size_t maximumDispatches = 16;
+        for (std::size_t index = 0; index < maximumDispatches; ++index) {
+            if (state_.surface() != widgetrail::Surface::Widget) {
+                ClearScrollPaginationPrefetch(L"stale-route");
+                return;
             }
-            const auto current = widgetrail::input::FindScrollPaginationActions(
-                snapshot->root, snapshot->activeInputScopeId,
-                lastWidgetRenderResult_);
-            if (std::ranges::none_of(current, [&](const auto& action) {
-                    return SameScrollPaginationAuthority(
-                        authority, authority.widgetId, *snapshot, *descriptor,
-                        action);
-                })) {
-                authority.status = ScrollPaginationPrefetchStatus::TerminalFailure;
-                AppendDiagnostic(
-                    L"Scroll pagination suppressed widget=" + authority.widgetId +
-                    L" scroll=" + authority.action.scrollId +
-                    L" reason=viewport-changed-before-dispatch");
-                continue;
+            const std::wstring widgetId{state_.activeWidget()};
+            const auto* snapshot = InteractionSnapshotFor(widgetId);
+            const auto* descriptor = sessions_.FindDescriptor(widgetId);
+            if (!snapshot || !descriptor || sessions_.Failure(widgetId)) {
+                ClearScrollPaginationPrefetch(L"stale-route");
+                return;
             }
-            authority.status = ScrollPaginationPrefetchStatus::InFlight;
-            authority.admittedAt = GetTickCount64();
-            ++scrollPaginationAdjacentActionCount_;
-            const auto handled = bridge_.SendAction(
-                authority.widgetId, authority.action.actionId,
-                authority.action.sourceElementId, authority.inputScopeId);
-            if (!handled || !*handled) {
-                authority.status = ScrollPaginationPrefetchStatus::TerminalFailure;
-                AppendDiagnostic(
-                    L"Scroll pagination terminal failure widget=" +
-                    authority.widgetId + L" scroll=" + authority.action.scrollId +
-                    L" direction=" +
-                    std::wstring{ScrollPaginationEdgeName(authority.action.edge)} +
-                    L" edge=" + authority.action.edgeKey + L" diagnostic=" +
-                    (!handled ? bridge_.lastError() : L"action-not-handled"));
-                continue;
+            auto [request, session] =
+                interactionSession_.AcquireScrollPaginationDispatch(
+                    {
+                        widgetId,
+                        snapshot,
+                        descriptor->runtimeGeneration,
+                        descriptor->presentationGeneration,
+                        false,
+                    },
+                    lastWidgetRenderResult_,
+                    GetTickCount64());
+            PublishScrollPaginationOutcome(session);
+            if (!request) return;
+
+            widgetrail::input::ScrollPaginationDispatchOutcome dispatch;
+            dispatch.request = *request;
+            dispatch.now = GetTickCount64();
+            if (!IsCurrentScrollPaginationRequest(
+                    *request, *snapshot, *descriptor)) {
+                dispatch.disposition =
+                    widgetrail::input::ScrollPaginationDispatchDisposition::
+                        StaleAuthority;
+                dispatch.safeDiagnostic = L"stale-route";
+            } else {
+                const auto handled = bridge_.SendAction(
+                    request->widgetId,
+                    request->action.actionId,
+                    request->action.sourceElementId,
+                    request->inputScopeId);
+                dispatch.disposition = !handled
+                    ? widgetrail::input::ScrollPaginationDispatchDisposition::
+                        TransportFailure
+                    : *handled
+                        ? widgetrail::input::ScrollPaginationDispatchDisposition::
+                            Admitted
+                        : widgetrail::input::ScrollPaginationDispatchDisposition::
+                            NotHandled;
+                if (!handled) {
+                    dispatch.safeDiagnostic = bridge_.lastError();
+                } else if (!*handled) {
+                    dispatch.safeDiagnostic = L"action-not-handled";
+                }
             }
-            AppendDiagnostic(
-                L"Scroll pagination admitted widget=" + authority.widgetId +
-                L" scroll=" + authority.action.scrollId + L" direction=" +
-                std::wstring{ScrollPaginationEdgeName(authority.action.edge)} +
-                L" edge=" + authority.action.edgeKey + L" action=" +
-                authority.action.actionId + L" count=" +
-                std::to_wstring(scrollPaginationAdjacentActionCount_) +
-                L" queue-latency-ms=" + std::to_wstring(
-                    authority.admittedAt - authority.thresholdAt));
-            // The acknowledgement admits the widget-owned action queue; it is
-            // not page completion. The widget's existing post-action
-            // invalidation owns the authoritative snapshot refresh.
+            PublishScrollPaginationOutcome(
+                interactionSession_.CompleteScrollPaginationDispatch(dispatch));
+            // Acknowledgement is queue admission, not page completion. The
+            // widget's existing invalidation owns the authoritative refresh.
         }
     }
 
     void ObserveScrollPaginationFailure(
         const widgetrail::WidgetActionFailure& failure) {
-        const auto match = std::ranges::find_if(
-            scrollPaginationPrefetch_, [&](const auto& authority) {
-                return authority.status == ScrollPaginationPrefetchStatus::InFlight &&
-                    authority.widgetId == failure.widgetId &&
-                    authority.runtimeGeneration == failure.runtimeGeneration &&
-                    authority.action.actionId == failure.actionId &&
-                    authority.action.sourceElementId == failure.sourceElementId;
-            });
-        if (match == scrollPaginationPrefetch_.end()) return;
-        match->status = ScrollPaginationPrefetchStatus::TerminalFailure;
-        AppendDiagnostic(
-            L"Scroll pagination terminal failure widget=" + match->widgetId +
-            L" scroll=" + match->action.scrollId + L" direction=" +
-            std::wstring{ScrollPaginationEdgeName(match->action.edge)} +
-            L" edge=" + match->action.edgeKey + L" reason=worker-action-failure");
+        PublishScrollPaginationOutcome(
+            interactionSession_.ObserveScrollPaginationFailure(
+                failure, GetTickCount64()));
     }
-
     void HandleWidgetDirection(
         const widgetrail::input::NavigationDirection direction,
         const widgetrail::input::NavigationEventPhase phase,
@@ -10164,10 +10030,6 @@ private:
     widgetrail::OverlayState state_;
     widgetrail::input::TrayYGesture trayYGesture_;
     widgetrail::input::WidgetInteractionSession interactionSession_;
-    std::vector<ScrollPaginationPrefetchAuthority> scrollPaginationPrefetch_;
-    std::uint64_t scrollPaginationAdjacentActionCount_{};
-    std::uint64_t scrollPaginationVisibleCompletionCount_{};
-    std::uint64_t scrollPaginationVisibleLatencyTotalMs_{};
     std::optional<bool> lastForegroundOwnership_;
     long long controllerSequence_{};
     std::wstring lastActionMessage_;
