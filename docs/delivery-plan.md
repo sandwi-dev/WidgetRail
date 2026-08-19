@@ -230,7 +230,7 @@ user decision. The native overlay is the sole production presentation path.
 
 | Lane | Task/worktree | State |
 | --- | --- | --- |
-| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | DLV-269 candidate `750b335a` is source-rejected: keep its viewport resolver, but move the new pagination authority state machine out of `OverlayApp` and into the existing `WidgetInteractionSession`, return typed exact requests for final host dispatch, rebuild tests-skipped, and stop. |
+| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | DLV-269 correction `f860da5d` fixes ownership but is runtime-rejected: prevent page-result trimming/anchor reconciliation from recursively rearming paging or flipping direction without new viewport demand, rebuild tests-skipped, and stop. |
 | Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | DLV-265 is saved at clean tip `13bd971` plus reconciliation `5fd1a06` and explicitly deferred until immediately after DLV-271. Preserve installed Spotify 0.3.3 and the unchanged Client ID/account state; do not resume, test, integrate, reinstall, or reset it early. DLV-270 follows accepted DLV-265; DLV-248 remains deferred. |
 
 DLV-257 is closed. Its approved identity decisions and evidence are preserved
@@ -669,7 +669,20 @@ only final current-authority validation, bridge dispatch, and lifecycle calls.
 The briefly launched candidate was withdrawn without a user verdict; accepted
 DLV-272 artifact hash
 `3D7D0FFC370AF411250DDDA15077A038C013A552541D522F85B115F8BCEE9384` is
-restored as PID 92828.
+restored as PID 56240.
+
+Ownership correction `f860da5d` moves the complete prefetch lifecycle into
+`WidgetInteractionSession` and reduces `main.cpp` from the rejected `10,005`
+lines to `9,871`, so its architecture is accepted. Its exact Release is runtime-
+rejected before a user verdict: on untouched live Spotify state it admitted nine
+adjacent-page actions in about twelve seconds, completed none, and alternated
+after/before requests as each bounded 24-row window trim and anchor reconciliation
+presented a new edge. Preserve the corrected ownership, but hold one demand latch
+across page-result cursor/window changes. Reconciliation alone must not recursively
+mint another request or flip direction. Rearm only after the viewport genuinely
+leaves and re-enters the threshold or a new same-direction user scroll/navigation
+intent requires another still-unloaded page. Keep initial, nested, horizontal,
+pointer/UIA, accessibility, and focus-follow behavior generic and diagnostic.
 
 ## Ready widgets deliverable — DLV-270: Spotify collection paging efficiency
 
@@ -885,7 +898,7 @@ deliberately deferred by user decision and requires explicit promotion.
 6. DLV-268 is accepted, focused-tested, and integrated through main `1cc9be8`;
    its PID 85924 was later replaced by the accepted DLV-272 candidate.
 7. DLV-272 is accepted and integrated through main `8100bd7`; after the
-   rejected DLV-269 launch, its exact accepted artifact is restored as PID 92828.
+   rejected DLV-269 launches, its exact accepted artifact is restored as PID 56240.
 8. DLV-269 is Assigned from `8100bd7`: generic viewport-driven,
    focus-independent adjacent prefetch with Spotify as the physical proof.
 9. DLV-273 follows accepted DLV-269: extract one atomic committed widget-content
@@ -915,7 +928,7 @@ deliberately deferred by user decision and requires explicit promotion.
 | DLV-267 | Complete: accepted physical evidence on PID 69904, 422 Spotify paints, 97 bounded commits, 430 zero-error raster-origin records, OverlayChrome 131/131, integrated through main `a552cbf`. |
 | DLV-268 | Complete: correction `e46af735` is physically accepted on PID 85924, focused coverage is green through `05ce5eba`, and the chain is integrated through main `1cc9be8`. |
 | DLV-272 | Complete: production `1feaa92b` was physically accepted on PID 86532; test commit `0b84a5d` passed 2,548 focused checks plus TextEntryModal, and the chain is integrated through main `8100bd7`. |
-| DLV-269 | Correction Assigned after source rejection of `750b335a`; requires a tests-skipped physical Spotify long-list verdict proving viewport-driven prefetch across right-stick and directional navigation without consumed input or forced focus. |
+| DLV-269 | Correction Assigned after runtime rejection of `f860da5d` for a nine-action no-input paging loop; requires a tests-skipped physical Spotify long-list verdict proving bounded viewport-driven prefetch without consumed input or forced focus. |
 | DLV-273 | Ready after accepted DLV-269 integration; requires an atomic committed presenter extraction, tests-skipped multi-widget/full-bounded physical verdict, then focused renderer/lifecycle coverage. |
 | DLV-270 | Ready after resumed DLV-265 is accepted following DLV-271; requires an immutable Spotify candidate, bounded provider-call/timing and snapshot evidence, then user long-list/Queue physical acceptance before tests. |
 | DLV-271 | Ready for the platform lane as serialized cross-layer work after accepted DLV-273; shared protocol work requires focused Tier 1 plus the smallest linked Tier 2 evidence and a bounded 10,000-item reference scenario before physical acceptance. |
