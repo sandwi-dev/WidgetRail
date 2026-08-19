@@ -29,7 +29,7 @@ evidence only; this file is the sole authority for current work.
 
 | Lane | Task/worktree | State |
 | --- | --- | --- |
-| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | DLV-269 is accepted and integrated through main `683af77`. Reconcile at the clean boundary, then execute DLV-273 physical-first from current main; stop at its exact production/build candidate for planner review and launch. Never push. |
+| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | DLV-273 production `b54e1e2` is source-reviewed and visibly running as unaccepted PID 86140 from a coherent 106-file launch graph. Await the user's multi-widget/full-bounded update, focus/scroll, retained-frame, and device/resource-refresh verdict; do not test, integrate, or start DLV-274 before acceptance. Never push. |
 | Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | Preserve saved DLV-265 and installed Spotify state. Do not resume, test, integrate, reinstall, replace configuration, or reset before accepted DLV-271 integration. DLV-270 follows accepted DLV-265; DLV-248 remains deferred. |
 
 ## Execution, review, and architecture rules
@@ -142,6 +142,25 @@ Stop for direct `OverlayState`/session/HWND back-references, a graphics service
 locator, second render checkpoint, protocol work, interaction-state ownership,
 broad `main.cpp` rewrite, substantial conflict, or changed product behavior
 beyond atomic committed-frame handoff. Never push.
+
+Candidate status: production commit `b54e1e2` introduces
+`WidgetContentPresenter` as the sole renderer, image-cache, last-render-result,
+committed-checkpoint, incremental-plan, and declarative-motion owner. The host
+retains lifecycle/session, focus/input, accessibility-provider, placement/HWND,
+device recovery, and final graphics-commit authority; presenter/UIA state is
+published only after successful DirectComposition commit or legacy `EndDraw`.
+The production-only native link succeeded; the unchanged managed publication
+restore failed, so no generated managed output was accepted from that run.
+Instead, the staged candidate at
+`C:\Users\dwive\AppData\Local\Temp\gba-dlv273-b54e1e2\src\OverlayHost\out\Release`
+uses the new `OverlayHost.exe` SHA-256
+`C3D7D473CEDE7319C05708831251F598EDEDA365940CB601100FDB5D5EB5B38B`,
+the accepted `OverlayPlatformInterop.dll` SHA-256
+`0436948A5772EDCE861F316623DB429FF087F93650D8488BB438145B7B00D915`,
+and all 104 accepted non-native launch files byte-identical. Exact prior PID
+98812 was gracefully closed after path/class verification; PID 86140 launched
+visibly with DirectComposition, foreground input, and successful Settings
+admission/commits. Do not test or integrate before the user's physical verdict.
 
 ## Ready platform deliverable — DLV-274: image-cache retention without icon churn
 
@@ -297,10 +316,10 @@ missing accepted DLV-265/DLV-271 baseline. Never push.
 
 ## Serialized order
 
-1. DLV-269 is accepted and integrated through main `683af77`; retain PID 98812
-   because the post-candidate delta is tests/reviewer documents only.
-2. Run DLV-273 in the platform lane from current main and obtain production/build, multi-widget
-   physical acceptance, focused tests, review, and integration.
+1. DLV-269 is accepted and integrated through main `683af77`; its retained PID
+   98812 was later closed only to stage the DLV-273 production candidate.
+2. DLV-273 production `b54e1e2` is visibly running as unaccepted PID 86140;
+   obtain the required multi-widget/full-bounded physical verdict before tests.
 3. Run DLV-274 in the platform lane and obtain measured production/build,
    stable-process Games & Apps physical acceptance, focused tests, review, and
    integration.
@@ -322,6 +341,7 @@ missing accepted DLV-265/DLV-271 baseline. Never push.
 | Trademark | Similar-mark clearance; qualified counsel recommended before public release. |
 | GitHub identity | User-selected owner plus repository/organization availability and optional rename/creation. |
 | DLV-269 | Complete: physical correction accepted on PID 98812, focused evidence passed, and the chain is integrated through main `683af77`. |
+| DLV-273 | Production `b54e1e2` is source-reviewed and visibly running as PID 86140; requires multi-widget/full-bounded update, focus/scroll, retained-frame, and device/resource-refresh physical acceptance before tests. |
 | DLV-265 | Saved until immediately after accepted DLV-271; preserve installed 0.3.3 and existing configuration/account state. |
 | DLV-248 | Deliberately deferred until explicit user promotion. |
 
