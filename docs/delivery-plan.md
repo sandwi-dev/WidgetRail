@@ -29,7 +29,7 @@ evidence only; this file is the sole authority for current work.
 
 | Lane | Task/worktree | State |
 | --- | --- | --- |
-| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | Preserve physically rejected DLV-273 production `b54e1e2` and correction `e98566e`. Narrow correction `dcd58e0` is source-reviewed, built, and visibly launched as PID 105876 for the focused Settings physical verdict. Do not test, integrate, or start DLV-274 before acceptance. Never push. |
+| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | DLV-273 is retired failed work; preserve `b54e1e2`, `e98566e`, and `dcd58e0` as rejected history and do not continue or integrate that refactor. Reconcile cleanly to accepted main `683af77` without destructive history rewriting, then start respecified DLV-274. Never push. |
 | Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | Preserve saved DLV-265 and installed Spotify state. Do not resume, test, integrate, reinstall, replace configuration, or reset before accepted DLV-271 integration. DLV-270 follows accepted DLV-265; DLV-248 remains deferred. |
 
 ## Execution, review, and architecture rules
@@ -114,10 +114,10 @@ visible range from the existing renderer result, a second scroll/focus/action
 owner, widget-specific native behavior, destructive state action, substantial
 conflict, or missing accepted DLV-268/DLV-272 baseline. Never push.
 
-## Ready platform deliverable — DLV-273: extract committed widget content presenter
+## Retired failed platform deliverable — DLV-273: extract committed widget content presenter
 
-Owner/baseline: platform lane from accepted DLV-269 main `683af77` and before
-DLV-271 changes collection presentation. Extract the declarative widget-
+Original scope (now retired): platform lane from accepted DLV-269 main `683af77`
+and before DLV-271 changes collection presentation. Extract the declarative widget-
 body painter, renderer/cache lifetime, committed visual checkpoint, incremental
 damage plan, last render result, and declarative-motion state into one
 `WidgetContentPresenter`, with a before/after authority map. It receives one
@@ -197,26 +197,7 @@ root. The exact rejected PID had no enumerable HWND while hidden and was
 boundedly stopped after path and hash verification. The immutable accepted
 DLV-269 executable was restored visibly as PID 38672 with its accepted SHA-256.
 
-Correct only the focus-and-first-direction handoff exposed by submenu Back under
-the extracted committed-frame path. Preserve the presenter extraction and its
-single renderer, cache, render-result, checkpoint, plan, and motion authority.
-After a handled nested-scope Back restores a committed Settings root, keep the
-widget as input owner, restore the prior/root visible focus, and apply the first
-D-pad/left-stick direction exactly once against that committed root. Down from
-Overlay must advance on the first press; Up must execute deterministically and
-may remain in place only at a real navigation boundary. Do not create a general
-input queue/replay owner: bind at most one pending direction to the existing
-exact widget, instance, runtime/presentation generation, source scope, and
-source-sequence handoff authority; retire it on every existing invalidation;
-apply it only after the exact root commit; never consume it silently or replay
-it twice. Do not add Settings/package-specific host behavior, mutate focus
-before the replacement frame commits, publish staged focus/accessibility state
-on a failed graphics commit, or fall back to the tray merely because the prior
-nested-scope element is absent from the replacement scope. Build once, commit
-the production-only correction, and stop for source review and a physical A/B
-verdict; do not run tests or integrate yet.
-
-Current correction candidate: production-only commit `dcd58e0` changes
+Final correction candidate: production-only commit `dcd58e0` changes
 `src/OverlayHost/main.cpp` only. It extends the exact Back handoff authority with
 one optional direction plus committed-root sequence/focus state. A direction
 arriving before the matching root commit is retained once while repeats are
@@ -240,12 +221,39 @@ submenu -> Back, then the first Down must advance immediately; first Up must
 execute and may remain only at a genuine boundary. Repeat with another submenu
 and confirm ordinary Settings, tray, and multi-widget navigation remain intact.
 
+Rejected verdict: the user found both Up and Down nonfunctional after returning
+to the Settings root. Directional navigation resumed only after another button
+event; A, X, and B all recovered it. This proves the failure is not a special B
+exit path and rejects direction retention/replay as the correction model. The
+log records `Committed nested Back direction` during the matching root commit,
+immediately followed in reproduced cases by a root paint with
+`input-owner=tray`, `visual-focus=none`, and `semantic-focus=tray:settings`;
+later frames may republish widget focus, but the physical controller remains
+directionally blocked until the unrelated button event. PID 105876 was
+boundedly stopped after exact path/hash verification. Immutable accepted
+DLV-269 was restored visibly as responding PID 36780 with accepted executable
+SHA-256
+`6683DAED8AA6941689A15B77BBCFDCEC6906B166E11B832805C4E4CD94673295`.
+
+User decision: roll back and retire DLV-273. The accepted pre-refactor DLV-269
+build does not reproduce the Settings regression, while the extraction and both
+handoff corrections do. Moving renderer/checkpoint publication into the
+presenter split an interaction-ordering boundary that had been behaviorally
+atomic in the accepted host; the attempted post-commit tokens introduced new
+stale controller states. None of `b54e1e2`, `e98566e`, or `dcd58e0` was
+integrated into main, so no production revert commit is needed. Preserve them
+only as rejected branch history. Do not resume, repair, cherry-pick, test, or
+integrate this refactor. Any future host decomposition requires a newly approved
+smaller seam that leaves committed checkpoint and interaction publication in
+the accepted owner and begins with deterministic Back/focus regression proof.
+
 ## Ready platform deliverable — DLV-274: image-cache retention without icon churn
 
-Owner/baseline: platform lane after DLV-273 is accepted and integrated and
-before DLV-271. Keep policy and lifetime in the extracted
-`WidgetContentPresenter`, `RemoteImageCache`, and declarative renderer; do not
-add Games & Apps branches or widget-owned native caches.
+Owner/baseline: platform lane from accepted main `683af77`, with DLV-273 retired,
+and before DLV-271. Keep policy and lifetime in the existing
+`RemoteImageCache`, declarative renderer, and accepted host cache owner; do not
+extract or depend on `WidgetContentPresenter`, add Games & Apps branches, or
+create widget-owned native caches.
 
 Correct the reproduced global 32-entry bottleneck. On accepted PID 56240,
 Games & Apps used only about 141 KiB for 32 small icons, yet revisiting and
@@ -269,7 +277,7 @@ artwork revision, device-loss, shutdown, and multi-widget retention coverage.
 
 Stop for unbounded retention, per-widget native cache authority, weakened
 untrusted-image bounds, a public SDK/protocol change, device/resource lifetime
-regression, substantial conflict, or missing accepted DLV-273 baseline. Never
+regression, substantial conflict, or missing accepted DLV-269 baseline. Never
 push.
 
 ## Ready serialized deliverable — DLV-271: virtualized collection presentation windows
@@ -325,8 +333,8 @@ Stop for an accessibility model that cannot remain accurate while bounded, an
 unbounded or author-controlled native allocation, a second semantic/scroll/
 focus authority, raw author-authored wire mutations, service-specific core
 behavior, silent truncation, compatibility code for an unused pre-release
-protocol generation, substantial conflict, or missing accepted DLV-269/DLV-273
-baseline. Never push.
+protocol generation, substantial conflict, or missing accepted DLV-269 baseline.
+Never push.
 
 ## Saved later widgets deliverable — DLV-265: controller-first Spotify onboarding
 
@@ -395,12 +403,11 @@ missing accepted DLV-265/DLV-271 baseline. Never push.
 ## Serialized order
 
 1. DLV-269 is accepted and integrated through main `683af77`; its immutable
-   accepted build is visibly restored as PID 38672 after both DLV-273 rejections.
-2. Preserve rejected DLV-273 production `b54e1e2` and correction `e98566e`;
-   obtain the focused physical verdict on narrow correction `dcd58e0`, then the
-   required focused Settings plus multi-widget/full-bounded physical verdict
-   before tests.
-3. Run DLV-274 in the platform lane and obtain measured production/build,
+   accepted build is visibly restored as PID 36780 after DLV-273 retirement.
+2. Preserve rejected DLV-273 commits only as failed branch history; do not
+   continue, test, integrate, or base later work on the presenter refactor.
+3. Run respecified DLV-274 directly from accepted main `683af77` and obtain
+   measured production/build,
    stable-process Games & Apps physical acceptance, focused tests, review, and
    integration.
 4. Run serialized DLV-271 in the platform lane with normal shared-protocol
@@ -421,7 +428,7 @@ missing accepted DLV-265/DLV-271 baseline. Never push.
 | Trademark | Similar-mark clearance; qualified counsel recommended before public release. |
 | GitHub identity | User-selected owner plus repository/organization availability and optional rename/creation. |
 | DLV-269 | Complete: physical correction accepted on PID 98812, focused evidence passed, and the chain is integrated through main `683af77`. |
-| DLV-273 | Production `b54e1e2` and correction `e98566e` remain rejected. Narrow exact-authority correction `dcd58e0` is source-reviewed, built, and running visibly as PID 105876. Await the first-Up/first-Down Settings submenu-Back verdict; no tests or integration before acceptance. |
+| DLV-273 | Retired failed refactor by user decision. Production `b54e1e2` and corrections `e98566e`/`dcd58e0` remain rejected branch history and must not be resumed or integrated. Accepted DLV-269 PID 36780 is restored; no production revert was necessary because main never contained DLV-273. |
 | DLV-265 | Saved until immediately after accepted DLV-271; preserve installed 0.3.3 and existing configuration/account state. |
 | DLV-248 | Deliberately deferred until explicit user promotion. |
 
