@@ -29,7 +29,7 @@ evidence only; this file is the sole authority for current work.
 
 | Lane | Task/worktree | State |
 | --- | --- | --- |
-| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | DLV-273 remains retired. DLV-275 production `baf7bd4` is source-reviewed, but exact combined candidate `cd1144f` is rejected: a YouTube Music worker exit propagated through the request dispatcher as a session-fatal exception and replaced the shared bridge, recreating keep-alive Spotify. Correct generic per-widget failure containment in DLV-275; do not test, integrate, or start DLV-271 before a new physical acceptance. Never push. |
+| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | DLV-273 remains retired. DLV-275 correction `2b609fc` is source-reviewed and staged after preserved DLV-274/275 production as exact candidate `e318ffb`. Packaged Release PID 16348 is visibly running for the YouTube Music failure plus Spotify-continuity verdict. Do not test, integrate, or start DLV-271 before user acceptance. Never push. |
 | Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | Preserve saved DLV-265 and installed Spotify state. Do not resume, test, integrate, reinstall, replace configuration, or reset before accepted DLV-271 integration. DLV-270 follows accepted DLV-265; DLV-248 remains deferred. |
 
 ## Execution, review, and architecture rules
@@ -515,6 +515,46 @@ registry generation, worker PID/start ordinal, route, and presentation sequence
 remain continuous; only the failed widget may enter its typed failure/restart
 path. Add focused tests only after that physical verdict.
 
+Current corrected production candidate: platform commit
+`2b609fcba7a7c646803632391fba6c3a9b135b0d` changes only
+`BridgeClientRegistry.cs` and `WidgetBridgeServer.cs` (137 insertions, 39
+deletions). Source review confirms that worker process, admission, worker-pipe,
+worker-protocol, timeout, and non-host cancellation failures are wrapped as a
+typed per-widget request failure. `WidgetProcessClient` retains ownership of
+the failed session and restart count; the registry entry and unrelated widgets
+are not retired. Shared bridge framing/transport failures, host disconnect,
+out-of-memory, and unclassified widget-keyed infrastructure faults still escape
+to the session-fatal dispatcher path. Response-write failure also remains
+session-fatal. No provider-specific branch, route persistence, crash-loop
+weakening, public protocol change, or reviewer-document edit was added. Diff
+checks passed and the implementation worktree is clean.
+
+The planner preserved the prior immutable candidate and created a new detached
+stage from `cd1144f`, cherry-picking the correction as exact candidate
+`e318ffb`. A full packaged Release build with tests skipped succeeded and
+republished 102 runtime files totaling 34,739,048 bytes. `OverlayHost.exe`
+SHA-256 is
+`981A573A964CD4F8735E62772C4275940083A6FB283BD011A65F8F4982B87FBD`;
+`OverlayPlatformInterop.dll` SHA-256 is
+`E10AA84F8455A8EB8E6C242B94882EDC7959F2B11AF85BE4829D8649F754EA86`;
+`WidgetBridge.dll` SHA-256 is
+`46B2527214CAF2F59AD9C8A4BF02EE1884B2146FE9CBB98A3570905C38643768`.
+The verified prior candidate PID 30536 exited normally through `WM_CLOSE`.
+The corrected Release launched visibly as responding PID 16348 from
+`C:\Users\dwive\AppData\Local\Temp\gba-dlv274-275b-candidate\src\OverlayHost\out\Release`.
+Startup diagnostics confirm production process ownership, 32 MiB per-image and
+96 MiB aggregate decoded/GPU cache limits, and bridge session 1/PID 13440.
+
+Required physical verdict: open Spotify and enter Playlists without opening a
+playlist; then select YouTube Music to reproduce its startup failure and return
+to Spotify. Spotify must return immediately to Playlists without a loading
+screen or route reset. After the route, inspect diagnostics for one unchanged
+bridge session plus the same Spotify registry generation, worker PID/start
+ordinal, and increasing presentation sequence. YouTube Music may report its
+typed failure and restart, but Settings and Spotify must not emit
+`registry-retirement` or cooperative worker exit. Do not run tests or integrate
+before the user verdict.
+
 ## Ready serialized deliverable — DLV-271: virtualized collection presentation windows
 
 Owner/baseline: platform lane as serialized cross-layer lead after DLV-274 is
@@ -668,7 +708,7 @@ missing accepted DLV-265/DLV-271 baseline. Never push.
 | DLV-269 | Complete: physical correction accepted on PID 98812, focused evidence passed, and the chain is integrated through main `683af77`. |
 | DLV-273 | Retired failed refactor by user decision. Production `b54e1e2` and corrections `e98566e`/`dcd58e0` remain rejected branch history and must not be resumed or integrated. Accepted DLV-269 PID 78428 is restored; no production revert was necessary because main never contained DLV-273. |
 | DLV-274 | Production `bf6d524` is rejected as insufficient. Correction `4645f40` preserves 32 MiB per-image limits and raises only decoded/GPU aggregate LRU budgets to 96 MiB; its caches remained healthy during the latest reproduction. The candidate is nevertheless rejected for the complete physical no-reload objective because Spotify sequence reset `21 -> 1`, proving keep-alive application recreation. Preserve its exact stage and measurements without tests, integration, packaging, or push until DLV-275 is accepted. |
-| DLV-275 | Production `baf7bd4` fixed Spotify's original active-lifetime cancellation and added the required diagnostics, but combined candidate `cd1144f` is rejected. YouTube Music worker PID 28440 exited 1; its lifecycle request became session-fatal, bridge session 1 retired unrelated keep-alive Spotify PID 29412, and bridge session 2 recreated Spotify as PID 26740. Correct generic per-widget failure containment, then obtain a new physical verdict; no tests or integration before acceptance. |
+| DLV-275 | Production `baf7bd4` fixed Spotify's original active-lifetime cancellation and added diagnostics; combined candidate `cd1144f` was rejected after YouTube Music exit 1 replaced the shared bridge. Correction `2b609fc` is source-reviewed and staged as exact candidate `e318ffb`; responding PID 16348 is visibly running. Await the YouTube Music failure plus Spotify-continuity physical verdict; no tests or integration before acceptance. |
 | DLV-265 | Saved until immediately after accepted DLV-271; preserve installed 0.3.3 and existing configuration/account state. |
 | DLV-248 | Deliberately deferred until explicit user promotion. |
 
