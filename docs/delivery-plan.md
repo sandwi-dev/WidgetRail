@@ -14,12 +14,20 @@ evidence only; this file is the sole authority for current work.
   `9189cad` preserves exact physically accepted DLV-274/275 cumulative candidate
   `949b586`; `6ce32b7` adds the reviewed focused test-only follow-up. The
   earlier accepted DLV-269 baseline remains `683af77`.
-- Exact accepted candidate `949b586` remains visibly running as responding PID
-  17928 from
-  `C:\Users\dwive\AppData\Local\Temp\gba-dlv274-275c-candidate\src\OverlayHost\out\Release`.
-  Its production inputs are now integrated unchanged. The user explicitly
-  requested one fresh coherent main Release build and visible replacement after
-  integration; that direct request overrides the ordinary no-relaunch rule.
+- By the user's explicit request, the full coherent `Release -SkipTests` build
+  from exact main `4b358c0` passed after the managed restore/publish was rerun
+  outside the sandbox. Verified candidate PID 17928 exited normally through
+  `WM_CLOSE`; the main executable launched visibly and is responding as PID
+  53016 directly from
+  `C:\Users\dwive\Projects\GameBarAlternative\src\OverlayHost\out\Release`.
+  `OverlayHost.exe` SHA-256 is
+  `0E5834D02C80E4DB6AC6B8661B4DD5DA2C8DD5A3DA495AA55F38759BCA5CE342`,
+  `OverlayPlatformInterop.dll` is
+  `9BC6391E2033E20E1179F75556E1362D3D36A4073B75F4E3C9B25FA73B4F8F93`,
+  and `WidgetBridge.dll` is
+  `3E2C828B6FA7F17F56D9F33B3DB8B91D13687688C96B4933391713A2622700D3`.
+  Startup diagnostics explicitly confirm 32 MiB per-image and 96 MiB aggregate
+  decoded/GPU cache limits.
 - Widgets correction DLV-265 remains saved at clean tip `13bd971` plus
   reconciliation `5fd1a06`, with immutable Spotify 0.3.3 installed and the
   existing Client ID/account state unchanged. It resumes only after accepted
@@ -625,9 +633,10 @@ directly changed suites passed. The broader WidgetBridge run reached 57/91;
 its remaining 34 cases failed before relevant behavior at environment-level
 named-pipe connection/startup boundaries, while the new typed-isolation case
 and directly changed session-fatal case passed. Do not rerun that inherited
-environment failure blindly. The user explicitly requested a fresh coherent
-main Release build and visible replacement after integration despite the
-tests-and-reviewer-documents-only post-acceptance delta.
+environment failure blindly. By explicit user request, a fresh coherent main
+Release was built and launched as responding PID 53016 despite the ordinary
+tests-and-reviewer-documents-only no-relaunch rule. Startup diagnostics confirm
+the integrated 96 MiB decoded and GPU aggregate cache budgets.
 
 ## Assigned serialized deliverable — DLV-271: virtualized collection presentation windows
 
@@ -759,8 +768,8 @@ missing accepted DLV-265/DLV-271 baseline. Never push.
    do not test or integrate it while the keep-alive reload remains unresolved.
 4. DLV-274/275 exact production candidate `949b586` is physically accepted and
    integrated by merge `9189cad`; reviewed focused tests are integrated as
-   `6ce32b7`. Refresh and visibly launch the coherent main Release once by the
-   user's explicit request, then continue DLV-271.
+   `6ce32b7`. The user-requested coherent main refresh is complete on responding
+   PID 53016; continue DLV-271.
 5. Run serialized DLV-271 in the platform lane with normal shared-protocol
    verification, provider-free 10,000-item scale proof, physical verdict,
    review, and integration.
@@ -781,7 +790,7 @@ missing accepted DLV-265/DLV-271 baseline. Never push.
 | DLV-269 | Complete: physical correction accepted on PID 98812, focused evidence passed, and the chain is integrated through main `683af77`. |
 | DLV-273 | Retired failed refactor by user decision. Production `b54e1e2` and corrections `e98566e`/`dcd58e0` remain rejected branch history and must not be resumed or integrated. Accepted DLV-269 PID 78428 is restored; no production revert was necessary because main never contained DLV-273. |
 | DLV-274 | Complete: production `bf6d524` plus correction `4645f40` preserves 32 MiB per-image limits and raises only decoded/GPU aggregate LRU budgets to 96 MiB. Exact accepted cumulative candidate `949b586` is integrated by `9189cad`; focused tests are integrated through `6ce32b7`. |
-| DLV-275 | Complete: production `baf7bd4` fixes active-lifetime cancellation and adds diagnostics; `2b609fc` isolates widget worker failures; `74ec5e9` removes destructive stale-request pipe cancellation. Exact accepted candidate `949b586` is integrated by `9189cad` and tests by `6ce32b7`; the user requested one fresh main Release replacement after integration. |
+| DLV-275 | Complete: production `baf7bd4` fixes active-lifetime cancellation and adds diagnostics; `2b609fc` isolates widget worker failures; `74ec5e9` removes destructive stale-request pipe cancellation. Exact accepted candidate `949b586` is integrated by `9189cad`, tests by `6ce32b7`, and fresh main Release PID 53016 is responding with the integrated cache policy. |
 | DLV-265 | Saved until immediately after accepted DLV-271; preserve installed 0.3.3 and existing configuration/account state. |
 | DLV-248 | Deliberately deferred until explicit user promotion. |
 
@@ -796,4 +805,4 @@ missing accepted DLV-265/DLV-271 baseline. Never push.
 | DLV-268 | Right-stick free-scroll/focus re-entry accepted and integrated through `1cc9be8`. |
 | DLV-272 | Interaction-session extraction accepted and integrated through `8100bd7`. |
 | DLV-269 | Viewport-driven paging accepted and integrated through `683af77`; PID 98812 retained under the no-relaunch rule. |
-| DLV-274/275 | Cache retention, keep-alive lifecycle, per-widget failure isolation, and non-destructive stale-request cancellation accepted as exact candidate `949b586`; production integrated by `9189cad` and focused tests by `6ce32b7`. A fresh coherent main launch was explicitly requested after integration. |
+| DLV-274/275 | Cache retention, keep-alive lifecycle, per-widget failure isolation, and non-destructive stale-request cancellation accepted as exact candidate `949b586`; production integrated by `9189cad`, focused tests by `6ce32b7`, and exact-main Release PID 53016 launched with confirmed 96 MiB aggregate decoded/GPU budgets. |
