@@ -312,17 +312,28 @@ surface visibly reload artwork, and right-stick scrolling was often unavailable.
 The user confirmed the visible reloading also occurs on the currently accepted
 DLV-269 build, so it is inherited behavior that `bf6d524` failed to correct, not
 a new reload regression introduced by the candidate.
-The worker was not destroyed: Spotify retained the same runtime-generation token
-across switches and its keep-alive Background lifecycle remained intact. The
-candidate instead exhausted both unchanged 32 MiB aggregate image budgets with
-large Spotify artwork. Logs reached 73 decoded byte-pressure evictions and 68
-GPU bitmap byte-pressure evictions, with zero count-pressure evictions; repeated
-image completions produced full/checkpoint refresh churn and right-stick drops
-such as `retained-refresh-gated` and `renderer-checkpoint-or-boundary`. This
-proves `bf6d524` fixed the 32-entry ceiling but retained an aggregate byte ceiling
-below the measured cross-widget working set. PID 59388 was boundedly stopped
-after exact path/hash verification, and accepted DLV-269 was restored visibly as
-responding PID 78428 with its accepted executable hash.
+
+Two observed effects must remain separate. The artwork/loading churn exhausted
+both unchanged 32 MiB aggregate image budgets with large Spotify artwork. Logs
+reached 73 decoded byte-pressure evictions and 68 GPU bitmap byte-pressure
+evictions, with zero count-pressure evictions; repeated image completions
+produced full/checkpoint refresh churn and right-stick drops such as
+`retained-refresh-gated` and `renderer-checkpoint-or-boundary`. This proves
+`bf6d524` fixed the 32-entry ceiling but retained an aggregate byte ceiling below
+the measured cross-widget working set.
+
+The reported loss of an open Spotify playlist is not evidence of image-cache
+eviction or worker restart. In the captured detail-to-list transition, authored
+snapshot sequence continued `19 -> 20 -> 21`; the detail scroll was removed and
+focus returned to the exact originating playlist row while the widget still
+owned input. That is the package-authored B shortcut
+`spotify.playlist.back`, which deliberately clears `_playlistSelection`, before
+a subsequent Back can return to the tray. Runtime/presentation fingerprints are
+content fingerprints and are not worker-liveness proof. DLV-274 changes no
+Spotify route, Back, lifecycle, or persistence behavior and must not be credited
+with preserving an open playlist. PID 59388 was boundedly stopped after exact
+path/hash verification, and accepted DLV-269 was restored visibly as responding
+PID 78428 with its accepted executable hash.
 
 Correct only the measured aggregate cache budgets while preserving the accepted
 owners and security bounds. Keep the existing untrusted download, dimension,
