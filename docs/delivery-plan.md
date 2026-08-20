@@ -854,6 +854,13 @@ input, the modal matches the active theme, and compact/wide plus 150% text/
 interface scale remain fully reachable. No account change or real commit is
 required for this physical verdict.
 
+The first production candidate at `3d3ed0e` was physically rejected: the
+opening A press leaked into the nested modal loop and inserted characters while
+focus moved; the terminating B escaped and hid the overlay; Enter sometimes
+failed admission without visible feedback; and the legend still said Commit.
+Correct DLV-276 with controller-neutral entry/exit quarantine, current semantic
+authority revalidation, bounded result feedback, and user-facing Enter wording.
+
 After acceptance, add focused modal layout/theme/live-buffer/hint/password,
 caret insertion/deletion and LB/RB boundary/repeat behavior, exclusive
 controller-routing, no-input-leak, UIA, commit/cancel/close/failure,
