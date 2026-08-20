@@ -184,6 +184,11 @@ struct ScrollPaginationSessionOutcome final {
     bool dispatchReady{};
 };
 
+struct ScrollPaginationBoundaryOutcome final {
+    ScrollPaginationSessionOutcome pagination;
+    bool retainFocus{};
+};
+
 struct ScrollPaginationDispatchOutcome final {
     ScrollPaginationPrefetchRequest request;
     ScrollPaginationDispatchDisposition disposition{
@@ -322,6 +327,14 @@ public:
         std::wstring_view nextFocus,
         ScrollPaginationIntentSource source,
         std::uint64_t now);
+    [[nodiscard]] ScrollPaginationBoundaryOutcome
+        ObserveScrollPaginationBoundaryIntent(
+            const WidgetInteractionAuthority& authority,
+            const RenderResult& renderResult,
+            std::wstring_view focusedElementId,
+            NavigationDirection direction,
+            ScrollPaginationIntentSource source,
+            std::uint64_t now);
     [[nodiscard]] std::pair<
         std::optional<ScrollPaginationPrefetchRequest>,
         ScrollPaginationSessionOutcome> AcquireScrollPaginationDispatch(

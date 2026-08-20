@@ -120,7 +120,7 @@ public:
     [[nodiscard]] LayoutResult Run(const LayoutElement& root) {
         std::set<std::string, std::less<>> ids;
         std::size_t nodeCount{};
-        Preflight(root, 1, ids, nodeCount);
+        (void)Preflight(root, 1, ids, nodeCount);
         if (!result_.valid()) return std::move(result_);
         if (wrail_taffy_abi_version() != WRAIL_TAFFY_ABI_VERSION) {
             AddIssue({}, "taffy_abi_mismatch",
@@ -203,23 +203,25 @@ private:
         return result;
     }
 
-    void Preflight(
+    [[nodiscard]] bool Preflight(
         const LayoutElement& element,
         const std::size_t depth,
         std::set<std::string, std::less<>>& ids,
         std::size_t& nodes) {
+        bool containsVerticalScroll =
+            element.scrollAxis == ScrollAxis::Vertical;
         if (++nodes > kMaximumNodes) {
             if (nodes == kMaximumNodes + 1) {
                 AddIssue(element.id, "tree_too_large",
                     "Layout tree exceeds 4096 elements.",
                     LayoutIssueSeverity::Error);
             }
-            return;
+            return containsVerticalScroll;
         }
         if (depth > kMaximumDepth) {
             AddIssue(element.id, "tree_too_deep",
                 "Layout tree exceeds 64 levels.", LayoutIssueSeverity::Error);
-            return;
+            return containsVerticalScroll;
         }
         if (element.id.empty() || element.id.size() > 128) {
             AddIssue(element.id, "invalid_id",
@@ -273,8 +275,13 @@ private:
                 "Grid column properties require responsive-grid layout mode.",
                 LayoutIssueSeverity::Error);
         }
-        for (const auto& child : element.children)
-            Preflight(child, depth + 1, ids, nodes);
+        for (const auto& child : element.children) {
+            containsVerticalScroll = Preflight(
+                child, depth + 1, ids, nodes) || containsVerticalScroll;
+        }
+        if (containsVerticalScroll)
+            verticalScrollAncestors_.insert(&element);
+        return containsVerticalScroll;
     }
 
     [[nodiscard]] static WidgetRailTaffyOptionalFloat Present(const float value) noexcept {
@@ -349,10 +356,16 @@ private:
             element.minWidth, element.id, "minWidth", 0.0F, kMaximumCoordinate);
         input.minHeight = ResolveOptionalForBridge(
             element.minHeight, element.id, "minHeight", 0.0F, kMaximumCoordinate);
-        // The established native contract uses zero as the unauthored flex/grid
-        // minimum. CSS "auto" minimums would let max-content text force cards
-        // wider than their admitted widget viewport.
+        // The established native contract uses zero as the unauthored inline
+        // flex/grid minimum. A vertical Scroll and its ordinary stack ancestors
+        // also require a zero block-axis minimum so the nested viewport can
+        // shrink within the admitted widget instead of expanding to its full
+        // (possibly estimated virtual) content extent.
         if (!input.minWidth.present) input.minWidth = Present(0.0F);
+        if (!input.minHeight.present &&
+            verticalScrollAncestors_.contains(&element)) {
+            input.minHeight = Present(0.0F);
+        }
         input.maxWidth = ResolveOptionalForBridge(
             element.maxWidth, element.id, "maxWidth", 0.0F, kMaximumCoordinate);
         input.maxWidth = Present(ownMaximumWidth);
@@ -650,6 +663,7 @@ private:
     LayoutOptions options_;
     LayoutResult result_;
     std::set<std::string, std::less<>> issueKeys_;
+    std::set<const LayoutElement*> verticalScrollAncestors_;
     Rect viewport_;
     std::vector<const LayoutElement*> elements_;
     std::vector<float> measurementMaximumWidths_;

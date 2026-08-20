@@ -7325,6 +7325,17 @@ private:
                 focus.priorFocus, focus.sliderDamageNodeIds);
             return;
         }
+        if (const auto authority = InteractionAuthority(widgetId, *snapshot)) {
+            auto boundary =
+                interactionSession_.ObserveScrollPaginationBoundaryIntent(
+                    *authority, lastWidgetRenderResult_,
+                    interactionSession_.focusedElementId(), navigationDirection,
+                    widgetrail::input::ScrollPaginationIntentSource::
+                        DirectionalNavigation,
+                    GetTickCount64());
+            PublishScrollPaginationOutcome(boundary.pagination);
+            if (boundary.retainFocus) return;
+        }
         if (widgetrail::input::ShouldTransferFocusToTray(
                 navigationDirection,
                 activeScope == widgetrail::input::RootInputScope(*snapshot),

@@ -1344,6 +1344,66 @@ void VirtualCollectionWindowKeepsNativeWorkBounded() {
           wide.scrollViewports.at(L"virtual.list").maximumOffset > 500'000.0F,
         "compact and wide reflow retain one bounded logical collection window");
 
+    auto nested = snapshot;
+    nested.instanceId = L"full-application-reference@1";
+    nested.root = Node(L"full-app.root", L"stack");
+    nested.root.baseStyle = {
+        {L"gap", Length(12)},
+        {L"padding", LengthList(L"16px")},
+    };
+    auto heading = Node(L"full-app.heading", L"text");
+    heading.text = L"Reference Library";
+    auto library = Node(L"full-app.library", L"stack");
+    auto summary = Node(L"full-app.summary", L"text");
+    summary.text = L"10,000 private records · 32 projected";
+    auto refresh = Node(L"full-app.refresh", L"button");
+    refresh.text = L"Refresh";
+    refresh.actionId = L"full-app.refresh";
+    auto nestedScroll = snapshot.root;
+    nestedScroll.id = L"full-app.document-list";
+    for (std::size_t index = 0; index < nestedScroll.children.size(); ++index) {
+        nestedScroll.children[index].id =
+            L"full-app.document-" + std::to_wstring(index);
+    }
+    library.children = {
+        std::move(summary), std::move(refresh), std::move(nestedScroll)};
+    nested.root.children = {std::move(heading), std::move(library)};
+    nested.initialFocusId = L"full-app.document-0";
+
+    const auto proveNested = [&](const Rect nestedViewport,
+                                 const char* description) {
+        target->BeginDraw();
+        const auto rendered = renderer.Render(
+            target.Get(), nested, nested.initialFocusId, nestedViewport,
+            accessibleOptions);
+        Check(SUCCEEDED(target->EndDraw()),
+              "nested virtual reference draw completes");
+        const auto scroll = rendered.scrollViewports.find(
+            L"full-app.document-list");
+        Check(rendered.succeeded && scroll != rendered.scrollViewports.end() &&
+                  scroll->second.rect.height > 0.0F &&
+                  scroll->second.rect.height < nestedViewport.height &&
+                  scroll->second.maximumOffset > 500'000.0F,
+              description);
+        const auto freeScroll = renderer.PlanFocusedFreeScroll(
+            nested, nested.initialFocusId,
+            widgetrail::declarative::ScrollAxis::Vertical, 80.0F,
+            nestedViewport, L"full-app.document-list");
+        Check(freeScroll && freeScroll->offset > freeScroll->priorOffset,
+              "nested virtual Scroll creates a nonzero right-stick plan");
+        Check(rendered.navigationRects.contains(L"full-app.document-10") &&
+                  rendered.revealableFocusIds.contains(
+                      L"full-app.document-10"),
+              "an admitted off-viewport virtual row remains available to D-pad navigation");
+        Check(rendered.navigationRects.size() == 33 &&
+                  rendered.accessibilityRegions.size() < 33,
+              "nested virtual presentation retains bounded native and UIA work");
+    };
+    proveNested({0.0F, 0.0F, 820.0F, 620.0F},
+                "wide nested virtual Scroll owns the remaining bounded viewport");
+    proveNested({0.0F, 0.0F, 360.0F, 300.0F},
+                "compact nested virtual Scroll owns the remaining bounded viewport");
+
     auto shifted = snapshot;
     shifted.sequence = 2;
     shifted.root.virtualCollectionWindow->requestGeneration = 8;

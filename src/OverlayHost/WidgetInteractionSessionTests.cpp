@@ -547,6 +547,36 @@ void PaginationPrefetchLifecycle() {
                   ScrollPaginationIntentSource::DirectionalNavigation,
           "focus-follow movement independently records its viewport prefetch intent");
 
+    WidgetInteractionSession boundarySession;
+    boundarySession.SetFocus(L"paged.widget", snapshot, L"page.row.4");
+    Check(!boundarySession.ReconcileScrollPagination(
+               authority, middle, 320).dispatchReady,
+          "boundary fixture establishes a non-threshold viewport");
+    const auto boundary = boundarySession.ObserveScrollPaginationBoundaryIntent(
+        authority, trailing, L"page.row.4", NavigationDirection::Down,
+        ScrollPaginationIntentSource::DirectionalNavigation, 321);
+    Check(boundary.retainFocus && boundary.pagination.dispatchReady &&
+              boundarySession.focusedElementId() == L"page.row.4",
+          "D-pad at an unloaded logical edge retains exact widget focus and queues one page");
+    const auto boundaryAcquire = boundarySession.AcquireScrollPaginationDispatch(
+        authority, trailing, 322);
+    Check(boundaryAcquire.first.has_value(),
+          "retained boundary focus reaches the existing single-flight dispatcher");
+    const auto joinedBoundary =
+        boundarySession.ObserveScrollPaginationBoundaryIntent(
+            authority, trailing, L"page.row.4", NavigationDirection::Down,
+            ScrollPaginationIntentSource::DirectionalNavigation, 323);
+    Check(joinedBoundary.retainFocus &&
+              !joinedBoundary.pagination.dispatchReady &&
+              boundarySession.focusedElementId() == L"page.row.4",
+          "repeated D-pad cannot escape to tray or dispatch a second in-flight page");
+    const auto unrelatedBoundary =
+        boundarySession.ObserveScrollPaginationBoundaryIntent(
+            authority, middle, L"page.row.4", NavigationDirection::Up,
+            ScrollPaginationIntentSource::DirectionalNavigation, 324);
+    Check(!unrelatedBoundary.retainFocus,
+          "a direction without logical page authority retains ordinary boundary behavior");
+
     WidgetInteractionSession failureSession;
     Check(!failureSession.ReconcileScrollPagination(
                authority, middle, 400).dispatchReady,

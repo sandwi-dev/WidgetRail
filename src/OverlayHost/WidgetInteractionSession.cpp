@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <iterator>
 #include <utility>
 
 namespace widgetrail::input {
@@ -733,6 +734,68 @@ WidgetInteractionSession::ObserveScrollPaginationFocusIntent(
             ? ScrollPaginationEdge::Before
             : ScrollPaginationEdge::After,
         source, now);
+}
+
+ScrollPaginationBoundaryOutcome
+WidgetInteractionSession::ObserveScrollPaginationBoundaryIntent(
+    const WidgetInteractionAuthority& authority,
+    const RenderResult& renderResult,
+    const std::wstring_view focusedElementId,
+    const NavigationDirection direction,
+    const ScrollPaginationIntentSource source,
+    const std::uint64_t now) {
+    ScrollPaginationBoundaryOutcome result;
+    if (!authority.semantics || focusedElementId.empty()) return result;
+    const bool horizontal = direction == NavigationDirection::Left ||
+        direction == NavigationDirection::Right;
+    const bool vertical = direction == NavigationDirection::Up ||
+        direction == NavigationDirection::Down;
+    if (!horizontal && !vertical) return result;
+    const auto axis = horizontal
+        ? declarative::ScrollAxis::Horizontal
+        : declarative::ScrollAxis::Vertical;
+    const auto edge = direction == NavigationDirection::Left ||
+            direction == NavigationDirection::Up
+        ? ScrollPaginationEdge::Before
+        : ScrollPaginationEdge::After;
+    const auto owner = ResolveFocusedScrollOwner(
+        authority.semantics->root, focusedElementId, axis,
+        authority.semantics->activeInputScopeId, renderResult);
+    if (owner.disposition != FocusedScrollResolutionDisposition::Resolved)
+        return result;
+
+    const auto actions = FindScrollPaginationActions(
+        authority.semantics->root,
+        authority.semantics->activeInputScopeId,
+        renderResult);
+    const auto action = std::ranges::find_if(actions, [&](const auto& item) {
+        return item.scrollId == owner.scrollId && item.axis == axis &&
+            item.edge == edge;
+    });
+    const bool matchingFlight = std::ranges::any_of(
+        scrollPaginationLatches_, [&](const auto& latch) {
+            return SameScrollPaginationRoute(latch, authority) &&
+                latch.scrollId == owner.scrollId && latch.axis == axis &&
+                latch.prefetch && latch.prefetch->request.action.edge == edge &&
+                latch.prefetch->status !=
+                    ScrollPaginationPrefetchStatus::TerminalFailure;
+        });
+    if (action == actions.end()) {
+        result.retainFocus = matchingFlight;
+        return result;
+    }
+
+    result.retainFocus = true;
+    result.pagination = ObserveScrollPaginationIntent(
+        authority, owner.scrollId, axis, edge, source, now);
+    auto reconciled = ReconcileScrollPagination(authority, renderResult, now);
+    result.pagination.dispatchReady =
+        result.pagination.dispatchReady || reconciled.dispatchReady;
+    result.pagination.diagnostics.insert(
+        result.pagination.diagnostics.end(),
+        std::make_move_iterator(reconciled.diagnostics.begin()),
+        std::make_move_iterator(reconciled.diagnostics.end()));
+    return result;
 }
 
 ScrollPaginationSessionOutcome WidgetInteractionSession::ReconcileScrollPagination(
