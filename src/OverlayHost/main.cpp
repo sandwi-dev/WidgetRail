@@ -865,6 +865,12 @@ private:
         std::uint64_t correlationId{};
     };
 
+    struct TextEntryModalAuthority final {
+        std::wstring widgetId;
+        std::wstring runtimeGeneration;
+        std::wstring presentationGeneration;
+    };
+
     struct WidgetSnapshotAdmissionAuthority final {
         std::wstring_view widgetId;
         std::wstring_view runtimeGeneration;
@@ -1393,6 +1399,10 @@ private:
     void HandlePlatformEvent(const WidgetRailOverlayPlatformEvent& event) {
         switch (event.kind) {
         case WidgetRailOverlayPlatformEventKind::GuideToggleRequested:
+            if (textEntryModal_.active()) {
+                AppendDiagnostic(L"Guide input consumed by text entry modal");
+                break;
+            }
             if (event.guideSource ==
                 WidgetRailOverlayPlatformGuideSource::LegacyCompatibility) {
                 AppendDiagnostic(
@@ -1453,6 +1463,7 @@ private:
     LRESULT HandleMessage(UINT message, WPARAM wParam, LPARAM lParam) {
         switch (message) {
         case WM_HOTKEY:
+            if (textEntryModal_.active()) return 0;
             if (wParam == kDeveloperHotkey) {
                 AppendDiagnostic(L"F1 fallback toggle received");
                 Dispatch(widgetrail::Command::ToggleOverlay);
@@ -2853,6 +2864,17 @@ private:
                 KillTimer(window_, kCatalogRetryTimer);
                 sessions_.ResetCatalogRetry();
                 ApplyWidgetCatalogChange(*event.catalog);
+                if (textEntryModal_.active() && textEntryModalAuthority_) {
+                    const auto* current = sessions_.FindDescriptor(
+                        textEntryModalAuthority_->widgetId);
+                    if (!current ||
+                        current->runtimeGeneration !=
+                            textEntryModalAuthority_->runtimeGeneration ||
+                        current->presentationGeneration !=
+                            textEntryModalAuthority_->presentationGeneration) {
+                        textEntryModal_.Close();
+                    }
+                }
                 RefreshCurrentBridgeSnapshot();
                 continue;
             }
@@ -2870,6 +2892,10 @@ private:
                     }
                     continue;
                 }
+                if (textEntryModal_.active() && textEntryModalAuthority_ &&
+                    textEntryModalAuthority_->widgetId == event.widgetId) {
+                    textEntryModal_.Close();
+                }
                 RecordWidgetStartupFailure(
                     event.widgetId, event.failure.safeMessage, event.failure.stage);
                 if (pinnedSurfaceCoordinator_.pinned() &&
@@ -2885,6 +2911,10 @@ private:
                 continue;
             }
             if (event.kind == widgetrail::WidgetSessionEventKind::Restarted) {
+                if (textEntryModal_.active() && textEntryModalAuthority_ &&
+                    textEntryModalAuthority_->widgetId == event.widgetId) {
+                    textEntryModal_.Close();
+                }
                 RefreshAndApplyPresentation([&] { SyncWidgetActivity(); });
                 continue;
             }
@@ -3863,6 +3893,7 @@ private:
     }
 
     void HideOverlay() {
+        textEntryModal_.Close();
         localWidgetPackageImport_.CancelPicker();
         if (const auto operation = localWidgetPackageImport_.CancelActiveOperation()) {
             (void)bridge_.CancelLocalWidgetPackageInstall(
@@ -5950,6 +5981,32 @@ private:
         const WORD buttons = frame.state.buttons;
         const WORD pressed = frame.pressedButtons;
         const WORD released = frame.releasedButtons;
+        if (textEntryModal_.active()) {
+            const auto routeDirection = [&](const auto& encoded) {
+                if (const auto direction = DecodeNavigation(encoded))
+                    HandleWidgetDirection(direction->direction, direction->phase, true);
+            };
+            routeDirection(frame.stickNavigation);
+            routeDirection(frame.dpadNavigation);
+            textEntryModal_.UpdateCaretRepeat(
+                (buttons & XINPUT_GAMEPAD_LEFT_SHOULDER) != 0,
+                (buttons & XINPUT_GAMEPAD_RIGHT_SHOULDER) != 0,
+                (pressed & XINPUT_GAMEPAD_LEFT_SHOULDER) != 0,
+                (pressed & XINPUT_GAMEPAD_RIGHT_SHOULDER) != 0,
+                now);
+            if ((pressed & XINPUT_GAMEPAD_B) != 0)
+                textEntryModal_.HandleController(L"B");
+            if ((pressed & XINPUT_GAMEPAD_A) != 0)
+                textEntryModal_.HandleController(L"A");
+            if ((pressed & XINPUT_GAMEPAD_X) != 0)
+                textEntryModal_.HandleController(L"X");
+            if (frame.rightTriggerPressed != WRAIL_OVERLAY_PLATFORM_FALSE)
+                textEntryModal_.HandleController(L"RT");
+            // The modal is the complete controller scope. Every unassigned
+            // button, trigger, shortcut, repeat, and right-stick sample is
+            // deliberately consumed here rather than reaching overlay state.
+            return;
+        }
         const auto pinnedControllerCommand = widgetrail::pinned::ResolveControllerCommand({
             pinnedSurfaceCoordinator_.pinned(),
             pinnedSurfaceCoordinator_.placementMode() !=
@@ -6265,6 +6322,10 @@ private:
     }
 
     void RestoreFocusForActiveSurface(const std::wstring_view widgetId) {
+        if (textEntryModal_.active()) {
+            interactionSession_.ClearFocus();
+            return;
+        }
         const auto* snapshot = InteractionSnapshotFor(widgetId);
         if (snapshot)
             (void)interactionSession_.RestoreFocus(widgetId, *snapshot);
@@ -6276,6 +6337,13 @@ private:
     }
 
     void HandleAccessibilityActions() {
+        if (textEntryModal_.active()) {
+            // Native modal children own the active UIA subtree. Drain any
+            // actions queued against the now-inert widget/chrome providers.
+            (void)accessibilityProvider_.TakeActions();
+            (void)chromeAccessibilityProvider_.TakeActions();
+            return;
+        }
         auto pendingActions = accessibilityProvider_.TakeActions();
         auto chromeActions = chromeAccessibilityProvider_.TakeActions();
         pendingActions.insert(pendingActions.end(),
@@ -6569,6 +6637,10 @@ private:
     bool PublishAccessibilityTree(
         const double pixelsPerDip,
         const bool forceDuringPlacement = false) {
+        if (textEntryModal_.active()) {
+            ClearAccessibilityTree();
+            return false;
+        }
         if (compositionPlacementInProgress_ && !forceDuringPlacement)
             return false;
         POINT origin{};
@@ -6643,6 +6715,10 @@ private:
         const float height,
         const widgetrail::accessibility::DashboardSemantics* dashboard = nullptr) {
         if (!accessibilityActive_) return;
+        if (textEntryModal_.active()) {
+            ClearAccessibilityTree();
+            return;
+        }
         std::vector<widgetrail::accessibility::TrayItem> items;
         items.reserve(state_.order().size());
         for (const auto& widgetId : state_.order()) {
@@ -7703,6 +7779,35 @@ private:
         InvalidateRect(window_, nullptr, FALSE);
     }
 
+    [[nodiscard]] widgetrail::input::TextEntryModalTheme CurrentTextEntryTheme() const {
+        const auto colorOr = [](const std::optional<widgetrail::NativeColor>& value,
+                                const widgetrail::NativeColor fallback) {
+            return GdiColor(value.value_or(fallback));
+        };
+        const widgetrail::NativeColor defaultText{
+            0xF7 / 255.0F, 0xF7 / 255.0F, 0xFA / 255.0F, 1.0F};
+        const widgetrail::NativeColor defaultSecondary{
+            0x9B / 255.0F, 0xA3 / 255.0F, 0xB3 / 255.0F, 1.0F};
+        const widgetrail::NativeColor defaultControl{
+            0x24 / 255.0F, 0x2A / 255.0F, 0x37 / 255.0F, 1.0F};
+        const auto& appearance = appearanceState_.current();
+        widgetrail::input::TextEntryModalTheme theme;
+        theme.canvas = GdiColor(effectiveCanvasBackground_);
+        theme.panel = GdiColor(effectivePanelBackground_);
+        theme.control = colorOr(trayItemStyle_.background(), defaultControl);
+        theme.controlFocused = colorOr(
+            trayItemSelectedFocusedStyle_.background(), kDefaultAccent);
+        theme.text = colorOr(bodyStyle_.foreground(), defaultText);
+        theme.secondaryText = colorOr(hintStyle_.foreground(), defaultSecondary);
+        theme.focus = colorOr(
+            trayItemFocusedStyle_.outlineColor(), defaultText);
+        theme.interfaceScale = appearance ? appearance->interfaceScale : 1.0;
+        theme.textScale = appearance ? appearance->textScale : 1.0;
+        theme.fontFamily = bodyStyle_.fontFamily().empty()
+            ? L"Segoe UI" : bodyStyle_.fontFamily();
+        return theme;
+    }
+
     bool OpenTextEntryModal(
         const std::wstring_view widget,
         const widgetrail::WidgetSnapshot& snapshot,
@@ -7718,14 +7823,39 @@ private:
 
         (void)interactionSession_.MoveFocus(
             widget, snapshot, request->nodeId);
+        const std::wstring exactFocusToRestore{
+            interactionSession_.focusedElementId()};
         const bool protectedWifi = descriptor->protectedWifiPromptSupported &&
             request->actionId == L"wifi.connect.protected";
         const auto modalTitle = protectedWifi
             ? std::wstring(L"Password for ") + request->placeholder
             : request->placeholder;
+        // Establish the modal semantic/input scope before its HWND becomes
+        // visible. The prior focus identity is retained only for validated
+        // restoration after the modal reaches a terminal outcome.
+        (void)interactionSession_.RetirePresentations();
+        interactionSession_.ClearFocus();
+        ClearAccessibilityTree();
+        InvalidateRect(window_, nullptr, FALSE);
+        if (chromeWindow_) {
+            EnableWindow(chromeWindow_, FALSE);
+            InvalidateRect(chromeWindow_, nullptr, FALSE);
+        }
+        if (backdropWindow_) EnableWindow(backdropWindow_, FALSE);
+        textEntryModalAuthority_ = TextEntryModalAuthority{
+            request->widgetId,
+            request->runtimeGeneration,
+            descriptor->presentationGeneration,
+        };
         auto modalResult = textEntryModal_.Show(
             instance_, window_, request->value,
-            modalTitle, request->maximumLength, protectedWifi);
+            modalTitle, request->maximumLength, protectedWifi,
+            CurrentTextEntryTheme());
+        textEntryModalAuthority_.reset();
+        if (backdropWindow_ && IsWindow(backdropWindow_))
+            EnableWindow(backdropWindow_, TRUE);
+        if (chromeWindow_ && IsWindow(chromeWindow_))
+            EnableWindow(chromeWindow_, TRUE);
         bool actionDispatched{};
         if (modalResult.outcome == widgetrail::input::TextEntryModalOutcome::Committed &&
             modalResult.committedText) {
@@ -7770,8 +7900,22 @@ private:
             }
             modalResult.committedText->clear();
         }
-        if (state_.surface() == widgetrail::Surface::Widget)
-            RestoreFocusForActiveSurface(state_.activeWidget());
+        if (state_.surface() == widgetrail::Surface::Widget) {
+            const std::wstring_view activeWidget = state_.activeWidget();
+            const auto* currentSnapshot = InteractionSnapshotFor(activeWidget);
+            const auto exactVisible = currentSnapshot && activeWidget == request->widgetId
+                ? widgetrail::input::ResolveVisibleFocusTarget(
+                    exactFocusToRestore,
+                    currentSnapshot->activeInputScopeId,
+                    lastWidgetRenderResult_)
+                : std::nullopt;
+            if (currentSnapshot && exactVisible && *exactVisible == exactFocusToRestore) {
+                (void)interactionSession_.MoveFocus(
+                    activeWidget, *currentSnapshot, exactFocusToRestore);
+            } else {
+                RestoreFocusForActiveSurface(activeWidget);
+            }
+        }
         const auto outcome = [&] {
             switch (modalResult.outcome) {
             case widgetrail::input::TextEntryModalOutcome::Failed: return L"failed";
@@ -10240,7 +10384,7 @@ private:
                     }
                 }
                 declarativeMotionActive_ = !inertRetainedSnapshot && result.animationActive;
-                if (!inertRetainedSnapshot &&
+                if (!textEntryModal_.active() && !inertRetainedSnapshot &&
                     !options.suppressFocusedDescendantFollow) {
                     if (const auto visibleFocus = widgetrail::input::ResolveVisibleFocusTarget(
                         interactionSession_.focusedElementId(), semanticSnapshot.activeInputScopeId, result);
@@ -10421,6 +10565,7 @@ private:
     std::uint64_t widgetAccessibilityRevision_{};
     long long hostAccessibilitySequence_{};
     widgetrail::input::TextEntryModal textEntryModal_;
+    std::optional<TextEntryModalAuthority> textEntryModalAuthority_;
     widgetrail::WidgetBridgeClient bridge_;
     widgetrail::WidgetSessionCoordinator sessions_;
     widgetrail::packages::FileOpenDialogWidgetPackagePicker localWidgetPackagePicker_;
