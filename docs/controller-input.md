@@ -70,15 +70,32 @@ providers remain bound to their exact runtime generation.
 
 ### Host-owned text entry
 
-A focused `TextEntry` opens one native modal owned by the overlay. Keyboard and
-controller navigation stay inside that modal: A activates a key or commits,
-B cancels, X backspaces, and Clear removes the current value. The edit, key,
-cancel, and commit controls are ordinary high-contrast-aware native controls
-with UI Automation semantics. Left/Right stay within a spatial row and
-Up/Down choose the nearest overlapping row without wrapping to an unrelated
-control. The host scales and centers the complete keyboard inside the active
-monitor work area, including compact and 150% DPI layouts. Closing the modal
-restores a valid current host focus target.
+A focused `TextEntry` opens one themed native modal owned by the overlay. The
+host establishes its exclusive interaction scope before showing it: the widget
+and tray become semantically inert, their windows cannot receive pointer or
+keyboard input, and the controller's opening and closing buttons must return to
+neutral before a new overlay gesture is admitted. The modal never forwards raw
+controller, keyboard, pointer, clipboard, or UI Automation input to a widget.
+
+D-pad or left stick moves among the 40 character/layer keys without typing. A
+inserts the focused character, X backspaces at the caret, B cancels only the
+modal, and right trigger performs **Enter**. LB/RB moves the visible caret left
+or right with bounded repeat; it does not move key focus. Shift and symbol keys
+change the reachable character layer. There is no focusable Clear/Cancel/Enter
+action row: a nonfocusable themed legend explains these mappings. Pointer or
+UI Automation Invoke activates an exact key once, while physical Left/Right,
+Enter, Escape, Backspace, typing, and ordinary non-password clipboard editing
+remain available through the native edit control.
+
+The authored prompt is a label, never the editable value. The committed value
+and live edit buffer are distinct; every insertion, deletion, paste, and caret
+move is reflected immediately. Password input is masked and blocks copy, cut,
+paste, and the context menu. The active WidgetRail appearance supplies the
+complete canvas, panel, controls, focus treatment, typeface, text scale, and
+interface scale. The borderless popup has no caption, resize, or system-menu
+affordance and remains centered inside compact, wide, high-DPI, and scaled work
+areas. Closing the modal restores the exact prior focus when it is still valid,
+otherwise the host resolves one current target.
 
 On the ordinary widget surface, `TextEntry` is one actionable UI Automation
 button with its existing stable node/action identity. Focus and Invoke pass
@@ -91,11 +108,14 @@ the exact current semantic/UIA focus target.
 Only one final bounded committed value is sent with the semantic widget action.
 Raw key events, HWNDs, insertion history, and canceled text never enter the
 snapshot or worker. The host rejects values beyond the authored maximum (at
-most 96 characters) or containing control characters. No snapshot or node
-reference survives the modal loop: before sending, the host freshly resolves
-the active widget, runtime and snapshot generation, input scope, source ID,
-action ID, and enabled state. Refresh, replacement, removal, hide, scope change,
-or disablement therefore closes without invoking stale widget authority.
+most 96 UTF-16 code units) or containing control characters. No snapshot or
+node reference survives the modal loop: before sending, the host freshly
+resolves the active widget, runtime and presentation generation, input scope,
+source ID, action ID, authored bound/value, and enabled/busy state. A harmless
+higher-sequence refresh may retain authority only when all of those values are
+unchanged. Replacement, removal, hide, scope/action/value/bound change, or an
+unavailable control rejects the result. Enter reports bounded host feedback
+without displaying or logging the committed text.
 
 ## B behavior
 

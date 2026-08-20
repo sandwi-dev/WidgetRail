@@ -1750,12 +1750,29 @@ launch grant.
 
 Use `UI.TextEntry(value, placeholder, action, id, maximumLength)` when a
 controller-first surface needs bounded text. Activating it opens the host-owned
-keyboard/modal; widgets never receive raw keys, edit-control handles, or
-intermediate values. A committed value arrives once in
-`WidgetActionEvent.CommittedText`. B cancels and preserves the authored value.
-The maximum is 96 UTF-16 code units, control characters are rejected, and
-`.Disabled()` keeps the control focusable without admitting activation. This is
-protocol v15; widgets that do not author TextEntry retain their earlier protocol.
+themed keyboard/modal and makes the underlying widget/tray inert; widgets never
+receive raw keys, edit-control handles, clipboard contents, or intermediate
+values. The `placeholder` is prompt guidance, not an initial value. The authored
+`value` initializes the separate live edit buffer, which visibly tracks the
+caret and every edit.
+
+D-pad/left stick moves key focus, A inserts the focused character, X
+backspaces, B cancels, right trigger performs Enter, and LB/RB moves the caret.
+Shift and symbol layers provide uppercase and bounded punctuation. The shortcut
+legend is not another focus stop. Physical keyboard, pointer, UI Automation,
+and ordinary non-password Unicode paste use the same host-owned modal; protected
+input blocks clipboard operations.
+
+Only Enter can deliver the final value, once, in
+`WidgetActionEvent.CommittedText`. Cancel or window close preserves the authored
+value and dispatches no action. The maximum is 96 UTF-16 code units, control
+characters are rejected, and `.Disabled()` keeps the control focusable without
+admitting activation. After the modal closes, the host revalidates the exact
+widget, runtime/presentation generation, input scope, node, action, authored
+value/bound, and enabled/busy state. Harmless newer presentation sequences may
+complete when that authority is unchanged; stale or replaced authority fails
+closed. This is protocol v15; widgets that do not author `TextEntry` retain
+their earlier protocol.
 
 This is an intentional pre-release replacement for
 `GetPageAsync(offset, limit)`. There is no compatibility facade: rebuild against

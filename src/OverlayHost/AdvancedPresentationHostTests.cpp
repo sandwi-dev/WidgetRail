@@ -5,6 +5,7 @@
 #include <UIAutomation.h>
 #include <wrl/client.h>
 
+#include <algorithm>
 #include <filesystem>
 #include <iostream>
 #include <string>
@@ -27,13 +28,16 @@ struct Arguments final {
     fs::path communityFixture;
     fs::path candidatePackage;
     fs::path fixtureBridge;
+    bool textEntryOnly{};
 };
 
 Arguments ParseArguments(const int argc, wchar_t** argv) {
     Arguments result;
     for (int index = 1; index < argc; ++index) {
         const std::wstring_view argument(argv[index]);
-        if ((argument == L"--installation" ||
+        if (argument == L"--text-entry-only") {
+            result.textEntryOnly = true;
+        } else if ((argument == L"--installation" ||
              argument == L"--community-fixture" ||
              argument == L"--candidate-package" ||
              argument == L"--fixture-bridge") && index + 1 < argc) {
@@ -46,7 +50,7 @@ Arguments ParseArguments(const int argc, wchar_t** argv) {
         } else {
             Fail("Usage: AdvancedPresentationHostTests --installation <dir> "
                  "--community-fixture <exe> --candidate-package <gbarwidget> "
-                 "--fixture-bridge <exe>");
+                 "--fixture-bridge <exe> [--text-entry-only]");
         }
     }
     Require(!result.installation.empty() && !result.communityFixture.empty() &&
@@ -94,6 +98,7 @@ public:
         const fs::path& fixtureBridge) {
         Require(fs::is_regular_file(source / L"OverlayHost.exe"),
             "--installation does not contain OverlayHost.exe");
+        ValidateNativeRuntimeDependencies(source);
         wchar_t temporaryRoot[MAX_PATH + 1]{};
         const DWORD length = GetTempPathW(MAX_PATH, temporaryRoot);
         Require(length > 0 && length <= MAX_PATH, Win32Error("GetTempPathW"));
@@ -105,6 +110,7 @@ public:
             (L"wrail-advanced-presentation-" + std::wstring(guidText));
         fs::create_directories(root_);
         fs::copy_file(source / L"OverlayHost.exe", root_ / L"OverlayHost.exe");
+        CopyNativeRuntimeDependencies(source, root_);
         fs::copy_file(
             source / L"widget-catalog.json", root_ / L"widget-catalog.json");
         fs::copy(source / L"runtime", root_ / L"runtime",
@@ -256,6 +262,23 @@ std::wstring NameOf(IUIAutomationElement* element) {
     return result;
 }
 
+std::wstring WindowText(const HWND window) {
+    const int length = window ? GetWindowTextLengthW(window) : 0;
+    std::wstring result(static_cast<std::size_t>(std::max(0, length)) + 1, L'\0');
+    if (length > 0) GetWindowTextW(window, result.data(), length + 1);
+    result.resize(static_cast<std::size_t>(std::max(0, length)));
+    return result;
+}
+
+std::size_t CountOccurrences(
+    const std::string_view value,
+    const std::string_view needle) {
+    std::size_t count{};
+    for (std::size_t offset{}; (offset = value.find(needle, offset)) !=
+         std::string_view::npos; offset += needle.size()) ++count;
+    return count;
+}
+
 void FocusAndActivate(
     IUIAutomationElement* element,
     const HWND window,
@@ -364,6 +387,90 @@ void ExerciseExportedCandidate(
     (void)WaitForElement(automation, window, trayId);
 }
 
+void ExerciseExportedTextEntry(
+    IUIAutomation* automation,
+    const DWORD processId,
+    const HWND window,
+    const fs::path& logPath,
+    const fs::path& backendDiagnosticPath) {
+    constexpr std::wstring_view widgetId =
+        L"widgetrail.community.reference.game-launcher";
+    const auto trayId = L"tray:tray." + std::wstring(widgetId);
+    auto tray = WaitForElement(automation, window, trayId);
+    FocusAndActivate(tray.Get(), window, WideToUtf8(trayId));
+    Require(WaitUntil(kTimeoutMilliseconds, [&] {
+        return ReadUtf8(backendDiagnosticPath).find("items=2") !=
+            std::string::npos;
+    }), "The exported TextEntry candidate did not receive its seeded page.");
+
+    const auto openModal = [&] {
+        auto search = WaitForElement(
+            automation, window, L"widget:game-launcher.search");
+        FocusAndActivate(search.Get(), window, "game-launcher.search");
+        HWND modal{};
+        Require(WaitUntil(kTimeoutMilliseconds, [&] {
+            modal = LocateHostWindow(processId, L"WidgetRail.TextEntryModal");
+            return modal && IsWindowVisible(modal) &&
+                FindWindowExW(modal, nullptr, L"EDIT", nullptr) &&
+                !IsWindowEnabled(window);
+        }), "The ordinary installed Community TextEntry did not open its modal.");
+        return modal;
+    };
+    const auto typeText = [](const HWND edit, const std::wstring_view text) {
+        Require(SetWindowTextW(edit, std::wstring(text).c_str()) != FALSE,
+            "The production native edit rejected fixture text.");
+    };
+
+    auto modal = openModal();
+    auto edit = FindWindowExW(modal, nullptr, L"EDIT", nullptr);
+    Require(edit && WindowText(edit).empty(),
+        "The production TextEntry did not start from its committed empty value.");
+    const auto queryCountBeforeCancel = CountOccurrences(
+        ReadUtf8(backendDiagnosticPath), "query limit=");
+    typeText(edit, L"UNCOMMITTED");
+    DWORD_PTR ignored{};
+    Require(SendMessageTimeoutW(
+                modal, WM_KEYDOWN, VK_ESCAPE, 1,
+                SMTO_ABORTIFHUNG | SMTO_BLOCK, 5000, &ignored) != 0,
+        Win32Error("SendMessageTimeoutW(TextEntry cancel)"));
+    Require(WaitUntil(kTimeoutMilliseconds, [&] {
+        ComPtr<IUIAutomationElement> focused;
+        return !IsWindow(modal) && IsWindowEnabled(window) &&
+            CountOccurrences(ReadUtf8(logPath),
+                "Text entry modal outcome=cancel ") == 1 &&
+            CountOccurrences(ReadUtf8(backendDiagnosticPath), "query limit=") ==
+                queryCountBeforeCancel &&
+            SUCCEEDED(automation->GetFocusedElement(focused.GetAddressOf())) &&
+            focused && AutomationIdOf(focused.Get()) ==
+                L"widget:game-launcher.search";
+    }), "Cancel did not preserve the value and restore exact search focus.");
+
+    modal = openModal();
+    edit = FindWindowExW(modal, nullptr, L"EDIT", nullptr);
+    const auto queryCountBeforeEnter = CountOccurrences(
+        ReadUtf8(backendDiagnosticPath), "query limit=");
+    typeText(edit, L"Controller Proof");
+    Require(WindowText(edit) == L"Controller Proof",
+        "The production modal did not expose its complete live edit buffer.");
+    Require(SendMessageTimeoutW(
+                edit, WM_KEYDOWN, VK_RETURN, 1,
+                SMTO_ABORTIFHUNG | SMTO_BLOCK, 5000, &ignored) != 0,
+        Win32Error("SendMessageTimeoutW(TextEntry enter)"));
+    Require(WaitUntil(kTimeoutMilliseconds, [&] {
+        ComPtr<IUIAutomationElement> focused;
+        const auto log = ReadUtf8(logPath);
+        return !IsWindow(modal) && IsWindowEnabled(window) &&
+            CountOccurrences(log, "Text entry modal outcome=enter ") == 1 &&
+            log.find("Text entry modal outcome=enter action-dispatched=true ") !=
+                std::string::npos &&
+            CountOccurrences(ReadUtf8(backendDiagnosticPath), "query limit=") ==
+                queryCountBeforeEnter + 1 &&
+            SUCCEEDED(automation->GetFocusedElement(focused.GetAddressOf())) &&
+            focused && AutomationIdOf(focused.Get()) ==
+                L"widget:game-launcher.search";
+    }), "Enter did not dispatch once and restore exact search focus.");
+}
+
 void ExercisePackagedCandidate(
     IUIAutomation* automation,
     const HWND window,
@@ -384,6 +491,7 @@ void ExercisePackagedCandidate(
 }
 
 void Run(const Arguments& arguments) {
+    VerifyNativeRuntimeDependencyPolicy(arguments.installation);
     TemporaryInstallation installation(
         arguments.installation, arguments.communityFixture,
         arguments.candidatePackage, arguments.fixtureBridge);
@@ -414,6 +522,12 @@ void Run(const Arguments& arguments) {
                 CLSID_CUIAutomation, nullptr, CLSCTX_INPROC_SERVER,
                 IID_PPV_ARGS(automation.GetAddressOf()))) && automation,
         "Windows UI Automation client is unavailable.");
+    if (arguments.textEntryOnly) {
+        ExerciseExportedTextEntry(
+            automation.Get(), host.Id(), window, installation.LogPath(),
+            installation.BackendDiagnosticPath());
+        return;
+    }
     ExerciseExportedCandidate(
         automation.Get(), window, installation.LogPath(),
         installation.BackendDiagnosticPath());
@@ -435,7 +549,8 @@ int wmain(const int argc, wchar_t** argv) {
     try {
         Run(ParseArguments(argc, argv));
         CoUninitialize();
-        std::cout << "AdvancedPresentationHostTests passed: 2 installed Community packages\n";
+        std::cout << "AdvancedPresentationHostTests passed: ordinary installed Community "
+                     "route\n";
         return 0;
     } catch (const std::exception& error) {
         CoUninitialize();

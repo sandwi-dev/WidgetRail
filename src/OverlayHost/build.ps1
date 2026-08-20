@@ -1480,6 +1480,7 @@ function Invoke-LauncherExperienceHostTests {
 }
 
 function Invoke-AdvancedPresentationHostTests {
+    param([switch]$TextEntryOnly)
     & dotnet publish `
         (Join-Path $projectDirectory '..\..\tests\AdvancedPresentationCommunityFixture\AdvancedPresentationCommunityFixture.csproj') `
         --configuration $Configuration --no-self-contained --nologo `
@@ -1491,15 +1492,6 @@ function Invoke-AdvancedPresentationHostTests {
     if (-not (Test-Path -LiteralPath $fixture)) {
         throw 'AdvancedPresentationCommunityFixture publish omitted its executable.'
     }
-    $wrailOutput = Join-Path $advancedPresentationCommunityFixtureOutput 'wrail'
-    & dotnet publish `
-        (Join-Path $projectDirectory '..\..\tools\WrailCli\WrailCli.csproj') `
-        --configuration $Configuration --no-self-contained --nologo `
-        --output $wrailOutput
-    if ($LASTEXITCODE -ne 0) {
-        throw "wrail publish for the DLV-212 export failed with exit code $LASTEXITCODE."
-    }
-    $wrail = Join-Path $wrailOutput 'wrail.exe'
     & dotnet publish `
         (Join-Path $projectDirectory '..\..\tests\LauncherExperienceBridgeFixture\LauncherExperienceBridgeFixture.csproj') `
         --configuration $Configuration --no-self-contained --nologo `
@@ -1508,9 +1500,8 @@ function Invoke-AdvancedPresentationHostTests {
         throw "LauncherExperienceBridgeFixture publish failed with exit code $LASTEXITCODE."
     }
     $fixtureBridge = Join-Path $launcherExperienceBridgeFixtureOutput 'LauncherExperienceBridgeFixture.exe'
-    if (-not (Test-Path -LiteralPath $wrail) -or
-        -not (Test-Path -LiteralPath $fixtureBridge)) {
-        throw 'The exported-candidate host fixture omitted wrail or its seeded bridge.'
+    if (-not (Test-Path -LiteralPath $fixtureBridge)) {
+        throw 'The exported-candidate host fixture omitted its seeded bridge.'
     }
     $arguments = $common + @(
         (Join-Path $projectDirectory 'AdvancedPresentationHostTests.cpp'),
@@ -1527,24 +1518,25 @@ function Invoke-AdvancedPresentationHostTests {
     }
     $temporaryRoot = [System.IO.Path]::GetFullPath([System.IO.Path]::GetTempPath())
     $runRoot = Join-Path $temporaryRoot ("wrail-dlv213-export-" + [Guid]::NewGuid().ToString('N'))
-    $candidateSource = Join-Path $runRoot 'GameLauncherCommunity'
-    $candidatePackage = Join-Path $runRoot 'widgetrail.community.reference.game-launcher-0.1.0.wrwidget'
+    $candidatePackage = Join-Path $runRoot 'widgetrail.community.reference.game-launcher-0.2.0.wrwidget'
     New-Item -ItemType Directory -Path $runRoot | Out-Null
     try {
-        & (Join-Path $projectDirectory '..\FirstPartyWidgets\GameLauncherWidget\Export-CommunityReference.ps1') `
-            -Wrail $wrail -Output $candidateSource
-        if ($LASTEXITCODE -ne 0) {
-            throw "Game Launcher Community export failed with exit code $LASTEXITCODE."
-        }
-        & $wrail pack $candidateSource --configuration $Configuration --output $candidatePackage
+        & (Join-Path $projectDirectory '..\FirstPartyWidgets\GameLauncherWidget\Build-CommunityPackage.ps1') `
+            -Configuration $Configuration -OutputDirectory $runRoot
         if ($LASTEXITCODE -ne 0 -or -not (Test-Path -LiteralPath $candidatePackage)) {
-            throw "Game Launcher Community pack failed with exit code $LASTEXITCODE."
+            throw "Game Launcher Community package build failed with exit code $LASTEXITCODE."
+        }
+        $hostTestArguments = @(
+            '--installation', $outputDirectory,
+            '--community-fixture', $fixture,
+            '--candidate-package', $candidatePackage,
+            '--fixture-bridge', $fixtureBridge
+        )
+        if ($TextEntryOnly) {
+            $hostTestArguments += '--text-entry-only'
         }
         & (Join-Path $outputDirectory 'AdvancedPresentationHostTests.exe') `
-            --installation $outputDirectory `
-            --community-fixture $fixture `
-            --candidate-package $candidatePackage `
-            --fixture-bridge $fixtureBridge
+            $hostTestArguments
         if ($LASTEXITCODE -ne 0) {
             throw "AdvancedPresentationHostTests failed with exit code $LASTEXITCODE."
         }
@@ -1892,7 +1884,7 @@ if ($TextEntryHostTestsOnly) {
     }
     Invoke-TextEntryModalTests
     Invoke-AccessibilityTreeTests
-    Invoke-LauncherExperienceHostTests -TextEntryOnly
+    Invoke-AdvancedPresentationHostTests -TextEntryOnly
     return
 }
 
