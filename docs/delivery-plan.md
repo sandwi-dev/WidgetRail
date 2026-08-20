@@ -694,6 +694,46 @@ behavior, silent truncation, compatibility code for an unused pre-release
 protocol generation, substantial conflict, or missing accepted DLV-269 baseline.
 Never push.
 
+Rejected candidate status: platform commit `62c563d` is a clean 32-file v19
+SDK/protocol/native candidate with a successful coherent Release build and
+green focused evidence: SDK/protocol 89/89, provider-free 10,000-item reference
+4/4, worker-to-bridge 1/1, renderer 4,965, layout 250, accessibility tree 18,
+session coordinator 22 scenarios plus 305 retained checks, and native bridge
+parsing. The work bounds realized items, native nodes, layout, paint, and UIA;
+adds only two non-semantic estimated extent elements; preserves both axes and
+legacy eager Scrolls; and contains no provider-specific behavior. The refreshed
+exact-worktree clangd database resolves the new admission definition and its
+single coordinator call site. No launch, installation, integration, or push
+occurred; accepted main PID 53016 remains running.
+
+Source review rejects the transition contract before physical testing.
+`VirtualCollectionWindowChange` publishes `replace`, `append`, and `prepend` as
+authoritative public v19 values, but the native `AdmitVirtualWindowTransition`
+path validates only a regressive or conflicting equal request generation. Any
+higher generation is admitted without proving that append/prepend moved the
+logical range in the declared direction or retained identical keys at
+overlapping logical positions. No production consumer otherwise uses the
+change value, and the new coordinator test covers only a lower generation.
+This leaves the documented append/prepend semantics unenforced at the untrusted
+host boundary. The candidate also lacks the assignment's direct virtual-window
+proof for provider insert/remove/move recovery.
+
+Correct DLV-271 in the platform lane before launch. Keep `replace` as the
+bounded arbitrary-window transition. For indexed windows, require `append` and
+`prepend` to advance in their declared logical direction, preserve any
+overlapping logical-position keys, and retain compatible known-total authority;
+reject a false disposition while preserving the last checkpoint. When the
+logical position is unknown, publish/admit `replace` rather than claiming a
+direction the host cannot prove. Align managed and native bounds for the
+request-generation number accepted by the native JSON representation. Add only
+focused SDK/coordinator coverage for false higher-generation append/prepend,
+unknown-position replacement, provider insert/remove/move through replacement,
+checkpoint retention, compact/wide reflow, and fresh-session restart. Retain
+all current bounds, one semantic/scroll/focus owner, v18 coexistence, and the
+green 10,000-item evidence. Rebuild the coherent Release once after correction
+and stop for reviewer source review; do not launch, install the reference
+package, integrate, push, or begin DLV-276.
+
 ## Ready platform deliverable — DLV-276: themed controller-first text-entry surface
 
 Owner/baseline: platform lane after DLV-271 is physically accepted,
