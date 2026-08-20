@@ -902,8 +902,7 @@ struct DeclarativeRenderer::RenderPass final {
             const auto existing = owner->scrollOffsets_.find(stateKey);
             const auto* scrollBox = layout.Find(NarrowStableId(scroll.id));
             if (existing == owner->scrollOffsets_.end() ||
-                !existing->second.hasAnchorPosition || !scrollBox ||
-                scrollBox->scrollAxis == declarative::ScrollAxis::None) {
+                !scrollBox || scrollBox->scrollAxis == declarative::ScrollAxis::None) {
                 return;
             }
 
@@ -936,7 +935,8 @@ struct DeclarativeRenderer::RenderPass final {
                 changed = true;
             };
 
-            if (existing->second.anchorKey == scroll.collectionAnchorKey) {
+            if (existing->second.hasAnchorPosition &&
+                existing->second.anchorKey == scroll.collectionAnchorKey) {
                 const auto* item = FindCollectionItem(
                     scroll, scroll.collectionAnchorKey);
                 const auto* itemBox = item
@@ -952,6 +952,53 @@ struct DeclarativeRenderer::RenderPass final {
                 return;
             }
 
+            const auto reconcileReplacementWindow = [&] {
+                if (!scroll.virtualCollectionWindow ||
+                    scroll.virtualCollectionWindow->change !=
+                        VirtualCollectionWindowChange::Replace) {
+                    return;
+                }
+                CollectionDiagnosticObservation current;
+                CollectCollectionItems(scroll, scroll, scrollBox, current);
+                if (current.itemsTruncated || current.itemKeys.empty()) return;
+                const auto viewportExtent = scrollBox->scrollAxis ==
+                        declarative::ScrollAxis::Vertical
+                    ? scrollBox->contentBox.height
+                    : scrollBox->contentBox.width;
+                if (!std::isfinite(viewportExtent) ||
+                    viewportExtent <= kRevealEpsilon) {
+                    return;
+                }
+
+                // A replacement is an arbitrary bounded window. Retain the
+                // current offset when any admitted row still occupies that
+                // viewport; virtual leading/trailing spacers alone do not make
+                // the replacement usable. When no row is reachable, place the
+                // replacement's declared anchor at the leading edge so the
+                // host cannot preserve an empty viewport deep in the virtual
+                // extent after the widget resets its private window.
+                const CollectionDiagnosticItemGeometry* anchorGeometry{};
+                for (std::size_t index = 0;
+                     index < current.itemGeometry.size() &&
+                         index < current.itemKeys.size();
+                     ++index) {
+                    const auto& geometry = current.itemGeometry[index];
+                    if (!geometry.valid) continue;
+                    if (geometry.position + geometry.extent > kRevealEpsilon &&
+                        geometry.position < viewportExtent - kRevealEpsilon) {
+                        return;
+                    }
+                    if (current.itemKeys[index] == scroll.collectionAnchorKey)
+                        anchorGeometry = &geometry;
+                }
+                if (!anchorGeometry) return;
+                apply(
+                    anchorGeometry->position,
+                    0.0F,
+                    L"replace-window",
+                    scroll.collectionAnchorKey);
+            };
+
             // A bounded retained-window shift can remove the declared anchor
             // while leaving visible keyed rows in both snapshots. Preserve one
             // such row's prior screen-relative position before focus-follow
@@ -963,6 +1010,7 @@ struct DeclarativeRenderer::RenderPass final {
             if (!previousCache ||
                 previousCache->instanceId != snapshot->instanceId ||
                 !SameRect(previousCache->viewport, viewport)) {
+                reconcileReplacementWindow();
                 return;
             }
             const auto previous = previousCache->collections.find(scroll.id);
@@ -973,21 +1021,23 @@ struct DeclarativeRenderer::RenderPass final {
                 previous->second.anchorKey != existing->second.anchorKey ||
                 !previousScrollBox ||
                 previousScrollBox->scrollAxis != scrollBox->scrollAxis) {
+                reconcileReplacementWindow();
                 return;
             }
 
             CollectionDiagnosticObservation current;
             CollectCollectionItems(scroll, scroll, scrollBox, current);
-            if (current.itemsTruncated ||
-                std::ranges::find(
+            if (current.itemsTruncated) return;
+            if (std::ranges::find(
                     current.itemKeys, existing->second.anchorKey) !=
-                    current.itemKeys.end()) {
+                current.itemKeys.end()) {
                 return;
             }
             if (std::abs(previousScrollBox->contentBox.width -
                           scrollBox->contentBox.width) > 0.01F ||
                 std::abs(previousScrollBox->contentBox.height -
                          scrollBox->contentBox.height) > 0.01F) {
+                reconcileReplacementWindow();
                 return;
             }
 
@@ -1025,7 +1075,10 @@ struct DeclarativeRenderer::RenderPass final {
                 retainedCurrent = &current.itemGeometry[currentIndex];
                 retainedKey = priorKey;
             }
-            if (!retainedPrior || !retainedCurrent) return;
+            if (!retainedPrior || !retainedCurrent) {
+                reconcileReplacementWindow();
+                return;
+            }
             apply(
                 retainedCurrent->position,
                 retainedPrior->position,
