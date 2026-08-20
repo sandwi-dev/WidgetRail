@@ -29,7 +29,7 @@ evidence only; this file is the sole authority for current work.
 
 | Lane | Task/worktree | State |
 | --- | --- | --- |
-| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | DLV-273 remains retired. DLV-275 correction `2b609fc` / exact candidate `e318ffb` is rejected and unintegrated: ordinary stale-request cancellation still taints and replaces the shared bridge. Correct that generic host cancellation boundary from accepted main plus the preserved DLV-274/275 chain. Do not test, integrate, or start DLV-271 before user acceptance. Never push. |
+| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | DLV-273 remains retired. DLV-275 stale-request correction `74ec5e9` is source-reviewed and staged after preserved DLV-274/275 production as exact candidate `949b586`. Packaged Release PID 17928 is visibly running for rapid-switch continuity plus failed-widget isolation verdicts. Do not test, integrate, or start DLV-271 before user acceptance. Never push. |
 | Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | Preserve saved DLV-265 and installed Spotify state. Do not resume, test, integrate, reinstall, replace configuration, or reset before accepted DLV-271 integration. DLV-270 follows accepted DLV-265; DLV-248 remains deferred. |
 
 ## Execution, review, and architecture rules
@@ -588,6 +588,34 @@ physical acceptance now requires repeated rapid tray switching while bridge
 session, unrelated registry generations/PIDs, and Spotify route/sequence all
 remain continuous. Add focused cancellation/rapid-switch tests only afterward.
 
+Current stale-request correction: platform commit `74ec5e9e444a46761b6d4093b22025a3b74b439c`
+changes only `WidgetSessionCoordinator.cpp` (one insertion, eight deletions).
+It removes `CancelSynchronousIo` from ordinary supersede and revoke paths while
+retaining the request stop/generation tokens that cause completed obsolete
+results to be dropped. Terminal coordinator shutdown still interrupts the
+serialized worker thread, and genuine pipe read/write/framing failures retain
+their existing transport-taint and replacement policy. The production diff
+adds no second request owner, queue, provider branch, persistence, public
+protocol change, test, or reviewer-document edit. Independent source review,
+`git diff --check`, and worktree-cleanliness checks passed.
+
+The planner created a clean detached stage from rejected exact candidate
+`e318ffb` and cherry-picked the correction as exact candidate `949b586`. A full
+packaged Release build with tests skipped succeeded and republished 102 runtime
+files totaling 34,739,064 bytes. `OverlayHost.exe` SHA-256 is
+`C6B6531707BD7B33ABB49EC9A325D720FB28776263F029F6C9B6DED99688CAA6`;
+`OverlayPlatformInterop.dll` SHA-256 is
+`75E07E3E9F388927F7C9CAA0F3CAA6F1FCB8BB4B70E1F7888279BAF679F2C32E`;
+`WidgetBridge.dll` SHA-256 is
+`E67E5D9FCDD0D6BB6937AA2767C1B8E2949EFCA41235045E30FB66AFC8BCC16C`.
+Exact rejected PID 16348 exited normally through `WM_CLOSE`. The corrected
+Release launched visibly as responding PID 17928 from
+`C:\Users\dwive\AppData\Local\Temp\gba-dlv274-275c-candidate\src\OverlayHost\out\Release`.
+Startup diagnostics confirm bridge session 1/PID 17816, Spotify registry
+generation 2/start 1/PID 13444, and the expected 32 MiB per-image plus 96 MiB
+aggregate decoded/GPU cache limits. Await the two physical verdicts above; do
+not run tests or integrate first.
+
 ## Ready serialized deliverable — DLV-271: virtualized collection presentation windows
 
 Owner/baseline: platform lane as serialized cross-layer lead after DLV-274 is
@@ -742,7 +770,7 @@ missing accepted DLV-265/DLV-271 baseline. Never push.
 | DLV-269 | Complete: physical correction accepted on PID 98812, focused evidence passed, and the chain is integrated through main `683af77`. |
 | DLV-273 | Retired failed refactor by user decision. Production `b54e1e2` and corrections `e98566e`/`dcd58e0` remain rejected branch history and must not be resumed or integrated. Accepted DLV-269 PID 78428 is restored; no production revert was necessary because main never contained DLV-273. |
 | DLV-274 | Production `bf6d524` is rejected as insufficient. Correction `4645f40` preserves 32 MiB per-image limits and raises only decoded/GPU aggregate LRU budgets to 96 MiB; its caches remained healthy during the latest reproduction. The candidate is nevertheless rejected for the complete physical no-reload objective because Spotify sequence reset `21 -> 1`, proving keep-alive application recreation. Preserve its exact stage and measurements without tests, integration, packaging, or push until DLV-275 is accepted. |
-| DLV-275 | Production `baf7bd4` fixed Spotify's original active-lifetime cancellation and added diagnostics; combined candidate `cd1144f` was rejected after YouTube Music exit 1 replaced the shared bridge. Per-widget failure correction `2b609fc` / exact candidate `e318ffb` is also rejected: rapid navigation calls `CancelSynchronousIo`, taints the healthy shared named-pipe transport, retires all registries, and recreates Spotify. Preserve both reviewed fixes while correcting this generic stale-request cancellation boundary; no tests or integration before the new physical verdict. |
+| DLV-275 | Production `baf7bd4` fixed Spotify's original active-lifetime cancellation and added diagnostics; combined candidate `cd1144f` was rejected after YouTube Music exit 1 replaced the shared bridge. Per-widget failure correction `2b609fc` / exact candidate `e318ffb` was rejected because rapid navigation still destructively canceled shared pipe I/O. Stale-request correction `74ec5e9` is source-reviewed and staged as exact candidate `949b586`; responding PID 17928 is visibly running. Await rapid-switch continuity plus failed-widget isolation verdicts; no tests or integration before acceptance. |
 | DLV-265 | Saved until immediately after accepted DLV-271; preserve installed 0.3.3 and existing configuration/account state. |
 | DLV-248 | Deliberately deferred until explicit user promotion. |
 
