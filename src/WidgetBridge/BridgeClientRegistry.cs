@@ -34,6 +34,16 @@ internal sealed record BridgeClientActionFailure(
     string RuntimeGeneration,
     WidgetActionFailure Failure);
 internal sealed record BridgeClientRuntimeFailure(string WidgetId, WidgetFailure Failure);
+internal sealed class BridgeWidgetRequestException(
+    string widgetId,
+    string failureCode,
+    Exception innerException) : Exception(
+        $"Widget '{widgetId}' runtime request failed ({failureCode}).",
+        innerException)
+{
+    internal string WidgetId { get; } = widgetId;
+    internal string FailureCode { get; } = failureCode;
+}
 internal sealed record BridgeClientLifetimeDiagnostic(
     string WidgetId,
     long RegistryGeneration,
@@ -317,11 +327,14 @@ internal sealed class BridgeClientRegistry : IAsyncDisposable
                 var generation = registration.Configured.PublicDescriptor().PresentationGeneration;
                 var canUpdate = capabilities.SupportsAtomicUpdates &&
                     registration.CachedSnapshot?.Sequence == baseSequence;
-                presentation = await registration.Client.GetPresentationAsync(
-                        canUpdate ? capabilities : PresentationUpdateCapabilities.None,
-                        generation,
-                        canUpdate ? baseSequence : 0,
-                        requireCheckpoint: !canUpdate,
+                presentation = await ExecuteClientOperationAsync(
+                        registration,
+                        (client, token) => client.GetPresentationAsync(
+                            canUpdate ? capabilities : PresentationUpdateCapabilities.None,
+                            generation,
+                            canUpdate ? baseSequence : 0,
+                            requireCheckpoint: !canUpdate,
+                            token),
                         cancellationToken)
                     .ConfigureAwait(false);
                 DemandCurrent(registration);
@@ -378,7 +391,10 @@ internal sealed class BridgeClientRegistry : IAsyncDisposable
         {
             DemandCurrent(registration);
             registration.CancelIdleUnload();
-            await registration.Client.SetLifecycleStateAsync(state, cancellationToken)
+            await ExecuteClientOperationAsync(
+                    registration,
+                    (client, token) => client.SetLifecycleStateAsync(state, token),
+                    cancellationToken)
                 .ConfigureAwait(false);
             DemandCurrent(registration);
             registration.HostLifecycle = state;
@@ -404,15 +420,20 @@ internal sealed class BridgeClientRegistry : IAsyncDisposable
         var registration = await GetOrCreateAsync(widgetId, cancellationToken)
             .ConfigureAwait(false);
         await registration.OperationGate.WaitAsync(cancellationToken).ConfigureAwait(false);
-        var startRetirement = false;
         try
         {
             DemandCurrent(registration);
             registration.CancelIdleUnload();
-            await registration.Client.SetLifecycleStateAsync(state, cancellationToken)
+            await ExecuteClientOperationAsync(
+                    registration,
+                    (client, token) => client.SetLifecycleStateAsync(state, token),
+                    cancellationToken)
                 .ConfigureAwait(false);
             DemandCurrent(registration);
-            var snapshot = await registration.Client.GetSnapshotAsync(cancellationToken)
+            var snapshot = await ExecuteClientOperationAsync(
+                    registration,
+                    (client, token) => client.GetSnapshotAsync(token),
+                    cancellationToken)
                 .ConfigureAwait(false);
             DemandCurrent(registration);
 
@@ -425,18 +446,6 @@ internal sealed class BridgeClientRegistry : IAsyncDisposable
             return AdmitPublication(
                 registration,
                 new BridgeClientSnapshot(registration.Configured, snapshot));
-        }
-        catch
-        {
-            lock (_gate)
-            {
-                if (_clients.TryGetValue(widgetId, out var current) &&
-                    ReferenceEquals(current, registration))
-                    startRetirement = ReserveRetirementLocked(
-                        registration, restartReserved: false);
-            }
-            if (startRetirement) StartRetirement(registration);
-            throw;
         }
         finally
         {
@@ -493,9 +502,12 @@ internal sealed class BridgeClientRegistry : IAsyncDisposable
             DemandCurrent(registration);
             DemandInteractionAllowed(registration);
             registration.CancelIdleUnload();
-            var handled = await registration.Client.SendControllerInputAsync(
-                    input,
-                    ResolveDashboardGestureAuthority(registration, input),
+            var handled = await ExecuteClientOperationAsync(
+                    registration,
+                    (client, token) => client.SendControllerInputAsync(
+                        input,
+                        ResolveDashboardGestureAuthority(registration, input),
+                        token),
                     cancellationToken)
                 .ConfigureAwait(false);
             DemandCurrent(registration);
@@ -1173,7 +1185,10 @@ internal sealed class BridgeClientRegistry : IAsyncDisposable
             if (registration.HostLifecycle == WidgetLifecycleState.Background)
                 return AdmitPublication(registration, WidgetOperationAdmission.RejectedInactive);
             registration.CancelIdleUnload();
-            var admission = await registration.Client.AdmitActionAsync(action, cancellationToken)
+            var admission = await ExecuteClientOperationAsync(
+                    registration,
+                    (client, token) => client.AdmitActionAsync(action, token),
+                    cancellationToken)
                 .ConfigureAwait(false);
             DemandCurrent(registration);
             ScheduleIdleUnload(registration, sessionCancellation);
@@ -1199,6 +1214,68 @@ internal sealed class BridgeClientRegistry : IAsyncDisposable
             (generation, cancellationToken) =>
                 RunIdleUnloadAsync(registration, generation, delay, cancellationToken));
     }
+
+    private async Task<T> ExecuteClientOperationAsync<T>(
+        ClientRegistration registration,
+        Func<IBridgeWidgetClient, CancellationToken, Task<T>> operation,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            return await operation(registration.Client, cancellationToken)
+                .ConfigureAwait(false);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception exception) when (IsWidgetRuntimeFailure(exception))
+        {
+            // WidgetProcessClient owns retirement of its failed process session
+            // and preserves restart-count authority on this registration.
+            throw new BridgeWidgetRequestException(
+                registration.Configured.Id,
+                ClassifyWidgetRuntimeFailure(exception),
+                exception);
+        }
+    }
+
+    private async Task ExecuteClientOperationAsync(
+        ClientRegistration registration,
+        Func<IBridgeWidgetClient, CancellationToken, Task> operation,
+        CancellationToken cancellationToken)
+    {
+        await ExecuteClientOperationAsync(
+                registration,
+                async (client, token) =>
+                {
+                    await operation(client, token).ConfigureAwait(false);
+                    return true;
+                },
+                cancellationToken)
+            .ConfigureAwait(false);
+    }
+
+    private static bool IsWidgetRuntimeFailure(Exception exception) => exception is
+        WidgetProcessException or
+        WidgetProcessAdmissionException or
+        WidgetProtocolViolationException or
+        IOException or
+        TimeoutException or
+        ObjectDisposedException or
+        OperationCanceledException;
+
+    private static string ClassifyWidgetRuntimeFailure(Exception exception) => exception switch
+    {
+        WidgetProcessAdmissionException => "worker-admission-failed",
+        WidgetProtocolViolationException => "worker-protocol-failed",
+        TimeoutException => "worker-request-timeout",
+        IOException => "worker-transport-failed",
+        ObjectDisposedException => "worker-session-ended",
+        OperationCanceledException => "worker-request-cancelled",
+        WidgetProcessException => "worker-runtime-failed",
+        _ => "worker-request-failed",
+    };
 
     private async Task RunIdleUnloadAsync(
         ClientRegistration registration,

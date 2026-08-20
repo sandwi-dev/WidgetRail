@@ -576,20 +576,40 @@ public sealed class WidgetBridgeServer : IAsyncDisposable
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
         }
-        catch (Exception exception) when (exception is not OutOfMemoryException)
+        catch (BridgeWidgetRequestException exception)
         {
-            try
-            {
-                await ReplyAsync(
-                        BridgeMessageTypes.Error,
-                        request.RequestId,
-                        new BridgeError("request_failed", SafeMessage(exception)),
-                        cancellationToken)
-                    .ConfigureAwait(false);
-            }
-            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
-            {
-            }
+            await ReplyRequestFailureAsync(request.RequestId, exception, cancellationToken)
+                .ConfigureAwait(false);
+        }
+        catch (Exception exception) when (
+            requestKey.WidgetId is null && exception is not OutOfMemoryException)
+        {
+            await ReplyRequestFailureAsync(request.RequestId, exception, cancellationToken)
+                .ConfigureAwait(false);
+        }
+        catch (Exception exception) when (exception is BridgeProtocolException or JsonException)
+        {
+            await ReplyRequestFailureAsync(request.RequestId, exception, cancellationToken)
+                .ConfigureAwait(false);
+        }
+    }
+
+    private async Task ReplyRequestFailureAsync(
+        long requestId,
+        Exception exception,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            await ReplyAsync(
+                    BridgeMessageTypes.Error,
+                    requestId,
+                    new BridgeError("request_failed", SafeMessage(exception)),
+                    cancellationToken)
+                .ConfigureAwait(false);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
         }
     }
 
@@ -997,7 +1017,8 @@ public sealed class WidgetBridgeServer : IAsyncDisposable
     private static string SafeMessage(Exception exception)
     {
         var message = exception is WidgetProcessException or
-            WidgetProcessAdmissionException or BridgeProtocolException
+            WidgetProcessAdmissionException or BridgeProtocolException or
+            BridgeWidgetRequestException
             ? exception.Message
             : "Widget request failed.";
         if (message.Length > 512) message = message[..512];
