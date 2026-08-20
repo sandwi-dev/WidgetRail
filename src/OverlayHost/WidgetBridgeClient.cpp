@@ -92,6 +92,8 @@ constexpr std::size_t kMaximumPresentationUpdateBytes = 256 * 1024;
 constexpr std::size_t kMaximumWidgetNodes = 2048;
 constexpr std::size_t kMaximumWidgetTreeDepth = 32;
 constexpr std::uint64_t kMaximumVirtualCollectionItems = 1'000'000;
+constexpr std::uint64_t kMaximumVirtualCollectionRequestGeneration =
+    9'007'199'254'740'991;
 constexpr double kMinimumVirtualCollectionItemExtent = 1.0;
 constexpr double kMaximumVirtualCollectionItemExtent = 512.0;
 constexpr double kMaximumVirtualCollectionExtent = 1'000'000.0;
@@ -1063,13 +1065,16 @@ WidgetNode ParseNode(const JsonObject& source) {
                 throw winrt::hresult_invalid_argument();
             const double number = value.GetNumber();
             if (!std::isfinite(number) || number < 0.0 ||
-                number > 9'007'199'254'740'991.0 || std::floor(number) != number)
+                number > static_cast<double>(kMaximumVirtualCollectionRequestGeneration) ||
+                std::floor(number) != number)
                 throw winrt::hresult_invalid_argument();
             return static_cast<std::uint64_t>(number);
         };
         VirtualCollectionWindow window;
         window.requestGeneration = *exactInteger(L"requestGeneration", false);
-        if (window.requestGeneration == 0) throw winrt::hresult_invalid_argument();
+        if (window.requestGeneration == 0 ||
+            window.requestGeneration > kMaximumVirtualCollectionRequestGeneration)
+            throw winrt::hresult_invalid_argument();
         const auto change = std::wstring(std::wstring_view(
             encoded.GetNamedString(L"change")));
         if (change == L"replace")
@@ -1085,6 +1090,9 @@ WidgetNode ParseNode(const JsonObject& source) {
         window.hasBefore = encoded.GetNamedBoolean(L"hasBefore");
         window.hasAfter = encoded.GetNamedBoolean(L"hasAfter");
         window.estimatedItemExtent = encoded.GetNamedNumber(L"estimatedItemExtent");
+        if (!window.firstItemIndex &&
+            window.change != VirtualCollectionWindowChange::Replace)
+            throw winrt::hresult_invalid_argument();
         if (!std::isfinite(window.estimatedItemExtent) ||
             window.estimatedItemExtent < kMinimumVirtualCollectionItemExtent ||
             window.estimatedItemExtent > kMaximumVirtualCollectionItemExtent ||

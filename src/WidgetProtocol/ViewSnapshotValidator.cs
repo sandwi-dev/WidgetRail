@@ -339,12 +339,17 @@ public static class ViewSnapshotValidator
                     if (node.CollectionAnchorKey is null || itemCount == 0)
                         Add($"{path}.virtualCollectionWindow", "virtual_collection_items_required",
                             "A virtual collection window requires a non-empty keyed cursor collection.");
-                    if (window.RequestGeneration < 1)
+                    if (window.RequestGeneration is < 1 or
+                        > ProtocolConstants.MaximumVirtualCollectionRequestGeneration)
                         Add($"{path}.virtualCollectionWindow.requestGeneration", "invalid_virtual_collection_generation",
-                            "Virtual collection request generation must be positive.");
+                            $"Virtual collection request generation must be between 1 and {ProtocolConstants.MaximumVirtualCollectionRequestGeneration}.");
                     if (!Enum.IsDefined(window.Change))
                         Add($"{path}.virtualCollectionWindow.change", "invalid_virtual_collection_change",
                             "Virtual collection window change is not supported.");
+                    if (window.FirstItemIndex is null &&
+                        window.Change is not VirtualCollectionWindowChange.Replace)
+                        Add($"{path}.virtualCollectionWindow.change", "virtual_collection_direction_requires_position",
+                            "A virtual collection window without a logical position must use replace.");
                     if (!double.IsFinite(window.EstimatedItemExtent) ||
                         window.EstimatedItemExtent < ProtocolConstants.MinimumVirtualCollectionItemExtent ||
                         window.EstimatedItemExtent > ProtocolConstants.MaximumVirtualCollectionItemExtent)

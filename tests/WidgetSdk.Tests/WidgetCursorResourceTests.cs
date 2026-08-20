@@ -171,6 +171,7 @@ internal static class WidgetCursorResourceTests
         const int total = 10_000;
         const int pageSize = 32;
         var fail = false;
+        var mutation = 0;
         var widget = await StartAsync(new()
         {
             PageSize = pageSize,
@@ -178,13 +179,35 @@ internal static class WidgetCursorResourceTests
             PaginationThreshold = 2,
             Viewports = [Viewport() with { EstimatedItemExtent = 56 }],
             MapError = _ => WidgetResourceError.InvalidPage,
-            LoadPage = (cursor, _, limit, _) =>
+            LoadPage = (cursor, direction, limit, _) =>
             {
                 if (fail)
                     return ValueTask.FromException<WidgetCursorPage<Item>>(
                         new InvalidOperationException("controlled virtual page failure"));
                 var start = cursor is null ? 0 : int.Parse(cursor.Value.Value.AsSpan(1));
-                return ValueTask.FromResult(VirtualPage(start, limit, total));
+                var page = VirtualPage(start, limit, total);
+                if (direction is null)
+                {
+                    page = mutation switch
+                    {
+                        1 => page with
+                        {
+                            Items = [new("item.inserted"), .. page.Items.Take(limit - 1)],
+                            TotalItemCount = total + 1,
+                        },
+                        2 => page with
+                        {
+                            Items = [.. page.Items.Skip(1), new("item.replacement")],
+                            TotalItemCount = total - 1,
+                        },
+                        3 => page with
+                        {
+                            Items = [page.Items[1], page.Items[0], .. page.Items.Skip(2)],
+                        },
+                        _ => page,
+                    };
+                }
+                return ValueTask.FromResult(page);
             },
         });
         await widget.Resource.EnsureLoaded().Completion;
@@ -249,6 +272,7 @@ internal static class WidgetCursorResourceTests
                     {
                         VirtualCollectionWindow = window with
                         {
+                            Change = VirtualCollectionWindowChange.Replace,
                             FirstItemIndex = null,
                             TotalItemCount = null,
                         },
@@ -277,6 +301,46 @@ internal static class WidgetCursorResourceTests
         True(ViewSnapshotValidator.Validate(unboundedUnknownExtent).Any(error =>
                 error.Code == "invalid_virtual_collection_first_index"),
             "An unknown-total window escaped the bounded logical item domain.");
+        var unsafeGeneration = shifted with
+        {
+            Root = shifted.Root with
+            {
+                Children =
+                [
+                    shifted.Root.Children[0] with
+                    {
+                        VirtualCollectionWindow = window with
+                        {
+                            RequestGeneration =
+                                ProtocolConstants.MaximumVirtualCollectionRequestGeneration + 1,
+                        },
+                    },
+                ],
+            },
+        };
+        True(ViewSnapshotValidator.Validate(unsafeGeneration).Any(error =>
+                error.Code == "invalid_virtual_collection_generation"),
+            "Managed admission exceeded the native JSON-safe generation bound.");
+        var unknownDirectional = unknownExtent with
+        {
+            Root = unknownExtent.Root with
+            {
+                Children =
+                [
+                    unknownExtent.Root.Children[0] with
+                    {
+                        VirtualCollectionWindow = unknownExtent.Root.Children[0]
+                            .VirtualCollectionWindow! with
+                        {
+                            Change = VirtualCollectionWindowChange.Append,
+                        },
+                    },
+                ],
+            },
+        };
+        True(ViewSnapshotValidator.Validate(unknownDirectional).Any(error =>
+                error.Code == "virtual_collection_direction_requires_position"),
+            "An unknown-position window claimed an unverifiable direction.");
 
         fail = true;
         await widget.Resource.Refresh().Completion;
@@ -287,11 +351,48 @@ internal static class WidgetCursorResourceTests
         await widget.Resource.Retry().Completion;
         Equal(WidgetPagedResourceStatus.Ready, widget.Resource.Snapshot.Status);
         Equal(5L, widget.Resource.Snapshot.WindowGeneration);
+        foreach (var nextMutation in new[] { 1, 2, 3 })
+        {
+            mutation = nextMutation;
+            await widget.Resource.Refresh().Completion;
+            Equal(WidgetPagedResourceStatus.Ready, widget.Resource.Snapshot.Status);
+            Equal(VirtualCollectionWindowChange.Replace,
+                widget.Resource.Snapshot.WindowChange);
+        }
         widget.Resource.Reset();
         Equal(0L, widget.Resource.Snapshot.WindowGeneration);
+        mutation = 0;
         await widget.Resource.EnsureLoaded().Completion;
-        Equal(6L, widget.Resource.Snapshot.WindowGeneration);
+        Equal(9L, widget.Resource.Snapshot.WindowGeneration);
+        Equal(VirtualCollectionWindowChange.Replace, widget.Resource.Snapshot.WindowChange);
         await StopAsync(widget);
+
+        var unknownPositionWidget = await StartAsync(new()
+        {
+            PageSize = pageSize,
+            MaximumRetainedItems = 64,
+            PaginationThreshold = 2,
+            Viewports = [Viewport() with { EstimatedItemExtent = 56 }],
+            MapError = _ => WidgetResourceError.InvalidPage,
+            LoadPage = (cursor, _, limit, _) =>
+            {
+                var start = cursor is null ? 0 : int.Parse(cursor.Value.Value.AsSpan(1));
+                return ValueTask.FromResult(Page(start, limit, total));
+            },
+        });
+        await unknownPositionWidget.Resource.EnsureLoaded().Completion;
+        Equal(VirtualCollectionWindowChange.Replace,
+            unknownPositionWidget.Resource.Snapshot.WindowChange);
+        await unknownPositionWidget.Resource.Move(
+            WidgetCursorDirection.After, "items.list").Completion;
+        Equal(VirtualCollectionWindowChange.Replace,
+            unknownPositionWidget.Resource.Snapshot.WindowChange);
+        var unknownPositionSnapshot = unknownPositionWidget.Render()
+            .CreateSnapshot("virtual.unknown-position", 1);
+        Equal(VirtualCollectionWindowChange.Replace,
+            unknownPositionSnapshot.Root.Children[0].VirtualCollectionWindow?.Change);
+        Equal(0, ViewSnapshotValidator.Validate(unknownPositionSnapshot).Count);
+        await StopAsync(unknownPositionWidget);
     }
 
     private static async Task PreservesAnchorAcrossAppendPrependAndRefresh()

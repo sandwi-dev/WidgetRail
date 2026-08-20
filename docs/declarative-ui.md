@@ -324,7 +324,11 @@ controller routing, UIA, and paint. UIA reports logical item position and known
 set size on the first exposed semantic control for each admitted item; no
 off-window provider is created. Atomic updates admit the metadata and keyed
 children together, and stale or malformed generations retain the last valid
-complete checkpoint. Omitting the metadata preserves the eager v14 layout.
+complete checkpoint. Replace is the only arbitrary or unknown-position window
+transition. Indexed append/prepend admissions must move contiguously in the
+declared direction, keep compatible total authority, and retain identical keys
+at every overlapping logical position. Omitting the metadata preserves the
+eager v14 layout.
 
 The same version adds an opaque `artworkHandle` on Image/Button nodes. The host
 does not interpret it as a URL or filesystem path. Resolution is a separate

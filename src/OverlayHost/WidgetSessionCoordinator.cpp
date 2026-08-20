@@ -70,17 +70,54 @@ void CollectVirtualWindows(
         left.estimatedItemExtent == right.estimatedItemExtent;
 }
 
+[[nodiscard]] bool AdmitDirectionalVirtualWindowTransition(
+    const VirtualWindowAdmissionState& prior,
+    const VirtualWindowAdmissionState& next) noexcept {
+    const auto& oldWindow = *prior.window;
+    const auto& newWindow = *next.window;
+    if (!oldWindow.firstItemIndex || !newWindow.firstItemIndex ||
+        oldWindow.totalItemCount != newWindow.totalItemCount)
+        return false;
+    const auto oldFirst = *oldWindow.firstItemIndex;
+    const auto newFirst = *newWindow.firstItemIndex;
+    const auto oldEnd = oldFirst + prior.itemKeys.size();
+    const auto newEnd = newFirst + next.itemKeys.size();
+    const bool validRange = newWindow.change == VirtualCollectionWindowChange::Append
+        ? newFirst >= oldFirst && newFirst <= oldEnd && newEnd > oldEnd
+        : newWindow.change == VirtualCollectionWindowChange::Prepend
+            ? newFirst < oldFirst && newEnd >= oldFirst && newEnd <= oldEnd
+            : false;
+    if (!validRange) return false;
+    const auto overlapFirst = std::max(oldFirst, newFirst);
+    const auto overlapEnd = std::min(oldEnd, newEnd);
+    for (auto position = overlapFirst; position < overlapEnd; ++position) {
+        if (prior.itemKeys[static_cast<std::size_t>(position - oldFirst)] !=
+            next.itemKeys[static_cast<std::size_t>(position - newFirst)])
+            return false;
+    }
+    return true;
+}
+
 [[nodiscard]] bool AdmitVirtualWindowTransition(
     const WidgetSnapshot* checkpoint,
     const WidgetSnapshot& candidate) {
-    if (!checkpoint) return true;
-    std::map<std::wstring, VirtualWindowAdmissionState, std::less<>> prior;
     std::map<std::wstring, VirtualWindowAdmissionState, std::less<>> next;
-    CollectVirtualWindows(checkpoint->root, prior);
     CollectVirtualWindows(candidate.root, next);
+    if (!checkpoint) {
+        return std::all_of(next.begin(), next.end(), [](const auto& entry) {
+            return entry.second.window->change ==
+                VirtualCollectionWindowChange::Replace;
+        });
+    }
+    std::map<std::wstring, VirtualWindowAdmissionState, std::less<>> prior;
+    CollectVirtualWindows(checkpoint->root, prior);
     for (const auto& [scrollId, state] : next) {
         const auto existing = prior.find(scrollId);
-        if (existing == prior.end()) continue;
+        if (existing == prior.end()) {
+            if (state.window->change != VirtualCollectionWindowChange::Replace)
+                return false;
+            continue;
+        }
         const auto& oldWindow = *existing->second.window;
         const auto& newWindow = *state.window;
         if (newWindow.requestGeneration < oldWindow.requestGeneration)
@@ -88,6 +125,10 @@ void CollectVirtualWindows(
         if (newWindow.requestGeneration == oldWindow.requestGeneration &&
             (!SameVirtualWindow(oldWindow, newWindow) ||
              existing->second.itemKeys != state.itemKeys))
+            return false;
+        if (newWindow.requestGeneration > oldWindow.requestGeneration &&
+            newWindow.change != VirtualCollectionWindowChange::Replace &&
+            !AdmitDirectionalVirtualWindowTransition(existing->second, state))
             return false;
     }
     return true;
@@ -425,7 +466,7 @@ std::vector<WidgetSessionEvent> WidgetSessionCoordinator::TakeEvents() {
                 CompleteRefresh(request, false);
                 auto failure = FailureFrom(
                     WidgetSessionFailureStage::Protocol,
-                    L"The widget returned a stale virtual collection window.");
+                    L"The widget returned an invalid or stale virtual collection window transition.");
                 failures_.insert_or_assign(request.widgetId, failure);
                 auto event = makeEvent(WidgetSessionEventKind::Failed);
                 event.failure = failure;

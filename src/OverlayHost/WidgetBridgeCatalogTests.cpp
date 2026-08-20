@@ -324,6 +324,48 @@ void VerifyVirtualCollectionProtocol() {
         },"renderStyles":{}
     })json", error),
             "Unknown-total virtual window escaped the bounded logical item domain");
+
+    error.clear();
+    Require(!widgetrail::testing::ParseWidgetSnapshotResponse(R"json({
+        "snapshot": {
+            "protocolVersion":19,"sequence":10,
+            "widgetInstanceId":"virtual.sample","activeInputScopeId":"virtual.list",
+            "root":{"id":"virtual.list","kind":"scroll","scrollAxis":"vertical",
+                "scrollNearEndActionId":"virtual.after","scrollPaginationThreshold":2,
+                "collectionAnchorKey":"key.0",
+                "virtualCollectionWindow":{
+                    "requestGeneration":9007199254740992,"change":"replace",
+                    "firstItemIndex":0,"totalItemCount":100,
+                    "hasBefore":false,"hasAfter":true,"estimatedItemExtent":56
+                },
+                "children":[
+                    {"id":"virtual.item.0","kind":"button","text":"A",
+                     "actionId":"select","collectionItemKey":"key.0","children":[]}
+                ]}
+        },"renderStyles":{}
+    })json", error),
+            "Native admission exceeded the managed JSON-safe generation bound");
+
+    error.clear();
+    Require(!widgetrail::testing::ParseWidgetSnapshotResponse(R"json({
+        "snapshot": {
+            "protocolVersion":19,"sequence":11,
+            "widgetInstanceId":"virtual.sample","activeInputScopeId":"virtual.list",
+            "root":{"id":"virtual.list","kind":"scroll","scrollAxis":"vertical",
+                "scrollNearStartActionId":"virtual.before","scrollPaginationThreshold":2,
+                "collectionAnchorKey":"key.unknown",
+                "virtualCollectionWindow":{
+                    "requestGeneration":7,"change":"prepend",
+                    "firstItemIndex":null,"totalItemCount":null,
+                    "hasBefore":true,"hasAfter":false,"estimatedItemExtent":56
+                },
+                "children":[
+                    {"id":"virtual.item.unknown","kind":"button","text":"A",
+                     "actionId":"select","collectionItemKey":"key.unknown","children":[]}
+                ]}
+        },"renderStyles":{}
+    })json", error),
+            "Native admission accepted an unverifiable unknown-position direction");
 }
 
 } // namespace

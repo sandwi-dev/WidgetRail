@@ -279,7 +279,11 @@ layout, focus, hit testing, paint, and UIA semantics. Off-window private items
 are never serialized or materialized by the host. The estimate is 1–512 DIPs,
 the known total is at most 1,000,000, and their product is capped at 1,000,000
 DIPs. Missing metadata preserves protocol-v14 behavior, while malformed or
-stale windows retain the last valid complete checkpoint.
+stale windows retain the last valid complete checkpoint. Unknown-position and
+provider-mutation windows publish `replace`. Indexed append/prepend windows are
+admitted only when they move contiguously in the declared direction, keep the
+same known-total authority, and preserve every overlapping logical-position key.
+The monotonic request generation is bounded to JSON's exact integer range.
 
 `WidgetAppLibraryItem` has one authoritative normalized `Presentation` value;
 there are no duplicate scalar title/kind/source/artwork accessors. It contains

@@ -1444,13 +1444,17 @@ layout nodes, paint work, hit targets, focus targets, or UIA providers.
 The estimate is 1–512 DIPs, a known total is 1–1,000,000 items, and the
 estimated logical extent is capped at 1,000,000 DIPs. Known totals require a
 zero-based first index and every retained page must remain contiguous with the
-same total. Unknown totals may leave both values null while cursor availability
-continues to drive bounded paging. Malformed, stale-generation, failed, or
-cancelled windows retain the last valid checkpoint; they never partially
-replace the visible collection. Exact retained keys preserve focus and anchor
-position, while removal uses the existing deterministic nearest retained
-fallback. Omitting `EstimatedItemExtent` keeps the protocol-v14 eager Scroll
-behavior unchanged.
+same total. Unknown positions must publish `replace`; indexed `append` and
+`prepend` must move contiguously in their declared direction, retain compatible
+known-total authority, and preserve identical keys at every overlapping logical
+position. Provider insert/remove/move and other arbitrary window changes use
+`replace`. The request generation is positive, monotonic for the runtime, and
+bounded to JSON's exact integer range. Malformed, stale-generation, failed, or
+cancelled windows retain the last valid checkpoint; they never partially replace
+the visible collection. Exact retained keys preserve focus and anchor position,
+while removal uses the existing deterministic nearest retained fallback.
+Omitting `EstimatedItemExtent` keeps the protocol-v14 eager Scroll behavior
+unchanged.
 
 `WidgetArtworkHandle` is also protocol v14. `UI.Artwork(handle, ...)` and
 `ButtonElement.LeadingArtwork(handle, ...)` publish a bounded opaque identity.

@@ -1327,6 +1327,23 @@ void VirtualCollectionWindowKeepsNativeWorkBounded() {
     Near(scrolled.scrollOffsets.at(L"virtual.list"), plan->offset,
         "suppressed focus-follow preserves the virtual free-scroll offset");
 
+    const Rect compactViewport{0.0F, 0.0F, 300.0F, 220.0F};
+    target->BeginDraw();
+    const auto compact = renderer.Render(
+        target.Get(), snapshot, L"virtual.item.4992", compactViewport);
+    Check(SUCCEEDED(target->EndDraw()), "compact virtual reflow draw completes");
+    const Rect wideViewport{0.0F, 0.0F, 760.0F, 320.0F};
+    target->BeginDraw();
+    const auto wide = renderer.Render(
+        target.Get(), snapshot, L"virtual.item.4992", wideViewport);
+    Check(SUCCEEDED(target->EndDraw()), "wide virtual reflow draw completes");
+    Check(compact.succeeded && wide.succeeded &&
+          compact.navigationRects.size() == 32 &&
+          wide.navigationRects.size() == 32 &&
+          compact.scrollViewports.at(L"virtual.list").maximumOffset > 500'000.0F &&
+          wide.scrollViewports.at(L"virtual.list").maximumOffset > 500'000.0F,
+        "compact and wide reflow retain one bounded logical collection window");
+
     auto shifted = snapshot;
     shifted.sequence = 2;
     shifted.root.virtualCollectionWindow->requestGeneration = 8;

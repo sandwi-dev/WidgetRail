@@ -5616,3 +5616,23 @@ window shifts, stale-generation denial with last-good retention, native parser
 fail-closed bounds, and eager v18 coexistence. No provider-specific behavior,
 second collection/scroll/focus authority, raw patch stream, silent truncation,
 Tier 3, installed-package/configuration change, or push was introduced.
+
+The pre-launch transition-authority correction makes the public change value
+enforceable at both managed and native admission. Fresh or unknown-position
+windows are replace-only. Higher-generation indexed append/prepend must be
+contiguous or overlapping, move in the declared direction, preserve compatible
+known-total authority, and keep identical keys at every overlapping logical
+position; false claims fail as protocol errors while the prior checkpoint
+remains active. Replace remains the bounded arbitrary transition for provider
+insert/remove/move. Managed SDK generation and native JSON parsing now share
+the exact integer ceiling `9,007,199,254,740,991`.
+
+Correction-focused evidence passes SDK/protocol 89/89, provider-free Full
+Application 4/4, Widget Session Coordinator 25 scenarios plus 305 retained
+lifecycle/action checks, native Widget Bridge parsing, and Declarative Renderer
+4,968 checks including compact/wide reflow. It covers false higher-generation
+append/prepend direction, overlapping-key and known-total mismatch, checkpoint
+retention, unknown-position replacement, provider insert/remove/move through
+replace, fresh-session restart, and the retained vertical/horizontal 10,000-item
+proof. The rejected candidate was not launched or integrated, no reference
+package was installed, and no Tier 3 or push was performed.

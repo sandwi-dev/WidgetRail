@@ -98,6 +98,7 @@ public sealed class WidgetCursorResource<TItem> where TItem : notnull
     private readonly string _afterActionId;
     private readonly WidgetCursorResourceOptions<TItem> _options;
     private readonly IReadOnlyDictionary<string, WidgetCursorViewport<TItem>> _viewports;
+    private readonly bool _usesVirtualCollectionWindows;
     private readonly WidgetOperations _operations;
     private readonly Action _invalidate;
     private readonly HashSet<string> _cursorHistory = new(StringComparer.Ordinal);
@@ -158,6 +159,8 @@ public sealed class WidgetCursorResource<TItem> where TItem : notnull
         StableIdentifier.Validate(_afterActionId, nameof(operationKey));
         _options = options;
         _viewports = new ReadOnlyDictionary<string, WidgetCursorViewport<TItem>>(viewports);
+        _usesVirtualCollectionWindows = viewports.Values.Any(
+            viewport => viewport.EstimatedItemExtent is not null);
         _operations = operations;
         _invalidate = invalidate;
     }
@@ -352,6 +355,9 @@ public sealed class WidgetCursorResource<TItem> where TItem : notnull
             {
                 if (!CanCommit(request, context)) return;
                 ValidateTraversalProgress(request.Intent, page);
+                if (_usesVirtualCollectionWindows && _windowGeneration >=
+                    WidgetRail.WidgetProtocol.ProtocolConstants.MaximumVirtualCollectionRequestGeneration)
+                    throw new InvalidOperationException("Virtual collection request generation is exhausted.");
                 var merged = Merge(page, request.Intent.Cursor, request.Intent.Direction);
                 var anchor = ResolveAnchor(request.Before, merged, request.Intent.Direction);
                 var focus = ResolveFocus(page.Items, request.Intent);
@@ -364,17 +370,25 @@ public sealed class WidgetCursorResource<TItem> where TItem : notnull
                     beforeCursor, afterCursor, anchor, focus, null);
                 var firstIndex = _segments.First?.Value.Page.FirstItemIndex;
                 var total = _segments.First?.Value.Page.TotalItemCount;
-                _snapshot = _snapshot with
-                {
-                    FirstItemIndex = firstIndex,
-                    TotalItemCount = total,
-                    WindowGeneration = ++_windowGeneration,
-                    WindowChange = request.Intent.Direction switch
+                var nextWindowGeneration = _usesVirtualCollectionWindows
+                    ? _windowGeneration + 1
+                    : 0;
+                var windowChange = firstIndex is null
+                    ? VirtualCollectionWindowChange.Replace
+                    : request.Intent.Direction switch
                     {
                         WidgetCursorDirection.Before => VirtualCollectionWindowChange.Prepend,
                         WidgetCursorDirection.After => VirtualCollectionWindowChange.Append,
                         _ => VirtualCollectionWindowChange.Replace,
-                    },
+                    };
+                if (_usesVirtualCollectionWindows)
+                    _windowGeneration = nextWindowGeneration;
+                _snapshot = _snapshot with
+                {
+                    FirstItemIndex = firstIndex,
+                    TotalItemCount = total,
+                    WindowGeneration = nextWindowGeneration,
+                    WindowChange = windowChange,
                 };
                 committed = true;
             }
@@ -467,23 +481,23 @@ public sealed class WidgetCursorResource<TItem> where TItem : notnull
 
     private static void ValidateLogicalWindow(IReadOnlyList<Segment> segments)
     {
+        var indexed = segments.Where(segment => segment.Page.FirstItemIndex is not null).ToArray();
+        if (indexed.Length != 0 && indexed.Length != segments.Count)
+            throw new InvalidOperationException("Cursor page extent changed within one retained window.");
+        for (var index = 1; index < indexed.Length; index++)
+        {
+            var prior = indexed[index - 1].Page;
+            var page = indexed[index].Page;
+            if (prior.FirstItemIndex + prior.Items.Count != page.FirstItemIndex)
+                throw new InvalidOperationException("Cursor pages are not logically contiguous.");
+        }
         var known = segments.Where(segment => segment.Page.TotalItemCount is not null).ToArray();
         if (known.Length != 0 && known.Length != segments.Count)
             throw new InvalidOperationException("Cursor page extent changed within one retained window.");
         if (known.Length == 0) return;
         var total = known[0].Page.TotalItemCount;
-        for (var index = 0; index < known.Length; index++)
-        {
-            var page = known[index].Page;
-            if (page.TotalItemCount != total || page.FirstItemIndex is null)
-                throw new InvalidOperationException("Cursor page extent changed within one retained window.");
-            if (index > 0)
-            {
-                var prior = known[index - 1].Page;
-                if (prior.FirstItemIndex + prior.Items.Count != page.FirstItemIndex)
-                    throw new InvalidOperationException("Cursor pages are not logically contiguous.");
-            }
-        }
+        if (known.Any(segment => segment.Page.TotalItemCount != total))
+            throw new InvalidOperationException("Cursor page extent changed within one retained window.");
     }
 
     private WidgetCollectionItemKey? ResolveAnchor(WidgetCursorResourceSnapshot<TItem> before,

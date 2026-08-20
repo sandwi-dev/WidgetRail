@@ -31,6 +31,7 @@ public static class ProtocolConstants
     public const int MaximumTextEntryLength = 96;
     public const int MaximumCursorCollectionItems = 256;
     public const int MaximumVirtualCollectionItems = 1_000_000;
+    public const long MaximumVirtualCollectionRequestGeneration = 9_007_199_254_740_991;
     public const double MinimumVirtualCollectionItemExtent = 1;
     public const double MaximumVirtualCollectionItemExtent = 512;
     public const double MaximumVirtualCollectionExtent = 1_000_000;
