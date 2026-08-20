@@ -38,7 +38,7 @@ evidence only; this file is the sole authority for current work.
 
 | Lane | Task/worktree | State |
 | --- | --- | --- |
-| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | Corrected DLV-271 commit `829b46f` is rejected by the physical production-shaped reference route: right stick and D-pad cannot scroll, and Down at the last visible row escapes to tray. Correct this same milestone before another launch. DLV-276 remains Ready only after accepted DLV-271 integration. DLV-273 remains retired. Never push. |
+| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | DLV-271 correction `46565ad` source-reviews clean, fixes nested vertical-Scroll viewport sizing plus bounded D-pad edge retention, and passes the directly affected evidence. Exact unaccepted Release PID 38908 is visibly staged with `OverlayHost.exe` SHA-256 `CFF963A3B0D9355C9513DF4E86E272FD4710F29747BBF2B6C54500BD47FF59EB`; the capability-free Full Application Reference is enabled for the required right-stick/D-pad verdict. Do not test further, integrate, or begin DLV-276 before the user's verdict. DLV-273 remains retired. Never push. |
 | Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | Preserve saved DLV-265 and installed Spotify state. Do not resume, test, integrate, reinstall, replace configuration, or reset before accepted DLV-276 integration. DLV-270 follows accepted DLV-265; DLV-248 remains deferred. |
 
 ## Execution, review, and architecture rules
