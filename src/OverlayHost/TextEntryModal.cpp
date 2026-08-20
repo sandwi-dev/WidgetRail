@@ -603,8 +603,9 @@ LRESULT CALLBACK TextEntryModal::EditWindowProc(
                     self->theme_.focus);
                 const auto priorPen = SelectObject(dc, pen);
                 MoveToEx(dc, x, y + 5, nullptr);
-                LineTo(dc, x, std::min(client.bottom - 5,
-                    y + PixelHeight(24.0, self->layout_.scale, self->theme_.textScale)));
+                const LONG caretBottom = static_cast<LONG>(
+                    y + PixelHeight(24.0, self->layout_.scale, self->theme_.textScale));
+                LineTo(dc, x, std::min<LONG>(client.bottom - 5, caretBottom));
                 SelectObject(dc, priorPen);
                 DeleteObject(pen);
                 ReleaseDC(window, dc);
