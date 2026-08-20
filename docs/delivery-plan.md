@@ -29,7 +29,7 @@ evidence only; this file is the sole authority for current work.
 
 | Lane | Task/worktree | State |
 | --- | --- | --- |
-| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | DLV-273 remains retired. DLV-274 correction `4645f40` is rejected for physical acceptance: the 96 MiB cache budgets remain healthy, but switching away from Spotify and returning recreates its declared keep-alive application and resets authored presentation sequence `21 -> 1`. Preserve the exact candidate/stage without tests or integration. DLV-275 is the next bounded correction before DLV-274 can be reconsidered or DLV-271 may start. Never push. |
+| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | DLV-273 remains retired. DLV-275 production `baf7bd4` is source-reviewed and combined with preserved DLV-274 production `bf6d524`/`4645f40` in exact unaccepted candidate `cd1144f`. Packaged Release PID 30536 is visibly running for the menu-only Spotify/Games & Apps verdict. Do not test, integrate, or start DLV-271 before user acceptance. Never push. |
 | Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | Preserve saved DLV-265 and installed Spotify state. Do not resume, test, integrate, reinstall, replace configuration, or reset before accepted DLV-271 integration. DLV-270 follows accepted DLV-265; DLV-248 remains deferred. |
 
 ## Execution, review, and architecture rules
@@ -432,6 +432,54 @@ protocol work, provider-specific host behavior, changed residency semantics,
 credential/private-state exposure, substantial conflict, or a fix that requires
 the retired DLV-273 presenter. Never push.
 
+Current production candidate: platform commit `baf7bd4` changes nine production
+files. The generic SDK lifecycle owner now contains only an
+`OperationCanceledException` whose token exactly equals the canceled active
+lifetime that just ended, while the host transition token remains live. The
+worker request processor otherwise continues to treat cancellation as terminal,
+so host cancellation, timeout, protocol/runtime faults, and unexpected exits
+remain visible. Source inspection confirms the prior failure chain: the SDK
+canceled the active lifetime before deactivation, an awaited active task could
+surface that exact cancellation from `OnDeactivatedAsync`, and the worker's
+request processor excluded all `OperationCanceledException` values from its
+ordinary error reply path, allowing the processor and worker application to
+terminate normally. No Spotify route persistence, package-specific branch,
+residency-policy change, or public protocol change was added.
+
+The same commit adds bounded observational diagnostics through the existing
+runtime/bridge log path: bridge session generation/PID, registry generation,
+residency mode, worker start ordinal/PID, lifecycle request/completion/failure,
+cooperative unload, registry retirement, exit code, and closed failure code.
+Diagnostics contain no paths, provider payloads, credentials, OAuth material,
+or raw exception text and cannot own worker lifetime. Independent diff review
+and `git diff --check` passed. The platform worktree is clean at `baf7bd4`; no
+tests, launch, integration, or push occurred there.
+
+For the required combined physical comparison, the planner created a clean
+detached candidate from reviewer main `1bc284e` and cherry-picked original
+DLV-274 commits `bf6d524`/`4645f40` followed by DLV-275 `baf7bd4`. The resulting
+exact candidate chain is `76a93eb`, `3d12c14`, and `cd1144f`. A full packaged
+Release build with tests skipped succeeded; 102 runtime files were republished
+from the same source tree. The immutable stage is
+`C:\Users\dwive\AppData\Local\Temp\gba-dlv274-275-candidate\src\OverlayHost\out\Release`.
+`OverlayHost.exe` SHA-256 is
+`E123FE1967A91F04923D5BF3273AE1638F000627A7C08D0DA953FFB920CEF9FF`;
+`OverlayPlatformInterop.dll` SHA-256 is
+`5595CE17C6C14C88737E08952AD2B6096CA81013F1102CA2503DFE2FB7F01224`.
+Exact prior DLV-274 PID 26848 was gracefully closed only after executable-path,
+PID, and hidden `WidgetRail.OverlayHost` window ownership verification. The
+combined candidate launched visibly as responding PID 30536. Startup diagnostics
+confirm bridge session 1/PID 11688, typed worker lifecycle events, and the
+expected 32 MiB per-image plus 96 MiB aggregate decoded/GPU cache limits.
+
+Required verdict: open Spotify, enter Playlists without opening a playlist,
+switch to Games & Apps, then return to Spotify. Spotify must return immediately
+to Playlists with no loading screen or initial Player reset; Games & Apps must
+retain its prior surface. After the user performs the route, inspect the new
+lifetime diagnostics for the same Spotify registry generation, worker start
+ordinal/PID, completed Background/reactivation transitions, and monotonically
+increasing authored presentation sequence. Do not run tests or integrate first.
+
 ## Ready serialized deliverable — DLV-271: virtualized collection presentation windows
 
 Owner/baseline: platform lane as serialized cross-layer lead after DLV-274 is
@@ -585,7 +633,7 @@ missing accepted DLV-265/DLV-271 baseline. Never push.
 | DLV-269 | Complete: physical correction accepted on PID 98812, focused evidence passed, and the chain is integrated through main `683af77`. |
 | DLV-273 | Retired failed refactor by user decision. Production `b54e1e2` and corrections `e98566e`/`dcd58e0` remain rejected branch history and must not be resumed or integrated. Accepted DLV-269 PID 78428 is restored; no production revert was necessary because main never contained DLV-273. |
 | DLV-274 | Production `bf6d524` is rejected as insufficient. Correction `4645f40` preserves 32 MiB per-image limits and raises only decoded/GPU aggregate LRU budgets to 96 MiB; its caches remained healthy during the latest reproduction. The candidate is nevertheless rejected for the complete physical no-reload objective because Spotify sequence reset `21 -> 1`, proving keep-alive application recreation. Preserve its exact stage and measurements without tests, integration, packaging, or push until DLV-275 is accepted. |
-| DLV-275 | Assigned before DLV-274 reconsideration and DLV-271. Existing evidence isolates Spotify worker/application lifetime loss during Background/reactivation but does not record the terminal exit code or lifecycle exception. Require bounded provenance, same-worker/same-sequence physical proof, focused post-verdict tests, review, and integration. |
+| DLV-275 | Production `baf7bd4` is source-reviewed. Combined DLV-274/275 candidate `cd1144f` is visibly running as PID 30536 from the immutable staged packaged graph. Await the menu-only Spotify/Games & Apps physical verdict and same-worker/monotonic-sequence log proof; no tests or integration before acceptance. |
 | DLV-265 | Saved until immediately after accepted DLV-271; preserve installed 0.3.3 and existing configuration/account state. |
 | DLV-248 | Deliberately deferred until explicit user promotion. |
 
