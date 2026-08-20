@@ -854,12 +854,12 @@ input, the modal matches the active theme, and compact/wide plus 150% text/
 interface scale remain fully reachable. No account change or real commit is
 required for this physical verdict.
 
-The first production candidate at `3d3ed0e` was physically rejected: the
-opening A press leaked into the nested modal loop and inserted characters while
-focus moved; the terminating B escaped and hid the overlay; Enter sometimes
-failed admission without visible feedback; and the legend still said Commit.
-Correct DLV-276 with controller-neutral entry/exit quarantine, current semantic
-authority revalidation, bounded result feedback, and user-facing Enter wording.
+Production candidates `3d3ed0e` and `c4619f3` were physically rejected. The
+first leaked opening/terminating controller state; the second quarantined those
+frames but still treated button `BN_SETFOCUS` as activation, so focus movement
+inserted characters and key-button focus lost bounded clipboard paste. Correct
+DLV-276 with exact `BN_CLICKED` admission and bounded Ctrl+V/Shift+Insert routing,
+preserving the neutral gate, B containment, semantic revalidation, result feedback, and Enter wording.
 
 After acceptance, add focused modal layout/theme/live-buffer/hint/password,
 caret insertion/deletion and LB/RB boundary/repeat behavior, exclusive
