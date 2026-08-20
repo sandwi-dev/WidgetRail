@@ -38,7 +38,7 @@ evidence only; this file is the sole authority for current work.
 
 | Lane | Task/worktree | State |
 | --- | --- | --- |
-| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | DLV-271 correction `e65362b` source-reviews clean and changes only the existing renderer reconciliation owner: valid exact/overlapping anchors and any replacement row still visible at the retained viewport preserve position; an unreachable replacement with no surviving anchor/overlap places its declared anchor at the leading edge. No tests changed or ran. Exact unaccepted Release PID 19032 is visibly staged with `OverlayHost.exe` SHA-256 `AA00BBECEE266C4E9A2A2B5D23BA9687527155620EE70CA300F1AE622A0A4685`; the sample is enabled. Required verdict: verify rows at initial open, deep-scroll beyond item 200, hide/deactivate and reopen, then confirm replacement rows remain visible and right-stick/D-pad still work. Do not integrate or begin DLV-276 before the verdict. DLV-273 remains retired. Never push. |
+| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | The user physically accepted exact DLV-271 production correction `e65362b` on PID 19032: initial and replacement rows remained visible after deep-scroll/reopen, and right-stick plus D-pad continued to work. The required focused post-verdict regression follow-up is now assigned; do not integrate or begin DLV-276 until that commit is reviewed. DLV-273 remains retired. Never push. |
 | Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | Preserve saved DLV-265 and installed Spotify state. Do not resume, test, integrate, reinstall, replace configuration, or reset before accepted DLV-276 integration. DLV-270 follows accepted DLV-265; DLV-248 remains deferred. |
 
 ## Execution, review, and architecture rules
@@ -910,7 +910,12 @@ Owner/baseline: widgets lane after DLV-265 resumes following DLV-276, is
 physically accepted, focused-tested, and integrated. Keep provider calls,
 page/retention policy, queue parsing, diagnostics, and immutable package version
 inside Spotify. Reuse accepted generic cursor, viewport-prefetch, and virtualized
-window contracts; do not add Spotify behavior to core layers.
+window contracts; do not add Spotify behavior to core layers. Explicitly opt
+Spotify playlist and playlist-track viewports into DLV-271 virtual windows with
+stable item keys, bounded estimated row extents, and authoritative logical
+first-index/total-count metadata. Preserve Queue as the explicit bounded
+unpaginated collection unless Spotify exposes a real adjacent-page contract;
+do not invent queue cursors merely to claim virtualization adoption.
 
 Load/validate selected-playlist metadata once per exact selection/configuration
 generation, then fetch adjacent tracks only through paged `/items`. Preserve
@@ -951,9 +956,8 @@ missing accepted DLV-265/DLV-271/DLV-276 baseline. Never push.
    integrated by merge `9189cad`; reviewed focused tests are integrated as
    `6ce32b7`. The user-requested coherent main refresh is complete on responding
    PID 53016; continue DLV-271.
-5. Run serialized DLV-271 in the platform lane with normal shared-protocol
-   verification, provider-free 10,000-item scale proof, physical verdict,
-   review, and integration.
+5. DLV-271 production correction `e65362b` is physically accepted on PID 19032;
+   finish its focused regression follow-up, review, and integration.
 6. Run generic DLV-276 in the platform lane after accepted DLV-271 integration;
    physically accept the themed exclusive-focus controller keyboard before its
    focused tests and integration.
@@ -975,6 +979,7 @@ missing accepted DLV-265/DLV-271/DLV-276 baseline. Never push.
 | DLV-273 | Retired failed refactor by user decision. Production `b54e1e2` and corrections `e98566e`/`dcd58e0` remain rejected branch history and must not be resumed or integrated. Accepted DLV-269 PID 78428 is restored; no production revert was necessary because main never contained DLV-273. |
 | DLV-274 | Complete: production `bf6d524` plus correction `4645f40` preserves 32 MiB per-image limits and raises only decoded/GPU aggregate LRU budgets to 96 MiB. Exact accepted cumulative candidate `949b586` is integrated by `9189cad`; focused tests are integrated through `6ce32b7`. |
 | DLV-275 | Complete: production `baf7bd4` fixes active-lifetime cancellation and adds diagnostics; `2b609fc` isolates widget worker failures; `74ec5e9` removes destructive stale-request pipe cancellation. Exact accepted candidate `949b586` is integrated by `9189cad`, tests by `6ce32b7`, and fresh main Release PID 53016 is responding with the integrated cache policy. |
+| DLV-271 | Physical production behavior accepted on exact correction `e65362b` and PID 19032; focused post-verdict regression evidence and integration remain pending. |
 | DLV-276 | Ready after accepted DLV-271 integration: generic themed controller keyboard, exclusive modal input/focus, live-buffer and hint/value correction. Physical Spotify cancel-path proof must preserve the installed Client ID/account. |
 | DLV-265 | Saved until immediately after accepted DLV-276; preserve installed 0.3.3 and existing configuration/account state. |
 | DLV-248 | Deliberately deferred until explicit user promotion. |
