@@ -38,7 +38,7 @@ evidence only; this file is the sole authority for current work.
 
 | Lane | Task/worktree | State |
 | --- | --- | --- |
-| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | The user physically accepted exact DLV-271 correction `e65362b` on PID 19032, but its required post-verdict test exposed one bounded defect: a replacement inserting rows before a still-visible overlapping key preserves the numeric offset instead of that key's screen position. Correct only existing renderer reconciliation, retain the uncommitted focused tests, rebuild and stop for a narrow physical regression verdict before integration. Do not begin DLV-276. DLV-273 remains retired. Never push. |
+| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | DLV-271 production correction `bab6d5b` and focused tests `d100f49` are clean: renderer 4,995, interaction 89, navigation 122/47/24, slider 2,096, pressed 29, accessibility 168, and TextEntryModal passed. Exact coherent Release PID 56752 is visibly staged with `OverlayHost.exe` SHA-256 `8C556B2982BC74EEC3BAA3798B3F2C27B1523D4A8D006DBDC244953801FD57C0`. Required narrow verdict: repeat deep-scroll/reopen and confirm rows/right-stick/D-pad remain correct; any replacement adding rows before a visible retained key must not visibly jump that row. Do not integrate or begin DLV-276 first. DLV-273 remains retired. Never push. |
 | Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | Preserve saved DLV-265 and installed Spotify state. Do not resume, test, integrate, reinstall, replace configuration, or reset before accepted DLV-276 integration. DLV-270 follows accepted DLV-265; DLV-248 remains deferred. |
 
 ## Execution, review, and architecture rules
@@ -956,8 +956,8 @@ missing accepted DLV-265/DLV-271/DLV-276 baseline. Never push.
    integrated by merge `9189cad`; reviewed focused tests are integrated as
    `6ce32b7`. The user-requested coherent main refresh is complete on responding
    PID 53016; continue DLV-271.
-5. Preserve the accepted `e65362b` reopen behavior while correcting the focused
-   overlapping-key position failure; rebuild, physically recheck, then integrate.
+5. DLV-271 correction/tests `bab6d5b`/`d100f49` are green and PID 56752 is
+   visibly staged; obtain the final narrow physical verdict, then integrate.
 6. Run generic DLV-276 in the platform lane after accepted DLV-271 integration;
    physically accept the themed exclusive-focus controller keyboard before its
    focused tests and integration.
@@ -979,7 +979,7 @@ missing accepted DLV-265/DLV-271/DLV-276 baseline. Never push.
 | DLV-273 | Retired failed refactor by user decision. Production `b54e1e2` and corrections `e98566e`/`dcd58e0` remain rejected branch history and must not be resumed or integrated. Accepted DLV-269 PID 78428 is restored; no production revert was necessary because main never contained DLV-273. |
 | DLV-274 | Complete: production `bf6d524` plus correction `4645f40` preserves 32 MiB per-image limits and raises only decoded/GPU aggregate LRU budgets to 96 MiB. Exact accepted cumulative candidate `949b586` is integrated by `9189cad`; focused tests are integrated through `6ce32b7`. |
 | DLV-275 | Complete: production `baf7bd4` fixes active-lifetime cancellation and adds diagnostics; `2b609fc` isolates widget worker failures; `74ec5e9` removes destructive stale-request pipe cancellation. Exact accepted candidate `949b586` is integrated by `9189cad`, tests by `6ce32b7`, and fresh main Release PID 53016 is responding with the integrated cache policy. |
-| DLV-271 | Exact correction `e65362b` passed the user's reopen/right-stick/D-pad route on PID 19032; post-verdict coverage found a valid overlapping-key position defect, so one bounded renderer correction and renewed physical verdict remain before integration. |
+| DLV-271 | `bab6d5b` corrects the post-verdict overlapping-key defect and `d100f49` adds green focused coverage. Exact coherent PID 56752 is awaiting only the final narrow physical regression verdict before integration. |
 | DLV-276 | Ready after accepted DLV-271 integration: generic themed controller keyboard, exclusive modal input/focus, live-buffer and hint/value correction. Physical Spotify cancel-path proof must preserve the installed Client ID/account. |
 | DLV-265 | Saved until immediately after accepted DLV-276; preserve installed 0.3.3 and existing configuration/account state. |
 | DLV-248 | Deliberately deferred until explicit user promotion. |
