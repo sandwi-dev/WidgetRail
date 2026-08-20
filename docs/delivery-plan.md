@@ -17,8 +17,7 @@ evidence only; this file is the sole authority for current work.
 - By the user's explicit request, the full coherent `Release -SkipTests` build
   from exact main `4b358c0` passed after the managed restore/publish was rerun
   outside the sandbox. Verified candidate PID 17928 exited normally through
-  `WM_CLOSE`; the main executable launched visibly and is responding as PID
-  53016 directly from
+  `WM_CLOSE`; the main executable launched visibly as PID 53016 directly from
   `C:\Users\dwive\Projects\GameBarAlternative\src\OverlayHost\out\Release`.
   `OverlayHost.exe` SHA-256 is
   `0E5834D02C80E4DB6AC6B8661B4DD5DA2C8DD5A3DA495AA55F38759BCA5CE342`,
@@ -26,8 +25,12 @@ evidence only; this file is the sole authority for current work.
   `9BC6391E2033E20E1179F75556E1362D3D36A4073B75F4E3C9B25FA73B4F8F93`,
   and `WidgetBridge.dll` is
   `3E2C828B6FA7F17F56D9F33B3DB8B91D13687688C96B4933391713A2622700D3`.
-  Startup diagnostics explicitly confirm 32 MiB per-image and 96 MiB aggregate
-  decoded/GPU cache limits.
+  Startup diagnostics explicitly confirmed 32 MiB per-image and 96 MiB
+  aggregate decoded/GPU cache limits. PID 53016 was later path/class verified
+  and exited normally through `WM_CLOSE` solely to stage the exact unaccepted
+  DLV-271 physical candidate described below. After that candidate was rejected,
+  the exact accepted main executable was visibly restored as responding PID
+  62056 with the same hash; the reference sample is installed but disabled.
 - Widgets correction DLV-265 remains saved at clean tip `13bd971` plus
   reconciliation `5fd1a06`, with immutable Spotify 0.3.3 installed and the
   existing Client ID/account state unchanged. It resumes only after accepted
@@ -35,7 +38,7 @@ evidence only; this file is the sole authority for current work.
 
 | Lane | Task/worktree | State |
 | --- | --- | --- |
-| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | DLV-274/275 are accepted and integrated through `6ce32b7`. DLV-271 is Assigned from that accepted production/test baseline as the serialized cross-layer lead. DLV-276 is Ready immediately after accepted DLV-271 integration. DLV-273 remains retired. Never push. |
+| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | Corrected DLV-271 commit `829b46f` is rejected by the physical production-shaped reference route: right stick and D-pad cannot scroll, and Down at the last visible row escapes to tray. Correct this same milestone before another launch. DLV-276 remains Ready only after accepted DLV-271 integration. DLV-273 remains retired. Never push. |
 | Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | Preserve saved DLV-265 and installed Spotify state. Do not resume, test, integrate, reinstall, replace configuration, or reset before accepted DLV-276 integration. DLV-270 follows accepted DLV-265; DLV-248 remains deferred. |
 
 ## Execution, review, and architecture rules
@@ -733,6 +736,54 @@ all current bounds, one semantic/scroll/focus owner, v18 coexistence, and the
 green 10,000-item evidence. Rebuild the coherent Release once after correction
 and stop for reviewer source review; do not launch, install the reference
 package, integrate, push, or begin DLV-276.
+
+Transition correction `829b46f2abf763d955e501bdf90de19f821bb567`
+source-reviews clean and passes the previously recorded focused evidence, but
+its exact production-shaped physical route is rejected. The planner validated,
+packed, installed, and enabled capability-free
+`widgetrail.samples.full-application` 0.1.0 from the exact build. The archive is
+11,160 bytes with SHA-256
+`C7D33E8A13660453A282D3B98402708220B9E24D61FE1CA6FB35154FF66D0124`;
+the sample owns 10,000 private records, requests no permissions, projects 32
+records per request, and retains at most 96. Exact accepted main PID 53016 was
+path/class verified and closed normally through `WM_CLOSE`; the corrected
+candidate launched visibly as responding PID 56028 from the platform worktree
+with `OverlayHost.exe` SHA-256
+`E7FE6DF0B629E99F1A4D8C18BC09188BB8189D8E8A50B536F5AA8E866077F1D2`.
+
+The user could not scroll the sample with either right analog or D-pad. Focus
+advanced only through the initially visible rows; Down on the last visible row
+returned input ownership to the tray. The exact session log corroborates the
+failure: v19 admission retained 32 keyed rows and a known 10,000-item estimated
+extent, but right-stick requests repeatedly dropped as
+`renderer-checkpoint-or-boundary`, and focus changed from
+`full-app.document-00009` to tray ownership rather than reaching another
+admitted row or requesting the next window. The existing renderer test proves a
+virtual Scroll only as the snapshot root with a synthetic viewport; it does not
+prove the real nested sample Scroll, shell geometry, controller focus fallback,
+or a physical edge transition. Thus green bounded-work evidence does not
+satisfy the assigned usable long-list contract.
+
+Correct DLV-271 again before launch. Reproduce the exact nested
+`FullApplicationReferenceWidget` shape through the production host/controller
+path. Identify the specific free-scroll plan rejection below the aggregate
+diagnostic; do not guess or special-case the sample. Right stick must create a
+nonzero plan against the committed nested Scroll and traverse its estimated
+global range. D-pad/left-stick Down must keep widget focus authority: it must
+advance through already admitted off-viewport keyed rows, or retain the current
+valid row while one bounded adjacent-window action is pending, but it must not
+fall through to tray merely because the next logical row is currently outside
+the painted viewport. Prove forward and backward window shifts, threshold
+single-flight, focus/anchor retention, compact/wide nested geometry, and no
+extra native/UIA nodes beyond the retained/visible bounds. Preserve all v19
+transition enforcement, v18 eager Scroll behavior, resource limits, and the
+single existing renderer/layout/focus/action owners. Add only the smallest
+typed diagnostic needed to distinguish cache, viewport, offset-boundary, and
+damage rejection if current observability cannot establish the owner. Rebuild
+the coherent Release once and stop for source review; do not install/enable the
+sample, launch, integrate, push, or begin DLV-276. Rejected PID 56028 exited
+normally through verified `WM_CLOSE`; the sample is disabled and exact accepted
+main is visibly restored as PID 62056.
 
 ## Ready platform deliverable — DLV-276: themed controller-first text-entry surface
 
