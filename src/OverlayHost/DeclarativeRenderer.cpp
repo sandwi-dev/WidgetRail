@@ -1028,9 +1028,13 @@ struct DeclarativeRenderer::RenderPass final {
             CollectionDiagnosticObservation current;
             CollectCollectionItems(scroll, scroll, scrollBox, current);
             if (current.itemsTruncated) return;
-            if (std::ranges::find(
+            const bool retainedAnchorSurvives = std::ranges::find(
                     current.itemKeys, existing->second.anchorKey) !=
-                current.itemKeys.end()) {
+                current.itemKeys.end();
+            const bool replacementWindow = scroll.virtualCollectionWindow &&
+                scroll.virtualCollectionWindow->change ==
+                    VirtualCollectionWindowChange::Replace;
+            if (retainedAnchorSurvives && !replacementWindow) {
                 return;
             }
             if (std::abs(previousScrollBox->contentBox.width -
