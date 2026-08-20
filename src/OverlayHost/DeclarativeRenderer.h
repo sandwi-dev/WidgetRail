@@ -174,6 +174,42 @@ struct FocusedFreeScrollPlan final {
     float maximumOffset{};
 };
 
+enum class FocusedFreeScrollPlanDisposition {
+    Planned,
+    MissingCheckpoint,
+    InstanceMismatch,
+    SequenceMismatch,
+    FocusMismatch,
+    InvalidAxis,
+    InvalidDelta,
+    ViewportMismatch,
+    MissingTarget,
+    MissingScrollViewport,
+    MissingScrollBox,
+    AxisMismatch,
+    EmptyScrollViewport,
+    OffsetBoundary,
+    EmptyDamage,
+};
+
+/// Bounded reason data for a rejected free-scroll plan. The host records this
+/// only on an already-coalesced right-stick drop, so renderer safety failures
+/// remain diagnosable without introducing per-frame logging.
+struct FocusedFreeScrollPlanDiagnostic final {
+    FocusedFreeScrollPlanDisposition disposition{
+        FocusedFreeScrollPlanDisposition::MissingCheckpoint};
+    declarative::Rect cachedViewport;
+    declarative::Rect requestedViewport;
+    declarative::Rect scrollViewport;
+    declarative::Rect scrollBox;
+    long long cachedSequence{};
+    long long requestedSequence{};
+    declarative::ScrollAxis requestedAxis{declarative::ScrollAxis::None};
+    declarative::ScrollAxis scrollAxis{declarative::ScrollAxis::None};
+    float priorOffset{};
+    float maximumOffset{};
+};
+
 struct DeclarativeRenderOptions final {
     float pixelScale{1.0F};
     float rootFontSizePx{16.0F};
@@ -288,7 +324,8 @@ public:
         declarative::ScrollAxis axis,
         float deltaDip,
         declarative::Rect viewport,
-        std::wstring_view exactScrollId = {});
+        std::wstring_view exactScrollId = {},
+        FocusedFreeScrollPlanDiagnostic* diagnostic = nullptr);
 
     void CancelPresentationUpdatePlan() noexcept;
 

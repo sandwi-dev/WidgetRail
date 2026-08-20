@@ -5511,6 +5511,29 @@ private:
         }
     }
 
+    [[nodiscard]] static std::wstring_view FocusedFreeScrollPlanDispositionName(
+        const widgetrail::FocusedFreeScrollPlanDisposition disposition) noexcept {
+        using Disposition = widgetrail::FocusedFreeScrollPlanDisposition;
+        switch (disposition) {
+        case Disposition::Planned: return L"planned";
+        case Disposition::MissingCheckpoint: return L"missing-checkpoint";
+        case Disposition::InstanceMismatch: return L"instance-mismatch";
+        case Disposition::SequenceMismatch: return L"sequence-mismatch";
+        case Disposition::FocusMismatch: return L"focus-mismatch";
+        case Disposition::InvalidAxis: return L"invalid-axis";
+        case Disposition::InvalidDelta: return L"invalid-delta";
+        case Disposition::ViewportMismatch: return L"viewport-mismatch";
+        case Disposition::MissingTarget: return L"missing-target";
+        case Disposition::MissingScrollViewport: return L"missing-scroll-viewport";
+        case Disposition::MissingScrollBox: return L"missing-scroll-box";
+        case Disposition::AxisMismatch: return L"axis-mismatch";
+        case Disposition::EmptyScrollViewport: return L"empty-scroll-viewport";
+        case Disposition::OffsetBoundary: return L"offset-boundary";
+        case Disposition::EmptyDamage: return L"empty-damage";
+        default: return L"unknown";
+        }
+    }
+
     void FlushRightStickDropDiagnostic() {
         if (rightStickDropCount_ > 1 && !rightStickDropSignature_.empty()) {
             AppendDiagnostic(
@@ -5715,8 +5738,19 @@ private:
         const float interfaceScale = appearanceState_.current()
             ? static_cast<float>(appearanceState_.current()->interfaceScale)
             : 1.0F;
+        // The content HWND may retain a larger composition container while the
+        // admitted child surface keeps the destination widget's authored
+        // extent. The renderer checkpoint is built in that child-surface
+        // coordinate space, so free-scroll planning must use the same exact
+        // dimensions rather than recomputing a viewport from the container.
+        const auto contentWidth = compositionSurface_.width();
+        const auto contentHeight = compositionSurface_.height();
+        if (contentWidth == 0 || contentHeight == 0) {
+            reject(L"content-surface-unavailable");
+            return true;
+        }
         const auto metrics = widgetrail::ComputeOverlayRenderMetrics(
-            client.right - client.left, client.bottom - client.top,
+            static_cast<int>(contentWidth), static_cast<int>(contentHeight),
             dpi, interfaceScale);
         const auto geometry = metrics
             ? ComputeCurrentWidgetSurfaceGeometry(
@@ -5753,11 +5787,31 @@ private:
             }
             exactScrollId = owner.scrollId;
         }
+        widgetrail::FocusedFreeScrollPlanDiagnostic planDiagnostic;
         const auto plan = declarativeRenderer_->PlanFocusedFreeScroll(
             *snapshot, interactionSession_.focusedElementId(), axis,
-            sample.deltaDip, viewport, exactScrollId);
+            sample.deltaDip, viewport, exactScrollId, &planDiagnostic);
         if (!plan) {
-            reject(L"renderer-checkpoint-or-boundary", exactScrollId);
+            const auto rectText = [](const widgetrail::declarative::Rect value) {
+                return std::to_wstring(value.x) + L"," +
+                    std::to_wstring(value.y) + L"," +
+                    std::to_wstring(value.width) + L"," +
+                    std::to_wstring(value.height);
+            };
+            const std::wstring reason =
+                L"renderer-" + std::wstring{FocusedFreeScrollPlanDispositionName(
+                    planDiagnostic.disposition)} +
+                L" cache-seq=" + std::to_wstring(planDiagnostic.cachedSequence) +
+                L" request-seq=" + std::to_wstring(planDiagnostic.requestedSequence) +
+                L" cache-viewport=" + rectText(planDiagnostic.cachedViewport) +
+                L" request-viewport=" + rectText(planDiagnostic.requestedViewport) +
+                L" scroll-viewport=" + rectText(planDiagnostic.scrollViewport) +
+                L" scroll-box=" + rectText(planDiagnostic.scrollBox) +
+                L" scroll-axis=" + std::wstring{FreeScrollAxisName(
+                    planDiagnostic.scrollAxis)} +
+                L" offset=" + std::to_wstring(planDiagnostic.priorOffset) +
+                L"/" + std::to_wstring(planDiagnostic.maximumOffset);
+            reject(reason, exactScrollId);
             return true;
         }
         if (!SubmitWidgetContentDamage(

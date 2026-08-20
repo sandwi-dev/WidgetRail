@@ -3274,40 +3274,85 @@ DeclarativeRenderer::PlanFocusedFreeScroll(
     const declarative::ScrollAxis axis,
     const float deltaDip,
     const Rect viewport,
-    const std::wstring_view exactScrollId) {
+    const std::wstring_view exactScrollId,
+    FocusedFreeScrollPlanDiagnostic* diagnostic) {
     pendingIncrementalPlan_.reset();
+    FocusedFreeScrollPlanDiagnostic localDiagnostic;
+    localDiagnostic.requestedViewport = viewport;
+    localDiagnostic.requestedSequence = snapshot.sequence;
+    localDiagnostic.requestedAxis = axis;
+    const auto reject = [&](const FocusedFreeScrollPlanDisposition disposition) {
+        localDiagnostic.disposition = disposition;
+        if (diagnostic) *diagnostic = localDiagnostic;
+        return std::optional<FocusedFreeScrollPlan>{};
+    };
     const auto& cache = incrementalLayoutCache_;
-    if (!cache || cache->instanceId != snapshot.instanceId ||
-        cache->sequence != snapshot.sequence ||
-        (exactScrollId.empty() && cache->focusedElementId != focusedElementId) ||
-        axis == declarative::ScrollAxis::None || !std::isfinite(deltaDip) ||
-        std::abs(deltaDip) <= 0.001F || !SameRect(cache->viewport, viewport)) {
-        return std::nullopt;
-    }
+    if (!cache)
+        return reject(FocusedFreeScrollPlanDisposition::MissingCheckpoint);
+    localDiagnostic.cachedViewport = cache->viewport;
+    localDiagnostic.cachedSequence = cache->sequence;
+    if (cache->instanceId != snapshot.instanceId)
+        return reject(FocusedFreeScrollPlanDisposition::InstanceMismatch);
+    if (cache->sequence != snapshot.sequence)
+        return reject(FocusedFreeScrollPlanDisposition::SequenceMismatch);
+    if (exactScrollId.empty() && cache->focusedElementId != focusedElementId)
+        return reject(FocusedFreeScrollPlanDisposition::FocusMismatch);
+    if (axis == declarative::ScrollAxis::None)
+        return reject(FocusedFreeScrollPlanDisposition::InvalidAxis);
+    if (!std::isfinite(deltaDip) || std::abs(deltaDip) <= 0.001F)
+        return reject(FocusedFreeScrollPlanDisposition::InvalidDelta);
+    if (!SameRect(cache->viewport, viewport))
+        return reject(FocusedFreeScrollPlanDisposition::ViewportMismatch);
 
     std::vector<const WidgetNode*> path;
     if (!FindNodePath(
             snapshot.root,
             exactScrollId.empty() ? focusedElementId : exactScrollId,
             path)) {
-        return std::nullopt;
+        return reject(FocusedFreeScrollPlanDisposition::MissingTarget);
     }
 
+    bool foundScroll = false;
     for (auto item = path.rbegin(); item != path.rend(); ++item) {
         const WidgetNode& candidate = **item;
         if (candidate.kind != L"scroll") continue;
         if (!exactScrollId.empty() && candidate.id != exactScrollId) continue;
+        foundScroll = true;
         const auto visible = cache->scrollViewports.find(candidate.id);
         const auto* box = cache->layout.Find(NarrowStableId(candidate.id));
-        if (visible == cache->scrollViewports.end() || !box ||
-            box->scrollAxis != axis ||
-            visible->second.rect.width <= 0.0F ||
+        if (visible == cache->scrollViewports.end()) {
+            localDiagnostic.disposition =
+                FocusedFreeScrollPlanDisposition::MissingScrollViewport;
+            continue;
+        }
+        localDiagnostic.scrollViewport = visible->second.rect;
+        if (!box) {
+            localDiagnostic.disposition =
+                FocusedFreeScrollPlanDisposition::MissingScrollBox;
+            continue;
+        }
+        localDiagnostic.scrollBox = box->borderBox;
+        localDiagnostic.scrollAxis = box->scrollAxis;
+        localDiagnostic.priorOffset = box->scrollOffset;
+        localDiagnostic.maximumOffset = box->maximumScrollOffset;
+        if (box->scrollAxis != axis) {
+            localDiagnostic.disposition =
+                FocusedFreeScrollPlanDisposition::AxisMismatch;
+            continue;
+        }
+        if (visible->second.rect.width <= 0.0F ||
             visible->second.rect.height <= 0.0F) {
+            localDiagnostic.disposition =
+                FocusedFreeScrollPlanDisposition::EmptyScrollViewport;
             continue;
         }
         const float next = std::clamp(
             box->scrollOffset + deltaDip, 0.0F, box->maximumScrollOffset);
-        if (std::abs(next - box->scrollOffset) <= 0.001F) continue;
+        if (std::abs(next - box->scrollOffset) <= 0.001F) {
+            localDiagnostic.disposition =
+                FocusedFreeScrollPlanDisposition::OffsetBoundary;
+            continue;
+        }
 
         std::wstring stateKey(snapshot.instanceId);
         stateKey.push_back(L'\x1f');
@@ -3321,7 +3366,7 @@ DeclarativeRenderer::PlanFocusedFreeScroll(
         const auto damage = Intersection(visible->second.rect, viewport);
         if (damage.width <= 0.0F || damage.height <= 0.0F) {
             state.offset = box->scrollOffset;
-            return std::nullopt;
+            return reject(FocusedFreeScrollPlanDisposition::EmptyDamage);
         }
         pendingIncrementalPlan_ = PendingIncrementalPlan{
             snapshot.instanceId,
@@ -3331,6 +3376,8 @@ DeclarativeRenderer::PlanFocusedFreeScroll(
             damage,
             {candidate.id},
         };
+        localDiagnostic.disposition = FocusedFreeScrollPlanDisposition::Planned;
+        if (diagnostic) *diagnostic = localDiagnostic;
         return FocusedFreeScrollPlan{
             IncrementalPresentationPlan{
                 IncrementalPresentationWork::LocalLayout, damage},
@@ -3342,6 +3389,10 @@ DeclarativeRenderer::PlanFocusedFreeScroll(
             box->maximumScrollOffset,
         };
     }
+    if (!foundScroll)
+        localDiagnostic.disposition =
+            FocusedFreeScrollPlanDisposition::MissingTarget;
+    if (diagnostic) *diagnostic = localDiagnostic;
     return std::nullopt;
 }
 
