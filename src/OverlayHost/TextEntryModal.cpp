@@ -183,7 +183,7 @@ TextEntryModalResult TextEntryModal::Show(
         ? L"WidgetRail text entry"
         : L"WidgetRail text entry - " + placeholder_;
     window_ = CreateWindowExW(
-        WS_EX_DLGMODALFRAME | WS_EX_CONTROLPARENT,
+        WS_EX_CONTROLPARENT,
         kClassName,
         title.c_str(),
         WS_POPUP | WS_CLIPCHILDREN,
