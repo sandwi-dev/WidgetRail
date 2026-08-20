@@ -73,6 +73,11 @@ int PixelHeight(const double dip, const double scale, const double textScale) no
     return std::max(10, static_cast<int>(std::lround(dip * scale * textScale)));
 }
 
+bool IsPasteGesture(const WPARAM key) noexcept {
+    return (key == L'V' && (GetKeyState(VK_CONTROL) & 0x8000) != 0) ||
+        (key == VK_INSERT && (GetKeyState(VK_SHIFT) & 0x8000) != 0);
+}
+
 } // namespace
 
 TextEntryModalLayout CalculateTextEntryModalLayout(
@@ -400,6 +405,70 @@ void TextEntryModal::Insert(const wchar_t value) {
     InvalidateRect(edit_, nullptr, TRUE);
 }
 
+bool TextEntryModal::PasteClipboard() {
+    if (password_ || !window_ || !edit_) return false;
+
+    const int length = GetWindowTextLengthW(edit_);
+    if (length < 0 || static_cast<std::size_t>(length) > maximumLength_)
+        return false;
+    DWORD selectionStart{};
+    DWORD selectionEnd{};
+    SendMessageW(edit_, EM_GETSEL,
+        reinterpret_cast<WPARAM>(&selectionStart), reinterpret_cast<LPARAM>(&selectionEnd));
+    const auto boundedStart = std::min<std::size_t>(selectionStart, length);
+    const auto boundedEnd = std::min<std::size_t>(selectionEnd, length);
+    const auto selected = boundedEnd >= boundedStart
+        ? boundedEnd - boundedStart : 0;
+    const auto retained = static_cast<std::size_t>(length) - selected;
+    if (retained > maximumLength_) return false;
+    const auto remaining = maximumLength_ - retained;
+
+    if (!IsClipboardFormatAvailable(CF_UNICODETEXT) ||
+        !OpenClipboard(window_)) return false;
+    bool admitted{};
+    const HANDLE handle = GetClipboardData(CF_UNICODETEXT);
+    if (handle) {
+        const SIZE_T units = GlobalSize(handle) / sizeof(wchar_t);
+        const auto* text = static_cast<const wchar_t*>(GlobalLock(handle));
+        if (text && units != 0) {
+            const auto scanLimit = std::min<std::size_t>(units, remaining + 1);
+            std::size_t count{};
+            bool valid = scanLimit != 0;
+            while (valid && count < scanLimit && text[count] != L'\0') {
+                const wchar_t value = text[count];
+                if (value < 0x20 || value == 0x7f) valid = false;
+                ++count;
+            }
+            // The complete clipboard value, including its terminator, must fit
+            // inside the bounded scan and the exact remaining edit capacity.
+            valid = valid && count < scanLimit && text[count] == L'\0' &&
+                count != 0 && count <= remaining;
+            for (std::size_t index = 0; valid && index < count; ++index) {
+                const auto value = static_cast<unsigned int>(text[index]);
+                if (value >= 0xD800 && value <= 0xDBFF) {
+                    if (++index >= count) {
+                        valid = false;
+                    } else {
+                        const auto trailing = static_cast<unsigned int>(text[index]);
+                        valid = trailing >= 0xDC00 && trailing <= 0xDFFF;
+                    }
+                } else if (value >= 0xDC00 && value <= 0xDFFF) {
+                    valid = false;
+                }
+            }
+            if (valid) {
+                SendMessageW(edit_, EM_REPLACESEL, TRUE,
+                    reinterpret_cast<LPARAM>(text));
+                admitted = true;
+            }
+        }
+        if (text) GlobalUnlock(handle);
+    }
+    CloseClipboard();
+    if (admitted) InvalidateRect(edit_, nullptr, TRUE);
+    return admitted;
+}
+
 void TextEntryModal::Backspace() {
     if (!edit_) return;
     DWORD selectionStart{};
@@ -560,12 +629,17 @@ LRESULT CALLBACK TextEntryModal::EditWindowProc(
     auto* self = reinterpret_cast<TextEntryModal*>(GetWindowLongPtrW(window, GWLP_USERDATA));
     if (!self || !self->priorEditWindowProc_)
         return DefWindowProcW(window, message, wParam, lParam);
+    if (message == WM_PASTE) {
+        (void)self->PasteClipboard();
+        return 0;
+    }
     if (self->password_ && (message == WM_COPY || message == WM_CUT ||
-        message == WM_PASTE || message == WM_CONTEXTMENU)) return 0;
+        message == WM_CONTEXTMENU)) return 0;
     if (message == WM_GETDLGCODE)
         return DLGC_WANTARROWS | DLGC_WANTCHARS | DLGC_WANTALLKEYS;
     if (message == WM_KEYDOWN) {
-        if (wParam == VK_ESCAPE) self->Complete(TextEntryModalOutcome::Cancelled);
+        if (IsPasteGesture(wParam)) (void)self->PasteClipboard();
+        else if (wParam == VK_ESCAPE) self->Complete(TextEntryModalOutcome::Cancelled);
         else if (wParam == VK_RETURN) self->Complete(TextEntryModalOutcome::Committed);
         else if (wParam == VK_BACK) self->Backspace();
         else if (wParam == VK_LEFT) self->MoveCaret(-1);
@@ -631,7 +705,9 @@ LRESULT CALLBACK TextEntryModal::KeyWindowProc(
         InvalidateRect(window, nullptr, TRUE);
     }
     if (message == WM_KEYDOWN) {
-        if (wParam == VK_ESCAPE) self->Complete(TextEntryModalOutcome::Cancelled);
+        if (IsPasteGesture(wParam)) (void)self->PasteClipboard();
+        else if (wParam == VK_SPACE) SendMessageW(window, BM_CLICK, 0, 0);
+        else if (wParam == VK_ESCAPE) self->Complete(TextEntryModalOutcome::Cancelled);
         else if (wParam == VK_RETURN) self->Complete(TextEntryModalOutcome::Committed);
         else if (wParam == VK_BACK) self->Backspace();
         else if (wParam == VK_LEFT) self->MoveCaret(-1);
@@ -654,7 +730,6 @@ LRESULT CALLBACK TextEntryModal::KeyWindowProc(
     if (message == WM_CHAR) {
         if (wParam != VK_BACK && wParam != VK_RETURN && wParam != VK_ESCAPE && wParam != L' ')
             self->HandlePhysicalCharacter(static_cast<wchar_t>(wParam));
-        else if (wParam == L' ') self->ActivateFocusedKey();
         return 0;
     }
     return CallWindowProcW(self->priorKeyWindowProc_, window, message, wParam, lParam);
@@ -679,8 +754,12 @@ LRESULT TextEntryModal::HandleMessage(
     case WM_COMMAND: {
         const int id = LOWORD(wParam);
         if (id >= kKeyBase && id < kKeyBase + static_cast<int>(keys_.size())) {
-            focusIndex_ = static_cast<std::size_t>(id - kKeyBase);
-            ActivateFocusedKey();
+            const auto index = static_cast<std::size_t>(id - kKeyBase);
+            const auto source = reinterpret_cast<HWND>(lParam);
+            if (HIWORD(wParam) == BN_CLICKED && source == keys_[index]) {
+                focusIndex_ = index;
+                ActivateFocusedKey();
+            }
         }
         return 0;
     }

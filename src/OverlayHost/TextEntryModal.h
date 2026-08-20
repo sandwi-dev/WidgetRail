@@ -113,6 +113,7 @@ private:
     void ApplyLayout();
     void UpdateKeyLabels();
     void Insert(wchar_t value);
+    [[nodiscard]] bool PasteClipboard();
     void Backspace();
     void MoveCaret(int delta);
     void ActivateFocusedKey();
