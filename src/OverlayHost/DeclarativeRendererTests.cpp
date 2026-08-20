@@ -1311,6 +1311,86 @@ void VirtualCollectionWindowKeepsNativeWorkBounded() {
     Check(initial.focusRects.contains(L"virtual.item.4992"),
         "the first admitted logical item is visible at its global offset");
 
+    const auto replacementWindow = [&snapshot](
+        const long long sequence,
+        const int firstIndex,
+        const int anchorIndex) {
+        auto result = snapshot;
+        result.sequence = sequence;
+        result.root.children.clear();
+        result.root.collectionAnchorKey =
+            L"item." + std::to_wstring(anchorIndex);
+        result.root.virtualCollectionWindow->requestGeneration =
+            static_cast<std::uint64_t>(sequence + 6);
+        result.root.virtualCollectionWindow->change =
+            widgetrail::VirtualCollectionWindowChange::Replace;
+        result.root.virtualCollectionWindow->firstItemIndex = firstIndex;
+        result.root.virtualCollectionWindow->hasBefore = firstIndex > 0;
+        result.root.virtualCollectionWindow->hasAfter = firstIndex + 32 < 10'000;
+        for (int index = firstIndex; index < firstIndex + 32; ++index) {
+            auto item = Node(
+                (L"virtual.item." + std::to_wstring(index)).c_str(),
+                L"button");
+            item.text = L"Replacement item";
+            item.accessibilityLabel = L"Virtual item " + std::to_wstring(index);
+            item.actionId = L"select";
+            item.collectionItemKey = L"item." + std::to_wstring(index);
+            item.baseStyle = {
+                {L"min-height", Length(index % 2 == 0 ? 44.0 : 56.0)},
+                {L"flex-shrink", Number(0)},
+            };
+            result.root.children.push_back(std::move(item));
+        }
+        return result;
+    };
+    const auto renderVirtual = [&](DeclarativeRenderer& targetRenderer,
+                                   const WidgetSnapshot& value) {
+        target->BeginDraw();
+        const auto result = targetRenderer.Render(
+            target.Get(), value, {}, viewport, accessibleOptions);
+        Check(SUCCEEDED(target->EndDraw()),
+              "virtual replacement draw completes");
+        Check(result.succeeded, "virtual replacement render succeeds");
+        return result;
+    };
+
+    DeclarativeRenderer reopenRenderer{d2d.Get(), write.Get(), nullptr};
+    const auto deepCheckpoint = renderVirtual(reopenRenderer, snapshot);
+    Check(deepCheckpoint.scrollOffsets.at(L"virtual.list") > 200.0F * 56.0F,
+          "virtual reopen fixture retains an offset beyond item 200");
+    const auto firstWindow = replacementWindow(2, 0, 0);
+    const auto reopened = renderVirtual(reopenRenderer, firstWindow);
+    const auto reopenedFirst =
+        reopened.elementVisibleRects.at(L"virtual.item.0");
+    Check(reopened.scrollOffsets.at(L"virtual.list") < 1.0F &&
+              reopenedFirst.width > 0.0F && reopenedFirst.height > 0.0F &&
+              reopened.timing.collectionAdmissionSummary.find(
+                  L"reconciliation=replace-window") != std::wstring::npos,
+          "fresh replacement window retires an unreachable deep offset and exposes its rows");
+
+    DeclarativeRenderer exactAnchorRenderer{d2d.Get(), write.Get(), nullptr};
+    const auto exactBefore = renderVirtual(exactAnchorRenderer, snapshot);
+    const auto exactAfter = renderVirtual(
+        exactAnchorRenderer, replacementWindow(2, 4992, 4992));
+    Near(exactAfter.scrollOffsets.at(L"virtual.list"),
+         exactBefore.scrollOffsets.at(L"virtual.list"),
+         "replacement with the same exact anchor preserves its retained position");
+
+    DeclarativeRenderer overlapRenderer{d2d.Get(), write.Get(), nullptr};
+    const auto overlapBefore = renderVirtual(overlapRenderer, snapshot);
+    const auto overlapBeforeY =
+        overlapBefore.elementRects.at(L"virtual.item.4992").y;
+    const auto overlapAfter = renderVirtual(
+        overlapRenderer, replacementWindow(2, 4990, 4990));
+    Check(overlapAfter.timing.collectionAdmissionSummary.find(
+              L"reconciliation=overlap") != std::wstring::npos &&
+              overlapAfter.timing.collectionAdmissionSummary.find(
+                  L"retained-key=item.4992") != std::wstring::npos,
+          "replacement rows already covering the viewport use stable overlap reconciliation");
+    Near(overlapAfter.elementRects.at(L"virtual.item.4992").y,
+         overlapBeforeY,
+         "overlapping keyed replacement preserves the retained row position");
+
     const auto plan = renderer.PlanFocusedFreeScroll(
         snapshot, L"virtual.item.4992",
         widgetrail::declarative::ScrollAxis::Vertical,
