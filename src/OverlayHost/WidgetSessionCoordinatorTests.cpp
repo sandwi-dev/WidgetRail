@@ -65,6 +65,38 @@ WidgetSnapshot Snapshot(
     return result;
 }
 
+WidgetSnapshot VirtualSnapshot(
+    const wchar_t* instance,
+    const long long sequence,
+    const std::uint64_t generation,
+    const int first) {
+    auto result = Snapshot(instance, sequence);
+    result.protocolVersion = 19;
+    result.root.id = L"virtual.list";
+    result.root.kind = L"scroll";
+    result.root.scrollAxis = L"vertical";
+    result.root.collectionAnchorKey = L"key." + std::to_wstring(first);
+    result.root.virtualCollectionWindow = widgetrail::VirtualCollectionWindow{
+        generation,
+        widgetrail::VirtualCollectionWindowChange::Replace,
+        static_cast<std::uint64_t>(first),
+        10'000,
+        first > 0,
+        first + 2 < 10'000,
+        52.0,
+    };
+    for (int index = first; index < first + 2; ++index) {
+        widgetrail::WidgetNode item;
+        item.id = L"item.node." + std::to_wstring(index);
+        item.kind = L"button";
+        item.text = L"Item";
+        item.actionId = L"select";
+        item.collectionItemKey = L"key." + std::to_wstring(index);
+        result.root.children.push_back(std::move(item));
+    }
+    return result;
+}
+
 struct FakeBridge final {
     std::mutex mutex;
     std::condition_variable_any changed;
@@ -1582,6 +1614,50 @@ void AtomicUpdateAdmissionAndCheckpointFallback() {
            std::make_pair(0LL, false));
 }
 
+void VirtualWindowAdmissionRejectsStaleAndRetainsCheckpoint() {
+    FakeBridge bridge;
+    bridge.catalog = {Descriptor(
+        L"alpha", L"alpha.one", L"runtime-1", L"view-1")};
+    bridge.snapshots[L"alpha"] = VirtualSnapshot(L"alpha.one", 1, 2, 100);
+    WidgetSessionCoordinator coordinator(bridge.Operations());
+    assert(coordinator.EstablishCatalog());
+    coordinator.SetLifecycleTargets({{L"alpha", WidgetLifecycleState::Visible}});
+    (void)WaitEvents(coordinator, [](const auto& events) {
+        return std::any_of(events.begin(), events.end(), [](const auto& event) {
+            return event.kind == WidgetSessionEventKind::SnapshotAdmitted;
+        });
+    });
+    assert(coordinator.Snapshot(L"alpha") &&
+           coordinator.Snapshot(L"alpha")->sequence == 1);
+
+    bridge.snapshots[L"alpha"] = VirtualSnapshot(L"alpha.one", 2, 1, 98);
+    assert(coordinator.RequestSnapshot(L"alpha"));
+    const auto stale = WaitEvents(coordinator, [](const auto& events) {
+        return std::any_of(events.begin(), events.end(), [](const auto& event) {
+            return event.kind == WidgetSessionEventKind::Failed;
+        });
+    });
+    assert(std::any_of(stale.begin(), stale.end(), [](const auto& event) {
+        return event.failure.stage == WidgetSessionFailureStage::Protocol;
+    }));
+    assert(coordinator.Snapshot(L"alpha") &&
+           coordinator.Snapshot(L"alpha")->sequence == 1 &&
+           coordinator.Snapshot(L"alpha")->root.virtualCollectionWindow->
+               requestGeneration == 2);
+
+    bridge.snapshots[L"alpha"] = VirtualSnapshot(L"alpha.one", 3, 3, 102);
+    assert(coordinator.RequestSnapshot(L"alpha", true));
+    (void)WaitEvents(coordinator, [](const auto& events) {
+        return std::any_of(events.begin(), events.end(), [](const auto& event) {
+            return event.kind == WidgetSessionEventKind::SnapshotAdmitted;
+        });
+    });
+    assert(coordinator.Snapshot(L"alpha") &&
+           coordinator.Snapshot(L"alpha")->sequence == 3 &&
+           coordinator.Snapshot(L"alpha")->root.virtualCollectionWindow->
+               requestGeneration == 3);
+}
+
 } // namespace
 
 int main() {
@@ -1606,5 +1682,6 @@ int main() {
     SelectedTraceRejectsPinnedAndSupersededAdmissions();
     SelectedLifecycleCorrelationExcludesPinnedTarget();
     AtomicUpdateAdmissionAndCheckpointFallback();
-    std::cout << "WidgetSessionCoordinatorTests passed (21 scenarios)\n";
+    VirtualWindowAdmissionRejectsStaleAndRetainsCheckpoint();
+    std::cout << "WidgetSessionCoordinatorTests passed (22 scenarios)\n";
 }

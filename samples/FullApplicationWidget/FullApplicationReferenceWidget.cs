@@ -35,7 +35,10 @@ public sealed class FullApplicationReferenceWidget : Widget
                 new("full-app.document-list",
                     item => new WidgetCollectionItemKey(item.Id),
                     item => "full-app." + item.Id,
-                    "full-app.retry"),
+                    "full-app.retry")
+                {
+                    EstimatedItemExtent = 56,
+                },
             ],
         });
     }

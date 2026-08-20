@@ -255,6 +255,31 @@ public sealed record WidgetQuickAction(
     string Label,
     WidgetQuickActionCapability? Capability = null);
 
+[JsonConverter(typeof(JsonStringEnumConverter<VirtualCollectionWindowChange>))]
+public enum VirtualCollectionWindowChange
+{
+    Replace,
+    Append,
+    Prepend,
+}
+
+/// <summary>
+/// Protocol-v19 bounded projection of a widget-private collection. The
+/// admitted keyed children remain the only live semantic nodes. Known logical
+/// positions let the host reserve estimated off-window extent without
+/// materializing those private items.
+/// </summary>
+public sealed record VirtualCollectionWindow
+{
+    public required long RequestGeneration { get; init; }
+    public required VirtualCollectionWindowChange Change { get; init; }
+    public long? FirstItemIndex { get; init; }
+    public long? TotalItemCount { get; init; }
+    public required bool HasBefore { get; init; }
+    public required bool HasAfter { get; init; }
+    public required double EstimatedItemExtent { get; init; }
+}
+
 /// <summary>A renderer-neutral node. Properties that do not apply to Kind must be null.</summary>
 public sealed record ViewNode
 {
@@ -339,6 +364,12 @@ public sealed record ViewNode
     public string? ScrollNearStartActionId { get; init; }
     public string? ScrollNearEndActionId { get; init; }
     public int? ScrollPaginationThreshold { get; init; }
+    /// <summary>
+    /// Optional protocol-v19 logical presentation window. Only the admitted
+    /// keyed descendants are semantic; the host owns estimated off-window
+    /// extent, scrolling, clipping, focus, layout, and accessibility.
+    /// </summary>
+    public VirtualCollectionWindow? VirtualCollectionWindow { get; init; }
     /// <summary>
     /// Protocol-v14 keyed collection anchor retained at the same viewport
     /// position when children are appended, prepended, refreshed, or evicted.

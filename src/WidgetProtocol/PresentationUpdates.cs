@@ -57,6 +57,7 @@ public enum PresentationProperty
     ScrollNearStartActionId,
     ScrollNearEndActionId,
     ScrollPaginationThreshold,
+    VirtualCollectionWindow,
     CollectionAnchorKey,
     CollectionItemKey,
     AdvancedPresentationSlot,
@@ -186,6 +187,7 @@ public static class PresentationPropertyMetadata
         PresentationProperty.ActionSurfaceOrientation or
         PresentationProperty.ScrollAxis or
         PresentationProperty.ScrollPaginationThreshold or
+        PresentationProperty.VirtualCollectionWindow or
         PresentationProperty.CollectionAnchorKey or
         PresentationProperty.CollectionItemKey or
         PresentationProperty.AdvancedPresentationSlot or

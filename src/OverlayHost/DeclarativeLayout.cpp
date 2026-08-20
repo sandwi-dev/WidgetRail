@@ -305,7 +305,10 @@ private:
         inputs_.emplace_back();
         const auto resolvedPadding = ResolveSpacing(
             element.padding, element.id, false);
-        auto ownMaximumWidth = inheritedMaximumWidth;
+        auto ownMaximumWidth = element.estimatesOffWindowScrollExtent &&
+                parentScrollAxis == ScrollAxis::Horizontal
+            ? kMaximumCoordinate
+            : inheritedMaximumWidth;
         if (element.width)
             ownMaximumWidth = std::min(ownMaximumWidth, ClampFinite(
                 *element.width, 0.0F, 0.0F, kMaximumCoordinate));

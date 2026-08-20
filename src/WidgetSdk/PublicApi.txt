@@ -1862,6 +1862,7 @@ property WidgetRail.WidgetProtocol.SliderInteractionMode? WidgetRail.WidgetSdk.S
 property WidgetRail.WidgetProtocol.SliderInteractionMode? WidgetRail.WidgetSdk.SliderElement.ControllerInteractionMode { get; set; }
 property WidgetRail.WidgetProtocol.ViewSnapshot WidgetRail.WidgetSdk.WidgetScenarioResult.Snapshot { get; }
 property WidgetRail.WidgetProtocol.ViewSnapshot? WidgetRail.WidgetSdk.WidgetScenarioRunResult.FinalSnapshot { get; set; }
+property WidgetRail.WidgetProtocol.VirtualCollectionWindowChange WidgetRail.WidgetSdk.WidgetCursorResourceSnapshot<TItem>.WindowChange { get; set; }
 property WidgetRail.WidgetProtocol.WidgetAdvancedPresentationSlot WidgetRail.WidgetSdk.AdvancedPresentationSlotElement.Slot { get; set; }
 property WidgetRail.WidgetProtocol.WidgetAdvancedPresentationView? WidgetRail.WidgetSdk.WidgetView.AdvancedPresentation { get; set; }
 property WidgetRail.WidgetProtocol.WidgetGlyph WidgetRail.WidgetSdk.IconElement.Glyph { get; set; }
@@ -2069,6 +2070,7 @@ property double WidgetRail.WidgetSdk.WidgetAudioSession.Volume { get; set; }
 property double WidgetRail.WidgetSdk.WidgetMediaSession.PlaybackRate { get; set; }
 property double? WidgetRail.WidgetSdk.ControllerInputEvent.RequestedValue { get; set; }
 property double? WidgetRail.WidgetSdk.WidgetActionEvent.RequestedValue { get; set; }
+property double? WidgetRail.WidgetSdk.WidgetCursorViewport<TItem>.EstimatedItemExtent { get; set; }
 property int WidgetRail.WidgetSdk.TextEntryElement.MaximumLength { get; set; }
 property int WidgetRail.WidgetSdk.WidgetAppLibraryCursorRequest.Limit { get; set; }
 property int WidgetRail.WidgetSdk.WidgetAppLibraryItem.PresentationVersion { get; set; }
@@ -2106,6 +2108,7 @@ property long WidgetRail.WidgetSdk.WidgetActionEvent.Sequence { get; set; }
 property long WidgetRail.WidgetSdk.WidgetAppLibraryMetadataAttribution.RetrievedAtUnixMilliseconds { get; set; }
 property long WidgetRail.WidgetSdk.WidgetAppLibrarySource.Revision { get; set; }
 property long WidgetRail.WidgetSdk.WidgetCursorResourceSnapshot<TItem>.Revision { get; set; }
+property long WidgetRail.WidgetSdk.WidgetCursorResourceSnapshot<TItem>.WindowGeneration { get; set; }
 property long WidgetRail.WidgetSdk.WidgetInvalidatedEventArgs.Revision { get; set; }
 property long WidgetRail.WidgetSdk.WidgetMediaSession.CapturedAtUnixMilliseconds { get; set; }
 property long WidgetRail.WidgetSdk.WidgetMediaSession.DurationMilliseconds { get; set; }
@@ -2126,6 +2129,10 @@ property long WidgetRail.WidgetSdk.WidgetTestPrivateState.Revision { get; }
 property long? WidgetRail.WidgetSdk.WidgetAppLibraryMetadata.LastPlayedAtUnixMilliseconds { get; set; }
 property long? WidgetRail.WidgetSdk.WidgetAppLibraryMetadata.PlaytimeMinutes { get; set; }
 property long? WidgetRail.WidgetSdk.WidgetAppLibrarySource.LastSuccessfulRefreshAtUnixMilliseconds { get; set; }
+property long? WidgetRail.WidgetSdk.WidgetCursorPage<TItem>.FirstItemIndex { get; set; }
+property long? WidgetRail.WidgetSdk.WidgetCursorPage<TItem>.TotalItemCount { get; set; }
+property long? WidgetRail.WidgetSdk.WidgetCursorResourceSnapshot<TItem>.FirstItemIndex { get; set; }
+property long? WidgetRail.WidgetSdk.WidgetCursorResourceSnapshot<TItem>.TotalItemCount { get; set; }
 property long? WidgetRail.WidgetSdk.WidgetPrivateSecretMetadata.LastWrittenUnixMilliseconds { get; set; }
 property static WidgetRail.WidgetSdk.WidgetCapabilityEvent<WidgetRail.WidgetSdk.WidgetAudioDevicesChanged> WidgetRail.WidgetSdk.WidgetAudioCapabilities.DevicesChanged { get; }
 property static WidgetRail.WidgetSdk.WidgetCapabilityEvent<WidgetRail.WidgetSdk.WidgetAudioInputChanged> WidgetRail.WidgetSdk.WidgetAudioCapabilities.InputChanged { get; }

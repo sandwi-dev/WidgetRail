@@ -503,6 +503,47 @@ struct DeclarativeRenderer::RenderPass final {
         return adapted;
     }
 
+    [[nodiscard]] static std::size_t VirtualCollectionItemCount(
+        const WidgetNode& collectionRoot) noexcept {
+        std::size_t count{};
+        const auto visit = [&](const auto& self,
+                               const WidgetNode& node,
+                               const bool root) -> void {
+            if (!root && node.kind == L"scroll") return;
+            if (!node.collectionItemKey.empty()) {
+                ++count;
+                return;
+            }
+            for (const auto& child : node.children) self(self, child, false);
+        };
+        visit(visit, collectionRoot, true);
+        return count;
+    }
+
+    [[nodiscard]] static std::optional<LayoutElement> VirtualCollectionSpacer(
+        const std::string_view scrollId,
+        const std::string_view suffix,
+        const declarative::ScrollAxis axis,
+        const std::uint64_t itemCount,
+        const double estimatedItemExtent,
+        const float gap) {
+        if (itemCount == 0 || axis == declarative::ScrollAxis::None)
+            return std::nullopt;
+        const auto extent = static_cast<float>(std::max(
+            0.0, static_cast<double>(itemCount) * estimatedItemExtent - gap));
+        if (!(extent > 0.0F) || !std::isfinite(extent)) return std::nullopt;
+        LayoutElement spacer;
+        spacer.id = std::string{scrollId} + std::string{suffix};
+        spacer.flexGrow = 0.0F;
+        spacer.flexShrink = 0.0F;
+        spacer.estimatesOffWindowScrollExtent = true;
+        if (axis == declarative::ScrollAxis::Vertical)
+            spacer.height = extent;
+        else
+            spacer.width = extent;
+        return spacer;
+    }
+
     [[nodiscard]] LayoutElement PrepareNode(
         const WidgetNode& node,
         const std::string_view parentId,
@@ -643,6 +684,15 @@ struct DeclarativeRenderer::RenderPass final {
                 if (!measurementOnly)
                     offset->second.lastAccess = ++owner->scrollStateAccessClock_;
                 element.scrollOffset = measurementOnly ? 0.0F : offset->second.offset;
+            } else if (!measurementOnly && node.virtualCollectionWindow &&
+                       node.virtualCollectionWindow->firstItemIndex) {
+                const auto leading = static_cast<float>(
+                    static_cast<double>(*node.virtualCollectionWindow->firstItemIndex) *
+                    node.virtualCollectionWindow->estimatedItemExtent);
+                if (std::isfinite(leading)) {
+                    element.scrollOffset = leading;
+                    StoreScrollOffset(key, leading);
+                }
             }
         }
         switch (style.justify()) {
@@ -664,12 +714,22 @@ struct DeclarativeRenderer::RenderPass final {
         // parent. Ordinary auto-sized nodes keep Taffy's inherited stretch;
         // definite dimensions, constraints, and aspect ratio still bound it.
         if (node.kind == L"loadingIndicator") element.stretchCrossAxis = false;
-        element.children.reserve(node.children.size());
+        element.children.reserve(node.children.size() + 2U);
         const float textScale = std::isfinite(options.accessibility.textScale) &&
                 options.accessibility.textScale >= 0.85F &&
                 options.accessibility.textScale <= 1.5F
             ? options.accessibility.textScale
             : 1.0F;
+        if (node.kind == L"scroll" && node.virtualCollectionWindow &&
+            node.virtualCollectionWindow->firstItemIndex) {
+            if (auto leading = VirtualCollectionSpacer(
+                    narrowId, "\x1fvirtual-leading", element.scrollAxis,
+                    *node.virtualCollectionWindow->firstItemIndex,
+                    node.virtualCollectionWindow->estimatedItemExtent,
+                    element.gap)) {
+                element.children.push_back(std::move(*leading));
+            }
+        }
         for (const auto& child : node.children) {
             if (!IsResponsiveVisible(child)) continue;
             element.children.push_back(PrepareNode(
@@ -679,6 +739,22 @@ struct DeclarativeRenderer::RenderPass final {
                 parentHeight,
                 style.fontSizePx() / textScale,
                 effectiveBackground));
+        }
+        if (node.kind == L"scroll" && node.virtualCollectionWindow &&
+            node.virtualCollectionWindow->firstItemIndex &&
+            node.virtualCollectionWindow->totalItemCount) {
+            const auto admittedItems = VirtualCollectionItemCount(node);
+            const auto first = *node.virtualCollectionWindow->firstItemIndex;
+            const auto total = *node.virtualCollectionWindow->totalItemCount;
+            const auto after = first + admittedItems <= total
+                ? total - first - admittedItems
+                : 0U;
+            if (auto trailing = VirtualCollectionSpacer(
+                    narrowId, "\x1fvirtual-trailing", element.scrollAxis,
+                    after, node.virtualCollectionWindow->estimatedItemExtent,
+                    element.gap)) {
+                element.children.push_back(std::move(*trailing));
+            }
         }
         return element;
     }
@@ -2215,7 +2291,12 @@ struct DeclarativeRenderer::RenderPass final {
         if (boundaryIds.empty()) return false;
         if (std::find(boundaryIds.begin(), boundaryIds.end(), snapshot->root.id) !=
             boundaryIds.end()) {
-            BuildLayout(!options.suppressFocusedDescendantFollow);
+            BuildLayout(
+                !options.suppressFocusedDescendantFollow,
+                true,
+                options.suppressFocusedDescendantFollow
+                    ? CollectionAnchorPolicy::PreserveFocusFollowOffsets
+                    : CollectionAnchorPolicy::Reconcile);
             return true;
         }
         LayoutOptions layoutOptions;
@@ -3364,7 +3445,12 @@ RenderResult DeclarativeRenderer::Render(
         } else if (!pass.BuildLocalLayout(
                 pendingIncrementalPlan_->layoutBoundaries,
                 incrementalLayoutCache_->nodes)) {
-            pass.BuildLayout(!options.suppressFocusedDescendantFollow);
+            pass.BuildLayout(
+                !options.suppressFocusedDescendantFollow,
+                true,
+                options.suppressFocusedDescendantFollow
+                    ? RenderPass::CollectionAnchorPolicy::PreserveFocusFollowOffsets
+                    : RenderPass::CollectionAnchorPolicy::Reconcile);
         }
         if (pass.layout.valid()) pass.SynchronizeScrollState();
     } else {

@@ -5567,3 +5567,52 @@ generic ambiguity fixture uses the nested test package
 `widgetrail.samples.spotify.preview` with the two valid owning namespaces
 `widgetrail.samples` and `widgetrail.samples.spotify`. The focused Release
 `WidgetConfiguration.Tests` route now passes 5/5. Tier 3 was not rerun.
+
+### DLV-271 — bounded virtual collection presentation windows
+
+Protocol v19 adds one atomic `VirtualCollectionWindow` property to the existing
+keyed cursor `Scroll` contract. It carries a monotonic request generation,
+replace/append/prepend disposition, optional first index and total count,
+before/after availability, and a bounded estimated off-window item extent.
+Managed and native admission reject malformed versions, fields, enums,
+generations, action/boundary mismatches, invalid ranges, more than 256 admitted
+items, more than 1,000,000 logical items, and estimated logical extents above
+1,000,000 DIPs. Failed, stale, cancelled, or regressive windows retain the last
+valid complete checkpoint; protocol v18 and ordinary eager `Scroll` remain
+unchanged.
+
+Before this milestone, `WidgetCursorResource` could retain bounded pages but
+serialized only those pages, so native layout, scroll range, and UIA had no
+logical position or extent authority. After it, the SDK remains the sole page,
+cursor, request-generation, and private-item owner; protocol admission remains
+the sole complete-snapshot boundary; `WidgetSessionCoordinator` remains the
+sole stale-generation/checkpoint authority; `DeclarativeRenderer` and Taffy
+remain the sole scroll/layout owners and add at most two host-internal,
+nonsemantic off-window extent elements; and the existing accessibility tree
+projects admitted items as logical `PositionInSet`/`SizeOfSet`. Off-window
+records are never serialized, admitted as native nodes, laid out individually,
+painted, hit-tested, focused, or exposed through UIA. Both vertical and
+horizontal axes use the same typed policy, and normal focus-follow, nested
+scrolling, retained collection anchors, and protocol-v18 eager collections keep
+their existing owners.
+
+The provider-free Full Application reference holds 10,000 private records while
+publishing 32-item pages and retaining at most 96 admitted items. Its focused
+Release route passes 4/4 for initial projection, forward/backward paging,
+last-good failure/retry, and cancellation. The SDK/protocol route passes 89/89,
+including atomic v19 updates, round-trip/version/range validation, unknown
+extent bounds, stale-safe retry, and monotonic reset/reload generation. The
+worker-to-bridge v19 proof passes 1/1 with 32 then 64 admitted items and no full
+collection payload; its first restricted run was denied only test-owned named
+pipe access, and the exact permission-capable rerun passed.
+
+Focused native Release evidence passes Declarative Renderer 4,965 checks,
+Declarative Layout 250 checks, Accessibility Tree 18 checks, Widget Session
+Coordinator 22 scenarios plus the retained lifecycle/action groups (305
+checks), and the Widget Bridge catalog/parser route. These cases cover 10,000
+logical vertical and horizontal collections, variable admitted content,
+bounded native/UIA nodes, large logical ranges, right-stick offset retention,
+window shifts, stale-generation denial with last-good retention, native parser
+fail-closed bounds, and eager v18 coexistence. No provider-specific behavior,
+second collection/scroll/focus authority, raw patch stream, silent truncation,
+Tier 3, installed-package/configuration change, or push was introduced.

@@ -32,6 +32,67 @@ namespace {
     return static_cast<std::uint64_t>(GetTickCount64());
 }
 
+struct VirtualWindowAdmissionState final {
+    const VirtualCollectionWindow* window{};
+    std::vector<std::wstring> itemKeys;
+};
+
+void CollectVirtualWindows(
+    const WidgetNode& node,
+    std::map<std::wstring, VirtualWindowAdmissionState, std::less<>>& windows) {
+    if (node.virtualCollectionWindow) {
+        auto& state = windows[node.id];
+        state.window = &*node.virtualCollectionWindow;
+        const auto collectItems = [&](const auto& self,
+                                      const WidgetNode& current,
+                                      const bool root) -> void {
+            if (!root && current.kind == L"scroll") return;
+            if (!current.collectionItemKey.empty()) {
+                state.itemKeys.push_back(current.collectionItemKey);
+                return;
+            }
+            for (const auto& child : current.children)
+                self(self, child, false);
+        };
+        collectItems(collectItems, node, true);
+    }
+    for (const auto& child : node.children) CollectVirtualWindows(child, windows);
+}
+
+[[nodiscard]] bool SameVirtualWindow(
+    const VirtualCollectionWindow& left,
+    const VirtualCollectionWindow& right) noexcept {
+    return left.requestGeneration == right.requestGeneration &&
+        left.change == right.change &&
+        left.firstItemIndex == right.firstItemIndex &&
+        left.totalItemCount == right.totalItemCount &&
+        left.hasBefore == right.hasBefore && left.hasAfter == right.hasAfter &&
+        left.estimatedItemExtent == right.estimatedItemExtent;
+}
+
+[[nodiscard]] bool AdmitVirtualWindowTransition(
+    const WidgetSnapshot* checkpoint,
+    const WidgetSnapshot& candidate) {
+    if (!checkpoint) return true;
+    std::map<std::wstring, VirtualWindowAdmissionState, std::less<>> prior;
+    std::map<std::wstring, VirtualWindowAdmissionState, std::less<>> next;
+    CollectVirtualWindows(checkpoint->root, prior);
+    CollectVirtualWindows(candidate.root, next);
+    for (const auto& [scrollId, state] : next) {
+        const auto existing = prior.find(scrollId);
+        if (existing == prior.end()) continue;
+        const auto& oldWindow = *existing->second.window;
+        const auto& newWindow = *state.window;
+        if (newWindow.requestGeneration < oldWindow.requestGeneration)
+            return false;
+        if (newWindow.requestGeneration == oldWindow.requestGeneration &&
+            (!SameVirtualWindow(oldWindow, newWindow) ||
+             existing->second.itemKeys != state.itemKeys))
+            return false;
+    }
+    return true;
+}
+
 } // namespace
 
 WidgetSessionCoordinator::WidgetSessionCoordinator(
@@ -351,6 +412,20 @@ std::vector<WidgetSessionEvent> WidgetSessionCoordinator::TakeEvents() {
                 auto failure = FailureFrom(
                     WidgetSessionFailureStage::Protocol,
                     L"The worker returned a stale or mismatched widget instance.");
+                failures_.insert_or_assign(request.widgetId, failure);
+                auto event = makeEvent(WidgetSessionEventKind::Failed);
+                event.failure = failure;
+                event.completionDisposition =
+                    WidgetSessionCompletionDisposition::Failed;
+                events.push_back(std::move(event));
+                continue;
+            }
+            if (!AdmitVirtualWindowTransition(
+                    Snapshot(request.widgetId), *completion.snapshot)) {
+                CompleteRefresh(request, false);
+                auto failure = FailureFrom(
+                    WidgetSessionFailureStage::Protocol,
+                    L"The widget returned a stale virtual collection window.");
                 failures_.insert_or_assign(request.widgetId, failure);
                 auto event = makeEvent(WidgetSessionEventKind::Failed);
                 event.failure = failure;

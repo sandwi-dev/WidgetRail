@@ -104,6 +104,7 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Managed presentation session preserves sandboxed authority lifecycle and last-good state", ManagedPresentationSessionPreservesSandboxedAuthority),
     ("Managed presentation session preserves the ordinary full-trust runtime", ManagedPresentationSessionPreservesFullTrustRuntime),
     ("Protocol-v2 scroll nodes resolve bridge render roles", ScrollRenderRole),
+    ("Protocol-v19 virtual collection window crosses worker and bridge", VirtualCollectionWindowCrossesBridge),
     ("Protocol-v8 grids, action surfaces, and loading indicators resolve bridge render roles", ActionSurfaceRenderRole),
     ("Protocol-v15 text entries resolve one closed bridge render role", TextEntryRenderRole),
     ("Dashboard-owned controller buttons are rejected", DashboardButtonsStayHostOwned),
@@ -147,7 +148,9 @@ static async Task<int> RunWorkerAsync(string[] arguments)
     var instance = RequiredValue(arguments, "--widget-instance");
     return await WidgetWorkerBootstrap.RunAsync(
         arguments,
-        _ => new BridgeTestWidget(instance));
+        _ => string.Equals(instance, "virtual.instance", StringComparison.Ordinal)
+            ? new VirtualCollectionBridgeWidget()
+            : new BridgeTestWidget(instance));
 }
 
 static async Task OversizedFrameIsRejected()
@@ -3228,6 +3231,50 @@ static Task ScrollRenderRole()
     return Task.CompletedTask;
 }
 
+static async Task VirtualCollectionWindowCrossesBridge()
+{
+    await using var harness = await BridgeHarness.StartBudgetAsync(
+        new WorkerResidencyBudgetOptions { MaximumApplicationWorkers = 1 },
+        new TemporaryWidgetDefinition(
+            "virtual", "dev.test.virtual", "dev.test", "virtual.instance"));
+    var lifecycle = await harness.Client.RequestAsync(
+        BridgeMessageTypes.SetWidgetLifecycle,
+        new BridgeWidgetLifecycleRequest("virtual", WidgetLifecycleState.Visible));
+    Assert.Equal(BridgeMessageTypes.Acknowledged, lifecycle.Type);
+    _ = await harness.Client.ReadEventAsync(BridgeMessageTypes.Invalidation);
+
+    var firstResponse = await harness.Client.RequestAsync(
+        BridgeMessageTypes.GetSnapshot, new WidgetIdRequest("virtual"));
+    Assert.Equal(BridgeMessageTypes.Snapshot, firstResponse.Type);
+    var first = SnapshotJson.Deserialize(System.Text.Encoding.UTF8.GetBytes(
+        firstResponse.Payload.GetProperty("snapshot").GetRawText()));
+    Assert.Equal(ProtocolConstants.VirtualCollectionWindowVersion, first.ProtocolVersion);
+    Assert.Equal(32, first.Root.Children.Count);
+    Assert.Equal(10_000L, first.Root.VirtualCollectionWindow?.TotalItemCount);
+    Assert.Equal(0L, first.Root.VirtualCollectionWindow?.FirstItemIndex);
+    Assert.True(first.Root.VirtualCollectionWindow is { HasBefore: false, HasAfter: true },
+        "Initial virtual bridge window lost its exact boundary authority.");
+
+    var pageAction = first.Root.ScrollNearEndActionId ??
+        throw new InvalidOperationException("Virtual bridge window omitted its next-page action.");
+    var admitted = await harness.Client.RequestAsync(
+        BridgeMessageTypes.Action,
+        new BridgeActionRequest(
+            "virtual", new WidgetActionEvent(pageAction, first.Root.Id)));
+    Assert.Equal(BridgeMessageTypes.Acknowledged, admitted.Type);
+    _ = await harness.Client.ReadEventAsync(BridgeMessageTypes.Invalidation);
+    var secondResponse = await harness.Client.RequestAsync(
+        BridgeMessageTypes.GetSnapshot, new WidgetIdRequest("virtual"));
+    var second = SnapshotJson.Deserialize(System.Text.Encoding.UTF8.GetBytes(
+        secondResponse.Payload.GetProperty("snapshot").GetRawText()));
+    Assert.Equal(64, second.Root.Children.Count);
+    Assert.Equal(2L, second.Root.VirtualCollectionWindow?.RequestGeneration);
+    Assert.Equal(VirtualCollectionWindowChange.Append,
+        second.Root.VirtualCollectionWindow?.Change);
+    Assert.True(second.Root.Children.Count <= 96,
+        "Bridge publication materialized the private 10,000-item collection.");
+}
+
 static Task ActionSurfaceRenderRole()
 {
     var snapshot = new WidgetView(
@@ -3646,6 +3693,90 @@ file sealed class BridgeTestWidget : Widget
             _actionOrder += ",second";
             Invalidate();
         }
+    }
+}
+
+file sealed record VirtualBridgeItem(int Index);
+
+file sealed class VirtualCollectionBridgeWidget : Widget
+{
+    private const int TotalItems = 10_000;
+    private readonly WidgetCursorResource<VirtualBridgeItem> _items;
+
+    internal VirtualCollectionBridgeWidget()
+    {
+        _items = CreateCursorResource<VirtualBridgeItem>("virtual.items", new()
+        {
+            PageSize = 32,
+            MaximumRetainedItems = 96,
+            PaginationThreshold = 2,
+            LoadPage = (cursor, _, limit, _) =>
+            {
+                var start = cursor is null
+                    ? 0
+                    : int.Parse(cursor.Value.Value.AsSpan(1));
+                var count = Math.Min(limit, TotalItems - start);
+                var page = new WidgetCursorPage<VirtualBridgeItem>(
+                    Enumerable.Range(start, count).Select(index =>
+                        new VirtualBridgeItem(index)).ToArray(),
+                    start > 0
+                        ? new WidgetCollectionCursor($"p{Math.Max(0, start - limit)}")
+                        : null,
+                    start + count < TotalItems
+                        ? new WidgetCollectionCursor($"p{start + count}")
+                        : null)
+                {
+                    FirstItemIndex = start,
+                    TotalItemCount = TotalItems,
+                };
+                return ValueTask.FromResult(page);
+            },
+            MapError = _ => new WidgetResourceError(
+                "virtual_page_failed", "The virtual page could not be loaded."),
+            Viewports =
+            [
+                new WidgetCursorViewport<VirtualBridgeItem>(
+                    "virtual.scroll",
+                    item => new WidgetCollectionItemKey($"item.{item.Index}"),
+                    item => $"virtual.item.{item.Index}")
+                {
+                    EstimatedItemExtent = 52,
+                },
+            ],
+        });
+    }
+
+    protected override ValueTask OnActivatedAsync(CancellationToken activeLifetime)
+    {
+        _items.EnsureLoaded();
+        return ValueTask.CompletedTask;
+    }
+
+    public override WidgetView Render()
+    {
+        var snapshot = _items.Snapshot;
+        var rows = snapshot.Items.Select(item => _items.PresentItem(item,
+            UI.Button($"Item {item.Index}", "virtual.open", $"virtual.item.{item.Index}")))
+            .ToArray();
+        var scroll = _items.Present(UI.VerticalScroll("virtual.scroll", rows));
+        return new WidgetView(
+            scroll,
+            snapshot.RequestedFocusId ?? rows.FirstOrDefault()?.Id,
+            Surface: new WidgetSurfaceHints
+            {
+                Mode = WidgetSurfaceMode.Standard,
+                PreferredWidth = 640,
+                PreferredHeight = 520,
+            });
+    }
+
+    public override ValueTask OnActionAsync(
+        WidgetActionEvent action,
+        CancellationToken cancellationToken = default)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        _items.TryHandlePagination(action, out _);
+        return ValueTask.CompletedTask;
     }
 }
 

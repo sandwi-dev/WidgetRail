@@ -245,11 +245,93 @@ void VerifyAtomicPresentationUpdateMaterialization() {
             "Unknown presentation payload fields did not fail closed");
 }
 
+void VerifyVirtualCollectionProtocol() {
+    std::wstring error;
+    const auto snapshot = widgetrail::testing::ParseWidgetSnapshotResponse(R"json({
+        "snapshot": {
+            "protocolVersion":19,
+            "sequence":7,
+            "widgetInstanceId":"virtual.sample",
+            "activeInputScopeId":"virtual.list",
+            "initialFocusId":"virtual.item.5000",
+            "root":{"id":"virtual.list","kind":"scroll","scrollAxis":"vertical",
+                "scrollNearStartActionId":"virtual.before",
+                "scrollNearEndActionId":"virtual.after",
+                "scrollPaginationThreshold":2,
+                "collectionAnchorKey":"key.5000",
+                "virtualCollectionWindow":{
+                    "requestGeneration":4,"change":"append",
+                    "firstItemIndex":5000,"totalItemCount":10000,
+                    "hasBefore":true,"hasAfter":true,
+                    "estimatedItemExtent":56
+                },
+                "children":[
+                    {"id":"virtual.item.5000","kind":"button","text":"A",
+                     "actionId":"select","collectionItemKey":"key.5000","children":[]},
+                    {"id":"virtual.item.5001","kind":"button","text":"B",
+                     "actionId":"select","collectionItemKey":"key.5001","children":[]}
+                ]}
+        },
+        "renderStyles":{}
+    })json", error);
+    Require(snapshot && error.empty() && snapshot->protocolVersion == 19 &&
+                snapshot->root.virtualCollectionWindow &&
+                snapshot->root.virtualCollectionWindow->requestGeneration == 4 &&
+                snapshot->root.virtualCollectionWindow->firstItemIndex == 5000 &&
+                snapshot->root.virtualCollectionWindow->totalItemCount == 10'000,
+            "Protocol-v19 virtual collection window did not cross the native parser");
+
+    error.clear();
+    Require(!widgetrail::testing::ParseWidgetSnapshotResponse(R"json({
+        "snapshot": {
+            "protocolVersion":19,"sequence":8,
+            "widgetInstanceId":"virtual.sample","activeInputScopeId":"virtual.list",
+            "root":{"id":"virtual.list","kind":"scroll","scrollAxis":"vertical",
+                "scrollNearEndActionId":"virtual.after","scrollPaginationThreshold":2,
+                "collectionAnchorKey":"key.9999",
+                "virtualCollectionWindow":{
+                    "requestGeneration":5,"change":"replace",
+                    "firstItemIndex":9999,"totalItemCount":10000,
+                    "hasBefore":false,"hasAfter":true,"estimatedItemExtent":56
+                },
+                "children":[
+                    {"id":"virtual.item.9999","kind":"button","text":"A",
+                     "actionId":"select","collectionItemKey":"key.9999","children":[]},
+                    {"id":"virtual.item.10000","kind":"button","text":"B",
+                     "actionId":"select","collectionItemKey":"key.10000","children":[]}
+                ]}
+        },"renderStyles":{}
+    })json", error),
+            "Out-of-range virtual window was admitted by the native parser");
+
+    error.clear();
+    Require(!widgetrail::testing::ParseWidgetSnapshotResponse(R"json({
+        "snapshot": {
+            "protocolVersion":19,"sequence":9,
+            "widgetInstanceId":"virtual.sample","activeInputScopeId":"virtual.list",
+            "root":{"id":"virtual.list","kind":"scroll","scrollAxis":"vertical",
+                "scrollNearStartActionId":"virtual.before","scrollPaginationThreshold":2,
+                "collectionAnchorKey":"key.1000000",
+                "virtualCollectionWindow":{
+                    "requestGeneration":6,"change":"replace",
+                    "firstItemIndex":1000000,"totalItemCount":null,
+                    "hasBefore":true,"hasAfter":false,"estimatedItemExtent":1
+                },
+                "children":[
+                    {"id":"virtual.item.1000000","kind":"button","text":"A",
+                     "actionId":"select","collectionItemKey":"key.1000000","children":[]}
+                ]}
+        },"renderStyles":{}
+    })json", error),
+            "Unknown-total virtual window escaped the bounded logical item domain");
+}
+
 } // namespace
 
 int main() {
     VerifyFrameSafeCancellationRecovery();
     VerifyAtomicPresentationUpdateMaterialization();
+    VerifyVirtualCollectionProtocol();
     std::vector<wchar_t> secret(14);
     for (std::size_t index = 0; index < secret.size(); ++index)
         secret[index] = static_cast<wchar_t>(L'!' + index);

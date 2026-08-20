@@ -9,6 +9,7 @@ param(
     [switch]$SemanticChurnTestsOnly,
     [switch]$DeclarativeLayoutTestsOnly,
     [switch]$DeclarativeRendererTestsOnly,
+    [switch]$AccessibilityTreeTestsOnly,
     [switch]$PinnedSurfaceTestsOnly,
     [switch]$PinnedPlacementTestsOnly,
     [switch]$ProcessOwnerTestsOnly,
@@ -1200,6 +1201,14 @@ if ($DeclarativeRendererTestsOnly) {
         throw 'DeclarativeRendererTestsOnly cannot be combined with SkipTests.'
     }
     Invoke-DeclarativeRendererTests
+    return
+}
+
+if ($AccessibilityTreeTestsOnly) {
+    if ($SkipTests) {
+        throw 'AccessibilityTreeTestsOnly cannot be combined with SkipTests.'
+    }
+    Invoke-AccessibilityTreeTests
     return
 }
 

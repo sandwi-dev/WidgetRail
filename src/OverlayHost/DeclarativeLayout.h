@@ -106,6 +106,10 @@ struct LayoutElement {
     float flexShrink{1.0F};
     std::optional<float> flexBasis;
     std::optional<float> aspectRatio;
+    // Host-authored, non-semantic virtual-window spacers may exceed the
+    // viewport on their parent's scroll axis. Ordinary authored elements keep
+    // the established inherited-width clamp.
+    bool estimatesOffWindowScrollExtent{};
     bool stretchCrossAxis{true};
     MainAxisAlignment mainAxisAlignment{MainAxisAlignment::Start};
     CrossAxisAlignment crossAxisAlignment{CrossAxisAlignment::Stretch};

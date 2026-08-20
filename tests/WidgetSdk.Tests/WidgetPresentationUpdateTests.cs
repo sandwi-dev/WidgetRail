@@ -10,6 +10,7 @@ internal static class WidgetPresentationUpdateTests
     internal static Task Run()
     {
         PropertyNoOpAndRoundTrip();
+        VirtualCollectionWindowUpdatesAtomically();
         KeyedStructureAndSubtreeReplacement();
         FallbacksAreDeterministic();
         MalformedAndOversizedFailClosed();
@@ -17,6 +18,70 @@ internal static class WidgetPresentationUpdateTests
         PropertyCoalescingIsBounded();
         DifferIsTrustTierNeutral();
         return Task.CompletedTask;
+    }
+
+    private static void VirtualCollectionWindowUpdatesAtomically()
+    {
+        static ViewNode Item(int index) => new()
+        {
+            Id = $"virtual.item.{index}",
+            Kind = ViewNodeKind.Button,
+            Text = $"Item {index}",
+            AccessibilityLabel = $"Item {index}",
+            ActionId = "virtual.open",
+            CollectionItemKey = $"item.{index}",
+        };
+        static VirtualCollectionWindow Window(long generation, int count) => new()
+        {
+            RequestGeneration = generation,
+            Change = generation == 1
+                ? VirtualCollectionWindowChange.Replace
+                : VirtualCollectionWindowChange.Append,
+            FirstItemIndex = 0,
+            TotalItemCount = 10_000,
+            HasBefore = false,
+            HasAfter = true,
+            EstimatedItemExtent = 52,
+        };
+        static ViewSnapshot VirtualSnapshot(long sequence, long generation, int count) => new()
+        {
+            ProtocolVersion = ProtocolConstants.VirtualCollectionWindowVersion,
+            Sequence = sequence,
+            WidgetInstanceId = "virtual.update",
+            ActiveInputScopeId = "virtual.scroll",
+            InitialFocusId = "virtual.item.0",
+            Root = new ViewNode
+            {
+                Id = "virtual.scroll",
+                Kind = ViewNodeKind.Scroll,
+                ScrollAxis = ScrollAxis.Vertical,
+                ScrollNearEndActionId = "virtual.next",
+                ScrollPaginationThreshold = 2,
+                CollectionAnchorKey = "item.0",
+                VirtualCollectionWindow = Window(generation, count),
+                Children = Enumerable.Range(0, count).Select(Item).ToArray(),
+            },
+        };
+
+        var previous = VirtualSnapshot(1, 1, 32);
+        var current = VirtualSnapshot(2, 2, 34);
+        var publication = WidgetPresentationDiff.Create(
+            previous, current, Generation, 1,
+            PresentationUpdateCapabilities.Current, requireCheckpoint: false);
+        True(publication.IsUpdate,
+            "A bounded virtual append should remain one atomic update candidate.");
+        True(publication.Update!.Operations.Any(operation =>
+                operation.Properties?.Any(change =>
+                    change.Property == PresentationProperty.VirtualCollectionWindow) == true),
+            "Virtual window authority was omitted from the atomic update.");
+        var admitted = PresentationUpdateMaterializer.Apply(
+            previous, publication.Update, Generation);
+        Equal(34, admitted.Root.Children.Count);
+        Equal(2L, admitted.Root.VirtualCollectionWindow!.RequestGeneration);
+        True((PresentationPropertyMetadata.Impact(
+                  PresentationProperty.VirtualCollectionWindow) &
+              PresentationPropertyImpact.MeasureLayout) != 0,
+            "Virtual window changes must invalidate native layout safely.");
     }
 
     private static void PropertyNoOpAndRoundTrip()

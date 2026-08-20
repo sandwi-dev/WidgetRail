@@ -314,6 +314,18 @@ window prepends, appends, refreshes, or evicts nodes, including items nested in
 a responsive Grid. At most 256 keyed items are serialized and offset paging
 continues to use its unchanged replacement-window behavior.
 
+Protocol v19 optionally adds a logical presentation window to that same
+cursor-owned Scroll. A viewport opts in with one bounded estimated item extent;
+pages may supply their first logical index and known total. The admitted keyed
+nodes remain the complete semantic tree. Native Taffy adds only two
+non-semantic estimated off-window extents, and the existing vertical or
+horizontal Scroll continues to own offset, clipping, focus follow, pointer and
+controller routing, UIA, and paint. UIA reports logical item position and known
+set size on the first exposed semantic control for each admitted item; no
+off-window provider is created. Atomic updates admit the metadata and keyed
+children together, and stale or malformed generations retain the last valid
+complete checkpoint. Omitting the metadata preserves the eager v14 layout.
+
 The same version adds an opaque `artworkHandle` on Image/Button nodes. The host
 does not interpret it as a URL or filesystem path. Resolution is a separate
 trusted service on a bounded asynchronous bridge lane; a slow provider cannot

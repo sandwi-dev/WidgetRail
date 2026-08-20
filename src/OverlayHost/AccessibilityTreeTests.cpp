@@ -134,6 +134,49 @@ int main() {
           "modal scope replaces rather than merges the root accessibility surface");
     Check(tree.focusedNode == 0, "modal focus is independently represented");
 
+    widgetrail::WidgetSnapshot virtualSnapshot;
+    virtualSnapshot.protocolVersion = 19;
+    virtualSnapshot.sequence = 10;
+    virtualSnapshot.instanceId = L"virtual.instance";
+    virtualSnapshot.activeInputScopeId = L"virtual.list";
+    virtualSnapshot.root.id = L"virtual.list";
+    virtualSnapshot.root.kind = L"scroll";
+    virtualSnapshot.root.inputScopeId = L"virtual.list";
+    virtualSnapshot.root.scrollAxis = L"vertical";
+    virtualSnapshot.root.collectionAnchorKey = L"key.5000";
+    virtualSnapshot.root.virtualCollectionWindow = widgetrail::VirtualCollectionWindow{
+        3,
+        widgetrail::VirtualCollectionWindowChange::Replace,
+        5000,
+        10'000,
+        true,
+        true,
+        52.0,
+    };
+    for (int index = 5000; index < 5002; ++index) {
+        widgetrail::WidgetNode item;
+        item.id = L"virtual.item." + std::to_wstring(index);
+        item.kind = L"button";
+        item.accessibilityLabel = L"Virtual item";
+        item.actionId = L"select";
+        item.collectionItemKey = L"key." + std::to_wstring(index);
+        virtualSnapshot.root.children.push_back(std::move(item));
+    }
+    widgetrail::RenderResult virtualRender;
+    virtualRender.accessibilityRegions = {
+        Region(L"virtual.item.5000", 10),
+        Region(L"virtual.item.5001", 50),
+    };
+    auto virtualTree = widgetrail::accessibility::BuildWidgetTree(
+        L"virtual", L"generation-1", virtualSnapshot, virtualRender,
+        L"virtual.item.5000");
+    Check(virtualTree.nodes.size() == 2 &&
+          virtualTree.nodes[0].positionInSet == 5001 &&
+          virtualTree.nodes[1].positionInSet == 5002 &&
+          virtualTree.nodes[0].sizeOfSet == 10'000 &&
+          virtualTree.nodes[1].sizeOfSet == 10'000,
+          "realized virtual items expose accurate logical set positions");
+
     render.accessibilityRegions.clear();
     tree = widgetrail::accessibility::BuildWidgetTree(
         L"music", L"generation-1", snapshot, render, L"modal-text");

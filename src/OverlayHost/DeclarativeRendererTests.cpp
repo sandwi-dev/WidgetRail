@@ -1232,6 +1232,178 @@ void CursorCollectionPreservesKeyedViewportAnchor() {
           "a deleted anchor admits the authored nearest keyed fallback");
 }
 
+void VirtualCollectionWindowKeepsNativeWorkBounded() {
+    WidgetSnapshot snapshot;
+    snapshot.protocolVersion = 19;
+    snapshot.sequence = 1;
+    snapshot.instanceId = L"virtual.collection@1";
+    snapshot.activeInputScopeId = L"root";
+    snapshot.root = Node(L"virtual.list", L"scroll");
+    snapshot.root.scrollAxis = L"vertical";
+    snapshot.root.collectionAnchorKey = L"item.4992";
+    snapshot.root.scrollNearStartActionId = L"virtual.before";
+    snapshot.root.scrollNearEndActionId = L"virtual.after";
+    snapshot.root.scrollPaginationThreshold = 2;
+    snapshot.root.virtualCollectionWindow = widgetrail::VirtualCollectionWindow{
+        7,
+        widgetrail::VirtualCollectionWindowChange::Replace,
+        4992,
+        10'000,
+        true,
+        true,
+        56.0,
+    };
+    for (int index = 4992; index < 5024; ++index) {
+        auto item = Node((L"virtual.item." + std::to_wstring(index)).c_str(), L"button");
+        item.text = index % 3 == 0
+            ? L"A variable-content row with a longer accessible title"
+            : L"Item";
+        item.accessibilityLabel = L"Virtual item " + std::to_wstring(index);
+        item.actionId = L"select";
+        item.collectionItemKey = L"item." + std::to_wstring(index);
+        item.baseStyle = {
+            {L"min-height", Length(index % 2 == 0 ? 44.0 : 56.0)},
+            {L"flex-shrink", Number(0)},
+        };
+        snapshot.root.children.push_back(std::move(item));
+    }
+
+    using Microsoft::WRL::ComPtr;
+    ComPtr<ID2D1Factory> d2d;
+    Check(SUCCEEDED(D2D1CreateFactory(
+        D2D1_FACTORY_TYPE_SINGLE_THREADED, d2d.ReleaseAndGetAddressOf())),
+        "virtual window creates a D2D factory");
+    ComPtr<IDWriteFactory> write;
+    Check(SUCCEEDED(DWriteCreateFactory(
+        DWRITE_FACTORY_TYPE_SHARED, __uuidof(IDWriteFactory),
+        reinterpret_cast<IUnknown**>(write.ReleaseAndGetAddressOf()))),
+        "virtual window creates a DirectWrite factory");
+    ComPtr<IWICImagingFactory> wic;
+    Check(SUCCEEDED(CoCreateInstance(
+        CLSID_WICImagingFactory, nullptr, CLSCTX_INPROC_SERVER,
+        IID_PPV_ARGS(wic.ReleaseAndGetAddressOf()))),
+        "virtual window creates a WIC factory");
+    ComPtr<IWICBitmap> canvas;
+    Check(SUCCEEDED(wic->CreateBitmap(
+        420, 280, GUID_WICPixelFormat32bppPBGRA,
+        WICBitmapCacheOnLoad, canvas.ReleaseAndGetAddressOf())),
+        "virtual window creates a WIC canvas");
+    ComPtr<ID2D1RenderTarget> target;
+    Check(SUCCEEDED(d2d->CreateWicBitmapRenderTarget(
+        canvas.Get(), D2D1::RenderTargetProperties(),
+        target.ReleaseAndGetAddressOf())),
+        "virtual window creates a WIC render target");
+    DeclarativeRenderer renderer{d2d.Get(), write.Get(), nullptr};
+    const Rect viewport{0.0F, 0.0F, 420.0F, 280.0F};
+    widgetrail::DeclarativeRenderOptions accessibleOptions;
+    accessibleOptions.collectAccessibility = true;
+    target->BeginDraw();
+    const auto initial = renderer.Render(
+        target.Get(), snapshot, L"virtual.item.4992", viewport, accessibleOptions);
+    Check(SUCCEEDED(target->EndDraw()), "virtual window initial draw completes");
+    Check(initial.succeeded && initial.navigationRects.size() == 32,
+        "only the admitted virtual window contributes native semantic nodes");
+    Check(!initial.accessibilityRegions.empty() &&
+          initial.accessibilityRegions.size() < 32,
+        "only viewport-visible admitted items create accessibility regions");
+    Check(initial.scrollViewports.at(L"virtual.list").maximumOffset > 500'000.0F,
+        "known logical extent contributes bounded estimated scroll range");
+    Check(initial.focusRects.contains(L"virtual.item.4992"),
+        "the first admitted logical item is visible at its global offset");
+
+    const auto plan = renderer.PlanFocusedFreeScroll(
+        snapshot, L"virtual.item.4992",
+        widgetrail::declarative::ScrollAxis::Vertical,
+        80.0F, viewport, L"virtual.list");
+    Check(plan && plan->scrollId == L"virtual.list" && plan->offset > plan->priorOffset,
+        "right-stick free scroll uses the existing global offset authority");
+    target->BeginDraw();
+    const auto scrolled = renderer.Render(
+        target.Get(), snapshot, L"virtual.item.4992", viewport,
+        widgetrail::DeclarativeRenderOptions{
+            .suppressFocusedDescendantFollow = true,
+        });
+    Check(SUCCEEDED(target->EndDraw()), "virtual window free-scroll draw completes");
+    Near(scrolled.scrollOffsets.at(L"virtual.list"), plan->offset,
+        "suppressed focus-follow preserves the virtual free-scroll offset");
+
+    auto shifted = snapshot;
+    shifted.sequence = 2;
+    shifted.root.virtualCollectionWindow->requestGeneration = 8;
+    shifted.root.virtualCollectionWindow->change =
+        widgetrail::VirtualCollectionWindowChange::Append;
+    shifted.root.virtualCollectionWindow->firstItemIndex = 5000;
+    shifted.root.collectionAnchorKey = L"item.5000";
+    shifted.root.children.erase(
+        shifted.root.children.begin(), shifted.root.children.begin() + 8);
+    for (int index = 5024; index < 5032; ++index) {
+        auto item = Node((L"virtual.item." + std::to_wstring(index)).c_str(), L"button");
+        item.text = L"Shifted item";
+        item.accessibilityLabel = L"Virtual item " + std::to_wstring(index);
+        item.actionId = L"select";
+        item.collectionItemKey = L"item." + std::to_wstring(index);
+        item.baseStyle = {{L"min-height", Length(44)}, {L"flex-shrink", Number(0)}};
+        shifted.root.children.push_back(std::move(item));
+    }
+    target->BeginDraw();
+    const auto afterShift = renderer.Render(
+        target.Get(), shifted, L"virtual.item.5000", viewport);
+    Check(SUCCEEDED(target->EndDraw()), "virtual window shift draw completes");
+    Check(afterShift.succeeded && afterShift.navigationRects.size() == 32 &&
+          afterShift.focusRects.contains(L"virtual.item.5000"),
+        "forward window replacement remains bounded and preserves keyed focus");
+
+    auto horizontal = snapshot;
+    horizontal.instanceId = L"virtual.horizontal@1";
+    horizontal.root.id = L"virtual.horizontal";
+    horizontal.root.scrollAxis = L"horizontal";
+    horizontal.root.baseStyle.insert_or_assign(
+        L"flex-direction", Keyword(L"row"));
+    horizontal.root.virtualCollectionWindow->estimatedItemExtent = 72.0;
+    for (auto& item : horizontal.root.children) {
+        item.baseStyle.insert_or_assign(L"width", Length(72));
+        item.baseStyle.insert_or_assign(L"height", Length(120));
+    }
+    const Rect horizontalViewport{0.0F, 0.0F, 280.0F, 180.0F};
+    target->BeginDraw();
+    const auto horizontalInitial = renderer.Render(
+        target.Get(), horizontal, L"virtual.item.4992", horizontalViewport);
+    Check(SUCCEEDED(target->EndDraw()), "horizontal virtual window draw completes");
+    Check(horizontalInitial.succeeded &&
+          horizontalInitial.scrollViewports.at(L"virtual.horizontal").maximumOffset >
+              700'000.0F,
+        "horizontal virtual window reserves its bounded logical extent");
+    const auto horizontalPlan = renderer.PlanFocusedFreeScroll(
+        horizontal, L"virtual.item.4992",
+        widgetrail::declarative::ScrollAxis::Horizontal,
+        96.0F, horizontalViewport, L"virtual.horizontal");
+    Check(horizontalPlan && horizontalPlan->offset > horizontalPlan->priorOffset,
+        "right-stick free scroll uses the horizontal virtual owner");
+    target->BeginDraw();
+    const auto horizontalScrolled = renderer.Render(
+        target.Get(), horizontal, L"virtual.item.4992", horizontalViewport,
+        widgetrail::DeclarativeRenderOptions{
+            .suppressFocusedDescendantFollow = true,
+        });
+    Check(SUCCEEDED(target->EndDraw()),
+        "horizontal virtual free-scroll draw completes");
+    Near(horizontalScrolled.scrollOffsets.at(L"virtual.horizontal"),
+        horizontalPlan->offset,
+        "horizontal virtual offset remains authoritative during free scroll");
+
+    WidgetSnapshot eager = snapshot;
+    eager.protocolVersion = 18;
+    eager.instanceId = L"eager.collection@1";
+    eager.root.virtualCollectionWindow.reset();
+    target->BeginDraw();
+    const auto eagerResult = renderer.Render(
+        target.Get(), eager, L"virtual.item.4992", viewport);
+    Check(SUCCEEDED(target->EndDraw()), "eager Scroll draw completes");
+    Check(eagerResult.succeeded &&
+          eagerResult.scrollViewports.at(L"virtual.list").maximumOffset < 5'000.0F,
+        "legacy eager Scroll keeps its existing measured-window behavior");
+}
+
 WidgetNode FixedSpacer(const wchar_t* id, const double height) {
     auto spacer = Node(id, L"spacer");
     spacer.baseStyle = {
@@ -3712,6 +3884,7 @@ int main() {
     ClippedControlsAreNotFocusCandidates();
     ControllerScrollFollowsFocusAndRestoresState();
     CursorCollectionPreservesKeyedViewportAnchor();
+    VirtualCollectionWindowKeepsNativeWorkBounded();
     WholeWidgetScrollRevealsAudioMixerControls();
     SegmentedTabsSurviveConstrainedNetworkSurfaces();
     CenteredChildrenDoNotDisableParentStretch();
