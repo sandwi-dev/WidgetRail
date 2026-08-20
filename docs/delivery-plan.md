@@ -35,8 +35,8 @@ evidence only; this file is the sole authority for current work.
 
 | Lane | Task/worktree | State |
 | --- | --- | --- |
-| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | DLV-274/275 are accepted and integrated through `6ce32b7`. DLV-271 is Assigned from that accepted production/test baseline as the serialized cross-layer lead. DLV-273 remains retired. Never push. |
-| Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | Preserve saved DLV-265 and installed Spotify state. Do not resume, test, integrate, reinstall, replace configuration, or reset before accepted DLV-271 integration. DLV-270 follows accepted DLV-265; DLV-248 remains deferred. |
+| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | DLV-274/275 are accepted and integrated through `6ce32b7`. DLV-271 is Assigned from that accepted production/test baseline as the serialized cross-layer lead. DLV-276 is Ready immediately after accepted DLV-271 integration. DLV-273 remains retired. Never push. |
+| Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | Preserve saved DLV-265 and installed Spotify state. Do not resume, test, integrate, reinstall, replace configuration, or reset before accepted DLV-276 integration. DLV-270 follows accepted DLV-265; DLV-248 remains deferred. |
 
 ## Execution, review, and architecture rules
 
@@ -694,13 +694,95 @@ behavior, silent truncation, compatibility code for an unused pre-release
 protocol generation, substantial conflict, or missing accepted DLV-269 baseline.
 Never push.
 
+## Ready platform deliverable — DLV-276: themed controller-first text-entry surface
+
+Owner/baseline: platform lane after DLV-271 is physically accepted,
+focused-tested, and integrated. This is a generic correction to the existing
+host-owned `TextEntryModal`, GameInput/modal interaction scope, native text-entry
+presentation, theming, UI Automation, and directly affected public text-entry
+guidance. Spotify Setup is one physical consumer, never a source of
+package-specific host behavior. Do not interrupt in-progress DLV-271.
+
+Replace the provisional stock-control keyboard shown in the current build. The
+user observed that the widget retains visible controller focus behind the modal;
+the modal uses untinted system window/edit/button styling instead of the active
+WidgetRail theme; the hint `Enter public Spotify Client ID` appears as though it
+were the text-entry value; the edit display does not visibly track characters as
+they are entered; and a bottom row exposes Backspace, Clear, Cancel, and Commit
+as ordinary focusable buttons. These are defects in the shared host component,
+not Spotify onboarding behavior.
+
+Opening text entry must establish one exclusive modal interaction scope before
+the modal becomes visible. Suppress the underlying widget/tray focus treatment
+and make its semantics inert while the modal is active. Route every controller
+input category to the modal or consume it there; D-pad/left stick navigate the
+keyboard, and right stick, shoulders, triggers, shortcuts, repeat, pointer, UIA,
+and physical-keyboard input must never leak into widget scrolling, focus, or
+actions. Retain the exact prior current focus identity only as restoration data.
+On commit, cancel, close, failure, runtime replacement, or overlay shutdown,
+retire modal authority once and restore that exact focus when still valid,
+otherwise resolve one valid current-surface target. Do not introduce a second
+GameInput, host-focus, semantic-tree, or modal-lifetime owner.
+
+Use a compact controller keyboard instead of a form made from stock buttons.
+The focused key is visually unmistakable and spatial navigation is stable.
+Default character entry supports lowercase letters and digits; an explicit
+Shift/Caps or symbol layer makes uppercase and the bounded generic punctuation
+set reachable without duplicating the keyboard tree. A activates the focused
+key, X performs Backspace, B cancels, and right trigger performs Enter/commit.
+Physical Enter/Escape/Backspace and ordinary pointer activation remain
+equivalent. Remove the focusable Backspace/Clear/Cancel/Commit action row; show
+the controller mappings as themed, accessible shortcut guidance rather than
+extra navigation targets. Do not overload an existing reserved host gesture or
+send raw keys to the widget.
+
+Render the existing modal HWND through the active effective WidgetRail
+appearance, text/interface scale, focus, spacing, and high-contrast policies;
+do not create another overlay HWND, renderer authority, theme store, or
+package-specific palette. Define prompt/hint, committed initial value, live edit
+buffer, and password presentation as distinct states. A hint is displayed only
+as non-value guidance when the live buffer is empty and is never selected,
+counted, returned, or logged as text. Each character, Backspace, and layer
+change updates the visible live buffer immediately; password mode masks it.
+Commit returns only the final bounded buffer, while cancel/close preserves the
+authored committed value. Preserve the existing 96 UTF-16-unit ceiling,
+control-character rejection, secure clearing, stale runtime/snapshot/action
+revalidation, and rule that only final committed text crosses to a widget.
+
+Follow physical-first ordering. Produce a production-only tests-skipped Release
+after direct source review of modal authority, focus capture/restoration,
+GameInput routing, owner HWND activation, DPI/work-area bounds, theme ownership,
+UIA, live-buffer rendering, password handling, and failure cleanup. The user
+opens Spotify Setup from configured Ready state, types mixed lowercase/digits,
+observes immediate live-buffer and Backspace updates, changes keyboard layer,
+and cancels with B without changing the existing Client ID/account. Verify that
+the underlying Spotify control never retains visible focus or reacts to any
+modal input, the modal matches the active theme, and compact/wide plus 150%
+text/interface scale remain fully reachable. No account change or real commit
+is required for this physical verdict.
+
+After acceptance, add focused modal layout/theme/live-buffer/hint/password,
+exclusive controller-routing, no-input-leak, UIA, commit/cancel/close/failure,
+stale-authority, exact-focus-restoration, DPI/scale, and maximum-length coverage.
+Use the existing credential-free production-host TextEntry route for committed
+value proof. Update controller-input and widget-authoring guidance so the public
+contract and controller legend match the accepted behavior.
+
+Stop for a required Spotify/package branch, raw-input exposure to widgets, a
+second native focus/input/theme owner, an accessibility model that cannot
+represent the edit buffer and keys accurately, a public protocol change rather
+than correction of the existing value/placeholder contract, credential or
+configuration mutation, destructive state action, substantial conflict, or
+missing accepted DLV-271 baseline. Never push.
+
 ## Saved later widgets deliverable — DLV-265: controller-first Spotify onboarding
 
 Preserve clean production-only correction tip `13bd971`, reconciliation
 `5fd1a06`, installed Spotify 0.3.3, and the user's existing Client ID/account
 state. Do not resume, test, integrate, reinstall, replace configuration, or
-reset state until DLV-271 is accepted and integrated. Then reconcile the saved
-correction onto current main without rewriting it and continue physical-first.
+reset state until DLV-276 is accepted and integrated after DLV-271. Then
+reconcile the saved correction onto current main without rewriting it and
+continue physical-first.
 
 The Spotify Community package must expose a controller-reachable Setup/Change
 Client ID flow on configured Ready and unconfigured surfaces, reuse the bounded
@@ -713,19 +795,19 @@ terminal, repository checkout, or source directory, and must not add a shared
 protocol or service-specific core behavior.
 
 Candidate 0.3.3 at `13bd971` uses the package-owned 96-character input bound.
-After DLV-271, physically verify Setup opens/cancels in configured Ready wide and
-compact layouts while Player, Queue, Playlists, Devices, account state, and
-shortcuts remain intact. Do not replace the existing Client ID unless the user
-chooses that account action. After the verdict add only focused presentation/
-action, configuration-write, old-credential invalidation, failure, and
-cancellation tests. Stop for shared protocol/capability work, Client Secret,
-Credential Manager migration, third-party authentication needed for automation,
-provider-dashboard automation, substantial conflict, or out-of-package work.
-Never push.
+After DLV-276, physically verify Setup uses the accepted host keyboard and
+opens/cancels in configured Ready wide and compact layouts while Player, Queue,
+Playlists, Devices, account state, and shortcuts remain intact. Do not replace
+the existing Client ID unless the user chooses that account action. After the
+verdict add only focused presentation/action, configuration-write,
+old-credential invalidation, failure, and cancellation tests. Stop for shared
+protocol/capability work, Client Secret, Credential Manager migration,
+third-party authentication needed for automation, provider-dashboard
+automation, substantial conflict, or out-of-package work. Never push.
 
 ## Ready widgets deliverable — DLV-270: Spotify collection paging efficiency
 
-Owner/baseline: widgets lane after DLV-265 resumes following DLV-271, is
+Owner/baseline: widgets lane after DLV-265 resumes following DLV-276, is
 physically accepted, focused-tested, and integrated. Keep provider calls,
 page/retention policy, queue parsing, diagnostics, and immutable package version
 inside Spotify. Reuse accepted generic cursor, viewport-prefetch, and virtualized
@@ -756,7 +838,7 @@ cursor, cancellation/stale-generation, bound, truncation, snapshot-size, and
 presentation tests. Stop for account authentication needed for automation,
 provider ambiguity changing contract, shared-boundary changes, destructive
 credential/configuration action, unbounded retention, substantial conflict, or
-missing accepted DLV-265/DLV-271 baseline. Never push.
+missing accepted DLV-265/DLV-271/DLV-276 baseline. Never push.
 
 ## Serialized order
 
@@ -773,10 +855,13 @@ missing accepted DLV-265/DLV-271 baseline. Never push.
 5. Run serialized DLV-271 in the platform lane with normal shared-protocol
    verification, provider-free 10,000-item scale proof, physical verdict,
    review, and integration.
-6. Resume saved DLV-265 in the widgets lane immediately after accepted DLV-271
+6. Run generic DLV-276 in the platform lane after accepted DLV-271 integration;
+   physically accept the themed exclusive-focus controller keyboard before its
+   focused tests and integration.
+7. Resume saved DLV-265 in the widgets lane immediately after accepted DLV-276
    integration; preserve existing Spotify configuration/account state.
-7. Run DLV-270 in the widgets lane only after accepted DLV-265 integration.
-8. DLV-248 remains deferred until explicit user promotion.
+8. Run DLV-270 in the widgets lane only after accepted DLV-265 integration.
+9. DLV-248 remains deferred until explicit user promotion.
 
 ## Manual, external, and blocked evidence
 
@@ -791,7 +876,8 @@ missing accepted DLV-265/DLV-271 baseline. Never push.
 | DLV-273 | Retired failed refactor by user decision. Production `b54e1e2` and corrections `e98566e`/`dcd58e0` remain rejected branch history and must not be resumed or integrated. Accepted DLV-269 PID 78428 is restored; no production revert was necessary because main never contained DLV-273. |
 | DLV-274 | Complete: production `bf6d524` plus correction `4645f40` preserves 32 MiB per-image limits and raises only decoded/GPU aggregate LRU budgets to 96 MiB. Exact accepted cumulative candidate `949b586` is integrated by `9189cad`; focused tests are integrated through `6ce32b7`. |
 | DLV-275 | Complete: production `baf7bd4` fixes active-lifetime cancellation and adds diagnostics; `2b609fc` isolates widget worker failures; `74ec5e9` removes destructive stale-request pipe cancellation. Exact accepted candidate `949b586` is integrated by `9189cad`, tests by `6ce32b7`, and fresh main Release PID 53016 is responding with the integrated cache policy. |
-| DLV-265 | Saved until immediately after accepted DLV-271; preserve installed 0.3.3 and existing configuration/account state. |
+| DLV-276 | Ready after accepted DLV-271 integration: generic themed controller keyboard, exclusive modal input/focus, live-buffer and hint/value correction. Physical Spotify cancel-path proof must preserve the installed Client ID/account. |
+| DLV-265 | Saved until immediately after accepted DLV-276; preserve installed 0.3.3 and existing configuration/account state. |
 | DLV-248 | Deliberately deferred until explicit user promotion. |
 
 ## Recent accepted milestones
