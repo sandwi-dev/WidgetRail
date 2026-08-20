@@ -13,6 +13,7 @@ namespace widgetrail::input {
 struct TextEntryActionRequest final {
     std::wstring widgetId;
     std::wstring runtimeGeneration;
+    std::wstring presentationGeneration;
     long long snapshotSequence{};
     std::wstring nodeId;
     std::wstring actionId;
@@ -31,17 +32,19 @@ struct TextEntryActionTarget final {
 [[nodiscard]] std::optional<TextEntryActionRequest> CaptureTextEntryActionRequest(
     std::wstring_view widgetId,
     std::wstring_view runtimeGeneration,
+    std::wstring_view presentationGeneration,
     const WidgetSnapshot& snapshot,
     std::wstring_view nodeId);
 
-// Re-resolves every action-bearing value after the modal closes. A snapshot
-// refresh is intentionally stale even when it happens to reproduce the same
-// node, preventing authority from surviving an intervening generation.
+// Re-resolves every action-bearing value after the modal closes. Ordinary
+// higher-sequence refreshes are allowed only while the exact widget/runtime/
+// presentation/scope/node/action authority remains current.
 [[nodiscard]] std::optional<TextEntryActionTarget> ResolveTextEntryActionTarget(
     const TextEntryActionRequest& request,
     bool currentInteractiveSurface,
     std::wstring_view activeWidgetId,
     std::wstring_view runtimeGeneration,
+    std::wstring_view presentationGeneration,
     const WidgetSnapshot& snapshot);
 
 } // namespace widgetrail::input

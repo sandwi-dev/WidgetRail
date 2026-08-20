@@ -310,7 +310,7 @@ void TextEntryModal::CreateControls() {
     const auto legendBounds = createBounds(layout_.legendBounds);
     legend_ = CreateWindowExW(
         0, L"STATIC",
-        L"A  Select key     X  Backspace     B  Cancel     RT  Commit\r\n"
+        L"A  Select key     X  Backspace     B  Cancel     RT  Enter\r\n"
         L"LB / RB  Move caret     D-pad / Left stick  Move key focus",
         WS_CHILD | WS_VISIBLE | SS_LEFT | SS_NOPREFIX,
         legendBounds[0], legendBounds[1], legendBounds[2], legendBounds[3],

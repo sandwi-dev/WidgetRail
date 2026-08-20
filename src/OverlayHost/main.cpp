@@ -871,6 +871,13 @@ private:
         std::wstring presentationGeneration;
     };
 
+    enum class TextEntryControllerPhase {
+        None,
+        AwaitingEntryNeutral,
+        Active,
+        AwaitingExitNeutral,
+    };
+
     struct WidgetSnapshotAdmissionAuthority final {
         std::wstring_view widgetId;
         std::wstring_view runtimeGeneration;
@@ -1530,6 +1537,14 @@ private:
             }
             return 0;
         case kForegroundChangedMessage:
+            if (textEntryModal_.active() ||
+                textEntryControllerPhase_ != TextEntryControllerPhase::None) {
+                // Opening and destroying the owned modal can enqueue transient
+                // foreground changes. They belong to the modal transaction and
+                // must not become a second overlay-close command while its
+                // controller release is still quarantined.
+                return 0;
+            }
             if (state_.surface() != widgetrail::Surface::Hidden) {
                 const HWND foreground = reinterpret_cast<HWND>(lParam);
                 const bool valid = foreground && IsWindow(foreground);
@@ -5516,6 +5531,22 @@ private:
         return widgetrail::input::StickNavigationEvent{direction, phase};
     }
 
+    [[nodiscard]] static bool TextEntryControllerFrameNeutral(
+        const WidgetRailOverlayPlatformControllerFrame& frame) noexcept {
+        const auto withinDeadZone = [](const std::int16_t value, const int deadZone) {
+            return std::abs(static_cast<int>(value)) <= deadZone;
+        };
+        return frame.state.buttons == 0 &&
+            frame.state.leftTrigger < XINPUT_GAMEPAD_TRIGGER_THRESHOLD &&
+            frame.state.rightTrigger < XINPUT_GAMEPAD_TRIGGER_THRESHOLD &&
+            withinDeadZone(frame.state.leftThumbX, XINPUT_GAMEPAD_LEFT_THUMB_DEADZONE) &&
+            withinDeadZone(frame.state.leftThumbY, XINPUT_GAMEPAD_LEFT_THUMB_DEADZONE) &&
+            withinDeadZone(frame.state.rightThumbX, XINPUT_GAMEPAD_RIGHT_THUMB_DEADZONE) &&
+            withinDeadZone(frame.state.rightThumbY, XINPUT_GAMEPAD_RIGHT_THUMB_DEADZONE) &&
+            !DecodeNavigation(frame.stickNavigation) &&
+            !DecodeNavigation(frame.dpadNavigation);
+    }
+
     [[nodiscard]] static std::wstring_view FreeScrollAxisName(
         const widgetrail::declarative::ScrollAxis axis) noexcept {
         switch (axis) {
@@ -5982,6 +6013,19 @@ private:
         const WORD pressed = frame.pressedButtons;
         const WORD released = frame.releasedButtons;
         if (textEntryModal_.active()) {
+            if (textEntryControllerPhase_ ==
+                TextEntryControllerPhase::AwaitingEntryNeutral) {
+                if (TextEntryControllerFrameNeutral(frame)) {
+                    textEntryControllerPhase_ = TextEntryControllerPhase::Active;
+                    AppendDiagnostic(
+                        L"Text entry controller scope armed after neutral frame");
+                }
+                // The neutral frame itself only proves release. A later fresh
+                // press/navigation event is required to affect the modal.
+                return;
+            }
+            if (textEntryControllerPhase_ != TextEntryControllerPhase::Active)
+                return;
             const auto routeDirection = [&](const auto& encoded) {
                 if (const auto direction = DecodeNavigation(encoded))
                     HandleWidgetDirection(direction->direction, direction->phase, true);
@@ -6005,6 +6049,16 @@ private:
             // The modal is the complete controller scope. Every unassigned
             // button, trigger, shortcut, repeat, and right-stick sample is
             // deliberately consumed here rather than reaching overlay state.
+            return;
+        }
+        if (textEntryControllerPhase_ != TextEntryControllerPhase::None) {
+            if (TextEntryControllerFrameNeutral(frame)) {
+                textEntryControllerPhase_ = TextEntryControllerPhase::None;
+                AppendDiagnostic(
+                    L"Text entry controller scope retired after neutral frame");
+            }
+            // Consume the release/neutral sample as part of the modal
+            // transaction. Only a later fresh sample can reach the overlay.
             return;
         }
         const auto pinnedControllerCommand = widgetrail::pinned::ResolveControllerCommand({
@@ -6203,6 +6257,11 @@ private:
         }
         if (pressed & XINPUT_GAMEPAD_A) {
             DispatchControllerAction(L"A", true);
+            // Opening a modal runs a nested message loop. When it returns, the
+            // original activation frame is still on this stack and must not be
+            // interpreted a second time after modal authority is retired.
+            if (textEntryControllerPhase_ != TextEntryControllerPhase::None)
+                return;
         }
         if (pressed & XINPUT_GAMEPAD_B) {
             DispatchControllerAction(L"B", true);
@@ -7818,7 +7877,8 @@ private:
         const auto* descriptor = sessions_.FindDescriptor(widget);
         if (!descriptor) return true;
         const auto request = widgetrail::input::CaptureTextEntryActionRequest(
-            widget, descriptor->runtimeGeneration, snapshot, nodeId);
+            widget, descriptor->runtimeGeneration,
+            descriptor->presentationGeneration, snapshot, nodeId);
         if (!request) return true;
 
         (void)interactionSession_.MoveFocus(
@@ -7845,12 +7905,19 @@ private:
         textEntryModalAuthority_ = TextEntryModalAuthority{
             request->widgetId,
             request->runtimeGeneration,
-            descriptor->presentationGeneration,
+            request->presentationGeneration,
         };
+        textEntryControllerPhase_ =
+            TextEntryControllerPhase::AwaitingEntryNeutral;
         auto modalResult = textEntryModal_.Show(
             instance_, window_, request->value,
             modalTitle, request->maximumLength, protectedWifi,
             CurrentTextEntryTheme());
+        // The terminal modal sample (B/RT/mouse/keyboard) and every other held
+        // controller category remain quarantined until one complete neutral
+        // frame has been consumed by the sole platform frame owner.
+        textEntryControllerPhase_ =
+            TextEntryControllerPhase::AwaitingExitNeutral;
         textEntryModalAuthority_.reset();
         if (backdropWindow_ && IsWindow(backdropWindow_))
             EnableWindow(backdropWindow_, TRUE);
@@ -7867,7 +7934,9 @@ private:
                     state_.surface() == widgetrail::Surface::Widget &&
                         state_.focusRegion() == widgetrail::FocusRegion::Widget,
                     state_.activeWidget(),
-                    currentDescriptor->runtimeGeneration, *currentSnapshot)
+                    currentDescriptor->runtimeGeneration,
+                    currentDescriptor->presentationGeneration,
+                    *currentSnapshot)
                 : std::nullopt;
             if (target) {
                 std::optional<bool> handled;
@@ -7898,6 +7967,10 @@ private:
                     });
                 }
             }
+            lastActionWidgetId_ = request->widgetId;
+            lastActionMessage_ = actionDispatched
+                ? L"Entry sent" : L"Could not send entry";
+            lastActionExpiresAt_ = GetTickCount64() + 3000;
             modalResult.committedText->clear();
         }
         if (state_.surface() == widgetrail::Surface::Widget) {
@@ -7921,7 +7994,7 @@ private:
             case widgetrail::input::TextEntryModalOutcome::Failed: return L"failed";
             case widgetrail::input::TextEntryModalOutcome::Cancelled: return L"cancel";
             case widgetrail::input::TextEntryModalOutcome::Closed: return L"close";
-            case widgetrail::input::TextEntryModalOutcome::Committed: return L"commit";
+            case widgetrail::input::TextEntryModalOutcome::Committed: return L"enter";
             }
             return L"unknown";
         }();
@@ -10566,6 +10639,8 @@ private:
     long long hostAccessibilitySequence_{};
     widgetrail::input::TextEntryModal textEntryModal_;
     std::optional<TextEntryModalAuthority> textEntryModalAuthority_;
+    TextEntryControllerPhase textEntryControllerPhase_{
+        TextEntryControllerPhase::None};
     widgetrail::WidgetBridgeClient bridge_;
     widgetrail::WidgetSessionCoordinator sessions_;
     widgetrail::packages::FileOpenDialogWidgetPackagePicker localWidgetPackagePicker_;

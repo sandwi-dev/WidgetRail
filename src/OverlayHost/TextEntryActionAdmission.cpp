@@ -8,11 +8,13 @@ namespace widgetrail::input {
 std::optional<TextEntryActionRequest> CaptureTextEntryActionRequest(
     const std::wstring_view widgetId,
     const std::wstring_view runtimeGeneration,
+    const std::wstring_view presentationGeneration,
     const WidgetSnapshot& snapshot,
     const std::wstring_view nodeId) {
     const auto* node = FindNodeInInputScope(
         snapshot, nodeId, snapshot.activeInputScopeId);
-    if (widgetId.empty() || runtimeGeneration.empty() || !node ||
+    if (widgetId.empty() || runtimeGeneration.empty() ||
+        presentationGeneration.empty() || !node ||
         !node->isTextEntry || node->isDisabled || node->isBusy ||
         node->actionId.empty() || node->textEntryMaximumLength == 0 ||
         node->textEntryMaximumLength > TextEntryModal::MaximumLength ||
@@ -23,6 +25,7 @@ std::optional<TextEntryActionRequest> CaptureTextEntryActionRequest(
     return TextEntryActionRequest{
         std::wstring(widgetId),
         std::wstring(runtimeGeneration),
+        std::wstring(presentationGeneration),
         snapshot.sequence,
         node->id,
         node->actionId,
@@ -38,17 +41,21 @@ std::optional<TextEntryActionTarget> ResolveTextEntryActionTarget(
     const bool currentInteractiveSurface,
     const std::wstring_view activeWidgetId,
     const std::wstring_view runtimeGeneration,
+    const std::wstring_view presentationGeneration,
     const WidgetSnapshot& snapshot) {
     if (!currentInteractiveSurface || activeWidgetId != request.widgetId ||
         runtimeGeneration != request.runtimeGeneration ||
-        snapshot.sequence != request.snapshotSequence ||
+        presentationGeneration != request.presentationGeneration ||
+        snapshot.sequence < request.snapshotSequence ||
         snapshot.activeInputScopeId != request.activeInputScopeId) {
         return std::nullopt;
     }
     const auto* node = FindNodeInInputScope(
         snapshot, request.nodeId, snapshot.activeInputScopeId);
     if (!node || !node->isTextEntry || node->isDisabled || node->isBusy ||
-        node->id != request.nodeId || node->actionId != request.actionId) {
+        node->id != request.nodeId || node->actionId != request.actionId ||
+        node->textEntryMaximumLength != request.maximumLength ||
+        node->textEntryValue != request.value) {
         return std::nullopt;
     }
     return TextEntryActionTarget{
