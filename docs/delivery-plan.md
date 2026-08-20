@@ -10,35 +10,24 @@ evidence only; this file is the sole authority for current work.
 
 ## Current baseline and active task map
 
-- Accepted production/test integration baseline on main is `6ce32b7`. Merge
-  `9189cad` preserves exact physically accepted DLV-274/275 cumulative candidate
-  `949b586`; `6ce32b7` adds the reviewed focused test-only follow-up. The
-  earlier accepted DLV-269 baseline remains `683af77`.
-- By the user's explicit request, the full coherent `Release -SkipTests` build
-  from exact main `4b358c0` passed after the managed restore/publish was rerun
-  outside the sandbox. Verified candidate PID 17928 exited normally through
-  `WM_CLOSE`; the main executable launched visibly as PID 53016 directly from
-  `C:\Users\dwive\Projects\GameBarAlternative\src\OverlayHost\out\Release`.
-  `OverlayHost.exe` SHA-256 is
-  `0E5834D02C80E4DB6AC6B8661B4DD5DA2C8DD5A3DA495AA55F38759BCA5CE342`,
+- Accepted production/test integration baseline on main is `56bc604`. It
+  contains accepted DLV-274/275 through `6ce32b7` plus the seven reviewed
+  DLV-271 commits cherry-picked without duplicate branch history.
+- Exact DLV-271 candidate PID 56752 is physically accepted and retained under
+  the no-relaunch rule because it already contains the integrated production
+  tree. `OverlayHost.exe` SHA-256 is
+  `8C556B2982BC74EEC3BAA3798B3F2C27B1523D4A8D006DBDC244953801FD57C0`;
   `OverlayPlatformInterop.dll` is
-  `9BC6391E2033E20E1179F75556E1362D3D36A4073B75F4E3C9B25FA73B4F8F93`,
-  and `WidgetBridge.dll` is
-  `3E2C828B6FA7F17F56D9F33B3DB8B91D13687688C96B4933391713A2622700D3`.
-  Startup diagnostics explicitly confirmed 32 MiB per-image and 96 MiB
-  aggregate decoded/GPU cache limits. PID 53016 was later path/class verified
-  and exited normally through `WM_CLOSE` solely to stage the exact unaccepted
-  DLV-271 physical candidate described below. After that candidate was rejected,
-  the exact accepted main executable was visibly restored as responding PID
-  62056 with the same hash; the reference sample is installed but disabled.
+  `E707CF80E647EA306D4BF83F72736EF6002ED6EA2CCE0E1C58593E4638D27DBE`.
+  The provider-free Full Application sample remains installed and enabled.
 - Widgets correction DLV-265 remains saved at clean tip `13bd971` plus
   reconciliation `5fd1a06`, with immutable Spotify 0.3.3 installed and the
   existing Client ID/account state unchanged. It resumes only after accepted
-  DLV-271 integration.
+  DLV-276 integration.
 
 | Lane | Task/worktree | State |
 | --- | --- | --- |
-| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | DLV-271 production correction `bab6d5b` and focused tests `d100f49` are clean: renderer 4,995, interaction 89, navigation 122/47/24, slider 2,096, pressed 29, accessibility 168, and TextEntryModal passed. Exact coherent Release PID 56752 is visibly staged with `OverlayHost.exe` SHA-256 `8C556B2982BC74EEC3BAA3798B3F2C27B1523D4A8D006DBDC244953801FD57C0`. Required narrow verdict: repeat deep-scroll/reopen and confirm rows/right-stick/D-pad remain correct; any replacement adding rows before a visible retained key must not visibly jump that row. Do not integrate or begin DLV-276 first. DLV-273 remains retired. Never push. |
+| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | DLV-276 is Assigned from accepted main `56bc604`. Reconcile that exact baseline at the clean boundary, then produce only the generic themed controller-keyboard production candidate and tests-skipped coherent Release for source review and physical verdict. Preserve installed Spotify configuration/account state; do not begin tests, DLV-265, or DLV-270 first. DLV-273 remains retired. Never push. |
 | Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | Preserve saved DLV-265 and installed Spotify state. Do not resume, test, integrate, reinstall, replace configuration, or reset before accepted DLV-276 integration. DLV-270 follows accepted DLV-265; DLV-248 remains deferred. |
 
 ## Execution, review, and architecture rules
@@ -641,7 +630,7 @@ Release was built and launched as responding PID 53016 despite the ordinary
 tests-and-reviewer-documents-only no-relaunch rule. Startup diagnostics confirm
 the integrated 96 MiB decoded and GPU aggregate cache budgets.
 
-## Assigned serialized deliverable — DLV-271: virtualized collection presentation windows
+## Accepted integrated deliverable — DLV-271: virtualized collection presentation windows
 
 Owner/baseline: platform lane from accepted DLV-274/275 production/test baseline
 `6ce32b7` as serialized cross-layer lead. This is deliberate public architecture work
@@ -785,10 +774,16 @@ sample, launch, integrate, push, or begin DLV-276. Rejected PID 56028 exited
 normally through verified `WM_CLOSE`; the sample is disabled and exact accepted
 main is visibly restored as PID 62056.
 
-## Ready platform deliverable — DLV-276: themed controller-first text-entry surface
+Final disposition: the user physically accepted production corrections through
+`bab6d5b` and focused follow-up `d100f49`. Renderer 4,995, interaction 89,
+navigation 122/47/24, slider 2,096, pressed 29, accessibility 168, and
+TextEntryModal passed. Equivalent accepted commits are integrated on main from
+`65e1303` through `56bc604`; PID 56752 already runs that production tree.
 
-Owner/baseline: platform lane after DLV-271 is physically accepted,
-focused-tested, and integrated. This is a generic correction to the existing
+## Assigned platform deliverable — DLV-276: themed controller-first text-entry surface
+
+Owner/baseline: platform lane from accepted main `56bc604`. This is a generic
+correction to the existing
 host-owned `TextEntryModal`, GameInput/modal interaction scope, native text-entry
 presentation, theming, UI Automation, and directly affected public text-entry
 guidance. Spotify Setup is one physical consumer, never a source of
@@ -956,11 +951,10 @@ missing accepted DLV-265/DLV-271/DLV-276 baseline. Never push.
    integrated by merge `9189cad`; reviewed focused tests are integrated as
    `6ce32b7`. The user-requested coherent main refresh is complete on responding
    PID 53016; continue DLV-271.
-5. DLV-271 correction/tests `bab6d5b`/`d100f49` are green and PID 56752 is
-   visibly staged; obtain the final narrow physical verdict, then integrate.
-6. Run generic DLV-276 in the platform lane after accepted DLV-271 integration;
-   physically accept the themed exclusive-focus controller keyboard before its
-   focused tests and integration.
+5. DLV-271 is physically accepted and integrated through main `56bc604`; retain
+   accepted PID 56752 without a redundant rebuild/relaunch.
+6. Run Assigned generic DLV-276 in the platform lane from `56bc604`; physically
+   accept the themed exclusive-focus controller keyboard before focused tests.
 7. Resume saved DLV-265 in the widgets lane immediately after accepted DLV-276
    integration; preserve existing Spotify configuration/account state.
 8. Run DLV-270 in the widgets lane only after accepted DLV-265 integration.
@@ -979,8 +973,8 @@ missing accepted DLV-265/DLV-271/DLV-276 baseline. Never push.
 | DLV-273 | Retired failed refactor by user decision. Production `b54e1e2` and corrections `e98566e`/`dcd58e0` remain rejected branch history and must not be resumed or integrated. Accepted DLV-269 PID 78428 is restored; no production revert was necessary because main never contained DLV-273. |
 | DLV-274 | Complete: production `bf6d524` plus correction `4645f40` preserves 32 MiB per-image limits and raises only decoded/GPU aggregate LRU budgets to 96 MiB. Exact accepted cumulative candidate `949b586` is integrated by `9189cad`; focused tests are integrated through `6ce32b7`. |
 | DLV-275 | Complete: production `baf7bd4` fixes active-lifetime cancellation and adds diagnostics; `2b609fc` isolates widget worker failures; `74ec5e9` removes destructive stale-request pipe cancellation. Exact accepted candidate `949b586` is integrated by `9189cad`, tests by `6ce32b7`, and fresh main Release PID 53016 is responding with the integrated cache policy. |
-| DLV-271 | `bab6d5b` corrects the post-verdict overlapping-key defect and `d100f49` adds green focused coverage. Exact coherent PID 56752 is awaiting only the final narrow physical regression verdict before integration. |
-| DLV-276 | Ready after accepted DLV-271 integration: generic themed controller keyboard, exclusive modal input/focus, live-buffer and hint/value correction. Physical Spotify cancel-path proof must preserve the installed Client ID/account. |
+| DLV-271 | Complete: production through `bab6d5b`, tests `d100f49`, focused evidence, and final physical verdict accepted; equivalent commits integrated through main `56bc604`, with accepted PID 56752 retained. |
+| DLV-276 | Assigned from `56bc604`: generic themed controller keyboard, exclusive modal input/focus, live-buffer and hint/value correction. Physical Spotify cancel-path proof must preserve installed configuration/account state. |
 | DLV-265 | Saved until immediately after accepted DLV-276; preserve installed 0.3.3 and existing configuration/account state. |
 | DLV-248 | Deliberately deferred until explicit user promotion. |
 
@@ -996,3 +990,4 @@ missing accepted DLV-265/DLV-271/DLV-276 baseline. Never push.
 | DLV-272 | Interaction-session extraction accepted and integrated through `8100bd7`. |
 | DLV-269 | Viewport-driven paging accepted and integrated through `683af77`; PID 98812 retained under the no-relaunch rule. |
 | DLV-274/275 | Cache retention, keep-alive lifecycle, per-widget failure isolation, and non-destructive stale-request cancellation accepted as exact candidate `949b586`; production integrated by `9189cad`, focused tests by `6ce32b7`, and exact-main Release PID 53016 launched with confirmed 96 MiB aggregate decoded/GPU budgets. |
+| DLV-271 | Bounded virtual collection windows accepted through branch `d100f49`, integrated through main `56bc604`, and physically retained as PID 56752. |
