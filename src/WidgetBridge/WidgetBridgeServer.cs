@@ -55,7 +55,8 @@ public sealed class WidgetBridgeServer : IAsyncDisposable
             catalogMonitor,
             residencyBudget,
             launcherExperience,
-            capabilityDiagnosticSink: null)
+            capabilityDiagnosticSink: null,
+            lifetimeDiagnosticSink: null)
     {
     }
 
@@ -69,7 +70,8 @@ public sealed class WidgetBridgeServer : IAsyncDisposable
         BridgeCatalogMonitor? catalogMonitor,
         WorkerResidencyBudgetOptions? residencyBudget,
         LauncherExperienceSelectionService? launcherExperience,
-        Action<string, BrokerCapabilityDiagnostic>? capabilityDiagnosticSink)
+        Action<string, BrokerCapabilityDiagnostic>? capabilityDiagnosticSink,
+        Action<BridgeClientLifetimeDiagnostic>? lifetimeDiagnosticSink = null)
     {
         _pipeName = ValidatePipeName(pipeName);
         _maximumMessageBytes = maximumMessageBytes is >= 256 and <=
@@ -89,7 +91,8 @@ public sealed class WidgetBridgeServer : IAsyncDisposable
             CreateWidgetClient,
             PublishClientInvalidation,
             PublishClientActionFailure,
-            PublishClientFailure);
+            PublishClientFailure,
+            lifetimeDiagnostic: lifetimeDiagnosticSink);
         _authorityRecovery = new BridgeAuthorityRecoveryProjection(
             AppContainerAuthorityRecoveryService.Default);
         _localData = new BridgeWidgetLocalDataService(

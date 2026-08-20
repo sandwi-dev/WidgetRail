@@ -34,6 +34,11 @@ internal sealed record BridgeClientActionFailure(
     string RuntimeGeneration,
     WidgetActionFailure Failure);
 internal sealed record BridgeClientRuntimeFailure(string WidgetId, WidgetFailure Failure);
+internal sealed record BridgeClientLifetimeDiagnostic(
+    string WidgetId,
+    long RegistryGeneration,
+    WidgetResidencyMode ResidencyMode,
+    WidgetProcessLifetimeDiagnostic Process);
 internal sealed record BridgeClientNotificationStatus(
     int Pending,
     int DroppedFailures,
@@ -71,6 +76,7 @@ internal interface IBridgeWidgetClient : IAsyncDisposable
     event EventHandler<long>? Invalidated;
     event EventHandler<WidgetActionFailure>? ActionFailed;
     event EventHandler<WidgetFailure>? Failed;
+    event EventHandler<WidgetProcessLifetimeDiagnostic>? LifetimeChanged;
     bool IsRunning { get; }
     int Starts { get; }
     Task<ViewSnapshot> GetSnapshotAsync(CancellationToken cancellationToken);
@@ -111,6 +117,12 @@ internal sealed class WidgetProcessBridgeClient(WidgetProcessClient client)
     {
         add => client.Failed += value;
         remove => client.Failed -= value;
+    }
+
+    public event EventHandler<WidgetProcessLifetimeDiagnostic>? LifetimeChanged
+    {
+        add => client.LifetimeChanged += value;
+        remove => client.LifetimeChanged -= value;
     }
 
     public bool IsRunning => client.IsRunning;
@@ -157,6 +169,7 @@ internal sealed class BridgeClientRegistry : IAsyncDisposable
     private readonly Func<BridgeClientInvalidation, CancellationToken, Task> _invalidated;
     private readonly Func<BridgeClientActionFailure, CancellationToken, Task> _actionFailed;
     private readonly Func<BridgeClientRuntimeFailure, CancellationToken, Task> _failed;
+    private readonly Action<BridgeClientLifetimeDiagnostic>? _lifetimeDiagnostic;
     private readonly Func<TimeSpan, CancellationToken, Task> _delay;
     private readonly HashSet<ClientRegistration> _activeRetirements = [];
     private int _terminalFailureCount;
@@ -165,6 +178,7 @@ internal sealed class BridgeClientRegistry : IAsyncDisposable
     private TaskCompletionSource? _restartsDrained;
     private BridgeCatalog _catalog;
     private long _catalogRevision;
+    private long _nextRegistrationGeneration;
     private bool _disposed;
     private readonly TaskCompletionSource _terminal = new(
         TaskCreationOptions.RunContinuationsAsynchronously);
@@ -176,7 +190,8 @@ internal sealed class BridgeClientRegistry : IAsyncDisposable
         Func<BridgeClientInvalidation, CancellationToken, Task> invalidated,
         Func<BridgeClientActionFailure, CancellationToken, Task> actionFailed,
         Func<BridgeClientRuntimeFailure, CancellationToken, Task> failed,
-        Func<TimeSpan, CancellationToken, Task>? delay = null)
+        Func<TimeSpan, CancellationToken, Task>? delay = null,
+        Action<BridgeClientLifetimeDiagnostic>? lifetimeDiagnostic = null)
     {
         _catalog = catalog ?? throw new ArgumentNullException(nameof(catalog));
         _residentBudget = new WorkerResidencyBudget(
@@ -186,6 +201,7 @@ internal sealed class BridgeClientRegistry : IAsyncDisposable
         _actionFailed = actionFailed ?? throw new ArgumentNullException(nameof(actionFailed));
         _failed = failed ?? throw new ArgumentNullException(nameof(failed));
         _delay = delay ?? Task.Delay;
+        _lifetimeDiagnostic = lifetimeDiagnostic;
     }
 
     internal int RunningWorkerCount
@@ -956,6 +972,14 @@ internal sealed class BridgeClientRegistry : IAsyncDisposable
         Exception? failure = null;
         try
         {
+            RecordLifetime(
+                registration,
+                new WidgetProcessLifetimeDiagnostic(
+                    WidgetProcessLifetimeEventKind.LifecycleRequested,
+                    registration.Client.Starts,
+                    null,
+                    WidgetLifecycleState.Destroying,
+                    FailureCode: "registry-retirement"));
             await registration.NotificationLane.CloseAndDrainAsync().ConfigureAwait(false);
             await DisposeRegistrationAsync(registration).ConfigureAwait(false);
         }
@@ -1002,7 +1026,11 @@ internal sealed class BridgeClientRegistry : IAsyncDisposable
                 configured.Id,
                 configured.MemoryRequestMb,
                 WidgetBridgeServer.IsTrustedSettings(configured)));
-        var registration = new ClientRegistration(configured, client, RecordTerminalFailure);
+        var registration = new ClientRegistration(
+            configured,
+            client,
+            Interlocked.Increment(ref _nextRegistrationGeneration),
+            RecordTerminalFailure);
         var runtimeGeneration = configured.PublicDescriptor().RuntimeGeneration;
         client.Invalidated += (_, revision) =>
             EnqueueNotification(
@@ -1026,7 +1054,27 @@ internal sealed class BridgeClientRegistry : IAsyncDisposable
                 cancellationToken => _failed(
                     new BridgeClientRuntimeFailure(configured.Id, failure), cancellationToken));
         };
+        client.LifetimeChanged += (_, diagnostic) => RecordLifetime(registration, diagnostic);
         return registration;
+    }
+
+    private void RecordLifetime(
+        ClientRegistration registration,
+        WidgetProcessLifetimeDiagnostic diagnostic)
+    {
+        try
+        {
+            _lifetimeDiagnostic?.Invoke(new BridgeClientLifetimeDiagnostic(
+                registration.Configured.Id,
+                registration.Generation,
+                WidgetResidencyPolicies.Resolve(
+                    registration.Configured.ResidencyPolicy).Mode,
+                diagnostic));
+        }
+        catch (Exception exception) when (exception is not OutOfMemoryException)
+        {
+            // Lifetime diagnostics are observational and cannot own retirement.
+        }
     }
 
     private void EnqueueNotification(
@@ -1328,6 +1376,7 @@ internal sealed class BridgeClientRegistry : IAsyncDisposable
     private sealed class ClientRegistration(
         ConfiguredWidget configured,
         IBridgeWidgetClient client,
+        long generation,
         Action<Exception> recordFailure)
     {
         private ConfiguredWidget _configured = configured;
@@ -1338,6 +1387,7 @@ internal sealed class BridgeClientRegistry : IAsyncDisposable
         }
 
         internal IBridgeWidgetClient Client { get; } = client;
+        internal long Generation { get; } = generation;
         internal BridgeClientNotificationLane NotificationLane { get; } = new(recordFailure);
         internal SemaphoreSlim OperationGate { get; } = new(1, 1);
         private int _hostLifecycle = (int)WidgetLifecycleState.Background;

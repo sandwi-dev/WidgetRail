@@ -651,6 +651,7 @@ private:
     std::wstring lastError_;
     std::optional<WidgetBridgeRuntimeFailure> lastRuntimeFailure_;
     long long nextRequestId_{};
+    long long bridgeSessionGeneration_{};
     WidgetInvalidationQueue invalidations_;
     WidgetActionFailureQueue actionFailures_;
     std::vector<WidgetBridgeRuntimeFailure> runtimeFailures_;
