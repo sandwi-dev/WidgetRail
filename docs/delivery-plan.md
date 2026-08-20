@@ -29,7 +29,7 @@ evidence only; this file is the sole authority for current work.
 
 | Lane | Task/worktree | State |
 | --- | --- | --- |
-| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | DLV-273 remains retired. DLV-275 stale-request correction `74ec5e9` is source-reviewed and staged after preserved DLV-274/275 production as exact candidate `949b586`. Packaged Release PID 17928 is visibly running for rapid-switch continuity plus failed-widget isolation verdicts. Do not test, integrate, or start DLV-271 before user acceptance. Never push. |
+| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | DLV-273 remains retired. The user physically accepted cumulative DLV-274/275 exact candidate `949b586` on responding PID 17928. Add only focused post-verdict regression coverage for cache retention, keep-alive lifecycle, per-widget failure isolation, and non-destructive rapid-switch cancellation; then stop for review and integration. Do not start DLV-271 before accepted integration. Never push. |
 | Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | Preserve saved DLV-265 and installed Spotify state. Do not resume, test, integrate, reinstall, replace configuration, or reset before accepted DLV-271 integration. DLV-270 follows accepted DLV-265; DLV-248 remains deferred. |
 
 ## Execution, review, and architecture rules
@@ -616,6 +616,17 @@ generation 2/start 1/PID 13444, and the expected 32 MiB per-image plus 96 MiB
 aggregate decoded/GPU cache limits. Await the two physical verdicts above; do
 not run tests or integrate first.
 
+Accepted physical verdict: the user accepted exact cumulative candidate
+`949b586` on 2026-08-19. This accepts the visible aggregate cache-retention,
+keep-alive lifecycle, per-widget failure-isolation, and non-destructive rapid-
+switch behavior represented by DLV-274/275 production commits `bf6d524`,
+`4645f40`, `baf7bd4`, `2b609fc`, and `74ec5e9`; it does not yet integrate them.
+Keep responding PID 17928 running while the platform lane adds the smallest
+focused post-verdict regression coverage. After review, integrate the accepted
+production/test chain in order. Because PID 17928 already contains the exact
+accepted production inputs, a tests-only follow-up and reviewer-document-only
+integration update must not trigger a rebuild or relaunch.
+
 ## Ready serialized deliverable — DLV-271: virtualized collection presentation windows
 
 Owner/baseline: platform lane as serialized cross-layer lead after DLV-274 is
@@ -744,12 +755,12 @@ missing accepted DLV-265/DLV-271 baseline. Never push.
    continue, test, integrate, or base later work on the presenter refactor.
 3. Preserve rejected DLV-274 correction `4645f40` and its healthy-cache evidence;
    do not test or integrate it while the keep-alive reload remains unresolved.
-4. Correct DLV-275 from accepted main `683af77`: retain per-widget worker/request
-   failure isolation and replace the destructive `CancelSynchronousIo` stale-
-   request path so rapid navigation cannot taint or replace the shared bridge.
-   Obtain both rapid-switch continuity and failed-widget isolation verdicts.
-5. After acceptance, add focused tests and integrate the reviewed DLV-274 and
-   DLV-275 production/test chain in order.
+4. DLV-274/275 production exact candidate `949b586` is physically accepted.
+   Add focused post-verdict tests for the accepted cache, lifecycle, per-widget
+   failure, and non-destructive rapid-switch invariants.
+5. Review and integrate the accepted DLV-274 and DLV-275 production/test chain
+   in order; retain accepted PID 17928 under the no-relaunch rule when the only
+   later delta is tests and reviewer documents.
 6. Run serialized DLV-271 in the platform lane with normal shared-protocol
    verification, provider-free 10,000-item scale proof, physical verdict,
    review, and integration.
@@ -769,8 +780,8 @@ missing accepted DLV-265/DLV-271 baseline. Never push.
 | GitHub identity | User-selected owner plus repository/organization availability and optional rename/creation. |
 | DLV-269 | Complete: physical correction accepted on PID 98812, focused evidence passed, and the chain is integrated through main `683af77`. |
 | DLV-273 | Retired failed refactor by user decision. Production `b54e1e2` and corrections `e98566e`/`dcd58e0` remain rejected branch history and must not be resumed or integrated. Accepted DLV-269 PID 78428 is restored; no production revert was necessary because main never contained DLV-273. |
-| DLV-274 | Production `bf6d524` is rejected as insufficient. Correction `4645f40` preserves 32 MiB per-image limits and raises only decoded/GPU aggregate LRU budgets to 96 MiB; its caches remained healthy during the latest reproduction. The candidate is nevertheless rejected for the complete physical no-reload objective because Spotify sequence reset `21 -> 1`, proving keep-alive application recreation. Preserve its exact stage and measurements without tests, integration, packaging, or push until DLV-275 is accepted. |
-| DLV-275 | Production `baf7bd4` fixed Spotify's original active-lifetime cancellation and added diagnostics; combined candidate `cd1144f` was rejected after YouTube Music exit 1 replaced the shared bridge. Per-widget failure correction `2b609fc` / exact candidate `e318ffb` was rejected because rapid navigation still destructively canceled shared pipe I/O. Stale-request correction `74ec5e9` is source-reviewed and staged as exact candidate `949b586`; responding PID 17928 is visibly running. Await rapid-switch continuity plus failed-widget isolation verdicts; no tests or integration before acceptance. |
+| DLV-274 | Production `bf6d524` plus correction `4645f40` preserves 32 MiB per-image limits and raises only decoded/GPU aggregate LRU budgets to 96 MiB. The user physically accepted cumulative exact candidate `949b586`; focused post-verdict cache coverage and integration remain pending. |
+| DLV-275 | Production `baf7bd4` fixes the active-lifetime cancellation and adds diagnostics; `2b609fc` isolates widget worker failures; `74ec5e9` removes destructive stale-request pipe cancellation. The user physically accepted cumulative exact candidate `949b586` on PID 17928. Focused post-verdict lifecycle/failure/rapid-switch coverage and integration remain pending; do not rebuild or relaunch for a tests-only delta. |
 | DLV-265 | Saved until immediately after accepted DLV-271; preserve installed 0.3.3 and existing configuration/account state. |
 | DLV-248 | Deliberately deferred until explicit user promotion. |
 
