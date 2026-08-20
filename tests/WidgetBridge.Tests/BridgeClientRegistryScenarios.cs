@@ -111,6 +111,45 @@ internal static class BridgeClientRegistryScenarios
         RegistryAssert.Equal(0, fixture.Registry.ResidencyBudget.ApplicationWorkers);
     }
 
+    internal static async Task WidgetRuntimeFailuresAreTypedAndRegistrationLocal()
+    {
+        var alpha = Widget("alpha-runtime-failure", worker: 'a', catalog: 'a');
+        var beta = Widget("beta-runtime-neighbor", worker: 'b', catalog: 'b');
+        await using var fixture = new RegistryFixture(Catalog(alpha, beta));
+
+        await fixture.SetLifecycleAsync(alpha.Id, WidgetLifecycleState.Visible);
+        await fixture.SetLifecycleAsync(beta.Id, WidgetLifecycleState.Visible);
+        var alphaClient = fixture.Clients.Single(client => client.WidgetId == alpha.Id);
+        var betaClient = fixture.Clients.Single(client => client.WidgetId == beta.Id);
+
+        var failures = new (Exception Failure, string Code)[]
+        {
+            (new WidgetProcessException("synthetic worker failure"), "worker-runtime-failed"),
+            (new WidgetProcessAdmissionException("synthetic admission failure"),
+                "worker-admission-failed"),
+            (new WidgetProtocolViolationException("synthetic protocol failure"),
+                "worker-protocol-failed"),
+            (new TimeoutException("synthetic request timeout"), "worker-request-timeout"),
+        };
+        foreach (var (failure, code) in failures)
+        {
+            alphaClient.SnapshotFailure = failure;
+            var typed = await RegistryAssert.ThrowsAsync<BridgeWidgetRequestException>(
+                () => fixture.GetSnapshotAsync(alpha.Id));
+            RegistryAssert.Equal(alpha.Id, typed.WidgetId);
+            RegistryAssert.Equal(code, typed.FailureCode);
+            RegistryAssert.True(ReferenceEquals(failure, typed.InnerException));
+            alphaClient.SnapshotFailure = null;
+
+            _ = await fixture.GetSnapshotAsync(beta.Id);
+            RegistryAssert.True(alphaClient.IsRunning,
+                "A typed widget failure retired its registration.");
+            RegistryAssert.True(betaClient.IsRunning,
+                "A neighbor registration ended after another widget failed.");
+            RegistryAssert.Equal(2, fixture.Registry.RunningWorkerCount);
+        }
+    }
+
     internal static async Task RestartRestoresLifecycleAndResetsGeneration()
     {
         var configured = Widget("restart", worker: 'f', catalog: 'f');
@@ -949,6 +988,7 @@ internal sealed class RegistryTestClient(
     public event EventHandler<long>? Invalidated;
     public event EventHandler<WidgetActionFailure>? ActionFailed;
     public event EventHandler<WidgetFailure>? Failed;
+    public event EventHandler<WidgetProcessLifetimeDiagnostic>? LifetimeChanged;
 
     internal string WidgetId { get; } = widgetId;
     internal int ClientGeneration { get; } = clientGeneration;
@@ -958,6 +998,7 @@ internal sealed class RegistryTestClient(
     internal int FailStartsAfterReservation { get; set; }
     internal int FailLifecycleTransitions { get; set; }
     internal int FailSnapshots { get; set; }
+    internal Exception? SnapshotFailure { get; set; }
     internal Action? OnDisposeStarted { get; set; }
     internal Task SnapshotEntered => _snapshotEntered.Task;
     internal Task Disposed => _disposed.Task;
@@ -971,6 +1012,8 @@ internal sealed class RegistryTestClient(
     public async Task<ViewSnapshot> GetSnapshotAsync(CancellationToken cancellationToken)
     {
         EnsureStarted();
+        if (SnapshotFailure is { } snapshotFailure)
+            throw snapshotFailure;
         if (FailSnapshots > 0)
         {
             FailSnapshots--;
@@ -1074,6 +1117,8 @@ internal sealed class RegistryTestClient(
             null,
             RestartsUsed: 0,
             CanRestart: true));
+    internal void RaiseLifetime(WidgetProcessLifetimeDiagnostic diagnostic) =>
+        LifetimeChanged?.Invoke(this, diagnostic);
 
     private void EnsureStarted()
     {

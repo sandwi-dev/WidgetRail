@@ -3677,6 +3677,19 @@ void ContentMeasurementUsesResponsiveTaffyGeometry() {
         "invalid measurement bounds fail closed before Taffy allocation");
 }
 
+void BitmapRetentionPolicyIsBounded() {
+    widgetrail::DeclarativeRenderer renderer(nullptr, nullptr, nullptr);
+    const auto stats = renderer.GetImageBitmapCacheStats();
+    Check(stats.entries == 0 && stats.bytes == 0,
+        "new bitmap cache starts empty");
+    Check(stats.maximumEntries == 256,
+        "bitmap cache retains a bounded ready-entry working set");
+    Check(stats.maximumEntryBytes == 32U * 1024U * 1024U,
+        "bitmap cache preserves the per-image safety ceiling");
+    Check(stats.maximumBytes == 96U * 1024U * 1024U,
+        "bitmap cache uses the distinct aggregate GPU retention budget");
+}
+
 } // namespace
 
 int main() {
@@ -3716,6 +3729,7 @@ int main() {
     OffscreenScrollArtworkDoesNotEnterRemoteCache();
     TrustedArtworkTerminalFallbackIsStable();
     ContentMeasurementUsesResponsiveTaffyGeometry();
+    BitmapRetentionPolicyIsBounded();
     std::cout << "DeclarativeRendererTests: " << checks << " checks passed\n";
     CoUninitialize();
     return EXIT_SUCCESS;

@@ -10,6 +10,7 @@
 #include <atomic>
 #include <chrono>
 #include <condition_variable>
+#include <future>
 #include <iostream>
 #include <mutex>
 #include <string>
@@ -222,6 +223,44 @@ struct FakeBridge final {
         auto result = found->second;
         if (protocolMismatch) result.instanceId = L"wrong.instance";
         return WidgetSessionOperationResult<WidgetSnapshot>::Success(std::move(result));
+    }
+};
+
+struct BlockingPipeRead final {
+    HANDLE readHandle{INVALID_HANDLE_VALUE};
+    HANDLE writeHandle{INVALID_HANDLE_VALUE};
+    HANDLE entered{CreateEventW(nullptr, TRUE, FALSE, nullptr)};
+    HANDLE completed{CreateEventW(nullptr, TRUE, FALSE, nullptr)};
+    std::atomic_bool succeeded{};
+    std::atomic<DWORD> error{ERROR_SUCCESS};
+
+    BlockingPipeRead() {
+        assert(entered && completed);
+        assert(CreatePipe(&readHandle, &writeHandle, nullptr, 0));
+    }
+
+    ~BlockingPipeRead() {
+        if (readHandle != INVALID_HANDLE_VALUE) CloseHandle(readHandle);
+        if (writeHandle != INVALID_HANDLE_VALUE) CloseHandle(writeHandle);
+        if (entered) CloseHandle(entered);
+        if (completed) CloseHandle(completed);
+    }
+
+    bool Read() {
+        assert(SetEvent(entered));
+        unsigned char value{};
+        DWORD read{};
+        const bool result = ReadFile(readHandle, &value, 1, &read, nullptr) && read == 1;
+        succeeded.store(result);
+        if (!result) error.store(GetLastError());
+        assert(SetEvent(completed));
+        return result;
+    }
+
+    void Release() const {
+        const unsigned char value = 1;
+        DWORD written{};
+        assert(WriteFile(writeHandle, &value, 1, &written, nullptr) && written == 1);
     }
 };
 
@@ -615,6 +654,113 @@ void CancellationStopsStalledRequest() {
     const auto began = std::chrono::steady_clock::now();
     coordinator.Shutdown();
     assert(std::chrono::steady_clock::now() - began < 1s);
+}
+
+void SerializedTransportIsInterruptedOnlyAtShutdown() {
+    for (const bool revoke : {false, true}) {
+        FakeBridge bridge;
+        bridge.catalog = {
+            Descriptor(L"alpha", L"alpha.one", L"runtime-1", L"view-1"),
+        };
+        bridge.snapshots[L"alpha"] = Snapshot(L"alpha.one", 1);
+        BlockingPipeRead pipe;
+        auto operations = bridge.Operations();
+        operations.getSnapshot = [&pipe](std::stop_token, std::wstring_view,
+                                         long long, bool) {
+            if (!pipe.Read()) {
+                return WidgetSessionOperationResult<
+                    WidgetPresentationPublication>::Failure(
+                        WidgetSessionFailureStage::Snapshot,
+                        L"serialized read interrupted");
+            }
+            WidgetPresentationPublication publication;
+            publication.checkpoint = Snapshot(L"alpha.one", 2);
+            return WidgetSessionOperationResult<
+                WidgetPresentationPublication>::Success(std::move(publication));
+        };
+        WidgetSessionCoordinator coordinator(std::move(operations));
+        assert(coordinator.EstablishCatalog());
+        coordinator.SetLifecycleTargets({
+            {L"alpha", WidgetLifecycleState::Visible},
+        });
+        (void)WaitEvents(coordinator, [](const auto& events) {
+            return std::any_of(events.begin(), events.end(), [](const auto& event) {
+                return event.widgetId == L"alpha" &&
+                       event.kind == WidgetSessionEventKind::SnapshotAdmitted;
+            });
+        });
+        assert(coordinator.RequestSnapshot(L"alpha"));
+        assert(WaitForSingleObject(pipe.entered, 1'000) == WAIT_OBJECT_0);
+
+        if (revoke) {
+            coordinator.RemoveSnapshot(L"alpha");
+        } else {
+            coordinator.SetLifecycleTargets({
+                {L"alpha", WidgetLifecycleState::Interactive},
+            });
+        }
+        assert(WaitForSingleObject(pipe.completed, 100) == WAIT_TIMEOUT);
+        pipe.Release();
+        const auto events = WaitEvents(coordinator, [revoke](const auto& value) {
+            return std::any_of(value.begin(), value.end(), [revoke](const auto& event) {
+                return event.widgetId == L"alpha" &&
+                    event.kind == (revoke
+                        ? WidgetSessionEventKind::StaleCompletionRejected
+                        : WidgetSessionEventKind::SnapshotAdmitted);
+            });
+        });
+        assert(pipe.succeeded.load());
+        assert(std::any_of(events.begin(), events.end(), [](const auto& event) {
+            return event.widgetId == L"alpha" &&
+                   event.kind == WidgetSessionEventKind::StaleCompletionRejected;
+        }));
+        assert(std::none_of(events.begin(), events.end(), [](const auto& event) {
+            return event.widgetId == L"alpha" &&
+                   event.kind == WidgetSessionEventKind::Failed;
+        }));
+    }
+
+    FakeBridge bridge;
+    bridge.catalog = {
+        Descriptor(L"alpha", L"alpha.one", L"runtime-1", L"view-1"),
+    };
+    bridge.snapshots[L"alpha"] = Snapshot(L"alpha.one", 1);
+    BlockingPipeRead pipe;
+    auto operations = bridge.Operations();
+    operations.getSnapshot = [&pipe](std::stop_token, std::wstring_view,
+                                     long long, bool) {
+        if (!pipe.Read()) {
+            return WidgetSessionOperationResult<
+                WidgetPresentationPublication>::Failure(
+                    WidgetSessionFailureStage::Snapshot,
+                    L"serialized read interrupted");
+        }
+        WidgetPresentationPublication publication;
+        publication.checkpoint = Snapshot(L"alpha.one", 2);
+        return WidgetSessionOperationResult<
+            WidgetPresentationPublication>::Success(std::move(publication));
+    };
+    WidgetSessionCoordinator coordinator(std::move(operations));
+    assert(coordinator.EstablishCatalog());
+    coordinator.SetLifecycleTargets({
+        {L"alpha", WidgetLifecycleState::Visible},
+    });
+    (void)WaitEvents(coordinator, [](const auto& events) {
+        return std::any_of(events.begin(), events.end(), [](const auto& event) {
+            return event.widgetId == L"alpha" &&
+                   event.kind == WidgetSessionEventKind::SnapshotAdmitted;
+        });
+    });
+    assert(coordinator.RequestSnapshot(L"alpha"));
+    assert(WaitForSingleObject(pipe.entered, 1'000) == WAIT_OBJECT_0);
+    auto shutdown = std::async(std::launch::async, [&] { coordinator.Shutdown(); });
+    const auto shutdownStatus = shutdown.wait_for(2s);
+    if (shutdownStatus != std::future_status::ready) pipe.Release();
+    shutdown.wait();
+    assert(shutdownStatus == std::future_status::ready);
+    assert(WaitForSingleObject(pipe.completed, 1'000) == WAIT_OBJECT_0);
+    assert(!pipe.succeeded.load());
+    assert(pipe.error.load() == ERROR_OPERATION_ABORTED);
 }
 
 void SelectionRevokesNeverCompletingRequest() {
@@ -1446,6 +1592,7 @@ int main() {
     TypedStartFailureAndRetryPolicy();
     PrimaryStartFailureSurvivesLifecycleRetargetAndRetry();
     CancellationStopsStalledRequest();
+    SerializedTransportIsInterruptedOnlyAtShutdown();
     SelectionRevokesNeverCompletingRequest();
     DelayedSuccessRetainsLastGoodSnapshot();
     RefreshDemandQueuesAgainstCurrentLifecycle();
@@ -1459,5 +1606,5 @@ int main() {
     SelectedTraceRejectsPinnedAndSupersededAdmissions();
     SelectedLifecycleCorrelationExcludesPinnedTarget();
     AtomicUpdateAdmissionAndCheckpointFallback();
-    std::cout << "WidgetSessionCoordinatorTests passed (20 scenarios)\n";
+    std::cout << "WidgetSessionCoordinatorTests passed (21 scenarios)\n";
 }

@@ -66,6 +66,7 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Catalog monitor closes the startup notification window", CatalogMonitorStartupCatchUp),
     ("Catalog reconciliation preserves compatible workers and retires changed workers", CatalogReconciliationPreservesCompatibleWorkers),
     ("Client registry owns compatible replacement removal and stale generations", BridgeClientRegistryScenarios.CatalogReplacementAndRemovalOwnGenerations),
+    ("Client registry isolates typed widget runtime failures", BridgeClientRegistryScenarios.WidgetRuntimeFailuresAreTypedAndRegistrationLocal),
     ("Client registry owns idle unload cancellation and replacement drain", BridgeClientRegistryScenarios.IdleUnloadCancellationAndReplacementAreOwned),
     ("Client registry restart restores lifecycle and resets generation", BridgeClientRegistryScenarios.RestartRestoresLifecycleAndResetsGeneration),
     ("Client registry restart reserves one generation and cleans failed restore", BridgeClientRegistryScenarios.RestartReservationAndRestoreFailureAreClosed),
@@ -642,10 +643,10 @@ static async Task RequestDispatcherCleansTerminalPaths()
         exception => failureFatal.TrySetResult(exception)))
     {
         var failed = dispatcher.TryDispatch(
-            2, GlobalRequest(), _ => Task.FromException(new InvalidOperationException("fatal")));
-        await Assert.ThrowsAsync<InvalidOperationException>(() => failed.Completion!);
+            2, GlobalRequest(), _ => Task.FromException(new IOException("fatal transport")));
+        await Assert.ThrowsAsync<IOException>(() => failed.Completion!);
         var fatal = await failureFatal.Task.WaitAsync(TimeSpan.FromSeconds(1));
-        Assert.Equal("fatal", fatal.Message);
+        Assert.Equal("fatal transport", fatal.Message);
         await dispatcher.CancelAndDrainAsync();
         Assert.Equal(0, dispatcher.ActiveCount);
         Assert.Equal(0, dispatcher.WidgetTailCount);
