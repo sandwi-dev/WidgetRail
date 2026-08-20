@@ -153,9 +153,12 @@ required for this physical verdict.
 Production candidates `3d3ed0e` and `c4619f3` were physically rejected. Exact
 correction `c96cdc0` admits only `BN_CLICKED`, restores bounded clipboard paste,
 and preserves the neutral gate, B containment, semantic revalidation, result
-feedback, and Enter wording. The user physically accepted that behavior on PID
-34644. `WS_EX_DLGMODALFRAME` still produces an untinted white non-client border;
-remove only that styling defect and obtain the final border verdict before tests.
+feedback, and Enter wording. Border-only correction `d20b2c5` removes the stock
+`WS_EX_DLGMODALFRAME` without changing modal behavior. The user physically
+accepted the complete production behavior and styling on PID 22944. The
+post-verdict focused tests and directly affected public guidance are assigned;
+do not change or relaunch the accepted production candidate for that
+non-production-only delta.
 
 After acceptance, add focused modal layout/theme/live-buffer/hint/password,
 caret insertion/deletion and LB/RB boundary/repeat behavior, exclusive
