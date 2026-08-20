@@ -37,8 +37,16 @@ enum class RemoteImageRequestResult {
 };
 
 struct RemoteImageLimits {
-    std::size_t maximumEntries{32};
-    std::size_t maximumDecodedBytes{32U * 1024U * 1024U};
+    // Entry metadata and ready decoded pixels have independent bounds from
+    // pending fetch/decode admission. A full pending queue must not evict a
+    // useful ready image merely to track another request.
+    std::size_t maximumEntries{320};
+    std::size_t maximumReadyEntries{256};
+    std::size_t maximumPendingEntries{32};
+    // Each untrusted decoded image remains capped independently from the
+    // bounded process-wide retention budget.
+    std::size_t maximumDecodedImageBytes{32U * 1024U * 1024U};
+    std::size_t maximumDecodedBytes{96U * 1024U * 1024U};
     std::size_t maximumDownloadBytes{5U * 1024U * 1024U};
     DWORD resolveTimeoutMilliseconds{2'000};
     DWORD connectTimeoutMilliseconds{3'000};
@@ -67,6 +75,17 @@ struct RemoteImageCacheStats {
     std::size_t entries{};
     std::size_t decodedBytes{};
     std::size_t queuedOrLoading{};
+    std::size_t readyEntries{};
+    std::size_t failedEntries{};
+    std::size_t httpsEntries{};
+    std::size_t inlineEntries{};
+    std::size_t trustedArtworkEntries{};
+    std::uint64_t evictions{};
+    std::uint64_t countPressureEvictions{};
+    std::uint64_t bytePressureEvictions{};
+    std::uint64_t supersededEntries{};
+    std::uint64_t countCapacityRejections{};
+    std::uint64_t pendingCapacityRejections{};
 };
 
 /// Thread-safe CPU image cache. Network and WIC decode execute on its worker.
@@ -151,6 +170,11 @@ public:
         const RemoteImageLimits& limits);
 
 private:
+    enum class EvictionReason {
+        CountPressure,
+        BytePressure,
+    };
+
     struct Entry {
         RemoteImageState state{RemoteImageState::Queued};
         std::shared_ptr<const RemoteDecodedImage> image;
@@ -160,7 +184,12 @@ private:
     };
 
     [[nodiscard]] RemoteImageRequestResult QueueLocked(std::wstring url, bool retry);
-    [[nodiscard]] bool EvictOneLocked(std::wstring_view protectedUrl);
+    [[nodiscard]] std::size_t PendingCountLocked() const noexcept;
+    [[nodiscard]] std::size_t ReadyCountLocked() const noexcept;
+    [[nodiscard]] bool EvictOneLocked(
+        std::wstring_view protectedUrl,
+        EvictionReason reason,
+        bool readyOnly = false);
     void WorkerLoop(std::stop_token stopToken);
     void CompleteLocked(const std::wstring& url, RemoteImageFetchResult result);
     RemoteImageLimits limits_;
@@ -174,6 +203,12 @@ private:
     std::jthread worker_;
     std::size_t decodedBytes_{};
     std::uint64_t useCounter_{};
+    std::uint64_t evictions_{};
+    std::uint64_t countPressureEvictions_{};
+    std::uint64_t bytePressureEvictions_{};
+    std::uint64_t supersededEntries_{};
+    std::uint64_t countCapacityRejections_{};
+    std::uint64_t pendingCapacityRejections_{};
     bool shuttingDown_{};
 };
 

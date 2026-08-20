@@ -2252,8 +2252,11 @@ bool WidgetBridgeClient::Launch(
 
     pipeName_ = L"wrail-host-" + std::to_wstring(GetCurrentProcessId()) + L"-" +
                 std::to_wstring(GetTickCount64());
+    const auto bridgeSessionGeneration = ++bridgeSessionGeneration_;
     std::wstring command = Quote(executable) + L" --host-pipe " + pipeName_ +
-                           L" --catalog " + Quote(catalog) + L" --accept-timeout-ms 10000";
+                           L" --catalog " + Quote(catalog) +
+                           L" --accept-timeout-ms 10000 --bridge-session-generation " +
+                           std::to_wstring(bridgeSessionGeneration);
     if (!installedCatalogRoot.empty()) {
         command += L" --installed-catalog-root " + Quote(installedCatalogRoot);
         wchar_t localAppData[MAX_PATH + 1]{};

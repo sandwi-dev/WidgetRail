@@ -302,6 +302,25 @@ public sealed record WidgetProcessOptions
     }
 }
 
+internal enum WidgetProcessLifetimeEventKind
+{
+    WorkerStarted,
+    LifecycleRequested,
+    LifecycleCompleted,
+    LifecycleFailed,
+    CooperativeUnloadRequested,
+    CooperativeUnloadCompleted,
+    ProcessExited,
+}
+
+internal sealed record WidgetProcessLifetimeDiagnostic(
+    WidgetProcessLifetimeEventKind Kind,
+    int StartOrdinal,
+    int? ProcessId,
+    WidgetLifecycleState? LifecycleState = null,
+    int? ExitCode = null,
+    string? FailureCode = null);
+
 public sealed class WidgetProcessAdmissionException : Exception
 {
     public WidgetProcessAdmissionException(string message) : base(message) { }

@@ -55,6 +55,7 @@ public sealed class WidgetProcessClient : IAsyncDisposable
     public event EventHandler<WidgetActionFailure>? ActionFailed;
     public event EventHandler<WidgetControllerActionFailure>? ControllerActionFailed;
     public event EventHandler<WidgetFailure>? Failed;
+    internal event EventHandler<WidgetProcessLifetimeDiagnostic>? LifetimeChanged;
 
     public bool IsRunning
     {
@@ -168,25 +169,39 @@ public sealed class WidgetProcessClient : IAsyncDisposable
         CancellationToken cancellationToken = default)
     {
         ValidateHostState(state);
-        if (state != _hostLifecycle)
-            Volatile.Read(ref _session)?.GestureReservations.Clear();
-        if (state == WidgetLifecycleState.Background && !IsRunning)
+        RecordLifetime(WidgetProcessLifetimeEventKind.LifecycleRequested, state);
+        try
         {
+            if (state != _hostLifecycle)
+                Volatile.Read(ref _session)?.GestureReservations.Clear();
+            if (state == WidgetLifecycleState.Background && !IsRunning)
+            {
+                _hostLifecycle = state;
+                RecordLifetime(WidgetProcessLifetimeEventKind.LifecycleCompleted, state);
+                return;
+            }
+            await EnsureConnectedAsync(cancellationToken).ConfigureAwait(false);
+            var session = Volatile.Read(ref _session) ??
+                throw new IOException("Widget pipe disconnected.");
+            await SetCompanionLifecycleAsync(session, state, cancellationToken).ConfigureAwait(false);
+            var response = await RequestConnectedAsync(
+                session, MessageTypes.SetWidgetLifecycle,
+                new WidgetLifecyclePayload(state),
+                cancellationToken).ConfigureAwait(false);
+            if (response.Type != MessageTypes.Acknowledged)
+                throw new WidgetProtocolViolationException(
+                    $"Expected lifecycle acknowledgement, received '{response.Type}'.");
             _hostLifecycle = state;
-            return;
+            RecordLifetime(WidgetProcessLifetimeEventKind.LifecycleCompleted, state, session);
         }
-        await EnsureConnectedAsync(cancellationToken).ConfigureAwait(false);
-        var session = Volatile.Read(ref _session) ??
-            throw new IOException("Widget pipe disconnected.");
-        await SetCompanionLifecycleAsync(session, state, cancellationToken).ConfigureAwait(false);
-        var response = await RequestConnectedAsync(
-            session, MessageTypes.SetWidgetLifecycle,
-            new WidgetLifecyclePayload(state),
-            cancellationToken).ConfigureAwait(false);
-        if (response.Type != MessageTypes.Acknowledged)
-            throw new WidgetProtocolViolationException(
-                $"Expected lifecycle acknowledgement, received '{response.Type}'.");
-        _hostLifecycle = state;
+        catch (Exception exception) when (exception is not OutOfMemoryException)
+        {
+            RecordLifetime(
+                WidgetProcessLifetimeEventKind.LifecycleFailed,
+                state,
+                failureCode: ClassifyLifecycleFailure(exception));
+            throw;
+        }
     }
 
     /// <summary>Compatibility API for callers using the former active/inactive model.</summary>
@@ -295,6 +310,8 @@ public sealed class WidgetProcessClient : IAsyncDisposable
         bool markResidencyUnload,
         CancellationToken cancellationToken)
     {
+        if (markResidencyUnload)
+            RecordLifetime(WidgetProcessLifetimeEventKind.CooperativeUnloadRequested);
         _stopping = true;
         var lifecycleEntered = false;
         var lifecycleDrainTimeout = _testHooks?.LifecycleDrainTimeout ?? TimeSpan.FromSeconds(6);
@@ -343,6 +360,11 @@ public sealed class WidgetProcessClient : IAsyncDisposable
         }
         try
         {
+            if (markResidencyUnload && stopAcknowledged)
+                RecordLifetime(
+                    WidgetProcessLifetimeEventKind.CooperativeUnloadCompleted,
+                    WidgetLifecycleState.Background,
+                    session);
             await DisposeSessionAsync(session, cancellationToken).ConfigureAwait(false);
             _hostLifecycle = WidgetLifecycleState.Background;
             _residencyUnloaded = markResidencyUnload && stopAcknowledged;
@@ -567,7 +589,11 @@ public sealed class WidgetProcessClient : IAsyncDisposable
             currentSession.Process.Exited += (_, _) => OnProcessExited(currentSession);
             if (isRestart && !isResidencyResume)
                 Interlocked.Increment(ref _restartAttempts);
-            Interlocked.Increment(ref _starts);
+            var startOrdinal = Interlocked.Increment(ref _starts);
+            RecordLifetime(
+                WidgetProcessLifetimeEventKind.WorkerStarted,
+                session: currentSession,
+                startOrdinal: startOrdinal);
 
             using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
             timeout.CancelAfter(_options.ConnectTimeout);
@@ -776,7 +802,14 @@ public sealed class WidgetProcessClient : IAsyncDisposable
 
     private void OnProcessExited(WidgetProcessSession session)
     {
-        if (!ReferenceEquals(session, Volatile.Read(ref _session)) || _stopping) return;
+        if (!ReferenceEquals(session, Volatile.Read(ref _session))) return;
+        var exitCode = TryGetExitCode(session);
+        RecordLifetime(
+            WidgetProcessLifetimeEventKind.ProcessExited,
+            session: session,
+            exitCode: exitCode,
+            failureCode: _stopping ? "cooperative-stop" : "unexpected-exit");
+        if (_stopping) return;
         session.ReleaseLeases();
         if (TryBeginCurrentPublication(session, "process-exited", out var publication))
         {
@@ -825,6 +858,62 @@ public sealed class WidgetProcessClient : IAsyncDisposable
         _options.StartupExitDiagnostics.TryGetValue(value, out var diagnostic)
             ? diagnostic
             : null;
+
+    private void RecordLifetime(
+        WidgetProcessLifetimeEventKind kind,
+        WidgetLifecycleState? state = null,
+        WidgetProcessSession? session = null,
+        int? exitCode = null,
+        string? failureCode = null,
+        int? startOrdinal = null)
+    {
+        session ??= Volatile.Read(ref _session);
+        WidgetProcessLifetimeDiagnostic diagnostic;
+        try
+        {
+            diagnostic = new WidgetProcessLifetimeDiagnostic(
+                kind,
+                startOrdinal ?? Volatile.Read(ref _starts),
+                session?.Process?.Id,
+                state,
+                exitCode,
+                failureCode);
+        }
+        catch (Exception exception) when (exception is not OutOfMemoryException)
+        {
+            return;
+        }
+        PublishLifetimeDiagnostic(diagnostic, value => LifetimeChanged?.Invoke(this, value));
+    }
+
+    private static void PublishLifetimeDiagnostic(
+        WidgetProcessLifetimeDiagnostic diagnostic,
+        Action<WidgetProcessLifetimeDiagnostic>? sink)
+    {
+        if (sink is null) return;
+        try { sink(diagnostic); }
+        catch (Exception exception) when (exception is not OutOfMemoryException)
+        {
+            // Diagnostics are observational and never own worker lifetime.
+        }
+    }
+
+    private static int? TryGetExitCode(WidgetProcessSession session)
+    {
+        try { return session.ExitCode; }
+        catch (InvalidOperationException) { return null; }
+    }
+
+    private static string ClassifyLifecycleFailure(Exception exception) => exception switch
+    {
+        OperationCanceledException => "request-cancelled",
+        TimeoutException => "request-timeout",
+        WidgetProtocolViolationException => "protocol-violation",
+        IOException => "transport-failure",
+        WidgetProcessAdmissionException => "admission-failure",
+        WidgetProcessException => "runtime-failure",
+        _ => "lifecycle-failure",
+    };
 
     private async Task DisposeSessionAsync(
         WidgetProcessSession? session,

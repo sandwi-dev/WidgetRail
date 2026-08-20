@@ -537,6 +537,7 @@ void WidgetSessionCoordinator::Shutdown() noexcept {
     worker_.request_stop();
     queueChanged_.notify_all();
     if (worker_.joinable()) {
+        // Only terminal shutdown may interrupt the serialized framed transport.
         (void)CancelSynchronousIo(worker_.native_handle());
         worker_.join();
     }
@@ -618,7 +619,6 @@ void WidgetSessionCoordinator::SupersedeSnapshotRequests(
     const std::wstring_view widgetId,
     const WidgetLifecycleState lifecycle) noexcept {
     const auto id = std::wstring(widgetId);
-    bool cancelInFlight = false;
     std::optional<std::uint64_t> cancelledInFlightId;
     std::vector<Request> cancelled;
     {
@@ -635,7 +635,6 @@ void WidgetSessionCoordinator::SupersedeSnapshotRequests(
         });
         if (inFlight_ && inFlight_->kind == RequestKind::Snapshot &&
             inFlight_->widgetId == id && inFlight_->lifecycle != lifecycle) {
-            cancelInFlight = true;
             cancelledInFlightId = inFlight_->id;
             if (inFlightStop_) inFlightStop_->request_stop();
         }
@@ -656,14 +655,11 @@ void WidgetSessionCoordinator::SupersedeSnapshotRequests(
             WidgetSessionTraceReason::NewerTarget,
             WidgetSessionCompletionDisposition::Cancelled);
     }
-    if (cancelInFlight && worker_.joinable())
-        (void)CancelSynchronousIo(worker_.native_handle());
 }
 
 void WidgetSessionCoordinator::RevokeRequests(
     const std::wstring_view widgetId) noexcept {
     const auto id = std::wstring(widgetId);
-    bool cancelInFlight = false;
     std::optional<std::uint64_t> cancelledInFlightId;
     std::vector<Request> cancelled;
     {
@@ -675,7 +671,6 @@ void WidgetSessionCoordinator::RevokeRequests(
             return request.widgetId == id;
         });
         if (inFlight_ && inFlight_->widgetId == id) {
-            cancelInFlight = true;
             cancelledInFlightId = inFlight_->id;
             if (inFlightStop_) inFlightStop_->request_stop();
         }
@@ -697,8 +692,6 @@ void WidgetSessionCoordinator::RevokeRequests(
             WidgetSessionTraceReason::NewerTarget,
             WidgetSessionCompletionDisposition::Cancelled);
     }
-    if (cancelInFlight && worker_.joinable())
-        (void)CancelSynchronousIo(worker_.native_handle());
 }
 
 WidgetSessionCoordinator::Request WidgetSessionCoordinator::MakeRequest(

@@ -129,14 +129,27 @@ struct ImagePlacement final {
     declarative::Rect source;
 };
 
+enum class ImageBitmapResourceDomain {
+    None,
+    RenderTarget,
+    Device,
+};
+
 struct ImageBitmapCacheStats final {
     std::size_t entries{};
     std::size_t bytes{};
     std::uint64_t hits{};
     std::uint64_t creates{};
     std::uint64_t evictions{};
+    std::uint64_t countPressureEvictions{};
+    std::uint64_t bytePressureEvictions{};
+    std::uint64_t supersededArtworkEvictions{};
     std::uint64_t resourceInvalidations{};
     std::uint64_t resourceGeneration{};
+    std::size_t maximumEntries{};
+    std::size_t maximumEntryBytes{};
+    std::size_t maximumBytes{};
+    ImageBitmapResourceDomain resourceDomain{ImageBitmapResourceDomain::None};
 };
 
 enum class IncrementalPresentationWork {
@@ -443,6 +456,9 @@ private:
     std::uint64_t bitmapHits_{};
     std::uint64_t bitmapCreates_{};
     std::uint64_t bitmapEvictions_{};
+    std::uint64_t bitmapCountPressureEvictions_{};
+    std::uint64_t bitmapBytePressureEvictions_{};
+    std::uint64_t bitmapSupersededArtworkEvictions_{};
     std::uint64_t bitmapResourceInvalidations_{};
     std::uint64_t bitmapResourceGeneration_{};
     std::unordered_map<std::wstring, ScrollStateEntry> scrollOffsets_;
