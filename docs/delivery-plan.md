@@ -730,11 +730,17 @@ Default character entry supports lowercase letters and digits; an explicit
 Shift/Caps or symbol layer makes uppercase and the bounded generic punctuation
 set reachable without duplicating the keyboard tree. A activates the focused
 key, X performs Backspace, B cancels, and right trigger performs Enter/commit.
-Physical Enter/Escape/Backspace and ordinary pointer activation remain
-equivalent. Remove the focusable Backspace/Clear/Cancel/Commit action row; show
-the controller mappings as themed, accessible shortcut guidance rather than
-extra navigation targets. Do not overload an existing reserved host gesture or
-send raw keys to the widget.
+LB moves the live insertion cursor one position left and RB moves it one
+position right, clamped at the buffer boundaries and with bounded controller
+repeat. Shoulder movement changes only the caret: it must not move the focused
+keyboard key, select text implicitly, or escape to a widget shortcut. Character
+insertion and Backspace operate at that visible caret position rather than
+always appending/removing at the end. Physical Left/Right, Enter/Escape/
+Backspace, and ordinary pointer activation remain equivalent. Remove the
+focusable Backspace/Clear/Cancel/Commit action row; show the controller mappings
+as themed, accessible shortcut guidance rather than extra navigation targets.
+Do not overload an existing reserved host gesture or send raw keys to the
+widget.
 
 Render the existing modal HWND through the active effective WidgetRail
 appearance, text/interface scale, focus, spacing, and high-contrast policies;
@@ -755,14 +761,16 @@ GameInput routing, owner HWND activation, DPI/work-area bounds, theme ownership,
 UIA, live-buffer rendering, password handling, and failure cleanup. The user
 opens Spotify Setup from configured Ready state, types mixed lowercase/digits,
 observes immediate live-buffer and Backspace updates, changes keyboard layer,
-and cancels with B without changing the existing Client ID/account. Verify that
-the underlying Spotify control never retains visible focus or reacts to any
-modal input, the modal matches the active theme, and compact/wide plus 150%
-text/interface scale remain fully reachable. No account change or real commit
-is required for this physical verdict.
+uses LB/RB to move the visible caret and insert/delete in the middle, and
+cancels with B without changing the existing Client ID/account. Verify that the
+underlying Spotify control never retains visible focus or reacts to any modal
+input, the modal matches the active theme, and compact/wide plus 150% text/
+interface scale remain fully reachable. No account change or real commit is
+required for this physical verdict.
 
 After acceptance, add focused modal layout/theme/live-buffer/hint/password,
-exclusive controller-routing, no-input-leak, UIA, commit/cancel/close/failure,
+caret insertion/deletion and LB/RB boundary/repeat behavior, exclusive
+controller-routing, no-input-leak, UIA, commit/cancel/close/failure,
 stale-authority, exact-focus-restoration, DPI/scale, and maximum-length coverage.
 Use the existing credential-free production-host TextEntry route for committed
 value proof. Update controller-input and widget-authoring guidance so the public
