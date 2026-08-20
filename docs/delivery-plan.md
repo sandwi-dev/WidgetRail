@@ -27,7 +27,7 @@ evidence only; this file is the sole authority for current work.
 
 | Lane | Task/worktree | State |
 | --- | --- | --- |
-| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | DLV-276 is Assigned from accepted main `56bc604`. Reconcile that exact baseline at the clean boundary, then produce only the generic themed controller-keyboard production candidate and tests-skipped coherent Release for source review and physical verdict. Preserve installed Spotify configuration/account state; do not begin tests, DLV-265, or DLV-270 first. DLV-273 remains retired. Never push. |
+| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | DLV-276 behavior is physically accepted through `c96cdc0`; exact PID 34644 remains the candidate. Correct only the confirmed native non-client white frame before the final styling verdict, then add focused tests/docs. Preserve installed Spotify configuration/account state; do not begin DLV-265 or DLV-270 first. DLV-273 remains retired. Never push. |
 | Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | Preserve saved DLV-265 and installed Spotify state. Do not resume, test, integrate, reinstall, replace configuration, or reset before accepted DLV-276 integration. DLV-270 follows accepted DLV-265; DLV-248 remains deferred. |
 
 ## Execution, review, and architecture rules
@@ -854,12 +854,12 @@ input, the modal matches the active theme, and compact/wide plus 150% text/
 interface scale remain fully reachable. No account change or real commit is
 required for this physical verdict.
 
-Production candidates `3d3ed0e` and `c4619f3` were physically rejected. The
-first leaked opening/terminating controller state; the second quarantined those
-frames but still treated button `BN_SETFOCUS` as activation, so focus movement
-inserted characters and key-button focus lost bounded clipboard paste. Correct
-DLV-276 with exact `BN_CLICKED` admission and bounded Ctrl+V/Shift+Insert routing,
-preserving the neutral gate, B containment, semantic revalidation, result feedback, and Enter wording.
+Production candidates `3d3ed0e` and `c4619f3` were physically rejected. Exact
+correction `c96cdc0` admits only `BN_CLICKED`, restores bounded clipboard paste,
+and preserves the neutral gate, B containment, semantic revalidation, result
+feedback, and Enter wording. The user physically accepted that behavior on PID
+34644. `WS_EX_DLGMODALFRAME` still produces an untinted white non-client border;
+remove only that styling defect and obtain the final border verdict before tests.
 
 After acceptance, add focused modal layout/theme/live-buffer/hint/password,
 caret insertion/deletion and LB/RB boundary/repeat behavior, exclusive
@@ -960,8 +960,8 @@ missing accepted DLV-265/DLV-271/DLV-276 baseline. Never push.
    PID 53016; continue DLV-271.
 5. DLV-271 is physically accepted and integrated through main `56bc604`; retain
    accepted PID 56752 without a redundant rebuild/relaunch.
-6. Run Assigned generic DLV-276 in the platform lane from `56bc604`; physically
-   accept the themed exclusive-focus controller keyboard before focused tests.
+6. DLV-276 behavior is physically accepted through `c96cdc0`; correct only its
+   white native dialog frame, obtain the styling verdict, then run focused tests.
 7. Resume saved DLV-265 in the widgets lane immediately after accepted DLV-276
    integration; preserve existing Spotify configuration/account state.
 8. Run DLV-270 in the widgets lane only after accepted DLV-265 integration.
@@ -981,7 +981,7 @@ missing accepted DLV-265/DLV-271/DLV-276 baseline. Never push.
 | DLV-274 | Complete: production `bf6d524` plus correction `4645f40` preserves 32 MiB per-image limits and raises only decoded/GPU aggregate LRU budgets to 96 MiB. Exact accepted cumulative candidate `949b586` is integrated by `9189cad`; focused tests are integrated through `6ce32b7`. |
 | DLV-275 | Complete: production `baf7bd4` fixes active-lifetime cancellation and adds diagnostics; `2b609fc` isolates widget worker failures; `74ec5e9` removes destructive stale-request pipe cancellation. Exact accepted candidate `949b586` is integrated by `9189cad`, tests by `6ce32b7`, and fresh main Release PID 53016 is responding with the integrated cache policy. |
 | DLV-271 | Complete: production through `bab6d5b`, tests `d100f49`, focused evidence, and final physical verdict accepted; equivalent commits integrated through main `56bc604`, with accepted PID 56752 retained. |
-| DLV-276 | Assigned from `56bc604`: generic themed controller keyboard, exclusive modal input/focus, live-buffer and hint/value correction. Physical Spotify cancel-path proof must preserve installed configuration/account state. |
+| DLV-276 | Behavior accepted through `c96cdc0` on PID 34644. Remove only the confirmed `WS_EX_DLGMODALFRAME` white border, obtain final styling verdict, then add focused tests/docs and integrate. |
 | DLV-265 | Saved until immediately after accepted DLV-276; preserve installed 0.3.3 and existing configuration/account state. |
 | DLV-248 | Deliberately deferred until explicit user promotion. |
 
@@ -989,7 +989,7 @@ missing accepted DLV-265/DLV-271/DLV-276 baseline. Never push.
 
 | DLV | Accepted evidence / integration |
 | --- | --- |
-| DLV-260 | Rebrand audit and active residue closure integrated through `1ff96ba`. |
+| DLV-276 | Controller keyboard behavior accepted through `c96cdc0`; native white-frame styling correction remains before tests/integration. |
 | DLV-264 | Hidden-snapshot failure correction accepted and integrated through `15a26b9`. |
 | DLV-266 | Resident Show activation accepted and integrated through `cd83b3a`. |
 | DLV-267 | Identical scene-origin correction accepted and integrated through `a552cbf`. |
