@@ -1005,6 +1005,8 @@ public sealed class WindowsSpotifyPlatformBackend : IAsyncDisposable
         "resource_not_found" => "Spotify has no active playback device.",
         "rate_limited" => "Spotify rate limit reached. Try again later.",
         "spotify_unavailable" => "Spotify is temporarily unavailable.",
+        "invalid_client_id" =>
+            "Spotify client ID must contain 8 to 128 ASCII letters or digits.",
         "invalid_configuration" => "Spotify setup is incomplete.",
         "invalid_request" or "invalid_payload" => "Spotify request is invalid.",
         _ => "Spotify request failed.",

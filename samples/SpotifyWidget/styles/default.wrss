@@ -249,18 +249,15 @@
   font-size: 12px;
   line-height: 1.3;
 }
-.spotify-setup-command {
+.spotify-setup-action {
   width: 100%;
-  min-width: 0px;
   flex-shrink: 0;
-  padding: 9px 11px;
-  color: var(--text);
-  background: var(--surface-active, #262623);
-  font-size: 10px;
-  line-height: 1.25;
-  corner-radius: 8px;
 }
-
+.spotify-setup-input {
+  width: 100%;
+  min-height: 44px;
+  flex-shrink: 0;
+}
 /* Spotify 0.2 controller shell. Expanded mode keeps transport persistent while
    the right context pane changes; compact mode retains the rail and presents
    one destination in the remaining width. */

@@ -81,6 +81,7 @@ public sealed class SpotifyWidget : Widget
     private int _consecutiveRefreshFailures;
     private bool _showSetup;
     private long _setupViewGeneration;
+    private bool _setupBusy;
     private long _activeGeneration;
     private Task? _pollTask;
     private Task? _progressTask;
@@ -276,6 +277,25 @@ public sealed class SpotifyWidget : Widget
                     await RunCommandOperationAsync(CheckConfigurationAsync, cancellationToken)
                         .ConfigureAwait(false);
                 break;
+            case SpotifyActionKind.SetupOpenDashboard:
+                await RunSetupActionAsync(
+                    _spotify.OpenDeveloperDashboardAsync,
+                    "Opening Spotify developer dashboard…",
+                    "Spotify developer dashboard opened",
+                    cancellationToken).ConfigureAwait(false);
+                break;
+            case SpotifyActionKind.SetupCopyRedirect:
+                await RunSetupActionAsync(
+                    _spotify.CopyRedirectUriAsync,
+                    "Copying redirect URI…",
+                    "Redirect URI copied",
+                    cancellationToken).ConfigureAwait(false);
+                break;
+            case SpotifyActionKind.SetupConfigureClient:
+                if (action.CommittedText is { } clientId)
+                    await ConfigureClientIdAsync(clientId, cancellationToken)
+                        .ConfigureAwait(false);
+                break;
             case SpotifyActionKind.Connect:
                 StartAuthorization();
                 break;
@@ -370,6 +390,69 @@ public sealed class SpotifyWidget : Widget
             SetState(Volatile.Read(ref _activeGeneration),
                 SpotifyWidgetViewState.ServiceUnavailable,
                 "Spotify configuration refresh timed out", null);
+    }
+
+    private async Task ConfigureClientIdAsync(
+        string clientId,
+        CancellationToken cancellationToken)
+    {
+        var configured = await RunSetupActionAsync(
+            async token =>
+            {
+                _ = await _spotify.ConfigureClientAsync(clientId, token)
+                    .ConfigureAwait(false);
+            },
+            "Saving public Spotify Client ID…",
+            "Spotify Client ID saved",
+            cancellationToken).ConfigureAwait(false);
+        if (!configured) return;
+        lock (_gate) _showSetup = false;
+        Invalidate();
+        if (IsActive)
+            await CheckConfigurationAsync(cancellationToken).ConfigureAwait(false);
+    }
+
+    private async Task<bool> RunSetupActionAsync(
+        Func<CancellationToken, ValueTask> action,
+        string pendingStatus,
+        string successStatus,
+        CancellationToken cancellationToken)
+    {
+        lock (_gate)
+        {
+            if (_setupBusy) return false;
+            _setupBusy = true;
+            _status = pendingStatus;
+        }
+        Invalidate();
+        try
+        {
+            await action(cancellationToken).ConfigureAwait(false);
+            lock (_gate) _status = successStatus;
+            return true;
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            lock (_gate) _status = "Spotify setup canceled";
+            return false;
+        }
+        catch (SpotifyApplicationException exception)
+        {
+            lock (_gate)
+                _status = SpotifyPlaybackPolicy.SafeMessage(
+                    exception, "Spotify setup could not be completed");
+            return false;
+        }
+        catch (Exception)
+        {
+            lock (_gate) _status = "Spotify setup could not be completed";
+            return false;
+        }
+        finally
+        {
+            lock (_gate) _setupBusy = false;
+            Invalidate();
+        }
     }
 
     private bool TryHandlePageAction(
@@ -755,6 +838,7 @@ public sealed class SpotifyWidget : Widget
                 _refreshWarning,
                 _showSetup,
                 _setupViewGeneration,
+                _setupBusy,
                 _destination,
                 _queue.Snapshot,
                 playlists,

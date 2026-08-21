@@ -18,7 +18,9 @@ internal static class SpotifyPresentation
     internal static WidgetView Render(SpotifyPresentationState presentation)
     {
         if (presentation.ShowSetup)
-            return RenderSetup(presentation.Status, presentation.SetupViewGeneration);
+            return RenderSetup(
+                presentation.Status, presentation.SetupViewGeneration,
+                presentation.SetupBusy);
         var header = Header(presentation.Status, presentation.ViewState);
         return presentation.ViewState switch
         {
@@ -126,28 +128,44 @@ internal static class SpotifyPresentation
             .InputScope(InputScope).Classes("spotify-widget"),
         InitialFocusId: "spotify.refresh", Surface: StandardSurface);
 
-    private static WidgetView RenderSetup(string status, long setupViewGeneration)
+    private static WidgetView RenderSetup(
+        string status,
+        long setupViewGeneration,
+        bool setupBusy)
     {
         var instructions = UI.Stack("spotify.setup-card",
                         UI.Text("Spotify setup", "spotify.setup-title",
                                 "Spotify developer app setup")
                             .Classes("spotify-state-title", "spotify-setup-title"),
-                        // Keep the only focus target at the top of the scroll
-                        // surface. Placing it after the instructions makes the
-                        // renderer correctly reveal that focused descendant,
-                        // which opens the page already scrolled past its title.
-                        UI.Button("Check configuration", "spotify.setup.done",
-                                "spotify.setup.done")
-                            .Classes("spotify-primary"),
                         UI.Text("1. Create an app in the Spotify developer dashboard.",
                                 "spotify.setup-step-1").Classes("spotify-setup-step"),
+                        UI.Button("Open developer dashboard", "spotify.setup.dashboard",
+                                "spotify.setup.dashboard")
+                            .Disabled(setupBusy)
+                            .FocusDown("spotify.setup.copy-redirect")
+                            .Classes("spotify-secondary", "spotify-setup-action"),
                         UI.Text($"2. Add this exact redirect URI: {SpotifyApplicationContract.ExactRedirectUri}",
                                 "spotify.setup-step-2").Classes("spotify-setup-step"),
+                        UI.Button("Copy redirect URI", "spotify.setup.copy-redirect",
+                                "spotify.setup.copy-redirect")
+                            .Disabled(setupBusy)
+                            .FocusUp("spotify.setup.dashboard")
+                            .FocusDown("spotify.setup.client-id")
+                            .Classes("spotify-secondary", "spotify-setup-action"),
                         UI.Text("3. Save only the public Client ID; never enter a Client Secret.",
                                 "spotify.setup-step-3").Classes("spotify-setup-step"),
-                        UI.CodeText("dotnet run --project .\\tools\\WrailCli\\WrailCli.csproj -- config set widgetrail.samples.spotify client-id YOUR_CLIENT_ID --publisher widgetrail.samples",
-                                "spotify.setup-command", "Client ID configuration command")
-                            .AddClasses("spotify-setup-command"))
+                        UI.TextEntry(string.Empty, "Enter public Spotify Client ID",
+                                "spotify.setup.client-id", "spotify.setup.client-id",
+                                SpotifyApplicationContract.MaximumClientIdInputCharacters)
+                            .Disabled(setupBusy)
+                            .FocusUp("spotify.setup.copy-redirect")
+                            .FocusDown("spotify.setup.done")
+                            .Classes("spotify-setup-input"),
+                        UI.Button("Check configuration", "spotify.setup.done",
+                                "spotify.setup.done")
+                            .Disabled(setupBusy)
+                            .FocusUp("spotify.setup.client-id")
+                            .Classes("spotify-primary", "spotify-setup-action"))
                     .Classes("spotify-setup-card");
         var setupScroll = UI.VerticalScroll(
                 $"spotify.setup-scroll.{setupViewGeneration}", instructions)
@@ -158,7 +176,7 @@ internal static class SpotifyPresentation
                 Header(status, SpotifyWidgetViewState.Unconfigured),
                 setupScroll)
             .Classes("spotify-widget", "spotify-setup");
-        return new WidgetView(root, "spotify.setup.done", ActiveInputScopeId: SetupScope,
+        return new WidgetView(root, "spotify.setup.dashboard", ActiveInputScopeId: SetupScope,
             Surface: StandardSurface);
     }
 
@@ -272,7 +290,8 @@ internal static class SpotifyPresentation
                 NavigationButton(SpotifyDestination.Player, selected, mode, WidgetGlyph.Music),
                 NavigationButton(SpotifyDestination.Queue, selected, mode, WidgetGlyph.Next),
                 NavigationButton(SpotifyDestination.Playlists, selected, mode, WidgetGlyph.Music),
-                NavigationButton(SpotifyDestination.Devices, selected, mode, WidgetGlyph.Connection))
+                NavigationButton(SpotifyDestination.Devices, selected, mode, WidgetGlyph.Connection),
+                SetupNavigationButton(mode))
             .Classes("spotify-navigation", "spotify-navigation-rail",
                 $"spotify-navigation-{mode}");
 
@@ -286,6 +305,12 @@ internal static class SpotifyPresentation
             .Icon(glyph, $"Open {DestinationLabel(destination)}")
             .Selected(destination == selected)
             .PersistFocusAs($"spotify.destination.{DestinationToken(destination)}")
+            .Classes("spotify-nav-button");
+
+    private static ButtonElement SetupNavigationButton(string mode) =>
+        UI.Button("Setup", "spotify.setup.open", $"spotify.setup.open.{mode}")
+            .Icon(WidgetGlyph.Settings, "Change Spotify Client ID")
+            .PersistFocusAs("spotify.setup")
             .Classes("spotify-nav-button");
 
     private static WidgetElement PlayerPanel(

@@ -3,6 +3,8 @@ namespace WidgetRail.Samples.SpotifyWidget;
 public static class SpotifyApplicationContract
 {
     public const string ExactRedirectUri = "http://127.0.0.1:43827/callback/";
+    public const string DeveloperDashboardUri = "https://developer.spotify.com/dashboard";
+    public const int MaximumClientIdInputCharacters = 96;
     public const int MaximumClientIdCharacters = 128;
     public const int MaximumCollectionPageSize = 50;
     public const int MaximumCollectionOffset = 100_000;
@@ -217,6 +219,20 @@ public sealed class SpotifyApplicationException : Exception
 
 public interface ISpotifyApplicationService : IAsyncDisposable
 {
+    ValueTask<SpotifyConfigurationSummary> ConfigureClientAsync(
+        string clientId,
+        CancellationToken cancellationToken = default) =>
+        ValueTask.FromException<SpotifyConfigurationSummary>(
+            new SpotifyApplicationException(
+                "setup_unavailable", "Spotify setup is unavailable."));
+    ValueTask OpenDeveloperDashboardAsync(
+        CancellationToken cancellationToken = default) =>
+        ValueTask.FromException(new SpotifyApplicationException(
+            "setup_unavailable", "Spotify setup is unavailable."));
+    ValueTask CopyRedirectUriAsync(
+        CancellationToken cancellationToken = default) =>
+        ValueTask.FromException(new SpotifyApplicationException(
+            "setup_unavailable", "Spotify setup is unavailable."));
     ValueTask<SpotifyConfigurationSummary> GetConfigurationAsync(
         CancellationToken cancellationToken = default);
     ValueTask<SpotifyAuthorizationSummary> GetAuthorizationAsync(
