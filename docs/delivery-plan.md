@@ -46,7 +46,7 @@ evidence only; this file is the sole authority for current work.
 | Lane | Task/worktree | State |
 | --- | --- | --- |
 | Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | Idle pending cumulative test evidence and integration. DLV-284 is queued but not assigned. Do not begin it, test, launch, integrate, or push. |
-| Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | DLV-319 test commit `199a81b` is clean; WidgetSdk 89/89, Spotify 54/54, and Tier 2 6/6 passed. Exact-commit Tier 3 stopped at two Runtime reds. Execute source-only DLV-320 below; preserve PID 126208 and do not edit/test/integrate/push. |
+| Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | DLV-320 classified both Tier 3 Runtime reds as exact test synchronization/timing drift. Execute test-only DLV-321 below against clean `199a81b`; preserve PID 126208 and do not touch production/package/installed state, integrate, or push. |
 
 ## Execution and architecture rules
 
@@ -1561,6 +1561,51 @@ change timeouts, or propose a rerun as classification evidence. If a production
 correction is justified, stop before applying it so physical-first ordering can
 resume.
 
+DLV-320 classified both failures as test drift with no production or environment
+failure. The retired gesture-grant fixture used one shared revocation signal:
+the intended immediate reservation revocation could satisfy it before the
+cancellation-ignoring fake grant completed and its separate tracked late
+revocation occurred. The exact-base cursor fixture consumed the first legal
+post-action invalidation, which represents `LoadingAdjacent` on retained
+generation 1/Replace; it incorrectly required the later generation 2/Append
+property immediately. The action route, exact base, update materialization,
+late cleanup, and product contracts are present and correct. No file or state
+changed.
+
+## Assigned widgets evidence — DLV-321 reconcile two Runtime fixtures
+
+Mode: test-only after DLV-320. Preserve clean baseline `199a81b`, accepted PID
+126208, Spotify 0.3.14, installed/configured state, and every production/runtime/
+package file. Edit only
+`tests/WidgetRuntime.Tests/WidgetProcessOwnershipScenarios.cs` and
+`tests/WidgetRuntime.Tests/Program.cs`.
+
+In the retired gesture-grant scenario, replace the shared-signal assumption
+with deterministic separate observation of the cancellation-ignoring grant's
+completion and its subsequent late revocation. Continue proving the immediate
+uncommitted reservation is revoked, the late granted authority is separately
+revoked, replacement authority remains current, and no retired-session
+authority survives. Do not weaken accepted one-or-two-revocation bounds or add
+sleeps/polling/timeouts.
+
+In the exact-base cursor scenario, retain the generated near-end action and
+exact-base contract. Consume current-session invalidations in a bounded event-
+driven sequence, applying one update against the currently materialized base
+until exact generation 2, 64 items, and `Append` are observed. Fail immediately
+on action failure or illegal/stale update. Then request base zero and prove the
+same durable generation-2 window is returned as `Replace`. Do not wait by time,
+skip intermediate states, weaken exact assertions, or create a second model.
+
+Build the Runtime test project once in serialized Release `--no-restore`, then
+run its complete 84-case executable once. Stop first red. If green, commit
+exactly the two authorized files on top of `199a81b`, then run one canonical
+Tier 3 verifier from a clean detached tree at that exact commit. Do not rerun
+WidgetSdk, Spotify, Tier 2, Bridge, coordinator, or individual prefixes outside
+the canonical verifier. Record commands, counts, hashes/provenance, results,
+and skips. No production/package edit, restore/update, diagnostics, hooks,
+timeout change, overlay rebuild/relaunch, installed-state change, integration,
+or push. If Tier 3 passes, stop for independent review.
+
 ## Queued platform production — DLV-284 explicit publication transaction model
 
 Status: queued, not assigned. It becomes assignable only after the cumulative
@@ -1646,8 +1691,9 @@ import/export or scheduling only after independent widgets prove the need.
 
 ## Ordered queues
 
-1. Widgets diagnostic queue: execute source/artifact-only DLV-320 to classify
-   the two exact-commit Runtime reds before any correction or rerun.
+1. Widgets evidence queue: execute DLV-321's two deterministic Runtime fixture
+   corrections, complete 84-case Runtime gate, and one exact-commit Tier 3
+   verifier, stopping on the first red result.
 2. Reviewer integration queue: independently review the eventual cumulative
    evidence milestone; integrate the
    accepted production/test chain into local main only if all required evidence
@@ -1705,7 +1751,8 @@ There is no other Ready production work in either standing lane.
 | DLV-317 | Stopped first red uncommitted: WidgetSdk 88/89 exposed projected virtual availability without matching admitted Error-state boundary actions; later groups skipped. |
 | DLV-318 | Physically accepted production `32a2a5e`, visibly running as responsive PID 126208 with Spotify 0.3.14 selected/enabled. |
 | DLV-319 | Test-only `199a81b`: WidgetSdk 89/89, Spotify 54/54, Tier 2 6/6 green; exact-commit Tier 3 stopped at Runtime 82/84 with two reds and skipped later steps. |
-| DLV-320 | Assigned source/artifact-only classification of the retired gesture-grant and exact-base cursor Runtime reds. |
+| DLV-320 | Completed source/artifact-only: both Runtime reds are exact test drift—shared revocation-signal ordering and first-invalidation cursor timing; no product defect. |
+| DLV-321 | Assigned test-only deterministic reconciliation of the two Runtime fixtures, complete Runtime gate, and one exact-commit Tier 3 verifier. |
 | DLV-284 | Queued, not assigned until cumulative integration. |
 | DLV-248 | Deliberately deferred until explicit user promotion. |
 
