@@ -34,7 +34,7 @@ The complete delivery record through the DLV-277 assignment is preserved in the\
 | Lane | Task/worktree | State |
 | --- | --- | --- |
 | Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | DLV-280 production `5f27393` plus transaction correction `09c3f07` are source-reviewed and their exact tests-skipped Release builds pass. One exact-base switch-back succeeded in the rejected cumulative trace, but DLV-280 remains unaccepted until the corrected cumulative verdict. The lane is idle; do not test, integrate, relaunch, or push. |
-| Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | Assigned bounded DLV-279 same-generation marker-stability correction from clean cumulative tip `4ece854`. Preserve the rejected 0.3.11 artifact and current state, publish only a new immutable 0.3.12 candidate, and follow production/build then user verdict before tests. Do not install, select, enable, launch, integrate, or push. |
+| Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | DLV-279 correction `9184143` and immutable Spotify 0.3.12 are source-reviewed; exact tests-skipped package/Release builds and hashes are verified. The lane is idle awaiting explicit full-trust staging and rejected-host replacement authority. Do not install, select, enable, launch, terminate, test, integrate, or push before approval. |
 
 ## Execution, review, and architecture rules
 
@@ -618,6 +618,34 @@ paging, B to Playlists, several unchanged playback/refresh publications,
 switch-away/back, and bidirectional paging. Only after acceptance add the held
 DLV-278/279/270 focused and cross-process evidence.
 
+Production commit `9184143` implements that exact SDK rule and changes only
+`WidgetPresentationDiff.cs` plus the immutable Spotify package identity to
+0.3.12. It indexes the exact prior virtual windows, carries prior `Replace`
+only when request generation, logical first index/total, before/after
+boundaries, and estimated extent all remain identical, and otherwise leaves
+the candidate for existing strict admission. Newer generations retain their
+directional marker. Source review found no new state owner, protocol/native
+change, package-specific shared behavior, provider reset, generation forgery,
+or weakening of item-key validation.
+
+The exact detached package and Release builds pass with only the six existing
+native `C4244` warnings; no tests ran. Spotify 0.3.12 is 1,164,228 bytes with
+SHA-256
+`6A21344203491612699D92DDD32D173F29F3647D20EB78B6C853CBE4C000C25B`.
+The coherent exact `OverlayHost.exe` is 2,690,560 bytes with SHA-256
+`8C5AC902FD8BB56BE4C99B10C7D0ACF6638401B40865DF0F4CA96273B633120E`;
+runtime `WidgetBridge.dll` is
+`26C4D5F451C6A02E7228575820DD7E8245678D2D61DC84B76147F9D2B42FB0D0`
+and `WidgetSdk.dll` is
+`4E1488F9E484306452BDBA04338BC5A21F972A72528DBC6B6A829B344786E4D0`.
+The package contains 23 validated entries. The first exact build tree was
+locked only because preserved rejected PID 82992 runs from it, so the agent
+built the coherent native graph in a second clean detached worktree at the
+same exact commit without touching that process. Both exact trees and the lane
+worktree are clean. Await explicit full-trust staging approval before package
+selection or cooperative host replacement; this source review is not physical
+acceptance or integration authority.
+
 ## Held widgets deliverable — DLV-270: Spotify collection paging efficiency
 
 Owner/baseline: widgets lane after accepted DLV-265 and DLV-277 integration on
@@ -729,9 +757,10 @@ after explicit full-trust approval.
    host replacement completed, and one exact-base switch-back succeeded, but
    the cumulative verdict is rejected on DLV-279 same-generation marker
    instability after B. No shared files are edited concurrently.
-5. The widgets lane corrects only that DLV-279 SDK invariant, advances to
-   immutable Spotify 0.3.12, and produces one exact tests-skipped cumulative
-   build for planner review and a new physical verdict.
+5. The widgets lane corrected only that DLV-279 SDK invariant in `9184143`,
+   advanced to immutable Spotify 0.3.12, and produced one exact tests-skipped
+   cumulative package/Release build. Source review and independent hashes pass;
+   explicit full-trust staging and rejected-host replacement approval are next.
 6. After the cumulative physical verdict, add focused and cross-process evidence
    in planner-directed order, then integrate the independently accepted DLV-280,
    DLV-278, DLV-279, and DLV-270 production/test chain into main.
@@ -750,8 +779,8 @@ after explicit full-trust approval.
 | DLV-277 | Complete: physical verdict accepted; focused native evidence passes and production/tests are integrated through main `c21ad02`. |
 | DLV-265 | Complete: physical verdict accepted; focused Spotify evidence passes and production/tests are integrated through main `bb8234f`. |
 | DLV-278 | Production `ab4844d` is source-reviewed; 0.3.7 physically confirmed its v18-to-v19 checkpoint and stable worker, but integration waits for the corrected cumulative verdict and post-verdict tests. |
-| DLV-279 | Cumulative 0.3.11 is rejected: re-entry `Replace` normalization is transient and the next unchanged render re-emits `Append` under the same request generation. The bounded marker-stability correction and immutable 0.3.12 candidate are assigned to widgets. |
-| DLV-270 | Cumulative Spotify 0.3.11 at `4ece854` is selected/enabled but rejected on DLV-279 after deep paging and B. Preserve its successful provider/paging evidence; acceptance waits for corrected 0.3.12. |
+| DLV-279 | Cumulative 0.3.11 is rejected. Correction `9184143` makes re-entry `Replace` stable for an otherwise identical request generation; source review and exact tests-skipped builds pass. Explicit full-trust staging approval and the physical verdict remain. |
+| DLV-270 | Cumulative Spotify 0.3.11 at `4ece854` is selected/enabled but rejected on DLV-279 after deep paging and B. Preserve its successful provider/paging evidence; immutable 0.3.12 is built and awaits staging approval. |
 | DLV-280 | Production through `09c3f07` successfully admitted one exact-base switch-back in the rejected cumulative trace. Keep it source-reviewed but unaccepted; focused/Tier 2/Tier 3 evidence waits for the corrected cumulative verdict. |
 | DLV-248 | Deliberately deferred until explicit user promotion. |
 
