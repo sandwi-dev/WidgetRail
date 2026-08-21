@@ -46,7 +46,7 @@ evidence only; this file is the sole authority for current work.
 | Lane | Task/worktree | State |
 | --- | --- | --- |
 | Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | Idle pending cumulative test evidence and integration. DLV-284 is queued but not assigned. Do not begin it, test, launch, integrate, or push. |
-| Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | DLV-296 `3922b58` is physically accepted and exact PID 83788 remains running. DLV-302 proved DLV-301 was a fixture-routing mismatch before the cursor resource, not production deadlock evidence. Preserve the six-file evidence and execute test-only DLV-303 correction below. Do not change production, rebuild, relaunch, integrate, or push. |
+| Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | DLV-296 `3922b58` is physically accepted and exact PID 83788 remains running. Corrected DLV-303 lifecycle-first direct-worker cursor evidence passed 1/1. Preserve the six-file evidence and execute diagnostic test-only DLV-304 through `WidgetProcessClient` below. Do not change production, rebuild, relaunch, integrate, or push. |
 
 ## Execution and architecture rules
 
@@ -846,6 +846,42 @@ preserve evidence and stop without correction or commit. If green, stop without
 commit and report the exact marker/event chain; the next bisection will carry
 the same sequence through `WidgetProcessClient`. Never push.
 
+DLV-303 completed green without a commit. After the fixture routing correction,
+its one lifecycle-first direct-worker prefix passed 1/1: Enqueued worker ACK;
+exact generated near-end action and `diagnostic.scroll` source entered
+`OnActionAsync`; `TryHandlePagination` handled it with Started admission; the
+cursor operation completed Succeeded without exception; and the first
+post-action worker event was a forward invalidation. The older DLV-298 wrapper
+route remains separate. Temporary markers were folded into permanent completion
+assertions and the cleaned source compiled successfully. Production and PID
+83788 remained untouched.
+
+## Assigned widgets diagnosis — DLV-304 lifecycle-first ProcessClient cursor
+
+Mode: diagnostic test-only against accepted DLV-296. Preserve all six current
+dirty/untracked evidence files and do not commit. Do not edit production/runtime
+source, packages, manifests, protocols, bounds, timeouts, installed/configured
+state, or processes. PID 83788 remains accepted and must not be touched.
+
+Carry the exact corrected DLV-303 lifecycle-first cursor sequence across the
+real external-worker `WidgetProcessClient` boundary. Use its existing test
+process launch seam to select the same test widget; do not add a production
+selector or hook. Establish Visible, observe the initial current-session
+invalidation, request and verify the Ready generation-1 Replace window, admit
+the exact generated near-end action/source, then observe the first
+current-session publication as either a forward invalidation or bounded action
+failure. On invalidation, request once and verify the durable generation-2
+Append window and exact item/count/index/boundary constraints. Also assert the
+same worker session/start ordinal remains current throughout.
+
+Do not add logging, reflection, production hooks, sleeps, polling, stress loops,
+timeout enlargement, stdout/file diagnostics, package special cases, or a
+second action/notification model. Compile with serialized MSBuild, run one
+uniquely named DLV-304 prefix at most once, and stop with the exact last-green /
+first-red ownership edge. Do not implement a correction or commit under
+DLV-304. Never push. If green, the next bisection will carry the same exact
+sequence through current visible registry admission and Bridge framing.
+
 ## Queued platform production — DLV-284 explicit publication transaction model
 
 Status: queued, not assigned. It becomes assignable only after the cumulative
@@ -876,12 +912,12 @@ every legal and illegal transition and follow physical-first order. Never push.
 
 ## Ordered queues
 
-1. Widgets evidence queue: execute DLV-303 exact test-fixture routing correction
-   and one lifecycle-first direct-worker prefix, then stop without commit.
-2. Widgets diagnostic queue: if DLV-303 is green, carry the same lifecycle-first
-   cursor sequence through `WidgetProcessClient`; if red, preserve its exact
-   marker/event boundary before any further correction.
-3. Reviewer evidence queue: finish and independently review DLV-297–303 before
+1. Widgets diagnostic queue: execute DLV-304 lifecycle-first cursor bisection
+   through `WidgetProcessClient` once and stop without correction or commit.
+2. Widgets diagnostic queue: if DLV-304 is green, carry the same sequence
+   through current visible registry admission and Bridge framing; if red,
+   preserve its exact current-session boundary before any correction.
+3. Reviewer evidence queue: finish and independently review DLV-297–304 before
    resuming cumulative evidence.
 4. Widgets cumulative test queue: resume and commit the cumulative DLV-278–283
    evidence only after DLV-297 is green and independently reviewed.
@@ -921,7 +957,8 @@ There is no other Ready production work in either standing lane.
 | DLV-300 | Stopped red uncommitted: after Enqueued action admission, the permanent case received neither invalidation nor failure before the unchanged deadline. |
 | DLV-301 | Invalidated as product evidence: its direct-worker fixture sent the generated cursor action into a wrapper-only route and never reached `TryHandlePagination`. |
 | DLV-302 | Completed uncommitted: passive markers located DLV-301's first red at that fixture-routing mismatch before the cursor resource. |
-| DLV-303 | Assigned test-only correction of exact generated cursor-action routing, followed by one lifecycle-first direct-worker prefix; no production correction or commit. |
+| DLV-303 | Completed green uncommitted: corrected lifecycle-first direct worker proved exact action entry, Started cursor admission, Succeeded completion, and forward invalidation 1/1. |
+| DLV-304 | Assigned diagnostic external-worker `WidgetProcessClient` coverage of the same exact lifecycle-first cursor sequence; one prefix once, no correction or commit. |
 | DLV-284 | Queued, not assigned until cumulative integration. |
 | DLV-248 | Deliberately deferred until explicit user promotion. |
 
