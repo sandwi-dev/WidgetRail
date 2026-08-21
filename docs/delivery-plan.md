@@ -46,7 +46,7 @@ evidence only; this file is the sole authority for current work.
 | Lane | Task/worktree | State |
 | --- | --- | --- |
 | Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | Idle pending cumulative test evidence and integration. DLV-284 is queued but not assigned. Do not begin it, test, launch, integrate, or push. |
-| Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | DLV-318 `32a2a5e` is physically accepted as responsive PID 126208 with immutable Spotify 0.3.14 selected/enabled. Execute post-verdict test-only DLV-319 below; do not rebuild/relaunch, integrate, or push. |
+| Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | DLV-319 test commit `199a81b` is clean; WidgetSdk 89/89, Spotify 54/54, and Tier 2 6/6 passed. Exact-commit Tier 3 stopped at two Runtime reds. Execute source-only DLV-320 below; preserve PID 126208 and do not edit/test/integrate/push. |
 
 ## Execution and architecture rules
 
@@ -1513,6 +1513,54 @@ the original five held test files plus
 `tests/WidgetSdk.Tests/WidgetCursorResourceTests.cs` as one coherent test-only
 DLV-319 milestone and stop for independent review.
 
+DLV-319 committed exactly the six authorized test files as
+`199a81b8a0e74df7fcd8ebd1905fff1792497f63`, with parent accepted production
+`32a2a5e`; the standing worktree is clean. WidgetSdk build/tests passed 89/89,
+Spotify build/tests passed 54/54, and the smallest linked generic installed-
+package convergence group passed 6/6. The single canonical Tier 3 verifier ran
+from a clean detached tree at exact `199a81b`, passed its first eight steps,
+then stopped at `widget-runtime-tests` with 82/84:
+
+- `Cancellation-ignoring retired gesture grants are revoked`: expected 1,
+  observed 0.
+- `Process client preserves exact-base cursor update semantics`: no matching
+  element.
+
+Verifier result SHA-256 is
+`DB19C1D13AEFBEF06E81ABB98B3C14D2D2A63EB0428A4D151994C024C4F8489C`.
+All later canonical steps were skipped. No rerun or correction occurred;
+accepted PID 126208 and installed/configured state remain untouched.
+
+## Assigned widgets diagnosis — DLV-320 classify two Runtime reds
+
+Mode: source/artifact-only diagnostic after DLV-319. Preserve clean baseline
+`199a81b`, accepted PID 126208, Spotify 0.3.14, all installed/configured state,
+and the retained exact-commit Tier 3 artifact under
+`GameBarAlternative-dlv319-tier3\artifacts\verification\20260821T224918Z-6927c681`.
+Do not edit, build, run/rerun tests, commit, rebuild/relaunch, integrate, or
+push.
+
+Trace each red independently against current production/test contracts and
+accepted DLV history:
+
+1. For the cancellation-ignoring retired gesture-grant case, identify the exact
+   lifecycle/retirement path that now yields zero observed callbacks, determine
+   whether revocation-before-observation is the intended bounded contract or a
+   product omission, and distinguish it from the already-reconciled retained-
+   worker/destructive-retirement fixtures.
+2. For exact-base cursor update semantics, identify the missing element/action
+   lookup, trace its fixture widget, action source/id, lifecycle establishment,
+   and `ProcessClient` update base through the current separated checkpoint/
+   update contract, and determine whether the fixture uses a stale route or
+   production fails to expose the generated cursor action.
+
+Classify each as exact test drift, production defect, environment failure, or
+unresolved ambiguity with source/log references and the smallest justified next
+milestone. Do not infer a shared cause, weaken assertions, add diagnostics,
+change timeouts, or propose a rerun as classification evidence. If a production
+correction is justified, stop before applying it so physical-first ordering can
+resume.
+
 ## Queued platform production — DLV-284 explicit publication transaction model
 
 Status: queued, not assigned. It becomes assignable only after the cumulative
@@ -1598,9 +1646,8 @@ import/export or scheduling only after independent widgets prove the need.
 
 ## Ordered queues
 
-1. Widgets evidence queue: execute DLV-319 WidgetSdk, Spotify, linked Tier 2,
-   and exact-commit Tier 3 evidence against accepted DLV-318, stopping on the
-   first red result.
+1. Widgets diagnostic queue: execute source/artifact-only DLV-320 to classify
+   the two exact-commit Runtime reds before any correction or rerun.
 2. Reviewer integration queue: independently review the eventual cumulative
    evidence milestone; integrate the
    accepted production/test chain into local main only if all required evidence
@@ -1657,7 +1704,8 @@ There is no other Ready production work in either standing lane.
 | DLV-316 | Completed diagnostic-only: serialized Release build passed with 0 warnings/errors after Roslyn named-pipe denial fell back to local compilation; no source/product failure. |
 | DLV-317 | Stopped first red uncommitted: WidgetSdk 88/89 exposed projected virtual availability without matching admitted Error-state boundary actions; later groups skipped. |
 | DLV-318 | Physically accepted production `32a2a5e`, visibly running as responsive PID 126208 with Spotify 0.3.14 selected/enabled. |
-| DLV-319 | Assigned post-verdict test-only projection/manifest expectations and remaining cumulative evidence. |
+| DLV-319 | Test-only `199a81b`: WidgetSdk 89/89, Spotify 54/54, Tier 2 6/6 green; exact-commit Tier 3 stopped at Runtime 82/84 with two reds and skipped later steps. |
+| DLV-320 | Assigned source/artifact-only classification of the retired gesture-grant and exact-base cursor Runtime reds. |
 | DLV-284 | Queued, not assigned until cumulative integration. |
 | DLV-248 | Deliberately deferred until explicit user promotion. |
 
