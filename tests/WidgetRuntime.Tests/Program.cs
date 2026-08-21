@@ -52,7 +52,19 @@ if (args.Contains("--authority-crash-probe", StringComparer.Ordinal))
 }
 
 if (args.Contains("--widget-pipe", StringComparer.Ordinal))
-    return await RunWorkerAsync(args);
+{
+    try
+    {
+        return await RunWorkerAsync(args);
+    }
+    catch (Exception exception) when (exception is not OutOfMemoryException)
+    {
+        var diagnosticPath = OptionalValue(args, "--worker-exception-diagnostic");
+        if (diagnosticPath is not null)
+            await File.WriteAllTextAsync(diagnosticPath, exception.ToString());
+        throw;
+    }
+}
 
 var tests = new (string Name, Func<Task> Run)[]
 {
