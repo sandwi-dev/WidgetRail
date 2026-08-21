@@ -46,7 +46,7 @@ evidence only; this file is the sole authority for current work.
 | Lane | Task/worktree | State |
 | --- | --- | --- |
 | Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | Idle pending cumulative test evidence and integration. DLV-284 is queued but not assigned. Do not begin it, test, launch, integrate, or push. |
-| Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | DLV-296 `3922b58` is physically accepted and exact PID 83788 remains running. Test-only DLV-306 `5fe7a5f` is independently source-reviewed and accepted; four notification-evidence files are committed and three cumulative matrix files remain dirty. DLV-309 made Bridge green 96/96 but stopped on a diagnostic-free Spotify build failure; execute diagnostic-only DLV-310 below. Do not change production, rebuild, relaunch, integrate, or push. |
+| Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | DLV-296 `3922b58` is physically accepted and exact PID 83788 remains running. Test-only DLV-306 `5fe7a5f` is independently source-reviewed and accepted; four notification-evidence files are committed and three cumulative matrix files remain dirty. DLV-310 proved Spotify's gate failure is stale test-harness contract drift; execute test-only DLV-311 below. Do not change production, rebuild, relaunch, integrate, or push. |
 
 ## Execution and architecture rules
 
@@ -1105,6 +1105,43 @@ assets, environment state, nondeterminism, or any production defect. No binlog,
 new logging, hooks, sleeps, polling, timeout changes, weakened assertions, or
 speculative repair.
 
+DLV-310's one explicit serialized Release build failed deterministically with
+six source errors. The first was CS0246 for removed
+`SpotifyPlaylistItemsSummary`; the remaining errors were the same stale summary
+type plus missing `GetPlaylistAsync` and a mismatched `GetPlaylistItemsAsync`
+return type. Current production separates playlist metadata from paged items as
+`SpotifyPlaylistSummary` and `SpotifyPlaylistItemsPageSummary`. The compiler
+server timeout fell back normally and was not causal. This is test-harness
+contract drift, not a production defect. No file or state changed.
+
+## Assigned widgets evidence — DLV-311 reconcile Spotify fixture and finish gate
+
+Mode: test-only after DLV-310. Owner/baseline: widgets lane at `5fe7a5f` with
+exactly the three dirty cumulative matrix files. Production/runtime source,
+packages, manifests, protocols, bounds, timeouts, installed/configured state,
+and PID 83788 are frozen.
+
+Edit only `tests/SpotifyWidget.Tests/Program.cs` to reconcile the stale fixture
+with the current production `ISpotifyApplicationService` contract: separate
+playlist metadata into `SpotifyPlaylistSummary`, use
+`SpotifyPlaylistItemsPageSummary` for paged items and completions/handlers, and
+implement `GetPlaylistAsync` with the fixture's matching playlist metadata.
+Preserve the existing paging offsets, limits, totals, cancellation/race
+controls, data, and assertions. Do not change production or reduce coverage.
+
+First build the Spotify test project once in Release with `--no-restore`; if
+green, run its existing 54-case executable once. If Spotify is green, continue
+once each with the smallest linked Tier 2 cross-process convergence group and
+one exact-commit Tier 3 verifier. Do not rerun Bridge, native coordinator,
+WidgetSdk, WidgetRuntime, or notification prefixes. Stop at the first red
+result and report exact commands, counts, hashes where applicable, and skips.
+
+No restore/update, production repair, logging, hooks, sleeps, polling, timeout
+enlargement, weakened assertions, overlay rebuild/relaunch, integration, or
+push. If all remaining groups pass, commit one coherent test-only DLV-311
+milestone containing exactly the original three matrix files plus
+`tests/SpotifyWidget.Tests/Program.cs`, then stop for independent review.
+
 ## Queued platform production — DLV-284 explicit publication transaction model
 
 Status: queued, not assigned. It becomes assignable only after the cumulative
@@ -1135,9 +1172,9 @@ every legal and illegal transition and follow physical-first order. Never push.
 
 ## Ordered queues
 
-1. Widgets cumulative evidence queue: capture DLV-309's diagnostic-free Spotify
-   build failure through DLV-310, then resume Spotify, Tier 2, and Tier 3 only
-   under a reviewed follow-up assignment.
+1. Widgets cumulative evidence queue: execute DLV-311's Spotify test-fixture
+   reconciliation, then finish Spotify, Tier 2, and Tier 3 in order, stopping on
+   the first red result.
 2. Reviewer integration queue: independently review the eventual cumulative
    evidence milestone; integrate the
    accepted production/test chain into local main only if all required evidence
@@ -1182,7 +1219,8 @@ There is no other Ready production work in either standing lane.
 | DLV-307 | Stopped first red: full Bridge passed 95/96; the residency-count refusal message assertion failed, so Spotify, Tier 2, and Tier 3 were skipped and no commit was created. |
 | DLV-308 | Completed diagnostic-only: isolated prefix reproduced 0/1 and proved a stale Bridge wrapper-message expectation, not suite state contamination or a production budget defect. |
 | DLV-309 | Stopped first red uncommitted: corrected residency prefix passed 1/1 and full Bridge passed 96/96; Spotify failed during build without a diagnostic, so Tier 2 and Tier 3 were skipped. |
-| DLV-310 | Assigned diagnostic-only source audit plus one explicit no-restore Spotify test-project build to capture the real failure; no edits, test execution, repair, process action, or integration. |
+| DLV-310 | Completed diagnostic-only: one explicit build exposed six deterministic errors from a stale Spotify test fixture using the removed combined playlist-items contract; no production defect. |
+| DLV-311 | Assigned test-only Spotify fixture reconciliation to the current separated metadata/page contract, followed by Spotify, Tier 2, and Tier 3 evidence. |
 | DLV-284 | Queued, not assigned until cumulative integration. |
 | DLV-248 | Deliberately deferred until explicit user promotion. |
 
