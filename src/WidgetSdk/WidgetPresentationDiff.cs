@@ -23,6 +23,7 @@ internal static class WidgetPresentationDiff
     {
         ArgumentNullException.ThrowIfNull(current);
         ArgumentNullException.ThrowIfNull(capabilities);
+        current = NormalizeVirtualWindowReentry(previous, current);
         if (requireCheckpoint) return Checkpoint("checkpoint_requested");
         if (!capabilities.SupportsAtomicUpdates) return Checkpoint("capability_unavailable");
         if (previous is null) return Checkpoint("missing_base");
@@ -133,6 +134,47 @@ internal static class WidgetPresentationDiff
 
     private static bool ValidGeneration(string value) =>
         value is { Length: 32 or 64 } && value.All(char.IsAsciiHexDigit);
+
+    private static ViewSnapshot NormalizeVirtualWindowReentry(
+        ViewSnapshot? previous,
+        ViewSnapshot current)
+    {
+        var previousIds = new HashSet<string>(StringComparer.Ordinal);
+        if (previous is not null) AddIds(previous.Root);
+        var root = Normalize(current.Root);
+        return ReferenceEquals(root, current.Root) ? current : current with { Root = root };
+
+        void AddIds(ViewNode node)
+        {
+            previousIds.Add(node.Id);
+            foreach (var child in node.Children) AddIds(child);
+        }
+
+        ViewNode Normalize(ViewNode node)
+        {
+            ViewNode[]? children = null;
+            for (var index = 0; index < node.Children.Count; index++)
+            {
+                var child = Normalize(node.Children[index]);
+                if (children is null && !ReferenceEquals(child, node.Children[index]))
+                    children = node.Children.ToArray();
+                if (children is not null) children[index] = child;
+            }
+
+            var window = node.VirtualCollectionWindow;
+            var normalizedWindow = window is { Change: not VirtualCollectionWindowChange.Replace } &&
+                !previousIds.Contains(node.Id)
+                ? window with { Change = VirtualCollectionWindowChange.Replace }
+                : window;
+            return children is null && ReferenceEquals(window, normalizedWindow)
+                ? node
+                : node with
+                {
+                    VirtualCollectionWindow = normalizedWindow,
+                    Children = children ?? node.Children,
+                };
+        }
+    }
 
     private static bool StableRelationships(ViewNode previous, ViewNode current)
     {
