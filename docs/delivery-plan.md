@@ -10,8 +10,8 @@ The complete delivery record through the DLV-277 assignment is preserved in the\
   contains accepted DLV-276 production through `dfa13d7`, focused behavior
   coverage `bd10e76`, and bounded completion evidence `ca967e6`, cherry-picked
   without duplicate branch history.
-- Exact DLV-277 production candidate PID 34764 is visibly running from clean
-  commit `830364d` over main `ce13a3c`. `OverlayHost.exe` SHA-256 is
+- Exact DLV-277 production candidate PID 34764 is visibly running from clean,
+  physically accepted commit `830364d` over main `ce13a3c`. `OverlayHost.exe` SHA-256 is
   `5EAEB6240C89A6DF8BE4A203340A683118394811955C9368D0C031DAB16D00FA`;
   `OverlayPlatformInterop.dll` is
   `089029C61D87F9837BA4E4E15908C411FCFF8E9B2A28707601FABD1928A91DEE`.
@@ -24,7 +24,7 @@ The complete delivery record through the DLV-277 assignment is preserved in the\
 
 | Lane | Task/worktree | State |
 | --- | --- | --- |
-| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | DLV-277 production candidate `830364d` is built, source-reviewed, and running as PID 34764 for the physical verdict. Do not test, integrate, or change it before the verdict. Preserve installed Spotify configuration/account state and package trees. DLV-273 remains retired. Never push. |
+| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | DLV-277 production candidate `830364d` is physically accepted and remains running as PID 34764. Run only the assigned focused renderer/focus-persistence, committed-geometry, same-sequence refresh, real-resize, UIA, and interaction evidence. Do not relaunch, integrate, or change package/configuration state before reviewer disposition. DLV-273 remains retired. Never push. |
 | Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | DLV-265 reconciled production candidate `edf2583` is physically accepted; saved `13bd971` plus `5fd1a06` remain preserved. Run only the assigned focused post-verdict presentation/action, configuration-write, prior-credential invalidation, failure, and cancellation evidence. Do not reinstall, replace configuration, reset state, integrate, or start DLV-270 before reviewer disposition. DLV-248 remains deferred. Never push. |
 
 ## Execution, review, and architecture rules
@@ -241,7 +241,9 @@ responsive viewport and compact/expanded mode used for that pass; responsive
 focus persistence consumes only that committed result. Navigation, hit testing,
 UIA, and focus reconciliation therefore share the rendered geometry. The
 tests-skipped Release build passes with the six existing `C4244` warnings and is
-running as PID 34764. Await the physical verdict before tests or integration.
+running as PID 34764. The physical verdict is accepted; the platform lane now
+runs only the bounded focused post-verdict evidence named above. Await reviewer
+disposition before integration.
 
 ## Assigned widgets deliverable — DLV-265: controller-first Spotify onboarding
 
@@ -326,8 +328,8 @@ missing accepted DLV-265/DLV-271/DLV-276 baseline. Never push.
 
 1. DLV-269, DLV-274/275, DLV-271, and DLV-276 are accepted and integrated
    through main `ca967e6`; DLV-273 remains retired rejected history.
-2. DLV-277 candidate `830364d` still awaits its physical verdict on PID 34764;
-   do not test or integrate it before that verdict.
+2. DLV-277 candidate `830364d` is physically accepted. Complete and review its
+   bounded post-verdict evidence before integration; keep PID 34764 unchanged.
 3. DLV-265 candidate `edf2583` is physically accepted. Complete and review its
    bounded post-verdict evidence, then integrate it before starting DLV-270.
 4. DLV-248 remains deferred until explicit user promotion.
@@ -342,7 +344,7 @@ missing accepted DLV-265/DLV-271/DLV-276 baseline. Never push.
 | Trademark | Similar-mark clearance; qualified counsel recommended before public release. |
 | GitHub identity | User-selected owner plus repository/organization availability and optional rename/creation. |
 | DLV-276 | Complete: behavior/styling accepted, focused boundary evidence passes, and production/tests are integrated through main `ca967e6`. |
-| DLV-277 | Production candidate `830364d` is running as PID 34764; verify stable Queue/Playlists/Devices focus across playback updates and one real compact/wide transition. |
+| DLV-277 | Physical verdict accepted for production candidate `830364d`; bounded focused post-verdict evidence is in progress before reviewer integration. |
 | DLV-265 | Physical verdict accepted for reconciled candidate `edf2583`; bounded focused post-verdict evidence is in progress before reviewer integration. |
 | DLV-248 | Deliberately deferred until explicit user promotion. |
 
