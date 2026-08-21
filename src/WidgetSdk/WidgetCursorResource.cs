@@ -253,8 +253,8 @@ public sealed class WidgetCursorResource<TItem> where TItem : notnull
                     Change = snapshot.WindowChange,
                     FirstItemIndex = snapshot.FirstItemIndex,
                     TotalItemCount = snapshot.TotalItemCount,
-                    HasBefore = snapshot.HasBefore,
-                    HasAfter = snapshot.HasAfter,
+                    HasBefore = before is not null,
+                    HasAfter = after is not null,
                     EstimatedItemExtent = estimate,
                 }
                 : null,
