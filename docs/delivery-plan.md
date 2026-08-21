@@ -27,7 +27,7 @@ The complete delivery record through the DLV-277 assignment is preserved in the\
 | Lane | Task/worktree | State |
 | --- | --- | --- |
 | Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | DLV-277 is accepted and integrated through main `c21ad02`; PID 34764 remains the accepted production artifact. No platform deliverable is assigned. DLV-273 remains retired and DLV-248 remains deferred. Never push. |
-| Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | DLV-270 corrected production tip `833fe9c` / Spotify 0.3.6 is rejected after reproducing the same exit-1 worker crash. Diagnose the actual fatal package-local path and produce a new immutable production/build correction with bounded sanitized fatal diagnostics if needed. Preserve current Client ID/account/configuration, PID 34764, selected disabled 0.3.3 rollback, installed inactive rejected 0.3.4/0.3.6, and shared contracts. Do not test before a new physical verdict. Never push. |
+| Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | DLV-278 is the assigned serialized managed-SDK prerequisite after source review proved that atomic update v18 cannot advance a materialized snapshot from protocol v18 to v19. Preserve the seven uncommitted DLV-270 diagnostic/fallback files without staging them in DLV-278. After the clean DLV-278 production commit/build, resume DLV-270, retain only bounded diagnostics that remain useful, advance the immutable package, and build one cumulative physical candidate. Preserve current Client ID/account/configuration, PID 34764, selected disabled 0.3.3 rollback, installed inactive rejected 0.3.4/0.3.6, and native/shared-host contracts. Do not test before the cumulative physical verdict. Never push. |
 
 ## Execution, review, and architecture rules
 
@@ -291,7 +291,54 @@ replacement Client-ID persistence and exact one-time prior refresh-credential
 deletion without network access. Production and evidence are integrated through
 main `bb8234f`; installed package and configuration state remain unchanged.
 
-## Assigned widgets deliverable — DLV-270: Spotify collection paging efficiency
+## Assigned widgets deliverable — DLV-278: checkpoint on snapshot protocol advance
+
+Owner/baseline: widgets lane as the serialized managed-SDK lead from clean
+reconciliation `b94aa13` over reviewer main `b3f2d48`, with rejected DLV-270
+commits preserved. This is the smallest generic prerequisite for the reproduced
+Spotify crash; it changes WidgetSdk publication choice only. Do not change the
+native host, runtime wire schema, update protocol v18, snapshot protocol v19,
+materializer, Spotify domain behavior, or public update operation families.
+
+Source review proved the exact boundary failure. Spotify's loading checkpoint
+is a valid protocol-v18 snapshot. Its first Ready collection publication adds
+DLV-271 virtual-window nodes and therefore requires snapshot protocol v19.
+`WidgetPresentationDiff` currently emits an atomic protocol-v18 update for that
+transition. `PresentationUpdateMaterializer` correctly retains the base
+snapshot at protocol v18 because the v18 update schema carries no target
+snapshot-version field; final snapshot validation then rejects the inserted v19
+feature. The failed render request retires the worker protocol and the Spotify
+application exits 1. Package-only capture fallbacks cannot correct this shared
+publication invariant.
+
+When a newly rendered valid snapshot requires a higher snapshot protocol than
+its exact previous checkpoint, WidgetSdk must publish the complete checkpoint
+instead of an atomic update. Preserve atomic updates when base and target use
+the same snapshot protocol, including subsequent protocol-v19 publications.
+Do not infer a target version in the host, weaken validation, forge a package
+root/marker, or expand the v18 update wire contract. Keep checkpoint selection
+deterministic, bounded, and observable through the existing fallback reason.
+
+Follow physical-first ordering. Preserve the seven current uncommitted
+DLV-270 package diagnostic/fallback files and stage none of them in DLV-278.
+Commit only the generic production correction, perform direct source review,
+and build a tests-skipped exact-commit Release. Then resume DLV-270, remove any
+now-unnecessary speculative package fallback while retaining only bounded
+sanitized fatal diagnostics that materially improve supportability, advance to
+a new immutable package version, and build one coherent cumulative candidate.
+The user physically reproduces compact Playlists activation, switch-away/back,
+and long collection traversal. Logs must show a full v19 checkpoint for the
+first virtual-window transition, a stable worker PID, and no
+`worker-protocol-failed`. Only after acceptance add focused WidgetSdk diff and
+runtime materialization coverage plus the previously assigned DLV-270 tests.
+
+Stop for a required wire-schema or native-host change, inability to distinguish
+base/target snapshot protocol before update emission, weakened validation,
+package-specific shared behavior, destructive state action, substantial
+conflict, or a physical failure after the exact checkpoint transition is
+confirmed. Never push.
+
+## Held widgets deliverable — DLV-270: Spotify collection paging efficiency
 
 Owner/baseline: widgets lane after accepted DLV-265 and DLV-277 integration on
 main `c21ad02`. Reconcile the standing worktree cleanly before production work.
@@ -363,18 +410,23 @@ rejects 0.3.6. Spotify 0.3.3 is selected as rollback but remains disabled
 pending explicit full-trust re-enable approval; rejected 0.3.4 and 0.3.6 remain
 installed inactive. Diagnose the actual fatal package-local boundary, add only
 bounded sanitized diagnostics if required, then produce a new immutable
-production/build candidate. Do not test or integrate before its verdict.
+production/build candidate. The exact boundary is now dispositioned by assigned
+DLV-278: the first Ready publication advances snapshot protocol v18 to v19
+through an atomic v18 update that cannot carry the target version. Resume this
+package work only after the clean DLV-278 production commit/build, then produce
+one cumulative candidate. Do not test or integrate before its verdict.
 
 ## Serialized order
 
 1. DLV-269, DLV-274/275, DLV-271, DLV-276, DLV-265, and DLV-277 are accepted
    and integrated through main `c21ad02`; DLV-273 remains retired rejected
    history.
-2. DLV-270 corrected tip `833fe9c` / Spotify 0.3.6 is rejected. The widgets lane
-   must identify the actual exit-1 package failure and produce a new immutable
-   production/build correction before another physical verdict. Do not test or
-   integrate before that verdict.
-3. DLV-248 remains deferred until explicit user promotion.
+2. DLV-278 is the serialized widgets-lane prerequisite: checkpoint whenever a
+   valid target snapshot advances beyond its exact base snapshot protocol.
+3. After DLV-278 production/build, resume DLV-270 and produce one cumulative
+   immutable package candidate for the physical verdict. Do not test or
+   integrate either deliverable before that verdict.
+4. DLV-248 remains deferred until explicit user promotion.
 
 ## Manual, external, and blocked evidence
 
@@ -388,7 +440,8 @@ production/build candidate. Do not test or integrate before its verdict.
 | DLV-276 | Complete: behavior/styling accepted, focused boundary evidence passes, and production/tests are integrated through main `ca967e6`. |
 | DLV-277 | Complete: physical verdict accepted; focused native evidence passes and production/tests are integrated through main `c21ad02`. |
 | DLV-265 | Complete: physical verdict accepted; focused Spotify evidence passes and production/tests are integrated through main `bb8234f`. |
-| DLV-270 | Spotify 0.3.6 reproduced the compact Playlists exit-1 worker crash and is rejected. Await a new immutable package-local correction with evidence for the actual fatal boundary, then verify stable worker PID, switch-away/back, and long playlist/detail focus, artwork, paging, refresh, and recovery. |
+| DLV-278 | Assigned serialized managed-SDK prerequisite: emit a checkpoint rather than atomic update when the target snapshot advances beyond the base snapshot protocol; physical evidence is cumulative with DLV-270. |
+| DLV-270 | Spotify 0.3.6 reproduced the compact Playlists exit-1 worker crash and is rejected. Resume after DLV-278, then verify the v19 checkpoint, stable worker PID, switch-away/back, and long playlist/detail focus, artwork, paging, refresh, and recovery. |
 | DLV-248 | Deliberately deferred until explicit user promotion. |
 
 ## Recent accepted milestones
