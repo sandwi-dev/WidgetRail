@@ -46,7 +46,7 @@ evidence only; this file is the sole authority for current work.
 | Lane | Task/worktree | State |
 | --- | --- | --- |
 | Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | Idle pending cumulative test evidence and integration. DLV-284 is queued but not assigned. Do not begin it, test, launch, integrate, or push. |
-| Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | DLV-296 `3922b58` is physically accepted and exact PID 83788 remains running. Test-only DLV-306 `5fe7a5f` is independently source-reviewed and accepted; four notification-evidence files are committed and three cumulative matrix files remain dirty. Execute DLV-307 cumulative evidence below. Do not change production, rebuild, relaunch, integrate, or push. |
+| Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | DLV-296 `3922b58` is physically accepted and exact PID 83788 remains running. Test-only DLV-306 `5fe7a5f` is independently source-reviewed and accepted; four notification-evidence files are committed and three cumulative matrix files remain dirty. DLV-307 stopped at a full-Bridge residency-budget assertion; execute diagnostic-only DLV-308 below. Do not change production, rebuild, relaunch, integrate, or push. |
 
 ## Execution and architecture rules
 
@@ -1006,6 +1006,35 @@ weakened assertions. If all required groups pass, commit one coherent test-only
 DLV-307 milestone containing exactly the three remaining matrix files and stop
 for independent review. Never rebuild/relaunch the overlay, integrate, or push.
 
+DLV-307 source audit passed, but cumulative execution stopped at the first red
+group as required. The complete Bridge suite passed 95/96 at `5fe7a5f`; the
+only failure was `Worker residency budget refuses count overcommit and releases
+failures`, whose assertion reported that the count-bound refusal did not contain
+the expected `application worker limit (1/1)` explanation. Spotify, linked Tier
+2, and Tier 3 were not run. No commit was created, the exact three matrix files
+remain dirty, and production/PID 83788 were untouched.
+
+## Assigned widgets diagnosis — DLV-308 Bridge residency refusal classification
+
+Mode: diagnostic-only after DLV-307. Preserve baseline `5fe7a5f`, exactly the
+three dirty matrix files, installed/configured state, and PID 83788. Do not edit
+or commit any file; do not rebuild/relaunch the overlay, integrate, or push.
+
+Source-audit the failing test, `WorkerResidencyBudget`, Bridge failure framing,
+and the budget harness to establish the current exact refusal contract and
+whether any earlier full-suite case can retain a worker or alter the response.
+Then run only the failing Bridge prefix once outside the command sandbox while
+capturing the exact response type and message. Do not rerun the complete Bridge
+suite and do not run Spotify, Tier 2, Tier 3, or previously green groups.
+
+If the isolated prefix is red, report the exact actual-versus-expected contract
+and the smallest test-only or production correction justified by source. If it
+is green, classify the result as full-suite order/state contamination and name
+the narrowest deterministic predecessor/state boundary to test next; do not
+bisect or rerun under this assignment. Stop for reviewer direction on any
+nondeterminism, fixture gap, or production defect. No logging, hooks, sleeps,
+polling, timeout enlargement, weakened assertions, or speculative repair.
+
 ## Queued platform production — DLV-284 explicit publication transaction model
 
 Status: queued, not assigned. It becomes assignable only after the cumulative
@@ -1036,9 +1065,11 @@ every legal and illegal transition and follow physical-first order. Never push.
 
 ## Ordered queues
 
-1. Widgets cumulative evidence queue: execute DLV-307 Bridge, Spotify, linked
-   Tier 2, and exact-commit Tier 3 order, stopping on the first red result.
-2. Reviewer integration queue: independently review DLV-307; integrate the
+1. Widgets cumulative evidence queue: classify DLV-307's single full-Bridge red
+   result through diagnostic-only DLV-308, then resume cumulative evidence only
+   under a new reviewed assignment.
+2. Reviewer integration queue: independently review the eventual cumulative
+   evidence milestone; integrate the
    accepted production/test chain into local main only if all required evidence
    passes.
 3. Platform production queue: assign DLV-284 after integration, before any new
@@ -1078,7 +1109,8 @@ There is no other Ready production work in either standing lane.
 | DLV-304 | Notification/session boundaries green uncommitted; sole red was an invalid Append expectation on base-zero `GetSnapshotAsync`, which correctly returned durable eight-item Replace. |
 | DLV-305 | Completed green uncommitted: exact-base atomic update produced generation-2 Append and base-zero checkpoint produced the same durable generation-2 Replace, 1/1. |
 | DLV-306 | Accepted test-only `5fe7a5f`: permanent Bridge exact-base Append/base-zero Replace convergence passed 1/1; four notification-evidence files committed. |
-| DLV-307 | Assigned completion of the three-file cumulative matrix through full Bridge, Spotify, linked Tier 2, and exact-commit Tier 3; stop first red, commit only if all green. |
+| DLV-307 | Stopped first red: full Bridge passed 95/96; the residency-count refusal message assertion failed, so Spotify, Tier 2, and Tier 3 were skipped and no commit was created. |
+| DLV-308 | Assigned diagnostic-only source audit plus one isolated residency-count prefix run; no edits, reruns, repair, commit, process action, or integration. |
 | DLV-284 | Queued, not assigned until cumulative integration. |
 | DLV-248 | Deliberately deferred until explicit user promotion. |
 
