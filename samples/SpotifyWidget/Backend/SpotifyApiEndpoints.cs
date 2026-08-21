@@ -236,7 +236,21 @@ internal sealed class SpotifyCollectionApi(ISpotifyAuthorizedRequestSender sende
         return SpotifyResponseParser.ParsePlaylistPage(response.Body, offset, limit);
     }
 
-    internal async Task<SpotifyPlaylistItemsSummary> GetPlaylistItemsAsync(
+    internal async Task<SpotifyPlaylistSummary> GetPlaylistAsync(
+        SpotifyIntegrationIdentity identity,
+        string playlistId,
+        CancellationToken cancellationToken)
+    {
+        SpotifyApiValidation.ValidateOpaqueId(playlistId, "playlist identifier");
+        var baseUri = "https://api.spotify.com/v1/playlists/" +
+            Uri.EscapeDataString(playlistId);
+        var playlistResponse = await SendAsync(identity, new Uri(baseUri), cancellationToken)
+            .ConfigureAwait(false);
+        SpotifyResponseParser.EnsureSuccess(playlistResponse);
+        return SpotifyResponseParser.ParsePlaylistDocument(playlistResponse.Body);
+    }
+
+    internal async Task<SpotifyPlaylistItemsPageSummary> GetPlaylistItemsAsync(
         SpotifyIntegrationIdentity identity,
         string playlistId,
         int offset,
@@ -247,18 +261,14 @@ internal sealed class SpotifyCollectionApi(ISpotifyAuthorizedRequestSender sende
         SpotifyApiValidation.ValidatePage(offset, limit);
         var baseUri = "https://api.spotify.com/v1/playlists/" +
             Uri.EscapeDataString(playlistId);
-        var playlistResponse = await SendAsync(identity, new Uri(baseUri), cancellationToken)
-            .ConfigureAwait(false);
-        SpotifyResponseParser.EnsureSuccess(playlistResponse);
-        var playlist = SpotifyResponseParser.ParsePlaylistDocument(playlistResponse.Body);
         var itemsUri = new Uri(baseUri + "/items?offset=" + offset.ToString(
             CultureInfo.InvariantCulture) + "&limit=" + limit.ToString(
-                CultureInfo.InvariantCulture));
+            CultureInfo.InvariantCulture));
         var itemsResponse = await SendAsync(identity, itemsUri, cancellationToken)
             .ConfigureAwait(false);
         SpotifyResponseParser.EnsureSuccess(itemsResponse);
         return SpotifyResponseParser.ParsePlaylistItems(
-            playlist, itemsResponse.Body, offset, limit);
+            itemsResponse.Body, offset, limit);
     }
 
     private Task<SpotifyHttpResponse> SendAsync(

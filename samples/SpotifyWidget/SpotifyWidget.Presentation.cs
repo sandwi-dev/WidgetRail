@@ -264,16 +264,16 @@ internal static class SpotifyPresentation
         }
         var requestedPageFocus = destination == SpotifyDestination.Playlists
             ? playlistDetail is null
-                ? playlists.RequestedFocusId
-                : playlistDetail.Items.RequestedFocusId
+                ? playlists.Snapshot.RequestedFocusId
+                : playlistDetail.Items.Snapshot.RequestedFocusId
             : null;
         var requestedInitialFocus = requestedPageFocus ?? presentation.ReadyInitialFocusId;
         if (destination == SpotifyDestination.Playlists && playlistDetail is not null &&
-            playlistDetail.Items.Items.Count == 0 &&
-            playlistDetail.Items.Status != WidgetPagedResourceStatus.Ready)
+            playlistDetail.Items.Snapshot.Items.Count == 0 &&
+            playlistDetail.Items.Snapshot.Status != WidgetPagedResourceStatus.Ready)
         {
             var mode = playlistDetail.Selection.Mode;
-            requestedInitialFocus = playlistDetail.Items.Error is null
+            requestedInitialFocus = playlistDetail.Items.Snapshot.Error is null
                 ? NavId(SpotifyDestination.Playlists, mode)
                 : $"spotify.page.error.{mode}.action";
         }
@@ -446,7 +446,7 @@ internal static class SpotifyPresentation
     private static WidgetElement DestinationPage(
         SpotifyDestination destination,
         WidgetCursorResourceSnapshot<SpotifyMediaCollectionItem> queue,
-        WidgetCursorResourceSnapshot<SpotifyPlaylistCollectionItem> playlists,
+        SpotifyCursorPresentation<SpotifyPlaylistCollectionItem> playlists,
         SpotifyPlaylistDetailPresentation? playlistDetail,
         SpotifyDevicesSummary? devices,
         SpotifyLocalPlaybackSummary? localPlayback,
@@ -517,13 +517,14 @@ internal static class SpotifyPresentation
     }
 
     private static WidgetElement PlaylistsPage(
-        WidgetCursorResourceSnapshot<SpotifyPlaylistCollectionItem> playlists,
+        SpotifyCursorPresentation<SpotifyPlaylistCollectionItem> playlistPresentation,
         SpotifyPlaylistDetailPresentation? playlistDetail,
         string mode)
     {
         if (playlistDetail is not null)
             return PlaylistDetail(playlistDetail.Selection.Playlist,
                 playlistDetail.Items, mode);
+        var playlists = playlistPresentation.Snapshot;
         if (playlists.Status == WidgetPagedResourceStatus.Loading && playlists.Items.Count == 0)
             return LoadingPage("Loading playlists", mode);
         if (playlists.Error is { } playlistError && playlists.Items.Count == 0)
@@ -560,9 +561,7 @@ internal static class SpotifyPresentation
         if (rows.Count == 0)
             rows.Add(SparsePagePlaceholder("playlist", mode));
         var range = $"{playlists.Items.Count} playlists loaded";
-        var scroll = PresentCursor(
-            UI.VerticalScroll($"spotify.playlists.scroll.{mode}", rows.ToArray()),
-            playlists, "spotify.playlists");
+        var scroll = playlistPresentation.Scroll(mode, rows);
         var content = new List<WidgetElement>
         {
             UI.SectionHeader("Your playlists", $"spotify.playlists.header.{mode}",
@@ -577,9 +576,10 @@ internal static class SpotifyPresentation
 
     private static WidgetElement PlaylistDetail(
         SpotifyPlaylistSummary playlist,
-        WidgetCursorResourceSnapshot<SpotifyMediaCollectionItem> items,
+        SpotifyCursorPresentation<SpotifyMediaCollectionItem> itemPresentation,
         string mode)
     {
+        var items = itemPresentation.Snapshot;
         if (items.Status == WidgetPagedResourceStatus.Loading && items.Items.Count == 0)
             return LoadingPage($"Loading {playlist.Name}", mode);
         if (items.Error is { } itemError && items.Items.Count == 0)
@@ -604,9 +604,7 @@ internal static class SpotifyPresentation
                         : SpotifyCollectionIdentity.FocusId(
                             "spotify.playlist.track", mode, items.Items[index + 1].Key)))
             .ToList<WidgetElement>();
-        var scroll = PresentCursor(
-            UI.VerticalScroll($"spotify.playlist.detail.scroll.{mode}", rows.ToArray()),
-            items, "spotify.playlist.items");
+        var scroll = itemPresentation.Scroll(mode, rows);
         var loading = items.Status is WidgetPagedResourceStatus.Loading or
             WidgetPagedResourceStatus.Refreshing or
             WidgetPagedResourceStatus.LoadingAdjacent;
@@ -637,20 +635,6 @@ internal static class SpotifyPresentation
                 $"spotify.page.sparse.{itemKind}.{mode}")
             .PersistFocusAs($"spotify.page.sparse.{itemKind}")
             .Classes("spotify-media-row", "is-quiet");
-
-    private static ScrollElement PresentCursor<TItem>(
-        ScrollElement scroll,
-        WidgetCursorResourceSnapshot<TItem> snapshot,
-        string operationKey) where TItem : notnull
-    {
-        var result = scroll;
-        if (snapshot.Status != WidgetPagedResourceStatus.Error &&
-            (snapshot.HasBefore || snapshot.HasAfter))
-            result = result.Paginate(
-                snapshot.HasBefore ? operationKey + ".cursor.before" : null,
-                snapshot.HasAfter ? operationKey + ".cursor.after" : null, 2);
-        return result with { CollectionAnchorKey = snapshot.Anchor?.Value };
-    }
 
     private static WidgetElement RetainedPageError(string error, string mode) =>
         UI.Alert("More items unavailable", error, AlertTone.Warning,
