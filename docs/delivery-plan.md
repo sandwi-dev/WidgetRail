@@ -35,8 +35,8 @@ The complete delivery record through the DLV-277 assignment is preserved in the\
 
 | Lane | Task/worktree | State |
 | --- | --- | --- |
-| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | DLV-282 is Assigned from clean DLV-281 tip `0960b81`: recover one typed stale retained-base conflict with a bounded full-checkpoint resynchronization under the same current widget/runtime/lifecycle authority. Production and one exact tests-skipped Release build only; do not test, launch, integrate, or push. |
-| Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | Exact cumulative DLV-281 branch `a838e2b` and immutable Spotify 0.3.12 remain source-reviewed and preserved. PID 84296 is rejected on DLV-282; the lane is idle and must not edit the shared request path, test, install, relaunch, integrate main, or push. |
+| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | DLV-282 production `39dc690` is source-reviewed and exact-build verified. It preserves the bridge's typed stale-base category and permits exactly one same-kind base-zero checkpoint retry under unchanged authority. The lane is idle; do not test, launch, integrate, or push. |
+| Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | Assigned the exact DLV-282 production commit onto preserved cumulative tip `a838e2b`, followed by one coherent tests-skipped Release build. Preserve immutable Spotify 0.3.12 and all package/account/configuration state; do not edit production, test, install, launch, integrate main, or push. |
 
 ## Execution, review, and architecture rules
 
@@ -875,9 +875,10 @@ after explicit full-trust approval.
    `a838e2b`. The coherent tests-skipped Release passed, but PID 84296 is
    rejected after a wrong-lifecycle completion left bridge base 234 ahead of
    host checkpoint 233.
-7. The platform lane corrects that distinct DLV-282 resynchronization boundary;
-   after source review, merge it exactly into `a838e2b` and build/launch one
-   coherent tests-skipped candidate for another physical verdict.
+7. DLV-282 production `39dc690` is source-reviewed and exact-build verified;
+   the widgets lane merges it exactly into `a838e2b` and builds one coherent
+   tests-skipped candidate. The planner then visibly launches it for another
+   physical verdict.
 8. After the cumulative physical verdict, add focused and cross-process evidence
    in planner-directed order, then integrate the independently accepted DLV-280,
    DLV-281, DLV-282, DLV-278, DLV-279, and DLV-270 production/test chain into
@@ -901,7 +902,7 @@ after explicit full-trust approval.
 | DLV-270 | Cumulative Spotify 0.3.11 at `4ece854` is rejected on DLV-279 after deep paging and B. Preserve its successful provider/paging evidence; immutable 0.3.12 is installed, selected, enabled, and preserved while the generic DLV-281 host race is corrected. |
 | DLV-280 | Production through `09c3f07` successfully admitted one exact-base switch-back in the rejected cumulative trace. Keep it source-reviewed but unaccepted; focused/Tier 2/Tier 3 evidence waits for the corrected cumulative verdict. |
 | DLV-281 | Production `dcbd006` plus correction `0960b81` fixed completion-admission overlap and remains source-reviewed in cumulative `a838e2b`; PID 84296 is rejected on the distinct DLV-282 switch-away base divergence. |
-| DLV-282 | Assigned to the platform lane: on one typed stale-base conflict, resynchronize through a bounded full checkpoint under unchanged authority rather than fail the widget or accept stale data. |
+| DLV-282 | Production `39dc690` is source-reviewed and exact-build verified. The widgets lane is assigned its exact cumulative merge/build before physical verdict, tests, or integration. |
 | DLV-248 | Deliberately deferred until explicit user promotion. |
 
 ## Recent accepted milestones
