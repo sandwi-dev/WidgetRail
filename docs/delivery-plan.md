@@ -46,7 +46,7 @@ evidence only; this file is the sole authority for current work.
 | Lane | Task/worktree | State |
 | --- | --- | --- |
 | Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | Idle pending cumulative test evidence and integration. DLV-284 is queued but not assigned. Do not begin it, test, launch, integrate, or push. |
-| Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | DLV-320 classified both Tier 3 Runtime reds as exact test synchronization/timing drift. Execute test-only DLV-321 below against clean `199a81b`; preserve PID 126208 and do not touch production/package/installed state, integrate, or push. |
+| Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | DLV-321 stopped before edits because its 64-item instruction contradicted the authoritative 4-to-8 Runtime fixture. Execute corrected test-only DLV-322 below against clean `199a81b`; preserve PID 126208 and do not touch production/package/installed state, integrate, or push. |
 
 ## Execution and architecture rules
 
@@ -1606,6 +1606,37 @@ and skips. No production/package edit, restore/update, diagnostics, hooks,
 timeout change, overlay rebuild/relaunch, installed-state change, integration,
 or push. If Tier 3 passes, stop for independent review.
 
+DLV-321 stopped correctly before edits/build/tests because the assignment's
+64-item expectation contradicted the existing Runtime fixture: page size 4,
+maximum retained items 8, and logical total 12. The fixture and durable
+assertions already define generation 1 as four items and generation 2 as eight
+items; the separate 32-to-64 model is Bridge-owned and outside this scope. No
+file changed and baseline `199a81b` remains clean.
+
+## Assigned widgets evidence — DLV-322 corrected Runtime fixture contract
+
+Mode and scope are identical to DLV-321, except the exact-base cursor outcome
+must preserve the authoritative existing 4-to-8 Runtime model. Edit only
+`tests/WidgetRuntime.Tests/WidgetProcessOwnershipScenarios.cs` and
+`tests/WidgetRuntime.Tests/Program.cs`; preserve clean `199a81b`, accepted PID
+126208, Spotify 0.3.14, installed/configured state, and all production/runtime/
+package files.
+
+Apply the deterministic retired gesture-grant synchronization specified by
+DLV-321. For the cursor case, consume bounded current-session invalidations and
+apply one update per current materialized base until exact generation 2, eight
+items (`diagnostic.item.0` through `.7`), logical total 12, remaining forward
+boundary, and `Append` are observed. Fail immediately on action failure or an
+illegal/stale update. Then prove a base-zero checkpoint yields that same exact
+eight-item generation-2 window normalized to `Replace`. Do not edit the fixture
+widget, import the Bridge 32-to-64 model, skip intermediate states, weaken exact
+assertions, or create a second model.
+
+Retain DLV-321's build/run/commit/Tier-3 commands and all prohibitions exactly:
+one serialized Runtime build, one complete 84-case Runtime execution, commit
+exactly the two authorized files if green, then one canonical verifier from a
+clean detached tree at that exact commit. Stop first red; never push.
+
 ## Queued platform production — DLV-284 explicit publication transaction model
 
 Status: queued, not assigned. It becomes assignable only after the cumulative
@@ -1691,8 +1722,8 @@ import/export or scheduling only after independent widgets prove the need.
 
 ## Ordered queues
 
-1. Widgets evidence queue: execute DLV-321's two deterministic Runtime fixture
-   corrections, complete 84-case Runtime gate, and one exact-commit Tier 3
+1. Widgets evidence queue: execute corrected DLV-322's two deterministic Runtime
+   fixture corrections, complete 84-case Runtime gate, and one exact-commit Tier 3
    verifier, stopping on the first red result.
 2. Reviewer integration queue: independently review the eventual cumulative
    evidence milestone; integrate the
@@ -1752,7 +1783,8 @@ There is no other Ready production work in either standing lane.
 | DLV-318 | Physically accepted production `32a2a5e`, visibly running as responsive PID 126208 with Spotify 0.3.14 selected/enabled. |
 | DLV-319 | Test-only `199a81b`: WidgetSdk 89/89, Spotify 54/54, Tier 2 6/6 green; exact-commit Tier 3 stopped at Runtime 82/84 with two reds and skipped later steps. |
 | DLV-320 | Completed source/artifact-only: both Runtime reds are exact test drift—shared revocation-signal ordering and first-invalidation cursor timing; no product defect. |
-| DLV-321 | Assigned test-only deterministic reconciliation of the two Runtime fixtures, complete Runtime gate, and one exact-commit Tier 3 verifier. |
+| DLV-321 | Stopped before edits: assignment incorrectly required 64 items while the authoritative Runtime fixture is page-size 4, retained 8, total 12. |
+| DLV-322 | Assigned corrected test-only reconciliation using the existing 4-to-8 Runtime contract, complete Runtime gate, and one exact-commit Tier 3 verifier. |
 | DLV-284 | Queued, not assigned until cumulative integration. |
 | DLV-248 | Deliberately deferred until explicit user promotion. |
 
