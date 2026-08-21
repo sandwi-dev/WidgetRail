@@ -7,6 +7,7 @@
   </PropertyGroup>
   <ItemGroup>
     <Compile Remove="RuntimeProtocol.cs" />
+    <Compile Remove="WidgetWorkerNotificationLane.cs" />
     <Compile Remove="WidgetWorkerServer.cs" />
   </ItemGroup>
   <ItemGroup>
