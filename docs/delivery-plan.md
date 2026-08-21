@@ -19,12 +19,15 @@ The complete delivery record through the DLV-277 assignment is preserved in the\
   The provider-free Full Application sample remains installed and enabled.
 - DLV-265 production and focused evidence are accepted and integrated while the
   immutable installed Spotify 0.3.3 and existing Client ID/account state remain
-  unchanged. DLV-270 is now the active widgets deliverable.
+  unchanged. DLV-270 candidates `cf9149e` / Spotify 0.3.4 and corrected tip
+  `833fe9c` / Spotify 0.3.6 are rejected. Spotify 0.3.3 is selected as the
+  rollback but remains disabled because its full-trust re-enable requires new
+  explicit user approval; no configuration or account state was changed.
 
 | Lane | Task/worktree | State |
 | --- | --- | --- |
 | Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | DLV-277 is accepted and integrated through main `c21ad02`; PID 34764 remains the accepted production artifact. No platform deliverable is assigned. DLV-273 remains retired and DLV-248 remains deferred. Never push. |
-| Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | DLV-270 is active from accepted integrated main `c21ad02`. Reconcile cleanly, then follow its physical-first package-local paging and Spotify virtualization-adoption assignment. Preserve installed Spotify 0.3.3, current Client ID/account/configuration, PID 34764, and shared contracts. Never push. |
+| Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | DLV-270 corrected production tip `833fe9c` / Spotify 0.3.6 is rejected after reproducing the same exit-1 worker crash. Diagnose the actual fatal package-local path and produce a new immutable production/build correction with bounded sanitized fatal diagnostics if needed. Preserve current Client ID/account/configuration, PID 34764, selected disabled 0.3.3 rollback, installed inactive rejected 0.3.4/0.3.6, and shared contracts. Do not test before a new physical verdict. Never push. |
 
 ## Execution, review, and architecture rules
 
@@ -329,12 +332,48 @@ provider ambiguity changing contract, shared-boundary changes, destructive
 credential/configuration action, unbounded retention, substantial conflict, or
 missing accepted DLV-265/DLV-271/DLV-276 baseline. Never push.
 
+Production-only commit `cf9149e` adopts the accepted virtual-window contract
+for playlist and playlist-detail viewports using stable keys, authoritative
+logical indices/totals, 12-item pages, 24 retained rows, and an 88-DIP estimated
+row extent. Selected-playlist metadata loads once per selection generation;
+the first page uses one metadata plus one `/items` request and each adjacent
+page uses one `/items` request. Queue now has one fail-closed 50-item
+unpaginated bound. The tests-skipped exact-commit Release/package build passes.
+Immutable Spotify 0.3.4 is 1,161,574 archive bytes with SHA-256
+`146DAD5EFD185469B0B3C77E3752786E551A53DA31CA686FC95C443BE5A1545E`.
+It was installed, selected, and enabled for review, but activating compact
+Playlists caused the Spotify worker to exit code 1 at
+`2026-08-21T03:48:08.968Z`; OverlayHost retained the last presentation and
+reported `worker-protocol-failed`. Candidate 0.3.4 is rejected and remains
+installed inactive. Accepted Spotify 0.3.3 is selected/enabled again, the
+existing Client ID/account/configuration are unchanged, and PID 34764 remains
+responsive. Correction `220cd7b` attributed the crash to exhausting four
+bounded stable-capture attempts during Loading-to-Ready/busy revision churn and
+changed that failure into a non-virtual fallback. Correction `833fe9c`
+preserves anchor and before/after paging actions in the fallback; stable
+captures continue to publish DLV-271 virtual-window metadata. Immutable Spotify 0.3.6 is
+1,161,774 bytes with SHA-256
+`08F588AF82328B06A40169332885144C0BEA99A24F45B137C987F854ADC5D41E`.
+Its isolated package and exact-commit tests-skipped Release builds pass, but
+the physical candidate reproduced the same failure: after compact Playlists
+handled A and painted sequences 10-11, worker PID 53516 exited code 1 at
+`2026-08-21T04:35:23.4491687Z` and the host reported
+`worker-protocol-failed`. This disproves the claimed sufficient root cause and
+rejects 0.3.6. Spotify 0.3.3 is selected as rollback but remains disabled
+pending explicit full-trust re-enable approval; rejected 0.3.4 and 0.3.6 remain
+installed inactive. Diagnose the actual fatal package-local boundary, add only
+bounded sanitized diagnostics if required, then produce a new immutable
+production/build candidate. Do not test or integrate before its verdict.
+
 ## Serialized order
 
 1. DLV-269, DLV-274/275, DLV-271, DLV-276, DLV-265, and DLV-277 are accepted
    and integrated through main `c21ad02`; DLV-273 remains retired rejected
    history.
-2. Run DLV-270 physical-first in the widgets lane from main `c21ad02`.
+2. DLV-270 corrected tip `833fe9c` / Spotify 0.3.6 is rejected. The widgets lane
+   must identify the actual exit-1 package failure and produce a new immutable
+   production/build correction before another physical verdict. Do not test or
+   integrate before that verdict.
 3. DLV-248 remains deferred until explicit user promotion.
 
 ## Manual, external, and blocked evidence
@@ -349,6 +388,7 @@ missing accepted DLV-265/DLV-271/DLV-276 baseline. Never push.
 | DLV-276 | Complete: behavior/styling accepted, focused boundary evidence passes, and production/tests are integrated through main `ca967e6`. |
 | DLV-277 | Complete: physical verdict accepted; focused native evidence passes and production/tests are integrated through main `c21ad02`. |
 | DLV-265 | Complete: physical verdict accepted; focused Spotify evidence passes and production/tests are integrated through main `bb8234f`. |
+| DLV-270 | Spotify 0.3.6 reproduced the compact Playlists exit-1 worker crash and is rejected. Await a new immutable package-local correction with evidence for the actual fatal boundary, then verify stable worker PID, switch-away/back, and long playlist/detail focus, artwork, paging, refresh, and recovery. |
 | DLV-248 | Deliberately deferred until explicit user promotion. |
 
 ## Recent accepted milestones
