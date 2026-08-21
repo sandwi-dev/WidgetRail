@@ -148,6 +148,25 @@ correction separately. If both pass, resume the held cumulative evidence from
 the first not-yet-run Bridge suite; do not rerun already green native/SDK groups.
 Stop on any distinct failure. Never push.
 
+Current DLV-285 evidence: the isolated run reproduced the unbounded notification
+wait and retired owned PID 121492 after timeout. Source review proved the test
+blocked the worker reader with `ManualResetEventSlim.Wait()` and could miss or
+strand the transient callback. A test-only correction added finite labeled
+deadlines and unconditional `finally` release. The corrected isolated run then
+failed in 8.8 seconds before notification admission because its spawned test
+worker exited before connecting with CLR exit `0xE0434352`; there was no matching
+Application event. This is a distinct test-fixture launch gap, not evidence that
+production admitted retired authority or deadlocked.
+
+Authorize one further test-only diagnostic: capture the spawned worker's exact
+managed exception using only existing process/test-support boundaries or a
+top-level test-executable diagnostic. Do not alter production or suppress the
+exception. Run the isolated prefix once under the same 60-second bound. Correct
+only a proven fixture/startup defect, then follow the ordered DLV-285 runs above.
+If the exception cannot be captured, requires production instrumentation, or
+reveals a production failure, stop with exact evidence and leave integration
+blocked.
+
 ## Queued platform production — DLV-284 explicit publication transaction model
 
 Status: queued, not assigned. It becomes assignable only after the cumulative
