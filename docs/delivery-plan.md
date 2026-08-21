@@ -37,7 +37,7 @@ evidence only; this file is the sole authority for current work.
 | Lane | Task/worktree | State |
 | --- | --- | --- |
 | Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | Idle pending cumulative test evidence and integration. DLV-284 is queued but not assigned. Do not begin it, test, launch, integrate, or push. |
-| Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | DLV-290 `b14dfdc` is committed and review-clean. DLV-291 exact prefix passes 1/1 and remains in the held cumulative matrix. Execute DLV-292 below. Preserve production, packages, state, and PID 129420. Do not rebuild, install, launch, terminate, integrate main, or push. |
+| Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | DLV-290 `b14dfdc` is committed and review-clean. DLV-291 remains held and passes 1/1. DLV-292 disproved the simple stale-event explanation: the first post-action snapshot remained generation 1 and no later invalidation arrived. Execute diagnostic DLV-293 below. Preserve production, packages, state, and PID 129420. Do not rebuild, install, launch, terminate, integrate main, or push. |
 
 ## Execution and architecture rules
 
@@ -365,6 +365,45 @@ passes, run the focused Bridge suite once. If Bridge is green, retain DLV-292
 inside the held cumulative matrix and resume Spotify/Tier 2/Tier 3; stop on the
 first remaining distinct failure. Never push.
 
+DLV-292 failed its exact prefix 0/1. After the first post-action invalidation,
+the requested snapshot still held the initial 32-item generation-1 window; no
+subsequent invalidation arrived within the existing four-second bounded read.
+The operation was admitted while the widget remained Visible, so the original
+claim that the fixture merely consumed an older queued notification is not
+sufficient. Keep the DLV-292 edit uncommitted and do not weaken its durable
+64-item/generation-2 requirement.
+
+## Assigned widgets diagnostic — DLV-293 pagination completion disposition
+
+Owner/baseline: widgets lane with the held DLV-291/292 matrix. Own only the
+virtual Bridge fixture/scenario and a narrowly reusable Bridge-test event
+reader if needed. This is a disposable test-only diagnostic, not an SDK,
+runtime, Bridge, package, or product correction.
+
+Instrument `VirtualCollectionBridgeWidget` through test-only state so one exact
+run can distinguish these outcomes after the admitted near-end action:
+
+- pagination action did not match its action/source IDs;
+- the resource operation was rejected, cancelled, superseded, or failed;
+- the resource operation succeeded and reached the 64-item generation-2
+  `Append` state, but the ordinary completion invalidation was not delivered;
+- an action/runtime failure event arrived instead of an invalidation; or
+- the durable state was published and the existing client event reader lost or
+  misclassified its notification.
+
+Expose only bounded, deterministic fixture evidence (for example, matched
+state, operation admission/completion status, and the next raw event type and
+revision). A diagnostic-only completion signal may invalidate a test status
+node so the cross-process result is observable, but it must be clearly
+separated from the production invalidation under investigation and must not be
+mistaken for the passing condition. Do not sleep, time-poll, extend deadlines,
+change product code, or turn the diagnostic into a committed workaround.
+
+Run only the exact virtual-window prefix once outside the command sandbox and
+report the complete ordered evidence. Stop after classification; do not run the
+full Bridge/Spotify/Tier 2/Tier 3 sequence and do not commit DLV-291–293. Never
+push.
+
 ## Queued platform production — DLV-284 explicit publication transaction model
 
 Status: queued, not assigned. It becomes assignable only after the cumulative
@@ -395,7 +434,8 @@ every legal and illegal transition and follow physical-first order. Never push.
 
 ## Ordered queues
 
-1. Widgets test queue: correct DLV-292, then resume and commit the cumulative
+1. Widgets test queue: classify the DLV-292 failure with DLV-293, then assign
+   the smallest evidence-backed correction. Resume and commit the cumulative
    DLV-278–283 evidence only if all remaining runs pass.
 2. Reviewer integration queue: independently review all evidence; integrate the
    accepted production/test chain into local main only if all required evidence
@@ -422,7 +462,8 @@ There is no other Ready production work in either standing lane.
 | DLV-289 | Assigned test-only update of one pre-DLV-275 raw admission-exception expectation to the current typed Bridge failure contract. |
 | DLV-290 | Assigned test-only update of three Bridge style-map counts after accepted DLV-276 added the committed-text-status node. |
 | DLV-291 | Assigned correction of one held convergence scenario that used Runtime-only actions against BridgeTestWidget. |
-| DLV-292 | Assigned event/state correlation for the Bridge virtual-window completion fixture. |
+| DLV-292 | Held after exact 0/1 disproved the simple stale-event explanation; generation stayed 1 and no later invalidation arrived. |
+| DLV-293 | Assigned disposable test-only classification of pagination action matching, operation completion, and notification disposition. |
 | DLV-284 | Queued, not assigned until cumulative integration. |
 | DLV-248 | Deliberately deferred until explicit user promotion. |
 
