@@ -46,7 +46,7 @@ evidence only; this file is the sole authority for current work.
 | Lane | Task/worktree | State |
 | --- | --- | --- |
 | Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | Idle pending cumulative test evidence and integration. DLV-284 is queued but not assigned. Do not begin it, test, launch, integrate, or push. |
-| Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | DLV-318 `32a2a5e` is independently source-reviewed and exact-build clean with immutable Spotify 0.3.14 packaged. Accepted DLV-314 PID 21672 remains responsive. Stop pending fresh user approval to install/select 0.3.14 and visibly switch to the reviewed DLV-318 Release; do not test/integrate/push. |
+| Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | Reviewed DLV-318 `32a2a5e` now runs visibly as responsive PID 126208 with immutable Spotify 0.3.14 installed, selected, and enabled. Stop for the user's physical verdict; do not test/integrate/push. |
 
 ## Execution and architecture rules
 
@@ -1460,6 +1460,18 @@ exact detached Release. No installation, selection, launch, termination,
 integration, or push has occurred. Fresh user approval is required before the
 immutable package change and visible candidate switch.
 
+The user explicitly approved the persistent full-trust package update and
+visible switch. Spotify 0.3.14 installed immutably, was selected and enabled,
+and earlier versions remain available. Accepted DLV-314 PID 21672 received
+`WM_CLOSE` through five verified top-level windows and exited cooperatively; no
+force termination occurred. Exact DLV-318 PID 126208 launched visibly from the
+clean detached Release and remains responsive. Its executable path is
+`C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative-dlv318-build\src\OverlayHost\out\Release\OverlayHost.exe`
+and its SHA-256 reverified as
+`86AC9946CC54F2B4CF51B14EEAA48CE32FECDF2C381DA73F24107DBE755F13AD`.
+Catalog inspection reports Spotify 0.3.14 enabled and active. Stop for the
+user's physical verdict; do not run tests first.
+
 ## Queued platform production — DLV-284 explicit publication transaction model
 
 Status: queued, not assigned. It becomes assignable only after the cumulative
@@ -1545,9 +1557,8 @@ import/export or scheduling only after independent widgets prove the need.
 
 ## Ordered queues
 
-1. Widgets physical-verdict queue: after fresh approval, install/select reviewed
-   Spotify 0.3.14 and cooperatively switch from accepted DLV-314 PID 21672 to
-   exact reviewed DLV-318 Release `32a2a5e`; obtain user verdict before tests.
+1. Widgets physical-verdict queue: obtain the user's verdict on exact reviewed
+   DLV-318 PID 126208 with Spotify 0.3.14 before any test or integration work.
 2. Reviewer integration queue: independently review the eventual cumulative
    evidence milestone; integrate the
    accepted production/test chain into local main only if all required evidence
@@ -1603,7 +1614,7 @@ There is no other Ready production work in either standing lane.
 | DLV-315 | Stopped first red uncommitted: authorized test edits remain held; WidgetSdk build failed before execution with no causal diagnostic, so later groups were skipped. |
 | DLV-316 | Completed diagnostic-only: serialized Release build passed with 0 warnings/errors after Roslyn named-pipe denial fell back to local compilation; no source/product failure. |
 | DLV-317 | Stopped first red uncommitted: WidgetSdk 88/89 exposed projected virtual availability without matching admitted Error-state boundary actions; later groups skipped. |
-| DLV-318 | Production `32a2a5e` independently source-reviewed and exact-build clean with Spotify 0.3.14 packaged; waiting fresh approval for installation/visible switch and user verdict. |
+| DLV-318 | Production `32a2a5e` independently reviewed and exact-build clean; visibly running as responsive PID 126208 with Spotify 0.3.14 installed/selected/enabled, awaiting user verdict. |
 | DLV-284 | Queued, not assigned until cumulative integration. |
 | DLV-248 | Deliberately deferred until explicit user promotion. |
 
