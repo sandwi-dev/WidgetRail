@@ -234,8 +234,12 @@ public sealed class WidgetCursorResource<TItem> where TItem : notnull
         if (!_viewports.ContainsKey(scroll.Id))
             throw new ArgumentException("The scroll is not a configured cursor viewport.", nameof(scroll));
         var snapshot = Snapshot;
-        var before = snapshot.HasBefore ? _beforeActionId : null;
-        var after = snapshot.HasAfter ? _afterActionId : null;
+        var before = snapshot.Status != WidgetPagedResourceStatus.Error && snapshot.HasBefore
+            ? _beforeActionId
+            : null;
+        var after = snapshot.Status != WidgetPagedResourceStatus.Error && snapshot.HasAfter
+            ? _afterActionId
+            : null;
         var result = before is null && after is null ? scroll :
             scroll.Paginate(before, after, _options.PaginationThreshold);
         return result with
