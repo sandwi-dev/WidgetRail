@@ -46,7 +46,7 @@ evidence only; this file is the sole authority for current work.
 | Lane | Task/worktree | State |
 | --- | --- | --- |
 | Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | Idle pending cumulative test evidence and integration. DLV-284 is queued but not assigned. Do not begin it, test, launch, integrate, or push. |
-| Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | DLV-314 `992b77b` is physically accepted as responsive PID 21672 with immutable Spotify 0.3.13 selected/enabled. Five cumulative test files remain dirty and held. Execute post-verdict test-only DLV-315 below; do not rebuild/relaunch, integrate, or push. |
+| Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | DLV-314 `992b77b` is physically accepted as responsive PID 21672 with immutable Spotify 0.3.13 selected/enabled. DLV-315 stopped first red before test execution and left six test files dirty and held. Execute diagnostic-only DLV-316 below; do not rebuild/relaunch, integrate, or push. |
 
 ## Execution and architecture rules
 
@@ -1343,6 +1343,33 @@ commit one coherent test-only DLV-315 milestone containing exactly the original
 five held test files plus `WidgetCursorResourceTests.cs`, then stop for
 independent review.
 
+DLV-315 added the authorized focused cursor Error/Retry assertions and corrected
+only the Spotify protocol-version and immutable-package expectations. Its first
+required command, the complete WidgetSdk executable, exited 1 before any test
+ran and emitted only `The build failed. Fix the build errors and run again.`
+Spotify, Tier 2, and Tier 3 were correctly skipped. No commit was created. The
+six test files remain dirty and held; production, packages, installed state,
+and accepted PID 21672 were untouched.
+
+## Assigned widgets diagnosis — DLV-316 WidgetSdk build failure capture
+
+Mode: diagnostic-only after DLV-315. Preserve baseline `992b77b`, all six dirty
+test files, accepted PID 21672, Spotify 0.3.13, and every installed/configured
+state surface. Do not edit or commit any file, restore/update dependencies,
+launch/terminate/rebuild the overlay, install/select a package, integrate, or
+push.
+
+Invoke exactly one explicit serialized Release build of
+`tests/WidgetSdk.Tests/WidgetSdk.Tests.csproj` with `--no-restore` and ordinary
+console verbosity sufficient to capture the first compiler/MSBuild diagnostic
+hidden by DLV-315's `dotnet run`. Do not execute the test binary. If the build
+is red, report its first causal diagnostic and classify it as an authorized
+DLV-315 test-fixture error, environment/tooling failure, or unrelated baseline
+failure. If the build is green, report the exact command/result and stop for
+planner disposition; do not rerun DLV-315 or advance to Spotify/Tier 2/Tier 3.
+No source correction, logging/hooks, sleeps, polling, timeout enlargement, or
+speculative repair is authorized.
+
 ## Queued platform production — DLV-284 explicit publication transaction model
 
 Status: queued, not assigned. It becomes assignable only after the cumulative
@@ -1371,18 +1398,78 @@ bounded windows, private widget data, last-valid presentation, and host-owned
 focus/input/render authority. Include focused table/interleaving evidence for
 every legal and illegal transition and follow physical-first order. Never push.
 
+## Future architecture queue — maturity review additions
+
+Status: ordered future work, not assigned. These deliverables do not displace
+DLV-316, cumulative integration, or DLV-284. Allocate implementation IDs only
+when each bounded milestone becomes assignable.
+
+1. Generic Game Launcher cutover. Remove the package's advanced-presentation
+   declaration and slot projection. Render every accepted launcher layout
+   through ordinary `ViewSnapshot`, responsive grid/scroll/navigation, semantic
+   tiles, virtual windows, bounded artwork, WRSS, and controller focus while
+   retaining the generic `WidgetApplicationRuntime`. Keep any layout choices
+   package-owned and provide no native LauncherExperience fallback. Build and
+   obtain a physical verdict before deleting the dormant framework slice.
+2. LauncherExperience vertical-slice deletion. Deliberately remove the
+   `LauncherExperienceCatalog`, public advanced-presentation protocol/SDK
+   models, Bridge selection/catalog routes, native adapter/layout/projection/
+   presentation state, Settings and CLI install/select/preview flows, project
+   references, fixtures, compatibility baselines, and active docs. Do not add a
+   generic custom-presentation escape hatch or compatibility layer.
+3. Targeted LauncherExperience state retirement and proof. Delete only obsolete
+   experience selection/last-good/package-catalog state while preserving themes,
+   widget order, package configuration, credentials, and Game Launcher-owned
+   library/organization state. Completion requires no active
+   `LauncherExperience` or `AdvancedPresentation` production references under
+   `src/`, a generic full-trust Game Launcher package, no launcher-specific host
+   knowledge, physical acceptance, and post-verdict focused evidence.
+4. Model-level protocol-version requirements. Replace WidgetSdk's overlapping
+   `ContainsX` feature walkers with one authoritative calculator over the final
+   snapshot model. SDK snapshot creation and raw protocol validation must share
+   it; every gated node/property needs exact coverage. Complete this before any
+   new protocol feature.
+5. SDK stability and evolution contract. Classify stable versus experimental
+   APIs, define supported-version and deprecation/removal policy, connect those
+   rules to API-baseline enforcement, and publish bounded migration guidance.
+6. Stable diagnostic contract. Define safe structured diagnostic codes and
+   owning boundaries across package validation, SDK, runtime, Bridge, host,
+   CLI, and preview tooling without coupling stable codes to mutable prose.
+7. Localization and accessibility semantics. Add resource/fallback/plural and
+   locale-formatting contracts plus distinct accessible label, description,
+   hint, and live-announcement intent that the host maps to UI Automation.
+8. Author diagnostics and preview inspection. Expose semantic tree, focus node,
+   input scope, computed bounds/clipping/overflow/scroll state, protocol
+   diagnostics, widget health, and deterministic controller record/replay.
+9. Public-source pre-alpha readiness. Add the license and third-party asset
+   review, working-tree/history secret audit, honest README/release boundary,
+   security/contribution/support policy, compact architecture front door,
+   reproducible clean-machine build, and public CI/security automation. Keep
+   source preview, binary release, and third-party marketplace gates distinct.
+
+Do not schedule a generic forms framework, component-count expansion, broad
+OverlayApp refactor, mediated import/export, background scheduling, or
+marketplace/publisher infrastructure without separate evidence and explicit
+promotion. Extract native authorities only when real work touches them; promote
+import/export or scheduling only after independent widgets prove the need.
+
 ## Ordered queues
 
-1. Widgets evidence queue: execute DLV-315 WidgetSdk, Spotify, linked Tier 2,
-   and exact-commit Tier 3 evidence against accepted DLV-314, stopping on the
-   first red result.
-2. Reviewer integration queue: independently review the eventual cumulative
+1. Widgets diagnostic queue: execute DLV-316 once to expose and classify the
+   hidden WidgetSdk build failure, then stop for planner disposition.
+2. Widgets evidence queue: after the smallest authorized correction, resume the
+   DLV-315 WidgetSdk, Spotify, linked Tier 2, and exact-commit Tier 3 sequence
+   against accepted DLV-314, stopping on the first red result.
+3. Reviewer integration queue: independently review the eventual cumulative
    evidence milestone; integrate the
    accepted production/test chain into local main only if all required evidence
    passes.
-3. Platform production queue: assign DLV-284 after integration, before any new
+4. Platform production queue: assign DLV-284 after integration, before any new
    virtualization feature.
-4. DLV-248 remains deliberately deferred until explicit user promotion.
+5. Future architecture queue: generic Game Launcher cutover, deliberate
+   LauncherExperience deletion/state retirement, then model-level protocol
+   requirements and the remaining maturity-review deliverables above.
+6. DLV-248 remains deliberately deferred until explicit user promotion.
 
 There is no other Ready production work in either standing lane.
 
@@ -1425,7 +1512,8 @@ There is no other Ready production work in either standing lane.
 | DLV-312 | Stopped first red uncommitted: build green; Spotify 51/54 with protocol-version, adjacent-failure pagination, and manifest-version assertions red; Tier 2 and Tier 3 skipped. |
 | DLV-313 | Completed source-only: protocol 19 and manifest 0.3.12 are test drift; automatic cursor-edge retry while Error is visible is a generic SDK production defect. |
 | DLV-314 | Physically accepted production `992b77b`, visibly running as PID 21672 with Spotify 0.3.13 selected/enabled. |
-| DLV-315 | Assigned post-verdict test-only cursor Error-state coverage, exact Spotify drift corrections, and remaining cumulative evidence. |
+| DLV-315 | Stopped first red uncommitted: authorized test edits remain held; WidgetSdk build failed before execution with no causal diagnostic, so later groups were skipped. |
+| DLV-316 | Assigned diagnostic-only one-build capture of DLV-315's hidden WidgetSdk compiler/MSBuild failure. |
 | DLV-284 | Queued, not assigned until cumulative integration. |
 | DLV-248 | Deliberately deferred until explicit user promotion. |
 
