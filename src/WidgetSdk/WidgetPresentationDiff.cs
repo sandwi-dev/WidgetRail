@@ -140,19 +140,19 @@ internal static class WidgetPresentationDiff
         ViewSnapshot current,
         long expectedBaseSequence)
     {
-        var previousVirtualWindowIds = new HashSet<string>(StringComparer.Ordinal);
+        var previousVirtualWindows = new Dictionary<string, VirtualCollectionWindow>(StringComparer.Ordinal);
         if (previous is not null &&
             previous.Sequence == expectedBaseSequence &&
             string.Equals(previous.WidgetInstanceId, current.WidgetInstanceId, StringComparison.Ordinal))
-            AddVirtualWindowIds(previous.Root);
+            AddVirtualWindows(previous.Root);
         var root = Normalize(current.Root);
         return ReferenceEquals(root, current.Root) ? current : current with { Root = root };
 
-        void AddVirtualWindowIds(ViewNode node)
+        void AddVirtualWindows(ViewNode node)
         {
-            if (node.VirtualCollectionWindow is not null)
-                previousVirtualWindowIds.Add(node.Id);
-            foreach (var child in node.Children) AddVirtualWindowIds(child);
+            if (node.VirtualCollectionWindow is { } window)
+                previousVirtualWindows.Add(node.Id, window);
+            foreach (var child in node.Children) AddVirtualWindows(child);
         }
 
         ViewNode Normalize(ViewNode node)
@@ -167,10 +167,14 @@ internal static class WidgetPresentationDiff
             }
 
             var window = node.VirtualCollectionWindow;
-            var normalizedWindow = window is { Change: not VirtualCollectionWindowChange.Replace } &&
-                !previousVirtualWindowIds.Contains(node.Id)
-                ? window with { Change = VirtualCollectionWindowChange.Replace }
-                : window;
+            var normalizedWindow = window;
+            if (window is { Change: not VirtualCollectionWindowChange.Replace })
+            {
+                if (!previousVirtualWindows.TryGetValue(node.Id, out var previousWindow) ||
+                    (previousWindow.Change is VirtualCollectionWindowChange.Replace &&
+                     SameVirtualWindowAuthorityExceptChange(previousWindow, window)))
+                    normalizedWindow = window with { Change = VirtualCollectionWindowChange.Replace };
+            }
             return children is null && ReferenceEquals(window, normalizedWindow)
                 ? node
                 : node with
@@ -179,6 +183,16 @@ internal static class WidgetPresentationDiff
                     Children = children ?? node.Children,
                 };
         }
+
+        static bool SameVirtualWindowAuthorityExceptChange(
+            VirtualCollectionWindow previous,
+            VirtualCollectionWindow current) =>
+            previous.RequestGeneration == current.RequestGeneration &&
+            previous.FirstItemIndex == current.FirstItemIndex &&
+            previous.TotalItemCount == current.TotalItemCount &&
+            previous.HasBefore == current.HasBefore &&
+            previous.HasAfter == current.HasAfter &&
+            previous.EstimatedItemExtent == current.EstimatedItemExtent;
     }
 
     private static bool StableRelationships(ViewNode previous, ViewNode current)
