@@ -785,7 +785,7 @@ static async Task PlaylistDetailFailureRetry()
 
 static async Task SlowPlaylistDetailBack()
 {
-    var completion = new TaskCompletionSource<SpotifyPlaylistItemsSummary>(
+    var completion = new TaskCompletionSource<SpotifyPlaylistItemsPageSummary>(
         TaskCreationOptions.RunContinuationsAsynchronously);
     var harness = SpotifyHarness.Ready();
     harness.PlaylistDetailCompletion = completion;
@@ -815,10 +815,10 @@ static async Task SupersededPlaylistDetail()
     {
         var playlistA = Playlist("playlist-a", "Playlist A");
         var playlistB = Playlist("playlist-b", "Playlist B");
-        var detailA = PlaylistDetail(playlistA, "Track A", "spotify:track:a");
-        var detailB = PlaylistDetail(playlistB, "Track B", "spotify:track:b");
+        var detailA = PlaylistItems("Track A", "spotify:track:a");
+        var detailB = PlaylistItems("Track B", "spotify:track:b");
         var aStarted = NewSignal();
-        var aCompletion = new TaskCompletionSource<SpotifyPlaylistItemsSummary>(
+        var aCompletion = new TaskCompletionSource<SpotifyPlaylistItemsPageSummary>(
             TaskCreationOptions.RunContinuationsAsynchronously);
         var harness = SpotifyHarness.Ready();
         harness.Playlists = new([playlistA, playlistB], 0, 50, 2);
@@ -879,11 +879,11 @@ static async Task SupersededPlaylistDetail()
 static async Task PlaylistDetailLifecycle()
 {
     var playlist = Playlist("playlist-a", "Playlist A");
-    var stale = PlaylistDetail(playlist, "Stale Track", "spotify:track:stale");
-    var fresh = PlaylistDetail(playlist, "Fresh Track", "spotify:track:fresh");
+    var stale = PlaylistItems("Stale Track", "spotify:track:stale");
+    var fresh = PlaylistItems("Fresh Track", "spotify:track:fresh");
     var firstStarted = NewSignal();
     var firstCancelled = NewSignal();
-    var firstCompletion = new TaskCompletionSource<SpotifyPlaylistItemsSummary>(
+    var firstCompletion = new TaskCompletionSource<SpotifyPlaylistItemsPageSummary>(
         TaskCreationOptions.RunContinuationsAsynchronously);
     var harness = SpotifyHarness.Ready();
     harness.Playlists = new([playlist], 0, 50, 1);
@@ -932,8 +932,8 @@ static async Task RefreshPreservesNewerPlaylist()
 {
     var playlistA = Playlist("playlist-a", "Playlist A");
     var playlistB = Playlist("playlist-b", "Playlist B");
-    var detailA = PlaylistDetail(playlistA, "Track A", "spotify:track:a");
-    var detailB = PlaylistDetail(playlistB, "Track B", "spotify:track:b");
+    var detailA = PlaylistItems("Track A", "spotify:track:a");
+    var detailB = PlaylistItems("Track B", "spotify:track:b");
     var harness = SpotifyHarness.Ready();
     harness.Playlists = new([playlistA, playlistB], 0, 50, 2);
     harness.PlaylistDetailHandler = (request, _) => ValueTask.FromResult(
@@ -982,11 +982,9 @@ static SpotifyPlaylistSummary Playlist(string id, string name) => new(
     $"https://open.spotify.com/playlist/{id}", $"spotify:playlist:{id}",
     "Listener", false, true, 1);
 
-static SpotifyPlaylistItemsSummary PlaylistDetail(
-    SpotifyPlaylistSummary playlist,
+static SpotifyPlaylistItemsPageSummary PlaylistItems(
     string trackName,
     string uri) => new(
-    playlist,
     [new SpotifyMediaItemSummary(SpotifyPlaybackItemType.Track,
         trackName, "Artist", 180_000, null, uri,
         $"https://open.spotify.com/track/{trackName.Replace(' ', '-').ToLowerInvariant()}",
@@ -1191,14 +1189,14 @@ static async Task MaximumPlaylistPageContract()
         .ToArray();
     var harness = SpotifyHarness.Ready();
     harness.Playlists = new(playlists, 0, playlists.Length, playlists.Length);
-    harness.PlaylistDetail = new(playlists[0], tracks, 0, tracks.Length, tracks.Length);
+    harness.PlaylistDetail = new(tracks, 0, tracks.Length, tracks.Length);
     var widget = await StartAsync(harness);
     await WaitUntil(() => widget.ViewState == SpotifyWidgetViewState.Ready);
 
     await widget.OnActionAsync(new("spotify.nav.playlists", "spotify.nav.wide.playlists"));
     await WaitUntil(() => harness.PlaylistCalls == 1);
     var firstPage = widget.RenderSnapshot("spotify.maximum-playlists", 1);
-    Assert.Equal(ProtocolConstants.CursorCollectionVersion, firstPage.ProtocolVersion);
+    Assert.Equal(ProtocolConstants.VirtualCollectionWindowVersion, firstPage.ProtocolVersion);
     var playlistScroll = Find(firstPage.Root, "spotify.playlists.scroll.wide");
     Assert.Equal(12, playlistScroll.Children.Count);
     Assert.Equal("spotify.playlists.cursor.after", playlistScroll.ScrollNearEndActionId);
@@ -1252,8 +1250,7 @@ static async Task ControllerPlaylistPaginationRoundTrip()
             .ToArray();
         var harness = SpotifyHarness.Ready();
         harness.Playlists = new(playlists, 0, 12, playlists.Length);
-        harness.PlaylistDetail = new(
-            playlists[0], tracks, 0, 12, tracks.Length);
+        harness.PlaylistDetail = new(tracks, 0, 12, tracks.Length);
         var widget = await StartAsync(harness);
         await WaitUntil(() => widget.ViewState == SpotifyWidgetViewState.Ready);
         await widget.OnActionAsync(new(
@@ -1414,7 +1411,7 @@ static async Task ContinuousPlaylistDetailAnchorAndHeader()
         .ToArray();
     var harness = SpotifyHarness.Ready();
     harness.Playlists = new(playlists, 0, 12, playlists.Length);
-    harness.PlaylistDetail = new(playlists[0], tracks, 0, 12, tracks.Length);
+    harness.PlaylistDetail = new(tracks, 0, 12, tracks.Length);
     var widget = await StartAsync(harness);
     await WaitUntil(() => widget.ViewState == SpotifyWidgetViewState.Ready);
     await widget.OnActionAsync(new("spotify.nav.playlists", "spotify.nav.wide.playlists"));
@@ -1453,7 +1450,7 @@ static async Task ContinuousPlaylistDetailAnchorAndHeader()
     var retainedUri = "spotify:track:track-5";
     await widget.OnActionAsync(new(PlaylistTrack(retainedUri),
         TrackFocus("wide", retainedUri)));
-    harness.PlaylistDetail = new(playlists[0], tracks.Skip(1).ToArray(), 0, 12,
+    harness.PlaylistDetail = new(tracks.Skip(1).ToArray(), 0, 12,
         tracks.Length - 1);
     await widget.OnActionAsync(new("spotify.refresh", "spotify.refresh.wide"));
     await WaitUntil(() => harness.PlaylistDetailCalls == 5);
@@ -1518,8 +1515,7 @@ static async Task DuplicatePlaylistOccurrencesStayKeyed()
     tracks[3] = repeated;
     tracks[13] = repeated;
     var harness = SpotifyHarness.Ready();
-    harness.PlaylistDetail = new(
-        harness.Playlists.Items[0], tracks, 0, 12, tracks.Length);
+    harness.PlaylistDetail = new(tracks, 0, 12, tracks.Length);
     var widget = await StartAsync(harness);
     await WaitUntil(() => widget.ViewState == SpotifyWidgetViewState.Ready);
     await widget.OnActionAsync(new("spotify.nav.playlists", "spotify.nav.wide.playlists"));
@@ -1576,8 +1572,7 @@ static async Task DuplicatePlaylistOccurrencesStayKeyed()
         SpotifyPlaybackItemType.Track, "Inserted", "New artist", 179_000,
         null, "spotify:track:inserted-before-duplicates",
         "https://open.spotify.com/track/inserted-before-duplicates", true)).ToArray();
-    harness.PlaylistDetail = new(
-        harness.Playlists.Items[0], inserted, 0, 12, inserted.Length);
+    harness.PlaylistDetail = new(inserted, 0, 12, inserted.Length);
     await widget.OnActionAsync(new("spotify.refresh", "spotify.refresh.wide"));
     await WaitUntil(() => harness.PlaylistDetailCalls == 5);
     await WaitUntil(() => ContainsId(
@@ -1596,8 +1591,7 @@ static async Task DuplicatePlaylistOccurrencesStayKeyed()
         string.Join(',', originalKeys.Order(StringComparer.Ordinal)),
         string.Join(',', PlaylistDuplicateKeys(widget, 4, repeatedUri)));
 
-    harness.PlaylistDetail = new(
-        harness.Playlists.Items[0], inserted[..^1], 0, 12, inserted.Length - 1);
+    harness.PlaylistDetail = new(inserted[..^1], 0, 12, inserted.Length - 1);
     await widget.OnActionAsync(new("spotify.refresh", "spotify.refresh.wide"));
     await WaitUntil(() => harness.PlaylistDetailCalls == 7);
     await WaitUntil(() => ContainsId(
@@ -1793,7 +1787,7 @@ static async Task AdjacentPlaylistFailureRetry()
             $"https://open.spotify.com/track/track-{index}", true))
         .ToArray();
     var harness = SpotifyHarness.Ready();
-    harness.PlaylistDetail = new(harness.Playlists.Items[0], tracks, 0, 12, tracks.Length);
+    harness.PlaylistDetail = new(tracks, 0, 12, tracks.Length);
     var widget = await StartAsync(harness);
     await WaitUntil(() => widget.ViewState == SpotifyWidgetViewState.Ready);
     await widget.OnActionAsync(new("spotify.nav.playlists", "spotify.nav.wide.playlists"));
@@ -1998,7 +1992,7 @@ static Task ManifestContract()
         "Full-trust Spotify retained the sandbox worker entrypoint.");
     Assert.Equal(0, manifest.Permissions.Count);
     Assert.Equal(0, manifest.OptionalPermissions.Count);
-    Assert.Equal("0.3.3", manifest.Version);
+    Assert.Equal("0.3.14", manifest.Version);
     Assert.SequenceEqual(["x64"], manifest.Architectures);
     Assert.NotNull(manifest.ResidencyPolicy);
     Assert.Equal(WidgetResidencyPolicies.KeepAlive, manifest.ResidencyPolicy!.Mode);
@@ -2014,7 +2008,11 @@ static Task PresentationBoundaryIsPure()
     var state = new SpotifyPresentationState(
         new(1, 0, 0, null), SpotifyWidgetViewState.Unconfigured, null, null,
         "Spotify client ID required", null, false, 0, false, SpotifyDestination.Player,
-        media, playlists, null, null, null, false, null, "spotify.setup.open");
+        media, new SpotifyCursorPresentation<SpotifyPlaylistCollectionItem>(
+            playlists,
+            UI.VerticalScroll("spotify.playlists.scroll.wide", []),
+            UI.VerticalScroll("spotify.playlists.scroll.compact", [])),
+        null, null, null, false, null, "spotify.setup.open");
 
     var first = SnapshotJson.Serialize(
         SpotifyPresentation.Render(state).CreateSnapshot("spotify.presentation", 1));
@@ -2287,20 +2285,17 @@ file sealed class SpotifyHarness : ISpotifyApplicationService
     public TaskCompletionSource<SpotifyPlaylistPageSummary>?
         PlaylistCompletion { get; set; }
     public bool IgnorePlaylistCancellation { get; set; }
-    public SpotifyPlaylistItemsSummary PlaylistDetail { get; set; } = new(
-        new SpotifyPlaylistSummary("playlist-one", "Night Drive", "Late-night focus",
-            "https://i.scdn.co/image/playlist", "https://open.spotify.com/playlist/playlist-one",
-            "spotify:playlist:playlist-one", "Listener", false, true, 1),
+    public SpotifyPlaylistItemsPageSummary PlaylistDetail { get; set; } = new(
         [new SpotifyMediaItemSummary(SpotifyPlaybackItemType.Track,
             "Midnight Run", "Northern Lines", 201_000,
             "https://i.scdn.co/image/next", "spotify:track:next",
             "https://open.spotify.com/track/next", true)], 0, 50, 1);
     public Exception? PlaylistDetailError { get; set; }
-    public TaskCompletionSource<SpotifyPlaylistItemsSummary>?
+    public TaskCompletionSource<SpotifyPlaylistItemsPageSummary>?
         PlaylistDetailCompletion { get; set; }
     public bool IgnorePlaylistDetailCancellation { get; set; }
     public Func<SpotifyPlaylistItemsRequest, CancellationToken,
-        ValueTask<SpotifyPlaylistItemsSummary>>? PlaylistDetailHandler { get; set; }
+        ValueTask<SpotifyPlaylistItemsPageSummary>>? PlaylistDetailHandler { get; set; }
     public List<SpotifyPlaylistItemsRequest> PlaylistDetailRequests { get; } = [];
     public SpotifyDevicesSummary Devices { get; set; } = new(
         [new SpotifyDeviceSummary("local-placeholder", "WidgetRail",
@@ -2397,7 +2392,21 @@ file sealed class SpotifyHarness : ISpotifyApplicationService
         };
     }
 
-    public async ValueTask<SpotifyPlaylistItemsSummary> GetPlaylistItemsAsync(
+    public ValueTask<SpotifyPlaylistSummary> GetPlaylistAsync(
+        string playlistId,
+        CancellationToken cancellationToken = default)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        var playlist = Playlists.Items.FirstOrDefault(item =>
+            string.Equals(item.PlaylistId, playlistId, StringComparison.Ordinal));
+        return playlist is null
+            ? ValueTask.FromException<SpotifyPlaylistSummary>(
+                new SpotifyApplicationException(
+                    "spotify_not_found", "Spotify could not find this playlist"))
+            : ValueTask.FromResult(playlist);
+    }
+
+    public async ValueTask<SpotifyPlaylistItemsPageSummary> GetPlaylistItemsAsync(
         string playlistId,
         int offset,
         int limit,

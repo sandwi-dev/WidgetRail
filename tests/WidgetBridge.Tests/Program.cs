@@ -102,6 +102,7 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Force reload rejects unknown widget IDs", ForceReloadRejectsUnknownWidget),
     ("Bridge rejects runtime-owned lifecycle states", RuntimeOwnedLifecycleStatesAreRejected),
     ("Snapshots and hover quick actions cross bridge", SnapshotAndQuickAction),
+    ("Exact-base divergence converges through one full checkpoint", ExactBaseDivergenceConvergesThroughCheckpoint),
     ("Committed text crosses bridge and worker action execution", CommittedTextCrossesBridgeAndWorker),
     ("Managed presentation session preserves sandboxed authority lifecycle and last-good state", ManagedPresentationSessionPreservesSandboxedAuthority),
     ("Managed presentation session preserves the ordinary full-trust runtime", ManagedPresentationSessionPreservesFullTrustRuntime),
@@ -2900,6 +2901,76 @@ static async Task SnapshotAndQuickAction()
         malformedCapabilities.Payload.GetProperty("code").GetString());
 }
 
+static async Task ExactBaseDivergenceConvergesThroughCheckpoint()
+{
+    await using var harness = await BridgeHarness.StartAsync();
+    var initialResponse = await harness.Client.RequestAsync(
+        BridgeMessageTypes.GetSnapshot, new WidgetIdRequest("test-widget"));
+    Assert.Equal(BridgeMessageTypes.Snapshot, initialResponse.Type);
+    var initial = SnapshotJson.Deserialize(System.Text.Encoding.UTF8.GetBytes(
+        initialResponse.Payload.GetProperty("snapshot").GetRawText()));
+
+    _ = await harness.Client.RequestAsync(
+        BridgeMessageTypes.SetWidgetLifecycle,
+        new BridgeWidgetLifecycleRequest("test-widget", WidgetLifecycleState.Interactive));
+    var action = await harness.Client.RequestAsync(
+        BridgeMessageTypes.Action,
+        new BridgeActionRequest("test-widget", new WidgetActionEvent("refresh", "button")));
+    Assert.Equal(BridgeMessageTypes.Acknowledged, action.Type);
+    _ = await harness.Client.ReadEventAsync(BridgeMessageTypes.Invalidation);
+
+    var advancedResponse = await harness.Client.RequestAsync(
+        BridgeMessageTypes.GetSnapshot,
+        new BridgePresentationRequest(
+            "test-widget", PresentationUpdateCapabilities.Current, initial.Sequence));
+    Assert.Equal(BridgeMessageTypes.PresentationUpdate, advancedResponse.Type);
+    var advancedUpdate = PresentationUpdateJson.Deserialize(
+        System.Text.Encoding.UTF8.GetBytes(
+            advancedResponse.Payload.GetProperty("update").GetRawText()));
+    Assert.Equal(initial.Sequence, advancedUpdate.BaseSequence);
+    Assert.True(advancedUpdate.Sequence > initial.Sequence,
+        "The bridge did not advance its private checkpoint from the exact host base.");
+
+    var staleResponse = await harness.Client.RequestAsync(
+        BridgeMessageTypes.GetSnapshot,
+        new BridgePresentationRequest(
+            "test-widget", PresentationUpdateCapabilities.Current, initial.Sequence));
+    Assert.Equal(BridgeMessageTypes.Error, staleResponse.Type);
+    Assert.Equal("stale_presentation_base",
+        staleResponse.Payload.GetProperty("code").GetString());
+
+    var recoveryResponse = await harness.Client.RequestAsync(
+        BridgeMessageTypes.GetSnapshot, new WidgetIdRequest("test-widget"));
+    Assert.Equal(BridgeMessageTypes.Snapshot, recoveryResponse.Type);
+    var recovery = SnapshotJson.Deserialize(System.Text.Encoding.UTF8.GetBytes(
+        recoveryResponse.Payload.GetProperty("snapshot").GetRawText()));
+    Assert.True(recovery.Sequence > initial.Sequence,
+        "The base-zero recovery checkpoint did not converge beyond the retained host base.");
+    Assert.Equal("unknown", FindNode(recovery.Root, "busy-button").Text);
+
+    var secondAction = await harness.Client.RequestAsync(
+        BridgeMessageTypes.Action,
+        new BridgeActionRequest(
+            "test-widget",
+            new WidgetActionEvent("volume.changed", "volume", RequestedValue: 0.7)));
+    Assert.Equal(BridgeMessageTypes.Acknowledged, secondAction.Type);
+    _ = await harness.Client.ReadEventAsync(BridgeMessageTypes.Invalidation);
+    var convergedResponse = await harness.Client.RequestAsync(
+        BridgeMessageTypes.GetSnapshot,
+        new BridgePresentationRequest(
+            "test-widget", PresentationUpdateCapabilities.Current, recovery.Sequence));
+    Assert.Equal(BridgeMessageTypes.PresentationUpdate, convergedResponse.Type);
+    var converged = PresentationUpdateJson.Deserialize(
+        System.Text.Encoding.UTF8.GetBytes(
+            convergedResponse.Payload.GetProperty("update").GetRawText()));
+    Assert.Equal(recovery.Sequence, converged.BaseSequence);
+    Assert.True(converged.Sequence > converged.BaseSequence,
+        "The post-recovery exact base did not resume ordinary incremental publication.");
+    var convergedSnapshot = PresentationUpdateMaterializer.Apply(
+        recovery, converged, converged.PresentationGeneration);
+    Assert.Equal(0.7D, FindNode(convergedSnapshot.Root, "volume").Value);
+}
+
 static async Task ManagedPresentationSessionPreservesSandboxedAuthority()
 {
     using var temporary = TemporaryCatalog.Create();
@@ -3599,10 +3670,10 @@ static async Task WorkerResidencyCountIsBounded()
         BridgeMessageTypes.SetWidgetLifecycle,
         new BridgeWidgetLifecycleRequest("worker-1", WidgetLifecycleState.Visible));
     Assert.Equal(BridgeMessageTypes.Error, refused.Type);
-    Assert.True(
-        refused.Payload.GetProperty("message").GetString()!
-            .Contains("application worker limit (1/1)", StringComparison.Ordinal),
-        "Count-bound refusal did not explain the exhausted worker limit.");
+    Assert.Equal("request_failed",
+        refused.Payload.GetProperty("code").GetString());
+    Assert.Equal("Widget 'worker-1' runtime request failed (worker-admission-failed).",
+        refused.Payload.GetProperty("message").GetString());
     Assert.Equal(1, harness.Server.RunningWorkerCount);
     Assert.Equal(1, harness.Server.ResidencyBudget.ApplicationWorkers);
 

@@ -11,6 +11,7 @@ internal static class WidgetPresentationUpdateTests
     {
         PropertyNoOpAndRoundTrip();
         VirtualCollectionWindowUpdatesAtomically();
+        PublicationProtocolAndVirtualReentryMatrix();
         KeyedStructureAndSubtreeReplacement();
         FallbacksAreDeterministic();
         MalformedAndOversizedFailClosed();
@@ -82,6 +83,98 @@ internal static class WidgetPresentationUpdateTests
                   PresentationProperty.VirtualCollectionWindow) &
               PresentationPropertyImpact.MeasureLayout) != 0,
             "Virtual window changes must invalidate native layout safely.");
+    }
+
+    private static void PublicationProtocolAndVirtualReentryMatrix()
+    {
+        static ViewSnapshot Virtual(
+            long sequence,
+            long generation,
+            VirtualCollectionWindowChange change) => new()
+        {
+            ProtocolVersion = ProtocolConstants.VirtualCollectionWindowVersion,
+            Sequence = sequence,
+            WidgetInstanceId = "virtual.reentry",
+            ActiveInputScopeId = "virtual.scroll",
+            InitialFocusId = "virtual.item.12",
+            Root = new ViewNode
+            {
+                Id = "virtual.scroll",
+                Kind = ViewNodeKind.Scroll,
+                ScrollAxis = ScrollAxis.Vertical,
+                ScrollNearStartActionId = "virtual.previous",
+                ScrollNearEndActionId = "virtual.next",
+                ScrollPaginationThreshold = 2,
+                CollectionAnchorKey = "item.12",
+                VirtualCollectionWindow = new()
+                {
+                    RequestGeneration = generation,
+                    Change = change,
+                    FirstItemIndex = 12,
+                    TotalItemCount = 10_000,
+                    HasBefore = true,
+                    HasAfter = true,
+                    EstimatedItemExtent = 52,
+                },
+                Children =
+                [
+                    new ViewNode
+                    {
+                        Id = "virtual.item.12",
+                        Kind = ViewNodeKind.Button,
+                        Text = "Item 12",
+                        AccessibilityLabel = "Item 12",
+                        ActionId = "virtual.open",
+                        CollectionItemKey = "item.12",
+                    },
+                ],
+            },
+        };
+
+        var legacy = Snapshot(1, "loading", "virtual.reentry");
+        var firstVirtual = Virtual(2, 20, VirtualCollectionWindowChange.Append);
+        var firstVirtualErrors = ViewSnapshotValidator.Validate(firstVirtual);
+        True(firstVirtualErrors.Count == 0, string.Join("; ",
+            firstVirtualErrors.Select(error =>
+                $"{error.Path} {error.Code}: {error.Message}")));
+        var protocolAdvance = WidgetPresentationDiff.Create(
+            legacy, firstVirtual, Generation, legacy.Sequence,
+            PresentationUpdateCapabilities.Current, requireCheckpoint: false);
+        True(!protocolAdvance.IsUpdate,
+            "A snapshot-protocol advance must publish a complete checkpoint.");
+        Equal("snapshot_protocol_advanced", protocolAdvance.FallbackReason);
+        Equal(VirtualCollectionWindowChange.Replace,
+            protocolAdvance.Snapshot.Root.VirtualCollectionWindow!.Change);
+
+        var routeWithoutWindow = firstVirtual with
+        {
+            Sequence = 3,
+            ActiveInputScopeId = "other.route",
+            InitialFocusId = null,
+            Root = new ViewNode { Id = "other.route", Kind = ViewNodeKind.Stack },
+        };
+        var reintroduced = WidgetPresentationDiff.Create(
+            routeWithoutWindow, Virtual(4, 21, VirtualCollectionWindowChange.Append),
+            Generation, routeWithoutWindow.Sequence,
+            PresentationUpdateCapabilities.Current, requireCheckpoint: false);
+        Equal(VirtualCollectionWindowChange.Replace,
+            reintroduced.Snapshot.Root.VirtualCollectionWindow!.Change);
+
+        var unchangedGeneration = WidgetPresentationDiff.Create(
+            reintroduced.Snapshot,
+            Virtual(5, 21, VirtualCollectionWindowChange.Append),
+            Generation, reintroduced.Snapshot.Sequence,
+            PresentationUpdateCapabilities.Current, requireCheckpoint: false);
+        Equal(VirtualCollectionWindowChange.Replace,
+            unchangedGeneration.Snapshot.Root.VirtualCollectionWindow!.Change);
+
+        var newerGeneration = WidgetPresentationDiff.Create(
+            unchangedGeneration.Snapshot,
+            Virtual(6, 22, VirtualCollectionWindowChange.Append),
+            Generation, unchangedGeneration.Snapshot.Sequence,
+            PresentationUpdateCapabilities.Current, requireCheckpoint: false);
+        Equal(VirtualCollectionWindowChange.Append,
+            newerGeneration.Snapshot.Root.VirtualCollectionWindow!.Change);
     }
 
     private static void PropertyNoOpAndRoundTrip()

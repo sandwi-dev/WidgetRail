@@ -131,7 +131,11 @@ internal static class SpotifyResponsiveLayoutTests
             new(false, false, false, false, false, false, false, false), "Spotify"),
         null, "Playing Small Hours", null, false, 0, false, SpotifyDestination.Player,
         EmptyCursor<SpotifyMediaCollectionItem>(),
-        EmptyCursor<SpotifyPlaylistCollectionItem>(), null, null, null,
+        new SpotifyCursorPresentation<SpotifyPlaylistCollectionItem>(
+            EmptyCursor<SpotifyPlaylistCollectionItem>(),
+            UI.VerticalScroll("spotify.playlists.scroll.wide", []),
+            UI.VerticalScroll("spotify.playlists.scroll.compact", [])),
+        null, null, null,
         false, null, "spotify.play-toggle");
 
     private static WidgetCursorResourceSnapshot<T> EmptyCursor<T>() where T : notnull =>
