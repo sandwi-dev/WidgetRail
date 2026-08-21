@@ -1,6 +1,6 @@
 # Spotify Web API integration
 
-Status: **autonomous full-trust Community application 0.3.0 implemented;
+Status: **autonomous full-trust Community application 0.3.3 implemented;
 live-account and WebView2 playback proof remains manual as of 2026-08-13**.
 
 The shipped reference is a separately installable Community application. Its
@@ -30,8 +30,8 @@ Premium eligibility, and terms remain external requirements.
 | Application contract | Package-private bounded DTOs connect the widget to its package-owned backend; no Spotify DTO or capability is added to product core. |
 | Package backend | Implemented PKCE, exact loopback callback, Credential Manager refresh-token storage, player snapshot/control projection, bounded `Retry-After` handling, scope allowlist, and sanitized application errors. |
 | Product composition | Generic catalog, full-trust supervisor, authenticated overlay IPC, lifecycle, restart, and presentation only; no Spotify construction or authorization. |
-| Community application | Version 0.3.0 publishes the accepted responsive Player, Queue, continuous occurrence-keyed Queue/Playlist/detail collections, and Devices surfaces through the generic full-trust package path. Wide and compact branches retain the same controller-first vertical-rail hierarchy and focus identities. |
-| Setup UI | Compact controller setup/instructions are implemented with a VerticalScroll, responsive actions, and a fresh Scroll identity on every explicit setup entry; a controller-native Client-ID editor is planned, so the CLI below remains the current testable configuration path. |
+| Community application | Version 0.3.3 publishes the accepted responsive Player, Queue, continuous occurrence-keyed Queue/Playlist/detail collections, Devices surfaces, and controller-first Client-ID onboarding through the generic full-trust package path. Wide and compact branches retain the same controller-first vertical-rail hierarchy and focus identities. |
+| Setup UI | The controller setup route opens Spotify's developer dashboard, copies the exact non-secret redirect URI, and invokes the host-owned text-entry modal with an explicit 96-character input maximum for Client ID entry or replacement. The package backend independently validates the committed value up to its 128-character defense-in-depth ceiling. A visible Setup action on the configured Ready navigation rail keeps replacement reachable without disconnecting. The CLI remains a developer/diagnostic route, not an ordinary setup requirement. |
 | Live evidence | No allowlisted-account login/playback evidence has been captured yet. |
 | Local Web Playback SDK audio | Isolated singleton WebView2 host, lifecycle/token orchestration, sanitized local-device projection, and offline protocol/process tests implemented; live account/device proof remains. |
 
@@ -111,19 +111,22 @@ guide](https://developer.spotify.com/documentation/web-api/tutorials/migration-i
 
 The Spotify Client ID is public configuration entered by the user for this
 widget/integration; it is never compiled into the addon. The implemented
-`PlatformSettings.WidgetConfigurationStore` validates and stores it under the
-declared publisher/package configuration identity using the key `client-id`.
-An unsigned content-digest runtime may resolve exactly one configuration whose
-publisher namespace owns that package ID; ambiguous matches fail closed. This
-exception is limited to explicitly non-secret configuration: consent, private
-state, OAuth tokens, and credentials remain bound to the exact authenticated
-runtime authority. Documents
-are bounded, strict, atomic, cross-process locked, and reparse-safe. They are
-readable public configuration, so secrets, passwords, credentials, and tokens
-do not belong there. OAuth tokens remain in the provider's Windows credential
-vault.
+package-owned `SpotifyClientConfigurationFileStore` validates and stores it
+under the declared publisher/package configuration identity using the key
+`client-id`. Documents are bounded, strict, atomic, and cross-process locked.
+They are readable public configuration, so secrets, passwords, credentials,
+and tokens do not belong there. OAuth tokens remain in the package-owned
+Windows Credential Manager vault under the same publisher/package authority.
 
-Until the controller-native Settings editor lands, the local workflow is:
+Ordinary setup is completed from the widget's **Setup** route: open the
+developer dashboard, copy/register the exact redirect URI, and enter or replace
+the public Client ID through the bounded host-owned text-entry modal. The
+package validates and atomically stores the committed value, then immediately
+rechecks configuration. Replacing it deletes the old client's refresh
+credential before the new identity becomes active. The same Setup route remains
+visible in the configured Ready navigation rail.
+
+The following CLI remains available for developer diagnostics and automation:
 
 ```powershell
 dotnet run --project .\tools\WrailCli\WrailCli.csproj -- config set widgetrail.samples.spotify client-id <spotify-client-id> --publisher widgetrail.samples
@@ -138,8 +141,7 @@ local tests. The CLI rejects secret/password/token/credential-like keys. This
 workflow configures the provider used by the overlay. Connecting still requires
 an explicit user gesture because it opens Spotify's authorization page.
 
-The current setup/instruction surface and planned native editor together contain
-exactly:
+The current setup surface contains exactly:
 
 - a bounded **Client ID** field;
 - the fixed read-only redirect URI
@@ -158,11 +160,9 @@ or make OAuth start automatically.
 PKCE does not require a client secret, and a secret embedded in a desktop app or
 Community package would not be confidential. Changing the Client ID through the
 implemented provider deletes the old refresh token and clears its cached access
-token before saving the new identity. Clearing configuration is currently a
-store/CLI operation; runtime integration must connect that mutation to provider
-disconnect/token deletion before the controller-native editor is complete. The
-host must never reuse tokens across Client IDs, package authorities, or Windows
-users.
+token before saving the new identity. Clearing configuration remains a
+store/CLI operation. The package must never reuse tokens across Client IDs,
+package authorities, or Windows users.
 
 ## Minimal scopes
 

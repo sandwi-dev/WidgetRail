@@ -4,11 +4,28 @@ namespace WidgetRail.Samples.SpotifyWidget;
 
 internal sealed class SpotifyApplicationService(
     WindowsSpotifyPlatformBackend backend,
-    SpotifyIntegrationIdentity identity) : ISpotifyApplicationService
+    SpotifyIntegrationIdentity identity,
+    ISpotifySetupActions? setupActions = null) : ISpotifyApplicationService
 {
     private readonly WindowsSpotifyPlatformBackend _backend = backend ??
         throw new ArgumentNullException(nameof(backend));
     private readonly SpotifyIntegrationIdentity _identity = identity;
+    private readonly ISpotifySetupActions _setupActions = setupActions ??
+        new SpotifyWindowsSetupActions();
+
+    public ValueTask<SpotifyConfigurationSummary> ConfigureClientAsync(
+        string clientId,
+        CancellationToken cancellationToken = default) => new(
+        _backend.ConfigureSpotifyClientAsync(
+            _identity, new ConfigureSpotifyClientRequest(clientId), cancellationToken));
+
+    public ValueTask OpenDeveloperDashboardAsync(
+        CancellationToken cancellationToken = default) =>
+        _setupActions.OpenDeveloperDashboardAsync(cancellationToken);
+
+    public ValueTask CopyRedirectUriAsync(
+        CancellationToken cancellationToken = default) =>
+        _setupActions.CopyRedirectUriAsync(cancellationToken);
 
     public ValueTask<SpotifyConfigurationSummary> GetConfigurationAsync(
         CancellationToken cancellationToken = default) => new(

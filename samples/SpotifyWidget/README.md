@@ -12,10 +12,17 @@ network, registry, database, and child-process authority outside AppContainer.
 Review the package before accepting that trust. The application never requires
 a client secret, and tokens never enter snapshots, logs, or widget action data.
 
-Configure the public Client ID for this package, register the exact redirect URI `http://127.0.0.1:43827/callback/` in Spotify's developer dashboard, then choose **Connect** in the widget. Authorization is always explicit; merely opening the widget never launches a browser.
+Open **Setup** in the widget, open Spotify's developer dashboard, copy and
+register the exact redirect URI `http://127.0.0.1:43827/callback/`, then enter
+the public Client ID through the host-owned text-entry modal. No terminal or
+Client Secret is required. Choose **Connect** afterward; authorization remains
+explicit, and merely opening the widget never launches a browser.
 
-Version 0.3.0 is the first autonomous immutable Community package. It publishes the
-accepted vertical-rail responsive layout and its four
+Version 0.3.3 keeps controller-first Client-ID onboarding available from the
+configured Ready navigation rail, so an existing Client ID can be replaced
+without disconnecting or using a terminal. Its Client-ID field stays within the
+public host text-entry limit while the backend independently revalidates the
+committed value. It retains the accepted vertical-rail responsive layout and its four
 controller-first destinations:
 
 The project imports the shared Community-package deterministic path map, so the
@@ -84,9 +91,8 @@ and detail tracks. A
 physical-controller retest with live Spotify data remains part of the manual
 release checklist.
 
-```powershell
-dotnet run --project .\tools\WrailCli\WrailCli.csproj -- config set widgetrail.samples.spotify client-id YOUR_CLIENT_ID --publisher widgetrail.samples
-```
+The `wrail config` command remains available for developer diagnostics and
+automation, but ordinary setup is complete inside the overlay.
 
 The manifest declares no product capabilities. Network, browser, credential,
 and child-process behavior belongs to the explicitly approved full-trust

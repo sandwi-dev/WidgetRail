@@ -6,25 +6,35 @@ The complete delivery record through the DLV-277 assignment is preserved in the\
 
 ## Current baseline and active task map
 
-- Accepted production/test integration baseline on main is `ca967e6`. It
-  contains accepted DLV-276 production through `dfa13d7`, focused behavior
-  coverage `bd10e76`, and bounded completion evidence `ca967e6`, cherry-picked
-  without duplicate branch history.
-- Coherent main Release PID 34208 is visibly running from that integrated tree.
-  `OverlayHost.exe` SHA-256 is
-  `613CE90F001D6C0561BC9008CD6FC253EC2D3E06C50614218A014C7FA0C06F45`;
+- Accepted production/test integration baseline on main is `c21ad02`. It
+  contains accepted DLV-265 package production through `4aca229` and focused
+  evidence `bb8234f`, plus accepted DLV-277 host production `144ede8` and
+  focused evidence `c21ad02`.
+- Exact DLV-277 production candidate PID 34764 is visibly running from clean,
+  physically accepted commit `830364d` over main `ce13a3c`. `OverlayHost.exe`
+  SHA-256 is
+  `5EAEB6240C89A6DF8BE4A203340A683118394811955C9368D0C031DAB16D00FA`;
   `OverlayPlatformInterop.dll` is
-  `D5A83EED275624A4F1E9E22EEBE77ACE1A44B7211C06A324BA5F839E4B13588A`.
+  `089029C61D87F9837BA4E4E15908C411FCFF8E9B2A28707601FABD1928A91DEE`.
   The provider-free Full Application sample remains installed and enabled.
-- Widgets correction DLV-265 remains saved at clean tip `13bd971` plus
-  reconciliation `5fd1a06`, with immutable Spotify 0.3.3 installed and the
-  existing Client ID/account state unchanged. It now resumes from integrated
-  main `ca967e6` without rewriting the saved production correction.
+- DLV-265 production and focused evidence are accepted and integrated while the
+  immutable installed Spotify 0.3.3 and existing Client ID/account state remain
+  unchanged. DLV-270 candidates `cf9149e` / Spotify 0.3.4 and corrected tip
+  `833fe9c` / Spotify 0.3.6 are rejected. Spotify 0.3.3 remains installed as
+  the inactive rollback; no configuration or account state was changed.
+  DLV-278 production `ab4844d` and cumulative DLV-270 diagnostics/package
+  production `86d4e54` are source-reviewed with tests-skipped builds green.
+  The user explicitly approved full trust; immutable Spotify 0.3.7 was installed,
+  selected, and enabled. Its cumulative physical verdict is rejected: the first
+  v19 checkpoint succeeded and worker PID 56308 stayed alive, but B from a paged
+  playlist detail at `2026-08-20 22:48:19` reintroduced the playlists virtual
+  viewport with a directional transition although that scroll ID was absent from
+  the immediately prior snapshot. Spotify 0.3.3 remains the installed rollback.
 
 | Lane | Task/worktree | State |
 | --- | --- | --- |
-| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | DLV-276 is accepted and integrated through main `ca967e6`. Reconcile that baseline and run DLV-277 physical-first exactly as assigned below. Preserve installed Spotify configuration/account state; do not modify package trees or begin DLV-270. DLV-273 remains retired. Never push. |
-| Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | Resume saved DLV-265 from clean correction tip `13bd971` plus reconciliation `5fd1a06`, reconcile onto main `ca967e6` without rewriting it, and continue physical-first. Preserve installed Spotify 0.3.3 plus current Client ID/account state; do not reinstall, replace configuration, or reset. DLV-270 follows accepted DLV-265; DLV-248 remains deferred. Never push. |
+| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | DLV-280 is Assigned as the serialized cross-layer lead. Reconcile the clean lane with reviewer main `c2d327f`, preserve accepted DLV-277 history, and implement only the exact retained-base lifecycle-establishment contract below. Do not launch, test, integrate, or push. |
+| Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | DLV-279 / cumulative Spotify 0.3.10 is rejected and preserved at clean tip `4af365f`. Wait for planner review of DLV-280. After an explicit bounded integration instruction, reconcile that exact production commit into this branch and produce immutable Spotify 0.3.11 plus one coherent cumulative Release build without further shared-core changes. Do not act before that instruction; never push. |
 
 ## Execution, review, and architecture rules
 
@@ -75,6 +85,105 @@ The complete delivery record through the DLV-277 assignment is preserved in the\
 
 Detailed candidate hashes, PIDs, rejection evidence, focused counts, and prior
 serialized transitions are preserved in the linked timestamped snapshot.
+
+## Assigned platform deliverable — DLV-280: exact-base lifecycle establishment
+
+Owner/baseline: platform lane as the one serialized host/bridge/runtime contract
+lead. Reconcile its clean DLV-277 branch with reviewer main `c2d327f` without
+rewriting accepted history. Preserve widgets-lane DLV-278 `ab4844d`, DLV-279
+through `5468199`, cumulative Spotify production through `4af365f`, every built
+artifact, and the installed package/configuration/account state. No second lane
+may edit the shared establish path concurrently.
+
+Correct the reproduced switch-back failure without relaxing virtual-window
+admission or adding another normalization heuristic. The host retained valid
+Spotify sequence 17, but `EstablishWidgetPresentation` sent only lifecycle plus
+`admitSnapshot=true`. The bridge consequently called `GetSnapshotAsync`, which
+forced worker base sequence 0 even though the host and bridge still held an
+exact checkpoint. DLV-279 then treated the current directional window as having
+no predecessor and normalized its marker to `Replace` while preserving the same
+request generation. Native admission correctly rejected that same-generation
+metadata change. This is an authority-transport defect, not a Spotify provider,
+resource-budget, old snapshot-protocol, or native-validator defect.
+
+Make lifecycle establishment one base-aware presentation transaction. The
+native coordinator remains sole authority for its last admitted checkpoint and
+supplies the exact retained base sequence and bounded update capabilities on an
+Establish request whenever that checkpoint is current for the exact descriptor
+instance, runtime generation, and presentation generation. A true cold start
+supplies no base. The native bridge client must send that distinction explicitly
+and accept the same checkpoint-or-atomic-update publication family already used
+by ordinary snapshot refresh. Establish completion materializes an update only
+against the retained exact checkpoint, runs the existing strict complete-
+snapshot admission, and commits lifecycle plus replacement presentation only
+after the entire result is current and valid.
+
+Within the bridge registration's existing serialized operation gate, establish
+the requested lifecycle and use the existing base-aware runtime presentation
+path when, and only when, the bridge cached checkpoint exactly matches the
+host-claimed base and configured worker identity/generations remain current. If
+the host claims a retained base that the bridge cannot prove exactly, return one
+bounded typed stale-base failure and preserve the host's last valid presentation;
+never silently downgrade that request to base 0. Base 0 is legal only for a true
+cold establishment and requests a complete checkpoint. The worker/SDK already
+supports capabilities, base sequence, and checkpoint-or-update publication;
+reuse that contract rather than add another worker operation or presentation
+owner.
+
+Update the private host-to-bridge lifecycle-establishment schema coherently and
+as one clean pre-release cutover. Do not retain a dual old/new compatibility
+path, optional fallback semantics, or a second protocol implementation. Keep
+message size/count validation and safe diagnostics bounded. Do not change the
+public widget manifest, public WidgetSdk authoring surface, snapshot protocol
+v19 feature contract, atomic-update operation family, provider behavior,
+virtual collection generations, or native virtual-window validation.
+
+Preserve these invariants:
+
+- Same request-generation virtual-window metadata remains immutable unless the
+  exact preceding admitted window proves an allowed directional transition.
+- A bridge/worker cache is evidence only; it never overrules the host's retained
+  checkpoint or descriptor generation.
+- A stale, cancelled, wrong-instance, wrong-runtime-generation, wrong-
+  presentation-generation, or failed establish completion cannot change
+  lifecycle, presentation, focus, scroll, input, action, or accessibility
+  authority.
+- Failure retains the last admitted screen and reports a precise safe category;
+  it does not clear/reload the widget, reset provider data, forge a collection
+  generation, or restart a healthy worker.
+- Normal exact-base switch-away/back does not publish a fresh first window,
+  revisit the loading surface, lose route/focus/scroll state, or reload artwork.
+
+Use the user's explicit approval for this bounded cross-process correction to
+follow physical-first order: production code and directly required internal
+contract documentation only, direct source review, then one tests-skipped
+Release build from the exact production commit. Do not add, edit, or run tests
+and do not launch or terminate any process. Commit the scoped production change
+as DLV-280 and stop for planner review.
+
+After source review, the planner will give the widgets lane a bounded instruction
+to reconcile the exact DLV-280 production commit into its preserved DLV-278/
+DLV-279/DLV-270 branch. That lane changes no more shared core, advances Spotify
+to immutable 0.3.11, and builds one coherent tests-skipped native Release plus
+package. The planner will request explicit full-trust staging approval, then
+gracefully replace PID 34764 with that exact native candidate and stage the
+package. The user verifies deep playlist paging, switch-away/back, same-widget
+hide/show, route/focus/scroll retention, stable worker lifetime, and absence of
+loading flashes, stale-window errors, or fresh-first-window publication.
+
+Only after physical acceptance add focused native coordinator, bridge protocol/
+registry, runtime publication, SDK diff, stale-base, cancellation/generation,
+checkpoint fallback, and cumulative Spotify paging regression evidence. Because
+this changes a private cross-process contract, run the smallest affected Tier 2
+group and one exact-commit Tier 3 verifier after the focused suites. Integrate
+production and test commits only after that evidence is independently reviewed.
+
+Stop for any design that requires clearing the retained checkpoint, weakening
+native admission, inventing/incrementing a collection generation, treating base
+0 as an existing host checkpoint, package-specific core behavior, a second
+lifecycle/presentation owner, public WidgetSdk or manifest expansion, destructive
+state/configuration/credential action, substantial conflict, or inability to
+commit lifecycle and presentation under one current authority. Never push.
 
 ## Accepted and integrated — DLV-276: themed controller-first text-entry surface
 
@@ -234,6 +343,19 @@ focus seam, protocol work, substantial conflict, missing accepted DLV-276
 baseline, destructive action, or physical behavior that contradicts the logged
 mode mismatch. Never push.
 
+Production-only commit `830364d` removes the four host-side pre-paint mode
+recalculations. A successful `DeclarativeRenderer` result now records the exact
+responsive viewport and compact/expanded mode used for that pass; responsive
+focus persistence consumes only that committed result. Navigation, hit testing,
+UIA, and focus reconciliation therefore share the rendered geometry. The
+tests-skipped Release build passes with the six existing `C4244` warnings and is
+running as PID 34764. The physical verdict is accepted. Focused renderer route
+evidence passes 5,009 checks; focused interaction groups pass 94 interaction-
+session, 122 controller-navigation, 49 focus-navigation, 24 widget-surface,
+2,096 slider, 29 pressed-state, 168 accessibility-provider, and text-entry
+checks. Production and evidence are integrated through main `c21ad02`; the
+running accepted artifact remains unchanged.
+
 ## Assigned widgets deliverable — DLV-265: controller-first Spotify onboarding
 
 Preserve clean production-only correction tip `13bd971`, reconciliation
@@ -263,10 +385,159 @@ protocol/capability work, Client Secret, Credential Manager migration,
 third-party authentication needed for automation, provider-dashboard
 automation, substantial conflict, or out-of-package work. Never push.
 
-## Ready widgets deliverable — DLV-270: Spotify collection paging efficiency
+Reconciliation `edf2583` preserves `13bd971` and `5fd1a06` over main `ce13a3c`.
+One fresh isolated tests-skipped Release and Spotify 0.3.3 package build pass;
+the package is 1,158,141 bytes with SHA-256
+`1AB8A56D400292004C8B6D924E917E03B3E1E4E7FEA30DEDDDC0524A86AD5B53`.
+Nothing was installed or selected and no configuration, authentication, or
+process state changed. The already installed immutable 0.3.3 plus PID 34764 are
+the physically accepted candidate. Focused Spotify widget presentation/action
+evidence passes 54/54 and package application evidence passes 6/6, including
+replacement Client-ID persistence and exact one-time prior refresh-credential
+deletion without network access. Production and evidence are integrated through
+main `bb8234f`; installed package and configuration state remain unchanged.
 
-Owner/baseline: widgets lane after DLV-265 resumes following DLV-276, is
-physically accepted, focused-tested, and integrated. Keep provider calls,
+## Assigned widgets deliverable — DLV-278: checkpoint on snapshot protocol advance
+
+Owner/baseline: widgets lane as the serialized managed-SDK lead from clean
+reconciliation `b94aa13` over reviewer main `b3f2d48`, with rejected DLV-270
+commits preserved. This is the smallest generic prerequisite for the reproduced
+Spotify crash; it changes WidgetSdk publication choice only. Do not change the
+native host, runtime wire schema, update protocol v18, snapshot protocol v19,
+materializer, Spotify domain behavior, or public update operation families.
+
+Source review proved the exact boundary failure. Spotify's loading checkpoint
+is a valid protocol-v18 snapshot. Its first Ready collection publication adds
+DLV-271 virtual-window nodes and therefore requires snapshot protocol v19.
+`WidgetPresentationDiff` currently emits an atomic protocol-v18 update for that
+transition. `PresentationUpdateMaterializer` correctly retains the base
+snapshot at protocol v18 because the v18 update schema carries no target
+snapshot-version field; final snapshot validation then rejects the inserted v19
+feature. The failed render request retires the worker protocol and the Spotify
+application exits 1. Package-only capture fallbacks cannot correct this shared
+publication invariant.
+
+When a newly rendered valid snapshot requires a higher snapshot protocol than
+its exact previous checkpoint, WidgetSdk must publish the complete checkpoint
+instead of an atomic update. Preserve atomic updates when base and target use
+the same snapshot protocol, including subsequent protocol-v19 publications.
+Do not infer a target version in the host, weaken validation, forge a package
+root/marker, or expand the v18 update wire contract. Keep checkpoint selection
+deterministic, bounded, and observable through the existing fallback reason.
+
+Follow physical-first ordering. Preserve the seven current uncommitted
+DLV-270 package diagnostic/fallback files and stage none of them in DLV-278.
+Commit only the generic production correction, perform direct source review,
+and build a tests-skipped exact-commit Release. Then resume DLV-270, remove any
+now-unnecessary speculative package fallback while retaining only bounded
+sanitized fatal diagnostics that materially improve supportability, advance to
+a new immutable package version, and build one coherent cumulative candidate.
+The user physically reproduces compact Playlists activation, switch-away/back,
+and long collection traversal. Logs must show a full v19 checkpoint for the
+first virtual-window transition, a stable worker PID, and no
+`worker-protocol-failed`. Only after acceptance add focused WidgetSdk diff and
+runtime materialization coverage plus the previously assigned DLV-270 tests.
+
+Stop for a required wire-schema or native-host change, inability to distinguish
+base/target snapshot protocol before update emission, weakened validation,
+package-specific shared behavior, destructive state action, substantial
+conflict, or a physical failure after the exact checkpoint transition is
+confirmed. Never push.
+
+Production commit `ab4844d` adds one generic checkpoint decision when the valid
+target snapshot protocol exceeds its exact base protocol. Same-protocol updates,
+including v19-to-v19, retain the existing atomic path. No host, materializer,
+wire schema, operation family, or package behavior changed. Direct source review
+and the exact-commit tests-skipped Release build pass. Spotify 0.3.7 physically
+confirmed the v18-to-v19 checkpoint and stable worker lifetime, but the
+cumulative candidate failed later on the separate DLV-279 virtual-window
+re-entry boundary. Preserve this commit unintegrated until the corrected
+cumulative verdict and focused post-verdict evidence.
+
+## Assigned widgets deliverable — DLV-279: safe virtual-window re-entry
+
+Owner/baseline: widgets lane after DLV-278 `ab4844d` and cumulative DLV-270
+`86d4e54`. Preserve both commits and the rejected immutable Spotify 0.3.7
+artifact. This is a reusable WidgetSdk virtual-window publication correction,
+not Spotify-specific behavior. Do not weaken or change native admission,
+materialization, wire schemas, protocol versions, host collection ownership,
+provider calls, retention policy, or Spotify navigation semantics.
+
+The rejected physical trace is exact. The initial loading-to-Ready publication
+crossed protocol v18 to v19 successfully, compact playlists loaded, bidirectional
+playlist-detail paging remained responsive through admitted sequence 28, and
+worker PID 56308 stayed alive. Sequence 28 contained only
+`spotify.playlist.detail.scroll.compact`; its latest window was an admitted
+directional `Append`. At `2026-08-20 22:48:19.871`, B returned from playlist
+detail. The next candidate reintroduced `spotify.playlists.scroll.compact`,
+which was absent from the immediately prior admitted snapshot, while the
+playlist cursor resource still projected its last directional window change.
+At `22:48:19.981` the host retained sequence 28 and correctly rejected the new
+scroll as an invalid or stale virtual collection transition: without a prior
+window under that scroll ID, directional overlap cannot be validated and the
+new window must use `Replace`.
+
+Make the SDK publication/projection boundary emit `Replace` whenever a virtual
+collection scroll ID is absent from the exact previous published snapshot and
+reappears, while preserving its monotonic request generation, authoritative
+logical first index/total, item keys, boundaries, estimated extent, pagination
+actions, anchor, and focus semantics. Preserve valid directional append/prepend
+updates when the same scroll ID exists in the exact previous snapshot. The
+solution must cover ordinary navigation, responsive-branch changes, and any
+other temporary removal/re-entry through the same generic rule; do not reset or
+reload provider data and do not special-case Spotify IDs or B.
+
+Follow physical-first ordering. Commit only the smallest production correction,
+perform direct source review, and build a tests-skipped exact-commit Release.
+Then advance the cumulative package to a new immutable Spotify version and build
+it without installing, selecting, enabling, launching, testing, or changing
+configuration/account/credentials. The planner will source-review and obtain
+explicit full-trust approval before staging. The user must reproduce compact
+Playlists, page deeply in playlist detail, press B, switch away/back, and page
+both directions without failure, reload, focus loss, or stale collection
+diagnostics. Only after acceptance add focused SDK publication/runtime coverage
+plus the held DLV-278/DLV-270 tests.
+
+Stop for a required native-host relaxation, wire-schema/protocol change,
+Spotify-specific shared behavior, loss of request-generation or logical-window
+authority, provider reset/reload as a workaround, destructive state action,
+substantial conflict, or inability to distinguish exact prior published scroll
+IDs at the SDK publication boundary. Never push.
+
+Production commits `f6b385f`, `94494a3`, and correction `5468199` implement the
+generic rule at `WidgetPresentationDiff`: only scroll IDs that carried an actual
+virtual window in the exact previous instance/base snapshot retain directional
+`Append`/`Prepend`; every other directional virtual window is copied with only
+its change kind normalized to `Replace`. Request generation, logical range,
+keys, boundaries, extent, pagination, anchor, focus, and children are preserved.
+Independent review rejected the initial all-node-ID comparison before staging;
+`5468199` now matches native admission's exact prior virtual-window identity set.
+Exact cumulative tests-skipped Release and package validation pass. Immutable
+0.3.8 and 0.3.9 remain un-staged intermediate builds. Corrected Spotify 0.3.10
+at `4af365f` is 1,163,988 bytes with SHA-256
+`3B941B259C519BA8EBFED59B50B6B6FFCC63E8BD4F948E2A39D1699A2B3F7B75`.
+No tests, launch, configuration/account action, integration, or push occurred.
+The user granted explicit full-trust approval. Spotify was briefly disabled as
+required by catalog update safety, then 0.3.10 was installed, selected, and
+re-enabled. The 0.3.7 worker PID 56308 retired cooperatively with exit code 0;
+accepted host PID 34764 remains responsive. The verdict is rejected. New worker
+PID 71968 loaded and paged successfully through admitted sequence 17. At
+`2026-08-20 23:23:14`, returning from the Full Application reference widget
+requested a full establish snapshot with base sequence 0 while the host retained
+Spotify sequence 17. DLV-279 treated that missing exact base as no predecessor
+and changed the current directional virtual-window marker to `Replace`, but it
+preserved the same request generation. Native admission requires identical
+metadata for the same generation, so it retained sequence 17 and reported the
+invalid/stale transition. This hits DLV-279's explicit stop condition: the SDK
+cannot infer exact host predecessor authority on establish. Do not continue with
+another package-only normalization. Disposition the host/bridge/worker establish
+base contract before assigning a correction.
+
+## Held widgets deliverable — DLV-270: Spotify collection paging efficiency
+
+Owner/baseline: widgets lane after accepted DLV-265 and DLV-277 integration on
+main `c21ad02`. Reconcile the standing worktree cleanly before production work.
+Keep provider calls,
 page/retention policy, queue parsing, diagnostics, and immutable package version
 inside Spotify. Reuse accepted generic cursor, viewport-prefetch, and virtualized
 window contracts; do not add Spotify behavior to core layers. Explicitly opt
@@ -303,14 +574,79 @@ provider ambiguity changing contract, shared-boundary changes, destructive
 credential/configuration action, unbounded retention, substantial conflict, or
 missing accepted DLV-265/DLV-271/DLV-276 baseline. Never push.
 
+Production-only commit `cf9149e` adopts the accepted virtual-window contract
+for playlist and playlist-detail viewports using stable keys, authoritative
+logical indices/totals, 12-item pages, 24 retained rows, and an 88-DIP estimated
+row extent. Selected-playlist metadata loads once per selection generation;
+the first page uses one metadata plus one `/items` request and each adjacent
+page uses one `/items` request. Queue now has one fail-closed 50-item
+unpaginated bound. The tests-skipped exact-commit Release/package build passes.
+Immutable Spotify 0.3.4 is 1,161,574 archive bytes with SHA-256
+`146DAD5EFD185469B0B3C77E3752786E551A53DA31CA686FC95C443BE5A1545E`.
+It was installed, selected, and enabled for review, but activating compact
+Playlists caused the Spotify worker to exit code 1 at
+`2026-08-21T03:48:08.968Z`; OverlayHost retained the last presentation and
+reported `worker-protocol-failed`. Candidate 0.3.4 is rejected and remains
+installed inactive. Accepted Spotify 0.3.3 is selected/enabled again, the
+existing Client ID/account/configuration are unchanged, and PID 34764 remains
+responsive. Correction `220cd7b` attributed the crash to exhausting four
+bounded stable-capture attempts during Loading-to-Ready/busy revision churn and
+changed that failure into a non-virtual fallback. Correction `833fe9c`
+preserves anchor and before/after paging actions in the fallback; stable
+captures continue to publish DLV-271 virtual-window metadata. Immutable Spotify 0.3.6 is
+1,161,774 bytes with SHA-256
+`08F588AF82328B06A40169332885144C0BEA99A24F45B137C987F854ADC5D41E`.
+Its isolated package and exact-commit tests-skipped Release builds pass, but
+the physical candidate reproduced the same failure: after compact Playlists
+handled A and painted sequences 10-11, worker PID 53516 exited code 1 at
+`2026-08-21T04:35:23.4491687Z` and the host reported
+`worker-protocol-failed`. This disproves the claimed sufficient root cause and
+rejects 0.3.6. Spotify 0.3.3 is selected as rollback but remains disabled
+pending explicit full-trust re-enable approval; rejected 0.3.4 and 0.3.6 remain
+installed inactive. Diagnose the actual fatal package-local boundary, add only
+bounded sanitized diagnostics if required, then produce a new immutable
+production/build candidate. The exact boundary is now dispositioned by assigned
+DLV-278: the first Ready publication advances snapshot protocol v18 to v19
+through an atomic v18 update that cannot carry the target version. Resume this
+package work only after the clean DLV-278 production commit/build, then produce
+one cumulative candidate. Do not test or integrate before its verdict.
+
+Cumulative production commit `86d4e54` advances immutable Spotify to 0.3.7,
+removes the speculative package presentation fallback, and retains only a
+64-KiB package-owned diagnostic log with bounded sanitized boundary/error tokens.
+The cumulative exact-commit tests-skipped Release/package build passes. Package
+size is 1,163,665 bytes and SHA-256 is
+`772C872BF8D1233B1E4000530673E507838A106EC8EE4FCFB5556CAE7B01BF32`.
+The branch is clean. Before staging, no test, install, selection, enablement,
+launch, authentication, configuration, credential, or account action occurred.
+The user then granted explicit full-trust approval; package 0.3.7 was installed,
+selected, and enabled without changing configuration, credentials, or account
+state. The verdict is rejected on DLV-279's generic virtual-window re-entry
+boundary; the worker remained alive and DLV-278's v19 checkpoint succeeded.
+Preserve the package and state while staging corrected immutable 0.3.10 only
+after explicit full-trust approval.
+
 ## Serialized order
 
-1. DLV-269, DLV-274/275, DLV-271, and DLV-276 are accepted and integrated
-   through main `ca967e6`; DLV-273 remains retired rejected history.
-2. Run DLV-277 in the platform lane and resume saved DLV-265 in the widgets
-   lane independently from shared accepted main `ca967e6`.
-3. Run DLV-270 only after accepted DLV-265 integration.
-4. DLV-248 remains deferred until explicit user promotion.
+1. DLV-269, DLV-274/275, DLV-271, DLV-276, DLV-265, and DLV-277 are accepted
+   and integrated through main `c21ad02`; DLV-273 remains retired rejected
+   history.
+2. DLV-278 `ab4844d` and cumulative DLV-270 `86d4e54` are production-complete
+   and preserved, but the cumulative Spotify 0.3.7 verdict is rejected on the
+   distinct virtual-window re-entry boundary.
+3. DLV-279 through `5468199` and cumulative immutable Spotify 0.3.10 at
+   `4af365f` are rejected after the establish/resume path proved that the SDK
+   lacks exact host predecessor authority when base sequence is 0. Preserve the
+   evidence; do not test or integrate DLV-278, DLV-279, or DLV-270 yet.
+4. DLV-280 is the sole active serialized shared-contract assignment. Platform
+   produces the exact-base establish production commit/build first. After
+   planner source review, widgets reconciles only that exact commit into the
+   preserved cumulative branch and produces Spotify 0.3.11 plus the coherent
+   physical candidate. No shared files are edited concurrently.
+5. After the cumulative physical verdict, add focused and cross-process evidence
+   in planner-directed order, then integrate the independently accepted DLV-280,
+   DLV-278, DLV-279, and DLV-270 production/test chain into main.
+6. DLV-248 remains deferred until explicit user promotion.
 
 ## Manual, external, and blocked evidence
 
@@ -321,9 +657,13 @@ missing accepted DLV-265/DLV-271/DLV-276 baseline. Never push.
 | Domain | Live registrar/RDAP availability and optional registration through the user's account. |
 | Trademark | Similar-mark clearance; qualified counsel recommended before public release. |
 | GitHub identity | User-selected owner plus repository/organization availability and optional rename/creation. |
-| DLV-276 | Complete: behavior/styling accepted, focused boundary evidence passes, and production/tests are integrated through main `ca967e6`; coherent main Release PID 34208 is running. |
-| DLV-277 | Assigned from main `ca967e6`; earlier PID 34644 logs establish the responsive focus-mode mismatch. |
-| DLV-265 | Resumed from main `ca967e6`; preserve installed Spotify 0.3.3 and current account/configuration state while reconciling saved `13bd971` plus `5fd1a06`. |
+| DLV-276 | Complete: behavior/styling accepted, focused boundary evidence passes, and production/tests are integrated through main `ca967e6`. |
+| DLV-277 | Complete: physical verdict accepted; focused native evidence passes and production/tests are integrated through main `c21ad02`. |
+| DLV-265 | Complete: physical verdict accepted; focused Spotify evidence passes and production/tests are integrated through main `bb8234f`. |
+| DLV-278 | Production `ab4844d` is source-reviewed; 0.3.7 physically confirmed its v18-to-v19 checkpoint and stable worker, but integration waits for the corrected cumulative verdict and post-verdict tests. |
+| DLV-279 | Rejected/architecture-blocked: exact-base route re-entry is corrected, but full establish supplies no exact base while the host retains a snapshot; same-generation marker normalization is invalid. |
+| DLV-270 | Spotify 0.3.7 and 0.3.10 are rejected. Preserve paging evidence and wait for the cross-layer establish/base authority disposition. |
+| DLV-280 | Assigned to the platform lane as serialized cross-layer lead. Production/build first; cumulative Spotify 0.3.11 physical verdict next; focused/Tier 2/Tier 3 evidence only after user acceptance. |
 | DLV-248 | Deliberately deferred until explicit user promotion. |
 
 ## Recent accepted milestones
@@ -332,6 +672,8 @@ missing accepted DLV-265/DLV-271/DLV-276 baseline. Never push.
 | --- | --- |
 | DLV-268 | Right-stick free-scroll/focus re-entry accepted and integrated through `1cc9be8`. |
 | DLV-272 | Interaction-session extraction accepted and integrated through `8100bd7`. |
+| DLV-265 | Controller-first Spotify onboarding accepted and integrated through `bb8234f`. |
+| DLV-277 | One committed responsive focus mode accepted and integrated through `c21ad02`. |
 | DLV-269 | Viewport-driven paging accepted and integrated through `683af77`. |
 | DLV-274/275 | Cache retention and lifetime corrections accepted as `949b586`; integrated by `9189cad` plus tests `6ce32b7`. |
 | DLV-271 | Virtual collection windows accepted through `d100f49` and integrated through `56bc604`. |
