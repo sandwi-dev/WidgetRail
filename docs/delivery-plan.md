@@ -19,14 +19,14 @@ The complete delivery record through the DLV-277 assignment is preserved in the\
   The provider-free Full Application sample remains installed and enabled.
 - DLV-265 production and focused evidence are accepted and integrated while the
   immutable installed Spotify 0.3.3 and existing Client ID/account state remain
-  unchanged. DLV-270 candidate `cf9149e` / Spotify 0.3.4 is rejected after its
-  worker exited with code 1 on Playlists activation. Selection is rolled back
-  to accepted enabled Spotify 0.3.3 while the widgets lane corrects the package.
+  unchanged. DLV-270 candidate `cf9149e` / Spotify 0.3.4 remains rejected.
+  Correction commits `220cd7b` and `833fe9c` are staged as immutable Spotify
+  0.3.6 for the new physical verdict; accepted 0.3.3 remains installed rollback.
 
 | Lane | Task/worktree | State |
 | --- | --- | --- |
 | Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | DLV-277 is accepted and integrated through main `c21ad02`; PID 34764 remains the accepted production artifact. No platform deliverable is assigned. DLV-273 remains retired and DLV-248 remains deferred. Never push. |
-| Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | DLV-270 candidate `cf9149e` / Spotify 0.3.4 is rejected: activating compact Playlists led the package worker to exit code 1 and the host reported `worker-protocol-failed`. Accepted Spotify 0.3.3 is selected/enabled again; 0.3.4 remains installed inactive. Correct package-locally and produce a new immutable tests-skipped candidate. Preserve current Client ID/account/configuration, PID 34764, and shared contracts. Never push. |
+| Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | DLV-270 corrected production tip `833fe9c` is staged as selected/enabled Spotify 0.3.6 for the physical verdict. It replaces fatal unstable cursor capture with a bounded valid non-virtual fallback that preserves anchor and edge pagination; stable renders retain virtual windows. Preserve current Client ID/account/configuration, PID 34764, installed 0.3.3 rollback, inactive rejected 0.3.4, and shared contracts. Do not test or integrate before the verdict. Never push. |
 
 ## Execution, review, and architecture rules
 
@@ -346,17 +346,26 @@ Playlists caused the Spotify worker to exit code 1 at
 reported `worker-protocol-failed`. Candidate 0.3.4 is rejected and remains
 installed inactive. Accepted Spotify 0.3.3 is selected/enabled again, the
 existing Client ID/account/configuration are unchanged, and PID 34764 remains
-responsive. Await a new immutable production/build correction before another
-physical verdict; do not test or integrate `cf9149e`.
+responsive. Correction `220cd7b` proves the crash came from exhausting four
+bounded stable-capture attempts during Loading-to-Ready/busy revision churn and
+throwing from the render path. Correction `833fe9c` preserves anchor and
+before/after paging actions in the non-virtual fallback; stable captures
+continue to publish DLV-271 virtual-window metadata. Immutable Spotify 0.3.6 is
+1,161,774 bytes with SHA-256
+`08F588AF82328B06A40169332885144C0BEA99A24F45B137C987F854ADC5D41E`.
+Its isolated package and exact-commit tests-skipped Release builds pass. It is
+installed, selected, and enabled for a new physical verdict; 0.3.3 remains
+installed rollback and rejected 0.3.4 remains inactive. Do not test or
+integrate before the verdict.
 
 ## Serialized order
 
 1. DLV-269, DLV-274/275, DLV-271, DLV-276, DLV-265, and DLV-277 are accepted
    and integrated through main `c21ad02`; DLV-273 remains retired rejected
    history.
-2. DLV-270 candidate `cf9149e` / Spotify 0.3.4 is rejected. Correct the exact
-   package-worker Playlists crash and stage a new immutable production/build
-   candidate before another physical verdict.
+2. DLV-270 corrected tip `833fe9c` awaits a physical verdict as Spotify 0.3.6.
+   Reproduce compact Playlists activation, switch away/back, then traverse long
+   playlist/detail lists; do not test or integrate before the verdict.
 3. DLV-248 remains deferred until explicit user promotion.
 
 ## Manual, external, and blocked evidence
@@ -371,7 +380,7 @@ physical verdict; do not test or integrate `cf9149e`.
 | DLV-276 | Complete: behavior/styling accepted, focused boundary evidence passes, and production/tests are integrated through main `ca967e6`. |
 | DLV-277 | Complete: physical verdict accepted; focused native evidence passes and production/tests are integrated through main `c21ad02`. |
 | DLV-265 | Complete: physical verdict accepted; focused Spotify evidence passes and production/tests are integrated through main `bb8234f`. |
-| DLV-270 | Candidate `cf9149e` / Spotify 0.3.4 rejected after the worker exited code 1 on compact Playlists activation; accepted 0.3.3 is restored while a new immutable correction is prepared. |
+| DLV-270 | Corrected tip `833fe9c` is staged as Spotify 0.3.6; verify the compact Playlists crash is gone, worker PID remains stable, switch-away/back works, and long playlist/detail traversal preserves focus, artwork, paging, refresh, and recovery. |
 | DLV-248 | Deliberately deferred until explicit user promotion. |
 
 ## Recent accepted milestones
