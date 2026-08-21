@@ -17,6 +17,10 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Reopening setup starts a fresh scroll entry", SetupReopenResetsScrollIdentity),
     ("Setup code and text styles remain compact and bounded", SetupCodeAndTextAreBounded),
     ("Setup check refreshes newly saved configuration without starting OAuth", SetupCheckRefreshesConfiguration),
+    ("Configured Ready exposes one setup action in both responsive rails", ConfiguredReadySetupAction),
+    ("Committed setup text writes once and refreshes configuration", SetupConfigureWritesAndRefreshes),
+    ("Setup write failure remains visible and retryable", SetupConfigureFailure),
+    ("Setup write cancellation retains configuration and the setup scope", SetupConfigureCancellation),
     ("Connect action acknowledges while OAuth remains pending", ConnectAcknowledgesWhilePending),
     ("OAuth survives Background and reconciles when visible", ConnectSurvivesBackground),
     ("Explicit connect requests the four implemented least-privilege scopes", ExplicitConnect),
@@ -208,10 +212,10 @@ static async Task NestedSetupBack()
     Assert.True(Find(setup.Root, "spotify.setup-step-2").Text!.Contains(
         SpotifyApplicationContract.ExactRedirectUri, StringComparison.Ordinal),
         "Exact redirect URI was not rendered.");
-    Assert.True(Find(setup.Root, "spotify.setup-command").Text!.Contains(
-        @"dotnet run --project .\tools\WrailCli\WrailCli.csproj -- config set",
-        StringComparison.Ordinal),
-        "Setup assumed that wrail was already installed on PATH.");
+    var input = Find(setup.Root, "spotify.setup.client-id");
+    Assert.Equal("Enter public Spotify Client ID", input.TextEntryPlaceholder);
+    Assert.Equal(ProtocolConstants.MaximumTextEntryLength,
+        input.TextEntryMaximumLength);
     var captured = await widget.OnControllerInputAsync(new ControllerInputEvent(
         ControllerButton.B, ControllerEventPhase.Pressed, ControllerInputContext.OpenWidget,
         "spotify.setup.done", ActiveInputScopeId: setup.ActiveInputScopeId,
@@ -235,7 +239,7 @@ static async Task SetupCheckRefreshesConfiguration()
     await widget.OnActionAsync(new WidgetActionEvent(
         "spotify.setup.open", "spotify.setup.open"));
     var setup = widget.RenderSnapshot("spotify.test", 5);
-    Assert.Equal("spotify.setup.done", setup.InitialFocusId);
+    Assert.Equal("spotify.setup.dashboard", setup.InitialFocusId);
     var readsBeforeCheck = harness.ConfigurationCalls;
 
     // Simulates `config set` completing while the setup page remains open.
@@ -247,6 +251,128 @@ static async Task SetupCheckRefreshesConfiguration()
         "Check configuration did not perform a fresh configuration read.");
     Assert.Equal(0, harness.ConnectCalls);
     Assert.Equal("spotify.connect", widget.Render().InitialFocusId);
+    await StopAsync(widget);
+}
+
+static async Task ConfiguredReadySetupAction()
+{
+    var harness = SpotifyHarness.Ready();
+    var widget = await StartAsync(harness);
+    await WaitUntil(() => widget.ViewState == SpotifyWidgetViewState.Ready);
+    var ready = widget.RenderSnapshot("spotify.setup.ready", 1);
+    var wide = Find(ready.Root, "spotify.setup.open.wide");
+    var compact = Find(ready.Root, "spotify.setup.open.compact");
+    Assert.Equal("spotify.setup.open", wide.ActionId);
+    Assert.Equal("spotify.setup.open", compact.ActionId);
+    Assert.Equal("spotify.setup", wide.FocusPersistenceId);
+    Assert.Equal("spotify.setup", compact.FocusPersistenceId);
+    Assert.Equal("Change Spotify Client ID", wide.AccessibilityLabel);
+    Assert.Equal("Change Spotify Client ID", compact.AccessibilityLabel);
+
+    await widget.OnActionAsync(new WidgetActionEvent(wide.ActionId!, wide.Id));
+    var setup = widget.RenderSnapshot("spotify.setup.ready", 2);
+    Assert.Equal("spotify.setup", setup.ActiveInputScopeId);
+    var input = Find(setup.Root, "spotify.setup.client-id");
+    Assert.Equal("spotify.setup.client-id", input.ActionId);
+    Assert.Equal(SpotifyApplicationContract.MaximumClientIdInputCharacters,
+        input.TextEntryMaximumLength);
+    Assert.Equal(ProtocolConstants.MaximumTextEntryLength, input.TextEntryMaximumLength);
+    Assert.Equal(0, harness.ConfigureClientCalls);
+    Assert.Equal(0, harness.ConnectCalls);
+    await StopAsync(widget);
+}
+
+static async Task SetupConfigureWritesAndRefreshes()
+{
+    const string replacementClientId = "ReplacementClient123456";
+    var harness = SpotifyHarness.Ready();
+    var widget = await StartAsync(harness);
+    await WaitUntil(() => widget.ViewState == SpotifyWidgetViewState.Ready);
+    await widget.OnActionAsync(new WidgetActionEvent(
+        "spotify.setup.open", "spotify.setup.open.wide"));
+    var readsBeforeWrite = harness.ConfigurationCalls;
+
+    await widget.OnActionAsync(new WidgetActionEvent(
+        "spotify.setup.client-id", "spotify.setup.client-id")
+        { CommittedText = replacementClientId });
+
+    await WaitUntil(() => widget.ViewState == SpotifyWidgetViewState.Disconnected);
+    Assert.Equal(1, harness.ConfigureClientCalls);
+    Assert.Equal(replacementClientId, harness.LastConfiguredClientId);
+    Assert.True(harness.ConfigurationCalls > readsBeforeWrite,
+        "Successful setup did not perform a fresh configuration read.");
+    Assert.Equal(0, harness.ConnectCalls);
+    Assert.True(!ContainsId(widget.RenderSnapshot("spotify.setup.write", 1).Root,
+        "spotify.setup.client-id"), "Successful setup did not close its nested scope.");
+    await StopAsync(widget);
+}
+
+static async Task SetupConfigureFailure()
+{
+    var harness = SpotifyHarness.Ready();
+    harness.ConfigureClientHandler = (_, _) =>
+        ValueTask.FromException<SpotifyConfigurationSummary>(
+            new SpotifyApplicationException(
+                "configuration_write_failed", "Spotify configuration could not be saved."));
+    var widget = await StartAsync(harness);
+    await WaitUntil(() => widget.ViewState == SpotifyWidgetViewState.Ready);
+    await widget.OnActionAsync(new WidgetActionEvent(
+        "spotify.setup.open", "spotify.setup.open.wide"));
+    var readsBeforeWrite = harness.ConfigurationCalls;
+
+    await widget.OnActionAsync(new WidgetActionEvent(
+        "spotify.setup.client-id", "spotify.setup.client-id")
+        { CommittedText = "ReplacementClient123456" });
+
+    Assert.Equal(1, harness.ConfigureClientCalls);
+    Assert.Equal(readsBeforeWrite, harness.ConfigurationCalls);
+    Assert.Equal("Spotify configuration could not be saved.", widget.Status);
+    Assert.NotNull(Find(widget.RenderSnapshot("spotify.setup.failure", 1).Root,
+        "spotify.setup.client-id"));
+    await StopAsync(widget);
+}
+
+static async Task SetupConfigureCancellation()
+{
+    var admitted = new TaskCompletionSource(
+        TaskCreationOptions.RunContinuationsAsynchronously);
+    var cancellationObserved = new TaskCompletionSource(
+        TaskCreationOptions.RunContinuationsAsynchronously);
+    var harness = SpotifyHarness.Ready();
+    harness.ConfigureClientHandler = async (_, cancellationToken) =>
+    {
+        admitted.TrySetResult();
+        try
+        {
+            await Task.Delay(Timeout.InfiniteTimeSpan, cancellationToken)
+                .ConfigureAwait(false);
+            throw new InvalidOperationException("Canceled setup write unexpectedly completed.");
+        }
+        finally
+        {
+            if (cancellationToken.IsCancellationRequested)
+                cancellationObserved.TrySetResult();
+        }
+    };
+    var widget = await StartAsync(harness);
+    await WaitUntil(() => widget.ViewState == SpotifyWidgetViewState.Ready);
+    await widget.OnActionAsync(new WidgetActionEvent(
+        "spotify.setup.open", "spotify.setup.open.wide"));
+    var readsBeforeWrite = harness.ConfigurationCalls;
+    using var cancellation = new CancellationTokenSource();
+    var write = widget.OnActionAsync(new WidgetActionEvent(
+        "spotify.setup.client-id", "spotify.setup.client-id")
+        { CommittedText = "ReplacementClient123456" }, cancellation.Token).AsTask();
+    await admitted.Task.WaitAsync(TimeSpan.FromSeconds(3));
+    cancellation.Cancel();
+    await write.WaitAsync(TimeSpan.FromSeconds(3));
+    await cancellationObserved.Task.WaitAsync(TimeSpan.FromSeconds(3));
+
+    Assert.Equal(1, harness.ConfigureClientCalls);
+    Assert.Equal(readsBeforeWrite, harness.ConfigurationCalls);
+    Assert.Equal("Spotify setup canceled", widget.Status);
+    Assert.NotNull(Find(widget.RenderSnapshot("spotify.setup.cancel", 1).Root,
+        "spotify.setup.client-id"));
     await StopAsync(widget);
 }
 
@@ -267,15 +393,12 @@ static async Task SetupUsesVerticalScroll()
     Assert.NotNull(Find(scroll, "spotify.setup-step-1"));
     Assert.NotNull(Find(scroll, "spotify.setup-step-2"));
     Assert.NotNull(Find(scroll, "spotify.setup-step-3"));
-    var command = Find(scroll, "spotify.setup-command");
-    Assert.True(command.StyleClasses.Contains("wrail-code-text"),
-        "Setup command no longer uses the semantic CodeText component.");
-    Assert.True(command.StyleClasses.Contains("spotify-setup-command"),
-        "Setup command lost its bounded widget style class.");
     var card = Find(scroll, "spotify.setup-card");
-    Assert.Equal("spotify.setup.done", card.Children[1].Id);
-    Assert.Equal("Check configuration", card.Children[1].Text);
-    Assert.Equal("spotify.setup.done", setup.InitialFocusId);
+    Assert.Equal("spotify.setup.dashboard", card.Children[2].Id);
+    Assert.Equal("spotify.setup.copy-redirect", card.Children[4].Id);
+    Assert.Equal("spotify.setup.client-id", card.Children[6].Id);
+    Assert.Equal("spotify.setup.done", card.Children[7].Id);
+    Assert.Equal("spotify.setup.dashboard", setup.InitialFocusId);
     Assert.True(setup.Surface?.MinimumHeight <= 404,
         "Setup requires a surface taller than the compact widget viewport.");
     await StopAsync(widget);
@@ -292,13 +415,12 @@ static Task SetupCodeAndTextAreBounded()
 
     var step = compiled.Theme!.Resolve(new WrssElement(
         "text", StyleClasses: new HashSet<string>(["spotify-setup-step"])))!;
-    var command = compiled.Theme.Resolve(new WrssElement(
-        "text", StyleClasses: new HashSet<string>(
-            ["wrail-code-text", "spotify-setup-command"])))!;
+    var input = compiled.Theme.Resolve(new WrssElement(
+        "text-entry", StyleClasses: new HashSet<string>(["spotify-setup-input"])))!;
     Assert.Equal<string?>(null, step.Get("max-lines")?.Text);
     Assert.Equal("1.3", step.Get("line-height")?.Text);
-    Assert.Equal<string?>(null, command.Get("max-lines")?.Text);
-    Assert.Equal("1.25", command.Get("line-height")?.Text);
+    Assert.Equal("100%", input.Get("width")?.Text);
+    Assert.Equal("44px", input.Get("min-height")?.Text);
     return Task.CompletedTask;
 }
 
@@ -1876,7 +1998,7 @@ static Task ManifestContract()
         "Full-trust Spotify retained the sandbox worker entrypoint.");
     Assert.Equal(0, manifest.Permissions.Count);
     Assert.Equal(0, manifest.OptionalPermissions.Count);
-    Assert.Equal("0.3.0", manifest.Version);
+    Assert.Equal("0.3.3", manifest.Version);
     Assert.SequenceEqual(["x64"], manifest.Architectures);
     Assert.NotNull(manifest.ResidencyPolicy);
     Assert.Equal(WidgetResidencyPolicies.KeepAlive, manifest.ResidencyPolicy!.Mode);
@@ -1891,7 +2013,7 @@ static Task PresentationBoundaryIsPure()
         WidgetPagedResourceStatus.NotLoaded, [], null, null, null, null, null, 0);
     var state = new SpotifyPresentationState(
         new(1, 0, 0, null), SpotifyWidgetViewState.Unconfigured, null, null,
-        "Spotify client ID required", null, false, 0, SpotifyDestination.Player,
+        "Spotify client ID required", null, false, 0, false, SpotifyDestination.Player,
         media, playlists, null, null, null, false, null, "spotify.setup.open");
 
     var first = SnapshotJson.Serialize(
@@ -2131,6 +2253,10 @@ file sealed class SpotifyHarness : ISpotifyApplicationService
     public TaskCompletionSource<SpotifyAuthorizationSummary>? ConnectCompletion { get; set; }
     public CancellationToken? ConnectCancellationToken { get; private set; }
     public int ConnectCalls { get; private set; }
+    public int ConfigureClientCalls { get; private set; }
+    public string? LastConfiguredClientId { get; private set; }
+    public Func<string, CancellationToken, ValueTask<SpotifyConfigurationSummary>>?
+        ConfigureClientHandler { get; set; }
     public int ConfigurationCalls { get; private set; }
     public int PlaybackCalls { get; private set; }
     public int QueueCalls { get; private set; }
@@ -2183,6 +2309,22 @@ file sealed class SpotifyHarness : ISpotifyApplicationService
             true, false, true, 45, false)]);
     public SpotifyLocalPlaybackSummary LocalPlayback { get; set; } = new(
         SpotifyLocalPlaybackState.Ready, "WidgetRail", 60, "Ready to play here");
+    public async ValueTask<SpotifyConfigurationSummary> ConfigureClientAsync(
+        string clientId,
+        CancellationToken cancellationToken = default)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        ConfigureClientCalls++;
+        LastConfiguredClientId = clientId;
+        if (ConfigureClientHandler is not null)
+            return await ConfigureClientHandler(clientId, cancellationToken)
+                .ConfigureAwait(false);
+        Configured = true;
+        Connected = false;
+        return new SpotifyConfigurationSummary(
+            true, SpotifyApplicationContract.ExactRedirectUri);
+    }
+
     public ValueTask<SpotifyConfigurationSummary> GetConfigurationAsync(
         CancellationToken cancellationToken = default)
     {
