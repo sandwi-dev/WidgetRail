@@ -37,8 +37,8 @@ The complete delivery record through the DLV-277 assignment is preserved in the\
 
 | Lane | Task/worktree | State |
 | --- | --- | --- |
-| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | Assigned DLV-283 from clean DLV-282 tip `39dc690`: preserve explicit full-checkpoint recovery provenance and admit that exact current checkpoint as a new virtual-window baseline only under the bounded rules below. Production/build only; do not test, launch, integrate, or push. |
-| Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | Exact DLV-282 merge `c78dfa4` and reviewer reconciliation `54937ea` remain source-reviewed; PID 144732 is rejected on DLV-283. The lane is idle and must preserve the cumulative branch, package/state, and diagnostic process until planner-directed DLV-283 reconciliation. Do not edit, test, install, relaunch, integrate main, or push. |
+| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | DLV-283 production `cdbb04a` is source-reviewed and exact-build verified. It adds private typed-recovery provenance, exact origin-sequence proof, forward-sequence proof, and fresh-baseline all-`Replace` admission while leaving ordinary transitions unchanged. The lane is idle; do not test, launch, integrate, or push. |
+| Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | Assigned bounded reconciliation: merge exact DLV-283 production `cdbb04a` into cumulative tip `54937ea` without other production changes, build one coherent exact tests-skipped Release, and stop for planner launch. Preserve Spotify 0.3.12, all state, and PID 144732; do not test, install, launch, terminate, integrate main, or push. |
 
 ## Execution, review, and architecture rules
 
@@ -945,11 +945,10 @@ after explicit full-trust approval.
    base retry returned the requested full checkpoint and the host then
    incorrectly applied ordinary incremental virtual-window transition rules to
    that recovery baseline.
-8. Assigned DLV-283 on platform tip `39dc690` carries exact recovery provenance
-   through admission and treats only a current, forward-sequence, all-`Replace`
-   recovery checkpoint as a new virtual-window baseline. After source review,
-   merge that exact correction into cumulative widgets tip `54937ea`, build,
-   visibly launch, and obtain another physical verdict.
+8. DLV-283 production `cdbb04a` is source-reviewed and exact-build verified.
+   Merge that exact correction into cumulative widgets tip `54937ea` without
+   other production changes, build, visibly launch, and obtain another physical
+   verdict.
 9. After the corrected cumulative physical verdict, add focused and cross-
    process evidence in planner-directed order, then integrate the independently
    accepted DLV-280, DLV-281, DLV-282, DLV-283, DLV-278, DLV-279, and DLV-270
@@ -974,7 +973,7 @@ after explicit full-trust approval.
 | DLV-280 | Production through `09c3f07` successfully admitted one exact-base switch-back in the rejected cumulative trace. Keep it source-reviewed but unaccepted; focused/Tier 2/Tier 3 evidence waits for the corrected cumulative verdict. |
 | DLV-281 | Production `dcbd006` plus correction `0960b81` fixed completion-admission overlap and remains source-reviewed in cumulative `a838e2b`; PID 84296 is rejected on the distinct DLV-282 switch-away base divergence. |
 | DLV-282 | Production `39dc690` is source-reviewed and its typed one-shot retry fired correctly, but PID 144732 is rejected because the returned full checkpoint was still evaluated as an incremental virtual-window transition. Preserve it for DLV-283; no tests or integration. |
-| DLV-283 | Assigned from platform tip `39dc690`: preserve exact typed-recovery provenance and admit only a current, forward-sequence, all-`Replace` recovery checkpoint as the new baseline. Physical verdict waits for production/source review, exact build, cumulative merge, and visible launch. |
+| DLV-283 | Production `cdbb04a` is source-reviewed and exact-build verified. It preserves exact typed-recovery provenance and admits only a current, forward-sequence, all-`Replace` recovery checkpoint as the new baseline. Physical verdict waits for cumulative merge/build and visible launch. |
 | DLV-248 | Deliberately deferred until explicit user promotion. |
 
 ## Recent accepted milestones
