@@ -49,6 +49,7 @@ public sealed class SpotifyWidget : Widget
     private readonly SemaphoreSlim _refreshGate = new(1, 1);
     private readonly ISpotifyApplicationService _spotify;
     private readonly TimeProvider _timeProvider;
+    private readonly ISpotifyRuntimeDiagnostics _runtimeDiagnostics;
     private SpotifyWidgetViewState _viewState = SpotifyWidgetViewState.Initial;
     private SpotifyAuthorizationState _authorizationState =
         SpotifyAuthorizationState.Disconnected;
@@ -89,9 +90,19 @@ public sealed class SpotifyWidget : Widget
     public SpotifyWidget(
         ISpotifyApplicationService spotify,
         TimeProvider? timeProvider = null)
+        : this(spotify, timeProvider, SpotifyRuntimeDiagnostics.None)
+    {
+    }
+
+    internal SpotifyWidget(
+        ISpotifyApplicationService spotify,
+        TimeProvider? timeProvider,
+        ISpotifyRuntimeDiagnostics runtimeDiagnostics)
     {
         _spotify = spotify ?? throw new ArgumentNullException(nameof(spotify));
         _timeProvider = timeProvider ?? TimeProvider.System;
+        _runtimeDiagnostics = runtimeDiagnostics ??
+            throw new ArgumentNullException(nameof(runtimeDiagnostics));
         _queue = CreateCursorResource<SpotifyMediaCollectionItem>("spotify.queue", new()
         {
             PageSize = SpotifyApplicationContract.MaximumQueueItems,
@@ -191,8 +202,20 @@ public sealed class SpotifyWidget : Widget
     public static string FormatTime(long milliseconds) =>
         SpotifyPresentation.FormatTime(milliseconds);
 
-    public override WidgetView Render() =>
-        SpotifyPresentation.Render(CapturePresentationState());
+    public override WidgetView Render()
+    {
+        try
+        {
+            return SpotifyPresentation.Render(CapturePresentationState());
+        }
+        catch (Exception exception)
+        {
+            _runtimeDiagnostics.Record(
+                "render-failed",
+                SpotifyRuntimeDiagnostics.Code(exception));
+            throw;
+        }
+    }
 
     protected override ValueTask OnActivatedAsync(CancellationToken activeLifetime)
     {
