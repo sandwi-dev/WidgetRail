@@ -384,6 +384,7 @@ std::vector<WidgetSessionEvent> WidgetSessionCoordinator::TakeEvents() {
                     WidgetSessionCompletionDisposition::Failed,
                     completion.completedAt);
                 CompleteRefresh(request, false);
+                ReleasePresentationAdmission(request);
                 auto fallback = MakeRequest(
                     RequestKind::Snapshot, request.widgetId,
                     request.lifecycle, request.correlationId);
@@ -449,12 +450,14 @@ std::vector<WidgetSessionEvent> WidgetSessionCoordinator::TakeEvents() {
         };
         if (!completionCurrent && !primaryStartFailure) {
             CompleteRefresh(request, false);
+            ReleasePresentationAdmission(request);
             events.push_back(makeEvent(
                 WidgetSessionEventKind::StaleCompletionRejected));
             continue;
         }
         if (completion.failure.stage != WidgetSessionFailureStage::None) {
             CompleteRefresh(request, false);
+            ReleasePresentationAdmission(request);
             if (!request.widgetId.empty()) {
                 awaitingRestartSnapshot_.erase(request.widgetId);
                 if (primaryStartFailure) RevokeRequests(request.widgetId);
@@ -478,6 +481,7 @@ std::vector<WidgetSessionEvent> WidgetSessionCoordinator::TakeEvents() {
         if (request.kind == RequestKind::Establish || request.kind == RequestKind::Snapshot) {
             if (!snapshotProtocolCurrent) {
                 HardRemoveCheckpoint(request.widgetId);
+                ReleasePresentationAdmission(request);
                 auto failure = FailureFrom(
                     WidgetSessionFailureStage::Protocol,
                     L"The worker returned a stale or mismatched widget instance.");
@@ -492,6 +496,7 @@ std::vector<WidgetSessionEvent> WidgetSessionCoordinator::TakeEvents() {
             if (!AdmitVirtualWindowTransition(
                     Snapshot(request.widgetId), *completion.snapshot)) {
                 CompleteRefresh(request, false);
+                ReleasePresentationAdmission(request);
                 auto failure = FailureFrom(
                     WidgetSessionFailureStage::Protocol,
                     L"The widget returned an invalid or stale virtual collection window transition.");
@@ -503,11 +508,16 @@ std::vector<WidgetSessionEvent> WidgetSessionCoordinator::TakeEvents() {
                 events.push_back(std::move(event));
                 continue;
             }
+            const bool refreshRequestedDuringAdmission =
+                RefreshState(request.widgetId) == WidgetRefreshState::RefreshRequested;
             snapshots_.insert_or_assign(request.widgetId, std::move(*completion.snapshot));
             CompleteRefresh(request, true);
             failures_.erase(request.widgetId);
             if (request.kind == RequestKind::Establish)
                 lifecycleStates_.insert_or_assign(request.widgetId, request.lifecycle);
+            ReleasePresentationAdmission(request);
+            QueueCoalescedRefreshAfterAdmission(
+                request, refreshRequestedDuringAdmission);
             auto event = makeEvent(WidgetSessionEventKind::SnapshotAdmitted);
             event.completedRestart = awaitingRestartSnapshot_.erase(request.widgetId) > 0;
             event.presentationImpact = std::move(completion.presentationImpact);
@@ -687,6 +697,7 @@ void WidgetSessionCoordinator::Shutdown() noexcept {
     }
     std::scoped_lock lock(queueMutex_);
     completed_.clear();
+    presentationAdmissions_.clear();
 }
 
 WidgetSessionCoordinator::QueueResult WidgetSessionCoordinator::Queue(
@@ -702,6 +713,20 @@ WidgetSessionCoordinator::QueueResult WidgetSessionCoordinator::Queue(
             result = {
                 WidgetSessionTraceAction::Skipped,
                 WidgetSessionTraceReason::ShuttingDown};
+        } else if (IsPresentationChanging(request.kind) &&
+            [&] {
+                const auto admission = presentationAdmissions_.find(request.widgetId);
+                return admission != presentationAdmissions_.end() &&
+                    SamePresentationAuthority(admission->second, request);
+            }()) {
+            const auto& admission = presentationAdmissions_.at(request.widgetId);
+            request.id = admission.id;
+            request.generation = admission.generation;
+            request.queuedAt = admission.queuedAt;
+            request.startedAt = admission.startedAt;
+            result = {
+                WidgetSessionTraceAction::Deduplicated,
+                WidgetSessionTraceReason::ExistingRequest};
         } else if (auto existing = std::find_if(
                 pending_.begin(), pending_.end(), [&](const Request& candidate) {
                 return candidate.kind == request.kind &&
@@ -756,7 +781,77 @@ bool WidgetSessionCoordinator::HasPending(
     std::scoped_lock lock(queueMutex_);
     return std::any_of(pending_.begin(), pending_.end(), [&](const Request& request) {
         return request.kind == kind && request.widgetId == widgetId;
-    }) || (inFlight_ && inFlight_->kind == kind && inFlight_->widgetId == widgetId);
+    }) || (inFlight_ && inFlight_->kind == kind && inFlight_->widgetId == widgetId) ||
+        std::any_of(
+            presentationAdmissions_.begin(), presentationAdmissions_.end(),
+            [&](const auto& entry) {
+                return entry.second.kind == kind && entry.second.widgetId == widgetId;
+            });
+}
+
+bool WidgetSessionCoordinator::IsPresentationChanging(const RequestKind kind) noexcept {
+    return kind == RequestKind::Establish || kind == RequestKind::Snapshot;
+}
+
+bool WidgetSessionCoordinator::SamePresentationAuthority(
+    const Request& left,
+    const Request& right) noexcept {
+    return IsPresentationChanging(left.kind) && IsPresentationChanging(right.kind) &&
+        left.widgetId == right.widgetId &&
+        left.lifecycle == right.lifecycle &&
+        left.generation == right.generation &&
+        left.expectedInstanceId == right.expectedInstanceId &&
+        left.expectedRuntimeGeneration == right.expectedRuntimeGeneration &&
+        left.expectedPresentationGeneration == right.expectedPresentationGeneration &&
+        left.baseSequence == right.baseSequence &&
+        left.allowUpdate == right.allowUpdate;
+}
+
+bool WidgetSessionCoordinator::PresentationRequestBlockedLocked(
+    const Request& request) const noexcept {
+    return IsPresentationChanging(request.kind) &&
+        presentationAdmissions_.contains(request.widgetId);
+}
+
+bool WidgetSessionCoordinator::HasExecutableRequestLocked() const noexcept {
+    return std::any_of(pending_.begin(), pending_.end(), [&](const Request& request) {
+        return !PresentationRequestBlockedLocked(request);
+    });
+}
+
+void WidgetSessionCoordinator::ReleasePresentationAdmission(
+    const Request& request) noexcept {
+    if (!IsPresentationChanging(request.kind)) return;
+    bool released{};
+    {
+        std::scoped_lock lock(queueMutex_);
+        const auto found = presentationAdmissions_.find(request.widgetId);
+        if (found != presentationAdmissions_.end() && found->second.id == request.id) {
+            presentationAdmissions_.erase(found);
+            released = true;
+        }
+    }
+    if (released) queueChanged_.notify_all();
+}
+
+void WidgetSessionCoordinator::QueueCoalescedRefreshAfterAdmission(
+    const Request& request,
+    const bool refreshRequestedDuringAdmission) {
+    if (!IsPresentationChanging(request.kind) ||
+        !refreshRequestedDuringAdmission ||
+        !CompletionIsCurrent(request)) return;
+    refreshStates_.insert_or_assign(
+        request.widgetId, WidgetRefreshState::RefreshRequested);
+    refreshRequestIds_.erase(request.widgetId);
+    const auto queued = Queue(MakeRequest(
+        RequestKind::Snapshot,
+        request.widgetId,
+        request.lifecycle,
+        request.correlationId));
+    if (queued.accepted() &&
+        queued.action != WidgetSessionTraceAction::Deduplicated) {
+        MarkRefreshInFlight(request.widgetId, queued.requestId);
+    }
 }
 
 void WidgetSessionCoordinator::SupersedeSnapshotRequests(
@@ -934,11 +1029,17 @@ void WidgetSessionCoordinator::WorkerLoop(const std::stop_token stopToken) {
         {
             std::unique_lock lock(queueMutex_);
             queueChanged_.wait(lock, [&] {
-                return shuttingDown_ || stopToken.stop_requested() || !pending_.empty();
+                return shuttingDown_ || stopToken.stop_requested() ||
+                    HasExecutableRequestLocked();
             });
             if (shuttingDown_ || stopToken.stop_requested()) break;
-            request = std::move(pending_.front());
-            pending_.pop_front();
+            const auto next = std::find_if(
+                pending_.begin(), pending_.end(), [&](const Request& candidate) {
+                    return !PresentationRequestBlockedLocked(candidate);
+                });
+            if (next == pending_.end()) continue;
+            request = std::move(*next);
+            pending_.erase(next);
             request.startedAt = timestamp_();
             inFlight_ = request;
             inFlightStop_.emplace();
@@ -954,6 +1055,10 @@ void WidgetSessionCoordinator::WorkerLoop(const std::stop_token stopToken) {
             if (shuttingDown_) break;
             inFlight_.reset();
             inFlightStop_.reset();
+            if (IsPresentationChanging(completion.request.kind)) {
+                presentationAdmissions_.insert_or_assign(
+                    completion.request.widgetId, completion.request);
+            }
             completed_.push_back(std::move(completion));
         }
         if (completionAvailable_) {
