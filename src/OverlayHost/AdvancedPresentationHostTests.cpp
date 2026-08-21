@@ -430,45 +430,77 @@ void ExerciseExportedTextEntry(
     typeText(edit, L"UNCOMMITTED");
     DWORD_PTR ignored{};
     Require(SendMessageTimeoutW(
-                modal, WM_KEYDOWN, VK_ESCAPE, 1,
+                edit, WM_KEYDOWN, VK_ESCAPE, 1,
                 SMTO_ABORTIFHUNG | SMTO_BLOCK, 5000, &ignored) != 0,
         Win32Error("SendMessageTimeoutW(TextEntry cancel)"));
+    Require(WaitUntil(kTimeoutMilliseconds, [&] { return !IsWindow(modal); }),
+        "Cancel did not close the TextEntry modal.");
+    Require(WaitUntil(kTimeoutMilliseconds, [&] { return IsWindowEnabled(window); }),
+        "Cancel did not re-enable the production host window.");
     Require(WaitUntil(kTimeoutMilliseconds, [&] {
+        return CountOccurrences(
+            ReadUtf8(logPath), "Text entry modal outcome=cancel ") == 1;
+    }), "Cancel did not publish exactly one terminal cancel diagnostic; log=" +
+        ReadUtf8(logPath));
+    Require(WaitUntil(kTimeoutMilliseconds, [&] {
+        return CountOccurrences(ReadUtf8(backendDiagnosticPath), "query limit=") ==
+            queryCountBeforeCancel;
+    }), "Cancel changed the committed query count; before=" +
+        std::to_string(queryCountBeforeCancel) + " after=" +
+        std::to_string(CountOccurrences(
+            ReadUtf8(backendDiagnosticPath), "query limit=")));
+    const bool exactFocusRestored = WaitUntil(kTimeoutMilliseconds, [&] {
         ComPtr<IUIAutomationElement> focused;
-        return !IsWindow(modal) && IsWindowEnabled(window) &&
-            CountOccurrences(ReadUtf8(logPath),
-                "Text entry modal outcome=cancel ") == 1 &&
-            CountOccurrences(ReadUtf8(backendDiagnosticPath), "query limit=") ==
-                queryCountBeforeCancel &&
-            SUCCEEDED(automation->GetFocusedElement(focused.GetAddressOf())) &&
+        return SUCCEEDED(automation->GetFocusedElement(focused.GetAddressOf())) &&
             focused && AutomationIdOf(focused.Get()) ==
                 L"widget:game-launcher.search";
-    }), "Cancel did not preserve the value and restore exact search focus.");
+    });
+    if (!exactFocusRestored) {
+        ComPtr<IUIAutomationElement> focused;
+        const auto result = automation->GetFocusedElement(focused.GetAddressOf());
+        Fail("Cancel did not restore exact search UIA focus; HRESULT=" +
+            std::to_string(static_cast<long>(result)) + " actual=" +
+            WideToUtf8(AutomationIdOf(focused.Get())) + " log=" +
+            ReadUtf8(logPath));
+    }
 
     modal = openModal();
     edit = FindWindowExW(modal, nullptr, L"EDIT", nullptr);
-    const auto queryCountBeforeEnter = CountOccurrences(
-        ReadUtf8(backendDiagnosticPath), "query limit=");
-    typeText(edit, L"Controller Proof");
-    Require(WindowText(edit) == L"Controller Proof",
+    constexpr std::wstring_view committedText = L"Controller Proof";
+    typeText(edit, committedText);
+    Require(WindowText(edit) == committedText,
         "The production modal did not expose its complete live edit buffer.");
     Require(SendMessageTimeoutW(
                 edit, WM_KEYDOWN, VK_RETURN, 1,
                 SMTO_ABORTIFHUNG | SMTO_BLOCK, 5000, &ignored) != 0,
         Win32Error("SendMessageTimeoutW(TextEntry enter)"));
-    Require(WaitUntil(kTimeoutMilliseconds, [&] {
-        ComPtr<IUIAutomationElement> focused;
+    bool enterModalClosed{};
+    bool enterOwnerEnabled{};
+    bool enterDispatchedOnce{};
+    bool enterFocusRestored{};
+    const bool enterCompleted = WaitUntil(kTimeoutMilliseconds, [&] {
         const auto log = ReadUtf8(logPath);
-        return !IsWindow(modal) && IsWindowEnabled(window) &&
+        enterModalClosed = !IsWindow(modal);
+        enterOwnerEnabled = IsWindowEnabled(window);
+        enterDispatchedOnce =
             CountOccurrences(log, "Text entry modal outcome=enter ") == 1 &&
             log.find("Text entry modal outcome=enter action-dispatched=true ") !=
-                std::string::npos &&
-            CountOccurrences(ReadUtf8(backendDiagnosticPath), "query limit=") ==
-                queryCountBeforeEnter + 1 &&
+                std::string::npos;
+        ComPtr<IUIAutomationElement> focused;
+        enterFocusRestored =
             SUCCEEDED(automation->GetFocusedElement(focused.GetAddressOf())) &&
             focused && AutomationIdOf(focused.Get()) ==
                 L"widget:game-launcher.search";
-    }), "Enter did not dispatch once and restore exact search focus.");
+        return enterModalClosed && enterOwnerEnabled && enterDispatchedOnce &&
+            enterFocusRestored;
+    });
+    if (!enterCompleted) {
+        Fail("Enter completion diagnostic modalClosed=" +
+            std::to_string(enterModalClosed) + " ownerEnabled=" +
+            std::to_string(enterOwnerEnabled) + " dispatchedOnce=" +
+            std::to_string(enterDispatchedOnce) + " focusRestored=" +
+            std::to_string(enterFocusRestored));
+    }
 }
 
 void ExercisePackagedCandidate(

@@ -101,6 +101,7 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Force reload rejects unknown widget IDs", ForceReloadRejectsUnknownWidget),
     ("Bridge rejects runtime-owned lifecycle states", RuntimeOwnedLifecycleStatesAreRejected),
     ("Snapshots and hover quick actions cross bridge", SnapshotAndQuickAction),
+    ("Committed text crosses bridge and worker action execution", CommittedTextCrossesBridgeAndWorker),
     ("Managed presentation session preserves sandboxed authority lifecycle and last-good state", ManagedPresentationSessionPreservesSandboxedAuthority),
     ("Managed presentation session preserves the ordinary full-trust runtime", ManagedPresentationSessionPreservesFullTrustRuntime),
     ("Protocol-v2 scroll nodes resolve bridge render roles", ScrollRenderRole),
@@ -843,6 +844,35 @@ static Task RequestClassificationIsClosed()
     Assert.False(unknown.IsKnown,
         "Unknown request acquired an implicit scheduling convention.");
     return Task.CompletedTask;
+}
+
+static async Task CommittedTextCrossesBridgeAndWorker()
+{
+    await using var harness = await BridgeHarness.StartAsync();
+    var lifecycle = await harness.Client.RequestAsync(
+        BridgeMessageTypes.SetWidgetLifecycle,
+        new BridgeWidgetLifecycleRequest(
+            "test-widget", WidgetLifecycleState.Interactive));
+    Assert.Equal(BridgeMessageTypes.Acknowledged, lifecycle.Type);
+    _ = await harness.Client.RequestAsync(
+        BridgeMessageTypes.GetSnapshot, new WidgetIdRequest("test-widget"));
+
+    var action = await harness.Client.RequestAsync(
+        BridgeMessageTypes.Action,
+        new BridgeActionRequest(
+            "test-widget",
+            new WidgetActionEvent("committed-text", "button")
+            {
+                CommittedText = "Controller Proof",
+            }));
+    Assert.Equal(BridgeMessageTypes.Acknowledged, action.Type);
+    _ = await harness.Client.ReadEventAsync(BridgeMessageTypes.Invalidation);
+    var response = await harness.Client.RequestAsync(
+        BridgeMessageTypes.GetSnapshot, new WidgetIdRequest("test-widget"));
+    var snapshot = SnapshotJson.Deserialize(System.Text.Encoding.UTF8.GetBytes(
+        response.Payload.GetProperty("snapshot").GetRawText()));
+    Assert.Equal("committed:16", Flatten(snapshot.Root).Single(
+        node => node.Id == "committed-text-status").Text);
 }
 
 static async Task TrustedArtworkDemandIsExact()
@@ -3509,6 +3539,7 @@ file sealed class BridgeTestWidget : Widget
 {
     private double _volume = 0.5;
     private string _actionOrder = "none";
+    private string _committedTextStatus = "committed:none";
     private readonly System.Collections.Concurrent.ConcurrentDictionary<long, string>
         _inputOrigins = new();
     private readonly bool _artworkFixture;
@@ -3535,6 +3566,7 @@ file sealed class BridgeTestWidget : Widget
                 .Disabled().Classes("disabled"),
             UI.Button(_actionOrder == "none" ? "Saving" : _actionOrder, "busy", "busy-button")
                 .Busy().Classes("busy"),
+            UI.Text(_committedTextStatus, "committed-text-status"),
             UI.Slider(_volume, 0, 1, 0.1, "volume.changed", "volume",
                 "Volume", $"{_volume:P0}"),
         };
@@ -3666,6 +3698,13 @@ file sealed class BridgeTestWidget : Widget
         else if (action is { ActionId: "volume.changed", RequestedValue: { } requested })
         {
             _volume = requested;
+            Invalidate();
+        }
+        else if (action.ActionId == "committed-text")
+        {
+            _committedTextStatus = action.CommittedText is { } committed
+                ? $"committed:{committed.Length}"
+                : "committed:missing";
             Invalidate();
         }
         else if (action.ActionId == "crash")

@@ -5636,3 +5636,28 @@ retention, unknown-position replacement, provider insert/remove/move through
 replace, fresh-session restart, and the retained vertical/horizontal 10,000-item
 proof. The rejected candidate was not launched or integrated, no reference
 package was installed, and no Tier 3 or push was performed.
+
+### DLV-276 — post-verdict text-entry boundary coverage
+
+The physically accepted production remains unchanged through border correction
+`d20b2c5` on retained PID 22944. The installed Community-host Cancel fixture now
+sends Escape to the modal edit control, matching the real keyboard route, and
+separately proves modal closure, owner re-enablement, exactly one terminal
+Cancel diagnostic, unchanged backend query count, and exact search-focus
+restoration. Enter proves the complete non-secret live edit buffer, one
+acknowledged host action admission, modal closure, owner re-enablement, and
+exact focus restoration. The focused production-host route passes together
+with `TextEntryModalTests` and all 18 Accessibility Tree checks.
+
+The earlier backend query-count oracle was removed because the real-host UIA
+fixture exposes no worker-dequeue acknowledgement: a successful UIA invoke and
+native bridge admission cannot by themselves prove that the packaged handler
+executed. Its unchanged query count therefore did not prove a production
+failure. Durable deterministic coverage instead proves the committed-text
+field crosses the real worker receive/action queue and the complete Widget
+Bridge-to-worker route without logging or echoing the value; both focused cases
+pass 1/1. The existing Game Launcher committed-query handler case also passes
+1/1. Packaged worker-dequeue/result publication remains an explicitly unproven
+host-fixture boundary rather than a claimed product defect. No production,
+public protocol, widget package, credential, configuration, or running-process
+state changed during this follow-up.
