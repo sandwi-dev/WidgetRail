@@ -46,7 +46,7 @@ evidence only; this file is the sole authority for current work.
 | Lane | Task/worktree | State |
 | --- | --- | --- |
 | Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | Idle pending cumulative test evidence and integration. DLV-284 is queued but not assigned. Do not begin it, test, launch, integrate, or push. |
-| Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | DLV-321 stopped before edits because its 64-item instruction contradicted the authoritative 4-to-8 Runtime fixture. Execute corrected test-only DLV-322 below against clean `199a81b`; preserve PID 126208 and do not touch production/package/installed state, integrate, or push. |
+| Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | DLV-322's Runtime build passed but its one run stalled at the corrected gesture fixture because test ordering awaited request termination before releasing the intentionally held grant. Execute bounded test-only DLV-323 below; preserve both authorized edits and PID 126208. |
 
 ## Execution and architecture rules
 
@@ -1637,6 +1637,36 @@ one serialized Runtime build, one complete 84-case Runtime execution, commit
 exactly the two authorized files if green, then one canonical verifier from a
 clean detached tree at that exact commit. Stop first red; never push.
 
+DLV-322 made only the two authorized test-file edits and its serialized Runtime
+build passed with zero warnings/errors. The single complete execution passed
+the first nine cases, then stalled at the corrected cancellation-ignoring grant
+case. The test awaited the controller-input request's terminal failure before
+releasing the deliberately held grant, but terminal completion remains coupled
+to that outstanding grant path. After more than two minutes without progress,
+only the owned test process was terminated. The cursor convergence edit was not
+reached. No commit/Tier 3, production/package/overlay/state mutation, or push
+occurred; the two test edits remain held on clean baseline `199a81b`.
+
+## Assigned widgets correction — DLV-323 release held grant after immediate revocation
+
+Mode: bounded test-only correction after DLV-322. Preserve both current edits
+in the only authorized files and change only the gesture scenario's ordering.
+After stop/replacement, await the existing immediate `Revoked` signal and prove
+zero granted authorities plus current replacement ownership before releasing
+the held cancellation-ignoring grant. Then call `ReleaseGrant`, await separate
+grant completion and `LateGrantRevoked`, await the original input request's
+terminal failure, and retain every authority/input-sequence/revocation-bound
+assertion. Do not await the input request before releasing the held grant, add a
+timer/sleep/poll, change product code, or alter the cursor convergence edit.
+
+Build the Runtime test project once in serialized Release `--no-restore`, run
+the complete 84-case executable once, and stop first red. If green, commit
+exactly `WidgetProcessOwnershipScenarios.cs` and `Program.cs` on top of
+`199a81b`, then run one canonical Tier 3 verifier from a clean detached tree at
+that exact commit. Retain every DLV-322 prohibition and do not rerun unrelated
+focused suites outside the verifier. Stop for independent review if Tier 3 is
+green; never push.
+
 ## Queued platform production — DLV-284 explicit publication transaction model
 
 Status: queued, not assigned. It becomes assignable only after the cumulative
@@ -1722,8 +1752,8 @@ import/export or scheduling only after independent widgets prove the need.
 
 ## Ordered queues
 
-1. Widgets evidence queue: execute corrected DLV-322's two deterministic Runtime
-   fixture corrections, complete 84-case Runtime gate, and one exact-commit Tier 3
+1. Widgets evidence queue: execute bounded DLV-323 ordering correction, complete
+   84-case Runtime gate, and one exact-commit Tier 3
    verifier, stopping on the first red result.
 2. Reviewer integration queue: independently review the eventual cumulative
    evidence milestone; integrate the
@@ -1784,7 +1814,8 @@ There is no other Ready production work in either standing lane.
 | DLV-319 | Test-only `199a81b`: WidgetSdk 89/89, Spotify 54/54, Tier 2 6/6 green; exact-commit Tier 3 stopped at Runtime 82/84 with two reds and skipped later steps. |
 | DLV-320 | Completed source/artifact-only: both Runtime reds are exact test drift—shared revocation-signal ordering and first-invalidation cursor timing; no product defect. |
 | DLV-321 | Stopped before edits: assignment incorrectly required 64 items while the authoritative Runtime fixture is page-size 4, retained 8, total 12. |
-| DLV-322 | Assigned corrected test-only reconciliation using the existing 4-to-8 Runtime contract, complete Runtime gate, and one exact-commit Tier 3 verifier. |
+| DLV-322 | Stopped first red uncommitted: build green, complete Runtime run stalled after 9 passes because the test awaited request termination before releasing its intentionally held grant; owned process terminated. |
+| DLV-323 | Assigned bounded test-only ordering correction, complete Runtime gate, and one exact-commit Tier 3 verifier. |
 | DLV-284 | Queued, not assigned until cumulative integration. |
 | DLV-248 | Deliberately deferred until explicit user promotion. |
 
