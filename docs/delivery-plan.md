@@ -46,7 +46,7 @@ evidence only; this file is the sole authority for current work.
 | Lane | Task/worktree | State |
 | --- | --- | --- |
 | Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | Idle pending cumulative test evidence and integration. DLV-284 is queued but not assigned. Do not begin it, test, launch, integrate, or push. |
-| Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | DLV-296 `3922b58` is physically accepted and exact PID 83788 remains running. Test-only DLV-306 `5fe7a5f` is independently source-reviewed and accepted; five cumulative test files are now dirty. DLV-312 built green but Spotify ran 51/54; execute diagnostic-only DLV-313 before deciding whether the adjacent-failure result requires production correction. Do not rebuild, relaunch, integrate, or push. |
+| Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | DLV-296 `3922b58` is physically accepted and exact PID 83788 remains running. Test-only DLV-306 `5fe7a5f` is independently source-reviewed and accepted; five cumulative test files are dirty and held. DLV-313 classified one generic SDK production defect; execute physical-first DLV-314 below. Do not run tests, install, launch, integrate, or push. |
 
 ## Execution and architecture rules
 
@@ -1215,6 +1215,47 @@ to obtain green. If any production change is justified, stop before applying it
 so the reviewer can restore physical-first ordering. No logging, hooks, sleeps,
 polling, timeout changes, or speculative repair.
 
+DLV-313 classified the protocol and manifest failures as exact test drift:
+Spotify's estimated-extent virtual window requires protocol 19, and the accepted
+package manifest is exactly 0.3.12. It classified the adjacent-load result as a
+generic SDK production defect. `WidgetCursorResource` correctly retains rows,
+cursors, failed intent, and Error state, but `Present` regenerates edge actions
+from retained cursors while Error is visible. That creates an automatic retry
+route alongside the explicit visible Retry action and violates the documented
+cursor authoring contract. The older paged resource independently suppresses
+edge actions in Error. No file or process changed.
+
+## Assigned widgets production — DLV-314 suppress cursor edge retry in Error
+
+Mode: physical-first production/build, user verdict, then tests. Owner/baseline:
+widgets lane at `5fe7a5f`. Preserve all five dirty test files exactly; stage and
+commit only production/package files. PID 83788 and installed/configured state
+remain untouched until planner review.
+
+In `src/WidgetSdk/WidgetCursorResource.cs`, make `Present` suppress generated
+before/after focus-edge pagination actions while the snapshot status is Error.
+Retain the last-good rows, cursor/anchor facts, virtual-window metadata,
+collection generation/change markers, failed intent, explicit `Retry`, and
+normal focus-edge pagination in every non-Error state. Do not clear cursors,
+replace the snapshot, special-case Spotify, change protocol/wire shape, bounds,
+timeouts, or lifecycle authority. Match the public cursor authoring contract
+without introducing a second retry owner.
+
+Because Spotify packages the changed SDK binary and installed packages are
+immutable, advance only its manifest version from 0.3.12 to 0.3.13. Do not
+change widget identity, permissions, entrypoint, package state, credentials,
+account/provider configuration, or any other package content deliberately.
+
+Before user verdict, perform source review only, commit one production-only
+DLV-314 milestone containing exactly the SDK source and Spotify manifest, and
+build that exact commit once from a clean isolated tree as coherent Release with
+tests skipped and packaging enabled. Also build the exact 0.3.13 Spotify
+community package from that same clean tree without installing it. Report exact
+commit, diff, commands/results, clean provenance, OverlayHost/runtime/WidgetSdk
+hashes, package path/hash, and package manifest/version inspection. Do not
+author/edit/run tests, install/select packages, launch/terminate processes,
+integrate, or push. Stop for independent review and visible launch.
+
 ## Queued platform production — DLV-284 explicit publication transaction model
 
 Status: queued, not assigned. It becomes assignable only after the cumulative
@@ -1245,9 +1286,9 @@ every legal and illegal transition and follow physical-first order. Never push.
 
 ## Ordered queues
 
-1. Widgets cumulative evidence queue: classify DLV-312's three Spotify runtime
-   reds through source-only DLV-313; if any is a production defect, return to a
-   production/build/user-verdict milestone before resuming tests.
+1. Widgets production queue: execute DLV-314 generic cursor Error-state retry
+   suppression, exact clean build, and immutable Spotify 0.3.13 package; then
+   stop for reviewer launch and user verdict before resuming tests.
 2. Reviewer integration queue: independently review the eventual cumulative
    evidence milestone; integrate the
    accepted production/test chain into local main only if all required evidence
@@ -1295,7 +1336,8 @@ There is no other Ready production work in either standing lane.
 | DLV-310 | Completed diagnostic-only: one explicit build exposed six deterministic errors from a stale Spotify test fixture using the removed combined playlist-items contract; no production defect. |
 | DLV-311 | Stopped first red uncommitted: service fixture now matches the separated metadata/page contract; build exposed two stale raw-snapshot presentation fixtures before tests ran. |
 | DLV-312 | Stopped first red uncommitted: build green; Spotify 51/54 with protocol-version, adjacent-failure pagination, and manifest-version assertions red; Tier 2 and Tier 3 skipped. |
-| DLV-313 | Assigned source-only classification of all three Spotify reds before any test or production correction. |
+| DLV-313 | Completed source-only: protocol 19 and manifest 0.3.12 are test drift; automatic cursor-edge retry while Error is visible is a generic SDK production defect. |
+| DLV-314 | Assigned physical-first generic SDK Error-state edge-action suppression plus immutable Spotify 0.3.13 package and exact clean build; no tests or process/package installation before review. |
 | DLV-284 | Queued, not assigned until cumulative integration. |
 | DLV-248 | Deliberately deferred until explicit user promotion. |
 
