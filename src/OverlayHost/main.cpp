@@ -400,21 +400,23 @@ public:
                       auto value = bridge_.EstablishWidgetPresentation(
                           widgetId, widgetrail::WidgetLifecycleProtocolValue(state),
                           baseSequence, allowUpdate);
-                      return value
-                          ? widgetrail::WidgetSessionOperationResult<
-                                widgetrail::WidgetPresentationPublication>::Success(
-                                std::move(*value))
-                          : widgetrail::WidgetSessionOperationResult<
-                                widgetrail::WidgetPresentationPublication>::Failure(
-                                bridge_.lastRequestFailureCategory() ==
-                                        widgetrail::WidgetBridgeRequestFailureCategory::
-                                            StalePresentationBase
-                                    ? widgetrail::WidgetSessionFailureStage::Protocol
-                                    : bridge_.lastRuntimeFailureCategory(widgetId) ==
-                                        widgetrail::WidgetBridgeRuntimeFailureCategory::WorkerStart
-                                    ? widgetrail::WidgetSessionFailureStage::Start
-                                    : widgetrail::WidgetSessionFailureStage::Snapshot,
-                                bridge_.lastError());
+                      if (value) {
+                          return widgetrail::WidgetSessionOperationResult<
+                              widgetrail::WidgetPresentationPublication>::Success(
+                                  std::move(*value));
+                      }
+                      const auto requestFailure =
+                          bridge_.lastRequestFailureCategory();
+                      return widgetrail::WidgetSessionOperationResult<
+                          widgetrail::WidgetPresentationPublication>::Failure(
+                              requestFailure == widgetrail::
+                                  WidgetBridgeRequestFailureCategory::StalePresentationBase
+                                  ? widgetrail::WidgetSessionFailureStage::Protocol
+                                  : bridge_.lastRuntimeFailureCategory(widgetId) ==
+                                      widgetrail::WidgetBridgeRuntimeFailureCategory::WorkerStart
+                                  ? widgetrail::WidgetSessionFailureStage::Start
+                                  : widgetrail::WidgetSessionFailureStage::Snapshot,
+                              bridge_.lastError(), requestFailure);
                   },
                   [this](std::stop_token, const std::wstring_view widgetId,
                          const widgetrail::WidgetLifecycleState state) {
@@ -430,18 +432,20 @@ public:
                          const long long baseSequence, const bool allowUpdate) {
                       auto value = bridge_.GetSnapshot(
                           widgetId, baseSequence, allowUpdate);
-                      return value
-                          ? widgetrail::WidgetSessionOperationResult<
-                                widgetrail::WidgetPresentationPublication>::Success(
-                                std::move(*value))
-                          : widgetrail::WidgetSessionOperationResult<
-                                widgetrail::WidgetPresentationPublication>::Failure(
-                                bridge_.lastRequestFailureCategory() ==
-                                        widgetrail::WidgetBridgeRequestFailureCategory::
-                                            StalePresentationBase
-                                    ? widgetrail::WidgetSessionFailureStage::Protocol
-                                    : widgetrail::WidgetSessionFailureStage::Snapshot,
-                                bridge_.lastError());
+                      if (value) {
+                          return widgetrail::WidgetSessionOperationResult<
+                              widgetrail::WidgetPresentationPublication>::Success(
+                                  std::move(*value));
+                      }
+                      const auto requestFailure =
+                          bridge_.lastRequestFailureCategory();
+                      return widgetrail::WidgetSessionOperationResult<
+                          widgetrail::WidgetPresentationPublication>::Failure(
+                              requestFailure == widgetrail::
+                                  WidgetBridgeRequestFailureCategory::StalePresentationBase
+                                  ? widgetrail::WidgetSessionFailureStage::Protocol
+                                  : widgetrail::WidgetSessionFailureStage::Snapshot,
+                              bridge_.lastError(), requestFailure);
                   },
                   [](const widgetrail::WidgetSnapshot& checkpoint,
                      const widgetrail::WidgetPresentationUpdate& update,

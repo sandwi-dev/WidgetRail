@@ -431,11 +431,41 @@ std::vector<WidgetSessionEvent> WidgetSessionCoordinator::TakeEvents() {
                         : !snapshotProtocolCurrent
                             ? WidgetSessionCompletionDisposition::Failed
                         : WidgetSessionCompletionDisposition::Admitted;
-        EmitTrace(
-            request, WidgetSessionTraceStage::RequestCompleted,
-            WidgetSessionTraceAction::None,
-            WidgetSessionTraceReason::None, disposition,
-            completion.completedAt);
+        bool completionTraceEmitted{};
+        if (!completion.cancelled && completionCurrent &&
+            completion.failure.stage != WidgetSessionFailureStage::None &&
+            completion.requestFailureCategory ==
+                WidgetBridgeRequestFailureCategory::StalePresentationBase &&
+            IsPresentationChanging(request.kind) && request.allowUpdate &&
+            request.baseSequence > 0) {
+            Request retry = request;
+            retry.id = ++nextRequestId_;
+            retry.baseSequence = 0;
+            retry.allowUpdate = false;
+            retry.queuedAt = timestamp_();
+            retry.startedAt = 0;
+            EmitTrace(
+                request, WidgetSessionTraceStage::RequestCompleted,
+                WidgetSessionTraceAction::None,
+                WidgetSessionTraceReason::StaleBaseResynchronization,
+                WidgetSessionCompletionDisposition::Failed,
+                completion.completedAt);
+            completionTraceEmitted = true;
+            const auto queued = Queue(retry);
+            if (queued.accepted()) {
+                CompleteRefresh(request, false);
+                MarkRefreshInFlight(request.widgetId, queued.requestId);
+                ReleasePresentationAdmission(request);
+                continue;
+            }
+        }
+        if (!completionTraceEmitted) {
+            EmitTrace(
+                request, WidgetSessionTraceStage::RequestCompleted,
+                WidgetSessionTraceAction::None,
+                WidgetSessionTraceReason::None, disposition,
+                completion.completedAt);
+        }
         const auto makeEvent = [&](const WidgetSessionEventKind kind) {
             WidgetSessionEvent event;
             event.kind = kind;
@@ -1108,7 +1138,11 @@ WidgetSessionCoordinator::Completion WidgetSessionCoordinator::Execute(
                         L"The bridge returned an invalid widget presentation establishment.");
                 }
             }
-            else completion.failure = FailureFrom(result.failureStage, std::move(result.safeError));
+            else {
+                completion.requestFailureCategory = result.requestFailureCategory;
+                completion.failure = FailureFrom(
+                    result.failureStage, std::move(result.safeError));
+            }
             return completion;
         }
         case RequestKind::Snapshot: {
@@ -1128,7 +1162,11 @@ WidgetSessionCoordinator::Completion WidgetSessionCoordinator::Execute(
                         L"The bridge returned an invalid widget presentation publication.");
                 }
             }
-            else completion.failure = FailureFrom(result.failureStage, std::move(result.safeError));
+            else {
+                completion.requestFailureCategory = result.requestFailureCategory;
+                completion.failure = FailureFrom(
+                    result.failureStage, std::move(result.safeError));
+            }
             return completion;
         }
         case RequestKind::Lifecycle: {

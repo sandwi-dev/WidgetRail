@@ -56,6 +56,8 @@ std::wstring_view ReasonValue(const WidgetSessionTraceReason value) noexcept {
     case WidgetSessionTraceReason::MissingDescriptor: return L"missing-descriptor";
     case WidgetSessionTraceReason::ExistingRequest: return L"existing-request";
     case WidgetSessionTraceReason::NewerTarget: return L"newer-target";
+    case WidgetSessionTraceReason::StaleBaseResynchronization:
+        return L"stale-base-resynchronization";
     case WidgetSessionTraceReason::ShuttingDown: return L"shutting-down";
     case WidgetSessionTraceReason::None:
     default: return L"none";
