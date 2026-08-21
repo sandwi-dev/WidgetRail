@@ -88,6 +88,25 @@ public sealed class SpotifyCommunityApplicationTests
     }
 
     [TestMethod]
+    public async Task ConfigureClientWritesAndInvalidatesPriorCredential()
+    {
+        var configuration = new FakeConfigurationStore("Client123456789");
+        var vault = new FakeVault("old-refresh");
+        await using var backend = Backend(configuration, vault,
+            new FakeHttp(_ => throw new AssertFailedException(
+                "Configuration must not make a Spotify network request.")),
+            new NullBrowser(), new NullCallback());
+        await using var service = new SpotifyApplicationService(backend, Identity);
+
+        var result = await service.ConfigureClientAsync("ReplacementClient123456");
+
+        Assert.IsTrue(result.IsConfigured);
+        Assert.AreEqual("ReplacementClient123456", configuration.ClientId);
+        Assert.AreEqual(1, vault.DeleteCalls);
+        Assert.IsNull(vault.Token);
+    }
+
+    [TestMethod]
     public async Task PlayerQueuePlaylistsAndDevicesUseDirectWebApi()
     {
         var scopes = new HashSet<string>(StringComparer.Ordinal)
@@ -255,6 +274,8 @@ internal sealed class FakeConfigurationStore(string? clientId) : ISpotifyClientC
 {
     private SpotifyClientConfiguration? _value = clientId is null
         ? null : new(clientId);
+
+    internal string? ClientId => _value?.ClientId;
 
     public Task<SpotifyClientConfiguration?> ReadAsync(
         SpotifyIntegrationIdentity identity,

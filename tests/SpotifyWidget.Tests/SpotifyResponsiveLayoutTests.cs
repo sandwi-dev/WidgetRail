@@ -129,7 +129,7 @@ internal static class SpotifyResponsiveLayoutTests
                 "Small Hours", "Northern Lines", "Night Drive",
                 "https://i.scdn.co/image/current", "spotify:track:current"),
             new(false, false, false, false, false, false, false, false), "Spotify"),
-        null, "Playing Small Hours", null, false, 0, SpotifyDestination.Player,
+        null, "Playing Small Hours", null, false, 0, false, SpotifyDestination.Player,
         EmptyCursor<SpotifyMediaCollectionItem>(),
         EmptyCursor<SpotifyPlaylistCollectionItem>(), null, null, null,
         false, null, "spotify.play-toggle");
