@@ -681,8 +681,13 @@ internal static class BridgeClientRegistryScenarios
             });
 
         await fixture.SetLifecycleAsync(first.Id, WidgetLifecycleState.Visible);
-        await RegistryAssert.ThrowsAsync<WidgetProcessAdmissionException>(() =>
+        var refusal = await RegistryAssert.ThrowsAsync<BridgeWidgetRequestException>(() =>
             fixture.SetLifecycleAsync(second.Id, WidgetLifecycleState.Visible));
+        RegistryAssert.Equal(second.Id, refusal.WidgetId);
+        RegistryAssert.Equal("worker-admission-failed", refusal.FailureCode);
+        RegistryAssert.Equal(
+            typeof(WidgetProcessAdmissionException),
+            refusal.InnerException?.GetType());
         RegistryAssert.Equal(1, fixture.Registry.ResidencyBudget.ApplicationWorkers);
 
         RegistryAssert.True(fixture.Registry.ApplyCatalog(Catalog(second, failed), revision: 1));
