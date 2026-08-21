@@ -46,7 +46,7 @@ evidence only; this file is the sole authority for current work.
 | Lane | Task/worktree | State |
 | --- | --- | --- |
 | Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | Idle pending cumulative test evidence and integration. DLV-284 is queued but not assigned. Do not begin it, test, launch, integrate, or push. |
-| Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | DLV-314 `992b77b` is source-reviewed and exact-build clean; five cumulative test files remain dirty and held. Its coherent Release plus immutable Spotify 0.3.13 package await fresh approval to install/select/enable and visibly replace accepted PID 83788. Do not run tests, integrate, or push. |
+| Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | DLV-314 `992b77b` is source-reviewed, exact-build clean, and visibly running as responsive PID 21672 with immutable Spotify 0.3.13 selected/enabled. Five cumulative test files remain dirty and held. Await user verdict; do not run tests, integrate, or push. |
 
 ## Execution and architecture rules
 
@@ -1280,11 +1280,22 @@ and validated full-trust identity `widgetrail.samples.spotify`.
 
 The attempted install/select/enable command was denied before execution because
 the persistent full-trust package change requires fresh explicit user approval.
-No package, process, or configuration mutation occurred; accepted PID 83788
-remains responsive on DLV-296 with Spotify 0.3.12. Await approval, then install
-0.3.13, cooperatively close only verified PID 83788, visibly launch exact
-DLV-314 Release, verify process/artifact/package identity, and stop for the
-physical verdict. Do not run tests before that verdict.
+No package, process, or configuration mutation occurred in that attempt;
+accepted PID 83788 remained responsive on DLV-296 with Spotify 0.3.12, and no
+retry occurred until the user approved it.
+
+The user then explicitly approved the full-trust package installation and
+visible switch. Spotify 0.3.13 installed immutably, was selected and enabled,
+and existing configuration/credentials remained in their user-owned stores.
+Verified PID 83788 accepted cooperative `WM_CLOSE` through its top-level
+windows; no force termination occurred. Exact DLV-314 PID 21672 launched
+visibly from the clean detached Release and remains responsive. Its executable
+path is
+`C:\Users\dwive\AppData\Local\Temp\GameBarAlternative-dlv314-992b77b\src\OverlayHost\out\Release\OverlayHost.exe`
+and its SHA-256 reverified as
+`318F3BD2B0F7E028EB9C2CC091B4DD74F7D880C4AAC45243AE628614E9FD69D8`.
+Catalog inspection reports Spotify 0.3.13 enabled. Stop for the user's physical
+verdict; do not run tests first.
 
 ## Queued platform production — DLV-284 explicit publication transaction model
 
@@ -1316,9 +1327,8 @@ every legal and illegal transition and follow physical-first order. Never push.
 
 ## Ordered queues
 
-1. Widgets production queue: after fresh user approval, install/select/enable
-   reviewed Spotify 0.3.13 and visibly switch from PID 83788 to exact DLV-314;
-   stop for user verdict before resuming tests.
+1. Widgets production queue: exact DLV-314 PID 21672 with Spotify 0.3.13 is
+   visibly running; stop for user verdict before resuming tests.
 2. Reviewer integration queue: independently review the eventual cumulative
    evidence milestone; integrate the
    accepted production/test chain into local main only if all required evidence
@@ -1367,7 +1377,7 @@ There is no other Ready production work in either standing lane.
 | DLV-311 | Stopped first red uncommitted: service fixture now matches the separated metadata/page contract; build exposed two stale raw-snapshot presentation fixtures before tests ran. |
 | DLV-312 | Stopped first red uncommitted: build green; Spotify 51/54 with protocol-version, adjacent-failure pagination, and manifest-version assertions red; Tier 2 and Tier 3 skipped. |
 | DLV-313 | Completed source-only: protocol 19 and manifest 0.3.12 are test drift; automatic cursor-edge retry while Error is visible is a generic SDK production defect. |
-| DLV-314 | Source-reviewed exact-build candidate `992b77b`; awaiting fresh approval for full-trust Spotify 0.3.13 installation and visible overlay switch before user verdict. |
+| DLV-314 | Source-reviewed exact-build `992b77b` visibly runs as PID 21672 with Spotify 0.3.13 selected/enabled; awaiting user verdict before tests. |
 | DLV-284 | Queued, not assigned until cumulative integration. |
 | DLV-248 | Deliberately deferred until explicit user promotion. |
 
