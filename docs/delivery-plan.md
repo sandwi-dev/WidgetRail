@@ -46,7 +46,7 @@ evidence only; this file is the sole authority for current work.
 | Lane | Task/worktree | State |
 | --- | --- | --- |
 | Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | Idle pending cumulative test evidence and integration. DLV-284 is queued but not assigned. Do not begin it, test, launch, integrate, or push. |
-| Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | DLV-314 `992b77b` is physically accepted as responsive PID 21672 with immutable Spotify 0.3.13 selected/enabled. DLV-315 stopped first red before test execution and left six test files dirty and held. Execute diagnostic-only DLV-316 below; do not rebuild/relaunch, integrate, or push. |
+| Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | DLV-314 `992b77b` is physically accepted as responsive PID 21672 with immutable Spotify 0.3.13 selected/enabled. DLV-316 proved the six-file DLV-315 evidence set compiles cleanly under serialized local compilation. Execute test-only DLV-317 below; do not rebuild/relaunch the overlay, integrate, or push. |
 
 ## Execution and architecture rules
 
@@ -1370,6 +1370,37 @@ planner disposition; do not rerun DLV-315 or advance to Spotify/Tier 2/Tier 3.
 No source correction, logging/hooks, sleeps, polling, timeout enlargement, or
 speculative repair is authorized.
 
+DLV-316's one explicit serialized Release build passed in 7.38 seconds with
+zero warnings/errors and produced the WidgetSdk test executable. MSBuild logged
+an `UnauthorizedAccessException` while connecting to the Roslyn compiler-server
+named pipe, then correctly fell back to local compilation. This classifies
+DLV-315's diagnostic-free `dotnet run` failure as an execution-environment/
+compiler-server incident rather than a source or product failure. No file,
+process, package, or installed state changed.
+
+## Assigned widgets evidence — DLV-317 resume cumulative gate
+
+Mode: test-only continuation after DLV-316. Preserve baseline `992b77b`, the
+exact six dirty test files, accepted PID 21672, Spotify 0.3.13, and installed/
+configured state. No production/package edit, restore/update, logging/hooks,
+sleeps, polling, timeout enlargement, weakened assertion, overlay rebuild/
+relaunch, installed-state change, integration, or push.
+
+Execute the already-built complete WidgetSdk test executable exactly once,
+without invoking another WidgetSdk build. If green, compile the complete
+Spotify test project exactly once with serialized Release `--no-restore`, then
+execute its 54-case binary exactly once. If green, run the smallest linked Tier
+2 convergence group and one exact-commit Tier 3 verifier required by DLV-315.
+Stop at the first red command and report all later groups as skipped. Do not
+rerun Bridge/native coordinator/WidgetRuntime/individual notification prefixes
+unless the documented Tier runner necessarily owns them.
+
+Record exact commands, counts, hashes/provenance, results, and skips. If every
+required group passes, commit exactly the original five held test files plus
+`tests/WidgetSdk.Tests/WidgetCursorResourceTests.cs` as one coherent test-only
+DLV-317 milestone, then stop for independent review. Do not include generated
+outputs or any seventh file.
+
 ## Queued platform production — DLV-284 explicit publication transaction model
 
 Status: queued, not assigned. It becomes assignable only after the cumulative
@@ -1455,21 +1486,19 @@ import/export or scheduling only after independent widgets prove the need.
 
 ## Ordered queues
 
-1. Widgets diagnostic queue: execute DLV-316 once to expose and classify the
-   hidden WidgetSdk build failure, then stop for planner disposition.
-2. Widgets evidence queue: after the smallest authorized correction, resume the
-   DLV-315 WidgetSdk, Spotify, linked Tier 2, and exact-commit Tier 3 sequence
-   against accepted DLV-314, stopping on the first red result.
-3. Reviewer integration queue: independently review the eventual cumulative
+1. Widgets evidence queue: execute DLV-317's already-built WidgetSdk binary,
+   serialized Spotify build/54-case binary, linked Tier 2, and exact-commit
+   Tier 3 sequence against accepted DLV-314, stopping on the first red result.
+2. Reviewer integration queue: independently review the eventual cumulative
    evidence milestone; integrate the
    accepted production/test chain into local main only if all required evidence
    passes.
-4. Platform production queue: assign DLV-284 after integration, before any new
+3. Platform production queue: assign DLV-284 after integration, before any new
    virtualization feature.
-5. Future architecture queue: generic Game Launcher cutover, deliberate
+4. Future architecture queue: generic Game Launcher cutover, deliberate
    LauncherExperience deletion/state retirement, then model-level protocol
    requirements and the remaining maturity-review deliverables above.
-6. DLV-248 remains deliberately deferred until explicit user promotion.
+5. DLV-248 remains deliberately deferred until explicit user promotion.
 
 There is no other Ready production work in either standing lane.
 
@@ -1513,7 +1542,8 @@ There is no other Ready production work in either standing lane.
 | DLV-313 | Completed source-only: protocol 19 and manifest 0.3.12 are test drift; automatic cursor-edge retry while Error is visible is a generic SDK production defect. |
 | DLV-314 | Physically accepted production `992b77b`, visibly running as PID 21672 with Spotify 0.3.13 selected/enabled. |
 | DLV-315 | Stopped first red uncommitted: authorized test edits remain held; WidgetSdk build failed before execution with no causal diagnostic, so later groups were skipped. |
-| DLV-316 | Assigned diagnostic-only one-build capture of DLV-315's hidden WidgetSdk compiler/MSBuild failure. |
+| DLV-316 | Completed diagnostic-only: serialized Release build passed with 0 warnings/errors after Roslyn named-pipe denial fell back to local compilation; no source/product failure. |
+| DLV-317 | Assigned test-only continuation of the complete WidgetSdk, Spotify, Tier 2, and Tier 3 evidence gate using the exact six held files. |
 | DLV-284 | Queued, not assigned until cumulative integration. |
 | DLV-248 | Deliberately deferred until explicit user promotion. |
 
