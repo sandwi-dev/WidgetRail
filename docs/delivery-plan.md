@@ -46,7 +46,7 @@ evidence only; this file is the sole authority for current work.
 | Lane | Task/worktree | State |
 | --- | --- | --- |
 | Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | Idle pending cumulative test evidence and integration. DLV-284 is queued but not assigned. Do not begin it, test, launch, integrate, or push. |
-| Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | DLV-296 `3922b58` is physically accepted and exact PID 83788 remains running. Test-only DLV-306 `5fe7a5f` is independently source-reviewed and accepted; four notification-evidence files are committed and three cumulative matrix files remain dirty. DLV-307 stopped at a full-Bridge residency-budget assertion; execute diagnostic-only DLV-308 below. Do not change production, rebuild, relaunch, integrate, or push. |
+| Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | DLV-296 `3922b58` is physically accepted and exact PID 83788 remains running. Test-only DLV-306 `5fe7a5f` is independently source-reviewed and accepted; four notification-evidence files are committed and three cumulative matrix files remain dirty. DLV-308 proved DLV-307's sole red was a stale Bridge-boundary test expectation; execute test-only DLV-309 below. Do not change production, rebuild, relaunch, integrate, or push. |
 
 ## Execution and architecture rules
 
@@ -1035,6 +1035,46 @@ bisect or rerun under this assignment. Stop for reviewer direction on any
 nondeterminism, fixture gap, or production defect. No logging, hooks, sleeps,
 polling, timeout enlargement, weakened assertions, or speculative repair.
 
+DLV-308 reproduced the residency test red in isolation 0/1 and ruled out
+full-suite state contamination. The refusal is correctly framed as error code
+`request_failed` with bounded message `Widget 'worker-1' runtime request failed
+(worker-admission-failed).`; the stale test instead searched that public Bridge
+message for the inner budget exception text `application worker limit (1/1)`.
+The direct registry evidence already owns the exact inner admission exception.
+No file, process, package, or installed state changed.
+
+## Assigned widgets evidence — DLV-309 correct boundary assertion and finish gate
+
+Mode: test-only after accepted DLV-308 classification. Owner/baseline: widgets
+lane at `5fe7a5f` with exactly the same three dirty cumulative matrix files.
+Production/runtime source, packages, manifests, protocols, bounds, timeouts,
+installed/configured state, and PID 83788 are frozen.
+
+Change only the stale residency-refusal assertion in
+`tests/WidgetBridge.Tests/Program.cs`: at the Bridge boundary require exact
+error code `request_failed` and exact typed wrapper message `Widget 'worker-1'
+runtime request failed (worker-admission-failed).`. Preserve the existing
+worker-count refusal, reservation counters, crash release, replacement retry,
+and direct-registry inner-exception coverage. Do not weaken the contract or add
+fallback alternatives.
+
+Run in this order, once each, and stop at the first red result:
+
+1. the corrected residency-count Bridge prefix outside the command sandbox;
+2. the complete focused Bridge suite outside the command sandbox;
+3. the smallest focused Spotify paging/virtual-window suite;
+4. the smallest linked Tier 2 cross-process convergence group; and
+5. one exact-commit Tier 3 verifier.
+
+Do not rerun already-green native coordinator, WidgetSdk, WidgetRuntime, or
+individual notification prefixes. Use current documented runners and record
+exact commands, counts, hashes where applicable, and all skipped/ineligible
+evidence. No production repair, logging, hooks, sleeps, polling, timeout
+enlargement, weakened assertions, rebuild/relaunch, integration, or push. If
+every required group passes, commit one coherent test-only DLV-309 milestone
+containing exactly the three remaining matrix files and stop for independent
+review.
+
 ## Queued platform production — DLV-284 explicit publication transaction model
 
 Status: queued, not assigned. It becomes assignable only after the cumulative
@@ -1065,9 +1105,9 @@ every legal and illegal transition and follow physical-first order. Never push.
 
 ## Ordered queues
 
-1. Widgets cumulative evidence queue: classify DLV-307's single full-Bridge red
-   result through diagnostic-only DLV-308, then resume cumulative evidence only
-   under a new reviewed assignment.
+1. Widgets cumulative evidence queue: execute DLV-309's exact Bridge-boundary
+   assertion correction, then finish Bridge, Spotify, Tier 2, and Tier 3 in
+   order, stopping on the first red result.
 2. Reviewer integration queue: independently review the eventual cumulative
    evidence milestone; integrate the
    accepted production/test chain into local main only if all required evidence
@@ -1110,7 +1150,8 @@ There is no other Ready production work in either standing lane.
 | DLV-305 | Completed green uncommitted: exact-base atomic update produced generation-2 Append and base-zero checkpoint produced the same durable generation-2 Replace, 1/1. |
 | DLV-306 | Accepted test-only `5fe7a5f`: permanent Bridge exact-base Append/base-zero Replace convergence passed 1/1; four notification-evidence files committed. |
 | DLV-307 | Stopped first red: full Bridge passed 95/96; the residency-count refusal message assertion failed, so Spotify, Tier 2, and Tier 3 were skipped and no commit was created. |
-| DLV-308 | Assigned diagnostic-only source audit plus one isolated residency-count prefix run; no edits, reruns, repair, commit, process action, or integration. |
+| DLV-308 | Completed diagnostic-only: isolated prefix reproduced 0/1 and proved a stale Bridge wrapper-message expectation, not suite state contamination or a production budget defect. |
+| DLV-309 | Assigned one exact test-only Bridge-boundary assertion correction followed by the remaining cumulative Bridge, Spotify, Tier 2, and Tier 3 gate. |
 | DLV-284 | Queued, not assigned until cumulative integration. |
 | DLV-248 | Deliberately deferred until explicit user promotion. |
 
