@@ -34,7 +34,7 @@ The complete delivery record through the DLV-277 assignment is preserved in the\
 | Lane | Task/worktree | State |
 | --- | --- | --- |
 | Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | DLV-277 is accepted and integrated through main `c21ad02`; PID 34764 remains the accepted production artifact. No platform deliverable is assigned. DLV-273 remains retired and DLV-248 remains deferred. Never push. |
-| Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | DLV-279 production through `5468199` is source-reviewed and accepted for physical staging: exact-base publication normalizes only re-entering virtual-window IDs to `Replace`. Cumulative immutable Spotify 0.3.10 at `4af365f` passed the tests-skipped Release/package build and awaits explicit full-trust install/select/enable approval. Preserve current Client ID/account/configuration, PID 34764, installed 0.3.3 rollback, rejected installed 0.3.4/0.3.6/0.3.7, un-staged immutable 0.3.8/0.3.9, and native/shared-host contracts. Do not test, stage, launch, or integrate before approval and verdict. Never push. |
+| Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | DLV-279 production through `5468199` is source-reviewed: exact-base publication normalizes only re-entering virtual-window IDs to `Replace`. After explicit full-trust approval, cumulative immutable Spotify 0.3.10 at `4af365f` is installed, selected, and enabled for physical verdict. Preserve current Client ID/account/configuration, PID 34764, installed 0.3.3 rollback, rejected installed 0.3.4/0.3.6/0.3.7, un-staged immutable 0.3.8/0.3.9, and native/shared-host contracts. Do not test, relaunch, or integrate before verdict. Never push. |
 
 ## Execution, review, and architecture rules
 
@@ -417,8 +417,11 @@ Exact cumulative tests-skipped Release and package validation pass. Immutable
 0.3.8 and 0.3.9 remain un-staged intermediate builds. Corrected Spotify 0.3.10
 at `4af365f` is 1,163,988 bytes with SHA-256
 `3B941B259C519BA8EBFED59B50B6B6FFCC63E8BD4F948E2A39D1699A2B3F7B75`.
-No tests, staging, launch, configuration/account action, integration, or push
-occurred. Await explicit full-trust approval to install/select/enable 0.3.10.
+No tests, launch, configuration/account action, integration, or push occurred.
+The user granted explicit full-trust approval. Spotify was briefly disabled as
+required by catalog update safety, then 0.3.10 was installed, selected, and
+re-enabled. The 0.3.7 worker PID 56308 retired cooperatively with exit code 0;
+accepted host PID 34764 remains responsive. Await the physical verdict.
 
 ## Held widgets deliverable — DLV-270: Spotify collection paging efficiency
 
@@ -522,9 +525,9 @@ after explicit full-trust approval.
    and preserved, but the cumulative Spotify 0.3.7 verdict is rejected on the
    distinct virtual-window re-entry boundary.
 3. DLV-279 through `5468199` and cumulative immutable Spotify 0.3.10 at
-   `4af365f` are source-reviewed and built. Obtain explicit full-trust approval
-   before install/select/enable and the cumulative physical verdict. Do not test
-   or integrate DLV-278, DLV-279, or DLV-270 before acceptance.
+   `4af365f` are source-reviewed, built, installed, selected, and enabled after
+   explicit full-trust approval. Obtain the cumulative physical verdict. Do not
+   test or integrate DLV-278, DLV-279, or DLV-270 before acceptance.
 4. DLV-248 remains deferred until explicit user promotion.
 
 ## Manual, external, and blocked evidence
@@ -540,8 +543,8 @@ after explicit full-trust approval.
 | DLV-277 | Complete: physical verdict accepted; focused native evidence passes and production/tests are integrated through main `c21ad02`. |
 | DLV-265 | Complete: physical verdict accepted; focused Spotify evidence passes and production/tests are integrated through main `bb8234f`. |
 | DLV-278 | Production `ab4844d` is source-reviewed; 0.3.7 physically confirmed its v18-to-v19 checkpoint and stable worker, but integration waits for the corrected cumulative verdict and post-verdict tests. |
-| DLV-279 | Production through `5468199` is source-reviewed; the exact prior virtual-window identity set controls `Replace` re-entry. Corrected cumulative Spotify 0.3.10 awaits explicit full-trust staging approval. |
-| DLV-270 | Spotify 0.3.7 is rejected after B from deeply paged detail caused stale virtual-window re-entry. Corrected cumulative immutable 0.3.10 at `4af365f` is built and awaits staging approval. |
+| DLV-279 | Production through `5468199` is source-reviewed; the exact prior virtual-window identity set controls `Replace` re-entry. Corrected cumulative Spotify 0.3.10 is selected/enabled for verdict. |
+| DLV-270 | Spotify 0.3.7 is rejected after B from deeply paged detail caused stale virtual-window re-entry. Corrected cumulative immutable 0.3.10 at `4af365f` is selected/enabled for verdict. |
 | DLV-248 | Deliberately deferred until explicit user promotion. |
 
 ## Recent accepted milestones
