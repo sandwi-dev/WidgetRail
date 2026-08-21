@@ -122,14 +122,20 @@ int main() {
             .actionId = L"shared-action", .focusPersistenceId = L"nav.library"},
     };
     responsiveSnapshot.root.children = {compact, rail};
-    Check(ResolveResponsiveFocusPersistenceTarget(
-              responsiveSnapshot, L"compact-library", L"root", false) ==
-              L"rail-library",
+    const auto expandedLibrary = ResolveResponsiveFocusPersistenceTarget(
+        responsiveSnapshot, L"compact-library", L"root", false);
+    Check(expandedLibrary == L"rail-library",
           "expanded presentation preserves the explicit logical destination");
-    Check(ResolveResponsiveFocusPersistenceTarget(
-              responsiveSnapshot, L"rail-home", L"root", true) ==
-              L"compact-home",
+    Check(!ResolveResponsiveFocusPersistenceTarget(
+              responsiveSnapshot, *expandedLibrary, L"root", false),
+          "same committed expanded mode cannot remap an already visible alias");
+    const auto compactHome = ResolveResponsiveFocusPersistenceTarget(
+        responsiveSnapshot, L"rail-home", L"root", true);
+    Check(compactHome == L"compact-home",
           "compact presentation preserves the explicit logical destination");
+    Check(!ResolveResponsiveFocusPersistenceTarget(
+              responsiveSnapshot, *compactHome, L"root", true),
+          "one compact transition consumes the responsive alias handoff");
 
     auto sharedActionOnly = responsiveSnapshot;
     sharedActionOnly.root.children[1].children[1].focusPersistenceId = L"nav.other";

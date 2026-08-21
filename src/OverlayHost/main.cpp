@@ -1981,7 +1981,6 @@ private:
                 ClearAccessibilityTree();
             if (!compositionPlacementInProgress_) {
                 ClearFreeScrollReentry(L"viewport-resized");
-                (void)ReconcileResponsiveFocusPersistence();
             }
             if (resize.invalidate && !compositionPlacementInProgress_)
                 InvalidateRect(window_, nullptr, FALSE);
@@ -2370,7 +2369,6 @@ private:
             RedrawWindow(window_, nullptr, nullptr,
                 RDW_INVALIDATE | RDW_UPDATENOW | RDW_ALLCHILDREN);
         }
-        (void)ReconcileResponsiveFocusPersistence();
     }
 
     void Dispatch(const widgetrail::Command command) {
@@ -4818,7 +4816,6 @@ private:
                 pendingWidgetSwitchSnap_.reset();
             }
         }
-        (void)ReconcileResponsiveFocusPersistence();
     }
 
     struct TrayPointerTarget final {
@@ -6392,7 +6389,6 @@ private:
             interactionSession_.ClearFocus();
         if (!interactionSession_.focusedElementId().empty())
             (void)scrollEvidenceProbe_.RecordTarget(interactionSession_.focusedElementId(), L"restore");
-        (void)ReconcileResponsiveFocusPersistence();
     }
 
     void HandleAccessibilityActions() {
@@ -6873,44 +6869,29 @@ private:
             accessibilityProjection_.Published(key);
     }
 
-    bool ReconcileResponsiveFocusPersistence() {
+    bool ReconcileResponsiveFocusPersistence(
+        const std::wstring_view widget,
+        const widgetrail::WidgetSnapshot& snapshot,
+        const widgetrail::RenderResult& renderResult) {
         if (!window_ || state_.surface() != widgetrail::Surface::Widget ||
-            state_.focusRegion() != widgetrail::FocusRegion::Widget) {
+            state_.focusRegion() != widgetrail::FocusRegion::Widget ||
+            state_.activeWidget() != widget || !renderResult.succeeded ||
+            !renderResult.responsiveSurface) {
             return false;
         }
-        const std::wstring widget{state_.activeWidget()};
-        const auto* snapshot = InteractionSnapshotFor(widget);
-        if (!snapshot || interactionSession_.focusedElementId().empty()) return false;
-
-        RECT client{};
-        if (!GetClientRect(window_, &client)) return false;
-        const UINT dpi = std::max(1U, GetDpiForWindow(window_));
-        const float interfaceScale = appearanceState_.current()
-            ? static_cast<float>(appearanceState_.current()->interfaceScale)
-            : 1.0F;
-        const auto metrics = widgetrail::ComputeOverlayRenderMetrics(
-            client.right - client.left,
-            client.bottom - client.top,
-            dpi,
-            interfaceScale);
-        if (!metrics) return false;
-        const auto geometry = ComputeCurrentWidgetSurfaceGeometry(
-            metrics->viewportWidthDip, metrics->viewportHeightDip);
-        if (!geometry) return false;
+        if (interactionSession_.focusedElementId().empty()) return false;
 
         const auto target = widgetrail::input::ResolveResponsiveFocusPersistenceTarget(
-            *snapshot,
+            snapshot,
             interactionSession_.focusedElementId(),
-            snapshot->activeInputScopeId,
-            widgetrail::IsCompactResponsiveSurface({
-                geometry->panelWidth,
-                geometry->panelHeight,
-            }));
+            snapshot.activeInputScopeId,
+            renderResult.responsiveSurface->mode ==
+                widgetrail::ResponsiveSurfaceMode::Compact);
         if (!target || *target == interactionSession_.focusedElementId()) return false;
 
         ClearFreeScrollReentry(L"responsive-view-changed");
         const auto focus = interactionSession_.MoveFocus(
-            widget, *snapshot, *target);
+            widget, snapshot, *target);
         (void)scrollEvidenceProbe_.RecordTarget(*target, L"responsive");
         InvalidateWidgetFocusChange(focus.priorFocus, focus.sliderDamageNodeIds);
         return true;
@@ -10197,6 +10178,19 @@ private:
                                 (launcherProjection.highContrast
                                     ? L"contrast-high" : L"contrast-standard")
                             : L"\nlauncher-presentation\ninactive";
+                    const std::wstring responsivePresentationKey =
+                        result.responsiveSurface
+                            ? L"\nresponsive-surface\n" +
+                                std::to_wstring(
+                                    result.responsiveSurface->viewport.width) +
+                                L"x" + std::to_wstring(
+                                    result.responsiveSurface->viewport.height) +
+                                L"\n" +
+                                (result.responsiveSurface->mode ==
+                                        widgetrail::ResponsiveSurfaceMode::Compact
+                                    ? L"compact"
+                                    : L"expanded")
+                            : L"\nresponsive-surface\nunavailable";
                     const std::wstring paintKey =
                         std::wstring(widget) + L"\n" + std::wstring(renderedWidget) +
                         L"\n" + std::to_wstring(snapshot->sequence) + L"\n" +
@@ -10206,7 +10200,8 @@ private:
                                 ? L"failure-retained" : L"refresh-retained")
                             : transitionRetainedSnapshot ? L"retained" : L"admitted") +
                         L"\n" + inputOwner + L"\n" + std::wstring(renderedFocusId) +
-                        L"\n" + semanticFocus + trayState + launcherPresentationKey;
+                        L"\n" + semanticFocus + trayState + launcherPresentationKey +
+                        responsivePresentationKey;
                     if (paintKey != lastWidgetPresentationPaintKey_) {
                         lastWidgetPresentationPaintKey_ = paintKey;
                         if (launcherProjection.disposition ==
@@ -10343,6 +10338,20 @@ private:
                                 ? std::wstring{L"none"}
                                 : std::wstring{renderedFocusId}) +
                             L" semantic-focus=" + semanticFocus +
+                            L" responsive-mode=" +
+                            (result.responsiveSurface
+                                ? result.responsiveSurface->mode ==
+                                        widgetrail::ResponsiveSurfaceMode::Compact
+                                    ? L"compact"
+                                    : L"expanded"
+                                : L"unavailable") +
+                            L" responsive-surface=" +
+                            (result.responsiveSurface
+                                ? std::to_wstring(
+                                      result.responsiveSurface->viewport.width) +
+                                    L"x" + std::to_wstring(
+                                      result.responsiveSurface->viewport.height)
+                                : std::wstring{L"unavailable"}) +
                             L" work=" + std::wstring(workClass) +
                             L" damage=" + std::to_wstring(damage.x) + L"," +
                             std::to_wstring(damage.y) + L"," +
@@ -10459,6 +10468,8 @@ private:
                 declarativeMotionActive_ = !inertRetainedSnapshot && result.animationActive;
                 if (!textEntryModal_.active() && !inertRetainedSnapshot &&
                     !options.suppressFocusedDescendantFollow) {
+                    (void)ReconcileResponsiveFocusPersistence(
+                        renderedWidget, semanticSnapshot, result);
                     if (const auto visibleFocus = widgetrail::input::ResolveVisibleFocusTarget(
                         interactionSession_.focusedElementId(), semanticSnapshot.activeInputScopeId, result);
                         visibleFocus && *visibleFocus != interactionSession_.focusedElementId()) {

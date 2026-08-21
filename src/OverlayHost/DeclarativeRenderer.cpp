@@ -3663,6 +3663,14 @@ RenderResult DeclarativeRenderer::Render(
             return item.severity == RenderDiagnosticSeverity::Error;
         });
     pass.result.succeeded = !hasErrors && pass.layout.valid() && renderTarget;
+    if (pass.result.succeeded) {
+        pass.result.responsiveSurface = ResponsiveSurfacePresentation{
+            responsiveViewport,
+            pass.compactMode
+                ? ResponsiveSurfaceMode::Compact
+                : ResponsiveSurfaceMode::Expanded,
+        };
+    }
     std::wstring collectionAdmissionSummary;
     if (pass.result.succeeded) {
         auto collectionObservations = pass.CaptureCollectionObservations();

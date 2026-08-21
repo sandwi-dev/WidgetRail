@@ -3197,6 +3197,108 @@ void RealDirect2DSmoke() {
          optimisticSliderRect.x + focusedTrackInset + focusedTrackWidth * 0.75F,
          "optimistic Slider thumb paints at the presented value instead of snapshot value");
 
+    WidgetSnapshot responsiveSnapshot;
+    responsiveSnapshot.sequence = 77;
+    responsiveSnapshot.instanceId = L"responsive-commit.runtime";
+    responsiveSnapshot.activeInputScopeId = L"responsive-commit.root";
+    responsiveSnapshot.root = Node(L"responsive-commit.root", L"stack");
+    responsiveSnapshot.root.inputScopeId = responsiveSnapshot.activeInputScopeId;
+    auto compactBranch = Node(L"responsive-commit.compact", L"stack");
+    compactBranch.visibleWhen = L"compactOnly";
+    auto compactAction = Node(L"responsive-commit.compact.queue", L"button");
+    compactAction.text = L"Queue";
+    compactAction.accessibilityLabel = L"Compact Queue";
+    compactAction.actionId = L"queue.open";
+    compactAction.focusPersistenceId = L"navigation.queue";
+    compactBranch.children = {compactAction};
+    auto expandedBranch = Node(L"responsive-commit.expanded", L"stack");
+    expandedBranch.visibleWhen = L"expandedOnly";
+    auto expandedAction = Node(L"responsive-commit.expanded.queue", L"button");
+    expandedAction.text = L"Queue";
+    expandedAction.accessibilityLabel = L"Expanded Queue";
+    expandedAction.actionId = L"queue.open";
+    expandedAction.focusPersistenceId = L"navigation.queue";
+    expandedBranch.children = {expandedAction};
+    responsiveSnapshot.root.children = {compactBranch, expandedBranch};
+
+    widgetrail::DeclarativeRenderOptions expandedOptions;
+    expandedOptions.collectAccessibility = true;
+    expandedOptions.responsiveViewport = Size{980.0F, 560.0F};
+    const auto renderResponsive = [&](const std::wstring_view focus,
+                                      const Rect viewport,
+                                      const widgetrail::DeclarativeRenderOptions& renderOptions) {
+        target->BeginDraw();
+        target->Clear(D2D1::ColorF(D2D1::ColorF::Black));
+        const auto rendered = renderer.Render(
+            target.Get(), responsiveSnapshot, focus, viewport, renderOptions);
+        Check(SUCCEEDED(target->EndDraw()),
+              "committed responsive geometry draw completes");
+        Check(rendered.succeeded && rendered.responsiveSurface.has_value(),
+              "successful render publishes one committed responsive decision");
+        return rendered;
+    };
+    const Rect expandedContentViewport{0.0F, 0.0F, 640.0F, 360.0F};
+    const auto expandedResponsive = renderResponsive(
+        L"responsive-commit.expanded.queue",
+        expandedContentViewport, expandedOptions);
+    Check(expandedResponsive.responsiveSurface->mode ==
+              widgetrail::ResponsiveSurfaceMode::Expanded,
+          "authored pre-chrome surface commits the expanded mode");
+    Near(expandedResponsive.responsiveSurface->viewport.width, 980.0F,
+         "committed responsive width retains authored authority");
+    Near(expandedResponsive.responsiveSurface->viewport.height, 560.0F,
+         "committed responsive height is not replaced by content height");
+    Check(expandedResponsive.focusRects.contains(
+              L"responsive-commit.expanded.queue") &&
+          !expandedResponsive.focusRects.contains(
+              L"responsive-commit.compact.queue") &&
+          std::ranges::any_of(
+              expandedResponsive.accessibilityRegions,
+              [](const auto& region) {
+                  return region.nodeId ==
+                      L"responsive-commit.expanded.queue";
+              }) &&
+          std::ranges::none_of(
+              expandedResponsive.accessibilityRegions,
+              [](const auto& region) {
+                  return region.nodeId ==
+                      L"responsive-commit.compact.queue";
+              }),
+          "focus, hit testing, and UIA expose only the committed expanded branch");
+
+    const auto sameSequenceRefresh = renderResponsive(
+        L"responsive-commit.expanded.queue",
+        expandedContentViewport, expandedOptions);
+    Check(sameSequenceRefresh.responsiveSurface->mode ==
+              widgetrail::ResponsiveSurfaceMode::Expanded &&
+          sameSequenceRefresh.focusRects.contains(
+              L"responsive-commit.expanded.queue") &&
+          !sameSequenceRefresh.focusRects.contains(
+              L"responsive-commit.compact.queue"),
+          "same-sequence same-geometry refresh preserves responsive focus geometry");
+
+    auto compactOptions = expandedOptions;
+    compactOptions.responsiveViewport = Size{980.0F, 505.0F};
+    const auto compactResponsive = renderResponsive(
+        L"responsive-commit.compact.queue",
+        {0.0F, 0.0F, 640.0F, 320.0F}, compactOptions);
+    Check(compactResponsive.responsiveSurface->mode ==
+              widgetrail::ResponsiveSurfaceMode::Compact,
+          "real committed surface resize selects compact mode once");
+    Near(compactResponsive.responsiveSurface->viewport.height, 505.0F,
+         "resized committed surface records its exact responsive height");
+    Check(compactResponsive.focusRects.contains(
+              L"responsive-commit.compact.queue") &&
+          !compactResponsive.focusRects.contains(
+              L"responsive-commit.expanded.queue") &&
+          std::ranges::any_of(
+              compactResponsive.accessibilityRegions,
+              [](const auto& region) {
+                  return region.nodeId ==
+                      L"responsive-commit.compact.queue";
+              }),
+          "resize makes focus, hit testing, and UIA agree on compact geometry");
+
     WidgetSnapshot loadingSnapshot;
     loadingSnapshot.instanceId = L"loading.runtime";
     loadingSnapshot.activeInputScopeId = L"loading-root";

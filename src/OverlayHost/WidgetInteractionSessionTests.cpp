@@ -210,6 +210,68 @@ void FocusAndSurfaceLifecycle() {
           "a nested input scope restores its own focus surface");
 }
 
+void ResponsiveFocusHandoffUsesInteractionOwner() {
+    using namespace widgetrail::input;
+    widgetrail::WidgetSnapshot snapshot;
+    snapshot.sequence = 77;
+    snapshot.instanceId = L"responsive.instance";
+    snapshot.activeInputScopeId = L"responsive.root";
+    snapshot.root.id = L"responsive.root";
+    snapshot.root.kind = L"stack";
+    snapshot.root.inputScopeId = snapshot.activeInputScopeId;
+
+    widgetrail::WidgetNode compact;
+    compact.id = L"responsive.compact";
+    compact.kind = L"stack";
+    compact.visibleWhen = L"compactOnly";
+    auto compactQueue = Button(L"responsive.compact.queue", L"queue.open");
+    compactQueue.focusPersistenceId = L"navigation.queue";
+    compact.children = {compactQueue};
+
+    widgetrail::WidgetNode expanded;
+    expanded.id = L"responsive.expanded";
+    expanded.kind = L"stack";
+    expanded.visibleWhen = L"expandedOnly";
+    auto expandedQueue = Button(L"responsive.expanded.queue", L"queue.open");
+    expandedQueue.focusPersistenceId = L"navigation.queue";
+    expanded.children = {expandedQueue};
+    snapshot.root.children = {compact, expanded};
+
+    WidgetInteractionSession session;
+    session.SetFocus(
+        L"responsive.widget", snapshot, L"responsive.expanded.queue");
+    Check(!ResolveResponsiveFocusPersistenceTarget(
+              snapshot, session.focusedElementId(),
+              snapshot.activeInputScopeId, false) &&
+          session.focusedElementId() == L"responsive.expanded.queue",
+          "same responsive geometry leaves interaction focus untouched");
+
+    const auto compactTarget = ResolveResponsiveFocusPersistenceTarget(
+        snapshot, session.focusedElementId(),
+        snapshot.activeInputScopeId, true);
+    Check(compactTarget.has_value(),
+          "committed compact transition resolves one exact alias target");
+    const auto compactMove = session.MoveFocus(
+        L"responsive.widget", snapshot, *compactTarget);
+    Check(compactMove.changed &&
+              compactMove.priorFocus == L"responsive.expanded.queue" &&
+              compactMove.focusedElementId == L"responsive.compact.queue" &&
+              session.focusedElementId() == L"responsive.compact.queue",
+          "interaction session atomically owns the responsive focus handoff");
+    Check(!ResolveResponsiveFocusPersistenceTarget(
+              snapshot, session.focusedElementId(),
+              snapshot.activeInputScopeId, true),
+          "repeated same-mode refresh cannot apply the handoff twice");
+
+    auto refreshed = snapshot;
+    ++refreshed.sequence;
+    Check(!ResolveResponsiveFocusPersistenceTarget(
+              refreshed, session.focusedElementId(),
+              refreshed.activeInputScopeId, true) &&
+          session.focusedElementId() == L"responsive.compact.queue",
+          "new snapshot authority with unchanged geometry preserves exact focus");
+}
+
 void FreeScrollAndRetainedRefreshLifecycle() {
     using namespace widgetrail::input;
     auto snapshot = Snapshot();
@@ -652,6 +714,7 @@ void PaginationPrefetchLifecycle() {
 
 int main() {
     FocusAndSurfaceLifecycle();
+    ResponsiveFocusHandoffUsesInteractionOwner();
     FreeScrollAndRetainedRefreshLifecycle();
     ExactSliderRequestAuthorityAndRollback();
     PressedAndAdmissionReconciliation();
