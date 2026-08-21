@@ -46,7 +46,7 @@ evidence only; this file is the sole authority for current work.
 | Lane | Task/worktree | State |
 | --- | --- | --- |
 | Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | Idle pending cumulative test evidence and integration. DLV-284 is queued but not assigned. Do not begin it, test, launch, integrate, or push. |
-| Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | DLV-314 `992b77b` is physically accepted as responsive PID 21672 with immutable Spotify 0.3.13 selected/enabled. DLV-316 proved the six-file DLV-315 evidence set compiles cleanly under serialized local compilation. Execute test-only DLV-317 below; do not rebuild/relaunch the overlay, integrate, or push. |
+| Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | DLV-314 `992b77b` is physically accepted as responsive PID 21672 with immutable Spotify 0.3.13 selected/enabled. DLV-317 exposed one generic invalid Error-state virtual-window projection. Execute physical-first production/build DLV-318 below; preserve all six held test files and do not install/launch/integrate/push. |
 
 ## Execution and architecture rules
 
@@ -1401,6 +1401,42 @@ required group passes, commit exactly the original five held test files plus
 DLV-317 milestone, then stop for independent review. Do not include generated
 outputs or any seventh file.
 
+DLV-317's already-built complete WidgetSdk executable stopped first red at
+88/89. The new permanent cursor scenario proved DLV-314 retained internal rows,
+cursors, anchor, extent, generation, and virtual-window position while
+suppressing Error-state edge action IDs, but the projected
+`VirtualCollectionWindow.HasBefore/HasAfter` still advertised those disabled
+directions. `ViewSnapshotValidator` correctly rejected that mismatch as
+`virtual_collection_action_mismatch`. Spotify, Tier 2, and Tier 3 were skipped;
+no commit or further edit was created.
+
+## Assigned widgets production — DLV-318 valid Error-state virtual projection
+
+Mode: physical-first production/build after DLV-317. Preserve the six dirty test
+files exactly and stage/commit only production/package files. In
+`src/WidgetSdk/WidgetCursorResource.cs`, keep DLV-314's Error-state suppression
+of generated before/after edge action IDs and retain the resource's private
+rows, cursors, anchor, failed intent, extent, logical indices/total,
+generation/change marker, and explicit Retry. Make only the projected virtual
+window availability flags describe the admitted presentation: `HasBefore` and
+`HasAfter` must be false when their corresponding boundary action is suppressed
+and must retain existing non-Error behavior. Do not weaken or special-case
+`ViewSnapshotValidator`, clear private cursors, replace the retained snapshot,
+change wire shape/protocol/bounds/timeouts/lifecycle ownership, or add package-
+specific behavior.
+
+Because Spotify packages the SDK, advance only
+`samples/SpotifyWidget/manifest.json` from immutable 0.3.13 to 0.3.14. Before
+user verdict, source-review and commit exactly those two production/package
+files as one DLV-318 milestone. Build that exact commit once from a clean
+isolated tree as coherent Release with tests skipped and packaging enabled, and
+build the exact Spotify 0.3.14 package from the same tree without installing it.
+Report commit/diff, exact commands/results, clean provenance, relevant hashes,
+package path/hash, and manifest inspection. Do not edit/run tests, install or
+select packages, touch credentials/account/provider/configuration, launch or
+terminate processes, integrate, or push. Preserve accepted PID 21672 and stop
+for independent review and fresh approval before any visible candidate switch.
+
 ## Queued platform production — DLV-284 explicit publication transaction model
 
 Status: queued, not assigned. It becomes assignable only after the cumulative
@@ -1486,9 +1522,9 @@ import/export or scheduling only after independent widgets prove the need.
 
 ## Ordered queues
 
-1. Widgets evidence queue: execute DLV-317's already-built WidgetSdk binary,
-   serialized Spotify build/54-case binary, linked Tier 2, and exact-commit
-   Tier 3 sequence against accepted DLV-314, stopping on the first red result.
+1. Widgets production queue: execute DLV-318's generic valid Error-state virtual
+   projection, exact clean Release/package builds, independent review, visible
+   user verdict, then focused/cumulative tests.
 2. Reviewer integration queue: independently review the eventual cumulative
    evidence milestone; integrate the
    accepted production/test chain into local main only if all required evidence
@@ -1543,7 +1579,8 @@ There is no other Ready production work in either standing lane.
 | DLV-314 | Physically accepted production `992b77b`, visibly running as PID 21672 with Spotify 0.3.13 selected/enabled. |
 | DLV-315 | Stopped first red uncommitted: authorized test edits remain held; WidgetSdk build failed before execution with no causal diagnostic, so later groups were skipped. |
 | DLV-316 | Completed diagnostic-only: serialized Release build passed with 0 warnings/errors after Roslyn named-pipe denial fell back to local compilation; no source/product failure. |
-| DLV-317 | Assigned test-only continuation of the complete WidgetSdk, Spotify, Tier 2, and Tier 3 evidence gate using the exact six held files. |
+| DLV-317 | Stopped first red uncommitted: WidgetSdk 88/89 exposed projected virtual availability without matching admitted Error-state boundary actions; later groups skipped. |
+| DLV-318 | Assigned physical-first generic SDK projection correction and immutable Spotify 0.3.14 package build. |
 | DLV-284 | Queued, not assigned until cumulative integration. |
 | DLV-248 | Deliberately deferred until explicit user promotion. |
 
