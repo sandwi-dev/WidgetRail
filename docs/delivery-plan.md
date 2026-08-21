@@ -37,7 +37,7 @@ evidence only; this file is the sole authority for current work.
 | Lane | Task/worktree | State |
 | --- | --- | --- |
 | Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | Idle pending cumulative test evidence and integration. DLV-284 is queued but not assigned. Do not begin it, test, launch, integrate, or push. |
-| Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | DLV-285 test correction `9365cb5` passes isolated 1/1 and Runtime 78/78. Assigned DLV-286 Bridge fixture reconciliation below while preserving the incomplete cumulative matrix. Bridge has not run; Spotify/Tier 2/Tier 3 remain pending. Preserve production, packages, state, and PID 129420. Do not rebuild, install, launch, terminate, integrate main, or push. |
+| Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | DLV-285 `9365cb5` passes Runtime 78/78. DLV-286's three signature corrections compile but exposed stale DLV-280 lifecycle assertions; commit DLV-286 separately, then execute assigned DLV-287 below. Preserve the incomplete cumulative matrix, production, packages, state, and PID 129420. Do not rebuild, install, launch, terminate, integrate main, or push. |
 
 ## Execution and architecture rules
 
@@ -203,6 +203,36 @@ failures were not diagnosed. That is an assignment error, not a production
 defect. Correct the three calls to `None`/zero and run the focused Bridge suite
 one further time. Stop on the first remaining distinct failure.
 
+The corrected `None`/zero rerun resolved the illegal-capability failure and
+completed 87/94. The first remaining failure is an older expectation inside
+`LifecycleAndFirstSnapshotAreAtomic`: after injected first-snapshot failure it
+waits for client disposal. Production DLV-280 `09c3f07` deliberately replaced
+that destructive behavior with bounded prior-lifecycle compensation while
+retaining the healthy client. The fixture also relies on the interface's
+default false restore method rather than modeling the real process client's
+restore contract. Commit only the three DLV-286 signature corrections now;
+their compile and legal request semantics are independently established. Do not
+claim the Bridge suite green.
+
+## Assigned widgets correction — DLV-287 lifecycle-compensation fixture
+
+Owner/baseline: widgets lane after test-only DLV-286, preserving DLV-285 and the
+held cumulative matrix. Own only the affected fake client and assertions in
+`tests/WidgetBridge.Tests/BridgeClientRegistryScenarios.cs`.
+
+Update the fake to model `TryRestoreLifecycleStateAsync` under exact running
+client/start-ordinal authority. Correct `LifecycleAndFirstSnapshotAreAtomic` to
+prove the DLV-280 contract: snapshot failure does not commit the requested host
+lifecycle or retire a healthy worker; the worker receives bounded compensation
+to the prior lifecycle; residency/client generation stay retained; a later
+establishment reuses that same current client and commits normally; stale or
+changed generation cannot be restored. Do not weaken disposal/replacement
+assertions in scenarios that actually retire a client.
+
+Run the focused Bridge suite once. If green, commit only DLV-287, then resume
+Spotify/Tier 2/Tier 3 without rerunning earlier green suites. Stop on the first
+remaining distinct failure; never change production or push.
+
 ## Queued platform production — DLV-284 explicit publication transaction model
 
 Status: queued, not assigned. It becomes assignable only after the cumulative
@@ -233,7 +263,7 @@ every legal and illegal transition and follow physical-first order. Never push.
 
 ## Ordered queues
 
-1. Widgets test queue: correct DLV-286, then resume and commit the cumulative
+1. Widgets test queue: commit DLV-286, correct DLV-287, then resume and commit the cumulative
    DLV-278–283 evidence only if all remaining runs pass.
 2. Reviewer integration queue: independently review all evidence; integrate the
    accepted production/test chain into local main only if all required evidence
@@ -255,6 +285,7 @@ There is no other Ready production work in either standing lane.
 | DLV-278–283/270 | Cumulative production `0dec737` is physically accepted; focused/Tier 2/Tier 3 convergence evidence is assigned before integration. |
 | DLV-285 | Test-only correction `9365cb5` passes isolated 1/1 and focused Runtime 78/78; command-sandbox named-pipe denial was not a product failure. |
 | DLV-286 | Assigned test-only reconciliation for three Bridge registry fixtures still using the retired EstablishPresentation signature; integration remains blocked. |
+| DLV-287 | Assigned test-only correction for stale destructive-retirement expectations after DLV-280 introduced bounded lifecycle compensation and worker retention. |
 | DLV-284 | Queued, not assigned until cumulative integration. |
 | DLV-248 | Deliberately deferred until explicit user promotion. |
 
