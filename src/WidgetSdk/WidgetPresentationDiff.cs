@@ -23,7 +23,7 @@ internal static class WidgetPresentationDiff
     {
         ArgumentNullException.ThrowIfNull(current);
         ArgumentNullException.ThrowIfNull(capabilities);
-        current = NormalizeVirtualWindowReentry(previous, current);
+        current = NormalizeVirtualWindowReentry(previous, current, expectedBaseSequence);
         if (requireCheckpoint) return Checkpoint("checkpoint_requested");
         if (!capabilities.SupportsAtomicUpdates) return Checkpoint("capability_unavailable");
         if (previous is null) return Checkpoint("missing_base");
@@ -137,10 +137,14 @@ internal static class WidgetPresentationDiff
 
     private static ViewSnapshot NormalizeVirtualWindowReentry(
         ViewSnapshot? previous,
-        ViewSnapshot current)
+        ViewSnapshot current,
+        long expectedBaseSequence)
     {
         var previousIds = new HashSet<string>(StringComparer.Ordinal);
-        if (previous is not null) AddIds(previous.Root);
+        if (previous is not null &&
+            previous.Sequence == expectedBaseSequence &&
+            string.Equals(previous.WidgetInstanceId, current.WidgetInstanceId, StringComparison.Ordinal))
+            AddIds(previous.Root);
         var root = Normalize(current.Root);
         return ReferenceEquals(root, current.Root) ? current : current with { Root = root };
 
