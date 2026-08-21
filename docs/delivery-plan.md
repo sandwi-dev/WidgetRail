@@ -37,7 +37,7 @@ evidence only; this file is the sole authority for current work.
 | Lane | Task/worktree | State |
 | --- | --- | --- |
 | Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | Idle pending cumulative test evidence and integration. DLV-284 is queued but not assigned. Do not begin it, test, launch, integrate, or push. |
-| Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | DLV-285 `9365cb5`, DLV-286 `81b8c23`, and DLV-287 `9f56c5b` are committed. DLV-288 proves the full-trust prefix green unsandboxed; full Bridge then stopped on stale admission-exception wrapping. Execute DLV-289 below. Preserve the cumulative matrix, production, packages, state, and PID 129420. Do not rebuild, install, launch, terminate, integrate main, or push. |
+| Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | DLV-285 `9365cb5`, DLV-286 `81b8c23`, DLV-287 `9f56c5b` are committed. DLV-288 is environment-only; DLV-289 scenario passes and awaits separate commit. Commit it, then execute DLV-290 below. Preserve the cumulative matrix, production, packages, state, and PID 129420. Do not rebuild, install, launch, terminate, integrate main, or push. |
 
 ## Execution and architecture rules
 
@@ -286,6 +286,29 @@ Run the focused Bridge suite once outside the command sandbox. If green, commit
 only DLV-289, then resume Spotify/Tier 2/Tier 3. Stop on the first remaining
 distinct failure; never change production or push.
 
+The DLV-289 scenario now passes. The same Bridge run reached 89/94 and first
+failed in `Snapshots and hover quick actions cross bridge`: render styles
+contained six nodes while three old fixture assertions still expect five.
+Commit only DLV-289 now; do not claim Bridge green.
+
+## Assigned widgets correction — DLV-290 Bridge style fixture count
+
+Owner/baseline: widgets lane after separate DLV-289 commit, preserving all
+prior test commits and the held cumulative matrix. Own only the three stale
+render-style count assertions and directly related semantic assertions in
+`tests/WidgetBridge.Tests/Program.cs`.
+
+Accepted DLV-276 added the `committed-text-status` node to `BridgeTestWidget`,
+so its ordinary snapshot/update/session style maps now contain six exact node
+IDs. Update the three pre-DLV-276 count expectations from five to six and assert
+the required committed-status node is present where the map is inspected. Do
+not replace exact validation with a lower bound, remove other style assertions,
+or change production/widget content.
+
+Run the focused Bridge suite once outside the command sandbox. If green, commit
+only DLV-290, then resume Spotify/Tier 2/Tier 3. Stop on the first remaining
+distinct failure; never push.
+
 ## Queued platform production — DLV-284 explicit publication transaction model
 
 Status: queued, not assigned. It becomes assignable only after the cumulative
@@ -316,7 +339,7 @@ every legal and illegal transition and follow physical-first order. Never push.
 
 ## Ordered queues
 
-1. Widgets test queue: correct DLV-289, then resume and commit the cumulative
+1. Widgets test queue: commit DLV-289, correct DLV-290, then resume and commit the cumulative
    DLV-278–283 evidence only if all remaining runs pass.
 2. Reviewer integration queue: independently review all evidence; integrate the
    accepted production/test chain into local main only if all required evidence
@@ -341,6 +364,7 @@ There is no other Ready production work in either standing lane.
 | DLV-287 | Assigned test-only correction for stale destructive-retirement expectations after DLV-280 introduced bounded lifecycle compensation and worker retention. |
 | DLV-288 | Assigned isolated unsandboxed classification of the full-trust child-worker exit before any production/test correction. |
 | DLV-289 | Assigned test-only update of one pre-DLV-275 raw admission-exception expectation to the current typed Bridge failure contract. |
+| DLV-290 | Assigned test-only update of three Bridge style-map counts after accepted DLV-276 added the committed-text-status node. |
 | DLV-284 | Queued, not assigned until cumulative integration. |
 | DLV-248 | Deliberately deferred until explicit user promotion. |
 
