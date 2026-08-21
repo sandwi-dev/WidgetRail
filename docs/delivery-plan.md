@@ -46,7 +46,7 @@ evidence only; this file is the sole authority for current work.
 | Lane | Task/worktree | State |
 | --- | --- | --- |
 | Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | Idle pending cumulative test evidence and integration. DLV-284 is queued but not assigned. Do not begin it, test, launch, integrate, or push. |
-| Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | DLV-324 is committed at `6b63edf` with Runtime 84/84; exact-commit Tier 3 stopped later on a retained Windows Spotify provider test that still consumes the pre-DLV-270 combined playlist/items contract. Execute bounded test-only DLV-325 below; preserve PID 126208 and all product state. |
+| Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | DLV-325 is committed at `e441f25` with provider 32/32; exact-commit Tier 3 stopped at a retained Runtime Job Object fixture cleanup race after all containment assertions passed. Execute bounded test-only DLV-326 below; preserve PID 126208 and all product state. |
 
 ## Execution and architecture rules
 
@@ -1737,6 +1737,41 @@ Runtime or other focused suites outside the verifier. Preserve PID 126208,
 Spotify 0.3.14, installed/configured state, and all production artifacts. Stop
 for independent review if Tier 3 is green; never push.
 
+DLV-325 committed exactly the authorized Windows Spotify provider test file as
+`e441f25bce88b51a8bd6b90c90f8a84d612812ae`. Its serialized build was green
+with zero warnings/errors and the complete provider executable passed 32/32.
+One canonical Tier 3 verifier from a clean detached tree at that exact commit
+then stopped at Runtime 83/84. The existing Windows Job Object process-tree
+case proved both contained processes exited and every containment assertion
+passed, but `TemporaryDirectory.Dispose` failed deleting `child.pid` because
+the helper publishes that path directly with an asynchronous writer. File
+existence is therefore not a deterministic closed-writer readiness boundary.
+Both DLV-324 Runtime corrections passed in this run. This is retained test
+fixture cleanup drift, not a product/Job Object/DLV-325 defect. No rerun,
+integration, overlay/package/state mutation, or push occurred. The verifier
+result SHA-256 is
+`BEA77238B35BCD82C0A5FBF71EA1B2F7791B483F697E6678D9EF3F6B96B5392D`.
+
+## Assigned widgets correction — DLV-326 atomically publish Job helper PID
+
+Mode: bounded test-only correction after DLV-325. Baseline is exact commit
+`e441f25`. Edit only `tests/WidgetRuntime.Tests/Program.cs`, and only the
+`--containment-parent` helper publication plus directly necessary local helper
+code. Publish the child PID by writing a sibling temporary file to completion,
+closing its writer, then atomically renaming it to the existing `child.pid`
+path. Preserve the current parent/child Job Object ownership, accounting,
+kill-on-close, exit, timeout, error, and cleanup assertions. Do not add deletion
+retries, sleeps, polling beyond the existing bounded readiness wait, suppress
+cleanup failures, broaden `TemporaryDirectory`, or edit production code.
+
+Build the Runtime test project once in serialized Release `--no-restore`, run
+the complete 84-case executable once, and stop first red. If green, commit
+exactly `tests/WidgetRuntime.Tests/Program.cs` on top of `e441f25`, then run one
+canonical Tier 3 verifier from a clean detached tree at that exact commit. Do
+not rerun provider or other focused suites outside the verifier. Preserve PID
+126208, Spotify 0.3.14, installed/configured state, and all production
+artifacts. Stop for independent review if Tier 3 is green; never push.
+
 ## Queued platform production — DLV-284 explicit publication transaction model
 
 Status: queued, not assigned. It becomes assignable only after the cumulative
@@ -1822,8 +1857,8 @@ import/export or scheduling only after independent widgets prove the need.
 
 ## Ordered queues
 
-1. Widgets evidence queue: execute bounded DLV-325 Windows Spotify provider
-   test correction, its complete focused gate, and one exact-commit Tier 3
+1. Widgets evidence queue: execute bounded DLV-326 Job helper publication
+   correction, its complete Runtime gate, and one exact-commit Tier 3
    verifier, stopping on the first red result.
 2. Reviewer integration queue: independently review the eventual cumulative
    evidence milestone; integrate the
@@ -1887,7 +1922,8 @@ There is no other Ready production work in either standing lane.
 | DLV-322 | Stopped first red uncommitted: build green, complete Runtime run stalled after 9 passes because the test awaited request termination before releasing its intentionally held grant; owned process terminated. |
 | DLV-323 | Stopped first red uncommitted: build green, complete Runtime run stalled after 9 passes because it awaited a pre-release companion revocation that source semantics do not promise. |
 | DLV-324 | Test-only `6b63edf`: Runtime 84/84 green; exact-commit Tier 3 stopped later at retained Windows Spotify provider compile drift. |
-| DLV-325 | Assigned one-file split-route provider-test correction, complete focused gate, and one exact-commit Tier 3 verifier. |
+| DLV-325 | Test-only `e441f25`: provider 32/32 green; exact-commit Tier 3 stopped later at retained Runtime Job helper file-publication cleanup race. |
+| DLV-326 | Assigned one-file atomic Job helper PID publication correction, complete Runtime gate, and one exact-commit Tier 3 verifier. |
 | DLV-284 | Queued, not assigned until cumulative integration. |
 | DLV-248 | Deliberately deferred until explicit user promotion. |
 
