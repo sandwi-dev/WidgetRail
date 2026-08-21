@@ -14,8 +14,10 @@ The complete delivery record through the DLV-277 assignment is preserved in the\
   is not currently running. PIDs 34764, 88756, 82992, rejected 54676, and
   rejected 84296 retired cooperatively through `WM_CLOSE`; no force termination
   occurred. Source-reviewed cumulative DLV-280/281/282/278/279/270 candidate
-  PID 144732 is visibly running from exact commit `54937ea` for physical
-  verdict. Its
+  PID 144732 is visibly running from exact commit `54937ea`, but the physical
+  verdict is rejected on DLV-283's full-checkpoint virtual-window admission
+  defect. Preserve it as diagnostic evidence until a coherent correction is
+  ready. Its
   `OverlayHost.exe` SHA-256 is
   `08B04683DB0644589E60C1DDCCD518514750D378A2D30CF50223F258E7AE57D6`;
   runtime `WidgetBridge.dll` is
@@ -35,8 +37,8 @@ The complete delivery record through the DLV-277 assignment is preserved in the\
 
 | Lane | Task/worktree | State |
 | --- | --- | --- |
-| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | DLV-282 production `39dc690` is source-reviewed and exact-build verified. It preserves the bridge's typed stale-base category and permits exactly one same-kind base-zero checkpoint retry under unchanged authority. The lane is idle; do not test, launch, integrate, or push. |
-| Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | Exact DLV-282 merge `c78dfa4` and reviewer reconciliation `54937ea` are source-reviewed; the exact tests-skipped Release passed and PID 144732 is visibly running. The lane is idle pending physical verdict; do not edit, test, install, relaunch, integrate main, or push. |
+| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | Assigned DLV-283 from clean DLV-282 tip `39dc690`: preserve explicit full-checkpoint recovery provenance and admit that exact current checkpoint as a new virtual-window baseline only under the bounded rules below. Production/build only; do not test, launch, integrate, or push. |
+| Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | Exact DLV-282 merge `c78dfa4` and reviewer reconciliation `54937ea` remain source-reviewed; PID 144732 is rejected on DLV-283. The lane is idle and must preserve the cumulative branch, package/state, and diagnostic process until planner-directed DLV-283 reconciliation. Do not edit, test, install, relaunch, integrate main, or push. |
 
 ## Execution, review, and architecture rules
 
@@ -92,6 +94,68 @@ The complete delivery record through the DLV-277 assignment is preserved in the\
 
 Detailed candidate hashes, PIDs, rejection evidence, focused counts, and prior
 serialized transitions are preserved in the linked timestamped snapshot.
+
+## Assigned platform deliverable — DLV-283: authoritative recovery-checkpoint admission
+
+Owner/baseline: platform lane from its clean DLV-282 tip `39dc690`. This lane
+alone may edit the native presentation-request coordinator and its internal
+virtual-window admission policy. Preserve cumulative widgets tip `54937ea`,
+immutable Spotify 0.3.12, every installed package, account/configuration/
+provider state, and rejected diagnostic PID 144732.
+
+Correct the reproduced generic recovery-boundary defect without weakening
+ordinary virtual-window transition validation. At `2026-08-21 02:23:55`, the
+host retained valid Spotify sequence 49. A Spotify Snapshot completed after
+selection moved to the Full Application reference and was correctly dropped by
+the host, while WidgetBridge had validly advanced its private checkpoint to 50.
+On switch-back, Establish request 136 offered host base 49, received the typed
+stale-base result, and DLV-282 correctly queued same-kind base-zero request 138.
+That retry returned a complete checkpoint. Because a base-zero checkpoint
+claims no predecessor, the SDK correctly normalized every directional virtual
+window in it to `Replace`. The native coordinator then incorrectly passed the
+recovery checkpoint through the ordinary old-to-new transition validator
+against retained sequence 49, so a same-request-generation marker change was
+rejected as `invalid or stale` even though that packet was the requested full
+resynchronization baseline. This is not a Spotify provider, paging, memory-
+budget, protocol-version, or ordinary native-validator defect.
+
+Carry explicit unforgeable internal provenance from DLV-282's typed current
+stale-base branch onto its queued full-checkpoint retry, including the exact
+positive host base sequence from which recovery began. On completion, admit
+that packet as an authoritative virtual-window baseline only when all of these
+remain true atomically at the existing admission owner:
+
+- the exact widget, lifecycle target, request generation, instance, runtime
+  generation, and presentation generation are current;
+- the host still retains the exact recovery-origin checkpoint sequence;
+- the response is a complete checkpoint, not an update, with a strictly newer
+  positive presentation sequence; and
+- every virtual collection window in the checkpoint uses `Replace` and passes
+  all existing snapshot, item-key, count, range, and resource validation.
+
+Under only that proven recovery path, establish the returned checkpoint as the
+new virtual-window baseline instead of comparing its markers to the divergent
+retained checkpoint. Normal cold checkpoints, ordinary full publications,
+directional paging, same-generation immutability, newer-generation overlap,
+SDK normalization, and all non-recovery native admission continue through the
+existing strict rules. Changed authority, a changed recovery-origin checkpoint,
+a non-forward sequence, any directional window, malformed content, failure, or
+cancellation remains rejected and cannot retry again. Preserve the last valid
+host presentation and real safe error. Do not clear state, restart the widget,
+forge a collection generation, accept a stale incremental update, infer
+recovery merely from base zero, add a second checkpoint owner, change the wire
+protocol, or special-case Spotify.
+
+Physical-first order: production only, source-review the complete diff, commit
+one bounded DLV-283 change, and build one exact tests-skipped Release. Do not
+author, modify, or run tests; do not launch, install/select/enable packages,
+alter user state, integrate, or push. Stop for a public or private wire change,
+recovery provenance that can be inferred or supplied outside the typed stale-
+base path, general relaxation of virtual-window validation, destructive
+recovery, substantial conflict, or failure to build cleanly. After review the
+planner will merge the exact correction into `54937ea`, build and visibly
+launch one coherent candidate, and request rapid switch-away/back plus deep
+bidirectional paging before any tests or integration.
 
 ## Assigned platform deliverable — DLV-282: bounded stale-base resynchronization
 
@@ -877,13 +941,20 @@ after explicit full-trust approval.
    host checkpoint 233.
 7. DLV-282 production `39dc690` is source-reviewed, merged exactly as
    `c78dfa4`, and reconciled with reviewer documents as `54937ea`. The coherent
-   tests-skipped Release passed and PID 144732 is visibly running for another
-   physical verdict.
-8. After the cumulative physical verdict, add focused and cross-process evidence
-   in planner-directed order, then integrate the independently accepted DLV-280,
-   DLV-281, DLV-282, DLV-278, DLV-279, and DLV-270 production/test chain into
-   main.
-9. DLV-248 remains deferred until explicit user promotion.
+   tests-skipped Release passed, but PID 144732 is rejected: its typed stale-
+   base retry returned the requested full checkpoint and the host then
+   incorrectly applied ordinary incremental virtual-window transition rules to
+   that recovery baseline.
+8. Assigned DLV-283 on platform tip `39dc690` carries exact recovery provenance
+   through admission and treats only a current, forward-sequence, all-`Replace`
+   recovery checkpoint as a new virtual-window baseline. After source review,
+   merge that exact correction into cumulative widgets tip `54937ea`, build,
+   visibly launch, and obtain another physical verdict.
+9. After the corrected cumulative physical verdict, add focused and cross-
+   process evidence in planner-directed order, then integrate the independently
+   accepted DLV-280, DLV-281, DLV-282, DLV-283, DLV-278, DLV-279, and DLV-270
+   production/test chain into main.
+10. DLV-248 remains deferred until explicit user promotion.
 
 ## Manual, external, and blocked evidence
 
@@ -902,7 +973,8 @@ after explicit full-trust approval.
 | DLV-270 | Cumulative Spotify 0.3.11 at `4ece854` is rejected on DLV-279 after deep paging and B. Preserve its successful provider/paging evidence; immutable 0.3.12 is installed, selected, enabled, and preserved while the generic DLV-281 host race is corrected. |
 | DLV-280 | Production through `09c3f07` successfully admitted one exact-base switch-back in the rejected cumulative trace. Keep it source-reviewed but unaccepted; focused/Tier 2/Tier 3 evidence waits for the corrected cumulative verdict. |
 | DLV-281 | Production `dcbd006` plus correction `0960b81` fixed completion-admission overlap and remains source-reviewed in cumulative `a838e2b`; PID 84296 is rejected on the distinct DLV-282 switch-away base divergence. |
-| DLV-282 | Production `39dc690` is source-reviewed, merged cumulatively as `c78dfa4`/`54937ea`, exact-build verified, and visibly running as PID 144732. Await physical cycling verdict before tests or integration. |
+| DLV-282 | Production `39dc690` is source-reviewed and its typed one-shot retry fired correctly, but PID 144732 is rejected because the returned full checkpoint was still evaluated as an incremental virtual-window transition. Preserve it for DLV-283; no tests or integration. |
+| DLV-283 | Assigned from platform tip `39dc690`: preserve exact typed-recovery provenance and admit only a current, forward-sequence, all-`Replace` recovery checkpoint as the new baseline. Physical verdict waits for production/source review, exact build, cumulative merge, and visible launch. |
 | DLV-248 | Deliberately deferred until explicit user promotion. |
 
 ## Recent accepted milestones
