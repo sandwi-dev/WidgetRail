@@ -11,15 +11,15 @@ The complete delivery record through the DLV-277 assignment is preserved in the\
   evidence `bb8234f`, plus accepted DLV-277 host production `144ede8` and
   focused evidence `c21ad02`.
 - The accepted DLV-277 artifact from commit `830364d` remains the rollback but
-  is not currently running. PIDs 34764, 88756, 82992, and rejected 54676
-  retired cooperatively through `WM_CLOSE`; no force termination occurred.
-  Source-reviewed cumulative DLV-280/281/278/279/270 candidate PID 84296 is
-  visibly running from exact commit `a838e2b` as rejected diagnostic evidence
-  after DLV-282 reproduced a switch-away retained-base divergence. Its
+  is not currently running. PIDs 34764, 88756, 82992, rejected 54676, and
+  rejected 84296 retired cooperatively through `WM_CLOSE`; no force termination
+  occurred. Source-reviewed cumulative DLV-280/281/282/278/279/270 candidate
+  PID 144732 is visibly running from exact commit `54937ea` for physical
+  verdict. Its
   `OverlayHost.exe` SHA-256 is
-  `F7B131733F05006881236B7E7568C3E2921699CB719A2A911CBCE6B59A70FD69`;
+  `08B04683DB0644589E60C1DDCCD518514750D378A2D30CF50223F258E7AE57D6`;
   runtime `WidgetBridge.dll` is
-  `F1BDA4A19D3A4C5406FFE1C6F98E4FEE73A5CFD66E57582272B8110EAB26BEF7`.
+  `773CECB027C1AA4F460C6D5E952DE10D61C33832A04B2EE1489D7D05ED54AD0D`.
   The provider-free Full Application sample remains installed and enabled.
 - DLV-265 production and focused evidence are accepted and integrated; the
   existing Client ID/account/configuration state remains unchanged. Reviewed
@@ -36,7 +36,7 @@ The complete delivery record through the DLV-277 assignment is preserved in the\
 | Lane | Task/worktree | State |
 | --- | --- | --- |
 | Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | DLV-282 production `39dc690` is source-reviewed and exact-build verified. It preserves the bridge's typed stale-base category and permits exactly one same-kind base-zero checkpoint retry under unchanged authority. The lane is idle; do not test, launch, integrate, or push. |
-| Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | Assigned the exact DLV-282 production commit onto preserved cumulative tip `a838e2b`, followed by one coherent tests-skipped Release build. Preserve immutable Spotify 0.3.12 and all package/account/configuration state; do not edit production, test, install, launch, integrate main, or push. |
+| Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | Exact DLV-282 merge `c78dfa4` and reviewer reconciliation `54937ea` are source-reviewed; the exact tests-skipped Release passed and PID 144732 is visibly running. The lane is idle pending physical verdict; do not edit, test, install, relaunch, integrate main, or push. |
 
 ## Execution, review, and architecture rules
 
@@ -875,9 +875,9 @@ after explicit full-trust approval.
    `a838e2b`. The coherent tests-skipped Release passed, but PID 84296 is
    rejected after a wrong-lifecycle completion left bridge base 234 ahead of
    host checkpoint 233.
-7. DLV-282 production `39dc690` is source-reviewed and exact-build verified;
-   the widgets lane merges it exactly into `a838e2b` and builds one coherent
-   tests-skipped candidate. The planner then visibly launches it for another
+7. DLV-282 production `39dc690` is source-reviewed, merged exactly as
+   `c78dfa4`, and reconciled with reviewer documents as `54937ea`. The coherent
+   tests-skipped Release passed and PID 144732 is visibly running for another
    physical verdict.
 8. After the cumulative physical verdict, add focused and cross-process evidence
    in planner-directed order, then integrate the independently accepted DLV-280,
@@ -902,7 +902,7 @@ after explicit full-trust approval.
 | DLV-270 | Cumulative Spotify 0.3.11 at `4ece854` is rejected on DLV-279 after deep paging and B. Preserve its successful provider/paging evidence; immutable 0.3.12 is installed, selected, enabled, and preserved while the generic DLV-281 host race is corrected. |
 | DLV-280 | Production through `09c3f07` successfully admitted one exact-base switch-back in the rejected cumulative trace. Keep it source-reviewed but unaccepted; focused/Tier 2/Tier 3 evidence waits for the corrected cumulative verdict. |
 | DLV-281 | Production `dcbd006` plus correction `0960b81` fixed completion-admission overlap and remains source-reviewed in cumulative `a838e2b`; PID 84296 is rejected on the distinct DLV-282 switch-away base divergence. |
-| DLV-282 | Production `39dc690` is source-reviewed and exact-build verified. The widgets lane is assigned its exact cumulative merge/build before physical verdict, tests, or integration. |
+| DLV-282 | Production `39dc690` is source-reviewed, merged cumulatively as `c78dfa4`/`54937ea`, exact-build verified, and visibly running as PID 144732. Await physical cycling verdict before tests or integration. |
 | DLV-248 | Deliberately deferred until explicit user promotion. |
 
 ## Recent accepted milestones
