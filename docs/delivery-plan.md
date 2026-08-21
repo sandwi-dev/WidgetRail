@@ -184,15 +184,24 @@ test processes.
 The Bridge build stopped before tests because three existing calls at the
 current lines 308, 326, and 338 still use the retired four-argument
 `EstablishPresentationAsync` fixture form. Reconcile only those cold-establish
-calls with the production signature's explicit current update capabilities,
-base sequence zero, session cancellation, and operation cancellation. Do not
-change the production signature, hide a compiler error, add overload
-compatibility, or alter scenario meaning.
+calls with the production signature's explicit `PresentationUpdateCapabilities.None`,
+base sequence zero, session cancellation, and operation cancellation. Cold
+establishment requests a checkpoint; `Current` is illegal with base zero and is
+reserved for an exact positive retained base. Do not change the production
+signature, hide a compiler error, add overload compatibility, or alter scenario
+meaning.
 
 Build/run the focused Bridge suite once. If green, commit only the DLV-286
 fixture correction separately, then resume held evidence at Spotify followed by
 the assigned Tier 2/Tier 3 order. Do not rerun native, SDK, Runtime, or Bridge.
 Stop on any distinct failure. Never push.
+
+The first DLV-286 attempt correctly built but used the planner's invalid
+`Current`/base-zero pair and therefore failed the first scenario with
+`Presentation updates require a positive current base sequence`; six later
+failures were not diagnosed. That is an assignment error, not a production
+defect. Correct the three calls to `None`/zero and run the focused Bridge suite
+one further time. Stop on the first remaining distinct failure.
 
 ## Queued platform production — DLV-284 explicit publication transaction model
 
