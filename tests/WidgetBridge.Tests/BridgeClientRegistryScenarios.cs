@@ -308,6 +308,8 @@ internal static class BridgeClientRegistryScenarios
             using var admitted = await fixture.Registry.EstablishPresentationAsync(
                 configured.Id,
                 WidgetLifecycleState.Visible,
+                PresentationUpdateCapabilities.None,
+                0,
                 CancellationToken.None,
                 CancellationToken.None);
             RegistryAssert.Equal(1, fixture.Clients.Count);
@@ -326,6 +328,8 @@ internal static class BridgeClientRegistryScenarios
             failed.Registry.EstablishPresentationAsync(
                 configured.Id,
                 WidgetLifecycleState.Interactive,
+                PresentationUpdateCapabilities.None,
+                0,
                 CancellationToken.None,
                 CancellationToken.None));
         var retired = failed.Clients.Single();
@@ -338,6 +342,8 @@ internal static class BridgeClientRegistryScenarios
         using var recovered = await failed.Registry.EstablishPresentationAsync(
             configured.Id,
             WidgetLifecycleState.Interactive,
+            PresentationUpdateCapabilities.None,
+            0,
             CancellationToken.None,
             CancellationToken.None);
         RegistryAssert.Equal(2, failed.Clients.Count);
