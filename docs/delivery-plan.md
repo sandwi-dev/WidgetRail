@@ -34,7 +34,7 @@ The complete delivery record through the DLV-277 assignment is preserved in the\
 | Lane | Task/worktree | State |
 | --- | --- | --- |
 | Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | DLV-277 is accepted and integrated through main `c21ad02`; PID 34764 remains the accepted production artifact. No platform deliverable is assigned. DLV-273 remains retired and DLV-248 remains deferred. Never push. |
-| Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | DLV-279 production through `5468199` is source-reviewed: exact-base publication normalizes only re-entering virtual-window IDs to `Replace`. After explicit full-trust approval, cumulative immutable Spotify 0.3.10 at `4af365f` is installed, selected, and enabled for physical verdict. Preserve current Client ID/account/configuration, PID 34764, installed 0.3.3 rollback, rejected installed 0.3.4/0.3.6/0.3.7, un-staged immutable 0.3.8/0.3.9, and native/shared-host contracts. Do not test, relaunch, or integrate before verdict. Never push. |
+| Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | DLV-279 / cumulative Spotify 0.3.10 is rejected and architecture-blocked. It fixed exact-base route re-entry, but the full establish/resume path supplies base sequence 0 while the host retains sequence 17. The SDK rewrites a directional marker to `Replace` without a new window generation; native admission correctly rejects the same-generation metadata change. Preserve all commits/artifacts and current package/config/account state. Do not patch, test, relaunch, integrate, or assign more package-only work until exact prior-snapshot authority across host/bridge/worker establish is explicitly dispositioned. Never push. |
 
 ## Execution, review, and architecture rules
 
@@ -421,7 +421,18 @@ No tests, launch, configuration/account action, integration, or push occurred.
 The user granted explicit full-trust approval. Spotify was briefly disabled as
 required by catalog update safety, then 0.3.10 was installed, selected, and
 re-enabled. The 0.3.7 worker PID 56308 retired cooperatively with exit code 0;
-accepted host PID 34764 remains responsive. Await the physical verdict.
+accepted host PID 34764 remains responsive. The verdict is rejected. New worker
+PID 71968 loaded and paged successfully through admitted sequence 17. At
+`2026-08-20 23:23:14`, returning from the Full Application reference widget
+requested a full establish snapshot with base sequence 0 while the host retained
+Spotify sequence 17. DLV-279 treated that missing exact base as no predecessor
+and changed the current directional virtual-window marker to `Replace`, but it
+preserved the same request generation. Native admission requires identical
+metadata for the same generation, so it retained sequence 17 and reported the
+invalid/stale transition. This hits DLV-279's explicit stop condition: the SDK
+cannot infer exact host predecessor authority on establish. Do not continue with
+another package-only normalization. Disposition the host/bridge/worker establish
+base contract before assigning a correction.
 
 ## Held widgets deliverable — DLV-270: Spotify collection paging efficiency
 
@@ -525,9 +536,10 @@ after explicit full-trust approval.
    and preserved, but the cumulative Spotify 0.3.7 verdict is rejected on the
    distinct virtual-window re-entry boundary.
 3. DLV-279 through `5468199` and cumulative immutable Spotify 0.3.10 at
-   `4af365f` are source-reviewed, built, installed, selected, and enabled after
-   explicit full-trust approval. Obtain the cumulative physical verdict. Do not
-   test or integrate DLV-278, DLV-279, or DLV-270 before acceptance.
+   `4af365f` are rejected after the establish/resume path proved that the SDK
+   lacks exact host predecessor authority when base sequence is 0. Preserve the
+   evidence and disposition that cross-layer contract before more production.
+   Do not test or integrate DLV-278, DLV-279, or DLV-270.
 4. DLV-248 remains deferred until explicit user promotion.
 
 ## Manual, external, and blocked evidence
@@ -543,8 +555,8 @@ after explicit full-trust approval.
 | DLV-277 | Complete: physical verdict accepted; focused native evidence passes and production/tests are integrated through main `c21ad02`. |
 | DLV-265 | Complete: physical verdict accepted; focused Spotify evidence passes and production/tests are integrated through main `bb8234f`. |
 | DLV-278 | Production `ab4844d` is source-reviewed; 0.3.7 physically confirmed its v18-to-v19 checkpoint and stable worker, but integration waits for the corrected cumulative verdict and post-verdict tests. |
-| DLV-279 | Production through `5468199` is source-reviewed; the exact prior virtual-window identity set controls `Replace` re-entry. Corrected cumulative Spotify 0.3.10 is selected/enabled for verdict. |
-| DLV-270 | Spotify 0.3.7 is rejected after B from deeply paged detail caused stale virtual-window re-entry. Corrected cumulative immutable 0.3.10 at `4af365f` is selected/enabled for verdict. |
+| DLV-279 | Rejected/architecture-blocked: exact-base route re-entry is corrected, but full establish supplies no exact base while the host retains a snapshot; same-generation marker normalization is invalid. |
+| DLV-270 | Spotify 0.3.7 and 0.3.10 are rejected. Preserve paging evidence and wait for the cross-layer establish/base authority disposition. |
 | DLV-248 | Deliberately deferred until explicit user promotion. |
 
 ## Recent accepted milestones
