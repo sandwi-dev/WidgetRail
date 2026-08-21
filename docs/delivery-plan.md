@@ -20,6 +20,14 @@ evidence only; this file is the sole authority for current work.
   `249FEB9EC5B10FA646F29B48BFCA6A3E0A4F829C0F47F8397A77BC2EC1142D87`.
   The accepted session exercised typed stale-base recovery repeatedly without
   reproducing the stale virtual-window error.
+- DLV-296 production commit
+  `3922b58dc6456be17442926f2a0c7257d3b97e11` is source-reviewed and its exact
+  clean detached Release build passed with tests skipped and packaging enabled.
+  Candidate `OverlayHost.exe` SHA-256 is
+  `147DCA59310AB4188E5B93850E6155DF04D8BE7B92488C2D650454C521EB177D`.
+  The desktop safety gate refused to replace accepted PID 129420 with this
+  unaccepted worktree candidate without a fresh explicit user approval, so no
+  process changed and the DLV-296 physical verdict has not begun.
 - Exact DLV-283 production is platform commit `cdbb04a`. The cumulative widgets
   merge is `0dec737`. DLV-280, DLV-281, DLV-282, DLV-283, DLV-278, DLV-279, and
   DLV-270 are physically accepted only as that cumulative tree; they remain
@@ -37,7 +45,7 @@ evidence only; this file is the sole authority for current work.
 | Lane | Task/worktree | State |
 | --- | --- | --- |
 | Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | Idle pending cumulative test evidence and integration. DLV-284 is queued but not assigned. Do not begin it, test, launch, integrate, or push. |
-| Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | DLV-290 `b14dfdc` is committed and review-clean. Preserve the three held test-matrix files. DLV-295 reproduced missing invalidation without disposable instrumentation; source review found untracked fire-and-forget worker notification sends. Execute production-only physical-first DLV-296 below. Preserve packages/state and PID 129420 until an exact candidate is ready. Do not integrate main or push. |
+| Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | DLV-296 `3922b58` is production-only, source-reviewed, and exact-build clean. Preserve the three held test-matrix files. Do not add/run tests or integrate. Await fresh explicit user approval to replace PID 129420 with the exact DLV-296 candidate for physical review. |
 
 ## Execution and architecture rules
 
@@ -483,7 +491,7 @@ completion, and exceptions have no notification owner, and expected connection
 exceptions are swallowed. This can lose or delay the only signal that tells the
 host to pull the completed generation-2 window.
 
-## Assigned widgets production — DLV-296 owned worker notification lane
+## Review-clean widgets production — DLV-296 owned worker notification lane
 
 Mode: physical-first production/build, user verdict, then focused tests.
 Owner/baseline: widgets lane at DLV-290 `b14dfdc` plus its accepted cumulative
@@ -522,6 +530,31 @@ change credentials/account/provider/configuration state, or launch/terminate
 processes. Report exact commit, diff, build command/result, artifact hashes, and
 clean isolated build provenance. Stop for planner review and visible launch.
 
+DLV-296 commit `3922b58dc6456be17442926f2a0c7257d3b97e11`
+meets that pre-verdict gate. The reviewed delta is exactly four runtime
+production files: one assembly-private notification-lane owner, its narrow
+`WidgetWorkerServer` integration, and the two compile-item projections. The
+lane owns one tracked pump, one latest queued invalidation, FIFO action failures
+bounded at eight, closed/full admission, and terminal failure observation by
+the existing request loop. The shared channel and writer gate remain the sole
+wire serialization authority. No protocol, payload, package, widget, host,
+collection-bound, or lifecycle-owner change is present. The three held test
+files remain unstaged and unchanged.
+
+The exact detached tree
+`C:\Users\dwive\.codex\worktrees\563c\dlv296-exact-3922b58` is clean at that
+commit. Its single documented `Release -SkipTests` build passed with packaging
+enabled. `WidgetApplicationRuntime.dll` SHA-256 is
+`EBAC3851ED228681C6C5F43BC9F0223AFE53E5795D25752390F2CED663E9FD07`;
+`WidgetBridge.dll` is
+`4B3C12837B94368BD8C21048C960B0D84E23591990D1B5523F03A73767594B81`;
+and `WidgetWorkerHost.dll` is
+`2454DCDD9E7A5B2AFBF70BA6FA75F7C44B65DF3F2101DEC3392613313D83CA57`.
+The launch attempt was denied before any process mutation because replacing an
+accepted instance with an unaccepted worktree candidate requires a fresh
+explicit user approval under the desktop safety gate. Accepted PID 129420 is
+still running and remains the rollback candidate.
+
 After planner review, launch the exact coherent Release as an unaccepted
 candidate for rapid Spotify/Games & Apps cycling and virtual paging. Only after
 the user accepts may DLV-296 receive focused regression tests for coalescing,
@@ -558,8 +591,9 @@ every legal and illegal transition and follow physical-first order. Never push.
 
 ## Ordered queues
 
-1. Widgets production queue: implement/build DLV-296, then stop for planner
-   review, exact visible launch, and user verdict.
+1. Widgets production queue: DLV-296 is implemented, review-clean, and exact-
+   build verified; await explicit approval, then visibly launch the exact
+   candidate and obtain the user verdict.
 2. Widgets test queue after user acceptance: add focused DLV-296 regression
    evidence, then resume and commit the cumulative DLV-278–283 evidence only if
    all remaining runs pass.
@@ -592,7 +626,7 @@ There is no other Ready production work in either standing lane.
 | DLV-293 | No product evidence: its disposable compound diagnostic class violated the existing 64-character style-class bound. |
 | DLV-294 | Classified ordinary revisions 2–4 through the Bridge and exact successful generation-2 Append; revision 5 was diagnostic only. |
 | DLV-295 | Reproduced missing ordinary invalidation after clean fixture synchronization; diagnostic campaign stopped. |
-| DLV-296 | Assigned physical-first replacement of untracked worker notification sends with one bounded ordered owner. |
+| DLV-296 | Production `3922b58` is source-reviewed and exact-build clean; accepted PID 129420 remains running because the unaccepted-candidate replacement requires fresh explicit user approval. No tests or integration before verdict. |
 | DLV-284 | Queued, not assigned until cumulative integration. |
 | DLV-248 | Deliberately deferred until explicit user promotion. |
 
