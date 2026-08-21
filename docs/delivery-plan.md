@@ -37,7 +37,7 @@ evidence only; this file is the sole authority for current work.
 | Lane | Task/worktree | State |
 | --- | --- | --- |
 | Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | Idle pending cumulative test evidence and integration. DLV-284 is queued but not assigned. Do not begin it, test, launch, integrate, or push. |
-| Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | DLV-289 `c755c55` is committed and review-clean. DLV-290 assertions pass and await a separate commit; then execute DLV-291 below. Preserve the cumulative matrix, production, packages, state, and PID 129420. Do not rebuild, install, launch, terminate, integrate main, or push. |
+| Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | DLV-290 `b14dfdc` is committed and review-clean. DLV-291 exact prefix passes 1/1 and remains in the held cumulative matrix. Execute DLV-292 below. Preserve production, packages, state, and PID 129420. Do not rebuild, install, launch, terminate, integrate main, or push. |
 
 ## Execution and architecture rules
 
@@ -337,6 +337,34 @@ run the focused Bridge suite once. If Bridge is green, retain DLV-291 inside
 the held cumulative matrix and resume Spotify/Tier 2/Tier 3; stop on the first
 remaining distinct failure. Never push.
 
+DLV-290 is committed separately as `b14dfdc`. The corrected DLV-291 exact-base
+scenario passes 1/1. The same full Bridge run reached 92/94 and first failed in
+`Protocol-v19 virtual collection window crosses worker and bridge`: after one
+uncorrelated invalidation read the requested snapshot still contained the
+initial 32-item generation rather than the completed 64-item appended window.
+
+## Assigned widgets correction — DLV-292 correlate virtual completion
+
+Owner/baseline: widgets lane after DLV-290 `b14dfdc`, preserving DLV-291 and
+the held cumulative matrix. Own only `VirtualCollectionWindowCrossesBridge`
+and, only if necessary, a narrowly reusable Bridge-test event wait helper in
+`tests/WidgetBridge.Tests/Program.cs`.
+
+The fixture assumes the next invalidation after pagination proves page-load
+completion. Activation and cursor loading can leave earlier loading/ready
+invalidations queued, while action acknowledgement means only admission. The
+test therefore consumed an older event and inspected generation 1. Replace
+that timing assumption with one bounded event-driven wait for the durable
+condition: a successful Snapshot whose virtual window has request generation
+2, 64 retained children, exact `Append` direction, and the existing logical
+bounds. Correlate through events and state; do not sleep, time-poll, weaken the
+64-item or generation assertions, or change SDK/runtime/Bridge production.
+
+Run the exact virtual-window prefix once outside the command sandbox. If it
+passes, run the focused Bridge suite once. If Bridge is green, retain DLV-292
+inside the held cumulative matrix and resume Spotify/Tier 2/Tier 3; stop on the
+first remaining distinct failure. Never push.
+
 ## Queued platform production — DLV-284 explicit publication transaction model
 
 Status: queued, not assigned. It becomes assignable only after the cumulative
@@ -367,7 +395,7 @@ every legal and illegal transition and follow physical-first order. Never push.
 
 ## Ordered queues
 
-1. Widgets test queue: commit DLV-290, correct DLV-291, then resume and commit the cumulative
+1. Widgets test queue: correct DLV-292, then resume and commit the cumulative
    DLV-278–283 evidence only if all remaining runs pass.
 2. Reviewer integration queue: independently review all evidence; integrate the
    accepted production/test chain into local main only if all required evidence
@@ -394,6 +422,7 @@ There is no other Ready production work in either standing lane.
 | DLV-289 | Assigned test-only update of one pre-DLV-275 raw admission-exception expectation to the current typed Bridge failure contract. |
 | DLV-290 | Assigned test-only update of three Bridge style-map counts after accepted DLV-276 added the committed-text-status node. |
 | DLV-291 | Assigned correction of one held convergence scenario that used Runtime-only actions against BridgeTestWidget. |
+| DLV-292 | Assigned event/state correlation for the Bridge virtual-window completion fixture. |
 | DLV-284 | Queued, not assigned until cumulative integration. |
 | DLV-248 | Deliberately deferred until explicit user promotion. |
 
