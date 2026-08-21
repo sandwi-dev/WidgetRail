@@ -46,7 +46,7 @@ evidence only; this file is the sole authority for current work.
 | Lane | Task/worktree | State |
 | --- | --- | --- |
 | Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | Idle pending cumulative test evidence and integration. DLV-284 is queued but not assigned. Do not begin it, test, launch, integrate, or push. |
-| Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | DLV-322's Runtime build passed but its one run stalled at the corrected gesture fixture because test ordering awaited request termination before releasing the intentionally held grant. Execute bounded test-only DLV-323 below; preserve both authorized edits and PID 126208. |
+| Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | DLV-323 proved that no pre-release companion revocation exists while the cancellation-ignoring grant is still held. Execute source-aligned test-only DLV-324 below; preserve both authorized edits and PID 126208. |
 
 ## Execution and architecture rules
 
@@ -1667,6 +1667,42 @@ that exact commit. Retain every DLV-322 prohibition and do not rerun unrelated
 focused suites outside the verifier. Stop for independent review if Tier 3 is
 green; never push.
 
+DLV-323 made only the authorized gesture-ordering edit and its serialized
+Runtime build passed with zero warnings/errors. The single complete execution
+again passed the first nine cases, then stalled because it awaited the existing
+`Revoked` signal before releasing the held grant. Source review established
+that the activation has already consumed the host reservation and no companion
+authority exists until the cancellation-ignoring grant returns. Session
+teardown fails pending host requests and clears reservations; the dedicated
+`RevokeLateGestureGrantAsync` path intentionally waits for that held grant and
+revokes it only after completion. Therefore a pre-release companion revocation
+is not a legal event to await. After 90 seconds only the owned test process was
+terminated. No commit/Tier 3, production/package/overlay/state mutation, or
+push occurred; the two test edits remain held on baseline `199a81b`.
+
+## Assigned widgets correction — DLV-324 prove absent authority then late revocation
+
+Mode: bounded test-only correction after DLV-323. Preserve both current edits
+in the only authorized files. In the gesture scenario, after stop/replacement
+and the existing terminal-start/replacement synchronization, prove the retired
+companion still has zero granted authorities and the replacement companion is
+current. Do not await a companion `Revoked` signal before releasing the held
+grant: no authority exists yet. Call `ReleaseGrant`, await separate
+`GrantCompleted` and `LateGrantRevoked`, then await the original input
+request's terminal failure. Preserve the exact input sequence, accepted one-or-
+two revocation bound, proof every granted late authority was revoked, and every
+replacement/current-session assertion. Do not add hooks, timers, sleeps,
+polling, product behavior, or weaken the late-revocation claim. Leave the
+cursor convergence edit unchanged.
+
+Build the Runtime test project once in serialized Release `--no-restore`, run
+the complete 84-case executable once, and stop first red. If green, commit
+exactly `WidgetProcessOwnershipScenarios.cs` and `Program.cs` on top of
+`199a81b`, then run one canonical Tier 3 verifier from a clean detached tree at
+that exact commit. Retain every DLV-322 prohibition and do not rerun unrelated
+focused suites outside the verifier. Stop for independent review if Tier 3 is
+green; never push.
+
 ## Queued platform production — DLV-284 explicit publication transaction model
 
 Status: queued, not assigned. It becomes assignable only after the cumulative
@@ -1752,7 +1788,7 @@ import/export or scheduling only after independent widgets prove the need.
 
 ## Ordered queues
 
-1. Widgets evidence queue: execute bounded DLV-323 ordering correction, complete
+1. Widgets evidence queue: execute source-aligned DLV-324 correction, complete
    84-case Runtime gate, and one exact-commit Tier 3
    verifier, stopping on the first red result.
 2. Reviewer integration queue: independently review the eventual cumulative
@@ -1815,7 +1851,8 @@ There is no other Ready production work in either standing lane.
 | DLV-320 | Completed source/artifact-only: both Runtime reds are exact test drift—shared revocation-signal ordering and first-invalidation cursor timing; no product defect. |
 | DLV-321 | Stopped before edits: assignment incorrectly required 64 items while the authoritative Runtime fixture is page-size 4, retained 8, total 12. |
 | DLV-322 | Stopped first red uncommitted: build green, complete Runtime run stalled after 9 passes because the test awaited request termination before releasing its intentionally held grant; owned process terminated. |
-| DLV-323 | Assigned bounded test-only ordering correction, complete Runtime gate, and one exact-commit Tier 3 verifier. |
+| DLV-323 | Stopped first red uncommitted: build green, complete Runtime run stalled after 9 passes because it awaited a pre-release companion revocation that source semantics do not promise. |
+| DLV-324 | Assigned source-aligned absent-authority/late-revocation correction, complete Runtime gate, and one exact-commit Tier 3 verifier. |
 | DLV-284 | Queued, not assigned until cumulative integration. |
 | DLV-248 | Deliberately deferred until explicit user promotion. |
 
