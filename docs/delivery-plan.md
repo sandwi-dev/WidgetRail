@@ -45,7 +45,7 @@ evidence only; this file is the sole authority for current work.
 
 | Lane | Task/worktree | State |
 | --- | --- | --- |
-| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | Execute bounded test-only DLV-327 below after an explicit fast-forward from clean `cdbb04a` to cumulative `676cd76`. DLV-284 remains queued and is not assigned. |
+| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | DLV-327 fast-forwarded to `676cd76` and produced the correct one-file plural-API migration, but its native gate stopped at a fixture viewport not positioned at the requested After edge. Execute bounded test-only DLV-328 below; DLV-284 remains queued and unassigned. |
 | Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | Idle at clean cumulative test tip `676cd76`; every managed gate and focused DLV-326 Runtime gate is green. Preserve PID 126208 and all product state; do not begin new work, integrate, rebuild/relaunch, or push. |
 
 ## Execution and architecture rules
@@ -1813,6 +1813,42 @@ PID 126208, Spotify 0.3.14, installed/configured state, and all production
 artifacts; do not launch/terminate, integrate to main, begin DLV-284, or push.
 Stop for independent review if Tier 3 is green.
 
+DLV-327 fast-forwarded cleanly from `cdbb04a` to cumulative `676cd76` and
+modified only `RealHostAccessibilityTests.cpp`. The six stale singular lookups
+were coherently migrated to exact Before/After selection from
+`FindScrollPaginationActions`, using each frame's active scope and committed
+render geometry. The sole complete Release native build/test invocation then
+stopped at the first behavioral red after 162 real-host checks: the initial
+List frame still renders with `cursor.item.2` focused but asserts the After edge
+that the removed singular API used to infer from a separate `cursor.item.5`
+argument. Under the current geometry contract item 5 must actually be brought
+to the viewport edge. The Grid forward frame has the same retained mismatch:
+it renders item 4 while its old singular call named item 8. No commit/Tier 3,
+production/overlay/package/state mutation, or push occurred; the one test-file
+edit remains uncommitted on `676cd76`.
+
+## Assigned platform correction — DLV-328 render exact pagination boundaries
+
+Mode: bounded native test-only correction after DLV-327. Preserve the current
+one-file plural-API migration. In the same
+`RealHostAccessibilityTests.cpp` cursor fixture, render the forward List frame
+with its existing trailing item 5 as the focused/rendered boundary and render
+the forward Grid frame with its existing trailing item 8 as the focused/
+rendered boundary before resolving After actions. Keep reverse frames on their
+existing first loaded items and preserve every exact edge/action/source-scroll,
+anchor, bounded-node, UIA, sparse-page, and final-page assertion. Do not modify
+snapshot data, thresholds, viewport dimensions, production pagination,
+renderer behavior, or any other file merely to force an action.
+
+Run one complete serialized Release native OverlayHost build/test invocation
+using `src/OverlayHost/build.ps1 -Configuration Release`, stopping first red.
+If green, commit exactly `RealHostAccessibilityTests.cpp` on top of `676cd76`,
+then run one canonical Tier 3 verifier from a clean detached tree at that exact
+commit. Do not run additional focused suites outside those two gates. Preserve
+PID 126208, Spotify 0.3.14, installed/configured state, and all production
+artifacts; do not launch/terminate, integrate to main, begin DLV-284, or push.
+Stop for independent review if Tier 3 is green.
+
 ## Queued platform production — DLV-284 explicit publication transaction model
 
 Status: queued, not assigned. It becomes assignable only after the cumulative
@@ -1898,7 +1934,7 @@ import/export or scheduling only after independent widgets prove the need.
 
 ## Ordered queues
 
-1. Platform evidence queue: execute bounded DLV-327 real-host pagination
+1. Platform evidence queue: execute bounded DLV-328 real-host viewport-boundary
    fixture correction, its complete native gate, and one exact-commit Tier 3
    verifier, stopping on the first red result.
 2. Reviewer integration queue: independently review the eventual cumulative
@@ -1965,7 +2001,8 @@ There is no other Ready production work in either standing lane.
 | DLV-324 | Test-only `6b63edf`: Runtime 84/84 green; exact-commit Tier 3 stopped later at retained Windows Spotify provider compile drift. |
 | DLV-325 | Test-only `e441f25`: provider 32/32 green; exact-commit Tier 3 stopped later at retained Runtime Job helper file-publication cleanup race. |
 | DLV-326 | Test-only `676cd76`: Runtime 84/84 and every preceding Tier 3 managed gate green; Tier 3 stopped later at retained native real-host pagination compile drift. |
-| DLV-327 | Assigned one-file native pagination fixture alignment, complete native gate, and one exact-commit Tier 3 verifier. |
+| DLV-327 | Stopped first red uncommitted: plural geometry migration compiled, but retained forward frames rendered interior focus while asserting trailing-edge actions. |
+| DLV-328 | Assigned one-file exact viewport-boundary correction, complete native gate, and one exact-commit Tier 3 verifier. |
 | DLV-284 | Queued, not assigned until cumulative integration. |
 | DLV-248 | Deliberately deferred until explicit user promotion. |
 
