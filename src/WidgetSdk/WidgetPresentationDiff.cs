@@ -31,6 +31,8 @@ internal static class WidgetPresentationDiff
         if (previous.Sequence != expectedBaseSequence) return Checkpoint("base_mismatch");
         if (current.Sequence <= previous.Sequence) return Checkpoint("sequence_not_advanced");
         if (!ValidGeneration(presentationGeneration)) return Checkpoint("invalid_generation");
+        if (current.ProtocolVersion > previous.ProtocolVersion)
+            return Checkpoint("snapshot_protocol_advanced");
 
         current = current with
         {
