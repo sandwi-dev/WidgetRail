@@ -46,7 +46,7 @@ evidence only; this file is the sole authority for current work.
 | Lane | Task/worktree | State |
 | --- | --- | --- |
 | Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | Idle pending cumulative test evidence and integration. DLV-284 is queued but not assigned. Do not begin it, test, launch, integrate, or push. |
-| Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | DLV-296 `3922b58` is physically accepted and exact PID 83788 remains running. DLV-304 proved current-session ProcessClient invalidation delivery; its only red assertion incorrectly expected Append from a base-zero checkpoint that correctly normalizes to Replace. Preserve the six-file evidence and execute test-only DLV-305 below. Do not change production, rebuild, relaunch, integrate, or push. |
+| Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | DLV-296 `3922b58` is physically accepted and exact PID 83788 remains running. Corrected DLV-305 proved exact-base generation-2 Append and base-zero Replace through the same current external worker. Preserve the six-file evidence and execute test-only DLV-306 permanent Bridge correction below. Do not change production, rebuild, relaunch, integrate, or push. |
 
 ## Execution and architecture rules
 
@@ -919,6 +919,48 @@ stop without commit and report both exact-base Append and base-zero Replace
 results; the next correction will apply the same legal request semantics to the
 permanent Bridge convergence case. Never push.
 
+DLV-305 completed green without a commit. Its one corrected prefix passed 1/1.
+The exact-base request retained the generation-1 checkpoint sequence and
+presentation generation, returned an atomic update based on that exact sequence,
+and carried generation-2 Append which materialized exact items 0–7, total 12,
+first index zero, no before boundary, and an after boundary. An independent
+base-zero checkpoint returned the same durable generation-2 items with Replace,
+as required. The worker stayed at start ordinal one and the same PID throughout.
+Production and PID 83788 remained untouched.
+
+## Assigned widgets evidence — DLV-306 permanent Bridge exact-base convergence
+
+Mode: test-only against accepted DLV-296. Preserve all six current dirty and
+untracked files and do not commit unless the gate below is green. Do not edit
+production/runtime source, packages, manifests, protocols, bounds, timeouts,
+installed/configured state, or processes. PID 83788 remains accepted and must
+not be touched.
+
+Correct the permanent `VirtualCollectionWindowCrossesBridge` case to use the
+same legal request contracts proven by DLV-305. Retain the initial base-zero
+checkpoint, its exact sequence and presentation generation. After the exact
+generated near-end action is Enqueued, consume raw events; fail immediately on
+the existing bounded action-failure payload. Each forward invalidation may
+drive one exact-base `BridgePresentationRequest` with current capabilities and
+the latest materialized sequence. Apply the returned update and advance that
+base until the existing bounded observation limit reaches the durable
+generation-2 64-item Append. Preserve total 10,000, first index zero, no before,
+after present, exact generation, Append, and 96-item host-bound assertions.
+Finally request one base-zero checkpoint and prove the same durable 64 items are
+normalized to Replace. Remove superseded diagnostic-only DLV-299–302 scenario
+names/helpers while retaining reusable focused coverage.
+
+This is event-driven convergence, not snapshot polling: no presentation request
+may occur without a preceding current forward invalidation. Do not add logging,
+reflection, production hooks, sleeps, polling, stress loops, timeout enlargement,
+stdout/file diagnostics, package special cases, weakened assertions, or a
+second model. Compile with serialized MSBuild and run the one permanent virtual
+collection prefix exactly once. If red, preserve evidence and stop without
+correction or commit. If green, source-audit and commit one coherent test-only
+notification-convergence milestone containing only DLV-297–306 notification
+evidence; leave earlier cumulative DLV-278–283 hunks uncommitted and report the
+exact staged/remaining scope. Never push.
+
 ## Queued platform production — DLV-284 explicit publication transaction model
 
 Status: queued, not assigned. It becomes assignable only after the cumulative
@@ -949,21 +991,19 @@ every legal and illegal transition and follow physical-first order. Never push.
 
 ## Ordered queues
 
-1. Widgets evidence queue: execute DLV-305 exact-base ProcessClient correction
-   once and stop without commit.
-2. Widgets evidence queue: if DLV-305 is green, apply the same exact-base versus
-   checkpoint semantics to the permanent Bridge convergence case before its
-   next one-shot run.
-3. Reviewer evidence queue: finish and independently review DLV-297–305 before
-   resuming cumulative evidence.
-4. Widgets cumulative test queue: resume and commit the cumulative DLV-278–283
-   evidence only after DLV-297 is green and independently reviewed.
-5. Reviewer integration queue: independently review all evidence; integrate the
+1. Widgets evidence queue: execute DLV-306 permanent Bridge exact-base
+   convergence once and commit notification evidence only if green.
+2. Reviewer evidence queue: independently review any resulting DLV-297–306
+   test-only milestone before cumulative evidence resumes.
+3. Widgets cumulative test queue: resume and commit the cumulative DLV-278–283
+   evidence only after notification convergence is green and independently
+   reviewed.
+4. Reviewer integration queue: independently review all evidence; integrate the
    accepted production/test chain into local main only if all required evidence
    passes.
-6. Platform production queue: assign DLV-284 after integration, before any new
+5. Platform production queue: assign DLV-284 after integration, before any new
    virtualization feature.
-7. DLV-248 remains deliberately deferred until explicit user promotion.
+6. DLV-248 remains deliberately deferred until explicit user promotion.
 
 There is no other Ready production work in either standing lane.
 
@@ -996,7 +1036,8 @@ There is no other Ready production work in either standing lane.
 | DLV-302 | Completed uncommitted: passive markers located DLV-301's first red at that fixture-routing mismatch before the cursor resource. |
 | DLV-303 | Completed green uncommitted: corrected lifecycle-first direct worker proved exact action entry, Started cursor admission, Succeeded completion, and forward invalidation 1/1. |
 | DLV-304 | Notification/session boundaries green uncommitted; sole red was an invalid Append expectation on base-zero `GetSnapshotAsync`, which correctly returned durable eight-item Replace. |
-| DLV-305 | Assigned test-only correction using exact-base `GetPresentationAsync` for Append plus an explicit base-zero Replace assertion; one prefix once, no commit. |
+| DLV-305 | Completed green uncommitted: exact-base atomic update produced generation-2 Append and base-zero checkpoint produced the same durable generation-2 Replace, 1/1. |
+| DLV-306 | Assigned permanent Bridge correction to event-driven exact-base updates plus explicit base-zero Replace; one prefix once, commit notification evidence only if green. |
 | DLV-284 | Queued, not assigned until cumulative integration. |
 | DLV-248 | Deliberately deferred until explicit user promotion. |
 
