@@ -46,7 +46,7 @@ evidence only; this file is the sole authority for current work.
 | Lane | Task/worktree | State |
 | --- | --- | --- |
 | Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | Idle pending cumulative test evidence and integration. DLV-284 is queued but not assigned. Do not begin it, test, launch, integrate, or push. |
-| Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | DLV-296 `3922b58` is physically accepted and exact PID 83788 remains running. Execute test-only DLV-297 below, preserving production/packages/state and committing only reviewed evidence. Do not rebuild, relaunch, integrate, or push. |
+| Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | DLV-296 `3922b58` is physically accepted and exact PID 83788 remains running. DLV-297 direct lane/transport prefixes passed but Bridge pagination remained red; preserve all uncommitted evidence and execute diagnostic-only DLV-298 below. Do not change production, rebuild, relaunch, integrate, or push. |
 
 ## Execution and architecture rules
 
@@ -601,6 +601,52 @@ planner review before resuming broader cumulative DLV-278–283 convergence
 evidence. If any focused case exposes a product failure, preserve the evidence
 and stop; do not repair production under this assignment. Never push.
 
+DLV-297 stopped without a commit after exactly three one-time focused runs.
+The direct notification-lane prefix passed 1/1 and proved one sender, latest
+queued invalidation coalescing, mixed FIFO failure order, exact eight-entry
+full/closed behavior, and bounded graceful/cancelled drain. The real
+`WidgetWorkerServer` disconnect prefix passed 1/1 and observed one terminal
+`IOException`, one initialization/destruction, and no post-terminal subscriber
+effect. The existing Bridge virtual-pagination prefix failed 0/1, again timing
+out at `Program.cs:3371` while awaiting the first ordinary post-action
+invalidation. No disposable diagnostics, polling, timeout change, production
+edit, rerun, or process/state mutation occurred. Direct lane success rejects
+DLV-296's former fire-and-forget transport as a sufficient explanation, but
+does not yet identify which next boundary loses the notification.
+
+## Assigned widgets diagnosis — DLV-298 notification boundary bisection
+
+Mode: diagnostic test-only against accepted DLV-296. Preserve all five current
+dirty/untracked test files exactly as starting evidence, including the two new
+Runtime test files from DLV-297. Do not commit DLV-297 yet. Do not change
+production/runtime source, packages, manifests, protocols, bounds, timeouts,
+installed/configured state, or processes. PID 83788 remains accepted and must
+not be touched.
+
+Add deterministic production-boundary tests that locate the first missing
+handoff without logging or timing-dependent probes. Use the real action and
+cursor-resource path and bisect these owners in order:
+
+1. `WidgetWorkerServer`: real Action admission and SDK action consumer/resource
+   completion must produce a forward invalidation on the worker pipe;
+2. `WidgetProcessClient`: that worker notification must be read, admitted under
+   the current process session, and raise exactly one current `Invalidated`
+   publication;
+3. `BridgeClientRegistry`: the visible current registration must admit that
+   publication into its existing notification lane and invoke the configured
+   Bridge publisher exactly once; and
+4. Bridge server/client framing: an admitted registry publication must reach
+   the existing client event queue without relying on another request.
+
+Use existing assembly-internal access and fixtures only—no reflection,
+production hook, new protocol, sleeps, polling, timeout enlargement, worker
+stdout/file diagnostics, or package-specific behavior. Give each new boundary
+one uniquely named focused prefix and run each at most once, stopping at the
+first red boundary. Do not rerun the already-red full pagination prefix. Report
+the exact last-green/first-red ownership edge and source-review explanation.
+Do not implement a production correction or commit under DLV-298; stop for
+planner review. Never push.
+
 ## Queued platform production — DLV-284 explicit publication transaction model
 
 Status: queued, not assigned. It becomes assignable only after the cumulative
@@ -631,16 +677,18 @@ every legal and illegal transition and follow physical-first order. Never push.
 
 ## Ordered queues
 
-1. Widgets test queue: execute test-only DLV-297 focused notification and
-   pagination convergence evidence against accepted DLV-296 production.
-2. Widgets cumulative test queue: after independent DLV-297 review, resume and
-   commit the cumulative DLV-278–283 evidence only if all remaining runs pass.
-3. Reviewer integration queue: independently review all evidence; integrate the
+1. Widgets diagnostic queue: execute test-only DLV-298 boundary bisection and
+   stop at the first red owner without production correction or commit.
+2. Widgets evidence queue: after the diagnosed production/harness disposition,
+   finish and independently review DLV-297 before resuming cumulative evidence.
+3. Widgets cumulative test queue: resume and commit the cumulative DLV-278–283
+   evidence only after DLV-297 is green and independently reviewed.
+4. Reviewer integration queue: independently review all evidence; integrate the
    accepted production/test chain into local main only if all required evidence
    passes.
-4. Platform production queue: assign DLV-284 after integration, before any new
+5. Platform production queue: assign DLV-284 after integration, before any new
    virtualization feature.
-5. DLV-248 remains deliberately deferred until explicit user promotion.
+6. DLV-248 remains deliberately deferred until explicit user promotion.
 
 There is no other Ready production work in either standing lane.
 
@@ -665,7 +713,8 @@ There is no other Ready production work in either standing lane.
 | DLV-294 | Classified ordinary revisions 2–4 through the Bridge and exact successful generation-2 Append; revision 5 was diagnostic only. |
 | DLV-295 | Reproduced missing ordinary invalidation after clean fixture synchronization; diagnostic campaign stopped. |
 | DLV-296 | Production `3922b58` is source-reviewed, exact-build clean, and physically accepted as running PID 83788. |
-| DLV-297 | Assigned test-only focused notification convergence evidence against accepted DLV-296; no production, package, process, integration, or push changes. |
+| DLV-297 | Held uncommitted: direct lane and real worker transport prefixes passed 1/1 each; Bridge virtual pagination remained red 0/1 awaiting its first post-action invalidation. |
+| DLV-298 | Assigned diagnostic-only boundary bisection from worker action/resource through process client, registry notification lane, and Bridge framing; stop at first red, no production correction or commit. |
 | DLV-284 | Queued, not assigned until cumulative integration. |
 | DLV-248 | Deliberately deferred until explicit user promotion. |
 
