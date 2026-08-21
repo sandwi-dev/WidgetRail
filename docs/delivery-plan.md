@@ -46,7 +46,7 @@ evidence only; this file is the sole authority for current work.
 | Lane | Task/worktree | State |
 | --- | --- | --- |
 | Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | Idle pending cumulative test evidence and integration. DLV-284 is queued but not assigned. Do not begin it, test, launch, integrate, or push. |
-| Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | DLV-314 `992b77b` is physically accepted as responsive PID 21672 with immutable Spotify 0.3.13 selected/enabled. DLV-317 exposed one generic invalid Error-state virtual-window projection. Execute physical-first production/build DLV-318 below; preserve all six held test files and do not install/launch/integrate/push. |
+| Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | DLV-318 `32a2a5e` is independently source-reviewed and exact-build clean with immutable Spotify 0.3.14 packaged. Accepted DLV-314 PID 21672 remains responsive. Stop pending fresh user approval to install/select 0.3.14 and visibly switch to the reviewed DLV-318 Release; do not test/integrate/push. |
 
 ## Execution and architecture rules
 
@@ -1437,6 +1437,29 @@ select packages, touch credentials/account/provider/configuration, launch or
 terminate processes, integrate, or push. Preserve accepted PID 21672 and stop
 for independent review and fresh approval before any visible candidate switch.
 
+DLV-318 production commit
+`32a2a5ed3f31ad95156d3ab61fe36f2d791449e2` has parent `992b77b` and changes
+exactly `WidgetCursorResource.cs` plus Spotify manifest 0.3.13 to 0.3.14. The
+review confirmed only projected `HasBefore/HasAfter` now follow corresponding
+admitted actions; private cursor facts, explicit Retry, non-Error behavior, the
+validator, protocol, and lifecycle ownership are unchanged. Its detached tree
+is clean at the exact commit. The coherent tests-skipped packaged Release and
+Spotify 0.3.14 package both passed. Reviewed hashes are:
+
+- `OverlayHost.exe`:
+  `86AC9946CC54F2B4CF51B14EEAA48CE32FECDF2C381DA73F24107DBE755F13AD`
+- Release `WidgetSdk.dll`:
+  `C98AB38346114F11482CD39609A7A6397F529EFDAC90F18BCF62E4EABAC7CC25`
+- Spotify 0.3.14 package:
+  `77F81AB127D19453876D982FE77C3E337A3CBBA4200FFD01B434FA89AA0F8727`
+
+Package inspection confirms `widgetrail.samples.spotify` 0.3.14 with
+`full-trust-application-v1`. All six held test files remain dirty and excluded
+from the clean build. Accepted DLV-314 PID 21672 remains responsive from its
+exact detached Release. No installation, selection, launch, termination,
+integration, or push has occurred. Fresh user approval is required before the
+immutable package change and visible candidate switch.
+
 ## Queued platform production — DLV-284 explicit publication transaction model
 
 Status: queued, not assigned. It becomes assignable only after the cumulative
@@ -1522,9 +1545,9 @@ import/export or scheduling only after independent widgets prove the need.
 
 ## Ordered queues
 
-1. Widgets production queue: execute DLV-318's generic valid Error-state virtual
-   projection, exact clean Release/package builds, independent review, visible
-   user verdict, then focused/cumulative tests.
+1. Widgets physical-verdict queue: after fresh approval, install/select reviewed
+   Spotify 0.3.14 and cooperatively switch from accepted DLV-314 PID 21672 to
+   exact reviewed DLV-318 Release `32a2a5e`; obtain user verdict before tests.
 2. Reviewer integration queue: independently review the eventual cumulative
    evidence milestone; integrate the
    accepted production/test chain into local main only if all required evidence
@@ -1580,7 +1603,7 @@ There is no other Ready production work in either standing lane.
 | DLV-315 | Stopped first red uncommitted: authorized test edits remain held; WidgetSdk build failed before execution with no causal diagnostic, so later groups were skipped. |
 | DLV-316 | Completed diagnostic-only: serialized Release build passed with 0 warnings/errors after Roslyn named-pipe denial fell back to local compilation; no source/product failure. |
 | DLV-317 | Stopped first red uncommitted: WidgetSdk 88/89 exposed projected virtual availability without matching admitted Error-state boundary actions; later groups skipped. |
-| DLV-318 | Assigned physical-first generic SDK projection correction and immutable Spotify 0.3.14 package build. |
+| DLV-318 | Production `32a2a5e` independently source-reviewed and exact-build clean with Spotify 0.3.14 packaged; waiting fresh approval for installation/visible switch and user verdict. |
 | DLV-284 | Queued, not assigned until cumulative integration. |
 | DLV-248 | Deliberately deferred until explicit user promotion. |
 
