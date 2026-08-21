@@ -37,7 +37,7 @@ evidence only; this file is the sole authority for current work.
 | Lane | Task/worktree | State |
 | --- | --- | --- |
 | Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | Idle pending cumulative test evidence and integration. DLV-284 is queued but not assigned. Do not begin it, test, launch, integrate, or push. |
-| Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | DLV-285 `9365cb5` passes Runtime 78/78; DLV-286 `81b8c23` is committed; DLV-287 scenario passes but awaits separate commit. Commit it, then execute DLV-288 isolated full-trust environment classification below. Preserve the cumulative matrix, production, packages, state, and PID 129420. Do not rebuild, install, launch, terminate, integrate main, or push. |
+| Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | DLV-285 `9365cb5`, DLV-286 `81b8c23`, and DLV-287 `9f56c5b` are committed. DLV-288 proves the full-trust prefix green unsandboxed; full Bridge then stopped on stale admission-exception wrapping. Execute DLV-289 below. Preserve the cumulative matrix, production, packages, state, and PID 129420. Do not rebuild, install, launch, terminate, integrate main, or push. |
 
 ## Execution and architecture rules
 
@@ -263,6 +263,29 @@ Bridge suite one final time unsandboxed. If it fails, stop with exact evidence;
 do not change production or tests. On a complete green Bridge result, resume
 Spotify/Tier 2/Tier 3. Never push.
 
+DLV-288 passed the exact prefix 1/1 in 3.4 seconds with exit 0 and no stderr or
+managed exception, proving the earlier worker exit was command-sandbox
+interference. The full unsandboxed Bridge run reached 88/94 and first failed in
+`BudgetRefusalAndFailedStartReleaseReservations` because it expected a raw
+`WidgetProcessAdmissionException`.
+
+## Assigned widgets correction — DLV-289 typed admission fixture
+
+Owner/baseline: widgets lane after DLV-287 `9f56c5b`, preserving all prior test
+commits and the held cumulative matrix. Own only the affected expectation in
+`BudgetRefusalAndFailedStartReleaseReservations`.
+
+DLV-275 intentionally maps a client `WidgetProcessAdmissionException` through
+`BridgeWidgetRequestException` with widget identity, safe failure code
+`worker-admission-failed`, and the exact original exception as `InnerException`.
+Update only the stale raw-exception assertion to prove that typed wrapper. Keep
+all residency release/count, failed-start, catalog retirement, and retry
+assertions unchanged.
+
+Run the focused Bridge suite once outside the command sandbox. If green, commit
+only DLV-289, then resume Spotify/Tier 2/Tier 3. Stop on the first remaining
+distinct failure; never change production or push.
+
 ## Queued platform production — DLV-284 explicit publication transaction model
 
 Status: queued, not assigned. It becomes assignable only after the cumulative
@@ -293,7 +316,7 @@ every legal and illegal transition and follow physical-first order. Never push.
 
 ## Ordered queues
 
-1. Widgets test queue: commit DLV-287, classify DLV-288, then resume and commit the cumulative
+1. Widgets test queue: correct DLV-289, then resume and commit the cumulative
    DLV-278–283 evidence only if all remaining runs pass.
 2. Reviewer integration queue: independently review all evidence; integrate the
    accepted production/test chain into local main only if all required evidence
@@ -317,6 +340,7 @@ There is no other Ready production work in either standing lane.
 | DLV-286 | Test-only `81b8c23` reconciles the three cold Bridge fixtures to explicit None/base-zero checkpoint semantics; Bridge remains red on DLV-287. |
 | DLV-287 | Assigned test-only correction for stale destructive-retirement expectations after DLV-280 introduced bounded lifecycle compensation and worker retention. |
 | DLV-288 | Assigned isolated unsandboxed classification of the full-trust child-worker exit before any production/test correction. |
+| DLV-289 | Assigned test-only update of one pre-DLV-275 raw admission-exception expectation to the current typed Bridge failure contract. |
 | DLV-284 | Queued, not assigned until cumulative integration. |
 | DLV-248 | Deliberately deferred until explicit user promotion. |
 
