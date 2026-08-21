@@ -25,10 +25,10 @@ evidence only; this file is the sole authority for current work.
   clean detached Release build passed with tests skipped and packaging enabled.
   Candidate `OverlayHost.exe` SHA-256 is
   `147DCA59310AB4188E5B93850E6155DF04D8BE7B92488C2D650454C521EB177D`.
-  After fresh explicit user approval, accepted PID 129420 exited cooperatively
-  through verified `WM_CLOSE` and exact unaccepted DLV-296 PID 83788 launched
-  visibly from the detached build. Immediate startup remained responsive and
-  admitted Settings without a startup failure. Physical verdict is pending.
+  After fresh explicit user approval, prior accepted PID 129420 exited
+  cooperatively through verified `WM_CLOSE` and exact DLV-296 PID 83788
+  launched visibly from the detached build. The user physically accepted this
+  candidate after rapid Spotify/Games & Apps cycling and virtual paging.
 - Exact DLV-283 production is platform commit `cdbb04a`. The cumulative widgets
   merge is `0dec737`. DLV-280, DLV-281, DLV-282, DLV-283, DLV-278, DLV-279, and
   DLV-270 are physically accepted only as that cumulative tree; they remain
@@ -46,7 +46,7 @@ evidence only; this file is the sole authority for current work.
 | Lane | Task/worktree | State |
 | --- | --- | --- |
 | Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | Idle pending cumulative test evidence and integration. DLV-284 is queued but not assigned. Do not begin it, test, launch, integrate, or push. |
-| Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | DLV-296 `3922b58` is production-only, source-reviewed, and exact-build clean. Exact unaccepted PID 83788 is visibly running for user verdict. Preserve the three held test-matrix files; do not add/run tests or integrate before acceptance. |
+| Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | DLV-296 `3922b58` is physically accepted and exact PID 83788 remains running. Execute test-only DLV-297 below, preserving production/packages/state and committing only reviewed evidence. Do not rebuild, relaunch, integrate, or push. |
 
 ## Execution and architecture rules
 
@@ -557,13 +557,49 @@ identity was reverified and it exited cooperatively through `WM_CLOSE`. Exact
 candidate PID 83788 then launched visibly with the expected executable path and
 hash. It remained responsive, elected the production process owner, started its
 Bridge, and admitted Settings on sequence 1 without an immediate startup error.
-The candidate is unaccepted; production tests and integration remain held.
+The user physically accepted DLV-296. PID 83788 remains the accepted running
+artifact; do not rebuild or relaunch solely for the following test/doc delta.
 
 After planner review, launch the exact coherent Release as an unaccepted
 candidate for rapid Spotify/Games & Apps cycling and virtual paging. Only after
 the user accepts may DLV-296 receive focused regression tests for coalescing,
 failure ordering, disconnect/shutdown drain, and the formerly intermittent
 Bridge pagination path. Never push.
+
+## Assigned widgets evidence — DLV-297 notification convergence
+
+Mode: test-only after accepted DLV-296 production. Owner/baseline: widgets lane
+at accepted production commit
+`3922b58dc6456be17442926f2a0c7257d3b97e11`, retaining the three existing dirty
+held test-matrix files until their exact roles are reconciled. Do not change
+production/runtime source, packages, manifests, public/private protocols,
+timeouts, bounds, configuration, credentials, installed/selected widgets, or
+processes. Accepted PID 83788 must remain running and untouched.
+
+Add deterministic focused evidence that proves the production notification
+owner rather than relying on sleeps or diagnostic timing:
+
+- multiple invalidations admitted while a send is blocked retain exactly the
+  newest queued forward revision and produce no concurrent senders;
+- action-failure notifications remain FIFO through mixed invalidations, with
+  exact closed/full behavior at the eight-entry bound;
+- a terminal transport failure is observed once by the existing request-loop
+  owner, with no unobserved task, duplicate lifecycle authority, or hidden
+  restart;
+- graceful close drains queued notifications before subscription/channel
+  release, while disconnect/cancellation remains bounded; and
+- the formerly intermittent Bridge virtual-pagination scenario observes the
+  completed forward window without disposable instrumentation, polling races,
+  or package-specific behavior.
+
+Use existing production fixtures and contracts. Do not add reflection access,
+test-only production hooks, weakened assertions, enlarged timeouts, or a second
+notification model. First reconcile the three held files and report which
+require changes for DLV-297. Run only the smallest directly affected test
+prefixes once. If they pass, commit one test-only DLV-297 milestone and stop for
+planner review before resuming broader cumulative DLV-278–283 convergence
+evidence. If any focused case exposes a product failure, preserve the evidence
+and stop; do not repair production under this assignment. Never push.
 
 ## Queued platform production — DLV-284 explicit publication transaction model
 
@@ -595,12 +631,10 @@ every legal and illegal transition and follow physical-first order. Never push.
 
 ## Ordered queues
 
-1. Widgets production queue: DLV-296 is implemented, review-clean, exact-build
-   verified, and visibly running as unaccepted PID 83788; obtain the user
-   verdict.
-2. Widgets test queue after user acceptance: add focused DLV-296 regression
-   evidence, then resume and commit the cumulative DLV-278–283 evidence only if
-   all remaining runs pass.
+1. Widgets test queue: execute test-only DLV-297 focused notification and
+   pagination convergence evidence against accepted DLV-296 production.
+2. Widgets cumulative test queue: after independent DLV-297 review, resume and
+   commit the cumulative DLV-278–283 evidence only if all remaining runs pass.
 3. Reviewer integration queue: independently review all evidence; integrate the
    accepted production/test chain into local main only if all required evidence
    passes.
@@ -630,7 +664,8 @@ There is no other Ready production work in either standing lane.
 | DLV-293 | No product evidence: its disposable compound diagnostic class violated the existing 64-character style-class bound. |
 | DLV-294 | Classified ordinary revisions 2–4 through the Bridge and exact successful generation-2 Append; revision 5 was diagnostic only. |
 | DLV-295 | Reproduced missing ordinary invalidation after clean fixture synchronization; diagnostic campaign stopped. |
-| DLV-296 | Production `3922b58` is source-reviewed and exact-build clean; exact PID 83788 is visibly running for physical verdict after PID 129420 exited cooperatively. No tests or integration before acceptance. |
+| DLV-296 | Production `3922b58` is source-reviewed, exact-build clean, and physically accepted as running PID 83788. |
+| DLV-297 | Assigned test-only focused notification convergence evidence against accepted DLV-296; no production, package, process, integration, or push changes. |
 | DLV-284 | Queued, not assigned until cumulative integration. |
 | DLV-248 | Deliberately deferred until explicit user promotion. |
 
