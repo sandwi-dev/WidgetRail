@@ -37,7 +37,7 @@ evidence only; this file is the sole authority for current work.
 | Lane | Task/worktree | State |
 | --- | --- | --- |
 | Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | Idle pending cumulative test evidence and integration. DLV-284 is queued but not assigned. Do not begin it, test, launch, integrate, or push. |
-| Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | DLV-285 `9365cb5` passes Runtime 78/78. DLV-286's three signature corrections compile but exposed stale DLV-280 lifecycle assertions; commit DLV-286 separately, then execute assigned DLV-287 below. Preserve the incomplete cumulative matrix, production, packages, state, and PID 129420. Do not rebuild, install, launch, terminate, integrate main, or push. |
+| Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | DLV-285 `9365cb5` passes Runtime 78/78; DLV-286 `81b8c23` is committed; DLV-287 scenario passes but awaits separate commit. Commit it, then execute DLV-288 isolated full-trust environment classification below. Preserve the cumulative matrix, production, packages, state, and PID 129420. Do not rebuild, install, launch, terminate, integrate main, or push. |
 
 ## Execution and architecture rules
 
@@ -241,6 +241,28 @@ the asynchronous per-widget lane. Await that widget's existing
 polling, synchronous production behavior, or change notification ownership.
 Run Bridge one further time and stop on the first remaining distinct failure.
 
+The corrected DLV-287 atomic lifecycle scenario now passes. The same Bridge run
+continued to 86/94 and first failed at `Two unrelated full-trust applications
+use one ordinary runtime` because its child worker exited during action
+admission. Commit only DLV-287 now; do not claim the complete Bridge suite green.
+
+## Assigned widgets diagnostic — DLV-288 full-trust test environment
+
+Owner/baseline: widgets lane after separate DLV-287 commit, preserving DLV-285,
+DLV-286, and the held cumulative matrix. Do not edit production or tests before
+classification.
+
+Run only the exact full-trust test prefix once, bounded to 60 seconds, outside
+the command sandbox needed for current-user named-pipe child-process evidence.
+This is authorized because DLV-285 already proved sandbox denial can produce a
+false worker-launch failure. Capture exact exit/stdout/stderr/managed exception.
+If the isolated unsandboxed test passes, classify the prior failure as an
+environment artifact and resume the remaining Bridge suite once from the first
+not-yet-proven boundary if the runner supports it; otherwise run the focused
+Bridge suite one final time unsandboxed. If it fails, stop with exact evidence;
+do not change production or tests. On a complete green Bridge result, resume
+Spotify/Tier 2/Tier 3. Never push.
+
 ## Queued platform production — DLV-284 explicit publication transaction model
 
 Status: queued, not assigned. It becomes assignable only after the cumulative
@@ -271,7 +293,7 @@ every legal and illegal transition and follow physical-first order. Never push.
 
 ## Ordered queues
 
-1. Widgets test queue: commit DLV-286, correct DLV-287, then resume and commit the cumulative
+1. Widgets test queue: commit DLV-287, classify DLV-288, then resume and commit the cumulative
    DLV-278–283 evidence only if all remaining runs pass.
 2. Reviewer integration queue: independently review all evidence; integrate the
    accepted production/test chain into local main only if all required evidence
@@ -294,6 +316,7 @@ There is no other Ready production work in either standing lane.
 | DLV-285 | Test-only correction `9365cb5` passes isolated 1/1 and focused Runtime 78/78; command-sandbox named-pipe denial was not a product failure. |
 | DLV-286 | Test-only `81b8c23` reconciles the three cold Bridge fixtures to explicit None/base-zero checkpoint semantics; Bridge remains red on DLV-287. |
 | DLV-287 | Assigned test-only correction for stale destructive-retirement expectations after DLV-280 introduced bounded lifecycle compensation and worker retention. |
+| DLV-288 | Assigned isolated unsandboxed classification of the full-trust child-worker exit before any production/test correction. |
 | DLV-284 | Queued, not assigned until cumulative integration. |
 | DLV-248 | Deliberately deferred until explicit user promotion. |
 
