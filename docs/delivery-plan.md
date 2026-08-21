@@ -46,7 +46,7 @@ evidence only; this file is the sole authority for current work.
 | Lane | Task/worktree | State |
 | --- | --- | --- |
 | Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | Idle pending cumulative test evidence and integration. DLV-284 is queued but not assigned. Do not begin it, test, launch, integrate, or push. |
-| Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | DLV-314 `992b77b` is source-reviewed, exact-build clean, and visibly running as responsive PID 21672 with immutable Spotify 0.3.13 selected/enabled. Five cumulative test files remain dirty and held. Await user verdict; do not run tests, integrate, or push. |
+| Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | DLV-314 `992b77b` is physically accepted as responsive PID 21672 with immutable Spotify 0.3.13 selected/enabled. Five cumulative test files remain dirty and held. Execute post-verdict test-only DLV-315 below; do not rebuild/relaunch, integrate, or push. |
 
 ## Execution and architecture rules
 
@@ -1297,6 +1297,52 @@ and its SHA-256 reverified as
 Catalog inspection reports Spotify 0.3.13 enabled. Stop for the user's physical
 verdict; do not run tests first.
 
+The user physically accepted exact DLV-314 PID 21672 with Spotify 0.3.13. This
+promotes `992b77b8959a615a3fe2791e9369fcfec1b9da4c` as the current accepted
+production milestone. Preserve that running process and package state while
+post-verdict evidence executes; test/doc-only deltas must not trigger another
+build or relaunch.
+
+## Assigned widgets evidence — DLV-315 accepted cursor recovery and cumulative gate
+
+Mode: post-verdict test-only against accepted DLV-314. Owner/baseline: widgets
+lane at `992b77b` with exactly the five held dirty test files. PID 21672,
+Spotify 0.3.13, installed/configured state, and all production/runtime/package
+files are frozen.
+
+In `tests/WidgetSdk.Tests/WidgetCursorResourceTests.cs`, add permanent focused
+coverage proving an Error snapshot retains its bounded last-good rows, cursor
+facts, anchor and virtual-window metadata while `Present` emits neither before
+nor after edge action; prove explicit `Retry` remains admitted and restores
+Ready/non-Error pagination. Do not duplicate Spotify behavior or expose private
+state.
+
+In `tests/SpotifyWidget.Tests/Program.cs`, correct only the two DLV-313 test
+drifts: require exact `ProtocolConstants.VirtualCollectionWindowVersion` for
+the estimated-extent playlist window and exact immutable manifest version
+0.3.13. Preserve the existing adjacent-failure assertion; it must now validate
+the accepted production correction. Preserve all prior DLV-309/311/312 fixture
+corrections and `SpotifyResponsiveLayoutTests.cs` unchanged except for its
+already-held DLV-312 correction.
+
+Run once each in order and stop on the first red result:
+
+1. build and run the complete WidgetSdk test executable, since it has no
+   supported prefix seam and the accepted production SDK changed;
+2. build and run the complete 54-case Spotify test executable;
+3. run the smallest linked Tier 2 cross-process convergence group; and
+4. run one exact-commit Tier 3 verifier.
+
+Do not rerun Bridge, native coordinator, WidgetRuntime, or individual
+notification prefixes already green unless the documented Tier 2/Tier 3 runner
+necessarily owns them. Record exact commands, counts, hashes where applicable,
+and skips. No production/package edit, restore/update, logging, hooks, sleeps,
+polling, timeout enlargement, weakened assertion, overlay rebuild/relaunch,
+installed-state change, integration, or push. If all required groups pass,
+commit one coherent test-only DLV-315 milestone containing exactly the original
+five held test files plus `WidgetCursorResourceTests.cs`, then stop for
+independent review.
+
 ## Queued platform production — DLV-284 explicit publication transaction model
 
 Status: queued, not assigned. It becomes assignable only after the cumulative
@@ -1327,8 +1373,9 @@ every legal and illegal transition and follow physical-first order. Never push.
 
 ## Ordered queues
 
-1. Widgets production queue: exact DLV-314 PID 21672 with Spotify 0.3.13 is
-   visibly running; stop for user verdict before resuming tests.
+1. Widgets evidence queue: execute DLV-315 WidgetSdk, Spotify, linked Tier 2,
+   and exact-commit Tier 3 evidence against accepted DLV-314, stopping on the
+   first red result.
 2. Reviewer integration queue: independently review the eventual cumulative
    evidence milestone; integrate the
    accepted production/test chain into local main only if all required evidence
@@ -1377,7 +1424,8 @@ There is no other Ready production work in either standing lane.
 | DLV-311 | Stopped first red uncommitted: service fixture now matches the separated metadata/page contract; build exposed two stale raw-snapshot presentation fixtures before tests ran. |
 | DLV-312 | Stopped first red uncommitted: build green; Spotify 51/54 with protocol-version, adjacent-failure pagination, and manifest-version assertions red; Tier 2 and Tier 3 skipped. |
 | DLV-313 | Completed source-only: protocol 19 and manifest 0.3.12 are test drift; automatic cursor-edge retry while Error is visible is a generic SDK production defect. |
-| DLV-314 | Source-reviewed exact-build `992b77b` visibly runs as PID 21672 with Spotify 0.3.13 selected/enabled; awaiting user verdict before tests. |
+| DLV-314 | Physically accepted production `992b77b`, visibly running as PID 21672 with Spotify 0.3.13 selected/enabled. |
+| DLV-315 | Assigned post-verdict test-only cursor Error-state coverage, exact Spotify drift corrections, and remaining cumulative evidence. |
 | DLV-284 | Queued, not assigned until cumulative integration. |
 | DLV-248 | Deliberately deferred until explicit user promotion. |
 
