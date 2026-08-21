@@ -10,11 +10,11 @@ The complete delivery record through the DLV-277 assignment is preserved in the\
   contains accepted DLV-276 production through `dfa13d7`, focused behavior
   coverage `bd10e76`, and bounded completion evidence `ca967e6`, cherry-picked
   without duplicate branch history.
-- Coherent main Release PID 34208 is visibly running from that integrated tree.
-  `OverlayHost.exe` SHA-256 is
-  `613CE90F001D6C0561BC9008CD6FC253EC2D3E06C50614218A014C7FA0C06F45`;
+- Exact DLV-277 production candidate PID 34764 is visibly running from clean
+  commit `830364d` over main `ce13a3c`. `OverlayHost.exe` SHA-256 is
+  `5EAEB6240C89A6DF8BE4A203340A683118394811955C9368D0C031DAB16D00FA`;
   `OverlayPlatformInterop.dll` is
-  `D5A83EED275624A4F1E9E22EEBE77ACE1A44B7211C06A324BA5F839E4B13588A`.
+  `089029C61D87F9837BA4E4E15908C411FCFF8E9B2A28707601FABD1928A91DEE`.
   The provider-free Full Application sample remains installed and enabled.
 - Widgets correction DLV-265 remains saved at clean tip `13bd971` plus
   reconciliation `5fd1a06`, with immutable Spotify 0.3.3 installed and the
@@ -23,8 +23,8 @@ The complete delivery record through the DLV-277 assignment is preserved in the\
 
 | Lane | Task/worktree | State |
 | --- | --- | --- |
-| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | DLV-276 is accepted and integrated through main `ca967e6`. Reconcile that baseline and run DLV-277 physical-first exactly as assigned below. Preserve installed Spotify configuration/account state; do not modify package trees or begin DLV-270. DLV-273 remains retired. Never push. |
-| Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | Resume saved DLV-265 from clean correction tip `13bd971` plus reconciliation `5fd1a06`, reconcile onto main `ca967e6` without rewriting it, and continue physical-first. Preserve installed Spotify 0.3.3 plus current Client ID/account state; do not reinstall, replace configuration, or reset. DLV-270 follows accepted DLV-265; DLV-248 remains deferred. Never push. |
+| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | DLV-277 production candidate `830364d` is built, source-reviewed, and running as PID 34764 for the physical verdict. Do not test, integrate, or change it before the verdict. Preserve installed Spotify configuration/account state and package trees. DLV-273 remains retired. Never push. |
+| Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | DLV-265 is cleanly reconciled as `edf2583`; saved `13bd971` plus `5fd1a06` are preserved. The isolated Release and immutable Spotify 0.3.3 package build pass without tests or installation. Existing installed Spotify 0.3.3/current Client ID/account state are the physical candidate on PID 34764. Do not reinstall, replace configuration, reset, test, or integrate before the verdict. DLV-270 follows accepted DLV-265; DLV-248 remains deferred. Never push. |
 
 ## Execution, review, and architecture rules
 
@@ -234,6 +234,14 @@ focus seam, protocol work, substantial conflict, missing accepted DLV-276
 baseline, destructive action, or physical behavior that contradicts the logged
 mode mismatch. Never push.
 
+Production-only commit `830364d` removes the four host-side pre-paint mode
+recalculations. A successful `DeclarativeRenderer` result now records the exact
+responsive viewport and compact/expanded mode used for that pass; responsive
+focus persistence consumes only that committed result. Navigation, hit testing,
+UIA, and focus reconciliation therefore share the rendered geometry. The
+tests-skipped Release build passes with the six existing `C4244` warnings and is
+running as PID 34764. Await the physical verdict before tests or integration.
+
 ## Assigned widgets deliverable — DLV-265: controller-first Spotify onboarding
 
 Preserve clean production-only correction tip `13bd971`, reconciliation
@@ -262,6 +270,14 @@ old-credential invalidation, failure, and cancellation tests. Stop for shared
 protocol/capability work, Client Secret, Credential Manager migration,
 third-party authentication needed for automation, provider-dashboard
 automation, substantial conflict, or out-of-package work. Never push.
+
+Reconciliation `edf2583` preserves `13bd971` and `5fd1a06` over main `ce13a3c`.
+One fresh isolated tests-skipped Release and Spotify 0.3.3 package build pass;
+the package is 1,158,141 bytes with SHA-256
+`1AB8A56D400292004C8B6D924E917E03B3E1E4E7FEA30DEDDDC0524A86AD5B53`.
+Nothing was installed or selected and no configuration, authentication, or
+process state changed. The already installed immutable 0.3.3 plus PID 34764 are
+the physical candidate; await the verdict before focused tests or integration.
 
 ## Ready widgets deliverable — DLV-270: Spotify collection paging efficiency
 
@@ -307,8 +323,9 @@ missing accepted DLV-265/DLV-271/DLV-276 baseline. Never push.
 
 1. DLV-269, DLV-274/275, DLV-271, and DLV-276 are accepted and integrated
    through main `ca967e6`; DLV-273 remains retired rejected history.
-2. Run DLV-277 in the platform lane and resume saved DLV-265 in the widgets
-   lane independently from shared accepted main `ca967e6`.
+2. DLV-277 candidate `830364d` and reconciled DLV-265 candidate `edf2583` now
+   await one combined physical verdict on PID 34764. Do not test or integrate
+   either before that verdict.
 3. Run DLV-270 only after accepted DLV-265 integration.
 4. DLV-248 remains deferred until explicit user promotion.
 
@@ -321,9 +338,9 @@ missing accepted DLV-265/DLV-271/DLV-276 baseline. Never push.
 | Domain | Live registrar/RDAP availability and optional registration through the user's account. |
 | Trademark | Similar-mark clearance; qualified counsel recommended before public release. |
 | GitHub identity | User-selected owner plus repository/organization availability and optional rename/creation. |
-| DLV-276 | Complete: behavior/styling accepted, focused boundary evidence passes, and production/tests are integrated through main `ca967e6`; coherent main Release PID 34208 is running. |
-| DLV-277 | Assigned from main `ca967e6`; earlier PID 34644 logs establish the responsive focus-mode mismatch. |
-| DLV-265 | Resumed from main `ca967e6`; preserve installed Spotify 0.3.3 and current account/configuration state while reconciling saved `13bd971` plus `5fd1a06`. |
+| DLV-276 | Complete: behavior/styling accepted, focused boundary evidence passes, and production/tests are integrated through main `ca967e6`. |
+| DLV-277 | Production candidate `830364d` is running as PID 34764; verify stable Queue/Playlists/Devices focus across playback updates and one real compact/wide transition. |
+| DLV-265 | Reconciled candidate `edf2583` is ready without reinstall; on existing installed Spotify 0.3.3 verify configured Ready Setup in wide/compact, accepted keyboard behavior, B cancel, and unchanged Client ID/account/navigation. |
 | DLV-248 | Deliberately deferred until explicit user promotion. |
 
 ## Recent accepted milestones
