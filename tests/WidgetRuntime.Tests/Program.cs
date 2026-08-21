@@ -24,6 +24,12 @@ if (args.Contains("--containment-sleeper", StringComparer.Ordinal))
 if (args.Contains("--containment-parent", StringComparer.Ordinal))
 {
     var childPath = RequiredValue(args, "--child-pid-file");
+    static async Task PublishChildResultAsync(string path, string value)
+    {
+        var temporaryPath = path + $".{Guid.NewGuid():N}.tmp";
+        await File.WriteAllTextAsync(temporaryPath, value);
+        File.Move(temporaryPath, path);
+    }
     try
     {
         var startInfo = new ProcessStartInfo(Environment.ProcessPath!)
@@ -34,13 +40,15 @@ if (args.Contains("--containment-parent", StringComparer.Ordinal))
         startInfo.ArgumentList.Add("--containment-sleeper");
         using var child = Process.Start(startInfo)
             ?? throw new InvalidOperationException("Contained helper did not start.");
-        await File.WriteAllTextAsync(childPath, child.Id.ToString(CultureInfo.InvariantCulture));
+        await PublishChildResultAsync(
+            childPath, child.Id.ToString(CultureInfo.InvariantCulture));
         await Task.Delay(Timeout.InfiniteTimeSpan);
         return 0;
     }
     catch (Exception exception)
     {
-        await File.WriteAllTextAsync(childPath, $"error:{exception.GetType().Name}:{exception.HResult}");
+        await PublishChildResultAsync(
+            childPath, $"error:{exception.GetType().Name}:{exception.HResult}");
         return 97;
     }
 }
