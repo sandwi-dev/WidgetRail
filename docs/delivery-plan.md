@@ -11,14 +11,14 @@ The complete delivery record through the DLV-277 assignment is preserved in the\
   evidence `bb8234f`, plus accepted DLV-277 host production `144ede8` and
   focused evidence `c21ad02`.
 - The accepted DLV-277 artifact from commit `830364d` remains the rollback but
-  is not currently running. PIDs 34764, 88756, and rejected 82992 retired
-  cooperatively through `WM_CLOSE`; no force termination occurred. Rejected
-  cumulative DLV-280/278/279/270 correction candidate PID 54676 remains visibly
-  running for exact diagnostic evidence from commit `9184143`. Its
+  is not currently running. PIDs 34764, 88756, 82992, and rejected 54676
+  retired cooperatively through `WM_CLOSE`; no force termination occurred.
+  Source-reviewed cumulative DLV-280/281/278/279/270 candidate PID 84296 is
+  visibly running from exact commit `a838e2b` for physical verdict. Its
   `OverlayHost.exe` SHA-256 is
-  `8C5AC902FD8BB56BE4C99B10C7D0ACF6638401B40865DF0F4CA96273B633120E`;
+  `F7B131733F05006881236B7E7568C3E2921699CB719A2A911CBCE6B59A70FD69`;
   runtime `WidgetBridge.dll` is
-  `26C4D5F451C6A02E7228575820DD7E8245678D2D61DC84B76147F9D2B42FB0D`.
+  `F1BDA4A19D3A4C5406FFE1C6F98E4FEE73A5CFD66E57582272B8110EAB26BEF7`.
   The provider-free Full Application sample remains installed and enabled.
 - DLV-265 production and focused evidence are accepted and integrated; the
   existing Client ID/account/configuration state remains unchanged. Reviewed
@@ -35,7 +35,7 @@ The complete delivery record through the DLV-277 assignment is preserved in the\
 | Lane | Task/worktree | State |
 | --- | --- | --- |
 | Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | DLV-281 production `dcbd006` plus correction `0960b81` are source-reviewed and exact-build verified. The first commit was rejected because completion bookkeeping could erase the coalesced refresh intent; the correction captures that intent before committing the admitted checkpoint and queues it once afterward. The lane is idle; do not test, launch, integrate, or push. |
-| Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | Assigned the exact DLV-281 production pair onto preserved cumulative tip `9184143`, followed by one coherent tests-skipped Release build. Preserve immutable Spotify 0.3.12 and all package/account/configuration state; do not edit production, test, install, launch, integrate main, or push. |
+| Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | Exact DLV-281 pair merge `db87e34` and reviewer reconciliation `a838e2b` are source-reviewed; the exact tests-skipped Release build passed and PID 84296 is visibly running. The lane is idle pending physical verdict; do not edit, test, install, relaunch, integrate main, or push. |
 
 ## Execution, review, and architecture rules
 
@@ -827,10 +827,10 @@ after explicit full-trust approval.
    full-trust staging and cooperative rejected-host replacement completed, but
    PID 54676 is rejected after Games & Apps and Now Playing exposed the generic
    DLV-281 completion-admission race.
-6. DLV-281 production `dcbd006` plus correction `0960b81` are source-reviewed;
-   the widgets lane merges that exact pair into the preserved cumulative branch
-   and builds one coherent tests-skipped candidate. The planner then visibly
-   launches it for the user verdict.
+6. DLV-281 production `dcbd006` plus correction `0960b81` are source-reviewed,
+   merged exactly as `db87e34`, and reconciled with reviewer documents as
+   `a838e2b`. The coherent tests-skipped Release passed and PID 84296 is visibly
+   running for the user verdict.
 7. After the cumulative physical verdict, add focused and cross-process evidence
    in planner-directed order, then integrate the independently accepted DLV-280,
    DLV-281, DLV-278, DLV-279, and DLV-270 production/test chain into main.
@@ -852,7 +852,7 @@ after explicit full-trust approval.
 | DLV-279 | Cumulative 0.3.11 is rejected. Correction `9184143` makes re-entry `Replace` stable for an otherwise identical request generation; source review and exact tests-skipped builds pass. Spotify 0.3.12 remains staged in rejected PID 54676 while generic DLV-281 is corrected. |
 | DLV-270 | Cumulative Spotify 0.3.11 at `4ece854` is rejected on DLV-279 after deep paging and B. Preserve its successful provider/paging evidence; immutable 0.3.12 is installed, selected, enabled, and preserved while the generic DLV-281 host race is corrected. |
 | DLV-280 | Production through `09c3f07` successfully admitted one exact-base switch-back in the rejected cumulative trace. Keep it source-reviewed but unaccepted; focused/Tier 2/Tier 3 evidence waits for the corrected cumulative verdict. |
-| DLV-281 | Production `dcbd006` plus correction `0960b81` are source-reviewed and exact-build verified. The widgets lane is assigned their exact cumulative merge/build before physical verdict, tests, or integration. |
+| DLV-281 | Production `dcbd006` plus correction `0960b81` are source-reviewed, merged cumulatively as `db87e34`/`a838e2b`, exact-build verified, and visibly running as PID 84296. Await physical cycling verdict before tests or integration. |
 | DLV-248 | Deliberately deferred until explicit user promotion. |
 
 ## Recent accepted milestones
