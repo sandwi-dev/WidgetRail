@@ -37,7 +37,7 @@ evidence only; this file is the sole authority for current work.
 | Lane | Task/worktree | State |
 | --- | --- | --- |
 | Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | Idle pending cumulative test evidence and integration. DLV-284 is queued but not assigned. Do not begin it, test, launch, integrate, or push. |
-| Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | Assigned the bounded post-verdict evidence below from exact clean cumulative `0dec737`. Test/test-support changes only; preserve production, packages, state, and PID 129420. Do not rebuild, install, launch, terminate, integrate main, or push. |
+| Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | Assigned DLV-285 bounded retirement-test liveness diagnosis below while preserving the incomplete uncommitted cumulative test-only matrix. Native/SDK evidence passed; the Runtime suite timed out before Bridge/Spotify/Tier 2/Tier 3. Preserve production, packages, state, and PID 129420. Do not rebuild, install, launch, terminate, integrate main, or push. |
 
 ## Execution and architecture rules
 
@@ -109,6 +109,45 @@ Stop on the first distinct production defect, nondeterminism, fixture gap that
 would require production changes, or out-of-scope failure. Commit test changes
 separately and report; never push or integrate main.
 
+Current evidence: native coordinator/OverlayState/lifecycle and 305 action-
+feedback checks pass, including 27 coordinator scenarios. WidgetSdk passes
+89/89. The bounded WidgetRuntime run passed six cases, then exceeded 180 seconds
+inside `Retired sessions cannot publish notifications into replacements`.
+Owned test PID 18064 retired; accepted PID 129420 was untouched. Bridge,
+Spotify, Tier 2, and Tier 3 did not run. Preserve the three uncommitted test-only
+matrix files; do not claim or commit the cumulative evidence until DLV-285 is
+resolved and the remaining ordered runs pass.
+
+## Assigned widgets diagnostic — DLV-285 retirement-test liveness
+
+Owner/baseline: widgets lane at cumulative `0dec737`, preserving the incomplete
+uncommitted test-only matrix in `WidgetSessionCoordinatorTests.cpp`,
+`WidgetBridge.Tests/Program.cs`, and
+`WidgetSdk.Tests/WidgetPresentationUpdateTests.cs`. This diagnostic owns only
+`tests/WidgetRuntime.Tests` test/test-support files and bounded owned test
+processes. No production, package, manifest, protocol, user state, accepted PID,
+or reviewer document may change.
+
+The existing focused Runtime executable timed out after six passing cases while
+entering `Retired sessions cannot publish notifications into replacements`.
+Determine the exact awaited signal/subcase with one isolated `--test-prefix`
+run bounded to at most 60 seconds. All test-controlled gates must use finite
+deadlines and release in `finally` so a failed assertion cannot strand a reader,
+worker, or replacement session. Distinguish these outcomes:
+
+- If the fixture waits for a transient or no-longer-guaranteed callback, correct
+  only the fixture to assert the durable invariant: a retired publication never
+  reaches replacement authority and cleanup/replacement completes boundedly.
+- If production can deadlock, lose terminal completion, admit the retired
+  notification, or cannot be tested without a new production hook, stop with
+  exact evidence. Do not fix or instrument production under DLV-285.
+
+After a test-only fixture correction, run the isolated prefix once and then the
+bounded focused WidgetRuntime suite once. Commit only the DLV-285 runtime-test
+correction separately. If both pass, resume the held cumulative evidence from
+the first not-yet-run Bridge suite; do not rerun already green native/SDK groups.
+Stop on any distinct failure. Never push.
+
 ## Queued platform production — DLV-284 explicit publication transaction model
 
 Status: queued, not assigned. It becomes assignable only after the cumulative
@@ -139,8 +178,9 @@ every legal and illegal transition and follow physical-first order. Never push.
 
 ## Ordered queues
 
-1. Widgets test queue: complete and commit the cumulative DLV-278–283 evidence.
-2. Reviewer integration queue: independently review evidence; integrate the
+1. Widgets test queue: diagnose/correct DLV-285, then resume and commit the
+   cumulative DLV-278–283 evidence only if all remaining runs pass.
+2. Reviewer integration queue: independently review all evidence; integrate the
    accepted production/test chain into local main only if all required evidence
    passes.
 3. Platform production queue: assign DLV-284 after integration, before any new
@@ -158,6 +198,7 @@ There is no other Ready production work in either standing lane.
 | DLV-276 | Complete and integrated through `ca967e6`. |
 | DLV-277 | Complete and integrated through `c21ad02`. |
 | DLV-278–283/270 | Cumulative production `0dec737` is physically accepted; focused/Tier 2/Tier 3 convergence evidence is assigned before integration. |
+| DLV-285 | Assigned bounded test-only diagnosis after WidgetRuntime timed out entering the retired-notification replacement scenario; integration is blocked. |
 | DLV-284 | Queued, not assigned until cumulative integration. |
 | DLV-248 | Deliberately deferred until explicit user promotion. |
 
