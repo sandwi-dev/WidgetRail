@@ -46,7 +46,7 @@ evidence only; this file is the sole authority for current work.
 | Lane | Task/worktree | State |
 | --- | --- | --- |
 | Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | Idle pending cumulative test evidence and integration. DLV-284 is queued but not assigned. Do not begin it, test, launch, integrate, or push. |
-| Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | DLV-296 `3922b58` is physically accepted and exact PID 83788 remains running. DLV-297's composite Bridge pagination case remains held red, while all four DLV-298 ownership handoffs passed once. Preserve the six-file uncommitted evidence and execute diagnostic-only DLV-299 below. Do not change production, rebuild, relaunch, integrate, or push. |
+| Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | DLV-296 `3922b58` is physically accepted and exact PID 83788 remains running. DLV-298's four ownership handoffs passed and DLV-299 observed the expected forward invalidation. Preserve the six-file evidence and execute test-only DLV-300 final notification-convergence disposition below. Do not change production, rebuild, relaunch, integrate, or push. |
 
 ## Execution and architecture rules
 
@@ -691,6 +691,47 @@ MSBuild, run the one uniquely named DLV-299 prefix at most once, and stop with
 the exact first event/outcome plus source-review ownership explanation. Do not
 implement a production correction or commit under DLV-299. Never push.
 
+DLV-299 completed without a commit. Source comparison found the same current
+`virtual` / `virtual.instance` identity and registry generation, established
+Visible lifecycle, exact generated near-end action and `virtual.scroll` source,
+and Enqueued admission preceding asynchronous cursor execution. Its one-shot
+prefix compiled with serialized MSBuild and passed 1/1: the first post-action
+event was an `Invalidation` for `virtual`, request ID zero, at a revision newer
+than the initial Ready revision. The former no-event result did not reproduce,
+and no stable red boundary exists within the WorkerServer, ProcessClient,
+registry, or Bridge-framing handoffs. Production and PID 83788 remained
+untouched.
+
+## Assigned widgets evidence — DLV-300 final notification convergence
+
+Mode: test-only against accepted DLV-296. Preserve the six current dirty and
+untracked files; they contain held cumulative evidence plus DLV-297–299 work.
+Do not edit production/runtime source, packages, manifests, protocols, bounds,
+timeouts, installed/configured state, or processes. PID 83788 remains accepted
+and must not be touched.
+
+Fold DLV-299's raw first-event classification into the existing
+`VirtualCollectionWindowCrossesBridge` evidence instead of retaining a second
+permanent diagnostic scenario. The permanent case must fail immediately and
+with the existing bounded payload if the first relevant post-action event is an
+action failure; an invalidation may drive the next snapshot request. Continue
+only from actual invalidations, not timers or speculative snapshot polling,
+until the existing bounded observation limit reaches the durable generation-2
+64-item Append or fails. Preserve the exact total count, first index,
+before/after, generation, Append, and 96-item host-bound assertions. Remove
+DLV-only naming and disposable classification text once folded.
+
+Do not add logging, reflection, production hooks, sleeps, polling, repeated
+stress loops, timeout enlargement, stdout/file diagnostics, package special
+cases, weakened assertions, or a second notification model. Compile the
+affected project with serialized MSBuild and run the one permanent virtual
+collection prefix exactly once. If it fails, preserve all evidence and stop
+without production correction or commit. If it passes, source-audit the final
+DLV-297/298 notification evidence, remove only superseded diagnostic code, and
+commit one coherent test-only milestone containing only notification evidence;
+leave the earlier held cumulative DLV-278–283 hunks uncommitted. Report the
+exact committed paths/hunks and remaining dirty evidence. Never push.
+
 ## Queued platform production — DLV-284 explicit publication transaction model
 
 Status: queued, not assigned. It becomes assignable only after the cumulative
@@ -721,10 +762,10 @@ every legal and illegal transition and follow physical-first order. Never push.
 
 ## Ordered queues
 
-1. Widgets diagnostic queue: execute test-only DLV-299 composite first-event
-   classification once and stop without production correction or commit.
-2. Widgets evidence queue: after the diagnosed production/harness disposition,
-   finish and independently review DLV-297 before resuming cumulative evidence.
+1. Widgets evidence queue: execute DLV-300 final notification-convergence
+   disposition and commit only if its permanent Bridge prefix passes once.
+2. Reviewer evidence queue: independently review the resulting DLV-297–300
+   test-only milestone before resuming cumulative evidence.
 3. Widgets cumulative test queue: resume and commit the cumulative DLV-278–283
    evidence only after DLV-297 is green and independently reviewed.
 4. Reviewer integration queue: independently review all evidence; integrate the
@@ -759,7 +800,8 @@ There is no other Ready production work in either standing lane.
 | DLV-296 | Production `3922b58` is source-reviewed, exact-build clean, and physically accepted as running PID 83788. |
 | DLV-297 | Held uncommitted: direct lane and real worker transport prefixes passed 1/1 each; Bridge virtual pagination remained red 0/1 awaiting its first post-action invalidation. |
 | DLV-298 | Completed uncommitted: all four individual ownership handoffs passed 1/1; the last green edge is registry publication through Bridge framing to the client event queue. |
-| DLV-299 | Assigned diagnostic-only classification of the composite virtual-pagination case's first post-action event; one prefix once, no production correction or commit. |
+| DLV-299 | Completed uncommitted: the one-shot case passed 1/1 and observed a forward `virtual` invalidation as the first post-action event; the prior no-event result did not reproduce. |
+| DLV-300 | Assigned final test-only convergence disposition: fold first-event classification into the permanent virtual-window case, run it once, and commit notification evidence only if green. |
 | DLV-284 | Queued, not assigned until cumulative integration. |
 | DLV-248 | Deliberately deferred until explicit user promotion. |
 
