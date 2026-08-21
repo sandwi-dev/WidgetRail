@@ -46,7 +46,7 @@ evidence only; this file is the sole authority for current work.
 | Lane | Task/worktree | State |
 | --- | --- | --- |
 | Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | Idle pending cumulative test evidence and integration. DLV-284 is queued but not assigned. Do not begin it, test, launch, integrate, or push. |
-| Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | DLV-296 `3922b58` is physically accepted and exact PID 83788 remains running. Test-only DLV-306 `5fe7a5f` is independently source-reviewed and accepted; four notification-evidence files are committed and three cumulative matrix files remain dirty. DLV-311 reconciled the Spotify service fixture but exposed two stale cursor-presentation fixtures; execute test-only DLV-312 below. Do not change production, rebuild, relaunch, integrate, or push. |
+| Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | DLV-296 `3922b58` is physically accepted and exact PID 83788 remains running. Test-only DLV-306 `5fe7a5f` is independently source-reviewed and accepted; five cumulative test files are now dirty. DLV-312 built green but Spotify ran 51/54; execute diagnostic-only DLV-313 before deciding whether the adjacent-failure result requires production correction. Do not rebuild, relaunch, integrate, or push. |
 
 ## Execution and architecture rules
 
@@ -1181,6 +1181,40 @@ push. If all remaining groups pass, commit one coherent test-only DLV-312
 milestone containing exactly the original three matrix files plus the two
 Spotify test files, then stop for independent review.
 
+DLV-312 compiled the reconciled Spotify fixtures with zero warnings/errors, then
+the 54-case executable passed 51/54. The failures were: expected protocol 14
+but snapshot protocol 19 in the maximum-page case; a failed adjacent playlist
+load still exposed automatic forward pagination; and manifest version 0.3.3 was
+expected while the current manifest is 0.3.12. Tier 2 and Tier 3 were skipped,
+no commit was created, and the intended five test files remain dirty. PID 83788
+was untouched.
+
+## Assigned widgets diagnosis — DLV-313 classify three Spotify runtime reds
+
+Mode: source-only diagnostic after DLV-312. Preserve baseline `5fe7a5f`, all
+five dirty test files, packages/restored assets, installed/configured state, and
+PID 83788. Do not edit, build, run tests, commit, rebuild/relaunch the overlay,
+integrate, or push.
+
+Trace each of the three red assertions against current production and test
+contracts. For the protocol assertion, determine the minimum valid protocol of
+the rendered virtual-window snapshot and whether 14 or 19 is authoritative.
+For adjacent-load failure, trace `WidgetCursorResource` failure state, retained
+cursors, `Present`, generated focus-edge action, retry action, and admission to
+decide whether automatic pagination after an error is an intended retry path or
+a production loop/regression. Compare the cursor-resource behavior with the
+older paged-resource error contract, but do not assume they should match. For
+the manifest assertion, identify the accepted production change that advanced
+0.3.3 to 0.3.12 and whether the test should pin the exact current version or a
+different invariant.
+
+Report an evidence-backed disposition for each red as test drift, production
+defect, or unresolved contract ambiguity, with exact source references and the
+smallest justified next milestone. Do not propose weakening an assertion merely
+to obtain green. If any production change is justified, stop before applying it
+so the reviewer can restore physical-first ordering. No logging, hooks, sleeps,
+polling, timeout changes, or speculative repair.
+
 ## Queued platform production — DLV-284 explicit publication transaction model
 
 Status: queued, not assigned. It becomes assignable only after the cumulative
@@ -1211,9 +1245,9 @@ every legal and illegal transition and follow physical-first order. Never push.
 
 ## Ordered queues
 
-1. Widgets cumulative evidence queue: execute DLV-312's two Spotify
-   presentation-fixture corrections, then finish Spotify, Tier 2, and Tier 3 in
-   order, stopping on the first red result.
+1. Widgets cumulative evidence queue: classify DLV-312's three Spotify runtime
+   reds through source-only DLV-313; if any is a production defect, return to a
+   production/build/user-verdict milestone before resuming tests.
 2. Reviewer integration queue: independently review the eventual cumulative
    evidence milestone; integrate the
    accepted production/test chain into local main only if all required evidence
@@ -1260,7 +1294,8 @@ There is no other Ready production work in either standing lane.
 | DLV-309 | Stopped first red uncommitted: corrected residency prefix passed 1/1 and full Bridge passed 96/96; Spotify failed during build without a diagnostic, so Tier 2 and Tier 3 were skipped. |
 | DLV-310 | Completed diagnostic-only: one explicit build exposed six deterministic errors from a stale Spotify test fixture using the removed combined playlist-items contract; no production defect. |
 | DLV-311 | Stopped first red uncommitted: service fixture now matches the separated metadata/page contract; build exposed two stale raw-snapshot presentation fixtures before tests ran. |
-| DLV-312 | Assigned two exact Spotify presentation-fixture corrections followed by Spotify, Tier 2, and Tier 3 evidence. |
+| DLV-312 | Stopped first red uncommitted: build green; Spotify 51/54 with protocol-version, adjacent-failure pagination, and manifest-version assertions red; Tier 2 and Tier 3 skipped. |
+| DLV-313 | Assigned source-only classification of all three Spotify reds before any test or production correction. |
 | DLV-284 | Queued, not assigned until cumulative integration. |
 | DLV-248 | Deliberately deferred until explicit user promotion. |
 
