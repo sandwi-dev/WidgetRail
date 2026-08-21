@@ -303,8 +303,12 @@ internal static class WidgetProcessOwnershipScenarios
         await client.StopAsync(canceled.Token);
         await terminalStarted.Task;
         _ = await client.GetSnapshotAsync();
+        Equal(0, companion.GrantedAuthorities.Count);
+        Equal(1, replacementCompanion.RunCount);
+
         companion.ReleaseGrant();
-        await companion.Revoked.Task;
+        await companion.GrantCompleted.Task;
+        await companion.LateGrantRevoked.Task;
         await ThrowsAnyAsync(async () => await input);
         Equal(1, companion.GrantedAuthorities.Count);
         var revokedInputSequences = companion.RevokedInputSequences.ToArray();
@@ -312,6 +316,9 @@ internal static class WidgetProcessOwnershipScenarios
             "Retired gesture cleanup emitted an unexpected number of revocations.");
         True(revokedInputSequences.All(sequence => sequence == 92L),
             "Retired gesture cleanup revoked authority for an unrelated input sequence.");
+        True(companion.GrantedAuthorities.All(authority =>
+                revokedInputSequences.Contains(authority.InputSequence)),
+            "A cancellation-ignoring retired gesture authority survived its late revocation.");
     }
 
     private static async Task AssertStalePublicationSuppressedAsync(
@@ -573,7 +580,11 @@ internal static class WidgetProcessOwnershipScenarios
         internal bool HoldGestureGrant { get; init; }
         internal TaskCompletionSource GrantStarted { get; } = new(
             TaskCreationOptions.RunContinuationsAsynchronously);
+        internal TaskCompletionSource GrantCompleted { get; } = new(
+            TaskCreationOptions.RunContinuationsAsynchronously);
         internal TaskCompletionSource Revoked { get; } = new(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        internal TaskCompletionSource LateGrantRevoked { get; } = new(
             TaskCreationOptions.RunContinuationsAsynchronously);
 
         public async Task RunAsync(CancellationToken cancellationToken)
@@ -594,6 +605,7 @@ internal static class WidgetProcessOwnershipScenarios
             GrantStarted.TrySetResult();
             if (HoldGestureGrant) await _grantRelease.Task;
             GrantedAuthorities.Add(authority);
+            GrantCompleted.TrySetResult();
         }
 
         public Task RevokeDashboardGestureAuthorityAsync(
@@ -602,6 +614,7 @@ internal static class WidgetProcessOwnershipScenarios
         {
             RevokedInputSequences.Enqueue(inputSequence);
             Revoked.TrySetResult();
+            if (GrantCompleted.Task.IsCompleted) LateGrantRevoked.TrySetResult();
             return Task.CompletedTask;
         }
 

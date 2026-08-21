@@ -1879,8 +1879,13 @@ static async Task ProcessClientCarriesLifecycleFirstCursorPagination()
         extraArguments: ["--notification-lifecycle-cursor-probe"]);
     var initialInvalidation = new TaskCompletionSource<long>(
         TaskCreationOptions.RunContinuationsAsynchronously);
-    var forwardInvalidation = new TaskCompletionSource<long>(
-        TaskCreationOptions.RunContinuationsAsynchronously);
+    var forwardInvalidations = System.Threading.Channels.Channel.CreateUnbounded<long>(
+        new System.Threading.Channels.UnboundedChannelOptions
+        {
+            SingleReader = true,
+            SingleWriter = true,
+            AllowSynchronousContinuations = false,
+        });
     var actionFailure = new TaskCompletionSource<WidgetActionFailure>(
         TaskCreationOptions.RunContinuationsAsynchronously);
     var actionAdmitted = 0;
@@ -1889,7 +1894,7 @@ static async Task ProcessClientCarriesLifecycleFirstCursorPagination()
         if (Volatile.Read(ref actionAdmitted) == 0)
             initialInvalidation.TrySetResult(revision);
         else
-            forwardInvalidation.TrySetResult(revision);
+            forwardInvalidations.Writer.TryWrite(revision);
     };
     client.ActionFailed += (_, failure) => actionFailure.TrySetResult(failure);
 
@@ -1938,38 +1943,67 @@ static async Task ProcessClientCarriesLifecycleFirstCursorPagination()
         WidgetOperationAdmission.Enqueued,
         await client.AdmitActionAsync(
             new WidgetActionEvent(pageAction, first.Root.Id), deadline.Token));
-    var publication = await Task.WhenAny(
-        forwardInvalidation.Task, actionFailure.Task).WaitAsync(deadline.Token);
-    if (ReferenceEquals(publication, actionFailure.Task))
+    var current = first;
+    long currentRevision = initialRevision;
+    WidgetRuntimePresentation? converged = null;
+    const int maximumForwardInvalidations = 4;
+    for (var observation = 0; observation < maximumForwardInvalidations; observation++)
     {
-        var failure = await actionFailure.Task;
-        Assert.Equal(pageAction, failure.ActionId);
-        Assert.Equal(first.Root.Id, failure.SourceElementId);
-        throw new InvalidOperationException(
-            $"The external worker published action failure '{failure.Message}'.");
+        if (actionFailure.Task.IsCompleted)
+            ThrowCursorActionFailure(await actionFailure.Task, pageAction, first.Root.Id);
+        var nextInvalidation = forwardInvalidations.Reader.ReadAsync(deadline.Token).AsTask();
+        var publication = await Task.WhenAny(nextInvalidation, actionFailure.Task)
+            .WaitAsync(deadline.Token);
+        if (ReferenceEquals(publication, actionFailure.Task))
+            ThrowCursorActionFailure(await actionFailure.Task, pageAction, first.Root.Id);
+
+        var forwardRevision = await nextInvalidation;
+        Assert.True(forwardRevision > currentRevision,
+            "A current-session cursor invalidation did not advance revision.");
+        currentRevision = forwardRevision;
+        Assert.Equal(1, client.Starts);
+        Assert.Equal(workerProcessId, client.WorkerProcessId);
+
+        var changed = await client.GetPresentationAsync(
+            PresentationUpdateCapabilities.Current,
+            presentationGeneration,
+            current.Sequence,
+            requireCheckpoint: false,
+            deadline.Token);
+        Assert.True(changed.Update is not null,
+            "A current exact base did not produce an atomic cursor update.");
+        Assert.Equal(current.Sequence, changed.Update!.BaseSequence);
+        Assert.Equal(changed.Snapshot.Sequence, changed.Update.Sequence);
+        Assert.Equal(presentationGeneration, changed.Update.PresentationGeneration);
+        Assert.True(changed.Snapshot.Sequence > current.Sequence,
+            "A cursor update did not advance the materialized presentation sequence.");
+        current = changed.Snapshot;
+
+        if (current.Root.VirtualCollectionWindow?.RequestGeneration == 2)
+        {
+            converged = changed;
+            break;
+        }
+        Assert.True(current.Root.VirtualCollectionWindow is
+        {
+            RequestGeneration: 1,
+            FirstItemIndex: 0,
+            TotalItemCount: 12,
+            HasBefore: false,
+            HasAfter: true,
+            EstimatedItemExtent: 40,
+            Change: VirtualCollectionWindowChange.Replace,
+        }, "An intermediate cursor update mutated generation-1 window authority.");
+        Assert.SequenceEqual(
+            Enumerable.Range(0, 4).Select(index => $"diagnostic.item.{index}"),
+            current.Root.Children.Select(child => child.Id));
     }
-
-    var forwardRevision = await forwardInvalidation.Task;
-    Assert.True(forwardRevision > initialRevision,
-        "The first current-session cursor invalidation did not advance revision.");
-    Assert.Equal(1, client.Starts);
-    Assert.Equal(workerProcessId, client.WorkerProcessId);
-
-    var changed = await client.GetPresentationAsync(
-        PresentationUpdateCapabilities.Current,
-        presentationGeneration,
-        first.Sequence,
-        requireCheckpoint: false,
-        deadline.Token);
-    Assert.True(changed.Update is not null,
-        "The exact generation-1 base did not produce an atomic cursor update.");
-    Assert.Equal(first.Sequence, changed.Update!.BaseSequence);
-    Assert.Equal(changed.Snapshot.Sequence, changed.Update.Sequence);
-    Assert.Equal(presentationGeneration, changed.Update.PresentationGeneration);
-    var windowChange = changed.Update.Operations
+    Assert.True(converged is not null,
+        $"The cursor did not converge after {maximumForwardInvalidations} current-session invalidations.");
+    var finalWindowChange = converged!.Update!.Operations
         .SelectMany(operation => operation.Properties ?? [])
         .Single(change => change.Property == PresentationProperty.VirtualCollectionWindow);
-    var updateWindow = RuntimeJson.FromElement<VirtualCollectionWindow>(windowChange.Value);
+    var updateWindow = RuntimeJson.FromElement<VirtualCollectionWindow>(finalWindowChange.Value);
     Assert.True(updateWindow is
     {
         RequestGeneration: 2,
@@ -1979,9 +2013,9 @@ static async Task ProcessClientCarriesLifecycleFirstCursorPagination()
         HasAfter: true,
         EstimatedItemExtent: 40,
         Change: VirtualCollectionWindowChange.Append,
-    }, "The atomic update did not carry the exact generation-2 Append authority.");
+    }, "The converged atomic update did not carry exact generation-2 Append authority.");
 
-    var second = changed.Snapshot;
+    var second = converged.Snapshot;
     Assert.SequenceEqual(
         Enumerable.Range(0, 8).Select(index => $"diagnostic.item.{index}"),
         second.Root.Children.Select(child => child.Id));
@@ -2020,6 +2054,17 @@ static async Task ProcessClientCarriesLifecycleFirstCursorPagination()
         "The base-zero checkpoint lost its remaining forward boundary.");
     Assert.Equal(1, client.Starts);
     Assert.Equal(workerProcessId, client.WorkerProcessId);
+
+    static void ThrowCursorActionFailure(
+        WidgetActionFailure failure,
+        string expectedActionId,
+        string expectedSourceElementId)
+    {
+        Assert.Equal(expectedActionId, failure.ActionId);
+        Assert.Equal(expectedSourceElementId, failure.SourceElementId);
+        throw new InvalidOperationException(
+            $"The external worker published action failure '{failure.Message}'.");
+    }
 }
 
 static async Task DirectAndControllerActionsShareQueue()
