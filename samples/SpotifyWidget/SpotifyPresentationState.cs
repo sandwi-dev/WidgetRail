@@ -33,6 +33,7 @@ internal sealed record SpotifyCursorPresentation<TItem>(
 
     internal static SpotifyCursorPresentation<TItem> Capture(
         WidgetCursorResource<TItem> resource,
+        string operationKey,
         string wideScrollId,
         string compactScrollId)
     {
@@ -53,8 +54,25 @@ internal sealed record SpotifyCursorPresentation<TItem>(
         var fallback = resource.Snapshot;
         return new(
             fallback,
-            UI.VerticalScroll(wideScrollId, []),
-            UI.VerticalScroll(compactScrollId, []));
+            FallbackScroll(wideScrollId, operationKey, fallback),
+            FallbackScroll(compactScrollId, operationKey, fallback));
+    }
+
+    private static ScrollElement FallbackScroll(
+        string scrollId,
+        string operationKey,
+        WidgetCursorResourceSnapshot<TItem> snapshot)
+    {
+        var scroll = UI.VerticalScroll(scrollId, []) with
+        {
+            CollectionAnchorKey = snapshot.Anchor?.Value,
+        };
+        return snapshot.HasBefore || snapshot.HasAfter
+            ? scroll.Paginate(
+                snapshot.HasBefore ? operationKey + ".cursor.before" : null,
+                snapshot.HasAfter ? operationKey + ".cursor.after" : null,
+                SpotifyCollectionPolicy.PaginationThreshold)
+            : scroll;
     }
 }
 

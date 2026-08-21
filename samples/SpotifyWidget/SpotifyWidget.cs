@@ -838,6 +838,7 @@ public sealed class SpotifyWidget : Widget
         {
             var playlists = SpotifyCursorPresentation<SpotifyPlaylistCollectionItem>.Capture(
                 _playlists,
+                "spotify.playlists",
                 "spotify.playlists.scroll.wide",
                 "spotify.playlists.scroll.compact");
             SpotifyPlaylistDetailPresentation? detail = null;
@@ -846,6 +847,7 @@ public sealed class SpotifyWidget : Widget
                 detail = new(selection,
                     SpotifyCursorPresentation<SpotifyMediaCollectionItem>.Capture(
                         _playlistItems,
+                        "spotify.playlist.items",
                         "spotify.playlist.detail.scroll.wide",
                         "spotify.playlist.detail.scroll.compact"));
             return new(
