@@ -33,8 +33,8 @@ The complete delivery record through the DLV-277 assignment is preserved in the\
 
 | Lane | Task/worktree | State |
 | --- | --- | --- |
-| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | DLV-280 is Assigned as the serialized cross-layer lead. Reconcile the clean lane with reviewer main `c2d327f`, preserve accepted DLV-277 history, and implement only the exact retained-base lifecycle-establishment contract below. Do not launch, test, integrate, or push. |
-| Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | DLV-279 / cumulative Spotify 0.3.10 is rejected and preserved at clean tip `4af365f`. Wait for planner review of DLV-280. After an explicit bounded integration instruction, reconcile that exact production commit into this branch and produce immutable Spotify 0.3.11 plus one coherent cumulative Release build without further shared-core changes. Do not act before that instruction; never push. |
+| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | DLV-280 production `5f27393` plus transaction correction `09c3f07` are source-reviewed and their exact tests-skipped Release builds pass. The lane is idle pending the cumulative physical verdict; do not test, integrate, relaunch, or push. |
+| Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | Assigned the bounded cumulative-candidate step. Preserve clean tip `4af365f`, merge exact DLV-280 corrected tip `09c3f07` without rewriting either history, make no shared-core change, advance only the Spotify package identity to immutable 0.3.11, and build one coherent tests-skipped Release plus package. Do not test, stage/install/select/enable, launch, change configuration/account/credentials, integrate, or push. |
 
 ## Execution, review, and architecture rules
 
@@ -184,6 +184,22 @@ native admission, inventing/incrementing a collection generation, treating base
 lifecycle/presentation owner, public WidgetSdk or manifest expansion, destructive
 state/configuration/credential action, substantial conflict, or inability to
 commit lifecycle and presentation under one current authority. Never push.
+
+Production `5f27393` carries exact retained base/capabilities through native
+coordinator/client and the private bridge request, proves the bridge cache under
+its existing registration gate, reuses runtime checkpoint-or-update publication,
+materializes only against the host checkpoint, and exposes bounded
+`stale_presentation_base` failure. Source review found one transaction gap: the
+worker lifecycle changed before a later presentation failure while bridge/host
+authority stayed at the prior state. Correction `09c3f07` captures that exact
+prior lifecycle and worker start ordinal, performs bounded best-effort rollback
+only against the same current worker, preserves the original failure, and
+publishes bridge lifecycle/cache/token together after success. Both exact
+tests-skipped Release builds pass; corrected `OverlayHost.exe` SHA-256 is
+`5074AF96C7A6A0AD7A30038A046CD7FD52DEB5D8F872B9B9148A30171EA90286`.
+No tests, process, package, configuration, account, credential, integration, or
+push action occurred. The production diff is source-reviewed for the cumulative
+physical candidate, not behaviorally accepted or integration-approved.
 
 ## Accepted and integrated — DLV-276: themed controller-first text-entry surface
 
@@ -638,11 +654,10 @@ after explicit full-trust approval.
    `4af365f` are rejected after the establish/resume path proved that the SDK
    lacks exact host predecessor authority when base sequence is 0. Preserve the
    evidence; do not test or integrate DLV-278, DLV-279, or DLV-270 yet.
-4. DLV-280 is the sole active serialized shared-contract assignment. Platform
-   produces the exact-base establish production commit/build first. After
-   planner source review, widgets reconciles only that exact commit into the
-   preserved cumulative branch and produces Spotify 0.3.11 plus the coherent
-   physical candidate. No shared files are edited concurrently.
+4. DLV-280 corrected production tip `09c3f07` is source-reviewed. Widgets now
+   reconciles that exact tip into the preserved cumulative branch and produces
+   Spotify 0.3.11 plus the coherent physical candidate without further shared-
+   core edits. No shared files are edited concurrently.
 5. After the cumulative physical verdict, add focused and cross-process evidence
    in planner-directed order, then integrate the independently accepted DLV-280,
    DLV-278, DLV-279, and DLV-270 production/test chain into main.
@@ -663,7 +678,7 @@ after explicit full-trust approval.
 | DLV-278 | Production `ab4844d` is source-reviewed; 0.3.7 physically confirmed its v18-to-v19 checkpoint and stable worker, but integration waits for the corrected cumulative verdict and post-verdict tests. |
 | DLV-279 | Rejected/architecture-blocked: exact-base route re-entry is corrected, but full establish supplies no exact base while the host retains a snapshot; same-generation marker normalization is invalid. |
 | DLV-270 | Spotify 0.3.7 and 0.3.10 are rejected. Preserve paging evidence and wait for the cross-layer establish/base authority disposition. |
-| DLV-280 | Assigned to the platform lane as serialized cross-layer lead. Production/build first; cumulative Spotify 0.3.11 physical verdict next; focused/Tier 2/Tier 3 evidence only after user acceptance. |
+| DLV-280 | Corrected production through `09c3f07` is source-reviewed with an exact tests-skipped Release build. Widgets is assigned the cumulative Spotify 0.3.11 candidate; focused/Tier 2/Tier 3 evidence waits for user acceptance. |
 | DLV-248 | Deliberately deferred until explicit user promotion. |
 
 ## Recent accepted milestones
