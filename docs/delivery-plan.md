@@ -37,7 +37,7 @@ evidence only; this file is the sole authority for current work.
 | Lane | Task/worktree | State |
 | --- | --- | --- |
 | Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | Idle pending cumulative test evidence and integration. DLV-284 is queued but not assigned. Do not begin it, test, launch, integrate, or push. |
-| Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | Assigned DLV-285 bounded retirement-test liveness diagnosis below while preserving the incomplete uncommitted cumulative test-only matrix. Native/SDK evidence passed; the Runtime suite timed out before Bridge/Spotify/Tier 2/Tier 3. Preserve production, packages, state, and PID 129420. Do not rebuild, install, launch, terminate, integrate main, or push. |
+| Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | DLV-285 test correction `9365cb5` passes isolated 1/1 and Runtime 78/78. Assigned DLV-286 Bridge fixture reconciliation below while preserving the incomplete cumulative matrix. Bridge has not run; Spotify/Tier 2/Tier 3 remain pending. Preserve production, packages, state, and PID 129420. Do not rebuild, install, launch, terminate, integrate main, or push. |
 
 ## Execution and architecture rules
 
@@ -167,6 +167,33 @@ If the exception cannot be captured, requires production instrumentation, or
 reveals a production failure, stop with exact evidence and leave integration
 blocked.
 
+DLV-285 completed as test-only commit `9365cb5`. The root causes were the
+unbounded fixture wait and command-sandbox denial of the child worker's current-
+user named pipe (`UnauthorizedAccessException`); the bounded unsandboxed run is
+the valid process evidence. The isolated case passes 1/1 in 1.3 seconds and the
+focused WidgetRuntime suite passes 78/78. Production and PID 129420 were not
+changed.
+
+## Assigned widgets correction — DLV-286 Bridge fixture reconciliation
+
+Owner/baseline: widgets lane after test-only DLV-285 `9365cb5`, preserving the
+three uncommitted cumulative matrix files. Own only
+`tests/WidgetBridge.Tests/BridgeClientRegistryScenarios.cs` plus bounded Bridge
+test processes.
+
+The Bridge build stopped before tests because three existing calls at the
+current lines 308, 326, and 338 still use the retired four-argument
+`EstablishPresentationAsync` fixture form. Reconcile only those cold-establish
+calls with the production signature's explicit current update capabilities,
+base sequence zero, session cancellation, and operation cancellation. Do not
+change the production signature, hide a compiler error, add overload
+compatibility, or alter scenario meaning.
+
+Build/run the focused Bridge suite once. If green, commit only the DLV-286
+fixture correction separately, then resume held evidence at Spotify followed by
+the assigned Tier 2/Tier 3 order. Do not rerun native, SDK, Runtime, or Bridge.
+Stop on any distinct failure. Never push.
+
 ## Queued platform production — DLV-284 explicit publication transaction model
 
 Status: queued, not assigned. It becomes assignable only after the cumulative
@@ -197,8 +224,8 @@ every legal and illegal transition and follow physical-first order. Never push.
 
 ## Ordered queues
 
-1. Widgets test queue: diagnose/correct DLV-285, then resume and commit the
-   cumulative DLV-278–283 evidence only if all remaining runs pass.
+1. Widgets test queue: correct DLV-286, then resume and commit the cumulative
+   DLV-278–283 evidence only if all remaining runs pass.
 2. Reviewer integration queue: independently review all evidence; integrate the
    accepted production/test chain into local main only if all required evidence
    passes.
@@ -217,7 +244,8 @@ There is no other Ready production work in either standing lane.
 | DLV-276 | Complete and integrated through `ca967e6`. |
 | DLV-277 | Complete and integrated through `c21ad02`. |
 | DLV-278–283/270 | Cumulative production `0dec737` is physically accepted; focused/Tier 2/Tier 3 convergence evidence is assigned before integration. |
-| DLV-285 | Assigned bounded test-only diagnosis after WidgetRuntime timed out entering the retired-notification replacement scenario; integration is blocked. |
+| DLV-285 | Test-only correction `9365cb5` passes isolated 1/1 and focused Runtime 78/78; command-sandbox named-pipe denial was not a product failure. |
+| DLV-286 | Assigned test-only reconciliation for three Bridge registry fixtures still using the retired EstablishPresentation signature; integration remains blocked. |
 | DLV-284 | Queued, not assigned until cumulative integration. |
 | DLV-248 | Deliberately deferred until explicit user promotion. |
 
