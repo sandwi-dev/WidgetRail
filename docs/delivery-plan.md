@@ -33,8 +33,8 @@ The complete delivery record through the DLV-277 assignment is preserved in the\
 
 | Lane | Task/worktree | State |
 | --- | --- | --- |
-| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | DLV-277 is accepted and integrated through main `c21ad02`; PID 34764 remains the accepted production artifact. No platform deliverable is assigned. DLV-273 remains retired and DLV-248 remains deferred. Never push. |
-| Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | DLV-279 / cumulative Spotify 0.3.10 is rejected and architecture-blocked. It fixed exact-base route re-entry, but the full establish/resume path supplies base sequence 0 while the host retains sequence 17. The SDK rewrites a directional marker to `Replace` without a new window generation; native admission correctly rejects the same-generation metadata change. Preserve all commits/artifacts and current package/config/account state. Do not patch, test, relaunch, integrate, or assign more package-only work until exact prior-snapshot authority across host/bridge/worker establish is explicitly dispositioned. Never push. |
+| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | DLV-280 is Assigned as the serialized cross-layer lead. Reconcile the clean lane with reviewer main `c2d327f`, preserve accepted DLV-277 history, and implement only the exact retained-base lifecycle-establishment contract below. Do not launch, test, integrate, or push. |
+| Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | DLV-279 / cumulative Spotify 0.3.10 is rejected and preserved at clean tip `4af365f`. Wait for planner review of DLV-280. After an explicit bounded integration instruction, reconcile that exact production commit into this branch and produce immutable Spotify 0.3.11 plus one coherent cumulative Release build without further shared-core changes. Do not act before that instruction; never push. |
 
 ## Execution, review, and architecture rules
 
@@ -85,6 +85,105 @@ The complete delivery record through the DLV-277 assignment is preserved in the\
 
 Detailed candidate hashes, PIDs, rejection evidence, focused counts, and prior
 serialized transitions are preserved in the linked timestamped snapshot.
+
+## Assigned platform deliverable — DLV-280: exact-base lifecycle establishment
+
+Owner/baseline: platform lane as the one serialized host/bridge/runtime contract
+lead. Reconcile its clean DLV-277 branch with reviewer main `c2d327f` without
+rewriting accepted history. Preserve widgets-lane DLV-278 `ab4844d`, DLV-279
+through `5468199`, cumulative Spotify production through `4af365f`, every built
+artifact, and the installed package/configuration/account state. No second lane
+may edit the shared establish path concurrently.
+
+Correct the reproduced switch-back failure without relaxing virtual-window
+admission or adding another normalization heuristic. The host retained valid
+Spotify sequence 17, but `EstablishWidgetPresentation` sent only lifecycle plus
+`admitSnapshot=true`. The bridge consequently called `GetSnapshotAsync`, which
+forced worker base sequence 0 even though the host and bridge still held an
+exact checkpoint. DLV-279 then treated the current directional window as having
+no predecessor and normalized its marker to `Replace` while preserving the same
+request generation. Native admission correctly rejected that same-generation
+metadata change. This is an authority-transport defect, not a Spotify provider,
+resource-budget, old snapshot-protocol, or native-validator defect.
+
+Make lifecycle establishment one base-aware presentation transaction. The
+native coordinator remains sole authority for its last admitted checkpoint and
+supplies the exact retained base sequence and bounded update capabilities on an
+Establish request whenever that checkpoint is current for the exact descriptor
+instance, runtime generation, and presentation generation. A true cold start
+supplies no base. The native bridge client must send that distinction explicitly
+and accept the same checkpoint-or-atomic-update publication family already used
+by ordinary snapshot refresh. Establish completion materializes an update only
+against the retained exact checkpoint, runs the existing strict complete-
+snapshot admission, and commits lifecycle plus replacement presentation only
+after the entire result is current and valid.
+
+Within the bridge registration's existing serialized operation gate, establish
+the requested lifecycle and use the existing base-aware runtime presentation
+path when, and only when, the bridge cached checkpoint exactly matches the
+host-claimed base and configured worker identity/generations remain current. If
+the host claims a retained base that the bridge cannot prove exactly, return one
+bounded typed stale-base failure and preserve the host's last valid presentation;
+never silently downgrade that request to base 0. Base 0 is legal only for a true
+cold establishment and requests a complete checkpoint. The worker/SDK already
+supports capabilities, base sequence, and checkpoint-or-update publication;
+reuse that contract rather than add another worker operation or presentation
+owner.
+
+Update the private host-to-bridge lifecycle-establishment schema coherently and
+as one clean pre-release cutover. Do not retain a dual old/new compatibility
+path, optional fallback semantics, or a second protocol implementation. Keep
+message size/count validation and safe diagnostics bounded. Do not change the
+public widget manifest, public WidgetSdk authoring surface, snapshot protocol
+v19 feature contract, atomic-update operation family, provider behavior,
+virtual collection generations, or native virtual-window validation.
+
+Preserve these invariants:
+
+- Same request-generation virtual-window metadata remains immutable unless the
+  exact preceding admitted window proves an allowed directional transition.
+- A bridge/worker cache is evidence only; it never overrules the host's retained
+  checkpoint or descriptor generation.
+- A stale, cancelled, wrong-instance, wrong-runtime-generation, wrong-
+  presentation-generation, or failed establish completion cannot change
+  lifecycle, presentation, focus, scroll, input, action, or accessibility
+  authority.
+- Failure retains the last admitted screen and reports a precise safe category;
+  it does not clear/reload the widget, reset provider data, forge a collection
+  generation, or restart a healthy worker.
+- Normal exact-base switch-away/back does not publish a fresh first window,
+  revisit the loading surface, lose route/focus/scroll state, or reload artwork.
+
+Use the user's explicit approval for this bounded cross-process correction to
+follow physical-first order: production code and directly required internal
+contract documentation only, direct source review, then one tests-skipped
+Release build from the exact production commit. Do not add, edit, or run tests
+and do not launch or terminate any process. Commit the scoped production change
+as DLV-280 and stop for planner review.
+
+After source review, the planner will give the widgets lane a bounded instruction
+to reconcile the exact DLV-280 production commit into its preserved DLV-278/
+DLV-279/DLV-270 branch. That lane changes no more shared core, advances Spotify
+to immutable 0.3.11, and builds one coherent tests-skipped native Release plus
+package. The planner will request explicit full-trust staging approval, then
+gracefully replace PID 34764 with that exact native candidate and stage the
+package. The user verifies deep playlist paging, switch-away/back, same-widget
+hide/show, route/focus/scroll retention, stable worker lifetime, and absence of
+loading flashes, stale-window errors, or fresh-first-window publication.
+
+Only after physical acceptance add focused native coordinator, bridge protocol/
+registry, runtime publication, SDK diff, stale-base, cancellation/generation,
+checkpoint fallback, and cumulative Spotify paging regression evidence. Because
+this changes a private cross-process contract, run the smallest affected Tier 2
+group and one exact-commit Tier 3 verifier after the focused suites. Integrate
+production and test commits only after that evidence is independently reviewed.
+
+Stop for any design that requires clearing the retained checkpoint, weakening
+native admission, inventing/incrementing a collection generation, treating base
+0 as an existing host checkpoint, package-specific core behavior, a second
+lifecycle/presentation owner, public WidgetSdk or manifest expansion, destructive
+state/configuration/credential action, substantial conflict, or inability to
+commit lifecycle and presentation under one current authority. Never push.
 
 ## Accepted and integrated — DLV-276: themed controller-first text-entry surface
 
@@ -538,9 +637,16 @@ after explicit full-trust approval.
 3. DLV-279 through `5468199` and cumulative immutable Spotify 0.3.10 at
    `4af365f` are rejected after the establish/resume path proved that the SDK
    lacks exact host predecessor authority when base sequence is 0. Preserve the
-   evidence and disposition that cross-layer contract before more production.
-   Do not test or integrate DLV-278, DLV-279, or DLV-270.
-4. DLV-248 remains deferred until explicit user promotion.
+   evidence; do not test or integrate DLV-278, DLV-279, or DLV-270 yet.
+4. DLV-280 is the sole active serialized shared-contract assignment. Platform
+   produces the exact-base establish production commit/build first. After
+   planner source review, widgets reconciles only that exact commit into the
+   preserved cumulative branch and produces Spotify 0.3.11 plus the coherent
+   physical candidate. No shared files are edited concurrently.
+5. After the cumulative physical verdict, add focused and cross-process evidence
+   in planner-directed order, then integrate the independently accepted DLV-280,
+   DLV-278, DLV-279, and DLV-270 production/test chain into main.
+6. DLV-248 remains deferred until explicit user promotion.
 
 ## Manual, external, and blocked evidence
 
@@ -557,6 +663,7 @@ after explicit full-trust approval.
 | DLV-278 | Production `ab4844d` is source-reviewed; 0.3.7 physically confirmed its v18-to-v19 checkpoint and stable worker, but integration waits for the corrected cumulative verdict and post-verdict tests. |
 | DLV-279 | Rejected/architecture-blocked: exact-base route re-entry is corrected, but full establish supplies no exact base while the host retains a snapshot; same-generation marker normalization is invalid. |
 | DLV-270 | Spotify 0.3.7 and 0.3.10 are rejected. Preserve paging evidence and wait for the cross-layer establish/base authority disposition. |
+| DLV-280 | Assigned to the platform lane as serialized cross-layer lead. Production/build first; cumulative Spotify 0.3.11 physical verdict next; focused/Tier 2/Tier 3 evidence only after user acceptance. |
 | DLV-248 | Deliberately deferred until explicit user promotion. |
 
 ## Recent accepted milestones
