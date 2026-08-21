@@ -140,18 +140,19 @@ internal static class WidgetPresentationDiff
         ViewSnapshot current,
         long expectedBaseSequence)
     {
-        var previousIds = new HashSet<string>(StringComparer.Ordinal);
+        var previousVirtualWindowIds = new HashSet<string>(StringComparer.Ordinal);
         if (previous is not null &&
             previous.Sequence == expectedBaseSequence &&
             string.Equals(previous.WidgetInstanceId, current.WidgetInstanceId, StringComparison.Ordinal))
-            AddIds(previous.Root);
+            AddVirtualWindowIds(previous.Root);
         var root = Normalize(current.Root);
         return ReferenceEquals(root, current.Root) ? current : current with { Root = root };
 
-        void AddIds(ViewNode node)
+        void AddVirtualWindowIds(ViewNode node)
         {
-            previousIds.Add(node.Id);
-            foreach (var child in node.Children) AddIds(child);
+            if (node.VirtualCollectionWindow is not null)
+                previousVirtualWindowIds.Add(node.Id);
+            foreach (var child in node.Children) AddVirtualWindowIds(child);
         }
 
         ViewNode Normalize(ViewNode node)
@@ -167,7 +168,7 @@ internal static class WidgetPresentationDiff
 
             var window = node.VirtualCollectionWindow;
             var normalizedWindow = window is { Change: not VirtualCollectionWindowChange.Replace } &&
-                !previousIds.Contains(node.Id)
+                !previousVirtualWindowIds.Contains(node.Id)
                 ? window with { Change = VirtualCollectionWindowChange.Replace }
                 : window;
             return children is null && ReferenceEquals(window, normalizedWindow)
