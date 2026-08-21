@@ -9,12 +9,9 @@ The complete delivery record through the DLV-277 assignment is preserved in the\
 - Accepted production/test integration baseline on main is `56bc604`. It
   contains accepted DLV-274/275 through `6ce32b7` plus the seven reviewed
   DLV-271 commits cherry-picked without duplicate branch history.
-- Exact DLV-271 candidate PID 56752 is physically accepted and retained under
-  the no-relaunch rule because it already contains the integrated production
-  tree. `OverlayHost.exe` SHA-256 is
-  `8C556B2982BC74EEC3BAA3798B3F2C27B1523D4A8D006DBDC244953801FD57C0`;
-  `OverlayPlatformInterop.dll` is
-  `E707CF80E647EA306D4BF83F72736EF6002ED6EA2CCE0E1C58593E4638D27DBE`.
+- Exact DLV-276 production candidate PID 22944 is physically accepted through
+  border correction `d20b2c5` and retained under the no-relaunch rule while its
+  post-verdict action-completion evidence is resolved. It is not integrated.
   The provider-free Full Application sample remains installed and enabled.
 - Widgets correction DLV-265 remains saved at clean tip `13bd971` plus
   reconciliation `5fd1a06`, with immutable Spotify 0.3.3 installed and the
@@ -23,7 +20,7 @@ The complete delivery record through the DLV-277 assignment is preserved in the\
 
 | Lane | Task/worktree | State |
 | --- | --- | --- |
-| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | DLV-276 behavior is physically accepted through `c96cdc0`; exact PID 34644 remains the candidate. Correct only the confirmed native non-client white frame before the final styling verdict, then add focused tests/docs. Preserve installed Spotify configuration/account state; do not begin DLV-265 or DLV-270 first. DLV-273 remains retired. Never push. |
+| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | DLV-276 behavior and styling are physically accepted through `d20b2c5`; exact PID 22944 remains the candidate. Post-verdict unit/UIA coverage passes, and the real-host Cancel failure was a stale fixture target. Do not integrate until the credential-free Enter route proves that the admitted committed-text action executes and publishes its result, or identifies and corrects the smallest existing-owner defect. Preserve the accepted keyboard UI and installed Spotify configuration/account state; do not begin DLV-277, DLV-265, or DLV-270 first. DLV-273 remains retired. Never push. |
 | Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | Preserve saved DLV-265 and installed Spotify state. Do not resume, test, integrate, reinstall, replace configuration, or reset before accepted DLV-276 integration. DLV-270 follows accepted DLV-265; DLV-248 remains deferred. |
 
 ## Execution, review, and architecture rules
@@ -160,6 +157,17 @@ post-verdict focused tests and directly affected public guidance are assigned;
 do not change or relaunch the accepted production candidate for that
 non-production-only delta.
 
+Post-verdict `TextEntryModalTests` and `AccessibilityTreeTests` pass. The real
+installed Community-host Cancel failure was a stale fixture target and must be
+corrected test-only. Its Enter route is not yet acceptable evidence: the host
+proved that a non-secret committed value existed, the action was admitted, the
+modal closed, owner/focus recovered, and no failure was logged, but the worker
+did not prove action execution or publish the committed value within 30
+seconds. The backend query count remained 1 to 1. Preserve all dirty diagnostic
+test work. Resolve this exact action-admission-to-worker-completion boundary
+before integrating DLV-276; do not infer a serialization defect because an
+exact SDK JSON round trip preserves `committedText`.
+
 After acceptance, add focused modal layout/theme/live-buffer/hint/password,
 caret insertion/deletion and LB/RB boundary/repeat behavior, exclusive
 controller-routing, no-input-leak, UIA, commit/cancel/close/failure,
@@ -295,9 +303,10 @@ missing accepted DLV-265/DLV-271/DLV-276 baseline. Never push.
 
 1. DLV-269, DLV-274/275, and DLV-271 are accepted and integrated through main
    `56bc604`; DLV-273 remains retired rejected history.
-2. DLV-276 behavior is accepted through `c96cdc0`. Complete only the white
-   native-frame correction and final styling verdict, then focused tests/docs
-   and integration. Retain PID 34644 until its exact replacement is ready.
+2. DLV-276 behavior and styling are accepted through `d20b2c5` on PID 22944.
+   Resolve the bounded post-verdict Enter action-completion evidence, commit the
+   corrected Cancel fixture and focused coverage, then integrate. Retain PID
+   22944 unless an exact production correction requires a replacement verdict.
 3. After DLV-276 integration, run DLV-277 in the platform lane and resume saved
    DLV-265 in the widgets lane independently from the shared accepted baseline.
 4. Run DLV-270 only after accepted DLV-265 integration.
@@ -312,8 +321,8 @@ missing accepted DLV-265/DLV-271/DLV-276 baseline. Never push.
 | Domain | Live registrar/RDAP availability and optional registration through the user's account. |
 | Trademark | Similar-mark clearance; qualified counsel recommended before public release. |
 | GitHub identity | User-selected owner plus repository/organization availability and optional rename/creation. |
-| DLV-276 | Behavior accepted through `c96cdc0` on PID 34644; final white-frame styling verdict, focused tests/docs, and integration remain. |
-| DLV-277 | Ready after accepted DLV-276 integration; exact PID 34644 logs establish the responsive focus-mode mismatch. |
+| DLV-276 | Behavior and styling accepted through `d20b2c5` on PID 22944. Unit/UIA coverage passes and Cancel is a stale fixture; the credential-free Enter route still must prove worker execution/result publication or receive the smallest existing-owner correction before tests/docs integration. |
+| DLV-277 | Ready after accepted DLV-276 integration; earlier PID 34644 logs establish the responsive focus-mode mismatch. |
 | DLV-265 | Saved until accepted DLV-276 integration; preserve installed Spotify 0.3.3 and current account/configuration state. |
 | DLV-248 | Deliberately deferred until explicit user promotion. |
 
@@ -326,4 +335,4 @@ missing accepted DLV-265/DLV-271/DLV-276 baseline. Never push.
 | DLV-269 | Viewport-driven paging accepted and integrated through `683af77`. |
 | DLV-274/275 | Cache retention and lifetime corrections accepted as `949b586`; integrated by `9189cad` plus tests `6ce32b7`. |
 | DLV-271 | Virtual collection windows accepted through `d100f49` and integrated through `56bc604`. |
-| DLV-276 | Controller keyboard behavior accepted through `c96cdc0`; final native-frame styling correction remains before tests/integration. |
+| DLV-276 | Controller keyboard behavior and border styling accepted through `d20b2c5` on PID 22944; integration waits only on bounded Enter action-completion evidence and corrected focused tests/docs. |
