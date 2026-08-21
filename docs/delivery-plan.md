@@ -46,7 +46,7 @@ evidence only; this file is the sole authority for current work.
 | Lane | Task/worktree | State |
 | --- | --- | --- |
 | Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | Idle pending cumulative test evidence and integration. DLV-284 is queued but not assigned. Do not begin it, test, launch, integrate, or push. |
-| Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | DLV-296 `3922b58` is physically accepted and exact PID 83788 remains running. Test-only DLV-306 `5fe7a5f` is independently source-reviewed and accepted; four notification-evidence files are committed and three cumulative matrix files remain dirty. DLV-308 proved DLV-307's sole red was a stale Bridge-boundary test expectation; execute test-only DLV-309 below. Do not change production, rebuild, relaunch, integrate, or push. |
+| Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | DLV-296 `3922b58` is physically accepted and exact PID 83788 remains running. Test-only DLV-306 `5fe7a5f` is independently source-reviewed and accepted; four notification-evidence files are committed and three cumulative matrix files remain dirty. DLV-309 made Bridge green 96/96 but stopped on a diagnostic-free Spotify build failure; execute diagnostic-only DLV-310 below. Do not change production, rebuild, relaunch, integrate, or push. |
 
 ## Execution and architecture rules
 
@@ -1075,6 +1075,36 @@ every required group passes, commit one coherent test-only DLV-309 milestone
 containing exactly the three remaining matrix files and stop for independent
 review.
 
+DLV-309 corrected the exact Bridge wrapper assertion and passed the isolated
+residency prefix 1/1 plus the complete Bridge suite 96/96. It then stopped at
+the Spotify gate before any Spotify test executed: `dotnet run` with Release
+and `--no-restore` printed only `The build failed. Fix the build errors and run
+again.` with no compiler diagnostic or test count. Tier 2 and Tier 3 were not
+run. No commit was created; exactly the same three files remain dirty and PID
+83788 was untouched.
+
+## Assigned widgets diagnosis — DLV-310 Spotify build failure capture
+
+Mode: diagnostic-only after DLV-309. Preserve baseline `5fe7a5f`, exactly the
+three dirty matrix files, packages/restored assets, installed/configured state,
+and PID 83788. Do not edit or commit any file, restore/update dependencies,
+rebuild/relaunch the overlay, integrate, or push.
+
+Source-audit the Spotify test project, its project references/targets, and the
+documented runner to identify why the prior `dotnet run --no-restore` could
+discard its actual build diagnostic. Then invoke exactly one explicit Release
+`dotnet build` of `tests/SpotifyWidget.Tests/SpotifyWidget.Tests.csproj` with
+`--no-restore` and sufficient ordinary console verbosity to capture the first
+real error. Do not run the Spotify executable or any other evidence group.
+
+If the explicit build is red, report its first causal diagnostic and classify
+the smallest justified correction without applying it. If green, classify the
+prior result as a runner/build-invocation anomaly and report the exact produced
+test artifact plus the narrowest next command; do not run it. Stop for missing
+assets, environment state, nondeterminism, or any production defect. No binlog,
+new logging, hooks, sleeps, polling, timeout changes, weakened assertions, or
+speculative repair.
+
 ## Queued platform production — DLV-284 explicit publication transaction model
 
 Status: queued, not assigned. It becomes assignable only after the cumulative
@@ -1105,9 +1135,9 @@ every legal and illegal transition and follow physical-first order. Never push.
 
 ## Ordered queues
 
-1. Widgets cumulative evidence queue: execute DLV-309's exact Bridge-boundary
-   assertion correction, then finish Bridge, Spotify, Tier 2, and Tier 3 in
-   order, stopping on the first red result.
+1. Widgets cumulative evidence queue: capture DLV-309's diagnostic-free Spotify
+   build failure through DLV-310, then resume Spotify, Tier 2, and Tier 3 only
+   under a reviewed follow-up assignment.
 2. Reviewer integration queue: independently review the eventual cumulative
    evidence milestone; integrate the
    accepted production/test chain into local main only if all required evidence
@@ -1151,7 +1181,8 @@ There is no other Ready production work in either standing lane.
 | DLV-306 | Accepted test-only `5fe7a5f`: permanent Bridge exact-base Append/base-zero Replace convergence passed 1/1; four notification-evidence files committed. |
 | DLV-307 | Stopped first red: full Bridge passed 95/96; the residency-count refusal message assertion failed, so Spotify, Tier 2, and Tier 3 were skipped and no commit was created. |
 | DLV-308 | Completed diagnostic-only: isolated prefix reproduced 0/1 and proved a stale Bridge wrapper-message expectation, not suite state contamination or a production budget defect. |
-| DLV-309 | Assigned one exact test-only Bridge-boundary assertion correction followed by the remaining cumulative Bridge, Spotify, Tier 2, and Tier 3 gate. |
+| DLV-309 | Stopped first red uncommitted: corrected residency prefix passed 1/1 and full Bridge passed 96/96; Spotify failed during build without a diagnostic, so Tier 2 and Tier 3 were skipped. |
+| DLV-310 | Assigned diagnostic-only source audit plus one explicit no-restore Spotify test-project build to capture the real failure; no edits, test execution, repair, process action, or integration. |
 | DLV-284 | Queued, not assigned until cumulative integration. |
 | DLV-248 | Deliberately deferred until explicit user promotion. |
 
