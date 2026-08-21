@@ -46,7 +46,7 @@ evidence only; this file is the sole authority for current work.
 | Lane | Task/worktree | State |
 | --- | --- | --- |
 | Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | Idle pending cumulative test evidence and integration. DLV-284 is queued but not assigned. Do not begin it, test, launch, integrate, or push. |
-| Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | DLV-296 `3922b58` is physically accepted and exact PID 83788 remains running. DLV-297 direct lane/transport prefixes passed but Bridge pagination remained red; preserve all uncommitted evidence and execute diagnostic-only DLV-298 below. Do not change production, rebuild, relaunch, integrate, or push. |
+| Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | DLV-296 `3922b58` is physically accepted and exact PID 83788 remains running. DLV-297's composite Bridge pagination case remains held red, while all four DLV-298 ownership handoffs passed once. Preserve the six-file uncommitted evidence and execute diagnostic-only DLV-299 below. Do not change production, rebuild, relaunch, integrate, or push. |
 
 ## Execution and architecture rules
 
@@ -647,6 +647,50 @@ the exact last-green/first-red ownership edge and source-review explanation.
 Do not implement a production correction or commit under DLV-298; stop for
 planner review. Never push.
 
+DLV-298 completed without a commit. Its four uniquely prefixed boundaries each
+passed 1/1: real worker Action through cursor completion to the worker pipe;
+current-session `WidgetProcessClient` admission to exactly one invalidation;
+visible current registry admission through its notification lane to the
+configured publisher; and admitted registry publication through Bridge framing
+to the client event queue without another request. Serialized MSBuild compiled
+the affected projects; the first parallel build attempt aborted with zero
+diagnostics and consumed no focused prefix. No production, protocol, package,
+timeout, process, or configured-state change occurred. There is therefore no
+first-red individual handoff: the last green edge is registry publication to
+the Bridge client event queue, and the only known red remains the composite
+virtual-pagination scenario.
+
+## Assigned widgets diagnosis — DLV-299 composite first-event classification
+
+Mode: diagnostic test-only against accepted DLV-296. Preserve the six current
+dirty/untracked test files as the complete DLV-297/298 evidence set; do not
+commit them yet. Do not edit production/runtime source, packages, manifests,
+protocols, bounds, timeouts, installed/configured state, or processes. PID
+83788 remains accepted and must not be touched.
+
+First perform a source-only comparison between the passing DLV-298 seams and
+the held `VirtualCollectionWindowCrossesBridge` path, including widget identity,
+lifecycle, source element/action identity, action admission versus execution,
+cursor busy/completion revisions, registry generation, and the Bridge test
+client's event queue. Then make the smallest test-harness-only change needed to
+observe the first post-action event without filtering it by expected type. The
+single focused case must classify exactly one of these outcomes:
+
+1. an invalidation reaches the client, proving the formerly red wait was not a
+   reproducible missing handoff;
+2. an action-failure event reaches the client, with its bounded existing
+   payload identifying the action/resource failure; or
+3. no event reaches the client before the unchanged existing deadline, leaving
+   the first red above the individually green seams.
+
+Do not add logging, reflection, production hooks, sleeps, polling, repeated
+stress loops, timeout enlargement, stdout/file diagnostics, or a package
+special case. Do not weaken the durable generation-2 Append assertions and do
+not request snapshots merely to poll for completion. Compile with serialized
+MSBuild, run the one uniquely named DLV-299 prefix at most once, and stop with
+the exact first event/outcome plus source-review ownership explanation. Do not
+implement a production correction or commit under DLV-299. Never push.
+
 ## Queued platform production — DLV-284 explicit publication transaction model
 
 Status: queued, not assigned. It becomes assignable only after the cumulative
@@ -677,8 +721,8 @@ every legal and illegal transition and follow physical-first order. Never push.
 
 ## Ordered queues
 
-1. Widgets diagnostic queue: execute test-only DLV-298 boundary bisection and
-   stop at the first red owner without production correction or commit.
+1. Widgets diagnostic queue: execute test-only DLV-299 composite first-event
+   classification once and stop without production correction or commit.
 2. Widgets evidence queue: after the diagnosed production/harness disposition,
    finish and independently review DLV-297 before resuming cumulative evidence.
 3. Widgets cumulative test queue: resume and commit the cumulative DLV-278–283
@@ -714,7 +758,8 @@ There is no other Ready production work in either standing lane.
 | DLV-295 | Reproduced missing ordinary invalidation after clean fixture synchronization; diagnostic campaign stopped. |
 | DLV-296 | Production `3922b58` is source-reviewed, exact-build clean, and physically accepted as running PID 83788. |
 | DLV-297 | Held uncommitted: direct lane and real worker transport prefixes passed 1/1 each; Bridge virtual pagination remained red 0/1 awaiting its first post-action invalidation. |
-| DLV-298 | Assigned diagnostic-only boundary bisection from worker action/resource through process client, registry notification lane, and Bridge framing; stop at first red, no production correction or commit. |
+| DLV-298 | Completed uncommitted: all four individual ownership handoffs passed 1/1; the last green edge is registry publication through Bridge framing to the client event queue. |
+| DLV-299 | Assigned diagnostic-only classification of the composite virtual-pagination case's first post-action event; one prefix once, no production correction or commit. |
 | DLV-284 | Queued, not assigned until cumulative integration. |
 | DLV-248 | Deliberately deferred until explicit user promotion. |
 
