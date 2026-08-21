@@ -233,6 +233,14 @@ Run the focused Bridge suite once. If green, commit only DLV-287, then resume
 Spotify/Tier 2/Tier 3 without rerunning earlier green suites. Stop on the first
 remaining distinct failure; never change production or push.
 
+DLV-286 is committed separately as `81b8c23`. The first DLV-287 run built but
+completed 87/94 because the updated scenario raised an invalidation and
+immediately inspected its count. Current Bridge notifications publish through
+the asynchronous per-widget lane. Await that widget's existing
+`DrainNotificationsAsync` boundary before asserting delivery; do not add sleeps,
+polling, synchronous production behavior, or change notification ownership.
+Run Bridge one further time and stop on the first remaining distinct failure.
+
 ## Queued platform production — DLV-284 explicit publication transaction model
 
 Status: queued, not assigned. It becomes assignable only after the cumulative
@@ -284,7 +292,7 @@ There is no other Ready production work in either standing lane.
 | DLV-277 | Complete and integrated through `c21ad02`. |
 | DLV-278–283/270 | Cumulative production `0dec737` is physically accepted; focused/Tier 2/Tier 3 convergence evidence is assigned before integration. |
 | DLV-285 | Test-only correction `9365cb5` passes isolated 1/1 and focused Runtime 78/78; command-sandbox named-pipe denial was not a product failure. |
-| DLV-286 | Assigned test-only reconciliation for three Bridge registry fixtures still using the retired EstablishPresentation signature; integration remains blocked. |
+| DLV-286 | Test-only `81b8c23` reconciles the three cold Bridge fixtures to explicit None/base-zero checkpoint semantics; Bridge remains red on DLV-287. |
 | DLV-287 | Assigned test-only correction for stale destructive-retirement expectations after DLV-280 introduced bounded lifecycle compensation and worker retention. |
 | DLV-284 | Queued, not assigned until cumulative integration. |
 | DLV-248 | Deliberately deferred until explicit user promotion. |
