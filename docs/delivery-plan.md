@@ -23,11 +23,15 @@ The complete delivery record through the DLV-277 assignment is preserved in the\
   `833fe9c` / Spotify 0.3.6 are rejected. Spotify 0.3.3 is selected as the
   rollback but remains disabled because its full-trust re-enable requires new
   explicit user approval; no configuration or account state was changed.
+  DLV-278 production `ab4844d` and cumulative DLV-270 diagnostics/package
+  production `86d4e54` are source-reviewed with tests-skipped builds green.
+  Immutable Spotify 0.3.7 awaits explicit full-trust install/enable approval
+  before its physical verdict.
 
 | Lane | Task/worktree | State |
 | --- | --- | --- |
 | Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | DLV-277 is accepted and integrated through main `c21ad02`; PID 34764 remains the accepted production artifact. No platform deliverable is assigned. DLV-273 remains retired and DLV-248 remains deferred. Never push. |
-| Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | DLV-278 is the assigned serialized managed-SDK prerequisite after source review proved that atomic update v18 cannot advance a materialized snapshot from protocol v18 to v19. Preserve the seven uncommitted DLV-270 diagnostic/fallback files without staging them in DLV-278. After the clean DLV-278 production commit/build, resume DLV-270, retain only bounded diagnostics that remain useful, advance the immutable package, and build one cumulative physical candidate. Preserve current Client ID/account/configuration, PID 34764, selected disabled 0.3.3 rollback, installed inactive rejected 0.3.4/0.3.6, and native/shared-host contracts. Do not test before the cumulative physical verdict. Never push. |
+| Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | DLV-278 production `ab4844d` checkpoints exact snapshot-protocol advances; cumulative DLV-270 production `86d4e54` removes the speculative fallback and adds bounded sanitized fatal diagnostics in immutable Spotify 0.3.7. Source review and tests-skipped builds pass. Physical staging is blocked only on explicit full-trust install/enable approval. Preserve current Client ID/account/configuration, PID 34764, selected disabled 0.3.3 rollback, installed inactive rejected 0.3.4/0.3.6, and native/shared-host contracts. Do not test or integrate before the verdict. Never push. |
 
 ## Execution, review, and architecture rules
 
@@ -338,6 +342,13 @@ package-specific shared behavior, destructive state action, substantial
 conflict, or a physical failure after the exact checkpoint transition is
 confirmed. Never push.
 
+Production commit `ab4844d` adds one generic checkpoint decision when the valid
+target snapshot protocol exceeds its exact base protocol. Same-protocol updates,
+including v19-to-v19, retain the existing atomic path. No host, materializer,
+wire schema, operation family, or package behavior changed. Direct source review
+and the exact-commit tests-skipped Release build pass. Physical evidence is
+cumulative with DLV-270; do not test or integrate before that verdict.
+
 ## Held widgets deliverable — DLV-270: Spotify collection paging efficiency
 
 Owner/baseline: widgets lane after accepted DLV-265 and DLV-277 integration on
@@ -416,15 +427,26 @@ through an atomic v18 update that cannot carry the target version. Resume this
 package work only after the clean DLV-278 production commit/build, then produce
 one cumulative candidate. Do not test or integrate before its verdict.
 
+Cumulative production commit `86d4e54` advances immutable Spotify to 0.3.7,
+removes the speculative package presentation fallback, and retains only a
+64-KiB package-owned diagnostic log with bounded sanitized boundary/error tokens.
+The cumulative exact-commit tests-skipped Release/package build passes. Package
+size is 1,163,665 bytes and SHA-256 is
+`772C872BF8D1233B1E4000530673E507838A106EC8EE4FCFB5556CAE7B01BF32`.
+The branch is clean. No test, install, selection, enablement, launch,
+authentication, configuration, credential, or account action occurred.
+Physical staging awaits explicit approval to install and enable this full-trust
+package.
+
 ## Serialized order
 
 1. DLV-269, DLV-274/275, DLV-271, DLV-276, DLV-265, and DLV-277 are accepted
    and integrated through main `c21ad02`; DLV-273 remains retired rejected
    history.
-2. DLV-278 is the serialized widgets-lane prerequisite: checkpoint whenever a
-   valid target snapshot advances beyond its exact base snapshot protocol.
-3. After DLV-278 production/build, resume DLV-270 and produce one cumulative
-   immutable package candidate for the physical verdict. Do not test or
+2. DLV-278 `ab4844d` and cumulative DLV-270 `86d4e54` are production-complete,
+   source-reviewed, and built as immutable Spotify 0.3.7. Explicit full-trust
+   install/enable approval is required before staging the physical candidate.
+3. After staging, obtain the cumulative physical verdict. Do not test or
    integrate either deliverable before that verdict.
 4. DLV-248 remains deferred until explicit user promotion.
 
@@ -440,8 +462,8 @@ one cumulative candidate. Do not test or integrate before its verdict.
 | DLV-276 | Complete: behavior/styling accepted, focused boundary evidence passes, and production/tests are integrated through main `ca967e6`. |
 | DLV-277 | Complete: physical verdict accepted; focused native evidence passes and production/tests are integrated through main `c21ad02`. |
 | DLV-265 | Complete: physical verdict accepted; focused Spotify evidence passes and production/tests are integrated through main `bb8234f`. |
-| DLV-278 | Assigned serialized managed-SDK prerequisite: emit a checkpoint rather than atomic update when the target snapshot advances beyond the base snapshot protocol; physical evidence is cumulative with DLV-270. |
-| DLV-270 | Spotify 0.3.6 reproduced the compact Playlists exit-1 worker crash and is rejected. Resume after DLV-278, then verify the v19 checkpoint, stable worker PID, switch-away/back, and long playlist/detail focus, artwork, paging, refresh, and recovery. |
+| DLV-278 | Production `ab4844d` is source-reviewed and built; physical evidence is cumulative with DLV-270 and awaits full-trust staging approval. |
+| DLV-270 | Cumulative Spotify 0.3.7 production `86d4e54` is source-reviewed and built. Await explicit full-trust install/enable approval, then verify the v19 checkpoint, stable worker PID, switch-away/back, and long playlist/detail focus, artwork, paging, refresh, and recovery. |
 | DLV-248 | Deliberately deferred until explicit user promotion. |
 
 ## Recent accepted milestones
