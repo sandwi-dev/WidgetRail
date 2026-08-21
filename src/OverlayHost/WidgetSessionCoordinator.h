@@ -334,7 +334,9 @@ private:
         const Request& request) const noexcept;
     [[nodiscard]] bool HasExecutableRequestLocked() const noexcept;
     void ReleasePresentationAdmission(const Request& request) noexcept;
-    void QueueCoalescedRefreshAfterAdmission(const Request& request);
+    void QueueCoalescedRefreshAfterAdmission(
+        const Request& request,
+        bool refreshRequestedDuringAdmission);
     void SupersedeSnapshotRequests(
         std::wstring_view widgetId,
         WidgetLifecycleState lifecycle) noexcept;

@@ -508,13 +508,16 @@ std::vector<WidgetSessionEvent> WidgetSessionCoordinator::TakeEvents() {
                 events.push_back(std::move(event));
                 continue;
             }
+            const bool refreshRequestedDuringAdmission =
+                RefreshState(request.widgetId) == WidgetRefreshState::RefreshRequested;
             snapshots_.insert_or_assign(request.widgetId, std::move(*completion.snapshot));
             CompleteRefresh(request, true);
             failures_.erase(request.widgetId);
             if (request.kind == RequestKind::Establish)
                 lifecycleStates_.insert_or_assign(request.widgetId, request.lifecycle);
             ReleasePresentationAdmission(request);
-            QueueCoalescedRefreshAfterAdmission(request);
+            QueueCoalescedRefreshAfterAdmission(
+                request, refreshRequestedDuringAdmission);
             auto event = makeEvent(WidgetSessionEventKind::SnapshotAdmitted);
             event.completedRestart = awaitingRestartSnapshot_.erase(request.widgetId) > 0;
             event.presentationImpact = std::move(completion.presentationImpact);
@@ -832,10 +835,14 @@ void WidgetSessionCoordinator::ReleasePresentationAdmission(
 }
 
 void WidgetSessionCoordinator::QueueCoalescedRefreshAfterAdmission(
-    const Request& request) {
+    const Request& request,
+    const bool refreshRequestedDuringAdmission) {
     if (!IsPresentationChanging(request.kind) ||
-        RefreshState(request.widgetId) != WidgetRefreshState::RefreshRequested ||
+        !refreshRequestedDuringAdmission ||
         !CompletionIsCurrent(request)) return;
+    refreshStates_.insert_or_assign(
+        request.widgetId, WidgetRefreshState::RefreshRequested);
+    refreshRequestIds_.erase(request.widgetId);
     const auto queued = Queue(MakeRequest(
         RequestKind::Snapshot,
         request.widgetId,
