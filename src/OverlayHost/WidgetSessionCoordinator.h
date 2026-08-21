@@ -74,6 +74,7 @@ enum class WidgetSessionTraceReason {
     ExistingRequest,
     NewerTarget,
     CheckpointFallback,
+    StaleBaseResynchronization,
     ShuttingDown,
 };
 
@@ -161,6 +162,8 @@ struct WidgetSessionOperationResult final {
     std::optional<Value> value;
     WidgetSessionFailureStage failureStage{WidgetSessionFailureStage::None};
     std::wstring safeError;
+    WidgetBridgeRequestFailureCategory requestFailureCategory{
+        WidgetBridgeRequestFailureCategory::None};
 
     [[nodiscard]] static WidgetSessionOperationResult Success(Value result) {
         return {std::move(result), WidgetSessionFailureStage::None, {}};
@@ -168,8 +171,11 @@ struct WidgetSessionOperationResult final {
 
     [[nodiscard]] static WidgetSessionOperationResult Failure(
         WidgetSessionFailureStage stage,
-        std::wstring safeError) {
-        return {std::nullopt, stage, std::move(safeError)};
+        std::wstring safeError,
+        WidgetBridgeRequestFailureCategory requestFailureCategory =
+            WidgetBridgeRequestFailureCategory::None) {
+        return {
+            std::nullopt, stage, std::move(safeError), requestFailureCategory};
     }
 };
 
@@ -315,6 +321,8 @@ private:
     struct Completion final {
         Request request;
         WidgetSessionFailure failure;
+        WidgetBridgeRequestFailureCategory requestFailureCategory{
+            WidgetBridgeRequestFailureCategory::None};
         std::optional<std::vector<WidgetDescriptor>> descriptors;
         std::optional<WidgetSnapshot> snapshot;
         std::optional<WidgetPresentationUpdate> update;
