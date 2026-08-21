@@ -34,7 +34,7 @@ The complete delivery record through the DLV-277 assignment is preserved in the\
 | Lane | Task/worktree | State |
 | --- | --- | --- |
 | Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | DLV-280 production `5f27393` plus transaction correction `09c3f07` are source-reviewed and their exact tests-skipped Release builds pass. The lane is idle pending the cumulative physical verdict; do not test, integrate, relaunch, or push. |
-| Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | Assigned the bounded cumulative-candidate step. Preserve clean tip `4af365f`, merge exact DLV-280 corrected tip `09c3f07` without rewriting either history, make no shared-core change, advance only the Spotify package identity to immutable 0.3.11, and build one coherent tests-skipped Release plus package. Do not test, stage/install/select/enable, launch, change configuration/account/credentials, integrate, or push. |
+| Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | Exact DLV-280 merge `b745c61` plus immutable Spotify 0.3.11 identity `4ece854` are source-reviewed; the exact cumulative tests-skipped Release and package builds pass. The lane is idle. Await explicit user approval before any full-trust package staging or accepted-host replacement; do not test, integrate, or push. |
 
 ## Execution, review, and architecture rules
 
@@ -200,6 +200,19 @@ tests-skipped Release builds pass; corrected `OverlayHost.exe` SHA-256 is
 No tests, process, package, configuration, account, credential, integration, or
 push action occurred. The production diff is source-reviewed for the cumulative
 physical candidate, not behaviorally accepted or integration-approved.
+
+The widgets lane merged corrected DLV-280 exactly as `b745c61` with no conflict
+or shared-core edit. Commit `4ece854` changes only the immutable Spotify package
+identity from 0.3.10 to 0.3.11. Its exact detached build produced a 1,164,005-byte
+package with SHA-256
+`6480F9B9E03A23488977928AA7351825622988244F14820389D422AEA3662FA4` and
+one coherent native Release. `OverlayHost.exe` is 2,690,560 bytes with SHA-256
+`C1D7CF8BE652258A7221C46D6428F908BA0DF1113356198C76DBC762D6C8709C`;
+the runtime `WidgetBridge.dll` SHA-256 is
+`61A5C737388D35552010F099FB4E14AEA63A3F557441CF165F809B8F77769E5E`.
+Package validation found 23 entries. The candidate is source-reviewed and ready
+for explicit full-trust staging approval; it has not been installed, selected,
+enabled, launched, tested, accepted, or integrated.
 
 ## Accepted and integrated — DLV-276: themed controller-first text-entry surface
 
@@ -654,10 +667,11 @@ after explicit full-trust approval.
    `4af365f` are rejected after the establish/resume path proved that the SDK
    lacks exact host predecessor authority when base sequence is 0. Preserve the
    evidence; do not test or integrate DLV-278, DLV-279, or DLV-270 yet.
-4. DLV-280 corrected production tip `09c3f07` is source-reviewed. Widgets now
-   reconciles that exact tip into the preserved cumulative branch and produces
-   Spotify 0.3.11 plus the coherent physical candidate without further shared-
-   core edits. No shared files are edited concurrently.
+4. DLV-280 corrected production tip `09c3f07` is source-reviewed and merged
+   exactly as `b745c61`; immutable Spotify 0.3.11 at cumulative tip `4ece854`
+   plus the coherent native Release are built and source-reviewed. Await explicit
+   full-trust staging approval before replacing the accepted host or selecting
+   the package. No shared files are edited concurrently.
 5. After the cumulative physical verdict, add focused and cross-process evidence
    in planner-directed order, then integrate the independently accepted DLV-280,
    DLV-278, DLV-279, and DLV-270 production/test chain into main.
@@ -678,7 +692,7 @@ after explicit full-trust approval.
 | DLV-278 | Production `ab4844d` is source-reviewed; 0.3.7 physically confirmed its v18-to-v19 checkpoint and stable worker, but integration waits for the corrected cumulative verdict and post-verdict tests. |
 | DLV-279 | Rejected/architecture-blocked: exact-base route re-entry is corrected, but full establish supplies no exact base while the host retains a snapshot; same-generation marker normalization is invalid. |
 | DLV-270 | Spotify 0.3.7 and 0.3.10 are rejected. Preserve paging evidence and wait for the cross-layer establish/base authority disposition. |
-| DLV-280 | Corrected production through `09c3f07` is source-reviewed with an exact tests-skipped Release build. Widgets is assigned the cumulative Spotify 0.3.11 candidate; focused/Tier 2/Tier 3 evidence waits for user acceptance. |
+| DLV-280 | Corrected production through `09c3f07` and cumulative Spotify 0.3.11 tip `4ece854` are source-reviewed with exact tests-skipped builds. Explicit full-trust staging approval and the physical verdict are pending; focused/Tier 2/Tier 3 evidence waits for user acceptance. |
 | DLV-248 | Deliberately deferred until explicit user promotion. |
 
 ## Recent accepted milestones
