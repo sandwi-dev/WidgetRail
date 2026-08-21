@@ -34,8 +34,8 @@ The complete delivery record through the DLV-277 assignment is preserved in the\
 
 | Lane | Task/worktree | State |
 | --- | --- | --- |
-| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | DLV-281 is Assigned from clean DLV-280 tip `09c3f07`: keep presentation-changing requests serialized through completion admission so an automatic refresh cannot start from the checkpoint an Establish completion is about to replace. Production and one exact tests-skipped Release build only; do not test, launch, integrate, or push. |
-| Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | DLV-279 correction `9184143` and immutable Spotify 0.3.12 remain source-reviewed and preserved. The cumulative PID 54676 verdict is rejected on generic DLV-281 after Games & Apps and Now Playing exposed the same retained-base race. The lane is idle; do not edit the shared request path, test, integrate, relaunch, or push. |
+| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | DLV-281 production `dcbd006` plus correction `0960b81` are source-reviewed and exact-build verified. The first commit was rejected because completion bookkeeping could erase the coalesced refresh intent; the correction captures that intent before committing the admitted checkpoint and queues it once afterward. The lane is idle; do not test, launch, integrate, or push. |
+| Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | Assigned the exact DLV-281 production pair onto preserved cumulative tip `9184143`, followed by one coherent tests-skipped Release build. Preserve immutable Spotify 0.3.12 and all package/account/configuration state; do not edit production, test, install, launch, integrate main, or push. |
 
 ## Execution, review, and architecture rules
 
@@ -827,9 +827,10 @@ after explicit full-trust approval.
    full-trust staging and cooperative rejected-host replacement completed, but
    PID 54676 is rejected after Games & Apps and Now Playing exposed the generic
    DLV-281 completion-admission race.
-6. The platform lane corrects DLV-281 from `09c3f07`; after review, merge that
-   exact production commit into the preserved widgets cumulative branch and
-   build/launch one coherent tests-skipped candidate for the user verdict.
+6. DLV-281 production `dcbd006` plus correction `0960b81` are source-reviewed;
+   the widgets lane merges that exact pair into the preserved cumulative branch
+   and builds one coherent tests-skipped candidate. The planner then visibly
+   launches it for the user verdict.
 7. After the cumulative physical verdict, add focused and cross-process evidence
    in planner-directed order, then integrate the independently accepted DLV-280,
    DLV-281, DLV-278, DLV-279, and DLV-270 production/test chain into main.
@@ -851,7 +852,7 @@ after explicit full-trust approval.
 | DLV-279 | Cumulative 0.3.11 is rejected. Correction `9184143` makes re-entry `Replace` stable for an otherwise identical request generation; source review and exact tests-skipped builds pass. Spotify 0.3.12 remains staged in rejected PID 54676 while generic DLV-281 is corrected. |
 | DLV-270 | Cumulative Spotify 0.3.11 at `4ece854` is rejected on DLV-279 after deep paging and B. Preserve its successful provider/paging evidence; immutable 0.3.12 is installed, selected, enabled, and preserved while the generic DLV-281 host race is corrected. |
 | DLV-280 | Production through `09c3f07` successfully admitted one exact-base switch-back in the rejected cumulative trace. Keep it source-reviewed but unaccepted; focused/Tier 2/Tier 3 evidence waits for the corrected cumulative verdict. |
-| DLV-281 | Assigned to the platform lane: serialize same-widget presentation-changing work through completion admission, then rebuild the preserved cumulative candidate before tests or integration. |
+| DLV-281 | Production `dcbd006` plus correction `0960b81` are source-reviewed and exact-build verified. The widgets lane is assigned their exact cumulative merge/build before physical verdict, tests, or integration. |
 | DLV-248 | Deliberately deferred until explicit user promotion. |
 
 ## Recent accepted milestones
