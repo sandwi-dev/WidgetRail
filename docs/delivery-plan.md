@@ -19,12 +19,14 @@ The complete delivery record through the DLV-277 assignment is preserved in the\
   The provider-free Full Application sample remains installed and enabled.
 - DLV-265 production and focused evidence are accepted and integrated while the
   immutable installed Spotify 0.3.3 and existing Client ID/account state remain
-  unchanged. DLV-270 is now the active widgets deliverable.
+  unchanged. DLV-270 production candidate `cf9149e` is built and source-reviewed;
+  immutable Spotify 0.3.4 is installed, selected, and enabled for its physical
+  verdict while 0.3.3 remains installed as rollback.
 
 | Lane | Task/worktree | State |
 | --- | --- | --- |
 | Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | DLV-277 is accepted and integrated through main `c21ad02`; PID 34764 remains the accepted production artifact. No platform deliverable is assigned. DLV-273 remains retired and DLV-248 remains deferred. Never push. |
-| Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | DLV-270 is active from accepted integrated main `c21ad02`. Reconcile cleanly, then follow its physical-first package-local paging and Spotify virtualization-adoption assignment. Preserve installed Spotify 0.3.3, current Client ID/account/configuration, PID 34764, and shared contracts. Never push. |
+| Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | DLV-270 clean production candidate `cf9149e` is built and staged as selected/enabled Spotify 0.3.4 for the physical verdict. Preserve current Client ID/account/configuration, PID 34764, installed 0.3.3 rollback, and shared contracts. Do not test, integrate, or change the candidate before the verdict. Never push. |
 
 ## Execution, review, and architecture rules
 
@@ -329,12 +331,27 @@ provider ambiguity changing contract, shared-boundary changes, destructive
 credential/configuration action, unbounded retention, substantial conflict, or
 missing accepted DLV-265/DLV-271/DLV-276 baseline. Never push.
 
+Production-only commit `cf9149e` adopts the accepted virtual-window contract
+for playlist and playlist-detail viewports using stable keys, authoritative
+logical indices/totals, 12-item pages, 24 retained rows, and an 88-DIP estimated
+row extent. Selected-playlist metadata loads once per selection generation;
+the first page uses one metadata plus one `/items` request and each adjacent
+page uses one `/items` request. Queue now has one fail-closed 50-item
+unpaginated bound. The tests-skipped exact-commit Release/package build passes.
+Immutable Spotify 0.3.4 is 1,161,574 archive bytes with SHA-256
+`146DAD5EFD185469B0B3C77E3752786E551A53DA31CA686FC95C443BE5A1545E`.
+It is installed, selected, and enabled; 0.3.3 remains installed as rollback,
+the existing Client ID/account/configuration are unchanged, no Spotify process
+was running during selection, and accepted host PID 34764 remains responsive.
+Await the physical verdict before tests or integration.
+
 ## Serialized order
 
 1. DLV-269, DLV-274/275, DLV-271, DLV-276, DLV-265, and DLV-277 are accepted
    and integrated through main `c21ad02`; DLV-273 remains retired rejected
    history.
-2. Run DLV-270 physical-first in the widgets lane from main `c21ad02`.
+2. DLV-270 candidate `cf9149e` awaits its physical verdict as selected Spotify
+   0.3.4. Do not test or integrate it before that verdict.
 3. DLV-248 remains deferred until explicit user promotion.
 
 ## Manual, external, and blocked evidence
@@ -349,6 +366,7 @@ missing accepted DLV-265/DLV-271/DLV-276 baseline. Never push.
 | DLV-276 | Complete: behavior/styling accepted, focused boundary evidence passes, and production/tests are integrated through main `ca967e6`. |
 | DLV-277 | Complete: physical verdict accepted; focused native evidence passes and production/tests are integrated through main `c21ad02`. |
 | DLV-265 | Complete: physical verdict accepted; focused Spotify evidence passes and production/tests are integrated through main `bb8234f`. |
+| DLV-270 | Production candidate `cf9149e` is staged as Spotify 0.3.4; verify long playlist/detail traversal in compact/wide layouts, forward/back eviction, stable focus/artwork, refresh/recovery, and normal Queue presentation. |
 | DLV-248 | Deliberately deferred until explicit user promotion. |
 
 ## Recent accepted milestones
