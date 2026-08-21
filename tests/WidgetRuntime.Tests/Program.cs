@@ -120,6 +120,12 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Action admission preserves protocol-v1 empty acknowledgements", LegacyActionAdmissionCompatibility),
     ("Committed text crosses worker receive and action execution", CommittedTextCrossesWorkerActionQueue),
     ("Actions deliver invalidation notifications", ActionsInvalidate),
+    ("Worker notification lane coalesces orders and drains boundedly", WidgetWorkerNotificationScenarios.LaneCoalescesOrdersAndDrainsBoundedly),
+    ("Worker notification transport failure has one request-loop outcome", WidgetWorkerNotificationScenarios.TransportFailureHasOneRequestLoopOutcome),
+    ("Worker action cursor completion reaches the worker pipe", WidgetWorkerNotificationScenarios.WorkerActionCursorCompletionReachesPipe),
+    ("Lifecycle-first generated cursor action reaches the worker pipe", WidgetWorkerNotificationScenarios.LifecycleFirstCursorActionReachesPipe),
+    ("Process client admits exactly one current invalidation", ProcessClientAdmitsExactlyOneCurrentInvalidation),
+    ("Process client preserves exact-base cursor update semantics", ProcessClientCarriesLifecycleFirstCursorPagination),
     ("Direct and controller actions share one ordered queue", DirectAndControllerActionsShareQueue),
     ("Direct action admission is bounded and lifecycle-owned", DirectActionAdmissionIsBounded),
     ("Direct action failures are observable without crashing", DirectActionFailuresAreObservable),
@@ -199,6 +205,10 @@ static async Task<int> RunWorkerAsync(string[] arguments)
             ? new CustomGestureWidget()
         : arguments.Contains("--gesture-adversarial-probe", StringComparer.Ordinal)
             ? new AdversarialGestureWidget(gestureProbe!)
+        : arguments.Contains("--notification-cursor-probe", StringComparer.Ordinal)
+            ? new DiagnosticCursorNotificationWidget()
+        : arguments.Contains("--notification-lifecycle-cursor-probe", StringComparer.Ordinal)
+            ? new DiagnosticCursorNotificationWidget(loadOnActivation: true)
         : arguments.Contains("--isolation-probe", StringComparer.Ordinal)
             ? new IsolationProbeWidget(
                 RequiredValue(arguments, "--probe-readable-path"),
@@ -1835,6 +1845,181 @@ static async Task ActionsInvalidate()
     client.Invalidated += (_, revision) => invalidated.TrySetResult(revision);
     await client.SendActionAsync(new WidgetActionEvent("invalidate", "button"));
     Assert.Equal(1L, await invalidated.Task.WaitAsync(TimeSpan.FromSeconds(2)));
+}
+
+static async Task ProcessClientAdmitsExactlyOneCurrentInvalidation()
+{
+    await using var client = CreateClient(
+        extraArguments: ["--notification-cursor-probe"]);
+    await client.SetLifecycleStateAsync(WidgetLifecycleState.Visible);
+    _ = await client.GetSnapshotAsync();
+
+    var delivered = new TaskCompletionSource<long>(
+        TaskCreationOptions.RunContinuationsAsynchronously);
+    var publications = 0;
+    client.Invalidated += (_, revision) =>
+    {
+        Interlocked.Increment(ref publications);
+        delivered.TrySetResult(revision);
+    };
+
+    Assert.Equal(WidgetOperationAdmission.Enqueued,
+        await client.AdmitActionAsync(new WidgetActionEvent(
+            DiagnosticCursorNotificationWidget.SingleInvalidationAction,
+            "diagnostic.action")));
+    Assert.Equal(1L, await delivered.Task.WaitAsync(TimeSpan.FromSeconds(2)));
+    _ = await client.GetSnapshotAsync();
+    Assert.Equal(1, Volatile.Read(ref publications));
+}
+
+static async Task ProcessClientCarriesLifecycleFirstCursorPagination()
+{
+    using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(4));
+    await using var client = CreateClient(
+        extraArguments: ["--notification-lifecycle-cursor-probe"]);
+    var initialInvalidation = new TaskCompletionSource<long>(
+        TaskCreationOptions.RunContinuationsAsynchronously);
+    var forwardInvalidation = new TaskCompletionSource<long>(
+        TaskCreationOptions.RunContinuationsAsynchronously);
+    var actionFailure = new TaskCompletionSource<WidgetActionFailure>(
+        TaskCreationOptions.RunContinuationsAsynchronously);
+    var actionAdmitted = 0;
+    client.Invalidated += (_, revision) =>
+    {
+        if (Volatile.Read(ref actionAdmitted) == 0)
+            initialInvalidation.TrySetResult(revision);
+        else
+            forwardInvalidation.TrySetResult(revision);
+    };
+    client.ActionFailed += (_, failure) => actionFailure.TrySetResult(failure);
+
+    await client.SetLifecycleStateAsync(
+        WidgetLifecycleState.Visible, deadline.Token);
+    var initialRevision = await initialInvalidation.Task.WaitAsync(deadline.Token);
+    Assert.True(initialRevision > 0,
+        "The external worker did not publish a positive initial invalidation revision.");
+    Assert.Equal(1, client.Starts);
+    var workerProcessId = client.WorkerProcessId;
+    Assert.True(workerProcessId is > 0,
+        "The lifecycle-first cursor worker did not expose its current process identity.");
+
+    var presentationGeneration = new string('D', 32);
+    var initialPresentation = await client.GetPresentationAsync(
+        PresentationUpdateCapabilities.Current,
+        presentationGeneration,
+        baseSequence: 0,
+        requireCheckpoint: false,
+        deadline.Token);
+    Assert.True(initialPresentation.Update is null,
+        "The missing initial base did not produce a complete checkpoint.");
+    var first = initialPresentation.Snapshot;
+    Assert.SequenceEqual(
+        Enumerable.Range(0, 4).Select(index => $"diagnostic.item.{index}"),
+        first.Root.Children.Select(child => child.Id));
+    Assert.True(first.Root.VirtualCollectionWindow is
+    {
+        RequestGeneration: 1,
+        FirstItemIndex: 0,
+        TotalItemCount: 12,
+        HasBefore: false,
+        HasAfter: true,
+        EstimatedItemExtent: 40,
+        Change: VirtualCollectionWindowChange.Replace,
+    }, "The external worker did not return the exact Ready generation-1 window.");
+    Assert.Equal<string?>(null, first.Root.ScrollNearStartActionId);
+    var pageAction = first.Root.ScrollNearEndActionId
+        ?? throw new InvalidOperationException(
+            "The external worker omitted its generated near-end cursor action.");
+    Assert.Equal(1, client.Starts);
+    Assert.Equal(workerProcessId, client.WorkerProcessId);
+
+    Volatile.Write(ref actionAdmitted, 1);
+    Assert.Equal(
+        WidgetOperationAdmission.Enqueued,
+        await client.AdmitActionAsync(
+            new WidgetActionEvent(pageAction, first.Root.Id), deadline.Token));
+    var publication = await Task.WhenAny(
+        forwardInvalidation.Task, actionFailure.Task).WaitAsync(deadline.Token);
+    if (ReferenceEquals(publication, actionFailure.Task))
+    {
+        var failure = await actionFailure.Task;
+        Assert.Equal(pageAction, failure.ActionId);
+        Assert.Equal(first.Root.Id, failure.SourceElementId);
+        throw new InvalidOperationException(
+            $"The external worker published action failure '{failure.Message}'.");
+    }
+
+    var forwardRevision = await forwardInvalidation.Task;
+    Assert.True(forwardRevision > initialRevision,
+        "The first current-session cursor invalidation did not advance revision.");
+    Assert.Equal(1, client.Starts);
+    Assert.Equal(workerProcessId, client.WorkerProcessId);
+
+    var changed = await client.GetPresentationAsync(
+        PresentationUpdateCapabilities.Current,
+        presentationGeneration,
+        first.Sequence,
+        requireCheckpoint: false,
+        deadline.Token);
+    Assert.True(changed.Update is not null,
+        "The exact generation-1 base did not produce an atomic cursor update.");
+    Assert.Equal(first.Sequence, changed.Update!.BaseSequence);
+    Assert.Equal(changed.Snapshot.Sequence, changed.Update.Sequence);
+    Assert.Equal(presentationGeneration, changed.Update.PresentationGeneration);
+    var windowChange = changed.Update.Operations
+        .SelectMany(operation => operation.Properties ?? [])
+        .Single(change => change.Property == PresentationProperty.VirtualCollectionWindow);
+    var updateWindow = RuntimeJson.FromElement<VirtualCollectionWindow>(windowChange.Value);
+    Assert.True(updateWindow is
+    {
+        RequestGeneration: 2,
+        FirstItemIndex: 0,
+        TotalItemCount: 12,
+        HasBefore: false,
+        HasAfter: true,
+        EstimatedItemExtent: 40,
+        Change: VirtualCollectionWindowChange.Append,
+    }, "The atomic update did not carry the exact generation-2 Append authority.");
+
+    var second = changed.Snapshot;
+    Assert.SequenceEqual(
+        Enumerable.Range(0, 8).Select(index => $"diagnostic.item.{index}"),
+        second.Root.Children.Select(child => child.Id));
+    Assert.True(second.Root.VirtualCollectionWindow is
+    {
+        RequestGeneration: 2,
+        FirstItemIndex: 0,
+        TotalItemCount: 12,
+        HasBefore: false,
+        HasAfter: true,
+        EstimatedItemExtent: 40,
+        Change: VirtualCollectionWindowChange.Append,
+    }, "The exact-base materialized snapshot did not retain generation-2 Append.");
+    Assert.Equal<string?>(null, second.Root.ScrollNearStartActionId);
+    Assert.True(second.Root.ScrollNearEndActionId is not null,
+        "The eight-item durable window lost its remaining forward boundary.");
+    Assert.Equal(1, client.Starts);
+    Assert.Equal(workerProcessId, client.WorkerProcessId);
+
+    var checkpoint = await client.GetSnapshotAsync(deadline.Token);
+    Assert.SequenceEqual(
+        Enumerable.Range(0, 8).Select(index => $"diagnostic.item.{index}"),
+        checkpoint.Root.Children.Select(child => child.Id));
+    Assert.True(checkpoint.Root.VirtualCollectionWindow is
+    {
+        RequestGeneration: 2,
+        FirstItemIndex: 0,
+        TotalItemCount: 12,
+        HasBefore: false,
+        HasAfter: true,
+        EstimatedItemExtent: 40,
+        Change: VirtualCollectionWindowChange.Replace,
+    }, "The base-zero checkpoint did not normalize the same durable window to Replace.");
+    Assert.Equal<string?>(null, checkpoint.Root.ScrollNearStartActionId);
+    Assert.True(checkpoint.Root.ScrollNearEndActionId is not null,
+        "The base-zero checkpoint lost its remaining forward boundary.");
+    Assert.Equal(1, client.Starts);
+    Assert.Equal(workerProcessId, client.WorkerProcessId);
 }
 
 static async Task DirectAndControllerActionsShareQueue()

@@ -8,6 +8,22 @@ using WidgetRail.PlatformDiagnostics;
 
 internal static class BridgeClientRegistryScenarios
 {
+    internal static async Task VisibleRegistrationPublishesInvalidationExactlyOnce()
+    {
+        var configured = Widget("notification-registry", worker: 'r', catalog: 'r');
+        await using var fixture = new RegistryFixture(Catalog(configured));
+
+        await fixture.SetLifecycleAsync(
+            configured.Id, WidgetLifecycleState.Visible);
+        var current = fixture.Clients.Single();
+        current.RaiseInvalidated(17);
+        await fixture.Registry.DrainNotificationsAsync(configured.Id);
+
+        RegistryAssert.Equal(1, fixture.Invalidations.Count);
+        RegistryAssert.Equal(configured.Id, fixture.Invalidations[0].WidgetId);
+        RegistryAssert.Equal(17L, fixture.Invalidations[0].Revision);
+    }
+
     internal static async Task CatalogReplacementAndRemovalOwnGenerations()
     {
         var initial = Widget("alpha", worker: 'a', catalog: 'a');

@@ -81,6 +81,7 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Client registry releases refused and failed-start residency", BridgeClientRegistryScenarios.BudgetRefusalAndFailedStartReleaseReservations),
     ("Client registry terminal disposal serializes with operations", BridgeClientRegistryScenarios.TerminalDisposalSerializesWithConcurrentOperation),
     ("Client registry observes retirement failures and disposes every client", BridgeClientRegistryScenarios.RetirementFailuresAreObservedAndDrained),
+    ("Visible registry publication reaches its configured publisher once", BridgeClientRegistryScenarios.VisibleRegistrationPublishesInvalidationExactlyOnce),
     ("Local package import origin is exact current Interactive Settings", BridgeClientRegistryScenarios.LocalPackageImportOriginIsExact),
     ("Local package import is disabled revisioned and path free", LocalPackageImportIsDisabledRevisionedAndPathFree),
     ("Local package import failures preserve catalog state", LocalPackageImportFailuresPreserveCatalog),
@@ -106,6 +107,7 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Managed presentation session preserves the ordinary full-trust runtime", ManagedPresentationSessionPreservesFullTrustRuntime),
     ("Protocol-v2 scroll nodes resolve bridge render roles", ScrollRenderRole),
     ("Protocol-v19 virtual collection window crosses worker and bridge", VirtualCollectionWindowCrossesBridge),
+    ("Admitted registry invalidation reaches the client event queue", AdmittedRegistryInvalidationReachesClientEventQueue),
     ("Protocol-v8 grids, action surfaces, and loading indicators resolve bridge render roles", ActionSurfaceRenderRole),
     ("Protocol-v15 text entries resolve one closed bridge render role", TextEntryRenderRole),
     ("Dashboard-owned controller buttons are rejected", DashboardButtonsStayHostOwned),
@@ -3269,11 +3271,27 @@ static async Task VirtualCollectionWindowCrossesBridge()
         new WorkerResidencyBudgetOptions { MaximumApplicationWorkers = 1 },
         new TemporaryWidgetDefinition(
             "virtual", "dev.test.virtual", "dev.test", "virtual.instance"));
+    var widgets = await harness.Client.RequestAsync(
+        BridgeMessageTypes.ListWidgets, new { });
+    Assert.Equal(BridgeMessageTypes.Widgets, widgets.Type);
+    var descriptor = widgets.Payload.GetProperty("widgets")
+        .EnumerateArray()
+        .Single(candidate => candidate.GetProperty("id").GetString() == "virtual");
+    var presentationGeneration = descriptor
+        .GetProperty("presentationGeneration").GetString()
+        ?? throw new InvalidOperationException(
+            "Virtual widget omitted its presentation generation.");
     var lifecycle = await harness.Client.RequestAsync(
         BridgeMessageTypes.SetWidgetLifecycle,
         new BridgeWidgetLifecycleRequest("virtual", WidgetLifecycleState.Visible));
     Assert.Equal(BridgeMessageTypes.Acknowledged, lifecycle.Type);
-    _ = await harness.Client.ReadEventAsync(BridgeMessageTypes.Invalidation);
+    var initialInvalidation = await harness.Client.ReadEventAsync(
+        BridgeMessageTypes.Invalidation);
+    Assert.Equal("virtual",
+        initialInvalidation.Payload.GetProperty("widgetId").GetString());
+    var lastRevision = initialInvalidation.Payload.GetProperty("revision").GetInt64();
+    Assert.True(lastRevision > 0,
+        "Initial virtual invalidation did not carry a positive revision.");
 
     var firstResponse = await harness.Client.RequestAsync(
         BridgeMessageTypes.GetSnapshot, new WidgetIdRequest("virtual"));
@@ -3284,8 +3302,17 @@ static async Task VirtualCollectionWindowCrossesBridge()
     Assert.Equal(32, first.Root.Children.Count);
     Assert.Equal(10_000L, first.Root.VirtualCollectionWindow?.TotalItemCount);
     Assert.Equal(0L, first.Root.VirtualCollectionWindow?.FirstItemIndex);
-    Assert.True(first.Root.VirtualCollectionWindow is { HasBefore: false, HasAfter: true },
+    Assert.True(first.Root.VirtualCollectionWindow is
+    {
+        RequestGeneration: 1,
+        HasBefore: false,
+        HasAfter: true,
+        Change: VirtualCollectionWindowChange.Replace,
+    },
         "Initial virtual bridge window lost its exact boundary authority.");
+    Assert.SequenceEqual(
+        Enumerable.Range(0, 32).Select(index => $"virtual.item.{index}"),
+        first.Root.Children.Select(child => child.Id));
 
     var pageAction = first.Root.ScrollNearEndActionId ??
         throw new InvalidOperationException("Virtual bridge window omitted its next-page action.");
@@ -3294,17 +3321,118 @@ static async Task VirtualCollectionWindowCrossesBridge()
         new BridgeActionRequest(
             "virtual", new WidgetActionEvent(pageAction, first.Root.Id)));
     Assert.Equal(BridgeMessageTypes.Acknowledged, admitted.Type);
-    _ = await harness.Client.ReadEventAsync(BridgeMessageTypes.Invalidation);
-    var secondResponse = await harness.Client.RequestAsync(
-        BridgeMessageTypes.GetSnapshot, new WidgetIdRequest("virtual"));
-    var second = SnapshotJson.Deserialize(System.Text.Encoding.UTF8.GetBytes(
-        secondResponse.Payload.GetProperty("snapshot").GetRawText()));
+    Assert.Equal("enqueued", admitted.Payload.GetProperty("admission").GetString());
+    var materialized = first;
+    ViewSnapshot? durable = null;
+    for (var publication = 0; publication < 8; publication++)
+    {
+        var notification = await harness.Client.ReadNextEventAsync();
+        if (notification.Type == BridgeMessageTypes.Failure)
+        {
+            Assert.Equal("virtual",
+                notification.Payload.GetProperty("widgetId").GetString());
+            Assert.Equal("controllerActionFailed",
+                notification.Payload.GetProperty("reason").GetString());
+            Assert.Equal(pageAction,
+                notification.Payload.GetProperty("actionId").GetString());
+            Assert.Equal(first.Root.Id,
+                notification.Payload.GetProperty("sourceElementId").GetString());
+            throw new InvalidOperationException(
+                $"Virtual pagination action '{pageAction}' failed from " +
+                $"'{first.Root.Id}': " +
+                notification.Payload.GetProperty("message").GetString());
+        }
+        Assert.Equal(BridgeMessageTypes.Invalidation, notification.Type);
+        Assert.Equal("virtual",
+            notification.Payload.GetProperty("widgetId").GetString());
+        var revision = notification.Payload.GetProperty("revision").GetInt64();
+        Assert.True(revision > lastRevision,
+            "Virtual bridge invalidation did not advance its current revision.");
+        lastRevision = revision;
+        var candidateResponse = await harness.Client.RequestAsync(
+            BridgeMessageTypes.GetSnapshot,
+            new BridgePresentationRequest(
+                "virtual", PresentationUpdateCapabilities.Current, materialized.Sequence));
+        Assert.Equal(BridgeMessageTypes.PresentationUpdate, candidateResponse.Type);
+        var update = PresentationUpdateJson.Deserialize(
+            System.Text.Encoding.UTF8.GetBytes(
+                candidateResponse.Payload.GetProperty("update").GetRawText()));
+        Assert.Equal(materialized.Sequence, update.BaseSequence);
+        Assert.Equal(presentationGeneration, update.PresentationGeneration);
+        materialized = PresentationUpdateMaterializer.Apply(
+            materialized, update, presentationGeneration);
+        if (materialized.Root.Children.Count == 64 &&
+            materialized.Root.VirtualCollectionWindow is
+            {
+                RequestGeneration: 2,
+                FirstItemIndex: 0,
+                TotalItemCount: 10_000,
+                HasBefore: false,
+                HasAfter: true,
+                Change: VirtualCollectionWindowChange.Append,
+            })
+        {
+            durable = materialized;
+            break;
+        }
+    }
+    var second = durable ?? throw new InvalidOperationException(
+        "Virtual bridge window did not publish its durable appended state.");
     Assert.Equal(64, second.Root.Children.Count);
     Assert.Equal(2L, second.Root.VirtualCollectionWindow?.RequestGeneration);
+    Assert.Equal(10_000L, second.Root.VirtualCollectionWindow?.TotalItemCount);
+    Assert.Equal(0L, second.Root.VirtualCollectionWindow?.FirstItemIndex);
     Assert.Equal(VirtualCollectionWindowChange.Append,
         second.Root.VirtualCollectionWindow?.Change);
+    Assert.True(second.Root.VirtualCollectionWindow is { HasBefore: false, HasAfter: true },
+        "Appended virtual bridge window lost its exact boundary authority.");
+    Assert.SequenceEqual(
+        Enumerable.Range(0, 64).Select(index => $"virtual.item.{index}"),
+        second.Root.Children.Select(child => child.Id));
     Assert.True(second.Root.Children.Count <= 96,
         "Bridge publication materialized the private 10,000-item collection.");
+
+    var checkpointResponse = await harness.Client.RequestAsync(
+        BridgeMessageTypes.GetSnapshot, new WidgetIdRequest("virtual"));
+    Assert.Equal(BridgeMessageTypes.Snapshot, checkpointResponse.Type);
+    var checkpoint = SnapshotJson.Deserialize(System.Text.Encoding.UTF8.GetBytes(
+        checkpointResponse.Payload.GetProperty("snapshot").GetRawText()));
+    Assert.SequenceEqual(
+        Enumerable.Range(0, 64).Select(index => $"virtual.item.{index}"),
+        checkpoint.Root.Children.Select(child => child.Id));
+    Assert.True(checkpoint.Root.VirtualCollectionWindow is
+    {
+        RequestGeneration: 2,
+        FirstItemIndex: 0,
+        TotalItemCount: 10_000,
+        HasBefore: false,
+        HasAfter: true,
+        Change: VirtualCollectionWindowChange.Replace,
+    }, "Base-zero Bridge checkpoint did not normalize the durable window to Replace.");
+    Assert.True(checkpoint.Root.Children.Count <= 96,
+        "Base-zero Bridge checkpoint exceeded the bounded host window.");
+}
+
+static async Task AdmittedRegistryInvalidationReachesClientEventQueue()
+{
+    await using var harness = await BridgeHarness.StartAsync();
+    var lifecycle = await harness.Client.RequestAsync(
+        BridgeMessageTypes.SetWidgetLifecycle,
+        new BridgeWidgetLifecycleRequest(
+            "test-widget", WidgetLifecycleState.Visible));
+    Assert.Equal(BridgeMessageTypes.Acknowledged, lifecycle.Type);
+
+    var admission = await harness.Client.RequestAsync(
+        BridgeMessageTypes.Action,
+        new BridgeActionRequest(
+            "test-widget", new WidgetActionEvent("refresh", "button")));
+    Assert.Equal(BridgeMessageTypes.Acknowledged, admission.Type);
+
+    var invalidation = await harness.Client.ReadEventAsync(
+        BridgeMessageTypes.Invalidation);
+    Assert.Equal("test-widget",
+        invalidation.Payload.GetProperty("widgetId").GetString());
+    Assert.Equal(1L, invalidation.Payload.GetProperty("revision").GetInt64());
 }
 
 static Task ActionSurfaceRenderRole()
@@ -3811,13 +3939,18 @@ file sealed class VirtualCollectionBridgeWidget : Widget
             });
     }
 
-    public override ValueTask OnActionAsync(
+    public override async ValueTask OnActionAsync(
         WidgetActionEvent action,
         CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
-        _items.TryHandlePagination(action, out _);
-        return ValueTask.CompletedTask;
+        if (!_items.TryHandlePagination(action, out var operation))
+            return;
+        var result = await operation.Completion.ConfigureAwait(false);
+        if (result.Status != WidgetOperationStatus.Succeeded)
+            throw new InvalidOperationException(
+                $"Virtual pagination completed with '{result.Status}'.",
+                result.Exception);
     }
 }
 
@@ -4477,6 +4610,15 @@ file sealed class BridgeTestClient : IAsyncDisposable
             if (message.Type == type) return message;
             _events.Enqueue(message);
         }
+    }
+
+    public async Task<BridgeEnvelope> ReadNextEventAsync()
+    {
+        if (_events.Count != 0) return _events.Dequeue();
+        var message = await _reader.ReadAsync(ReadDeadline);
+        if (message.RequestId != 0)
+            throw new InvalidOperationException("Expected an event, received a response.");
+        return message;
     }
 
     public async ValueTask DisposeAsync() => await _pipe.DisposeAsync();
