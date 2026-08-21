@@ -46,7 +46,7 @@ evidence only; this file is the sole authority for current work.
 | Lane | Task/worktree | State |
 | --- | --- | --- |
 | Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | Idle pending cumulative test evidence and integration. DLV-284 is queued but not assigned. Do not begin it, test, launch, integrate, or push. |
-| Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | DLV-323 proved that no pre-release companion revocation exists while the cancellation-ignoring grant is still held. Execute source-aligned test-only DLV-324 below; preserve both authorized edits and PID 126208. |
+| Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | DLV-324 is committed at `6b63edf` with Runtime 84/84; exact-commit Tier 3 stopped later on a retained Windows Spotify provider test that still consumes the pre-DLV-270 combined playlist/items contract. Execute bounded test-only DLV-325 below; preserve PID 126208 and all product state. |
 
 ## Execution and architecture rules
 
@@ -1703,6 +1703,40 @@ that exact commit. Retain every DLV-322 prohibition and do not rerun unrelated
 focused suites outside the verifier. Stop for independent review if Tier 3 is
 green; never push.
 
+DLV-324 committed exactly the two authorized Runtime test files as
+`6b63edf253ef2a6aa0c760da3dd870d7fabf5bc8`. The serialized Runtime build was
+green with zero warnings/errors and the complete executable passed 84/84.
+One canonical Tier 3 verifier from a clean detached tree at that exact commit
+reconfirmed Runtime 84/84 and then stopped at `windows-spotify-tests` because
+`tests/WindowsSpotifyProvider.Tests/Program.cs` still accesses removed
+`SpotifyPlaylistItemsPageSummary.Playlist`. Source history proves DLV-270 split
+playlist metadata into `GetSpotifyPlaylistAsync` and retained paged items in
+`GetSpotifyPlaylistItemsAsync`; the old test also queues separate detail and
+items responses but never calls the new detail operation. This is retained
+test compile/route drift, not a DLV-324 or production defect. No rerun,
+integration, overlay/package/state mutation, or push occurred. The verifier
+result SHA-256 is
+`1722B3DEB61418EDC21DEE2F264BFBB34075FF651279FF905143C32808C0B29C`.
+
+## Assigned widgets correction — DLV-325 align Spotify provider test with split routes
+
+Mode: bounded test-only correction after DLV-324. Baseline is exact commit
+`6b63edf`. Edit only `tests/WindowsSpotifyProvider.Tests/Program.cs`. In the
+existing API-read scenario, call `GetSpotifyPlaylistAsync` for the queued
+playlist-detail response and assert its collaborative metadata there; then call
+`GetSpotifyPlaylistItemsAsync` for the queued items page and retain the exact
+item/title/request-exhaustion assertions. Do not combine the production
+contracts again, remove either queued response, weaken request URI/order checks,
+or edit Spotify/runtime/SDK/bridge/host production code.
+
+Build the Windows Spotify provider test project once in serialized Release
+`--no-restore`, run its complete executable once, and stop first red. If green,
+commit exactly that one test file on top of `6b63edf`, then run one canonical
+Tier 3 verifier from a clean detached tree at that exact commit. Do not rerun
+Runtime or other focused suites outside the verifier. Preserve PID 126208,
+Spotify 0.3.14, installed/configured state, and all production artifacts. Stop
+for independent review if Tier 3 is green; never push.
+
 ## Queued platform production — DLV-284 explicit publication transaction model
 
 Status: queued, not assigned. It becomes assignable only after the cumulative
@@ -1788,8 +1822,8 @@ import/export or scheduling only after independent widgets prove the need.
 
 ## Ordered queues
 
-1. Widgets evidence queue: execute source-aligned DLV-324 correction, complete
-   84-case Runtime gate, and one exact-commit Tier 3
+1. Widgets evidence queue: execute bounded DLV-325 Windows Spotify provider
+   test correction, its complete focused gate, and one exact-commit Tier 3
    verifier, stopping on the first red result.
 2. Reviewer integration queue: independently review the eventual cumulative
    evidence milestone; integrate the
@@ -1852,7 +1886,8 @@ There is no other Ready production work in either standing lane.
 | DLV-321 | Stopped before edits: assignment incorrectly required 64 items while the authoritative Runtime fixture is page-size 4, retained 8, total 12. |
 | DLV-322 | Stopped first red uncommitted: build green, complete Runtime run stalled after 9 passes because the test awaited request termination before releasing its intentionally held grant; owned process terminated. |
 | DLV-323 | Stopped first red uncommitted: build green, complete Runtime run stalled after 9 passes because it awaited a pre-release companion revocation that source semantics do not promise. |
-| DLV-324 | Assigned source-aligned absent-authority/late-revocation correction, complete Runtime gate, and one exact-commit Tier 3 verifier. |
+| DLV-324 | Test-only `6b63edf`: Runtime 84/84 green; exact-commit Tier 3 stopped later at retained Windows Spotify provider compile drift. |
+| DLV-325 | Assigned one-file split-route provider-test correction, complete focused gate, and one exact-commit Tier 3 verifier. |
 | DLV-284 | Queued, not assigned until cumulative integration. |
 | DLV-248 | Deliberately deferred until explicit user promotion. |
 
