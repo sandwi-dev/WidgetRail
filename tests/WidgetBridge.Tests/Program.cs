@@ -2731,7 +2731,9 @@ static async Task SnapshotAndQuickAction()
     Assert.True(snapshot.ProtocolVersion < ProtocolConstants.AtomicPresentationUpdateVersion,
         "A legacy Bridge request unexpectedly activated protocol-18 update traffic.");
     var renderStyles = snapshotResponse.Payload.GetProperty("renderStyles");
-    Assert.Equal(5, renderStyles.EnumerateObject().Count());
+    Assert.Equal(6, renderStyles.EnumerateObject().Count());
+    Assert.True(renderStyles.TryGetProperty("committed-text-status", out _),
+        "Committed text status was omitted from the bridge render-style map.");
     var buttonStyles = renderStyles.GetProperty("button");
     var fontSize = buttonStyles.GetProperty("base").GetProperty("font-size");
     Assert.Equal("length", fontSize.GetProperty("kind").GetString());
@@ -2868,7 +2870,7 @@ static async Task SnapshotAndQuickAction()
         "The bridge did not forward a newer atomic presentation sequence.");
     Assert.True(update.Operations.Count > 0,
         "The changed worker view produced an empty bridge update.");
-    Assert.Equal(5,
+    Assert.Equal(6,
         updatedResponse.Payload.GetProperty("renderStyles").EnumerateObject().Count());
 
     var checkpointResponse = await harness.Client.RequestAsync(
@@ -2925,7 +2927,7 @@ static async Task ManagedPresentationSessionPreservesSandboxedAuthority()
             initial.Authority.PresentationGeneration);
         Assert.Equal(initial.Snapshot.Sequence, initial.Authority.SnapshotSequence);
         Assert.Equal(initial.Snapshot.ActiveInputScopeId, initial.Authority.ActiveInputScopeId);
-        Assert.Equal(5, initial.RenderStyles.Count);
+        Assert.Equal(6, initial.RenderStyles.Count);
 
         var refreshed = WaitForPresentationAsync(
             session,
