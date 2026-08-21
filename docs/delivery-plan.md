@@ -37,7 +37,7 @@ evidence only; this file is the sole authority for current work.
 | Lane | Task/worktree | State |
 | --- | --- | --- |
 | Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | Idle pending cumulative test evidence and integration. DLV-284 is queued but not assigned. Do not begin it, test, launch, integrate, or push. |
-| Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | DLV-290 `b14dfdc` is committed and review-clean. DLV-291 remains held and passes 1/1. DLV-294 proved pagination succeeds and ordinary completion invalidation crosses the Bridge; DLV-292 is a fixture synchronization gap, not a production defect. Execute DLV-295 below. Preserve production, packages, state, and PID 129420. Do not rebuild, install, launch, terminate, integrate main, or push. |
+| Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | DLV-290 `b14dfdc` is committed and review-clean. Preserve the three held test-matrix files. DLV-295 reproduced missing invalidation without disposable instrumentation; source review found untracked fire-and-forget worker notification sends. Execute production-only physical-first DLV-296 below. Preserve packages/state and PID 129420 until an exact candidate is ready. Do not integrate main or push. |
 
 ## Execution and architecture rules
 
@@ -469,6 +469,65 @@ the held cumulative matrix and resume Spotify/Tier 2/Tier 3 in the assigned
 order; stop at the first distinct failure. Commit DLV-291/292/295 only after the
 complete required evidence is green. Never push.
 
+DLV-295 built cleanly but its exact prefix again timed out awaiting the first
+ordinary invalidation after acknowledged pagination. The awaited test resource
+operation was matched and required to succeed, and every disposable diagnostic
+signal had been removed. Together with DLV-294—where adding diagnostic timing
+made ordinary revisions 3/4 observable—this is timing-sensitive production
+evidence, not a stable fixture-only explanation. Stop the diagnostic campaign.
+
+Source review identifies the owning gap in `WidgetWorkerServer`: widget
+invalidation and action-failure callbacks each launch an untracked
+fire-and-forget send against the shared writer gate; their tasks, ordering,
+completion, and exceptions have no notification owner, and expected connection
+exceptions are swallowed. This can lose or delay the only signal that tells the
+host to pull the completed generation-2 window.
+
+## Assigned widgets production — DLV-296 owned worker notification lane
+
+Mode: physical-first production/build, user verdict, then focused tests.
+Owner/baseline: widgets lane at DLV-290 `b14dfdc` plus its accepted cumulative
+production ancestry. Preserve the three dirty held test-matrix files exactly;
+stage and commit only production/runtime files. Build the exact production
+commit from a clean isolated tree so held tests cannot affect provenance.
+
+Replace `WidgetWorkerServer`'s fire-and-forget invalidation/action-failure sends
+with one private runtime-owned, bounded, ordered notification lane and one
+tracked pump. The lane must:
+
+- retain only the latest queued invalidation revision while preserving ordered,
+  non-coalescible action failures under an explicit small bound;
+- serialize notification writes through the existing channel/writer owner with
+  no unobserved tasks or concurrent notification senders;
+- define exact admission, coalescing, closed/full behavior and never silently
+  convert a current accepted completion into an unowned task;
+- close, cancel, and drain boundedly during worker shutdown before channel and
+  subscriptions are released, without hanging a faulty/disconnected worker;
+- surface one safe terminal transport failure to the existing request-loop
+  owner rather than swallowing it or creating a second restart/lifecycle owner;
+  and
+- preserve revision monotonicity, action-failure ordering, last-valid
+  presentation, active lifecycle, and current wire payloads.
+
+Do not change WidgetSdk resource semantics, public/wire protocol or version,
+Bridge/native host admission, package code, widget identity, collection bounds,
+timeouts, lifecycle authority, or add a Spotify/Games special case. Report a
+before/after responsibility map and prove the new lane is the only notification
+task owner; do not add a generic framework abstraction beyond this boundary.
+
+Before user verdict, perform source review only, commit one production-only
+DLV-296 milestone, and build that exact commit once as Release with tests
+skipped. Do not author, edit, or run tests; do not install/select packages,
+change credentials/account/provider/configuration state, or launch/terminate
+processes. Report exact commit, diff, build command/result, artifact hashes, and
+clean isolated build provenance. Stop for planner review and visible launch.
+
+After planner review, launch the exact coherent Release as an unaccepted
+candidate for rapid Spotify/Games & Apps cycling and virtual paging. Only after
+the user accepts may DLV-296 receive focused regression tests for coalescing,
+failure ordering, disconnect/shutdown drain, and the formerly intermittent
+Bridge pagination path. Never push.
+
 ## Queued platform production — DLV-284 explicit publication transaction model
 
 Status: queued, not assigned. It becomes assignable only after the cumulative
@@ -499,14 +558,17 @@ every legal and illegal transition and follow physical-first order. Never push.
 
 ## Ordered queues
 
-1. Widgets test queue: execute DLV-295, then resume and commit the cumulative
-   DLV-278–283 evidence only if all remaining runs pass.
-2. Reviewer integration queue: independently review all evidence; integrate the
+1. Widgets production queue: implement/build DLV-296, then stop for planner
+   review, exact visible launch, and user verdict.
+2. Widgets test queue after user acceptance: add focused DLV-296 regression
+   evidence, then resume and commit the cumulative DLV-278–283 evidence only if
+   all remaining runs pass.
+3. Reviewer integration queue: independently review all evidence; integrate the
    accepted production/test chain into local main only if all required evidence
    passes.
-3. Platform production queue: assign DLV-284 after integration, before any new
+4. Platform production queue: assign DLV-284 after integration, before any new
    virtualization feature.
-4. DLV-248 remains deliberately deferred until explicit user promotion.
+5. DLV-248 remains deliberately deferred until explicit user promotion.
 
 There is no other Ready production work in either standing lane.
 
@@ -529,7 +591,8 @@ There is no other Ready production work in either standing lane.
 | DLV-292 | Held after exact 0/1 disproved the simple stale-event explanation; generation stayed 1 and no later invalidation arrived. |
 | DLV-293 | No product evidence: its disposable compound diagnostic class violated the existing 64-character style-class bound. |
 | DLV-294 | Classified ordinary revisions 2–4 through the Bridge and exact successful generation-2 Append; revision 5 was diagnostic only. |
-| DLV-295 | Assigned removal of disposable diagnostics plus deterministic test-widget operation completion. |
+| DLV-295 | Reproduced missing ordinary invalidation after clean fixture synchronization; diagnostic campaign stopped. |
+| DLV-296 | Assigned physical-first replacement of untracked worker notification sends with one bounded ordered owner. |
 | DLV-284 | Queued, not assigned until cumulative integration. |
 | DLV-248 | Deliberately deferred until explicit user promotion. |
 
