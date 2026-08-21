@@ -79,6 +79,19 @@ struct DeclarativeRenderTiming final {
     std::wstring collectionAdmissionSummary;
 };
 
+enum class ResponsiveSurfaceMode {
+    Compact,
+    Expanded,
+};
+
+/// Exact responsive surface decision used by one successful renderer pass.
+/// Host focus persistence consumes this committed geometry authority instead
+/// of deriving a second mode from a post-chrome viewport.
+struct ResponsiveSurfacePresentation final {
+    declarative::Size viewport;
+    ResponsiveSurfaceMode mode{ResponsiveSurfaceMode::Compact};
+};
+
 struct RenderResult final {
     bool succeeded{};
     /// True only while at least one paint-only node transition requires a
@@ -87,6 +100,7 @@ struct RenderResult final {
     /// Captured on every call but emitted only by the existing host diagnostic
     /// when the containing composition frame exceeds its slow threshold.
     DeclarativeRenderTiming timing;
+    std::optional<ResponsiveSurfacePresentation> responsiveSurface;
     std::vector<RenderDiagnostic> diagnostics;
     std::vector<RenderHitRegion> hitRegions;
     /// Visible semantic geometry retained for the immutable Windows
