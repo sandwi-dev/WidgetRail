@@ -332,12 +332,13 @@ internal static class BridgeClientRegistryScenarios
                 0,
                 CancellationToken.None,
                 CancellationToken.None));
-        var retired = failed.Clients.Single();
-        await retired.Disposed.WaitAsync(TimeSpan.FromSeconds(2));
+        var retained = failed.Clients.Single();
         RegistryAssert.SequenceEqual(
-            [WidgetLifecycleState.Interactive], retired.LifecycleStates);
-        RegistryAssert.Equal(0, failed.Registry.RunningWorkerCount);
-        RegistryAssert.Equal(0, failed.Registry.ResidencyBudget.ApplicationWorkers);
+            [WidgetLifecycleState.Interactive, WidgetLifecycleState.Background],
+            retained.LifecycleStates);
+        RegistryAssert.Equal(0, retained.DisposeCount);
+        RegistryAssert.Equal(1, failed.Registry.RunningWorkerCount);
+        RegistryAssert.Equal(1, failed.Registry.ResidencyBudget.ApplicationWorkers);
 
         using var recovered = await failed.Registry.EstablishPresentationAsync(
             configured.Id,
@@ -346,12 +347,18 @@ internal static class BridgeClientRegistryScenarios
             0,
             CancellationToken.None,
             CancellationToken.None);
-        RegistryAssert.Equal(2, failed.Clients.Count);
-        RegistryAssert.Equal(2L, recovered.Value.Snapshot.Sequence >> 32);
+        RegistryAssert.Equal(1, failed.Clients.Count);
+        RegistryAssert.Equal(1L, recovered.Value.Snapshot.Sequence >> 32);
         RegistryAssert.SequenceEqual(
-            [WidgetLifecycleState.Interactive], failed.Clients[1].LifecycleStates);
-        retired.RaiseInvalidated(72);
-        RegistryAssert.Equal(0, failed.Invalidations.Count);
+            [
+                WidgetLifecycleState.Interactive,
+                WidgetLifecycleState.Background,
+                WidgetLifecycleState.Interactive,
+            ],
+            retained.LifecycleStates);
+        retained.RaiseInvalidated(72);
+        await failed.Registry.DrainNotificationsAsync(configured.Id);
+        RegistryAssert.Equal(1, failed.Invalidations.Count);
     }
 
     internal static async Task PublicationAdmissionSerializesReplacement()
@@ -1060,6 +1067,21 @@ internal sealed class RegistryTestClient(
         }
         lock (_gate) LifecycleStates.Add(state);
         return Task.CompletedTask;
+    }
+
+    public Task<bool> TryRestoreLifecycleStateAsync(
+        WidgetLifecycleState state,
+        int expectedStartOrdinal,
+        CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        lock (_gate)
+        {
+            if (_running == 0 || _starts != expectedStartOrdinal)
+                return Task.FromResult(false);
+            LifecycleStates.Add(state);
+            return Task.FromResult(true);
+        }
     }
 
     public Task<WidgetOperationAdmission> AdmitActionAsync(
