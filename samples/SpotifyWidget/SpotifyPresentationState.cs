@@ -45,8 +45,16 @@ internal sealed record SpotifyCursorPresentation<TItem>(
             if (snapshot.Revision == resource.Snapshot.Revision)
                 return new(snapshot, wide, compact);
         }
-        throw new InvalidOperationException(
-            "Spotify collection presentation changed during bounded capture.");
+
+        // A provider completion can publish Loading -> Ready and busy-state
+        // invalidations while the worker is capturing both responsive shells.
+        // One unstable render safely omits virtual-window metadata rather than
+        // turning ordinary collection churn into a fatal render request.
+        var fallback = resource.Snapshot;
+        return new(
+            fallback,
+            UI.VerticalScroll(wideScrollId, []),
+            UI.VerticalScroll(compactScrollId, []));
     }
 }
 
