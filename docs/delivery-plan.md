@@ -46,7 +46,7 @@ evidence only; this file is the sole authority for current work.
 | Lane | Task/worktree | State |
 | --- | --- | --- |
 | Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | Idle pending cumulative test evidence and integration. DLV-284 is queued but not assigned. Do not begin it, test, launch, integrate, or push. |
-| Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | DLV-296 `3922b58` is physically accepted and exact PID 83788 remains running. Corrected DLV-303 lifecycle-first direct-worker cursor evidence passed 1/1. Preserve the six-file evidence and execute diagnostic test-only DLV-304 through `WidgetProcessClient` below. Do not change production, rebuild, relaunch, integrate, or push. |
+| Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | DLV-296 `3922b58` is physically accepted and exact PID 83788 remains running. DLV-304 proved current-session ProcessClient invalidation delivery; its only red assertion incorrectly expected Append from a base-zero checkpoint that correctly normalizes to Replace. Preserve the six-file evidence and execute test-only DLV-305 below. Do not change production, rebuild, relaunch, integrate, or push. |
 
 ## Execution and architecture rules
 
@@ -882,6 +882,43 @@ first-red ownership edge. Do not implement a correction or commit under
 DLV-304. Never push. If green, the next bisection will carry the same exact
 sequence through current visible registry admission and Bridge framing.
 
+DLV-304 stopped without a commit, but its notification and session boundaries
+are green. Visible external worker startup, initial current-session invalidation,
+generation-1 Replace, exact generated near-end action/source, Enqueued admission,
+forward post-action invalidation, unchanged start ordinal/PID, and the eight-item
+second window all succeeded. Its sole red assertion expected generation-2
+Append from `GetSnapshotAsync`; that API intentionally requests a base-zero full
+checkpoint, and `NormalizeVirtualWindowReentry` correctly converts a directional
+window lacking an exact previous base to Replace. This is a test expectation /
+API-selection mismatch, not a notification or session-authority failure.
+Production and PID 83788 remained untouched.
+
+## Assigned widgets evidence — DLV-305 exact-base ProcessClient update
+
+Mode: test-only against accepted DLV-296. Preserve all six current dirty and
+untracked files and do not commit. Do not edit production/runtime source,
+packages, manifests, protocols, bounds, timeouts, installed/configured state,
+or processes. PID 83788 remains accepted and must not be touched.
+
+Correct only DLV-304's post-invalidation presentation request. Retain the exact
+generation-1 checkpoint sequence and presentation generation, then use the
+existing exact-base `WidgetProcessClient.GetPresentationAsync` incremental path
+with current capabilities and `requireCheckpoint: false`. Prove the returned
+update is based on that exact sequence, carries generation-2 Append semantics,
+materializes exact items 0–7 with total 12, first index zero, no before cursor,
+and an after cursor, and remains in the same worker start ordinal/PID. Separately
+retain one assertion that base-zero `GetSnapshotAsync` returns the same durable
+eight items with Replace semantics, so both legal contracts are explicit.
+
+Do not change production behavior or weaken normalization. Do not add hooks,
+logging, reflection, sleeps, polling, stress loops, timeout enlargement,
+stdout/file diagnostics, package special cases, or a second model. Compile with
+serialized MSBuild and run one uniquely named corrected DLV-305 prefix exactly
+once. If red, preserve evidence and stop without correction or commit. If green,
+stop without commit and report both exact-base Append and base-zero Replace
+results; the next correction will apply the same legal request semantics to the
+permanent Bridge convergence case. Never push.
+
 ## Queued platform production — DLV-284 explicit publication transaction model
 
 Status: queued, not assigned. It becomes assignable only after the cumulative
@@ -912,12 +949,12 @@ every legal and illegal transition and follow physical-first order. Never push.
 
 ## Ordered queues
 
-1. Widgets diagnostic queue: execute DLV-304 lifecycle-first cursor bisection
-   through `WidgetProcessClient` once and stop without correction or commit.
-2. Widgets diagnostic queue: if DLV-304 is green, carry the same sequence
-   through current visible registry admission and Bridge framing; if red,
-   preserve its exact current-session boundary before any correction.
-3. Reviewer evidence queue: finish and independently review DLV-297–304 before
+1. Widgets evidence queue: execute DLV-305 exact-base ProcessClient correction
+   once and stop without commit.
+2. Widgets evidence queue: if DLV-305 is green, apply the same exact-base versus
+   checkpoint semantics to the permanent Bridge convergence case before its
+   next one-shot run.
+3. Reviewer evidence queue: finish and independently review DLV-297–305 before
    resuming cumulative evidence.
 4. Widgets cumulative test queue: resume and commit the cumulative DLV-278–283
    evidence only after DLV-297 is green and independently reviewed.
@@ -958,7 +995,8 @@ There is no other Ready production work in either standing lane.
 | DLV-301 | Invalidated as product evidence: its direct-worker fixture sent the generated cursor action into a wrapper-only route and never reached `TryHandlePagination`. |
 | DLV-302 | Completed uncommitted: passive markers located DLV-301's first red at that fixture-routing mismatch before the cursor resource. |
 | DLV-303 | Completed green uncommitted: corrected lifecycle-first direct worker proved exact action entry, Started cursor admission, Succeeded completion, and forward invalidation 1/1. |
-| DLV-304 | Assigned diagnostic external-worker `WidgetProcessClient` coverage of the same exact lifecycle-first cursor sequence; one prefix once, no correction or commit. |
+| DLV-304 | Notification/session boundaries green uncommitted; sole red was an invalid Append expectation on base-zero `GetSnapshotAsync`, which correctly returned durable eight-item Replace. |
+| DLV-305 | Assigned test-only correction using exact-base `GetPresentationAsync` for Append plus an explicit base-zero Replace assertion; one prefix once, no commit. |
 | DLV-284 | Queued, not assigned until cumulative integration. |
 | DLV-248 | Deliberately deferred until explicit user promotion. |
 
