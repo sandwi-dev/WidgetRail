@@ -37,7 +37,7 @@ evidence only; this file is the sole authority for current work.
 | Lane | Task/worktree | State |
 | --- | --- | --- |
 | Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | Idle pending cumulative test evidence and integration. DLV-284 is queued but not assigned. Do not begin it, test, launch, integrate, or push. |
-| Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | DLV-290 `b14dfdc` is committed and review-clean. DLV-291 remains held and passes 1/1. DLV-292 disproved the simple stale-event explanation: the first post-action snapshot remained generation 1 and no later invalidation arrived. Execute diagnostic DLV-293 below. Preserve production, packages, state, and PID 129420. Do not rebuild, install, launch, terminate, integrate main, or push. |
+| Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | DLV-290 `b14dfdc` is committed and review-clean. DLV-291 remains held and passes 1/1. DLV-292 remains unclassified. DLV-293 produced no product evidence because its diagnostic class exceeded the protocol's 64-character bound. Execute the single bounded DLV-294 correction below. Preserve production, packages, state, and PID 129420. Do not rebuild, install, launch, terminate, integrate main, or push. |
 
 ## Execution and architecture rules
 
@@ -404,6 +404,35 @@ report the complete ordered evidence. Stop after classification; do not run the
 full Bridge/Spotify/Tier 2/Tier 3 sequence and do not commit DLV-291–293. Never
 push.
 
+DLV-293 produced no pagination disposition. Its single exact run stopped when
+the disposable operation diagnostic was encoded as one 118-character style
+class, exceeding the existing exact 64-character style-class limit; Bridge
+correctly rejected that snapshot. This is a deterministic diagnostic-fixture
+defect, not product evidence and not authority to change the protocol bound.
+
+## Assigned widgets diagnostic correction — DLV-294 bounded status encoding
+
+Owner/baseline: widgets lane with the held DLV-291–293 matrix. Own only the
+DLV-293 diagnostic encoding/assertions in
+`tests/WidgetBridge.Tests/Program.cs`. Preserve its production-independent
+classification design and raw-event ordering.
+
+Replace the oversized compound operation class with separate exact bounded
+tokens, each at most 64 characters, for match, admission, completion, resource
+status, retained count, request generation, and window change. Validate every
+token before the run and assert each semantic fact separately; do not truncate,
+hash away, omit, or loosen evidence. Keep diagnostic completion invalidation
+distinguishable from ordinary invalidation and do not let it satisfy the
+ordinary completion assertion.
+
+Run the exact virtual-window prefix one final time outside the command sandbox.
+If it reaches classification, report the ordered raw revisions plus all status
+tokens and stop without committing or running other suites. If another
+diagnostic artifact blocks classification, stop this diagnostic campaign and
+report source-level disposition/residual risk; do not redesign or rerun the
+harness again. No product/protocol change, deadline extension, sleep, polling,
+package/process/state change, integration, or push.
+
 ## Queued platform production — DLV-284 explicit publication transaction model
 
 Status: queued, not assigned. It becomes assignable only after the cumulative
@@ -434,7 +463,7 @@ every legal and illegal transition and follow physical-first order. Never push.
 
 ## Ordered queues
 
-1. Widgets test queue: classify the DLV-292 failure with DLV-293, then assign
+1. Widgets test queue: classify the DLV-292 failure with corrected DLV-294, then assign
    the smallest evidence-backed correction. Resume and commit the cumulative
    DLV-278–283 evidence only if all remaining runs pass.
 2. Reviewer integration queue: independently review all evidence; integrate the
@@ -463,7 +492,8 @@ There is no other Ready production work in either standing lane.
 | DLV-290 | Assigned test-only update of three Bridge style-map counts after accepted DLV-276 added the committed-text-status node. |
 | DLV-291 | Assigned correction of one held convergence scenario that used Runtime-only actions against BridgeTestWidget. |
 | DLV-292 | Held after exact 0/1 disproved the simple stale-event explanation; generation stayed 1 and no later invalidation arrived. |
-| DLV-293 | Assigned disposable test-only classification of pagination action matching, operation completion, and notification disposition. |
+| DLV-293 | No product evidence: its disposable compound diagnostic class violated the existing 64-character style-class bound. |
+| DLV-294 | Assigned one final test-only correction to encode the DLV-293 disposition as separate bounded semantic tokens. |
 | DLV-284 | Queued, not assigned until cumulative integration. |
 | DLV-248 | Deliberately deferred until explicit user promotion. |
 
