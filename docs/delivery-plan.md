@@ -18,13 +18,14 @@ The complete delivery record through the DLV-277 assignment is preserved in the\
   The provider-free Full Application sample remains installed and enabled.
 - Widgets correction DLV-265 remains saved at clean tip `13bd971` plus
   reconciliation `5fd1a06`, with immutable Spotify 0.3.3 installed and the
-  existing Client ID/account state unchanged. It now resumes from integrated
-  main `ca967e6` without rewriting the saved production correction.
+  existing Client ID/account state unchanged. Its reconciled production
+  candidate `edf2583` is physically accepted; the widgets lane is running only
+  the bounded post-verdict evidence before reviewer integration.
 
 | Lane | Task/worktree | State |
 | --- | --- | --- |
 | Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | DLV-277 production candidate `830364d` is built, source-reviewed, and running as PID 34764 for the physical verdict. Do not test, integrate, or change it before the verdict. Preserve installed Spotify configuration/account state and package trees. DLV-273 remains retired. Never push. |
-| Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | DLV-265 is cleanly reconciled as `edf2583`; saved `13bd971` plus `5fd1a06` are preserved. The isolated Release and immutable Spotify 0.3.3 package build pass without tests or installation. Existing installed Spotify 0.3.3/current Client ID/account state are the physical candidate on PID 34764. Do not reinstall, replace configuration, reset, test, or integrate before the verdict. DLV-270 follows accepted DLV-265; DLV-248 remains deferred. Never push. |
+| Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | DLV-265 reconciled production candidate `edf2583` is physically accepted; saved `13bd971` plus `5fd1a06` remain preserved. Run only the assigned focused post-verdict presentation/action, configuration-write, prior-credential invalidation, failure, and cancellation evidence. Do not reinstall, replace configuration, reset state, integrate, or start DLV-270 before reviewer disposition. DLV-248 remains deferred. Never push. |
 
 ## Execution, review, and architecture rules
 
@@ -277,7 +278,9 @@ the package is 1,158,141 bytes with SHA-256
 `1AB8A56D400292004C8B6D924E917E03B3E1E4E7FEA30DEDDDC0524A86AD5B53`.
 Nothing was installed or selected and no configuration, authentication, or
 process state changed. The already installed immutable 0.3.3 plus PID 34764 are
-the physical candidate; await the verdict before focused tests or integration.
+the physically accepted candidate. The widgets lane now runs only the bounded
+focused post-verdict evidence named above; await reviewer disposition before
+integration or DLV-270.
 
 ## Ready widgets deliverable — DLV-270: Spotify collection paging efficiency
 
@@ -323,10 +326,10 @@ missing accepted DLV-265/DLV-271/DLV-276 baseline. Never push.
 
 1. DLV-269, DLV-274/275, DLV-271, and DLV-276 are accepted and integrated
    through main `ca967e6`; DLV-273 remains retired rejected history.
-2. DLV-277 candidate `830364d` and reconciled DLV-265 candidate `edf2583` now
-   await one combined physical verdict on PID 34764. Do not test or integrate
-   either before that verdict.
-3. Run DLV-270 only after accepted DLV-265 integration.
+2. DLV-277 candidate `830364d` still awaits its physical verdict on PID 34764;
+   do not test or integrate it before that verdict.
+3. DLV-265 candidate `edf2583` is physically accepted. Complete and review its
+   bounded post-verdict evidence, then integrate it before starting DLV-270.
 4. DLV-248 remains deferred until explicit user promotion.
 
 ## Manual, external, and blocked evidence
@@ -340,7 +343,7 @@ missing accepted DLV-265/DLV-271/DLV-276 baseline. Never push.
 | GitHub identity | User-selected owner plus repository/organization availability and optional rename/creation. |
 | DLV-276 | Complete: behavior/styling accepted, focused boundary evidence passes, and production/tests are integrated through main `ca967e6`. |
 | DLV-277 | Production candidate `830364d` is running as PID 34764; verify stable Queue/Playlists/Devices focus across playback updates and one real compact/wide transition. |
-| DLV-265 | Reconciled candidate `edf2583` is ready without reinstall; on existing installed Spotify 0.3.3 verify configured Ready Setup in wide/compact, accepted keyboard behavior, B cancel, and unchanged Client ID/account/navigation. |
+| DLV-265 | Physical verdict accepted for reconciled candidate `edf2583`; bounded focused post-verdict evidence is in progress before reviewer integration. |
 | DLV-248 | Deliberately deferred until explicit user promotion. |
 
 ## Recent accepted milestones
