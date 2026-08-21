@@ -440,6 +440,9 @@ std::vector<WidgetSessionEvent> WidgetSessionCoordinator::TakeEvents() {
             request.baseSequence > 0) {
             Request retry = request;
             retry.id = ++nextRequestId_;
+            retry.checkpointAdmissionProvenance =
+                CheckpointAdmissionProvenance::TypedStaleBaseRecovery;
+            retry.recoveryOriginSequence = request.baseSequence;
             retry.baseSequence = 0;
             retry.allowUpdate = false;
             retry.queuedAt = timestamp_();
@@ -523,8 +526,21 @@ std::vector<WidgetSessionEvent> WidgetSessionCoordinator::TakeEvents() {
                 events.push_back(std::move(event));
                 continue;
             }
-            if (!AdmitVirtualWindowTransition(
-                    Snapshot(request.widgetId), *completion.snapshot)) {
+            const auto* retainedCheckpoint = Snapshot(request.widgetId);
+            const bool recoveryCheckpoint =
+                request.checkpointAdmissionProvenance ==
+                    CheckpointAdmissionProvenance::TypedStaleBaseRecovery;
+            const bool transitionAdmitted = recoveryCheckpoint
+                ? request.recoveryOriginSequence > 0 &&
+                    request.baseSequence == 0 && !request.allowUpdate &&
+                    retainedCheckpoint &&
+                    retainedCheckpoint->sequence == request.recoveryOriginSequence &&
+                    completion.snapshot->sequence > 0 &&
+                    completion.snapshot->sequence > request.recoveryOriginSequence &&
+                    AdmitVirtualWindowTransition(nullptr, *completion.snapshot)
+                : AdmitVirtualWindowTransition(
+                    retainedCheckpoint, *completion.snapshot);
+            if (!transitionAdmitted) {
                 CompleteRefresh(request, false);
                 ReleasePresentationAdmission(request);
                 auto failure = FailureFrom(
@@ -834,7 +850,10 @@ bool WidgetSessionCoordinator::SamePresentationAuthority(
         left.expectedRuntimeGeneration == right.expectedRuntimeGeneration &&
         left.expectedPresentationGeneration == right.expectedPresentationGeneration &&
         left.baseSequence == right.baseSequence &&
-        left.allowUpdate == right.allowUpdate;
+        left.allowUpdate == right.allowUpdate &&
+        left.checkpointAdmissionProvenance ==
+            right.checkpointAdmissionProvenance &&
+        left.recoveryOriginSequence == right.recoveryOriginSequence;
 }
 
 bool WidgetSessionCoordinator::PresentationRequestBlockedLocked(

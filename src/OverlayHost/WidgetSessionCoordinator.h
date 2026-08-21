@@ -289,6 +289,11 @@ public:
 private:
     using RequestKind = WidgetSessionRequestKind;
 
+    enum class CheckpointAdmissionProvenance {
+        Ordinary,
+        TypedStaleBaseRecovery,
+    };
+
     struct QueueResult final {
         WidgetSessionTraceAction action{WidgetSessionTraceAction::Skipped};
         WidgetSessionTraceReason reason{WidgetSessionTraceReason::None};
@@ -314,6 +319,9 @@ private:
         std::wstring expectedPresentationGeneration;
         long long baseSequence{};
         bool allowUpdate{};
+        CheckpointAdmissionProvenance checkpointAdmissionProvenance{
+            CheckpointAdmissionProvenance::Ordinary};
+        long long recoveryOriginSequence{};
         std::uint64_t queuedAt{};
         std::uint64_t startedAt{};
     };
