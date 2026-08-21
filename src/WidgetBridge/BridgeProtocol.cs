@@ -68,7 +68,10 @@ internal sealed record BridgeArtworkRequest(string WidgetId, string ArtworkHandl
 internal sealed record BridgeWidgetLifecycleRequest(
     string WidgetId,
     WidgetRail.WidgetSdk.WidgetLifecycleState State,
-    bool AdmitSnapshot = false);
+    BridgePresentationEstablishment? Presentation = null);
+internal sealed record BridgePresentationEstablishment(
+    PresentationUpdateCapabilities? Capabilities,
+    long BaseSequence);
 internal sealed record BridgeActionRequest(string WidgetId, WidgetRail.WidgetSdk.WidgetActionEvent Action);
 internal sealed record BridgeQuickActionRequest(string WidgetId, string QuickActionId, long Sequence = 0, long MonotonicTimestampMicroseconds = 0);
 internal sealed record BridgeControllerInputRequest(string WidgetId, WidgetRail.WidgetSdk.ControllerInputEvent Input);
@@ -249,3 +252,6 @@ internal sealed class BridgeProtectedWifiSecret : IDisposable
 
 public sealed class BridgeProtocolException(string message, Exception? innerException = null)
     : Exception(message, innerException);
+
+internal sealed class BridgeStalePresentationBaseException()
+    : Exception("The retained presentation base is not current in the widget bridge.");

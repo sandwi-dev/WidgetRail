@@ -98,6 +98,10 @@ internal interface IBridgeWidgetClient : IAsyncDisposable
         CancellationToken cancellationToken) =>
         new(await GetSnapshotAsync(cancellationToken).ConfigureAwait(false), null);
     Task SetLifecycleStateAsync(WidgetLifecycleState state, CancellationToken cancellationToken);
+    Task<bool> TryRestoreLifecycleStateAsync(
+        WidgetLifecycleState state,
+        int expectedStartOrdinal,
+        CancellationToken cancellationToken) => Task.FromResult(false);
     Task<WidgetOperationAdmission> AdmitActionAsync(
         WidgetActionEvent action,
         CancellationToken cancellationToken);
@@ -152,6 +156,12 @@ internal sealed class WidgetProcessBridgeClient(WidgetProcessClient client)
         WidgetLifecycleState state,
         CancellationToken cancellationToken) =>
         client.SetLifecycleStateAsync(state, cancellationToken);
+    public Task<bool> TryRestoreLifecycleStateAsync(
+        WidgetLifecycleState state,
+        int expectedStartOrdinal,
+        CancellationToken cancellationToken) =>
+        client.TryRestoreLifecycleStateAsync(
+            state, expectedStartOrdinal, cancellationToken);
     public Task<WidgetOperationAdmission> AdmitActionAsync(
         WidgetActionEvent action,
         CancellationToken cancellationToken) =>
@@ -313,6 +323,9 @@ internal sealed class BridgeClientRegistry : IAsyncDisposable
                 registration.HostLifecycle == WidgetLifecycleState.Background &&
                 residencyMode is WidgetResidencyMode.SuspendWhenHidden or
                     WidgetResidencyMode.UnloadAfterIdle;
+            var canUpdate = capabilities.SupportsAtomicUpdates;
+            if (canUpdate && registration.CachedSnapshot?.Sequence != baseSequence)
+                throw new BridgeStalePresentationBaseException();
             WidgetRuntimePresentation presentation;
             if (hiddenAndRestricted)
             {
@@ -325,8 +338,6 @@ internal sealed class BridgeClientRegistry : IAsyncDisposable
             {
                 registration.CancelIdleUnload();
                 var generation = registration.Configured.PublicDescriptor().PresentationGeneration;
-                var canUpdate = capabilities.SupportsAtomicUpdates &&
-                    registration.CachedSnapshot?.Sequence == baseSequence;
                 presentation = await ExecuteClientOperationAsync(
                         registration,
                         (client, token) => client.GetPresentationAsync(
@@ -407,49 +418,125 @@ internal sealed class BridgeClientRegistry : IAsyncDisposable
         }
     }
 
-    internal async Task<BridgeClientPublication<BridgeClientSnapshot>>
+    internal async Task<BridgeClientPublication<BridgeClientPresentation>>
         EstablishPresentationAsync(
             string widgetId,
             WidgetLifecycleState state,
+            PresentationUpdateCapabilities capabilities,
+            long baseSequence,
             CancellationToken sessionCancellation,
             CancellationToken cancellationToken)
     {
         if (state == WidgetLifecycleState.Background)
             throw new BridgeProtocolException(
                 "A background widget cannot establish a visible presentation.");
+        ValidateUpdateRequest(capabilities, baseSequence);
         var registration = await GetOrCreateAsync(widgetId, cancellationToken)
             .ConfigureAwait(false);
         await registration.OperationGate.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
             DemandCurrent(registration);
+            var canUpdate = capabilities.SupportsAtomicUpdates;
+            if (canUpdate && registration.CachedSnapshot?.Sequence != baseSequence)
+                throw new BridgeStalePresentationBaseException();
+            var priorHostLifecycle = registration.HostLifecycle;
             registration.CancelIdleUnload();
             await ExecuteClientOperationAsync(
                     registration,
                     (client, token) => client.SetLifecycleStateAsync(state, token),
                     cancellationToken)
                 .ConfigureAwait(false);
-            DemandCurrent(registration);
-            var snapshot = await ExecuteClientOperationAsync(
-                    registration,
-                    (client, token) => client.GetSnapshotAsync(token),
-                    cancellationToken)
-                .ConfigureAwait(false);
-            DemandCurrent(registration);
+            var lifecycleStartOrdinal = registration.Client.Starts;
+            try
+            {
+                DemandCurrent(registration);
+                var generation = registration.Configured.PublicDescriptor().PresentationGeneration;
+                var presentation = await ExecuteClientOperationAsync(
+                        registration,
+                        (client, token) => client.GetPresentationAsync(
+                            canUpdate ? capabilities : PresentationUpdateCapabilities.None,
+                            generation,
+                            canUpdate ? baseSequence : 0,
+                            requireCheckpoint: !canUpdate,
+                            token),
+                        cancellationToken)
+                    .ConfigureAwait(false);
+                DemandCurrent(registration);
 
-            // Lifecycle and its first render-facing revision commit together.
-            // No other operation can observe a Visible/Interactive registration
-            // whose first snapshot failed admission.
-            registration.CachedSnapshot = snapshot;
-            registration.HostLifecycle = state;
-            ScheduleIdleUnload(registration, sessionCancellation);
-            return AdmitPublication(
-                registration,
-                new BridgeClientSnapshot(registration.Configured, snapshot));
+                var publication = CommitEstablishmentPublication(
+                    registration, state, presentation);
+                ScheduleIdleUnload(registration, sessionCancellation);
+                return publication;
+            }
+            catch
+            {
+                if (state != priorHostLifecycle)
+                    await TryRestoreEstablishmentLifecycleAsync(
+                            registration,
+                            priorHostLifecycle,
+                            lifecycleStartOrdinal,
+                            sessionCancellation)
+                        .ConfigureAwait(false);
+                throw;
+            }
         }
         finally
         {
             registration.OperationGate.Release();
+        }
+    }
+
+    private BridgeClientPublication<BridgeClientPresentation>
+        CommitEstablishmentPublication(
+            ClientRegistration registration,
+            WidgetLifecycleState state,
+            WidgetRuntimePresentation presentation)
+    {
+        lock (_gate)
+        {
+            if (!IsCurrentLocked(registration))
+                throw new BridgeProtocolException(
+                    $"Widget '{registration.Configured.Id}' changed during establishment.");
+            var publication = AdmitPublicationLocked(
+                registration,
+                new BridgeClientPresentation(
+                    registration.Configured,
+                    presentation.Snapshot,
+                    presentation.Update));
+            // The bridge-visible lifecycle, retained base, and publication token
+            // become observable together only after worker presentation succeeds.
+            registration.CachedSnapshot = presentation.Snapshot;
+            registration.HostLifecycle = state;
+            return publication;
+        }
+    }
+
+    private async Task TryRestoreEstablishmentLifecycleAsync(
+        ClientRegistration registration,
+        WidgetLifecycleState priorHostLifecycle,
+        int lifecycleStartOrdinal,
+        CancellationToken sessionCancellation)
+    {
+        try
+        {
+            if (!IsCurrent(registration) ||
+                registration.HostLifecycle != priorHostLifecycle ||
+                !registration.Client.IsRunning ||
+                registration.Client.Starts != lifecycleStartOrdinal)
+                return;
+            using var compensationDeadline = new CancellationTokenSource(OperationDeadline);
+            _ = await registration.Client.TryRestoreLifecycleStateAsync(
+                    priorHostLifecycle,
+                    lifecycleStartOrdinal,
+                    compensationDeadline.Token)
+                .ConfigureAwait(false);
+            if (IsCurrent(registration))
+                ScheduleIdleUnload(registration, sessionCancellation);
+        }
+        catch (Exception)
+        {
+            // Compensation is bounded and must never mask the establishment failure.
         }
     }
 

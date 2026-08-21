@@ -183,16 +183,8 @@ public sealed class WidgetProcessClient : IAsyncDisposable
             await EnsureConnectedAsync(cancellationToken).ConfigureAwait(false);
             var session = Volatile.Read(ref _session) ??
                 throw new IOException("Widget pipe disconnected.");
-            await SetCompanionLifecycleAsync(session, state, cancellationToken).ConfigureAwait(false);
-            var response = await RequestConnectedAsync(
-                session, MessageTypes.SetWidgetLifecycle,
-                new WidgetLifecyclePayload(state),
-                cancellationToken).ConfigureAwait(false);
-            if (response.Type != MessageTypes.Acknowledged)
-                throw new WidgetProtocolViolationException(
-                    $"Expected lifecycle acknowledgement, received '{response.Type}'.");
-            _hostLifecycle = state;
-            RecordLifetime(WidgetProcessLifetimeEventKind.LifecycleCompleted, state, session);
+            await SetLifecycleStateOnSessionAsync(session, state, cancellationToken)
+                .ConfigureAwait(false);
         }
         catch (Exception exception) when (exception is not OutOfMemoryException)
         {
@@ -201,6 +193,51 @@ public sealed class WidgetProcessClient : IAsyncDisposable
                 state,
                 failureCode: ClassifyLifecycleFailure(exception));
             throw;
+        }
+    }
+
+    /// <summary>
+    /// Best-effort transaction compensation against an exact still-running worker.
+    /// This never starts or updates a replacement process.
+    /// </summary>
+    internal async Task<bool> TryRestoreLifecycleStateAsync(
+        WidgetLifecycleState state,
+        int expectedStartOrdinal,
+        CancellationToken cancellationToken = default)
+    {
+        ValidateHostState(state);
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        await _lifecycleGate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            if (_disposed || _stopping || Starts != expectedStartOrdinal)
+                return false;
+            var session = Volatile.Read(ref _session);
+            if (session?.IsRunning != true)
+                return false;
+
+            RecordLifetime(WidgetProcessLifetimeEventKind.LifecycleRequested, state, session);
+            try
+            {
+                if (state != _hostLifecycle)
+                    session.GestureReservations.Clear();
+                await SetLifecycleStateOnSessionAsync(session, state, cancellationToken)
+                    .ConfigureAwait(false);
+                return true;
+            }
+            catch (Exception exception) when (exception is not OutOfMemoryException)
+            {
+                RecordLifetime(
+                    WidgetProcessLifetimeEventKind.LifecycleFailed,
+                    state,
+                    session,
+                    failureCode: ClassifyLifecycleFailure(exception));
+                throw;
+            }
+        }
+        finally
+        {
+            _lifecycleGate.Release();
         }
     }
 
@@ -965,6 +1002,23 @@ public sealed class WidgetProcessClient : IAsyncDisposable
             session.Terminate();
             throw new WidgetProcessException("Widget companion lifecycle update failed.", exception);
         }
+    }
+
+    private async Task SetLifecycleStateOnSessionAsync(
+        WidgetProcessSession session,
+        WidgetLifecycleState state,
+        CancellationToken cancellationToken)
+    {
+        await SetCompanionLifecycleAsync(session, state, cancellationToken).ConfigureAwait(false);
+        var response = await RequestConnectedAsync(
+            session, MessageTypes.SetWidgetLifecycle,
+            new WidgetLifecyclePayload(state),
+            cancellationToken).ConfigureAwait(false);
+        if (response.Type != MessageTypes.Acknowledged)
+            throw new WidgetProtocolViolationException(
+                $"Expected lifecycle acknowledgement, received '{response.Type}'.");
+        _hostLifecycle = state;
+        RecordLifetime(WidgetProcessLifetimeEventKind.LifecycleCompleted, state, session);
     }
 
     private async Task GrantCompanionGestureAuthorityAsync(

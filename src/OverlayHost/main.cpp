@@ -395,14 +395,22 @@ public:
                                     bridge_.lastError());
                   },
                   [this](std::stop_token, const std::wstring_view widgetId,
-                         const widgetrail::WidgetLifecycleState state) {
+                         const widgetrail::WidgetLifecycleState state,
+                         const long long baseSequence, const bool allowUpdate) {
                       auto value = bridge_.EstablishWidgetPresentation(
-                          widgetId, widgetrail::WidgetLifecycleProtocolValue(state));
+                          widgetId, widgetrail::WidgetLifecycleProtocolValue(state),
+                          baseSequence, allowUpdate);
                       return value
-                          ? widgetrail::WidgetSessionOperationResult<widgetrail::WidgetSnapshot>::Success(
+                          ? widgetrail::WidgetSessionOperationResult<
+                                widgetrail::WidgetPresentationPublication>::Success(
                                 std::move(*value))
-                          : widgetrail::WidgetSessionOperationResult<widgetrail::WidgetSnapshot>::Failure(
-                                bridge_.lastRuntimeFailureCategory(widgetId) ==
+                          : widgetrail::WidgetSessionOperationResult<
+                                widgetrail::WidgetPresentationPublication>::Failure(
+                                bridge_.lastRequestFailureCategory() ==
+                                        widgetrail::WidgetBridgeRequestFailureCategory::
+                                            StalePresentationBase
+                                    ? widgetrail::WidgetSessionFailureStage::Protocol
+                                    : bridge_.lastRuntimeFailureCategory(widgetId) ==
                                         widgetrail::WidgetBridgeRuntimeFailureCategory::WorkerStart
                                     ? widgetrail::WidgetSessionFailureStage::Start
                                     : widgetrail::WidgetSessionFailureStage::Snapshot,
@@ -428,7 +436,11 @@ public:
                                 std::move(*value))
                           : widgetrail::WidgetSessionOperationResult<
                                 widgetrail::WidgetPresentationPublication>::Failure(
-                                widgetrail::WidgetSessionFailureStage::Snapshot,
+                                bridge_.lastRequestFailureCategory() ==
+                                        widgetrail::WidgetBridgeRequestFailureCategory::
+                                            StalePresentationBase
+                                    ? widgetrail::WidgetSessionFailureStage::Protocol
+                                    : widgetrail::WidgetSessionFailureStage::Snapshot,
                                 bridge_.lastError());
                   },
                   [](const widgetrail::WidgetSnapshot& checkpoint,
