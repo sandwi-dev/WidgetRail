@@ -326,6 +326,15 @@ private:
 
     [[nodiscard]] QueueResult Queue(Request request);
     [[nodiscard]] bool HasPending(RequestKind kind, std::wstring_view widgetId) const noexcept;
+    [[nodiscard]] static bool IsPresentationChanging(RequestKind kind) noexcept;
+    [[nodiscard]] static bool SamePresentationAuthority(
+        const Request& left,
+        const Request& right) noexcept;
+    [[nodiscard]] bool PresentationRequestBlockedLocked(
+        const Request& request) const noexcept;
+    [[nodiscard]] bool HasExecutableRequestLocked() const noexcept;
+    void ReleasePresentationAdmission(const Request& request) noexcept;
+    void QueueCoalescedRefreshAfterAdmission(const Request& request);
     void SupersedeSnapshotRequests(
         std::wstring_view widgetId,
         WidgetLifecycleState lifecycle) noexcept;
@@ -370,6 +379,7 @@ private:
     std::condition_variable queueChanged_;
     std::deque<Request> pending_;
     std::deque<Completion> completed_;
+    std::unordered_map<std::wstring, Request> presentationAdmissions_;
     std::optional<Request> inFlight_;
     std::optional<std::stop_source> inFlightStop_;
     std::jthread worker_;
