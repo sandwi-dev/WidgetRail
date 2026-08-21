@@ -45,8 +45,8 @@ evidence only; this file is the sole authority for current work.
 
 | Lane | Task/worktree | State |
 | --- | --- | --- |
-| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | Idle pending cumulative test evidence and integration. DLV-284 is queued but not assigned. Do not begin it, test, launch, integrate, or push. |
-| Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | DLV-325 is committed at `e441f25` with provider 32/32; exact-commit Tier 3 stopped at a retained Runtime Job Object fixture cleanup race after all containment assertions passed. Execute bounded test-only DLV-326 below; preserve PID 126208 and all product state. |
+| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | Execute bounded test-only DLV-327 below after an explicit fast-forward from clean `cdbb04a` to cumulative `676cd76`. DLV-284 remains queued and is not assigned. |
+| Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | Idle at clean cumulative test tip `676cd76`; every managed gate and focused DLV-326 Runtime gate is green. Preserve PID 126208 and all product state; do not begin new work, integrate, rebuild/relaunch, or push. |
 
 ## Execution and architecture rules
 
@@ -1772,6 +1772,47 @@ not rerun provider or other focused suites outside the verifier. Preserve PID
 126208, Spotify 0.3.14, installed/configured state, and all production
 artifacts. Stop for independent review if Tier 3 is green; never push.
 
+DLV-326 committed exactly the authorized Runtime test file as
+`676cd76f6761ca35b49b9810a0a8f0b42e9fabf4`. Its serialized build was green
+with zero warnings/errors and the complete Runtime executable passed 84/84,
+including the Job Object process-tree case. One canonical Tier 3 verifier from
+a clean detached tree at that exact commit passed every preceding managed gate:
+WidgetSdk 89/89, compatibility 12/12, scenarios 9/9, ticker 5/5, Runtime 84/84,
+presentation sessions 11/11, worker host 10/10, Windows Spotify provider
+32/32, Spotify widget 54/54, Bridge 96/96, and first-party conformance 6/6.
+It then stopped compiling the existing native real-host accessibility fixture,
+which still calls the removed singular `FindScrollPaginationAction` while
+production and focused navigation tests use geometry-based plural
+`FindScrollPaginationActions`. This is native test compile drift from the
+DLV-269 pagination API change, not a DLV-326 or production defect. No rerun,
+integration, overlay/package/state mutation, or push occurred. The verifier
+result SHA-256 is
+`3C47FE182308DFAB672D498B658F2853B1E486F833CC0C88476922693F7FE232`.
+
+## Assigned platform correction — DLV-327 align real-host pagination fixture
+
+Mode: bounded native test-only correction after DLV-326. The clean platform
+branch at `cdbb04a` may be fast-forwarded only to exact cumulative commit
+`676cd76`; stop on any non-fast-forward condition or dirty state. Edit only
+`src/OverlayHost/RealHostAccessibilityTests.cpp`. Replace the six stale
+singular pagination lookups with the current geometry-owned
+`FindScrollPaginationActions` contract using each frame's exact snapshot active
+scope and committed `RenderResult`. Select/assert the exact Before or After
+edge, action ID, source scroll, and presence/absence needed by each existing
+List/Grid/sparse/final-page claim. A small file-local test helper is permitted
+only if it preserves those exact assertions. Do not restore the singular
+production API, infer from focus/direction, duplicate pagination discovery,
+weaken coverage, or edit production/native headers/other tests.
+
+Run one complete serialized Release native OverlayHost build/test invocation
+using `src/OverlayHost/build.ps1 -Configuration Release`, stopping first red.
+If green, commit exactly `RealHostAccessibilityTests.cpp` on top of `676cd76`,
+then run one canonical Tier 3 verifier from a clean detached tree at that exact
+commit. Do not run additional focused suites outside those two gates. Preserve
+PID 126208, Spotify 0.3.14, installed/configured state, and all production
+artifacts; do not launch/terminate, integrate to main, begin DLV-284, or push.
+Stop for independent review if Tier 3 is green.
+
 ## Queued platform production — DLV-284 explicit publication transaction model
 
 Status: queued, not assigned. It becomes assignable only after the cumulative
@@ -1857,8 +1898,8 @@ import/export or scheduling only after independent widgets prove the need.
 
 ## Ordered queues
 
-1. Widgets evidence queue: execute bounded DLV-326 Job helper publication
-   correction, its complete Runtime gate, and one exact-commit Tier 3
+1. Platform evidence queue: execute bounded DLV-327 real-host pagination
+   fixture correction, its complete native gate, and one exact-commit Tier 3
    verifier, stopping on the first red result.
 2. Reviewer integration queue: independently review the eventual cumulative
    evidence milestone; integrate the
@@ -1923,7 +1964,8 @@ There is no other Ready production work in either standing lane.
 | DLV-323 | Stopped first red uncommitted: build green, complete Runtime run stalled after 9 passes because it awaited a pre-release companion revocation that source semantics do not promise. |
 | DLV-324 | Test-only `6b63edf`: Runtime 84/84 green; exact-commit Tier 3 stopped later at retained Windows Spotify provider compile drift. |
 | DLV-325 | Test-only `e441f25`: provider 32/32 green; exact-commit Tier 3 stopped later at retained Runtime Job helper file-publication cleanup race. |
-| DLV-326 | Assigned one-file atomic Job helper PID publication correction, complete Runtime gate, and one exact-commit Tier 3 verifier. |
+| DLV-326 | Test-only `676cd76`: Runtime 84/84 and every preceding Tier 3 managed gate green; Tier 3 stopped later at retained native real-host pagination compile drift. |
+| DLV-327 | Assigned one-file native pagination fixture alignment, complete native gate, and one exact-commit Tier 3 verifier. |
 | DLV-284 | Queued, not assigned until cumulative integration. |
 | DLV-248 | Deliberately deferred until explicit user promotion. |
 
