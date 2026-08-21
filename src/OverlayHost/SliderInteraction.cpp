@@ -192,11 +192,33 @@ bool SliderInteractionState::CancelPending(
     const SliderInputDescriptor& slider,
     const std::uint64_t nowMilliseconds) {
     if (!Valid(slider)) return false;
-    const auto position = entries_.find(Key(slider));
+    return CancelPending(SliderPresentationIdentity{
+        std::wstring{slider.widgetInstanceId},
+        std::wstring{slider.inputScopeId},
+        std::wstring{slider.nodeId},
+        std::wstring{slider.valueChangedActionId},
+        slider.snapshotSequence,
+    }, nowMilliseconds);
+}
+
+bool SliderInteractionState::CancelPending(
+    const SliderPresentationIdentity& identity,
+    const std::uint64_t nowMilliseconds) {
+    if (identity.widgetInstanceId.empty() || identity.inputScopeId.empty() ||
+        identity.nodeId.empty() || identity.valueChangedActionId.empty() ||
+        identity.snapshotSequence <= 0) {
+        return false;
+    }
+    std::wstring key{identity.widgetInstanceId};
+    key.push_back(L'\x1f');
+    key.append(identity.inputScopeId);
+    key.push_back(L'\x1f');
+    key.append(identity.nodeId);
+    const auto position = entries_.find(key);
     if (position == entries_.end()) return false;
     auto& entry = position->second;
-    if (!entry.pending || entry.actionId != slider.valueChangedActionId ||
-        entry.snapshotSequence != slider.snapshotSequence) {
+    if (!entry.pending || entry.actionId != identity.valueChangedActionId ||
+        entry.snapshotSequence != identity.snapshotSequence) {
         return false;
     }
     entry.pending = false;

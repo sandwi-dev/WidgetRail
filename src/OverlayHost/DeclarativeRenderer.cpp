@@ -24,8 +24,9 @@ using declarative::Rect;
 using declarative::Size;
 
 constexpr std::size_t kMaximumDiagnostics = 256;
-constexpr std::size_t kMaximumBitmapEntries = 32;
-constexpr std::size_t kMaximumBitmapBytes = 32U * 1024U * 1024U;
+constexpr std::size_t kMaximumBitmapEntries = 256;
+constexpr std::size_t kMaximumBitmapEntryBytes = 32U * 1024U * 1024U;
+constexpr std::size_t kMaximumBitmapBytes = 96U * 1024U * 1024U;
 constexpr float kMinimumControlSize = 44.0F;
 constexpr float kButtonIconLabelGap = 8.0F;
 constexpr float kButtonStateCueGap = 8.0F;
@@ -502,6 +503,47 @@ struct DeclarativeRenderer::RenderPass final {
         return adapted;
     }
 
+    [[nodiscard]] static std::size_t VirtualCollectionItemCount(
+        const WidgetNode& collectionRoot) noexcept {
+        std::size_t count{};
+        const auto visit = [&](const auto& self,
+                               const WidgetNode& node,
+                               const bool root) -> void {
+            if (!root && node.kind == L"scroll") return;
+            if (!node.collectionItemKey.empty()) {
+                ++count;
+                return;
+            }
+            for (const auto& child : node.children) self(self, child, false);
+        };
+        visit(visit, collectionRoot, true);
+        return count;
+    }
+
+    [[nodiscard]] static std::optional<LayoutElement> VirtualCollectionSpacer(
+        const std::string_view scrollId,
+        const std::string_view suffix,
+        const declarative::ScrollAxis axis,
+        const std::uint64_t itemCount,
+        const double estimatedItemExtent,
+        const float gap) {
+        if (itemCount == 0 || axis == declarative::ScrollAxis::None)
+            return std::nullopt;
+        const auto extent = static_cast<float>(std::max(
+            0.0, static_cast<double>(itemCount) * estimatedItemExtent - gap));
+        if (!(extent > 0.0F) || !std::isfinite(extent)) return std::nullopt;
+        LayoutElement spacer;
+        spacer.id = std::string{scrollId} + std::string{suffix};
+        spacer.flexGrow = 0.0F;
+        spacer.flexShrink = 0.0F;
+        spacer.estimatesOffWindowScrollExtent = true;
+        if (axis == declarative::ScrollAxis::Vertical)
+            spacer.height = extent;
+        else
+            spacer.width = extent;
+        return spacer;
+    }
+
     [[nodiscard]] LayoutElement PrepareNode(
         const WidgetNode& node,
         const std::string_view parentId,
@@ -642,6 +684,15 @@ struct DeclarativeRenderer::RenderPass final {
                 if (!measurementOnly)
                     offset->second.lastAccess = ++owner->scrollStateAccessClock_;
                 element.scrollOffset = measurementOnly ? 0.0F : offset->second.offset;
+            } else if (!measurementOnly && node.virtualCollectionWindow &&
+                       node.virtualCollectionWindow->firstItemIndex) {
+                const auto leading = static_cast<float>(
+                    static_cast<double>(*node.virtualCollectionWindow->firstItemIndex) *
+                    node.virtualCollectionWindow->estimatedItemExtent);
+                if (std::isfinite(leading)) {
+                    element.scrollOffset = leading;
+                    StoreScrollOffset(key, leading);
+                }
             }
         }
         switch (style.justify()) {
@@ -663,12 +714,22 @@ struct DeclarativeRenderer::RenderPass final {
         // parent. Ordinary auto-sized nodes keep Taffy's inherited stretch;
         // definite dimensions, constraints, and aspect ratio still bound it.
         if (node.kind == L"loadingIndicator") element.stretchCrossAxis = false;
-        element.children.reserve(node.children.size());
+        element.children.reserve(node.children.size() + 2U);
         const float textScale = std::isfinite(options.accessibility.textScale) &&
                 options.accessibility.textScale >= 0.85F &&
                 options.accessibility.textScale <= 1.5F
             ? options.accessibility.textScale
             : 1.0F;
+        if (node.kind == L"scroll" && node.virtualCollectionWindow &&
+            node.virtualCollectionWindow->firstItemIndex) {
+            if (auto leading = VirtualCollectionSpacer(
+                    narrowId, "\x1fvirtual-leading", element.scrollAxis,
+                    *node.virtualCollectionWindow->firstItemIndex,
+                    node.virtualCollectionWindow->estimatedItemExtent,
+                    element.gap)) {
+                element.children.push_back(std::move(*leading));
+            }
+        }
         for (const auto& child : node.children) {
             if (!IsResponsiveVisible(child)) continue;
             element.children.push_back(PrepareNode(
@@ -678,6 +739,22 @@ struct DeclarativeRenderer::RenderPass final {
                 parentHeight,
                 style.fontSizePx() / textScale,
                 effectiveBackground));
+        }
+        if (node.kind == L"scroll" && node.virtualCollectionWindow &&
+            node.virtualCollectionWindow->firstItemIndex &&
+            node.virtualCollectionWindow->totalItemCount) {
+            const auto admittedItems = VirtualCollectionItemCount(node);
+            const auto first = *node.virtualCollectionWindow->firstItemIndex;
+            const auto total = *node.virtualCollectionWindow->totalItemCount;
+            const auto after = first + admittedItems <= total
+                ? total - first - admittedItems
+                : 0U;
+            if (auto trailing = VirtualCollectionSpacer(
+                    narrowId, "\x1fvirtual-trailing", element.scrollAxis,
+                    after, node.virtualCollectionWindow->estimatedItemExtent,
+                    element.gap)) {
+                element.children.push_back(std::move(*trailing));
+            }
         }
         return element;
     }
@@ -825,8 +902,7 @@ struct DeclarativeRenderer::RenderPass final {
             const auto existing = owner->scrollOffsets_.find(stateKey);
             const auto* scrollBox = layout.Find(NarrowStableId(scroll.id));
             if (existing == owner->scrollOffsets_.end() ||
-                !existing->second.hasAnchorPosition || !scrollBox ||
-                scrollBox->scrollAxis == declarative::ScrollAxis::None) {
+                !scrollBox || scrollBox->scrollAxis == declarative::ScrollAxis::None) {
                 return;
             }
 
@@ -859,7 +935,8 @@ struct DeclarativeRenderer::RenderPass final {
                 changed = true;
             };
 
-            if (existing->second.anchorKey == scroll.collectionAnchorKey) {
+            if (existing->second.hasAnchorPosition &&
+                existing->second.anchorKey == scroll.collectionAnchorKey) {
                 const auto* item = FindCollectionItem(
                     scroll, scroll.collectionAnchorKey);
                 const auto* itemBox = item
@@ -875,6 +952,53 @@ struct DeclarativeRenderer::RenderPass final {
                 return;
             }
 
+            const auto reconcileReplacementWindow = [&] {
+                if (!scroll.virtualCollectionWindow ||
+                    scroll.virtualCollectionWindow->change !=
+                        VirtualCollectionWindowChange::Replace) {
+                    return;
+                }
+                CollectionDiagnosticObservation current;
+                CollectCollectionItems(scroll, scroll, scrollBox, current);
+                if (current.itemsTruncated || current.itemKeys.empty()) return;
+                const auto viewportExtent = scrollBox->scrollAxis ==
+                        declarative::ScrollAxis::Vertical
+                    ? scrollBox->contentBox.height
+                    : scrollBox->contentBox.width;
+                if (!std::isfinite(viewportExtent) ||
+                    viewportExtent <= kRevealEpsilon) {
+                    return;
+                }
+
+                // A replacement is an arbitrary bounded window. Retain the
+                // current offset when any admitted row still occupies that
+                // viewport; virtual leading/trailing spacers alone do not make
+                // the replacement usable. When no row is reachable, place the
+                // replacement's declared anchor at the leading edge so the
+                // host cannot preserve an empty viewport deep in the virtual
+                // extent after the widget resets its private window.
+                const CollectionDiagnosticItemGeometry* anchorGeometry{};
+                for (std::size_t index = 0;
+                     index < current.itemGeometry.size() &&
+                         index < current.itemKeys.size();
+                     ++index) {
+                    const auto& geometry = current.itemGeometry[index];
+                    if (!geometry.valid) continue;
+                    if (geometry.position + geometry.extent > kRevealEpsilon &&
+                        geometry.position < viewportExtent - kRevealEpsilon) {
+                        return;
+                    }
+                    if (current.itemKeys[index] == scroll.collectionAnchorKey)
+                        anchorGeometry = &geometry;
+                }
+                if (!anchorGeometry) return;
+                apply(
+                    anchorGeometry->position,
+                    0.0F,
+                    L"replace-window",
+                    scroll.collectionAnchorKey);
+            };
+
             // A bounded retained-window shift can remove the declared anchor
             // while leaving visible keyed rows in both snapshots. Preserve one
             // such row's prior screen-relative position before focus-follow
@@ -886,6 +1010,7 @@ struct DeclarativeRenderer::RenderPass final {
             if (!previousCache ||
                 previousCache->instanceId != snapshot->instanceId ||
                 !SameRect(previousCache->viewport, viewport)) {
+                reconcileReplacementWindow();
                 return;
             }
             const auto previous = previousCache->collections.find(scroll.id);
@@ -896,21 +1021,27 @@ struct DeclarativeRenderer::RenderPass final {
                 previous->second.anchorKey != existing->second.anchorKey ||
                 !previousScrollBox ||
                 previousScrollBox->scrollAxis != scrollBox->scrollAxis) {
+                reconcileReplacementWindow();
                 return;
             }
 
             CollectionDiagnosticObservation current;
             CollectCollectionItems(scroll, scroll, scrollBox, current);
-            if (current.itemsTruncated ||
-                std::ranges::find(
+            if (current.itemsTruncated) return;
+            const bool retainedAnchorSurvives = std::ranges::find(
                     current.itemKeys, existing->second.anchorKey) !=
-                    current.itemKeys.end()) {
+                current.itemKeys.end();
+            const bool replacementWindow = scroll.virtualCollectionWindow &&
+                scroll.virtualCollectionWindow->change ==
+                    VirtualCollectionWindowChange::Replace;
+            if (retainedAnchorSurvives && !replacementWindow) {
                 return;
             }
             if (std::abs(previousScrollBox->contentBox.width -
                           scrollBox->contentBox.width) > 0.01F ||
                 std::abs(previousScrollBox->contentBox.height -
                          scrollBox->contentBox.height) > 0.01F) {
+                reconcileReplacementWindow();
                 return;
             }
 
@@ -948,7 +1079,10 @@ struct DeclarativeRenderer::RenderPass final {
                 retainedCurrent = &current.itemGeometry[currentIndex];
                 retainedKey = priorKey;
             }
-            if (!retainedPrior || !retainedCurrent) return;
+            if (!retainedPrior || !retainedCurrent) {
+                reconcileReplacementWindow();
+                return;
+            }
             apply(
                 retainedCurrent->position,
                 retainedPrior->position,
@@ -2214,7 +2348,12 @@ struct DeclarativeRenderer::RenderPass final {
         if (boundaryIds.empty()) return false;
         if (std::find(boundaryIds.begin(), boundaryIds.end(), snapshot->root.id) !=
             boundaryIds.end()) {
-            BuildLayout();
+            BuildLayout(
+                !options.suppressFocusedDescendantFollow,
+                true,
+                options.suppressFocusedDescendantFollow
+                    ? CollectionAnchorPolicy::PreserveFocusFollowOffsets
+                    : CollectionAnchorPolicy::Reconcile);
             return true;
         }
         LayoutOptions layoutOptions;
@@ -2759,6 +2898,19 @@ struct DeclarativeRenderer::RenderPass final {
 #endif
 
         const auto visibleRect = presented.visibleBox;
+        if (node.kind == L"scroll") {
+            if (const auto* box = layout.Find(narrowId);
+                box && box->scrollAxis != declarative::ScrollAxis::None) {
+                result.scrollViewports.insert_or_assign(
+                    node.id,
+                    RenderScrollViewport{
+                        box->scrollAxis,
+                        Intersection(presented.contentBox, presented.ancestorClip),
+                        box->scrollOffset,
+                        box->maximumScrollOffset,
+                    });
+            }
+        }
         const bool semanticNode =
             node.kind == L"button" || node.kind == L"slider" ||
             node.kind == L"actionSurface" || node.kind == L"image" ||
@@ -3172,6 +3324,135 @@ DeclarativeRenderer::PlanFocusUpdate(
         IncrementalPresentationWork::PaintOnly, damage};
 }
 
+std::optional<FocusedFreeScrollPlan>
+DeclarativeRenderer::PlanFocusedFreeScroll(
+    const WidgetSnapshot& snapshot,
+    const std::wstring_view focusedElementId,
+    const declarative::ScrollAxis axis,
+    const float deltaDip,
+    const Rect viewport,
+    const std::wstring_view exactScrollId,
+    FocusedFreeScrollPlanDiagnostic* diagnostic) {
+    pendingIncrementalPlan_.reset();
+    FocusedFreeScrollPlanDiagnostic localDiagnostic;
+    localDiagnostic.requestedViewport = viewport;
+    localDiagnostic.requestedSequence = snapshot.sequence;
+    localDiagnostic.requestedAxis = axis;
+    const auto reject = [&](const FocusedFreeScrollPlanDisposition disposition) {
+        localDiagnostic.disposition = disposition;
+        if (diagnostic) *diagnostic = localDiagnostic;
+        return std::optional<FocusedFreeScrollPlan>{};
+    };
+    const auto& cache = incrementalLayoutCache_;
+    if (!cache)
+        return reject(FocusedFreeScrollPlanDisposition::MissingCheckpoint);
+    localDiagnostic.cachedViewport = cache->viewport;
+    localDiagnostic.cachedSequence = cache->sequence;
+    if (cache->instanceId != snapshot.instanceId)
+        return reject(FocusedFreeScrollPlanDisposition::InstanceMismatch);
+    if (cache->sequence != snapshot.sequence)
+        return reject(FocusedFreeScrollPlanDisposition::SequenceMismatch);
+    if (exactScrollId.empty() && cache->focusedElementId != focusedElementId)
+        return reject(FocusedFreeScrollPlanDisposition::FocusMismatch);
+    if (axis == declarative::ScrollAxis::None)
+        return reject(FocusedFreeScrollPlanDisposition::InvalidAxis);
+    if (!std::isfinite(deltaDip) || std::abs(deltaDip) <= 0.001F)
+        return reject(FocusedFreeScrollPlanDisposition::InvalidDelta);
+    if (!SameRect(cache->viewport, viewport))
+        return reject(FocusedFreeScrollPlanDisposition::ViewportMismatch);
+
+    std::vector<const WidgetNode*> path;
+    if (!FindNodePath(
+            snapshot.root,
+            exactScrollId.empty() ? focusedElementId : exactScrollId,
+            path)) {
+        return reject(FocusedFreeScrollPlanDisposition::MissingTarget);
+    }
+
+    bool foundScroll = false;
+    for (auto item = path.rbegin(); item != path.rend(); ++item) {
+        const WidgetNode& candidate = **item;
+        if (candidate.kind != L"scroll") continue;
+        if (!exactScrollId.empty() && candidate.id != exactScrollId) continue;
+        foundScroll = true;
+        const auto visible = cache->scrollViewports.find(candidate.id);
+        const auto* box = cache->layout.Find(NarrowStableId(candidate.id));
+        if (visible == cache->scrollViewports.end()) {
+            localDiagnostic.disposition =
+                FocusedFreeScrollPlanDisposition::MissingScrollViewport;
+            continue;
+        }
+        localDiagnostic.scrollViewport = visible->second.rect;
+        if (!box) {
+            localDiagnostic.disposition =
+                FocusedFreeScrollPlanDisposition::MissingScrollBox;
+            continue;
+        }
+        localDiagnostic.scrollBox = box->borderBox;
+        localDiagnostic.scrollAxis = box->scrollAxis;
+        localDiagnostic.priorOffset = box->scrollOffset;
+        localDiagnostic.maximumOffset = box->maximumScrollOffset;
+        if (box->scrollAxis != axis) {
+            localDiagnostic.disposition =
+                FocusedFreeScrollPlanDisposition::AxisMismatch;
+            continue;
+        }
+        if (visible->second.rect.width <= 0.0F ||
+            visible->second.rect.height <= 0.0F) {
+            localDiagnostic.disposition =
+                FocusedFreeScrollPlanDisposition::EmptyScrollViewport;
+            continue;
+        }
+        const float next = std::clamp(
+            box->scrollOffset + deltaDip, 0.0F, box->maximumScrollOffset);
+        if (std::abs(next - box->scrollOffset) <= 0.001F) {
+            localDiagnostic.disposition =
+                FocusedFreeScrollPlanDisposition::OffsetBoundary;
+            continue;
+        }
+
+        std::wstring stateKey(snapshot.instanceId);
+        stateKey.push_back(L'\x1f');
+        stateKey.append(snapshot.activeInputScopeId);
+        stateKey.push_back(L'\x1f');
+        stateKey.append(candidate.id);
+        auto& state = scrollOffsets_[stateKey];
+        state.offset = next;
+        state.lastAccess = ++scrollStateAccessClock_;
+
+        const auto damage = Intersection(visible->second.rect, viewport);
+        if (damage.width <= 0.0F || damage.height <= 0.0F) {
+            state.offset = box->scrollOffset;
+            return reject(FocusedFreeScrollPlanDisposition::EmptyDamage);
+        }
+        pendingIncrementalPlan_ = PendingIncrementalPlan{
+            snapshot.instanceId,
+            snapshot.sequence,
+            snapshot.sequence,
+            IncrementalPresentationWork::LocalLayout,
+            damage,
+            {candidate.id},
+        };
+        localDiagnostic.disposition = FocusedFreeScrollPlanDisposition::Planned;
+        if (diagnostic) *diagnostic = localDiagnostic;
+        return FocusedFreeScrollPlan{
+            IncrementalPresentationPlan{
+                IncrementalPresentationWork::LocalLayout, damage},
+            candidate.id,
+            axis,
+            visible->second.rect,
+            box->scrollOffset,
+            next,
+            box->maximumScrollOffset,
+        };
+    }
+    if (!foundScroll)
+        localDiagnostic.disposition =
+            FocusedFreeScrollPlanDisposition::MissingTarget;
+    if (diagnostic) *diagnostic = localDiagnostic;
+    return std::nullopt;
+}
+
 void DeclarativeRenderer::CancelPresentationUpdatePlan() noexcept {
     pendingIncrementalPlan_.reset();
 }
@@ -3272,11 +3553,16 @@ RenderResult DeclarativeRenderer::Render(
         } else if (!pass.BuildLocalLayout(
                 pendingIncrementalPlan_->layoutBoundaries,
                 incrementalLayoutCache_->nodes)) {
-            pass.BuildLayout();
+            pass.BuildLayout(
+                !options.suppressFocusedDescendantFollow,
+                true,
+                options.suppressFocusedDescendantFollow
+                    ? RenderPass::CollectionAnchorPolicy::PreserveFocusFollowOffsets
+                    : RenderPass::CollectionAnchorPolicy::Reconcile);
         }
         if (pass.layout.valid()) pass.SynchronizeScrollState();
     } else {
-        pass.BuildLayout();
+        pass.BuildLayout(!options.suppressFocusedDescendantFollow);
     }
     const auto preparationFinished = std::chrono::steady_clock::now();
     const auto presentationFollowStarted = preparationFinished;
@@ -3285,7 +3571,8 @@ RenderResult DeclarativeRenderer::Render(
     bool lastPresentationFollowChanged{};
     bool presentationCorrectnessFallbackUsed{};
     for (std::size_t followPass = 0;
-         followPass < kMaximumFocusFollowPasses;
+         !options.suppressFocusedDescendantFollow &&
+             followPass < kMaximumFocusFollowPasses;
          ++followPass) {
         ++presentationFollowAttempts;
         pass.presentation.clear();
@@ -3319,6 +3606,11 @@ RenderResult DeclarativeRenderer::Render(
             false,
             true,
             RenderPass::CollectionAnchorPolicy::PreserveFocusFollowOffsets);
+    }
+    if (options.suppressFocusedDescendantFollow) {
+        pass.presentation.clear();
+        pass.ResolvePresentation(snapshot.root, 0.0F, 0.0F, viewport);
+        presentationMatchesLayout = true;
     }
     if (presentationFollowAttempts == kMaximumFocusFollowPasses &&
         (!presentationMatchesLayout ||
@@ -3386,6 +3678,7 @@ RenderResult DeclarativeRenderer::Render(
         cache.options = options;
         cache.textMeasurements = std::move(pass.textMeasurements);
         cache.collections = std::move(collectionObservations);
+        cache.scrollViewports = pass.result.scrollViewports;
         const auto retain = [&](const auto& self,
                                 const WidgetNode& node,
                                 const std::wstring_view parentId,
@@ -3543,8 +3836,19 @@ ImageBitmapCacheStats DeclarativeRenderer::GetImageBitmapCacheStats() const noex
         bitmapHits_,
         bitmapCreates_,
         bitmapEvictions_,
+        bitmapCountPressureEvictions_,
+        bitmapBytePressureEvictions_,
+        bitmapSupersededArtworkEvictions_,
         bitmapResourceInvalidations_,
         bitmapResourceGeneration_,
+        kMaximumBitmapEntries,
+        kMaximumBitmapEntryBytes,
+        kMaximumBitmapBytes,
+        !bitmapResourceDomain_
+            ? ImageBitmapResourceDomain::None
+            : bitmapResourceDomainIsDevice_
+                ? ImageBitmapResourceDomain::Device
+                : ImageBitmapResourceDomain::RenderTarget,
     };
 }
 
@@ -3586,9 +3890,11 @@ void DeclarativeRenderer::ClearBitmapCache(
 
 void DeclarativeRenderer::TrimBitmapCache(
     const std::size_t incomingBytes) noexcept {
-    while (!bitmaps_.empty() &&
-           (bitmaps_.size() >= kMaximumBitmapEntries ||
-            incomingBytes > kMaximumBitmapBytes - bitmapBytes_)) {
+    while (!bitmaps_.empty()) {
+        const bool countPressure = bitmaps_.size() >= kMaximumBitmapEntries;
+        const bool bytePressure = incomingBytes > kMaximumBitmapBytes ||
+            bitmapBytes_ > kMaximumBitmapBytes - incomingBytes;
+        if (!countPressure && !bytePressure) break;
         const auto oldest = std::min_element(
             bitmaps_.begin(), bitmaps_.end(),
             [](const auto& left, const auto& right) {
@@ -3597,6 +3903,8 @@ void DeclarativeRenderer::TrimBitmapCache(
         bitmapBytes_ -= oldest->second.bytes;
         bitmaps_.erase(oldest);
         ++bitmapEvictions_;
+        if (bytePressure) ++bitmapBytePressureEvictions_;
+        else ++bitmapCountPressureEvictions_;
     }
 }
 
@@ -3675,6 +3983,7 @@ ComPtr<ID2D1Bitmap> DeclarativeRenderer::GetImageBitmap(
                 bitmapBytes_ -= iterator->second.bytes;
                 iterator = bitmaps_.erase(iterator);
                 ++bitmapEvictions_;
+                ++bitmapSupersededArtworkEvictions_;
             } else ++iterator;
         }
     }
@@ -3728,7 +4037,7 @@ ComPtr<ID2D1Bitmap> DeclarativeRenderer::GetImageBitmap(
     const auto pixelSize = bitmap->GetPixelSize();
     const auto byteCount64 = static_cast<std::uint64_t>(pixelSize.width) *
         static_cast<std::uint64_t>(pixelSize.height) * 4ULL;
-    if (byteCount64 <= kMaximumBitmapBytes) {
+    if (byteCount64 <= kMaximumBitmapEntryBytes) {
         const auto byteCount = static_cast<std::size_t>(byteCount64);
         TrimBitmapCache(byteCount);
         bitmapBytes_ += byteCount;

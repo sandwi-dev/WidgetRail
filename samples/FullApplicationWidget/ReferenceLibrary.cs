@@ -51,7 +51,11 @@ internal sealed class ReferenceLibrary
         return new(
             items,
             beforeOffset is null ? null : Cursor(beforeOffset.Value),
-            afterOffset is null ? null : Cursor(afterOffset.Value));
+            afterOffset is null ? null : Cursor(afterOffset.Value))
+        {
+            FirstItemIndex = offset,
+            TotalItemCount = _documents.Length,
+        };
     }
 
     internal ReferenceDocument? Find(string id) =>

@@ -17,6 +17,13 @@ public sealed class FullApplicationWidgetTests
         Assert.AreEqual(ReferenceLibrary.DocumentCount, widget.PrivateDocumentCount);
         Assert.IsTrue(widget.Documents.Items.Count <= FullApplicationReferenceWidget.MaximumRetainedItems);
         var view = Snapshot(widget, 1);
+        Assert.AreEqual(ProtocolConstants.VirtualCollectionWindowVersion, view.ProtocolVersion);
+        var scroll = Nodes(view.Root).Single(node => node.Id == "full-app.document-list");
+        Assert.AreEqual(ReferenceLibrary.DocumentCount,
+            scroll.VirtualCollectionWindow?.TotalItemCount);
+        Assert.AreEqual(0L, scroll.VirtualCollectionWindow?.FirstItemIndex);
+        Assert.IsTrue(Nodes(view.Root).Count() <=
+            FullApplicationReferenceWidget.MaximumRetainedItems + 8);
         var first = Nodes(view.Root).First(node => node.ActionId == "full-app.open");
         await widget.OnActionAsync(new(first.ActionId!, first.Id));
         var details = Snapshot(widget, 2);
@@ -46,7 +53,25 @@ public sealed class FullApplicationWidgetTests
         Assert.AreEqual(FullApplicationReferenceWidget.MaximumRetainedItems,
             widget.Documents.Items.Count);
         Assert.IsTrue(widget.Documents.After is not null);
-        Assert.AreEqual(0, ViewSnapshotValidator.Validate(Snapshot(widget, 4)).Count);
+        var forward = Snapshot(widget, 4);
+        var forwardWindow = Nodes(forward.Root).Single(node =>
+            node.Id == "full-app.document-list").VirtualCollectionWindow;
+        Assert.IsNotNull(forwardWindow);
+        Assert.AreEqual(VirtualCollectionWindowChange.Append, forwardWindow.Change);
+        Assert.IsTrue(forwardWindow.FirstItemIndex > 0);
+        Assert.AreEqual(ReferenceLibrary.DocumentCount, forwardWindow.TotalItemCount);
+        Assert.AreEqual(0, ViewSnapshotValidator.Validate(forward).Count);
+        var beforeFirst = forwardWindow.FirstItemIndex;
+        await widget.OnActionAsync(new(
+            "full-app.documents.cursor.before", "full-app.document-list"));
+        await widget.WhenDocumentsIdleAsync();
+        var backward = Snapshot(widget, 5);
+        var backwardWindow = Nodes(backward.Root).Single(node =>
+            node.Id == "full-app.document-list").VirtualCollectionWindow;
+        Assert.AreEqual(VirtualCollectionWindowChange.Prepend, backwardWindow?.Change);
+        Assert.IsTrue(backwardWindow?.FirstItemIndex < beforeFirst);
+        Assert.IsTrue(Nodes(backward.Root).Count() <=
+            FullApplicationReferenceWidget.MaximumRetainedItems + 8);
         await Background(widget);
     }
 

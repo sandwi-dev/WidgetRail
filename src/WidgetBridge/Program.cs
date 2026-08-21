@@ -21,6 +21,8 @@ internal static class Program
             var acceptTimeout = OptionalInt(args, "--accept-timeout-ms", 10_000, 100, 60_000);
             var maximumBytes = OptionalInt(args, "--max-message-bytes",
                 BridgeProtocol.DefaultMaximumMessageBytes, 256, BridgeProtocol.AbsoluteMaximumMessageBytes);
+            var bridgeSessionGeneration = OptionalLong(
+                args, "--bridge-session-generation", 1, 1, long.MaxValue);
             var residencyBudget = ResolveWorkerResidencyBudget(args);
             using var shutdown = new CancellationTokenSource();
             Console.CancelKeyPress += (_, eventArgs) =>
@@ -55,7 +57,9 @@ internal static class Program
             catalogMonitor.Start();
             var settingsStore = new PlatformSettingsStore(settingsPaths);
             await using var mediaDiagnostics = new MediaSessionsDiagnosticLog(
-                Path.Combine(settingsPaths.RootDirectory, "overlay.log"));
+                Path.Combine(settingsPaths.RootDirectory, "overlay.log"),
+                bridgeSessionGeneration);
+            mediaDiagnostics.RecordBridgeSessionStarted(Environment.ProcessId);
             await using var appearance = new PlatformAppearanceService(
                 settingsPaths,
                 new ThemeManager(settingsStore, new ThemeCatalog(settingsPaths)));
@@ -84,7 +88,8 @@ internal static class Program
             await using var server = new WidgetBridgeServer(
                 pipeName, catalog, maximumBytes, appearance, consentStore, platformBackend,
                 catalogMonitor, residencyBudget, launcherExperience,
-                mediaDiagnostics.Record);
+                mediaDiagnostics.Record,
+                mediaDiagnostics.RecordLifetime);
             await server.RunAsync(TimeSpan.FromMilliseconds(acceptTimeout), shutdown.Token)
                 .ConfigureAwait(false);
             return 0;
@@ -110,6 +115,26 @@ internal static class Program
         if (index < 0) return fallback;
         if (index + 1 >= args.Length ||
             !int.TryParse(args[index + 1], NumberStyles.None, CultureInfo.InvariantCulture, out var value) ||
+            value < minimum || value > maximum)
+            throw new ArgumentException($"Invalid value for {name}.");
+        return value;
+    }
+
+    private static long OptionalLong(
+        string[] args,
+        string name,
+        long fallback,
+        long minimum,
+        long maximum)
+    {
+        var index = Array.IndexOf(args, name);
+        if (index < 0) return fallback;
+        if (index + 1 >= args.Length ||
+            !long.TryParse(
+                args[index + 1],
+                NumberStyles.None,
+                CultureInfo.InvariantCulture,
+                out var value) ||
             value < minimum || value > maximum)
             throw new ArgumentException($"Invalid value for {name}.");
         return value;

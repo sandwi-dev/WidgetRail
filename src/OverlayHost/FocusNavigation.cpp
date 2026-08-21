@@ -19,15 +19,6 @@ bool Overlaps(const float a0, const float a1, const float b0, const float b1) no
     return std::min(a1, b1) >= std::max(a0, b0);
 }
 
-bool ContainsWidgetNode(
-    const WidgetNode& node,
-    const std::wstring_view nodeId) noexcept {
-    if (node.id == nodeId) return true;
-    return std::ranges::any_of(node.children, [&](const WidgetNode& child) {
-        return ContainsWidgetNode(child, nodeId);
-    });
-}
-
 bool IsFocusableNode(const WidgetNode& node) noexcept {
     return node.kind == L"button" || node.kind == L"slider" ||
         node.kind == L"actionSurface";
@@ -37,6 +28,29 @@ bool IsResponsiveVisible(const WidgetNode& node, const bool compactMode) noexcep
     return node.visibleWhen.empty() || node.visibleWhen == L"always" ||
         (compactMode && node.visibleWhen == L"compactOnly") ||
         (!compactMode && node.visibleWhen == L"expandedOnly");
+}
+
+const WidgetNode* FindNode(
+    const WidgetNode& node,
+    const std::wstring_view nodeId) noexcept {
+    if (node.id == nodeId) return &node;
+    for (const auto& child : node.children) {
+        if (const auto* found = FindNode(child, nodeId)) return found;
+    }
+    return nullptr;
+}
+
+bool FindNodePath(
+    const WidgetNode& node,
+    const std::wstring_view nodeId,
+    std::vector<const WidgetNode*>& path) {
+    path.push_back(&node);
+    if (node.id == nodeId) return true;
+    for (const auto& child : node.children) {
+        if (FindNodePath(child, nodeId, path)) return true;
+    }
+    path.pop_back();
+    return false;
 }
 
 void CollectCollectionItems(
@@ -52,52 +66,186 @@ void CollectCollectionItems(
         CollectCollectionItems(child, collectionRoot, items);
 }
 
+std::optional<Rect> CollectionItemBounds(
+    const WidgetNode& item,
+    const std::wstring_view activeScopeId,
+    const RenderResult& renderResult) {
+    std::optional<Rect> bounds;
+    const auto visit = [&](const auto& self, const WidgetNode& node,
+                           const bool root) -> void {
+        if (!root && node.kind == L"scroll") return;
+        const auto geometry = renderResult.navigationRects.find(node.id);
+        const auto scope = renderResult.focusScopes.find(node.id);
+        if (geometry != renderResult.navigationRects.end() &&
+            scope != renderResult.focusScopes.end() &&
+            scope->second == activeScopeId && geometry->second.width > 0.0F &&
+            geometry->second.height > 0.0F) {
+            if (!bounds) {
+                bounds = geometry->second;
+            } else {
+                const float left = std::min(bounds->x, geometry->second.x);
+                const float top = std::min(bounds->y, geometry->second.y);
+                const float right = std::max(
+                    bounds->x + bounds->width,
+                    geometry->second.x + geometry->second.width);
+                const float bottom = std::max(
+                    bounds->y + bounds->height,
+                    geometry->second.y + geometry->second.height);
+                *bounds = Rect{left, top, right - left, bottom - top};
+            }
+        }
+        for (const auto& child : node.children) self(self, child, false);
+    };
+    visit(visit, item, true);
+    return bounds;
+}
+
+bool Intersects(const Rect& item, const Rect& viewport) noexcept {
+    constexpr float epsilon = 0.5F;
+    return item.x < viewport.x + viewport.width - epsilon &&
+        item.x + item.width > viewport.x + epsilon &&
+        item.y < viewport.y + viewport.height - epsilon &&
+        item.y + item.height > viewport.y + epsilon;
+}
+
+void CollectScrollPaginationActions(
+    const WidgetNode& node,
+    const std::wstring_view activeScopeId,
+    const RenderResult& renderResult,
+    std::vector<ScrollPaginationAction>& actions) {
+    for (const auto& child : node.children) {
+        CollectScrollPaginationActions(
+            child, activeScopeId, renderResult, actions);
+    }
+    if (node.kind != L"scroll" || node.scrollPaginationThreshold == 0 ||
+        node.children.empty()) {
+        return;
+    }
+    const auto viewport = renderResult.scrollViewports.find(node.id);
+    if (viewport == renderResult.scrollViewports.end() ||
+        viewport->second.axis == declarative::ScrollAxis::None ||
+        viewport->second.rect.width <= 0.0F ||
+        viewport->second.rect.height <= 0.0F) {
+        return;
+    }
+
+    std::vector<const WidgetNode*> items;
+    if (!node.collectionAnchorKey.empty()) {
+        CollectCollectionItems(node, node, items);
+    } else {
+        items.reserve(node.children.size());
+        for (const auto& child : node.children) items.push_back(&child);
+    }
+    if (items.empty()) return;
+
+    std::optional<std::size_t> firstVisible;
+    std::optional<std::size_t> lastVisible;
+    for (std::size_t index = 0; index < items.size(); ++index) {
+        const auto bounds = CollectionItemBounds(
+            *items[index], activeScopeId, renderResult);
+        if (!bounds || !Intersects(*bounds, viewport->second.rect)) continue;
+        if (!firstVisible) firstVisible = index;
+        lastVisible = index;
+    }
+    if (!firstVisible || !lastVisible) return;
+
+    const auto append = [&](const ScrollPaginationEdge edge,
+                            const std::wstring& actionId,
+                            const std::size_t boundaryIndex) {
+        if (actionId.empty()) return;
+        const auto& boundary = *items[boundaryIndex];
+        actions.push_back(ScrollPaginationAction{
+            node.id,
+            actionId,
+            node.id,
+            boundary.collectionItemKey.empty()
+                ? boundary.id
+                : boundary.collectionItemKey,
+            node.collectionAnchorKey,
+            viewport->second.axis,
+            edge,
+            *firstVisible,
+            *lastVisible,
+            items.size(),
+        });
+    };
+    if (*firstVisible < node.scrollPaginationThreshold) {
+        append(ScrollPaginationEdge::Before,
+               node.scrollNearStartActionId, 0);
+    }
+    if (items.size() - *lastVisible <= node.scrollPaginationThreshold) {
+        append(ScrollPaginationEdge::After,
+               node.scrollNearEndActionId, items.size() - 1);
+    }
+}
+
 } // namespace
 
-std::optional<ScrollPaginationAction> FindScrollPaginationAction(
+FocusedScrollResolution ResolveFocusedScrollOwner(
     const WidgetNode& root,
-    const std::wstring_view focusedId,
-    const NavigationDirection direction) {
-    for (const auto& child : root.children) {
-        if (const auto nested = FindScrollPaginationAction(
-                child, focusedId, direction))
-            return nested;
+    const std::wstring_view focusedElementId,
+    const declarative::ScrollAxis axis,
+    const std::wstring_view activeScopeId,
+    const RenderResult& renderResult) {
+    if (focusedElementId.empty() || axis == declarative::ScrollAxis::None)
+        return {FocusedScrollResolutionDisposition::MissingFocus};
+    std::vector<const WidgetNode*> path;
+    if (!FindNodePath(root, focusedElementId, path))
+        return {FocusedScrollResolutionDisposition::MissingFocus};
+    const auto scope = renderResult.focusScopes.find(focusedElementId);
+    if (scope == renderResult.focusScopes.end() ||
+        scope->second != activeScopeId) {
+        return {FocusedScrollResolutionDisposition::ScopeMismatch};
     }
-    if (root.kind != L"scroll" || root.scrollPaginationThreshold == 0 ||
-        root.children.empty())
-        return std::nullopt;
-    const bool towardStart =
-        (root.scrollAxis == L"vertical" && direction == NavigationDirection::Up) ||
-        (root.scrollAxis == L"horizontal" && direction == NavigationDirection::Left);
-    const bool towardEnd =
-        (root.scrollAxis == L"vertical" && direction == NavigationDirection::Down) ||
-        (root.scrollAxis == L"horizontal" && direction == NavigationDirection::Right);
-    if (!towardStart && !towardEnd) return std::nullopt;
-    if (!root.collectionAnchorKey.empty()) {
-        std::vector<const WidgetNode*> items;
-        CollectCollectionItems(root, root, items);
-        for (std::size_t index = 0; index < items.size(); ++index) {
-            if (!ContainsWidgetNode(*items[index], focusedId)) continue;
-            if (towardStart && !root.scrollNearStartActionId.empty() &&
-                index < root.scrollPaginationThreshold)
-                return ScrollPaginationAction{root.scrollNearStartActionId, root.id};
-            if (towardEnd && !root.scrollNearEndActionId.empty() &&
-                items.size() - index <= root.scrollPaginationThreshold)
-                return ScrollPaginationAction{root.scrollNearEndActionId, root.id};
-            return std::nullopt;
+
+    bool foundSemanticScroll{};
+    for (auto item = path.rbegin(); item != path.rend(); ++item) {
+        if ((*item)->kind != L"scroll") continue;
+        foundSemanticScroll = true;
+        const auto viewport = renderResult.scrollViewports.find((*item)->id);
+        if (viewport == renderResult.scrollViewports.end() ||
+            viewport->second.axis != axis ||
+            viewport->second.rect.width <= 0.0F ||
+            viewport->second.rect.height <= 0.0F) {
+            continue;
         }
+        return {
+            FocusedScrollResolutionDisposition::Resolved,
+            (*item)->id,
+            axis,
+        };
     }
-    for (std::size_t index = 0; index < root.children.size(); ++index) {
-        if (!ContainsWidgetNode(root.children[index], focusedId)) continue;
-        if (towardStart && !root.scrollNearStartActionId.empty() &&
-            index < root.scrollPaginationThreshold)
-            return ScrollPaginationAction{root.scrollNearStartActionId, root.id};
-        if (towardEnd && !root.scrollNearEndActionId.empty() &&
-            root.children.size() - index <= root.scrollPaginationThreshold)
-            return ScrollPaginationAction{root.scrollNearEndActionId, root.id};
-        break;
-    }
-    return std::nullopt;
+    return {
+        foundSemanticScroll
+            ? FocusedScrollResolutionDisposition::StaleGeometry
+            : FocusedScrollResolutionDisposition::NoEligibleScroll,
+    };
+}
+
+bool IsExactScrollAuthorityCurrent(
+    const WidgetNode& root,
+    const std::wstring_view scrollId,
+    const declarative::ScrollAxis axis,
+    const RenderResult& renderResult) noexcept {
+    if (scrollId.empty() || axis == declarative::ScrollAxis::None)
+        return false;
+    const auto* scroll = FindNode(root, scrollId);
+    const auto viewport = renderResult.scrollViewports.find(scrollId);
+    return scroll && scroll->kind == L"scroll" &&
+        viewport != renderResult.scrollViewports.end() &&
+        viewport->second.axis == axis &&
+        viewport->second.rect.width > 0.0F &&
+        viewport->second.rect.height > 0.0F;
+}
+
+std::vector<ScrollPaginationAction> FindScrollPaginationActions(
+    const WidgetNode& root,
+    const std::wstring_view activeScopeId,
+    const RenderResult& renderResult) {
+    std::vector<ScrollPaginationAction> actions;
+    CollectScrollPaginationActions(
+        root, activeScopeId, renderResult, actions);
+    return actions;
 }
 
 std::optional<PointerHitTarget> FindPointerHitTarget(
@@ -299,6 +447,83 @@ std::optional<std::wstring> FindGeometricFocusTarget(
         }
     }
     return best;
+}
+
+std::optional<std::wstring> FindFreeScrollReentryTarget(
+    const WidgetNode& root,
+    const std::wstring_view scrollId,
+    const declarative::ScrollAxis axis,
+    const std::wstring_view activeScopeId,
+    const RenderResult& renderResult) {
+    if (axis == declarative::ScrollAxis::None || scrollId.empty())
+        return std::nullopt;
+    const auto viewport = renderResult.scrollViewports.find(scrollId);
+    const auto* scroll = FindNode(root, scrollId);
+    if (!scroll || viewport == renderResult.scrollViewports.end() ||
+        viewport->second.axis != axis || viewport->second.rect.width <= 0.0F ||
+        viewport->second.rect.height <= 0.0F) {
+        return std::nullopt;
+    }
+
+    constexpr float epsilon = 0.5F;
+    const auto& clip = viewport->second.rect;
+    struct Candidate final {
+        std::wstring id;
+        Rect rect;
+        bool fullyVisible{};
+    };
+    std::vector<Candidate> candidates;
+    const auto collect = [&](const auto& self, const WidgetNode& node) -> void {
+        const auto geometry = renderResult.navigationRects.find(node.id);
+        const auto scope = renderResult.focusScopes.find(node.id);
+        const auto hit = std::ranges::find_if(
+            renderResult.hitRegions,
+            [&](const RenderHitRegion& region) {
+                return region.nodeId == node.id;
+            });
+        if (geometry != renderResult.navigationRects.end() &&
+            scope != renderResult.focusScopes.end() &&
+            scope->second == activeScopeId &&
+            hit != renderResult.hitRegions.end() && hit->enabled) {
+            const auto& rect = geometry->second;
+            const bool intersects = rect.x < clip.x + clip.width - epsilon &&
+                rect.x + rect.width > clip.x + epsilon &&
+                rect.y < clip.y + clip.height - epsilon &&
+                rect.y + rect.height > clip.y + epsilon;
+            if (intersects) {
+                const bool fullyVisible =
+                    rect.x >= clip.x - epsilon &&
+                    rect.y >= clip.y - epsilon &&
+                    rect.x + rect.width <= clip.x + clip.width + epsilon &&
+                    rect.y + rect.height <= clip.y + clip.height + epsilon;
+                candidates.push_back({node.id, rect, fullyVisible});
+            }
+        }
+        for (const auto& child : node.children) self(self, child);
+    };
+    collect(collect, *scroll);
+    const bool hasFullyVisible = std::ranges::any_of(
+        candidates, [](const Candidate& candidate) {
+            return candidate.fullyVisible;
+        });
+    std::erase_if(candidates, [&](const Candidate& candidate) {
+        return hasFullyVisible && !candidate.fullyVisible;
+    });
+    if (candidates.empty()) return std::nullopt;
+    std::ranges::sort(candidates, [axis](const Candidate& left,
+                                        const Candidate& right) {
+        const auto primary = [axis](const Rect& rect) {
+            return axis == declarative::ScrollAxis::Vertical ? rect.y : rect.x;
+        };
+        const auto secondary = [axis](const Rect& rect) {
+            return axis == declarative::ScrollAxis::Vertical ? rect.x : rect.y;
+        };
+        return std::tuple{
+                   primary(left.rect), secondary(left.rect), left.id} <
+            std::tuple{
+                   primary(right.rect), secondary(right.rect), right.id};
+    });
+    return candidates.front().id;
 }
 
 } // namespace widgetrail::input

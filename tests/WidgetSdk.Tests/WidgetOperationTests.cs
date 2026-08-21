@@ -12,6 +12,7 @@ internal static class WidgetOperationTests
         await ReportsFailuresWithoutFaultingCompletionAsync();
         await DrainsLifecycleWorkBeforeCallbacksAsync();
         await StateTransitionsPreserveActiveWorkAsync();
+        await ActiveLifetimeCancellationIsNormalButRealFaultsPropagateAsync();
     }
 
     private static async Task RejectsInactiveWorkAsync()
@@ -207,6 +208,35 @@ internal static class WidgetOperationTests
         await WidgetTestHost.DestroyAsync(widget);
     }
 
+    private static async Task ActiveLifetimeCancellationIsNormalButRealFaultsPropagateAsync()
+    {
+        var normal = new ActiveLifetimeCancellationWidget();
+        await WidgetTestHost.InitializeAsync(normal);
+        await WidgetTestHost.SetLifecycleStateAsync(normal, WidgetLifecycleState.Visible);
+        await WidgetTestHost.SetLifecycleStateAsync(normal, WidgetLifecycleState.Background);
+        Equal(WidgetLifecycleState.Background, normal.CurrentState);
+        await WidgetTestHost.SetLifecycleStateAsync(normal, WidgetLifecycleState.Visible);
+        Equal(2, normal.Activations);
+        await WidgetTestHost.SetLifecycleStateAsync(normal, WidgetLifecycleState.Background);
+        await WidgetTestHost.DestroyAsync(normal);
+
+        var faulting = new FaultingDeactivationWidget();
+        await WidgetTestHost.InitializeAsync(faulting);
+        await WidgetTestHost.SetLifecycleStateAsync(faulting, WidgetLifecycleState.Visible);
+        var propagated = false;
+        try
+        {
+            await WidgetTestHost.SetLifecycleStateAsync(
+                faulting, WidgetLifecycleState.Background);
+        }
+        catch (InvalidOperationException exception) when (exception.Message == "expected fault")
+        {
+            propagated = true;
+        }
+        True(propagated, "A real deactivation fault was incorrectly treated as normal cancellation.");
+        await WidgetTestHost.DestroyAsync(faulting);
+    }
+
     private static async Task<OperationWidget> CreateVisibleAsync()
     {
         var widget = new OperationWidget();
@@ -275,5 +305,33 @@ internal static class WidgetOperationTests
             DeactivationSawCleanup = OperationCleanupFinished;
             return ValueTask.CompletedTask;
         }
+    }
+
+    private sealed class ActiveLifetimeCancellationWidget : Widget
+    {
+        private CancellationToken _activeLifetime;
+
+        public int Activations { get; private set; }
+        public WidgetLifecycleState CurrentState => LifecycleState;
+
+        public override WidgetView Render() => new(UI.Text("Active lifetime", "root"));
+
+        protected override ValueTask OnActivatedAsync(CancellationToken activeLifetime)
+        {
+            _activeLifetime = activeLifetime;
+            Activations++;
+            return ValueTask.CompletedTask;
+        }
+
+        protected override ValueTask OnDeactivatedAsync(CancellationToken transitionToken) =>
+            ValueTask.FromException(new OperationCanceledException(_activeLifetime));
+    }
+
+    private sealed class FaultingDeactivationWidget : Widget
+    {
+        public override WidgetView Render() => new(UI.Text("Faulting lifetime", "root"));
+
+        protected override ValueTask OnDeactivatedAsync(CancellationToken transitionToken) =>
+            ValueTask.FromException(new InvalidOperationException("expected fault"));
     }
 }

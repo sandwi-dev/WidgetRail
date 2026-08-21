@@ -6,6 +6,7 @@
 #include <optional>
 #include <string>
 #include <string_view>
+#include <vector>
 
 namespace widgetrail {
 struct WidgetNode;
@@ -19,19 +20,65 @@ struct PointerHitTarget final {
     bool enabled{};
 };
 
-struct ScrollPaginationAction final {
-    std::wstring actionId;
-    std::wstring sourceElementId;
+enum class ScrollPaginationEdge {
+    Before,
+    After,
 };
 
-/// Resolves the configured pagination action for a focused descendant that is
-/// already inside a scroll viewport's leading or trailing threshold. This is
-/// independent of whether ordinary focus navigation found another target, so
-/// the host can paginate before falling through to its root/tray boundary.
-[[nodiscard]] std::optional<ScrollPaginationAction> FindScrollPaginationAction(
+struct ScrollPaginationAction final {
+    std::wstring scrollId;
+    std::wstring actionId;
+    std::wstring sourceElementId;
+    std::wstring edgeKey;
+    std::wstring anchorKey;
+    declarative::ScrollAxis axis{declarative::ScrollAxis::None};
+    ScrollPaginationEdge edge{ScrollPaginationEdge::Before};
+    std::size_t firstVisibleIndex{};
+    std::size_t lastVisibleIndex{};
+    std::size_t itemCount{};
+};
+
+enum class FocusedScrollResolutionDisposition {
+    Resolved,
+    MissingFocus,
+    ScopeMismatch,
+    NoEligibleScroll,
+    StaleGeometry,
+};
+
+struct FocusedScrollResolution final {
+    FocusedScrollResolutionDisposition disposition{
+        FocusedScrollResolutionDisposition::MissingFocus};
+    std::wstring scrollId;
+    declarative::ScrollAxis axis{declarative::ScrollAxis::None};
+};
+
+/// Resolves the deepest rendered Scroll ancestor of one exact focused node.
+/// This is the shared owner lookup for vertical and horizontal free scrolling
+/// and pagination intent; callers must not guess from axis alone.
+[[nodiscard]] FocusedScrollResolution ResolveFocusedScrollOwner(
     const WidgetNode& root,
-    std::wstring_view focusedId,
-    NavigationDirection direction);
+    std::wstring_view focusedElementId,
+    declarative::ScrollAxis axis,
+    std::wstring_view activeScopeId,
+    const RenderResult& renderResult);
+
+/// Validates that a previously bound Scroll still exists in the current
+/// semantic tree and the committed renderer geometry with the same axis.
+[[nodiscard]] bool IsExactScrollAuthorityCurrent(
+    const WidgetNode& root,
+    std::wstring_view scrollId,
+    declarative::ScrollAxis axis,
+    const RenderResult& renderResult) noexcept;
+
+/// Resolves pagination actions from each rendered Scroll viewport's visible
+/// collection range. Focus identity and input source are deliberately absent:
+/// right-stick, pointer/UIA, focus-follow, and retained-anchor movement all
+/// converge on the same committed renderer geometry.
+[[nodiscard]] std::vector<ScrollPaginationAction> FindScrollPaginationActions(
+    const WidgetNode& root,
+    std::wstring_view activeScopeId,
+    const RenderResult& renderResult);
 
 /// Resolves the topmost visible pointer region in the active input scope.
 /// Disabled/busy controls remain selectable but report enabled=false so the
@@ -48,6 +95,16 @@ struct ScrollPaginationAction final {
 [[nodiscard]] std::optional<std::wstring> FindGeometricFocusTarget(
     std::wstring_view currentId,
     NavigationDirection direction,
+    const RenderResult& renderResult);
+
+/// Re-enters ordinary focus navigation after right-stick free scroll. The
+/// exact scroll subtree and its real rendered viewport remain authoritative;
+/// fully visible enabled descendants win before the first partial fallback.
+[[nodiscard]] std::optional<std::wstring> FindFreeScrollReentryTarget(
+    const WidgetNode& root,
+    std::wstring_view scrollId,
+    declarative::ScrollAxis axis,
+    std::wstring_view activeScopeId,
     const RenderResult& renderResult);
 
 [[nodiscard]] bool IsEnabledFocusTarget(

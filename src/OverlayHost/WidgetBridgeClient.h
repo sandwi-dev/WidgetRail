@@ -287,6 +287,22 @@ struct LauncherExperienceSelectionRequest final {
     std::wstring version;
 };
 
+enum class VirtualCollectionWindowChange {
+    Replace,
+    Append,
+    Prepend,
+};
+
+struct VirtualCollectionWindow final {
+    std::uint64_t requestGeneration{};
+    VirtualCollectionWindowChange change{VirtualCollectionWindowChange::Replace};
+    std::optional<std::uint64_t> firstItemIndex;
+    std::optional<std::uint64_t> totalItemCount;
+    bool hasBefore{};
+    bool hasAfter{};
+    double estimatedItemExtent{};
+};
+
 struct WidgetNode final {
     std::wstring id;
     std::wstring kind;
@@ -315,6 +331,7 @@ struct WidgetNode final {
     std::wstring scrollNearStartActionId;
     std::wstring scrollNearEndActionId;
     std::size_t scrollPaginationThreshold{};
+    std::optional<VirtualCollectionWindow> virtualCollectionWindow;
     std::wstring collectionAnchorKey;
     std::wstring collectionItemKey;
     std::wstring advancedPresentationSlot;
@@ -651,6 +668,7 @@ private:
     std::wstring lastError_;
     std::optional<WidgetBridgeRuntimeFailure> lastRuntimeFailure_;
     long long nextRequestId_{};
+    long long bridgeSessionGeneration_{};
     WidgetInvalidationQueue invalidations_;
     WidgetActionFailureQueue actionFailures_;
     std::vector<WidgetBridgeRuntimeFailure> runtimeFailures_;

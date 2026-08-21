@@ -1,6 +1,8 @@
 using System.Text;
 using System.Threading.Channels;
 using WidgetRail.PlatformBroker;
+using WidgetRail.WidgetProtocol;
+using WidgetRail.WidgetRuntime;
 
 namespace WidgetRail.WidgetBridge;
 
@@ -16,6 +18,7 @@ internal sealed class MediaSessionsDiagnosticLog : IAsyncDisposable
 
     private readonly object _gate = new();
     private readonly string _path;
+    private readonly long _bridgeSessionGeneration;
     private readonly Dictionary<string, TrackedTransition> _transitions =
         new(StringComparer.Ordinal);
     private readonly LinkedList<string> _recency = [];
@@ -30,11 +33,66 @@ internal sealed class MediaSessionsDiagnosticLog : IAsyncDisposable
     private readonly Task _writer;
     private int _disposed;
 
-    internal MediaSessionsDiagnosticLog(string path)
+    internal MediaSessionsDiagnosticLog(string path, long bridgeSessionGeneration = 1)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(path);
+        if (bridgeSessionGeneration <= 0)
+            throw new ArgumentOutOfRangeException(nameof(bridgeSessionGeneration));
         _path = Path.GetFullPath(path);
+        _bridgeSessionGeneration = bridgeSessionGeneration;
         _writer = WriteAsync();
+    }
+
+    internal void RecordBridgeSessionStarted(int processId)
+    {
+        if (Volatile.Read(ref _disposed) != 0 || processId <= 0) return;
+        _lines.Writer.TryWrite(
+            $"{DateTimeOffset.UtcNow:O} Widget lifetime " +
+            $"bridge-session={_bridgeSessionGeneration} bridge-pid={processId} " +
+            $"event=bridge-session-started{Environment.NewLine}");
+    }
+
+    internal void RecordLifetime(BridgeClientLifetimeDiagnostic diagnostic)
+    {
+        if (Volatile.Read(ref _disposed) != 0 ||
+            !IsSafe(diagnostic.WidgetId, 128) ||
+            diagnostic.RegistryGeneration <= 0)
+            return;
+        var process = diagnostic.Process;
+        var eventCode = process.FailureCode == "registry-retirement"
+            ? "registry-retirement"
+            : process.Kind switch
+        {
+            WidgetProcessLifetimeEventKind.WorkerStarted => "worker-started",
+            WidgetProcessLifetimeEventKind.LifecycleRequested => "lifecycle-requested",
+            WidgetProcessLifetimeEventKind.LifecycleCompleted => "lifecycle-completed",
+            WidgetProcessLifetimeEventKind.LifecycleFailed => "lifecycle-failed",
+            WidgetProcessLifetimeEventKind.CooperativeUnloadRequested =>
+                "cooperative-unload-requested",
+            WidgetProcessLifetimeEventKind.CooperativeUnloadCompleted =>
+                "cooperative-unload-completed",
+            WidgetProcessLifetimeEventKind.ProcessExited => "worker-exited",
+            _ => "unknown",
+        };
+        var residency = diagnostic.ResidencyMode switch
+        {
+            WidgetResidencyMode.KeepAlive => "keep-alive",
+            WidgetResidencyMode.SuspendWhenHidden => "suspend",
+            WidgetResidencyMode.UnloadAfterIdle => "unload-after-idle",
+            _ => "unknown",
+        };
+        var lifecycle = process.LifecycleState?.ToString().ToLowerInvariant() ?? "none";
+        var failure = process.FailureCode is { } code && IsSafe(code, 64)
+            ? code
+            : "none";
+        _lines.Writer.TryWrite(
+            $"{DateTimeOffset.UtcNow:O} Widget lifetime " +
+            $"bridge-session={_bridgeSessionGeneration} widget={diagnostic.WidgetId} " +
+            $"registry-generation={diagnostic.RegistryGeneration} residency={residency} " +
+            $"event={eventCode} start={process.StartOrdinal} " +
+            $"pid={process.ProcessId?.ToString() ?? "none"} lifecycle={lifecycle} " +
+            $"exit={process.ExitCode?.ToString() ?? "none"} failure={failure}" +
+            Environment.NewLine);
     }
 
     internal void Record(string widgetId, BrokerCapabilityDiagnostic diagnostic)

@@ -82,6 +82,7 @@ add_executable(OverlayHost WIN32
     GuideInputCompatibility.cpp
     ControllerNavigation.cpp
     SliderInteraction.cpp
+    WidgetInteractionSession.cpp
     TextEntryActionAdmission.cpp
     TextEntryModal.cpp
     FocusNavigation.cpp
@@ -320,6 +321,16 @@ if(WRAIL_BUILD_TESTS)
     target_compile_features(SliderInteractionTests PRIVATE cxx_std_20)
     target_compile_options(SliderInteractionTests PRIVATE /W4 /permissive- /EHsc)
     add_test(NAME SliderInteractionTests COMMAND SliderInteractionTests)
+
+    add_executable(WidgetInteractionSessionTests
+        WidgetInteractionSessionTests.cpp WidgetInteractionSession.cpp
+        ControllerNavigation.cpp FocusNavigation.cpp SliderInteraction.cpp
+        WidgetSurfaceFocus.cpp)
+    target_compile_features(WidgetInteractionSessionTests PRIVATE cxx_std_20)
+    target_compile_options(WidgetInteractionSessionTests PRIVATE /W4 /permissive- /EHsc)
+    target_compile_definitions(WidgetInteractionSessionTests PRIVATE
+        UNICODE _UNICODE WIN32_LEAN_AND_MEAN NOMINMAX)
+    add_test(NAME WidgetInteractionSessionTests COMMAND WidgetInteractionSessionTests)
 
     add_executable(FocusNavigationTests
         FocusNavigationTests.cpp FocusNavigation.cpp)

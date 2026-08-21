@@ -288,6 +288,7 @@ internal static class WidgetPresentationDiff
         Add(PresentationProperty.ScrollNearStartActionId, before.ScrollNearStartActionId, after.ScrollNearStartActionId);
         Add(PresentationProperty.ScrollNearEndActionId, before.ScrollNearEndActionId, after.ScrollNearEndActionId);
         Add(PresentationProperty.ScrollPaginationThreshold, before.ScrollPaginationThreshold, after.ScrollPaginationThreshold);
+        Add(PresentationProperty.VirtualCollectionWindow, before.VirtualCollectionWindow, after.VirtualCollectionWindow);
         Add(PresentationProperty.CollectionAnchorKey, before.CollectionAnchorKey, after.CollectionAnchorKey);
         Add(PresentationProperty.CollectionItemKey, before.CollectionItemKey, after.CollectionItemKey);
         Add(PresentationProperty.AdvancedPresentationSlot, before.AdvancedPresentationSlot, after.AdvancedPresentationSlot);

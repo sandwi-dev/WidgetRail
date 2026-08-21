@@ -85,12 +85,18 @@ constexpr std::size_t kMaximumIdentifierLength = 128;
 constexpr std::size_t kMaximumLabelLength = 256;
 constexpr std::size_t kMaximumControllerButtonLength = 32;
 constexpr int kMinimumWidgetSnapshotProtocolVersion = 1;
-constexpr int kMaximumWidgetSnapshotProtocolVersion = 18;
+constexpr int kMaximumWidgetSnapshotProtocolVersion = 19;
 constexpr int kAtomicPresentationUpdateVersion = 18;
 constexpr std::size_t kMaximumPresentationUpdateOperations = 256;
 constexpr std::size_t kMaximumPresentationUpdateBytes = 256 * 1024;
 constexpr std::size_t kMaximumWidgetNodes = 2048;
 constexpr std::size_t kMaximumWidgetTreeDepth = 32;
+constexpr std::uint64_t kMaximumVirtualCollectionItems = 1'000'000;
+constexpr std::uint64_t kMaximumVirtualCollectionRequestGeneration =
+    9'007'199'254'740'991;
+constexpr double kMinimumVirtualCollectionItemExtent = 1.0;
+constexpr double kMaximumVirtualCollectionItemExtent = 512.0;
+constexpr double kMaximumVirtualCollectionExtent = 1'000'000.0;
 
 constexpr uint32_t kMaximumShellStyles = 12;
 constexpr uint32_t kMaximumShellProperties = 64;
@@ -1038,6 +1044,67 @@ WidgetNode ParseNode(const JsonObject& source) {
             throw winrt::hresult_invalid_argument();
         node.scrollPaginationThreshold = static_cast<std::size_t>(value);
     }
+    if (source.HasKey(L"virtualCollectionWindow")) {
+        const auto encoded = source.GetNamedObject(L"virtualCollectionWindow");
+        if (!HasNoUnknownProperties(encoded,
+                {L"requestGeneration", L"change", L"firstItemIndex",
+                 L"totalItemCount", L"hasBefore", L"hasAfter",
+                 L"estimatedItemExtent"}))
+            throw winrt::hresult_invalid_argument();
+        const auto exactInteger = [&encoded](
+            const wchar_t* name,
+            const bool optional) -> std::optional<std::uint64_t> {
+            if (!encoded.HasKey(name)) {
+                if (optional) return std::nullopt;
+                throw winrt::hresult_invalid_argument();
+            }
+            const auto value = encoded.GetNamedValue(name);
+            if (value.ValueType() == JsonValueType::Null && optional)
+                return std::nullopt;
+            if (value.ValueType() != JsonValueType::Number)
+                throw winrt::hresult_invalid_argument();
+            const double number = value.GetNumber();
+            if (!std::isfinite(number) || number < 0.0 ||
+                number > static_cast<double>(kMaximumVirtualCollectionRequestGeneration) ||
+                std::floor(number) != number)
+                throw winrt::hresult_invalid_argument();
+            return static_cast<std::uint64_t>(number);
+        };
+        VirtualCollectionWindow window;
+        window.requestGeneration = *exactInteger(L"requestGeneration", false);
+        if (window.requestGeneration == 0 ||
+            window.requestGeneration > kMaximumVirtualCollectionRequestGeneration)
+            throw winrt::hresult_invalid_argument();
+        const auto change = std::wstring(std::wstring_view(
+            encoded.GetNamedString(L"change")));
+        if (change == L"replace")
+            window.change = VirtualCollectionWindowChange::Replace;
+        else if (change == L"append")
+            window.change = VirtualCollectionWindowChange::Append;
+        else if (change == L"prepend")
+            window.change = VirtualCollectionWindowChange::Prepend;
+        else
+            throw winrt::hresult_invalid_argument();
+        window.firstItemIndex = exactInteger(L"firstItemIndex", true);
+        window.totalItemCount = exactInteger(L"totalItemCount", true);
+        window.hasBefore = encoded.GetNamedBoolean(L"hasBefore");
+        window.hasAfter = encoded.GetNamedBoolean(L"hasAfter");
+        window.estimatedItemExtent = encoded.GetNamedNumber(L"estimatedItemExtent");
+        if (!window.firstItemIndex &&
+            window.change != VirtualCollectionWindowChange::Replace)
+            throw winrt::hresult_invalid_argument();
+        if (!std::isfinite(window.estimatedItemExtent) ||
+            window.estimatedItemExtent < kMinimumVirtualCollectionItemExtent ||
+            window.estimatedItemExtent > kMaximumVirtualCollectionItemExtent ||
+            (window.totalItemCount &&
+             *window.totalItemCount > kMaximumVirtualCollectionItems) ||
+            (window.totalItemCount &&
+             static_cast<double>(*window.totalItemCount) *
+                 window.estimatedItemExtent > kMaximumVirtualCollectionExtent) ||
+            (window.totalItemCount && !window.firstItemIndex))
+            throw winrt::hresult_invalid_argument();
+        node.virtualCollectionWindow = window;
+    }
     node.actionSurfaceOrientation = OptionalString(source, L"actionSurfaceOrientation");
     if (source.HasKey(L"gridMinimumColumnWidth")) {
         if (source.GetNamedValue(L"gridMinimumColumnWidth").ValueType() != JsonValueType::Number)
@@ -1102,6 +1169,40 @@ WidgetNode ParseNode(const JsonObject& source) {
         for (uint32_t index = 0; index < children.Size(); ++index) {
             node.children.push_back(ParseNode(children.GetObjectAt(index)));
         }
+    }
+    if (node.virtualCollectionWindow) {
+        if (node.kind != L"scroll" || node.collectionAnchorKey.empty() ||
+            node.virtualCollectionWindow->hasBefore !=
+                !node.scrollNearStartActionId.empty() ||
+            node.virtualCollectionWindow->hasAfter !=
+                !node.scrollNearEndActionId.empty())
+            throw winrt::hresult_invalid_argument();
+        std::size_t itemCount{};
+        const auto countItems = [&](const auto& self,
+                                    const WidgetNode& current,
+                                    const bool root) -> void {
+            if (!root && current.kind == L"scroll") return;
+            if (!current.collectionItemKey.empty()) {
+                ++itemCount;
+                return;
+            }
+            for (const auto& child : current.children)
+                self(self, child, false);
+        };
+        countItems(countItems, node, true);
+        const auto& window = *node.virtualCollectionWindow;
+        if (itemCount == 0 || itemCount > 256 ||
+            (window.firstItemIndex &&
+             (*window.firstItemIndex > kMaximumVirtualCollectionItems ||
+              itemCount > kMaximumVirtualCollectionItems - *window.firstItemIndex)) ||
+            (window.firstItemIndex && window.totalItemCount &&
+             (*window.firstItemIndex > *window.totalItemCount ||
+              itemCount > *window.totalItemCount - *window.firstItemIndex)) ||
+            (window.firstItemIndex == 0 && window.hasBefore) ||
+            (window.firstItemIndex && window.totalItemCount &&
+             *window.firstItemIndex + itemCount == *window.totalItemCount &&
+             window.hasAfter))
+            throw winrt::hresult_invalid_argument();
     }
     return node;
 }
@@ -1199,6 +1300,15 @@ WidgetSnapshot ParseSnapshot(const JsonObject& source) {
         }
     }
     snapshot.root = ParseNode(source.GetNamedObject(L"root"));
+    const auto usesVirtualWindow = [&](const auto& self,
+                                      const WidgetNode& node) -> bool {
+        if (node.virtualCollectionWindow) return true;
+        return std::any_of(node.children.begin(), node.children.end(),
+            [&](const WidgetNode& child) { return self(self, child); });
+    };
+    if (usesVirtualWindow(usesVirtualWindow, snapshot.root) &&
+        snapshot.protocolVersion < 19)
+        throw winrt::hresult_invalid_argument();
     snapshot.documentJson = std::wstring(std::wstring_view(source.Stringify()));
     return snapshot;
 }
@@ -1234,7 +1344,7 @@ bool IsDocumentPresentationProperty(const std::wstring_view property) noexcept {
 }
 
 bool IsNodePresentationProperty(const std::wstring_view property) noexcept {
-    static constexpr std::array<std::wstring_view, 37> properties{
+    static constexpr std::array<std::wstring_view, 38> properties{
         L"visibleWhen", L"text", L"accessibilityLabel", L"accessibilityValue",
         L"actionId", L"textEntryValue", L"textEntryPlaceholder",
         L"textEntryMaximumLength", L"value", L"minimum", L"maximum", L"step",
@@ -1244,7 +1354,8 @@ bool IsNodePresentationProperty(const std::wstring_view property) noexcept {
         L"gridMaximumColumns", L"isDisabled", L"isSelected", L"isBusy",
         L"focusPersistenceId", L"focus", L"inputScopeId", L"scrollAxis",
         L"scrollNearStartActionId", L"scrollNearEndActionId",
-        L"scrollPaginationThreshold", L"collectionAnchorKey",
+        L"scrollPaginationThreshold", L"virtualCollectionWindow",
+        L"collectionAnchorKey",
         L"collectionItemKey", L"advancedPresentationSlot", L"styleClasses",
         L"shortcuts"};
     return std::find(properties.begin(), properties.end(), property) != properties.end();
@@ -1285,6 +1396,7 @@ bool ValidateWidgetDocumentStructure(
                  L"isSelected", L"isBusy", L"focusPersistenceId", L"focus",
                  L"inputScopeId", L"scrollAxis", L"scrollNearStartActionId",
                  L"scrollNearEndActionId", L"scrollPaginationThreshold",
+                 L"virtualCollectionWindow",
                  L"collectionAnchorKey", L"collectionItemKey",
                  L"advancedPresentationSlot", L"styleClasses", L"shortcuts",
                  L"children"})) {
@@ -1803,6 +1915,7 @@ WidgetPresentationEffect ImpactForPresentationProperty(
         property == L"actionSurfaceOrientation" ||
         property == L"scrollAxis" ||
         property == L"scrollPaginationThreshold" ||
+        property == L"virtualCollectionWindow" ||
         property == L"collectionAnchorKey" ||
         property == L"collectionItemKey") {
         return Effect::MeasureLayout | Effect::Paint |
@@ -2252,8 +2365,11 @@ bool WidgetBridgeClient::Launch(
 
     pipeName_ = L"wrail-host-" + std::to_wstring(GetCurrentProcessId()) + L"-" +
                 std::to_wstring(GetTickCount64());
+    const auto bridgeSessionGeneration = ++bridgeSessionGeneration_;
     std::wstring command = Quote(executable) + L" --host-pipe " + pipeName_ +
-                           L" --catalog " + Quote(catalog) + L" --accept-timeout-ms 10000";
+                           L" --catalog " + Quote(catalog) +
+                           L" --accept-timeout-ms 10000 --bridge-session-generation " +
+                           std::to_wstring(bridgeSessionGeneration);
     if (!installedCatalogRoot.empty()) {
         command += L" --installed-catalog-root " + Quote(installedCatalogRoot);
         wchar_t localAppData[MAX_PATH + 1]{};

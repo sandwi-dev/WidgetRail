@@ -1,6 +1,7 @@
 #include "AccessibilityTree.h"
 
 #include <algorithm>
+#include <climits>
 #include <map>
 #include <string_view>
 
@@ -103,11 +104,48 @@ Tree BuildWidgetTree(
         if (!region.nodeId.empty() && region.rect.width > 0.5F && region.rect.height > 0.5F)
             regions.insert_or_assign(region.nodeId, region.rect);
     }
+    struct VirtualSetPosition final {
+        int position{};
+        int size{};
+    };
+    std::map<const WidgetNode*, VirtualSetPosition> virtualPositions;
+    const auto collectVirtualPositions = [&](const auto& self,
+                                             const WidgetNode& node) -> void {
+        if (node.virtualCollectionWindow &&
+            node.virtualCollectionWindow->firstItemIndex) {
+            std::vector<const WidgetNode*> items;
+            const auto collectItems = [&](const auto& collect,
+                                          const WidgetNode& current,
+                                          const bool root) -> void {
+                if (!root && current.kind == L"scroll") return;
+                if (!current.collectionItemKey.empty()) {
+                    items.push_back(&current);
+                    return;
+                }
+                for (const auto& child : current.children)
+                    collect(collect, child, false);
+            };
+            collectItems(collectItems, node, true);
+            const auto first = *node.virtualCollectionWindow->firstItemIndex;
+            const auto total = node.virtualCollectionWindow->totalItemCount.value_or(0);
+            for (std::size_t index = 0; index < items.size(); ++index) {
+                const auto position = first + index + 1U;
+                if (position <= static_cast<std::uint64_t>(INT_MAX) &&
+                    total <= static_cast<std::uint64_t>(INT_MAX)) {
+                    virtualPositions.emplace(items[index], VirtualSetPosition{
+                        static_cast<int>(position), static_cast<int>(total)});
+                }
+            }
+        }
+        for (const auto& child : node.children) self(self, child);
+    };
+    collectVirtualPositions(collectVirtualPositions, snapshot.root);
 
     const auto visit = [&](const auto& self,
                            const WidgetNode& source,
                            const std::wstring_view inheritedScope,
-                           const std::optional<std::size_t> accessibleParent) -> void {
+                           const std::optional<std::size_t> accessibleParent,
+                           const std::optional<VirtualSetPosition> inheritedSet) -> void {
         const std::wstring_view scope = !source.inputScopeId.empty()
             ? std::wstring_view{source.inputScopeId}
             : inheritedScope.empty() ? std::wstring_view{source.id} : inheritedScope;
@@ -118,6 +156,10 @@ Tree BuildWidgetTree(
             !AccessibleName(source).empty();
 
         auto parent = accessibleParent;
+        const auto ownSet = virtualPositions.find(&source);
+        const auto setPosition = ownSet != virtualPositions.end()
+            ? std::optional<VirtualSetPosition>{ownSet->second}
+            : inheritedSet;
         if (exposed) {
             Node node;
             node.id = source.id;
@@ -139,6 +181,10 @@ Tree BuildWidgetTree(
             node.enabled = !source.isDisabled && !source.isBusy;
             node.selected = source.isSelected;
             node.focused = source.id == focusedElementId;
+            if (setPosition) {
+                node.positionInSet = setPosition->position;
+                node.sizeOfSet = setPosition->size;
+            }
             const auto index = tree.nodes.size();
             tree.nodes.push_back(std::move(node));
             if (accessibleParent) tree.nodes[*accessibleParent].children.push_back(index);
@@ -149,9 +195,13 @@ Tree BuildWidgetTree(
         // An action surface is one semantic control. Its validated descendants
         // are visual content and must not be announced a second time.
         if (exposed && source.kind == L"actionSurface") return;
-        for (const auto& child : source.children) self(self, child, scope, parent);
+        const auto childSetPosition = exposed && setPosition
+            ? std::optional<VirtualSetPosition>{}
+            : setPosition;
+        for (const auto& child : source.children)
+            self(self, child, scope, parent, childSetPosition);
     };
-    visit(visit, snapshot.root, std::wstring_view{}, std::nullopt);
+    visit(visit, snapshot.root, std::wstring_view{}, std::nullopt, std::nullopt);
     return tree;
 }
 

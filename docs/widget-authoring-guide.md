@@ -86,7 +86,7 @@ Do not use these version numbers interchangeably.
 | --- | ---: | --- | --- |
 | Manifest schema | `manifestVersion: 1` | `manifest.json` | Shape and validation rules of the package manifest. |
 | Package host API | major `1` | `hostApi.minimum` and `hostApi.maximumMajor` | Compatibility range used when the catalog decides whether this host may load the package. |
-| Declarative snapshot protocol | `1` through `18` | Generated `ViewSnapshot.ProtocolVersion` | Shape of one rendered UI checkpoint and the optional atomic update contract. The SDK selects the highest version required by the complete tree automatically. |
+| Declarative snapshot protocol | `1` through `19` | Generated `ViewSnapshot.ProtocolVersion` | Shape of one rendered UI checkpoint and the optional atomic update contract. The SDK selects the highest version required by the complete tree automatically. |
 
 A plain Stack/Row view is emitted as protocol 1. Scroll/surface hints require
 v2; Slider v3; dashboard gesture authority v4; LoadingIndicator v5; inline PNG
@@ -94,7 +94,8 @@ v6; ActionSurface v7; ResponsiveGrid v8; responsive visibility v9;
 activation-first Slider v10; focus-edge pagination v11; RepeatOne glyph v12;
 explicit focus persistence v13; cursor collections and opaque artwork handles
 v14; host-owned bounded TextEntry v15; and declared advanced-presentation
-semantic slots v16; and independent surface-axis sizing v17.
+semantic slots v16; independent surface-axis sizing v17; atomic presentation
+updates v18; and virtual collection presentation windows v19.
 Combining features selects the highest
 required version. These additive snapshot features do **not** change the
 package host API range, which remains `1.0` through major `1`.
@@ -1400,6 +1401,61 @@ then fails closed; changing direction or refreshing starts a new bounded
 traversal, so an evicted page can be fetched again without weakening loop
 detection.
 
+### Virtual collection presentation windows (protocol v19)
+
+Large logical collections can opt into host-owned virtual extent without
+serializing off-window items. Set `EstimatedItemExtent` on each configured
+`WidgetCursorViewport<TItem>`, then return `FirstItemIndex` and
+`TotalItemCount` on each `WidgetCursorPage<TItem>` when the logical extent is
+known:
+
+```csharp
+Viewports =
+[
+    new WidgetCursorViewport<Item>(
+        "library.list",
+        item => new WidgetCollectionItemKey(item.SavedId),
+        item => $"library.item.{item.StableFocusId}",
+        "library.empty")
+    {
+        EstimatedItemExtent = 56,
+    },
+],
+LoadPage = async (cursor, direction, limit, cancellationToken) =>
+{
+    var page = await LoadPrivatePageAsync(cursor, direction, limit, cancellationToken);
+    return new WidgetCursorPage<Item>(page.Items, page.Before, page.After)
+    {
+        FirstItemIndex = page.FirstItemIndex,
+        TotalItemCount = page.TotalItemCount,
+    };
+},
+```
+
+The widget still owns private item data and materializes only the retained
+cursor pages. The SDK publishes one typed request generation, replace/append/
+prepend disposition, exact before/after availability, and the logical index
+metadata. The host keeps the one existing vertical or horizontal Scroll as the
+sole offset, clipping, focus-follow, controller, pointer, UIA, Taffy, and paint
+authority. It measures admitted rows normally and uses the estimate only for
+the two off-window extents. Off-window items do not become protocol nodes,
+layout nodes, paint work, hit targets, focus targets, or UIA providers.
+
+The estimate is 1–512 DIPs, a known total is 1–1,000,000 items, and the
+estimated logical extent is capped at 1,000,000 DIPs. Known totals require a
+zero-based first index and every retained page must remain contiguous with the
+same total. Unknown positions must publish `replace`; indexed `append` and
+`prepend` must move contiguously in their declared direction, retain compatible
+known-total authority, and preserve identical keys at every overlapping logical
+position. Provider insert/remove/move and other arbitrary window changes use
+`replace`. The request generation is positive, monotonic for the runtime, and
+bounded to JSON's exact integer range. Malformed, stale-generation, failed, or
+cancelled windows retain the last valid checkpoint; they never partially replace
+the visible collection. Exact retained keys preserve focus and anchor position,
+while removal uses the existing deterministic nearest retained fallback.
+Omitting `EstimatedItemExtent` keeps the protocol-v14 eager Scroll behavior
+unchanged.
+
 `WidgetArtworkHandle` is also protocol v14. `UI.Artwork(handle, ...)` and
 `ButtonElement.LeadingArtwork(handle, ...)` publish a bounded opaque identity.
 It is not a URL or path and grants no file, network, decode, or launch
@@ -1694,12 +1750,29 @@ launch grant.
 
 Use `UI.TextEntry(value, placeholder, action, id, maximumLength)` when a
 controller-first surface needs bounded text. Activating it opens the host-owned
-keyboard/modal; widgets never receive raw keys, edit-control handles, or
-intermediate values. A committed value arrives once in
-`WidgetActionEvent.CommittedText`. B cancels and preserves the authored value.
-The maximum is 96 UTF-16 code units, control characters are rejected, and
-`.Disabled()` keeps the control focusable without admitting activation. This is
-protocol v15; widgets that do not author TextEntry retain their earlier protocol.
+themed keyboard/modal and makes the underlying widget/tray inert; widgets never
+receive raw keys, edit-control handles, clipboard contents, or intermediate
+values. The `placeholder` is prompt guidance, not an initial value. The authored
+`value` initializes the separate live edit buffer, which visibly tracks the
+caret and every edit.
+
+D-pad/left stick moves key focus, A inserts the focused character, X
+backspaces, B cancels, right trigger performs Enter, and LB/RB moves the caret.
+Shift and symbol layers provide uppercase and bounded punctuation. The shortcut
+legend is not another focus stop. Physical keyboard, pointer, UI Automation,
+and ordinary non-password Unicode paste use the same host-owned modal; protected
+input blocks clipboard operations.
+
+Only Enter can deliver the final value, once, in
+`WidgetActionEvent.CommittedText`. Cancel or window close preserves the authored
+value and dispatches no action. The maximum is 96 UTF-16 code units, control
+characters are rejected, and `.Disabled()` keeps the control focusable without
+admitting activation. After the modal closes, the host revalidates the exact
+widget, runtime/presentation generation, input scope, node, action, authored
+value/bound, and enabled/busy state. Harmless newer presentation sequences may
+complete when that authority is unchanged; stale or replaced authority fails
+closed. This is protocol v15; widgets that do not author `TextEntry` retain
+their earlier protocol.
 
 This is an intentional pre-release replacement for
 `GetPageAsync(offset, limit)`. There is no compatibility facade: rebuild against

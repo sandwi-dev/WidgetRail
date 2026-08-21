@@ -261,6 +261,8 @@ public static class PresentationUpdateMaterializer
                 PresentationProperty.CollectionItemKey => Read<string?>(change.Value),
                 PresentationProperty.TextEntryMaximumLength or PresentationProperty.GridMaximumColumns or
                 PresentationProperty.ScrollPaginationThreshold => Read<int?>(change.Value),
+                PresentationProperty.VirtualCollectionWindow =>
+                    Read<VirtualCollectionWindow?>(change.Value),
                 PresentationProperty.Value or PresentationProperty.Minimum or PresentationProperty.Maximum or
                 PresentationProperty.Step or PresentationProperty.GridMinimumColumnWidth => Read<double?>(change.Value),
                 PresentationProperty.SliderInteractionMode => Read<SliderInteractionMode?>(change.Value),
@@ -405,6 +407,7 @@ public static class PresentationUpdateMaterializer
                 PresentationProperty.ScrollNearStartActionId => node with { ScrollNearStartActionId = Read<string?>(change.Value) },
                 PresentationProperty.ScrollNearEndActionId => node with { ScrollNearEndActionId = Read<string?>(change.Value) },
                 PresentationProperty.ScrollPaginationThreshold => node with { ScrollPaginationThreshold = Read<int?>(change.Value) },
+                PresentationProperty.VirtualCollectionWindow => node with { VirtualCollectionWindow = Read<VirtualCollectionWindow?>(change.Value) },
                 PresentationProperty.CollectionAnchorKey => node with { CollectionAnchorKey = Read<string?>(change.Value) },
                 PresentationProperty.CollectionItemKey => node with { CollectionItemKey = Read<string?>(change.Value) },
                 PresentationProperty.AdvancedPresentationSlot => node with { AdvancedPresentationSlot = Read<WidgetAdvancedPresentationSlot?>(change.Value) },

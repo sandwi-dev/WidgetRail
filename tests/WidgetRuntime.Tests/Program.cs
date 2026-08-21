@@ -106,6 +106,7 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Widget activation transitions are idempotent and cancel their lifetime", ActivationTransitions),
     ("Worker remains inactive until explicit activity transport", ActivityTransport),
     ("Action admission preserves protocol-v1 empty acknowledgements", LegacyActionAdmissionCompatibility),
+    ("Committed text crosses worker receive and action execution", CommittedTextCrossesWorkerActionQueue),
     ("Actions deliver invalidation notifications", ActionsInvalidate),
     ("Direct and controller actions share one ordered queue", DirectAndControllerActionsShareQueue),
     ("Direct action admission is bounded and lifecycle-owned", DirectActionAdmissionIsBounded),
@@ -1795,6 +1796,25 @@ static Task LegacyActionAdmissionCompatibility()
     return Task.CompletedTask;
 }
 
+static async Task CommittedTextCrossesWorkerActionQueue()
+{
+    await using var client = CreateClient();
+    await client.SetLifecycleStateAsync(WidgetLifecycleState.Interactive);
+    var invalidated = new TaskCompletionSource<long>(
+        TaskCreationOptions.RunContinuationsAsynchronously);
+    client.Invalidated += (_, revision) => invalidated.TrySetResult(revision);
+
+    Assert.Equal(WidgetOperationAdmission.Enqueued,
+        await client.AdmitActionAsync(new WidgetActionEvent(
+            "committed-text", "button")
+        {
+            CommittedText = "Controller Proof",
+        }));
+    _ = await invalidated.Task.WaitAsync(TimeSpan.FromSeconds(2));
+    Assert.Equal("committed:16", Find(
+        (await client.GetSnapshotAsync()).Root, "committed-text-status").Text);
+}
+
 static async Task ActionsInvalidate()
 {
     await using var client = CreateClient();
@@ -2689,6 +2709,7 @@ file sealed class TestWidget : Widget
     private readonly object _historyLock = new();
     private readonly List<long> _controllerHistory = [];
     private string _scopedAction = "none";
+    private string _committedTextStatus = "committed:none";
     private string _activeScope = "root";
     private readonly byte[]? _privateMemory;
 
@@ -2708,6 +2729,7 @@ file sealed class TestWidget : Widget
             .. PrivateMemoryNodes(),
             UI.Text(ControllerHistory(), "controller-history"),
             UI.Text(_scopedAction, "scoped-action"),
+            UI.Text(_committedTextStatus, "committed-text-status"),
             UI.Button("Test", "invalidate", "button")
                 .Shortcut(ControllerButton.RightBumper)
                 .Shortcut(ControllerButton.LeftBumper, actionId: "queued-fail")
@@ -2753,6 +2775,13 @@ file sealed class TestWidget : Widget
         {
             await Task.Delay(TimeSpan.FromMilliseconds(50), cancellationToken);
             throw new InvalidOperationException("intentional queued action failure");
+        }
+        else if (action.ActionId == "committed-text")
+        {
+            _committedTextStatus = action.CommittedText is { } committed
+                ? $"committed:{committed.Length}"
+                : "committed:missing";
+            Invalidate();
         }
         else if (action.ActionId == "queued-block")
         {

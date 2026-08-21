@@ -189,6 +189,7 @@ public sealed record ScrollElement : WidgetElement
     public string? NearEndActionId { get; init; }
     public int? PaginationThreshold { get; init; }
     public string? CollectionAnchorKey { get; init; }
+    internal VirtualCollectionWindow? VirtualCollectionWindow { get; init; }
     public IReadOnlyList<ControllerShortcut> Shortcuts { get; init; } = [];
     public ScrollElement InputScope(string scopeId) => this with { InputScopeId = RequireId(scopeId) };
     public ScrollElement Shortcut(
@@ -231,6 +232,7 @@ public sealed record ScrollElement : WidgetElement
         ScrollNearStartActionId = NearStartActionId,
         ScrollNearEndActionId = NearEndActionId,
         ScrollPaginationThreshold = PaginationThreshold,
+        VirtualCollectionWindow = VirtualCollectionWindow,
         CollectionAnchorKey = CollectionAnchorKey,
         StyleClasses = StyleClasses,
         InputScopeId = InputScopeId,

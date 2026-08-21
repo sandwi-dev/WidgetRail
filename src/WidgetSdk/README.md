@@ -269,6 +269,22 @@ edge, and refresh follows the segment containing the anchor. Page size is
 history is capped at 256. Duplicate keys, cursor loops, stale completions, and
 malformed pages fail without partial publication.
 
+For a large logical collection, opt a cursor viewport into protocol v19 by
+setting `WidgetCursorViewport<TItem>.EstimatedItemExtent` and returning the
+page's zero-based `FirstItemIndex` plus `TotalItemCount`. The SDK continues to
+retain and serialize at most 256 real keyed items; it adds one typed virtual
+window descriptor so the existing vertical or horizontal host Scroll can
+reserve the bounded off-window extent. Admitted rows keep normal measured
+layout, focus, hit testing, paint, and UIA semantics. Off-window private items
+are never serialized or materialized by the host. The estimate is 1–512 DIPs,
+the known total is at most 1,000,000, and their product is capped at 1,000,000
+DIPs. Missing metadata preserves protocol-v14 behavior, while malformed or
+stale windows retain the last valid complete checkpoint. Unknown-position and
+provider-mutation windows publish `replace`. Indexed append/prepend windows are
+admitted only when they move contiguously in the declared direction, keep the
+same known-total authority, and preserve every overlapping logical-position key.
+The monotonic request generation is bounded to JSON's exact integer range.
+
 `WidgetAppLibraryItem` has one authoritative normalized `Presentation` value;
 there are no duplicate scalar title/kind/source/artwork accessors. It contains
 the sanitized display name and closed kind, one opaque source reference, one

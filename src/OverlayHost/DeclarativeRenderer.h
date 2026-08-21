@@ -46,6 +46,13 @@ struct RenderAccessibilityRegion final {
     declarative::Rect rect;
 };
 
+struct RenderScrollViewport final {
+    declarative::ScrollAxis axis{declarative::ScrollAxis::None};
+    declarative::Rect rect;
+    float offset{};
+    float maximumOffset{};
+};
+
 /// Exact shared geometry for a Button's optional leading visual, label, and
 /// trailing semantic state cue. Empty rectangles represent absent content.
 struct ButtonContentPlacement final {
@@ -103,6 +110,7 @@ struct RenderResult final {
     std::set<std::wstring, std::less<>> revealableFocusIds;
     std::map<std::wstring, std::wstring, std::less<>> focusScopes;
     std::map<std::wstring, float, std::less<>> scrollOffsets;
+    std::map<std::wstring, RenderScrollViewport, std::less<>> scrollViewports;
     std::optional<declarative::Rect> currentFocusRect;
     // Deferred outlines normally escape ordinary layout clips. A focused
     // scroll descendant additionally carries the effective scroll viewport so
@@ -121,14 +129,27 @@ struct ImagePlacement final {
     declarative::Rect source;
 };
 
+enum class ImageBitmapResourceDomain {
+    None,
+    RenderTarget,
+    Device,
+};
+
 struct ImageBitmapCacheStats final {
     std::size_t entries{};
     std::size_t bytes{};
     std::uint64_t hits{};
     std::uint64_t creates{};
     std::uint64_t evictions{};
+    std::uint64_t countPressureEvictions{};
+    std::uint64_t bytePressureEvictions{};
+    std::uint64_t supersededArtworkEvictions{};
     std::uint64_t resourceInvalidations{};
     std::uint64_t resourceGeneration{};
+    std::size_t maximumEntries{};
+    std::size_t maximumEntryBytes{};
+    std::size_t maximumBytes{};
+    ImageBitmapResourceDomain resourceDomain{ImageBitmapResourceDomain::None};
 };
 
 enum class IncrementalPresentationWork {
@@ -141,6 +162,52 @@ enum class IncrementalPresentationWork {
 struct IncrementalPresentationPlan final {
     IncrementalPresentationWork work{IncrementalPresentationWork::PaintOnly};
     declarative::Rect damage;
+};
+
+struct FocusedFreeScrollPlan final {
+    IncrementalPresentationPlan render;
+    std::wstring scrollId;
+    declarative::ScrollAxis axis{declarative::ScrollAxis::None};
+    declarative::Rect viewport;
+    float priorOffset{};
+    float offset{};
+    float maximumOffset{};
+};
+
+enum class FocusedFreeScrollPlanDisposition {
+    Planned,
+    MissingCheckpoint,
+    InstanceMismatch,
+    SequenceMismatch,
+    FocusMismatch,
+    InvalidAxis,
+    InvalidDelta,
+    ViewportMismatch,
+    MissingTarget,
+    MissingScrollViewport,
+    MissingScrollBox,
+    AxisMismatch,
+    EmptyScrollViewport,
+    OffsetBoundary,
+    EmptyDamage,
+};
+
+/// Bounded reason data for a rejected free-scroll plan. The host records this
+/// only on an already-coalesced right-stick drop, so renderer safety failures
+/// remain diagnosable without introducing per-frame logging.
+struct FocusedFreeScrollPlanDiagnostic final {
+    FocusedFreeScrollPlanDisposition disposition{
+        FocusedFreeScrollPlanDisposition::MissingCheckpoint};
+    declarative::Rect cachedViewport;
+    declarative::Rect requestedViewport;
+    declarative::Rect scrollViewport;
+    declarative::Rect scrollBox;
+    long long cachedSequence{};
+    long long requestedSequence{};
+    declarative::ScrollAxis requestedAxis{declarative::ScrollAxis::None};
+    declarative::ScrollAxis scrollAxis{declarative::ScrollAxis::None};
+    float priorOffset{};
+    float maximumOffset{};
 };
 
 struct DeclarativeRenderOptions final {
@@ -172,6 +239,9 @@ struct DeclarativeRenderOptions final {
     std::wstring pressedElementId;
     /// Current bridge widget ID used only to bind lazy opaque artwork demand.
     std::wstring artworkWidgetId;
+    /// Right-stick free scroll deliberately retains semantic focus without
+    /// allowing that descendant to pull the viewport back until re-entry.
+    bool suppressFocusedDescendantFollow{};
 };
 
 [[nodiscard]] constexpr bool IsCompactResponsiveSurface(
@@ -243,6 +313,19 @@ public:
         std::wstring_view nextFocusedElementId,
         declarative::Rect viewport,
         const std::vector<std::wstring>& additionalPaintNodeIds);
+
+    /// Applies one bounded right-stick delta through the renderer's sole
+    /// retained scroll-offset authority and prepares the matching local Taffy
+    /// boundary for repaint. A missing result leaves both offset and raster
+    /// state unchanged.
+    [[nodiscard]] std::optional<FocusedFreeScrollPlan> PlanFocusedFreeScroll(
+        const WidgetSnapshot& snapshot,
+        std::wstring_view focusedElementId,
+        declarative::ScrollAxis axis,
+        float deltaDip,
+        declarative::Rect viewport,
+        std::wstring_view exactScrollId = {},
+        FocusedFreeScrollPlanDiagnostic* diagnostic = nullptr);
 
     void CancelPresentationUpdatePlan() noexcept;
 
@@ -356,6 +439,7 @@ private:
         std::map<std::wstring, TextMeasurementProof, std::less<>> textMeasurements;
         std::map<std::wstring, CollectionDiagnosticObservation, std::less<>>
             collections;
+        std::map<std::wstring, RenderScrollViewport, std::less<>> scrollViewports;
     };
     struct PendingIncrementalPlan final {
         std::wstring instanceId;
@@ -409,6 +493,9 @@ private:
     std::uint64_t bitmapHits_{};
     std::uint64_t bitmapCreates_{};
     std::uint64_t bitmapEvictions_{};
+    std::uint64_t bitmapCountPressureEvictions_{};
+    std::uint64_t bitmapBytePressureEvictions_{};
+    std::uint64_t bitmapSupersededArtworkEvictions_{};
     std::uint64_t bitmapResourceInvalidations_{};
     std::uint64_t bitmapResourceGeneration_{};
     std::unordered_map<std::wstring, ScrollStateEntry> scrollOffsets_;

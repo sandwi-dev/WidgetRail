@@ -4,7 +4,7 @@ public static class ProtocolConstants
 {
     public const int MinimumSupportedVersion = 1;
     public const int BaselineVersion = 1;
-    public const int CurrentVersion = 18;
+    public const int CurrentVersion = 19;
     public const int ScrollContainerVersion = 2;
     public const int SurfaceHintsVersion = 2;
     public const int SliderVersion = 3;
@@ -23,12 +23,18 @@ public static class ProtocolConstants
     public const int AdvancedPresentationVersion = 16;
     public const int SurfaceAxisSizingVersion = 17;
     public const int AtomicPresentationUpdateVersion = 18;
+    public const int VirtualCollectionWindowVersion = 19;
     public const int MaximumPresentationUpdateOperations = 256;
     public const int MaximumPresentationUpdateBytes = 256 * 1024;
     public const int MaximumPendingPresentationUpdates = 4;
     public const int MaximumPendingPresentationUpdateBytes = 512 * 1024;
     public const int MaximumTextEntryLength = 96;
     public const int MaximumCursorCollectionItems = 256;
+    public const int MaximumVirtualCollectionItems = 1_000_000;
+    public const long MaximumVirtualCollectionRequestGeneration = 9_007_199_254_740_991;
+    public const double MinimumVirtualCollectionItemExtent = 1;
+    public const double MaximumVirtualCollectionItemExtent = 512;
+    public const double MaximumVirtualCollectionExtent = 1_000_000;
     public const int MaximumScrollPaginationThreshold = 8;
     public const double MinimumSurfaceWidth = 240;
     public const double MaximumSurfaceWidth = 1_600;

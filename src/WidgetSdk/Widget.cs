@@ -69,6 +69,8 @@ public sealed record WidgetView(
                 required = Math.Max(required, ProtocolConstants.FocusPersistenceVersion);
             if (ContainsCursorCollectionFeature(Root))
                 required = Math.Max(required, ProtocolConstants.CursorCollectionVersion);
+            if (ContainsVirtualCollectionWindow(Root))
+                required = Math.Max(required, ProtocolConstants.VirtualCollectionWindowVersion);
             if (ContainsTextEntry(Root))
                 required = Math.Max(required, ProtocolConstants.TextEntryVersion);
             if (AdvancedPresentation is not null ||
@@ -78,6 +80,19 @@ public sealed record WidgetView(
             return required;
         }
     }
+
+    private static bool ContainsVirtualCollectionWindow(WidgetElement element) => element switch
+    {
+        ResponsiveBranchElement branch => ContainsVirtualCollectionWindow(branch.Child),
+        StackElement stack => stack.Children.Any(ContainsVirtualCollectionWindow),
+        RowElement row => row.Children.Any(ContainsVirtualCollectionWindow),
+        ScrollElement scroll => scroll.VirtualCollectionWindow is not null ||
+            scroll.Children.Any(ContainsVirtualCollectionWindow),
+        ActionSurfaceElement surface => surface.Children.Any(ContainsVirtualCollectionWindow),
+        GridElement grid => grid.Children.Any(ContainsVirtualCollectionWindow),
+        CollectionItemElement item => ContainsVirtualCollectionWindow(item.Child),
+        _ => false,
+    };
 
     private static bool ContainsAdvancedPresentationSlot(WidgetElement element) =>
         element switch
@@ -604,7 +619,23 @@ public abstract partial class Widget
             if (!wasVisible && isVisible)
                 await OnActivatedAsync(ActiveCancellationToken).ConfigureAwait(false);
             else if (wasVisible && !isVisible)
-                await OnDeactivatedAsync(transitionToken).ConfigureAwait(false);
+            {
+                try
+                {
+                    await OnDeactivatedAsync(transitionToken).ConfigureAwait(false);
+                }
+                catch (OperationCanceledException exception) when (
+                    endedActiveLifetime is not null &&
+                    endedActiveLifetime.IsCancellationRequested &&
+                    !transitionToken.IsCancellationRequested &&
+                    exception.CancellationToken == endedActiveLifetime.Token)
+                {
+                    // The host deliberately ended this exact active lifetime before
+                    // invoking the deactivation hook. Awaiting work owned by that
+                    // lifetime may therefore complete as cancelled. That is normal
+                    // lifecycle completion, not cancellation of the host transition.
+                }
+            }
         }
         finally
         {

@@ -9,6 +9,7 @@ param(
     [switch]$SemanticChurnTestsOnly,
     [switch]$DeclarativeLayoutTestsOnly,
     [switch]$DeclarativeRendererTestsOnly,
+    [switch]$AccessibilityTreeTestsOnly,
     [switch]$PinnedSurfaceTestsOnly,
     [switch]$PinnedPlacementTestsOnly,
     [switch]$ProcessOwnerTestsOnly,
@@ -17,6 +18,7 @@ param(
     [switch]$WidgetSwitchGeometryOnly,
     [switch]$TrustedArtworkTestsOnly,
     [switch]$WidgetSessionTestsOnly,
+    [switch]$WidgetInteractionTestsOnly,
     [switch]$WidgetBridgeCatalogTestsOnly,
     [switch]$LocalPackageImportTestsOnly,
     [switch]$WidgetSurfaceTestsOnly,
@@ -148,6 +150,7 @@ $inputOwnershipTestObjectDirectory = Join-Path $outputDirectory 'obj\input-owner
 $navigationTestObjectDirectory = Join-Path $outputDirectory 'obj\navigation-tests'
 $pressedTestObjectDirectory = Join-Path $outputDirectory 'obj\pressed-tests'
 $sliderTestObjectDirectory = Join-Path $outputDirectory 'obj\slider-tests'
+$widgetInteractionTestObjectDirectory = Join-Path $outputDirectory 'obj\widget-interaction-tests'
 $focusTestObjectDirectory = Join-Path $outputDirectory 'obj\focus-tests'
 $surfaceFocusTestObjectDirectory = Join-Path $outputDirectory 'obj\surface-focus-tests'
 $lifecycleTestObjectDirectory = Join-Path $outputDirectory 'obj\lifecycle-tests'
@@ -185,7 +188,7 @@ $advancedPresentationCommunityFixtureOutput = Join-Path $outputDirectory 'obj\ad
 $trayRefreshHostTestObjectDirectory = Join-Path $outputDirectory 'obj\tray-refresh-host-tests'
 $trayRefreshCommunityFixtureOutput = Join-Path $outputDirectory 'obj\tray-refresh-community-fixture'
 $launcherExperienceBridgeFixtureOutput = Join-Path $outputDirectory 'obj\launcher-experience-bridge-fixture'
-New-Item -ItemType Directory -Force -Path $hostObjectDirectory, $platformObjectDirectory, $platformTestObjectDirectory, $testObjectDirectory, $imageTestObjectDirectory, $layoutTestObjectDirectory, $iconTestObjectDirectory, $styleTestObjectDirectory, $textLayoutTestObjectDirectory, $motionTestObjectDirectory, $placementTestObjectDirectory, $targetingTestObjectDirectory, $transitionTestObjectDirectory, $chromeTestObjectDirectory, $guideTestObjectDirectory, $inputOwnershipTestObjectDirectory, $navigationTestObjectDirectory, $pressedTestObjectDirectory, $sliderTestObjectDirectory, $focusTestObjectDirectory, $surfaceFocusTestObjectDirectory, $lifecycleTestObjectDirectory, $actionFeedbackTestObjectDirectory, $accessibilityTreeTestObjectDirectory, $accessibilityProjectionTestObjectDirectory, $accessibilityProviderTestObjectDirectory, $realHostAccessibilityTestObjectDirectory, $actionFailureHostTestObjectDirectory, $actionFailureFixtureOutput, $widgetSwitchHostTestObjectDirectory, $coldDashboardHostTestObjectDirectory, $widgetSwitchFixtureOutput, $audioMixerScrollHostTestObjectDirectory, $audioMixerScrollFixtureOutput, $scrollEvidenceProbeTestObjectDirectory, $trayLayoutTestObjectDirectory, $hostAccessibilityTestObjectDirectory, $accessibilityEventsTestObjectDirectory, $bridgeCatalogTestObjectDirectory, $localPackageImportTestObjectDirectory, $textEntryModalTestObjectDirectory, $rendererTestObjectDirectory, $semanticChurnTestObjectDirectory, $pinnedSurfaceTestObjectDirectory, $pinnedPlacementTestObjectDirectory, $widgetSurfaceTestObjectDirectory, $widgetSessionTestObjectDirectory, $processOwnerTestObjectDirectory, $componentGeometryTestObjectDirectory, $launcherExperienceTestObjectDirectory, $launcherExperienceHostTestObjectDirectory, $advancedPresentationHostTestObjectDirectory, $advancedPresentationCommunityFixtureOutput, $trayRefreshHostTestObjectDirectory, $trayRefreshCommunityFixtureOutput, $launcherExperienceBridgeFixtureOutput | Out-Null
+New-Item -ItemType Directory -Force -Path $hostObjectDirectory, $platformObjectDirectory, $platformTestObjectDirectory, $testObjectDirectory, $imageTestObjectDirectory, $layoutTestObjectDirectory, $iconTestObjectDirectory, $styleTestObjectDirectory, $textLayoutTestObjectDirectory, $motionTestObjectDirectory, $placementTestObjectDirectory, $targetingTestObjectDirectory, $transitionTestObjectDirectory, $chromeTestObjectDirectory, $guideTestObjectDirectory, $inputOwnershipTestObjectDirectory, $navigationTestObjectDirectory, $pressedTestObjectDirectory, $sliderTestObjectDirectory, $widgetInteractionTestObjectDirectory, $focusTestObjectDirectory, $surfaceFocusTestObjectDirectory, $lifecycleTestObjectDirectory, $actionFeedbackTestObjectDirectory, $accessibilityTreeTestObjectDirectory, $accessibilityProjectionTestObjectDirectory, $accessibilityProviderTestObjectDirectory, $realHostAccessibilityTestObjectDirectory, $actionFailureHostTestObjectDirectory, $actionFailureFixtureOutput, $widgetSwitchHostTestObjectDirectory, $coldDashboardHostTestObjectDirectory, $widgetSwitchFixtureOutput, $audioMixerScrollHostTestObjectDirectory, $audioMixerScrollFixtureOutput, $scrollEvidenceProbeTestObjectDirectory, $trayLayoutTestObjectDirectory, $hostAccessibilityTestObjectDirectory, $accessibilityEventsTestObjectDirectory, $bridgeCatalogTestObjectDirectory, $localPackageImportTestObjectDirectory, $textEntryModalTestObjectDirectory, $rendererTestObjectDirectory, $semanticChurnTestObjectDirectory, $pinnedSurfaceTestObjectDirectory, $pinnedPlacementTestObjectDirectory, $widgetSurfaceTestObjectDirectory, $widgetSessionTestObjectDirectory, $processOwnerTestObjectDirectory, $componentGeometryTestObjectDirectory, $launcherExperienceTestObjectDirectory, $launcherExperienceHostTestObjectDirectory, $advancedPresentationHostTestObjectDirectory, $advancedPresentationCommunityFixtureOutput, $trayRefreshHostTestObjectDirectory, $trayRefreshCommunityFixtureOutput, $launcherExperienceBridgeFixtureOutput | Out-Null
 Copy-Item -LiteralPath (Join-Path $projectDirectory '..\..\THIRD_PARTY_NOTICES.md') `
     -Destination (Join-Path $outputDirectory 'THIRD_PARTY_NOTICES.md') -Force
 
@@ -517,6 +520,58 @@ function Invoke-TextEntryModalTests {
     if ($LASTEXITCODE -ne 0) {
         throw "TextEntryModalTests failed with exit code $LASTEXITCODE."
     }
+}
+
+function Invoke-WidgetInteractionTests {
+    Invoke-OverlayPlatformParityTest `
+        -Name 'WidgetInteractionSessionTests' `
+        -ObjectDirectory $widgetInteractionTestObjectDirectory `
+        -Sources @(
+            (Join-Path $projectDirectory 'WidgetInteractionSessionTests.cpp'),
+            (Join-Path $projectDirectory 'WidgetInteractionSession.cpp'),
+            (Join-Path $projectDirectory 'ControllerNavigation.cpp'),
+            (Join-Path $projectDirectory 'FocusNavigation.cpp'),
+            (Join-Path $projectDirectory 'SliderInteraction.cpp'),
+            (Join-Path $projectDirectory 'WidgetSurfaceFocus.cpp'))
+    Invoke-OverlayPlatformParityTest `
+        -Name 'ControllerNavigationTests' `
+        -ObjectDirectory $navigationTestObjectDirectory `
+        -Sources @(
+            (Join-Path $projectDirectory 'ControllerNavigationTests.cpp'),
+            (Join-Path $projectDirectory 'ControllerNavigation.cpp'),
+            (Join-Path $platformDirectory 'OverlayPlatformPolicy.cpp'))
+    Invoke-OverlayPlatformParityTest `
+        -Name 'FocusNavigationTests' `
+        -ObjectDirectory $focusTestObjectDirectory `
+        -Sources @(
+            (Join-Path $projectDirectory 'FocusNavigationTests.cpp'),
+            (Join-Path $projectDirectory 'FocusNavigation.cpp'))
+    Invoke-OverlayPlatformParityTest `
+        -Name 'WidgetSurfaceFocusTests' `
+        -ObjectDirectory $surfaceFocusTestObjectDirectory `
+        -Sources @(
+            (Join-Path $projectDirectory 'WidgetSurfaceFocusTests.cpp'),
+            (Join-Path $projectDirectory 'WidgetSurfaceFocus.cpp'))
+    Invoke-OverlayPlatformParityTest `
+        -Name 'SliderInteractionTests' `
+        -ObjectDirectory $sliderTestObjectDirectory `
+        -Sources @(
+            (Join-Path $projectDirectory 'SliderInteractionTests.cpp'),
+            (Join-Path $projectDirectory 'SliderInteraction.cpp'))
+    Invoke-OverlayPlatformParityTest `
+        -Name 'PressedInteractionTests' `
+        -ObjectDirectory $pressedTestObjectDirectory `
+        -Sources @((Join-Path $projectDirectory 'PressedInteractionTests.cpp'))
+    Invoke-TextEntryModalTests
+    Invoke-OverlayPlatformParityTest `
+        -Name 'AccessibilityProviderTests' `
+        -ObjectDirectory $accessibilityProviderTestObjectDirectory `
+        -Sources @(
+            (Join-Path $projectDirectory 'AccessibilityProviderTests.cpp'),
+            (Join-Path $projectDirectory 'AccessibilityProvider.cpp'),
+            (Join-Path $projectDirectory 'AccessibilityEvents.cpp'),
+            (Join-Path $projectDirectory 'AccessibilityTree.cpp')) `
+        -Libraries @('user32.lib', 'ole32.lib', 'oleaut32.lib', 'uiautomationcore.lib')
 }
 
 function Invoke-AccessibilityTreeTests {
@@ -1149,6 +1204,22 @@ if ($DeclarativeRendererTestsOnly) {
     return
 }
 
+if ($AccessibilityTreeTestsOnly) {
+    if ($SkipTests) {
+        throw 'AccessibilityTreeTestsOnly cannot be combined with SkipTests.'
+    }
+    Invoke-AccessibilityTreeTests
+    return
+}
+
+if ($WidgetInteractionTestsOnly) {
+    if ($SkipTests) {
+        throw 'WidgetInteractionTestsOnly cannot be combined with SkipTests.'
+    }
+    Invoke-WidgetInteractionTests
+    return
+}
+
 if ($PinnedSurfaceTestsOnly) {
     if ($SkipTests) {
         throw 'PinnedSurfaceTestsOnly cannot be combined with SkipTests.'
@@ -1409,6 +1480,7 @@ function Invoke-LauncherExperienceHostTests {
 }
 
 function Invoke-AdvancedPresentationHostTests {
+    param([switch]$TextEntryOnly)
     & dotnet publish `
         (Join-Path $projectDirectory '..\..\tests\AdvancedPresentationCommunityFixture\AdvancedPresentationCommunityFixture.csproj') `
         --configuration $Configuration --no-self-contained --nologo `
@@ -1420,15 +1492,6 @@ function Invoke-AdvancedPresentationHostTests {
     if (-not (Test-Path -LiteralPath $fixture)) {
         throw 'AdvancedPresentationCommunityFixture publish omitted its executable.'
     }
-    $wrailOutput = Join-Path $advancedPresentationCommunityFixtureOutput 'wrail'
-    & dotnet publish `
-        (Join-Path $projectDirectory '..\..\tools\WrailCli\WrailCli.csproj') `
-        --configuration $Configuration --no-self-contained --nologo `
-        --output $wrailOutput
-    if ($LASTEXITCODE -ne 0) {
-        throw "wrail publish for the DLV-212 export failed with exit code $LASTEXITCODE."
-    }
-    $wrail = Join-Path $wrailOutput 'wrail.exe'
     & dotnet publish `
         (Join-Path $projectDirectory '..\..\tests\LauncherExperienceBridgeFixture\LauncherExperienceBridgeFixture.csproj') `
         --configuration $Configuration --no-self-contained --nologo `
@@ -1437,9 +1500,8 @@ function Invoke-AdvancedPresentationHostTests {
         throw "LauncherExperienceBridgeFixture publish failed with exit code $LASTEXITCODE."
     }
     $fixtureBridge = Join-Path $launcherExperienceBridgeFixtureOutput 'LauncherExperienceBridgeFixture.exe'
-    if (-not (Test-Path -LiteralPath $wrail) -or
-        -not (Test-Path -LiteralPath $fixtureBridge)) {
-        throw 'The exported-candidate host fixture omitted wrail or its seeded bridge.'
+    if (-not (Test-Path -LiteralPath $fixtureBridge)) {
+        throw 'The exported-candidate host fixture omitted its seeded bridge.'
     }
     $arguments = $common + @(
         (Join-Path $projectDirectory 'AdvancedPresentationHostTests.cpp'),
@@ -1456,24 +1518,25 @@ function Invoke-AdvancedPresentationHostTests {
     }
     $temporaryRoot = [System.IO.Path]::GetFullPath([System.IO.Path]::GetTempPath())
     $runRoot = Join-Path $temporaryRoot ("wrail-dlv213-export-" + [Guid]::NewGuid().ToString('N'))
-    $candidateSource = Join-Path $runRoot 'GameLauncherCommunity'
-    $candidatePackage = Join-Path $runRoot 'widgetrail.community.reference.game-launcher-0.1.0.wrwidget'
+    $candidatePackage = Join-Path $runRoot 'widgetrail.community.reference.game-launcher-0.2.0.wrwidget'
     New-Item -ItemType Directory -Path $runRoot | Out-Null
     try {
-        & (Join-Path $projectDirectory '..\FirstPartyWidgets\GameLauncherWidget\Export-CommunityReference.ps1') `
-            -Wrail $wrail -Output $candidateSource
-        if ($LASTEXITCODE -ne 0) {
-            throw "Game Launcher Community export failed with exit code $LASTEXITCODE."
-        }
-        & $wrail pack $candidateSource --configuration $Configuration --output $candidatePackage
+        & (Join-Path $projectDirectory '..\FirstPartyWidgets\GameLauncherWidget\Build-CommunityPackage.ps1') `
+            -Configuration $Configuration -OutputDirectory $runRoot
         if ($LASTEXITCODE -ne 0 -or -not (Test-Path -LiteralPath $candidatePackage)) {
-            throw "Game Launcher Community pack failed with exit code $LASTEXITCODE."
+            throw "Game Launcher Community package build failed with exit code $LASTEXITCODE."
+        }
+        $hostTestArguments = @(
+            '--installation', $outputDirectory,
+            '--community-fixture', $fixture,
+            '--candidate-package', $candidatePackage,
+            '--fixture-bridge', $fixtureBridge
+        )
+        if ($TextEntryOnly) {
+            $hostTestArguments += '--text-entry-only'
         }
         & (Join-Path $outputDirectory 'AdvancedPresentationHostTests.exe') `
-            --installation $outputDirectory `
-            --community-fixture $fixture `
-            --candidate-package $candidatePackage `
-            --fixture-bridge $fixtureBridge
+            $hostTestArguments
         if ($LASTEXITCODE -ne 0) {
             throw "AdvancedPresentationHostTests failed with exit code $LASTEXITCODE."
         }
@@ -1565,6 +1628,7 @@ $hostArguments = $common + @(
     (Join-Path $projectDirectory 'LauncherExperienceHostProof.cpp'),
     (Join-Path $projectDirectory 'ControllerNavigation.cpp'),
     (Join-Path $projectDirectory 'SliderInteraction.cpp'),
+    (Join-Path $projectDirectory 'WidgetInteractionSession.cpp'),
     (Join-Path $projectDirectory 'TextEntryActionAdmission.cpp'),
     (Join-Path $projectDirectory 'TextEntryModal.cpp'),
     (Join-Path $projectDirectory 'FocusNavigation.cpp'),
@@ -1820,7 +1884,7 @@ if ($TextEntryHostTestsOnly) {
     }
     Invoke-TextEntryModalTests
     Invoke-AccessibilityTreeTests
-    Invoke-LauncherExperienceHostTests -TextEntryOnly
+    Invoke-AdvancedPresentationHostTests -TextEntryOnly
     return
 }
 

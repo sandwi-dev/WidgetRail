@@ -307,6 +307,10 @@ public static class ViewSnapshotValidator
                         Add($"{path}.scrollPaginationThreshold", "invalid_scroll_pagination_threshold",
                             $"Scroll pagination threshold must be between 1 and {ProtocolConstants.MaximumScrollPaginationThreshold}.");
                 }
+                var itemKeys = new HashSet<string>(StringComparer.Ordinal);
+                var itemCount = 0;
+                if (node.CollectionAnchorKey is not null || node.VirtualCollectionWindow is not null)
+                    CollectCollectionItems(node, path);
                 if (node.CollectionAnchorKey is not null)
                 {
                     if (snapshot.ProtocolVersion < ProtocolConstants.CursorCollectionVersion)
@@ -314,38 +318,95 @@ public static class ViewSnapshotValidator
                             $"Cursor collections require protocol version {ProtocolConstants.CursorCollectionVersion} or later.");
                     CheckIdentifier(node.CollectionAnchorKey,
                         $"{path}.collectionAnchorKey", "collection anchor key");
-                    var itemKeys = new HashSet<string>(StringComparer.Ordinal);
-                    var itemCount = 0;
-                    CollectCollectionItems(node, path);
                     if (itemCount > ProtocolConstants.MaximumCursorCollectionItems)
                         Add(path, "too_many_collection_items",
                             $"A cursor collection may serialize at most {ProtocolConstants.MaximumCursorCollectionItems} retained items.");
                     if (!itemKeys.Contains(node.CollectionAnchorKey))
                         Add($"{path}.collectionAnchorKey", "missing_collection_anchor",
                             "The collection anchor must name one retained item key.");
-
-                    void CollectCollectionItems(ViewNode current, string currentPath)
-                    {
-                        if (!ReferenceEquals(current, node) && current.Kind is ViewNodeKind.Scroll)
-                            return;
-                        if (current.CollectionItemKey is { } key)
-                        {
-                            itemCount++;
-                            if (!itemKeys.Add(key))
-                                Add($"{currentPath}.collectionItemKey", "duplicate_collection_item_key",
-                                    $"The collection item key '{key}' is repeated.");
-                            return;
-                        }
-                        var currentChildren = current.Children ?? [];
-                        for (var childIndex = 0; childIndex < currentChildren.Count; childIndex++)
-                            CollectCollectionItems(currentChildren[childIndex],
-                                $"{currentPath}.children[{childIndex}]");
-                    }
                 }
                 else if (ContainsCollectionItem(node, isRoot: true))
                 {
                     Add($"{path}.collectionAnchorKey", "collection_anchor_required",
                         "A non-empty keyed cursor collection requires one retained anchor.");
+                }
+
+                if (node.VirtualCollectionWindow is { } window)
+                {
+                    if (snapshot.ProtocolVersion < ProtocolConstants.VirtualCollectionWindowVersion)
+                        Add($"{path}.virtualCollectionWindow", "feature_requires_version",
+                            $"Virtual collection windows require protocol version {ProtocolConstants.VirtualCollectionWindowVersion} or later.");
+                    if (node.CollectionAnchorKey is null || itemCount == 0)
+                        Add($"{path}.virtualCollectionWindow", "virtual_collection_items_required",
+                            "A virtual collection window requires a non-empty keyed cursor collection.");
+                    if (window.RequestGeneration is < 1 or
+                        > ProtocolConstants.MaximumVirtualCollectionRequestGeneration)
+                        Add($"{path}.virtualCollectionWindow.requestGeneration", "invalid_virtual_collection_generation",
+                            $"Virtual collection request generation must be between 1 and {ProtocolConstants.MaximumVirtualCollectionRequestGeneration}.");
+                    if (!Enum.IsDefined(window.Change))
+                        Add($"{path}.virtualCollectionWindow.change", "invalid_virtual_collection_change",
+                            "Virtual collection window change is not supported.");
+                    if (window.FirstItemIndex is null &&
+                        window.Change is not VirtualCollectionWindowChange.Replace)
+                        Add($"{path}.virtualCollectionWindow.change", "virtual_collection_direction_requires_position",
+                            "A virtual collection window without a logical position must use replace.");
+                    if (!double.IsFinite(window.EstimatedItemExtent) ||
+                        window.EstimatedItemExtent < ProtocolConstants.MinimumVirtualCollectionItemExtent ||
+                        window.EstimatedItemExtent > ProtocolConstants.MaximumVirtualCollectionItemExtent)
+                        Add($"{path}.virtualCollectionWindow.estimatedItemExtent", "invalid_virtual_collection_item_extent",
+                            $"Estimated item extent must be finite and between {ProtocolConstants.MinimumVirtualCollectionItemExtent} and {ProtocolConstants.MaximumVirtualCollectionItemExtent} DIPs.");
+                    if (window.FirstItemIndex is { } first &&
+                        (first < 0 || first > ProtocolConstants.MaximumVirtualCollectionItems ||
+                         itemCount > ProtocolConstants.MaximumVirtualCollectionItems - first))
+                        Add($"{path}.virtualCollectionWindow.firstItemIndex", "invalid_virtual_collection_first_index",
+                            $"Virtual collection first item index and admitted window must remain within {ProtocolConstants.MaximumVirtualCollectionItems} logical items.");
+                    if (window.TotalItemCount is { } total)
+                    {
+                        if (total is < 1 or > ProtocolConstants.MaximumVirtualCollectionItems)
+                            Add($"{path}.virtualCollectionWindow.totalItemCount", "invalid_virtual_collection_total",
+                                $"Virtual collection total must be between 1 and {ProtocolConstants.MaximumVirtualCollectionItems}.");
+                        if (window.FirstItemIndex is not { } knownFirstIndex)
+                            Add($"{path}.virtualCollectionWindow.firstItemIndex", "virtual_collection_first_index_required",
+                                "A known virtual collection total requires the first admitted item index.");
+                        else if (knownFirstIndex > total || itemCount > total - knownFirstIndex)
+                            Add($"{path}.virtualCollectionWindow", "virtual_collection_window_out_of_range",
+                                "The admitted virtual collection window exceeds its logical total.");
+                        if (double.IsFinite(window.EstimatedItemExtent) &&
+                            total * window.EstimatedItemExtent > ProtocolConstants.MaximumVirtualCollectionExtent)
+                            Add($"{path}.virtualCollectionWindow", "virtual_collection_extent_too_large",
+                                $"Estimated virtual collection extent may not exceed {ProtocolConstants.MaximumVirtualCollectionExtent} DIPs.");
+                    }
+                    if (window.FirstItemIndex == 0 && window.HasBefore)
+                        Add($"{path}.virtualCollectionWindow.hasBefore", "inconsistent_virtual_collection_boundary",
+                            "The first logical item cannot report preceding content.");
+                    if (window.TotalItemCount is { } knownTotal &&
+                        window.FirstItemIndex is { } knownFirst &&
+                        knownFirst <= knownTotal && itemCount == knownTotal - knownFirst &&
+                        window.HasAfter)
+                        Add($"{path}.virtualCollectionWindow.hasAfter", "inconsistent_virtual_collection_boundary",
+                            "The final logical item cannot report following content.");
+                    if (window.HasBefore != (node.ScrollNearStartActionId is not null) ||
+                        window.HasAfter != (node.ScrollNearEndActionId is not null))
+                        Add($"{path}.virtualCollectionWindow", "virtual_collection_action_mismatch",
+                            "Virtual collection availability must match its admitted boundary actions.");
+                }
+
+                void CollectCollectionItems(ViewNode current, string currentPath)
+                {
+                    if (!ReferenceEquals(current, node) && current.Kind is ViewNodeKind.Scroll)
+                        return;
+                    if (current.CollectionItemKey is { } key)
+                    {
+                        itemCount++;
+                        if (!itemKeys.Add(key))
+                            Add($"{currentPath}.collectionItemKey", "duplicate_collection_item_key",
+                                $"The collection item key '{key}' is repeated.");
+                        return;
+                    }
+                    var currentChildren = current.Children ?? [];
+                    for (var childIndex = 0; childIndex < currentChildren.Count; childIndex++)
+                        CollectCollectionItems(currentChildren[childIndex],
+                            $"{currentPath}.children[{childIndex}]");
                 }
 
                 static bool ContainsCollectionItem(ViewNode current, bool isRoot)
@@ -359,6 +420,7 @@ public static class ViewSnapshotValidator
             else if (node.ScrollAxis is not null || node.ScrollNearStartActionId is not null ||
                      node.ScrollNearEndActionId is not null ||
                      node.ScrollPaginationThreshold is not null ||
+                     node.VirtualCollectionWindow is not null ||
                      node.CollectionAnchorKey is not null)
             {
                 Add(path, "scroll_property_not_allowed",

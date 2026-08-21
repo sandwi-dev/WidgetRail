@@ -6,6 +6,7 @@ internal static class WidgetCursorResourceTests
     public static async Task Run()
     {
         await TraversesTenThousandItemsWithinBound();
+        await ProjectsVersionedTenThousandItemVirtualWindow();
         await HandlesEmptySparseFinalAndLastGoodError();
         await PreservesAnchorAcrossAppendPrependAndRefresh();
         await DirectionChangeAllowsEvictedRefetch();
@@ -163,6 +164,235 @@ internal static class WidgetCursorResourceTests
         True(widget.Resource.RetainedCursorCount <= WidgetCursorResource<Item>.MaximumCursorHistory,
             "Cursor history exceeded its explicit bound.");
         await StopAsync(widget);
+    }
+
+    private static async Task ProjectsVersionedTenThousandItemVirtualWindow()
+    {
+        const int total = 10_000;
+        const int pageSize = 32;
+        var fail = false;
+        var mutation = 0;
+        var widget = await StartAsync(new()
+        {
+            PageSize = pageSize,
+            MaximumRetainedItems = 96,
+            PaginationThreshold = 2,
+            Viewports = [Viewport() with { EstimatedItemExtent = 56 }],
+            MapError = _ => WidgetResourceError.InvalidPage,
+            LoadPage = (cursor, direction, limit, _) =>
+            {
+                if (fail)
+                    return ValueTask.FromException<WidgetCursorPage<Item>>(
+                        new InvalidOperationException("controlled virtual page failure"));
+                var start = cursor is null ? 0 : int.Parse(cursor.Value.Value.AsSpan(1));
+                var page = VirtualPage(start, limit, total);
+                if (direction is null)
+                {
+                    page = mutation switch
+                    {
+                        1 => page with
+                        {
+                            Items = [new("item.inserted"), .. page.Items.Take(limit - 1)],
+                            TotalItemCount = total + 1,
+                        },
+                        2 => page with
+                        {
+                            Items = [.. page.Items.Skip(1), new("item.replacement")],
+                            TotalItemCount = total - 1,
+                        },
+                        3 => page with
+                        {
+                            Items = [page.Items[1], page.Items[0], .. page.Items.Skip(2)],
+                        },
+                        _ => page,
+                    };
+                }
+                return ValueTask.FromResult(page);
+            },
+        });
+        await widget.Resource.EnsureLoaded().Completion;
+        var initial = widget.Render().CreateSnapshot("virtual.fixture", 1);
+        Equal(ProtocolConstants.VirtualCollectionWindowVersion, initial.ProtocolVersion);
+        var window = initial.Root.Children[0].VirtualCollectionWindow!;
+        Equal(1L, window.RequestGeneration);
+        Equal(VirtualCollectionWindowChange.Replace, window.Change);
+        Equal(0L, window.FirstItemIndex);
+        Equal((long)total, window.TotalItemCount);
+        True(!window.HasBefore && window.HasAfter,
+            "Initial virtual boundaries did not reflect the logical collection.");
+        Equal(pageSize, initial.Root.Children[0].Children.Count);
+
+        await widget.Resource.Move(WidgetCursorDirection.After, "items.list").Completion;
+        await widget.Resource.Move(WidgetCursorDirection.After, "items.list").Completion;
+        await widget.Resource.Move(WidgetCursorDirection.After, "items.list").Completion;
+        var shifted = widget.Render().CreateSnapshot("virtual.fixture", 2);
+        window = shifted.Root.Children[0].VirtualCollectionWindow!;
+        Equal(VirtualCollectionWindowChange.Append, window.Change);
+        Equal(32L, window.FirstItemIndex);
+        Equal((long)total, window.TotalItemCount);
+        Equal(4L, window.RequestGeneration);
+        True(window.HasBefore && window.HasAfter,
+            "A shifted virtual window lost its bidirectional cursor authority.");
+        True(shifted.Root.Children[0].Children.Count <= 96,
+            "The 10,000-item private collection escaped the admitted window.");
+        True(Flatten(shifted.Root).Count() <= 98,
+            "Virtual metadata materialized off-window semantic nodes.");
+
+        var encoded = SnapshotJson.Serialize(shifted);
+        True(System.Text.Encoding.UTF8.GetString(encoded).Contains(
+                "\"change\":\"append\"", StringComparison.Ordinal),
+            "Virtual window change did not use the closed camel-case wire value.");
+        var restored = SnapshotJson.Deserialize(encoded);
+        Equal(window, restored.Root.Children[0].VirtualCollectionWindow);
+        var legacy = shifted with
+        {
+            ProtocolVersion = ProtocolConstants.AtomicPresentationUpdateVersion,
+        };
+        True(ViewSnapshotValidator.Validate(legacy).Any(error =>
+                error.Code == "feature_requires_version"),
+            "Protocol v18 admitted virtual collection metadata.");
+        var malformedScroll = shifted.Root.Children[0] with
+        {
+            VirtualCollectionWindow = window with { TotalItemCount = 33 },
+        };
+        var malformed = shifted with
+        {
+            Root = shifted.Root with { Children = [malformedScroll] },
+        };
+        True(ViewSnapshotValidator.Validate(malformed).Any(error =>
+                error.Code == "virtual_collection_window_out_of_range"),
+            "An out-of-range logical window was not rejected.");
+        var unknownExtent = shifted with
+        {
+            Root = shifted.Root with
+            {
+                Children =
+                [
+                    shifted.Root.Children[0] with
+                    {
+                        VirtualCollectionWindow = window with
+                        {
+                            Change = VirtualCollectionWindowChange.Replace,
+                            FirstItemIndex = null,
+                            TotalItemCount = null,
+                        },
+                    },
+                ],
+            },
+        };
+        Equal(0, ViewSnapshotValidator.Validate(unknownExtent).Count);
+        var unboundedUnknownExtent = unknownExtent with
+        {
+            Root = unknownExtent.Root with
+            {
+                Children =
+                [
+                    unknownExtent.Root.Children[0] with
+                    {
+                        VirtualCollectionWindow = unknownExtent.Root.Children[0]
+                            .VirtualCollectionWindow! with
+                        {
+                            FirstItemIndex = ProtocolConstants.MaximumVirtualCollectionItems,
+                        },
+                    },
+                ],
+            },
+        };
+        True(ViewSnapshotValidator.Validate(unboundedUnknownExtent).Any(error =>
+                error.Code == "invalid_virtual_collection_first_index"),
+            "An unknown-total window escaped the bounded logical item domain.");
+        var unsafeGeneration = shifted with
+        {
+            Root = shifted.Root with
+            {
+                Children =
+                [
+                    shifted.Root.Children[0] with
+                    {
+                        VirtualCollectionWindow = window with
+                        {
+                            RequestGeneration =
+                                ProtocolConstants.MaximumVirtualCollectionRequestGeneration + 1,
+                        },
+                    },
+                ],
+            },
+        };
+        True(ViewSnapshotValidator.Validate(unsafeGeneration).Any(error =>
+                error.Code == "invalid_virtual_collection_generation"),
+            "Managed admission exceeded the native JSON-safe generation bound.");
+        var unknownDirectional = unknownExtent with
+        {
+            Root = unknownExtent.Root with
+            {
+                Children =
+                [
+                    unknownExtent.Root.Children[0] with
+                    {
+                        VirtualCollectionWindow = unknownExtent.Root.Children[0]
+                            .VirtualCollectionWindow! with
+                        {
+                            Change = VirtualCollectionWindowChange.Append,
+                        },
+                    },
+                ],
+            },
+        };
+        True(ViewSnapshotValidator.Validate(unknownDirectional).Any(error =>
+                error.Code == "virtual_collection_direction_requires_position"),
+            "An unknown-position window claimed an unverifiable direction.");
+
+        fail = true;
+        await widget.Resource.Refresh().Completion;
+        Equal(WidgetPagedResourceStatus.Error, widget.Resource.Snapshot.Status);
+        Equal(4L, widget.Resource.Snapshot.WindowGeneration);
+        Equal(96, widget.Resource.Snapshot.Items.Count);
+        fail = false;
+        await widget.Resource.Retry().Completion;
+        Equal(WidgetPagedResourceStatus.Ready, widget.Resource.Snapshot.Status);
+        Equal(5L, widget.Resource.Snapshot.WindowGeneration);
+        foreach (var nextMutation in new[] { 1, 2, 3 })
+        {
+            mutation = nextMutation;
+            await widget.Resource.Refresh().Completion;
+            Equal(WidgetPagedResourceStatus.Ready, widget.Resource.Snapshot.Status);
+            Equal(VirtualCollectionWindowChange.Replace,
+                widget.Resource.Snapshot.WindowChange);
+        }
+        widget.Resource.Reset();
+        Equal(0L, widget.Resource.Snapshot.WindowGeneration);
+        mutation = 0;
+        await widget.Resource.EnsureLoaded().Completion;
+        Equal(9L, widget.Resource.Snapshot.WindowGeneration);
+        Equal(VirtualCollectionWindowChange.Replace, widget.Resource.Snapshot.WindowChange);
+        await StopAsync(widget);
+
+        var unknownPositionWidget = await StartAsync(new()
+        {
+            PageSize = pageSize,
+            MaximumRetainedItems = 64,
+            PaginationThreshold = 2,
+            Viewports = [Viewport() with { EstimatedItemExtent = 56 }],
+            MapError = _ => WidgetResourceError.InvalidPage,
+            LoadPage = (cursor, _, limit, _) =>
+            {
+                var start = cursor is null ? 0 : int.Parse(cursor.Value.Value.AsSpan(1));
+                return ValueTask.FromResult(Page(start, limit, total));
+            },
+        });
+        await unknownPositionWidget.Resource.EnsureLoaded().Completion;
+        Equal(VirtualCollectionWindowChange.Replace,
+            unknownPositionWidget.Resource.Snapshot.WindowChange);
+        await unknownPositionWidget.Resource.Move(
+            WidgetCursorDirection.After, "items.list").Completion;
+        Equal(VirtualCollectionWindowChange.Replace,
+            unknownPositionWidget.Resource.Snapshot.WindowChange);
+        var unknownPositionSnapshot = unknownPositionWidget.Render()
+            .CreateSnapshot("virtual.unknown-position", 1);
+        Equal(VirtualCollectionWindowChange.Replace,
+            unknownPositionSnapshot.Root.Children[0].VirtualCollectionWindow?.Change);
+        Equal(0, ViewSnapshotValidator.Validate(unknownPositionSnapshot).Count);
+        await StopAsync(unknownPositionWidget);
     }
 
     private static async Task PreservesAnchorAcrossAppendPrependAndRefresh()
@@ -485,6 +715,13 @@ internal static class WidgetCursorResourceTests
             start > 0 ? new WidgetCollectionCursor($"c{Math.Max(0, start - limit)}") : null,
             start + count < total ? new WidgetCollectionCursor($"c{start + count}") : null);
     }
+
+    private static WidgetCursorPage<Item> VirtualPage(int start, int limit, int total) =>
+        Page(start, limit, total) with
+        {
+            FirstItemIndex = start,
+            TotalItemCount = total,
+        };
 
     private static WidgetCursorViewport<Item> Viewport() => new(
         "items.list", item => new(item.Id), item => "focus." + item.Id, "empty");

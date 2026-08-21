@@ -41,6 +41,90 @@ void CheckCompositionCoordinatePolicies() {
     Check(fallback.x == 7.0F && fallback.y == -4.0F,
           "missing DPI uses the 96-DPI update-offset contract");
 
+    const auto approximatelyEqual = [](const float left, const float right) {
+        return std::abs(left - right) < 0.001F;
+    };
+    const auto surfacePoint = [](
+        const widgetrail::CompositionUpdateRasterMapping& mapping,
+        const D2D1_POINT_2F logicalPoint) {
+        const D2D1_POINT_2F atlasPoint{
+            logicalPoint.x * mapping.scenePixelsPerDip +
+                mapping.sceneTranslationPixels.x,
+            logicalPoint.y * mapping.scenePixelsPerDip +
+                mapping.sceneTranslationPixels.y,
+        };
+        return D2D1_POINT_2F{
+            static_cast<float>(mapping.requestedPixels.left) + atlasPoint.x -
+                static_cast<float>(mapping.atlasOffsetPixels.x),
+            static_cast<float>(mapping.requestedPixels.top) + atlasPoint.y -
+                static_cast<float>(mapping.atlasOffsetPixels.y),
+        };
+    };
+    struct RasterCase final {
+        float physicalPixelsPerDip;
+        RECT fullRequest;
+        RECT boundedRequest;
+        POINT fullAtlasOffset;
+        POINT boundedAtlasOffset;
+    };
+    constexpr std::array rasterCases{
+        RasterCase{1.0F, {0, 0, 980, 505}, {155, 235, 962, 312},
+                   {31, 47}, {53, 79}},
+        RasterCase{1.25F, {0, 0, 1225, 631}, {193, 293, 1202, 390},
+                   {37, 59}, {61, 83}},
+        RasterCase{1.5F, {0, 0, 1470, 758}, {232, 352, 1443, 468},
+                   {41, 67}, {71, 97}},
+        RasterCase{1.5625F, {0, 0, 1532, 790}, {242, 367, 1503, 488},
+                   {43, 73}, {89, 101}},
+    };
+    for (const auto& test : rasterCases) {
+        const auto full = widgetrail::PlanCompositionUpdateRasterMapping(
+            test.fullRequest, test.fullAtlasOffset,
+            test.physicalPixelsPerDip);
+        const auto bounded = widgetrail::PlanCompositionUpdateRasterMapping(
+            test.boundedRequest, test.boundedAtlasOffset,
+            test.physicalPixelsPerDip);
+        Check(approximatelyEqual(
+                  full.mappedRequestedOriginPixels.x,
+                  static_cast<float>(test.fullAtlasOffset.x)) &&
+                  approximatelyEqual(
+                      full.mappedRequestedOriginPixels.y,
+                      static_cast<float>(test.fullAtlasOffset.y)) &&
+                  approximatelyEqual(
+                      bounded.mappedRequestedOriginPixels.x,
+                      static_cast<float>(test.boundedAtlasOffset.x)) &&
+                  approximatelyEqual(
+                      bounded.mappedRequestedOriginPixels.y,
+                      static_cast<float>(test.boundedAtlasOffset.y)),
+              "full and bounded update origins map to their physical atlas offsets");
+
+        const auto fullSceneOrigin = surfacePoint(full, {0.0F, 0.0F});
+        const auto boundedSceneOrigin = surfacePoint(bounded, {0.0F, 0.0F});
+        Check(approximatelyEqual(fullSceneOrigin.x, 0.0F) &&
+                  approximatelyEqual(fullSceneOrigin.y, 0.0F) &&
+                  approximatelyEqual(boundedSceneOrigin.x, 0.0F) &&
+                  approximatelyEqual(boundedSceneOrigin.y, 0.0F),
+              "full and bounded updates retain the same physical scene origin");
+
+        const D2D1_POINT_2F logicalSample{
+            static_cast<float>(test.boundedRequest.left + 17) /
+                test.physicalPixelsPerDip,
+            static_cast<float>(test.boundedRequest.top + 11) /
+                test.physicalPixelsPerDip,
+        };
+        const auto fullSample = surfacePoint(full, logicalSample);
+        const auto boundedSample = surfacePoint(bounded, logicalSample);
+        Check(approximatelyEqual(fullSample.x, boundedSample.x) &&
+                  approximatelyEqual(fullSample.y, boundedSample.y) &&
+                  approximatelyEqual(
+                      fullSample.x,
+                      logicalSample.x * test.physicalPixelsPerDip) &&
+                  approximatelyEqual(
+                      fullSample.y,
+                      logicalSample.y * test.physicalPixelsPerDip),
+              "full and bounded requests rasterize logical content at identical physical pixels");
+    }
+
     widgetrail::OverlayCompositionSurface::Frame content;
     content.layer = widgetrail::OverlayCompositionSurface::Layer::Content;
     content.replacement = false;

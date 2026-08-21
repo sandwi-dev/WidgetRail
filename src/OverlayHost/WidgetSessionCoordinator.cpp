@@ -32,6 +32,108 @@ namespace {
     return static_cast<std::uint64_t>(GetTickCount64());
 }
 
+struct VirtualWindowAdmissionState final {
+    const VirtualCollectionWindow* window{};
+    std::vector<std::wstring> itemKeys;
+};
+
+void CollectVirtualWindows(
+    const WidgetNode& node,
+    std::map<std::wstring, VirtualWindowAdmissionState, std::less<>>& windows) {
+    if (node.virtualCollectionWindow) {
+        auto& state = windows[node.id];
+        state.window = &*node.virtualCollectionWindow;
+        const auto collectItems = [&](const auto& self,
+                                      const WidgetNode& current,
+                                      const bool root) -> void {
+            if (!root && current.kind == L"scroll") return;
+            if (!current.collectionItemKey.empty()) {
+                state.itemKeys.push_back(current.collectionItemKey);
+                return;
+            }
+            for (const auto& child : current.children)
+                self(self, child, false);
+        };
+        collectItems(collectItems, node, true);
+    }
+    for (const auto& child : node.children) CollectVirtualWindows(child, windows);
+}
+
+[[nodiscard]] bool SameVirtualWindow(
+    const VirtualCollectionWindow& left,
+    const VirtualCollectionWindow& right) noexcept {
+    return left.requestGeneration == right.requestGeneration &&
+        left.change == right.change &&
+        left.firstItemIndex == right.firstItemIndex &&
+        left.totalItemCount == right.totalItemCount &&
+        left.hasBefore == right.hasBefore && left.hasAfter == right.hasAfter &&
+        left.estimatedItemExtent == right.estimatedItemExtent;
+}
+
+[[nodiscard]] bool AdmitDirectionalVirtualWindowTransition(
+    const VirtualWindowAdmissionState& prior,
+    const VirtualWindowAdmissionState& next) noexcept {
+    const auto& oldWindow = *prior.window;
+    const auto& newWindow = *next.window;
+    if (!oldWindow.firstItemIndex || !newWindow.firstItemIndex ||
+        oldWindow.totalItemCount != newWindow.totalItemCount)
+        return false;
+    const auto oldFirst = *oldWindow.firstItemIndex;
+    const auto newFirst = *newWindow.firstItemIndex;
+    const auto oldEnd = oldFirst + prior.itemKeys.size();
+    const auto newEnd = newFirst + next.itemKeys.size();
+    const bool validRange = newWindow.change == VirtualCollectionWindowChange::Append
+        ? newFirst >= oldFirst && newFirst <= oldEnd && newEnd > oldEnd
+        : newWindow.change == VirtualCollectionWindowChange::Prepend
+            ? newFirst < oldFirst && newEnd >= oldFirst && newEnd <= oldEnd
+            : false;
+    if (!validRange) return false;
+    const auto overlapFirst = std::max(oldFirst, newFirst);
+    const auto overlapEnd = std::min(oldEnd, newEnd);
+    for (auto position = overlapFirst; position < overlapEnd; ++position) {
+        if (prior.itemKeys[static_cast<std::size_t>(position - oldFirst)] !=
+            next.itemKeys[static_cast<std::size_t>(position - newFirst)])
+            return false;
+    }
+    return true;
+}
+
+[[nodiscard]] bool AdmitVirtualWindowTransition(
+    const WidgetSnapshot* checkpoint,
+    const WidgetSnapshot& candidate) {
+    std::map<std::wstring, VirtualWindowAdmissionState, std::less<>> next;
+    CollectVirtualWindows(candidate.root, next);
+    if (!checkpoint) {
+        return std::all_of(next.begin(), next.end(), [](const auto& entry) {
+            return entry.second.window->change ==
+                VirtualCollectionWindowChange::Replace;
+        });
+    }
+    std::map<std::wstring, VirtualWindowAdmissionState, std::less<>> prior;
+    CollectVirtualWindows(checkpoint->root, prior);
+    for (const auto& [scrollId, state] : next) {
+        const auto existing = prior.find(scrollId);
+        if (existing == prior.end()) {
+            if (state.window->change != VirtualCollectionWindowChange::Replace)
+                return false;
+            continue;
+        }
+        const auto& oldWindow = *existing->second.window;
+        const auto& newWindow = *state.window;
+        if (newWindow.requestGeneration < oldWindow.requestGeneration)
+            return false;
+        if (newWindow.requestGeneration == oldWindow.requestGeneration &&
+            (!SameVirtualWindow(oldWindow, newWindow) ||
+             existing->second.itemKeys != state.itemKeys))
+            return false;
+        if (newWindow.requestGeneration > oldWindow.requestGeneration &&
+            newWindow.change != VirtualCollectionWindowChange::Replace &&
+            !AdmitDirectionalVirtualWindowTransition(existing->second, state))
+            return false;
+    }
+    return true;
+}
+
 } // namespace
 
 WidgetSessionCoordinator::WidgetSessionCoordinator(
@@ -359,6 +461,20 @@ std::vector<WidgetSessionEvent> WidgetSessionCoordinator::TakeEvents() {
                 events.push_back(std::move(event));
                 continue;
             }
+            if (!AdmitVirtualWindowTransition(
+                    Snapshot(request.widgetId), *completion.snapshot)) {
+                CompleteRefresh(request, false);
+                auto failure = FailureFrom(
+                    WidgetSessionFailureStage::Protocol,
+                    L"The widget returned an invalid or stale virtual collection window transition.");
+                failures_.insert_or_assign(request.widgetId, failure);
+                auto event = makeEvent(WidgetSessionEventKind::Failed);
+                event.failure = failure;
+                event.completionDisposition =
+                    WidgetSessionCompletionDisposition::Failed;
+                events.push_back(std::move(event));
+                continue;
+            }
             snapshots_.insert_or_assign(request.widgetId, std::move(*completion.snapshot));
             CompleteRefresh(request, true);
             failures_.erase(request.widgetId);
@@ -537,6 +653,7 @@ void WidgetSessionCoordinator::Shutdown() noexcept {
     worker_.request_stop();
     queueChanged_.notify_all();
     if (worker_.joinable()) {
+        // Only terminal shutdown may interrupt the serialized framed transport.
         (void)CancelSynchronousIo(worker_.native_handle());
         worker_.join();
     }
@@ -618,7 +735,6 @@ void WidgetSessionCoordinator::SupersedeSnapshotRequests(
     const std::wstring_view widgetId,
     const WidgetLifecycleState lifecycle) noexcept {
     const auto id = std::wstring(widgetId);
-    bool cancelInFlight = false;
     std::optional<std::uint64_t> cancelledInFlightId;
     std::vector<Request> cancelled;
     {
@@ -635,7 +751,6 @@ void WidgetSessionCoordinator::SupersedeSnapshotRequests(
         });
         if (inFlight_ && inFlight_->kind == RequestKind::Snapshot &&
             inFlight_->widgetId == id && inFlight_->lifecycle != lifecycle) {
-            cancelInFlight = true;
             cancelledInFlightId = inFlight_->id;
             if (inFlightStop_) inFlightStop_->request_stop();
         }
@@ -656,14 +771,11 @@ void WidgetSessionCoordinator::SupersedeSnapshotRequests(
             WidgetSessionTraceReason::NewerTarget,
             WidgetSessionCompletionDisposition::Cancelled);
     }
-    if (cancelInFlight && worker_.joinable())
-        (void)CancelSynchronousIo(worker_.native_handle());
 }
 
 void WidgetSessionCoordinator::RevokeRequests(
     const std::wstring_view widgetId) noexcept {
     const auto id = std::wstring(widgetId);
-    bool cancelInFlight = false;
     std::optional<std::uint64_t> cancelledInFlightId;
     std::vector<Request> cancelled;
     {
@@ -675,7 +787,6 @@ void WidgetSessionCoordinator::RevokeRequests(
             return request.widgetId == id;
         });
         if (inFlight_ && inFlight_->widgetId == id) {
-            cancelInFlight = true;
             cancelledInFlightId = inFlight_->id;
             if (inFlightStop_) inFlightStop_->request_stop();
         }
@@ -697,8 +808,6 @@ void WidgetSessionCoordinator::RevokeRequests(
             WidgetSessionTraceReason::NewerTarget,
             WidgetSessionCompletionDisposition::Cancelled);
     }
-    if (cancelInFlight && worker_.joinable())
-        (void)CancelSynchronousIo(worker_.native_handle());
 }
 
 WidgetSessionCoordinator::Request WidgetSessionCoordinator::MakeRequest(

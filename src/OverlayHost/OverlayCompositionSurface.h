@@ -25,6 +25,49 @@ namespace widgetrail {
     };
 }
 
+// DirectComposition defines both the requested update rectangle and the
+// returned backing-atlas offset in physical surface pixels. Keep that boundary
+// in one pixel coordinate space and scale the logical scene exactly once. This
+// avoids fractional-DPI target conversion choosing a different raster origin
+// for a bounded update than for a full-surface update.
+struct CompositionUpdateRasterMapping final {
+    RECT requestedPixels{};
+    POINT atlasOffsetPixels{};
+    float scenePixelsPerDip{1.0F};
+    D2D1_POINT_2F requestedLogicalOriginDip{};
+    D2D1_POINT_2F sceneTranslationPixels{};
+    D2D1_POINT_2F mappedRequestedOriginPixels{};
+};
+
+[[nodiscard]] constexpr CompositionUpdateRasterMapping
+PlanCompositionUpdateRasterMapping(
+    const RECT requestedPixels,
+    const POINT atlasOffsetPixels,
+    const float physicalPixelsPerDip) noexcept {
+    const float scale = physicalPixelsPerDip > 0.0F
+        ? physicalPixelsPerDip
+        : 1.0F;
+    const D2D1_POINT_2F logicalOrigin{
+        static_cast<float>(requestedPixels.left) / scale,
+        static_cast<float>(requestedPixels.top) / scale,
+    };
+    const D2D1_POINT_2F translation{
+        static_cast<float>(atlasOffsetPixels.x - requestedPixels.left),
+        static_cast<float>(atlasOffsetPixels.y - requestedPixels.top),
+    };
+    return {
+        requestedPixels,
+        atlasOffsetPixels,
+        scale,
+        logicalOrigin,
+        translation,
+        {
+            logicalOrigin.x * scale + translation.x,
+            logicalOrigin.y * scale + translation.y,
+        },
+    };
+}
+
 // One DirectComposition presentation owner for the overlay HWND. A replacement
 // surface is rendered while it is detached from the visual tree; the caller
 // attaches it only after EndDraw has completed the full update rectangle.

@@ -5613,3 +5613,96 @@ retains the separate 128-character backend validation ceiling as defense in
 depth. Shared protocol, SDK, runtime, host validation, configuration, account,
 PKCE, and credential ordering remain unchanged. Tests continue to await the
 user's physical verdict.
+### DLV-271 — bounded virtual collection presentation windows
+
+Protocol v19 adds one atomic `VirtualCollectionWindow` property to the existing
+keyed cursor `Scroll` contract. It carries a monotonic request generation,
+replace/append/prepend disposition, optional first index and total count,
+before/after availability, and a bounded estimated off-window item extent.
+Managed and native admission reject malformed versions, fields, enums,
+generations, action/boundary mismatches, invalid ranges, more than 256 admitted
+items, more than 1,000,000 logical items, and estimated logical extents above
+1,000,000 DIPs. Failed, stale, cancelled, or regressive windows retain the last
+valid complete checkpoint; protocol v18 and ordinary eager `Scroll` remain
+unchanged.
+
+Before this milestone, `WidgetCursorResource` could retain bounded pages but
+serialized only those pages, so native layout, scroll range, and UIA had no
+logical position or extent authority. After it, the SDK remains the sole page,
+cursor, request-generation, and private-item owner; protocol admission remains
+the sole complete-snapshot boundary; `WidgetSessionCoordinator` remains the
+sole stale-generation/checkpoint authority; `DeclarativeRenderer` and Taffy
+remain the sole scroll/layout owners and add at most two host-internal,
+nonsemantic off-window extent elements; and the existing accessibility tree
+projects admitted items as logical `PositionInSet`/`SizeOfSet`. Off-window
+records are never serialized, admitted as native nodes, laid out individually,
+painted, hit-tested, focused, or exposed through UIA. Both vertical and
+horizontal axes use the same typed policy, and normal focus-follow, nested
+scrolling, retained collection anchors, and protocol-v18 eager collections keep
+their existing owners.
+
+The provider-free Full Application reference holds 10,000 private records while
+publishing 32-item pages and retaining at most 96 admitted items. Its focused
+Release route passes 4/4 for initial projection, forward/backward paging,
+last-good failure/retry, and cancellation. The SDK/protocol route passes 89/89,
+including atomic v19 updates, round-trip/version/range validation, unknown
+extent bounds, stale-safe retry, and monotonic reset/reload generation. The
+worker-to-bridge v19 proof passes 1/1 with 32 then 64 admitted items and no full
+collection payload; its first restricted run was denied only test-owned named
+pipe access, and the exact permission-capable rerun passed.
+
+Focused native Release evidence passes Declarative Renderer 4,965 checks,
+Declarative Layout 250 checks, Accessibility Tree 18 checks, Widget Session
+Coordinator 22 scenarios plus the retained lifecycle/action groups (305
+checks), and the Widget Bridge catalog/parser route. These cases cover 10,000
+logical vertical and horizontal collections, variable admitted content,
+bounded native/UIA nodes, large logical ranges, right-stick offset retention,
+window shifts, stale-generation denial with last-good retention, native parser
+fail-closed bounds, and eager v18 coexistence. No provider-specific behavior,
+second collection/scroll/focus authority, raw patch stream, silent truncation,
+Tier 3, installed-package/configuration change, or push was introduced.
+
+The pre-launch transition-authority correction makes the public change value
+enforceable at both managed and native admission. Fresh or unknown-position
+windows are replace-only. Higher-generation indexed append/prepend must be
+contiguous or overlapping, move in the declared direction, preserve compatible
+known-total authority, and keep identical keys at every overlapping logical
+position; false claims fail as protocol errors while the prior checkpoint
+remains active. Replace remains the bounded arbitrary transition for provider
+insert/remove/move. Managed SDK generation and native JSON parsing now share
+the exact integer ceiling `9,007,199,254,740,991`.
+
+Correction-focused evidence passes SDK/protocol 89/89, provider-free Full
+Application 4/4, Widget Session Coordinator 25 scenarios plus 305 retained
+lifecycle/action checks, native Widget Bridge parsing, and Declarative Renderer
+4,968 checks including compact/wide reflow. It covers false higher-generation
+append/prepend direction, overlapping-key and known-total mismatch, checkpoint
+retention, unknown-position replacement, provider insert/remove/move through
+replace, fresh-session restart, and the retained vertical/horizontal 10,000-item
+proof. The rejected candidate was not launched or integrated, no reference
+package was installed, and no Tier 3 or push was performed.
+
+### DLV-276 — post-verdict text-entry boundary coverage
+
+The physically accepted production remains unchanged through border correction
+`d20b2c5` on retained PID 22944. The installed Community-host Cancel fixture now
+sends Escape to the modal edit control, matching the real keyboard route, and
+separately proves modal closure, owner re-enablement, exactly one terminal
+Cancel diagnostic, unchanged backend query count, and exact search-focus
+restoration. Enter proves the complete non-secret live edit buffer, one
+acknowledged host action admission, modal closure, owner re-enablement, and
+exact focus restoration. The focused production-host route passes together
+with `TextEntryModalTests` and all 18 Accessibility Tree checks.
+
+The earlier backend query-count oracle was removed because the real-host UIA
+fixture exposes no worker-dequeue acknowledgement: a successful UIA invoke and
+native bridge admission cannot by themselves prove that the packaged handler
+executed. Its unchanged query count therefore did not prove a production
+failure. Durable deterministic coverage instead proves the committed-text
+field crosses the real worker receive/action queue and the complete Widget
+Bridge-to-worker route without logging or echoing the value; both focused cases
+pass 1/1. The existing Game Launcher committed-query handler case also passes
+1/1. Packaged worker-dequeue/result publication remains an explicitly unproven
+host-fixture boundary rather than a claimed product defect. No production,
+public protocol, widget package, credential, configuration, or running-process
+state changed during this follow-up.

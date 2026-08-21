@@ -42,13 +42,18 @@ internal static class Program
         try
         {
             var catalog = new WidgetRail.WidgetCatalog.WidgetCatalog(catalogRoot);
-            var candidate = await catalog.InstallAsync(candidatePackage)
+            var candidate = await catalog.InstallAsync(
+                    candidatePackage,
+                    WidgetRail.WidgetCatalog.WidgetPackageTrustApproval.FullTrustCurrentUser)
                 .ConfigureAwait(false);
             if (candidate.Manifest.Id !=
                 "widgetrail.community.reference.game-launcher")
                 throw new InvalidOperationException(
                     "The supplied candidate was not the supported Game Launcher export.");
-            await catalog.SetEnabledAsync(candidate.Manifest.Id, true)
+            await catalog.SetEnabledAsync(
+                    candidate.Manifest.Id,
+                    true,
+                    WidgetRail.WidgetCatalog.WidgetPackageTrustApproval.FullTrustCurrentUser)
                 .ConfigureAwait(false);
             foreach (var package in Packages)
             {
