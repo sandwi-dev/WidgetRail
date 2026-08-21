@@ -169,11 +169,31 @@ std::optional<WidgetSnapshot> WidgetSessionCoordinator::EstablishPresentationFor
         !operations_.setLifecycle) return std::nullopt;
     auto started = operations_.ensureStarted({});
     if (!started.value || !*started.value) return std::nullopt;
-    auto established = operations_.establish({}, widgetId, state);
-    if (!established.value || established.value->instanceId != descriptor->instanceId)
+    const auto* retained = Snapshot(widgetId);
+    const bool allowUpdate = retained && retained->sequence > 0 &&
+        retained->instanceId == descriptor->instanceId &&
+        !retained->documentJson.empty();
+    auto established = operations_.establish(
+        {}, widgetId, state, allowUpdate ? retained->sequence : 0, allowUpdate);
+    if (!established.value ||
+        established.value->checkpoint.has_value() ==
+            established.value->update.has_value())
+        return std::nullopt;
+    std::optional<WidgetSnapshot> candidate =
+        std::move(established.value->checkpoint);
+    if (established.value->update) {
+        if (!retained || !operations_.materializeUpdate) return std::nullopt;
+        auto materialized = operations_.materializeUpdate(
+            *retained, *established.value->update,
+            descriptor->presentationGeneration);
+        if (!materialized.value) return std::nullopt;
+        candidate = std::move(materialized.value->snapshot);
+    }
+    if (!candidate || candidate->instanceId != descriptor->instanceId ||
+        !AdmitVirtualWindowTransition(retained, *candidate))
         return std::nullopt;
     const auto id = std::wstring(widgetId);
-    snapshots_.insert_or_assign(id, *established.value);
+    snapshots_.insert_or_assign(id, *candidate);
     refreshStates_.insert_or_assign(id, WidgetRefreshState::Current);
     refreshRequestIds_.erase(id);
     lifecycleStates_.insert_or_assign(id, state);
@@ -181,7 +201,7 @@ std::optional<WidgetSnapshot> WidgetSessionCoordinator::EstablishPresentationFor
         {}, widgetId, WidgetLifecycleState::Background);
     if (!background.value || !*background.value) return std::nullopt;
     lifecycleStates_.erase(id);
-    return established.value;
+    return candidate;
 }
 
 bool WidgetSessionCoordinator::RequestCatalog() {
@@ -335,7 +355,8 @@ std::vector<WidgetSessionEvent> WidgetSessionCoordinator::TakeEvents() {
         const auto* completionDescriptor =
             request.widgetId.empty() ? nullptr : FindDescriptor(request.widgetId);
         if (completion.failure.stage == WidgetSessionFailureStage::None &&
-            request.kind == RequestKind::Snapshot && completion.update &&
+            (request.kind == RequestKind::Establish ||
+             request.kind == RequestKind::Snapshot) && completion.update &&
             runtimeCurrent && completionCurrent) {
             std::wstring updateError;
             const auto* checkpoint = Snapshot(request.widgetId);
@@ -355,7 +376,7 @@ std::vector<WidgetSessionEvent> WidgetSessionCoordinator::TakeEvents() {
             if (candidate) {
                 completion.snapshot = std::move(*candidate);
                 completion.update.reset();
-            } else {
+            } else if (request.kind == RequestKind::Snapshot) {
                 EmitTrace(
                     request, WidgetSessionTraceStage::RequestCompleted,
                     WidgetSessionTraceAction::None,
@@ -378,6 +399,13 @@ std::vector<WidgetSessionEvent> WidgetSessionCoordinator::TakeEvents() {
                     WidgetSessionFailureStage::Protocol,
                     updateError.empty()
                         ? L"The widget update was rejected and checkpoint recovery could not be queued."
+                        : std::move(updateError));
+            } else {
+                completion.update.reset();
+                completion.failure = FailureFrom(
+                    WidgetSessionFailureStage::Protocol,
+                    updateError.empty()
+                        ? L"The retained-base establishment update was rejected."
                         : std::move(updateError));
             }
         }
@@ -828,9 +856,10 @@ WidgetSessionCoordinator::Request WidgetSessionCoordinator::MakeRequest(
             request.expectedRuntimeGeneration = descriptor->runtimeGeneration;
             request.expectedPresentationGeneration = descriptor->presentationGeneration;
         }
-        if (kind == RequestKind::Snapshot) {
+        if (kind == RequestKind::Snapshot || kind == RequestKind::Establish) {
             const auto* checkpoint = Snapshot(request.widgetId);
             if (checkpoint && checkpoint->sequence > 0 &&
+                checkpoint->instanceId == request.expectedInstanceId &&
                 !checkpoint->documentJson.empty()) {
                 request.baseSequence = checkpoint->sequence;
                 request.allowUpdate = true;
@@ -961,8 +990,19 @@ WidgetSessionCoordinator::Completion WidgetSessionCoordinator::Execute(
         case RequestKind::Establish: {
             if (!operations_.establish) break;
             auto result = operations_.establish(
-                stopToken, completion.request.widgetId, completion.request.lifecycle);
-            if (result.value) completion.snapshot = std::move(*result.value);
+                stopToken, completion.request.widgetId, completion.request.lifecycle,
+                completion.request.baseSequence, completion.request.allowUpdate);
+            if (result.value) {
+                completion.snapshot = std::move(result.value->checkpoint);
+                completion.update = std::move(result.value->update);
+                if (completion.snapshot.has_value() == completion.update.has_value()) {
+                    completion.snapshot.reset();
+                    completion.update.reset();
+                    completion.failure = FailureFrom(
+                        WidgetSessionFailureStage::Protocol,
+                        L"The bridge returned an invalid widget presentation establishment.");
+                }
+            }
             else completion.failure = FailureFrom(result.failureStage, std::move(result.safeError));
             return completion;
         }

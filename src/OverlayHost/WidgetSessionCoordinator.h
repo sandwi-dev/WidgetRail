@@ -177,8 +177,9 @@ struct WidgetSessionOperations final {
     std::function<WidgetSessionOperationResult<bool>(std::stop_token)> ensureStarted;
     std::function<WidgetSessionOperationResult<std::vector<WidgetDescriptor>>(
         std::stop_token)> listWidgets;
-    std::function<WidgetSessionOperationResult<WidgetSnapshot>(
-        std::stop_token, std::wstring_view, WidgetLifecycleState)> establish;
+    std::function<WidgetSessionOperationResult<WidgetPresentationPublication>(
+        std::stop_token, std::wstring_view, WidgetLifecycleState, long long, bool)>
+        establish;
     std::function<WidgetSessionOperationResult<bool>(
         std::stop_token, std::wstring_view, WidgetLifecycleState)> setLifecycle;
     std::function<WidgetSessionOperationResult<WidgetPresentationPublication>(

@@ -167,7 +167,12 @@ public sealed class WidgetPresentationSession : IAsyncDisposable
         var sessionGeneration = ValidateTarget(target);
         var response = await RequestAsync(
             BridgeMessageTypes.SetWidgetLifecycle,
-            new BridgeWidgetLifecycleRequest(target.Descriptor.Id, state, AdmitSnapshot: true),
+            new BridgeWidgetLifecycleRequest(
+                target.Descriptor.Id,
+                state,
+                new BridgePresentationEstablishment(
+                    PresentationUpdateCapabilities.None,
+                    BaseSequence: 0)),
             BridgeMessageTypes.Snapshot,
             cancellationToken).ConfigureAwait(false);
         return PublishSnapshot(target.Descriptor, sessionGeneration, response.Payload);

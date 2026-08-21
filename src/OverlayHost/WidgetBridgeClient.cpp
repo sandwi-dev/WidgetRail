@@ -968,6 +968,17 @@ std::wstring SafeBridgeError(const JsonObject& response) {
     return message;
 }
 
+WidgetBridgeRequestFailureCategory BridgeRequestFailureCategoryFromError(
+    const JsonObject& response) {
+    if (!response.HasKey(L"payload") ||
+        response.GetNamedValue(L"payload").ValueType() != JsonValueType::Object)
+        return WidgetBridgeRequestFailureCategory::None;
+    const auto code = OptionalString(response.GetNamedObject(L"payload"), L"code");
+    return code == L"stale_presentation_base"
+        ? WidgetBridgeRequestFailureCategory::StalePresentationBase
+        : WidgetBridgeRequestFailureCategory::None;
+}
+
 WidgetNode ParseNode(const JsonObject& source) {
     WidgetNode node;
     node.id = std::wstring(std::wstring_view(source.GetNamedString(L"id")));
@@ -2846,15 +2857,20 @@ std::optional<bool> WidgetBridgeClient::SetWidgetLifecycle(
     return std::nullopt;
 }
 
-std::optional<WidgetSnapshot> WidgetBridgeClient::EstablishWidgetPresentation(
+std::optional<WidgetPresentationPublication>
+WidgetBridgeClient::EstablishWidgetPresentation(
     const std::wstring_view widgetId,
-    const std::wstring_view state) {
+    const std::wstring_view state,
+    const long long baseSequence,
+    const bool allowUpdate) {
     std::scoped_lock lock(requestMutex_);
     lastRuntimeFailure_.reset();
+    lastRequestFailureCategory_ = WidgetBridgeRequestFailureCategory::None;
     const bool validState = state == L"visible" || state == L"interactive";
     if (pipe_ == INVALID_HANDLE_VALUE || widgetId.empty() ||
         widgetId.size() > kMaximumIdentifierLength || !IsIdentifier(widgetId) ||
-        !validState) {
+        !validState || baseSequence < 0 ||
+        allowUpdate != (baseSequence > 0)) {
         if (pipe_ != INVALID_HANDLE_VALUE)
             Fail(L"Widget presentation establishment request is invalid.");
         return std::nullopt;
@@ -2863,7 +2879,18 @@ std::optional<WidgetSnapshot> WidgetBridgeClient::EstablishWidgetPresentation(
         JsonObject payload;
         payload.Insert(L"widgetId", JsonValue::CreateStringValue(winrt::hstring(widgetId)));
         payload.Insert(L"state", JsonValue::CreateStringValue(winrt::hstring(state)));
-        payload.Insert(L"admitSnapshot", JsonValue::CreateBooleanValue(true));
+        JsonObject presentation;
+        JsonObject capabilities;
+        capabilities.Insert(L"maximumProtocolVersion", JsonValue::CreateNumberValue(
+            allowUpdate ? kAtomicPresentationUpdateVersion : 0));
+        capabilities.Insert(L"maximumOperationsPerBatch", JsonValue::CreateNumberValue(
+            allowUpdate ? static_cast<double>(kMaximumPresentationUpdateOperations) : 0));
+        capabilities.Insert(L"maximumBatchBytes", JsonValue::CreateNumberValue(
+            allowUpdate ? static_cast<double>(kMaximumPresentationUpdateBytes) : 0));
+        presentation.Insert(L"capabilities", capabilities);
+        presentation.Insert(L"baseSequence", JsonValue::CreateNumberValue(
+            static_cast<double>(baseSequence)));
+        payload.Insert(L"presentation", presentation);
         const long long requestId = ++nextRequestId_;
         JsonObject envelope;
         envelope.Insert(L"protocolVersion", JsonValue::CreateNumberValue(1));
@@ -2899,10 +2926,14 @@ std::optional<WidgetSnapshot> WidgetBridgeClient::EstablishWidgetPresentation(
             }
             const auto type = response.GetNamedString(L"type");
             if (type == L"error") {
+                lastRequestFailureCategory_ =
+                    BridgeRequestFailureCategoryFromError(response);
                 Fail(SafeBridgeError(response));
                 return std::nullopt;
             }
-            if (type != L"snapshot" || !response.HasKey(L"payload") ||
+            if ((type != L"snapshot" &&
+                 !(allowUpdate && type == L"presentation-update")) ||
+                !response.HasKey(L"payload") ||
                 response.GetNamedValue(L"payload").ValueType() != JsonValueType::Object) {
                 Fail(L"WidgetBridge returned an unexpected presentation response.");
                 return std::nullopt;
@@ -2912,6 +2943,13 @@ std::optional<WidgetSnapshot> WidgetBridgeClient::EstablishWidgetPresentation(
                 Fail(L"WidgetBridge established presentation for a different widget ID.");
                 return std::nullopt;
             }
+            if (type == L"presentation-update") {
+                WidgetPresentationPublication publication;
+                publication.update = ParsePresentationUpdatePayload(responsePayload);
+                lastRuntimeFailure_.reset();
+                lastError_.clear();
+                return publication;
+            }
             auto snapshot = ParseSnapshot(responsePayload.GetNamedObject(L"snapshot"));
             if (responsePayload.HasKey(L"renderStyles")) {
                 ApplyComputedStyles(
@@ -2920,7 +2958,9 @@ std::optional<WidgetSnapshot> WidgetBridgeClient::EstablishWidgetPresentation(
             }
             lastRuntimeFailure_.reset();
             lastError_.clear();
-            return snapshot;
+            WidgetPresentationPublication publication;
+            publication.checkpoint = std::move(snapshot);
+            return publication;
         }
     } catch (const winrt::hresult_error& error) {
         Fail(L"Invalid WidgetBridge presentation JSON: " +
@@ -3005,6 +3045,7 @@ std::optional<WidgetPresentationPublication> WidgetBridgeClient::GetSnapshot(
     const long long baseSequence,
     const bool allowUpdate) {
     std::scoped_lock lock(requestMutex_);
+    lastRequestFailureCategory_ = WidgetBridgeRequestFailureCategory::None;
     if (pipe_ == INVALID_HANDLE_VALUE || baseSequence < 0 ||
         (allowUpdate && baseSequence == 0)) return std::nullopt;
     try {
@@ -3049,8 +3090,9 @@ std::optional<WidgetPresentationPublication> WidgetBridgeClient::GetSnapshot(
             }
             const auto type = response.GetNamedString(L"type");
             if (type == L"error") {
-                Fail(std::wstring(std::wstring_view(
-                    response.GetNamedObject(L"payload").GetNamedString(L"message"))));
+                lastRequestFailureCategory_ =
+                    BridgeRequestFailureCategoryFromError(response);
+                Fail(SafeBridgeError(response));
                 return std::nullopt;
             }
             if (type != L"snapshot" &&
@@ -3544,6 +3586,12 @@ WidgetBridgeClient::lastRuntimeFailureCategory(
     if (!lastRuntimeFailure_ || lastRuntimeFailure_->widgetId != widgetId)
         return std::nullopt;
     return lastRuntimeFailure_->category;
+}
+
+WidgetBridgeRequestFailureCategory
+WidgetBridgeClient::lastRequestFailureCategory() const noexcept {
+    std::scoped_lock lock(requestMutex_);
+    return lastRequestFailureCategory_;
 }
 
 bool WidgetBridgeClient::PumpEvents() {

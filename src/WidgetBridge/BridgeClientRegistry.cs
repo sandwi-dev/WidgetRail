@@ -313,6 +313,9 @@ internal sealed class BridgeClientRegistry : IAsyncDisposable
                 registration.HostLifecycle == WidgetLifecycleState.Background &&
                 residencyMode is WidgetResidencyMode.SuspendWhenHidden or
                     WidgetResidencyMode.UnloadAfterIdle;
+            var canUpdate = capabilities.SupportsAtomicUpdates;
+            if (canUpdate && registration.CachedSnapshot?.Sequence != baseSequence)
+                throw new BridgeStalePresentationBaseException();
             WidgetRuntimePresentation presentation;
             if (hiddenAndRestricted)
             {
@@ -325,8 +328,6 @@ internal sealed class BridgeClientRegistry : IAsyncDisposable
             {
                 registration.CancelIdleUnload();
                 var generation = registration.Configured.PublicDescriptor().PresentationGeneration;
-                var canUpdate = capabilities.SupportsAtomicUpdates &&
-                    registration.CachedSnapshot?.Sequence == baseSequence;
                 presentation = await ExecuteClientOperationAsync(
                         registration,
                         (client, token) => client.GetPresentationAsync(
@@ -407,22 +408,28 @@ internal sealed class BridgeClientRegistry : IAsyncDisposable
         }
     }
 
-    internal async Task<BridgeClientPublication<BridgeClientSnapshot>>
+    internal async Task<BridgeClientPublication<BridgeClientPresentation>>
         EstablishPresentationAsync(
             string widgetId,
             WidgetLifecycleState state,
+            PresentationUpdateCapabilities capabilities,
+            long baseSequence,
             CancellationToken sessionCancellation,
             CancellationToken cancellationToken)
     {
         if (state == WidgetLifecycleState.Background)
             throw new BridgeProtocolException(
                 "A background widget cannot establish a visible presentation.");
+        ValidateUpdateRequest(capabilities, baseSequence);
         var registration = await GetOrCreateAsync(widgetId, cancellationToken)
             .ConfigureAwait(false);
         await registration.OperationGate.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
             DemandCurrent(registration);
+            var canUpdate = capabilities.SupportsAtomicUpdates;
+            if (canUpdate && registration.CachedSnapshot?.Sequence != baseSequence)
+                throw new BridgeStalePresentationBaseException();
             registration.CancelIdleUnload();
             await ExecuteClientOperationAsync(
                     registration,
@@ -430,22 +437,31 @@ internal sealed class BridgeClientRegistry : IAsyncDisposable
                     cancellationToken)
                 .ConfigureAwait(false);
             DemandCurrent(registration);
-            var snapshot = await ExecuteClientOperationAsync(
+            var generation = registration.Configured.PublicDescriptor().PresentationGeneration;
+            var presentation = await ExecuteClientOperationAsync(
                     registration,
-                    (client, token) => client.GetSnapshotAsync(token),
+                    (client, token) => client.GetPresentationAsync(
+                        canUpdate ? capabilities : PresentationUpdateCapabilities.None,
+                        generation,
+                        canUpdate ? baseSequence : 0,
+                        requireCheckpoint: !canUpdate,
+                        token),
                     cancellationToken)
                 .ConfigureAwait(false);
             DemandCurrent(registration);
 
-            // Lifecycle and its first render-facing revision commit together.
+            // Lifecycle and its replacement render-facing revision commit together.
             // No other operation can observe a Visible/Interactive registration
-            // whose first snapshot failed admission.
-            registration.CachedSnapshot = snapshot;
+            // whose presentation publication failed admission.
+            registration.CachedSnapshot = presentation.Snapshot;
             registration.HostLifecycle = state;
             ScheduleIdleUnload(registration, sessionCancellation);
             return AdmitPublication(
                 registration,
-                new BridgeClientSnapshot(registration.Configured, snapshot));
+                new BridgeClientPresentation(
+                    registration.Configured,
+                    presentation.Snapshot,
+                    presentation.Update));
         }
         finally
         {
