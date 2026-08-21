@@ -46,7 +46,7 @@ evidence only; this file is the sole authority for current work.
 | Lane | Task/worktree | State |
 | --- | --- | --- |
 | Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | Idle pending cumulative test evidence and integration. DLV-284 is queued but not assigned. Do not begin it, test, launch, integrate, or push. |
-| Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | DLV-296 `3922b58` is physically accepted and exact PID 83788 remains running. DLV-300 reproduced the no-event failure after admitted pagination, despite DLV-298/299 green seams. Preserve the six-file evidence and execute diagnostic test-only DLV-301 below. Do not change production, rebuild, relaunch, integrate, or push. |
+| Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | DLV-296 `3922b58` is physically accepted and exact PID 83788 remains running. DLV-301 reproduced the no-event failure inside the direct worker and localized it after action admission but before any SDK invalidation/failure publication. Preserve the six-file evidence and execute diagnostic test-only DLV-302 below. Do not change production, rebuild, relaunch, integrate, or push. |
 
 ## Execution and architecture rules
 
@@ -770,6 +770,47 @@ push. If it passes, the next planned bisection is the same lifecycle-first
 cursor sequence through `WidgetProcessClient`; if it fails, the next work must
 target the SDK action/resource/worker boundary instead.
 
+DLV-301 stopped red without a commit. Visible activation completed its initial
+cursor load, the worker pipe delivered the initial invalidation, and the Ready
+generation-1 Replace snapshot had the expected four items, total 12, index zero,
+and exact boundaries. The generated near-end action/source was admitted as
+Enqueued, but neither invalidation nor action failure reached the same worker
+pipe before the unchanged deadline. This removes Bridge, registry, and
+`WidgetProcessClient` from the failing reproduction. The last green edge is
+`WidgetWorkerServer` admission into the real widget action queue; the first red
+is queued execution / already-Ready cursor pagination to SDK invalidation or
+action-failure publication. Production and PID 83788 remained untouched.
+
+## Assigned widgets diagnosis — DLV-302 queued-action execution markers
+
+Mode: diagnostic test-only against accepted DLV-296. Preserve all six current
+dirty/untracked evidence files and do not commit. Do not edit production/runtime
+source, packages, manifests, protocols, bounds, timeouts, installed/configured
+state, or processes. PID 83788 remains accepted and must not be touched.
+
+Extend only the DLV-301 in-process test widget with asynchronous
+`TaskCompletionSource` markers using `RunContinuationsAsynchronously` for:
+
+1. entry into `OnActionAsync` for the exact generated pagination action;
+2. successful `TryHandlePagination` admission and its returned operation status;
+3. terminal completion of that cursor operation, including its existing bounded
+   result status and exception type when present.
+
+After the real worker action acknowledgement, observe those markers and the
+first raw worker-pipe event under one unchanged existing deadline, without
+changing their execution order. The one focused outcome must identify the last
+completed marker and whether an invalidation/action failure arrived. This is
+test-fixture state inspection only; do not signal or unblock production work
+from a marker, and do not replace the real action queue, cursor resource,
+lifecycle, worker server, or framed pipe.
+
+Do not add production hooks, logging, reflection, sleeps, polling, stress loops,
+timeout enlargement, stdout/file diagnostics, package special cases, or a
+second action/notification model. Compile with serialized MSBuild, run one
+uniquely named DLV-302 prefix at most once, and stop with the exact last-green
+marker/first-red edge. Do not implement a correction or commit under DLV-302.
+Never push.
+
 ## Queued platform production — DLV-284 explicit publication transaction model
 
 Status: queued, not assigned. It becomes assignable only after the cumulative
@@ -800,12 +841,12 @@ every legal and illegal transition and follow physical-first order. Never push.
 
 ## Ordered queues
 
-1. Widgets diagnostic queue: execute DLV-301 lifecycle-first direct-worker
-   cursor bisection once and stop without correction or commit.
-2. Widgets diagnostic queue: if DLV-301 is green, bisect the same sequence
-   through `WidgetProcessClient`; if red, diagnose the SDK action/resource/worker
-   boundary before any correction.
-3. Reviewer evidence queue: finish and independently review DLV-297–301 before
+1. Widgets diagnostic queue: execute DLV-302 queued-action execution markers
+   once and stop without correction or commit.
+2. Widgets correction queue: after DLV-302 identifies the last completed marker,
+   assign one bounded production correction at that exact SDK/action/resource
+   ownership edge before resuming convergence evidence.
+3. Reviewer evidence queue: finish and independently review DLV-297–302 before
    resuming cumulative evidence.
 4. Widgets cumulative test queue: resume and commit the cumulative DLV-278–283
    evidence only after DLV-297 is green and independently reviewed.
@@ -843,7 +884,8 @@ There is no other Ready production work in either standing lane.
 | DLV-298 | Completed uncommitted: all four individual ownership handoffs passed 1/1; the last green edge is registry publication through Bridge framing to the client event queue. |
 | DLV-299 | Completed uncommitted: the one-shot case passed 1/1 and observed a forward `virtual` invalidation as the first post-action event; the prior no-event result did not reproduce. |
 | DLV-300 | Stopped red uncommitted: after Enqueued action admission, the permanent case received neither invalidation nor failure before the unchanged deadline. |
-| DLV-301 | Assigned diagnostic direct-worker coverage of the exact lifecycle-first Ready cursor followed by pagination; one prefix once, no correction or commit. |
+| DLV-301 | Stopped red uncommitted: the lifecycle-first direct worker admitted pagination but published neither invalidation nor failure, removing ProcessClient/registry/Bridge from the reproduction. |
+| DLV-302 | Assigned diagnostic in-process markers for action entry, pagination admission, and cursor completion while retaining the real worker/pipe path; one prefix once, no correction or commit. |
 | DLV-284 | Queued, not assigned until cumulative integration. |
 | DLV-248 | Deliberately deferred until explicit user promotion. |
 
