@@ -35,7 +35,7 @@ historical evidence only; this file is the sole implementation authority.
 
 | Lane | Task/worktree | State |
 | --- | --- | --- |
-| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | DLV-465 focused gate is green at `eb41cf5` over accepted DLV-466 content commit `5a94e2e`, but review requires one warning-only test cleanup before acceptance. DLV-284 remains queued. |
+| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | DLV-465 focused gate and warning-only cleanup are accepted at cumulative tip `9dd7b78`; one canonical Tier-3 run is now the only gate before explicit integration. DLV-284 remains queued. |
 | Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | Idle and clean at `676cd76`; do not begin work or change product state. |
 
 ## Execution rules
@@ -142,11 +142,13 @@ content commit `5a94e2e`; the latter has stable patch ID
 `40ca4b6d50aacb84147159a747991e0d411074db`, identical to accepted `360544a`.
 The exact focused gate passed in 83.28 seconds with host-focus p95 16 ms,
 input-to-retained maximum 12 ms, and input-to-admitted maximum 711 ms; all
-owned descendants exited. Review is not yet accepted because the final compile
-introduced C4457 for a local `target` hiding the `switchTo` parameter and C4189
-for unused `compositionActiveAt`. Correct only those two warning causes in the
-test file, compile the affected target without rerunning the already-green
-end-to-end route, commit the DLV-465 warning cleanup, and stop for review.
+owned descendants exited. Warning-only follow-up `9dd7b78` renames the shadowing
+local and removes the unused composition diagnostic without changing behavior.
+It changes only `WidgetSwitchHostTests.cpp`, passes `diff --check`, and produced
+a clean `/W4` translation unit object from source SHA-256
+`D1A2E4DC7E1A58DA3B6A5BCE86A46D3072D61767BDAB7CC5B6C729302F48952C`.
+The reviewer accepts the DLV-465 focused milestone through `9dd7b78`; do not
+rerun its already-green focused end-to-end route.
 
 ## DLV-465 production blocker and physical-first correction — DLV-466
 
@@ -215,11 +217,15 @@ production-only rejection returns to DLV-466 without changing tests.
 
 ## After the cumulative native gate is green
 
-1. Review each of the four commits and the cumulative diff. Reject extra files,
-   production changes, weakened assertions, timeout/tolerance changes, debug
-   artifacts, and unrelated cleanup.
-2. Assign one canonical Tier-3 run from a clean detached tree containing the
-   exact accepted production and four test/build commits.
+1. Review every explicit commit and the cumulative diff. Reject extra files,
+   unaccepted production changes, weakened assertions, timeout/tolerance
+   changes, debug artifacts, and unrelated cleanup. This review is complete
+   for clean detached tip `9dd7b78`: its exact chain after `676cd76` is
+   `8658e76`, `fd37c34`, `eed3a48`, `914b077`, `58b75e3`, `e9412ec`,
+   `5a94e2e`, `eb41cf5`, and `9dd7b78`; the cumulative surface is the three
+   accepted production commits plus six test/build commits and no other files.
+2. Assign one canonical Tier-3 run from that exact clean detached tip. Do not
+   rebuild or relaunch accepted PID 89008 and do not rerun the focused gate.
 3. If Tier 3 is green, integrate only the explicit accepted hashes. Never
    integrate the rejected/restoration/ancestry-bound commits listed above.
 4. Test/build-tool integration does not warrant rebuilding or relaunching the
