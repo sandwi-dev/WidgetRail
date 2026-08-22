@@ -39,7 +39,7 @@ historical evidence only; this file is the sole authority for current work.
 
 | Lane | Task/worktree | State |
 | --- | --- | --- |
-| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | Assigned diagnostic-only DLV-337 below at `676cd76`, preserving two held test files and three disposable diagnostic files. DLV-284 remains queued and unassigned. |
+| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | Assigned diagnostic-only DLV-338 below at `676cd76`, preserving two held test files and three disposable diagnostic files. DLV-284 remains queued and unassigned. |
 | Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | Idle and clean at `676cd76`. Preserve PID 126208 and all product state; do not begin new work, integrate, rebuild/relaunch, or push. |
 
 ## Execution and architecture rules
@@ -309,6 +309,29 @@ after this one command. Preserve PID 126208 and all package/configured state;
 no commit, cleanup of disposable hunks, full gate, Tier 3, integration,
 DLV-284, launch/terminate, or push.
 
+DLV-337's exact serialized Bridge publish passed in 2.12 seconds with zero
+warnings/errors and all restored projects already current. This classifies the
+DLV-336 packaging stop as a transient diagnostic-free invocation/tooling
+incident, not source, asset, or persistent environment failure. The five
+uncommitted files remain preserved.
+
+## Assigned platform diagnosis — DLV-338 resume the UIA raise trace
+
+Mode: diagnostic-only continuation with no further edits.
+
+Preserve all five uncommitted files and the now-coherent platform Release
+runtime. Run only
+`src/OverlayHost/build.ps1 -Configuration Release
+-WidgetActionFailureHostTestsOnly` once. Stop after its first result and report
+the ordered DLV-336 records for prior/current widget-runtime identity, planned
+live-region key, HWND/endpoint, provider resolution, and exact UIA raise
+HRESULT. Do not change or rerun anything if any record is absent.
+
+No correction, cleanup, commit, complete native gate, Tier 3, integration,
+DLV-284, launch/terminate, or push. Preserve PID 126208, Spotify 0.3.14, and all
+installed/configured state. Identify every disposable production hunk for
+removal by the next milestone.
+
 DLV-333 stopped at its first targeted red with both test files uncommitted. The
 exact UI Automation tray invocation succeeded, selected
 `ytmusic-fixture`, and reached its intended Establish/worker-start failure.
@@ -443,9 +466,8 @@ import/export or scheduling only after independent widgets prove the need.
 
 ## Ordered queues
 
-1. Platform evidence queue: execute diagnostic-only DLV-337 once, then either
-   resolve its exact publish blocker or resume the one-shot DLV-336 runtime
-   diagnostic before removing all disposable instrumentation.
+1. Platform evidence queue: execute diagnostic-only DLV-338 once, remove all
+   disposable instrumentation, then assign only the proven production repair.
 2. Reviewer integration queue: independently review DLV-332 and the cumulative
    accepted production/test chain; integrate only if every required gate passes.
 3. Platform production queue: assign DLV-284 after clean integration, before
@@ -477,7 +499,8 @@ There is no other Ready production work in either standing lane.
 | DLV-334 | Typed failure assertion passed; later live-region event expectation remained red. |
 | DLV-335 | Classified production live-region omission on the correct combined-root subscription. |
 | DLV-336 | Native trace compiled, but hidden WidgetBridge publish failure prevented execution. |
-| DLV-337 | Assigned one explicit serialized Bridge publish to expose the causal diagnostic. |
+| DLV-337 | Explicit Bridge publish green; prior stop was transient tooling noise. |
+| DLV-338 | Assigned one resumed instrumented host route with no further edits. |
 | DLV-284 | Queued, not assigned until cumulative review/integration. |
 | DLV-248 | Deliberately deferred until explicit user promotion. |
 
