@@ -33,7 +33,7 @@ historical evidence only; this file is the sole implementation authority.
 
 | Lane | Task/worktree | State |
 | --- | --- | --- |
-| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | DLV-457 assigned: replace sticky generic fallback lookups with phase-aware checkpoint selection, then run the fast selector and one focused gate. Preserve seven held diffs and all rejected/restoration evidence. DLV-284 remains queued. |
+| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | DLV-458 assigned: correlate the latest converged Settings paint, checkpoint, and live geometry atomically, then run fast seam evidence and one focused gate. Preserve seven held diffs and all rejected/restoration evidence. DLV-284 remains queued. |
 | Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | Idle and clean at `676cd76`; do not begin work or change product state. |
 
 ## Execution rules
@@ -613,26 +613,26 @@ worker/Bridge/host boundary, so they do not prove refresh demand reached the
 host. No production defect is established. Evidence is under
 `%TEMP%\wrail-dlv453-focused-20260822-050100`.
 
-Disposition: DLV-455 established stable interactive focus. DLV-456 stopped
-before its priming path because the inherited completion wait repeatedly reads
-the first generic fallback record; an intervening `set-window-pos` permanently
-hides the later valid checkpoint. The priming wait has the same defect. This is
-a deterministic test selector error, not production. Evidence is under
-`%TEMP%\wrail-dlv456-focused-20260822-053000`.
+Disposition: DLV-457's eight selector cases passed and exact checkpoint
+selection reached priming. Its first matching sequence-2 checkpoint recorded
+`965x698`, but immediate live geometry had advanced in the same fallback extent
+cascade. Freezing the first checkpoint before reading live authority is the
+remaining oracle defect; no production failure is established. Evidence is
+under `%TEMP%\wrail-dlv457-focused-20260822-054100`.
 
-## Assigned platform phase-aware Settings checkpoint — DLV-457
+## Assigned platform atomic fallback convergence — DLV-458
 
-Test-only; change only held `WidgetSwitchHostTests.cpp`. Generalize the existing
-phase/sequence fallback selector from Audio to an expected widget while keeping
-positive instance/runtime/presentation authority. Use it for both Settings
-interactive completion and DLV-456 priming so intervening placement phases and
-wrong sequences are skipped, never sticky. Add one table case proving a
-`set-window-pos` before the exact Settings checkpoint. Preserve convergence,
-no-lifecycle/no-raster/no-geometry, all block authority, and diagnostics.
+Test-only; change only held `WidgetSwitchHostTests.cpp`. Preserve DLV-457's
+generic selector and eight cases. During priming, do not freeze the first exact
+checkpoint then sample live geometry later. In one bounded callback, scan the
+post-action Settings paints/checkpoints, choose the latest equal desired/
+presented paint with same-sequence exact checkpoint, sample live HWND/client,
+and succeed only when that latest checkpoint matches the live sample. Retain a
+complete candidate/live geometry diagnostic on failure.
 
 Do not weaken assertions/timeouts, alter production or the fixture, or touch
-another held file. Run the fast selector first; if green, reuse the coherent
-incremental tree after seven-file parity for one observable focused gate.
+another held file. Add/run a fast deterministic stale-first/latest-match seam;
+if green, reuse the coherent tree after parity for one observable focused gate.
 No full gate, commit, integration, product/package/process action, evidence
 removal, DLV-284, or push.
 
@@ -942,7 +942,7 @@ Extract native authorities only when real work touches them.
 
 ## Ordered queues
 
-1. DLV-457 phase-aware Settings checkpoint before the block handshake.
+1. DLV-458 atomic fallback convergence before the block handshake.
 2. Reviewer commit/diff review, then one exact clean Tier-3 run.
 3. DLV-284 after cumulative clean integration.
 4. Generic Game Launcher cutover; LauncherExperience deletion/state retirement;
@@ -995,4 +995,4 @@ There is no other Ready production work in either standing lane.
 | DLV-451 | Wrapper passed; reused partial artifact tree failed isolated Bridge startup. |
 | DLV-452 | Fresh parity tree reproduced startup; malformed test catalog JSON was the exact cause. |
 | DLV-453 | Catalog delimiter passed; worker-local arm acknowledgements did not prove host-visible invalidation. |
-| DLV-456 | Priming was not reached; a sticky generic fallback lookup hid the later checkpoint. |
+| DLV-457 | Eight selector cases passed; first exact checkpoint raced later same-sequence geometry. |
