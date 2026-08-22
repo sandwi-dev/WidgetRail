@@ -33,7 +33,7 @@ historical evidence only; this file is the sole implementation authority.
 
 | Lane | Task/worktree | State |
 | --- | --- | --- |
-| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | DLV-439 assigned. Preserve seven held diffs and all rejected/restoration evidence. DLV-284 remains queued. |
+| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | DLV-440 assigned. Preserve seven held diffs and all rejected/restoration evidence. DLV-284 remains queued. |
 | Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | Idle and clean at `676cd76`; do not begin work or change product state. |
 
 ## Execution rules
@@ -406,6 +406,39 @@ selector/replay/full native, commit, integrate, rebuild/relaunch PID 144396,
 change product/package state, remove prior evidence, assign DLV-284, or push.
 Red stops for reviewer classification; green returns to commit planning.
 
+Disposition: the aggregate vector classified all six invariants in one run.
+Checkpoint geometry was physical at DPI 120 (`5120x1440`; window
+`1822,591,1475,581`), while the test's live Win32 reads were DPI-virtualized to
+96-DPI coordinates (`4096x1152`; window `1458,473,1180,465`). Every dimension
+and coordinate differs by the exact 1.25 DPI scale. The production host and
+other real-HWND tests opt into Per-Monitor-V2 awareness; `WidgetSwitchHostTests`
+does not. This is a test-process DPI-awareness defect, not stale host authority
+or a product geometry defect. The run also failed to exercise log retention
+because its owner omitted the diagnostics environment, and its wrapper exit
+disagreed with the test stream. Evidence is retained under
+`%TEMP%\wrail-dlv439-widget-switch-monitor-20260822-034300`.
+
+## Assigned platform test DPI awareness — DLV-440
+
+Test-only; change only held `WidgetSwitchHostTests.cpp`. At process entry,
+request `DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2` before COM or any HWND/
+monitor query, following the established real-host test pattern: accept only
+success or `ERROR_ACCESS_DENIED`; otherwise emit the exact Win32 failure and
+return nonzero. Do not convert coordinates manually, add tolerances, alter the
+six invariants/classifier, change production, timing/input/focus/selector
+behavior, touch another held file, or alter SDK/runtime/Bridge/packaging.
+
+Recreate one fresh detached `c38b261` tree with exactly seven held files and
+full path/SHA-256 parity. Run the focused WidgetSwitch gate exactly once with
+`WRAIL_WIDGET_SWITCH_DIAGNOSTICS_DIR` set to the durable evidence directory so
+any test failure retains its overlay log. Use an observable owner that inspects
+the exact child and durable streams every 15–20 seconds. Record both the child
+OS exit and the test stream's explicit terminal result; do not let wrapper-exit
+disagreement override a test failure. Stop at the numeric result. Do not run
+selector/replay/full native, commit, integrate, rebuild/relaunch PID 144396,
+change product/package state, remove evidence, assign DLV-284, or push. Red
+stops for classification; green returns to reviewer commit planning.
+
 ## After the cumulative native gate is green
 
 1. Review each of the four commits and the cumulative diff. Reject extra files,
@@ -421,7 +454,7 @@ Red stops for reviewer classification; green returns to commit planning.
 
 ## Queued platform production — DLV-284 typed publication transactions
 
-Status: queued, not assigned. It becomes assignable only after DLV-439, the
+Status: queued, not assigned. It becomes assignable only after DLV-440, the
 cumulative native gate, commit review/integration, and exact clean Tier 3 are
 green. No new virtualization feature may precede it.
 
@@ -479,7 +512,7 @@ Extract native authorities only when real work touches them.
 
 ## Ordered queues
 
-1. DLV-439 one aggregate fallback geometry classifier and observable focused gate.
+1. DLV-440 one test-process DPI-awareness correction and observable focused gate.
 2. Reviewer commit/diff review, then one exact clean Tier-3 run.
 3. DLV-284 after cumulative clean integration.
 4. Generic Game Launcher cutover; LauncherExperience deletion/state retirement;
@@ -495,7 +528,7 @@ There is no other Ready production work in either standing lane.
 | DLV-257 identity | Store, domain, trademark, and GitHub availability remain external/manual. |
 | DLV-278–283/270 | Production accepted; integration awaits the native gate, exact Tier 3, and review. |
 | DLV-319–326 | Managed chain through `676cd76`; all managed Tier-3 gates green. |
-| DLV-327–421 | Native fixture/build evidence remains held behind DLV-439 and exact Tier 3. |
+| DLV-327–421 | Native fixture/build evidence remains held behind DLV-440 and exact Tier 3. |
 | DLV-427 | `e26b92b` and `16050bb` are unbuilt/unaccepted ancestry-bound evidence only. |
 | DLV-428 | Accepted/integrated as `c38b261`; PID 144396 already runs it. |
 | DLV-284 | Queued until cumulative review/integration. |
@@ -517,4 +550,5 @@ There is no other Ready production work in either standing lane.
 | DLV-436 | One observable run red after 140.110 seconds; no post-Back fallback repaint or diagnostic. |
 | DLV-437 | Back semantics passed; later raw CRLF checkpoint reparse failed after 120.139 seconds. |
 | DLV-438 | CRLF sequence passed; later recorded-work/live-monitor mismatch failed after 120.176 seconds. |
-| DLV-439 | Assigned one aggregate recorded-versus-live geometry classifier and focused gate. |
+| DLV-439 | Exact 1.25 coordinate ratio proved missing test-process PMv2 DPI awareness. |
+| DLV-440 | Assigned established PMv2 test setup and one observable focused gate. |
