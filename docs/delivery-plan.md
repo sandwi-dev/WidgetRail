@@ -33,7 +33,7 @@ historical evidence only; this file is the sole implementation authority.
 
 | Lane | Task/worktree | State |
 | --- | --- | --- |
-| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | DLV-452 assigned as one fresh coherent artifact tree and focused invocation. Preserve seven held diffs and all rejected/restoration evidence. DLV-284 remains queued. |
+| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | DLV-452 red at fresh isolated Bridge/catalog startup; classification required before any further gate. Preserve seven held diffs and all rejected/restoration evidence. DLV-284 remains queued. |
 | Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | Idle and clean at `676cd76`; do not begin work or change product state. |
 
 ## Execution rules
@@ -572,6 +572,15 @@ commit, integration, PID 144396 or product/package action, evidence removal,
 DLV-284, or push. Red stops for classification; green returns to reviewer commit
 planning.
 
+Disposition: red after 143.459 seconds with explicit exit 1 and all descendants
+terminal. A brand-new detached tree with exact seven-file parity reproduced the
+isolated startup failure: WidgetBridge exited before accepting the host
+connection, then the host reported that the development bridge catalog lacked
+the expected package generation. Reused-output contamination is ruled out. The
+WidgetSwitch scenario did not begin, so this is not a switch assertion result.
+Do not authorize another gate until the fresh Bridge/catalog startup boundary
+is classified. Evidence is under the DLV-452 fresh-tree result directory.
+
 Disposition: red after 140.110 seconds with fresh child/output inspection every
 20 seconds. The exact current Audio fallback checkpoint was already present,
 but Back produced no post-boundary fallback paint, composition sample, or
@@ -818,7 +827,8 @@ stops for classification; green returns to reviewer commit planning.
 
 ## Queued platform production — DLV-284 typed publication transactions
 
-Status: queued, not assigned. It becomes assignable only after DLV-452, the
+Status: queued, not assigned. It becomes assignable only after DLV-452 startup
+classification and correction, the
 cumulative native gate, commit review/
 integration, and exact clean Tier 3 are green. No new virtualization feature
 may precede it.
@@ -877,7 +887,7 @@ Extract native authorities only when real work touches them.
 
 ## Ordered queues
 
-1. DLV-452 one fresh coherent artifact proof and focused invocation.
+1. Classify DLV-452 fresh isolated Bridge/catalog startup failure; no gate assigned.
 2. Reviewer commit/diff review, then one exact clean Tier-3 run.
 3. DLV-284 after cumulative clean integration.
 4. Generic Game Launcher cutover; LauncherExperience deletion/state retirement;
@@ -893,7 +903,7 @@ There is no other Ready production work in either standing lane.
 | DLV-257 identity | Store, domain, trademark, and GitHub availability remain external/manual. |
 | DLV-278–283/270 | Production accepted; integration awaits the native gate, exact Tier 3, and review. |
 | DLV-319–326 | Managed chain through `676cd76`; all managed Tier-3 gates green. |
-| DLV-327–421 | Native fixture/build evidence remains held behind DLV-452 and exact Tier 3. |
+| DLV-327–421 | Native fixture/build evidence remains held behind DLV-452 startup classification and exact Tier 3. |
 | DLV-427 | `e26b92b` and `16050bb` are unbuilt/unaccepted ancestry-bound evidence only. |
 | DLV-428 | Accepted/integrated as `c38b261`; PID 144396 already runs it. |
 | DLV-284 | Queued until cumulative review/integration. |
@@ -928,4 +938,4 @@ There is no other Ready production work in either standing lane.
 | DLV-449 | Cargo passed; outer PowerShell stream merging later reclassified MSVC diagnostics. |
 | DLV-450 | Separated capture passed; child lacked the parent-only Utility import. |
 | DLV-451 | Wrapper passed; reused partial artifact tree failed isolated Bridge startup. |
-| DLV-452 | Assigned one fresh coherent artifact tree and focused invocation. |
+| DLV-452 | Fresh parity tree reproduced Bridge/catalog startup failure before the switch scenario. |
