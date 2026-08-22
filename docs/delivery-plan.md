@@ -31,7 +31,7 @@ historical evidence only; this file is the sole authority for current work.
 
 | Lane | Task/worktree | State |
 | --- | --- | --- |
-| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | Assigned DLV-394 source/output diagnosis of Game Launcher extent authority. Preserve all seven held diffs and neutral rejected/restoration commits. DLV-284 remains queued and unassigned. |
+| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | Assigned DLV-395 test-only correction to correlate Game Launcher content extent with its destination transaction. Preserve all seven held diffs and neutral rejected/restoration commits. DLV-284 remains queued and unassigned. |
 | Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | Idle and clean at `676cd76`. Preserve PID 126208 and product state; do not begin work, integrate, rebuild/relaunch, or push. |
 
 ## Execution rules
@@ -94,6 +94,30 @@ smallest strict correction. Do not guess constants, weaken equality, edit,
 rerun, commit, integrate, start DLV-284, launch/terminate, or push. Preserve
 PID 126208, seven diffs, state, and DLV-393 diagnostics.
 
+DLV-394 found the fixture used the wrong authority/revision. Game Launcher is a
+generic Wide surface: 1052×878 is its outer fallback target, while 980×645 is
+the correct DirectComposition content extent. The failing record was earlier
+than the Game Launcher destination placement and still correlated to Audio.
+No production defect is proven.
+
+## Assigned platform test correction — DLV-395 correlate destination extent
+
+Own only `WidgetSwitchHostTests.cpp`; preserve the other six held files. Keep
+the exact retained Audio transition/sequence proof. Do not apply 980×645 to the
+earliest admitted Game Launcher paint. Correlate the exact Game Launcher
+destination paint with its own 980×700 placement, positive destination
+sequence, later complete placement commit, and composition-child sample, with
+no intervening paint or placement. On that correlated paint require exact
+`desired-extent=presented-extent=980x645`. If only the 1052×878 fallback record
+exists, fail distinctly for missing destination composition authority; never
+accept it as content or weaken equality.
+
+Run `WidgetSwitchTestsOnly` once via durable capture; stop first red. If green,
+run the full native gate once. If both are green, create only the four documented
+scoped commits using DLV-395 for this file, then stop before Tier 3. No
+production edit, integration, DLV-284, launch/terminate, or push. Preserve PID
+126208, state, seven diffs, and diagnostics.
+
 ## After the cumulative native gate is green
 
 1. Review exact DLV-349 and the cumulative test commits and full diffs. Reject
@@ -109,7 +133,7 @@ PID 126208, seven diffs, state, and DLV-393 diagnostics.
 
 ## Queued platform production — DLV-284 explicit publication transaction model
 
-Status: queued, not assigned. It becomes assignable only after DLV-394 is
+Status: queued, not assigned. It becomes assignable only after DLV-395 is
 dispositioned, the native gate is green, cumulative evidence is reviewed and
 integrated, and the accepted main Release is coherently refreshed only if
 runtime inputs changed. No new virtualization feature may precede it.
@@ -168,8 +192,8 @@ Extract native authorities only when real work touches them.
 
 ## Ordered queues
 
-1. Platform evidence: execute DLV-394 source/output classification before
-   another edit or rerun.
+1. Platform evidence: execute DLV-395's destination extent correlation and stop
+   first red before another diagnosis or rerun.
 2. Reviewer integration: review the eventual four commits, then assign exact
    clean Tier 3 if the native routes are green.
 3. Platform production: DLV-284 after clean cumulative integration.
@@ -189,7 +213,7 @@ There is no other Ready production work in either standing lane.
 | DLV-314 | Production `992b77b` accepted with Spotify 0.3.13. |
 | DLV-318 | Current accepted production `32a2a5e`; PID 126208 runs Spotify 0.3.14. |
 | DLV-319–326 | Managed test chain through `676cd76`; all managed Tier-3 gates green. |
-| DLV-327–394 | Native fixture/build evidence held pending DLV-394 and exact-commit Tier 3. |
+| DLV-327–395 | Native fixture/build evidence held pending DLV-395 and exact-commit Tier 3. |
 | DLV-284 | Queued until cumulative review/integration. |
 | DLV-248 | Deliberately deferred until explicit user promotion. |
 
@@ -207,4 +231,5 @@ There is no other Ready production work in either standing lane.
 | DLV-390 | Back-to-tray authority required before the cold switch. |
 | DLV-392 | Retained-paint commit is conditional; destination owns baseline. |
 | DLV-393 | Destination correlation reached Game Launcher extent mismatch. |
-| DLV-394 | Assigned source/output classification of Game Launcher extent authority. |
+| DLV-394 | 980×645 is correct content; the fixture captured an earlier 1052×878 fallback record. |
+| DLV-395 | Assigned exact Game Launcher destination transaction/extent correlation. |
