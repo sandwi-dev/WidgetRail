@@ -152,14 +152,19 @@ internal static class Program
             CancellationToken cancellationToken = default)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            if (action.ActionId == "fixture.ready" && TryConsumeBlockEpoch(out var epoch))
+            if (action.ActionId == "fixture.ready")
             {
-                Interlocked.Exchange(ref _blockedEpoch, epoch);
-                _blockNextSnapshot = true;
+                if (TryConsumeBlockEpoch(out var epoch))
+                {
+                    Interlocked.Exchange(ref _blockedEpoch, epoch);
+                    _blockNextSnapshot = true;
+                    Invalidate();
+                    if (blockSnapshotArmed is not null)
+                        File.AppendAllText(blockSnapshotArmed,
+                            $"epoch={epoch.ToString(CultureInfo.InvariantCulture)} armed\n");
+                    return ValueTask.CompletedTask;
+                }
                 Invalidate();
-                if (blockSnapshotArmed is not null)
-                    File.AppendAllText(blockSnapshotArmed,
-                        $"epoch={epoch.ToString(CultureInfo.InvariantCulture)} armed\n");
                 return ValueTask.CompletedTask;
             }
             if (action.ActionId == "refresh" && refreshSignal is not null)

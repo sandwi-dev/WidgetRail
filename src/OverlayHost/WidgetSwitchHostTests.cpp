@@ -10,6 +10,7 @@
 #include <algorithm>
 #include <chrono>
 #include <cmath>
+#include <cstdio>
 #include <cstdint>
 #include <cwctype>
 #include <filesystem>
@@ -504,6 +505,12 @@ std::string_view RecordLine(const std::string_view text, const std::size_t start
     return text.substr(start, end - start);
 }
 
+std::string_view RecordContainingLine(
+    const std::string_view text, const std::size_t position) {
+    const auto priorEnd = text.rfind('\n', position);
+    return RecordLine(text, priorEnd == std::string_view::npos ? 0 : priorEnd + 1);
+}
+
 FallbackCheckpointSelection SelectCurrentFallbackCheckpoint(
     const std::string_view log,
     const std::size_t after,
@@ -561,9 +568,47 @@ SettingsFallbackCorrelation CorrelateLatestSettingsFallbackPresentation(
     const std::string_view log, const std::size_t after,
     const std::string_view liveWindow, const std::string_view liveClient) {
     SettingsFallbackCorrelation result;
-    for (std::size_t paintAt = after;;) {
+    constexpr std::string_view resizeMarker = "Overlay render target resized in place";
+    constexpr std::string_view setWindowMarker =
+        "Fallback placement mode=hwnd-fallback phase=set-window-pos";
+    const auto resizeAt = log.find(resizeMarker, after);
+    const auto setWindowAt = log.find(setWindowMarker, after);
+    const auto geometryAt = resizeAt == std::string::npos
+        ? setWindowAt
+        : setWindowAt == std::string::npos
+            ? resizeAt
+            : std::min(resizeAt, setWindowAt);
+    if (geometryAt == std::string::npos) {
+        result.diagnostics = " geometry-boundary=none";
+        return result;
+    }
+    result.diagnostics = " live-window=" + std::string(liveWindow) +
+        " live-client=" + std::string(liveClient) +
+        " geometry-boundary=" +
+        std::string(geometryAt == resizeAt ? "resize@" : "set-window-pos@") +
+        std::to_string(geometryAt);
+    const auto geometryEnd = log.find('\n', geometryAt);
+    if (geometryEnd == std::string::npos) {
+        result.diagnostics += " truncated";
+        return result;
+    }
+    const std::array<std::string_view, 4> correlationMarkers{{
+        "Widget presentation extent refresh",
+        resizeMarker,
+        setWindowMarker,
+        "Widget presentation paint target=settings",
+    }};
+    const auto hasSupersedingBetween = [&](const std::size_t begin,
+                                           const std::size_t end) {
+        for (const auto marker : correlationMarkers) {
+            const auto at = log.find(marker, begin);
+            if (at != std::string::npos && at < end) return true;
+        }
+        return false;
+    };
+    for (std::size_t paintAt = geometryEnd + 1;;) {
         paintAt = log.find("Widget presentation paint target=settings", paintAt);
-        if (paintAt == std::string::npos) return result;
+        if (paintAt == std::string::npos) break;
         const auto paint = RecordLine(log, paintAt);
         const auto sequence = ParsePositiveSequence(TextField(paint, "sequence="));
         const auto content = TextField(paint, "content=");
@@ -572,14 +617,39 @@ SettingsFallbackCorrelation CorrelateLatestSettingsFallbackPresentation(
             " desired=" + TextField(paint, "desired-extent=") +
             " presented=" + TextField(paint, "presented-extent=");
         if (sequence && TextField(paint, "desired-extent=") == TextField(paint, "presented-extent=")) {
-            const auto checkpoint = SelectCurrentFallbackCheckpoint(
+            auto checkpoint = SelectCurrentFallbackCheckpoint(
                 log, paintAt + paint.size(), "settings", *sequence);
+            if (checkpoint.offset && hasSupersedingBetween(
+                    paintAt + paint.size(), *checkpoint.offset))
+                checkpoint.offset.reset();
+            if (!checkpoint.offset) {
+                const auto precedingAt = log.rfind(
+                    "Fallback placement mode=hwnd-fallback phase=", paintAt);
+                if (precedingAt != std::string::npos && precedingAt >= geometryEnd + 1) {
+                    const auto preceding = RecordLine(log, precedingAt);
+                    const auto precedingSequence = ParsePositiveSequence(
+                        TextField(preceding, "sequence="));
+                    if (TextField(preceding, "phase=") == "presentation-checkpoint" &&
+                        TextField(preceding, "widget=") == "settings" &&
+                        TextField(preceding, "instance=") == "settings.default" &&
+                        !TextField(preceding, "runtime=").empty() &&
+                        !TextField(preceding, "presentation=").empty() &&
+                        precedingSequence == sequence &&
+                        !hasSupersedingBetween(
+                            precedingAt + preceding.size(), paintAt))
+                        checkpoint.offset = precedingAt;
+                }
+            }
             if (checkpoint.offset) {
                 const auto record = RecordLine(log, *checkpoint.offset);
                 const auto window = TextField(record, "content-window=");
                 const auto client = TextField(record, "content-client-screen=");
                 result.diagnostics += " checkpoint@" + std::to_string(*checkpoint.offset) +
                     " window=" + window + " client=" + client;
+                result.diagnostics += " exact-window=" +
+                    std::string(window == liveWindow ? "true" : "false") +
+                    " exact-client=" +
+                    std::string(client == liveClient ? "true" : "false");
                 if (TextField(record, "instance=") == "settings.default" &&
                     !TextField(record, "runtime=").empty() &&
                     !TextField(record, "presentation=").empty() &&
@@ -591,6 +661,27 @@ SettingsFallbackCorrelation CorrelateLatestSettingsFallbackPresentation(
         }
         paintAt += paint.size();
     }
+    if (!result.checkpointOffset) return result;
+    const auto checkpoint = RecordLine(log, *result.checkpointOffset);
+    const auto checkpointEnd = std::max(
+        *result.checkpointOffset + checkpoint.size(),
+        *result.paintOffset + RecordLine(log, *result.paintOffset).size());
+    constexpr std::array<std::string_view, 3> geometrySupersedingMarkers{{
+        "Widget presentation extent refresh",
+        resizeMarker,
+        setWindowMarker,
+    }};
+    for (const auto marker : geometrySupersedingMarkers) {
+        const auto supersedingAt = log.find(marker, checkpointEnd);
+        if (supersedingAt == std::string::npos) continue;
+        result.diagnostics += " superseded@" + std::to_string(supersedingAt) +
+            " marker=" + std::string(marker);
+        result.paintOffset.reset();
+        result.checkpointOffset.reset();
+        return result;
+    }
+    result.diagnostics += " terminal";
+    return result;
 }
 
 void RunFallbackCheckpointSelectionTests() {
@@ -652,6 +743,7 @@ void RunFallbackCheckpointSelectionTests() {
     const std::string geometryLog = marker +
         "Widget presentation paint target=settings content=admitted sequence=7 desired-extent=772x828 presented-extent=772x828\n" +
         "Fallback placement mode=hwnd-fallback phase=presentation-checkpoint widget=settings instance=settings.default runtime=r presentation=p sequence=7 content-window=2077,702,965,698 content-client-screen=2077,702,965,698\n" +
+        "Overlay render target resized in place width=965 height=1035\n" +
         record("set-window-pos", "settings", "settings.default", "r", "p", 7) +
         record("presentation-checkpoint", "settings", "settings.default", "r", "p", 6) +
         "Widget presentation paint target=settings content=refresh-retained sequence=7 desired-extent=772x828 presented-extent=772x828\n" +
@@ -663,6 +755,25 @@ void RunFallbackCheckpointSelectionTests() {
                     std::string_view::npos,
             "Fallback geometry correlation did not select the latest matching retained paint;" +
                 geometry.diagnostics);
+    const std::string splitAuthorityLog = geometryLog +
+        "Widget presentation paint target=settings content=admitted sequence=8 desired-extent=772x558 presented-extent=772x828\n" +
+        "Fallback placement mode=hwnd-fallback phase=presentation-checkpoint widget=settings instance=settings.default runtime=r presentation=p sequence=8 content-window=2077,365,965,1035 content-client-screen=2077,365,965,1035\n";
+    const auto splitAuthority = CorrelateLatestSettingsFallbackPresentation(
+        splitAuthorityLog, marker.size(), "2077,365,965,1035", "2077,365,965,1035");
+    Require(splitAuthority.paintOffset && splitAuthority.checkpointOffset &&
+                RecordLine(splitAuthorityLog, *splitAuthority.paintOffset).find(
+                    "content=refresh-retained sequence=7") != std::string_view::npos,
+            "Fallback geometry correlation let a later semantic-only paint erase exact settled geometry;" +
+                splitAuthority.diagnostics);
+    const std::string stableWindowLog = marker +
+        record("set-window-pos", "settings", "settings.default", "r", "p", 7) +
+        "Widget presentation paint target=settings content=refresh-retained sequence=7 desired-extent=772x828 presented-extent=772x828\n" +
+        "Fallback placement mode=hwnd-fallback phase=presentation-checkpoint widget=settings instance=settings.default runtime=r presentation=p sequence=7 content-window=2077,365,965,1035 content-client-screen=2077,365,965,1035\n";
+    const auto stableWindow = CorrelateLatestSettingsFallbackPresentation(
+        stableWindowLog, marker.size(), "2077,365,965,1035", "2077,365,965,1035");
+    Require(stableWindow.paintOffset && stableWindow.checkpointOffset,
+            "Fallback geometry correlation rejected a fresh exact set-window-pos transaction when no resize was required;" +
+                stableWindow.diagnostics);
     std::cout << "WidgetSwitch fallback-authority selector table cases=8 passed\n";
 }
 
@@ -701,6 +812,34 @@ LoggedBounds ParseBounds(const std::string& value) {
         cursor = end == std::string::npos ? value.size() : end + 1;
     }
     return result;
+}
+
+std::optional<std::uint64_t> DiagnosticTimestampMilliseconds(
+    const std::string_view record) {
+    int year{}, month{}, day{}, hour{}, minute{}, second{}, millisecond{};
+    const std::string text(record);
+    if (sscanf_s(
+            text.c_str(), "%d-%d-%d %d:%d:%d.%d",
+            &year, &month, &day, &hour, &minute, &second, &millisecond) != 7 ||
+        year < 2000 || month < 1 || month > 12 || day < 1 || day > 31 ||
+        hour < 0 || hour > 23 || minute < 0 || minute > 59 ||
+        second < 0 || second > 59 || millisecond < 0 || millisecond > 999) {
+        return std::nullopt;
+    }
+    return (((static_cast<std::uint64_t>(day) * 24 + hour) * 60 + minute) * 60 +
+            second) * 1000 + millisecond;
+}
+
+std::uint64_t DiagnosticLatencyMilliseconds(
+    const std::string_view startRecord,
+    const std::string_view endRecord,
+    const std::string_view context) {
+    const auto start = DiagnosticTimestampMilliseconds(startRecord);
+    const auto end = DiagnosticTimestampMilliseconds(endRecord);
+    Require(start && end && *end >= *start,
+            std::string(context) + " omitted ordered host diagnostic timestamps; start=" +
+                std::string(startRecord) + " end=" + std::string(endRecord));
+    return *end - *start;
 }
 
 ComPtr<IUIAutomationElement> FindAutomationElement(
@@ -1033,7 +1172,8 @@ void RunRetentionScenario(const Arguments& arguments) {
     const auto waitForPaint = [&](const std::size_t after,
                                   const Target& target,
                                   const std::wstring_view rendered,
-                                  const std::string_view authority) {
+                                  const std::string_view authority,
+                                  const bool retainedWidgetFocus = false) {
         const std::string needle =
             "Widget presentation paint target=" + WideToUtf8(target.id) +
             " content=" + std::string(authority) +
@@ -1053,6 +1193,13 @@ void RunRetentionScenario(const Arguments& arguments) {
                             std::string::npos)
                         return false;
                     if (authority != "retained") return true;
+                    if (retainedWidgetFocus)
+                        return record.find("semantics=inert") != std::string::npos &&
+                            record.find("input-owner=widget") != std::string::npos &&
+                            record.find("selected=" + WideToUtf8(target.id)) !=
+                                std::string::npos &&
+                            record.find("visual-focus=settings-ready") != std::string::npos &&
+                            record.find("semantic-focus=none") != std::string::npos;
                     return record.find("semantics=inert") != std::string::npos &&
                         record.find("input-owner=tray") != std::string::npos &&
                         record.find("selected=" + WideToUtf8(target.id)) !=
@@ -1247,7 +1394,11 @@ void RunRetentionScenario(const Arguments& arguments) {
         const std::size_t after,
         const std::string_view paintRecord,
         const std::wstring_view expectedTarget,
-        const std::string_view phase) {
+        const std::string_view phase,
+        const std::wstring_view expectedFocusedWidget = {},
+        const bool allowPriorGeometry = false,
+        const bool requireCurrentUiAuthority = true,
+        const bool allowGeometrySequenceReset = false) {
         const auto mode = CurrentPresentationMode(ReadUtf8(logPath));
         Require(mode.has_value(),
                 "Presentation completion lacked a positive mode record phase=" +
@@ -1257,56 +1408,77 @@ void RunRetentionScenario(const Arguments& arguments) {
             return;
         }
         const auto target = WideToUtf8(expectedTarget);
-        const auto sequence = TextField(paintRecord, "sequence=");
-        std::string checkpoint;
-        Require(WaitUntil(kOperationTimeoutMilliseconds, [&] {
-                    const auto current = ReadUtf8(logPath);
-                    const auto paintAt = current.find(paintRecord, after);
-                    if (paintAt == std::string::npos) return false;
-                    auto checkpointAt = current.find(
-                        "Fallback placement mode=hwnd-fallback", paintAt + paintRecord.size());
-                    while (checkpointAt != std::string::npos) {
-                        const auto candidate = RecordLine(current, checkpointAt);
-                        if (TextField(candidate, "phase=") == "presentation-checkpoint" &&
-                            TextField(candidate, "widget=") == target &&
-                            TextField(candidate, "sequence=") == sequence) {
-                            checkpoint = std::string(candidate);
-                            return true;
-                        }
-                        checkpointAt = current.find(
-                            "Fallback placement mode=hwnd-fallback", checkpointAt + 1);
-                    }
-                    return false;
-                }), "HWND fallback paint was not followed by its exact post-EndDraw presentation checkpoint phase=" +
-                    std::string(phase) + " target=" + target + " sequence=" + sequence);
-        RECT liveWindow{};
-        RECT liveClient{};
-        POINT clientOrigin{};
-        Require(GetWindowRect(window, &liveWindow) != FALSE &&
-                    GetClientRect(window, &liveClient) != FALSE &&
-                    ClientToScreen(window, &clientOrigin) != FALSE,
-                "HWND fallback completion could not resolve current content geometry");
+        const auto sequence = ParsePositiveSequence(TextField(paintRecord, "sequence="));
+        const auto current = ReadUtf8(logPath);
+        const auto paintAt = current.find(paintRecord, after);
+        Require(sequence.has_value() && paintAt != std::string::npos,
+                "HWND fallback paint lacked retained positive transaction authority phase=" +
+                    std::string(phase) + " target=" + target + " record=" +
+                    std::string(paintRecord));
+        const auto checkpointAt = current.rfind(
+            "Fallback placement mode=hwnd-fallback phase=", paintAt);
+        Require(checkpointAt != std::string::npos &&
+                    (allowPriorGeometry || checkpointAt >= after),
+                "HWND fallback paint lacked a preceding geometry transaction phase=" +
+                    std::string(phase) + " target=" + target + " record=" +
+                    std::string(paintRecord));
+        const auto checkpoint = RecordLine(current, checkpointAt);
+        const auto checkpointEnd = checkpointAt + checkpoint.size();
+        const auto checkpointSequence = ParsePositiveSequence(
+            TextField(checkpoint, "sequence="));
+        bool superseded = false;
+        for (const auto marker : {"Widget presentation extent refresh",
+                                  "Overlay render target resized in place",
+                                  "Fallback placement mode=hwnd-fallback phase=set-window-pos"}) {
+            const auto markerAt = current.find(marker, checkpointEnd);
+            superseded = superseded ||
+                (markerAt != std::string::npos && markerAt < paintAt);
+        }
+        Require(!superseded &&
+                    (TextField(checkpoint, "phase=") == "presentation-checkpoint" ||
+                     TextField(checkpoint, "phase=") == "set-window-pos") &&
+                    TextField(checkpoint, "widget=") == target &&
+                    checkpointSequence.has_value() &&
+                    (allowGeometrySequenceReset || *checkpointSequence <= *sequence) &&
+                    !TextField(checkpoint, "instance=").empty() &&
+                    !TextField(checkpoint, "runtime=").empty() &&
+                    !TextField(checkpoint, "presentation=").empty(),
+                "HWND fallback paint lacked exact unsuperseded preceding geometry authority phase=" +
+                    std::string(phase) + " record=" + std::string(paintRecord) +
+                    " authority=" + std::string(checkpoint));
         const auto loggedWindow = ParseBounds(TextField(checkpoint, "content-window="));
-        const auto loggedClient = ParseBounds(TextField(checkpoint, "content-client-screen="));
-        Require(liveWindow.left == static_cast<LONG>(loggedWindow.x) &&
-                    liveWindow.top == static_cast<LONG>(loggedWindow.y) &&
-                    liveWindow.right - liveWindow.left == static_cast<LONG>(loggedWindow.width) &&
-                    liveWindow.bottom - liveWindow.top == static_cast<LONG>(loggedWindow.height) &&
-                    clientOrigin.x == static_cast<LONG>(loggedClient.x) &&
-                    clientOrigin.y == static_cast<LONG>(loggedClient.y) &&
-                    liveClient.right - liveClient.left == static_cast<LONG>(loggedClient.width) &&
-                    liveClient.bottom - liveClient.top == static_cast<LONG>(loggedClient.height),
-                "HWND fallback checkpoint geometry was not current phase=" +
-                    std::string(phase) + " record=" + checkpoint);
-        ComPtr<IUIAutomationElement> contentRoot;
-        Require(SUCCEEDED(automation->ElementFromHandle(window, contentRoot.GetAddressOf())) && contentRoot,
-                "HWND fallback completion lacked a current content UIA root");
-        const std::wstring trayId = L"tray:tray." + std::wstring(expectedTarget);
-        ComPtr<IUIAutomationElement> tray = FindAutomationElement(
-            automation.Get(), contentRoot.Get(), trayId.c_str());
-        Require(tray && IsSelectionItemSelected(tray.Get()) && IsKeyboardFocused(tray.Get()),
-                "HWND fallback completion lost selected/focused exact tray authority phase=" +
-                    std::string(phase));
+        const auto damage = ParseBounds(TextField(paintRecord, "damage="));
+        Require(paintRecord.find("work=full") != std::string_view::npos &&
+                    damage.x == 0.0F && damage.y == 0.0F &&
+                    damage.width == loggedWindow.width &&
+                    damage.height == loggedWindow.height,
+                "HWND fallback paint did not match its exact transaction geometry phase=" +
+                    std::string(phase) + " record=" + std::string(paintRecord) +
+                    " authority=" + std::string(checkpoint));
+        if (requireCurrentUiAuthority) {
+            ComPtr<IUIAutomationElement> contentRoot;
+            Require(SUCCEEDED(automation->ElementFromHandle(window, contentRoot.GetAddressOf())) && contentRoot,
+                    "HWND fallback completion lacked a current content UIA root");
+            const std::wstring trayId = L"tray:tray." + std::wstring(expectedTarget);
+            ComPtr<IUIAutomationElement> tray = FindAutomationElement(
+                automation.Get(), contentRoot.Get(), trayId.c_str());
+            Require(tray && IsSelectionItemSelected(tray.Get()),
+                    "HWND fallback completion lost exact selected tray authority phase=" +
+                        std::string(phase));
+            if (expectedFocusedWidget.empty()) {
+                Require(IsKeyboardFocused(tray.Get()),
+                        "HWND fallback completion lost keyboard-focused exact tray authority phase=" +
+                            std::string(phase));
+            } else {
+                const std::wstring widgetId(expectedFocusedWidget);
+                const auto focusedWidget = FindAutomationElement(
+                    automation.Get(), contentRoot.Get(), widgetId.c_str());
+                Require(!IsKeyboardFocused(tray.Get()) && focusedWidget &&
+                            IsKeyboardFocused(focusedWidget.Get()),
+                        "HWND fallback completion lost exact widget-focus authority phase=" +
+                            std::string(phase));
+            }
+        }
     };
     const auto establishTrayStationarityAuthority = [&](
         const std::size_t after,
@@ -1875,10 +2047,15 @@ void RunRetentionScenario(const Arguments& arguments) {
                     "First retained switch paint lacked exact admitted/current Audio backing; record=" +
                         retainedRecord);
         }
-        inputToRetainedMilliseconds.push_back(
-            static_cast<std::uint64_t>(std::chrono::duration_cast<
-                std::chrono::milliseconds>(
-                    std::chrono::steady_clock::now() - inputStarted).count()));
+        const auto retainedTransitionAt = retainedLog.find(
+            TransitionNeedle(target.id), before);
+        Require(retainedTransitionAt != std::string::npos,
+                "Retained switch timing lacked its exact host transition for " +
+                    WideToUtf8(target.label));
+        inputToRetainedMilliseconds.push_back(DiagnosticLatencyMilliseconds(
+            RecordContainingLine(retainedLog, retainedTransitionAt),
+            RecordContainingLine(retainedLog, retainedAt),
+            "Retained switch timing for " + WideToUtf8(target.label)));
         Require(WaitUntil(kOperationTimeoutMilliseconds, [&] {
                     std::error_code signalError;
                     return fs::exists(signal, signalError);
@@ -2439,7 +2616,7 @@ void RunRetentionScenario(const Arguments& arguments) {
     SendKey(window, VK_DOWN);
     const auto settingsFocused = waitForPaint(
         focusBefore, kTargets.back(), kTargets.back().id, "admitted");
-    const auto focusLog = ReadUtf8(logPath);
+    auto focusLog = ReadUtf8(logPath);
     const auto focusMode = CurrentPresentationMode(focusLog);
     Require(focusMode.has_value(),
             "Ordinary Settings focus movement lacked positive presentation-mode authority; record=" +
@@ -2463,27 +2640,81 @@ void RunRetentionScenario(const Arguments& arguments) {
                 "Ordinary Settings focus movement damaged the complete content surface; "
                 "presentation-mode=" + focusPresentationMode + " record=" + settingsFocused);
     } else {
-        RECT fallbackClient{};
-        Require(GetClientRect(window, &fallbackClient) != FALSE,
-                Win32Error("GetClientRect(HWND fallback Settings focus)"));
+        const auto focusedAt = focusLog.find(settingsFocused, focusBefore);
+        const auto focusedSequence = ParsePositiveSequence(TextField(settingsFocused, "sequence="));
+        Require(focusedAt != std::string::npos && focusedSequence.has_value(),
+                "Ordinary Settings fallback focus paint lacked exact record/sequence authority; record=" +
+                    settingsFocused);
+        FallbackCheckpointSelection focusCheckpoint;
+        const auto checkpointAt = focusLog.rfind("Fallback placement mode=hwnd-fallback phase=", focusedAt);
+        Require(checkpointAt != std::string::npos, "Ordinary Settings fallback focus paint lacked a preceding geometry transaction");
+        const auto checkpoint = RecordLine(focusLog, checkpointAt);
+        const auto afterCheckpoint = checkpointAt + checkpoint.size();
+        const std::array<std::string_view, 3> superseding{{
+            "Widget presentation extent refresh", "Overlay render target resized in place",
+            "Fallback placement mode=hwnd-fallback phase=set-window-pos"}};
+        auto barrier = focusedAt;
+        for (const auto marker : superseding) {
+            const auto at = focusLog.find(marker, afterCheckpoint);
+            if (at != std::string::npos) barrier = std::min(barrier, at);
+        }
+        const auto checkpointWindow = ParseBounds(TextField(checkpoint, "content-window="));
+        bool interveningPaintsExact = true;
+        for (auto paintAt = focusLog.find("Widget presentation paint target=settings", afterCheckpoint);
+             paintAt != std::string::npos && paintAt < focusedAt;
+             paintAt = focusLog.find("Widget presentation paint target=settings", paintAt + 1)) {
+            const auto paint = RecordLine(focusLog, paintAt);
+            const auto damage = ParseBounds(TextField(paint, "damage="));
+            interveningPaintsExact = interveningPaintsExact &&
+                ParsePositiveSequence(TextField(paint, "sequence=")) == focusedSequence &&
+                damage.x == 0.0F && damage.y == 0.0F &&
+                damage.width == checkpointWindow.width && damage.height == checkpointWindow.height;
+        }
+        Require(barrier == focusedAt && interveningPaintsExact && (TextField(checkpoint, "phase=") == "presentation-checkpoint" || TextField(checkpoint, "phase=") == "set-window-pos") && TextField(checkpoint, "widget=") == "settings" &&
+                    TextField(checkpoint, "instance=") == "settings.default" &&
+                    ParsePositiveSequence(TextField(checkpoint, "sequence=")) == focusedSequence &&
+                    !TextField(checkpoint, "runtime=").empty() && !TextField(checkpoint, "presentation=").empty(),
+                "Ordinary Settings fallback focus paint lacked an unambiguous preceding current checkpoint; checkpoint=" + std::string(checkpoint));
+        focusCheckpoint.offset = checkpointAt;
         Require(settingsFocused.find("work=full") != std::string::npos &&
                     focusDamage.x == 0.0F && focusDamage.y == 0.0F &&
-                    focusDamage.width == static_cast<float>(fallbackClient.right - fallbackClient.left) &&
-                    focusDamage.height == static_cast<float>(fallbackClient.bottom - fallbackClient.top),
+                    focusDamage.width == checkpointWindow.width &&
+                    focusDamage.height == checkpointWindow.height,
                 "Ordinary Settings focus movement did not use full-surface HWND fallback work; "
-                "presentation-mode=" + focusPresentationMode + " record=" + settingsFocused);
+                "presentation-mode=" + focusPresentationMode + " record=" + settingsFocused +
+                    " checkpoint=" + std::string(RecordLine(focusLog, *focusCheckpoint.offset)));
     }
     Require(waitForWidgetAutomation(L"widget:settings-ready", true),
             "Current Settings presentation omitted its actionable widget UIA node");
     const auto settingsInteractiveBefore = ReadUtf8(logPath).size();
     SendKey(window, VK_UP);
-    const auto settingsInteractive = waitForPaint(
-        settingsInteractiveBefore, kTargets.back(), kTargets.back().id, "admitted");
-    Require(settingsInteractive.find("input-owner=widget") != std::string::npos &&
-                settingsInteractive.find("visual-focus=settings-ready") != std::string::npos &&
-                settingsInteractive.find("semantic-focus=widget:settings-ready") != std::string::npos,
-            "Settings did not return to exact current widget focus before block handshake; record=" +
-                settingsInteractive);
+    const auto selectInteractiveSettingsPaint = [&](const std::string_view log) {
+        constexpr std::string_view needle =
+            "Widget presentation paint target=settings content=admitted rendered=settings sequence=";
+        std::size_t recordAt = log.find(needle, settingsInteractiveBefore);
+        while (recordAt != std::string::npos) {
+            const auto lineEnd = log.find('\n', recordAt);
+            const auto record = log.substr(
+                recordAt,
+                lineEnd == std::string::npos ? std::string::npos : lineEnd - recordAt);
+            if (record.find("semantics=current") != std::string::npos &&
+                record.find("input-owner=widget") != std::string::npos &&
+                record.find("selected=settings") != std::string::npos &&
+                record.find("visual-focus=settings-ready") != std::string::npos &&
+                record.find("semantic-focus=widget:settings-ready") != std::string::npos)
+                return std::string(record);
+            if (lineEnd == std::string::npos) break;
+            recordAt = log.find(needle, lineEnd + 1);
+        }
+        return std::string{};
+    };
+    Require(WaitUntil(kOperationTimeoutMilliseconds, [&] {
+                return !selectInteractiveSettingsPaint(ReadUtf8(logPath)).empty();
+            }), "Settings did not return to exact current widget focus before block handshake; log=" +
+                ReadUtf8(logPath).substr(settingsInteractiveBefore));
+    const auto settingsInteractive = selectInteractiveSettingsPaint(ReadUtf8(logPath));
+    Require(!settingsInteractive.empty(),
+            "Exact current Settings interactive paint disappeared before block handshake");
     const auto settingsInteractiveSequence = TextField(settingsInteractive, "sequence=");
     const auto settingsInteractiveSequenceValue = ParsePositiveSequence(settingsInteractiveSequence);
     Require(settingsInteractiveSequenceValue.has_value(),
@@ -2503,13 +2734,28 @@ void RunRetentionScenario(const Arguments& arguments) {
                         settingsInteractive.size()) != std::string::npos;
                 }), "Current Settings interactive composition presentation did not complete");
     } else {
-        Require(WaitUntil(kOperationTimeoutMilliseconds, [&] {
-                    const auto current = ReadUtf8(logPath);
-                    const auto selection = SelectCurrentFallbackCheckpoint(
-                        current, settingsInteractiveAt + settingsInteractive.size(), "settings",
-                        *settingsInteractiveSequenceValue);
-                    return selection.offset.has_value();
-                }), "Current Settings interactive HWND fallback presentation did not complete");
+        const auto interactiveLog = ReadUtf8(logPath);
+        const auto authorityAt = interactiveLog.rfind(
+            "Fallback placement mode=hwnd-fallback phase=", settingsInteractiveAt);
+        Require(authorityAt != std::string::npos,
+                "Current Settings interactive HWND fallback presentation lacked preceding geometry authority");
+        const auto authority = RecordLine(interactiveLog, authorityAt);
+        const auto authorityEnd = authorityAt + authority.size();
+        bool superseded = false;
+        for (const auto marker : {"Widget presentation extent refresh",
+                                  "Overlay render target resized in place",
+                                  "Fallback placement mode=hwnd-fallback phase=set-window-pos"}) {
+            const auto at = interactiveLog.find(marker, authorityEnd);
+            superseded = superseded || (at != std::string::npos && at < settingsInteractiveAt);
+        }
+        Require(!superseded && TextField(authority, "widget=") == "settings" &&
+                    TextField(authority, "instance=") == "settings.default" &&
+                    ParsePositiveSequence(TextField(authority, "sequence=")) ==
+                        settingsInteractiveSequenceValue &&
+                    !TextField(authority, "runtime=").empty() &&
+                    !TextField(authority, "presentation=").empty(),
+                "Current Settings interactive HWND fallback presentation lacked exact current geometry authority; record=" +
+                    std::string(authority));
     }
     Require(WaitUntil(kOperationTimeoutMilliseconds, [&] {
                 ComPtr<IUIAutomationElement> contentRoot;
@@ -2517,8 +2763,8 @@ void RunRetentionScenario(const Arguments& arguments) {
                     !contentRoot) return false;
                 const auto ready = FindAutomationElement(
                     automation.Get(), contentRoot.Get(), L"widget:settings-ready");
-                return ready && IsKeyboardFocused(ready.Get());
-            }), "Current Settings widget Ready UIA node did not regain keyboard focus before block handshake");
+                return ready && IsEnabled(ready.Get()) && IsKeyboardFocused(ready.Get());
+            }), "Current Settings widget Ready UIA node was not enabled and keyboard-focused before block handshake");
 
     if (!*interactiveMode) {
         const auto primingBefore = ReadUtf8(logPath).size();
@@ -2529,34 +2775,50 @@ void RunRetentionScenario(const Arguments& arguments) {
         RECT primedWindow{};
         RECT primedClient{};
         POINT primedOrigin{};
-        Require(WaitUntil(kOperationTimeoutMilliseconds, [&] {
-                    const auto current = ReadUtf8(logPath);
-                    RECT liveWindow{};
-                    RECT liveClient{};
-                    POINT liveOrigin{};
-                    if (GetWindowRect(window, &liveWindow) == FALSE ||
-                        GetClientRect(window, &liveClient) == FALSE ||
-                        ClientToScreen(window, &liveOrigin) == FALSE) return false;
-                    const auto describeRect = [](const RECT& rect) {
-                        return std::to_string(rect.left) + "," + std::to_string(rect.top) + "," +
-                            std::to_string(rect.right - rect.left) + "," +
-                            std::to_string(rect.bottom - rect.top);
-                    };
-                    const RECT clientScreen{liveOrigin.x, liveOrigin.y,
-                        liveOrigin.x + liveClient.right - liveClient.left,
-                        liveOrigin.y + liveClient.bottom - liveClient.top};
-                    const auto correlation = CorrelateLatestSettingsFallbackPresentation(
-                        current, primingBefore, describeRect(liveWindow), describeRect(clientScreen));
-                    primingCandidates = correlation.diagnostics;
-                    if (!correlation.paintOffset || !correlation.checkpointOffset) return false;
-                    primedSettings = std::string(RecordLine(current, *correlation.paintOffset));
-                    primedCheckpoint = std::string(RecordLine(current, *correlation.checkpointOffset));
-                    primedWindow = liveWindow;
-                    primedClient = liveClient;
-                    primedOrigin = liveOrigin;
-                    return true;
-                }), "Unarmed Settings Ready priming did not atomically converge its latest equal extent, "
-                   "current checkpoint, and live HWND geometry; candidates=" + primingCandidates);
+        const bool primingConverged = WaitUntil(kOperationTimeoutMilliseconds, [&] {
+            const auto current = ReadUtf8(logPath);
+            RECT liveWindow{};
+            RECT liveClient{};
+            POINT liveOrigin{};
+            if (GetWindowRect(window, &liveWindow) == FALSE ||
+                GetClientRect(window, &liveClient) == FALSE ||
+                ClientToScreen(window, &liveOrigin) == FALSE) return false;
+            const auto describeRect = [](const RECT& rect) {
+                return std::to_string(rect.left) + "," + std::to_string(rect.top) + "," +
+                    std::to_string(rect.right - rect.left) + "," +
+                    std::to_string(rect.bottom - rect.top);
+            };
+            const RECT clientScreen{liveOrigin.x, liveOrigin.y,
+                liveOrigin.x + liveClient.right - liveClient.left,
+                liveOrigin.y + liveClient.bottom - liveClient.top};
+            const auto correlation = CorrelateLatestSettingsFallbackPresentation(
+                current, primingBefore, describeRect(liveWindow), describeRect(clientScreen));
+            primingCandidates = correlation.diagnostics;
+            if (!correlation.paintOffset || !correlation.checkpointOffset) return false;
+            FenceWindow(window);
+            const auto fenced = ReadUtf8(logPath);
+            liveOrigin = {};
+            if (GetWindowRect(window, &liveWindow) == FALSE ||
+                GetClientRect(window, &liveClient) == FALSE ||
+                ClientToScreen(window, &liveOrigin) == FALSE) return false;
+            const RECT fencedClientScreen{liveOrigin.x, liveOrigin.y,
+                liveOrigin.x + liveClient.right - liveClient.left,
+                liveOrigin.y + liveClient.bottom - liveClient.top};
+            const auto fencedCorrelation = CorrelateLatestSettingsFallbackPresentation(
+                fenced, primingBefore, describeRect(liveWindow),
+                describeRect(fencedClientScreen));
+            primingCandidates = fencedCorrelation.diagnostics;
+            if (!fencedCorrelation.paintOffset || !fencedCorrelation.checkpointOffset) return false;
+            primedSettings = std::string(RecordLine(fenced, *fencedCorrelation.paintOffset));
+            primedCheckpoint = std::string(RecordLine(fenced, *fencedCorrelation.checkpointOffset));
+            primedWindow = liveWindow;
+            primedClient = liveClient;
+            primedOrigin = liveOrigin;
+            return true;
+        });
+        Require(primingConverged, "Unarmed Settings Ready priming did not atomically converge its latest equal extent, "
+                "current checkpoint, and live HWND geometry; candidates=" + primingCandidates +
+                " post-priming-log=" + ReadUtf8(logPath).substr(primingBefore));
         const auto checkpointWindow = ParseBounds(TextField(primedCheckpoint, "content-window="));
         const auto checkpointClient = ParseBounds(TextField(primedCheckpoint, "content-client-screen="));
         Require(primedWindow.left == static_cast<LONG>(checkpointWindow.x) &&
@@ -2584,13 +2846,83 @@ void RunRetentionScenario(const Arguments& arguments) {
     const auto handshakeLog = ReadUtf8(logPath).substr(ordinaryRefreshBefore);
     Require(handshakeLog.find("kind=lifecycle") == std::string::npos,
             "Ready-action block handshake introduced a lifecycle transition; log=" + handshakeLog);
+    auto blockedRefreshBefore = ReadUtf8(logPath).size();
+    std::string fallbackBlockedCheckpoint;
+    if (!*interactiveMode) {
+        std::string blockedCandidates;
+        const auto describeWindow = [](const RECT& window, const RECT& client, const POINT& origin) {
+            return std::array<std::string, 2>{
+                std::to_string(window.left) + "," + std::to_string(window.top) + "," +
+                    std::to_string(window.right-window.left) + "," + std::to_string(window.bottom-window.top),
+                std::to_string(origin.x) + "," + std::to_string(origin.y) + "," +
+                    std::to_string(client.right-client.left) + "," + std::to_string(client.bottom-client.top)};
+        };
+        const auto selectBlockedFallback = [&](const std::string_view log,
+                                                const std::array<std::string, 2>& geometry) {
+            std::optional<std::string> selected;
+            for (auto paintAt = log.find("Widget presentation paint target=settings", ordinaryRefreshBefore);
+                 paintAt != std::string::npos;
+                 paintAt = log.find("Widget presentation paint target=settings", paintAt + 1)) {
+                const auto paint = RecordLine(log, paintAt);
+                const auto sequence = ParsePositiveSequence(TextField(paint, "sequence="));
+                if (!sequence || TextField(paint, "desired-extent=") != TextField(paint, "presented-extent="))
+                    continue;
+                const auto authorityAt = log.rfind(
+                    "Fallback placement mode=hwnd-fallback phase=", paintAt);
+                if (authorityAt == std::string::npos || authorityAt < ordinaryRefreshBefore) continue;
+                const auto authority = RecordLine(log, authorityAt);
+                const auto authorityEnd = authorityAt + authority.size();
+                bool superseded = false;
+                for (const auto marker : {"Widget presentation extent refresh",
+                                          "Overlay render target resized in place",
+                                          "Fallback placement mode=hwnd-fallback phase=set-window-pos"}) {
+                    const auto at = log.find(marker, authorityEnd);
+                    superseded = superseded || (at != std::string::npos && at < paintAt);
+                }
+                if (!superseded && TextField(authority, "widget=") == "settings" &&
+                    TextField(authority, "instance=") == "settings.default" &&
+                    ParsePositiveSequence(TextField(authority, "sequence=")) == sequence &&
+                    TextField(authority, "content-window=") == geometry[0] &&
+                    TextField(authority, "content-client-screen=") == geometry[1])
+                    selected = std::string(authority);
+            }
+            return selected;
+        };
+        const bool blockedConverged = WaitUntil(kOperationTimeoutMilliseconds, [&] {
+                    const auto current = ReadUtf8(logPath);
+                    RECT liveWindow{}, liveClient{};
+                    POINT origin{};
+                    if (!GetWindowRect(window, &liveWindow) || !GetClientRect(window, &liveClient) ||
+                        !ClientToScreen(window, &origin)) return false;
+                    const auto geometry = describeWindow(liveWindow, liveClient, origin);
+                    const auto correlation = selectBlockedFallback(current, geometry);
+                    blockedCandidates = correlation ? *correlation : "none";
+                    if (!correlation) return false;
+                    FenceWindow(window);
+                    const auto fenced = ReadUtf8(logPath);
+                    origin = {};
+                    if (!GetWindowRect(window, &liveWindow) || !GetClientRect(window, &liveClient) ||
+                        !ClientToScreen(window, &origin)) return false;
+                    const auto fencedGeometry = describeWindow(liveWindow, liveClient, origin);
+                    const auto fencedCorrelation = selectBlockedFallback(fenced, fencedGeometry);
+                    blockedCandidates = fencedCorrelation ? *fencedCorrelation : "none";
+                    if (!fencedCorrelation) return false;
+                    fallbackBlockedCheckpoint = *fencedCorrelation;
+                    return true;
+                });
+        Require(blockedConverged,
+                "Blocked Settings fallback cascade did not converge under the blocked render; candidates=" +
+                    blockedCandidates);
+        blockedRefreshBefore = ReadUtf8(logPath).size();
+    }
     FenceWindow(window);
     Require(waitForWidgetAutomation(L"widget:settings-ready", false),
             "RefreshRetained exposed stale widget UIA/action authority");
     RECT pendingRefreshPaint{};
     Require(GetUpdateRect(window, &pendingRefreshPaint, FALSE) == FALSE,
             "Exact RefreshRetained scheduled an inert content raster");
-    const auto heldRefreshLog = ReadUtf8(logPath).substr(ordinaryRefreshBefore);
+    const auto heldRefreshLog = ReadUtf8(logPath).substr(
+        *interactiveMode ? ordinaryRefreshBefore : blockedRefreshBefore);
     Require(heldRefreshLog.find(
                 "Widget presentation paint target=settings content=refresh-retained") ==
                     std::string::npos &&
@@ -2601,7 +2933,7 @@ void RunRetentionScenario(const Arguments& arguments) {
                 heldRefreshLog.find("Widget presentation extent refresh") ==
                     std::string::npos,
             "Exact RefreshRetained repainted content/guide/chrome or changed geometry; log=" +
-                heldRefreshLog);
+                heldRefreshLog + " fallback-checkpoint=" + fallbackBlockedCheckpoint);
     installation->ReleaseBlockedSnapshot(ordinaryRefreshEpoch);
     Require(WaitUntil(kOperationTimeoutMilliseconds, [&] {
                 std::error_code ignored;
@@ -2611,7 +2943,7 @@ void RunRetentionScenario(const Arguments& arguments) {
         ordinaryRefreshBefore, kTargets.back(), kTargets.back().id, "admitted");
     requireCurrentPresentationCompletion(
         ordinaryRefreshBefore, ordinaryRefreshAdmitted,
-        kTargets.back().id, "ordinary-refresh-admitted");
+        kTargets.back().id, "ordinary-refresh-admitted", L"widget:settings-ready");
     Require(waitForWidgetAutomation(L"widget:settings-ready", true),
             "Fresh Current admission did not restore Settings UIA/action authority");
 
@@ -2627,10 +2959,13 @@ void RunRetentionScenario(const Arguments& arguments) {
                 return fs::exists(restartSignal, ignored);
             }), "Final widget refresh did not enter its first snapshot request.");
     const auto settingsRetained = waitForPaint(
-        restartBefore, kTargets.back(), kTargets.back().id, "retained");
+        restartBefore, kTargets.back(), kTargets.back().id, "retained", true);
     requireCurrentPresentationCompletion(
         restartBefore, settingsRetained,
-        kTargets.back().id, "same-destination-lifecycle-retained");
+        kTargets.back().id, "same-destination-lifecycle-retained",
+        {}, true, false);
+    Require(waitForWidgetAutomation(L"widget:settings-ready", false),
+            "Same-destination retained lifecycle exposed stale actionable Settings UIA authority");
     Require(WaitUntil(kOperationTimeoutMilliseconds, [&] {
                 const auto log = ReadUtf8(logPath);
                 return log.size() > restartBefore &&
@@ -2651,7 +2986,8 @@ void RunRetentionScenario(const Arguments& arguments) {
     }
     requireCurrentPresentationCompletion(
         restartBefore, settingsLastGood,
-        kTargets.back().id, "same-destination-snapshot-admitted");
+        kTargets.back().id, "same-destination-snapshot-admitted",
+        L"widget:settings-ready", true, true, true);
     const auto sameDestinationLog = ReadUtf8(logPath).substr(restartBefore);
     if (*sameDestinationMode) {
         Require(sameDestinationLog.find("Composition motion start") ==
@@ -2803,65 +3139,287 @@ void RunRetentionScenario(const Arguments& arguments) {
     Require(bridgeBeforeSelection.size() == 1,
             "Slow-worker scenario did not begin with one authoritative bridge process");
 
+    {
+        ComPtr<IUIAutomationElement> contentRoot;
+        Require(SUCCEEDED(automation->ElementFromHandle(
+                    window, contentRoot.GetAddressOf())) && contentRoot,
+                "Blocked Settings route lacked a current content root before Back");
+        const auto back = FindAutomationElement(
+            automation.Get(), contentRoot.Get(), L"host:host.open.back");
+        Require(back && IsEnabled(back.Get()),
+                "Blocked Settings route lacked exact enabled host Back authority");
+        ComPtr<IUIAutomationInvokePattern> invoke;
+        Require(SUCCEEDED(back->GetCurrentPatternAs(
+                    UIA_InvokePatternId, IID_PPV_ARGS(invoke.GetAddressOf()))) && invoke,
+                "Blocked Settings host Back authority lacked InvokePattern");
+        Require(SUCCEEDED(invoke->Invoke()),
+                "Blocked Settings exact host Back invocation failed");
+    }
+    Require(WaitUntil(kOperationTimeoutMilliseconds, [&] {
+                ComPtr<IUIAutomationElement> contentRoot;
+                if (FAILED(automation->ElementFromHandle(
+                        window, contentRoot.GetAddressOf())) || !contentRoot) return false;
+                const auto tray = FindAutomationElement(
+                    automation.Get(), contentRoot.Get(), L"tray:tray.settings");
+                const auto ready = FindAutomationElement(
+                    automation.Get(), contentRoot.Get(), L"widget:settings-ready");
+                return tray && IsSelectionItemSelected(tray.Get()) &&
+                    IsKeyboardFocused(tray.Get()) &&
+                    (!ready || !IsKeyboardFocused(ready.Get()));
+            }), "Blocked Settings route did not return to exact selected/focused tray authority before selection-away");
+    {
+        const HWND trayWindow = *interactiveMode
+            ? LocateHostWindow(host->Id(), L"WidgetRail.Chrome")
+            : window;
+        Require(trayWindow && IsWindow(trayWindow) != FALSE,
+                "Blocked Settings setup lacked its mode-authoritative tray HWND");
+        ComPtr<IUIAutomationElement> trayRoot;
+        Require(SUCCEEDED(automation->ElementFromHandle(
+                    trayWindow, trayRoot.GetAddressOf())) && trayRoot,
+                "Blocked Settings setup lacked its mode-authoritative tray root");
+        const auto settingsTray = FindAutomationElement(
+            automation.Get(), trayRoot.Get(), L"tray:tray.settings");
+        Require(settingsTray && IsSelectionItemSelected(settingsTray.Get()) &&
+                    IsKeyboardFocused(settingsTray.Get()) && IsEnabled(settingsTray.Get()),
+                "Blocked Settings setup lost exact selected/focused Settings tray authority");
+        ComPtr<IUIAutomationInvokePattern> invoke;
+        Require(SUCCEEDED(settingsTray->GetCurrentPatternAs(
+                    UIA_InvokePatternId, IID_PPV_ARGS(invoke.GetAddressOf()))) && invoke,
+                "Blocked Settings setup tray authority lacked InvokePattern");
+        Require(SUCCEEDED(invoke->Invoke()),
+                "Blocked Settings setup exact tray invocation failed");
+    }
+    Require(WaitUntil(kOperationTimeoutMilliseconds, [&] {
+                ComPtr<IUIAutomationElement> contentRoot;
+                if (FAILED(automation->ElementFromHandle(
+                        window, contentRoot.GetAddressOf())) || !contentRoot) return false;
+                const auto ready = FindAutomationElement(
+                    automation.Get(), contentRoot.Get(), L"widget:settings-ready");
+                return ready && IsEnabled(ready.Get()) && IsKeyboardFocused(ready.Get());
+            }), "Blocked Settings setup did not restore exact Ready widget focus");
     const auto selectionRevokedEpoch = blockSnapshot();
     const auto selectionRevokedSequence = installation->BlockedSnapshotSequence(selectionRevokedEpoch);
+    Require(WaitUntil(kOperationTimeoutMilliseconds, [&] {
+                ComPtr<IUIAutomationElement> contentRoot;
+                if (FAILED(automation->ElementFromHandle(
+                        window, contentRoot.GetAddressOf())) || !contentRoot) return false;
+                const auto back = FindAutomationElement(
+                    automation.Get(), contentRoot.Get(), L"host:host.open.back");
+                return back && IsEnabled(back.Get());
+            }), "Blocked Settings route did not publish exact non-current host Back authority");
+    {
+        ComPtr<IUIAutomationElement> contentRoot;
+        Require(SUCCEEDED(automation->ElementFromHandle(
+                    window, contentRoot.GetAddressOf())) && contentRoot,
+                "Blocked Settings route lost its content root before host Back");
+        const auto back = FindAutomationElement(
+            automation.Get(), contentRoot.Get(), L"host:host.open.back");
+        Require(back && IsEnabled(back.Get()),
+                "Blocked Settings route lost exact non-current host Back authority");
+        ComPtr<IUIAutomationInvokePattern> invoke;
+        Require(SUCCEEDED(back->GetCurrentPatternAs(
+                    UIA_InvokePatternId, IID_PPV_ARGS(invoke.GetAddressOf()))) && invoke,
+                "Blocked Settings non-current host Back lacked InvokePattern");
+        Require(SUCCEEDED(invoke->Invoke()),
+                "Blocked Settings exact non-current host Back invocation failed");
+    }
+    const HWND blockedTrayWindow = *interactiveMode
+        ? LocateHostWindow(host->Id(), L"WidgetRail.Chrome")
+        : window;
+    Require(blockedTrayWindow && IsWindow(blockedTrayWindow) != FALSE,
+            "Blocked Settings route lacked its mode-authoritative tray HWND");
+    Require(WaitUntil(kOperationTimeoutMilliseconds, [&] {
+                const HWND trayWindow = *interactiveMode
+                    ? LocateHostWindow(host->Id(), L"WidgetRail.Chrome")
+                    : window;
+                if (!trayWindow || trayWindow != blockedTrayWindow ||
+                    IsWindow(trayWindow) == FALSE) return false;
+                ComPtr<IUIAutomationElement> trayRoot;
+                if (FAILED(automation->ElementFromHandle(
+                        trayWindow, trayRoot.GetAddressOf())) || !trayRoot) return false;
+                const auto tray = FindAutomationElement(
+                    automation.Get(), trayRoot.Get(), L"tray:tray.settings");
+                return tray && IsSelectionItemSelected(tray.Get()) &&
+                    IsKeyboardFocused(tray.Get());
+            }), "Blocked Settings request disturbed exact selected/focused mode-authoritative tray authority");
     const auto blockedBefore = ReadUtf8(logPath).size();
     const auto blockedNavigationStarted = std::chrono::steady_clock::now();
-    SendKey(window, VK_LEFT);
+    {
+        const HWND trayWindow = *interactiveMode
+            ? LocateHostWindow(host->Id(), L"WidgetRail.Chrome")
+            : window;
+        Require(trayWindow == blockedTrayWindow && IsWindow(trayWindow) != FALSE,
+                "Blocked Settings route lost its mode-authoritative tray HWND before selecting Spotify");
+        ComPtr<IUIAutomationElement> trayRoot;
+        Require(SUCCEEDED(automation->ElementFromHandle(
+                    trayWindow, trayRoot.GetAddressOf())) && trayRoot,
+                "Blocked Settings route lacked its mode-authoritative tray root before selecting Spotify");
+        const auto spotifyTray = FindAutomationElement(
+            automation.Get(), trayRoot.Get(), L"tray:tray.spotify");
+        Require(spotifyTray && IsEnabled(spotifyTray.Get()),
+                "Blocked Settings route lacked exact enabled Spotify tray authority");
+        ComPtr<IUIAutomationSelectionItemPattern> select;
+        Require(SUCCEEDED(spotifyTray->GetCurrentPatternAs(
+                    UIA_SelectionItemPatternId,
+                    IID_PPV_ARGS(select.GetAddressOf()))) && select,
+                "Blocked Settings Spotify tray authority lacked SelectionItemPattern");
+        Require(SUCCEEDED(select->Select()),
+                "Blocked Settings exact Spotify tray selection failed");
+    }
     const auto spotifyWhileBlocked = waitForPaint(
         blockedBefore, kTargets[kTargets.size() - 2],
-        kTargets[kTargets.size() - 2].id, "admitted");
+        kTargets[kTargets.size() - 2].id, "refresh-retained");
     const auto blockedNavigationMilliseconds = static_cast<std::uint64_t>(
         std::chrono::duration_cast<std::chrono::milliseconds>(
             std::chrono::steady_clock::now() - blockedNavigationStarted).count());
+    const auto blockedNavigationLog = ReadUtf8(logPath);
+    const auto blockedNavigationTransitionAt = blockedNavigationLog.find(
+        TransitionNeedle(L"spotify"), blockedBefore);
+    const auto blockedNavigationPaintAt = blockedNavigationLog.find(
+        "Widget presentation paint target=spotify content=refresh-retained "
+        "rendered=spotify sequence=", blockedBefore);
+    Require(blockedNavigationTransitionAt != std::string::npos &&
+                blockedNavigationPaintAt != std::string::npos,
+            "Blocked navigation timing lacked exact Spotify transition/paint authority");
+    const auto blockedNavigationHostFocusMilliseconds =
+        DiagnosticLatencyMilliseconds(
+            RecordContainingLine(blockedNavigationLog, blockedNavigationTransitionAt),
+            RecordContainingLine(blockedNavigationLog, blockedNavigationPaintAt),
+            "Blocked Spotify navigation timing");
     Require(spotifyWhileBlocked.find("semantic-focus=tray:spotify") !=
                 std::string::npos,
             "Never-completing Settings snapshot disturbed ordinary tray focus.");
-    DWORD bridgeAfterSelection{};
-    Require(WaitUntil(kOperationTimeoutMilliseconds, [&] {
-                const auto current =
-                    DirectChildProcessIds(host->Id(), L"WidgetBridge.exe");
-                if (current.size() != 1 ||
-                    current.front() == bridgeBeforeSelection.front() ||
-                    ProcessIsRunning(bridgeBeforeSelection.front())) return false;
-                bridgeAfterSelection = current.front();
-                return true;
-            }),
-            "Selection-away did not replace the tainted sole bridge after bounded old-process teardown");
-    const auto bridgeSelectionReconnectMilliseconds = static_cast<std::uint64_t>(
-        std::chrono::duration_cast<std::chrono::milliseconds>(
-            std::chrono::steady_clock::now() - blockedNavigationStarted).count());
-    recoveryProcessIds.push_back(bridgeAfterSelection);
-
+    Require(DirectChildProcessIds(host->Id(), L"WidgetBridge.exe") ==
+                bridgeBeforeSelection && ProcessIsRunning(bridgeBeforeSelection.front()),
+            "Selection-away replaced the healthy serialized bridge while Settings remained blocked");
+    installation->ReleaseBlockedSnapshot(selectionRevokedEpoch);
     Require(WaitUntil(kOperationTimeoutMilliseconds, [&] {
                 return ReadUtf8(logPath).find(
                     "Dropped stale widget session completion for settings",
                     blockedBefore) != std::string::npos;
             }), "Selection-away did not record exact stale Settings revocation.");
+    {
+        const HWND trayWindow = *interactiveMode
+            ? LocateHostWindow(host->Id(), L"WidgetRail.Chrome")
+            : window;
+        Require(trayWindow == blockedTrayWindow && IsWindow(trayWindow) != FALSE,
+                "Released Settings route lost its mode-authoritative tray HWND");
+        ComPtr<IUIAutomationElement> trayRoot;
+        Require(SUCCEEDED(automation->ElementFromHandle(
+                    trayWindow, trayRoot.GetAddressOf())) && trayRoot,
+                "Released Settings route lacked its mode-authoritative tray root");
+        const auto spotifyTray = FindAutomationElement(
+            automation.Get(), trayRoot.Get(), L"tray:tray.spotify");
+        Require(spotifyTray && IsEnabled(spotifyTray.Get()) &&
+                    IsSelectionItemSelected(spotifyTray.Get()) &&
+                    IsKeyboardFocused(spotifyTray.Get()),
+                "Released Settings route lost exact selected/focused Spotify tray authority");
+        ComPtr<IUIAutomationInvokePattern> invoke;
+        Require(SUCCEEDED(spotifyTray->GetCurrentPatternAs(
+                    UIA_InvokePatternId, IID_PPV_ARGS(invoke.GetAddressOf()))) && invoke,
+                "Released Settings Spotify tray authority lacked InvokePattern");
+        Require(SUCCEEDED(invoke->Invoke()),
+                "Released Settings exact Spotify tray invocation failed");
+    }
+    (void)waitForPaint(
+        blockedBefore, kTargets[kTargets.size() - 2],
+        kTargets[kTargets.size() - 2].id, "admitted");
+    Require(DirectChildProcessIds(host->Id(), L"WidgetBridge.exe") ==
+                bridgeBeforeSelection && ProcessIsRunning(bridgeBeforeSelection.front()),
+            "Released stale Settings completion replaced the healthy serialized bridge");
+    const auto bridgeSelectionContinuityMilliseconds = static_cast<std::uint64_t>(
+        std::chrono::duration_cast<std::chrono::milliseconds>(
+            std::chrono::steady_clock::now() - blockedNavigationStarted).count());
 
-    installation->ReleaseBlockedSnapshot(selectionRevokedEpoch);
-
+    {
+        ComPtr<IUIAutomationElement> contentRoot;
+        Require(SUCCEEDED(automation->ElementFromHandle(
+                    window, contentRoot.GetAddressOf())) && contentRoot,
+                "Spotify reselection boundary lacked its current content root");
+        const auto back = FindAutomationElement(
+            automation.Get(), contentRoot.Get(), L"host:host.open.back");
+        Require(back && IsEnabled(back.Get()),
+                "Spotify reselection boundary lacked exact enabled host Back authority");
+        ComPtr<IUIAutomationInvokePattern> invoke;
+        Require(SUCCEEDED(back->GetCurrentPatternAs(
+                    UIA_InvokePatternId, IID_PPV_ARGS(invoke.GetAddressOf()))) && invoke,
+                "Spotify reselection host Back lacked InvokePattern");
+        Require(SUCCEEDED(invoke->Invoke()),
+                "Spotify reselection exact host Back invocation failed");
+    }
+    Require(WaitUntil(kOperationTimeoutMilliseconds, [&] {
+                const HWND trayWindow = *interactiveMode
+                    ? LocateHostWindow(host->Id(), L"WidgetRail.Chrome")
+                    : window;
+                if (!trayWindow || IsWindow(trayWindow) == FALSE) return false;
+                ComPtr<IUIAutomationElement> trayRoot;
+                if (FAILED(automation->ElementFromHandle(
+                        trayWindow, trayRoot.GetAddressOf())) || !trayRoot) return false;
+                const auto spotifyTray = FindAutomationElement(
+                    automation.Get(), trayRoot.Get(), L"tray:tray.spotify");
+                return spotifyTray && IsSelectionItemSelected(spotifyTray.Get()) &&
+                    IsKeyboardFocused(spotifyTray.Get());
+            }), "Spotify reselection boundary did not return exact focus to its tray item");
     const auto reselectionBefore = ReadUtf8(logPath).size();
     const auto blockedReselectionStarted = std::chrono::steady_clock::now();
-    SendKey(window, VK_RIGHT);
+    {
+        const HWND trayWindow = *interactiveMode
+            ? LocateHostWindow(host->Id(), L"WidgetRail.Chrome")
+            : window;
+        Require(trayWindow && IsWindow(trayWindow) != FALSE,
+                "Settings reselection lacked its mode-authoritative tray HWND");
+        ComPtr<IUIAutomationElement> trayRoot;
+        Require(SUCCEEDED(automation->ElementFromHandle(
+                    trayWindow, trayRoot.GetAddressOf())) && trayRoot,
+                "Settings reselection lacked its mode-authoritative tray root");
+        const auto settingsTray = FindAutomationElement(
+            automation.Get(), trayRoot.Get(), L"tray:tray.settings");
+        Require(settingsTray && IsEnabled(settingsTray.Get()),
+                "Settings reselection lacked exact enabled tray authority");
+        ComPtr<IUIAutomationSelectionItemPattern> select;
+        Require(SUCCEEDED(settingsTray->GetCurrentPatternAs(
+                    UIA_SelectionItemPatternId,
+                    IID_PPV_ARGS(select.GetAddressOf()))) && select,
+                "Settings reselection tray authority lacked SelectionItemPattern");
+        Require(SUCCEEDED(select->Select()),
+                "Settings reselection exact tray selection failed");
+    }
     const auto settingsReselected = waitForPaint(
         reselectionBefore, kTargets.back(), kTargets.back().id, "admitted");
     const auto blockedReselectionMilliseconds = static_cast<std::uint64_t>(
         std::chrono::duration_cast<std::chrono::milliseconds>(
             std::chrono::steady_clock::now() - blockedReselectionStarted).count());
+    const auto blockedReselectionLog = ReadUtf8(logPath);
+    const auto blockedReselectionTransitionAt = blockedReselectionLog.find(
+        TransitionNeedle(L"settings"), reselectionBefore);
+    const auto blockedReselectionPaintAt = blockedReselectionLog.find(
+        "Widget presentation paint target=settings content=admitted "
+        "rendered=settings sequence=", reselectionBefore);
+    Require(blockedReselectionTransitionAt != std::string::npos &&
+                blockedReselectionPaintAt != std::string::npos,
+            "Blocked reselection timing lacked exact Settings transition/paint authority");
+    const auto blockedReselectionHostFocusMilliseconds =
+        DiagnosticLatencyMilliseconds(
+            RecordContainingLine(blockedReselectionLog, blockedReselectionTransitionAt),
+            RecordContainingLine(blockedReselectionLog, blockedReselectionPaintAt),
+            "Blocked Settings reselection timing");
     const auto lastGoodBody = ParseBounds(TextField(settingsLastGood, "body-bounds="));
     const auto reselectedBody = ParseBounds(TextField(settingsReselected, "body-bounds="));
     const auto lastGoodViewport = ParseBounds(
         TextField(settingsLastGood, "viewport-bounds="));
     const auto reselectedViewport = ParseBounds(
         TextField(settingsReselected, "viewport-bounds="));
-    Require(TextField(settingsReselected, "sequence=") ==
-                TextField(settingsLastGood, "sequence=") &&
+    const auto lastGoodSequence = ParsePositiveSequence(
+        TextField(settingsLastGood, "sequence="));
+    const auto reselectedSequence = ParsePositiveSequence(
+        TextField(settingsReselected, "sequence="));
+    Require(lastGoodSequence && reselectedSequence &&
+                *reselectedSequence >= *lastGoodSequence &&
                 reselectedBody.width == lastGoodBody.width &&
                 reselectedBody.height == lastGoodBody.height &&
                 reselectedViewport.width == lastGoodViewport.width &&
                 reselectedViewport.height == lastGoodViewport.height,
-            "Late revoked result changed retained content or extent on reselection; before=" +
+            "Late revoked result regressed authority or changed retained content/extent on reselection; before=" +
                 settingsLastGood + " after=" + settingsReselected);
 
     const auto rearmBefore = ReadUtf8(logPath).size();
@@ -2884,6 +3442,43 @@ void RunRetentionScenario(const Arguments& arguments) {
 
     const auto closeRevokedEpoch = blockSnapshot();
     const auto closeRevokedSequence = installation->BlockedSnapshotSequence(closeRevokedEpoch);
+    Require(WaitUntil(kOperationTimeoutMilliseconds, [&] {
+                ComPtr<IUIAutomationElement> contentRoot;
+                if (FAILED(automation->ElementFromHandle(
+                        window, contentRoot.GetAddressOf())) || !contentRoot) return false;
+                const auto back = FindAutomationElement(
+                    automation.Get(), contentRoot.Get(), L"host:host.open.back");
+                return back && IsEnabled(back.Get());
+            }), "Close-time blocked Settings route omitted exact non-current host Back authority");
+    {
+        ComPtr<IUIAutomationElement> contentRoot;
+        Require(SUCCEEDED(automation->ElementFromHandle(
+                    window, contentRoot.GetAddressOf())) && contentRoot,
+                "Close-time blocked Settings route lost its content root before host Back");
+        const auto back = FindAutomationElement(
+            automation.Get(), contentRoot.Get(), L"host:host.open.back");
+        Require(back && IsEnabled(back.Get()),
+                "Close-time blocked Settings route lost exact non-current host Back authority");
+        ComPtr<IUIAutomationInvokePattern> invoke;
+        Require(SUCCEEDED(back->GetCurrentPatternAs(
+                    UIA_InvokePatternId, IID_PPV_ARGS(invoke.GetAddressOf()))) && invoke,
+                "Close-time blocked Settings host Back lacked InvokePattern");
+        Require(SUCCEEDED(invoke->Invoke()),
+                "Close-time blocked Settings exact host Back invocation failed");
+    }
+    Require(WaitUntil(kOperationTimeoutMilliseconds, [&] {
+                const HWND trayWindow = *interactiveMode
+                    ? LocateHostWindow(host->Id(), L"WidgetRail.Chrome")
+                    : window;
+                if (!trayWindow || IsWindow(trayWindow) == FALSE) return false;
+                ComPtr<IUIAutomationElement> trayRoot;
+                if (FAILED(automation->ElementFromHandle(
+                        trayWindow, trayRoot.GetAddressOf())) || !trayRoot) return false;
+                const auto settingsTray = FindAutomationElement(
+                    automation.Get(), trayRoot.Get(), L"tray:tray.settings");
+                return settingsTray && IsSelectionItemSelected(settingsTray.Get()) &&
+                    IsKeyboardFocused(settingsTray.Get());
+            }), "Close-time blocked Settings host Back did not restore exact tray authority");
     const auto closeWhileBlockedBoundary = ReadUtf8(logPath).size();
     const auto closeStarted = std::chrono::steady_clock::now();
     SendKey(window, VK_ESCAPE);
@@ -2914,69 +3509,56 @@ void RunRetentionScenario(const Arguments& arguments) {
             }), "Host did not reopen after cancellation-ignoring worker completion.");
     const auto settingsAfterLate = waitForPaint(
         lateBoundary, kTargets.back(), kTargets.back().id, "admitted");
-    DWORD bridgeAfterClose{};
-    Require(WaitUntil(kOperationTimeoutMilliseconds, [&] {
-                const auto current =
-                    DirectChildProcessIds(host->Id(), L"WidgetBridge.exe");
-                if (current.size() != 1 ||
-                    current.front() == bridgeBeforeClose.front() ||
-                    ProcessIsRunning(bridgeBeforeClose.front())) return false;
-                bridgeAfterClose = current.front();
-                return true;
-            }),
-            "Reopen did not replace the close-cancelled tainted bridge after bounded teardown");
-    const auto bridgeCloseReconnectMilliseconds = static_cast<std::uint64_t>(
+    Require(DirectChildProcessIds(host->Id(), L"WidgetBridge.exe") ==
+                bridgeBeforeClose && ProcessIsRunning(bridgeBeforeClose.front()),
+            "Reopen replaced the healthy serialized bridge after a stale close-time completion");
+    const auto bridgeCloseContinuityMilliseconds = static_cast<std::uint64_t>(
         std::chrono::duration_cast<std::chrono::milliseconds>(
             std::chrono::steady_clock::now() - closeStarted).count());
-    recoveryProcessIds.push_back(bridgeBeforeClose.front());
-    recoveryProcessIds.push_back(bridgeAfterClose);
     const auto afterLateBody = ParseBounds(
         TextField(settingsAfterLate, "body-bounds="));
     const auto afterLateViewport = ParseBounds(
         TextField(settingsAfterLate, "viewport-bounds="));
-    const std::string revokedAdmission =
-        "Widget presentation paint target=settings content=admitted "
-        "rendered=settings sequence=" + std::to_string(selectionRevokedSequence);
-    const std::string closeRevokedAdmission =
-        "Widget presentation paint target=settings content=admitted "
-        "rendered=settings sequence=" + std::to_string(closeRevokedSequence);
-    const auto finalSlowWorkerLog = ReadUtf8(logPath);
-    Require(finalSlowWorkerLog.find(revokedAdmission, blockedBefore) ==
-                std::string::npos &&
-                finalSlowWorkerLog.find(
-                    closeRevokedAdmission, closeWhileBlockedBoundary) ==
-                    std::string::npos &&
-                TextField(settingsAfterLate, "sequence=") !=
-                    std::to_string(selectionRevokedSequence) &&
-                TextField(settingsAfterLate, "sequence=") !=
-                    std::to_string(closeRevokedSequence) &&
+    const auto afterLateSequence = ParsePositiveSequence(
+        TextField(settingsAfterLate, "sequence="));
+    Require(afterLateSequence && lastGoodSequence &&
+                *afterLateSequence >= *lastGoodSequence &&
                 afterLateBody.width == lastGoodBody.width &&
                 afterLateBody.height == lastGoodBody.height &&
                 afterLateViewport.width == lastGoodViewport.width &&
                 afterLateViewport.height == lastGoodViewport.height &&
                 settingsAfterLate.find("semantic-focus=tray:settings") !=
                     std::string::npos,
-            "Late revoked Settings sequence was admitted or changed extent/focus authority; before=" +
-                settingsLastGood + " after=" + settingsAfterLate);
+            "Reopened Settings authority regressed or changed retained extent/focus after stale drops; "
+                "selection-revoked-sequence=" + std::to_string(selectionRevokedSequence) +
+                " close-revoked-sequence=" + std::to_string(closeRevokedSequence) +
+                " before=" + settingsLastGood + " after=" + settingsAfterLate);
 
     std::vector<std::uint64_t> hostFocusMilliseconds =
         inputToRetainedMilliseconds;
-    hostFocusMilliseconds.push_back(blockedNavigationMilliseconds);
-    hostFocusMilliseconds.push_back(blockedReselectionMilliseconds);
+    hostFocusMilliseconds.push_back(blockedNavigationHostFocusMilliseconds);
+    hostFocusMilliseconds.push_back(blockedReselectionHostFocusMilliseconds);
     std::sort(hostFocusMilliseconds.begin(), hostFocusMilliseconds.end());
     const auto hostFocusP95 = hostFocusMilliseconds[
         (hostFocusMilliseconds.size() * 95 + 99) / 100 - 1];
+    std::string hostFocusSamples;
+    for (const auto sample : hostFocusMilliseconds) {
+        if (!hostFocusSamples.empty()) hostFocusSamples += ",";
+        hostFocusSamples += std::to_string(sample);
+    }
     Require(hostFocusP95 <= 50,
             "Host focus p95 exceeded 50 ms while worker completion was isolated; p95=" +
-                std::to_string(hostFocusP95));
+                std::to_string(hostFocusP95) + " samples=" + hostFocusSamples);
     std::cout << "Slow-worker response timing ms host-focus-p95="
               << hostFocusP95
               << " tray-navigation=" << blockedNavigationMilliseconds
+              << " tray-navigation-host=" << blockedNavigationHostFocusMilliseconds
               << " tray-reselection=" << blockedReselectionMilliseconds
+              << " tray-reselection-host=" << blockedReselectionHostFocusMilliseconds
               << " b-dispatch=" << blockedCloseDispatchMilliseconds
               << " b-hide-complete=" << blockedCloseMilliseconds
-              << " bridge-selection-reconnect=" << bridgeSelectionReconnectMilliseconds
-              << " bridge-close-reconnect=" << bridgeCloseReconnectMilliseconds
+              << " bridge-selection-continuity=" << bridgeSelectionContinuityMilliseconds
+              << " bridge-close-continuity=" << bridgeCloseContinuityMilliseconds
               << " host-focus-samples=" << hostFocusMilliseconds.size() << '\n';
 
     RECT hostBounds{};
@@ -3015,23 +3597,29 @@ void RunRetentionScenario(const Arguments& arguments) {
                 hostBounds.right <= hostMonitorInfo.rcWork.right &&
                 hostBounds.bottom <= hostMonitorInfo.rcWork.bottom,
             "Runtime display reconciliation moved the host outside rcWork");
-    const auto packPoint = [](const LONG x, const LONG y) {
-        return MAKELPARAM(
-            static_cast<WORD>(static_cast<short>(x)),
-            static_cast<WORD>(static_cast<short>(y)));
-    };
-    const auto unusedHit = SendMessageW(
-        window, WM_NCHITTEST, 0,
-        packPoint(hostBounds.left + 1, hostBounds.top + 1));
-    const auto authoredHit = SendMessageW(
-        window, WM_NCHITTEST, 0,
-        packPoint(
-            (hostBounds.left + hostBounds.right) / 2,
-            (hostBounds.top + hostBounds.bottom) / 2));
-    Require(unusedHit == HTTRANSPARENT && authoredHit == HTCLIENT,
-            "Fixed composition container did not exclude transparent client pixels from hit testing");
-    Require(GetClassLongPtrW(window, GCLP_HBRBACKGROUND) == 0,
-            "Composition HWND retained an opaque class background owner");
+    const auto finalPresentationMode = CurrentPresentationMode(ReadUtf8(logPath));
+    Require(finalPresentationMode.has_value(),
+            "Final switch route lacked positive presentation-mode authority");
+    const bool finalUsesComposition = *finalPresentationMode;
+    if (finalUsesComposition) {
+        const auto packPoint = [](const LONG x, const LONG y) {
+            return MAKELPARAM(
+                static_cast<WORD>(static_cast<short>(x)),
+                static_cast<WORD>(static_cast<short>(y)));
+        };
+        const auto unusedHit = SendMessageW(
+            window, WM_NCHITTEST, 0,
+            packPoint(hostBounds.left + 1, hostBounds.top + 1));
+        const auto authoredHit = SendMessageW(
+            window, WM_NCHITTEST, 0,
+            packPoint(
+                (hostBounds.left + hostBounds.right) / 2,
+                (hostBounds.top + hostBounds.bottom) / 2));
+        Require(unusedHit == HTTRANSPARENT && authoredHit == HTCLIENT,
+                "Fixed composition container did not exclude transparent client pixels from hit testing");
+        Require(GetClassLongPtrW(window, GCLP_HBRBACKGROUND) == 0,
+                "Composition HWND retained an opaque class background owner");
+    }
 
     const auto reopenBefore = ReadUtf8(logPath).size();
     // Queue a same-shell switch and close in order on the host thread. DLV-127
@@ -3044,97 +3632,242 @@ void RunRetentionScenario(const Arguments& arguments) {
                 return IsWindowVisible(window) == FALSE;
             }), "Composition host did not complete the bounded close");
     const auto hiddenLog = ReadUtf8(logPath);
-    const auto retiredAt = hiddenLog.find(
-        "Composition motion retired state=hidden", reopenBefore);
-    Require(retiredAt != std::string::npos,
-            "Hidden host did not retire its interrupted composition motion");
-    const auto retiredEnd = hiddenLog.find('\n', retiredAt);
-    const auto retiredRecord = hiddenLog.substr(
-        retiredAt, retiredEnd == std::string::npos
-            ? std::string::npos : retiredEnd - retiredAt);
-    Require(retiredRecord.find(
-                    "future-work=false geometry=discarded") != std::string::npos,
-            "Hidden host retained stale composition geometry or frame work; record=" +
-                retiredRecord);
-    const auto hiddenBoundary = retiredEnd == std::string::npos
-        ? hiddenLog.size() : retiredEnd;
+    std::size_t hiddenBoundary = hiddenLog.size();
+    if (finalUsesComposition) {
+        const auto retiredAt = hiddenLog.find(
+            "Composition motion retired state=hidden", reopenBefore);
+        Require(retiredAt != std::string::npos,
+                "Hidden host did not retire its interrupted composition motion");
+        const auto retiredEnd = hiddenLog.find('\n', retiredAt);
+        const auto retiredRecord = hiddenLog.substr(
+            retiredAt, retiredEnd == std::string::npos
+                ? std::string::npos : retiredEnd - retiredAt);
+        Require(retiredRecord.find(
+                        "future-work=false geometry=discarded") != std::string::npos,
+                "Hidden host retained stale composition geometry or frame work; record=" +
+                    retiredRecord);
+        hiddenBoundary = retiredEnd == std::string::npos
+            ? hiddenLog.size() : retiredEnd;
+    }
     std::this_thread::sleep_for(std::chrono::milliseconds(220));
     const auto afterHidden = ReadUtf8(logPath);
-    Require(afterHidden.find("Composition motion step", hiddenBoundary) ==
-                std::string::npos &&
-                afterHidden.find("Composition frame committed", hiddenBoundary) ==
+    if (finalUsesComposition) {
+        Require(afterHidden.find("Composition motion step", hiddenBoundary) ==
+                    std::string::npos &&
+                    afterHidden.find("Composition frame committed", hiddenBoundary) ==
+                        std::string::npos,
+                "Hidden host continued composition frame work after retirement");
+    } else {
+        Require(afterHidden.find("Widget presentation paint", hiddenBoundary) ==
                     std::string::npos,
-            "Hidden host continued composition frame work after retirement");
+                "Hidden HWND fallback host continued presentation paint work");
+    }
 
     Require(PostMessageW(window, WM_HOTKEY, 1, 0) != FALSE,
             Win32Error("PostMessageW(reopen hotkey)"));
     Require(WaitUntil(kOperationTimeoutMilliseconds, [&] {
                 return IsWindowVisible(window) != FALSE;
             }), "Composition host did not reopen after interrupted motion");
-    Require(WaitUntil(kOperationTimeoutMilliseconds, [&] {
-                const auto current = ReadUtf8(logPath);
-                const auto placement = current.find(
-                    "Composition placement committed content=complete", hiddenBoundary);
-                return placement != std::string::npos &&
-                    current.find("order=commit-place", placement) != std::string::npos &&
-                    current.find("alpha=premultiplied-clear", placement) !=
-                        std::string::npos;
-            }), "Reopened host did not atomically place a transparent complete surface");
+    if (finalUsesComposition) {
+        Require(WaitUntil(kOperationTimeoutMilliseconds, [&] {
+                    const auto current = ReadUtf8(logPath);
+                    const auto placement = current.find(
+                        "Composition placement committed content=complete", hiddenBoundary);
+                    return placement != std::string::npos &&
+                        current.find("order=commit-place", placement) != std::string::npos &&
+                        current.find("alpha=premultiplied-clear", placement) !=
+                            std::string::npos;
+                }), "Reopened host did not atomically place a transparent complete surface");
+    } else {
+        Require(WaitUntil(kOperationTimeoutMilliseconds, [&] {
+                    const auto current = ReadUtf8(logPath);
+                    constexpr std::string_view paintNeedle =
+                        "Widget presentation paint target=audio-mixer content=admitted rendered=audio-mixer sequence=";
+                    const auto paintAt = current.find(paintNeedle, hiddenBoundary);
+                    if (paintAt == std::string::npos) return false;
+                    const auto paint = RecordLine(current, paintAt);
+                    const auto sequence = ParsePositiveSequence(TextField(paint, "sequence="));
+                    if (!sequence) return false;
+                    const auto checkpoint = SelectCurrentFallbackCheckpoint(
+                        current, paintAt + paint.size(), "audio-mixer", *sequence);
+                    if (!checkpoint.offset) return false;
+                    const auto authority = RecordLine(current, *checkpoint.offset);
+                    RECT liveWindow{}, liveClient{};
+                    POINT origin{};
+                    if (!GetWindowRect(window, &liveWindow) ||
+                        !GetClientRect(window, &liveClient) ||
+                        !ClientToScreen(window, &origin)) return false;
+                    const auto rect = [](const LONG left, const LONG top,
+                                         const LONG width, const LONG height) {
+                        return std::to_string(left) + "," + std::to_string(top) + "," +
+                            std::to_string(width) + "," + std::to_string(height);
+                    };
+                    if (TextField(authority, "content-window=") !=
+                            rect(liveWindow.left, liveWindow.top,
+                                 liveWindow.right - liveWindow.left,
+                                 liveWindow.bottom - liveWindow.top) ||
+                        TextField(authority, "content-client-screen=") !=
+                            rect(origin.x, origin.y,
+                                 liveClient.right - liveClient.left,
+                                 liveClient.bottom - liveClient.top)) return false;
+                    ComPtr<IUIAutomationElement> contentRoot;
+                    if (FAILED(automation->ElementFromHandle(
+                            window, contentRoot.GetAddressOf())) || !contentRoot) return false;
+                    const auto tray = FindAutomationElement(
+                        automation.Get(), contentRoot.Get(), L"tray:tray.audio-mixer");
+                    return tray && IsSelectionItemSelected(tray.Get()) &&
+                        IsKeyboardFocused(tray.Get());
+                }), "Reopened HWND fallback host lacked exact admitted paint/checkpoint/live HWND/UIA authority");
+    }
 
     const auto log = ReadUtf8(logPath);
     Require(log.find("Render-target resize failed") == std::string::npos,
             "A production switch forced render-target recreation.");
-    Require(log.find("DirectComposition complete-content presentation owner active") !=
-                std::string::npos,
-            "Production host did not activate its DirectComposition owner.");
-    Require(log.find(
-                "alpha=premultiplied-clear hwnd=no-redirection "
-                "opacity=composition-effect hwnd-background=none") !=
-                std::string::npos &&
-                log.find(" surface=widget shell=shared ") != std::string::npos,
-            "Production diagnostics omitted the alpha or shared-shell decision.");
-    Require(log.find("Composition motion start") != std::string::npos &&
-                log.find("anchor=bottom") != std::string::npos,
-            "Variable widget extents omitted bottom-anchored composition continuity.");
-    Require(log.find("intrinsic-passes=0 surface-axis=fillAvailable/preferred") !=
-                std::string::npos,
-            "Production host did not admit independent FillAvailable width without measurement.");
+    Require(log.find(" surface=widget shell=shared ") != std::string::npos,
+            "Production diagnostics omitted the shared-shell decision.");
+    if (log.find("intrinsic-passes=0 surface-axis=fillAvailable/preferred") ==
+        std::string::npos) {
+        std::string axisRecords;
+        for (auto at = log.find("surface-axis="); at != std::string::npos;) {
+            const auto lineStart = log.rfind('\n', at);
+            const auto recordAt = lineStart == std::string::npos ? 0 : lineStart + 1;
+            const auto record = RecordLine(log, recordAt);
+            axisRecords += " [" + std::string(record) + "]";
+            at = log.find("surface-axis=", at + 1);
+        }
+        const auto admittedAt = log.find(
+            "Widget presentation paint target=network-controls content=admitted "
+            "rendered=network-controls sequence=");
+        const auto admitted = admittedAt == std::string::npos
+            ? std::string_view{} : RecordLine(log, admittedAt);
+        const auto sequence = ParsePositiveSequence(TextField(admitted, "sequence="));
+        const auto checkpointAt = admittedAt == std::string::npos
+            ? std::string::npos
+            : log.find(
+                "Fallback placement mode=hwnd-fallback phase=presentation-checkpoint",
+                admittedAt + admitted.size());
+        const auto checkpoint = checkpointAt == std::string::npos
+            ? std::string_view{} : RecordLine(log, checkpointAt);
+        const auto work = ParseBounds(TextField(checkpoint, "work="));
+        const auto target = ParseBounds(TextField(checkpoint, "target="));
+        const auto dpi = ParsePositiveSequence(TextField(checkpoint, "dpi="));
+        float interfaceScale{};
+        try {
+            std::size_t consumed{};
+            const auto value = TextField(checkpoint, "interface-scale=");
+            interfaceScale = std::stof(value, &consumed);
+            if (consumed != value.size()) interfaceScale = 0.0F;
+        } catch (...) {
+            interfaceScale = 0.0F;
+        }
+        const auto desired = TextField(admitted, "desired-extent=");
+        const auto extentSeparator = desired.find('x');
+        const auto desiredWidth = extentSeparator == std::string::npos
+            ? std::optional<long long>{}
+            : ParsePositiveSequence(desired.substr(0, extentSeparator));
+        const auto desiredHeight = extentSeparator == std::string::npos
+            ? std::optional<long long>{}
+            : ParsePositiveSequence(desired.substr(extentSeparator + 1));
+        const auto sideMarginPixels = dpi
+            ? static_cast<long long>(std::llround(24.0 * static_cast<double>(*dpi) / 96.0))
+            : 0LL;
+        const auto availableWidthPixels =
+            static_cast<long long>(std::llround(work.width)) - sideMarginPixels * 2;
+        const double pixelsPerDesignDip = dpi
+            ? static_cast<double>(*dpi) / 96.0 * interfaceScale
+            : 0.0;
+        const auto expectedWidthDip = pixelsPerDesignDip > 0.0
+            ? static_cast<long long>(std::llround(
+                static_cast<double>(availableWidthPixels) / pixelsPerDesignDip))
+            : 0LL;
+        const bool exactFallbackFillAvailable =
+            !finalUsesComposition && admittedAt != std::string::npos &&
+            sequence.has_value() &&
+            TextField(admitted, "semantics=") == "current" &&
+            TextField(admitted, "desired-extent=") ==
+                TextField(admitted, "presented-extent=") &&
+            checkpointAt != std::string::npos &&
+            TextField(checkpoint, "widget=") == "network-controls" &&
+            TextField(checkpoint, "instance=") == "network-controls.default" &&
+            !TextField(checkpoint, "runtime=").empty() &&
+            !TextField(checkpoint, "presentation=").empty() &&
+            ParsePositiveSequence(TextField(checkpoint, "sequence=")) == sequence &&
+            dpi.has_value() && interfaceScale > 0.0F &&
+            desiredWidth && *desiredWidth == expectedWidthDip &&
+            desiredHeight && *desiredHeight == 878 &&
+            availableWidthPixels > 0 &&
+            static_cast<long long>(std::llround(target.width)) == availableWidthPixels &&
+            target.x >= work.x && target.y >= work.y &&
+            target.x + target.width <= work.x + work.width &&
+            target.y + target.height <= work.y + work.height;
+        if (!exactFallbackFillAvailable) {
+            std::string retainedLog = "not-supplied";
+            if (!arguments.durableDiagnosticsDirectory.empty()) {
+                std::error_code error;
+                fs::create_directories(arguments.durableDiagnosticsDirectory, error);
+                const auto destination = arguments.durableDiagnosticsDirectory /
+                    L"WidgetSwitchHostTests-complete-overlay.log";
+                if (!error) {
+                    fs::copy_file(logPath, destination,
+                                  fs::copy_options::overwrite_existing, error);
+                }
+                retainedLog = error ? "copy-failed=" + error.message()
+                                    : destination.string();
+            }
+            Fail("Production host did not admit independent FillAvailable width without measurement; "
+                 "surface-axis-records=" + axisRecords +
+                 " admitted-record=" + std::string(admitted) +
+                 " checkpoint-record=" + std::string(checkpoint) +
+                 " expected-width-dip=" + std::to_string(expectedWidthDip) +
+                 " available-width-px=" + std::to_string(availableWidthPixels) +
+                 " retained-overlay-log=" + retainedLog);
+        }
+    }
     Require(log.find("intrinsic-passes=1 surface-axis=preferred/content") !=
                 std::string::npos,
             "Production host did not perform one Content-height intrinsic pass.");
-    Require(log.find("DirectComposition presentation disabled") == std::string::npos &&
-                log.find("Overlay render target resized in place") == std::string::npos,
-            "Production transition fell back to direct HWND presentation.");
-    Require(drawTimings.size() == kTargets.size() &&
-                commitTimings.size() == drawTimings.size() &&
-                geometryTimings.size() == drawTimings.size(),
-            "Production timing distribution omitted a widget transition.");
     constexpr std::uint64_t kTransitionBudgetMicroseconds = 100000;
-    Require(*std::max_element(drawTimings.begin(), drawTimings.end()) <=
-                kTransitionBudgetMicroseconds,
-            "Complete destination drawing exceeded the bounded transition budget.");
-    Require(*std::max_element(commitTimings.begin(), commitTimings.end()) <=
-                kTransitionBudgetMicroseconds,
-            "Synchronous replacement commit exceeded the bounded transition budget.");
-    Require(*std::max_element(geometryTimings.begin(), geometryTimings.end()) <=
-                kTransitionBudgetMicroseconds,
-            "Coordinated commit and HWND geometry exceeded the bounded transition budget.");
-    const auto maximumMotionCommit = motionCommitTimings.empty()
-        ? 0ULL
-        : *std::max_element(
-            motionCommitTimings.begin(), motionCommitTimings.end());
-    Require(maximumMotionCommit <= kTransitionBudgetMicroseconds,
-            "Nonblocking composition motion commits exceeded the transition budget; max-us=" +
-                std::to_string(maximumMotionCommit));
-    std::cout << "Composition transition timing us draw-max="
-              << *std::max_element(drawTimings.begin(), drawTimings.end())
-              << " commit-max="
-              << *std::max_element(commitTimings.begin(), commitTimings.end())
-              << " geometry-max="
-              << *std::max_element(geometryTimings.begin(), geometryTimings.end())
-              << " motion-commit-max="
-              << maximumMotionCommit
-              << " samples=" << drawTimings.size() << '\n';
+    if (finalUsesComposition) {
+        Require(log.find("DirectComposition complete-content presentation owner active") !=
+                    std::string::npos &&
+                    log.find(
+                        "alpha=premultiplied-clear hwnd=no-redirection "
+                        "opacity=composition-effect hwnd-background=none") !=
+                    std::string::npos,
+                "Production diagnostics omitted the active composition alpha owner.");
+        Require(log.find("Composition motion start") != std::string::npos &&
+                    log.find("anchor=bottom") != std::string::npos,
+                "Variable widget extents omitted bottom-anchored composition continuity.");
+        Require(log.find("DirectComposition presentation disabled") == std::string::npos &&
+                    log.find("Overlay render target resized in place") == std::string::npos,
+                "Positive composition route fell back to direct HWND presentation.");
+        Require(drawTimings.size() == kTargets.size() &&
+                    commitTimings.size() == drawTimings.size() &&
+                    geometryTimings.size() == drawTimings.size(),
+                "Production timing distribution omitted a widget transition.");
+        Require(*std::max_element(drawTimings.begin(), drawTimings.end()) <=
+                    kTransitionBudgetMicroseconds &&
+                    *std::max_element(commitTimings.begin(), commitTimings.end()) <=
+                    kTransitionBudgetMicroseconds &&
+                    *std::max_element(geometryTimings.begin(), geometryTimings.end()) <=
+                    kTransitionBudgetMicroseconds,
+                "Composition transition timing exceeded the bounded budget.");
+        const auto maximumMotionCommit = motionCommitTimings.empty()
+            ? 0ULL
+            : *std::max_element(motionCommitTimings.begin(), motionCommitTimings.end());
+        Require(maximumMotionCommit <= kTransitionBudgetMicroseconds,
+                "Nonblocking composition motion commits exceeded the transition budget; max-us=" +
+                    std::to_string(maximumMotionCommit));
+        std::cout << "Composition transition timing us draw-max="
+                  << *std::max_element(drawTimings.begin(), drawTimings.end())
+                  << " commit-max=" << *std::max_element(commitTimings.begin(), commitTimings.end())
+                  << " geometry-max=" << *std::max_element(geometryTimings.begin(), geometryTimings.end())
+                  << " motion-commit-max=" << maximumMotionCommit
+                  << " samples=" << drawTimings.size() << '\n';
+    } else {
+        Require(log.find("DirectComposition presentation disabled") != std::string::npos,
+                "HWND fallback proof lacked its positive presentation-mode marker");
+    }
     Require(inputToRetainedMilliseconds.size() == kTargets.size() - 1 &&
                 inputToAdmittedMilliseconds.size() == kTargets.size() - 1,
             "Production temporal evidence omitted a widget switch.");
