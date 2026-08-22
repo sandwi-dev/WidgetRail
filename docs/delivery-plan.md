@@ -39,7 +39,7 @@ historical evidence only; this file is the sole authority for current work.
 
 | Lane | Task/worktree | State |
 | --- | --- | --- |
-| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | Assigned build-tooling DLV-340 below at `676cd76`, preserving five unrelated uncommitted files plus held build-script work. DLV-284 remains queued and unassigned. |
+| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | Assigned build-tooling verification DLV-341 below at `676cd76`, preserving five unrelated uncommitted files plus held DLV-340 build-script work. DLV-284 remains queued and unassigned. |
 | Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | Idle and clean at `676cd76`. Preserve PID 126208 and all product state; do not begin new work, integrate, rebuild/relaunch, or push. |
 
 ## Execution and architecture rules
@@ -383,6 +383,24 @@ uncommitted. No UIA diagnostic execution, complete native gate, Tier 3,
 production correction, integration, DLV-284, launch/terminate, or push.
 Preserve PID 126208 and all installed/configured state.
 
+DLV-340 reached the intended centralized helper and successfully published the
+complete production managed set through Media Sessions. Its first red was the
+pre-existing command contract: `WidgetActionFailureHostTestsOnly` requires
+tests and therefore rejects `SkipTests`. No managed publish failed; the reviewer
+had assigned an invalid verification combination. The helper remains
+uncommitted.
+
+## Assigned platform tooling — DLV-341 verify DLV-340 on a legal route
+
+Preserve all six current uncommitted files and make no further edits. Run
+`src/OverlayHost/build.ps1 -Configuration Release -SkipTests` exactly once to
+verify the held centralized managed-publish helper on the script's ordinary
+legal production/build route. Stop first red. If green, commit exactly
+`src/OverlayHost/build.ps1` with a DLV-340 subject, leaving the other five files
+uncommitted. Do not execute any test or UIA diagnostic, complete native gate,
+Tier 3, production correction, integration, DLV-284, launch/terminate, or push.
+Preserve PID 126208 and all installed/configured state.
+
 DLV-333 stopped at its first targeted red with both test files uncommitted. The
 exact UI Automation tray invocation succeeded, selected
 `ytmusic-fixture`, and reached its intended Establish/worker-start failure.
@@ -517,7 +535,7 @@ import/export or scheduling only after independent widgets prove the need.
 
 ## Ordered queues
 
-1. Platform evidence queue: execute DLV-340 tooling correction, then resume the
+1. Platform evidence queue: execute DLV-341 tooling verification, then resume the
    one-shot UIA diagnostic from its clean build baseline.
 2. Reviewer integration queue: independently review DLV-332 and the cumulative
    accepted production/test chain; integrate only if every required gate passes.
@@ -553,7 +571,8 @@ There is no other Ready production work in either standing lane.
 | DLV-337 | Explicit Bridge publish green; prior stop was transient tooling noise. |
 | DLV-338 | Repeated default-parallel Bridge publish failure; host did not execute. |
 | DLV-339 | Serialized Bridge passed; next default-parallel Worker Host publish failed identically. |
-| DLV-340 | Assigned one shared serialized managed-publish helper in build.ps1. |
+| DLV-340 | Helper published all production managed projects; invalid assigned flag combination stopped after packaging. |
+| DLV-341 | Assigned no-edit verification on legal ordinary Release `SkipTests` route. |
 | DLV-284 | Queued, not assigned until cumulative review/integration. |
 | DLV-248 | Deliberately deferred until explicit user promotion. |
 
