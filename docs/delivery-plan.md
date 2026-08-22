@@ -39,7 +39,7 @@ historical evidence only; this file is the sole authority for current work.
 
 | Lane | Task/worktree | State |
 | --- | --- | --- |
-| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | Assigned non-racy lifetime correction/gates DLV-359 below at DLV-340 commit `0f8b080`, preserving build tooling plus four cumulative test files. DLV-284 remains queued and unassigned. |
+| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | Assigned source-only retained-event diagnostic design DLV-360 below at DLV-340 commit `0f8b080`, preserving build tooling plus four cumulative test files. DLV-284 remains queued and unassigned. |
 | Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | Idle and clean at `676cd76`. Preserve PID 126208 and all product state; do not begin new work, integrate, rebuild/relaunch, or push. |
 
 ## Execution and architecture rules
@@ -480,6 +480,28 @@ native/accessibility fixtures pass. Then commit exactly `build.ps1` with a
 DLV-349 subject and commit exactly the three test files with a DLV-347 subject.
 Do not run Tier 3 yet, integrate, start DLV-284, launch/terminate, or push.
 Preserve PID 126208 and all state.
+
+DLV-359 corrected the lifetime oracle, but its focused route again observed no
+first `LiveRegionChanged` despite the DLV-357 exact root/action identity
+handshake. The handshake was necessary but is not sufficient. Repeating the
+same route is prohibited until retained evidence distinguishes host planning,
+provider resolution/raise, and UIA delivery.
+
+## Assigned platform diagnosis — DLV-360 design retained event evidence
+
+Source inspection only; make no edits and run no build, test, publish, or
+process command. Inspect the current action-failure fixture cleanup, temporary
+installation/log ownership, UIA handler lifetime/apartment, host event-plan and
+provider-resolution seams, and `UiaRaiseAutomationEvent` call. Design the
+smallest one-run diagnostic that survives fixture failure and records, for the
+first action only: current content HWND/root identity at subscription and at
+invoke, prior/current semantic presence of `host.open.status`, planned event
+kind/key, resolved provider identity, exact raise HRESULT, and handler callback
+count/timestamp. Prefer test-owned artifact preservation and bounded diagnostic
+hooks; no permanent verbose production logging. Identify exact files/scopes,
+cleanup rules, and how accepted PID 126208 remains isolated. Do not change
+files, commit, integrate, start DLV-284, launch/terminate, or push. Preserve all
+state.
 
 DLV-358 proved the polled failure log is not the feedback deadline origin: it
 can be written before UI-thread admission and observed after admission.
@@ -971,8 +993,8 @@ import/export or scheduling only after independent widgets prove the need.
 
 ## Ordered queues
 
-1. Platform evidence queue: execute DLV-359 invocation-anchored retention
-   correction, focused action-failure route, then one canonical Release route.
+1. Platform evidence queue: execute DLV-360 source-only retained event-evidence
+   design before authorizing one diagnostic run.
 2. Reviewer integration queue: independently review DLV-332 and the cumulative
    accepted production/test chain; integrate only if every required gate passes.
 3. Platform production queue: assign DLV-284 after clean integration, before
@@ -1026,7 +1048,8 @@ There is no other Ready production work in either standing lane.
 | DLV-356 | Classified prior-root handler registration as the intermittent event race. |
 | DLV-357 | Exact UIA handshake and one first event passed; real-host lifetime timing remained flaky. |
 | DLV-358 | Polled log is not deadline origin; exact expiry belongs in deterministic unit coverage. |
-| DLV-359 | Assigned invocation-anchored +3000-ms replacement proof and focused-plus-canonical gates. |
+| DLV-359 | Lifetime oracle fixed; first live-region event remained intermittent despite root handshake. |
+| DLV-360 | Assigned source-only persistent host-plan/raise/handler diagnostic design. |
 | DLV-284 | Queued, not assigned until cumulative review/integration. |
 | DLV-248 | Deliberately deferred until explicit user promotion. |
 
