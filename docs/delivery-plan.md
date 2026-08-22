@@ -39,7 +39,7 @@ historical evidence only; this file is the sole authority for current work.
 
 | Lane | Task/worktree | State |
 | --- | --- | --- |
-| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | Assigned DLV-386 source/output diagnosis of post-catalog fixed-chrome baseline publication. Preserve all seven held diffs and neutral rejected/restoration commits. DLV-284 remains queued and unassigned. |
+| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | Assigned DLV-387 test-only correction to establish tray stationarity from the first naturally placed widget switch. Preserve all seven held diffs and neutral rejected/restoration commits. DLV-284 remains queued and unassigned. |
 | Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | Idle and clean at `676cd76`. Preserve PID 126208 and all product state; do not begin work, integrate, rebuild/relaunch, or push. |
 
 ## Execution and architecture rules
@@ -584,9 +584,60 @@ pre-removal records, add sleeps/tolerance/timeouts, edit, rerun, commit,
 integrate, start DLV-284, launch/terminate, or push. Preserve PID 126208, all
 seven diffs, and DLV-385 diagnostics.
 
+DLV-386 classified the red as a `WidgetSwitchHostTests.cpp` parser/order
+overconstraint plus missing immediate post-removal screen-space correlation,
+not a demonstrated production stationarity failure. Catalog removal
+synchronously publishes the current eight-item Audio Mixer tray, but because
+the widget and extent are unchanged the legitimate path is repaint-only. It
+does not need to advance fixed-chrome placement, recreate a chrome composition
+session, or emit a new composition-child sample. The current paint's fallback
+tray rectangle is local DIP; the prior screen sample is pre-removal and stale.
+The first new screen-projected authority is the next naturally required
+placement transaction.
+
+## Assigned platform test correction — DLV-387 natural placement baseline
+
+Continue to own only `src/OverlayHost/WidgetSwitchHostTests.cpp`; preserve the
+other six held files unchanged. Keep DLV-383's exact content extents and the
+post-removal Audio Mixer paint as exact proof of current catalog order,
+selection, target, sequence, and `tray-total=8`. Remove only the blocking
+requirement that catalog removal itself produce an ordered fixed-chrome
+placement, Audio paint, and composition-child sample.
+
+Allow the first ordinary extent-changing widget switch to proceed and use its
+naturally emitted placement transaction to establish the screen-space tray
+baseline. Within that transaction require exact order and correlation:
+
+- exact fixed-chrome placement;
+- matching target/sequence paint with no intervening presentation change; and
+- committed composition-child sample where sample
+  `chrome-placement-count` equals placement `placement-count`, sample
+  `chrome-hwnd` equals placement `actual`, sample `tray` equals placement
+  `tray-screen`, and both placement exactness and
+  `chrome-applied-exact=true` hold.
+
+Pin the resulting `{placement-count, chrome-hwnd, tray-screen}` tuple and use
+exact equality for every later stationarity comparison. Give catalog/target/
+sequence, missing natural placement, placement exactness, placement/sample
+count, chrome HWND, tray-screen, and intervening-authority changes distinct
+diagnostics. Do not rebaseline later, use post-removal local DIPs or stale
+pre-removal records, force an extra placement/repaint, add tolerance/sleep/
+timeout, weaken equality, or change production or unrelated assertions.
+
+Using the proven absolute child/process-handle durable capture pattern, run
+`WidgetSwitchTestsOnly` exactly once and retain command, preflight, streams,
+and numeric exit. Stop first red. If green, run the complete serialized Release
+native gate exactly once through the same durable pattern. If both are green,
+commit exactly `tests/WidgetSwitchFixture/Program.cs` with DLV-375 subject,
+commit exactly `src/OverlayHost/WidgetSwitchHostTests.cpp` with DLV-387
+subject, commit exactly `src/OverlayHost/build.ps1` with DLV-349 subject, then
+commit exactly the four other held native test files with DLV-374 subject. Do
+not run Tier 3, integrate, start DLV-284, launch/terminate product processes,
+or push. Preserve PID 126208, all state, and all diagnostic directories.
+
 ## Reviewer disposition after the cumulative native gate is green
 
-If either authorized native route is red, retain all five diffs uncommitted and
+If either authorized native route is red, retain all seven diffs uncommitted and
 assign a source-first classification of that first red. Do not rerun unchanged.
 
 If both routes are green:
@@ -605,7 +656,7 @@ If both routes are green:
 
 ## Queued platform production — DLV-284 explicit publication transaction model
 
-Status: queued, not assigned. It becomes assignable only after DLV-386 is
+Status: queued, not assigned. It becomes assignable only after DLV-387 is
 dispositioned, the cumulative native gate is green, and the
 cumulative evidence pass, the accepted production/test chain is independently
 reviewed and integrated, and the accepted main Release is coherently refreshed
@@ -690,8 +741,8 @@ import/export or scheduling only after independent widgets prove the need.
 
 ## Ordered queues
 
-1. Platform evidence queue: execute DLV-386 source/output classification of
-   post-catalog baseline event guarantees before another correction or rerun.
+1. Platform evidence queue: execute DLV-387's natural-placement stationarity
+   correction and stop at the first red before another diagnosis or rerun.
 2. Reviewer integration queue: review DLV-349 and the eventual cumulative test
    commit, then assign exact clean
    Tier 3 if the native routes are green.
@@ -714,7 +765,7 @@ There is no other Ready production work in either standing lane.
 | DLV-314 | Production `992b77b` physically accepted with Spotify 0.3.13. |
 | DLV-318 | Current accepted production `32a2a5e`; PID 126208 runs Spotify 0.3.14. |
 | DLV-319–326 | Accepted managed test chain through `676cd76`; all managed Tier-3 gates green. |
-| DLV-327–386 | Cumulative fixture/build evidence remains held pending DLV-386 disposition and exact-commit Tier 3. |
+| DLV-327–387 | Cumulative fixture/build evidence remains held pending DLV-387 disposition and exact-commit Tier 3. |
 | DLV-284 | Queued, not assigned until cumulative review/integration. |
 | DLV-248 | Deliberately deferred until explicit user promotion. |
 
@@ -745,4 +796,5 @@ There is no other Ready production work in either standing lane.
 | DLV-383 | Audio extent correction passed; focused route exposed cross-authority tray stationarity red. |
 | DLV-384 | Screen-pixel baseline versus local-DIP fallback and catalog revision mismatch classified. |
 | DLV-385 | Strict post-catalog baseline overconstrained; required ordered trio was not observed. |
-| DLV-386 | Assigned source/output trace of catalog revision and chrome publication order. |
+| DLV-386 | Catalog removal legitimately repaints without a new placement/sample; held parser/order was overconstrained. |
+| DLV-387 | Assigned natural first-placement stationarity baseline correction. |
