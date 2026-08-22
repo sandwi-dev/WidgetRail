@@ -39,7 +39,7 @@ historical evidence only; this file is the sole authority for current work.
 
 | Lane | Task/worktree | State |
 | --- | --- | --- |
-| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | Assigned source-only event-partition diagnosis DLV-362 below at DLV-340 commit `0f8b080`, preserving build tooling, four cumulative test files, and temporary trace hooks. DLV-284 remains queued and unassigned. |
+| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | Assigned production event-planner correction DLV-363 below at DLV-340 commit `0f8b080`, preserving build tooling and cumulative test files while removing temporary trace hooks. DLV-284 remains queued and unassigned. |
 | Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | Idle and clean at `676cd76`. Preserve PID 126208 and all product state; do not begin new work, integrate, rebuild/relaunch, or push. |
 
 ## Execution and architecture rules
@@ -477,6 +477,39 @@ absent-to-present polite live region. Classify production versus fixture error
 and identify the smallest correction plus exact focused evidence. Do not change
 files, commit, integrate, start DLV-284, launch/terminate, or push. Preserve
 PID 126208, retained artifacts, and all state.
+
+DLV-362 resolved both authorities. `host.open.status` belongs to the fixed-chrome
+partition/provider, while the fixture subscribed to content. Independently,
+the authoritative chrome planner saw absent to present polite status but emitted
+only structural addition and no live-region event. Production therefore has a
+bounded event-planning omission; fixture correction and deterministic tests
+remain after the physical verdict.
+
+## Assigned platform production correction — DLV-363 added live region event
+
+Return to physical-first order. Preserve `build.ps1` and all cumulative test
+work. Using explicit patches, remove only the temporary DLV-361 trace hooks from
+`AccessibilityProvider.h`, `AccessibilityProvider.cpp`, and `main.cpp`, restoring
+those files exactly to HEAD; remove only diagnostic-manifest/hook code from
+`WidgetActionFailureHostTests.cpp` while preserving its functional cumulative
+changes. Keep retained artifact files outside source untouched for evidence.
+
+Own production only in `src/OverlayHost/AccessibilityEvents.cpp`. When the same
+authoritative provider partition/runtime adds a new semantic node whose live
+setting is polite or assertive, plan exactly one `LiveRegionChanged` for that
+new key. Preserve zero live-region events for identical retained/replacement
+text, removal, unrelated structural changes, and cross-runtime/root replacement
+where prior authority is not comparable. Do not change partition routing,
+provider resolution, event raising, focus, status text/lifetime, or tests in
+this milestone.
+
+With external execution approval, run exactly once:
+`powershell.exe -NoProfile -ExecutionPolicy Bypass -File
+.\src\OverlayHost\build.ps1 -Configuration Release -SkipTests`. Stop first red.
+If green, inspect and commit exactly `AccessibilityEvents.cpp` with a DLV-363
+subject. Do not run tests, edit test expectations, integrate, launch/terminate,
+start DLV-284, or push. Preserve accepted PID 126208 and all state for reviewer
+candidate preparation.
 
 DLV-350 classified the Cold Dashboard red as fixture drift. Current startup is
 the real Settings widget, not the retired dashboard placeholder. Content
@@ -1049,8 +1082,8 @@ import/export or scheduling only after independent widgets prove the need.
 
 ## Ordered queues
 
-1. Platform evidence queue: execute DLV-362 source-only status-partition and
-   planner-authority classification before any correction or rerun.
+1. Platform physical-first queue: execute DLV-363 production correction and
+   Release `SkipTests` build, then reviewer prepares the visible candidate.
 2. Reviewer integration queue: independently review DLV-332 and the cumulative
    accepted production/test chain; integrate only if every required gate passes.
 3. Platform production queue: assign DLV-284 after clean integration, before
@@ -1107,7 +1140,8 @@ There is no other Ready production work in either standing lane.
 | DLV-359 | Lifetime oracle fixed; first live-region event remained intermittent despite root handshake. |
 | DLV-360 | Designed bounded isolated host-plan/raise plus test-handler retained evidence. |
 | DLV-361 | Host saw status add but planned no event; traced HWND differed from subscribed content HWND. |
-| DLV-362 | Assigned source-only content/chrome partition and live-region planning diagnosis. |
+| DLV-362 | Chrome owns status; fixture root was stale and production omitted added live-region event. |
+| DLV-363 | Assigned bounded production event-planner correction and test-free Release build. |
 | DLV-284 | Queued, not assigned until cumulative review/integration. |
 | DLV-248 | Deliberately deferred until explicit user promotion. |
 
