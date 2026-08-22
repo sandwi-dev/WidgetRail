@@ -15,6 +15,10 @@ param(
     [switch]$ProcessOwnerTestsOnly,
     [switch]$CompositionTestsOnly,
     [switch]$WidgetSwitchTestsOnly,
+    [switch]$WidgetSwitchFallbackAuthorityTestsOnly,
+    [string]$WidgetSwitchFallbackAuthorityReplayLog,
+    [Int64]$WidgetSwitchFallbackAuthorityReplayMarker,
+    [Int64]$WidgetSwitchFallbackAuthorityReplaySequence,
     [switch]$WidgetSwitchGeometryOnly,
     [switch]$TrustedArtworkTestsOnly,
     [switch]$WidgetSessionTestsOnly,
@@ -98,6 +102,21 @@ if (-not (Test-Path -LiteralPath (Join-Path $sdkBin 'mt.exe'))) {
 $env:PATH = "$sdkBin;$compilerBin;$env:PATH"
 
 $outputDirectory = Join-Path $projectDirectory "out\$Configuration"
+
+function Invoke-SerializedManagedPublish {
+    param(
+        [Parameter(Mandatory = $true)] [string]$Project,
+        [Parameter(Mandatory = $true)] [string]$Configuration,
+        [Parameter(Mandatory = $true)] [string]$Output,
+        [Parameter(Mandatory = $true)] [ref]$ExitCode
+    )
+
+    & dotnet publish $Project `
+        --configuration $Configuration --no-self-contained --nologo --output $Output `
+        -m:1 -p:BuildInParallel=false -nr:false -p:UseSharedCompilation=false
+    $ExitCode.Value = $LASTEXITCODE
+}
+
 $cargo = Get-Command cargo -ErrorAction SilentlyContinue | Select-Object -ExpandProperty Source
 if (-not $cargo) {
     $cargoCandidate = Join-Path $env:USERPROFILE '.cargo\bin\cargo.exe'
@@ -114,14 +133,22 @@ $taffyArguments = @(
     '--target', 'x86_64-pc-windows-msvc')
 if ($Configuration -eq 'Release') { $taffyArguments += '--release' }
 $previousCargoTargetDirectory = $env:CARGO_TARGET_DIR
+$previousCargoErrorActionPreference = $ErrorActionPreference
+$cargoExitCode = $null
 try {
     $env:CARGO_TARGET_DIR = $taffyTargetDirectory
+    # Cargo reports ordinary compiler progress through stderr. Keep that stream
+    # visible without turning it into a PowerShell exception; Cargo's exact exit
+    # code remains the build authority below.
+    $ErrorActionPreference = 'Continue'
     & $cargo $taffyArguments
-    if ($LASTEXITCODE -ne 0) {
-        throw "Pinned Taffy static-library build failed with exit code $LASTEXITCODE."
-    }
+    $cargoExitCode = $LASTEXITCODE
 } finally {
+    $ErrorActionPreference = $previousCargoErrorActionPreference
     $env:CARGO_TARGET_DIR = $previousCargoTargetDirectory
+}
+if ($cargoExitCode -ne 0) {
+    throw "Pinned Taffy static-library build failed with exit code $cargoExitCode."
 }
 $taffyLibrary = Join-Path $taffyTargetDirectory "x86_64-pc-windows-msvc\$taffyProfile\wrail_taffy_layout.lib"
 if (-not (Test-Path -LiteralPath $taffyLibrary)) {
@@ -830,12 +857,35 @@ function Invoke-WidgetSwitchHostTests {
     if ($LASTEXITCODE -ne 0) {
         throw "WidgetSwitchHostTests build failed with exit code $LASTEXITCODE."
     }
-    & dotnet publish `
-        (Join-Path $projectDirectory '..\..\tests\WidgetSwitchFixture\WidgetSwitchFixture.csproj') `
-        --configuration $Configuration --no-self-contained --nologo `
-        --output $widgetSwitchFixtureOutput
-    if ($LASTEXITCODE -ne 0) {
-        throw "Widget switch fixture publish failed with exit code $LASTEXITCODE."
+    if ($WidgetSwitchFallbackAuthorityTestsOnly -or
+        -not [string]::IsNullOrWhiteSpace($WidgetSwitchFallbackAuthorityReplayLog)) {
+        $selectorArguments = @()
+        if ($WidgetSwitchFallbackAuthorityTestsOnly) {
+            $selectorArguments += '--fallback-authority-selection-only'
+        } else {
+            if ($WidgetSwitchFallbackAuthorityReplayMarker -le 0 -or
+                $WidgetSwitchFallbackAuthorityReplaySequence -le 0) {
+                throw 'WidgetSwitch fallback-authority replay requires positive marker and sequence.'
+            }
+            $selectorArguments += @(
+                '--fallback-authority-replay-log', $WidgetSwitchFallbackAuthorityReplayLog,
+                '--fallback-authority-marker', $WidgetSwitchFallbackAuthorityReplayMarker,
+                '--fallback-authority-sequence', $WidgetSwitchFallbackAuthorityReplaySequence)
+        }
+        & (Join-Path $outputDirectory 'WidgetSwitchHostTests.exe') `
+            $selectorArguments
+        if ($LASTEXITCODE -ne 0) {
+            throw "WidgetSwitch fallback-authority selector/replay failed with exit code $LASTEXITCODE."
+        }
+        return
+    }
+    $managedPublishExitCode = 0
+    Invoke-SerializedManagedPublish `
+        -Project (Join-Path $projectDirectory '..\..\tests\WidgetSwitchFixture\WidgetSwitchFixture.csproj') `
+        -Configuration $Configuration -Output $widgetSwitchFixtureOutput `
+        -ExitCode ([ref]$managedPublishExitCode)
+    if ($managedPublishExitCode -ne 0) {
+        throw "Widget switch fixture publish failed with exit code $managedPublishExitCode."
     }
     $fixture = Join-Path $widgetSwitchFixtureOutput 'WidgetSwitchFixture.exe'
     if (-not (Test-Path -LiteralPath $fixture)) {
@@ -926,12 +976,13 @@ function Invoke-WidgetActionFailureHostTests {
     if ($LASTEXITCODE -ne 0) {
         throw "WidgetActionFailureHostTests build failed with exit code $LASTEXITCODE."
     }
-    & dotnet publish `
-        (Join-Path $projectDirectory '..\..\tests\AdvancedActionFailureFixture\AdvancedActionFailureFixture.csproj') `
-        --configuration $Configuration --no-self-contained --nologo `
-        --output $actionFailureFixtureOutput
-    if ($LASTEXITCODE -ne 0) {
-        throw "Advanced action-failure fixture publish failed with exit code $LASTEXITCODE."
+    $managedPublishExitCode = 0
+    Invoke-SerializedManagedPublish `
+        -Project (Join-Path $projectDirectory '..\..\tests\AdvancedActionFailureFixture\AdvancedActionFailureFixture.csproj') `
+        -Configuration $Configuration -Output $actionFailureFixtureOutput `
+        -ExitCode ([ref]$managedPublishExitCode)
+    if ($managedPublishExitCode -ne 0) {
+        throw "Advanced action-failure fixture publish failed with exit code $managedPublishExitCode."
     }
     $fixture = Join-Path $actionFailureFixtureOutput 'AdvancedActionFailureFixture.exe'
     if (-not (Test-Path -LiteralPath $fixture)) {
@@ -959,12 +1010,13 @@ function Invoke-AudioMixerScrollHostTests {
         return
     }
 
-    & dotnet publish `
-        (Join-Path $projectDirectory '..\..\tests\AudioMixerScrollFixture\AudioMixerScrollFixture.csproj') `
-        --configuration $Configuration --no-self-contained --nologo `
-        --output $audioMixerScrollFixtureOutput
-    if ($LASTEXITCODE -ne 0) {
-        throw "Audio Mixer scroll fixture publish failed with exit code $LASTEXITCODE."
+    $managedPublishExitCode = 0
+    Invoke-SerializedManagedPublish `
+        -Project (Join-Path $projectDirectory '..\..\tests\AudioMixerScrollFixture\AudioMixerScrollFixture.csproj') `
+        -Configuration $Configuration -Output $audioMixerScrollFixtureOutput `
+        -ExitCode ([ref]$managedPublishExitCode)
+    if ($managedPublishExitCode -ne 0) {
+        throw "Audio Mixer scroll fixture publish failed with exit code $managedPublishExitCode."
     }
     $fixture = Join-Path $audioMixerScrollFixtureOutput 'AudioMixerScrollFixture.exe'
     if (-not (Test-Path -LiteralPath $fixture)) {
@@ -1027,12 +1079,13 @@ function Invoke-TrayRefreshHostTests {
     if ($LASTEXITCODE -ne 0) {
         throw "TrayRefreshHostTests build failed with exit code $LASTEXITCODE."
     }
-    & dotnet publish `
-        (Join-Path $projectDirectory '..\..\tests\TrayRefreshCommunityFixture\TrayRefreshCommunityFixture.csproj') `
-        --configuration $Configuration --no-self-contained --nologo `
-        --output $trayRefreshCommunityFixtureOutput
-    if ($LASTEXITCODE -ne 0) {
-        throw "Tray refresh Community fixture publish failed with exit code $LASTEXITCODE."
+    $managedPublishExitCode = 0
+    Invoke-SerializedManagedPublish `
+        -Project (Join-Path $projectDirectory '..\..\tests\TrayRefreshCommunityFixture\TrayRefreshCommunityFixture.csproj') `
+        -Configuration $Configuration -Output $trayRefreshCommunityFixtureOutput `
+        -ExitCode ([ref]$managedPublishExitCode)
+    if ($managedPublishExitCode -ne 0) {
+        throw "Tray refresh Community fixture publish failed with exit code $managedPublishExitCode."
     }
     $fixture = Join-Path $trayRefreshCommunityFixtureOutput 'TrayRefreshCommunityFixture.exe'
     if (-not (Test-Path -LiteralPath $fixture)) {
@@ -1156,8 +1209,11 @@ function Invoke-OverlayProcessOwnerTests {
         [void]$processOwnerTest.WaitForExit(5000)
         throw 'OverlayProcessOwnerTests exceeded its 20-second bounded timeout.'
     }
-    if ($processOwnerTest.ExitCode -ne 0) {
-        throw "OverlayProcessOwnerTests failed with exit code $($processOwnerTest.ExitCode)."
+    $processOwnerTest.WaitForExit()
+    $processOwnerTest.Refresh()
+    [int]$processOwnerTestExitCode = $processOwnerTest.ExitCode
+    if ($processOwnerTestExitCode -ne 0) {
+        throw "OverlayProcessOwnerTests failed with exit code $processOwnerTestExitCode."
     }
 
     $hostExecutable = Join-Path $outputDirectory 'OverlayHost.exe'
@@ -1420,11 +1476,13 @@ function Invoke-LauncherExperienceHostTests {
         [switch]$TrayInvokeOnly,
         [switch]$LifecycleOnly
     )
-    & dotnet publish (Join-Path $projectDirectory '..\..\tests\LauncherExperienceBridgeFixture\LauncherExperienceBridgeFixture.csproj') `
-        --configuration $Configuration --no-self-contained --nologo `
-        --output $launcherExperienceBridgeFixtureOutput
-    if ($LASTEXITCODE -ne 0) {
-        throw "LauncherExperienceBridgeFixture publish failed with exit code $LASTEXITCODE."
+    $managedPublishExitCode = 0
+    Invoke-SerializedManagedPublish `
+        -Project (Join-Path $projectDirectory '..\..\tests\LauncherExperienceBridgeFixture\LauncherExperienceBridgeFixture.csproj') `
+        -Configuration $Configuration -Output $launcherExperienceBridgeFixtureOutput `
+        -ExitCode ([ref]$managedPublishExitCode)
+    if ($managedPublishExitCode -ne 0) {
+        throw "LauncherExperienceBridgeFixture publish failed with exit code $managedPublishExitCode."
     }
     $fixtureBridge = Join-Path $launcherExperienceBridgeFixtureOutput 'LauncherExperienceBridgeFixture.exe'
     if (-not (Test-Path -LiteralPath $fixtureBridge)) {
@@ -1481,23 +1539,25 @@ function Invoke-LauncherExperienceHostTests {
 
 function Invoke-AdvancedPresentationHostTests {
     param([switch]$TextEntryOnly)
-    & dotnet publish `
-        (Join-Path $projectDirectory '..\..\tests\AdvancedPresentationCommunityFixture\AdvancedPresentationCommunityFixture.csproj') `
-        --configuration $Configuration --no-self-contained --nologo `
-        --output $advancedPresentationCommunityFixtureOutput
-    if ($LASTEXITCODE -ne 0) {
-        throw "AdvancedPresentationCommunityFixture publish failed with exit code $LASTEXITCODE."
+    $managedPublishExitCode = 0
+    Invoke-SerializedManagedPublish `
+        -Project (Join-Path $projectDirectory '..\..\tests\AdvancedPresentationCommunityFixture\AdvancedPresentationCommunityFixture.csproj') `
+        -Configuration $Configuration -Output $advancedPresentationCommunityFixtureOutput `
+        -ExitCode ([ref]$managedPublishExitCode)
+    if ($managedPublishExitCode -ne 0) {
+        throw "AdvancedPresentationCommunityFixture publish failed with exit code $managedPublishExitCode."
     }
     $fixture = Join-Path $advancedPresentationCommunityFixtureOutput 'AdvancedPresentationCommunityFixture.exe'
     if (-not (Test-Path -LiteralPath $fixture)) {
         throw 'AdvancedPresentationCommunityFixture publish omitted its executable.'
     }
-    & dotnet publish `
-        (Join-Path $projectDirectory '..\..\tests\LauncherExperienceBridgeFixture\LauncherExperienceBridgeFixture.csproj') `
-        --configuration $Configuration --no-self-contained --nologo `
-        --output $launcherExperienceBridgeFixtureOutput
-    if ($LASTEXITCODE -ne 0) {
-        throw "LauncherExperienceBridgeFixture publish failed with exit code $LASTEXITCODE."
+    $managedPublishExitCode = 0
+    Invoke-SerializedManagedPublish `
+        -Project (Join-Path $projectDirectory '..\..\tests\LauncherExperienceBridgeFixture\LauncherExperienceBridgeFixture.csproj') `
+        -Configuration $Configuration -Output $launcherExperienceBridgeFixtureOutput `
+        -ExitCode ([ref]$managedPublishExitCode)
+    if ($managedPublishExitCode -ne 0) {
+        throw "LauncherExperienceBridgeFixture publish failed with exit code $managedPublishExitCode."
     }
     $fixtureBridge = Join-Path $launcherExperienceBridgeFixtureOutput 'LauncherExperienceBridgeFixture.exe'
     if (-not (Test-Path -LiteralPath $fixtureBridge)) {
@@ -1591,6 +1651,15 @@ if ($PlatformInteropTestsOnly) {
     Invoke-OverlayPlatformInteropBuild
     Invoke-OverlayPlatformInteropTests
     Invoke-OverlayPlatformParityTests
+    return
+}
+
+if ($WidgetSwitchFallbackAuthorityTestsOnly -or
+    -not [string]::IsNullOrWhiteSpace($WidgetSwitchFallbackAuthorityReplayLog)) {
+    if ($SkipTests) {
+        throw 'WidgetSwitch fallback-authority selector/replay cannot be combined with SkipTests.'
+    }
+    Invoke-WidgetSwitchHostTests
     return
 }
 
@@ -1718,10 +1787,13 @@ if (-not $SkipPackaging) {
         $payloadOutput = Join-Path $resolvedPackageRoot 'payload'
         $stylesOutput = Join-Path $resolvedPackageRoot 'styles'
         New-Item -ItemType Directory -Force -Path $payloadOutput, $stylesOutput | Out-Null
-        & dotnet publish (Join-Path $WidgetProject "$AssemblyName.csproj") `
-            --configuration $Configuration --no-self-contained --nologo --output $payloadOutput
-        if ($LASTEXITCODE -ne 0) {
-            throw "$DisplayName package publish failed with exit code $LASTEXITCODE."
+        $managedPublishExitCode = 0
+        Invoke-SerializedManagedPublish `
+            -Project (Join-Path $WidgetProject "$AssemblyName.csproj") `
+            -Configuration $Configuration -Output $payloadOutput `
+            -ExitCode ([ref]$managedPublishExitCode)
+        if ($managedPublishExitCode -ne 0) {
+            throw "$DisplayName package publish failed with exit code $managedPublishExitCode."
         }
         # WidgetSdk/WidgetProtocol are host-ABI assemblies selected by the
         # generic loader. Project assets copied by `dotnet publish` are pruned
@@ -1774,21 +1846,30 @@ if (-not $SkipPackaging) {
     # YT Music is a community addon now. Remove an incremental build's retired
     # trusted worker so it cannot remain as an accidental fallback.
     Remove-GeneratedDirectory -Path (Join-Path $outputDirectory 'runtime\YtMusic')
-    & dotnet publish (Join-Path $projectDirectory '..\WidgetBridge\WidgetBridge.csproj') `
-        --configuration $Configuration --no-self-contained --nologo --output $bridgeOutput
-    if ($LASTEXITCODE -ne 0) {
-        throw "WidgetBridge publish failed with exit code $LASTEXITCODE."
+    $managedPublishExitCode = 0
+    Invoke-SerializedManagedPublish `
+        -Project (Join-Path $projectDirectory '..\WidgetBridge\WidgetBridge.csproj') `
+        -Configuration $Configuration -Output $bridgeOutput `
+        -ExitCode ([ref]$managedPublishExitCode)
+    if ($managedPublishExitCode -ne 0) {
+        throw "WidgetBridge publish failed with exit code $managedPublishExitCode."
     }
-    & dotnet publish (Join-Path $projectDirectory '..\WidgetWorkerHost\WidgetWorkerHost.csproj') `
-        --configuration $Configuration --no-self-contained --nologo --output $workerHostOutput
-    if ($LASTEXITCODE -ne 0 -or
+    $managedPublishExitCode = 0
+    Invoke-SerializedManagedPublish `
+        -Project (Join-Path $projectDirectory '..\WidgetWorkerHost\WidgetWorkerHost.csproj') `
+        -Configuration $Configuration -Output $workerHostOutput `
+        -ExitCode ([ref]$managedPublishExitCode)
+    if ($managedPublishExitCode -ne 0 -or
         -not (Test-Path -LiteralPath (Join-Path $workerHostOutput 'WidgetWorkerHost.exe'))) {
-        throw "Generic widget worker host publish failed with exit code $LASTEXITCODE."
+        throw "Generic widget worker host publish failed with exit code $managedPublishExitCode."
     }
-    & dotnet publish (Join-Path $projectDirectory '..\FirstPartyWidgets\SettingsWidget.Worker\SettingsWidget.Worker.csproj') `
-        --configuration $Configuration --no-self-contained --nologo --output $settingsOutput
-    if ($LASTEXITCODE -ne 0) {
-        throw "Settings worker publish failed with exit code $LASTEXITCODE."
+    $managedPublishExitCode = 0
+    Invoke-SerializedManagedPublish `
+        -Project (Join-Path $projectDirectory '..\FirstPartyWidgets\SettingsWidget.Worker\SettingsWidget.Worker.csproj') `
+        -Configuration $Configuration -Output $settingsOutput `
+        -ExitCode ([ref]$managedPublishExitCode)
+    if ($managedPublishExitCode -ne 0) {
+        throw "Settings worker publish failed with exit code $managedPublishExitCode."
     }
     $settingsProject = Join-Path $projectDirectory '..\FirstPartyWidgets\SettingsWidget'
     $settingsStylesOutput = Join-Path $settingsOutput 'styles'
@@ -2355,12 +2436,13 @@ if (-not $SkipTests) {
         throw "WidgetActionFailureHostTests build failed with exit code $LASTEXITCODE."
     }
     if (-not $SkipPackaging) {
-        & dotnet publish `
-            (Join-Path $projectDirectory '..\..\tests\AdvancedActionFailureFixture\AdvancedActionFailureFixture.csproj') `
-            --configuration $Configuration --no-self-contained --nologo `
-            --output $actionFailureFixtureOutput
-        if ($LASTEXITCODE -ne 0) {
-            throw "Advanced action-failure fixture publish failed with exit code $LASTEXITCODE."
+        $managedPublishExitCode = 0
+        Invoke-SerializedManagedPublish `
+            -Project (Join-Path $projectDirectory '..\..\tests\AdvancedActionFailureFixture\AdvancedActionFailureFixture.csproj') `
+            -Configuration $Configuration -Output $actionFailureFixtureOutput `
+            -ExitCode ([ref]$managedPublishExitCode)
+        if ($managedPublishExitCode -ne 0) {
+            throw "Advanced action-failure fixture publish failed with exit code $managedPublishExitCode."
         }
         $actionFailureFixture = Join-Path $actionFailureFixtureOutput 'AdvancedActionFailureFixture.exe'
         if (-not (Test-Path -LiteralPath $actionFailureFixture)) {
@@ -2404,12 +2486,13 @@ if (-not $SkipTests) {
         throw "WidgetSwitchHostTests build failed with exit code $LASTEXITCODE."
     }
     if (-not $SkipPackaging) {
-        & dotnet publish `
-            (Join-Path $projectDirectory '..\..\tests\WidgetSwitchFixture\WidgetSwitchFixture.csproj') `
-            --configuration $Configuration --no-self-contained --nologo `
-            --output $widgetSwitchFixtureOutput
-        if ($LASTEXITCODE -ne 0) {
-            throw "Widget switch fixture publish failed with exit code $LASTEXITCODE."
+        $managedPublishExitCode = 0
+        Invoke-SerializedManagedPublish `
+            -Project (Join-Path $projectDirectory '..\..\tests\WidgetSwitchFixture\WidgetSwitchFixture.csproj') `
+            -Configuration $Configuration -Output $widgetSwitchFixtureOutput `
+            -ExitCode ([ref]$managedPublishExitCode)
+        if ($managedPublishExitCode -ne 0) {
+            throw "Widget switch fixture publish failed with exit code $managedPublishExitCode."
         }
         $widgetSwitchFixture = Join-Path $widgetSwitchFixtureOutput 'WidgetSwitchFixture.exe'
         if (-not (Test-Path -LiteralPath $widgetSwitchFixture)) {
