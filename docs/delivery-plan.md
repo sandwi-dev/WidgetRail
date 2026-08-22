@@ -33,7 +33,7 @@ historical evidence only; this file is the sole implementation authority.
 
 | Lane | Task/worktree | State |
 | --- | --- | --- |
-| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | DLV-466 assigned in physical-first mode: restore host-owned root Back while widget presentation/input is non-current. Preserve DLV-465 test-only work and resume it only after physical acceptance. DLV-284 remains queued. |
+| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | DLV-466 production candidate `360544a` is source-reviewed, Release-built, and visibly running unaccepted as PID 47516 for the physical verdict. Preserve DLV-465 test-only work and resume it only after physical acceptance. DLV-284 remains queued. |
 | Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | Idle and clean at `676cd76`; do not begin work or change product state. |
 
 ## Execution rules
@@ -144,8 +144,8 @@ republish selected/focused tray authority. Evidence is under
 `%TEMP%\wrail-dlv465-focused32-20260822-144000`; the owner and all descendants
 exited, and the two authorized DLV-465 test files remain preserved uncommitted.
 
-DLV-466 is assigned to the platform lane from a new clean isolated tree at
-planner `main` `dfd88ef`, whose production baseline is accepted `c38b261`.
+DLV-466 was assigned to the platform lane from a new clean isolated tree at
+planner `main` `08cf81d`, whose production baseline is accepted `c38b261`.
 Change production code only. Give root widget scope an immediate host-owned
 Back-to-tray path whenever the host can already prove current widget
 presentation/input authority is unavailable, retained/inert, or otherwise
@@ -165,6 +165,18 @@ Release -SkipTests -SkipPackaging`, using durable streams and the one-minute
 observability rule. Commit the production-only candidate as DLV-466 and stop
 for planner review, visible launch, and user acceptance. Nothing is integrated
 before that verdict.
+
+The platform lane produced clean production-only commit `360544a`. Reviewer
+source review found the change confined to `src/OverlayHost/main.cpp`: its
+non-current authority is fail-closed on the active bridge widget, widget-focus
+surface, runtime generation, retained snapshot/root scope, and identical UIA
+invocation authority, while current and nested widget dispatch remain on the
+existing path. The assigned Release build completed with exit 0 and produced
+`OverlayHost.exe` SHA-256
+`FC8CABD1F4997E040D73300D0AC6741955E78C0D8A423713E999682CB97849AB`.
+The planner gracefully closed accepted PID 144396 and visibly launched that
+exact unaccepted candidate as PID 47516. No tests ran and nothing is integrated;
+DLV-466 now waits only for the physical verdict below.
 
 The physical verdict covers ordinary root Settings B returning to the selected
 tray item, tray B closing the overlay, normal widget activation, and no
