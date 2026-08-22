@@ -812,6 +812,30 @@ test/build diffs, terminate PID 33360, assign test adoption, or push. The
 reviewer will inspect the exact commit and launch only the coherent isolated
 candidate for physical verdict.
 
+Disposition: platform commit `e26b92b` implemented the bounded checkpoint, but
+its parent `35489ab` retains rejected/restoration ancestry that differs from
+integrated `6926e05` in `main.cpp`. The sole cherry-pick applied cleanly yet the
+committed file hashes did not match, so no build was run. Neither `e26b92b` nor
+its isolated cherry-pick `16050bb` is integrable.
+
+## Assigned platform production correction — DLV-428 integrated-base checkpoint
+
+Leave the retained DLV-427 isolated worktree and its unaccepted cherry-pick
+`16050bb` untouched. Create another detached worktree directly from integrated
+main `6926e05`; do not rewrite or discard the original platform branch or its
+seven held diffs. Re-author the exact DLV-427 semantic change there: only
+`src/OverlayHost/main.cpp`, bounded current-presentation checkpoint after
+successful HWND `EndDraw`, exact current session/snapshot/geometry authority,
+deduplication, and no behavioral change. Review the semantic diff against
+`e26b92b` while excluding every unrelated baseline difference.
+
+Commit the one-file milestone in that integrated-base isolated worktree and
+build one coherent native Release there without running tests. Require a sole
+`main.cpp` diff from `6926e05`, retain commit/file/diff hashes and full build
+provenance, and stop after fresh artifact evidence. Do not launch, integrate,
+change product/package state, touch or copy held test/build diffs, terminate PID
+33360, remove retained artifacts, or push.
+
 ## After the cumulative native gate is green
 
 1. Review exact DLV-349 and the cumulative test commits and full diffs. Reject
@@ -827,7 +851,7 @@ candidate for physical verdict.
 
 ## Queued platform production — DLV-284 explicit publication transaction model
 
-Status: queued, not assigned. It becomes assignable only after DLV-427, its
+Status: queued, not assigned. It becomes assignable only after DLV-428, its
 test adoption, and the
 resumed DLV-423 evidence are
 dispositioned, the resumed native test gate is green,
@@ -889,8 +913,9 @@ Extract native authorities only when real work touches them.
 
 ## Ordered queues
 
-1. Platform production diagnostic: execute DLV-427 typed fallback presentation
-   checkpoint, then obtain physical verdict before test adoption.
+1. Platform production correction: execute DLV-428 typed fallback presentation
+   checkpoint directly on integrated main, then obtain physical verdict before
+   test adoption.
 2. Reviewer integration: review the eventual cumulative commits, then assign exact
    clean Tier 3 if the native routes are green.
 3. Platform production: DLV-284 after clean cumulative integration.
@@ -910,13 +935,14 @@ There is no other Ready production work in either standing lane.
 | DLV-314 | Production `992b77b` accepted with Spotify 0.3.13. |
 | DLV-318 | Last physically accepted production `32a2a5e`; exact restore artifact preserved, not currently running. |
 | DLV-319–326 | Managed test chain through `676cd76`; all managed Tier-3 gates green. |
-| DLV-327–421 | Native fixture/build evidence held pending DLV-427 adoption and resumed exact-commit Tier 3. |
+| DLV-327–421 | Native fixture/build evidence held pending DLV-428 adoption and resumed exact-commit Tier 3. |
 | DLV-422 | Production diagnostic `6926e05` physically accepted and integrated; PID 33360 retained. |
 | DLV-423 | Test adoption diff compiled only to the interop link boundary; accepted PID 33360 locks the worktree Release DLL, so no test verdict. |
 | DLV-424 | Build helper has no output override; a detached worktree provides exact lock-safe native/runtime outputs without touching PID 33360. |
 | DLV-425 | Isolated coherent focused gate stopped first red on a test oracle that conflated startup-unavailable fallback with a live fallback transition. |
 | DLV-426 | Origin correction reached the strict missing typed-authority boundary; no production geometry defect was proven. |
-| DLV-427 | Assigned diagnostic-only fallback presentation checkpoint; build before physical verdict. |
+| DLV-427 | Correct semantic checkpoint was authored on rejected/restoration ancestry; hash mismatch blocked the isolated build and both commits are non-integrable. |
+| DLV-428 | Assigned direct integrated-base re-author and isolated build of the one-file checkpoint. |
 | DLV-284 | Queued until cumulative review/integration. |
 | DLV-248 | Deliberately deferred until explicit user promotion. |
 
@@ -967,4 +993,5 @@ There is no other Ready production work in either standing lane.
 | DLV-424 | Exact isolation strategy is detached integrated DLV-422 plus hash-verified seven-file diff and its own output tree. |
 | DLV-425 | Exact isolated build/package succeeded; first test red was the invalid post-marker placement requirement in startup-unavailable fallback. |
 | DLV-426 | Startup-unavailable and live-disabled origins are now distinct; startup route has no typed current placement/checkpoint record. |
-| DLV-427 | Assigned bounded typed current-presentation checkpoint for startup HWND fallback. |
+| DLV-427 | `e26b92b`/isolated `16050bb` were not built or accepted because their `main.cpp` baseline differed from integrated main. |
+| DLV-428 | Assigned exact semantic re-author on `6926e05`; no rejected ancestry may enter the candidate. |
