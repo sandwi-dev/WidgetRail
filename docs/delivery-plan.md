@@ -39,7 +39,7 @@ historical evidence only; this file is the sole authority for current work.
 
 | Lane | Task/worktree | State |
 | --- | --- | --- |
-| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | Assigned DLV-332 below at `676cd76`, preserving two uncommitted test-only files. DLV-284 remains queued and unassigned. |
+| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | Assigned DLV-333 below at `676cd76`, preserving two uncommitted test-only files. DLV-284 remains queued and unassigned. |
 | Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | Idle and clean at `676cd76`. Preserve PID 126208 and all product state; do not begin new work, integrate, rebuild/relaunch, or push. |
 
 ## Execution and architecture rules
@@ -167,6 +167,54 @@ or push. If the targeted or complete native route reveals another distinct
 fixture or product failure, retain both diffs uncommitted and stop with exact
 evidence. If Tier 3 is green, stop for independent reviewer inspection.
 
+DLV-332 stopped at its first targeted red with both test files uncommitted. The
+trusted Settings entry corrected startup: the isolated host created a visible
+session and admitted Settings normally. The next assertion failed because no
+YT Music worker-start failure occurred. Log evidence showed the selected and
+active widget remained Settings and no `ytmusic-fixture` activation occurred.
+The fixture's bare Enter press remained within the production startup Settings
+surface; it no longer selects the failure fixture now that startup correctly
+opens Settings with tray focus. The complete native gate, commit, and Tier 3
+were not run.
+
+## Assigned platform correction — DLV-333 invoke the exact failure fixture
+
+Mode: bounded native test-only correction after DLV-332.
+
+Owner/baseline: platform lane at exact `676cd76`, preserving both current
+uncommitted test files and the DLV-332 trusted Settings catalog entry. Own only
+`src/OverlayHost/WidgetActionFailureHostTests.cpp`.
+
+After the existing bounded wait obtains the exact
+`tray:tray.ytmusic-fixture` UI Automation element, replace only the first bare
+Enter activation with that element's supported `IUIAutomationInvokePattern`
+and require the invoke to succeed. This must select the fixture by its stable
+published tray identity through the production accessibility/host-action path.
+Retain the later Enter presses, which occur inside the failure fixture and
+exercise Retry or widget actions. Do not infer navigation direction, depend on
+catalog order, add a sleep, set focus as a separate authority, call a private
+host method, alter product input/focus behavior, or change any production file,
+timeout, catalog entry, launch state, later assertion, or diagnostic.
+
+Verification order, once each, stopping at the first red result:
+
+1. Build/run
+   `src/OverlayHost/build.ps1 -Configuration Release
+   -WidgetActionFailureHostTestsOnly`.
+2. If green, run
+   `src/OverlayHost/build.ps1 -Configuration Release` once.
+3. If green, inspect and commit exactly
+   `RealHostAccessibilityTests.cpp` and `WidgetActionFailureHostTests.cpp` on
+   top of `676cd76` with a DLV-333 subject.
+4. Run one canonical Tier-3 verifier from a clean detached tree at that exact
+   commit. Do not run additional focused suites outside these gates.
+
+Preserve PID 126208, Spotify 0.3.14, installed/configured state, and all
+production artifacts. Do not launch/terminate the accepted overlay, integrate
+to main, begin DLV-284, edit another file, restore/update dependencies, or
+push. On another distinct red, retain both diffs uncommitted and stop with exact
+evidence. If Tier 3 is green, stop for independent reviewer inspection.
+
 ## Queued platform production — DLV-284 explicit publication transaction model
 
 Status: queued, not assigned. It becomes assignable only after DLV-332 and the
@@ -253,7 +301,7 @@ import/export or scheduling only after independent widgets prove the need.
 
 ## Ordered queues
 
-1. Platform evidence queue: execute DLV-332 and stop on its first red result or
+1. Platform evidence queue: execute DLV-333 and stop on its first red result or
    for independent review after a green exact-commit Tier 3.
 2. Reviewer integration queue: independently review DLV-332 and the cumulative
    accepted production/test chain; integrate only if every required gate passes.
@@ -281,7 +329,8 @@ There is no other Ready production work in either standing lane.
 | DLV-326 | Test-only `676cd76`; managed Tier 3 gates green, native compile drift exposed. |
 | DLV-327–330 | Uncommitted cumulative RealHost fixture corrections; all 291 RealHost checks now green. |
 | DLV-331 | Diagnostic-only host startup evidence retained; user screenshot identified missing trusted Settings catalog entry. |
-| DLV-332 | Assigned fixture-only Settings catalog correction and final native/Tier-3 evidence. |
+| DLV-332 | Settings fixture restored startup; targeted route exposed stale bare-Enter activation. |
+| DLV-333 | Assigned exact UI Automation invoke of the published failure-fixture tray item. |
 | DLV-284 | Queued, not assigned until cumulative review/integration. |
 | DLV-248 | Deliberately deferred until explicit user promotion. |
 
@@ -299,3 +348,4 @@ There is no other Ready production work in either standing lane.
 | DLV-329 | UIA corrected; stale protocol maximum rejected. |
 | DLV-330 | RealHost 291 green; action-failure host startup remained unexplained. |
 | DLV-331 | Diagnostic retained; screenshot proved missing Settings fixture. |
+| DLV-332 | Settings catalog correction admitted startup; bare Enter did not activate YT Music. |
