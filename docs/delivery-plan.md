@@ -39,7 +39,7 @@ historical evidence only; this file is the sole authority for current work.
 
 | Lane | Task/worktree | State |
 | --- | --- | --- |
-| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | Assigned Cold Dashboard focus-handoff correction/gates DLV-369 below; action-failure route is stable green and rejected production change remains neutralized. DLV-284 remains queued and unassigned. |
+| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | Assigned source-only re-show focus geometry diagnosis DLV-370 below; DLV-369 activation checks are green and rejected production change remains neutralized. DLV-284 remains queued and unassigned. |
 | Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | Idle and clean at `676cd76`. Preserve PID 126208 and all product state; do not begin new work, integrate, rebuild/relaunch, or push. |
 
 ## Execution and architecture rules
@@ -646,6 +646,26 @@ DLV-349 subject and commit exactly the three test files with a DLV-347 subject.
 Do not run Tier 3 yet, integrate, start DLV-284, launch/terminate, or push.
 Preserve PID 126208 and all state.
 
+DLV-369's exact Settings invocation and layered focus-handoff assertions all
+passed in the focused route. The first later red was the pre-existing re-show
+assertion: `Re-shown production widget focus escaped visible content bounds.`
+No canonical gate or commit occurred.
+
+## Assigned platform diagnosis — DLV-370 classify re-show focus geometry
+
+Source inspection only; make no edits and run no build, test, publish, or
+process command. Trace the re-show assertion's focused element, UIA root, HWND
+client rectangle, and any cached first-visible/content bounds across hide,
+resident re-show, presentation motion, and focus restoration. Determine whether
+it compares different presentation revisions or coordinate spaces, chooses a
+provider root instead of a clipped semantic descendant, or exposes a production
+focus-restoration clipping defect. Compare with the strict current-root/current-
+client descendant pattern established in DLV-352–355 and with
+RealHostAccessibility geometry helpers. Identify the smallest strict correction
+and distinct diagnostics; no tolerance/intersection weakening or timeout
+increase. Do not change files, commit, integrate, start DLV-284,
+launch/terminate, or push. Preserve PID 126208 and all state.
+
 DLV-368 classified the Cold Dashboard red as retired-flow fixture logic.
 Settings content is already admitted and published before activation. Invoking
 the selected Settings tray item changes focus from tray to widget and repaints;
@@ -1240,8 +1260,8 @@ import/export or scheduling only after independent widgets prove the need.
 
 ## Ordered queues
 
-1. Platform evidence queue: execute DLV-369 exact Settings focus-handoff
-   fixture correction, focused Cold Dashboard route, then canonical Release.
+1. Platform evidence queue: execute DLV-370 source-only re-show focused-element
+   geometry classification before another correction or rerun.
 2. Reviewer integration queue: independently review DLV-332 and the cumulative
    accepted production/test chain; integrate only if every required gate passes.
 3. Platform production queue: assign DLV-284 after clean integration, before
@@ -1305,7 +1325,8 @@ There is no other Ready production work in either standing lane.
 | DLV-366 | Tray must be selected/current and not focused while content action owns focus. |
 | DLV-367 | Action-failure focused/full evidence green; canonical gate exposed Cold Dashboard open red. |
 | DLV-368 | Settings was already admitted; activation is focus handoff, not re-admission. |
-| DLV-369 | Assigned exact InvokePattern and retained-content/focus publication evidence. |
+| DLV-369 | Activation checks green; later pre-existing re-show focus bounds assertion red. |
+| DLV-370 | Assigned source-only hide/re-show focus geometry revision diagnosis. |
 | DLV-284 | Queued, not assigned until cumulative review/integration. |
 | DLV-248 | Deliberately deferred until explicit user promotion. |
 
