@@ -289,6 +289,22 @@ for this file, then stop before Tier 3. No production edit, integration,
 DLV-284, launch/terminate, or push. Preserve PID 126208, state, seven diffs, and
 diagnostics.
 
+## Assigned platform test diagnosis — DLV-404 Chrome authority conjunct
+
+Use only production/test source, the uncommitted DLV-403 diff, and retained
+DLV-403 diagnostics. Do not edit, build, run, publish, or touch product state.
+Split the failed combined predicate into its exact observable conjuncts:
+current fixed-chrome HWND resolution, `WidgetRail.Chrome` UIA-root resolution,
+exact `tray:tray.audio-mixer` lookup/identity, selected state, and keyboard-focus
+state. Determine which facts are guaranteed synchronously after Back and which
+require an existing deterministic readiness/fence boundary. Identify the
+smallest strict one-file correction that reports each failed conjunct without
+weakening selection/focus/identity or substituting timing sleeps. Stop if the
+current production/test surface cannot observe the required authority.
+
+No production edit, rerun, integration, DLV-284, launch/terminate, or push.
+Preserve PID 126208, state, seven diffs, and retained diagnostics.
+
 ## After the cumulative native gate is green
 
 1. Review exact DLV-349 and the cumulative test commits and full diffs. Reject
@@ -304,7 +320,7 @@ diagnostics.
 
 ## Queued platform production — DLV-284 explicit publication transaction model
 
-Status: queued, not assigned. It becomes assignable only after DLV-403 is
+Status: queued, not assigned. It becomes assignable only after DLV-404 is
 dispositioned, the native gate is green, cumulative evidence is reviewed and
 integrated, and the accepted main Release is coherently refreshed only if
 runtime inputs changed. No new virtualization feature may precede it.
@@ -363,8 +379,8 @@ Extract native authorities only when real work touches them.
 
 ## Ordered queues
 
-1. Platform evidence: execute DLV-403 split Back tray/UIA and retained visual
-   sequence correction, then classify the first focused result.
+1. Platform evidence: execute DLV-404 retained/source classification of the
+   failed Chrome UIA authority conjunct before another correction or rerun.
 2. Reviewer integration: review the eventual four commits, then assign exact
    clean Tier 3 if the native routes are green.
 3. Platform production: DLV-284 after clean cumulative integration.
@@ -384,7 +400,7 @@ There is no other Ready production work in either standing lane.
 | DLV-314 | Production `992b77b` accepted with Spotify 0.3.13. |
 | DLV-318 | Current accepted production `32a2a5e`; PID 126208 runs Spotify 0.3.14. |
 | DLV-319–326 | Managed test chain through `676cd76`; all managed Tier-3 gates green. |
-| DLV-327–403 | Native fixture/build evidence held pending DLV-403 and exact-commit Tier 3. |
+| DLV-327–404 | Native fixture/build evidence held pending DLV-404 and exact-commit Tier 3. |
 | DLV-284 | Queued until cumulative review/integration. |
 | DLV-248 | Deliberately deferred until explicit user promotion. |
 
@@ -411,4 +427,5 @@ There is no other Ready production work in either standing lane.
 | DLV-400 | Back visual source may be admitted/current or refresh-retained/inert with exact tray authority. |
 | DLV-401 | No qualifying post-Back widget paint exists; paint is not the tray handshake. |
 | DLV-402 | Exact non-paint authority exists in the live Chrome UIA tray element; widget paint remains the separate visual-sequence authority. |
-| DLV-403 | Assigned one-file correction separating Back tray focus from retained Audio visual sequence. |
+| DLV-403 | Split-authority correction reached a combined Chrome UIA predicate red; no product defect is proven because the failed conjunct is unknown. |
+| DLV-404 | Assigned source/retained-output classification of HWND, UIA root, tray identity, selection, and focus observability. |
