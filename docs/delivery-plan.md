@@ -31,7 +31,7 @@ historical evidence only; this file is the sole authority for current work.
 
 | Lane | Task/worktree | State |
 | --- | --- | --- |
-| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | Assigned DLV-395 test-only correction to correlate Game Launcher content extent with its destination transaction. Preserve all seven held diffs and neutral rejected/restoration commits. DLV-284 remains queued and unassigned. |
+| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | Assigned DLV-396 source/output diagnosis of Back-route Audio sequence authority. Preserve all seven held diffs and neutral rejected/restoration commits. DLV-284 remains queued and unassigned. |
 | Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | Idle and clean at `676cd76`. Preserve PID 126208 and product state; do not begin work, integrate, rebuild/relaunch, or push. |
 
 ## Execution rules
@@ -118,6 +118,24 @@ scoped commits using DLV-395 for this file, then stop before Tier 3. No
 production edit, integration, DLV-284, launch/terminate, or push. Preserve PID
 126208, state, seven diffs, and diagnostics.
 
+DLV-395 compiled but its focused run stopped before destination correlation at
+`Back route did not publish exact captured Audio sequence authority.` Exact
+exit was 1; no full gate or commit occurred. Evidence is retained under
+`%TEMP%\wrail-dlv395-widget-switch-20260821-221947`.
+
+## Assigned platform diagnosis — DLV-396 classify Back sequence authority
+
+Source and retained DLV-395 streams only. Make no edit or executable/process
+run. Trace the captured post-Down Audio sequence through Back, focus-region
+transition, same-widget admission/paint, and the switch boundary. Establish
+whether Back must preserve the sequence, may legitimately advance it, or the
+fixture captured a stale/intervening record; identify the exact current Audio
+sequence that the retained Game Launcher paint must carry. Classify stale
+cross-input pinning, parser correlation gap, or production defect and give the
+smallest strict one-file correction. Do not ignore/regress sequence, accept any
+target, edit, rerun, commit, integrate, start DLV-284, launch/terminate, or push.
+Preserve PID 126208, seven diffs, state, and DLV-395 diagnostics.
+
 ## After the cumulative native gate is green
 
 1. Review exact DLV-349 and the cumulative test commits and full diffs. Reject
@@ -133,7 +151,7 @@ production edit, integration, DLV-284, launch/terminate, or push. Preserve PID
 
 ## Queued platform production — DLV-284 explicit publication transaction model
 
-Status: queued, not assigned. It becomes assignable only after DLV-395 is
+Status: queued, not assigned. It becomes assignable only after DLV-396 is
 dispositioned, the native gate is green, cumulative evidence is reviewed and
 integrated, and the accepted main Release is coherently refreshed only if
 runtime inputs changed. No new virtualization feature may precede it.
@@ -192,8 +210,8 @@ Extract native authorities only when real work touches them.
 
 ## Ordered queues
 
-1. Platform evidence: execute DLV-395's destination extent correlation and stop
-   first red before another diagnosis or rerun.
+1. Platform evidence: execute DLV-396 source/output classification of Back-route
+   Audio sequence authority before another edit or rerun.
 2. Reviewer integration: review the eventual four commits, then assign exact
    clean Tier 3 if the native routes are green.
 3. Platform production: DLV-284 after clean cumulative integration.
@@ -213,7 +231,7 @@ There is no other Ready production work in either standing lane.
 | DLV-314 | Production `992b77b` accepted with Spotify 0.3.13. |
 | DLV-318 | Current accepted production `32a2a5e`; PID 126208 runs Spotify 0.3.14. |
 | DLV-319–326 | Managed test chain through `676cd76`; all managed Tier-3 gates green. |
-| DLV-327–395 | Native fixture/build evidence held pending DLV-395 and exact-commit Tier 3. |
+| DLV-327–396 | Native fixture/build evidence held pending DLV-396 and exact-commit Tier 3. |
 | DLV-284 | Queued until cumulative review/integration. |
 | DLV-248 | Deliberately deferred until explicit user promotion. |
 
@@ -232,4 +250,5 @@ There is no other Ready production work in either standing lane.
 | DLV-392 | Retained-paint commit is conditional; destination owns baseline. |
 | DLV-393 | Destination correlation reached Game Launcher extent mismatch. |
 | DLV-394 | 980×645 is correct content; the fixture captured an earlier 1052×878 fallback record. |
-| DLV-395 | Assigned exact Game Launcher destination transaction/extent correlation. |
+| DLV-395 | Destination correction compiled; Back-route Audio sequence prerequisite was stale or miscorrelated. |
+| DLV-396 | Assigned source/output classification of Back-route sequence authority. |
