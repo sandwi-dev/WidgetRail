@@ -39,7 +39,7 @@ historical evidence only; this file is the sole authority for current work.
 
 | Lane | Task/worktree | State |
 | --- | --- | --- |
-| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | Assigned source-only diagnosis DLV-343 below at DLV-340 commit `0f8b080`, preserving five uncommitted diagnostic/test files. DLV-284 remains queued and unassigned. |
+| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | Assigned external-context diagnostic DLV-344 below at DLV-340 commit `0f8b080`, preserving five uncommitted diagnostic/test files. DLV-284 remains queued and unassigned. |
 | Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | Idle and clean at `676cd76`. Preserve PID 126208 and all product state; do not begin new work, integrate, rebuild/relaunch, or push. |
 
 ## Execution and architecture rules
@@ -422,6 +422,27 @@ smallest production-versus-test correction scope. Do not change files, launch
 or terminate anything, commit, integrate, start DLV-284, or push. Preserve all
 state.
 
+DLV-343 ruled out accepted-overlay and stale-fixture collisions. The fixture has
+a GUID installation, isolated profile/job, distinct activation identity, and a
+PID/tick-specific Bridge endpoint. Win32 error 5 occurred at `CreateFileW`
+against the fixture's own `PipeOptions.CurrentUserOnly` server before hello or
+catalog handling, so the retained run was blocked by its restricted execution
+context. The C++ test returns failure and the script throws; the apparent outer
+zero was command-runner PowerShell status reporting, not harness logic.
+
+## Assigned platform diagnostic — DLV-344 rerun with real user IPC
+
+Make no edits. With the required external execution approval, run the targeted
+route exactly once through a separate PowerShell process so same-user named-pipe
+IPC is permitted and the process exit code is authoritative:
+`powershell.exe -NoProfile -ExecutionPolicy Bypass -File
+.\src\OverlayHost\build.ps1 -Configuration Release
+-WidgetActionFailureHostTestsOnly`. Stop first red. Capture the DLV-336 trace
+facts and report the first causal UIA boundary. Do not correct or commit
+anything. Preserve accepted PID 126208; the fixture's distinct identities make
+termination unnecessary. Do not run any additional test/gate, integrate, start
+DLV-284, launch/terminate product processes, or push.
+
 DLV-340 reached the intended centralized helper and successfully published the
 complete production managed set through Media Sessions. Its first red was the
 pre-existing command contract: `WidgetActionFailureHostTestsOnly` requires
@@ -574,8 +595,8 @@ import/export or scheduling only after independent widgets prove the need.
 
 ## Ordered queues
 
-1. Platform evidence queue: execute DLV-343 source-only Bridge-denial and
-   failure-propagation classification before any diagnostic rerun.
+1. Platform evidence queue: execute DLV-344 once in a real-user IPC context,
+   then classify the captured live-region trace before any correction.
 2. Reviewer integration queue: independently review DLV-332 and the cumulative
    accepted production/test chain; integrate only if every required gate passes.
 3. Platform production queue: assign DLV-284 after clean integration, before
@@ -613,7 +634,8 @@ There is no other Ready production work in either standing lane.
 | DLV-340 | Serialized helper green and integrated as main `d11e9ae`; no runtime relaunch required. |
 | DLV-341 | Legal ordinary Release `SkipTests` verification green; no tests executed. |
 | DLV-342 | Isolated host blocked by WidgetBridge Win32 error 5; UIA boundary not reached; wrapper returned 0 despite FAIL. |
-| DLV-343 | Assigned source-only IPC ownership/isolation and failure-propagation diagnosis. |
+| DLV-343 | Ruled out endpoint collision; restricted-context IPC denial and outer PowerShell status reporting. |
+| DLV-344 | Assigned one approved external-context run with authoritative process exit. |
 | DLV-284 | Queued, not assigned until cumulative review/integration. |
 | DLV-248 | Deliberately deferred until explicit user promotion. |
 
