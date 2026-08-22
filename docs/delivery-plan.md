@@ -33,7 +33,7 @@ historical evidence only; this file is the sole implementation authority.
 
 | Lane | Task/worktree | State |
 | --- | --- | --- |
-| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | DLV-466 production candidate `360544a` is source-reviewed, Release-built, and visibly running unaccepted as PID 47516 for the physical verdict. Preserve DLV-465 test-only work and resume it only after physical acceptance. DLV-284 remains queued. |
+| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | DLV-466 production candidate `360544a` is source-reviewed, Release-built, and visibly running unaccepted as PID 89008 for the physical verdict. Preserve DLV-465 test-only work and resume it only after physical acceptance. DLV-284 remains queued. |
 | Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | Idle and clean at `676cd76`; do not begin work or change product state. |
 
 ## Execution rules
@@ -174,9 +174,14 @@ invocation authority, while current and nested widget dispatch remain on the
 existing path. The assigned Release build completed with exit 0 and produced
 `OverlayHost.exe` SHA-256
 `FC8CABD1F4997E040D73300D0AC6741955E78C0D8A423713E999682CB97849AB`.
-The planner gracefully closed accepted PID 144396 and visibly launched that
-exact unaccepted candidate as PID 47516. No tests ran and nothing is integrated;
-DLV-466 now waits only for the physical verdict below.
+The planner gracefully closed accepted PID 144396. The first launch as PID
+47516 was invalid because the native-only `-SkipPackaging` output lacked the
+unchanged accepted `runtime` graph and `widget-catalog.json`; startup failed
+closed with Settings absent. The planner removed that exact failed process,
+hydrated only those unchanged artifacts from the accepted `c38b261` Release,
+and visibly relaunched the same candidate executable as PID 89008. Startup now
+admits Settings and removed `startup-error.log`. No tests ran and nothing is
+integrated; DLV-466 now waits only for the physical verdict below.
 
 The physical verdict covers ordinary root Settings B returning to the selected
 tray item, tray B closing the overlay, normal widget activation, and no
