@@ -45,7 +45,7 @@ evidence only; this file is the sole authority for current work.
 
 | Lane | Task/worktree | State |
 | --- | --- | --- |
-| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | DLV-327 fast-forwarded to `676cd76` and produced the correct one-file plural-API migration, but its native gate stopped at a fixture viewport not positioned at the requested After edge. Execute bounded test-only DLV-328 below; DLV-284 remains queued and unassigned. |
+| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | DLV-328 proved the List After action from trailing geometry, then stopped because the retained UIA assertion still expected off-viewport item 2 instead of visible boundary item 5. Execute bounded test-only DLV-329 below; DLV-284 remains queued and unassigned. |
 | Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | Idle at clean cumulative test tip `676cd76`; every managed gate and focused DLV-326 Runtime gate is green. Preserve PID 126208 and all product state; do not begin new work, integrate, rebuild/relaunch, or push. |
 
 ## Execution and architecture rules
@@ -1849,6 +1849,36 @@ PID 126208, Spotify 0.3.14, installed/configured state, and all production
 artifacts; do not launch/terminate, integrate to main, begin DLV-284, or push.
 Stop for independent review if Tier 3 is green.
 
+DLV-328 preserved the one-file plural-API migration and changed only the two
+forward frames to render their existing trailing List/Grid items. The sole
+complete Release native gate proved the prior List After action, then stopped
+at the next real-host accessibility check after 165 checks. The fixture now
+renders the List viewport at item 5 but still asks `PublishCursorTree` to find
+the formerly visible item 2 in the real UIA tree. Host accessibility correctly
+publishes the committed visible geometry rather than off-viewport retained
+items. No commit/Tier 3, production/overlay/package/state mutation, or push
+occurred; the one test-file edit remains uncommitted on `676cd76`.
+
+## Assigned platform correction — DLV-329 align UIA item with visible boundary
+
+Mode: bounded native test-only correction after DLV-328. Preserve the current
+one-file plural-API migration and exact forward viewport positioning. Change
+only the initial List frame's existing `PublishCursorTree` expected semantic
+item from the former interior `cursor.item.2` to the now-visible trailing
+`cursor.item.5`, retaining the header and every absence/identity/UIA assertion.
+Do not publish off-viewport semantics, broaden expected sets, change the
+snapshot, renderer, viewport, focus again, accessibility production, or any
+other file.
+
+Run one complete serialized Release native OverlayHost build/test invocation
+using `src/OverlayHost/build.ps1 -Configuration Release`, stopping first red.
+If green, commit exactly `RealHostAccessibilityTests.cpp` on top of `676cd76`,
+then run one canonical Tier 3 verifier from a clean detached tree at that exact
+commit. Do not run additional focused suites outside those two gates. Preserve
+PID 126208, Spotify 0.3.14, installed/configured state, and all production
+artifacts; do not launch/terminate, integrate to main, begin DLV-284, or push.
+Stop for independent review if Tier 3 is green.
+
 ## Queued platform production — DLV-284 explicit publication transaction model
 
 Status: queued, not assigned. It becomes assignable only after the cumulative
@@ -1934,7 +1964,7 @@ import/export or scheduling only after independent widgets prove the need.
 
 ## Ordered queues
 
-1. Platform evidence queue: execute bounded DLV-328 real-host viewport-boundary
+1. Platform evidence queue: execute bounded DLV-329 real-host UIA-boundary
    fixture correction, its complete native gate, and one exact-commit Tier 3
    verifier, stopping on the first red result.
 2. Reviewer integration queue: independently review the eventual cumulative
@@ -2002,7 +2032,8 @@ There is no other Ready production work in either standing lane.
 | DLV-325 | Test-only `e441f25`: provider 32/32 green; exact-commit Tier 3 stopped later at retained Runtime Job helper file-publication cleanup race. |
 | DLV-326 | Test-only `676cd76`: Runtime 84/84 and every preceding Tier 3 managed gate green; Tier 3 stopped later at retained native real-host pagination compile drift. |
 | DLV-327 | Stopped first red uncommitted: plural geometry migration compiled, but retained forward frames rendered interior focus while asserting trailing-edge actions. |
-| DLV-328 | Assigned one-file exact viewport-boundary correction, complete native gate, and one exact-commit Tier 3 verifier. |
+| DLV-328 | Stopped first red uncommitted: List After geometry passed; retained UIA assertion still expected now-off-viewport item 2. |
+| DLV-329 | Assigned one-assertion visible-boundary UIA correction, complete native gate, and one exact-commit Tier 3 verifier. |
 | DLV-284 | Queued, not assigned until cumulative integration. |
 | DLV-248 | Deliberately deferred until explicit user promotion. |
 
