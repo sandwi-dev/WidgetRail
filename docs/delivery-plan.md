@@ -39,7 +39,7 @@ historical evidence only; this file is the sole authority for current work.
 
 | Lane | Task/worktree | State |
 | --- | --- | --- |
-| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | Assigned build-tooling verification DLV-341 below at `676cd76`, preserving five unrelated uncommitted files plus held DLV-340 build-script work. DLV-284 remains queued and unassigned. |
+| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | Assigned diagnostic DLV-342 below at DLV-340 commit `0f8b080`, preserving five uncommitted diagnostic/test files. DLV-284 remains queued and unassigned. |
 | Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | Idle and clean at `676cd76`. Preserve PID 126208 and all product state; do not begin new work, integrate, rebuild/relaunch, or push. |
 
 ## Execution and architecture rules
@@ -383,6 +383,25 @@ uncommitted. No UIA diagnostic execution, complete native gate, Tier 3,
 production correction, integration, DLV-284, launch/terminate, or push.
 Preserve PID 126208 and all installed/configured state.
 
+DLV-341 verified the ordinary Release `SkipTests` route green: every managed
+publish succeeded, `OverlayHost.exe` was produced, and no tests ran. DLV-340
+committed only `build.ps1` as `0f8b080` and reviewer integration produced main
+commit `d11e9ae`. The running accepted candidate already contains the same
+production sources, so this tooling-only integration does not require a rebuild
+or relaunch.
+
+## Assigned platform diagnostic — DLV-342 execute the live-region trace
+
+Preserve the five current uncommitted diagnostic/test files and make no edits.
+Run `src/OverlayHost/build.ps1 -Configuration Release
+-WidgetActionFailureHostTestsOnly` exactly once. Stop first red. Capture the
+isolated overlay log facts from the temporary DLV-336 trace: prior/current
+authority, planned live-region key, endpoint/HWND, provider resolution, and the
+exact `UiaRaiseAutomationEvent` result. Report the first causal boundary and do
+not correct production or tests. Do not commit. Do not run the complete native
+gate, Tier 3, integration, DLV-284, launch/terminate, or push. Preserve PID
+126208 and all installed/configured state.
+
 DLV-340 reached the intended centralized helper and successfully published the
 complete production managed set through Media Sessions. Its first red was the
 pre-existing command contract: `WidgetActionFailureHostTestsOnly` requires
@@ -535,8 +554,8 @@ import/export or scheduling only after independent widgets prove the need.
 
 ## Ordered queues
 
-1. Platform evidence queue: execute DLV-341 tooling verification, then resume the
-   one-shot UIA diagnostic from its clean build baseline.
+1. Platform evidence queue: execute DLV-342 one-shot UIA diagnostic from the
+   clean serialized-publish build baseline.
 2. Reviewer integration queue: independently review DLV-332 and the cumulative
    accepted production/test chain; integrate only if every required gate passes.
 3. Platform production queue: assign DLV-284 after clean integration, before
@@ -571,8 +590,9 @@ There is no other Ready production work in either standing lane.
 | DLV-337 | Explicit Bridge publish green; prior stop was transient tooling noise. |
 | DLV-338 | Repeated default-parallel Bridge publish failure; host did not execute. |
 | DLV-339 | Serialized Bridge passed; next default-parallel Worker Host publish failed identically. |
-| DLV-340 | Helper published all production managed projects; invalid assigned flag combination stopped after packaging. |
-| DLV-341 | Assigned no-edit verification on legal ordinary Release `SkipTests` route. |
+| DLV-340 | Serialized helper green and integrated as main `d11e9ae`; no runtime relaunch required. |
+| DLV-341 | Legal ordinary Release `SkipTests` verification green; no tests executed. |
+| DLV-342 | Assigned one-shot instrumented live-region diagnostic; no correction authorized. |
 | DLV-284 | Queued, not assigned until cumulative review/integration. |
 | DLV-248 | Deliberately deferred until explicit user promotion. |
 
