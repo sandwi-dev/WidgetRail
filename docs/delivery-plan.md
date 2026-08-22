@@ -33,7 +33,7 @@ historical evidence only; this file is the sole implementation authority.
 
 | Lane | Task/worktree | State |
 | --- | --- | --- |
-| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | DLV-460 assigned: construct one clean main-compatible commit from the four accepted test/build commits and run the canonical Tier-3 verifier exactly once. Preserve rejected/restoration evidence. DLV-284 remains queued. |
+| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | DLV-461 assigned: run the canonical Tier-3 verifier once under its required PowerShell 7 host from clean DLV-460 `3ed0f8c`. Preserve rejected/restoration evidence. DLV-284 remains queued. |
 | Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | Idle and clean at `676cd76`; do not begin work or change product state. |
 
 ## Execution rules
@@ -620,23 +620,22 @@ diagnosis found no DLV-458 path involvement; do not rerun or redesign startup.
 The exact-commit checkpoint will carry residual runtime evidence. Evidence is
 under `%TEMP%\wrail-dlv458-focused-20260822-051500`.
 
-## Assigned exact clean integration checkpoint — DLV-460
+## Assigned corrected exact clean checkpoint — DLV-461
 
-Reviewer accepted exact ancestry-bound commits `d0b7169`, `5745655`, `0465fee`,
-and `e83a3b9`: cached diffs and complete path sets are clean; no production or
-reviewer file, weakened assertion/timeout, debug artifact, or unrelated cleanup
-was found. Create one fresh isolated worktree at current main `5471b5e`, apply
-those four commits in order without importing rejected ancestry, and stop on
-any non-mechanical conflict or path expansion. Verify the resulting exact
-seven-file diff and commit it as DLV-460.
+DLV-460 `3ed0f8c` contains the reviewed seven files on main-compatible ancestry. Its verifier stopped before builds/tests:
+legacy Windows PowerShell's `Add-Type` compiler rejected the runner's C# `init`
+accessor. The runner imports successfully under installed `pwsh 7.6.4`, uses
+PowerShell-7/.NET APIs, and launches `pwsh` children. This was a wrong entry host, not a DLV-460 or verifier-source defect.
 
-From that exact clean commit run `scripts\Verify.ps1 -Configuration Release`
-exactly once with durable streams/results. Expose output or terminal state every
-60 seconds; inspect descendants, results, CPU, and streams every 15-30 seconds.
-At 60 seconds of silence diagnose; trust explicit child/results over a stuck wrapper and leave no owned descendants. Stop first red
-or at one green result. Do not edit after the run, rerun, integrate,
-rebuild/relaunch PID 144396, change
-product/package state, remove evidence, assign DLV-284, or push.
+Reuse the clean detached DLV-460 tree without edit or new commit. Positively
+record PowerShell Core 7 and module import, then invoke exactly once with
+`pwsh -NoProfile -File scripts\Verify.ps1 -Configuration Release`. Retain
+durable streams/results. Expose output/terminal state within 60 seconds; inspect
+descendants, results, CPU, and streams every 15-30 seconds. Diagnose 60 seconds
+of silence immediately, trust explicit child/results over a stuck wrapper, and
+leave no owned descendants. Stop first red or at one green result. Do not edit,
+rerun, integrate, rebuild/relaunch PID 144396, change product/package state,
+remove evidence, assign DLV-284, or push.
 
 Disposition: red after 140.110 seconds with fresh child/output inspection every
 20 seconds. The exact current Audio fallback checkpoint was already present,
@@ -944,8 +943,8 @@ Extract native authorities only when real work touches them.
 
 ## Ordered queues
 
-1. DLV-460 one main-compatible seven-file commit and exact clean Tier-3 run.
-2. Reviewer integration of the accepted DLV-460 hash after one green result.
+1. DLV-461 exact clean PowerShell-7 Tier-3 run from DLV-460 `3ed0f8c`.
+2. Reviewer integration of accepted `3ed0f8c` after one green result.
 3. DLV-284 after cumulative clean integration.
 4. Generic Game Launcher cutover; LauncherExperience deletion/state retirement;
    protocol requirements; then the remaining maturity deliverables.
