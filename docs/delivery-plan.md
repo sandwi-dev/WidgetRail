@@ -33,7 +33,7 @@ historical evidence only; this file is the sole implementation authority.
 
 | Lane | Task/worktree | State |
 | --- | --- | --- |
-| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | DLV-458 assigned: correlate the latest converged Settings paint, checkpoint, and live geometry atomically, then run fast seam evidence and one focused gate. Preserve seven held diffs and all rejected/restoration evidence. DLV-284 remains queued. |
+| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | DLV-459 assigned: create the four planned scoped test/build commits without another run, then stop for reviewer diff review and one exact-commit checkpoint. Preserve rejected/restoration evidence. DLV-284 remains queued. |
 | Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | Idle and clean at `676cd76`; do not begin work or change product state. |
 
 ## Execution rules
@@ -613,28 +613,27 @@ worker/Bridge/host boundary, so they do not prove refresh demand reached the
 host. No production defect is established. Evidence is under
 `%TEMP%\wrail-dlv453-focused-20260822-050100`.
 
-Disposition: DLV-457's eight selector cases passed and exact checkpoint
-selection reached priming. Its first matching sequence-2 checkpoint recorded
-`965x698`, but immediate live geometry had advanced in the same fallback extent
-cascade. Freezing the first checkpoint before reading live authority is the
-remaining oracle defect; no production failure is established. Evidence is
-under `%TEMP%\wrail-dlv457-focused-20260822-054100`.
+Disposition: DLV-458's shared all-paint atomic convergence seam is source-clean
+and fast-green. The one focused run stopped before its scenario: Bridge started,
+then the isolated host's first named-pipe open failed Win32 5. One bounded
+diagnosis found no DLV-458 path involvement; do not rerun or redesign startup.
+The exact-commit checkpoint will carry residual runtime evidence. Evidence is
+under `%TEMP%\wrail-dlv458-focused-20260822-051500`.
 
-## Assigned platform atomic fallback convergence — DLV-458
+## Assigned platform scoped commit boundary — DLV-459
 
-Test-only; change only held `WidgetSwitchHostTests.cpp`. Preserve DLV-457's
-generic selector and eight cases. During priming, do not freeze the first exact
-checkpoint then sample live geometry later. In one bounded callback, scan the
-post-action Settings paints/checkpoints, choose the latest equal desired/
-presented paint with same-sequence exact checkpoint, sample live HWND/client,
-and succeed only when that latest checkpoint matches the live sample. Retain a
-complete candidate/live geometry diagnostic on failure.
+No edit or verification. Review the seven held diffs for exact scope, debug
+artifacts, weakened assertions/timeouts, and reviewer files. If clean, create
+the planned commits: DLV-375 fixture `Program.cs`; DLV-458
+`WidgetSwitchHostTests.cpp`; DLV-349 `build.ps1`; and DLV-374 for the four other
+native test files. Stage each explicit path set, run cached diff-check, and
+verify no production or reviewer file enters any commit. Preserve complete
+history; never amend, squash, rebase, or include rejected ancestry.
 
 Do not weaken assertions/timeouts, alter production or the fixture, or touch
-another held file. Add/run a fast deterministic stale-first/latest-match seam;
-if green, reuse the coherent tree after parity for one observable focused gate.
-No full gate, commit, integration, product/package/process action, evidence
-removal, DLV-284, or push.
+Do not run a build/test, integrate, rebuild/relaunch, change product/package/
+process state, remove evidence, assign DLV-284, or push. Stop after four commit
+hashes plus full path and cached-diff evidence for independent review.
 
 Disposition: red after 140.110 seconds with fresh child/output inspection every
 20 seconds. The exact current Audio fallback checkpoint was already present,
@@ -942,7 +941,7 @@ Extract native authorities only when real work touches them.
 
 ## Ordered queues
 
-1. DLV-458 atomic fallback convergence before the block handshake.
+1. DLV-459 four scoped commits, then reviewer diff review.
 2. Reviewer commit/diff review, then one exact clean Tier-3 run.
 3. DLV-284 after cumulative clean integration.
 4. Generic Game Launcher cutover; LauncherExperience deletion/state retirement;
@@ -995,4 +994,4 @@ There is no other Ready production work in either standing lane.
 | DLV-451 | Wrapper passed; reused partial artifact tree failed isolated Bridge startup. |
 | DLV-452 | Fresh parity tree reproduced startup; malformed test catalog JSON was the exact cause. |
 | DLV-453 | Catalog delimiter passed; worker-local arm acknowledgements did not prove host-visible invalidation. |
-| DLV-457 | Eight selector cases passed; first exact checkpoint raced later same-sequence geometry. |
+| DLV-458 | Atomic seam fast-green; focused startup hit unrelated Bridge pipe access denial. |
