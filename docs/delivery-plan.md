@@ -39,7 +39,7 @@ historical evidence only; this file is the sole authority for current work.
 
 | Lane | Task/worktree | State |
 | --- | --- | --- |
-| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | Assigned build-tooling DLV-339 below at `676cd76`, preserving five unrelated uncommitted files. DLV-284 remains queued and unassigned. |
+| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | Assigned build-tooling DLV-340 below at `676cd76`, preserving five unrelated uncommitted files plus held build-script work. DLV-284 remains queued and unassigned. |
 | Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | Idle and clean at `676cd76`. Preserve PID 126208 and all product state; do not begin new work, integrate, rebuild/relaunch, or push. |
 
 ## Execution and architecture rules
@@ -357,6 +357,32 @@ other five files uncommitted. Do not run the UIA diagnostic, complete native
 gate, Tier 3, or another publish command. Preserve PID 126208 and all state; no
 production correction, integration, DLV-284, launch/terminate, or push.
 
+DLV-339 proved the serialized WidgetBridge publish succeeds, then the next
+unchanged default-parallel Generic Widget Worker Host publish failed identically
+with exit 1 and no causal diagnostic. This establishes a repeated build-script
+publish-pattern defect rather than a WidgetBridge-specific failure. The
+one-invocation build-script edit remains uncommitted.
+
+## Assigned platform tooling — DLV-340 centralize serialized managed publish
+
+Preserve the five pre-existing uncommitted source/test files. In
+`src/OverlayHost/build.ps1`, replace the held one-off Bridge change with one
+small script-private managed-publish helper and route every existing
+`dotnet publish` call through it. The helper must use one MSBuild node,
+`BuildInParallel=false`, node reuse disabled, and shared compilation disabled;
+preserve each call's exact project, configuration, self-contained policy,
+output, restore behavior, call-site error handling, and diagnostic output.
+Do not change non-publish commands, packaging contents/order, cleanup, project
+selection, runtime inputs, or test behavior.
+
+Run
+`src/OverlayHost/build.ps1 -Configuration Release
+-WidgetActionFailureHostTestsOnly -SkipTests` once. Stop first red. If green,
+commit exactly `build.ps1` with a DLV-340 subject, leaving the other five files
+uncommitted. No UIA diagnostic execution, complete native gate, Tier 3,
+production correction, integration, DLV-284, launch/terminate, or push.
+Preserve PID 126208 and all installed/configured state.
+
 DLV-333 stopped at its first targeted red with both test files uncommitted. The
 exact UI Automation tray invocation succeeded, selected
 `ytmusic-fixture`, and reached its intended Establish/worker-start failure.
@@ -491,7 +517,7 @@ import/export or scheduling only after independent widgets prove the need.
 
 ## Ordered queues
 
-1. Platform evidence queue: execute DLV-339 tooling correction, then resume the
+1. Platform evidence queue: execute DLV-340 tooling correction, then resume the
    one-shot UIA diagnostic from its clean build baseline.
 2. Reviewer integration queue: independently review DLV-332 and the cumulative
    accepted production/test chain; integrate only if every required gate passes.
@@ -526,7 +552,8 @@ There is no other Ready production work in either standing lane.
 | DLV-336 | Native trace compiled, but hidden WidgetBridge publish failure prevented execution. |
 | DLV-337 | Explicit Bridge publish green; prior stop was transient tooling noise. |
 | DLV-338 | Repeated default-parallel Bridge publish failure; host did not execute. |
-| DLV-339 | Assigned deterministic serialized Bridge publish tooling correction. |
+| DLV-339 | Serialized Bridge passed; next default-parallel Worker Host publish failed identically. |
+| DLV-340 | Assigned one shared serialized managed-publish helper in build.ps1. |
 | DLV-284 | Queued, not assigned until cumulative review/integration. |
 | DLV-248 | Deliberately deferred until explicit user promotion. |
 
