@@ -19,6 +19,7 @@ internal static class Program
         var firstSnapshotSignal = OptionalValue(args, "--first-snapshot-signal");
         var refreshSignal = OptionalValue(args, "--refresh-signal");
         var blockSnapshotTrigger = OptionalValue(args, "--block-snapshot-trigger");
+        var blockSnapshotArmed = OptionalValue(args, "--block-snapshot-armed");
         var blockSnapshotSignal = OptionalValue(args, "--block-snapshot-signal");
         var blockSnapshotRelease = OptionalValue(args, "--block-snapshot-release");
         var blockSnapshotComplete = OptionalValue(args, "--block-snapshot-complete");
@@ -38,6 +39,7 @@ internal static class Program
                         firstSnapshotSignal,
                         refreshSignal,
                         blockSnapshotTrigger,
+                        blockSnapshotArmed,
                         blockSnapshotSignal,
                         blockSnapshotRelease,
                         blockSnapshotComplete),
@@ -81,20 +83,20 @@ internal static class Program
         string? firstSnapshotSignal,
         string? refreshSignal,
         string? blockSnapshotTrigger,
+        string? blockSnapshotArmed,
         string? blockSnapshotSignal,
         string? blockSnapshotRelease,
         string? blockSnapshotComplete) : Widget
     {
         private readonly SurfaceDefinition _surface = ResolveSurface(instanceId);
         private bool _firstSnapshotDelayed;
-        private int _blockMonitorStarted;
         private int _renderCount;
         private volatile bool _blockNextSnapshot;
+        private long _blockedEpoch;
 
         public override WidgetView Render()
         {
             var renderOrdinal = Interlocked.Increment(ref _renderCount);
-            StartBlockMonitor();
             if (!_firstSnapshotDelayed)
             {
                 _firstSnapshotDelayed = true;
@@ -110,18 +112,21 @@ internal static class Program
             if (_blockNextSnapshot)
             {
                 _blockNextSnapshot = false;
+                var epoch = Interlocked.Read(ref _blockedEpoch);
                 if (blockSnapshotSignal is not null)
                     File.WriteAllText(
                         blockSnapshotSignal,
-                        $"{Environment.ProcessId.ToString(CultureInfo.InvariantCulture)}:" +
-                        renderOrdinal.ToString(CultureInfo.InvariantCulture));
+                        $"epoch={epoch.ToString(CultureInfo.InvariantCulture)} " +
+                        $"render-sequence={renderOrdinal.ToString(CultureInfo.InvariantCulture)} " +
+                        $"pid={Environment.ProcessId.ToString(CultureInfo.InvariantCulture)}");
                 if (blockSnapshotRelease is not null)
                 {
-                    while (!File.Exists(blockSnapshotRelease))
+                    while (!ReleaseMatchesEpoch(epoch))
                         Thread.Sleep(10);
                 }
                 if (blockSnapshotComplete is not null)
-                    File.WriteAllText(blockSnapshotComplete, "completed");
+                    File.WriteAllText(blockSnapshotComplete,
+                        $"epoch={epoch.ToString(CultureInfo.InvariantCulture)} completed");
             }
             return new WidgetView(
                 UI.Stack(
@@ -131,7 +136,7 @@ internal static class Program
                     UI.Text("Production host transition fixture", $"{_surface.Id}-detail")
                         .Classes("switch-detail"),
                     UI.Button("Ready", "fixture.ready", $"{_surface.Id}-ready")
-                        .Shortcut(ControllerButton.X, "fixture.ready")
+                        .Shortcut(ControllerButton.X, actionId: "fixture.ready")
                         .FocusDown($"{_surface.Id}-more")
                         .Classes("switch-button"),
                     UI.Button("More", "fixture.more", $"{_surface.Id}-more")
@@ -147,6 +152,16 @@ internal static class Program
             CancellationToken cancellationToken = default)
         {
             cancellationToken.ThrowIfCancellationRequested();
+            if (action.ActionId == "fixture.ready" && TryConsumeBlockEpoch(out var epoch))
+            {
+                Interlocked.Exchange(ref _blockedEpoch, epoch);
+                _blockNextSnapshot = true;
+                Invalidate();
+                if (blockSnapshotArmed is not null)
+                    File.AppendAllText(blockSnapshotArmed,
+                        $"epoch={epoch.ToString(CultureInfo.InvariantCulture)} armed\n");
+                return ValueTask.CompletedTask;
+            }
             if (action.ActionId == "refresh" && refreshSignal is not null)
             {
                 File.AppendAllText(refreshSignal, "refresh\n");
@@ -155,24 +170,36 @@ internal static class Program
             return base.OnActionAsync(action, cancellationToken);
         }
 
-        private void StartBlockMonitor()
+        private bool TryConsumeBlockEpoch(out long epoch)
         {
-            if (blockSnapshotTrigger is null ||
-                Interlocked.Exchange(ref _blockMonitorStarted, 1) != 0)
-                return;
-            _ = Task.Run(async () =>
+            epoch = 0;
+            if (blockSnapshotTrigger is null || !File.Exists(blockSnapshotTrigger))
+                return false;
+            var trigger = File.ReadAllText(blockSnapshotTrigger);
+            File.Delete(blockSnapshotTrigger);
+            return TryParseEpoch(trigger, out epoch);
+        }
+
+        private bool ReleaseMatchesEpoch(long epoch)
+        {
+            if (blockSnapshotRelease is null || !File.Exists(blockSnapshotRelease))
+                return false;
+            return TryParseEpoch(File.ReadAllText(blockSnapshotRelease), out var released) &&
+                released == epoch;
+        }
+
+        private static bool TryParseEpoch(string value, out long epoch)
+        {
+            const string prefix = "epoch=";
+            if (!value.StartsWith(prefix, StringComparison.Ordinal))
             {
-                while (true)
-                {
-                    while (!File.Exists(blockSnapshotTrigger))
-                        await Task.Delay(10).ConfigureAwait(false);
-                    File.Delete(blockSnapshotTrigger);
-                    _blockNextSnapshot = true;
-                    Invalidate();
-                    while (_blockNextSnapshot)
-                        await Task.Delay(10).ConfigureAwait(false);
-                }
-            });
+                epoch = 0;
+                return false;
+            }
+            var terminal = value.IndexOfAny([' ', '\r', '\n'], prefix.Length);
+            var token = terminal < 0 ? value[prefix.Length..] : value[prefix.Length..terminal];
+            return long.TryParse(token, NumberStyles.None, CultureInfo.InvariantCulture, out epoch) &&
+                epoch > 0;
         }
 
         private static SurfaceDefinition ResolveSurface(string value)
