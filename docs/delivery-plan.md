@@ -15,12 +15,19 @@ historical evidence only; this file is the sole authority for current work.
   chain remains unintegrated.
 - Current physically accepted production is DLV-318
   `32a2a5ed3f31ad95156d3ab61fe36f2d791449e2`.
-- PID 126208 visibly runs its exact Release from
+- DLV-318 remains the last physically accepted production. Its exact recoverable
+  Release is
   `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative-dlv318-build`;
   executable SHA-256 is
   `86AC9946CC54F2B4CF51B14EEAA48CE32FECDF2C381DA73F24107DBE755F13AD`.
-  Spotify 0.3.14 is installed, selected, and enabled. Preserve every package,
-  credential, account, configuration, and provider state.
+- PID 33360 now visibly runs the reviewed, unintegrated DLV-422 candidate from
+  `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative\src\OverlayHost\out\Release`;
+  executable SHA-256 is
+  `DB81DEF2314F65AAA9E96B1DA730099EC7EF27772D7EE67D49C41196745DD9BE`.
+  Candidate commit is `35489ab5963d9978b32876255d00929592937944`;
+  physical verdict is pending. Spotify 0.3.14 remains installed, selected, and
+  enabled. Preserve every package, credential, account, configuration, and
+  provider state.
 - Managed tests are accepted through exact `676cd76`: DLV-319 `199a81b`,
   DLV-324 `6b63edf`, DLV-325 `e441f25`, and DLV-326 `676cd76`. All named
   managed Tier-3 gates are green.
@@ -31,8 +38,8 @@ historical evidence only; this file is the sole authority for current work.
 
 | Lane | Task/worktree | State |
 | --- | --- | --- |
-| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | Assigned DLV-402 source/output diagnosis of non-paint Back tray authority. Preserve all seven held diffs and neutral rejected/restoration commits. DLV-284 remains queued and unassigned. |
-| Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | Idle and clean at `676cd76`. Preserve PID 126208 and product state; do not begin work, integrate, rebuild/relaunch, or push. |
+| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | DLV-422 `35489ab` reviewer/build accepted; PID 33360 candidate awaits physical verdict. Preserve seven held diffs and neutral rejected/restoration commits. DLV-284 remains queued and unassigned. |
+| Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | Idle and clean at `676cd76`. Preserve installed product state; do not begin work, integrate, rebuild/relaunch, or push. |
 
 ## Execution rules
 
@@ -42,8 +49,9 @@ historical evidence only; this file is the sole authority for current work.
 - Follow physical-first order: coherent production/build, user verdict, then
   focused tests. Do not integrate production-only work before verdict and
   post-verdict evidence.
-- Relaunch only when accepted integrated production/runtime artifact inputs
-  change. Retain PID 126208 for test-only, build-tool, or reviewer-doc deltas.
+- Relaunch only for a reviewed production/runtime candidate or accepted
+  integrated production/runtime input change. Retain the currently running
+  candidate for test-only, build-tool, or reviewer-doc deltas.
 - Use affected Tier 1 once, the smallest linked Tier 2 only for a changed
   boundary, and Tier 3 only when assigned. Stop first red; classify before edit
   or rerun.
@@ -769,10 +777,10 @@ There is no other Ready production work in either standing lane.
 | DLV-278–283/270 | Production accepted; integration awaits native gate, exact-commit Tier 3, and review. |
 | DLV-296 | Production `3922b58` and notification evidence DLV-306 `5fe7a5f` are accepted in the chain. |
 | DLV-314 | Production `992b77b` accepted with Spotify 0.3.13. |
-| DLV-318 | Current accepted production `32a2a5e`; PID 126208 runs Spotify 0.3.14. |
+| DLV-318 | Last physically accepted production `32a2a5e`; exact restore artifact preserved, not currently running. |
 | DLV-319–326 | Managed test chain through `676cd76`; all managed Tier-3 gates green. |
 | DLV-327–421 | Native fixture/build evidence held pending DLV-422 physical-first diagnostic and resumed exact-commit Tier 3. |
-| DLV-422 | Assigned narrow fallback-placement structured diagnostic and native Release build; tests held for physical verdict. |
+| DLV-422 | `35489ab` candidate running as PID 33360; tests held for physical verdict. |
 | DLV-284 | Queued until cumulative review/integration. |
 | DLV-248 | Deliberately deferred until explicit user promotion. |
 
@@ -780,7 +788,7 @@ There is no other Ready production work in either standing lane.
 
 | Milestone | Disposition |
 | --- | --- |
-| DLV-318 | Production `32a2a5e` physically accepted; PID 126208 running. |
+| DLV-318 | Production `32a2a5e` remains last physically accepted; exact restore artifact preserved. |
 | DLV-326 | Test-only `676cd76` accepted; managed Tier-3 gates green. |
 | DLV-340 | Build helper accepted/integrated as `d11e9ae`. |
 | DLV-374 | Focused reopen route green. |
@@ -818,4 +826,4 @@ There is no other Ready production work in either standing lane.
 | DLV-419 | Fallback selection need not republish unchanged placement; exact pre/post live HWND equality can pin the prior current placement around destination admission. |
 | DLV-420 | Latest placement was a stale DirectComposition-container record; fallback mode emits no replacement, so it cannot anchor live HWND stationarity. |
 | DLV-421 | No strict test-only work-area authority exists; exact fallback placement requires a narrow post-success host diagnostic. |
-| DLV-422 | Assigned exact post-placement fallback diagnostic, production build, and physical-first candidate handoff. |
+| DLV-422 | `35489ab` emits exact post-placement fallback authority; Release build green, coherent PID 33360 launched, user verdict pending. |
