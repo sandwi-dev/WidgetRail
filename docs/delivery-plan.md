@@ -33,7 +33,7 @@ historical evidence only; this file is the sole implementation authority.
 
 | Lane | Task/worktree | State |
 | --- | --- | --- |
-| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | DLV-448 assigned as wrapper-only reuse of the sealed DLV-447 tree and one focused invocation. Preserve seven held diffs and all rejected/restoration evidence. DLV-284 remains queued. |
+| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | DLV-449 assigned as one Cargo-wrapper correction plus sealed-tree reuse and one focused invocation. Preserve seven held diffs and all rejected/restoration evidence. DLV-284 remains queued. |
 | Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | Idle and clean at `676cd76`; do not begin work or change product state. |
 
 ## Execution rules
@@ -474,6 +474,32 @@ Do not edit, run another gate, commit, integrate, rebuild/relaunch PID 144396,
 change product/package state, remove evidence, assign DLV-284, or push. Red
 stops for classification; green returns to reviewer commit planning.
 
+Disposition: the outer owner was corrected, but `build.ps1` itself globally
+sets `$ErrorActionPreference = 'Stop'` and invokes Cargo directly at line 138.
+This PowerShell environment promotes Cargo's normal progress stderr to a
+terminating `NativeCommandError`; the test again never launched. Evidence is
+under `%TEMP%\wrail-dlv448-focused-20260822-052500`.
+
+## Assigned platform scoped Cargo invocation — DLV-449
+
+Test/build infrastructure only; change only held `src/OverlayHost/build.ps1`.
+Around the Cargo invocation, temporarily use non-terminating native stderr
+handling, capture `$LASTEXITCODE` immediately, restore the prior preference in
+`finally`, and throw only for a nonzero Cargo exit. Preserve visible Cargo
+stdout/stderr and every other build behavior. Do not weaken PowerShell error
+handling globally or change another source file.
+
+Copy only the corrected `build.ps1` into the sealed DLV-447 tree, then verify
+all seven held paths match the standing worktree byte-for-byte. Reuse existing
+incremental outputs. Run the focused WidgetSwitch gate exactly once with the
+absolute Utility manifest and explicit native exit/result capture. Every
+command must expose meaningful output or terminate within 60 seconds; inspect
+streams and the full owned descendant tree every 15–20 seconds and audit
+silence immediately at 60 seconds. Do not return with active descendants. No
+second gate, commit, integration, rebuild/relaunch PID 144396, product/package
+change, evidence removal, DLV-284, or push. Red stops for classification; green
+returns to reviewer commit planning.
+
 Disposition: red after 140.110 seconds with fresh child/output inspection every
 20 seconds. The exact current Audio fallback checkpoint was already present,
 but Back produced no post-boundary fallback paint, composition sample, or
@@ -720,7 +746,7 @@ stops for classification; green returns to reviewer commit planning.
 
 ## Queued platform production — DLV-284 typed publication transactions
 
-Status: queued, not assigned. It becomes assignable only after DLV-448, the
+Status: queued, not assigned. It becomes assignable only after DLV-449, the
 cumulative native gate, commit review/
 integration, and exact clean Tier 3 are green. No new virtualization feature
 may precede it.
@@ -779,7 +805,7 @@ Extract native authorities only when real work touches them.
 
 ## Ordered queues
 
-1. DLV-448 one corrected wrapper invocation from the sealed DLV-447 tree.
+1. DLV-449 one scoped Cargo wrapper correction and focused invocation.
 2. Reviewer commit/diff review, then one exact clean Tier-3 run.
 3. DLV-284 after cumulative clean integration.
 4. Generic Game Launcher cutover; LauncherExperience deletion/state retirement;
@@ -795,7 +821,7 @@ There is no other Ready production work in either standing lane.
 | DLV-257 identity | Store, domain, trademark, and GitHub availability remain external/manual. |
 | DLV-278–283/270 | Production accepted; integration awaits the native gate, exact Tier 3, and review. |
 | DLV-319–326 | Managed chain through `676cd76`; all managed Tier-3 gates green. |
-| DLV-327–421 | Native fixture/build evidence remains held behind DLV-448 and exact Tier 3. |
+| DLV-327–421 | Native fixture/build evidence remains held behind DLV-449 and exact Tier 3. |
 | DLV-427 | `e26b92b` and `16050bb` are unbuilt/unaccepted ancestry-bound evidence only. |
 | DLV-428 | Accepted/integrated as `c38b261`; PID 144396 already runs it. |
 | DLV-284 | Queued until cumulative review/integration. |
@@ -826,4 +852,5 @@ There is no other Ready production work in either standing lane.
 | DLV-445 | Mode-aware focus passed; one-shot blocked-snapshot trigger then timed out. |
 | DLV-446 | Audited all remaining post-fallback mode assumptions and the shared block race. |
 | DLV-447 | Cohesive edit/parity passed; wrapper promoted normal Cargo stderr and stopped before test launch. |
-| DLV-448 | Assigned no-edit corrected wrapper invocation from the sealed tree. |
+| DLV-448 | Outer owner corrected; inner build.ps1 still promoted Cargo progress and stopped. |
+| DLV-449 | Assigned scoped Cargo invocation plus one focused run. |
