@@ -261,6 +261,34 @@ scoped commits using DLV-399 for this file, then stop before Tier 3. No producti
 edit, integration, DLV-284, launch/terminate, or push. Preserve PID 126208,
 state, seven diffs, and diagnostics.
 
+## Assigned platform test correction — DLV-403 split Back authorities
+
+Own only `WidgetSwitchHostTests.cpp`; preserve six other held files. Replace the
+invalid post-Back widget-paint prerequisite with two independent exact
+authorities:
+
+1. Immediately before Right, resolve the current `WidgetRail.Chrome` UIA root
+   and exact `tray:tray.audio-mixer` element. Require both
+   `SelectionItemIsSelected=true` and `HasKeyboardFocus=true`, and identity-pin
+   that element across the observation.
+2. Retain the latest admitted/current Audio widget paint captured after the
+   preceding Down/fence as the visual-sequence authority. Bind every retained
+   Game Launcher paint before destination admission to that exact positive,
+   nonregressed sequence.
+
+Do not treat UIA as widget visual authority, do not treat the retained paint as
+tray focus authority, and do not require Back to publish a new widget paint.
+Preserve the DLV-399 destination transaction boundary and all existing exact
+identity, catalog, lifecycle, focus, sequence, placement, paint, commit, sample,
+alpha, timing, motion, HWND, and tray assertions.
+
+Run `WidgetSwitchTestsOnly` once via durable capture; stop first red and classify
+it before any further correction. If green, run the full native gate once. If
+both are green, create only the four documented scoped commits using DLV-403
+for this file, then stop before Tier 3. No production edit, integration,
+DLV-284, launch/terminate, or push. Preserve PID 126208, state, seven diffs, and
+diagnostics.
+
 ## After the cumulative native gate is green
 
 1. Review exact DLV-349 and the cumulative test commits and full diffs. Reject
@@ -276,7 +304,7 @@ state, seven diffs, and diagnostics.
 
 ## Queued platform production — DLV-284 explicit publication transaction model
 
-Status: queued, not assigned. It becomes assignable only after DLV-402 is
+Status: queued, not assigned. It becomes assignable only after DLV-403 is
 dispositioned, the native gate is green, cumulative evidence is reviewed and
 integrated, and the accepted main Release is coherently refreshed only if
 runtime inputs changed. No new virtualization feature may precede it.
@@ -335,8 +363,8 @@ Extract native authorities only when real work touches them.
 
 ## Ordered queues
 
-1. Platform evidence: execute DLV-402 source/output classification of non-paint
-   Back tray authority before another edit or rerun.
+1. Platform evidence: execute DLV-403 split Back tray/UIA and retained visual
+   sequence correction, then classify the first focused result.
 2. Reviewer integration: review the eventual four commits, then assign exact
    clean Tier 3 if the native routes are green.
 3. Platform production: DLV-284 after clean cumulative integration.
@@ -356,7 +384,7 @@ There is no other Ready production work in either standing lane.
 | DLV-314 | Production `992b77b` accepted with Spotify 0.3.13. |
 | DLV-318 | Current accepted production `32a2a5e`; PID 126208 runs Spotify 0.3.14. |
 | DLV-319–326 | Managed test chain through `676cd76`; all managed Tier-3 gates green. |
-| DLV-327–402 | Native fixture/build evidence held pending DLV-402 and exact-commit Tier 3. |
+| DLV-327–403 | Native fixture/build evidence held pending DLV-403 and exact-commit Tier 3. |
 | DLV-284 | Queued until cumulative review/integration. |
 | DLV-248 | Deliberately deferred until explicit user promotion. |
 
@@ -382,4 +410,5 @@ There is no other Ready production work in either standing lane.
 | DLV-399 | Shared destination boundary compiled; Back handshake lacked a qualifying new Audio tray paint. |
 | DLV-400 | Back visual source may be admitted/current or refresh-retained/inert with exact tray authority. |
 | DLV-401 | No qualifying post-Back widget paint exists; paint is not the tray handshake. |
-| DLV-402 | Assigned source/output search for exact non-paint tray authority. |
+| DLV-402 | Exact non-paint authority exists in the live Chrome UIA tray element; widget paint remains the separate visual-sequence authority. |
+| DLV-403 | Assigned one-file correction separating Back tray focus from retained Audio visual sequence. |
