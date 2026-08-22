@@ -39,7 +39,7 @@ historical evidence only; this file is the sole authority for current work.
 
 | Lane | Task/worktree | State |
 | --- | --- | --- |
-| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | Assigned DLV-334 below at `676cd76`, preserving two uncommitted test-only files. DLV-284 remains queued and unassigned. |
+| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | Assigned source-only DLV-335 below at `676cd76`, preserving two uncommitted test-only files. DLV-284 remains queued and unassigned. |
 | Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | Idle and clean at `676cd76`. Preserve PID 126208 and all product state; do not begin new work, integrate, rebuild/relaunch, or push. |
 
 ## Execution and architecture rules
@@ -215,6 +215,43 @@ to main, begin DLV-284, edit another file, restore/update dependencies, or
 push. On another distinct red, retain both diffs uncommitted and stop with exact
 evidence. If Tier 3 is green, stop for independent reviewer inspection.
 
+DLV-334 stopped at its first targeted red with both test files uncommitted. The
+exact tray invocation and current typed worker-failure match both succeeded.
+Retry/recovery reached the later action-feedback accessibility assertions. The
+visible open-widget status appeared with its expected semantics, but the
+fixture's original UI Automation event handler observed no
+`LiveRegionChanged` event. The complete native gate, commit, and Tier 3 were
+not run.
+
+## Assigned platform diagnosis — DLV-335 classify live-region event ownership
+
+Mode: source/artifact-only diagnostic after DLV-334.
+
+Preserve exact baseline `676cd76`, both current uncommitted test files, PID
+126208, Spotify 0.3.14, and all installed/configured state. Do not edit, build,
+run or rerun tests, commit, launch/terminate, integrate, begin DLV-284, or push.
+
+Trace the exact `WidgetActionFailureHostTests` subscription and failure path
+against current production accessibility ownership. Establish:
+
+1. which HWND/root the fixture captures while startup Settings is active;
+2. which content/chrome accessibility root owns
+   `host:host.open.status` after exact tray invocation opens YT Music;
+3. whether switching Settings to YT Music invalidates or replaces the original
+   UI Automation element/subscription boundary;
+4. where production raises `LiveRegionChanged`, with the exact element/root
+   and timing relative to the visible status update; and
+5. whether the zero count is a stale test subscription, a production omission,
+   or unresolved ambiguity.
+
+Use current source and the retained targeted output/log only. Compare an
+existing real-host test that successfully subscribes across the current two-HWND
+content/chrome model if one exists. Report exact source references and the
+smallest justified test-only or production milestone. Do not infer that visible
+status alone substitutes for the required event, propose a sleep/retry, weaken
+the assertion, or change provider ownership. If production is implicated, stop
+before any correction so physical-first ordering can be restored.
+
 DLV-333 stopped at its first targeted red with both test files uncommitted. The
 exact UI Automation tray invocation succeeded, selected
 `ytmusic-fixture`, and reached its intended Establish/worker-start failure.
@@ -349,8 +386,8 @@ import/export or scheduling only after independent widgets prove the need.
 
 ## Ordered queues
 
-1. Platform evidence queue: execute DLV-334 and stop on its first red result or
-   for independent review after a green exact-commit Tier 3.
+1. Platform evidence queue: execute source-only DLV-335, classify the exact
+   live-region ownership boundary, then assign only the justified correction.
 2. Reviewer integration queue: independently review DLV-332 and the cumulative
    accepted production/test chain; integrate only if every required gate passes.
 3. Platform production queue: assign DLV-284 after clean integration, before
@@ -379,7 +416,8 @@ There is no other Ready production work in either standing lane.
 | DLV-331 | Diagnostic-only host startup evidence retained; user screenshot identified missing trusted Settings catalog entry. |
 | DLV-332 | Settings fixture restored startup; targeted route exposed stale bare-Enter activation. |
 | DLV-333 | Exact tray invoke reached the intended typed worker failure; stale log substring remained. |
-| DLV-334 | Assigned exact typed worker-failure identity/code assertion. |
+| DLV-334 | Typed failure assertion passed; later live-region event expectation remained red. |
+| DLV-335 | Assigned source/artifact-only classification of UIA event ownership. |
 | DLV-284 | Queued, not assigned until cumulative review/integration. |
 | DLV-248 | Deliberately deferred until explicit user promotion. |
 
@@ -399,3 +437,4 @@ There is no other Ready production work in either standing lane.
 | DLV-331 | Diagnostic retained; screenshot proved missing Settings fixture. |
 | DLV-332 | Settings catalog correction admitted startup; bare Enter did not activate YT Music. |
 | DLV-333 | Exact UIA tray invocation succeeded; typed failure exposed stale expected prose. |
+| DLV-334 | Typed failure matched; visible status appeared but LiveRegionChanged was not observed. |
