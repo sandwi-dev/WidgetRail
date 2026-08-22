@@ -39,7 +39,7 @@ historical evidence only; this file is the sole authority for current work.
 
 | Lane | Task/worktree | State |
 | --- | --- | --- |
-| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | DLV-363 commit `0494b69` held/rejected pending source proof DLV-364 below; preserve build tooling and cumulative test files. DLV-284 remains queued and unassigned. |
+| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | Assigned fail-closed chrome-baseline correction/gates DLV-365 below; `0494b69` is rejected and must be reversed explicitly. DLV-284 remains queued and unassigned. |
 | Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | Idle and clean at `676cd76`. Preserve PID 126208 and all product state; do not begin new work, integrate, rebuild/relaunch, or push. |
 
 ## Execution and architecture rules
@@ -420,6 +420,38 @@ with the fixture, and why the printed test failure did not produce a nonzero
 wrapper result. Report the first incorrect ownership/isolation boundary and the
 smallest production-versus-test correction scope. Do not change files, launch
 or terminate anything, commit, integrate, start DLV-284, or push. Preserve all
+state.
+
+DLV-364 proved `0494b69` is a no-op for DLV-361 and broadens empty
+announcements incorrectly. The status node was polite and had a nonempty name;
+the unrecorded/failed gate was prior-tree comparability: null previous tree or
+widget/runtime replacement. That guard must remain fail-closed. A comparable
+chrome baseline must be established before the action instead.
+
+## Assigned platform correction — DLV-365 authoritative chrome baseline
+
+Using an explicit patch, restore the nonempty-name guard in
+`AccessibilityEvents.cpp` exactly and commit that file alone with a DLV-365
+rejection/restoration subject. Do not amend or reset `0494b69`; both held
+production commits will remain excluded from reviewer integration.
+
+Then own only the already-held `WidgetActionFailureHostTests.cpp`. After the YT
+Music switch, retain exact content-root/action validation, locate the current
+`WidgetRail.Chrome` root, require the focused YT Music tray semantic on it, and
+prove `host.open.status` is absent on that same root before subscription. Register
+the handler on the chrome root, then re-resolve and identity-compare chrome root,
+focused tray, content root, and action before invoking. Require exactly one
+first status callback whose sender is exactly `host:host.open.status`; retain
+zero identical-text duplicates, unchanged focus, and invocation-anchored
+replacement retention. Use no sleeps or relaxed authority comparisons.
+
+With external execution approval, run the focused action-failure route exactly
+once. Stop first red. If green, run the canonical Release route exactly once.
+If both are green, commit exactly `build.ps1` with a DLV-349 subject, then
+commit exactly `RealHostAccessibilityTests.cpp`,
+`WidgetActionFeedbackTests.cpp`, `WidgetActionFailureHostTests.cpp`, and
+`ColdDashboardHostTests.cpp` with a DLV-365 subject. Do not run Tier 3 yet,
+integrate, start DLV-284, launch/terminate, or push. Preserve PID 126208 and all
 state.
 
 DLV-360 designed a bounded two-sided trace that survives fixture cleanup. It
@@ -1104,8 +1136,8 @@ import/export or scheduling only after independent widgets prove the need.
 
 ## Ordered queues
 
-1. Platform physical-first queue: execute DLV-364 proof of the exact failed
-   planner predicate before accepting or replacing held commit `0494b69`.
+1. Platform evidence queue: execute DLV-365 explicit restoration, authoritative
+   chrome-baseline fixture handshake, focused route, then one canonical route.
 2. Reviewer integration queue: independently review DLV-332 and the cumulative
    accepted production/test chain; integrate only if every required gate passes.
 3. Platform production queue: assign DLV-284 after clean integration, before
@@ -1164,7 +1196,8 @@ There is no other Ready production work in either standing lane.
 | DLV-361 | Host saw status add but planned no event; traced HWND differed from subscribed content HWND. |
 | DLV-362 | Chrome owns status; fixture root was stale and production omitted added live-region event. |
 | DLV-363 | Built `0494b69`, but reviewer held it because its name-guard removal may be a no-op. |
-| DLV-364 | Assigned exact pre-DLV-363 planner-predicate proof; no edits authorized. |
+| DLV-364 | Proved `0494b69` no-op/overbroad; missing gate was prior authority comparability. |
+| DLV-365 | Assigned name-guard restoration and exact comparable chrome-baseline handshake. |
 | DLV-284 | Queued, not assigned until cumulative review/integration. |
 | DLV-248 | Deliberately deferred until explicit user promotion. |
 
