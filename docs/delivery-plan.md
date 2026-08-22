@@ -39,7 +39,7 @@ historical evidence only; this file is the sole authority for current work.
 
 | Lane | Task/worktree | State |
 | --- | --- | --- |
-| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | Assigned DLV-383 strict WidgetSwitch content-extent fixture alignment. Preserve all six held diffs and neutral rejected/restoration commits. DLV-284 remains queued and unassigned. |
+| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | Assigned DLV-384 source/output diagnosis of WidgetSwitch tray-coordinate authority. Preserve all seven held diffs and neutral rejected/restoration commits. DLV-284 remains queued and unassigned. |
 | Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | Idle and clean at `676cd76`. Preserve PID 126208 and all product state; do not begin work, integrate, rebuild/relaunch, or push. |
 
 ## Execution and architecture rules
@@ -501,6 +501,31 @@ commit exactly the four held native test files with DLV-374 subject. Do not run
 Tier 3, integrate, start DLV-284, launch/terminate product processes, or push.
 Preserve PID 126208, all state, and diagnostic directories.
 
+DLV-383's corrected initial Audio Mixer `520×465` exact equality passed. The
+focused route then stopped at a separate tray-stationarity red before remaining
+widget extents were reached: expected physical screen corners
+`2205,1307,2915,1440`; observed later rectangle
+`310,352.799988,870,450.799988`. No full gate or commit occurred. Seven diffs
+are held.
+
+## Assigned platform diagnosis — DLV-384 classify tray coordinate spaces
+
+Source and retained DLV-383 stdout/stderr only. Make no edit and run no build,
+test, publish, executable, or product/process command. Trace both values used by
+the `before-selection` tray-stationarity assertion to their exact producers,
+coordinate units, origin, DPI/interface scale, HWND/root ownership,
+publication/placement revision, and conversion path. Determine whether the
+fixture mixes physical screen placement with logical content/chrome-local
+geometry, compares different revisions, or exposes real tray motion.
+
+Compare with a current green fixed-chrome/UIA or placement stationarity
+assertion. Identify the smallest strict same-authority correction and separate
+diagnostics for record identity/revision, coordinate-space conversion, and
+actual stationarity. Do not convert by guessed constants, add tolerance,
+weaken equality, increase timeouts, edit, rerun, commit, integrate, start
+DLV-284, launch/terminate, or push. Preserve PID 126208, all seven diffs, and
+DLV-383 diagnostics.
+
 ## Reviewer disposition after the cumulative native gate is green
 
 If either authorized native route is red, retain all five diffs uncommitted and
@@ -522,7 +547,7 @@ If both routes are green:
 
 ## Queued platform production — DLV-284 explicit publication transaction model
 
-Status: queued, not assigned. It becomes assignable only after DLV-383 is
+Status: queued, not assigned. It becomes assignable only after DLV-384 is
 dispositioned, the cumulative native gate is green, and the
 cumulative evidence pass, the accepted production/test chain is independently
 reviewed and integrated, and the accepted main Release is coherently refreshed
@@ -607,8 +632,8 @@ import/export or scheduling only after independent widgets prove the need.
 
 ## Ordered queues
 
-1. Platform evidence queue: execute DLV-383 strict content-extent alignment,
-   focused route, then complete gate once if focused evidence is green.
+1. Platform evidence queue: execute DLV-384 source/output classification of the
+   tray-stationarity coordinate authority before another correction or rerun.
 2. Reviewer integration queue: review DLV-349 and the eventual cumulative test
    commit, then assign exact clean
    Tier 3 if the native routes are green.
@@ -631,7 +656,7 @@ There is no other Ready production work in either standing lane.
 | DLV-314 | Production `992b77b` physically accepted with Spotify 0.3.13. |
 | DLV-318 | Current accepted production `32a2a5e`; PID 126208 runs Spotify 0.3.14. |
 | DLV-319–326 | Accepted managed test chain through `676cd76`; all managed Tier-3 gates green. |
-| DLV-327–383 | Cumulative fixture/build evidence remains held pending DLV-383 result and exact-commit Tier 3. |
+| DLV-327–384 | Cumulative fixture/build evidence remains held pending DLV-384 disposition and exact-commit Tier 3. |
 | DLV-284 | Queued, not assigned until cumulative review/integration. |
 | DLV-248 | Deliberately deferred until explicit user promotion. |
 
@@ -659,4 +684,5 @@ There is no other Ready production work in either standing lane.
 | DLV-380 | Preflight passed; in-process `2>` wrapper converted successful Cargo stderr into terminating error. |
 | DLV-381 | Durable focused route exposed genuine initial Audio Mixer source-extent red. |
 | DLV-382 | Retired combined-shell expectation classified; current content extents source-derived. |
-| DLV-383 | Assigned exact fixed-widget content extent alignment and durable gates. |
+| DLV-383 | Audio extent correction passed; focused route exposed cross-authority tray stationarity red. |
+| DLV-384 | Assigned source/output trace of tray coordinate spaces and revision. |
