@@ -39,7 +39,7 @@ historical evidence only; this file is the sole authority for current work.
 
 | Lane | Task/worktree | State |
 | --- | --- | --- |
-| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | Assigned diagnostic DLV-342 below at DLV-340 commit `0f8b080`, preserving five uncommitted diagnostic/test files. DLV-284 remains queued and unassigned. |
+| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | Assigned source-only diagnosis DLV-343 below at DLV-340 commit `0f8b080`, preserving five uncommitted diagnostic/test files. DLV-284 remains queued and unassigned. |
 | Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | Idle and clean at `676cd76`. Preserve PID 126208 and all product state; do not begin new work, integrate, rebuild/relaunch, or push. |
 
 ## Execution and architecture rules
@@ -402,6 +402,26 @@ not correct production or tests. Do not commit. Do not run the complete native
 gate, Tier 3, integration, DLV-284, launch/terminate, or push. Preserve PID
 126208 and all installed/configured state.
 
+DLV-342 stopped before the UIA boundary. The isolated host PID 139604 completed
+composition/input initialization, then failed startup because connecting to
+WidgetBridge returned Win32 error 5. It never created the visible HWND, so none
+of the DLV-336 event records could exist. The targeted route also emitted its
+failure while the wrapper returned exit 0. No rerun or correction occurred.
+
+## Assigned platform diagnosis — DLV-343 classify isolated Bridge denial
+
+Source/log inspection only; make no edits and run no build, test, publish, or
+process command. Trace the exact WidgetActionFailure isolated startup path,
+WidgetBridge launch/pipe-name ownership, client identity/ACL admission, and
+failure propagation through `Invoke-WidgetActionFailureHostTests`. Determine
+why the isolated host received Win32 error 5 while accepted PID 126208 remained
+running, whether the live production Bridge or stale per-test state can collide
+with the fixture, and why the printed test failure did not produce a nonzero
+wrapper result. Report the first incorrect ownership/isolation boundary and the
+smallest production-versus-test correction scope. Do not change files, launch
+or terminate anything, commit, integrate, start DLV-284, or push. Preserve all
+state.
+
 DLV-340 reached the intended centralized helper and successfully published the
 complete production managed set through Media Sessions. Its first red was the
 pre-existing command contract: `WidgetActionFailureHostTestsOnly` requires
@@ -554,8 +574,8 @@ import/export or scheduling only after independent widgets prove the need.
 
 ## Ordered queues
 
-1. Platform evidence queue: execute DLV-342 one-shot UIA diagnostic from the
-   clean serialized-publish build baseline.
+1. Platform evidence queue: execute DLV-343 source-only Bridge-denial and
+   failure-propagation classification before any diagnostic rerun.
 2. Reviewer integration queue: independently review DLV-332 and the cumulative
    accepted production/test chain; integrate only if every required gate passes.
 3. Platform production queue: assign DLV-284 after clean integration, before
@@ -592,7 +612,8 @@ There is no other Ready production work in either standing lane.
 | DLV-339 | Serialized Bridge passed; next default-parallel Worker Host publish failed identically. |
 | DLV-340 | Serialized helper green and integrated as main `d11e9ae`; no runtime relaunch required. |
 | DLV-341 | Legal ordinary Release `SkipTests` verification green; no tests executed. |
-| DLV-342 | Assigned one-shot instrumented live-region diagnostic; no correction authorized. |
+| DLV-342 | Isolated host blocked by WidgetBridge Win32 error 5; UIA boundary not reached; wrapper returned 0 despite FAIL. |
+| DLV-343 | Assigned source-only IPC ownership/isolation and failure-propagation diagnosis. |
 | DLV-284 | Queued, not assigned until cumulative review/integration. |
 | DLV-248 | Deliberately deferred until explicit user promotion. |
 
