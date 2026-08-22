@@ -39,7 +39,7 @@ historical evidence only; this file is the sole authority for current work.
 
 | Lane | Task/worktree | State |
 | --- | --- | --- |
-| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | Assigned DLV-374 test-only separation of post-reopen action-failure authority. Preserve the five held diffs and neutral rejected/restoration commits. DLV-284 remains queued and unassigned. |
+| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | Assigned DLV-375 one-line WidgetSwitchFixture shortcut API alignment. Preserve the five held diffs and neutral rejected/restoration commits. DLV-284 remains queued and unassigned. |
 | Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | Idle and clean at `676cd76`. Preserve PID 126208 and all product state; do not begin work, integrate, rebuild/relaunch, or push. |
 
 ## Execution and architecture rules
@@ -250,6 +250,30 @@ PID 126208 and all installed/configured state. If the focused route proves the
 current chrome root and authoritative YT Music paint are present while the
 exact tray is absent, stop for a production-boundary diagnosis before any fix.
 
+DLV-374's focused route is green and clears the suspected production reopen/
+accessibility boundary. The exact retained YT Music state, both current roots,
+tray-input paint, selected/focused exact tray, unfocused play/pause, absent
+feedback, and sole original worker PID all passed. The complete gate advanced
+to a separate managed compile red at
+`tests/WidgetSwitchFixture/Program.cs:134`: a string is supplied where the
+current `ButtonElement.Shortcut` overload requires `ControllerEventPhase`.
+
+## Assigned platform test correction — DLV-375 align fixture shortcut call
+
+Own only `tests/WidgetSwitchFixture/Program.cs`; preserve the five held native
+files unchanged. On the `Ready` button's X shortcut, change only the obsolete
+second positional string to the current named `actionId: "fixture.ready"`
+argument. Preserve the default `ControllerEventPhase.Pressed`, exact action ID,
+button, focus links, fixture behavior, and every other line. Do not change the
+SDK overload or add a compatibility overload for one stale internal fixture.
+
+Run the complete serialized Release native gate exactly once; do not rerun the
+already-green focused route. Stop first red. If green, commit exactly
+`tests/WidgetSwitchFixture/Program.cs` with a DLV-375 subject, commit exactly
+`src/OverlayHost/build.ps1` with a DLV-349 subject, then commit exactly the four
+held native test files with a DLV-374 subject. Do not run Tier 3, integrate,
+start DLV-284, launch/terminate, or push. Preserve PID 126208 and all state.
+
 ## Reviewer disposition after the cumulative native gate is green
 
 If either authorized native route is red, retain all five diffs uncommitted and
@@ -271,7 +295,7 @@ If both routes are green:
 
 ## Queued platform production — DLV-284 explicit publication transaction model
 
-Status: queued, not assigned. It becomes assignable only after DLV-374 is
+Status: queued, not assigned. It becomes assignable only after DLV-375 is
 dispositioned, the cumulative native gate is green, and the
 cumulative evidence pass, the accepted production/test chain is independently
 reviewed and integrated, and the accepted main Release is coherently refreshed
@@ -356,8 +380,8 @@ import/export or scheduling only after independent widgets prove the need.
 
 ## Ordered queues
 
-1. Platform evidence queue: execute DLV-374 strict post-reopen authority
-   separation and stop at the first red result.
+1. Platform evidence queue: execute DLV-375 exact fixture shortcut alignment
+   and resume the complete gate once, stopping at the first red result.
 2. Reviewer integration queue: review DLV-349 and the eventual cumulative test
    commit, then assign exact clean
    Tier 3 if the native routes are green.
@@ -380,7 +404,7 @@ There is no other Ready production work in either standing lane.
 | DLV-314 | Production `992b77b` physically accepted with Spotify 0.3.13. |
 | DLV-318 | Current accepted production `32a2a5e`; PID 126208 runs Spotify 0.3.14. |
 | DLV-319–326 | Accepted managed test chain through `676cd76`; all managed Tier-3 gates green. |
-| DLV-327–374 | Native cumulative fixture/build evidence remains held pending DLV-374 disposition and exact-commit Tier 3. |
+| DLV-327–375 | Cumulative fixture/build evidence remains held pending DLV-375 disposition and exact-commit Tier 3. |
 | DLV-284 | Queued, not assigned until cumulative review/integration. |
 | DLV-248 | Deliberately deferred until explicit user promotion. |
 
@@ -399,4 +423,5 @@ There is no other Ready production work in either standing lane.
 | DLV-371 | Same-sample Settings focus/root/client correction authored; focused build exposed malformed test conditional before execution. |
 | DLV-372 | One-line conditional correction; focused route green, full gate exposed action-failure reopen red. |
 | DLV-373 | Combined post-F1 oracle classified as insufficient evidence; retained YT Music expectation remains valid. |
-| DLV-374 | Assigned strict current root/tray/content/state/feedback/worker separation. |
+| DLV-374 | Focused reopen evidence green; full gate advanced to WidgetSwitchFixture compile drift. |
+| DLV-375 | Assigned named-action shortcut API alignment and resumed full gate. |
