@@ -39,7 +39,7 @@ historical evidence only; this file is the sole authority for current work.
 
 | Lane | Task/worktree | State |
 | --- | --- | --- |
-| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | Assigned source-only dual-root readiness diagnosis DLV-366 below; rejected production change is neutralized by `ad109f8`. DLV-284 remains queued and unassigned. |
+| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | Assigned selected-tray readiness correction/gates DLV-367 below; rejected production change is neutralized by `ad109f8`. DLV-284 remains queued and unassigned. |
 | Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | Idle and clean at `676cd76`. Preserve PID 126208 and all product state; do not begin new work, integrate, rebuild/relaunch, or push. |
 
 ## Execution and architecture rules
@@ -646,6 +646,32 @@ DLV-349 subject and commit exactly the three test files with a DLV-347 subject.
 Do not run Tier 3 yet, integrate, start DLV-284, launch/terminate, or push.
 Preserve PID 126208 and all state.
 
+DLV-366 classified the readiness red as fixture-only. Widget focus and tray
+focus are mutually exclusive by contract. After tray activation, play/pause is
+focused in content while the exact YT Music tray element is selected/current
+and deliberately not keyboard-focused. Exact tray automation identity plus
+`SelectionItemIsSelected` is the chrome-side authority.
+
+## Assigned platform test correction — DLV-367 selected chrome authority
+
+Continue to own only `WidgetActionFailureHostTests.cpp`; preserve the other four
+held files unchanged. Replace only the impossible tray-focused predicate with
+strict selected/current semantics: exact content action present and focused;
+exact chrome tray present and selected; tray explicitly not keyboard-focused;
+status absent. Preserve the existing identity comparisons across subscription
+for both roots and both elements, applying the same focus/selection predicates
+after subscription. Give each readiness and identity predicate its own failure
+message; do not increase timeouts or weaken exact identities.
+
+With external execution approval, run the focused action-failure route exactly
+once. Stop first red. If green, run the canonical Release route exactly once.
+If both are green, commit exactly `build.ps1` with a DLV-349 subject, then
+commit exactly `RealHostAccessibilityTests.cpp`,
+`WidgetActionFeedbackTests.cpp`, `WidgetActionFailureHostTests.cpp`, and
+`ColdDashboardHostTests.cpp` with a DLV-367 subject. Do not run Tier 3 yet,
+integrate, start DLV-284, launch/terminate, or push. Preserve PID 126208 and all
+state.
+
 DLV-359 corrected the lifetime oracle, but its focused route again observed no
 first `LiveRegionChanged` despite the DLV-357 exact root/action identity
 handshake. The handshake was necessary but is not sufficient. Repeating the
@@ -1158,8 +1184,8 @@ import/export or scheduling only after independent widgets prove the need.
 
 ## Ordered queues
 
-1. Platform evidence queue: execute DLV-366 source-only dual-root readiness
-   classification before another fixture correction or rerun.
+1. Platform evidence queue: execute DLV-367 selected-tray chrome authority,
+   focused action-failure route, then one canonical Release route.
 2. Reviewer integration queue: independently review DLV-332 and the cumulative
    accepted production/test chain; integrate only if every required gate passes.
 3. Platform production queue: assign DLV-284 after clean integration, before
@@ -1220,7 +1246,8 @@ There is no other Ready production work in either standing lane.
 | DLV-363 | Built `0494b69`, but reviewer held it because its name-guard removal may be a no-op. |
 | DLV-364 | Proved `0494b69` no-op/overbroad; missing gate was prior authority comparability. |
 | DLV-365 | Guard restored in `ad109f8`; combined dual-root readiness oracle was over-constrained. |
-| DLV-366 | Assigned source-only focus/selection/current-widget predicate diagnosis. |
+| DLV-366 | Tray must be selected/current and not focused while content action owns focus. |
+| DLV-367 | Assigned selected-tray readiness predicates with focused-plus-canonical gates. |
 | DLV-284 | Queued, not assigned until cumulative review/integration. |
 | DLV-248 | Deliberately deferred until explicit user promotion. |
 
