@@ -33,7 +33,7 @@ historical evidence only; this file is the sole implementation authority.
 
 | Lane | Task/worktree | State |
 | --- | --- | --- |
-| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | DLV-434 assigned. Preserve seven held diffs and all rejected/restoration evidence. DLV-284 remains queued. |
+| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | DLV-435 assigned. Preserve seven held diffs and all rejected/restoration evidence. DLV-284 remains queued. |
 | Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | Idle and clean at `676cd76`; do not begin work or change product state. |
 
 ## Execution rules
@@ -71,7 +71,7 @@ authorized diffs remain held:
 5. `src/OverlayHost/ColdDashboardHostTests.cpp` — current two-HWND Settings
    activation/re-show authority; focused route previously green.
 6. `tests/WidgetSwitchFixture/Program.cs` — DLV-375 named action argument.
-7. `src/OverlayHost/WidgetSwitchHostTests.cpp` — cumulative DLV-383–433
+7. `src/OverlayHost/WidgetSwitchHostTests.cpp` — cumulative DLV-383–434
    extent, switching, Back, rendering-mode, and fallback-authority corrections.
 
 The accepted DLV-428 checkpoint is diagnostic-only. It emits after successful
@@ -263,6 +263,27 @@ live polling view could differ. Do not modify the real-host assertion yet,
 start any host gate, commit, integrate, rebuild/relaunch PID 144396, change
 product/package state, remove evidence, assign DLV-284, or push.
 
+Disposition: table cases passed in 18 seconds. Exact retained-log replay stopped
+red in 7 seconds with two checkpoint candidates but zero current-Audio
+candidates. The retained Windows log uses CRLF; splitting at `\n` leaves `\r`
+on the terminal `sequence` field, so strict numeric parsing rejects `6\r`.
+This is a deterministic test parser defect, not production or live polling.
+
+## Assigned platform test correction — DLV-435
+
+Test-only; no real host. Normalize only the parsed record-line CRLF boundary so
+the final field is evaluated without a terminal carriage return. Do not loosen
+numeric parsing, identity rules, or general field syntax. Add a table case with
+the exact Windows CRLF shape and a terminal sequence field.
+
+Run the fast table route once, then the retained-log replay once with marker
+`15308`, expected sequence `6`, and expected selected offset `21645`. Each must
+finish within one minute with observable output and no host, bridge, worker,
+packaging, or managed publication. Stop first red. If both are green, stop and
+report; do not run the real-host or full gate, modify another file, commit,
+integrate, rebuild/relaunch PID 144396, change product state, remove evidence,
+assign DLV-284, or push.
+
 ## After the cumulative native gate is green
 
 1. Review each of the four commits and the cumulative diff. Reject extra files,
@@ -278,7 +299,7 @@ product/package state, remove evidence, assign DLV-284, or push.
 
 ## Queued platform production — DLV-284 typed publication transactions
 
-Status: queued, not assigned. It becomes assignable only after DLV-434, the
+Status: queued, not assigned. It becomes assignable only after DLV-435, the
 cumulative native gate, commit review/integration, and exact clean Tier 3 are
 green. No new virtualization feature may precede it.
 
@@ -336,7 +357,7 @@ Extract native authorities only when real work touches them.
 
 ## Ordered queues
 
-1. DLV-434 offline replay against retained exact real-host evidence; no host rerun.
+1. DLV-435 CRLF-safe terminal-field parsing; sub-minute table and retained replay only.
 2. Reviewer commit/diff review, then one exact clean Tier-3 run.
 3. DLV-284 after cumulative clean integration.
 4. Generic Game Launcher cutover; LauncherExperience deletion/state retirement;
@@ -352,7 +373,7 @@ There is no other Ready production work in either standing lane.
 | DLV-257 identity | Store, domain, trademark, and GitHub availability remain external/manual. |
 | DLV-278–283/270 | Production accepted; integration awaits the native gate, exact Tier 3, and review. |
 | DLV-319–326 | Managed chain through `676cd76`; all managed Tier-3 gates green. |
-| DLV-327–421 | Native fixture/build evidence remains held behind DLV-434 and exact Tier 3. |
+| DLV-327–421 | Native fixture/build evidence remains held behind DLV-435 and exact Tier 3. |
 | DLV-427 | `e26b92b` and `16050bb` are unbuilt/unaccepted ancestry-bound evidence only. |
 | DLV-428 | Accepted/integrated as `c38b261`; PID 144396 already runs it. |
 | DLV-284 | Queued until cumulative review/integration. |
@@ -362,7 +383,6 @@ There is no other Ready production work in either standing lane.
 
 | Milestone | Disposition |
 | --- | --- |
-| DLV-425 | Isolated build succeeded; startup marker was wrongly treated as a live transition. |
 | DLV-426 | Origin distinction exposed that startup fallback lacked typed current authority. |
 | DLV-427 | Correct semantics on rejected ancestry; hash mismatch prevented build/integration. |
 | DLV-428 | Integrated-base `dae5e5b` accepted/integrated as `c38b261`. |
@@ -371,4 +391,5 @@ There is no other Ready production work in either standing lane.
 | DLV-431 | First post-marker checkpoint had older sequence authority; selection must require exact-current authority. |
 | DLV-432 | No exact checkpoint was immediately visible; its stale owner hid a two-minute red result for 18 minutes. |
 | DLV-433 | Fast seam green; retained real-host log disproved its zero-candidate polling summary. |
-| DLV-434 | Assigned sub-minute offline replay against the exact retained log; no host rerun. |
+| DLV-434 | Replay isolated terminal CRLF parsing: two checkpoints, zero current candidates. |
+| DLV-435 | Assigned strict CRLF record normalization plus sub-minute table/replay evidence. |
