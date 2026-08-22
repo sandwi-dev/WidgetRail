@@ -39,7 +39,7 @@ historical evidence only; this file is the sole authority for current work.
 
 | Lane | Task/worktree | State |
 | --- | --- | --- |
-| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | Assigned diagnostic-only DLV-338 below at `676cd76`, preserving two held test files and three disposable diagnostic files. DLV-284 remains queued and unassigned. |
+| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | Assigned build-tooling DLV-339 below at `676cd76`, preserving five unrelated uncommitted files. DLV-284 remains queued and unassigned. |
 | Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | Idle and clean at `676cd76`. Preserve PID 126208 and all product state; do not begin new work, integrate, rebuild/relaunch, or push. |
 
 ## Execution and architecture rules
@@ -332,6 +332,31 @@ DLV-284, launch/terminate, or push. Preserve PID 126208, Spotify 0.3.14, and all
 installed/configured state. Identify every disposable production hunk for
 removal by the next milestone.
 
+DLV-338 again stopped before host execution at the same default-parallel
+WidgetBridge publish. The identical project/output succeeds with node reuse and
+parallel build disabled. This repeated wrapper-only failure is a build-tooling
+defect; do not rerun the UIA route unchanged.
+
+## Assigned platform tooling — DLV-339 serialize Bridge publication
+
+Preserve all five existing uncommitted files. Edit only
+`src/OverlayHost/build.ps1` and only the WidgetBridge publish invocation.
+Make that stage deterministic with one MSBuild node, no project parallelism,
+no node reuse, and no shared compiler server, using command-line properties/
+switches whose scope ends with that publish. Do not change project inputs,
+output path, cleanup, restore policy, configuration, later publishes, test
+selection, or suppress diagnostics.
+
+Run
+`src/OverlayHost/build.ps1 -Configuration Release
+-WidgetActionFailureHostTestsOnly -SkipTests` once so it compiles/packages the
+same path but does not execute `WidgetActionFailureHostTests`. Stop first red.
+If the packaging path is
+green, commit exactly `build.ps1` with a DLV-339 subject while leaving the
+other five files uncommitted. Do not run the UIA diagnostic, complete native
+gate, Tier 3, or another publish command. Preserve PID 126208 and all state; no
+production correction, integration, DLV-284, launch/terminate, or push.
+
 DLV-333 stopped at its first targeted red with both test files uncommitted. The
 exact UI Automation tray invocation succeeded, selected
 `ytmusic-fixture`, and reached its intended Establish/worker-start failure.
@@ -466,8 +491,8 @@ import/export or scheduling only after independent widgets prove the need.
 
 ## Ordered queues
 
-1. Platform evidence queue: execute diagnostic-only DLV-338 once, remove all
-   disposable instrumentation, then assign only the proven production repair.
+1. Platform evidence queue: execute DLV-339 tooling correction, then resume the
+   one-shot UIA diagnostic from its clean build baseline.
 2. Reviewer integration queue: independently review DLV-332 and the cumulative
    accepted production/test chain; integrate only if every required gate passes.
 3. Platform production queue: assign DLV-284 after clean integration, before
@@ -500,7 +525,8 @@ There is no other Ready production work in either standing lane.
 | DLV-335 | Classified production live-region omission on the correct combined-root subscription. |
 | DLV-336 | Native trace compiled, but hidden WidgetBridge publish failure prevented execution. |
 | DLV-337 | Explicit Bridge publish green; prior stop was transient tooling noise. |
-| DLV-338 | Assigned one resumed instrumented host route with no further edits. |
+| DLV-338 | Repeated default-parallel Bridge publish failure; host did not execute. |
+| DLV-339 | Assigned deterministic serialized Bridge publish tooling correction. |
 | DLV-284 | Queued, not assigned until cumulative review/integration. |
 | DLV-248 | Deliberately deferred until explicit user promotion. |
 
