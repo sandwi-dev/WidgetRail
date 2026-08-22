@@ -33,7 +33,7 @@ historical evidence only; this file is the sole implementation authority.
 
 | Lane | Task/worktree | State |
 | --- | --- | --- |
-| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | DLV-453 assigned: correct the malformed block-snapshot catalog argument delimiter exposed by DLV-452, then run only the focused gate. Preserve seven held diffs and all rejected/restoration evidence. DLV-284 remains queued. |
+| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | DLV-454 assigned: replace the worker-local block acknowledgement with an in-band action handshake, then run only the focused gate. Preserve seven held diffs and all rejected/restoration evidence. DLV-284 remains queued. |
 | Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | Idle and clean at `676cd76`; do not begin work or change product state. |
 
 ## Execution rules
@@ -605,6 +605,34 @@ the full native gate, commit, integrate, rebuild/relaunch PID 144396, change
 product/package state, remove evidence, assign DLV-284, or push. Red requires
 classification; green returns to reviewer commit planning.
 
+Disposition: the delimiter correction passed: Bridge connected and workers
+started. The next red was `Settings worker armed but never started exact
+epoch=1 acknowledgements=2`. Both acknowledgements occur in the fixture's
+background file monitor before `Invalidate` has crossed the asynchronous
+worker/Bridge/host boundary, so they do not prove refresh demand reached the
+host. No production defect is established. Evidence is under
+`%TEMP%\wrail-dlv453-focused-20260822-050100`.
+
+## Assigned platform in-band block handshake — DLV-454
+
+Test-only; change only held `WidgetSwitchHostTests.cpp` and
+`tests/WidgetSwitchFixture/Program.cs`. Replace the background file monitor
+with an in-band action handshake: when the exact current fixture Ready action
+sees a pending epoch trigger, consume it, arm that epoch, call `Invalidate`,
+and acknowledge the arm before completing the action. The harness must write
+the epoch, invoke the exact enabled current Ready UIA node, wait for arm then
+Render-start, and may repeat that same action once for the same epoch. Preserve
+all three block sites, exact epoch/render-sequence/release checks, ordinary
+invalidation semantics, and the one-retry bound. On failure retain the current
+complete overlay log and a bounded post-trigger lifecycle/request summary.
+
+Do not add polling/retry loops, weaken timeouts, alter production, or touch
+another held file. Reuse the coherent DLV-452 tree and incremental outputs
+after exact seven-file parity. Run the focused gate once with the established
+observable owner and 15–20-second process/stream checks. Stop at its explicit
+result; no full gate, commit, integration, product/package/process action,
+DLV-284, evidence removal, or push.
+
 Disposition: red after 140.110 seconds with fresh child/output inspection every
 20 seconds. The exact current Audio fallback checkpoint was already present,
 but Back produced no post-boundary fallback paint, composition sample, or
@@ -911,7 +939,7 @@ Extract native authorities only when real work touches them.
 
 ## Ordered queues
 
-1. DLV-453 focused correction for the malformed development catalog delimiter.
+1. DLV-454 in-band action handshake for the three blocked-snapshot sites.
 2. Reviewer commit/diff review, then one exact clean Tier-3 run.
 3. DLV-284 after cumulative clean integration.
 4. Generic Game Launcher cutover; LauncherExperience deletion/state retirement;
@@ -963,3 +991,4 @@ There is no other Ready production work in either standing lane.
 | DLV-450 | Separated capture passed; child lacked the parent-only Utility import. |
 | DLV-451 | Wrapper passed; reused partial artifact tree failed isolated Bridge startup. |
 | DLV-452 | Fresh parity tree reproduced startup; malformed test catalog JSON was the exact cause. |
+| DLV-453 | Catalog delimiter passed; worker-local arm acknowledgements did not prove host-visible invalidation. |
