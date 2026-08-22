@@ -387,6 +387,30 @@ test-owned observation seam; do not request broad production logging or alter
 runtime behavior. No correction or rerun until this classification is recorded.
 Preserve PID 126208, state, seven diffs, and retained diagnostics.
 
+## Assigned platform test correction — DLV-409 retain Back observation
+
+Own only `WidgetSwitchHostTests.cpp`; preserve six other held files. Keep the
+DLV-406 `UpdateWindow` attempt and DLV-405 split authorities. Immediately after
+Back returns and before the flush, sample `GetUpdateRect` on the current content
+HWND without validating, invalidating, or consuming it. Retain that observation
+in the exact failure diagnostics.
+
+Before `TemporaryInstallation` cleanup on any failure in this boundary, copy
+the isolated `local-app-data/WidgetRail/overlay.log` to the externally supplied
+durable diagnostics directory. Report the captured update-region state and
+parse only exact post-boundary terminal composition-frame/child-sample records;
+keep each UIA conjunct independent. Do not treat absence of a terminal-positive
+log as proof of one specific internal branch, weaken assertions, or add product
+logging. Preserve every existing sequence, identity, focus, catalog,
+composition, geometry, timing, and destination invariant.
+
+Run `WidgetSwitchTestsOnly` once via a durable owner that supplies the retained
+diagnostics directory; stop first red and classify before another correction or
+rerun. If green, run the full native gate once. If both are green, create only
+the four documented scoped commits using DLV-409 for this file, then stop before
+Tier 3. No production edit, integration, DLV-284, launch/terminate, or push.
+Preserve PID 126208, state, seven diffs, and all retained artifacts.
+
 ## After the cumulative native gate is green
 
 1. Review exact DLV-349 and the cumulative test commits and full diffs. Reject
@@ -402,7 +426,7 @@ Preserve PID 126208, state, seven diffs, and retained diagnostics.
 
 ## Queued platform production — DLV-284 explicit publication transaction model
 
-Status: queued, not assigned. It becomes assignable only after DLV-408 is
+Status: queued, not assigned. It becomes assignable only after DLV-409 is
 dispositioned, the native gate is green, cumulative evidence is reviewed and
 integrated, and the accepted main Release is coherently refreshed only if
 runtime inputs changed. No new virtualization feature may precede it.
@@ -461,8 +485,8 @@ Extract native authorities only when real work touches them.
 
 ## Ordered queues
 
-1. Platform evidence: execute DLV-408 source inventory of existing Back
-   transaction diagnostics and exact isolated-log retention seam.
+1. Platform evidence: execute DLV-409 test-owned update-region observation and
+   isolated-log retention, then classify the first focused result.
 2. Reviewer integration: review the eventual four commits, then assign exact
    clean Tier 3 if the native routes are green.
 3. Platform production: DLV-284 after clean cumulative integration.
@@ -482,7 +506,7 @@ There is no other Ready production work in either standing lane.
 | DLV-314 | Production `992b77b` accepted with Spotify 0.3.13. |
 | DLV-318 | Current accepted production `32a2a5e`; PID 126208 runs Spotify 0.3.14. |
 | DLV-319–326 | Managed test chain through `676cd76`; all managed Tier-3 gates green. |
-| DLV-327–408 | Native fixture/build evidence held pending DLV-408 and exact-commit Tier 3. |
+| DLV-327–409 | Native fixture/build evidence held pending DLV-409 and exact-commit Tier 3. |
 | DLV-284 | Queued until cumulative review/integration. |
 | DLV-248 | Deliberately deferred until explicit user promotion. |
 
@@ -514,4 +538,5 @@ There is no other Ready production work in either standing lane.
 | DLV-405 | Back invalidated Chrome but input injection did not service `WM_PAINT`, so no composition/UIA publication occurred. |
 | DLV-406 | `UpdateWindow` on the content HWND succeeded but still emitted no qualifying fixed-chrome sample; exact paint ownership remains unresolved. |
 | DLV-407 | Content HWND and parser were correct, but deleted isolated logs leave Back transition, update region, paint, and commit disposition indistinguishable. |
-| DLV-408 | Assigned inventory of existing Back transaction diagnostics and the exact test-only retention/parsing seam. |
+| DLV-408 | Existing log has only terminal-positive composition records; test cleanup deletes it, while `GetUpdateRect` can non-destructively expose pending invalidation. |
+| DLV-409 | Assigned test-owned update-region observation and isolated-log retention before cleanup. |
