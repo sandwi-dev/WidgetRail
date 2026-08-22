@@ -39,7 +39,7 @@ historical evidence only; this file is the sole authority for current work.
 
 | Lane | Task/worktree | State |
 | --- | --- | --- |
-| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | Assigned source-only diagnosis DLV-345 below at DLV-340 commit `0f8b080`, preserving five uncommitted diagnostic/test files. DLV-284 remains queued and unassigned. |
+| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | Assigned test correction DLV-346 below at DLV-340 commit `0f8b080`, preserving five uncommitted diagnostic/test files. DLV-284 remains queued and unassigned. |
 | Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | Idle and clean at `676cd76`. Preserve PID 126208 and all product state; do not begin new work, integrate, rebuild/relaunch, or push. |
 
 ## Execution and architecture rules
@@ -466,6 +466,41 @@ after correction. Do not weaken expiry bounds or accessibility semantics. Do
 not change files, commit, integrate, start DLV-284, launch/terminate, or push.
 Preserve PID 126208 and all state.
 
+DLV-345 classified the DLV-344 red as test drift. Production assigns a fresh
+`now + 4000 ms` deadline with `insert_or_assign`, replaces the host timer, and
+rechecks the current entry deadline even if an old callback was queued. The
+real-host fixture instead anchored a single visibility sample to the first
+action before asynchronous publication and did not prove one new second
+admission. Identical replacement text correctly does not raise a duplicate
+live-region event; the non-focusable status does not move widget focus.
+
+## Assigned platform test correction — DLV-346 anchor replacement evidence
+
+Own only `src/OverlayHost/WidgetActionFeedbackTests.cpp` and the already-held
+`src/OverlayHost/WidgetActionFailureHostTests.cpp`; preserve the other three
+diagnostic production files and `RealHostAccessibilityTests.cpp` unchanged.
+
+Add a deterministic feedback-host case that publishes the same widget/runtime
+twice, invokes expiry at the old deadline, proves the replacement and its new
+deadline remain, then expires exactly at the replacement deadline. In the
+real-host fixture, record the matching-failure count before the second action,
+require exactly one new matching record, wait for replacement status
+publication, and measure retention/expiry from that second admission boundary.
+Preserve the 4000-ms production bound, require no duplicate
+`LiveRegionChanged` for identical text, and reassert unchanged widget focus
+through replacement and expiry. Do not change production code, timeouts merely
+to mask latency, failure identity, accessibility semantics, fixture isolation,
+or unrelated assertions.
+
+Run the externally approved targeted route exactly once through a separate
+PowerShell process:
+`powershell.exe -NoProfile -ExecutionPolicy Bypass -File
+.\src\OverlayHost\build.ps1 -Configuration Release
+-WidgetActionFailureHostTestsOnly`. Stop first red. If green, stop and report;
+do not commit until the deterministic unit case receives its exact focused gate
+in the next assignment. No additional test, complete gate, Tier 3, integration,
+DLV-284, launch/terminate, or push. Preserve PID 126208 and all state.
+
 DLV-340 reached the intended centralized helper and successfully published the
 complete production managed set through Media Sessions. Its first red was the
 pre-existing command contract: `WidgetActionFailureHostTestsOnly` requires
@@ -618,8 +653,8 @@ import/export or scheduling only after independent widgets prove the need.
 
 ## Ordered queues
 
-1. Platform evidence queue: execute DLV-345 source-only replacement-lifetime
-   classification before authorizing any correction.
+1. Platform evidence queue: execute DLV-346 test-only replacement oracle
+   correction and its one approved real-host route.
 2. Reviewer integration queue: independently review DLV-332 and the cumulative
    accepted production/test chain; integrate only if every required gate passes.
 3. Platform production queue: assign DLV-284 after clean integration, before
@@ -659,7 +694,8 @@ There is no other Ready production work in either standing lane.
 | DLV-342 | Isolated host blocked by WidgetBridge Win32 error 5; UIA boundary not reached; wrapper returned 0 despite FAIL. |
 | DLV-343 | Ruled out endpoint collision; restricted-context IPC denial and outer PowerShell status reporting. |
 | DLV-344 | Real IPC run reached UIA; first event succeeded, then replacement expired at the first deadline. |
-| DLV-345 | Assigned source-only replacement deadline/timer ownership diagnosis. |
+| DLV-345 | Production deadline replacement is sound; real-host timing oracle is stale/racy. |
+| DLV-346 | Assigned deterministic deadline coverage plus second-admission-anchored real-host evidence. |
 | DLV-284 | Queued, not assigned until cumulative review/integration. |
 | DLV-248 | Deliberately deferred until explicit user promotion. |
 
