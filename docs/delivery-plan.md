@@ -781,6 +781,37 @@ platform worktree, using DLV-426 for `WidgetSwitchHostTests.cpp`, and stop befor
 Tier 3. Preserve PID 33360, package/product state, retained worktree/artifacts,
 and all other boundaries from DLV-425; do not integrate or push.
 
+Disposition: the origin distinction compiled and ran correctly, but the
+startup-unavailable route had no typed fallback placement record at all before
+the first switch. The test therefore stopped at its strict authority boundary.
+No geometry defect is proven, and relaxing to a generic record or raw live HWND
+measurement remains disallowed.
+
+## Assigned platform production diagnostic — DLV-427 fallback presentation checkpoint
+
+Change only `src/OverlayHost/main.cpp`. In HWND fallback, after a current widget
+presentation is successfully established and all widget instance/runtime/
+presentation/snapshot sequence authorities are current, publish one typed,
+deduplicated fallback presentation checkpoint. It must carry the same strict
+work area, DPI, interface scale, computed current target, actual content-window
+and client-screen geometry, and exact widget authority fields as DLV-422, with
+a distinct phase such as `presentation-checkpoint`. Do not infer a placement
+transaction, move/resize/repaint/focus anything, alter admission or fallback
+behavior, relax validation, or emit an unbounded record on unchanged paints.
+Existing `set-window-pos` and `composition-transition` meanings stay unchanged.
+
+Commit the one-file milestone, then create a separate detached worktree from
+integrated main `6926e05`, apply only that exact DLV-427 commit, verify its sole
+diff and file hash, and build one coherent native Release there without running
+tests. The running platform-worktree Release path is locked by accepted PID
+33360 and must not be built in place. Retain source/base/diff,
+command/environment, streams, numeric exit, fresh artifact hashes, and the new
+executable path. Stop after build evidence; do not launch, integrate,
+install/change packages, change product state, touch or copy the seven held
+test/build diffs, terminate PID 33360, assign test adoption, or push. The
+reviewer will inspect the exact commit and launch only the coherent isolated
+candidate for physical verdict.
+
 ## After the cumulative native gate is green
 
 1. Review exact DLV-349 and the cumulative test commits and full diffs. Reject
@@ -796,7 +827,8 @@ and all other boundaries from DLV-425; do not integrate or push.
 
 ## Queued platform production — DLV-284 explicit publication transaction model
 
-Status: queued, not assigned. It becomes assignable only after DLV-426 and the
+Status: queued, not assigned. It becomes assignable only after DLV-427, its
+test adoption, and the
 resumed DLV-423 evidence are
 dispositioned, the resumed native test gate is green,
 cumulative evidence is reviewed and integrated, and the accepted main Release
@@ -857,8 +889,8 @@ Extract native authorities only when real work touches them.
 
 ## Ordered queues
 
-1. Platform test correction: execute DLV-426 fallback-origin distinction and
-   the isolated focused/full native gate.
+1. Platform production diagnostic: execute DLV-427 typed fallback presentation
+   checkpoint, then obtain physical verdict before test adoption.
 2. Reviewer integration: review the eventual cumulative commits, then assign exact
    clean Tier 3 if the native routes are green.
 3. Platform production: DLV-284 after clean cumulative integration.
@@ -878,12 +910,13 @@ There is no other Ready production work in either standing lane.
 | DLV-314 | Production `992b77b` accepted with Spotify 0.3.13. |
 | DLV-318 | Last physically accepted production `32a2a5e`; exact restore artifact preserved, not currently running. |
 | DLV-319–326 | Managed test chain through `676cd76`; all managed Tier-3 gates green. |
-| DLV-327–421 | Native fixture/build evidence held pending DLV-426 and resumed exact-commit Tier 3. |
+| DLV-327–421 | Native fixture/build evidence held pending DLV-427 adoption and resumed exact-commit Tier 3. |
 | DLV-422 | Production diagnostic `6926e05` physically accepted and integrated; PID 33360 retained. |
 | DLV-423 | Test adoption diff compiled only to the interop link boundary; accepted PID 33360 locks the worktree Release DLL, so no test verdict. |
 | DLV-424 | Build helper has no output override; a detached worktree provides exact lock-safe native/runtime outputs without touching PID 33360. |
 | DLV-425 | Isolated coherent focused gate stopped first red on a test oracle that conflated startup-unavailable fallback with a live fallback transition. |
-| DLV-426 | Assigned mode-origin-aware test correction and isolated focused/full gate. |
+| DLV-426 | Origin correction reached the strict missing typed-authority boundary; no production geometry defect was proven. |
+| DLV-427 | Assigned diagnostic-only fallback presentation checkpoint; build before physical verdict. |
 | DLV-284 | Queued until cumulative review/integration. |
 | DLV-248 | Deliberately deferred until explicit user promotion. |
 
@@ -933,4 +966,5 @@ There is no other Ready production work in either standing lane.
 | DLV-423 | Focused build stopped at `LNK1104` on the running accepted Release interop DLL; test did not execute. |
 | DLV-424 | Exact isolation strategy is detached integrated DLV-422 plus hash-verified seven-file diff and its own output tree. |
 | DLV-425 | Exact isolated build/package succeeded; first test red was the invalid post-marker placement requirement in startup-unavailable fallback. |
-| DLV-426 | Assigned strict fallback-origin distinction; accepted PID 33360 remains untouched. |
+| DLV-426 | Startup-unavailable and live-disabled origins are now distinct; startup route has no typed current placement/checkpoint record. |
+| DLV-427 | Assigned bounded typed current-presentation checkpoint for startup HWND fallback. |
