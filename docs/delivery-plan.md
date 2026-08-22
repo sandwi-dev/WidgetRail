@@ -39,7 +39,7 @@ historical evidence only; this file is the sole authority for current work.
 
 | Lane | Task/worktree | State |
 | --- | --- | --- |
-| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | Assigned source-only Cold Dashboard diagnosis DLV-350 below at DLV-340 commit `0f8b080`, preserving build tooling plus three cumulative test files. DLV-284 remains queued and unassigned. |
+| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | Assigned Cold Dashboard correction/gate DLV-351 below at DLV-340 commit `0f8b080`, preserving build tooling plus three cumulative test files. DLV-284 remains queued and unassigned. |
 | Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | Idle and clean at `676cd76`. Preserve PID 126208 and all product state; do not begin new work, integrate, rebuild/relaunch, or push. |
 
 ## Execution and architecture rules
@@ -422,6 +422,34 @@ smallest production-versus-test correction scope. Do not change files, launch
 or terminate anything, commit, integrate, start DLV-284, or push. Preserve all
 state.
 
+DLV-350 classified the Cold Dashboard red as fixture drift. Current startup is
+the real Settings widget, not the retired dashboard placeholder. Content
+semantics live under `WidgetRail.OverlayHost`; the focused Settings tray item
+lives under `WidgetRail.Chrome`. The packaged catalog already admits Settings,
+and the deterministic 15-second failure cannot be fixed by waiting longer.
+
+## Assigned platform test correction — DLV-351 current Settings roots
+
+Own only `src/OverlayHost/ColdDashboardHostTests.cpp`; preserve `build.ps1` and
+the other three test diffs unchanged. Locate both production HWND/UIA roots.
+Under the content root require current Settings semantics such as
+`widget:category.appearance` and require the legacy
+`host:host.dashboard.title` to be absent. Under the fixed-chrome root require
+focused `tray:tray.settings`. Validate Settings content bounds against the
+content rectangle and tray bounds/pointer hit against the chrome rectangle and
+HWND. Preserve existing startup, hide, resident re-show, focus, and timeout
+behavior. Do not add catalog data, increase timeouts, or weaken geometry/UIA
+identity.
+
+With external execution approval, run exactly once:
+`powershell.exe -NoProfile -ExecutionPolicy Bypass -File
+.\src\OverlayHost\build.ps1 -Configuration Release`. Stop first red. If green,
+commit exactly `build.ps1` with a DLV-349 subject, then commit exactly
+`RealHostAccessibilityTests.cpp`, `WidgetActionFeedbackTests.cpp`,
+`WidgetActionFailureHostTests.cpp`, and `ColdDashboardHostTests.cpp` with a
+DLV-351 subject. Do not run Tier 3 yet, integrate, start DLV-284,
+launch/terminate, or push. Preserve PID 126208 and all state.
+
 DLV-348 classified two build-tooling defects. DLV-340's
 `$script:LASTEXITCODE` creates a script-scoped shadow that can hide later native
 process status. Separately, the bounded `Start-Process` owner test reads
@@ -748,8 +776,8 @@ import/export or scheduling only after independent widgets prove the need.
 
 ## Ordered queues
 
-1. Platform evidence queue: execute DLV-350 source-only Cold Dashboard UIA
-   classification before any further correction or canonical rerun.
+1. Platform evidence queue: execute DLV-351 Cold Dashboard current-root
+   correction and one canonical native Release rerun.
 2. Reviewer integration queue: independently review DLV-332 and the cumulative
    accepted production/test chain; integrate only if every required gate passes.
 3. Platform production queue: assign DLV-284 after clean integration, before
@@ -794,7 +822,8 @@ There is no other Ready production work in either standing lane.
 | DLV-347 | Trace removed; native gate exposed blank exit code after a passing test, before feedback unit case. |
 | DLV-348 | Classified script-scope shadow plus incomplete bounded-process exit observation. |
 | DLV-349 | Exit authority fixed; intended suites green; canonical gate exposed Cold Dashboard UIA drift. |
-| DLV-350 | Assigned source-only Cold Dashboard fixture/production boundary diagnosis. |
+| DLV-350 | Retired dashboard ID and wrong content-root tray lookup classified as fixture drift. |
+| DLV-351 | Assigned current Settings content/chrome-root fixture correction and canonical rerun. |
 | DLV-284 | Queued, not assigned until cumulative review/integration. |
 | DLV-248 | Deliberately deferred until explicit user promotion. |
 
