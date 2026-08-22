@@ -33,7 +33,7 @@ historical evidence only; this file is the sole implementation authority.
 
 | Lane | Task/worktree | State |
 | --- | --- | --- |
-| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | DLV-465 assigned: make fallback priming wait for terminal resize/paint/checkpoint convergence, then run only the focused WidgetSwitch gate once. DLV-284 remains queued. |
+| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | DLV-465 assigned: own the complete focused WidgetSwitch stabilization loop through green, without planner reassignment between in-scope reds. DLV-284 remains queued. |
 | Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | Idle and clean at `676cd76`; do not begin work or change product state. |
 
 ## Execution rules
@@ -79,7 +79,7 @@ fallback `EndDraw`, requires exact current widget instance/runtime/presentation/
 snapshot sequence and geometry authority, deduplicates unchanged paints, and
 does not redefine `set-window-pos` or `composition-transition`.
 
-## DLV-464 result and assigned convergence correction — DLV-465
+## Complete focused WidgetSwitch stabilization — DLV-465
 
 DLV-464 changed only the post-Up call site and passed the prior false match: it
 selected exact admitted/current widget-owned `settings-ready` paint authority
@@ -92,28 +92,47 @@ boundary. This is another test precondition race; no production defect is
 established. Evidence is under
 `%TEMP%\wrail-dlv464-widget-switch-20260822-104500`.
 
-Continue only the authorized uncommitted DLV-464 edit in the preserved detached
-`e9412ec6` tree. Change only `WidgetSwitchHostTests.cpp`. Preserve its exact
-post-Up paint/UIA correction. In the existing HWND-fallback unarmed priming
-branch, do not admit equality before the post-priming intrinsic resize cascade.
-Require at least one post-priming `Overlay render target resized in place`, then
-select a later Settings paint whose desired/presented extents are equal and
-whose exact-current checkpoint equals immediate live HWND/client geometry.
-Fence and reread before returning; if a newer extent-refresh, resize, placement,
-or Settings paint exists, evaluate the latest terminal candidate instead. Keep
-the existing strict identities, sequence, geometry, focus, and no-repaint block
-assertion. Do not add a quiet-period sleep/retry, hard-code `772x828`, alter
-production, the fixture, timing/tolerance, packaging, SDK/runtime/Bridge
-behavior, the shared generic paint selector, or another file.
+Continue the authorized uncommitted DLV-464 edit in the preserved detached
+`e9412ec6` tree. Preserve its exact post-Up paint/UIA correction. First correct
+the HWND-fallback unarmed priming correlation: require post-priming resize
+evidence, exact equal paint/checkpoint/live geometry after it, and a fence/reread
+that rejects a candidate superseded by newer extent-refresh, resize, placement,
+or Settings-paint evidence. Do not use a quiet-period sleep/retry or hard-code a
+terminal extent.
 
-Preserve clean parity for the other seven cumulative files. Run only `pwsh
--NoProfile -File src\OverlayHost\build.ps1 -Configuration Release
--WidgetSwitchTestsOnly` once, reusing incremental outputs. Retain durable
-streams/results; inspect output, exact descendants, CPU, and result files every
-15-30 seconds and diagnose 60 seconds of silence immediately. Stop first red or
-one green and leave no owned descendants. Do not run Tier 3, integrate main,
-rebuild/relaunch PID 144396, change product/package state, remove evidence,
-assign DLV-284, or push.
+The user authorizes this assignment to own the complete focused
+`WidgetSwitchHostTests` stabilization loop. After every invocation, retain and
+classify the exact first red. If it is another false test precondition,
+correlation, lifecycle, cleanup, or assertion mismatch within the same focused
+route, inspect the retained evidence, make the smallest root-cause test-only
+correction, and continue without returning for a new planner assignment. Batch
+all already-understood corrections before the next run. Use the smallest
+available exact failing case during iteration; run the complete focused
+`-WidgetSwitchTestsOnly` gate once after the worktree is coherent. A later red
+in that final gate remains owned by DLV-465 when it is an in-scope harness defect.
+For DLV-465 only, this continuing ownership supersedes the generic requirement
+to return to the planner after each first red; it does not waive first-red
+classification, evidence retention, or proportional verification.
+
+The default edit surface is `src/OverlayHost/WidgetSwitchHostTests.cpp`. The
+agent may also change `tests/WidgetSwitchFixture/Program.cs` or test-only owner/
+launch code in `src/OverlayHost/build.ps1` only when retained evidence proves
+that file is the direct root cause and the change is necessary for this focused
+gate. Do not alter production behavior, SDK/runtime/Bridge code, packaging,
+accepted product/package state, timing/tolerance merely to make the test pass,
+or unrelated tests. Preserve strict instance/runtime/presentation/snapshot,
+sequence, geometry, input, focus, cleanup, and fail-closed assertions. Do not
+weaken or delete coverage; replace inferred or racy authority with exact
+observable authority.
+
+Every invocation must use durable streams/results and a bounded owner. Inspect
+output, exact descendants, CPU, and result files every 15-30 seconds; diagnose
+60 seconds of silence immediately and leave no owned descendants. DLV-465 stops
+only when the focused gate is green or when retained evidence proves a genuine
+blocker outside the authorized test-only surface, especially a production
+defect or a required production/protocol change. Report that blocker without
+editing around it. Do not run Tier 3, integrate main, rebuild/relaunch PID
+144396, change product/package state, remove evidence, assign DLV-284, or push.
 
 ## After the cumulative native gate is green
 
@@ -190,7 +209,7 @@ Extract native authorities only when real work touches them.
 
 ## Ordered queues
 
-1. DLV-465 terminal fallback priming convergence and one focused WidgetSwitch run.
+1. DLV-465 complete focused WidgetSwitch stabilization through green or a proven out-of-scope blocker.
 2. Reviewer integration of the explicit cumulative hashes after focused green and independent review.
 3. DLV-284 after cumulative clean integration.
 4. Generic Game Launcher cutover; LauncherExperience deletion/state retirement;
