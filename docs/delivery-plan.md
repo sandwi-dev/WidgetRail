@@ -33,7 +33,7 @@ historical evidence only; this file is the sole implementation authority.
 
 | Lane | Task/worktree | State |
 | --- | --- | --- |
-| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | DLV-459 assigned: create the four planned scoped test/build commits without another run, then stop for reviewer diff review and one exact-commit checkpoint. Preserve rejected/restoration evidence. DLV-284 remains queued. |
+| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | DLV-460 assigned: construct one clean main-compatible commit from the four accepted test/build commits and run the canonical Tier-3 verifier exactly once. Preserve rejected/restoration evidence. DLV-284 remains queued. |
 | Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | Idle and clean at `676cd76`; do not begin work or change product state. |
 
 ## Execution rules
@@ -620,20 +620,23 @@ diagnosis found no DLV-458 path involvement; do not rerun or redesign startup.
 The exact-commit checkpoint will carry residual runtime evidence. Evidence is
 under `%TEMP%\wrail-dlv458-focused-20260822-051500`.
 
-## Assigned platform scoped commit boundary — DLV-459
+## Assigned exact clean integration checkpoint — DLV-460
 
-No edit or verification. Review the seven held diffs for exact scope, debug
-artifacts, weakened assertions/timeouts, and reviewer files. If clean, create
-the planned commits: DLV-375 fixture `Program.cs`; DLV-458
-`WidgetSwitchHostTests.cpp`; DLV-349 `build.ps1`; and DLV-374 for the four other
-native test files. Stage each explicit path set, run cached diff-check, and
-verify no production or reviewer file enters any commit. Preserve complete
-history; never amend, squash, rebase, or include rejected ancestry.
+Reviewer accepted exact ancestry-bound commits `d0b7169`, `5745655`, `0465fee`,
+and `e83a3b9`: cached diffs and complete path sets are clean; no production or
+reviewer file, weakened assertion/timeout, debug artifact, or unrelated cleanup
+was found. Create one fresh isolated worktree at current main `5471b5e`, apply
+those four commits in order without importing rejected ancestry, and stop on
+any non-mechanical conflict or path expansion. Verify the resulting exact
+seven-file diff and commit it as DLV-460.
 
-Do not weaken assertions/timeouts, alter production or the fixture, or touch
-Do not run a build/test, integrate, rebuild/relaunch, change product/package/
-process state, remove evidence, assign DLV-284, or push. Stop after four commit
-hashes plus full path and cached-diff evidence for independent review.
+From that exact clean commit run `scripts\Verify.ps1 -Configuration Release`
+exactly once with durable streams/results. Expose output or terminal state every
+60 seconds; inspect descendants, results, CPU, and streams every 15-30 seconds.
+At 60 seconds of silence diagnose; trust explicit child/results over a stuck wrapper and leave no owned descendants. Stop first red
+or at one green result. Do not edit after the run, rerun, integrate,
+rebuild/relaunch PID 144396, change
+product/package state, remove evidence, assign DLV-284, or push.
 
 Disposition: red after 140.110 seconds with fresh child/output inspection every
 20 seconds. The exact current Audio fallback checkpoint was already present,
@@ -941,8 +944,8 @@ Extract native authorities only when real work touches them.
 
 ## Ordered queues
 
-1. DLV-459 four scoped commits, then reviewer diff review.
-2. Reviewer commit/diff review, then one exact clean Tier-3 run.
+1. DLV-460 one main-compatible seven-file commit and exact clean Tier-3 run.
+2. Reviewer integration of the accepted DLV-460 hash after one green result.
 3. DLV-284 after cumulative clean integration.
 4. Generic Game Launcher cutover; LauncherExperience deletion/state retirement;
    protocol requirements; then the remaining maturity deliverables.
