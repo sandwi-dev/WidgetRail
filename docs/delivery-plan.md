@@ -39,7 +39,7 @@ historical evidence only; this file is the sole authority for current work.
 
 | Lane | Task/worktree | State |
 | --- | --- | --- |
-| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | Assigned semantic-geometry correction/gate DLV-355 below at DLV-340 commit `0f8b080`, preserving build tooling plus four cumulative test files. DLV-284 remains queued and unassigned. |
+| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | Assigned source-only UIA ordering diagnosis DLV-356 below at DLV-340 commit `0f8b080`, preserving build tooling plus four cumulative test files. DLV-284 remains queued and unassigned. |
 | Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | Idle and clean at `676cd76`. Preserve PID 126208 and all product state; do not begin new work, integrate, rebuild/relaunch, or push. |
 
 ## Execution and architecture rules
@@ -481,6 +481,27 @@ DLV-349 subject and commit exactly the three test files with a DLV-347 subject.
 Do not run Tier 3 yet, integrate, start DLV-284, launch/terminate, or push.
 Preserve PID 126208 and all state.
 
+DLV-355 changed only the intended Cold Dashboard assertion, but its canonical
+run stopped earlier because WidgetActionFailureHostTests observed no
+`LiveRegionChanged`. The same corrected fixture passed in DLV-346 and DLV-349;
+feedback 314 and real-host accessibility 291 remained green. Cold Dashboard was
+not reached, so DLV-355 remains unverified. No commits exist.
+
+## Assigned platform diagnosis — DLV-356 classify UIA event nondeterminism
+
+Source and retained-evidence inspection only; make no edits and run no build,
+test, publish, or process command. Compare the green DLV-346/DLV-349 action
+failure runs with the DLV-355 no-event red. Trace handler registration,
+provider/root readiness, first failure admission, tree publication, event-plan
+diff base, `UiaRaiseAutomationEvent`, and the test's readiness/wait oracle.
+Determine whether the fixture can trigger the action before the subscription is
+fully authoritative or whether production can omit the first live-region event
+under an unchanged/combined-root transition. Classify production versus fixture
+race and identify the smallest deterministic handshake/invariant plus focused
+evidence. Preserve the requirement for one first event and no duplicate event
+for identical replacement text. Do not change files, commit, integrate, start
+DLV-284, launch/terminate, or push. Preserve PID 126208 and all state.
+
 DLV-354 classified whole-root/client containment as invalid fixture logic. The
 provider root intentionally reflects presentation origin, motion, offset, and
 extent and is not client-clipped. Clipped semantic descendants carry the strict
@@ -869,8 +890,8 @@ import/export or scheduling only after independent widgets prove the need.
 
 ## Ordered queues
 
-1. Platform evidence queue: execute DLV-355 strict semantic-descendant
-   containment correction and one canonical native Release rerun.
+1. Platform evidence queue: execute DLV-356 source-only action-failure UIA
+   event-ordering classification before any further rerun.
 2. Reviewer integration queue: independently review DLV-332 and the cumulative
    accepted production/test chain; integrate only if every required gate passes.
 3. Platform production queue: assign DLV-284 after clean integration, before
@@ -920,7 +941,8 @@ There is no other Ready production work in either standing lane.
 | DLV-352 | Current UIA bounds were compared with a historical composition revision. |
 | DLV-353 | Settings is inside current root; whole-root/client containment is the remaining invalid assertion. |
 | DLV-354 | Provider root is intentionally unbounded by client; descendants own clipping. |
-| DLV-355 | Assigned strict Settings-in-root and Settings-in-client correction plus canonical rerun. |
+| DLV-355 | Cold Dashboard assertion changed but not reached; earlier action-failure event was intermittent. |
+| DLV-356 | Assigned source-only subscription/publication ordering diagnosis. |
 | DLV-284 | Queued, not assigned until cumulative review/integration. |
 | DLV-248 | Deliberately deferred until explicit user promotion. |
 
