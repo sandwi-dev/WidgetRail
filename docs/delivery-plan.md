@@ -33,7 +33,7 @@ historical evidence only; this file is the sole implementation authority.
 
 | Lane | Task/worktree | State |
 | --- | --- | --- |
-| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | DLV-464 assigned: correct the post-Up Settings paint selector and run only the focused WidgetSwitch gate once. DLV-284 remains queued. |
+| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | DLV-465 assigned: make fallback priming wait for terminal resize/paint/checkpoint convergence, then run only the focused WidgetSwitch gate once. DLV-284 remains queued. |
 | Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | Idle and clean at `676cd76`; do not begin work or change product state. |
 
 ## Execution rules
@@ -79,30 +79,32 @@ fallback `EndDraw`, requires exact current widget instance/runtime/presentation/
 snapshot sequence and geometry authority, deduplicates unchanged paints, and
 does not redefine `set-window-pos` or `composition-transition`.
 
-## DLV-463 result and assigned focused correction — DLV-464
+## DLV-464 result and assigned convergence correction — DLV-465
 
-DLV-463 resolved the approved `build.ps1` composition and produced clean exact
-cumulative commit `e9412ec6f91667b656e38ff603f27ab64ff9d087`. Its one PowerShell-7
-Tier-3 run passed every managed, package, Bridge, focus, accessibility, and
-real-host gate through 291/291 checks, then stopped first-red in
-`WidgetSwitchHostTests`. After Up from Settings tray focus, the generic
-`waitForPaint` selector returned the first admitted Settings paint after the
-boundary: a delayed tray-owned paint (`input-owner=tray`, `visual-focus=none`,
-`semantic-focus=tray:settings`). Production `main.cpp` routes non-repeated Up
-from an open widget's tray through `Command::Activate`; no product defect is
-established. Evidence is under `%TEMP%\wrail-dlv463-verify-20260822-061000`.
+DLV-464 changed only the post-Up call site and passed the prior false match: it
+selected exact admitted/current widget-owned `settings-ready` paint authority
+and required enabled keyboard-focused Ready UIA authority. Its one focused run
+then stopped later at the existing fallback RefreshRetained assertion. The log
+shows unarmed priming accepted a momentary equal `772x558` paint/checkpoint,
+then the already-scheduled preferred/content intrinsic cascade completed via
+two fallback render-target resizes and settled at `772x828` after the block
+boundary. This is another test precondition race; no production defect is
+established. Evidence is under
+`%TEMP%\wrail-dlv464-widget-switch-20260822-104500`.
 
-Reuse the preserved clean detached tree at
-`%TEMP%\wrail-dlv462-676cd76-20260822-060200` and exact commit `e9412ec6`. Change
-only `src/OverlayHost/WidgetSwitchHostTests.cpp`. For the post-Up Settings
-precondition, search every post-boundary admitted/current Settings paint and
-select only one carrying exact `input-owner=widget`, `selected=settings`,
-`visual-focus=settings-ready`, and `semantic-focus=widget:settings-ready`.
-Require the exact Ready UIA element to be enabled and keyboard-focused before
-arming the block handshake. Do not weaken the required authority, alter the
-generic selector globally, add sleeps/retries, change input, production, the
-fixture, timing/tolerance, packaging, SDK/runtime/Bridge behavior, or another
-file.
+Continue only the authorized uncommitted DLV-464 edit in the preserved detached
+`e9412ec6` tree. Change only `WidgetSwitchHostTests.cpp`. Preserve its exact
+post-Up paint/UIA correction. In the existing HWND-fallback unarmed priming
+branch, do not admit equality before the post-priming intrinsic resize cascade.
+Require at least one post-priming `Overlay render target resized in place`, then
+select a later Settings paint whose desired/presented extents are equal and
+whose exact-current checkpoint equals immediate live HWND/client geometry.
+Fence and reread before returning; if a newer extent-refresh, resize, placement,
+or Settings paint exists, evaluate the latest terminal candidate instead. Keep
+the existing strict identities, sequence, geometry, focus, and no-repaint block
+assertion. Do not add a quiet-period sleep/retry, hard-code `772x828`, alter
+production, the fixture, timing/tolerance, packaging, SDK/runtime/Bridge
+behavior, the shared generic paint selector, or another file.
 
 Preserve clean parity for the other seven cumulative files. Run only `pwsh
 -NoProfile -File src\OverlayHost\build.ps1 -Configuration Release
@@ -188,7 +190,7 @@ Extract native authorities only when real work touches them.
 
 ## Ordered queues
 
-1. DLV-464 exact post-Up Settings focus selector and one focused WidgetSwitch run.
+1. DLV-465 terminal fallback priming convergence and one focused WidgetSwitch run.
 2. Reviewer integration of the explicit cumulative hashes after focused green and independent review.
 3. DLV-284 after cumulative clean integration.
 4. Generic Game Launcher cutover; LauncherExperience deletion/state retirement;
@@ -214,26 +216,6 @@ There is no other Ready production work in either standing lane.
 
 | Milestone | Disposition |
 | --- | --- |
-| DLV-429 | Startup checkpoint was valid; live-transition selector wrongly chose a later non-placement checkpoint. |
-| DLV-430 | Phase filtering passed; live fallback legitimately retained HWND without a new placement transaction. |
-| DLV-431 | First post-marker checkpoint had older sequence authority; selection must require exact-current authority. |
-| DLV-432 | No exact checkpoint was immediately visible; its stale owner hid a two-minute red result for 18 minutes. |
-| DLV-433 | Fast seam green; retained real-host log disproved its zero-candidate polling summary. |
-| DLV-434 | Replay isolated terminal CRLF parsing: two checkpoints, zero current candidates. |
-| DLV-435 | Seven table cases and exact retained-log replay green in 7 seconds each. |
-| DLV-436 | One observable run red after 140.110 seconds; no post-Back fallback repaint or diagnostic. |
-| DLV-437 | Back semantics passed; later raw CRLF checkpoint reparse failed after 120.139 seconds. |
-| DLV-438 | CRLF sequence passed; later recorded-work/live-monitor mismatch failed after 120.176 seconds. |
-| DLV-439 | Exact 1.25 coordinate ratio proved missing test-process PMv2 DPI awareness. |
-| DLV-440 | PMv2 fixed all recorded/live geometry; only an invalid target=window check remained. |
-| DLV-441 | Checkpoint contract passed; old preflight sequence 5 lost current authority to 6 before Right. |
-| DLV-442 | Backing helper parsed the next arbitrary non-paint log line and failed before its proof. |
-| DLV-443 | Iterator passed; fallback assertion compared combined HWND extent to content extent. |
-| DLV-444 | Dual extents passed; later fallback focus demanded an impossible composition-only optimization. |
-| DLV-445 | Mode-aware focus passed; one-shot blocked-snapshot trigger then timed out. |
-| DLV-446 | Audited all remaining post-fallback mode assumptions and the shared block race. |
-| DLV-447 | Cohesive edit/parity passed; wrapper promoted normal Cargo stderr and stopped before test launch. |
-| DLV-448 | Outer owner corrected; inner build.ps1 still promoted Cargo progress and stopped. |
 | DLV-449 | Cargo passed; outer PowerShell stream merging later reclassified MSVC diagnostics. |
 | DLV-450 | Separated capture passed; child lacked the parent-only Utility import. |
 | DLV-451 | Wrapper passed; reused partial artifact tree failed isolated Bridge startup. |
@@ -242,3 +224,5 @@ There is no other Ready production work in either standing lane.
 | DLV-458 | Atomic seam fast-green; focused startup hit unrelated Bridge pipe access denial. |
 | DLV-460 | Seven native files were source-clean, but its exact checkpoint omitted the accepted managed chain. |
 | DLV-461 | PowerShell-7 aggregate reached Runtime 77/78; missing DLV-326 reproduced its already-fixed PID publication race. |
+| DLV-463 | Exact cumulative Tier 3 passed through 291 real-host accessibility checks; WidgetSwitch then selected a delayed tray-owned paint. |
+| DLV-464 | Exact post-Up focus selection passed; fallback priming then crossed the block boundary before its intrinsic resize settled. |
