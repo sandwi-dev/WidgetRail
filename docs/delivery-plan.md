@@ -305,6 +305,31 @@ current production/test surface cannot observe the required authority.
 No production edit, rerun, integration, DLV-284, launch/terminate, or push.
 Preserve PID 126208, state, seven diffs, and retained diagnostics.
 
+## Assigned platform test correction — DLV-405 Chrome publication fence
+
+Own only `WidgetSwitchHostTests.cpp`; preserve six other held files. Keep the
+DLV-403 split authorities, but replace `FenceWindow` as the Chrome UIA-readiness
+boundary. After Back, require the next post-boundary fixed-chrome
+`Composition child sample`: the focus-region change invalidates the guide paint
+key, guide rendering republishes tray accessibility, and this sample follows
+the composition commit. Only after that fence resolve and identity-pin the
+current Chrome HWND/root and exact `tray:tray.audio-mixer` element.
+
+Report each strict conjunct independently: missing HWND, UIA root failure,
+missing/wrong tray identity, `SelectionItemIsSelected=false`,
+`HasKeyboardFocus=false`, or root/tray identity drift on immediate re-resolve.
+Do not add sleeps, retries without an event boundary, a widget-paint
+prerequisite, or weakened selection/focus/identity. Preserve the pre-Back
+admitted/current Audio paint as the retained visual-sequence authority and the
+DLV-399 destination transaction boundary with all existing exact invariants.
+
+Run `WidgetSwitchTestsOnly` once via durable capture; stop first red and classify
+before another edit or rerun. If green, run the full native gate once. If both
+are green, create only the four documented scoped commits using DLV-405 for
+this file, then stop before Tier 3. No production edit, integration, DLV-284,
+launch/terminate, or push. Preserve PID 126208, state, seven diffs, and retained
+diagnostics.
+
 ## After the cumulative native gate is green
 
 1. Review exact DLV-349 and the cumulative test commits and full diffs. Reject
@@ -320,7 +345,7 @@ Preserve PID 126208, state, seven diffs, and retained diagnostics.
 
 ## Queued platform production — DLV-284 explicit publication transaction model
 
-Status: queued, not assigned. It becomes assignable only after DLV-404 is
+Status: queued, not assigned. It becomes assignable only after DLV-405 is
 dispositioned, the native gate is green, cumulative evidence is reviewed and
 integrated, and the accepted main Release is coherently refreshed only if
 runtime inputs changed. No new virtualization feature may precede it.
@@ -379,8 +404,8 @@ Extract native authorities only when real work touches them.
 
 ## Ordered queues
 
-1. Platform evidence: execute DLV-404 retained/source classification of the
-   failed Chrome UIA authority conjunct before another correction or rerun.
+1. Platform evidence: execute DLV-405 post-Back fixed-chrome composition fence
+   and split UIA authority diagnostics, then classify the focused result.
 2. Reviewer integration: review the eventual four commits, then assign exact
    clean Tier 3 if the native routes are green.
 3. Platform production: DLV-284 after clean cumulative integration.
@@ -400,7 +425,7 @@ There is no other Ready production work in either standing lane.
 | DLV-314 | Production `992b77b` accepted with Spotify 0.3.13. |
 | DLV-318 | Current accepted production `32a2a5e`; PID 126208 runs Spotify 0.3.14. |
 | DLV-319–326 | Managed test chain through `676cd76`; all managed Tier-3 gates green. |
-| DLV-327–404 | Native fixture/build evidence held pending DLV-404 and exact-commit Tier 3. |
+| DLV-327–405 | Native fixture/build evidence held pending DLV-405 and exact-commit Tier 3. |
 | DLV-284 | Queued until cumulative review/integration. |
 | DLV-248 | Deliberately deferred until explicit user promotion. |
 
@@ -428,4 +453,5 @@ There is no other Ready production work in either standing lane.
 | DLV-401 | No qualifying post-Back widget paint exists; paint is not the tray handshake. |
 | DLV-402 | Exact non-paint authority exists in the live Chrome UIA tray element; widget paint remains the separate visual-sequence authority. |
 | DLV-403 | Split-authority correction reached a combined Chrome UIA predicate red; no product defect is proven because the failed conjunct is unknown. |
-| DLV-404 | Assigned source/retained-output classification of HWND, UIA root, tray identity, selection, and focus observability. |
+| DLV-404 | `WM_NULL` was not a publication fence; the post-Back fixed-chrome composition child sample is the deterministic UIA-publication boundary. |
+| DLV-405 | Assigned composition-fenced Chrome UIA validation with per-conjunct diagnostics. |
