@@ -39,7 +39,7 @@ historical evidence only; this file is the sole authority for current work.
 
 | Lane | Task/worktree | State |
 | --- | --- | --- |
-| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | Assigned selected-tray readiness correction/gates DLV-367 below; rejected production change is neutralized by `ad109f8`. DLV-284 remains queued and unassigned. |
+| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | Assigned source-only Cold Dashboard open diagnosis DLV-368 below; action-failure route is now stable green and rejected production change remains neutralized. DLV-284 remains queued and unassigned. |
 | Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | Idle and clean at `676cd76`. Preserve PID 126208 and all product state; do not begin new work, integrate, rebuild/relaunch, or push. |
 
 ## Execution and architecture rules
@@ -646,6 +646,28 @@ DLV-349 subject and commit exactly the three test files with a DLV-347 subject.
 Do not run Tier 3 yet, integrate, start DLV-284, launch/terminate, or push.
 Preserve PID 126208 and all state.
 
+DLV-367's focused action-failure route passed, and that fixture passed again
+inside the canonical gate. Feedback 314 and real-host accessibility 291 also
+passed. The first later red was ColdDashboardHostTests:
+`Opening the focused widget did not admit content in the shared production
+host.` No build/test commit occurred.
+
+## Assigned platform diagnosis — DLV-368 classify shared-host open admission
+
+Source and retained-output inspection only; make no edits and run no build,
+test, publish, or process command. Trace the Cold Dashboard fixture from its
+current startup/hide/re-show state through the exact input/API used to open the
+focused Settings tray item, OverlayState transition, widget-session/catalog
+admission, content HWND visibility/tree publication, and the failing oracle.
+Determine whether it invokes the wrong root/element after the two-HWND update,
+uses stale focus instead of selection/invoke semantics, expects retired
+dashboard behavior, or exposes a production admission defect. Compare with the
+now-green exact UIA tray invocation used by WidgetActionFailureHostTests.
+Identify the smallest correction and separate diagnostics for input dispatch,
+state transition, content admission, and UIA publication; no timeout increase.
+Do not change files, commit, integrate, start DLV-284, launch/terminate, or push.
+Preserve PID 126208 and all state.
+
 DLV-366 classified the readiness red as fixture-only. Widget focus and tray
 focus are mutually exclusive by contract. After tray activation, play/pause is
 focused in content while the exact YT Music tray element is selected/current
@@ -1184,8 +1206,8 @@ import/export or scheduling only after independent widgets prove the need.
 
 ## Ordered queues
 
-1. Platform evidence queue: execute DLV-367 selected-tray chrome authority,
-   focused action-failure route, then one canonical Release route.
+1. Platform evidence queue: execute DLV-368 source-only Cold Dashboard shared
+   host open/admission classification before another correction or rerun.
 2. Reviewer integration queue: independently review DLV-332 and the cumulative
    accepted production/test chain; integrate only if every required gate passes.
 3. Platform production queue: assign DLV-284 after clean integration, before
@@ -1247,7 +1269,8 @@ There is no other Ready production work in either standing lane.
 | DLV-364 | Proved `0494b69` no-op/overbroad; missing gate was prior authority comparability. |
 | DLV-365 | Guard restored in `ad109f8`; combined dual-root readiness oracle was over-constrained. |
 | DLV-366 | Tray must be selected/current and not focused while content action owns focus. |
-| DLV-367 | Assigned selected-tray readiness predicates with focused-plus-canonical gates. |
+| DLV-367 | Action-failure focused/full evidence green; canonical gate exposed Cold Dashboard open red. |
+| DLV-368 | Assigned source-only Settings open/action/admission/UIA publication diagnosis. |
 | DLV-284 | Queued, not assigned until cumulative review/integration. |
 | DLV-248 | Deliberately deferred until explicit user promotion. |
 
