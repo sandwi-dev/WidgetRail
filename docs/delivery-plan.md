@@ -11,12 +11,14 @@ historical evidence only; this file is the sole implementation authority.
 
 - Local `main` contains physically accepted DLV-428 production as `c38b261`.
   Later commits may be reviewer-owned control-plane changes only.
-- The coherent accepted artifact visibly runs as OverlayHost PID 144396 with
-  matching WidgetBridge PID 64560 from
-  `C:\Users\dwive\AppData\Local\Temp\wrail-dlv428-6926e05-20260822-004155\GameBarAlternative\src\OverlayHost\out\Release`.
-  `OverlayHost.exe` SHA-256 is
-  `7999E3FAB4F7C952D757F553C1FF5709C9C37CA988BDE4CF820BA25E077EA3F2`.
-  Do not rebuild or relaunch it for tests or reviewer documents.
+- The coherent physically accepted artifact visibly runs as OverlayHost PID
+  89008 from
+  `C:\Users\dwive\AppData\Local\Temp\wrail-dlv466-08cf81d-20260822-140742\GameBarAlternative\src\OverlayHost\out\Release`.
+  It combines accepted DLV-466 native executable SHA-256
+  `FC8CABD1F4997E040D73300D0AC6741955E78C0D8A423713E999682CB97849AB`
+  with the unchanged accepted DLV-428 runtime graph and catalog. DLV-466 is
+  not yet integrated into local `main`; do not rebuild or relaunch this
+  accepted instance for tests or reviewer documents.
 - DLV-318 is the exact recoverable prior accepted Release at
   `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative-dlv318-build`;
   executable SHA-256 is
