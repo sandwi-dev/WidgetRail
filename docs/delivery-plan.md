@@ -33,7 +33,7 @@ historical evidence only; this file is the sole implementation authority.
 
 | Lane | Task/worktree | State |
 | --- | --- | --- |
-| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | DLV-436 assigned. Preserve seven held diffs and all rejected/restoration evidence. DLV-284 remains queued. |
+| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | DLV-437 assigned. Preserve seven held diffs and all rejected/restoration evidence. DLV-284 remains queued. |
 | Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | Idle and clean at `676cd76`; do not begin work or change product state. |
 
 ## Execution rules
@@ -305,6 +305,45 @@ remove evidence, assign DLV-284, or push. A red result requires classification
 before any further assignment; a green result returns to reviewer scope and
 commit planning.
 
+Disposition: red after 140.110 seconds with fresh child/output inspection every
+20 seconds. The exact current Audio fallback checkpoint was already present,
+but Back produced no post-boundary fallback paint, composition sample, or
+pending content update region. The retained fallback log ends at its sequence-6
+checkpoint. Mid-session fallback intentionally resets/hides the fixed chrome
+endpoint and restores the combined content-HWND path, so neither a chrome-HWND
+assertion nor another unchanged run explains this result. Evidence is retained
+under
+`%TEMP%\wrail-dlv436-widget-switch-monitor-20260822-060100`.
+
+## Assigned platform Back classification — DLV-437
+
+Test-only; change only held `WidgetSwitchHostTests.cpp`. Before sending Back,
+require the current fallback content UIA root to expose exact enabled
+`host:host.open.back` authority and retain the exact focused widget identity.
+After Back, make the user-visible semantic result the primary observation:
+bounded-poll the current fallback content UIA root for exact selected and
+keyboard-focused `tray:tray.audio-mixer`. Do not require a new diagnostic paint
+record before querying that semantic result, and do not force a repaint from
+the test.
+
+On failure, retain one bounded classification containing the pre-Back Back-node
+authority, pre/post focused AutomationId, content/chrome HWND identity and
+visibility, content/chrome update-region state, and the first post-boundary
+paint/action record when present. This classifier must distinguish an
+unhandled-root Back dispatch failure from a successful semantic transition
+whose diagnostic paint was absent. Do not change production code, input
+routing, timeouts, tolerances, SDK/runtime/Bridge behavior, or another held
+file.
+
+Recreate one fresh detached `c38b261` tree containing exactly the seven held
+files with full path/SHA-256 parity. Run the focused WidgetSwitch gate once
+through an observable owner with exact child and durable-stream inspection at
+intervals below 60 seconds. Stop at the numeric result. Do not run the selector
+table/replay, full native gate, commit, integrate, rebuild/relaunch PID 144396,
+change product/package state, remove evidence, assign DLV-284, or push. A red
+result stops for classification; a green result returns to reviewer commit
+planning.
+
 ## After the cumulative native gate is green
 
 1. Review each of the four commits and the cumulative diff. Reject extra files,
@@ -320,7 +359,7 @@ commit planning.
 
 ## Queued platform production — DLV-284 typed publication transactions
 
-Status: queued, not assigned. It becomes assignable only after DLV-436, the
+Status: queued, not assigned. It becomes assignable only after DLV-437, the
 cumulative native gate, commit review/integration, and exact clean Tier 3 are
 green. No new virtualization feature may precede it.
 
@@ -378,7 +417,7 @@ Extract native authorities only when real work touches them.
 
 ## Ordered queues
 
-1. DLV-436 one observable focused real-host gate with no code change.
+1. DLV-437 one semantic Back classifier and one observable focused gate.
 2. Reviewer commit/diff review, then one exact clean Tier-3 run.
 3. DLV-284 after cumulative clean integration.
 4. Generic Game Launcher cutover; LauncherExperience deletion/state retirement;
@@ -394,7 +433,7 @@ There is no other Ready production work in either standing lane.
 | DLV-257 identity | Store, domain, trademark, and GitHub availability remain external/manual. |
 | DLV-278–283/270 | Production accepted; integration awaits the native gate, exact Tier 3, and review. |
 | DLV-319–326 | Managed chain through `676cd76`; all managed Tier-3 gates green. |
-| DLV-327–421 | Native fixture/build evidence remains held behind DLV-436 and exact Tier 3. |
+| DLV-327–421 | Native fixture/build evidence remains held behind DLV-437 and exact Tier 3. |
 | DLV-427 | `e26b92b` and `16050bb` are unbuilt/unaccepted ancestry-bound evidence only. |
 | DLV-428 | Accepted/integrated as `c38b261`; PID 144396 already runs it. |
 | DLV-284 | Queued until cumulative review/integration. |
@@ -413,4 +452,5 @@ There is no other Ready production work in either standing lane.
 | DLV-433 | Fast seam green; retained real-host log disproved its zero-candidate polling summary. |
 | DLV-434 | Replay isolated terminal CRLF parsing: two checkpoints, zero current candidates. |
 | DLV-435 | Seven table cases and exact retained-log replay green in 7 seconds each. |
-| DLV-436 | Assigned one observable focused real-host gate; no code edit or full gate. |
+| DLV-436 | One observable run red after 140.110 seconds; no post-Back fallback repaint or diagnostic. |
+| DLV-437 | Assigned semantic Back classification before any further native/full gate. |
