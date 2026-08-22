@@ -569,6 +569,25 @@ environment correction when the repository helper is sound; change
 mask hash verification, substitute an unverified file, or rerun until the cause
 is recorded. Preserve PID 126208, state, seven diffs, and retained artifacts.
 
+## Assigned platform evidence — DLV-418 clean Windows PowerShell module path
+
+Do not edit repository files. Create one new durable external Windows
+PowerShell owner for the existing DLV-416 test diff. Before invoking
+`build.ps1`, set `PSModulePath` only to the canonical Windows PowerShell module
+roots for redirected Documents, Program Files, and
+`%WINDIR%/System32/WindowsPowerShell/v1.0/Modules`. Preflight that
+`Get-FileHash` resolves from `Microsoft.PowerShell.Utility`; fail closed before
+the build if it does not.
+
+Run `WidgetSwitchTestsOnly` once and retain command, environment roots,
+preflight result, streams, PIDs, timestamps, and numeric exit. Stop first red
+and classify before another edit or rerun. If green, run the full native gate
+once under the same sanitized environment. If both are green, create only the
+four documented scoped commits using DLV-416 for `WidgetSwitchHostTests.cpp`,
+then stop before Tier 3. Do not edit `build.ps1`, bypass provenance hashing,
+touch product state, integrate, assign DLV-284, launch/terminate, or push.
+Preserve PID 126208, state, seven diffs, and retained artifacts.
+
 ## After the cumulative native gate is green
 
 1. Review exact DLV-349 and the cumulative test commits and full diffs. Reject
@@ -584,7 +603,7 @@ is recorded. Preserve PID 126208, state, seven diffs, and retained artifacts.
 
 ## Queued platform production — DLV-284 explicit publication transaction model
 
-Status: queued, not assigned. It becomes assignable only after DLV-417 is
+Status: queued, not assigned. It becomes assignable only after DLV-418 is
 dispositioned, the native gate is green, cumulative evidence is reviewed and
 integrated, and the accepted main Release is coherently refreshed only if
 runtime inputs changed. No new virtualization feature may precede it.
@@ -643,8 +662,8 @@ Extract native authorities only when real work touches them.
 
 ## Ordered queues
 
-1. Platform evidence: execute DLV-417 retained/source diagnosis of the
-   `Get-FileHash` PowerShell command-resolution boundary.
+1. Platform evidence: execute DLV-418 focused run under a sanitized Windows
+   PowerShell module path with fail-closed `Get-FileHash` preflight.
 2. Reviewer integration: review the eventual four commits, then assign exact
    clean Tier 3 if the native routes are green.
 3. Platform production: DLV-284 after clean cumulative integration.
@@ -664,7 +683,7 @@ There is no other Ready production work in either standing lane.
 | DLV-314 | Production `992b77b` accepted with Spotify 0.3.13. |
 | DLV-318 | Current accepted production `32a2a5e`; PID 126208 runs Spotify 0.3.14. |
 | DLV-319–326 | Managed test chain through `676cd76`; all managed Tier-3 gates green. |
-| DLV-327–417 | Native fixture/build evidence held pending DLV-417 and exact-commit Tier 3. |
+| DLV-327–418 | Native fixture/build evidence held pending DLV-418 and exact-commit Tier 3. |
 | DLV-284 | Queued until cumulative review/integration. |
 | DLV-248 | Deliberately deferred until explicit user promotion. |
 
@@ -705,4 +724,5 @@ There is no other Ready production work in either standing lane.
 | DLV-414 | Mode-aware correlation change stopped at compile error because the exact `sequence` local was out of scope; no test verdict. |
 | DLV-415 | Shared typed sequence was added, but one failure diagnostic still referenced the former branch-local name; no test verdict. |
 | DLV-416 | Sequence compile correction succeeded; the wrapper then failed before test execution because Windows PowerShell could not resolve `Get-FileHash`. |
-| DLV-417 | Assigned exact shell/module/build-helper command-resolution diagnosis. |
+| DLV-417 | Windows PowerShell inherited PowerShell 7 module roots; a Core Utility module shadowed the Desktop module containing `Get-FileHash`; helper is sound. |
+| DLV-418 | Assigned sanitized external-owner module path, fail-closed hash preflight, and focused run. |
