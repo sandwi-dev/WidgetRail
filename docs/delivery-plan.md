@@ -39,7 +39,7 @@ historical evidence only; this file is the sole authority for current work.
 
 | Lane | Task/worktree | State |
 | --- | --- | --- |
-| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | Assigned source-only retained-event diagnostic design DLV-360 below at DLV-340 commit `0f8b080`, preserving build tooling plus four cumulative test files. DLV-284 remains queued and unassigned. |
+| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | Assigned one-run retained event trace DLV-361 below at DLV-340 commit `0f8b080`, preserving build tooling plus four cumulative test files. DLV-284 remains queued and unassigned. |
 | Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | Idle and clean at `676cd76`. Preserve PID 126208 and all product state; do not begin new work, integrate, rebuild/relaunch, or push. |
 
 ## Execution and architecture rules
@@ -421,6 +421,38 @@ wrapper result. Report the first incorrect ownership/isolation boundary and the
 smallest production-versus-test correction scope. Do not change files, launch
 or terminate anything, commit, integrate, start DLV-284, or push. Preserve all
 state.
+
+DLV-360 designed a bounded two-sided trace that survives fixture cleanup. It
+uses the isolated process profile, records test subscription/invocation identity
+and callback timing, and captures host plan/provider/raise facts only for the
+first `host.open.status` event. The retained artifact lives outside the
+temporary installation and contains no payloads, credentials, or arbitrary
+semantic text.
+
+## Assigned platform diagnostic — DLV-361 execute retained event trace once
+
+Preserve all five held diffs. In the already-held
+`WidgetActionFailureHostTests.cpp`, add bounded diagnostic-manifest persistence
+outside `TemporaryInstallation`, recording subscription/invocation timestamps,
+content HWND, root/action runtime identities and `CompareElements` results,
+plus atomic callback count and first-callback timestamp. Remove the handler
+before persisting on success or failure; retain only a bounded isolated-log
+suffix and manifest in a unique test-owned Release diagnostics directory.
+
+Add disposable test-gated diagnostic hooks only in `AccessibilityProvider.h`,
+`AccessibilityProvider.cpp`, and `main.cpp`. Enable them solely for the
+fixture's unique process profile/path and first `host.open.status` event. Record
+prior/current semantic presence, planned event kind/key, bound content
+HWND/endpoint, resolved provider key/runtime identity, exact hexadecimal
+`UiaRaiseAutomationEvent` HRESULT, and monotonic resolution/raise timestamps.
+Do not log payloads, credentials, messages, or unrelated events.
+
+With external execution approval, run the targeted action-failure route exactly
+once and stop at its first result. Read and report the retained artifact,
+classifying the first divergence among planning, provider resolution, raise,
+and callback delivery. Do not correct, rerun, or commit. Do not run the complete
+gate, Tier 3, integrate, start DLV-284, launch/terminate product processes, or
+push. Preserve accepted PID 126208 and all state.
 
 DLV-350 classified the Cold Dashboard red as fixture drift. Current startup is
 the real Settings widget, not the retired dashboard placeholder. Content
@@ -993,8 +1025,8 @@ import/export or scheduling only after independent widgets prove the need.
 
 ## Ordered queues
 
-1. Platform evidence queue: execute DLV-360 source-only retained event-evidence
-   design before authorizing one diagnostic run.
+1. Platform evidence queue: execute DLV-361 retained two-sided event trace once,
+   then classify its exact first divergence before any correction.
 2. Reviewer integration queue: independently review DLV-332 and the cumulative
    accepted production/test chain; integrate only if every required gate passes.
 3. Platform production queue: assign DLV-284 after clean integration, before
@@ -1049,7 +1081,8 @@ There is no other Ready production work in either standing lane.
 | DLV-357 | Exact UIA handshake and one first event passed; real-host lifetime timing remained flaky. |
 | DLV-358 | Polled log is not deadline origin; exact expiry belongs in deterministic unit coverage. |
 | DLV-359 | Lifetime oracle fixed; first live-region event remained intermittent despite root handshake. |
-| DLV-360 | Assigned source-only persistent host-plan/raise/handler diagnostic design. |
+| DLV-360 | Designed bounded isolated host-plan/raise plus test-handler retained evidence. |
+| DLV-361 | Assigned one externally run retained event trace; no correction authorized. |
 | DLV-284 | Queued, not assigned until cumulative review/integration. |
 | DLV-248 | Deliberately deferred until explicit user promotion. |
 
