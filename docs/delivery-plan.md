@@ -176,51 +176,10 @@ once; if both are green, create the same four scoped commits using DLV-431 for
 `WidgetSwitchHostTests.cpp`, then stop before Tier 3. Preserve every DLV-430
 process, state, artifact, integration, and push prohibition.
 
-Disposition: exact-current filtering found no eligible checkpoint after the
-live-disabled marker. The retained evidence does not distinguish a genuinely
-missing host checkpoint from asynchronous publication that had not reached the
-test's immediate pre-switch read. Do not add another selector-only correction
-or rerun. The build/test itself completed in about two minutes with exit `1`;
-its `Start-Process -Wait` owner remained stale for roughly another 18 minutes
-despite terminal stdout/stderr. Evidence is retained under
-`%TEMP%\wrail-dlv432-widget-switch-20260822-024200`.
-
-## Assigned platform test architecture — DLV-433
-
-Test-only; no production change. First make fallback-checkpoint selection a
-small deterministic seam with table-driven cases covering pre-marker records,
-wrong phase, stale identity/sequence, the first exact-current record, and no
-match. The real-host fixture must call that same seam rather than reimplement
-selection. On any fallback-authority failure, retain the complete overlay log
-and a bounded classification summary so the next diagnosis does not require a
-fresh scenario merely to see record order.
-
-For live-disabled fallback, replace the immediate one-shot log read with one
-bounded wait for the first exact-current checkpoint after the explicit marker;
-then apply every existing exact identity, sequence, work/DPI/scale, target,
-window, and client-geometry assertion. Do not weaken or replace those checks,
-admit a stale record, change production code, or expand unrelated test scope.
-Keep the implementation as small as practical; any new helper is test-only and
-must have one clear authority owner.
-
-Verification must obey the one-minute command observability rule in the planner
-and implementation-agent goals. Never use the stale opaque `Start-Process
--Wait` pattern. Run the new deterministic selector test first with observable
-output. Only if it is green, recreate isolated `c38b261` plus the authorized
-held test/build files with full path/hash parity and run the focused real-host
-gate once with output/result/process inspection at intervals below 60 seconds.
-Stop first red. If focused green, run the full native gate once under the same
-observable rule. If both are green, propose the exact scoped commit split for
-review before committing; do not create commits until the planner confirms the
-new test-only file ownership. Do not integrate, rebuild/relaunch PID 144396,
-change product/package state, remove artifacts/worktrees, assign DLV-284, or
-push.
-
-Disposition: the focused gate stopped first red because the selector chose the
-first post-marker checkpoint by phase and only then required the exact current
-Audio sequence. That checkpoint carried older sequence authority. Exact-current
-authority must be part of selection, not merely a later assertion. No production
-defect is proven; no full gate or commits ran. Evidence is retained under
+Disposition: the focused gate selected the first post-marker checkpoint by
+phase and then found its sequence was older than current Audio authority.
+Exact-current authority had to become part of selection. No production defect
+was proven; no full gate or commits ran. Evidence is retained under
 `%TEMP%\wrail-dlv431-widget-switch-20260822-020500`.
 
 ## Assigned platform test correction — DLV-432
@@ -231,18 +190,50 @@ marker, select the first `presentation-checkpoint` whose Audio widget,
 instance, runtime, presentation, snapshot, and sequence authority is already
 exactly current, including equality to the latest pre-switch Audio sequence.
 Skip post-marker checkpoints with nonmatching authority; do not select them and
-then fail the resulting-state assertion. The selected checkpoint must still
-pass every DLV-431 work-area, DPI, scale, computed-target, recorded/live content
-window, and recorded/live client-screen equality check. Placement phases remain
-independent supporting evidence only.
+then fail the resulting-state assertion. Preserve every exact identity and
+geometry proof.
 
-Do not relax identity, sequence, geometry, timeout, or tolerance rules, fall
-back to a noncurrent checkpoint, or touch another file. Recreate isolated
-`c38b261` plus exact seven-file parity and run the focused gate once under the
-sanitized owner. Stop first red. If focused green, run the full native gate
-once; if both are green, create the same four scoped commits using DLV-432 for
-`WidgetSwitchHostTests.cpp`, then stop before Tier 3. Preserve every DLV-431
-process, state, artifact, integration, and push prohibition.
+Disposition: exact-current filtering found no eligible checkpoint after the
+live-disabled marker. The evidence did not distinguish a missing checkpoint
+from asynchronous publication not yet visible to the immediate read. The real
+build/test completed in about two minutes with exit `1`; its opaque
+`Start-Process -Wait` owner remained stale for roughly another 18 minutes.
+Evidence is retained under
+`%TEMP%\wrail-dlv432-widget-switch-20260822-024200`.
+
+## Assigned platform test architecture — DLV-433
+
+Test-only; no production change. Make fallback-checkpoint selection a small
+deterministic seam with table-driven cases covering pre-marker records, wrong
+phase, stale identity/sequence, the first exact-current record, and no match.
+The real-host fixture must call that same seam. On fallback-authority failure,
+retain the complete overlay log and a bounded classification summary.
+
+For live-disabled fallback, replace the immediate read with one bounded wait
+for the first exact-current checkpoint after the explicit marker; then apply
+every existing exact identity, sequence, work/DPI/scale, target, window, and
+client-geometry assertion. Do not weaken those checks, admit a stale record,
+change production code, or expand unrelated test scope.
+
+Verification must obey the one-minute command observability rule. Never use the
+stale opaque `Start-Process -Wait` pattern. Run the deterministic selector test
+first. Only if green, recreate isolated `c38b261` plus the authorized held files
+with full hash parity and run the focused real-host gate once. Stop first red.
+If focused green, run the full native gate once. If both are green, propose the
+exact scoped commit split and stop without committing until reviewer approval.
+Preserve PID 144396, product/package state, artifacts, integration, and push
+prohibitions.
+
+First deterministic disposition: the selector correctly chose the second
+post-marker exact-current record, but the table assertion passed the remainder
+of the synthetic log to `TextField`, so terminal `sequence=7` read into the next
+line. Correct only that bounded selected-record assertion/fixture shape. Before
+rerunning, move the selector-only build branch ahead of runtime packaging and
+managed fixture publication; a pure selector route must not rebuild the managed
+artifact graph. Run only the deterministic route once. It must remain observable
+and should terminate within one minute after eliminating packaging; otherwise
+stop and diagnose. Only a green deterministic result reauthorizes the one
+observable focused real-host run above.
 
 ## After the cumulative native gate is green
 
