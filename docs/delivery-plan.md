@@ -462,6 +462,22 @@ this file, then stop before Tier 3. No production edit, integration, DLV-284,
 launch/terminate, or push. Preserve PID 126208, state, seven diffs, and retained
 artifacts.
 
+## Assigned platform test diagnosis — DLV-412 geometry sequence record
+
+Use only production/test source, the uncommitted DLV-411 diff, and retained
+DLV-411 stdout/stderr/result artifacts. Do not edit, build, run, publish, or
+touch product state. Identify the exact record that triggered `Production
+geometry record omitted sequence=` before the Back/render-mode route. Trace its
+producer, lifecycle/transaction semantics, complete field schema, and the
+generic parser/range that selected it.
+
+Classify whether this is a stale parser accepting a non-sequenced geometry
+record, a truncated/concurrent line, an invalid production diagnostic, or a
+wrong transaction boundary. Specify the smallest strict one-file correction
+without ignoring malformed authoritative records, fabricating a sequence, or
+weakening the later DLV-411 route. No correction or rerun until classified.
+Preserve PID 126208, state, seven diffs, and all retained artifacts.
+
 ## After the cumulative native gate is green
 
 1. Review exact DLV-349 and the cumulative test commits and full diffs. Reject
@@ -477,7 +493,7 @@ artifacts.
 
 ## Queued platform production — DLV-284 explicit publication transaction model
 
-Status: queued, not assigned. It becomes assignable only after DLV-411 is
+Status: queued, not assigned. It becomes assignable only after DLV-412 is
 dispositioned, the native gate is green, cumulative evidence is reviewed and
 integrated, and the accepted main Release is coherently refreshed only if
 runtime inputs changed. No new virtualization feature may precede it.
@@ -536,8 +552,8 @@ Extract native authorities only when real work touches them.
 
 ## Ordered queues
 
-1. Platform evidence: execute DLV-411 explicit mode-aware Back readiness using
-   composition/Chrome UIA or fallback paint/content UIA as applicable.
+1. Platform evidence: execute DLV-412 retained/source classification of the
+   pre-route production-geometry record lacking `sequence=`.
 2. Reviewer integration: review the eventual four commits, then assign exact
    clean Tier 3 if the native routes are green.
 3. Platform production: DLV-284 after clean cumulative integration.
@@ -557,7 +573,7 @@ There is no other Ready production work in either standing lane.
 | DLV-314 | Production `992b77b` accepted with Spotify 0.3.13. |
 | DLV-318 | Current accepted production `32a2a5e`; PID 126208 runs Spotify 0.3.14. |
 | DLV-319–326 | Managed test chain through `676cd76`; all managed Tier-3 gates green. |
-| DLV-327–411 | Native fixture/build evidence held pending DLV-411 and exact-commit Tier 3. |
+| DLV-327–412 | Native fixture/build evidence held pending DLV-412 and exact-commit Tier 3. |
 | DLV-284 | Queued until cumulative review/integration. |
 | DLV-248 | Deliberately deferred until explicit user promotion. |
 
@@ -592,4 +608,5 @@ There is no other Ready production work in either standing lane.
 | DLV-408 | Existing log has only terminal-positive composition records; test cleanup deletes it, while `GetUpdateRect` can non-destructively expose pending invalidation. |
 | DLV-409 | Retained log proves exact Audio tray authority at sequence 5, but the isolated route had disabled DirectComposition after destination draw failure, making a composition sample impossible. |
 | DLV-410 | In explicit fallback, exact Audio paint plus content-HWND UIA owns readiness; composition sample and Chrome UIA are intentionally unavailable. |
-| DLV-411 | Assigned explicit DirectComposition/fallback Back readiness correction. |
+| DLV-411 | Mode-aware correction compiled, but the focused route stopped earlier on a generic geometry record lacking `sequence=`; Back coverage has no verdict. |
+| DLV-412 | Assigned exact producer/schema/parser classification of the pre-route geometry record. |
