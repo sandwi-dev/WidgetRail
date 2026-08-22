@@ -39,7 +39,7 @@ historical evidence only; this file is the sole authority for current work.
 
 | Lane | Task/worktree | State |
 | --- | --- | --- |
-| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | Assigned DLV-372 compile correction for the held DLV-371 test-only oracle. Preserve the five held diffs and neutral rejected/restoration commits. DLV-284 remains queued and unassigned. |
+| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | Assigned DLV-373 source/artifact diagnosis of the post-reopen action-failure fixture red. Preserve the five held diffs and neutral rejected/restoration commits. DLV-284 remains queued and unassigned. |
 | Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | Idle and clean at `676cd76`. Preserve PID 126208 and all product state; do not begin work, integrate, rebuild/relaunch, or push. |
 
 ## Execution and architecture rules
@@ -180,28 +180,60 @@ commit exactly the four held test files with a DLV-372 subject. Do not run Tier
 3, integrate, start DLV-284, launch/terminate, or push. Preserve PID 126208 and
 all installed/configured state.
 
-## Reviewer disposition after DLV-372
+DLV-372's exact one-line compile correction made `ColdDashboardTestsOnly`
+green. The complete serialized Release gate then reached a different later
+fixture and stopped at: `Reopened overlay did not republish its dashboard.` No
+commit was created. The assertion currently searches the fixed-chrome root for
+the exact fixture tray identity after widget-to-tray Escape, hide, and F1
+reopen, while its prose still describes the retired dashboard.
+
+## Assigned platform diagnosis — DLV-373 classify action-failure reopen
+
+Source and retained-artifact inspection only. Make no edit and run no build,
+test, publish, or product/process command. Trace the exact
+`WidgetActionFailureHostTests` state from the first Escape through tray focus,
+the second Escape/hide, F1 reopen, selected widget/runtime retention, chrome
+tray publication, content publication, and feedback non-resurrection checks.
+Inspect the retained full-gate output and isolated host log/profile when
+available. Establish whether the red is:
+
+- stale dashboard wording only but a valid missing exact tray semantic;
+- a stale expectation that the prior fixture tray remains published/selected
+  after reopen;
+- a root/HWND or publication-revision race in the fixture;
+- or a production lifecycle/accessibility defect.
+
+Compare with the green current Settings/chrome hide/re-show route and exact
+selected-not-focused authority established in DLV-367. Identify the smallest
+strict correction and separate diagnostics for overlay visibility, current
+chrome root, exact tray identity, selection/focus authority, current content,
+and feedback absence. Do not infer success from window visibility alone, accept
+any tray item, add tolerance/sleep/timeout, edit, rerun, commit, integrate,
+start DLV-284, launch/terminate, or push. Preserve PID 126208 and all state.
+
+## Reviewer disposition after the cumulative native gate is green
 
 If either authorized native route is red, retain all five diffs uncommitted and
 assign a source-first classification of that first red. Do not rerun unchanged.
 
 If both routes are green:
 
-1. Independently review the exact DLV-349 and DLV-372 commits and their full
+1. Independently review the exact DLV-349 and cumulative test commits and their full
    diffs. Reject any extra file, production change, weakened assertion,
    timeout/tolerance change, debug artifact, or unrelated cleanup.
 2. Assign one exact canonical Tier-3 run from a clean detached tree containing
    those commits and the cumulative production/test chain.
 3. If Tier 3 is green, integrate only explicit accepted hashes. Never integrate
    `0494b69` or `ad109f8` merely because they are branch ancestors.
-4. Because DLV-349/DLV-372 are build-tool and test-only deltas, do not rebuild
+4. Because these are build-tool and test-only deltas, do not rebuild
    or relaunch PID 126208 solely for their integration.
 5. Rebaseline both lanes, then assign DLV-284 before any new virtualization
    feature.
 
 ## Queued platform production — DLV-284 explicit publication transaction model
 
-Status: queued, not assigned. It becomes assignable only after DLV-372 and the
+Status: queued, not assigned. It becomes assignable only after DLV-373 is
+dispositioned, the cumulative native gate is green, and the
 cumulative evidence pass, the accepted production/test chain is independently
 reviewed and integrated, and the accepted main Release is coherently refreshed
 only if its runtime inputs changed. No new virtualization feature may precede
@@ -232,7 +264,7 @@ every legal and illegal transition and follow physical-first order. Never push.
 ## Future architecture queue — maturity review additions
 
 Status: ordered future work, not assigned. These deliverables do not displace
-DLV-372 integration or DLV-284. Allocate implementation IDs only when each
+cumulative integration or DLV-284. Allocate implementation IDs only when each
 bounded milestone becomes assignable.
 
 1. Generic Game Launcher cutover. Remove the package's advanced-presentation
@@ -285,8 +317,10 @@ import/export or scheduling only after independent widgets prove the need.
 
 ## Ordered queues
 
-1. Platform evidence queue: execute DLV-372 and stop at the first red result.
-2. Reviewer integration queue: review DLV-349/DLV-372, then assign exact clean
+1. Platform evidence queue: execute DLV-373 source/artifact classification
+   before another correction or rerun.
+2. Reviewer integration queue: review DLV-349 and the eventual cumulative test
+   commit, then assign exact clean
    Tier 3 if the native routes are green.
 3. Platform production queue: assign DLV-284 only after clean cumulative
    integration and before any new virtualization feature.
@@ -302,12 +336,12 @@ There is no other Ready production work in either standing lane.
 | Item | Blocker / required evidence |
 | --- | --- |
 | DLV-257 identity | Mapping is approved/frozen; Store, domain, trademark, and GitHub availability remain external/manual. |
-| DLV-278–283/270 | Production is physically accepted; cumulative integration awaits DLV-372, exact-commit Tier 3, and reviewer disposition. |
+| DLV-278–283/270 | Production is physically accepted; cumulative integration awaits the green native gate, exact-commit Tier 3, and reviewer disposition. |
 | DLV-296 | Production `3922b58` and notification evidence DLV-306 `5fe7a5f` are accepted within the cumulative chain. |
 | DLV-314 | Production `992b77b` physically accepted with Spotify 0.3.13. |
 | DLV-318 | Current accepted production `32a2a5e`; PID 126208 runs Spotify 0.3.14. |
 | DLV-319–326 | Accepted managed test chain through `676cd76`; all managed Tier-3 gates green. |
-| DLV-327–372 | Native cumulative fixture/build evidence remains held pending DLV-372 and exact-commit Tier 3. |
+| DLV-327–373 | Native cumulative fixture/build evidence remains held pending DLV-373 disposition and exact-commit Tier 3. |
 | DLV-284 | Queued, not assigned until cumulative review/integration. |
 | DLV-248 | Deliberately deferred until explicit user promotion. |
 
@@ -324,4 +358,5 @@ There is no other Ready production work in either standing lane.
 | DLV-369 | Exact Settings invocation/focus handoff green; later re-show geometry oracle red. |
 | DLV-370 | Cross-publication fixture geometry drift classified; production clipping remains sound. |
 | DLV-371 | Same-sample Settings focus/root/client correction authored; focused build exposed malformed test conditional before execution. |
-| DLV-372 | Assigned one-token conditional compile correction and resumed gates. |
+| DLV-372 | One-line conditional correction; focused route green, full gate exposed action-failure reopen red. |
+| DLV-373 | Assigned source/artifact classification of post-hide F1 reopen authority. |
