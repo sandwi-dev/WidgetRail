@@ -33,7 +33,7 @@ historical evidence only; this file is the sole implementation authority.
 
 | Lane | Task/worktree | State |
 | --- | --- | --- |
-| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | DLV-444 assigned. Preserve seven held diffs and all rejected/restoration evidence. DLV-284 remains queued. |
+| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | DLV-445 assigned. Preserve seven held diffs and all rejected/restoration evidence. DLV-284 remains queued. |
 | Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | Idle and clean at `676cd76`; do not begin work or change product state. |
 
 ## Execution rules
@@ -338,6 +338,39 @@ native, commit, integrate, rebuild/relaunch PID 144396, change product/package
 state, remove evidence, assign DLV-284, or push. Red stops for classification;
 green returns to reviewer commit planning.
 
+Disposition: green for the intended contract. The separate legacy fallback
+window extent cleared the first Game Launcher destination failure. The next red
+was later Settings focus work: the fixture had deliberately disabled
+DirectComposition, while the inherited assertion still required
+`work=paint-only`. Production `InvalidateWidgetFocusChange` explicitly falls
+back to a full invalidation when the composition surface is unavailable, so
+paint-only work is impossible in this branch by design. Evidence is under
+`%TEMP%\wrail-dlv444-monitor-20260822-041900`.
+
+## Assigned platform mode-aware focus work contract — DLV-445
+
+Test-only; change only held `WidgetSwitchHostTests.cpp`. Preserve the accepted
+DLV-242 composition contract: when DirectComposition remains available,
+ordinary Settings focus movement must be `work=paint-only` with positive damage
+smaller than the complete shell surface. When the fixture has deliberately
+entered HWND fallback, require the designed `work=full` focus repaint and full
+surface damage instead; retain the existing semantic focus and UIA/action
+authority checks in both modes. Make the failure report the active presentation
+mode and complete paint record. Do not weaken the composition assertion, alter
+production fallback behavior, or change timing/tolerance, sequence/backing/
+checkpoint/PMv2/input, another held file, or SDK/runtime/Bridge/packaging.
+
+Recreate one fresh detached `c38b261` tree with exact seven-file path/SHA-256
+parity and retained diagnostics. Use the verified absolute Utility manifest.
+Run the focused WidgetSwitch gate exactly once. Every command must expose
+meaningful output or a terminal result within 60 seconds; inspect streams and
+the exact full owned descendant tree every 15–20 seconds and immediately audit
+silence at 60 seconds. Do not return while descendants are active. Stop at the
+explicit test result. Do not run selector/replay/full native, commit, integrate,
+rebuild/relaunch PID 144396, change product/package state, remove evidence,
+assign DLV-284, or push. Red stops for classification; green returns to reviewer
+commit planning.
+
 Disposition: red after 140.110 seconds with fresh child/output inspection every
 20 seconds. The exact current Audio fallback checkpoint was already present,
 but Back produced no post-boundary fallback paint, composition sample, or
@@ -584,7 +617,7 @@ stops for classification; green returns to reviewer commit planning.
 
 ## Queued platform production — DLV-284 typed publication transactions
 
-Status: queued, not assigned. It becomes assignable only after DLV-444, the
+Status: queued, not assigned. It becomes assignable only after DLV-445, the
 cumulative native gate, commit review/integration, and exact clean Tier 3 are
 green. No new virtualization feature may precede it.
 
@@ -642,7 +675,7 @@ Extract native authorities only when real work touches them.
 
 ## Ordered queues
 
-1. DLV-444 one dual content/fallback extent contract and observable focused gate.
+1. DLV-445 one mode-aware focus work contract and observable focused gate.
 2. Reviewer commit/diff review, then one exact clean Tier-3 run.
 3. DLV-284 after cumulative clean integration.
 4. Generic Game Launcher cutover; LauncherExperience deletion/state retirement;
@@ -658,7 +691,7 @@ There is no other Ready production work in either standing lane.
 | DLV-257 identity | Store, domain, trademark, and GitHub availability remain external/manual. |
 | DLV-278–283/270 | Production accepted; integration awaits the native gate, exact Tier 3, and review. |
 | DLV-319–326 | Managed chain through `676cd76`; all managed Tier-3 gates green. |
-| DLV-327–421 | Native fixture/build evidence remains held behind DLV-444 and exact Tier 3. |
+| DLV-327–421 | Native fixture/build evidence remains held behind DLV-445 and exact Tier 3. |
 | DLV-427 | `e26b92b` and `16050bb` are unbuilt/unaccepted ancestry-bound evidence only. |
 | DLV-428 | Accepted/integrated as `c38b261`; PID 144396 already runs it. |
 | DLV-284 | Queued until cumulative review/integration. |
@@ -685,4 +718,5 @@ There is no other Ready production work in either standing lane.
 | DLV-441 | Checkpoint contract passed; old preflight sequence 5 lost current authority to 6 before Right. |
 | DLV-442 | Backing helper parsed the next arbitrary non-paint log line and failed before its proof. |
 | DLV-443 | Iterator passed; fallback assertion compared combined HWND extent to content extent. |
-| DLV-444 | Assigned separate content-presentation and fallback-window expectations. |
+| DLV-444 | Dual extents passed; later fallback focus demanded an impossible composition-only optimization. |
+| DLV-445 | Assigned mode-aware Settings focus work expectations. |
