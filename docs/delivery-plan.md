@@ -33,7 +33,7 @@ historical evidence only; this file is the sole implementation authority.
 
 | Lane | Task/worktree | State |
 | --- | --- | --- |
-| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | DLV-431 assigned. Preserve seven held diffs and all rejected/restoration evidence. DLV-284 remains queued. |
+| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | DLV-432 assigned. Preserve seven held diffs and all rejected/restoration evidence. DLV-284 remains queued. |
 | Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | Idle and clean at `676cd76`; do not begin work or change product state. |
 
 ## Execution rules
@@ -71,7 +71,7 @@ authorized diffs remain held:
 5. `src/OverlayHost/ColdDashboardHostTests.cpp` — current two-HWND Settings
    activation/re-show authority; focused route previously green.
 6. `tests/WidgetSwitchFixture/Program.cs` — DLV-375 named action argument.
-7. `src/OverlayHost/WidgetSwitchHostTests.cpp` — cumulative DLV-383–430
+7. `src/OverlayHost/WidgetSwitchHostTests.cpp` — cumulative DLV-383–431
    extent, switching, Back, rendering-mode, and fallback-authority corrections.
 
 The accepted DLV-428 checkpoint is diagnostic-only. It emits after successful
@@ -176,6 +176,34 @@ once; if both are green, create the same four scoped commits using DLV-431 for
 `WidgetSwitchHostTests.cpp`, then stop before Tier 3. Preserve every DLV-430
 process, state, artifact, integration, and push prohibition.
 
+Disposition: the focused gate stopped first red because the selector chose the
+first post-marker checkpoint by phase and only then required the exact current
+Audio sequence. That checkpoint carried older sequence authority. Exact-current
+authority must be part of selection, not merely a later assertion. No production
+defect is proven; no full gate or commits ran. Evidence is retained under
+`%TEMP%\wrail-dlv431-widget-switch-20260822-020500`.
+
+## Assigned platform test correction — DLV-432
+
+Change only held `WidgetSwitchHostTests.cpp`. Preserve DLV-431's explicit
+startup-unavailable and live-disabled origin markers. After the applicable
+marker, select the first `presentation-checkpoint` whose Audio widget,
+instance, runtime, presentation, snapshot, and sequence authority is already
+exactly current, including equality to the latest pre-switch Audio sequence.
+Skip post-marker checkpoints with nonmatching authority; do not select them and
+then fail the resulting-state assertion. The selected checkpoint must still
+pass every DLV-431 work-area, DPI, scale, computed-target, recorded/live content
+window, and recorded/live client-screen equality check. Placement phases remain
+independent supporting evidence only.
+
+Do not relax identity, sequence, geometry, timeout, or tolerance rules, fall
+back to a noncurrent checkpoint, or touch another file. Recreate isolated
+`c38b261` plus exact seven-file parity and run the focused gate once under the
+sanitized owner. Stop first red. If focused green, run the full native gate
+once; if both are green, create the same four scoped commits using DLV-432 for
+`WidgetSwitchHostTests.cpp`, then stop before Tier 3. Preserve every DLV-431
+process, state, artifact, integration, and push prohibition.
+
 ## After the cumulative native gate is green
 
 1. Review each of the four commits and the cumulative diff. Reject extra files,
@@ -249,7 +277,7 @@ Extract native authorities only when real work touches them.
 
 ## Ordered queues
 
-1. DLV-431 exact current-state checkpoint focused/full native gate and four scoped commits.
+1. DLV-432 exact-current checkpoint selection, focused/full native gate, and four scoped commits.
 2. Reviewer commit/diff review, then one exact clean Tier-3 run.
 3. DLV-284 after cumulative clean integration.
 4. Generic Game Launcher cutover; LauncherExperience deletion/state retirement;
@@ -265,7 +293,7 @@ There is no other Ready production work in either standing lane.
 | DLV-257 identity | Store, domain, trademark, and GitHub availability remain external/manual. |
 | DLV-278–283/270 | Production accepted; integration awaits the native gate, exact Tier 3, and review. |
 | DLV-319–326 | Managed chain through `676cd76`; all managed Tier-3 gates green. |
-| DLV-327–421 | Native fixture/build evidence remains held behind DLV-431 and exact Tier 3. |
+| DLV-327–421 | Native fixture/build evidence remains held behind DLV-432 and exact Tier 3. |
 | DLV-427 | `e26b92b` and `16050bb` are unbuilt/unaccepted ancestry-bound evidence only. |
 | DLV-428 | Accepted/integrated as `c38b261`; PID 144396 already runs it. |
 | DLV-284 | Queued until cumulative review/integration. |
@@ -275,7 +303,6 @@ There is no other Ready production work in either standing lane.
 
 | Milestone | Disposition |
 | --- | --- |
-| DLV-422 | Fallback placement diagnostic accepted/integrated as `6926e05`. |
 | DLV-423 | Focused build hit the running Release DLL lock before test execution. |
 | DLV-424 | Detached integrated-main worktree established the lock-safe build route. |
 | DLV-425 | Isolated build succeeded; startup marker was wrongly treated as a live transition. |
@@ -284,4 +311,5 @@ There is no other Ready production work in either standing lane.
 | DLV-428 | Integrated-base `dae5e5b` accepted/integrated as `c38b261`. |
 | DLV-429 | Startup checkpoint was valid; live-transition selector wrongly chose a later non-placement checkpoint. |
 | DLV-430 | Phase filtering passed; live fallback legitimately retained HWND without a new placement transaction. |
-| DLV-431 | Assigned exact post-marker current-state checkpoint authority and isolated native gates. |
+| DLV-431 | First post-marker checkpoint had older sequence authority; selection must require exact-current authority. |
+| DLV-432 | Assigned exact-current checkpoint filtering and isolated native gates. |
