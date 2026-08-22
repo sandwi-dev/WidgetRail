@@ -39,7 +39,7 @@ historical evidence only; this file is the sole authority for current work.
 
 | Lane | Task/worktree | State |
 | --- | --- | --- |
-| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | Assigned DLV-379 absolute-host durable WidgetSwitch diagnostic. Preserve all six held diffs and neutral rejected/restoration commits. DLV-284 remains queued and unassigned. |
+| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | Assigned DLV-380 corrected absolute-host WidgetSwitch diagnostic. Preserve all six held diffs and neutral rejected/restoration commits. DLV-284 remains queued and unassigned. |
 | Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | Idle and clean at `676cd76`. Preserve PID 126208 and all product state; do not begin work, integrate, rebuild/relaunch, or push. |
 
 ## Execution and architecture rules
@@ -385,6 +385,29 @@ gate, rerun, edit source, commit, integrate, start DLV-284, launch/terminate
 product processes, or push. Preserve PID 126208, all six diffs, and both
 diagnostic directories.
 
+DLV-379's exact system Windows PowerShell 5.1 host resolved `Get-FileHash` from
+`Microsoft.PowerShell.Utility`, with default module autoload, but reports the
+command type as `Function` rather than PowerShell 7's `Cmdlet`. The diagnostic
+preflight was over-constrained, persisted exit 2, and correctly did not start
+the build. No source or product boundary failed.
+
+## Assigned platform diagnostic — DLV-380 accept standard hash command shape
+
+Make no source edit. Use a new preserved TEMP diagnostics directory and the
+same exact system Windows PowerShell executable/owned-child pattern as DLV-379.
+Retain the same preflight fields and durable capture, but accept
+`Get-FileHash` when it resolves from exact module
+`Microsoft.PowerShell.Utility` with command type either `Function` or `Cmdlet`.
+Reject any other module, missing command, alias, script, or application.
+
+If that corrected preflight is standard, run exactly once in the same child:
+`src/OverlayHost/build.ps1 -Configuration Release -WidgetSwitchTestsOnly`.
+Persist complete stdout/stderr, command/cwd, preflight, and numeric exit, then
+report the exact first red or green result plus directory. Do not run the
+complete gate, rerun, edit source, commit, integrate, start DLV-284,
+launch/terminate product processes, or push. Preserve PID 126208, all six
+diffs, and every DLV-377/379/380 diagnostic directory.
+
 ## Reviewer disposition after the cumulative native gate is green
 
 If either authorized native route is red, retain all five diffs uncommitted and
@@ -406,7 +429,7 @@ If both routes are green:
 
 ## Queued platform production — DLV-284 explicit publication transaction model
 
-Status: queued, not assigned. It becomes assignable only after DLV-379 is
+Status: queued, not assigned. It becomes assignable only after DLV-380 is
 dispositioned, the cumulative native gate is green, and the
 cumulative evidence pass, the accepted production/test chain is independently
 reviewed and integrated, and the accepted main Release is coherently refreshed
@@ -491,8 +514,8 @@ import/export or scheduling only after independent widgets prove the need.
 
 ## Ordered queues
 
-1. Platform evidence queue: execute DLV-379 once through the absolute standard
-   Windows PowerShell host with durable preflight/output/exit capture.
+1. Platform evidence queue: execute DLV-380 once through the corrected absolute
+   Windows PowerShell preflight with durable focused output/exit capture.
 2. Reviewer integration queue: review DLV-349 and the eventual cumulative test
    commit, then assign exact clean
    Tier 3 if the native routes are green.
@@ -515,7 +538,7 @@ There is no other Ready production work in either standing lane.
 | DLV-314 | Production `992b77b` physically accepted with Spotify 0.3.13. |
 | DLV-318 | Current accepted production `32a2a5e`; PID 126208 runs Spotify 0.3.14. |
 | DLV-319–326 | Accepted managed test chain through `676cd76`; all managed Tier-3 gates green. |
-| DLV-327–379 | Cumulative fixture/build evidence remains held pending DLV-379 result and exact-commit Tier 3. |
+| DLV-327–380 | Cumulative fixture/build evidence remains held pending DLV-380 result and exact-commit Tier 3. |
 | DLV-284 | Queued, not assigned until cumulative review/integration. |
 | DLV-248 | Deliberately deferred until explicit user promotion. |
 
@@ -539,4 +562,5 @@ There is no other Ready production work in either standing lane.
 | DLV-376 | Exact red unrecoverable; all per-run evidence was deleted or never persisted. |
 | DLV-377 | Durable child exit 1: diagnostic PowerShell could not resolve `Get-FileHash` before test launch. |
 | DLV-378 | Bare child host provenance unresolved; no build-script defect proven. |
-| DLV-379 | Assigned absolute-host preflight and one durable focused WidgetSwitch route. |
+| DLV-379 | Absolute host standard; preflight rejected PowerShell 5.1 function-shaped module command before build. |
+| DLV-380 | Assigned corrected Function-or-Cmdlet module preflight and focused route. |
