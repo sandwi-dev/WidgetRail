@@ -39,7 +39,7 @@ historical evidence only; this file is the sole authority for current work.
 
 | Lane | Task/worktree | State |
 | --- | --- | --- |
-| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | Assigned fail-closed chrome-baseline correction/gates DLV-365 below; `0494b69` is rejected and must be reversed explicitly. DLV-284 remains queued and unassigned. |
+| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | Assigned source-only dual-root readiness diagnosis DLV-366 below; rejected production change is neutralized by `ad109f8`. DLV-284 remains queued and unassigned. |
 | Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | Idle and clean at `676cd76`. Preserve PID 126208 and all product state; do not begin new work, integrate, rebuild/relaunch, or push. |
 
 ## Execution and architecture rules
@@ -421,6 +421,28 @@ wrapper result. Report the first incorrect ownership/isolation boundary and the
 smallest production-versus-test correction scope. Do not change files, launch
 or terminate anything, commit, integrate, start DLV-284, or push. Preserve all
 state.
+
+DLV-365 explicitly restored the name guard in `ad109f8`. Its focused route
+stopped before subscription because the combined content/chrome authority
+oracle did not become true within three seconds. The check combines content
+root/action, chrome root/tray, two focus states, and status absence, so the red
+does not identify its failed conjunct. No full gate or test commit occurred.
+
+## Assigned platform diagnosis — DLV-366 classify dual-root readiness
+
+Source inspection only; make no edits and run no build, test, publish, or
+process command. Enumerate each current DLV-365 readiness conjunct and map it to
+production focus/selection semantics after invoking the YT Music tray item.
+Determine whether the content action and chrome tray can both report UIA
+keyboard focus, whether the tray should instead be selected/current but not
+focused, and how the two provider roots expose a comparable runtime/selection
+authority. Establish the minimal independently observable predicates needed
+before chrome subscription: content action identity/focus, chrome current-widget
+identity, status absence, and stable root identities. Require separate failure
+diagnostics per predicate and no timeout increase. Classify fixture versus
+production and specify the exact correction/focused evidence. Do not change
+files, commit, integrate, start DLV-284, launch/terminate, or push. Preserve
+PID 126208 and all state.
 
 DLV-364 proved `0494b69` is a no-op for DLV-361 and broadens empty
 announcements incorrectly. The status node was polite and had a nonempty name;
@@ -1136,8 +1158,8 @@ import/export or scheduling only after independent widgets prove the need.
 
 ## Ordered queues
 
-1. Platform evidence queue: execute DLV-365 explicit restoration, authoritative
-   chrome-baseline fixture handshake, focused route, then one canonical route.
+1. Platform evidence queue: execute DLV-366 source-only dual-root readiness
+   classification before another fixture correction or rerun.
 2. Reviewer integration queue: independently review DLV-332 and the cumulative
    accepted production/test chain; integrate only if every required gate passes.
 3. Platform production queue: assign DLV-284 after clean integration, before
@@ -1197,7 +1219,8 @@ There is no other Ready production work in either standing lane.
 | DLV-362 | Chrome owns status; fixture root was stale and production omitted added live-region event. |
 | DLV-363 | Built `0494b69`, but reviewer held it because its name-guard removal may be a no-op. |
 | DLV-364 | Proved `0494b69` no-op/overbroad; missing gate was prior authority comparability. |
-| DLV-365 | Assigned name-guard restoration and exact comparable chrome-baseline handshake. |
+| DLV-365 | Guard restored in `ad109f8`; combined dual-root readiness oracle was over-constrained. |
+| DLV-366 | Assigned source-only focus/selection/current-widget predicate diagnosis. |
 | DLV-284 | Queued, not assigned until cumulative review/integration. |
 | DLV-248 | Deliberately deferred until explicit user promotion. |
 
