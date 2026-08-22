@@ -45,7 +45,7 @@ evidence only; this file is the sole authority for current work.
 
 | Lane | Task/worktree | State |
 | --- | --- | --- |
-| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | DLV-329 passed pagination/UIA corrections, then stopped at a retained protocol-boundary fixture that still treats version 18 as above range although the native parser supports through 19. Execute bounded test-only DLV-330 below; DLV-284 remains queued and unassigned. |
+| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | DLV-330 made RealHostAccessibilityTests green at 291 checks; the complete gate then stopped because WidgetActionFailureHostTests did not expose why its isolated host lacked a visible HWND. Execute diagnostic-only DLV-331 below; DLV-284 remains queued and unassigned. |
 | Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | Idle at clean cumulative test tip `676cd76`; every managed gate and focused DLV-326 Runtime gate is green. Preserve PID 126208 and all product state; do not begin new work, integrate, rebuild/relaunch, or push. |
 
 ## Execution and architecture rules
@@ -1908,6 +1908,39 @@ PID 126208, Spotify 0.3.14, installed/configured state, and all production
 artifacts; do not launch/terminate, integrate to main, begin DLV-284, or push.
 Stop for independent review if Tier 3 is green.
 
+DLV-330 preserved the cumulative one-file migration and changed only the stale
+above-range protocol value from 18 to 20. The sole complete Release native gate
+made `RealHostAccessibilityTests` fully green at 291 checks, then stopped in the
+next route because `WidgetActionFailureHostTests` did not observe a visible
+production HWND within its existing 15-second startup bound. That fixture
+already uses a unique process profile and isolated `LOCALAPPDATA`, so the
+accepted overlay's singleton is not the cause. Its current failure discards the
+child exit state and isolated host startup/log evidence, preventing an honest
+root-cause classification. No commit/Tier 3, production/overlay/package/state
+mutation, or push occurred; only the RealHost test remains modified on
+`676cd76`.
+
+## Assigned platform diagnosis — DLV-331 retain isolated host startup evidence
+
+Mode: bounded native test-diagnostic correction after DLV-330. Preserve the
+current uncommitted `RealHostAccessibilityTests.cpp` migration. Edit only
+`src/OverlayHost/WidgetActionFailureHostTests.cpp` to make its existing startup
+timeout failure include the child process wait/exit state and a bounded suffix
+of the fixture's isolated WidgetRail startup/overlay log evidence. Reuse the
+fixture's exact isolated paths and existing read helpers; do not increase
+timeouts, add retries/sleeps, change launch arguments/environment/process
+profile, suppress the failure, edit production, or alter any later assertion.
+
+Build/run exactly the existing targeted route once with
+`src/OverlayHost/build.ps1 -Configuration Release
+-WidgetActionFailureHostTestsOnly` and stop with its first result. If it fails,
+retain the diagnostic diff uncommitted and report exact evidence for planner
+classification; do not rerun. If it passes, still stop uncommitted because an
+observability-only rerun is not a root-cause fix. Preserve PID 126208, Spotify
+0.3.14, installed/configured state, and all product artifacts; do not run the
+complete native gate or Tier 3, launch/terminate, integrate, begin DLV-284, or
+push.
+
 ## Queued platform production — DLV-284 explicit publication transaction model
 
 Status: queued, not assigned. It becomes assignable only after the cumulative
@@ -1993,9 +2026,9 @@ import/export or scheduling only after independent widgets prove the need.
 
 ## Ordered queues
 
-1. Platform evidence queue: execute bounded DLV-330 native protocol-boundary
-   fixture correction, its complete native gate, and one exact-commit Tier 3
-   verifier, stopping on the first red result.
+1. Platform evidence queue: execute diagnostic-only DLV-331 targeted host
+   startup route once, then classify its retained evidence before another
+   native/Tier 3 gate.
 2. Reviewer integration queue: independently review the eventual cumulative
    evidence milestone; integrate the
    accepted production/test chain into local main only if all required evidence
@@ -2063,7 +2096,8 @@ There is no other Ready production work in either standing lane.
 | DLV-327 | Stopped first red uncommitted: plural geometry migration compiled, but retained forward frames rendered interior focus while asserting trailing-edge actions. |
 | DLV-328 | Stopped first red uncommitted: List After geometry passed; retained UIA assertion still expected now-off-viewport item 2. |
 | DLV-329 | Stopped first red uncommitted: pagination/UIA corrections passed; retained fixture still treated supported protocol 18 as above range. |
-| DLV-330 | Assigned one-value native protocol-boundary correction, complete native gate, and one exact-commit Tier 3 verifier. |
+| DLV-330 | Stopped first red uncommitted: RealHostAccessibilityTests 291 checks green; later isolated action-failure host omitted startup evidence when no HWND appeared. |
+| DLV-331 | Assigned two-file-held, one-file diagnostic startup evidence correction and one targeted host-test route. |
 | DLV-284 | Queued, not assigned until cumulative integration. |
 | DLV-248 | Deliberately deferred until explicit user promotion. |
 
