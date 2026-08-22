@@ -39,7 +39,7 @@ historical evidence only; this file is the sole authority for current work.
 
 | Lane | Task/worktree | State |
 | --- | --- | --- |
-| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | Assigned one-run retained event trace DLV-361 below at DLV-340 commit `0f8b080`, preserving build tooling plus four cumulative test files. DLV-284 remains queued and unassigned. |
+| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | Assigned source-only event-partition diagnosis DLV-362 below at DLV-340 commit `0f8b080`, preserving build tooling, four cumulative test files, and temporary trace hooks. DLV-284 remains queued and unassigned. |
 | Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | Idle and clean at `676cd76`. Preserve PID 126208 and all product state; do not begin new work, integrate, rebuild/relaunch, or push. |
 
 ## Execution and architecture rules
@@ -453,6 +453,30 @@ classifying the first divergence among planning, provider resolution, raise,
 and callback delivery. Do not correct, rerun, or commit. Do not run the complete
 gate, Tier 3, integrate, start DLV-284, launch/terminate product processes, or
 push. Preserve accepted PID 126208 and all state.
+
+DLV-361 reproduced the first-event red once and retained exact evidence. The
+subscribed root/action identities remained authoritative. Thirty-one
+milliseconds after invocation, the host saw `host.open.status` absent to
+present, but planned no event, did not resolve a provider, and did not call
+`UiaRaiseAutomationEvent`; handler callbacks were therefore zero. The traced
+provider HWND differed from the subscribed content HWND, and the temporary
+endpoint label was not authoritative. The first divergence is planning or
+provider-partition ownership, not UIA delivery.
+
+## Assigned platform diagnosis — DLV-362 classify status partition authority
+
+Source and retained-artifact inspection only; make no edits and run no build,
+test, publish, or process command. Trace how combined semantic trees are split
+between content and fixed-chrome providers, where `host.open.status` is
+authored/routed, which prior/current trees each `ProviderHost` receives, and how
+`PlanEvents` recognizes live-region add/change per partition. Resolve the two
+recorded HWNDs to their provider roles from source/test setup rather than the
+hardcoded diagnostic label. Determine whether the fixture subscribed to the
+wrong authoritative root or the correct provider's planner suppresses an
+absent-to-present polite live region. Classify production versus fixture error
+and identify the smallest correction plus exact focused evidence. Do not change
+files, commit, integrate, start DLV-284, launch/terminate, or push. Preserve
+PID 126208, retained artifacts, and all state.
 
 DLV-350 classified the Cold Dashboard red as fixture drift. Current startup is
 the real Settings widget, not the retired dashboard placeholder. Content
@@ -1025,8 +1049,8 @@ import/export or scheduling only after independent widgets prove the need.
 
 ## Ordered queues
 
-1. Platform evidence queue: execute DLV-361 retained two-sided event trace once,
-   then classify its exact first divergence before any correction.
+1. Platform evidence queue: execute DLV-362 source-only status-partition and
+   planner-authority classification before any correction or rerun.
 2. Reviewer integration queue: independently review DLV-332 and the cumulative
    accepted production/test chain; integrate only if every required gate passes.
 3. Platform production queue: assign DLV-284 after clean integration, before
@@ -1082,7 +1106,8 @@ There is no other Ready production work in either standing lane.
 | DLV-358 | Polled log is not deadline origin; exact expiry belongs in deterministic unit coverage. |
 | DLV-359 | Lifetime oracle fixed; first live-region event remained intermittent despite root handshake. |
 | DLV-360 | Designed bounded isolated host-plan/raise plus test-handler retained evidence. |
-| DLV-361 | Assigned one externally run retained event trace; no correction authorized. |
+| DLV-361 | Host saw status add but planned no event; traced HWND differed from subscribed content HWND. |
+| DLV-362 | Assigned source-only content/chrome partition and live-region planning diagnosis. |
 | DLV-284 | Queued, not assigned until cumulative review/integration. |
 | DLV-248 | Deliberately deferred until explicit user promotion. |
 
