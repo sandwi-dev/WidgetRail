@@ -628,6 +628,24 @@ file, then stop before Tier 3. No production edit, integration, DLV-284,
 launch/terminate, or push. Preserve PID 126208, state, seven diffs, and retained
 artifacts.
 
+## Assigned platform test diagnosis — DLV-421 live fallback geometry authority
+
+Use only production/test source, the uncommitted DLV-420 diff, and retained
+DLV-420 artifacts. Do not edit, build, run, publish, or touch product state.
+Search for an existing exact fallback geometry authority that does not reuse the
+DirectComposition-era placement record: live content HWND window/client bounds,
+current monitor/work-area APIs, fallback layout state, window-position messages,
+or an existing structured diagnostic.
+
+Determine whether the test can strictly prove the fallback HWND is on the
+current expected work area before Right and remains unchanged after the exact
+destination admission using only test-owned Win32 observations. Specify the
+smallest one-file correction if so. If not, specify the narrow production
+diagnostic point after fallback `SetWindowPos`/mode transition, including exact
+fields and when it must publish. Do not reuse stale placement, infer expected
+geometry from the observed HWND alone, or weaken stationarity. Preserve PID
+126208, state, seven diffs, and retained artifacts.
+
 ## After the cumulative native gate is green
 
 1. Review exact DLV-349 and the cumulative test commits and full diffs. Reject
@@ -643,7 +661,7 @@ artifacts.
 
 ## Queued platform production — DLV-284 explicit publication transaction model
 
-Status: queued, not assigned. It becomes assignable only after DLV-420 is
+Status: queued, not assigned. It becomes assignable only after DLV-421 is
 dispositioned, the native gate is green, cumulative evidence is reviewed and
 integrated, and the accepted main Release is coherently refreshed only if
 runtime inputs changed. No new virtualization feature may precede it.
@@ -702,8 +720,8 @@ Extract native authorities only when real work touches them.
 
 ## Ordered queues
 
-1. Platform evidence: execute DLV-420 pinned fallback placement plus exact
-   destination paint/live-geometry/UIA proof, then classify.
+1. Platform evidence: execute DLV-421 source/retained search for strict live
+   fallback work-area authority before adding any production diagnostic.
 2. Reviewer integration: review the eventual four commits, then assign exact
    clean Tier 3 if the native routes are green.
 3. Platform production: DLV-284 after clean cumulative integration.
@@ -723,7 +741,7 @@ There is no other Ready production work in either standing lane.
 | DLV-314 | Production `992b77b` accepted with Spotify 0.3.13. |
 | DLV-318 | Current accepted production `32a2a5e`; PID 126208 runs Spotify 0.3.14. |
 | DLV-319–326 | Managed test chain through `676cd76`; all managed Tier-3 gates green. |
-| DLV-327–420 | Native fixture/build evidence held pending DLV-420 and exact-commit Tier 3. |
+| DLV-327–421 | Native fixture/build evidence held pending DLV-421 and exact-commit Tier 3. |
 | DLV-284 | Queued until cumulative review/integration. |
 | DLV-248 | Deliberately deferred until explicit user promotion. |
 
@@ -767,4 +785,5 @@ There is no other Ready production work in either standing lane.
 | DLV-417 | Windows PowerShell inherited PowerShell 7 module roots; a Core Utility module shadowed the Desktop module containing `Get-FileHash`; helper is sound. |
 | DLV-418 | Clean module path reached the test; first real red is missing ordered fallback work-area placement plus exact Game Launcher destination paint. |
 | DLV-419 | Fallback selection need not republish unchanged placement; exact pre/post live HWND equality can pin the prior current placement around destination admission. |
-| DLV-420 | Assigned pinned fallback placement, exact destination paint, live geometry, and content-root UIA proof. |
+| DLV-420 | Latest placement was a stale DirectComposition-container record; fallback mode emits no replacement, so it cannot anchor live HWND stationarity. |
+| DLV-421 | Assigned search for exact test-owned live work-area authority or the narrow required fallback-placement diagnostic seam. |
