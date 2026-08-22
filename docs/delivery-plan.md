@@ -31,7 +31,7 @@ historical evidence only; this file is the sole authority for current work.
 
 | Lane | Task/worktree | State |
 | --- | --- | --- |
-| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | Assigned DLV-397 test-only correction to capture immediate pre-Right Audio tray authority. Preserve all seven held diffs and neutral rejected/restoration commits. DLV-284 remains queued and unassigned. |
+| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | Assigned DLV-398 source/output diagnosis of the pre-correlation complete-content assertion. Preserve all seven held diffs and neutral rejected/restoration commits. DLV-284 remains queued and unassigned. |
 | Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | Idle and clean at `676cd76`. Preserve PID 126208 and product state; do not begin work, integrate, rebuild/relaunch, or push. |
 
 ## Execution rules
@@ -159,6 +159,25 @@ scoped commits using DLV-397 for this file, then stop before Tier 3. No producti
 edit, integration, DLV-284, launch/terminate, or push. Preserve PID 126208,
 state, seven diffs, and diagnostics.
 
+DLV-397 passed immediate pre-Right Audio authority, then stopped at
+`Production transition omitted a committed complete-content surface for Game
+Launcher` before the DLV-395 destination transaction helper completed. Exact
+exit was 1; no full gate or commit occurred. Evidence is retained under
+`%TEMP%\wrail-dlv397-widget-switch-20260821-222810`.
+
+## Assigned platform diagnosis — DLV-398 classify pre-correlation commit check
+
+Source and retained DLV-397 streams only; no edit or executable/process run.
+Trace the older complete-content assertion, its record parser/range, and the
+DLV-395 placement/paint/commit/sample helper. Establish whether the older check
+protects a distinct invariant, consumes the wrong pre-destination range, or is
+fully subsumed by the exact correlated helper. Classify stale duplicate,
+ordering/correlation gap, or production commit failure and give the smallest
+strict one-file correction. Do not remove independent evidence, infer commits,
+weaken equality, edit, rerun, commit, integrate, start DLV-284,
+launch/terminate, or push. Preserve PID 126208, seven diffs, state, and DLV-397
+diagnostics.
+
 ## After the cumulative native gate is green
 
 1. Review exact DLV-349 and the cumulative test commits and full diffs. Reject
@@ -174,7 +193,7 @@ state, seven diffs, and diagnostics.
 
 ## Queued platform production — DLV-284 explicit publication transaction model
 
-Status: queued, not assigned. It becomes assignable only after DLV-397 is
+Status: queued, not assigned. It becomes assignable only after DLV-398 is
 dispositioned, the native gate is green, cumulative evidence is reviewed and
 integrated, and the accepted main Release is coherently refreshed only if
 runtime inputs changed. No new virtualization feature may precede it.
@@ -233,8 +252,8 @@ Extract native authorities only when real work touches them.
 
 ## Ordered queues
 
-1. Platform evidence: execute DLV-397 immediate pre-Right Audio authority and
-   stop first red before another diagnosis or rerun.
+1. Platform evidence: execute DLV-398 source/output classification of the
+   pre-correlation complete-content check before another edit or rerun.
 2. Reviewer integration: review the eventual four commits, then assign exact
    clean Tier 3 if the native routes are green.
 3. Platform production: DLV-284 after clean cumulative integration.
@@ -254,7 +273,7 @@ There is no other Ready production work in either standing lane.
 | DLV-314 | Production `992b77b` accepted with Spotify 0.3.13. |
 | DLV-318 | Current accepted production `32a2a5e`; PID 126208 runs Spotify 0.3.14. |
 | DLV-319–326 | Managed test chain through `676cd76`; all managed Tier-3 gates green. |
-| DLV-327–397 | Native fixture/build evidence held pending DLV-397 and exact-commit Tier 3. |
+| DLV-327–398 | Native fixture/build evidence held pending DLV-398 and exact-commit Tier 3. |
 | DLV-284 | Queued until cumulative review/integration. |
 | DLV-248 | Deliberately deferred until explicit user promotion. |
 
@@ -275,4 +294,5 @@ There is no other Ready production work in either standing lane.
 | DLV-394 | 980×645 is correct content; the fixture captured an earlier 1052×878 fallback record. |
 | DLV-395 | Destination correction compiled; Back-route Audio sequence prerequisite was stale or miscorrelated. |
 | DLV-396 | Latest admitted Audio tray paint immediately before Right owns retained-source sequence. |
-| DLV-397 | Assigned exact immediate switch-boundary Audio sequence capture. |
+| DLV-397 | Switch-boundary sequence passed; an older complete-content check failed before exact correlation. |
+| DLV-398 | Assigned source/output classification of the pre-correlation commit check. |
