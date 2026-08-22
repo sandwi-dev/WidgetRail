@@ -39,7 +39,7 @@ historical evidence only; this file is the sole authority for current work.
 
 | Lane | Task/worktree | State |
 | --- | --- | --- |
-| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | Assigned source-only content-root geometry diagnosis DLV-354 below at DLV-340 commit `0f8b080`, preserving build tooling plus four cumulative test files. DLV-284 remains queued and unassigned. |
+| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | Assigned semantic-geometry correction/gate DLV-355 below at DLV-340 commit `0f8b080`, preserving build tooling plus four cumulative test files. DLV-284 remains queued and unassigned. |
 | Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | Idle and clean at `676cd76`. Preserve PID 126208 and all product state; do not begin new work, integrate, rebuild/relaunch, or push. |
 
 ## Execution and architecture rules
@@ -481,6 +481,32 @@ DLV-349 subject and commit exactly the three test files with a DLV-347 subject.
 Do not run Tier 3 yet, integrate, start DLV-284, launch/terminate, or push.
 Preserve PID 126208 and all state.
 
+DLV-354 classified whole-root/client containment as invalid fixture logic. The
+provider root intentionally reflects presentation origin, motion, offset, and
+extent and is not client-clipped. Clipped semantic descendants carry the strict
+visible-content guarantee. Production and existing provider tests support this
+contract.
+
+## Assigned platform test correction — DLV-355 strict descendant visibility
+
+Continue to own only `ColdDashboardHostTests.cpp`; preserve `build.ps1` and the
+other three test diffs unchanged. Keep strict Settings-category containment
+inside the current content UIA root. Also require those same Settings category
+bounds to be fully contained by the current content HWND client rectangle in
+screen coordinates. Remove only the invalid assertion that the entire UIA root
+fit inside the client. Keep exact chrome tray containment/hit testing,
+historical first-visible/bottom-anchor evidence, hide/re-show, focus, and all
+timeouts unchanged. Do not add intersection or tolerance logic.
+
+With external execution approval, run exactly once:
+`powershell.exe -NoProfile -ExecutionPolicy Bypass -File
+.\src\OverlayHost\build.ps1 -Configuration Release`. Stop first red. If green,
+commit exactly `build.ps1` with a DLV-349 subject, then commit exactly
+`RealHostAccessibilityTests.cpp`, `WidgetActionFeedbackTests.cpp`,
+`WidgetActionFailureHostTests.cpp`, and `ColdDashboardHostTests.cpp` with a
+DLV-355 subject. Do not run Tier 3 yet, integrate, start DLV-284,
+launch/terminate, or push. Preserve PID 126208 and all state.
+
 DLV-353 proved the Settings category is strictly inside the current content UIA
 root and both UIA roots/tray identities are correct. The first later red was
 the newly added requirement that the entire content UIA root fit inside the
@@ -843,8 +869,8 @@ import/export or scheduling only after independent widgets prove the need.
 
 ## Ordered queues
 
-1. Platform evidence queue: execute DLV-354 source-only content-root geometry
-   classification before another correction or canonical rerun.
+1. Platform evidence queue: execute DLV-355 strict semantic-descendant
+   containment correction and one canonical native Release rerun.
 2. Reviewer integration queue: independently review DLV-332 and the cumulative
    accepted production/test chain; integrate only if every required gate passes.
 3. Platform production queue: assign DLV-284 after clean integration, before
@@ -893,7 +919,8 @@ There is no other Ready production work in either standing lane.
 | DLV-351 | Current roots resolved; new Settings-content containment assertion used wrong geometry. |
 | DLV-352 | Current UIA bounds were compared with a historical composition revision. |
 | DLV-353 | Settings is inside current root; whole-root/client containment is the remaining invalid assertion. |
-| DLV-354 | Assigned source-only content-root bounding-contract diagnosis. |
+| DLV-354 | Provider root is intentionally unbounded by client; descendants own clipping. |
+| DLV-355 | Assigned strict Settings-in-root and Settings-in-client correction plus canonical rerun. |
 | DLV-284 | Queued, not assigned until cumulative review/integration. |
 | DLV-248 | Deliberately deferred until explicit user promotion. |
 
