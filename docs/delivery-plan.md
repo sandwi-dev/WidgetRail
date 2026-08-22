@@ -842,7 +842,32 @@ review confirms diagnostic-only current-authority gating, post-`EndDraw`
 emission, bounded deduplication, and unchanged legacy placement phases. The
 coherent isolated artifact is visibly running as OverlayHost PID 144396 with
 its matching WidgetBridge PID 64560; prior accepted PID 33360 was stopped. The
-candidate is awaiting physical verdict and is not yet accepted or integrated.
+candidate was physically accepted and integrated on main as `c38b261`. The
+running artifact already contains that exact production change.
+
+## Assigned platform test adoption — DLV-429 fallback presentation checkpoint
+
+Change only the held `src/OverlayHost/WidgetSwitchHostTests.cpp`. Preserve the
+DLV-426 origin distinction. In startup-unavailable fallback only, admit the
+latest typed pre-Right `phase=presentation-checkpoint` record when its exact
+Audio widget/instance/runtime/presentation authority is current, its sequence
+equals the latest current pre-switch Audio paint sequence, and its work area,
+DPI, interface scale, computed target, recorded HWND/client geometry, and
+immediate live HWND/client geometry all match. Do not admit this phase as a
+placement transaction or use it for a live DirectComposition-disabled
+transition; that route must retain its newer-than-transition placement proof.
+Do not weaken assertions, tolerances, timeouts, or other files.
+
+Create a new detached worktree from integrated main `c38b261`, copy only the
+current exact seven held files from the platform worktree, and verify exact
+path-set and per-file SHA-256 equality. Run the focused gate once through the
+DLV-418 sanitized Windows PowerShell owner. Stop first red and classify before
+any edit or rerun. If focused green, run the full native gate once in the same
+isolated worktree/environment. If both are green, create only the four
+documented scoped commits in the original platform worktree, using DLV-429 for
+`WidgetSwitchHostTests.cpp`, and stop before Tier 3. Do not integrate, rebuild
+or relaunch the already-current PID 144396, change product/package state, touch
+production code, remove retained worktrees/artifacts, assign DLV-284, or push.
 
 ## After the cumulative native gate is green
 
@@ -859,8 +884,7 @@ candidate is awaiting physical verdict and is not yet accepted or integrated.
 
 ## Queued platform production — DLV-284 explicit publication transaction model
 
-Status: queued, not assigned. It becomes assignable only after DLV-428, its
-test adoption, and the
+Status: queued, not assigned. It becomes assignable only after DLV-429 and the
 resumed DLV-423 evidence are
 dispositioned, the resumed native test gate is green,
 cumulative evidence is reviewed and integrated, and the accepted main Release
@@ -921,13 +945,11 @@ Extract native authorities only when real work touches them.
 
 ## Ordered queues
 
-1. User evidence: physically verdict the coherent DLV-428 isolated Release.
-2. Platform test adoption: after acceptance only, admit the typed
-   `presentation-checkpoint` in the strict startup-fallback oracle and resume
-   the isolated focused/full native gate.
-3. Reviewer integration: review the eventual cumulative commits, then assign exact
+1. Platform test adoption: execute DLV-429 in a detached integrated-main tree
+   and resume the focused/full native gate.
+2. Reviewer integration: review the eventual cumulative commits, then assign exact
    clean Tier 3 if the native routes are green.
-4. Platform production: DLV-284 after clean cumulative integration.
+3. Platform production: DLV-284 after clean cumulative integration.
 4. Future architecture: generic Game Launcher cutover, LauncherExperience
    deletion/state retirement, protocol requirements, then maturity deliverables.
 5. DLV-248 remains deliberately deferred until explicit user promotion.
@@ -951,7 +973,8 @@ There is no other Ready production work in either standing lane.
 | DLV-425 | Isolated coherent focused gate stopped first red on a test oracle that conflated startup-unavailable fallback with a live fallback transition. |
 | DLV-426 | Origin correction reached the strict missing typed-authority boundary; no production geometry defect was proven. |
 | DLV-427 | Correct semantic checkpoint was authored on rejected/restoration ancestry; hash mismatch blocked the isolated build and both commits are non-integrable. |
-| DLV-428 | `dae5e5b` sole-file isolated Release build green; physical verdict pending before integration/test adoption. |
+| DLV-428 | `dae5e5b` physically accepted and integrated as `c38b261`; PID 144396 already runs it. |
+| DLV-429 | Assigned strict startup-fallback checkpoint adoption and isolated focused/full native gate. |
 | DLV-284 | Queued until cumulative review/integration. |
 | DLV-248 | Deliberately deferred until explicit user promotion. |
 
@@ -1003,4 +1026,5 @@ There is no other Ready production work in either standing lane.
 | DLV-425 | Exact isolated build/package succeeded; first test red was the invalid post-marker placement requirement in startup-unavailable fallback. |
 | DLV-426 | Startup-unavailable and live-disabled origins are now distinct; startup route has no typed current placement/checkpoint record. |
 | DLV-427 | `e26b92b`/isolated `16050bb` were not built or accepted because their `main.cpp` baseline differed from integrated main. |
-| DLV-428 | `dae5e5b` re-authored on `6926e05`; isolated Release green and exact diff review accepted, physical verdict pending. |
+| DLV-428 | `dae5e5b` accepted and integrated as `c38b261`; diagnostic-only behavior is physically non-regressing. |
+| DLV-429 | Assigned current-sequence checkpoint adoption for startup fallback only. |
