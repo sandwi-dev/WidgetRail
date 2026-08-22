@@ -33,7 +33,7 @@ historical evidence only; this file is the sole implementation authority.
 
 | Lane | Task/worktree | State |
 | --- | --- | --- |
-| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | DLV-441 assigned. Preserve seven held diffs and all rejected/restoration evidence. DLV-284 remains queued. |
+| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | DLV-442 assigned. Preserve seven held diffs and all rejected/restoration evidence. DLV-284 remains queued. |
 | Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | Idle and clean at `676cd76`; do not begin work or change product state. |
 
 ## Execution rules
@@ -439,6 +439,41 @@ selector/replay/full native, commit, integrate, rebuild/relaunch PID 144396,
 change product/package state, remove evidence, assign DLV-284, or push. Red
 stops for classification; green returns to reviewer commit planning.
 
+Disposition: the focused run passed the corrected checkpoint contract and
+stopped at the first retained-source sequence check. The retained log proves
+Audio sequence 5 was captured during earlier preflight, then sequence 6 was
+admitted current and checkpointed before first Right. Exact equality to the old
+sequence 5 therefore freezes a live source across the test's own asynchronous
+preflight. This is a test input-boundary authority defect, not a sequence
+regression or product failure. Evidence and retained log are under
+`%TEMP%\wrail-dlv441-monitor-20260822-035300`.
+
+## Assigned platform switch-boundary sequence authority — DLV-442
+
+Test-only; change only held `WidgetSwitchHostTests.cpp`. After all first-switch
+checkpoint/fallback preflight and immediately before sending Right, capture the
+latest admitted/current Audio paint as the first-switch input-boundary
+authority and its positive sequence. Set the first-switch log boundary from the
+same read. A retained Audio source paint after that boundary must carry a
+positive sequence no lower than the captured input-boundary sequence and must
+be backed by an admitted/current Audio paint no later than that retained
+record. Apply the same non-regressing current-source rule to every retained
+source paint before destination admission. Preserve widget/rendered identity,
+inert semantics, tray input ownership, destination selection/focus, and all
+other assertions.
+
+Do not remove sequence validation, accept a stale/regressed sequence, alter
+production, add timing/tolerance, change checkpoint selection/PMv2/focus/input,
+touch another held file, or alter SDK/runtime/Bridge/packaging. Recreate one
+fresh detached `c38b261` tree with exact seven-file path/SHA-256 parity and
+diagnostics retention enabled. Run the focused WidgetSwitch gate exactly once
+with exact child and durable-stream inspection every 15–20 seconds. Do not
+return while the owned child is still running. The explicit test terminal
+result is authoritative over a wrapper/OS discrepancy. Stop at the result. Do
+not run selector/replay/full native, commit, integrate, rebuild/relaunch PID
+144396, change product/package state, remove evidence, assign DLV-284, or push.
+Red stops for classification; green returns to reviewer commit planning.
+
 Disposition: PMv2 removed the DPI virtualization mismatch. Checkpoint and live
 work are both `5120x1440`; DPI, recorded/live content window, and recorded/live
 client-screen geometry match exactly. The only remaining red comparison was
@@ -485,7 +520,7 @@ stops for classification; green returns to reviewer commit planning.
 
 ## Queued platform production — DLV-284 typed publication transactions
 
-Status: queued, not assigned. It becomes assignable only after DLV-441, the
+Status: queued, not assigned. It becomes assignable only after DLV-442, the
 cumulative native gate, commit review/integration, and exact clean Tier 3 are
 green. No new virtualization feature may precede it.
 
@@ -543,7 +578,7 @@ Extract native authorities only when real work touches them.
 
 ## Ordered queues
 
-1. DLV-441 one checkpoint-contract assertion correction and observable focused gate.
+1. DLV-442 one input-boundary sequence-authority correction and observable focused gate.
 2. Reviewer commit/diff review, then one exact clean Tier-3 run.
 3. DLV-284 after cumulative clean integration.
 4. Generic Game Launcher cutover; LauncherExperience deletion/state retirement;
@@ -559,7 +594,7 @@ There is no other Ready production work in either standing lane.
 | DLV-257 identity | Store, domain, trademark, and GitHub availability remain external/manual. |
 | DLV-278–283/270 | Production accepted; integration awaits the native gate, exact Tier 3, and review. |
 | DLV-319–326 | Managed chain through `676cd76`; all managed Tier-3 gates green. |
-| DLV-327–421 | Native fixture/build evidence remains held behind DLV-441 and exact Tier 3. |
+| DLV-327–421 | Native fixture/build evidence remains held behind DLV-442 and exact Tier 3. |
 | DLV-427 | `e26b92b` and `16050bb` are unbuilt/unaccepted ancestry-bound evidence only. |
 | DLV-428 | Accepted/integrated as `c38b261`; PID 144396 already runs it. |
 | DLV-284 | Queued until cumulative review/integration. |
@@ -583,4 +618,5 @@ There is no other Ready production work in either standing lane.
 | DLV-438 | CRLF sequence passed; later recorded-work/live-monitor mismatch failed after 120.176 seconds. |
 | DLV-439 | Exact 1.25 coordinate ratio proved missing test-process PMv2 DPI awareness. |
 | DLV-440 | PMv2 fixed all recorded/live geometry; only an invalid target=window check remained. |
-| DLV-441 | Assigned removal of only the checkpoint-as-placement equality and focused gate. |
+| DLV-441 | Checkpoint contract passed; old preflight sequence 5 lost current authority to 6 before Right. |
+| DLV-442 | Assigned exact input-boundary/non-regressing retained-source sequence proof. |
