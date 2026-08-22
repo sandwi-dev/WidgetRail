@@ -3635,6 +3635,10 @@ private:
                              std::to_wstring(GetLastError()));
             return OverlayShowResult::Failed;
         }
+        if (!compositionSurface_.available()) {
+            AppendFallbackPlacementDiagnostic(
+                L"set-window-pos", work, dpi, interfaceScale, *placement);
+        }
         const auto surfaceRequest = CurrentWidgetSurfaceRequest();
         const auto axisName = [](const widgetrail::WidgetSurfaceAxisMode mode) {
             switch (mode) {
@@ -8536,6 +8540,73 @@ private:
             std::to_wstring(bounds.bottom - bounds.top);
     }
 
+    void AppendFallbackPlacementDiagnostic(
+        const std::wstring_view phase,
+        const RECT& workArea,
+        const UINT dpi,
+        const float interfaceScale,
+        const widgetrail::OverlayPlacement& targetPlacement) {
+        const auto validBounds = [](const RECT& bounds) noexcept {
+            return bounds.right > bounds.left && bounds.bottom > bounds.top;
+        };
+        if (!window_ || !validBounds(workArea) || targetPlacement.width <= 0 ||
+            targetPlacement.height <= 0) {
+            return;
+        }
+
+        const RECT targetBounds{
+            targetPlacement.x,
+            targetPlacement.y,
+            targetPlacement.x + targetPlacement.width,
+            targetPlacement.y + targetPlacement.height,
+        };
+        if (!validBounds(targetBounds) || targetBounds.left < workArea.left ||
+            targetBounds.top < workArea.top || targetBounds.right > workArea.right ||
+            targetBounds.bottom > workArea.bottom) {
+            return;
+        }
+
+        RECT windowBounds{};
+        RECT clientBounds{};
+        POINT clientOrigin{};
+        if (!GetWindowRect(window_, &windowBounds) ||
+            !GetClientRect(window_, &clientBounds) ||
+            !ClientToScreen(window_, &clientOrigin) || !validBounds(windowBounds) ||
+            clientBounds.right <= clientBounds.left ||
+            clientBounds.bottom <= clientBounds.top) {
+            return;
+        }
+        const RECT clientScreenBounds{
+            clientOrigin.x,
+            clientOrigin.y,
+            clientOrigin.x + clientBounds.right - clientBounds.left,
+            clientOrigin.y + clientBounds.bottom - clientBounds.top,
+        };
+        if (!validBounds(clientScreenBounds)) return;
+
+        const std::wstring_view widgetId = state_.surface() == widgetrail::Surface::Widget
+            ? state_.activeWidget()
+            : state_.selectedWidget();
+        const auto* descriptor = widgetId.empty()
+            ? nullptr : sessions_.FindDescriptor(widgetId);
+        const auto* snapshot = widgetId.empty()
+            ? nullptr : SnapshotFor(widgetId);
+        AppendDiagnostic(
+            L"Fallback placement mode=hwnd-fallback phase=" + std::wstring(phase) +
+            L" work=" + FormatPhysicalBounds(workArea) +
+            L" dpi=" + std::to_wstring(dpi) +
+            L" interface-scale=" + std::to_wstring(interfaceScale) +
+            L" target=" + FormatPhysicalBounds(targetBounds) +
+            L" content-window=" + FormatPhysicalBounds(windowBounds) +
+            L" content-client-screen=" + FormatPhysicalBounds(clientScreenBounds) +
+            L" widget=" + (widgetId.empty() ? L"none" : std::wstring(widgetId)) +
+            L" instance=" + (snapshot ? snapshot->instanceId : L"none") +
+            L" runtime=" + (descriptor ? descriptor->runtimeGeneration : L"none") +
+            L" presentation=" +
+                (descriptor ? descriptor->presentationGeneration : L"none") +
+            L" sequence=" + std::to_wstring(snapshot ? snapshot->sequence : -1));
+    }
+
     [[nodiscard]] std::optional<RECT> ActualChromeWindowBounds() const {
         RECT actual{};
         return chromeWindow_ && GetWindowRect(chromeWindow_, &actual)
@@ -9196,6 +9267,7 @@ private:
     }
 
     void DisableCompositionFallback(const std::wstring_view reason) {
+        const auto fallbackAnchor = fixedChromeAnchor_;
         AppendDiagnostic(
             L"DirectComposition presentation disabled; using HWND fallback: " +
             std::wstring(reason));
@@ -9214,6 +9286,20 @@ private:
         EnableLegacyLayeredFallback();
         appliedOverlayOpacity_.reset();
         ApplyTransitionWindowOpacity(overlayTransitionSample_.shellOpacity);
+        if (fallbackAnchor && window_ &&
+            state_.surface() != widgetrail::Surface::Hidden) {
+            const auto extent = state_.surface() == widgetrail::Surface::Widget
+                ? PresentedPresentationExtentDip()
+                : widgetrail::OverlayPresentationExtent{kPanelWidth, kDashboardHeight};
+            if (const auto target = ComputePlatformPlacement(
+                    fallbackAnchor->workArea, fallbackAnchor->dpi,
+                    static_cast<float>(extent.widthDip) * fallbackAnchor->interfaceScale,
+                    static_cast<float>(extent.heightDip) * fallbackAnchor->interfaceScale)) {
+                AppendFallbackPlacementDiagnostic(
+                    L"composition-transition", fallbackAnchor->workArea,
+                    fallbackAnchor->dpi, fallbackAnchor->interfaceScale, *target);
+            }
+        }
         if (window_ && state_.surface() != widgetrail::Surface::Hidden)
             InvalidateRect(window_, nullptr, FALSE);
     }
