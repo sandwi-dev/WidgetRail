@@ -330,6 +330,28 @@ this file, then stop before Tier 3. No production edit, integration, DLV-284,
 launch/terminate, or push. Preserve PID 126208, state, seven diffs, and retained
 diagnostics.
 
+## Assigned platform test correction — DLV-406 realize invalidated Chrome
+
+Own only `WidgetSwitchHostTests.cpp`; preserve six other held files. Keep the
+DLV-405 event fence and split UIA checks. After Back, synchronously realize the
+already-invalidated current fixed-chrome window with the narrow existing/native
+paint-flush mechanism appropriate to that HWND; do not invalidate unrelated
+windows or synthesize application state. Then require the first resulting
+post-boundary fixed-chrome `Composition child sample` before resolving the
+Chrome UIA root and exact Audio tray element.
+
+Preserve per-conjunct diagnostics, immediate identity pinning, exact selected
+and keyboard-focus properties, pre-Back admitted/current Audio visual sequence,
+DLV-399 destination correlation, and every existing invariant. Do not add a
+sleep, polling-only workaround, widget-paint prerequisite, broad redraw, or
+production change.
+
+Run `WidgetSwitchTestsOnly` once via durable capture; stop first red and classify
+before another edit or rerun. If green, run the full native gate once. If both
+are green, create only the four documented scoped commits using DLV-406 for
+this file, then stop before Tier 3. No integration, DLV-284, launch/terminate,
+or push. Preserve PID 126208, state, seven diffs, and retained diagnostics.
+
 ## After the cumulative native gate is green
 
 1. Review exact DLV-349 and the cumulative test commits and full diffs. Reject
@@ -345,7 +367,7 @@ diagnostics.
 
 ## Queued platform production — DLV-284 explicit publication transaction model
 
-Status: queued, not assigned. It becomes assignable only after DLV-405 is
+Status: queued, not assigned. It becomes assignable only after DLV-406 is
 dispositioned, the native gate is green, cumulative evidence is reviewed and
 integrated, and the accepted main Release is coherently refreshed only if
 runtime inputs changed. No new virtualization feature may precede it.
@@ -404,8 +426,8 @@ Extract native authorities only when real work touches them.
 
 ## Ordered queues
 
-1. Platform evidence: execute DLV-405 post-Back fixed-chrome composition fence
-   and split UIA authority diagnostics, then classify the focused result.
+1. Platform evidence: execute DLV-406 narrow realization of the invalidated
+   Chrome HWND, then require the composition/UIA authorities and classify.
 2. Reviewer integration: review the eventual four commits, then assign exact
    clean Tier 3 if the native routes are green.
 3. Platform production: DLV-284 after clean cumulative integration.
@@ -425,7 +447,7 @@ There is no other Ready production work in either standing lane.
 | DLV-314 | Production `992b77b` accepted with Spotify 0.3.13. |
 | DLV-318 | Current accepted production `32a2a5e`; PID 126208 runs Spotify 0.3.14. |
 | DLV-319–326 | Managed test chain through `676cd76`; all managed Tier-3 gates green. |
-| DLV-327–405 | Native fixture/build evidence held pending DLV-405 and exact-commit Tier 3. |
+| DLV-327–406 | Native fixture/build evidence held pending DLV-406 and exact-commit Tier 3. |
 | DLV-284 | Queued until cumulative review/integration. |
 | DLV-248 | Deliberately deferred until explicit user promotion. |
 
@@ -454,4 +476,5 @@ There is no other Ready production work in either standing lane.
 | DLV-402 | Exact non-paint authority exists in the live Chrome UIA tray element; widget paint remains the separate visual-sequence authority. |
 | DLV-403 | Split-authority correction reached a combined Chrome UIA predicate red; no product defect is proven because the failed conjunct is unknown. |
 | DLV-404 | `WM_NULL` was not a publication fence; the post-Back fixed-chrome composition child sample is the deterministic UIA-publication boundary. |
-| DLV-405 | Assigned composition-fenced Chrome UIA validation with per-conjunct diagnostics. |
+| DLV-405 | Back invalidated Chrome but input injection did not service `WM_PAINT`, so no composition/UIA publication occurred. |
+| DLV-406 | Assigned narrow synchronous realization of the already-invalidated Chrome HWND before exact composition/UIA validation. |
