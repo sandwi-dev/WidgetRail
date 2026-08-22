@@ -35,7 +35,7 @@ historical evidence only; this file is the sole implementation authority.
 
 | Lane | Task/worktree | State |
 | --- | --- | --- |
-| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | DLV-466 production commit `360544a` is physically accepted and running as PID 89008. Resume the preserved DLV-465 test-only tree with this exact production delta and complete the authorized focused stabilization. DLV-284 remains queued. |
+| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | DLV-465 focused gate is green at `eb41cf5` over accepted DLV-466 content commit `5a94e2e`, but review requires one warning-only test cleanup before acceptance. DLV-284 remains queued. |
 | Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | Idle and clean at `676cd76`; do not begin work or change product state. |
 
 ## Execution rules
@@ -133,8 +133,20 @@ output, exact descendants, CPU, and result files every 15-30 seconds; diagnose
 only when the focused gate is green or when retained evidence proves a genuine
 blocker outside the authorized test-only surface, especially a production
 defect or a required production/protocol change. Report that blocker without
-editing around it. Do not run Tier 3, integrate main, rebuild/relaunch PID
-144396, change product/package state, remove evidence, assign DLV-284, or push.
+ editing around it. Do not run Tier 3, integrate main, rebuild/relaunch accepted
+ PID 89008, change product/package state, remove evidence, assign DLV-284, or
+ push.
+
+DLV-465 reached terminal focused green as test commit `eb41cf5` over DLV-466
+content commit `5a94e2e`; the latter has stable patch ID
+`40ca4b6d50aacb84147159a747991e0d411074db`, identical to accepted `360544a`.
+The exact focused gate passed in 83.28 seconds with host-focus p95 16 ms,
+input-to-retained maximum 12 ms, and input-to-admitted maximum 711 ms; all
+owned descendants exited. Review is not yet accepted because the final compile
+introduced C4457 for a local `target` hiding the `switchTo` parameter and C4189
+for unused `compositionActiveAt`. Correct only those two warning causes in the
+test file, compile the affected target without rerunning the already-green
+end-to-end route, commit the DLV-465 warning cleanup, and stop for review.
 
 ## DLV-465 production blocker and physical-first correction — DLV-466
 
