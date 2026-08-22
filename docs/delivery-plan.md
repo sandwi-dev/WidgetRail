@@ -39,7 +39,7 @@ historical evidence only; this file is the sole authority for current work.
 
 | Lane | Task/worktree | State |
 | --- | --- | --- |
-| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | Assigned tooling correction/gate DLV-349 below at DLV-340 commit `0f8b080`, preserving three cumulative test files. DLV-284 remains queued and unassigned. |
+| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | Assigned source-only Cold Dashboard diagnosis DLV-350 below at DLV-340 commit `0f8b080`, preserving build tooling plus three cumulative test files. DLV-284 remains queued and unassigned. |
 | Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | Idle and clean at `676cd76`. Preserve PID 126208 and all product state; do not begin new work, integrate, rebuild/relaunch, or push. |
 
 ## Execution and architecture rules
@@ -453,6 +453,26 @@ DLV-349 subject and commit exactly the three test files with a DLV-347 subject.
 Do not run Tier 3 yet, integrate, start DLV-284, launch/terminate, or push.
 Preserve PID 126208 and all state.
 
+DLV-349 corrected exit authority and the canonical gate passed the former
+boundary. Green evidence includes ProcessOwner 32 checks, feedback 314 checks
+with the replacement case, provider 168 checks, real-host accessibility 291
+checks, and WidgetActionFailureHostTests. The first later red was
+`ColdDashboardHostTests`: production dashboard UIA title/focused tray item was
+unavailable. No commits were created.
+
+## Assigned platform diagnosis — DLV-350 classify Cold Dashboard UIA drift
+
+Source and retained-output inspection only; make no edits and run no build,
+test, publish, or process command. Trace ColdDashboardHostTests installation,
+catalog and startup widget selection, expected dashboard/tray UIA identity,
+focus acquisition, root selection, and timeout. Compare the expectation with
+current production dashboard accessibility semantics and the exact trusted
+Settings/catalog requirements already corrected in the action-failure fixture.
+Determine whether the red is production, stale fixture/catalog setup, stale
+UIA identity/root selection, or timing. Identify the smallest correction and
+focused evidence required. Do not change files, commit, integrate, start
+DLV-284, launch/terminate, or push. Preserve PID 126208 and all state.
+
 DLV-343 ruled out accepted-overlay and stale-fixture collisions. The fixture has
 a GUID installation, isolated profile/job, distinct activation identity, and a
 PID/tick-specific Bridge endpoint. Win32 error 5 occurred at `CreateFileW`
@@ -728,8 +748,8 @@ import/export or scheduling only after independent widgets prove the need.
 
 ## Ordered queues
 
-1. Platform evidence queue: execute DLV-349 exit-authority correction and one
-   canonical native Release gate; if green, commit tooling and tests separately.
+1. Platform evidence queue: execute DLV-350 source-only Cold Dashboard UIA
+   classification before any further correction or canonical rerun.
 2. Reviewer integration queue: independently review DLV-332 and the cumulative
    accepted production/test chain; integrate only if every required gate passes.
 3. Platform production queue: assign DLV-284 after clean integration, before
@@ -773,7 +793,8 @@ There is no other Ready production work in either standing lane.
 | DLV-346 | Corrected test oracle; externally run real-host route green, unit case awaits native gate. |
 | DLV-347 | Trace removed; native gate exposed blank exit code after a passing test, before feedback unit case. |
 | DLV-348 | Classified script-scope shadow plus incomplete bounded-process exit observation. |
-| DLV-349 | Assigned named publish exit output, refreshed process exit capture, and canonical gate. |
+| DLV-349 | Exit authority fixed; intended suites green; canonical gate exposed Cold Dashboard UIA drift. |
+| DLV-350 | Assigned source-only Cold Dashboard fixture/production boundary diagnosis. |
 | DLV-284 | Queued, not assigned until cumulative review/integration. |
 | DLV-248 | Deliberately deferred until explicit user promotion. |
 
