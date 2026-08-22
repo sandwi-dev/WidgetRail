@@ -33,7 +33,7 @@ historical evidence only; this file is the sole implementation authority.
 
 | Lane | Task/worktree | State |
 | --- | --- | --- |
-| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | DLV-466 production candidate `360544a` is source-reviewed, Release-built, and visibly running unaccepted as PID 89008 for the physical verdict. Preserve DLV-465 test-only work and resume it only after physical acceptance. DLV-284 remains queued. |
+| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | DLV-466 production commit `360544a` is physically accepted and running as PID 89008. Resume the preserved DLV-465 test-only tree with this exact production delta and complete the authorized focused stabilization. DLV-284 remains queued. |
 | Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | Idle and clean at `676cd76`; do not begin work or change product state. |
 
 ## Execution rules
@@ -183,6 +183,15 @@ and visibly relaunched the same candidate executable as PID 89008. Startup now
 admits Settings and removed `startup-error.log`. No tests ran and nothing is
 integrated; DLV-466 now waits only for the physical verdict below.
 
+The user physically accepted DLV-466 with the coherent PID 89008 candidate.
+This accepts production commit `360544a`; it does not yet authorize cumulative
+integration. Apply its exact production delta to the preserved DLV-465 tree,
+retain the two existing uncommitted test files, and resume the already
+authorized focused stabilization through terminal green. Because the accepted
+running candidate already contains the production executable and the only next
+delta is tests, do not rebuild or relaunch the visible overlay for that test
+follow-up.
+
 The physical verdict covers ordinary root Settings B returning to the selected
 tray item, tray B closing the overlay, normal widget activation, and no
 regression in nested/back or modal behavior that is reachable in the installed
@@ -265,13 +274,12 @@ Extract native authorities only when real work touches them.
 
 ## Ordered queues
 
-1. DLV-466 root Back resilience production candidate, build, and physical verdict.
-2. DLV-465 resume on accepted DLV-466 and complete focused WidgetSwitch stabilization.
-3. Reviewer integration of the explicit cumulative hashes after focused green and independent review.
-4. DLV-284 after cumulative clean integration.
-5. Generic Game Launcher cutover; LauncherExperience deletion/state retirement;
+1. DLV-465 resume on accepted DLV-466 and complete focused WidgetSwitch stabilization.
+2. Reviewer integration of the explicit cumulative hashes after focused green and independent review.
+3. DLV-284 after cumulative clean integration.
+4. Generic Game Launcher cutover; LauncherExperience deletion/state retirement;
    protocol requirements; then the remaining maturity deliverables.
-6. DLV-248 remains deliberately deferred until explicit user promotion.
+5. DLV-248 remains deliberately deferred until explicit user promotion.
 
 There is no other Ready production work in either standing lane.
 
@@ -284,8 +292,9 @@ There is no other Ready production work in either standing lane.
 | DLV-319–326 | Managed chain through `676cd76`; all managed Tier-3 gates green. |
 | DLV-327–421 | Native fixture/build evidence remains held behind DLV-452 startup classification and exact Tier 3. |
 | DLV-427 | `e26b92b` and `16050bb` are unbuilt/unaccepted ancestry-bound evidence only. |
-| DLV-428 | Accepted/integrated as `c38b261`; PID 144396 already runs it. |
-| DLV-465 | Preserved test-only diff is blocked on DLV-466 production and physical acceptance. |
+| DLV-428 | Accepted/integrated as `c38b261`; superseded in the running candidate by accepted DLV-466. |
+| DLV-466 | Production `360544a` physically accepted; coherent candidate PID 89008 remains running. |
+| DLV-465 | Preserved test-only diff resumes with the exact accepted DLV-466 production delta. |
 | DLV-284 | Queued until cumulative review/integration. |
 | DLV-248 | Deferred until explicit user promotion. |
 
