@@ -725,6 +725,30 @@ code, disable the interop build, copy an unverified executable, or relaunch only
 for tests. Specify the exact bounded command/environment and artifact ownership.
 No rerun until classified.
 
+## Assigned platform evidence — DLV-425 isolated focused/native gate
+
+Create one temporary detached Git worktree from integrated DLV-422 main commit
+`6926e05`, outside the running platform worktree. Apply only the current seven
+held-file diff from the platform worktree. Verify the exact seven paths and
+per-file SHA-256 equality between the source held files and isolated copies;
+reject any extra source change or patch drift.
+
+Run the isolated `build.ps1 -Configuration Release -WidgetSwitchTestsOnly`
+once through the DLV-418 sanitized Windows PowerShell owner. Retain base commit,
+diff/path/file hashes, command/environment preflight, streams, PIDs, timestamps,
+numeric exit, and fresh output hashes. Require fresh isolated
+`OverlayHost.exe`, `OverlayPlatformInterop.dll`, Bridge and WorkerHost runtime
+executables, and `widget-catalog.json`. Stop first red and classify before any
+edit or rerun.
+
+If focused green, run the full native gate once in the same isolated worktree
+and environment. If both are green, create only the four documented scoped
+commits in the original platform worktree, using DLV-423 for
+`WidgetSwitchHostTests.cpp`, and stop before Tier 3. Do not integrate, rebuild/
+relaunch or terminate accepted PID 33360, change product/package state, assign
+DLV-284, or push. Preserve all durable artifacts; removal of the temporary
+worktree is not authorized in this assignment.
+
 ## After the cumulative native gate is green
 
 1. Review exact DLV-349 and the cumulative test commits and full diffs. Reject
@@ -740,7 +764,7 @@ No rerun until classified.
 
 ## Queued platform production — DLV-284 explicit publication transaction model
 
-Status: queued, not assigned. It becomes assignable only after DLV-424 and the
+Status: queued, not assigned. It becomes assignable only after DLV-425 and the
 resumed DLV-423 evidence are
 dispositioned, the resumed native test gate is green,
 cumulative evidence is reviewed and integrated, and the accepted main Release
@@ -801,8 +825,8 @@ Extract native authorities only when real work touches them.
 
 ## Ordered queues
 
-1. Platform evidence: execute DLV-424 lock-safe isolated native output
-   classification, then resume DLV-423 without touching PID 33360.
+1. Platform evidence: execute DLV-425 isolated focused/full native gate from
+   integrated DLV-422 plus the exact seven held files.
 2. Reviewer integration: review the eventual cumulative commits, then assign exact
    clean Tier 3 if the native routes are green.
 3. Platform production: DLV-284 after clean cumulative integration.
@@ -822,10 +846,11 @@ There is no other Ready production work in either standing lane.
 | DLV-314 | Production `992b77b` accepted with Spotify 0.3.13. |
 | DLV-318 | Last physically accepted production `32a2a5e`; exact restore artifact preserved, not currently running. |
 | DLV-319–326 | Managed test chain through `676cd76`; all managed Tier-3 gates green. |
-| DLV-327–421 | Native fixture/build evidence held pending DLV-424 and resumed exact-commit Tier 3. |
+| DLV-327–421 | Native fixture/build evidence held pending DLV-425 and resumed exact-commit Tier 3. |
 | DLV-422 | Production diagnostic `6926e05` physically accepted and integrated; PID 33360 retained. |
 | DLV-423 | Test adoption diff compiled only to the interop link boundary; accepted PID 33360 locks the worktree Release DLL, so no test verdict. |
-| DLV-424 | Assigned lock-safe isolated native output/build classification without relaunching the accepted overlay. |
+| DLV-424 | Build helper has no output override; a detached worktree provides exact lock-safe native/runtime outputs without touching PID 33360. |
+| DLV-425 | Assigned isolated exact-seven-file focused/full native gate and four scoped commits on green. |
 | DLV-284 | Queued until cumulative review/integration. |
 | DLV-248 | Deliberately deferred until explicit user promotion. |
 
@@ -873,4 +898,5 @@ There is no other Ready production work in either standing lane.
 | DLV-421 | No strict test-only work-area authority exists; exact fallback placement requires a narrow post-success host diagnostic. |
 | DLV-422 | `35489ab`/main `6926e05` physically accepted and integrated; PID 33360 retained without relaunch. |
 | DLV-423 | Focused build stopped at `LNK1104` on the running accepted Release interop DLL; test did not execute. |
-| DLV-424 | Assigned exact isolated output strategy preserving PID 33360 and build provenance. |
+| DLV-424 | Exact isolation strategy is detached integrated DLV-422 plus hash-verified seven-file diff and its own output tree. |
+| DLV-425 | Assigned lock-safe isolated focused/full gate; accepted PID 33360 retained. |
