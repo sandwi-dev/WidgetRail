@@ -496,6 +496,33 @@ If fallback lacks an observable completion authority, state the narrow test
 observation needed. No correction or rerun until classified. Preserve PID
 126208, state, seven diffs, and retained artifacts.
 
+## Assigned platform test correction — DLV-414 mode-aware destination proof
+
+Own only `WidgetSwitchHostTests.cpp`; preserve six other held files. First fix
+control flow so the full destination correlation is required before
+`destinationPaint` is parsed.
+
+Keep the existing exact DirectComposition chain unchanged. Under the positive,
+sticky HWND-fallback marker, replace only the unavailable fixed-chrome chain
+with: exact fallback `Overlay work-area placement` and content-host bounds →
+exact admitted Game Launcher paint with positive destination sequence and
+expected extent → current content-HWND window/client geometry matching that
+placement → identity-pinned content-root UIA publication with exact selected/
+focused tray and destination semantic bounds.
+
+This fallback chain proves destination stationarity and authority; do not claim
+it independently proves `EndDraw`, treat missing composition as success, skip
+geometry/UIA, or weaken the DirectComposition route. Preserve DLV-411 Back
+readiness, rendering-mode proof, and every existing sequence, identity, catalog,
+geometry, timing, motion, focus, and composition-when-active invariant.
+
+Run `WidgetSwitchTestsOnly` once via durable capture; stop first red and classify
+before another edit or rerun. If green, run the full native gate once. If both
+are green, create only the four documented scoped commits using DLV-414 for
+this file, then stop before Tier 3. No production edit, integration, DLV-284,
+launch/terminate, or push. Preserve PID 126208, state, seven diffs, and retained
+artifacts.
+
 ## After the cumulative native gate is green
 
 1. Review exact DLV-349 and the cumulative test commits and full diffs. Reject
@@ -511,7 +538,7 @@ observation needed. No correction or rerun until classified. Preserve PID
 
 ## Queued platform production — DLV-284 explicit publication transaction model
 
-Status: queued, not assigned. It becomes assignable only after DLV-413 is
+Status: queued, not assigned. It becomes assignable only after DLV-414 is
 dispositioned, the native gate is green, cumulative evidence is reviewed and
 integrated, and the accepted main Release is coherently refreshed only if
 runtime inputs changed. No new virtualization feature may precede it.
@@ -570,8 +597,8 @@ Extract native authorities only when real work touches them.
 
 ## Ordered queues
 
-1. Platform evidence: execute DLV-413 exact mode-aware destination correlation
-   for DirectComposition and sticky HWND fallback.
+1. Platform evidence: execute DLV-414 mode-aware destination correlation and
+   parser-order correction, then classify the focused result.
 2. Reviewer integration: review the eventual four commits, then assign exact
    clean Tier 3 if the native routes are green.
 3. Platform production: DLV-284 after clean cumulative integration.
@@ -591,7 +618,7 @@ There is no other Ready production work in either standing lane.
 | DLV-314 | Production `992b77b` accepted with Spotify 0.3.13. |
 | DLV-318 | Current accepted production `32a2a5e`; PID 126208 runs Spotify 0.3.14. |
 | DLV-319–326 | Managed test chain through `676cd76`; all managed Tier-3 gates green. |
-| DLV-327–413 | Native fixture/build evidence held pending DLV-413 and exact-commit Tier 3. |
+| DLV-327–414 | Native fixture/build evidence held pending DLV-414 and exact-commit Tier 3. |
 | DLV-284 | Queued until cumulative review/integration. |
 | DLV-248 | Deliberately deferred until explicit user promotion. |
 
@@ -628,4 +655,5 @@ There is no other Ready production work in either standing lane.
 | DLV-410 | In explicit fallback, exact Audio paint plus content-HWND UIA owns readiness; composition sample and Chrome UIA are intentionally unavailable. |
 | DLV-411 | Mode-aware correction compiled, but the focused route stopped earlier on a generic geometry record lacking `sequence=`; Back coverage has no verdict. |
 | DLV-412 | The test parsed an empty `destinationPaint` before requiring correlation; fallback also makes the fixed-chrome destination transaction unavailable. |
-| DLV-413 | Assigned exact HWND-fallback equivalent of DLV-399 destination stationarity and completion evidence. |
+| DLV-413 | Fallback stationarity is explicit marker, work-area placement, exact paint/sequence, live content geometry, and content-root UIA; `EndDraw` completion is not externally recorded. |
+| DLV-414 | Assigned parser-order fix and explicit DirectComposition/fallback destination correlation. |
