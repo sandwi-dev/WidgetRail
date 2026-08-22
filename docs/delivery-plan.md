@@ -538,6 +538,22 @@ this file, then stop before Tier 3. No production edit, integration, DLV-284,
 launch/terminate, or push. Preserve PID 126208, state, seven diffs, and retained
 artifacts.
 
+## Assigned platform test correction — DLV-416 complete sequence scope
+
+Own only `WidgetSwitchHostTests.cpp`; preserve six other held files. Inspect the
+entire mode-aware destination helper for references to the former branch-local
+`sequence`, including failure diagnostics. Replace every out-of-scope use with
+the shared typed destination-sequence state when present, or an explicit
+`missing` diagnostic before unwrap. Keep one parse and one positive authority;
+do not shadow, duplicate, fabricate, or change correlation behavior.
+
+Perform a compile-oriented source search/diff check before the single durable
+`WidgetSwitchTestsOnly` run. Stop first red and classify before another edit or
+rerun. If green, run the full native gate once. If both are green, create only
+the four documented scoped commits using DLV-416 for this file, then stop before
+Tier 3. No production edit, integration, DLV-284, launch/terminate, or push.
+Preserve PID 126208, state, seven diffs, and retained artifacts.
+
 ## After the cumulative native gate is green
 
 1. Review exact DLV-349 and the cumulative test commits and full diffs. Reject
@@ -553,7 +569,7 @@ artifacts.
 
 ## Queued platform production — DLV-284 explicit publication transaction model
 
-Status: queued, not assigned. It becomes assignable only after DLV-415 is
+Status: queued, not assigned. It becomes assignable only after DLV-416 is
 dispositioned, the native gate is green, cumulative evidence is reviewed and
 integrated, and the accepted main Release is coherently refreshed only if
 runtime inputs changed. No new virtualization feature may precede it.
@@ -612,8 +628,8 @@ Extract native authorities only when real work touches them.
 
 ## Ordered queues
 
-1. Platform evidence: execute DLV-415 sequence-scope compile correction, then
-   classify the focused result.
+1. Platform evidence: execute DLV-416 complete destination-helper sequence
+   scope correction, then classify the focused result.
 2. Reviewer integration: review the eventual four commits, then assign exact
    clean Tier 3 if the native routes are green.
 3. Platform production: DLV-284 after clean cumulative integration.
@@ -633,7 +649,7 @@ There is no other Ready production work in either standing lane.
 | DLV-314 | Production `992b77b` accepted with Spotify 0.3.13. |
 | DLV-318 | Current accepted production `32a2a5e`; PID 126208 runs Spotify 0.3.14. |
 | DLV-319–326 | Managed test chain through `676cd76`; all managed Tier-3 gates green. |
-| DLV-327–415 | Native fixture/build evidence held pending DLV-415 and exact-commit Tier 3. |
+| DLV-327–416 | Native fixture/build evidence held pending DLV-416 and exact-commit Tier 3. |
 | DLV-284 | Queued until cumulative review/integration. |
 | DLV-248 | Deliberately deferred until explicit user promotion. |
 
@@ -672,4 +688,5 @@ There is no other Ready production work in either standing lane.
 | DLV-412 | The test parsed an empty `destinationPaint` before requiring correlation; fallback also makes the fixed-chrome destination transaction unavailable. |
 | DLV-413 | Fallback stationarity is explicit marker, work-area placement, exact paint/sequence, live content geometry, and content-root UIA; `EndDraw` completion is not externally recorded. |
 | DLV-414 | Mode-aware correlation change stopped at compile error because the exact `sequence` local was out of scope; no test verdict. |
-| DLV-415 | Assigned minimal shared-scope correction for the exact destination sequence. |
+| DLV-415 | Shared typed sequence was added, but one failure diagnostic still referenced the former branch-local name; no test verdict. |
+| DLV-416 | Assigned complete helper-wide cleanup of all former local sequence references. |
