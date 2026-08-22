@@ -39,7 +39,7 @@ historical evidence only; this file is the sole authority for current work.
 
 | Lane | Task/worktree | State |
 | --- | --- | --- |
-| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | Assigned source-only re-show focus geometry diagnosis DLV-370 below; DLV-369 activation checks are green and rejected production change remains neutralized. DLV-284 remains queued and unassigned. |
+| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | Assigned test-only re-show focus geometry correction DLV-371 below; DLV-370 classified stale cross-revision fixture geometry and rejected production change remains neutralized. DLV-284 remains queued and unassigned. |
 | Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | Idle and clean at `676cd76`. Preserve PID 126208 and all product state; do not begin new work, integrate, rebuild/relaunch, or push. |
 
 ## Execution and architecture rules
@@ -666,6 +666,55 @@ and distinct diagnostics; no tolerance/intersection weakening or timeout
 increase. Do not change files, commit, integrate, start DLV-284,
 launch/terminate, or push. Preserve PID 126208 and all state.
 
+DLV-370 classified stale fixture geometry authority, not a proven production
+focus-restoration clipping defect. The test retains the first re-show
+`visible-content-bounds` record, then resolves a later focused semantic
+descendant after retained refresh and UIA republication. Both values are in
+screen coordinates, but they belong to different publication revisions. The
+test also accepts whichever descendant is focused instead of pinning the exact
+restored Settings action. Production clips semantic geometry through the
+renderer before publishing UIA bounds; no production correction is justified.
+
+## Assigned platform test correction — DLV-371 current re-show focus geometry
+
+Owner/baseline: platform lane with the five existing held diffs. Own only
+`src/OverlayHost/ColdDashboardHostTests.cpp`; preserve `build.ps1`,
+`RealHostAccessibilityTests.cpp`, `WidgetActionFeedbackTests.cpp`, and
+`WidgetActionFailureHostTests.cpp` unchanged. Do not alter any production file.
+
+Keep the first-visible/bottom-anchor composition record unchanged as historical
+placement evidence. Replace only the later re-show focus containment oracle so
+one current authority sample:
+
+- resolves the current content HWND UIA root;
+- resolves the exact `widget:category.appearance` Settings element;
+- requires that exact element to own keyboard focus;
+- obtains current root and focused-element UIA bounds;
+- obtains the current content HWND client rectangle through `GetClientRect`
+  and `ClientToScreen`; and
+- requires the exact focused descendant strictly inside both the current UIA
+  root and current client rectangle.
+
+Give root missing, exact action missing, focus not restored, UIA bounds
+unavailable, client conversion failure, outside-current-root, and outside-
+current-client failures distinct diagnostics. Do not require the provider root
+itself to fit inside the HWND client, compare with the cached composition
+rectangle, accept any focused descendant, weaken containment to intersection or
+tolerance, increase timeouts, or change hide/re-show, focus restoration,
+placement, rendering, or accessibility production behavior.
+
+With external execution approval, run exactly once:
+`powershell.exe -NoProfile -ExecutionPolicy Bypass -File
+.\src\OverlayHost\build.ps1 -Configuration Release -ColdDashboardTestsOnly`.
+Stop at the first red. If green, run the complete serialized Release native gate
+exactly once through the same external PowerShell route. If both are green,
+commit exactly `src/OverlayHost/build.ps1` with a DLV-349 subject, then commit
+exactly `RealHostAccessibilityTests.cpp`, `WidgetActionFeedbackTests.cpp`,
+`WidgetActionFailureHostTests.cpp`, and `ColdDashboardHostTests.cpp` with a
+DLV-371 subject. Do not run Tier 3 yet, integrate, start DLV-284,
+launch/terminate, or push. Preserve PID 126208, Spotify 0.3.14, all installed
+and configured state, and the rejected/restoration commit history.
+
 DLV-368 classified the Cold Dashboard red as retired-flow fixture logic.
 Settings content is already admitted and published before activation. Invoking
 the selected Settings tray item changes focus from tray to widget and repaints;
@@ -1260,8 +1309,8 @@ import/export or scheduling only after independent widgets prove the need.
 
 ## Ordered queues
 
-1. Platform evidence queue: execute DLV-370 source-only re-show focused-element
-   geometry classification before another correction or rerun.
+1. Platform evidence queue: execute DLV-371 current-revision re-show focused-
+   element geometry correction and stop at the first red result.
 2. Reviewer integration queue: independently review DLV-332 and the cumulative
    accepted production/test chain; integrate only if every required gate passes.
 3. Platform production queue: assign DLV-284 after clean integration, before
@@ -1326,7 +1375,8 @@ There is no other Ready production work in either standing lane.
 | DLV-367 | Action-failure focused/full evidence green; canonical gate exposed Cold Dashboard open red. |
 | DLV-368 | Settings was already admitted; activation is focus handoff, not re-admission. |
 | DLV-369 | Activation checks green; later pre-existing re-show focus bounds assertion red. |
-| DLV-370 | Assigned source-only hide/re-show focus geometry revision diagnosis. |
+| DLV-370 | Classified cross-publication fixture geometry drift; production clipping remains sound. |
+| DLV-371 | Assigned strict same-sample Settings focus/root/client geometry correction. |
 | DLV-284 | Queued, not assigned until cumulative review/integration. |
 | DLV-248 | Deliberately deferred until explicit user promotion. |
 
