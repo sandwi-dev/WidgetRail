@@ -39,7 +39,7 @@ historical evidence only; this file is the sole authority for current work.
 
 | Lane | Task/worktree | State |
 | --- | --- | --- |
-| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | Assigned source-only DLV-335 below at `676cd76`, preserving two uncommitted test-only files. DLV-284 remains queued and unassigned. |
+| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | Assigned diagnostic-only DLV-336 below at `676cd76`, preserving two uncommitted test-only files. DLV-284 remains queued and unassigned. |
 | Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | Idle and clean at `676cd76`. Preserve PID 126208 and all product state; do not begin new work, integrate, rebuild/relaunch, or push. |
 
 ## Execution and architecture rules
@@ -252,6 +252,35 @@ status alone substitutes for the required event, propose a sleep/retry, weaken
 the assertion, or change provider ownership. If production is implicated, stop
 before any correction so physical-first ordering can be restored.
 
+DLV-335 classified a production omission. The isolated route used the combined
+content accessibility tree, so the original root subscription remained correct
+across Settings-to-YT Music switching. Production published
+`host.open.status` as a polite live region and planned
+`LiveRegionChanged` for its exact element, but the retained registered handler
+observed zero events. Do not move or weaken the test subscription.
+
+## Assigned platform diagnosis — DLV-336 capture the live-region raise boundary
+
+Mode: one disposable native production diagnostic; no committed correction.
+
+Preserve baseline `676cd76`, both held test diffs, PID 126208, Spotify 0.3.14,
+and all installed/configured state. Add only the minimum uncommitted diagnostic
+at the existing `ProviderHost::RaisePendingEvents`/host log boundary needed to
+record, for the failing publication: prior/current widget and runtime identity,
+planned live-region element key, bound HWND/endpoint, provider-resolution
+result, and exact `UiaRaiseAutomationEvent` HRESULT. The diagnostic may use the
+existing isolated `overlay.log` path through a narrow temporary callback; do
+not add a permanent logging API, change event ordering/coalescing, retry the
+raise, alter provider identity, or edit the test assertion.
+
+Run only
+`src/OverlayHost/build.ps1 -Configuration Release
+-WidgetActionFailureHostTestsOnly` once. Stop after the first result and report
+the ordered diagnostic facts. Do not correct the production omission, commit,
+run the complete native gate/Tier 3, launch/terminate, integrate, begin DLV-284,
+or push. Retain the two authorized test diffs; clearly identify every disposable
+diagnostic hunk so the next milestone removes it before any production commit.
+
 DLV-333 stopped at its first targeted red with both test files uncommitted. The
 exact UI Automation tray invocation succeeded, selected
 `ytmusic-fixture`, and reached its intended Establish/worker-start failure.
@@ -386,8 +415,8 @@ import/export or scheduling only after independent widgets prove the need.
 
 ## Ordered queues
 
-1. Platform evidence queue: execute source-only DLV-335, classify the exact
-   live-region ownership boundary, then assign only the justified correction.
+1. Platform evidence queue: execute diagnostic-only DLV-336 once, remove its
+   disposable instrumentation, then assign the proven production correction.
 2. Reviewer integration queue: independently review DLV-332 and the cumulative
    accepted production/test chain; integrate only if every required gate passes.
 3. Platform production queue: assign DLV-284 after clean integration, before
@@ -417,7 +446,8 @@ There is no other Ready production work in either standing lane.
 | DLV-332 | Settings fixture restored startup; targeted route exposed stale bare-Enter activation. |
 | DLV-333 | Exact tray invoke reached the intended typed worker failure; stale log substring remained. |
 | DLV-334 | Typed failure assertion passed; later live-region event expectation remained red. |
-| DLV-335 | Assigned source/artifact-only classification of UIA event ownership. |
+| DLV-335 | Classified production live-region omission on the correct combined-root subscription. |
+| DLV-336 | Assigned one bounded diagnostic at the existing UIA event-raise owner. |
 | DLV-284 | Queued, not assigned until cumulative review/integration. |
 | DLV-248 | Deliberately deferred until explicit user promotion. |
 
