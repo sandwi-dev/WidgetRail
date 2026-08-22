@@ -39,7 +39,7 @@ historical evidence only; this file is the sole authority for current work.
 
 | Lane | Task/worktree | State |
 | --- | --- | --- |
-| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | Assigned Cold Dashboard correction/gate DLV-351 below at DLV-340 commit `0f8b080`, preserving build tooling plus three cumulative test files. DLV-284 remains queued and unassigned. |
+| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | Assigned source-only Settings geometry diagnosis DLV-352 below at DLV-340 commit `0f8b080`, preserving build tooling plus four cumulative test files. DLV-284 remains queued and unassigned. |
 | Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | Idle and clean at `676cd76`. Preserve PID 126208 and all product state; do not begin new work, integrate, rebuild/relaunch, or push. |
 
 ## Execution and architecture rules
@@ -481,6 +481,26 @@ DLV-349 subject and commit exactly the three test files with a DLV-347 subject.
 Do not run Tier 3 yet, integrate, start DLV-284, launch/terminate, or push.
 Preserve PID 126208 and all state.
 
+DLV-351 corrected both UIA roots successfully: the fixture found current
+Settings content, proved the retired title absent, and found the focused tray
+item under fixed chrome. The first later red was the newly added assertion
+`Settings content UIA bounds escaped visible content`. All earlier cumulative
+suites remained green. No commits were created.
+
+## Assigned platform diagnosis — DLV-352 classify Settings bounds space
+
+Source inspection only; make no edits and run no build, test, publish, or
+process command. Trace the Settings UIA element's bounding rectangle from the
+content provider through client-to-screen translation, clipping, and the
+fixture's content HWND rectangle. Determine whether the new comparison mixes
+screen, window, client, layout, or clipped-visible coordinate spaces, or chose
+an element whose semantic bounds legitimately span beyond the viewport.
+Compare with established RealHostAccessibility geometry helpers/assertions.
+Classify production versus fixture error and specify the smallest exact
+coordinate/element correction plus focused evidence. Do not weaken containment
+to a vague intersection. Do not change files, commit, integrate, start DLV-284,
+launch/terminate, or push. Preserve PID 126208 and all state.
+
 DLV-349 corrected exit authority and the canonical gate passed the former
 boundary. Green evidence includes ProcessOwner 32 checks, feedback 314 checks
 with the replacement case, provider 168 checks, real-host accessibility 291
@@ -776,8 +796,8 @@ import/export or scheduling only after independent widgets prove the need.
 
 ## Ordered queues
 
-1. Platform evidence queue: execute DLV-351 Cold Dashboard current-root
-   correction and one canonical native Release rerun.
+1. Platform evidence queue: execute DLV-352 source-only Settings UIA geometry
+   classification before another correction or canonical rerun.
 2. Reviewer integration queue: independently review DLV-332 and the cumulative
    accepted production/test chain; integrate only if every required gate passes.
 3. Platform production queue: assign DLV-284 after clean integration, before
@@ -823,7 +843,8 @@ There is no other Ready production work in either standing lane.
 | DLV-348 | Classified script-scope shadow plus incomplete bounded-process exit observation. |
 | DLV-349 | Exit authority fixed; intended suites green; canonical gate exposed Cold Dashboard UIA drift. |
 | DLV-350 | Retired dashboard ID and wrong content-root tray lookup classified as fixture drift. |
-| DLV-351 | Assigned current Settings content/chrome-root fixture correction and canonical rerun. |
+| DLV-351 | Current roots resolved; new Settings-content containment assertion used wrong geometry. |
+| DLV-352 | Assigned source-only UIA/content coordinate-space diagnosis. |
 | DLV-284 | Queued, not assigned until cumulative review/integration. |
 | DLV-248 | Deliberately deferred until explicit user promotion. |
 
