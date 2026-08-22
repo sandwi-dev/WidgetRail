@@ -840,8 +840,9 @@ Status: implementation commit `dae5e5b` is a sole `main.cpp` diff directly on
 `6926e05`; its isolated tests-skipped native Release build is green. Exact diff
 review confirms diagnostic-only current-authority gating, post-`EndDraw`
 emission, bounded deduplication, and unchanged legacy placement phases. The
-coherent isolated artifact is ready for visible physical verdict; not yet
-accepted or integrated.
+coherent isolated artifact is visibly running as OverlayHost PID 144396 with
+its matching WidgetBridge PID 64560; prior accepted PID 33360 was stopped. The
+candidate is awaiting physical verdict and is not yet accepted or integrated.
 
 ## After the cumulative native gate is green
 
