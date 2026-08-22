@@ -10,24 +10,25 @@ historical evidence only; this file is the sole authority for current work.
 ## Current baseline and accepted candidate
 
 - Accepted production/test integration baseline on local `main` remains
-  `c21ad02`. Later main commits are reviewer-owned control-plane updates plus
-  accepted DLV-340 build tooling `d11e9ae`; the cumulative production/test
-  chain remains unintegrated.
-- Current physically accepted production is DLV-318
-  `32a2a5ed3f31ad95156d3ab61fe36f2d791449e2`.
-- DLV-318 remains the last physically accepted production. Its exact recoverable
+  `c21ad02`. Later main commits are reviewer-owned control-plane updates,
+  accepted DLV-340 build tooling `d11e9ae`, and physically accepted DLV-422
+  production diagnostic `6926e05`; the earlier cumulative native test chain
+  remains unintegrated.
+- Current physically accepted and integrated production is DLV-422
+  `6926e05`; its implementation candidate identity was `35489ab`.
+- DLV-318 remains the exact recoverable prior accepted production. Its
   Release is
   `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative-dlv318-build`;
   executable SHA-256 is
   `86AC9946CC54F2B4CF51B14EEAA48CE32FECDF2C381DA73F24107DBE755F13AD`.
-- PID 33360 now visibly runs the reviewed, unintegrated DLV-422 candidate from
+- PID 33360 visibly runs the physically accepted DLV-422 Release from
   `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative\src\OverlayHost\out\Release`;
   executable SHA-256 is
   `DB81DEF2314F65AAA9E96B1DA730099EC7EF27772D7EE67D49C41196745DD9BE`.
-  Candidate commit is `35489ab5963d9978b32876255d00929592937944`;
-  physical verdict is pending. Spotify 0.3.14 remains installed, selected, and
-  enabled. Preserve every package, credential, account, configuration, and
-  provider state.
+  production commit is `6926e05`, equivalent to reviewed candidate
+  `35489ab5963d9978b32876255d00929592937944`. Spotify 0.3.14 remains installed,
+  selected, and enabled. Preserve every package, credential, account,
+  configuration, and provider state.
 - Managed tests are accepted through exact `676cd76`: DLV-319 `199a81b`,
   DLV-324 `6b63edf`, DLV-325 `e441f25`, and DLV-326 `676cd76`. All named
   managed Tier-3 gates are green.
@@ -38,7 +39,7 @@ historical evidence only; this file is the sole authority for current work.
 
 | Lane | Task/worktree | State |
 | --- | --- | --- |
-| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | DLV-422 `35489ab` reviewer/build accepted; PID 33360 candidate awaits physical verdict. Preserve seven held diffs and neutral rejected/restoration commits. DLV-284 remains queued and unassigned. |
+| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | Assigned DLV-423 adoption of accepted fallback-placement authority in the held switch test. Preserve seven held diffs and neutral rejected/restoration commits. DLV-284 remains queued and unassigned. |
 | Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | Idle and clean at `676cd76`. Preserve installed product state; do not begin work, integrate, rebuild/relaunch, or push. |
 
 ## Execution rules
@@ -679,6 +680,34 @@ After reviewer acceptance of the diff/build, visibly launch the coherent native
 Release candidate and obtain the user verdict before assigning the test adoption
 of this record.
 
+## Assigned platform test correction — DLV-423 adopt fallback authority
+
+Own only `WidgetSwitchHostTests.cpp`; preserve six other held files. In explicit
+sticky HWND fallback, select only a fresh typed `Fallback placement
+mode=hwnd-fallback` record published after the positive fallback transition.
+Require exact work/DPI/interface-scale/target fields, actual content-window and
+content-client-screen bounds, phase, widget/instance/runtime/presentation/
+sequence authority where available, and exact equality to test-owned live HWND
+window/client geometry at the pinned pre-Right boundary.
+
+After Right, require the exact admitted Game Launcher destination paint with
+positive nonregressed sequence and expected extent, require live fallback HWND
+geometry remains equal to the pinned actual bounds, and retain the exact
+content-root UIA selected/focused tray plus destination-semantic identity/bounds
+proof. The diagnostic target and actual rectangles remain distinct facts; do
+not require equality unless the record phase represents successful
+`SetWindowPos`. Never accept a pre-fallback/DirectComposition placement or infer
+fallback from absent composition. Keep the complete DirectComposition branch,
+DLV-416 parser ordering, DLV-411 Back readiness, and every existing invariant.
+
+Run `WidgetSwitchTestsOnly` once through the sanitized durable Windows
+PowerShell owner from DLV-418. Stop first red and classify before another edit
+or rerun. If green, run the full native gate once under the same environment.
+If both are green, create only the four documented scoped commits using DLV-423
+for `WidgetSwitchHostTests.cpp`, then stop before Tier 3. No production edit,
+rebuild/relaunch, integration, DLV-284, termination, or push. Retain accepted
+PID 33360 and all installed/configured state.
+
 ## After the cumulative native gate is green
 
 1. Review exact DLV-349 and the cumulative test commits and full diffs. Reject
@@ -694,8 +723,8 @@ of this record.
 
 ## Queued platform production — DLV-284 explicit publication transaction model
 
-Status: queued, not assigned. It becomes assignable only after DLV-422 and its
-physical-first verdict are dispositioned, the resumed native test gate is green,
+Status: queued, not assigned. It becomes assignable only after DLV-423 is
+dispositioned, the resumed native test gate is green,
 cumulative evidence is reviewed and integrated, and the accepted main Release
 is coherently refreshed only if runtime inputs changed. No new virtualization
 feature may precede it.
@@ -754,18 +783,14 @@ Extract native authorities only when real work touches them.
 
 ## Ordered queues
 
-1. Platform production/build: execute DLV-422 exact fallback-placement
-   diagnostic and native Release build without tests.
-2. User verdict: reviewer launches the coherent DLV-422 candidate only after
-   diff/build acceptance; tests remain held until the physical verdict.
-3. Platform evidence: adopt the accepted diagnostic into the strict fallback
-   destination test and resume the native gate.
-4. Reviewer integration: review the eventual cumulative commits, then assign exact
+1. Platform evidence: execute DLV-423 adoption of accepted fallback-placement
+   authority and resume the focused/full native gate.
+2. Reviewer integration: review the eventual cumulative commits, then assign exact
    clean Tier 3 if the native routes are green.
-5. Platform production: DLV-284 after clean cumulative integration.
-6. Future architecture: generic Game Launcher cutover, LauncherExperience
+3. Platform production: DLV-284 after clean cumulative integration.
+4. Future architecture: generic Game Launcher cutover, LauncherExperience
    deletion/state retirement, protocol requirements, then maturity deliverables.
-7. DLV-248 remains deliberately deferred until explicit user promotion.
+5. DLV-248 remains deliberately deferred until explicit user promotion.
 
 There is no other Ready production work in either standing lane.
 
@@ -779,8 +804,9 @@ There is no other Ready production work in either standing lane.
 | DLV-314 | Production `992b77b` accepted with Spotify 0.3.13. |
 | DLV-318 | Last physically accepted production `32a2a5e`; exact restore artifact preserved, not currently running. |
 | DLV-319–326 | Managed test chain through `676cd76`; all managed Tier-3 gates green. |
-| DLV-327–421 | Native fixture/build evidence held pending DLV-422 physical-first diagnostic and resumed exact-commit Tier 3. |
-| DLV-422 | `35489ab` candidate running as PID 33360; tests held for physical verdict. |
+| DLV-327–421 | Native fixture/build evidence held pending DLV-423 and resumed exact-commit Tier 3. |
+| DLV-422 | Production diagnostic `6926e05` physically accepted and integrated; PID 33360 retained. |
+| DLV-423 | Assigned exact fallback-placement test adoption and resumed native gate. |
 | DLV-284 | Queued until cumulative review/integration. |
 | DLV-248 | Deliberately deferred until explicit user promotion. |
 
@@ -826,4 +852,5 @@ There is no other Ready production work in either standing lane.
 | DLV-419 | Fallback selection need not republish unchanged placement; exact pre/post live HWND equality can pin the prior current placement around destination admission. |
 | DLV-420 | Latest placement was a stale DirectComposition-container record; fallback mode emits no replacement, so it cannot anchor live HWND stationarity. |
 | DLV-421 | No strict test-only work-area authority exists; exact fallback placement requires a narrow post-success host diagnostic. |
-| DLV-422 | `35489ab` emits exact post-placement fallback authority; Release build green, coherent PID 33360 launched, user verdict pending. |
+| DLV-422 | `35489ab`/main `6926e05` physically accepted and integrated; PID 33360 retained without relaunch. |
+| DLV-423 | Assigned strict adoption of the accepted typed fallback-placement authority. |
