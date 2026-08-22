@@ -39,7 +39,7 @@ historical evidence only; this file is the sole authority for current work.
 
 | Lane | Task/worktree | State |
 | --- | --- | --- |
-| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | Assigned source-only Cold Dashboard open diagnosis DLV-368 below; action-failure route is now stable green and rejected production change remains neutralized. DLV-284 remains queued and unassigned. |
+| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | Assigned Cold Dashboard focus-handoff correction/gates DLV-369 below; action-failure route is stable green and rejected production change remains neutralized. DLV-284 remains queued and unassigned. |
 | Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | Idle and clean at `676cd76`. Preserve PID 126208 and all product state; do not begin new work, integrate, rebuild/relaunch, or push. |
 
 ## Execution and architecture rules
@@ -646,6 +646,40 @@ DLV-349 subject and commit exactly the three test files with a DLV-347 subject.
 Do not run Tier 3 yet, integrate, start DLV-284, launch/terminate, or push.
 Preserve PID 126208 and all state.
 
+DLV-368 classified the Cold Dashboard red as retired-flow fixture logic.
+Settings content is already admitted and published before activation. Invoking
+the selected Settings tray item changes focus from tray to widget and repaints;
+it does not require a new placement or content-admission record.
+
+## Assigned platform test correction — DLV-369 Settings focus handoff
+
+Own only the already-held `ColdDashboardHostTests.cpp`; preserve the other four
+held files unchanged. Before activation, identity-pin the exact content root,
+Settings content/action element, chrome root, and selected Settings tray item.
+Invoke the exact tray item through `IUIAutomationInvokePattern`, separately
+asserting pattern availability and successful invocation. Replace the retired
+new-placement/new-admission oracle with:
+
+- post-boundary Settings paint diagnostic showing `input-owner=widget` and
+  `selected=settings`;
+- re-resolved Settings content/action with exact identity retained and strict
+  visible bounds;
+- Settings action keyboard-focused;
+- Settings tray still selected and no longer keyboard-focused;
+- both roots identity-stable.
+
+Keep the existing 15-second bound and give dispatch, focus transition, content
+identity, and UIA publication distinct failure messages. Preserve hide/re-show,
+historical first-visible/bottom-anchor evidence, and all unrelated assertions.
+
+With external execution approval, run `ColdDashboardTestsOnly` exactly once.
+Stop first red. If green, run the canonical Release route exactly once. If both
+are green, commit exactly `build.ps1` with a DLV-349 subject, then commit exactly
+`RealHostAccessibilityTests.cpp`, `WidgetActionFeedbackTests.cpp`,
+`WidgetActionFailureHostTests.cpp`, and `ColdDashboardHostTests.cpp` with a
+DLV-369 subject. Do not run Tier 3 yet, integrate, start DLV-284,
+launch/terminate, or push. Preserve PID 126208 and all state.
+
 DLV-367's focused action-failure route passed, and that fixture passed again
 inside the canonical gate. Feedback 314 and real-host accessibility 291 also
 passed. The first later red was ColdDashboardHostTests:
@@ -1206,8 +1240,8 @@ import/export or scheduling only after independent widgets prove the need.
 
 ## Ordered queues
 
-1. Platform evidence queue: execute DLV-368 source-only Cold Dashboard shared
-   host open/admission classification before another correction or rerun.
+1. Platform evidence queue: execute DLV-369 exact Settings focus-handoff
+   fixture correction, focused Cold Dashboard route, then canonical Release.
 2. Reviewer integration queue: independently review DLV-332 and the cumulative
    accepted production/test chain; integrate only if every required gate passes.
 3. Platform production queue: assign DLV-284 after clean integration, before
@@ -1270,7 +1304,8 @@ There is no other Ready production work in either standing lane.
 | DLV-365 | Guard restored in `ad109f8`; combined dual-root readiness oracle was over-constrained. |
 | DLV-366 | Tray must be selected/current and not focused while content action owns focus. |
 | DLV-367 | Action-failure focused/full evidence green; canonical gate exposed Cold Dashboard open red. |
-| DLV-368 | Assigned source-only Settings open/action/admission/UIA publication diagnosis. |
+| DLV-368 | Settings was already admitted; activation is focus handoff, not re-admission. |
+| DLV-369 | Assigned exact InvokePattern and retained-content/focus publication evidence. |
 | DLV-284 | Queued, not assigned until cumulative review/integration. |
 | DLV-248 | Deliberately deferred until explicit user promotion. |
 
