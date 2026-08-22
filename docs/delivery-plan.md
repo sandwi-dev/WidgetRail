@@ -39,7 +39,7 @@ historical evidence only; this file is the sole authority for current work.
 
 | Lane | Task/worktree | State |
 | --- | --- | --- |
-| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | Assigned DLV-333 below at `676cd76`, preserving two uncommitted test-only files. DLV-284 remains queued and unassigned. |
+| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | Assigned DLV-334 below at `676cd76`, preserving two uncommitted test-only files. DLV-284 remains queued and unassigned. |
 | Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | Idle and clean at `676cd76`. Preserve PID 126208 and all product state; do not begin new work, integrate, rebuild/relaunch, or push. |
 
 ## Execution and architecture rules
@@ -215,6 +215,54 @@ to main, begin DLV-284, edit another file, restore/update dependencies, or
 push. On another distinct red, retain both diffs uncommitted and stop with exact
 evidence. If Tier 3 is green, stop for independent reviewer inspection.
 
+DLV-333 stopped at its first targeted red with both test files uncommitted. The
+exact UI Automation tray invocation succeeded, selected
+`ytmusic-fixture`, and reached its intended Establish/worker-start failure.
+The host retained and published the current typed failure:
+`YT Music failed: Widget 'ytmusic-fixture' runtime request failed
+(worker-runtime-failed). Press A to retry.` The test still searched for the
+obsolete substring `YT Music failed: Widget worker`, so it misreported that
+the primary failure was not retained. No product failure occurred. The complete
+native gate, commit, and Tier 3 were not run.
+
+## Assigned platform correction — DLV-334 align typed worker-failure evidence
+
+Mode: bounded native test-only correction after DLV-333.
+
+Owner/baseline: platform lane at exact `676cd76`, preserving both current
+uncommitted test files, the trusted Settings entry, exact tray invocation, and
+DLV-331 startup diagnostic. Own only
+`src/OverlayHost/WidgetActionFailureHostTests.cpp`.
+
+Change only the obsolete post-activation log search so it requires the current
+safe typed failure identity and code:
+`YT Music failed: Widget 'ytmusic-fixture' runtime request failed
+(worker-runtime-failed).` The test may match that exact bounded prefix without
+pinning the mutable retry-help suffix. Preserve the later assertion that a
+secondary missing-cache error cannot replace the primary failure. Do not accept
+generic `failed` prose, weaken the widget/code identity, change production
+diagnostics, add alternate legacy strings, or alter any other assertion,
+fixture behavior, timeout, catalog, input path, or file.
+
+Verification order, once each, stopping at the first red result:
+
+1. Build/run
+   `src/OverlayHost/build.ps1 -Configuration Release
+   -WidgetActionFailureHostTestsOnly`.
+2. If green, run
+   `src/OverlayHost/build.ps1 -Configuration Release` once.
+3. If green, inspect and commit exactly
+   `RealHostAccessibilityTests.cpp` and `WidgetActionFailureHostTests.cpp` on
+   top of `676cd76` with a DLV-334 subject.
+4. Run one canonical Tier-3 verifier from a clean detached tree at that exact
+   commit. Do not run additional focused suites outside these gates.
+
+Preserve PID 126208, Spotify 0.3.14, installed/configured state, and all
+production artifacts. Do not launch/terminate the accepted overlay, integrate
+to main, begin DLV-284, edit another file, restore/update dependencies, or
+push. On another distinct red, retain both diffs uncommitted and stop with exact
+evidence. If Tier 3 is green, stop for independent reviewer inspection.
+
 ## Queued platform production — DLV-284 explicit publication transaction model
 
 Status: queued, not assigned. It becomes assignable only after DLV-332 and the
@@ -301,7 +349,7 @@ import/export or scheduling only after independent widgets prove the need.
 
 ## Ordered queues
 
-1. Platform evidence queue: execute DLV-333 and stop on its first red result or
+1. Platform evidence queue: execute DLV-334 and stop on its first red result or
    for independent review after a green exact-commit Tier 3.
 2. Reviewer integration queue: independently review DLV-332 and the cumulative
    accepted production/test chain; integrate only if every required gate passes.
@@ -330,7 +378,8 @@ There is no other Ready production work in either standing lane.
 | DLV-327–330 | Uncommitted cumulative RealHost fixture corrections; all 291 RealHost checks now green. |
 | DLV-331 | Diagnostic-only host startup evidence retained; user screenshot identified missing trusted Settings catalog entry. |
 | DLV-332 | Settings fixture restored startup; targeted route exposed stale bare-Enter activation. |
-| DLV-333 | Assigned exact UI Automation invoke of the published failure-fixture tray item. |
+| DLV-333 | Exact tray invoke reached the intended typed worker failure; stale log substring remained. |
+| DLV-334 | Assigned exact typed worker-failure identity/code assertion. |
 | DLV-284 | Queued, not assigned until cumulative review/integration. |
 | DLV-248 | Deliberately deferred until explicit user promotion. |
 
@@ -349,3 +398,4 @@ There is no other Ready production work in either standing lane.
 | DLV-330 | RealHost 291 green; action-failure host startup remained unexplained. |
 | DLV-331 | Diagnostic retained; screenshot proved missing Settings fixture. |
 | DLV-332 | Settings catalog correction admitted startup; bare Enter did not activate YT Music. |
+| DLV-333 | Exact UIA tray invocation succeeded; typed failure exposed stale expected prose. |
