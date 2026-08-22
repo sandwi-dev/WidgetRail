@@ -39,7 +39,7 @@ historical evidence only; this file is the sole authority for current work.
 
 | Lane | Task/worktree | State |
 | --- | --- | --- |
-| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | Assigned Settings geometry correction/gate DLV-353 below at DLV-340 commit `0f8b080`, preserving build tooling plus four cumulative test files. DLV-284 remains queued and unassigned. |
+| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | Assigned source-only content-root geometry diagnosis DLV-354 below at DLV-340 commit `0f8b080`, preserving build tooling plus four cumulative test files. DLV-284 remains queued and unassigned. |
 | Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | Idle and clean at `676cd76`. Preserve PID 126208 and all product state; do not begin new work, integrate, rebuild/relaunch, or push. |
 
 ## Execution and architecture rules
@@ -481,6 +481,25 @@ DLV-349 subject and commit exactly the three test files with a DLV-347 subject.
 Do not run Tier 3 yet, integrate, start DLV-284, launch/terminate, or push.
 Preserve PID 126208 and all state.
 
+DLV-353 proved the Settings category is strictly inside the current content UIA
+root and both UIA roots/tray identities are correct. The first later red was
+the newly added requirement that the entire content UIA root fit inside the
+content HWND client. No commits were created.
+
+## Assigned platform diagnosis — DLV-354 classify content-root bounds
+
+Source inspection only; make no edits and run no build, test, publish, or
+process command. Trace the root provider's `BoundingRectangle` contract,
+content HWND window/client geometry, DWM/non-client extent, visual offset,
+scale, and any provider-root padding or offscreen semantics. Determine whether
+the content root is specified to equal/fit the client rectangle or whether only
+its clipped semantic descendants carry the strict visible-content guarantee.
+Compare current production behavior with UIA root geometry assertions in other
+fixtures. Classify production versus fixture error and identify the smallest
+strict assertion that proves the intended ownership without intersection-only
+or tolerance-based weakening. Do not change files, commit, integrate, start
+DLV-284, launch/terminate, or push. Preserve PID 126208 and all state.
+
 DLV-352 classified the bounds red as mixed presentation revisions, not mixed
 coordinate systems or production clipping. The current Settings UIA rectangle
 is clipped and screen-projected correctly, but DLV-351 compared it with the
@@ -824,8 +843,8 @@ import/export or scheduling only after independent widgets prove the need.
 
 ## Ordered queues
 
-1. Platform evidence queue: execute DLV-353 current-revision geometry
-   correction and one canonical native Release rerun.
+1. Platform evidence queue: execute DLV-354 source-only content-root geometry
+   classification before another correction or canonical rerun.
 2. Reviewer integration queue: independently review DLV-332 and the cumulative
    accepted production/test chain; integrate only if every required gate passes.
 3. Platform production queue: assign DLV-284 after clean integration, before
@@ -873,7 +892,8 @@ There is no other Ready production work in either standing lane.
 | DLV-350 | Retired dashboard ID and wrong content-root tray lookup classified as fixture drift. |
 | DLV-351 | Current roots resolved; new Settings-content containment assertion used wrong geometry. |
 | DLV-352 | Current UIA bounds were compared with a historical composition revision. |
-| DLV-353 | Assigned strict current-root/current-client containment and canonical rerun. |
+| DLV-353 | Settings is inside current root; whole-root/client containment is the remaining invalid assertion. |
+| DLV-354 | Assigned source-only content-root bounding-contract diagnosis. |
 | DLV-284 | Queued, not assigned until cumulative review/integration. |
 | DLV-248 | Deliberately deferred until explicit user promotion. |
 
