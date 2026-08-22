@@ -31,7 +31,7 @@ historical evidence only; this file is the sole authority for current work.
 
 | Lane | Task/worktree | State |
 | --- | --- | --- |
-| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | Assigned DLV-399 test-only correction to share the exact destination transaction boundary. Preserve all seven held diffs and neutral rejected/restoration commits. DLV-284 remains queued and unassigned. |
+| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | Assigned DLV-400 source/output diagnosis of Back-to-tray authority observability. Preserve all seven held diffs and neutral rejected/restoration commits. DLV-284 remains queued and unassigned. |
 | Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | Idle and clean at `676cd76`. Preserve PID 126208 and product state; do not begin work, integrate, rebuild/relaunch, or push. |
 
 ## Execution rules
@@ -159,6 +159,25 @@ scoped commits using DLV-397 for this file, then stop before Tier 3. No producti
 edit, integration, DLV-284, launch/terminate, or push. Preserve PID 126208,
 state, seven diffs, and diagnostics.
 
+DLV-399 compiled but stopped before destination correlation at `Back route did
+not publish current exact admitted Audio tray authority.` Exact exit was 1; no
+full gate or commit occurred. Evidence is under
+`%TEMP%\wrail-dlv399-widget-switch-20260821-223306`.
+
+## Assigned platform diagnosis — DLV-400 classify Back tray observability
+
+Source and retained DLV-399 streams only; no edit or executable/process run.
+Trace Back's focus/input transition, invalidation/damage, paint-key suppression,
+UIA/semantic authority, and the held qualifying-paint parser. Establish whether
+Back guarantees a new production paint, whether current tray ownership is
+strictly observable through another existing record, and how to bind the exact
+retained-source sequence immediately before Right without waiting for an
+optional repaint. Classify stale paint requirement, parser gap, or production
+failure; give the smallest strict one-file correction. Do not invent events,
+ignore sequence, weaken tray identity/focus, edit, rerun, commit, integrate,
+start DLV-284, launch/terminate, or push. Preserve PID 126208, seven diffs,
+state, and diagnostics.
+
 DLV-397 passed immediate pre-Right Audio authority, then stopped at
 `Production transition omitted a committed complete-content surface for Game
 Launcher` before the DLV-395 destination transaction helper completed. Exact
@@ -215,7 +234,7 @@ state, seven diffs, and diagnostics.
 
 ## Queued platform production — DLV-284 explicit publication transaction model
 
-Status: queued, not assigned. It becomes assignable only after DLV-399 is
+Status: queued, not assigned. It becomes assignable only after DLV-400 is
 dispositioned, the native gate is green, cumulative evidence is reviewed and
 integrated, and the accepted main Release is coherently refreshed only if
 runtime inputs changed. No new virtualization feature may precede it.
@@ -274,8 +293,8 @@ Extract native authorities only when real work touches them.
 
 ## Ordered queues
 
-1. Platform evidence: execute DLV-399 shared destination transaction boundary
-   and stop first red before another diagnosis or rerun.
+1. Platform evidence: execute DLV-400 source/output classification of Back
+   tray-authority observability before another edit or rerun.
 2. Reviewer integration: review the eventual four commits, then assign exact
    clean Tier 3 if the native routes are green.
 3. Platform production: DLV-284 after clean cumulative integration.
@@ -295,7 +314,7 @@ There is no other Ready production work in either standing lane.
 | DLV-314 | Production `992b77b` accepted with Spotify 0.3.13. |
 | DLV-318 | Current accepted production `32a2a5e`; PID 126208 runs Spotify 0.3.14. |
 | DLV-319–326 | Managed test chain through `676cd76`; all managed Tier-3 gates green. |
-| DLV-327–399 | Native fixture/build evidence held pending DLV-399 and exact-commit Tier 3. |
+| DLV-327–400 | Native fixture/build evidence held pending DLV-400 and exact-commit Tier 3. |
 | DLV-284 | Queued until cumulative review/integration. |
 | DLV-248 | Deliberately deferred until explicit user promotion. |
 
@@ -318,4 +337,5 @@ There is no other Ready production work in either standing lane.
 | DLV-396 | Latest admitted Audio tray paint immediately before Right owns retained-source sequence. |
 | DLV-397 | Switch-boundary sequence passed; an older complete-content check failed before exact correlation. |
 | DLV-398 | Older composition evidence is valid but used the wrong fallback-anchored range. |
-| DLV-399 | Assigned shared exact destination boundary for independent composition evidence. |
+| DLV-399 | Shared destination boundary compiled; Back handshake lacked a qualifying new Audio tray paint. |
+| DLV-400 | Assigned source/output classification of Back-to-tray authority observability. |
