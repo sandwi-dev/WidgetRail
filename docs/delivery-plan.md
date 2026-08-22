@@ -39,7 +39,7 @@ historical evidence only; this file is the sole authority for current work.
 
 | Lane | Task/worktree | State |
 | --- | --- | --- |
-| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | Assigned source-only lifetime-oracle diagnosis DLV-358 below at DLV-340 commit `0f8b080`, preserving build tooling plus four cumulative test files. DLV-284 remains queued and unassigned. |
+| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | Assigned non-racy lifetime correction/gates DLV-359 below at DLV-340 commit `0f8b080`, preserving build tooling plus four cumulative test files. DLV-284 remains queued and unassigned. |
 | Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | Idle and clean at `676cd76`. Preserve PID 126208 and all product state; do not begin new work, integrate, rebuild/relaunch, or push. |
 
 ## Execution and architecture rules
@@ -480,6 +480,34 @@ native/accessibility fixtures pass. Then commit exactly `build.ps1` with a
 DLV-349 subject and commit exactly the three test files with a DLV-347 subject.
 Do not run Tier 3 yet, integrate, start DLV-284, launch/terminate, or push.
 Preserve PID 126208 and all state.
+
+DLV-358 proved the polled failure log is not the feedback deadline origin: it
+can be written before UI-thread admission and observed after admission.
+Identical replacement text has intentionally no UIA publication edge. Exact
+replacement expiry belongs in the deterministic feedback unit, not the
+cross-process fixture.
+
+## Assigned platform test correction — DLV-359 invocation-anchored retention
+
+Continue to own only `WidgetActionFailureHostTests.cpp`; preserve the other
+four held files unchanged. Record `secondFailureAt` immediately before invoking
+the second action. Require exactly one new matching failure record. Require the
+status to remain present at `secondFailureAt + 3000 ms`. Because replacement
+cannot precede invocation, this is before its 4000-ms deadline; because the
+second invocation occurs about 2200 ms after the first, it is beyond the first
+entry's deadline and proves replacement. Remove the cross-process exact-expiry
+oracle; retain exact expiry in `WidgetActionFeedbackTests`. Preserve unchanged
+focus, exactly one first live-region event, zero additional identical-text
+events, production timing, and every other assertion.
+
+With external execution approval, run the focused action-failure route exactly
+once. Stop first red. If green, run the canonical Release route exactly once.
+If both are green, commit exactly `build.ps1` with a DLV-349 subject, then
+commit exactly `RealHostAccessibilityTests.cpp`,
+`WidgetActionFeedbackTests.cpp`, `WidgetActionFailureHostTests.cpp`, and
+`ColdDashboardHostTests.cpp` with a DLV-359 subject. Do not run Tier 3 yet,
+integrate, start DLV-284, launch/terminate, or push. Preserve PID 126208 and all
+state.
 
 DLV-357's exact root/action handshake passed and the first failure produced
 exactly one `LiveRegionChanged`. The focused route then again failed the
@@ -943,8 +971,8 @@ import/export or scheduling only after independent widgets prove the need.
 
 ## Ordered queues
 
-1. Platform evidence queue: execute DLV-358 source-only cross-process lifetime
-   oracle classification before another correction or rerun.
+1. Platform evidence queue: execute DLV-359 invocation-anchored retention
+   correction, focused action-failure route, then one canonical Release route.
 2. Reviewer integration queue: independently review DLV-332 and the cumulative
    accepted production/test chain; integrate only if every required gate passes.
 3. Platform production queue: assign DLV-284 after clean integration, before
@@ -997,7 +1025,8 @@ There is no other Ready production work in either standing lane.
 | DLV-355 | Cold Dashboard assertion changed but not reached; earlier action-failure event was intermittent. |
 | DLV-356 | Classified prior-root handler registration as the intermittent event race. |
 | DLV-357 | Exact UIA handshake and one first event passed; real-host lifetime timing remained flaky. |
-| DLV-358 | Assigned source-only log/admission/publication timing-oracle diagnosis. |
+| DLV-358 | Polled log is not deadline origin; exact expiry belongs in deterministic unit coverage. |
+| DLV-359 | Assigned invocation-anchored +3000-ms replacement proof and focused-plus-canonical gates. |
 | DLV-284 | Queued, not assigned until cumulative review/integration. |
 | DLV-248 | Deliberately deferred until explicit user promotion. |
 
