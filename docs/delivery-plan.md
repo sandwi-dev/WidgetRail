@@ -33,7 +33,7 @@ historical evidence only; this file is the sole implementation authority.
 
 | Lane | Task/worktree | State |
 | --- | --- | --- |
-| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | DLV-440 assigned. Preserve seven held diffs and all rejected/restoration evidence. DLV-284 remains queued. |
+| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | DLV-441 assigned. Preserve seven held diffs and all rejected/restoration evidence. DLV-284 remains queued. |
 | Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | Idle and clean at `676cd76`; do not begin work or change product state. |
 
 ## Execution rules
@@ -439,6 +439,37 @@ selector/replay/full native, commit, integrate, rebuild/relaunch PID 144396,
 change product/package state, remove evidence, assign DLV-284, or push. Red
 stops for classification; green returns to reviewer commit planning.
 
+Disposition: PMv2 removed the DPI virtualization mismatch. Checkpoint and live
+work are both `5120x1440`; DPI, recorded/live content window, and recorded/live
+client-screen geometry match exactly. The only remaining red comparison was
+computed target equals recorded content HWND. That comparison contradicts the
+accepted DLV-428/429 checkpoint contract: the diagnostic checkpoint proves a
+valid computed target and exact recorded/live HWND authority but is explicitly
+not a placement transaction. Evidence and the retained overlay log are under
+`%TEMP%\wrail-dlv440-monitor-20260822-034900`.
+
+## Assigned platform checkpoint-contract correction — DLV-441
+
+Test-only; change only held `WidgetSwitchHostTests.cpp`. Remove only the
+`target-matches-recorded-window` equality from the fallback checkpoint failure
+set and classifier. Retain the accepted contract unchanged: target must be
+positive and fully within recorded work; work and DPI must equal immediate live
+authority; recorded window and client-screen must equal immediate live window
+and client-screen; identity and exact sequence remain strict. Keep target,
+recorded geometry, and all surviving booleans in failure diagnostics. Do not
+treat the checkpoint as a placement transaction.
+
+Do not alter production, add tolerances, change checkpoint selection, timing,
+input/focus behavior, PMv2 setup, another held file, or SDK/runtime/Bridge/
+packaging. Recreate one fresh detached `c38b261` tree with exact seven-file
+path/SHA-256 parity and diagnostics retention enabled. Run the focused
+WidgetSwitch gate exactly once with exact child and durable-stream inspection
+every 15–20 seconds. Record the explicit test terminal result as authoritative
+if the wrapper/OS exit disagrees. Stop at the numeric result. Do not run
+selector/replay/full native, commit, integrate, rebuild/relaunch PID 144396,
+change product/package state, remove evidence, assign DLV-284, or push. Red
+stops for classification; green returns to reviewer commit planning.
+
 ## After the cumulative native gate is green
 
 1. Review each of the four commits and the cumulative diff. Reject extra files,
@@ -454,7 +485,7 @@ stops for classification; green returns to reviewer commit planning.
 
 ## Queued platform production — DLV-284 typed publication transactions
 
-Status: queued, not assigned. It becomes assignable only after DLV-440, the
+Status: queued, not assigned. It becomes assignable only after DLV-441, the
 cumulative native gate, commit review/integration, and exact clean Tier 3 are
 green. No new virtualization feature may precede it.
 
@@ -512,7 +543,7 @@ Extract native authorities only when real work touches them.
 
 ## Ordered queues
 
-1. DLV-440 one test-process DPI-awareness correction and observable focused gate.
+1. DLV-441 one checkpoint-contract assertion correction and observable focused gate.
 2. Reviewer commit/diff review, then one exact clean Tier-3 run.
 3. DLV-284 after cumulative clean integration.
 4. Generic Game Launcher cutover; LauncherExperience deletion/state retirement;
@@ -528,7 +559,7 @@ There is no other Ready production work in either standing lane.
 | DLV-257 identity | Store, domain, trademark, and GitHub availability remain external/manual. |
 | DLV-278–283/270 | Production accepted; integration awaits the native gate, exact Tier 3, and review. |
 | DLV-319–326 | Managed chain through `676cd76`; all managed Tier-3 gates green. |
-| DLV-327–421 | Native fixture/build evidence remains held behind DLV-440 and exact Tier 3. |
+| DLV-327–421 | Native fixture/build evidence remains held behind DLV-441 and exact Tier 3. |
 | DLV-427 | `e26b92b` and `16050bb` are unbuilt/unaccepted ancestry-bound evidence only. |
 | DLV-428 | Accepted/integrated as `c38b261`; PID 144396 already runs it. |
 | DLV-284 | Queued until cumulative review/integration. |
@@ -551,4 +582,5 @@ There is no other Ready production work in either standing lane.
 | DLV-437 | Back semantics passed; later raw CRLF checkpoint reparse failed after 120.139 seconds. |
 | DLV-438 | CRLF sequence passed; later recorded-work/live-monitor mismatch failed after 120.176 seconds. |
 | DLV-439 | Exact 1.25 coordinate ratio proved missing test-process PMv2 DPI awareness. |
-| DLV-440 | Assigned established PMv2 test setup and one observable focused gate. |
+| DLV-440 | PMv2 fixed all recorded/live geometry; only an invalid target=window check remained. |
+| DLV-441 | Assigned removal of only the checkpoint-as-placement equality and focused gate. |
