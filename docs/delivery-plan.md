@@ -604,6 +604,30 @@ one-file correction; do not reorder facts, reuse stale placement, or relax exact
 identity/sequence/geometry. No correction or rerun until classified. Preserve
 PID 126208, state, seven diffs, and retained artifacts.
 
+## Assigned platform test correction — DLV-420 pinned fallback placement
+
+Own only `WidgetSwitchHostTests.cpp`; preserve six other held files. In explicit
+sticky HWND fallback, capture the latest existing fallback `Overlay work-area
+placement` immediately before Right and require its exact host rectangle matches
+the current content HWND window/client geometry. After Right, use the already
+proven exact admitted Game Launcher paint with positive destination sequence and
+expected extent; require the current HWND geometry still matches the pinned
+placement, then apply the exact content-root UIA tray and destination semantic
+identity/bounds checks.
+
+Do not require selection to republish unchanged placement, accept a placement
+that does not match the live HWND at both boundaries, or weaken any identity,
+sequence, extent, focus, or UIA assertion. Keep the DirectComposition chain
+unchanged and retain DLV-416 parser ordering and DLV-411 Back readiness.
+
+Run `WidgetSwitchTestsOnly` once via the sanitized durable Windows PowerShell
+owner from DLV-418. Stop first red and classify before another edit or rerun. If
+green, run the full native gate once under the same environment. If both are
+green, create only the four documented scoped commits using DLV-420 for this
+file, then stop before Tier 3. No production edit, integration, DLV-284,
+launch/terminate, or push. Preserve PID 126208, state, seven diffs, and retained
+artifacts.
+
 ## After the cumulative native gate is green
 
 1. Review exact DLV-349 and the cumulative test commits and full diffs. Reject
@@ -619,7 +643,7 @@ PID 126208, state, seven diffs, and retained artifacts.
 
 ## Queued platform production — DLV-284 explicit publication transaction model
 
-Status: queued, not assigned. It becomes assignable only after DLV-419 is
+Status: queued, not assigned. It becomes assignable only after DLV-420 is
 dispositioned, the native gate is green, cumulative evidence is reviewed and
 integrated, and the accepted main Release is coherently refreshed only if
 runtime inputs changed. No new virtualization feature may precede it.
@@ -678,8 +702,8 @@ Extract native authorities only when real work touches them.
 
 ## Ordered queues
 
-1. Platform evidence: execute DLV-419 retained/source classification of the
-   first sticky-fallback Game Launcher destination record order.
+1. Platform evidence: execute DLV-420 pinned fallback placement plus exact
+   destination paint/live-geometry/UIA proof, then classify.
 2. Reviewer integration: review the eventual four commits, then assign exact
    clean Tier 3 if the native routes are green.
 3. Platform production: DLV-284 after clean cumulative integration.
@@ -699,7 +723,7 @@ There is no other Ready production work in either standing lane.
 | DLV-314 | Production `992b77b` accepted with Spotify 0.3.13. |
 | DLV-318 | Current accepted production `32a2a5e`; PID 126208 runs Spotify 0.3.14. |
 | DLV-319–326 | Managed test chain through `676cd76`; all managed Tier-3 gates green. |
-| DLV-327–419 | Native fixture/build evidence held pending DLV-419 and exact-commit Tier 3. |
+| DLV-327–420 | Native fixture/build evidence held pending DLV-420 and exact-commit Tier 3. |
 | DLV-284 | Queued until cumulative review/integration. |
 | DLV-248 | Deliberately deferred until explicit user promotion. |
 
@@ -742,4 +766,5 @@ There is no other Ready production work in either standing lane.
 | DLV-416 | Sequence compile correction succeeded; the wrapper then failed before test execution because Windows PowerShell could not resolve `Get-FileHash`. |
 | DLV-417 | Windows PowerShell inherited PowerShell 7 module roots; a Core Utility module shadowed the Desktop module containing `Get-FileHash`; helper is sound. |
 | DLV-418 | Clean module path reached the test; first real red is missing ordered fallback work-area placement plus exact Game Launcher destination paint. |
-| DLV-419 | Assigned exact retained-log/source classification of fallback destination record order and authority. |
+| DLV-419 | Fallback selection need not republish unchanged placement; exact pre/post live HWND equality can pin the prior current placement around destination admission. |
+| DLV-420 | Assigned pinned fallback placement, exact destination paint, live geometry, and content-root UIA proof. |
