@@ -1849,7 +1849,7 @@ void RunRetentionScenario(const Arguments& arguments) {
                 Require(phase == "presentation-checkpoint",
                         "HWND fallback first switch admitted a non-checkpoint phase=" + phase);
                 const auto work = ParseBounds(TextField(checkpoint, "work="));
-                const auto target = ParseBounds(TextField(checkpoint, "target="));
+                const auto checkpointTarget = ParseBounds(TextField(checkpoint, "target="));
                 const auto recordedWindow = ParseBounds(
                     TextField(checkpoint, "content-window="));
                 const auto recordedClient = ParseBounds(
@@ -1900,10 +1900,11 @@ void RunRetentionScenario(const Arguments& arguments) {
                     static_cast<float>(monitorInfo.rcWork.bottom - monitorInfo.rcWork.top),
                 };
                 const auto currentDpi = static_cast<long long>(GetDpiForWindow(window));
-                const bool targetWithinWork = target.width > 0.0F && target.height > 0.0F &&
-                    target.x >= work.x && target.y >= work.y &&
-                    target.x + target.width <= work.x + work.width &&
-                    target.y + target.height <= work.y + work.height;
+                const bool targetWithinWork =
+                    checkpointTarget.width > 0.0F && checkpointTarget.height > 0.0F &&
+                    checkpointTarget.x >= work.x && checkpointTarget.y >= work.y &&
+                    checkpointTarget.x + checkpointTarget.width <= work.x + work.width &&
+                    checkpointTarget.y + checkpointTarget.height <= work.y + work.height;
                 const bool workMatchesCurrent = capturedMonitor &&
                     work.x == currentWork.x && work.y == currentWork.y &&
                     work.width == currentWork.width && work.height == currentWork.height;
@@ -1940,7 +1941,7 @@ void RunRetentionScenario(const Arguments& arguments) {
                          std::string(" selected-offset=") + std::to_string(checkpointAt) +
                          " record=" + std::string(checkpoint) +
                          " checkpoint-work=" + formatBounds(work) +
-                         " checkpoint-target=" + formatBounds(target) +
+                         " checkpoint-target=" + formatBounds(checkpointTarget) +
                          " checkpoint-content-window=" + formatBounds(recordedWindow) +
                          " checkpoint-client-screen=" + formatBounds(recordedClient) +
                          " checkpoint-dpi=" + std::to_string(*dpi) +
@@ -1964,7 +1965,7 @@ void RunRetentionScenario(const Arguments& arguments) {
                 }
                 firstFallbackPresentationAuthority = FallbackPresentationAuthority{
                     phase,
-                    target,
+                    checkpointTarget,
                     recordedWindow,
                     recordedClient,
                     TextField(checkpoint, "widget="),
@@ -2311,13 +2312,10 @@ void RunRetentionScenario(const Arguments& arguments) {
             "post-removal=" + postRemovalAudioAuthority->sequence +
                 " current=" + preSwitchAudioAuthority->sequence);
     const auto preBackLog = ReadUtf8(logPath);
-    constexpr std::string_view compositionActiveNeedle =
-        "DirectComposition complete-content presentation owner active";
     constexpr std::string_view compositionDisabledNeedle =
         "DirectComposition presentation disabled; using HWND fallback:";
     constexpr std::string_view compositionUnavailableNeedle =
         "DirectComposition unavailable; retaining HWND render-target fallback:";
-    const auto compositionActiveAt = preBackLog.rfind(compositionActiveNeedle);
     const auto compositionDisabledAt = preBackLog.rfind(compositionDisabledNeedle);
     const auto compositionUnavailableAt = preBackLog.rfind(compositionUnavailableNeedle);
     auto fallbackAt = compositionDisabledAt;
