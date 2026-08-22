@@ -369,6 +369,24 @@ dependency, or production change. If the present diagnostics cannot strictly
 observe the transaction, state that boundary explicitly. Preserve PID 126208,
 state, seven diffs, and retained diagnostics.
 
+## Assigned platform test diagnosis — DLV-408 retain Back transaction evidence
+
+Use only production/test source, the uncommitted DLV-406 diff, and retained
+DLV-405/406 artifacts. Do not edit, build, run, publish, or touch product state.
+Inventory the existing diagnostics for the isolated Back transaction in exact
+order: input/unhandled-root return, state transition/presentation directive,
+content-HWND invalidation or paint, guide dirty/redraw, tray-accessibility
+publication, composition frame/commit disposition, and child sample. Determine
+whether the isolated `overlay.log` already distinguishes the DLV-407 failure
+branches and exactly where the test lifecycle deletes it.
+
+If existing records are sufficient, specify the smallest test-only change that
+copies the isolated log into the durable run directory before cleanup and
+parses the exact transaction. If insufficient, identify the smallest
+test-owned observation seam; do not request broad production logging or alter
+runtime behavior. No correction or rerun until this classification is recorded.
+Preserve PID 126208, state, seven diffs, and retained diagnostics.
+
 ## After the cumulative native gate is green
 
 1. Review exact DLV-349 and the cumulative test commits and full diffs. Reject
@@ -384,7 +402,7 @@ state, seven diffs, and retained diagnostics.
 
 ## Queued platform production — DLV-284 explicit publication transaction model
 
-Status: queued, not assigned. It becomes assignable only after DLV-407 is
+Status: queued, not assigned. It becomes assignable only after DLV-408 is
 dispositioned, the native gate is green, cumulative evidence is reviewed and
 integrated, and the accepted main Release is coherently refreshed only if
 runtime inputs changed. No new virtualization feature may precede it.
@@ -443,8 +461,8 @@ Extract native authorities only when real work touches them.
 
 ## Ordered queues
 
-1. Platform evidence: execute DLV-407 source/retained trace of exact Chrome
-   invalidation, paint ownership, composition publication, and event fence.
+1. Platform evidence: execute DLV-408 source inventory of existing Back
+   transaction diagnostics and exact isolated-log retention seam.
 2. Reviewer integration: review the eventual four commits, then assign exact
    clean Tier 3 if the native routes are green.
 3. Platform production: DLV-284 after clean cumulative integration.
@@ -464,7 +482,7 @@ There is no other Ready production work in either standing lane.
 | DLV-314 | Production `992b77b` accepted with Spotify 0.3.13. |
 | DLV-318 | Current accepted production `32a2a5e`; PID 126208 runs Spotify 0.3.14. |
 | DLV-319–326 | Managed test chain through `676cd76`; all managed Tier-3 gates green. |
-| DLV-327–407 | Native fixture/build evidence held pending DLV-407 and exact-commit Tier 3. |
+| DLV-327–408 | Native fixture/build evidence held pending DLV-408 and exact-commit Tier 3. |
 | DLV-284 | Queued until cumulative review/integration. |
 | DLV-248 | Deliberately deferred until explicit user promotion. |
 
@@ -495,4 +513,5 @@ There is no other Ready production work in either standing lane.
 | DLV-404 | `WM_NULL` was not a publication fence; the post-Back fixed-chrome composition child sample is the deterministic UIA-publication boundary. |
 | DLV-405 | Back invalidated Chrome but input injection did not service `WM_PAINT`, so no composition/UIA publication occurred. |
 | DLV-406 | `UpdateWindow` on the content HWND succeeded but still emitted no qualifying fixed-chrome sample; exact paint ownership remains unresolved. |
-| DLV-407 | Assigned source/retained trace of invalidation target, window procedure, guide render, accessibility publication, commit, and diagnostic fence. |
+| DLV-407 | Content HWND and parser were correct, but deleted isolated logs leave Back transition, update region, paint, and commit disposition indistinguishable. |
+| DLV-408 | Assigned inventory of existing Back transaction diagnostics and the exact test-only retention/parsing seam. |
