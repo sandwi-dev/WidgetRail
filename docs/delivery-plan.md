@@ -39,7 +39,7 @@ historical evidence only; this file is the sole authority for current work.
 
 | Lane | Task/worktree | State |
 | --- | --- | --- |
-| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | Assigned DLV-381 process-handle durable WidgetSwitch diagnostic. Preserve all six held diffs and neutral rejected/restoration commits. DLV-284 remains queued and unassigned. |
+| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | Assigned DLV-382 source/output diagnosis of Audio Mixer source-extent establishment. Preserve all six held diffs and neutral rejected/restoration commits. DLV-284 remains queued and unassigned. |
 | Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | Idle and clean at `676cd76`. Preserve PID 126208 and all product state; do not begin work, integrate, rebuild/relaunch, or push. |
 
 ## Execution and architecture rules
@@ -434,6 +434,32 @@ red or green result plus directory. Do not run the complete gate, rerun, edit
 source, commit, integrate, start DLV-284, launch/terminate product processes,
 or push. Preserve PID 126208, all six diffs, and prior diagnostics.
 
+DLV-381's corrected process-handle capture reached the first genuine red with
+authoritative child exit 1:
+`Audio Mixer did not establish the expected authored source extent.` The
+failure occurs during initial Audio Mixer extent establishment, before later
+widget switching, blocked-snapshot, worker-retention, or hide/re-show checks.
+The wrapper and standard Windows PowerShell environment are cleared.
+
+## Assigned platform diagnosis — DLV-382 classify Audio Mixer extent
+
+Source and retained DLV-381 stdout/stderr inspection only. Make no edit and run
+no build, test, publish, executable, or product/process command. Trace the exact
+initial Audio Mixer activation from fixture snapshot/source-extent publication
+through runtime/bridge admission, host extent policy, placement diagnostic, and
+the failing WidgetSwitch assertion. Establish the expected authored extent,
+actual retained record when available, units/coordinate authority, selected
+widget/runtime/presentation sequence, and whether Settings startup or current
+two-HWND placement changes the relevant boundary.
+
+Classify protocol/fixture drift, stale diagnostic wording/parser, wrong
+publication revision, or production extent-policy defect. Compare with another
+green current source-extent assertion and identify the smallest strict
+correction with distinct diagnostics. Do not loosen exact extent equality,
+add tolerance/timeout/retries, edit, rerun, commit, integrate, start DLV-284,
+launch/terminate, or push. Preserve PID 126208, all six diffs, and DLV-381
+diagnostics.
+
 ## Reviewer disposition after the cumulative native gate is green
 
 If either authorized native route is red, retain all five diffs uncommitted and
@@ -455,7 +481,7 @@ If both routes are green:
 
 ## Queued platform production — DLV-284 explicit publication transaction model
 
-Status: queued, not assigned. It becomes assignable only after DLV-381 is
+Status: queued, not assigned. It becomes assignable only after DLV-382 is
 dispositioned, the cumulative native gate is green, and the
 cumulative evidence pass, the accepted production/test chain is independently
 reviewed and integrated, and the accepted main Release is coherently refreshed
@@ -540,8 +566,8 @@ import/export or scheduling only after independent widgets prove the need.
 
 ## Ordered queues
 
-1. Platform evidence queue: execute DLV-381 once with OS process-handle stream
-   redirection and durable focused output/exit capture.
+1. Platform evidence queue: execute DLV-382 source/output classification of the
+   genuine Audio Mixer source-extent red before any correction or rerun.
 2. Reviewer integration queue: review DLV-349 and the eventual cumulative test
    commit, then assign exact clean
    Tier 3 if the native routes are green.
@@ -564,7 +590,7 @@ There is no other Ready production work in either standing lane.
 | DLV-314 | Production `992b77b` physically accepted with Spotify 0.3.13. |
 | DLV-318 | Current accepted production `32a2a5e`; PID 126208 runs Spotify 0.3.14. |
 | DLV-319–326 | Accepted managed test chain through `676cd76`; all managed Tier-3 gates green. |
-| DLV-327–381 | Cumulative fixture/build evidence remains held pending DLV-381 result and exact-commit Tier 3. |
+| DLV-327–382 | Cumulative fixture/build evidence remains held pending DLV-382 disposition and exact-commit Tier 3. |
 | DLV-284 | Queued, not assigned until cumulative review/integration. |
 | DLV-248 | Deliberately deferred until explicit user promotion. |
 
@@ -590,4 +616,5 @@ There is no other Ready production work in either standing lane.
 | DLV-378 | Bare child host provenance unresolved; no build-script defect proven. |
 | DLV-379 | Absolute host standard; preflight rejected PowerShell 5.1 function-shaped module command before build. |
 | DLV-380 | Preflight passed; in-process `2>` wrapper converted successful Cargo stderr into terminating error. |
-| DLV-381 | Assigned OS-level child stream capture and one focused route. |
+| DLV-381 | Durable focused route exposed genuine initial Audio Mixer source-extent red. |
+| DLV-382 | Assigned source/output classification of extent publication/admission authority. |
