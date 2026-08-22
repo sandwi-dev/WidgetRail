@@ -39,7 +39,7 @@ historical evidence only; this file is the sole authority for current work.
 
 | Lane | Task/worktree | State |
 | --- | --- | --- |
-| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | Assigned DLV-392 source/output diagnosis of the retained-paint composition-commit requirement. Preserve all seven held diffs and neutral rejected/restoration commits. DLV-284 remains queued and unassigned. |
+| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | Assigned DLV-393 test-only correction to bind stationarity to the complete destination commit. Preserve all seven held diffs and neutral rejected/restoration commits. DLV-284 remains queued and unassigned. |
 | Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | Idle and clean at `676cd76`. Preserve PID 126208 and all product state; do not begin work, integrate, rebuild/relaunch, or push. |
 
 ## Execution and architecture rules
@@ -801,6 +801,28 @@ ignore sequence, rebaseline later, add tolerance/sleep/timeout, edit, rerun,
 commit, integrate, start DLV-284, launch/terminate, or push. Preserve PID
 126208, seven diffs, state, and DLV-391 diagnostics.
 
+DLV-392 classified the intermediate retained-frame commit requirement as stale.
+The exact retained transition/paint is valid, but its commit diagnostic is
+conditional; the complete Game Launcher destination transaction owns the first
+screen-space stationarity baseline. No production defect is proven.
+
+## Assigned platform test correction — DLV-393 destination commit baseline
+
+Own only `WidgetSwitchHostTests.cpp`; preserve the other six held files. Remove
+only the wait for a complete commit immediately after the retained paint. Keep
+all exact retained transition, target/rendered identity, and captured Audio
+sequence checks. Require Game Launcher's independent positive sequence and the
+exact order `fixed-chrome placement -> Game Launcher destination paint/sequence
+-> Composition placement committed content=complete -> composition child
+sample`, with the commit before the sample and no intervening target/sequence
+paint or placement. Preserve exact placement count, HWND, tray projection, and
+later tuple equality. Do not infer a commit from paint or weaken any authority.
+Run `WidgetSwitchTestsOnly` once via the proven durable capture; stop first red.
+If green, run the full native gate once; if both green, create only the four
+documented scoped commits using DLV-393 for this file, then stop before Tier 3.
+No production edit, integration, DLV-284, launch/terminate, or push. Preserve
+PID 126208, state, seven diffs, and diagnostics.
+
 ## Reviewer disposition after the cumulative native gate is green
 
 If either authorized native route is red, retain all seven diffs uncommitted and
@@ -822,7 +844,7 @@ If both routes are green:
 
 ## Queued platform production — DLV-284 explicit publication transaction model
 
-Status: queued, not assigned. It becomes assignable only after DLV-392 is
+Status: queued, not assigned. It becomes assignable only after DLV-393 is
 dispositioned, the cumulative native gate is green, and the
 cumulative evidence pass, the accepted production/test chain is independently
 reviewed and integrated, and the accepted main Release is coherently refreshed
@@ -907,8 +929,8 @@ import/export or scheduling only after independent widgets prove the need.
 
 ## Ordered queues
 
-1. Platform evidence queue: execute DLV-392 source/output classification of
-   retained-frame composition ownership before another edit or rerun.
+1. Platform evidence queue: execute DLV-393's complete-destination commit
+   correlation and stop at the first red before another diagnosis or rerun.
 2. Reviewer integration queue: review DLV-349 and the eventual cumulative test
    commit, then assign exact clean
    Tier 3 if the native routes are green.
@@ -931,7 +953,7 @@ There is no other Ready production work in either standing lane.
 | DLV-314 | Production `992b77b` physically accepted with Spotify 0.3.13. |
 | DLV-318 | Current accepted production `32a2a5e`; PID 126208 runs Spotify 0.3.14. |
 | DLV-319–326 | Accepted managed test chain through `676cd76`; all managed Tier-3 gates green. |
-| DLV-327–392 | Cumulative fixture/build evidence remains held pending DLV-392 disposition and exact-commit Tier 3. |
+| DLV-327–393 | Cumulative fixture/build evidence remains held pending DLV-393 disposition and exact-commit Tier 3. |
 | DLV-284 | Queued, not assigned until cumulative review/integration. |
 | DLV-248 | Deliberately deferred until explicit user promotion. |
 
@@ -968,4 +990,5 @@ There is no other Ready production work in either standing lane.
 | DLV-389 | Current Audio capture passed; focused route exposed missing expected retained Game Launcher paint. |
 | DLV-390 | Right never switched because Down retained widget input; exact retained paint remains valid after tray ownership. |
 | DLV-391 | Tray authority and retained paint passed; fixture next required a separate complete retained composition commit. |
-| DLV-392 | Assigned source/output classification of retained-frame composition ownership. |
+| DLV-392 | Retained-paint commit diagnostic is conditional; the complete destination owns the baseline. |
+| DLV-393 | Assigned exact destination placement/paint/commit/sample correlation. |
