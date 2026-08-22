@@ -39,7 +39,7 @@ historical evidence only; this file is the sole authority for current work.
 
 | Lane | Task/worktree | State |
 | --- | --- | --- |
-| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | Assigned source-only Settings geometry diagnosis DLV-352 below at DLV-340 commit `0f8b080`, preserving build tooling plus four cumulative test files. DLV-284 remains queued and unassigned. |
+| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | Assigned Settings geometry correction/gate DLV-353 below at DLV-340 commit `0f8b080`, preserving build tooling plus four cumulative test files. DLV-284 remains queued and unassigned. |
 | Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | Idle and clean at `676cd76`. Preserve PID 126208 and all product state; do not begin new work, integrate, rebuild/relaunch, or push. |
 
 ## Execution and architecture rules
@@ -481,6 +481,34 @@ DLV-349 subject and commit exactly the three test files with a DLV-347 subject.
 Do not run Tier 3 yet, integrate, start DLV-284, launch/terminate, or push.
 Preserve PID 126208 and all state.
 
+DLV-352 classified the bounds red as mixed presentation revisions, not mixed
+coordinate systems or production clipping. The current Settings UIA rectangle
+is clipped and screen-projected correctly, but DLV-351 compared it with the
+historical first-visible composition rectangle. Established host geometry uses
+the current UIA root and current HWND client rectangle.
+
+## Assigned platform test correction — DLV-353 current content geometry
+
+Continue to own only `ColdDashboardHostTests.cpp`; preserve `build.ps1` and the
+other three test diffs unchanged. Keep the historical first-visible diagnostic
+and bottom-anchor verification unchanged. For the later Settings UIA assertion,
+read the current content UIA root bounding rectangle and compute the current
+content HWND client rectangle in screen coordinates using `GetClientRect` plus
+`ClientToScreen`. Require strict full containment of Settings category bounds
+inside the current UIA root, and strict full containment of that root inside
+the current content client rectangle. Keep the chrome tray check against the
+current chrome HWND rectangle. Do not add tolerance, intersection-only logic,
+timeouts, or production changes.
+
+With external execution approval, run exactly once:
+`powershell.exe -NoProfile -ExecutionPolicy Bypass -File
+.\src\OverlayHost\build.ps1 -Configuration Release`. Stop first red. If green,
+commit exactly `build.ps1` with a DLV-349 subject, then commit exactly
+`RealHostAccessibilityTests.cpp`, `WidgetActionFeedbackTests.cpp`,
+`WidgetActionFailureHostTests.cpp`, and `ColdDashboardHostTests.cpp` with a
+DLV-353 subject. Do not run Tier 3 yet, integrate, start DLV-284,
+launch/terminate, or push. Preserve PID 126208 and all state.
+
 DLV-351 corrected both UIA roots successfully: the fixture found current
 Settings content, proved the retired title absent, and found the focused tray
 item under fixed chrome. The first later red was the newly added assertion
@@ -796,8 +824,8 @@ import/export or scheduling only after independent widgets prove the need.
 
 ## Ordered queues
 
-1. Platform evidence queue: execute DLV-352 source-only Settings UIA geometry
-   classification before another correction or canonical rerun.
+1. Platform evidence queue: execute DLV-353 current-revision geometry
+   correction and one canonical native Release rerun.
 2. Reviewer integration queue: independently review DLV-332 and the cumulative
    accepted production/test chain; integrate only if every required gate passes.
 3. Platform production queue: assign DLV-284 after clean integration, before
@@ -844,7 +872,8 @@ There is no other Ready production work in either standing lane.
 | DLV-349 | Exit authority fixed; intended suites green; canonical gate exposed Cold Dashboard UIA drift. |
 | DLV-350 | Retired dashboard ID and wrong content-root tray lookup classified as fixture drift. |
 | DLV-351 | Current roots resolved; new Settings-content containment assertion used wrong geometry. |
-| DLV-352 | Assigned source-only UIA/content coordinate-space diagnosis. |
+| DLV-352 | Current UIA bounds were compared with a historical composition revision. |
+| DLV-353 | Assigned strict current-root/current-client containment and canonical rerun. |
 | DLV-284 | Queued, not assigned until cumulative review/integration. |
 | DLV-248 | Deliberately deferred until explicit user promotion. |
 
