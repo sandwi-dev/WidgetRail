@@ -39,7 +39,7 @@ historical evidence only; this file is the sole authority for current work.
 
 | Lane | Task/worktree | State |
 | --- | --- | --- |
-| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | Assigned DLV-371 test-only re-show focus geometry correction. Preserve the five held diffs and neutral rejected/restoration commits. DLV-284 remains queued and unassigned. |
+| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | Assigned DLV-372 compile correction for the held DLV-371 test-only oracle. Preserve the five held diffs and neutral rejected/restoration commits. DLV-284 remains queued and unassigned. |
 | Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | Idle and clean at `676cd76`. Preserve PID 126208 and all product state; do not begin work, integrate, rebuild/relaunch, or push. |
 
 ## Execution and architecture rules
@@ -158,28 +158,50 @@ Verification order, once each, stopping at the first red:
 Do not integrate, start DLV-284, launch/terminate, or push. Preserve PID 126208,
 Spotify 0.3.14, all installed/configured state, and rejected/restoration history.
 
-## Reviewer disposition after DLV-371
+DLV-371 stopped before test execution. The focused build found one malformed
+conditional in the new test helper: the success path writes
+`Require(WaitUntil(...)) { return; }`, invoking the repository's two-argument
+`Require` helper with one argument and producing a later syntax-error cascade.
+No production or product behavior was exercised.
+
+## Assigned platform test correction — DLV-372 compile DLV-371 oracle
+
+Own only `src/OverlayHost/ColdDashboardHostTests.cpp`. Replace only the
+malformed success-path `Require(WaitUntil(...))` wrapper in
+`VerifyReshownSettingsFocus` with the intended ordinary conditional: if the
+bounded current-authority wait succeeds, return; otherwise fall through to the
+existing predicate-specific `Require` diagnostics. Do not change the lambda,
+timeout, assertions, failure text, includes, another held file, or production.
+
+With external execution approval, run `ColdDashboardTestsOnly` exactly once.
+Stop first red. If green, run the complete serialized Release native gate once.
+If both are green, commit exactly `build.ps1` with a DLV-349 subject, then
+commit exactly the four held test files with a DLV-372 subject. Do not run Tier
+3, integrate, start DLV-284, launch/terminate, or push. Preserve PID 126208 and
+all installed/configured state.
+
+## Reviewer disposition after DLV-372
 
 If either authorized native route is red, retain all five diffs uncommitted and
 assign a source-first classification of that first red. Do not rerun unchanged.
 
 If both routes are green:
 
-1. Independently review the exact DLV-349 and DLV-371 commits and their full
+1. Independently review the exact DLV-349 and DLV-372 commits and their full
    diffs. Reject any extra file, production change, weakened assertion,
    timeout/tolerance change, debug artifact, or unrelated cleanup.
 2. Assign one exact canonical Tier-3 run from a clean detached tree containing
    those commits and the cumulative production/test chain.
 3. If Tier 3 is green, integrate only explicit accepted hashes. Never integrate
    `0494b69` or `ad109f8` merely because they are branch ancestors.
-4. Because DLV-349/DLV-371 are build-tool and test-only deltas, do not rebuild
+4. Because DLV-349/DLV-372 are build-tool and test-only deltas, do not rebuild
    or relaunch PID 126208 solely for their integration.
 5. Rebaseline both lanes, then assign DLV-284 before any new virtualization
    feature.
 
 ## Queued platform production — DLV-284 explicit publication transaction model
 
-Status: queued, not assigned. It becomes assignable only after DLV-371 and the
+Status: queued, not assigned. It becomes assignable only after DLV-372 and the
 cumulative evidence pass, the accepted production/test chain is independently
 reviewed and integrated, and the accepted main Release is coherently refreshed
 only if its runtime inputs changed. No new virtualization feature may precede
@@ -210,7 +232,7 @@ every legal and illegal transition and follow physical-first order. Never push.
 ## Future architecture queue — maturity review additions
 
 Status: ordered future work, not assigned. These deliverables do not displace
-DLV-371 integration or DLV-284. Allocate implementation IDs only when each
+DLV-372 integration or DLV-284. Allocate implementation IDs only when each
 bounded milestone becomes assignable.
 
 1. Generic Game Launcher cutover. Remove the package's advanced-presentation
@@ -263,8 +285,8 @@ import/export or scheduling only after independent widgets prove the need.
 
 ## Ordered queues
 
-1. Platform evidence queue: execute DLV-371 and stop at the first red result.
-2. Reviewer integration queue: review DLV-349/DLV-371, then assign exact clean
+1. Platform evidence queue: execute DLV-372 and stop at the first red result.
+2. Reviewer integration queue: review DLV-349/DLV-372, then assign exact clean
    Tier 3 if the native routes are green.
 3. Platform production queue: assign DLV-284 only after clean cumulative
    integration and before any new virtualization feature.
@@ -280,12 +302,12 @@ There is no other Ready production work in either standing lane.
 | Item | Blocker / required evidence |
 | --- | --- |
 | DLV-257 identity | Mapping is approved/frozen; Store, domain, trademark, and GitHub availability remain external/manual. |
-| DLV-278–283/270 | Production is physically accepted; cumulative integration awaits DLV-371, exact-commit Tier 3, and reviewer disposition. |
+| DLV-278–283/270 | Production is physically accepted; cumulative integration awaits DLV-372, exact-commit Tier 3, and reviewer disposition. |
 | DLV-296 | Production `3922b58` and notification evidence DLV-306 `5fe7a5f` are accepted within the cumulative chain. |
 | DLV-314 | Production `992b77b` physically accepted with Spotify 0.3.13. |
 | DLV-318 | Current accepted production `32a2a5e`; PID 126208 runs Spotify 0.3.14. |
 | DLV-319–326 | Accepted managed test chain through `676cd76`; all managed Tier-3 gates green. |
-| DLV-327–371 | Native cumulative fixture/build evidence remains held pending DLV-371 and exact-commit Tier 3. |
+| DLV-327–372 | Native cumulative fixture/build evidence remains held pending DLV-372 and exact-commit Tier 3. |
 | DLV-284 | Queued, not assigned until cumulative review/integration. |
 | DLV-248 | Deliberately deferred until explicit user promotion. |
 
@@ -301,4 +323,5 @@ There is no other Ready production work in either standing lane.
 | DLV-367 | Action-failure focused/full evidence green; Cold Dashboard activation oracle red. |
 | DLV-369 | Exact Settings invocation/focus handoff green; later re-show geometry oracle red. |
 | DLV-370 | Cross-publication fixture geometry drift classified; production clipping remains sound. |
-| DLV-371 | Assigned strict same-sample Settings focus/root/client correction. |
+| DLV-371 | Same-sample Settings focus/root/client correction authored; focused build exposed malformed test conditional before execution. |
+| DLV-372 | Assigned one-token conditional compile correction and resumed gates. |
