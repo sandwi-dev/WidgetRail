@@ -478,6 +478,24 @@ without ignoring malformed authoritative records, fabricating a sequence, or
 weakening the later DLV-411 route. No correction or rerun until classified.
 Preserve PID 126208, state, seven diffs, and all retained artifacts.
 
+## Assigned platform test diagnosis — DLV-413 fallback destination correlation
+
+Use only production/test source, the uncommitted DLV-411 diff, and retained
+DLV-409/411 artifacts. Do not edit, build, run, publish, or touch product state.
+Confirm the one-line control-flow correction that requires successful
+correlation before parsing `destinationPaint`. Then trace the exact
+HWND-fallback equivalent of DLV-399's destination stationarity transaction for
+the first Game Launcher switch: destination widget paint/sequence, content-HWND
+geometry or work area, fallback `EndDraw`/paint completion, and any exact
+post-paint UIA/geometry authority.
+
+Specify the strict mode-aware correlation for DirectComposition and explicit
+fallback. Do not silently skip stationarity, treat missing composition as
+success, conflate content/window geometry, or invent an `EndDraw` diagnostic.
+If fallback lacks an observable completion authority, state the narrow test
+observation needed. No correction or rerun until classified. Preserve PID
+126208, state, seven diffs, and retained artifacts.
+
 ## After the cumulative native gate is green
 
 1. Review exact DLV-349 and the cumulative test commits and full diffs. Reject
@@ -493,7 +511,7 @@ Preserve PID 126208, state, seven diffs, and all retained artifacts.
 
 ## Queued platform production — DLV-284 explicit publication transaction model
 
-Status: queued, not assigned. It becomes assignable only after DLV-412 is
+Status: queued, not assigned. It becomes assignable only after DLV-413 is
 dispositioned, the native gate is green, cumulative evidence is reviewed and
 integrated, and the accepted main Release is coherently refreshed only if
 runtime inputs changed. No new virtualization feature may precede it.
@@ -552,8 +570,8 @@ Extract native authorities only when real work touches them.
 
 ## Ordered queues
 
-1. Platform evidence: execute DLV-412 retained/source classification of the
-   pre-route production-geometry record lacking `sequence=`.
+1. Platform evidence: execute DLV-413 exact mode-aware destination correlation
+   for DirectComposition and sticky HWND fallback.
 2. Reviewer integration: review the eventual four commits, then assign exact
    clean Tier 3 if the native routes are green.
 3. Platform production: DLV-284 after clean cumulative integration.
@@ -573,7 +591,7 @@ There is no other Ready production work in either standing lane.
 | DLV-314 | Production `992b77b` accepted with Spotify 0.3.13. |
 | DLV-318 | Current accepted production `32a2a5e`; PID 126208 runs Spotify 0.3.14. |
 | DLV-319–326 | Managed test chain through `676cd76`; all managed Tier-3 gates green. |
-| DLV-327–412 | Native fixture/build evidence held pending DLV-412 and exact-commit Tier 3. |
+| DLV-327–413 | Native fixture/build evidence held pending DLV-413 and exact-commit Tier 3. |
 | DLV-284 | Queued until cumulative review/integration. |
 | DLV-248 | Deliberately deferred until explicit user promotion. |
 
@@ -609,4 +627,5 @@ There is no other Ready production work in either standing lane.
 | DLV-409 | Retained log proves exact Audio tray authority at sequence 5, but the isolated route had disabled DirectComposition after destination draw failure, making a composition sample impossible. |
 | DLV-410 | In explicit fallback, exact Audio paint plus content-HWND UIA owns readiness; composition sample and Chrome UIA are intentionally unavailable. |
 | DLV-411 | Mode-aware correction compiled, but the focused route stopped earlier on a generic geometry record lacking `sequence=`; Back coverage has no verdict. |
-| DLV-412 | Assigned exact producer/schema/parser classification of the pre-route geometry record. |
+| DLV-412 | The test parsed an empty `destinationPaint` before requiring correlation; fallback also makes the fixed-chrome destination transaction unavailable. |
+| DLV-413 | Assigned exact HWND-fallback equivalent of DLV-399 destination stationarity and completion evidence. |
