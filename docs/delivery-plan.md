@@ -33,7 +33,7 @@ historical evidence only; this file is the sole implementation authority.
 
 | Lane | Task/worktree | State |
 | --- | --- | --- |
-| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | DLV-462 blocked before verification: applying DLV-349 to the accepted managed baseline produced a substantive `build.ps1` composition conflict. Await explicit user authority; DLV-284 remains queued. |
+| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | DLV-463 assigned: resolve only the approved cumulative `build.ps1` composition, finish the exact checkpoint, and run Tier 3 once. DLV-284 remains queued. |
 | Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | Idle and clean at `676cd76`; do not begin work or change product state. |
 
 ## Execution rules
@@ -620,33 +620,32 @@ diagnosis found no DLV-458 path involvement; do not rerun or redesign startup.
 The exact-commit checkpoint will carry residual runtime evidence. Evidence is
 under `%TEMP%\wrail-dlv458-focused-20260822-051500`.
 
-## Assigned cumulative exact checkpoint — DLV-462
+## DLV-462 result and assigned composition resolution — DLV-463
 
-DLV-461 ran the canonical verifier once under PowerShell Core 7.6.4 from clean
-DLV-460 `3ed0f8c` and stopped first red after 110.702 seconds at Runtime 77/78.
-`child.pid` was visible while the helper still owned its write handle; cleanup
-then masked that read race with recursive-delete `IOException`. DLV-326
-`676cd76` already fixes this exact race by atomically publishing the completed
-PID file. DLV-460 omitted the accepted managed chain, so this is checkpoint
-composition, not a new test or product defect. Evidence is retained under
-`%TEMP%\wrail-dlv461b-verify-20260822-055300`; no rerun is authorized there.
+DLV-461 reached Runtime 77/78 and exposed the already-fixed DLV-326 atomic PID
+race because DLV-460 omitted the accepted managed chain. DLV-462 therefore
+started from accepted managed tip `676cd76`, confirmed all rejected/restoration
+ancestry absent, and applied DLV-422, DLV-428, DLV-375, and DLV-458 cleanly.
+Applying DLV-349 then produced a substantive `build.ps1` conflict. The user has
+now explicitly approved the bounded implementation-owned resolution.
 
-In one fresh detached worktree, start from accepted managed tip `676cd76`.
-Confirm rejected `0494b69`, restoration `ad109f8`, and ancestry-bound DLV-427
-`e26b92b`/`16050bb` are absent. Apply accepted production DLV-422 `6926e05` then
-DLV-428 `c38b261`, followed by reviewed main-compatible test/build commits
-`e282a42`, `17fc386`, `01d0121`, and `dc31ed1` in that order. Do not merge either
-standing branch or import reviewer documents. Stop on any substantive conflict.
-Record the resulting exact commit, clean status, path set, and source hashes.
+Reuse the preserved unresolved detached tree at
+`%TEMP%\wrail-dlv462-676cd76-20260822-060200`. Resolve only `build.ps1`: preserve
+all current managed-baseline routes and arguments, preserve DLV-458's selector/
+replay early-return path, and apply DLV-349's one serialized managed-publish
+helper with explicit captured exit authority to every current managed publish
+call site. Do not retain duplicate direct publish paths, weaken errors, or edit
+another file. Review the complete resolved script and continue the DLV-349
+cherry-pick, then apply DLV-374 `dc31ed1`. Stop on another substantive conflict.
 
-Disposition: DLV-422, DLV-428, DLV-375, and DLV-458 applied cleanly in the
-fresh detached tree. DLV-349 then conflicted across its serialized managed-
-publish helper, the selector-only WidgetSwitch route, and every managed publish
-call site in current `build.ps1`. The task preserved the exact unresolved tree
-at `%TEMP%\wrail-dlv462-676cd76-20260822-060200` and stopped before DLV-374,
-build, or verification. No product state changed. Resolving this requires user
-authority for an implementation-owned cumulative build-script composition;
-the planner will not choose or author that implementation silently.
+Record the exact clean cumulative commit, path set, source hashes, and absence
+of `0494b69`, `ad109f8`, `e26b92b`, and `16050bb`. Under PowerShell Core, import
+the verifier module and invoke exactly once: `pwsh -NoProfile -File
+scripts\Verify.ps1 -Configuration Release`. Retain durable streams/results;
+inspect output, exact descendants, CPU, and result files every 15-30 seconds and
+diagnose 60 seconds of silence immediately. Stop first red or one green and
+leave no owned descendants. Do not rerun, integrate main, rebuild/relaunch PID
+144396, change product/package state, remove evidence, assign DLV-284, or push.
 
 ## Assigned platform Back classification — DLV-437
 
@@ -944,7 +943,7 @@ Extract native authorities only when real work touches them.
 
 ## Ordered queues
 
-1. DLV-462 cumulative checkpoint, blocked on user-authorized build-script composition.
+1. DLV-463 approved build-script composition and one clean PowerShell-7 Tier-3 run.
 2. Reviewer integration of its explicit accepted hashes after one green result.
 3. DLV-284 after cumulative clean integration.
 4. Generic Game Launcher cutover; LauncherExperience deletion/state retirement;
