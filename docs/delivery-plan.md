@@ -33,7 +33,7 @@ historical evidence only; this file is the sole implementation authority.
 
 | Lane | Task/worktree | State |
 | --- | --- | --- |
-| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | DLV-452 red at fresh isolated Bridge/catalog startup; classification required before any further gate. Preserve seven held diffs and all rejected/restoration evidence. DLV-284 remains queued. |
+| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | DLV-453 assigned: correct the malformed block-snapshot catalog argument delimiter exposed by DLV-452, then run only the focused gate. Preserve seven held diffs and all rejected/restoration evidence. DLV-284 remains queued. |
 | Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | Idle and clean at `676cd76`; do not begin work or change product state. |
 
 ## Execution rules
@@ -578,8 +578,32 @@ isolated startup failure: WidgetBridge exited before accepting the host
 connection, then the host reported that the development bridge catalog lacked
 the expected package generation. Reused-output contamination is ruled out. The
 WidgetSwitch scenario did not begin, so this is not a switch assertion result.
-Do not authorize another gate until the fresh Bridge/catalog startup boundary
-is classified. Evidence is under the DLV-452 fresh-tree result directory.
+Static classification found the exact test defect: DLV-447 inserted
+`--block-snapshot-armed` without restoring the closing JSON quote after the
+preceding `--block-snapshot-trigger` path. `TemporaryInstallation` therefore
+writes malformed `widget-catalog.json`; WidgetBridge exits while loading that
+development catalog, before it can open the host pipe. This is test-fixture
+catalog construction, not production Bridge/catalog behavior. Evidence is
+under `%TEMP%\wrail-dlv452-focused-20260822-045800`.
+
+## Assigned platform catalog delimiter correction — DLV-453
+
+Test-only; change only held `src/OverlayHost/WidgetSwitchHostTests.cpp`. In the
+blockable worker-argument JSON construction, restore the exact closing quote
+and comma between the escaped `--block-snapshot-trigger` path and
+`--block-snapshot-armed`. Do not change epoch semantics, another catalog field,
+production, another held file, SDK/runtime/Bridge behavior, or packaging.
+
+Reuse the fresh coherent DLV-452 detached tree after proving the six unchanged
+held-file hashes and copying only the corrected test file with exact parity.
+Reuse its incremental build outputs. Run the focused WidgetSwitch gate exactly
+once through the same-child absolute Utility preflight and OS-level separated
+streams. Inspect exact descendants and durable streams every 15–20 seconds;
+every command must expose output or terminate within 60 seconds, and no owned
+descendant may remain active on return. Stop at the explicit result. Do not run
+the full native gate, commit, integrate, rebuild/relaunch PID 144396, change
+product/package state, remove evidence, assign DLV-284, or push. Red requires
+classification; green returns to reviewer commit planning.
 
 Disposition: red after 140.110 seconds with fresh child/output inspection every
 20 seconds. The exact current Audio fallback checkpoint was already present,
@@ -887,7 +911,7 @@ Extract native authorities only when real work touches them.
 
 ## Ordered queues
 
-1. Classify DLV-452 fresh isolated Bridge/catalog startup failure; no gate assigned.
+1. DLV-453 focused correction for the malformed development catalog delimiter.
 2. Reviewer commit/diff review, then one exact clean Tier-3 run.
 3. DLV-284 after cumulative clean integration.
 4. Generic Game Launcher cutover; LauncherExperience deletion/state retirement;
@@ -938,4 +962,4 @@ There is no other Ready production work in either standing lane.
 | DLV-449 | Cargo passed; outer PowerShell stream merging later reclassified MSVC diagnostics. |
 | DLV-450 | Separated capture passed; child lacked the parent-only Utility import. |
 | DLV-451 | Wrapper passed; reused partial artifact tree failed isolated Bridge startup. |
-| DLV-452 | Fresh parity tree reproduced Bridge/catalog startup failure before the switch scenario. |
+| DLV-452 | Fresh parity tree reproduced startup; malformed test catalog JSON was the exact cause. |
