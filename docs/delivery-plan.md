@@ -39,7 +39,7 @@ historical evidence only; this file is the sole authority for current work.
 
 | Lane | Task/worktree | State |
 | --- | --- | --- |
-| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | Assigned DLV-389 test-only correction to capture current pre-switch Audio sequence authority. Preserve all seven held diffs and neutral rejected/restoration commits. DLV-284 remains queued and unassigned. |
+| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | Assigned DLV-390 source/output diagnosis of the missing retained Game Launcher paint. Preserve all seven held diffs and neutral rejected/restoration commits. DLV-284 remains queued and unassigned. |
 | Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | Idle and clean at `676cd76`. Preserve PID 126208 and all product state; do not begin work, integrate, rebuild/relaunch, or push. |
 
 ## Execution and architecture rules
@@ -713,6 +713,33 @@ commit exactly the four other held native test files with DLV-374 subject. Do
 not run Tier 3, integrate, start DLV-284, launch/terminate product processes,
 or push. Preserve PID 126208, all state, and diagnostics.
 
+DLV-389's focused run passed the new current Audio authority capture, then
+stopped at a later first red: `Production paint trace omitted retained content
+for Game Launcher.` Exact child exit was 1; no full gate or commit occurred.
+Durable evidence is retained under
+`%TEMP%\wrail-dlv389-widget-switch-20260821-220500`. All seven diffs remain
+held and production was untouched.
+
+## Assigned platform diagnosis — DLV-390 classify retained destination paint
+
+Source and retained DLV-389 streams only. Make no edit and run no build, test,
+publish, executable, or product/process command. Trace the first Audio Mixer to
+Game Launcher switch from captured current Audio authority through pending
+switch, destination admission, placement, paint, composition commit, and the
+held parser. Establish whether a distinct retained Game Launcher paint is
+guaranteed, which widget/sequence each emitted paint owns, and the exact event
+that can strictly correlate the first natural placement with its destination
+composition sample.
+
+Classify stale retained-content expectation, parser ordering/correlation gap,
+or production transition failure. Identify the smallest strict one-file
+correction while retaining exact source sequence, destination target/sequence,
+placement/sample, HWND, and tray-screen authority. Do not invent a paint,
+accept any target, ignore sequence, rebaseline stationarity, add tolerance/
+sleep/timeout, edit, rerun, commit, integrate, start DLV-284,
+launch/terminate, or push. Preserve PID 126208, all seven diffs, state, and
+DLV-389 diagnostics.
+
 ## Reviewer disposition after the cumulative native gate is green
 
 If either authorized native route is red, retain all seven diffs uncommitted and
@@ -734,7 +761,7 @@ If both routes are green:
 
 ## Queued platform production — DLV-284 explicit publication transaction model
 
-Status: queued, not assigned. It becomes assignable only after DLV-389 is
+Status: queued, not assigned. It becomes assignable only after DLV-390 is
 dispositioned, the cumulative native gate is green, and the
 cumulative evidence pass, the accepted production/test chain is independently
 reviewed and integrated, and the accepted main Release is coherently refreshed
@@ -819,8 +846,8 @@ import/export or scheduling only after independent widgets prove the need.
 
 ## Ordered queues
 
-1. Platform evidence queue: execute DLV-389's current pre-switch sequence
-   correction and stop at the first red before another diagnosis or rerun.
+1. Platform evidence queue: execute DLV-390 source/output classification of
+   the missing retained Game Launcher paint before another edit or rerun.
 2. Reviewer integration queue: review DLV-349 and the eventual cumulative test
    commit, then assign exact clean
    Tier 3 if the native routes are green.
@@ -843,7 +870,7 @@ There is no other Ready production work in either standing lane.
 | DLV-314 | Production `992b77b` physically accepted with Spotify 0.3.13. |
 | DLV-318 | Current accepted production `32a2a5e`; PID 126208 runs Spotify 0.3.14. |
 | DLV-319–326 | Accepted managed test chain through `676cd76`; all managed Tier-3 gates green. |
-| DLV-327–389 | Cumulative fixture/build evidence remains held pending DLV-389 disposition and exact-commit Tier 3. |
+| DLV-327–390 | Cumulative fixture/build evidence remains held pending DLV-390 disposition and exact-commit Tier 3. |
 | DLV-284 | Queued, not assigned until cumulative review/integration. |
 | DLV-248 | Deliberately deferred until explicit user promotion. |
 
@@ -877,4 +904,5 @@ There is no other Ready production work in either standing lane.
 | DLV-386 | Catalog removal legitimately repaints without a new placement/sample; held parser/order was overconstrained. |
 | DLV-387 | Natural-placement correction reached a stale pre-switch sequence pin: Audio remained current while focus publication advanced 4→5. |
 | DLV-388 | Sequence 4→5 is legitimate same-widget admitted authority; the test froze sequence across focus input. |
-| DLV-389 | Assigned current pre-switch Audio authority capture and exact transaction correlation. |
+| DLV-389 | Current Audio capture passed; focused route exposed missing expected retained Game Launcher paint. |
+| DLV-390 | Assigned source/output classification of first destination paint ownership. |
