@@ -39,7 +39,7 @@ historical evidence only; this file is the sole authority for current work.
 
 | Lane | Task/worktree | State |
 | --- | --- | --- |
-| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | Assigned diagnostic-only DLV-336 below at `676cd76`, preserving two uncommitted test-only files. DLV-284 remains queued and unassigned. |
+| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | Assigned diagnostic-only DLV-337 below at `676cd76`, preserving two held test files and three disposable diagnostic files. DLV-284 remains queued and unassigned. |
 | Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | Idle and clean at `676cd76`. Preserve PID 126208 and all product state; do not begin new work, integrate, rebuild/relaunch, or push. |
 
 ## Execution and architecture rules
@@ -281,6 +281,34 @@ run the complete native gate/Tier 3, launch/terminate, integrate, begin DLV-284,
 or push. Retain the two authorized test diffs; clearly identify every disposable
 diagnostic hunk so the next milestone removes it before any production commit.
 
+DLV-336 stopped before the host test launched. The native diagnostic compiled,
+but the unchanged packaging stage stopped at `dotnet publish` for
+`WidgetBridge.csproj` with exit 1 and no causal diagnostic. The script had
+already removed the platform worktree's `out/Release/runtime/Bridge`, so that
+worktree output is incomplete and must not be launched. PID 126208 and accepted
+artifacts/state were untouched. No runtime event facts were produced. The
+worktree now retains the two test diffs plus disposable instrumentation in
+`AccessibilityProvider.h`, `AccessibilityProvider.cpp`, and `main.cpp`.
+
+## Assigned platform diagnosis — DLV-337 expose Bridge publish failure
+
+Mode: diagnostic-only after DLV-336. Preserve all five uncommitted files exactly
+and do not launch any platform-worktree artifact.
+
+Source-audit the exact WidgetBridge publish command and properties used by
+`src/OverlayHost/build.ps1`. Invoke that one publish explicitly, serialized,
+with the same Release output/properties and ordinary console verbosity
+sufficient to expose its first causal error. Do not restore/update dependencies,
+edit files, run the native build/test route, or execute any produced binary.
+
+If publish fails, report the first causal diagnostic and classify source,
+environment/sandbox, or missing asset without applying a correction. If it
+passes, report the exact command/output path and classify DLV-336's failure as a
+diagnostic-free invocation/tooling incident; do not rerun DLV-336 yet. Stop
+after this one command. Preserve PID 126208 and all package/configured state;
+no commit, cleanup of disposable hunks, full gate, Tier 3, integration,
+DLV-284, launch/terminate, or push.
+
 DLV-333 stopped at its first targeted red with both test files uncommitted. The
 exact UI Automation tray invocation succeeded, selected
 `ytmusic-fixture`, and reached its intended Establish/worker-start failure.
@@ -415,8 +443,9 @@ import/export or scheduling only after independent widgets prove the need.
 
 ## Ordered queues
 
-1. Platform evidence queue: execute diagnostic-only DLV-336 once, remove its
-   disposable instrumentation, then assign the proven production correction.
+1. Platform evidence queue: execute diagnostic-only DLV-337 once, then either
+   resolve its exact publish blocker or resume the one-shot DLV-336 runtime
+   diagnostic before removing all disposable instrumentation.
 2. Reviewer integration queue: independently review DLV-332 and the cumulative
    accepted production/test chain; integrate only if every required gate passes.
 3. Platform production queue: assign DLV-284 after clean integration, before
@@ -447,7 +476,8 @@ There is no other Ready production work in either standing lane.
 | DLV-333 | Exact tray invoke reached the intended typed worker failure; stale log substring remained. |
 | DLV-334 | Typed failure assertion passed; later live-region event expectation remained red. |
 | DLV-335 | Classified production live-region omission on the correct combined-root subscription. |
-| DLV-336 | Assigned one bounded diagnostic at the existing UIA event-raise owner. |
+| DLV-336 | Native trace compiled, but hidden WidgetBridge publish failure prevented execution. |
+| DLV-337 | Assigned one explicit serialized Bridge publish to expose the causal diagnostic. |
 | DLV-284 | Queued, not assigned until cumulative review/integration. |
 | DLV-248 | Deliberately deferred until explicit user promotion. |
 
