@@ -39,7 +39,7 @@ historical evidence only; this file is the sole authority for current work.
 
 | Lane | Task/worktree | State |
 | --- | --- | --- |
-| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | Assigned DLV-388 source/output diagnosis of same-widget sequence advancement before the first switch. Preserve all seven held diffs and neutral rejected/restoration commits. DLV-284 remains queued and unassigned. |
+| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | Assigned DLV-389 test-only correction to capture current pre-switch Audio sequence authority. Preserve all seven held diffs and neutral rejected/restoration commits. DLV-284 remains queued and unassigned. |
 | Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | Idle and clean at `676cd76`. Preserve PID 126208 and all product state; do not begin work, integrate, rebuild/relaunch, or push. |
 
 ## Execution and architecture rules
@@ -667,6 +667,52 @@ accept any target, rebaseline later, add tolerance/sleep/timeout, edit, rerun,
 commit, integrate, start DLV-284, launch/terminate, or push. Preserve PID
 126208, all seven diffs, all state, and DLV-387 diagnostics.
 
+DLV-388 classified stale cross-input sequence pinning plus missing
+current-authority capture in the held test. The post-removal Audio sequence 4
+is valid catalog proof at that instant. After Down, the same Audio target and
+extent legitimately remain repaint-only while a newer admitted snapshot is
+observed as sequence 5. Sequence is exact per transaction, not globally frozen
+across focus input or different widget publications. No production defect is
+proven.
+
+## Assigned platform test correction — DLV-389 current pre-switch authority
+
+Continue to own only `src/OverlayHost/WidgetSwitchHostTests.cpp`; preserve the
+other six held files unchanged. Retain sequence 4 as exact post-removal catalog,
+Audio target, and eight-item tray proof. After the existing `SendKey(VK_DOWN)`
+and `FenceWindow`, capture the latest exact admitted Audio paint as the current
+pre-switch authority. Require exact `target=audio-mixer`, admitted content, the
+validated eight-item catalog/tray state, a valid sequence, and sequence
+nondecreasing from the post-removal value.
+
+Require the first retained destination-switch paint to render exactly that
+captured current Audio sequence until the destination snapshot is admitted.
+Then keep DLV-387's first natural destination placement -> matching exact
+destination target/sequence paint -> composition-child sample correlation.
+Target/sequence equality is per transaction with no intervening presentation
+authority change; the pinned stationarity tuple remains exact
+`{placement-count, chrome-hwnd, tray-screen}` and every later comparison must
+match it exactly.
+
+Give stale post-removal Audio, invalid/regressed pre-switch sequence, wrong
+pre-switch target/catalog/admission, retained-source sequence mismatch,
+destination target/sequence mismatch, placement/sample count, chrome HWND,
+tray-screen, and intervening-authority changes distinct diagnostics. Do not
+ignore sequence, accept any widget, rebaseline stationarity, use local DIPs or
+stale records, force republish, add tolerance/sleep/timeout, weaken equality,
+or change production or unrelated assertions.
+
+Using the proven absolute child/process-handle durable capture pattern, run
+`WidgetSwitchTestsOnly` exactly once and retain command, preflight, streams,
+and numeric exit. Stop first red. If green, run the complete serialized Release
+native gate exactly once through the same durable pattern. If both are green,
+commit exactly `tests/WidgetSwitchFixture/Program.cs` with DLV-375 subject,
+commit exactly `src/OverlayHost/WidgetSwitchHostTests.cpp` with DLV-389
+subject, commit exactly `src/OverlayHost/build.ps1` with DLV-349 subject, then
+commit exactly the four other held native test files with DLV-374 subject. Do
+not run Tier 3, integrate, start DLV-284, launch/terminate product processes,
+or push. Preserve PID 126208, all state, and diagnostics.
+
 ## Reviewer disposition after the cumulative native gate is green
 
 If either authorized native route is red, retain all seven diffs uncommitted and
@@ -688,7 +734,7 @@ If both routes are green:
 
 ## Queued platform production — DLV-284 explicit publication transaction model
 
-Status: queued, not assigned. It becomes assignable only after DLV-388 is
+Status: queued, not assigned. It becomes assignable only after DLV-389 is
 dispositioned, the cumulative native gate is green, and the
 cumulative evidence pass, the accepted production/test chain is independently
 reviewed and integrated, and the accepted main Release is coherently refreshed
@@ -773,8 +819,8 @@ import/export or scheduling only after independent widgets prove the need.
 
 ## Ordered queues
 
-1. Platform evidence queue: execute DLV-388 source/output classification of
-   the pre-switch same-widget sequence advance before another edit or rerun.
+1. Platform evidence queue: execute DLV-389's current pre-switch sequence
+   correction and stop at the first red before another diagnosis or rerun.
 2. Reviewer integration queue: review DLV-349 and the eventual cumulative test
    commit, then assign exact clean
    Tier 3 if the native routes are green.
@@ -797,7 +843,7 @@ There is no other Ready production work in either standing lane.
 | DLV-314 | Production `992b77b` physically accepted with Spotify 0.3.13. |
 | DLV-318 | Current accepted production `32a2a5e`; PID 126208 runs Spotify 0.3.14. |
 | DLV-319–326 | Accepted managed test chain through `676cd76`; all managed Tier-3 gates green. |
-| DLV-327–388 | Cumulative fixture/build evidence remains held pending DLV-388 disposition and exact-commit Tier 3. |
+| DLV-327–389 | Cumulative fixture/build evidence remains held pending DLV-389 disposition and exact-commit Tier 3. |
 | DLV-284 | Queued, not assigned until cumulative review/integration. |
 | DLV-248 | Deliberately deferred until explicit user promotion. |
 
@@ -830,4 +876,5 @@ There is no other Ready production work in either standing lane.
 | DLV-385 | Strict post-catalog baseline overconstrained; required ordered trio was not observed. |
 | DLV-386 | Catalog removal legitimately repaints without a new placement/sample; held parser/order was overconstrained. |
 | DLV-387 | Natural-placement correction reached a stale pre-switch sequence pin: Audio remained current while focus publication advanced 4→5. |
-| DLV-388 | Assigned source/output classification of the same-widget sequence advance. |
+| DLV-388 | Sequence 4→5 is legitimate same-widget admitted authority; the test froze sequence across focus input. |
+| DLV-389 | Assigned current pre-switch Audio authority capture and exact transaction correlation. |
