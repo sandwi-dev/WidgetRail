@@ -39,7 +39,7 @@ historical evidence only; this file is the sole authority for current work.
 
 | Lane | Task/worktree | State |
 | --- | --- | --- |
-| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | Assigned DLV-376 source/artifact diagnosis of the WidgetSwitchHostTests stop whose command output expired. Preserve all six held diffs and neutral rejected/restoration commits. DLV-284 remains queued and unassigned. |
+| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | Assigned DLV-377 one-run durable WidgetSwitch diagnostic. Preserve all six held diffs and neutral rejected/restoration commits. DLV-284 remains queued and unassigned. |
 | Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | Idle and clean at `676cd76`. Preserve PID 126208 and all product state; do not begin work, integrate, rebuild/relaunch, or push. |
 
 ## Execution and architecture rules
@@ -305,6 +305,34 @@ one-run rule. Do not rerun the complete gate, guess the first red from artifact
 order, change production, edit, commit, integrate, start DLV-284,
 launch/terminate, or push. Preserve PID 126208 and all state.
 
+DLV-376 proved the exact WidgetSwitch red is unrecoverable. The corrected
+fixture and `WidgetSwitchHostTests.exe` rebuilt, but the fixture unconditionally
+deleted its profile/log/markers during unwinding. The Codex transcript retained
+only a vanished cell handle, and the late watcher captured completion without
+the child exit. Artifact order cannot distinguish startup, switching, blocked-
+snapshot handling, re-show, cleanup, or success.
+
+## Assigned platform diagnostic — DLV-377 durably capture WidgetSwitch result
+
+Make no source edit. Create one unique diagnostics directory under the user's
+temporary directory, outside the repository and `out/Release`, and preserve it
+for review. Through one waiting external PowerShell owner, run exactly once:
+`src/OverlayHost/build.ps1 -Configuration Release -WidgetSwitchTestsOnly`.
+Before launch, persist the exact command and working directory. Redirect the
+child's complete stdout and stderr to separate files in that directory and,
+after the child terminates, persist its exact numeric exit code in a small
+manifest/result file. The external waiting owner must remain attached through
+completion; do not rely on a late `Get-Process` attachment or an expiring model
+cell for the verdict.
+
+After completion, read the retained result/stdout/stderr files and report the
+exact first red or green result plus the diagnostics directory. Do not edit the
+test to retain its temporary installation yet; its distinct `Require` messages
+should make console capture sufficient. Do not run the complete gate, rerun the
+focused route, change source, commit, integrate, start DLV-284,
+launch/terminate product processes, or push. Preserve PID 126208, all six held
+diffs, installed/configured state, and the durable diagnostic files.
+
 ## Reviewer disposition after the cumulative native gate is green
 
 If either authorized native route is red, retain all five diffs uncommitted and
@@ -326,7 +354,7 @@ If both routes are green:
 
 ## Queued platform production — DLV-284 explicit publication transaction model
 
-Status: queued, not assigned. It becomes assignable only after DLV-376 is
+Status: queued, not assigned. It becomes assignable only after DLV-377 is
 dispositioned, the cumulative native gate is green, and the
 cumulative evidence pass, the accepted production/test chain is independently
 reviewed and integrated, and the accepted main Release is coherently refreshed
@@ -411,8 +439,8 @@ import/export or scheduling only after independent widgets prove the need.
 
 ## Ordered queues
 
-1. Platform evidence queue: execute DLV-376 source/artifact recovery of the
-   WidgetSwitch stop before authorizing any rerun or correction.
+1. Platform evidence queue: execute DLV-377 once with durable output/exit
+   capture and stop at the exact focused result.
 2. Reviewer integration queue: review DLV-349 and the eventual cumulative test
    commit, then assign exact clean
    Tier 3 if the native routes are green.
@@ -435,7 +463,7 @@ There is no other Ready production work in either standing lane.
 | DLV-314 | Production `992b77b` physically accepted with Spotify 0.3.13. |
 | DLV-318 | Current accepted production `32a2a5e`; PID 126208 runs Spotify 0.3.14. |
 | DLV-319–326 | Accepted managed test chain through `676cd76`; all managed Tier-3 gates green. |
-| DLV-327–376 | Cumulative fixture/build evidence remains held pending DLV-376 disposition and exact-commit Tier 3. |
+| DLV-327–377 | Cumulative fixture/build evidence remains held pending DLV-377 result and exact-commit Tier 3. |
 | DLV-284 | Queued, not assigned until cumulative review/integration. |
 | DLV-248 | Deliberately deferred until explicit user promotion. |
 
@@ -456,4 +484,5 @@ There is no other Ready production work in either standing lane.
 | DLV-373 | Combined post-F1 oracle classified as insufficient evidence; retained YT Music expectation remains valid. |
 | DLV-374 | Focused reopen evidence green; full gate advanced to WidgetSwitchFixture compile drift. |
 | DLV-375 | Named-action fixture alignment compiled; full-gate output expired during WidgetSwitchHostTests. |
-| DLV-376 | Assigned source/artifact recovery of the exact WidgetSwitch stop boundary. |
+| DLV-376 | Exact red unrecoverable; all per-run evidence was deleted or never persisted. |
+| DLV-377 | Assigned one focused route with durable command/stdout/stderr/exit capture. |
