@@ -39,7 +39,7 @@ historical evidence only; this file is the sole authority for current work.
 
 | Lane | Task/worktree | State |
 | --- | --- | --- |
-| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | Assigned test correction DLV-346 below at DLV-340 commit `0f8b080`, preserving five uncommitted diagnostic/test files. DLV-284 remains queued and unassigned. |
+| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | Assigned cleanup/native gate DLV-347 below at DLV-340 commit `0f8b080`, preserving three cumulative test files and removing only temporary trace hunks. DLV-284 remains queued and unassigned. |
 | Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | Idle and clean at `676cd76`. Preserve PID 126208 and all product state; do not begin new work, integrate, rebuild/relaunch, or push. |
 
 ## Execution and architecture rules
@@ -466,6 +466,29 @@ after correction. Do not weaken expiry bounds or accessibility semantics. Do
 not change files, commit, integrate, start DLV-284, launch/terminate, or push.
 Preserve PID 126208 and all state.
 
+DLV-346 corrected only the two authorized tests. The externally run
+`WidgetActionFailureHostTestsOnly` route returned 0 and passed; the production
+4000-ms bound is unchanged. `WidgetActionFeedbackTests.cpp` now contains the
+deterministic replacement-deadline case but has not yet run. No commit exists.
+
+## Assigned platform gate — DLV-347 remove trace and run native Release
+
+Preserve the cumulative changes in `RealHostAccessibilityTests.cpp`,
+`WidgetActionFeedbackTests.cpp`, and `WidgetActionFailureHostTests.cpp`.
+Using an explicit patch, remove only the temporary DLV-336 instrumentation from
+`AccessibilityProvider.h`, `AccessibilityProvider.cpp`, and `main.cpp`,
+restoring those three files exactly to HEAD without touching any other file.
+
+Then, with external execution approval, run exactly once through a separate
+PowerShell process:
+`powershell.exe -NoProfile -ExecutionPolicy Bypass -File
+.\src\OverlayHost\build.ps1 -Configuration Release`. Stop first red. The
+canonical output must include the deterministic `WidgetActionFeedbackTests`
+case and the cumulative native host/accessibility fixtures. If green, inspect
+the diff and commit exactly the three test files with a DLV-347 subject. Do not
+run Tier 3 yet. Do not alter production, weaken assertions, integrate, start
+DLV-284, launch/terminate, or push. Preserve PID 126208 and all state.
+
 DLV-345 classified the DLV-344 red as test drift. Production assigns a fresh
 `now + 4000 ms` deadline with `insert_or_assign`, replaces the host timer, and
 rechecks the current entry deadline even if an old callback was queued. The
@@ -653,8 +676,8 @@ import/export or scheduling only after independent widgets prove the need.
 
 ## Ordered queues
 
-1. Platform evidence queue: execute DLV-346 test-only replacement oracle
-   correction and its one approved real-host route.
+1. Platform evidence queue: execute DLV-347 temporary-trace cleanup and one
+   complete native Release gate; if green, commit the three test files.
 2. Reviewer integration queue: independently review DLV-332 and the cumulative
    accepted production/test chain; integrate only if every required gate passes.
 3. Platform production queue: assign DLV-284 after clean integration, before
@@ -695,7 +718,8 @@ There is no other Ready production work in either standing lane.
 | DLV-343 | Ruled out endpoint collision; restricted-context IPC denial and outer PowerShell status reporting. |
 | DLV-344 | Real IPC run reached UIA; first event succeeded, then replacement expired at the first deadline. |
 | DLV-345 | Production deadline replacement is sound; real-host timing oracle is stale/racy. |
-| DLV-346 | Assigned deterministic deadline coverage plus second-admission-anchored real-host evidence. |
+| DLV-346 | Corrected test oracle; externally run real-host route green, unit case awaits native gate. |
+| DLV-347 | Assigned temporary-trace removal plus complete native Release gate and test commit. |
 | DLV-284 | Queued, not assigned until cumulative review/integration. |
 | DLV-248 | Deliberately deferred until explicit user promotion. |
 
