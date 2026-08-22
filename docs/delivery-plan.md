@@ -708,6 +708,23 @@ for `WidgetSwitchHostTests.cpp`, then stop before Tier 3. No production edit,
 rebuild/relaunch, integration, DLV-284, termination, or push. Retain accepted
 PID 33360 and all installed/configured state.
 
+## Assigned platform test diagnosis — DLV-424 isolate locked native outputs
+
+Use only `build.ps1`/native project source, the held DLV-423 diff, retained
+DLV-423 artifacts, and read-only process/file metadata. Do not edit, build, run
+tests, terminate/relaunch, or touch product state. Identify the smallest
+supported way to compile and run `WidgetSwitchTestsOnly` without writing the
+accepted PID 33360 Release directory: an existing output-root parameter,
+environment override, isolated build tree, or exact copied source/output
+arrangement.
+
+The solution must build the held source diff, retain provenance hashing and
+runtime coherence, avoid stale binaries, and leave PID 33360 and its loaded DLLs
+untouched. Prefer an existing supported isolation seam; do not change product
+code, disable the interop build, copy an unverified executable, or relaunch only
+for tests. Specify the exact bounded command/environment and artifact ownership.
+No rerun until classified.
+
 ## After the cumulative native gate is green
 
 1. Review exact DLV-349 and the cumulative test commits and full diffs. Reject
@@ -723,7 +740,8 @@ PID 33360 and all installed/configured state.
 
 ## Queued platform production — DLV-284 explicit publication transaction model
 
-Status: queued, not assigned. It becomes assignable only after DLV-423 is
+Status: queued, not assigned. It becomes assignable only after DLV-424 and the
+resumed DLV-423 evidence are
 dispositioned, the resumed native test gate is green,
 cumulative evidence is reviewed and integrated, and the accepted main Release
 is coherently refreshed only if runtime inputs changed. No new virtualization
@@ -783,8 +801,8 @@ Extract native authorities only when real work touches them.
 
 ## Ordered queues
 
-1. Platform evidence: execute DLV-423 adoption of accepted fallback-placement
-   authority and resume the focused/full native gate.
+1. Platform evidence: execute DLV-424 lock-safe isolated native output
+   classification, then resume DLV-423 without touching PID 33360.
 2. Reviewer integration: review the eventual cumulative commits, then assign exact
    clean Tier 3 if the native routes are green.
 3. Platform production: DLV-284 after clean cumulative integration.
@@ -804,9 +822,10 @@ There is no other Ready production work in either standing lane.
 | DLV-314 | Production `992b77b` accepted with Spotify 0.3.13. |
 | DLV-318 | Last physically accepted production `32a2a5e`; exact restore artifact preserved, not currently running. |
 | DLV-319–326 | Managed test chain through `676cd76`; all managed Tier-3 gates green. |
-| DLV-327–421 | Native fixture/build evidence held pending DLV-423 and resumed exact-commit Tier 3. |
+| DLV-327–421 | Native fixture/build evidence held pending DLV-424 and resumed exact-commit Tier 3. |
 | DLV-422 | Production diagnostic `6926e05` physically accepted and integrated; PID 33360 retained. |
-| DLV-423 | Assigned exact fallback-placement test adoption and resumed native gate. |
+| DLV-423 | Test adoption diff compiled only to the interop link boundary; accepted PID 33360 locks the worktree Release DLL, so no test verdict. |
+| DLV-424 | Assigned lock-safe isolated native output/build classification without relaunching the accepted overlay. |
 | DLV-284 | Queued until cumulative review/integration. |
 | DLV-248 | Deliberately deferred until explicit user promotion. |
 
@@ -853,4 +872,5 @@ There is no other Ready production work in either standing lane.
 | DLV-420 | Latest placement was a stale DirectComposition-container record; fallback mode emits no replacement, so it cannot anchor live HWND stationarity. |
 | DLV-421 | No strict test-only work-area authority exists; exact fallback placement requires a narrow post-success host diagnostic. |
 | DLV-422 | `35489ab`/main `6926e05` physically accepted and integrated; PID 33360 retained without relaunch. |
-| DLV-423 | Assigned strict adoption of the accepted typed fallback-placement authority. |
+| DLV-423 | Focused build stopped at `LNK1104` on the running accepted Release interop DLL; test did not execute. |
+| DLV-424 | Assigned exact isolated output strategy preserving PID 33360 and build provenance. |
