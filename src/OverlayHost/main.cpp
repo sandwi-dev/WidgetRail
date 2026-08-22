@@ -8220,6 +8220,7 @@ private:
 
     void DiscardGraphicsResources(const bool discardRenderTarget = true) {
         if (declarativeRenderer_) declarativeRenderer_->DiscardTargetResources();
+        lastFallbackPresentationCheckpointKey_.clear();
         pendingContentRenderPlan_.reset();
         activeContentRenderPlan_.reset();
         launcherExperienceProjection_.DiscardTargetResources();
@@ -8556,7 +8557,7 @@ private:
             std::to_wstring(bounds.bottom - bounds.top);
     }
 
-    void AppendFallbackPlacementDiagnostic(
+    bool AppendFallbackPlacementDiagnostic(
         const std::wstring_view phase,
         const RECT& workArea,
         const UINT dpi,
@@ -8567,7 +8568,7 @@ private:
         };
         if (!window_ || !validBounds(workArea) || targetPlacement.width <= 0 ||
             targetPlacement.height <= 0) {
-            return;
+            return false;
         }
 
         const RECT targetBounds{
@@ -8579,7 +8580,7 @@ private:
         if (!validBounds(targetBounds) || targetBounds.left < workArea.left ||
             targetBounds.top < workArea.top || targetBounds.right > workArea.right ||
             targetBounds.bottom > workArea.bottom) {
-            return;
+            return false;
         }
 
         RECT windowBounds{};
@@ -8590,7 +8591,7 @@ private:
             !ClientToScreen(window_, &clientOrigin) || !validBounds(windowBounds) ||
             clientBounds.right <= clientBounds.left ||
             clientBounds.bottom <= clientBounds.top) {
-            return;
+            return false;
         }
         const RECT clientScreenBounds{
             clientOrigin.x,
@@ -8598,7 +8599,7 @@ private:
             clientOrigin.x + clientBounds.right - clientBounds.left,
             clientOrigin.y + clientBounds.bottom - clientBounds.top,
         };
-        if (!validBounds(clientScreenBounds)) return;
+        if (!validBounds(clientScreenBounds)) return false;
 
         const std::wstring_view widgetId = state_.surface() == widgetrail::Surface::Widget
             ? state_.activeWidget()
@@ -8621,6 +8622,71 @@ private:
             L" presentation=" +
                 (descriptor ? descriptor->presentationGeneration : L"none") +
             L" sequence=" + std::to_wstring(snapshot ? snapshot->sequence : -1));
+        return true;
+    }
+
+    void AppendFallbackPresentationCheckpoint() {
+        if (compositionSurface_.available() || !window_ ||
+            state_.surface() != widgetrail::Surface::Widget) {
+            return;
+        }
+        const std::wstring_view widgetId = state_.activeWidget();
+        if (widgetId.empty()) return;
+        const auto* descriptor = sessions_.FindDescriptor(widgetId);
+        const auto* snapshot = SnapshotFor(widgetId);
+        const auto presentation = sessions_.Presentation(widgetId);
+        if (!descriptor || !snapshot || snapshot->instanceId.empty() ||
+            snapshot->sequence <= 0 || descriptor->runtimeGeneration.empty() ||
+            descriptor->presentationGeneration.empty() ||
+            presentation.authority != widgetrail::WidgetPresentationAuthority::Current ||
+            presentation.snapshot != snapshot) {
+            return;
+        }
+
+        const HMONITOR monitor = MonitorFromWindow(window_, MONITOR_DEFAULTTONEAREST);
+        MONITORINFO monitorInfo{sizeof(monitorInfo)};
+        if (!monitor || !GetMonitorInfoW(monitor, &monitorInfo)) return;
+        const UINT dpi = GetDpiForWindow(window_);
+        const float interfaceScale = appearanceState_.current()
+            ? static_cast<float>(appearanceState_.current()->interfaceScale)
+            : 1.0F;
+        const auto extent = DesiredPresentationExtentDip();
+        const auto target = ComputePlatformPlacement(
+            monitorInfo.rcWork, dpi,
+            static_cast<float>(extent.widthDip) * interfaceScale,
+            static_cast<float>(extent.heightDip) * interfaceScale);
+        if (!target) return;
+
+        RECT windowBounds{};
+        RECT clientBounds{};
+        POINT clientOrigin{};
+        if (!GetWindowRect(window_, &windowBounds) ||
+            !GetClientRect(window_, &clientBounds) ||
+            !ClientToScreen(window_, &clientOrigin)) {
+            return;
+        }
+        const RECT clientScreenBounds{
+            clientOrigin.x,
+            clientOrigin.y,
+            clientOrigin.x + clientBounds.right - clientBounds.left,
+            clientOrigin.y + clientBounds.bottom - clientBounds.top,
+        };
+        const std::wstring checkpointKey =
+            std::wstring(widgetId) + L"|" + snapshot->instanceId + L"|" +
+            descriptor->runtimeGeneration + L"|" + descriptor->presentationGeneration +
+            L"|" + std::to_wstring(snapshot->sequence) + L"|" +
+            FormatPhysicalBounds(monitorInfo.rcWork) + L"|" + std::to_wstring(dpi) +
+            L"|" + std::to_wstring(interfaceScale) + L"|" +
+            std::to_wstring(target->x) + L"," + std::to_wstring(target->y) + L"," +
+            std::to_wstring(target->width) + L"," + std::to_wstring(target->height) +
+            L"|" + FormatPhysicalBounds(windowBounds) + L"|" +
+            FormatPhysicalBounds(clientScreenBounds);
+        if (checkpointKey == lastFallbackPresentationCheckpointKey_) return;
+        if (AppendFallbackPlacementDiagnostic(
+                L"presentation-checkpoint", monitorInfo.rcWork, dpi, interfaceScale,
+                *target)) {
+            lastFallbackPresentationCheckpointKey_ = checkpointKey;
+        }
     }
 
     [[nodiscard]] std::optional<RECT> ActualChromeWindowBounds() const {
@@ -9513,6 +9579,7 @@ private:
             ReprimeOpenAfterRenderTargetLoss();
         } else if (SUCCEEDED(result)) {
             if (performanceCountersActive_) ++performanceSuccessfulFrames_;
+            AppendFallbackPresentationCheckpoint();
             pendingWidgetPresentationImpact_.reset();
             pendingContentRenderPlan_.reset();
             activeContentRenderPlan_.reset();
@@ -10817,6 +10884,7 @@ private:
     mutable std::optional<WidgetSurfaceResolutionCache>
         widgetSurfaceResolutionCache_;
     std::wstring lastWidgetPresentationPaintKey_;
+    std::wstring lastFallbackPresentationCheckpointKey_;
     BYTE targetOverlayOpacity_{248};
     BYTE targetBackdropOpacity_{kBackdropOpacity};
     std::optional<BYTE> appliedOverlayOpacity_;
