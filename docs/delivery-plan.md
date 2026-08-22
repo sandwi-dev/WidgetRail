@@ -39,7 +39,7 @@ historical evidence only; this file is the sole authority for current work.
 
 | Lane | Task/worktree | State |
 | --- | --- | --- |
-| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | Assigned DLV-373 source/artifact diagnosis of the post-reopen action-failure fixture red. Preserve the five held diffs and neutral rejected/restoration commits. DLV-284 remains queued and unassigned. |
+| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | Assigned DLV-374 test-only separation of post-reopen action-failure authority. Preserve the five held diffs and neutral rejected/restoration commits. DLV-284 remains queued and unassigned. |
 | Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | Idle and clean at `676cd76`. Preserve PID 126208 and all product state; do not begin work, integrate, rebuild/relaunch, or push. |
 
 ## Execution and architecture rules
@@ -211,6 +211,45 @@ and feedback absence. Do not infer success from window visibility alone, accept
 any tray item, add tolerance/sleep/timeout, edit, rerun, commit, integrate,
 start DLV-284, launch/terminate, or push. Preserve PID 126208 and all state.
 
+DLV-373 did not prove a production defect. The state machine retains YT Music
+and `reopenWidget`, so F1 should reopen it with tray focus. The failing fixture
+combines current chrome-root resolution and exact YT Music tray lookup, while
+its `dashboard` prose is retired. Hide clears feedback and both accessibility
+providers; the retained evidence ends before F1 and the failed run's temporary
+profile was deleted. The green Settings re-show fixture does not inspect fixed-
+chrome UIA after re-show, so it cannot disposition this boundary.
+
+## Assigned platform test correction — DLV-374 separate reopen authorities
+
+Own only `src/OverlayHost/WidgetActionFailureHostTests.cpp`; preserve the other
+four held files unchanged. Replace only the combined post-F1 `dashboard`
+predicate with one bounded current-authority wait and predicate-specific
+diagnostics that require:
+
+- both content and chrome HWNDs visible;
+- current content and chrome UIA roots;
+- a post-reopen YT Music paint record with `input-owner=tray` and
+  `selected=ytmusic-fixture`;
+- exact `tray:tray.ytmusic-fixture` present, selected, and keyboard-focused;
+- exact current YT Music play/pause content present and not keyboard-focused;
+- both dashboard/open feedback status elements absent; and
+- the exact original fixture worker PID remains the sole matching descendant.
+
+Keep the existing bounds and exact identities. Give visibility, each root,
+paint/state, tray presence, selection, tray focus, content presence, content
+focus, each feedback status, and worker retention distinct failure messages.
+Do not accept any tray, add sleeps/tolerance/retries, increase timeouts, change
+production, or alter earlier event/lifetime checks.
+
+With external execution approval, run `WidgetActionFailureHostTestsOnly`
+exactly once. Stop first red. If green, run the complete serialized Release
+native gate once. If both are green, commit exactly `build.ps1` with a DLV-349
+subject, then commit exactly the four held test files with a DLV-374 subject.
+Do not run Tier 3, integrate, start DLV-284, launch/terminate, or push. Preserve
+PID 126208 and all installed/configured state. If the focused route proves the
+current chrome root and authoritative YT Music paint are present while the
+exact tray is absent, stop for a production-boundary diagnosis before any fix.
+
 ## Reviewer disposition after the cumulative native gate is green
 
 If either authorized native route is red, retain all five diffs uncommitted and
@@ -232,7 +271,7 @@ If both routes are green:
 
 ## Queued platform production — DLV-284 explicit publication transaction model
 
-Status: queued, not assigned. It becomes assignable only after DLV-373 is
+Status: queued, not assigned. It becomes assignable only after DLV-374 is
 dispositioned, the cumulative native gate is green, and the
 cumulative evidence pass, the accepted production/test chain is independently
 reviewed and integrated, and the accepted main Release is coherently refreshed
@@ -317,8 +356,8 @@ import/export or scheduling only after independent widgets prove the need.
 
 ## Ordered queues
 
-1. Platform evidence queue: execute DLV-373 source/artifact classification
-   before another correction or rerun.
+1. Platform evidence queue: execute DLV-374 strict post-reopen authority
+   separation and stop at the first red result.
 2. Reviewer integration queue: review DLV-349 and the eventual cumulative test
    commit, then assign exact clean
    Tier 3 if the native routes are green.
@@ -341,7 +380,7 @@ There is no other Ready production work in either standing lane.
 | DLV-314 | Production `992b77b` physically accepted with Spotify 0.3.13. |
 | DLV-318 | Current accepted production `32a2a5e`; PID 126208 runs Spotify 0.3.14. |
 | DLV-319–326 | Accepted managed test chain through `676cd76`; all managed Tier-3 gates green. |
-| DLV-327–373 | Native cumulative fixture/build evidence remains held pending DLV-373 disposition and exact-commit Tier 3. |
+| DLV-327–374 | Native cumulative fixture/build evidence remains held pending DLV-374 disposition and exact-commit Tier 3. |
 | DLV-284 | Queued, not assigned until cumulative review/integration. |
 | DLV-248 | Deliberately deferred until explicit user promotion. |
 
@@ -359,4 +398,5 @@ There is no other Ready production work in either standing lane.
 | DLV-370 | Cross-publication fixture geometry drift classified; production clipping remains sound. |
 | DLV-371 | Same-sample Settings focus/root/client correction authored; focused build exposed malformed test conditional before execution. |
 | DLV-372 | One-line conditional correction; focused route green, full gate exposed action-failure reopen red. |
-| DLV-373 | Assigned source/artifact classification of post-hide F1 reopen authority. |
+| DLV-373 | Combined post-F1 oracle classified as insufficient evidence; retained YT Music expectation remains valid. |
+| DLV-374 | Assigned strict current root/tray/content/state/feedback/worker separation. |
