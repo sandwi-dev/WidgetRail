@@ -35,7 +35,7 @@ historical evidence only; this file is the sole implementation authority.
 
 | Lane | Task/worktree | State |
 | --- | --- | --- |
-| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | DLV-465 focused gate and warning-only cleanup are accepted at cumulative tip `9dd7b78`; one canonical Tier-3 run is now the only gate before explicit integration. DLV-284 remains queued. |
+| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | DLV-467 owns the first canonical Tier-3 red in `WidgetActionFailureHostTests` from exact cumulative tip `9dd7b78`. DLV-284 remains queued. |
 | Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | Idle and clean at `676cd76`; do not begin work or change product state. |
 
 ## Execution rules
@@ -232,6 +232,52 @@ production-only rejection returns to DLV-466 without changing tests.
    already-current accepted overlay.
 5. Rebaseline both lanes, then assign DLV-284 before new virtualization work.
 
+The exact clean Tier-3 invocation ran once at `9dd7b78` and stopped first red
+after 44 passed steps. `RealHostAccessibilityTests` passed 291 checks; the
+native step then failed because `WidgetActionFailureHostTests` observed more
+than one `LiveRegionChanged` callback after the first action-failure status.
+The run exited 1 with no remaining owned descendants. Structured evidence is
+under `artifacts/verification/20260822T230948Z-8b3efb96`; durable owner streams
+are under `%TEMP%\wrail-dlv465-tier3-run-20260822-160920`. Do not rerun Tier 3
+until the focused red is classified and corrected.
+
+## Assigned platform test correction — DLV-467 accessibility event authority
+
+Baseline: clean detached cumulative tip
+`9dd7b7876cf80a8f4fe6d4f9221e4b4735ad4cbb`. This is a test-only assignment
+owned by the platform lane. Preserve all accepted production commits and the
+running accepted PID 89008; do not rebuild/relaunch it.
+
+First inspect the retained red and the logical event contract already covered
+by `AccessibilityEventsTests`: insertion/name change of one polite status must
+plan exactly one logical live-region element. Determine whether the real-host
+failure is an actual second logical publication, an unexpected sender, a
+duplicate callback delivery for the same exact sender, or a subscription/
+fixture race. The current failure copy is insufficient because it records no
+sender identities or before/after counts.
+
+Default edit surface is
+`src/OverlayHost/WidgetActionFailureHostTests.cpp`; use
+`src/OverlayHost/AccessibilityEventsTests.cpp` only if an exact logical-plan
+assertion is genuinely missing. Improve deterministic failure evidence before
+changing the assertion. Preserve exact status ID, polite role/name, focus,
+single failure record, unchanged identical-replacement semantics, retention,
+hide/reopen cleanup, and worker-lifetime coverage. Do not mask an unexpected
+sender, use sleeps/quiet periods as authority, increase timeouts/tolerances,
+weaken the logical one-publication contract, or modify production code. If
+evidence proves production emits a second logical event or another production
+change is required, stop with the retained proof for a physical-first
+production assignment.
+
+The user authorizes DLV-467 to own the complete focused correction loop without
+returning after each in-scope test-only red. Use the smallest exact failing
+case while iterating, retain and classify each first red, batch understood
+corrections, and run the affected native test group once when coherent. Every
+command must expose real output within 60 seconds and long work must be checked
+every 15-30 seconds. Commit one test-only DLV-467 milestone and stop for
+review. Do not run Tier 3, integrate, push, change packages/configuration, or
+touch Avalonia/AVP.
+
 ## Queued platform production — DLV-284 typed publication transactions
 
 Status: queued, not assigned. It becomes assignable only after DLV-452 startup
@@ -294,8 +340,9 @@ Extract native authorities only when real work touches them.
 
 ## Ordered queues
 
-1. DLV-465 resume on accepted DLV-466 and complete focused WidgetSwitch stabilization.
-2. Reviewer integration of the explicit cumulative hashes after focused green and independent review.
+1. DLV-467 focused accessibility-event classification and test correction.
+2. One final exact clean Tier-3 checkpoint, then reviewer integration of the
+   explicit accepted cumulative hashes.
 3. DLV-284 after cumulative clean integration.
 4. Generic Game Launcher cutover; LauncherExperience deletion/state retirement;
    protocol requirements; then the remaining maturity deliverables.
@@ -314,7 +361,8 @@ There is no other Ready production work in either standing lane.
 | DLV-427 | `e26b92b` and `16050bb` are unbuilt/unaccepted ancestry-bound evidence only. |
 | DLV-428 | Accepted/integrated as `c38b261`; superseded in the running candidate by accepted DLV-466. |
 | DLV-466 | Production `360544a` physically accepted; coherent candidate PID 89008 remains running. |
-| DLV-465 | Preserved test-only diff resumes with the exact accepted DLV-466 production delta. |
+| DLV-465 | Focused WidgetSwitch gate and warning cleanup accepted through `9dd7b78`. |
+| DLV-467 | Assigned after Tier 3 first-red duplicate live-region callback evidence. |
 | DLV-284 | Queued until cumulative review/integration. |
 | DLV-248 | Deferred until explicit user promotion. |
 
