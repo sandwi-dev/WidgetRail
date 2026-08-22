@@ -39,7 +39,7 @@ historical evidence only; this file is the sole authority for current work.
 
 | Lane | Task/worktree | State |
 | --- | --- | --- |
-| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | Assigned DLV-385 strict same-session WidgetSwitch tray stationarity. Preserve all seven held diffs and neutral rejected/restoration commits. DLV-284 remains queued and unassigned. |
+| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | Assigned DLV-386 source/output diagnosis of post-catalog fixed-chrome baseline publication. Preserve all seven held diffs and neutral rejected/restoration commits. DLV-284 remains queued and unassigned. |
 | Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | Idle and clean at `676cd76`. Preserve PID 126208 and all product state; do not begin work, integrate, rebuild/relaunch, or push. |
 
 ## Execution and architecture rules
@@ -560,6 +560,30 @@ subject, then commit exactly the four held native test files with DLV-374
 subject. Do not run Tier 3, integrate, start DLV-284, launch/terminate product
 processes, or push. Preserve PID 126208, all state, and diagnostics.
 
+DLV-385 stopped before the stationarity comparison. After catalog probe
+removal, the focused route did not observe the newly required ordered exact
+fixed-chrome placement/current paint/composition-child sample trio. The source-
+derived extent correction remains green. No full gate or commit occurred.
+
+## Assigned platform diagnosis — DLV-386 classify post-catalog sample order
+
+Source and retained DLV-385 stdout/stderr only. Make no edit and run no build,
+test, publish, executable, or product/process command. Trace catalog probe
+removal through catalog-order revision, chrome-session invalidation, placement
+decision, paint publication, composition child commit, and the DLV-385 baseline
+parser. Determine which events are guaranteed, their exact order/keys, whether
+an unchanged fixed-chrome placement is legitimately reused, and which single
+record is the current screen-projected tray authority after removal.
+
+Classify parser/order overconstraint, missing diagnostic correlation, or
+production failure. Identify the smallest strict baseline acquisition that
+pins current placement count/HWND/tray-screen without requiring an event the
+product need not republish. Keep exact stationarity equality and distinct
+revision/authority failures. Do not rebaseline from local DIPs, accept stale
+pre-removal records, add sleeps/tolerance/timeouts, edit, rerun, commit,
+integrate, start DLV-284, launch/terminate, or push. Preserve PID 126208, all
+seven diffs, and DLV-385 diagnostics.
+
 ## Reviewer disposition after the cumulative native gate is green
 
 If either authorized native route is red, retain all five diffs uncommitted and
@@ -581,7 +605,7 @@ If both routes are green:
 
 ## Queued platform production — DLV-284 explicit publication transaction model
 
-Status: queued, not assigned. It becomes assignable only after DLV-385 is
+Status: queued, not assigned. It becomes assignable only after DLV-386 is
 dispositioned, the cumulative native gate is green, and the
 cumulative evidence pass, the accepted production/test chain is independently
 reviewed and integrated, and the accepted main Release is coherently refreshed
@@ -666,8 +690,8 @@ import/export or scheduling only after independent widgets prove the need.
 
 ## Ordered queues
 
-1. Platform evidence queue: execute DLV-385 strict post-catalog fixed-chrome
-   tray stationarity, focused route, then full gate once if green.
+1. Platform evidence queue: execute DLV-386 source/output classification of
+   post-catalog baseline event guarantees before another correction or rerun.
 2. Reviewer integration queue: review DLV-349 and the eventual cumulative test
    commit, then assign exact clean
    Tier 3 if the native routes are green.
@@ -690,7 +714,7 @@ There is no other Ready production work in either standing lane.
 | DLV-314 | Production `992b77b` physically accepted with Spotify 0.3.13. |
 | DLV-318 | Current accepted production `32a2a5e`; PID 126208 runs Spotify 0.3.14. |
 | DLV-319–326 | Accepted managed test chain through `676cd76`; all managed Tier-3 gates green. |
-| DLV-327–385 | Cumulative fixture/build evidence remains held pending DLV-385 result and exact-commit Tier 3. |
+| DLV-327–386 | Cumulative fixture/build evidence remains held pending DLV-386 disposition and exact-commit Tier 3. |
 | DLV-284 | Queued, not assigned until cumulative review/integration. |
 | DLV-248 | Deliberately deferred until explicit user promotion. |
 
@@ -720,4 +744,5 @@ There is no other Ready production work in either standing lane.
 | DLV-382 | Retired combined-shell expectation classified; current content extents source-derived. |
 | DLV-383 | Audio extent correction passed; focused route exposed cross-authority tray stationarity red. |
 | DLV-384 | Screen-pixel baseline versus local-DIP fallback and catalog revision mismatch classified. |
-| DLV-385 | Assigned exact same-session chrome HWND/placement/tray-screen stationarity. |
+| DLV-385 | Strict post-catalog baseline overconstrained; required ordered trio was not observed. |
+| DLV-386 | Assigned source/output trace of catalog revision and chrome publication order. |
