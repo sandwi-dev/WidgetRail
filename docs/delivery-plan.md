@@ -646,6 +646,31 @@ fields and when it must publish. Do not reuse stale placement, infer expected
 geometry from the observed HWND alone, or weaken stationarity. Preserve PID
 126208, state, seven diffs, and retained artifacts.
 
+## Assigned platform production diagnostic — DLV-422 fallback placement record
+
+Own only `src/OverlayHost/main.cpp`; preserve all seven held files. Add one
+typed structured fallback-placement diagnostic at the existing successful
+fallback `SetWindowPos` path and once when a mid-session DirectComposition-to-
+fallback transition has established current HWND geometry. Emit only after the
+actual geometry is authoritative.
+
+The record must identify `mode=hwnd-fallback` and include current work rectangle,
+DPI, interface scale, computed target placement, actual content-HWND window and
+client-screen rectangles, and current widget/presentation authority where
+available. Reuse existing structured formatting and bounds validation; do not
+alter placement, rendering, focus, accessibility, fallback behavior, or error
+handling. Do not emit a stale DirectComposition-container record as fallback.
+
+Perform source review and the canonical native Release production build only;
+do not run tests. Create one scoped DLV-422 commit for `main.cpp`, retain exact
+build evidence, and stop before launch. No integration, DLV-284, package change,
+launch/terminate, or push. Preserve accepted PID 126208 until reviewer launch
+disposition and preserve the seven earlier held diffs/artifacts.
+
+After reviewer acceptance of the diff/build, visibly launch the coherent native
+Release candidate and obtain the user verdict before assigning the test adoption
+of this record.
+
 ## After the cumulative native gate is green
 
 1. Review exact DLV-349 and the cumulative test commits and full diffs. Reject
@@ -661,10 +686,11 @@ geometry from the observed HWND alone, or weaken stationarity. Preserve PID
 
 ## Queued platform production — DLV-284 explicit publication transaction model
 
-Status: queued, not assigned. It becomes assignable only after DLV-421 is
-dispositioned, the native gate is green, cumulative evidence is reviewed and
-integrated, and the accepted main Release is coherently refreshed only if
-runtime inputs changed. No new virtualization feature may precede it.
+Status: queued, not assigned. It becomes assignable only after DLV-422 and its
+physical-first verdict are dispositioned, the resumed native test gate is green,
+cumulative evidence is reviewed and integrated, and the accepted main Release
+is coherently refreshed only if runtime inputs changed. No new virtualization
+feature may precede it.
 
 Replace semantics inferred from `allowUpdate`, base zero/nonzero, and
 recovery-side conditions with one private typed transaction model through SDK/
@@ -720,14 +746,18 @@ Extract native authorities only when real work touches them.
 
 ## Ordered queues
 
-1. Platform evidence: execute DLV-421 source/retained search for strict live
-   fallback work-area authority before adding any production diagnostic.
-2. Reviewer integration: review the eventual four commits, then assign exact
+1. Platform production/build: execute DLV-422 exact fallback-placement
+   diagnostic and native Release build without tests.
+2. User verdict: reviewer launches the coherent DLV-422 candidate only after
+   diff/build acceptance; tests remain held until the physical verdict.
+3. Platform evidence: adopt the accepted diagnostic into the strict fallback
+   destination test and resume the native gate.
+4. Reviewer integration: review the eventual cumulative commits, then assign exact
    clean Tier 3 if the native routes are green.
-3. Platform production: DLV-284 after clean cumulative integration.
-4. Future architecture: generic Game Launcher cutover, LauncherExperience
+5. Platform production: DLV-284 after clean cumulative integration.
+6. Future architecture: generic Game Launcher cutover, LauncherExperience
    deletion/state retirement, protocol requirements, then maturity deliverables.
-5. DLV-248 remains deliberately deferred until explicit user promotion.
+7. DLV-248 remains deliberately deferred until explicit user promotion.
 
 There is no other Ready production work in either standing lane.
 
@@ -741,7 +771,8 @@ There is no other Ready production work in either standing lane.
 | DLV-314 | Production `992b77b` accepted with Spotify 0.3.13. |
 | DLV-318 | Current accepted production `32a2a5e`; PID 126208 runs Spotify 0.3.14. |
 | DLV-319–326 | Managed test chain through `676cd76`; all managed Tier-3 gates green. |
-| DLV-327–421 | Native fixture/build evidence held pending DLV-421 and exact-commit Tier 3. |
+| DLV-327–421 | Native fixture/build evidence held pending DLV-422 physical-first diagnostic and resumed exact-commit Tier 3. |
+| DLV-422 | Assigned narrow fallback-placement structured diagnostic and native Release build; tests held for physical verdict. |
 | DLV-284 | Queued until cumulative review/integration. |
 | DLV-248 | Deliberately deferred until explicit user promotion. |
 
@@ -786,4 +817,5 @@ There is no other Ready production work in either standing lane.
 | DLV-418 | Clean module path reached the test; first real red is missing ordered fallback work-area placement plus exact Game Launcher destination paint. |
 | DLV-419 | Fallback selection need not republish unchanged placement; exact pre/post live HWND equality can pin the prior current placement around destination admission. |
 | DLV-420 | Latest placement was a stale DirectComposition-container record; fallback mode emits no replacement, so it cannot anchor live HWND stationarity. |
-| DLV-421 | Assigned search for exact test-owned live work-area authority or the narrow required fallback-placement diagnostic seam. |
+| DLV-421 | No strict test-only work-area authority exists; exact fallback placement requires a narrow post-success host diagnostic. |
+| DLV-422 | Assigned exact post-placement fallback diagnostic, production build, and physical-first candidate handoff. |
