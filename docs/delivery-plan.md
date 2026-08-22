@@ -39,7 +39,7 @@ historical evidence only; this file is the sole authority for current work.
 
 | Lane | Task/worktree | State |
 | --- | --- | --- |
-| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | Assigned DLV-382 source/output diagnosis of Audio Mixer source-extent establishment. Preserve all six held diffs and neutral rejected/restoration commits. DLV-284 remains queued and unassigned. |
+| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | Assigned DLV-383 strict WidgetSwitch content-extent fixture alignment. Preserve all six held diffs and neutral rejected/restoration commits. DLV-284 remains queued and unassigned. |
 | Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | Idle and clean at `676cd76`. Preserve PID 126208 and all product state; do not begin work, integrate, rebuild/relaunch, or push. |
 
 ## Execution and architecture rules
@@ -460,6 +460,47 @@ add tolerance/timeout/retries, edit, rerun, commit, integrate, start DLV-284,
 launch/terminate, or push. Preserve PID 126208, all six diffs, and DLV-381
 diagnostics.
 
+DLV-382 classified stale WidgetSwitch fixture geometry, not protocol or
+production failure. The old `592×698` Audio Mixer expectation is authored
+`520×520` plus retired combined-shell reservations. Current DirectComposition/
+two-HWND diagnostics report content presentation extent, excluding the fixed
+55-DIP guide/footer: `520×465`. Settings startup is irrelevant to this
+development-catalog fixture.
+
+## Assigned platform test correction — DLV-383 current content extents
+
+Own only `src/OverlayHost/WidgetSwitchHostTests.cpp`; preserve all six existing
+held files unchanged. Keep exact equality and update only fixed widget expected
+extents from retired combined-shell values to the source-derived current
+content-presentation contract:
+
+- Audio Mixer `520×465`;
+- Game Launcher `980×645`;
+- Now Playing `760×425`;
+- Games & Apps `820×375`;
+- YT Music `900×545`;
+- Spotify `980×505`.
+
+Leave dynamic Network Controls and Settings expectations unchanged. Rename the
+affected assertion wording to `authored content presentation extent`. On
+failure, include the exact admitted record and separately identify sequence,
+desired extent, presented extent, body bounds, viewport bounds, and the
+matching placement record's authored `body-preferred` value. Do not change
+production, parser authority, diagnostic format, equality, units, tolerance,
+timeouts, retries, fixture surfaces, or unrelated WidgetSwitch assertions.
+
+With external execution approval and the proven DLV-381 absolute child/
+process-handle capture pattern, run `WidgetSwitchTestsOnly` exactly once and
+durably retain its command, preflight, streams, and numeric exit. Stop first
+red. If green, run the complete serialized Release native gate exactly once
+through the same durable process-level capture pattern. If both are green,
+commit exactly `tests/WidgetSwitchFixture/Program.cs` with DLV-375 subject,
+commit exactly `src/OverlayHost/WidgetSwitchHostTests.cpp` with DLV-383
+subject, commit exactly `src/OverlayHost/build.ps1` with DLV-349 subject, then
+commit exactly the four held native test files with DLV-374 subject. Do not run
+Tier 3, integrate, start DLV-284, launch/terminate product processes, or push.
+Preserve PID 126208, all state, and diagnostic directories.
+
 ## Reviewer disposition after the cumulative native gate is green
 
 If either authorized native route is red, retain all five diffs uncommitted and
@@ -481,7 +522,7 @@ If both routes are green:
 
 ## Queued platform production — DLV-284 explicit publication transaction model
 
-Status: queued, not assigned. It becomes assignable only after DLV-382 is
+Status: queued, not assigned. It becomes assignable only after DLV-383 is
 dispositioned, the cumulative native gate is green, and the
 cumulative evidence pass, the accepted production/test chain is independently
 reviewed and integrated, and the accepted main Release is coherently refreshed
@@ -566,8 +607,8 @@ import/export or scheduling only after independent widgets prove the need.
 
 ## Ordered queues
 
-1. Platform evidence queue: execute DLV-382 source/output classification of the
-   genuine Audio Mixer source-extent red before any correction or rerun.
+1. Platform evidence queue: execute DLV-383 strict content-extent alignment,
+   focused route, then complete gate once if focused evidence is green.
 2. Reviewer integration queue: review DLV-349 and the eventual cumulative test
    commit, then assign exact clean
    Tier 3 if the native routes are green.
@@ -590,7 +631,7 @@ There is no other Ready production work in either standing lane.
 | DLV-314 | Production `992b77b` physically accepted with Spotify 0.3.13. |
 | DLV-318 | Current accepted production `32a2a5e`; PID 126208 runs Spotify 0.3.14. |
 | DLV-319–326 | Accepted managed test chain through `676cd76`; all managed Tier-3 gates green. |
-| DLV-327–382 | Cumulative fixture/build evidence remains held pending DLV-382 disposition and exact-commit Tier 3. |
+| DLV-327–383 | Cumulative fixture/build evidence remains held pending DLV-383 result and exact-commit Tier 3. |
 | DLV-284 | Queued, not assigned until cumulative review/integration. |
 | DLV-248 | Deliberately deferred until explicit user promotion. |
 
@@ -617,4 +658,5 @@ There is no other Ready production work in either standing lane.
 | DLV-379 | Absolute host standard; preflight rejected PowerShell 5.1 function-shaped module command before build. |
 | DLV-380 | Preflight passed; in-process `2>` wrapper converted successful Cargo stderr into terminating error. |
 | DLV-381 | Durable focused route exposed genuine initial Audio Mixer source-extent red. |
-| DLV-382 | Assigned source/output classification of extent publication/admission authority. |
+| DLV-382 | Retired combined-shell expectation classified; current content extents source-derived. |
+| DLV-383 | Assigned exact fixed-widget content extent alignment and durable gates. |
