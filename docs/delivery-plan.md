@@ -33,7 +33,7 @@ historical evidence only; this file is the sole implementation authority.
 
 | Lane | Task/worktree | State |
 | --- | --- | --- |
-| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | DLV-454 assigned: replace the worker-local block acknowledgement with an in-band action handshake, then run only the focused gate. Preserve seven held diffs and all rejected/restoration evidence. DLV-284 remains queued. |
+| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | DLV-455 assigned: settle Settings back to interactive widget focus before the in-band block action, then run only the focused gate. Preserve seven held diffs and all rejected/restoration evidence. DLV-284 remains queued. |
 | Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | Idle and clean at `676cd76`; do not begin work or change product state. |
 
 ## Execution rules
@@ -613,25 +613,29 @@ worker/Bridge/host boundary, so they do not prove refresh demand reached the
 host. No production defect is established. Evidence is under
 `%TEMP%\wrail-dlv453-focused-20260822-050100`.
 
-## Assigned platform in-band block handshake — DLV-454
+Disposition: the in-band handshake passed and entered blocked Render. The next
+red was the old no-paint RefreshRetained assertion. Exact logs show UIA Invoke
+first moved Settings from tray `Visible` to widget `Interactive`, legitimately
+causing lifecycle admission, fallback resize, and paint inside the assertion's
+pre-action boundary. The failure is test-state contamination, not production.
+Evidence is under `%TEMP%\wrail-dlv454-focused-20260822-051400`.
 
-Test-only; change only held `WidgetSwitchHostTests.cpp` and
-`tests/WidgetSwitchFixture/Program.cs`. Replace the background file monitor
-with an in-band action handshake: when the exact current fixture Ready action
-sees a pending epoch trigger, consume it, arm that epoch, call `Invalidate`,
-and acknowledge the arm before completing the action. The harness must write
-the epoch, invoke the exact enabled current Ready UIA node, wait for arm then
-Render-start, and may repeat that same action once for the same epoch. Preserve
-all three block sites, exact epoch/render-sequence/release checks, ordinary
-invalidation semantics, and the one-retry bound. On failure retain the current
-complete overlay log and a bounded post-trigger lifecycle/request summary.
+## Assigned platform stable-focus block boundary — DLV-455
 
-Do not add polling/retry loops, weaken timeouts, alter production, or touch
-another held file. Reuse the coherent DLV-452 tree and incremental outputs
-after exact seven-file parity. Run the focused gate once with the established
-observable owner and 15–20-second process/stream checks. Stop at its explicit
-result; no full gate, commit, integration, product/package/process action,
-DLV-284, evidence removal, or push.
+Test-only; change only held `WidgetSwitchHostTests.cpp`. After completing the
+mode-aware tray-focus proof, explicitly return to exact current Settings widget
+focus and wait for its admitted interactive presentation and mode-appropriate
+completion to settle. Establish the ordinary-refresh boundary only after that
+settle, then use the accepted DLV-454 in-band Ready-action handshake. Require
+that the action does not introduce another lifecycle transition; preserve the
+existing no-raster/no-geometry RefreshRetained proof, all three block sites,
+epoch/render/release authority, one retry, and retained failure diagnostics.
+
+Do not weaken assertions/timeouts, alter production or the fixture, or touch
+another held file. Reuse the coherent incremental tree after seven-file parity;
+run one observable focused gate with 15–20-second checks and stop at its result.
+No full gate, commit, integration, product/package/process action, evidence
+removal, DLV-284, or push.
 
 Disposition: red after 140.110 seconds with fresh child/output inspection every
 20 seconds. The exact current Audio fallback checkpoint was already present,
@@ -939,7 +943,7 @@ Extract native authorities only when real work touches them.
 
 ## Ordered queues
 
-1. DLV-454 in-band action handshake for the three blocked-snapshot sites.
+1. DLV-455 stable interactive-focus boundary before the block handshake.
 2. Reviewer commit/diff review, then one exact clean Tier-3 run.
 3. DLV-284 after cumulative clean integration.
 4. Generic Game Launcher cutover; LauncherExperience deletion/state retirement;
@@ -992,3 +996,4 @@ There is no other Ready production work in either standing lane.
 | DLV-451 | Wrapper passed; reused partial artifact tree failed isolated Bridge startup. |
 | DLV-452 | Fresh parity tree reproduced startup; malformed test catalog JSON was the exact cause. |
 | DLV-453 | Catalog delimiter passed; worker-local arm acknowledgements did not prove host-visible invalidation. |
+| DLV-454 | In-band block entered Render; its UIA action contaminated the old tray-focus assertion boundary. |
