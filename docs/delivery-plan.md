@@ -33,7 +33,7 @@ historical evidence only; this file is the sole implementation authority.
 
 | Lane | Task/worktree | State |
 | --- | --- | --- |
-| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | DLV-438 assigned. Preserve seven held diffs and all rejected/restoration evidence. DLV-284 remains queued. |
+| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | DLV-439 assigned. Preserve seven held diffs and all rejected/restoration evidence. DLV-284 remains queued. |
 | Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | Idle and clean at `676cd76`; do not begin work or change product state. |
 
 ## Execution rules
@@ -373,6 +373,39 @@ not run selector/replay/full native, commit, integrate, rebuild/relaunch PID
 144396, change product/package state, remove evidence, assign DLV-284, or push.
 Red stops for classification; green returns to reviewer commit planning.
 
+Disposition: the normalized record correction passed its former sequence
+boundary. The single observable run continued to the next strict assertion and
+stopped after 120.176 seconds because checkpoint work-area authority differed
+from the later live content-HWND monitor work area. The child stream recorded
+exit 1; the durable owner's null exit field is an observation-script defect and
+is not authoritative. Exact child PID, streams, and resource state were
+inspected every 15–20 seconds. Evidence is retained under
+`%TEMP%\wrail-dlv438-widget-switch-monitor-20260822-033600`.
+
+## Assigned platform fallback geometry classifier — DLV-439
+
+Test-only; change only held `WidgetSwitchHostTests.cpp`. Preserve every strict
+fallback checkpoint geometry, DPI, identity, and sequence invariant, but do not
+fail them serially. At the already-selected normalized checkpoint, capture in
+one aggregate classifier: selected offset and full record; checkpoint work,
+target, content window, client-screen, and DPI; current content HWND identity,
+monitor identity, monitor work area, window, client-screen, and DPI; plus one
+boolean for each existing invariant. Always retain the source overlay log when
+any geometry invariant fails. The first red must report every value and every
+failed invariant together so no further run is needed merely to reveal the
+next comparison.
+
+Do not weaken/remove an invariant, choose a different checkpoint, change
+production, add tolerances, change timing/input/focus/selector behavior, touch
+another held file, or alter SDK/runtime/Bridge/packaging. Recreate one fresh
+detached `c38b261` tree with exactly seven held files and full path/SHA-256
+parity. Run the focused WidgetSwitch gate exactly once through an observable
+owner that records a reliable numeric child exit and inspects exact child plus
+durable streams every 15–20 seconds. Stop at the numeric result. Do not run
+selector/replay/full native, commit, integrate, rebuild/relaunch PID 144396,
+change product/package state, remove prior evidence, assign DLV-284, or push.
+Red stops for reviewer classification; green returns to commit planning.
+
 ## After the cumulative native gate is green
 
 1. Review each of the four commits and the cumulative diff. Reject extra files,
@@ -388,7 +421,7 @@ Red stops for classification; green returns to reviewer commit planning.
 
 ## Queued platform production — DLV-284 typed publication transactions
 
-Status: queued, not assigned. It becomes assignable only after DLV-438, the
+Status: queued, not assigned. It becomes assignable only after DLV-439, the
 cumulative native gate, commit review/integration, and exact clean Tier 3 are
 green. No new virtualization feature may precede it.
 
@@ -446,7 +479,7 @@ Extract native authorities only when real work touches them.
 
 ## Ordered queues
 
-1. DLV-438 one checkpoint-record consistency correction and observable focused gate.
+1. DLV-439 one aggregate fallback geometry classifier and observable focused gate.
 2. Reviewer commit/diff review, then one exact clean Tier-3 run.
 3. DLV-284 after cumulative clean integration.
 4. Generic Game Launcher cutover; LauncherExperience deletion/state retirement;
@@ -462,7 +495,7 @@ There is no other Ready production work in either standing lane.
 | DLV-257 identity | Store, domain, trademark, and GitHub availability remain external/manual. |
 | DLV-278–283/270 | Production accepted; integration awaits the native gate, exact Tier 3, and review. |
 | DLV-319–326 | Managed chain through `676cd76`; all managed Tier-3 gates green. |
-| DLV-327–421 | Native fixture/build evidence remains held behind DLV-438 and exact Tier 3. |
+| DLV-327–421 | Native fixture/build evidence remains held behind DLV-439 and exact Tier 3. |
 | DLV-427 | `e26b92b` and `16050bb` are unbuilt/unaccepted ancestry-bound evidence only. |
 | DLV-428 | Accepted/integrated as `c38b261`; PID 144396 already runs it. |
 | DLV-284 | Queued until cumulative review/integration. |
@@ -483,4 +516,5 @@ There is no other Ready production work in either standing lane.
 | DLV-435 | Seven table cases and exact retained-log replay green in 7 seconds each. |
 | DLV-436 | One observable run red after 140.110 seconds; no post-Back fallback repaint or diagnostic. |
 | DLV-437 | Back semantics passed; later raw CRLF checkpoint reparse failed after 120.139 seconds. |
-| DLV-438 | Assigned one normalized selected-record correction and one observable focused gate. |
+| DLV-438 | CRLF sequence passed; later recorded-work/live-monitor mismatch failed after 120.176 seconds. |
+| DLV-439 | Assigned one aggregate recorded-versus-live geometry classifier and focused gate. |
