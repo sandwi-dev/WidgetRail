@@ -13,6 +13,7 @@
 #include <optional>
 #include <string>
 #include <string_view>
+#include <utility>
 
 namespace fs = std::filesystem;
 using Microsoft::WRL::ComPtr;
@@ -145,7 +146,8 @@ std::wstring AutomationId(IUIAutomationElement* element) {
 
 ComPtr<IUIAutomationElement> FocusedTrayItem(
     IUIAutomation* automation,
-    IUIAutomationElement* root) {
+    IUIAutomationElement* root,
+    const std::wstring_view expected) {
     VARIANT value{};
     V_VT(&value) = VT_BOOL;
     V_BOOL(&value) = VARIANT_TRUE;
@@ -161,9 +163,44 @@ ComPtr<IUIAutomationElement> FocusedTrayItem(
     for (int index = 0; index < count; ++index) {
         ComPtr<IUIAutomationElement> element;
         if (SUCCEEDED(elements->GetElement(index, element.GetAddressOf())) &&
-            AutomationId(element.Get()).starts_with(L"tray:")) return element;
+            AutomationId(element.Get()) == expected) return element;
     }
     return {};
+}
+
+bool IsFocused(IUIAutomationElement* element) {
+    BOOL focused{};
+    return element && SUCCEEDED(element->get_CurrentHasKeyboardFocus(&focused)) && focused;
+}
+
+bool IsSelected(IUIAutomationElement* element) {
+    VARIANT selected{};
+    const bool result = element &&
+        SUCCEEDED(element->GetCurrentPropertyValue(
+            UIA_SelectionItemIsSelectedPropertyId, &selected)) &&
+        V_VT(&selected) == VT_BOOL && V_BOOL(&selected) == VARIANT_TRUE;
+    VariantClear(&selected);
+    return result;
+}
+
+bool HasSettingsWidgetInputPaint(
+    const std::string& log,
+    const std::size_t after) {
+    constexpr std::string_view needle =
+        "Widget presentation paint target=settings ";
+    std::size_t cursor = after;
+    while ((cursor = log.find(needle, cursor)) != std::string::npos) {
+        const auto end = log.find('\n', cursor);
+        const std::string_view record{
+            log.data() + cursor,
+            end == std::string::npos ? log.size() - cursor : end - cursor};
+        if (record.find(" input-owner=widget ") != std::string_view::npos &&
+            record.find(" selected=settings ") != std::string_view::npos)
+            return true;
+        if (end == std::string::npos) break;
+        cursor = end + 1;
+    }
+    return false;
 }
 
 bool Contains(const RECT outer, const RECT inner) noexcept {
@@ -206,68 +243,161 @@ void RequireBottomAnchoredRecord(
     visibleContent = *content;
 }
 
-void VerifyDashboardUia(
+struct SettingsAuthority final {
+    ComPtr<IUIAutomationElement> contentRoot;
+    ComPtr<IUIAutomationElement> settingsAction;
+    ComPtr<IUIAutomationElement> chromeRoot;
+    ComPtr<IUIAutomationElement> settingsTray;
+};
+
+SettingsAuthority VerifyStartupSettingsUia(
     IUIAutomation* automation,
-    HWND window,
-    const RECT visibleContent) {
-    ComPtr<IUIAutomationElement> root;
-    ComPtr<IUIAutomationElement> title;
+    HWND contentWindow,
+    HWND chromeWindow) {
+    ComPtr<IUIAutomationElement> contentRoot;
+    ComPtr<IUIAutomationElement> chromeRoot;
+    ComPtr<IUIAutomationElement> settingsCategory;
+    ComPtr<IUIAutomationElement> legacyTitle;
     ComPtr<IUIAutomationElement> selected;
     Require(WaitUntil(kStepTimeoutMilliseconds, [&] {
-        root.Reset();
-        title.Reset();
+        contentRoot.Reset();
+        chromeRoot.Reset();
+        settingsCategory.Reset();
+        legacyTitle.Reset();
         selected.Reset();
-        if (FAILED(automation->ElementFromHandle(window, root.GetAddressOf())) || !root)
+        if (FAILED(automation->ElementFromHandle(
+                contentWindow, contentRoot.GetAddressOf())) || !contentRoot ||
+            FAILED(automation->ElementFromHandle(
+                chromeWindow, chromeRoot.GetAddressOf())) || !chromeRoot)
             return false;
-        title = FindByAutomationId(
-            automation, root.Get(), L"host:host.dashboard.title");
-        selected = FocusedTrayItem(automation, root.Get());
-        return title && selected;
-    }), "Production dashboard UIA title/focused tray item was unavailable.");
-    RECT titleBounds{};
+        settingsCategory = FindByAutomationId(
+            automation, contentRoot.Get(), L"widget:category.appearance");
+        legacyTitle = FindByAutomationId(
+            automation, contentRoot.Get(), L"host:host.dashboard.title");
+        selected = FocusedTrayItem(
+            automation, chromeRoot.Get(), L"tray:tray.settings");
+        return settingsCategory && !legacyTitle && selected && IsSelected(selected.Get());
+    }), "Production Settings content/fixed-chrome tray UIA was unavailable.");
+    RECT contentRootBounds{};
+    RECT settingsBounds{};
     RECT selectedBounds{};
-    Require(SUCCEEDED(title->get_CurrentBoundingRectangle(&titleBounds)) &&
+    Require(SUCCEEDED(contentRoot->get_CurrentBoundingRectangle(&contentRootBounds)) &&
+                SUCCEEDED(settingsCategory->get_CurrentBoundingRectangle(&settingsBounds)) &&
                 SUCCEEDED(selected->get_CurrentBoundingRectangle(&selectedBounds)),
-            "Production dashboard UIA bounds were unavailable.");
-    Require(Contains(visibleContent, titleBounds) &&
-                Contains(visibleContent, selectedBounds),
-            "Dashboard title or focused tray UIA bounds escaped visible content.");
-    Require(selectedBounds.top > titleBounds.bottom,
-            "Focused tray UIA bounds did not remain below the dashboard title.");
+            "Production Settings/tray UIA bounds were unavailable.");
+    RECT contentClient{};
+    POINT contentOrigin{};
+    Require(GetClientRect(contentWindow, &contentClient) != FALSE,
+            Win32Error("GetClientRect(content)"));
+    Require(ClientToScreen(contentWindow, &contentOrigin) != FALSE,
+            Win32Error("ClientToScreen(content)"));
+    const RECT contentClientBounds{
+        contentOrigin.x,
+        contentOrigin.y,
+        contentOrigin.x + contentClient.right - contentClient.left,
+        contentOrigin.y + contentClient.bottom - contentClient.top,
+    };
+    Require(Contains(contentRootBounds, settingsBounds),
+            "Settings content UIA bounds escaped the current content root.");
+    Require(Contains(contentClientBounds, settingsBounds),
+            "Settings content UIA bounds escaped the content HWND client.");
+    RECT chromeBounds{};
+    Require(GetWindowRect(chromeWindow, &chromeBounds) != FALSE,
+            Win32Error("GetWindowRect(chrome)"));
+    Require(Contains(chromeBounds, selectedBounds),
+            "Focused Settings tray UIA bounds escaped fixed chrome.");
     const POINT pointer{
         selectedBounds.left + (selectedBounds.right - selectedBounds.left) / 2,
         selectedBounds.top + (selectedBounds.bottom - selectedBounds.top) / 2};
     const LRESULT hit = SendMessageW(
-        window, WM_NCHITTEST, 0, MAKELPARAM(pointer.x, pointer.y));
+        chromeWindow, WM_NCHITTEST, 0, MAKELPARAM(pointer.x, pointer.y));
     Require(hit == HTCLIENT,
-            "Focused tray UIA center did not map to the authored pointer surface.");
+            "Focused Settings tray UIA center did not map to fixed chrome input.");
+    return {
+        std::move(contentRoot),
+        std::move(settingsCategory),
+        std::move(chromeRoot),
+        std::move(selected),
+    };
 }
 
-void VerifyFocusedUiaInside(
+void VerifyReshownSettingsFocus(
     IUIAutomation* automation,
-    HWND window,
-    const RECT visibleContent) {
-    ComPtr<IUIAutomationElement> root;
-    ComPtr<IUIAutomationElement> focused;
-    Require(WaitUntil(kStepTimeoutMilliseconds, [&] {
-        root.Reset();
-        focused.Reset();
-        if (FAILED(automation->ElementFromHandle(window, root.GetAddressOf())) || !root)
+    HWND window) {
+    ComPtr<IUIAutomationElement> currentRoot;
+    ComPtr<IUIAutomationElement> currentSettings;
+    bool settingsFocused{};
+    bool rootBoundsAvailable{};
+    bool settingsBoundsAvailable{};
+    bool clientBoundsAvailable{};
+    bool clientOriginAvailable{};
+    bool settingsInsideRoot{};
+    bool settingsInsideClient{};
+    if (WaitUntil(kStepTimeoutMilliseconds, [&] {
+        currentRoot.Reset();
+        currentSettings.Reset();
+        settingsFocused = false;
+        rootBoundsAvailable = false;
+        settingsBoundsAvailable = false;
+        clientBoundsAvailable = false;
+        clientOriginAvailable = false;
+        settingsInsideRoot = false;
+        settingsInsideClient = false;
+
+        if (FAILED(automation->ElementFromHandle(
+                window, currentRoot.GetAddressOf())) || !currentRoot)
             return false;
-        VARIANT value{};
-        V_VT(&value) = VT_BOOL;
-        V_BOOL(&value) = VARIANT_TRUE;
-        ComPtr<IUIAutomationCondition> condition;
-        return SUCCEEDED(automation->CreatePropertyCondition(
-                   UIA_HasKeyboardFocusPropertyId, value,
-                   condition.GetAddressOf())) && condition &&
-            SUCCEEDED(root->FindFirst(
-                TreeScope_Descendants, condition.Get(), focused.GetAddressOf())) && focused;
-    }), "Re-shown production widget omitted its focused UIA descendant.");
-    RECT bounds{};
-    Require(SUCCEEDED(focused->get_CurrentBoundingRectangle(&bounds)) &&
-                Contains(visibleContent, bounds),
-            "Re-shown production widget focus escaped visible content bounds.");
+        currentSettings = FindByAutomationId(
+            automation, currentRoot.Get(), L"widget:category.appearance");
+        if (!currentSettings) return false;
+
+        settingsFocused = IsFocused(currentSettings.Get());
+        RECT rootBounds{};
+        RECT settingsBounds{};
+        RECT client{};
+        POINT clientOrigin{};
+        rootBoundsAvailable = SUCCEEDED(
+            currentRoot->get_CurrentBoundingRectangle(&rootBounds));
+        settingsBoundsAvailable = SUCCEEDED(
+            currentSettings->get_CurrentBoundingRectangle(&settingsBounds));
+        clientBoundsAvailable = GetClientRect(window, &client) != FALSE;
+        clientOriginAvailable = ClientToScreen(window, &clientOrigin) != FALSE;
+        if (rootBoundsAvailable && settingsBoundsAvailable)
+            settingsInsideRoot = Contains(rootBounds, settingsBounds);
+        if (settingsBoundsAvailable && clientBoundsAvailable &&
+            clientOriginAvailable) {
+            const RECT clientBounds{
+                clientOrigin.x,
+                clientOrigin.y,
+                clientOrigin.x + client.right - client.left,
+                clientOrigin.y + client.bottom - client.top,
+            };
+            settingsInsideClient = Contains(clientBounds, settingsBounds);
+        }
+        return settingsFocused && rootBoundsAvailable && settingsBoundsAvailable &&
+            clientBoundsAvailable && clientOriginAvailable &&
+            settingsInsideRoot && settingsInsideClient;
+    })) {
+        return;
+    }
+    Require(currentRoot,
+            "Re-shown production widget omitted its current content UIA root.");
+    Require(currentSettings,
+            "Re-shown production widget omitted the exact Settings action.");
+    Require(settingsFocused,
+            "Re-shown production widget did not restore focus to the exact Settings action.");
+    Require(rootBoundsAvailable,
+            "Re-shown production widget content root bounds were unavailable.");
+    Require(settingsBoundsAvailable,
+            "Re-shown production widget Settings bounds were unavailable.");
+    Require(clientBoundsAvailable,
+            "Re-shown production widget content client rectangle was unavailable.");
+    Require(clientOriginAvailable,
+            "Re-shown production widget content client origin was unavailable.");
+    Require(settingsInsideRoot,
+            "Re-shown production widget Settings bounds escaped the current content root.");
+    Require(settingsInsideClient,
+            "Re-shown production widget Settings bounds escaped the current content client.");
 }
 
 void Run(const Arguments& arguments) {
@@ -278,10 +408,13 @@ void Run(const Arguments& arguments) {
         L"--show --process-profile " + profile.profile();
     HostProcess host(arguments.installation, profile.localAppData(), hostArguments);
     HWND window{};
+    HWND chromeWindow{};
     Require(WaitUntil(kStartupTimeoutMilliseconds, [&] {
         window = LocateHostWindow(host.Id());
-        return window && IsWindowVisible(window) != FALSE;
-    }), "Cold production host did not expose its first visible window.");
+        chromeWindow = LocateHostWindow(host.Id(), L"WidgetRail.Chrome");
+        return window && chromeWindow && IsWindowVisible(window) != FALSE &&
+            IsWindowVisible(chromeWindow) != FALSE;
+    }), "Cold production host did not expose its first visible content/chrome pair.");
     std::optional<std::string> firstRecord;
     Require(WaitUntil(kStartupTimeoutMilliseconds, [&] {
         const auto log = ReadUtf8(profile.logPath());
@@ -296,16 +429,138 @@ void Run(const Arguments& arguments) {
                 CLSID_CUIAutomation, nullptr, CLSCTX_INPROC_SERVER,
                 IID_PPV_ARGS(automation.GetAddressOf()))) && automation,
             "Windows UI Automation client is unavailable.");
-    VerifyDashboardUia(automation.Get(), window, firstContent);
+    const auto settingsAuthority = VerifyStartupSettingsUia(
+        automation.Get(), window, chromeWindow);
 
     const auto beforeWidget = ReadUtf8(profile.logPath()).size();
-    SendKey(window, VK_RETURN);
-    Require(WaitUntil(kStepTimeoutMilliseconds, [&] {
+    ComPtr<IUIAutomationInvokePattern> settingsTrayInvoke;
+    Require(SUCCEEDED(settingsAuthority.settingsTray->GetCurrentPatternAs(
+                UIA_InvokePatternId,
+                IID_PPV_ARGS(settingsTrayInvoke.ReleaseAndGetAddressOf()))) &&
+                settingsTrayInvoke,
+            "Selected Settings tray item did not expose InvokePattern.");
+    Require(SUCCEEDED(settingsTrayInvoke->Invoke()),
+            "Selected Settings tray item rejected InvokePattern.");
+
+    ComPtr<IUIAutomationElement> currentContentRoot;
+    ComPtr<IUIAutomationElement> currentSettingsAction;
+    ComPtr<IUIAutomationElement> currentChromeRoot;
+    ComPtr<IUIAutomationElement> currentSettingsTray;
+    BOOL sameContentRoot{};
+    BOOL sameSettingsAction{};
+    BOOL sameChromeRoot{};
+    BOOL sameSettingsTray{};
+    bool widgetInputPaint{};
+    bool settingsBoundsAvailable{};
+    bool settingsInsideContentRoot{};
+    bool settingsInsideContentClient{};
+    bool settingsFocused{};
+    bool settingsTraySelected{};
+    bool settingsTrayFocused{};
+    const auto currentAuthorityPublished = [&] {
         const auto log = ReadUtf8(profile.logPath());
-        return log.find(" surface=widget shell=shared ", beforeWidget) !=
-                std::string::npos &&
-            log.find(" content=admitted ", beforeWidget) != std::string::npos;
-    }), "Opening the focused widget did not admit content in the shared production host.");
+        widgetInputPaint = HasSettingsWidgetInputPaint(log, beforeWidget);
+
+        currentContentRoot.Reset();
+        currentSettingsAction.Reset();
+        currentChromeRoot.Reset();
+        currentSettingsTray.Reset();
+        sameContentRoot = FALSE;
+        sameSettingsAction = FALSE;
+        sameChromeRoot = FALSE;
+        sameSettingsTray = FALSE;
+        settingsBoundsAvailable = false;
+        settingsInsideContentRoot = false;
+        settingsInsideContentClient = false;
+        settingsFocused = false;
+        settingsTraySelected = false;
+        settingsTrayFocused = false;
+
+        if (FAILED(automation->ElementFromHandle(
+                window, currentContentRoot.GetAddressOf())) || !currentContentRoot ||
+            FAILED(automation->ElementFromHandle(
+                chromeWindow, currentChromeRoot.GetAddressOf())) || !currentChromeRoot)
+            return false;
+        currentSettingsAction = FindByAutomationId(
+            automation.Get(), currentContentRoot.Get(), L"widget:category.appearance");
+        currentSettingsTray = FindByAutomationId(
+            automation.Get(), currentChromeRoot.Get(), L"tray:tray.settings");
+        if (!currentSettingsAction || !currentSettingsTray) return false;
+
+        const bool identitiesMatch =
+            SUCCEEDED(automation->CompareElements(
+                settingsAuthority.contentRoot.Get(), currentContentRoot.Get(),
+                &sameContentRoot)) && sameContentRoot &&
+            SUCCEEDED(automation->CompareElements(
+                settingsAuthority.settingsAction.Get(), currentSettingsAction.Get(),
+                &sameSettingsAction)) && sameSettingsAction &&
+            SUCCEEDED(automation->CompareElements(
+                settingsAuthority.chromeRoot.Get(), currentChromeRoot.Get(),
+                &sameChromeRoot)) && sameChromeRoot &&
+            SUCCEEDED(automation->CompareElements(
+                settingsAuthority.settingsTray.Get(), currentSettingsTray.Get(),
+                &sameSettingsTray)) && sameSettingsTray;
+
+        RECT contentRootBounds{};
+        RECT settingsBounds{};
+        RECT contentClient{};
+        POINT contentOrigin{};
+        settingsBoundsAvailable =
+            SUCCEEDED(currentContentRoot->get_CurrentBoundingRectangle(
+                &contentRootBounds)) &&
+            SUCCEEDED(currentSettingsAction->get_CurrentBoundingRectangle(
+                &settingsBounds)) &&
+            GetClientRect(window, &contentClient) != FALSE &&
+            ClientToScreen(window, &contentOrigin) != FALSE;
+        if (settingsBoundsAvailable) {
+            const RECT contentClientBounds{
+                contentOrigin.x,
+                contentOrigin.y,
+                contentOrigin.x + contentClient.right - contentClient.left,
+                contentOrigin.y + contentClient.bottom - contentClient.top,
+            };
+            settingsInsideContentRoot = Contains(contentRootBounds, settingsBounds);
+            settingsInsideContentClient = Contains(contentClientBounds, settingsBounds);
+        }
+        settingsFocused = IsFocused(currentSettingsAction.Get());
+        settingsTraySelected = IsSelected(currentSettingsTray.Get());
+        settingsTrayFocused = IsFocused(currentSettingsTray.Get());
+        return widgetInputPaint && identitiesMatch && settingsBoundsAvailable &&
+            settingsInsideContentRoot && settingsInsideContentClient &&
+            settingsFocused && settingsTraySelected && !settingsTrayFocused;
+    };
+    if (!WaitUntil(kStepTimeoutMilliseconds, currentAuthorityPublished)) {
+        Require(widgetInputPaint,
+                "Settings activation did not publish widget input ownership.");
+        Require(currentContentRoot,
+                "Settings activation did not retain the content UIA root.");
+        Require(currentSettingsAction,
+                "Settings activation did not retain the Settings content action.");
+        Require(sameContentRoot,
+                "Settings activation replaced the exact content UIA root.");
+        Require(sameSettingsAction,
+                "Settings activation replaced the exact Settings content action.");
+        Require(settingsBoundsAvailable,
+                "Settings content bounds were unavailable after activation.");
+        Require(settingsInsideContentRoot,
+                "Settings content escaped the exact retained content root after activation.");
+        Require(settingsInsideContentClient,
+                "Settings content escaped the content HWND client after activation.");
+        Require(settingsFocused,
+                "Settings activation did not transfer keyboard focus to the Settings action.");
+        Require(currentChromeRoot,
+                "Settings activation did not retain the fixed-chrome UIA root.");
+        Require(currentSettingsTray,
+                "Settings activation did not retain the Settings tray item.");
+        Require(sameChromeRoot,
+                "Settings activation replaced the exact fixed-chrome UIA root.");
+        Require(sameSettingsTray,
+                "Settings activation replaced the exact Settings tray item.");
+        Require(settingsTraySelected,
+                "Settings activation cleared the selected Settings tray item.");
+        Require(!settingsTrayFocused,
+                "Settings tray item retained keyboard focus after widget activation.");
+    }
     Require(PostMessageW(window, WM_HOTKEY, 1, 0) != FALSE,
             Win32Error("PostMessageW(close hotkey)"));
     Require(WaitUntil(kStepTimeoutMilliseconds, [&] {
@@ -328,12 +583,12 @@ void Run(const Arguments& arguments) {
     }), "Resident re-show omitted bottom-anchored first-visible geometry.");
     RECT reshownContent{};
     RequireBottomAnchoredRecord(*reshowRecord, window, reshownContent);
-    VerifyFocusedUiaInside(automation.Get(), window, reshownContent);
+    VerifyReshownSettingsFocus(automation.Get(), window);
 
     PostMessageW(window, WM_CLOSE, 0, 0);
     Require(WaitForSingleObject(host.Process(), kStepTimeoutMilliseconds) == WAIT_OBJECT_0,
             "Production OverlayHost did not stop after the cold dashboard scenario.");
-    std::cout << "ColdDashboardHostTests: first commit, dashboard UIA/pointer, widget hide, and re-show passed\n";
+    std::cout << "ColdDashboardHostTests: first commit, Settings/chrome UIA/pointer, widget hide, and re-show passed\n";
 }
 
 Arguments ParseArguments(const int argc, wchar_t** argv) {

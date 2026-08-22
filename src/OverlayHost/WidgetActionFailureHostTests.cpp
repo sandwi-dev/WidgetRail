@@ -35,6 +35,7 @@ using Microsoft::WRL::RuntimeClassFlags;
 namespace fs = std::filesystem;
 
 constexpr wchar_t kHostWindowClass[] = L"WidgetRail.OverlayHost";
+constexpr wchar_t kChromeWindowClass[] = L"WidgetRail.Chrome";
 constexpr wchar_t kWidgetId[] = L"ytmusic-fixture";
 constexpr wchar_t kPlayPauseAutomationId[] = L"widget:play-pause";
 constexpr wchar_t kOpenStatusAutomationId[] = L"host:host.open.status";
@@ -222,6 +223,20 @@ public:
                 JsonEscape((root_ / L"worker-failed-once.marker").wstring()) + "\"],\n"
             "    \"declaredCapabilities\": [],\n"
             "    \"quickActions\": []\n"
+            "  }, {\n"
+            "    \"id\": \"settings\",\n"
+            "    \"packageId\": \"widgetrail.firstparty.settings\",\n"
+            "    \"publisherId\": \"widgetrail.firstparty\",\n"
+            "    \"name\": \"Settings\",\n"
+            "    \"instanceId\": \"settings.default\",\n"
+            "    \"icon\": \"settings\",\n"
+            "    \"workerExecutable\": \"runtime/Settings/SettingsWidget.Worker.exe\",\n"
+            "    \"styleFile\": \"runtime/Settings/styles/default.wrss\",\n"
+            "    \"memoryLimitMb\": 48,\n"
+            "    \"residencyPolicy\": { \"schemaVersion\": 1, \"mode\": \"suspend-when-hidden\" },\n"
+            "    \"workerArguments\": [\"--bundled-widget-root\", \"..\"],\n"
+            "    \"declaredCapabilities\": [],\n"
+            "    \"quickActions\": []\n"
             "  }],\n"
             "  \"bundledWidgets\": []\n"
             "}\n";
@@ -240,7 +255,6 @@ public:
     [[nodiscard]] const std::wstring& ProcessProfile() const noexcept {
         return processProfile_;
     }
-
 private:
     fs::path root_;
     fs::path localAppData_;
@@ -330,6 +344,7 @@ private:
 
 struct WindowSearch {
     DWORD processId{};
+    std::wstring_view className;
     HWND window{};
 };
 
@@ -340,15 +355,17 @@ BOOL CALLBACK FindHostWindow(HWND window, LPARAM parameter) {
     if (processId != search.processId) return TRUE;
     wchar_t className[128]{};
     if (GetClassNameW(window, className, 128) > 0 &&
-        wcscmp(className, kHostWindowClass) == 0) {
+        search.className == className) {
         search.window = window;
         return FALSE;
     }
     return TRUE;
 }
 
-HWND LocateHostWindow(const DWORD processId) {
-    WindowSearch search{processId, nullptr};
+HWND LocateHostWindow(
+    const DWORD processId,
+    const std::wstring_view className = kHostWindowClass) {
+    WindowSearch search{processId, className, nullptr};
     EnumWindows(FindHostWindow, reinterpret_cast<LPARAM>(&search));
     return search.window;
 }
@@ -357,14 +374,25 @@ class LiveRegionHandler final : public RuntimeClass<
     RuntimeClassFlags<ClassicCom>, IUIAutomationEventHandler> {
 public:
     IFACEMETHODIMP HandleAutomationEvent(
-        IUIAutomationElement*, const EVENTID eventId) noexcept override {
-        if (eventId == UIA_LiveRegionChangedEventId) count_.fetch_add(1);
+        IUIAutomationElement* sender, const EVENTID eventId) noexcept override {
+        if (eventId == UIA_LiveRegionChangedEventId) {
+            BSTR automationId{};
+            if (sender && SUCCEEDED(sender->get_CurrentAutomationId(&automationId)) &&
+                automationId && std::wstring_view(automationId) == kOpenStatusAutomationId)
+                exactStatusCount_.fetch_add(1);
+            if (automationId) SysFreeString(automationId);
+            count_.fetch_add(1);
+        }
         return S_OK;
     }
     [[nodiscard]] int Count() const noexcept { return count_.load(); }
+    [[nodiscard]] int ExactStatusCount() const noexcept {
+        return exactStatusCount_.load();
+    }
 
 private:
     std::atomic<int> count_{};
+    std::atomic<int> exactStatusCount_{};
 };
 
 std::optional<std::wstring> StringProperty(
@@ -409,6 +437,16 @@ ComPtr<IUIAutomationElement> RootForWindow(IUIAutomation* automation, HWND windo
 bool IsFocused(IUIAutomationElement* element) {
     BOOL focused{};
     return element && SUCCEEDED(element->get_CurrentHasKeyboardFocus(&focused)) && focused;
+}
+
+bool IsSelected(IUIAutomationElement* element) {
+    VARIANT selected{};
+    const bool result = element &&
+        SUCCEEDED(element->GetCurrentPropertyValue(
+            UIA_SelectionItemIsSelectedPropertyId, &selected)) &&
+        V_VT(&selected) == VT_BOOL && V_BOOL(&selected) == VARIANT_TRUE;
+    VariantClear(&selected);
+    return result;
 }
 
 bool HasExpectedStatus(
@@ -541,44 +579,72 @@ void Run(const Arguments& arguments) {
     TemporaryInstallation installation(arguments.installation, arguments.fixtureWorker);
     HostProcess host(
         installation.Root(), installation.LocalAppData(), installation.ProcessProfile());
+    const fs::path logPath = installation.LocalAppData() /
+        L"WidgetRail" / L"overlay.log";
 
     HWND window{};
-    Require(WaitUntil(kStartupTimeoutMilliseconds, [&] {
-                window = LocateHostWindow(host.Id());
-                return window && IsWindowVisible(window);
-            }), "Production OverlayHost did not create a visible HWND in time.");
+    HWND chromeWindow{};
+    if (!WaitUntil(kStartupTimeoutMilliseconds, [&] {
+            window = LocateHostWindow(host.Id());
+            chromeWindow = LocateHostWindow(host.Id(), kChromeWindowClass);
+            return window && chromeWindow && IsWindowVisible(window) &&
+                IsWindowVisible(chromeWindow);
+        })) {
+        const DWORD waitState = WaitForSingleObject(host.Process(), 0);
+        DWORD exitCode{};
+        const bool hasExitCode = GetExitCodeProcess(host.Process(), &exitCode) != FALSE;
+        const auto log = ReadLog(logPath);
+        constexpr std::size_t maximumLogSuffix = 8192;
+        const auto suffixStart = log.size() > maximumLogSuffix
+            ? log.size() - maximumLogSuffix
+            : 0;
+        Fail("Production OverlayHost did not create a visible HWND in time. "
+             "Child wait state=" + std::to_string(waitState) +
+             ", exit code=" +
+             (hasExitCode ? std::to_string(exitCode) : std::string("unavailable")) +
+             ", isolated overlay log bytes=" + std::to_string(log.size()) +
+             ", bounded suffix: " + log.substr(suffixStart));
+    }
 
     ComPtr<IUIAutomation> automation;
     Require(SUCCEEDED(CoCreateInstance(
                 CLSID_CUIAutomation, nullptr, CLSCTX_INPROC_SERVER,
                 IID_PPV_ARGS(automation.GetAddressOf()))) && automation,
             "Windows UI Automation client is unavailable.");
-    auto root = RootForWindow(automation.Get(), window);
-    Require(root, "UI Automation could not acquire the production host root.");
+    ComPtr<IUIAutomationElement> contentRoot;
+    ComPtr<IUIAutomationElement> chromeRoot;
     auto eventHandler = Make<LiveRegionHandler>();
     Require(eventHandler, "Could not create UI Automation event handler.");
-    Require(SUCCEEDED(automation->AddAutomationEventHandler(
-                UIA_LiveRegionChangedEventId, root.Get(), TreeScope_Subtree, nullptr,
-                eventHandler.Get())),
-            "Could not subscribe to production live-region events.");
+    bool eventHandlerRegistered{};
     const auto removeEventHandler = [&] {
-        (void)automation->RemoveAutomationEventHandler(
-            UIA_LiveRegionChangedEventId, root.Get(), eventHandler.Get());
+        if (eventHandlerRegistered && chromeRoot) {
+            (void)automation->RemoveAutomationEventHandler(
+                UIA_LiveRegionChangedEventId, chromeRoot.Get(), eventHandler.Get());
+            eventHandlerRegistered = false;
+        }
     };
 
     try {
+        ComPtr<IUIAutomationElement> fixtureTray;
         Require(WaitUntil(kOperationTimeoutMilliseconds, [&] {
-                    auto currentRoot = RootForWindow(automation.Get(), window);
-                    return currentRoot && FindByAutomationId(
+                    auto currentRoot = RootForWindow(automation.Get(), chromeWindow);
+                    if (currentRoot) fixtureTray = FindByAutomationId(
                         automation.Get(), currentRoot.Get(), kTrayAutomationId);
+                    return static_cast<bool>(fixtureTray);
                 }), "The fixture did not appear in the production dashboard.");
-        const fs::path logPath = installation.LocalAppData() /
-            L"WidgetRail" / L"overlay.log";
         const auto activationLogBoundary = ReadLog(logPath).size();
-        PostKey(window, VK_RETURN);
+        ComPtr<IUIAutomationInvokePattern> fixtureTrayInvoke;
+        Require(SUCCEEDED(fixtureTray->GetCurrentPatternAs(
+                    UIA_InvokePatternId,
+                    IID_PPV_ARGS(fixtureTrayInvoke.ReleaseAndGetAddressOf()))) &&
+                    fixtureTrayInvoke,
+                "The fixture tray element did not expose InvokePattern.");
+        Require(SUCCEEDED(fixtureTrayInvoke->Invoke()),
+                "The fixture tray element rejected InvokePattern.");
         if (!WaitUntil(kOperationTimeoutMilliseconds, [&] {
                 return ReadLog(logPath).find(
-                    "YT Music failed: Widget worker", activationLogBoundary) !=
+                    "YT Music failed: Widget 'ytmusic-fixture' runtime request failed "
+                    "(worker-runtime-failed).", activationLogBoundary) !=
                     std::string::npos;
             })) {
             const auto log = ReadLog(logPath);
@@ -608,21 +674,119 @@ void Run(const Arguments& arguments) {
                         automation.Get(), currentRoot.Get(), kPlayPauseAutomationId);
                 }), "The real widget did not expose play-pause after opening.");
 
-        Require(WaitUntil(3000, [&] {
-                    auto currentRoot = RootForWindow(automation.Get(), window);
-                    ComPtr<IUIAutomationElement> playPause;
-                    if (currentRoot) playPause = FindByAutomationId(
-                        automation.Get(), currentRoot.Get(), kPlayPauseAutomationId);
-                    return IsFocused(playPause.Get());
-                }), "play-pause was not the initial UI Automation focus.");
+        ComPtr<IUIAutomationElement> playPause;
+        ComPtr<IUIAutomationElement> selectedTray;
+        ComPtr<IUIAutomationElement> currentContentRoot;
+        ComPtr<IUIAutomationElement> currentPlayPause;
+        ComPtr<IUIAutomationElement> currentChromeRoot;
+        ComPtr<IUIAutomationElement> currentTray;
+        bool statusAbsent{};
+        const auto resolveCurrentAuthority = [&] {
+            currentContentRoot = RootForWindow(automation.Get(), window);
+            currentPlayPause = currentContentRoot
+                ? FindByAutomationId(
+                    automation.Get(), currentContentRoot.Get(), kPlayPauseAutomationId)
+                : ComPtr<IUIAutomationElement>{};
+            currentChromeRoot = RootForWindow(automation.Get(), chromeWindow);
+            currentTray = currentChromeRoot
+                ? FindByAutomationId(
+                    automation.Get(), currentChromeRoot.Get(), kTrayAutomationId)
+                : ComPtr<IUIAutomationElement>{};
+            statusAbsent = currentChromeRoot && !FindByAutomationId(
+                automation.Get(), currentChromeRoot.Get(), kOpenStatusAutomationId);
+            return currentContentRoot && currentPlayPause && currentChromeRoot &&
+                currentTray && IsFocused(currentPlayPause.Get()) &&
+                IsSelected(currentTray.Get()) && !IsFocused(currentTray.Get()) &&
+                statusAbsent;
+        };
+        if (!WaitUntil(3000, resolveCurrentAuthority)) {
+            Require(currentContentRoot,
+                    "Current YT Music content root was unavailable before subscription.");
+            Require(currentPlayPause,
+                    "Current YT Music play-pause action was unavailable before subscription.");
+            Require(IsFocused(currentPlayPause.Get()),
+                    "Current YT Music play-pause action did not own keyboard focus.");
+            Require(currentChromeRoot,
+                    "Current WidgetRail chrome root was unavailable before subscription.");
+            Require(currentTray,
+                    "Current YT Music tray semantic was unavailable before subscription.");
+            Require(IsSelected(currentTray.Get()),
+                    "Current YT Music tray semantic was not selected.");
+            Require(!IsFocused(currentTray.Get()),
+                    "Current YT Music tray semantic incorrectly owned keyboard focus.");
+            Require(statusAbsent,
+                    "The chrome status was already present before subscription.");
+        }
+        contentRoot = std::move(currentContentRoot);
+        playPause = std::move(currentPlayPause);
+        chromeRoot = std::move(currentChromeRoot);
+        selectedTray = std::move(currentTray);
+        Require(!FindByAutomationId(
+                    automation.Get(), chromeRoot.Get(), kOpenStatusAutomationId),
+                "The chrome status was already present before subscription.");
+        Require(SUCCEEDED(automation->AddAutomationEventHandler(
+                    UIA_LiveRegionChangedEventId, chromeRoot.Get(), TreeScope_Subtree, nullptr,
+                    eventHandler.Get())),
+                "Could not subscribe to current fixed-chrome live-region events.");
+        eventHandlerRegistered = true;
+        BOOL sameContentRoot{};
+        BOOL samePlayPause{};
+        BOOL sameChromeRoot{};
+        BOOL sameTray{};
+        const auto resolveStableAuthority = [&] {
+            if (!resolveCurrentAuthority()) return false;
+            sameContentRoot = FALSE;
+            samePlayPause = FALSE;
+            sameChromeRoot = FALSE;
+            sameTray = FALSE;
+            return SUCCEEDED(automation->CompareElements(
+                       contentRoot.Get(), currentContentRoot.Get(), &sameContentRoot)) &&
+                sameContentRoot &&
+                SUCCEEDED(automation->CompareElements(
+                    playPause.Get(), currentPlayPause.Get(), &samePlayPause)) &&
+                samePlayPause &&
+                SUCCEEDED(automation->CompareElements(
+                    chromeRoot.Get(), currentChromeRoot.Get(), &sameChromeRoot)) &&
+                sameChromeRoot &&
+                SUCCEEDED(automation->CompareElements(
+                    selectedTray.Get(), currentTray.Get(), &sameTray)) && sameTray;
+        };
+        if (!WaitUntil(3000, resolveStableAuthority)) {
+            Require(currentContentRoot,
+                    "Current YT Music content root disappeared while subscribing.");
+            Require(currentPlayPause,
+                    "Current YT Music play-pause action disappeared while subscribing.");
+            Require(IsFocused(currentPlayPause.Get()),
+                    "Current YT Music play-pause action lost keyboard focus while subscribing.");
+            Require(currentChromeRoot,
+                    "Current WidgetRail chrome root disappeared while subscribing.");
+            Require(currentTray,
+                    "Current YT Music tray semantic disappeared while subscribing.");
+            Require(IsSelected(currentTray.Get()),
+                    "Current YT Music tray semantic lost selection while subscribing.");
+            Require(!IsFocused(currentTray.Get()),
+                    "Current YT Music tray semantic gained keyboard focus while subscribing.");
+            Require(statusAbsent,
+                    "The chrome status appeared before the first failure invocation.");
+            Require(sameContentRoot,
+                    "The YT Music content root identity changed while subscribing.");
+            Require(samePlayPause,
+                    "The YT Music play-pause identity changed while subscribing.");
+            Require(sameChromeRoot,
+                    "The WidgetRail chrome root identity changed while subscribing.");
+            Require(sameTray,
+                    "The YT Music tray identity changed while subscribing.");
+        }
+        const int liveRegionCountBeforeFirstFailure = eventHandler->Count();
+        const int exactStatusCountBeforeFirstFailure = eventHandler->ExactStatusCount();
 
         const ULONGLONG firstFailureAt = GetTickCount64();
         PostKey(window, VK_RETURN);
         if (!WaitUntil(kOperationTimeoutMilliseconds, [&] {
                 return HasExpectedStatus(
-                    automation.Get(), window, kOpenStatusAutomationId);
+                    automation.Get(), chromeWindow, kOpenStatusAutomationId);
             })) {
-            auto currentRoot = RootForWindow(automation.Get(), window);
+            auto currentRoot = RootForWindow(automation.Get(), chromeWindow);
             auto status = currentRoot
                 ? FindByAutomationId(
                     automation.Get(), currentRoot.Get(), kOpenStatusAutomationId)
@@ -638,8 +802,18 @@ void Run(const Arguments& arguments) {
                  ". Activation log suffix: " +
                  log.substr(suffixStart, suffixLength));
         }
-        Require(WaitUntil(3000, [&] { return eventHandler->Count() >= 1; }),
+        Require(WaitUntil(3000, [&] {
+                    return eventHandler->ExactStatusCount() >=
+                        exactStatusCountBeforeFirstFailure + 1;
+                }),
                 "The production UI Automation provider did not raise LiveRegionChanged.");
+        Require(eventHandler->Count() == liveRegionCountBeforeFirstFailure + 1,
+                "The first action failure raised duplicate LiveRegionChanged events.");
+        Require(eventHandler->ExactStatusCount() ==
+                    exactStatusCountBeforeFirstFailure + 1,
+                "The first LiveRegionChanged sender was not exactly host:host.open.status.");
+        const int liveRegionCountAfterFirstFailure = eventHandler->Count();
+        const int exactStatusCountAfterFirstFailure = eventHandler->ExactStatusCount();
         Require(WaitUntil(3000, [&] {
                     auto currentRoot = RootForWindow(automation.Get(), window);
                     ComPtr<IUIAutomationElement> playPause;
@@ -663,56 +837,170 @@ void Run(const Arguments& arguments) {
                 "Could not retain the fixture worker process handle.");
 
         while (GetTickCount64() < firstFailureAt + 2200) Sleep(kPollMilliseconds);
-        const ULONGLONG replacementAt = GetTickCount64();
+        const auto failureCountBeforeReplacement = MatchingFailureRecords(ReadLog(logPath));
+        Require(failureCountBeforeReplacement == 1,
+                "The first action produced an unexpected number of failure records.");
+        const ULONGLONG secondFailureAt = GetTickCount64();
         PostKey(window, VK_RETURN);
         Require(WaitUntil(kOperationTimeoutMilliseconds, [&] {
-                    return MatchingFailureRecords(ReadLog(logPath)) >= 2;
+                    const auto count = MatchingFailureRecords(ReadLog(logPath));
+                    return count == failureCountBeforeReplacement + 1;
                 }), "The replacement action failure did not traverse the production route.");
-        while (GetTickCount64() < firstFailureAt + 4300) Sleep(kPollMilliseconds);
-        Require(HasExpectedStatus(automation.Get(), window, kOpenStatusAutomationId),
-                "Replacement feedback did not extend beyond the first deadline.");
-        const ULONGLONG replacementExpiryDeadline = replacementAt + 5500;
-        const ULONGLONG replacementExpiryRemaining =
-            GetTickCount64() < replacementExpiryDeadline
-                ? replacementExpiryDeadline - GetTickCount64()
-                : 1;
-        Require(WaitUntil(static_cast<DWORD>(replacementExpiryRemaining), [&] {
-                return !HasExpectedStatus(
-                        automation.Get(), window, kOpenStatusAutomationId);
-                }), "Replacement feedback did not expire after its bounded deadline.");
+        Require(MatchingFailureRecords(ReadLog(logPath)) ==
+                    failureCountBeforeReplacement + 1,
+                "The replacement action produced more than one failure record.");
+        Require(WaitUntil(3000, [&] {
+                    return HasExpectedStatus(
+                        automation.Get(), chromeWindow, kOpenStatusAutomationId);
+                }), "Replacement feedback was not published through UI Automation.");
+        Require(eventHandler->Count() == liveRegionCountAfterFirstFailure,
+                "Identical replacement feedback raised duplicate LiveRegionChanged.");
+        Require(eventHandler->ExactStatusCount() == exactStatusCountAfterFirstFailure,
+                "Identical replacement feedback raised a duplicate status event.");
+        Require(WaitUntil(3000, [&] {
+                    auto currentRoot = RootForWindow(automation.Get(), window);
+                    ComPtr<IUIAutomationElement> playPause;
+                    if (currentRoot) playPause = FindByAutomationId(
+                        automation.Get(), currentRoot.Get(), kPlayPauseAutomationId);
+                    return IsFocused(playPause.Get());
+                }), "Replacement feedback moved focus away from widget:play-pause.");
+
+        constexpr ULONGLONG replacementRetentionProbeMilliseconds = 3000;
+        while (GetTickCount64() <
+               secondFailureAt + replacementRetentionProbeMilliseconds) {
+            Sleep(kPollMilliseconds);
+        }
+        Require(HasExpectedStatus(
+                    automation.Get(), chromeWindow, kOpenStatusAutomationId),
+                "Replacement feedback expired at the first deadline.");
+        Require(MatchingFailureRecords(ReadLog(logPath)) ==
+                    failureCountBeforeReplacement + 1,
+                "Replacement feedback admitted an unexpected extra failure.");
+        Require(eventHandler->Count() == liveRegionCountAfterFirstFailure,
+                "Retained identical feedback raised duplicate LiveRegionChanged.");
+        Require(eventHandler->ExactStatusCount() == exactStatusCountAfterFirstFailure,
+                "Retained identical feedback raised a duplicate status event.");
+        Require(WaitUntil(3000, [&] {
+                    auto currentRoot = RootForWindow(automation.Get(), window);
+                    ComPtr<IUIAutomationElement> playPause;
+                    if (currentRoot) playPause = FindByAutomationId(
+                        automation.Get(), currentRoot.Get(), kPlayPauseAutomationId);
+                    return IsFocused(playPause.Get());
+                }), "Retained replacement feedback moved widget focus.");
 
         PostKey(window, VK_RETURN);
         Require(WaitUntil(kOperationTimeoutMilliseconds, [&] {
                     return HasExpectedStatus(
-                        automation.Get(), window, kOpenStatusAutomationId);
+                        automation.Get(), chromeWindow, kOpenStatusAutomationId);
                 }), "The pre-hide action failure did not appear.");
         PostKey(window, VK_ESCAPE);
         Require(WaitUntil(3000, [&] {
-                    auto currentRoot = RootForWindow(automation.Get(), window);
+                    auto currentRoot = RootForWindow(automation.Get(), chromeWindow);
                     return currentRoot && FindByAutomationId(
                         automation.Get(), currentRoot.Get(), kTrayAutomationId);
                 }), "First Escape did not return the real host to its dashboard.");
         PostKey(window, VK_ESCAPE);
         Require(WaitUntil(3000, [&] { return !IsWindowVisible(window); }),
                 "Second Escape did not hide the production overlay.");
+        const auto reopenLogBoundary = ReadLog(logPath).size();
         Require(PostMessageW(window, WM_HOTKEY, 1, MAKELPARAM(MOD_NOREPEAT, VK_F1)),
                 Win32Error("PostMessageW(WM_HOTKEY)"));
         Require(WaitUntil(5000, [&] { return IsWindowVisible(window); }),
                 "F1 WM_HOTKEY did not reopen the production overlay.");
-        Require(WaitUntil(5000, [&] {
-                    auto currentRoot = RootForWindow(automation.Get(), window);
-                    return currentRoot && FindByAutomationId(
-                        automation.Get(), currentRoot.Get(), kTrayAutomationId);
-                }), "Reopened overlay did not republish its dashboard.");
-        Require(!HasExpectedStatus(
-                    automation.Get(), window, kDashboardStatusAutomationId) &&
-                !HasExpectedStatus(
-                    automation.Get(), window, kOpenStatusAutomationId),
-                "Feedback resurrected after Hide and F1 reopen.");
+        ComPtr<IUIAutomationElement> reopenedContentRoot;
+        ComPtr<IUIAutomationElement> reopenedChromeRoot;
+        ComPtr<IUIAutomationElement> reopenedTray;
+        ComPtr<IUIAutomationElement> reopenedPlayPause;
+        bool contentVisible{};
+        bool chromeVisible{};
+        bool reopenPaintCurrent{};
+        bool reopenedTraySelected{};
+        bool reopenedTrayFocused{};
+        bool reopenedPlayPauseFocused{};
+        bool dashboardStatusAbsent{};
+        bool openStatusAbsent{};
+        bool originalWorkerRetained{};
+        const auto resolveReopenedAuthority = [&] {
+            contentVisible = IsWindowVisible(window) != FALSE;
+            chromeVisible = IsWindowVisible(chromeWindow) != FALSE;
+            reopenedContentRoot = RootForWindow(automation.Get(), window);
+            reopenedChromeRoot = RootForWindow(automation.Get(), chromeWindow);
+            reopenedPlayPause = reopenedContentRoot
+                ? FindByAutomationId(
+                    automation.Get(), reopenedContentRoot.Get(),
+                    kPlayPauseAutomationId)
+                : ComPtr<IUIAutomationElement>{};
+            reopenedTray = reopenedChromeRoot
+                ? FindByAutomationId(
+                    automation.Get(), reopenedChromeRoot.Get(), kTrayAutomationId)
+                : ComPtr<IUIAutomationElement>{};
+            reopenedTraySelected = IsSelected(reopenedTray.Get());
+            reopenedTrayFocused = IsFocused(reopenedTray.Get());
+            reopenedPlayPauseFocused = IsFocused(reopenedPlayPause.Get());
+            dashboardStatusAbsent = reopenedChromeRoot && !FindByAutomationId(
+                automation.Get(), reopenedChromeRoot.Get(),
+                kDashboardStatusAutomationId);
+            openStatusAbsent = reopenedChromeRoot && !FindByAutomationId(
+                automation.Get(), reopenedChromeRoot.Get(),
+                kOpenStatusAutomationId);
+            fixtureProcesses = FixtureDescendants(host.Id(), arguments.fixtureWorker);
+            originalWorkerRetained = fixtureProcesses.size() == 1 &&
+                fixtureProcesses.front() == fixtureProcessId;
 
-        fixtureProcesses = FixtureDescendants(host.Id(), arguments.fixtureWorker);
-        Require(fixtureProcesses.size() == 1 && fixtureProcesses.front() == fixtureProcessId,
-                "The production host restarted or duplicated the fixture worker.");
+            reopenPaintCurrent = false;
+            const std::string log = ReadLog(logPath);
+            constexpr std::string_view paintPrefix =
+                "Widget presentation paint target=ytmusic-fixture ";
+            std::size_t cursor = std::min(reopenLogBoundary, log.size());
+            while ((cursor = log.find(paintPrefix, cursor)) != std::string::npos) {
+                const auto end = log.find('\n', cursor);
+                const std::string_view record{
+                    log.data() + cursor,
+                    end == std::string::npos ? log.size() - cursor : end - cursor};
+                if (record.find(" input-owner=tray ") != std::string_view::npos &&
+                    record.find(" selected=ytmusic-fixture ") !=
+                        std::string_view::npos) {
+                    reopenPaintCurrent = true;
+                    break;
+                }
+                if (end == std::string::npos) break;
+                cursor = end + 1;
+            }
+
+            return contentVisible && chromeVisible && reopenedContentRoot &&
+                reopenedChromeRoot && reopenPaintCurrent && reopenedTray &&
+                reopenedTraySelected && reopenedTrayFocused && reopenedPlayPause &&
+                !reopenedPlayPauseFocused && dashboardStatusAbsent &&
+                openStatusAbsent && originalWorkerRetained;
+        };
+        if (!WaitUntil(5000, resolveReopenedAuthority)) {
+            Require(contentVisible,
+                    "Reopened overlay content HWND was not visible.");
+            Require(chromeVisible,
+                    "Reopened overlay chrome HWND was not visible.");
+            Require(reopenedContentRoot,
+                    "Reopened overlay omitted its current content UIA root.");
+            Require(reopenedChromeRoot,
+                    "Reopened overlay omitted its current chrome UIA root.");
+            Require(reopenPaintCurrent,
+                    "Reopened overlay omitted the authoritative YT Music tray-input paint.");
+            Require(reopenedTray,
+                    "Reopened chrome root omitted exact tray:tray.ytmusic-fixture.");
+            Require(reopenedTraySelected,
+                    "Reopened YT Music tray item was not selected.");
+            Require(reopenedTrayFocused,
+                    "Reopened YT Music tray item did not own keyboard focus.");
+            Require(reopenedPlayPause,
+                    "Reopened content root omitted exact widget:play-pause.");
+            Require(!reopenedPlayPauseFocused,
+                    "Reopened YT Music play-pause incorrectly retained keyboard focus.");
+            Require(dashboardStatusAbsent,
+                    "Dashboard feedback resurrected after Hide and F1 reopen.");
+            Require(openStatusAbsent,
+                    "Open-widget feedback resurrected after Hide and F1 reopen.");
+            Require(originalWorkerRetained,
+                    "Reopened overlay did not retain the exact sole fixture worker PID.");
+        }
         const std::string finalLog = ReadLog(logPath);
         Require(finalLog.find(kSecretSentinel) == std::string::npos,
                 "The private exception sentinel leaked into overlay.log.");

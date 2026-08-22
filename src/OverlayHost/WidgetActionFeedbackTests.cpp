@@ -89,6 +89,61 @@ int main() {
     Check(!feedback.MessageFor(L"widget.0", L"generation.0", 0),
           "show does not resurrect prior runtime feedback");
 
+    std::uint64_t replacementNow = 30'000;
+    std::optional<std::uint64_t> replacementDeadline;
+    int replacementInvalidations = 0;
+    widgetrail::WidgetActionFeedbackHost replacementHost({
+        [&] { return replacementNow; },
+        [&](const std::optional<std::uint64_t> deadline) {
+            replacementDeadline = deadline;
+        },
+        [&] { ++replacementInvalidations; },
+    });
+    Check(replacementHost.ReconcileCatalog({
+              {L"music", L"Music", L"music.instance", L"music.g1", L"music.p1"},
+          }),
+          "replacement host accepts its exact catalog authority");
+    replacementHost.Show();
+    Check(replacementHost.PublishBridgeFailures({
+              {L"music", L"music.g1", L"music.play", L"music.play.button"},
+          }).OutcomeAt(0) == widgetrail::WidgetActionFeedbackOutcome::Published,
+          "replacement host publishes the first same-widget failure");
+    const auto firstDeadline = replacementNow +
+        widgetrail::WidgetActionFeedbackHost::DisplayDurationMilliseconds;
+    Check(replacementDeadline == firstDeadline,
+          "first same-widget failure owns one bounded deadline");
+
+    replacementNow += 2'200;
+    Check(replacementHost.PublishBridgeFailures({
+              {L"music", L"music.g1", L"music.play", L"music.play.button"},
+          }).OutcomeAt(0) == widgetrail::WidgetActionFeedbackOutcome::Published,
+          "same-widget replacement is admitted under the same runtime authority");
+    const auto secondDeadline = replacementNow +
+        widgetrail::WidgetActionFeedbackHost::DisplayDurationMilliseconds;
+    Check(replacementDeadline == secondDeadline && secondDeadline > firstDeadline,
+          "same-widget replacement computes a fresh bounded deadline");
+
+    const int invalidationsBeforeOldDeadline = replacementInvalidations;
+    replacementNow = firstDeadline;
+    replacementHost.OnDeadlineTimer();
+    Check(replacementHost.MessageForSurface(
+              widgetrail::WidgetActionFeedbackSurface::OpenWidget,
+              L"music", L"music") == L"Music action failed; try again",
+          "old timer delivery cannot expire the same-widget replacement");
+    Check(replacementDeadline == secondDeadline &&
+              replacementInvalidations == invalidationsBeforeOldDeadline,
+          "old timer delivery preserves the replacement deadline without repaint");
+
+    replacementNow = secondDeadline;
+    replacementHost.OnDeadlineTimer();
+    Check(!replacementHost.MessageForSurface(
+              widgetrail::WidgetActionFeedbackSurface::OpenWidget,
+              L"music", L"music"),
+          "same-widget replacement expires exactly at its own bounded deadline");
+    Check(!replacementDeadline &&
+              replacementInvalidations == invalidationsBeforeOldDeadline + 1,
+          "replacement expiry clears its timer and repaints exactly once");
+
     std::uint64_t now = 10'000;
     std::optional<std::uint64_t> scheduledDeadline;
     bool timerAvailable = true;
