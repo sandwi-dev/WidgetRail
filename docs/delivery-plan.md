@@ -33,7 +33,7 @@ historical evidence only; this file is the sole implementation authority.
 
 | Lane | Task/worktree | State |
 | --- | --- | --- |
-| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | DLV-433 assigned. Preserve seven held diffs and all rejected/restoration evidence. DLV-284 remains queued. |
+| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | DLV-434 assigned. Preserve seven held diffs and all rejected/restoration evidence. DLV-284 remains queued. |
 | Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | Idle and clean at `676cd76`; do not begin work or change product state. |
 
 ## Execution rules
@@ -71,7 +71,7 @@ authorized diffs remain held:
 5. `src/OverlayHost/ColdDashboardHostTests.cpp` — current two-HWND Settings
    activation/re-show authority; focused route previously green.
 6. `tests/WidgetSwitchFixture/Program.cs` — DLV-375 named action argument.
-7. `src/OverlayHost/WidgetSwitchHostTests.cpp` — cumulative DLV-383–432
+7. `src/OverlayHost/WidgetSwitchHostTests.cpp` — cumulative DLV-383–433
    extent, switching, Back, rendering-mode, and fallback-authority corrections.
 
 The accepted DLV-428 checkpoint is diagnostic-only. It emits after successful
@@ -235,6 +235,34 @@ and should terminate within one minute after eliminating packaging; otherwise
 stop and diagnose. Only a green deterministic result reauthorizes the one
 observable focused real-host run above.
 
+Second disposition: the deterministic route passed all six cases in 18 seconds
+without managed publication. The observable focused real-host gate then exited
+`1` in 2 minutes 41 seconds and retained the complete overlay log. Its failure
+summary claimed zero post-marker candidates, but the retained file contains the
+marker at byte 15308, a sequence-5 checkpoint at byte 18300, and the exact
+sequence-6 checkpoint at byte 21645. Production therefore emitted the promised
+current checkpoint. Do not rerun the real-host scenario or treat the diagnostic
+log as a synchronization precondition. Evidence is retained under
+`%TEMP%\wrail-dlv433-realhost-monitor-20260822-042100`.
+
+## Assigned platform test diagnosis — DLV-434
+
+Test-only; no production or real-host execution. Add the smallest selector
+replay input that invokes the already-shared compiled selector against an
+explicit existing log path, marker offset, and expected sequence, printing the
+selected offset and bounded counts. It must not start OverlayHost, WidgetBridge,
+workers, packaging, or managed publication. Do not copy the retained user-temp
+log into the repository or weaken any selector rule.
+
+Run the fast deterministic table route once, then run the replay once against
+the exact retained DLV-433 log with marker `15308` and sequence `6`. Each command
+must finish within one minute and obey the observability rule. Expected replay
+authority is offset `21645`; any other outcome stops first red. If both are
+green, stop and report the exact code path plus a static explanation of why the
+live polling view could differ. Do not modify the real-host assertion yet,
+start any host gate, commit, integrate, rebuild/relaunch PID 144396, change
+product/package state, remove evidence, assign DLV-284, or push.
+
 ## After the cumulative native gate is green
 
 1. Review each of the four commits and the cumulative diff. Reject extra files,
@@ -250,7 +278,7 @@ observable focused real-host run above.
 
 ## Queued platform production — DLV-284 typed publication transactions
 
-Status: queued, not assigned. It becomes assignable only after DLV-433, the
+Status: queued, not assigned. It becomes assignable only after DLV-434, the
 cumulative native gate, commit review/integration, and exact clean Tier 3 are
 green. No new virtualization feature may precede it.
 
@@ -308,7 +336,7 @@ Extract native authorities only when real work touches them.
 
 ## Ordered queues
 
-1. DLV-433 deterministic fallback-authority seam, observable focused/full native gate, and scoped commits.
+1. DLV-434 offline replay against retained exact real-host evidence; no host rerun.
 2. Reviewer commit/diff review, then one exact clean Tier-3 run.
 3. DLV-284 after cumulative clean integration.
 4. Generic Game Launcher cutover; LauncherExperience deletion/state retirement;
@@ -324,7 +352,7 @@ There is no other Ready production work in either standing lane.
 | DLV-257 identity | Store, domain, trademark, and GitHub availability remain external/manual. |
 | DLV-278–283/270 | Production accepted; integration awaits the native gate, exact Tier 3, and review. |
 | DLV-319–326 | Managed chain through `676cd76`; all managed Tier-3 gates green. |
-| DLV-327–421 | Native fixture/build evidence remains held behind DLV-433 and exact Tier 3. |
+| DLV-327–421 | Native fixture/build evidence remains held behind DLV-434 and exact Tier 3. |
 | DLV-427 | `e26b92b` and `16050bb` are unbuilt/unaccepted ancestry-bound evidence only. |
 | DLV-428 | Accepted/integrated as `c38b261`; PID 144396 already runs it. |
 | DLV-284 | Queued until cumulative review/integration. |
@@ -334,7 +362,6 @@ There is no other Ready production work in either standing lane.
 
 | Milestone | Disposition |
 | --- | --- |
-| DLV-424 | Detached integrated-main worktree established the lock-safe build route. |
 | DLV-425 | Isolated build succeeded; startup marker was wrongly treated as a live transition. |
 | DLV-426 | Origin distinction exposed that startup fallback lacked typed current authority. |
 | DLV-427 | Correct semantics on rejected ancestry; hash mismatch prevented build/integration. |
@@ -343,4 +370,5 @@ There is no other Ready production work in either standing lane.
 | DLV-430 | Phase filtering passed; live fallback legitimately retained HWND without a new placement transaction. |
 | DLV-431 | First post-marker checkpoint had older sequence authority; selection must require exact-current authority. |
 | DLV-432 | No exact checkpoint was immediately visible; its stale owner hid a two-minute red result for 18 minutes. |
-| DLV-433 | Assigned deterministic authority seam, retained failure logs, bounded checkpoint wait, and observable commands. |
+| DLV-433 | Fast seam green; retained real-host log disproved its zero-candidate polling summary. |
+| DLV-434 | Assigned sub-minute offline replay against the exact retained log; no host rerun. |
