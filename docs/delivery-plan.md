@@ -39,7 +39,7 @@ historical evidence only; this file is the sole authority for current work.
 
 | Lane | Task/worktree | State |
 | --- | --- | --- |
-| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | Assigned source-only UIA ordering diagnosis DLV-356 below at DLV-340 commit `0f8b080`, preserving build tooling plus four cumulative test files. DLV-284 remains queued and unassigned. |
+| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | Assigned UIA readiness correction/gates DLV-357 below at DLV-340 commit `0f8b080`, preserving build tooling plus four cumulative test files. DLV-284 remains queued and unassigned. |
 | Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | Idle and clean at `676cd76`. Preserve PID 126208 and all product state; do not begin new work, integrate, rebuild/relaunch, or push. |
 
 ## Execution and architecture rules
@@ -481,6 +481,36 @@ DLV-349 subject and commit exactly the three test files with a DLV-347 subject.
 Do not run Tier 3 yet, integrate, start DLV-284, launch/terminate, or push.
 Preserve PID 126208 and all state.
 
+DLV-356 classified the intermittent no-event result as a fixture readiness race.
+The action can be invokable before replacement content/root authority is fully
+published, while the handler remains registered on the prior Settings root.
+There is no evidence that production omitted a planned event or that
+`UiaRaiseAutomationEvent` failed.
+
+## Assigned platform test correction — DLV-357 authoritative root handshake
+
+Own only the already-held `WidgetActionFailureHostTests.cpp`; preserve
+`build.ps1`, `RealHostAccessibilityTests.cpp`, `WidgetActionFeedbackTests.cpp`,
+and `ColdDashboardHostTests.cpp` unchanged. After switching to YT Music, wait
+for the exact current YT Music content root and action element. Register the
+`LiveRegionChanged` handler on that root, then re-resolve and prove the same
+HWND/root identity and action target remain authoritative before capturing the
+event baseline and invoking the first failure. Use no fixed sleep. Require
+exactly one new first event and zero additional events for identical replacement
+text. Preserve failure identity, focus checks, feedback lifetime, retry flow,
+timeouts, and production code.
+
+With external execution approval, run once:
+`powershell.exe -NoProfile -ExecutionPolicy Bypass -File
+.\src\OverlayHost\build.ps1 -Configuration Release
+-WidgetActionFailureHostTestsOnly`. Stop first red. If green, run the canonical
+Release route exactly once. If both are green, commit exactly `build.ps1` with
+a DLV-349 subject, then commit exactly `RealHostAccessibilityTests.cpp`,
+`WidgetActionFeedbackTests.cpp`, `WidgetActionFailureHostTests.cpp`, and
+`ColdDashboardHostTests.cpp` with a DLV-357 subject. Do not run Tier 3 yet,
+integrate, start DLV-284, launch/terminate, or push. Preserve PID 126208 and all
+state.
+
 DLV-355 changed only the intended Cold Dashboard assertion, but its canonical
 run stopped earlier because WidgetActionFailureHostTests observed no
 `LiveRegionChanged`. The same corrected fixture passed in DLV-346 and DLV-349;
@@ -890,8 +920,8 @@ import/export or scheduling only after independent widgets prove the need.
 
 ## Ordered queues
 
-1. Platform evidence queue: execute DLV-356 source-only action-failure UIA
-   event-ordering classification before any further rerun.
+1. Platform evidence queue: execute DLV-357 authoritative-root handshake,
+   focused action-failure route, then one canonical native Release route.
 2. Reviewer integration queue: independently review DLV-332 and the cumulative
    accepted production/test chain; integrate only if every required gate passes.
 3. Platform production queue: assign DLV-284 after clean integration, before
@@ -942,7 +972,8 @@ There is no other Ready production work in either standing lane.
 | DLV-353 | Settings is inside current root; whole-root/client containment is the remaining invalid assertion. |
 | DLV-354 | Provider root is intentionally unbounded by client; descendants own clipping. |
 | DLV-355 | Cold Dashboard assertion changed but not reached; earlier action-failure event was intermittent. |
-| DLV-356 | Assigned source-only subscription/publication ordering diagnosis. |
+| DLV-356 | Classified prior-root handler registration as the intermittent event race. |
+| DLV-357 | Assigned exact current-root/action handshake and focused-plus-canonical gates. |
 | DLV-284 | Queued, not assigned until cumulative review/integration. |
 | DLV-248 | Deliberately deferred until explicit user promotion. |
 
