@@ -836,6 +836,13 @@ provenance, and stop after fresh artifact evidence. Do not launch, integrate,
 change product/package state, touch or copy held test/build diffs, terminate PID
 33360, remove retained artifacts, or push.
 
+Status: implementation commit `dae5e5b` is a sole `main.cpp` diff directly on
+`6926e05`; its isolated tests-skipped native Release build is green. Exact diff
+review confirms diagnostic-only current-authority gating, post-`EndDraw`
+emission, bounded deduplication, and unchanged legacy placement phases. The
+coherent isolated artifact is ready for visible physical verdict; not yet
+accepted or integrated.
+
 ## After the cumulative native gate is green
 
 1. Review exact DLV-349 and the cumulative test commits and full diffs. Reject
@@ -913,12 +920,13 @@ Extract native authorities only when real work touches them.
 
 ## Ordered queues
 
-1. Platform production correction: execute DLV-428 typed fallback presentation
-   checkpoint directly on integrated main, then obtain physical verdict before
-   test adoption.
-2. Reviewer integration: review the eventual cumulative commits, then assign exact
+1. User evidence: physically verdict the coherent DLV-428 isolated Release.
+2. Platform test adoption: after acceptance only, admit the typed
+   `presentation-checkpoint` in the strict startup-fallback oracle and resume
+   the isolated focused/full native gate.
+3. Reviewer integration: review the eventual cumulative commits, then assign exact
    clean Tier 3 if the native routes are green.
-3. Platform production: DLV-284 after clean cumulative integration.
+4. Platform production: DLV-284 after clean cumulative integration.
 4. Future architecture: generic Game Launcher cutover, LauncherExperience
    deletion/state retirement, protocol requirements, then maturity deliverables.
 5. DLV-248 remains deliberately deferred until explicit user promotion.
@@ -942,7 +950,7 @@ There is no other Ready production work in either standing lane.
 | DLV-425 | Isolated coherent focused gate stopped first red on a test oracle that conflated startup-unavailable fallback with a live fallback transition. |
 | DLV-426 | Origin correction reached the strict missing typed-authority boundary; no production geometry defect was proven. |
 | DLV-427 | Correct semantic checkpoint was authored on rejected/restoration ancestry; hash mismatch blocked the isolated build and both commits are non-integrable. |
-| DLV-428 | Assigned direct integrated-base re-author and isolated build of the one-file checkpoint. |
+| DLV-428 | `dae5e5b` sole-file isolated Release build green; physical verdict pending before integration/test adoption. |
 | DLV-284 | Queued until cumulative review/integration. |
 | DLV-248 | Deliberately deferred until explicit user promotion. |
 
@@ -994,4 +1002,4 @@ There is no other Ready production work in either standing lane.
 | DLV-425 | Exact isolated build/package succeeded; first test red was the invalid post-marker placement requirement in startup-unavailable fallback. |
 | DLV-426 | Startup-unavailable and live-disabled origins are now distinct; startup route has no typed current placement/checkpoint record. |
 | DLV-427 | `e26b92b`/isolated `16050bb` were not built or accepted because their `main.cpp` baseline differed from integrated main. |
-| DLV-428 | Assigned exact semantic re-author on `6926e05`; no rejected ancestry may enter the candidate. |
+| DLV-428 | `dae5e5b` re-authored on `6926e05`; isolated Release green and exact diff review accepted, physical verdict pending. |
