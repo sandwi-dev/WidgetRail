@@ -749,6 +749,38 @@ relaunch or terminate accepted PID 33360, change product/package state, assign
 DLV-284, or push. Preserve all durable artifacts; removal of the temporary
 worktree is not authorized in this assignment.
 
+Disposition: focused gate built and packaged a coherent isolated runtime, then
+stopped first red because the DLV-423 oracle required a typed placement record
+after a `DirectComposition unavailable` startup marker. That marker means the
+session started in HWND fallback; it is not a live DirectComposition-to-fallback
+transition and does not itself imply a later placement. No production defect is
+proven. The full native gate and scoped commits did not run.
+
+## Assigned platform test correction — DLV-426 fallback-origin authority
+
+Change only the held `src/OverlayHost/WidgetSwitchHostTests.cpp`. Preserve the
+positive rendering-mode proof but represent startup-unavailable fallback and an
+established mid-session DirectComposition-disabled transition as distinct
+authorities. For a real disabled transition, continue requiring the typed
+fallback placement to be newer than that transition. For startup-unavailable
+fallback, do not infer a transition or require a later placement; select the
+latest typed pre-Right fallback placement and admit it only when its Audio
+widget/instance/runtime/presentation/sequence fields, work area, DPI, interface
+scale, target, recorded HWND/client geometry, and immediate live HWND/client
+geometry are all current and exact. Do not weaken either route, accept a generic
+work-area record, relax timeout/tolerance, or change production/fixture/build
+files.
+
+Mirror the corrected file into the retained DLV-425 isolated worktree, reprove
+the exact seven-path dirty set and all seven per-file SHA-256 equalities, then
+run the focused gate once through the same sanitized Windows PowerShell owner.
+Stop first red and classify before any further edit or rerun. If focused green,
+run the full native gate once in that same isolated worktree/environment. If
+both are green, create only the four documented scoped commits in the original
+platform worktree, using DLV-426 for `WidgetSwitchHostTests.cpp`, and stop before
+Tier 3. Preserve PID 33360, package/product state, retained worktree/artifacts,
+and all other boundaries from DLV-425; do not integrate or push.
+
 ## After the cumulative native gate is green
 
 1. Review exact DLV-349 and the cumulative test commits and full diffs. Reject
@@ -764,7 +796,7 @@ worktree is not authorized in this assignment.
 
 ## Queued platform production — DLV-284 explicit publication transaction model
 
-Status: queued, not assigned. It becomes assignable only after DLV-425 and the
+Status: queued, not assigned. It becomes assignable only after DLV-426 and the
 resumed DLV-423 evidence are
 dispositioned, the resumed native test gate is green,
 cumulative evidence is reviewed and integrated, and the accepted main Release
@@ -825,8 +857,8 @@ Extract native authorities only when real work touches them.
 
 ## Ordered queues
 
-1. Platform evidence: execute DLV-425 isolated focused/full native gate from
-   integrated DLV-422 plus the exact seven held files.
+1. Platform test correction: execute DLV-426 fallback-origin distinction and
+   the isolated focused/full native gate.
 2. Reviewer integration: review the eventual cumulative commits, then assign exact
    clean Tier 3 if the native routes are green.
 3. Platform production: DLV-284 after clean cumulative integration.
@@ -846,11 +878,12 @@ There is no other Ready production work in either standing lane.
 | DLV-314 | Production `992b77b` accepted with Spotify 0.3.13. |
 | DLV-318 | Last physically accepted production `32a2a5e`; exact restore artifact preserved, not currently running. |
 | DLV-319–326 | Managed test chain through `676cd76`; all managed Tier-3 gates green. |
-| DLV-327–421 | Native fixture/build evidence held pending DLV-425 and resumed exact-commit Tier 3. |
+| DLV-327–421 | Native fixture/build evidence held pending DLV-426 and resumed exact-commit Tier 3. |
 | DLV-422 | Production diagnostic `6926e05` physically accepted and integrated; PID 33360 retained. |
 | DLV-423 | Test adoption diff compiled only to the interop link boundary; accepted PID 33360 locks the worktree Release DLL, so no test verdict. |
 | DLV-424 | Build helper has no output override; a detached worktree provides exact lock-safe native/runtime outputs without touching PID 33360. |
-| DLV-425 | Assigned isolated exact-seven-file focused/full native gate and four scoped commits on green. |
+| DLV-425 | Isolated coherent focused gate stopped first red on a test oracle that conflated startup-unavailable fallback with a live fallback transition. |
+| DLV-426 | Assigned mode-origin-aware test correction and isolated focused/full gate. |
 | DLV-284 | Queued until cumulative review/integration. |
 | DLV-248 | Deliberately deferred until explicit user promotion. |
 
@@ -899,4 +932,5 @@ There is no other Ready production work in either standing lane.
 | DLV-422 | `35489ab`/main `6926e05` physically accepted and integrated; PID 33360 retained without relaunch. |
 | DLV-423 | Focused build stopped at `LNK1104` on the running accepted Release interop DLL; test did not execute. |
 | DLV-424 | Exact isolation strategy is detached integrated DLV-422 plus hash-verified seven-file diff and its own output tree. |
-| DLV-425 | Assigned lock-safe isolated focused/full gate; accepted PID 33360 retained. |
+| DLV-425 | Exact isolated build/package succeeded; first test red was the invalid post-marker placement requirement in startup-unavailable fallback. |
+| DLV-426 | Assigned strict fallback-origin distinction; accepted PID 33360 remains untouched. |
