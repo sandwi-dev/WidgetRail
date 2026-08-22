@@ -33,7 +33,7 @@ historical evidence only; this file is the sole implementation authority.
 
 | Lane | Task/worktree | State |
 | --- | --- | --- |
-| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | DLV-456 assigned: causally converge the Settings fallback extent before the in-band block action, then run only the focused gate. Preserve seven held diffs and all rejected/restoration evidence. DLV-284 remains queued. |
+| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | DLV-457 assigned: replace sticky generic fallback lookups with phase-aware checkpoint selection, then run the fast selector and one focused gate. Preserve seven held diffs and all rejected/restoration evidence. DLV-284 remains queued. |
 | Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | Idle and clean at `676cd76`; do not begin work or change product state. |
 
 ## Execution rules
@@ -613,27 +613,26 @@ worker/Bridge/host boundary, so they do not prove refresh demand reached the
 host. No production defect is established. Evidence is under
 `%TEMP%\wrail-dlv453-focused-20260822-050100`.
 
-Disposition: DLV-454's in-band handshake passed, but its action crossed a tray
-to interactive lifecycle boundary. DLV-455 moved that boundary correctly and
-proved the action adds no lifecycle transition; the remaining red is a delayed
-fallback extent cascade after the first matching checkpoint. This is test-state
-settling, not a production defect. Evidence is under `%TEMP%\wrail-dlv455-
-focused-20260822-052100`.
+Disposition: DLV-455 established stable interactive focus. DLV-456 stopped
+before its priming path because the inherited completion wait repeatedly reads
+the first generic fallback record; an intervening `set-window-pos` permanently
+hides the later valid checkpoint. The priming wait has the same defect. This is
+a deterministic test selector error, not production. Evidence is under
+`%TEMP%\wrail-dlv456-focused-20260822-053000`.
 
-## Assigned platform causal fallback convergence — DLV-456
+## Assigned platform phase-aware Settings checkpoint — DLV-457
 
-Test-only; change only held `WidgetSwitchHostTests.cpp`. Preserve DLV-455's
-interactive-focus and no-lifecycle proof. In HWND fallback, invoke exact current
-Settings Ready once while unarmed to causally drive the ordinary-refresh extent
-cascade, then correlate its final equal desired/presented paint, subsequent
-current-geometry checkpoint, and live HWND before setting the block boundary.
-Revalidate exact Ready UIA authority, then use the accepted armed handshake and
-preserve no-raster/no-geometry, all three block sites, epoch/render/release, one
-retry, and retained failure diagnostics. Use no sleep or quiescence guess.
+Test-only; change only held `WidgetSwitchHostTests.cpp`. Generalize the existing
+phase/sequence fallback selector from Audio to an expected widget while keeping
+positive instance/runtime/presentation authority. Use it for both Settings
+interactive completion and DLV-456 priming so intervening placement phases and
+wrong sequences are skipped, never sticky. Add one table case proving a
+`set-window-pos` before the exact Settings checkpoint. Preserve convergence,
+no-lifecycle/no-raster/no-geometry, all block authority, and diagnostics.
 
 Do not weaken assertions/timeouts, alter production or the fixture, or touch
-another held file. Reuse the coherent incremental tree after seven-file parity;
-run one observable focused gate with 15–20-second checks and stop at its result.
+another held file. Run the fast selector first; if green, reuse the coherent
+incremental tree after seven-file parity for one observable focused gate.
 No full gate, commit, integration, product/package/process action, evidence
 removal, DLV-284, or push.
 
@@ -943,7 +942,7 @@ Extract native authorities only when real work touches them.
 
 ## Ordered queues
 
-1. DLV-456 causal fallback convergence before the block handshake.
+1. DLV-457 phase-aware Settings checkpoint before the block handshake.
 2. Reviewer commit/diff review, then one exact clean Tier-3 run.
 3. DLV-284 after cumulative clean integration.
 4. Generic Game Launcher cutover; LauncherExperience deletion/state retirement;
@@ -996,4 +995,4 @@ There is no other Ready production work in either standing lane.
 | DLV-451 | Wrapper passed; reused partial artifact tree failed isolated Bridge startup. |
 | DLV-452 | Fresh parity tree reproduced startup; malformed test catalog JSON was the exact cause. |
 | DLV-453 | Catalog delimiter passed; worker-local arm acknowledgements did not prove host-visible invalidation. |
-| DLV-455 | Stable focus passed; first fallback checkpoint preceded a delayed extent cascade. |
+| DLV-456 | Priming was not reached; a sticky generic fallback lookup hid the later checkpoint. |
