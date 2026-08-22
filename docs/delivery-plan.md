@@ -39,7 +39,7 @@ historical evidence only; this file is the sole authority for current work.
 
 | Lane | Task/worktree | State |
 | --- | --- | --- |
-| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | Assigned DLV-384 source/output diagnosis of WidgetSwitch tray-coordinate authority. Preserve all seven held diffs and neutral rejected/restoration commits. DLV-284 remains queued and unassigned. |
+| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | Assigned DLV-385 strict same-session WidgetSwitch tray stationarity. Preserve all seven held diffs and neutral rejected/restoration commits. DLV-284 remains queued and unassigned. |
 | Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | Idle and clean at `676cd76`. Preserve PID 126208 and all product state; do not begin work, integrate, rebuild/relaunch, or push. |
 
 ## Execution and architecture rules
@@ -526,6 +526,40 @@ weaken equality, increase timeouts, edit, rerun, commit, integrate, start
 DLV-284, launch/terminate, or push. Preserve PID 126208, all seven diffs, and
 DLV-383 diagnostics.
 
+DLV-384 classified a test/diagnostic authority mismatch, not real tray motion.
+The baseline was a screen-pixel rectangle projected from the fixed-chrome HWND.
+After the catalog probe cleared the chrome session, the later overloaded paint
+fallback was a content-local DIP rectangle. The test also crossed catalog/
+chrome-session revisions without pinning placement count or HWND.
+
+## Assigned platform test correction — DLV-385 current tray stationarity
+
+Continue to own only `src/OverlayHost/WidgetSwitchHostTests.cpp`; preserve the
+other six held files unchanged. Keep the DLV-383 exact content extents. Replace
+only tray-stationarity authority so the baseline is established after catalog
+probe removal from an exact current fixed-chrome placement/current composition
+child sample. Use the unambiguous composition child `tray-screen` projection,
+not paint `tray-bounds` fallback.
+
+Pin and compare the exact tuple `{chrome-placement-count, chrome-hwnd,
+tray-screen rectangle}` only within that authority. Require
+`chrome-applied-exact=true` and exact corner equality. Fail rather than silently
+rebaseline if placement count, chrome HWND, target, or sequence changes. Include
+target/sequence, placement count, chrome HWND, `tray-client`, `tray-screen`, and
+conversion authority in distinct diagnostics. Do not compare screen pixels to
+local DIPs, guess scale/offset constants, add tolerance, weaken equality,
+change production diagnostics, increase timeout, or alter unrelated assertions.
+
+Using the proven absolute child/process-handle durable capture pattern, run
+`WidgetSwitchTestsOnly` exactly once. Stop first red. If green, run the complete
+serialized Release native gate exactly once through the same durable pattern.
+If both are green, commit exactly `tests/WidgetSwitchFixture/Program.cs` with
+DLV-375 subject, commit exactly `src/OverlayHost/WidgetSwitchHostTests.cpp`
+with DLV-385 subject, commit exactly `src/OverlayHost/build.ps1` with DLV-349
+subject, then commit exactly the four held native test files with DLV-374
+subject. Do not run Tier 3, integrate, start DLV-284, launch/terminate product
+processes, or push. Preserve PID 126208, all state, and diagnostics.
+
 ## Reviewer disposition after the cumulative native gate is green
 
 If either authorized native route is red, retain all five diffs uncommitted and
@@ -547,7 +581,7 @@ If both routes are green:
 
 ## Queued platform production — DLV-284 explicit publication transaction model
 
-Status: queued, not assigned. It becomes assignable only after DLV-384 is
+Status: queued, not assigned. It becomes assignable only after DLV-385 is
 dispositioned, the cumulative native gate is green, and the
 cumulative evidence pass, the accepted production/test chain is independently
 reviewed and integrated, and the accepted main Release is coherently refreshed
@@ -632,8 +666,8 @@ import/export or scheduling only after independent widgets prove the need.
 
 ## Ordered queues
 
-1. Platform evidence queue: execute DLV-384 source/output classification of the
-   tray-stationarity coordinate authority before another correction or rerun.
+1. Platform evidence queue: execute DLV-385 strict post-catalog fixed-chrome
+   tray stationarity, focused route, then full gate once if green.
 2. Reviewer integration queue: review DLV-349 and the eventual cumulative test
    commit, then assign exact clean
    Tier 3 if the native routes are green.
@@ -656,7 +690,7 @@ There is no other Ready production work in either standing lane.
 | DLV-314 | Production `992b77b` physically accepted with Spotify 0.3.13. |
 | DLV-318 | Current accepted production `32a2a5e`; PID 126208 runs Spotify 0.3.14. |
 | DLV-319–326 | Accepted managed test chain through `676cd76`; all managed Tier-3 gates green. |
-| DLV-327–384 | Cumulative fixture/build evidence remains held pending DLV-384 disposition and exact-commit Tier 3. |
+| DLV-327–385 | Cumulative fixture/build evidence remains held pending DLV-385 result and exact-commit Tier 3. |
 | DLV-284 | Queued, not assigned until cumulative review/integration. |
 | DLV-248 | Deliberately deferred until explicit user promotion. |
 
@@ -685,4 +719,5 @@ There is no other Ready production work in either standing lane.
 | DLV-381 | Durable focused route exposed genuine initial Audio Mixer source-extent red. |
 | DLV-382 | Retired combined-shell expectation classified; current content extents source-derived. |
 | DLV-383 | Audio extent correction passed; focused route exposed cross-authority tray stationarity red. |
-| DLV-384 | Assigned source/output trace of tray coordinate spaces and revision. |
+| DLV-384 | Screen-pixel baseline versus local-DIP fallback and catalog revision mismatch classified. |
+| DLV-385 | Assigned exact same-session chrome HWND/placement/tray-screen stationarity. |
