@@ -33,7 +33,7 @@ historical evidence only; this file is the sole implementation authority.
 
 | Lane | Task/worktree | State |
 | --- | --- | --- |
-| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | DLV-442 assigned. Preserve seven held diffs and all rejected/restoration evidence. DLV-284 remains queued. |
+| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | DLV-443 assigned. Preserve seven held diffs and all rejected/restoration evidence. DLV-284 remains queued. |
 | Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | Idle and clean at `676cd76`; do not begin work or change product state. |
 
 ## Execution rules
@@ -373,6 +373,37 @@ not run selector/replay/full native, commit, integrate, rebuild/relaunch PID
 144396, change product/package state, remove evidence, assign DLV-284, or push.
 Red stops for classification; green returns to reviewer commit planning.
 
+Disposition: after two pre-test PowerShell module-resolution failures, the
+absolute system Utility manifest preflight succeeded and the first actual
+focused test ran. It stopped before the DLV-442 backing assertion because the
+new helper advanced from one paint to the start of the next arbitrary log line
+and parsed that non-paint record with `TextField(..., "sequence=")`. The helper
+must search for the next paint marker, not assume every following line is a
+paint. Evidence is under
+`%TEMP%\wrail-dlv442c-monitor-20260822-040500`.
+
+## Assigned platform paint-iterator correction — DLV-443
+
+Test-only; change only held `WidgetSwitchHostTests.cpp`. In
+`hasCurrentAdmittedAudioBacking`, after each examined paint record, advance with
+`find("Widget presentation paint", nextLine + 1)` rather than setting the next
+candidate to the following line start. Stop at no marker/end/through boundary.
+Do not change the exact admitted/current Audio identity, same-sequence, or
+at-or-before-retained-offset rules, and do not alter DLV-442's input-boundary
+lower bound or either helper call site.
+
+Do not alter production, timing/tolerance, checkpoint selection/PMv2/focus/
+input, another held file, or SDK/runtime/Bridge/packaging. Recreate one fresh
+detached `c38b261` tree with exact seven-file path/SHA-256 parity and diagnostics
+retention. Use the verified absolute Microsoft.PowerShell.Utility manifest in
+the same owner session. Run the focused WidgetSwitch gate exactly once, follow
+the complete exact owned descendant tree, and inspect streams every 15–20
+seconds. Do not return while a descendant is active. Stop at the explicit test
+result. Do not run selector/replay/full native, commit, integrate,
+rebuild/relaunch PID 144396, change product/package state, remove evidence,
+assign DLV-284, or push. Red stops for classification; green returns to reviewer
+commit planning.
+
 Disposition: the normalized record correction passed its former sequence
 boundary. The single observable run continued to the next strict assertion and
 stopped after 120.176 seconds because checkpoint work-area authority differed
@@ -520,7 +551,7 @@ stops for classification; green returns to reviewer commit planning.
 
 ## Queued platform production — DLV-284 typed publication transactions
 
-Status: queued, not assigned. It becomes assignable only after DLV-442, the
+Status: queued, not assigned. It becomes assignable only after DLV-443, the
 cumulative native gate, commit review/integration, and exact clean Tier 3 are
 green. No new virtualization feature may precede it.
 
@@ -578,7 +609,7 @@ Extract native authorities only when real work touches them.
 
 ## Ordered queues
 
-1. DLV-442 one input-boundary sequence-authority correction and observable focused gate.
+1. DLV-443 one exact paint-iterator correction and observable focused gate.
 2. Reviewer commit/diff review, then one exact clean Tier-3 run.
 3. DLV-284 after cumulative clean integration.
 4. Generic Game Launcher cutover; LauncherExperience deletion/state retirement;
@@ -594,7 +625,7 @@ There is no other Ready production work in either standing lane.
 | DLV-257 identity | Store, domain, trademark, and GitHub availability remain external/manual. |
 | DLV-278–283/270 | Production accepted; integration awaits the native gate, exact Tier 3, and review. |
 | DLV-319–326 | Managed chain through `676cd76`; all managed Tier-3 gates green. |
-| DLV-327–421 | Native fixture/build evidence remains held behind DLV-442 and exact Tier 3. |
+| DLV-327–421 | Native fixture/build evidence remains held behind DLV-443 and exact Tier 3. |
 | DLV-427 | `e26b92b` and `16050bb` are unbuilt/unaccepted ancestry-bound evidence only. |
 | DLV-428 | Accepted/integrated as `c38b261`; PID 144396 already runs it. |
 | DLV-284 | Queued until cumulative review/integration. |
@@ -619,4 +650,5 @@ There is no other Ready production work in either standing lane.
 | DLV-439 | Exact 1.25 coordinate ratio proved missing test-process PMv2 DPI awareness. |
 | DLV-440 | PMv2 fixed all recorded/live geometry; only an invalid target=window check remained. |
 | DLV-441 | Checkpoint contract passed; old preflight sequence 5 lost current authority to 6 before Right. |
-| DLV-442 | Assigned exact input-boundary/non-regressing retained-source sequence proof. |
+| DLV-442 | Backing helper parsed the next arbitrary non-paint log line and failed before its proof. |
+| DLV-443 | Assigned exact next-paint iteration and one observable focused gate. |
