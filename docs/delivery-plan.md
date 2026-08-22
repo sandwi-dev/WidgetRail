@@ -33,7 +33,7 @@ historical evidence only; this file is the sole implementation authority.
 
 | Lane | Task/worktree | State |
 | --- | --- | --- |
-| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | DLV-465 assigned: own the complete focused WidgetSwitch stabilization loop through green, without planner reassignment between in-scope reds. DLV-284 remains queued. |
+| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | DLV-466 assigned in physical-first mode: restore host-owned root Back while widget presentation/input is non-current. Preserve DLV-465 test-only work and resume it only after physical acceptance. DLV-284 remains queued. |
 | Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | Idle and clean at `676cd76`; do not begin work or change product state. |
 
 ## Execution rules
@@ -134,6 +134,45 @@ defect or a required production/protocol change. Report that blocker without
 editing around it. Do not run Tier 3, integrate main, rebuild/relaunch PID
 144396, change product/package state, remove evidence, assign DLV-284, or push.
 
+## DLV-465 production blocker and physical-first correction — DLV-466
+
+Focused32 is a valid DLV-465 stop. The exact worker is blocked inside `Render`,
+Settings is retained/inert, and the host has no `host:host.open.back` semantic
+action. Root-scope B therefore enters synchronous widget dispatch and cannot
+reach the existing unhandled-root fallback. The blocked presentation cannot
+republish selected/focused tray authority. Evidence is under
+`%TEMP%\wrail-dlv465-focused32-20260822-144000`; the owner and all descendants
+exited, and the two authorized DLV-465 test files remain preserved uncommitted.
+
+DLV-466 is assigned to the platform lane from a new clean isolated tree at
+planner `main` `dfd88ef`, whose production baseline is accepted `c38b261`.
+Change production code only. Give root widget scope an immediate host-owned
+Back-to-tray path whenever the host can already prove current widget
+presentation/input authority is unavailable, retained/inert, or otherwise
+cannot make a bounded widget-first decision. The controller route and the
+host-owned `host:host.open.back` UIA action must remain available without a
+worker round trip in that state. Preserve widget-first B for a current nested
+scope, current explicit widget actions, focused-slider adjustment exit, text
+entry cancellation, failed-widget recovery, tray B overlay close, current
+instance/snapshot authority, and all unrelated buttons.
+
+Do not edit or run tests before the user's verdict. Do not copy the DLV-465
+test diff into the production candidate, change protocol/SDK/runtime/Bridge or
+package state, add timeouts/retries, weaken input authority, or broaden into
+controller cleanup. Source-review the production route and build one coherent
+Release with `pwsh -NoProfile -File src\OverlayHost\build.ps1 -Configuration
+Release -SkipTests -SkipPackaging`, using durable streams and the one-minute
+observability rule. Commit the production-only candidate as DLV-466 and stop
+for planner review, visible launch, and user acceptance. Nothing is integrated
+before that verdict.
+
+The physical verdict covers ordinary root Settings B returning to the selected
+tray item, tray B closing the overlay, normal widget activation, and no
+regression in nested/back or modal behavior that is reachable in the installed
+candidate. After acceptance, apply the exact DLV-466 production commit to the
+preserved cumulative test tree and resume DLV-465 through focused green. A
+production-only rejection returns to DLV-466 without changing tests.
+
 ## After the cumulative native gate is green
 
 1. Review each of the four commits and the cumulative diff. Reject extra files,
@@ -209,12 +248,13 @@ Extract native authorities only when real work touches them.
 
 ## Ordered queues
 
-1. DLV-465 complete focused WidgetSwitch stabilization through green or a proven out-of-scope blocker.
-2. Reviewer integration of the explicit cumulative hashes after focused green and independent review.
-3. DLV-284 after cumulative clean integration.
-4. Generic Game Launcher cutover; LauncherExperience deletion/state retirement;
+1. DLV-466 root Back resilience production candidate, build, and physical verdict.
+2. DLV-465 resume on accepted DLV-466 and complete focused WidgetSwitch stabilization.
+3. Reviewer integration of the explicit cumulative hashes after focused green and independent review.
+4. DLV-284 after cumulative clean integration.
+5. Generic Game Launcher cutover; LauncherExperience deletion/state retirement;
    protocol requirements; then the remaining maturity deliverables.
-5. DLV-248 remains deliberately deferred until explicit user promotion.
+6. DLV-248 remains deliberately deferred until explicit user promotion.
 
 There is no other Ready production work in either standing lane.
 
@@ -228,6 +268,7 @@ There is no other Ready production work in either standing lane.
 | DLV-327–421 | Native fixture/build evidence remains held behind DLV-452 startup classification and exact Tier 3. |
 | DLV-427 | `e26b92b` and `16050bb` are unbuilt/unaccepted ancestry-bound evidence only. |
 | DLV-428 | Accepted/integrated as `c38b261`; PID 144396 already runs it. |
+| DLV-465 | Preserved test-only diff is blocked on DLV-466 production and physical acceptance. |
 | DLV-284 | Queued until cumulative review/integration. |
 | DLV-248 | Deferred until explicit user promotion. |
 
