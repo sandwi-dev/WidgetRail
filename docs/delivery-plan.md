@@ -33,7 +33,7 @@ historical evidence only; this file is the sole implementation authority.
 
 | Lane | Task/worktree | State |
 | --- | --- | --- |
-| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | DLV-443 assigned. Preserve seven held diffs and all rejected/restoration evidence. DLV-284 remains queued. |
+| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | DLV-444 assigned. Preserve seven held diffs and all rejected/restoration evidence. DLV-284 remains queued. |
 | Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | Idle and clean at `676cd76`; do not begin work or change product state. |
 
 ## Execution rules
@@ -305,6 +305,39 @@ remove evidence, assign DLV-284, or push. A red result requires classification
 before any further assignment; a green result returns to reviewer scope and
 commit planning.
 
+Disposition: exact next-paint iteration removed the malformed-record failure.
+The next red was the first Game Launcher destination authority assertion. Its
+fallback branch compared `DesiredPresentationExtentDip`, which is the combined
+legacy HWND/window extent, to the composition-only content extent `980x645`.
+The target table previously carried full-window values (`1052x878` for Game
+Launcher) before being renamed to content extents; fallback retained the wrong
+field. No Game Launcher destination loss is proven. Evidence is under
+`%TEMP%\wrail-dlv443-monitor-20260822-041150`.
+
+## Assigned platform dual extent contract — DLV-444
+
+Test-only; change only held `WidgetSwitchHostTests.cpp`. Give each static target
+separate explicit expected content-presentation and expected legacy fallback
+window extents. Preserve current content values and restore the prior fallback
+window values: Audio `592x698`, Game Launcher `1052x878`, Now Playing
+`832x658`, Games & Apps `892x608`, YT Music `972x778`, Spotify `1052x738`;
+leave dynamic/unsupported expectations absent. In composition assertions use
+only content-presentation extent. In HWND fallback destination assertions use
+only fallback-window extent. Include expected and actual desired/presented
+values in failure output.
+
+Do not conflate fallback window, body-preferred, or composition content extents;
+alter production, timing/tolerance, sequence/backing/checkpoint/PMv2/focus/
+input behavior, another held file, or SDK/runtime/Bridge/packaging. Recreate one
+fresh detached `c38b261` tree with exact seven-file path/SHA-256 parity and
+diagnostics retention. Use the verified absolute Utility manifest. Run the
+focused WidgetSwitch gate exactly once, follow the full owned descendant tree,
+and inspect streams every 15–20 seconds. Do not return while descendants are
+active. Stop at the explicit test result. Do not run selector/replay/full
+native, commit, integrate, rebuild/relaunch PID 144396, change product/package
+state, remove evidence, assign DLV-284, or push. Red stops for classification;
+green returns to reviewer commit planning.
+
 Disposition: red after 140.110 seconds with fresh child/output inspection every
 20 seconds. The exact current Audio fallback checkpoint was already present,
 but Back produced no post-boundary fallback paint, composition sample, or
@@ -551,7 +584,7 @@ stops for classification; green returns to reviewer commit planning.
 
 ## Queued platform production — DLV-284 typed publication transactions
 
-Status: queued, not assigned. It becomes assignable only after DLV-443, the
+Status: queued, not assigned. It becomes assignable only after DLV-444, the
 cumulative native gate, commit review/integration, and exact clean Tier 3 are
 green. No new virtualization feature may precede it.
 
@@ -609,7 +642,7 @@ Extract native authorities only when real work touches them.
 
 ## Ordered queues
 
-1. DLV-443 one exact paint-iterator correction and observable focused gate.
+1. DLV-444 one dual content/fallback extent contract and observable focused gate.
 2. Reviewer commit/diff review, then one exact clean Tier-3 run.
 3. DLV-284 after cumulative clean integration.
 4. Generic Game Launcher cutover; LauncherExperience deletion/state retirement;
@@ -625,7 +658,7 @@ There is no other Ready production work in either standing lane.
 | DLV-257 identity | Store, domain, trademark, and GitHub availability remain external/manual. |
 | DLV-278–283/270 | Production accepted; integration awaits the native gate, exact Tier 3, and review. |
 | DLV-319–326 | Managed chain through `676cd76`; all managed Tier-3 gates green. |
-| DLV-327–421 | Native fixture/build evidence remains held behind DLV-443 and exact Tier 3. |
+| DLV-327–421 | Native fixture/build evidence remains held behind DLV-444 and exact Tier 3. |
 | DLV-427 | `e26b92b` and `16050bb` are unbuilt/unaccepted ancestry-bound evidence only. |
 | DLV-428 | Accepted/integrated as `c38b261`; PID 144396 already runs it. |
 | DLV-284 | Queued until cumulative review/integration. |
@@ -651,4 +684,5 @@ There is no other Ready production work in either standing lane.
 | DLV-440 | PMv2 fixed all recorded/live geometry; only an invalid target=window check remained. |
 | DLV-441 | Checkpoint contract passed; old preflight sequence 5 lost current authority to 6 before Right. |
 | DLV-442 | Backing helper parsed the next arbitrary non-paint log line and failed before its proof. |
-| DLV-443 | Assigned exact next-paint iteration and one observable focused gate. |
+| DLV-443 | Iterator passed; fallback assertion compared combined HWND extent to content extent. |
+| DLV-444 | Assigned separate content-presentation and fallback-window expectations. |
