@@ -39,7 +39,7 @@ historical evidence only; this file is the sole authority for current work.
 
 | Lane | Task/worktree | State |
 | --- | --- | --- |
-| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | Assigned cleanup/native gate DLV-347 below at DLV-340 commit `0f8b080`, preserving three cumulative test files and removing only temporary trace hunks. DLV-284 remains queued and unassigned. |
+| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | Assigned source-only tooling diagnosis DLV-348 below at DLV-340 commit `0f8b080`, preserving three cumulative test files. DLV-284 remains queued and unassigned. |
 | Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | Idle and clean at `676cd76`. Preserve PID 126208 and all product state; do not begin new work, integrate, rebuild/relaunch, or push. |
 
 ## Execution and architecture rules
@@ -466,6 +466,27 @@ after correction. Do not weaken expiry bounds or accessibility semantics. Do
 not change files, commit, integrate, start DLV-284, launch/terminate, or push.
 Preserve PID 126208 and all state.
 
+DLV-347 removed the temporary trace exactly, leaving only the intended three
+test files dirty. The canonical Release gate stopped after
+`OverlayProcessOwnerTests` itself passed 32 checks because `build.ps1` then saw
+a blank `$LASTEXITCODE` and threw. The gate did not reach
+`WidgetActionFeedbackTests`. This is a build-wrapper regression introduced by
+the DLV-340 helper's exit-code propagation, not a native test failure.
+
+## Assigned platform diagnosis — DLV-348 classify PowerShell exit scope
+
+Source inspection only; make no edits and run no build, test, publish, or
+process command. Trace PowerShell native exit-code scope before, inside, and
+after `Invoke-SerializedManagedPublish`, including the effect of assigning
+`$script:LASTEXITCODE` on later native executables invoked inside test
+functions. Explain why a passing `OverlayProcessOwnerTests.exe` produced a
+blank value at the subsequent check. Identify the smallest helper/call-site
+correction that preserves every existing failure message and makes publish and
+later native-process exit codes authoritative without script/global shadowing.
+State the exact focused verification required. Do not change files, commit,
+integrate, start DLV-284, launch/terminate, or push. Preserve PID 126208 and all
+state.
+
 DLV-346 corrected only the two authorized tests. The externally run
 `WidgetActionFailureHostTestsOnly` route returned 0 and passed; the production
 4000-ms bound is unchanged. `WidgetActionFeedbackTests.cpp` now contains the
@@ -676,8 +697,8 @@ import/export or scheduling only after independent widgets prove the need.
 
 ## Ordered queues
 
-1. Platform evidence queue: execute DLV-347 temporary-trace cleanup and one
-   complete native Release gate; if green, commit the three test files.
+1. Platform evidence queue: execute DLV-348 source-only exit-code scope
+   classification before correcting the integrated build helper.
 2. Reviewer integration queue: independently review DLV-332 and the cumulative
    accepted production/test chain; integrate only if every required gate passes.
 3. Platform production queue: assign DLV-284 after clean integration, before
@@ -719,7 +740,8 @@ There is no other Ready production work in either standing lane.
 | DLV-344 | Real IPC run reached UIA; first event succeeded, then replacement expired at the first deadline. |
 | DLV-345 | Production deadline replacement is sound; real-host timing oracle is stale/racy. |
 | DLV-346 | Corrected test oracle; externally run real-host route green, unit case awaits native gate. |
-| DLV-347 | Assigned temporary-trace removal plus complete native Release gate and test commit. |
+| DLV-347 | Trace removed; native gate exposed blank exit code after a passing test, before feedback unit case. |
+| DLV-348 | Assigned source-only DLV-340 PowerShell exit-scope diagnosis. |
 | DLV-284 | Queued, not assigned until cumulative review/integration. |
 | DLV-248 | Deliberately deferred until explicit user promotion. |
 
