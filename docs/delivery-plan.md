@@ -433,6 +433,35 @@ No correction, rerun, production logging/edit, integration, DLV-284,
 launch/terminate, or push. Preserve PID 126208, state, seven diffs, and all
 retained artifacts.
 
+## Assigned platform test correction — DLV-411 mode-aware Back readiness
+
+Own only `WidgetSwitchHostTests.cpp`; preserve six other held files. Determine
+the sticky rendering mode from the positive diagnostic before Back; never infer
+fallback from absent composition output.
+
+- While DirectComposition remains active, require the exact post-Back
+  fixed-chrome composition child sample, then validate the exact Audio tray on
+  the identity-pinned `WidgetRail.Chrome` UIA root.
+- When the explicit `DirectComposition presentation disabled; using HWND
+  fallback` marker is current, require the exact post-Back Audio widget paint
+  with positive nonregressed sequence, `semantics=current`,
+  `input-owner=tray`, `selected=audio-mixer`, `visual-focus=none`, and
+  `semantic-focus=tray:audio-mixer`. Then resolve and identity-pin the content
+  HWND UIA root and exact `tray:tray.audio-mixer`, requiring selected and
+  keyboard-focus properties there.
+
+Keep `GetUpdateRect` and retained log only as diagnostic evidence; absent update
+region or composition is never success. Preserve DLV-399 destination
+correlation and every existing identity, sequence, catalog, geometry,
+composition-when-active, timing, motion, and focus invariant.
+
+Run `WidgetSwitchTestsOnly` once via durable capture; stop first red and classify
+before another edit or rerun. If green, run the full native gate once. If both
+are green, create only the four documented scoped commits using DLV-411 for
+this file, then stop before Tier 3. No production edit, integration, DLV-284,
+launch/terminate, or push. Preserve PID 126208, state, seven diffs, and retained
+artifacts.
+
 ## After the cumulative native gate is green
 
 1. Review exact DLV-349 and the cumulative test commits and full diffs. Reject
@@ -448,7 +477,7 @@ retained artifacts.
 
 ## Queued platform production — DLV-284 explicit publication transaction model
 
-Status: queued, not assigned. It becomes assignable only after DLV-410 is
+Status: queued, not assigned. It becomes assignable only after DLV-411 is
 dispositioned, the native gate is green, cumulative evidence is reviewed and
 integrated, and the accepted main Release is coherently refreshed only if
 runtime inputs changed. No new virtualization feature may precede it.
@@ -507,8 +536,8 @@ Extract native authorities only when real work touches them.
 
 ## Ordered queues
 
-1. Platform evidence: execute DLV-410 retained/source classification of the
-   HWND-fallback Back authority and exact mode-aware completion fence.
+1. Platform evidence: execute DLV-411 explicit mode-aware Back readiness using
+   composition/Chrome UIA or fallback paint/content UIA as applicable.
 2. Reviewer integration: review the eventual four commits, then assign exact
    clean Tier 3 if the native routes are green.
 3. Platform production: DLV-284 after clean cumulative integration.
@@ -528,7 +557,7 @@ There is no other Ready production work in either standing lane.
 | DLV-314 | Production `992b77b` accepted with Spotify 0.3.13. |
 | DLV-318 | Current accepted production `32a2a5e`; PID 126208 runs Spotify 0.3.14. |
 | DLV-319–326 | Managed test chain through `676cd76`; all managed Tier-3 gates green. |
-| DLV-327–410 | Native fixture/build evidence held pending DLV-410 and exact-commit Tier 3. |
+| DLV-327–411 | Native fixture/build evidence held pending DLV-411 and exact-commit Tier 3. |
 | DLV-284 | Queued until cumulative review/integration. |
 | DLV-248 | Deliberately deferred until explicit user promotion. |
 
@@ -562,4 +591,5 @@ There is no other Ready production work in either standing lane.
 | DLV-407 | Content HWND and parser were correct, but deleted isolated logs leave Back transition, update region, paint, and commit disposition indistinguishable. |
 | DLV-408 | Existing log has only terminal-positive composition records; test cleanup deletes it, while `GetUpdateRect` can non-destructively expose pending invalidation. |
 | DLV-409 | Retained log proves exact Audio tray authority at sequence 5, but the isolated route had disabled DirectComposition after destination draw failure, making a composition sample impossible. |
-| DLV-410 | Assigned exact HWND-fallback authority and mode-aware completion-fence classification. |
+| DLV-410 | In explicit fallback, exact Audio paint plus content-HWND UIA owns readiness; composition sample and Chrome UIA are intentionally unavailable. |
+| DLV-411 | Assigned explicit DirectComposition/fallback Back readiness correction. |
