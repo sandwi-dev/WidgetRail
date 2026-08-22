@@ -39,7 +39,7 @@ historical evidence only; this file is the sole authority for current work.
 
 | Lane | Task/worktree | State |
 | --- | --- | --- |
-| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | Assigned production event-planner correction DLV-363 below at DLV-340 commit `0f8b080`, preserving build tooling and cumulative test files while removing temporary trace hooks. DLV-284 remains queued and unassigned. |
+| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | DLV-363 commit `0494b69` held/rejected pending source proof DLV-364 below; preserve build tooling and cumulative test files. DLV-284 remains queued and unassigned. |
 | Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | Idle and clean at `676cd76`. Preserve PID 126208 and all product state; do not begin new work, integrate, rebuild/relaunch, or push. |
 
 ## Execution and architecture rules
@@ -510,6 +510,28 @@ If green, inspect and commit exactly `AccessibilityEvents.cpp` with a DLV-363
 subject. Do not run tests, edit test expectations, integrate, launch/terminate,
 start DLV-284, or push. Preserve accepted PID 126208 and all state for reviewer
 candidate preparation.
+
+DLV-363 built and committed only `AccessibilityEvents.cpp` as `0494b69`, but
+review did not accept it. The one-line diff merely removes the nonempty-name
+guard from the existing new-live-node branch. `HostAccessibility` normally
+authors `host.open.status` with `name = semantics.status`, so the commit is a
+no-op unless the authoritative partition's traced node actually had an empty
+name. No candidate was launched.
+
+## Assigned platform review diagnosis — DLV-364 prove failed planner predicate
+
+Source and retained-artifact inspection only; make no edits and run no build,
+test, publish, or process command. For the exact DLV-361 prior/current chrome
+trees, establish every `PlanEvents` gate: non-null trees, widget ID equality,
+runtime-generation equality, node-key absence/presence, `liveSetting`, and
+whether `name` was empty. Trace `semantics.status` into the partitioned node and
+explain exactly why the pre-DLV-363 condition evaluated false. Determine whether
+`0494b69` fixes the recorded omission, is a no-op, or incorrectly broadens empty
+live-region events. If the real blocker is authority comparability or another
+gate, specify the smallest fail-closed correction consistent with silence on
+cross-runtime/root replacement. Do not amend/revert, change files, commit,
+launch/terminate, integrate, start DLV-284, or push. Preserve PID 126208 and all
+state.
 
 DLV-350 classified the Cold Dashboard red as fixture drift. Current startup is
 the real Settings widget, not the retired dashboard placeholder. Content
@@ -1082,8 +1104,8 @@ import/export or scheduling only after independent widgets prove the need.
 
 ## Ordered queues
 
-1. Platform physical-first queue: execute DLV-363 production correction and
-   Release `SkipTests` build, then reviewer prepares the visible candidate.
+1. Platform physical-first queue: execute DLV-364 proof of the exact failed
+   planner predicate before accepting or replacing held commit `0494b69`.
 2. Reviewer integration queue: independently review DLV-332 and the cumulative
    accepted production/test chain; integrate only if every required gate passes.
 3. Platform production queue: assign DLV-284 after clean integration, before
@@ -1141,7 +1163,8 @@ There is no other Ready production work in either standing lane.
 | DLV-360 | Designed bounded isolated host-plan/raise plus test-handler retained evidence. |
 | DLV-361 | Host saw status add but planned no event; traced HWND differed from subscribed content HWND. |
 | DLV-362 | Chrome owns status; fixture root was stale and production omitted added live-region event. |
-| DLV-363 | Assigned bounded production event-planner correction and test-free Release build. |
+| DLV-363 | Built `0494b69`, but reviewer held it because its name-guard removal may be a no-op. |
+| DLV-364 | Assigned exact pre-DLV-363 planner-predicate proof; no edits authorized. |
 | DLV-284 | Queued, not assigned until cumulative review/integration. |
 | DLV-248 | Deliberately deferred until explicit user promotion. |
 
