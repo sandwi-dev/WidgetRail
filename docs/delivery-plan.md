@@ -31,7 +31,7 @@ historical evidence only; this file is the sole authority for current work.
 
 | Lane | Task/worktree | State |
 | --- | --- | --- |
-| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | Assigned DLV-400 source/output diagnosis of Back-to-tray authority observability. Preserve all seven held diffs and neutral rejected/restoration commits. DLV-284 remains queued and unassigned. |
+| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | Assigned DLV-401 test-only correction for typed pre-Right Audio visual authority. Preserve all seven held diffs and neutral rejected/restoration commits. DLV-284 remains queued and unassigned. |
 | Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | Idle and clean at `676cd76`. Preserve PID 126208 and product state; do not begin work, integrate, rebuild/relaunch, or push. |
 
 ## Execution rules
@@ -178,6 +178,30 @@ ignore sequence, weaken tray identity/focus, edit, rerun, commit, integrate,
 start DLV-284, launch/terminate, or push. Preserve PID 126208, seven diffs,
 state, and diagnostics.
 
+DLV-400 classified a stale admitted-only paint requirement. Back may expose the
+exact Audio visual source as either admitted/current or refresh-retained/inert;
+both retain exact tray identity and sequence, while inert semantics cannot act.
+No production failure is proven.
+
+## Assigned platform test correction — DLV-401 typed Audio visual authority
+
+Own only `WidgetSwitchHostTests.cpp`; preserve six other held files. Replace the
+admitted-only Back needle with an exact parser accepting only: (1)
+`content=admitted semantics=current`, or (2)
+`content=refresh-retained semantics=inert`. In both cases require exact Audio
+target/rendered identity, tray input owner, Audio selection/semantic focus,
+eight-item catalog, and positive nonregressed sequence. Select the latest
+qualifying record immediately before Right and bind its exact sequence to every
+retained Game Launcher paint until destination admission. Do not authorize
+actions from inert semantics or weaken identity/focus/sequence. Keep DLV-399
+destination correlation unchanged.
+
+Run `WidgetSwitchTestsOnly` once via durable capture; stop first red. If green,
+run the full native gate once. If both are green, create only the four documented
+commits using DLV-401 for this file, then stop before Tier 3. No production edit,
+integration, DLV-284, launch/terminate, or push. Preserve PID 126208, state,
+seven diffs, and diagnostics.
+
 DLV-397 passed immediate pre-Right Audio authority, then stopped at
 `Production transition omitted a committed complete-content surface for Game
 Launcher` before the DLV-395 destination transaction helper completed. Exact
@@ -234,7 +258,7 @@ state, seven diffs, and diagnostics.
 
 ## Queued platform production — DLV-284 explicit publication transaction model
 
-Status: queued, not assigned. It becomes assignable only after DLV-400 is
+Status: queued, not assigned. It becomes assignable only after DLV-401 is
 dispositioned, the native gate is green, cumulative evidence is reviewed and
 integrated, and the accepted main Release is coherently refreshed only if
 runtime inputs changed. No new virtualization feature may precede it.
@@ -293,8 +317,8 @@ Extract native authorities only when real work touches them.
 
 ## Ordered queues
 
-1. Platform evidence: execute DLV-400 source/output classification of Back
-   tray-authority observability before another edit or rerun.
+1. Platform evidence: execute DLV-401 typed immediate pre-Right authority and
+   stop first red before another diagnosis or rerun.
 2. Reviewer integration: review the eventual four commits, then assign exact
    clean Tier 3 if the native routes are green.
 3. Platform production: DLV-284 after clean cumulative integration.
@@ -314,7 +338,7 @@ There is no other Ready production work in either standing lane.
 | DLV-314 | Production `992b77b` accepted with Spotify 0.3.13. |
 | DLV-318 | Current accepted production `32a2a5e`; PID 126208 runs Spotify 0.3.14. |
 | DLV-319–326 | Managed test chain through `676cd76`; all managed Tier-3 gates green. |
-| DLV-327–400 | Native fixture/build evidence held pending DLV-400 and exact-commit Tier 3. |
+| DLV-327–401 | Native fixture/build evidence held pending DLV-401 and exact-commit Tier 3. |
 | DLV-284 | Queued until cumulative review/integration. |
 | DLV-248 | Deliberately deferred until explicit user promotion. |
 
@@ -338,4 +362,5 @@ There is no other Ready production work in either standing lane.
 | DLV-397 | Switch-boundary sequence passed; an older complete-content check failed before exact correlation. |
 | DLV-398 | Older composition evidence is valid but used the wrong fallback-anchored range. |
 | DLV-399 | Shared destination boundary compiled; Back handshake lacked a qualifying new Audio tray paint. |
-| DLV-400 | Assigned source/output classification of Back-to-tray authority observability. |
+| DLV-400 | Back visual source may be admitted/current or refresh-retained/inert with exact tray authority. |
+| DLV-401 | Assigned typed pre-Right Audio visual-source capture. |
