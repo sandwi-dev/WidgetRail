@@ -352,6 +352,23 @@ are green, create only the four documented scoped commits using DLV-406 for
 this file, then stop before Tier 3. No integration, DLV-284, launch/terminate,
 or push. Preserve PID 126208, state, seven diffs, and retained diagnostics.
 
+## Assigned platform test diagnosis — DLV-407 Chrome paint ownership
+
+Use only production/test source, the uncommitted DLV-406 diff, and retained
+DLV-405/406 diagnostics. Do not edit, build, run, publish, or touch product
+state. Trace the exact post-Back `InvalidateRect` target through its window
+procedure, paint scheduling, guide-layer rendering, accessibility publication,
+DirectComposition commit, and emitted diagnostics. Explain why
+`UpdateWindow(window)` did not yield the expected fixed-chrome sample: wrong
+HWND, no update region, parser mismatch, conditional/no-op render, or another
+specific source-proven cause.
+
+Identify the smallest deterministic one-file test correction and exact event
+fence. Do not prescribe a broad redraw, sleep, speculative message, widget-paint
+dependency, or production change. If the present diagnostics cannot strictly
+observe the transaction, state that boundary explicitly. Preserve PID 126208,
+state, seven diffs, and retained diagnostics.
+
 ## After the cumulative native gate is green
 
 1. Review exact DLV-349 and the cumulative test commits and full diffs. Reject
@@ -367,7 +384,7 @@ or push. Preserve PID 126208, state, seven diffs, and retained diagnostics.
 
 ## Queued platform production — DLV-284 explicit publication transaction model
 
-Status: queued, not assigned. It becomes assignable only after DLV-406 is
+Status: queued, not assigned. It becomes assignable only after DLV-407 is
 dispositioned, the native gate is green, cumulative evidence is reviewed and
 integrated, and the accepted main Release is coherently refreshed only if
 runtime inputs changed. No new virtualization feature may precede it.
@@ -426,8 +443,8 @@ Extract native authorities only when real work touches them.
 
 ## Ordered queues
 
-1. Platform evidence: execute DLV-406 narrow realization of the invalidated
-   Chrome HWND, then require the composition/UIA authorities and classify.
+1. Platform evidence: execute DLV-407 source/retained trace of exact Chrome
+   invalidation, paint ownership, composition publication, and event fence.
 2. Reviewer integration: review the eventual four commits, then assign exact
    clean Tier 3 if the native routes are green.
 3. Platform production: DLV-284 after clean cumulative integration.
@@ -447,7 +464,7 @@ There is no other Ready production work in either standing lane.
 | DLV-314 | Production `992b77b` accepted with Spotify 0.3.13. |
 | DLV-318 | Current accepted production `32a2a5e`; PID 126208 runs Spotify 0.3.14. |
 | DLV-319–326 | Managed test chain through `676cd76`; all managed Tier-3 gates green. |
-| DLV-327–406 | Native fixture/build evidence held pending DLV-406 and exact-commit Tier 3. |
+| DLV-327–407 | Native fixture/build evidence held pending DLV-407 and exact-commit Tier 3. |
 | DLV-284 | Queued until cumulative review/integration. |
 | DLV-248 | Deliberately deferred until explicit user promotion. |
 
@@ -477,4 +494,5 @@ There is no other Ready production work in either standing lane.
 | DLV-403 | Split-authority correction reached a combined Chrome UIA predicate red; no product defect is proven because the failed conjunct is unknown. |
 | DLV-404 | `WM_NULL` was not a publication fence; the post-Back fixed-chrome composition child sample is the deterministic UIA-publication boundary. |
 | DLV-405 | Back invalidated Chrome but input injection did not service `WM_PAINT`, so no composition/UIA publication occurred. |
-| DLV-406 | Assigned narrow synchronous realization of the already-invalidated Chrome HWND before exact composition/UIA validation. |
+| DLV-406 | `UpdateWindow` on the content HWND succeeded but still emitted no qualifying fixed-chrome sample; exact paint ownership remains unresolved. |
+| DLV-407 | Assigned source/retained trace of invalidation target, window procedure, guide render, accessibility publication, commit, and diagnostic fence. |
