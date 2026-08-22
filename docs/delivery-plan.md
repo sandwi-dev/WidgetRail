@@ -39,7 +39,7 @@ historical evidence only; this file is the sole authority for current work.
 
 | Lane | Task/worktree | State |
 | --- | --- | --- |
-| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | Assigned external-context diagnostic DLV-344 below at DLV-340 commit `0f8b080`, preserving five uncommitted diagnostic/test files. DLV-284 remains queued and unassigned. |
+| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | Assigned source-only diagnosis DLV-345 below at DLV-340 commit `0f8b080`, preserving five uncommitted diagnostic/test files. DLV-284 remains queued and unassigned. |
 | Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | Idle and clean at `676cd76`. Preserve PID 126208 and all product state; do not begin new work, integrate, rebuild/relaunch, or push. |
 
 ## Execution and architecture rules
@@ -443,6 +443,29 @@ anything. Preserve accepted PID 126208; the fixture's distinct identities make
 termination unnecessary. Do not run any additional test/gate, integrate, start
 DLV-284, launch/terminate product processes, or push.
 
+DLV-344 ran once outside the restricted context and returned authoritative exit
+1. The Bridge denial did not recur. The fixture reached the real host, observed
+the first failure publication, received at least one `LiveRegionChanged`,
+retained focus, and observed two action-failure records. It then failed because
+replacement feedback did not outlive the first feedback deadline. This moves
+the first causal boundary from provider/event raising to replacement-feedback
+lifetime. Exact numeric HWND/HRESULT were unavailable after fixture cleanup and
+must not be inferred.
+
+## Assigned platform diagnosis — DLV-345 classify replacement lifetime
+
+Source inspection only; make no edits and run no build, test, publish, or
+process command. Trace the two action-failure publications through their
+identity/keying, replacement admission, feedback deadline/timer ownership,
+expiry callback, status removal, accessibility-event planning, and focus
+retention. Determine whether the second record reuses the first record's
+deadline or whether an older timer is allowed to expire the replacement.
+Classify the defect as production versus stale test expectation, identify the
+smallest invariant-preserving correction, and state the focused evidence needed
+after correction. Do not weaken expiry bounds or accessibility semantics. Do
+not change files, commit, integrate, start DLV-284, launch/terminate, or push.
+Preserve PID 126208 and all state.
+
 DLV-340 reached the intended centralized helper and successfully published the
 complete production managed set through Media Sessions. Its first red was the
 pre-existing command contract: `WidgetActionFailureHostTestsOnly` requires
@@ -595,8 +618,8 @@ import/export or scheduling only after independent widgets prove the need.
 
 ## Ordered queues
 
-1. Platform evidence queue: execute DLV-344 once in a real-user IPC context,
-   then classify the captured live-region trace before any correction.
+1. Platform evidence queue: execute DLV-345 source-only replacement-lifetime
+   classification before authorizing any correction.
 2. Reviewer integration queue: independently review DLV-332 and the cumulative
    accepted production/test chain; integrate only if every required gate passes.
 3. Platform production queue: assign DLV-284 after clean integration, before
@@ -635,7 +658,8 @@ There is no other Ready production work in either standing lane.
 | DLV-341 | Legal ordinary Release `SkipTests` verification green; no tests executed. |
 | DLV-342 | Isolated host blocked by WidgetBridge Win32 error 5; UIA boundary not reached; wrapper returned 0 despite FAIL. |
 | DLV-343 | Ruled out endpoint collision; restricted-context IPC denial and outer PowerShell status reporting. |
-| DLV-344 | Assigned one approved external-context run with authoritative process exit. |
+| DLV-344 | Real IPC run reached UIA; first event succeeded, then replacement expired at the first deadline. |
+| DLV-345 | Assigned source-only replacement deadline/timer ownership diagnosis. |
 | DLV-284 | Queued, not assigned until cumulative review/integration. |
 | DLV-248 | Deliberately deferred until explicit user promotion. |
 
