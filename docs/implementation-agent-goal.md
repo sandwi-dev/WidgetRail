@@ -509,6 +509,20 @@ Every test or build command must have a bounded timeout. Inspect actual output,
 machine-readable results, commit provenance, and failure fields. Do not infer
 success from an exit code alone.
 
+Every command must also expose meaningful progress or a terminal result at
+least once every 60 seconds. For long-running work, stream progress or write it
+to durable files and monitor those files within that interval. A tool, wrapper,
+or task `inProgress` marker alone is not evidence that the child is active.
+
+After 60 seconds without new output, immediately inspect the exact owned
+process tree, output-file timestamps, result files, child exit state, and
+resource use. Do not continue waiting until that diagnosis proves genuine
+activity. If the child has completed while its owner is stuck, preserve its
+terminal streams and release only the precisely identified task-owned
+test/build process. Never touch the planner's accepted product instance or an
+unrelated user process. Polling and diagnosing the same invocation do not count
+as a rerun.
+
 ### Capture evidence policy
 
 Screenshots are optional supporting evidence, not a default implementation

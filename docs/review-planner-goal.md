@@ -633,6 +633,23 @@ than becoming a second implementation/test runner. At a named Tier-3 checkpoint,
 run or direct one exact-commit aggregate as the delivery plan specifies and
 inspect its machine-readable provenance.
 
+### One-minute command observability rule
+
+Every command started or supervised by the planner or an implementation task
+must expose meaningful progress or a terminal result at least once every 60
+seconds. Long-running work must use visible streams, durable output files, or a
+bounded monitor that checks them within that interval. Never treat a tool,
+wrapper, or task `inProgress` marker by itself as proof that the child process
+is still doing work.
+
+If 60 seconds pass without new output, immediately inspect the exact owned
+process tree, output-file timestamps, result files, child exit state, and
+resource use. Do not continue waiting until that diagnosis proves the command
+is genuinely active. If the child completed but its owner is stuck, preserve
+the terminal streams and release only the precisely identified planner-owned
+test/build process; never touch the accepted product instance or an unrelated
+user process. Polling and diagnosis of the same invocation are not reruns.
+
 ### Evidence proportionality stop rule
 
 Verification must remain proportional to the product risk. Deterministic
