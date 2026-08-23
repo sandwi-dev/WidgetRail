@@ -821,13 +821,25 @@ std::optional<std::uint64_t> DiagnosticTimestampMilliseconds(
     if (sscanf_s(
             text.c_str(), "%d-%d-%d %d:%d:%d.%d",
             &year, &month, &day, &hour, &minute, &second, &millisecond) != 7 ||
-        year < 2000 || month < 1 || month > 12 || day < 1 || day > 31 ||
+        year < 2000 || year > 65535 || month < 1 || month > 12 || day < 1 || day > 31 ||
         hour < 0 || hour > 23 || minute < 0 || minute > 59 ||
         second < 0 || second > 59 || millisecond < 0 || millisecond > 999) {
         return std::nullopt;
     }
-    return (((static_cast<std::uint64_t>(day) * 24 + hour) * 60 + minute) * 60 +
-            second) * 1000 + millisecond;
+    SYSTEMTIME timestamp{};
+    timestamp.wYear = static_cast<WORD>(year);
+    timestamp.wMonth = static_cast<WORD>(month);
+    timestamp.wDay = static_cast<WORD>(day);
+    timestamp.wHour = static_cast<WORD>(hour);
+    timestamp.wMinute = static_cast<WORD>(minute);
+    timestamp.wSecond = static_cast<WORD>(second);
+    timestamp.wMilliseconds = static_cast<WORD>(millisecond);
+    FILETIME fileTime{};
+    if (!SystemTimeToFileTime(&timestamp, &fileTime)) return std::nullopt;
+    ULARGE_INTEGER ticks{};
+    ticks.LowPart = fileTime.dwLowDateTime;
+    ticks.HighPart = fileTime.dwHighDateTime;
+    return ticks.QuadPart / 10000;
 }
 
 std::uint64_t DiagnosticLatencyMilliseconds(
@@ -836,10 +848,32 @@ std::uint64_t DiagnosticLatencyMilliseconds(
     const std::string_view context) {
     const auto start = DiagnosticTimestampMilliseconds(startRecord);
     const auto end = DiagnosticTimestampMilliseconds(endRecord);
-    Require(start && end && *end >= *start,
-            std::string(context) + " omitted ordered host diagnostic timestamps; start=" +
+    Require(start && end,
+            std::string(context) + " omitted valid host diagnostic timestamps; start=" +
                 std::string(startRecord) + " end=" + std::string(endRecord));
-    return *end - *start;
+    return *end >= *start ? *end - *start : *start - *end;
+}
+
+void RunDiagnosticLatencyTableTests() {
+    struct Case final {
+        const char* name;
+        const char* start;
+        const char* end;
+        std::uint64_t expectedMilliseconds;
+    };
+    constexpr std::array cases{
+        Case{"forward-order", "2026-8-22 17:49:37.053", "2026-8-22 17:49:37.059", 6},
+        Case{"reversed-append-order", "2026-8-22 17:49:37.059", "2026-8-22 17:49:37.053", 6},
+        Case{"calendar-boundary", "2026-12-31 23:59:59.990", "2027-1-1 0:0:0.010", 20},
+    };
+    for (const auto& test : cases) {
+        const auto actual = DiagnosticLatencyMilliseconds(test.start, test.end, test.name);
+        Require(actual == test.expectedMilliseconds,
+                std::string("Diagnostic latency table case failed: ") + test.name +
+                    " expected=" + std::to_string(test.expectedMilliseconds) +
+                    " actual=" + std::to_string(actual));
+    }
+    std::cout << "WidgetSwitch diagnostic latency table cases=" << cases.size() << " passed\n";
 }
 
 ComPtr<IUIAutomationElement> FindAutomationElement(
@@ -3914,6 +3948,7 @@ int wmain(const int argc, wchar_t** argv) {
     }
     try {
         const auto arguments = ParseArguments(argc, argv);
+        RunDiagnosticLatencyTableTests();
         if (arguments.fallbackAuthoritySelectionOnly)
             RunFallbackCheckpointSelectionTests();
         else if (!arguments.fallbackAuthorityReplayLog.empty())
