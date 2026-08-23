@@ -43,6 +43,12 @@ internal static class WidgetProcessOwnershipScenarios
         False(rejection.Message.Contains("private", StringComparison.Ordinal),
             "The public process exception exposed a worker-private path.");
 
+        _ = Throws<WidgetProtocolViolationException>(() =>
+            new WidgetProcessException(MessageTypes.Render, "invalid code", "bounded"));
+        _ = Throws<WidgetProtocolViolationException>(() =>
+            new WidgetProcessException(
+                MessageTypes.Render, "worker_request_failed", "line one\nline two"));
+
         pending.FailAll(new WidgetProcessException("session ended"));
         await ThrowsAsync<WidgetProcessException>(async () => await first.Response);
         Equal(0, pending.Count);
@@ -531,6 +537,13 @@ internal static class WidgetProcessOwnershipScenarios
     private static async Task<T> ThrowsAsync<T>(Func<Task> action) where T : Exception
     {
         try { await action(); }
+        catch (T exception) { return exception; }
+        throw new InvalidOperationException($"Expected {typeof(T).Name}.");
+    }
+
+    private static T Throws<T>(Action action) where T : Exception
+    {
+        try { action(); }
         catch (T exception) { return exception; }
         throw new InvalidOperationException($"Expected {typeof(T).Name}.");
     }

@@ -89,7 +89,8 @@ internal static class Program
                 pipeName, catalog, maximumBytes, appearance, consentStore, platformBackend,
                 catalogMonitor, residencyBudget, launcherExperience,
                 mediaDiagnostics.Record,
-                mediaDiagnostics.RecordLifetime);
+                mediaDiagnostics.RecordLifetime,
+                mediaDiagnostics.RecordRequestFailure);
             await server.RunAsync(TimeSpan.FromMilliseconds(acceptTimeout), shutdown.Token)
                 .ConfigureAwait(false);
             return 0;

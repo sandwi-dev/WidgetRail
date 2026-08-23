@@ -171,6 +171,21 @@ internal static class BridgeClientRegistryScenarios
                 RegistryAssert.True(!typed.Message.Contains(
                     processFailure.WorkerDiagnosticMessage!, StringComparison.Ordinal));
                 RegistryAssert.True(!typed.Message.Contains("DO_NOT_SURFACE", StringComparison.Ordinal));
+
+                var response = WidgetBridgeServer.CreateRequestFailure(typed);
+                RegistryAssert.Equal("request_failed", response.Code);
+                RegistryAssert.Equal(typed.Message, response.Message);
+                RegistryAssert.True(!response.Message.Contains(
+                    processFailure.WorkerDiagnosticMessage!, StringComparison.Ordinal));
+                RegistryAssert.True(!response.Message.Contains(
+                    "DO_NOT_SURFACE", StringComparison.Ordinal));
+
+                var diagnostics = new List<BridgeWidgetRequestDiagnostic>();
+                WidgetBridgeServer.ReportWidgetRequestFailure(diagnostics.Add, typed);
+                RegistryAssert.Equal(1, diagnostics.Count);
+                RegistryAssert.Equal(alpha.Id, diagnostics[0].WidgetId);
+                RegistryAssert.Equal(MessageTypes.Render, diagnostics[0].RequestType);
+                RegistryAssert.Equal("worker_request_failed", diagnostics[0].WorkerErrorCode);
             }
             alphaClient.SnapshotFailure = null;
 

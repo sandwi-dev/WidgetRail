@@ -2886,6 +2886,7 @@ static async Task ProtocolValidationDiagnosticIsStructural()
     await using var client = CreateClient(extraArguments: ["--invalid-protocol-widget"]);
     var exception = await Assert.ThrowsAsync<WidgetProcessException>(() => client.GetSnapshotAsync());
 
+    Assert.Equal(WorkerErrorCodes.ProtocolValidationFailed, exception.WorkerErrorCode);
     Assert.True(exception.WorkerDiagnosticMessage?.Contains(
         "$.activeInputScopeId", StringComparison.Ordinal) == true,
         "The worker response omitted the first validation path.");

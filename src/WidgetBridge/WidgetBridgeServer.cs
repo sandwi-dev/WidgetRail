@@ -29,6 +29,7 @@ public sealed class WidgetBridgeServer : IAsyncDisposable
     private readonly SemaphoreSlim _writeGate = new(1, 1);
     private readonly BridgeFrameWriteBoundary _frameWriter;
     private readonly Action<string, BrokerCapabilityDiagnostic>? _capabilityDiagnosticSink;
+    private readonly Action<BridgeWidgetRequestDiagnostic>? _requestDiagnosticSink;
     private long _hostEffectSequence;
     private BridgeFrameChannel? _channel;
     private CancellationToken _sessionCancellation;
@@ -56,7 +57,8 @@ public sealed class WidgetBridgeServer : IAsyncDisposable
             residencyBudget,
             launcherExperience,
             capabilityDiagnosticSink: null,
-            lifetimeDiagnosticSink: null)
+            lifetimeDiagnosticSink: null,
+            requestDiagnosticSink: null)
     {
     }
 
@@ -71,7 +73,8 @@ public sealed class WidgetBridgeServer : IAsyncDisposable
         WorkerResidencyBudgetOptions? residencyBudget,
         LauncherExperienceSelectionService? launcherExperience,
         Action<string, BrokerCapabilityDiagnostic>? capabilityDiagnosticSink,
-        Action<BridgeClientLifetimeDiagnostic>? lifetimeDiagnosticSink = null)
+        Action<BridgeClientLifetimeDiagnostic>? lifetimeDiagnosticSink = null,
+        Action<BridgeWidgetRequestDiagnostic>? requestDiagnosticSink = null)
     {
         _pipeName = ValidatePipeName(pipeName);
         _maximumMessageBytes = maximumMessageBytes is >= 256 and <=
@@ -85,6 +88,7 @@ public sealed class WidgetBridgeServer : IAsyncDisposable
         _appLibraryArtwork = platformBackend is null ? null : new AppLibraryArtworkRegistry();
         _catalogMonitor = catalogMonitor;
         _capabilityDiagnosticSink = capabilityDiagnosticSink;
+        _requestDiagnosticSink = requestDiagnosticSink;
         _registry = new BridgeClientRegistry(
             catalog ?? throw new ArgumentNullException(nameof(catalog)),
             residencyBudget ?? new WorkerResidencyBudgetOptions(),
@@ -587,6 +591,7 @@ public sealed class WidgetBridgeServer : IAsyncDisposable
         }
         catch (BridgeWidgetRequestException exception)
         {
+            ReportWidgetRequestFailure(_requestDiagnosticSink, exception);
             await ReplyRequestFailureAsync(request.RequestId, exception, cancellationToken)
                 .ConfigureAwait(false);
         }
@@ -604,6 +609,26 @@ public sealed class WidgetBridgeServer : IAsyncDisposable
         }
     }
 
+    internal static void ReportWidgetRequestFailure(
+        Action<BridgeWidgetRequestDiagnostic>? diagnosticSink,
+        BridgeWidgetRequestException exception)
+    {
+        ArgumentNullException.ThrowIfNull(exception);
+        if (diagnosticSink is null ||
+            exception.RequestType is null ||
+            exception.WorkerErrorCode is null)
+            return;
+
+        try
+        {
+            diagnosticSink(BridgeWidgetRequestDiagnostic.From(exception));
+        }
+        catch (Exception diagnosticException) when (diagnosticException is not OutOfMemoryException)
+        {
+            // Developer diagnostics are observational and cannot own the Bridge reply.
+        }
+    }
+
     private async Task ReplyRequestFailureAsync(
         long requestId,
         Exception exception,
@@ -614,17 +639,23 @@ public sealed class WidgetBridgeServer : IAsyncDisposable
             await ReplyAsync(
                     BridgeMessageTypes.Error,
                     requestId,
-                    new BridgeError(
-                        exception is BridgeStalePresentationBaseException
-                            ? "stale_presentation_base"
-                            : "request_failed",
-                        SafeMessage(exception)),
+                    CreateRequestFailure(exception),
                     cancellationToken)
                 .ConfigureAwait(false);
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
         }
+    }
+
+    internal static BridgeError CreateRequestFailure(Exception exception)
+    {
+        ArgumentNullException.ThrowIfNull(exception);
+        return new BridgeError(
+            exception is BridgeStalePresentationBaseException
+                ? "stale_presentation_base"
+                : "request_failed",
+            SafeMessage(exception));
     }
 
     private async Task DispatchProtectedWifiRequestAsync(

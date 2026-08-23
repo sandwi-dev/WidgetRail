@@ -7,9 +7,10 @@ using WidgetRail.WidgetRuntime;
 namespace WidgetRail.WidgetBridge;
 
 /// <summary>
-/// Records only transition-owned, correlation-safe Media Sessions failures.
-/// Provider/player identities, response bodies, process details, and credentials
-/// never enter this bounded lane.
+/// Records bounded developer-only Bridge diagnostics through one serialized owner.
+/// Provider responses, credentials, package-private paths, and widget-controlled
+/// text never enter this persistent lane. User-facing Bridge failure copy never
+/// reads from it.
 /// </summary>
 internal sealed class MediaSessionsDiagnosticLog : IAsyncDisposable
 {
@@ -92,6 +93,21 @@ internal sealed class MediaSessionsDiagnosticLog : IAsyncDisposable
             $"event={eventCode} start={process.StartOrdinal} " +
             $"pid={process.ProcessId?.ToString() ?? "none"} lifecycle={lifecycle} " +
             $"exit={process.ExitCode?.ToString() ?? "none"} failure={failure}" +
+            Environment.NewLine);
+    }
+
+    internal void RecordRequestFailure(BridgeWidgetRequestDiagnostic diagnostic)
+    {
+        if (Volatile.Read(ref _disposed) != 0 ||
+            !IsSafe(diagnostic.WidgetId, 128) ||
+            !IsSafe(diagnostic.RequestType, 64) ||
+            !IsSafe(diagnostic.WorkerErrorCode, 64))
+            return;
+
+        _lines.Writer.TryWrite(
+            $"{DateTimeOffset.UtcNow:O} Widget request diagnostic " +
+            $"bridge-session={_bridgeSessionGeneration} widget={diagnostic.WidgetId} " +
+            $"request={diagnostic.RequestType} worker-code={diagnostic.WorkerErrorCode}" +
             Environment.NewLine);
     }
 

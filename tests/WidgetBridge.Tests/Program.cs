@@ -88,6 +88,7 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Platform appearance is bounded and does not launch workers", PlatformAppearanceIsLazy),
     ("Private diagnostics attach only to the exact trusted Settings identity", DiagnosticsAreSettingsOnly),
     ("Media Sessions diagnostics are bounded transition-only and sanitized", MediaSessionDiagnosticsAreBounded),
+    ("Worker request diagnostics are bounded developer-only records", WorkerRequestDiagnosticsAreBounded),
     ("Diagnostics projection is bounded sanitized and read only", BridgeDiagnosticsScenarios.ProjectionIsBoundedSanitizedAndReadOnly),
     ("Diagnostics partial failures malformed input and deadline are closed", BridgeDiagnosticsScenarios.PartialFailureMalformedInputAndDeadlineAreClosed),
     ("Authority recovery projection is exact bounded and cancellation safe", BridgeDiagnosticsScenarios.RecoveryRetryIsExactBoundedAndCancellationSafe),
@@ -545,6 +546,72 @@ static async Task MediaSessionDiagnosticsAreBounded()
         !line.Contains("player.exe", StringComparison.OrdinalIgnoreCase) &&
         !line.Contains("secret", StringComparison.OrdinalIgnoreCase)),
         "Unsafe diagnostic content crossed the bounded log boundary.");
+}
+
+static async Task WorkerRequestDiagnosticsAreBounded()
+{
+    using var temporary = new TemporaryDirectory("wrail-worker-request-diagnostics");
+    var path = System.IO.Path.Combine(temporary.Path, "overlay.log");
+    var forgedValidation = new ProtocolValidationException([
+        new ProtocolValidationError(
+            "$.credentials.providerToken",
+            "provider_secret",
+            "credential=FORGED_STRUCTURAL_SECRET"),
+    ]);
+    var forgedError = forgedValidation.Errors[0];
+    var forgedStructuralDiagnostic =
+        $"Widget protocol validation failed at {forgedError.Path} ({forgedError.Code}).";
+    await using (var diagnostics = new MediaSessionsDiagnosticLog(path, bridgeSessionGeneration: 7))
+    {
+        WidgetBridgeServer.ReportWidgetRequestFailure(
+            diagnostics.RecordRequestFailure,
+            new BridgeWidgetRequestException(
+                "installed-widget",
+                "worker-runtime-failed",
+                new WidgetProcessException(
+                    MessageTypes.Render,
+                    WorkerErrorCodes.RequestFailed,
+                    "provider response credential=DEVELOPER_ONLY path=C:\\private\\widget.json")));
+        WidgetBridgeServer.ReportWidgetRequestFailure(
+            diagnostics.RecordRequestFailure,
+            new BridgeWidgetRequestException(
+                "protocol-widget",
+                "worker-protocol-failed",
+                new WidgetProcessException(
+                    MessageTypes.Render,
+                    WorkerErrorCodes.ProtocolValidationFailed,
+                    forgedStructuralDiagnostic)));
+        diagnostics.RecordRequestFailure(new BridgeWidgetRequestDiagnostic(
+            "unsafe widget/path",
+            MessageTypes.Render,
+            WorkerErrorCodes.RequestFailed));
+    }
+
+    var lines = File.ReadAllLines(path);
+    Assert.Equal(2, lines.Length);
+    Assert.True(lines[0].Contains(
+        "Widget request diagnostic bridge-session=7 widget=installed-widget " +
+        "request=render worker-code=worker_request_failed",
+        StringComparison.Ordinal), "The correlated worker request record was not retained.");
+    Assert.True(!lines[0].Contains("detail=", StringComparison.Ordinal),
+        "A general worker failure retained arbitrary diagnostic detail.");
+    Assert.True(lines[1].Contains(
+        "widget=protocol-widget request=render " +
+        "worker-code=worker_protocol_validation_failed",
+        StringComparison.Ordinal), "The structural failure lost its correlated metadata.");
+    Assert.True(!lines[1].Contains("detail=", StringComparison.Ordinal),
+        "A forged structural diagnostic entered the persistent record.");
+    Assert.True(lines.All(line =>
+        !line.Contains(forgedStructuralDiagnostic, StringComparison.Ordinal)),
+        "A forged ProtocolValidationException diagnostic entered the persistent log.");
+    Assert.True(lines.All(line =>
+        !line.Contains("credential", StringComparison.OrdinalIgnoreCase) &&
+        !line.Contains("provider response", StringComparison.OrdinalIgnoreCase) &&
+        !line.Contains("C:\\", StringComparison.Ordinal) &&
+        !line.Contains("$.credentials", StringComparison.Ordinal) &&
+        !line.Contains("provider_secret", StringComparison.Ordinal) &&
+        !line.Contains("FORGED_STRUCTURAL_SECRET", StringComparison.Ordinal)),
+        "Sensitive or package-private detail crossed the persistent log boundary.");
 }
 
 static ConfiguredWidget DiagnosticCandidate() => new()
