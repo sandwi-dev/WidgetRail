@@ -2,8 +2,9 @@
 
 Status: active implementation authority
 
-The complete delivery record through DLV-463 is preserved in the
-[2026-08-22 10:48 snapshot](history/delivery-plan/2026-08-22T10-48-01-0700.md).
+The complete delivery record through the rejected `54167ee` DLV-284 diagnostic
+candidate is preserved in the
+[2026-08-23 13:36 snapshot](history/delivery-plan/2026-08-23T13-36-12-07-00.md).
 Earlier snapshots remain under `docs/history/delivery-plan/`. Snapshots are
 historical evidence only; this file is the sole implementation authority.
 
@@ -41,7 +42,7 @@ historical evidence only; this file is the sole implementation authority.
 
 | Lane | Task/worktree | State |
 | --- | --- | --- |
-| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | Safe correlation pair `f583f40` + `ac79ed0` accepted through merge `8ac55d`; one bounded follow-up is assigned because `WidgetBridgeServer.ReplyRequestFailureAsync` still discards the retained request type, worker error code, and developer diagnostic instead of recording them in a bounded developer-only diagnostic sink. |
+| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | Safe correlation pair `f583f40` + `ac79ed0` accepted through merge `8ac55d`; diagnostic-log candidate `54167ee` rejected because it writes arbitrary worker text, including its credential-shaped test value, into persistent `overlay.log`. Bounded correction assigned. |
 | Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | Idle; DLV-285 remains queued behind corrected DLV-284 physical acceptance. |
 
 ## Execution rules
@@ -63,530 +64,16 @@ historical evidence only; this file is the sole implementation authority.
   interaction authority, installed/configured state, and unrelated user work.
   Never push.
 
-## Held platform state
 
-The original platform branch contains rejected/restoration ancestry plus
-unaccepted DLV-427 `e26b92b`; never integrate that ancestry. Exactly seven
-authorized diffs remain held:
+## Preserved accepted baseline
 
-1. `src/OverlayHost/build.ps1` — DLV-349 numeric exit authority.
-2. `src/OverlayHost/RealHostAccessibilityTests.cpp` — DLV-327–330 fixture
-   alignment; 291 focused checks previously green.
-3. `src/OverlayHost/WidgetActionFeedbackTests.cpp` — deterministic replacement
-   deadline; 314 checks previously green in the native gate.
-4. `src/OverlayHost/WidgetActionFailureHostTests.cpp` — current Settings/tray/
-   accessibility/feedback/reopen authority; focused route previously green.
-5. `src/OverlayHost/ColdDashboardHostTests.cpp` — current two-HWND Settings
-   activation/re-show authority; focused route previously green.
-6. `tests/WidgetSwitchFixture/Program.cs` — DLV-375 named action argument.
-7. `src/OverlayHost/WidgetSwitchHostTests.cpp` — cumulative DLV-383–435
-   extent, switching, Back, rendering-mode, and fallback-authority corrections.
-
-The accepted DLV-428 checkpoint is diagnostic-only. It emits after successful
-fallback `EndDraw`, requires exact current widget instance/runtime/presentation/
-snapshot sequence and geometry authority, deduplicates unchanged paints, and
-does not redefine `set-window-pos` or `composition-transition`.
-
-## Complete focused WidgetSwitch stabilization — DLV-465
-
-DLV-464 changed only the post-Up call site and passed the prior false match: it
-selected exact admitted/current widget-owned `settings-ready` paint authority
-and required enabled keyboard-focused Ready UIA authority. Its one focused run
-then stopped later at the existing fallback RefreshRetained assertion. The log
-shows unarmed priming accepted a momentary equal `772x558` paint/checkpoint,
-then the already-scheduled preferred/content intrinsic cascade completed via
-two fallback render-target resizes and settled at `772x828` after the block
-boundary. This is another test precondition race; no production defect is
-established. Evidence is under
-`%TEMP%\wrail-dlv464-widget-switch-20260822-104500`.
-
-Continue the authorized uncommitted DLV-464 edit in the preserved detached
-`e9412ec6` tree. Preserve its exact post-Up paint/UIA correction. First correct
-the HWND-fallback unarmed priming correlation: require post-priming resize
-evidence, exact equal paint/checkpoint/live geometry after it, and a fence/reread
-that rejects a candidate superseded by newer extent-refresh, resize, placement,
-or Settings-paint evidence. Do not use a quiet-period sleep/retry or hard-code a
-terminal extent.
-
-The user authorizes this assignment to own the complete focused
-`WidgetSwitchHostTests` stabilization loop. After every invocation, retain and
-classify the exact first red. If it is another false test precondition,
-correlation, lifecycle, cleanup, or assertion mismatch within the same focused
-route, inspect the retained evidence, make the smallest root-cause test-only
-correction, and continue without returning for a new planner assignment. Batch
-all already-understood corrections before the next run. Use the smallest
-available exact failing case during iteration; run the complete focused
-`-WidgetSwitchTestsOnly` gate once after the worktree is coherent. A later red
-in that final gate remains owned by DLV-465 when it is an in-scope harness defect.
-For DLV-465 only, this continuing ownership supersedes the generic requirement
-to return to the planner after each first red; it does not waive first-red
-classification, evidence retention, or proportional verification.
-
-The default edit surface is `src/OverlayHost/WidgetSwitchHostTests.cpp`. The
-agent may also change `tests/WidgetSwitchFixture/Program.cs` or test-only owner/
-launch code in `src/OverlayHost/build.ps1` only when retained evidence proves
-that file is the direct root cause and the change is necessary for this focused
-gate. Do not alter production behavior, SDK/runtime/Bridge code, packaging,
-accepted product/package state, timing/tolerance merely to make the test pass,
-or unrelated tests. Preserve strict instance/runtime/presentation/snapshot,
-sequence, geometry, input, focus, cleanup, and fail-closed assertions. Do not
-weaken or delete coverage; replace inferred or racy authority with exact
-observable authority.
-
-Every invocation must use durable streams/results and a bounded owner. Inspect
-output, exact descendants, CPU, and result files every 15-30 seconds; diagnose
-60 seconds of silence immediately and leave no owned descendants. DLV-465 stops
-only when the focused gate is green or when retained evidence proves a genuine
-blocker outside the authorized test-only surface, especially a production
-defect or a required production/protocol change. Report that blocker without
- editing around it. Do not run Tier 3, integrate main, rebuild/relaunch accepted
- PID 89008, change product/package state, remove evidence, assign DLV-284, or
- push.
-
-DLV-465 reached terminal focused green as test commit `eb41cf5` over DLV-466
-content commit `5a94e2e`; the latter has stable patch ID
-`40ca4b6d50aacb84147159a747991e0d411074db`, identical to accepted `360544a`.
-The exact focused gate passed in 83.28 seconds with host-focus p95 16 ms,
-input-to-retained maximum 12 ms, and input-to-admitted maximum 711 ms; all
-owned descendants exited. Warning-only follow-up `9dd7b78` renames the shadowing
-local and removes the unused composition diagnostic without changing behavior.
-It changes only `WidgetSwitchHostTests.cpp`, passes `diff --check`, and produced
-a clean `/W4` translation unit object from source SHA-256
-`D1A2E4DC7E1A58DA3B6A5BCE86A46D3072D61767BDAB7CC5B6C729302F48952C`.
-The reviewer accepts the DLV-465 focused milestone through `9dd7b78`; do not
-rerun its already-green focused end-to-end route.
-
-## DLV-465 production blocker and physical-first correction — DLV-466
-
-Focused32 is a valid DLV-465 stop. The exact worker is blocked inside `Render`,
-Settings is retained/inert, and the host has no `host:host.open.back` semantic
-action. Root-scope B therefore enters synchronous widget dispatch and cannot
-reach the existing unhandled-root fallback. The blocked presentation cannot
-republish selected/focused tray authority. Evidence is under
-`%TEMP%\wrail-dlv465-focused32-20260822-144000`; the owner and all descendants
-exited, and the two authorized DLV-465 test files remain preserved uncommitted.
-
-DLV-466 was assigned to the platform lane from a new clean isolated tree at
-planner `main` `08cf81d`, whose production baseline is accepted `c38b261`.
-Change production code only. Give root widget scope an immediate host-owned
-Back-to-tray path whenever the host can already prove current widget
-presentation/input authority is unavailable, retained/inert, or otherwise
-cannot make a bounded widget-first decision. The controller route and the
-host-owned `host:host.open.back` UIA action must remain available without a
-worker round trip in that state. Preserve widget-first B for a current nested
-scope, current explicit widget actions, focused-slider adjustment exit, text
-entry cancellation, failed-widget recovery, tray B overlay close, current
-instance/snapshot authority, and all unrelated buttons.
-
-Do not edit or run tests before the user's verdict. Do not copy the DLV-465
-test diff into the production candidate, change protocol/SDK/runtime/Bridge or
-package state, add timeouts/retries, weaken input authority, or broaden into
-controller cleanup. Source-review the production route and build one coherent
-Release with `pwsh -NoProfile -File src\OverlayHost\build.ps1 -Configuration
-Release -SkipTests -SkipPackaging`, using durable streams and the one-minute
-observability rule. Commit the production-only candidate as DLV-466 and stop
-for planner review, visible launch, and user acceptance. Nothing is integrated
-before that verdict.
-
-The platform lane produced clean production-only commit `360544a`. Reviewer
-source review found the change confined to `src/OverlayHost/main.cpp`: its
-non-current authority is fail-closed on the active bridge widget, widget-focus
-surface, runtime generation, retained snapshot/root scope, and identical UIA
-invocation authority, while current and nested widget dispatch remain on the
-existing path. The assigned Release build completed with exit 0 and produced
-`OverlayHost.exe` SHA-256
-`FC8CABD1F4997E040D73300D0AC6741955E78C0D8A423713E999682CB97849AB`.
-The planner gracefully closed accepted PID 144396. The first launch as PID
-47516 was invalid because the native-only `-SkipPackaging` output lacked the
-unchanged accepted `runtime` graph and `widget-catalog.json`; startup failed
-closed with Settings absent. The planner removed that exact failed process,
-hydrated only those unchanged artifacts from the accepted `c38b261` Release,
-and visibly relaunched the same candidate executable as PID 89008. Startup now
-admits Settings and removed `startup-error.log`. No tests ran and nothing is
-integrated; DLV-466 now waits only for the physical verdict below.
-
-The user physically accepted DLV-466 with the coherent PID 89008 candidate.
-This accepts production commit `360544a`; it does not yet authorize cumulative
-integration. Apply its exact production delta to the preserved DLV-465 tree,
-retain the two existing uncommitted test files, and resume the already
-authorized focused stabilization through terminal green. Because the accepted
-running candidate already contains the production executable and the only next
-delta is tests, do not rebuild or relaunch the visible overlay for that test
-follow-up.
-
-The physical verdict covers ordinary root Settings B returning to the selected
-tray item, tray B closing the overlay, normal widget activation, and no
-regression in nested/back or modal behavior that is reachable in the installed
-candidate. After acceptance, apply the exact DLV-466 production commit to the
-preserved cumulative test tree and resume DLV-465 through focused green. A
-production-only rejection returns to DLV-466 without changing tests.
-
-## After the cumulative native gate is green
-
-1. Review every explicit commit and the cumulative diff. Reject extra files,
-   unaccepted production changes, weakened assertions, timeout/tolerance
-   changes, debug artifacts, and unrelated cleanup. This review is complete
-   for clean detached tip `9dd7b78`: its exact chain after `676cd76` is
-   `8658e76`, `fd37c34`, `eed3a48`, `914b077`, `58b75e3`, `e9412ec`,
-   `5a94e2e`, `eb41cf5`, and `9dd7b78`; the cumulative surface is the three
-   accepted production commits plus six test/build commits and no other files.
-2. Assign one canonical Tier-3 run from that exact clean detached tip. Do not
-   rebuild or relaunch accepted PID 89008 and do not rerun the focused gate.
-3. If Tier 3 is green, integrate only the explicit accepted hashes. Never
-   integrate the rejected/restoration/ancestry-bound commits listed above.
-4. Test/build-tool integration does not warrant rebuilding or relaunching the
-   already-current accepted overlay.
-5. Rebaseline both lanes, then assign DLV-284 before new virtualization work.
-
-The exact clean Tier-3 invocation ran once at `9dd7b78` and stopped first red
-after 44 passed steps. `RealHostAccessibilityTests` passed 291 checks; the
-native step then failed because `WidgetActionFailureHostTests` observed more
-than one `LiveRegionChanged` callback after the first action-failure status.
-The run exited 1 with no remaining owned descendants. Structured evidence is
-under `artifacts/verification/20260822T230948Z-8b3efb96`; durable owner streams
-are under `%TEMP%\wrail-dlv465-tier3-run-20260822-160920`. Do not rerun Tier 3
-until the focused red is classified and corrected.
-
-## Accepted platform test correction — DLV-467 accessibility event authority
-
-Baseline: clean detached cumulative tip
-`9dd7b7876cf80a8f4fe6d4f9221e4b4735ad4cbb`. This is a test-only assignment
-owned by the platform lane. Preserve all accepted production commits and the
-running accepted PID 89008; do not rebuild/relaunch it.
-
-First inspect the retained red and the logical event contract already covered
-by `AccessibilityEventsTests`: insertion/name change of one polite status must
-plan exactly one logical live-region element. Determine whether the real-host
-failure is an actual second logical publication, an unexpected sender, a
-duplicate callback delivery for the same exact sender, or a subscription/
-fixture race. The current failure copy is insufficient because it records no
-sender identities or before/after counts.
-
-Default edit surface is
-`src/OverlayHost/WidgetActionFailureHostTests.cpp`; use
-`src/OverlayHost/AccessibilityEventsTests.cpp` only if an exact logical-plan
-assertion is genuinely missing. Improve deterministic failure evidence before
-changing the assertion. Preserve exact status ID, polite role/name, focus,
-single failure record, unchanged identical-replacement semantics, retention,
-hide/reopen cleanup, and worker-lifetime coverage. Do not mask an unexpected
-sender, use sleeps/quiet periods as authority, increase timeouts/tolerances,
-weaken the logical one-publication contract, or modify production code. If
-evidence proves production emits a second logical event or another production
-change is required, stop with the retained proof for a physical-first
-production assignment.
-
-Accepted through test-only commits
-`c80d9395530ca863362fae6ffe25564e3676800b` and
-`b35586541f33fd71e75a3aac5aa4969805259567`. The retained callback evidence
-proved that the apparent duplicate was two distinct logical publications from
-the same polite status sender: the successful action status followed by the
-failure status. The old fixture counted both as failure publications.
-
-The corrected fixture retains `TreeScope_Subtree`, snapshots AutomationId,
-Name, ControlType, LiveSetting, and RuntimeId exactly once per callback, and
-uses that one snapshot for both classification and bounded diagnostics. It
-requires exactly one matching failure publication, rejects unexpected senders,
-and preserves zero-event identical-replacement/retention checks without longer
-timeouts. The focused `-WidgetActionFailureHostTestsOnly` gate passed at
-`b355865` with executable SHA-256
-`E67D08709F929EBCB125722E7EEECDBF9C959F981406F17E292B70669841C156`.
-The detached cumulative tree is clean. No production/runtime artifact changed,
-so PID 89008 remains the accepted visible candidate and must not be rebuilt or
-relaunched for this test-only delta.
-
-The final exact clean Tier-3 run from `b355865` executed once and stopped first
-red after 44 passed steps. The DLV-467 target remained green:
-`RealHostAccessibilityTests` passed 291 checks and
-`WidgetActionFailureHostTests` passed. The later native first red is assigned
-separately as DLV-468 below; do not rerun Tier 3 until it is corrected and
-accepted.
-
-## Assigned platform test correction — DLV-468 diagnostic span authority
-
-Baseline: clean detached cumulative tip
-`b35586541f33fd71e75a3aac5aa4969805259567`. Tier 3 exited 1 after 44 passed
-steps at `overlay-native-build-tests` → `WidgetSwitchHostTests` because
-`DiagnosticLatencyMilliseconds` rejected an exact correlated transition/paint
-pair whose host timestamps were 17:49:37.059 and 17:49:37.053. Structured
-evidence is under
-`artifacts/verification/20260823T003620Z-c79dbd1a`; durable streams are under
-`%TEMP%\wrail-dlv467-tier3-20260822-173619`. The owner, verifier, and all owned
-descendants exited; accepted PID 89008 remains alive and untouched.
-
-This is a test-only diagnostic-authority defect. Production
-`AppendDiagnostic` captures `GetLocalTime` before independently opening and
-appending the record, so concurrent diagnostic writers may commit exact records
-in the opposite order from timestamp capture. The fixture incorrectly treats
-the two wall-clock samples as causal ordering authority even though exact
-transition/paint identity and record correlation are already established. It
-must continue to measure the bounded span between those exact records and
-enforce host-focus p95 at 50 ms; it must not require the diagnostic append race
-to preserve timestamp direction.
-
-Change only `src/OverlayHost/WidgetSwitchHostTests.cpp`. Replace the ordered
-wall-clock subtraction with a full-calendar, rollover-safe span calculation
-that admits either timestamp direction for an already exact correlated pair.
-Add deterministic helper/table evidence for forward order, reversed append
-order, and a calendar boundary. Preserve exact transition/paint selection,
-all focus/authority checks, the 50 ms p95 limit, current timeouts, and every
-unrelated assertion. Do not use a tolerance, sleep, retry, clamping, or
-production logger change.
-
-The authorized DLV-468 diff changes only the named test file, passes
-`diff --check`, converts the parsed full calendar timestamp through FILETIME,
-uses the absolute span only after exact record correlation, and adds green
-forward/reversed/calendar-boundary table cases. Reviewer source review accepts
-that correction. Its one focused run then stopped at a separate performance
-estimator red: raw samples `0,2,2,2,2,2,2,7,54` produced nearest-rank p95 54
-ms. Preserve and commit the reviewed DLV-468 diff without rerunning it, then
-perform DLV-469 below as a separate test-only commit.
-
-## Accepted platform test correction — DLV-469 small-sample p95 estimator
-
-The 50 ms host-focus budget is intentional, but the current nearest-rank p95
-estimator degenerates to the single maximum when the exact scenario supplies
-nine samples. That makes one Windows scheduling/logging outlier the entire
-functional Tier-3 verdict, even though the other eight exact samples are 0-7 ms
-and the earlier coherent focused run measured 16 ms p95. This is an estimator
-defect, not evidence of sustained product latency or authority regression.
-
-Continue in the same detached cumulative tree after committing DLV-468. Change
-only `src/OverlayHost/WidgetSwitchHostTests.cpp`. Replace nearest-rank p95 with
-an explicit deterministic inclusive linearly interpolated p95 over the sorted
-samples. Keep the 50 ms threshold unchanged and continue printing every raw
-sample. Add table evidence proving the exact nine-sample distribution above is
-below 50 ms while a sustained slow tail is above 50 ms; reject empty/non-finite
-inputs rather than defaulting. Do not remove the performance gate, change its
-budget, discard the maximum, add retries/sleeps/tolerance, increase samples or
-timeouts, or modify production code.
-
-The platform lane owns the complete focused test-only correction loop for this
-route without returning after each understood in-scope harness red. Batch the
-coherent DLV-469 estimator correction and run `-WidgetSwitchTestsOnly` once
-with durable output and a bounded owner. Every command must expose output within
-60 seconds and long work must be checked every 15-30 seconds. If another red is
-an exact false test precondition/correlation/assertion defect in this same
-route, retain its proof and make the smallest correction before one final
-focused gate; stop immediately for a production defect or broader change.
-Commit DLV-469 only after focused green. Do not run Tier 3, integrate, push,
-change packages/configuration, rebuild/relaunch PID 89008, or touch Avalonia/AVP.
-
-Accepted as separate test-only commits
-`8a65106732e05d3e2a48a1813171830f7febbd10` (DLV-468) and
-`3f63db99f40a85066452d0dc9129cab3b0df2ad0` (DLV-469). Reviewer source review
-confirms the cumulative diff remains confined to
-`WidgetSwitchHostTests.cpp`, preserves the 50 ms gate and all raw samples, and
-adds fail-closed calendar/span and percentile tables. The focused gate passed
-in 120.742 seconds: three diagnostic-span cases, four inclusive-percentile
-cases, and the complete WidgetSwitch route were green; measured interpolated
-p95 was 33.8 ms. Test executable SHA-256 is
-`536511F241A4711026541265B2222830ECA459A241B891E41AE79115C90697E8`.
-The detached tree is clean at `3f63db9`; all owned processes exited.
-
-The final exact clean Tier-3 run from `3f63db9` executed once. All 45 preceding
-steps passed, including the complete native aggregate and DLV-468/469. It then
-stopped first red at `overlay-hidden-smoke`, assigned separately as DLV-470
-below. Structured evidence is under
-`artifacts/verification/20260823T013507Z-b9a95fee`; durable streams are under
-`%TEMP%\wrail-dlv469-tier3-20260822-183506`. The owner, verifier, and all owned
-descendants exited; PID 89008 remains alive and untouched.
-
-## Assigned platform test-tool correction — DLV-470 hidden-smoke isolation
-
-Baseline: clean detached accepted cumulative tip
-`3f63db99f40a85066452d0dc9129cab3b0df2ad0`. The smoke script launched
-`OverlayHost.exe --hidden` with the default `production` process profile while
-the physically accepted production owner PID 89008 was already resident. The
-new process therefore activated the existing owner and exited normally with
-code 0 after 690 ms; the script misclassified that expected owner/client
-behavior as initialization failure. This is not a crash or product defect.
-
-Change only `scripts/Test-HiddenOverlay.ps1`. Give every smoke invocation a
-unique bounded `--process-profile` so it proves that its own isolated hidden
-owner remains resident instead of colliding with the user's production owner.
-Preserve the one-second residency check, startup-error freshness check, hidden
-window behavior, deterministic cleanup, five-second termination bound, and
-failure on any non-resident isolated process. Do not terminate, activate,
-rebuild, or relaunch PID 89008; do not change production, packages,
-configuration, timeouts, or unrelated verification steps.
-
-Run `pwsh -NoProfile -File scripts\Test-HiddenOverlay.ps1 -Configuration
-Release` exactly once against the already-built accepted cumulative output.
-Every command must expose output within 60 seconds and all spawned processes
-must be accounted for. Commit one DLV-470 test-tool milestone only after green
-and stop for review. Do not run Tier 3, integrate, push, or touch Avalonia/AVP.
-
-Accepted as test-tool commit
-`ffb87422391821a74ff9a7b3fe5e3326669ec547`. Reviewer source review confirms
-the five-line diff only generates a GUID-backed `hidden-smoke-` profile and
-passes it with `--hidden`; all residency, error, cleanup, and timeout behavior
-is unchanged. The focused smoke passed in 1.465 seconds with isolated owner PID
-144836, all five observed test processes exited, and accepted PID 89008 stayed
-alive and untouched. Script SHA-256 is
-`99AD8EE9A4B4857E55068205BBF45B3E735084A63C2B326CB61C28EBE7ED6F82`.
-
-The only authorized next action is one final exact clean Tier-3 run from
-`ffb87422391821a74ff9a7b3fe5e3326669ec547`. Invoke the canonical verifier
-exactly once, stop first red, retain structured/durable evidence, and do not
-rerun or edit around a failure. Every command must expose output within 60
-seconds and long work must be checked every 15-30 seconds. Do not integrate,
-push, change packages/configuration, rebuild/relaunch PID 89008, or touch
-Avalonia/AVP during the run.
-
-The exact clean Tier-3 run from `ffb8742` executed once and stopped first red
-after 44 passed steps at `overlay-native-build-tests` ->
-`TextEntryModalTests`: `modal opens with one keyboard key focused`. The run
-exited 1 after 644,888.529 ms; all owner/verifier descendants exited and
-accepted PID 89008 stayed alive and untouched. Structured evidence is under
-`artifacts/verification/20260823T021948Z-62b4fae8`; durable streams are under
-`%TEMP%\wrail-dlv470-tier3-20260822-191947`. The retained output records no
-actual focus handle/class/text, while the later D-pad-to-`w` assertion passed,
-so the first task is to distinguish a fixture/foreground observation race from
-a production initial-focus defect. Do not rerun Tier 3 before that focused red
-is classified, corrected, and accepted.
-
-## Assigned platform test correction — DLV-471 text-entry initial-focus evidence
-
-Baseline: clean detached accepted cumulative tip
-`ffb87422391821a74ff9a7b3fe5e3326669ec547`. This assignment is test-only unless
-retained evidence proves the production modal fails to establish its initial
-focus after activation. Preserve all accepted production/runtime inputs and the
-running accepted PID 89008; do not rebuild or relaunch it.
-
-First add bounded failure evidence for the initial-focus check: actual focus
-HWND, class, text, owning GUI thread, modal/owner enabled and foreground state,
-and whether the modal's later controller focus transition succeeds. Classify
-whether the fixture observes focus before the UI thread completes
-`ShowWindow`/`UpdateWindow`/`SetKeyboardFocus`, lacks a valid foreground input
-queue, or exposes a real product defect. For a fixture race, make the smallest
-deterministic correction in `TextEntryModalTests.cpp` that proves the same
-product contract without weakening the assertion, increasing the two-second
-bound, adding retries/sleeps, or changing production. Stop immediately and
-report retained proof if production code, a wider host route, or a protocol
-change is required.
-
-The platform lane owns the complete focused DLV-471 loop without returning
-after each understood in-scope test-fixture red. Run only the smallest focused
-TextEntry host gate needed to compile and exercise this route, with durable
-streams and a bounded owner. Every command must expose output within 60 seconds
-and long work must be inspected every 15-30 seconds. Commit one DLV-471
-test-only milestone only after focused green and stop for review. Do not run
-Tier 3, integrate, push, change packages/configuration, rebuild/relaunch PID
-89008, or touch Avalonia/AVP.
-
-Candidate `853191541df15713137cdb1ad84fd56f15720408` is rejected. Its bounded
-diagnostics are useful and its focused `-WidgetInteractionTestsOnly` run exited
-0 in 40.300 seconds, but `SendMessageTimeoutW(..., WM_NULL, ...)` is not the
-claimed causal fence. A cross-thread sent message can be dispatched reentrantly
-while the modal UI thread is still inside `ShowWindow`/`UpdateWindow`; therefore
-it can complete before the subsequent initial `SetKeyboardFocus`. One green
-run does not close the original readiness race.
-
-Preserve the diagnostic evidence and replace only the invalid fence with a
-test-owned queued completion acknowledgment. The acknowledgment must be
-observable only after the modal UI thread has entered its `GetMessage` loop,
-which occurs after initial focus establishment; a same-thread queue hook or an
-equivalent bounded test-only sentinel is acceptable. It must clean up every
-hook/event/sentinel on success and failure, keep the existing two-second bound,
-and retain exact `q` focus plus later controller-transition assertions. Do not
-add a production test hook, sleep/retry/quiet period, timeout increase, or
-foreground-forcing behavior. Amend nothing: create a separate DLV-471
-correction commit over the preserved rejected candidate, run the smallest
-focused gate once after the coherent correction, and stop for review.
-
-Correction `8886e251d2cd0dafb6dcad47dc05ce0e248d5aa8` is accepted together with
-its corrected diagnostic ancestor `853191541df15713137cdb1ad84fd56f15720408`.
-Reviewer source review confirms the final cumulative diff remains confined to
-`TextEntryModalTests.cpp`: a thread-specific `WH_GETMESSAGE` hook acknowledges
-only removal of one tokenized thread-queue sentinel, which cannot occur until
-the modal reaches `GetMessage` after initial focus establishment. The sentinel
-is neutralized, and RAII cleanup releases the hook/event plus global token on
-every path. Exact `q` focus, later `w` controller focus, the original two-second
-bound, and detailed failure state remain intact; no production/runtime input
-changed.
-
-The focused `-WidgetInteractionTestsOnly` gate exited 0 in 40.325 seconds:
-`TextEntryModalTests` passed and the other directly affected suites reported
-2,582 green checks. Durable evidence is under
-`%TEMP%\wrail-dlv471-queued-ack-20260822-195500`; result SHA-256 is
-`DCA1156B6A90E02C3532BE6B00ED09A2B25252FA37133C0A4C1A20FFF45D1874`.
-The detached tree is clean, every owned process exited, and PID 89008 remains
-the accepted visible candidate without rebuild or relaunch.
-
-The only authorized next action is one final exact clean Tier-3 run from
-`8886e251d2cd0dafb6dcad47dc05ce0e248d5aa8`. Invoke the canonical verifier
-exactly once, stop first red, retain structured/durable evidence, and do not
-rerun or edit around a failure. Every command must expose output within 60
-seconds and long work must be checked every 15-30 seconds. Do not integrate,
-push, change packages/configuration, rebuild/relaunch PID 89008, or touch
-Avalonia/AVP during the run.
-
-That exact Tier-3 run executed once and stopped first red after 42 passed steps
-at `widget-bridge-tests`. The suite reported 95/96 green; `Managed presentation
-session preserves the ordinary full-trust runtime` received typed
-`worker-runtime-failed` from `SendActionAsync` instead of returning `Enqueued`.
-The verifier exited 1 after 439.501 seconds; all owner/verifier descendants
-exited and PID 89008 stayed alive and untouched. Structured evidence is under
-`artifacts/verification/20260823T030651Z-e20f936a`; durable streams are under
-`%TEMP%\wrail-dlv471-tier3-final-20260822-200650`. Do not rerun Tier 3 until
-the focused managed first red below is corrected and accepted.
-
-## Accepted widgets test correction — DLV-472 full-trust crash admission race
-
-Baseline: clean widgets tip `676cd76f6761ca35b49b9810a0a8f0b42e9fabf4`.
-The directly affected `WidgetBridge.Tests` and `FullTrustAlphaFixture` sources
-are identical between that managed tip and cumulative `8886e25`, so the widgets
-lane owns this test-only correction without taking platform work.
-
-The fixture deliberately calls `Environment.FailFast` from the admitted action.
-After the runtime enqueues it, process exit may race the worker-to-Bridge action
-acknowledgment: either the managed facade receives exact `Enqueued`, or the
-current request fails with the already-typed `worker-runtime-failed`. The latter
-does not prove lost failure/restart authority and is not a reason to delay the
-crash artificially.
-
-Change only `tests/WidgetBridge.Tests/Program.cs`. Express those two exact legal
-outcomes without swallowing any other code or weakening the recovery contract.
-Whether admission returns or the exact typed runtime failure wins, require the
-same current failure state with `CanRestart`, unchanged `LastGood`, stale old
-authority, successful full-trust restart/snapshot, and cleared retained failure.
-Emit the observed admission outcome on failure. Do not add sleeps, retries,
-quiet periods, timeouts, fixture delays, production changes, protocol changes,
-or broader test cleanup. If evidence contradicts this two-outcome model or
-requires production work, stop and report it.
-
-The widgets lane owned the complete focused correction loop for this one case
-without returning after each understood in-scope test-only red. Accepted commit
-`29601e2702ed7f53870e50b3300844a023f812a9` changes only
-`tests/WidgetBridge.Tests/Program.cs`. It admits exactly the two legal observed
-outcomes—`Enqueued` or typed `worker-runtime-failed`—and requires identical
-last-good, restart, stale-authority, recovered-snapshot, and cleared-failure
-proof after either outcome. It adds no sleep, retry, delay, timeout, production,
-or protocol change.
-
-The one authorized focused run passed 96/96. Durable output is
-`%TEMP%\wrail-dlv472-widget-bridge.log`, SHA-256
-`A725FD95C03FC800E877BAD61595A6434CA52364CF17D5A0CCF13B5C661676DD`.
-The widgets worktree is clean; no Tier 3, integration, push, package/configuration
-change, rebuild/relaunch of PID 89008, or Avalonia/AVP interaction occurred.
-
-Platform applied DLV-472 mechanically as clean detached cumulative commit
-`82093d5d230d93276e96ab6173cdb80cf7aeac0b`; its one changed path, patch text,
-and blob are identical to accepted `29601e2`. The single final Tier-3 run passed
-44/45 steps, including DLV-472's `WidgetBridge.Tests` at 96/96, then stopped at
-the later `AudioMixerScrollHostTests`: after one synthetic Down, UIA still
-reported Master rather than Microphone focus. Structured evidence is under
-`artifacts/verification/20260823T033656Z-bf51f6a3`; durable streams are under
-`%TEMP%\wrail-dlv472-tier3-final-20260822-203654`.
-
-This first red is not caused by DLV-472: since the same Audio Mixer host test
-was green at complete native checkpoint `3f63db9`, only the hidden-smoke,
-TextEntry, and managed Bridge test files changed; no Audio Mixer or production
-source changed. Per the evidence-proportionality stop
-rule, do not rerun Tier 3 or redesign/repeat that synthetic scenario merely to
-obtain green. Retain the focus observation as test-harness verification debt;
-it is not evidence of a live Audio Mixer regression. The reviewed cumulative
-tip was integrated into local `main` as merge `cf77507`.
+Detailed DLV-465–472 stabilization, focused evidence, and held-branch
+history are preserved in the current timestamped delivery-plan snapshot. Local
+`main` contains the complete reviewed production/test chain through `cf77507`,
+including accepted DLV-472 `29601e2`; its named managed Tier-3 gates are
+green. Do not integrate rejected/restoration/ancestry-bound platform history or
+the closed Avalonia/AVP experiment. Reopen older evidence only for a named
+decision, regression, or provenance check.
 
 ## Accepted platform production — DLV-284 typed publication transactions
 
@@ -855,6 +342,27 @@ failure UI generic. Do not add package-ID special cases, weaken validation,
 change runtime-v2 wire, expose arbitrary worker text to the user, run Tier 3,
 or touch live/package state.
 
+Candidate `54167ee5598e2af259cff5c71f4d0188dbdcf59e` is rejected. It correctly
+routes the retained correlation through the Bridge catch boundary and keeps the
+Bridge response generic, but it broadens the existing persistent `overlay.log`
+lane from transition-safe structural records to arbitrary full-trust worker
+text. Its own focused test requires
+`credential=DEVELOPER_ONLY` to be written to disk, directly removing the prior
+guarantee that credentials, provider responses, paths, and widget-controlled
+text never enter that log. Bounded length and JSON escaping prevent record
+injection; they do not make sensitive content safe to persist.
+
+Correct this without losing the accepted correlation foundation. The bounded
+developer record must always retain validated widget ID, request type, and
+worker error code. Retain detail only for an explicitly allowlisted structural
+protocol diagnostic whose producer already strips widget-controlled message
+text; omit arbitrary `worker_request_failed` detail entirely. Restore the
+existing `overlay.log` credential/provider-response safety contract and prove
+that a credential-shaped general worker message is absent from disk while a
+sanitized structural path/code remains available. Keep the public Bridge reply
+generic, do not alter runtime-v2 wire or package behavior, and run only the
+direct focused build/cases with no Tier-3 rerun or live/package changes.
+
 ## Queued widgets production — DLV-285 generic Game Launcher cutover
 
 Lane: widgets. Baseline: exact integrated production commit `8ac55d` in a new
@@ -954,7 +462,7 @@ There is no concurrent Ready production work in either standing lane.
 | DLV-471 | Corrected pair `8531915` + `8886e25` accepted; focused TextEntry route green in 40.325 seconds, final exact Tier 3 assigned. |
 | DLV-472 | Accepted `29601e2`, cumulatively applied as `82093d5`, and integrated through `cf77507`; focused and final Tier-3 Bridge target passed 96/96. |
 | Audio Mixer synthetic focus | Final Tier 3 passed 44/45 then retained Master after synthetic Down; unrelated source was previously green, so no unchanged rerun is authorized. |
-| DLV-284 | `21c3b8b` plus `86d6532` integrated as `7f31e04`; PID 108300 exposed and rejected the frozen-v2 unknown-field defect. Compatibility correction `60130b4`, integrated as `052a392`, fixed startup and allowed installed Spotify 0.3.14 to render through sequence 40. PID 116844 then failed its next post-Y `render` while worker PID 7632 remained alive. Corrected correlation/redaction pair `f583f40` + `ac79ed0` is accepted through `8ac55d`; focused production and four one-case gates passed. A bounded developer-only diagnostic sink is still required before asking for another physical reproduction; no Tier-3 rerun. |
+| DLV-284 | `21c3b8b` plus `86d6532` integrated as `7f31e04`; PID 108300 exposed and rejected the frozen-v2 unknown-field defect. Compatibility correction `60130b4`, integrated as `052a392`, fixed startup and allowed installed Spotify 0.3.14 to render through sequence 40. PID 116844 then failed its next post-Y `render` while worker PID 7632 remained alive. Corrected correlation/redaction pair `f583f40` + `ac79ed0` is accepted through `8ac55d`; focused production and four one-case gates passed. Diagnostic-log candidate `54167ee` is rejected for persisting arbitrary credential/provider text; bounded structural-only correction assigned, no Tier-3 rerun. |
 | DLV-285 | Held behind corrected DLV-284 physical acceptance; package-only production first, then reviewer launch and verdict before tests or framework deletion. |
 | DLV-248 | Deferred until explicit user promotion. |
 
