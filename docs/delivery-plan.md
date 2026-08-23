@@ -35,7 +35,7 @@ historical evidence only; this file is the sole implementation authority.
 
 | Lane | Task/worktree | State |
 | --- | --- | --- |
-| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | DLV-471 is assigned for the isolated `TextEntryModalTests` initial-focus first red at accepted cumulative tip `ffb8742`. DLV-284 remains queued. |
+| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | DLV-471 candidate `8531915` is rejected; its same-lane queued-message correction remains assigned at accepted cumulative tip `ffb8742`. DLV-284 remains queued. |
 | Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | Idle and clean at `676cd76`; do not begin work or change product state. |
 
 ## Execution rules
@@ -468,6 +468,26 @@ test-only milestone only after focused green and stop for review. Do not run
 Tier 3, integrate, push, change packages/configuration, rebuild/relaunch PID
 89008, or touch Avalonia/AVP.
 
+Candidate `853191541df15713137cdb1ad84fd56f15720408` is rejected. Its bounded
+diagnostics are useful and its focused `-WidgetInteractionTestsOnly` run exited
+0 in 40.300 seconds, but `SendMessageTimeoutW(..., WM_NULL, ...)` is not the
+claimed causal fence. A cross-thread sent message can be dispatched reentrantly
+while the modal UI thread is still inside `ShowWindow`/`UpdateWindow`; therefore
+it can complete before the subsequent initial `SetKeyboardFocus`. One green
+run does not close the original readiness race.
+
+Preserve the diagnostic evidence and replace only the invalid fence with a
+test-owned queued completion acknowledgment. The acknowledgment must be
+observable only after the modal UI thread has entered its `GetMessage` loop,
+which occurs after initial focus establishment; a same-thread queue hook or an
+equivalent bounded test-only sentinel is acceptable. It must clean up every
+hook/event/sentinel on success and failure, keep the existing two-second bound,
+and retain exact `q` focus plus later controller-transition assertions. Do not
+add a production test hook, sleep/retry/quiet period, timeout increase, or
+foreground-forcing behavior. Amend nothing: create a separate DLV-471
+correction commit over the preserved rejected candidate, run the smallest
+focused gate once after the coherent correction, and stop for review.
+
 ## Queued platform production — DLV-284 typed publication transactions
 
 Status: queued, not assigned. It becomes assignable only after DLV-452 startup
@@ -556,7 +576,7 @@ There is no other Ready production work in either standing lane.
 | DLV-468 | Accepted test-only full-calendar direction-independent diagnostic span as `8a65106`. |
 | DLV-469 | Accepted inclusive interpolated p95 as `3f63db9`; focused WidgetSwitch gate green at 33.8 ms. |
 | DLV-470 | Accepted isolated hidden-smoke profile as `ffb8742`; focused smoke green in 1.465 seconds. |
-| DLV-471 | Assigned for the test-only `TextEntryModalTests` initial-focus first red at cumulative `ffb8742`; no Tier-3 rerun is authorized yet. |
+| DLV-471 | Candidate `8531915` rejected because a sent `WM_NULL` can run reentrantly before initial focus; queued-message correction assigned, with no Tier-3 rerun authorized. |
 | DLV-284 | Queued until cumulative review/integration. |
 | DLV-248 | Deferred until explicit user promotion. |
 
@@ -580,4 +600,4 @@ There is no other Ready production work in either standing lane.
 | DLV-468/469 | Direction-independent full-calendar spans and inclusive p95 tables passed with the complete focused WidgetSwitch route. |
 | DLV-470 | Tier 3 passed the full native aggregate, then hidden smoke launched the default production profile and exited 0 after activating the resident owner. |
 | DLV-470 accepted | A unique process profile kept the focused hidden owner resident without touching PID 89008; cleanup accounted for all five test processes. |
-| DLV-471 | Tier 3 passed 44 steps, then the modal initial-focus assertion failed without recording the actual focus identity; the later D-pad focus transition passed. |
+| DLV-471 | Tier 3 passed 44 steps, then the modal initial-focus assertion failed without recording the actual focus identity; candidate `8531915` added useful diagnostics but not a causal UI-loop fence. |
