@@ -157,17 +157,6 @@ internal static class GameLauncherOrganizationPolicy
             : GameLauncherPrivateState.Empty;
     }
 
-    internal static GameLauncherStateMutation SelectExperience(
-        GameLauncherPrivateState state,
-        GameLauncherExperience experience)
-    {
-        state = Normalize(state);
-        var id = GameLauncherExperienceIdentity.Id(experience);
-        return string.Equals(state.ExperienceId, id, StringComparison.Ordinal)
-            ? GameLauncherStateMutation.Reject(state)
-            : GameLauncherStateMutation.Apply(state with { ExperienceId = id });
-    }
-
     internal static GameLauncherPrivateState ProjectPage(
         GameLauncherPrivateState state,
         IReadOnlyList<GameLauncherItem> items)
