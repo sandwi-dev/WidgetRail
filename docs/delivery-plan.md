@@ -35,7 +35,7 @@ historical evidence only; this file is the sole implementation authority.
 
 | Lane | Task/worktree | State |
 | --- | --- | --- |
-| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | DLV-470 is accepted as `ffb8742`; one final exact clean Tier-3 checkpoint is authorized. DLV-284 remains queued. |
+| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | DLV-471 is assigned for the isolated `TextEntryModalTests` initial-focus first red at accepted cumulative tip `ffb8742`. DLV-284 remains queued. |
 | Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | Idle and clean at `676cd76`; do not begin work or change product state. |
 
 ## Execution rules
@@ -427,6 +427,47 @@ seconds and long work must be checked every 15-30 seconds. Do not integrate,
 push, change packages/configuration, rebuild/relaunch PID 89008, or touch
 Avalonia/AVP during the run.
 
+The exact clean Tier-3 run from `ffb8742` executed once and stopped first red
+after 44 passed steps at `overlay-native-build-tests` ->
+`TextEntryModalTests`: `modal opens with one keyboard key focused`. The run
+exited 1 after 644,888.529 ms; all owner/verifier descendants exited and
+accepted PID 89008 stayed alive and untouched. Structured evidence is under
+`artifacts/verification/20260823T021948Z-62b4fae8`; durable streams are under
+`%TEMP%\wrail-dlv470-tier3-20260822-191947`. The retained output records no
+actual focus handle/class/text, while the later D-pad-to-`w` assertion passed,
+so the first task is to distinguish a fixture/foreground observation race from
+a production initial-focus defect. Do not rerun Tier 3 before that focused red
+is classified, corrected, and accepted.
+
+## Assigned platform test correction — DLV-471 text-entry initial-focus evidence
+
+Baseline: clean detached accepted cumulative tip
+`ffb87422391821a74ff9a7b3fe5e3326669ec547`. This assignment is test-only unless
+retained evidence proves the production modal fails to establish its initial
+focus after activation. Preserve all accepted production/runtime inputs and the
+running accepted PID 89008; do not rebuild or relaunch it.
+
+First add bounded failure evidence for the initial-focus check: actual focus
+HWND, class, text, owning GUI thread, modal/owner enabled and foreground state,
+and whether the modal's later controller focus transition succeeds. Classify
+whether the fixture observes focus before the UI thread completes
+`ShowWindow`/`UpdateWindow`/`SetKeyboardFocus`, lacks a valid foreground input
+queue, or exposes a real product defect. For a fixture race, make the smallest
+deterministic correction in `TextEntryModalTests.cpp` that proves the same
+product contract without weakening the assertion, increasing the two-second
+bound, adding retries/sleeps, or changing production. Stop immediately and
+report retained proof if production code, a wider host route, or a protocol
+change is required.
+
+The platform lane owns the complete focused DLV-471 loop without returning
+after each understood in-scope test-fixture red. Run only the smallest focused
+TextEntry host gate needed to compile and exercise this route, with durable
+streams and a bounded owner. Every command must expose output within 60 seconds
+and long work must be inspected every 15-30 seconds. Commit one DLV-471
+test-only milestone only after focused green and stop for review. Do not run
+Tier 3, integrate, push, change packages/configuration, rebuild/relaunch PID
+89008, or touch Avalonia/AVP.
+
 ## Queued platform production — DLV-284 typed publication transactions
 
 Status: queued, not assigned. It becomes assignable only after DLV-452 startup
@@ -489,8 +530,9 @@ Extract native authorities only when real work touches them.
 
 ## Ordered queues
 
-1. One final exact clean Tier-3 checkpoint at `ffb8742`, then reviewer integration of the
-   explicit accepted cumulative hashes.
+1. DLV-471 focused `TextEntryModalTests` initial-focus classification and
+   correction, then one final exact clean Tier-3 checkpoint and reviewer
+   integration of the explicit accepted cumulative hashes.
 2. DLV-284 after cumulative clean integration.
 3. Generic Game Launcher cutover; LauncherExperience deletion/state retirement;
    protocol requirements; then the remaining maturity deliverables.
@@ -514,6 +556,7 @@ There is no other Ready production work in either standing lane.
 | DLV-468 | Accepted test-only full-calendar direction-independent diagnostic span as `8a65106`. |
 | DLV-469 | Accepted inclusive interpolated p95 as `3f63db9`; focused WidgetSwitch gate green at 33.8 ms. |
 | DLV-470 | Accepted isolated hidden-smoke profile as `ffb8742`; focused smoke green in 1.465 seconds. |
+| DLV-471 | Assigned for the test-only `TextEntryModalTests` initial-focus first red at cumulative `ffb8742`; no Tier-3 rerun is authorized yet. |
 | DLV-284 | Queued until cumulative review/integration. |
 | DLV-248 | Deferred until explicit user promotion. |
 
@@ -537,3 +580,4 @@ There is no other Ready production work in either standing lane.
 | DLV-468/469 | Direction-independent full-calendar spans and inclusive p95 tables passed with the complete focused WidgetSwitch route. |
 | DLV-470 | Tier 3 passed the full native aggregate, then hidden smoke launched the default production profile and exited 0 after activating the resident owner. |
 | DLV-470 accepted | A unique process profile kept the focused hidden owner resident without touching PID 89008; cleanup accounted for all five test processes. |
+| DLV-471 | Tier 3 passed 44 steps, then the modal initial-focus assertion failed without recording the actual focus identity; the later D-pad focus transition passed. |
