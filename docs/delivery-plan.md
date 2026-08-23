@@ -241,7 +241,7 @@ under `artifacts/verification/20260822T230948Z-8b3efb96`; durable owner streams
 are under `%TEMP%\wrail-dlv465-tier3-run-20260822-160920`. Do not rerun Tier 3
 until the focused red is classified and corrected.
 
-## Assigned platform test correction — DLV-467 accessibility event authority
+## Accepted platform test correction — DLV-467 accessibility event authority
 
 Baseline: clean detached cumulative tip
 `9dd7b7876cf80a8f4fe6d4f9221e4b4735ad4cbb`. This is a test-only assignment
@@ -269,14 +269,30 @@ evidence proves production emits a second logical event or another production
 change is required, stop with the retained proof for a physical-first
 production assignment.
 
-The user authorizes DLV-467 to own the complete focused correction loop without
-returning after each in-scope test-only red. Use the smallest exact failing
-case while iterating, retain and classify each first red, batch understood
-corrections, and run the affected native test group once when coherent. Every
-command must expose real output within 60 seconds and long work must be checked
-every 15-30 seconds. Commit one test-only DLV-467 milestone and stop for
-review. Do not run Tier 3, integrate, push, change packages/configuration, or
-touch Avalonia/AVP.
+Accepted through test-only commits
+`c80d9395530ca863362fae6ffe25564e3676800b` and
+`b35586541f33fd71e75a3aac5aa4969805259567`. The retained callback evidence
+proved that the apparent duplicate was two distinct logical publications from
+the same polite status sender: the successful action status followed by the
+failure status. The old fixture counted both as failure publications.
+
+The corrected fixture retains `TreeScope_Subtree`, snapshots AutomationId,
+Name, ControlType, LiveSetting, and RuntimeId exactly once per callback, and
+uses that one snapshot for both classification and bounded diagnostics. It
+requires exactly one matching failure publication, rejects unexpected senders,
+and preserves zero-event identical-replacement/retention checks without longer
+timeouts. The focused `-WidgetActionFailureHostTestsOnly` gate passed at
+`b355865` with executable SHA-256
+`E67D08709F929EBCB125722E7EEECDBF9C959F981406F17E292B70669841C156`.
+The detached cumulative tree is clean. No production/runtime artifact changed,
+so PID 89008 remains the accepted visible candidate and must not be rebuilt or
+relaunched for this test-only delta.
+
+The only authorized next action is one final exact clean Tier-3 run from
+`b355865`; stop first red and do not rerun, edit, integrate, push, change
+packages/configuration, or touch the accepted overlay during that run. Every
+command must expose output within 60 seconds and long work must be checked every
+15-30 seconds.
 
 ## Queued platform production — DLV-284 typed publication transactions
 
@@ -340,13 +356,12 @@ Extract native authorities only when real work touches them.
 
 ## Ordered queues
 
-1. DLV-467 focused accessibility-event classification and test correction.
-2. One final exact clean Tier-3 checkpoint, then reviewer integration of the
+1. One final exact clean Tier-3 checkpoint at `b355865`, then reviewer integration of the
    explicit accepted cumulative hashes.
-3. DLV-284 after cumulative clean integration.
-4. Generic Game Launcher cutover; LauncherExperience deletion/state retirement;
+2. DLV-284 after cumulative clean integration.
+3. Generic Game Launcher cutover; LauncherExperience deletion/state retirement;
    protocol requirements; then the remaining maturity deliverables.
-5. DLV-248 remains deliberately deferred until explicit user promotion.
+4. DLV-248 remains deliberately deferred until explicit user promotion.
 
 There is no other Ready production work in either standing lane.
 
@@ -362,7 +377,7 @@ There is no other Ready production work in either standing lane.
 | DLV-428 | Accepted/integrated as `c38b261`; superseded in the running candidate by accepted DLV-466. |
 | DLV-466 | Production `360544a` physically accepted; coherent candidate PID 89008 remains running. |
 | DLV-465 | Focused WidgetSwitch gate and warning cleanup accepted through `9dd7b78`. |
-| DLV-467 | Assigned after Tier 3 first-red duplicate live-region callback evidence. |
+| DLV-467 | Test-only correction accepted through `b355865`; focused gate green; final exact Tier 3 is next. |
 | DLV-284 | Queued until cumulative review/integration. |
 | DLV-248 | Deferred until explicit user promotion. |
 
@@ -380,3 +395,4 @@ There is no other Ready production work in either standing lane.
 | DLV-461 | PowerShell-7 aggregate reached Runtime 77/78; missing DLV-326 reproduced its already-fixed PID publication race. |
 | DLV-463 | Exact cumulative Tier 3 passed through 291 real-host accessibility checks; WidgetSwitch then selected a delayed tray-owned paint. |
 | DLV-464 | Exact post-Up focus selection passed; fallback priming then crossed the block boundary before its intrinsic resize settled. |
+| DLV-467 | Distinct success/failure callbacks from one status sender were separated by exact semantic snapshots; focused native gate passed. |
