@@ -35,7 +35,7 @@ historical evidence only; this file is the sole implementation authority.
 
 | Lane | Task/worktree | State |
 | --- | --- | --- |
-| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | DLV-467 owns the first canonical Tier-3 red in `WidgetActionFailureHostTests` from exact cumulative tip `9dd7b78`. DLV-284 remains queued. |
+| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | DLV-468 owns the final Tier-3 first red in `WidgetSwitchHostTests` from exact cumulative tip `b355865`. DLV-284 remains queued. |
 | Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | Idle and clean at `676cd76`; do not begin work or change product state. |
 
 ## Execution rules
@@ -288,11 +288,49 @@ The detached cumulative tree is clean. No production/runtime artifact changed,
 so PID 89008 remains the accepted visible candidate and must not be rebuilt or
 relaunched for this test-only delta.
 
-The only authorized next action is one final exact clean Tier-3 run from
-`b355865`; stop first red and do not rerun, edit, integrate, push, change
-packages/configuration, or touch the accepted overlay during that run. Every
-command must expose output within 60 seconds and long work must be checked every
-15-30 seconds.
+The final exact clean Tier-3 run from `b355865` executed once and stopped first
+red after 44 passed steps. The DLV-467 target remained green:
+`RealHostAccessibilityTests` passed 291 checks and
+`WidgetActionFailureHostTests` passed. The later native first red is assigned
+separately as DLV-468 below; do not rerun Tier 3 until it is corrected and
+accepted.
+
+## Assigned platform test correction — DLV-468 diagnostic span authority
+
+Baseline: clean detached cumulative tip
+`b35586541f33fd71e75a3aac5aa4969805259567`. Tier 3 exited 1 after 44 passed
+steps at `overlay-native-build-tests` → `WidgetSwitchHostTests` because
+`DiagnosticLatencyMilliseconds` rejected an exact correlated transition/paint
+pair whose host timestamps were 17:49:37.059 and 17:49:37.053. Structured
+evidence is under
+`artifacts/verification/20260823T003620Z-c79dbd1a`; durable streams are under
+`%TEMP%\wrail-dlv467-tier3-20260822-173619`. The owner, verifier, and all owned
+descendants exited; accepted PID 89008 remains alive and untouched.
+
+This is a test-only diagnostic-authority defect. Production
+`AppendDiagnostic` captures `GetLocalTime` before independently opening and
+appending the record, so concurrent diagnostic writers may commit exact records
+in the opposite order from timestamp capture. The fixture incorrectly treats
+the two wall-clock samples as causal ordering authority even though exact
+transition/paint identity and record correlation are already established. It
+must continue to measure the bounded span between those exact records and
+enforce host-focus p95 at 50 ms; it must not require the diagnostic append race
+to preserve timestamp direction.
+
+Change only `src/OverlayHost/WidgetSwitchHostTests.cpp`. Replace the ordered
+wall-clock subtraction with a full-calendar, rollover-safe span calculation
+that admits either timestamp direction for an already exact correlated pair.
+Add deterministic helper/table evidence for forward order, reversed append
+order, and a calendar boundary. Preserve exact transition/paint selection,
+all focus/authority checks, the 50 ms p95 limit, current timeouts, and every
+unrelated assertion. Do not use a tolerance, sleep, retry, clamping, or
+production logger change.
+
+Run the coherent focused `-WidgetSwitchTestsOnly` gate once with durable output
+and a bounded owner. Every command must expose output within 60 seconds and long
+work must be checked every 15-30 seconds. Commit one test-only DLV-468 milestone
+and stop for review. Do not run Tier 3, integrate, push, change packages/
+configuration, rebuild/relaunch PID 89008, or touch Avalonia/AVP.
 
 ## Queued platform production — DLV-284 typed publication transactions
 
@@ -356,12 +394,13 @@ Extract native authorities only when real work touches them.
 
 ## Ordered queues
 
-1. One final exact clean Tier-3 checkpoint at `b355865`, then reviewer integration of the
+1. DLV-468 focused diagnostic-span correction.
+2. One final exact clean Tier-3 checkpoint, then reviewer integration of the
    explicit accepted cumulative hashes.
-2. DLV-284 after cumulative clean integration.
-3. Generic Game Launcher cutover; LauncherExperience deletion/state retirement;
+3. DLV-284 after cumulative clean integration.
+4. Generic Game Launcher cutover; LauncherExperience deletion/state retirement;
    protocol requirements; then the remaining maturity deliverables.
-4. DLV-248 remains deliberately deferred until explicit user promotion.
+5. DLV-248 remains deliberately deferred until explicit user promotion.
 
 There is no other Ready production work in either standing lane.
 
@@ -377,7 +416,8 @@ There is no other Ready production work in either standing lane.
 | DLV-428 | Accepted/integrated as `c38b261`; superseded in the running candidate by accepted DLV-466. |
 | DLV-466 | Production `360544a` physically accepted; coherent candidate PID 89008 remains running. |
 | DLV-465 | Focused WidgetSwitch gate and warning cleanup accepted through `9dd7b78`. |
-| DLV-467 | Test-only correction accepted through `b355865`; focused gate green; final exact Tier 3 is next. |
+| DLV-467 | Test-only correction accepted through `b355865`; its focused and final Tier-3 target gates are green. |
+| DLV-468 | Assigned for the final Tier-3 `WidgetSwitchHostTests` diagnostic timestamp-direction red. |
 | DLV-284 | Queued until cumulative review/integration. |
 | DLV-248 | Deferred until explicit user promotion. |
 
@@ -396,3 +436,4 @@ There is no other Ready production work in either standing lane.
 | DLV-463 | Exact cumulative Tier 3 passed through 291 real-host accessibility checks; WidgetSwitch then selected a delayed tray-owned paint. |
 | DLV-464 | Exact post-Up focus selection passed; fallback priming then crossed the block boundary before its intrinsic resize settled. |
 | DLV-467 | Distinct success/failure callbacks from one status sender were separated by exact semantic snapshots; focused native gate passed. |
+| DLV-468 | Tier 3 reached 44 passed steps, then exact transition/paint records exposed a six-millisecond concurrent diagnostic append inversion. |
