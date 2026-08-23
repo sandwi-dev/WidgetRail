@@ -19,6 +19,10 @@ historical evidence only; this file is the sole implementation authority.
   The full Release build and packaging exited 0, startup admitted Settings,
   and `startup-error.log` is absent. Prior accepted PID 89008 exited through
   exact-PID `WM_CLOSE` before replacement.
+- The user physically accepted PID 78860 on 2026-08-23. That verdict closes
+  the integrated DLV-472 checkpoint and authorizes DLV-284. Preserve PID
+  78860 while DLV-284 is implemented; DLV-284 is protocol hardening, not a
+  physical-first UI assignment.
 - DLV-318 is the exact recoverable prior accepted Release at
   `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative-dlv318-build`;
   executable SHA-256 is
@@ -35,8 +39,8 @@ historical evidence only; this file is the sole implementation authority.
 
 | Lane | Task/worktree | State |
 | --- | --- | --- |
-| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | Idle at a clean boundary while the user physically checks integrated Release PID 78860. DLV-284 is next after that verdict. |
-| Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | Idle at accepted clean test-only commit `29601e2`; no independent work may precede DLV-284. |
+| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | Assigned DLV-284 from clean integrated baseline `cf77507`; create a new isolated branch from that exact commit and preserve the existing held branch. |
+| Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | Idle at accepted clean test-only commit `29601e2`; serialized behind DLV-284 with no independent assignment. |
 
 ## Execution rules
 
@@ -582,12 +586,28 @@ obtain green. Retain the focus observation as test-harness verification debt;
 it is not evidence of a live Audio Mixer regression. The reviewed cumulative
 tip was integrated into local `main` as merge `cf77507`.
 
-## Queued platform production — DLV-284 typed publication transactions
+## Assigned platform production — DLV-284 typed publication transactions
 
-Status: next, not assigned until the user physically accepts coherent integrated
-Release PID 78860. Cumulative review and integration are complete as `cf77507`;
-the retained unrelated Audio Mixer synthetic-focus first red does not reopen or
-repeat Tier 3. No new virtualization feature may precede DLV-284.
+Lane: platform, acting as the sole serialized cross-process owner. Baseline:
+clean integrated production commit `cf77507`. The existing
+`codex/impl-platform-responsive-focus` branch retains held ancestry and must not
+be rewritten, merged, or used as the assignment baseline. From the clean
+platform worktree, create `codex/dlv-284-typed-publication-transactions` at
+exact commit `cf77507`; stop if that branch already exists at a different tip
+or if the worktree is not clean. Dependencies: user acceptance of coherent PID
+78860 is recorded above; DLV-278–283 and DLV-472 are integrated. The retained
+unrelated Audio Mixer synthetic-focus first red does not reopen or repeat Tier
+3. No new virtualization feature may precede DLV-284.
+
+Objective and ownership boundary: replace publication intent inferred from
+`allowUpdate`, base zero/nonzero, and recovery conditions with one explicit,
+private typed transaction model from SDK snapshot construction through runtime,
+Bridge, native bridge client, coordinator admission, and final host commit. The
+platform lane is explicitly authorized to touch the minimum shared SDK/runtime,
+Bridge, host, and directly affected deterministic test files needed for this
+serialized boundary. It may not change package behavior, widget-specific
+presentation, unrelated rendering/focus/input, public feature documentation,
+LauncherExperience, or Avalonia/AVP history.
 
 Replace semantics inferred from `allowUpdate`, base zero/nonzero, and recovery
 conditions with one private typed transaction model through SDK/runtime,
@@ -606,8 +626,63 @@ This is bounded hardening, not a framework rewrite. Remove old inference only
 when replaced; do not add a second state machine or package special case.
 Preserve ordinary validation, bounded windows, private widget data, last-valid
 presentation, and host-owned focus/input/render authority. Require focused
-table/interleaving evidence for every legal/illegal transition and retain
-physical-first ordering. Never push.
+table/interleaving evidence for every legal/illegal transition and use the
+normal protocol verification order defined below. Never push.
+
+Required acceptance evidence:
+
+1. Publication kind is explicit and typed at its origin and remains attached
+   to the same transaction owner until final admission/commit. Compatibility
+   adapters may serialize existing fields, but no downstream layer may
+   independently reconstruct intent from booleans, zero/nonzero bases, payload
+   shape, or failure state.
+2. One table-driven policy is the authority for legal/illegal combinations of
+   prior host sequence, request base, widget/lifecycle/runtime/presentation
+   authority, publication kind, collection generation, virtual-window marker,
+   and commit/reject outcome. Transport parsing may validate facts but may not
+   own a parallel transition policy.
+3. `IncrementalUpdate`, `OrdinaryCheckpoint`, and `RecoveryCheckpoint` have
+   exact legal bases, origin authority, retry behavior, and admission results.
+   Recovery remains limited to current typed stale-base provenance, a recorded
+   origin, a newer complete checkpoint, and an all-`Replace` fresh baseline.
+4. Ordinary incremental and checkpoint behavior, bounded virtual windows,
+   last-valid presentation, current interaction authority, private widget data,
+   and fail-closed rejection remain unchanged. Invalid or stale transactions
+   cannot mutate retained presentation, focus/input authority, lifecycle state,
+   or collection generation.
+5. Deterministic table/interleaving coverage includes bridge-ahead/host-behind,
+   switch-away during an in-flight publication, recovery checkpoints, rapid
+   cycling, and virtual paging in both directions, plus representative illegal
+   combinations. Do not build a new generalized simulator when existing seams
+   can express these cases.
+6. No public third-party SDK break, public wire break, protocol-version bump,
+   package/configuration mutation, compatibility layer, widget/package special
+   case, or second state machine is introduced. Stop before implementation if
+   a public wire or third-party SDK break is required.
+
+Verification: normal ordering, not physical-first. Run the directly affected
+Tier-1 builds and deterministic suites once after the coherent change, then the
+smallest existing Tier-2 cross-process group covering SDK/runtime/Bridge/native
+admission. Because this changes a core cross-process protocol/security
+boundary, commit the scoped DLV-284 result and run Tier 3 exactly once from that
+exact clean commit in an isolated worktree. Every command must produce
+meaningful output or a terminal result within 60 seconds; use bounded timeouts,
+stop at the first red, classify it, and do not rerun an unchanged gate. Preserve
+PID 78860 and all package, account, credential, provider, and configuration
+state; do not launch or terminate OverlayHost, install packages, push, or touch
+the retained Audio Mixer debt.
+
+Concurrency and stop conditions: the widgets lane remains idle until DLV-284
+reaches a clean committed boundary. Stop and report before broadening scope if
+the typed model requires a public compatibility decision, a protocol-version
+bump, a second independent inference/state machine, widget-specific host
+knowledge, substantial merge conflict, destructive recovery, or a material
+change to the threat model/performance envelope. Stop on the first unrelated
+red after preserving exact evidence; do not repair it under DLV-284. Report one
+DLV-284 commit, exact changed files, focused/Tier-2/Tier-3 evidence actually
+run, numeric exits, retained risks, and a clean worktree. No additional Ready
+milestone is safe in either lane until this serialized boundary is reviewed and
+integrated; the future architecture queue depends on it.
 
 ## Future architecture queue — maturity review additions
 
@@ -643,11 +718,10 @@ Extract native authorities only when real work touches them.
 
 ## Ordered queues
 
-1. User physical verdict on coherent integrated Release PID 78860.
-2. DLV-284 typed publication transactions from integrated `main` `cf77507`.
-3. Generic Game Launcher cutover; LauncherExperience deletion/state retirement;
+1. DLV-284 typed publication transactions from integrated `main` `cf77507`.
+2. Generic Game Launcher cutover; LauncherExperience deletion/state retirement;
    protocol requirements; then the remaining maturity deliverables.
-4. DLV-248 remains deliberately deferred until explicit user promotion.
+3. DLV-248 remains deliberately deferred until explicit user promotion.
 
 There is no other Ready production work in either standing lane.
 
@@ -670,7 +744,7 @@ There is no other Ready production work in either standing lane.
 | DLV-471 | Corrected pair `8531915` + `8886e25` accepted; focused TextEntry route green in 40.325 seconds, final exact Tier 3 assigned. |
 | DLV-472 | Accepted `29601e2`, cumulatively applied as `82093d5`, and integrated through `cf77507`; focused and final Tier-3 Bridge target passed 96/96. |
 | Audio Mixer synthetic focus | Final Tier 3 passed 44/45 then retained Master after synthetic Down; unrelated source was previously green, so no unchanged rerun is authorized. |
-| DLV-284 | Next after the user's physical verdict on integrated PID 78860. |
+| DLV-284 | Assigned to the serialized platform lane from clean integrated baseline `cf77507` after user acceptance of PID 78860. |
 | DLV-248 | Deferred until explicit user promotion. |
 
 ## Recent dispositions
