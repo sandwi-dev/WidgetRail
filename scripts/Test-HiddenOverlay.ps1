@@ -8,10 +8,13 @@ $ErrorActionPreference = 'Stop'
 $repositoryRoot = Split-Path -Parent $PSScriptRoot
 $overlayPath = Resolve-Path (Join-Path $repositoryRoot "src\OverlayHost\out\$Configuration\OverlayHost.exe")
 $startupError = Join-Path $env:LOCALAPPDATA 'WidgetRail\startup-error.log'
+$processProfile = 'hidden-smoke-' + [Guid]::NewGuid().ToString('N')
 $startupErrorTimestamp = if (Test-Path -LiteralPath $startupError) {
     (Get-Item -LiteralPath $startupError).LastWriteTimeUtc
 } else { $null }
-$overlayProcess = Start-Process -FilePath $overlayPath -ArgumentList '--hidden' -WindowStyle Hidden -PassThru
+$overlayProcess = Start-Process -FilePath $overlayPath `
+    -ArgumentList @('--hidden', '--process-profile', $processProfile) `
+    -WindowStyle Hidden -PassThru
 try {
     $overlayProcess.WaitForExit(1000) | Out-Null
     $overlayProcess.Refresh()
