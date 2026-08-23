@@ -465,7 +465,7 @@ public sealed class WidgetProcessClient : IAsyncDisposable
         WidgetProcessSession session,
         string type, T payload, CancellationToken cancellationToken)
     {
-        using var request = session.PendingRequests.Register();
+        using var request = session.PendingRequests.Register(type);
         await session.WriteAsync(new RuntimeEnvelope
         {
             Type = type,

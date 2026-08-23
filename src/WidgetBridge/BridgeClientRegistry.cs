@@ -37,15 +37,28 @@ internal sealed record BridgeClientActionFailure(
     string RuntimeGeneration,
     WidgetActionFailure Failure);
 internal sealed record BridgeClientRuntimeFailure(string WidgetId, WidgetFailure Failure);
-internal sealed class BridgeWidgetRequestException(
-    string widgetId,
-    string failureCode,
-    Exception innerException) : Exception(
-        $"Widget '{widgetId}' runtime request failed ({failureCode}).",
-        innerException)
+internal sealed class BridgeWidgetRequestException : Exception
 {
-    internal string WidgetId { get; } = widgetId;
-    internal string FailureCode { get; } = failureCode;
+    internal BridgeWidgetRequestException(
+        string widgetId,
+        string failureCode,
+        Exception innerException) : base(
+            FormatMessage(widgetId, failureCode, innerException), innerException)
+    {
+        WidgetId = widgetId;
+        FailureCode = failureCode;
+    }
+
+    internal string WidgetId { get; }
+    internal string FailureCode { get; }
+
+    private static string FormatMessage(
+        string widgetId,
+        string failureCode,
+        Exception innerException) => innerException is WidgetRequestRejectedException rejected
+        ? $"Widget '{widgetId}' runtime request '{rejected.RequestType}' failed " +
+          $"({failureCode}; {rejected.ErrorCode}): {rejected.WorkerSafeMessage}"
+        : $"Widget '{widgetId}' runtime request failed ({failureCode}).";
 }
 internal sealed record BridgeClientLifetimeDiagnostic(
     string WidgetId,
@@ -1397,6 +1410,7 @@ internal sealed class BridgeClientRegistry : IAsyncDisposable
     }
 
     private static bool IsWidgetRuntimeFailure(Exception exception) => exception is
+        WidgetRequestRejectedException or
         WidgetProcessException or
         WidgetProcessAdmissionException or
         WidgetProtocolViolationException or
@@ -1407,6 +1421,7 @@ internal sealed class BridgeClientRegistry : IAsyncDisposable
 
     private static string ClassifyWidgetRuntimeFailure(Exception exception) => exception switch
     {
+        WidgetRequestRejectedException => "worker-runtime-failed",
         WidgetProcessAdmissionException => "worker-admission-failed",
         WidgetProtocolViolationException => "worker-protocol-failed",
         TimeoutException => "worker-request-timeout",

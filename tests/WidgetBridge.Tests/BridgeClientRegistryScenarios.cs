@@ -141,6 +141,11 @@ internal static class BridgeClientRegistryScenarios
         var failures = new (Exception Failure, string Code)[]
         {
             (new WidgetProcessException("synthetic worker failure"), "worker-runtime-failed"),
+            (new WidgetRequestRejectedException(
+                MessageTypes.Render,
+                "worker_request_failed",
+                "Frozen runtime-v2 render failed at $.root.children[7] (duplicate_id)."),
+                "worker-runtime-failed"),
             (new WidgetProcessAdmissionException("synthetic admission failure"),
                 "worker-admission-failed"),
             (new WidgetProtocolViolationException("synthetic protocol failure"),
@@ -155,6 +160,12 @@ internal static class BridgeClientRegistryScenarios
             RegistryAssert.Equal(alpha.Id, typed.WidgetId);
             RegistryAssert.Equal(code, typed.FailureCode);
             RegistryAssert.True(ReferenceEquals(failure, typed.InnerException));
+            if (failure is WidgetRequestRejectedException)
+                RegistryAssert.Equal(
+                    "Widget 'alpha-runtime-failure' runtime request 'render' failed " +
+                    "(worker-runtime-failed; worker_request_failed): Frozen runtime-v2 " +
+                    "render failed at $.root.children[7] (duplicate_id).",
+                    typed.Message);
             alphaClient.SnapshotFailure = null;
 
             _ = await fixture.GetSnapshotAsync(beta.Id);
