@@ -10,19 +10,18 @@ historical evidence only; this file is the sole implementation authority.
 ## Current accepted state
 
 - Local `main` integrates every accepted cumulative production/test milestone
-  through DLV-472 as merge `cf77507`. The merge contains exact cumulative tip
-  `82093d5` and excludes rejected/restoration/ancestry-bound commits.
-- The coherent integrated Release visibly runs as OverlayHost PID 78860 from
+  through DLV-284 as merge `7f31e04`. The merge contains DLV-284 production
+  `21c3b8b` plus bounded correction `86d6532` and excludes rejected,
+  restoration, and ancestry-bound commits.
+- The coherent integrated Release visibly runs as OverlayHost PID 108300 from
   `C:\Users\dwive\Projects\GameBarAlternative\src\OverlayHost\out\Release`.
   Executable SHA-256 is
-  `6B5B5C715F7C1029B8B39F583FC51D87CC675048ED548F285DBD9E163D702D60`.
+  `76D9F8AB1F172FCBBF77B356452247777DA7417AF46ECDE85FC3DC9BB223BD07`.
   The full Release build and packaging exited 0, startup admitted Settings,
-  and `startup-error.log` is absent. Prior accepted PID 89008 exited through
-  exact-PID `WM_CLOSE` before replacement.
-- The user physically accepted PID 78860 on 2026-08-23. That verdict closes
-  the integrated DLV-472 checkpoint and authorizes DLV-284. Preserve PID
-  78860 while DLV-284 is implemented; DLV-284 is protocol hardening, not a
-  physical-first UI assignment.
+  Settings painted sequences 1 and 2, and `startup-error.log` is absent. Prior
+  accepted PID 78860 exited through exact-owner `WM_CLOSE` before replacement.
+- PID 108300 is the DLV-284 physical candidate. Preserve it until the user
+  accepts or rejects it. DLV-285 may be released only after that verdict.
 - DLV-318 is the exact recoverable prior accepted Release at
   `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative-dlv318-build`;
   executable SHA-256 is
@@ -39,8 +38,8 @@ historical evidence only; this file is the sole implementation authority.
 
 | Lane | Task/worktree | State |
 | --- | --- | --- |
-| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | Assigned DLV-284 from clean integrated baseline `cf77507`; create a new isolated branch from that exact commit and preserve the existing held branch. |
-| Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | Idle at accepted clean test-only commit `29601e2`; serialized behind DLV-284 with no independent assignment. |
+| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | Idle at accepted clean DLV-284 correction `86d6532`; do not reuse or rewrite the held branch. |
+| Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | Queued for DLV-285 generic Game Launcher cutover after the user verdict on PID 108300; no work starts before explicit reviewer release. |
 
 ## Execution rules
 
@@ -586,7 +585,7 @@ obtain green. Retain the focus observation as test-harness verification debt;
 it is not evidence of a live Audio Mixer regression. The reviewed cumulative
 tip was integrated into local `main` as merge `cf77507`.
 
-## Assigned platform production — DLV-284 typed publication transactions
+## Accepted platform production — DLV-284 typed publication transactions
 
 Lane: platform, acting as the sole serialized cross-process owner. Baseline:
 clean integrated production commit `cf77507`. The existing
@@ -684,7 +683,7 @@ run, numeric exits, retained risks, and a clean worktree. No additional Ready
 milestone is safe in either lane until this serialized boundary is reviewed and
 integrated; the future architecture queue depends on it.
 
-Candidate `21c3b8bcda58036ee488cb7f310a38f34d5cb3e6` is not accepted.
+Initial candidate `21c3b8bcda58036ee488cb7f310a38f34d5cb3e6` required one bounded correction.
 Its focused evidence is green: Widget SDK 89/89; the four directly changed
 Runtime cases 1/1 each; WidgetBridge 96/96; presentation session 11/11; native
 Bridge client/catalog; 28 coordinator scenarios; 314 linked feedback checks;
@@ -714,10 +713,62 @@ assertion invariants. Commit one clean follow-up only after focused green. Do
 not rerun Tier 3, integrate, push, relaunch PID 78860, repair Audio Mixer debt,
 or release the widgets lane before reviewer acceptance.
 
+Correction `86d653262bc73c77f877465234ca2d99d4146966` is accepted. The exact
+root cause was the native synchronous presentation parser rejecting the three
+new typed wrapper fields (`transactionKind`, `baseSequence`, and
+`recoveryOriginSequence`) after a Retry started a fresh worker. The correction
+admits exactly those fields for synchronous typed publication responses while
+leaving asynchronous event parsing on its existing strict allowlist. It adds a
+valid typed-envelope case, preserves unknown-field rejection, and adds bounded
+retry diagnostics.
+
+The corrected focused `WidgetActionFailureHostTestsOnly` gate exited 0 in
+90.600 seconds and `WidgetBridgeCatalogTestsOnly` exited 0 in 6.57 seconds.
+Per the unchanged-gate rule, Tier 3 was not rerun. The platform worktree was
+clean. Reviewer inspection accepted both commits and integrated them into
+local `main` as `7f31e04`; no push occurred. The integrated Release build
+exited 0 and is visibly running as PID 108300 with the hash recorded above.
+
+## Queued widgets production — DLV-285 generic Game Launcher cutover
+
+Lane: widgets. Baseline: exact integrated production commit `7f31e04` in a new
+clean isolated branch. This assignment is queued, not released: do not begin
+until the user physically accepts PID 108300 and the reviewer explicitly sends
+the assignment. The platform lane remains idle while DLV-285 is active.
+
+Objective: move the first-party Game Launcher package completely onto the
+ordinary declarative application path before any framework deletion. Remove
+the package manifest request for `advancedPresentation`, stop projecting
+`WidgetView` through `GameLauncherExperienceProjection`, and remove the visible
+experience-selection route/actions so the package emits its existing generic
+responsive grid/scroll/navigation, `AppTile`, virtual-window, bounded artwork,
+WRSS, and controller-focus primitives directly through
+`WidgetApplicationRuntime`.
+
+This is the package cutover only. Do not delete or modify the host, Bridge,
+protocol, SDK, catalog, Settings, CLI, fixture, or documentation
+LauncherExperience vertical slice in DLV-285. Do not add a generic custom-host
+presentation escape hatch, compatibility layer, package-ID special case, or a
+new semantic primitive unless the agent first proves two plausible widget
+categories need it and stops for review. Preserve game-library behavior,
+launching, navigation, pagination, organization, titles, categories, hidden
+items, private package state, and all unrelated package/account/configuration
+state. Retain the obsolete private experience value inertly for the later
+targeted state-retirement milestone rather than broad-resetting state here.
+
+Physical-first verification: implement production and build the smallest
+coherent Game Launcher package plus integrated native Release, with every
+command producing output or a terminal result within 60 seconds. Commit the
+clean production candidate and report exact files, numeric exits, package and
+Release artifact hashes, and retained risks. Do not launch/terminate the
+resident OverlayHost, install packages, run tests, push, or start the vertical
+slice deletion. The reviewer will inspect, refresh, visibly launch, and obtain
+the user verdict. Only after physical acceptance may focused tests be assigned.
+
 ## Future architecture queue — maturity review additions
 
-Status: ordered future work, not assigned. It does not displace the cumulative
-native integration or DLV-284.
+Status: DLV-285 is queued behind the current physical verdict; later items are
+ordered future work and are not assigned.
 
 1. Generic Game Launcher cutover through ordinary `ViewSnapshot`, responsive
    grid/scroll/navigation, semantic tiles, virtual windows, bounded artwork,
@@ -748,12 +799,12 @@ Extract native authorities only when real work touches them.
 
 ## Ordered queues
 
-1. DLV-284 typed publication transactions from integrated `main` `cf77507`.
-2. Generic Game Launcher cutover; LauncherExperience deletion/state retirement;
+1. DLV-285 generic Game Launcher cutover after PID 108300 physical acceptance.
+2. LauncherExperience deletion/state retirement;
    protocol requirements; then the remaining maturity deliverables.
 3. DLV-248 remains deliberately deferred until explicit user promotion.
 
-There is no other Ready production work in either standing lane.
+There is no concurrent Ready production work in either standing lane.
 
 ## Manual and blocked evidence
 
@@ -774,7 +825,8 @@ There is no other Ready production work in either standing lane.
 | DLV-471 | Corrected pair `8531915` + `8886e25` accepted; focused TextEntry route green in 40.325 seconds, final exact Tier 3 assigned. |
 | DLV-472 | Accepted `29601e2`, cumulatively applied as `82093d5`, and integrated through `cf77507`; focused and final Tier-3 Bridge target passed 96/96. |
 | Audio Mixer synthetic focus | Final Tier 3 passed 44/45 then retained Master after synthetic Down; unrelated source was previously green, so no unchanged rerun is authorized. |
-| DLV-284 | Clean candidate `21c3b8b` has focused/Tier-2 green but is unaccepted: its one Tier-3 run passed 44/45 then failed the linked Retry worker-generation route; bounded platform correction assigned, no unchanged Tier-3 rerun. |
+| DLV-284 | Accepted `21c3b8b` plus correction `86d6532`, integrated as `7f31e04`; corrected focused Retry and catalog gates green, no unchanged Tier-3 rerun, PID 108300 awaiting physical verdict. |
+| DLV-285 | Queued widgets-lane generic Game Launcher cutover after the PID 108300 verdict; package-only production first, then reviewer launch and physical verdict before tests or framework deletion. |
 | DLV-248 | Deferred until explicit user promotion. |
 
 ## Recent dispositions
