@@ -42,7 +42,7 @@ historical evidence only; this file is the sole implementation authority.
 
 | Lane | Task/worktree | State |
 | --- | --- | --- |
-| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | Safe correlation pair `f583f40` + `ac79ed0` accepted through merge `8ac55d`; diagnostic-log candidate `54167ee` rejected because it writes arbitrary worker text, including its credential-shaped test value, into persistent `overlay.log`. Bounded correction assigned. |
+| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | Safe correlation pair `f583f40` + `ac79ed0` accepted through merge `8ac55d`; diagnostic candidates `54167ee` and `f66e082` rejected for persisting arbitrary or forgeable worker-controlled detail. Metadata-only correction assigned. |
 | Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | Idle; DLV-285 remains queued behind corrected DLV-284 physical acceptance. |
 
 ## Execution rules
@@ -328,40 +328,25 @@ arbitrary worker text is excluded from the public process exception and
 Bridge-visible failure message. The production WidgetBridge Release build and
 four directly affected one-case gates passed; no Tier 3 or broad suite ran.
 
-This pair is an accepted correlation/redaction foundation, not the completed
-post-Y diagnosis. Independent review found that
-`WidgetBridgeServer.ReplyRequestFailureAsync` still serializes only the generic
-failure code and safe public message; no production diagnostic sink consumes
-`BridgeWidgetRequestException.RequestType`, `WorkerErrorCode`, or its retained
-internal worker diagnostic. A fresh physical failure would therefore still
-discard the evidence needed to distinguish a runtime/Bridge defect from a
-Spotify package defect. Add one bounded developer-only diagnostic record at
-that catch boundary containing widget ID, request type, worker error code, and
-bounded internal diagnostic text, while keeping the Bridge response and native
-failure UI generic. Do not add package-ID special cases, weaken validation,
-change runtime-v2 wire, expose arbitrary worker text to the user, run Tier 3,
-or touch live/package state.
+The accepted pair is a correlation/redaction foundation, not the completed
+post-Y diagnosis. Candidate `54167ee` correctly routes correlation through the
+Bridge catch boundary but is rejected because it persists arbitrary full-trust
+worker text, including its credential-shaped test value. Correction `f66e082`
+omits general failure detail but is also rejected: public
+`ProtocolValidationException` lets package code forge the allowlisted error
+type, path, and code, and its syntax filter cannot prove host-owned provenance.
+Persisting that text would violate `overlay.log`'s guarantee that credentials,
+provider responses, paths, and widget-controlled text never enter the lane.
 
-Candidate `54167ee5598e2af259cff5c71f4d0188dbdcf59e` is rejected. It correctly
-routes the retained correlation through the Bridge catch boundary and keeps the
-Bridge response generic, but it broadens the existing persistent `overlay.log`
-lane from transition-safe structural records to arbitrary full-trust worker
-text. Its own focused test requires
-`credential=DEVELOPER_ONLY` to be written to disk, directly removing the prior
-guarantee that credentials, provider responses, paths, and widget-controlled
-text never enter that log. Bounded length and JSON escaping prevent record
-injection; they do not make sensitive content safe to persist.
-
-Correct this without losing the accepted correlation foundation. The bounded
-developer record must always retain validated widget ID, request type, and
-worker error code. Retain detail only for an explicitly allowlisted structural
-protocol diagnostic whose producer already strips widget-controlled message
-text; omit arbitrary `worker_request_failed` detail entirely. Restore the
-existing `overlay.log` credential/provider-response safety contract and prove
-that a credential-shaped general worker message is absent from disk while a
-sanitized structural path/code remains available. Keep the public Bridge reply
-generic, do not alter runtime-v2 wire or package behavior, and run only the
-direct focused build/cases with no Tier-3 rerun or live/package changes.
+Correct the cumulative pair without losing correlation. The bounded developer
+record must contain only validated widget ID, request type, and worker error
+code; never persist any worker-supplied message text. The request type plus
+`worker_request_failed` is sufficient to classify the current Spotify failure
+as an application render exception, while the distinct structural error code
+may remain metadata without its forgeable message. Prove credential/provider,
+path, and structurally shaped spoof text are absent from disk. Keep the public
+Bridge reply generic, preserve strict validation and runtime-v2 schema, and run
+only direct focused build/cases with no Tier-3 or live/package changes.
 
 ## Queued widgets production — DLV-285 generic Game Launcher cutover
 
@@ -462,7 +447,7 @@ There is no concurrent Ready production work in either standing lane.
 | DLV-471 | Corrected pair `8531915` + `8886e25` accepted; focused TextEntry route green in 40.325 seconds, final exact Tier 3 assigned. |
 | DLV-472 | Accepted `29601e2`, cumulatively applied as `82093d5`, and integrated through `cf77507`; focused and final Tier-3 Bridge target passed 96/96. |
 | Audio Mixer synthetic focus | Final Tier 3 passed 44/45 then retained Master after synthetic Down; unrelated source was previously green, so no unchanged rerun is authorized. |
-| DLV-284 | `21c3b8b` plus `86d6532` integrated as `7f31e04`; PID 108300 exposed and rejected the frozen-v2 unknown-field defect. Compatibility correction `60130b4`, integrated as `052a392`, fixed startup and allowed installed Spotify 0.3.14 to render through sequence 40. PID 116844 then failed its next post-Y `render` while worker PID 7632 remained alive. Corrected correlation/redaction pair `f583f40` + `ac79ed0` is accepted through `8ac55d`; focused production and four one-case gates passed. Diagnostic-log candidate `54167ee` is rejected for persisting arbitrary credential/provider text; bounded structural-only correction assigned, no Tier-3 rerun. |
+| DLV-284 | `21c3b8b` plus `86d6532` integrated as `7f31e04`; PID 108300 exposed and rejected the frozen-v2 unknown-field defect. Compatibility correction `60130b4`, integrated as `052a392`, fixed startup and allowed installed Spotify 0.3.14 to render through sequence 40. PID 116844 then failed its next post-Y `render` while worker PID 7632 remained alive. Corrected correlation/redaction pair `f583f40` + `ac79ed0` is accepted through `8ac55d`; focused production and four one-case gates passed. Diagnostic candidates `54167ee` and `f66e082` are rejected for persisting arbitrary or forgeable worker-controlled text; metadata-only correction assigned, no Tier-3 rerun. |
 | DLV-285 | Held behind corrected DLV-284 physical acceptance; package-only production first, then reviewer launch and verdict before tests or framework deletion. |
 | DLV-248 | Deferred until explicit user promotion. |
 
