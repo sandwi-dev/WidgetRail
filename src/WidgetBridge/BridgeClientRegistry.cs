@@ -37,6 +37,11 @@ internal sealed record BridgeClientActionFailure(
     string RuntimeGeneration,
     WidgetActionFailure Failure);
 internal sealed record BridgeClientRuntimeFailure(string WidgetId, WidgetFailure Failure);
+internal sealed record BridgeWidgetRequestDiagnostic(
+    string WidgetId,
+    string RequestType,
+    string WorkerErrorCode,
+    string WorkerDiagnosticMessage);
 internal sealed class BridgeWidgetRequestException : Exception
 {
     internal BridgeWidgetRequestException(
@@ -51,6 +56,7 @@ internal sealed class BridgeWidgetRequestException : Exception
         {
             RequestType = processException.RequestType;
             WorkerErrorCode = processException.WorkerErrorCode;
+            WorkerDiagnosticMessage = processException.WorkerDiagnosticMessage;
         }
     }
 
@@ -58,6 +64,7 @@ internal sealed class BridgeWidgetRequestException : Exception
     internal string FailureCode { get; }
     internal string? RequestType { get; }
     internal string? WorkerErrorCode { get; }
+    internal string? WorkerDiagnosticMessage { get; }
 }
 internal sealed record BridgeClientLifetimeDiagnostic(
     string WidgetId,

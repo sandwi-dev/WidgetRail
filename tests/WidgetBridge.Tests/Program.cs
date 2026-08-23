@@ -88,6 +88,7 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Platform appearance is bounded and does not launch workers", PlatformAppearanceIsLazy),
     ("Private diagnostics attach only to the exact trusted Settings identity", DiagnosticsAreSettingsOnly),
     ("Media Sessions diagnostics are bounded transition-only and sanitized", MediaSessionDiagnosticsAreBounded),
+    ("Worker request diagnostics are bounded developer-only records", WorkerRequestDiagnosticsAreBounded),
     ("Diagnostics projection is bounded sanitized and read only", BridgeDiagnosticsScenarios.ProjectionIsBoundedSanitizedAndReadOnly),
     ("Diagnostics partial failures malformed input and deadline are closed", BridgeDiagnosticsScenarios.PartialFailureMalformedInputAndDeadlineAreClosed),
     ("Authority recovery projection is exact bounded and cancellation safe", BridgeDiagnosticsScenarios.RecoveryRetryIsExactBoundedAndCancellationSafe),
@@ -545,6 +546,44 @@ static async Task MediaSessionDiagnosticsAreBounded()
         !line.Contains("player.exe", StringComparison.OrdinalIgnoreCase) &&
         !line.Contains("secret", StringComparison.OrdinalIgnoreCase)),
         "Unsafe diagnostic content crossed the bounded log boundary.");
+}
+
+static async Task WorkerRequestDiagnosticsAreBounded()
+{
+    using var temporary = new TemporaryDirectory("wrail-worker-request-diagnostics");
+    var path = System.IO.Path.Combine(temporary.Path, "overlay.log");
+    await using (var diagnostics = new MediaSessionsDiagnosticLog(path, bridgeSessionGeneration: 7))
+    {
+        diagnostics.RecordRequestFailure(new BridgeWidgetRequestDiagnostic(
+            "installed-widget",
+            MessageTypes.Render,
+            "worker_request_failed",
+            "provider response\tcredential=DEVELOPER_ONLY"));
+        diagnostics.RecordRequestFailure(new BridgeWidgetRequestDiagnostic(
+            "unsafe widget/path",
+            MessageTypes.Render,
+            "worker_request_failed",
+            "must-not-be-recorded"));
+        diagnostics.RecordRequestFailure(new BridgeWidgetRequestDiagnostic(
+            "installed-widget",
+            "invalid request",
+            "worker_request_failed",
+            "must-not-be-recorded"));
+    }
+
+    var lines = File.ReadAllLines(path);
+    Assert.Equal(1, lines.Length);
+    Assert.True(lines[0].Contains(
+        "Widget request diagnostic bridge-session=7 widget=installed-widget " +
+        "request=render worker-code=worker_request_failed",
+        StringComparison.Ordinal), "The correlated worker request record was not retained.");
+    Assert.True(lines[0].Contains(
+        "detail=\"provider response\\tcredential=DEVELOPER_ONLY\"",
+        StringComparison.Ordinal), "The bounded worker diagnostic was not JSON escaped.");
+    Assert.True(!lines[0].Contains('\t'),
+        "The developer diagnostic wrote a raw control character into the record.");
+    Assert.True(!lines[0].Contains("must-not-be-recorded", StringComparison.Ordinal),
+        "An invalid diagnostic authority crossed the bounded log boundary.");
 }
 
 static ConfiguredWidget DiagnosticCandidate() => new()

@@ -1,4 +1,5 @@
 using System.Text;
+using System.Text.Json;
 using System.Threading.Channels;
 using WidgetRail.PlatformBroker;
 using WidgetRail.WidgetProtocol;
@@ -7,9 +8,8 @@ using WidgetRail.WidgetRuntime;
 namespace WidgetRail.WidgetBridge;
 
 /// <summary>
-/// Records only transition-owned, correlation-safe Media Sessions failures.
-/// Provider/player identities, response bodies, process details, and credentials
-/// never enter this bounded lane.
+/// Records bounded developer-only Bridge diagnostics through one serialized owner.
+/// User-facing Bridge failure copy never reads from this diagnostic lane.
 /// </summary>
 internal sealed class MediaSessionsDiagnosticLog : IAsyncDisposable
 {
@@ -92,6 +92,23 @@ internal sealed class MediaSessionsDiagnosticLog : IAsyncDisposable
             $"event={eventCode} start={process.StartOrdinal} " +
             $"pid={process.ProcessId?.ToString() ?? "none"} lifecycle={lifecycle} " +
             $"exit={process.ExitCode?.ToString() ?? "none"} failure={failure}" +
+            Environment.NewLine);
+    }
+
+    internal void RecordRequestFailure(BridgeWidgetRequestDiagnostic diagnostic)
+    {
+        if (Volatile.Read(ref _disposed) != 0 ||
+            !IsSafe(diagnostic.WidgetId, 128) ||
+            !IsSafe(diagnostic.RequestType, 64) ||
+            !IsSafe(diagnostic.WorkerErrorCode, 64) ||
+            !IsBoundedDiagnostic(diagnostic.WorkerDiagnosticMessage))
+            return;
+
+        _lines.Writer.TryWrite(
+            $"{DateTimeOffset.UtcNow:O} Widget request diagnostic " +
+            $"bridge-session={_bridgeSessionGeneration} widget={diagnostic.WidgetId} " +
+            $"request={diagnostic.RequestType} worker-code={diagnostic.WorkerErrorCode} " +
+            $"detail={JsonSerializer.Serialize(diagnostic.WorkerDiagnosticMessage)}" +
             Environment.NewLine);
     }
 
@@ -192,6 +209,10 @@ internal sealed class MediaSessionsDiagnosticLog : IAsyncDisposable
         value.Length is > 0 && value.Length <= maximumLength &&
         value.All(character => char.IsAsciiLetterOrDigit(character) ||
             character is '.' or '-' or '_');
+
+    private static bool IsBoundedDiagnostic(string value) =>
+        value.Length is > 0 and <= 512 &&
+        !value.Any(character => char.IsControl(character) && character is not '\t');
 
     private static string Key(string widgetId, string stage) => widgetId + "\0" + stage;
 
