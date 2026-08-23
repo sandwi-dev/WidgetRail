@@ -396,10 +396,12 @@ public:
                   },
                   [this](std::stop_token, const std::wstring_view widgetId,
                          const widgetrail::WidgetLifecycleState state,
-                         const long long baseSequence, const bool allowUpdate) {
+                         const long long baseSequence,
+                         const widgetrail::WidgetPresentationTransactionKind transactionKind,
+                         const long long recoveryOriginSequence) {
                       auto value = bridge_.EstablishWidgetPresentation(
                           widgetId, widgetrail::WidgetLifecycleProtocolValue(state),
-                          baseSequence, allowUpdate);
+                          baseSequence, transactionKind, recoveryOriginSequence);
                       if (value) {
                           return widgetrail::WidgetSessionOperationResult<
                               widgetrail::WidgetPresentationPublication>::Success(
@@ -429,9 +431,12 @@ public:
                                 bridge_.lastError());
                   },
                   [this](std::stop_token, const std::wstring_view widgetId,
-                         const long long baseSequence, const bool allowUpdate) {
+                         const long long baseSequence,
+                         const widgetrail::WidgetPresentationTransactionKind transactionKind,
+                         const long long recoveryOriginSequence) {
                       auto value = bridge_.GetSnapshot(
-                          widgetId, baseSequence, allowUpdate);
+                          widgetId, baseSequence, transactionKind,
+                          recoveryOriginSequence);
                       if (value) {
                           return widgetrail::WidgetSessionOperationResult<
                               widgetrail::WidgetPresentationPublication>::Success(

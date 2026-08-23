@@ -706,7 +706,8 @@ static Task RequestClassificationIsClosed()
         Type = BridgeMessageTypes.GetSnapshot,
         RequestId = 13,
         Payload = BridgeJson.ToElement(new BridgePresentationRequest(
-            "widget-a", PresentationUpdateCapabilities.Current, 7)),
+            "widget-a", PresentationUpdateCapabilities.Current, 7,
+            WidgetPresentationTransactionKind.IncrementalUpdate)),
     });
     Assert.Equal(BridgeRequestKind.GetSnapshot, update.Kind);
     Assert.Equal("widget-a", update.WidgetId);
@@ -2856,7 +2857,8 @@ static async Task SnapshotAndQuickAction()
     var negotiatedRequest = new BridgePresentationRequest(
         "test-widget",
         PresentationUpdateCapabilities.Current,
-        snapshot.Sequence);
+        snapshot.Sequence,
+        WidgetPresentationTransactionKind.IncrementalUpdate);
     _ = BridgeJson.FromElement<BridgePresentationRequest>(
         BridgeJson.ToElement(negotiatedRequest));
     var updatedResponse = await harness.Client.RequestAsync(
@@ -2865,6 +2867,8 @@ static async Task SnapshotAndQuickAction()
     Assert.True(updatedResponse.Type == BridgeMessageTypes.PresentationUpdate,
         $"Expected presentation-update, received '{updatedResponse.Type}': " +
         updatedResponse.Payload.GetRawText());
+    Assert.Equal("incrementalUpdate",
+        updatedResponse.Payload.GetProperty("transactionKind").GetString());
     var update = PresentationUpdateJson.Deserialize(
         System.Text.Encoding.UTF8.GetBytes(
             updatedResponse.Payload.GetProperty("update").GetRawText()));
@@ -2895,10 +2899,23 @@ static async Task SnapshotAndQuickAction()
                 MaximumOperationsPerBatch =
                     ProtocolConstants.MaximumPresentationUpdateOperations + 1,
             },
-            updated.Sequence));
+            updated.Sequence,
+            WidgetPresentationTransactionKind.IncrementalUpdate));
     Assert.Equal(BridgeMessageTypes.Error, malformedCapabilities.Type);
     Assert.Equal("request_failed",
         malformedCapabilities.Payload.GetProperty("code").GetString());
+
+    var malformedRecovery = await harness.Client.RequestAsync(
+        BridgeMessageTypes.GetSnapshot,
+        new BridgePresentationRequest(
+            "test-widget",
+            PresentationUpdateCapabilities.None,
+            BaseSequence: 0,
+            TransactionKind: WidgetPresentationTransactionKind.RecoveryCheckpoint,
+            RecoveryOriginSequence: 0));
+    Assert.Equal(BridgeMessageTypes.Error, malformedRecovery.Type);
+    Assert.Equal("request_failed",
+        malformedRecovery.Payload.GetProperty("code").GetString());
 }
 
 static async Task ExactBaseDivergenceConvergesThroughCheckpoint()
@@ -2907,6 +2924,8 @@ static async Task ExactBaseDivergenceConvergesThroughCheckpoint()
     var initialResponse = await harness.Client.RequestAsync(
         BridgeMessageTypes.GetSnapshot, new WidgetIdRequest("test-widget"));
     Assert.Equal(BridgeMessageTypes.Snapshot, initialResponse.Type);
+    Assert.Equal("ordinaryCheckpoint",
+        initialResponse.Payload.GetProperty("transactionKind").GetString());
     var initial = SnapshotJson.Deserialize(System.Text.Encoding.UTF8.GetBytes(
         initialResponse.Payload.GetProperty("snapshot").GetRawText()));
 
@@ -2922,8 +2941,11 @@ static async Task ExactBaseDivergenceConvergesThroughCheckpoint()
     var advancedResponse = await harness.Client.RequestAsync(
         BridgeMessageTypes.GetSnapshot,
         new BridgePresentationRequest(
-            "test-widget", PresentationUpdateCapabilities.Current, initial.Sequence));
+            "test-widget", PresentationUpdateCapabilities.Current, initial.Sequence,
+            WidgetPresentationTransactionKind.IncrementalUpdate));
     Assert.Equal(BridgeMessageTypes.PresentationUpdate, advancedResponse.Type);
+    Assert.Equal("incrementalUpdate",
+        advancedResponse.Payload.GetProperty("transactionKind").GetString());
     var advancedUpdate = PresentationUpdateJson.Deserialize(
         System.Text.Encoding.UTF8.GetBytes(
             advancedResponse.Payload.GetProperty("update").GetRawText()));
@@ -2934,14 +2956,23 @@ static async Task ExactBaseDivergenceConvergesThroughCheckpoint()
     var staleResponse = await harness.Client.RequestAsync(
         BridgeMessageTypes.GetSnapshot,
         new BridgePresentationRequest(
-            "test-widget", PresentationUpdateCapabilities.Current, initial.Sequence));
+            "test-widget", PresentationUpdateCapabilities.Current, initial.Sequence,
+            WidgetPresentationTransactionKind.IncrementalUpdate));
     Assert.Equal(BridgeMessageTypes.Error, staleResponse.Type);
     Assert.Equal("stale_presentation_base",
         staleResponse.Payload.GetProperty("code").GetString());
 
     var recoveryResponse = await harness.Client.RequestAsync(
-        BridgeMessageTypes.GetSnapshot, new WidgetIdRequest("test-widget"));
+        BridgeMessageTypes.GetSnapshot,
+        new BridgePresentationRequest(
+            "test-widget",
+            PresentationUpdateCapabilities.None,
+            BaseSequence: 0,
+            TransactionKind: WidgetPresentationTransactionKind.RecoveryCheckpoint,
+            RecoveryOriginSequence: initial.Sequence));
     Assert.Equal(BridgeMessageTypes.Snapshot, recoveryResponse.Type);
+    Assert.Equal("recoveryCheckpoint",
+        recoveryResponse.Payload.GetProperty("transactionKind").GetString());
     var recovery = SnapshotJson.Deserialize(System.Text.Encoding.UTF8.GetBytes(
         recoveryResponse.Payload.GetProperty("snapshot").GetRawText()));
     Assert.True(recovery.Sequence > initial.Sequence,
@@ -2958,8 +2989,11 @@ static async Task ExactBaseDivergenceConvergesThroughCheckpoint()
     var convergedResponse = await harness.Client.RequestAsync(
         BridgeMessageTypes.GetSnapshot,
         new BridgePresentationRequest(
-            "test-widget", PresentationUpdateCapabilities.Current, recovery.Sequence));
+            "test-widget", PresentationUpdateCapabilities.Current, recovery.Sequence,
+            WidgetPresentationTransactionKind.IncrementalUpdate));
     Assert.Equal(BridgeMessageTypes.PresentationUpdate, convergedResponse.Type);
+    Assert.Equal("incrementalUpdate",
+        convergedResponse.Payload.GetProperty("transactionKind").GetString());
     var converged = PresentationUpdateJson.Deserialize(
         System.Text.Encoding.UTF8.GetBytes(
             convergedResponse.Payload.GetProperty("update").GetRawText()));
@@ -3445,7 +3479,8 @@ static async Task VirtualCollectionWindowCrossesBridge()
         var candidateResponse = await harness.Client.RequestAsync(
             BridgeMessageTypes.GetSnapshot,
             new BridgePresentationRequest(
-                "virtual", PresentationUpdateCapabilities.Current, materialized.Sequence));
+                "virtual", PresentationUpdateCapabilities.Current, materialized.Sequence,
+                WidgetPresentationTransactionKind.IncrementalUpdate));
         Assert.Equal(BridgeMessageTypes.PresentationUpdate, candidateResponse.Type);
         var update = PresentationUpdateJson.Deserialize(
             System.Text.Encoding.UTF8.GetBytes(

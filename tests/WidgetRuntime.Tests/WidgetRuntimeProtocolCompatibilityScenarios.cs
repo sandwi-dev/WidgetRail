@@ -8,19 +8,77 @@ internal static class WidgetRuntimeProtocolCompatibilityScenarios
 {
     internal static async Task FrozenV2ApplicationCheckpointCompatibility()
     {
-        using (var legacyDocument = JsonDocument.Parse("{}"))
+        using (var incompleteDocument = JsonDocument.Parse("{}"))
         {
-            var legacyRender = RuntimeJson.FromElement<RenderPayload>(legacyDocument.RootElement);
-            var legacyCapabilities = WidgetWorkerServer.ValidateRenderRequest(legacyRender);
-            var legacyPublication = new CompatibilityWidget().RenderPublication(
+            var incompleteRender = RuntimeJson.FromElement<RenderPayload>(
+                incompleteDocument.RootElement);
+            var rejected = false;
+            try { _ = WidgetWorkerServer.ValidateRenderRequest(incompleteRender); }
+            catch (WidgetProtocolViolationException) { rejected = true; }
+            True(rejected,
+                "A render without typed transaction authority must fail closed.");
+            var publication = new CompatibilityWidget().RenderPublication(
                 "runtime.test",
                 new string('0', 32),
                 sequence: 1,
                 expectedBaseSequence: 0,
-                legacyCapabilities,
-                legacyRender.RequireCheckpoint);
-            True(legacyPublication.Update is null,
-                "A legacy empty render payload must produce a complete checkpoint.");
+                PresentationUpdateCapabilities.None,
+                WidgetPresentationTransactionKind.OrdinaryCheckpoint);
+            True(publication.Update is null,
+                "An explicit ordinary transaction must produce a complete checkpoint.");
+        }
+
+        var generation = new string('B', 32);
+        var transactionRows = new[]
+        {
+            ("incremental", new RenderPayload
+            {
+                UpdateCapabilities = PresentationUpdateCapabilities.Current,
+                BaseSequence = 7,
+                PresentationGeneration = generation,
+                TransactionKind = WidgetPresentationTransactionKind.IncrementalUpdate,
+                RequireCheckpoint = false,
+            }, true),
+            ("ordinary", new RenderPayload
+            {
+                UpdateCapabilities = PresentationUpdateCapabilities.None,
+                TransactionKind = WidgetPresentationTransactionKind.OrdinaryCheckpoint,
+                RequireCheckpoint = true,
+            }, true),
+            ("recovery", new RenderPayload
+            {
+                UpdateCapabilities = PresentationUpdateCapabilities.None,
+                TransactionKind = WidgetPresentationTransactionKind.RecoveryCheckpoint,
+                RecoveryOriginSequence = 7,
+                RequireCheckpoint = true,
+            }, true),
+            ("incremental-zero-base", new RenderPayload
+            {
+                UpdateCapabilities = PresentationUpdateCapabilities.Current,
+                PresentationGeneration = generation,
+                TransactionKind = WidgetPresentationTransactionKind.IncrementalUpdate,
+                RequireCheckpoint = false,
+            }, false),
+            ("recovery-without-origin", new RenderPayload
+            {
+                UpdateCapabilities = PresentationUpdateCapabilities.None,
+                TransactionKind = WidgetPresentationTransactionKind.RecoveryCheckpoint,
+                RequireCheckpoint = true,
+            }, false),
+            ("compatibility-field-mismatch", new RenderPayload
+            {
+                UpdateCapabilities = PresentationUpdateCapabilities.None,
+                TransactionKind = WidgetPresentationTransactionKind.OrdinaryCheckpoint,
+                RequireCheckpoint = false,
+            }, false),
+        };
+        foreach (var (name, render, expectedValid) in transactionRows)
+        {
+            var valid = true;
+            try { _ = WidgetWorkerServer.ValidateRenderRequest(render); }
+            catch (WidgetProtocolViolationException) { valid = false; }
+            True(valid == expectedValid,
+                $"Typed runtime transaction row '{name}' had the wrong result.");
         }
 
         var pipeName = $"wrail-runtime-v2-{Guid.NewGuid():N}";
@@ -65,7 +123,6 @@ internal static class WidgetRuntimeProtocolCompatibilityScenarios
         Equal(MessageTypes.Acknowledged,
             (await channel.ReadAsync(CancellationToken.None)).Type);
 
-        var generation = new string('B', 32);
         await channel.WriteAsync(new RuntimeEnvelope
         {
             ProtocolVersion = 2,
@@ -76,6 +133,7 @@ internal static class WidgetRuntimeProtocolCompatibilityScenarios
                 UpdateCapabilities = PresentationUpdateCapabilities.Current,
                 BaseSequence = 1,
                 PresentationGeneration = generation,
+                TransactionKind = WidgetPresentationTransactionKind.IncrementalUpdate,
                 RequireCheckpoint = false,
             }),
         }, CancellationToken.None);

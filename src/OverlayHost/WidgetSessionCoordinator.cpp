@@ -134,6 +134,60 @@ void CollectVirtualWindows(
     return true;
 }
 
+enum class PresentationBaseRule {
+    ExactRetained,
+    Zero,
+    RecoveryOrigin,
+};
+
+struct PresentationTransactionRule final {
+    WidgetPresentationTransactionKind kind;
+    PresentationBaseRule baseRule;
+    bool requireFreshVirtualWindowBaseline;
+};
+
+[[nodiscard]] bool AdmitPresentationTransaction(
+    const WidgetPresentationTransactionKind requestedKind,
+    const std::optional<WidgetPresentationTransactionKind> returnedKind,
+    const long long retainedHostSequence,
+    const long long requestBaseSequence,
+    const long long recoveryOriginSequence,
+    const long long candidateSequence,
+    const bool authorityCurrent,
+    const bool ordinaryWindowTransitionValid,
+    const bool freshWindowBaselineValid) noexcept {
+    static constexpr PresentationTransactionRule rules[] = {
+        {WidgetPresentationTransactionKind::IncrementalUpdate,
+         PresentationBaseRule::ExactRetained, false},
+        {WidgetPresentationTransactionKind::OrdinaryCheckpoint,
+         PresentationBaseRule::Zero, false},
+        {WidgetPresentationTransactionKind::RecoveryCheckpoint,
+         PresentationBaseRule::RecoveryOrigin, true},
+    };
+    const auto found = std::find_if(
+        std::begin(rules), std::end(rules), [&](const auto& rule) {
+            return rule.kind == requestedKind;
+        });
+    if (found == std::end(rules) || !returnedKind ||
+        *returnedKind != requestedKind || !authorityCurrent ||
+        candidateSequence <= 0)
+        return false;
+    const bool baseValid = found->baseRule == PresentationBaseRule::ExactRetained
+        ? retainedHostSequence > 0 &&
+            requestBaseSequence == retainedHostSequence &&
+            recoveryOriginSequence == 0 &&
+            candidateSequence > requestBaseSequence
+        : found->baseRule == PresentationBaseRule::Zero
+            ? requestBaseSequence == 0 && recoveryOriginSequence == 0 &&
+                candidateSequence > retainedHostSequence
+            : requestBaseSequence == 0 && retainedHostSequence > 0 &&
+                recoveryOriginSequence == retainedHostSequence &&
+                candidateSequence > recoveryOriginSequence;
+    return baseValid && (found->requireFreshVirtualWindowBaseline
+        ? freshWindowBaselineValid
+        : ordinaryWindowTransitionValid);
+}
+
 } // namespace
 
 WidgetSessionCoordinator::WidgetSessionCoordinator(
@@ -170,11 +224,16 @@ std::optional<WidgetSnapshot> WidgetSessionCoordinator::EstablishPresentationFor
     auto started = operations_.ensureStarted({});
     if (!started.value || !*started.value) return std::nullopt;
     const auto* retained = Snapshot(widgetId);
-    const bool allowUpdate = retained && retained->sequence > 0 &&
+    const bool hasIncrementalBase = retained && retained->sequence > 0 &&
         retained->instanceId == descriptor->instanceId &&
         !retained->documentJson.empty();
+    const auto transactionKind = hasIncrementalBase
+        ? WidgetPresentationTransactionKind::IncrementalUpdate
+        : WidgetPresentationTransactionKind::OrdinaryCheckpoint;
+    const auto baseSequence = hasIncrementalBase ? retained->sequence : 0;
     auto established = operations_.establish(
-        {}, widgetId, state, allowUpdate ? retained->sequence : 0, allowUpdate);
+        {}, widgetId, state, baseSequence, transactionKind,
+        0);
     if (!established.value ||
         established.value->checkpoint.has_value() ==
             established.value->update.has_value())
@@ -190,7 +249,16 @@ std::optional<WidgetSnapshot> WidgetSessionCoordinator::EstablishPresentationFor
         candidate = std::move(materialized.value->snapshot);
     }
     if (!candidate || candidate->instanceId != descriptor->instanceId ||
-        !AdmitVirtualWindowTransition(retained, *candidate))
+        !AdmitPresentationTransaction(
+            transactionKind,
+            established.value->transactionKind,
+            retained ? retained->sequence : 0,
+            established.value->requestBaseSequence,
+            established.value->recoveryOriginSequence,
+            candidate->sequence,
+            established.value->requestBaseSequence == baseSequence,
+            AdmitVirtualWindowTransition(retained, *candidate),
+            AdmitVirtualWindowTransition(nullptr, *candidate)))
         return std::nullopt;
     const auto id = std::wstring(widgetId);
     snapshots_.insert_or_assign(id, *candidate);
@@ -388,8 +456,10 @@ std::vector<WidgetSessionEvent> WidgetSessionCoordinator::TakeEvents() {
                 auto fallback = MakeRequest(
                     RequestKind::Snapshot, request.widgetId,
                     request.lifecycle, request.correlationId);
-                fallback.allowUpdate = false;
+                fallback.transactionKind =
+                    WidgetPresentationTransactionKind::OrdinaryCheckpoint;
                 fallback.baseSequence = 0;
+                fallback.recoveryOriginSequence = 0;
                 const auto queued = Queue(fallback);
                 if (queued.accepted()) {
                     MarkRefreshInFlight(request.widgetId, queued.requestId);
@@ -410,7 +480,7 @@ std::vector<WidgetSessionEvent> WidgetSessionCoordinator::TakeEvents() {
                         : std::move(updateError));
             }
         }
-        const bool snapshotProtocolCurrent =
+        const bool snapshotIdentityCurrent =
             (request.kind != RequestKind::Establish &&
              request.kind != RequestKind::Snapshot) ||
             (completion.snapshot && completionDescriptor &&
@@ -420,6 +490,14 @@ std::vector<WidgetSessionEvent> WidgetSessionCoordinator::TakeEvents() {
                  request.expectedRuntimeGeneration &&
              completionDescriptor->presentationGeneration ==
                  request.expectedPresentationGeneration);
+        const bool transactionAuthorityCurrent =
+            (request.kind != RequestKind::Establish &&
+             request.kind != RequestKind::Snapshot) ||
+            (completion.snapshot &&
+             completion.transactionKind == request.transactionKind &&
+             completion.responseBaseSequence == request.baseSequence &&
+             completion.responseRecoveryOriginSequence ==
+                 request.recoveryOriginSequence);
         const auto disposition = completion.cancelled
             ? WidgetSessionCompletionDisposition::Cancelled
             : !runtimeCurrent && !primaryStartFailure
@@ -428,7 +506,7 @@ std::vector<WidgetSessionEvent> WidgetSessionCoordinator::TakeEvents() {
                     ? WidgetSessionCompletionDisposition::WrongLifecycle
                     : completion.failure.stage != WidgetSessionFailureStage::None
                         ? WidgetSessionCompletionDisposition::Failed
-                        : !snapshotProtocolCurrent
+                        : !snapshotIdentityCurrent || !transactionAuthorityCurrent
                             ? WidgetSessionCompletionDisposition::Failed
                         : WidgetSessionCompletionDisposition::Admitted;
         bool completionTraceEmitted{};
@@ -436,15 +514,16 @@ std::vector<WidgetSessionEvent> WidgetSessionCoordinator::TakeEvents() {
             completion.failure.stage != WidgetSessionFailureStage::None &&
             completion.requestFailureCategory ==
                 WidgetBridgeRequestFailureCategory::StalePresentationBase &&
-            IsPresentationChanging(request.kind) && request.allowUpdate &&
+            IsPresentationChanging(request.kind) &&
+            request.transactionKind ==
+                WidgetPresentationTransactionKind::IncrementalUpdate &&
             request.baseSequence > 0) {
             Request retry = request;
             retry.id = ++nextRequestId_;
-            retry.checkpointAdmissionProvenance =
-                CheckpointAdmissionProvenance::TypedStaleBaseRecovery;
+            retry.transactionKind =
+                WidgetPresentationTransactionKind::RecoveryCheckpoint;
             retry.recoveryOriginSequence = request.baseSequence;
             retry.baseSequence = 0;
-            retry.allowUpdate = false;
             retry.queuedAt = timestamp_();
             retry.startedAt = 0;
             EmitTrace(
@@ -512,7 +591,7 @@ std::vector<WidgetSessionEvent> WidgetSessionCoordinator::TakeEvents() {
             continue;
         }
         if (request.kind == RequestKind::Establish || request.kind == RequestKind::Snapshot) {
-            if (!snapshotProtocolCurrent) {
+            if (!snapshotIdentityCurrent) {
                 HardRemoveCheckpoint(request.widgetId);
                 ReleasePresentationAdmission(request);
                 auto failure = FailureFrom(
@@ -526,20 +605,36 @@ std::vector<WidgetSessionEvent> WidgetSessionCoordinator::TakeEvents() {
                 events.push_back(std::move(event));
                 continue;
             }
+            if (!transactionAuthorityCurrent) {
+                CompleteRefresh(request, false);
+                ReleasePresentationAdmission(request);
+                auto failure = FailureFrom(
+                    WidgetSessionFailureStage::Protocol,
+                    L"The worker returned mismatched presentation transaction authority.");
+                failures_.insert_or_assign(request.widgetId, failure);
+                auto event = makeEvent(WidgetSessionEventKind::Failed);
+                event.failure = failure;
+                event.completionDisposition =
+                    WidgetSessionCompletionDisposition::Failed;
+                events.push_back(std::move(event));
+                continue;
+            }
             const auto* retainedCheckpoint = Snapshot(request.widgetId);
-            const bool recoveryCheckpoint =
-                request.checkpointAdmissionProvenance ==
-                    CheckpointAdmissionProvenance::TypedStaleBaseRecovery;
-            const bool transitionAdmitted = recoveryCheckpoint
-                ? request.recoveryOriginSequence > 0 &&
-                    request.baseSequence == 0 && !request.allowUpdate &&
-                    retainedCheckpoint &&
-                    retainedCheckpoint->sequence == request.recoveryOriginSequence &&
-                    completion.snapshot->sequence > 0 &&
-                    completion.snapshot->sequence > request.recoveryOriginSequence &&
-                    AdmitVirtualWindowTransition(nullptr, *completion.snapshot)
-                : AdmitVirtualWindowTransition(
-                    retainedCheckpoint, *completion.snapshot);
+            const auto retainedHostSequence = retainedCheckpoint
+                ? retainedCheckpoint->sequence
+                : 0;
+            const bool transitionAdmitted = AdmitPresentationTransaction(
+                request.transactionKind,
+                completion.transactionKind,
+                retainedHostSequence,
+                request.baseSequence,
+                request.recoveryOriginSequence,
+                completion.snapshot->sequence,
+                completionCurrent && runtimeCurrent && snapshotIdentityCurrent &&
+                    transactionAuthorityCurrent,
+                AdmitVirtualWindowTransition(
+                    retainedCheckpoint, *completion.snapshot),
+                AdmitVirtualWindowTransition(nullptr, *completion.snapshot));
             if (!transitionAdmitted) {
                 CompleteRefresh(request, false);
                 ReleasePresentationAdmission(request);
@@ -850,9 +945,7 @@ bool WidgetSessionCoordinator::SamePresentationAuthority(
         left.expectedRuntimeGeneration == right.expectedRuntimeGeneration &&
         left.expectedPresentationGeneration == right.expectedPresentationGeneration &&
         left.baseSequence == right.baseSequence &&
-        left.allowUpdate == right.allowUpdate &&
-        left.checkpointAdmissionProvenance ==
-            right.checkpointAdmissionProvenance &&
+        left.transactionKind == right.transactionKind &&
         left.recoveryOriginSequence == right.recoveryOriginSequence;
 }
 
@@ -1006,7 +1099,8 @@ WidgetSessionCoordinator::Request WidgetSessionCoordinator::MakeRequest(
                 checkpoint->instanceId == request.expectedInstanceId &&
                 !checkpoint->documentJson.empty()) {
                 request.baseSequence = checkpoint->sequence;
-                request.allowUpdate = true;
+                request.transactionKind =
+                    WidgetPresentationTransactionKind::IncrementalUpdate;
             }
         }
     }
@@ -1145,8 +1239,14 @@ WidgetSessionCoordinator::Completion WidgetSessionCoordinator::Execute(
             if (!operations_.establish) break;
             auto result = operations_.establish(
                 stopToken, completion.request.widgetId, completion.request.lifecycle,
-                completion.request.baseSequence, completion.request.allowUpdate);
+                completion.request.baseSequence,
+                completion.request.transactionKind,
+                completion.request.recoveryOriginSequence);
             if (result.value) {
+                completion.transactionKind = result.value->transactionKind;
+                completion.responseBaseSequence = result.value->requestBaseSequence;
+                completion.responseRecoveryOriginSequence =
+                    result.value->recoveryOriginSequence;
                 completion.snapshot = std::move(result.value->checkpoint);
                 completion.update = std::move(result.value->update);
                 if (completion.snapshot.has_value() == completion.update.has_value()) {
@@ -1169,8 +1269,13 @@ WidgetSessionCoordinator::Completion WidgetSessionCoordinator::Execute(
             auto result = operations_.getSnapshot(
                 stopToken, completion.request.widgetId,
                 completion.request.baseSequence,
-                completion.request.allowUpdate);
+                completion.request.transactionKind,
+                completion.request.recoveryOriginSequence);
             if (result.value) {
+                completion.transactionKind = result.value->transactionKind;
+                completion.responseBaseSequence = result.value->requestBaseSequence;
+                completion.responseRecoveryOriginSequence =
+                    result.value->recoveryOriginSequence;
                 completion.snapshot = std::move(result.value->checkpoint);
                 completion.update = std::move(result.value->update);
                 if (completion.snapshot.has_value() == completion.update.has_value()) {

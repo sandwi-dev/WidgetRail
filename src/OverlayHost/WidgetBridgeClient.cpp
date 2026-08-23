@@ -229,6 +229,46 @@ std::wstring OptionalString(const JsonObject& object, const wchar_t* name) {
     return std::wstring(std::wstring_view(object.GetNamedString(name)));
 }
 
+std::wstring_view PresentationTransactionKindName(
+    const WidgetPresentationTransactionKind kind) noexcept {
+    switch (kind) {
+    case WidgetPresentationTransactionKind::IncrementalUpdate:
+        return L"incrementalUpdate";
+    case WidgetPresentationTransactionKind::OrdinaryCheckpoint:
+        return L"ordinaryCheckpoint";
+    case WidgetPresentationTransactionKind::RecoveryCheckpoint:
+        return L"recoveryCheckpoint";
+    }
+    return {};
+}
+
+std::optional<WidgetPresentationTransactionKind> ParsePresentationTransactionKind(
+    const JsonObject& object) {
+    const auto value = OptionalString(object, L"transactionKind");
+    if (value == L"incrementalUpdate")
+        return WidgetPresentationTransactionKind::IncrementalUpdate;
+    if (value == L"ordinaryCheckpoint")
+        return WidgetPresentationTransactionKind::OrdinaryCheckpoint;
+    if (value == L"recoveryCheckpoint")
+        return WidgetPresentationTransactionKind::RecoveryCheckpoint;
+    return std::nullopt;
+}
+
+bool ValidPresentationTransaction(
+    const WidgetPresentationTransactionKind kind,
+    const long long baseSequence,
+    const long long recoveryOriginSequence) noexcept {
+    switch (kind) {
+    case WidgetPresentationTransactionKind::IncrementalUpdate:
+        return baseSequence > 0 && recoveryOriginSequence == 0;
+    case WidgetPresentationTransactionKind::OrdinaryCheckpoint:
+        return baseSequence == 0 && recoveryOriginSequence == 0;
+    case WidgetPresentationTransactionKind::RecoveryCheckpoint:
+        return baseSequence == 0 && recoveryOriginSequence > 0;
+    }
+    return false;
+}
+
 bool IsIdentifier(const std::wstring_view value) {
     return !value.empty() && value.size() <= kMaximumIdentifierLength &&
            std::all_of(value.begin(), value.end(), [](const wchar_t character) {
@@ -2862,15 +2902,16 @@ WidgetBridgeClient::EstablishWidgetPresentation(
     const std::wstring_view widgetId,
     const std::wstring_view state,
     const long long baseSequence,
-    const bool allowUpdate) {
+    const WidgetPresentationTransactionKind transactionKind,
+    const long long recoveryOriginSequence) {
     std::scoped_lock lock(requestMutex_);
     lastRuntimeFailure_.reset();
     lastRequestFailureCategory_ = WidgetBridgeRequestFailureCategory::None;
     const bool validState = state == L"visible" || state == L"interactive";
     if (pipe_ == INVALID_HANDLE_VALUE || widgetId.empty() ||
         widgetId.size() > kMaximumIdentifierLength || !IsIdentifier(widgetId) ||
-        !validState || baseSequence < 0 ||
-        allowUpdate != (baseSequence > 0)) {
+        !validState || !ValidPresentationTransaction(
+            transactionKind, baseSequence, recoveryOriginSequence)) {
         if (pipe_ != INVALID_HANDLE_VALUE)
             Fail(L"Widget presentation establishment request is invalid.");
         return std::nullopt;
@@ -2880,16 +2921,22 @@ WidgetBridgeClient::EstablishWidgetPresentation(
         payload.Insert(L"widgetId", JsonValue::CreateStringValue(winrt::hstring(widgetId)));
         payload.Insert(L"state", JsonValue::CreateStringValue(winrt::hstring(state)));
         JsonObject presentation;
+        const bool incremental = transactionKind ==
+            WidgetPresentationTransactionKind::IncrementalUpdate;
         JsonObject capabilities;
         capabilities.Insert(L"maximumProtocolVersion", JsonValue::CreateNumberValue(
-            allowUpdate ? kAtomicPresentationUpdateVersion : 0));
+            incremental ? kAtomicPresentationUpdateVersion : 0));
         capabilities.Insert(L"maximumOperationsPerBatch", JsonValue::CreateNumberValue(
-            allowUpdate ? static_cast<double>(kMaximumPresentationUpdateOperations) : 0));
+            incremental ? static_cast<double>(kMaximumPresentationUpdateOperations) : 0));
         capabilities.Insert(L"maximumBatchBytes", JsonValue::CreateNumberValue(
-            allowUpdate ? static_cast<double>(kMaximumPresentationUpdateBytes) : 0));
+            incremental ? static_cast<double>(kMaximumPresentationUpdateBytes) : 0));
         presentation.Insert(L"capabilities", capabilities);
         presentation.Insert(L"baseSequence", JsonValue::CreateNumberValue(
             static_cast<double>(baseSequence)));
+        presentation.Insert(L"transactionKind", JsonValue::CreateStringValue(
+            winrt::hstring(PresentationTransactionKindName(transactionKind))));
+        presentation.Insert(L"recoveryOriginSequence", JsonValue::CreateNumberValue(
+            static_cast<double>(recoveryOriginSequence)));
         payload.Insert(L"presentation", presentation);
         const long long requestId = ++nextRequestId_;
         JsonObject envelope;
@@ -2932,7 +2979,7 @@ WidgetBridgeClient::EstablishWidgetPresentation(
                 return std::nullopt;
             }
             if ((type != L"snapshot" &&
-                 !(allowUpdate && type == L"presentation-update")) ||
+                 !(incremental && type == L"presentation-update")) ||
                 !response.HasKey(L"payload") ||
                 response.GetNamedValue(L"payload").ValueType() != JsonValueType::Object) {
                 Fail(L"WidgetBridge returned an unexpected presentation response.");
@@ -2943,8 +2990,26 @@ WidgetBridgeClient::EstablishWidgetPresentation(
                 Fail(L"WidgetBridge established presentation for a different widget ID.");
                 return std::nullopt;
             }
+            const auto responseTransactionKind =
+                ParsePresentationTransactionKind(responsePayload);
+            if (!responseTransactionKind || *responseTransactionKind != transactionKind) {
+                Fail(L"WidgetBridge returned a different presentation transaction kind.");
+                return std::nullopt;
+            }
+            const auto responseBaseSequence = RequiredIntegral(
+                responsePayload, L"baseSequence");
+            const auto responseRecoveryOriginSequence = RequiredIntegral(
+                responsePayload, L"recoveryOriginSequence");
+            if (responseBaseSequence != baseSequence ||
+                responseRecoveryOriginSequence != recoveryOriginSequence) {
+                Fail(L"WidgetBridge returned different presentation transaction authority.");
+                return std::nullopt;
+            }
             if (type == L"presentation-update") {
                 WidgetPresentationPublication publication;
+                publication.transactionKind = transactionKind;
+                publication.requestBaseSequence = baseSequence;
+                publication.recoveryOriginSequence = recoveryOriginSequence;
                 publication.update = ParsePresentationUpdatePayload(responsePayload);
                 lastRuntimeFailure_.reset();
                 lastError_.clear();
@@ -2959,6 +3024,9 @@ WidgetBridgeClient::EstablishWidgetPresentation(
             lastRuntimeFailure_.reset();
             lastError_.clear();
             WidgetPresentationPublication publication;
+            publication.transactionKind = transactionKind;
+            publication.requestBaseSequence = baseSequence;
+            publication.recoveryOriginSequence = recoveryOriginSequence;
             publication.checkpoint = std::move(snapshot);
             return publication;
         }
@@ -3043,15 +3111,18 @@ std::optional<bool> WidgetBridgeClient::RestartWidget(
 std::optional<WidgetPresentationPublication> WidgetBridgeClient::GetSnapshot(
     const std::wstring_view widgetId,
     const long long baseSequence,
-    const bool allowUpdate) {
+    const WidgetPresentationTransactionKind transactionKind,
+    const long long recoveryOriginSequence) {
     std::scoped_lock lock(requestMutex_);
     lastRequestFailureCategory_ = WidgetBridgeRequestFailureCategory::None;
-    if (pipe_ == INVALID_HANDLE_VALUE || baseSequence < 0 ||
-        (allowUpdate && baseSequence == 0)) return std::nullopt;
+    if (pipe_ == INVALID_HANDLE_VALUE || !ValidPresentationTransaction(
+            transactionKind, baseSequence, recoveryOriginSequence)) return std::nullopt;
     try {
         JsonObject payload;
         payload.Insert(L"widgetId", JsonValue::CreateStringValue(winrt::hstring(widgetId)));
-        if (allowUpdate) {
+        const bool incremental = transactionKind ==
+            WidgetPresentationTransactionKind::IncrementalUpdate;
+        if (incremental) {
             JsonObject capabilities;
             capabilities.Insert(L"maximumProtocolVersion",
                 JsonValue::CreateNumberValue(kAtomicPresentationUpdateVersion));
@@ -3065,6 +3136,10 @@ std::optional<WidgetPresentationPublication> WidgetBridgeClient::GetSnapshot(
             payload.Insert(L"baseSequence", JsonValue::CreateNumberValue(
                 static_cast<double>(baseSequence)));
         }
+        payload.Insert(L"transactionKind", JsonValue::CreateStringValue(
+            winrt::hstring(PresentationTransactionKindName(transactionKind))));
+        payload.Insert(L"recoveryOriginSequence", JsonValue::CreateNumberValue(
+            static_cast<double>(recoveryOriginSequence)));
         const long long requestId = ++nextRequestId_;
         JsonObject envelope;
         envelope.Insert(L"protocolVersion", JsonValue::CreateNumberValue(1));
@@ -3096,7 +3171,7 @@ std::optional<WidgetPresentationPublication> WidgetBridgeClient::GetSnapshot(
                 return std::nullopt;
             }
             if (type != L"snapshot" &&
-                !(allowUpdate && type == L"presentation-update")) {
+                !(incremental && type == L"presentation-update")) {
                 Fail(L"WidgetBridge returned an unexpected snapshot response.");
                 return std::nullopt;
             }
@@ -3105,8 +3180,26 @@ std::optional<WidgetPresentationPublication> WidgetBridgeClient::GetSnapshot(
                 Fail(L"WidgetBridge returned a snapshot for a different widget ID.");
                 return std::nullopt;
             }
+            const auto responseTransactionKind =
+                ParsePresentationTransactionKind(responsePayload);
+            if (!responseTransactionKind || *responseTransactionKind != transactionKind) {
+                Fail(L"WidgetBridge returned a different presentation transaction kind.");
+                return std::nullopt;
+            }
+            const auto responseBaseSequence = RequiredIntegral(
+                responsePayload, L"baseSequence");
+            const auto responseRecoveryOriginSequence = RequiredIntegral(
+                responsePayload, L"recoveryOriginSequence");
+            if (responseBaseSequence != baseSequence ||
+                responseRecoveryOriginSequence != recoveryOriginSequence) {
+                Fail(L"WidgetBridge returned different presentation transaction authority.");
+                return std::nullopt;
+            }
             if (type == L"presentation-update") {
                 WidgetPresentationPublication publication;
+                publication.transactionKind = transactionKind;
+                publication.requestBaseSequence = baseSequence;
+                publication.recoveryOriginSequence = recoveryOriginSequence;
                 publication.update = ParsePresentationUpdatePayload(responsePayload);
                 lastError_.clear();
                 return publication;
@@ -3117,6 +3210,9 @@ std::optional<WidgetPresentationPublication> WidgetBridgeClient::GetSnapshot(
                                     responsePayload.GetNamedObject(L"renderStyles"));
             }
             WidgetPresentationPublication publication;
+            publication.transactionKind = transactionKind;
+            publication.requestBaseSequence = baseSequence;
+            publication.recoveryOriginSequence = recoveryOriginSequence;
             publication.checkpoint = std::move(snapshot);
             lastError_.clear();
             return publication;

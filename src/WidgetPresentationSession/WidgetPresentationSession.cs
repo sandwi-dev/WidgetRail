@@ -172,7 +172,10 @@ public sealed class WidgetPresentationSession : IAsyncDisposable
                 state,
                 new BridgePresentationEstablishment(
                     PresentationUpdateCapabilities.None,
-                    BaseSequence: 0)),
+                    BaseSequence: 0,
+                    TransactionKind:
+                        WidgetPresentationTransactionKind.OrdinaryCheckpoint,
+                    RecoveryOriginSequence: 0)),
             BridgeMessageTypes.Snapshot,
             cancellationToken).ConfigureAwait(false);
         return PublishSnapshot(target.Descriptor, sessionGeneration, response.Payload);
@@ -207,7 +210,13 @@ public sealed class WidgetPresentationSession : IAsyncDisposable
         var descriptor = ValidateAuthority(authority);
         var response = await RequestAsync(
             BridgeMessageTypes.GetSnapshot,
-            new WidgetIdRequest(authority.WidgetId),
+            new BridgePresentationRequest(
+                authority.WidgetId,
+                PresentationUpdateCapabilities.None,
+                BaseSequence: 0,
+                TransactionKind:
+                    WidgetPresentationTransactionKind.OrdinaryCheckpoint,
+                RecoveryOriginSequence: 0),
             BridgeMessageTypes.Snapshot,
             cancellationToken).ConfigureAwait(false);
         return PublishSnapshot(descriptor, authority.SessionGeneration, response.Payload);
@@ -770,9 +779,18 @@ public sealed class WidgetPresentationSession : IAsyncDisposable
         long sessionGeneration,
         JsonElement payload)
     {
-        RequireObjectProperties(payload, "widgetId", "snapshot", "renderStyles");
+        RequireObjectProperties(
+            payload, "widgetId", "transactionKind", "baseSequence",
+            "recoveryOriginSequence", "snapshot", "renderStyles");
         if (!string.Equals(ReadString(payload, "widgetId"), descriptor.Id, StringComparison.Ordinal))
             throw new BridgeProtocolException("WidgetBridge returned a snapshot for another widget.");
+        if (!string.Equals(
+                ReadString(payload, "transactionKind"), "ordinaryCheckpoint",
+                StringComparison.Ordinal) ||
+            payload.GetProperty("baseSequence").GetInt64() != 0 ||
+            payload.GetProperty("recoveryOriginSequence").GetInt64() != 0)
+            throw new BridgeProtocolException(
+                "WidgetBridge returned different checkpoint transaction authority.");
         var snapshot = SnapshotJson.Deserialize(
             System.Text.Encoding.UTF8.GetBytes(payload.GetProperty("snapshot").GetRawText()));
         if (!string.Equals(snapshot.WidgetInstanceId, descriptor.InstanceId, StringComparison.Ordinal))

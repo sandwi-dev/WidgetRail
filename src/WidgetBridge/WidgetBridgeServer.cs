@@ -374,9 +374,11 @@ public sealed class WidgetBridgeServer : IAsyncDisposable
             var capabilities = snapshotRequest.Capabilities ??
                 PresentationUpdateCapabilities.None;
             using var snapshotPublication = await _registry.GetPresentationAsync(
-                    snapshotRequest.WidgetId,
-                    capabilities,
-                    snapshotRequest.BaseSequence,
+                snapshotRequest.WidgetId,
+                snapshotRequest.TransactionKind,
+                capabilities,
+                snapshotRequest.BaseSequence,
+                snapshotRequest.RecoveryOriginSequence,
                     _sessionCancellation,
                     cancellationToken)
                 .ConfigureAwait(false);
@@ -459,8 +461,10 @@ public sealed class WidgetBridgeServer : IAsyncDisposable
                     .EstablishPresentationAsync(
                         lifecycleRequest.WidgetId,
                         lifecycleRequest.State,
+                        establishment.TransactionKind,
                         capabilities,
                         establishment.BaseSequence,
+                        establishment.RecoveryOriginSequence,
                         _sessionCancellation,
                         cancellationToken)
                     .ConfigureAwait(false);
@@ -798,6 +802,9 @@ public sealed class WidgetBridgeServer : IAsyncDisposable
         long requestId,
         string widgetId,
         BridgeClientSnapshot snapshotResult,
+        WidgetPresentationTransactionKind transactionKind,
+        long baseSequence,
+        long recoveryOriginSequence,
         CancellationToken cancellationToken)
     {
         var snapshot = snapshotResult.Snapshot;
@@ -816,6 +823,9 @@ public sealed class WidgetBridgeServer : IAsyncDisposable
             Payload = BridgeJson.ToElement(new
             {
                 widgetId,
+                transactionKind,
+                baseSequence,
+                recoveryOriginSequence,
                 snapshot = document.RootElement.Clone(),
                 renderStyles,
             }),
@@ -834,6 +844,9 @@ public sealed class WidgetBridgeServer : IAsyncDisposable
                 requestId,
                 widgetId,
                 new BridgeClientSnapshot(presentation.Configured, presentation.Snapshot),
+                presentation.TransactionKind,
+                presentation.RequestBaseSequence,
+                presentation.RecoveryOriginSequence,
                 cancellationToken).ConfigureAwait(false);
             return;
         }
@@ -853,6 +866,9 @@ public sealed class WidgetBridgeServer : IAsyncDisposable
             Payload = BridgeJson.ToElement(new
             {
                 widgetId,
+                transactionKind = presentation.TransactionKind,
+                baseSequence = presentation.RequestBaseSequence,
+                recoveryOriginSequence = presentation.RecoveryOriginSequence,
                 update = document.RootElement.Clone(),
                 renderStyles,
             }),

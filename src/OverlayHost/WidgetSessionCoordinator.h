@@ -184,12 +184,14 @@ struct WidgetSessionOperations final {
     std::function<WidgetSessionOperationResult<std::vector<WidgetDescriptor>>(
         std::stop_token)> listWidgets;
     std::function<WidgetSessionOperationResult<WidgetPresentationPublication>(
-        std::stop_token, std::wstring_view, WidgetLifecycleState, long long, bool)>
+        std::stop_token, std::wstring_view, WidgetLifecycleState, long long,
+        WidgetPresentationTransactionKind, long long)>
         establish;
     std::function<WidgetSessionOperationResult<bool>(
         std::stop_token, std::wstring_view, WidgetLifecycleState)> setLifecycle;
     std::function<WidgetSessionOperationResult<WidgetPresentationPublication>(
-        std::stop_token, std::wstring_view, long long, bool)> getSnapshot;
+        std::stop_token, std::wstring_view, long long,
+        WidgetPresentationTransactionKind, long long)> getSnapshot;
     std::function<WidgetSessionOperationResult<WidgetPresentationMaterialization>(
         const WidgetSnapshot&, const WidgetPresentationUpdate&, std::wstring_view)>
         materializeUpdate;
@@ -289,11 +291,6 @@ public:
 private:
     using RequestKind = WidgetSessionRequestKind;
 
-    enum class CheckpointAdmissionProvenance {
-        Ordinary,
-        TypedStaleBaseRecovery,
-    };
-
     struct QueueResult final {
         WidgetSessionTraceAction action{WidgetSessionTraceAction::Skipped};
         WidgetSessionTraceReason reason{WidgetSessionTraceReason::None};
@@ -318,9 +315,8 @@ private:
         std::wstring expectedRuntimeGeneration;
         std::wstring expectedPresentationGeneration;
         long long baseSequence{};
-        bool allowUpdate{};
-        CheckpointAdmissionProvenance checkpointAdmissionProvenance{
-            CheckpointAdmissionProvenance::Ordinary};
+        WidgetPresentationTransactionKind transactionKind{
+            WidgetPresentationTransactionKind::OrdinaryCheckpoint};
         long long recoveryOriginSequence{};
         std::uint64_t queuedAt{};
         std::uint64_t startedAt{};
@@ -334,6 +330,9 @@ private:
         std::optional<std::vector<WidgetDescriptor>> descriptors;
         std::optional<WidgetSnapshot> snapshot;
         std::optional<WidgetPresentationUpdate> update;
+        std::optional<WidgetPresentationTransactionKind> transactionKind;
+        long long responseBaseSequence{};
+        long long responseRecoveryOriginSequence{};
         std::optional<WidgetPresentationImpact> presentationImpact;
         std::optional<bool> acknowledged;
         std::uint64_t completedAt{};

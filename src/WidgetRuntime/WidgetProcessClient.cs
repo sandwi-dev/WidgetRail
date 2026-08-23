@@ -79,14 +79,16 @@ public sealed class WidgetProcessClient : IAsyncDisposable
             PresentationUpdateCapabilities.None,
             presentationGeneration: null,
             baseSequence: 0,
-            requireCheckpoint: true,
+            WidgetPresentationTransactionKind.OrdinaryCheckpoint,
+            recoveryOriginSequence: 0,
             cancellationToken).ConfigureAwait(false)).Snapshot;
 
     internal async Task<WidgetRuntimePresentation> GetPresentationAsync(
         PresentationUpdateCapabilities capabilities,
         string? presentationGeneration,
         long baseSequence,
-        bool requireCheckpoint,
+        WidgetPresentationTransactionKind transactionKind,
+        long recoveryOriginSequence,
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(capabilities);
@@ -94,31 +96,59 @@ public sealed class WidgetProcessClient : IAsyncDisposable
         try
         {
             var cached = _materializedSnapshot;
-            var canUpdate = !requireCheckpoint && capabilities.SupportsAtomicUpdates &&
+            var incrementalCurrent = transactionKind ==
+                WidgetPresentationTransactionKind.IncrementalUpdate &&
+                capabilities.SupportsAtomicUpdates &&
                 cached is not null && cached.Sequence == baseSequence &&
                 IsPresentationGeneration(presentationGeneration);
+            var checkpoint = transactionKind is
+                WidgetPresentationTransactionKind.OrdinaryCheckpoint or
+                WidgetPresentationTransactionKind.RecoveryCheckpoint;
+            if ((!incrementalCurrent && !checkpoint) ||
+                (transactionKind == WidgetPresentationTransactionKind.OrdinaryCheckpoint &&
+                    recoveryOriginSequence != 0) ||
+                (transactionKind == WidgetPresentationTransactionKind.RecoveryCheckpoint &&
+                    recoveryOriginSequence <= 0))
+                throw new WidgetProtocolViolationException(
+                    "Presentation transaction authority is incomplete or malformed.");
             var request = await RequestWithSessionAsync(
                 MessageTypes.Render,
                 new RenderPayload
                 {
-                    UpdateCapabilities = canUpdate ? capabilities : PresentationUpdateCapabilities.None,
-                    BaseSequence = canUpdate ? baseSequence : 0,
-                    PresentationGeneration = canUpdate ? presentationGeneration : null,
-                    RequireCheckpoint = !canUpdate,
+                    UpdateCapabilities = incrementalCurrent
+                        ? capabilities : PresentationUpdateCapabilities.None,
+                    BaseSequence = incrementalCurrent ? baseSequence : 0,
+                    PresentationGeneration = incrementalCurrent
+                        ? presentationGeneration : null,
+                    TransactionKind = transactionKind,
+                    RecoveryOriginSequence = recoveryOriginSequence,
+                    RequireCheckpoint = !incrementalCurrent,
                 },
                 cancellationToken).ConfigureAwait(false);
             var response = request.Response;
             try
             {
+                if (response.PresentationTransactionKind is { } returnedKind &&
+                    returnedKind != transactionKind)
+                    throw new WidgetProtocolViolationException(
+                        "Worker returned a presentation for a different transaction kind.");
+                if (response.PresentationTransactionKind is not null &&
+                    (response.PresentationBaseSequence !=
+                        (incrementalCurrent ? baseSequence : 0) ||
+                     response.RecoveryOriginSequence != recoveryOriginSequence))
+                    throw new WidgetProtocolViolationException(
+                        "Worker returned different presentation transaction authority.");
                 if (response.Type == MessageTypes.Snapshot)
                 {
                     var snapshot = SnapshotJson.Deserialize(
                         Encoding.UTF8.GetBytes(response.Payload.GetRawText()));
                     DemandWidgetInstance(snapshot.WidgetInstanceId);
                     _materializedSnapshot = snapshot;
-                    return new(snapshot, null);
+                    return new(
+                        transactionKind, incrementalCurrent ? baseSequence : 0,
+                        recoveryOriginSequence, snapshot, null);
                 }
-                if (response.Type == MessageTypes.PresentationUpdate && canUpdate)
+                if (response.Type == MessageTypes.PresentationUpdate && incrementalCurrent)
                 {
                     var update = PresentationUpdateJson.Deserialize(
                         Encoding.UTF8.GetBytes(response.Payload.GetRawText()));
@@ -126,7 +156,9 @@ public sealed class WidgetProcessClient : IAsyncDisposable
                         cached!, update, presentationGeneration!);
                     DemandWidgetInstance(snapshot.WidgetInstanceId);
                     _materializedSnapshot = snapshot;
-                    return new(snapshot, update);
+                    return new(
+                        transactionKind, baseSequence, recoveryOriginSequence,
+                        snapshot, update);
                 }
                 throw new WidgetProtocolViolationException(
                     $"Expected snapshot or negotiated update, received '{response.Type}'.");

@@ -669,7 +669,8 @@ public abstract partial class Widget
         long sequence,
         long expectedBaseSequence,
         PresentationUpdateCapabilities capabilities,
-        bool requireCheckpoint)
+        WidgetPresentationTransactionKind transactionKind,
+        long recoveryOriginSequence = 0)
     {
         var previous = Volatile.Read(ref _latestSnapshot);
         var snapshot = Render().CreateSnapshot(widgetInstanceId, sequence);
@@ -679,7 +680,8 @@ public abstract partial class Widget
             presentationGeneration,
             expectedBaseSequence,
             capabilities,
-            requireCheckpoint);
+            transactionKind,
+            recoveryOriginSequence);
         Volatile.Write(ref _latestSnapshot, publication.Snapshot);
         return publication;
     }
