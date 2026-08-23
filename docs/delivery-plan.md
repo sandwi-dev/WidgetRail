@@ -24,7 +24,10 @@ historical evidence only; this file is the sole implementation authority.
   host is alive and responsive, and `startup-error.txt` is absent. Prior
   accepted PID 47948 had no top-level HWND and survived its graceful exact-PID
   signal, so the reviewer force-stopped only that verified process before the
-  refresh. DLV-285 stays held for this candidate's physical Spotify verdict.
+  refresh. Exact `--show` activation PID 69700 forwarded Show and exited;
+  Settings reached visible lifecycle under the resident owner. Windows-control
+  discovery omitted the overlay HWND, so no automated first-page claim is made.
+  DLV-285 stays held for this candidate's physical Spotify verdict.
 - DLV-318 is the exact recoverable prior accepted Release at
   `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative-dlv318-build`;
   executable SHA-256 is
