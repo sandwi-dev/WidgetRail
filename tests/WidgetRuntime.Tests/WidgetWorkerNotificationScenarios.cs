@@ -61,7 +61,6 @@ internal static class WidgetWorkerNotificationScenarios
             {
                 UpdateCapabilities = PresentationUpdateCapabilities.None,
                 BaseSequence = 0,
-                TransactionKind = WidgetPresentationTransactionKind.OrdinaryCheckpoint,
                 RequireCheckpoint = true,
             }),
         }, deadline.Token);

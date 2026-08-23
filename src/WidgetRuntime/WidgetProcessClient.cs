@@ -120,24 +120,12 @@ public sealed class WidgetProcessClient : IAsyncDisposable
                     BaseSequence = incrementalCurrent ? baseSequence : 0,
                     PresentationGeneration = incrementalCurrent
                         ? presentationGeneration : null,
-                    TransactionKind = transactionKind,
-                    RecoveryOriginSequence = recoveryOriginSequence,
                     RequireCheckpoint = !incrementalCurrent,
                 },
                 cancellationToken).ConfigureAwait(false);
             var response = request.Response;
             try
             {
-                if (response.PresentationTransactionKind is { } returnedKind &&
-                    returnedKind != transactionKind)
-                    throw new WidgetProtocolViolationException(
-                        "Worker returned a presentation for a different transaction kind.");
-                if (response.PresentationTransactionKind is not null &&
-                    (response.PresentationBaseSequence !=
-                        (incrementalCurrent ? baseSequence : 0) ||
-                     response.RecoveryOriginSequence != recoveryOriginSequence))
-                    throw new WidgetProtocolViolationException(
-                        "Worker returned different presentation transaction authority.");
                 if (response.Type == MessageTypes.Snapshot)
                 {
                     var snapshot = SnapshotJson.Deserialize(
