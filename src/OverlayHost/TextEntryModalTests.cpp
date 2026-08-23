@@ -7,6 +7,7 @@
 #include <UIAutomation.h>
 
 #include <algorithm>
+#include <atomic>
 #include <chrono>
 #include <cstdint>
 #include <iostream>
@@ -16,6 +17,10 @@
 
 namespace {
 int failures{};
+constexpr UINT kModalLoopSentinel = WM_APP + 0x37;
+std::atomic<HANDLE> modalLoopAcknowledgmentEvent{};
+std::atomic<WPARAM> modalLoopAcknowledgmentToken{};
+
 void Check(const bool value, const char* message) {
     if (!value) { ++failures; std::cerr << "FAIL: " << message << '\n'; }
 }
@@ -69,14 +74,78 @@ FocusDiagnostic CaptureFocusDiagnostic(const HWND modalWindow, const HWND owner)
     return result;
 }
 
-bool FenceWindow(const HWND window, DWORD& error) {
-    DWORD_PTR ignored{};
-    SetLastError(ERROR_SUCCESS);
-    const bool succeeded = SendMessageTimeoutW(
-        window, WM_NULL, 0, 0, SMTO_ABORTIFHUNG | SMTO_BLOCK, 2000, &ignored) != 0;
-    error = succeeded ? ERROR_SUCCESS : GetLastError();
-    return succeeded;
+LRESULT CALLBACK ModalLoopSentinelHook(
+    const int code, const WPARAM wParam, const LPARAM lParam) {
+    if (code == HC_ACTION && wParam == PM_REMOVE && lParam != 0) {
+        auto* message = reinterpret_cast<MSG*>(lParam);
+        if (!message->hwnd && message->message == kModalLoopSentinel &&
+            message->wParam == modalLoopAcknowledgmentToken.load(std::memory_order_acquire)) {
+            if (const auto event =
+                    modalLoopAcknowledgmentEvent.load(std::memory_order_acquire)) {
+                SetEvent(event);
+            }
+            message->message = WM_NULL;
+            message->wParam = 0;
+            message->lParam = 0;
+        }
+    }
+    return CallNextHookEx(nullptr, code, wParam, lParam);
 }
+
+class ModalLoopAcknowledgment final {
+public:
+    explicit ModalLoopAcknowledgment(const DWORD thread) : thread_(thread) {
+        event_ = CreateEventW(nullptr, TRUE, FALSE, nullptr);
+        if (!event_) {
+            createError_ = GetLastError();
+            return;
+        }
+        token_ = reinterpret_cast<WPARAM>(this);
+        modalLoopAcknowledgmentEvent.store(event_, std::memory_order_release);
+        modalLoopAcknowledgmentToken.store(token_, std::memory_order_release);
+        hook_ = SetWindowsHookExW(WH_GETMESSAGE, ModalLoopSentinelHook, nullptr, thread_);
+        if (!hook_) {
+            hookError_ = GetLastError();
+            return;
+        }
+        if (!PostThreadMessageW(thread_, kModalLoopSentinel, token_, 0))
+            postError_ = GetLastError();
+    }
+
+    ModalLoopAcknowledgment(const ModalLoopAcknowledgment&) = delete;
+    ModalLoopAcknowledgment& operator=(const ModalLoopAcknowledgment&) = delete;
+
+    ~ModalLoopAcknowledgment() {
+        if (hook_) UnhookWindowsHookEx(hook_);
+        modalLoopAcknowledgmentToken.store(0, std::memory_order_release);
+        modalLoopAcknowledgmentEvent.store(nullptr, std::memory_order_release);
+        if (event_) CloseHandle(event_);
+    }
+
+    [[nodiscard]] bool Wait() {
+        if (!event_ || !hook_ || postError_ != ERROR_SUCCESS) return false;
+        waitResult_ = WaitForSingleObject(event_, 2000);
+        if (waitResult_ == WAIT_FAILED) waitError_ = GetLastError();
+        return waitResult_ == WAIT_OBJECT_0;
+    }
+
+    [[nodiscard]] DWORD createError() const noexcept { return createError_; }
+    [[nodiscard]] DWORD hookError() const noexcept { return hookError_; }
+    [[nodiscard]] DWORD postError() const noexcept { return postError_; }
+    [[nodiscard]] DWORD waitResult() const noexcept { return waitResult_; }
+    [[nodiscard]] DWORD waitError() const noexcept { return waitError_; }
+
+private:
+    DWORD thread_{};
+    HANDLE event_{};
+    HHOOK hook_{};
+    WPARAM token_{};
+    DWORD createError_{};
+    DWORD hookError_{};
+    DWORD postError_{};
+    DWORD waitResult_{WAIT_FAILED};
+    DWORD waitError_{};
+};
 
 std::wstring WindowText(const HWND window) {
     const int length = GetWindowTextLengthW(window);
@@ -384,8 +453,9 @@ int wmain() {
             "active modal theme owns live-buffer foreground and control background");
         ReleaseDC(edit, editDc);
 
-        DWORD focusFenceError{};
-        const bool focusFenceSucceeded = FenceWindow(window, focusFenceError);
+        ModalLoopAcknowledgment modalLoopAcknowledgment(
+            GetWindowThreadProcessId(window, nullptr));
+        const bool modalLoopAcknowledged = modalLoopAcknowledgment.Wait();
         const bool initialFocusReached =
             WindowText(CurrentFocus(window)) == L"q";
         const auto initialFocusDiagnostic = CaptureFocusDiagnostic(window, owner);
@@ -412,12 +482,16 @@ int wmain() {
                 << L" owner-enabled=" << initialFocusDiagnostic.ownerEnabled
                 << L" modal-foreground=" << initialFocusDiagnostic.modalForeground
                 << L" owner-foreground=" << initialFocusDiagnostic.ownerForeground
-                << L" focus-fence=" << focusFenceSucceeded
-                << L" focus-fence-error=" << focusFenceError
+                << L" modal-loop-acknowledged=" << modalLoopAcknowledged
+                << L" sentinel-create-error=" << modalLoopAcknowledgment.createError()
+                << L" sentinel-hook-error=" << modalLoopAcknowledgment.hookError()
+                << L" sentinel-post-error=" << modalLoopAcknowledgment.postError()
+                << L" sentinel-wait-result=" << modalLoopAcknowledgment.waitResult()
+                << L" sentinel-wait-error=" << modalLoopAcknowledgment.waitError()
                 << L" controller-transition=" << controllerFocusReached << L'\n';
         }
-        Check(focusFenceSucceeded,
-            "modal UI thread completes initial focus establishment within two seconds");
+        Check(modalLoopAcknowledged,
+            "modal UI thread enters its message loop within two seconds");
         Check(initialFocusReached, "modal opens with one keyboard key focused");
         Check(controllerFocusReached,
             "D-pad reaches the adjacent key");
