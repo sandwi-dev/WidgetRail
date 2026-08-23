@@ -10,12 +10,6 @@ public sealed record WidgetView(
     string? ActiveInputScopeId = null,
     WidgetSurfaceHints? Surface = null)
 {
-    /// <summary>
-    /// Requests one package-declared host-owned advanced presentation for this
-    /// immutable view. Omission keeps the ordinary declarative presentation.
-    /// </summary>
-    public WidgetAdvancedPresentationView? AdvancedPresentation { get; init; }
-
     public ViewSnapshot CreateSnapshot(string widgetInstanceId, long sequence)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(widgetInstanceId);
@@ -30,7 +24,6 @@ public sealed record WidgetView(
             InitialFocusId = InitialFocusId,
             QuickActions = QuickActions?.ToArray() ?? [],
             Surface = Surface,
-            AdvancedPresentation = AdvancedPresentation,
             Root = Root.ToProtocolNode(),
         };
         var errors = ViewSnapshotValidator.Validate(snapshot);
@@ -73,10 +66,6 @@ public sealed record WidgetView(
                 required = Math.Max(required, ProtocolConstants.VirtualCollectionWindowVersion);
             if (ContainsTextEntry(Root))
                 required = Math.Max(required, ProtocolConstants.TextEntryVersion);
-            if (AdvancedPresentation is not null ||
-                ContainsAdvancedPresentationSlot(Root))
-                required = Math.Max(
-                    required, ProtocolConstants.AdvancedPresentationVersion);
             return required;
         }
     }
@@ -93,20 +82,6 @@ public sealed record WidgetView(
         CollectionItemElement item => ContainsVirtualCollectionWindow(item.Child),
         _ => false,
     };
-
-    private static bool ContainsAdvancedPresentationSlot(WidgetElement element) =>
-        element switch
-        {
-            AdvancedPresentationSlotElement => true,
-            CollectionItemElement item => ContainsAdvancedPresentationSlot(item.Child),
-            ResponsiveBranchElement branch => ContainsAdvancedPresentationSlot(branch.Child),
-            StackElement stack => stack.Children.Any(ContainsAdvancedPresentationSlot),
-            RowElement row => row.Children.Any(ContainsAdvancedPresentationSlot),
-            ScrollElement scroll => scroll.Children.Any(ContainsAdvancedPresentationSlot),
-            ActionSurfaceElement surface => surface.Children.Any(ContainsAdvancedPresentationSlot),
-            GridElement grid => grid.Children.Any(ContainsAdvancedPresentationSlot),
-            _ => false,
-        };
 
     private static bool ContainsTextEntry(WidgetElement element) => element switch
     {

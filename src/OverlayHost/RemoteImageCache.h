@@ -140,9 +140,8 @@ public:
     [[nodiscard]] std::shared_ptr<const RemoteDecodedImage> GetReadyImage(
         std::wstring_view key);
 
-    /// Canonical host-only key shared by the ordinary renderer and the native
-    /// Launcher Experience presentation seam. Widget snapshots cannot author
-    /// this namespace directly.
+    /// Canonical host-only key used by the ordinary renderer. Widget snapshots
+    /// cannot author this namespace directly.
     [[nodiscard]] static std::wstring TrustedArtworkKey(
         std::wstring_view widgetId,
         std::wstring_view nodeId,

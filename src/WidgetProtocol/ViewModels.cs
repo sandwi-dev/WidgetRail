@@ -88,45 +88,6 @@ public enum WidgetSurfaceAxisMode
 }
 
 /// <summary>
-/// A closed host-owned presentation family. It changes composition only;
-/// authored nodes retain all action, focus, collection, and accessibility identity.
-/// </summary>
-[JsonConverter(typeof(JsonStringEnumConverter<WidgetAdvancedPresentationKind>))]
-public enum WidgetAdvancedPresentationKind
-{
-    LauncherExperience,
-}
-
-/// <summary>The host-owned layout preset requested by one immutable view.</summary>
-[JsonConverter(typeof(JsonStringEnumConverter<WidgetAdvancedPresentationPreset>))]
-public enum WidgetAdvancedPresentationPreset
-{
-    HeroRail,
-    CoverWall,
-    Carousel,
-    CompactGrid,
-}
-
-/// <summary>
-/// Closed semantic content roles consumed by an advanced presentation. These
-/// roles never identify a package, action, provider, path, URL, or executable.
-/// </summary>
-[JsonConverter(typeof(JsonStringEnumConverter<WidgetAdvancedPresentationSlot>))]
-public enum WidgetAdvancedPresentationSlot
-{
-    DetailsPanel,
-    PrimaryCollection,
-    CollectionNavigation,
-    SourceStatus,
-    OperationStatus,
-    ControllerHints,
-}
-
-public sealed record WidgetAdvancedPresentationView(
-    WidgetAdvancedPresentationKind Kind,
-    WidgetAdvancedPresentationPreset Preset);
-
-/// <summary>
 /// Host-resolved responsive visibility. Conditional nodes remain in the
 /// immutable snapshot, but the host excludes an inactive node and its complete
 /// subtree from layout, paint, pointer input, controller focus, shortcuts, and
@@ -380,12 +341,6 @@ public sealed record ViewNode
     /// is presentation identity only and never authorizes an action.
     /// </summary>
     public string? CollectionItemKey { get; init; }
-    /// <summary>
-    /// Optional protocol-v16 content role for a declared advanced presentation.
-    /// The host accepts only one complete closed slot set and otherwise renders
-    /// the ordinary declarative tree unchanged.
-    /// </summary>
-    public WidgetAdvancedPresentationSlot? AdvancedPresentationSlot { get; init; }
     public IReadOnlyList<string> StyleClasses { get; init; } = [];
     public IReadOnlyList<ControllerShortcut> Shortcuts { get; init; } = [];
     public IReadOnlyList<ViewNode> Children { get; init; } = [];
@@ -407,10 +362,5 @@ public sealed record ViewSnapshot
     public IReadOnlyList<WidgetQuickAction> QuickActions { get; init; } = [];
     /// <summary>Versioned, host-clamped sizing hints for this exact view.</summary>
     public WidgetSurfaceHints? Surface { get; init; }
-    /// <summary>
-    /// Optional protocol-v16 request for the package-declared host-owned
-    /// presentation. The manifest declaration remains independently required.
-    /// </summary>
-    public WidgetAdvancedPresentationView? AdvancedPresentation { get; init; }
     public required ViewNode Root { get; init; }
 }

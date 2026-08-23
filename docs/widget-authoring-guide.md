@@ -93,8 +93,8 @@ v2; Slider v3; dashboard gesture authority v4; LoadingIndicator v5; inline PNG
 v6; ActionSurface v7; ResponsiveGrid v8; responsive visibility v9;
 activation-first Slider v10; focus-edge pagination v11; RepeatOne glyph v12;
 explicit focus persistence v13; cursor collections and opaque artwork handles
-v14; host-owned bounded TextEntry v15; and declared advanced-presentation
-semantic slots v16; independent surface-axis sizing v17; atomic presentation
+v14; host-owned bounded TextEntry v15; protocol v16 is retired before release;
+independent surface-axis sizing v17; atomic presentation
 updates v18; and virtual collection presentation windows v19.
 Combining features selects the highest
 required version. These additive snapshot features do **not** change the
@@ -201,64 +201,6 @@ CPU, memory, socket, file, database, or process quota beyond existing package
 and protocol bounds. Disable, replacement, removal, host shutdown, or worker
 failure closes the owning kill-on-close Job so the application process tree
 does not outlive its admitted session.
-
-## Optional host-owned advanced presentation
-
-Any installed Community package may opt into the same closed native advanced
-presentation contract. This changes only how the host composes one immutable
-declarative view. It does not grant provider, launch, action, navigation,
-Settings mutation, path, URL, script, renderer, window, compositor, or GPU
-authority. Launcher Experience Packs remain data-only choices installed and
-selected through Settings.
-
-First add the versioned package declaration to `manifest.json`:
-
-```json
-"advancedPresentation": {
-  "schemaVersion": 1,
-  "kind": "launcherExperience"
-}
-```
-
-Then publish one preset and exactly one container for each of the six closed
-semantic roles. The containers may have arbitrary IDs, nesting, style classes,
-publisher identity, assembly/type, and authored child shape:
-
-```csharp
-var view = new WidgetView(UI.Stack("my-root",
-    details.InAdvancedPresentationSlot(
-        WidgetAdvancedPresentationSlot.DetailsPanel),
-    games.InAdvancedPresentationSlot(
-        WidgetAdvancedPresentationSlot.PrimaryCollection),
-    collections.InAdvancedPresentationSlot(
-        WidgetAdvancedPresentationSlot.CollectionNavigation),
-    sourceStatus.InAdvancedPresentationSlot(
-        WidgetAdvancedPresentationSlot.SourceStatus),
-    operationStatus.InAdvancedPresentationSlot(
-        WidgetAdvancedPresentationSlot.OperationStatus),
-    controllerHelp.InAdvancedPresentationSlot(
-        WidgetAdvancedPresentationSlot.ControllerHints)))
-{
-    AdvancedPresentation = new(
-        WidgetAdvancedPresentationKind.LauncherExperience,
-        WidgetAdvancedPresentationPreset.HeroRail),
-};
-```
-
-The available presets are `HeroRail`, `CoverWall`, `Carousel`, and
-`CompactGrid`. Slot roots must be Stack, Row, Scroll, or Grid containers and
-must not contain another slot root. Authored node IDs, action IDs, collection
-keys, focus neighbors, active input scope, Back behavior, and accessibility
-labels remain authoritative. The host never infers any of them from the
-presentation kind.
-
-Admission also requires the current bridge catalog generation to carry the
-matching validated manifest declaration. A missing or incompatible declaration,
-missing/duplicate/unknown/nested slot, stale package generation, or native
-composition failure rejects only advanced adoption; the same current tree is
-rendered through the ordinary declarative path. Existing widgets therefore
-migrate by replacing private marker/profile/slot style conventions with these
-typed fields. Do not keep identity checks or marker classes as a fallback.
 
 ## Tutorial 1: scaffold and run the minimal widget
 
@@ -2288,7 +2230,6 @@ Do not design or advertise a widget around any of these yet:
 - [Capabilities](capabilities.md)
 - [Display and resolution](display-and-resolution.md)
 - [Packaging contract](widget-packaging.md)
-- [Launcher Experience Pack authoring](launcher-experience-packs.md)
 - [Publishing and installation](publishing-and-installation.md)
 - [Security and trust](security-and-trust.md)
 - [Performance](performance.md)

@@ -2,8 +2,6 @@
 
 #include <Windows.h>
 
-#include "LauncherExperienceLayout.h"
-
 #include <cstddef>
 #include <cstdint>
 #include <map>
@@ -44,11 +42,6 @@ struct WidgetDescriptorQuickAction final {
     std::optional<std::wstring> controllerButton;
 };
 
-struct WidgetAdvancedPresentationDeclaration final {
-    int schemaVersion{};
-    std::wstring kind;
-};
-
 /// Public catalog data returned by WidgetBridge. Worker paths and arguments are
 /// deliberately absent from this native model.
 struct WidgetDescriptor final {
@@ -59,7 +52,6 @@ struct WidgetDescriptor final {
     std::wstring presentationGeneration;
     std::wstring icon{L"connection"};
     bool pinningSupported{};
-    std::optional<WidgetAdvancedPresentationDeclaration> advancedPresentation;
     bool protectedWifiPromptSupported{};
     std::vector<WidgetDescriptorQuickAction> quickActions;
 };
@@ -252,46 +244,6 @@ struct WidgetStyleValue final {
 using WidgetComputedStyle =
     std::unordered_map<std::wstring, WidgetStyleValue>;
 
-struct LauncherExperienceSealedAsset final {
-    std::wstring opaqueAssetId;
-    std::wstring revision;
-    std::wstring format;
-    std::vector<unsigned char> bytes;
-};
-
-/// Complete private settings/catalog projection. It contains no path, URL,
-/// action, provider identity, or public protocol value.
-struct LauncherExperienceSelection final {
-    long long revision{};
-    std::wstring id;
-    std::wstring version;
-    std::wstring contentDigest;
-    std::wstring presentationRevision;
-    launcher::Preset preset{launcher::Preset::HeroRail};
-    bool builtIn{};
-    bool followWidgetPreset{};
-    bool useGlobalAppearance{};
-    std::wstring backgroundMode;
-    std::wstring focusEffect;
-    std::wstring motionIntensity;
-    launcher::Recipe recipe;
-    std::map<launcher::Slot, WidgetComputedStyle> packStyles;
-    std::optional<LauncherExperienceSealedAsset> packBackground;
-    std::wstring diagnostic;
-};
-
-enum class LauncherExperienceSelectionOperation {
-    SelectExact,
-    RecoverBuiltIn,
-};
-
-struct LauncherExperienceSelectionRequest final {
-    LauncherExperienceSelectionOperation operation{
-        LauncherExperienceSelectionOperation::RecoverBuiltIn};
-    std::wstring id;
-    std::wstring version;
-};
-
 enum class VirtualCollectionWindowChange {
     Replace,
     Append,
@@ -339,7 +291,6 @@ struct WidgetNode final {
     std::optional<VirtualCollectionWindow> virtualCollectionWindow;
     std::wstring collectionAnchorKey;
     std::wstring collectionItemKey;
-    std::wstring advancedPresentationSlot;
     std::wstring actionSurfaceOrientation;
     std::optional<double> gridMinimumColumnWidth;
     std::optional<std::size_t> gridMaximumColumns;
@@ -383,8 +334,6 @@ struct WidgetSnapshot final {
     std::wstring initialFocusId;
     std::vector<WidgetQuickAction> quickActions;
     std::optional<WidgetSurfaceHints> surface;
-    std::wstring advancedPresentationKind;
-    std::wstring advancedPresentationPreset;
     WidgetNode root;
     // Canonical unstyled semantic document retained by the sole native
     // session owner. It is the immutable base for an atomic update candidate;
@@ -584,18 +533,8 @@ public:
     [[nodiscard]] std::optional<std::vector<WidgetDescriptor>> ListWidgets();
     /// Retrieves immutable platform appearance without launching a widget worker.
     [[nodiscard]] std::optional<PlatformAppearance> GetPlatformAppearance();
-    /// Retrieves one immutable trusted Launcher Experience presentation value
-    /// without starting a widget worker.
-    [[nodiscard]] std::optional<LauncherExperienceSelection>
-        GetLauncherExperience();
-    /// Applies one exact installed-package selection or the code-owned built-in
-    /// recovery through the private Settings/catalog authority.
-    [[nodiscard]] std::optional<LauncherExperienceSelection>
-        SelectLauncherExperience(const LauncherExperienceSelectionRequest& request);
     /// Coalesced latest revision announced by platform-appearance-changed events.
     [[nodiscard]] std::optional<long long> TakePlatformAppearanceChangedRevision() noexcept;
-    [[nodiscard]] std::optional<long long>
-        TakeLauncherExperienceChangedRevision() noexcept;
     /// Coalesced latest catalog revision announced by widget-catalog-changed events.
     [[nodiscard]] std::optional<long long> TakeWidgetCatalogChangedRevision() noexcept;
     /// Requeues an announced revision after a transient list/parse failure.
@@ -700,7 +639,6 @@ private:
     WidgetArtworkResultQueue artworkResults_;
     LocalWidgetPackageInstallResultQueue localPackageInstallResults_;
     PlatformAppearanceRevisionTracker appearanceChanges_;
-    PlatformAppearanceRevisionTracker launcherExperienceChanges_;
     WidgetCatalogRevisionTracker catalogChanges_;
     mutable std::recursive_mutex requestMutex_;
 };
@@ -720,9 +658,6 @@ struct BridgeFrameReadResult final {
     std::string_view payloadUtf8,
     std::wstring& error);
 [[nodiscard]] std::optional<PlatformAppearance> ParsePlatformAppearance(
-    std::string_view payloadUtf8,
-    std::wstring& error);
-[[nodiscard]] std::optional<LauncherExperienceSelection> ParseLauncherExperience(
     std::string_view payloadUtf8,
     std::wstring& error);
 [[nodiscard]] std::optional<WidgetSnapshot> ParseWidgetSnapshotResponse(

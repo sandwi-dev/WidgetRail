@@ -8,7 +8,7 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Missing settings use safe appearance defaults", DefaultsAreSafe),
     ("Default paths use only the WidgetRail local state root", DefaultPathsUseWidgetRail),
     ("Settings round trip through strict canonical JSON", SettingsRoundTrip),
-    ("Legacy schema-one settings receive additive accessibility defaults", LegacyAccessibilityDefaults),
+    ("Schema-one settings retire launcher selection and preserve unrelated state", LegacyAccessibilityDefaults),
     ("Malformed duplicate unknown and oversized settings fail closed", StrictSettingsFailClosed),
     ("Settings ranges and enums are enforced", SettingsRangesAreEnforced),
     ("Failed mutations preserve the prior atomic document", FailedMutationPreservesState),
@@ -21,8 +21,6 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Theme version mutation is exact protected and bounded", ThemeVersionMutation),
     ("Theme layers apply platform widget and user precedence", ThemeLayerPrecedence),
     ("Invalid reload retains the last valid theme and revision", InvalidReloadRetainsLastGood),
-    ("Launcher experience packages are strict bounded and catalog-isolated", LauncherExperienceCatalogTests.Run),
-    ("Launcher experience selection recovery and removal are exact", LauncherExperienceSelectionTests.Run),
     ("Built-in theme gives CodeText bounded Windows monospace wrapping", CodeTextThemeTests.Run),
 };
 
@@ -62,7 +60,7 @@ static Task DefaultsAreSafe()
     async Task VerifyAsync()
     {
         var settings = await store.LoadAsync();
-        Assert.Equal(1, settings.SchemaVersion);
+        Assert.Equal(2, settings.SchemaVersion);
         Assert.Equal(ThemeIdentity.BuiltInDefault, settings.Appearance.ThemeId);
         Assert.Equal(ThemeIdentity.BuiltInDefaultVersion, settings.Appearance.ThemeVersion);
         Assert.Equal(1D, settings.Appearance.InterfaceScale);
@@ -113,7 +111,7 @@ static async Task SettingsRoundTrip()
     Assert.Equal(updated, reloaded);
     Assert.Equal(true, reloaded.Appearance.AnimateWidgetSwitching);
     var source = await File.ReadAllTextAsync(store.Paths.SettingsFile);
-    Assert.Contains("\"schemaVersion\": 1", source);
+    Assert.Contains("\"schemaVersion\": 2", source);
     Assert.Contains("\"motion\": \"reduced\"", source);
     Assert.Contains("\"contrast\": \"high\"", source);
     Assert.Contains("\"boldText\": true", source);
@@ -133,12 +131,32 @@ static async Task LegacyAccessibilityDefaults()
     using var temp = new TemporaryDirectory();
     var paths = new PlatformSettingsPaths(temp.Path);
     Directory.CreateDirectory(temp.Path);
-    await File.WriteAllTextAsync(paths.SettingsFile, SettingsJson());
-    var loaded = await new PlatformSettingsStore(paths).LoadAsync();
+    await File.WriteAllTextAsync(paths.SettingsFile, SettingsJson(extra:
+        ",\"appLibrary\":{\"epicInstalledGamesEnabled\":true," +
+        "\"gogInstalledGamesEnabled\":false}," +
+        "\"launcherExperience\":{\"useGlobalAppearance\":false," +
+        "\"selectedId\":\"dev.example.launcher\",\"selectedVersion\":\"1.2.3\"," +
+        "\"lastGoodId\":\"dev.example.launcher\",\"lastGoodVersion\":\"1.2.3\"}"));
+    var store = new PlatformSettingsStore(paths);
+    var loaded = await store.LoadAsync();
+    Assert.Equal(2, loaded.SchemaVersion);
     Assert.Equal(ContrastPreference.System, loaded.Appearance.Contrast);
     Assert.Equal(false, loaded.Appearance.BoldText);
     Assert.Equal(TransparencyPreference.Full, loaded.Appearance.Transparency);
     Assert.Equal(false, loaded.Appearance.AnimateWidgetSwitching);
+    Assert.Equal(true, loaded.AppLibrary.EpicInstalledGamesEnabled);
+    Assert.Equal(false, loaded.AppLibrary.GogInstalledGamesEnabled);
+
+    var updated = await store.UpdateAsync(current => current with
+    {
+        Appearance = current.Appearance with { TextScale = 1.1 },
+    });
+    Assert.Equal(1.1, updated.Appearance.TextScale);
+    Assert.Equal(true, updated.AppLibrary.EpicInstalledGamesEnabled);
+    var persisted = await File.ReadAllTextAsync(paths.SettingsFile);
+    Assert.Contains("\"schemaVersion\": 2", persisted);
+    Assert.True(!persisted.Contains("launcherExperience", StringComparison.Ordinal),
+        "The retired launcher selection remained in the current settings schema.");
 }
 
 static async Task StrictSettingsFailClosed()
@@ -187,7 +205,7 @@ static async Task SettingsRangesAreEnforced()
         SettingsJson(appearanceExtra: ",\"contrast\":\"future\""),
         SettingsJson(appearanceExtra: ",\"transparency\":\"future\""),
         SettingsJson(appearanceExtra: ",\"boldText\":1"),
-        SettingsJson(schemaVersion: 2),
+        SettingsJson(schemaVersion: 3),
     })
     {
         await File.WriteAllTextAsync(paths.SettingsFile, source);

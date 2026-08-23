@@ -32,6 +32,14 @@ records zero timer, Guide-fallback, paint, and D2D-frame work; the complete
 three-process tree used 132.1 MiB working set. The Release host is 2,164,224
 bytes and the intermediate Rust static archive is 4,184,950 bytes.
 
+DLV-286 removes the dormant Launcher Experience and advanced-presentation
+vertical slice before release. Widgets, including Game Launcher, now use only
+the ordinary declarative presentation contract. Platform Settings schema 1 is
+read through one bounded migration that removes only the retired launcher
+selection object while preserving unrelated settings; newly persisted state is
+schema 2. Historical milestone notes below describe the removed experiments
+and are not current production contracts.
+
 The older auth-free standalone exporter and visible performance fixture have
 baseline gaps unrelated to layout: the exporter still assumes Spotify's
 retired managed AppContainer entrypoint after its full-application cutover, and

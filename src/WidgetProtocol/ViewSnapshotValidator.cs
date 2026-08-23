@@ -21,7 +21,6 @@ public static class ViewSnapshotValidator
                 $"Expected protocol version {ProtocolConstants.MinimumSupportedVersion}-{ProtocolConstants.CurrentVersion}.");
         CheckIdentifier(snapshot.WidgetInstanceId, "$.widgetInstanceId", "widget instance ID");
         ValidateSurfaceHints();
-        ValidateAdvancedPresentation();
         Visit(snapshot.Root, "$.root", 1, "$.root");
         var activeInputScopeId = snapshot.ActiveInputScopeId ?? string.Empty;
         CheckIdentifier(activeInputScopeId, "$.activeInputScopeId", "active input scope ID");
@@ -139,20 +138,6 @@ public static class ViewSnapshotValidator
                     "Minimum height cannot exceed preferred height.");
         }
 
-        void ValidateAdvancedPresentation()
-        {
-            if (snapshot.AdvancedPresentation is null) return;
-            if (snapshot.ProtocolVersion < ProtocolConstants.AdvancedPresentationVersion)
-                Add("$.advancedPresentation", "feature_requires_version",
-                    $"Advanced presentations require protocol version {ProtocolConstants.AdvancedPresentationVersion} or later.");
-            if (!Enum.IsDefined(snapshot.AdvancedPresentation.Kind))
-                Add("$.advancedPresentation.kind", "unsupported_presentation",
-                    "The advanced presentation kind is not supported.");
-            if (!Enum.IsDefined(snapshot.AdvancedPresentation.Preset))
-                Add("$.advancedPresentation.preset", "unsupported_preset",
-                    "The advanced presentation preset is not supported.");
-        }
-
         void CheckPair(
             double? width,
             double? height,
@@ -202,19 +187,6 @@ public static class ViewSnapshotValidator
             CheckIdentifier(node.Id, $"{path}.id", "node ID");
             if (!Enum.IsDefined(node.Kind))
                 Add($"{path}.kind", "invalid_node_kind", "The node kind is not supported.");
-            if (node.AdvancedPresentationSlot is { } advancedSlot)
-            {
-                if (snapshot.ProtocolVersion < ProtocolConstants.AdvancedPresentationVersion)
-                    Add($"{path}.advancedPresentationSlot", "feature_requires_version",
-                        $"Advanced presentation slots require protocol version {ProtocolConstants.AdvancedPresentationVersion} or later.");
-                if (!Enum.IsDefined(advancedSlot))
-                    Add($"{path}.advancedPresentationSlot", "unsupported_slot",
-                        "The advanced presentation slot is not supported.");
-                if (node.Kind is not (ViewNodeKind.Stack or ViewNodeKind.Row or
-                    ViewNodeKind.Scroll or ViewNodeKind.Grid))
-                    Add($"{path}.advancedPresentationSlot", "slot_requires_container",
-                        "Advanced presentation slots must mark a layout container.");
-            }
             if (node.VisibleWhen is { } visibility)
             {
                 if (snapshot.ProtocolVersion < ProtocolConstants.ResponsiveVisibilityVersion)

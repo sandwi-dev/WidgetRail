@@ -112,13 +112,7 @@ planner and implementation turns do not spend context on closed evidence.
   and fresh exact SavedId launch admission through the generic application runtime.
 - [Game Launcher product and engineering requirements](game-launcher-requirements.md)
   — proposed console-home expansion informed by Heroic and One Game Launcher,
-  including trusted multi-source adapters, optional content operations, and
-  data-only per-launcher experience packs with safe custom layouts and media.
-- [Launcher Experience Pack format](launcher-experience-packs.md) — implemented
-  launcher-only manifest, responsive recipe, parameter, package-boundary,
-  digest/catalog, deterministic CLI authoring/preview/package/install workflow,
-  and built-in recovery contracts for static data-only packs. Ordinary-overlay
-  adoption remains a private native-host milestone.
+  including trusted multi-source adapters and optional content operations.
 - [YT Music Community addon reference](../samples/YtMusicWidget/README.md) — the
   first real public-package/AppContainer local-companion integration, including
   pairing, optimistic media UX, dashboard actions, and local pack/install.

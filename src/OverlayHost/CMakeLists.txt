@@ -74,11 +74,6 @@ add_executable(OverlayHost WIN32
     OverlayTargeting.cpp
     OverlayTransition.cpp
     DeclarativeRenderer.cpp
-    LauncherExperienceLayout.cpp
-    LauncherExperienceAdapter.cpp
-    LauncherExperienceProjection.cpp
-    LauncherExperiencePresentation.cpp
-    LauncherExperienceHostProof.cpp
     GuideInputCompatibility.cpp
     ControllerNavigation.cpp
     SliderInteraction.cpp
@@ -433,28 +428,6 @@ if(WRAIL_BUILD_TESTS)
     target_link_libraries(AudioMixerScrollHostTests PRIVATE
         user32 gdi32 windowscodecs ole32 oleaut32 uiautomationcore)
 
-    # The held first-party Game Launcher package is exercised through the
-    # ordinary production OverlayHost and its real UIA/action boundary.
-    add_executable(LauncherExperienceHostTests
-        LauncherExperienceHostTests.cpp OverlayHostTestSupport.cpp)
-    target_compile_features(LauncherExperienceHostTests PRIVATE cxx_std_20)
-    target_compile_options(LauncherExperienceHostTests PRIVATE /W4 /permissive- /EHsc)
-    target_compile_definitions(LauncherExperienceHostTests PRIVATE
-        UNICODE _UNICODE WIN32_LEAN_AND_MEAN NOMINMAX)
-    target_link_libraries(LauncherExperienceHostTests PRIVATE
-        user32 ole32 oleaut32 uiautomationcore)
-
-    # Two unrelated installed Community packages exercise the public advanced
-    # presentation contract through the ordinary production host.
-    add_executable(AdvancedPresentationHostTests
-        AdvancedPresentationHostTests.cpp OverlayHostTestSupport.cpp)
-    target_compile_features(AdvancedPresentationHostTests PRIVATE cxx_std_20)
-    target_compile_options(AdvancedPresentationHostTests PRIVATE /W4 /permissive- /EHsc)
-    target_compile_definitions(AdvancedPresentationHostTests PRIVATE
-        UNICODE _UNICODE WIN32_LEAN_AND_MEAN NOMINMAX)
-    target_link_libraries(AdvancedPresentationHostTests PRIVATE
-        user32 ole32 oleaut32 uiautomationcore)
-
     add_executable(TrayLayoutTests TrayLayoutTests.cpp TrayLayout.cpp)
     target_compile_features(TrayLayoutTests PRIVATE cxx_std_20)
     target_compile_options(TrayLayoutTests PRIVATE /W4 /permissive- /EHsc)
@@ -545,22 +518,6 @@ if(WRAIL_BUILD_TESTS)
     target_link_libraries(NetworkFirstPageRendererTests PRIVATE
         windowsapp user32 d2d1 dwrite winhttp windowscodecs ole32)
     widgetrail_link_taffy(NetworkFirstPageRendererTests)
-
-    add_executable(LauncherExperienceTests
-        LauncherExperienceTests.cpp LauncherExperienceLayout.cpp LauncherExperienceAdapter.cpp
-        LauncherExperienceProjection.cpp
-        LauncherExperiencePresentation.cpp
-        AccessibilityTree.cpp FocusNavigation.cpp ControllerNavigation.cpp
-        DeclarativeRenderer.cpp DeclarativeLayout.cpp NativeStyle.cpp NativeTextLayout.cpp
-        DeclarativeMotion.cpp NativeIcons.cpp RemoteImageCache.cpp)
-    target_compile_features(LauncherExperienceTests PRIVATE cxx_std_20)
-    target_compile_options(LauncherExperienceTests PRIVATE /W4 /permissive- /EHsc)
-    target_compile_definitions(LauncherExperienceTests PRIVATE
-        WRAIL_DECLARATIVE_RENDERER_TESTING UNICODE _UNICODE WIN32_LEAN_AND_MEAN NOMINMAX)
-    target_link_libraries(LauncherExperienceTests PRIVATE
-        d2d1 dwrite winhttp windowscodecs ole32)
-    widgetrail_link_taffy(LauncherExperienceTests)
-    add_test(NAME LauncherExperienceTests COMMAND LauncherExperienceTests)
 
     add_executable(SemanticChurnPerformanceTests
         SemanticChurnPerformanceTests.cpp AccessibilityTree.cpp DeclarativeRenderer.cpp

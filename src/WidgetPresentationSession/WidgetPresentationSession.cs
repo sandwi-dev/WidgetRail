@@ -444,7 +444,6 @@ public sealed class WidgetPresentationSession : IAsyncDisposable
                 ReadString(envelope.Payload, "widgetId"));
             break;
         case BridgeMessageTypes.AppearanceChanged:
-        case BridgeMessageTypes.LauncherExperienceChanged:
             RequireObjectProperties(envelope.Payload, "revision");
             RecordDiagnostic(
                 envelope.Type,

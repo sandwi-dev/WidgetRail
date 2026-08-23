@@ -31,40 +31,6 @@ public abstract record WidgetElement(string Id)
     public WidgetElement CollectionItem(WidgetCollectionItemKey key) =>
         new CollectionItemElement(this, key);
 
-    /// <summary>
-    /// Assigns this complete authored subtree to one closed host-owned
-    /// advanced-presentation role. IDs, actions, focus, and accessibility stay
-    /// authored and unchanged.
-    /// </summary>
-    public WidgetElement InAdvancedPresentationSlot(
-        WidgetAdvancedPresentationSlot slot)
-    {
-        if (!Enum.IsDefined(slot)) throw new ArgumentOutOfRangeException(nameof(slot));
-        return new AdvancedPresentationSlotElement(this, slot);
-    }
-}
-
-/// <summary>A serialization-only semantic slot modifier.</summary>
-public sealed record AdvancedPresentationSlotElement : WidgetElement
-{
-    internal AdvancedPresentationSlotElement(
-        WidgetElement child,
-        WidgetAdvancedPresentationSlot slot)
-        : base((child ?? throw new ArgumentNullException(nameof(child))).Id)
-    {
-        Child = child;
-        Slot = slot;
-        StyleClasses = child.StyleClasses;
-    }
-
-    public WidgetElement Child { get; init; }
-    public WidgetAdvancedPresentationSlot Slot { get; init; }
-
-    internal override ViewNode ToProtocolNode() => Child.ToProtocolNode() with
-    {
-        AdvancedPresentationSlot = Slot,
-        StyleClasses = StyleClasses,
-    };
 }
 
 /// <summary>A serialization-only keyed collection-item modifier.</summary>

@@ -8,6 +8,5 @@
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="..\..\src\PlatformSettings\PlatformSettings.csproj" />
-    <ProjectReference Include="..\..\src\LauncherExperienceCatalog\LauncherExperienceCatalog.csproj" />
   </ItemGroup>
 </Project>

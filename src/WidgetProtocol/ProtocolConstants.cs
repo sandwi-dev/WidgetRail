@@ -20,7 +20,6 @@ public static class ProtocolConstants
     public const int FocusPersistenceVersion = 13;
     public const int CursorCollectionVersion = 14;
     public const int TextEntryVersion = 15;
-    public const int AdvancedPresentationVersion = 16;
     public const int SurfaceAxisSizingVersion = 17;
     public const int AtomicPresentationUpdateVersion = 18;
     public const int VirtualCollectionWindowVersion = 19;

@@ -37,7 +37,6 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Theme picker scrolls every valid and invalid package", ThemePickerScroll),
     ("Theme selection atomically pins ID and version", ThemeSelection),
     ("Theme versions group select and confirm exact inactive removal", ThemeVersionManagement),
-    ("Launcher Experience versions disclose trust select recover and protect active removal", LauncherExperienceManagement),
     ("Reset requires confirmation and restores defaults", ResetConfirmation),
     ("Malformed settings recover through safe defaults", InvalidSettingsRecovery),
     ("Saving exposes busy and completion feedback", BusyFeedback),
@@ -106,7 +105,7 @@ static Task RootCategories()
     Assert.Equal("settings-root", snapshot.ActiveInputScopeId);
     Assert.Equal("category.appearance", snapshot.InitialFocusId);
     Assert.SequenceEqual(
-        ["category.appearance", "category.accessibility", "category.overlay", "category.installed-widgets", "category.game-sources", "category.launcher-experiences", "category.diagnostics", "settings.refresh", "category.reset"],
+        ["category.appearance", "category.accessibility", "category.overlay", "category.installed-widgets", "category.game-sources", "category.diagnostics", "settings.refresh", "category.reset"],
         Buttons(snapshot.Root).Select(button => button.Id));
     Assert.Valid(snapshot);
     return Task.CompletedTask;
@@ -2194,110 +2193,6 @@ static async Task BundledPermissionsAreDiscovered()
     Assert.Contains("Optional", Button(networkCapabilities.Root, "capability.item.1").Text!);
 }
 
-static async Task LauncherExperienceManagement()
-{
-    using var temp = new TemporaryDirectory();
-    WriteLauncherExperience(temp.Path, "dev.test.launcher", "1.0.0", "Unsigned Rail");
-    var widget = Create(temp.Path);
-    await Activate(widget);
-
-    await Action(widget, "open.launcher-experiences");
-    var list = Snapshot(widget);
-    Assert.Equal("launcher-experience.page", list.ActiveInputScopeId);
-    Assert.Equal("launcher-experience.global", list.InitialFocusId);
-    Assert.HasShortcut(list.Root, "launcher-experience.page", ControllerButton.B, "back");
-    Assert.Equal("back", Button(list.Root, "launcher-experience.back").ActionId);
-    var custom = Buttons(list.Root).Last(button =>
-        button.ActionId is not null &&
-        button.ActionId.StartsWith("launcher-experience.open.", StringComparison.Ordinal));
-    await Action(widget, "back");
-    Assert.Equal(SettingsPage.Root, widget.CurrentPage);
-    await Action(widget, "open.launcher-experiences");
-    await Action(widget, custom.ActionId!);
-
-    var details = Snapshot(widget);
-    Assert.HasShortcut(details.Root, "launcher-experience.page", ControllerButton.B, "back");
-    Assert.Equal("back", Button(details.Root, "launcher-experience.version.back").ActionId);
-    Assert.Contains("dev.test.launcher", Text(details.Root, "launcher-experience.version.id").Text!);
-    Assert.Contains("1.0.0", Text(details.Root, "launcher-experience.version.version").Text!);
-    Assert.Contains("dev.test", Text(details.Root, "launcher-experience.version.publisher").Text!);
-    Assert.Contains("unsigned local package", Text(details.Root, "launcher-experience.version.trust").Text!);
-    Assert.Equal(64, Text(details.Root, "launcher-experience.version.digest").Text!
-        .Split(':', 2)[1].Trim().Length);
-    Assert.True(Button(details.Root, "launcher-experience.version.select").IsDisabled is not true,
-        "Valid inactive exact version was not selectable.");
-    await Action(widget, "back");
-    var returnedList = Snapshot(widget);
-    Assert.Equal(SettingsPage.LauncherExperiences, widget.CurrentPage);
-    Assert.Equal(custom.Id, returnedList.InitialFocusId);
-    await Action(widget, custom.ActionId!);
-    await Action(widget, "launcher-experience.select");
-
-    var selected = await Store(temp.Path).LoadAsync();
-    Assert.Equal(false, selected.LauncherExperience.UseGlobalAppearance);
-    Assert.Equal("dev.test.launcher", selected.LauncherExperience.SelectedId);
-    Assert.Equal("1.0.0", selected.LauncherExperience.SelectedVersion);
-    Assert.Equal("dev.test.launcher", selected.LauncherExperience.LastGoodId);
-    Assert.Equal("1.0.0", selected.LauncherExperience.LastGoodVersion);
-
-    await Action(widget, custom.ActionId!);
-    var selectedDetails = Snapshot(widget);
-    Assert.True(Button(selectedDetails.Root, "launcher-experience.version.remove").IsDisabled is true,
-        "Selected exact version exposed removal.");
-
-    var versionDirectory = Path.Combine(
-        new PlatformSettingsPaths(temp.Path).LauncherExperiencesDirectory,
-        "dev.test.launcher", "1.0.0");
-    var unavailableDirectory = Path.Combine(temp.Path, "temporarily-unavailable-launcher");
-    Directory.Move(versionDirectory, unavailableDirectory);
-    await Action(widget, "refresh");
-    var missing = Snapshot(widget);
-    Assert.HasShortcut(missing.Root, "launcher-experience.page", ControllerButton.B, "back");
-    Assert.Equal("back", Button(missing.Root, "launcher-experience.version.back").ActionId);
-    await Action(widget, "back");
-    Assert.Equal(SettingsPage.LauncherExperiences, widget.CurrentPage);
-    Directory.Move(unavailableDirectory, versionDirectory);
-    await Action(widget, "refresh");
-
-    await Action(widget, "launcher-experience.global");
-    var global = await Store(temp.Path).LoadAsync();
-    Assert.Equal(true, global.LauncherExperience.UseGlobalAppearance);
-    Assert.Equal("dev.test.launcher", global.LauncherExperience.LastGoodId);
-    Assert.Equal("1.0.0", global.LauncherExperience.LastGoodVersion);
-
-    await Action(widget, "launcher-experience.recover");
-    var recovered = await Store(temp.Path).LoadAsync();
-    Assert.Equal(false, recovered.LauncherExperience.UseGlobalAppearance);
-    Assert.Equal("widgetrail.builtin.hero-rail", recovered.LauncherExperience.SelectedId);
-    Assert.Equal("1.0.0", recovered.LauncherExperience.SelectedVersion);
-
-    var afterRecovery = Snapshot(widget);
-    var customAfterRecovery = Buttons(afterRecovery.Root).Single(button =>
-        button.ActionId == custom.ActionId);
-    await Action(widget, customAfterRecovery.ActionId!);
-    var removable = Snapshot(widget);
-    Assert.True(Button(removable.Root, "launcher-experience.version.remove").IsDisabled is not true,
-        "Inactive unsigned exact version was not removable.");
-    await Action(widget, "launcher-experience.remove.request");
-    var confirmation = Snapshot(widget);
-    Assert.Equal("launcher-experience.removal.cancel", confirmation.InitialFocusId);
-    Assert.HasShortcut(confirmation.Root, "launcher-experience.page", ControllerButton.B, "back");
-    Assert.Equal("launcher-experience.remove.cancel",
-        Button(confirmation.Root, "launcher-experience.removal.cancel").ActionId);
-    await Action(widget, "back");
-    Assert.Equal(SettingsPage.LauncherExperienceVersion, widget.CurrentPage);
-    Assert.Equal("launcher-experience.version.select", Snapshot(widget).InitialFocusId);
-    await Action(widget, "launcher-experience.remove.request");
-    await Action(widget, "launcher-experience.remove.cancel");
-    Assert.Equal(SettingsPage.LauncherExperienceVersion, widget.CurrentPage);
-    await Action(widget, "launcher-experience.remove.request");
-    await Action(widget, "launcher-experience.remove.confirm");
-    Assert.True(!Directory.Exists(Path.Combine(
-        new PlatformSettingsPaths(temp.Path).LauncherExperiencesDirectory,
-        "dev.test.launcher", "1.0.0")), "Confirmed exact version remained installed.");
-    Assert.Valid(Snapshot(widget));
-}
-
 static async Task ShippedAssetsValidate()
 {
     var project = ProjectDirectory();
@@ -2425,38 +2320,6 @@ static void WriteTheme(string root, string id, string name, string version, bool
     File.WriteAllText(Path.Combine(directory, "theme.json"),
         $$"""{"schemaVersion":1,"id":"{{manifestId}}","name":"{{name}}","version":"{{version}}","entryFile":"theme.wrss"}""");
     File.WriteAllText(Path.Combine(directory, "theme.wrss"), "button { color: #ffffff; }");
-}
-
-static void WriteLauncherExperience(string root, string id, string version, string name)
-{
-    var directory = Path.Combine(
-        new PlatformSettingsPaths(root).LauncherExperiencesDirectory, id, version);
-    Directory.CreateDirectory(Path.Combine(directory, "layouts"));
-    Directory.CreateDirectory(Path.Combine(directory, "styles"));
-    Directory.CreateDirectory(Path.Combine(directory, "assets"));
-    File.WriteAllText(Path.Combine(directory, "launcher.json"),
-        "{\"schemaVersion\":1,\"id\":\"" + id +
-        "\",\"publisher\":\"dev.test\",\"name\":\"" + name +
-        "\",\"version\":\"" + version +
-        "\",\"layoutPreset\":\"hero-rail\",\"compositionFile\":\"layouts/launcher-layout.json\"," +
-        "\"styleFile\":\"styles/launcher.wrss\",\"previewFile\":\"assets/preview.png\",\"parameters\":{}}");
-    const string rootNode = "{\"type\":\"overlay\",\"children\":[" +
-        "{\"type\":\"region\",\"slot\":\"hero-background\",\"region\":{\"x\":0,\"y\":0,\"width\":1,\"height\":1}}," +
-        "{\"type\":\"region\",\"slot\":\"game-rail\",\"orientation\":\"horizontal\",\"region\":{\"x\":0.08,\"y\":0.62,\"width\":0.84,\"height\":0.24}}," +
-        "{\"type\":\"region\",\"slot\":\"source-status\",\"region\":{\"x\":0.68,\"y\":0.08,\"width\":0.24,\"height\":0.1}}," +
-        "{\"type\":\"region\",\"slot\":\"details-panel\",\"region\":{\"x\":0.08,\"y\":0.08,\"width\":0.5,\"height\":0.4}}," +
-        "{\"type\":\"region\",\"slot\":\"controller-hints\",\"region\":{\"x\":0.52,\"y\":0.91,\"width\":0.4,\"height\":0.06}}]}";
-    File.WriteAllText(Path.Combine(directory, "layouts", "launcher-layout.json"),
-        "{\"schemaVersion\":1,\"branches\":{\"compact\":{\"root\":" + rootNode +
-        "},\"standard\":{\"root\":" + rootNode + "},\"wide\":{\"root\":" + rootNode + "}}}");
-    File.WriteAllText(Path.Combine(directory, "styles", "launcher.wrss"),
-        "launcher-game-rail { color: #ffffff; } launcher-details-panel { background: rgba(0, 0, 0, 0.5); }");
-    var png = new byte[24];
-    new byte[] { 137, 80, 78, 71, 13, 10, 26, 10 }.CopyTo(png, 0);
-    "IHDR"u8.CopyTo(png.AsSpan(12, 4));
-    BinaryPrimitives.WriteInt32BigEndian(png.AsSpan(16, 4), 64);
-    BinaryPrimitives.WriteInt32BigEndian(png.AsSpan(20, 4), 36);
-    File.WriteAllBytes(Path.Combine(directory, "assets", "preview.png"), png);
 }
 
 static void WriteInstalledWidget(

@@ -92,9 +92,6 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Theme archives reject traversal collisions and executable content", ThemeArchiveSafety),
     ("Theme installation is immutable and catalog-compatible", ThemeInstallIsImmutable),
     ("Theme removal is exact protected and shares catalog policy", ThemeRemovalIsExact),
-    ("Launcher Experience authoring is deterministic and immutable", LauncherThemeScenarios.WorkflowIsDeterministicAndImmutable),
-    ("Launcher Experience preview covers the bounded fixture matrix", LauncherThemeScenarios.PreviewCoversTheBoundedFixtureMatrix),
-    ("Launcher Experience validation rejects authority and unsafe content", LauncherThemeScenarios.ValidationFailsClosedForAuthorityAndUnsafeContent),
     ("Remote theme installation requires and verifies a pinned release asset", ThemeRemoteInstall),
     ("Validate accepts a scaffolded widget", ValidateScaffold),
     ("Validate rejects unsafe WRSS", ValidateRejectsUnsafeWrss),
@@ -141,12 +138,6 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Catalog state commands report missing widgets", StateCommandRejectsMissingWidget),
     ("Unknown commands return usage errors", UnknownCommand),
 };
-
-if (!string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable(
-        "WRAIL_LAUNCHER_LIFECYCLE_HOST_TEST")))
-    tests = [.. tests, (
-        "Launcher Experience author-to-production lifecycle is exact",
-        LauncherThemeScenarios.AuthorToProductionLifecycle)];
 
 if (args is ["--test", var exactName])
 {
@@ -1054,10 +1045,6 @@ static async Task ExternalGameLauncherCommunityReference()
         await File.ReadAllBytesAsync(Path.Combine(widget, "manifest.json")));
     Assert.Equal("widgetrail.community.reference.game-launcher", manifest.Id);
     Assert.Equal("widgetrail.community.reference", manifest.Publisher);
-    Assert.Equal(WidgetAdvancedPresentationKind.LauncherExperience,
-        manifest.AdvancedPresentation?.Kind);
-    Assert.Equal(WidgetAdvancedPresentationDeclaration.CurrentSchemaVersion,
-        manifest.AdvancedPresentation?.SchemaVersion);
     Assert.Equal(WidgetEntrypointRuntimes.FullTrustApplicationV1,
         manifest.Entrypoint.Runtime);
     Assert.Equal("payload/GameLauncherApplication.exe", manifest.Entrypoint.Executable);
@@ -1103,7 +1090,7 @@ static void CopyWrailDistribution(string source, string destination)
     foreach (var name in new[]
              {
                  "wrail.exe", "wrail.dll", "wrail.deps.json", "wrail.runtimeconfig.json",
-                 "LauncherExperienceCatalog.dll", "PlatformBroker.dll",
+                 "PlatformBroker.dll",
                  "PlatformSettings.dll", "WidgetCatalog.dll", "WidgetProtocol.dll",
                  "WidgetApplicationRuntime.dll", "WidgetRuntime.dll", "WidgetSdk.dll",
                  "WidgetStyling.dll",
