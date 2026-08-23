@@ -11,6 +11,9 @@ internal sealed record BridgeClientSnapshot(
 
 internal sealed record BridgeClientPresentation(
     ConfiguredWidget Configured,
+    WidgetPresentationTransactionKind TransactionKind,
+    long RequestBaseSequence,
+    long RecoveryOriginSequence,
     ViewSnapshot Snapshot,
     PresentationUpdateBatch? Update);
 
@@ -94,9 +97,12 @@ internal interface IBridgeWidgetClient : IAsyncDisposable
         PresentationUpdateCapabilities capabilities,
         string presentationGeneration,
         long baseSequence,
-        bool requireCheckpoint,
+        WidgetPresentationTransactionKind transactionKind,
+        long recoveryOriginSequence,
         CancellationToken cancellationToken) =>
-        new(await GetSnapshotAsync(cancellationToken).ConfigureAwait(false), null);
+        new(
+            transactionKind, baseSequence, recoveryOriginSequence,
+            await GetSnapshotAsync(cancellationToken).ConfigureAwait(false), null);
     Task SetLifecycleStateAsync(WidgetLifecycleState state, CancellationToken cancellationToken);
     Task<bool> TryRestoreLifecycleStateAsync(
         WidgetLifecycleState state,
@@ -147,11 +153,12 @@ internal sealed class WidgetProcessBridgeClient(WidgetProcessClient client)
         PresentationUpdateCapabilities capabilities,
         string presentationGeneration,
         long baseSequence,
-        bool requireCheckpoint,
+        WidgetPresentationTransactionKind transactionKind,
+        long recoveryOriginSequence,
         CancellationToken cancellationToken) =>
         client.GetPresentationAsync(
             capabilities, presentationGeneration, baseSequence,
-            requireCheckpoint, cancellationToken);
+            transactionKind, recoveryOriginSequence, cancellationToken);
     public Task SetLifecycleStateAsync(
         WidgetLifecycleState state,
         CancellationToken cancellationToken) =>
@@ -296,8 +303,10 @@ internal sealed class BridgeClientRegistry : IAsyncDisposable
     {
         var publication = await GetPresentationAsync(
             widgetId,
+            WidgetPresentationTransactionKind.OrdinaryCheckpoint,
             PresentationUpdateCapabilities.None,
             baseSequence: 0,
+            recoveryOriginSequence: 0,
             sessionCancellation,
             cancellationToken).ConfigureAwait(false);
         return publication.Map(value =>
@@ -306,12 +315,15 @@ internal sealed class BridgeClientRegistry : IAsyncDisposable
 
     internal async Task<BridgeClientPublication<BridgeClientPresentation>> GetPresentationAsync(
         string widgetId,
+        WidgetPresentationTransactionKind transactionKind,
         PresentationUpdateCapabilities capabilities,
         long baseSequence,
+        long recoveryOriginSequence,
         CancellationToken sessionCancellation,
         CancellationToken cancellationToken)
     {
-        ValidateUpdateRequest(capabilities, baseSequence);
+        ValidatePresentationRequest(
+            transactionKind, capabilities, baseSequence, recoveryOriginSequence);
         var registration = await GetOrCreateAsync(widgetId, cancellationToken).ConfigureAwait(false);
         await registration.OperationGate.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
@@ -323,8 +335,9 @@ internal sealed class BridgeClientRegistry : IAsyncDisposable
                 registration.HostLifecycle == WidgetLifecycleState.Background &&
                 residencyMode is WidgetResidencyMode.SuspendWhenHidden or
                     WidgetResidencyMode.UnloadAfterIdle;
-            var canUpdate = capabilities.SupportsAtomicUpdates;
-            if (canUpdate && registration.CachedSnapshot?.Sequence != baseSequence)
+            var incremental = transactionKind ==
+                WidgetPresentationTransactionKind.IncrementalUpdate;
+            if (incremental && registration.CachedSnapshot?.Sequence != baseSequence)
                 throw new BridgeStalePresentationBaseException();
             WidgetRuntimePresentation presentation;
             if (hiddenAndRestricted)
@@ -332,7 +345,9 @@ internal sealed class BridgeClientRegistry : IAsyncDisposable
                 var snapshot = registration.CachedSnapshot ??
                     throw new BridgeProtocolException(
                         "A hidden suspended widget has no cached snapshot. Make it Visible before rendering.");
-                presentation = new(snapshot, null);
+                presentation = new(
+                    transactionKind, baseSequence,
+                    recoveryOriginSequence, snapshot, null);
             }
             else
             {
@@ -341,14 +356,21 @@ internal sealed class BridgeClientRegistry : IAsyncDisposable
                 presentation = await ExecuteClientOperationAsync(
                         registration,
                         (client, token) => client.GetPresentationAsync(
-                            canUpdate ? capabilities : PresentationUpdateCapabilities.None,
+                            incremental ? capabilities : PresentationUpdateCapabilities.None,
                             generation,
-                            canUpdate ? baseSequence : 0,
-                            requireCheckpoint: !canUpdate,
+                            incremental ? baseSequence : 0,
+                            transactionKind,
+                            recoveryOriginSequence,
                             token),
                         cancellationToken)
                     .ConfigureAwait(false);
                 DemandCurrent(registration);
+                if (presentation.TransactionKind !=
+                        transactionKind ||
+                    presentation.RequestBaseSequence != baseSequence ||
+                    presentation.RecoveryOriginSequence != recoveryOriginSequence)
+                    throw new BridgeProtocolException(
+                        "Worker returned a presentation for a different transaction kind.");
                 registration.CachedSnapshot = presentation.Snapshot;
                 ScheduleIdleUnload(registration, sessionCancellation);
             }
@@ -356,6 +378,9 @@ internal sealed class BridgeClientRegistry : IAsyncDisposable
                 registration,
                 new BridgeClientPresentation(
                     registration.Configured,
+                    transactionKind,
+                    baseSequence,
+                    recoveryOriginSequence,
                     presentation.Snapshot,
                     presentation.Update));
         }
@@ -365,9 +390,11 @@ internal sealed class BridgeClientRegistry : IAsyncDisposable
         }
     }
 
-    private static void ValidateUpdateRequest(
+    private static void ValidatePresentationRequest(
+        WidgetPresentationTransactionKind transactionKind,
         PresentationUpdateCapabilities capabilities,
-        long baseSequence)
+        long baseSequence,
+        long recoveryOriginSequence)
     {
         ArgumentNullException.ThrowIfNull(capabilities);
         var none = capabilities.MaximumProtocolVersion == 0 &&
@@ -382,10 +409,20 @@ internal sealed class BridgeClientRegistry : IAsyncDisposable
         if (!none && !bounded)
             throw new BridgeProtocolException(
                 "Presentation update capabilities are malformed or unsupported.");
-        if (bounded && baseSequence <= 0)
+        var incremental = transactionKind ==
+            WidgetPresentationTransactionKind.IncrementalUpdate;
+        var recovery = transactionKind ==
+            WidgetPresentationTransactionKind.RecoveryCheckpoint;
+        if (!Enum.IsDefined(transactionKind))
+            throw new BridgeProtocolException(
+                "Presentation transaction kind is unsupported.");
+        if (bounded && (!incremental || baseSequence <= 0 ||
+                recoveryOriginSequence != 0))
             throw new BridgeProtocolException(
                 "Presentation updates require a positive current base sequence.");
-        if (none && baseSequence != 0)
+        if (none && (incremental || baseSequence != 0 ||
+                (recovery ? recoveryOriginSequence <= 0 :
+                    recoveryOriginSequence != 0)))
             throw new BridgeProtocolException(
                 "Checkpoint requests cannot claim a presentation base sequence.");
     }
@@ -420,25 +457,29 @@ internal sealed class BridgeClientRegistry : IAsyncDisposable
 
     internal async Task<BridgeClientPublication<BridgeClientPresentation>>
         EstablishPresentationAsync(
-            string widgetId,
-            WidgetLifecycleState state,
-            PresentationUpdateCapabilities capabilities,
-            long baseSequence,
+        string widgetId,
+        WidgetLifecycleState state,
+        WidgetPresentationTransactionKind transactionKind,
+        PresentationUpdateCapabilities capabilities,
+        long baseSequence,
+        long recoveryOriginSequence,
             CancellationToken sessionCancellation,
             CancellationToken cancellationToken)
     {
         if (state == WidgetLifecycleState.Background)
             throw new BridgeProtocolException(
                 "A background widget cannot establish a visible presentation.");
-        ValidateUpdateRequest(capabilities, baseSequence);
+        ValidatePresentationRequest(
+            transactionKind, capabilities, baseSequence, recoveryOriginSequence);
         var registration = await GetOrCreateAsync(widgetId, cancellationToken)
             .ConfigureAwait(false);
         await registration.OperationGate.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
             DemandCurrent(registration);
-            var canUpdate = capabilities.SupportsAtomicUpdates;
-            if (canUpdate && registration.CachedSnapshot?.Sequence != baseSequence)
+            var incremental = transactionKind ==
+                WidgetPresentationTransactionKind.IncrementalUpdate;
+            if (incremental && registration.CachedSnapshot?.Sequence != baseSequence)
                 throw new BridgeStalePresentationBaseException();
             var priorHostLifecycle = registration.HostLifecycle;
             registration.CancelIdleUnload();
@@ -455,17 +496,24 @@ internal sealed class BridgeClientRegistry : IAsyncDisposable
                 var presentation = await ExecuteClientOperationAsync(
                         registration,
                         (client, token) => client.GetPresentationAsync(
-                            canUpdate ? capabilities : PresentationUpdateCapabilities.None,
+                            incremental ? capabilities : PresentationUpdateCapabilities.None,
                             generation,
-                            canUpdate ? baseSequence : 0,
-                            requireCheckpoint: !canUpdate,
+                            incremental ? baseSequence : 0,
+                            transactionKind,
+                            recoveryOriginSequence,
                             token),
                         cancellationToken)
                     .ConfigureAwait(false);
                 DemandCurrent(registration);
+                if (presentation.TransactionKind !=
+                        transactionKind ||
+                    presentation.RequestBaseSequence != baseSequence ||
+                    presentation.RecoveryOriginSequence != recoveryOriginSequence)
+                    throw new BridgeProtocolException(
+                        "Worker returned a presentation for a different transaction kind.");
 
                 var publication = CommitEstablishmentPublication(
-                    registration, state, presentation);
+                    registration, state, transactionKind, presentation);
                 ScheduleIdleUnload(registration, sessionCancellation);
                 return publication;
             }
@@ -491,6 +539,7 @@ internal sealed class BridgeClientRegistry : IAsyncDisposable
         CommitEstablishmentPublication(
             ClientRegistration registration,
             WidgetLifecycleState state,
+            WidgetPresentationTransactionKind transactionKind,
             WidgetRuntimePresentation presentation)
     {
         lock (_gate)
@@ -502,6 +551,9 @@ internal sealed class BridgeClientRegistry : IAsyncDisposable
                 registration,
                 new BridgeClientPresentation(
                     registration.Configured,
+                    transactionKind,
+                    presentation.RequestBaseSequence,
+                    presentation.RecoveryOriginSequence,
                     presentation.Snapshot,
                     presentation.Update));
             // The bridge-visible lifecycle, retained base, and publication token
@@ -511,6 +563,7 @@ internal sealed class BridgeClientRegistry : IAsyncDisposable
             return publication;
         }
     }
+
 
     private async Task TryRestoreEstablishmentLifecycleAsync(
         ClientRegistration registration,

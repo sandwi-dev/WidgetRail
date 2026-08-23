@@ -324,7 +324,9 @@ internal static class BridgeClientRegistryScenarios
             using var admitted = await fixture.Registry.EstablishPresentationAsync(
                 configured.Id,
                 WidgetLifecycleState.Visible,
+                WidgetPresentationTransactionKind.OrdinaryCheckpoint,
                 PresentationUpdateCapabilities.None,
+                0,
                 0,
                 CancellationToken.None,
                 CancellationToken.None);
@@ -344,7 +346,9 @@ internal static class BridgeClientRegistryScenarios
             failed.Registry.EstablishPresentationAsync(
                 configured.Id,
                 WidgetLifecycleState.Interactive,
+                WidgetPresentationTransactionKind.OrdinaryCheckpoint,
                 PresentationUpdateCapabilities.None,
+                0,
                 0,
                 CancellationToken.None,
                 CancellationToken.None));
@@ -359,7 +363,9 @@ internal static class BridgeClientRegistryScenarios
         using var recovered = await failed.Registry.EstablishPresentationAsync(
             configured.Id,
             WidgetLifecycleState.Interactive,
+            WidgetPresentationTransactionKind.OrdinaryCheckpoint,
             PresentationUpdateCapabilities.None,
+            0,
             0,
             CancellationToken.None,
             CancellationToken.None);

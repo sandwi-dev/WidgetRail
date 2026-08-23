@@ -3,7 +3,17 @@ using WidgetRail.WidgetProtocol;
 
 namespace WidgetRail.WidgetSdk;
 
+internal enum WidgetPresentationTransactionKind
+{
+    IncrementalUpdate,
+    OrdinaryCheckpoint,
+    RecoveryCheckpoint,
+}
+
 internal sealed record WidgetPresentationPublication(
+    WidgetPresentationTransactionKind TransactionKind,
+    long RequestBaseSequence,
+    long RecoveryOriginSequence,
     ViewSnapshot Snapshot,
     PresentationUpdateBatch? Update,
     string? FallbackReason)
@@ -19,12 +29,28 @@ internal static class WidgetPresentationDiff
         string presentationGeneration,
         long expectedBaseSequence,
         PresentationUpdateCapabilities capabilities,
-        bool requireCheckpoint)
+        WidgetPresentationTransactionKind transactionKind,
+        long recoveryOriginSequence = 0)
     {
         ArgumentNullException.ThrowIfNull(current);
         ArgumentNullException.ThrowIfNull(capabilities);
+        var validAuthority = transactionKind switch
+        {
+            WidgetPresentationTransactionKind.IncrementalUpdate =>
+                expectedBaseSequence > 0 && recoveryOriginSequence == 0,
+            WidgetPresentationTransactionKind.OrdinaryCheckpoint =>
+                expectedBaseSequence == 0 && recoveryOriginSequence == 0,
+            WidgetPresentationTransactionKind.RecoveryCheckpoint =>
+                expectedBaseSequence == 0 && recoveryOriginSequence > 0,
+            _ => false,
+        };
+        if (!validAuthority)
+            throw new ArgumentException(
+                "Presentation transaction authority is incomplete or malformed.",
+                nameof(transactionKind));
         current = NormalizeVirtualWindowReentry(previous, current, expectedBaseSequence);
-        if (requireCheckpoint) return Checkpoint("checkpoint_requested");
+        if (transactionKind is not WidgetPresentationTransactionKind.IncrementalUpdate)
+            return Checkpoint("checkpoint_requested");
         if (!capabilities.SupportsAtomicUpdates) return Checkpoint("capability_unavailable");
         if (previous is null) return Checkpoint("missing_base");
         if (!string.Equals(previous.WidgetInstanceId, current.WidgetInstanceId, StringComparison.Ordinal))
@@ -76,10 +102,14 @@ internal static class WidgetPresentationDiff
         var checkpointBytes = SnapshotJson.Serialize(current);
         if (updateBytes.Length > byteLimit || updateBytes.Length >= checkpointBytes.Length)
             return Checkpoint("checkpoint_smaller");
-        return new(current, batch, null);
+        return new(
+            transactionKind, expectedBaseSequence, recoveryOriginSequence,
+            current, batch, null);
 
         WidgetPresentationPublication Checkpoint(string reason) =>
-            new(current, null, reason);
+            new(
+                transactionKind, expectedBaseSequence, recoveryOriginSequence,
+                current, null, reason);
     }
 
     internal static PresentationUpdateBatch? TryCoalesce(

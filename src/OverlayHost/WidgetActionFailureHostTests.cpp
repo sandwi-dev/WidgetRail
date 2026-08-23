@@ -629,6 +629,16 @@ std::string ReadLog(const fs::path& path) {
     return {std::istreambuf_iterator<char>(input), std::istreambuf_iterator<char>()};
 }
 
+std::string ProcessIds(const std::vector<DWORD>& processIds) {
+    std::string result{"["};
+    for (std::size_t index = 0; index < processIds.size(); ++index) {
+        if (index != 0) result += ",";
+        result += std::to_string(processIds[index]);
+    }
+    result += "]";
+    return result;
+}
+
 std::size_t MatchingFailureRecords(const std::string& log) {
     static const std::regex record(
         R"(Widget action failed: widget=ytmusic-fixture generation=([^\s]+) code=controllerActionFailed action=toggle-playback source=play-pause)");
@@ -812,16 +822,33 @@ void Run(const Arguments& arguments) {
         Require(startupLog.find("hidden suspended widget has no cached snapshot") ==
                     std::string::npos,
                 "The secondary missing-cache error replaced the primary startup failure.");
+        const auto retryLogBoundary = startupLog.size();
         PostKey(window, VK_RETURN);
-        Require(WaitUntil(kOperationTimeoutMilliseconds, [&] {
-                    return FixtureDescendants(host.Id(), arguments.fixtureWorker).size() == 1 &&
-                           [&] {
-                               auto currentRoot = RootForWindow(automation.Get(), window);
-                               return currentRoot && FindByAutomationId(
-                                   automation.Get(), currentRoot.Get(),
-                                   kPlayPauseAutomationId);
-                           }();
-                }), "A Retry did not recover with one fresh worker generation.");
+        std::vector<DWORD> retryDescendants;
+        bool retryPlayPauseAppeared{};
+        if (!WaitUntil(kOperationTimeoutMilliseconds, [&] {
+                retryDescendants = FixtureDescendants(
+                    host.Id(), arguments.fixtureWorker);
+                auto currentRoot = RootForWindow(automation.Get(), window);
+                retryPlayPauseAppeared = currentRoot && FindByAutomationId(
+                    automation.Get(), currentRoot.Get(), kPlayPauseAutomationId);
+                return retryDescendants.size() == 1 && retryPlayPauseAppeared;
+            })) {
+            const auto log = ReadLog(logPath);
+            const auto evidenceStart = std::min(retryLogBoundary, log.size());
+            const auto evidenceLength = std::min<std::size_t>(
+                8192, log.size() - evidenceStart);
+            const auto suffixStart = log.size() > 8192 ? log.size() - 8192 : 0;
+            Fail("A Retry did not recover with one fresh worker generation. "
+                 "Fresh fixture descendants=" +
+                 std::to_string(retryDescendants.size()) + " ids=" +
+                 ProcessIds(retryDescendants) + " play-pause=" +
+                 (retryPlayPauseAppeared ? "present" : "absent") +
+                 " isolated overlay log bytes=" + std::to_string(log.size()) +
+                 " post-Retry prefix: " +
+                 log.substr(evidenceStart, evidenceLength) +
+                 " bounded suffix: " + log.substr(suffixStart));
+        }
         Require(WaitUntil(kOperationTimeoutMilliseconds, [&] {
                     auto currentRoot = RootForWindow(automation.Get(), window);
                     return currentRoot && FindByAutomationId(

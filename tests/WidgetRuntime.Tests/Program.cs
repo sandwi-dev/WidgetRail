@@ -1772,11 +1772,16 @@ static async Task NegotiatedPresentationUpdates()
 
     var initial = await client.GetPresentationAsync(
         PresentationUpdateCapabilities.Current,
-        generation,
+        presentationGeneration: null,
         baseSequence: 0,
-        requireCheckpoint: false);
+        WidgetPresentationTransactionKind.OrdinaryCheckpoint,
+        recoveryOriginSequence: 0);
     Assert.True(initial.Update is null,
         "A missing runtime base must negotiate a complete checkpoint.");
+    Assert.Equal(WidgetPresentationTransactionKind.OrdinaryCheckpoint,
+        initial.TransactionKind);
+    Assert.Equal(0L, initial.RequestBaseSequence);
+    Assert.Equal(0L, initial.RecoveryOriginSequence);
     Assert.Equal("none", Find(initial.Snapshot.Root, "scoped-action").Text);
 
     var invalidated = new TaskCompletionSource<long>(
@@ -1789,29 +1794,47 @@ static async Task NegotiatedPresentationUpdates()
         PresentationUpdateCapabilities.Current,
         generation,
         initial.Snapshot.Sequence,
-        requireCheckpoint: false);
+        WidgetPresentationTransactionKind.IncrementalUpdate,
+        recoveryOriginSequence: 0);
     Assert.True(changed.Update is not null,
         "An exact negotiated base did not receive an atomic update batch.");
+    Assert.Equal(WidgetPresentationTransactionKind.IncrementalUpdate,
+        changed.TransactionKind);
+    Assert.Equal(initial.Snapshot.Sequence, changed.RequestBaseSequence);
+    Assert.Equal(0L, changed.RecoveryOriginSequence);
     Assert.Equal(initial.Snapshot.Sequence, changed.Update!.BaseSequence);
     Assert.Equal(changed.Snapshot.Sequence, changed.Update.Sequence);
     Assert.Equal(generation, changed.Update.PresentationGeneration);
     Assert.Equal("nested", Find(changed.Snapshot.Root, "scoped-action").Text);
 
-    var wrongBase = await client.GetPresentationAsync(
-        PresentationUpdateCapabilities.Current,
-        generation,
-        baseSequence: initial.Snapshot.Sequence,
-        requireCheckpoint: false);
-    Assert.True(wrongBase.Update is null,
-        "A stale negotiated base must fall back to a complete checkpoint.");
+    _ = await Assert.ThrowsAsync<WidgetProtocolViolationException>(() =>
+        client.GetPresentationAsync(
+            PresentationUpdateCapabilities.Current,
+            generation,
+            baseSequence: initial.Snapshot.Sequence,
+            WidgetPresentationTransactionKind.IncrementalUpdate,
+            recoveryOriginSequence: 0));
 
     var legacy = await client.GetPresentationAsync(
         PresentationUpdateCapabilities.None,
-        generation,
-        changed.Snapshot.Sequence,
-        requireCheckpoint: false);
+        presentationGeneration: null,
+        baseSequence: 0,
+        WidgetPresentationTransactionKind.OrdinaryCheckpoint,
+        recoveryOriginSequence: 0);
     Assert.True(legacy.Update is null,
         "A consumer without update capability received update traffic.");
+
+    var recovery = await client.GetPresentationAsync(
+        PresentationUpdateCapabilities.None,
+        presentationGeneration: null,
+        baseSequence: 0,
+        WidgetPresentationTransactionKind.RecoveryCheckpoint,
+        recoveryOriginSequence: changed.Snapshot.Sequence);
+    Assert.True(recovery.Update is null,
+        "A typed recovery transaction did not produce a complete checkpoint.");
+    Assert.Equal(WidgetPresentationTransactionKind.RecoveryCheckpoint,
+        recovery.TransactionKind);
+    Assert.Equal(changed.Snapshot.Sequence, recovery.RecoveryOriginSequence);
 }
 
 static Task LegacyActionAdmissionCompatibility()
@@ -1919,9 +1942,10 @@ static async Task ProcessClientCarriesLifecycleFirstCursorPagination()
     var presentationGeneration = new string('D', 32);
     var initialPresentation = await client.GetPresentationAsync(
         PresentationUpdateCapabilities.Current,
-        presentationGeneration,
+        presentationGeneration: null,
         baseSequence: 0,
-        requireCheckpoint: false,
+        WidgetPresentationTransactionKind.OrdinaryCheckpoint,
+        recoveryOriginSequence: 0,
         deadline.Token);
     Assert.True(initialPresentation.Update is null,
         "The missing initial base did not produce a complete checkpoint.");
@@ -1976,7 +2000,8 @@ static async Task ProcessClientCarriesLifecycleFirstCursorPagination()
             PresentationUpdateCapabilities.Current,
             presentationGeneration,
             current.Sequence,
-            requireCheckpoint: false,
+            WidgetPresentationTransactionKind.IncrementalUpdate,
+            recoveryOriginSequence: 0,
             deadline.Token);
         Assert.True(changed.Update is not null,
             "A current exact base did not produce an atomic cursor update.");

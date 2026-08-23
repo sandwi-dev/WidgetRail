@@ -481,7 +481,17 @@ struct WidgetPresentationMaterialization final {
     WidgetPresentationImpact impact;
 };
 
+enum class WidgetPresentationTransactionKind {
+    IncrementalUpdate,
+    OrdinaryCheckpoint,
+    RecoveryCheckpoint,
+};
+
 struct WidgetPresentationPublication final {
+    WidgetPresentationTransactionKind transactionKind{
+        WidgetPresentationTransactionKind::OrdinaryCheckpoint};
+    long long requestBaseSequence{};
+    long long recoveryOriginSequence{};
     std::optional<WidgetSnapshot> checkpoint;
     std::optional<WidgetPresentationUpdate> update;
 };
@@ -603,14 +613,16 @@ public:
         std::wstring_view widgetId,
         std::wstring_view state,
         long long baseSequence,
-        bool allowUpdate);
+        WidgetPresentationTransactionKind transactionKind,
+        long long recoveryOriginSequence);
     /// Retires the exact current worker registration, clears its cached
     /// snapshot/input authority, and restores its prior host lifecycle.
     [[nodiscard]] std::optional<bool> RestartWidget(std::wstring_view widgetId);
     [[nodiscard]] std::optional<WidgetPresentationPublication> GetSnapshot(
         std::wstring_view widgetId,
         long long baseSequence,
-        bool allowUpdate);
+        WidgetPresentationTransactionKind transactionKind,
+        long long recoveryOriginSequence);
     [[nodiscard]] std::optional<bool> RequestArtwork(
         std::wstring_view widgetId,
         std::wstring_view artworkHandle);
@@ -718,6 +730,10 @@ struct BridgeFrameReadResult final {
     std::wstring& error);
 [[nodiscard]] std::optional<WidgetPresentationUpdate>
 ParseWidgetPresentationUpdateResponse(
+    std::string_view payloadUtf8,
+    std::wstring& error);
+[[nodiscard]] std::optional<WidgetPresentationUpdate>
+ParseTypedWidgetPresentationUpdateResponse(
     std::string_view payloadUtf8,
     std::wstring& error);
 [[nodiscard]] std::optional<WidgetHostEffect> ParseWidgetHostEffectEvent(

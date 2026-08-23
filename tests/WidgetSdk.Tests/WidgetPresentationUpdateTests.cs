@@ -12,6 +12,7 @@ internal static class WidgetPresentationUpdateTests
         PropertyNoOpAndRoundTrip();
         VirtualCollectionWindowUpdatesAtomically();
         PublicationProtocolAndVirtualReentryMatrix();
+        TransactionKindsRetainExactAuthority();
         KeyedStructureAndSubtreeReplacement();
         FallbacksAreDeterministic();
         MalformedAndOversizedFailClosed();
@@ -19,6 +20,49 @@ internal static class WidgetPresentationUpdateTests
         PropertyCoalescingIsBounded();
         DifferIsTrustTierNeutral();
         return Task.CompletedTask;
+    }
+
+    private static void TransactionKindsRetainExactAuthority()
+    {
+        var previous = Snapshot(40, "old");
+        var current = Snapshot(41, "new");
+        var incremental = WidgetPresentationDiff.Create(
+            previous, current, Generation, 40,
+            PresentationUpdateCapabilities.Current,
+            WidgetPresentationTransactionKind.IncrementalUpdate);
+        Equal(WidgetPresentationTransactionKind.IncrementalUpdate,
+            incremental.TransactionKind);
+        Equal(40L, incremental.RequestBaseSequence);
+        Equal(0L, incremental.RecoveryOriginSequence);
+
+        var ordinary = WidgetPresentationDiff.Create(
+            previous, current, Generation, 0,
+            PresentationUpdateCapabilities.None,
+            WidgetPresentationTransactionKind.OrdinaryCheckpoint);
+        Equal(WidgetPresentationTransactionKind.OrdinaryCheckpoint,
+            ordinary.TransactionKind);
+        Equal(0L, ordinary.RequestBaseSequence);
+        Equal(0L, ordinary.RecoveryOriginSequence);
+
+        var recovery = WidgetPresentationDiff.Create(
+            previous, current, Generation, 0,
+            PresentationUpdateCapabilities.None,
+            WidgetPresentationTransactionKind.RecoveryCheckpoint,
+            recoveryOriginSequence: 40);
+        Equal(WidgetPresentationTransactionKind.RecoveryCheckpoint,
+            recovery.TransactionKind);
+        Equal(0L, recovery.RequestBaseSequence);
+        Equal(40L, recovery.RecoveryOriginSequence);
+
+        Throws<ArgumentException>(() => WidgetPresentationDiff.Create(
+            previous, current, Generation, 0,
+            PresentationUpdateCapabilities.Current,
+            WidgetPresentationTransactionKind.IncrementalUpdate));
+        Throws<ArgumentException>(() => WidgetPresentationDiff.Create(
+            previous, current, Generation, 40,
+            PresentationUpdateCapabilities.None,
+            WidgetPresentationTransactionKind.RecoveryCheckpoint,
+            recoveryOriginSequence: 40));
     }
 
     private static void VirtualCollectionWindowUpdatesAtomically()
@@ -68,7 +112,8 @@ internal static class WidgetPresentationUpdateTests
         var current = VirtualSnapshot(2, 2, 34);
         var publication = WidgetPresentationDiff.Create(
             previous, current, Generation, 1,
-            PresentationUpdateCapabilities.Current, requireCheckpoint: false);
+            PresentationUpdateCapabilities.Current,
+            WidgetPresentationTransactionKind.IncrementalUpdate);
         True(publication.IsUpdate,
             "A bounded virtual append should remain one atomic update candidate.");
         True(publication.Update!.Operations.Any(operation =>
@@ -139,7 +184,8 @@ internal static class WidgetPresentationUpdateTests
                 $"{error.Path} {error.Code}: {error.Message}")));
         var protocolAdvance = WidgetPresentationDiff.Create(
             legacy, firstVirtual, Generation, legacy.Sequence,
-            PresentationUpdateCapabilities.Current, requireCheckpoint: false);
+            PresentationUpdateCapabilities.Current,
+            WidgetPresentationTransactionKind.IncrementalUpdate);
         True(!protocolAdvance.IsUpdate,
             "A snapshot-protocol advance must publish a complete checkpoint.");
         Equal("snapshot_protocol_advanced", protocolAdvance.FallbackReason);
@@ -156,7 +202,8 @@ internal static class WidgetPresentationUpdateTests
         var reintroduced = WidgetPresentationDiff.Create(
             routeWithoutWindow, Virtual(4, 21, VirtualCollectionWindowChange.Append),
             Generation, routeWithoutWindow.Sequence,
-            PresentationUpdateCapabilities.Current, requireCheckpoint: false);
+            PresentationUpdateCapabilities.Current,
+            WidgetPresentationTransactionKind.IncrementalUpdate);
         Equal(VirtualCollectionWindowChange.Replace,
             reintroduced.Snapshot.Root.VirtualCollectionWindow!.Change);
 
@@ -164,7 +211,8 @@ internal static class WidgetPresentationUpdateTests
             reintroduced.Snapshot,
             Virtual(5, 21, VirtualCollectionWindowChange.Append),
             Generation, reintroduced.Snapshot.Sequence,
-            PresentationUpdateCapabilities.Current, requireCheckpoint: false);
+            PresentationUpdateCapabilities.Current,
+            WidgetPresentationTransactionKind.IncrementalUpdate);
         Equal(VirtualCollectionWindowChange.Replace,
             unchangedGeneration.Snapshot.Root.VirtualCollectionWindow!.Change);
 
@@ -172,7 +220,8 @@ internal static class WidgetPresentationUpdateTests
             unchangedGeneration.Snapshot,
             Virtual(6, 22, VirtualCollectionWindowChange.Append),
             Generation, unchangedGeneration.Snapshot.Sequence,
-            PresentationUpdateCapabilities.Current, requireCheckpoint: false);
+            PresentationUpdateCapabilities.Current,
+            WidgetPresentationTransactionKind.IncrementalUpdate);
         Equal(VirtualCollectionWindowChange.Append,
             newerGeneration.Snapshot.Root.VirtualCollectionWindow!.Change);
     }
@@ -183,7 +232,8 @@ internal static class WidgetPresentationUpdateTests
         var identical = Snapshot(2, "old");
         var noOp = WidgetPresentationDiff.Create(
             previous, identical, Generation, 1,
-            PresentationUpdateCapabilities.Current, requireCheckpoint: false);
+            PresentationUpdateCapabilities.Current,
+            WidgetPresentationTransactionKind.IncrementalUpdate);
         True(noOp.IsUpdate, "An identical semantic model should advance through an empty update.");
         Equal(0, noOp.Update!.Operations.Count);
         Equal(2L, PresentationUpdateMaterializer.Apply(previous, noOp.Update, Generation).Sequence);
@@ -192,7 +242,8 @@ internal static class WidgetPresentationUpdateTests
         var publication = WidgetPresentationDiff.Create(
             identical with { ProtocolVersion = ProtocolConstants.AtomicPresentationUpdateVersion },
             changed, Generation, 2,
-            PresentationUpdateCapabilities.Current, requireCheckpoint: false);
+            PresentationUpdateCapabilities.Current,
+            WidgetPresentationTransactionKind.IncrementalUpdate);
         True(publication.IsUpdate, "A bounded text change should use SetProperties.");
         var operation = publication.Update!.Operations.Single();
         Equal(PresentationUpdateOperationKind.SetProperties, operation.Kind);
@@ -225,7 +276,8 @@ internal static class WidgetPresentationUpdateTests
                 .. stableTail]);
         var publication = WidgetPresentationDiff.Create(
             previous, current, Generation, 10,
-            PresentationUpdateCapabilities.Current, requireCheckpoint: false);
+            PresentationUpdateCapabilities.Current,
+            WidgetPresentationTransactionKind.IncrementalUpdate);
         True(publication.IsUpdate, "Stable keyed children should use structural operations.");
         True(publication.Update!.Operations.Any(operation =>
             operation.Kind == PresentationUpdateOperationKind.RemoveChild &&
@@ -254,7 +306,8 @@ internal static class WidgetPresentationUpdateTests
         var replaced = WidgetPresentationDiff.Create(
             current with { ProtocolVersion = ProtocolConstants.AtomicPresentationUpdateVersion },
             replacement, Generation, 11,
-            PresentationUpdateCapabilities.Current, requireCheckpoint: false);
+            PresentationUpdateCapabilities.Current,
+            WidgetPresentationTransactionKind.IncrementalUpdate);
         True(replaced.Update?.Operations.Any(operation =>
             operation.Kind == PresentationUpdateOperationKind.ReplaceSubtree &&
             operation.TargetId == "delta") == true,
@@ -267,16 +320,20 @@ internal static class WidgetPresentationUpdateTests
         var current = Snapshot(21, "new");
         Equal("capability_unavailable", WidgetPresentationDiff.Create(
             previous, current, Generation, 20,
-            PresentationUpdateCapabilities.None, false).FallbackReason);
+            PresentationUpdateCapabilities.None,
+            WidgetPresentationTransactionKind.IncrementalUpdate).FallbackReason);
         Equal("base_mismatch", WidgetPresentationDiff.Create(
             previous, current, Generation, 19,
-            PresentationUpdateCapabilities.Current, false).FallbackReason);
+            PresentationUpdateCapabilities.Current,
+            WidgetPresentationTransactionKind.IncrementalUpdate).FallbackReason);
         Equal("checkpoint_requested", WidgetPresentationDiff.Create(
-            previous, current, Generation, 20,
-            PresentationUpdateCapabilities.Current, true).FallbackReason);
+            previous, current, Generation, 0,
+            PresentationUpdateCapabilities.Current,
+            WidgetPresentationTransactionKind.OrdinaryCheckpoint).FallbackReason);
         var tiny = PresentationUpdateCapabilities.Current with { MaximumBatchBytes = 1 };
         Equal("checkpoint_smaller", WidgetPresentationDiff.Create(
-            previous, current, Generation, 20, tiny, false).FallbackReason);
+            previous, current, Generation, 20, tiny,
+            WidgetPresentationTransactionKind.IncrementalUpdate).FallbackReason);
 
         var moved = SnapshotWithChildren(22,
             new ViewNode
@@ -287,7 +344,8 @@ internal static class WidgetPresentationUpdateTests
             });
         Equal("unstable_identity", WidgetPresentationDiff.Create(
             previous, moved, Generation, 20,
-            PresentationUpdateCapabilities.Current, false).FallbackReason);
+            PresentationUpdateCapabilities.Current,
+            WidgetPresentationTransactionKind.IncrementalUpdate).FallbackReason);
     }
 
     private static void MalformedAndOversizedFailClosed()
@@ -454,10 +512,12 @@ internal static class WidgetPresentationUpdateTests
     {
         var alpha = WidgetPresentationDiff.Create(
             Snapshot(1, "old", "sandbox.alpha"), Snapshot(2, "new", "sandbox.alpha"),
-            Generation, 1, PresentationUpdateCapabilities.Current, false);
+            Generation, 1, PresentationUpdateCapabilities.Current,
+            WidgetPresentationTransactionKind.IncrementalUpdate);
         var beta = WidgetPresentationDiff.Create(
             Snapshot(1, "old", "fulltrust.beta"), Snapshot(2, "new", "fulltrust.beta"),
-            Generation, 1, PresentationUpdateCapabilities.Current, false);
+            Generation, 1, PresentationUpdateCapabilities.Current,
+            WidgetPresentationTransactionKind.IncrementalUpdate);
         Equal(alpha.Update!.Operations.Select(operation => operation.Kind).ToArray(),
             beta.Update!.Operations.Select(operation => operation.Kind).ToArray());
         Equal(alpha.Update.Operations.Single().Properties!.Single().Property,

@@ -63,7 +63,10 @@ internal sealed record WidgetIdRequest(string WidgetId);
 internal sealed record BridgePresentationRequest(
     string WidgetId,
     PresentationUpdateCapabilities? Capabilities = null,
-    long BaseSequence = 0);
+    long BaseSequence = 0,
+    WidgetRail.WidgetSdk.WidgetPresentationTransactionKind TransactionKind =
+        WidgetRail.WidgetSdk.WidgetPresentationTransactionKind.OrdinaryCheckpoint,
+    long RecoveryOriginSequence = 0);
 internal sealed record BridgeArtworkRequest(string WidgetId, string ArtworkHandle);
 internal sealed record BridgeWidgetLifecycleRequest(
     string WidgetId,
@@ -71,7 +74,10 @@ internal sealed record BridgeWidgetLifecycleRequest(
     BridgePresentationEstablishment? Presentation = null);
 internal sealed record BridgePresentationEstablishment(
     PresentationUpdateCapabilities? Capabilities,
-    long BaseSequence);
+    long BaseSequence,
+    WidgetRail.WidgetSdk.WidgetPresentationTransactionKind TransactionKind =
+        WidgetRail.WidgetSdk.WidgetPresentationTransactionKind.OrdinaryCheckpoint,
+    long RecoveryOriginSequence = 0);
 internal sealed record BridgeActionRequest(string WidgetId, WidgetRail.WidgetSdk.WidgetActionEvent Action);
 internal sealed record BridgeQuickActionRequest(string WidgetId, string QuickActionId, long Sequence = 0, long MonotonicTimestampMicroseconds = 0);
 internal sealed record BridgeControllerInputRequest(string WidgetId, WidgetRail.WidgetSdk.ControllerInputEvent Input);

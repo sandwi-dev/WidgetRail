@@ -150,6 +150,9 @@ public sealed class SessionTransportTests
                 Payload = BridgeJson.ToElement(new
                 {
                     widgetId = "session-widget",
+                    transactionKind = "ordinaryCheckpoint",
+                    baseSequence = 0,
+                    recoveryOriginSequence = 0,
                     snapshot = snapshotDocument.RootElement.Clone(),
                     renderStyles = new Dictionary<string, BridgeNodeRenderStyles>(),
                 }),
@@ -815,6 +818,9 @@ public sealed class SessionTransportTests
             Payload = BridgeJson.ToElement(new
             {
                 widgetId = descriptor.Id,
+                transactionKind = "ordinaryCheckpoint",
+                baseSequence = 0,
+                recoveryOriginSequence = 0,
                 snapshot = document.RootElement.Clone(),
                 renderStyles = new Dictionary<string, BridgeNodeRenderStyles>(),
             }),
