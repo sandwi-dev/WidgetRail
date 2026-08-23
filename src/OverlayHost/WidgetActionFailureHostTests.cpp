@@ -16,6 +16,7 @@
 #include <functional>
 #include <iostream>
 #include <iterator>
+#include <mutex>
 #include <optional>
 #include <regex>
 #include <stdexcept>
@@ -377,11 +378,39 @@ public:
         IUIAutomationElement* sender, const EVENTID eventId) noexcept override {
         if (eventId == UIA_LiveRegionChangedEventId) {
             BSTR automationId{};
-            if (sender && SUCCEEDED(sender->get_CurrentAutomationId(&automationId)) &&
-                automationId && std::wstring_view(automationId) == kOpenStatusAutomationId)
+            const HRESULT automationIdResult = sender
+                ? sender->get_CurrentAutomationId(&automationId)
+                : E_POINTER;
+            const bool exactStatus = SUCCEEDED(automationIdResult) && automationId &&
+                std::wstring_view(automationId, SysStringLen(automationId)) ==
+                    kOpenStatusAutomationId;
+            const bool expectedFailure = exactStatus && IsExpectedFailure(sender);
+            if (exactStatus)
                 exactStatusCount_.fetch_add(1);
+            if (expectedFailure)
+                expectedFailureCount_.fetch_add(1);
+            const int ordinal = count_.fetch_add(1) + 1;
+            try {
+                EventRecord record;
+                record.ordinal = ordinal;
+                record.tick = GetTickCount64();
+                record.automationIdResult = automationIdResult;
+                record.automationId = automationId
+                    ? std::wstring(automationId, SysStringLen(automationId))
+                    : std::wstring{};
+                record.exactStatus = exactStatus;
+                record.expectedFailure = expectedFailure;
+                record.runtimeId = RuntimeId(sender);
+                record.name = Property(sender, UIA_NamePropertyId);
+                record.controlType = Property(sender, UIA_ControlTypePropertyId);
+                record.liveSetting = Property(sender, UIA_LiveSettingPropertyId);
+                std::scoped_lock lock(recordsMutex_);
+                if (records_.size() < kMaximumRecords) records_.push_back(std::move(record));
+                else ++droppedRecords_;
+            } catch (...) {
+                diagnosticFailure_.store(true);
+            }
             if (automationId) SysFreeString(automationId);
-            count_.fetch_add(1);
         }
         return S_OK;
     }
@@ -389,10 +418,115 @@ public:
     [[nodiscard]] int ExactStatusCount() const noexcept {
         return exactStatusCount_.load();
     }
+    [[nodiscard]] int ExpectedFailureCount() const noexcept {
+        return expectedFailureCount_.load();
+    }
+    [[nodiscard]] std::string DescribeFrom(const int baseline) const {
+        std::string result = " total=" + std::to_string(Count()) +
+            " exact-status=" + std::to_string(ExactStatusCount()) +
+            " expected-failure=" + std::to_string(ExpectedFailureCount());
+        std::scoped_lock lock(recordsMutex_);
+        for (const auto& record : records_) {
+            if (record.ordinal <= baseline) continue;
+            result += " [ordinal=" + std::to_string(record.ordinal) +
+                " tick=" + std::to_string(record.tick) +
+                " automation-id-hr=" + std::to_string(record.automationIdResult) +
+                " automation-id=" +
+                    (record.automationId.empty()
+                        ? std::string{"<empty>"}
+                        : WideToUtf8(record.automationId)) +
+                " exact-status=" + (record.exactStatus ? "true" : "false") +
+                " expected-failure=" +
+                    (record.expectedFailure ? "true" : "false") +
+                " runtime-id=" + record.runtimeId +
+                " name=" + record.name +
+                " control-type=" + record.controlType +
+                " live-setting=" + record.liveSetting + "]";
+        }
+        result += " dropped=" + std::to_string(droppedRecords_) +
+            " diagnostic-failure=" +
+                (diagnosticFailure_.load() ? std::string{"true"} : std::string{"false"});
+        return result;
+    }
 
 private:
+    struct EventRecord {
+        int ordinal{};
+        ULONGLONG tick{};
+        HRESULT automationIdResult{};
+        std::wstring automationId;
+        bool exactStatus{};
+        bool expectedFailure{};
+        std::string runtimeId;
+        std::string name;
+        std::string controlType;
+        std::string liveSetting;
+    };
+
+    static std::string Property(
+        IUIAutomationElement* sender, const PROPERTYID propertyId) {
+        VARIANT propertyValue{};
+        const HRESULT result = sender
+            ? sender->GetCurrentPropertyValue(propertyId, &propertyValue)
+            : E_POINTER;
+        std::string rendered = "hr=" + std::to_string(result) + ":";
+        if (SUCCEEDED(result) && V_VT(&propertyValue) == VT_BSTR &&
+            V_BSTR(&propertyValue)) {
+            rendered += WideToUtf8(std::wstring_view(
+                V_BSTR(&propertyValue), SysStringLen(V_BSTR(&propertyValue))));
+        } else if (SUCCEEDED(result) && V_VT(&propertyValue) == VT_I4) {
+            rendered += std::to_string(V_I4(&propertyValue));
+        } else {
+            rendered += "vt=" + std::to_string(V_VT(&propertyValue));
+        }
+        VariantClear(&propertyValue);
+        return rendered;
+    }
+
+    static bool IsExpectedFailure(IUIAutomationElement* sender) {
+        if (!sender) return false;
+        const auto name = Property(sender, UIA_NamePropertyId);
+        const auto controlType = Property(sender, UIA_ControlTypePropertyId);
+        const auto liveSetting = Property(sender, UIA_LiveSettingPropertyId);
+        return name == "hr=0:" + WideToUtf8(kExpectedStatus) &&
+            controlType == "hr=0:" + std::to_string(UIA_StatusBarControlTypeId) &&
+            liveSetting == "hr=0:" + std::to_string(Polite);
+    }
+
+    static std::string RuntimeId(IUIAutomationElement* sender) {
+        SAFEARRAY* runtimeId{};
+        const HRESULT result = sender ? sender->GetRuntimeId(&runtimeId) : E_POINTER;
+        if (FAILED(result) || !runtimeId)
+            return "unavailable-hr=" + std::to_string(result);
+        LONG lower{};
+        LONG upper{-1};
+        if (FAILED(SafeArrayGetLBound(runtimeId, 1, &lower)) ||
+            FAILED(SafeArrayGetUBound(runtimeId, 1, &upper))) {
+            SafeArrayDestroy(runtimeId);
+            return "invalid-bounds";
+        }
+        std::string identity;
+        for (LONG index = lower; index <= upper; ++index) {
+            int part{};
+            if (FAILED(SafeArrayGetElement(runtimeId, &index, &part))) {
+                identity += identity.empty() ? "read-failed" : ",read-failed";
+                continue;
+            }
+            if (!identity.empty()) identity.push_back(',');
+            identity += std::to_string(part);
+        }
+        SafeArrayDestroy(runtimeId);
+        return identity.empty() ? std::string{"empty"} : identity;
+    }
+
+    static constexpr std::size_t kMaximumRecords = 16;
     std::atomic<int> count_{};
     std::atomic<int> exactStatusCount_{};
+    std::atomic<int> expectedFailureCount_{};
+    std::atomic<bool> diagnosticFailure_{};
+    mutable std::mutex recordsMutex_;
+    std::vector<EventRecord> records_;
+    std::size_t droppedRecords_{};
 };
 
 std::optional<std::wstring> StringProperty(
@@ -725,7 +859,7 @@ void Run(const Arguments& arguments) {
                     automation.Get(), chromeRoot.Get(), kOpenStatusAutomationId),
                 "The chrome status was already present before subscription.");
         Require(SUCCEEDED(automation->AddAutomationEventHandler(
-                    UIA_LiveRegionChangedEventId, chromeRoot.Get(), TreeScope_Subtree, nullptr,
+                    UIA_LiveRegionChangedEventId, chromeRoot.Get(), TreeScope_Children, nullptr,
                     eventHandler.Get())),
                 "Could not subscribe to current fixed-chrome live-region events.");
         eventHandlerRegistered = true;
@@ -779,6 +913,8 @@ void Run(const Arguments& arguments) {
         }
         const int liveRegionCountBeforeFirstFailure = eventHandler->Count();
         const int exactStatusCountBeforeFirstFailure = eventHandler->ExactStatusCount();
+        const int expectedFailureCountBeforeFirstFailure =
+            eventHandler->ExpectedFailureCount();
 
         const ULONGLONG firstFailureAt = GetTickCount64();
         PostKey(window, VK_RETURN);
@@ -803,17 +939,28 @@ void Run(const Arguments& arguments) {
                  log.substr(suffixStart, suffixLength));
         }
         Require(WaitUntil(3000, [&] {
-                    return eventHandler->ExactStatusCount() >=
-                        exactStatusCountBeforeFirstFailure + 1;
+                    return eventHandler->ExpectedFailureCount() >=
+                        expectedFailureCountBeforeFirstFailure + 1;
                 }),
-                "The production UI Automation provider did not raise LiveRegionChanged.");
-        Require(eventHandler->Count() == liveRegionCountBeforeFirstFailure + 1,
-                "The first action failure raised duplicate LiveRegionChanged events.");
-        Require(eventHandler->ExactStatusCount() ==
-                    exactStatusCountBeforeFirstFailure + 1,
-                "The first LiveRegionChanged sender was not exactly host:host.open.status.");
+                "The production UI Automation provider did not raise the exact failure "
+                "LiveRegionChanged event.");
+        Require(eventHandler->ExpectedFailureCount() ==
+                    expectedFailureCountBeforeFirstFailure + 1,
+                "The first action failure raised duplicate matching LiveRegionChanged events. "
+                "Before total=" + std::to_string(liveRegionCountBeforeFirstFailure) +
+                " exact-status=" + std::to_string(exactStatusCountBeforeFirstFailure) +
+                " expected-failure=" +
+                    std::to_string(expectedFailureCountBeforeFirstFailure) +
+                "; callbacks:" +
+                    eventHandler->DescribeFrom(liveRegionCountBeforeFirstFailure));
+        Require(eventHandler->Count() - liveRegionCountBeforeFirstFailure ==
+                    eventHandler->ExactStatusCount() -
+                        exactStatusCountBeforeFirstFailure,
+                "The first action route raised LiveRegionChanged from an unexpected sender.");
         const int liveRegionCountAfterFirstFailure = eventHandler->Count();
         const int exactStatusCountAfterFirstFailure = eventHandler->ExactStatusCount();
+        const int expectedFailureCountAfterFirstFailure =
+            eventHandler->ExpectedFailureCount();
         Require(WaitUntil(3000, [&] {
                     auto currentRoot = RootForWindow(automation.Get(), window);
                     ComPtr<IUIAutomationElement> playPause;
@@ -857,6 +1004,8 @@ void Run(const Arguments& arguments) {
                 "Identical replacement feedback raised duplicate LiveRegionChanged.");
         Require(eventHandler->ExactStatusCount() == exactStatusCountAfterFirstFailure,
                 "Identical replacement feedback raised a duplicate status event.");
+        Require(eventHandler->ExpectedFailureCount() == expectedFailureCountAfterFirstFailure,
+                "Identical replacement feedback raised a duplicate matching failure event.");
         Require(WaitUntil(3000, [&] {
                     auto currentRoot = RootForWindow(automation.Get(), window);
                     ComPtr<IUIAutomationElement> playPause;
@@ -880,6 +1029,8 @@ void Run(const Arguments& arguments) {
                 "Retained identical feedback raised duplicate LiveRegionChanged.");
         Require(eventHandler->ExactStatusCount() == exactStatusCountAfterFirstFailure,
                 "Retained identical feedback raised a duplicate status event.");
+        Require(eventHandler->ExpectedFailureCount() == expectedFailureCountAfterFirstFailure,
+                "Retained identical feedback raised a duplicate matching failure event.");
         Require(WaitUntil(3000, [&] {
                     auto currentRoot = RootForWindow(automation.Get(), window);
                     ComPtr<IUIAutomationElement> playPause;
