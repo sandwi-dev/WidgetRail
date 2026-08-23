@@ -684,6 +684,36 @@ run, numeric exits, retained risks, and a clean worktree. No additional Ready
 milestone is safe in either lane until this serialized boundary is reviewed and
 integrated; the future architecture queue depends on it.
 
+Candidate `21c3b8bcda58036ee488cb7f310a38f34d5cb3e6` is not accepted.
+Its focused evidence is green: Widget SDK 89/89; the four directly changed
+Runtime cases 1/1 each; WidgetBridge 96/96; presentation session 11/11; native
+Bridge client/catalog; 28 coordinator scenarios; 314 linked feedback checks;
+and the coherent no-launch Release build. The platform worktree and exact
+candidate were clean before verification.
+
+The one authorized Tier-3 run from an isolated detached copy of `21c3b8b`
+stopped first red after 44/45 passed steps at `overlay-native-build-tests` ->
+`WidgetActionFailureHostTests`: `A Retry did not recover with one fresh worker
+generation.` The verifier exited 1 after 769.019 seconds; all owned descendants
+exited and accepted PID 78860 remained alive and untouched. Structured evidence
+is under `artifacts/verification/20260823T102602Z-5d58dade` in the isolated
+worktree; durable streams and the retained isolated tree are under
+`%TEMP%\wrail-dlv284-tier3-20260823-032456`. The structured-result SHA-256 is
+`19A93497D4BA6B8BB94552D774296E5C78785D405015F8E37E0C05543C26DE51`.
+
+This red remains in-scope until disproved: the same linked retry route passed
+on the integrated baseline before its later unrelated Audio Mixer red, while
+DLV-284 changes the worker/runtime/Bridge/coordinator publication path used by
+that retry. The platform lane owns one bounded correction loop. Before a
+focused execution it must add durable failure evidence for the isolated overlay
+log, fresh fixture descendants, and play-pause UIA state; then run only the
+smallest `WidgetActionFailureHostTests` gate. It may make the smallest coherent
+production and directly affected deterministic-test correction without
+weakening typed transaction, lifecycle, generation, replacement, timeout, or
+assertion invariants. Commit one clean follow-up only after focused green. Do
+not rerun Tier 3, integrate, push, relaunch PID 78860, repair Audio Mixer debt,
+or release the widgets lane before reviewer acceptance.
+
 ## Future architecture queue — maturity review additions
 
 Status: ordered future work, not assigned. It does not displace the cumulative
@@ -744,7 +774,7 @@ There is no other Ready production work in either standing lane.
 | DLV-471 | Corrected pair `8531915` + `8886e25` accepted; focused TextEntry route green in 40.325 seconds, final exact Tier 3 assigned. |
 | DLV-472 | Accepted `29601e2`, cumulatively applied as `82093d5`, and integrated through `cf77507`; focused and final Tier-3 Bridge target passed 96/96. |
 | Audio Mixer synthetic focus | Final Tier 3 passed 44/45 then retained Master after synthetic Down; unrelated source was previously green, so no unchanged rerun is authorized. |
-| DLV-284 | Assigned to the serialized platform lane from clean integrated baseline `cf77507` after user acceptance of PID 78860. |
+| DLV-284 | Clean candidate `21c3b8b` has focused/Tier-2 green but is unaccepted: its one Tier-3 run passed 44/45 then failed the linked Retry worker-generation route; bounded platform correction assigned, no unchanged Tier-3 rerun. |
 | DLV-248 | Deferred until explicit user promotion. |
 
 ## Recent dispositions
