@@ -35,7 +35,7 @@ historical evidence only; this file is the sole implementation authority.
 
 | Lane | Task/worktree | State |
 | --- | --- | --- |
-| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | DLV-471 candidate `8531915` is rejected; its same-lane queued-message correction remains assigned at accepted cumulative tip `ffb8742`. DLV-284 remains queued. |
+| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | DLV-471 is accepted as corrected pair `8531915` + `8886e25`; one final exact clean Tier-3 checkpoint is assigned. DLV-284 remains queued. |
 | Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | Idle and clean at `676cd76`; do not begin work or change product state. |
 
 ## Execution rules
@@ -488,6 +488,33 @@ foreground-forcing behavior. Amend nothing: create a separate DLV-471
 correction commit over the preserved rejected candidate, run the smallest
 focused gate once after the coherent correction, and stop for review.
 
+Correction `8886e251d2cd0dafb6dcad47dc05ce0e248d5aa8` is accepted together with
+its corrected diagnostic ancestor `853191541df15713137cdb1ad84fd56f15720408`.
+Reviewer source review confirms the final cumulative diff remains confined to
+`TextEntryModalTests.cpp`: a thread-specific `WH_GETMESSAGE` hook acknowledges
+only removal of one tokenized thread-queue sentinel, which cannot occur until
+the modal reaches `GetMessage` after initial focus establishment. The sentinel
+is neutralized, and RAII cleanup releases the hook/event plus global token on
+every path. Exact `q` focus, later `w` controller focus, the original two-second
+bound, and detailed failure state remain intact; no production/runtime input
+changed.
+
+The focused `-WidgetInteractionTestsOnly` gate exited 0 in 40.325 seconds:
+`TextEntryModalTests` passed and the other directly affected suites reported
+2,582 green checks. Durable evidence is under
+`%TEMP%\wrail-dlv471-queued-ack-20260822-195500`; result SHA-256 is
+`DCA1156B6A90E02C3532BE6B00ED09A2B25252FA37133C0A4C1A20FFF45D1874`.
+The detached tree is clean, every owned process exited, and PID 89008 remains
+the accepted visible candidate without rebuild or relaunch.
+
+The only authorized next action is one final exact clean Tier-3 run from
+`8886e251d2cd0dafb6dcad47dc05ce0e248d5aa8`. Invoke the canonical verifier
+exactly once, stop first red, retain structured/durable evidence, and do not
+rerun or edit around a failure. Every command must expose output within 60
+seconds and long work must be checked every 15-30 seconds. Do not integrate,
+push, change packages/configuration, rebuild/relaunch PID 89008, or touch
+Avalonia/AVP during the run.
+
 ## Queued platform production — DLV-284 typed publication transactions
 
 Status: queued, not assigned. It becomes assignable only after DLV-452 startup
@@ -550,9 +577,9 @@ Extract native authorities only when real work touches them.
 
 ## Ordered queues
 
-1. DLV-471 focused `TextEntryModalTests` initial-focus classification and
-   correction, then one final exact clean Tier-3 checkpoint and reviewer
-   integration of the explicit accepted cumulative hashes.
+1. One final exact clean Tier-3 checkpoint at accepted corrected DLV-471 tip
+   `8886e25`, then reviewer integration of the explicit accepted cumulative
+   hashes.
 2. DLV-284 after cumulative clean integration.
 3. Generic Game Launcher cutover; LauncherExperience deletion/state retirement;
    protocol requirements; then the remaining maturity deliverables.
@@ -576,7 +603,7 @@ There is no other Ready production work in either standing lane.
 | DLV-468 | Accepted test-only full-calendar direction-independent diagnostic span as `8a65106`. |
 | DLV-469 | Accepted inclusive interpolated p95 as `3f63db9`; focused WidgetSwitch gate green at 33.8 ms. |
 | DLV-470 | Accepted isolated hidden-smoke profile as `ffb8742`; focused smoke green in 1.465 seconds. |
-| DLV-471 | Candidate `8531915` rejected because a sent `WM_NULL` can run reentrantly before initial focus; queued-message correction assigned, with no Tier-3 rerun authorized. |
+| DLV-471 | Corrected pair `8531915` + `8886e25` accepted; focused TextEntry route green in 40.325 seconds, final exact Tier 3 assigned. |
 | DLV-284 | Queued until cumulative review/integration. |
 | DLV-248 | Deferred until explicit user promotion. |
 
@@ -601,3 +628,4 @@ There is no other Ready production work in either standing lane.
 | DLV-470 | Tier 3 passed the full native aggregate, then hidden smoke launched the default production profile and exited 0 after activating the resident owner. |
 | DLV-470 accepted | A unique process profile kept the focused hidden owner resident without touching PID 89008; cleanup accounted for all five test processes. |
 | DLV-471 | Tier 3 passed 44 steps, then the modal initial-focus assertion failed without recording the actual focus identity; candidate `8531915` added useful diagnostics but not a causal UI-loop fence. |
+| DLV-471 accepted | `8886e25` replaces the sent-message fence with a tokenized queued-message acknowledgment after modal-loop entry; focused route and 2,582 linked checks passed. |
