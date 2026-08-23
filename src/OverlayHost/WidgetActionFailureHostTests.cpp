@@ -377,40 +377,39 @@ public:
     IFACEMETHODIMP HandleAutomationEvent(
         IUIAutomationElement* sender, const EVENTID eventId) noexcept override {
         if (eventId == UIA_LiveRegionChangedEventId) {
-            BSTR automationId{};
-            const HRESULT automationIdResult = sender
-                ? sender->get_CurrentAutomationId(&automationId)
-                : E_POINTER;
-            const bool exactStatus = SUCCEEDED(automationIdResult) && automationId &&
-                std::wstring_view(automationId, SysStringLen(automationId)) ==
-                    kOpenStatusAutomationId;
-            const bool expectedFailure = exactStatus && IsExpectedFailure(sender);
-            if (exactStatus)
-                exactStatusCount_.fetch_add(1);
-            if (expectedFailure)
-                expectedFailureCount_.fetch_add(1);
             const int ordinal = count_.fetch_add(1) + 1;
             try {
+                const auto automationId = Property(sender, UIA_AutomationIdPropertyId);
+                const auto name = Property(sender, UIA_NamePropertyId);
+                const auto controlType = Property(sender, UIA_ControlTypePropertyId);
+                const auto liveSetting = Property(sender, UIA_LiveSettingPropertyId);
+                const auto runtimeId = RuntimeId(sender);
+                const bool exactStatus = automationId.IsString(kOpenStatusAutomationId);
+                const bool expectedFailure = exactStatus &&
+                    name.IsString(kExpectedStatus) &&
+                    controlType.IsInteger(UIA_StatusBarControlTypeId) &&
+                    liveSetting.IsInteger(Polite);
+                if (exactStatus)
+                    exactStatusCount_.fetch_add(1);
+                if (expectedFailure)
+                    expectedFailureCount_.fetch_add(1);
                 EventRecord record;
                 record.ordinal = ordinal;
                 record.tick = GetTickCount64();
-                record.automationIdResult = automationIdResult;
-                record.automationId = automationId
-                    ? std::wstring(automationId, SysStringLen(automationId))
-                    : std::wstring{};
+                record.automationIdResult = automationId.result;
+                record.automationId = automationId.text;
                 record.exactStatus = exactStatus;
                 record.expectedFailure = expectedFailure;
-                record.runtimeId = RuntimeId(sender);
-                record.name = Property(sender, UIA_NamePropertyId);
-                record.controlType = Property(sender, UIA_ControlTypePropertyId);
-                record.liveSetting = Property(sender, UIA_LiveSettingPropertyId);
+                record.runtimeId = runtimeId;
+                record.name = Describe(name);
+                record.controlType = Describe(controlType);
+                record.liveSetting = Describe(liveSetting);
                 std::scoped_lock lock(recordsMutex_);
                 if (records_.size() < kMaximumRecords) records_.push_back(std::move(record));
                 else ++droppedRecords_;
             } catch (...) {
                 diagnosticFailure_.store(true);
             }
-            if (automationId) SysFreeString(automationId);
         }
         return S_OK;
     }
@@ -450,6 +449,21 @@ public:
     }
 
 private:
+    struct PropertySnapshot {
+        HRESULT result{};
+        VARTYPE type{VT_EMPTY};
+        std::wstring text;
+        LONG integer{};
+
+        [[nodiscard]] bool IsString(const std::wstring_view expected) const noexcept {
+            return SUCCEEDED(result) && type == VT_BSTR && text == expected;
+        }
+
+        [[nodiscard]] bool IsInteger(const LONG expected) const noexcept {
+            return SUCCEEDED(result) && type == VT_I4 && integer == expected;
+        }
+    };
+
     struct EventRecord {
         int ordinal{};
         ULONGLONG tick{};
@@ -463,34 +477,40 @@ private:
         std::string liveSetting;
     };
 
-    static std::string Property(
+    static PropertySnapshot Property(
         IUIAutomationElement* sender, const PROPERTYID propertyId) {
         VARIANT propertyValue{};
-        const HRESULT result = sender
+        PropertySnapshot snapshot;
+        snapshot.result = sender
             ? sender->GetCurrentPropertyValue(propertyId, &propertyValue)
             : E_POINTER;
-        std::string rendered = "hr=" + std::to_string(result) + ":";
-        if (SUCCEEDED(result) && V_VT(&propertyValue) == VT_BSTR &&
-            V_BSTR(&propertyValue)) {
-            rendered += WideToUtf8(std::wstring_view(
-                V_BSTR(&propertyValue), SysStringLen(V_BSTR(&propertyValue))));
-        } else if (SUCCEEDED(result) && V_VT(&propertyValue) == VT_I4) {
-            rendered += std::to_string(V_I4(&propertyValue));
-        } else {
-            rendered += "vt=" + std::to_string(V_VT(&propertyValue));
+        snapshot.type = V_VT(&propertyValue);
+        try {
+            if (SUCCEEDED(snapshot.result) && snapshot.type == VT_BSTR &&
+                V_BSTR(&propertyValue)) {
+                snapshot.text.assign(
+                    V_BSTR(&propertyValue), SysStringLen(V_BSTR(&propertyValue)));
+            } else if (SUCCEEDED(snapshot.result) && snapshot.type == VT_I4) {
+                snapshot.integer = V_I4(&propertyValue);
+            }
+        } catch (...) {
+            VariantClear(&propertyValue);
+            throw;
         }
         VariantClear(&propertyValue);
-        return rendered;
+        return snapshot;
     }
 
-    static bool IsExpectedFailure(IUIAutomationElement* sender) {
-        if (!sender) return false;
-        const auto name = Property(sender, UIA_NamePropertyId);
-        const auto controlType = Property(sender, UIA_ControlTypePropertyId);
-        const auto liveSetting = Property(sender, UIA_LiveSettingPropertyId);
-        return name == "hr=0:" + WideToUtf8(kExpectedStatus) &&
-            controlType == "hr=0:" + std::to_string(UIA_StatusBarControlTypeId) &&
-            liveSetting == "hr=0:" + std::to_string(Polite);
+    static std::string Describe(const PropertySnapshot& property) {
+        std::string rendered = "hr=" + std::to_string(property.result) + ":";
+        if (SUCCEEDED(property.result) && property.type == VT_BSTR) {
+            rendered += property.text.empty() ? "<empty>" : WideToUtf8(property.text);
+        } else if (SUCCEEDED(property.result) && property.type == VT_I4) {
+            rendered += std::to_string(property.integer);
+        } else {
+            rendered += "vt=" + std::to_string(property.type);
+        }
+        return rendered;
     }
 
     static std::string RuntimeId(IUIAutomationElement* sender) {
@@ -859,7 +879,7 @@ void Run(const Arguments& arguments) {
                     automation.Get(), chromeRoot.Get(), kOpenStatusAutomationId),
                 "The chrome status was already present before subscription.");
         Require(SUCCEEDED(automation->AddAutomationEventHandler(
-                    UIA_LiveRegionChangedEventId, chromeRoot.Get(), TreeScope_Children, nullptr,
+                    UIA_LiveRegionChangedEventId, chromeRoot.Get(), TreeScope_Subtree, nullptr,
                     eventHandler.Get())),
                 "Could not subscribe to current fixed-chrome live-region events.");
         eventHandlerRegistered = true;
