@@ -9,16 +9,16 @@ historical evidence only; this file is the sole implementation authority.
 
 ## Current accepted state
 
-- Local `main` contains physically accepted DLV-428 production as `c38b261`.
-  Later commits may be reviewer-owned control-plane changes only.
-- The coherent physically accepted artifact visibly runs as OverlayHost PID
-  89008 from
-  `C:\Users\dwive\AppData\Local\Temp\wrail-dlv466-08cf81d-20260822-140742\GameBarAlternative\src\OverlayHost\out\Release`.
-  It combines accepted DLV-466 native executable SHA-256
-  `FC8CABD1F4997E040D73300D0AC6741955E78C0D8A423713E999682CB97849AB`
-  with the unchanged accepted DLV-428 runtime graph and catalog. DLV-466 is
-  not yet integrated into local `main`; do not rebuild or relaunch this
-  accepted instance for tests or reviewer documents.
+- Local `main` integrates every accepted cumulative production/test milestone
+  through DLV-472 as merge `cf77507`. The merge contains exact cumulative tip
+  `82093d5` and excludes rejected/restoration/ancestry-bound commits.
+- The coherent integrated Release visibly runs as OverlayHost PID 78860 from
+  `C:\Users\dwive\Projects\GameBarAlternative\src\OverlayHost\out\Release`.
+  Executable SHA-256 is
+  `6B5B5C715F7C1029B8B39F583FC51D87CC675048ED548F285DBD9E163D702D60`.
+  The full Release build and packaging exited 0, startup admitted Settings,
+  and `startup-error.log` is absent. Prior accepted PID 89008 exited through
+  exact-PID `WM_CLOSE` before replacement.
 - DLV-318 is the exact recoverable prior accepted Release at
   `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative-dlv318-build`;
   executable SHA-256 is
@@ -28,15 +28,15 @@ historical evidence only; this file is the sole implementation authority.
 - Managed tests are accepted through `676cd76`: DLV-319 `199a81b`, DLV-324
   `6b63edf`, DLV-325 `e441f25`, and DLV-326 `676cd76`. All named managed
   Tier-3 gates are green.
-- DLV-283 platform production is `cdbb04a`. The cumulative production/test
-  chain awaits the native gate, independent review, and one clean Tier-3 run.
+- DLV-283 platform production `cdbb04a` and the complete reviewed cumulative
+  production/test chain are integrated through `cf77507`.
 
 ## Standing tasks
 
 | Lane | Task/worktree | State |
 | --- | --- | --- |
-| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | Apply accepted test-only DLV-472 `29601e2` to clean cumulative `8886e25`, then run one final exact clean Tier-3 checkpoint. DLV-284 remains queued. |
-| Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | DLV-472 is accepted as clean test-only commit `29601e2`; idle. |
+| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | Idle at a clean boundary while the user physically checks integrated Release PID 78860. DLV-284 is next after that verdict. |
+| Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | Idle at accepted clean test-only commit `29601e2`; no independent work may precede DLV-284. |
 
 ## Execution rules
 
@@ -564,13 +564,30 @@ The one authorized focused run passed 96/96. Durable output is
 The widgets worktree is clean; no Tier 3, integration, push, package/configuration
 change, rebuild/relaunch of PID 89008, or Avalonia/AVP interaction occurred.
 
+Platform applied DLV-472 mechanically as clean detached cumulative commit
+`82093d5d230d93276e96ab6173cdb80cf7aeac0b`; its one changed path, patch text,
+and blob are identical to accepted `29601e2`. The single final Tier-3 run passed
+44/45 steps, including DLV-472's `WidgetBridge.Tests` at 96/96, then stopped at
+the later `AudioMixerScrollHostTests`: after one synthetic Down, UIA still
+reported Master rather than Microphone focus. Structured evidence is under
+`artifacts/verification/20260823T033656Z-bf51f6a3`; durable streams are under
+`%TEMP%\wrail-dlv472-tier3-final-20260822-203654`.
+
+This first red is not caused by DLV-472: since the same Audio Mixer host test
+was green at complete native checkpoint `3f63db9`, only the hidden-smoke,
+TextEntry, and managed Bridge test files changed; no Audio Mixer or production
+source changed. Per the evidence-proportionality stop
+rule, do not rerun Tier 3 or redesign/repeat that synthetic scenario merely to
+obtain green. Retain the focus observation as test-harness verification debt;
+it is not evidence of a live Audio Mixer regression. The reviewed cumulative
+tip was integrated into local `main` as merge `cf77507`.
+
 ## Queued platform production — DLV-284 typed publication transactions
 
-Status: queued, not assigned. It becomes assignable only after DLV-452 startup
-classification and correction, the
-cumulative native gate, commit review/
-integration, and exact clean Tier 3 are green. No new virtualization feature
-may precede it.
+Status: next, not assigned until the user physically accepts coherent integrated
+Release PID 78860. Cumulative review and integration are complete as `cf77507`;
+the retained unrelated Audio Mixer synthetic-focus first red does not reopen or
+repeat Tier 3. No new virtualization feature may precede DLV-284.
 
 Replace semantics inferred from `allowUpdate`, base zero/nonzero, and recovery
 conditions with one private typed transaction model through SDK/runtime,
@@ -626,10 +643,8 @@ Extract native authorities only when real work touches them.
 
 ## Ordered queues
 
-1. Platform applies accepted DLV-472 `29601e2` to clean cumulative `8886e25`,
-   then runs one final exact clean Tier-3 checkpoint. On green, reviewer
-   integrates all explicit accepted hashes into local `main`.
-2. DLV-284 after cumulative clean integration.
+1. User physical verdict on coherent integrated Release PID 78860.
+2. DLV-284 typed publication transactions from integrated `main` `cf77507`.
 3. Generic Game Launcher cutover; LauncherExperience deletion/state retirement;
    protocol requirements; then the remaining maturity deliverables.
 4. DLV-248 remains deliberately deferred until explicit user promotion.
@@ -641,20 +656,21 @@ There is no other Ready production work in either standing lane.
 | Item | Required evidence |
 | --- | --- |
 | DLV-257 identity | Store, domain, trademark, and GitHub availability remain external/manual. |
-| DLV-278–283/270 | Production accepted; integration awaits the native gate, exact Tier 3, and review. |
-| DLV-319–326 | Managed chain through `676cd76`; all managed Tier-3 gates green. |
-| DLV-327–421 | Native fixture/build evidence remains held behind DLV-452 startup classification and exact Tier 3. |
+| DLV-278–283/270 | Accepted and integrated through merge `cf77507`. |
+| DLV-319–326 | Managed chain through `676cd76` accepted and integrated through `cf77507`. |
+| DLV-327–421 | Accepted cumulative native fixture/build evidence integrated through `cf77507`. |
 | DLV-427 | `e26b92b` and `16050bb` are unbuilt/unaccepted ancestry-bound evidence only. |
 | DLV-428 | Accepted/integrated as `c38b261`; superseded in the running candidate by accepted DLV-466. |
-| DLV-466 | Production `360544a` physically accepted; coherent candidate PID 89008 remains running. |
+| DLV-466 | Production `360544a` physically accepted and integrated through `cf77507`; superseded PID 89008 exited gracefully. |
 | DLV-465 | Focused WidgetSwitch gate and warning cleanup accepted through `9dd7b78`. |
 | DLV-467 | Test-only correction accepted through `b355865`; its focused and final Tier-3 target gates are green. |
 | DLV-468 | Accepted test-only full-calendar direction-independent diagnostic span as `8a65106`. |
 | DLV-469 | Accepted inclusive interpolated p95 as `3f63db9`; focused WidgetSwitch gate green at 33.8 ms. |
 | DLV-470 | Accepted isolated hidden-smoke profile as `ffb8742`; focused smoke green in 1.465 seconds. |
 | DLV-471 | Corrected pair `8531915` + `8886e25` accepted; focused TextEntry route green in 40.325 seconds, final exact Tier 3 assigned. |
-| DLV-472 | Accepted test-only `29601e2`; focused `WidgetBridge.Tests` passed 96/96, and platform owns cumulative application plus the final exact Tier-3 rerun. |
-| DLV-284 | Queued until cumulative review/integration. |
+| DLV-472 | Accepted `29601e2`, cumulatively applied as `82093d5`, and integrated through `cf77507`; focused and final Tier-3 Bridge target passed 96/96. |
+| Audio Mixer synthetic focus | Final Tier 3 passed 44/45 then retained Master after synthetic Down; unrelated source was previously green, so no unchanged rerun is authorized. |
+| DLV-284 | Next after the user's physical verdict on integrated PID 78860. |
 | DLV-248 | Deferred until explicit user promotion. |
 
 ## Recent dispositions
@@ -681,3 +697,4 @@ There is no other Ready production work in either standing lane.
 | DLV-471 accepted | `8886e25` replaces the sent-message fence with a tokenized queued-message acknowledgment after modal-loop entry; focused route and 2,582 linked checks passed. |
 | DLV-472 | Tier 3 passed 42 steps, then an immediately crashing full-trust fixture exited before the action acknowledgment reached the managed presentation facade. |
 | DLV-472 accepted | `29601e2` makes the fixture accept only the two process-exit ordering outcomes while preserving the same full recovery proof; focused `WidgetBridge.Tests` passed 96/96. |
+| Cumulative integration | Exact tip `82093d5` passed 44/45 Tier-3 steps with DLV-472 green, then hit unrelated Audio Mixer synthetic-focus debt; reviewed accepted history is integrated as `cf77507`, and coherent PID 78860 is ready for user testing. |
