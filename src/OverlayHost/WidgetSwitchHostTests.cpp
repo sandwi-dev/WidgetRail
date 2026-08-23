@@ -15,6 +15,7 @@
 #include <cwctype>
 #include <filesystem>
 #include <iostream>
+#include <limits>
 #include <memory>
 #include <string>
 #include <string_view>
@@ -874,6 +875,40 @@ void RunDiagnosticLatencyTableTests() {
                     " actual=" + std::to_string(actual));
     }
     std::cout << "WidgetSwitch diagnostic latency table cases=" << cases.size() << " passed\n";
+}
+
+std::optional<double> InclusiveLinearPercentile(
+    std::vector<double> samples,
+    const double percentile) {
+    if (samples.empty() || !std::isfinite(percentile) || percentile < 0.0 ||
+        percentile > 1.0 || std::any_of(samples.begin(), samples.end(), [](const double sample) {
+            return !std::isfinite(sample);
+        })) {
+        return std::nullopt;
+    }
+    std::sort(samples.begin(), samples.end());
+    const double position = percentile * static_cast<double>(samples.size() - 1);
+    const auto lower = static_cast<std::size_t>(std::floor(position));
+    const auto upper = static_cast<std::size_t>(std::ceil(position));
+    const double fraction = position - static_cast<double>(lower);
+    return samples[lower] + (samples[upper] - samples[lower]) * fraction;
+}
+
+void RunInclusivePercentileTableTests() {
+    const auto isolatedOutlier = InclusiveLinearPercentile(
+        {0, 2, 2, 2, 2, 2, 2, 7, 54}, 0.95);
+    Require(isolatedOutlier && *isolatedOutlier < 50.0,
+            "Inclusive p95 table did not keep the isolated-outlier distribution below 50 ms");
+    const auto sustainedSlowTail = InclusiveLinearPercentile(
+        {0, 2, 2, 2, 2, 2, 54, 54, 54}, 0.95);
+    Require(sustainedSlowTail && *sustainedSlowTail > 50.0,
+            "Inclusive p95 table did not keep a sustained slow tail above 50 ms");
+    Require(!InclusiveLinearPercentile({}, 0.95),
+            "Inclusive p95 table admitted an empty sample set");
+    Require(!InclusiveLinearPercentile(
+                {0, std::numeric_limits<double>::quiet_NaN()}, 0.95),
+            "Inclusive p95 table admitted a non-finite sample");
+    std::cout << "WidgetSwitch inclusive percentile table cases=4 passed\n";
 }
 
 ComPtr<IUIAutomationElement> FindAutomationElement(
@@ -3571,18 +3606,19 @@ void RunRetentionScenario(const Arguments& arguments) {
     hostFocusMilliseconds.push_back(blockedNavigationHostFocusMilliseconds);
     hostFocusMilliseconds.push_back(blockedReselectionHostFocusMilliseconds);
     std::sort(hostFocusMilliseconds.begin(), hostFocusMilliseconds.end());
-    const auto hostFocusP95 = hostFocusMilliseconds[
-        (hostFocusMilliseconds.size() * 95 + 99) / 100 - 1];
+    const auto hostFocusP95 = InclusiveLinearPercentile(
+        std::vector<double>(hostFocusMilliseconds.begin(), hostFocusMilliseconds.end()), 0.95);
     std::string hostFocusSamples;
     for (const auto sample : hostFocusMilliseconds) {
         if (!hostFocusSamples.empty()) hostFocusSamples += ",";
         hostFocusSamples += std::to_string(sample);
     }
-    Require(hostFocusP95 <= 50,
+    Require(hostFocusP95 && *hostFocusP95 <= 50.0,
             "Host focus p95 exceeded 50 ms while worker completion was isolated; p95=" +
-                std::to_string(hostFocusP95) + " samples=" + hostFocusSamples);
+                (hostFocusP95 ? std::to_string(*hostFocusP95) : "invalid") +
+                " samples=" + hostFocusSamples);
     std::cout << "Slow-worker response timing ms host-focus-p95="
-              << hostFocusP95
+              << *hostFocusP95
               << " tray-navigation=" << blockedNavigationMilliseconds
               << " tray-navigation-host=" << blockedNavigationHostFocusMilliseconds
               << " tray-reselection=" << blockedReselectionMilliseconds
@@ -3949,6 +3985,7 @@ int wmain(const int argc, wchar_t** argv) {
     try {
         const auto arguments = ParseArguments(argc, argv);
         RunDiagnosticLatencyTableTests();
+        RunInclusivePercentileTableTests();
         if (arguments.fallbackAuthoritySelectionOnly)
             RunFallbackCheckpointSelectionTests();
         else if (!arguments.fallbackAuthorityReplayLog.empty())
