@@ -342,13 +342,6 @@ public sealed class GameLauncherWidget : Widget
                 await MutateOrganizationAsync(GameLauncherOrganizationPolicy.Clear,
                     "Organization cleared", cancellationToken).ConfigureAwait(false);
                 return;
-            case "game-launcher.experiences.open":
-                if (LifecycleState != WidgetLifecycleState.Interactive) return;
-                _navigation.Push(GameLauncherRoute.Experiences, action.SourceElementId);
-                return;
-            case "game-launcher.experiences.back":
-                _navigation.Back(action.SourceElementId);
-                return;
             case "game-launcher.add.open":
                 if (LifecycleState != WidgetLifecycleState.Interactive) return;
                 if (_navigation.Push(GameLauncherRoute.AddGames, action.SourceElementId) ==
@@ -553,19 +546,6 @@ public sealed class GameLauncherWidget : Widget
                     action.ActionId[categoryDeletePrefix.Length..], cancellationToken)
                 .ConfigureAwait(false);
             return;
-        }
-        const string experiencePrefix = "game-launcher.experience.select.";
-        if (action.ActionId.StartsWith(experiencePrefix, StringComparison.Ordinal) &&
-            LifecycleState == WidgetLifecycleState.Interactive)
-        {
-            var experience = GameLauncherExperienceIdentity.Parse(
-                action.ActionId[experiencePrefix.Length..]);
-            await MutateOrganizationAsync(
-                    state => GameLauncherOrganizationPolicy.SelectExperience(
-                        state, experience),
-                    $"Experience set to {GameLauncherExperienceIdentity.Label(experience)}",
-                    cancellationToken)
-                .ConfigureAwait(false);
         }
     }
 
