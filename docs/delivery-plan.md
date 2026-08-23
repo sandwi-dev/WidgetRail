@@ -27,7 +27,7 @@ historical evidence only; this file is the sole implementation authority.
   refresh. Exact `--show` activation PID 69700 forwarded Show and exited;
   Settings reached visible lifecycle under the resident owner. Windows-control
   discovery omitted the overlay HWND, so no automated first-page claim is made.
-  DLV-285 stays held for this candidate's physical Spotify verdict.
+  The user physically accepted this coherent Release; DLV-285 is released.
 - DLV-318 is the exact recoverable prior accepted Release at
   `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative-dlv318-build`;
   executable SHA-256 is
@@ -44,8 +44,8 @@ historical evidence only; this file is the sole implementation authority.
 
 | Lane | Task/worktree | State |
 | --- | --- | --- |
-| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | Corrected cumulative diagnostic stack through metadata-only `a65228c` accepted and integrated as `12728a2`; idle pending physical verdict. |
-| Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | Idle; DLV-285 remains queued behind corrected DLV-284 physical acceptance. |
+| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | Corrected cumulative diagnostic stack through metadata-only `a65228c` accepted and integrated as `12728a2`; idle while DLV-285 is active. |
+| Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | DLV-285 assigned from exact baseline `12728a2`; production/build first, then user verdict before tests. |
 
 ## Execution rules
 
@@ -341,13 +341,12 @@ integrated Release is ready for the user to repeat Spotify Y-refresh; its
 metadata distinguishes a render/runtime failure without persisting package
 content.
 
-## Queued widgets production — DLV-285 generic Game Launcher cutover
+## Assigned widgets production — DLV-285 generic Game Launcher cutover
 
 Lane: widgets. Baseline: exact integrated production commit `12728a2` in a new
-clean isolated branch. This assignment is queued, not released: do not begin
-until the user physically accepts the final corrected DLV-284 Release and the
-reviewer explicitly sends the assignment. The platform lane remains idle while
-DLV-285 is active.
+clean isolated branch. The user physically accepted the final corrected
+DLV-284 Release and the reviewer released this assignment. The platform lane
+remains idle while DLV-285 is active.
 
 Objective: move the first-party Game Launcher package completely onto the
 ordinary declarative application path before any framework deletion. Remove
@@ -380,8 +379,8 @@ the user verdict. Only after physical acceptance may focused tests be assigned.
 
 ## Future architecture queue — maturity review additions
 
-Status: DLV-285 is queued behind corrected DLV-284 physical acceptance; later
-items are ordered future work and are not assigned.
+Status: DLV-285 is assigned; later items are ordered future work and are not
+assigned.
 
 1. Generic Game Launcher cutover through ordinary `ViewSnapshot`, responsive
    grid/scroll/navigation, semantic tiles, virtual windows, bounded artwork,
@@ -412,12 +411,11 @@ Extract native authorities only when real work touches them.
 
 ## Ordered queues
 
-1. Obtain a fresh physical Spotify 0.3.14 Y-refresh verdict from PID 133304 and
-   use the bounded metadata record if the failure reproduces.
-2. DLV-285 generic Game Launcher cutover after corrected DLV-284 acceptance.
-3. LauncherExperience deletion/state retirement;
+1. DLV-285 generic Game Launcher production cutover, reviewer launch, and user
+   verdict before its focused tests.
+2. LauncherExperience deletion/state retirement;
    protocol requirements; then the remaining maturity deliverables.
-4. DLV-248 remains deliberately deferred until explicit user promotion.
+3. DLV-248 remains deliberately deferred until explicit user promotion.
 
 There is no concurrent Ready production work in either standing lane.
 
@@ -440,8 +438,8 @@ There is no concurrent Ready production work in either standing lane.
 | DLV-471 | Corrected pair `8531915` + `8886e25` accepted; focused TextEntry route green in 40.325 seconds, final exact Tier 3 assigned. |
 | DLV-472 | Accepted `29601e2`, cumulatively applied as `82093d5`, and integrated through `cf77507`; focused and final Tier-3 Bridge target passed 96/96. |
 | Audio Mixer synthetic focus | Final Tier 3 passed 44/45 then retained Master after synthetic Down; unrelated source was previously green, so no unchanged rerun is authorized. |
-| DLV-284 | `21c3b8b` + `86d6532` integrated as `7f31e04`; compatibility `60130b4` as `052a392`; correlation/redaction `f583f40` + `ac79ed0` as `8ac55d`. The cumulative diagnostic stack is accepted only with metadata-only correction `a65228c`, integrated as `12728a2`; production build and two direct one-case gates passed, no Tier-3 rerun. Coherent PID 133304 is ready for the Spotify Y-refresh verdict. |
-| DLV-285 | Held behind corrected DLV-284 physical acceptance; package-only production first, then reviewer launch and verdict before tests or framework deletion. |
+| DLV-284 | `21c3b8b` + `86d6532` integrated as `7f31e04`; compatibility `60130b4` as `052a392`; correlation/redaction `f583f40` + `ac79ed0` as `8ac55d`. The cumulative diagnostic stack is accepted only with metadata-only correction `a65228c`, integrated as `12728a2`; production build and two direct one-case gates passed, no Tier-3 rerun. The user physically accepted coherent PID 133304. |
+| DLV-285 | Assigned from exact integrated baseline `12728a2`; package-only production first, then reviewer launch and verdict before tests or framework deletion. |
 | DLV-248 | Deferred until explicit user promotion. |
 
 ## Recent dispositions
