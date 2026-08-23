@@ -375,18 +375,17 @@ internal sealed class WidgetWorkerServer
             break;
         case MessageTypes.Render:
             var render = RuntimeJson.FromElement<RenderPayload>(request.Payload);
-            var capabilities = ValidateRenderRequest(render);
+            var presentationRequest = ValidateRenderRequest(render);
             var publication = _widget.RenderPublication(
                 _widgetInstanceId,
-                render.TransactionKind ==
+                presentationRequest.TransactionKind ==
                     WidgetPresentationTransactionKind.IncrementalUpdate
-                    ? render.PresentationGeneration!
+                    ? presentationRequest.PresentationGeneration!
                     : new string('0', 32),
                 Interlocked.Increment(ref _sequence),
-                render.BaseSequence,
-                capabilities,
-                render.TransactionKind!.Value,
-                render.RecoveryOriginSequence);
+                presentationRequest.BaseSequence,
+                presentationRequest.UpdateCapabilities,
+                presentationRequest.TransactionKind);
             if (publication.Update is { } update)
             {
                 var updateBytes = PresentationUpdateJson.Serialize(update);
@@ -395,9 +394,6 @@ internal sealed class WidgetWorkerServer
                 {
                     Type = MessageTypes.PresentationUpdate,
                     RequestId = request.RequestId,
-                    PresentationTransactionKind = render.TransactionKind,
-                    PresentationBaseSequence = render.BaseSequence,
-                    RecoveryOriginSequence = render.RecoveryOriginSequence,
                     Payload = document.RootElement.Clone(),
                 }, cancellationToken).ConfigureAwait(false);
                 break;
@@ -409,9 +405,6 @@ internal sealed class WidgetWorkerServer
                 {
                     Type = MessageTypes.Snapshot,
                     RequestId = request.RequestId,
-                    PresentationTransactionKind = render.TransactionKind,
-                    PresentationBaseSequence = render.BaseSequence,
-                    RecoveryOriginSequence = render.RecoveryOriginSequence,
                     Payload = document.RootElement.Clone(),
                 }, cancellationToken).ConfigureAwait(false);
             }
@@ -545,7 +538,7 @@ internal sealed class WidgetWorkerServer
                 "Hosts may request only Background, Visible, or Interactive.");
     }
 
-    internal static PresentationUpdateCapabilities ValidateRenderRequest(
+    internal static RuntimeRenderRequest ValidateRenderRequest(
         RenderPayload render)
     {
         var capabilities = render.UpdateCapabilities;
@@ -562,29 +555,23 @@ internal sealed class WidgetWorkerServer
         if (!none && !bounded)
             throw new WidgetProtocolViolationException(
                 "Presentation update capabilities are malformed or unsupported.");
-        if (render.TransactionKind is null || !Enum.IsDefined(render.TransactionKind.Value))
-            throw new WidgetProtocolViolationException(
-                "Presentation transaction kind is missing or unsupported.");
-        var incremental = render.TransactionKind ==
-            WidgetPresentationTransactionKind.IncrementalUpdate;
-        var recovery = render.TransactionKind ==
-            WidgetPresentationTransactionKind.RecoveryCheckpoint;
-        if (render.RequireCheckpoint == incremental)
-            throw new WidgetProtocolViolationException(
-                "Presentation transaction compatibility fields disagree.");
-        if (bounded && (!incremental || render.BaseSequence <= 0 ||
+        var transactionKind = render.RequireCheckpoint
+            ? WidgetPresentationTransactionKind.OrdinaryCheckpoint
+            : WidgetPresentationTransactionKind.IncrementalUpdate;
+        if (bounded && (render.RequireCheckpoint || render.BaseSequence <= 0 ||
                 render.PresentationGeneration is not { Length: 32 or 64 } ||
-                !render.PresentationGeneration.All(char.IsAsciiHexDigit) ||
-                render.RecoveryOriginSequence != 0))
+                !render.PresentationGeneration.All(char.IsAsciiHexDigit)))
             throw new WidgetProtocolViolationException(
                 "Presentation update admission is incomplete or malformed.");
-        if (none && (incremental || render.BaseSequence != 0 ||
-                render.PresentationGeneration is not null ||
-                (recovery ? render.RecoveryOriginSequence <= 0 :
-                    render.RecoveryOriginSequence != 0)))
+        if (none && (!render.RequireCheckpoint || render.BaseSequence != 0 ||
+                render.PresentationGeneration is not null))
             throw new WidgetProtocolViolationException(
                 "Checkpoint render admission is malformed.");
-        return capabilities;
+        return new RuntimeRenderRequest(
+            transactionKind,
+            render.BaseSequence,
+            render.PresentationGeneration,
+            capabilities);
     }
 
 

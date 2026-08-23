@@ -38,9 +38,6 @@ internal sealed record RuntimeEnvelope
     public int ProtocolVersion { get; init; } = WidgetRuntimeProtocol.CurrentVersion;
     public required string Type { get; init; }
     public long RequestId { get; init; }
-    public WidgetPresentationTransactionKind? PresentationTransactionKind { get; init; }
-    public long PresentationBaseSequence { get; init; }
-    public long RecoveryOriginSequence { get; init; }
     public required JsonElement Payload { get; init; }
 }
 
@@ -51,10 +48,13 @@ internal sealed record RenderPayload
     public PresentationUpdateCapabilities? UpdateCapabilities { get; init; }
     public long BaseSequence { get; init; }
     public string? PresentationGeneration { get; init; }
-    public WidgetPresentationTransactionKind? TransactionKind { get; init; }
-    public long RecoveryOriginSequence { get; init; }
-    public bool RequireCheckpoint { get; init; }
+    public bool RequireCheckpoint { get; init; } = true;
 }
+internal sealed record RuntimeRenderRequest(
+    WidgetPresentationTransactionKind TransactionKind,
+    long BaseSequence,
+    string? PresentationGeneration,
+    PresentationUpdateCapabilities UpdateCapabilities);
 internal sealed record WidgetRuntimePresentation(
     WidgetPresentationTransactionKind TransactionKind,
     long RequestBaseSequence,
