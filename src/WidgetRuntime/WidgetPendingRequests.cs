@@ -29,7 +29,7 @@ internal sealed class WidgetPendingRequests
         if (response.Type == MessageTypes.Error)
         {
             var error = RuntimeJson.FromElement<ErrorPayload>(response.Payload);
-            pending.Completion.TrySetException(new WidgetRequestRejectedException(
+            pending.Completion.TrySetException(new WidgetProcessException(
                 pending.RequestType, error.Code, error.Message));
         }
         else
@@ -66,45 +66,5 @@ internal sealed class WidgetPendingRequests
         internal Task<RuntimeEnvelope> Response { get; } = response;
 
         public void Dispose() => Interlocked.Exchange(ref _owner, null)?.Remove(RequestId);
-    }
-}
-
-internal sealed class WidgetRequestRejectedException : Exception
-{
-    internal WidgetRequestRejectedException(
-        string requestType,
-        string errorCode,
-        string safeMessage) : base(Format(requestType, errorCode, safeMessage))
-    {
-        RequestType = ValidateToken(requestType, nameof(requestType));
-        ErrorCode = ValidateToken(errorCode, nameof(errorCode));
-        WorkerSafeMessage = ValidateMessage(safeMessage);
-    }
-
-    internal string RequestType { get; }
-    internal string ErrorCode { get; }
-    internal string WorkerSafeMessage { get; }
-
-    private static string Format(string requestType, string errorCode, string safeMessage) =>
-        $"Worker rejected request '{ValidateToken(requestType, nameof(requestType))}' " +
-        $"({ValidateToken(errorCode, nameof(errorCode))}): {ValidateMessage(safeMessage)}";
-
-    private static string ValidateToken(string value, string parameterName)
-    {
-        if (string.IsNullOrWhiteSpace(value) || value.Length > 64 ||
-            !value.All(character => char.IsAsciiLetterOrDigit(character) ||
-                character is '-' or '_' or '.'))
-            throw new WidgetProtocolViolationException(
-                $"Worker error {parameterName} is invalid.");
-        return value;
-    }
-
-    private static string ValidateMessage(string value)
-    {
-        if (string.IsNullOrWhiteSpace(value) || value.Length > 512 ||
-            value.Any(character => char.IsControl(character) && character is not '\t'))
-            throw new WidgetProtocolViolationException(
-                "Worker error message is invalid.");
-        return value;
     }
 }

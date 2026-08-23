@@ -29,14 +29,19 @@ internal static class WidgetProcessOwnershipScenarios
             RequestId = rejected.RequestId,
             Payload = RuntimeJson.ToElement(new ErrorPayload(
                 "worker_request_failed",
-                "Frozen runtime-v2 render failed at $.root.children[7] (duplicate_id).")),
+                "provider-token=DO_NOT_SURFACE; path=C:\\private\\widget.json")),
         }), "The exact rejected request was not completed.");
-        var rejection = await ThrowsAsync<WidgetRequestRejectedException>(
+        var rejection = await ThrowsAsync<WidgetProcessException>(
             async () => await rejected.Response);
+        Equal(typeof(WidgetProcessException), rejection.GetType());
         Equal(MessageTypes.Render, rejection.RequestType);
-        Equal("worker_request_failed", rejection.ErrorCode);
-        Equal("Frozen runtime-v2 render failed at $.root.children[7] (duplicate_id).",
-            rejection.WorkerSafeMessage);
+        Equal("worker_request_failed", rejection.WorkerErrorCode);
+        Equal("provider-token=DO_NOT_SURFACE; path=C:\\private\\widget.json",
+            rejection.WorkerDiagnosticMessage);
+        False(rejection.Message.Contains("DO_NOT_SURFACE", StringComparison.Ordinal),
+            "The public process exception exposed arbitrary worker detail.");
+        False(rejection.Message.Contains("private", StringComparison.Ordinal),
+            "The public process exception exposed a worker-private path.");
 
         pending.FailAll(new WidgetProcessException("session ended"));
         await ThrowsAsync<WidgetProcessException>(async () => await first.Response);

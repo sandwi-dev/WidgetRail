@@ -141,10 +141,10 @@ internal static class BridgeClientRegistryScenarios
         var failures = new (Exception Failure, string Code)[]
         {
             (new WidgetProcessException("synthetic worker failure"), "worker-runtime-failed"),
-            (new WidgetRequestRejectedException(
+            (new WidgetProcessException(
                 MessageTypes.Render,
                 "worker_request_failed",
-                "Frozen runtime-v2 render failed at $.root.children[7] (duplicate_id)."),
+                "provider-token=DO_NOT_SURFACE; path=C:\\private\\widget.json"),
                 "worker-runtime-failed"),
             (new WidgetProcessAdmissionException("synthetic admission failure"),
                 "worker-admission-failed"),
@@ -160,12 +160,18 @@ internal static class BridgeClientRegistryScenarios
             RegistryAssert.Equal(alpha.Id, typed.WidgetId);
             RegistryAssert.Equal(code, typed.FailureCode);
             RegistryAssert.True(ReferenceEquals(failure, typed.InnerException));
-            if (failure is WidgetRequestRejectedException)
+            if (failure is WidgetProcessException { RequestType: not null } processFailure)
+            {
+                RegistryAssert.Equal(MessageTypes.Render, typed.RequestType);
+                RegistryAssert.Equal("worker_request_failed", typed.WorkerErrorCode);
                 RegistryAssert.Equal(
-                    "Widget 'alpha-runtime-failure' runtime request 'render' failed " +
-                    "(worker-runtime-failed; worker_request_failed): Frozen runtime-v2 " +
-                    "render failed at $.root.children[7] (duplicate_id).",
+                    "Widget 'alpha-runtime-failure' runtime request failed " +
+                    "(worker-runtime-failed).",
                     typed.Message);
+                RegistryAssert.True(!typed.Message.Contains(
+                    processFailure.WorkerDiagnosticMessage!, StringComparison.Ordinal));
+                RegistryAssert.True(!typed.Message.Contains("DO_NOT_SURFACE", StringComparison.Ordinal));
+            }
             alphaClient.SnapshotFailure = null;
 
             _ = await fixture.GetSnapshotAsync(beta.Id);
