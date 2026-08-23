@@ -35,7 +35,7 @@ historical evidence only; this file is the sole implementation authority.
 
 | Lane | Task/worktree | State |
 | --- | --- | --- |
-| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | DLV-469 owns the focused `WidgetSwitchHostTests` percentile-estimator red while the reviewed DLV-468 correction remains uncommitted. DLV-284 remains queued. |
+| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | DLV-468/469 are accepted through `3f63db9`; one final exact clean Tier-3 checkpoint is authorized. DLV-284 remains queued. |
 | Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | Idle and clean at `676cd76`; do not begin work or change product state. |
 
 ## Execution rules
@@ -335,7 +335,7 @@ estimator red: raw samples `0,2,2,2,2,2,2,7,54` produced nearest-rank p95 54
 ms. Preserve and commit the reviewed DLV-468 diff without rerunning it, then
 perform DLV-469 below as a separate test-only commit.
 
-## Assigned platform test correction — DLV-469 small-sample p95 estimator
+## Accepted platform test correction — DLV-469 small-sample p95 estimator
 
 The 50 ms host-focus budget is intentional, but the current nearest-rank p95
 estimator degenerates to the single maximum when the exact scenario supplies
@@ -364,6 +364,26 @@ route, retain its proof and make the smallest correction before one final
 focused gate; stop immediately for a production defect or broader change.
 Commit DLV-469 only after focused green. Do not run Tier 3, integrate, push,
 change packages/configuration, rebuild/relaunch PID 89008, or touch Avalonia/AVP.
+
+Accepted as separate test-only commits
+`8a65106732e05d3e2a48a1813171830f7febbd10` (DLV-468) and
+`3f63db99f40a85066452d0dc9129cab3b0df2ad0` (DLV-469). Reviewer source review
+confirms the cumulative diff remains confined to
+`WidgetSwitchHostTests.cpp`, preserves the 50 ms gate and all raw samples, and
+adds fail-closed calendar/span and percentile tables. The focused gate passed
+in 120.742 seconds: three diagnostic-span cases, four inclusive-percentile
+cases, and the complete WidgetSwitch route were green; measured interpolated
+p95 was 33.8 ms. Test executable SHA-256 is
+`536511F241A4711026541265B2222830ECA459A241B891E41AE79115C90697E8`.
+The detached tree is clean at `3f63db9`; all owned processes exited.
+
+The only authorized next action is one final exact clean Tier-3 run from
+`3f63db99f40a85066452d0dc9129cab3b0df2ad0`. Invoke the canonical verifier
+exactly once, stop first red, retain structured/durable evidence, and do not
+rerun or edit around a failure. Every command must expose output within 60
+seconds and long work must be checked every 15-30 seconds. Do not integrate,
+push, change packages/configuration, rebuild/relaunch PID 89008, or touch
+Avalonia/AVP during the run.
 
 ## Queued platform production — DLV-284 typed publication transactions
 
@@ -427,13 +447,12 @@ Extract native authorities only when real work touches them.
 
 ## Ordered queues
 
-1. Commit reviewed DLV-468, then complete DLV-469 focused percentile correction.
-2. One final exact clean Tier-3 checkpoint, then reviewer integration of the
+1. One final exact clean Tier-3 checkpoint at `3f63db9`, then reviewer integration of the
    explicit accepted cumulative hashes.
-3. DLV-284 after cumulative clean integration.
-4. Generic Game Launcher cutover; LauncherExperience deletion/state retirement;
+2. DLV-284 after cumulative clean integration.
+3. Generic Game Launcher cutover; LauncherExperience deletion/state retirement;
    protocol requirements; then the remaining maturity deliverables.
-5. DLV-248 remains deliberately deferred until explicit user promotion.
+4. DLV-248 remains deliberately deferred until explicit user promotion.
 
 There is no other Ready production work in either standing lane.
 
@@ -450,8 +469,8 @@ There is no other Ready production work in either standing lane.
 | DLV-466 | Production `360544a` physically accepted; coherent candidate PID 89008 remains running. |
 | DLV-465 | Focused WidgetSwitch gate and warning cleanup accepted through `9dd7b78`. |
 | DLV-467 | Test-only correction accepted through `b355865`; its focused and final Tier-3 target gates are green. |
-| DLV-468 | Reviewed test-only span correction; commit it without rerun before DLV-469. |
-| DLV-469 | Assigned for the nine-sample nearest-rank p95 estimator red; 50 ms budget remains unchanged. |
+| DLV-468 | Accepted test-only full-calendar direction-independent diagnostic span as `8a65106`. |
+| DLV-469 | Accepted inclusive interpolated p95 as `3f63db9`; focused WidgetSwitch gate green at 33.8 ms. |
 | DLV-284 | Queued until cumulative review/integration. |
 | DLV-248 | Deferred until explicit user promotion. |
 
@@ -472,3 +491,4 @@ There is no other Ready production work in either standing lane.
 | DLV-467 | Distinct success/failure callbacks from one status sender were separated by exact semantic snapshots; focused native gate passed. |
 | DLV-468 | Tier 3 reached 44 passed steps, then exact transition/paint records exposed a six-millisecond concurrent diagnostic append inversion. |
 | DLV-469 | DLV-468 table evidence passed; the focused route then produced eight 0-7 ms samples and one 54 ms scheduler outlier that nearest-rank p95 treated as the whole verdict. |
+| DLV-468/469 | Direction-independent full-calendar spans and inclusive p95 tables passed with the complete focused WidgetSwitch route. |
