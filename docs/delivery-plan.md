@@ -9,22 +9,20 @@ historical evidence only; this file is the sole implementation authority.
 
 ## Current accepted state
 
-- Local `main` integrates every accepted cumulative production/test milestone
-  through DLV-284 as merge `7f31e04`. The merge contains DLV-284 production
-  `21c3b8b` plus bounded correction `86d6532` and excludes rejected,
-  restoration, and ancestry-bound commits.
-- The coherent integrated Release visibly runs as OverlayHost PID 108300 from
+- Local `main` integrates the review-accepted DLV-284 runtime-v2 compatibility
+  correction `60130b4` as merge `052a392`, on top of DLV-284 production
+  `21c3b8b` plus bounded correction `86d6532` integrated as `7f31e04`. Rejected,
+  restoration, and ancestry-bound commits remain excluded.
+- The corrected coherent integrated Release visibly runs as OverlayHost PID
+  116844 from
   `C:\Users\dwive\Projects\GameBarAlternative\src\OverlayHost\out\Release`.
   Executable SHA-256 is
-  `76D9F8AB1F172FCBBF77B356452247777DA7417AF46ECDE85FC3DC9BB223BD07`.
-  The full Release build and packaging exited 0, startup admitted Settings,
-  Settings painted sequences 1 and 2, and `startup-error.log` is absent. Prior
-  accepted PID 78860 exited through exact-owner `WM_CLOSE` before replacement.
-- PID 108300 is rejected after the installed Spotify 0.3.14 worker failed its
-  first visible lifecycle request and exited 1. Preserve it as live failure
-  evidence until the bounded DLV-284 compatibility correction is ready.
-  DLV-285 remains held until the corrected DLV-284 candidate is physically
-  accepted.
+  `5202C96E47FEA318B355988A05619D40792D5B1DF1876D9B90FF26FA32AA700E`.
+  The Release build exited 0, the production Bridge session started, the
+  process is alive and responsive, and `startup-error.log` is absent. Rejected
+  PID 108300 exited through exact-owner `WM_CLOSE` after its evidence was
+  preserved. Physical proof with the already installed Spotify 0.3.14 worker
+  and the user verdict remain pending; DLV-285 stays held until acceptance.
 - DLV-318 is the exact recoverable prior accepted Release at
   `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative-dlv318-build`;
   executable SHA-256 is
@@ -41,7 +39,7 @@ historical evidence only; this file is the sole implementation authority.
 
 | Lane | Task/worktree | State |
 | --- | --- | --- |
-| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | Assigned one bounded DLV-284 runtime-v2 compatibility correction from clean `86d6532`; preserve the rejected live PID 108300 and prove the real installed Spotify 0.3.14 worker. |
+| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | Idle at clean correction `60130b4`; reviewer accepted and integrated it as `052a392`. |
 | Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | Idle; DLV-285 remains queued behind corrected DLV-284 physical acceptance. |
 
 ## Execution rules
@@ -770,9 +768,27 @@ Spotify state, release DLV-285, or touch LauncherExperience/Avalonia history.
 The reviewer will integrate an accepted correction, rebuild/relaunch, and use
 the already installed Spotify 0.3.14 worker for the physical verdict.
 
+Correction `60130b4` is accepted and integrated as `052a392`. It removes the
+new transaction fields from the public runtime-v2 wire while retaining typed
+transaction and recovery authority in the current host/Bridge path, and maps
+the frozen legacy checkpoint request at the bounded worker adapter. Independent
+strict frozen-v2 schemas prove current-host-to-old-worker and
+old-host-to-current-worker compatibility; the directly affected Runtime gates,
+exact-base Bridge convergence, and ordinary full-trust Bridge runtime all
+passed. Per the unchanged-gate rule, Tier 3 was not rerun.
+
+Rejected PID 108300 exited through exact-owner `WM_CLOSE`. The coherent
+corrected Release build exited 0 and is visibly running as responsive PID
+116844 with executable SHA-256
+`5202C96E47FEA318B355988A05619D40792D5B1DF1876D9B90FF26FA32AA700E`;
+`startup-error.log` is absent and its production Bridge session started. The
+next action is only physical exercise of the already installed Spotify 0.3.14
+widget and the user's accept/reject verdict. Do not rebuild, relaunch, run Tier
+3, change package state, or release DLV-285 before that verdict.
+
 ## Queued widgets production — DLV-285 generic Game Launcher cutover
 
-Lane: widgets. Baseline: exact integrated production commit `7f31e04` in a new
+Lane: widgets. Baseline: exact integrated production commit `052a392` in a new
 clean isolated branch. This assignment is queued, not released: do not begin
 until the user physically accepts PID 108300 and the reviewer explicitly sends
 the assignment. The platform lane remains idle while DLV-285 is active.
@@ -840,8 +856,8 @@ Extract native authorities only when real work touches them.
 
 ## Ordered queues
 
-1. Bounded DLV-284 runtime-v2 compatibility correction and physical proof with
-   the already installed Spotify 0.3.14 worker.
+1. Physical proof of corrected integrated PID 116844 with the already installed
+   Spotify 0.3.14 worker, followed by the user verdict.
 2. DLV-285 generic Game Launcher cutover after corrected DLV-284 acceptance.
 3. LauncherExperience deletion/state retirement;
    protocol requirements; then the remaining maturity deliverables.
@@ -868,7 +884,7 @@ There is no concurrent Ready production work in either standing lane.
 | DLV-471 | Corrected pair `8531915` + `8886e25` accepted; focused TextEntry route green in 40.325 seconds, final exact Tier 3 assigned. |
 | DLV-472 | Accepted `29601e2`, cumulatively applied as `82093d5`, and integrated through `cf77507`; focused and final Tier-3 Bridge target passed 96/96. |
 | Audio Mixer synthetic focus | Final Tier 3 passed 44/45 then retained Master after synthetic Down; unrelated source was previously green, so no unchanged rerun is authorized. |
-| DLV-284 | `21c3b8b` plus `86d6532` integrated as `7f31e04`, then physically rejected on PID 108300: installed Spotify 0.3.14's strict frozen runtime-v2 envelope rejects the new top-level typed transaction fields and exits 1; bounded compatibility correction assigned, no Tier-3 rerun. |
+| DLV-284 | `21c3b8b` plus `86d6532` integrated as `7f31e04`, then physically rejected on PID 108300 because installed Spotify 0.3.14's strict frozen runtime-v2 envelope rejected the new fields. Compatibility correction `60130b4` passed the directly affected frozen-peer Runtime/Bridge gates without an unchanged Tier-3 rerun and is integrated as `052a392`; corrected PID 116844 is running pending physical Spotify 0.3.14 verdict. |
 | DLV-285 | Held behind corrected DLV-284 physical acceptance; package-only production first, then reviewer launch and verdict before tests or framework deletion. |
 | DLV-248 | Deferred until explicit user promotion. |
 
