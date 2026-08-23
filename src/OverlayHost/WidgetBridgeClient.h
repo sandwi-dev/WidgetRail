@@ -732,6 +732,10 @@ struct BridgeFrameReadResult final {
 ParseWidgetPresentationUpdateResponse(
     std::string_view payloadUtf8,
     std::wstring& error);
+[[nodiscard]] std::optional<WidgetPresentationUpdate>
+ParseTypedWidgetPresentationUpdateResponse(
+    std::string_view payloadUtf8,
+    std::wstring& error);
 [[nodiscard]] std::optional<WidgetHostEffect> ParseWidgetHostEffectEvent(
     std::string_view eventUtf8,
     std::wstring& error);

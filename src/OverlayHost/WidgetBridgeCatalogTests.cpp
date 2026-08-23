@@ -177,6 +177,46 @@ void VerifyAtomicPresentationUpdateMaterialization() {
         "renderStyles":{"a":{"base":{"opacity":{"kind":"number","text":"0.75","number":0.75,"unit":null}}}}
     })json", error);
     Require(update && error.empty(), "Could not parse the bounded update batch");
+
+    error.clear();
+    const auto typedUpdate =
+        widgetrail::testing::ParseTypedWidgetPresentationUpdateResponse(R"json({
+        "widgetId":"sample",
+        "transactionKind":"incrementalUpdate",
+        "baseSequence":9,
+        "recoveryOriginSequence":0,
+        "update":{
+            "protocolVersion":18,
+            "widgetInstanceId":"update.sample",
+            "presentationGeneration":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "baseSequence":9,
+            "sequence":10,
+            "operations":[]
+        },
+        "renderStyles":{}
+    })json", error);
+    Require(typedUpdate && error.empty() && typedUpdate->baseSequence == 9 &&
+                typedUpdate->sequence == 10,
+            "Typed incremental publication fields were rejected by the native parser");
+
+    error.clear();
+    Require(!widgetrail::testing::ParseTypedWidgetPresentationUpdateResponse(R"json({
+        "widgetId":"sample",
+        "transactionKind":"incrementalUpdate",
+        "baseSequence":9,
+        "recoveryOriginSequence":0,
+        "unexpected":true,
+        "update":{
+            "protocolVersion":18,
+            "widgetInstanceId":"update.sample",
+            "presentationGeneration":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "baseSequence":9,
+            "sequence":10,
+            "operations":[]
+        },
+        "renderStyles":{}
+    })json", error),
+            "Unknown typed publication fields did not fail closed");
     auto materialized = widgetrail::MaterializeWidgetPresentationUpdate(
         *checkpoint, *update, L"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", error);
     Require(materialized && error.empty(), "Could not materialize the atomic update");

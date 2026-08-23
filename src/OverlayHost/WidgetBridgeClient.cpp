@@ -1513,8 +1513,16 @@ std::optional<PresentationNodeParent> FindPresentationNodeParent(
     return std::nullopt;
 }
 
-WidgetPresentationUpdate ParsePresentationUpdatePayload(const JsonObject& payload) {
-    if (!HasNoUnknownProperties(payload, {L"widgetId", L"update", L"renderStyles"}) ||
+WidgetPresentationUpdate ParsePresentationUpdatePayload(
+    const JsonObject& payload,
+    const bool typedTransactionEnvelope = false) {
+    const bool payloadPropertiesCurrent = typedTransactionEnvelope
+        ? HasNoUnknownProperties(
+            payload,
+            {L"widgetId", L"transactionKind", L"baseSequence",
+             L"recoveryOriginSequence", L"update", L"renderStyles"})
+        : HasNoUnknownProperties(payload, {L"widgetId", L"update", L"renderStyles"});
+    if (!payloadPropertiesCurrent ||
         !payload.HasKey(L"update") ||
         payload.GetNamedValue(L"update").ValueType() != JsonValueType::Object)
         throw winrt::hresult_invalid_argument();
@@ -3010,7 +3018,8 @@ WidgetBridgeClient::EstablishWidgetPresentation(
                 publication.transactionKind = transactionKind;
                 publication.requestBaseSequence = baseSequence;
                 publication.recoveryOriginSequence = recoveryOriginSequence;
-                publication.update = ParsePresentationUpdatePayload(responsePayload);
+                publication.update = ParsePresentationUpdatePayload(
+                    responsePayload, true);
                 lastRuntimeFailure_.reset();
                 lastError_.clear();
                 return publication;
@@ -3200,7 +3209,8 @@ std::optional<WidgetPresentationPublication> WidgetBridgeClient::GetSnapshot(
                 publication.transactionKind = transactionKind;
                 publication.requestBaseSequence = baseSequence;
                 publication.recoveryOriginSequence = recoveryOriginSequence;
-                publication.update = ParsePresentationUpdatePayload(responsePayload);
+                publication.update = ParsePresentationUpdatePayload(
+                    responsePayload, true);
                 lastError_.clear();
                 return publication;
             }
@@ -3893,6 +3903,21 @@ std::optional<WidgetPresentationUpdate> ParseWidgetPresentationUpdateResponse(
         return update;
     } catch (const winrt::hresult_error& exception) {
         error = L"Invalid widget presentation update JSON: " +
+            std::wstring(exception.message());
+        return std::nullopt;
+    }
+}
+
+std::optional<WidgetPresentationUpdate> ParseTypedWidgetPresentationUpdateResponse(
+    const std::string_view payloadUtf8,
+    std::wstring& error) {
+    try {
+        const auto payload = JsonObject::Parse(winrt::to_hstring(payloadUtf8));
+        auto update = ParsePresentationUpdatePayload(payload, true);
+        error.clear();
+        return update;
+    } catch (const winrt::hresult_error& exception) {
+        error = L"Invalid typed widget presentation update JSON: " +
             std::wstring(exception.message());
         return std::nullopt;
     }
