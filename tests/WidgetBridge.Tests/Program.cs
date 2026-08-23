@@ -554,36 +554,62 @@ static async Task WorkerRequestDiagnosticsAreBounded()
     var path = System.IO.Path.Combine(temporary.Path, "overlay.log");
     await using (var diagnostics = new MediaSessionsDiagnosticLog(path, bridgeSessionGeneration: 7))
     {
+        WidgetBridgeServer.ReportWidgetRequestFailure(
+            diagnostics.RecordRequestFailure,
+            new BridgeWidgetRequestException(
+                "installed-widget",
+                "worker-runtime-failed",
+                new WidgetProcessException(
+                    MessageTypes.Render,
+                    WorkerErrorCodes.RequestFailed,
+                    "provider response credential=DEVELOPER_ONLY path=C:\\private\\widget.json")));
+        WidgetBridgeServer.ReportWidgetRequestFailure(
+            diagnostics.RecordRequestFailure,
+            new BridgeWidgetRequestException(
+                "protocol-widget",
+                "worker-protocol-failed",
+                new WidgetProcessException(
+                    MessageTypes.Render,
+                    WorkerErrorCodes.ProtocolValidationFailed,
+                    "Widget protocol validation failed at " +
+                    "$.root.children[7] (duplicate_id).")));
         diagnostics.RecordRequestFailure(new BridgeWidgetRequestDiagnostic(
-            "installed-widget",
+            "spoofed-protocol-widget",
             MessageTypes.Render,
-            "worker_request_failed",
-            "provider response\tcredential=DEVELOPER_ONLY"));
+            WorkerErrorCodes.ProtocolValidationFailed,
+            "credential=SHOULD_NOT_SURFACE"));
         diagnostics.RecordRequestFailure(new BridgeWidgetRequestDiagnostic(
             "unsafe widget/path",
             MessageTypes.Render,
-            "worker_request_failed",
-            "must-not-be-recorded"));
-        diagnostics.RecordRequestFailure(new BridgeWidgetRequestDiagnostic(
-            "installed-widget",
-            "invalid request",
-            "worker_request_failed",
-            "must-not-be-recorded"));
+            WorkerErrorCodes.RequestFailed,
+            StructuralDiagnostic: null));
     }
 
     var lines = File.ReadAllLines(path);
-    Assert.Equal(1, lines.Length);
+    Assert.Equal(3, lines.Length);
     Assert.True(lines[0].Contains(
         "Widget request diagnostic bridge-session=7 widget=installed-widget " +
         "request=render worker-code=worker_request_failed",
         StringComparison.Ordinal), "The correlated worker request record was not retained.");
-    Assert.True(lines[0].Contains(
-        "detail=\"provider response\\tcredential=DEVELOPER_ONLY\"",
-        StringComparison.Ordinal), "The bounded worker diagnostic was not JSON escaped.");
-    Assert.True(!lines[0].Contains('\t'),
-        "The developer diagnostic wrote a raw control character into the record.");
-    Assert.True(!lines[0].Contains("must-not-be-recorded", StringComparison.Ordinal),
-        "An invalid diagnostic authority crossed the bounded log boundary.");
+    Assert.True(!lines[0].Contains("detail=", StringComparison.Ordinal),
+        "A general worker failure retained arbitrary diagnostic detail.");
+    Assert.True(lines[1].Contains(
+        "widget=protocol-widget request=render " +
+        "worker-code=worker_protocol_validation_failed " +
+        "detail=\"Widget protocol validation failed at " +
+        "$.root.children[7] (duplicate_id).\"",
+        StringComparison.Ordinal), "The sanitized structural diagnostic was not retained.");
+    Assert.True(lines[2].Contains(
+        "widget=spoofed-protocol-widget request=render " +
+        "worker-code=worker_protocol_validation_failed",
+        StringComparison.Ordinal), "The spoofed-code record lost its correlated metadata.");
+    Assert.True(!lines[2].Contains("detail=", StringComparison.Ordinal),
+        "An allowlisted code admitted non-structural diagnostic detail.");
+    Assert.True(lines.All(line =>
+        !line.Contains("credential", StringComparison.OrdinalIgnoreCase) &&
+        !line.Contains("provider response", StringComparison.OrdinalIgnoreCase) &&
+        !line.Contains("C:\\", StringComparison.Ordinal)),
+        "Sensitive or package-private detail crossed the persistent log boundary.");
 }
 
 static ConfiguredWidget DiagnosticCandidate() => new()

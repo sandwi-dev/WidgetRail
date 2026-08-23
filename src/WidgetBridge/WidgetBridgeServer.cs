@@ -615,18 +615,14 @@ public sealed class WidgetBridgeServer : IAsyncDisposable
     {
         ArgumentNullException.ThrowIfNull(exception);
         if (diagnosticSink is null ||
-            exception.RequestType is not { } requestType ||
-            exception.WorkerErrorCode is not { } workerErrorCode ||
-            exception.WorkerDiagnosticMessage is not { } workerDiagnosticMessage)
+            exception.RequestType is null ||
+            exception.WorkerErrorCode is null ||
+            exception.WorkerDiagnosticMessage is null)
             return;
 
         try
         {
-            diagnosticSink(new BridgeWidgetRequestDiagnostic(
-                exception.WidgetId,
-                requestType,
-                workerErrorCode,
-                workerDiagnosticMessage));
+            diagnosticSink(BridgeWidgetRequestDiagnostic.From(exception));
         }
         catch (Exception diagnosticException) when (diagnosticException is not OutOfMemoryException)
         {

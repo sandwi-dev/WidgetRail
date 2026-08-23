@@ -33,6 +33,12 @@ internal static class MessageTypes
     public const string Stop = "stop";
 }
 
+internal static class WorkerErrorCodes
+{
+    internal const string RequestFailed = "worker_request_failed";
+    internal const string ProtocolValidationFailed = "worker_protocol_validation_failed";
+}
+
 internal sealed record RuntimeEnvelope
 {
     public int ProtocolVersion { get; init; } = WidgetRuntimeProtocol.CurrentVersion;

@@ -215,7 +215,7 @@ internal sealed class WidgetWorkerServer
                         {
                             await ReplyAsync(MessageTypes.Error, request.RequestId,
                                     new ErrorPayload(
-                                        "worker_request_failed", SafeMessage(exception)),
+                                        ErrorCode(exception), SafeMessage(exception)),
                                     loopCancellation.Token)
                                 .ConfigureAwait(false);
                         }
@@ -609,4 +609,9 @@ internal sealed class WidgetWorkerServer
         if (message.Length > 512) message = message[..512];
         return message.Replace(Environment.NewLine, " ", StringComparison.Ordinal);
     }
+
+    private static string ErrorCode(Exception exception) =>
+        exception is ProtocolValidationException
+            ? WorkerErrorCodes.ProtocolValidationFailed
+            : WorkerErrorCodes.RequestFailed;
 }
