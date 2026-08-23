@@ -35,8 +35,8 @@ historical evidence only; this file is the sole implementation authority.
 
 | Lane | Task/worktree | State |
 | --- | --- | --- |
-| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | DLV-471 is accepted through `8886e25`; idle while widgets owns the DLV-472 managed first red. DLV-284 remains queued. |
-| Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | DLV-472 is assigned at clean managed baseline `676cd76` for the full-trust crash/admission fixture race. |
+| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | Apply accepted test-only DLV-472 `29601e2` to clean cumulative `8886e25`, then run one final exact clean Tier-3 checkpoint. DLV-284 remains queued. |
+| Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | DLV-472 is accepted as clean test-only commit `29601e2`; idle. |
 
 ## Execution rules
 
@@ -525,7 +525,7 @@ exited and PID 89008 stayed alive and untouched. Structured evidence is under
 `%TEMP%\wrail-dlv471-tier3-final-20260822-200650`. Do not rerun Tier 3 until
 the focused managed first red below is corrected and accepted.
 
-## Assigned widgets test correction — DLV-472 full-trust crash admission race
+## Accepted widgets test correction — DLV-472 full-trust crash admission race
 
 Baseline: clean widgets tip `676cd76f6761ca35b49b9810a0a8f0b42e9fabf4`.
 The directly affected `WidgetBridge.Tests` and `FullTrustAlphaFixture` sources
@@ -549,14 +549,20 @@ quiet periods, timeouts, fixture delays, production changes, protocol changes,
 or broader test cleanup. If evidence contradicts this two-outcome model or
 requires production work, stop and report it.
 
-The widgets lane owns the complete focused correction loop for this one case
-without returning after each understood in-scope test-only red. Run the focused
-`WidgetBridge.Tests` suite once after the coherent correction, using durable
-streams and a bounded owner. Every command must expose output within 60 seconds
-and long work must be inspected every 15-30 seconds. Commit one DLV-472
-test-only milestone only after focused green and stop for review. Do not run
-Tier 3, integrate, push, change packages/configuration, rebuild/relaunch PID
-89008, or touch Avalonia/AVP.
+The widgets lane owned the complete focused correction loop for this one case
+without returning after each understood in-scope test-only red. Accepted commit
+`29601e2702ed7f53870e50b3300844a023f812a9` changes only
+`tests/WidgetBridge.Tests/Program.cs`. It admits exactly the two legal observed
+outcomes—`Enqueued` or typed `worker-runtime-failed`—and requires identical
+last-good, restart, stale-authority, recovered-snapshot, and cleared-failure
+proof after either outcome. It adds no sleep, retry, delay, timeout, production,
+or protocol change.
+
+The one authorized focused run passed 96/96. Durable output is
+`%TEMP%\wrail-dlv472-widget-bridge.log`, SHA-256
+`A725FD95C03FC800E877BAD61595A6434CA52364CF17D5A0CCF13B5C661676DD`.
+The widgets worktree is clean; no Tier 3, integration, push, package/configuration
+change, rebuild/relaunch of PID 89008, or Avalonia/AVP interaction occurred.
 
 ## Queued platform production — DLV-284 typed publication transactions
 
@@ -620,9 +626,9 @@ Extract native authorities only when real work touches them.
 
 ## Ordered queues
 
-1. DLV-472 focused managed crash/admission fixture correction; apply its
-   accepted commit to cumulative `8886e25`, then one final exact clean Tier-3
-   checkpoint and reviewer integration of all explicit accepted hashes.
+1. Platform applies accepted DLV-472 `29601e2` to clean cumulative `8886e25`,
+   then runs one final exact clean Tier-3 checkpoint. On green, reviewer
+   integrates all explicit accepted hashes into local `main`.
 2. DLV-284 after cumulative clean integration.
 3. Generic Game Launcher cutover; LauncherExperience deletion/state retirement;
    protocol requirements; then the remaining maturity deliverables.
@@ -647,7 +653,7 @@ There is no other Ready production work in either standing lane.
 | DLV-469 | Accepted inclusive interpolated p95 as `3f63db9`; focused WidgetSwitch gate green at 33.8 ms. |
 | DLV-470 | Accepted isolated hidden-smoke profile as `ffb8742`; focused smoke green in 1.465 seconds. |
 | DLV-471 | Corrected pair `8531915` + `8886e25` accepted; focused TextEntry route green in 40.325 seconds, final exact Tier 3 assigned. |
-| DLV-472 | Assigned to widgets at `676cd76` for the exact full-trust crash/admission two-outcome fixture race; no Tier-3 rerun authorized. |
+| DLV-472 | Accepted test-only `29601e2`; focused `WidgetBridge.Tests` passed 96/96, and platform owns cumulative application plus the final exact Tier-3 rerun. |
 | DLV-284 | Queued until cumulative review/integration. |
 | DLV-248 | Deferred until explicit user promotion. |
 
@@ -674,3 +680,4 @@ There is no other Ready production work in either standing lane.
 | DLV-471 | Tier 3 passed 44 steps, then the modal initial-focus assertion failed without recording the actual focus identity; candidate `8531915` added useful diagnostics but not a causal UI-loop fence. |
 | DLV-471 accepted | `8886e25` replaces the sent-message fence with a tokenized queued-message acknowledgment after modal-loop entry; focused route and 2,582 linked checks passed. |
 | DLV-472 | Tier 3 passed 42 steps, then an immediately crashing full-trust fixture exited before the action acknowledgment reached the managed presentation facade. |
+| DLV-472 accepted | `29601e2` makes the fixture accept only the two process-exit ordering outcomes while preserving the same full recovery proof; focused `WidgetBridge.Tests` passed 96/96. |
