@@ -186,7 +186,6 @@ internal static class BridgeClientRegistryScenarios
                 RegistryAssert.Equal(alpha.Id, diagnostics[0].WidgetId);
                 RegistryAssert.Equal(MessageTypes.Render, diagnostics[0].RequestType);
                 RegistryAssert.Equal("worker_request_failed", diagnostics[0].WorkerErrorCode);
-                RegistryAssert.True(diagnostics[0].StructuralDiagnostic is null);
             }
             alphaClient.SnapshotFailure = null;
 

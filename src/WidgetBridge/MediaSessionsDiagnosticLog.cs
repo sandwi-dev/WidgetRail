@@ -1,5 +1,4 @@
 using System.Text;
-using System.Text.Json;
 using System.Threading.Channels;
 using WidgetRail.PlatformBroker;
 using WidgetRail.WidgetProtocol;
@@ -105,16 +104,10 @@ internal sealed class MediaSessionsDiagnosticLog : IAsyncDisposable
             !IsSafe(diagnostic.WorkerErrorCode, 64))
             return;
 
-        var structuralDiagnostic = BridgeWidgetRequestDiagnostic.NormalizeStructuralDiagnostic(
-            diagnostic.WorkerErrorCode, diagnostic.StructuralDiagnostic);
-        var detail = structuralDiagnostic is { } value
-            ? $" detail={JsonSerializer.Serialize(value)}"
-            : string.Empty;
         _lines.Writer.TryWrite(
             $"{DateTimeOffset.UtcNow:O} Widget request diagnostic " +
             $"bridge-session={_bridgeSessionGeneration} widget={diagnostic.WidgetId} " +
             $"request={diagnostic.RequestType} worker-code={diagnostic.WorkerErrorCode}" +
-            detail +
             Environment.NewLine);
     }
 

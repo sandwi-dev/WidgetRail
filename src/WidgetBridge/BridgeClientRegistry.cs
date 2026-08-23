@@ -40,40 +40,13 @@ internal sealed record BridgeClientRuntimeFailure(string WidgetId, WidgetFailure
 internal sealed record BridgeWidgetRequestDiagnostic(
     string WidgetId,
     string RequestType,
-    string WorkerErrorCode,
-    string? StructuralDiagnostic)
+    string WorkerErrorCode)
 {
     internal static BridgeWidgetRequestDiagnostic From(BridgeWidgetRequestException exception) =>
         new(
             exception.WidgetId,
             exception.RequestType!,
-            exception.WorkerErrorCode!,
-            NormalizeStructuralDiagnostic(
-                exception.WorkerErrorCode!, exception.WorkerDiagnosticMessage!));
-
-    internal static string? NormalizeStructuralDiagnostic(string errorCode, string? message)
-    {
-        const string prefix = "Widget protocol validation failed at ";
-        if (errorCode != WorkerErrorCodes.ProtocolValidationFailed ||
-            message is null ||
-            !message.StartsWith(prefix, StringComparison.Ordinal) ||
-            !message.EndsWith(").", StringComparison.Ordinal))
-            return null;
-
-        var separator = message.LastIndexOf(" (", StringComparison.Ordinal);
-        if (separator <= prefix.Length) return null;
-        var path = message[prefix.Length..separator];
-        var code = message[(separator + 2)..^2];
-        if (path.Length is 0 or > 256 || path[0] != '$' ||
-            !path.All(character => char.IsAsciiLetterOrDigit(character) ||
-                character is '$' or '.' or '[' or ']' or '_' or '-') ||
-            code.Length is 0 or > 64 ||
-            !code.All(character => char.IsAsciiLetterOrDigit(character) ||
-                character is '.' or '-' or '_'))
-            return null;
-
-        return $"{prefix}{path} ({code}).";
-    }
+            exception.WorkerErrorCode!);
 }
 internal sealed class BridgeWidgetRequestException : Exception
 {

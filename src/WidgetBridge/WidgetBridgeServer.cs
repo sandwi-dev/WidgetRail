@@ -616,8 +616,7 @@ public sealed class WidgetBridgeServer : IAsyncDisposable
         ArgumentNullException.ThrowIfNull(exception);
         if (diagnosticSink is null ||
             exception.RequestType is null ||
-            exception.WorkerErrorCode is null ||
-            exception.WorkerDiagnosticMessage is null)
+            exception.WorkerErrorCode is null)
             return;
 
         try
