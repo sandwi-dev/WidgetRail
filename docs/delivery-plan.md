@@ -35,7 +35,7 @@ historical evidence only; this file is the sole implementation authority.
 
 | Lane | Task/worktree | State |
 | --- | --- | --- |
-| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | DLV-468/469 are accepted through `3f63db9`; one final exact clean Tier-3 checkpoint is authorized. DLV-284 remains queued. |
+| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | DLV-470 owns the final Tier-3 hidden-smoke process-profile collision from accepted cumulative tip `3f63db9`. DLV-284 remains queued. |
 | Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | Idle and clean at `676cd76`; do not begin work or change product state. |
 
 ## Execution rules
@@ -377,13 +377,38 @@ p95 was 33.8 ms. Test executable SHA-256 is
 `536511F241A4711026541265B2222830ECA459A241B891E41AE79115C90697E8`.
 The detached tree is clean at `3f63db9`; all owned processes exited.
 
-The only authorized next action is one final exact clean Tier-3 run from
-`3f63db99f40a85066452d0dc9129cab3b0df2ad0`. Invoke the canonical verifier
-exactly once, stop first red, retain structured/durable evidence, and do not
-rerun or edit around a failure. Every command must expose output within 60
-seconds and long work must be checked every 15-30 seconds. Do not integrate,
-push, change packages/configuration, rebuild/relaunch PID 89008, or touch
-Avalonia/AVP during the run.
+The final exact clean Tier-3 run from `3f63db9` executed once. All 45 preceding
+steps passed, including the complete native aggregate and DLV-468/469. It then
+stopped first red at `overlay-hidden-smoke`, assigned separately as DLV-470
+below. Structured evidence is under
+`artifacts/verification/20260823T013507Z-b9a95fee`; durable streams are under
+`%TEMP%\wrail-dlv469-tier3-20260822-183506`. The owner, verifier, and all owned
+descendants exited; PID 89008 remains alive and untouched.
+
+## Assigned platform test-tool correction — DLV-470 hidden-smoke isolation
+
+Baseline: clean detached accepted cumulative tip
+`3f63db99f40a85066452d0dc9129cab3b0df2ad0`. The smoke script launched
+`OverlayHost.exe --hidden` with the default `production` process profile while
+the physically accepted production owner PID 89008 was already resident. The
+new process therefore activated the existing owner and exited normally with
+code 0 after 690 ms; the script misclassified that expected owner/client
+behavior as initialization failure. This is not a crash or product defect.
+
+Change only `scripts/Test-HiddenOverlay.ps1`. Give every smoke invocation a
+unique bounded `--process-profile` so it proves that its own isolated hidden
+owner remains resident instead of colliding with the user's production owner.
+Preserve the one-second residency check, startup-error freshness check, hidden
+window behavior, deterministic cleanup, five-second termination bound, and
+failure on any non-resident isolated process. Do not terminate, activate,
+rebuild, or relaunch PID 89008; do not change production, packages,
+configuration, timeouts, or unrelated verification steps.
+
+Run `pwsh -NoProfile -File scripts\Test-HiddenOverlay.ps1 -Configuration
+Release` exactly once against the already-built accepted cumulative output.
+Every command must expose output within 60 seconds and all spawned processes
+must be accounted for. Commit one DLV-470 test-tool milestone only after green
+and stop for review. Do not run Tier 3, integrate, push, or touch Avalonia/AVP.
 
 ## Queued platform production — DLV-284 typed publication transactions
 
@@ -447,12 +472,13 @@ Extract native authorities only when real work touches them.
 
 ## Ordered queues
 
-1. One final exact clean Tier-3 checkpoint at `3f63db9`, then reviewer integration of the
+1. DLV-470 focused hidden-smoke isolation correction.
+2. One final exact clean Tier-3 checkpoint, then reviewer integration of the
    explicit accepted cumulative hashes.
-2. DLV-284 after cumulative clean integration.
-3. Generic Game Launcher cutover; LauncherExperience deletion/state retirement;
+3. DLV-284 after cumulative clean integration.
+4. Generic Game Launcher cutover; LauncherExperience deletion/state retirement;
    protocol requirements; then the remaining maturity deliverables.
-4. DLV-248 remains deliberately deferred until explicit user promotion.
+5. DLV-248 remains deliberately deferred until explicit user promotion.
 
 There is no other Ready production work in either standing lane.
 
@@ -471,6 +497,7 @@ There is no other Ready production work in either standing lane.
 | DLV-467 | Test-only correction accepted through `b355865`; its focused and final Tier-3 target gates are green. |
 | DLV-468 | Accepted test-only full-calendar direction-independent diagnostic span as `8a65106`. |
 | DLV-469 | Accepted inclusive interpolated p95 as `3f63db9`; focused WidgetSwitch gate green at 33.8 ms. |
+| DLV-470 | Assigned for hidden-smoke collision with the already-running production process profile. |
 | DLV-284 | Queued until cumulative review/integration. |
 | DLV-248 | Deferred until explicit user promotion. |
 
@@ -492,3 +519,4 @@ There is no other Ready production work in either standing lane.
 | DLV-468 | Tier 3 reached 44 passed steps, then exact transition/paint records exposed a six-millisecond concurrent diagnostic append inversion. |
 | DLV-469 | DLV-468 table evidence passed; the focused route then produced eight 0-7 ms samples and one 54 ms scheduler outlier that nearest-rank p95 treated as the whole verdict. |
 | DLV-468/469 | Direction-independent full-calendar spans and inclusive p95 tables passed with the complete focused WidgetSwitch route. |
+| DLV-470 | Tier 3 passed the full native aggregate, then hidden smoke launched the default production profile and exited 0 after activating the resident owner. |
