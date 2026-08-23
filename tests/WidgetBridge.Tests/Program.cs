@@ -3162,35 +3162,57 @@ static async Task ManagedPresentationSessionPreservesFullTrustRuntime()
         var failedState = WaitForPresentationAsync(
             session,
             state => state.Failure is { CanRestart: true });
-        var admission = await session.SendActionAsync(
-            frame.Authority,
-            new WidgetActionEvent(
-                "crash",
-                "alpha-crash",
-                Sequence: 1,
-                MonotonicTimestampMicroseconds: 1_000,
-                InputScopeId: frame.Authority.ActiveInputScopeId));
-        Assert.Equal(WidgetOperationAdmission.Enqueued, admission);
+        var admissionOutcome = "not-observed";
+        try
+        {
+            var admission = await session.SendActionAsync(
+                frame.Authority,
+                new WidgetActionEvent(
+                    "crash",
+                    "alpha-crash",
+                    Sequence: 1,
+                    MonotonicTimestampMicroseconds: 1_000,
+                    InputScopeId: frame.Authority.ActiveInputScopeId));
+            admissionOutcome = admission.ToString();
+            Assert.True(
+                admission == WidgetOperationAdmission.Enqueued,
+                $"Unexpected full-trust crash admission outcome '{admissionOutcome}'.");
+        }
+        catch (WidgetPresentationSessionException exception)
+        {
+            admissionOutcome = $"{nameof(WidgetPresentationSessionException)}:{exception.Code}";
+            Assert.True(
+                exception.Code == "worker-runtime-failed",
+                $"Unexpected full-trust crash admission outcome '{admissionOutcome}'.");
+        }
+
         var failed = await failedState;
-        Assert.Equal(frame, failed.LastGood);
+        Assert.True(
+            Equals(frame, failed.LastGood),
+            $"Full-trust crash changed LastGood after admission outcome '{admissionOutcome}'.");
         Assert.True(failed.Failure!.CanRestart,
-            "Full-trust restart authority was not preserved by the facade.");
+            $"Full-trust restart authority was not preserved after admission outcome '{admissionOutcome}'.");
         var staleAfterFailure = await Assert.ThrowsAsync<WidgetPresentationSessionException>(
             () => session.SendActionAsync(
                 frame.Authority,
                 new WidgetActionEvent(
                     "crash", "alpha-crash",
                     InputScopeId: frame.Authority.ActiveInputScopeId)));
-        Assert.Equal("presentation_stale", staleAfterFailure.Code);
+        Assert.True(
+            staleAfterFailure.Code == "presentation_stale",
+            $"Expected stale old authority after admission outcome '{admissionOutcome}', " +
+            $"got '{staleAfterFailure.Code}'.");
 
         var recovered = await session.EstablishPresentationAsync(
             target, WidgetLifecycleState.Interactive);
         Assert.True(
             FindNode(recovered.Snapshot.Root, "alpha-result").Text?.Contains(
                 "run=", StringComparison.Ordinal) == true,
-            "The full-trust session did not recover a typed snapshot.");
+            $"The full-trust session did not recover a typed snapshot after admission outcome " +
+            $"'{admissionOutcome}'.");
         Assert.True(session.GetState(installed.Id)?.Failure is null,
-            "A successful full-trust refresh did not clear the retained failure.");
+            $"A successful full-trust refresh did not clear the retained failure after admission " +
+            $"outcome '{admissionOutcome}'.");
     }
     finally
     {
