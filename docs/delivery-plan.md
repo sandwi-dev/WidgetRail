@@ -28,9 +28,8 @@ historical evidence only; this file is the sole implementation authority.
   discovery omitted the overlay HWND, so no automated first-page claim is made.
   The user physically accepted this coherent Release; DLV-285 is released.
 - DLV-285 production `ccb46e7` is physically accepted and integrated into local
-  `main` as merge `609d34e`. Its exact reviewed Release remains visibly running
-  from the clean widgets worktree as OverlayHost PID 144052, Bridge PID 142324,
-  with executable
+  `main` as merge `609d34e`. Its exact reviewed Release ran from the clean
+  widgets worktree as OverlayHost PID 144052, Bridge PID 142324, with executable
   SHA-256 `55E31C824E96656B14DC8485FFBA9608B63033C08A553B32CDB0ED462FE42A2C`.
   Reviewed Game Launcher 0.2.1 package SHA-256 is
   `54989DDCB8A75FA813284585E06F55F56C704FA4310410126E72B30D0DF7FB4C`;
@@ -40,8 +39,14 @@ historical evidence only; this file is the sole implementation authority.
   and force-stopped only that planner-owned process before candidate launch.
   The user explicitly deferred Game Launcher widget tests for future package
   work. No test-only follow-up, rebuild, or relaunch is required for DLV-285;
-  the running accepted candidate already contains its integrated production
-  commit.
+  its accepted production commit is integrated. For DLV-286 review, PID 144052
+  exposed no closable main window; the reviewer reverified its exact executable
+  path and force-stopped only that planner-owned process.
+- Unaccepted DLV-286 candidate `d0ca29b` is visibly running from the clean
+  platform worktree as responsive OverlayHost PID 80988. Executable SHA-256 is
+  `A694909AAD4F8A75464BCAE7BFF665084637AD1E5309C864D1DC802D45AF9FFE`;
+  `startup-error.txt` is absent. It is not integrated and awaits the user's
+  physical overlay/Settings verdict.
 - DLV-318 is the exact recoverable prior accepted Release at
   `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative-dlv318-build`;
   executable SHA-256 is
@@ -58,7 +63,7 @@ historical evidence only; this file is the sole implementation authority.
 
 | Lane | Task/worktree | State |
 | --- | --- | --- |
-| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | DLV-286 LauncherExperience vertical-slice removal is Assigned from exact main `609d34e`; the retained DLV-284 branch must not be used as its baseline. |
+| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | DLV-286 production `d0ca29b` is source-reviewed and visibly running as unaccepted PID 80988; awaiting the user's physical verdict before integration. |
 | Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | DLV-285 production `ccb46e7` is physically accepted/integrated; Game Launcher tests are explicitly deferred and the lane is idle for the user's future package plans. |
 
 ## Execution rules
@@ -466,6 +471,28 @@ Stop for review if removal requires a generic replacement channel, a material
 public compatibility promise, a broad state reset, a package-ID special case,
 or substantial conflict.
 
+Production candidate `d0ca29b` is clean at exact parent `609d34e`. It deletes
+35 obsolete files and removes the catalog, protocol/SDK, Bridge, native,
+Settings, CLI, fixture, and public-guide slice across 86 paths. The sole active
+production-name residue is the documented schema-1 settings tombstone, which
+removes only `launcherExperience`, advances the in-memory document to schema 2,
+and preserves unrelated state. The private Game Launcher `experienceId` is
+retired without redesigning its generic application.
+
+Production builds passed for WidgetSdk, PlatformSettings, WidgetBridge,
+SettingsWidget, Wrail CLI, Game Launcher Core/Application/package, and native
+Release. Focused non-Game-Launcher evidence passed: WidgetSdk 87/87,
+PlatformSettings 17/17, SettingsWidget 59/59, native catalog, and two exact
+Bridge contract cases. No Tier 3 ran. One broader Bridge aggregate was stopped
+at 60/96 on sandbox named-pipe `UnauthorizedAccessException`; it incidentally
+traversed a packaged Game Launcher catalog row before that environmental red.
+Do not repeat it. The dedicated Game Launcher test project was untouched and
+not built or run, per user direction; its obsolete advanced-presentation
+assertions remain explicitly deferred with the user's future package plans.
+Candidate PID 80988 is ready for the user to verify ordinary overlay startup,
+Settings without Launcher Experience controls, widget switching, and retained
+installed/configured state. Do not integrate before that verdict.
+
 ## Future architecture queue — maturity review additions
 
 Status: DLV-286 is assigned; later items are ordered future work and are not
@@ -488,7 +515,7 @@ Extract native authorities only when real work touches them.
 ## Ordered queues
 
 1. DLV-286 LauncherExperience/AdvancedPresentation vertical-slice deletion and
-   narrow obsolete-state retirement; no Game Launcher widget tests.
+   narrow obsolete-state retirement; unaccepted PID 80988 awaits user verdict.
 2. Protocol requirements; then the remaining maturity deliverables.
 3. DLV-248 remains deliberately deferred until explicit user promotion.
 
@@ -514,7 +541,8 @@ There is no concurrent Ready production work in either standing lane.
 | DLV-472 | Accepted `29601e2`, cumulatively applied as `82093d5`, and integrated through `cf77507`; focused and final Tier-3 Bridge target passed 96/96. |
 | Audio Mixer synthetic focus | Final Tier 3 passed 44/45 then retained Master after synthetic Down; unrelated source was previously green, so no unchanged rerun is authorized. |
 | DLV-284 | `21c3b8b` + `86d6532` integrated as `7f31e04`; compatibility `60130b4` as `052a392`; correlation/redaction `f583f40` + `ac79ed0` as `8ac55d`. The cumulative diagnostic stack is accepted only with metadata-only correction `a65228c`, integrated as `12728a2`; production build and two direct one-case gates passed, no Tier-3 rerun. The user physically accepted coherent PID 133304. |
-| DLV-285 | Production `ccb46e7` from exact baseline `12728a2` is physically accepted and integrated as `609d34e`; package and Release builds exited 0. Game Launcher 0.2.1 is installed/full-trust enabled, and accepted PID 144052 remains running. Widget tests are explicitly deferred for future package work. |
+| DLV-285 | Production `ccb46e7` from exact baseline `12728a2` is physically accepted and integrated as `609d34e`; package and Release builds exited 0. Game Launcher 0.2.1 is installed/full-trust enabled. Accepted PID 144052 was replaced only for DLV-286 physical review. Widget tests are explicitly deferred for future package work. |
+| DLV-286 | Production `d0ca29b` from exact baseline `609d34e` is clean; affected production builds and focused non-Game-Launcher checks passed. Unaccepted PID 80988 is running for physical verdict. The dedicated Game Launcher test project remains untouched/deferred; one broader Bridge attempt stopped on sandbox pipe denial after incidental catalog traversal and must not be repeated. |
 | DLV-248 | Deferred until explicit user promotion. |
 
 ## Recent dispositions
