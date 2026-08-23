@@ -27,8 +27,10 @@ historical evidence only; this file is the sole implementation authority.
   Settings reached visible lifecycle under the resident owner. Windows-control
   discovery omitted the overlay HWND, so no automated first-page claim is made.
   The user physically accepted this coherent Release; DLV-285 is released.
-- Unaccepted DLV-285 candidate `ccb46e7` is visibly running from the clean
-  widgets worktree as OverlayHost PID 144052, Bridge PID 142324, with executable
+- DLV-285 production `ccb46e7` is physically accepted and integrated into local
+  `main` as merge `609d34e`. Its exact reviewed Release remains visibly running
+  from the clean widgets worktree as OverlayHost PID 144052, Bridge PID 142324,
+  with executable
   SHA-256 `55E31C824E96656B14DC8485FFBA9608B63033C08A553B32CDB0ED462FE42A2C`.
   Reviewed Game Launcher 0.2.1 package SHA-256 is
   `54989DDCB8A75FA813284585E06F55F56C704FA4310410126E72B30D0DF7FB4C`;
@@ -36,6 +38,10 @@ historical evidence only; this file is the sole implementation authority.
   catalog admits nine tray widgets and startup is clean. Accepted PID 133304
   survived its graceful exact-PID signal, so the reviewer reverified its path
   and force-stopped only that planner-owned process before candidate launch.
+  The user explicitly deferred Game Launcher widget tests for future package
+  work. No test-only follow-up, rebuild, or relaunch is required for DLV-285;
+  the running accepted candidate already contains its integrated production
+  commit.
 - DLV-318 is the exact recoverable prior accepted Release at
   `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative-dlv318-build`;
   executable SHA-256 is
@@ -52,8 +58,8 @@ historical evidence only; this file is the sole implementation authority.
 
 | Lane | Task/worktree | State |
 | --- | --- | --- |
-| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | Corrected cumulative diagnostic stack through metadata-only `a65228c` accepted and integrated as `12728a2`; idle while DLV-285 is active. |
-| Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | DLV-285 production candidate `ccb46e7` reviewed and visibly running as PID 144052; awaiting user verdict before tests or integration. |
+| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | DLV-286 LauncherExperience vertical-slice removal is Assigned from exact main `609d34e`; the retained DLV-284 branch must not be used as its baseline. |
+| Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | DLV-285 production `ccb46e7` is physically accepted/integrated; Game Launcher tests are explicitly deferred and the lane is idle for the user's future package plans. |
 
 ## Execution rules
 
@@ -349,7 +355,7 @@ integrated Release is ready for the user to repeat Spotify Y-refresh; its
 metadata distinguishes a render/runtime failure without persisting package
 content.
 
-## Assigned widgets production — DLV-285 generic Game Launcher cutover
+## Accepted widgets production — DLV-285 generic Game Launcher cutover
 
 Lane: widgets. Baseline: exact integrated production commit `12728a2` in a new
 clean isolated branch. The user physically accepted the final corrected
@@ -391,36 +397,88 @@ selection controls/actions, and compiled projection dependency while retaining
 the prior private `ExperienceId` inertly for targeted retirement. The ordinary
 declarative application view remains the sole package presentation. Package and
 Release builds exited 0 without tests. Game Launcher 0.2.1 is installed and
-enabled; coherent candidate PID 144052 is ready for the user's generic layout,
-focus/navigation, paging, organization-state, and launch-behavior verdict. Do
-not add tests or integrate until that verdict.
+enabled. The user physically accepted coherent PID 144052 and explicitly
+deferred Game Launcher widget tests for future package work. Production
+`ccb46e7` is integrated as `609d34e`; the same accepted candidate remains
+running, so no test-only rebuild or relaunch is required.
+
+## Assigned platform production — DLV-286 remove LauncherExperience
+
+Lane: platform, acting as the sole serialized cross-framework owner. Baseline:
+exact clean local-main merge `609d34e` in a new branch
+`codex/dlv-286-remove-launcher-experience`. Do not reuse or merge the retained
+DLV-284 platform branch. Dependencies: DLV-285 is physically accepted and
+integrated; Game Launcher 0.2.1 already presents through the ordinary generic
+full-trust application runtime. The widgets lane remains idle and no Game
+Launcher widget tests are authorized under this milestone.
+
+Objective: deliberately remove the complete dormant LauncherExperience and
+AdvancedPresentation framework vertical slice. The post-removal boundary is
+the ordinary declarative model only: bounded `ViewSnapshot`, responsive
+grid/scroll/navigation, semantic tiles, virtual collections, bounded artwork,
+WRSS, controller focus, and generic host rendering/input/accessibility/lifecycle.
+Do not replace the deleted slice with a custom-host-presentation escape hatch,
+compatibility layer, renamed equivalent, or package-specific native path.
+
+In scope:
+
+1. Delete the `LauncherExperienceCatalog` production project and its remaining
+   catalog, validation, archive, built-in, identity, and file-system owners.
+2. Remove LauncherExperience/AdvancedPresentation manifest, protocol, SDK,
+   public-API, snapshot/update, Bridge catalog/event/selection/configuration,
+   native bridge-client, layout/projection/adapter/host-state, Settings, CLI,
+   build, fixture, recovery-descriptor, and documentation surfaces.
+3. Remove only obsolete launcher-experience selection/configuration state with
+   one explicit narrow pre-release schema retirement. Preserve themes, widget
+   ordering, installed/enabled/current package state, credentials, provider
+   configuration, accounts, and all unrelated host/package state.
+4. Remove the now-inert Game Launcher `ExperienceId`/identity residue as part
+   of the breaking slice deletion, without redesigning or otherwise testing
+   the Game Launcher package.
+5. Delete or replace launcher-specific tests and fixtures only where required
+   to remove the dead contract; retain generic runtime, rendering, focus,
+   accessibility, paging, launch, and package behavior unchanged.
+
+Out of scope: new Game Launcher behavior or tests; generic forms; a custom
+presentation channel; host knowledge of Game Launcher identity, tree shape, or
+styles; unrelated protocol features; broad Settings/CLI redesign; arbitrary
+state reset; Avalonia/AVP history; package publication; push.
+
+Acceptance requires no active production reference under `src/` to
+`LauncherExperience`, `AdvancedPresentation`, `advancedPresentation`, or the
+specialized presentation protocol, except an explicitly documented migration
+tombstone whose lifetime and removal condition are stated. Game Launcher must
+still build/package as an ordinary full-trust Community application, while the
+native host, Bridge, protocol, SDK, Settings, and CLI have no launcher-specific
+knowledge. The narrow state retirement must prove unrelated persisted state is
+preserved. Provide a before/after responsibility map because this deletion
+crosses several existing owners; do not add a new multipurpose coordinator.
+
+Verification is production/build first. Build the affected managed projects,
+native Release, CLI, and Game Launcher package with bounded commands that emit
+progress or terminate within 60 seconds. Do not run Game Launcher widget tests.
+Run only focused non-Game-Launcher contract/state checks needed to prove the
+dead framework and narrow state retirement are gone; do not run Tier 3. Commit
+one coherent DLV-286 candidate, report exact deletions/remaining tombstones,
+numeric exits and hashes, and do not install packages, launch/terminate the
+resident accepted PID 144052, reset user state, push, or touch Avalonia/AVP.
+Stop for review if removal requires a generic replacement channel, a material
+public compatibility promise, a broad state reset, a package-ID special case,
+or substantial conflict.
 
 ## Future architecture queue — maturity review additions
 
-Status: DLV-285 is assigned; later items are ordered future work and are not
+Status: DLV-286 is assigned; later items are ordered future work and are not
 assigned.
 
-1. Generic Game Launcher cutover through ordinary `ViewSnapshot`, responsive
-   grid/scroll/navigation, semantic tiles, virtual windows, bounded artwork,
-   WRSS, controller focus, and generic `WidgetApplicationRuntime`. Obtain a
-   physical verdict before deleting the dormant framework slice.
-2. Deliberate LauncherExperience vertical-slice deletion: catalog, public
-   advanced-presentation models, Bridge routes, native adapter/projection/state,
-   Settings/CLI flows, references, fixtures, compatibility baselines, and docs.
-   Add no custom-presentation escape hatch or compatibility layer.
-3. Targeted LauncherExperience state retirement preserving themes, ordering,
-   package configuration, credentials, and Game Launcher-owned state. Require
-   no active `LauncherExperience`/`AdvancedPresentation` production references,
-   generic full-trust Game Launcher, no launcher-specific host knowledge,
-   physical acceptance, and focused evidence.
-4. One authoritative model-level protocol-version calculator shared by SDK
+1. One authoritative model-level protocol-version calculator shared by SDK
    snapshot creation and raw validation, with exact gated-node/property
    coverage, before any new protocol feature.
-5. SDK stability/evolution contract.
-6. Stable structured diagnostic contract.
-7. Localization and accessibility semantics.
-8. Author diagnostics and preview inspection.
-9. Public-source pre-alpha readiness.
+2. SDK stability/evolution contract.
+3. Stable structured diagnostic contract.
+4. Localization and accessibility semantics.
+5. Author diagnostics and preview inspection.
+6. Public-source pre-alpha readiness.
 
 Do not schedule generic forms, broad OverlayApp refactoring, mediated import/
 export, background scheduling, marketplace/publisher infrastructure, or new
@@ -429,10 +487,9 @@ Extract native authorities only when real work touches them.
 
 ## Ordered queues
 
-1. DLV-285 generic Game Launcher production cutover, reviewer launch, and user
-   verdict before its focused tests.
-2. LauncherExperience deletion/state retirement;
-   protocol requirements; then the remaining maturity deliverables.
+1. DLV-286 LauncherExperience/AdvancedPresentation vertical-slice deletion and
+   narrow obsolete-state retirement; no Game Launcher widget tests.
+2. Protocol requirements; then the remaining maturity deliverables.
 3. DLV-248 remains deliberately deferred until explicit user promotion.
 
 There is no concurrent Ready production work in either standing lane.
@@ -457,7 +514,7 @@ There is no concurrent Ready production work in either standing lane.
 | DLV-472 | Accepted `29601e2`, cumulatively applied as `82093d5`, and integrated through `cf77507`; focused and final Tier-3 Bridge target passed 96/96. |
 | Audio Mixer synthetic focus | Final Tier 3 passed 44/45 then retained Master after synthetic Down; unrelated source was previously green, so no unchanged rerun is authorized. |
 | DLV-284 | `21c3b8b` + `86d6532` integrated as `7f31e04`; compatibility `60130b4` as `052a392`; correlation/redaction `f583f40` + `ac79ed0` as `8ac55d`. The cumulative diagnostic stack is accepted only with metadata-only correction `a65228c`, integrated as `12728a2`; production build and two direct one-case gates passed, no Tier-3 rerun. The user physically accepted coherent PID 133304. |
-| DLV-285 | Production `ccb46e7` from exact baseline `12728a2` is source-clean; package and Release builds exited 0. Game Launcher 0.2.1 is installed/full-trust enabled, and unaccepted PID 144052 is running for the user verdict. No tests or framework deletion yet. |
+| DLV-285 | Production `ccb46e7` from exact baseline `12728a2` is physically accepted and integrated as `609d34e`; package and Release builds exited 0. Game Launcher 0.2.1 is installed/full-trust enabled, and accepted PID 144052 remains running. Widget tests are explicitly deferred for future package work. |
 | DLV-248 | Deferred until explicit user promotion. |
 
 ## Recent dispositions
