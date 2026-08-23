@@ -10,21 +10,21 @@ historical evidence only; this file is the sole implementation authority.
 ## Current accepted state
 
 - Local `main` integrates the review-accepted DLV-284 runtime-v2 compatibility
-  correction `60130b4` as merge `052a392`, on top of DLV-284 production
-  `21c3b8b` plus bounded correction `86d6532` integrated as `7f31e04`. Rejected,
-  restoration, and ancestry-bound commits remain excluded.
-- The corrected coherent integrated Release visibly runs as OverlayHost PID
-  116844 from
+  correction `60130b4` as merge `052a392` and the safe worker-failure
+  correlation pair `f583f40` + `ac79ed0` as merge `8ac55d`, on top of DLV-284
+  production `21c3b8b` plus bounded correction `86d6532` integrated as
+  `7f31e04`. Rejected, restoration, and ancestry-bound commits remain excluded.
+- The latest coherent integrated Release visibly runs as OverlayHost PID 47948
+  from
   `C:\Users\dwive\Projects\GameBarAlternative\src\OverlayHost\out\Release`.
   Executable SHA-256 is
-  `5202C96E47FEA318B355988A05619D40792D5B1DF1876D9B90FF26FA32AA700E`.
+  `5C09BA4DB3A4C64F16A1DBCEF6C4A2AA221D43BF9271D3BA0C440639375BDE67`.
   The Release build exited 0, the production Bridge session started, the
   process is alive and responsive, and `startup-error.log` is absent. Rejected
-  PID 108300 exited through exact-owner `WM_CLOSE` after its evidence was
-  preserved. PID 116844 is also physically rejected: installed Spotify 0.3.14
-  starts and renders successfully but later returns `worker-runtime-failed`
-  after the Y refresh route. Preserve PID 116844 and worker PID 7632 as exact
-  live evidence. DLV-285 stays held until the defect is corrected and accepted.
+  PID 116844 exposed no top-level HWND; a graceful exact-PID termination signal
+  did not retire it, so the reviewer force-stopped that exact verified process
+  to unlock the accepted Release inputs. Its worker PID 7632 exited with it.
+  DLV-285 stays held until the post-Y Spotify defect is corrected and accepted.
 - DLV-318 is the exact recoverable prior accepted Release at
   `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative-dlv318-build`;
   executable SHA-256 is
@@ -41,7 +41,7 @@ historical evidence only; this file is the sole implementation authority.
 
 | Lane | Task/worktree | State |
 | --- | --- | --- |
-| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | DLV-284 correlation candidate `f583f40` rejected; bounded correction assigned to retain the public `WidgetProcessException` contract and prevent arbitrary worker text from reaching user-facing Bridge failure copy. |
+| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | Safe correlation pair `f583f40` + `ac79ed0` accepted through merge `8ac55d`; one bounded follow-up is assigned because `WidgetBridgeServer.ReplyRequestFailureAsync` still discards the retained request type, worker error code, and developer diagnostic instead of recording them in a bounded developer-only diagnostic sink. |
 | Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | Idle; DLV-285 remains queued behind corrected DLV-284 physical acceptance. |
 
 ## Execution rules
@@ -833,12 +833,35 @@ losing pending-request correlation, strict validation, last-good retention, or
 the frozen peer evidence. Run only the directly affected focused cases; do not
 run Tier 3 or touch live/product/package state.
 
+Correction `ac79ed0c77deb36d5b389a5d728d1f1886327953` repairs both rejection
+blockers and is accepted cumulatively with `f583f40` through merge `8ac55d`.
+Worker Error responses again preserve the exact public `WidgetProcessException`
+type. The correlated request type and worker error code remain internal, while
+arbitrary worker text is excluded from the public process exception and
+Bridge-visible failure message. The production WidgetBridge Release build and
+four directly affected one-case gates passed; no Tier 3 or broad suite ran.
+
+This pair is an accepted correlation/redaction foundation, not the completed
+post-Y diagnosis. Independent review found that
+`WidgetBridgeServer.ReplyRequestFailureAsync` still serializes only the generic
+failure code and safe public message; no production diagnostic sink consumes
+`BridgeWidgetRequestException.RequestType`, `WorkerErrorCode`, or its retained
+internal worker diagnostic. A fresh physical failure would therefore still
+discard the evidence needed to distinguish a runtime/Bridge defect from a
+Spotify package defect. Add one bounded developer-only diagnostic record at
+that catch boundary containing widget ID, request type, worker error code, and
+bounded internal diagnostic text, while keeping the Bridge response and native
+failure UI generic. Do not add package-ID special cases, weaken validation,
+change runtime-v2 wire, expose arbitrary worker text to the user, run Tier 3,
+or touch live/package state.
+
 ## Queued widgets production — DLV-285 generic Game Launcher cutover
 
-Lane: widgets. Baseline: exact integrated production commit `052a392` in a new
+Lane: widgets. Baseline: exact integrated production commit `8ac55d` in a new
 clean isolated branch. This assignment is queued, not released: do not begin
-until the user physically accepts PID 108300 and the reviewer explicitly sends
-the assignment. The platform lane remains idle while DLV-285 is active.
+until the user physically accepts the final corrected DLV-284 Release and the
+reviewer explicitly sends the assignment. The platform lane remains idle while
+DLV-285 is active.
 
 Objective: move the first-party Game Launcher package completely onto the
 ordinary declarative application path before any framework deletion. Remove
@@ -931,7 +954,7 @@ There is no concurrent Ready production work in either standing lane.
 | DLV-471 | Corrected pair `8531915` + `8886e25` accepted; focused TextEntry route green in 40.325 seconds, final exact Tier 3 assigned. |
 | DLV-472 | Accepted `29601e2`, cumulatively applied as `82093d5`, and integrated through `cf77507`; focused and final Tier-3 Bridge target passed 96/96. |
 | Audio Mixer synthetic focus | Final Tier 3 passed 44/45 then retained Master after synthetic Down; unrelated source was previously green, so no unchanged rerun is authorized. |
-| DLV-284 | `21c3b8b` plus `86d6532` integrated as `7f31e04`; PID 108300 exposed and rejected the frozen-v2 unknown-field defect. Compatibility correction `60130b4`, integrated as `052a392`, fixed startup and allowed installed Spotify 0.3.14 to render through sequence 40. PID 116844 then failed its next post-Y `render` while worker PID 7632 remained alive. Correlation candidate `f583f40` is rejected for breaking the public runtime exception type and exposing arbitrary worker text; bounded correction assigned, no Tier-3 rerun. |
+| DLV-284 | `21c3b8b` plus `86d6532` integrated as `7f31e04`; PID 108300 exposed and rejected the frozen-v2 unknown-field defect. Compatibility correction `60130b4`, integrated as `052a392`, fixed startup and allowed installed Spotify 0.3.14 to render through sequence 40. PID 116844 then failed its next post-Y `render` while worker PID 7632 remained alive. Corrected correlation/redaction pair `f583f40` + `ac79ed0` is accepted through `8ac55d`; focused production and four one-case gates passed. A bounded developer-only diagnostic sink is still required before asking for another physical reproduction; no Tier-3 rerun. |
 | DLV-285 | Held behind corrected DLV-284 physical acceptance; package-only production first, then reviewer launch and verdict before tests or framework deletion. |
 | DLV-248 | Deferred until explicit user promotion. |
 
