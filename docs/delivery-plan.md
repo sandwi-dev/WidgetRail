@@ -35,8 +35,8 @@ historical evidence only; this file is the sole implementation authority.
 
 | Lane | Task/worktree | State |
 | --- | --- | --- |
-| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | DLV-471 is accepted as corrected pair `8531915` + `8886e25`; one final exact clean Tier-3 checkpoint is assigned. DLV-284 remains queued. |
-| Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | Idle and clean at `676cd76`; do not begin work or change product state. |
+| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | DLV-471 is accepted through `8886e25`; idle while widgets owns the DLV-472 managed first red. DLV-284 remains queued. |
+| Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | DLV-472 is assigned at clean managed baseline `676cd76` for the full-trust crash/admission fixture race. |
 
 ## Execution rules
 
@@ -515,6 +515,49 @@ seconds and long work must be checked every 15-30 seconds. Do not integrate,
 push, change packages/configuration, rebuild/relaunch PID 89008, or touch
 Avalonia/AVP during the run.
 
+That exact Tier-3 run executed once and stopped first red after 42 passed steps
+at `widget-bridge-tests`. The suite reported 95/96 green; `Managed presentation
+session preserves the ordinary full-trust runtime` received typed
+`worker-runtime-failed` from `SendActionAsync` instead of returning `Enqueued`.
+The verifier exited 1 after 439.501 seconds; all owner/verifier descendants
+exited and PID 89008 stayed alive and untouched. Structured evidence is under
+`artifacts/verification/20260823T030651Z-e20f936a`; durable streams are under
+`%TEMP%\wrail-dlv471-tier3-final-20260822-200650`. Do not rerun Tier 3 until
+the focused managed first red below is corrected and accepted.
+
+## Assigned widgets test correction — DLV-472 full-trust crash admission race
+
+Baseline: clean widgets tip `676cd76f6761ca35b49b9810a0a8f0b42e9fabf4`.
+The directly affected `WidgetBridge.Tests` and `FullTrustAlphaFixture` sources
+are identical between that managed tip and cumulative `8886e25`, so the widgets
+lane owns this test-only correction without taking platform work.
+
+The fixture deliberately calls `Environment.FailFast` from the admitted action.
+After the runtime enqueues it, process exit may race the worker-to-Bridge action
+acknowledgment: either the managed facade receives exact `Enqueued`, or the
+current request fails with the already-typed `worker-runtime-failed`. The latter
+does not prove lost failure/restart authority and is not a reason to delay the
+crash artificially.
+
+Change only `tests/WidgetBridge.Tests/Program.cs`. Express those two exact legal
+outcomes without swallowing any other code or weakening the recovery contract.
+Whether admission returns or the exact typed runtime failure wins, require the
+same current failure state with `CanRestart`, unchanged `LastGood`, stale old
+authority, successful full-trust restart/snapshot, and cleared retained failure.
+Emit the observed admission outcome on failure. Do not add sleeps, retries,
+quiet periods, timeouts, fixture delays, production changes, protocol changes,
+or broader test cleanup. If evidence contradicts this two-outcome model or
+requires production work, stop and report it.
+
+The widgets lane owns the complete focused correction loop for this one case
+without returning after each understood in-scope test-only red. Run the focused
+`WidgetBridge.Tests` suite once after the coherent correction, using durable
+streams and a bounded owner. Every command must expose output within 60 seconds
+and long work must be inspected every 15-30 seconds. Commit one DLV-472
+test-only milestone only after focused green and stop for review. Do not run
+Tier 3, integrate, push, change packages/configuration, rebuild/relaunch PID
+89008, or touch Avalonia/AVP.
+
 ## Queued platform production — DLV-284 typed publication transactions
 
 Status: queued, not assigned. It becomes assignable only after DLV-452 startup
@@ -577,9 +620,9 @@ Extract native authorities only when real work touches them.
 
 ## Ordered queues
 
-1. One final exact clean Tier-3 checkpoint at accepted corrected DLV-471 tip
-   `8886e25`, then reviewer integration of the explicit accepted cumulative
-   hashes.
+1. DLV-472 focused managed crash/admission fixture correction; apply its
+   accepted commit to cumulative `8886e25`, then one final exact clean Tier-3
+   checkpoint and reviewer integration of all explicit accepted hashes.
 2. DLV-284 after cumulative clean integration.
 3. Generic Game Launcher cutover; LauncherExperience deletion/state retirement;
    protocol requirements; then the remaining maturity deliverables.
@@ -604,6 +647,7 @@ There is no other Ready production work in either standing lane.
 | DLV-469 | Accepted inclusive interpolated p95 as `3f63db9`; focused WidgetSwitch gate green at 33.8 ms. |
 | DLV-470 | Accepted isolated hidden-smoke profile as `ffb8742`; focused smoke green in 1.465 seconds. |
 | DLV-471 | Corrected pair `8531915` + `8886e25` accepted; focused TextEntry route green in 40.325 seconds, final exact Tier 3 assigned. |
+| DLV-472 | Assigned to widgets at `676cd76` for the exact full-trust crash/admission two-outcome fixture race; no Tier-3 rerun authorized. |
 | DLV-284 | Queued until cumulative review/integration. |
 | DLV-248 | Deferred until explicit user promotion. |
 
@@ -629,3 +673,4 @@ There is no other Ready production work in either standing lane.
 | DLV-470 accepted | A unique process profile kept the focused hidden owner resident without touching PID 89008; cleanup accounted for all five test processes. |
 | DLV-471 | Tier 3 passed 44 steps, then the modal initial-focus assertion failed without recording the actual focus identity; candidate `8531915` added useful diagnostics but not a causal UI-loop fence. |
 | DLV-471 accepted | `8886e25` replaces the sent-message fence with a tokenized queued-message acknowledgment after modal-loop entry; focused route and 2,582 linked checks passed. |
+| DLV-472 | Tier 3 passed 42 steps, then an immediately crashing full-trust fixture exited before the action acknowledgment reached the managed presentation facade. |
