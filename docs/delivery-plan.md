@@ -41,7 +41,7 @@ historical evidence only; this file is the sole implementation authority.
 
 | Lane | Task/worktree | State |
 | --- | --- | --- |
-| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | Assigned bounded DLV-284 post-refresh failure classification from clean `60130b4`; fix only if the defect is runtime/Bridge-owned, otherwise stop with an exact widgets-lane handoff. |
+| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | DLV-284 correlation candidate `f583f40` rejected; bounded correction assigned to retain the public `WidgetProcessException` contract and prevent arbitrary worker text from reaching user-facing Bridge failure copy. |
 | Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | Idle; DLV-285 remains queued behind corrected DLV-284 physical acceptance. |
 
 ## Execution rules
@@ -810,6 +810,29 @@ widgets-lane handoff. Do not run Tier 3, relaunch or terminate product
 processes, alter package state, release DLV-285, or touch LauncherExperience or
 Avalonia history.
 
+Candidate `f583f40620ab23f55cad8c0c64cf6eb79233e68d` is rejected. Its evidence
+correctly narrows the failed operation to the next `render` request after
+sequence 40 and proves that an independent frozen 0.3.14-style worker can
+serialize the equivalent three-publication sequence. Its focused production
+build and three directly affected correlation/rejection cases passed 1/1 each;
+no Tier 3 or broad suite ran.
+
+The implementation is not compatible with the existing runtime exception
+contract. Every worker Error response previously completed public
+`WidgetProcessClient` operations with `WidgetProcessException`; `f583f40`
+instead lets an internal unrelated `WidgetRequestRejectedException` escape.
+Existing callers and tests are entitled to catch the public exception type.
+The candidate also places `WorkerSafeMessage` in `BridgeWidgetRequestException`
+and therefore in the native Bridge error response, but the worker's general
+`SafeMessage` path is arbitrary full-trust `Exception.Message`, not a proven
+credential/provider-response-safe user diagnostic. Preserve exact bounded
+request type and worker error code plus structural protocol path/code where
+already sanitized, but keep arbitrary worker detail in developer diagnostics
+and retain generic user-facing failure copy. Correct these two issues without
+losing pending-request correlation, strict validation, last-good retention, or
+the frozen peer evidence. Run only the directly affected focused cases; do not
+run Tier 3 or touch live/product/package state.
+
 ## Queued widgets production — DLV-285 generic Game Launcher cutover
 
 Lane: widgets. Baseline: exact integrated production commit `052a392` in a new
@@ -908,7 +931,7 @@ There is no concurrent Ready production work in either standing lane.
 | DLV-471 | Corrected pair `8531915` + `8886e25` accepted; focused TextEntry route green in 40.325 seconds, final exact Tier 3 assigned. |
 | DLV-472 | Accepted `29601e2`, cumulatively applied as `82093d5`, and integrated through `cf77507`; focused and final Tier-3 Bridge target passed 96/96. |
 | Audio Mixer synthetic focus | Final Tier 3 passed 44/45 then retained Master after synthetic Down; unrelated source was previously green, so no unchanged rerun is authorized. |
-| DLV-284 | `21c3b8b` plus `86d6532` integrated as `7f31e04`; PID 108300 exposed and rejected the frozen-v2 unknown-field defect. Compatibility correction `60130b4`, integrated as `052a392`, fixed startup and allowed installed Spotify 0.3.14 to render through sequence 40. PID 116844 is nevertheless rejected after Y refresh produced `worker-runtime-failed` while worker PID 7632 remained alive; bounded platform classification assigned, no Tier-3 rerun. |
+| DLV-284 | `21c3b8b` plus `86d6532` integrated as `7f31e04`; PID 108300 exposed and rejected the frozen-v2 unknown-field defect. Compatibility correction `60130b4`, integrated as `052a392`, fixed startup and allowed installed Spotify 0.3.14 to render through sequence 40. PID 116844 then failed its next post-Y `render` while worker PID 7632 remained alive. Correlation candidate `f583f40` is rejected for breaking the public runtime exception type and exposing arbitrary worker text; bounded correction assigned, no Tier-3 rerun. |
 | DLV-285 | Held behind corrected DLV-284 physical acceptance; package-only production first, then reviewer launch and verdict before tests or framework deletion. |
 | DLV-248 | Deferred until explicit user promotion. |
 
