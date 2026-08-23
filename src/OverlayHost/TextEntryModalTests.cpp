@@ -8,6 +8,7 @@
 
 #include <algorithm>
 #include <chrono>
+#include <cstdint>
 #include <iostream>
 #include <string>
 #include <thread>
@@ -28,6 +29,53 @@ HWND CurrentFocus(const HWND modalWindow) {
     GUITHREADINFO info{sizeof(info)};
     const auto thread = GetWindowThreadProcessId(modalWindow, nullptr);
     return GetGUIThreadInfo(thread, &info) ? info.hwndFocus : nullptr;
+}
+
+struct FocusDiagnostic {
+    HWND focus{};
+    HWND active{};
+    HWND foreground{};
+    DWORD modalThread{};
+    DWORD ownerThread{};
+    DWORD focusThread{};
+    DWORD foregroundThread{};
+    bool guiThreadInfoSucceeded{};
+    bool modalVisible{};
+    bool modalEnabled{};
+    bool ownerEnabled{};
+    bool modalForeground{};
+    bool ownerForeground{};
+};
+
+FocusDiagnostic CaptureFocusDiagnostic(const HWND modalWindow, const HWND owner) {
+    FocusDiagnostic result{};
+    result.modalThread = GetWindowThreadProcessId(modalWindow, nullptr);
+    result.ownerThread = GetWindowThreadProcessId(owner, nullptr);
+    GUITHREADINFO info{sizeof(info)};
+    result.guiThreadInfoSucceeded = GetGUIThreadInfo(result.modalThread, &info) != FALSE;
+    if (result.guiThreadInfoSucceeded) {
+        result.focus = info.hwndFocus;
+        result.active = info.hwndActive;
+    }
+    result.foreground = GetForegroundWindow();
+    result.focusThread = result.focus ? GetWindowThreadProcessId(result.focus, nullptr) : 0;
+    result.foregroundThread = result.foreground
+        ? GetWindowThreadProcessId(result.foreground, nullptr) : 0;
+    result.modalVisible = IsWindowVisible(modalWindow) != FALSE;
+    result.modalEnabled = IsWindowEnabled(modalWindow) != FALSE;
+    result.ownerEnabled = IsWindowEnabled(owner) != FALSE;
+    result.modalForeground = result.foreground == modalWindow;
+    result.ownerForeground = result.foreground == owner;
+    return result;
+}
+
+bool FenceWindow(const HWND window, DWORD& error) {
+    DWORD_PTR ignored{};
+    SetLastError(ERROR_SUCCESS);
+    const bool succeeded = SendMessageTimeoutW(
+        window, WM_NULL, 0, 0, SMTO_ABORTIFHUNG | SMTO_BLOCK, 2000, &ignored) != 0;
+    error = succeeded ? ERROR_SUCCESS : GetLastError();
+    return succeeded;
 }
 
 std::wstring WindowText(const HWND window) {
@@ -336,10 +384,42 @@ int wmain() {
             "active modal theme owns live-buffer foreground and control background");
         ReleaseDC(edit, editDc);
 
-        Check(WaitUntil([&] { return WindowText(CurrentFocus(window)) == L"q"; }),
-            "modal opens with one keyboard key focused");
+        DWORD focusFenceError{};
+        const bool focusFenceSucceeded = FenceWindow(window, focusFenceError);
+        const bool initialFocusReached =
+            WindowText(CurrentFocus(window)) == L"q";
+        const auto initialFocusDiagnostic = CaptureFocusDiagnostic(window, owner);
         Check(modal.PostController(L"DPadRight"), "D-pad moves key focus");
-        Check(WaitUntil([&] { return WindowText(CurrentFocus(window)) == L"w"; }),
+        const bool controllerFocusReached = WaitUntil(
+            [&] { return WindowText(CurrentFocus(window)) == L"w"; });
+        if (!initialFocusReached) {
+            std::wcerr << L"Initial modal focus diagnostic: focus=0x" << std::hex
+                << reinterpret_cast<std::uintptr_t>(initialFocusDiagnostic.focus)
+                << L" class='" << WindowClass(initialFocusDiagnostic.focus)
+                << L"' text='" << WindowText(initialFocusDiagnostic.focus)
+                << L"' active=0x"
+                << reinterpret_cast<std::uintptr_t>(initialFocusDiagnostic.active)
+                << L" foreground=0x"
+                << reinterpret_cast<std::uintptr_t>(initialFocusDiagnostic.foreground)
+                << std::dec
+                << L" modal-thread=" << initialFocusDiagnostic.modalThread
+                << L" owner-thread=" << initialFocusDiagnostic.ownerThread
+                << L" focus-thread=" << initialFocusDiagnostic.focusThread
+                << L" foreground-thread=" << initialFocusDiagnostic.foregroundThread
+                << L" gui-thread-info=" << initialFocusDiagnostic.guiThreadInfoSucceeded
+                << L" modal-visible=" << initialFocusDiagnostic.modalVisible
+                << L" modal-enabled=" << initialFocusDiagnostic.modalEnabled
+                << L" owner-enabled=" << initialFocusDiagnostic.ownerEnabled
+                << L" modal-foreground=" << initialFocusDiagnostic.modalForeground
+                << L" owner-foreground=" << initialFocusDiagnostic.ownerForeground
+                << L" focus-fence=" << focusFenceSucceeded
+                << L" focus-fence-error=" << focusFenceError
+                << L" controller-transition=" << controllerFocusReached << L'\n';
+        }
+        Check(focusFenceSucceeded,
+            "modal UI thread completes initial focus establishment within two seconds");
+        Check(initialFocusReached, "modal opens with one keyboard key focused");
+        Check(controllerFocusReached,
             "D-pad reaches the adjacent key");
         Check(WindowText(edit) == L"ab",
             "moving key focus never inserts a character");
