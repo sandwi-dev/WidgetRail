@@ -2886,18 +2886,26 @@ static async Task ProtocolValidationDiagnosticIsStructural()
     await using var client = CreateClient(extraArguments: ["--invalid-protocol-widget"]);
     var exception = await Assert.ThrowsAsync<WidgetProcessException>(() => client.GetSnapshotAsync());
 
-    Assert.True(exception.Message.Contains("$.activeInputScopeId", StringComparison.Ordinal),
+    Assert.True(exception.WorkerDiagnosticMessage?.Contains(
+        "$.activeInputScopeId", StringComparison.Ordinal) == true,
         "The worker response omitted the first validation path.");
-    Assert.True(exception.Message.Contains("invalid_active_input_scope", StringComparison.Ordinal),
+    Assert.True(exception.WorkerDiagnosticMessage?.Contains(
+        "invalid_active_input_scope", StringComparison.Ordinal) == true,
         "The worker response omitted the first validation code.");
-    Assert.True(!exception.Message.Contains("FIRST_WIDGET_SECRET", StringComparison.Ordinal),
+    Assert.True(exception.WorkerDiagnosticMessage?.Contains(
+        "FIRST_WIDGET_SECRET", StringComparison.Ordinal) != true,
         "The worker response exposed widget-controlled text from the first validation message.");
-    Assert.True(!exception.Message.Contains("$.initialFocusId", StringComparison.Ordinal),
+    Assert.True(exception.WorkerDiagnosticMessage?.Contains(
+        "$.initialFocusId", StringComparison.Ordinal) != true,
         "The worker response exposed a later validation path.");
-    Assert.True(!exception.Message.Contains("invalid_focus_target", StringComparison.Ordinal),
+    Assert.True(exception.WorkerDiagnosticMessage?.Contains(
+        "invalid_focus_target", StringComparison.Ordinal) != true,
         "The worker response exposed a later validation code.");
-    Assert.True(!exception.Message.Contains("SECOND_WIDGET_SECRET", StringComparison.Ordinal),
+    Assert.True(exception.WorkerDiagnosticMessage?.Contains(
+        "SECOND_WIDGET_SECRET", StringComparison.Ordinal) != true,
         "The worker response exposed widget-controlled text from a later validation message.");
+    Assert.True(!exception.Message.Contains("$.activeInputScopeId", StringComparison.Ordinal),
+        "The public process exception exposed a developer-only structural diagnostic.");
 }
 
 static async Task DestroyIsBounded()

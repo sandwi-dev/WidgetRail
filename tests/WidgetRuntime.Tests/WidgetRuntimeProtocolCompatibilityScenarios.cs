@@ -144,8 +144,28 @@ internal static class WidgetRuntimeProtocolCompatibilityScenarios
         await channel.WriteAsync(new RuntimeEnvelope
         {
             ProtocolVersion = 2,
-            Type = MessageTypes.Stop,
+            Type = MessageTypes.Render,
             RequestId = 4,
+            Payload = RuntimeJson.ToElement(new RenderPayload
+            {
+                UpdateCapabilities = PresentationUpdateCapabilities.Current,
+                BaseSequence = repeated.Sequence,
+                PresentationGeneration = generation,
+                RequireCheckpoint = false,
+            }),
+        }, CancellationToken.None);
+        var rejectedResponse = await channel.ReadAsync(CancellationToken.None);
+        Equal(MessageTypes.Error, rejectedResponse.Type);
+        Equal(new ErrorPayload(
+                "worker_request_failed",
+                "Frozen runtime-v2 render failed at $.root.children[7] (duplicate_id)."),
+            RuntimeJson.FromElement<ErrorPayload>(rejectedResponse.Payload));
+
+        await channel.WriteAsync(new RuntimeEnvelope
+        {
+            ProtocolVersion = 2,
+            Type = MessageTypes.Stop,
+            RequestId = 5,
             Payload = RuntimeJson.ToElement(new { }),
         }, CancellationToken.None);
         Equal(MessageTypes.Acknowledged,
@@ -234,6 +254,14 @@ internal static class WidgetRuntimeProtocolCompatibilityScenarios
             if (request.Type == MessageTypes.Render)
             {
                 _ = FrozenV2Json.FromElement<FrozenV2RenderPayload>(request.Payload);
+                if (sequence == 2)
+                {
+                    await ReplyAsync(MessageTypes.Error, request.RequestId,
+                        FrozenV2Json.ToElement(new FrozenV2ErrorPayload(
+                            "worker_request_failed",
+                            "Frozen runtime-v2 render failed at $.root.children[7] (duplicate_id).")));
+                    continue;
+                }
                 var snapshot = new ViewSnapshot
                 {
                     ProtocolVersion = ProtocolConstants.CurrentVersion,
@@ -367,6 +395,9 @@ internal static class WidgetRuntimeProtocolCompatibilityScenarios
 
     [JsonUnmappedMemberHandling(JsonUnmappedMemberHandling.Disallow)]
     private sealed record FrozenV2HelloPayload(string WidgetInstanceId, string SessionNonce);
+
+    [JsonUnmappedMemberHandling(JsonUnmappedMemberHandling.Disallow)]
+    private sealed record FrozenV2ErrorPayload(string Code, string Message);
 
     private static class FrozenV2Json
     {

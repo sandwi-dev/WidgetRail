@@ -465,7 +465,7 @@ public sealed class WidgetProcessClient : IAsyncDisposable
         WidgetProcessSession session,
         string type, T payload, CancellationToken cancellationToken)
     {
-        using var request = session.PendingRequests.Register();
+        using var request = session.PendingRequests.Register(type);
         await session.WriteAsync(new RuntimeEnvelope
         {
             Type = type,
@@ -1231,5 +1231,54 @@ internal sealed class WidgetProcessClientTestHooks
     internal Action<string, bool>? ResponseCorrelationCompleted { get; init; }
 }
 
-public sealed class WidgetProcessException(string message, Exception? innerException = null)
-    : Exception(message, innerException);
+public sealed class WidgetProcessException : Exception
+{
+    public WidgetProcessException(string message, Exception? innerException = null)
+        : base(message, innerException)
+    {
+    }
+
+    internal WidgetProcessException(
+        string requestType,
+        string workerErrorCode,
+        string workerDiagnosticMessage)
+        : base(FormatWorkerRejection(requestType, workerErrorCode, workerDiagnosticMessage))
+    {
+        RequestType = ValidateToken(requestType, nameof(requestType));
+        WorkerErrorCode = ValidateToken(workerErrorCode, nameof(workerErrorCode));
+        WorkerDiagnosticMessage = ValidateDiagnostic(workerDiagnosticMessage);
+    }
+
+    internal string? RequestType { get; }
+    internal string? WorkerErrorCode { get; }
+    internal string? WorkerDiagnosticMessage { get; }
+
+    private static string FormatWorkerRejection(
+        string requestType,
+        string workerErrorCode,
+        string workerDiagnosticMessage)
+    {
+        _ = ValidateDiagnostic(workerDiagnosticMessage);
+        return $"Worker rejected request '{ValidateToken(requestType, nameof(requestType))}' " +
+            $"({ValidateToken(workerErrorCode, nameof(workerErrorCode))}).";
+    }
+
+    private static string ValidateToken(string value, string parameterName)
+    {
+        if (string.IsNullOrWhiteSpace(value) || value.Length > 64 ||
+            !value.All(character => char.IsAsciiLetterOrDigit(character) ||
+                character is '-' or '_' or '.'))
+            throw new WidgetProtocolViolationException(
+                $"Worker error {parameterName} is invalid.");
+        return value;
+    }
+
+    private static string ValidateDiagnostic(string value)
+    {
+        if (string.IsNullOrWhiteSpace(value) || value.Length > 512 ||
+            value.Any(character => char.IsControl(character) && character is not '\t'))
+            throw new WidgetProtocolViolationException(
+                "Worker error message is invalid.");
+        return value;
+    }
+}

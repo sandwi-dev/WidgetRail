@@ -37,15 +37,27 @@ internal sealed record BridgeClientActionFailure(
     string RuntimeGeneration,
     WidgetActionFailure Failure);
 internal sealed record BridgeClientRuntimeFailure(string WidgetId, WidgetFailure Failure);
-internal sealed class BridgeWidgetRequestException(
-    string widgetId,
-    string failureCode,
-    Exception innerException) : Exception(
-        $"Widget '{widgetId}' runtime request failed ({failureCode}).",
-        innerException)
+internal sealed class BridgeWidgetRequestException : Exception
 {
-    internal string WidgetId { get; } = widgetId;
-    internal string FailureCode { get; } = failureCode;
+    internal BridgeWidgetRequestException(
+        string widgetId,
+        string failureCode,
+        Exception innerException) : base(
+            $"Widget '{widgetId}' runtime request failed ({failureCode}).", innerException)
+    {
+        WidgetId = widgetId;
+        FailureCode = failureCode;
+        if (innerException is WidgetProcessException processException)
+        {
+            RequestType = processException.RequestType;
+            WorkerErrorCode = processException.WorkerErrorCode;
+        }
+    }
+
+    internal string WidgetId { get; }
+    internal string FailureCode { get; }
+    internal string? RequestType { get; }
+    internal string? WorkerErrorCode { get; }
 }
 internal sealed record BridgeClientLifetimeDiagnostic(
     string WidgetId,

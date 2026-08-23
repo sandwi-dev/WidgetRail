@@ -9,8 +9,8 @@ internal static class WidgetProcessOwnershipScenarios
     internal static async Task PendingRequestsCorrelateExactly()
     {
         var pending = new WidgetPendingRequests();
-        using var first = pending.Register();
-        using var second = pending.Register();
+        using var first = pending.Register(MessageTypes.Render);
+        using var second = pending.Register(MessageTypes.Action);
         Equal(1L, first.RequestId);
         Equal(2L, second.RequestId);
         Equal(2, pending.Count);
@@ -21,6 +21,27 @@ internal static class WidgetProcessOwnershipScenarios
         Equal(1, pending.Count);
         False(pending.TryComplete(Response(77, MessageTypes.Acknowledged)),
             "An unknown response was accepted.");
+
+        using var rejected = pending.Register(MessageTypes.Render);
+        True(pending.TryComplete(new RuntimeEnvelope
+        {
+            Type = MessageTypes.Error,
+            RequestId = rejected.RequestId,
+            Payload = RuntimeJson.ToElement(new ErrorPayload(
+                "worker_request_failed",
+                "provider-token=DO_NOT_SURFACE; path=C:\\private\\widget.json")),
+        }), "The exact rejected request was not completed.");
+        var rejection = await ThrowsAsync<WidgetProcessException>(
+            async () => await rejected.Response);
+        Equal(typeof(WidgetProcessException), rejection.GetType());
+        Equal(MessageTypes.Render, rejection.RequestType);
+        Equal("worker_request_failed", rejection.WorkerErrorCode);
+        Equal("provider-token=DO_NOT_SURFACE; path=C:\\private\\widget.json",
+            rejection.WorkerDiagnosticMessage);
+        False(rejection.Message.Contains("DO_NOT_SURFACE", StringComparison.Ordinal),
+            "The public process exception exposed arbitrary worker detail.");
+        False(rejection.Message.Contains("private", StringComparison.Ordinal),
+            "The public process exception exposed a worker-private path.");
 
         pending.FailAll(new WidgetProcessException("session ended"));
         await ThrowsAsync<WidgetProcessException>(async () => await first.Response);
@@ -85,8 +106,8 @@ internal static class WidgetProcessOwnershipScenarios
         var clock = new OwnershipTimeProvider();
         var retired = new WidgetProcessSession(clock, TimeSpan.FromSeconds(10));
         var replacement = new WidgetProcessSession(clock, TimeSpan.FromSeconds(10));
-        using var retiredRequest = retired.PendingRequests.Register();
-        using var replacementRequest = replacement.PendingRequests.Register();
+        using var retiredRequest = retired.PendingRequests.Register(MessageTypes.Render);
+        using var replacementRequest = replacement.PendingRequests.Register(MessageTypes.Render);
         Equal(retiredRequest.RequestId, replacementRequest.RequestId);
 
         True(retired.PendingRequests.TryComplete(
@@ -507,10 +528,10 @@ internal static class WidgetProcessOwnershipScenarios
             throw new InvalidOperationException($"Expected '{expected}', got '{actual}'.");
     }
 
-    private static async Task ThrowsAsync<T>(Func<Task> action) where T : Exception
+    private static async Task<T> ThrowsAsync<T>(Func<Task> action) where T : Exception
     {
         try { await action(); }
-        catch (T) { return; }
+        catch (T exception) { return exception; }
         throw new InvalidOperationException($"Expected {typeof(T).Name}.");
     }
 
