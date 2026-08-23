@@ -37,9 +37,6 @@ public sealed class SpotifyWidget : Widget
     private static readonly TimeSpan ProgressInterval = TimeSpan.FromMilliseconds(250);
     private static readonly TimeSpan SetupRefreshTimeout = TimeSpan.FromSeconds(5);
     private static readonly TimeSpan DevicesCacheLifetime = TimeSpan.FromSeconds(20);
-    private const int CollectionPageSize = 12;
-    private const int QueuePageSize = 50;
-    private const int MaximumRetainedCollectionItems = CollectionPageSize * 2;
     private static readonly IReadOnlyList<SpotifyAuthorizationScope> SpotifyScopes =
     [
         SpotifyAuthorizationScope.PlaybackStateRead,
@@ -52,6 +49,7 @@ public sealed class SpotifyWidget : Widget
     private readonly SemaphoreSlim _refreshGate = new(1, 1);
     private readonly ISpotifyApplicationService _spotify;
     private readonly TimeProvider _timeProvider;
+    private readonly ISpotifyRuntimeDiagnostics _runtimeDiagnostics;
     private SpotifyWidgetViewState _viewState = SpotifyWidgetViewState.Initial;
     private SpotifyAuthorizationState _authorizationState =
         SpotifyAuthorizationState.Disconnected;
@@ -61,9 +59,9 @@ public sealed class SpotifyWidget : Widget
     private readonly WidgetCursorResource<SpotifyPlaylistCollectionItem> _playlists;
     private readonly WidgetCursorResource<SpotifyMediaCollectionItem> _playlistItems;
     private readonly SpotifyMediaOccurrencePolicy _queueOccurrences =
-        new(QueuePageSize * 2);
+        new(SpotifyApplicationContract.MaximumQueueItems * 2);
     private readonly SpotifyMediaOccurrencePolicy _playlistOccurrences =
-        new(MaximumRetainedCollectionItems);
+        new(SpotifyCollectionPolicy.MaximumRetainedItems);
     private SpotifyDevicesSummary? _devices;
     private SpotifyLocalPlaybackSummary? _localPlayback;
     private string? _preferredPlaybackDeviceId;
@@ -72,6 +70,7 @@ public sealed class SpotifyWidget : Widget
     private string? _pageError;
     private string? _readyInitialFocusId = "spotify.play-toggle";
     private SpotifyPlaylistSelection? _playlistSelection;
+    private SpotifySelectedPlaylistPageSource? _playlistPageSource;
     private long? _playlistItemsSelectionGeneration;
     private long _playlistSelectionGeneration;
     private long _presentationCaptureSequence;
@@ -91,13 +90,23 @@ public sealed class SpotifyWidget : Widget
     public SpotifyWidget(
         ISpotifyApplicationService spotify,
         TimeProvider? timeProvider = null)
+        : this(spotify, timeProvider, SpotifyRuntimeDiagnostics.None)
+    {
+    }
+
+    internal SpotifyWidget(
+        ISpotifyApplicationService spotify,
+        TimeProvider? timeProvider,
+        ISpotifyRuntimeDiagnostics runtimeDiagnostics)
     {
         _spotify = spotify ?? throw new ArgumentNullException(nameof(spotify));
         _timeProvider = timeProvider ?? TimeProvider.System;
+        _runtimeDiagnostics = runtimeDiagnostics ??
+            throw new ArgumentNullException(nameof(runtimeDiagnostics));
         _queue = CreateCursorResource<SpotifyMediaCollectionItem>("spotify.queue", new()
         {
-            PageSize = QueuePageSize,
-            MaximumRetainedItems = QueuePageSize * 2,
+            PageSize = SpotifyApplicationContract.MaximumQueueItems,
+            MaximumRetainedItems = SpotifyApplicationContract.MaximumQueueItems * 2,
             LoadPage = async (cursor, direction, limit, token) =>
             {
                 if (cursor is not null || direction is not null)
@@ -124,8 +133,9 @@ public sealed class SpotifyWidget : Widget
         _playlists = CreateCursorResource<SpotifyPlaylistCollectionItem>(
             "spotify.playlists", new()
         {
-            PageSize = CollectionPageSize,
-            MaximumRetainedItems = MaximumRetainedCollectionItems,
+            PageSize = SpotifyCollectionPolicy.PageSize,
+            MaximumRetainedItems = SpotifyCollectionPolicy.MaximumRetainedItems,
+            PaginationThreshold = SpotifyCollectionPolicy.PaginationThreshold,
             LoadPage = async (cursor, _, limit, token) =>
             {
                 var offset = SpotifyCollectionIdentity.Offset(cursor);
@@ -133,7 +143,9 @@ public sealed class SpotifyWidget : Widget
                     .ConfigureAwait(false);
                 var items = page.Items.Select(item => new SpotifyPlaylistCollectionItem(
                     item, SpotifyCollectionIdentity.Playlist(item.PlaylistId))).ToArray();
-                return SpotifyCollectionIdentity.Page(items, page.Offset, page.Limit, page.Total);
+                return SpotifyCollectionIdentity.Page(
+                    items, page.Offset, page.Limit, page.Total,
+                    page.HasAuthoritativeWindow);
             },
             MapError = SpotifyResourceError,
             Viewports =
@@ -141,18 +153,25 @@ public sealed class SpotifyWidget : Widget
                 new("spotify.playlists.scroll.wide", item => item.Key,
                     item => SpotifyCollectionIdentity.FocusId(
                         "spotify.playlist.item", "wide", item.Key),
-                    "spotify.page.sparse.playlist.wide"),
+                    "spotify.page.sparse.playlist.wide")
+                {
+                    EstimatedItemExtent = SpotifyCollectionPolicy.EstimatedItemExtent,
+                },
                 new("spotify.playlists.scroll.compact", item => item.Key,
                     item => SpotifyCollectionIdentity.FocusId(
                         "spotify.playlist.item", "compact", item.Key),
-                    "spotify.page.sparse.playlist.compact"),
+                    "spotify.page.sparse.playlist.compact")
+                {
+                    EstimatedItemExtent = SpotifyCollectionPolicy.EstimatedItemExtent,
+                },
             ],
         });
         _playlistItems = CreateCursorResource<SpotifyMediaCollectionItem>(
             "spotify.playlist.items", new()
         {
-            PageSize = CollectionPageSize,
-            MaximumRetainedItems = MaximumRetainedCollectionItems,
+            PageSize = SpotifyCollectionPolicy.PageSize,
+            MaximumRetainedItems = SpotifyCollectionPolicy.MaximumRetainedItems,
+            PaginationThreshold = SpotifyCollectionPolicy.PaginationThreshold,
             LoadPage = LoadSelectedPlaylistCursorPageAsync,
             MapError = SpotifyResourceError,
             Viewports =
@@ -160,11 +179,17 @@ public sealed class SpotifyWidget : Widget
                 new("spotify.playlist.detail.scroll.wide", item => item.Key,
                     item => SpotifyCollectionIdentity.FocusId(
                         "spotify.playlist.track", "wide", item.Key),
-                    "spotify.playlist.play.wide"),
+                    "spotify.playlist.play.wide")
+                {
+                    EstimatedItemExtent = SpotifyCollectionPolicy.EstimatedItemExtent,
+                },
                 new("spotify.playlist.detail.scroll.compact", item => item.Key,
                     item => SpotifyCollectionIdentity.FocusId(
                         "spotify.playlist.track", "compact", item.Key),
-                    "spotify.playlist.play.compact"),
+                    "spotify.playlist.play.compact")
+                {
+                    EstimatedItemExtent = SpotifyCollectionPolicy.EstimatedItemExtent,
+                },
             ],
         });
     }
@@ -177,8 +202,20 @@ public sealed class SpotifyWidget : Widget
     public static string FormatTime(long milliseconds) =>
         SpotifyPresentation.FormatTime(milliseconds);
 
-    public override WidgetView Render() =>
-        SpotifyPresentation.Render(CapturePresentationState());
+    public override WidgetView Render()
+    {
+        try
+        {
+            return SpotifyPresentation.Render(CapturePresentationState());
+        }
+        catch (Exception exception)
+        {
+            _runtimeDiagnostics.Record(
+                "render-failed",
+                SpotifyRuntimeDiagnostics.Code(exception));
+            throw;
+        }
+    }
 
     protected override ValueTask OnActivatedAsync(CancellationToken activeLifetime)
     {
@@ -822,14 +859,24 @@ public sealed class SpotifyWidget : Widget
     {
         lock (_gate)
         {
-            var playlists = _playlists.Snapshot;
+            var playlists = SpotifyCursorPresentation<SpotifyPlaylistCollectionItem>.Capture(
+                _playlists,
+                "spotify.playlists",
+                "spotify.playlists.scroll.wide",
+                "spotify.playlists.scroll.compact");
             SpotifyPlaylistDetailPresentation? detail = null;
             if (_playlistSelection is { } selection &&
                 _playlistItemsSelectionGeneration == selection.Key.Generation)
-                detail = new(selection, _playlistItems.Snapshot);
+                detail = new(selection,
+                    SpotifyCursorPresentation<SpotifyMediaCollectionItem>.Capture(
+                        _playlistItems,
+                        "spotify.playlist.items",
+                        "spotify.playlist.detail.scroll.wide",
+                        "spotify.playlist.detail.scroll.compact"));
             return new(
-                new(++_presentationCaptureSequence, playlists.Revision,
-                    detail?.Items.Revision ?? 0, detail?.Selection.Key.Generation),
+                new(++_presentationCaptureSequence, playlists.Snapshot.Revision,
+                    detail?.Items.Snapshot.Revision ?? 0,
+                    detail?.Selection.Key.Generation),
                 _viewState,
                 SpotifyPlaybackPolicy.Project(
                     _playback, _timeProvider.GetUtcNow().ToUnixTimeMilliseconds()),
@@ -975,6 +1022,7 @@ public sealed class SpotifyWidget : Widget
             _pageError = null;
             _playlistSelection = new(
                 new(playlist.PlaylistId, generation), playlist, mode, sourceElementId);
+            _playlistPageSource = new(_spotify, _playlistSelection.Key);
             _playlistItemsSelectionGeneration = generation;
             _readyInitialFocusId = $"spotify.playlist.play.{mode}";
             _playlistItems.EnsureLoaded();
@@ -990,21 +1038,33 @@ public sealed class SpotifyWidget : Widget
     {
         var offset = SpotifyCollectionIdentity.Offset(cursor);
         SpotifyPlaylistSelection? selection;
-        lock (_gate) selection = _playlistSelection;
-        if (selection is null)
+        SpotifySelectedPlaylistPageSource? pageSource;
+        lock (_gate)
+        {
+            selection = _playlistSelection;
+            pageSource = _playlistPageSource;
+        }
+        if (selection is null || pageSource is null)
             throw new InvalidOperationException("No Spotify playlist is selected.");
         var occurrenceRequest = _playlistOccurrences.BeginPage(
             selection.Key.PlaylistId, offset, direction);
-        var page = await _spotify.GetPlaylistItemsAsync(
-            selection.Key.PlaylistId, offset, limit, cancellationToken).ConfigureAwait(false);
-        if (!string.Equals(page.Playlist.PlaylistId, selection.Key.PlaylistId,
-                StringComparison.Ordinal))
-            throw new InvalidOperationException("Spotify returned a different playlist.");
+        var page = await pageSource.LoadAsync(offset, limit, cancellationToken)
+            .ConfigureAwait(false);
+        cancellationToken.ThrowIfCancellationRequested();
+        lock (_gate)
+        {
+            if (_playlistSelection?.Key != selection.Key ||
+                !ReferenceEquals(_playlistPageSource, pageSource))
+                throw new OperationCanceledException(cancellationToken);
+            _playlistSelection = selection with { Playlist = page.Playlist };
+        }
         var items = _playlistOccurrences.NormalizePage(
             occurrenceRequest,
-            page.Items,
+            page.Items.Items,
             _playlistItems.Snapshot.Items.Select(item => item.Key).ToArray());
-        return SpotifyCollectionIdentity.Page(items, page.Offset, page.Limit, page.Total);
+        return SpotifyCollectionIdentity.Page(
+            items, page.Items.Offset, page.Items.Limit, page.Items.Total,
+            page.Items.HasAuthoritativeWindow);
     }
 
     private void ClearPageCaches()
@@ -1031,6 +1091,7 @@ public sealed class SpotifyWidget : Widget
         _playlistItems.Reset(invalidate: false);
         _playlistOccurrences.Reset();
         _playlistSelection = null;
+        _playlistPageSource = null;
         _playlistItemsSelectionGeneration = null;
     }
 

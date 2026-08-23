@@ -8,6 +8,22 @@ using WidgetRail.PlatformDiagnostics;
 
 internal static class BridgeClientRegistryScenarios
 {
+    internal static async Task VisibleRegistrationPublishesInvalidationExactlyOnce()
+    {
+        var configured = Widget("notification-registry", worker: 'r', catalog: 'r');
+        await using var fixture = new RegistryFixture(Catalog(configured));
+
+        await fixture.SetLifecycleAsync(
+            configured.Id, WidgetLifecycleState.Visible);
+        var current = fixture.Clients.Single();
+        current.RaiseInvalidated(17);
+        await fixture.Registry.DrainNotificationsAsync(configured.Id);
+
+        RegistryAssert.Equal(1, fixture.Invalidations.Count);
+        RegistryAssert.Equal(configured.Id, fixture.Invalidations[0].WidgetId);
+        RegistryAssert.Equal(17L, fixture.Invalidations[0].Revision);
+    }
+
     internal static async Task CatalogReplacementAndRemovalOwnGenerations()
     {
         var initial = Widget("alpha", worker: 'a', catalog: 'a');
@@ -308,6 +324,8 @@ internal static class BridgeClientRegistryScenarios
             using var admitted = await fixture.Registry.EstablishPresentationAsync(
                 configured.Id,
                 WidgetLifecycleState.Visible,
+                PresentationUpdateCapabilities.None,
+                0,
                 CancellationToken.None,
                 CancellationToken.None);
             RegistryAssert.Equal(1, fixture.Clients.Count);
@@ -326,26 +344,37 @@ internal static class BridgeClientRegistryScenarios
             failed.Registry.EstablishPresentationAsync(
                 configured.Id,
                 WidgetLifecycleState.Interactive,
+                PresentationUpdateCapabilities.None,
+                0,
                 CancellationToken.None,
                 CancellationToken.None));
-        var retired = failed.Clients.Single();
-        await retired.Disposed.WaitAsync(TimeSpan.FromSeconds(2));
+        var retained = failed.Clients.Single();
         RegistryAssert.SequenceEqual(
-            [WidgetLifecycleState.Interactive], retired.LifecycleStates);
-        RegistryAssert.Equal(0, failed.Registry.RunningWorkerCount);
-        RegistryAssert.Equal(0, failed.Registry.ResidencyBudget.ApplicationWorkers);
+            [WidgetLifecycleState.Interactive, WidgetLifecycleState.Background],
+            retained.LifecycleStates);
+        RegistryAssert.Equal(0, retained.DisposeCount);
+        RegistryAssert.Equal(1, failed.Registry.RunningWorkerCount);
+        RegistryAssert.Equal(1, failed.Registry.ResidencyBudget.ApplicationWorkers);
 
         using var recovered = await failed.Registry.EstablishPresentationAsync(
             configured.Id,
             WidgetLifecycleState.Interactive,
+            PresentationUpdateCapabilities.None,
+            0,
             CancellationToken.None,
             CancellationToken.None);
-        RegistryAssert.Equal(2, failed.Clients.Count);
-        RegistryAssert.Equal(2L, recovered.Value.Snapshot.Sequence >> 32);
+        RegistryAssert.Equal(1, failed.Clients.Count);
+        RegistryAssert.Equal(1L, recovered.Value.Snapshot.Sequence >> 32);
         RegistryAssert.SequenceEqual(
-            [WidgetLifecycleState.Interactive], failed.Clients[1].LifecycleStates);
-        retired.RaiseInvalidated(72);
-        RegistryAssert.Equal(0, failed.Invalidations.Count);
+            [
+                WidgetLifecycleState.Interactive,
+                WidgetLifecycleState.Background,
+                WidgetLifecycleState.Interactive,
+            ],
+            retained.LifecycleStates);
+        retained.RaiseInvalidated(72);
+        await failed.Registry.DrainNotificationsAsync(configured.Id);
+        RegistryAssert.Equal(1, failed.Invalidations.Count);
     }
 
     internal static async Task PublicationAdmissionSerializesReplacement()
@@ -668,8 +697,13 @@ internal static class BridgeClientRegistryScenarios
             });
 
         await fixture.SetLifecycleAsync(first.Id, WidgetLifecycleState.Visible);
-        await RegistryAssert.ThrowsAsync<WidgetProcessAdmissionException>(() =>
+        var refusal = await RegistryAssert.ThrowsAsync<BridgeWidgetRequestException>(() =>
             fixture.SetLifecycleAsync(second.Id, WidgetLifecycleState.Visible));
+        RegistryAssert.Equal(second.Id, refusal.WidgetId);
+        RegistryAssert.Equal("worker-admission-failed", refusal.FailureCode);
+        RegistryAssert.Equal(
+            typeof(WidgetProcessAdmissionException),
+            refusal.InnerException?.GetType());
         RegistryAssert.Equal(1, fixture.Registry.ResidencyBudget.ApplicationWorkers);
 
         RegistryAssert.True(fixture.Registry.ApplyCatalog(Catalog(second, failed), revision: 1));
@@ -1054,6 +1088,21 @@ internal sealed class RegistryTestClient(
         }
         lock (_gate) LifecycleStates.Add(state);
         return Task.CompletedTask;
+    }
+
+    public Task<bool> TryRestoreLifecycleStateAsync(
+        WidgetLifecycleState state,
+        int expectedStartOrdinal,
+        CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        lock (_gate)
+        {
+            if (_running == 0 || _starts != expectedStartOrdinal)
+                return Task.FromResult(false);
+            LifecycleStates.Add(state);
+            return Task.FromResult(true);
+        }
     }
 
     public Task<WidgetOperationAdmission> AdmitActionAsync(

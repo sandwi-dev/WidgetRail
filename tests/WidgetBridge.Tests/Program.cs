@@ -81,6 +81,7 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Client registry releases refused and failed-start residency", BridgeClientRegistryScenarios.BudgetRefusalAndFailedStartReleaseReservations),
     ("Client registry terminal disposal serializes with operations", BridgeClientRegistryScenarios.TerminalDisposalSerializesWithConcurrentOperation),
     ("Client registry observes retirement failures and disposes every client", BridgeClientRegistryScenarios.RetirementFailuresAreObservedAndDrained),
+    ("Visible registry publication reaches its configured publisher once", BridgeClientRegistryScenarios.VisibleRegistrationPublishesInvalidationExactlyOnce),
     ("Local package import origin is exact current Interactive Settings", BridgeClientRegistryScenarios.LocalPackageImportOriginIsExact),
     ("Local package import is disabled revisioned and path free", LocalPackageImportIsDisabledRevisionedAndPathFree),
     ("Local package import failures preserve catalog state", LocalPackageImportFailuresPreserveCatalog),
@@ -101,11 +102,13 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Force reload rejects unknown widget IDs", ForceReloadRejectsUnknownWidget),
     ("Bridge rejects runtime-owned lifecycle states", RuntimeOwnedLifecycleStatesAreRejected),
     ("Snapshots and hover quick actions cross bridge", SnapshotAndQuickAction),
+    ("Exact-base divergence converges through one full checkpoint", ExactBaseDivergenceConvergesThroughCheckpoint),
     ("Committed text crosses bridge and worker action execution", CommittedTextCrossesBridgeAndWorker),
     ("Managed presentation session preserves sandboxed authority lifecycle and last-good state", ManagedPresentationSessionPreservesSandboxedAuthority),
     ("Managed presentation session preserves the ordinary full-trust runtime", ManagedPresentationSessionPreservesFullTrustRuntime),
     ("Protocol-v2 scroll nodes resolve bridge render roles", ScrollRenderRole),
     ("Protocol-v19 virtual collection window crosses worker and bridge", VirtualCollectionWindowCrossesBridge),
+    ("Admitted registry invalidation reaches the client event queue", AdmittedRegistryInvalidationReachesClientEventQueue),
     ("Protocol-v8 grids, action surfaces, and loading indicators resolve bridge render roles", ActionSurfaceRenderRole),
     ("Protocol-v15 text entries resolve one closed bridge render role", TextEntryRenderRole),
     ("Dashboard-owned controller buttons are rejected", DashboardButtonsStayHostOwned),
@@ -2731,7 +2734,9 @@ static async Task SnapshotAndQuickAction()
     Assert.True(snapshot.ProtocolVersion < ProtocolConstants.AtomicPresentationUpdateVersion,
         "A legacy Bridge request unexpectedly activated protocol-18 update traffic.");
     var renderStyles = snapshotResponse.Payload.GetProperty("renderStyles");
-    Assert.Equal(5, renderStyles.EnumerateObject().Count());
+    Assert.Equal(6, renderStyles.EnumerateObject().Count());
+    Assert.True(renderStyles.TryGetProperty("committed-text-status", out _),
+        "Committed text status was omitted from the bridge render-style map.");
     var buttonStyles = renderStyles.GetProperty("button");
     var fontSize = buttonStyles.GetProperty("base").GetProperty("font-size");
     Assert.Equal("length", fontSize.GetProperty("kind").GetString());
@@ -2868,7 +2873,7 @@ static async Task SnapshotAndQuickAction()
         "The bridge did not forward a newer atomic presentation sequence.");
     Assert.True(update.Operations.Count > 0,
         "The changed worker view produced an empty bridge update.");
-    Assert.Equal(5,
+    Assert.Equal(6,
         updatedResponse.Payload.GetProperty("renderStyles").EnumerateObject().Count());
 
     var checkpointResponse = await harness.Client.RequestAsync(
@@ -2894,6 +2899,76 @@ static async Task SnapshotAndQuickAction()
     Assert.Equal(BridgeMessageTypes.Error, malformedCapabilities.Type);
     Assert.Equal("request_failed",
         malformedCapabilities.Payload.GetProperty("code").GetString());
+}
+
+static async Task ExactBaseDivergenceConvergesThroughCheckpoint()
+{
+    await using var harness = await BridgeHarness.StartAsync();
+    var initialResponse = await harness.Client.RequestAsync(
+        BridgeMessageTypes.GetSnapshot, new WidgetIdRequest("test-widget"));
+    Assert.Equal(BridgeMessageTypes.Snapshot, initialResponse.Type);
+    var initial = SnapshotJson.Deserialize(System.Text.Encoding.UTF8.GetBytes(
+        initialResponse.Payload.GetProperty("snapshot").GetRawText()));
+
+    _ = await harness.Client.RequestAsync(
+        BridgeMessageTypes.SetWidgetLifecycle,
+        new BridgeWidgetLifecycleRequest("test-widget", WidgetLifecycleState.Interactive));
+    var action = await harness.Client.RequestAsync(
+        BridgeMessageTypes.Action,
+        new BridgeActionRequest("test-widget", new WidgetActionEvent("refresh", "button")));
+    Assert.Equal(BridgeMessageTypes.Acknowledged, action.Type);
+    _ = await harness.Client.ReadEventAsync(BridgeMessageTypes.Invalidation);
+
+    var advancedResponse = await harness.Client.RequestAsync(
+        BridgeMessageTypes.GetSnapshot,
+        new BridgePresentationRequest(
+            "test-widget", PresentationUpdateCapabilities.Current, initial.Sequence));
+    Assert.Equal(BridgeMessageTypes.PresentationUpdate, advancedResponse.Type);
+    var advancedUpdate = PresentationUpdateJson.Deserialize(
+        System.Text.Encoding.UTF8.GetBytes(
+            advancedResponse.Payload.GetProperty("update").GetRawText()));
+    Assert.Equal(initial.Sequence, advancedUpdate.BaseSequence);
+    Assert.True(advancedUpdate.Sequence > initial.Sequence,
+        "The bridge did not advance its private checkpoint from the exact host base.");
+
+    var staleResponse = await harness.Client.RequestAsync(
+        BridgeMessageTypes.GetSnapshot,
+        new BridgePresentationRequest(
+            "test-widget", PresentationUpdateCapabilities.Current, initial.Sequence));
+    Assert.Equal(BridgeMessageTypes.Error, staleResponse.Type);
+    Assert.Equal("stale_presentation_base",
+        staleResponse.Payload.GetProperty("code").GetString());
+
+    var recoveryResponse = await harness.Client.RequestAsync(
+        BridgeMessageTypes.GetSnapshot, new WidgetIdRequest("test-widget"));
+    Assert.Equal(BridgeMessageTypes.Snapshot, recoveryResponse.Type);
+    var recovery = SnapshotJson.Deserialize(System.Text.Encoding.UTF8.GetBytes(
+        recoveryResponse.Payload.GetProperty("snapshot").GetRawText()));
+    Assert.True(recovery.Sequence > initial.Sequence,
+        "The base-zero recovery checkpoint did not converge beyond the retained host base.");
+    Assert.Equal("unknown", FindNode(recovery.Root, "busy-button").Text);
+
+    var secondAction = await harness.Client.RequestAsync(
+        BridgeMessageTypes.Action,
+        new BridgeActionRequest(
+            "test-widget",
+            new WidgetActionEvent("volume.changed", "volume", RequestedValue: 0.7)));
+    Assert.Equal(BridgeMessageTypes.Acknowledged, secondAction.Type);
+    _ = await harness.Client.ReadEventAsync(BridgeMessageTypes.Invalidation);
+    var convergedResponse = await harness.Client.RequestAsync(
+        BridgeMessageTypes.GetSnapshot,
+        new BridgePresentationRequest(
+            "test-widget", PresentationUpdateCapabilities.Current, recovery.Sequence));
+    Assert.Equal(BridgeMessageTypes.PresentationUpdate, convergedResponse.Type);
+    var converged = PresentationUpdateJson.Deserialize(
+        System.Text.Encoding.UTF8.GetBytes(
+            convergedResponse.Payload.GetProperty("update").GetRawText()));
+    Assert.Equal(recovery.Sequence, converged.BaseSequence);
+    Assert.True(converged.Sequence > converged.BaseSequence,
+        "The post-recovery exact base did not resume ordinary incremental publication.");
+    var convergedSnapshot = PresentationUpdateMaterializer.Apply(
+        recovery, converged, converged.PresentationGeneration);
+    Assert.Equal(0.7D, FindNode(convergedSnapshot.Root, "volume").Value);
 }
 
 static async Task ManagedPresentationSessionPreservesSandboxedAuthority()
@@ -2925,7 +3000,7 @@ static async Task ManagedPresentationSessionPreservesSandboxedAuthority()
             initial.Authority.PresentationGeneration);
         Assert.Equal(initial.Snapshot.Sequence, initial.Authority.SnapshotSequence);
         Assert.Equal(initial.Snapshot.ActiveInputScopeId, initial.Authority.ActiveInputScopeId);
-        Assert.Equal(5, initial.RenderStyles.Count);
+        Assert.Equal(6, initial.RenderStyles.Count);
 
         var refreshed = WaitForPresentationAsync(
             session,
@@ -3087,35 +3162,57 @@ static async Task ManagedPresentationSessionPreservesFullTrustRuntime()
         var failedState = WaitForPresentationAsync(
             session,
             state => state.Failure is { CanRestart: true });
-        var admission = await session.SendActionAsync(
-            frame.Authority,
-            new WidgetActionEvent(
-                "crash",
-                "alpha-crash",
-                Sequence: 1,
-                MonotonicTimestampMicroseconds: 1_000,
-                InputScopeId: frame.Authority.ActiveInputScopeId));
-        Assert.Equal(WidgetOperationAdmission.Enqueued, admission);
+        var admissionOutcome = "not-observed";
+        try
+        {
+            var admission = await session.SendActionAsync(
+                frame.Authority,
+                new WidgetActionEvent(
+                    "crash",
+                    "alpha-crash",
+                    Sequence: 1,
+                    MonotonicTimestampMicroseconds: 1_000,
+                    InputScopeId: frame.Authority.ActiveInputScopeId));
+            admissionOutcome = admission.ToString();
+            Assert.True(
+                admission == WidgetOperationAdmission.Enqueued,
+                $"Unexpected full-trust crash admission outcome '{admissionOutcome}'.");
+        }
+        catch (WidgetPresentationSessionException exception)
+        {
+            admissionOutcome = $"{nameof(WidgetPresentationSessionException)}:{exception.Code}";
+            Assert.True(
+                exception.Code == "worker-runtime-failed",
+                $"Unexpected full-trust crash admission outcome '{admissionOutcome}'.");
+        }
+
         var failed = await failedState;
-        Assert.Equal(frame, failed.LastGood);
+        Assert.True(
+            Equals(frame, failed.LastGood),
+            $"Full-trust crash changed LastGood after admission outcome '{admissionOutcome}'.");
         Assert.True(failed.Failure!.CanRestart,
-            "Full-trust restart authority was not preserved by the facade.");
+            $"Full-trust restart authority was not preserved after admission outcome '{admissionOutcome}'.");
         var staleAfterFailure = await Assert.ThrowsAsync<WidgetPresentationSessionException>(
             () => session.SendActionAsync(
                 frame.Authority,
                 new WidgetActionEvent(
                     "crash", "alpha-crash",
                     InputScopeId: frame.Authority.ActiveInputScopeId)));
-        Assert.Equal("presentation_stale", staleAfterFailure.Code);
+        Assert.True(
+            staleAfterFailure.Code == "presentation_stale",
+            $"Expected stale old authority after admission outcome '{admissionOutcome}', " +
+            $"got '{staleAfterFailure.Code}'.");
 
         var recovered = await session.EstablishPresentationAsync(
             target, WidgetLifecycleState.Interactive);
         Assert.True(
             FindNode(recovered.Snapshot.Root, "alpha-result").Text?.Contains(
                 "run=", StringComparison.Ordinal) == true,
-            "The full-trust session did not recover a typed snapshot.");
+            $"The full-trust session did not recover a typed snapshot after admission outcome " +
+            $"'{admissionOutcome}'.");
         Assert.True(session.GetState(installed.Id)?.Failure is null,
-            "A successful full-trust refresh did not clear the retained failure.");
+            $"A successful full-trust refresh did not clear the retained failure after admission " +
+            $"outcome '{admissionOutcome}'.");
     }
     finally
     {
@@ -3267,11 +3364,27 @@ static async Task VirtualCollectionWindowCrossesBridge()
         new WorkerResidencyBudgetOptions { MaximumApplicationWorkers = 1 },
         new TemporaryWidgetDefinition(
             "virtual", "dev.test.virtual", "dev.test", "virtual.instance"));
+    var widgets = await harness.Client.RequestAsync(
+        BridgeMessageTypes.ListWidgets, new { });
+    Assert.Equal(BridgeMessageTypes.Widgets, widgets.Type);
+    var descriptor = widgets.Payload.GetProperty("widgets")
+        .EnumerateArray()
+        .Single(candidate => candidate.GetProperty("id").GetString() == "virtual");
+    var presentationGeneration = descriptor
+        .GetProperty("presentationGeneration").GetString()
+        ?? throw new InvalidOperationException(
+            "Virtual widget omitted its presentation generation.");
     var lifecycle = await harness.Client.RequestAsync(
         BridgeMessageTypes.SetWidgetLifecycle,
         new BridgeWidgetLifecycleRequest("virtual", WidgetLifecycleState.Visible));
     Assert.Equal(BridgeMessageTypes.Acknowledged, lifecycle.Type);
-    _ = await harness.Client.ReadEventAsync(BridgeMessageTypes.Invalidation);
+    var initialInvalidation = await harness.Client.ReadEventAsync(
+        BridgeMessageTypes.Invalidation);
+    Assert.Equal("virtual",
+        initialInvalidation.Payload.GetProperty("widgetId").GetString());
+    var lastRevision = initialInvalidation.Payload.GetProperty("revision").GetInt64();
+    Assert.True(lastRevision > 0,
+        "Initial virtual invalidation did not carry a positive revision.");
 
     var firstResponse = await harness.Client.RequestAsync(
         BridgeMessageTypes.GetSnapshot, new WidgetIdRequest("virtual"));
@@ -3282,8 +3395,17 @@ static async Task VirtualCollectionWindowCrossesBridge()
     Assert.Equal(32, first.Root.Children.Count);
     Assert.Equal(10_000L, first.Root.VirtualCollectionWindow?.TotalItemCount);
     Assert.Equal(0L, first.Root.VirtualCollectionWindow?.FirstItemIndex);
-    Assert.True(first.Root.VirtualCollectionWindow is { HasBefore: false, HasAfter: true },
+    Assert.True(first.Root.VirtualCollectionWindow is
+    {
+        RequestGeneration: 1,
+        HasBefore: false,
+        HasAfter: true,
+        Change: VirtualCollectionWindowChange.Replace,
+    },
         "Initial virtual bridge window lost its exact boundary authority.");
+    Assert.SequenceEqual(
+        Enumerable.Range(0, 32).Select(index => $"virtual.item.{index}"),
+        first.Root.Children.Select(child => child.Id));
 
     var pageAction = first.Root.ScrollNearEndActionId ??
         throw new InvalidOperationException("Virtual bridge window omitted its next-page action.");
@@ -3292,17 +3414,118 @@ static async Task VirtualCollectionWindowCrossesBridge()
         new BridgeActionRequest(
             "virtual", new WidgetActionEvent(pageAction, first.Root.Id)));
     Assert.Equal(BridgeMessageTypes.Acknowledged, admitted.Type);
-    _ = await harness.Client.ReadEventAsync(BridgeMessageTypes.Invalidation);
-    var secondResponse = await harness.Client.RequestAsync(
-        BridgeMessageTypes.GetSnapshot, new WidgetIdRequest("virtual"));
-    var second = SnapshotJson.Deserialize(System.Text.Encoding.UTF8.GetBytes(
-        secondResponse.Payload.GetProperty("snapshot").GetRawText()));
+    Assert.Equal("enqueued", admitted.Payload.GetProperty("admission").GetString());
+    var materialized = first;
+    ViewSnapshot? durable = null;
+    for (var publication = 0; publication < 8; publication++)
+    {
+        var notification = await harness.Client.ReadNextEventAsync();
+        if (notification.Type == BridgeMessageTypes.Failure)
+        {
+            Assert.Equal("virtual",
+                notification.Payload.GetProperty("widgetId").GetString());
+            Assert.Equal("controllerActionFailed",
+                notification.Payload.GetProperty("reason").GetString());
+            Assert.Equal(pageAction,
+                notification.Payload.GetProperty("actionId").GetString());
+            Assert.Equal(first.Root.Id,
+                notification.Payload.GetProperty("sourceElementId").GetString());
+            throw new InvalidOperationException(
+                $"Virtual pagination action '{pageAction}' failed from " +
+                $"'{first.Root.Id}': " +
+                notification.Payload.GetProperty("message").GetString());
+        }
+        Assert.Equal(BridgeMessageTypes.Invalidation, notification.Type);
+        Assert.Equal("virtual",
+            notification.Payload.GetProperty("widgetId").GetString());
+        var revision = notification.Payload.GetProperty("revision").GetInt64();
+        Assert.True(revision > lastRevision,
+            "Virtual bridge invalidation did not advance its current revision.");
+        lastRevision = revision;
+        var candidateResponse = await harness.Client.RequestAsync(
+            BridgeMessageTypes.GetSnapshot,
+            new BridgePresentationRequest(
+                "virtual", PresentationUpdateCapabilities.Current, materialized.Sequence));
+        Assert.Equal(BridgeMessageTypes.PresentationUpdate, candidateResponse.Type);
+        var update = PresentationUpdateJson.Deserialize(
+            System.Text.Encoding.UTF8.GetBytes(
+                candidateResponse.Payload.GetProperty("update").GetRawText()));
+        Assert.Equal(materialized.Sequence, update.BaseSequence);
+        Assert.Equal(presentationGeneration, update.PresentationGeneration);
+        materialized = PresentationUpdateMaterializer.Apply(
+            materialized, update, presentationGeneration);
+        if (materialized.Root.Children.Count == 64 &&
+            materialized.Root.VirtualCollectionWindow is
+            {
+                RequestGeneration: 2,
+                FirstItemIndex: 0,
+                TotalItemCount: 10_000,
+                HasBefore: false,
+                HasAfter: true,
+                Change: VirtualCollectionWindowChange.Append,
+            })
+        {
+            durable = materialized;
+            break;
+        }
+    }
+    var second = durable ?? throw new InvalidOperationException(
+        "Virtual bridge window did not publish its durable appended state.");
     Assert.Equal(64, second.Root.Children.Count);
     Assert.Equal(2L, second.Root.VirtualCollectionWindow?.RequestGeneration);
+    Assert.Equal(10_000L, second.Root.VirtualCollectionWindow?.TotalItemCount);
+    Assert.Equal(0L, second.Root.VirtualCollectionWindow?.FirstItemIndex);
     Assert.Equal(VirtualCollectionWindowChange.Append,
         second.Root.VirtualCollectionWindow?.Change);
+    Assert.True(second.Root.VirtualCollectionWindow is { HasBefore: false, HasAfter: true },
+        "Appended virtual bridge window lost its exact boundary authority.");
+    Assert.SequenceEqual(
+        Enumerable.Range(0, 64).Select(index => $"virtual.item.{index}"),
+        second.Root.Children.Select(child => child.Id));
     Assert.True(second.Root.Children.Count <= 96,
         "Bridge publication materialized the private 10,000-item collection.");
+
+    var checkpointResponse = await harness.Client.RequestAsync(
+        BridgeMessageTypes.GetSnapshot, new WidgetIdRequest("virtual"));
+    Assert.Equal(BridgeMessageTypes.Snapshot, checkpointResponse.Type);
+    var checkpoint = SnapshotJson.Deserialize(System.Text.Encoding.UTF8.GetBytes(
+        checkpointResponse.Payload.GetProperty("snapshot").GetRawText()));
+    Assert.SequenceEqual(
+        Enumerable.Range(0, 64).Select(index => $"virtual.item.{index}"),
+        checkpoint.Root.Children.Select(child => child.Id));
+    Assert.True(checkpoint.Root.VirtualCollectionWindow is
+    {
+        RequestGeneration: 2,
+        FirstItemIndex: 0,
+        TotalItemCount: 10_000,
+        HasBefore: false,
+        HasAfter: true,
+        Change: VirtualCollectionWindowChange.Replace,
+    }, "Base-zero Bridge checkpoint did not normalize the durable window to Replace.");
+    Assert.True(checkpoint.Root.Children.Count <= 96,
+        "Base-zero Bridge checkpoint exceeded the bounded host window.");
+}
+
+static async Task AdmittedRegistryInvalidationReachesClientEventQueue()
+{
+    await using var harness = await BridgeHarness.StartAsync();
+    var lifecycle = await harness.Client.RequestAsync(
+        BridgeMessageTypes.SetWidgetLifecycle,
+        new BridgeWidgetLifecycleRequest(
+            "test-widget", WidgetLifecycleState.Visible));
+    Assert.Equal(BridgeMessageTypes.Acknowledged, lifecycle.Type);
+
+    var admission = await harness.Client.RequestAsync(
+        BridgeMessageTypes.Action,
+        new BridgeActionRequest(
+            "test-widget", new WidgetActionEvent("refresh", "button")));
+    Assert.Equal(BridgeMessageTypes.Acknowledged, admission.Type);
+
+    var invalidation = await harness.Client.ReadEventAsync(
+        BridgeMessageTypes.Invalidation);
+    Assert.Equal("test-widget",
+        invalidation.Payload.GetProperty("widgetId").GetString());
+    Assert.Equal(1L, invalidation.Payload.GetProperty("revision").GetInt64());
 }
 
 static Task ActionSurfaceRenderRole()
@@ -3469,10 +3692,10 @@ static async Task WorkerResidencyCountIsBounded()
         BridgeMessageTypes.SetWidgetLifecycle,
         new BridgeWidgetLifecycleRequest("worker-1", WidgetLifecycleState.Visible));
     Assert.Equal(BridgeMessageTypes.Error, refused.Type);
-    Assert.True(
-        refused.Payload.GetProperty("message").GetString()!
-            .Contains("application worker limit (1/1)", StringComparison.Ordinal),
-        "Count-bound refusal did not explain the exhausted worker limit.");
+    Assert.Equal("request_failed",
+        refused.Payload.GetProperty("code").GetString());
+    Assert.Equal("Widget 'worker-1' runtime request failed (worker-admission-failed).",
+        refused.Payload.GetProperty("message").GetString());
     Assert.Equal(1, harness.Server.RunningWorkerCount);
     Assert.Equal(1, harness.Server.ResidencyBudget.ApplicationWorkers);
 
@@ -3809,13 +4032,18 @@ file sealed class VirtualCollectionBridgeWidget : Widget
             });
     }
 
-    public override ValueTask OnActionAsync(
+    public override async ValueTask OnActionAsync(
         WidgetActionEvent action,
         CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
-        _items.TryHandlePagination(action, out _);
-        return ValueTask.CompletedTask;
+        if (!_items.TryHandlePagination(action, out var operation))
+            return;
+        var result = await operation.Completion.ConfigureAwait(false);
+        if (result.Status != WidgetOperationStatus.Succeeded)
+            throw new InvalidOperationException(
+                $"Virtual pagination completed with '{result.Status}'.",
+                result.Exception);
     }
 }
 
@@ -4475,6 +4703,15 @@ file sealed class BridgeTestClient : IAsyncDisposable
             if (message.Type == type) return message;
             _events.Enqueue(message);
         }
+    }
+
+    public async Task<BridgeEnvelope> ReadNextEventAsync()
+    {
+        if (_events.Count != 0) return _events.Dequeue();
+        var message = await _reader.ReadAsync(ReadDeadline);
+        if (message.RequestId != 0)
+            throw new InvalidOperationException("Expected an event, received a response.");
+        return message;
     }
 
     public async ValueTask DisposeAsync() => await _pipe.DisposeAsync();

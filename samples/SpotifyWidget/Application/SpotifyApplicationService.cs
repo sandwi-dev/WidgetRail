@@ -97,7 +97,12 @@ internal sealed class SpotifyApplicationService(
         _backend.GetSpotifyPlaylistsAsync(_identity,
             new SpotifyPlaylistPageRequest(offset, limit), cancellationToken));
 
-    public ValueTask<SpotifyPlaylistItemsSummary> GetPlaylistItemsAsync(
+    public ValueTask<SpotifyPlaylistSummary> GetPlaylistAsync(
+        string playlistId,
+        CancellationToken cancellationToken = default) => new(
+        _backend.GetSpotifyPlaylistAsync(_identity, playlistId, cancellationToken));
+
+    public ValueTask<SpotifyPlaylistItemsPageSummary> GetPlaylistItemsAsync(
         string playlistId,
         int offset,
         int limit,

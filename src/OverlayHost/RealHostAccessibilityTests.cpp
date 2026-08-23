@@ -18,6 +18,7 @@
 #include <future>
 #include <iostream>
 #include <map>
+#include <optional>
 #include <set>
 #include <sstream>
 #include <stdexcept>
@@ -237,6 +238,24 @@ struct CursorFrame final {
     widgetrail::accessibility::Tree tree;
 };
 
+std::optional<widgetrail::input::ScrollPaginationAction>
+FindCursorPaginationEdge(
+    const CursorFrame& frame,
+    const widgetrail::input::ScrollPaginationEdge edge) {
+    const auto actions = widgetrail::input::FindScrollPaginationActions(
+        frame.snapshot.root,
+        frame.snapshot.activeInputScopeId,
+        frame.render);
+    std::optional<widgetrail::input::ScrollPaginationAction> result;
+    for (const auto& action : actions) {
+        if (action.edge != edge) continue;
+        Check(!result.has_value(),
+              "cursor frame exposes at most one action for each pagination edge");
+        result = action;
+    }
+    return result;
+}
+
 std::string CursorSnapshotResponse(
     const CursorLayout layout,
     const long long sequence,
@@ -348,7 +367,7 @@ void VerifyNativeSnapshotProtocolVersions() {
         R"json("protocolVersion":0,)json",
         "below-range native snapshot protocolVersion fails closed");
     rejectWithoutReplacing(
-        R"json("protocolVersion":18,)json",
+        R"json("protocolVersion":20,)json",
         "above-range native snapshot protocolVersion fails closed");
 }
 
@@ -537,17 +556,19 @@ void VerifyCursorCollectionComposition(
         listRenderer, target.Get(), profile,
         CursorSnapshotResponse(
             CursorLayout::List, 401, CursorKeys(0, 6), "", "c6", "item.2", 2'000),
-        L"cursor.item.2");
+        L"cursor.item.5");
     Check(SnapshotNodeCount(initial.snapshot.root) == 9,
           "managed List snapshot retains only header scroll and one bounded page");
-    const auto listForward = widgetrail::input::FindScrollPaginationAction(
-        initial.snapshot.root, L"cursor.item.5", widgetrail::input::NavigationDirection::Down);
-    Check(listForward && listForward->actionId == L"cursor.after" &&
+    const auto listForward = FindCursorPaginationEdge(
+        initial, widgetrail::input::ScrollPaginationEdge::After);
+    Check(listForward &&
+              listForward->edge == widgetrail::input::ScrollPaginationEdge::After &&
+              listForward->actionId == L"cursor.after" &&
               listForward->sourceElementId == L"cursor.scroll",
           "List trailing edge resolves the forward cursor action");
     PublishCursorTree(
         host, client, root, initial, profile,
-        {L"cursor.header", L"cursor.item.2"});
+        {L"cursor.header", L"cursor.item.5"});
 
     auto appended = RenderCursorFrame(
         listRenderer, target.Get(), profile,
@@ -564,9 +585,12 @@ void VerifyCursorCollectionComposition(
         CursorSnapshotResponse(
             CursorLayout::List, 403, CursorKeys(4, 6), "c0", "c10", "item.4", 2'000),
         L"cursor.item.4");
-    const auto listReverse = widgetrail::input::FindScrollPaginationAction(
-        evicted.snapshot.root, L"cursor.item.4", widgetrail::input::NavigationDirection::Up);
-    Check(listReverse && listReverse->actionId == L"cursor.before" &&
+    const auto listReverse = FindCursorPaginationEdge(
+        evicted, widgetrail::input::ScrollPaginationEdge::Before);
+    Check(listReverse &&
+              listReverse->edge == widgetrail::input::ScrollPaginationEdge::Before &&
+              listReverse->actionId == L"cursor.before" &&
+              listReverse->sourceElementId == L"cursor.scroll" &&
               evicted.snapshot.root.children.front().id == L"cursor.header",
           "reverse List edge paginates before the fixed header can capture focus");
     const auto evictedAnchorY = evicted.render.focusRects.at(L"cursor.item.4").y;
@@ -603,19 +627,25 @@ void VerifyCursorCollectionComposition(
         gridRenderer, target.Get(), profile,
         CursorSnapshotResponse(
             CursorLayout::Grid, 501, CursorKeys(0, 9), "", "c9", "item.4", 10'000),
-        L"cursor.item.4");
-    const auto gridForward = widgetrail::input::FindScrollPaginationAction(
-        gridInitial.snapshot.root, L"cursor.item.8", widgetrail::input::NavigationDirection::Down);
-    Check(gridForward && gridForward->actionId == L"cursor.after",
+        L"cursor.item.8");
+    const auto gridForward = FindCursorPaginationEdge(
+        gridInitial, widgetrail::input::ScrollPaginationEdge::After);
+    Check(gridForward &&
+              gridForward->edge == widgetrail::input::ScrollPaginationEdge::After &&
+              gridForward->actionId == L"cursor.after" &&
+              gridForward->sourceElementId == L"cursor.scroll",
           "responsive Grid descendant resolves the forward cursor action");
     auto gridEvicted = RenderCursorFrame(
         gridRenderer, target.Get(), profile,
         CursorSnapshotResponse(
             CursorLayout::Grid, 502, CursorKeys(6, 9), "c0", "c15", "item.6", 10'000),
         L"cursor.item.6");
-    const auto gridReverse = widgetrail::input::FindScrollPaginationAction(
-        gridEvicted.snapshot.root, L"cursor.item.6", widgetrail::input::NavigationDirection::Up);
-    Check(gridReverse && gridReverse->actionId == L"cursor.before",
+    const auto gridReverse = FindCursorPaginationEdge(
+        gridEvicted, widgetrail::input::ScrollPaginationEdge::Before);
+    Check(gridReverse &&
+              gridReverse->edge == widgetrail::input::ScrollPaginationEdge::Before &&
+              gridReverse->actionId == L"cursor.before" &&
+              gridReverse->sourceElementId == L"cursor.scroll",
           "responsive Grid descendant resolves reverse before fixed-header focus");
     const auto gridAnchorY = gridEvicted.render.focusRects.at(L"cursor.item.6").y;
     auto gridPrepended = RenderCursorFrame(
@@ -650,18 +680,20 @@ void VerifyCursorCollectionComposition(
         CursorSnapshotResponse(
             CursorLayout::List, 602, {"0"}, "", "c1", "item.0", 2'000),
         L"cursor.item.0");
-    Check(widgetrail::input::FindScrollPaginationAction(
-              sparse.snapshot.root, L"cursor.item.0",
-              widgetrail::input::NavigationDirection::Down).has_value(),
+    const auto sparseForward = FindCursorPaginationEdge(
+        sparse, widgetrail::input::ScrollPaginationEdge::After);
+    Check(sparseForward &&
+              sparseForward->edge == widgetrail::input::ScrollPaginationEdge::After &&
+              sparseForward->actionId == L"cursor.after" &&
+              sparseForward->sourceElementId == L"cursor.scroll",
           "sparse non-final page retains its forward boundary");
     auto partialFinal = RenderCursorFrame(
         stateRenderer, target.Get(), profile,
         CursorSnapshotResponse(
             CursorLayout::List, 603, CursorKeys(0, 3), "", "", "item.1", 2'000),
         L"cursor.item.1");
-    Check(!widgetrail::input::FindScrollPaginationAction(
-              partialFinal.snapshot.root, L"cursor.item.2",
-              widgetrail::input::NavigationDirection::Down),
+    Check(!FindCursorPaginationEdge(
+              partialFinal, widgetrail::input::ScrollPaginationEdge::After),
           "partial final page exposes no phantom forward boundary");
     auto lastGoodError = RenderCursorFrame(
         stateRenderer, target.Get(), profile,

@@ -450,16 +450,21 @@ public sealed class WidgetBridgeServer : IAsyncDisposable
         {
             var lifecycleRequest = BridgeJson.FromElement<BridgeWidgetLifecycleRequest>(request.Payload);
             ValidateHostState(lifecycleRequest.State);
-            if (lifecycleRequest.AdmitSnapshot)
+            if (lifecycleRequest.Presentation is { } establishment)
             {
+                var capabilities = establishment.Capabilities ??
+                    throw new BridgeProtocolException(
+                        "Presentation establishment capabilities are required.");
                 using var presentationPublication = await _registry
                     .EstablishPresentationAsync(
                         lifecycleRequest.WidgetId,
                         lifecycleRequest.State,
+                        capabilities,
+                        establishment.BaseSequence,
                         _sessionCancellation,
                         cancellationToken)
                     .ConfigureAwait(false);
-                await ReplySnapshotAsync(
+                await ReplyPresentationAsync(
                     request.RequestId,
                     lifecycleRequest.WidgetId,
                     presentationPublication.Value,
@@ -587,7 +592,8 @@ public sealed class WidgetBridgeServer : IAsyncDisposable
             await ReplyRequestFailureAsync(request.RequestId, exception, cancellationToken)
                 .ConfigureAwait(false);
         }
-        catch (Exception exception) when (exception is BridgeProtocolException or JsonException)
+        catch (Exception exception) when (exception is BridgeProtocolException or
+            BridgeStalePresentationBaseException or JsonException)
         {
             await ReplyRequestFailureAsync(request.RequestId, exception, cancellationToken)
                 .ConfigureAwait(false);
@@ -604,7 +610,11 @@ public sealed class WidgetBridgeServer : IAsyncDisposable
             await ReplyAsync(
                     BridgeMessageTypes.Error,
                     requestId,
-                    new BridgeError("request_failed", SafeMessage(exception)),
+                    new BridgeError(
+                        exception is BridgeStalePresentationBaseException
+                            ? "stale_presentation_base"
+                            : "request_failed",
+                        SafeMessage(exception)),
                     cancellationToken)
                 .ConfigureAwait(false);
         }
@@ -1018,7 +1028,7 @@ public sealed class WidgetBridgeServer : IAsyncDisposable
     {
         var message = exception is WidgetProcessException or
             WidgetProcessAdmissionException or BridgeProtocolException or
-            BridgeWidgetRequestException
+            BridgeWidgetRequestException or BridgeStalePresentationBaseException
             ? exception.Message
             : "Widget request failed.";
         if (message.Length > 512) message = message[..512];

@@ -23,6 +23,7 @@ internal static class WidgetPresentationDiff
     {
         ArgumentNullException.ThrowIfNull(current);
         ArgumentNullException.ThrowIfNull(capabilities);
+        current = NormalizeVirtualWindowReentry(previous, current, expectedBaseSequence);
         if (requireCheckpoint) return Checkpoint("checkpoint_requested");
         if (!capabilities.SupportsAtomicUpdates) return Checkpoint("capability_unavailable");
         if (previous is null) return Checkpoint("missing_base");
@@ -31,6 +32,8 @@ internal static class WidgetPresentationDiff
         if (previous.Sequence != expectedBaseSequence) return Checkpoint("base_mismatch");
         if (current.Sequence <= previous.Sequence) return Checkpoint("sequence_not_advanced");
         if (!ValidGeneration(presentationGeneration)) return Checkpoint("invalid_generation");
+        if (current.ProtocolVersion > previous.ProtocolVersion)
+            return Checkpoint("snapshot_protocol_advanced");
 
         current = current with
         {
@@ -131,6 +134,66 @@ internal static class WidgetPresentationDiff
 
     private static bool ValidGeneration(string value) =>
         value is { Length: 32 or 64 } && value.All(char.IsAsciiHexDigit);
+
+    private static ViewSnapshot NormalizeVirtualWindowReentry(
+        ViewSnapshot? previous,
+        ViewSnapshot current,
+        long expectedBaseSequence)
+    {
+        var previousVirtualWindows = new Dictionary<string, VirtualCollectionWindow>(StringComparer.Ordinal);
+        if (previous is not null &&
+            previous.Sequence == expectedBaseSequence &&
+            string.Equals(previous.WidgetInstanceId, current.WidgetInstanceId, StringComparison.Ordinal))
+            AddVirtualWindows(previous.Root);
+        var root = Normalize(current.Root);
+        return ReferenceEquals(root, current.Root) ? current : current with { Root = root };
+
+        void AddVirtualWindows(ViewNode node)
+        {
+            if (node.VirtualCollectionWindow is { } window)
+                previousVirtualWindows.Add(node.Id, window);
+            foreach (var child in node.Children) AddVirtualWindows(child);
+        }
+
+        ViewNode Normalize(ViewNode node)
+        {
+            ViewNode[]? children = null;
+            for (var index = 0; index < node.Children.Count; index++)
+            {
+                var child = Normalize(node.Children[index]);
+                if (children is null && !ReferenceEquals(child, node.Children[index]))
+                    children = node.Children.ToArray();
+                if (children is not null) children[index] = child;
+            }
+
+            var window = node.VirtualCollectionWindow;
+            var normalizedWindow = window;
+            if (window is { Change: not VirtualCollectionWindowChange.Replace })
+            {
+                if (!previousVirtualWindows.TryGetValue(node.Id, out var previousWindow) ||
+                    (previousWindow.Change is VirtualCollectionWindowChange.Replace &&
+                     SameVirtualWindowAuthorityExceptChange(previousWindow, window)))
+                    normalizedWindow = window with { Change = VirtualCollectionWindowChange.Replace };
+            }
+            return children is null && ReferenceEquals(window, normalizedWindow)
+                ? node
+                : node with
+                {
+                    VirtualCollectionWindow = normalizedWindow,
+                    Children = children ?? node.Children,
+                };
+        }
+
+        static bool SameVirtualWindowAuthorityExceptChange(
+            VirtualCollectionWindow previous,
+            VirtualCollectionWindow current) =>
+            previous.RequestGeneration == current.RequestGeneration &&
+            previous.FirstItemIndex == current.FirstItemIndex &&
+            previous.TotalItemCount == current.TotalItemCount &&
+            previous.HasBefore == current.HasBefore &&
+            previous.HasAfter == current.HasAfter &&
+            previous.EstimatedItemExtent == current.EstimatedItemExtent;
+    }
 
     private static bool StableRelationships(ViewNode previous, ViewNode current)
     {

@@ -135,6 +135,11 @@ enum class WidgetBridgeRuntimeFailureCategory {
     WorkerExited,
 };
 
+enum class WidgetBridgeRequestFailureCategory {
+    None,
+    StalePresentationBase,
+};
+
 struct WidgetBridgeRuntimeFailure final {
     std::wstring widgetId;
     WidgetBridgeRuntimeFailureCategory category{
@@ -591,11 +596,14 @@ public:
     [[nodiscard]] std::optional<bool> SetWidgetLifecycle(
         std::wstring_view widgetId,
         std::wstring_view state);
-    /// Atomically establishes a non-background lifecycle and admits the exact
-    /// generation's first immutable snapshot.
-    [[nodiscard]] std::optional<WidgetSnapshot> EstablishWidgetPresentation(
+    /// Atomically establishes a non-background lifecycle and requests either a
+    /// cold checkpoint or a publication against the host's exact retained base.
+    [[nodiscard]] std::optional<WidgetPresentationPublication>
+        EstablishWidgetPresentation(
         std::wstring_view widgetId,
-        std::wstring_view state);
+        std::wstring_view state,
+        long long baseSequence,
+        bool allowUpdate);
     /// Retires the exact current worker registration, clears its cached
     /// snapshot/input authority, and restores its prior host lifecycle.
     [[nodiscard]] std::optional<bool> RestartWidget(std::wstring_view widgetId);
@@ -638,6 +646,8 @@ public:
     [[nodiscard]] std::wstring lastError() const;
     [[nodiscard]] std::optional<WidgetBridgeRuntimeFailureCategory>
         lastRuntimeFailureCategory(std::wstring_view widgetId) const noexcept;
+    [[nodiscard]] WidgetBridgeRequestFailureCategory
+        lastRequestFailureCategory() const noexcept;
     /// Non-blocking UI-thread pump for complete asynchronous bridge events.
     [[nodiscard]] bool PumpEvents();
     [[nodiscard]] std::vector<WidgetBridgeRuntimeFailure>
@@ -667,6 +677,8 @@ private:
     std::wstring pipeName_;
     std::wstring lastError_;
     std::optional<WidgetBridgeRuntimeFailure> lastRuntimeFailure_;
+    WidgetBridgeRequestFailureCategory lastRequestFailureCategory_{
+        WidgetBridgeRequestFailureCategory::None};
     long long nextRequestId_{};
     long long bridgeSessionGeneration_{};
     WidgetInvalidationQueue invalidations_;

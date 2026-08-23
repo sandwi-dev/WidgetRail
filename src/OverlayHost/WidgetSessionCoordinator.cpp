@@ -169,11 +169,31 @@ std::optional<WidgetSnapshot> WidgetSessionCoordinator::EstablishPresentationFor
         !operations_.setLifecycle) return std::nullopt;
     auto started = operations_.ensureStarted({});
     if (!started.value || !*started.value) return std::nullopt;
-    auto established = operations_.establish({}, widgetId, state);
-    if (!established.value || established.value->instanceId != descriptor->instanceId)
+    const auto* retained = Snapshot(widgetId);
+    const bool allowUpdate = retained && retained->sequence > 0 &&
+        retained->instanceId == descriptor->instanceId &&
+        !retained->documentJson.empty();
+    auto established = operations_.establish(
+        {}, widgetId, state, allowUpdate ? retained->sequence : 0, allowUpdate);
+    if (!established.value ||
+        established.value->checkpoint.has_value() ==
+            established.value->update.has_value())
+        return std::nullopt;
+    std::optional<WidgetSnapshot> candidate =
+        std::move(established.value->checkpoint);
+    if (established.value->update) {
+        if (!retained || !operations_.materializeUpdate) return std::nullopt;
+        auto materialized = operations_.materializeUpdate(
+            *retained, *established.value->update,
+            descriptor->presentationGeneration);
+        if (!materialized.value) return std::nullopt;
+        candidate = std::move(materialized.value->snapshot);
+    }
+    if (!candidate || candidate->instanceId != descriptor->instanceId ||
+        !AdmitVirtualWindowTransition(retained, *candidate))
         return std::nullopt;
     const auto id = std::wstring(widgetId);
-    snapshots_.insert_or_assign(id, *established.value);
+    snapshots_.insert_or_assign(id, *candidate);
     refreshStates_.insert_or_assign(id, WidgetRefreshState::Current);
     refreshRequestIds_.erase(id);
     lifecycleStates_.insert_or_assign(id, state);
@@ -181,7 +201,7 @@ std::optional<WidgetSnapshot> WidgetSessionCoordinator::EstablishPresentationFor
         {}, widgetId, WidgetLifecycleState::Background);
     if (!background.value || !*background.value) return std::nullopt;
     lifecycleStates_.erase(id);
-    return established.value;
+    return candidate;
 }
 
 bool WidgetSessionCoordinator::RequestCatalog() {
@@ -335,7 +355,8 @@ std::vector<WidgetSessionEvent> WidgetSessionCoordinator::TakeEvents() {
         const auto* completionDescriptor =
             request.widgetId.empty() ? nullptr : FindDescriptor(request.widgetId);
         if (completion.failure.stage == WidgetSessionFailureStage::None &&
-            request.kind == RequestKind::Snapshot && completion.update &&
+            (request.kind == RequestKind::Establish ||
+             request.kind == RequestKind::Snapshot) && completion.update &&
             runtimeCurrent && completionCurrent) {
             std::wstring updateError;
             const auto* checkpoint = Snapshot(request.widgetId);
@@ -355,7 +376,7 @@ std::vector<WidgetSessionEvent> WidgetSessionCoordinator::TakeEvents() {
             if (candidate) {
                 completion.snapshot = std::move(*candidate);
                 completion.update.reset();
-            } else {
+            } else if (request.kind == RequestKind::Snapshot) {
                 EmitTrace(
                     request, WidgetSessionTraceStage::RequestCompleted,
                     WidgetSessionTraceAction::None,
@@ -363,6 +384,7 @@ std::vector<WidgetSessionEvent> WidgetSessionCoordinator::TakeEvents() {
                     WidgetSessionCompletionDisposition::Failed,
                     completion.completedAt);
                 CompleteRefresh(request, false);
+                ReleasePresentationAdmission(request);
                 auto fallback = MakeRequest(
                     RequestKind::Snapshot, request.widgetId,
                     request.lifecycle, request.correlationId);
@@ -378,6 +400,13 @@ std::vector<WidgetSessionEvent> WidgetSessionCoordinator::TakeEvents() {
                     WidgetSessionFailureStage::Protocol,
                     updateError.empty()
                         ? L"The widget update was rejected and checkpoint recovery could not be queued."
+                        : std::move(updateError));
+            } else {
+                completion.update.reset();
+                completion.failure = FailureFrom(
+                    WidgetSessionFailureStage::Protocol,
+                    updateError.empty()
+                        ? L"The retained-base establishment update was rejected."
                         : std::move(updateError));
             }
         }
@@ -402,11 +431,44 @@ std::vector<WidgetSessionEvent> WidgetSessionCoordinator::TakeEvents() {
                         : !snapshotProtocolCurrent
                             ? WidgetSessionCompletionDisposition::Failed
                         : WidgetSessionCompletionDisposition::Admitted;
-        EmitTrace(
-            request, WidgetSessionTraceStage::RequestCompleted,
-            WidgetSessionTraceAction::None,
-            WidgetSessionTraceReason::None, disposition,
-            completion.completedAt);
+        bool completionTraceEmitted{};
+        if (!completion.cancelled && completionCurrent &&
+            completion.failure.stage != WidgetSessionFailureStage::None &&
+            completion.requestFailureCategory ==
+                WidgetBridgeRequestFailureCategory::StalePresentationBase &&
+            IsPresentationChanging(request.kind) && request.allowUpdate &&
+            request.baseSequence > 0) {
+            Request retry = request;
+            retry.id = ++nextRequestId_;
+            retry.checkpointAdmissionProvenance =
+                CheckpointAdmissionProvenance::TypedStaleBaseRecovery;
+            retry.recoveryOriginSequence = request.baseSequence;
+            retry.baseSequence = 0;
+            retry.allowUpdate = false;
+            retry.queuedAt = timestamp_();
+            retry.startedAt = 0;
+            EmitTrace(
+                request, WidgetSessionTraceStage::RequestCompleted,
+                WidgetSessionTraceAction::None,
+                WidgetSessionTraceReason::StaleBaseResynchronization,
+                WidgetSessionCompletionDisposition::Failed,
+                completion.completedAt);
+            completionTraceEmitted = true;
+            const auto queued = Queue(retry);
+            if (queued.accepted()) {
+                CompleteRefresh(request, false);
+                MarkRefreshInFlight(request.widgetId, queued.requestId);
+                ReleasePresentationAdmission(request);
+                continue;
+            }
+        }
+        if (!completionTraceEmitted) {
+            EmitTrace(
+                request, WidgetSessionTraceStage::RequestCompleted,
+                WidgetSessionTraceAction::None,
+                WidgetSessionTraceReason::None, disposition,
+                completion.completedAt);
+        }
         const auto makeEvent = [&](const WidgetSessionEventKind kind) {
             WidgetSessionEvent event;
             event.kind = kind;
@@ -421,12 +483,14 @@ std::vector<WidgetSessionEvent> WidgetSessionCoordinator::TakeEvents() {
         };
         if (!completionCurrent && !primaryStartFailure) {
             CompleteRefresh(request, false);
+            ReleasePresentationAdmission(request);
             events.push_back(makeEvent(
                 WidgetSessionEventKind::StaleCompletionRejected));
             continue;
         }
         if (completion.failure.stage != WidgetSessionFailureStage::None) {
             CompleteRefresh(request, false);
+            ReleasePresentationAdmission(request);
             if (!request.widgetId.empty()) {
                 awaitingRestartSnapshot_.erase(request.widgetId);
                 if (primaryStartFailure) RevokeRequests(request.widgetId);
@@ -450,6 +514,7 @@ std::vector<WidgetSessionEvent> WidgetSessionCoordinator::TakeEvents() {
         if (request.kind == RequestKind::Establish || request.kind == RequestKind::Snapshot) {
             if (!snapshotProtocolCurrent) {
                 HardRemoveCheckpoint(request.widgetId);
+                ReleasePresentationAdmission(request);
                 auto failure = FailureFrom(
                     WidgetSessionFailureStage::Protocol,
                     L"The worker returned a stale or mismatched widget instance.");
@@ -461,9 +526,23 @@ std::vector<WidgetSessionEvent> WidgetSessionCoordinator::TakeEvents() {
                 events.push_back(std::move(event));
                 continue;
             }
-            if (!AdmitVirtualWindowTransition(
-                    Snapshot(request.widgetId), *completion.snapshot)) {
+            const auto* retainedCheckpoint = Snapshot(request.widgetId);
+            const bool recoveryCheckpoint =
+                request.checkpointAdmissionProvenance ==
+                    CheckpointAdmissionProvenance::TypedStaleBaseRecovery;
+            const bool transitionAdmitted = recoveryCheckpoint
+                ? request.recoveryOriginSequence > 0 &&
+                    request.baseSequence == 0 && !request.allowUpdate &&
+                    retainedCheckpoint &&
+                    retainedCheckpoint->sequence == request.recoveryOriginSequence &&
+                    completion.snapshot->sequence > 0 &&
+                    completion.snapshot->sequence > request.recoveryOriginSequence &&
+                    AdmitVirtualWindowTransition(nullptr, *completion.snapshot)
+                : AdmitVirtualWindowTransition(
+                    retainedCheckpoint, *completion.snapshot);
+            if (!transitionAdmitted) {
                 CompleteRefresh(request, false);
+                ReleasePresentationAdmission(request);
                 auto failure = FailureFrom(
                     WidgetSessionFailureStage::Protocol,
                     L"The widget returned an invalid or stale virtual collection window transition.");
@@ -475,11 +554,16 @@ std::vector<WidgetSessionEvent> WidgetSessionCoordinator::TakeEvents() {
                 events.push_back(std::move(event));
                 continue;
             }
+            const bool refreshRequestedDuringAdmission =
+                RefreshState(request.widgetId) == WidgetRefreshState::RefreshRequested;
             snapshots_.insert_or_assign(request.widgetId, std::move(*completion.snapshot));
             CompleteRefresh(request, true);
             failures_.erase(request.widgetId);
             if (request.kind == RequestKind::Establish)
                 lifecycleStates_.insert_or_assign(request.widgetId, request.lifecycle);
+            ReleasePresentationAdmission(request);
+            QueueCoalescedRefreshAfterAdmission(
+                request, refreshRequestedDuringAdmission);
             auto event = makeEvent(WidgetSessionEventKind::SnapshotAdmitted);
             event.completedRestart = awaitingRestartSnapshot_.erase(request.widgetId) > 0;
             event.presentationImpact = std::move(completion.presentationImpact);
@@ -659,6 +743,7 @@ void WidgetSessionCoordinator::Shutdown() noexcept {
     }
     std::scoped_lock lock(queueMutex_);
     completed_.clear();
+    presentationAdmissions_.clear();
 }
 
 WidgetSessionCoordinator::QueueResult WidgetSessionCoordinator::Queue(
@@ -674,6 +759,20 @@ WidgetSessionCoordinator::QueueResult WidgetSessionCoordinator::Queue(
             result = {
                 WidgetSessionTraceAction::Skipped,
                 WidgetSessionTraceReason::ShuttingDown};
+        } else if (IsPresentationChanging(request.kind) &&
+            [&] {
+                const auto admission = presentationAdmissions_.find(request.widgetId);
+                return admission != presentationAdmissions_.end() &&
+                    SamePresentationAuthority(admission->second, request);
+            }()) {
+            const auto& admission = presentationAdmissions_.at(request.widgetId);
+            request.id = admission.id;
+            request.generation = admission.generation;
+            request.queuedAt = admission.queuedAt;
+            request.startedAt = admission.startedAt;
+            result = {
+                WidgetSessionTraceAction::Deduplicated,
+                WidgetSessionTraceReason::ExistingRequest};
         } else if (auto existing = std::find_if(
                 pending_.begin(), pending_.end(), [&](const Request& candidate) {
                 return candidate.kind == request.kind &&
@@ -728,7 +827,80 @@ bool WidgetSessionCoordinator::HasPending(
     std::scoped_lock lock(queueMutex_);
     return std::any_of(pending_.begin(), pending_.end(), [&](const Request& request) {
         return request.kind == kind && request.widgetId == widgetId;
-    }) || (inFlight_ && inFlight_->kind == kind && inFlight_->widgetId == widgetId);
+    }) || (inFlight_ && inFlight_->kind == kind && inFlight_->widgetId == widgetId) ||
+        std::any_of(
+            presentationAdmissions_.begin(), presentationAdmissions_.end(),
+            [&](const auto& entry) {
+                return entry.second.kind == kind && entry.second.widgetId == widgetId;
+            });
+}
+
+bool WidgetSessionCoordinator::IsPresentationChanging(const RequestKind kind) noexcept {
+    return kind == RequestKind::Establish || kind == RequestKind::Snapshot;
+}
+
+bool WidgetSessionCoordinator::SamePresentationAuthority(
+    const Request& left,
+    const Request& right) noexcept {
+    return IsPresentationChanging(left.kind) && IsPresentationChanging(right.kind) &&
+        left.widgetId == right.widgetId &&
+        left.lifecycle == right.lifecycle &&
+        left.generation == right.generation &&
+        left.expectedInstanceId == right.expectedInstanceId &&
+        left.expectedRuntimeGeneration == right.expectedRuntimeGeneration &&
+        left.expectedPresentationGeneration == right.expectedPresentationGeneration &&
+        left.baseSequence == right.baseSequence &&
+        left.allowUpdate == right.allowUpdate &&
+        left.checkpointAdmissionProvenance ==
+            right.checkpointAdmissionProvenance &&
+        left.recoveryOriginSequence == right.recoveryOriginSequence;
+}
+
+bool WidgetSessionCoordinator::PresentationRequestBlockedLocked(
+    const Request& request) const noexcept {
+    return IsPresentationChanging(request.kind) &&
+        presentationAdmissions_.contains(request.widgetId);
+}
+
+bool WidgetSessionCoordinator::HasExecutableRequestLocked() const noexcept {
+    return std::any_of(pending_.begin(), pending_.end(), [&](const Request& request) {
+        return !PresentationRequestBlockedLocked(request);
+    });
+}
+
+void WidgetSessionCoordinator::ReleasePresentationAdmission(
+    const Request& request) noexcept {
+    if (!IsPresentationChanging(request.kind)) return;
+    bool released{};
+    {
+        std::scoped_lock lock(queueMutex_);
+        const auto found = presentationAdmissions_.find(request.widgetId);
+        if (found != presentationAdmissions_.end() && found->second.id == request.id) {
+            presentationAdmissions_.erase(found);
+            released = true;
+        }
+    }
+    if (released) queueChanged_.notify_all();
+}
+
+void WidgetSessionCoordinator::QueueCoalescedRefreshAfterAdmission(
+    const Request& request,
+    const bool refreshRequestedDuringAdmission) {
+    if (!IsPresentationChanging(request.kind) ||
+        !refreshRequestedDuringAdmission ||
+        !CompletionIsCurrent(request)) return;
+    refreshStates_.insert_or_assign(
+        request.widgetId, WidgetRefreshState::RefreshRequested);
+    refreshRequestIds_.erase(request.widgetId);
+    const auto queued = Queue(MakeRequest(
+        RequestKind::Snapshot,
+        request.widgetId,
+        request.lifecycle,
+        request.correlationId));
+    if (queued.accepted() &&
+        queued.action != WidgetSessionTraceAction::Deduplicated) {
+        MarkRefreshInFlight(request.widgetId, queued.requestId);
+    }
 }
 
 void WidgetSessionCoordinator::SupersedeSnapshotRequests(
@@ -828,9 +1000,10 @@ WidgetSessionCoordinator::Request WidgetSessionCoordinator::MakeRequest(
             request.expectedRuntimeGeneration = descriptor->runtimeGeneration;
             request.expectedPresentationGeneration = descriptor->presentationGeneration;
         }
-        if (kind == RequestKind::Snapshot) {
+        if (kind == RequestKind::Snapshot || kind == RequestKind::Establish) {
             const auto* checkpoint = Snapshot(request.widgetId);
             if (checkpoint && checkpoint->sequence > 0 &&
+                checkpoint->instanceId == request.expectedInstanceId &&
                 !checkpoint->documentJson.empty()) {
                 request.baseSequence = checkpoint->sequence;
                 request.allowUpdate = true;
@@ -905,11 +1078,17 @@ void WidgetSessionCoordinator::WorkerLoop(const std::stop_token stopToken) {
         {
             std::unique_lock lock(queueMutex_);
             queueChanged_.wait(lock, [&] {
-                return shuttingDown_ || stopToken.stop_requested() || !pending_.empty();
+                return shuttingDown_ || stopToken.stop_requested() ||
+                    HasExecutableRequestLocked();
             });
             if (shuttingDown_ || stopToken.stop_requested()) break;
-            request = std::move(pending_.front());
-            pending_.pop_front();
+            const auto next = std::find_if(
+                pending_.begin(), pending_.end(), [&](const Request& candidate) {
+                    return !PresentationRequestBlockedLocked(candidate);
+                });
+            if (next == pending_.end()) continue;
+            request = std::move(*next);
+            pending_.erase(next);
             request.startedAt = timestamp_();
             inFlight_ = request;
             inFlightStop_.emplace();
@@ -925,6 +1104,10 @@ void WidgetSessionCoordinator::WorkerLoop(const std::stop_token stopToken) {
             if (shuttingDown_) break;
             inFlight_.reset();
             inFlightStop_.reset();
+            if (IsPresentationChanging(completion.request.kind)) {
+                presentationAdmissions_.insert_or_assign(
+                    completion.request.widgetId, completion.request);
+            }
             completed_.push_back(std::move(completion));
         }
         if (completionAvailable_) {
@@ -961,9 +1144,24 @@ WidgetSessionCoordinator::Completion WidgetSessionCoordinator::Execute(
         case RequestKind::Establish: {
             if (!operations_.establish) break;
             auto result = operations_.establish(
-                stopToken, completion.request.widgetId, completion.request.lifecycle);
-            if (result.value) completion.snapshot = std::move(*result.value);
-            else completion.failure = FailureFrom(result.failureStage, std::move(result.safeError));
+                stopToken, completion.request.widgetId, completion.request.lifecycle,
+                completion.request.baseSequence, completion.request.allowUpdate);
+            if (result.value) {
+                completion.snapshot = std::move(result.value->checkpoint);
+                completion.update = std::move(result.value->update);
+                if (completion.snapshot.has_value() == completion.update.has_value()) {
+                    completion.snapshot.reset();
+                    completion.update.reset();
+                    completion.failure = FailureFrom(
+                        WidgetSessionFailureStage::Protocol,
+                        L"The bridge returned an invalid widget presentation establishment.");
+                }
+            }
+            else {
+                completion.requestFailureCategory = result.requestFailureCategory;
+                completion.failure = FailureFrom(
+                    result.failureStage, std::move(result.safeError));
+            }
             return completion;
         }
         case RequestKind::Snapshot: {
@@ -983,7 +1181,11 @@ WidgetSessionCoordinator::Completion WidgetSessionCoordinator::Execute(
                         L"The bridge returned an invalid widget presentation publication.");
                 }
             }
-            else completion.failure = FailureFrom(result.failureStage, std::move(result.safeError));
+            else {
+                completion.requestFailureCategory = result.requestFailureCategory;
+                completion.failure = FailureFrom(
+                    result.failureStage, std::move(result.safeError));
+            }
             return completion;
         }
         case RequestKind::Lifecycle: {

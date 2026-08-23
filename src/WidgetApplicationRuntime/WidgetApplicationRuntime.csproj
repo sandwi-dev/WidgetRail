@@ -11,5 +11,6 @@
   <ItemGroup>
     <Compile Include="..\WidgetRuntime\RuntimeProtocol.cs" Link="RuntimeProtocol.cs" />
     <Compile Include="..\WidgetRuntime\WidgetWorkerServer.cs" Link="WidgetWorkerServer.cs" />
+    <Compile Include="..\WidgetRuntime\WidgetWorkerNotificationLane.cs" Link="WidgetWorkerNotificationLane.cs" />
   </ItemGroup>
 </Project>

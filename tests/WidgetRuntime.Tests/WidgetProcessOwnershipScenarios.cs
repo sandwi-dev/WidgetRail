@@ -303,8 +303,12 @@ internal static class WidgetProcessOwnershipScenarios
         await client.StopAsync(canceled.Token);
         await terminalStarted.Task;
         _ = await client.GetSnapshotAsync();
+        Equal(0, companion.GrantedAuthorities.Count);
+        Equal(1, replacementCompanion.RunCount);
+
         companion.ReleaseGrant();
-        await companion.Revoked.Task;
+        await companion.GrantCompleted.Task;
+        await companion.LateGrantRevoked.Task;
         await ThrowsAnyAsync(async () => await input);
         Equal(1, companion.GrantedAuthorities.Count);
         var revokedInputSequences = companion.RevokedInputSequences.ToArray();
@@ -312,12 +316,18 @@ internal static class WidgetProcessOwnershipScenarios
             "Retired gesture cleanup emitted an unexpected number of revocations.");
         True(revokedInputSequences.All(sequence => sequence == 92L),
             "Retired gesture cleanup revoked authority for an unrelated input sequence.");
+        True(companion.GrantedAuthorities.All(authority =>
+                revokedInputSequences.Contains(authority.InputSequence)),
+            "A cancellation-ignoring retired gesture authority survived its late revocation.");
     }
 
     private static async Task AssertStalePublicationSuppressedAsync(
         string publicationKind,
         Func<WidgetProcessClient, Task> trigger)
     {
+        var fixtureDeadline = TimeSpan.FromSeconds(5);
+        var workerDiagnosticPath = Path.Combine(
+            Path.GetTempPath(), $"widgetruntime-worker-{Guid.NewGuid():N}.txt");
         using var publicationRelease = new ManualResetEventSlim();
         var publicationReached = new TaskCompletionSource(
             TaskCreationOptions.RunContinuationsAsynchronously);
@@ -334,7 +344,9 @@ internal static class WidgetProcessOwnershipScenarios
                     : string.Equals(kind, publicationKind, StringComparison.Ordinal);
                 if (!matches) return;
                 publicationReached.TrySetResult();
-                publicationRelease.Wait();
+                if (!publicationRelease.Wait(fixtureDeadline))
+                    throw new TimeoutException(
+                        $"The {publicationKind} publication fixture was not released.");
             },
             SessionTerminalStarted = () => terminalStarted.TrySetResult(),
             PublicationAdmissionCompleted = (kind, admitted) =>
@@ -345,25 +357,78 @@ internal static class WidgetProcessOwnershipScenarios
                 if (matches) publicationCompleted.TrySetResult(admitted);
             },
         };
-        await using var client = CreateClient(hooks);
+        await using var client = CreateClient(
+            hooks,
+            extraArguments: ["--worker-exception-diagnostic", workerDiagnosticPath]);
         var published = 0;
         if (publicationKind == "invalidated") client.Invalidated += (_, _) => published++;
         else if (publicationKind == "action-failed") client.ActionFailed += (_, _) => published++;
         else client.Failed += (_, _) => published++;
 
-        var triggerTask = trigger(client);
-        await publicationReached.Task;
-        using var canceled = new CancellationTokenSource();
-        canceled.Cancel();
-        await client.StopAsync(canceled.Token);
-        await terminalStarted.Task;
-        _ = await client.GetSnapshotAsync();
-        publicationRelease.Set();
-        False(await publicationCompleted.Task,
-            "A retired notification was admitted after replacement.");
-        try { await triggerTask; }
-        catch (Exception exception) when (exception is not OutOfMemoryException) { }
-        Equal(0, published);
+        var triggerTask = Task.CompletedTask;
+        try
+        {
+            _ = await WaitFixtureSignalAsync(
+                client.GetSnapshotAsync(), fixtureDeadline,
+                $"The {publicationKind} fixture did not establish its initial checkpoint.");
+            triggerTask = trigger(client);
+            await WaitFixtureSignalAsync(
+                publicationReached.Task, fixtureDeadline,
+                $"The {publicationKind} publication did not reach admission.");
+            using var canceled = new CancellationTokenSource();
+            canceled.Cancel();
+            var stop = client.StopAsync(canceled.Token);
+            await WaitFixtureSignalAsync(
+                terminalStarted.Task, fixtureDeadline,
+                $"The {publicationKind} retired session did not begin terminal cleanup.");
+            await WaitFixtureSignalAsync(
+                stop, fixtureDeadline,
+                $"The {publicationKind} retired session did not stop boundedly.");
+            await WaitFixtureSignalAsync(
+                client.GetSnapshotAsync(), fixtureDeadline,
+                $"The {publicationKind} replacement did not establish boundedly.");
+            publicationRelease.Set();
+            False(await WaitFixtureSignalAsync(
+                    publicationCompleted.Task, fixtureDeadline,
+                    $"The {publicationKind} publication admission did not complete."),
+                "A retired notification was admitted after replacement.");
+            try { await triggerTask.WaitAsync(fixtureDeadline); }
+            catch (Exception exception) when (exception is not OutOfMemoryException) { }
+            Equal(0, published);
+        }
+        catch (Exception exception) when (File.Exists(workerDiagnosticPath))
+        {
+            var workerDiagnostic = await File.ReadAllTextAsync(workerDiagnosticPath);
+            throw new InvalidOperationException(
+                $"The {publicationKind} test worker failed: {workerDiagnostic}", exception);
+        }
+        finally
+        {
+            publicationRelease.Set();
+            try { await triggerTask.WaitAsync(fixtureDeadline); }
+            catch (Exception exception) when (exception is not OutOfMemoryException) { }
+            try { File.Delete(workerDiagnosticPath); }
+            catch (IOException) { }
+            catch (UnauthorizedAccessException) { }
+        }
+    }
+
+    private static async Task WaitFixtureSignalAsync(
+        Task signal,
+        TimeSpan timeout,
+        string message)
+    {
+        try { await signal.WaitAsync(timeout); }
+        catch (TimeoutException exception) { throw new InvalidOperationException(message, exception); }
+    }
+
+    private static async Task<T> WaitFixtureSignalAsync<T>(
+        Task<T> signal,
+        TimeSpan timeout,
+        string message)
+    {
+        try { return await signal.WaitAsync(timeout); }
+        catch (TimeoutException exception) { throw new InvalidOperationException(message, exception); }
     }
 
     private static WidgetProcessClient CreateClient(
@@ -515,7 +580,11 @@ internal static class WidgetProcessOwnershipScenarios
         internal bool HoldGestureGrant { get; init; }
         internal TaskCompletionSource GrantStarted { get; } = new(
             TaskCreationOptions.RunContinuationsAsynchronously);
+        internal TaskCompletionSource GrantCompleted { get; } = new(
+            TaskCreationOptions.RunContinuationsAsynchronously);
         internal TaskCompletionSource Revoked { get; } = new(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        internal TaskCompletionSource LateGrantRevoked { get; } = new(
             TaskCreationOptions.RunContinuationsAsynchronously);
 
         public async Task RunAsync(CancellationToken cancellationToken)
@@ -536,6 +605,7 @@ internal static class WidgetProcessOwnershipScenarios
             GrantStarted.TrySetResult();
             if (HoldGestureGrant) await _grantRelease.Task;
             GrantedAuthorities.Add(authority);
+            GrantCompleted.TrySetResult();
         }
 
         public Task RevokeDashboardGestureAuthorityAsync(
@@ -544,6 +614,7 @@ internal static class WidgetProcessOwnershipScenarios
         {
             RevokedInputSequences.Enqueue(inputSequence);
             Revoked.TrySetResult();
+            if (GrantCompleted.Task.IsCompleted) LateGrantRevoked.TrySetResult();
             return Task.CompletedTask;
         }
 

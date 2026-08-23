@@ -342,15 +342,42 @@ internal static class WidgetCursorResourceTests
                 error.Code == "virtual_collection_direction_requires_position"),
             "An unknown-position window claimed an unverifiable direction.");
 
+        var retained = widget.Resource.Snapshot;
+        var retainedScroll = shifted.Root.Children[0];
         fail = true;
-        await widget.Resource.Refresh().Completion;
+        var failedRefresh = await widget.Resource.Refresh().Completion;
+        Equal(WidgetOperationStatus.Failed, failedRefresh.Status);
         Equal(WidgetPagedResourceStatus.Error, widget.Resource.Snapshot.Status);
         Equal(4L, widget.Resource.Snapshot.WindowGeneration);
+        Equal(retained.WindowChange, widget.Resource.Snapshot.WindowChange);
         Equal(96, widget.Resource.Snapshot.Items.Count);
+        Equal(retained.Before, widget.Resource.Snapshot.Before);
+        Equal(retained.After, widget.Resource.Snapshot.After);
+        Equal(retained.Anchor, widget.Resource.Snapshot.Anchor);
+        Equal(retained.FirstItemIndex, widget.Resource.Snapshot.FirstItemIndex);
+        Equal(retained.TotalItemCount, widget.Resource.Snapshot.TotalItemCount);
+        for (var index = 0; index < retained.Items.Count; index++)
+            Equal(retained.Items[index], widget.Resource.Snapshot.Items[index]);
+        var errorScroll = widget.Render().CreateSnapshot("virtual.fixture", 3).Root.Children[0];
+        Equal<string?>(null, errorScroll.ScrollNearStartActionId);
+        Equal<string?>(null, errorScroll.ScrollNearEndActionId);
+        Equal(retainedScroll.CollectionAnchorKey, errorScroll.CollectionAnchorKey);
+        Equal(retainedScroll.VirtualCollectionWindow! with
+            {
+                HasBefore = false,
+                HasAfter = false,
+            }, errorScroll.VirtualCollectionWindow);
         fail = false;
-        await widget.Resource.Retry().Completion;
+        var retry = widget.Resource.Retry();
+        Equal(WidgetOperationAdmission.Started, retry.Admission);
+        Equal(WidgetOperationStatus.Succeeded, (await retry.Completion).Status);
         Equal(WidgetPagedResourceStatus.Ready, widget.Resource.Snapshot.Status);
         Equal(5L, widget.Resource.Snapshot.WindowGeneration);
+        var recoveredScroll = widget.Render().CreateSnapshot("virtual.fixture", 4).Root.Children[0];
+        Equal("test.cursor.cursor.before", recoveredScroll.ScrollNearStartActionId);
+        Equal("test.cursor.cursor.after", recoveredScroll.ScrollNearEndActionId);
+        True(recoveredScroll.VirtualCollectionWindow is { HasBefore: true, HasAfter: true },
+            "Explicit Retry did not restore non-Error virtual boundary availability.");
         foreach (var nextMutation in new[] { 1, 2, 3 })
         {
             mutation = nextMutation;

@@ -19,6 +19,7 @@ internal sealed class WidgetWorkerServer
     private readonly ConcurrentDictionary<long, TaskCompletionSource<bool>>
         _dashboardGestureActivations = new();
     private LengthPrefixedJsonChannel? _channel;
+    private WidgetWorkerNotificationLane? _notificationLane;
     private CancellationToken _runCancellation;
     private long _sequence;
     private long _dashboardGestureActivationId;
@@ -63,6 +64,7 @@ internal sealed class WidgetWorkerServer
 
     public async Task RunAsync(CancellationToken cancellationToken = default)
     {
+        WidgetWorkerNotificationLane? notifications = null;
         await using var pipe = new NamedPipeClientStream(
             ".", _pipeName, PipeDirection.InOut, PipeOptions.Asynchronous);
         await pipe.ConnectAsync(cancellationToken).ConfigureAwait(false);
@@ -78,6 +80,8 @@ internal sealed class WidgetWorkerServer
         if (acceptance.Type != MessageTypes.HelloAccepted || acceptance.RequestId != 0)
             throw new WidgetProtocolViolationException("Host did not accept the worker handshake.");
 
+        notifications = new WidgetWorkerNotificationLane(SendAsync, cancellationToken);
+        _notificationLane = notifications;
         _widget.Invalidated += OnInvalidated;
         _widget.ActionFailed += OnActionFailed;
         try
@@ -102,7 +106,8 @@ internal sealed class WidgetWorkerServer
             {
                 while (!requestLoopCancellation.IsCancellationRequested)
                 {
-                    var request = await _channel.ReadAsync(requestLoopCancellation.Token)
+                    var request = await ReadRequestAsync(
+                            _channel, notifications, requestLoopCancellation.Token)
                         .ConfigureAwait(false);
                     if (request.RequestId == 0 &&
                         request.Type == MessageTypes.DashboardGestureActivationResult)
@@ -228,23 +233,79 @@ internal sealed class WidgetWorkerServer
         }
         finally
         {
-            using var shutdownTimeout = new CancellationTokenSource(TimeSpan.FromSeconds(2));
             try
             {
-                await _widget.DestroyAsync(shutdownTimeout.Token).AsTask()
-                    .WaitAsync(shutdownTimeout.Token).ConfigureAwait(false);
+                using var shutdownTimeout =
+                    new CancellationTokenSource(TimeSpan.FromSeconds(2));
+                try
+                {
+                    await _widget.DestroyAsync(shutdownTimeout.Token).AsTask()
+                        .WaitAsync(shutdownTimeout.Token).ConfigureAwait(false);
+                }
+                catch (OperationCanceledException) when (shutdownTimeout.IsCancellationRequested)
+                {
+                    // Destruction is bounded so a faulty widget cannot hang worker shutdown.
+                }
+                finally
+                {
+                    notifications?.Close();
+                    try
+                    {
+                        if (notifications is not null)
+                        {
+                            try
+                            {
+                                await notifications.DrainAsync(TimeSpan.FromSeconds(2))
+                                    .ConfigureAwait(false);
+                            }
+                            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+                            {
+                                // Caller cancellation is the existing worker terminal authority.
+                            }
+                        }
+                    }
+                    finally
+                    {
+                        _widget.Invalidated -= OnInvalidated;
+                        _widget.ActionFailed -= OnActionFailed;
+                    }
+                }
             }
-            catch (OperationCanceledException) when (shutdownTimeout.IsCancellationRequested)
+            finally
             {
-                // Destruction is bounded so a faulty widget cannot hang worker shutdown.
+                foreach (var activation in _dashboardGestureActivations.Values)
+                    activation.TrySetResult(false);
+                _dashboardGestureActivations.Clear();
+                _channel = null;
             }
-            _widget.Invalidated -= OnInvalidated;
-            _widget.ActionFailed -= OnActionFailed;
-            foreach (var activation in _dashboardGestureActivations.Values)
-                activation.TrySetResult(false);
-            _dashboardGestureActivations.Clear();
-            _channel = null;
         }
+    }
+
+    private static async Task<RuntimeEnvelope> ReadRequestAsync(
+        LengthPrefixedJsonChannel channel,
+        WidgetWorkerNotificationLane notifications,
+        CancellationToken cancellationToken)
+    {
+        using var readCancellation =
+            CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        var read = channel.ReadAsync(readCancellation.Token).AsTask();
+        var completed = await Task.WhenAny(read, notifications.Completion)
+            .ConfigureAwait(false);
+        if (completed == read)
+            return await read.ConfigureAwait(false);
+
+        readCancellation.Cancel();
+        try
+        {
+            await read.ConfigureAwait(false);
+        }
+        catch (OperationCanceledException) when (readCancellation.IsCancellationRequested)
+        {
+            // The notification pump owns the terminal result selected below.
+        }
+
+        await notifications.Completion.ConfigureAwait(false);
+        throw new IOException("The worker notification lane ended unexpectedly.");
     }
 
     private static string ValidateSessionNonce(string value)
@@ -384,48 +445,23 @@ internal sealed class WidgetWorkerServer
 
     private void OnInvalidated(object? sender, WidgetInvalidatedEventArgs args)
     {
-        _ = SendInvalidationAsync(args.Revision);
+        _ = sender;
+        _ = GetNotificationLane().EnqueueInvalidation(args.Revision);
     }
 
     private void OnActionFailed(object? sender, WidgetActionFailedEventArgs args)
     {
-        _ = SendActionFailureAsync(args);
+        _ = sender;
+        _ = GetNotificationLane().EnqueueActionFailure(
+            new ControllerActionFailurePayload(
+                args.Action.ActionId,
+                args.Action.SourceElementId,
+                "Action failed."));
     }
 
-    private async Task SendActionFailureAsync(WidgetActionFailedEventArgs args)
-    {
-        try
-        {
-            await SendAsync(new RuntimeEnvelope
-            {
-                Type = MessageTypes.ControllerActionFailed,
-                Payload = RuntimeJson.ToElement(new ControllerActionFailurePayload(
-                    args.Action.ActionId,
-                    args.Action.SourceElementId,
-                    "Action failed.")),
-            }, _runCancellation).ConfigureAwait(false);
-        }
-        catch (Exception exception) when (exception is IOException or OperationCanceledException or ObjectDisposedException or InvalidOperationException)
-        {
-            // The request loop owns connection failure reporting.
-        }
-    }
-
-    private async Task SendInvalidationAsync(long revision)
-    {
-        try
-        {
-            await SendAsync(new RuntimeEnvelope
-            {
-                Type = MessageTypes.Invalidated,
-                Payload = RuntimeJson.ToElement(new InvalidationPayload(revision)),
-            }, _runCancellation).ConfigureAwait(false);
-        }
-        catch (Exception exception) when (exception is IOException or OperationCanceledException or ObjectDisposedException or InvalidOperationException)
-        {
-            // The request loop owns connection failure reporting.
-        }
-    }
+    private WidgetWorkerNotificationLane GetNotificationLane() =>
+        _notificationLane ?? throw new InvalidOperationException(
+            "Worker notification admission is not active.");
 
     private Task ReplyAsync<T>(string type, long requestId, T payload, CancellationToken cancellationToken) =>
         SendAsync(new RuntimeEnvelope

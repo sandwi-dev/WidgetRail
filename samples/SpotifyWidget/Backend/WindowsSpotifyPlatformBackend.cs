@@ -479,7 +479,16 @@ public sealed class WindowsSpotifyPlatformBackend : IAsyncDisposable
                 cancellationToken).ConfigureAwait(false);
         });
 
-    public Task<SpotifyPlaylistItemsSummary> GetSpotifyPlaylistItemsAsync(
+    public Task<SpotifyPlaylistSummary> GetSpotifyPlaylistAsync(
+        SpotifyIntegrationIdentity identity,
+        string playlistId,
+        CancellationToken cancellationToken) => ApplicationCallAsync(async () =>
+        {
+            return await _collectionApi.GetPlaylistAsync(
+                identity, playlistId, cancellationToken).ConfigureAwait(false);
+        });
+
+    public Task<SpotifyPlaylistItemsPageSummary> GetSpotifyPlaylistItemsAsync(
         SpotifyIntegrationIdentity identity, SpotifyPlaylistItemsRequest request,
         CancellationToken cancellationToken) => ApplicationCallAsync(async () =>
         {

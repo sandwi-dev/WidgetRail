@@ -6,6 +6,7 @@ public static class SpotifyApplicationContract
     public const string DeveloperDashboardUri = "https://developer.spotify.com/dashboard";
     public const int MaximumClientIdInputCharacters = 96;
     public const int MaximumClientIdCharacters = 128;
+    public const int MaximumQueueItems = 50;
     public const int MaximumCollectionPageSize = 50;
     public const int MaximumCollectionOffset = 100_000;
     public const long MaximumPositionMilliseconds = 604_800_000;
@@ -184,7 +185,8 @@ public sealed record SpotifyPlaylistPageSummary(
     IReadOnlyList<SpotifyPlaylistSummary> Items,
     int Offset,
     int Limit,
-    int Total);
+    int Total,
+    bool HasAuthoritativeWindow = true);
 
 public sealed record SpotifyPlaylistPageRequest(int Offset, int Limit);
 
@@ -193,12 +195,12 @@ public sealed record SpotifyPlaylistItemsRequest(
     int Offset,
     int Limit);
 
-public sealed record SpotifyPlaylistItemsSummary(
-    SpotifyPlaylistSummary Playlist,
+public sealed record SpotifyPlaylistItemsPageSummary(
     IReadOnlyList<SpotifyMediaItemSummary> Items,
     int Offset,
     int Limit,
-    int Total);
+    int Total,
+    bool HasAuthoritativeWindow = true);
 
 public sealed record StartSpotifyPlaybackRequest(
     string? ContextUri,
@@ -271,7 +273,10 @@ public interface ISpotifyApplicationService : IAsyncDisposable
         int offset,
         int limit,
         CancellationToken cancellationToken = default);
-    ValueTask<SpotifyPlaylistItemsSummary> GetPlaylistItemsAsync(
+    ValueTask<SpotifyPlaylistSummary> GetPlaylistAsync(
+        string playlistId,
+        CancellationToken cancellationToken = default);
+    ValueTask<SpotifyPlaylistItemsPageSummary> GetPlaylistItemsAsync(
         string playlistId,
         int offset,
         int limit,

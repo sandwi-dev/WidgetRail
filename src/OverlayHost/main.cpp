@@ -395,18 +395,28 @@ public:
                                     bridge_.lastError());
                   },
                   [this](std::stop_token, const std::wstring_view widgetId,
-                         const widgetrail::WidgetLifecycleState state) {
+                         const widgetrail::WidgetLifecycleState state,
+                         const long long baseSequence, const bool allowUpdate) {
                       auto value = bridge_.EstablishWidgetPresentation(
-                          widgetId, widgetrail::WidgetLifecycleProtocolValue(state));
-                      return value
-                          ? widgetrail::WidgetSessionOperationResult<widgetrail::WidgetSnapshot>::Success(
-                                std::move(*value))
-                          : widgetrail::WidgetSessionOperationResult<widgetrail::WidgetSnapshot>::Failure(
-                                bridge_.lastRuntimeFailureCategory(widgetId) ==
-                                        widgetrail::WidgetBridgeRuntimeFailureCategory::WorkerStart
-                                    ? widgetrail::WidgetSessionFailureStage::Start
-                                    : widgetrail::WidgetSessionFailureStage::Snapshot,
-                                bridge_.lastError());
+                          widgetId, widgetrail::WidgetLifecycleProtocolValue(state),
+                          baseSequence, allowUpdate);
+                      if (value) {
+                          return widgetrail::WidgetSessionOperationResult<
+                              widgetrail::WidgetPresentationPublication>::Success(
+                                  std::move(*value));
+                      }
+                      const auto requestFailure =
+                          bridge_.lastRequestFailureCategory();
+                      return widgetrail::WidgetSessionOperationResult<
+                          widgetrail::WidgetPresentationPublication>::Failure(
+                              requestFailure == widgetrail::
+                                  WidgetBridgeRequestFailureCategory::StalePresentationBase
+                                  ? widgetrail::WidgetSessionFailureStage::Protocol
+                                  : bridge_.lastRuntimeFailureCategory(widgetId) ==
+                                      widgetrail::WidgetBridgeRuntimeFailureCategory::WorkerStart
+                                  ? widgetrail::WidgetSessionFailureStage::Start
+                                  : widgetrail::WidgetSessionFailureStage::Snapshot,
+                              bridge_.lastError(), requestFailure);
                   },
                   [this](std::stop_token, const std::wstring_view widgetId,
                          const widgetrail::WidgetLifecycleState state) {
@@ -422,14 +432,20 @@ public:
                          const long long baseSequence, const bool allowUpdate) {
                       auto value = bridge_.GetSnapshot(
                           widgetId, baseSequence, allowUpdate);
-                      return value
-                          ? widgetrail::WidgetSessionOperationResult<
-                                widgetrail::WidgetPresentationPublication>::Success(
-                                std::move(*value))
-                          : widgetrail::WidgetSessionOperationResult<
-                                widgetrail::WidgetPresentationPublication>::Failure(
-                                widgetrail::WidgetSessionFailureStage::Snapshot,
-                                bridge_.lastError());
+                      if (value) {
+                          return widgetrail::WidgetSessionOperationResult<
+                              widgetrail::WidgetPresentationPublication>::Success(
+                                  std::move(*value));
+                      }
+                      const auto requestFailure =
+                          bridge_.lastRequestFailureCategory();
+                      return widgetrail::WidgetSessionOperationResult<
+                          widgetrail::WidgetPresentationPublication>::Failure(
+                              requestFailure == widgetrail::
+                                  WidgetBridgeRequestFailureCategory::StalePresentationBase
+                                  ? widgetrail::WidgetSessionFailureStage::Protocol
+                                  : widgetrail::WidgetSessionFailureStage::Snapshot,
+                              bridge_.lastError(), requestFailure);
                   },
                   [](const widgetrail::WidgetSnapshot& checkpoint,
                      const widgetrail::WidgetPresentationUpdate& update,
@@ -4766,6 +4782,7 @@ private:
             // current admission arrives: do not clear transient host visuals,
             // advance declarative motion, or paint a temporary inert frame.
             ClearAccessibilityTree();
+            PublishNonCurrentHostBackAccessibility();
             return;
         }
         const auto& retainedPresentation =
@@ -6375,6 +6392,49 @@ private:
             : nullptr;
     }
 
+    struct HostRootBackAuthority final {
+        std::wstring widgetId;
+        std::wstring runtimeGeneration;
+        std::wstring inputScopeId;
+        long long snapshotSequence{};
+    };
+
+    [[nodiscard]] std::optional<HostRootBackAuthority>
+    NonCurrentHostRootBackAuthority() const {
+        if (state_.surface() != widgetrail::Surface::Widget ||
+            state_.focusRegion() != widgetrail::FocusRegion::Widget ||
+            !IsBridgeWidget(state_.activeWidget())) {
+            return std::nullopt;
+        }
+
+        const std::wstring_view widgetId = state_.activeWidget();
+        const auto presentation = sessions_.Presentation(widgetId);
+        if (presentation.authority ==
+            widgetrail::WidgetPresentationAuthority::Current) {
+            return std::nullopt;
+        }
+        const auto* descriptor = sessions_.FindDescriptor(widgetId);
+        if (!descriptor) return std::nullopt;
+
+        HostRootBackAuthority authority{
+            std::wstring{widgetId}, descriptor->runtimeGeneration,
+            L"host.root", 0,
+        };
+        if (!presentation.snapshot) return authority;
+
+        const auto& snapshot = launcherExperienceProjection_.InteractionSnapshot(
+            widgetId, descriptor->presentationGeneration, *presentation.snapshot);
+        const std::wstring_view rootScope =
+            widgetrail::input::RootInputScope(snapshot);
+        if (snapshot.activeInputScopeId != rootScope &&
+            !sessions_.Failure(widgetId)) {
+            return std::nullopt;
+        }
+        authority.inputScopeId = std::wstring{rootScope};
+        authority.snapshotSequence = snapshot.sequence;
+        return authority;
+    }
+
     void RememberCurrentFocus(const std::wstring_view widgetId) {
         const auto* snapshot = InteractionSnapshotFor(widgetId);
         if (!snapshot || interactionSession_.focusedElementId().empty()) return;
@@ -6457,6 +6517,24 @@ private:
                         state_.activeWidget() != request.widgetId ||
                         !IsBridgeWidget(request.widgetId))
                         continue;
+                    if (request.hostAction ==
+                        widgetrail::accessibility::HostAction::BackToTray) {
+                        const auto hostBack = NonCurrentHostRootBackAuthority();
+                        if (hostBack &&
+                            request.widgetId == hostBack->widgetId &&
+                            request.runtimeGeneration ==
+                                hostBack->runtimeGeneration &&
+                            request.snapshotSequence ==
+                                hostBack->snapshotSequence &&
+                            request.activeInputScopeId ==
+                                hostBack->inputScopeId &&
+                            request.hostTargetId == hostBack->inputScopeId) {
+                            Dispatch(widgetrail::Command::SampleWidgetBack);
+                            (void)SetFocus(window_);
+                            InvalidateRect(window_, nullptr, FALSE);
+                            continue;
+                        }
+                    }
                     const auto* descriptor = sessions_.FindDescriptor(request.widgetId);
                     const auto* snapshot = InteractionSnapshotFor(request.widgetId);
                     if (!descriptor || !snapshot ||
@@ -6768,6 +6846,37 @@ private:
         return true;
     }
 
+    void PublishNonCurrentHostBackAccessibility() {
+        if (!accessibilityActive_ || openWidgetAccessibility_.title.empty()) return;
+        const auto hostBack = NonCurrentHostRootBackAuthority();
+        if (!hostBack) return;
+
+        widgetrail::accessibility::Tree hostTree;
+        hostTree.widgetId = hostBack->widgetId;
+        hostTree.runtimeGeneration = hostBack->runtimeGeneration;
+        hostTree.snapshotSequence = hostBack->snapshotSequence;
+        hostTree.activeInputScopeId = hostBack->inputScopeId;
+        auto semantics = openWidgetAccessibility_;
+        semantics.backAction = widgetrail::accessibility::HostAction::BackToTray;
+        semantics.backTargetId = hostBack->inputScopeId;
+        accessibilityTree_ = widgetrail::accessibility::BuildOpenWidgetTree(
+            std::move(hostTree), {}, {}, 0, false, semantics);
+
+        RECT client{};
+        const UINT dpi = std::max(1U, GetDpiForWindow(window_));
+        const float interfaceScale = appearanceState_.current()
+            ? static_cast<float>(appearanceState_.current()->interfaceScale)
+            : 1.0F;
+        const auto metrics = GetClientRect(window_, &client)
+            ? widgetrail::ComputeOverlayRenderMetrics(
+                client.right - client.left, client.bottom - client.top,
+                dpi, interfaceScale)
+            : std::nullopt;
+        if (!metrics || !PublishAccessibilityTree(metrics->physicalPixelsPerDip)) {
+            ClearAccessibilityTree();
+        }
+    }
+
     void PublishTrayAccessibility(
         const widgetrail::shell::TrayLayout& layout,
         const float width,
@@ -6786,9 +6895,12 @@ private:
         }
         if (state_.surface() == widgetrail::Surface::Widget) {
             const bool currentWidgetSemantics =
+                InteractionSnapshotFor(state_.activeWidget()) &&
                 widgetAccessibilityTree_.widgetId == state_.activeWidget();
+            const auto hostBack = NonCurrentHostRootBackAuthority();
             if ((!currentWidgetSemantics &&
-                 state_.focusRegion() != widgetrail::FocusRegion::Tray) ||
+                 state_.focusRegion() != widgetrail::FocusRegion::Tray &&
+                 !hostBack) ||
                 openWidgetAccessibility_.title.empty())
                 return;
             widgetrail::accessibility::Tree semanticTree = currentWidgetSemantics
@@ -6796,10 +6908,16 @@ private:
                 : widgetrail::accessibility::Tree{};
             if (!currentWidgetSemantics) {
                 semanticTree.widgetId = state_.activeWidget();
-                semanticTree.activeInputScopeId = L"host.tray";
-                if (const auto* descriptor = sessions_.FindDescriptor(
-                        state_.activeWidget())) {
-                    semanticTree.runtimeGeneration = descriptor->runtimeGeneration;
+                if (hostBack) {
+                    semanticTree.runtimeGeneration = hostBack->runtimeGeneration;
+                    semanticTree.snapshotSequence = hostBack->snapshotSequence;
+                    semanticTree.activeInputScopeId = hostBack->inputScopeId;
+                } else {
+                    semanticTree.activeInputScopeId = L"host.tray";
+                    if (const auto* descriptor = sessions_.FindDescriptor(
+                            state_.activeWidget())) {
+                        semanticTree.runtimeGeneration = descriptor->runtimeGeneration;
+                    }
                 }
             }
             const auto semanticRevision =
@@ -7594,6 +7712,10 @@ private:
             return;
         }
         if (HandleFocusedSliderModeButton(button)) return;
+        if (button == L"B" && NonCurrentHostRootBackAuthority()) {
+            Dispatch(widgetrail::Command::SampleWidgetBack);
+            return;
+        }
         using widgetrail::input::ControllerActionContext;
         using widgetrail::input::ControllerActionRoute;
         const auto context = state_.focusRegion() == widgetrail::FocusRegion::Tray
@@ -9902,21 +10024,24 @@ private:
         const std::wstring help = OpenWidgetPrompt();
         const std::wstring prompt = status ? *status : help;
         const auto* snapshot = InteractionSnapshotFor(state_.activeWidget());
+        const auto hostBack = NonCurrentHostRootBackAuthority();
         const bool rootScope = snapshot &&
             std::wstring_view(snapshot->activeInputScopeId) ==
                 widgetrail::input::RootInputScope(*snapshot);
         const bool nestedBack = snapshot && !rootScope &&
             widgetrail::accessibility::HasActiveScopeBackShortcut(
                 *snapshot, interactionSession_.focusedElementId());
-        const bool hasBack = rootScope || nestedBack;
+        const bool hasBack = rootScope || nestedBack || hostBack.has_value();
         const std::wstring hostPrompt = hasBack
             ? L"B  Back     Guide  Close"
             : L"Guide  Close";
         if (hasBack) {
-            openWidgetAccessibility_.backAction = rootScope
+            openWidgetAccessibility_.backAction = rootScope || hostBack
                 ? widgetrail::accessibility::HostAction::BackToTray
                 : widgetrail::accessibility::HostAction::BackWithinWidget;
-            openWidgetAccessibility_.backTargetId = snapshot->activeInputScopeId;
+            openWidgetAccessibility_.backTargetId = hostBack
+                ? hostBack->inputScopeId
+                : snapshot->activeInputScopeId;
         }
         if (contentRight - contentLeft >= 300.0F) {
             const float hostPromptWidth = hasBack ? 180.0F : 106.0F;

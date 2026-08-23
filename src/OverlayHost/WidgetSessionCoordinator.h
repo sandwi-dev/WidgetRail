@@ -74,6 +74,7 @@ enum class WidgetSessionTraceReason {
     ExistingRequest,
     NewerTarget,
     CheckpointFallback,
+    StaleBaseResynchronization,
     ShuttingDown,
 };
 
@@ -161,6 +162,8 @@ struct WidgetSessionOperationResult final {
     std::optional<Value> value;
     WidgetSessionFailureStage failureStage{WidgetSessionFailureStage::None};
     std::wstring safeError;
+    WidgetBridgeRequestFailureCategory requestFailureCategory{
+        WidgetBridgeRequestFailureCategory::None};
 
     [[nodiscard]] static WidgetSessionOperationResult Success(Value result) {
         return {std::move(result), WidgetSessionFailureStage::None, {}};
@@ -168,8 +171,11 @@ struct WidgetSessionOperationResult final {
 
     [[nodiscard]] static WidgetSessionOperationResult Failure(
         WidgetSessionFailureStage stage,
-        std::wstring safeError) {
-        return {std::nullopt, stage, std::move(safeError)};
+        std::wstring safeError,
+        WidgetBridgeRequestFailureCategory requestFailureCategory =
+            WidgetBridgeRequestFailureCategory::None) {
+        return {
+            std::nullopt, stage, std::move(safeError), requestFailureCategory};
     }
 };
 
@@ -177,8 +183,9 @@ struct WidgetSessionOperations final {
     std::function<WidgetSessionOperationResult<bool>(std::stop_token)> ensureStarted;
     std::function<WidgetSessionOperationResult<std::vector<WidgetDescriptor>>(
         std::stop_token)> listWidgets;
-    std::function<WidgetSessionOperationResult<WidgetSnapshot>(
-        std::stop_token, std::wstring_view, WidgetLifecycleState)> establish;
+    std::function<WidgetSessionOperationResult<WidgetPresentationPublication>(
+        std::stop_token, std::wstring_view, WidgetLifecycleState, long long, bool)>
+        establish;
     std::function<WidgetSessionOperationResult<bool>(
         std::stop_token, std::wstring_view, WidgetLifecycleState)> setLifecycle;
     std::function<WidgetSessionOperationResult<WidgetPresentationPublication>(
@@ -282,6 +289,11 @@ public:
 private:
     using RequestKind = WidgetSessionRequestKind;
 
+    enum class CheckpointAdmissionProvenance {
+        Ordinary,
+        TypedStaleBaseRecovery,
+    };
+
     struct QueueResult final {
         WidgetSessionTraceAction action{WidgetSessionTraceAction::Skipped};
         WidgetSessionTraceReason reason{WidgetSessionTraceReason::None};
@@ -307,6 +319,9 @@ private:
         std::wstring expectedPresentationGeneration;
         long long baseSequence{};
         bool allowUpdate{};
+        CheckpointAdmissionProvenance checkpointAdmissionProvenance{
+            CheckpointAdmissionProvenance::Ordinary};
+        long long recoveryOriginSequence{};
         std::uint64_t queuedAt{};
         std::uint64_t startedAt{};
     };
@@ -314,6 +329,8 @@ private:
     struct Completion final {
         Request request;
         WidgetSessionFailure failure;
+        WidgetBridgeRequestFailureCategory requestFailureCategory{
+            WidgetBridgeRequestFailureCategory::None};
         std::optional<std::vector<WidgetDescriptor>> descriptors;
         std::optional<WidgetSnapshot> snapshot;
         std::optional<WidgetPresentationUpdate> update;
@@ -325,6 +342,17 @@ private:
 
     [[nodiscard]] QueueResult Queue(Request request);
     [[nodiscard]] bool HasPending(RequestKind kind, std::wstring_view widgetId) const noexcept;
+    [[nodiscard]] static bool IsPresentationChanging(RequestKind kind) noexcept;
+    [[nodiscard]] static bool SamePresentationAuthority(
+        const Request& left,
+        const Request& right) noexcept;
+    [[nodiscard]] bool PresentationRequestBlockedLocked(
+        const Request& request) const noexcept;
+    [[nodiscard]] bool HasExecutableRequestLocked() const noexcept;
+    void ReleasePresentationAdmission(const Request& request) noexcept;
+    void QueueCoalescedRefreshAfterAdmission(
+        const Request& request,
+        bool refreshRequestedDuringAdmission);
     void SupersedeSnapshotRequests(
         std::wstring_view widgetId,
         WidgetLifecycleState lifecycle) noexcept;
@@ -369,6 +397,7 @@ private:
     std::condition_variable queueChanged_;
     std::deque<Request> pending_;
     std::deque<Completion> completed_;
+    std::unordered_map<std::wstring, Request> presentationAdmissions_;
     std::optional<Request> inFlight_;
     std::optional<std::stop_source> inFlightStop_;
     std::jthread worker_;

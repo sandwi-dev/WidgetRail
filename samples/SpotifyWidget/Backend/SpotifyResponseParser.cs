@@ -10,7 +10,6 @@ namespace WidgetRail.WindowsSpotifyProvider;
 /// </summary>
 internal static class SpotifyResponseParser
 {
-    private const int MaximumQueueItems = 100;
     private static readonly UTF8Encoding StrictUtf8 = new(false, true);
 
     internal static SpotifyProviderPlayback ParsePlayback(string body)
@@ -116,17 +115,17 @@ internal static class SpotifyResponseParser
                 currentElement.ValueKind == JsonValueKind.Object)
                 current = ParseMediaItem(currentElement);
             var queue = RequireArray(root, "queue");
-            var items = new List<SpotifyMediaItemSummary>(
-                Math.Min(queue.GetArrayLength(), MaximumQueueItems));
-            var truncated = queue.GetArrayLength() > MaximumQueueItems;
+            if (queue.GetArrayLength() > SpotifyApplicationContract.MaximumQueueItems)
+                throw Invalid($"Spotify returned more than the bounded " +
+                    $"{SpotifyApplicationContract.MaximumQueueItems}-item queue.");
+            var items = new List<SpotifyMediaItemSummary>(queue.GetArrayLength());
             foreach (var item in queue.EnumerateArray())
             {
-                if (items.Count == MaximumQueueItems) break;
                 if (item.ValueKind == JsonValueKind.Object &&
                     ParseMediaItem(item) is { } parsed)
                     items.Add(parsed);
             }
-            return new SpotifyQueueSummary(current, items, truncated);
+            return new SpotifyQueueSummary(current, items, false);
         }
         catch (SpotifyProviderException) { throw; }
         catch (JsonException exception)
@@ -162,7 +161,9 @@ internal static class SpotifyResponseParser
                     continue;
                 items.Add(ParsePlaylist(value));
             }
-            return new SpotifyPlaylistPageSummary(items, offset, limit, total);
+            return new SpotifyPlaylistPageSummary(
+                items, offset, limit, total,
+                HasAuthoritativeWindow: items.Count == values.GetArrayLength());
         }
         catch (SpotifyProviderException) { throw; }
         catch (JsonException exception)
@@ -186,8 +187,7 @@ internal static class SpotifyResponseParser
         }
     }
 
-    internal static SpotifyPlaylistItemsSummary ParsePlaylistItems(
-        SpotifyPlaylistSummary playlist,
+    internal static SpotifyPlaylistItemsPageSummary ParsePlaylistItems(
         string body,
         int requestedOffset,
         int requestedLimit)
@@ -216,7 +216,9 @@ internal static class SpotifyResponseParser
                     continue;
                 if (ParseMediaItem(item) is { } parsed) items.Add(parsed);
             }
-            return new SpotifyPlaylistItemsSummary(playlist, items, offset, limit, total);
+            return new SpotifyPlaylistItemsPageSummary(
+                items, offset, limit, total,
+                HasAuthoritativeWindow: items.Count == values.GetArrayLength());
         }
         catch (SpotifyProviderException) { throw; }
         catch (JsonException exception)

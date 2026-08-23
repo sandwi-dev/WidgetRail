@@ -741,9 +741,12 @@ static async Task WebApiCollections()
     Assert.Equal("https://open.spotify.com/playlist/playlist-1",
         playlists.Items[0].SpotifyUrl);
 
+    var playlist = await backend.GetSpotifyPlaylistAsync(
+        identity, "playlist-1", default);
+    Assert.True(playlist.IsCollaborative);
+
     var items = await backend.GetSpotifyPlaylistItemsAsync(
         identity, new SpotifyPlaylistItemsRequest("playlist-1", 0, 20), default);
-    Assert.True(items.Playlist.IsCollaborative);
     Assert.Equal("Next", items.Items[0].Title);
     Assert.Equal(0, apiRequests.Count);
 }
