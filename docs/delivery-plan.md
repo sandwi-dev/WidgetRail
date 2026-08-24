@@ -736,8 +736,32 @@ with `--show`. It is responsive as PID 28912 with unchanged executable SHA-256
 Bridge PID 34368 started session 1, and Spotify PID 128796 runs from the exact
 installed 0.3.23 path. The worker admitted current visible snapshots, the
 pinned Spotify surface was recreated, and the startup log has no candidate
-failure. Await the user's pinned Next/Previous queue verdict. Do not test or
-integrate before acceptance.
+failure.
+
+Physical disposition: 0.3.23 is rejected. With the pinned Up Next surface left
+visible, the queue remained Loading even though the new package diagnostic
+proved operation 1/generation 3 was admitted at `20:29:59.497Z`, acquired the
+provider gate immediately, issued HTTP attempt 1, and completed successfully in
+320 ms. Opening the ordinary Queue later publishes the already-loaded rows.
+Source inspection identifies the shared publication gap: `WidgetCursorResource`
+commits its terminal Ready/Error snapshot inside `LoadCoreAsync`, but the normal
+started-operation success/error path does not invalidate the owning widget after
+that commit. A later unrelated invalidation therefore exposes the terminal
+snapshot. The provider, deadline, and Spotify pinned projection are not the
+remaining cause.
+
+Produce one production-only 0.3.24 correction. Fix the generic public
+`WidgetCursorResource` owner so an accepted asynchronous cursor load publishes
+its Loading/Refreshing transition and its terminal Ready/empty/Error commit,
+without publishing a stale, superseded, canceled, reset, or destroying result
+and without duplicate invalidation storms. Keep one cursor/resource owner; do
+not add Spotify-specific SDK behavior, another queue timer, provider retry, or
+host projection special case. Use the existing package only as the physical
+proof: bump the immutable Spotify package version, build one coherent Release
+and package containing the corrected SDK, commit the production-only candidate,
+and stop before tests, install, launch, or integration. After planner source
+review, replace 0.3.23 and repeat the exact pinned Next/Previous sequence. Tests
+remain post-acceptance under physical-first ordering.
 
 ### DLV-294 generic pinned-layout projections
 
@@ -793,12 +817,13 @@ without explicit promotion.
 
 ## Ordered queues
 
-1. DLV-291 Spotify compact pinned layouts: cumulative 0.3.22 `e0fa1a3` +
-   `ca80217` + `8dd3a8d` is physically rejected because pinned Next/Previous can
-   leave Up Next indefinitely Loading. Production-only 0.3.23 `2031a8c` is
-   source-reviewed, installed as the sole active version, and visibly running
-   under PID 28912. Await the queue refresh/deadline/diagnostic verdict. No
-   tests or integration before that verdict.
+1. DLV-291 Spotify compact pinned layouts: versions through production-only
+   0.3.23 `2031a8c` are physically rejected. The 0.3.23 diagnostic proves the
+   queue request succeeds in 320 ms while the pinned presentation remains
+   Loading; source review identifies the generic `WidgetCursorResource`
+   terminal-invalidation gap. Assign production-only 0.3.24 as the shared SDK
+   correction and Spotify physical proof. No tests or integration before the
+   user verdict.
 2. DLV-474 fresh-session sequence-authority correction: retained correction
    passed its native gate, then the managed gate stopped on an opaque pre-test
    build red. Four diffs remain uncommitted; no rerun or repair is authorized.
@@ -811,9 +836,10 @@ without explicit promotion.
 7. DLV-248 remains deliberately deferred until explicit user promotion.
 
 DLV-473 production is accepted/integrated and its tests are post-acceptance
-work. DLV-291 versions through 0.3.22 are physically rejected overall. Exact-
-hash 0.3.23 is the sole installed active Spotify version under responsive PID
-28912 for physical review; no DLV-291 production is integrated.
+work. DLV-291 versions through 0.3.23 are physically rejected overall. Exact-
+hash 0.3.23 remains the sole installed active Spotify version under responsive
+PID 28912 only until the 0.3.24 correction is reviewed; no DLV-291 production is
+integrated.
 DLV-474 production is rejected before integration by deterministic
 fresh-session sequence evidence; its exact historical exit trigger remains
 unproven and retained diagnostics are ready for a future recurrence.
@@ -849,7 +875,7 @@ tests remain deferred.
 | DLV-292 | `ff5e7e4` binds each Bridge-cached snapshot to its worker start ordinal and uses existing typed stale-base recovery after replacement. Production build and three focused lifecycle/native gates passed; integrated as `80cdb10`. The user accepted PID 81980 by default because live reproduction is impractical. |
 | DLV-293 | Production `a9d36cf` is physically accepted and integrated as `10c3e26`; PID 137288 already contains that production tip. New catalog-removal/focus/Guide assertions completed before the focused host gate stopped on an older Game Launcher stationarity correlation. The pin-coordinator suite did not run; both uncommitted test diffs remain retained, with no rerun or Game Launcher repair authorized. |
 | DLV-474 | Production `a830f026` was provisionally accepted by user disposition because the historical bridge-session loss could not be reproduced, then rejected before integration when the first focused native gate proved fresh sequence 1 was compared against retained prior-session sequences 10/20. The retained correction passed 29 native coordinator scenarios plus linked native checks, then the managed diagnostic gate exited 1 during an opaque pre-test build. Four diffs remain uncommitted at identity `d14a224507d682e9c67f83860e713fe0118bb4dd`; no rerun or repair occurred. |
-| DLV-291 | Spotify versions through 0.3.22 are physically rejected overall. Production-only 0.3.23 `2031a8c` is source-reviewed; its Release/package builds passed with tests skipped. It adds internal redacted queue/provider-gate correlation and a 45-second whole-load deadline, using the existing cursor terminal path to retain last-good rows or publish recoverable error. Exact package `C29CA62EFF45C010DBEEF41F3A6CC71F898B476651B8E58E22E511C194F3659B` is the sole installed active Spotify version under responsive PID 28912; await physical verdict before tests or integration. |
+| DLV-291 | Spotify versions through production-only 0.3.23 `2031a8c` are physically rejected overall. Its redacted diagnostic proved the pinned queue load succeeded in 320 ms while the UI remained Loading; opening ordinary Queue later published the rows. The remaining defect is the generic `WidgetCursorResource` terminal-invalidation gap. Exact 0.3.23 remains installed under responsive PID 28912 only until production-only 0.3.24 is reviewed; no tests or integration before the next physical verdict. |
 | DLV-248 | Deferred until explicit user promotion. |
 
 ## Integrated reliability — DLV-292 fresh-worker virtual-window recovery
