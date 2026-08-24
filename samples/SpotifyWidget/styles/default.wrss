@@ -38,7 +38,12 @@
   flex-grow: 1;
   flex-shrink: 1;
 }
-.spotify-pinned-player-up-next { width: 0px; }
+.spotify-player-card.spotify-pinned-player-up-next {
+  width: 0px;
+  min-width: 280px;
+  flex-grow: 1;
+  flex-shrink: 1;
+}
 .spotify-pinned-queue {
   width: 280px;
   min-width: 240px;
