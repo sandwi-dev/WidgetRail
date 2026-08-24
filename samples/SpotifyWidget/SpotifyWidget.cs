@@ -243,7 +243,6 @@ public sealed class SpotifyWidget : Widget
     protected override async ValueTask OnDeactivatedAsync(CancellationToken transitionToken)
     {
         Interlocked.Increment(ref _activeGeneration);
-        lock (_gate) _upNextPinnedLayoutSelected = false;
         var tasks = new[] { _pollTask, _progressTask }
             .Where(task => task is not null).Cast<Task>().ToArray();
         _pollTask = null;
