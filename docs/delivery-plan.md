@@ -640,6 +640,19 @@ change still calls the existing bounded queue refresh owner exactly once, while
 switching away/unpinning prevents further queue demand. Change package code
 only, build once, and stop before install, tests, integration, or push.
 
+The same 0.3.22 correction also owns the active pinned-control ordering exposed
+by user review. Pressing Next in the focused pinned surface currently completes
+the provider control, calls `InvalidateQueueCollection` while `_playback` still
+identifies the old track, and only then calls `RefreshPlaybackAsync`. The 0.3.21
+generation guard can therefore reject the newly advanced queue against stale
+local playback, while the later authoritative playback transition starts a
+second competing queue refresh; the pinned projection remains at Loading.
+After Next/Previous, reconcile authoritative playback first and let the real
+identity transition invoke the existing queue invalidation exactly once. Do not
+start a pre-reconciliation queue refresh, weaken queue/playback correlation, or
+special-case the pinned renderer. Prove active pinned Next/Previous reaches a
+terminal refreshed or retained-error queue state and never remains Loading.
+
 ### DLV-294 generic pinned-layout projections
 
 Lane: widgets lead, serialized SDK/protocol/native-host prerequisite. Status:
@@ -700,8 +713,11 @@ without explicit promotion.
    `OnDeactivatedAsync` clears its selected-layout demand while the pin and
    unchanged host selection remain alive. Produce one immutable 0.3.22 package
    correction that preserves demand across ordinary deactivation and clears it
-   only on selection change/unpin or destruction/replacement. Build once and
-   stop before install, tests, or integration for reviewer inspection.
+   only on selection change/unpin or destruction/replacement. Also reorder
+   package-originated Next/Previous completion: fetch authoritative playback
+   before queue invalidation and let the identity transition refresh Queue once,
+   eliminating the stale-identity competing load that leaves pinned Up Next at
+   Loading. Build once and stop before install, tests, or integration.
 2. DLV-474 fresh-session sequence-authority correction: retained correction
    passed its native gate, then the managed gate stopped on an opaque pre-test
    build red. Four diffs remain uncommitted; no rerun or repair is authorized.
@@ -753,7 +769,7 @@ tests remain deferred.
 | DLV-292 | `ff5e7e4` binds each Bridge-cached snapshot to its worker start ordinal and uses existing typed stale-base recovery after replacement. Production build and three focused lifecycle/native gates passed; integrated as `80cdb10`. The user accepted PID 81980 by default because live reproduction is impractical. |
 | DLV-293 | Production `a9d36cf` is physically accepted and integrated as `10c3e26`; PID 137288 already contains that production tip. New catalog-removal/focus/Guide assertions completed before the focused host gate stopped on an older Game Launcher stationarity correlation. The pin-coordinator suite did not run; both uncommitted test diffs remain retained, with no rerun or Game Launcher repair authorized. |
 | DLV-474 | Production `a830f026` was provisionally accepted by user disposition because the historical bridge-session loss could not be reproduced, then rejected before integration when the first focused native gate proved fresh sequence 1 was compared against retained prior-session sequences 10/20. The retained correction passed 29 native coordinator scenarios plus linked native checks, then the managed diagnostic gate exited 1 during an opaque pre-test build. Four diffs remain uncommitted at identity `d14a224507d682e9c67f83860e713fe0118bb4dd`; no rerun or repair occurred. |
-| DLV-291 | Spotify versions through 0.3.21 are physically rejected overall. Clean 0.3.21 `77122d3` fixes the prior `missing_collection_anchor` runtime failure and adds bounded queue/playback generation correlation; exact-hash package `F6AE87ADDB82C8DA4C643130BD9009274AA9430D58E588C8BCD0E6A97628DB0D` is the sole installed active version under responsive PID 110872. User review confirms the runtime error is fixed but pinned Up Next stops refreshing after overlay deactivation until the main Queue page is opened. Source inspection proves `OnDeactivatedAsync` clears `_upNextPinnedLayoutSelected` while the pinned surface and unchanged host layout selection persist. Active 0.3.22 must preserve that demand across ordinary deactivation and revoke it only on selection change/unpin or runtime destruction/replacement. No tests or integration. |
+| DLV-291 | Spotify versions through 0.3.21 are physically rejected overall. Clean 0.3.21 `77122d3` fixes the prior `missing_collection_anchor` runtime failure and adds bounded queue/playback generation correlation; exact-hash package `F6AE87ADDB82C8DA4C643130BD9009274AA9430D58E588C8BCD0E6A97628DB0D` is the sole installed active version under responsive PID 110872. User review confirms the runtime error is fixed but pinned Up Next stops refreshing after overlay deactivation until main Queue is opened; source proves `OnDeactivatedAsync` wrongly clears persistent selected-layout demand. A second active-overlay reproduction shows pinned Next leaves Queue at Loading; source proves the command path invalidates Queue against stale pre-refresh `_playback` before authoritative playback reconciliation, then can start a competing identity-triggered refresh. Active 0.3.22 must fix both lifecycle and action ordering at package scope. No tests or integration. |
 | DLV-248 | Deferred until explicit user promotion. |
 
 ## Integrated reliability — DLV-292 fresh-worker virtual-window recovery
