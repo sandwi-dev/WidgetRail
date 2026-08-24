@@ -157,6 +157,23 @@ long long ComputeOpenWidgetSemanticRevision(
         revision ^= static_cast<std::uint16_t>(codeUnit);
         revision *= 1099511628211ULL;
     }
+    const auto hashText = [&](const std::wstring_view text) {
+        for (const wchar_t codeUnit : text) {
+            revision ^= static_cast<std::uint16_t>(codeUnit);
+            revision *= 1099511628211ULL;
+        }
+        revision ^= 0xffffU;
+        revision *= 1099511628211ULL;
+    };
+    revision ^= semantics.pinVisible ? 1U : 0U;
+    revision *= 1099511628211ULL;
+    revision ^= semantics.pinEnabled ? 1U : 0U;
+    revision *= 1099511628211ULL;
+    revision ^= semantics.pinSelected ? 1U : 0U;
+    revision *= 1099511628211ULL;
+    hashText(semantics.pinName);
+    hashText(semantics.pinValue);
+    hashText(semantics.pinTargetId);
     return static_cast<long long>(revision & 0x7fffffffffffffffULL);
 }
 
@@ -258,6 +275,22 @@ Tree BuildOpenWidgetTree(
         back.hostTargetId = semantics.backTargetId;
         back.keyboardFocusable = false;
         widgetTree.nodes.push_back(std::move(back));
+    }
+
+    if (semantics.pinVisible) {
+        Node pin;
+        pin.id = L"host.open.pin";
+        pin.domain = ElementDomain::HostShell;
+        pin.name = semantics.pinName;
+        pin.value = semantics.pinValue;
+        pin.bounds = semantics.pinBounds;
+        pin.role = Role::Button;
+        pin.hostAction = HostAction::TogglePinnedSurface;
+        pin.hostTargetId = semantics.pinTargetId;
+        pin.enabled = semantics.pinEnabled;
+        pin.selected = semantics.pinSelected;
+        pin.keyboardFocusable = false;
+        widgetTree.nodes.push_back(std::move(pin));
     }
 
     Node close;

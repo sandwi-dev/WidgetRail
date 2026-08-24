@@ -1807,9 +1807,11 @@ Unknown capability IDs are syntactically valid at manifest parse time but an
 installed package declaring unsupported authority is omitted by the bridge.
 Use only the published closed IDs above.
 
-For a supporting widget, open its full surface and press `P` to request the
-single host-owned pinned surface. It starts click-through; a second `P` while
-the same widget is open explicitly makes it Interactive, and `U` unpins it.
+For a supporting widget, open its full surface and use the host-owned Pin action
+in the guide (pointer, UI Automation, or `LB`+`RB`+right-stick), with `P` as the
+keyboard fallback. It starts click-through; a second `P` or a bare right-stick
+click while the same widget is open explicitly makes it Interactive. Use the
+guide's Unpin action, the same controller chord, or `U` to unpin it.
 Overlay close preserves the surface but restores click-through. Package
 removal/replacement, worker restart/loss, pinned close, and host exit tear it
 down. Authors publish ordinary immutable snapshots and lifecycle behavior only;

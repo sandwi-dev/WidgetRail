@@ -33,6 +33,13 @@ struct OpenWidgetSemantics final {
     declarative::Rect helpBounds;
     std::wstring status;
     declarative::Rect statusBounds;
+    bool pinVisible{};
+    bool pinEnabled{};
+    bool pinSelected{};
+    std::wstring pinName;
+    std::wstring pinValue;
+    std::wstring pinTargetId;
+    declarative::Rect pinBounds;
 };
 
 /// Mirrors managed open-widget B resolution for the exact active scope and

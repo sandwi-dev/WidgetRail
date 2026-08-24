@@ -4,6 +4,7 @@
   "publisher": "widgetrail.firstparty",
   "name": "Now Playing",
   "version": "0.1.0",
+  "pinningSupported": true,
   "hostApi": {
     "minimum": "1.0",
     "maximumMajor": 1

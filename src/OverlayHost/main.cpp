@@ -4712,6 +4712,66 @@ private:
         bool activate{};
     };
 
+    struct CurrentPinActionState final {
+        bool visible{};
+        bool enabled{};
+        bool selected{};
+        std::wstring name;
+        std::wstring value;
+        std::wstring targetId;
+        std::wstring guideLabel;
+    };
+
+    [[nodiscard]] CurrentPinActionState CurrentPinAction() const {
+        CurrentPinActionState action;
+        if (state_.surface() != widgetrail::Surface::Widget ||
+            state_.focusRegion() != widgetrail::FocusRegion::Widget) {
+            return action;
+        }
+
+        action.visible = true;
+        action.targetId = std::wstring{state_.activeWidget()};
+        const auto* descriptor = sessions_.FindDescriptor(action.targetId);
+        const bool samePinnedWidget = pinnedSurfaceCoordinator_.pinned() &&
+            pinnedSurfaceCoordinator_.widgetId() == action.targetId;
+        if (samePinnedWidget) {
+            action.enabled = true;
+            action.selected = true;
+            action.name = L"Unpin " + std::wstring{DisplayWidgetName(action.targetId)};
+            action.value = pinnedSurfaceCoordinator_.interactionMode() ==
+                    widgetrail::pinned::InteractionMode::Focusable
+                ? L"Pinned, Interactive"
+                : L"Pinned, Click-through";
+            action.guideLabel = L"Unpin";
+            return action;
+        }
+        if (pinnedSurfaceCoordinator_.pinned()) {
+            action.name = L"Pin unavailable";
+            action.value = L"Another widget is pinned";
+            action.guideLabel = L"Pin unavailable";
+            return action;
+        }
+        if (!descriptor || !descriptor->pinningSupported) {
+            action.name = L"Pin unavailable";
+            action.value = descriptor
+                ? L"This widget does not support pinning"
+                : L"The current widget is unavailable";
+            action.guideLabel = L"Pin unavailable";
+            return action;
+        }
+        if (!SnapshotFor(action.targetId)) {
+            action.name = L"Pin unavailable";
+            action.value = L"The current widget is still loading";
+            action.guideLabel = L"Pin unavailable";
+            return action;
+        }
+        action.enabled = true;
+        action.name = L"Pin " + std::wstring{DisplayWidgetName(action.targetId)};
+        action.value = L"Not pinned; creates a Click-through surface";
+        action.guideLabel = L"Pin";
+        return action;
+    }
+
     [[nodiscard]] std::optional<widgetrail::CompositionMotionPlan>
     CurrentCompositionMotionPlan() const {
         if (!compositionSurface_.available()) return std::nullopt;
@@ -4922,11 +4982,30 @@ private:
         const auto trayPoint = childSpaces
             ? widgetrail::InverseTrayPoint(*childSpaces, {clientX, clientY})
             : widgetrail::CompositionPoint{clientX, clientY};
+        const auto guidePoint = childSpaces
+            ? widgetrail::InverseGuidePoint(*childSpaces, {clientX, clientY})
+            : widgetrail::CompositionPoint{clientX, clientY};
         const float trayPixelsPerDip = compositionChromeSession_
             ? compositionChromeSession_->pixelsPerDip
             : metrics->physicalPixelsPerDip;
         const float trayX = trayPoint.x / trayPixelsPerDip;
         const float trayY = trayPoint.y / trayPixelsPerDip;
+        const float guideX = guidePoint.x / trayPixelsPerDip;
+        const float guideY = guidePoint.y / trayPixelsPerDip;
+
+        const auto contains = [](const float pointX, const float pointY,
+                                 const widgetrail::declarative::Rect& bounds) {
+            return pointX >= bounds.x && pointY >= bounds.y &&
+                pointX <= bounds.x + bounds.width &&
+                pointY <= bounds.y + bounds.height;
+        };
+        if (openWidgetAccessibility_.pinVisible &&
+            openWidgetAccessibility_.pinEnabled &&
+            openWidgetAccessibility_.pinTargetId == state_.activeWidget() &&
+            contains(guideX, guideY, openWidgetAccessibility_.pinBounds)) {
+            ToggleCurrentPinState();
+            return;
+        }
 
         if (state_.surface() == widgetrail::Surface::Widget) {
             const std::wstring widget{state_.activeWidget()};
@@ -5060,6 +5139,78 @@ private:
         return fallbackTray && contains(trayX, trayY, fallbackTray->stripBounds);
     }
 
+    void PinCurrentSurface() {
+        if (pinnedSurfaceCoordinator_.pinned()) return;
+        if (state_.surface() != widgetrail::Surface::Widget) {
+            lastActionWidgetId_.clear();
+            lastActionMessage_ = L"Open a pinnable widget before pressing P";
+            lastActionExpiresAt_ = GetTickCount64() + 3000;
+            InvalidateRect(window_, nullptr, FALSE);
+            return;
+        }
+        const std::wstring widgetId(state_.activeWidget());
+        const auto* descriptor = sessions_.FindDescriptor(widgetId);
+        const auto* snapshot = SnapshotFor(widgetId);
+        if (!descriptor || !descriptor->pinningSupported || !snapshot) {
+            lastActionWidgetId_ = widgetId;
+            lastActionMessage_ = descriptor && descriptor->pinningSupported
+                ? L"Pinned surface unavailable until the widget has loaded"
+                : L"This widget does not support pinned surfaces";
+            lastActionExpiresAt_ = GetTickCount64() + 4000;
+            InvalidateRect(window_, nullptr, FALSE);
+            return;
+        }
+        std::wstring error;
+        if (!pinnedSurfaceCoordinator_.Pin({
+                descriptor->id,
+                descriptor->instanceId,
+                descriptor->runtimeGeneration,
+                descriptor->presentationGeneration,
+                descriptor->name,
+                descriptor->pinningSupported,
+                *snapshot,
+            }, error)) {
+            lastActionWidgetId_ = widgetId;
+            lastActionMessage_ = error;
+            lastActionExpiresAt_ = GetTickCount64() + 4000;
+            AppendDiagnostic(L"Pinned surface rejected for " + widgetId + L": " + error);
+            InvalidateRect(window_, nullptr, FALSE);
+            return;
+        }
+        lastActionWidgetId_ = widgetId;
+        lastActionMessage_ =
+            L"Pinned click-through surface created. Press P to interact or U to unpin.";
+        lastActionExpiresAt_ = GetTickCount64() + 5000;
+        SyncWidgetActivity();
+        AppendDiagnostic(L"Pinned surface created for " + widgetId);
+        InvalidateRect(window_, nullptr, FALSE);
+    }
+
+    void ToggleCurrentPinState() {
+        const auto action = CurrentPinAction();
+        if (!action.visible || !action.enabled) {
+            if (action.visible) {
+                lastActionWidgetId_ = action.targetId;
+                lastActionMessage_ = action.value;
+                lastActionExpiresAt_ = GetTickCount64() + 4000;
+                InvalidateRect(window_, nullptr, FALSE);
+            }
+            return;
+        }
+        if (action.selected) {
+            (void)pinnedSurfaceCoordinator_.Unpin(
+                widgetrail::pinned::WidgetSurfaceStopReason::Unpin);
+            lastActionWidgetId_ = action.targetId;
+            lastActionMessage_ = L"Pinned surface removed";
+            lastActionExpiresAt_ = GetTickCount64() + 2400;
+            SyncWidgetActivity();
+            AppendDiagnostic(L"Pinned surface removed for " + action.targetId);
+            InvalidateRect(window_, nullptr, FALSE);
+            return;
+        }
+        PinCurrentSurface();
+    }
+
     void ToggleCurrentPinnedSurface() {
         if (pinnedSurfaceCoordinator_.pinned()) {
             const std::wstring widgetId(pinnedSurfaceCoordinator_.widgetId());
@@ -5087,50 +5238,7 @@ private:
             }
             return;
         }
-        if (state_.surface() != widgetrail::Surface::Widget) {
-            lastActionWidgetId_.clear();
-            lastActionMessage_ = L"Open a pinnable widget before pressing P";
-            lastActionExpiresAt_ = GetTickCount64() + 3000;
-            InvalidateRect(window_, nullptr, FALSE);
-            return;
-        }
-        const std::wstring widgetId(state_.activeWidget());
-        const auto* descriptor = sessions_.FindDescriptor(widgetId);
-        const auto* snapshot = SnapshotFor(widgetId);
-        if (!descriptor ||
-            !descriptor->pinningSupported || !snapshot) {
-            lastActionWidgetId_ = widgetId;
-            lastActionMessage_ = descriptor &&
-                    descriptor->pinningSupported
-                ? L"Pinned surface unavailable until the widget has loaded"
-                : L"This widget does not support pinned surfaces";
-            lastActionExpiresAt_ = GetTickCount64() + 4000;
-            InvalidateRect(window_, nullptr, FALSE);
-            return;
-        }
-        std::wstring error;
-        if (!pinnedSurfaceCoordinator_.Pin({
-                descriptor->id,
-                descriptor->instanceId,
-                descriptor->runtimeGeneration,
-                descriptor->presentationGeneration,
-                descriptor->name,
-                descriptor->pinningSupported,
-                *snapshot,
-            }, error)) {
-            lastActionWidgetId_ = widgetId;
-            lastActionMessage_ = error;
-            lastActionExpiresAt_ = GetTickCount64() + 4000;
-            AppendDiagnostic(L"Pinned surface rejected for " + widgetId + L": " + error);
-            InvalidateRect(window_, nullptr, FALSE);
-            return;
-        }
-        lastActionWidgetId_ = widgetId;
-        lastActionMessage_ = L"Pinned click-through surface created. Press P to interact or U to unpin.";
-        lastActionExpiresAt_ = GetTickCount64() + 5000;
-        SyncWidgetActivity();
-        AppendDiagnostic(L"Pinned surface created for " + widgetId);
-        InvalidateRect(window_, nullptr, FALSE);
+        PinCurrentSurface();
     }
 
     void DrainPinnedSurfaceInputs() {
@@ -5962,6 +6070,17 @@ private:
             EmergencyHidePinnedSurfaces();
             return;
         }
+        const auto pinAction = CurrentPinAction();
+        const bool pinChordPressed =
+            (pressed & XINPUT_GAMEPAD_RIGHT_THUMB) != 0 &&
+            (buttons & XINPUT_GAMEPAD_LEFT_SHOULDER) != 0 &&
+            (buttons & XINPUT_GAMEPAD_RIGHT_SHOULDER) != 0;
+        if (pinChordPressed && pinAction.enabled &&
+            pinnedSurfaceCoordinator_.placementMode() ==
+                widgetrail::pinned::PlacementMode::None) {
+            ToggleCurrentPinState();
+            return;
+        }
         constexpr WORD recoveryChord = XINPUT_GAMEPAD_BACK | XINPUT_GAMEPAD_START;
         const bool recoveryChordDown = (buttons & recoveryChord) == recoveryChord;
         if (frame.recoveryChordPressed != WRAIL_OVERLAY_PLATFORM_FALSE) {
@@ -6410,6 +6529,15 @@ private:
                             });
                         }
                     }
+                } else if (request.hostAction ==
+                           widgetrail::accessibility::HostAction::TogglePinnedSurface) {
+                    const auto pinAction = CurrentPinAction();
+                    if (request.kind != widgetrail::accessibility::ActionKind::Invoke ||
+                        !pinAction.visible || !pinAction.enabled ||
+                        request.hostTargetId != pinAction.targetId ||
+                        request.widgetId != pinAction.targetId)
+                        continue;
+                    ToggleCurrentPinState();
                 } else if (request.hostAction ==
                            widgetrail::accessibility::HostAction::CloseOverlay) {
                     if (request.kind != widgetrail::accessibility::ActionKind::Invoke ||
@@ -8936,6 +9064,11 @@ private:
         } else {
             if (const auto status = OpenWidgetStatus()) key += L"\n" + *status;
             key += L"\n" + OpenWidgetPrompt();
+            const auto pinAction = CurrentPinAction();
+            key += L"\npin=" + pinAction.targetId + L":" + pinAction.name + L":" +
+                pinAction.value + L":" +
+                (pinAction.enabled ? L"enabled" : L"disabled") + L":" +
+                (pinAction.selected ? L"selected" : L"unselected");
             if (const auto* snapshot = GuideSnapshotFor(state_.activeWidget()))
                 key += L"\n" + snapshot->activeInputScopeId;
         }
@@ -9832,9 +9965,23 @@ private:
             widgetrail::accessibility::HasActiveScopeBackShortcut(
                 *snapshot, interactionSession_.focusedElementId());
         const bool hasBack = rootScope || nestedBack || hostBack.has_value();
-        const std::wstring hostPrompt = hasBack
-            ? L"B  Back     Guide  Close"
-            : L"Guide  Close";
+        const auto pinAction = CurrentPinAction();
+        openWidgetAccessibility_.pinVisible = pinAction.visible;
+        openWidgetAccessibility_.pinEnabled = pinAction.enabled;
+        openWidgetAccessibility_.pinSelected = pinAction.selected;
+        openWidgetAccessibility_.pinName = pinAction.name;
+        openWidgetAccessibility_.pinValue = pinAction.value;
+        openWidgetAccessibility_.pinTargetId = pinAction.targetId;
+        const std::wstring pinPrompt = pinAction.visible
+            ? L"LB+RB+RS  " + pinAction.guideLabel
+            : std::wstring{};
+        std::wstring hostPrompt = pinPrompt;
+        if (hasBack) {
+            if (!hostPrompt.empty()) hostPrompt += L"     ";
+            hostPrompt += L"B  Back";
+        }
+        if (!hostPrompt.empty()) hostPrompt += L"     ";
+        hostPrompt += L"Guide  Close";
         if (hasBack) {
             openWidgetAccessibility_.backAction = rootScope || hostBack
                 ? widgetrail::accessibility::HostAction::BackToTray
@@ -9843,8 +9990,12 @@ private:
                 ? hostBack->inputScopeId
                 : snapshot->activeInputScopeId;
         }
-        if (contentRight - contentLeft >= 300.0F) {
-            const float hostPromptWidth = hasBack ? 180.0F : 106.0F;
+        if (contentRight - contentLeft >= 420.0F) {
+            const float pinPromptWidth = pinAction.visible ? 150.0F : 0.0F;
+            const float backPromptWidth = hasBack ? 74.0F : 0.0F;
+            const float closePromptWidth = 106.0F;
+            const float hostPromptWidth = pinPromptWidth + backPromptWidth +
+                closePromptWidth;
             const float hostPromptLeft = contentRight - hostPromptWidth;
             const widgetrail::declarative::Rect promptBounds{
                 contentLeft, textTop,
@@ -9858,17 +10009,26 @@ private:
                 openWidgetAccessibility_.help = help;
                 openWidgetAccessibility_.helpBounds = promptBounds;
             }
+            float actionLeft = hostPromptLeft;
+            if (pinAction.visible) {
+                openWidgetAccessibility_.pinBounds = {
+                    actionLeft, textTop, pinPromptWidth, textBottom - textTop,
+                };
+                actionLeft += pinPromptWidth;
+            }
             if (hasBack) {
                 openWidgetAccessibility_.backBounds = {
-                    hostPromptLeft, textTop, 74.0F, textBottom - textTop,
+                    actionLeft, textTop, backPromptWidth, textBottom - textTop,
                 };
+                actionLeft += backPromptWidth;
                 openWidgetAccessibility_.closeBounds = {
-                    hostPromptLeft + 74.0F, textTop,
-                    contentRight - hostPromptLeft - 74.0F, textBottom - textTop,
+                    actionLeft, textTop, contentRight - actionLeft,
+                    textBottom - textTop,
                 };
             } else {
                 openWidgetAccessibility_.closeBounds = {
-                    hostPromptLeft, textTop, hostPromptWidth, textBottom - textTop,
+                    actionLeft, textTop, contentRight - actionLeft,
+                    textBottom - textTop,
                 };
             }
             DrawTextLine(prompt, hintFormat_.Get(),
@@ -9882,17 +10042,33 @@ private:
         } else {
             // At narrow logical widths retain the hierarchy/escape affordance;
             // widget action labels remain discoverable on larger surfaces.
-            const float halfWidth = footerBounds.width * 0.5F;
+            const int actionCount = 1 + (hasBack ? 1 : 0) +
+                (pinAction.visible ? 1 : 0);
+            const float actionWidth = footerBounds.width /
+                static_cast<float>(actionCount);
+            float actionLeft = footerBounds.x;
+            if (pinAction.visible) {
+                openWidgetAccessibility_.pinBounds = {
+                    actionLeft, footerBounds.y, actionWidth, footerBounds.height,
+                };
+                actionLeft += actionWidth;
+            }
             if (hasBack) {
                 openWidgetAccessibility_.backBounds = {
-                    footerBounds.x, footerBounds.y, halfWidth, footerBounds.height,
+                    actionLeft, footerBounds.y, actionWidth, footerBounds.height,
                 };
+                actionLeft += actionWidth;
                 openWidgetAccessibility_.closeBounds = {
-                    footerBounds.x + halfWidth, footerBounds.y,
-                    footerBounds.width - halfWidth, footerBounds.height,
+                    actionLeft, footerBounds.y,
+                    footerBounds.x + footerBounds.width - actionLeft,
+                    footerBounds.height,
                 };
             } else {
-                openWidgetAccessibility_.closeBounds = footerBounds;
+                openWidgetAccessibility_.closeBounds = {
+                    actionLeft, footerBounds.y,
+                    footerBounds.x + footerBounds.width - actionLeft,
+                    footerBounds.height,
+                };
             }
             DrawTextLine(hostPrompt, hintFormat_.Get(),
                          D2D1::RectF(contentLeft, textTop, contentRight, textBottom),

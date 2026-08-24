@@ -1,10 +1,10 @@
 # Host-owned pinned surfaces
 
-Status: DLV-058 implements the first bounded generic lifecycle on the Win32
-tool-window architecture selected by DLV-011. A widget opts in with the
-data-only `pinningSupported` manifest flag. The host alone creates, renders,
-orders, focuses, and destroys the native surface; no HWND or native authority
-is exposed to widget code.
+Status: the bounded generic lifecycle is available on the Win32 tool-window
+architecture selected by DLV-011. A widget opts in with the data-only
+`pinningSupported` manifest flag. The host alone creates, renders, orders,
+focuses, and destroys the native surface; no HWND or native authority is
+exposed to widget code.
 
 ## Decision
 
@@ -47,15 +47,19 @@ provider.
 
 Only one surface may be pinned in this first bounded release:
 
-1. open a supporting widget and press `P`; the new peer surface starts in
-   nonactivating click-through mode and the main overlay keeps controller focus;
+1. open a supporting widget and choose the host-owned Pin action in the guide,
+   invoke its UI Automation button, click it, press `LB`+`RB`+right-stick, or
+   use the `P` keyboard fallback; the new peer surface starts in nonactivating
+   click-through mode and the main overlay keeps controller focus;
 2. while that widget remains open in the main overlay, press `P` or controller
    right-stick click to enter the pinned surface. D-pad/stick navigation and
    `A` then use the exact current widget generation; `B` or another right-stick
    click returns focus to the overlay and restores Click-through;
-3. press `U`, use the pinned Interactive chrome, close the pinned window, remove
-   or replace its package generation, restart its worker, or exit the host to
-   perform one exact paired HWND/semantic teardown;
+3. choose the same guide action when it says Unpin, invoke or click that action,
+   press `LB`+`RB`+right-stick again, use the `U` keyboard fallback, use the
+   pinned Interactive chrome, close the pinned window, remove or replace its
+   package generation, restart its worker, or exit the host to perform one
+   exact paired HWND/semantic teardown;
 4. closing the main overlay preserves the current declarative content and keeps
    repainting accepted snapshot replacements, but always returns the surface to
    click-through. Reopen the main overlay before explicitly restoring
@@ -87,7 +91,10 @@ not discoverable. Safe action failures publish one bounded assertive live status
 High contrast uses Windows system colors; reduced-motion rendering remains
 immediate with no new ambient animation or timer.
 
-Unsupported widgets retain their existing behavior. Omitted
+The guide and accessibility action report Not pinned, Pinned Click-through,
+Pinned Interactive, still loading, unsupported, or the one-surface capacity
+state from current host authority. Unsupported widgets retain their existing
+behavior. Omitted
 `pinningSupported` is exactly `false`, a wrong JSON type fails manifest parsing,
 and admission failures produce bounded host diagnostics rather than a fallback
 window. Worker loss, stale runtime or presentation generations, catalog
