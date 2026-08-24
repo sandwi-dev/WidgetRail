@@ -2698,7 +2698,19 @@ private:
             if (state_.surface() != widgetrail::Surface::Hidden && window_)
                 InvalidateRect(window_, nullptr, FALSE);
         }
-        if (state_.surface() != widgetrail::Surface::Hidden && window_) {
+        bool catalogPlacementReady = true;
+        if (catalogOrderChanged &&
+            state_.surface() != widgetrail::Surface::Hidden && window_) {
+            // A catalog-order refresh retires the fixed-chrome anchor and its
+            // composition session. Re-establish that existing placement
+            // transaction against the new order before the synchronous paint;
+            // otherwise the content draw observes no authoritative chrome
+            // session and incorrectly disables DirectComposition.
+            catalogPlacementReady =
+                ShowOverlay(true) == OverlayShowResult::Shown;
+        }
+        if (catalogPlacementReady &&
+            state_.surface() != widgetrail::Surface::Hidden && window_) {
             // Catalog events and pointer messages share this UI thread. Commit
             // the replacement tray before returning to the message queue so
             // old pixels can never dispatch through new slot geometry.
