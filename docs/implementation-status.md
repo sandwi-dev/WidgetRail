@@ -5723,3 +5723,13 @@ layout test host drives selection, restoration, revocation, immutable snapshot
 replacement, and exact projection action routing without adding native or
 protocol ownership. The low-level protocol-v21 layout factory and callback
 remain compatible.
+
+### DLV-298 — Spotify typed pinned-layout adoption
+
+Spotify 0.3.25 registers its Compact and Up Next projections once through the
+public `PinnedLayoutHandle` API and presents only their current declarative
+roots. The SDK owns selected identity and cancellation for the package; Spotify
+retains only the existing queue-demand start/reset reaction and no longer
+mirrors selected layout state in a package boolean or string comparison. The
+projection trees, Full widget fallback, queue/provider lifecycle, controls,
+focus graph, account configuration, and credential boundaries are unchanged.

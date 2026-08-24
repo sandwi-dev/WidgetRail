@@ -39,8 +39,10 @@ When pinned, Spotify contributes **Compact now playing** and **Now playing +
 up next** beside the host's always-available **Full widget** fallback. Both
 projections reuse the ordinary playback snapshot, artwork, progress, transport,
 and focus actions. The up-next projection admits the existing bounded queue
-demand only while that layout is selected; deselection, removal, deactivation,
-and destruction revoke that demand without adding another provider or poller.
+demand through its SDK-owned typed pinned-layout handle only while that layout is
+selected. Selection revocation, removal, runtime replacement, unpin, and
+destruction revoke that demand without adding another provider or poller;
+ordinary overlay deactivation does not revoke a still-selected pinned surface.
 
 Internally, one non-partial widget owns lifecycle, provider calls, resources,
 committed state, and invalidation. Closed value-only policies classify authored
