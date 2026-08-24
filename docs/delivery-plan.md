@@ -42,15 +42,15 @@ historical evidence only; this file is the sole implementation authority.
   its accepted production commit is integrated. For DLV-286 review, PID 144052
   exposed no closable main window; the reviewer reverified its exact executable
   path and force-stopped only that planner-owned process.
-- DLV-286 candidate `d0ca29b` was physically rejected after Spotify started as
-  worker PID 71612, failed its first visible lifecycle request with
-  `worker-transport-failed`, and exited with code 1. Responsive OverlayHost PID
-  80988 remains the exact rejected evidence process; executable SHA-256 is
-  `A694909AAD4F8A75464BCAE7BFF665084637AD1E5309C864D1DC802D45AF9FFE`.
-  The commit is not integrated. Other generic workers admitted immediately
-  before and after Spotify, and Spotify's package-local diagnostics contain an
-  earlier pre-DLV-286 `exit-1`, so causation is not attributed to the framework
-  deletion without isolation evidence.
+- DLV-286 candidate `d0ca29b` was physically rejected after Spotify worker PID
+  71612 failed its first visible lifecycle request and exited 1. Follow-up
+  `058efbc` proved the source deletion was not causal and corrected Bridge plus
+  generic WorkerHost publication under `-SkipPackaging`, but its visible PID
+  103768 was also rejected when the stale bundled Settings worker exited 1 on
+  its first lifecycle request. Both commits remain unintegrated. Exact rejected
+  PIDs 80988 and 103768 have been stopped after evidence capture. The complete
+  host-launched managed runtime graph now requires one coherent build-boundary
+  correction before another physical candidate.
 - DLV-318 is the exact recoverable prior accepted Release at
   `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative-dlv318-build`;
   executable SHA-256 is
@@ -67,7 +67,7 @@ historical evidence only; this file is the sole implementation authority.
 
 | Lane | Task/worktree | State |
 | --- | --- | --- |
-| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | DLV-286 production `d0ca29b` is physically rejected and unintegrated. A bounded one-pass Spotify worker-start correction is Assigned on top of that exact commit; PID 80988 is retained only as rejected runtime evidence until a reviewed replacement exists. |
+| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | DLV-286 `d0ca29b` and incomplete artifact-coherence follow-up `058efbc` are physically rejected and unintegrated. A complete host-runtime-graph build correction is Assigned on top of `058efbc`; no candidate is running. |
 | Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | DLV-285 production `ccb46e7` is physically accepted/integrated; Game Launcher tests are explicitly deferred and the lane is idle for the user's future package plans. |
 
 ## Execution rules
@@ -516,13 +516,40 @@ the first unrelated red, and do not run Tier 3 or any Game Launcher widget test.
 The replacement must prove Spotify can cold-start, publish its first ordinary
 snapshot, survive one bounded retry/reopen path, and leave neighboring generic
 workers usable. Do not install/reset package state, alter credentials/accounts,
-push, touch Avalonia/AVP, integrate, or terminate PID 80988; the reviewer owns
-physical replacement after source/build review.
+push, touch Avalonia/AVP, integrate, or control live product processes; the
+reviewer owns physical replacement after source/build review.
+
+First correction `058efbc` is clean on exact parent `d0ca29b`. It correctly
+makes Bridge and generic WorkerHost outputs purge-and-publish even under
+`-SkipPackaging`; an isolated production build exited 0 and its focused Spotify
+cold-start/reopen/generic-neighbor scenario passed 1/1. Physical launch then
+exposed that the correction was incomplete: bundled Settings output still
+dated from before the current protocol graph, its worker exited 1 immediately,
+and Settings reported `worker-runtime-failed`. PID 103768 closed gracefully and
+is gone; `058efbc` remains rejected and unintegrated.
+
+Assigned complete correction: treat `-SkipPackaging` as skipping only Community
+package publication, never host runtime generation. On top of `058efbc`, split
+the build seam so every host-launched managed runtime is purged and regenerated
+coherently: Bridge, generic WorkerHost, Settings, Audio Mixer, Network Controls,
+Games & Apps, and Media Sessions, plus deterministic removal of retired trusted
+Game Launcher, Spotify playback-host, and YT Music output locations. Inventory
+the actual catalog/runtime paths first and cover the whole finite set in one
+patch; do not return another single-worker fix. Preserve package publication
+skip semantics and do not build, edit, or run Game Launcher widget tests. Add
+one bounded artifact-coherence/startup scenario that proves fresh current
+protocol/runtime assemblies for every host-owned runtime, successful first
+snapshots for all bundled workers, Spotify cold-start plus one reopen, and one
+independent generic full-trust neighbor. Production build first, then that one
+focused scenario; no Tier 3 or broad aggregate. Every command must emit output
+or be inspected by 60 seconds. Do not touch installed state, credentials,
+accounts, Avalonia/AVP, reviewer docs, or push. Commit one coherent follow-up;
+the reviewer owns visible replacement and integration.
 
 ## Future architecture queue — maturity review additions
 
-Status: the bounded DLV-286 Spotify worker-start correction is assigned; later
-items are ordered future work and are not assigned.
+Status: the complete DLV-286 host-runtime-graph build correction is assigned;
+later items are ordered future work and are not assigned.
 
 1. One authoritative model-level protocol-version calculator shared by SDK
    snapshot creation and raw validation, with exact gated-node/property
@@ -540,9 +567,9 @@ Extract native authorities only when real work touches them.
 
 ## Ordered queues
 
-1. DLV-286 correction: isolate and fix the Spotify worker exit-1 observed during
-   the physical verdict, then return one coherent replacement for the otherwise
-   reviewed LauncherExperience/AdvancedPresentation deletion.
+1. DLV-286 correction: make every host-launched managed runtime artifact
+   coherent under `-SkipPackaging`, then return one replacement for the
+   otherwise reviewed LauncherExperience/AdvancedPresentation deletion.
 2. Protocol requirements; then the remaining maturity deliverables.
 3. DLV-248 remains deliberately deferred until explicit user promotion.
 
@@ -569,7 +596,7 @@ There is no concurrent Ready production work in either standing lane.
 | Audio Mixer synthetic focus | Final Tier 3 passed 44/45 then retained Master after synthetic Down; unrelated source was previously green, so no unchanged rerun is authorized. |
 | DLV-284 | `21c3b8b` + `86d6532` integrated as `7f31e04`; compatibility `60130b4` as `052a392`; correlation/redaction `f583f40` + `ac79ed0` as `8ac55d`. The cumulative diagnostic stack is accepted only with metadata-only correction `a65228c`, integrated as `12728a2`; production build and two direct one-case gates passed, no Tier-3 rerun. The user physically accepted coherent PID 133304. |
 | DLV-285 | Production `ccb46e7` from exact baseline `12728a2` is physically accepted and integrated as `609d34e`; package and Release builds exited 0. Game Launcher 0.2.1 is installed/full-trust enabled. Accepted PID 144052 was replaced only for DLV-286 physical review. Widget tests are explicitly deferred for future package work. |
-| DLV-286 | Production `d0ca29b` from exact baseline `609d34e` is clean and its affected production builds/focused non-Game-Launcher checks passed, but the physical verdict rejected it when Spotify worker PID 71612 failed its first visible lifecycle request and exited 1. It remains unintegrated. A one-pass correction is Assigned; PID 80988 is retained only as exact rejected evidence. The dedicated Game Launcher test project remains untouched/deferred, and the broader Bridge aggregate must not be repeated. |
+| DLV-286 | Production `d0ca29b` and artifact-coherence follow-up `058efbc` are clean but physically rejected/unintegrated: the first launched stale Bridge/runtime outputs and lost Spotify; the second refreshed Bridge/WorkerHost but left stale bundled Settings output, whose worker exited 1. PIDs 80988 and 103768 are stopped. A complete finite host-runtime-graph correction is Assigned. The dedicated Game Launcher test project remains untouched/deferred, and the broader Bridge aggregate must not be repeated. |
 | DLV-248 | Deferred until explicit user promotion. |
 
 ## Recent dispositions
