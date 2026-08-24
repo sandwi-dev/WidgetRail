@@ -916,6 +916,15 @@ host special cases, Game Launcher, Avalonia/AVP, and push. Stop for a second
 presentation authority, unbounded retention, destructive state, a public
 compatibility choice, substantial conflict, or triggers owned outside setup.
 
+Candidate `32ce34f` is rejected before launch. Its production implementation and
+packaged Release build are otherwise reviewable, but adding `PinnedLayouts` as
+a sixth positional `WidgetView` parameter removes the accepted public
+constructor and `Deconstruct` signatures. The active DLV-288 SDK evolution
+contract classifies that as a breaking change rather than DLV-290's optional
+compatible addition. The platform lane is correcting only this boundary by
+preserving the five-parameter positional record API and exposing the catalog as
+an additive init property; physical review and all tests remain pending.
+
 ### DLV-291 Spotify compact pinned layouts
 
 Lane: widgets. Status: Awaiting accepted/integrated DLV-290. Baseline: fresh
