@@ -170,7 +170,9 @@ internal static class PinnedPresentationLayoutTests
         Equal("compact", host.SelectedLayoutId);
         True(widget.Compact.IsSelected && !widget.Details.IsSelected,
             "SDK selection was not visible before the author callback.");
-        Equal("compact:true:false", widget.SelectionObservations.Single());
+        Equal(
+            new SelectionObservation("compact", true, false),
+            widget.SelectionObservations.Single());
         Equal(1, invalidations);
         var firstSelection = widget.Compact.SelectionCancellationToken;
         True(!firstSelection.IsCancellationRequested,
@@ -227,7 +229,8 @@ internal static class PinnedPresentationLayoutTests
         True(await host.SelectAsync("legacy"),
             "A low-level layout could not coexist with typed handles.");
         True(!widget.Compact.IsSelected && !widget.Details.IsSelected &&
-             widget.SelectionObservations[^1] == "legacy:false:false",
+             widget.SelectionObservations[^1] ==
+             new SelectionObservation("legacy", false, false),
             "Mixed low-level selection incorrectly acquired typed handle state.");
         True(await host.SelectAsync("details"),
             "The public host did not select the replacement projection.");
@@ -394,7 +397,7 @@ internal static class PinnedPresentationLayoutTests
         internal PinnedLayoutHandle Compact { get; }
         internal PinnedLayoutHandle Details { get; }
         internal bool IncludeCompact { get; set; } = true;
-        internal List<string> SelectionObservations { get; } = [];
+        internal List<SelectionObservation> SelectionObservations { get; } = [];
         internal TaskCompletionSource<WidgetActionEvent> Action { get; } =
             new(TaskCreationOptions.RunContinuationsAsynchronously);
 
@@ -428,8 +431,8 @@ internal static class PinnedPresentationLayoutTests
             CancellationToken cancellationToken = default)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            SelectionObservations.Add(
-                $"{layoutId ?? "null"}:{Compact.IsSelected}:{Details.IsSelected}");
+            SelectionObservations.Add(new SelectionObservation(
+                layoutId, Compact.IsSelected, Details.IsSelected));
             return ValueTask.CompletedTask;
         }
 
@@ -442,6 +445,11 @@ internal static class PinnedPresentationLayoutTests
             return ValueTask.CompletedTask;
         }
     }
+
+    private sealed record SelectionObservation(
+        string? LayoutId,
+        bool CompactSelected,
+        bool DetailsSelected);
 
     private static void AssertError(ViewSnapshot snapshot, string path, string code)
     {
