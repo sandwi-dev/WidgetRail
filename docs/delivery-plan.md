@@ -206,9 +206,14 @@ historical evidence only; this file is the sole implementation authority.
   proves fresh workers restart at sequence 1 while ordinary-checkpoint
   admission still requires that value to exceed retained prior-session
   sequences 10 and 20. Both fresh checkpoints are rejected and recovery times
-  out. The test-only worktree and first-red evidence are retained uncommitted;
-  a bounded production correction is Assigned. PID 43416 remains unchanged as
-  the current Spotify physical candidate, not accepted DLV-474 integration.
+  out. The bounded correction now explicitly marks retained prior-Bridge
+  snapshots inert and passed the native coordinator gate: 29 coordinator
+  scenarios plus the retained OverlayState, lifecycle, and 314 action-feedback
+  checks. The managed sanitized-terminal gate then exited 1 during an opaque
+  pre-test build with no compiler diagnostic or test artifact. Per stop-first-
+  red, four intentional diffs remain retained uncommitted with identity
+  `d14a224507d682e9c67f83860e713fe0118bb4dd`; no rerun or repair occurred.
+  PID 43416 remains unchanged, not accepted DLV-474 integration.
 - Clean DLV-291 Spotify 0.3.18 production `2dc8ab8` is independently
   source-reviewed. It attempted to let the growing player share the selected
   Up Next row with the bounded queue panel by applying a layout-specific zero
@@ -225,7 +230,15 @@ historical evidence only; this file is the sole implementation authority.
   uses one selected-layout index for both geometry and projection, clears
   renderer state, and invalidates, with no logged stale/drop failure, but the
   runtime log does not identify the selected projection root. A package-first
-  deterministic snapshot boundary proof is Assigned before another correction.
+  deterministic snapshot boundary proof then proved both roots are structurally
+  distinct and the Up Next root contains its header plus loading/error/empty/
+  first-item queue branches, but the WRSS cascade computed the player as
+  `width: 100%`, `flex-grow: 0`, and `flex-shrink: 0`, clipping the following
+  queue pane. Clean correction `9dda3bf` uses a specific selector to restore a
+  zero flex basis with bounded minimum width. Coherent Release and community
+  package builds exited 0; immutable 0.3.19 package SHA-256 is
+  `D877986774C1B64100B6680C4B717845AA04F4197E6AF2C0925F9A3229AB2C86`.
+  Nothing was installed or launched; physical review is pending.
 - DLV-473 post-acceptance test commit `34f15ae9` is retained clean and
   unintegrated. Its first authorized focused SDK gate exited 1 during build
   before test output, emitted no compiler diagnostic, and produced no test
@@ -250,8 +263,8 @@ historical evidence only; this file is the sole implementation authority.
 
 | Lane | Task/worktree | State |
 | --- | --- | --- |
-| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | DLV-474 post-acceptance testing rejected `a830f026` on the fresh-session sequence-authority gap; bounded production correction is Assigned in the isolated retained test worktree. DLV-473 test-only `34f15ae9` remains blocked after its first red; the standing tree's two DLV-293 test diffs remain byte-identical and must not be touched. |
-| Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | DLV-291 0.3.18 `2dc8ab8` is physically rejected because Now playing + queue changed dimensions but did not expose its queue. Prove the package snapshot boundary first; correct package presentation/WRSS only if that proof is red, otherwise stop and return exact evidence for platform reassignment. Game Launcher tests remain deferred/out of scope. |
+| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | DLV-474 correction passed the native gate, then the managed sanitized-terminal gate stopped on an opaque pre-test build red. Four intentional diffs remain retained uncommitted in the isolated worktree; no rerun or repair is authorized. DLV-473 test-only `34f15ae9` remains blocked after its first red; the standing tree's two DLV-293 test diffs remain byte-identical and must not be touched. |
+| Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | DLV-291 boundary proof found a package WRSS cascade defect. Clean 0.3.19 correction `9dda3bf` is built with exact package hash retained for source review and physical candidate installation; nothing is installed or launched. Game Launcher tests remain deferred/out of scope. |
 
 ## Execution rules
 
@@ -294,9 +307,10 @@ The current accepted-state summary above remains the live disposition.
 ### DLV-474 Bridge-session replacement and retained-presentation recovery
 
 Lane: platform, serialized host/Bridge lifecycle correction. Status: production
-`a830f026` rejected before integration by its first post-acceptance focused gate;
-bounded fresh-session sequence-authority correction Assigned. The same exact
-reviewed host remains running as PID 43416 for DLV-291 physical review only.
+`a830f026` rejected before integration by its first post-acceptance focused gate.
+The bounded fresh-session correction passed its native gate, then stopped on an
+opaque managed pre-test build red and remains uncommitted. The same exact
+reviewed host remains running as PID 43416; it contains no DLV-474 correction.
 Baseline: clean local `main` at planner tip. Use a separate clean worktree; the
 standing platform worktree's two DLV-293 test diffs and retained DLV-473 test
 commit are immutable evidence and must not be edited, staged, discarded,
@@ -354,6 +368,16 @@ stop on any red; only if green run the managed sanitized-terminal gate. Stage
 production separately from the retained tests and produce separate production
 and test commits. Do not relaunch, mutate packages, run Game Launcher tests or
 broad aggregates, touch retained DLV-293/DLV-473 evidence, or weaken validation.
+
+Correction evidence: native Release gate exited 0 with 29 coordinator scenarios,
+the retained OverlayState/lifecycle coverage, and 314 action-feedback checks;
+executable SHA-256 was
+`DDE1BE5756A8780D93BEA790316C1637DA2ACA749182A4565005F8AA91E37524`.
+The managed gate used `SkipGameLauncherFixture=true` but exited 1 during build
+before tests with no compiler diagnostic and no `obj\Release` artifact. Tests
+executed: zero. Retain the four-file diff at identity
+`d14a224507d682e9c67f83860e713fe0118bb4dd`; do not commit, rerun, or repair
+under this stopped milestone.
 
 ### DLV-473 pinned-surface action routing and controller ownership
 
@@ -448,8 +472,9 @@ state, public contract change, substantial conflict, or an unrelated red.
 
 Lane: widgets. Status: 0.3.17 correction `009af955` and clean 0.3.18 correction
 `2dc8ab8` physically rejected. 0.3.18 remains installed, selected, and enabled
-under the user's explicit current full-trust approval while its exact boundary
-is proven.
+under the user's explicit current full-trust approval. Deterministic boundary
+proof found a package-owned WRSS cascade defect; clean 0.3.19 correction
+`9dda3bf` is built and awaits candidate installation/physical review.
 The rejected 0.3.17 build was reviewed, built, and installed as the sole Spotify
 version after explicit
 full-trust and retirement approval, but physical review proves LT/RT changes
@@ -484,6 +509,21 @@ states, accessibility, responsive sizing, and ordinary full-widget behavior.
 Use physical-first production/package build and user verdict, then focused
 package/runtime tests only; no Game Launcher tests, broad aggregate, account or
 package-state mutation, publication, Avalonia/AVP, or push.
+
+Boundary result: Compact root `spotify.pinned-compact.root` and Up Next root
+`spotify.pinned-up-next.root` are structurally distinct. The Up Next snapshot
+contains its shell, queue identity, `QUEUE`/`Up next` header, and loading,
+error, empty, and first-item branches. At the 640-DIP minimum, player minimum +
+queue minimum + gap is 530 DIP. The failure was the cascade: the player card's
+more specific generic rule retained `width: 100%` and non-growing/non-shrinking
+flex values, so the queue was clipped after it. `9dda3bf` uses a specific
+selector producing `width: 0px`, `min-width: 280px`, `flex-grow: 1`, and
+`flex-shrink: 1`. Coherent Release and package builds exited 0. Artifact:
+`artifacts/community-addons/spotify/widgetrail.samples.spotify-0.3.19.wrwidget`,
+1,170,516 bytes, SHA-256
+`D877986774C1B64100B6680C4B717845AA04F4197E6AF2C0925F9A3229AB2C86`.
+Nothing is installed or launched. Repeat the exact rejected sequence for the
+physical verdict before tests or integration.
 
 ### DLV-294 generic pinned-layout projections
 
@@ -539,14 +579,13 @@ without explicit promotion.
 
 ## Ordered queues
 
-1. DLV-291 Spotify compact pinned layouts: 0.3.18 `2dc8ab8` is physically
-   rejected because cycling from Compact to Now playing + queue changed only
-   geometry. Prove the deterministic package snapshot boundary first; repair
-   package presentation/WRSS only if red, otherwise stop for platform
-   reassignment with exact evidence.
-2. DLV-474 fresh-session sequence-authority correction: first focused native
-   gate rejected production `a830f026`; bounded production and retained focused
-   tests are Assigned while sanitized future-exit diagnostics remain in place.
+1. DLV-291 Spotify compact pinned layouts: deterministic proof found the WRSS
+   cascade defect; clean 0.3.19 `9dda3bf` and exact package hash are ready for
+   candidate installation and the repeated physical sequence. No tests or
+   integration before the verdict.
+2. DLV-474 fresh-session sequence-authority correction: retained correction
+   passed its native gate, then the managed gate stopped on an opaque pre-test
+   build red. Four diffs remain uncommitted; no rerun or repair is authorized.
 3. DLV-473 focused post-acceptance tests: clean `34f15ae9` is retained
    unintegrated after the first SDK gate stopped before tests on an opaque build
    red; later gates did not run and no rerun is authorized.
@@ -556,8 +595,9 @@ without explicit promotion.
 7. DLV-248 remains deliberately deferred until explicit user promotion.
 
 DLV-473 production is accepted/integrated and its tests are post-acceptance
-work. DLV-291 0.3.17 and 0.3.18 are physically rejected; package-versus-platform
-ownership remains open pending a deterministic snapshot boundary proof.
+work. DLV-291 0.3.17 and 0.3.18 are physically rejected; deterministic proof
+assigns the visible queue failure to the package WRSS cascade, and built 0.3.19
+awaits physical review.
 DLV-474 production is rejected before integration by deterministic
 fresh-session sequence evidence; its exact historical exit trigger remains
 unproven and retained diagnostics are ready for a future recurrence.
@@ -592,8 +632,8 @@ tests remain deferred.
 | DLV-289 | The user physically accepted correction `a74e677` after `e7b24f4` was rejected for clipped active pixels. Test-only `941b0f9` passed six focused groups and the full chain is integrated as `4c8048d`. Exact PID 121188 contains the accepted production tip, so no tests-only rebuild/relaunch occurred. |
 | DLV-292 | `ff5e7e4` binds each Bridge-cached snapshot to its worker start ordinal and uses existing typed stale-base recovery after replacement. Production build and three focused lifecycle/native gates passed; integrated as `80cdb10`. The user accepted PID 81980 by default because live reproduction is impractical. |
 | DLV-293 | Production `a9d36cf` is physically accepted and integrated as `10c3e26`; PID 137288 already contains that production tip. New catalog-removal/focus/Guide assertions completed before the focused host gate stopped on an older Game Launcher stationarity correlation. The pin-coordinator suite did not run; both uncommitted test diffs remain retained, with no rerun or Game Launcher repair authorized. |
-| DLV-474 | Production `a830f026` was provisionally accepted by user disposition because the historical bridge-session loss could not be reproduced, then rejected before integration when the first focused native gate proved fresh sequence 1 was compared against retained prior-session sequences 10/20. No test commit exists. Bounded correction is Assigned; sanitized terminal diagnostics remain active for a future recurrence. |
-| DLV-291 | Reviewed Spotify 0.3.18 `2dc8ab8`, package SHA-256 `DB463A3AF2F035FC6F88BA8216CA08674C992BF5E0495CFF2FC2894D0BB88D05`, remains the sole installed, selected, enabled version under explicit full-trust approval. Physical review rejects it: Compact-to-Up Next changed only dimensions and still showed no queue. Ownership is open; the assigned package snapshot proof must either justify one package-only correction or return exact structurally-correct evidence for platform reassignment. |
+| DLV-474 | Production `a830f026` was provisionally accepted by user disposition because the historical bridge-session loss could not be reproduced, then rejected before integration when the first focused native gate proved fresh sequence 1 was compared against retained prior-session sequences 10/20. The retained correction passed 29 native coordinator scenarios plus linked native checks, then the managed diagnostic gate exited 1 during an opaque pre-test build. Four diffs remain uncommitted at identity `d14a224507d682e9c67f83860e713fe0118bb4dd`; no rerun or repair occurred. |
+| DLV-291 | Reviewed Spotify 0.3.18 `2dc8ab8`, package SHA-256 `DB463A3AF2F035FC6F88BA8216CA08674C992BF5E0495CFF2FC2894D0BB88D05`, remains the sole installed, selected, enabled version under explicit full-trust approval and is physically rejected. Deterministic snapshot proof found the Up Next root structurally correct and in bounds, but a package WRSS specificity defect clipped its queue. Clean 0.3.19 `9dda3bf` is built; package SHA-256 is `D877986774C1B64100B6680C4B717845AA04F4197E6AF2C0925F9A3229AB2C86`. Nothing is installed or launched; physical verdict pending. |
 | DLV-248 | Deferred until explicit user promotion. |
 
 ## Integrated reliability — DLV-292 fresh-worker virtual-window recovery
