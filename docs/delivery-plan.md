@@ -875,6 +875,25 @@ Source-review the complete menu/focus/input/placement ordering, run one coherent
 packaged Release build, and commit one clean `[DLV-289]` production correction.
 The reviewer will inspect and launch that exact candidate for the user's verdict.
 
+Candidate `ddb2d91` is rejected by source review before launch. It correctly
+removes the chord, preserves content-owned Menu/LB/RB/RS, reuses the fixed-chrome
+and placement owners, and builds the packaged Release with exit 0, but its two
+pinned actions are laid out side by side in one 48-DIP tray ribbon rather than
+as the requested Windows-like vertical context-menu list. Its raw right-stick
+resize advances only once when the cardinal direction changes, so a held stick
+cannot continue resizing; the overlay-window keyboard route also calls the
+single-mode step overload while Adjust is active and therefore does nothing.
+
+The next production-only correction must stack one option per row in a bounded
+menu anchored adjacent to the selected tray item, with matching pointer/UIA
+bounds and Up/Down navigation. Right-stick resize must repeat through the
+existing bounded controller cadence while held, without a new timer, and reset
+cleanly on neutral, reversal, commit, cancel, hide, display reconciliation, or
+generation retirement. The overlay-window arrow-key fallback in Adjust must
+move through the same explicit Move operation. Preserve every other accepted
+scope boundary above; add/run no tests, build one coherent packaged Release,
+and return one separate clean production correction for review.
+
 ## Future architecture queue — maturity review additions
 
 Status: DLV-288 is accepted/integrated and the explicitly requested visible
