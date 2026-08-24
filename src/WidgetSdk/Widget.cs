@@ -8,9 +8,15 @@ public sealed record WidgetView(
     string? InitialFocusId = null,
     IReadOnlyList<WidgetQuickAction>? QuickActions = null,
     string? ActiveInputScopeId = null,
-    WidgetSurfaceHints? Surface = null,
-    IReadOnlyList<PinnedPresentationLayout>? PinnedLayouts = null)
+    WidgetSurfaceHints? Surface = null)
 {
+    /// <summary>
+    /// Optional bounded sizing profiles for the host-owned pinned projection.
+    /// This additive property deliberately preserves the positional constructor
+    /// and Deconstruct contracts.
+    /// </summary>
+    public IReadOnlyList<PinnedPresentationLayout>? PinnedLayouts { get; init; }
+
     public ViewSnapshot CreateSnapshot(string widgetInstanceId, long sequence)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(widgetInstanceId);

@@ -1821,7 +1821,8 @@ widget content has focus. The surface starts click-through; a second
 `P` or a bare right-stick click while the same widget is open explicitly makes
 it Interactive. Menu while widget content owns focus remains available to the
 widget, as do all package-declared bumper, trigger, stick-click, and View actions.
-Supporting widgets may also pass `PinnedLayouts` to `WidgetView`. Each
+Supporting widgets may also set the optional `WidgetView.PinnedLayouts` init
+property. Each
 `PinnedPresentationLayout` has a stable ID, a visible name, and ordinary bounded
 `WidgetSurfaceHints`; the host accepts at most eight and always prepends its
 own **Full widget** fallback. These are sizing profiles for the same validated
