@@ -1595,6 +1595,11 @@ private:
             return 0;
         case kPinnedSurfaceChangedMessage:
             DrainPinnedSurfaceInputs();
+            if (!pinnedSurfaceCoordinator_.pinned() ||
+                pinnedSurfaceCoordinator_.placementMode() ==
+                    widgetrail::pinned::PlacementMode::None) {
+                placementRightStickNavigator_.Reset();
+            }
             if (state_.surface() == widgetrail::Surface::Hidden) {
                 if (pinnedSurfaceCoordinator_.pinned())
                     SetTimer(window_, kPinnedSurfaceTimer, 100, nullptr);
@@ -2055,6 +2060,7 @@ private:
             (void)bridge_.CancelLocalWidgetPackageInstall(
                 *operation);
         }
+        placementRightStickNavigator_.Reset();
         pinnedSurfaceCoordinator_.Dispose();
         DiscardGraphicsResources();
         widgetrail::shell::ResetFixedChromeComposition(
@@ -2604,6 +2610,7 @@ private:
 
     void ApplyPendingDisplayEnvironmentRefresh() {
         const auto plan = displayRefresh_.Take();
+        placementRightStickNavigator_.Reset();
         pinnedSurfaceCoordinator_.ReconcileDisplayEnvironment();
         if (state_.surface() == widgetrail::Surface::Hidden) return;
         if (!plan.repositionWindows) return;
@@ -3826,6 +3833,7 @@ private:
             (void)bridge_.CancelLocalWidgetPackageInstall(
                 *operation);
         }
+        placementRightStickNavigator_.Reset();
         (void)pinnedSurfaceCoordinator_.CancelPlacement();
         pinnedSurfaceCoordinator_.OnOverlayHidden();
         KillTimer(window_, kControllerTimer);
@@ -4823,23 +4831,22 @@ private:
         if (tile == tray.tiles.end()) return std::nullopt;
         const float menuWidth = std::min(286.0F, std::max(1.0F, width - 16.0F));
         constexpr float itemHeight = 48.0F;
-        const float menuHeight = itemHeight;
+        constexpr float menuGap = 8.0F;
+        const float menuHeight = itemHeight * static_cast<float>(actions.size());
         const float left = std::clamp(
             tile->bounds.x + tile->bounds.width * 0.5F - menuWidth * 0.5F,
             8.0F, std::max(8.0F, width - menuWidth - 8.0F));
+        const float above = tile->bounds.y - menuHeight - menuGap;
+        const float below = tile->bounds.y + tile->bounds.height + menuGap;
+        const float preferredTop = above >= 8.0F ? above : below;
         const float top = std::clamp(
-            tray.stripBounds.y + (tray.stripBounds.height - menuHeight) * 0.5F,
-            tray.stripBounds.y,
-            std::max(tray.stripBounds.y, std::min(
-                height - menuHeight,
-                tray.stripBounds.y + tray.stripBounds.height - menuHeight)));
+            preferredTop, 8.0F, std::max(8.0F, height - menuHeight - 8.0F));
         TrayContextMenuLayout result;
         result.bounds = {left, top, menuWidth, menuHeight};
         result.semantics.targetId = trayContextMenu_->widgetId;
         result.semantics.items.reserve(actions.size());
         const std::size_t selectedItem = std::min(
             trayContextMenu_->selectedItem, actions.size() - 1);
-        const float itemWidth = menuWidth / static_cast<float>(actions.size());
         for (std::size_t index = 0; index < actions.size(); ++index) {
             const auto& action = actions[index];
             const auto hostAction = action.selected
@@ -4852,8 +4859,8 @@ private:
                 action.name,
                 action.value,
                 action.targetId,
-                {left + itemWidth * static_cast<float>(index), top,
-                 itemWidth, itemHeight},
+                {left, top + itemHeight * static_cast<float>(index),
+                 menuWidth, itemHeight},
                 hostAction,
                 action.enabled,
                 index == selectedItem,
@@ -5307,7 +5314,7 @@ private:
             return;
         }
         if (itemIndex == 0) {
-            placementRightStickDirection_.reset();
+            placementRightStickNavigator_.Reset();
             if (pinnedSurfaceCoordinator_.pinned() &&
                 pinnedSurfaceCoordinator_.widgetId() == widgetId &&
                 pinnedSurfaceCoordinator_.BeginPlacement(
@@ -5407,6 +5414,7 @@ private:
 
     void EmergencyHidePinnedSurfaces() {
         if (!pinnedSurfaceCoordinator_.pinned()) return;
+        placementRightStickNavigator_.Reset();
         const std::wstring widgetId(pinnedSurfaceCoordinator_.widgetId());
         (void)interactionSession_.TransitionPressedPresentation(
             widgetrail::input::PressedInputTransition::Clear);
@@ -5430,19 +5438,23 @@ private:
         }
         if (pinnedSurfaceCoordinator_.placementMode() !=
             widgetrail::pinned::PlacementMode::None) {
+            const bool adjusting = pinnedSurfaceCoordinator_.placementMode() ==
+                widgetrail::pinned::PlacementMode::Adjust;
+            const auto step = [&](const widgetrail::pinned::PlacementDirection direction) {
+                return adjusting
+                    ? pinnedSurfaceCoordinator_.StepPlacement(
+                          widgetrail::pinned::PlacementMode::Move, direction)
+                    : pinnedSurfaceCoordinator_.StepPlacement(direction);
+            };
             bool changed = false;
             if (key == VK_LEFT)
-                changed = pinnedSurfaceCoordinator_.StepPlacement(
-                    widgetrail::pinned::PlacementDirection::Left);
+                changed = step(widgetrail::pinned::PlacementDirection::Left);
             else if (key == VK_RIGHT)
-                changed = pinnedSurfaceCoordinator_.StepPlacement(
-                    widgetrail::pinned::PlacementDirection::Right);
+                changed = step(widgetrail::pinned::PlacementDirection::Right);
             else if (key == VK_UP)
-                changed = pinnedSurfaceCoordinator_.StepPlacement(
-                    widgetrail::pinned::PlacementDirection::Up);
+                changed = step(widgetrail::pinned::PlacementDirection::Up);
             else if (key == VK_DOWN)
-                changed = pinnedSurfaceCoordinator_.StepPlacement(
-                    widgetrail::pinned::PlacementDirection::Down);
+                changed = step(widgetrail::pinned::PlacementDirection::Down);
             else if (!repeated && key == VK_RETURN) {
                 std::wstring error;
                 changed = pinnedSurfaceCoordinator_.CommitPlacement(error);
@@ -5452,6 +5464,10 @@ private:
                 changed = pinnedSurfaceCoordinator_.CancelPlacement();
                 lastActionMessage_ = L"Pinned placement canceled";
                 lastActionExpiresAt_ = GetTickCount64() + 2400;
+            }
+            if (pinnedSurfaceCoordinator_.placementMode() ==
+                widgetrail::pinned::PlacementMode::None) {
+                placementRightStickNavigator_.Reset();
             }
             if (changed) InvalidateRect(window_, nullptr, FALSE);
             return;
@@ -6174,10 +6190,8 @@ private:
             const auto actions = CurrentTrayMenuActions();
             if (!trayContextMenu_ || actions.empty()) return;
             const bool previous =
-                event.direction == widgetrail::input::NavigationDirection::Left ||
                 event.direction == widgetrail::input::NavigationDirection::Up;
             const bool next =
-                event.direction == widgetrail::input::NavigationDirection::Right ||
                 event.direction == widgetrail::input::NavigationDirection::Down;
             if (!previous && !next) return;
             if (previous) {
@@ -6290,25 +6304,23 @@ private:
             if (const auto direction = DecodeNavigation(frame.dpadNavigation))
                 step(*direction, widgetrail::pinned::PlacementMode::Move);
             if (adjusting) {
-                const int rightX = frame.state.rightThumbX;
-                const int rightY = frame.state.rightThumbY;
-                std::optional<widgetrail::pinned::PlacementDirection> rightDirection;
-                if (std::max(std::abs(rightX), std::abs(rightY)) >
-                    XINPUT_GAMEPAD_RIGHT_THUMB_DEADZONE) {
-                    if (std::abs(rightX) >= std::abs(rightY))
-                        rightDirection = rightX < 0
-                            ? widgetrail::pinned::PlacementDirection::Left
-                            : widgetrail::pinned::PlacementDirection::Right;
-                    else
-                        rightDirection = rightY > 0
-                            ? widgetrail::pinned::PlacementDirection::Up
-                            : widgetrail::pinned::PlacementDirection::Down;
+                if (const auto resize = placementRightStickNavigator_.UpdateEvent(
+                        frame.state.rightThumbX, frame.state.rightThumbY, now)) {
+                    using widgetrail::input::NavigationDirection;
+                    std::optional<widgetrail::pinned::PlacementDirection> direction;
+                    if (resize->direction == NavigationDirection::Left)
+                        direction = widgetrail::pinned::PlacementDirection::Left;
+                    else if (resize->direction == NavigationDirection::Right)
+                        direction = widgetrail::pinned::PlacementDirection::Right;
+                    else if (resize->direction == NavigationDirection::Up)
+                        direction = widgetrail::pinned::PlacementDirection::Up;
+                    else if (resize->direction == NavigationDirection::Down)
+                        direction = widgetrail::pinned::PlacementDirection::Down;
+                    if (direction) (void)pinnedSurfaceCoordinator_.StepPlacement(
+                        widgetrail::pinned::PlacementMode::Resize, *direction);
                 }
-                if (rightDirection != placementRightStickDirection_) {
-                    placementRightStickDirection_ = rightDirection;
-                    if (rightDirection) (void)pinnedSurfaceCoordinator_.StepPlacement(
-                        widgetrail::pinned::PlacementMode::Resize, *rightDirection);
-                }
+            } else {
+                placementRightStickNavigator_.Reset();
             }
             if ((pressed & XINPUT_GAMEPAD_A) != 0) {
                 std::wstring error;
@@ -6322,7 +6334,7 @@ private:
             }
             if (pinnedSurfaceCoordinator_.placementMode() ==
                 widgetrail::pinned::PlacementMode::None)
-                placementRightStickDirection_.reset();
+                placementRightStickNavigator_.Reset();
             InvalidateRect(window_, nullptr, FALSE);
             return;
         }
@@ -10952,8 +10964,7 @@ private:
     std::wstring lastActionWidgetId_;
     ULONGLONG lastActionExpiresAt_{};
     std::optional<TrayContextMenuState> trayContextMenu_;
-    std::optional<widgetrail::pinned::PlacementDirection>
-        placementRightStickDirection_;
+    widgetrail::input::StickNavigator placementRightStickNavigator_;
     std::wstring admissionTraceWidget_;
     std::uint64_t admissionTraceCorrelationId_{};
     std::optional<PendingWidgetSwitchSnap> pendingWidgetSwitchSnap_;

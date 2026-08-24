@@ -1,5 +1,7 @@
 #pragma once
 
+#include <algorithm>
+#include <cmath>
 #include <cstdint>
 #include <optional>
 #include <string>
@@ -291,5 +293,102 @@ private:
     NavigationDirection direction_{NavigationDirection::None};
     std::uint64_t nextRepeat_{};
 };
+
+inline StickNavigator::StickNavigator(StickNavigationOptions options) noexcept
+    : options_(options) {
+    options_.engageThreshold = std::clamp(options_.engageThreshold, 1, 32'767);
+    options_.releaseThreshold = std::clamp(
+        options_.releaseThreshold, 0, options_.engageThreshold);
+    options_.initialRepeatMilliseconds = std::max<std::uint64_t>(
+        1, options_.initialRepeatMilliseconds);
+    options_.repeatMilliseconds = std::max<std::uint64_t>(
+        1, options_.repeatMilliseconds);
+}
+
+inline void StickNavigator::Prime(
+    const short x,
+    const short y,
+    const std::uint64_t now) noexcept {
+    direction_ = Resolve(x, y);
+    nextRepeat_ = direction_ == NavigationDirection::None
+        ? 0
+        : now + options_.initialRepeatMilliseconds;
+}
+
+inline std::optional<NavigationDirection> StickNavigator::Update(
+    const short x,
+    const short y,
+    const std::uint64_t now) noexcept {
+    const auto event = UpdateEvent(x, y, now);
+    return event ? std::optional{event->direction} : std::nullopt;
+}
+
+inline std::optional<StickNavigationEvent> StickNavigator::UpdateEvent(
+    const short x,
+    const short y,
+    const std::uint64_t now) noexcept {
+    const auto resolved = Resolve(x, y);
+    if (resolved == NavigationDirection::None) {
+        Reset();
+        return std::nullopt;
+    }
+    if (resolved != direction_) {
+        direction_ = resolved;
+        nextRepeat_ = now + options_.initialRepeatMilliseconds;
+        return StickNavigationEvent{resolved, NavigationEventPhase::Pressed};
+    }
+    if (nextRepeat_ != 0 && now >= nextRepeat_) {
+        nextRepeat_ = now + options_.repeatMilliseconds;
+        return StickNavigationEvent{resolved, NavigationEventPhase::Repeated};
+    }
+    return std::nullopt;
+}
+
+inline void StickNavigator::Reset() noexcept {
+    direction_ = NavigationDirection::None;
+    nextRepeat_ = 0;
+}
+
+inline NavigationDirection StickNavigator::Resolve(
+    const short x,
+    const short y) const noexcept {
+    const auto magnitude = [](const short value) noexcept {
+        return std::abs(static_cast<int>(value));
+    };
+    const auto sameDirection = [](const NavigationDirection direction,
+                                  const short horizontal,
+                                  const short vertical) noexcept {
+        switch (direction) {
+        case NavigationDirection::Left: return horizontal < 0;
+        case NavigationDirection::Right: return horizontal > 0;
+        case NavigationDirection::Up: return vertical > 0;
+        case NavigationDirection::Down: return vertical < 0;
+        default: return false;
+        }
+    };
+    const auto horizontal = [](const NavigationDirection direction) noexcept {
+        return direction == NavigationDirection::Left ||
+               direction == NavigationDirection::Right;
+    };
+    const auto absX = magnitude(x);
+    const auto absY = magnitude(y);
+    if (direction_ != NavigationDirection::None &&
+        sameDirection(direction_, x, y)) {
+        const auto primary = horizontal(direction_) ? absX : absY;
+        const auto perpendicular = horizontal(direction_) ? absY : absX;
+        if (primary >= options_.releaseThreshold &&
+            !(perpendicular >= options_.engageThreshold &&
+              perpendicular * 4 > primary * 5)) {
+            return direction_;
+        }
+    }
+    if (std::max(absX, absY) < options_.engageThreshold) {
+        return NavigationDirection::None;
+    }
+    if (absY > absX) {
+        return y < 0 ? NavigationDirection::Down : NavigationDirection::Up;
+    }
+    return x < 0 ? NavigationDirection::Left : NavigationDirection::Right;
+}
 
 } // namespace widgetrail::input
