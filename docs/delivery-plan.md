@@ -166,8 +166,24 @@ historical evidence only; this file is the sole implementation authority.
   showed errors following repeated live catalog mutations, the user requested
   a clean overlay restart. Exact PID 116316 exited cooperatively through
   verified `WM_CLOSE`; the same reviewed executable relaunched visibly as
-  responsive PID 105080 with no `startup-error.txt`. DLV-291 awaits a renewed
-  tray Pin, Up Next materialization, and LT/RT layout-cycling verdict.
+  responsive PID 105080 with no `startup-error.txt`. Physical review rejects
+  0.3.17: LT/RT changes the pinned surface dimensions but `Now playing + up
+  next` continues to show the compact Now Playing document; only the Full
+  widget projection renders its distinct document. The host log records the
+  pin lifecycle but has no typed selected-layout/projection render diagnostic,
+  so the exact package-publication versus host-selection boundary remains to
+  be proven by the widgets correction rather than guessed.
+- The same PID 105080 session proves an independent platform regression after
+  the overlay is hidden and reopened. Bridge session 1 (PID 49632) retired all
+  seven workers cooperatively at 10:37:37; reopening reported broken pipe 232
+  and started session 2 (PID 48760). The new workers then returned stale-base
+  failures for YT Music, Now Playing, and Settings. Session 2 retired its
+  workers at 10:38:08; the next reopen again hit broken pipe 232 before session
+  3 (PID 147564) started at 10:39:07. The Bridge terminal exception and exit
+  code are not durably captured because the no-window child discards stderr.
+  DLV-474 is Assigned to bind retained host presentations to the exact Bridge
+  session, recover atomically after transport replacement, and retain the
+  terminal cause.
 - DLV-473 post-acceptance test commit `34f15ae9` is retained clean and
   unintegrated. Its first authorized focused SDK gate exited 1 during build
   before test output, emitted no compiler diagnostic, and produced no test
@@ -192,8 +208,8 @@ historical evidence only; this file is the sole implementation authority.
 
 | Lane | Task/worktree | State |
 | --- | --- | --- |
-| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | DLV-473 production `4c66b128` is physically accepted/integrated as `055ec2f`. Test-only `34f15ae9` is retained unintegrated after its first focused gate stopped on an opaque pre-test build red; no rerun. The standing tree's two DLV-293 test diffs remain byte-identical. |
-| Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | DLV-291 0.3.16 `64b14864` is rejected. Clean 0.3.17 correction `009af955` is the sole installed/selected/enabled version and cleanly restarted PID 105080 awaits renewed physical verdict. Game Launcher tests remain deferred/out of scope. |
+| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | DLV-474 Bridge-session recovery is Assigned from clean local `main`. DLV-473 test-only `34f15ae9` remains blocked after its first red; the standing tree's two DLV-293 test diffs remain byte-identical and must not be touched. |
+| Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | DLV-291 0.3.17 `009af955` is physically rejected because Up Next changes only dimensions while retaining the compact document. A production-only correction is Assigned; 0.3.17 remains the sole installed version until a new immutable package is reviewed. Game Launcher tests remain deferred/out of scope. |
 
 ## Execution rules
 
@@ -232,6 +248,53 @@ Detailed accepted evidence for DLV-284 through DLV-290 is preserved in the
 The current accepted-state summary above remains the live disposition.
 
 ## Ready overlay recovery
+
+### DLV-474 Bridge-session replacement and retained-presentation recovery
+
+Lane: platform, serialized host/Bridge lifecycle correction. Status: Assigned.
+Baseline: clean local `main` at planner tip. Use a separate clean worktree; the
+standing platform worktree's two DLV-293 test diffs and retained DLV-473 test
+commit are immutable evidence and must not be edited, staged, discarded,
+stashed, moved, or rerun.
+
+Correct the reproduced product failure after the overlay is hidden and later
+reopened. The accepted host remains alive, but its Bridge transport disappears:
+session 1 retires all workers at 10:37:37, reopen receives Win32 broken pipe
+232, and session 2 starts. The host then sends retained virtual-window bases
+from the prior Bridge authority, producing stale-base failures across unrelated
+widgets. Session 2 repeats the retirement and broken-pipe cycle before session
+3 recovers. DLV-292 binds Bridge snapshots to worker starts inside one Bridge
+session; do not weaken or remove that check. Extend the authority boundary so
+host-retained catalog/presentation/session state is also bound to the exact
+Bridge session generation and atomically re-established when the transport is
+replaced.
+
+First retain the actual Bridge terminal evidence: exact PID/session, process
+exit code, and bounded final stderr or an equivalent durable sanitized terminal
+diagnostic. Current `CREATE_NO_WINDOW` launch discards the caught exception
+message, so the trigger for the two exits is not proven. Diagnose and correct
+that trigger if it is in this lifecycle boundary. A Bridge replacement must
+retire old request/catalog/presentation authority, preserve only safe last-valid
+visuals during recovery, establish the new catalog, and request Replace from a
+fresh base for every subsequently activated widget. It must not publish a
+broken-pipe failure as the current widget state merely because the overlay was
+hidden, nor allow a stale session completion to overwrite newer state.
+
+Use physical-first ordering: production and bounded terminal diagnostics only,
+source review, one coherent Release build, planner launch, and user hide/reopen
+verdict before focused tests. After acceptance, add only deterministic
+Bridge-process-exit, session-replacement, retained-base, multi-widget recovery,
+and hidden/reopen tests. Exclude Game Launcher widget tests, broad aggregates,
+package/config mutation, DLV-291 package code, Avalonia/AVP, push, and unrelated
+repair. Stop for destructive state, a second catalog/session owner, weakened
+stale-generation checks, a materially different public protocol decision, or
+an unrelated first red.
+
+Acceptance: repeatedly hiding and reopening the overlay never strands the
+catalog or any widget in broken-pipe/stale-window failure; a genuinely replaced
+Bridge obtains a new session authority and all activated widgets establish from
+a fresh base; pinned and last-valid visuals remain safe; the exact terminal
+cause of any future Bridge exit is diagnosable without exposing secrets.
 
 ### DLV-473 pinned-surface action routing and controller ownership
 
@@ -324,17 +387,18 @@ state, public contract change, substantial conflict, or an unrelated red.
 
 ### DLV-291 Spotify compact pinned layouts
 
-Lane: widgets. Status: 0.3.16 correction `64b14864` rejected after a fresh
-worker's next render following 31 valid snapshots failed protocol validation.
-Concrete immutable 0.3.17 correction `009af955` is reviewed, built, and
-installed as the sole Spotify version after explicit full-trust and retirement
-approval; physical verdict pending. The
-0.3.15 production `5435eaf` was rejected because the package
-manifest omits `pinningSupported: true`, so host admission prevents tray Pin
-despite the rendered layouts. Produce a clean production-only 0.3.16 correction
-from current main that adds only the existing generic flag and required version
-updates, then rebuild the deterministic package before a new physical verdict.
-The original scope adds two package-owned layouts—
+Lane: widgets. Status: 0.3.17 correction `009af955` physically rejected. It is
+reviewed, built, and installed as the sole Spotify version after explicit
+full-trust and retirement approval, but physical review proves LT/RT changes
+the surface dimensions without replacing compact Now Playing with the distinct
+Now Playing + Up Next document; Full widget remains distinct and works. The log
+does not identify the selected projection, so inspect the exact snapshot,
+selection notification, host-selected layout identity, and rendered projection
+before changing code. Add one bounded typed trace for this chain only if needed
+to prove the boundary; do not treat new dimensions as evidence that the root
+changed. Produce the next immutable production-only package correction from
+the clean DLV-291 branch after rebasing its logical change on current main.
+Retain the original two package-owned layouts—
 `Compact now playing` and `Now playing + up next`—beside the host `Full widget`
 fallback. Reuse Spotify's existing session/queue model and polling; do not add
 duplicate provider work, credentials, host knowledge, or a Spotify protocol
@@ -398,19 +462,22 @@ without explicit promotion.
 
 ## Ordered queues
 
-1. DLV-291 Spotify compact pinned layouts: clean correction `009af955` and
-   immutable 0.3.17 package are the sole installed candidate; await renewed
-   tray Pin, Up Next materialization, and LT/RT cycling verdict.
-2. DLV-473 focused post-acceptance tests: clean `34f15ae9` is retained
+1. DLV-474 Bridge-session replacement and retained-presentation recovery:
+   Assigned platform P1 from the reproduced hide/reopen broken-pipe and
+   cross-widget stale-base sequence.
+2. DLV-291 Spotify compact pinned layouts: 0.3.17 `009af955` is rejected;
+   correct the document-selection path and produce a new immutable package.
+3. DLV-473 focused post-acceptance tests: clean `34f15ae9` is retained
    unintegrated after the first SDK gate stopped before tests on an opaque build
    red; later gates did not run and no rerun is authorized.
-3. DLV-294 generic pinned-layout projections: accepted/integrated as `60536ff`; closed.
-4. DLV-293 focused test debt: retained uncommitted after unrelated Game Launcher stationarity red; no rerun under the explicit deferral.
-5. Remaining maturity deliverables, ordered after the pinned-layout UX settles.
-6. DLV-248 remains deliberately deferred until explicit user promotion.
+4. DLV-294 generic pinned-layout projections: accepted/integrated as `60536ff`; closed.
+5. DLV-293 focused test debt: retained uncommitted after unrelated Game Launcher stationarity red; no rerun under the explicit deferral.
+6. Remaining maturity deliverables, ordered after the pinned-layout UX settles.
+7. DLV-248 remains deliberately deferred until explicit user promotion.
 
 DLV-473 production is accepted/integrated and its tests are post-acceptance
-work. DLV-291 awaits the reviewed 0.3.17 physical verdict.
+work. DLV-291 0.3.17 is physically rejected. DLV-474 is the highest-priority
+reproduced cross-widget platform recovery defect.
 DLV-293 production is accepted/integrated;
 its incomplete test follow-up is retained as blocked debt, and Game Launcher
 tests remain deferred.
