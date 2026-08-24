@@ -20,8 +20,6 @@
 #include "RemoteImageCache.h"
 #include "ScrollEvidenceProbe.h"
 #include "LocalWidgetPackageImport.h"
-#include "LauncherExperienceProjection.h"
-#include "LauncherExperienceHostProof.h"
 #include "WidgetBridgeClient.h"
 #include "WidgetActionFeedback.h"
 #include "WidgetAdmissionTrace.h"
@@ -93,7 +91,6 @@ constexpr UINT kPinnedSurfaceChangedMessage = WM_APP + 11;
 constexpr UINT kProcessActivationMessage = WM_APP + 12;
 constexpr UINT kDevelopmentTrayYHoldMessage = WM_APP + 14;
 constexpr UINT kScrollPaginationPrefetchMessage = WM_APP + 15;
-constexpr ULONG_PTR kLauncherExperienceSelectionProof = 0x4742414c;
 
 constexpr BYTE kBackdropOpacity = 164;
 constexpr std::uint64_t kSlowCompositionFrameMicroseconds = 100000;
@@ -779,7 +776,6 @@ public:
         if (bridge_.EnsureStarted(
                 installationDirectory_, developmentCatalogRoot_.value_or(L""))) {
             RefreshPlatformAppearance();
-            RefreshLauncherExperience();
             if (auto change = sessions_.EstablishCatalog()) {
                 ApplyWidgetCatalogChange(*change);
                 developmentCatalogReady = true;
@@ -1033,10 +1029,9 @@ private:
             std::transform(performanceState_->begin(), performanceState_->end(),
                            performanceState_->begin(), towlower);
             if (*performanceState_ != L"hidden" && *performanceState_ != L"visible" &&
-                *performanceState_ != L"interactive" &&
-                *performanceState_ != L"safe-start") {
+                *performanceState_ != L"interactive") {
                 initializationError_ =
-                    L"--performance-state must be hidden, visible, interactive, or safe-start.";
+                    L"--performance-state must be hidden, visible, or interactive.";
                 return false;
             }
             if (!validIdentity(performanceWidgetId_)) {
@@ -1087,17 +1082,11 @@ private:
             initializationError_ = L"The requested performance widget is not installed and enabled.";
             return false;
         }
-        if (*performanceState_ == L"interactive" ||
-            *performanceState_ == L"safe-start") {
-            // The bounded performance fixture enters through the same
-            // one-shot activation state as the physical LT+RT+A gesture. It
-            // does not change selection or add an action/protocol route.
-            launcherSafeStartPending_ = *performanceState_ == L"safe-start";
+        if (*performanceState_ == L"interactive") {
             Dispatch(widgetrail::Command::Activate);
         }
 
-        const auto expected = *performanceState_ == L"interactive" ||
-                              *performanceState_ == L"safe-start"
+        const auto expected = *performanceState_ == L"interactive"
             ? widgetrail::WidgetLifecycleState::Interactive
             : widgetrail::WidgetLifecycleState::Visible;
         const auto deadline = std::chrono::steady_clock::now() +
@@ -1497,9 +1486,6 @@ private:
                 Dispatch(widgetrail::Command::ToggleOverlay);
             }
             return 0;
-        case WM_COPYDATA:
-            return HandleLauncherExperienceSelectionProof(
-                reinterpret_cast<const COPYDATASTRUCT*>(lParam)) ? TRUE : FALSE;
         case kPlatformEventMessage:
             HandlePlatformEvents();
             return 0;
@@ -1806,11 +1792,6 @@ private:
                         RefreshPlatformAppearance();
                     }
                 }
-                if (const auto revision =
-                        bridge_.TakeLauncherExperienceChangedRevision()) {
-                    if (*revision > launcherExperienceProjection_.selectionRevision())
-                        RefreshLauncherExperience();
-                }
                 if (const auto revision = bridge_.TakeWidgetCatalogChangedRevision()) {
                     sessions_.ResetCatalogRetry();
                     AppendDiagnostic(L"Reconciling widget catalog revision " +
@@ -1861,11 +1842,7 @@ private:
                     const auto* failureDescriptor =
                         sessions_.FindDescriptor(failure.widgetId);
                     if (failureSnapshot && failureDescriptor) {
-                        const auto& presentationSnapshot =
-                            launcherExperienceProjection_.InteractionSnapshot(
-                                failure.widgetId,
-                                failureDescriptor->presentationGeneration,
-                                *failureSnapshot);
+                        const auto& presentationSnapshot = *failureSnapshot;
                         const auto* source = widgetrail::input::FindNodeInInputScope(
                             presentationSnapshot, failure.sourceElementId,
                             presentationSnapshot.activeInputScopeId);
@@ -2393,14 +2370,6 @@ private:
     }
 
     void Dispatch(const widgetrail::Command command) {
-        if (command == widgetrail::Command::Activate &&
-            state_.focusRegion() == widgetrail::FocusRegion::Tray &&
-            UsesLauncherExperiencePresentation(state_.selectedWidget())) {
-            launcherExperienceProjection_.BeginActivation(
-                std::exchange(launcherSafeStartPending_, false));
-        } else if (command == widgetrail::Command::Activate) {
-            launcherSafeStartPending_ = false;
-        }
         ApplyStateTransition(
             [&] { return state_.Dispatch(command); }, command);
     }
@@ -2601,97 +2570,6 @@ private:
         ApplyPlatformAppearance();
     }
 
-    void RefreshLauncherExperience() {
-        auto selection = bridge_.GetLauncherExperience();
-        if (!selection) {
-            AppendDiagnostic(
-                L"Launcher Experience refresh failed; retaining last good state: " +
-                bridge_.lastError());
-            return;
-        }
-        (void)PublishLauncherExperience(std::move(*selection));
-    }
-
-    bool SelectLauncherExperience(
-        const widgetrail::LauncherExperienceSelectionRequest& request) {
-        auto selection = bridge_.SelectLauncherExperience(request);
-        if (!selection) {
-            AppendDiagnostic(
-                L"Launcher Experience selection denied; retaining last good state: " +
-                bridge_.lastError());
-            return false;
-        }
-        return PublishLauncherExperience(std::move(*selection));
-    }
-
-    bool PublishLauncherExperience(widgetrail::LauncherExperienceSelection selection) {
-        const long long revision = selection.revision;
-        std::wstring diagnostic;
-        if (!launcherExperienceProjection_.PublishSelection(
-                std::move(selection), diagnostic)) {
-            AppendDiagnostic(
-                L"Launcher Experience revision " + std::to_wstring(revision) +
-                L" rejected; retaining last good state: " + diagnostic);
-            return false;
-        }
-        AppendDiagnostic(
-            L"Applied Launcher Experience revision " + std::to_wstring(revision) +
-            L" validated=compact@100%,compact@150%,standard@100%,standard@150%,wide@100%,wide@150%" +
-            (diagnostic.empty() ? L"" : L" retained-diagnostic=" + diagnostic));
-        if (state_.surface() != widgetrail::Surface::Hidden)
-            InvalidateRect(window_, nullptr, FALSE);
-        return true;
-    }
-
-    bool HandleLauncherExperienceSelectionProof(
-        const COPYDATASTRUCT* message) {
-        // The production-host fixture drives the existing host-owned Settings
-        // selection service. Keep the proof seam unavailable
-        // unless the existing bounded performance-evidence nonce is present.
-        if (!performanceDiagnosticsNonce_ || !message ||
-            message->dwData != kLauncherExperienceSelectionProof ||
-            !message->lpData || message->cbData < sizeof(wchar_t) ||
-            message->cbData > 2048 ||
-            message->cbData % sizeof(wchar_t) != 0) return false;
-        const auto characters = message->cbData / sizeof(wchar_t);
-        const auto* data = static_cast<const wchar_t*>(message->lpData);
-        if (data[characters - 1] != L'\0') return false;
-        const std::wstring_view payload(data, characters - 1);
-        std::array<std::wstring_view, 5> fields{};
-        std::size_t cursor{};
-        for (std::size_t index = 0; index < fields.size(); ++index) {
-            const auto end = payload.find(L'\n', cursor);
-            if (end == std::wstring_view::npos) {
-                if (index != fields.size() - 1) return false;
-                fields[index] = payload.substr(cursor);
-                cursor = payload.size();
-            } else {
-                fields[index] = payload.substr(cursor, end - cursor);
-                cursor = end + 1;
-            }
-        }
-        if (cursor != payload.size() || fields[0] != L"wrail-launcher-selection-v1" ||
-            fields[1] != *performanceDiagnosticsNonce_) return false;
-
-        widgetrail::LauncherExperienceSelectionRequest request;
-        if (fields[2] == L"select-exact" && !fields[3].empty() &&
-            !fields[4].empty()) {
-            request.operation =
-                widgetrail::LauncherExperienceSelectionOperation::SelectExact;
-            request.id = fields[3];
-            request.version = fields[4];
-        } else if (fields[2] == L"recover-built-in" && fields[3].empty() &&
-                   fields[4].empty()) {
-            request.operation =
-                widgetrail::LauncherExperienceSelectionOperation::RecoverBuiltIn;
-        } else {
-            return false;
-        }
-        AppendDiagnostic(L"Authenticated Launcher Experience selection proof operation=" +
-            std::wstring(fields[2]));
-        return SelectLauncherExperience(request);
-    }
-
     void QueueDisplayEnvironmentRefresh(const widgetrail::DisplayEnvironmentChange change) {
         if (displayRefresh_.Enqueue(
                 state_.surface() != widgetrail::Surface::Hidden, change)) {
@@ -2819,14 +2697,6 @@ private:
 
     [[nodiscard]] bool IsBridgeWidget(const std::wstring_view id) const noexcept {
         return sessions_.Contains(id);
-    }
-
-    [[nodiscard]] bool UsesLauncherExperiencePresentation(
-        const std::wstring_view id) const noexcept {
-        const auto* descriptor = sessions_.FindDescriptor(id);
-        return descriptor && descriptor->advancedPresentation &&
-            descriptor->advancedPresentation->schemaVersion == 1 &&
-            descriptor->advancedPresentation->kind == L"launcherExperience";
     }
 
     void RecordWidgetStartupFailure(
@@ -4141,7 +4011,7 @@ private:
         if (!declarativeRenderer_ || !compositionSurface_.available() ||
             state_.surface() != widgetrail::Surface::Widget ||
             state_.focusRegion() != widgetrail::FocusRegion::Widget ||
-            lastWidgetPresentationUsesProjection_ || declarativeMotionActive_ ||
+            declarativeMotionActive_ ||
             overlayTransition_.active() ||
             presentationTransaction_.extentTransitionActive() ||
             compositionPlacementInProgress_ ||
@@ -4200,7 +4070,7 @@ private:
         if (!window_ || !declarativeRenderer_ || !compositionSurface_.available() ||
             state_.surface() != widgetrail::Surface::Widget ||
             state_.activeWidget() != widgetId || focusChanged || pressedVisualChanged ||
-            lastWidgetPresentationUsesProjection_ || declarativeMotionActive_ ||
+            declarativeMotionActive_ ||
             overlayTransition_.active() ||
             presentationTransaction_.extentTransitionActive() ||
             compositionPlacementInProgress_ ||
@@ -4591,7 +4461,6 @@ private:
         std::map<std::wstring, float, std::less<>> scrollOffsets;
         widgetrail::FocusRegion focusRegion{widgetrail::FocusRegion::Tray};
         bool animationActive{};
-        bool projectionActive{};
         std::optional<widgetrail::OverlayPlacement> contentPlacement;
     };
 
@@ -4662,7 +4531,6 @@ private:
             committed.scrollOffsets != lastWidgetRenderResult_.scrollOffsets ||
             committed.focusRegion != state_.focusRegion() ||
             committed.animationActive != declarativeMotionActive_ ||
-            committed.projectionActive != lastWidgetPresentationUsesProjection_ ||
             !samePlacement || overlayTransition_.active() ||
             presentationTransaction_.extentTransitionActive() ||
             compositionPlacementInProgress_ || pendingContentRenderPlan_ ||
@@ -4704,12 +4572,7 @@ private:
             !HasExactRefreshRetainedVisualCheckpoint()) {
             return nullptr;
         }
-        const auto* descriptor = sessions_.FindDescriptor(widgetId);
-        return descriptor
-            ? &launcherExperienceProjection_.InteractionSnapshot(
-                widgetId, descriptor->presentationGeneration,
-                *presentation.snapshot)
-            : nullptr;
+        return presentation.snapshot;
     }
 
     template <typename Refresh>
@@ -5076,8 +4939,6 @@ private:
                         Dispatch(widgetrail::Command::Activate);
                     }
                     ClearFreeScrollReentry(L"pointer-focus");
-                    launcherExperienceProjection_.ObserveFocusInput(
-                        widget, GetTickCount64());
                     ObserveScrollPaginationFocusIntent(
                         widget, *snapshot,
                         interactionSession_.focusedElementId(), hit->id,
@@ -5731,8 +5592,6 @@ private:
             ineligibleReason = L"renderer-unavailable";
         else if (!compositionSurface_.available())
             ineligibleReason = L"composition-unavailable";
-        else if (lastWidgetPresentationUsesProjection_)
-            ineligibleReason = L"projection-active";
         else if (overlayTransition_.active())
             ineligibleReason = L"overlay-transition";
         else if (presentationTransaction_.extentTransitionActive())
@@ -5978,7 +5837,6 @@ private:
 
         const auto focus = interactionSession_.MoveFocus(
             widget, *snapshot, *request.target);
-        launcherExperienceProjection_.ObserveFocusInput(widget, GetTickCount64());
         widgetAccessibilityProjection_.Clear();
         if (focus.changed)
             InvalidateWidgetFocusChange(focus.priorFocus, focus.sliderDamageNodeIds);
@@ -6264,20 +6122,6 @@ private:
             if (dpadDirection) DispatchStickNavigation(*dpadDirection);
         }
 
-        const bool launcherSafeStartGesture =
-            (pressed & XINPUT_GAMEPAD_A) != 0 &&
-            state_.focusRegion() == widgetrail::FocusRegion::Tray &&
-            UsesLauncherExperiencePresentation(state_.selectedWidget()) &&
-            frame.state.leftTrigger >= 30 &&
-            frame.state.rightTrigger >= 30;
-        if (launcherSafeStartGesture) {
-            launcherSafeStartPending_ = true;
-            lastActionWidgetId_ = state_.selectedWidget();
-            lastActionMessage_ =
-                L"Advanced presentation safe start: built-in experience for this activation";
-            lastActionExpiresAt_ = now + 5000;
-            AppendDiagnostic(lastActionMessage_);
-        }
         if (pressed & XINPUT_GAMEPAD_A) {
             DispatchControllerAction(L"A", true);
             // Opening a modal runs a nested message loop. When it returns, the
@@ -6310,12 +6154,10 @@ private:
         if (!recoveryChordDown && (pressed & XINPUT_GAMEPAD_START)) {
             DispatchControllerAction(L"Menu", true);
         }
-        if (!launcherSafeStartGesture &&
-            frame.leftTriggerPressed != WRAIL_OVERLAY_PLATFORM_FALSE) {
+        if (frame.leftTriggerPressed != WRAIL_OVERLAY_PLATFORM_FALSE) {
             DispatchControllerAction(L"LT", true);
         }
-        if (!launcherSafeStartGesture &&
-            frame.rightTriggerPressed != WRAIL_OVERLAY_PLATFORM_FALSE) {
+        if (frame.rightTriggerPressed != WRAIL_OVERLAY_PLATFORM_FALSE) {
             DispatchControllerAction(L"RT", true);
         }
         if (frame.leftTriggerReleased != WRAIL_OVERLAY_PLATFORM_FALSE &&
@@ -6390,11 +6232,7 @@ private:
         if (presentation.authority != widgetrail::WidgetPresentationAuthority::Current)
             return nullptr;
         const auto* source = presentation.snapshot;
-        const auto* descriptor = sessions_.FindDescriptor(widgetId);
-        return source && descriptor
-            ? &launcherExperienceProjection_.InteractionSnapshot(
-                widgetId, descriptor->presentationGeneration, *source)
-            : nullptr;
+        return source;
     }
 
     struct HostRootBackAuthority final {
@@ -6427,8 +6265,7 @@ private:
         };
         if (!presentation.snapshot) return authority;
 
-        const auto& snapshot = launcherExperienceProjection_.InteractionSnapshot(
-            widgetId, descriptor->presentationGeneration, *presentation.snapshot);
+        const auto& snapshot = *presentation.snapshot;
         const std::wstring_view rootScope =
             widgetrail::input::RootInputScope(snapshot);
         if (snapshot.activeInputScopeId != rootScope &&
@@ -6613,8 +6450,6 @@ private:
                     state_.focusRegion() != widgetrail::FocusRegion::Widget ||
                     state_.activeWidget() != request.widgetId) continue;
                 ClearFreeScrollReentry(L"accessibility-focus");
-                launcherExperienceProjection_.ObserveFocusInput(
-                    request.widgetId, GetTickCount64());
                 ObserveScrollPaginationFocusIntent(
                     request.widgetId, *snapshot,
                     interactionSession_.focusedElementId(), resolved->nodeId,
@@ -7111,7 +6946,7 @@ private:
             state_.focusRegion() != widgetrail::FocusRegion::Widget || !current ||
             current->instanceId != snapshot.instanceId ||
             current->sequence != snapshot.sequence ||
-            lastWidgetPresentationUsesProjection_ || declarativeMotionActive_ ||
+            declarativeMotionActive_ ||
             overlayTransition_.active() ||
             presentationTransaction_.extentTransitionActive() ||
             compositionPlacementInProgress_ || pendingWidgetPresentationImpact_ ||
@@ -7351,19 +7186,6 @@ private:
             InvalidateWidgetFocusChange(
                 focus.priorFocus, focus.sliderDamageNodeIds);
         }
-        const auto projectedDirection =
-            direction == widgetrail::input::NavigationDirection::Left ? L"left" :
-            direction == widgetrail::input::NavigationDirection::Right ? L"right" :
-            direction == widgetrail::input::NavigationDirection::Up ? L"up" : L"down";
-        const auto projectedFocusTarget =
-            launcherExperienceProjection_.ProjectedFocusTarget(
-                widgetId, interactionSession_.focusedElementId(), projectedDirection);
-        if ((phase != widgetrail::input::NavigationEventPhase::Repeated ||
-             repeatedCanNavigate) &&
-            projectedFocusTarget) {
-            MoveWidgetFocus(projectedDirection);
-            return;
-        }
         const auto* focused = widgetrail::input::FindNodeInInputScope(
             *snapshot, interactionSession_.focusedElementId(), snapshot->activeInputScopeId);
         if (!focused) return;
@@ -7541,8 +7363,6 @@ private:
             return;
         }
         if (*visibleFocus != interactionSession_.focusedElementId()) {
-            launcherExperienceProjection_.ObserveFocusInput(
-                widgetId, GetTickCount64());
             ObserveScrollPaginationFocusIntent(
                 widgetId, *snapshot, interactionSession_.focusedElementId(),
                 *visibleFocus,
@@ -7550,26 +7370,6 @@ private:
                     DirectionalNavigation);
             const auto focus = interactionSession_.MoveFocus(
                 widgetId, *snapshot, *visibleFocus);
-            InvalidateWidgetFocusChange(
-                focus.priorFocus, focus.sliderDamageNodeIds);
-            return;
-        }
-        const auto projectedTarget =
-            launcherExperienceProjection_.ProjectedFocusTarget(
-                widgetId, interactionSession_.focusedElementId(), direction);
-        if (projectedTarget && widgetrail::input::IsEnabledFocusTarget(
-                *projectedTarget, lastWidgetRenderResult_)) {
-            launcherExperienceProjection_.ObserveFocusInput(
-                widgetId, GetTickCount64());
-            ObserveScrollPaginationFocusIntent(
-                widgetId, *snapshot, interactionSession_.focusedElementId(),
-                *projectedTarget,
-                widgetrail::input::ScrollPaginationIntentSource::
-                    DirectionalNavigation);
-            const auto focus = interactionSession_.MoveFocus(
-                widgetId, *snapshot, *projectedTarget);
-            (void)scrollEvidenceProbe_.RecordTarget(
-                interactionSession_.focusedElementId(), direction);
             InvalidateWidgetFocusChange(
                 focus.priorFocus, focus.sliderDamageNodeIds);
             return;
@@ -7590,8 +7390,6 @@ private:
         const bool explicitMoves = explicitTarget && widgetrail::input::IsDistinctFocusMove(
             interactionSession_.focusedElementId(), explicitTarget->id, explicitNavigable);
         if (explicitMoves) {
-            launcherExperienceProjection_.ObserveFocusInput(
-                widgetId, GetTickCount64());
             ObserveScrollPaginationFocusIntent(
                 widgetId, *snapshot, interactionSession_.focusedElementId(),
                 explicitTarget->id,
@@ -7608,8 +7406,6 @@ private:
         const auto fallback = widgetrail::input::FindGeometricFocusTarget(
             interactionSession_.focusedElementId(), navigationDirection, lastWidgetRenderResult_);
         if (fallback) {
-            launcherExperienceProjection_.ObserveFocusInput(
-                widgetId, GetTickCount64());
             ObserveScrollPaginationFocusIntent(
                 widgetId, *snapshot, interactionSession_.focusedElementId(),
                 *fallback,
@@ -8334,7 +8130,6 @@ private:
         lastFallbackPresentationCheckpointKey_.clear();
         pendingContentRenderPlan_.reset();
         activeContentRenderPlan_.reset();
-        launcherExperienceProjection_.DiscardTargetResources();
         // Hit and focus rectangles are valid only for the render target's
         // logical viewport. Never dispatch controller focus through geometry
         // retained across a resize, DPI migration, or appearance rebuild.
@@ -10335,17 +10130,8 @@ private:
                 options.suppressFocusedDescendantFollow =
                     freeScrollDecision.followSuppressed &&
                     (!inertRetainedSnapshot || retainedRefreshFreeScroll);
-                auto launcherProjection = launcherExperienceProjection_.Render(
-                    *declarativeRenderer_, renderTarget_.Get(), imageCache_.get(),
-                    descriptor ? descriptor->advancedPresentation
-                               : std::optional<widgetrail::WidgetAdvancedPresentationDeclaration>{},
-                    descriptor ? std::wstring_view{descriptor->presentationGeneration}
-                               : std::wstring_view{},
-                    renderedWidget,
-                    *snapshot, renderedFocusId, viewport, options);
-                lastWidgetPresentationUsesProjection_ =
-                    launcherProjection.presentationActive;
-                auto result = std::move(launcherProjection.render);
+                auto result = declarativeRenderer_->Render(
+                    renderTarget_.Get(), *snapshot, renderedFocusId, viewport, options);
                 currentCompositionRenderTiming_ = result.timing;
                 if (options.suppressFocusedDescendantFollow &&
                     interactionSession_.freeScrollBinding()) {
@@ -10358,36 +10144,8 @@ private:
                         InvalidateRect(window_, nullptr, FALSE);
                     }
                 }
-                const auto& semanticSnapshot =
-                    launcherExperienceProjection_.InteractionSnapshot(
-                        renderedWidget,
-                        descriptor ? std::wstring_view{descriptor->presentationGeneration}
-                                   : std::wstring_view{},
-                        *snapshot);
+                const auto& semanticSnapshot = *snapshot;
                 if (result.succeeded) {
-                    const auto projectedNavigationCount =
-                        launcherProjection.presentationActive
-                            ? result.navigationRects.size() : 0U;
-                    std::wstring launcherRailPrevious;
-                    std::wstring launcherRailNext;
-                    if (launcherProjection.preset) {
-                        if (const auto* focusedLauncherNode =
-                                widgetrail::input::FindNodeInInputScope(
-                                    semanticSnapshot, renderedFocusId,
-                                    semanticSnapshot.activeInputScopeId)) {
-                            const bool verticalRail =
-                                *launcherProjection.preset ==
-                                    widgetrail::launcher::Preset::CoverWall ||
-                                *launcherProjection.preset ==
-                                    widgetrail::launcher::Preset::CompactGrid;
-                            launcherRailPrevious = verticalRail
-                                ? focusedLauncherNode->focusUp
-                                : focusedLauncherNode->focusLeft;
-                            launcherRailNext = verticalRail
-                                ? focusedLauncherNode->focusDown
-                                : focusedLauncherNode->focusRight;
-                        }
-                    }
                     const std::wstring inputOwner =
                         state_.focusRegion() == widgetrail::FocusRegion::Tray
                             ? L"tray"
@@ -10429,38 +10187,6 @@ private:
                             std::to_wstring(trayLayout->stripBounds.width) + L"," +
                             std::to_wstring(trayLayout->stripBounds.height)
                         : L"\nmissing";
-                    const std::wstring launcherPresentationKey =
-                        launcherProjection.presentationActive
-                            ? L"\nlauncher-presentation\n" +
-                                std::wstring(widgetrail::launcher::EffectQualityName(
-                                    launcherProjection.effectQuality)) + L"\n" +
-                                (launcherProjection.backgroundIsFallback
-                                    ? L"fallback"
-                                    : launcherProjection.backgroundFocusId) + L"\n" +
-                                (launcherProjection.backgroundTransitionActive
-                                    ? L"transitioning"
-                                    : L"settled") + L"\n" +
-                                launcherProjection.selectionIdentity + L"\n" +
-                                (launcherProjection.selectionUsesGlobalAppearance
-                                    ? L"global" : L"launcher") + L"\n" +
-                                (launcherProjection.safeStart ? L"safe" : L"selected") + L"\n" +
-                                launcherProjection.layoutBranch + L"\n" +
-                                launcherProjection.railOrientation + L"\n" +
-                                launcherProjection.detailsSurface + L"\n" +
-                                launcherProjection.artworkAvailability + L"\n" +
-                                std::to_wstring(launcherProjection.bodyBounds.width) + L"x" +
-                                std::to_wstring(launcherProjection.bodyBounds.height) + L"\n" +
-                                std::to_wstring(launcherProjection.railBounds.x) + L"," +
-                                std::to_wstring(launcherProjection.railBounds.y) + L"," +
-                                std::to_wstring(launcherProjection.railBounds.width) + L"," +
-                                std::to_wstring(launcherProjection.railBounds.height) + L"\n" +
-                                std::to_wstring(launcherProjection.textScale) + L"\n" +
-                                (launcherProjection.reducedMotion ? L"motion-reduced" : L"motion-full") + L"\n" +
-                                (launcherProjection.reducedTransparency
-                                    ? L"transparency-reduced" : L"transparency-full") + L"\n" +
-                                (launcherProjection.highContrast
-                                    ? L"contrast-high" : L"contrast-standard")
-                            : L"\nlauncher-presentation\ninactive";
                     const std::wstring responsivePresentationKey =
                         result.responsiveSurface
                             ? L"\nresponsive-surface\n" +
@@ -10483,89 +10209,9 @@ private:
                                 ? L"failure-retained" : L"refresh-retained")
                             : transitionRetainedSnapshot ? L"retained" : L"admitted") +
                         L"\n" + inputOwner + L"\n" + std::wstring(renderedFocusId) +
-                        L"\n" + semanticFocus + trayState + launcherPresentationKey +
-                        responsivePresentationKey;
+                        L"\n" + semanticFocus + trayState + responsivePresentationKey;
                     if (paintKey != lastWidgetPresentationPaintKey_) {
                         lastWidgetPresentationPaintKey_ = paintKey;
-                        if (launcherProjection.disposition ==
-                            widgetrail::launcher::ProductionProjectionDisposition::Adopted) {
-                            AppendDiagnostic(
-                                L"Launcher Experience projection adopted widget=" +
-                                std::wstring(renderedWidget) + L" preset=" +
-                                std::wstring(widgetrail::launcher::PresetName(
-                                    *launcherProjection.preset)) +
-                                L" sequence=" + std::to_wstring(snapshot->sequence) +
-                                L" instance=" + snapshot->instanceId +
-                                L" scope=" + snapshot->activeInputScopeId +
-                                L" focus=" +
-                                (renderedFocusId.empty()
-                                    ? std::wstring{L"none"}
-                                    : std::wstring{renderedFocusId}) +
-                                L" projected-navigation=" + std::to_wstring(
-                                    projectedNavigationCount) +
-                                L" rail-previous=" +
-                                (launcherRailPrevious.empty()
-                                    ? std::wstring{L"none"}
-                                    : launcherRailPrevious) +
-                                L" rail-next=" +
-                                (launcherRailNext.empty()
-                                    ? std::wstring{L"none"}
-                                    : launcherRailNext) +
-                                L" selection=" +
-                                launcherProjection.selectionIdentity +
-                                L" appearance=" +
-                                (launcherProjection.selectionUsesGlobalAppearance
-                                    ? L"global" : L"launcher") +
-                                L" safe-start=" +
-                                (launcherProjection.safeStart ? L"true" : L"false") +
-                                L" branch=" + launcherProjection.layoutBranch +
-                                L" rail=" + launcherProjection.railOrientation +
-                                L" details-surface=" + launcherProjection.detailsSurface +
-                                L" artwork=" + launcherProjection.artworkAvailability +
-                                L" body=" +
-                                std::to_wstring(launcherProjection.bodyBounds.width) + L"x" +
-                                std::to_wstring(launcherProjection.bodyBounds.height) +
-                                L" rail-bounds=" +
-                                std::to_wstring(launcherProjection.railBounds.x) + L"," +
-                                std::to_wstring(launcherProjection.railBounds.y) + L"," +
-                                std::to_wstring(launcherProjection.railBounds.width) + L"," +
-                                std::to_wstring(launcherProjection.railBounds.height) +
-                                L" text-scale=" +
-                                std::to_wstring(launcherProjection.textScale) +
-                                L" reduced-motion=" +
-                                (launcherProjection.reducedMotion ? L"true" : L"false") +
-                                L" reduced-transparency=" +
-                                (launcherProjection.reducedTransparency ? L"true" : L"false") +
-                                L" high-contrast=" +
-                                (launcherProjection.highContrast ? L"true" : L"false") +
-                                L" effect=" + std::wstring(
-                                    widgetrail::launcher::EffectQualityName(
-                                        launcherProjection.effectQuality)) +
-                                L" background=" +
-                                (launcherProjection.backgroundIsFallback
-                                    ? std::wstring{L"fallback"}
-                                    : std::wstring{L"ready"}) +
-                                L" background-focus=" +
-                                (launcherProjection.backgroundFocusId.empty()
-                                    ? std::wstring{L"none"}
-                                    : launcherProjection.backgroundFocusId) +
-                                L" crossfade=" +
-                                (launcherProjection.backgroundTransitionActive
-                                    ? L"active"
-                                    : L"settled") +
-                                L" input-to-focus-last-ms=" + std::to_wstring(
-                                    launcherProjection.presentationMetrics
-                                        .lastInputToFocusMilliseconds) +
-                                L" input-to-focus-p95-ms=" + std::to_wstring(
-                                    launcherProjection.presentationMetrics
-                                        .p95InputToFocusMilliseconds) +
-                                L" input-samples=" + std::to_wstring(
-                                    launcherProjection.presentationMetrics
-                                        .inputToFocusSampleCount) +
-                                L" degraded=" + std::to_wstring(
-                                    launcherProjection.presentationMetrics
-                                        .degradedFrameCount));
-                        }
                         const auto actualTrayBounds = compositionChromeSession_
                             ? ProjectChromeClientBoundsToScreen(
                                 compositionChromeSession_->trayClientBounds)
@@ -10796,7 +10442,6 @@ private:
                         result.scrollOffsets,
                         state_.focusRegion(),
                         result.animationActive,
-                        launcherProjection.presentationActive,
                         presentationTransaction_.contentPlacement(),
                     };
                 }
@@ -10832,7 +10477,6 @@ private:
                         std::wstring(widget), snapshot->sequence);
                 }
             } else {
-                lastWidgetPresentationUsesProjection_ = false;
                 ClearAccessibilityTree();
                 DrawTextLine(sessions_.Failure(widget)
                                  ? std::wstring{L"Widget unavailable. Press A to retry."}
@@ -10965,8 +10609,6 @@ private:
     float focusOutlineWidth_{2.0F};
     std::unique_ptr<widgetrail::RemoteImageCache> imageCache_;
     std::unique_ptr<widgetrail::DeclarativeRenderer> declarativeRenderer_;
-    widgetrail::launcher::LauncherExperienceProjection launcherExperienceProjection_;
-    bool launcherSafeStartPending_{};
     widgetrail::pinned::WidgetSurfaceCoordinator pinnedSurfaceCoordinator_;
     bool runtimeInitialized_{};
     std::unordered_map<std::wstring, long long> renderedSnapshotSequences_;
@@ -10974,7 +10616,6 @@ private:
     std::optional<widgetrail::DeclarativeRenderTiming>
         currentCompositionRenderTiming_;
     std::optional<CommittedWidgetVisualState> committedWidgetVisualState_;
-    bool lastWidgetPresentationUsesProjection_{};
     std::optional<widgetrail::WidgetPresentationImpact>
         pendingWidgetPresentationImpact_;
     std::optional<widgetrail::IncrementalPresentationPlan>
@@ -11033,22 +10674,13 @@ private:
 int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int showCommand) {
     std::wstring processProfile = L"production";
     bool processOwnerProbe = false;
-    bool launcherExperienceSemanticProof = false;
     for (int index = 1; index < __argc; ++index) {
         if (_wcsicmp(__wargv[index], L"--process-profile") == 0 &&
             index + 1 < __argc) {
             processProfile = __wargv[++index];
         } else if (_wcsicmp(__wargv[index], L"--process-owner-probe") == 0) {
             processOwnerProbe = true;
-        } else if (_wcsicmp(__wargv[index], L"--launcher-experience-semantic-proof") == 0) {
-            launcherExperienceSemanticProof = true;
         }
-    }
-    if (launcherExperienceSemanticProof) {
-        std::wstring diagnostic;
-        const bool passed = widgetrail::launcher::RunProductionHostSemanticProof(diagnostic);
-        AppendDiagnostic(L"Launcher Experience production-host semantic proof " + diagnostic);
-        return passed ? EXIT_SUCCESS : EXIT_FAILURE;
     }
     widgetrail::process::OverlayProcessOwner processOwner;
     std::wstring ownershipError;

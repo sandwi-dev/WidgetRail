@@ -249,7 +249,6 @@ public static class PresentationUpdateMaterializer
                 PresentationProperty.InitialFocusId => Read<string?>(change.Value),
                 PresentationProperty.QuickActions => ReadRequired<IReadOnlyList<WidgetQuickAction>>(change.Value),
                 PresentationProperty.Surface => Read<WidgetSurfaceHints?>(change.Value),
-                PresentationProperty.AdvancedPresentation => Read<WidgetAdvancedPresentationView?>(change.Value),
                 PresentationProperty.VisibleWhen => Read<ResponsiveVisibility?>(change.Value),
                 PresentationProperty.Text or PresentationProperty.AccessibilityLabel or
                 PresentationProperty.AccessibilityValue or PresentationProperty.ActionId or
@@ -274,7 +273,6 @@ public static class PresentationUpdateMaterializer
                 PresentationProperty.IsBusy => Read<bool?>(change.Value),
                 PresentationProperty.Focus => Read<FocusNeighbors?>(change.Value),
                 PresentationProperty.ScrollAxis => Read<ScrollAxis?>(change.Value),
-                PresentationProperty.AdvancedPresentationSlot => Read<WidgetAdvancedPresentationSlot?>(change.Value),
                 PresentationProperty.StyleClasses => ReadRequired<IReadOnlyList<string>>(change.Value),
                 PresentationProperty.Shortcuts => ReadRequired<IReadOnlyList<ControllerShortcut>>(change.Value),
                 _ => throw new JsonException(),
@@ -357,7 +355,6 @@ public static class PresentationUpdateMaterializer
                     PresentationProperty.InitialFocusId => snapshot with { InitialFocusId = Read<string?>(change.Value) },
                     PresentationProperty.QuickActions => snapshot with { QuickActions = ReadRequired<IReadOnlyList<WidgetQuickAction>>(change.Value) },
                     PresentationProperty.Surface => snapshot with { Surface = Read<WidgetSurfaceHints?>(change.Value) },
-                    PresentationProperty.AdvancedPresentation => snapshot with { AdvancedPresentation = Read<WidgetAdvancedPresentationView?>(change.Value) },
                     _ => throw Error("$.operations", "wrong_property_target", "Node property cannot target the document."),
                 };
             return snapshot;
@@ -410,7 +407,6 @@ public static class PresentationUpdateMaterializer
                 PresentationProperty.VirtualCollectionWindow => node with { VirtualCollectionWindow = Read<VirtualCollectionWindow?>(change.Value) },
                 PresentationProperty.CollectionAnchorKey => node with { CollectionAnchorKey = Read<string?>(change.Value) },
                 PresentationProperty.CollectionItemKey => node with { CollectionItemKey = Read<string?>(change.Value) },
-                PresentationProperty.AdvancedPresentationSlot => node with { AdvancedPresentationSlot = Read<WidgetAdvancedPresentationSlot?>(change.Value) },
                 PresentationProperty.StyleClasses => node with { StyleClasses = ReadRequired<IReadOnlyList<string>>(change.Value) },
                 PresentationProperty.Shortcuts => node with { Shortcuts = ReadRequired<IReadOnlyList<ControllerShortcut>>(change.Value) },
                 _ => throw Error("$.operations", "wrong_property_target", "Document property cannot target a node."),

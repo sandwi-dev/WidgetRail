@@ -51,7 +51,6 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Packaged Spotify uses the ordinary full-trust runtime", FullTrustCommunityScenarios.SpotifyUsesTheOrdinaryRuntime),
     ("Packaged Game Launcher uses the ordinary full-trust runtime", FullTrustCommunityScenarios.GameLauncherUsesTheOrdinaryRuntime),
     ("Full-trust missing entrypoints and silent promotion fail closed", FullTrustCommunityScenarios.MissingEntrypointAndManifestPromotionFailClosed),
-    ("Installed Community advanced presentation declarations are generic and generation owned", InstalledAdvancedPresentationDeclarationsAreGeneric),
     ("Installed content generations receive distinct isolation identities", InstalledContentGenerationIsIsolated),
     ("Installed launch admission rejects content changed after catalog publication", InstalledLaunchAdmissionRejectsRace),
     ("Installed widget residency policies reach the generic supervisor", InstalledResidencyPolicyIsCarried),
@@ -788,29 +787,6 @@ static Task RequestClassificationIsClosed()
     });
     Assert.Equal(BridgeRequestKind.ResolveArtwork, artwork.Kind);
     Assert.Equal<string?>(null, artwork.WidgetId);
-
-    var launcherSelection = BridgeRequestClassifier.Classify(new BridgeEnvelope
-    {
-        Type = BridgeMessageTypes.SelectLauncherExperience,
-        RequestId = 11,
-        Payload = BridgeJson.ToElement(new BridgeLauncherExperienceSelectionRequest(
-            BridgeLauncherExperienceSelectionOperation.SelectExact,
-            "dev.example.launcher", "2.0.0")),
-    });
-    Assert.Equal(BridgeRequestKind.SelectLauncherExperience, launcherSelection.Kind);
-    Assert.Equal<string?>(null, launcherSelection.WidgetId);
-
-    var malformedLauncherSelection = BridgeRequestClassifier.Classify(new BridgeEnvelope
-    {
-        Type = BridgeMessageTypes.SelectLauncherExperience,
-        RequestId = 12,
-        Payload = BridgeJson.ToElement(new
-        {
-            operation = "recoverBuiltIn",
-            id = "dev.example.forged",
-        }),
-    });
-    Assert.Equal(BridgeRequestKind.Malformed, malformedLauncherSelection.Kind);
 
     var localInstall = BridgeRequestClassifier.Classify(new BridgeEnvelope
     {
@@ -1549,46 +1525,6 @@ static async Task InstalledWidgetsJoinCatalog()
     Assert.True(Path.IsPathFullyQualified(installed.WorkerArguments[3]),
         "Installed assembly path must be canonical before worker launch.");
     Assert.Equal(WidgetResidencyPolicies.KeepAlive, installed.ResidencyPolicy.Mode);
-}
-
-static async Task InstalledAdvancedPresentationDeclarationsAreGeneric()
-{
-    using var temporary = new TemporaryDirectory("wrail-advanced-presentation");
-    using var trusted = TemporaryCatalog.Create();
-    var installedRoot = Path.Combine(temporary.Path, "installed");
-    var catalog = new WidgetRail.WidgetCatalog.WidgetCatalog(installedRoot);
-    var declaration = new WidgetAdvancedPresentationDeclaration
-    {
-        SchemaVersion = WidgetAdvancedPresentationDeclaration.CurrentSchemaVersion,
-        Kind = WidgetAdvancedPresentationKind.LauncherExperience,
-    };
-    await InstallWidgetAsync(
-        catalog, temporary.Path, "org.random.alpha.surface", enabled: true,
-        advancedPresentation: declaration,
-        publisher: "org.random",
-        assembly: "payload/AlphaSurface.dll",
-        type: "Random.Alpha.SurfaceWidget");
-    await InstallWidgetAsync(
-        catalog, temporary.Path, "net.unrelated.bravo.deck", enabled: true,
-        advancedPresentation: declaration,
-        publisher: "net.unrelated",
-        assembly: "payload/BravoDeck.dll",
-        type: "Unrelated.Bravo.DeckWidget");
-    var load = await BridgeCatalog.LoadWithInstalledAsync(
-        trusted.Path, installedRoot, Environment.ProcessPath!);
-    var declared = load.Catalog.Widgets
-        .Where(widget => widget.AdvancedPresentation is not null)
-        .OrderBy(widget => widget.Id, StringComparer.Ordinal)
-        .ToArray();
-    Assert.Equal(2, declared.Length);
-    Assert.True(declared.All(widget =>
-        widget.AdvancedPresentation!.SchemaVersion == 1 &&
-        widget.AdvancedPresentation.Kind ==
-            WidgetAdvancedPresentationKind.LauncherExperience),
-        "Installed declarations did not survive the generic catalog boundary.");
-    Assert.True(declared.Select(widget => widget.PresentationGeneration)
-        .Distinct(StringComparer.Ordinal).Count() == 2,
-        "Distinct installed package identities shared one presentation generation.");
 }
 
 static async Task InstalledLaunchAdmissionRejectsRace()
@@ -2396,14 +2332,13 @@ static async Task<InstalledWidgetVersion> InstallWidgetAsync(
     WidgetResidencyPolicy? residencyPolicy = null,
     WidgetGlyph icon = WidgetGlyph.Connection,
     string version = "1.0.0",
-    WidgetAdvancedPresentationDeclaration? advancedPresentation = null,
     string publisher = "dev.example",
     string assembly = "payload/Widget.dll",
     string type = "Example.EnabledWidget")
 {
     var packagePath = await CreateWidgetPackageAsync(
         packageDirectory, id, version, styleSource, permissions, residencyPolicy, icon,
-        advancedPresentation, publisher, assembly, type);
+        publisher, assembly, type);
     var installed = await catalog.InstallAsync(packagePath);
     if (enabled) await catalog.SetEnabledAsync(id, true);
     return installed;
@@ -2417,7 +2352,6 @@ static async Task<string> CreateWidgetPackageAsync(
     IReadOnlyList<string>? permissions = null,
     WidgetResidencyPolicy? residencyPolicy = null,
     WidgetGlyph icon = WidgetGlyph.Connection,
-    WidgetAdvancedPresentationDeclaration? advancedPresentation = null,
     string publisher = "dev.example",
     string assembly = "payload/Widget.dll",
     string type = "Example.EnabledWidget")
@@ -2434,7 +2368,6 @@ static async Task<string> CreateWidgetPackageAsync(
         Entrypoint = new WidgetEntrypoint(
             "dotnet-worker", assembly, type),
         Presentation = new WidgetPresentation(icon),
-        AdvancedPresentation = advancedPresentation,
         Permissions = permissions ?? [],
         OptionalPermissions = [],
         BackgroundPolicy = residencyPolicy is null ? "none" : null,

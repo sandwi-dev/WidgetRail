@@ -64,9 +64,6 @@ internal static class Program
                 settingsPaths,
                 new ThemeManager(settingsStore, new ThemeCatalog(settingsPaths)));
             await appearance.StartAsync(shutdown.Token).ConfigureAwait(false);
-            await using var launcherExperience = new LauncherExperienceSelectionService(
-                settingsStore);
-            await launcherExperience.StartAsync(shutdown.Token).ConfigureAwait(false);
             var consentStore = new ConsentStore(
                 Path.Combine(settingsPaths.RootDirectory, "consent"));
             await using var communityBackend = new WindowsCommunityPlatformBackend(
@@ -87,7 +84,7 @@ internal static class Program
                 communityBackend);
             await using var server = new WidgetBridgeServer(
                 pipeName, catalog, maximumBytes, appearance, consentStore, platformBackend,
-                catalogMonitor, residencyBudget, launcherExperience,
+                catalogMonitor, residencyBudget,
                 mediaDiagnostics.Record,
                 mediaDiagnostics.RecordLifetime,
                 mediaDiagnostics.RecordRequestFailure);

@@ -5,8 +5,6 @@ For an end-to-end walkthrough, see the repository
 limitations, see [publishing and installation](../../docs/publishing-and-installation.md).
 Global-theme authors should use [theme packaging and
 distribution](../../docs/theme-packaging.md).
-Launcher Experience authors should use the dedicated
-[data-only pack format](../../docs/launcher-experience-packs.md).
 
 The prototype CLI makes the controller-widget development loop usable before
 the graphical simulator exists. It has no third-party runtime dependencies.
@@ -262,76 +260,3 @@ identity; obtain it through an independent trusted channel. Packages are not
 signed and there is no revocation service yet. Legacy schema-version-1 local
 theme directories remain readable by the runtime, but `theme pack` accepts
 only the publisher-bearing public schema.
-
-### Launcher Experience authoring and distribution
-
-`wrail launcher-theme` is the data-only Game Launcher presentation workflow. It
-uses `LauncherExperienceValidator` for source directories and materialized
-archives, so commands do not carry a second manifest, recipe, WRSS, asset, or
-digest schema.
-
-- `launcher-theme new` atomically publishes a minimal valid project with strict
-  `launcher.json`, compact/standard/wide recipe branches, launcher-scoped WRSS,
-  and a sealed static preview asset. The requested output must not exist.
-- `validate` accepts a directory or `.wrlauncher`; `pack` writes a
-  byte-reproducible ZIP with ordinal entries and fixed metadata; and `inspect`
-  reports identity, publisher claim, version, preset, sizes, content digest,
-  and archive digest without executing anything.
-- `preview` writes a deterministic schema-version-1 offscreen fixture document.
-  It covers all four presets across compact, standard, and wide surfaces for
-  empty, 20-game, 2,000-game, offline, long-title, missing-art,
-  active-operation, 150%-scale, reduced-motion, reduced-transparency, and
-  high-contrast states. The 2,000-game case retains only a bounded 64-row
-  semantic window. The document contains no actions, SavedIds, provider
-  bindings, paths, or game/content authority.
-- `install`, `list`, and `remove` use the production catalog under
-  `%LOCALAPPDATA%\WidgetRail\launcher-experiences`, or an isolated
-  `--catalog <root>`. Installed `<id>/<version>` content is immutable; removal
-  requires an exact canonical ID/version and cannot remove built-in recovery
-  presets.
-
-The archive admits only strict JSON, launcher-scoped WRSS, and bounded static
-PNG/JPEG/WebP. URLs, HTML/JavaScript, executables, links/reparse points, path
-escape/collisions, animated or multi-frame images, oversized content,
-pack-authored actions/provider bindings, and inaccessible recipe branches fail
-closed. Installation grants presentation data only. Preview is deterministic
-authoring evidence, not an ordinary-overlay preview: production overlay
-adoption remains owned by the private native Launcher Experience hook.
-
-Packaging and catalog commands only inspect bytes and metadata; they never load
-or execute a widget assembly. Packages are not signed, and a digest proves
-integrity rather than publisher identity, so compare the required remote digest
-through an independent trusted channel. Newly installed widget IDs remain
-disabled until explicitly enabled after review. Installed versions are
-immutable and coexist under `<id>/<version>`; changing the active version never
-rewrites either package. Update or rollback is a disabled-only review flow:
-disable the ID, install if necessary, explicitly select or roll back, review,
-and then enable it again. A local or remote update of an enabled widget is
-rejected before package publication without changing its active version.
-Installing a newer version does not override an existing explicit pin; the CLI
-prints the still-selected version and the exact `version select` command needed
-to review the new one.
-
-The shared remote downloader permits HTTPS on port 443 only, rejects credentials,
-fragments, localhost, and obvious private or link-local IP literals, and checks
-every redirect against the same policy. It accepts at most five redirects and
-72 MiB for widgets or 4 MiB for themes, with the selected byte limit enforced
-both from `Content-Length` and while streaming. The default connect, response,
-and overall limits are 10, 20, and 120 seconds. Responses must use identity
-content encoding. A random temporary file remains exclusively locked through
-validation and is removed on success or failure. These controls do not make an
-untrusted widget safe and do not claim to prevent DNS rebinding; install only
-from publishers you trust.
-
-`wrail render` and scenario listing never load widget/provider assemblies.
-`wrail preview <directory> --scenario <name>` loads one declared public static
-factory only in a capability-free AppContainer/Job worker, drives the normal
-Visible, Interactive, and Background lifecycle, validates two deterministic
-snapshots, and writes a bounded versioned semantic result. The CLI process never
-loads the scenario assembly. The exact build-output tree is pinned for the
-worker session; neighboring files are not granted. This is credential-free
-semantic preview, not native pixels, controller replay, or a general desktop
-sandbox. Use only author-controlled scenario code.
-
-Exit code 0 means success, 1 means validation/runtime failure, and 2 means the
-command was used incorrectly.

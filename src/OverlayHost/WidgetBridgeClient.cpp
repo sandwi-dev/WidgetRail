@@ -358,35 +358,6 @@ std::optional<std::vector<WidgetDescriptor>> ParseWidgetDescriptors(
             }
             descriptor.pinningSupported = source.GetNamedBoolean(L"pinningSupported");
         }
-        if (source.HasKey(L"advancedPresentation")) {
-            if (source.GetNamedValue(L"advancedPresentation").ValueType() !=
-                JsonValueType::Object) {
-                error = L"Widget descriptor property 'advancedPresentation' must be an object.";
-                return std::nullopt;
-            }
-            const auto declaration = source.GetNamedObject(L"advancedPresentation");
-            if (!HasOnlyProperties(declaration, {L"schemaVersion", L"kind"}) ||
-                !declaration.HasKey(L"schemaVersion") ||
-                declaration.GetNamedValue(L"schemaVersion").ValueType() !=
-                    JsonValueType::Number ||
-                !declaration.HasKey(L"kind") ||
-                declaration.GetNamedValue(L"kind").ValueType() !=
-                    JsonValueType::String) {
-                error = L"Widget descriptor advanced presentation declaration is malformed.";
-                return std::nullopt;
-            }
-            const auto schema = declaration.GetNamedNumber(L"schemaVersion");
-            auto kind = std::wstring(std::wstring_view(
-                declaration.GetNamedString(L"kind")));
-            if (!std::isfinite(schema) || schema < 0 || schema > 65535 ||
-                std::floor(schema) != schema || kind.empty() || kind.size() > 64 ||
-                !IsIdentifier(kind)) {
-                error = L"Widget descriptor advanced presentation declaration is invalid.";
-                return std::nullopt;
-            }
-            descriptor.advancedPresentation = WidgetAdvancedPresentationDeclaration{
-                static_cast<int>(schema), std::move(kind)};
-        }
         if (source.HasKey(L"protectedWifiPromptSupported")) {
             if (source.GetNamedValue(L"protectedWifiPromptSupported").ValueType() !=
                 JsonValueType::Boolean) {
@@ -625,366 +596,6 @@ std::optional<PlatformAppearance> ParsePlatformAppearance(
     return appearance;
 }
 
-std::optional<std::vector<unsigned char>> DecodeBase64(
-    const std::wstring_view value,
-    const std::size_t maximumBytes) {
-    if (value.empty() || value.size() > ((maximumBytes + 2) / 3) * 4 + 4 ||
-        value.size() % 4 != 0) return std::nullopt;
-    const auto digit = [](const wchar_t character) -> int {
-        if (character >= L'A' && character <= L'Z') return character - L'A';
-        if (character >= L'a' && character <= L'z') return character - L'a' + 26;
-        if (character >= L'0' && character <= L'9') return character - L'0' + 52;
-        if (character == L'+') return 62;
-        if (character == L'/') return 63;
-        return -1;
-    };
-    std::vector<unsigned char> result;
-    result.reserve(std::min(maximumBytes, value.size() / 4 * 3));
-    for (std::size_t index = 0; index < value.size(); index += 4) {
-        const bool final = index + 4 == value.size();
-        const bool pad2 = value[index + 2] == L'=';
-        const bool pad3 = value[index + 3] == L'=';
-        if (pad2 && !pad3 || (!final && (pad2 || pad3))) return std::nullopt;
-        const int a = digit(value[index]);
-        const int b = digit(value[index + 1]);
-        const int c = pad2 ? 0 : digit(value[index + 2]);
-        const int d = pad3 ? 0 : digit(value[index + 3]);
-        if (a < 0 || b < 0 || c < 0 || d < 0) return std::nullopt;
-        const unsigned value24 = static_cast<unsigned>(
-            (a << 18) | (b << 12) | (c << 6) | d);
-        result.push_back(static_cast<unsigned char>((value24 >> 16) & 0xff));
-        if (!pad2) result.push_back(static_cast<unsigned char>((value24 >> 8) & 0xff));
-        if (!pad3) result.push_back(static_cast<unsigned char>(value24 & 0xff));
-        if (result.size() > maximumBytes) return std::nullopt;
-    }
-    return result;
-}
-
-std::optional<launcher::Preset> ParseLauncherPreset(
-    const std::wstring_view value) noexcept {
-    if (value == L"hero-rail") return launcher::Preset::HeroRail;
-    if (value == L"cover-wall") return launcher::Preset::CoverWall;
-    if (value == L"carousel") return launcher::Preset::Carousel;
-    if (value == L"compact-grid") return launcher::Preset::CompactGrid;
-    return std::nullopt;
-}
-
-std::optional<launcher::Slot> ParseLauncherSlot(
-    const std::wstring_view value) noexcept {
-    if (value == L"heroBackground" || value == L"hero-background")
-        return launcher::Slot::HeroBackground;
-    if (value == L"gameRail" || value == L"game-rail") return launcher::Slot::GameRail;
-    if (value == L"detailsPanel" || value == L"details-panel")
-        return launcher::Slot::DetailsPanel;
-    if (value == L"collectionTabs" || value == L"collection-tabs")
-        return launcher::Slot::CollectionTabs;
-    if (value == L"sourceStatus" || value == L"source-status")
-        return launcher::Slot::SourceStatus;
-    if (value == L"operationStatus" || value == L"operation-status")
-        return launcher::Slot::OperationStatus;
-    if (value == L"systemStatus" || value == L"system-status")
-        return launcher::Slot::SystemStatus;
-    if (value == L"controllerHints" || value == L"controller-hints")
-        return launcher::Slot::ControllerHints;
-    return std::nullopt;
-}
-
-std::optional<launcher::RecipeNode> ParseLauncherRecipeNode(
-    const JsonObject& source,
-    std::size_t& count,
-    const int depth,
-    std::wstring& error) {
-    if (depth > 16 || ++count > 384 || !HasNoUnknownProperties(source,
-            {L"type", L"region", L"insets", L"horizontalAlignment",
-             L"verticalAlignment", L"slot", L"orientation", L"rows",
-             L"columns", L"children", L"surface", L"density"})) {
-        error = L"Launcher Experience recipe exceeded its structural bound.";
-        return std::nullopt;
-    }
-    if (!source.HasKey(L"type") || !source.HasKey(L"region") ||
-        !source.HasKey(L"insets") || !source.HasKey(L"horizontalAlignment") ||
-        !source.HasKey(L"verticalAlignment") || !source.HasKey(L"children")) {
-        error = L"Launcher Experience recipe omitted a required node property.";
-        return std::nullopt;
-    }
-    const auto typeText = OptionalString(source, L"type");
-    launcher::RecipeNode node;
-    if (typeText == L"region") node.type = launcher::Primitive::Region;
-    else if (typeText == L"grid") node.type = launcher::Primitive::Grid;
-    else if (typeText == L"stack") node.type = launcher::Primitive::Stack;
-    else if (typeText == L"overlay") node.type = launcher::Primitive::Overlay;
-    else if (typeText == L"inset") node.type = launcher::Primitive::Inset;
-    else {
-        error = L"Launcher Experience recipe contains an invalid primitive.";
-        return std::nullopt;
-    }
-    const auto readFloat = [&](const JsonObject& object, const wchar_t* name,
-                               float& output) {
-        if (!object.HasKey(name) ||
-            object.GetNamedValue(name).ValueType() != JsonValueType::Number)
-            return false;
-        const double number = object.GetNamedNumber(name);
-        if (!std::isfinite(number) || number < -1.0 || number > 2.0) return false;
-        output = static_cast<float>(number);
-        return true;
-    };
-    if (!source.HasKey(L"region") ||
-        source.GetNamedValue(L"region").ValueType() != JsonValueType::Object ||
-        !source.HasKey(L"insets") ||
-        source.GetNamedValue(L"insets").ValueType() != JsonValueType::Object) {
-        error = L"Launcher Experience recipe omitted geometry.";
-        return std::nullopt;
-    }
-    const auto region = source.GetNamedObject(L"region");
-    const auto insets = source.GetNamedObject(L"insets");
-    if (!HasOnlyProperties(region, {L"x", L"y", L"width", L"height"}) ||
-        !readFloat(region, L"x", node.region.x) ||
-        !readFloat(region, L"y", node.region.y) ||
-        !readFloat(region, L"width", node.region.width) ||
-        !readFloat(region, L"height", node.region.height) ||
-        !HasOnlyProperties(insets, {L"left", L"top", L"right", L"bottom"}) ||
-        !readFloat(insets, L"left", node.insets.left) ||
-        !readFloat(insets, L"top", node.insets.top) ||
-        !readFloat(insets, L"right", node.insets.right) ||
-        !readFloat(insets, L"bottom", node.insets.bottom)) {
-        error = L"Launcher Experience recipe contains invalid geometry.";
-        return std::nullopt;
-    }
-    if (source.HasKey(L"slot")) {
-        if (source.GetNamedValue(L"slot").ValueType() != JsonValueType::String ||
-            !(node.slot = ParseLauncherSlot(OptionalString(source, L"slot")))) {
-            error = L"Launcher Experience recipe contains an invalid slot.";
-            return std::nullopt;
-        }
-    }
-    if (source.HasKey(L"orientation")) {
-        const auto value = OptionalString(source, L"orientation");
-        if (value == L"horizontal") node.orientation = launcher::Orientation::Horizontal;
-        else if (value == L"vertical") node.orientation = launcher::Orientation::Vertical;
-        else {
-            error = L"Launcher Experience recipe contains an invalid orientation.";
-            return std::nullopt;
-        }
-    }
-    if (source.HasKey(L"surface")) {
-        const auto value = OptionalString(source, L"surface");
-        if (value == L"solid") node.surface = launcher::Surface::Solid;
-        else if (value == L"glass") node.surface = launcher::Surface::Glass;
-        else {
-            error = L"Launcher Experience recipe contains an invalid surface.";
-            return std::nullopt;
-        }
-    }
-    const auto readOptionalInteger = [&](const wchar_t* name, std::optional<int>& target) {
-        if (!source.HasKey(name)) return true;
-        if (source.GetNamedValue(name).ValueType() != JsonValueType::Number) return false;
-        const double number = source.GetNamedNumber(name);
-        if (!std::isfinite(number) || number < 1 || number > 12 ||
-            std::floor(number) != number) return false;
-        target = static_cast<int>(number);
-        return true;
-    };
-    if (!readOptionalInteger(L"rows", node.rows) ||
-        !readOptionalInteger(L"columns", node.columns)) {
-        error = L"Launcher Experience recipe contains an invalid grid bound.";
-        return std::nullopt;
-    }
-    if (!source.HasKey(L"children") ||
-        source.GetNamedValue(L"children").ValueType() != JsonValueType::Array) {
-        error = L"Launcher Experience recipe omitted children.";
-        return std::nullopt;
-    }
-    const auto children = source.GetNamedArray(L"children");
-    if (children.Size() > 32) {
-        error = L"Launcher Experience recipe contains too many children.";
-        return std::nullopt;
-    }
-    node.children.reserve(children.Size());
-    for (uint32_t index = 0; index < children.Size(); ++index) {
-        if (children.GetAt(index).ValueType() != JsonValueType::Object) {
-            error = L"Launcher Experience recipe contains a non-object child.";
-            return std::nullopt;
-        }
-        auto child = ParseLauncherRecipeNode(
-            children.GetObjectAt(index), count, depth + 1, error);
-        if (!child) return std::nullopt;
-        node.children.push_back(std::move(*child));
-    }
-    return node;
-}
-
-std::optional<LauncherExperienceSelection> ParseLauncherExperience(
-    const JsonObject& payload,
-    std::wstring& error) {
-    if (!HasNoUnknownProperties(payload,
-            {L"revision", L"id", L"version", L"contentDigest",
-             L"presentationRevision", L"preset", L"builtIn",
-             L"followWidgetPreset", L"useGlobalAppearance", L"backgroundMode", L"focusEffect",
-             L"motionIntensity", L"recipe", L"packStyles",
-             L"packBackground", L"diagnostic"})) {
-        error = L"Launcher Experience payload has an unknown property.";
-        return std::nullopt;
-    }
-    constexpr std::array<const wchar_t*, 14> requiredProperties{{
-        L"revision", L"id", L"version", L"contentDigest",
-        L"presentationRevision", L"preset", L"builtIn", L"followWidgetPreset",
-        L"useGlobalAppearance", L"backgroundMode", L"focusEffect",
-        L"motionIntensity", L"recipe", L"packStyles",
-    }};
-    if (!std::all_of(requiredProperties.begin(), requiredProperties.end(),
-            [&](const wchar_t* name) { return payload.HasKey(name); })) {
-        error = L"Launcher Experience payload omitted a required property.";
-        return std::nullopt;
-    }
-    const auto number = payload.GetNamedValue(L"revision");
-    if (number.ValueType() != JsonValueType::Number ||
-        payload.GetNamedValue(L"builtIn").ValueType() != JsonValueType::Boolean ||
-        payload.GetNamedValue(L"followWidgetPreset").ValueType() != JsonValueType::Boolean ||
-        payload.GetNamedValue(L"useGlobalAppearance").ValueType() != JsonValueType::Boolean ||
-        payload.GetNamedValue(L"recipe").ValueType() != JsonValueType::Object ||
-        payload.GetNamedValue(L"packStyles").ValueType() != JsonValueType::Object) {
-        error = L"Launcher Experience payload has invalid property types.";
-        return std::nullopt;
-    }
-    LauncherExperienceSelection result;
-    const double revision = number.GetNumber();
-    if (!std::isfinite(revision) || revision <= 0 || std::floor(revision) != revision ||
-        revision > 9'007'199'254'740'991.0) {
-        error = L"Launcher Experience revision is invalid.";
-        return std::nullopt;
-    }
-    result.revision = static_cast<long long>(revision);
-    result.id = OptionalString(payload, L"id");
-    result.version = OptionalString(payload, L"version");
-    result.contentDigest = OptionalString(payload, L"contentDigest");
-    result.presentationRevision = OptionalString(payload, L"presentationRevision");
-    result.backgroundMode = OptionalString(payload, L"backgroundMode");
-    result.focusEffect = OptionalString(payload, L"focusEffect");
-    result.motionIntensity = OptionalString(payload, L"motionIntensity");
-    result.diagnostic = OptionalString(payload, L"diagnostic");
-    const auto preset = ParseLauncherPreset(OptionalString(payload, L"preset"));
-    if (!preset) {
-        error = L"Launcher Experience preset is invalid.";
-        return std::nullopt;
-    }
-    result.preset = *preset;
-    result.builtIn = payload.GetNamedBoolean(L"builtIn");
-    result.followWidgetPreset = payload.GetNamedBoolean(L"followWidgetPreset");
-    result.useGlobalAppearance = payload.GetNamedBoolean(L"useGlobalAppearance");
-    if (!IsIdentifier(result.id) || result.version.empty() || result.version.size() > 64 ||
-        result.contentDigest.empty() || result.contentDigest.size() > 128 ||
-        result.presentationRevision.empty() || result.presentationRevision.size() > 384 ||
-        (result.backgroundMode != L"global" && result.backgroundMode != L"pack-asset" &&
-         result.backgroundMode != L"selected-game-artwork") ||
-        (result.focusEffect != L"outline" && result.focusEffect != L"lift" &&
-         result.focusEffect != L"scale") ||
-        (result.motionIntensity != L"none" && result.motionIntensity != L"reduced" &&
-         result.motionIntensity != L"standard") ||
-        result.diagnostic.size() > 256) {
-        error = L"Launcher Experience identity or parameters are invalid.";
-        return std::nullopt;
-    }
-    const auto recipe = payload.GetNamedObject(L"recipe");
-    if (!HasOnlyProperties(recipe, {L"schemaVersion", L"branches"}) ||
-        recipe.GetNamedValue(L"schemaVersion").ValueType() != JsonValueType::Number ||
-        recipe.GetNamedNumber(L"schemaVersion") != 1 ||
-        recipe.GetNamedValue(L"branches").ValueType() != JsonValueType::Object) {
-        error = L"Launcher Experience recipe envelope is invalid.";
-        return std::nullopt;
-    }
-    result.recipe.schemaVersion = 1;
-    const auto branches = recipe.GetNamedObject(L"branches");
-    if (!HasOnlyProperties(branches, {L"compact", L"standard", L"wide"})) {
-        error = L"Launcher Experience recipe contains an unknown branch.";
-        return std::nullopt;
-    }
-    const std::array<std::pair<const wchar_t*, launcher::Branch>, 3> branchNames{{
-        {L"compact", launcher::Branch::Compact},
-        {L"standard", launcher::Branch::Standard},
-        {L"wide", launcher::Branch::Wide},
-    }};
-    std::size_t nodeCount{};
-    for (const auto& [name, branch] : branchNames) {
-        if (!branches.HasKey(name) ||
-            branches.GetNamedValue(name).ValueType() != JsonValueType::Object) continue;
-        const auto branchObject = branches.GetNamedObject(name);
-        auto root = ParseLauncherRecipeNode(
-            branchObject, nodeCount, 0, error);
-        if (!root) return std::nullopt;
-        result.recipe.branches.emplace(branch, std::move(*root));
-    }
-    if (result.recipe.branches.empty()) {
-        error = L"Launcher Experience recipe omitted every responsive branch.";
-        return std::nullopt;
-    }
-
-    const auto styles = payload.GetNamedObject(L"packStyles");
-    if (styles.Size() > 8) {
-        error = L"Launcher Experience styles exceed the slot bound.";
-        return std::nullopt;
-    }
-    std::size_t totalProperties{};
-    for (const auto& slotEntry : styles) {
-        const auto slot = ParseLauncherSlot(std::wstring_view(slotEntry.Key()));
-        if (!slot || slotEntry.Value().ValueType() != JsonValueType::Object) {
-            error = L"Launcher Experience styles contain an invalid slot.";
-            return std::nullopt;
-        }
-        const auto properties = slotEntry.Value().GetObject();
-        if (properties.Size() > kMaximumShellProperties ||
-            totalProperties + properties.Size() > 8 * kMaximumShellProperties) {
-            error = L"Launcher Experience styles exceed the property bound.";
-            return std::nullopt;
-        }
-        totalProperties += properties.Size();
-        WidgetComputedStyle computed;
-        for (const auto& property : properties) {
-            const std::wstring name(std::wstring_view(property.Key()));
-            if (!IsIdentifier(name) || property.Value().ValueType() != JsonValueType::Object) {
-                error = L"Launcher Experience style property is invalid.";
-                return std::nullopt;
-            }
-            auto parsed = ParseShellStyleValue(property.Value().GetObject(), name, error);
-            if (!parsed) return std::nullopt;
-            computed.emplace(name, std::move(*parsed));
-        }
-        result.packStyles.emplace(*slot, std::move(computed));
-    }
-    if (payload.HasKey(L"packBackground")) {
-        if (payload.GetNamedValue(L"packBackground").ValueType() != JsonValueType::Object) {
-            error = L"Launcher Experience background is invalid.";
-            return std::nullopt;
-        }
-        const auto source = payload.GetNamedObject(L"packBackground");
-        if (!HasOnlyProperties(source,
-                {L"opaqueAssetId", L"revision", L"format", L"base64"})) {
-            error = L"Launcher Experience background shape is invalid.";
-            return std::nullopt;
-        }
-        LauncherExperienceSealedAsset asset;
-        asset.opaqueAssetId = OptionalString(source, L"opaqueAssetId");
-        asset.revision = OptionalString(source, L"revision");
-        asset.format = OptionalString(source, L"format");
-        auto bytes = DecodeBase64(OptionalString(source, L"base64"),
-                                  16U * 1024U * 1024U);
-        if (asset.opaqueAssetId.empty() || asset.opaqueAssetId.size() > 256 ||
-            asset.revision != result.presentationRevision ||
-            (asset.format != L"png" && asset.format != L"jpeg" &&
-             asset.format != L"webp") || !bytes) {
-            error = L"Launcher Experience sealed background is invalid.";
-            return std::nullopt;
-        }
-        asset.bytes = std::move(*bytes);
-        result.packBackground = std::move(asset);
-    }
-    if (result.backgroundMode == L"pack-asset" && !result.packBackground) {
-        error = L"Launcher Experience pack background is absent.";
-        return std::nullopt;
-    }
-    error.clear();
-    return result;
-}
-
 bool ReadRequestId(const JsonObject& response, long long& requestId) {
     if (!response.HasKey(L"requestId") ||
         response.GetNamedValue(L"requestId").ValueType() != JsonValueType::Number) return false;
@@ -1076,8 +687,6 @@ WidgetNode ParseNode(const JsonObject& source) {
     node.scrollNearEndActionId = OptionalString(source, L"scrollNearEndActionId");
     node.collectionAnchorKey = OptionalString(source, L"collectionAnchorKey");
     node.collectionItemKey = OptionalString(source, L"collectionItemKey");
-    node.advancedPresentationSlot = OptionalString(
-        source, L"advancedPresentationSlot");
     if ((!node.collectionAnchorKey.empty() &&
          (node.collectionAnchorKey.size() > kMaximumIdentifierLength ||
           !IsIdentifier(node.collectionAnchorKey))) ||
@@ -1333,11 +942,6 @@ WidgetSnapshot ParseSnapshot(const JsonObject& source) {
         parsed.minimumHeight = optionalNumber(L"minimumHeight");
         snapshot.surface = std::move(parsed);
     }
-    if (source.HasKey(L"advancedPresentation")) {
-        const auto advanced = source.GetNamedObject(L"advancedPresentation");
-        snapshot.advancedPresentationKind = OptionalString(advanced, L"kind");
-        snapshot.advancedPresentationPreset = OptionalString(advanced, L"preset");
-    }
     if (source.HasKey(L"quickActions")) {
         const JsonArray actions = source.GetNamedArray(L"quickActions");
         snapshot.quickActions.reserve(actions.Size());
@@ -1390,12 +994,11 @@ long long RequiredIntegral(
 
 bool IsDocumentPresentationProperty(const std::wstring_view property) noexcept {
     return property == L"activeInputScopeId" || property == L"initialFocusId" ||
-        property == L"quickActions" || property == L"surface" ||
-        property == L"advancedPresentation";
+        property == L"quickActions" || property == L"surface";
 }
 
 bool IsNodePresentationProperty(const std::wstring_view property) noexcept {
-    static constexpr std::array<std::wstring_view, 38> properties{
+    static constexpr std::array<std::wstring_view, 37> properties{
         L"visibleWhen", L"text", L"accessibilityLabel", L"accessibilityValue",
         L"actionId", L"textEntryValue", L"textEntryPlaceholder",
         L"textEntryMaximumLength", L"value", L"minimum", L"maximum", L"step",
@@ -1407,7 +1010,7 @@ bool IsNodePresentationProperty(const std::wstring_view property) noexcept {
         L"scrollNearStartActionId", L"scrollNearEndActionId",
         L"scrollPaginationThreshold", L"virtualCollectionWindow",
         L"collectionAnchorKey",
-        L"collectionItemKey", L"advancedPresentationSlot", L"styleClasses",
+        L"collectionItemKey", L"styleClasses",
         L"shortcuts"};
     return std::find(properties.begin(), properties.end(), property) != properties.end();
 }
@@ -1418,7 +1021,7 @@ bool ValidateWidgetDocumentStructure(
     if (!HasNoUnknownProperties(document,
             {L"protocolVersion", L"sequence", L"widgetInstanceId",
              L"activeInputScopeId", L"initialFocusId", L"quickActions",
-             L"surface", L"advancedPresentation", L"root"}) ||
+             L"surface", L"root"}) ||
         !document.HasKey(L"root") ||
         document.GetNamedValue(L"root").ValueType() != JsonValueType::Object) {
         error = L"The materialized widget document shape is invalid.";
@@ -1449,7 +1052,7 @@ bool ValidateWidgetDocumentStructure(
                  L"scrollNearEndActionId", L"scrollPaginationThreshold",
                  L"virtualCollectionWindow",
                  L"collectionAnchorKey", L"collectionItemKey",
-                 L"advancedPresentationSlot", L"styleClasses", L"shortcuts",
+                 L"styleClasses", L"shortcuts",
                  L"children"})) {
             error = L"The materialized widget node contains an unknown property.";
             return false;
@@ -1661,7 +1264,6 @@ bool HandleAsyncEvent(
     std::wstring& status,
     WidgetArtworkResultQueue* artworkResults = nullptr,
     LocalWidgetPackageInstallResultQueue* localPackageInstallResults = nullptr,
-    PlatformAppearanceRevisionTracker* launcherExperienceChanges = nullptr,
     std::optional<WidgetBridgeRuntimeFailure>* runtimeFailure = nullptr) {
     if (!event.HasKey(L"type") ||
         event.GetNamedValue(L"type").ValueType() != JsonValueType::String ||
@@ -1683,23 +1285,6 @@ bool HandleAsyncEvent(
             revision > 9'007'199'254'740'991.0 || std::floor(revision) != revision ||
             !appearanceChanges.Notify(static_cast<long long>(revision))) {
             status = L"WidgetBridge appearance event has an invalid revision.";
-            return false;
-        }
-        status.clear();
-        return true;
-    }
-    if (type == L"launcher-experience-changed") {
-        if (!launcherExperienceChanges ||
-            !HasOnlyProperties(payload, {L"revision"}) ||
-            payload.GetNamedValue(L"revision").ValueType() != JsonValueType::Number) {
-            status = L"WidgetBridge Launcher Experience event has an invalid revision.";
-            return false;
-        }
-        const double revision = payload.GetNamedNumber(L"revision");
-        if (!std::isfinite(revision) || revision < 0 ||
-            revision > 9'007'199'254'740'991.0 || std::floor(revision) != revision ||
-            !launcherExperienceChanges->Notify(static_cast<long long>(revision))) {
-            status = L"WidgetBridge Launcher Experience event has an invalid revision.";
             return false;
         }
         status.clear();
@@ -1918,7 +1503,7 @@ WidgetPresentationEffect ImpactForPresentationProperty(
         return Effect::Paint | Effect::Authority |
             Effect::Interaction | Effect::Accessibility;
     }
-    if (property == L"surface" || property == L"advancedPresentation") {
+    if (property == L"surface") {
         return Effect::SurfacePlacement | Effect::MeasureLayout |
             Effect::Paint | Effect::Accessibility;
     }
@@ -1978,10 +1563,6 @@ WidgetPresentationEffect ImpactForPresentationProperty(
         property == L"collectionAnchorKey" ||
         property == L"collectionItemKey") {
         return Effect::MeasureLayout | Effect::Paint |
-            Effect::Interaction | Effect::Accessibility;
-    }
-    if (property == L"advancedPresentationSlot") {
-        return Effect::Structure | Effect::MeasureLayout | Effect::Paint |
             Effect::Interaction | Effect::Accessibility;
     }
     if (property == L"sliderInteractionMode") {
@@ -2505,7 +2086,6 @@ void WidgetBridgeClient::Stop() noexcept {
     artworkResults_.Reset();
     localPackageInstallResults_.Reset();
     (void)appearanceChanges_.Take();
-    (void)launcherExperienceChanges_.Take();
     catalogChanges_.Reset();
 }
 
@@ -2565,7 +2145,7 @@ std::optional<std::vector<WidgetDescriptor>> WidgetBridgeClient::ListWidgets() {
             }
             if (responseId == 0) {
                 std::wstring status;
-                if (!HandleAsyncEvent(response, invalidations_, actionFailures_, hostEffects_, appearanceChanges_, catalogChanges_, status, &artworkResults_, &localPackageInstallResults_, &launcherExperienceChanges_)) {
+                if (!HandleAsyncEvent(response, invalidations_, actionFailures_, hostEffects_, appearanceChanges_, catalogChanges_, status, &artworkResults_, &localPackageInstallResults_)) {
                     Fail(std::move(status));
                     return std::nullopt;
                 }
@@ -2654,7 +2234,7 @@ std::optional<PlatformAppearance> WidgetBridgeClient::GetPlatformAppearance() {
             }
             if (responseId == 0) {
                 std::wstring status;
-                if (!HandleAsyncEvent(response, invalidations_, actionFailures_, hostEffects_, appearanceChanges_, catalogChanges_, status, &artworkResults_, &localPackageInstallResults_, &launcherExperienceChanges_)) {
+                if (!HandleAsyncEvent(response, invalidations_, actionFailures_, hostEffects_, appearanceChanges_, catalogChanges_, status, &artworkResults_, &localPackageInstallResults_)) {
                     Fail(std::move(status));
                     return std::nullopt;
                 }
@@ -2686,159 +2266,6 @@ std::optional<PlatformAppearance> WidgetBridgeClient::GetPlatformAppearance() {
         }
     } catch (const winrt::hresult_error& error) {
         Fail(L"Invalid WidgetBridge platform appearance JSON: " +
-             std::wstring(error.message()));
-    }
-    return std::nullopt;
-}
-
-std::optional<LauncherExperienceSelection>
-WidgetBridgeClient::GetLauncherExperience() {
-    std::scoped_lock lock(requestMutex_);
-    if (pipe_ == INVALID_HANDLE_VALUE) return std::nullopt;
-    try {
-        const long long requestId = ++nextRequestId_;
-        JsonObject envelope;
-        envelope.Insert(L"protocolVersion", JsonValue::CreateNumberValue(1));
-        envelope.Insert(L"type", JsonValue::CreateStringValue(L"get-launcher-experience"));
-        envelope.Insert(L"requestId", JsonValue::CreateNumberValue(
-            static_cast<double>(requestId)));
-        envelope.Insert(L"payload", JsonObject{});
-        if (!WriteFrame(winrt::to_string(envelope.Stringify()))) return std::nullopt;
-
-        while (const auto frame = ReadFrame()) {
-            const auto response = JsonObject::Parse(winrt::to_hstring(*frame));
-            long long responseId{};
-            if (!ReadRequestId(response, responseId) ||
-                !response.HasKey(L"type") ||
-                response.GetNamedValue(L"type").ValueType() != JsonValueType::String) {
-                Fail(L"WidgetBridge returned an invalid Launcher Experience response.");
-                return std::nullopt;
-            }
-            const std::wstring type(std::wstring_view(response.GetNamedString(L"type")));
-            if (responseId == 0) {
-                std::wstring status;
-                if (!HandleAsyncEvent(
-                        response, invalidations_, actionFailures_, hostEffects_,
-                        appearanceChanges_, catalogChanges_, status,
-                        &artworkResults_, &localPackageInstallResults_,
-                        &launcherExperienceChanges_)) {
-                    Fail(std::move(status));
-                    return std::nullopt;
-                }
-                if (!status.empty()) lastError_ = std::move(status);
-                continue;
-            }
-            if (responseId != requestId) {
-                Fail(L"WidgetBridge returned a mismatched Launcher Experience request ID.");
-                return std::nullopt;
-            }
-            if (type == L"error") {
-                Fail(SafeBridgeError(response));
-                return std::nullopt;
-            }
-            if (type != L"launcher-experience" || !response.HasKey(L"payload") ||
-                response.GetNamedValue(L"payload").ValueType() != JsonValueType::Object) {
-                Fail(L"WidgetBridge returned an unexpected Launcher Experience response.");
-                return std::nullopt;
-            }
-            std::wstring parseError;
-            auto selection = ParseLauncherExperience(
-                response.GetNamedObject(L"payload"), parseError);
-            if (!selection) {
-                Fail(std::move(parseError));
-                return std::nullopt;
-            }
-            lastError_.clear();
-            return selection;
-        }
-    } catch (const winrt::hresult_error& error) {
-        Fail(L"Invalid WidgetBridge Launcher Experience JSON: " +
-             std::wstring(error.message()));
-    }
-    return std::nullopt;
-}
-
-std::optional<LauncherExperienceSelection>
-WidgetBridgeClient::SelectLauncherExperience(
-    const LauncherExperienceSelectionRequest& request) {
-    std::scoped_lock lock(requestMutex_);
-    const bool exact = request.operation ==
-        LauncherExperienceSelectionOperation::SelectExact;
-    if (pipe_ == INVALID_HANDLE_VALUE ||
-        (exact && (request.id.empty() || request.version.empty() ||
-            request.id.size() > kMaximumIdentifierLength ||
-            request.version.size() > kMaximumIdentifierLength ||
-            !IsIdentifier(request.id) || !IsIdentifier(request.version))) ||
-        (!exact && (!request.id.empty() || !request.version.empty()))) {
-        Fail(L"Launcher Experience selection request is invalid.");
-        return std::nullopt;
-    }
-    try {
-        const long long requestId = ++nextRequestId_;
-        JsonObject payload;
-        payload.Insert(L"operation", JsonValue::CreateStringValue(
-            exact ? L"selectExact" : L"recoverBuiltIn"));
-        if (exact) {
-            payload.Insert(L"id", JsonValue::CreateStringValue(request.id));
-            payload.Insert(L"version", JsonValue::CreateStringValue(request.version));
-        }
-        JsonObject envelope;
-        envelope.Insert(L"protocolVersion", JsonValue::CreateNumberValue(1));
-        envelope.Insert(L"type", JsonValue::CreateStringValue(
-            L"select-launcher-experience"));
-        envelope.Insert(L"requestId", JsonValue::CreateNumberValue(
-            static_cast<double>(requestId)));
-        envelope.Insert(L"payload", payload);
-        if (!WriteFrame(winrt::to_string(envelope.Stringify()))) return std::nullopt;
-
-        while (const auto frame = ReadFrame()) {
-            const auto response = JsonObject::Parse(winrt::to_hstring(*frame));
-            long long responseId{};
-            if (!ReadRequestId(response, responseId) ||
-                !response.HasKey(L"type") ||
-                response.GetNamedValue(L"type").ValueType() != JsonValueType::String) {
-                Fail(L"WidgetBridge returned an invalid Launcher Experience selection response.");
-                return std::nullopt;
-            }
-            const std::wstring type(std::wstring_view(response.GetNamedString(L"type")));
-            if (responseId == 0) {
-                std::wstring status;
-                if (!HandleAsyncEvent(
-                        response, invalidations_, actionFailures_, hostEffects_,
-                        appearanceChanges_, catalogChanges_, status,
-                        &artworkResults_, &localPackageInstallResults_,
-                        &launcherExperienceChanges_)) {
-                    Fail(std::move(status));
-                    return std::nullopt;
-                }
-                if (!status.empty()) lastError_ = std::move(status);
-                continue;
-            }
-            if (responseId != requestId) {
-                Fail(L"WidgetBridge returned a mismatched Launcher Experience selection request ID.");
-                return std::nullopt;
-            }
-            if (type == L"error") {
-                Fail(SafeBridgeError(response));
-                return std::nullopt;
-            }
-            if (type != L"launcher-experience" || !response.HasKey(L"payload") ||
-                response.GetNamedValue(L"payload").ValueType() != JsonValueType::Object) {
-                Fail(L"WidgetBridge returned an unexpected Launcher Experience selection response.");
-                return std::nullopt;
-            }
-            std::wstring parseError;
-            auto selection = ParseLauncherExperience(
-                response.GetNamedObject(L"payload"), parseError);
-            if (!selection) {
-                Fail(std::move(parseError));
-                return std::nullopt;
-            }
-            lastError_.clear();
-            return selection;
-        }
-    } catch (const winrt::hresult_error& error) {
-        Fail(L"Invalid WidgetBridge Launcher Experience selection JSON: " +
              std::wstring(error.message()));
     }
     return std::nullopt;
@@ -2878,7 +2305,7 @@ std::optional<bool> WidgetBridgeClient::SetWidgetLifecycle(
             const auto type = response.GetNamedString(L"type");
             if (responseId == 0) {
                 std::wstring status;
-                if (!HandleAsyncEvent(response, invalidations_, actionFailures_, hostEffects_, appearanceChanges_, catalogChanges_, status, &artworkResults_, &localPackageInstallResults_, &launcherExperienceChanges_)) {
+                if (!HandleAsyncEvent(response, invalidations_, actionFailures_, hostEffects_, appearanceChanges_, catalogChanges_, status, &artworkResults_, &localPackageInstallResults_)) {
                     Fail(std::move(status));
                     return std::nullopt;
                 }
@@ -2967,7 +2394,7 @@ WidgetBridgeClient::EstablishWidgetPresentation(
                 if (!HandleAsyncEvent(
                         response, invalidations_, actionFailures_, hostEffects_,
                         appearanceChanges_, catalogChanges_, status, &artworkResults_,
-                        &localPackageInstallResults_, &launcherExperienceChanges_,
+                        &localPackageInstallResults_,
                         &lastRuntimeFailure_)) {
                     Fail(std::move(status));
                     return std::nullopt;
@@ -3077,7 +2504,7 @@ std::optional<bool> WidgetBridgeClient::RestartWidget(
                 std::wstring status;
                 if (!HandleAsyncEvent(response, invalidations_, actionFailures_, hostEffects_,
                                       appearanceChanges_, catalogChanges_, status, &artworkResults_,
-                                      &localPackageInstallResults_, &launcherExperienceChanges_)) {
+                                      &localPackageInstallResults_)) {
                     Fail(std::move(status));
                     return std::nullopt;
                 }
@@ -3161,7 +2588,7 @@ std::optional<WidgetPresentationPublication> WidgetBridgeClient::GetSnapshot(
             const auto responseId = static_cast<long long>(response.GetNamedNumber(L"requestId"));
             if (responseId == 0) {
                 std::wstring status;
-                if (!HandleAsyncEvent(response, invalidations_, actionFailures_, hostEffects_, appearanceChanges_, catalogChanges_, status, &artworkResults_, &localPackageInstallResults_, &launcherExperienceChanges_)) {
+                if (!HandleAsyncEvent(response, invalidations_, actionFailures_, hostEffects_, appearanceChanges_, catalogChanges_, status, &artworkResults_, &localPackageInstallResults_)) {
                     Fail(std::move(status));
                     return std::nullopt;
                 }
@@ -3262,7 +2689,7 @@ std::optional<bool> WidgetBridgeClient::RequestArtwork(
                 std::wstring status;
                 if (!HandleAsyncEvent(response, invalidations_, actionFailures_, hostEffects_,
                                       appearanceChanges_, catalogChanges_, status, &artworkResults_,
-                                      &localPackageInstallResults_, &launcherExperienceChanges_))
+                                      &localPackageInstallResults_))
                     return std::nullopt;
                 continue;
             }
@@ -3335,7 +2762,7 @@ std::optional<bool> WidgetBridgeClient::SendControllerInput(
             const auto responseId = static_cast<long long>(response.GetNamedNumber(L"requestId"));
             if (responseId == 0) {
                 std::wstring status;
-                if (!HandleAsyncEvent(response, invalidations_, actionFailures_, hostEffects_, appearanceChanges_, catalogChanges_, status, &artworkResults_, &localPackageInstallResults_, &launcherExperienceChanges_)) {
+                if (!HandleAsyncEvent(response, invalidations_, actionFailures_, hostEffects_, appearanceChanges_, catalogChanges_, status, &artworkResults_, &localPackageInstallResults_)) {
                     Fail(std::move(status));
                     return std::nullopt;
                 }
@@ -3415,7 +2842,7 @@ std::optional<bool> WidgetBridgeClient::SendAction(
                 std::wstring status;
                 if (!HandleAsyncEvent(response, invalidations_, actionFailures_, hostEffects_,
                                       appearanceChanges_, catalogChanges_, status, &artworkResults_,
-                                      &localPackageInstallResults_, &launcherExperienceChanges_)) {
+                                      &localPackageInstallResults_)) {
                     Fail(std::move(status));
                     return std::nullopt;
                 }
@@ -3489,7 +2916,7 @@ std::optional<std::wstring> WidgetBridgeClient::ConnectProtectedWifi(
                 std::wstring status;
                 if (!HandleAsyncEvent(response, invalidations_, actionFailures_, hostEffects_,
                         appearanceChanges_, catalogChanges_, status, &artworkResults_,
-                        &localPackageInstallResults_, &launcherExperienceChanges_)) {
+                        &localPackageInstallResults_)) {
                     Fail(std::move(status));
                     return std::nullopt;
                 }
@@ -3564,7 +2991,7 @@ std::optional<bool> WidgetBridgeClient::BeginLocalWidgetPackageInstall(
                 if (!HandleAsyncEvent(
                         response, invalidations_, actionFailures_, hostEffects_,
                         appearanceChanges_, catalogChanges_, status, &artworkResults_,
-                        &localPackageInstallResults_, &launcherExperienceChanges_)) {
+                        &localPackageInstallResults_)) {
                     Fail(std::move(status));
                     return std::nullopt;
                 }
@@ -3616,7 +3043,7 @@ std::optional<bool> WidgetBridgeClient::CancelLocalWidgetPackageInstall(
                 if (!HandleAsyncEvent(
                         response, invalidations_, actionFailures_, hostEffects_,
                         appearanceChanges_, catalogChanges_, status, &artworkResults_,
-                        &localPackageInstallResults_, &launcherExperienceChanges_)) return std::nullopt;
+                        &localPackageInstallResults_)) return std::nullopt;
                 continue;
             }
             if (responseId != requestId || type != L"acknowledged") {
@@ -3732,7 +3159,7 @@ bool WidgetBridgeClient::PumpEvents() {
             }
             std::wstring status;
             std::optional<WidgetBridgeRuntimeFailure> runtimeFailure;
-            if (!HandleAsyncEvent(message, invalidations_, actionFailures_, hostEffects_, appearanceChanges_, catalogChanges_, status, &artworkResults_, &localPackageInstallResults_, &launcherExperienceChanges_, &runtimeFailure)) {
+            if (!HandleAsyncEvent(message, invalidations_, actionFailures_, hostEffects_, appearanceChanges_, catalogChanges_, status, &artworkResults_, &localPackageInstallResults_, &runtimeFailure)) {
                 Fail(std::move(status));
                 return consumed;
             }
@@ -3800,13 +3227,6 @@ WidgetBridgeClient::TakePlatformAppearanceChangedRevision() noexcept {
 }
 
 std::optional<long long>
-WidgetBridgeClient::TakeLauncherExperienceChangedRevision() noexcept {
-    std::unique_lock lock(requestMutex_, std::try_to_lock);
-    if (!lock.owns_lock()) return std::nullopt;
-    return launcherExperienceChanges_.Take();
-}
-
-std::optional<long long>
 WidgetBridgeClient::TakeWidgetCatalogChangedRevision() noexcept {
     std::unique_lock lock(requestMutex_, std::try_to_lock);
     if (!lock.owns_lock()) return std::nullopt;
@@ -3858,19 +3278,6 @@ std::optional<PlatformAppearance> ParsePlatformAppearance(
         return widgetrail::ParsePlatformAppearance(payload, error);
     } catch (const winrt::hresult_error& exception) {
         error = L"Invalid platform appearance JSON: " +
-                std::wstring(exception.message());
-        return std::nullopt;
-    }
-}
-
-std::optional<LauncherExperienceSelection> ParseLauncherExperience(
-    const std::string_view payloadUtf8,
-    std::wstring& error) {
-    try {
-        const auto payload = JsonObject::Parse(winrt::to_hstring(payloadUtf8));
-        return widgetrail::ParseLauncherExperience(payload, error);
-    } catch (const winrt::hresult_error& exception) {
-        error = L"Invalid Launcher Experience JSON: " +
                 std::wstring(exception.message());
         return std::nullopt;
     }
@@ -3997,7 +3404,7 @@ std::optional<WidgetBridgeRuntimeFailure> ParseWidgetRuntimeFailureEvent(
         std::wstring status;
         if (!HandleAsyncEvent(
                 event, invalidations, actionFailures, effects, appearance, catalog,
-                status, nullptr, nullptr, nullptr, &failure)) {
+                status, nullptr, nullptr, &failure)) {
             error = std::move(status);
             return std::nullopt;
         }

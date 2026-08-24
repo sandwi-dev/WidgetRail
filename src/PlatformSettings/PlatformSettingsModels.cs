@@ -1,6 +1,5 @@
 using System.Text.Json.Serialization;
 using System.Text.RegularExpressions;
-using WidgetRail.LauncherExperienceCatalog;
 
 namespace WidgetRail.PlatformSettings;
 
@@ -96,24 +95,9 @@ public sealed record AppLibrarySourceSettings
     public static AppLibrarySourceSettings Default { get; } = new();
 }
 
-public sealed record LauncherExperienceSelectionSettings
-{
-    public bool UseGlobalAppearance { get; init; } = true;
-
-    public string? SelectedId { get; init; }
-
-    public string? SelectedVersion { get; init; }
-
-    public string? LastGoodId { get; init; }
-
-    public string? LastGoodVersion { get; init; }
-
-    public static LauncherExperienceSelectionSettings Default { get; } = new();
-}
-
 public sealed record PlatformSettingsDocument
 {
-    public const int CurrentSchemaVersion = 1;
+    public const int CurrentSchemaVersion = 2;
 
     [JsonRequired]
     public required int SchemaVersion { get; init; }
@@ -124,15 +108,11 @@ public sealed record PlatformSettingsDocument
     public AppLibrarySourceSettings AppLibrary { get; init; } =
         AppLibrarySourceSettings.Default;
 
-    public LauncherExperienceSelectionSettings LauncherExperience { get; init; } =
-        LauncherExperienceSelectionSettings.Default;
-
     public static PlatformSettingsDocument Default { get; } = new()
     {
         SchemaVersion = CurrentSchemaVersion,
         Appearance = AppearanceSettings.Default,
         AppLibrary = AppLibrarySourceSettings.Default,
-        LauncherExperience = LauncherExperienceSelectionSettings.Default,
     };
 }
 
@@ -186,12 +166,6 @@ public static class PlatformSettingsValidator
         }
         if (document.AppLibrary is null)
             Add("$.appLibrary", "required", "App-library source settings are required.");
-        if (document.LauncherExperience is null)
-            Add("$.launcherExperience", "required",
-                "Launcher Experience selection is required.");
-        else
-            ValidateLauncherExperience(document.LauncherExperience);
-
         var appearance = document.Appearance;
         if (!ThemeIdentity.IsValid(appearance.ThemeId))
             Add("$.appearance.themeId", "invalid_theme_id",
@@ -222,35 +196,6 @@ public static class PlatformSettingsValidator
         void Add(string path, string code, string message) =>
             errors.Add(new PlatformSettingsValidationError(path, code, message));
 
-        void ValidateLauncherExperience(LauncherExperienceSelectionSettings selection)
-        {
-            ValidatePair(selection.SelectedId, selection.SelectedVersion,
-                "$.launcherExperience.selectedId",
-                "$.launcherExperience.selectedVersion");
-            ValidatePair(selection.LastGoodId, selection.LastGoodVersion,
-                "$.launcherExperience.lastGoodId",
-                "$.launcherExperience.lastGoodVersion");
-            if (!selection.UseGlobalAppearance && selection.SelectedId is null)
-                Add("$.launcherExperience.selectedId", "required",
-                    "A selected Launcher Experience is required when global appearance is off.");
-        }
-
-        void ValidatePair(string? id, string? version, string idPath, string versionPath)
-        {
-            if ((id is null) != (version is null))
-            {
-                Add(id is null ? idPath : versionPath, "required",
-                    "Launcher Experience ID and version must be stored together.");
-                return;
-            }
-            if (id is null) return;
-            if (!LauncherExperienceIdentity.IsValidId(id))
-                Add(idPath, "invalid_launcher_experience_id",
-                    "Launcher Experience ID is invalid.");
-            if (!LauncherExperienceIdentity.TryParseCanonicalVersion(version, out _))
-                Add(versionPath, "invalid_launcher_experience_version",
-                    "Launcher Experience version is invalid.");
-        }
     }
 }
 

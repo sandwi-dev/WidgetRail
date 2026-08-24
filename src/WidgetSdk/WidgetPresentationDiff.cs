@@ -255,7 +255,6 @@ internal static class WidgetPresentationDiff
         Add(PresentationProperty.InitialFocusId, previous.InitialFocusId, current.InitialFocusId);
         Add(PresentationProperty.QuickActions, previous.QuickActions, current.QuickActions);
         Add(PresentationProperty.Surface, previous.Surface, current.Surface);
-        Add(PresentationProperty.AdvancedPresentation, previous.AdvancedPresentation, current.AdvancedPresentation);
         if (changes.Count != 0)
             operations.Add(new()
             {
@@ -384,7 +383,6 @@ internal static class WidgetPresentationDiff
         Add(PresentationProperty.VirtualCollectionWindow, before.VirtualCollectionWindow, after.VirtualCollectionWindow);
         Add(PresentationProperty.CollectionAnchorKey, before.CollectionAnchorKey, after.CollectionAnchorKey);
         Add(PresentationProperty.CollectionItemKey, before.CollectionItemKey, after.CollectionItemKey);
-        Add(PresentationProperty.AdvancedPresentationSlot, before.AdvancedPresentationSlot, after.AdvancedPresentationSlot);
         Add(PresentationProperty.StyleClasses, before.StyleClasses, after.StyleClasses);
         Add(PresentationProperty.Shortcuts, before.Shortcuts, after.Shortcuts);
         return changes;

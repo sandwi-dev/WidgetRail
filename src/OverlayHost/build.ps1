@@ -27,13 +27,9 @@ param(
     [switch]$LocalPackageImportTestsOnly,
     [switch]$WidgetSurfaceTestsOnly,
     [switch]$ColdDashboardTestsOnly,
-    [switch]$LauncherExperienceTestsOnly,
-    [switch]$LauncherExperienceHostTestsOnly,
-    [switch]$AdvancedPresentationHostTestsOnly,
     [switch]$TextEntryHostTestsOnly,
     [switch]$TrayAccessibilityHostTestsOnly,
     [switch]$TrayRefreshHostTestsOnly,
-    [switch]$LauncherExperienceLifecycleTestsOnly,
     [switch]$PlatformInteropTestsOnly,
     [switch]$WidgetActionFailureHostTestsOnly,
     [switch]$AudioMixerScrollHostTestsOnly
@@ -102,6 +98,42 @@ if (-not (Test-Path -LiteralPath (Join-Path $sdkBin 'mt.exe'))) {
 $env:PATH = "$sdkBin;$compilerBin;$env:PATH"
 
 $outputDirectory = Join-Path $projectDirectory "out\$Configuration"
+
+function Assert-NoReparsePointInPath {
+    param([Parameter(Mandatory = $true)] [string]$Path)
+
+    $resolved = [System.IO.Path]::GetFullPath($Path)
+    $root = [System.IO.Path]::GetPathRoot($resolved)
+    $current = $root
+    foreach ($segment in $resolved.Substring($root.Length).Split(
+        [System.IO.Path]::DirectorySeparatorChar,
+        [System.StringSplitOptions]::RemoveEmptyEntries)) {
+        $current = Join-Path $current $segment
+        if (Test-Path -LiteralPath $current) {
+            $attributes = [System.IO.File]::GetAttributes($current)
+            if (($attributes -band [System.IO.FileAttributes]::ReparsePoint) -ne 0) {
+                throw "Build output paths cannot traverse a reparse point: $current"
+            }
+        }
+    }
+}
+
+function Remove-GeneratedDirectory {
+    param([Parameter(Mandatory = $true)] [string]$Path)
+
+    $resolvedOutputRoot = [System.IO.Path]::GetFullPath($outputDirectory)
+    $resolvedPath = [System.IO.Path]::GetFullPath($Path)
+    if (-not $resolvedPath.StartsWith(
+        $resolvedOutputRoot + [System.IO.Path]::DirectorySeparatorChar,
+        [System.StringComparison]::OrdinalIgnoreCase)) {
+        throw "Generated output escaped the build layout: $resolvedPath"
+    }
+    Assert-NoReparsePointInPath -Path $resolvedOutputRoot
+    Assert-NoReparsePointInPath -Path $resolvedPath
+    if (Test-Path -LiteralPath $resolvedPath) {
+        Remove-Item -LiteralPath $resolvedPath -Recurse -Force
+    }
+}
 
 function Invoke-SerializedManagedPublish {
     param(
@@ -208,14 +240,9 @@ $widgetSurfaceTestObjectDirectory = Join-Path $outputDirectory 'obj\widget-surfa
 $widgetSessionTestObjectDirectory = Join-Path $outputDirectory 'obj\widget-session-coordinator-tests'
 $processOwnerTestObjectDirectory = Join-Path $outputDirectory 'obj\process-owner-tests'
 $componentGeometryTestObjectDirectory = Join-Path $outputDirectory 'obj\component-geometry-tests'
-$launcherExperienceTestObjectDirectory = Join-Path $outputDirectory 'obj\launcher-experience-tests'
-$launcherExperienceHostTestObjectDirectory = Join-Path $outputDirectory 'obj\launcher-experience-host-tests'
-$advancedPresentationHostTestObjectDirectory = Join-Path $outputDirectory 'obj\advanced-presentation-host-tests'
-$advancedPresentationCommunityFixtureOutput = Join-Path $outputDirectory 'obj\advanced-presentation-community-fixture'
 $trayRefreshHostTestObjectDirectory = Join-Path $outputDirectory 'obj\tray-refresh-host-tests'
 $trayRefreshCommunityFixtureOutput = Join-Path $outputDirectory 'obj\tray-refresh-community-fixture'
-$launcherExperienceBridgeFixtureOutput = Join-Path $outputDirectory 'obj\launcher-experience-bridge-fixture'
-New-Item -ItemType Directory -Force -Path $hostObjectDirectory, $platformObjectDirectory, $platformTestObjectDirectory, $testObjectDirectory, $imageTestObjectDirectory, $layoutTestObjectDirectory, $iconTestObjectDirectory, $styleTestObjectDirectory, $textLayoutTestObjectDirectory, $motionTestObjectDirectory, $placementTestObjectDirectory, $targetingTestObjectDirectory, $transitionTestObjectDirectory, $chromeTestObjectDirectory, $guideTestObjectDirectory, $inputOwnershipTestObjectDirectory, $navigationTestObjectDirectory, $pressedTestObjectDirectory, $sliderTestObjectDirectory, $widgetInteractionTestObjectDirectory, $focusTestObjectDirectory, $surfaceFocusTestObjectDirectory, $lifecycleTestObjectDirectory, $actionFeedbackTestObjectDirectory, $accessibilityTreeTestObjectDirectory, $accessibilityProjectionTestObjectDirectory, $accessibilityProviderTestObjectDirectory, $realHostAccessibilityTestObjectDirectory, $actionFailureHostTestObjectDirectory, $actionFailureFixtureOutput, $widgetSwitchHostTestObjectDirectory, $coldDashboardHostTestObjectDirectory, $widgetSwitchFixtureOutput, $audioMixerScrollHostTestObjectDirectory, $audioMixerScrollFixtureOutput, $scrollEvidenceProbeTestObjectDirectory, $trayLayoutTestObjectDirectory, $hostAccessibilityTestObjectDirectory, $accessibilityEventsTestObjectDirectory, $bridgeCatalogTestObjectDirectory, $localPackageImportTestObjectDirectory, $textEntryModalTestObjectDirectory, $rendererTestObjectDirectory, $semanticChurnTestObjectDirectory, $pinnedSurfaceTestObjectDirectory, $pinnedPlacementTestObjectDirectory, $widgetSurfaceTestObjectDirectory, $widgetSessionTestObjectDirectory, $processOwnerTestObjectDirectory, $componentGeometryTestObjectDirectory, $launcherExperienceTestObjectDirectory, $launcherExperienceHostTestObjectDirectory, $advancedPresentationHostTestObjectDirectory, $advancedPresentationCommunityFixtureOutput, $trayRefreshHostTestObjectDirectory, $trayRefreshCommunityFixtureOutput, $launcherExperienceBridgeFixtureOutput | Out-Null
+New-Item -ItemType Directory -Force -Path $hostObjectDirectory, $platformObjectDirectory, $platformTestObjectDirectory, $testObjectDirectory, $imageTestObjectDirectory, $layoutTestObjectDirectory, $iconTestObjectDirectory, $styleTestObjectDirectory, $textLayoutTestObjectDirectory, $motionTestObjectDirectory, $placementTestObjectDirectory, $targetingTestObjectDirectory, $transitionTestObjectDirectory, $chromeTestObjectDirectory, $guideTestObjectDirectory, $inputOwnershipTestObjectDirectory, $navigationTestObjectDirectory, $pressedTestObjectDirectory, $sliderTestObjectDirectory, $widgetInteractionTestObjectDirectory, $focusTestObjectDirectory, $surfaceFocusTestObjectDirectory, $lifecycleTestObjectDirectory, $actionFeedbackTestObjectDirectory, $accessibilityTreeTestObjectDirectory, $accessibilityProjectionTestObjectDirectory, $accessibilityProviderTestObjectDirectory, $realHostAccessibilityTestObjectDirectory, $actionFailureHostTestObjectDirectory, $actionFailureFixtureOutput, $widgetSwitchHostTestObjectDirectory, $coldDashboardHostTestObjectDirectory, $widgetSwitchFixtureOutput, $audioMixerScrollHostTestObjectDirectory, $audioMixerScrollFixtureOutput, $scrollEvidenceProbeTestObjectDirectory, $trayLayoutTestObjectDirectory, $hostAccessibilityTestObjectDirectory, $accessibilityEventsTestObjectDirectory, $bridgeCatalogTestObjectDirectory, $localPackageImportTestObjectDirectory, $textEntryModalTestObjectDirectory, $rendererTestObjectDirectory, $semanticChurnTestObjectDirectory, $pinnedSurfaceTestObjectDirectory, $pinnedPlacementTestObjectDirectory, $widgetSurfaceTestObjectDirectory, $widgetSessionTestObjectDirectory, $processOwnerTestObjectDirectory, $componentGeometryTestObjectDirectory, $trayRefreshHostTestObjectDirectory, $trayRefreshCommunityFixtureOutput | Out-Null
 Copy-Item -LiteralPath (Join-Path $projectDirectory '..\..\THIRD_PARTY_NOTICES.md') `
     -Destination (Join-Path $outputDirectory 'THIRD_PARTY_NOTICES.md') -Force
 
@@ -1436,190 +1463,6 @@ function Invoke-WidgetSessionTests {
     }
 }
 
-function Invoke-LauncherExperienceTests {
-    $arguments = $common + @(
-        '/DWRAIL_DECLARATIVE_RENDERER_TESTING',
-        (Join-Path $projectDirectory 'LauncherExperienceTests.cpp'),
-        (Join-Path $projectDirectory 'LauncherExperienceLayout.cpp'),
-        (Join-Path $projectDirectory 'LauncherExperienceAdapter.cpp'),
-        (Join-Path $projectDirectory 'LauncherExperienceProjection.cpp'),
-        (Join-Path $projectDirectory 'LauncherExperiencePresentation.cpp'),
-        (Join-Path $projectDirectory 'AccessibilityTree.cpp'),
-        (Join-Path $projectDirectory 'FocusNavigation.cpp'),
-        (Join-Path $projectDirectory 'ControllerNavigation.cpp'),
-        (Join-Path $projectDirectory 'DeclarativeRenderer.cpp'),
-        (Join-Path $projectDirectory 'DeclarativeLayout.cpp'),
-        (Join-Path $projectDirectory 'NativeStyle.cpp'),
-        (Join-Path $projectDirectory 'NativeTextLayout.cpp'),
-        (Join-Path $projectDirectory 'DeclarativeMotion.cpp'),
-        (Join-Path $projectDirectory 'NativeIcons.cpp'),
-        (Join-Path $projectDirectory 'RemoteImageCache.cpp'),
-        "/Fo:$launcherExperienceTestObjectDirectory\",
-        "/Fe:$outputDirectory\LauncherExperienceTests.exe",
-        '/link', '/SUBSYSTEM:CONSOLE'
-    ) + $libraryArguments + @(
-        'd2d1.lib', 'dwrite.lib', 'winhttp.lib', 'windowscodecs.lib', 'ole32.lib'
-    )
-    & $cl $arguments
-    if ($LASTEXITCODE -ne 0) {
-        throw "LauncherExperienceTests build failed with exit code $LASTEXITCODE."
-    }
-    & (Join-Path $outputDirectory 'LauncherExperienceTests.exe')
-    if ($LASTEXITCODE -ne 0) {
-        throw "LauncherExperienceTests failed with exit code $LASTEXITCODE."
-    }
-}
-
-function Invoke-LauncherExperienceHostTests {
-    param(
-        [switch]$TextEntryOnly,
-        [switch]$TrayInvokeOnly,
-        [switch]$LifecycleOnly
-    )
-    $managedPublishExitCode = 0
-    Invoke-SerializedManagedPublish `
-        -Project (Join-Path $projectDirectory '..\..\tests\LauncherExperienceBridgeFixture\LauncherExperienceBridgeFixture.csproj') `
-        -Configuration $Configuration -Output $launcherExperienceBridgeFixtureOutput `
-        -ExitCode ([ref]$managedPublishExitCode)
-    if ($managedPublishExitCode -ne 0) {
-        throw "LauncherExperienceBridgeFixture publish failed with exit code $managedPublishExitCode."
-    }
-    $fixtureBridge = Join-Path $launcherExperienceBridgeFixtureOutput 'LauncherExperienceBridgeFixture.exe'
-    if (-not (Test-Path -LiteralPath $fixtureBridge)) {
-        throw 'LauncherExperienceBridgeFixture publish omitted its executable.'
-    }
-    $arguments = $common + @(
-        (Join-Path $projectDirectory 'LauncherExperienceHostTests.cpp'),
-        (Join-Path $projectDirectory 'OverlayHostTestSupport.cpp'),
-        "/Fo:$launcherExperienceHostTestObjectDirectory\",
-        "/Fe:$outputDirectory\LauncherExperienceHostTests.exe",
-        '/link', '/SUBSYSTEM:CONSOLE'
-    ) + $libraryArguments + @(
-        'user32.lib', 'ole32.lib', 'oleaut32.lib', 'uiautomationcore.lib'
-    )
-    & $cl $arguments
-    if ($LASTEXITCODE -ne 0) {
-        throw "LauncherExperienceHostTests build failed with exit code $LASTEXITCODE."
-    }
-    $testArguments = @(
-        '--installation', $outputDirectory,
-        '--fixture-bridge', $fixtureBridge
-    )
-    if ($TextEntryOnly) {
-        $testArguments += '--text-entry-only'
-    } elseif ($TrayInvokeOnly) {
-        $testArguments += '--tray-invoke-only'
-    } elseif ($LifecycleOnly) {
-        $previousInstallation = $env:WRAIL_LAUNCHER_LIFECYCLE_INSTALLATION
-        $previousHostTest = $env:WRAIL_LAUNCHER_LIFECYCLE_HOST_TEST
-        $previousFixtureBridge = $env:WRAIL_LAUNCHER_LIFECYCLE_FIXTURE_BRIDGE
-        try {
-            $env:WRAIL_LAUNCHER_LIFECYCLE_INSTALLATION = $outputDirectory
-            $env:WRAIL_LAUNCHER_LIFECYCLE_HOST_TEST = Join-Path $outputDirectory 'LauncherExperienceHostTests.exe'
-            $env:WRAIL_LAUNCHER_LIFECYCLE_FIXTURE_BRIDGE = $fixtureBridge
-            & dotnet run `
-                --project (Join-Path $projectDirectory '..\..\tests\WrailCli.Tests\WrailCli.Tests.csproj') `
-                --configuration $Configuration -- `
-                --test 'Launcher Experience author-to-production lifecycle is exact'
-            if ($LASTEXITCODE -ne 0) {
-                throw "Launcher Experience lifecycle coordinator failed with exit code $LASTEXITCODE."
-            }
-        } finally {
-            $env:WRAIL_LAUNCHER_LIFECYCLE_INSTALLATION = $previousInstallation
-            $env:WRAIL_LAUNCHER_LIFECYCLE_HOST_TEST = $previousHostTest
-            $env:WRAIL_LAUNCHER_LIFECYCLE_FIXTURE_BRIDGE = $previousFixtureBridge
-        }
-        return
-    }
-    & (Join-Path $outputDirectory 'LauncherExperienceHostTests.exe') $testArguments
-    if ($LASTEXITCODE -ne 0) {
-        throw "LauncherExperienceHostTests failed with exit code $LASTEXITCODE."
-    }
-}
-
-function Invoke-AdvancedPresentationHostTests {
-    param([switch]$TextEntryOnly)
-    $managedPublishExitCode = 0
-    Invoke-SerializedManagedPublish `
-        -Project (Join-Path $projectDirectory '..\..\tests\AdvancedPresentationCommunityFixture\AdvancedPresentationCommunityFixture.csproj') `
-        -Configuration $Configuration -Output $advancedPresentationCommunityFixtureOutput `
-        -ExitCode ([ref]$managedPublishExitCode)
-    if ($managedPublishExitCode -ne 0) {
-        throw "AdvancedPresentationCommunityFixture publish failed with exit code $managedPublishExitCode."
-    }
-    $fixture = Join-Path $advancedPresentationCommunityFixtureOutput 'AdvancedPresentationCommunityFixture.exe'
-    if (-not (Test-Path -LiteralPath $fixture)) {
-        throw 'AdvancedPresentationCommunityFixture publish omitted its executable.'
-    }
-    $managedPublishExitCode = 0
-    Invoke-SerializedManagedPublish `
-        -Project (Join-Path $projectDirectory '..\..\tests\LauncherExperienceBridgeFixture\LauncherExperienceBridgeFixture.csproj') `
-        -Configuration $Configuration -Output $launcherExperienceBridgeFixtureOutput `
-        -ExitCode ([ref]$managedPublishExitCode)
-    if ($managedPublishExitCode -ne 0) {
-        throw "LauncherExperienceBridgeFixture publish failed with exit code $managedPublishExitCode."
-    }
-    $fixtureBridge = Join-Path $launcherExperienceBridgeFixtureOutput 'LauncherExperienceBridgeFixture.exe'
-    if (-not (Test-Path -LiteralPath $fixtureBridge)) {
-        throw 'The exported-candidate host fixture omitted its seeded bridge.'
-    }
-    $arguments = $common + @(
-        (Join-Path $projectDirectory 'AdvancedPresentationHostTests.cpp'),
-        (Join-Path $projectDirectory 'OverlayHostTestSupport.cpp'),
-        "/Fo:$advancedPresentationHostTestObjectDirectory\",
-        "/Fe:$outputDirectory\AdvancedPresentationHostTests.exe",
-        '/link', '/SUBSYSTEM:CONSOLE'
-    ) + $libraryArguments + @(
-        'user32.lib', 'ole32.lib', 'oleaut32.lib', 'uiautomationcore.lib'
-    )
-    & $cl $arguments
-    if ($LASTEXITCODE -ne 0) {
-        throw "AdvancedPresentationHostTests build failed with exit code $LASTEXITCODE."
-    }
-    $temporaryRoot = [System.IO.Path]::GetFullPath([System.IO.Path]::GetTempPath())
-    $runRoot = Join-Path $temporaryRoot ("wrail-dlv213-export-" + [Guid]::NewGuid().ToString('N'))
-    $candidatePackage = Join-Path $runRoot 'widgetrail.community.reference.game-launcher-0.2.0.wrwidget'
-    New-Item -ItemType Directory -Path $runRoot | Out-Null
-    try {
-        & (Join-Path $projectDirectory '..\FirstPartyWidgets\GameLauncherWidget\Build-CommunityPackage.ps1') `
-            -Configuration $Configuration -OutputDirectory $runRoot
-        if ($LASTEXITCODE -ne 0 -or -not (Test-Path -LiteralPath $candidatePackage)) {
-            throw "Game Launcher Community package build failed with exit code $LASTEXITCODE."
-        }
-        $hostTestArguments = @(
-            '--installation', $outputDirectory,
-            '--community-fixture', $fixture,
-            '--candidate-package', $candidatePackage,
-            '--fixture-bridge', $fixtureBridge
-        )
-        if ($TextEntryOnly) {
-            $hostTestArguments += '--text-entry-only'
-        }
-        & (Join-Path $outputDirectory 'AdvancedPresentationHostTests.exe') `
-            $hostTestArguments
-        if ($LASTEXITCODE -ne 0) {
-            throw "AdvancedPresentationHostTests failed with exit code $LASTEXITCODE."
-        }
-    } finally {
-        $resolvedRunRoot = [System.IO.Path]::GetFullPath($runRoot)
-        if (-not $resolvedRunRoot.StartsWith(
-                $temporaryRoot, [StringComparison]::OrdinalIgnoreCase)) {
-            throw 'Refusing to remove an exported-candidate path outside the temporary root.'
-        }
-        if (Test-Path -LiteralPath $resolvedRunRoot) {
-            Remove-Item -LiteralPath $resolvedRunRoot -Recurse -Force
-        }
-    }
-}
-
-if ($LauncherExperienceTestsOnly) {
-    if ($SkipTests) {
-        throw 'LauncherExperienceTestsOnly cannot be combined with SkipTests.'
-    }
-    Invoke-LauncherExperienceTests
-    return
-}
-
 if ($CompositionTestsOnly) {
     if ($SkipTests) {
         throw 'CompositionTestsOnly cannot be combined with SkipTests.'
@@ -1690,11 +1533,6 @@ $hostArguments = $common + @(
     (Join-Path $projectDirectory 'OverlayTargeting.cpp'),
     (Join-Path $projectDirectory 'OverlayTransition.cpp'),
     (Join-Path $projectDirectory 'DeclarativeRenderer.cpp'),
-    (Join-Path $projectDirectory 'LauncherExperienceLayout.cpp'),
-    (Join-Path $projectDirectory 'LauncherExperienceAdapter.cpp'),
-    (Join-Path $projectDirectory 'LauncherExperienceProjection.cpp'),
-    (Join-Path $projectDirectory 'LauncherExperiencePresentation.cpp'),
-    (Join-Path $projectDirectory 'LauncherExperienceHostProof.cpp'),
     (Join-Path $projectDirectory 'ControllerNavigation.cpp'),
     (Join-Path $projectDirectory 'SliderInteraction.cpp'),
     (Join-Path $projectDirectory 'WidgetInteractionSession.cpp'),
@@ -1729,183 +1567,155 @@ if ($LASTEXITCODE -ne 0) {
     throw "OverlayHost build failed with exit code $LASTEXITCODE."
 }
 
-if (-not $SkipPackaging) {
-    function Assert-NoReparsePointInPath {
-        param([Parameter(Mandatory = $true)] [string]$Path)
+$bridgeOutput = Join-Path $outputDirectory 'runtime\Bridge'
+$workerHostOutput = Join-Path $outputDirectory 'runtime\WidgetWorkerHost'
+$settingsOutput = Join-Path $outputDirectory 'runtime\Settings'
+$audioMixerOutput = Join-Path $outputDirectory 'runtime\AudioMixer'
+$networkControlsOutput = Join-Path $outputDirectory 'runtime\NetworkControls'
+$gamesAppsOutput = Join-Path $outputDirectory 'runtime\GamesApps'
+$mediaSessionsOutput = Join-Path $outputDirectory 'runtime\MediaSessions'
 
-        $resolved = [System.IO.Path]::GetFullPath($Path)
-        $root = [System.IO.Path]::GetPathRoot($resolved)
-        $current = $root
-        foreach ($segment in $resolved.Substring($root.Length).Split(
-            [System.IO.Path]::DirectorySeparatorChar,
-            [System.StringSplitOptions]::RemoveEmptyEntries)) {
-            $current = Join-Path $current $segment
-            if (Test-Path -LiteralPath $current) {
-                $attributes = [System.IO.File]::GetAttributes($current)
-                if (($attributes -band [System.IO.FileAttributes]::ReparsePoint) -ne 0) {
-                    throw "Build output paths cannot traverse a reparse point: $current"
-                }
-            }
-        }
+# Host runtime generation is part of every coherent Release build. The
+# SkipPackaging switch omits Community/test package publication only; it must
+# never leave a new native host beside stale managed workers or contracts.
+foreach ($hostRuntimeOutput in @(
+    $bridgeOutput,
+    $workerHostOutput,
+    $settingsOutput,
+    $audioMixerOutput,
+    $networkControlsOutput,
+    $gamesAppsOutput,
+    $mediaSessionsOutput,
+    (Join-Path $outputDirectory 'runtime\GameLauncher'),
+    (Join-Path $outputDirectory 'runtime\SpotifyPlaybackHost'),
+    (Join-Path $outputDirectory 'runtime\YtMusic')
+)) {
+    Remove-GeneratedDirectory -Path $hostRuntimeOutput
+}
+$managedPublishExitCode = 0
+Invoke-SerializedManagedPublish `
+    -Project (Join-Path $projectDirectory '..\WidgetBridge\WidgetBridge.csproj') `
+    -Configuration $Configuration -Output $bridgeOutput `
+    -ExitCode ([ref]$managedPublishExitCode)
+if ($managedPublishExitCode -ne 0) {
+    throw "WidgetBridge publish failed with exit code $managedPublishExitCode."
+}
+$managedPublishExitCode = 0
+Invoke-SerializedManagedPublish `
+    -Project (Join-Path $projectDirectory '..\WidgetWorkerHost\WidgetWorkerHost.csproj') `
+    -Configuration $Configuration -Output $workerHostOutput `
+    -ExitCode ([ref]$managedPublishExitCode)
+if ($managedPublishExitCode -ne 0 -or
+    -not (Test-Path -LiteralPath (Join-Path $workerHostOutput 'WidgetWorkerHost.exe'))) {
+    throw "Generic widget worker host publish failed with exit code $managedPublishExitCode."
+}
+
+function Publish-BundledWidgetPackage {
+    param(
+        [Parameter(Mandatory = $true)] [string]$WidgetProject,
+        [Parameter(Mandatory = $true)] [string]$PackageRoot,
+        [Parameter(Mandatory = $true)] [string]$AssemblyName,
+        [Parameter(Mandatory = $true)] [string]$DisplayName
+    )
+
+    $resolvedPackageRoot = [System.IO.Path]::GetFullPath($PackageRoot)
+    $resolvedOutputRoot = [System.IO.Path]::GetFullPath($outputDirectory)
+    if (-not $resolvedPackageRoot.StartsWith(
+        $resolvedOutputRoot + [System.IO.Path]::DirectorySeparatorChar,
+        [System.StringComparison]::OrdinalIgnoreCase)) {
+        throw "Bundled package output escaped the build layout: $resolvedPackageRoot"
     }
-
-    function Remove-GeneratedDirectory {
-        param([Parameter(Mandatory = $true)] [string]$Path)
-
-        $resolvedOutputRoot = [System.IO.Path]::GetFullPath($outputDirectory)
-        $resolvedPath = [System.IO.Path]::GetFullPath($Path)
-        if (-not $resolvedPath.StartsWith(
-            $resolvedOutputRoot + [System.IO.Path]::DirectorySeparatorChar,
-            [System.StringComparison]::OrdinalIgnoreCase)) {
-            throw "Generated output escaped the build layout: $resolvedPath"
-        }
-        Assert-NoReparsePointInPath -Path $resolvedOutputRoot
-        Assert-NoReparsePointInPath -Path $resolvedPath
-        if (Test-Path -LiteralPath $resolvedPath) {
-            Remove-Item -LiteralPath $resolvedPath -Recurse -Force
-        }
+    if (Test-Path -LiteralPath $resolvedPackageRoot) {
+        Remove-Item -LiteralPath $resolvedPackageRoot -Recurse -Force
     }
-
-    function Publish-BundledWidgetPackage {
-        param(
-            [Parameter(Mandatory = $true)] [string]$WidgetProject,
-            [Parameter(Mandatory = $true)] [string]$PackageRoot,
-            [Parameter(Mandatory = $true)] [string]$AssemblyName,
-            [Parameter(Mandatory = $true)] [string]$DisplayName
-        )
-
-        $resolvedPackageRoot = [System.IO.Path]::GetFullPath($PackageRoot)
-        $resolvedOutputRoot = [System.IO.Path]::GetFullPath($outputDirectory)
-        if (-not $resolvedPackageRoot.StartsWith(
-            $resolvedOutputRoot + [System.IO.Path]::DirectorySeparatorChar,
-            [System.StringComparison]::OrdinalIgnoreCase)) {
-            throw "Bundled package output escaped the build layout: $resolvedPackageRoot"
-        }
-        if (Test-Path -LiteralPath $resolvedPackageRoot) {
-            Remove-Item -LiteralPath $resolvedPackageRoot -Recurse -Force
-        }
-        $payloadOutput = Join-Path $resolvedPackageRoot 'payload'
-        $stylesOutput = Join-Path $resolvedPackageRoot 'styles'
-        New-Item -ItemType Directory -Force -Path $payloadOutput, $stylesOutput | Out-Null
-        $managedPublishExitCode = 0
-        Invoke-SerializedManagedPublish `
-            -Project (Join-Path $WidgetProject "$AssemblyName.csproj") `
-            -Configuration $Configuration -Output $payloadOutput `
-            -ExitCode ([ref]$managedPublishExitCode)
-        if ($managedPublishExitCode -ne 0) {
-            throw "$DisplayName package publish failed with exit code $managedPublishExitCode."
-        }
-        # WidgetSdk/WidgetProtocol are host-ABI assemblies selected by the
-        # generic loader. Project assets copied by `dotnet publish` are pruned
-        # so four bundled packages do not duplicate or shadow host contracts.
-        foreach ($hostSharedFile in @(
-            'WidgetSdk.dll',
-            'WidgetSdk.pdb',
-            'WidgetProtocol.dll',
-            'WidgetProtocol.pdb',
-            "$AssemblyName.pdb",
-            'manifest.json'
-        )) {
-            $candidate = Join-Path $payloadOutput $hostSharedFile
-            if (Test-Path -LiteralPath $candidate) {
-                Remove-Item -LiteralPath $candidate -Force
-            }
-        }
-        $copiedStyles = Join-Path $payloadOutput 'styles'
-        if (Test-Path -LiteralPath $copiedStyles) {
-            Remove-Item -LiteralPath $copiedStyles -Recurse -Force
-        }
-        Copy-Item -LiteralPath (Join-Path $WidgetProject 'manifest.json') `
-            -Destination (Join-Path $resolvedPackageRoot 'manifest.json') -Force
-        Copy-Item -LiteralPath (Join-Path $WidgetProject 'styles\default.wrss') `
-            -Destination (Join-Path $stylesOutput 'default.wrss') -Force
-        foreach ($requiredFile in @(
-            'manifest.json',
-            'styles\default.wrss',
-            "payload\$AssemblyName.dll"
-        )) {
-            if (-not (Test-Path -LiteralPath (Join-Path $resolvedPackageRoot $requiredFile))) {
-                throw "$DisplayName bundled package is missing $requiredFile."
-            }
-        }
-    }
-
-    $bridgeOutput = Join-Path $outputDirectory 'runtime\Bridge'
-    $workerHostOutput = Join-Path $outputDirectory 'runtime\WidgetWorkerHost'
-    $settingsOutput = Join-Path $outputDirectory 'runtime\Settings'
-    $audioMixerOutput = Join-Path $outputDirectory 'runtime\AudioMixer'
-    $networkControlsOutput = Join-Path $outputDirectory 'runtime\NetworkControls'
-    $gamesAppsOutput = Join-Path $outputDirectory 'runtime\GamesApps'
-    $mediaSessionsOutput = Join-Path $outputDirectory 'runtime\MediaSessions'
-    # Product-owned Spotify and the private Game Launcher are retired. Purge
-    # exact generated locations before publishing into an incremental output
-    # tree so stale executables or Bridge dependency assemblies cannot ship.
-    Remove-GeneratedDirectory -Path (Join-Path $outputDirectory 'runtime\GameLauncher')
-    Remove-GeneratedDirectory -Path (Join-Path $outputDirectory 'runtime\SpotifyPlaybackHost')
-    Remove-GeneratedDirectory -Path $bridgeOutput
-    # YT Music is a community addon now. Remove an incremental build's retired
-    # trusted worker so it cannot remain as an accidental fallback.
-    Remove-GeneratedDirectory -Path (Join-Path $outputDirectory 'runtime\YtMusic')
+    $payloadOutput = Join-Path $resolvedPackageRoot 'payload'
+    $stylesOutput = Join-Path $resolvedPackageRoot 'styles'
+    New-Item -ItemType Directory -Force -Path $payloadOutput, $stylesOutput | Out-Null
     $managedPublishExitCode = 0
     Invoke-SerializedManagedPublish `
-        -Project (Join-Path $projectDirectory '..\WidgetBridge\WidgetBridge.csproj') `
-        -Configuration $Configuration -Output $bridgeOutput `
+        -Project (Join-Path $WidgetProject "$AssemblyName.csproj") `
+        -Configuration $Configuration -Output $payloadOutput `
         -ExitCode ([ref]$managedPublishExitCode)
     if ($managedPublishExitCode -ne 0) {
-        throw "WidgetBridge publish failed with exit code $managedPublishExitCode."
+        throw "$DisplayName package publish failed with exit code $managedPublishExitCode."
     }
-    $managedPublishExitCode = 0
-    Invoke-SerializedManagedPublish `
-        -Project (Join-Path $projectDirectory '..\WidgetWorkerHost\WidgetWorkerHost.csproj') `
-        -Configuration $Configuration -Output $workerHostOutput `
-        -ExitCode ([ref]$managedPublishExitCode)
-    if ($managedPublishExitCode -ne 0 -or
-        -not (Test-Path -LiteralPath (Join-Path $workerHostOutput 'WidgetWorkerHost.exe'))) {
-        throw "Generic widget worker host publish failed with exit code $managedPublishExitCode."
+    # WidgetSdk/WidgetProtocol are host-ABI assemblies selected by the generic
+    # loader. Project assets copied by `dotnet publish` are pruned so bundled
+    # packages do not duplicate or shadow host contracts.
+    foreach ($hostSharedFile in @(
+        'WidgetSdk.dll',
+        'WidgetSdk.pdb',
+        'WidgetProtocol.dll',
+        'WidgetProtocol.pdb',
+        "$AssemblyName.pdb",
+        'manifest.json'
+    )) {
+        $candidate = Join-Path $payloadOutput $hostSharedFile
+        if (Test-Path -LiteralPath $candidate) {
+            Remove-Item -LiteralPath $candidate -Force
+        }
     }
-    $managedPublishExitCode = 0
-    Invoke-SerializedManagedPublish `
-        -Project (Join-Path $projectDirectory '..\FirstPartyWidgets\SettingsWidget.Worker\SettingsWidget.Worker.csproj') `
-        -Configuration $Configuration -Output $settingsOutput `
-        -ExitCode ([ref]$managedPublishExitCode)
-    if ($managedPublishExitCode -ne 0) {
-        throw "Settings worker publish failed with exit code $managedPublishExitCode."
+    $copiedStyles = Join-Path $payloadOutput 'styles'
+    if (Test-Path -LiteralPath $copiedStyles) {
+        Remove-Item -LiteralPath $copiedStyles -Recurse -Force
     }
-    $settingsProject = Join-Path $projectDirectory '..\FirstPartyWidgets\SettingsWidget'
-    $settingsStylesOutput = Join-Path $settingsOutput 'styles'
-    $settingsPayloadOutput = Join-Path $settingsOutput 'payload'
-    New-Item -ItemType Directory -Force -Path $settingsStylesOutput, $settingsPayloadOutput | Out-Null
-    Copy-Item -LiteralPath (Join-Path $settingsProject 'manifest.json') `
-        -Destination (Join-Path $settingsOutput 'manifest.json') -Force
-    Copy-Item -LiteralPath (Join-Path $settingsProject 'styles\default.wrss') `
-        -Destination (Join-Path $settingsStylesOutput 'default.wrss') -Force
-    Copy-Item -LiteralPath (Join-Path $settingsOutput 'SettingsWidget.dll') `
-        -Destination (Join-Path $settingsPayloadOutput 'SettingsWidget.dll') -Force
-    foreach ($requiredSettingsFile in @(
-        'SettingsWidget.Worker.exe',
+    Copy-Item -LiteralPath (Join-Path $WidgetProject 'manifest.json') `
+        -Destination (Join-Path $resolvedPackageRoot 'manifest.json') -Force
+    Copy-Item -LiteralPath (Join-Path $WidgetProject 'styles\default.wrss') `
+        -Destination (Join-Path $stylesOutput 'default.wrss') -Force
+    foreach ($requiredFile in @(
         'manifest.json',
         'styles\default.wrss',
-        'payload\SettingsWidget.dll'
+        "payload\$AssemblyName.dll"
     )) {
-        if (-not (Test-Path -LiteralPath (Join-Path $settingsOutput $requiredSettingsFile))) {
-            throw "Settings deployment is missing $requiredSettingsFile."
+        if (-not (Test-Path -LiteralPath (Join-Path $resolvedPackageRoot $requiredFile))) {
+            throw "$DisplayName bundled package is missing $requiredFile."
         }
     }
-    Publish-BundledWidgetPackage `
-        (Join-Path $projectDirectory '..\FirstPartyWidgets\AudioMixerWidget') `
-        $audioMixerOutput 'AudioMixerWidget' 'Audio Mixer'
-    Publish-BundledWidgetPackage `
-        (Join-Path $projectDirectory '..\FirstPartyWidgets\NetworkControlsWidget') `
-        $networkControlsOutput 'NetworkControlsWidget' 'Network Controls'
-    Publish-BundledWidgetPackage `
-        (Join-Path $projectDirectory '..\FirstPartyWidgets\GamesAppsWidget') `
-        $gamesAppsOutput 'GamesAppsWidget' 'Games & Apps'
-    Publish-BundledWidgetPackage `
-        (Join-Path $projectDirectory '..\FirstPartyWidgets\MediaSessionsWidget') `
-        $mediaSessionsOutput 'MediaSessionsWidget' 'Now Playing'
-    Copy-Item -LiteralPath (Join-Path $projectDirectory 'widget-catalog.json') `
-        -Destination (Join-Path $outputDirectory 'widget-catalog.json') -Force
 }
+
+$managedPublishExitCode = 0
+Invoke-SerializedManagedPublish `
+    -Project (Join-Path $projectDirectory '..\FirstPartyWidgets\SettingsWidget.Worker\SettingsWidget.Worker.csproj') `
+    -Configuration $Configuration -Output $settingsOutput `
+    -ExitCode ([ref]$managedPublishExitCode)
+if ($managedPublishExitCode -ne 0) {
+    throw "Settings worker publish failed with exit code $managedPublishExitCode."
+}
+$settingsProject = Join-Path $projectDirectory '..\FirstPartyWidgets\SettingsWidget'
+$settingsStylesOutput = Join-Path $settingsOutput 'styles'
+$settingsPayloadOutput = Join-Path $settingsOutput 'payload'
+New-Item -ItemType Directory -Force -Path $settingsStylesOutput, $settingsPayloadOutput | Out-Null
+Copy-Item -LiteralPath (Join-Path $settingsProject 'manifest.json') `
+    -Destination (Join-Path $settingsOutput 'manifest.json') -Force
+Copy-Item -LiteralPath (Join-Path $settingsProject 'styles\default.wrss') `
+    -Destination (Join-Path $settingsStylesOutput 'default.wrss') -Force
+Copy-Item -LiteralPath (Join-Path $settingsOutput 'SettingsWidget.dll') `
+    -Destination (Join-Path $settingsPayloadOutput 'SettingsWidget.dll') -Force
+foreach ($requiredSettingsFile in @(
+    'SettingsWidget.Worker.exe',
+    'manifest.json',
+    'styles\default.wrss',
+    'payload\SettingsWidget.dll'
+)) {
+    if (-not (Test-Path -LiteralPath (Join-Path $settingsOutput $requiredSettingsFile))) {
+        throw "Settings deployment is missing $requiredSettingsFile."
+    }
+}
+Publish-BundledWidgetPackage `
+    (Join-Path $projectDirectory '..\FirstPartyWidgets\AudioMixerWidget') `
+    $audioMixerOutput 'AudioMixerWidget' 'Audio Mixer'
+Publish-BundledWidgetPackage `
+    (Join-Path $projectDirectory '..\FirstPartyWidgets\NetworkControlsWidget') `
+    $networkControlsOutput 'NetworkControlsWidget' 'Network Controls'
+Publish-BundledWidgetPackage `
+    (Join-Path $projectDirectory '..\FirstPartyWidgets\GamesAppsWidget') `
+    $gamesAppsOutput 'GamesAppsWidget' 'Games & Apps'
+Publish-BundledWidgetPackage `
+    (Join-Path $projectDirectory '..\FirstPartyWidgets\MediaSessionsWidget') `
+    $mediaSessionsOutput 'MediaSessionsWidget' 'Now Playing'
+Copy-Item -LiteralPath (Join-Path $projectDirectory 'widget-catalog.json') `
+    -Destination (Join-Path $outputDirectory 'widget-catalog.json') -Force
 
 if ($WidgetSwitchTestsOnly) {
     if ($SkipTests) {
@@ -1943,29 +1753,12 @@ if ($ColdDashboardTestsOnly) {
     return
 }
 
-if ($LauncherExperienceHostTestsOnly) {
-    if ($SkipTests -or $SkipPackaging) {
-        throw 'LauncherExperienceHostTestsOnly requires tests and packaging.'
-    }
-    Invoke-LauncherExperienceHostTests
-    return
-}
-
-if ($AdvancedPresentationHostTestsOnly) {
-    if ($SkipTests -or $SkipPackaging) {
-        throw 'AdvancedPresentationHostTestsOnly requires tests and packaging.'
-    }
-    Invoke-AdvancedPresentationHostTests
-    return
-}
-
 if ($TextEntryHostTestsOnly) {
     if ($SkipTests -or $SkipPackaging) {
         throw 'TextEntryHostTestsOnly requires tests and packaging.'
     }
     Invoke-TextEntryModalTests
     Invoke-AccessibilityTreeTests
-    Invoke-AdvancedPresentationHostTests -TextEntryOnly
     return
 }
 
@@ -1974,7 +1767,6 @@ if ($TrayAccessibilityHostTestsOnly) {
         throw 'TrayAccessibilityHostTestsOnly requires tests and packaging.'
     }
     Invoke-TrayAccessibilityTests
-    Invoke-LauncherExperienceHostTests -TrayInvokeOnly
     return
 }
 
@@ -1983,15 +1775,6 @@ if ($TrayRefreshHostTestsOnly) {
         throw 'TrayRefreshHostTestsOnly requires tests and packaging.'
     }
     Invoke-TrayRefreshHostTests
-    return
-}
-
-if ($LauncherExperienceLifecycleTestsOnly) {
-    if ($SkipTests -or $SkipPackaging) {
-        throw 'LauncherExperienceLifecycleTestsOnly requires tests and packaging.'
-    }
-    Invoke-LauncherExperienceTests
-    Invoke-LauncherExperienceHostTests -LifecycleOnly
     return
 }
 

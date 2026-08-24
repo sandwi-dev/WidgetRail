@@ -428,10 +428,6 @@ method WidgetRail.WidgetSdk.ActionSurfaceElement.PersistFocusAs(string id) -> Wi
 method WidgetRail.WidgetSdk.ActionSurfaceElement.Selected(bool selected = true) -> WidgetRail.WidgetSdk.ActionSurfaceElement
 method WidgetRail.WidgetSdk.ActionSurfaceElement.Shortcut(WidgetRail.WidgetProtocol.ControllerButton button, WidgetRail.WidgetProtocol.ControllerEventPhase phase = WidgetRail.WidgetProtocol.ControllerEventPhase.Pressed, string? actionId = null) -> WidgetRail.WidgetSdk.ActionSurfaceElement
 method WidgetRail.WidgetSdk.ActionSurfaceElement.ToString() -> string
-method WidgetRail.WidgetSdk.AdvancedPresentationSlotElement.Equals(WidgetRail.WidgetSdk.WidgetElement? other) -> bool
-method WidgetRail.WidgetSdk.AdvancedPresentationSlotElement.Equals(object? obj) -> bool
-method WidgetRail.WidgetSdk.AdvancedPresentationSlotElement.GetHashCode() -> int
-method WidgetRail.WidgetSdk.AdvancedPresentationSlotElement.ToString() -> string
 method WidgetRail.WidgetSdk.ButtonElement.Busy(bool busy = true) -> WidgetRail.WidgetSdk.ButtonElement
 method WidgetRail.WidgetSdk.ButtonElement.Disabled(bool disabled = true) -> WidgetRail.WidgetSdk.ButtonElement
 method WidgetRail.WidgetSdk.ButtonElement.Equals(WidgetRail.WidgetSdk.WidgetElement? other) -> bool
@@ -936,7 +932,6 @@ method WidgetRail.WidgetSdk.WidgetElement.CollectionItem(WidgetRail.WidgetSdk.Wi
 method WidgetRail.WidgetSdk.WidgetElement.Deconstruct(out string Id) -> void
 method WidgetRail.WidgetSdk.WidgetElement.Equals(object? obj) -> bool
 method WidgetRail.WidgetSdk.WidgetElement.GetHashCode() -> int
-method WidgetRail.WidgetSdk.WidgetElement.InAdvancedPresentationSlot(WidgetRail.WidgetProtocol.WidgetAdvancedPresentationSlot slot) -> WidgetRail.WidgetSdk.WidgetElement
 method WidgetRail.WidgetSdk.WidgetElement.ToString() -> string
 method WidgetRail.WidgetSdk.WidgetElement.VisibleWhen(WidgetRail.WidgetProtocol.ResponsiveVisibility visibility) -> WidgetRail.WidgetSdk.WidgetElement
 method WidgetRail.WidgetSdk.WidgetIdScope.Id(string name) -> string
@@ -1262,8 +1257,6 @@ method static WidgetRail.WidgetSdk.ActionSheetItem.op_Equality(WidgetRail.Widget
 method static WidgetRail.WidgetSdk.ActionSheetItem.op_Inequality(WidgetRail.WidgetSdk.ActionSheetItem? left, WidgetRail.WidgetSdk.ActionSheetItem? right) -> bool
 method static WidgetRail.WidgetSdk.ActionSurfaceElement.op_Equality(WidgetRail.WidgetSdk.ActionSurfaceElement? left, WidgetRail.WidgetSdk.ActionSurfaceElement? right) -> bool
 method static WidgetRail.WidgetSdk.ActionSurfaceElement.op_Inequality(WidgetRail.WidgetSdk.ActionSurfaceElement? left, WidgetRail.WidgetSdk.ActionSurfaceElement? right) -> bool
-method static WidgetRail.WidgetSdk.AdvancedPresentationSlotElement.op_Equality(WidgetRail.WidgetSdk.AdvancedPresentationSlotElement? left, WidgetRail.WidgetSdk.AdvancedPresentationSlotElement? right) -> bool
-method static WidgetRail.WidgetSdk.AdvancedPresentationSlotElement.op_Inequality(WidgetRail.WidgetSdk.AdvancedPresentationSlotElement? left, WidgetRail.WidgetSdk.AdvancedPresentationSlotElement? right) -> bool
 method static WidgetRail.WidgetSdk.ButtonElement.op_Equality(WidgetRail.WidgetSdk.ButtonElement? left, WidgetRail.WidgetSdk.ButtonElement? right) -> bool
 method static WidgetRail.WidgetSdk.ButtonElement.op_Inequality(WidgetRail.WidgetSdk.ButtonElement? left, WidgetRail.WidgetSdk.ButtonElement? right) -> bool
 method static WidgetRail.WidgetSdk.CollectionItemElement.op_Equality(WidgetRail.WidgetSdk.CollectionItemElement? left, WidgetRail.WidgetSdk.CollectionItemElement? right) -> bool
@@ -1597,8 +1590,6 @@ method static WidgetRail.WidgetSdk.WidgetWifiRadioChanged.op_Inequality(WidgetRa
 method virtual WidgetRail.WidgetSdk.ActionSheetItem.Equals(WidgetRail.WidgetSdk.ActionSheetItem? other) -> bool
 method virtual WidgetRail.WidgetSdk.ActionSurfaceElement.<Clone>$() -> WidgetRail.WidgetSdk.ActionSurfaceElement
 method virtual WidgetRail.WidgetSdk.ActionSurfaceElement.Equals(WidgetRail.WidgetSdk.ActionSurfaceElement? other) -> bool
-method virtual WidgetRail.WidgetSdk.AdvancedPresentationSlotElement.<Clone>$() -> WidgetRail.WidgetSdk.AdvancedPresentationSlotElement
-method virtual WidgetRail.WidgetSdk.AdvancedPresentationSlotElement.Equals(WidgetRail.WidgetSdk.AdvancedPresentationSlotElement? other) -> bool
 method virtual WidgetRail.WidgetSdk.ButtonElement.<Clone>$() -> WidgetRail.WidgetSdk.ButtonElement
 method virtual WidgetRail.WidgetSdk.ButtonElement.Equals(WidgetRail.WidgetSdk.ButtonElement? other) -> bool
 method virtual WidgetRail.WidgetSdk.CollectionItemElement.<Clone>$() -> WidgetRail.WidgetSdk.CollectionItemElement
@@ -1863,8 +1854,6 @@ property WidgetRail.WidgetProtocol.SliderInteractionMode? WidgetRail.WidgetSdk.S
 property WidgetRail.WidgetProtocol.ViewSnapshot WidgetRail.WidgetSdk.WidgetScenarioResult.Snapshot { get; }
 property WidgetRail.WidgetProtocol.ViewSnapshot? WidgetRail.WidgetSdk.WidgetScenarioRunResult.FinalSnapshot { get; set; }
 property WidgetRail.WidgetProtocol.VirtualCollectionWindowChange WidgetRail.WidgetSdk.WidgetCursorResourceSnapshot<TItem>.WindowChange { get; set; }
-property WidgetRail.WidgetProtocol.WidgetAdvancedPresentationSlot WidgetRail.WidgetSdk.AdvancedPresentationSlotElement.Slot { get; set; }
-property WidgetRail.WidgetProtocol.WidgetAdvancedPresentationView? WidgetRail.WidgetSdk.WidgetView.AdvancedPresentation { get; set; }
 property WidgetRail.WidgetProtocol.WidgetGlyph WidgetRail.WidgetSdk.IconElement.Glyph { get; set; }
 property WidgetRail.WidgetProtocol.WidgetGlyph WidgetRail.WidgetSdk.NavigationShellDestination.Glyph { get; set; }
 property WidgetRail.WidgetProtocol.WidgetGlyph? WidgetRail.WidgetSdk.ActionSheetItem.Glyph { get; set; }
@@ -1922,7 +1911,6 @@ property WidgetRail.WidgetSdk.WidgetCollectionItemKey? WidgetRail.WidgetSdk.Widg
 property WidgetRail.WidgetSdk.WidgetCommandPolicy WidgetRail.WidgetSdk.WidgetOptimisticCommandOptions<TState,TRequest,TExecution,TResult>.Policy { get; set; }
 property WidgetRail.WidgetSdk.WidgetCursorDirection? WidgetRail.WidgetSdk.WidgetAppLibraryCursorRequest.Direction { get; set; }
 property WidgetRail.WidgetSdk.WidgetCursorResourceSnapshot<TItem> WidgetRail.WidgetSdk.WidgetCursorResource<TItem>.Snapshot { get; }
-property WidgetRail.WidgetSdk.WidgetElement WidgetRail.WidgetSdk.AdvancedPresentationSlotElement.Child { get; set; }
 property WidgetRail.WidgetSdk.WidgetElement WidgetRail.WidgetSdk.CollectionItemElement.Child { get; set; }
 property WidgetRail.WidgetSdk.WidgetElement WidgetRail.WidgetSdk.ResponsiveBranchElement.Child { get; set; }
 property WidgetRail.WidgetSdk.WidgetElement WidgetRail.WidgetSdk.WidgetView.Root { get; set; }
@@ -2415,7 +2403,6 @@ type enum WidgetRail.WidgetSdk.WidgetWifiScanState : System.IComparable, System.
 type enum WidgetRail.WidgetSdk.WidgetWifiSecurityKind : System.IComparable, System.IConvertible, System.IFormattable, System.ISpanFormattable
 type sealed class WidgetRail.WidgetSdk.ActionSheetItem : System.IEquatable<WidgetRail.WidgetSdk.ActionSheetItem>
 type sealed class WidgetRail.WidgetSdk.ActionSurfaceElement : System.IEquatable<WidgetRail.WidgetSdk.ActionSurfaceElement>, System.IEquatable<WidgetRail.WidgetSdk.WidgetElement>, WidgetRail.WidgetSdk.WidgetElement
-type sealed class WidgetRail.WidgetSdk.AdvancedPresentationSlotElement : System.IEquatable<WidgetRail.WidgetSdk.AdvancedPresentationSlotElement>, System.IEquatable<WidgetRail.WidgetSdk.WidgetElement>, WidgetRail.WidgetSdk.WidgetElement
 type sealed class WidgetRail.WidgetSdk.ButtonElement : System.IEquatable<WidgetRail.WidgetSdk.ButtonElement>, System.IEquatable<WidgetRail.WidgetSdk.WidgetElement>, WidgetRail.WidgetSdk.WidgetElement
 type sealed class WidgetRail.WidgetSdk.CollectionItemElement : System.IEquatable<WidgetRail.WidgetSdk.CollectionItemElement>, System.IEquatable<WidgetRail.WidgetSdk.WidgetElement>, WidgetRail.WidgetSdk.WidgetElement
 type sealed class WidgetRail.WidgetSdk.ComponentAction : System.IEquatable<WidgetRail.WidgetSdk.ComponentAction>

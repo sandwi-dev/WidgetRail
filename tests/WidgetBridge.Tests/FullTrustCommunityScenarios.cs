@@ -1,4 +1,5 @@
 using System.IO.Compression;
+using System.Security.Cryptography;
 using System.Text;
 using WidgetRail.WidgetBridge;
 using WidgetRail.WidgetCatalog;
@@ -144,6 +145,8 @@ internal static class FullTrustCommunityScenarios
         var playbackHostOutput = Path.Combine(
             root, "samples", "SpotifyWidget", "PlaybackHost", "bin", "Release",
             "net8.0-windows10.0.19041.0", "win-x64");
+        var hostOutput = Path.Combine(root, "src", "OverlayHost", "out", "Release");
+        AssertHostRuntimeArtifacts(root, hostOutput);
         Check(File.Exists(Path.Combine(applicationOutput, "SpotifyApplication.exe")),
             "The package-owned Spotify application was not built.");
         Check(File.Exists(Path.Combine(playbackHostOutput, "SpotifyPlaybackHost.exe")),
@@ -151,23 +154,50 @@ internal static class FullTrustCommunityScenarios
         using var temporary = new ScenarioDirectory();
         var package = CreateSpotifyPackage(
             root, applicationOutput, playbackHostOutput, temporary.Path);
+        var betaOutput = FixtureOutput(root, "FullTrustBetaFixture");
+        var betaPackage = CreatePackage(
+            temporary.Path, betaOutput, "FullTrustBetaFixture.exe",
+            "org.independent.beta-utility", "3.2.1");
         var installedRoot = Path.Combine(temporary.Path, "installed");
         var catalog = new CatalogService(installedRoot);
         var installed = await catalog.InstallAsync(
             package, WidgetPackageTrustApproval.FullTrustCurrentUser);
+        var beta = await catalog.InstallAsync(
+            betaPackage, WidgetPackageTrustApproval.FullTrustCurrentUser);
         await catalog.SetEnabledAsync(
             installed.Id, true, WidgetPackageTrustApproval.FullTrustCurrentUser);
+        await catalog.SetEnabledAsync(
+            beta.Id, true, WidgetPackageTrustApproval.FullTrustCurrentUser);
 
-        var trustedCatalog = CreateTrustedCatalog(temporary.Path);
         var load = await BridgeCatalog.LoadWithInstalledAsync(
-            trustedCatalog.CatalogPath, installedRoot, trustedCatalog.WorkerHostPath);
+            Path.Combine(hostOutput, "widget-catalog.json"),
+            installedRoot,
+            Path.Combine(hostOutput, "runtime", "WidgetWorkerHost", "WidgetWorkerHost.exe"));
         Check(load.InstalledCatalogValid && load.Warnings.Count == 0,
             "The packaged Spotify application failed ordinary catalog admission.");
         var configured = load.Catalog.GetConfigured(installed.Id);
+        var betaConfigured = load.Catalog.GetConfigured(beta.Id);
         AssertFullTrust(configured, "SpotifyApplication.exe");
+        AssertFullTrust(betaConfigured, "FullTrustBetaFixture.exe");
         Check(configured.DeclaredCapabilities.Count == 0 &&
               configured.WorkerArguments.Count == 0,
             "Spotify retained a product capability or special host argument.");
+
+        foreach (var widgetId in new[]
+                 {
+                     "settings", "audio-mixer", "network-controls", "games-apps",
+                     "media-sessions",
+                 })
+        {
+            var hostRuntime = load.Catalog.GetConfigured(widgetId);
+            await using var hostClient = HostRuntimeClient(hostRuntime);
+            await hostClient.SetLifecycleStateAsync(WidgetLifecycleState.Visible);
+            var firstSnapshot = await hostClient.GetSnapshotAsync();
+            Check(firstSnapshot.Sequence > 0 &&
+                  !string.IsNullOrWhiteSpace(firstSnapshot.Root.Id),
+                $"Host runtime '{widgetId}' did not publish its first snapshot.");
+            await hostClient.StopAsync();
+        }
 
         var previousRoot = Environment.GetEnvironmentVariable(
             SpotifyConfigurationRootEnvironmentVariable);
@@ -181,6 +211,8 @@ internal static class FullTrustCommunityScenarios
             client.Invalidated += (_, _) => invalidated.Release();
             await client.SetLifecycleStateAsync(WidgetLifecycleState.Visible);
             var snapshot = await client.GetSnapshotAsync();
+            Check(snapshot.Sequence > 0,
+                "Spotify's first ordinary snapshot did not carry positive authority.");
             for (var attempt = 0; attempt != 4; attempt++)
             {
                 if (TryFind(snapshot.Root, "spotify.setup.open") is not null) break;
@@ -190,6 +222,20 @@ internal static class FullTrustCommunityScenarios
             Check(TryFind(snapshot.Root, "spotify.setup.open") is not null &&
                   snapshot.InitialFocusId == "spotify.setup.open",
                 "The ordinary full-trust route did not return Spotify's credential-free setup snapshot.");
+
+            await client.StopAsync();
+            await client.SetLifecycleStateAsync(WidgetLifecycleState.Visible);
+            var reopened = await client.GetSnapshotAsync();
+            Check(client.Starts == 2 && reopened.Sequence > 0,
+                "Spotify did not complete one bounded ordinary-runtime reopen.");
+
+            await using var betaClient = Client(betaConfigured);
+            await betaClient.SetLifecycleStateAsync(WidgetLifecycleState.Visible);
+            var betaSnapshot = await betaClient.GetSnapshotAsync();
+            Check(Find(betaSnapshot.Root, "beta-title").Text ==
+                  "Independent beta application",
+                "A neighboring generic full-trust worker was not usable after Spotify reopened.");
+            await betaClient.StopAsync();
             await client.StopAsync();
         }
         finally
@@ -199,8 +245,11 @@ internal static class FullTrustCommunityScenarios
         }
 
         await catalog.SetEnabledAsync(installed.Id, false);
+        await catalog.SetEnabledAsync(beta.Id, false);
         var removed = await catalog.UninstallAsync(installed.Id);
-        Check(removed.RemovedVersions.Count == 1,
+        var removedBeta = await catalog.UninstallAsync(beta.Id);
+        Check(removed.RemovedVersions.Count == 1 &&
+              removedBeta.RemovedVersions.Count == 1,
             "The ordinary Spotify package did not disable and remove cleanly.");
     }
 
@@ -303,6 +352,86 @@ internal static class FullTrustCommunityScenarios
         ContentLeaseFactory = configured.ContentLeaseFactory,
         IsolationPolicy = WidgetWorkerIsolationPolicy.FullTrustCommunity,
     });
+
+    private static WidgetProcessClient HostRuntimeClient(ConfiguredWidget configured) =>
+        new(new WidgetProcessOptions
+        {
+            ExecutablePath = configured.WorkerExecutable,
+            Arguments = configured.WorkerArguments,
+            WidgetInstanceId = configured.InstanceId,
+            ConnectTimeout = TimeSpan.FromSeconds(5),
+            RequestTimeout = TimeSpan.FromSeconds(5),
+            MaximumMessageBytes = WidgetRuntimeProtocol.DefaultMaximumMessageBytes,
+            MaximumRestartAttempts = 0,
+            ContentLeaseFactory = configured.ContentLeaseFactory,
+            IsolationPolicy = configured.RequiresAppContainer
+                ? WidgetWorkerIsolationPolicy.RequireAppContainer
+                : WidgetWorkerIsolationPolicy.HostTrustedJobOnly,
+            IsolationKey = configured.IsolationKey,
+            ReadOnlyPaths = configured.ReadOnlyPaths,
+        });
+
+    private static void AssertHostRuntimeArtifacts(string repositoryRoot, string hostOutput)
+    {
+        var runtimeRoot = Path.Combine(hostOutput, "runtime");
+        var expectedDirectories = new[]
+        {
+            "AudioMixer", "Bridge", "GamesApps", "MediaSessions", "NetworkControls",
+            "Settings", "WidgetWorkerHost",
+        };
+        var actualDirectories = Directory.EnumerateDirectories(runtimeRoot)
+            .Select(Path.GetFileName)
+            .Order(StringComparer.Ordinal)
+            .ToArray();
+        Check(actualDirectories.SequenceEqual(expectedDirectories),
+            $"Host runtime inventory was incoherent: {string.Join(",", actualDirectories)}.");
+
+        foreach (var assembly in new[] { "WidgetProtocol.dll", "WidgetRuntime.dll", "WidgetSdk.dll" })
+        {
+            var source = Path.Combine(
+                repositoryRoot, "src", Path.GetFileNameWithoutExtension(assembly),
+                "bin", "Release", "net8.0", assembly);
+            foreach (var runtime in new[] { "Bridge", "WidgetWorkerHost", "Settings" })
+                CheckFilesEqual(source, Path.Combine(runtimeRoot, runtime, assembly));
+        }
+
+        foreach (var (runtime, project, assembly) in new[]
+                 {
+                     ("AudioMixer", "AudioMixerWidget", "AudioMixerWidget.dll"),
+                     ("NetworkControls", "NetworkControlsWidget", "NetworkControlsWidget.dll"),
+                     ("GamesApps", "GamesAppsWidget", "GamesAppsWidget.dll"),
+                     ("MediaSessions", "MediaSessionsWidget", "MediaSessionsWidget.dll"),
+                 })
+        {
+            var payload = Path.Combine(runtimeRoot, runtime, "payload");
+            CheckFilesEqual(
+                Path.Combine(repositoryRoot, "src", "FirstPartyWidgets", project,
+                    "bin", "Release", "net8.0", assembly),
+                Path.Combine(payload, assembly));
+            Check(!File.Exists(Path.Combine(payload, "WidgetProtocol.dll")) &&
+                  !File.Exists(Path.Combine(payload, "WidgetSdk.dll")),
+                $"Bundled runtime '{runtime}' shadowed the generic host contracts.");
+        }
+
+        CheckFilesEqual(
+            Path.Combine(repositoryRoot, "src", "FirstPartyWidgets", "SettingsWidget.Worker",
+                "bin", "Release", "net8.0", "SettingsWidget.Worker.dll"),
+            Path.Combine(runtimeRoot, "Settings", "SettingsWidget.Worker.dll"));
+        CheckFilesEqual(
+            Path.Combine(repositoryRoot, "src", "FirstPartyWidgets", "SettingsWidget",
+                "bin", "Release", "net8.0", "SettingsWidget.dll"),
+            Path.Combine(runtimeRoot, "Settings", "payload", "SettingsWidget.dll"));
+    }
+
+    private static void CheckFilesEqual(string expected, string actual)
+    {
+        Check(File.Exists(expected), $"Expected current build artifact was missing: {expected}.");
+        Check(File.Exists(actual), $"Host runtime artifact was missing: {actual}.");
+        var expectedHash = SHA256.HashData(File.ReadAllBytes(expected));
+        var actualHash = SHA256.HashData(File.ReadAllBytes(actual));
+        Check(expectedHash.AsSpan().SequenceEqual(actualHash),
+            $"Host runtime artifact was stale: {actual}.");
+    }
 
     private static void AssertFullTrust(ConfiguredWidget configured, string executableName)
     {

@@ -440,10 +440,6 @@ int main() {
             "presentationGeneration": "presentation-1",
             "icon": "music",
             "pinningSupported": true,
-            "advancedPresentation": {
-                "schemaVersion": 1,
-                "kind": "launcherExperience"
-            },
             "protectedWifiPromptSupported": true,
             "quickActions": [{
                 "id": "refresh",
@@ -469,9 +465,6 @@ int main() {
     CHECK((*valid)[0].presentationGeneration == L"presentation-1");
     CHECK((*valid)[0].icon == L"music");
     CHECK((*valid)[0].pinningSupported);
-    CHECK((*valid)[0].advancedPresentation);
-    CHECK((*valid)[0].advancedPresentation->schemaVersion == 1);
-    CHECK((*valid)[0].advancedPresentation->kind == L"launcherExperience");
     CHECK((*valid)[0].protectedWifiPromptSupported);
     CHECK((*valid)[0].quickActions.size() == 2);
     CHECK((*valid)[0].quickActions[0].controllerButton == L"x");
@@ -492,23 +485,7 @@ int main() {
         }]
     })json", error);
     CHECK(defaultPinning && !(*defaultPinning)[0].pinningSupported);
-    CHECK(defaultPinning && !(*defaultPinning)[0].advancedPresentation);
     CHECK(defaultPinning && !(*defaultPinning)[0].protectedWifiPromptSupported);
-
-    error.clear();
-    const auto incompatiblePresentation = widgetrail::testing::ParseWidgetDescriptors(R"json({
-        "widgets": [{
-            "id": "dev.test.future",
-            "name": "Future",
-            "instanceId": "future.instance",
-            "runtimeGeneration": "runtime-future",
-            "presentationGeneration": "presentation-future",
-            "advancedPresentation": {"schemaVersion":99,"kind":"launcherExperience"},
-            "quickActions": []
-        }]
-    })json", error);
-    CHECK(incompatiblePresentation &&
-           (*incompatiblePresentation)[0].advancedPresentation->schemaVersion == 99);
 
     error.clear();
     CHECK(!widgetrail::testing::ParseWidgetDescriptors(R"json({
@@ -542,16 +519,12 @@ int main() {
             "widgetInstanceId": "music.runtime.v1",
             "activeInputScopeId": "root",
             "initialFocusId": "play",
-            "advancedPresentation": {
-                "kind": "launcherExperience",
-                "preset": "heroRail"
-            },
             "root": {
                 "id": "root",
                 "kind": "stack",
                 "children": [
                     {"id":"play","kind":"button","text":"Play","actionId":"play","focusPersistenceId":"transport.play"},
-                    {"id":"advanced-slot","kind":"stack","advancedPresentationSlot":"detailsPanel","children":[]},
+                    {"id":"details","kind":"stack","children":[]},
                     {"id":"loading","kind":"loadingIndicator","accessibilityLabel":"Loading music","indicatorSize":"compact","visibleWhen":"compactOnly"},
                     {
                         "id":"album","kind":"actionSurface","actionId":"open-album",
@@ -600,9 +573,6 @@ int main() {
     })json", error);
     CHECK(styledSnapshot && error.empty());
     CHECK(styledSnapshot->root.children.size() == 7);
-    CHECK(styledSnapshot->advancedPresentationKind == L"launcherExperience");
-    CHECK(styledSnapshot->advancedPresentationPreset == L"heroRail");
-    CHECK(styledSnapshot->root.children[1].advancedPresentationSlot == L"detailsPanel");
     const auto& styledButton = styledSnapshot->root.children.front();
     (void)styledButton;
     CHECK(styledButton.baseStyle.at(L"opacity").number == 0.5);

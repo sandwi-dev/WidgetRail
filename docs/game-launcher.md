@@ -316,19 +316,3 @@ removal, same/stale identity refusal, committed hide closure, and failed/busy
 organization feedback are also covered. The
 installed generic-worker fixture covers the bundled manifest/catalog route,
 10,000-row broker source, adjacent grid focus, artwork handle, and exact launch.
-
-## Launcher Experience selection
-
-Settings owns a trusted local Launcher Experiences page. It lists exact
-installed ID/version pairs and discloses the full digest, publisher claim,
-layout preset, validation state, package summary, and whether the version is a
-built-in recovery or an unsigned local package. Selecting a valid exact version
-records it together with the last known-good exact identity. **Use global
-appearance** disables the launcher-specific choice without discarding that
-record; **Restore built-in Hero Rail** provides a one-action recovery. Settings
-denies removal of the selected exact version and requires confirmation before
-removing another local version.
-
-The selection is intentionally held for private native consumption. It grants
-no action, provider, path, URL, script, or widget-protocol authority, and does
-not add signing, gallery, or update behavior.

@@ -29,7 +29,6 @@ public sealed record BridgeWidgetDescriptor
     public required string PresentationGeneration { get; init; }
     public required WidgetGlyph Icon { get; init; }
     public bool PinningSupported { get; init; }
-    public WidgetAdvancedPresentationDeclaration? AdvancedPresentation { get; init; }
     /// <summary>
     /// Trusted host policy for the bundled Network Controls credential prompt.
     /// This is derived by the bridge and cannot be declared by a widget package.
@@ -48,12 +47,6 @@ internal sealed record ConfiguredWidget
     public WidgetGlyph Icon { get; init; } = WidgetGlyph.Connection;
     /// <summary>Immutable declaration; native-window authority remains host-only.</summary>
     public bool PinningSupported { get; init; }
-    /// <summary>
-    /// Validated package declaration. Trusted catalog JSON cannot manufacture
-    /// this value; it is copied only from a bundled or installed manifest.
-    /// </summary>
-    [JsonIgnore]
-    public WidgetAdvancedPresentationDeclaration? AdvancedPresentation { get; init; }
     public required string WorkerExecutable { get; init; }
     public string? StyleFile { get; init; }
     public IReadOnlyList<string> WorkerArguments { get; init; } = [];
@@ -116,7 +109,6 @@ internal sealed record ConfiguredWidget
         PresentationGeneration = CatalogFingerprint[..32].ToLowerInvariant(),
         Icon = Icon,
         PinningSupported = PinningSupported,
-        AdvancedPresentation = AdvancedPresentation,
         ProtectedWifiPromptSupported =
             string.Equals(PackageId, "widgetrail.firstparty.network-controls", StringComparison.Ordinal) &&
             string.Equals(PublisherId, "widgetrail.firstparty", StringComparison.Ordinal) &&
@@ -396,7 +388,6 @@ public sealed class BridgeCatalog
                     manifest.Id, manifest.Version),
                 Icon = manifest.Presentation.Icon,
                 PinningSupported = manifest.PinningSupported,
-                AdvancedPresentation = manifest.AdvancedPresentation,
                 WorkerExecutable = executionTrust == WidgetExecutionTrust.Sandboxed
                     ? workerHost
                     : entrypoint,
@@ -492,9 +483,6 @@ public sealed class BridgeCatalog
             workerFingerprint,
             source.Name,
             source.Icon.ToString(),
-            source.AdvancedPresentation?.SchemaVersion.ToString(
-                System.Globalization.CultureInfo.InvariantCulture) ?? string.Empty,
-            source.AdvancedPresentation?.Kind.ToString() ?? string.Empty,
             .. source.QuickActions.SelectMany(action => new[]
             {
                 action.Id,
@@ -668,7 +656,6 @@ public sealed class BridgeCatalog
             InstanceId = source.InstanceId,
             Icon = manifest.Presentation.Icon,
             PinningSupported = manifest.PinningSupported,
-            AdvancedPresentation = manifest.AdvancedPresentation,
             WorkerExecutable = workerHost,
             WorkerArguments =
             [

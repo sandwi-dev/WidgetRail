@@ -1,5 +1,6 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using System.Text.Json.Nodes;
 
 namespace WidgetRail.PlatformSettings;
 
@@ -32,7 +33,8 @@ public sealed class PlatformSettingsStore
         try
         {
             StrictJson.RejectDuplicateProperties(bytes);
-            var document = JsonSerializer.Deserialize<PlatformSettingsDocument>(bytes, JsonOptions)
+            var currentBytes = RetireSchemaOneLauncherExperience(bytes);
+            var document = JsonSerializer.Deserialize<PlatformSettingsDocument>(currentBytes, JsonOptions)
                 ?? throw new JsonException("Settings document was null.");
             Validate(document);
             return document;
@@ -195,6 +197,29 @@ public sealed class PlatformSettingsStore
         };
         options.Converters.Add(new JsonStringEnumConverter(JsonNamingPolicy.CamelCase, allowIntegerValues: false));
         return options;
+    }
+
+    /// <summary>
+    /// Pre-release schema 1 carried one now-removed launcher-presentation selection.
+    /// Retire only that property and advance the overlay-owned document in memory;
+    /// the next successful mutation persists schema 2. Remove this tombstone when
+    /// schema 1 settings are no longer an accepted local-development input.
+    /// </summary>
+    private static byte[] RetireSchemaOneLauncherExperience(byte[] bytes)
+    {
+        using var document = JsonDocument.Parse(bytes);
+        if (document.RootElement.ValueKind != JsonValueKind.Object ||
+            !document.RootElement.TryGetProperty("schemaVersion", out var schemaVersion) ||
+            schemaVersion.ValueKind != JsonValueKind.Number ||
+            !schemaVersion.TryGetInt32(out var version) ||
+            version != 1)
+            return bytes;
+
+        var root = JsonNode.Parse(bytes)?.AsObject()
+            ?? throw new JsonException("Settings document was null.");
+        root.Remove("launcherExperience");
+        root["schemaVersion"] = PlatformSettingsDocument.CurrentSchemaVersion;
+        return JsonSerializer.SerializeToUtf8Bytes(root);
     }
 
     private static string SafeMessage(string value)

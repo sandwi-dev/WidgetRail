@@ -24,7 +24,6 @@ public enum PresentationProperty
     InitialFocusId,
     QuickActions,
     Surface,
-    AdvancedPresentation,
     VisibleWhen,
     Text,
     AccessibilityLabel,
@@ -60,7 +59,6 @@ public enum PresentationProperty
     VirtualCollectionWindow,
     CollectionAnchorKey,
     CollectionItemKey,
-    AdvancedPresentationSlot,
     StyleClasses,
     Shortcuts,
 }
@@ -131,7 +129,7 @@ public static class PresentationPropertyMetadata
             PresentationPropertyImpact.Authority |
             PresentationPropertyImpact.Interaction |
             PresentationPropertyImpact.Accessibility,
-        PresentationProperty.Surface or PresentationProperty.AdvancedPresentation =>
+        PresentationProperty.Surface =>
             PresentationPropertyImpact.SurfacePlacement |
             PresentationPropertyImpact.MeasureLayout |
             PresentationPropertyImpact.Paint |
@@ -190,7 +188,6 @@ public static class PresentationPropertyMetadata
         PresentationProperty.VirtualCollectionWindow or
         PresentationProperty.CollectionAnchorKey or
         PresentationProperty.CollectionItemKey or
-        PresentationProperty.AdvancedPresentationSlot or
         PresentationProperty.TextEntryMaximumLength =>
             PresentationPropertyImpact.MeasureLayout |
             PresentationPropertyImpact.Paint |
@@ -203,8 +200,7 @@ public static class PresentationPropertyMetadata
         PresentationProperty.ActiveInputScopeId or
         PresentationProperty.InitialFocusId or
         PresentationProperty.QuickActions or
-        PresentationProperty.Surface or
-        PresentationProperty.AdvancedPresentation;
+        PresentationProperty.Surface;
 }
 
 public static class PresentationUpdateJson

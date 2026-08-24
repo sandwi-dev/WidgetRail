@@ -45,14 +45,6 @@ internal enum GameLauncherRoute
     Category,
 }
 
-internal static class GameLauncherExperienceIdentity
-{
-    internal const string HeroRail = "hero-rail";
-
-    internal static bool IsValid(string? value) => value is
-        HeroRail or "cover-wall" or "carousel" or "compact-grid";
-}
-
 internal enum GameLauncherLaunchState
 {
     RequestAccepted,

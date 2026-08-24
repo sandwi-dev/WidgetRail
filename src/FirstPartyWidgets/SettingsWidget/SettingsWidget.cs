@@ -3,7 +3,6 @@ using System.Text.Json;
 using WidgetRail.PlatformSettings;
 using WidgetRail.PlatformBroker;
 using WidgetRail.PlatformDiagnostics;
-using WidgetRail.LauncherExperienceCatalog;
 using WidgetRail.WidgetProtocol;
 using WidgetRail.WidgetSdk;
 using WidgetRail.WidgetStyling;
@@ -19,9 +18,6 @@ public enum SettingsPage
     ThemePicker,
     ThemeVersion,
     ThemeRemoval,
-    LauncherExperiences,
-    LauncherExperienceVersion,
-    LauncherExperienceRemoval,
     Accessibility,
     AccessibilityVisual,
     Overlay,
@@ -51,8 +47,6 @@ public sealed class SettingsWidget : Widget
     private readonly PlatformSettingsStore _store;
     private readonly ThemeCatalog _catalog;
     private readonly ThemeCatalogMutationPolicy _themeMutations;
-    private readonly LauncherExperienceCatalog.LauncherExperienceCatalog _launcherExperiences;
-    private readonly LauncherExperienceSelectionPolicy _launcherExperienceMutations;
     private readonly CatalogService _widgetCatalog;
     private readonly ConsentStore _consentStore;
     private readonly IPlatformDiagnosticsService _diagnosticsService;
@@ -67,9 +61,6 @@ public sealed class SettingsWidget : Widget
     private SettingsPermissionState _permissionState = SettingsPermissionState.Empty;
     private SettingsAuthorityRecoverySelection? _selectedAuthorityRecovery;
     private SettingsThemeSelection? _selectedTheme;
-    private LauncherExperienceCatalogSnapshot _launcherExperienceCatalog;
-    private SettingsLauncherExperienceSelection? _selectedLauncherExperience;
-    private string? _launcherExperienceFocusId;
     private string? _themePickerFocusId;
     private SettingsPage _page;
     private int _activationLoadCount;
@@ -90,9 +81,6 @@ public sealed class SettingsWidget : Widget
         _store = store ?? new PlatformSettingsStore(paths);
         _catalog = catalog ?? new ThemeCatalog(paths);
         _themeMutations = new ThemeCatalogMutationPolicy(_store, _catalog);
-        _launcherExperiences = new LauncherExperienceCatalog.LauncherExperienceCatalog(
-            paths.LauncherExperiencesDirectory);
-        _launcherExperienceMutations = new LauncherExperienceSelectionPolicy(_store);
         _widgetCatalog = widgetCatalog ?? new CatalogService(
             Path.Combine(paths.RootDirectory, "widgets"));
         _consentStore = consentStore ?? new ConsentStore(
@@ -105,7 +93,6 @@ public sealed class SettingsWidget : Widget
         var builtIn = _catalog.BuiltInDefault;
         _themes = new ThemeCatalogSnapshot(
             [new ThemeCatalogEntry(builtIn.Descriptor, builtIn.IsValid, builtIn.Diagnostics)]);
-        _launcherExperienceCatalog = BuiltInLauncherExperiences();
     }
 
     public SettingsPage CurrentPage
@@ -130,9 +117,6 @@ public sealed class SettingsWidget : Widget
         string? themePickerFocusId;
         string? selectedAuthorityRecoveryId;
         string status;
-        LauncherExperienceCatalogSnapshot launcherExperiences;
-        SettingsLauncherExperienceSelection? selectedLauncherExperience;
-        string? launcherExperienceFocusId;
         lock (_stateLock)
         {
             settings = _settings;
@@ -148,9 +132,6 @@ public sealed class SettingsWidget : Widget
             selectedTheme = _selectedTheme;
             themePickerFocusId = _themePickerFocusId;
             status = _status;
-            launcherExperiences = _launcherExperienceCatalog;
-            selectedLauncherExperience = _selectedLauncherExperience;
-            launcherExperienceFocusId = _launcherExperienceFocusId;
         }
 
         var presentation = new SettingsPresentationState(
@@ -199,16 +180,6 @@ public sealed class SettingsWidget : Widget
             SettingsPage.CapabilityDecision =>
                 SettingsPermissionPresentation.RenderCapabilityDecision(
                     header, busy, permissionState),
-            SettingsPage.LauncherExperiences or
-            SettingsPage.LauncherExperienceVersion or
-            SettingsPage.LauncherExperienceRemoval =>
-                SettingsLauncherExperiencePresentation.Render(new(
-                    page,
-                    settings.LauncherExperience,
-                    launcherExperiences,
-                    selectedLauncherExperience,
-                    launcherExperienceFocusId,
-                    busy), header),
             _ => throw new InvalidOperationException($"Unsupported Settings page {page}."),
         };
     }
@@ -287,22 +258,9 @@ public sealed class SettingsWidget : Widget
                 case "theme.remove.confirm": await RemoveSelectedThemeAsync(cancellationToken)
                     .ConfigureAwait(false); break;
                 case "theme.remove.cancel": Navigate(SettingsPage.ThemeVersion); break;
-                case "launcher-experience.global": await UseGlobalLauncherExperienceAsync(
-                    cancellationToken).ConfigureAwait(false); break;
-                case "launcher-experience.recover": await RecoverLauncherExperienceAsync(
-                    cancellationToken).ConfigureAwait(false); break;
-                case "launcher-experience.select": await SelectLauncherExperienceAsync(
-                    cancellationToken).ConfigureAwait(false); break;
-                case "launcher-experience.remove.request": OpenLauncherExperienceRemoval(); break;
-                case "launcher-experience.remove.confirm": await RemoveLauncherExperienceAsync(
-                    cancellationToken).ConfigureAwait(false); break;
-                case "launcher-experience.remove.cancel": Navigate(
-                    SettingsPage.LauncherExperienceVersion); break;
                 default:
                     if (TryThemeIndex(action.ActionId, out var index))
                         OpenThemeVersion(index);
-                    else if (TryIndexedAction(action.ActionId, "launcher-experience.open.", out index))
-                        OpenLauncherExperience(index);
                     else if (TryIndexedAction(action.ActionId, "installed.select.", out index))
                         await SelectInstalledWidgetAsync(index, cancellationToken)
                             .ConfigureAwait(false);
@@ -369,33 +327,6 @@ public sealed class SettingsWidget : Widget
                 string.Equals(entry.Descriptor.Version.ToString(), settings.Appearance.ThemeVersion, StringComparison.Ordinal));
             if (!selectedInstalled)
                 warning ??= "Selected theme is unavailable; choose an installed theme";
-            LauncherExperienceCatalogSnapshot launcherExperiences;
-            try
-            {
-                launcherExperiences = _launcherExperiences.Discover();
-            }
-            catch (LauncherExperiencePackageException exception)
-            {
-                launcherExperiences = BuiltInLauncherExperiences();
-                warning ??= $"Launcher Experience catalog unavailable ({exception.Code}); built-in recovery only";
-            }
-            catch (IOException)
-            {
-                launcherExperiences = BuiltInLauncherExperiences();
-                warning ??= "Launcher Experience catalog unavailable (io_error); built-in recovery only";
-            }
-            catch (UnauthorizedAccessException)
-            {
-                launcherExperiences = BuiltInLauncherExperiences();
-                warning ??= "Launcher Experience catalog unavailable (access_denied); built-in recovery only";
-            }
-            var launcherSelection = settings.LauncherExperience;
-            if (!launcherSelection.UseGlobalAppearance && !launcherExperiences.Experiences.Any(entry =>
-                    entry.IsValid &&
-                    string.Equals(entry.Descriptor.Id, launcherSelection.SelectedId, StringComparison.Ordinal) &&
-                    string.Equals(entry.Descriptor.Version.ToString(), launcherSelection.SelectedVersion,
-                        StringComparison.Ordinal)))
-                warning ??= "Selected Launcher Experience is unavailable; use built-in recovery";
             var installedWarning = await ReloadInstalledWidgetsAsync(cancellationToken)
                 .ConfigureAwait(false);
             warning ??= installedWarning;
@@ -419,7 +350,6 @@ public sealed class SettingsWidget : Widget
                 _settings = settings;
                 _settingsValid = settingsValid;
                 _themes = themes;
-                _launcherExperienceCatalog = launcherExperiences;
                 _diagnostics = diagnostics;
                 _busy = false;
                 _error = warning is not null;
@@ -554,159 +484,6 @@ public sealed class SettingsWidget : Widget
             if (ReferenceEquals(_themes.Themes[index], entry) || _themes.Themes[index] == entry) return index;
         return 0;
     }
-
-    private void OpenLauncherExperience(int index)
-    {
-        lock (_stateLock)
-        {
-            if (index < 0 || index >= _launcherExperienceCatalog.Experiences.Count) return;
-            var entry = _launcherExperienceCatalog.Experiences[index];
-            _selectedLauncherExperience = new(entry.Descriptor.Id, entry.Descriptor.Version.ToString());
-            _launcherExperienceFocusId = $"launcher-experience.item.{index}.action";
-            _page = SettingsPage.LauncherExperienceVersion;
-            _status = $"Reviewing {entry.Descriptor.Name} {entry.Descriptor.Version}";
-        }
-        Invalidate();
-    }
-
-    private void OpenLauncherExperienceRemoval()
-    {
-        lock (_stateLock)
-        {
-            var entry = FindLauncherExperienceLocked();
-            if (entry is null || entry.Descriptor.IsBuiltIn || IsSelectedLauncherExperienceLocked(entry)) return;
-            _page = SettingsPage.LauncherExperienceRemoval;
-            _status = $"Confirm removal of {entry.Descriptor.Name} {entry.Descriptor.Version}";
-        }
-        Invalidate();
-    }
-
-    private async Task SelectLauncherExperienceAsync(CancellationToken cancellationToken)
-    {
-        LauncherExperienceCatalogEntry? entry;
-        lock (_stateLock) entry = FindLauncherExperienceLocked();
-        if (entry is null || !entry.IsValid) return;
-        await ChangeLauncherExperienceAsync(
-            "Selecting Launcher Experience…",
-            token => _launcherExperienceMutations.SelectAsync(
-                entry.Descriptor.Id, entry.Descriptor.Version.ToString(), token),
-            $"Selected {entry.Descriptor.Name} {entry.Descriptor.Version}",
-            cancellationToken).ConfigureAwait(false);
-    }
-
-    private Task UseGlobalLauncherExperienceAsync(CancellationToken cancellationToken) =>
-        ChangeLauncherExperienceAsync(
-            "Using global appearance…",
-            _launcherExperienceMutations.UseGlobalAppearanceAsync,
-            "Game Launcher now uses global appearance",
-            cancellationToken);
-
-    private Task RecoverLauncherExperienceAsync(CancellationToken cancellationToken) =>
-        ChangeLauncherExperienceAsync(
-            "Restoring built-in Launcher Experience…",
-            _launcherExperienceMutations.RecoverBuiltInAsync,
-            "Restored built-in Hero Rail",
-            cancellationToken);
-
-    private async Task ChangeLauncherExperienceAsync(
-        string pending,
-        Func<CancellationToken, Task<PlatformSettingsDocument>> mutation,
-        string completed,
-        CancellationToken cancellationToken)
-    {
-        SetOperation(pending, busy: true, error: false);
-        try
-        {
-            var settings = await mutation(cancellationToken).ConfigureAwait(false);
-            lock (_stateLock)
-            {
-                _settings = settings;
-                _settingsValid = true;
-                _page = SettingsPage.LauncherExperiences;
-                _busy = false;
-                _error = false;
-                _status = completed;
-            }
-        }
-        catch (OperationCanceledException)
-        {
-            SetOperation("Launcher Experience change cancelled", busy: false, error: false);
-            return;
-        }
-        catch (PlatformSettingsException exception)
-        {
-            SetOperation($"Launcher Experience change failed ({exception.Code})", busy: false, error: true);
-            return;
-        }
-        Invalidate();
-    }
-
-    private async Task RemoveLauncherExperienceAsync(CancellationToken cancellationToken)
-    {
-        LauncherExperienceCatalogEntry? entry;
-        int priorIndex;
-        lock (_stateLock)
-        {
-            entry = FindLauncherExperienceLocked();
-            priorIndex = entry is null ? 0 : IndexOfLauncherExperienceLocked(entry);
-        }
-        if (entry is null || entry.Descriptor.IsBuiltIn) return;
-        SetOperation("Removing Launcher Experience version…", busy: true, error: false);
-        try
-        {
-            var result = await _launcherExperienceMutations.RetireAsync(
-                entry.Descriptor.Id, entry.Descriptor.Version.ToString(), cancellationToken)
-                .ConfigureAwait(false);
-            var catalog = _launcherExperiences.Discover();
-            var focusIndex = catalog.Experiences.Count == 0
-                ? -1 : Math.Min(priorIndex, catalog.Experiences.Count - 1);
-            lock (_stateLock)
-            {
-                _launcherExperienceCatalog = catalog;
-                _selectedLauncherExperience = null;
-                _launcherExperienceFocusId = focusIndex < 0
-                    ? null : $"launcher-experience.item.{focusIndex}.action";
-                _page = SettingsPage.LauncherExperiences;
-                _busy = false;
-                _error = false;
-                _status = $"Removed {result.Name} {result.Version}";
-            }
-        }
-        catch (OperationCanceledException)
-        {
-            SetOperation("Launcher Experience removal cancelled", busy: false, error: false);
-            return;
-        }
-        catch (PlatformSettingsException exception)
-        {
-            SetOperation($"Launcher Experience removal failed ({exception.Code})", busy: false, error: true);
-            return;
-        }
-        Invalidate();
-    }
-
-    private LauncherExperienceCatalogEntry? FindLauncherExperienceLocked() =>
-        _selectedLauncherExperience is null ? null : _launcherExperienceCatalog.Experiences.FirstOrDefault(entry =>
-            string.Equals(entry.Descriptor.Id, _selectedLauncherExperience.Id, StringComparison.Ordinal) &&
-            string.Equals(entry.Descriptor.Version.ToString(), _selectedLauncherExperience.Version,
-                StringComparison.Ordinal));
-
-    private bool IsSelectedLauncherExperienceLocked(LauncherExperienceCatalogEntry entry) =>
-        string.Equals(entry.Descriptor.Id, _settings.LauncherExperience.SelectedId, StringComparison.Ordinal) &&
-        string.Equals(entry.Descriptor.Version.ToString(), _settings.LauncherExperience.SelectedVersion,
-            StringComparison.Ordinal);
-
-    private int IndexOfLauncherExperienceLocked(LauncherExperienceCatalogEntry entry)
-    {
-        for (var index = 0; index < _launcherExperienceCatalog.Experiences.Count; index++)
-            if (_launcherExperienceCatalog.Experiences[index] == entry) return index;
-        return 0;
-    }
-
-    private LauncherExperienceCatalogSnapshot BuiltInLauncherExperiences() => new(
-        _launcherExperiences.BuiltInRecoveryPackages.Select(package =>
-            new LauncherExperienceCatalogEntry(package.Descriptor, true, [], package))
-        .ToArray());
 
     private async Task ResetAsync(CancellationToken cancellationToken)
     {

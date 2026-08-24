@@ -44,7 +44,6 @@ internal sealed record GameLauncherPrivateState(
     public IReadOnlyList<string> ExcludedSavedIds { get; init; } = [];
     public IReadOnlyList<GameLauncherCategory> Categories { get; init; } = [];
     public IReadOnlyList<GameLauncherTitleOverride> TitleOverrides { get; init; } = [];
-    public string ExperienceId { get; init; } = GameLauncherExperienceIdentity.HeroRail;
     public IReadOnlyList<string> ProvenSources { get; init; } = [];
 }
 
@@ -118,9 +117,6 @@ internal static class GameLauncherOrganizationPolicy
             if (!ValidSavedId(savedId) || !display.ContainsKey(savedId) ||
                 !excluded.Add(savedId))
                 return GameLauncherPrivateState.Empty;
-        var experienceId = GameLauncherExperienceIdentity.IsValid(state.ExperienceId)
-            ? state.ExperienceId
-            : GameLauncherExperienceIdentity.HeroRail;
         var provenSources = GameLauncherSourceCatalog.Normalize(state.ProvenSources);
         var categories = GameLauncherCategoryPolicy.Normalize(
             state.Categories, display, out _);
@@ -139,7 +135,6 @@ internal static class GameLauncherOrganizationPolicy
             ExcludedSavedIds = state.ExcludedSavedIds.ToArray(),
             Categories = categories,
             TitleOverrides = titleOverrides,
-            ExperienceId = experienceId,
             ProvenSources = provenSources,
         };
         if (JsonSerializer.SerializeToUtf8Bytes(normalized).Length >

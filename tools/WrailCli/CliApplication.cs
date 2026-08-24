@@ -51,7 +51,6 @@ public static class CliApplication
                 "version" => await VersionCommand.RunAsync(args[1..], output, cancellationToken),
                 "config" => await ConfigCommand.RunAsync(args[1..], output, cancellationToken),
                 "theme" => await ThemeCommand.RunAsync(args[1..], output, remoteHttpHandler, cancellationToken),
-                "launcher-theme" => await LauncherThemeCommand.RunAsync(args[1..], output, cancellationToken),
                 _ => throw new CliUsageException($"Unknown command '{args[0]}'. Run 'wrail help'."),
             };
         }
@@ -68,11 +67,6 @@ public static class CliApplication
         catch (ThemePackageException exception)
         {
             await error.WriteLineAsync($"error {exception.Code}: {exception.Message}");
-            return 1;
-        }
-        catch (LauncherExperienceCatalog.LauncherExperiencePackageException exception)
-        {
-            await error.WriteLineAsync($"error {exception.Code} at {exception.DiagnosticPath}: {exception.Message}");
             return 1;
         }
         catch (PlatformSettings.PlatformSettingsException exception)
@@ -133,15 +127,6 @@ public static class CliApplication
           wrail theme install <file.wrtheme|https-url|github:owner/repository@tag/asset.wrtheme> [--sha256 <64-hex>] [--settings-root <root>]
           wrail theme list [--settings-root <root>]
           wrail theme remove <exact-id> <exact-version> [--settings-root <root>]
-          wrail launcher-theme new <Name> [--output <directory>] [--id <id>] [--publisher <id>] [--version <version>] [--preset <hero-rail|cover-wall|carousel|compact-grid>]
-          wrail launcher-theme validate <directory|file.wrlauncher>
-          wrail launcher-theme preview <directory|file.wrlauncher> [--output <preview.json>]
-          wrail launcher-theme pack <directory> [--output <file.wrlauncher>]
-          wrail launcher-theme inspect <file.wrlauncher>
-          wrail launcher-theme install <file.wrlauncher> [--catalog <root>]
-          wrail launcher-theme list [--catalog <root>]
-          wrail launcher-theme remove <exact-id> <exact-version> [--catalog <root>]
-
         render is data-only and never loads widget assemblies. Use wrail dev for
         isolated AppContainer execution of author code.
 
