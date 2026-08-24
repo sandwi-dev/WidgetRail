@@ -210,17 +210,22 @@ historical evidence only; this file is the sole implementation authority.
   a bounded production correction is Assigned. PID 43416 remains unchanged as
   the current Spotify physical candidate, not accepted DLV-474 integration.
 - Clean DLV-291 Spotify 0.3.18 production `2dc8ab8` is independently
-  source-reviewed. The selected Up Next projection was correct, but its player
-  retained the generic `width: 100%` basis inside a clipped horizontal row, so
-  the queue column was outside the visible surface. One layout-specific zero
-  flex basis lets the existing growing player share the row with the bounded
-  queue panel. The package build passed; package SHA-256 is
+  source-reviewed. It attempted to let the growing player share the selected
+  Up Next row with the bounded queue panel by applying a layout-specific zero
+  flex basis. The package build passed; package SHA-256 is
   `DB463A3AF2F035FC6F88BA8216CA08674C992BF5E0495CFF2FC2894D0BB88D05`.
   The user explicitly approved the package's ordinary current-user full-trust
   authority. Spotify 0.3.18 was installed with the reviewed hash, selected,
   and enabled while the overlay was stopped; retired 0.3.17 was removed and
   0.3.18 is the sole installed version. Exact DLV-474 host PID 43416 was then
-  visibly relaunched. The three-layout physical verdict remains pending.
+  visibly relaunched. Physical review rejects 0.3.18: after pinning Compact
+  while idle, starting playback, refreshing, and cycling to Now playing +
+  queue, only the surface dimensions changed and the queue remained absent.
+  Full widget remains distinct. Ownership is not yet proven: the host source
+  uses one selected-layout index for both geometry and projection, clears
+  renderer state, and invalidates, with no logged stale/drop failure, but the
+  runtime log does not identify the selected projection root. A package-first
+  deterministic snapshot boundary proof is Assigned before another correction.
 - DLV-473 post-acceptance test commit `34f15ae9` is retained clean and
   unintegrated. Its first authorized focused SDK gate exited 1 during build
   before test output, emitted no compiler diagnostic, and produced no test
@@ -246,7 +251,7 @@ historical evidence only; this file is the sole implementation authority.
 | Lane | Task/worktree | State |
 | --- | --- | --- |
 | Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | DLV-474 post-acceptance testing rejected `a830f026` on the fresh-session sequence-authority gap; bounded production correction is Assigned in the isolated retained test worktree. DLV-473 test-only `34f15ae9` remains blocked after its first red; the standing tree's two DLV-293 test diffs remain byte-identical and must not be touched. |
-| Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | DLV-291 0.3.18 `2dc8ab8` is reviewed/built, installed as the sole active version under explicit full-trust approval, and awaits the user's three-layout physical verdict. Game Launcher tests remain deferred/out of scope. |
+| Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | DLV-291 0.3.18 `2dc8ab8` is physically rejected because Now playing + queue changed dimensions but did not expose its queue. Prove the package snapshot boundary first; correct package presentation/WRSS only if that proof is red, otherwise stop and return exact evidence for platform reassignment. Game Launcher tests remain deferred/out of scope. |
 
 ## Execution rules
 
@@ -441,9 +446,10 @@ state, public contract change, substantial conflict, or an unrelated red.
 
 ### DLV-291 Spotify compact pinned layouts
 
-Lane: widgets. Status: 0.3.17 correction `009af955` physically rejected; clean
-0.3.18 correction `2dc8ab8` reviewed/built, installed, selected, and enabled
-under the user's explicit current full-trust approval; physical verdict pending.
+Lane: widgets. Status: 0.3.17 correction `009af955` and clean 0.3.18 correction
+`2dc8ab8` physically rejected. 0.3.18 remains installed, selected, and enabled
+under the user's explicit current full-trust approval while its exact boundary
+is proven.
 The rejected 0.3.17 build was reviewed, built, and installed as the sole Spotify
 version after explicit
 full-trust and retirement approval, but physical review proves LT/RT changes
@@ -451,10 +457,24 @@ the surface dimensions without replacing compact Now Playing with the distinct
 Now Playing + Up Next document; Full widget remains distinct and works. The log
 does not identify the selected projection, so inspect the exact snapshot,
 selection notification, host-selected layout identity, and rendered projection
-before changing code. Add one bounded typed trace for this chain only if needed
-to prove the boundary; do not treat new dimensions as evidence that the root
-changed. Produce the next immutable production-only package correction from
-the clean DLV-291 branch after rebasing its logical change on current main.
+before changing code. The 0.3.18 physical sequence—pin Compact while idle,
+start playback, refresh, then cycle to Now playing + queue—again changes only
+dimensions and leaves the queue absent. This does not prove widget or platform
+ownership. First build a credential-free deterministic presentation snapshot
+for the exact empty-to-ready/playback transition and inspect both package layout
+roots, node identities, computed style inputs, and the Up Next header plus
+loading/error/empty/first-item queue content. Do not infer root selection from
+geometry.
+
+If the package snapshot aliases Compact, omits the queue, or lays the queue
+outside the admitted width, correct only Spotify presentation/WRSS, bump the
+immutable package version, build once, and stop for physical review. If the
+snapshot proves structurally distinct in-bounds roots, make no production
+change: return the exact snapshot evidence so the planner can reassign the
+selection/materialization boundary to platform. Do not add permanent product
+diagnostics, mutate the installed package, or touch concurrent DLV-474 work.
+Produce any justified immutable production-only package correction from the
+clean DLV-291 branch after rebasing its logical change on current main.
 Retain the original two package-owned layouts—
 `Compact now playing` and `Now playing + up next`—beside the host `Full widget`
 fallback. Reuse Spotify's existing session/queue model and polling; do not add
@@ -519,9 +539,11 @@ without explicit promotion.
 
 ## Ordered queues
 
-1. DLV-291 Spotify compact pinned layouts: reviewed 0.3.18 `2dc8ab8` is the
-   sole installed active version and exact host PID 43416 awaits the physical
-   Full widget / Compact now playing / Now playing + up next verdict.
+1. DLV-291 Spotify compact pinned layouts: 0.3.18 `2dc8ab8` is physically
+   rejected because cycling from Compact to Now playing + queue changed only
+   geometry. Prove the deterministic package snapshot boundary first; repair
+   package presentation/WRSS only if red, otherwise stop for platform
+   reassignment with exact evidence.
 2. DLV-474 fresh-session sequence-authority correction: first focused native
    gate rejected production `a830f026`; bounded production and retained focused
    tests are Assigned while sanitized future-exit diagnostics remain in place.
@@ -534,8 +556,9 @@ without explicit promotion.
 7. DLV-248 remains deliberately deferred until explicit user promotion.
 
 DLV-473 production is accepted/integrated and its tests are post-acceptance
-work. DLV-291 0.3.17 is physically rejected and 0.3.18 is the active physical
-candidate. DLV-474 production is rejected before integration by deterministic
+work. DLV-291 0.3.17 and 0.3.18 are physically rejected; package-versus-platform
+ownership remains open pending a deterministic snapshot boundary proof.
+DLV-474 production is rejected before integration by deterministic
 fresh-session sequence evidence; its exact historical exit trigger remains
 unproven and retained diagnostics are ready for a future recurrence.
 DLV-293 production is accepted/integrated;
@@ -570,7 +593,7 @@ tests remain deferred.
 | DLV-292 | `ff5e7e4` binds each Bridge-cached snapshot to its worker start ordinal and uses existing typed stale-base recovery after replacement. Production build and three focused lifecycle/native gates passed; integrated as `80cdb10`. The user accepted PID 81980 by default because live reproduction is impractical. |
 | DLV-293 | Production `a9d36cf` is physically accepted and integrated as `10c3e26`; PID 137288 already contains that production tip. New catalog-removal/focus/Guide assertions completed before the focused host gate stopped on an older Game Launcher stationarity correlation. The pin-coordinator suite did not run; both uncommitted test diffs remain retained, with no rerun or Game Launcher repair authorized. |
 | DLV-474 | Production `a830f026` was provisionally accepted by user disposition because the historical bridge-session loss could not be reproduced, then rejected before integration when the first focused native gate proved fresh sequence 1 was compared against retained prior-session sequences 10/20. No test commit exists. Bounded correction is Assigned; sanitized terminal diagnostics remain active for a future recurrence. |
-| DLV-291 | Reviewed Spotify 0.3.18 `2dc8ab8`, package SHA-256 `DB463A3AF2F035FC6F88BA8216CA08674C992BF5E0495CFF2FC2894D0BB88D05`, is the sole installed, selected, enabled version under explicit full-trust approval. Physical three-layout verdict remains pending. |
+| DLV-291 | Reviewed Spotify 0.3.18 `2dc8ab8`, package SHA-256 `DB463A3AF2F035FC6F88BA8216CA08674C992BF5E0495CFF2FC2894D0BB88D05`, remains the sole installed, selected, enabled version under explicit full-trust approval. Physical review rejects it: Compact-to-Up Next changed only dimensions and still showed no queue. Ownership is open; the assigned package snapshot proof must either justify one package-only correction or return exact structurally-correct evidence for platform reassignment. |
 | DLV-248 | Deferred until explicit user promotion. |
 
 ## Integrated reliability — DLV-292 fresh-worker virtual-window recovery
