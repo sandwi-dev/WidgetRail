@@ -286,7 +286,7 @@ historical evidence only; this file is the sole implementation authority.
 | Lane | Task/worktree | State |
 | --- | --- | --- |
 | Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | DLV-474 correction passed the native gate, then the managed sanitized-terminal gate stopped on an opaque pre-test build red. Four intentional diffs remain retained uncommitted in the isolated worktree; no rerun or repair is authorized. DLV-473 test-only `34f15ae9` remains blocked after its first red; the standing tree's two DLV-293 test diffs remain byte-identical and must not be touched. |
-| Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | Assigned nonvisual DLV-295 SDK handle/lifecycle and public test-host work on clean branch `codex/dlv-295-pinned-layout-authoring`. Review and integrate automatically when focused gates are green. DLV-298 then migrates Spotify and is the next user-acceptance boundary; its regressions remain post-migration. |
+| Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | Assigned DLV-295 resumes from explicitly unaccepted candidate `225e736` after DLV-299 proved the two opaque failures came from a manual extra `--no-restore` forcing stale August 17 assets that reference a deleted project. Merge planner main at a clean boundary, run the tracked restore-enabled compatibility command, then the focused handle gate. Review/integrate automatically when green. DLV-298 remains the next user-acceptance boundary. |
 
 ## Execution rules
 
@@ -856,29 +856,30 @@ cumulative stack is accepted and integrated; DLV-294 is closed.
 
 ### DLV-295 pinned-layout authoring ergonomics
 
-Lane: widgets, baseline accepted integration `e7ebdbe`. Status: Assigned and
-authorized for automatic review/integration without a user verdict because it
-is nonvisual SDK/test infrastructure. Add an optional SDK-level typed pinned-layout handle that
-owns one stable layout ID and exposes current selection without package string
-comparisons or hand-maintained booleans. The SDK must update selection before
-the author callback, provide a selection-scoped cancellation token that is
-replaced on selection and canceled on deselection, revocation, worker teardown,
-or runtime replacement, and invalidate once when effective demand changes.
-Allow the handle to present current immutable root/surface/focus/scope data while
-retaining the existing `WidgetView.PinnedLayout(...)` and callback as the
-low-level compatible API. Handles are widget-instance state, never static shared
-authority. Use the existing protocol-v21 notification; no protocol/native-host
-change, second lifecycle owner, provider work, or package special case.
+Lane: widgets, baseline accepted integration `e7ebdbe`. Status: Assigned from explicitly unaccepted evidence commit `225e736` after DLV-299 diagnosis. The corrected nine-file diff's direct SDK and compatibility-project builds pass. Prior compatibility attempts were invalid because a manual extra `--no-restore` forced stale ignored assets; use the tracked restore-enabled invocation. Merge current planner main at the clean boundary, then run compatibility once and the focused handle harness only if green. Review/integrate automatically; do not start DLV-298 before planner integration.
+
+Define stable ID, name, surface, initial focus, and input scope once in an
+optional widget-instance handle whose compatibility-tracked author entrypoint
+is visible in `PublicApi.txt`; `Present(...)` then accepts only the current root.
+Expose `IsSelected` and a fresh selection-scoped token, update state before the
+compatible callback, cancel on deselection/revocation/teardown/replacement, and
+invalidate once per effective demand change. Remove public mutable/current-
+presentation state. Preserve mixed low-level/high-level authoring and existing
+`WidgetView.PinnedLayout(...)`. Use protocol v21 only; no native-host change,
+second lifecycle owner, provider work, or package special case.
 
 Add a focused public test host that can select, restore, revoke, and replace a
 pinned layout and route controller actions against its root. Prove ordering,
 idempotence, cancellation, stale notification rejection, automatic
 invalidation, Full widget behavior, and compatibility with the low-level API.
-Update public API baselines and directly affected author guidance. Run only the
-SDK/public-API and focused pinned-layout harness gates; Tier 2 only if the
-existing worker ingress boundary changes. Do not edit Spotify in DLV-295; it is
-the serialized physical proof in DLV-298. Stop for a protocol revision, hidden
-window authority, destructive state, or a design that makes handles mandatory.
+Update API baselines/guidance, then run the corrected SDK/public-API and focused
+pinned-layout harness gates once. Do not edit Spotify; it is DLV-298's physical
+proof. Stop for protocol revision, hidden window authority, destructive state,
+or mandatory handles.
+
+### DLV-299 compatibility test-launcher diagnosis and repair
+
+Lane: widgets. Status: diagnosis complete with no implementation commit or repository defect. Candidate `225e736` preserves DLV-295. Direct compatibility build exited 0 with zero errors and one warning; durable log/binlog are under `artifacts/dlv-299/`. The ignored August 17 assets/dgspec still reference deleted `LauncherExperienceCatalog.csproj`; both failed attempts manually supplied `--no-restore`, while tracked `scripts/verification-steps.json` correctly allows restore. `--no-progress` is valid and retained repository evidence previously passed 12/12. No source, runner, manifest, product artifact, or live state changed; DLV-299 is closed and requires no integration/relaunch.
 
 ### DLV-298 Spotify high-level pinned-layout migration
 
@@ -917,9 +918,7 @@ no live provider, installation, Game Launcher tests, broad aggregate, or push.
 
 ## Ordered queues
 
-1. DLV-295 pinned-layout authoring ergonomics: typed handles, SDK-managed
-   selection/cancellation/invalidation, and focused public test host; review and
-   integrate automatically when green.
+1. DLV-295 pinned-layout authoring ergonomics: resume `225e736` with the restore-enabled compatibility command, run focused gates once, and integrate automatically when green.
 2. DLV-298 Spotify high-level migration and physical proof; next user verdict.
 3. DLV-296 pinned-layout preview and diagnostics.
 4. DLV-297 pinned-layout templates and examples.
@@ -934,8 +933,7 @@ no live provider, installation, Game Launcher tests, broad aggregate, or push.
    red; later gates did not run and no rerun is authorized.
 8. DLV-294 generic pinned-layout projections: accepted/integrated as `60536ff`; closed.
 9. DLV-293 focused test debt: retained uncommitted after unrelated Game Launcher stationarity red; no rerun under the explicit deferral.
-10. Remaining maturity deliverables after the pinned-layout author workflow.
-11. DLV-248 remains deliberately deferred until explicit user promotion.
+10. Remaining maturity deliverables after the pinned-layout author workflow; DLV-248 stays deferred until explicit user promotion.
 
 DLV-473 production is accepted/integrated and its tests are post-acceptance
 work. DLV-291 versions through 0.3.23 are physically rejected overall. Reviewed
