@@ -53,6 +53,18 @@ historical evidence only; this file is the sole implementation authority.
   That accepted candidate already contains exact integrated production tip
   `a41bd72`, so no merge-only rebuild or relaunch is required. Game Launcher
   widget tests remain explicitly deferred.
+- DLV-287 production/test `dccf49a` is independently accepted and integrated
+  into local `main` as merge `fc91157`. One internal WidgetProtocol calculator
+  now owns the complete version-1-through-19 snapshot requirement matrix and
+  exact validation provenance; SDK snapshot construction and raw validation
+  consume the same result. The affected Release build passed with the expected
+  existing native conversion warnings after one sandbox-only NuGet audit access
+  failure was corrected by the approved unrestricted invocation. Prior accepted
+  PID 85884 exited gracefully through exact owned `WM_CLOSE`; coherent local-main
+  PID 113716 is responsive, visibly admitted the generic full-application and
+  Spotify widgets, has executable SHA-256
+  `5C8FC0B43BA54279E7DBB666FBD98338C592E25629CB9ABE722D1E02957DB43E`,
+  and has no `startup-error.txt`.
 - DLV-318 is the exact recoverable prior accepted Release at
   `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative-dlv318-build`;
   executable SHA-256 is
@@ -69,8 +81,8 @@ historical evidence only; this file is the sole implementation authority.
 
 | Lane | Task/worktree | State |
 | --- | --- | --- |
-| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | DLV-287 is Assigned from exact local-main baseline after accepted DLV-286 merge `627ba4c`; the lane must create a fresh branch and consolidate protocol-version requirements without a wire or SDK break. |
-| Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | DLV-285 production `ccb46e7` is physically accepted/integrated; Game Launcher tests are explicitly deferred and the lane is idle for the user's future package plans. |
+| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | DLV-287 `dccf49a` is accepted/integrated as `fc91157`; its focused 89/89 contract route is green and the lane is idle. |
+| Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | DLV-288 is Assigned from the exact planner baseline that follows merge `fc91157`; Game Launcher tests remain explicitly deferred and out of scope. |
 
 ## Execution rules
 
@@ -566,7 +578,7 @@ physically accepted the complete corrected candidate. The cumulative chain
 running accepted candidate already contains exact production tip `a41bd72`, no
 merge-only rebuild or relaunch is required.
 
-## Assigned platform production — DLV-287 protocol-version requirements
+## Accepted platform production — DLV-287 protocol-version requirements
 
 Lane: platform, as the sole owner of this shared SDK/protocol seam. Baseline:
 the exact clean local-main planner commit that assigns DLV-287 on top of accepted
@@ -631,17 +643,89 @@ visible product defect remains after DLV-286, and the user deferred Game
 Launcher verification; this is the single internal prerequisite before the
 remaining framework-maturity queue is reconsidered.
 
+Commit `dccf49a` is accepted and integrated as merge `fc91157`. Its five-file
+change adds one internal version-requirement calculator, removes the duplicate
+SDK feature walkers and validator gates, and adds complete table-driven version
+coverage without changing the public API or wire. The affected Release build
+exited 0 after the restricted first invocation failed only on inaccessible
+NuGet vulnerability metadata; the authoritative unrestricted invocation
+completed successfully. WidgetSdk protocol contracts passed 89/89. No Bridge
+aggregate, Tier 3, or Game Launcher widget test ran. The refreshed integrated
+Release is visibly running as responsive PID 113716; its log admits the generic
+full-application and Spotify widgets with current presentations.
+
+## Assigned widgets documentation/test — DLV-288 SDK evolution contract
+
+Lane: widgets, as the owner of the public authoring contract. Baseline: the
+exact clean local-main planner commit that assigns DLV-288 on top of accepted
+DLV-287 merge `fc91157`; create a fresh branch rather than continuing the
+retained DLV-285 branch. Dependencies: the authoritative protocol requirement
+matrix is integrated. The platform lane remains idle, and Game Launcher widget
+tests remain explicitly deferred.
+
+Objective: approve and publish one active pre-release SDK stability, migration,
+and deprecation contract from the existing non-operative governance proposal.
+Replace proposal wording with current public policy through one link-aware
+documentation migration. The contract must define the reviewed release unit
+(`WidgetSdk` package, `wrail`, ControllerWidget template, API baseline, and
+supported protocol range), public API diff classifications, pre-release version
+movement, migration-record fields, the external-distribution trigger for a
+deprecation interval, emergency exception authority, and the strict separation
+between SDK API evolution and wire-protocol evolution.
+
+Ownership and scope: implementation owns the public compatibility/governance
+pages and affected documentation indexes. Rename the proposal to an active
+governance path if that produces the clearest information architecture, update
+all inbound links atomically, and remove stale proposal status or historical
+artifact hashes that readers could mistake for current evidence. Preserve the
+existing executable `eng/WidgetSdkRelease.props`, `PublicApi.txt`, baseline
+updater, compatibility suite, and template/release-unit metadata as the
+enforcement mechanisms; change them only if a focused test proves the written
+policy is not currently enforceable or discoverable.
+
+Out of scope: no SDK public symbol change, baseline regeneration, release or
+template version bump, package publication, signing, remote feed, multi-version
+resolver, compatibility shim, deprecation attribute campaign, runtime fallback,
+wire/protocol change, product process control, Game Launcher widget test, or
+Avalonia/AVP work. Do not claim post-1.0 compatibility or that an external SDK
+artifact has already been distributed.
+
+Acceptance: one active page is authoritative rather than a proposal; the
+compatibility guide links it and gives a copyable change-review sequence;
+compatible additions, deprecations, breaking changes, and emergency removals
+have unambiguous required evidence; the migration table requires old surface,
+replacement, deprecated/removed release units, protocol/template impact, and a
+before/after example; all links resolve; executable commands and metadata names
+match current source; and no stale current-state hashes or unsupported promises
+remain.
+
+Verification: documentation/test ordering only. Run the smallest documentation
+link/contract checks covering changed pages, then the existing WidgetSdk
+compatibility suite once only if executable contract names or commands are
+changed. Do not run the native Release build, WidgetSdk aggregate, Bridge tests,
+Tier 3, or Game Launcher tests. Every command must emit useful output or
+terminate within 60 seconds; inspect immediately otherwise, stop at the first
+red, and do not rerun an unchanged gate. Commit one coherent `[DLV-288]` change,
+report exact files and numeric exits, leave the worktree clean, and do not edit
+reviewer documents or push.
+
+Concurrency and stop conditions: this is the only active lane. Stop before
+implementation if policy adoption requires choosing between materially
+different supported-consumer promises, preserving an obsolete API, publishing
+an artifact, changing a public symbol/version/wire, adding runtime compatibility
+code, or making a legal/trademark commitment. Report the exact decision rather
+than inventing a promise.
+
 ## Future architecture queue — maturity review additions
 
-Status: DLV-287 is Assigned as the serialized prerequisite; later items are
-ordered future work and are not assigned because their exact contracts depend
-on its accepted model-level boundary.
+Status: DLV-287 is accepted/integrated and DLV-288 is Assigned. Later items are
+ordered future work and are not assigned until the active public SDK contract
+is reviewed.
 
-1. SDK stability/evolution contract.
-2. Stable structured diagnostic contract.
-3. Localization and accessibility semantics.
-4. Author diagnostics and preview inspection.
-5. Public-source pre-alpha readiness.
+1. Stable structured diagnostic contract.
+2. Localization and accessibility semantics.
+3. Author diagnostics and preview inspection.
+4. Public-source pre-alpha readiness.
 
 Do not schedule generic forms, broad OverlayApp refactoring, mediated import/
 export, background scheduling, marketplace/publisher infrastructure, or new
@@ -650,15 +734,15 @@ Extract native authorities only when real work touches them.
 
 ## Ordered queues
 
-1. DLV-287 authoritative protocol-version requirements: Assigned platform.
-2. Remaining maturity deliverables, ordered only after DLV-287 review and
-   integration because their exact contracts depend on that shared boundary.
+1. DLV-288 SDK stability/evolution contract: Assigned widgets.
+2. Remaining maturity deliverables, ordered only after DLV-288 review because
+   their public diagnostic/accessibility promises depend on the active SDK
+   governance boundary.
 3. DLV-248 remains deliberately deferred until explicit user promotion.
 
-There is no concurrent Ready production work in either standing lane: DLV-287
-is the serialized prerequisite for the remaining maturity contracts, the user
-deferred Game Launcher verification, and no other reproduced visible defect is
-currently unblocked.
+There is no concurrent Ready production work in either standing lane: DLV-288
+is the active public-contract decision, the user deferred Game Launcher
+verification, and no other reproduced visible defect is currently unblocked.
 
 ## Manual and blocked evidence
 
@@ -682,6 +766,7 @@ currently unblocked.
 | DLV-284 | `21c3b8b` + `86d6532` integrated as `7f31e04`; compatibility `60130b4` as `052a392`; correlation/redaction `f583f40` + `ac79ed0` as `8ac55d`. The cumulative diagnostic stack is accepted only with metadata-only correction `a65228c`, integrated as `12728a2`; production build and two direct one-case gates passed, no Tier-3 rerun. The user physically accepted coherent PID 133304. |
 | DLV-285 | Production `ccb46e7` from exact baseline `12728a2` is physically accepted and integrated as `609d34e`; package and Release builds exited 0. Game Launcher 0.2.1 is installed/full-trust enabled. Accepted PID 144052 was replaced only for DLV-286 physical review. Widget tests are explicitly deferred for future package work. |
 | DLV-286 | The user physically accepted complete correction `a41bd72`; cumulative chain `d0ca29b` + `058efbc` + `a41bd72` is integrated as merge `627ba4c`. Responsive accepted PID 85884 already contains that production tip, so it remains running without a merge-only rebuild/relaunch. The dedicated Game Launcher test project remains untouched/deferred, and the broader Bridge aggregate must not be repeated. |
+| DLV-287 | Production/test `dccf49a` is accepted and integrated as `fc91157`; focused Release build passed and WidgetSdk protocol contracts passed 89/89. Exact prior PID 85884 exited gracefully. Refreshed integrated PID 113716 is responsive, has no startup error, and admitted the generic full-application and Spotify widgets. |
 | DLV-248 | Deferred until explicit user promotion. |
 
 ## Recent dispositions
