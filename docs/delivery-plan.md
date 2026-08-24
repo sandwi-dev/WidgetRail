@@ -84,6 +84,12 @@ historical evidence only; this file is the sole implementation authority.
   composition headroom. Exact PID 121188 contains the accepted production tip.
   Test-only follow-up `941b0f9` is green; the full chain is integrated as
   `4c8048d`. The running accepted production candidate remains current.
+- DLV-292 production/test `ff5e7e4` is accepted and integrated as `80cdb10`.
+  Bridge snapshot retention is bound to the exact worker start ordinal; worker
+  replacement now emits typed stale-base recovery instead of continuing the
+  old virtual-window generation. The coherent main Release is responsive as
+  PID 81980. The user accepted it by default because live reproduction is not
+  practical; DLV-292 is closed and DLV-290 is released.
 - DLV-318 is the exact recoverable prior accepted Release at
   `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative-dlv318-build`;
   executable SHA-256 is
@@ -100,7 +106,7 @@ historical evidence only; this file is the sole implementation authority.
 
 | Lane | Task/worktree | State |
 | --- | --- | --- |
-| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | DLV-292 fresh-worker virtual-window recovery is Assigned from clean integrated baseline `4c8048d`; this is the sole production lane and runs before DLV-290. |
+| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | DLV-290 generic selectable pinned layouts is Assigned from clean integrated DLV-292 merge `80cdb10`; it is the sole production lane. |
 | Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | DLV-288 `8be0ebb` is accepted/integrated as `a37d614`; the lane is idle. Game Launcher tests remain explicitly deferred and out of scope. |
 
 ## Execution rules
@@ -887,9 +893,9 @@ Rejected intermediate commits `78f90d4`, `53ab7b0`, and `ddb2d91` are retained o
 
 ### DLV-290 generic selectable pinned layouts
 
-Lane: platform, serialized shared-contract owner. Status: Ready only after the
-final DLV-289 chain is accepted/integrated into a fresh clean baseline; never
-start from an unintegrated candidate or dirty tree. Add an optional bounded
+Lane: platform, serialized shared-contract owner. Status: Assigned. Baseline:
+fresh clean branch from integrated DLV-292 merge `80cdb10`; never start from an
+unintegrated candidate or dirty tree. Add an optional bounded
 widget-authored pinned-presentation catalog without granting native authority.
 `Full widget` is the host fallback; added layouts have stable IDs, names,
 existing bounded axis sizing, and a selected checkpoint keyed independently
@@ -901,11 +907,13 @@ returns the pin to click-through, and `B` cancels the new pin/restores tray
 focus. Adjust reopens setup and `B` restores the prior layout/rectangle. LT/RT
 remain package actions outside setup. Preserve every DLV-289 invariant.
 
-Verification: normal focused shared-contract suites, then one physical-first UX
-candidate before final UI tests; Tier 3 only if the public wire boundary
-requires it. Exclude multi-pin, native rehydration, widget windows, marketplace,
-package host special cases, Game Launcher, Avalonia/AVP, and push. Stop for a
-second presentation authority, unbounded retention, destructive state, a public
+Verification is physical-first: production and directly affected public docs,
+one coherent packaged Release build, reviewer source inspection, then the user
+UX verdict before any tests. After acceptance, add and run only the focused
+shared-contract coverage once; Tier 3 only if a public wire boundary requires
+it. Exclude multi-pin, native rehydration, widget windows, marketplace, package
+host special cases, Game Launcher, Avalonia/AVP, and push. Stop for a second
+presentation authority, unbounded retention, destructive state, a public
 compatibility choice, substantial conflict, or triggers owned outside setup.
 
 ### DLV-291 Spotify compact pinned layouts
@@ -929,14 +937,12 @@ without explicit promotion.
 
 ## Ordered queues
 
-1. DLV-292 fresh-worker virtual-window recovery: Assigned platform from
-   integrated DLV-289; ahead of new pinned-layout contract work.
-2. DLV-290 generic selectable pinned layouts: Ready after accepted DLV-292.
-3. DLV-291 Spotify compact pinned layouts: widgets Awaiting DLV-290 integration.
-4. Remaining maturity deliverables, ordered after the pinned-layout UX settles.
-5. DLV-248 remains deliberately deferred until explicit user promotion.
+1. DLV-290 generic selectable pinned layouts: Assigned platform from integrated DLV-292.
+2. DLV-291 Spotify compact pinned layouts: widgets Awaiting DLV-290 integration.
+3. Remaining maturity deliverables, ordered after the pinned-layout UX settles.
+4. DLV-248 remains deliberately deferred until explicit user promotion.
 
-DLV-292 is the sole executable production assignment. DLV-290 follows DLV-292, DLV-291 consumes accepted DLV-290, and Game Launcher tests remain deferred.
+DLV-290 is the sole executable production assignment. DLV-291 consumes accepted DLV-290, and Game Launcher tests remain deferred.
 
 ## Manual and blocked evidence
 
@@ -963,30 +969,22 @@ DLV-292 is the sole executable production assignment. DLV-290 follows DLV-292, D
 | DLV-287 | Production/test `dccf49a` is accepted and integrated as `fc91157`; focused Release build passed and WidgetSdk protocol contracts passed 89/89. Exact prior PID 85884 exited gracefully. Refreshed integrated PID 113716 is responsive, has no startup error, and admitted the generic full-application and Spotify widgets. |
 | DLV-288 | Documentation `8be0ebb` is accepted and integrated as `a37d614`; scoped link/reference/contract inspection passed. Its single documentation gate stopped only on three pre-existing OverlayHost packaging assertions, with no DLV-288 link failure, and was not rerun. No runtime input changed, so PID 113716 remains accepted. |
 | DLV-289 | The user physically accepted correction `a74e677` after `e7b24f4` was rejected for clipped active pixels. Test-only `941b0f9` passed six focused groups and the full chain is integrated as `4c8048d`. Exact PID 121188 contains the accepted production tip, so no tests-only rebuild/relaunch occurred. |
+| DLV-292 | `ff5e7e4` binds each Bridge-cached snapshot to its worker start ordinal and uses existing typed stale-base recovery after replacement. Production build and three focused lifecycle/native gates passed; integrated as `80cdb10`. The user accepted PID 81980 by default because live reproduction is impractical. |
 | DLV-248 | Deferred until explicit user promotion. |
 
-## Ready platform reliability — DLV-292 fresh-worker virtual-window recovery
+## Integrated reliability — DLV-292 fresh-worker virtual-window recovery
 
-Lane: platform, serialized shared runtime/native admission owner. Status: Assigned. Baseline: a fresh clean branch from exact integrated DLV-289 merge `4c8048d`. Dependencies: DLV-289 is accepted/integrated; this runs before DLV-290. User evidence on exact candidate PID 37884 shows Games & Apps, Network Controls, and Full Application Reference failing with the same invalid/stale virtual collection transition. In each captured route a retained checkpoint is visible, a worker starts fresh, and the first refreshed snapshot is rejected after the Bridge reports it admitted.
+Lane: platform, serialized shared runtime/native admission owner. Status: accepted/integrated as `80cdb10`; the user accepted PID 81980 by default because live reproduction is impractical. User evidence on prior PID 37884 showed Games & Apps, Network Controls, and Full Application Reference failing after a retained checkpoint crossed a fresh worker start.
 
-Diagnose and correct the one generic authority seam across worker/runtime,
-Bridge typed transaction/recovery, and native `WidgetSessionCoordinator`.
-Fresh worker state must not be compared as an ordinary directional continuation
-of a retained process-local collection generation. Preserve the last valid
-checkpoint, exact runtime/presentation identity, bounded virtual windows, and
-typed recovery; never merely accept a decreasing/reused generation, clear the
-checkpoint on ordinary invalidation, add package IDs, or reset user state.
+Root cause: Bridge retained snapshot sequence without the worker start ordinal
+that produced it, so a restarted worker appeared to continue the old process-
+local virtual-window generation. `ff5e7e4` binds both, returns typed stale-base
+after replacement, and reuses native RecoveryCheckpoint for a fresh Replace.
+No stale-generation validation, checkpoint retention, or identity rule weakened.
 
-Normal verification ordering applies. Build the affected production graph,
-then run one focused deterministic lifecycle group covering at least two
-differently named generic workers: unload-after-idle restart and suspended/
-restarted worker, with retained checkpoint, fresh Replace baseline, paging in
-both directions, stale reply rejection, and last-valid retention. Run the
-smallest linked Runtime/Bridge/native admission group only; no Tier 3, broad
-aggregate, Game Launcher test, live process control, package/config mutation,
-Avalonia/AVP, publication, or push. Commit one coherent `[DLV-292]` result.
+The Release build passed. Focused Runtime idle-unload, two-widget Bridge restart,
+and native coordinator/lifecycle/action-feedback gates passed. Tier 3, broad
+aggregate, Game Launcher tests, and package/config mutation did not run.
 
-Stop before a public wire/SDK break, second transaction owner, unbounded retry,
-identity-specific exception, destructive state reset, or substantial conflict.
-Report exact root cause, responsibility map, files, numeric build/test counts,
-and residual packaged risk. The reviewer owns integration and visible launch.
+Live packaged-worker reproduction remains unperformed by explicit user
+disposition; the focused deterministic lifecycle evidence is final for DLV-292.
