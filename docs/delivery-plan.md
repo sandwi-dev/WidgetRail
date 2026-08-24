@@ -846,6 +846,27 @@ substantial merge conflict, or a materially different multi-monitor/product
 choice. Stop on the first unrelated build red after preserving exact evidence;
 do not repair or rerun it under DLV-289.
 
+Initial production candidate `78f90d4` is rejected before physical launch.
+Its seven-file productization otherwise stays inside the existing surface,
+placement, focus, renderer, and accessibility owners, and its packaged Release
+build exited 0. The exact visible controller chord is not fail-closed when the
+host Pin action is disabled: the guide still advertises `LB+RB+RS Pin
+unavailable`, but the chord branch requires `pinAction.enabled`; pressing that
+advertised unavailable chord therefore falls through and dispatches the three
+ordinary LB, RB, and RS widget actions. A truthful unavailable host action must
+never trigger unrelated package behavior.
+
+The platform lane owns one bounded production-only correction on top of
+`78f90d4`. Resolve the exact chord before ordinary widget dispatch whenever the
+host Pin action is visible: when enabled, retain the accepted Pin/Unpin toggle;
+when disabled, consume the complete chord and publish the existing bounded
+unavailable reason without pinning or forwarding any constituent button. Do
+not reserve or consume bare LB, RB, or RS, change the chosen chord, add tests,
+broaden UI/layout/lifecycle behavior, or rerun unrelated verification. Source
+review the corrected input ordering, run one coherent packaged Release build,
+and commit one separate clean production correction. The reviewer will then
+review and launch the cumulative exact candidate for the user's verdict.
+
 ## Future architecture queue — maturity review additions
 
 Status: DLV-288 is accepted/integrated and the explicitly requested visible
