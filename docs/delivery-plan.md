@@ -118,7 +118,7 @@ historical evidence only; this file is the sole implementation authority.
 | Lane | Task/worktree | State |
 | --- | --- | --- |
 | Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | DLV-293 production is accepted/integrated as `10c3e26`; two uncommitted test diffs are retained as blocked evidence after the first unrelated red. |
-| Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | DLV-291 Spotify compact pinned layouts is Assigned from accepted DLV-293 integration; Game Launcher tests remain deferred/out of scope. |
+| Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | DLV-294 generic pinned-layout projections is Assigned as the serialized prerequisite; DLV-291 waits behind it. Game Launcher tests remain deferred/out of scope. |
 
 ## Execution rules
 
@@ -186,8 +186,8 @@ state, public contract change, substantial conflict, or an unrelated red.
 
 ### DLV-291 Spotify compact pinned layouts
 
-Lane: widgets. Status: Assigned. Baseline: fresh clean widgets branch from
-accepted DLV-293 integration `10c3e26` plus the planner assignment commit. Add two package-owned layouts—
+Lane: widgets. Status: Dependency-blocked on accepted/integrated DLV-294.
+Baseline: fresh clean widgets branch from that integration. Add two package-owned layouts—
 `Compact now playing` and `Now playing + up next`—beside the host `Full widget`
 fallback. Reuse Spotify's existing session/queue model and polling; do not add
 duplicate provider work, credentials, host knowledge, or a Spotify protocol
@@ -197,6 +197,44 @@ Use physical-first production/package build and user verdict, then focused
 package/runtime tests only; no Game Launcher tests, broad aggregate, account or
 package-state mutation, publication, Avalonia/AVP, or push.
 
+### DLV-294 generic pinned-layout projections
+
+Lane: widgets lead, serialized SDK/protocol/native-host prerequisite. Status:
+Assigned from clean planner baseline `3b0424c`. Replace the current size-profile-
+only limitation with one generic versioned contract that lets each bounded
+pinned layout carry its own package-authored declarative root, surface hints,
+active input scope, and initial focus while the host continues to inject the
+always-available Full widget fallback. Preserve the existing positional
+`WidgetView` API compatibility and ordinary full-widget snapshot behavior.
+
+The single host-owned pinned surface/HWND, placement, opacity, focus router,
+action admission, and LT/RT selection owner remain authoritative. A layout
+switch atomically selects one validated projection; it does not create another
+window, renderer, worker, provider, or navigation owner. Validate each root and
+the aggregate catalog under explicit node/string/depth/resource bounds so eight
+layouts cannot multiply shared-host limits. Reject malformed, duplicate, stale,
+wrong-generation, or over-budget projections before native allocation and
+retain the last valid pinned presentation where safe.
+
+Publish one generic generation-bound selected-layout notification to the owning
+package after explicit user selection so a package may activate data demand for
+that selected projection. It carries only current widget/runtime/layout
+identity, never service-specific data, and must be revoked on layout removal,
+runtime replacement, unpin, or shutdown. The host must not fetch queue/provider
+data or recognize Spotify. Existing sizing-only packages and snapshots remain
+valid in this pre-release API generation.
+
+This is a nonvisual serialized prerequisite: update public SDK/protocol/native
+owners and directly affected public docs, run only focused SDK version/bounds,
+Bridge materialization, selection-generation, and pinned-coordinator gates plus
+one Release build, then commit `[DLV-294]`. Do not launch or mutate packages;
+DLV-291 is the physical-first visible proof after integration. Exclude Game
+Launcher tests, broad aggregate/Tier 3, provider/account work, marketplace,
+multi-pin, Avalonia/AVP, DLV-293 test debt, push, and unrelated refactoring.
+Stop for a second presentation/focus authority, unbounded aggregate retention,
+service-specific core behavior, destructive state, or a public design with
+materially different ownership outcomes.
+
 The later maturity queue remains: structured diagnostics; localization and
 accessibility semantics; author diagnostics/preview inspection; and public-
 source pre-alpha readiness. Do not schedule generic forms, broad OverlayApp
@@ -205,12 +243,14 @@ without explicit promotion.
 
 ## Ordered queues
 
-1. DLV-291 Spotify compact pinned layouts: Assigned widgets from accepted DLV-293 integration.
-2. DLV-293 focused test debt: retained uncommitted after unrelated Game Launcher stationarity red; no rerun under the explicit deferral.
-3. Remaining maturity deliverables, ordered after the pinned-layout UX settles.
-4. DLV-248 remains deliberately deferred until explicit user promotion.
+1. DLV-294 generic pinned-layout projections: Assigned serialized prerequisite.
+2. DLV-291 Spotify compact pinned layouts: dependency-blocked on DLV-294 integration.
+3. DLV-293 focused test debt: retained uncommitted after unrelated Game Launcher stationarity red; no rerun under the explicit deferral.
+4. Remaining maturity deliverables, ordered after the pinned-layout UX settles.
+5. DLV-248 remains deliberately deferred until explicit user promotion.
 
-DLV-291 is the sole executable production assignment. DLV-293 production is
+DLV-294 is the sole executable production assignment; DLV-291 is its named
+visible successor. DLV-293 production is
 accepted/integrated; its incomplete test follow-up is retained as blocked debt,
 and Game Launcher tests remain deferred.
 
