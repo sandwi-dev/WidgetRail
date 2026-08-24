@@ -112,11 +112,13 @@ public sealed class SpotifyWidget : Widget
             SpotifyPresentation.CompactPinnedLayoutId,
             SpotifyPresentation.CompactPinnedLayoutName,
             SpotifyPresentation.CompactPinnedSurface,
+            initialFocusId: "spotify.player.pinned-compact.play-toggle",
             activeInputScopeId: SpotifyPresentation.CompactPinnedScope);
         _upNextPinnedLayout = CreatePinnedLayoutHandle(
             SpotifyPresentation.UpNextPinnedLayoutId,
             SpotifyPresentation.UpNextPinnedLayoutName,
             SpotifyPresentation.UpNextPinnedSurface,
+            initialFocusId: "spotify.player.pinned-up-next.play-toggle",
             activeInputScopeId: SpotifyPresentation.UpNextPinnedScope);
         _queue = CreateCursorResource<SpotifyMediaCollectionItem>("spotify.queue", new()
         {
