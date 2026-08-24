@@ -1,4 +1,5 @@
 using System.Runtime.CompilerServices;
+using WidgetRail.WidgetProtocol;
 
 namespace WidgetRail.WidgetSdk;
 
@@ -377,4 +378,145 @@ public static class WidgetTestHost
         ArgumentNullException.ThrowIfNull(widget);
         return widget.DestroyAsync(cancellationToken);
     }
+
+    /// <summary>
+    /// Creates a deterministic host for package-authored pinned-layout selection
+    /// and input without creating a native window or a second lifecycle owner.
+    /// </summary>
+    public static WidgetPinnedLayoutTestHost CreatePinnedLayoutHost(
+        Widget widget,
+        string widgetInstanceId,
+        long initialSequence = 1)
+    {
+        ArgumentNullException.ThrowIfNull(widget);
+        return new WidgetPinnedLayoutTestHost(
+            widget, widgetInstanceId, initialSequence);
+    }
+}
+
+/// <summary>
+/// Drives the existing pinned-layout notification and input ingress against
+/// deterministic snapshots produced by one widget instance.
+/// </summary>
+public sealed class WidgetPinnedLayoutTestHost
+{
+    private const string FullWidgetLayoutId = "host.full-widget";
+    private readonly Widget _widget;
+    private readonly string _widgetInstanceId;
+    private long _sequence;
+
+    internal WidgetPinnedLayoutTestHost(
+        Widget widget,
+        string widgetInstanceId,
+        long initialSequence)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(widgetInstanceId);
+        if (initialSequence <= 0)
+            throw new ArgumentOutOfRangeException(
+                nameof(initialSequence), initialSequence,
+                "A positive initial snapshot sequence is required.");
+        _widget = widget;
+        _widgetInstanceId = widgetInstanceId;
+        _sequence = initialSequence;
+        CurrentSnapshot = _widget.RenderSnapshot(_widgetInstanceId, _sequence);
+    }
+
+    /// <summary>The latest exact snapshot used for selection and action authority.</summary>
+    public ViewSnapshot CurrentSnapshot { get; private set; }
+
+    /// <summary>The currently selected package-authored layout, or null for Full widget.</summary>
+    public string? SelectedLayoutId { get; private set; }
+
+    /// <summary>Selects one current package-authored layout.</summary>
+    public async ValueTask<bool> SelectAsync(
+        string layoutId,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(layoutId);
+        if (string.Equals(layoutId, FullWidgetLayoutId, StringComparison.Ordinal))
+            return await RevokeAsync(cancellationToken).ConfigureAwait(false);
+        if (!CurrentSnapshot.PinnedLayouts.Any(layout =>
+                string.Equals(layout.Id, layoutId, StringComparison.Ordinal)))
+            return false;
+        if (SelectedLayoutId is { } selected &&
+            !string.Equals(selected, layoutId, StringComparison.Ordinal) &&
+            !await RevokeAsync(cancellationToken).ConfigureAwait(false))
+            return false;
+
+        var handled = await _widget.OnControllerInputAsync(
+                SelectionInput(layoutId, selected: true), cancellationToken)
+            .ConfigureAwait(false);
+        if (handled) SelectedLayoutId = layoutId;
+        return handled;
+    }
+
+    /// <summary>Restores one persisted package-authored layout selection.</summary>
+    public ValueTask<bool> RestoreAsync(
+        string layoutId,
+        CancellationToken cancellationToken = default) =>
+        SelectAsync(layoutId, cancellationToken);
+
+    /// <summary>Revokes the current package-authored layout and returns to Full widget.</summary>
+    public async ValueTask<bool> RevokeAsync(
+        CancellationToken cancellationToken = default)
+    {
+        if (SelectedLayoutId is not { } selected) return true;
+        var handled = await _widget.OnControllerInputAsync(
+                SelectionInput(selected, selected: false), cancellationToken)
+            .ConfigureAwait(false);
+        if (handled) SelectedLayoutId = null;
+        return handled;
+    }
+
+    /// <summary>
+    /// Publishes the widget's next immutable snapshot and revokes a selected
+    /// layout when that layout no longer exists in the replacement.
+    /// </summary>
+    public async ValueTask<ViewSnapshot> ReplaceSnapshotAsync(
+        CancellationToken cancellationToken = default)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        CurrentSnapshot = _widget.RenderSnapshot(
+            _widgetInstanceId, checked(++_sequence));
+        if (SelectedLayoutId is { } selected &&
+            !CurrentSnapshot.PinnedLayouts.Any(layout =>
+                string.Equals(layout.Id, selected, StringComparison.Ordinal)))
+            await RevokeAsync(cancellationToken).ConfigureAwait(false);
+        return CurrentSnapshot;
+    }
+
+    /// <summary>Routes one controller input against the selected projection root.</summary>
+    public ValueTask<bool> RouteActionAsync(
+        ControllerButton button,
+        string focusedElementId,
+        ControllerEventPhase phase = ControllerEventPhase.Pressed,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(focusedElementId);
+        if (SelectedLayoutId is not { } selected) return ValueTask.FromResult(false);
+        var layout = CurrentSnapshot.PinnedLayouts.SingleOrDefault(candidate =>
+            string.Equals(candidate.Id, selected, StringComparison.Ordinal));
+        if (layout?.Root is null || string.IsNullOrWhiteSpace(layout.ActiveInputScopeId))
+            return ValueTask.FromResult(false);
+        return _widget.OnControllerInputAsync(new ControllerInputEvent(
+            button,
+            phase,
+            ControllerInputContext.PinnedSurface,
+            focusedElementId,
+            ActiveInputScopeId: layout.ActiveInputScopeId,
+            SnapshotSequence: CurrentSnapshot.Sequence)
+        {
+            PinnedLayoutId = selected,
+        }, cancellationToken);
+    }
+
+    private ControllerInputEvent SelectionInput(string layoutId, bool selected) => new(
+        ControllerButton.View,
+        ControllerEventPhase.Pressed,
+        ControllerInputContext.PinnedLayoutSelection,
+        SnapshotSequence: CurrentSnapshot.Sequence)
+    {
+        PinnedLayoutId = layoutId,
+        IsPinnedLayoutSelected = selected,
+    };
 }

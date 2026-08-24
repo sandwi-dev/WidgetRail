@@ -5714,3 +5714,12 @@ pass 1/1. The existing Game Launcher committed-query handler case also passes
 host-fixture boundary rather than a claimed product defect. No production,
 public protocol, widget package, credential, configuration, or running-process
 state changed during this follow-up.
+# DLV-295 pinned-layout authoring ergonomics
+
+The public WidgetSdk now offers an optional widget-instance
+`PinnedLayoutHandle` with SDK-owned selected state, selection-scoped
+cancellation, and one effective-demand invalidation. A focused public pinned
+layout test host drives selection, restoration, revocation, immutable snapshot
+replacement, and exact projection action routing without adding native or
+protocol ownership. The low-level protocol-v21 layout factory and callback
+remain compatible.

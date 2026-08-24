@@ -187,6 +187,11 @@ public abstract partial class Widget
     private ViewSnapshot? _latestSnapshot;
     private WidgetHostServices _hostServices = WidgetHostServices.Unavailable;
     private int _hostServicesAttached;
+    private readonly object _pinnedLayoutGate = new();
+    private readonly Dictionary<string, PinnedLayoutHandle> _pinnedLayoutHandles =
+        new(StringComparer.Ordinal);
+    private string? _selectedPinnedLayoutId;
+    private CancellationTokenSource? _pinnedLayoutSelectionLifetime;
 
     public event EventHandler<WidgetInvalidatedEventArgs>? Invalidated;
 
@@ -228,6 +233,37 @@ public abstract partial class Widget
         Volatile.Read(ref _activeLifetime)?.Token ?? InactiveCancellationToken;
 
     public abstract WidgetView Render();
+
+    /// <summary>
+    /// Creates and uniquely registers one optional widget-instance handle for a
+    /// stable authored pinned layout.
+    /// The existing low-level pinned-layout callback remains supported.
+    /// </summary>
+    public PinnedLayoutHandle CreatePinnedLayoutHandle(
+        string id,
+        string name,
+        WidgetSurfaceHints surface,
+        string? initialFocusId = null,
+        string? activeInputScopeId = null)
+    {
+        StableIdentifier.Validate(id, nameof(id));
+        ArgumentException.ThrowIfNullOrWhiteSpace(name);
+        ArgumentNullException.ThrowIfNull(surface);
+        if (initialFocusId is not null)
+            StableIdentifier.Validate(initialFocusId, nameof(initialFocusId));
+        if (activeInputScopeId is not null)
+            StableIdentifier.Validate(activeInputScopeId, nameof(activeInputScopeId));
+        lock (_pinnedLayoutGate)
+        {
+            if (_pinnedLayoutHandles.ContainsKey(id))
+                throw new InvalidOperationException(
+                    $"Pinned layout handle '{id}' is already registered by this widget.");
+            var handle = new PinnedLayoutHandle(
+                id, name, surface, initialFocusId, activeInputScopeId);
+            _pinnedLayoutHandles.Add(id, handle);
+            return handle;
+        }
+    }
 
     internal void AttachHostServices(WidgetHostServices services)
     {
@@ -327,6 +363,7 @@ public abstract partial class Widget
             stateLifetime?.Cancel();
             activeLifetime?.Cancel();
             _widgetLifetime.Cancel();
+            EndPinnedLayoutSelection();
             Volatile.Write(ref _isActive, 0);
             Volatile.Write(ref _lifecycleState, (int)WidgetLifecycleState.Destroying);
 
@@ -676,11 +713,97 @@ public abstract partial class Widget
         ControllerInputEvent input,
         CancellationToken cancellationToken)
     {
-        await OnPinnedLayoutSelectionChangedAsync(
-                input.IsPinnedLayoutSelected == true ? input.PinnedLayoutId : null,
-                cancellationToken)
-            .ConfigureAwait(false);
+        var selectedId = input.IsPinnedLayoutSelected == true
+            ? input.PinnedLayoutId
+            : null;
+        bool usesHandles;
+        lock (_pinnedLayoutGate) usesHandles = _pinnedLayoutHandles.Count != 0;
+        if (!usesHandles)
+        {
+            await OnPinnedLayoutSelectionChangedAsync(selectedId, cancellationToken)
+                .ConfigureAwait(false);
+            return true;
+        }
+
+        if (!IsCurrentPinnedLayoutNotification(input)) return false;
+        if (!TryChangePinnedLayoutSelection(selectedId, out var priorLifetime)) return true;
+        CancelAndDispose(priorLifetime);
+        try
+        {
+            await OnPinnedLayoutSelectionChangedAsync(selectedId, cancellationToken)
+                .ConfigureAwait(false);
+        }
+        finally
+        {
+            Invalidate();
+        }
         return true;
+    }
+
+    private bool IsCurrentPinnedLayoutNotification(ControllerInputEvent input)
+    {
+        var snapshot = Volatile.Read(ref _latestSnapshot);
+        if (snapshot is null || input.SnapshotSequence != snapshot.Sequence) return false;
+        if (input.IsPinnedLayoutSelected == true)
+            return snapshot.PinnedLayouts.Any(layout =>
+                string.Equals(layout.Id, input.PinnedLayoutId, StringComparison.Ordinal));
+        lock (_pinnedLayoutGate)
+        {
+            return _selectedPinnedLayoutId is not null &&
+                (input.PinnedLayoutId is null || string.Equals(
+                    input.PinnedLayoutId, _selectedPinnedLayoutId,
+                    StringComparison.Ordinal));
+        }
+    }
+
+    private bool TryChangePinnedLayoutSelection(
+        string? selectedId,
+        out CancellationTokenSource? priorLifetime)
+    {
+        lock (_pinnedLayoutGate)
+        {
+            priorLifetime = null;
+            if (string.Equals(
+                    _selectedPinnedLayoutId, selectedId, StringComparison.Ordinal))
+                return false;
+
+            priorLifetime = _pinnedLayoutSelectionLifetime;
+            if (_selectedPinnedLayoutId is { } priorId &&
+                _pinnedLayoutHandles.TryGetValue(priorId, out var priorHandle))
+                priorHandle.SetSelection(false, default);
+
+            _selectedPinnedLayoutId = selectedId;
+            _pinnedLayoutSelectionLifetime = selectedId is null
+                ? null
+                : CancellationTokenSource.CreateLinkedTokenSource(_widgetLifetime.Token);
+            if (selectedId is not null &&
+                _pinnedLayoutHandles.TryGetValue(selectedId, out var selectedHandle))
+                selectedHandle.SetSelection(
+                    true, _pinnedLayoutSelectionLifetime!.Token);
+            return true;
+        }
+    }
+
+    private void EndPinnedLayoutSelection()
+    {
+        CancellationTokenSource? lifetime;
+        lock (_pinnedLayoutGate)
+        {
+            lifetime = _pinnedLayoutSelectionLifetime;
+            _pinnedLayoutSelectionLifetime = null;
+            if (_selectedPinnedLayoutId is { } selectedId &&
+                _pinnedLayoutHandles.TryGetValue(selectedId, out var handle))
+                handle.SetSelection(false, default);
+            _selectedPinnedLayoutId = null;
+        }
+        CancelAndDispose(lifetime);
+    }
+
+    private static void CancelAndDispose(CancellationTokenSource? lifetime)
+    {
+        if (lifetime is null) return;
+        lifetime.Cancel();
+        lifetime.Dispose();
     }
 
     protected void Invalidate()

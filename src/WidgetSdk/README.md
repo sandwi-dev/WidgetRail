@@ -22,6 +22,18 @@ selects one on the single pinned surface. Override
 `OnPinnedLayoutSelectionChangedAsync` only to observe package data demand;
 null revokes it and never grants host authority.
 
+For selection-driven data, create an optional per-widget
+`PinnedLayoutHandle` with `CreatePinnedLayoutHandle(id, name, surface,
+initialFocusId, activeInputScopeId)`. Those stable values are registered once;
+each render supplies only its current root through `handle.Present(root)`. The
+handle exposes `IsSelected` and a selection-scoped cancellation token. The SDK
+updates the handle before the compatible low-level callback, cancels the token
+on deselection/replacement/teardown, and invalidates once when effective demand
+changes. The public `WidgetPinnedLayoutTestHost` can deterministically select,
+restore, revoke, replace, and route actions against these projections without a
+native window. Existing `WidgetView.PinnedLayout(...)` and callback-only widgets
+remain supported.
+
 Keep returning complete immutable `WidgetView` values on every render. When a
 protocol-v18 host explicitly negotiates atomic presentation updates, the SDK
 automatically compares stable element IDs and chooses a bounded typed update or

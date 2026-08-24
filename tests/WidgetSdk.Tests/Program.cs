@@ -103,6 +103,18 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Capability subscriptions acknowledge before event consumption", SubscriptionOpenAcknowledges),
 };
 
+var testPrefixIndex = Array.IndexOf(args, "--test-prefix");
+if (testPrefixIndex >= 0)
+{
+    if (testPrefixIndex + 1 >= args.Length)
+        throw new ArgumentException("Missing --test-prefix value.");
+    var prefix = args[testPrefixIndex + 1];
+    tests = tests.Where(test => test.Name.StartsWith(
+        prefix, StringComparison.Ordinal)).ToArray();
+    if (tests.Length == 0)
+        throw new ArgumentException($"No WidgetSdk test starts with '{prefix}'.");
+}
+
 var failures = new List<string>();
 foreach (var test in tests)
 {

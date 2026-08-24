@@ -523,6 +523,7 @@ method WidgetRail.WidgetSdk.PickerOption.Deconstruct(out string Id, out string L
 method WidgetRail.WidgetSdk.PickerOption.Equals(object? obj) -> bool
 method WidgetRail.WidgetSdk.PickerOption.GetHashCode() -> int
 method WidgetRail.WidgetSdk.PickerOption.ToString() -> string
+method WidgetRail.WidgetSdk.PinnedLayoutHandle.Present(WidgetRail.WidgetSdk.WidgetElement? root) -> WidgetRail.WidgetProtocol.PinnedPresentationLayout
 method WidgetRail.WidgetSdk.ProgressElement.Equals(WidgetRail.WidgetSdk.WidgetElement? other) -> bool
 method WidgetRail.WidgetSdk.ProgressElement.Equals(object? obj) -> bool
 method WidgetRail.WidgetSdk.ProgressElement.GetHashCode() -> int
@@ -667,6 +668,7 @@ method WidgetRail.WidgetSdk.UnpairWidgetBluetoothDeviceRequest.Deconstruct(out s
 method WidgetRail.WidgetSdk.UnpairWidgetBluetoothDeviceRequest.Equals(object? obj) -> bool
 method WidgetRail.WidgetSdk.UnpairWidgetBluetoothDeviceRequest.GetHashCode() -> int
 method WidgetRail.WidgetSdk.UnpairWidgetBluetoothDeviceRequest.ToString() -> string
+method WidgetRail.WidgetSdk.Widget.CreatePinnedLayoutHandle(string id, string name, WidgetRail.WidgetProtocol.WidgetSurfaceHints surface, string? initialFocusId = null, string? activeInputScopeId = null) -> WidgetRail.WidgetSdk.PinnedLayoutHandle
 method WidgetRail.WidgetSdk.Widget.RenderSnapshot(string widgetInstanceId, long sequence) -> WidgetRail.WidgetProtocol.ViewSnapshot
 method WidgetRail.WidgetSdk.WidgetActionEvent.<Clone>$() -> WidgetRail.WidgetSdk.WidgetActionEvent
 method WidgetRail.WidgetSdk.WidgetActionEvent.Deconstruct(out string ActionId, out string SourceElementId, out WidgetRail.WidgetProtocol.ControllerButton? ControllerButton, out WidgetRail.WidgetProtocol.ControllerEventPhase Phase, out long Sequence, out long MonotonicTimestampMicroseconds, out double? RequestedValue, out string? InputScopeId) -> void
@@ -1105,6 +1107,11 @@ method WidgetRail.WidgetSdk.WidgetPagedViewport<TItem>.Deconstruct(out string Sc
 method WidgetRail.WidgetSdk.WidgetPagedViewport<TItem>.Equals(object? obj) -> bool
 method WidgetRail.WidgetSdk.WidgetPagedViewport<TItem>.GetHashCode() -> int
 method WidgetRail.WidgetSdk.WidgetPagedViewport<TItem>.ToString() -> string
+method WidgetRail.WidgetSdk.WidgetPinnedLayoutTestHost.ReplaceSnapshotAsync(System.Threading.CancellationToken cancellationToken = null) -> System.Threading.Tasks.ValueTask<WidgetRail.WidgetProtocol.ViewSnapshot>
+method WidgetRail.WidgetSdk.WidgetPinnedLayoutTestHost.RestoreAsync(string layoutId, System.Threading.CancellationToken cancellationToken = null) -> System.Threading.Tasks.ValueTask<bool>
+method WidgetRail.WidgetSdk.WidgetPinnedLayoutTestHost.RevokeAsync(System.Threading.CancellationToken cancellationToken = null) -> System.Threading.Tasks.ValueTask<bool>
+method WidgetRail.WidgetSdk.WidgetPinnedLayoutTestHost.RouteActionAsync(WidgetRail.WidgetProtocol.ControllerButton button, string focusedElementId, WidgetRail.WidgetProtocol.ControllerEventPhase phase = WidgetRail.WidgetProtocol.ControllerEventPhase.Pressed, System.Threading.CancellationToken cancellationToken = null) -> System.Threading.Tasks.ValueTask<bool>
+method WidgetRail.WidgetSdk.WidgetPinnedLayoutTestHost.SelectAsync(string layoutId, System.Threading.CancellationToken cancellationToken = null) -> System.Threading.Tasks.ValueTask<bool>
 method WidgetRail.WidgetSdk.WidgetPrivateSecretExists.<Clone>$() -> WidgetRail.WidgetSdk.WidgetPrivateSecretExists
 method WidgetRail.WidgetSdk.WidgetPrivateSecretExists.Deconstruct(out bool Exists) -> void
 method WidgetRail.WidgetSdk.WidgetPrivateSecretExists.Equals(object? obj) -> bool
@@ -1579,6 +1586,7 @@ method static WidgetRail.WidgetSdk.WidgetScenarioRunResult.op_Inequality(WidgetR
 method static WidgetRail.WidgetSdk.WidgetScenarioStepResult.op_Equality(WidgetRail.WidgetSdk.WidgetScenarioStepResult? left, WidgetRail.WidgetSdk.WidgetScenarioStepResult? right) -> bool
 method static WidgetRail.WidgetSdk.WidgetScenarioStepResult.op_Inequality(WidgetRail.WidgetSdk.WidgetScenarioStepResult? left, WidgetRail.WidgetSdk.WidgetScenarioStepResult? right) -> bool
 method static WidgetRail.WidgetSdk.WidgetTestHost.Attach<TWidget>(TWidget widget, WidgetRail.WidgetSdk.WidgetHostServices services) -> TWidget where TWidget : WidgetRail.WidgetSdk.Widget
+method static WidgetRail.WidgetSdk.WidgetTestHost.CreatePinnedLayoutHost(WidgetRail.WidgetSdk.Widget widget, string widgetInstanceId, long initialSequence = 1) -> WidgetRail.WidgetSdk.WidgetPinnedLayoutTestHost
 method static WidgetRail.WidgetSdk.WidgetTestHost.DestroyAsync(WidgetRail.WidgetSdk.Widget widget, System.Threading.CancellationToken cancellationToken = null) -> System.Threading.Tasks.ValueTask
 method static WidgetRail.WidgetSdk.WidgetTestHost.InitializeAsync(WidgetRail.WidgetSdk.Widget widget, System.Threading.CancellationToken cancellationToken = null) -> System.Threading.Tasks.ValueTask
 method static WidgetRail.WidgetSdk.WidgetTestHost.SetLifecycleStateAsync(WidgetRail.WidgetSdk.Widget widget, WidgetRail.WidgetSdk.WidgetLifecycleState state, System.Threading.CancellationToken cancellationToken = null) -> System.Threading.Tasks.ValueTask
@@ -1811,6 +1819,7 @@ property System.Func<TState,TState,TExecution,TState> WidgetRail.WidgetSdk.Widge
 property System.Func<TState,TState,TExecution,WidgetRail.WidgetSdk.WidgetCommandError,TState>? WidgetRail.WidgetSdk.WidgetOptimisticCommandOptions<TState,TRequest,TExecution,TResult>.Fail { get; set; }
 property System.Func<WidgetRail.WidgetSdk.WidgetCollectionCursor?,WidgetRail.WidgetSdk.WidgetCursorDirection?,int,System.Threading.CancellationToken,System.Threading.Tasks.ValueTask<WidgetRail.WidgetSdk.WidgetCursorPage<TItem>>> WidgetRail.WidgetSdk.WidgetCursorResourceOptions<TItem>.LoadPage { get; set; }
 property System.Func<int,int,System.Threading.CancellationToken,System.Threading.Tasks.ValueTask<WidgetRail.WidgetSdk.WidgetPage<TItem>>> WidgetRail.WidgetSdk.WidgetPagedResourceOptions<TItem>.LoadPage { get; set; }
+property System.Threading.CancellationToken WidgetRail.WidgetSdk.PinnedLayoutHandle.SelectionCancellationToken { get; }
 property System.Threading.CancellationToken WidgetRail.WidgetSdk.WidgetNavigationSnapshot<TRoute>.RouteCancellationToken { get; set; }
 property System.Threading.CancellationToken WidgetRail.WidgetSdk.WidgetOperationContext.CancellationToken { get; }
 property System.Threading.Tasks.Task WidgetRail.WidgetSdk.WidgetScenarioOperationInvocation<TRequest,TResponse>.CancellationObserved { get; }
@@ -1856,6 +1865,7 @@ property WidgetRail.WidgetProtocol.ResponsiveVisibility WidgetRail.WidgetSdk.Res
 property WidgetRail.WidgetProtocol.ScrollAxis WidgetRail.WidgetSdk.ScrollElement.Axis { get; set; }
 property WidgetRail.WidgetProtocol.SliderInteractionMode? WidgetRail.WidgetSdk.ScrubberElement.ControllerInteractionMode { get; set; }
 property WidgetRail.WidgetProtocol.SliderInteractionMode? WidgetRail.WidgetSdk.SliderElement.ControllerInteractionMode { get; set; }
+property WidgetRail.WidgetProtocol.ViewSnapshot WidgetRail.WidgetSdk.WidgetPinnedLayoutTestHost.CurrentSnapshot { get; }
 property WidgetRail.WidgetProtocol.ViewSnapshot WidgetRail.WidgetSdk.WidgetScenarioResult.Snapshot { get; }
 property WidgetRail.WidgetProtocol.ViewSnapshot? WidgetRail.WidgetSdk.WidgetScenarioRunResult.FinalSnapshot { get; set; }
 property WidgetRail.WidgetProtocol.VirtualCollectionWindowChange WidgetRail.WidgetSdk.WidgetCursorResourceSnapshot<TItem>.WindowChange { get; set; }
@@ -1866,6 +1876,7 @@ property WidgetRail.WidgetProtocol.WidgetGlyph? WidgetRail.WidgetSdk.ButtonEleme
 property WidgetRail.WidgetProtocol.WidgetGlyph? WidgetRail.WidgetSdk.ComponentAction.Glyph { get; set; }
 property WidgetRail.WidgetProtocol.WidgetGlyph? WidgetRail.WidgetSdk.PickerOption.Glyph { get; set; }
 property WidgetRail.WidgetProtocol.WidgetGlyph? WidgetRail.WidgetSdk.ToastElement.Glyph { get; }
+property WidgetRail.WidgetProtocol.WidgetSurfaceHints WidgetRail.WidgetSdk.PinnedLayoutHandle.Surface { get; }
 property WidgetRail.WidgetProtocol.WidgetSurfaceHints? WidgetRail.WidgetSdk.WidgetView.Surface { get; set; }
 property WidgetRail.WidgetSdk.ActionSheetItemTone WidgetRail.WidgetSdk.ActionSheetItem.Tone { get; set; }
 property WidgetRail.WidgetSdk.ControllerInputContext WidgetRail.WidgetSdk.ControllerInputEvent.Context { get; set; }
@@ -1970,6 +1981,7 @@ property bool WidgetRail.WidgetSdk.NavigationShellDestination.IsDisabled { get; 
 property bool WidgetRail.WidgetSdk.PickerOption.IsBusy { get; set; }
 property bool WidgetRail.WidgetSdk.PickerOption.IsDisabled { get; set; }
 property bool WidgetRail.WidgetSdk.PickerOption.IsSelected { get; set; }
+property bool WidgetRail.WidgetSdk.PinnedLayoutHandle.IsSelected { get; }
 property bool WidgetRail.WidgetSdk.SegmentedTab.IsDisabled { get; set; }
 property bool WidgetRail.WidgetSdk.SetWidgetAudioInputMutedRequest.IsMuted { get; set; }
 property bool WidgetRail.WidgetSdk.SetWidgetAudioOutputMutedRequest.IsMuted { get; set; }
@@ -2204,6 +2216,8 @@ property string WidgetRail.WidgetSdk.PairWidgetBluetoothDeviceRequest.DeviceId {
 property string WidgetRail.WidgetSdk.PickerOption.ActionId { get; set; }
 property string WidgetRail.WidgetSdk.PickerOption.Id { get; set; }
 property string WidgetRail.WidgetSdk.PickerOption.Label { get; set; }
+property string WidgetRail.WidgetSdk.PinnedLayoutHandle.Id { get; }
+property string WidgetRail.WidgetSdk.PinnedLayoutHandle.Name { get; }
 property string WidgetRail.WidgetSdk.SaveWidgetPrivateSecretRequest.Secret { get; set; }
 property string WidgetRail.WidgetSdk.SaveWidgetPrivateSecretRequest.Slot { get; set; }
 property string WidgetRail.WidgetSdk.ScrubberElement.AccessibilityLabel { get; set; }
@@ -2310,6 +2324,8 @@ property string? WidgetRail.WidgetSdk.GridElement.InputScopeId { get; set; }
 property string? WidgetRail.WidgetSdk.ImageElement.ArtworkHandle { get; set; }
 property string? WidgetRail.WidgetSdk.NavigationShellDestination.AccessibilityLabel { get; set; }
 property string? WidgetRail.WidgetSdk.PickerOption.AccessibilityLabel { get; set; }
+property string? WidgetRail.WidgetSdk.PinnedLayoutHandle.ActiveInputScopeId { get; }
+property string? WidgetRail.WidgetSdk.PinnedLayoutHandle.InitialFocusId { get; }
 property string? WidgetRail.WidgetSdk.ProgressElement.AccessibilityLabel { get; set; }
 property string? WidgetRail.WidgetSdk.RowElement.InputScopeId { get; set; }
 property string? WidgetRail.WidgetSdk.ScrollElement.CollectionAnchorKey { get; set; }
@@ -2349,6 +2365,7 @@ property string? WidgetRail.WidgetSdk.WidgetNetworkStatus.ActiveProfileName { ge
 property string? WidgetRail.WidgetSdk.WidgetNetworkStatus.AttemptProfileId { get; set; }
 property string? WidgetRail.WidgetSdk.WidgetPagedResourceSnapshot<TItem>.RequestedFocusId { get; set; }
 property string? WidgetRail.WidgetSdk.WidgetPagedViewport<TItem>.EmptyFocusId { get; set; }
+property string? WidgetRail.WidgetSdk.WidgetPinnedLayoutTestHost.SelectedLayoutId { get; }
 property string? WidgetRail.WidgetSdk.WidgetPrivateStateSnapshot.Json { get; set; }
 property string? WidgetRail.WidgetSdk.WidgetScenarioStepResult.Message { get; set; }
 property string? WidgetRail.WidgetSdk.WidgetTestPrivateState.Json { get; }
@@ -2427,6 +2444,7 @@ type sealed class WidgetRail.WidgetSdk.NavigationShellDestination : System.IEqua
 type sealed class WidgetRail.WidgetSdk.OpenWidgetBluetoothDeviceSettingsRequest : System.IEquatable<WidgetRail.WidgetSdk.OpenWidgetBluetoothDeviceSettingsRequest>
 type sealed class WidgetRail.WidgetSdk.PairWidgetBluetoothDeviceRequest : System.IEquatable<WidgetRail.WidgetSdk.PairWidgetBluetoothDeviceRequest>
 type sealed class WidgetRail.WidgetSdk.PickerOption : System.IEquatable<WidgetRail.WidgetSdk.PickerOption>
+type sealed class WidgetRail.WidgetSdk.PinnedLayoutHandle
 type sealed class WidgetRail.WidgetSdk.ProgressElement : System.IEquatable<WidgetRail.WidgetSdk.ProgressElement>, System.IEquatable<WidgetRail.WidgetSdk.WidgetElement>, WidgetRail.WidgetSdk.WidgetElement
 type sealed class WidgetRail.WidgetSdk.ResolveSavedWidgetAppLibraryItemsRequest : System.IEquatable<WidgetRail.WidgetSdk.ResolveSavedWidgetAppLibraryItemsRequest>
 type sealed class WidgetRail.WidgetSdk.ResolveSavedWidgetAppLibraryItemsResponse : System.IEquatable<WidgetRail.WidgetSdk.ResolveSavedWidgetAppLibraryItemsResponse>
@@ -2531,6 +2549,7 @@ type sealed class WidgetRail.WidgetSdk.WidgetPagedResource<TItem>
 type sealed class WidgetRail.WidgetSdk.WidgetPagedResourceOptions<TItem> : System.IEquatable<WidgetRail.WidgetSdk.WidgetPagedResourceOptions<TItem>>
 type sealed class WidgetRail.WidgetSdk.WidgetPagedResourceSnapshot<TItem> : System.IEquatable<WidgetRail.WidgetSdk.WidgetPagedResourceSnapshot<TItem>>
 type sealed class WidgetRail.WidgetSdk.WidgetPagedViewport<TItem> : System.IEquatable<WidgetRail.WidgetSdk.WidgetPagedViewport<TItem>>
+type sealed class WidgetRail.WidgetSdk.WidgetPinnedLayoutTestHost
 type sealed class WidgetRail.WidgetSdk.WidgetPrivateSecretExists : System.IEquatable<WidgetRail.WidgetSdk.WidgetPrivateSecretExists>
 type sealed class WidgetRail.WidgetSdk.WidgetPrivateSecretMetadata : System.IEquatable<WidgetRail.WidgetSdk.WidgetPrivateSecretMetadata>
 type sealed class WidgetRail.WidgetSdk.WidgetPrivateSecretService

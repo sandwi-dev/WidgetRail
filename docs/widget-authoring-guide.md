@@ -1837,6 +1837,40 @@ After explicit selection, `OnPinnedLayoutSelectionChangedAsync` receives the
 selected package layout ID; null revokes that demand on removal, replacement,
 unpin, or shutdown. The notification grants no provider, capability, focus, or
 window authority.
+
+When a layout owns selection-scoped data demand, prefer the optional typed
+handle over a package-maintained string or boolean:
+
+```csharp
+private readonly PinnedLayoutHandle _details;
+
+public MyWidget()
+{
+    _details = CreatePinnedLayoutHandle(
+        "details", "Details", DetailsSurface,
+        initialFocusId: "details.play",
+        activeInputScopeId: "details.scope");
+}
+
+public override WidgetView Render() => new(UI.Stack("full.root"))
+{
+    PinnedLayouts =
+    [
+        _details.Present(
+            UI.Stack("details.root", DetailsContent()).InputScope("details.scope")),
+    ],
+};
+```
+
+`IsSelected` is updated before the compatible
+`OnPinnedLayoutSelectionChangedAsync` callback. Each effective selection gets a
+fresh `SelectionCancellationToken`; deselection, layout removal, runtime
+replacement, unpin, or widget teardown cancels it. Repeated notification of the
+same selection is idempotent. Use `WidgetTestHost.CreatePinnedLayoutHost(...)`
+to select/restore/revoke layouts, replace the current immutable snapshot, and
+route actions against the exact selected projection in deterministic tests.
+The handle remains optional: callback-only and `WidgetView.PinnedLayout(...)`
+authoring continue to use the same protocol-v21 ingress.
 Overlay close preserves the surface but restores click-through. Package
 removal/replacement, worker restart/loss, pinned close, and host exit tear it
 down. Authors publish ordinary immutable snapshots and lifecycle behavior only;
