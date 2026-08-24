@@ -137,12 +137,17 @@ void VerifyAtomicPresentationUpdateMaterialization() {
     std::wstring error;
     const auto checkpoint = widgetrail::testing::ParseWidgetSnapshotResponse(R"json({
         "snapshot": {
-            "protocolVersion":17,
+            "protocolVersion":20,
             "sequence":9,
             "widgetInstanceId":"update.sample",
             "activeInputScopeId":"root",
             "initialFocusId":"a",
             "surface":{"mode":"standard","preferredWidth":560,"preferredHeight":645,"minimumWidth":320,"minimumHeight":240},
+            "pinnedLayouts":[
+                {"id":"compact","name":"Compact",
+                 "surface":{"mode":"compact","preferredWidth":360,"preferredHeight":240,
+                            "minimumWidth":240,"minimumHeight":180}}
+            ],
             "root":{"id":"root","kind":"stack","children":[
                 {"id":"a","kind":"button","text":"Before","actionId":"activate.a","children":[]},
                 {"id":"b","kind":"text","text":"Remove me","children":[]}
@@ -224,13 +229,66 @@ void VerifyAtomicPresentationUpdateMaterialization() {
         *checkpoint, *update, L"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", error);
     Require(materialized && error.empty(), "Could not materialize the atomic update");
     const auto& materializedSnapshot = materialized->snapshot;
-    Require(materializedSnapshot.protocolVersion == 18 && materializedSnapshot.sequence == 10 &&
+    Require(materializedSnapshot.protocolVersion == 20 && materializedSnapshot.sequence == 10 &&
+                materializedSnapshot.pinnedLayouts.size() == 1 &&
+                materializedSnapshot.pinnedLayouts[0].id == L"compact" &&
                 materializedSnapshot.root.children.size() == 2 &&
                 materializedSnapshot.root.children[0].id == L"c" &&
                 materializedSnapshot.root.children[1].id == L"a" &&
                 materializedSnapshot.root.children[1].text == L"Replaced" &&
                 materializedSnapshot.root.children[1].baseStyle.at(L"opacity").number == 0.75,
             "Atomic update did not publish the complete candidate and styles");
+
+    error.clear();
+    Require(!widgetrail::testing::ParseWidgetSnapshotResponse(R"json({
+        "snapshot": {
+            "protocolVersion":19,"sequence":1,
+            "widgetInstanceId":"layouts.old","activeInputScopeId":"root",
+            "pinnedLayouts":[{"id":"compact","name":"Compact",
+                "surface":{"mode":"compact","preferredWidth":360,"preferredHeight":240}}],
+            "root":{"id":"root","kind":"stack","children":[]}
+        },"renderStyles":{}
+    })json", error),
+            "Protocol-v19 snapshot admitted a pinned layout catalog");
+
+    std::string tooManyLayouts = R"json({"snapshot":{"protocolVersion":20,"sequence":1,
+        "widgetInstanceId":"layouts.many","activeInputScopeId":"root","pinnedLayouts":[)json";
+    for (int index = 0; index < 9; ++index) {
+        if (index != 0) tooManyLayouts += ',';
+        tooManyLayouts += "{\"id\":\"layout." + std::to_string(index) +
+            "\",\"name\":\"Layout\",\"surface\":{\"mode\":\"compact\","
+            "\"preferredWidth\":360,\"preferredHeight\":240}}";
+    }
+    tooManyLayouts += R"json(],"root":{"id":"root","kind":"stack","children":[]}},"renderStyles":{}})json";
+    error.clear();
+    Require(!widgetrail::testing::ParseWidgetSnapshotResponse(tooManyLayouts, error),
+            "Native snapshot admission exceeded the pinned layout catalog bound");
+
+    error.clear();
+    Require(!widgetrail::testing::ParseWidgetSnapshotResponse(R"json({
+        "snapshot": {
+            "protocolVersion":20,"sequence":1,
+            "widgetInstanceId":"layouts.duplicate","activeInputScopeId":"root",
+            "pinnedLayouts":[
+                {"id":"same","name":"First","surface":{"mode":"compact"}},
+                {"id":"same","name":"Second","surface":{"mode":"wide"}}
+            ],
+            "root":{"id":"root","kind":"stack","children":[]}
+        },"renderStyles":{}
+    })json", error),
+            "Native snapshot admission accepted duplicate pinned layout identity");
+
+    error.clear();
+    Require(!widgetrail::testing::ParseWidgetSnapshotResponse(R"json({
+        "snapshot": {
+            "protocolVersion":20,"sequence":1,
+            "widgetInstanceId":"layouts.surface","activeInputScopeId":"root",
+            "pinnedLayouts":[{"id":"compact","name":"Compact",
+                "surface":{"mode":"compact","preferredWidth":360},"unknown":true}],
+            "root":{"id":"root","kind":"stack","children":[]}
+        },"renderStyles":{}
+    })json", error),
+            "Native snapshot admission accepted malformed or unknown pinned layout fields");
 
     auto stale = *update;
     stale.baseSequence = 8;
