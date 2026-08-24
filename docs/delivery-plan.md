@@ -856,29 +856,31 @@ cumulative stack is accepted and integrated; DLV-294 is closed.
 
 ### DLV-295 pinned-layout authoring ergonomics
 
-Lane: widgets, baseline accepted integration `e7ebdbe`. Status: Assigned and
-authorized for automatic review/integration without a user verdict because it
-is nonvisual SDK/test infrastructure. Add an optional SDK-level typed pinned-layout handle that
-owns one stable layout ID and exposes current selection without package string
-comparisons or hand-maintained booleans. The SDK must update selection before
-the author callback, provide a selection-scoped cancellation token that is
-replaced on selection and canceled on deselection, revocation, worker teardown,
-or runtime replacement, and invalidate once when effective demand changes.
-Allow the handle to present current immutable root/surface/focus/scope data while
-retaining the existing `WidgetView.PinnedLayout(...)` and callback as the
-low-level compatible API. Handles are widget-instance state, never static shared
-authority. Use the existing protocol-v21 notification; no protocol/native-host
-change, second lifecycle owner, provider work, or package special case.
+Lane: widgets, baseline accepted integration `e7ebdbe`. Status: first attempt
+retained uncommitted after its compatibility gate failed before tests with only
+`Build failed`; focused harness did not run. Source review also rejects its
+authoring shape: metadata remained repeated per render, the protected creation
+entrypoint was absent from the API baseline, and `CurrentPresentation` exposed
+unnecessary last-rendered state. Correct it before a new gate sequence.
+
+Define stable ID, name, surface, initial focus, and input scope once in an
+optional widget-instance handle whose compatibility-tracked author entrypoint
+is visible in `PublicApi.txt`; `Present(...)` then accepts only the current root.
+Expose `IsSelected` and a fresh selection-scoped token, update state before the
+compatible callback, cancel on deselection/revocation/teardown/replacement, and
+invalidate once per effective demand change. Remove public mutable/current-
+presentation state. Preserve mixed low-level/high-level authoring and existing
+`WidgetView.PinnedLayout(...)`. Use protocol v21 only; no native-host change,
+second lifecycle owner, provider work, or package special case.
 
 Add a focused public test host that can select, restore, revoke, and replace a
 pinned layout and route controller actions against its root. Prove ordering,
 idempotence, cancellation, stale notification rejection, automatic
 invalidation, Full widget behavior, and compatibility with the low-level API.
-Update public API baselines and directly affected author guidance. Run only the
-SDK/public-API and focused pinned-layout harness gates; Tier 2 only if the
-existing worker ingress boundary changes. Do not edit Spotify in DLV-295; it is
-the serialized physical proof in DLV-298. Stop for a protocol revision, hidden
-window authority, destructive state, or a design that makes handles mandatory.
+Update API baselines/guidance, then run the corrected SDK/public-API and focused
+pinned-layout harness gates once. Do not edit Spotify; it is DLV-298's physical
+proof. Stop for protocol revision, hidden window authority, destructive state,
+or mandatory handles.
 
 ### DLV-298 Spotify high-level pinned-layout migration
 
