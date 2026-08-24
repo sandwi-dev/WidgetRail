@@ -879,61 +879,72 @@ substantial merge conflict, or a materially different multi-monitor/product
 choice. Stop on the first unrelated build red after preserving exact evidence;
 do not repair or rerun it under DLV-289.
 
-The rejected chord and incomplete-menu history remains preserved in commits
-`78f90d4`, `53ab7b0`, and `ddb2d91`. Correction `da1f848` provides the vertical
-tray menu and coherent held-stick Adjust route; its Release build exited 0 and
-exact PID 94188 is responsive. The user physically accepted that foundation,
-then required the final sizing, compact-chrome, View-entry, controller-guide,
-and opacity polish above. The cumulative chain remains unintegrated and no tests
-are authorized until the refined exact candidate receives a verdict.
+Rejected pin-history commits `78f90d4`, `53ab7b0`, and `ddb2d91` remain
+unintegrated. The user accepted `da1f848` as the foundation, then required the
+five final refinements above. The platform lane owns one production-only
+correction on that clean tip using the existing HWND/coordinator/renderer/
+input/focus/semantic and placement-persistence owners. Preserve generation,
+click-through/Interactive, package-action, DPI/work-area, cancellation, and
+teardown invariants. No tests, process control, state mutation, public wire or
+manifest change, Game Launcher, Avalonia/AVP, or push. Source-review, build one
+coherent Release, commit, and stop for reviewer launch and the final verdict.
 
-The platform lane owns one production-only correction on clean tip `da1f848`.
-Implement all five refinements as one coherent build: reuse the normal resolved
-content extent only for first pin without valid placement; compact host chrome;
-make tray-scope View enter the sole pin independent of selected tile; publish
-mode-accurate controller-first visible and accessibility guidance; and add the
-30–100% persisted whole-window opacity transaction exactly specified above.
-Evolve the current host-owned placement/persistence model narrowly rather than
-adding a second store or state machine. Preserve the existing one HWND,
-coordinator, renderer, input/focus/semantic owners, generation revalidation,
-click-through/Interactive lifetime, package action isolation, work-area/DPI
-clamp, cancel restoration, and exact teardown. Do not add or run tests, control
-product processes, mutate installed/provider/account state, change public wire
-or manifest shape, touch Game Launcher or Avalonia/AVP, or push. Source-review
-the complete responsibility/input/persistence/lifecycle delta, build the
-coherent packaged Release once, and commit one clean `[DLV-289]` correction for
-reviewer launch and final physical verdict.
+## Ready pinned-presentation work
 
-## Future architecture queue — maturity review additions
+### DLV-290 generic selectable pinned layouts
 
-Status: DLV-288 is accepted/integrated and the explicitly requested visible
-DLV-289 pinning milestone is Assigned ahead of the internal maturity queue.
-Later items remain ordered future work and will be restacked after the physical
-pinning verdict so surface accessibility/diagnostic evidence is not specified
-against a changing user interaction.
+Lane: platform, serialized shared-contract owner. Status: Ready only after the
+final DLV-289 chain is accepted/integrated into a fresh clean baseline; never
+start from an unintegrated candidate or dirty tree. Add an optional bounded
+widget-authored pinned-presentation catalog without granting native authority.
+`Full widget` is the host fallback; added layouts have stable IDs, names,
+existing bounded axis sizing, and a selected checkpoint keyed independently
+from the ordinary view. Reuse SDK/runtime/Bridge/native declarative admission.
 
-1. Stable structured diagnostic contract.
-2. Localization and accessibility semantics.
-3. Author diagnostics and preview inspection.
-4. Public-source pre-alpha readiness.
+Selecting `Pin` immediately focuses setup: LT/RT cycle a visible layout
+name/index, left stick or D-pad moves, right stick resizes, `A` commits and
+returns the pin to click-through, and `B` cancels the new pin/restores tray
+focus. Adjust reopens setup and `B` restores the prior layout/rectangle. LT/RT
+remain package actions outside setup. Preserve every DLV-289 invariant.
 
-Do not schedule generic forms, broad OverlayApp refactoring, mediated import/
-export, background scheduling, marketplace/publisher infrastructure, or new
-component-count expansion without separate evidence and explicit promotion.
-Extract native authorities only when real work touches them.
+Verification: normal focused shared-contract suites, then one physical-first UX
+candidate before final UI tests; Tier 3 only if the public wire boundary
+requires it. Exclude multi-pin, native rehydration, widget windows, marketplace,
+package host special cases, Game Launcher, Avalonia/AVP, and push. Stop for a
+second presentation authority, unbounded retention, destructive state, a public
+compatibility choice, substantial conflict, or triggers owned outside setup.
+
+### DLV-291 Spotify compact pinned layouts
+
+Lane: widgets. Status: Awaiting accepted/integrated DLV-290. Baseline: fresh
+clean widgets branch from that integration. Add two package-owned layouts—
+`Compact now playing` and `Now playing + up next`—beside the host `Full widget`
+fallback. Reuse Spotify's existing session/queue model and polling; do not add
+duplicate provider work, credentials, host knowledge, or a Spotify protocol
+special case. Preserve controller actions, bounded artwork, progress, failure
+states, accessibility, responsive sizing, and ordinary full-widget behavior.
+Use physical-first production/package build and user verdict, then focused
+package/runtime tests only; no Game Launcher tests, broad aggregate, account or
+package-state mutation, publication, Avalonia/AVP, or push.
+
+The later maturity queue remains: structured diagnostics; localization and
+accessibility semantics; author diagnostics/preview inspection; and public-
+source pre-alpha readiness. Do not schedule generic forms, broad OverlayApp
+refactoring, marketplace/publisher infrastructure, or component-count growth
+without explicit promotion.
 
 ## Ordered queues
 
 1. DLV-289 user-ready single-widget pinning: Assigned platform, physical-first.
-2. Remaining maturity deliverables, ordered after the DLV-289 physical verdict;
-   their diagnostic/accessibility promises consume the accepted surface
-   interaction rather than a rejected candidate.
-3. DLV-248 remains deliberately deferred until explicit user promotion.
+2. DLV-290 generic selectable pinned layouts: Ready platform after accepted
+   DLV-289 integration.
+3. DLV-291 Spotify compact pinned layouts: widgets Awaiting DLV-290 integration.
+4. Remaining maturity deliverables, ordered after the pinned-layout UX settles.
+5. DLV-248 remains deliberately deferred until explicit user promotion.
 
-There is no concurrent Ready production work in either standing lane: DLV-289
-is a serialized native surface assignment with one explicitly included bundled
-manifest edit, the user deferred Game Launcher verification, and the internal
-maturity queue is deliberately held until the visible physical verdict.
+There is no concurrently executable Ready production work: DLV-290 consumes
+accepted DLV-289 and DLV-291 consumes accepted DLV-290. Game Launcher tests
+remain deferred; maturity work waits for the changing surface contract.
 
 ## Manual and blocked evidence
 
