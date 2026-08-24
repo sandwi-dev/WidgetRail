@@ -286,7 +286,7 @@ historical evidence only; this file is the sole implementation authority.
 | Lane | Task/worktree | State |
 | --- | --- | --- |
 | Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | DLV-474 correction passed the native gate, then the managed sanitized-terminal gate stopped on an opaque pre-test build red. Four intentional diffs remain retained uncommitted in the isolated worktree; no rerun or repair is authorized. DLV-473 test-only `34f15ae9` remains blocked after its first red; the standing tree's two DLV-293 test diffs remain byte-identical and must not be touched. |
-| Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | Assigned DLV-295 resumes from explicitly unaccepted candidate `225e736` after DLV-299 proved the two opaque failures came from a manual extra `--no-restore` forcing stale August 17 assets that reference a deleted project. Merge planner main at a clean boundary, run the tracked restore-enabled compatibility command, then the focused handle gate. Review/integrate automatically when green. DLV-298 remains the next user-acceptance boundary. |
+| Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | DLV-295 candidate `225e736` is preserved and unaccepted. Its restore-enabled compatibility command still failed because ordinary restore considered the stale August 17 assets up to date. Assigned DLV-299 now owns one explicit forced project-graph restore plus the focused compatibility gate; DLV-295 resumes only if green. DLV-298 remains the next user-acceptance boundary. |
 
 ## Execution rules
 
@@ -856,7 +856,7 @@ cumulative stack is accepted and integrated; DLV-294 is closed.
 
 ### DLV-295 pinned-layout authoring ergonomics
 
-Lane: widgets, baseline accepted integration `e7ebdbe`. Status: Assigned from explicitly unaccepted evidence commit `225e736` after DLV-299 diagnosis. The corrected nine-file diff's direct SDK and compatibility-project builds pass. Prior compatibility attempts were invalid because a manual extra `--no-restore` forced stale ignored assets; use the tracked restore-enabled invocation. Merge current planner main at the clean boundary, then run compatibility once and the focused handle harness only if green. Review/integrate automatically; do not start DLV-298 before planner integration.
+Lane: widgets, baseline accepted integration `e7ebdbe`. Status: dependency-blocked by the final DLV-299 restore repair. Explicitly unaccepted `225e736` plus planner merge `80874ba` is clean. Direct SDK and compatibility-project builds pass, but the restore-enabled compatibility command still exited 1 before discovery because ordinary restore left the stale assets unchanged. Do not rerun it until DLV-299 explicitly refreshes that graph; do not integrate or start DLV-298.
 
 Define stable ID, name, surface, initial focus, and input scope once in an
 optional widget-instance handle whose compatibility-tracked author entrypoint
@@ -879,7 +879,7 @@ or mandatory handles.
 
 ### DLV-299 compatibility test-launcher diagnosis and repair
 
-Lane: widgets. Status: diagnosis complete with no implementation commit or repository defect. Candidate `225e736` preserves DLV-295. Direct compatibility build exited 0 with zero errors and one warning; durable log/binlog are under `artifacts/dlv-299/`. The ignored August 17 assets/dgspec still reference deleted `LauncherExperienceCatalog.csproj`; both failed attempts manually supplied `--no-restore`, while tracked `scripts/verification-steps.json` correctly allows restore. `--no-progress` is valid and retained repository evidence previously passed 12/12. No source, runner, manifest, product artifact, or live state changed; DLV-299 is closed and requires no integration/relaunch.
+Lane: widgets. Status: Assigned environment-only completion after the restore-enabled command disproved the first diagnosis by leaving the stale ignored assets unchanged. Candidate `225e736` remains preserved. Direct compatibility build exited 0 with zero errors and one stale-graph warning; durable log/binlog are under `artifacts/dlv-299/`. Run one explicit forced restore for only `WidgetSdk.Compatibility.Tests.csproj` so its ignored assets/dgspec no longer reference deleted `LauncherExperienceCatalog.csproj`; retain restore output and stop on any acquisition/network red. If refresh succeeds, run the supported compatibility command once and require 12/12. Do not change tracked files or run the DLV-295 handle harness in this prerequisite. No implementation commit/integration/relaunch is expected; report exact graph evidence, command exits, and counts, then DLV-295 may resume.
 
 ### DLV-298 Spotify high-level pinned-layout migration
 
@@ -918,22 +918,23 @@ no live provider, installation, Game Launcher tests, broad aggregate, or push.
 
 ## Ordered queues
 
-1. DLV-295 pinned-layout authoring ergonomics: resume `225e736` with the restore-enabled compatibility command, run focused gates once, and integrate automatically when green.
-2. DLV-298 Spotify high-level migration and physical proof; next user verdict.
-3. DLV-296 pinned-layout preview and diagnostics.
-4. DLV-297 pinned-layout templates and examples.
-5. DLV-474 fresh-session sequence-authority correction: retained correction
+1. DLV-299 forced compatibility-project restore and one 12/12 gate; no tracked change or integration expected.
+2. DLV-295 pinned-layout authoring ergonomics: after green DLV-299, run only the focused handle harness and integrate automatically when green.
+3. DLV-298 Spotify high-level migration and physical proof; next user verdict.
+4. DLV-296 pinned-layout preview and diagnostics.
+5. DLV-297 pinned-layout templates and examples.
+6. DLV-474 fresh-session sequence-authority correction: retained correction
    passed its native gate, then the managed gate stopped on an opaque pre-test
    build red. Four diffs remain uncommitted; no rerun or repair is authorized.
-6. DLV-291 focused post-acceptance evidence: native 108/108 green; obsolete
+7. DLV-291 focused post-acceptance evidence: native 108/108 green; obsolete
    low-level Spotify attempt is retained only as unaccepted `bdda057`. Its
    behavior regression moves into DLV-295 after the high-level migration.
-7. DLV-473 focused post-acceptance tests: clean `34f15ae9` is retained
+8. DLV-473 focused post-acceptance tests: clean `34f15ae9` is retained
    unintegrated after the first SDK gate stopped before tests on an opaque build
    red; later gates did not run and no rerun is authorized.
-8. DLV-294 generic pinned-layout projections: accepted/integrated as `60536ff`; closed.
-9. DLV-293 focused test debt: retained uncommitted after unrelated Game Launcher stationarity red; no rerun under the explicit deferral.
-10. Remaining maturity deliverables after the pinned-layout author workflow; DLV-248 stays deferred until explicit user promotion.
+9. DLV-294 generic pinned-layout projections: accepted/integrated as `60536ff`; closed.
+10. DLV-293 focused test debt: retained uncommitted after unrelated Game Launcher stationarity red; no rerun under the explicit deferral.
+11. Remaining maturity deliverables after the pinned-layout author workflow; DLV-248 stays deferred until explicit user promotion.
 
 DLV-473 production is accepted/integrated and its tests are post-acceptance
 work. DLV-291 versions through 0.3.23 are physically rejected overall. Reviewed
