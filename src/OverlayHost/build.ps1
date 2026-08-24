@@ -1569,8 +1569,29 @@ if ($LASTEXITCODE -ne 0) {
 
 $bridgeOutput = Join-Path $outputDirectory 'runtime\Bridge'
 $workerHostOutput = Join-Path $outputDirectory 'runtime\WidgetWorkerHost'
-Remove-GeneratedDirectory -Path $bridgeOutput
-Remove-GeneratedDirectory -Path $workerHostOutput
+$settingsOutput = Join-Path $outputDirectory 'runtime\Settings'
+$audioMixerOutput = Join-Path $outputDirectory 'runtime\AudioMixer'
+$networkControlsOutput = Join-Path $outputDirectory 'runtime\NetworkControls'
+$gamesAppsOutput = Join-Path $outputDirectory 'runtime\GamesApps'
+$mediaSessionsOutput = Join-Path $outputDirectory 'runtime\MediaSessions'
+
+# Host runtime generation is part of every coherent Release build. The
+# SkipPackaging switch omits Community/test package publication only; it must
+# never leave a new native host beside stale managed workers or contracts.
+foreach ($hostRuntimeOutput in @(
+    $bridgeOutput,
+    $workerHostOutput,
+    $settingsOutput,
+    $audioMixerOutput,
+    $networkControlsOutput,
+    $gamesAppsOutput,
+    $mediaSessionsOutput,
+    (Join-Path $outputDirectory 'runtime\GameLauncher'),
+    (Join-Path $outputDirectory 'runtime\SpotifyPlaybackHost'),
+    (Join-Path $outputDirectory 'runtime\YtMusic')
+)) {
+    Remove-GeneratedDirectory -Path $hostRuntimeOutput
+}
 $managedPublishExitCode = 0
 Invoke-SerializedManagedPublish `
     -Project (Join-Path $projectDirectory '..\WidgetBridge\WidgetBridge.csproj') `
@@ -1589,128 +1610,112 @@ if ($managedPublishExitCode -ne 0 -or
     throw "Generic widget worker host publish failed with exit code $managedPublishExitCode."
 }
 
-if (-not $SkipPackaging) {
+function Publish-BundledWidgetPackage {
+    param(
+        [Parameter(Mandatory = $true)] [string]$WidgetProject,
+        [Parameter(Mandatory = $true)] [string]$PackageRoot,
+        [Parameter(Mandatory = $true)] [string]$AssemblyName,
+        [Parameter(Mandatory = $true)] [string]$DisplayName
+    )
 
-    function Publish-BundledWidgetPackage {
-        param(
-            [Parameter(Mandatory = $true)] [string]$WidgetProject,
-            [Parameter(Mandatory = $true)] [string]$PackageRoot,
-            [Parameter(Mandatory = $true)] [string]$AssemblyName,
-            [Parameter(Mandatory = $true)] [string]$DisplayName
-        )
-
-        $resolvedPackageRoot = [System.IO.Path]::GetFullPath($PackageRoot)
-        $resolvedOutputRoot = [System.IO.Path]::GetFullPath($outputDirectory)
-        if (-not $resolvedPackageRoot.StartsWith(
-            $resolvedOutputRoot + [System.IO.Path]::DirectorySeparatorChar,
-            [System.StringComparison]::OrdinalIgnoreCase)) {
-            throw "Bundled package output escaped the build layout: $resolvedPackageRoot"
-        }
-        if (Test-Path -LiteralPath $resolvedPackageRoot) {
-            Remove-Item -LiteralPath $resolvedPackageRoot -Recurse -Force
-        }
-        $payloadOutput = Join-Path $resolvedPackageRoot 'payload'
-        $stylesOutput = Join-Path $resolvedPackageRoot 'styles'
-        New-Item -ItemType Directory -Force -Path $payloadOutput, $stylesOutput | Out-Null
-        $managedPublishExitCode = 0
-        Invoke-SerializedManagedPublish `
-            -Project (Join-Path $WidgetProject "$AssemblyName.csproj") `
-            -Configuration $Configuration -Output $payloadOutput `
-            -ExitCode ([ref]$managedPublishExitCode)
-        if ($managedPublishExitCode -ne 0) {
-            throw "$DisplayName package publish failed with exit code $managedPublishExitCode."
-        }
-        # WidgetSdk/WidgetProtocol are host-ABI assemblies selected by the
-        # generic loader. Project assets copied by `dotnet publish` are pruned
-        # so four bundled packages do not duplicate or shadow host contracts.
-        foreach ($hostSharedFile in @(
-            'WidgetSdk.dll',
-            'WidgetSdk.pdb',
-            'WidgetProtocol.dll',
-            'WidgetProtocol.pdb',
-            "$AssemblyName.pdb",
-            'manifest.json'
-        )) {
-            $candidate = Join-Path $payloadOutput $hostSharedFile
-            if (Test-Path -LiteralPath $candidate) {
-                Remove-Item -LiteralPath $candidate -Force
-            }
-        }
-        $copiedStyles = Join-Path $payloadOutput 'styles'
-        if (Test-Path -LiteralPath $copiedStyles) {
-            Remove-Item -LiteralPath $copiedStyles -Recurse -Force
-        }
-        Copy-Item -LiteralPath (Join-Path $WidgetProject 'manifest.json') `
-            -Destination (Join-Path $resolvedPackageRoot 'manifest.json') -Force
-        Copy-Item -LiteralPath (Join-Path $WidgetProject 'styles\default.wrss') `
-            -Destination (Join-Path $stylesOutput 'default.wrss') -Force
-        foreach ($requiredFile in @(
-            'manifest.json',
-            'styles\default.wrss',
-            "payload\$AssemblyName.dll"
-        )) {
-            if (-not (Test-Path -LiteralPath (Join-Path $resolvedPackageRoot $requiredFile))) {
-                throw "$DisplayName bundled package is missing $requiredFile."
-            }
-        }
+    $resolvedPackageRoot = [System.IO.Path]::GetFullPath($PackageRoot)
+    $resolvedOutputRoot = [System.IO.Path]::GetFullPath($outputDirectory)
+    if (-not $resolvedPackageRoot.StartsWith(
+        $resolvedOutputRoot + [System.IO.Path]::DirectorySeparatorChar,
+        [System.StringComparison]::OrdinalIgnoreCase)) {
+        throw "Bundled package output escaped the build layout: $resolvedPackageRoot"
     }
-
-    $settingsOutput = Join-Path $outputDirectory 'runtime\Settings'
-    $audioMixerOutput = Join-Path $outputDirectory 'runtime\AudioMixer'
-    $networkControlsOutput = Join-Path $outputDirectory 'runtime\NetworkControls'
-    $gamesAppsOutput = Join-Path $outputDirectory 'runtime\GamesApps'
-    $mediaSessionsOutput = Join-Path $outputDirectory 'runtime\MediaSessions'
-    # Product-owned Spotify and the private Game Launcher are retired. Purge
-    # exact generated locations before publishing into an incremental output
-    # tree so stale executables or Bridge dependency assemblies cannot ship.
-    Remove-GeneratedDirectory -Path (Join-Path $outputDirectory 'runtime\GameLauncher')
-    Remove-GeneratedDirectory -Path (Join-Path $outputDirectory 'runtime\SpotifyPlaybackHost')
-    # YT Music is a community addon now. Remove an incremental build's retired
-    # trusted worker so it cannot remain as an accidental fallback.
-    Remove-GeneratedDirectory -Path (Join-Path $outputDirectory 'runtime\YtMusic')
+    if (Test-Path -LiteralPath $resolvedPackageRoot) {
+        Remove-Item -LiteralPath $resolvedPackageRoot -Recurse -Force
+    }
+    $payloadOutput = Join-Path $resolvedPackageRoot 'payload'
+    $stylesOutput = Join-Path $resolvedPackageRoot 'styles'
+    New-Item -ItemType Directory -Force -Path $payloadOutput, $stylesOutput | Out-Null
     $managedPublishExitCode = 0
     Invoke-SerializedManagedPublish `
-        -Project (Join-Path $projectDirectory '..\FirstPartyWidgets\SettingsWidget.Worker\SettingsWidget.Worker.csproj') `
-        -Configuration $Configuration -Output $settingsOutput `
+        -Project (Join-Path $WidgetProject "$AssemblyName.csproj") `
+        -Configuration $Configuration -Output $payloadOutput `
         -ExitCode ([ref]$managedPublishExitCode)
     if ($managedPublishExitCode -ne 0) {
-        throw "Settings worker publish failed with exit code $managedPublishExitCode."
+        throw "$DisplayName package publish failed with exit code $managedPublishExitCode."
     }
-    $settingsProject = Join-Path $projectDirectory '..\FirstPartyWidgets\SettingsWidget'
-    $settingsStylesOutput = Join-Path $settingsOutput 'styles'
-    $settingsPayloadOutput = Join-Path $settingsOutput 'payload'
-    New-Item -ItemType Directory -Force -Path $settingsStylesOutput, $settingsPayloadOutput | Out-Null
-    Copy-Item -LiteralPath (Join-Path $settingsProject 'manifest.json') `
-        -Destination (Join-Path $settingsOutput 'manifest.json') -Force
-    Copy-Item -LiteralPath (Join-Path $settingsProject 'styles\default.wrss') `
-        -Destination (Join-Path $settingsStylesOutput 'default.wrss') -Force
-    Copy-Item -LiteralPath (Join-Path $settingsOutput 'SettingsWidget.dll') `
-        -Destination (Join-Path $settingsPayloadOutput 'SettingsWidget.dll') -Force
-    foreach ($requiredSettingsFile in @(
-        'SettingsWidget.Worker.exe',
-        'manifest.json',
-        'styles\default.wrss',
-        'payload\SettingsWidget.dll'
+    # WidgetSdk/WidgetProtocol are host-ABI assemblies selected by the generic
+    # loader. Project assets copied by `dotnet publish` are pruned so bundled
+    # packages do not duplicate or shadow host contracts.
+    foreach ($hostSharedFile in @(
+        'WidgetSdk.dll',
+        'WidgetSdk.pdb',
+        'WidgetProtocol.dll',
+        'WidgetProtocol.pdb',
+        "$AssemblyName.pdb",
+        'manifest.json'
     )) {
-        if (-not (Test-Path -LiteralPath (Join-Path $settingsOutput $requiredSettingsFile))) {
-            throw "Settings deployment is missing $requiredSettingsFile."
+        $candidate = Join-Path $payloadOutput $hostSharedFile
+        if (Test-Path -LiteralPath $candidate) {
+            Remove-Item -LiteralPath $candidate -Force
         }
     }
-    Publish-BundledWidgetPackage `
-        (Join-Path $projectDirectory '..\FirstPartyWidgets\AudioMixerWidget') `
-        $audioMixerOutput 'AudioMixerWidget' 'Audio Mixer'
-    Publish-BundledWidgetPackage `
-        (Join-Path $projectDirectory '..\FirstPartyWidgets\NetworkControlsWidget') `
-        $networkControlsOutput 'NetworkControlsWidget' 'Network Controls'
-    Publish-BundledWidgetPackage `
-        (Join-Path $projectDirectory '..\FirstPartyWidgets\GamesAppsWidget') `
-        $gamesAppsOutput 'GamesAppsWidget' 'Games & Apps'
-    Publish-BundledWidgetPackage `
-        (Join-Path $projectDirectory '..\FirstPartyWidgets\MediaSessionsWidget') `
-        $mediaSessionsOutput 'MediaSessionsWidget' 'Now Playing'
-    Copy-Item -LiteralPath (Join-Path $projectDirectory 'widget-catalog.json') `
-        -Destination (Join-Path $outputDirectory 'widget-catalog.json') -Force
+    $copiedStyles = Join-Path $payloadOutput 'styles'
+    if (Test-Path -LiteralPath $copiedStyles) {
+        Remove-Item -LiteralPath $copiedStyles -Recurse -Force
+    }
+    Copy-Item -LiteralPath (Join-Path $WidgetProject 'manifest.json') `
+        -Destination (Join-Path $resolvedPackageRoot 'manifest.json') -Force
+    Copy-Item -LiteralPath (Join-Path $WidgetProject 'styles\default.wrss') `
+        -Destination (Join-Path $stylesOutput 'default.wrss') -Force
+    foreach ($requiredFile in @(
+        'manifest.json',
+        'styles\default.wrss',
+        "payload\$AssemblyName.dll"
+    )) {
+        if (-not (Test-Path -LiteralPath (Join-Path $resolvedPackageRoot $requiredFile))) {
+            throw "$DisplayName bundled package is missing $requiredFile."
+        }
+    }
 }
+
+$managedPublishExitCode = 0
+Invoke-SerializedManagedPublish `
+    -Project (Join-Path $projectDirectory '..\FirstPartyWidgets\SettingsWidget.Worker\SettingsWidget.Worker.csproj') `
+    -Configuration $Configuration -Output $settingsOutput `
+    -ExitCode ([ref]$managedPublishExitCode)
+if ($managedPublishExitCode -ne 0) {
+    throw "Settings worker publish failed with exit code $managedPublishExitCode."
+}
+$settingsProject = Join-Path $projectDirectory '..\FirstPartyWidgets\SettingsWidget'
+$settingsStylesOutput = Join-Path $settingsOutput 'styles'
+$settingsPayloadOutput = Join-Path $settingsOutput 'payload'
+New-Item -ItemType Directory -Force -Path $settingsStylesOutput, $settingsPayloadOutput | Out-Null
+Copy-Item -LiteralPath (Join-Path $settingsProject 'manifest.json') `
+    -Destination (Join-Path $settingsOutput 'manifest.json') -Force
+Copy-Item -LiteralPath (Join-Path $settingsProject 'styles\default.wrss') `
+    -Destination (Join-Path $settingsStylesOutput 'default.wrss') -Force
+Copy-Item -LiteralPath (Join-Path $settingsOutput 'SettingsWidget.dll') `
+    -Destination (Join-Path $settingsPayloadOutput 'SettingsWidget.dll') -Force
+foreach ($requiredSettingsFile in @(
+    'SettingsWidget.Worker.exe',
+    'manifest.json',
+    'styles\default.wrss',
+    'payload\SettingsWidget.dll'
+)) {
+    if (-not (Test-Path -LiteralPath (Join-Path $settingsOutput $requiredSettingsFile))) {
+        throw "Settings deployment is missing $requiredSettingsFile."
+    }
+}
+Publish-BundledWidgetPackage `
+    (Join-Path $projectDirectory '..\FirstPartyWidgets\AudioMixerWidget') `
+    $audioMixerOutput 'AudioMixerWidget' 'Audio Mixer'
+Publish-BundledWidgetPackage `
+    (Join-Path $projectDirectory '..\FirstPartyWidgets\NetworkControlsWidget') `
+    $networkControlsOutput 'NetworkControlsWidget' 'Network Controls'
+Publish-BundledWidgetPackage `
+    (Join-Path $projectDirectory '..\FirstPartyWidgets\GamesAppsWidget') `
+    $gamesAppsOutput 'GamesAppsWidget' 'Games & Apps'
+Publish-BundledWidgetPackage `
+    (Join-Path $projectDirectory '..\FirstPartyWidgets\MediaSessionsWidget') `
+    $mediaSessionsOutput 'MediaSessionsWidget' 'Now Playing'
+Copy-Item -LiteralPath (Join-Path $projectDirectory 'widget-catalog.json') `
+    -Destination (Join-Path $outputDirectory 'widget-catalog.json') -Force
 
 if ($WidgetSwitchTestsOnly) {
     if ($SkipTests) {
