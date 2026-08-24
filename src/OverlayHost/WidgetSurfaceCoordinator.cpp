@@ -201,6 +201,8 @@ bool WidgetSurfaceCoordinator::Pin(
         error = L"The pinned layout setup could not be started.";
         return false;
     }
+    if (selectedLayoutIndex_ != 0)
+        QueueLayoutSelection(layoutOptions_[selectedLayoutIndex_].id, true);
     PublishAccessibility();
     NotifyOwner();
     return true;
