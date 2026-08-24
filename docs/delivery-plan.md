@@ -79,9 +79,10 @@ historical evidence only; this file is the sole implementation authority.
   through PID 54348, which exited cooperatively through verified `WM_CLOSE` for
   corrected DLV-289 review. Replacement candidate `e7b24f4`, stacked on
   `7cc2be0`, was rejected because its active menu pixels were clipped above the
-  fixed chrome surface. Correction `a74e677` preserves the topmost chrome owner,
-  adds bounded click-through composition headroom, and is Release-green.
-  Responsive exact PID 121188 awaits physical acceptance. No tests have run.
+  fixed chrome surface. The user physically accepted correction `a74e677`,
+  which preserves the topmost chrome owner and adds bounded click-through
+  composition headroom. Exact PID 121188 contains the accepted production tip.
+  The focused post-acceptance test follow-up is Assigned.
 - DLV-318 is the exact recoverable prior accepted Release at
   `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative-dlv318-build`;
   executable SHA-256 is
@@ -98,7 +99,7 @@ historical evidence only; this file is the sole implementation authority.
 
 | Lane | Task/worktree | State |
 | --- | --- | --- |
-| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | DLV-289 correction `a74e677` is source-reviewed and Release-green; responsive exact PID 121188 awaits physical verdict on visible above-tray rendering and transparent-headroom click-through. No tests have run. |
+| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | DLV-289 production through `a74e677` is physically accepted. Its one focused post-acceptance regression follow-up is Assigned; no production changes, Tier 3, broad aggregate, or Game Launcher tests. |
 | Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | DLV-288 `8be0ebb` is accepted/integrated as `a37d614`; the lane is idle. Game Launcher tests remain explicitly deferred and out of scope. |
 
 ## Execution rules
@@ -881,13 +882,7 @@ do not repair or rerun it under DLV-289.
 
 Rejected pin-history commits `78f90d4`, `53ab7b0`, and `ddb2d91` remain
 unintegrated. The user accepted `da1f848` as the foundation and rejected only
-the downward tray-menu placement in correction `7cc2be0`; `e7b24f4` then moved the layout above the tray but drew it outside the fixed chrome HWND client, so the pixels were clipped while controller authority remained live. The next
-correction must preserve `chromeWindow_` as the topmost tray owner, keep the
-same menu/layout/input/accessibility authority, and render the always-above menu through an existing host-owned surface whose client bounds cover the shared menu geometry. Preserve stable top-to-bottom order and horizontal work-
-area clamping. Do not add adaptive placement, a second menu state/window owner,
-or broaden chrome hit-testing over widget content. Production and directly
-affected public docs only; build one coherent Release, commit, and stop for
-reviewer launch. No tests, Game Launcher, Avalonia/AVP, state mutation, or push.
+the downward tray-menu placement in correction `7cc2be0`; `e7b24f4` then moved the layout above the tray but drew it outside the fixed chrome HWND client, so the pixels were clipped while controller authority remained live. The user physically accepted `a74e677`, which preserves `chromeWindow_` as the topmost tray owner, renders the always-above menu inside bounded transparent composition headroom, and keeps non-menu headroom click-through. Production is closed for DLV-289. The same lane may add only the focused post-acceptance regression coverage specified above, run each authorized group once, commit the test follow-up separately, and stop. No Game Launcher test, Tier 3, broad aggregate, production repair, Avalonia/AVP, state mutation, or push.
 
 ## Ready pinned-presentation work
 
@@ -935,7 +930,7 @@ without explicit promotion.
 
 ## Ordered queues
 
-1. DLV-289 user-ready single-widget pinning: correction Awaiting user verdict.
+1. DLV-289 user-ready single-widget pinning: production Accepted; tests Assigned.
 2. DLV-292 fresh-worker virtual-window recovery: Ready platform after accepted
    DLV-289 integration; ahead of new pinned-layout contract work.
 3. DLV-290 generic selectable pinned layouts: Ready platform after accepted
@@ -970,7 +965,7 @@ There is no concurrently executable Ready production work: DLV-292 consumes acce
 | DLV-286 | The user physically accepted complete correction `a41bd72`; cumulative chain `d0ca29b` + `058efbc` + `a41bd72` is integrated as merge `627ba4c`. Responsive accepted PID 85884 already contains that production tip, so it remains running without a merge-only rebuild/relaunch. The dedicated Game Launcher test project remains untouched/deferred, and the broader Bridge aggregate must not be repeated. |
 | DLV-287 | Production/test `dccf49a` is accepted and integrated as `fc91157`; focused Release build passed and WidgetSdk protocol contracts passed 89/89. Exact prior PID 85884 exited gracefully. Refreshed integrated PID 113716 is responsive, has no startup error, and admitted the generic full-application and Spotify widgets. |
 | DLV-288 | Documentation `8be0ebb` is accepted and integrated as `a37d614`; scoped link/reference/contract inspection passed. Its single documentation gate stopped only on three pre-existing OverlayHost packaging assertions, with no DLV-288 link failure, and was not rerun. No runtime input changed, so PID 113716 remains accepted. |
-| DLV-289 | `e7b24f4` was rejected for clipped active menu pixels. Correction `a74e677` keeps the existing topmost chrome/menu authority, adds bounded click-through composition headroom, and passed its coherent Release build. Responsive exact PID 121188 awaits physical verdict; no tests have run and the chain remains unintegrated. |
+| DLV-289 | The user physically accepted correction `a74e677` after `e7b24f4` was rejected for clipped active pixels. Exact PID 121188 contains the accepted topmost chrome/menu owner and bounded click-through headroom. Focused post-acceptance tests are Assigned; the chain remains unintegrated until their review. |
 | DLV-248 | Deferred until explicit user promotion. |
 
 ## Ready platform reliability — DLV-292 fresh-worker virtual-window recovery
