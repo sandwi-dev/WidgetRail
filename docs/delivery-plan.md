@@ -870,10 +870,14 @@ Add a focused public test host that can select, restore, revoke, and replace a
 pinned layout and route controller actions against its root. Prove ordering,
 idempotence, cancellation, stale notification rejection, automatic
 invalidation, Full widget behavior, and compatibility with the low-level API.
-Update public API baselines and directly affected author guidance. Run only the
-SDK/public-API and focused pinned-layout harness gates; Tier 2 only if the
-existing worker ingress boundary changes. Stop for a protocol revision, hidden
-window authority, destructive state, or a design that makes handles mandatory.
+Migrate Spotify's accepted pinned layouts from its manual selected-layout
+boolean/string comparison to the new optional handle as the real Community
+package proof, without changing its accepted presentation, provider, queue, or
+controller behavior. Update public API baselines and directly affected author
+guidance. Run only the SDK/public-API, focused pinned-layout harness, and
+Spotify deterministic package/runtime gates; Tier 2 only if the existing worker
+ingress boundary changes. Stop for a protocol revision, hidden window authority,
+destructive state, or a design that makes handles mandatory.
 
 ### DLV-296 pinned-layout preview and diagnostics
 
