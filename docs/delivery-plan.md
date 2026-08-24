@@ -492,14 +492,14 @@ state, public contract change, substantial conflict, or an unrelated red.
 
 ### DLV-291 Spotify compact pinned layouts
 
-Lane: widgets. Status: 0.3.17 correction `009af955` and clean 0.3.18 correction
-`2dc8ab8` physically rejected. 0.3.18 remains installed, selected, and enabled
-under the user's explicit current full-trust approval. Deterministic boundary
-proof found a package-owned WRSS cascade defect; clean 0.3.19 correction
-`9dda3bf` was built and installed as the sole active Spotify version, then
-physically rejected under reviewed host PID 90896: the queue projection is now
-selected and its right column is visible, but active playback leaves the entire
-left Now Playing panel blank.
+Lane: widgets. Status: versions through 0.3.20 are physically rejected. Clean
+0.3.20 commits `8948d1d` + `17e875f` restored visible active-player geometry
+and added two queue rows plus playback-identity-triggered queue refresh, but
+user review found both a live render failure and an incorrect next item. At
+2026-08-24T19:33:41Z the exact reviewed host recorded request `render` with
+worker code `worker_protocol_validation_failed`; PID 123124 and Bridge PID
+61764 remained alive. Exact-hash 0.3.20 remains the sole installed active
+Spotify version pending clean replacement; it is not accepted or integrated.
 The rejected 0.3.17 build was reviewed, built, and installed as the sole Spotify
 version after explicit
 full-trust and retirement approval, but physical review proves LT/RT changes
@@ -588,6 +588,26 @@ provider call. Keep the ordinary main Queue's existing complete bounded list.
 Include this and the demand-gated refresh in the same scoped 0.3.20 production
 commit after the player-geometry proof; stop before install or tests.
 
+0.3.20 physical rejection adds one bounded 0.3.21 correction. First prove the
+live protocol failure with a snapshot where the shared queue cursor anchor is
+outside the first two projected Up Next rows. The current projection truncates
+to two keyed rows but copies `queue.Anchor` unchanged; protocol validation
+requires a non-empty keyed collection's anchor to name one of its retained
+projected items. Keep the main Queue cursor unchanged, but give the pinned
+two-row projection an anchor that is present in that projection and preserve
+typed focus/scroll behavior. Return the exact validation code as evidence.
+
+Treat the incorrect next item as separate package/provider-generation work.
+The queue response already carries `CurrentlyPlaying`, but the current loader
+ignores it. A queue refresh fired immediately by a polled playback identity
+change may therefore commit a response still correlated to the previous track
+and never refresh again. Add a bounded reconciliation at the existing queue
+load/refresh boundary: compare the response's currently-playing identity with
+the latest demanded playback identity, do not publish a mismatched generation,
+and retry/defer only within an explicit small bound. Do not poll the queue on
+every playback tick, add a second timer/provider owner, or alter the host. Build
+one immutable 0.3.21 package and stop before install, tests, or integration.
+
 ### DLV-294 generic pinned-layout projections
 
 Lane: widgets lead, serialized SDK/protocol/native-host prerequisite. Status:
@@ -642,19 +662,16 @@ without explicit promotion.
 
 ## Ordered queues
 
-1. DLV-291 Spotify compact pinned layouts: clean 0.3.20 commits `8948d1d` and
-   `17e875f` are reviewer-accepted for physical promotion, not yet integrated.
-   Native 640x340 proof gives the corrected player a 326-DIP outer width with
-   visible 96-DIP artwork and 306-DIP content while retaining the 280-DIP queue.
-   The package refreshes a demanded queue once on natural playback item-identity
-   change and renders two focusable rows in the pinned queue. Immutable package
-   SHA-256 is `31B3B888DCF5868EC60ECECC42AAF8B135B8AE676B636D4A3C3B974825454ACC`.
-   Rejected 0.3.19 was cooperatively retired without clearing credentials or
-   private data. Exact-hash 0.3.20 is now the sole installed, selected, enabled
-   Spotify version under responsive PID 123124 using the unchanged reviewed
-   DLV-474 host SHA-256
-   `1C7C8849B014F538AD5AC7FEFA8947B6F85735808A64BF7D9F2BD70A134B1C18`.
-   Await the user's physical verdict; do not run tests or integrate first.
+1. DLV-291 Spotify compact pinned layouts: 0.3.20 commits `8948d1d` and
+   `17e875f` are physically rejected and remain unintegrated. Live evidence is
+   `worker_protocol_validation_failed` during render, consistent with the
+   two-row pinned projection retaining a shared cursor anchor outside those
+   projected rows. The user also reports that Queue/Up Next still presents the
+   wrong next track after playback changes; the current loader ignores the
+   queue response's `CurrentlyPlaying` generation correlation. Produce one
+   immutable 0.3.21 correction with exact validation proof, a projected anchor
+   present among its two rows, and bounded queue/playback reconciliation. Build
+   once, then stop before install, tests, or integration for reviewer inspection.
 2. DLV-474 fresh-session sequence-authority correction: retained correction
    passed its native gate, then the managed gate stopped on an opaque pre-test
    build red. Four diffs remain uncommitted; no rerun or repair is authorized.
@@ -667,10 +684,9 @@ without explicit promotion.
 7. DLV-248 remains deliberately deferred until explicit user promotion.
 
 DLV-473 production is accepted/integrated and its tests are post-acceptance
-work. DLV-291 versions through 0.3.19 are physically rejected. Exact-hash 0.3.20
-is the sole installed active Spotify version under responsive PID 123124 and
-awaits the user's physical verdict on visible Now Playing content, two pinned
-queue rows, and main/pinned queue refresh after a natural track transition.
+work. DLV-291 versions through 0.3.20 are physically rejected. Exact-hash 0.3.20
+is the sole installed active Spotify version under responsive PID 123124 only
+until a reviewed replacement is ready; no DLV-291 production is integrated.
 DLV-474 production is rejected before integration by deterministic
 fresh-session sequence evidence; its exact historical exit trigger remains
 unproven and retained diagnostics are ready for a future recurrence.
@@ -706,7 +722,7 @@ tests remain deferred.
 | DLV-292 | `ff5e7e4` binds each Bridge-cached snapshot to its worker start ordinal and uses existing typed stale-base recovery after replacement. Production build and three focused lifecycle/native gates passed; integrated as `80cdb10`. The user accepted PID 81980 by default because live reproduction is impractical. |
 | DLV-293 | Production `a9d36cf` is physically accepted and integrated as `10c3e26`; PID 137288 already contains that production tip. New catalog-removal/focus/Guide assertions completed before the focused host gate stopped on an older Game Launcher stationarity correlation. The pin-coordinator suite did not run; both uncommitted test diffs remain retained, with no rerun or Game Launcher repair authorized. |
 | DLV-474 | Production `a830f026` was provisionally accepted by user disposition because the historical bridge-session loss could not be reproduced, then rejected before integration when the first focused native gate proved fresh sequence 1 was compared against retained prior-session sequences 10/20. The retained correction passed 29 native coordinator scenarios plus linked native checks, then the managed diagnostic gate exited 1 during an opaque pre-test build. Four diffs remain uncommitted at identity `d14a224507d682e9c67f83860e713fe0118bb4dd`; no rerun or repair occurred. |
-| DLV-291 | Spotify 0.3.18 `2dc8ab8` and 0.3.19 `9dda3bf` are physically rejected. Reviewer inspection accepted clean 0.3.20 commits `8948d1d` + `17e875f` for physical promotion: typed `flex-basis` restores the player, demanded Queue/Up Next refreshes once when polled playback identity changes, and pinned Up Next renders two focusable rows. Coherent Release and package builds exited 0. The 1,171,003-byte immutable package SHA-256 is `31B3B888DCF5868EC60ECECC42AAF8B135B8AE676B636D4A3C3B974825454ACC`; final tree is `e2236c56be03e432c8e1aafba1848c5b95829aaa`. PID 90896 and its six top-level windows exited cooperatively; 0.3.19 was retired without clearing credentials/private data; exact-hash 0.3.20 is the sole installed active version. Unchanged reviewed DLV-474 host SHA-256 `1C7C8849B014F538AD5AC7FEFA8947B6F85735808A64BF7D9F2BD70A134B1C18` is responsive as PID 123124 with Bridge PID 61764 and no startup error in the bounded log prefix. Await user verdict; no tests or integration. |
+| DLV-291 | Spotify versions through 0.3.20 are physically rejected. Clean 0.3.20 commits `8948d1d` + `17e875f` built successfully and exact-hash package `31B3B888DCF5868EC60ECECC42AAF8B135B8AE676B636D4A3C3B974825454ACC` is the sole installed active version, but user review found the next item still wrong and a render failure. At 2026-08-24T19:33:41Z the unchanged reviewed host recorded `worker_protocol_validation_failed`; host PID 123124 and Bridge PID 61764 remained alive. Source inspection shows the two-row pinned projection copies a potentially out-of-projection shared cursor anchor, while queue loading ignores the response's `CurrentlyPlaying` correlation and can commit the prior provider generation after a track change. Active 0.3.21 must prove/fix both at package scope, build once, and stop before install, tests, integration, or push. |
 | DLV-248 | Deferred until explicit user promotion. |
 
 ## Integrated reliability — DLV-292 fresh-worker virtual-window recovery
