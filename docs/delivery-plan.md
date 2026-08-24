@@ -284,7 +284,7 @@ historical evidence only; this file is the sole implementation authority.
 | Lane | Task/worktree | State |
 | --- | --- | --- |
 | Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | DLV-474 correction passed the native gate, then the managed sanitized-terminal gate stopped on an opaque pre-test build red. Four intentional diffs remain retained uncommitted in the isolated worktree; no rerun or repair is authorized. DLV-473 test-only `34f15ae9` remains blocked after its first red; the standing tree's two DLV-293 test diffs remain byte-identical and must not be touched. |
-| Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | DLV-295 is accepted/integrated through `3d4b940`. Assigned physical-first DLV-298 from current clean main: migrate Spotify Compact/Up Next to typed handles, remove its duplicated selection-demand owner, bump the immutable package, build without tests, and stop for planner review/install/launch and the user's next verdict. |
+| Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | DLV-295 is accepted/integrated through `3d4b940`. DLV-298 source `65d7872` is retained clean but reviewer correction is required: register each stable pinned player focus target instead of silently dropping authored initial focus. Its first Release build was blocked only by accepted PID 32880 locking the lane output. Rebuild/package after correction; Spotify migration remains the next verdict. |
 
 ## Execution rules
 
@@ -881,13 +881,16 @@ Lane: widgets. Status: closed with no implementation commit. Direct compatibilit
 
 ### DLV-298 Spotify high-level pinned-layout migration
 
-Lane: widgets, baseline accepted DLV-295 integration `3d4b940`. Status: Assigned;
-next user-acceptance boundary. Migrate Spotify's Compact and Up Next layouts
+Lane: widgets, baseline accepted DLV-295 integration `3d4b940`. Status: source
+candidate `65d7872` retained; focused correction assigned before build because it
+dropped both authored player initial-focus targets. This is the next user-
+acceptance boundary. Migrate Spotify's Compact and Up Next layouts
 from manual selection plumbing to the optional typed handle, deleting the old
 demand owner while preserving accepted roots, sizing, focus/scopes, controls,
 queue/provider behavior, credentials, and Full widget fallback. Bump the
 immutable package, build without tests, then planner-review/install/launch the
-exact candidate. DLV-295 requires no intermediate user verdict.
+exact candidate. The user authorizes automatic prerequisite integration through
+this migration; no intermediate verdict is required before DLV-298.
 
 After the user accepts the migrated package, add a fresh deterministic Spotify
 regression against the final handle API proving selection, lifecycle, and
