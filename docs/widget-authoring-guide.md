@@ -1807,9 +1807,20 @@ Unknown capability IDs are syntactically valid at manifest parse time but an
 installed package declaring unsupported authority is omitted by the bridge.
 Use only the published closed IDs above.
 
-For a supporting widget, open its full surface and press `P` to request the
-single host-owned pinned surface. It starts click-through; a second `P` while
-the same widget is open explicitly makes it Interactive, and `U` unpins it.
+For a supporting widget, focus its tray item and press controller Menu/Options
+or right-click that exact tray item. The host-owned context menu exposes
+**Pin**, or **Adjust pinned widget**, **Opacity — N%**, and **Unpin** for the current pin; UI
+Automation invokes those same typed menu actions. The complete vertical menu
+always opens above the bottom tray while retaining the same top-to-bottom visual,
+controller, pointer, and semantic order. An unavailable Pin item names
+loading, unsupported, or one-pin-cap authority without replacing the existing
+pin. `P` remains the keyboard interaction/pin fallback while the widget is open,
+and `U` remains the unpin fallback. From tray focus, controller View enters the
+single pin independent of tray selection; View remains package-owned while
+widget content has focus. The surface starts click-through; a second
+`P` or a bare right-stick click while the same widget is open explicitly makes
+it Interactive. Menu while widget content owns focus remains available to the
+widget, as do all package-declared bumper, trigger, stick-click, and View actions.
 Overlay close preserves the surface but restores click-through. Package
 removal/replacement, worker restart/loss, pinned close, and host exit tear it
 down. Authors publish ordinary immutable snapshots and lifecycle behavior only;

@@ -80,6 +80,31 @@ void AppendTrayOverflow(
     tree.nodes.push_back(std::move(node));
 }
 
+void AppendTrayContextMenu(
+    Tree& tree,
+    const TrayContextMenuSemantics& menu) {
+    if (menu.targetId.empty()) return;
+    for (const auto& item : menu.items) {
+        if (item.id.empty() || item.name.empty() || item.action == HostAction::None)
+            continue;
+        Node node;
+        node.id = item.id;
+        node.domain = ElementDomain::HostShell;
+        node.name = item.name;
+        node.value = item.value;
+        node.hostTargetId = item.targetId;
+        node.bounds = item.bounds;
+        node.role = Role::Button;
+        node.hostAction = item.action;
+        node.enabled = item.enabled;
+        node.selected = item.selected;
+        node.focused = item.selected;
+        const auto index = tree.nodes.size();
+        tree.nodes.push_back(std::move(node));
+        if (tree.nodes[index].focused) tree.focusedNode = index;
+    }
+}
+
 } // namespace
 
 bool HasActiveScopeBackShortcut(
@@ -138,6 +163,19 @@ long long ComputeTraySemanticRevision(
         hashText(dashboard->title);
         hashText(dashboard->help);
         hashText(dashboard->status);
+        hashText(dashboard->contextMenu.targetId);
+        for (const auto& item : dashboard->contextMenu.items) {
+            hashText(item.id);
+            hashText(item.name);
+            hashText(item.value);
+            hashText(item.targetId);
+            hash ^= static_cast<std::uint64_t>(item.action);
+            hash *= 1099511628211ULL;
+            hash ^= item.enabled ? 1U : 0U;
+            hash *= 1099511628211ULL;
+            hash ^= item.selected ? 1U : 0U;
+            hash *= 1099511628211ULL;
+        }
     }
     return static_cast<long long>(hash & 0x7fffffffffffffffULL);
 }
@@ -147,6 +185,7 @@ long long ComputeOpenWidgetSemanticRevision(
     const OpenWidgetSemantics& semantics) noexcept {
     DashboardSemantics semanticText{
         semantics.title, {}, semantics.help, {}, semantics.status, {},
+        semantics.contextMenu,
     };
     auto revision = static_cast<std::uint64_t>(
         ComputeTraySemanticRevision(items, &semanticText));
@@ -200,7 +239,8 @@ Tree BuildTrayTree(
         node.hostAction = HostAction::ActivateTrayItem;
         node.enabled = item.enabled;
         node.selected = tile.slot == selectedSlot;
-        node.focused = node.selected;
+        node.focused = node.selected &&
+            (!dashboard || dashboard->contextMenu.targetId.empty());
         node.positionInSet = static_cast<int>(tile.slot + 1);
         node.sizeOfSet = static_cast<int>(items.size());
         const auto index = tree.nodes.size();
@@ -208,6 +248,7 @@ Tree BuildTrayTree(
         if (tree.nodes[index].focused) tree.focusedNode = index;
     }
     AppendTrayOverflow(tree, items, layout.nextOverflow);
+    if (dashboard) AppendTrayContextMenu(tree, dashboard->contextMenu);
     if (dashboard && !dashboard->help.empty()) {
         Node help;
         help.id = L"host.dashboard.help";
@@ -307,7 +348,8 @@ Tree BuildOpenWidgetTree(
         node.hostAction = HostAction::ActivateTrayItem;
         node.enabled = item.enabled;
         node.selected = tile.slot == selectedSlot;
-        node.focused = trayFocused && node.selected;
+        node.focused = trayFocused && node.selected &&
+            semantics.contextMenu.targetId.empty();
         node.positionInSet = static_cast<int>(tile.slot + 1);
         node.sizeOfSet = static_cast<int>(items.size());
         const auto index = widgetTree.nodes.size();
@@ -315,6 +357,7 @@ Tree BuildOpenWidgetTree(
         if (widgetTree.nodes[index].focused) widgetTree.focusedNode = index;
     }
     AppendTrayOverflow(widgetTree, items, layout.nextOverflow);
+    AppendTrayContextMenu(widgetTree, semantics.contextMenu);
     return widgetTree;
 }
 

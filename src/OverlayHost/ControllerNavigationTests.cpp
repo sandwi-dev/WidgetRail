@@ -136,6 +136,22 @@ int main() {
     navigator.Prime(-20'000, 0, 700);
     Check(!navigator.Update(-20'000, 0, 710), "priming prevents an opening ghost move");
 
+    widgetrail::input::StickNavigator menuNavigation;
+    menuNavigation.Prime(0, 0, 1'000);
+    const auto menuDown = menuNavigation.UpdateEvent(0, -20'000, 1'010);
+    const auto menuRepeat = menuNavigation.UpdateEvent(0, -20'000, 1'370);
+    const auto menuReverse = menuNavigation.UpdateEvent(0, 20'000, 1'380);
+    Check(menuDown && menuDown->direction == NavigationDirection::Down &&
+              menuDown->phase == widgetrail::input::NavigationEventPhase::Pressed &&
+              menuRepeat && menuRepeat->direction == NavigationDirection::Down &&
+              menuRepeat->phase == widgetrail::input::NavigationEventPhase::Repeated &&
+              menuReverse && menuReverse->direction == NavigationDirection::Up &&
+              menuReverse->phase == widgetrail::input::NavigationEventPhase::Pressed,
+          "vertical tray-menu navigation shares bounded press, repeat, and reversal cadence");
+    menuNavigation.Reset();
+    Check(!menuNavigation.UpdateEvent(0, 0, 1'390),
+          "closing the tray menu retires its held navigation cadence");
+
     using widgetrail::input::FreeScrollAxis;
     using widgetrail::input::RightStickScrollKinetics;
     RightStickScrollKinetics freeScroll;

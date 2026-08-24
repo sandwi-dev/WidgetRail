@@ -1,5 +1,6 @@
 #include "HostAccessibility.h"
 
+#include <algorithm>
 #include <cstdlib>
 #include <iostream>
 
@@ -100,6 +101,73 @@ int main() {
     Check(revision != widgetrail::accessibility::ComputeTraySemanticRevision(
               renamedItems, &dashboard),
           "catalog display-name changes invalidate the host projection revision");
+
+    auto pinDashboard = dashboard;
+    pinDashboard.contextMenu.targetId = L"music";
+    pinDashboard.contextMenu.items = {{
+        L"host.tray.context.primary", L"Pin YT Music",
+        L"Not pinned; creates a Click-through surface", L"music",
+        {12, 100, 216, 48},
+        widgetrail::accessibility::HostAction::PinTrayWidget, true, true,
+    }};
+    const auto pinMenuTree = widgetrail::accessibility::BuildTrayTree(
+        items, *layout, 2, 20, &pinDashboard);
+    const auto pinNode = std::find_if(
+        pinMenuTree.nodes.begin(), pinMenuTree.nodes.end(), [](const auto& node) {
+            return node.id == L"host.tray.context.primary";
+        });
+    Check(pinNode != pinMenuTree.nodes.end() &&
+              pinNode->hostAction == widgetrail::accessibility::HostAction::PinTrayWidget &&
+              pinNode->hostTargetId == L"music" && pinNode->enabled &&
+              pinNode->focused && pinNode->bounds.x == 12 &&
+              pinNode->bounds.y == 100 && pinNode->bounds.width == 216 &&
+              pinNode->bounds.height == 48,
+          "visible Pin exposes one enabled focused host action with exact shared row geometry");
+    Check(pinMenuTree.focusedNode &&
+              pinMenuTree.nodes[*pinMenuTree.focusedNode].id ==
+                  L"host.tray.context.primary" &&
+              std::none_of(pinMenuTree.nodes.begin(), pinMenuTree.nodes.end(),
+                           [](const auto& node) {
+                               return node.domain ==
+                                          widgetrail::accessibility::ElementDomain::Tray &&
+                                   node.focused;
+                           }),
+          "open host menu owns one focus identity without leaving tray focus duplicated");
+
+    auto pinnedDashboard = dashboard;
+    pinnedDashboard.contextMenu.targetId = L"music";
+    pinnedDashboard.contextMenu.items = {
+        {L"host.tray.context.primary", L"Adjust pinned widget",
+         L"Move with left stick or D-pad; resize with right stick", L"music",
+         {12, 8, 216, 48},
+         widgetrail::accessibility::HostAction::AdjustPinnedSurface, true, false},
+        {L"host.tray.context.opacity", L"Opacity — 70%",
+         L"Adjust whole pinned surface opacity from 30 to 100 percent", L"music",
+         {12, 56, 216, 48},
+         widgetrail::accessibility::HostAction::AdjustPinnedOpacity, true, true},
+        {L"host.tray.context.unpin", L"Unpin", L"Remove the pinned surface", L"music",
+         {12, 104, 216, 48},
+         widgetrail::accessibility::HostAction::UnpinSurface, true, false},
+    };
+    const auto pinnedMenuTree = widgetrail::accessibility::BuildTrayTree(
+        items, *layout, 2, 21, &pinnedDashboard);
+    const auto firstMenuNode = std::find_if(
+        pinnedMenuTree.nodes.begin(), pinnedMenuTree.nodes.end(), [](const auto& node) {
+            return node.id == L"host.tray.context.primary";
+        });
+    Check(firstMenuNode != pinnedMenuTree.nodes.end() &&
+              std::distance(firstMenuNode, pinnedMenuTree.nodes.end()) >= 3 &&
+              firstMenuNode[0].hostAction ==
+                  widgetrail::accessibility::HostAction::AdjustPinnedSurface &&
+              firstMenuNode[1].hostAction ==
+                  widgetrail::accessibility::HostAction::AdjustPinnedOpacity &&
+              firstMenuNode[2].hostAction ==
+                  widgetrail::accessibility::HostAction::UnpinSurface &&
+              firstMenuNode[0].bounds.y + firstMenuNode[0].bounds.height ==
+                  firstMenuNode[1].bounds.y &&
+              firstMenuNode[1].bounds.y + firstMenuNode[1].bounds.height ==
+                  firstMenuNode[2].bounds.y,
+          "Adjust, Opacity, and Unpin retain top-to-bottom action and shared-row order");
 
     widgetrail::accessibility::Tree widgetTree;
     widgetTree.widgetId = L"music";

@@ -7,12 +7,15 @@
 #include <fstream>
 #include <iomanip>
 #include <limits>
+#include <sstream>
 #include <utility>
 
 namespace widgetrail::pinned {
 namespace {
 
 constexpr std::size_t kMaximumStoredWidgets = 64;
+constexpr unsigned int kMinimumOpacityPercent = 30;
+constexpr unsigned int kMaximumOpacityPercent = 100;
 
 [[nodiscard]] bool ValidLimits(const PlacementLimits& limits) noexcept {
     return std::isfinite(limits.minimumWidthDip) &&
@@ -98,7 +101,8 @@ constexpr std::size_t kMaximumStoredWidgets = 64;
 std::optional<ResolvedPlacement> ResolveDurablePlacement(
     const std::vector<MonitorWorkArea>& monitors,
     const std::optional<DurablePinnedPlacement>& persisted,
-    const PlacementLimits limits) noexcept {
+    const PlacementLimits limits,
+    const std::optional<std::pair<float, float>> initialWindowExtentDip) noexcept {
     if (!ValidLimits(limits)) return std::nullopt;
     const bool persistedValid = persisted && ValidPlacement(*persisted, limits);
     bool fallback = persisted.has_value() && !persistedValid;
@@ -111,8 +115,16 @@ std::optional<ResolvedPlacement> ResolveDurablePlacement(
         placement.monitorId = monitor->stableId;
         placement.anchorX = 1.0;
         placement.anchorY = 0.0;
-        placement.widthDip = std::clamp(480.0F, limits.minimumWidthDip, limits.maximumWidthDip);
-        placement.heightDip = std::clamp(270.0F, limits.minimumHeightDip, limits.maximumHeightDip);
+        const float initialWidth = initialWindowExtentDip &&
+                std::isfinite(initialWindowExtentDip->first)
+            ? initialWindowExtentDip->first : 480.0F;
+        const float initialHeight = initialWindowExtentDip &&
+                std::isfinite(initialWindowExtentDip->second)
+            ? initialWindowExtentDip->second : 270.0F;
+        placement.widthDip = std::clamp(
+            initialWidth, limits.minimumWidthDip, limits.maximumWidthDip);
+        placement.heightDip = std::clamp(
+            initialHeight, limits.minimumHeightDip, limits.maximumHeightDip);
     }
     const int workWidth = monitor->workArea.right - monitor->workArea.left;
     const int workHeight = monitor->workArea.bottom - monitor->workArea.top;
@@ -161,6 +173,7 @@ std::optional<DurablePinnedPlacement> CaptureDurablePlacement(
         travelY == 0 ? 0.0 : static_cast<double>(constrained.top - monitor.workArea.top) / travelY,
         static_cast<float>(width) * 96.0F / monitor.dpi,
         static_cast<float>(height) * 96.0F / monitor.dpi,
+        100,
     };
 }
 
@@ -169,7 +182,8 @@ std::optional<PlacementSession> BeginPlacementSession(
     const PhysicalRect bounds,
     std::wstring runtimeGeneration,
     std::wstring presentationGeneration) noexcept {
-    if ((mode != PlacementMode::Move && mode != PlacementMode::Resize) ||
+    if ((mode != PlacementMode::Move && mode != PlacementMode::Resize &&
+         mode != PlacementMode::Adjust) ||
         bounds.right <= bounds.left || bounds.bottom <= bounds.top ||
         runtimeGeneration.empty() || presentationGeneration.empty()) return std::nullopt;
     return PlacementSession{
@@ -236,20 +250,50 @@ std::map<std::wstring, DurablePinnedPlacement> PinnedPlacementStore::LoadAll() c
     std::wifstream input(path_);
     std::wstring header;
     std::size_t count{};
-    if (!(input >> header >> count) || header != L"wrail-pinned-placement-v1" ||
+    if (!(input >> header >> count) ||
+        (header != L"wrail-pinned-placement-v1" &&
+         header != L"wrail-pinned-placement-v2") ||
         count > kMaximumStoredWidgets) return {};
+    const bool hasOpacity = header == L"wrail-pinned-placement-v2";
+    input.ignore(std::numeric_limits<std::streamsize>::max(), L'\n');
     for (std::size_t index = 0; index < count; ++index) {
+        std::wstring line;
+        if (!std::getline(input, line)) return {};
+        std::wistringstream row(line);
         std::wstring widgetId;
         DurablePinnedPlacement placement;
-        if (!(input >> std::quoted(widgetId) >> placement.schemaVersion >>
+        if (!(row >> std::quoted(widgetId) >> placement.schemaVersion >>
               std::quoted(placement.monitorId) >> placement.anchorX >> placement.anchorY >>
               placement.widthDip >> placement.heightDip) ||
             widgetId.empty() || widgetId.size() > 128 ||
             !ValidPlacement(placement, {})) return {};
+        if (hasOpacity) {
+            std::wstring opacityToken;
+            if (row >> opacityToken) {
+                std::size_t consumed{};
+                try {
+                    const auto parsed = std::stoull(opacityToken, &consumed, 10);
+                    placement.opacityPercent = consumed == opacityToken.size() &&
+                            parsed <= std::numeric_limits<unsigned int>::max()
+                        ? static_cast<unsigned int>(parsed)
+                        : kMaximumOpacityPercent;
+                } catch (...) {
+                    placement.opacityPercent = kMaximumOpacityPercent;
+                }
+            }
+        }
+        std::wstring trailingField;
+        if (row >> trailingField) return {};
+        if (placement.opacityPercent < kMinimumOpacityPercent ||
+            placement.opacityPercent > kMaximumOpacityPercent)
+            placement.opacityPercent = kMaximumOpacityPercent;
         placements.insert_or_assign(std::move(widgetId), std::move(placement));
     }
-    std::wstring trailing;
-    if (input >> trailing) return {};
+    std::wstring trailingLine;
+    while (std::getline(input, trailingLine)) {
+        if (trailingLine.find_first_not_of(L" \t\r\n") != std::wstring::npos)
+            return {};
+    }
     return placements;
 }
 
@@ -288,13 +332,13 @@ bool PinnedPlacementStore::Save(
             error = L"Pinned placement temporary file could not be created.";
             return false;
         }
-        output << L"wrail-pinned-placement-v1 " << all.size() << L'\n'
+        output << L"wrail-pinned-placement-v2 " << all.size() << L'\n'
                << std::setprecision(17);
         for (const auto& [id, value] : all) {
             output << std::quoted(id) << L' ' << value.schemaVersion << L' '
                    << std::quoted(value.monitorId) << L' ' << value.anchorX << L' '
                    << value.anchorY << L' ' << value.widthDip << L' '
-                   << value.heightDip << L'\n';
+                   << value.heightDip << L' ' << value.opacityPercent << L'\n';
         }
         output.flush();
         if (!output) {

@@ -60,6 +60,8 @@ struct WidgetSurfaceAdmission final {
     std::wstring name;
     bool pinningSupported{};
     WidgetSnapshot snapshot;
+    float initialContentWidthDip{480.0F};
+    float initialContentHeightDip{270.0F};
     // Host-injected policy. Public manifests cannot set physical geometry.
     PlacementLimits placementLimits{};
 };
@@ -113,8 +115,16 @@ public:
     [[nodiscard]] bool EmergencyHideAll() noexcept;
     [[nodiscard]] bool BeginPlacement(PlacementMode mode);
     [[nodiscard]] bool StepPlacement(PlacementDirection direction, float stepDip = 16.0F);
+    [[nodiscard]] bool StepPlacement(
+        PlacementMode operation,
+        PlacementDirection direction,
+        float stepDip = 16.0F);
     [[nodiscard]] bool CommitPlacement(std::wstring& error);
     [[nodiscard]] bool CancelPlacement() noexcept;
+    [[nodiscard]] bool BeginOpacityAdjustment();
+    [[nodiscard]] bool StepOpacity(PlacementDirection direction);
+    [[nodiscard]] bool CommitOpacity(std::wstring& error);
+    [[nodiscard]] bool CancelOpacity() noexcept;
     void ReconcileDisplayEnvironment() noexcept;
 #ifdef WRAIL_WIDGET_SURFACE_COORDINATOR_TESTING
     void ReconcileDisplayEnvironmentForTesting(
@@ -147,6 +157,12 @@ public:
     [[nodiscard]] PlacementMode placementMode() const noexcept {
         return placementSession_ ? placementSession_->mode : PlacementMode::None;
     }
+    [[nodiscard]] bool opacityAdjustmentActive() const noexcept {
+        return opacityPreviewOriginal_.has_value();
+    }
+    [[nodiscard]] unsigned int opacityPercent() const noexcept {
+        return opacityPercent_;
+    }
     [[nodiscard]] std::size_t teardownCount() const noexcept { return teardownCount_; }
     [[nodiscard]] WidgetSurfaceStopReason lastStopReason() const noexcept {
         return lastStopReason_;
@@ -167,6 +183,8 @@ private:
     void ReconcileDisplayEnvironment(
         const std::vector<MonitorWorkArea>& monitors) noexcept;
     void ApplyPlacementBounds(const PhysicalRect& bounds) noexcept;
+    void ApplyOpacity() noexcept;
+    [[nodiscard]] bool SaveCurrentState(std::wstring& error);
     void HandleAccessibilityActions();
     void QueueResolvedInput(
         std::wstring nodeId,
@@ -201,6 +219,8 @@ private:
     std::unique_ptr<PinnedPlacementStore> placementStore_;
     std::optional<DurablePinnedPlacement> committedPlacement_;
     std::optional<PlacementSession> placementSession_;
+    unsigned int opacityPercent_{100};
+    std::optional<unsigned int> opacityPreviewOriginal_;
     RenderResult lastRenderResult_;
     std::wstring focusedElementId_;
     std::vector<WidgetSurfaceInputRequest> inputRequests_;

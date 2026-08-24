@@ -14,6 +14,22 @@ struct TrayItem final {
     bool enabled{true};
 };
 
+struct TrayContextMenuItem final {
+    std::wstring id;
+    std::wstring name;
+    std::wstring value;
+    std::wstring targetId;
+    declarative::Rect bounds;
+    HostAction action{HostAction::None};
+    bool enabled{};
+    bool selected{};
+};
+
+struct TrayContextMenuSemantics final {
+    std::wstring targetId;
+    std::vector<TrayContextMenuItem> items;
+};
+
 struct DashboardSemantics final {
     std::wstring title;
     declarative::Rect titleBounds;
@@ -21,6 +37,7 @@ struct DashboardSemantics final {
     declarative::Rect helpBounds;
     std::wstring status;
     declarative::Rect statusBounds;
+    TrayContextMenuSemantics contextMenu;
 };
 
 struct OpenWidgetSemantics final {
@@ -33,6 +50,7 @@ struct OpenWidgetSemantics final {
     declarative::Rect helpBounds;
     std::wstring status;
     declarative::Rect statusBounds;
+    TrayContextMenuSemantics contextMenu;
 };
 
 /// Mirrors managed open-widget B resolution for the exact active scope and

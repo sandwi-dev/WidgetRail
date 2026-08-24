@@ -1352,13 +1352,7 @@ private:
         case WM_NCHITTEST: {
             POINT point{static_cast<LONG>(static_cast<short>(LOWORD(lParam))),
                         static_cast<LONG>(static_cast<short>(HIWORD(lParam)))};
-            if (!app->compositionChromeSession_) return HTTRANSPARENT;
-            const auto guide = app->ProjectChromeClientBoundsToScreen(
-                app->compositionChromeSession_->guideClientBounds);
-            const auto tray = app->ProjectChromeClientBoundsToScreen(
-                app->compositionChromeSession_->trayClientBounds);
-            if (!guide || !tray ||
-                !widgetrail::shell::IsFixedChromeHit(point, *guide, *tray))
+            if (!app->IsCurrentFixedChromeHit(point))
                 return HTTRANSPARENT;
             return HTCLIENT;
         }
@@ -1375,6 +1369,14 @@ private:
                 window, app->window_, lParam, app,
                 [](void* context, const float x, const float y) noexcept {
                     static_cast<OverlayApp*>(context)->HandlePointerActivation(x, y);
+                });
+            return 0;
+        }
+        case WM_RBUTTONUP: {
+            (void)widgetrail::shell::RouteFixedChromePointerRelease(
+                window, app->window_, lParam, app,
+                [](void* context, const float x, const float y) noexcept {
+                    static_cast<OverlayApp*>(context)->HandlePointerActivation(x, y, true);
                 });
             return 0;
         }
@@ -1587,6 +1589,11 @@ private:
             return 0;
         case kPinnedSurfaceChangedMessage:
             DrainPinnedSurfaceInputs();
+            if (!pinnedSurfaceCoordinator_.pinned() ||
+                pinnedSurfaceCoordinator_.placementMode() ==
+                    widgetrail::pinned::PlacementMode::None) {
+                placementRightStickNavigator_.Reset();
+            }
             if (state_.surface() == widgetrail::Surface::Hidden) {
                 if (pinnedSurfaceCoordinator_.pinned())
                     SetTimer(window_, kPinnedSurfaceTimer, 100, nullptr);
@@ -1698,6 +1705,11 @@ private:
             HandlePointerActivation(
                 static_cast<float>(static_cast<short>(LOWORD(lParam))),
                 static_cast<float>(static_cast<short>(HIWORD(lParam))));
+            return 0;
+        case WM_RBUTTONUP:
+            HandlePointerActivation(
+                static_cast<float>(static_cast<short>(LOWORD(lParam))),
+                static_cast<float>(static_cast<short>(HIWORD(lParam))), true);
             return 0;
         case WM_TIMER:
             if (performanceCountersActive_) {
@@ -2042,6 +2054,7 @@ private:
             (void)bridge_.CancelLocalWidgetPackageInstall(
                 *operation);
         }
+        placementRightStickNavigator_.Reset();
         pinnedSurfaceCoordinator_.Dispose();
         DiscardGraphicsResources();
         widgetrail::shell::ResetFixedChromeComposition(
@@ -2126,6 +2139,12 @@ private:
         const auto before = state_.persistent();
         if (!mutation()) {
             return;
+        }
+        if (trayContextMenu_ &&
+            (state_.focusRegion() != widgetrail::FocusRegion::Tray ||
+             trayContextMenu_->widgetId != state_.selectedWidget())) {
+            trayContextMenu_.reset();
+            retainedTrayPaintState_.reset();
         }
         // Any accepted shell transition changes focus, selection, presentation,
         // reorder, or lifecycle authority. A pending Y must never survive it;
@@ -2585,6 +2604,7 @@ private:
 
     void ApplyPendingDisplayEnvironmentRefresh() {
         const auto plan = displayRefresh_.Take();
+        placementRightStickNavigator_.Reset();
         pinnedSurfaceCoordinator_.ReconcileDisplayEnvironment();
         if (state_.surface() == widgetrail::Surface::Hidden) return;
         if (!plan.repositionWindows) return;
@@ -3807,6 +3827,7 @@ private:
             (void)bridge_.CancelLocalWidgetPackageInstall(
                 *operation);
         }
+        placementRightStickNavigator_.Reset();
         (void)pinnedSurfaceCoordinator_.CancelPlacement();
         pinnedSurfaceCoordinator_.OnOverlayHidden();
         KillTimer(window_, kControllerTimer);
@@ -3951,6 +3972,66 @@ private:
         request.minimumWidthDip = toFloat(snapshot.surface->minimumWidth);
         request.minimumHeightDip = toFloat(snapshot.surface->minimumHeight);
         return request;
+    }
+
+    [[nodiscard]] widgetrail::ResolvedWidgetSurface
+    ResolvePinnedContentSurface(const widgetrail::WidgetSnapshot& snapshot) const {
+        const auto request = WidgetSurfaceRequestForSnapshot(snapshot);
+        RECT workArea{};
+        UINT dpi = 96;
+        float interfaceScale = 1.0F;
+        if (fixedChromeAnchor_) {
+            workArea = fixedChromeAnchor_->workArea;
+            dpi = fixedChromeAnchor_->dpi;
+            interfaceScale = fixedChromeAnchor_->interfaceScale;
+        } else {
+            const HMONITOR monitor = MonitorFromWindow(
+                window_, MONITOR_DEFAULTTONEAREST);
+            MONITORINFO monitorInfo{sizeof(monitorInfo)};
+            UINT dpiY = 96;
+            if (!monitor || !GetMonitorInfoW(monitor, &monitorInfo))
+                return widgetrail::ResolveWidgetSurfaceTarget(
+                    request, CurrentTextScale());
+            workArea = monitorInfo.rcWork;
+            if (FAILED(GetDpiForMonitor(
+                    monitor, MDT_EFFECTIVE_DPI, &dpi, &dpiY)) ||
+                dpi == 0 || dpiY == 0) dpi = 96;
+            interfaceScale = appearanceState_.current()
+                ? static_cast<float>(appearanceState_.current()->interfaceScale)
+                : 1.0F;
+        }
+        const widgetrail::WidgetSurfaceConstraints constraints{
+            {workArea.left, workArea.top, workArea.right, workArea.bottom},
+            dpi,
+            interfaceScale,
+            fixedChromeAnchor_ ? fixedChromeAnchor_->textScale : CurrentTextScale(),
+        };
+        widgetrail::WidgetSurfaceIntrinsicMeasure measure;
+        if (request && declarativeRenderer_ &&
+            (request->widthMode == widgetrail::WidgetSurfaceAxisMode::Content ||
+             request->heightMode == widgetrail::WidgetSurfaceAxisMode::Content)) {
+            const bool intrinsicWidth =
+                request->widthMode == widgetrail::WidgetSurfaceAxisMode::Content;
+            measure = [this, &snapshot, dpi, interfaceScale, intrinsicWidth](
+                const float maximumWidthDip,
+                const float maximumHeightDip)
+                -> std::optional<widgetrail::WidgetSurfaceIntrinsicExtent> {
+                widgetrail::DeclarativeRenderOptions options;
+                options.pixelScale = static_cast<float>(dpi) / 96.0F * interfaceScale;
+                options.accessibility = CurrentAccessibilityPolicy();
+                options.surfaceBackground = effectivePanelBackground_;
+                const auto measured = declarativeRenderer_->MeasureContent(
+                    snapshot, {maximumWidthDip, maximumHeightDip},
+                    intrinsicWidth, options);
+                if (!measured.succeeded) return std::nullopt;
+                return widgetrail::WidgetSurfaceIntrinsicExtent{
+                    measured.extent.width, measured.extent.height};
+            };
+        }
+        return widgetrail::ResolveWidgetSurface(
+            request, constraints, measure).value_or(
+                widgetrail::ResolveWidgetSurfaceTarget(
+                    request, CurrentTextScale()));
     }
 
     void CommitAdmittedWidgetPresentation(const std::wstring_view widgetId) {
@@ -4712,6 +4793,151 @@ private:
         bool activate{};
     };
 
+    struct CurrentPinActionState final {
+        bool enabled{};
+        bool selected{};
+        std::wstring name;
+        std::wstring value;
+        std::wstring targetId;
+    };
+
+    struct TrayContextMenuState final {
+        std::wstring widgetId;
+        std::size_t selectedItem{};
+    };
+
+    struct TrayContextMenuLayout final {
+        widgetrail::declarative::Rect bounds;
+        widgetrail::accessibility::TrayContextMenuSemantics semantics;
+    };
+
+    static constexpr float kTrayContextMenuItemHeightDip = 48.0F;
+    static constexpr float kTrayContextMenuGapDip = 8.0F;
+    static constexpr std::size_t kTrayContextMenuMaximumItems = 3;
+    static constexpr float kTrayContextMenuHeadroomDip =
+        kTrayContextMenuGapDip +
+        kTrayContextMenuItemHeightDip *
+            static_cast<float>(kTrayContextMenuMaximumItems);
+
+    [[nodiscard]] CurrentPinActionState PinActionFor(
+        const std::wstring_view widgetId) const {
+        CurrentPinActionState action;
+        action.targetId = std::wstring{widgetId};
+        const auto* descriptor = sessions_.FindDescriptor(action.targetId);
+        const bool samePinnedWidget = pinnedSurfaceCoordinator_.pinned() &&
+            pinnedSurfaceCoordinator_.widgetId() == action.targetId;
+        if (samePinnedWidget) {
+            action.enabled = true;
+            action.selected = true;
+            action.name = L"Unpin " + std::wstring{DisplayWidgetName(action.targetId)};
+            action.value = pinnedSurfaceCoordinator_.interactionMode() ==
+                    widgetrail::pinned::InteractionMode::Focusable
+                ? L"Pinned, Interactive"
+                : L"Pinned, Click-through";
+            return action;
+        }
+        if (pinnedSurfaceCoordinator_.pinned()) {
+            action.name = L"Pin unavailable";
+            action.value = L"Another widget is pinned";
+            return action;
+        }
+        if (!descriptor || !descriptor->pinningSupported) {
+            action.name = L"Pin unavailable";
+            action.value = descriptor
+                ? L"This widget does not support pinning"
+                : L"The current widget is unavailable";
+            return action;
+        }
+        if (!SnapshotFor(action.targetId)) {
+            action.name = L"Pin unavailable";
+            action.value = L"The current widget is still loading";
+            return action;
+        }
+        action.enabled = true;
+        action.name = L"Pin " + std::wstring{DisplayWidgetName(action.targetId)};
+        action.value = L"Not pinned; creates a Click-through surface";
+        return action;
+    }
+
+    [[nodiscard]] std::vector<CurrentPinActionState> CurrentTrayMenuActions() const {
+        if (!trayContextMenu_ || trayContextMenu_->widgetId != state_.selectedWidget())
+            return {};
+        const auto pin = PinActionFor(trayContextMenu_->widgetId);
+        if (!pin.selected) return {pin};
+        CurrentPinActionState adjust;
+        adjust.enabled = true;
+        adjust.selected = true;
+        adjust.name = L"Adjust pinned widget";
+        adjust.value = L"Move with left stick or D-pad; resize with right stick";
+        adjust.targetId = pin.targetId;
+        CurrentPinActionState opacity;
+        opacity.enabled = true;
+        opacity.selected = true;
+        opacity.name = L"Opacity — " +
+            std::to_wstring(pinnedSurfaceCoordinator_.opacityPercent()) + L"%";
+        opacity.value = L"Adjust whole pinned surface opacity from 30 to 100 percent";
+        opacity.targetId = pin.targetId;
+        CurrentPinActionState unpin;
+        unpin.enabled = true;
+        unpin.selected = true;
+        unpin.name = L"Unpin";
+        unpin.value = L"Remove the pinned surface";
+        unpin.targetId = pin.targetId;
+        return {std::move(adjust), std::move(opacity), std::move(unpin)};
+    }
+
+    [[nodiscard]] std::optional<TrayContextMenuLayout> CurrentTrayContextMenuLayout(
+        const widgetrail::shell::TrayLayout& tray,
+        const float width) const {
+        const auto actions = CurrentTrayMenuActions();
+        if (!trayContextMenu_ || actions.empty()) return std::nullopt;
+        const auto tile = std::find_if(
+            tray.tiles.begin(), tray.tiles.end(), [&](const auto& candidate) {
+                return candidate.slot < state_.order().size() &&
+                    state_.order()[candidate.slot] == trayContextMenu_->widgetId;
+            });
+        if (tile == tray.tiles.end()) return std::nullopt;
+        const float menuWidth = std::min(286.0F, std::max(1.0F, width - 16.0F));
+        const float menuHeight =
+            kTrayContextMenuItemHeightDip * static_cast<float>(actions.size());
+        const float left = std::clamp(
+            tile->bounds.x + tile->bounds.width * 0.5F - menuWidth * 0.5F,
+            8.0F, std::max(8.0F, width - menuWidth - 8.0F));
+        const float top =
+            tray.stripBounds.y - kTrayContextMenuGapDip - menuHeight;
+        TrayContextMenuLayout result;
+        result.bounds = {left, top, menuWidth, menuHeight};
+        result.semantics.targetId = trayContextMenu_->widgetId;
+        result.semantics.items.reserve(actions.size());
+        const std::size_t selectedItem = std::min(
+            trayContextMenu_->selectedItem, actions.size() - 1);
+        for (std::size_t index = 0; index < actions.size(); ++index) {
+            const auto& action = actions[index];
+            const auto hostAction = !action.selected
+                ? widgetrail::accessibility::HostAction::PinTrayWidget
+                : index == 0
+                    ? widgetrail::accessibility::HostAction::AdjustPinnedSurface
+                    : index == 1
+                        ? widgetrail::accessibility::HostAction::AdjustPinnedOpacity
+                        : widgetrail::accessibility::HostAction::UnpinSurface;
+            result.semantics.items.push_back({
+                index == 0 ? L"host.tray.context.primary"
+                    : index == 1 ? L"host.tray.context.opacity"
+                                 : L"host.tray.context.unpin",
+                action.name,
+                action.value,
+                action.targetId,
+                {left, top +
+                    kTrayContextMenuItemHeightDip * static_cast<float>(index),
+                 menuWidth, kTrayContextMenuItemHeightDip},
+                hostAction,
+                action.enabled,
+                index == selectedItem,
+            });
+        }
+        return result;
+    }
+
     [[nodiscard]] std::optional<widgetrail::CompositionMotionPlan>
     CurrentCompositionMotionPlan() const {
         if (!compositionSurface_.available()) return std::nullopt;
@@ -4865,31 +5091,10 @@ private:
             L",tray:" + std::to_wstring(counters.tray));
     }
 
-    [[nodiscard]] std::optional<TrayPointerTarget> HitTrayTarget(
-        const float x,
-        const float y,
-        const float width,
-        const float height,
-        const widgetrail::OverlaySurfaceGeometry* surfaceGeometry) const {
-        const auto layout = widgetrail::shell::ComputeTrayLayout(
-            width, height, state_.order().size(), state_.selectedSlot(),
-            surfaceGeometry
-                ? std::optional<widgetrail::shell::TrayBand>{widgetrail::shell::TrayBand{
-                    surfaceGeometry->trayY,
-                    surfaceGeometry->trayY + surfaceGeometry->trayHeight,
-                }}
-                : std::nullopt);
-        if (!layout) return std::nullopt;
-        const auto* hit = widgetrail::shell::HitTestTray(*layout, x, y);
-        if (hit) return TrayPointerTarget{hit->slot, true};
-        const auto* overflow = widgetrail::shell::HitTestTrayOverflow(*layout, x, y);
-        return overflow
-            ? std::optional<TrayPointerTarget>{TrayPointerTarget{
-                overflow->targetSlot, false}}
-            : std::nullopt;
-    }
-
-    void HandlePointerActivation(const float clientX, const float clientY) {
+    void HandlePointerActivation(
+        const float clientX,
+        const float clientY,
+        const bool openContext = false) {
         if (state_.surface() == widgetrail::Surface::Hidden || !window_) return;
         RECT client{};
         if (!GetClientRect(window_, &client)) return;
@@ -4928,7 +5133,46 @@ private:
         const float trayX = trayPoint.x / trayPixelsPerDip;
         const float trayY = trayPoint.y / trayPixelsPerDip;
 
+        std::optional<widgetrail::OverlaySurfaceGeometry> surfaceGeometry;
         if (state_.surface() == widgetrail::Surface::Widget) {
+            surfaceGeometry = ComputeCurrentWidgetSurfaceGeometry(
+                metrics->viewportWidthDip, metrics->viewportHeightDip);
+        }
+        auto trayLayout = CurrentCompositionTrayLayout();
+        if (!trayLayout) {
+            trayLayout = widgetrail::shell::ComputeTrayLayout(
+                metrics->viewportWidthDip, metrics->viewportHeightDip,
+                state_.order().size(), state_.selectedSlot(),
+                surfaceGeometry
+                    ? std::optional<widgetrail::shell::TrayBand>{widgetrail::shell::TrayBand{
+                        surfaceGeometry->trayY,
+                        surfaceGeometry->trayY + surfaceGeometry->trayHeight}}
+                    : std::nullopt);
+        }
+        if (trayContextMenu_ && trayLayout) {
+            const auto menu = CurrentTrayContextMenuLayout(
+                *trayLayout,
+                CurrentTrayViewportWidthDip(metrics->viewportWidthDip));
+            if (menu) {
+                const auto item = std::find_if(
+                    menu->semantics.items.begin(), menu->semantics.items.end(),
+                    [&](const auto& candidate) {
+                        const auto& bounds = candidate.bounds;
+                        return trayX >= bounds.x && trayY >= bounds.y &&
+                            trayX <= bounds.x + bounds.width &&
+                            trayY <= bounds.y + bounds.height;
+                    });
+                if (item != menu->semantics.items.end()) {
+                    ActivateTrayContextMenuItem(static_cast<std::size_t>(
+                        std::distance(menu->semantics.items.begin(), item)));
+                    return;
+                }
+            }
+            CloseTrayContextMenu();
+            return;
+        }
+
+        if (!openContext && state_.surface() == widgetrail::Surface::Widget) {
             const std::wstring widget{state_.activeWidget()};
             const auto* snapshot = InteractionSnapshotFor(widget);
             if (snapshot) {
@@ -4953,24 +5197,14 @@ private:
             }
         }
 
-        std::optional<widgetrail::OverlaySurfaceGeometry> surfaceGeometry;
-        if (state_.surface() == widgetrail::Surface::Widget) {
-            surfaceGeometry = ComputeCurrentWidgetSurfaceGeometry(
-                metrics->viewportWidthDip, metrics->viewportHeightDip);
-        }
         std::optional<TrayPointerTarget> trayTarget;
-        if (const auto sessionTray = CurrentCompositionTrayLayout()) {
-            if (const auto* hit = widgetrail::shell::HitTestTray(*sessionTray, trayX, trayY)) {
+        if (trayLayout) {
+            if (const auto* hit = widgetrail::shell::HitTestTray(*trayLayout, trayX, trayY)) {
                 trayTarget = TrayPointerTarget{hit->slot, true};
             } else if (const auto* overflow = widgetrail::shell::HitTestTrayOverflow(
-                           *sessionTray, trayX, trayY)) {
+                           *trayLayout, trayX, trayY)) {
                 trayTarget = TrayPointerTarget{overflow->targetSlot, false};
             }
-        } else {
-            trayTarget = HitTrayTarget(
-                trayX, trayY,
-                metrics->viewportWidthDip, metrics->viewportHeightDip,
-                surfaceGeometry ? &*surfaceGeometry : nullptr);
         }
         if (!trayTarget || trayTarget->slot >= state_.order().size()) return;
         if (state_.surface() == widgetrail::Surface::Widget &&
@@ -4980,7 +5214,9 @@ private:
         if (state_.reorderMode()) Dispatch(widgetrail::Command::Cancel);
         const std::wstring targetWidget = state_.order()[trayTarget->slot];
         if (!SelectTrayWidget(targetWidget)) return;
-        if (trayTarget->activate && state_.selectedSlot() == trayTarget->slot) {
+        if (openContext) {
+            OpenTrayContextMenu(targetWidget);
+        } else if (trayTarget->activate && state_.selectedSlot() == trayTarget->slot) {
             Dispatch(widgetrail::Command::Activate);
         }
     }
@@ -5060,6 +5296,133 @@ private:
         return fallbackTray && contains(trayX, trayY, fallbackTray->stripBounds);
     }
 
+    void PinWidget(const std::wstring_view requestedWidgetId) {
+        if (pinnedSurfaceCoordinator_.pinned()) return;
+        const std::wstring widgetId(requestedWidgetId);
+        const auto* descriptor = sessions_.FindDescriptor(widgetId);
+        const auto* snapshot = SnapshotFor(widgetId);
+        if (!descriptor || !descriptor->pinningSupported || !snapshot) {
+            lastActionWidgetId_ = widgetId;
+            lastActionMessage_ = descriptor && descriptor->pinningSupported
+                ? L"Pinned surface unavailable until the widget has loaded"
+                : L"This widget does not support pinned surfaces";
+            lastActionExpiresAt_ = GetTickCount64() + 4000;
+            InvalidateRect(window_, nullptr, FALSE);
+            return;
+        }
+        std::wstring error;
+        const auto pinnedSurface = ResolvePinnedContentSurface(*snapshot);
+        if (!pinnedSurfaceCoordinator_.Pin({
+                descriptor->id,
+                descriptor->instanceId,
+                descriptor->runtimeGeneration,
+                descriptor->presentationGeneration,
+                descriptor->name,
+                descriptor->pinningSupported,
+                *snapshot,
+                pinnedSurface.panelWidthDip,
+                pinnedSurface.panelHeightDip,
+            }, error)) {
+            lastActionWidgetId_ = widgetId;
+            lastActionMessage_ = error;
+            lastActionExpiresAt_ = GetTickCount64() + 4000;
+            AppendDiagnostic(L"Pinned surface rejected for " + widgetId + L": " + error);
+            InvalidateRect(window_, nullptr, FALSE);
+            return;
+        }
+        lastActionWidgetId_ = widgetId;
+        lastActionMessage_ =
+            L"Pinned click-through surface created. From the tray, press View to enter or Menu for options.";
+        lastActionExpiresAt_ = GetTickCount64() + 5000;
+        SyncWidgetActivity();
+        AppendDiagnostic(L"Pinned surface created for " + widgetId);
+        InvalidateRect(window_, nullptr, FALSE);
+    }
+
+    void PinCurrentSurface() {
+        if (state_.surface() != widgetrail::Surface::Widget) {
+            lastActionWidgetId_.clear();
+            lastActionMessage_ = L"Open a pinnable widget before pressing P";
+            lastActionExpiresAt_ = GetTickCount64() + 3000;
+            InvalidateRect(window_, nullptr, FALSE);
+            return;
+        }
+        PinWidget(state_.activeWidget());
+    }
+
+    void CloseTrayContextMenu() {
+        if (!trayContextMenu_) return;
+        trayContextMenu_.reset();
+        retainedTrayPaintState_.reset();
+        (void)SetFocus(window_);
+        InvalidateRect(window_, nullptr, FALSE);
+    }
+
+    void OpenTrayContextMenu(const std::wstring_view widgetId) {
+        if (state_.surface() == widgetrail::Surface::Hidden ||
+            state_.focusRegion() != widgetrail::FocusRegion::Tray ||
+            pinnedSurfaceCoordinator_.controllerFocused() ||
+            widgetId.empty() || widgetId != state_.selectedWidget()) return;
+        trayContextMenu_ = TrayContextMenuState{std::wstring(widgetId), 0};
+        retainedTrayPaintState_.reset();
+        (void)SetFocus(window_);
+        InvalidateRect(window_, nullptr, FALSE);
+    }
+
+    void ActivateTrayContextMenuItem(const std::size_t itemIndex) {
+        const auto actions = CurrentTrayMenuActions();
+        if (!trayContextMenu_ || itemIndex >= actions.size()) return;
+        const auto action = actions[itemIndex];
+        const std::wstring widgetId = trayContextMenu_->widgetId;
+        if (!action.enabled) {
+            lastActionWidgetId_ = widgetId;
+            lastActionMessage_ = action.value;
+            lastActionExpiresAt_ = GetTickCount64() + 4000;
+            InvalidateRect(window_, nullptr, FALSE);
+            return;
+        }
+        CloseTrayContextMenu();
+        if (!action.selected) {
+            PinWidget(widgetId);
+            return;
+        }
+        if (itemIndex == 0) {
+            placementRightStickNavigator_.Reset();
+            if (pinnedSurfaceCoordinator_.pinned() &&
+                pinnedSurfaceCoordinator_.widgetId() == widgetId &&
+                pinnedSurfaceCoordinator_.BeginPlacement(
+                    widgetrail::pinned::PlacementMode::Adjust)) {
+                (void)interactionSession_.TransitionPressedPresentation(
+                    widgetrail::input::PressedInputTransition::Clear);
+                lastActionWidgetId_ = widgetId;
+                lastActionMessage_ =
+                    L"Adjust pinned widget: left stick/D-pad move, right stick resize, A commit, B cancel";
+                lastActionExpiresAt_ = GetTickCount64() + 6000;
+            }
+            return;
+        }
+        if (itemIndex == 1) {
+            if (pinnedSurfaceCoordinator_.pinned() &&
+                pinnedSurfaceCoordinator_.widgetId() == widgetId &&
+                pinnedSurfaceCoordinator_.BeginOpacityAdjustment()) {
+                (void)interactionSession_.TransitionPressedPresentation(
+                    widgetrail::input::PressedInputTransition::Clear);
+                lastActionWidgetId_ = widgetId;
+                lastActionMessage_ = L"Opacity: Left/Right adjusts by 10%, A saves, B cancels";
+                lastActionExpiresAt_ = GetTickCount64() + 6000;
+            }
+            return;
+        }
+        (void)pinnedSurfaceCoordinator_.Unpin(
+            widgetrail::pinned::WidgetSurfaceStopReason::Unpin);
+        lastActionWidgetId_ = widgetId;
+        lastActionMessage_ = L"Pinned surface removed";
+        lastActionExpiresAt_ = GetTickCount64() + 2400;
+        SyncWidgetActivity();
+        AppendDiagnostic(L"Pinned surface removed for " + widgetId);
+        InvalidateRect(window_, nullptr, FALSE);
+    }
+
     void ToggleCurrentPinnedSurface() {
         if (pinnedSurfaceCoordinator_.pinned()) {
             const std::wstring widgetId(pinnedSurfaceCoordinator_.widgetId());
@@ -5087,50 +5450,7 @@ private:
             }
             return;
         }
-        if (state_.surface() != widgetrail::Surface::Widget) {
-            lastActionWidgetId_.clear();
-            lastActionMessage_ = L"Open a pinnable widget before pressing P";
-            lastActionExpiresAt_ = GetTickCount64() + 3000;
-            InvalidateRect(window_, nullptr, FALSE);
-            return;
-        }
-        const std::wstring widgetId(state_.activeWidget());
-        const auto* descriptor = sessions_.FindDescriptor(widgetId);
-        const auto* snapshot = SnapshotFor(widgetId);
-        if (!descriptor ||
-            !descriptor->pinningSupported || !snapshot) {
-            lastActionWidgetId_ = widgetId;
-            lastActionMessage_ = descriptor &&
-                    descriptor->pinningSupported
-                ? L"Pinned surface unavailable until the widget has loaded"
-                : L"This widget does not support pinned surfaces";
-            lastActionExpiresAt_ = GetTickCount64() + 4000;
-            InvalidateRect(window_, nullptr, FALSE);
-            return;
-        }
-        std::wstring error;
-        if (!pinnedSurfaceCoordinator_.Pin({
-                descriptor->id,
-                descriptor->instanceId,
-                descriptor->runtimeGeneration,
-                descriptor->presentationGeneration,
-                descriptor->name,
-                descriptor->pinningSupported,
-                *snapshot,
-            }, error)) {
-            lastActionWidgetId_ = widgetId;
-            lastActionMessage_ = error;
-            lastActionExpiresAt_ = GetTickCount64() + 4000;
-            AppendDiagnostic(L"Pinned surface rejected for " + widgetId + L": " + error);
-            InvalidateRect(window_, nullptr, FALSE);
-            return;
-        }
-        lastActionWidgetId_ = widgetId;
-        lastActionMessage_ = L"Pinned click-through surface created. Press P to interact or U to unpin.";
-        lastActionExpiresAt_ = GetTickCount64() + 5000;
-        SyncWidgetActivity();
-        AppendDiagnostic(L"Pinned surface created for " + widgetId);
-        InvalidateRect(window_, nullptr, FALSE);
+        PinCurrentSurface();
     }
 
     void DrainPinnedSurfaceInputs() {
@@ -5179,6 +5499,7 @@ private:
 
     void EmergencyHidePinnedSurfaces() {
         if (!pinnedSurfaceCoordinator_.pinned()) return;
+        placementRightStickNavigator_.Reset();
         const std::wstring widgetId(pinnedSurfaceCoordinator_.widgetId());
         (void)interactionSession_.TransitionPressedPresentation(
             widgetrail::input::PressedInputTransition::Clear);
@@ -5200,21 +5521,46 @@ private:
             EmergencyHidePinnedSurfaces();
             return;
         }
-        if (pinnedSurfaceCoordinator_.placementMode() !=
-            widgetrail::pinned::PlacementMode::None) {
+        if (pinnedSurfaceCoordinator_.opacityAdjustmentActive()) {
             bool changed = false;
             if (key == VK_LEFT)
-                changed = pinnedSurfaceCoordinator_.StepPlacement(
+                changed = pinnedSurfaceCoordinator_.StepOpacity(
                     widgetrail::pinned::PlacementDirection::Left);
             else if (key == VK_RIGHT)
-                changed = pinnedSurfaceCoordinator_.StepPlacement(
+                changed = pinnedSurfaceCoordinator_.StepOpacity(
                     widgetrail::pinned::PlacementDirection::Right);
+            else if (!repeated && key == VK_RETURN) {
+                std::wstring error;
+                changed = pinnedSurfaceCoordinator_.CommitOpacity(error);
+                lastActionMessage_ = changed ? L"Pinned opacity saved" : error;
+                lastActionExpiresAt_ = GetTickCount64() + 3000;
+            } else if (!repeated && key == VK_ESCAPE) {
+                changed = pinnedSurfaceCoordinator_.CancelOpacity();
+                lastActionMessage_ = L"Pinned opacity canceled";
+                lastActionExpiresAt_ = GetTickCount64() + 2400;
+            }
+            if (changed) InvalidateRect(window_, nullptr, FALSE);
+            return;
+        }
+        if (pinnedSurfaceCoordinator_.placementMode() !=
+            widgetrail::pinned::PlacementMode::None) {
+            const bool adjusting = pinnedSurfaceCoordinator_.placementMode() ==
+                widgetrail::pinned::PlacementMode::Adjust;
+            const auto step = [&](const widgetrail::pinned::PlacementDirection direction) {
+                return adjusting
+                    ? pinnedSurfaceCoordinator_.StepPlacement(
+                          widgetrail::pinned::PlacementMode::Move, direction)
+                    : pinnedSurfaceCoordinator_.StepPlacement(direction);
+            };
+            bool changed = false;
+            if (key == VK_LEFT)
+                changed = step(widgetrail::pinned::PlacementDirection::Left);
+            else if (key == VK_RIGHT)
+                changed = step(widgetrail::pinned::PlacementDirection::Right);
             else if (key == VK_UP)
-                changed = pinnedSurfaceCoordinator_.StepPlacement(
-                    widgetrail::pinned::PlacementDirection::Up);
+                changed = step(widgetrail::pinned::PlacementDirection::Up);
             else if (key == VK_DOWN)
-                changed = pinnedSurfaceCoordinator_.StepPlacement(
-                    widgetrail::pinned::PlacementDirection::Down);
+                changed = step(widgetrail::pinned::PlacementDirection::Down);
             else if (!repeated && key == VK_RETURN) {
                 std::wstring error;
                 changed = pinnedSurfaceCoordinator_.CommitPlacement(error);
@@ -5224,6 +5570,10 @@ private:
                 changed = pinnedSurfaceCoordinator_.CancelPlacement();
                 lastActionMessage_ = L"Pinned placement canceled";
                 lastActionExpiresAt_ = GetTickCount64() + 2400;
+            }
+            if (pinnedSurfaceCoordinator_.placementMode() ==
+                widgetrail::pinned::PlacementMode::None) {
+                placementRightStickNavigator_.Reset();
             }
             if (changed) InvalidateRect(window_, nullptr, FALSE);
             return;
@@ -5942,10 +6292,55 @@ private:
             // transaction. Only a later fresh sample can reach the overlay.
             return;
         }
+        const auto moveMenuSelection = [&](const widgetrail::input::StickNavigationEvent& event) {
+            const auto actions = CurrentTrayMenuActions();
+            if (!trayContextMenu_ || actions.empty()) return;
+            const bool previous =
+                event.direction == widgetrail::input::NavigationDirection::Up;
+            const bool next =
+                event.direction == widgetrail::input::NavigationDirection::Down;
+            if (!previous && !next) return;
+            if (previous) {
+                trayContextMenu_->selectedItem = trayContextMenu_->selectedItem == 0
+                    ? actions.size() - 1 : trayContextMenu_->selectedItem - 1;
+            } else {
+                trayContextMenu_->selectedItem =
+                    (trayContextMenu_->selectedItem + 1) % actions.size();
+            }
+            retainedTrayPaintState_.reset();
+            InvalidateRect(window_, nullptr, FALSE);
+        };
+        if (trayContextMenu_) {
+            if (trayContextMenu_->widgetId != state_.selectedWidget() ||
+                state_.focusRegion() != widgetrail::FocusRegion::Tray ||
+                pinnedSurfaceCoordinator_.controllerFocused()) {
+                CloseTrayContextMenu();
+                return;
+            }
+            if (const auto direction = DecodeNavigation(frame.stickNavigation))
+                moveMenuSelection(*direction);
+            if (const auto direction = DecodeNavigation(frame.dpadNavigation))
+                moveMenuSelection(*direction);
+            if ((pressed & XINPUT_GAMEPAD_A) != 0)
+                ActivateTrayContextMenuItem(trayContextMenu_->selectedItem);
+            else if ((pressed & (XINPUT_GAMEPAD_B | XINPUT_GAMEPAD_START)) != 0)
+                CloseTrayContextMenu();
+            return;
+        }
+        constexpr WORD recoveryChord = XINPUT_GAMEPAD_BACK | XINPUT_GAMEPAD_START;
+        const bool recoveryChordDown = (buttons & recoveryChord) == recoveryChord;
+        if (!recoveryChordDown &&
+            (pressed & XINPUT_GAMEPAD_START) != 0 &&
+            state_.focusRegion() == widgetrail::FocusRegion::Tray &&
+            !pinnedSurfaceCoordinator_.controllerFocused()) {
+            OpenTrayContextMenu(state_.selectedWidget());
+            return;
+        }
         const auto pinnedControllerCommand = widgetrail::pinned::ResolveControllerCommand({
             pinnedSurfaceCoordinator_.pinned(),
             pinnedSurfaceCoordinator_.placementMode() !=
-                widgetrail::pinned::PlacementMode::None,
+                    widgetrail::pinned::PlacementMode::None ||
+                pinnedSurfaceCoordinator_.opacityAdjustmentActive(),
             pinnedSurfaceCoordinator_.pinned() &&
                 state_.surface() == widgetrail::Surface::Widget &&
                 state_.activeWidget() == pinnedSurfaceCoordinator_.widgetId(),
@@ -5962,10 +6357,37 @@ private:
             EmergencyHidePinnedSurfaces();
             return;
         }
-        constexpr WORD recoveryChord = XINPUT_GAMEPAD_BACK | XINPUT_GAMEPAD_START;
-        const bool recoveryChordDown = (buttons & recoveryChord) == recoveryChord;
         if (frame.recoveryChordPressed != WRAIL_OVERLAY_PLATFORM_FALSE) {
             RestartCurrentWidget();
+        }
+
+        if (pinnedSurfaceCoordinator_.opacityAdjustmentActive()) {
+            const auto stepOpacity = [&](
+                const widgetrail::input::StickNavigationEvent& event) {
+                if (event.direction == widgetrail::input::NavigationDirection::Left)
+                    (void)pinnedSurfaceCoordinator_.StepOpacity(
+                        widgetrail::pinned::PlacementDirection::Left);
+                else if (event.direction ==
+                         widgetrail::input::NavigationDirection::Right)
+                    (void)pinnedSurfaceCoordinator_.StepOpacity(
+                        widgetrail::pinned::PlacementDirection::Right);
+            };
+            if (const auto direction = DecodeNavigation(frame.stickNavigation))
+                stepOpacity(*direction);
+            if (const auto direction = DecodeNavigation(frame.dpadNavigation))
+                stepOpacity(*direction);
+            if ((pressed & XINPUT_GAMEPAD_A) != 0) {
+                std::wstring error;
+                const bool committed = pinnedSurfaceCoordinator_.CommitOpacity(error);
+                lastActionMessage_ = committed ? L"Pinned opacity saved" : error;
+                lastActionExpiresAt_ = now + 3000;
+            } else if ((pressed & XINPUT_GAMEPAD_B) != 0) {
+                (void)pinnedSurfaceCoordinator_.CancelOpacity();
+                lastActionMessage_ = L"Pinned opacity canceled";
+                lastActionExpiresAt_ = now + 2400;
+            }
+            InvalidateRect(window_, nullptr, FALSE);
+            return;
         }
 
         const auto stepPinnedPlacement = [&](const widgetrail::input::StickNavigationEvent& event) {
@@ -5992,10 +6414,50 @@ private:
         };
         if (pinnedSurfaceCoordinator_.placementMode() !=
             widgetrail::pinned::PlacementMode::None) {
+            const bool adjusting = pinnedSurfaceCoordinator_.placementMode() ==
+                widgetrail::pinned::PlacementMode::Adjust;
+            const auto step = [&](const widgetrail::input::StickNavigationEvent& event,
+                                  const widgetrail::pinned::PlacementMode operation) {
+                if (adjusting) {
+                    using widgetrail::input::NavigationDirection;
+                    widgetrail::pinned::PlacementDirection direction{};
+                    if (event.direction == NavigationDirection::Left)
+                        direction = widgetrail::pinned::PlacementDirection::Left;
+                    else if (event.direction == NavigationDirection::Right)
+                        direction = widgetrail::pinned::PlacementDirection::Right;
+                    else if (event.direction == NavigationDirection::Up)
+                        direction = widgetrail::pinned::PlacementDirection::Up;
+                    else if (event.direction == NavigationDirection::Down)
+                        direction = widgetrail::pinned::PlacementDirection::Down;
+                    else return;
+                    (void)pinnedSurfaceCoordinator_.StepPlacement(operation, direction);
+                } else {
+                    stepPinnedPlacement(event);
+                }
+            };
             if (const auto direction = DecodeNavigation(frame.stickNavigation))
-                stepPinnedPlacement(*direction);
+                step(*direction, widgetrail::pinned::PlacementMode::Move);
             if (const auto direction = DecodeNavigation(frame.dpadNavigation))
-                stepPinnedPlacement(*direction);
+                step(*direction, widgetrail::pinned::PlacementMode::Move);
+            if (adjusting) {
+                if (const auto resize = placementRightStickNavigator_.UpdateEvent(
+                        frame.state.rightThumbX, frame.state.rightThumbY, now)) {
+                    using widgetrail::input::NavigationDirection;
+                    std::optional<widgetrail::pinned::PlacementDirection> direction;
+                    if (resize->direction == NavigationDirection::Left)
+                        direction = widgetrail::pinned::PlacementDirection::Left;
+                    else if (resize->direction == NavigationDirection::Right)
+                        direction = widgetrail::pinned::PlacementDirection::Right;
+                    else if (resize->direction == NavigationDirection::Up)
+                        direction = widgetrail::pinned::PlacementDirection::Up;
+                    else if (resize->direction == NavigationDirection::Down)
+                        direction = widgetrail::pinned::PlacementDirection::Down;
+                    if (direction) (void)pinnedSurfaceCoordinator_.StepPlacement(
+                        widgetrail::pinned::PlacementMode::Resize, *direction);
+                }
+            } else {
+                placementRightStickNavigator_.Reset();
+            }
             if ((pressed & XINPUT_GAMEPAD_A) != 0) {
                 std::wstring error;
                 const bool committed = pinnedSurfaceCoordinator_.CommitPlacement(error);
@@ -6006,31 +6468,12 @@ private:
                 lastActionMessage_ = L"Pinned placement canceled";
                 lastActionExpiresAt_ = now + 2400;
             }
+            if (pinnedSurfaceCoordinator_.placementMode() ==
+                widgetrail::pinned::PlacementMode::None)
+                placementRightStickNavigator_.Reset();
             InvalidateRect(window_, nullptr, FALSE);
             return;
         }
-        const bool placementEligible = !recoveryChordDown &&
-            pinnedSurfaceCoordinator_.pinned() &&
-            state_.surface() == widgetrail::Surface::Widget &&
-            state_.activeWidget() == pinnedSurfaceCoordinator_.widgetId();
-        widgetrail::pinned::PlacementMode requestedPlacement = widgetrail::pinned::PlacementMode::None;
-        if (placementEligible && (pressed & XINPUT_GAMEPAD_START) != 0)
-            requestedPlacement = widgetrail::pinned::PlacementMode::Move;
-        else if (placementEligible && (pressed & XINPUT_GAMEPAD_BACK) != 0)
-            requestedPlacement = widgetrail::pinned::PlacementMode::Resize;
-        if (requestedPlacement != widgetrail::pinned::PlacementMode::None &&
-            pinnedSurfaceCoordinator_.BeginPlacement(requestedPlacement)) {
-            (void)interactionSession_.TransitionPressedPresentation(
-                widgetrail::input::PressedInputTransition::Clear);
-            lastActionWidgetId_ = std::wstring(pinnedSurfaceCoordinator_.widgetId());
-            lastActionMessage_ = requestedPlacement == widgetrail::pinned::PlacementMode::Move
-                ? L"Move pinned surface: D-pad/stick, A commit, B cancel"
-                : L"Resize pinned surface: D-pad/stick, A commit, B cancel";
-            lastActionExpiresAt_ = now + 5000;
-            InvalidateRect(window_, nullptr, FALSE);
-            return;
-        }
-
         if (pinnedControllerCommand == widgetrail::pinned::ControllerCommand::Enter) {
             if (pinnedSurfaceCoordinator_.interactionMode() !=
                 widgetrail::pinned::InteractionMode::Focusable)
@@ -6042,7 +6485,7 @@ private:
                 lastActionWidgetId_ =
                     std::wstring(pinnedSurfaceCoordinator_.widgetId());
                 lastActionMessage_ =
-                    L"Pinned focus entered. B returns, X closes, Menu moves, View resizes.";
+                    L"Pinned focus entered. B returns and X closes.";
                 lastActionExpiresAt_ = now + 5000;
                 InvalidateRect(window_, nullptr, FALSE);
             }
@@ -6080,6 +6523,27 @@ private:
                 SyncWidgetActivity();
             }
             InvalidateRect(window_, nullptr, FALSE);
+            return;
+        }
+
+        if (!recoveryChordDown &&
+            (pressed & XINPUT_GAMEPAD_BACK) != 0 &&
+            state_.focusRegion() == widgetrail::FocusRegion::Tray &&
+            pinnedSurfaceCoordinator_.pinned()) {
+            if (pinnedSurfaceCoordinator_.interactionMode() !=
+                widgetrail::pinned::InteractionMode::Focusable)
+                (void)pinnedSurfaceCoordinator_.SetInteractionMode(
+                    widgetrail::pinned::InteractionMode::Focusable);
+            if (pinnedSurfaceCoordinator_.EnterControllerFocus()) {
+                (void)interactionSession_.TransitionPressedPresentation(
+                    widgetrail::input::PressedInputTransition::Clear);
+                lastActionWidgetId_ =
+                    std::wstring(pinnedSurfaceCoordinator_.widgetId());
+                lastActionMessage_ =
+                    L"Pinned focus entered. B returns to the tray.";
+                lastActionExpiresAt_ = now + 4000;
+                InvalidateRect(window_, nullptr, FALSE);
+            }
             return;
         }
 
@@ -6411,6 +6875,28 @@ private:
                         }
                     }
                 } else if (request.hostAction ==
+                               widgetrail::accessibility::HostAction::PinTrayWidget ||
+                           request.hostAction ==
+                               widgetrail::accessibility::HostAction::AdjustPinnedSurface ||
+                           request.hostAction ==
+                               widgetrail::accessibility::HostAction::AdjustPinnedOpacity ||
+                           request.hostAction ==
+                               widgetrail::accessibility::HostAction::UnpinSurface) {
+                    if (request.kind != widgetrail::accessibility::ActionKind::Invoke ||
+                        !trayContextMenu_ ||
+                        request.hostTargetId != trayContextMenu_->widgetId ||
+                        request.hostTargetId != state_.selectedWidget())
+                        continue;
+                    const auto actions = CurrentTrayMenuActions();
+                    const auto actionIndex = request.hostAction ==
+                            widgetrail::accessibility::HostAction::UnpinSurface
+                        ? 2U
+                        : request.hostAction ==
+                              widgetrail::accessibility::HostAction::AdjustPinnedOpacity
+                            ? 1U : 0U;
+                    if (actionIndex >= actions.size()) continue;
+                    ActivateTrayContextMenuItem(actionIndex);
+                } else if (request.hostAction ==
                            widgetrail::accessibility::HostAction::CloseOverlay) {
                     if (request.kind != widgetrail::accessibility::ActionKind::Invoke ||
                         state_.surface() == widgetrail::Surface::Hidden)
@@ -6733,7 +7219,13 @@ private:
             const std::wstring name{DisplayWidgetName(widgetId)};
             items.push_back({widgetId, name});
         }
+        const auto menuLayout = CurrentTrayContextMenuLayout(
+            layout, CurrentTrayViewportWidthDip(width));
+        const widgetrail::accessibility::TrayContextMenuSemantics menuSemantics =
+            menuLayout ? menuLayout->semantics
+                       : widgetrail::accessibility::TrayContextMenuSemantics{};
         if (state_.surface() == widgetrail::Surface::Widget) {
+            openWidgetAccessibility_.contextMenu = menuSemantics;
             const bool currentWidgetSemantics =
                 InteractionSnapshotFor(state_.activeWidget()) &&
                 widgetAccessibilityTree_.widgetId == state_.activeWidget();
@@ -6799,8 +7291,14 @@ private:
             return;
         }
         if (state_.focusRegion() != widgetrail::FocusRegion::Tray) return;
+        auto dashboardSemantics = dashboard
+            ? *dashboard : widgetrail::accessibility::DashboardSemantics{};
+        dashboardSemantics.contextMenu = menuSemantics;
+        const auto* effectiveDashboard = dashboard || menuLayout
+            ? &dashboardSemantics : nullptr;
         const auto semanticRevision =
-            widgetrail::accessibility::ComputeTraySemanticRevision(items, dashboard);
+            widgetrail::accessibility::ComputeTraySemanticRevision(
+                items, effectiveDashboard);
         const auto policy = appearanceState_.current()
             ? CurrentAccessibilityPolicy()
             : widgetrail::NativeAccessibilityPolicy{};
@@ -6826,7 +7324,8 @@ private:
         };
         if (!accessibilityProjection_.ShouldCollect(key)) return;
         accessibilityTree_ = widgetrail::accessibility::BuildTrayTree(
-            items, layout, state_.selectedSlot(), ++hostAccessibilitySequence_, dashboard);
+            items, layout, state_.selectedSlot(), ++hostAccessibilitySequence_,
+            effectiveDashboard);
         if (PublishAccessibilityTree(key.pixelsPerDip))
             accessibilityProjection_.Published(key);
     }
@@ -8256,7 +8755,8 @@ private:
 
         if (layer == CompositionPaintLayer::Tray && trayLayout) {
             DrawIconStrip(
-                width, height, nullptr, nullptr, trayLayout, false);
+                metrics->viewportWidthDip, metrics->viewportHeightDip,
+                nullptr, nullptr, trayLayout, false);
             finishUpdate();
             return;
         }
@@ -8437,6 +8937,7 @@ private:
         unsigned int guideHeight{};
         unsigned int trayWidth{};
         unsigned int trayHeight{};
+        unsigned int trayMenuHeadroom{};
         unsigned int trayFocusPadding{};
         UINT dpi{};
         std::uint64_t appearanceRevision{};
@@ -8447,6 +8948,15 @@ private:
         RECT windowBounds{};
         widgetrail::shell::FixedChromeSessionKey key;
     };
+
+    [[nodiscard]] float CurrentTrayViewportWidthDip(
+        const float fallback) const noexcept {
+        return compositionChromeSession_ &&
+                compositionChromeSession_->pixelsPerDip > 0.0F
+            ? static_cast<float>(compositionChromeSession_->trayWidth) /
+                compositionChromeSession_->pixelsPerDip
+            : fallback;
+    }
 
     void RequestFixedChromeAnchorRefresh(
         const FixedChromePlacementReason reason) {
@@ -8625,6 +9135,44 @@ private:
         };
     }
 
+    [[nodiscard]] std::optional<RECT> ProjectTrayBoundsToScreen(
+        const widgetrail::declarative::Rect& bounds) const {
+        if (!compositionChromeSession_ ||
+            compositionChromeSession_->pixelsPerDip <= 0.0F) {
+            return std::nullopt;
+        }
+        const auto& session = *compositionChromeSession_;
+        const RECT physical{
+            session.trayClientBounds.left + static_cast<LONG>(std::floor(
+                bounds.x * session.pixelsPerDip)),
+            session.trayClientBounds.top + static_cast<LONG>(std::floor(
+                bounds.y * session.pixelsPerDip)),
+            session.trayClientBounds.left + static_cast<LONG>(std::ceil(
+                (bounds.x + bounds.width) * session.pixelsPerDip)),
+            session.trayClientBounds.top + static_cast<LONG>(std::ceil(
+                (bounds.y + bounds.height) * session.pixelsPerDip)),
+        };
+        return ProjectChromeClientBoundsToScreen(physical);
+    }
+
+    [[nodiscard]] bool IsCurrentFixedChromeHit(
+        const POINT screenPoint) const {
+        if (!compositionChromeSession_) return false;
+        const auto guide = ProjectChromeClientBoundsToScreen(
+            compositionChromeSession_->guideClientBounds);
+        const auto trayLayout = CurrentCompositionTrayLayout();
+        if (!guide || !trayLayout) return false;
+        const auto tray = ProjectTrayBoundsToScreen(trayLayout->stripBounds);
+        if (!tray) return false;
+        if (widgetrail::shell::IsFixedChromeHit(screenPoint, *guide, *tray))
+            return true;
+        const auto menu = CurrentTrayContextMenuLayout(
+            *trayLayout, CurrentTrayViewportWidthDip(0.0F));
+        if (!menu) return false;
+        const auto menuBounds = ProjectTrayBoundsToScreen(menu->bounds);
+        return menuBounds && PtInRect(&*menuBounds, screenPoint) != FALSE;
+    }
+
     [[nodiscard]] bool EnsureFixedChromeAnchor() {
         if (fixedChromeAnchor_) return true;
         if (pendingFixedChromePlacementReason_ ==
@@ -8740,6 +9288,11 @@ private:
             1L, static_cast<LONG>(std::ceil(
                 policyLayout->stripBounds.height *
                 metrics->physicalPixelsPerDip))) + focusPadding * 2;
+        const LONG trayMenuHeadroom = std::max(
+            1L, static_cast<LONG>(std::ceil(
+                kTrayContextMenuHeadroomDip *
+                metrics->physicalPixelsPerDip)));
+        const LONG traySurfaceHeight = trayHeight + trayMenuHeadroom;
         const LONG guideWidth = std::max(
             1L, static_cast<LONG>(std::ceil(
                 policyLayout->stripBounds.width *
@@ -8752,7 +9305,7 @@ private:
                 kGuideToTrayGapDip * metrics->physicalPixelsPerDip)));
         const LONG chromeWidth = std::max(trayWidth, guideWidth);
         const LONG chromeHeight =
-            guideHeight + guideToTrayGap + trayHeight;
+            trayMenuHeadroom + guideHeight + guideToTrayGap + trayHeight;
         if (chromeWidth <= 0 || chromeHeight <= 0) return false;
 
         CompositionChromeSession session;
@@ -8761,7 +9314,9 @@ private:
         session.guideWidth = static_cast<unsigned int>(guideWidth);
         session.guideHeight = static_cast<unsigned int>(guideHeight);
         session.trayWidth = static_cast<unsigned int>(trayWidth);
-        session.trayHeight = static_cast<unsigned int>(trayHeight);
+        session.trayHeight = static_cast<unsigned int>(traySurfaceHeight);
+        session.trayMenuHeadroom =
+            static_cast<unsigned int>(trayMenuHeadroom);
         session.trayFocusPadding = static_cast<unsigned int>(focusPadding);
         session.dpi = effectiveDpi;
         session.key = std::move(key);
@@ -8772,10 +9327,12 @@ private:
         const LONG guideLeft = (chromeWidth - guideWidth) / 2;
         const LONG trayLeft = (chromeWidth - trayWidth) / 2;
         session.guideClientBounds = {
-            guideLeft, 0, guideLeft + guideWidth, guideHeight,
+            guideLeft, trayMenuHeadroom,
+            guideLeft + guideWidth, trayMenuHeadroom + guideHeight,
         };
         session.trayClientBounds = {
-            trayLeft, trayTop, trayLeft + trayWidth, trayTop + trayHeight,
+            trayLeft, trayTop,
+            trayLeft + trayWidth, trayTop + traySurfaceHeight,
         };
         session.guideBounds = {
             0.0F,
@@ -8894,13 +9451,17 @@ private:
             static_cast<int>(contentWidth), static_cast<int>(contentHeight),
             session.dpi, interfaceScale);
         if (!metrics) return std::nullopt;
+        const float inset = static_cast<float>(session.trayFocusPadding) /
+            session.pixelsPerDip;
+        const float menuHeadroom =
+            static_cast<float>(session.trayMenuHeadroom) /
+            session.pixelsPerDip;
         auto layout = widgetrail::shell::ComputeTrayLayout(
             metrics->viewportWidthDip, metrics->viewportHeightDip,
             state_.order().size(), state_.selectedSlot(),
-            widgetrail::shell::TrayBand{0.0F, metrics->viewportHeightDip});
+            widgetrail::shell::TrayBand{
+                menuHeadroom, metrics->viewportHeightDip});
         if (!layout) return std::nullopt;
-        const float inset = static_cast<float>(session.trayFocusPadding) /
-            session.pixelsPerDip;
         const auto offset = [inset](widgetrail::declarative::Rect& bounds) {
             bounds.x += inset;
             bounds.y += inset;
@@ -8936,6 +9497,10 @@ private:
         } else {
             if (const auto status = OpenWidgetStatus()) key += L"\n" + *status;
             key += L"\n" + OpenWidgetPrompt();
+            if (trayContextMenu_) {
+                key += L"\ntray-context=" + trayContextMenu_->widgetId + L":" +
+                    std::to_wstring(trayContextMenu_->selectedItem);
+            }
             if (const auto* snapshot = GuideSnapshotFor(state_.activeWidget()))
                 key += L"\n" + snapshot->activeInputScopeId;
         }
@@ -9589,6 +10154,48 @@ private:
                 2.35F);
         }
         if (layout->nextOverflow) drawOverflow(*layout->nextOverflow);
+        if (const auto menu = CurrentTrayContextMenuLayout(
+                *layout, CurrentTrayViewportWidthDip(width))) {
+            const D2D1_ROUNDED_RECT panel{
+                D2D1::RectF(
+                    menu->bounds.x, menu->bounds.y,
+                    menu->bounds.x + menu->bounds.width,
+                    menu->bounds.y + menu->bounds.height),
+                trayItemCornerRadius_, trayItemCornerRadius_};
+            renderTarget_->FillRoundedRectangle(panel, backgroundBrush_.Get());
+            renderTarget_->DrawRoundedRectangle(
+                panel, focusBrush_.Get(), focusOutlineWidth_);
+            for (const auto& item : menu->semantics.items) {
+                const auto& bounds = item.bounds;
+                if (item.selected) {
+                    const D2D1_ROUNDED_RECT selection{
+                        D2D1::RectF(
+                            bounds.x + 3.0F, bounds.y + 3.0F,
+                            bounds.x + bounds.width - 3.0F,
+                            bounds.y + bounds.height - 3.0F),
+                        trayItemCornerRadius_ * 0.65F,
+                        trayItemCornerRadius_ * 0.65F};
+                    renderTarget_->FillRoundedRectangle(selection, accentBrush_.Get());
+                }
+                DrawTextLine(
+                    item.name, hintFormat_.Get(),
+                    D2D1::RectF(
+                        bounds.x + 14.0F, bounds.y + 5.0F,
+                        bounds.x + bounds.width - 12.0F,
+                        bounds.y + 25.0F),
+                    item.enabled ? trayItemTextBrush_.Get()
+                                 : dashboardSecondaryBrush_.Get());
+                if (!item.value.empty()) {
+                    DrawTextLine(
+                        item.value, hintFormat_.Get(),
+                        D2D1::RectF(
+                            bounds.x + 14.0F, bounds.y + 25.0F,
+                            bounds.x + bounds.width - 12.0F,
+                            bounds.y + bounds.height - 4.0F),
+                        dashboardSecondaryBrush_.Get());
+                }
+            }
+        }
         if (publishAccessibility)
             PublishTrayAccessibility(*layout, width, height, dashboard);
     }
@@ -9625,6 +10232,8 @@ private:
     }
 
     std::wstring DashboardHint(const float availableWidth) {
+        if (trayContextMenu_)
+            return L"D-pad/left stick  Navigate    A  Select    B/Menu  Close";
         if (trayYGesture_.pendingRestart()) {
             return L"Hold Y to restart " +
                 std::wstring(DisplayWidgetName(trayYGesture_.selectedWidget())) +
@@ -9643,10 +10252,12 @@ private:
                 quickActions.push_back({DisplayButton(action.button), action.label});
             }
         }
-        return widgetrail::BuildTrayControllerGuide(
+        auto guide = widgetrail::BuildTrayControllerGuide(
             widgetrail::ResolveControllerGuideDensity(
                 availableWidth, CurrentTextScale()),
             state_.reorderMode(), TrayYRestartEligible(), quickActions);
+        if (!state_.reorderMode()) guide += L"    Menu  Options";
+        return guide;
     }
 
     std::wstring DashboardAccessibilityHint(const std::wstring_view visualHint) const {
@@ -9832,9 +10443,13 @@ private:
             widgetrail::accessibility::HasActiveScopeBackShortcut(
                 *snapshot, interactionSession_.focusedElementId());
         const bool hasBack = rootScope || nestedBack || hostBack.has_value();
-        const std::wstring hostPrompt = hasBack
-            ? L"B  Back     Guide  Close"
-            : L"Guide  Close";
+        std::wstring hostPrompt;
+        if (hasBack) {
+            if (!hostPrompt.empty()) hostPrompt += L"     ";
+            hostPrompt += L"B  Back";
+        }
+        if (!hostPrompt.empty()) hostPrompt += L"     ";
+        hostPrompt += L"Guide  Close";
         if (hasBack) {
             openWidgetAccessibility_.backAction = rootScope || hostBack
                 ? widgetrail::accessibility::HostAction::BackToTray
@@ -9843,8 +10458,10 @@ private:
                 ? hostBack->inputScopeId
                 : snapshot->activeInputScopeId;
         }
-        if (contentRight - contentLeft >= 300.0F) {
-            const float hostPromptWidth = hasBack ? 180.0F : 106.0F;
+        if (contentRight - contentLeft >= 420.0F) {
+            const float backPromptWidth = hasBack ? 74.0F : 0.0F;
+            const float closePromptWidth = 106.0F;
+            const float hostPromptWidth = backPromptWidth + closePromptWidth;
             const float hostPromptLeft = contentRight - hostPromptWidth;
             const widgetrail::declarative::Rect promptBounds{
                 contentLeft, textTop,
@@ -9858,17 +10475,20 @@ private:
                 openWidgetAccessibility_.help = help;
                 openWidgetAccessibility_.helpBounds = promptBounds;
             }
+            float actionLeft = hostPromptLeft;
             if (hasBack) {
                 openWidgetAccessibility_.backBounds = {
-                    hostPromptLeft, textTop, 74.0F, textBottom - textTop,
+                    actionLeft, textTop, backPromptWidth, textBottom - textTop,
                 };
+                actionLeft += backPromptWidth;
                 openWidgetAccessibility_.closeBounds = {
-                    hostPromptLeft + 74.0F, textTop,
-                    contentRight - hostPromptLeft - 74.0F, textBottom - textTop,
+                    actionLeft, textTop, contentRight - actionLeft,
+                    textBottom - textTop,
                 };
             } else {
                 openWidgetAccessibility_.closeBounds = {
-                    hostPromptLeft, textTop, hostPromptWidth, textBottom - textTop,
+                    actionLeft, textTop, contentRight - actionLeft,
+                    textBottom - textTop,
                 };
             }
             DrawTextLine(prompt, hintFormat_.Get(),
@@ -9882,17 +10502,26 @@ private:
         } else {
             // At narrow logical widths retain the hierarchy/escape affordance;
             // widget action labels remain discoverable on larger surfaces.
-            const float halfWidth = footerBounds.width * 0.5F;
+            const int actionCount = 1 + (hasBack ? 1 : 0);
+            const float actionWidth = footerBounds.width /
+                static_cast<float>(actionCount);
+            float actionLeft = footerBounds.x;
             if (hasBack) {
                 openWidgetAccessibility_.backBounds = {
-                    footerBounds.x, footerBounds.y, halfWidth, footerBounds.height,
+                    actionLeft, footerBounds.y, actionWidth, footerBounds.height,
                 };
+                actionLeft += actionWidth;
                 openWidgetAccessibility_.closeBounds = {
-                    footerBounds.x + halfWidth, footerBounds.y,
-                    footerBounds.width - halfWidth, footerBounds.height,
+                    actionLeft, footerBounds.y,
+                    footerBounds.x + footerBounds.width - actionLeft,
+                    footerBounds.height,
                 };
             } else {
-                openWidgetAccessibility_.closeBounds = footerBounds;
+                openWidgetAccessibility_.closeBounds = {
+                    actionLeft, footerBounds.y,
+                    footerBounds.x + footerBounds.width - actionLeft,
+                    footerBounds.height,
+                };
             }
             DrawTextLine(hostPrompt, hintFormat_.Get(),
                          D2D1::RectF(contentLeft, textTop, contentRight, textBottom),
@@ -10560,6 +11189,8 @@ private:
     std::wstring lastActionMessage_;
     std::wstring lastActionWidgetId_;
     ULONGLONG lastActionExpiresAt_{};
+    std::optional<TrayContextMenuState> trayContextMenu_;
+    widgetrail::input::StickNavigator placementRightStickNavigator_;
     std::wstring admissionTraceWidget_;
     std::uint64_t admissionTraceCorrelationId_{};
     std::optional<PendingWidgetSwitchSnap> pendingWidgetSwitchSnap_;
