@@ -223,10 +223,11 @@ exclusive documented controls.
 Use physical-first ordering. Change production/API code only, source-audit the
 complete boundary, run one coherent Release/package build, and commit
 `[DLV-473]`; do not write, modify, regenerate, or run tests before the user
-accepts the launched behavior. The planner will integrate the reviewed
-production candidate, rebase/stack DLV-291 only through a bounded clean
-integration if needed, then launch one coherent candidate containing DLV-473
-and DLV-291 for the user's controller verdict. After acceptance, add only
+accepts the launched behavior. The planner will assemble the reviewed
+production candidate with DLV-291 only in a bounded clean unaccepted
+branch/worktree, then launch that one coherent candidate containing DLV-473
+and DLV-291 for the user's controller verdict. Main integration remains gated
+on that verdict. After acceptance, add only
 focused SDK JSON/context, Bridge generation/layout admission, controller-route,
 pinned focus/action, and projection-root tests. Do not run Game Launcher tests,
 broad aggregates, DLV-293 retained tests, account/package-state mutation,
