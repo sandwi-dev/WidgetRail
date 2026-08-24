@@ -91,6 +91,10 @@ internal static class SpotifyPresentation
         string? initialFocusId;
         if (presentation.ViewState == SpotifyWidgetViewState.Ready)
         {
+            var playerFocusId = presentation.Playback is
+                { IsAvailable: true, Item: not null }
+                    ? $"spotify.player.{mode}.play-toggle"
+                    : $"spotify.player.empty.{mode}.action";
             var nextItemId = includeUpNext && presentation.Queue.Items.Count != 0
                 ? SpotifyCollectionIdentity.FocusId(
                     "spotify.queue.item", mode, presentation.Queue.Items[0].Key)
@@ -105,16 +109,15 @@ internal static class SpotifyPresentation
             if (includeUpNext)
             {
                 content.Add(UI.Row($"spotify.{mode}.shell",
-                        player, PinnedUpNext(presentation.Queue, mode))
+                        player, PinnedUpNext(
+                            presentation.Queue, mode, playerFocusId))
                     .Classes("spotify-pinned-shell"));
             }
             else
             {
                 content.Add(player);
             }
-            initialFocusId = presentation.Playback is { IsAvailable: true, Item: not null }
-                ? $"spotify.player.{mode}.play-toggle"
-                : $"spotify.player.empty.{mode}.action";
+            initialFocusId = playerFocusId;
         }
         else
         {
@@ -179,7 +182,8 @@ internal static class SpotifyPresentation
 
     private static WidgetElement PinnedUpNext(
         WidgetCursorResourceSnapshot<SpotifyMediaCollectionItem> queue,
-        string mode)
+        string mode,
+        string playerFocusId)
     {
         WidgetElement content;
         if (queue.Items.Count != 0)
@@ -191,7 +195,7 @@ internal static class SpotifyPresentation
                     itemId,
                     SpotifyCollectionIdentity.FocusId(
                         "spotify.queue.persist", "shared", item.Key))
-                .FocusLeft($"spotify.player.{mode}.repeat")
+                .FocusLeft(playerFocusId)
                 .CollectionItem(item.Key)
                 .Classes("spotify-pinned-next-row");
         }
