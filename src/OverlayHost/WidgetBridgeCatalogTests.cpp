@@ -6,7 +6,10 @@
 #include <cstdint>
 #include <cstdlib>
 #include <cstring>
+#include <filesystem>
+#include <fstream>
 #include <iostream>
+#include <sstream>
 #include <thread>
 #include <string>
 #include <vector>
@@ -411,6 +414,20 @@ void VerifyVirtualCollectionProtocol() {
 } // namespace
 
 int main() {
+    const auto nowPlayingManifest = std::filesystem::path{__FILE__}.parent_path()
+        .parent_path() / L"FirstPartyWidgets" / L"MediaSessionsWidget" /
+        L"manifest.json";
+    std::ifstream manifestStream(nowPlayingManifest, std::ios::binary);
+    CHECK(manifestStream.good());
+    std::ostringstream manifestPayload;
+    manifestPayload << manifestStream.rdbuf();
+    const auto manifestText = manifestPayload.str();
+    CHECK(manifestText.find(
+              "\"id\": \"widgetrail.firstparty.media-sessions\"") !=
+          std::string::npos);
+    CHECK(manifestText.find("\"name\": \"Now Playing\"") != std::string::npos);
+    CHECK(manifestText.find("\"pinningSupported\": true") != std::string::npos);
+
     VerifyFrameSafeCancellationRecovery();
     VerifyAtomicPresentationUpdateMaterialization();
     VerifyVirtualCollectionProtocol();

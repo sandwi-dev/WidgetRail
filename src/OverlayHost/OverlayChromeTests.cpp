@@ -8,6 +8,7 @@
 #include <wincodec.h>
 #include <wrl/client.h>
 
+#include <algorithm>
 #include <array>
 #include <cmath>
 #include <cstdlib>
@@ -152,6 +153,86 @@ void CheckCompositionCoordinatePolicies() {
               !widgetrail::shell::ComputeContentWindowBoundsAboveGuide(
                   work, 900, 760, 385, -1),
           "invalid panel-local content placement fails closed");
+}
+
+void CheckTrayMenuCompositionHeadroom() {
+    constexpr float itemHeight = 48.0F;
+    constexpr float menuGap = 8.0F;
+    constexpr std::size_t maximumItems = 3;
+    constexpr float headroom = menuGap + itemHeight * maximumItems;
+    constexpr float viewportWidth = 640.0F;
+    constexpr float viewportHeight = 360.0F;
+    constexpr float pixelsPerDip = 1.5F;
+
+    const auto tray = widgetrail::shell::ComputeTrayLayout(
+        viewportWidth, viewportHeight, 4, 1,
+        widgetrail::shell::TrayBand{headroom, viewportHeight});
+    Check(tray && tray->tiles.size() == 4,
+          "headroom fixture retains the full current tray catalog");
+
+    const auto& selected = tray->tiles[1].bounds;
+    const float menuWidth = std::min(286.0F, viewportWidth - 16.0F);
+    const float menuHeight = itemHeight * maximumItems;
+    const float menuLeft = std::clamp(
+        selected.x + selected.width * 0.5F - menuWidth * 0.5F,
+        8.0F, viewportWidth - menuWidth - 8.0F);
+    const widgetrail::declarative::Rect menu{
+        menuLeft, tray->stripBounds.y - menuGap - menuHeight,
+        menuWidth, menuHeight};
+    Check(menu.y >= 0.0F &&
+              menu.y + menu.height + menuGap == tray->stripBounds.y,
+          "three-row menu fits wholly above the tray in reserved headroom");
+    Check(menu.x >= 8.0F && menu.x + menu.width <= viewportWidth - 8.0F,
+          "menu remains horizontally clamped inside the chrome viewport");
+
+    const RECT workArea{100, 50, 1700, 950};
+    const LONG chromeWidth = static_cast<LONG>(std::ceil(
+        viewportWidth * pixelsPerDip));
+    const LONG chromeHeight = static_cast<LONG>(std::ceil(
+        viewportHeight * pixelsPerDip));
+    const RECT chrome = widgetrail::shell::ComputeFixedChromeWindowBounds(
+        workArea, chromeWidth, chromeHeight);
+    const auto project = [&](const widgetrail::declarative::Rect& bounds) {
+        return RECT{
+            chrome.left + static_cast<LONG>(std::floor(bounds.x * pixelsPerDip)),
+            chrome.top + static_cast<LONG>(std::floor(bounds.y * pixelsPerDip)),
+            chrome.left + static_cast<LONG>(std::ceil(
+                (bounds.x + bounds.width) * pixelsPerDip)),
+            chrome.top + static_cast<LONG>(std::ceil(
+                (bounds.y + bounds.height) * pixelsPerDip)),
+        };
+    };
+    const RECT menuScreen = project(menu);
+    const RECT trayScreen = project(tray->stripBounds);
+    Check(menuScreen.left >= chrome.left && menuScreen.top >= chrome.top &&
+              menuScreen.right <= chrome.right && menuScreen.bottom <= chrome.bottom,
+          "above-tray menu pixels remain inside the topmost chrome HWND client extent");
+
+    const POINT menuPoint{
+        (menuScreen.left + menuScreen.right) / 2,
+        (menuScreen.top + menuScreen.bottom) / 2};
+    const POINT transparentHeadroomPoint{
+        chrome.left + 2,
+        menuScreen.top + 2};
+    Check(PtInRect(&menuScreen, menuPoint) != FALSE &&
+              !widgetrail::shell::IsFixedChromeHit(
+                  menuPoint, RECT{}, trayScreen),
+          "menu is the sole extra hit owner above the ordinary guide/tray policy");
+    Check(PtInRect(&menuScreen, transparentHeadroomPoint) == FALSE &&
+              !widgetrail::shell::IsFixedChromeHit(
+                  transparentHeadroomPoint, RECT{}, trayScreen),
+          "non-menu composition headroom remains transparent to pointer hit testing");
+
+    std::array<widgetrail::declarative::Rect, maximumItems> rows{};
+    for (std::size_t index = 0; index < rows.size(); ++index) {
+        rows[index] = {
+            menu.x, menu.y + itemHeight * static_cast<float>(index),
+            menu.width, itemHeight};
+    }
+    Check(rows.front().x == menu.x && rows.front().y == menu.y &&
+              rows.back().x + rows.back().width == menu.x + menu.width &&
+              rows.back().y + rows.back().height == menu.y + menu.height,
+          "one row geometry exactly partitions render, pointer, and UIA menu bounds");
 }
 
 void CheckFrame(
@@ -577,6 +658,7 @@ int main() {
     CheckPremultipliedFrame(d2d.Get(), wic.Get(), 1.0F);
     CheckPremultipliedFrame(d2d.Get(), wic.Get(), 1.5F);
     CheckCompositionCoordinatePolicies();
+    CheckTrayMenuCompositionHeadroom();
     CheckRetainedTrayInvalidation();
     CheckFixedChromeWindowPolicy();
     widgetrail::shell::FillColorKeyRoundedRectangle(nullptr, {}, nullptr);
