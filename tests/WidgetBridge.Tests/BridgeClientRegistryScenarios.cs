@@ -127,6 +127,88 @@ internal static class BridgeClientRegistryScenarios
         RegistryAssert.Equal(0, fixture.Registry.ResidencyBudget.ApplicationWorkers);
     }
 
+    internal static async Task FreshGenericWorkersRequireTypedRecoveryFromRetainedBases()
+    {
+        var delay = new ManualRegistryDelay();
+        var gamesApps = Widget(
+            "games-apps-restart",
+            worker: 'g',
+            catalog: 'g',
+            residency: new WidgetResidencyPolicy
+            {
+                Mode = WidgetResidencyPolicies.UnloadAfterIdle,
+                IdleSeconds = WidgetResidencyPolicies.MinimumIdleSeconds,
+            });
+        var networkControls = Widget(
+            "network-controls-restart",
+            worker: 'n',
+            catalog: 'n',
+            residency: new WidgetResidencyPolicy
+            {
+                Mode = WidgetResidencyPolicies.SuspendWhenHidden,
+            });
+        await using var fixture = new RegistryFixture(
+            Catalog(gamesApps, networkControls), delay: delay.InvokeAsync);
+
+        var retained = new Dictionary<string, ViewSnapshot>(StringComparer.Ordinal);
+        foreach (var configured in new[] { gamesApps, networkControls })
+        {
+            await fixture.SetLifecycleAsync(configured.Id, WidgetLifecycleState.Visible);
+            retained[configured.Id] = await fixture.GetPresentationAsync(
+                configured.Id,
+                WidgetPresentationTransactionKind.OrdinaryCheckpoint,
+                baseSequence: 0,
+                recoveryOriginSequence: 0);
+            await fixture.SetLifecycleAsync(configured.Id, WidgetLifecycleState.Background);
+        }
+
+        var idleClient = fixture.Clients.Single(client => client.WidgetId == gamesApps.Id);
+        var suspendedClient = fixture.Clients.Single(
+            client => client.WidgetId == networkControls.Id);
+        var idleDelay = await delay.NextAsync();
+        idleDelay.Release();
+        await idleClient.Unloaded.WaitAsync(TimeSpan.FromSeconds(2));
+        suspendedClient.StopForTest();
+
+        foreach (var configured in new[] { gamesApps, networkControls })
+        {
+            var cached = await fixture.GetPresentationAsync(
+                configured.Id,
+                WidgetPresentationTransactionKind.IncrementalUpdate,
+                retained[configured.Id].Sequence,
+                recoveryOriginSequence: 0);
+            RegistryAssert.Equal(retained[configured.Id].Sequence, cached.Sequence);
+        }
+
+        foreach (var configured in new[] { gamesApps, networkControls })
+        {
+            var client = fixture.Clients.Single(item => item.WidgetId == configured.Id);
+            await fixture.SetLifecycleAsync(configured.Id, WidgetLifecycleState.Visible);
+            RegistryAssert.Equal(2, client.Starts);
+            _ = await RegistryAssert.ThrowsAsync<BridgeStalePresentationBaseException>(
+                () => fixture.GetPresentationAsync(
+                    configured.Id,
+                    WidgetPresentationTransactionKind.IncrementalUpdate,
+                    retained[configured.Id].Sequence,
+                    recoveryOriginSequence: 0));
+            RegistryAssert.Equal(1, client.PresentationRequests.Count);
+
+            var recovered = await fixture.GetPresentationAsync(
+                configured.Id,
+                WidgetPresentationTransactionKind.RecoveryCheckpoint,
+                baseSequence: 0,
+                recoveryOriginSequence: retained[configured.Id].Sequence);
+            RegistryAssert.True(recovered.Sequence > retained[configured.Id].Sequence);
+            RegistryAssert.Equal(2, client.Starts);
+            RegistryAssert.Equal(2, client.PresentationRequests.Count);
+            RegistryAssert.Equal(
+                WidgetPresentationTransactionKind.RecoveryCheckpoint,
+                client.PresentationRequests[^1].TransactionKind);
+            RegistryAssert.Equal(retained[configured.Id].Sequence,
+                client.PresentationRequests[^1].RecoveryOriginSequence);
+        }
+    }
+
     internal static async Task WidgetRuntimeFailuresAreTypedAndRegistrationLocal()
     {
         var alpha = Widget("alpha-runtime-failure", worker: 'a', catalog: 'a');
@@ -1011,6 +1093,25 @@ internal sealed class RegistryFixture : IAsyncDisposable
         return publication.Value;
     }
 
+    internal async Task<ViewSnapshot> GetPresentationAsync(
+        string widgetId,
+        WidgetPresentationTransactionKind transactionKind,
+        long baseSequence,
+        long recoveryOriginSequence)
+    {
+        using var publication = await Registry.GetPresentationAsync(
+            widgetId,
+            transactionKind,
+            transactionKind == WidgetPresentationTransactionKind.IncrementalUpdate
+                ? PresentationUpdateCapabilities.Current
+                : PresentationUpdateCapabilities.None,
+            baseSequence,
+            recoveryOriginSequence,
+            CancellationToken.None,
+            CancellationToken.None);
+        return publication.Value.Snapshot;
+    }
+
     internal async Task<WidgetLifecycleState> RestartAsync(string widgetId)
     {
         using var publication = await Registry.RestartAsync(
@@ -1050,6 +1151,8 @@ internal sealed class RegistryTestClient(
         TaskCreationOptions.RunContinuationsAsynchronously);
     private readonly TaskCompletionSource _disposeRelease = new(
         TaskCreationOptions.RunContinuationsAsynchronously);
+    private readonly TaskCompletionSource _unloaded = new(
+        TaskCreationOptions.RunContinuationsAsynchronously);
     private IDisposable? _reservation;
     private int _running;
     private int _starts;
@@ -1075,9 +1178,12 @@ internal sealed class RegistryTestClient(
     internal Task SnapshotEntered => _snapshotEntered.Task;
     internal Task Disposed => _disposed.Task;
     internal Task DisposeEntered => _disposeEntered.Task;
+    internal Task Unloaded => _unloaded.Task;
     internal int DisposeCount => Volatile.Read(ref _disposeCount);
     internal int UnloadCount => Volatile.Read(ref _unloadCount);
     internal List<WidgetLifecycleState> LifecycleStates { get; } = [];
+    internal List<(WidgetPresentationTransactionKind TransactionKind,
+        long BaseSequence, long RecoveryOriginSequence)> PresentationRequests { get; } = [];
     public bool IsRunning => Volatile.Read(ref _running) != 0;
     public int Starts => Volatile.Read(ref _starts);
 
@@ -1111,6 +1217,24 @@ internal sealed class RegistryTestClient(
                 InputScopeId = "root",
             },
         };
+    }
+
+    public async Task<WidgetRuntimePresentation> GetPresentationAsync(
+        PresentationUpdateCapabilities capabilities,
+        string presentationGeneration,
+        long baseSequence,
+        WidgetPresentationTransactionKind transactionKind,
+        long recoveryOriginSequence,
+        CancellationToken cancellationToken)
+    {
+        PresentationRequests.Add((transactionKind, baseSequence, recoveryOriginSequence));
+        var snapshot = await GetSnapshotAsync(cancellationToken).ConfigureAwait(false);
+        return new(
+            transactionKind,
+            baseSequence,
+            recoveryOriginSequence,
+            snapshot,
+            null);
     }
 
     public Task SetLifecycleStateAsync(
@@ -1167,6 +1291,7 @@ internal sealed class RegistryTestClient(
         cancellationToken.ThrowIfCancellationRequested();
         Interlocked.Increment(ref _unloadCount);
         Stop();
+        _unloaded.TrySetResult();
         return Task.CompletedTask;
     }
 
@@ -1193,6 +1318,7 @@ internal sealed class RegistryTestClient(
 
     internal void ReleaseSnapshot() => _snapshotRelease.TrySetResult();
     internal void ReleaseDispose() => _disposeRelease.TrySetResult();
+    internal void StopForTest() => Stop();
     internal void RaiseInvalidated(long revision) => Invalidated?.Invoke(this, revision);
     internal void RaiseActionFailed(string actionId) => ActionFailed?.Invoke(
         this, new WidgetActionFailure(actionId, "source", "failed"));

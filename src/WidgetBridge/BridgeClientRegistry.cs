@@ -364,6 +364,7 @@ internal sealed class BridgeClientRegistry : IAsyncDisposable
                 WidgetPresentationTransactionKind.IncrementalUpdate;
             if (incremental && registration.CachedSnapshot?.Sequence != baseSequence)
                 throw new BridgeStalePresentationBaseException();
+            var retainedWorkerStart = 0;
             WidgetRuntimePresentation presentation;
             if (hiddenAndRestricted)
             {
@@ -376,6 +377,9 @@ internal sealed class BridgeClientRegistry : IAsyncDisposable
             }
             else
             {
+                retainedWorkerStart = incremental
+                    ? registration.DemandCurrentPresentationBase(baseSequence)
+                    : 0;
                 registration.CancelIdleUnload();
                 var generation = registration.Configured.PublicDescriptor().PresentationGeneration;
                 presentation = await ExecuteClientOperationAsync(
@@ -390,13 +394,15 @@ internal sealed class BridgeClientRegistry : IAsyncDisposable
                         cancellationToken)
                     .ConfigureAwait(false);
                 DemandCurrent(registration);
+                if (incremental && registration.Client.Starts != retainedWorkerStart)
+                    throw new BridgeStalePresentationBaseException();
                 if (presentation.TransactionKind !=
                         transactionKind ||
                     presentation.RequestBaseSequence != baseSequence ||
                     presentation.RecoveryOriginSequence != recoveryOriginSequence)
                     throw new BridgeProtocolException(
                         "Worker returned a presentation for a different transaction kind.");
-                registration.CachedSnapshot = presentation.Snapshot;
+                registration.CommitCachedSnapshot(presentation.Snapshot);
                 ScheduleIdleUnload(registration, sessionCancellation);
             }
             return AdmitPublication(
@@ -504,8 +510,9 @@ internal sealed class BridgeClientRegistry : IAsyncDisposable
             DemandCurrent(registration);
             var incremental = transactionKind ==
                 WidgetPresentationTransactionKind.IncrementalUpdate;
-            if (incremental && registration.CachedSnapshot?.Sequence != baseSequence)
-                throw new BridgeStalePresentationBaseException();
+            var retainedWorkerStart = incremental
+                ? registration.DemandCurrentPresentationBase(baseSequence)
+                : 0;
             var priorHostLifecycle = registration.HostLifecycle;
             registration.CancelIdleUnload();
             await ExecuteClientOperationAsync(
@@ -513,6 +520,8 @@ internal sealed class BridgeClientRegistry : IAsyncDisposable
                     (client, token) => client.SetLifecycleStateAsync(state, token),
                     cancellationToken)
                 .ConfigureAwait(false);
+            if (incremental && registration.Client.Starts != retainedWorkerStart)
+                throw new BridgeStalePresentationBaseException();
             var lifecycleStartOrdinal = registration.Client.Starts;
             try
             {
@@ -530,6 +539,8 @@ internal sealed class BridgeClientRegistry : IAsyncDisposable
                         cancellationToken)
                     .ConfigureAwait(false);
                 DemandCurrent(registration);
+                if (incremental && registration.Client.Starts != retainedWorkerStart)
+                    throw new BridgeStalePresentationBaseException();
                 if (presentation.TransactionKind !=
                         transactionKind ||
                     presentation.RequestBaseSequence != baseSequence ||
@@ -583,7 +594,7 @@ internal sealed class BridgeClientRegistry : IAsyncDisposable
                     presentation.Update));
             // The bridge-visible lifecycle, retained base, and publication token
             // become observable together only after worker presentation succeeds.
-            registration.CachedSnapshot = presentation.Snapshot;
+            registration.CommitCachedSnapshot(presentation.Snapshot);
             registration.HostLifecycle = state;
             return publication;
         }
@@ -1639,7 +1650,8 @@ internal sealed class BridgeClientRegistry : IAsyncDisposable
             set => Volatile.Write(ref _hostLifecycle, (int)value);
         }
 
-        internal ViewSnapshot? CachedSnapshot { get; set; }
+        internal ViewSnapshot? CachedSnapshot { get; private set; }
+        private int _cachedSnapshotWorkerStart;
         private long _lastDashboardInputSequence;
         private readonly object _residencyGate = new();
         private CancellationTokenSource? _idleUnloadCancellation;
@@ -1667,6 +1679,29 @@ internal sealed class BridgeClientRegistry : IAsyncDisposable
             HostLifecycle != WidgetLifecycleState.Background ||
             WidgetResidencyPolicies.Resolve(Configured.ResidencyPolicy).Mode ==
                 WidgetResidencyMode.KeepAlive;
+
+        internal int DemandCurrentPresentationBase(long baseSequence)
+        {
+            var cached = CachedSnapshot;
+            var workerStart = _cachedSnapshotWorkerStart;
+            if (cached?.Sequence != baseSequence ||
+                workerStart <= 0 ||
+                !Client.IsRunning ||
+                Client.Starts != workerStart)
+                throw new BridgeStalePresentationBaseException();
+            return workerStart;
+        }
+
+        internal void CommitCachedSnapshot(ViewSnapshot snapshot)
+        {
+            ArgumentNullException.ThrowIfNull(snapshot);
+            var workerStart = Client.Starts;
+            if (workerStart <= 0 || !Client.IsRunning)
+                throw new BridgeProtocolException(
+                    $"Widget '{Configured.Id}' lost its worker before snapshot publication.");
+            CachedSnapshot = snapshot;
+            _cachedSnapshotWorkerStart = workerStart;
+        }
 
         internal void AcceptDashboardInputSequence(long sequence)
         {
