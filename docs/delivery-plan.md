@@ -87,9 +87,9 @@ historical evidence only; this file is the sole implementation authority.
 - DLV-292 production/test `ff5e7e4` is accepted and integrated as `80cdb10`.
   Bridge snapshot retention is bound to the exact worker start ordinal; worker
   replacement now emits typed stale-base recovery instead of continuing the
-  old virtual-window generation. The coherent main Release is responsive as
-  PID 81980. The user accepted it by default because live reproduction is not
-  practical; DLV-292 is closed and DLV-290 is released.
+  old virtual-window generation; DLV-292 is closed. DLV-290 selectable layouts,
+  its API/materializer corrections, and focused tests are accepted/integrated as
+  `9857beb`; the new Settings disable failure is assigned separately as DLV-293.
 - DLV-318 is the exact recoverable prior accepted Release at
   `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative-dlv318-build`;
   executable SHA-256 is
@@ -106,7 +106,7 @@ historical evidence only; this file is the sole implementation authority.
 
 | Lane | Task/worktree | State |
 | --- | --- | --- |
-| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | DLV-290 generic selectable pinned layouts is Assigned from clean integrated DLV-292 merge `80cdb10`; it is the sole production lane. |
+| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | DLV-293 disable-widget main-overlay survival is Assigned from integrated DLV-290 merge `9857beb`; it is the sole production lane. |
 | Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | DLV-288 `8be0ebb` is accepted/integrated as `a37d614`; the lane is idle. Game Launcher tests remain explicitly deferred and out of scope. |
 
 ## Execution rules
@@ -889,46 +889,44 @@ do not repair or rerun it under DLV-289.
 
 Rejected intermediate commits `78f90d4`, `53ab7b0`, and `ddb2d91` are retained only as ancestry inside the corrected accepted chain. The user accepted `da1f848` as the foundation, rejected downward placement in `7cc2be0`, and rejected clipped active pixels in `e7b24f4`. The user physically accepted `a74e677`, which preserves `chromeWindow_` as the topmost tray owner, renders the always-above menu inside bounded transparent composition headroom, and keeps non-menu headroom click-through. Test-only follow-up `941b0f9` passed all six authorized focused groups and the complete chain is integrated as merge `4c8048d`. DLV-289 is closed; exact PID 121188 remains the coherent accepted production instance without a tests-only rebuild/relaunch.
 
-## Ready pinned-presentation work
+## Accepted pinned-presentation work
 
-### DLV-290 generic selectable pinned layouts
+DLV-290 cumulative production `32ce34f` + additive-API correction `bc5a312` +
+materializer correction `1e64ad1` + focused tests `863c955` is accepted and
+integrated as merge `9857beb`. SDK 90/90, compatibility 12/12, Bridge,
+placement 17, coordinator 95, and isolated Release passed. PID 90872 was the
+physically accepted candidate; its later main-overlay failure during Settings
+catalog mutation is separated into DLV-293 rather than reopening DLV-290.
 
-Lane: platform, serialized shared-contract owner. Status: Assigned. Baseline:
-fresh clean branch from integrated DLV-292 merge `80cdb10`; never start from an
-unintegrated candidate or dirty tree. Add an optional bounded
-widget-authored pinned-presentation catalog without granting native authority.
-`Full widget` is the host fallback; added layouts have stable IDs, names,
-existing bounded axis sizing, and a selected checkpoint keyed independently
-from the ordinary view. Reuse SDK/runtime/Bridge/native declarative admission.
+## Ready overlay recovery
 
-Selecting `Pin` immediately focuses setup: LT/RT cycle a visible layout
-name/index, left stick or D-pad moves, right stick resizes, `A` commits and
-returns the pin to click-through, and `B` cancels the new pin/restores tray
-focus. Adjust reopens setup and `B` restores the prior layout/rectangle. LT/RT
-remain package actions outside setup. Preserve every DLV-289 invariant.
+### DLV-293 disable-widget main-overlay survival
 
-Verification is physical-first: production and directly affected public docs,
-one coherent packaged Release build, reviewer source inspection, then the user
-UX verdict before any tests. After acceptance, add and run only the focused
-shared-contract coverage once; Tier 3 only if a public wire boundary requires
-it. Exclude multi-pin, native rehydration, widget windows, marketplace, package
-host special cases, Game Launcher, Avalonia/AVP, and push. Stop for a second
-presentation authority, unbounded retention, destructive state, a public
-compatibility choice, substantial conflict, or triggers owned outside setup.
+Lane: platform. Status: Assigned. Baseline: fresh clean branch from integrated
+DLV-290 merge `9857beb` plus the planner assignment commit. Diagnose and correct
+the observed main overlay/session failure after disabling Game Launcher from
+Settings. The pin is not the defect: its continued visibility only proves the
+process and peer surface remained partly alive. Do not assume a root cause from
+that symptom and do not add a Game Launcher identity special case.
 
-Candidate `32ce34f` was rejected before launch: its sixth positional
-`WidgetView` parameter removed accepted constructor/`Deconstruct` signatures,
-a breaking change under DLV-288 rather than an optional compatible addition.
-Correction `bc5a312` preserves those exact five-value APIs and exposes
-`PinnedLayouts` only as an optional init property.
-PID 109724 was rejected after live refresh proved the native materializer omitted
-`pinnedLayouts`. Correction `1e64ad1` and focused tests `863c955` pass SDK 90/90,
-compatibility 12/12, Bridge, placement 17, coordinator 95, and isolated Release.
-Corrected PID 90872 is responsive and awaits a regression verdict; no integration.
+Acceptance: disabling any catalog widget from Settings completes through the
+existing catalog/session authority without exception, main-overlay HWND loss,
+or a stranded visibility/focus transaction. The main overlay remains usable;
+Guide can close and reopen it; surviving tray selection/focus is deterministic.
+An unrelated pin remains visible and current. If the disabled widget itself is
+pinned, only that pin is torn down through existing catalog reconciliation.
+
+Use physical-first ordering: source diagnosis and one coherent Release build,
+reviewer inspection, user verdict, then only focused catalog-removal,
+visibility/Guide, Settings action, and pinned-peer tests. Reuse the current host,
+window, catalog, focus, and pin owners. Exclude package/config mutation in tests,
+Game Launcher widget tests, broad aggregates, DLV-291, multi-pin, Avalonia/AVP,
+push, and unrelated repair. Stop for a new window/session owner, destructive
+state, public contract change, substantial conflict, or an unrelated red.
 
 ### DLV-291 Spotify compact pinned layouts
 
-Lane: widgets. Status: Awaiting accepted/integrated DLV-290. Baseline: fresh
+Lane: widgets. Status: Awaiting accepted/integrated DLV-293. Baseline: fresh
 clean widgets branch from that integration. Add two package-owned layouts—
 `Compact now playing` and `Now playing + up next`—beside the host `Full widget`
 fallback. Reuse Spotify's existing session/queue model and polling; do not add
@@ -947,12 +945,12 @@ without explicit promotion.
 
 ## Ordered queues
 
-1. DLV-290 generic selectable pinned layouts: Assigned platform from integrated DLV-292.
-2. DLV-291 Spotify compact pinned layouts: widgets Awaiting DLV-290 integration.
+1. DLV-293 disable-widget main-overlay survival: Assigned platform from integrated DLV-290.
+2. DLV-291 Spotify compact pinned layouts: widgets Awaiting DLV-293 integration.
 3. Remaining maturity deliverables, ordered after the pinned-layout UX settles.
 4. DLV-248 remains deliberately deferred until explicit user promotion.
 
-DLV-290 is the sole executable production assignment. DLV-291 consumes accepted DLV-290, and Game Launcher tests remain deferred.
+DLV-293 is the sole executable production assignment. DLV-291 follows its integration, and Game Launcher tests remain deferred.
 
 ## Manual and blocked evidence
 
