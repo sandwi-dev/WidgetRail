@@ -642,12 +642,15 @@ without explicit promotion.
 
 ## Ordered queues
 
-1. DLV-291 Spotify compact pinned layouts: 0.3.19 `9dda3bf` is physically
-   rejected because active playback leaves the Now Playing panel blank while
-   the selected queue remains visible. Prove player/descendant native geometry,
-   then build one immutable 0.3.20 correction that also refreshes a demanded
-   queue on natural track identity change and renders a small bounded multi-row
-   pinned queue. No install, tests, or integration before reviewer inspection.
+1. DLV-291 Spotify compact pinned layouts: clean 0.3.20 commits `8948d1d` and
+   `17e875f` are reviewer-accepted for physical promotion, not yet integrated.
+   Native 640x340 proof gives the corrected player a 326-DIP outer width with
+   visible 96-DIP artwork and 306-DIP content while retaining the 280-DIP queue.
+   The package refreshes a demanded queue once on natural playback item-identity
+   change and renders two focusable rows in the pinned queue. Immutable package
+   SHA-256 is `31B3B888DCF5868EC60ECECC42AAF8B135B8AE676B636D4A3C3B974825454ACC`.
+   Install and launch this production candidate for the user's verdict; do not
+   run tests or integrate first.
 2. DLV-474 fresh-session sequence-authority correction: retained correction
    passed its native gate, then the managed gate stopped on an opaque pre-test
    build red. Four diffs remain uncommitted; no rerun or repair is authorized.
@@ -699,7 +702,7 @@ tests remain deferred.
 | DLV-292 | `ff5e7e4` binds each Bridge-cached snapshot to its worker start ordinal and uses existing typed stale-base recovery after replacement. Production build and three focused lifecycle/native gates passed; integrated as `80cdb10`. The user accepted PID 81980 by default because live reproduction is impractical. |
 | DLV-293 | Production `a9d36cf` is physically accepted and integrated as `10c3e26`; PID 137288 already contains that production tip. New catalog-removal/focus/Guide assertions completed before the focused host gate stopped on an older Game Launcher stationarity correlation. The pin-coordinator suite did not run; both uncommitted test diffs remain retained, with no rerun or Game Launcher repair authorized. |
 | DLV-474 | Production `a830f026` was provisionally accepted by user disposition because the historical bridge-session loss could not be reproduced, then rejected before integration when the first focused native gate proved fresh sequence 1 was compared against retained prior-session sequences 10/20. The retained correction passed 29 native coordinator scenarios plus linked native checks, then the managed diagnostic gate exited 1 during an opaque pre-test build. Four diffs remain uncommitted at identity `d14a224507d682e9c67f83860e713fe0118bb4dd`; no rerun or repair occurred. |
-| DLV-291 | Reviewed Spotify 0.3.18 `2dc8ab8`, package SHA-256 `DB463A3AF2F035FC6F88BA8216CA08674C992BF5E0495CFF2FC2894D0BB88D05`, is physically rejected and retired. Clean 0.3.19 `9dda3bf`, package SHA-256 `D877986774C1B64100B6680C4B717845AA04F4197E6AF2C0925F9A3229AB2C86`, is the sole installed active version but is physically rejected: queue renders while active Now Playing is blank. Native 640x340 proof shows its 280x316 player descendants at width 0; typed flex-basis yields a 326x316 visible player and retains the 280x316 queue. Ordinary Queue is also stale after natural track transitions, and pinned Up Next can show multiple loaded rows. Active 0.3.20 owns the proven geometry, demand-gated identity-change refresh, and bounded multi-row presentation. |
+| DLV-291 | Spotify 0.3.18 `2dc8ab8` and 0.3.19 `9dda3bf` are physically rejected; 0.3.19 remains the sole active installed version only until clean replacement. Reviewer inspection accepts clean 0.3.20 commits `8948d1d` + `17e875f` for physical promotion: typed `flex-basis` restores the player, demanded Queue/Up Next refreshes once when polled playback identity changes, and pinned Up Next renders two focusable rows. Coherent Release and package builds exited 0. The 1,171,003-byte immutable package SHA-256 is `31B3B888DCF5868EC60ECECC42AAF8B135B8AE676B636D4A3C3B974825454ACC`; final tree is `e2236c56be03e432c8e1aafba1848c5b95829aaa`. No tests, install, launch, integration, or push occurred before review. |
 | DLV-248 | Deferred until explicit user promotion. |
 
 ## Integrated reliability — DLV-292 fresh-worker virtual-window recovery
