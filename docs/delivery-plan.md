@@ -122,14 +122,25 @@ historical evidence only; this file is the sole implementation authority.
   Current source confirms two independent contract defects: native input sends
   the JSON context `pinnedSurface`, which is absent from the public SDK enum and
   therefore rejected by Bridge deserialization, and the pinned controller
-  policy reserves X as `Close` while forwarding only A. DLV-473 is Assigned as
-  the serialized platform correction. DLV-291 production `5435eaf` is retained
-  clean and unlaunched until that prerequisite is accepted and integrated.
+  policy reserves X as `Close` while forwarding only A. Clean production-only
+  DLV-473 commit `4c66b128` corrects the generic SDK/Bridge/native boundary and
+  passed its Release build. Its exact patch is stacked with clean DLV-291
+  production `5435eaf` as unaccepted candidate `68248d1a` without integrating
+  `main`; the coherent Release/package build passed with no tests run. Accepted
+  PID 31132 exited cooperatively through verified `WM_CLOSE`. Exact candidate
+  PID 116316 is responsive with executable SHA-256
+  `F9D4643E9A290F38ABC495AB8E9EBAB849C034F6404E03CD5194C2811DFC81F4`;
+  reviewed Spotify 0.3.15 package SHA-256 is
+  `1C4F722B59037CE7F6D348AC12A372F4D941D58779CB3F9B88869B7C6377F65A`.
+  Spotify 0.3.15 is installed, selected, and enabled while its existing
+  configuration is preserved. The combined candidate awaits the user's
+  controller verdict; neither production commit is integrated.
 - DLV-318 is the exact recoverable prior accepted Release at
   `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative-dlv318-build`;
   executable SHA-256 is
   `86AC9946CC54F2B4CF51B14EEAA48CE32FECDF2C381DA73F24107DBE755F13AD`.
-- Spotify 0.3.14 remains installed, selected, and enabled. Preserve every
+- Spotify 0.3.15 is installed, selected, and enabled for the current physical
+  candidate; 0.3.14 remains the immediate installed rollback. Preserve every
   package, credential, account, provider, and configuration state.
 - Managed tests are accepted through `676cd76`: DLV-319 `199a81b`, DLV-324
   `6b63edf`, DLV-325 `e441f25`, and DLV-326 `676cd76`. All named managed
@@ -141,8 +152,8 @@ historical evidence only; this file is the sole implementation authority.
 
 | Lane | Task/worktree | State |
 | --- | --- | --- |
-| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | DLV-473 pinned-surface action routing is Assigned from a separate clean worktree because the standing tree retains exactly two uncommitted DLV-293 test diffs. Preserve those diffs unchanged. |
-| Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | DLV-291 production `5435eaf` is clean and held before physical launch/tests on DLV-473. Game Launcher tests remain deferred/out of scope. |
+| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | DLV-473 production `4c66b128` is clean, built, and stacked only in unaccepted candidate `68248d1a`; physical verdict pending. The standing tree retains exactly two uncommitted DLV-293 test diffs; preserve them unchanged. |
+| Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | DLV-291 production `5435eaf` is clean and included in unaccepted candidate `68248d1a`; physical verdict pending. Game Launcher tests remain deferred/out of scope. |
 
 ## Execution rules
 
@@ -335,17 +346,16 @@ without explicit promotion.
 
 ## Ordered queues
 
-1. DLV-473 pinned-surface action routing: Assigned serialized platform blocker.
-2. DLV-291 Spotify compact pinned layouts: production `5435eaf` retained clean;
-   physical launch/tests wait for DLV-473 integration.
+1. DLV-473 pinned-surface action routing plus DLV-291 Spotify compact pinned
+   layouts: clean unaccepted candidate `68248d1a` is launched as PID 116316;
+   await one combined physical verdict before integration or tests.
 3. DLV-294 generic pinned-layout projections: accepted/integrated as `60536ff`; closed.
 4. DLV-293 focused test debt: retained uncommitted after unrelated Game Launcher stationarity red; no rerun under the explicit deferral.
 5. Remaining maturity deliverables, ordered after the pinned-layout UX settles.
 6. DLV-248 remains deliberately deferred until explicit user promotion.
 
-DLV-473 is the sole executable production assignment and the direct blocker for
-a meaningful DLV-291 physical verdict. DLV-291's package-only commit remains
-retained but unlaunched/unaccepted. DLV-293 production is accepted/integrated;
+DLV-473 and DLV-291 are assembled only in the clean unaccepted candidate for one
+physical verdict. DLV-293 production is accepted/integrated;
 its incomplete test follow-up is retained as blocked debt, and Game Launcher
 tests remain deferred.
 
