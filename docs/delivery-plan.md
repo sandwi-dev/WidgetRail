@@ -90,8 +90,8 @@ historical evidence only; this file is the sole implementation authority.
   old virtual-window generation; DLV-292 is closed. DLV-290 selectable layouts,
   its API/materializer corrections, and focused tests are accepted/integrated as
   `9857beb`; the new Settings disable failure is assigned separately as DLV-293.
-- DLV-293 production `a9d36cf` is source-reviewed with a green isolated Release
-  build and awaits the physical-first user verdict. Catalog-order replacement
+- DLV-293 production `a9d36cf` is physically accepted with a green isolated
+  Release build; the focused regression follow-up is assigned. Catalog-order replacement
   now recreates the existing fixed-chrome/composition session before its
   synchronous repaint instead of painting through the retired session and
   falling permanently into the legacy HWND path. Exact candidate PID 137288 is
@@ -113,7 +113,7 @@ historical evidence only; this file is the sole implementation authority.
 
 | Lane | Task/worktree | State |
 | --- | --- | --- |
-| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | DLV-293 production `a9d36cf` is built and visibly launched as PID 137288; user verdict is pending before focused tests. |
+| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | DLV-293 production `a9d36cf` is physically accepted; focused regression tests are Assigned. |
 | Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | DLV-288 `8be0ebb` is accepted/integrated as `a37d614`; the lane is idle. Game Launcher tests remain explicitly deferred and out of scope. |
 
 ## Execution rules
@@ -156,7 +156,7 @@ The current accepted-state summary above remains the live disposition.
 
 ### DLV-293 disable-widget main-overlay survival
 
-Lane: platform. Status: Physical verdict pending on production `a9d36cf`.
+Lane: platform. Status: Production `a9d36cf` physically accepted; focused tests Assigned.
 Baseline: fresh clean branch from integrated
 DLV-290 merge `9857beb` plus the planner assignment commit. Diagnose and correct
 the observed main overlay/session failure after disabling Game Launcher from
@@ -200,12 +200,12 @@ without explicit promotion.
 
 ## Ordered queues
 
-1. DLV-293 disable-widget main-overlay survival: production candidate awaiting user verdict.
+1. DLV-293 disable-widget main-overlay survival: focused tests Assigned after physical acceptance.
 2. DLV-291 Spotify compact pinned layouts: widgets Awaiting DLV-293 integration.
 3. Remaining maturity deliverables, ordered after the pinned-layout UX settles.
 4. DLV-248 remains deliberately deferred until explicit user promotion.
 
-DLV-293 is at the physical verdict gate; no tests run before that verdict.
+DLV-293 is in its focused regression phase after the accepted physical verdict.
 DLV-291 follows its integration, and Game Launcher tests remain deferred.
 
 ## Manual and blocked evidence
