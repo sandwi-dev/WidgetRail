@@ -921,10 +921,10 @@ Candidate `32ce34f` was rejected before launch: its sixth positional
 a breaking change under DLV-288 rather than an optional compatible addition.
 Correction `bc5a312` preserves those exact five-value APIs and exposes
 `PinnedLayouts` only as an optional init property.
-The corrected cumulative production candidate passed the coherent packaged
-Release build with no tests run and is visibly running from the platform
-worktree as responsive PID 109724. DLV-290 awaits the user's physical UX verdict
-before any shared-contract test work or integration.
+The corrected cumulative production candidate passed its packaged Release build
+and the user physically accepted responsive PID 109724. The platform lane now
+owns the complete focused shared-contract test/fix phase in one pass; no Game
+Launcher or broad aggregate runs, integration, or test-only relaunch yet.
 
 ### DLV-291 Spotify compact pinned layouts
 
