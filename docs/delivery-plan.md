@@ -682,8 +682,10 @@ without explicit promotion.
    mismatch and performs at most two total requests through the existing
    resource owner. Exact package SHA-256 is
    `F6AE87ADDB82C8DA4C643130BD9009274AA9430D58E588C8BCD0E6A97628DB0D`.
-   Replace installed 0.3.20 cleanly, visibly launch the unchanged reviewed host,
-   and await the user's verdict before tests or integration.
+   Rejected 0.3.20 was cooperatively retired without clearing credentials or
+   private data; exact-hash 0.3.21 is now the sole installed active version.
+   The unchanged reviewed DLV-474 host is responsive as PID 110872 with Bridge
+   PID 66820. Await the user's verdict before tests or integration.
 2. DLV-474 fresh-session sequence-authority correction: retained correction
    passed its native gate, then the managed gate stopped on an opaque pre-test
    build red. Four diffs remain uncommitted; no rerun or repair is authorized.
@@ -696,9 +698,9 @@ without explicit promotion.
 7. DLV-248 remains deliberately deferred until explicit user promotion.
 
 DLV-473 production is accepted/integrated and its tests are post-acceptance
-work. DLV-291 versions through 0.3.20 are physically rejected. Exact-hash 0.3.20
-is the sole installed active Spotify version under responsive PID 123124 only
-until a reviewed replacement is ready; no DLV-291 production is integrated.
+work. DLV-291 versions through 0.3.20 are physically rejected. Exact-hash 0.3.21
+is the sole installed active Spotify version under responsive PID 110872 and
+awaits the user's physical verdict; no DLV-291 production is integrated.
 DLV-474 production is rejected before integration by deterministic
 fresh-session sequence evidence; its exact historical exit trigger remains
 unproven and retained diagnostics are ready for a future recurrence.
@@ -734,7 +736,7 @@ tests remain deferred.
 | DLV-292 | `ff5e7e4` binds each Bridge-cached snapshot to its worker start ordinal and uses existing typed stale-base recovery after replacement. Production build and three focused lifecycle/native gates passed; integrated as `80cdb10`. The user accepted PID 81980 by default because live reproduction is impractical. |
 | DLV-293 | Production `a9d36cf` is physically accepted and integrated as `10c3e26`; PID 137288 already contains that production tip. New catalog-removal/focus/Guide assertions completed before the focused host gate stopped on an older Game Launcher stationarity correlation. The pin-coordinator suite did not run; both uncommitted test diffs remain retained, with no rerun or Game Launcher repair authorized. |
 | DLV-474 | Production `a830f026` was provisionally accepted by user disposition because the historical bridge-session loss could not be reproduced, then rejected before integration when the first focused native gate proved fresh sequence 1 was compared against retained prior-session sequences 10/20. The retained correction passed 29 native coordinator scenarios plus linked native checks, then the managed diagnostic gate exited 1 during an opaque pre-test build. Four diffs remain uncommitted at identity `d14a224507d682e9c67f83860e713fe0118bb4dd`; no rerun or repair occurred. |
-| DLV-291 | Spotify versions through 0.3.20 are physically rejected; exact-hash 0.3.20 remains the sole installed active version only until clean replacement. Clean 0.3.21 `77122d3` proves the rejected anchor case fails with `missing_collection_anchor`, chooses a projected anchor among the two visible rows, and keeps ordinary Queue state unchanged. Queue responses now must correlate `CurrentlyPlaying` with latest demanded playback before normalization/publication, with at most two total requests and no second timer or per-tick queue polling. Coherent tests-skipped Release and package builds exited 0; no tests, install, launch, integration, or push occurred. Artifact is 1,171,340 bytes, SHA-256 `F6AE87ADDB82C8DA4C643130BD9009274AA9430D58E588C8BCD0E6A97628DB0D`; final tree `88eac9f1b30e97424dc9ebaa51123810d3bd04db`. Reviewer source inspection accepts physical promotion only. |
+| DLV-291 | Spotify versions through 0.3.20 are physically rejected. Clean 0.3.21 `77122d3` proves the rejected anchor case fails with `missing_collection_anchor`, chooses a projected anchor among the two visible rows, and keeps ordinary Queue state unchanged. Queue responses now must correlate `CurrentlyPlaying` with latest demanded playback before normalization/publication, with at most two total requests and no second timer or per-tick queue polling. Coherent tests-skipped Release and package builds exited 0; no tests ran. Artifact is 1,171,340 bytes, SHA-256 `F6AE87ADDB82C8DA4C643130BD9009274AA9430D58E588C8BCD0E6A97628DB0D`; final tree `88eac9f1b30e97424dc9ebaa51123810d3bd04db`. PID 123124 and its six windows exited cooperatively; 0.3.20 was retired without clearing credentials/private data; exact-hash 0.3.21 is the sole installed active version. Unchanged reviewed host SHA-256 `1C7C8849B014F538AD5AC7FEFA8947B6F85735808A64BF7D9F2BD70A134B1C18` is responsive as PID 110872 with Bridge PID 66820. Await user verdict; no integration or push. |
 | DLV-248 | Deferred until explicit user promotion. |
 
 ## Integrated reliability — DLV-292 fresh-worker virtual-window recovery
