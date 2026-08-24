@@ -1361,16 +1361,11 @@ public sealed class SpotifyWidget : Widget
         {
             await _spotify.ControlPlaybackAsync(command, cancellationToken)
                 .ConfigureAwait(false);
-            var invalidateQueue = false;
             lock (_gate)
             {
                 _pendingOperation = null;
                 _status = "Updated in Spotify";
-                if (operation is SpotifyPlaybackOperation.Next or
-                    SpotifyPlaybackOperation.Previous)
-                    invalidateQueue = true;
             }
-            if (invalidateQueue) InvalidateQueueCollection();
             Invalidate();
             await RefreshPlaybackAsync(Volatile.Read(ref _activeGeneration), cancellationToken)
                 .ConfigureAwait(false);
