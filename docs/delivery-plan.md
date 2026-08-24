@@ -246,7 +246,12 @@ historical evidence only; this file is the sole implementation authority.
   reviewed host binary is visibly responsive as PID 90896 with SHA-256
   `1C7C8849B014F538AD5AC7FEFA8947B6F85735808A64BF7D9F2BD70A134B1C18`,
   no startup error, Bridge PID 101932, and package worker PID 90072 from the
-  exact 0.3.19 path. Physical review is pending.
+  exact 0.3.19 path. Physical review rejects 0.3.19: the Up Next projection and
+  queue column are now visibly selected, but once playback is active the left
+  Now Playing panel is entirely blank. The queue remains visible. This proves
+  the platform selected the intended projection and narrows the next correction
+  to the package player's active-content geometry. A bounded WRSS/native-layout
+  proof is Assigned before another immutable package build.
 - DLV-473 post-acceptance test commit `34f15ae9` is retained clean and
   unintegrated. Its first authorized focused SDK gate exited 1 during build
   before test output, emitted no compiler diagnostic, and produced no test
@@ -258,7 +263,7 @@ historical evidence only; this file is the sole implementation authority.
   `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative-dlv318-build`;
   executable SHA-256 is
   `86AC9946CC54F2B4CF51B14EEAA48CE32FECDF2C381DA73F24107DBE755F13AD`.
-- Spotify 0.3.18 is the sole installed, selected, and enabled version after the
+- Spotify 0.3.19 is the sole installed, selected, and enabled version after the
   user's explicit full-trust and retirement approval. Preserve every
   package, credential, account, provider, and configuration state.
 - Managed tests are accepted through `676cd76`: DLV-319 `199a81b`, DLV-324
@@ -272,7 +277,7 @@ historical evidence only; this file is the sole implementation authority.
 | Lane | Task/worktree | State |
 | --- | --- | --- |
 | Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | DLV-474 correction passed the native gate, then the managed sanitized-terminal gate stopped on an opaque pre-test build red. Four intentional diffs remain retained uncommitted in the isolated worktree; no rerun or repair is authorized. DLV-473 test-only `34f15ae9` remains blocked after its first red; the standing tree's two DLV-293 test diffs remain byte-identical and must not be touched. |
-| Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | DLV-291 boundary proof found a package WRSS cascade defect. Clean 0.3.19 correction `9dda3bf` is built, installed as the sole active version, and running under exact reviewed host PID 90896 for the user's repeated idle-to-playback physical verdict. Game Launcher tests remain deferred/out of scope. |
+| Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | DLV-291 0.3.19 `9dda3bf` is physically rejected: the selected queue is visible but active Now Playing content is blank. Prove exact player/descendant native geometry, then correct only WRSS and build one immutable package if proven. Game Launcher tests remain deferred/out of scope. |
 
 ## Execution rules
 
@@ -482,8 +487,10 @@ Lane: widgets. Status: 0.3.17 correction `009af955` and clean 0.3.18 correction
 `2dc8ab8` physically rejected. 0.3.18 remains installed, selected, and enabled
 under the user's explicit current full-trust approval. Deterministic boundary
 proof found a package-owned WRSS cascade defect; clean 0.3.19 correction
-`9dda3bf` is built, installed as the sole active Spotify version, and awaits the
-exact repeated physical verdict under reviewed host PID 90896.
+`9dda3bf` was built and installed as the sole active Spotify version, then
+physically rejected under reviewed host PID 90896: the queue projection is now
+selected and its right column is visible, but active playback leaves the entire
+left Now Playing panel blank.
 The rejected 0.3.17 build was reviewed, built, and installed as the sole Spotify
 version after explicit
 full-trust and retirement approval, but physical review proves LT/RT changes
@@ -533,8 +540,22 @@ selector producing `width: 0px`, `min-width: 280px`, `flex-grow: 1`, and
 `D877986774C1B64100B6680C4B717845AA04F4197E6AF2C0925F9A3229AB2C86`.
 Exact-hash 0.3.19 is the sole installed, selected, enabled Spotify version.
 Reviewed host PID 90896 is responsive, has no startup error, and spawned its
-Spotify worker from the 0.3.19 package path. Repeat the exact rejected sequence
-for the physical verdict before tests or integration.
+Spotify worker from the 0.3.19 package path. The repeated exact sequence
+physically proved projection selection and queue rendering, but rejected active
+player rendering.
+
+Next correction: use a credential-free ready-playback snapshot at the admitted
+640-DIP surface to record native bounds for the Up Next shell, player card,
+player's immediate artwork/details/scrubber/control descendants, and queue.
+Prove whether the new authored `width: 0px` collapses player descendants while
+`min-width` preserves only the empty outer panel. If proven, use the existing
+typed `flex-basis` contract—or another equally evidenced ordinary WRSS rule—to
+control row allocation without giving the player's content a zero authored
+width. Do not guess from the screenshot or change platform code. Correct only
+Spotify WRSS, bump the immutable version, run one coherent Release/package
+build, commit the scoped production change, and stop before install, tests, or
+integration. Preserve the two projection roots, queue behavior, ordinary full
+widget, provider/account state, and concurrent DLV-474 evidence.
 
 ### DLV-294 generic pinned-layout projections
 
@@ -590,10 +611,11 @@ without explicit promotion.
 
 ## Ordered queues
 
-1. DLV-291 Spotify compact pinned layouts: deterministic proof found the WRSS
-   cascade defect; clean 0.3.19 `9dda3bf` is the sole active installed version
-   under responsive reviewed host PID 90896. Await the repeated idle-to-playing
-   physical sequence. No tests or integration before the verdict.
+1. DLV-291 Spotify compact pinned layouts: 0.3.19 `9dda3bf` is physically
+   rejected because active playback leaves the Now Playing panel blank while
+   the selected queue remains visible. Prove player/descendant native geometry,
+   then make one WRSS-only immutable correction and build; no install, tests, or
+   integration before reviewer inspection.
 2. DLV-474 fresh-session sequence-authority correction: retained correction
    passed its native gate, then the managed gate stopped on an opaque pre-test
    build red. Four diffs remain uncommitted; no rerun or repair is authorized.
@@ -608,7 +630,8 @@ without explicit promotion.
 DLV-473 production is accepted/integrated and its tests are post-acceptance
 work. DLV-291 0.3.17 and 0.3.18 are physically rejected; deterministic proof
 assigns the visible queue failure to the package WRSS cascade, and built 0.3.19
-is the sole active installed physical candidate under PID 90896.
+is the sole active installed version under PID 90896 but is physically rejected
+for blank active Now Playing content.
 DLV-474 production is rejected before integration by deterministic
 fresh-session sequence evidence; its exact historical exit trigger remains
 unproven and retained diagnostics are ready for a future recurrence.
@@ -644,7 +667,7 @@ tests remain deferred.
 | DLV-292 | `ff5e7e4` binds each Bridge-cached snapshot to its worker start ordinal and uses existing typed stale-base recovery after replacement. Production build and three focused lifecycle/native gates passed; integrated as `80cdb10`. The user accepted PID 81980 by default because live reproduction is impractical. |
 | DLV-293 | Production `a9d36cf` is physically accepted and integrated as `10c3e26`; PID 137288 already contains that production tip. New catalog-removal/focus/Guide assertions completed before the focused host gate stopped on an older Game Launcher stationarity correlation. The pin-coordinator suite did not run; both uncommitted test diffs remain retained, with no rerun or Game Launcher repair authorized. |
 | DLV-474 | Production `a830f026` was provisionally accepted by user disposition because the historical bridge-session loss could not be reproduced, then rejected before integration when the first focused native gate proved fresh sequence 1 was compared against retained prior-session sequences 10/20. The retained correction passed 29 native coordinator scenarios plus linked native checks, then the managed diagnostic gate exited 1 during an opaque pre-test build. Four diffs remain uncommitted at identity `d14a224507d682e9c67f83860e713fe0118bb4dd`; no rerun or repair occurred. |
-| DLV-291 | Reviewed Spotify 0.3.18 `2dc8ab8`, package SHA-256 `DB463A3AF2F035FC6F88BA8216CA08674C992BF5E0495CFF2FC2894D0BB88D05`, is physically rejected and retired. Deterministic snapshot proof found the Up Next root structurally correct and in bounds, but a package WRSS specificity defect clipped its queue. Clean 0.3.19 `9dda3bf`, package SHA-256 `D877986774C1B64100B6680C4B717845AA04F4197E6AF2C0925F9A3229AB2C86`, is the sole installed, selected, enabled version under explicit full-trust approval. Reviewed host PID 90896 is responsive with no startup error and loaded the exact 0.3.19 worker; physical verdict pending. |
+| DLV-291 | Reviewed Spotify 0.3.18 `2dc8ab8`, package SHA-256 `DB463A3AF2F035FC6F88BA8216CA08674C992BF5E0495CFF2FC2894D0BB88D05`, is physically rejected and retired. Deterministic snapshot proof found the Up Next root structurally correct and in bounds, but a package WRSS specificity defect clipped its queue. Clean 0.3.19 `9dda3bf`, package SHA-256 `D877986774C1B64100B6680C4B717845AA04F4197E6AF2C0925F9A3229AB2C86`, is the sole installed, selected, enabled version under explicit full-trust approval. Reviewed host PID 90896 loaded the exact worker. Physical review rejects it: queue selection/rendering works, but active playback leaves the Now Playing panel blank. Exact native player/descendant geometry proof and one WRSS-only correction are Assigned. |
 | DLV-248 | Deferred until explicit user promotion. |
 
 ## Integrated reliability — DLV-292 fresh-worker virtual-window recovery
