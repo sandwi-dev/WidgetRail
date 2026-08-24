@@ -95,7 +95,7 @@ historical evidence only; this file is the sole implementation authority.
 
 | Lane | Task/worktree | State |
 | --- | --- | --- |
-| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | DLV-289 production commits `78f90d4` + `53ab7b0` remain rejected and unintegrated. A production-only tray Options/Adjust correction is Assigned on that clean branch; this is the sole serialized surface owner. |
+| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | DLV-289 cumulative production candidate through `da1f848` is source-accepted, build-green, unintegrated, and ready for exact-candidate physical review. The lane is idle. |
 | Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | DLV-288 `8be0ebb` is accepted/integrated as `a37d614`; the lane is idle. Game Launcher tests remain explicitly deferred and out of scope. |
 
 ## Execution rules
@@ -875,24 +875,16 @@ Source-review the complete menu/focus/input/placement ordering, run one coherent
 packaged Release build, and commit one clean `[DLV-289]` production correction.
 The reviewer will inspect and launch that exact candidate for the user's verdict.
 
-Candidate `ddb2d91` is rejected by source review before launch. It correctly
-removes the chord, preserves content-owned Menu/LB/RB/RS, reuses the fixed-chrome
-and placement owners, and builds the packaged Release with exit 0, but its two
-pinned actions are laid out side by side in one 48-DIP tray ribbon rather than
-as the requested Windows-like vertical context-menu list. Its raw right-stick
-resize advances only once when the cardinal direction changes, so a held stick
-cannot continue resizing; the overlay-window keyboard route also calls the
-single-mode step overload while Adjust is active and therefore does nothing.
-
-The next production-only correction must stack one option per row in a bounded
-menu anchored adjacent to the selected tray item, with matching pointer/UIA
-bounds and Up/Down navigation. Right-stick resize must repeat through the
-existing bounded controller cadence while held, without a new timer, and reset
-cleanly on neutral, reversal, commit, cancel, hide, display reconciliation, or
-generation retirement. The overlay-window arrow-key fallback in Adjust must
-move through the same explicit Move operation. Preserve every other accepted
-scope boundary above; add/run no tests, build one coherent packaged Release,
-and return one separate clean production correction for review.
+Candidate `ddb2d91` was rejected before launch for its horizontal action ribbon,
+one-shot right-stick resize, and no-op Adjust keyboard route. Correction
+`da1f848` is source-accepted: it supplies the requested vertical adjacent menu
+with shared render/pointer/UIA row bounds and Up/Down navigation, routes held
+right-stick resize through the existing 360/125-ms controller cadence with
+deterministic lifecycle resets, and makes Adjust arrow keys explicitly move.
+The clean three-production-file correction preserves existing ownership and its
+coherent packaged Release build exited 0. Executable SHA-256 is
+`1A8C48349C90FEE122381B0E557D78DE350D433F6DD7D65BC50AD11B36D1DE2A`.
+No tests ran; exact-candidate physical review is next, before integration.
 
 ## Future architecture queue — maturity review additions
 
@@ -949,7 +941,7 @@ maturity queue is deliberately held until the visible physical verdict.
 | DLV-286 | The user physically accepted complete correction `a41bd72`; cumulative chain `d0ca29b` + `058efbc` + `a41bd72` is integrated as merge `627ba4c`. Responsive accepted PID 85884 already contains that production tip, so it remains running without a merge-only rebuild/relaunch. The dedicated Game Launcher test project remains untouched/deferred, and the broader Bridge aggregate must not be repeated. |
 | DLV-287 | Production/test `dccf49a` is accepted and integrated as `fc91157`; focused Release build passed and WidgetSdk protocol contracts passed 89/89. Exact prior PID 85884 exited gracefully. Refreshed integrated PID 113716 is responsive, has no startup error, and admitted the generic full-application and Spotify widgets. |
 | DLV-288 | Documentation `8be0ebb` is accepted and integrated as `a37d614`; scoped link/reference/contract inspection passed. Its single documentation gate stopped only on three pre-existing OverlayHost packaging assertions, with no DLV-288 link failure, and was not rerun. No runtime input changed, so PID 113716 remains accepted. |
-| DLV-289 | `78f90d4` + `53ab7b0` remain rejected/unintegrated. Assigned production-only correction replaces the chord with a tray Options menu: Pin, Adjust pinned widget, and Unpin; left/D-pad moves, right resizes, A saves, B cancels. Now Playing opt-in and focused post-verdict tests only remain. |
+| DLV-289 | Cumulative candidate through correction `da1f848` is source-accepted, build-green, and unintegrated. Exact-candidate physical review is next for the tray Options menu, Pin/Adjust/Unpin, move/resize, persistence, and content-action isolation; no tests ran. |
 | DLV-248 | Deferred until explicit user promotion. |
 
 ## Recent dispositions
