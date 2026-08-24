@@ -620,6 +620,26 @@ tests ran. The 1,171,340-byte immutable 0.3.21 package SHA-256 is
 final tree is `88eac9f1b30e97424dc9ebaa51123810d3bd04db`. Reviewer source inspection
 accepts this candidate for physical promotion only; it remains unintegrated.
 
+Physical disposition: 0.3.21 fixes the prior runtime/protocol failure, but is
+rejected overall because pinned Up Next stops refreshing after ordinary overlay
+deactivation and resumes only when the user enters Queue in the main widget.
+The package selection callback correctly records the Up Next demand, but
+`OnDeactivatedAsync` unconditionally clears `_upNextPinnedLayoutSelected` even
+though the pinned surface and its unchanged layout selection remain alive. The
+generic host contract revokes layout selection on layout removal, runtime
+replacement, unpin, or shutdown—not ordinary overlay hide/deactivation—so the
+host does not need to resend the unchanged selection on the next activation.
+
+Produce one immutable 0.3.22 package correction. Preserve the selected pinned
+layout demand across ordinary deactivation/background transitions; clear it
+only through the existing selection-change/unpin notification or final runtime
+destruction/replacement boundary. Keep active polling lifecycle-owned and do
+not keep the ordinary overlay active merely because a pin exists. Prove the
+sequence select Up Next -> deactivate overlay -> polled playback identity
+change still calls the existing bounded queue refresh owner exactly once, while
+switching away/unpinning prevents further queue demand. Change package code
+only, build once, and stop before install, tests, integration, or push.
+
 ### DLV-294 generic pinned-layout projections
 
 Lane: widgets lead, serialized SDK/protocol/native-host prerequisite. Status:
@@ -674,18 +694,14 @@ without explicit promotion.
 
 ## Ordered queues
 
-1. DLV-291 Spotify compact pinned layouts: versions through 0.3.20 are
-   physically rejected. Clean 0.3.21 `77122d3` is reviewer-accepted for
-   physical promotion only and remains unintegrated. Exact proof reproduces
-   `missing_collection_anchor`; the projection now chooses an anchor among its
-   two displayed rows. Queue loading rejects a `CurrentlyPlaying` generation
-   mismatch and performs at most two total requests through the existing
-   resource owner. Exact package SHA-256 is
-   `F6AE87ADDB82C8DA4C643130BD9009274AA9430D58E588C8BCD0E6A97628DB0D`.
-   Rejected 0.3.20 was cooperatively retired without clearing credentials or
-   private data; exact-hash 0.3.21 is now the sole installed active version.
-   The unchanged reviewed DLV-474 host is responsive as PID 110872 with Bridge
-   PID 66820. Await the user's verdict before tests or integration.
+1. DLV-291 Spotify compact pinned layouts: 0.3.21 `77122d3` fixes the prior
+   runtime/protocol failure but is physically rejected overall. Pinned Up Next
+   stops refreshing after ordinary overlay deactivation because package
+   `OnDeactivatedAsync` clears its selected-layout demand while the pin and
+   unchanged host selection remain alive. Produce one immutable 0.3.22 package
+   correction that preserves demand across ordinary deactivation and clears it
+   only on selection change/unpin or destruction/replacement. Build once and
+   stop before install, tests, or integration for reviewer inspection.
 2. DLV-474 fresh-session sequence-authority correction: retained correction
    passed its native gate, then the managed gate stopped on an opaque pre-test
    build red. Four diffs remain uncommitted; no rerun or repair is authorized.
@@ -698,9 +714,10 @@ without explicit promotion.
 7. DLV-248 remains deliberately deferred until explicit user promotion.
 
 DLV-473 production is accepted/integrated and its tests are post-acceptance
-work. DLV-291 versions through 0.3.20 are physically rejected. Exact-hash 0.3.21
-is the sole installed active Spotify version under responsive PID 110872 and
-awaits the user's physical verdict; no DLV-291 production is integrated.
+work. DLV-291 versions through 0.3.21 are physically rejected overall, although
+0.3.21 fixes the prior runtime/protocol error. Exact-hash 0.3.21 remains the
+sole installed active Spotify version under responsive PID 110872 pending a
+reviewed 0.3.22 replacement; no DLV-291 production is integrated.
 DLV-474 production is rejected before integration by deterministic
 fresh-session sequence evidence; its exact historical exit trigger remains
 unproven and retained diagnostics are ready for a future recurrence.
@@ -736,7 +753,7 @@ tests remain deferred.
 | DLV-292 | `ff5e7e4` binds each Bridge-cached snapshot to its worker start ordinal and uses existing typed stale-base recovery after replacement. Production build and three focused lifecycle/native gates passed; integrated as `80cdb10`. The user accepted PID 81980 by default because live reproduction is impractical. |
 | DLV-293 | Production `a9d36cf` is physically accepted and integrated as `10c3e26`; PID 137288 already contains that production tip. New catalog-removal/focus/Guide assertions completed before the focused host gate stopped on an older Game Launcher stationarity correlation. The pin-coordinator suite did not run; both uncommitted test diffs remain retained, with no rerun or Game Launcher repair authorized. |
 | DLV-474 | Production `a830f026` was provisionally accepted by user disposition because the historical bridge-session loss could not be reproduced, then rejected before integration when the first focused native gate proved fresh sequence 1 was compared against retained prior-session sequences 10/20. The retained correction passed 29 native coordinator scenarios plus linked native checks, then the managed diagnostic gate exited 1 during an opaque pre-test build. Four diffs remain uncommitted at identity `d14a224507d682e9c67f83860e713fe0118bb4dd`; no rerun or repair occurred. |
-| DLV-291 | Spotify versions through 0.3.20 are physically rejected. Clean 0.3.21 `77122d3` proves the rejected anchor case fails with `missing_collection_anchor`, chooses a projected anchor among the two visible rows, and keeps ordinary Queue state unchanged. Queue responses now must correlate `CurrentlyPlaying` with latest demanded playback before normalization/publication, with at most two total requests and no second timer or per-tick queue polling. Coherent tests-skipped Release and package builds exited 0; no tests ran. Artifact is 1,171,340 bytes, SHA-256 `F6AE87ADDB82C8DA4C643130BD9009274AA9430D58E588C8BCD0E6A97628DB0D`; final tree `88eac9f1b30e97424dc9ebaa51123810d3bd04db`. PID 123124 and its six windows exited cooperatively; 0.3.20 was retired without clearing credentials/private data; exact-hash 0.3.21 is the sole installed active version. Unchanged reviewed host SHA-256 `1C7C8849B014F538AD5AC7FEFA8947B6F85735808A64BF7D9F2BD70A134B1C18` is responsive as PID 110872 with Bridge PID 66820. Await user verdict; no integration or push. |
+| DLV-291 | Spotify versions through 0.3.21 are physically rejected overall. Clean 0.3.21 `77122d3` fixes the prior `missing_collection_anchor` runtime failure and adds bounded queue/playback generation correlation; exact-hash package `F6AE87ADDB82C8DA4C643130BD9009274AA9430D58E588C8BCD0E6A97628DB0D` is the sole installed active version under responsive PID 110872. User review confirms the runtime error is fixed but pinned Up Next stops refreshing after overlay deactivation until the main Queue page is opened. Source inspection proves `OnDeactivatedAsync` clears `_upNextPinnedLayoutSelected` while the pinned surface and unchanged host layout selection persist. Active 0.3.22 must preserve that demand across ordinary deactivation and revoke it only on selection change/unpin or runtime destruction/replacement. No tests or integration. |
 | DLV-248 | Deferred until explicit user promotion. |
 
 ## Integrated reliability — DLV-292 fresh-worker virtual-window recovery
