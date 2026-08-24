@@ -90,13 +90,17 @@ historical evidence only; this file is the sole implementation authority.
   old virtual-window generation; DLV-292 is closed. DLV-290 selectable layouts,
   its API/materializer corrections, and focused tests are accepted/integrated as
   `9857beb`; the new Settings disable failure is assigned separately as DLV-293.
-- DLV-293 production `a9d36cf` is physically accepted with a green isolated
-  Release build; the focused regression follow-up is assigned. Catalog-order replacement
+- DLV-293 production `a9d36cf` is physically accepted and integrated as
+  `10c3e26`. Catalog-order replacement
   now recreates the existing fixed-chrome/composition session before its
   synchronous repaint instead of painting through the retired session and
   falling permanently into the legacy HWND path. Exact candidate PID 137288 is
   responsive with executable SHA-256
   `B26DD3AC26DB44BB065F188879882A940F78C027F9699687E9BC6635D4F5D734`.
+  Its new catalog-removal, focus, and Guide assertions completed before the
+  focused host gate stopped on an older Game Launcher stationarity correlation.
+  Per the user's explicit Game Launcher test deferral, that unrelated red is not
+  rerun or repaired; the pin-coordinator test did not run and remains test debt.
 - DLV-318 is the exact recoverable prior accepted Release at
   `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative-dlv318-build`;
   executable SHA-256 is
@@ -113,8 +117,8 @@ historical evidence only; this file is the sole implementation authority.
 
 | Lane | Task/worktree | State |
 | --- | --- | --- |
-| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | DLV-293 production `a9d36cf` is physically accepted; focused regression tests are Assigned. |
-| Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | DLV-288 `8be0ebb` is accepted/integrated as `a37d614`; the lane is idle. Game Launcher tests remain explicitly deferred and out of scope. |
+| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | DLV-293 production is accepted/integrated as `10c3e26`; two uncommitted test diffs are retained as blocked evidence after the first unrelated red. |
+| Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | DLV-291 Spotify compact pinned layouts is Assigned from accepted DLV-293 integration; Game Launcher tests remain deferred/out of scope. |
 
 ## Execution rules
 
@@ -156,7 +160,8 @@ The current accepted-state summary above remains the live disposition.
 
 ### DLV-293 disable-widget main-overlay survival
 
-Lane: platform. Status: Production `a9d36cf` physically accepted; focused tests Assigned.
+Lane: platform. Status: Production `a9d36cf` physically accepted and integrated
+as `10c3e26`; focused test follow-up incomplete after an unrelated first red.
 Baseline: fresh clean branch from integrated
 DLV-290 merge `9857beb` plus the planner assignment commit. Diagnose and correct
 the observed main overlay/session failure after disabling Game Launcher from
@@ -181,8 +186,8 @@ state, public contract change, substantial conflict, or an unrelated red.
 
 ### DLV-291 Spotify compact pinned layouts
 
-Lane: widgets. Status: Awaiting accepted/integrated DLV-293. Baseline: fresh
-clean widgets branch from that integration. Add two package-owned layouts—
+Lane: widgets. Status: Assigned. Baseline: fresh clean widgets branch from
+accepted DLV-293 integration `10c3e26` plus the planner assignment commit. Add two package-owned layouts—
 `Compact now playing` and `Now playing + up next`—beside the host `Full widget`
 fallback. Reuse Spotify's existing session/queue model and polling; do not add
 duplicate provider work, credentials, host knowledge, or a Spotify protocol
@@ -200,13 +205,14 @@ without explicit promotion.
 
 ## Ordered queues
 
-1. DLV-293 disable-widget main-overlay survival: focused tests Assigned after physical acceptance.
-2. DLV-291 Spotify compact pinned layouts: widgets Awaiting DLV-293 integration.
+1. DLV-291 Spotify compact pinned layouts: Assigned widgets from accepted DLV-293 integration.
+2. DLV-293 focused test debt: retained uncommitted after unrelated Game Launcher stationarity red; no rerun under the explicit deferral.
 3. Remaining maturity deliverables, ordered after the pinned-layout UX settles.
 4. DLV-248 remains deliberately deferred until explicit user promotion.
 
-DLV-293 is in its focused regression phase after the accepted physical verdict.
-DLV-291 follows its integration, and Game Launcher tests remain deferred.
+DLV-291 is the sole executable production assignment. DLV-293 production is
+accepted/integrated; its incomplete test follow-up is retained as blocked debt,
+and Game Launcher tests remain deferred.
 
 ## Manual and blocked evidence
 
@@ -234,6 +240,7 @@ DLV-291 follows its integration, and Game Launcher tests remain deferred.
 | DLV-288 | Documentation `8be0ebb` is accepted and integrated as `a37d614`; scoped link/reference/contract inspection passed. Its single documentation gate stopped only on three pre-existing OverlayHost packaging assertions, with no DLV-288 link failure, and was not rerun. No runtime input changed, so PID 113716 remains accepted. |
 | DLV-289 | The user physically accepted correction `a74e677` after `e7b24f4` was rejected for clipped active pixels. Test-only `941b0f9` passed six focused groups and the full chain is integrated as `4c8048d`. Exact PID 121188 contains the accepted production tip, so no tests-only rebuild/relaunch occurred. |
 | DLV-292 | `ff5e7e4` binds each Bridge-cached snapshot to its worker start ordinal and uses existing typed stale-base recovery after replacement. Production build and three focused lifecycle/native gates passed; integrated as `80cdb10`. The user accepted PID 81980 by default because live reproduction is impractical. |
+| DLV-293 | Production `a9d36cf` is physically accepted and integrated as `10c3e26`; PID 137288 already contains that production tip. New catalog-removal/focus/Guide assertions completed before the focused host gate stopped on an older Game Launcher stationarity correlation. The pin-coordinator suite did not run; both uncommitted test diffs remain retained, with no rerun or Game Launcher repair authorized. |
 | DLV-248 | Deferred until explicit user promotion. |
 
 ## Integrated reliability — DLV-292 fresh-worker virtual-window recovery
