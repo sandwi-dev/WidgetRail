@@ -184,18 +184,24 @@ historical evidence only; this file is the sole implementation authority.
   DLV-474 is Assigned to bind retained host presentations to the exact Bridge
   session, recover atomically after transport replacement, and retain the
   terminal cause.
-- Clean DLV-474 production `a830f026` is independently source-reviewed and its
-  Release build passed. It binds every host request to the exact Bridge session
+- Clean DLV-474 production `a830f026` is independently source-reviewed, its
+  Release build passed, and the user accepted it by disposition after the
+  historical bridge-session loss could not be reproduced. It binds every host
+  request to the exact Bridge session
   generation, classifies transport loss without publishing it as the current
   widget failure, serially reloads the replacement catalog, retires prior
   request/admission authority, and re-establishes active widgets from fresh
   ordinary checkpoints. Bridge terminal evidence is sanitized to session, PID,
   exit, bounded reason, and HRESULT metadata. The exact historical exit trigger
-  remains unproven until the new diagnostics observe it. Prior exact PID 105080
+  remains unproven; the bounded sanitized terminal diagnostics remain in
+  production so a future recurrence can prove it. Prior exact PID 105080
   exited cooperatively after `WM_CLOSE` reached its three top-level windows.
-  Unaccepted DLV-474 candidate PID 844 is responsive with executable SHA-256
+  Accepted candidate PID 844 later exited cooperatively for the approved
+  Spotify package update. The same exact reviewed host is now responsive as
+  PID 43416 with executable SHA-256
   `1C7C8849B014F538AD5AC7FEFA8947B6F85735808A64BF7D9F2BD70A134B1C18`
-  and no `startup-error.txt`; it awaits repeated hide/reopen physical review.
+  and no `startup-error.txt`. Focused post-acceptance tests are assigned; main
+  integration remains gated on their review.
 - Clean DLV-291 Spotify 0.3.18 production `2dc8ab8` is independently
   source-reviewed. The selected Up Next projection was correct, but its player
   retained the generic `width: 100%` basis inside a clipped horizontal row, so
@@ -203,9 +209,11 @@ historical evidence only; this file is the sole implementation authority.
   flex basis lets the existing growing player share the row with the bounded
   queue panel. The package build passed; package SHA-256 is
   `DB463A3AF2F035FC6F88BA8216CA08674C992BF5E0495CFF2FC2894D0BB88D05`.
-  Installation is blocked pending current explicit approval of the package's
-  ordinary current-user full-trust authority. No catalog mutation occurred;
-  Spotify 0.3.17 remains the sole installed, selected, enabled version.
+  The user explicitly approved the package's ordinary current-user full-trust
+  authority. Spotify 0.3.18 was installed with the reviewed hash, selected,
+  and enabled while the overlay was stopped; retired 0.3.17 was removed and
+  0.3.18 is the sole installed version. Exact DLV-474 host PID 43416 was then
+  visibly relaunched. The three-layout physical verdict remains pending.
 - DLV-473 post-acceptance test commit `34f15ae9` is retained clean and
   unintegrated. Its first authorized focused SDK gate exited 1 during build
   before test output, emitted no compiler diagnostic, and produced no test
@@ -217,8 +225,8 @@ historical evidence only; this file is the sole implementation authority.
   `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative-dlv318-build`;
   executable SHA-256 is
   `86AC9946CC54F2B4CF51B14EEAA48CE32FECDF2C381DA73F24107DBE755F13AD`.
-- Spotify 0.3.17 is the sole installed, selected, and enabled version after the
-  user's explicit retirement approval. Preserve every
+- Spotify 0.3.18 is the sole installed, selected, and enabled version after the
+  user's explicit full-trust and retirement approval. Preserve every
   package, credential, account, provider, and configuration state.
 - Managed tests are accepted through `676cd76`: DLV-319 `199a81b`, DLV-324
   `6b63edf`, DLV-325 `e441f25`, and DLV-326 `676cd76`. All named managed
@@ -230,8 +238,8 @@ historical evidence only; this file is the sole implementation authority.
 
 | Lane | Task/worktree | State |
 | --- | --- | --- |
-| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | DLV-474 production `a830f026` is reviewed/built and exact candidate PID 844 awaits physical hide/reopen verdict. DLV-473 test-only `34f15ae9` remains blocked after its first red; the standing tree's two DLV-293 test diffs remain byte-identical and must not be touched. |
-| Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | DLV-291 0.3.18 `2dc8ab8` is reviewed/built. Installation awaits explicit current full-trust approval; 0.3.17 remains the sole installed/active version. Game Launcher tests remain deferred/out of scope. |
+| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | DLV-474 production `a830f026` is accepted by user disposition; focused post-acceptance tests are Assigned in a separate clean worktree. DLV-473 test-only `34f15ae9` remains blocked after its first red; the standing tree's two DLV-293 test diffs remain byte-identical and must not be touched. |
+| Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | DLV-291 0.3.18 `2dc8ab8` is reviewed/built, installed as the sole active version under explicit full-trust approval, and awaits the user's three-layout physical verdict. Game Launcher tests remain deferred/out of scope. |
 
 ## Execution rules
 
@@ -274,8 +282,9 @@ The current accepted-state summary above remains the live disposition.
 ### DLV-474 Bridge-session replacement and retained-presentation recovery
 
 Lane: platform, serialized host/Bridge lifecycle correction. Status: clean
-production `a830f026` reviewed/built and exact candidate PID 844 launched;
-physical verdict pending.
+production `a830f026` accepted by user disposition after the historical failure
+could not be reproduced; focused post-acceptance tests Assigned. The same exact
+reviewed host is running as PID 43416 after the approved Spotify update.
 Baseline: clean local `main` at planner tip. Use a separate clean worktree; the
 standing platform worktree's two DLV-293 test diffs and retained DLV-473 test
 commit are immutable evidence and must not be edited, staged, discarded,
@@ -412,9 +421,10 @@ state, public contract change, substantial conflict, or an unrelated red.
 ### DLV-291 Spotify compact pinned layouts
 
 Lane: widgets. Status: 0.3.17 correction `009af955` physically rejected; clean
-0.3.18 correction `2dc8ab8` reviewed/built but not installed pending explicit
-current full-trust approval. 0.3.17 is
-reviewed, built, and installed as the sole Spotify version after explicit
+0.3.18 correction `2dc8ab8` reviewed/built, installed, selected, and enabled
+under the user's explicit current full-trust approval; physical verdict pending.
+The rejected 0.3.17 build was reviewed, built, and installed as the sole Spotify
+version after explicit
 full-trust and retirement approval, but physical review proves LT/RT changes
 the surface dimensions without replacing compact Now Playing with the distinct
 Now Playing + Up Next document; Full widget remains distinct and works. The log
@@ -488,10 +498,12 @@ without explicit promotion.
 
 ## Ordered queues
 
-1. DLV-474 Bridge-session replacement and retained-presentation recovery:
-   exact candidate PID 844 awaits repeated hide/reopen verdict.
-2. DLV-291 Spotify compact pinned layouts: reviewed 0.3.18 `2dc8ab8` awaits
-   explicit current full-trust install approval, then physical layout verdict.
+1. DLV-291 Spotify compact pinned layouts: reviewed 0.3.18 `2dc8ab8` is the
+   sole installed active version and exact host PID 43416 awaits the physical
+   Full widget / Compact now playing / Now playing + up next verdict.
+2. DLV-474 focused post-acceptance tests: production `a830f026` is accepted by
+   user disposition; deterministic session-replacement and retained-base tests
+   are Assigned while the sanitized future-exit diagnostics remain in place.
 3. DLV-473 focused post-acceptance tests: clean `34f15ae9` is retained
    unintegrated after the first SDK gate stopped before tests on an opaque build
    red; later gates did not run and no rerun is authorized.
@@ -501,8 +513,9 @@ without explicit promotion.
 7. DLV-248 remains deliberately deferred until explicit user promotion.
 
 DLV-473 production is accepted/integrated and its tests are post-acceptance
-work. DLV-291 0.3.17 is physically rejected. DLV-474 is the highest-priority
-reproduced cross-widget platform recovery defect.
+work. DLV-291 0.3.17 is physically rejected and 0.3.18 is the active physical
+candidate. DLV-474 production is accepted with its exact historical trigger
+still unproven and retained diagnostics ready for a future recurrence.
 DLV-293 production is accepted/integrated;
 its incomplete test follow-up is retained as blocked debt, and Game Launcher
 tests remain deferred.
@@ -534,6 +547,8 @@ tests remain deferred.
 | DLV-289 | The user physically accepted correction `a74e677` after `e7b24f4` was rejected for clipped active pixels. Test-only `941b0f9` passed six focused groups and the full chain is integrated as `4c8048d`. Exact PID 121188 contains the accepted production tip, so no tests-only rebuild/relaunch occurred. |
 | DLV-292 | `ff5e7e4` binds each Bridge-cached snapshot to its worker start ordinal and uses existing typed stale-base recovery after replacement. Production build and three focused lifecycle/native gates passed; integrated as `80cdb10`. The user accepted PID 81980 by default because live reproduction is impractical. |
 | DLV-293 | Production `a9d36cf` is physically accepted and integrated as `10c3e26`; PID 137288 already contains that production tip. New catalog-removal/focus/Guide assertions completed before the focused host gate stopped on an older Game Launcher stationarity correlation. The pin-coordinator suite did not run; both uncommitted test diffs remain retained, with no rerun or Game Launcher repair authorized. |
+| DLV-474 | Production `a830f026` is accepted by user disposition because the historical bridge-session loss could not be reproduced. Bounded sanitized terminal diagnostics remain active for a future recurrence. Focused post-acceptance tests are Assigned; integration is pending their review. |
+| DLV-291 | Reviewed Spotify 0.3.18 `2dc8ab8`, package SHA-256 `DB463A3AF2F035FC6F88BA8216CA08674C992BF5E0495CFF2FC2894D0BB88D05`, is the sole installed, selected, enabled version under explicit full-trust approval. Physical three-layout verdict remains pending. |
 | DLV-248 | Deferred until explicit user promotion. |
 
 ## Integrated reliability — DLV-292 fresh-worker virtual-window recovery
