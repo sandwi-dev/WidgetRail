@@ -25,6 +25,7 @@ constexpr float kAdjustBorderDip = 3.0F;
 constexpr unsigned int kMinimumOpacityPercent = 30;
 constexpr unsigned int kMaximumOpacityPercent = 100;
 constexpr std::size_t kMaximumPendingInputRequests = 16;
+constexpr std::size_t kMaximumPendingLayoutSelectionNotifications = 16;
 constexpr std::size_t kMaximumFeedbackCharacters = 160;
 constexpr std::wstring_view kFullWidgetLayoutId = L"host.full-widget";
 
@@ -182,7 +183,7 @@ bool WidgetSurfaceCoordinator::Pin(
     admission_ = std::move(admission);
     layoutOptions_ = std::move(layouts);
     selectedLayoutIndex_ = 0;
-    focusedElementId_ = admission_->snapshot.initialFocusId;
+    focusedElementId_ = SelectedSnapshot().initialFocusId;
     inputRequests_.clear();
     actionFeedback_.clear();
     actionFeedbackFailure_ = false;
@@ -230,10 +231,16 @@ bool WidgetSurfaceCoordinator::UpdateSnapshot(
     });
     selectedLayoutIndex_ = selected == layoutOptions_.end()
         ? 0 : static_cast<std::size_t>(selected - layoutOptions_.begin());
+    if (selected == layoutOptions_.end() && selectedId != kFullWidgetLayoutId)
+        QueueLayoutSelection(selectedId, false);
     inputRequests_.clear();
     actionFeedback_.clear();
     actionFeedbackFailure_ = false;
-    if (focusedElementId_.empty()) focusedElementId_ = snapshot.initialFocusId;
+    const auto& selectedSnapshot = SelectedSnapshot();
+    if (focusedElementId_.empty() ||
+        !input::FindNodeInInputScope(
+            selectedSnapshot, focusedElementId_, selectedSnapshot.activeInputScopeId))
+        focusedElementId_ = selectedSnapshot.initialFocusId;
     if (renderer_) renderer_->ForgetWidgetState(admission_->instanceId);
     if (window_) InvalidateRect(window_, nullptr, FALSE);
     return true;
@@ -265,12 +272,13 @@ bool WidgetSurfaceCoordinator::ToggleInteractionMode() {
 bool WidgetSurfaceCoordinator::EnterControllerFocus() {
     if (!pinned() || !overlayVisible_ ||
         policy_.interactionMode() != InteractionMode::Focusable) return false;
+    const auto& snapshot = SelectedSnapshot();
     if (const auto visible = input::ResolveVisibleFocusTarget(
-            focusedElementId_, admission_->snapshot.activeInputScopeId,
+            focusedElementId_, snapshot.activeInputScopeId,
             lastRenderResult_)) {
         focusedElementId_ = *visible;
     } else if (focusedElementId_.empty()) {
-        focusedElementId_ = admission_->snapshot.initialFocusId;
+        focusedElementId_ = snapshot.initialFocusId;
     }
     controllerFocused_ = true;
     if (window_) {
@@ -300,7 +308,8 @@ bool WidgetSurfaceCoordinator::MoveControllerFocus(
     const input::NavigationDirection direction) {
     if (!controllerFocused_ || direction == input::NavigationDirection::None ||
         !pinned()) return false;
-    const auto activeScope = std::wstring_view(admission_->snapshot.activeInputScopeId);
+    const auto& snapshot = SelectedSnapshot();
+    const auto activeScope = std::wstring_view(snapshot.activeInputScopeId);
     const auto visible = input::ResolveVisibleFocusTarget(
         focusedElementId_, activeScope, lastRenderResult_);
     if (!visible) return false;
@@ -311,7 +320,7 @@ bool WidgetSurfaceCoordinator::MoveControllerFocus(
         return true;
     }
     const auto* focused = input::FindNodeInInputScope(
-        admission_->snapshot, focusedElementId_, activeScope);
+        snapshot, focusedElementId_, activeScope);
     if (!focused) return false;
     const std::wstring* authored{};
     switch (direction) {
@@ -322,7 +331,7 @@ bool WidgetSurfaceCoordinator::MoveControllerFocus(
     case input::NavigationDirection::None: break;
     }
     const auto* explicitTarget = authored && !authored->empty()
-        ? input::FindNodeInInputScope(admission_->snapshot, *authored, activeScope)
+        ? input::FindNodeInInputScope(snapshot, *authored, activeScope)
         : nullptr;
     if (explicitTarget && input::IsDistinctFocusMove(
             focusedElementId_, explicitTarget->id,
@@ -350,11 +359,12 @@ void WidgetSurfaceCoordinator::QueueResolvedInput(
         SetActionFeedback(L"Pinned input queue is busy. Try again.", true);
         return;
     }
+    const auto& snapshot = SelectedSnapshot();
     inputRequests_.push_back({
         admission_->widgetId,
         admission_->runtimeGeneration,
-        admission_->snapshot.sequence,
-        admission_->snapshot.activeInputScopeId,
+        snapshot.sequence,
+        snapshot.activeInputScopeId,
         std::move(nodeId),
         std::move(protocolButton),
         requestedValue,
@@ -368,9 +378,9 @@ bool WidgetSurfaceCoordinator::QueueFocusedInput(
     const ControllerInputOrigin origin,
     const std::optional<double> requestedValue) {
     if (!controllerFocused_ || focusedElementId_.empty()) return false;
+    const auto& snapshot = SelectedSnapshot();
     const auto* node = input::FindNodeInInputScope(
-        admission_->snapshot, focusedElementId_,
-        admission_->snapshot.activeInputScopeId);
+        snapshot, focusedElementId_, snapshot.activeInputScopeId);
     if (!node || node->isDisabled || node->isBusy) return false;
     QueueResolvedInput(focusedElementId_, std::wstring(protocolButton), origin,
                        requestedValue);
@@ -382,6 +392,50 @@ WidgetSurfaceCoordinator::TakeInputRequests() noexcept {
     std::vector<WidgetSurfaceInputRequest> result;
     result.swap(inputRequests_);
     return result;
+}
+
+bool WidgetSurfaceCoordinator::IsCurrentInputRequest(
+    const WidgetSurfaceInputRequest& request) const noexcept {
+    if (!pinned() || request.widgetId != admission_->widgetId ||
+        request.runtimeGeneration != admission_->runtimeGeneration)
+        return false;
+    const auto& snapshot = SelectedSnapshot();
+    const auto* node = input::FindNodeInInputScope(
+        snapshot, request.nodeId, request.activeInputScopeId);
+    return node && !node->isDisabled && !node->isBusy &&
+        request.snapshotSequence == snapshot.sequence &&
+        request.activeInputScopeId == snapshot.activeInputScopeId;
+}
+
+std::vector<PinnedLayoutSelectionNotification>
+WidgetSurfaceCoordinator::TakeLayoutSelectionNotifications() noexcept {
+    std::vector<PinnedLayoutSelectionNotification> result;
+    result.swap(layoutSelectionNotifications_);
+    return result;
+}
+
+const WidgetSnapshot& WidgetSurfaceCoordinator::SelectedSnapshot() const noexcept {
+    if (selectedLayoutIndex_ < layoutOptions_.size() &&
+        layoutOptions_[selectedLayoutIndex_].projection)
+        return *layoutOptions_[selectedLayoutIndex_].projection;
+    return admission_->snapshot;
+}
+
+void WidgetSurfaceCoordinator::QueueLayoutSelection(
+    const std::wstring_view layoutId,
+    const bool selected) {
+    if (!admission_ || layoutId.empty() || layoutId == kFullWidgetLayoutId) return;
+    if (layoutSelectionNotifications_.size() >=
+        kMaximumPendingLayoutSelectionNotifications)
+        layoutSelectionNotifications_.erase(layoutSelectionNotifications_.begin());
+    layoutSelectionNotifications_.push_back({
+        admission_->widgetId,
+        admission_->runtimeGeneration,
+        admission_->snapshot.sequence,
+        std::wstring(layoutId),
+        selected,
+    });
+    NotifyOwner();
 }
 
 void WidgetSurfaceCoordinator::SetActionFeedback(
@@ -451,8 +505,16 @@ bool WidgetSurfaceCoordinator::CycleLayout(const int delta) {
         return false;
     const auto count = static_cast<long long>(layoutOptions_.size());
     const auto current = static_cast<long long>(selectedLayoutIndex_);
+    const auto priorId = layoutOptions_[selectedLayoutIndex_].id;
     selectedLayoutIndex_ = static_cast<std::size_t>((current + delta % count + count) % count);
     const auto& layout = layoutOptions_[selectedLayoutIndex_];
+    if (priorId != layout.id) {
+        QueueLayoutSelection(priorId, false);
+        QueueLayoutSelection(layout.id, true);
+        focusedElementId_ = SelectedSnapshot().initialFocusId;
+        inputRequests_.clear();
+        if (renderer_) renderer_->ForgetWidgetState(admission_->instanceId);
+    }
     const auto monitor = CurrentWindowMonitor();
     if (!monitor) return false;
     const int width = std::max(1, static_cast<int>(std::lround(
@@ -497,8 +559,15 @@ bool WidgetSurfaceCoordinator::CancelSetup() noexcept {
     const auto original = std::ranges::find_if(layoutOptions_, [&](const auto& layout) {
         return layout.id == setupOriginalLayoutId_;
     });
+    const auto selectedId = layoutOptions_[selectedLayoutIndex_].id;
     if (original != layoutOptions_.end())
         selectedLayoutIndex_ = static_cast<std::size_t>(original - layoutOptions_.begin());
+    const auto restoredId = layoutOptions_[selectedLayoutIndex_].id;
+    if (selectedId != restoredId) {
+        QueueLayoutSelection(selectedId, false);
+        QueueLayoutSelection(restoredId, true);
+        focusedElementId_ = SelectedSnapshot().initialFocusId;
+    }
     setupOriginalLayoutId_.clear();
     const bool canceled = CancelPlacement();
     (void)ExitControllerFocus();
@@ -768,6 +837,8 @@ std::optional<POINT> WidgetSurfaceCoordinator::PointerPointForTesting(
 bool WidgetSurfaceCoordinator::Unpin(const WidgetSurfaceStopReason reason) noexcept {
     if (!pinned() && !window_) return false;
     lastStopReason_ = reason;
+    if (selectedLayoutIndex_ < layoutOptions_.size())
+        QueueLayoutSelection(layoutOptions_[selectedLayoutIndex_].id, false);
     placementSession_.reset();
     setupNewPin_.reset();
     setupOriginalLayoutId_.clear();
@@ -957,7 +1028,7 @@ LRESULT WidgetSurfaceCoordinator::HandleMessage(
             if (const auto hit = input::FindPointerHitTarget(
                     static_cast<float>(x) / scale,
                     static_cast<float>(y) / scale,
-                    admission_->snapshot.activeInputScopeId,
+                    SelectedSnapshot().activeInputScopeId,
                     lastRenderResult_)) {
                 focusedElementId_ = hit->id;
                 pointerActionNode_ = hit->enabled ? hit->id : std::wstring{};
@@ -1014,7 +1085,7 @@ LRESULT WidgetSurfaceCoordinator::HandleMessage(
             const auto hit = input::FindPointerHitTarget(
                 static_cast<float>(static_cast<short>(LOWORD(lParam))) / scale,
                 static_cast<float>(static_cast<short>(HIWORD(lParam))) / scale,
-                admission_->snapshot.activeInputScopeId,
+                SelectedSnapshot().activeInputScopeId,
                 lastRenderResult_);
             if (hit && hit->enabled && hit->id == pressed)
                 QueueResolvedInput(
@@ -1128,16 +1199,17 @@ LRESULT WidgetSurfaceCoordinator::HandleMessage(
 
 void WidgetSurfaceCoordinator::HandleAccessibilityActions() {
     if (!pinned()) return;
+    const auto& snapshot = SelectedSnapshot();
     for (const auto& request : accessibilityProvider_.TakeActions()) {
         if (request.widgetId != admission_->widgetId ||
             request.runtimeGeneration != admission_->runtimeGeneration ||
-            request.snapshotSequence != admission_->snapshot.sequence ||
-            request.activeInputScopeId != admission_->snapshot.activeInputScopeId)
+            request.snapshotSequence != snapshot.sequence ||
+            request.activeInputScopeId != snapshot.activeInputScopeId)
             continue;
         if (request.domain == accessibility::ElementDomain::Widget) {
             const auto resolved = accessibility::ResolveActionRequest(
                 request, admission_->widgetId, admission_->runtimeGeneration,
-                admission_->snapshot);
+                snapshot);
             if (!resolved || policy_.interactionMode() != InteractionMode::Focusable)
                 continue;
             if (resolved->kind == accessibility::ActionKind::Focus) {
@@ -1363,7 +1435,7 @@ void WidgetSurfaceCoordinator::Paint() {
         std::max(1.0F, heightDip - kChromeHeightDip - kBottomInsetDip),
     };
     lastRenderResult_ = renderer_->Render(
-        renderTarget_.Get(), admission_->snapshot,
+        renderTarget_.Get(), SelectedSnapshot(),
         controllerFocused_
             ? std::wstring_view{focusedElementId_}
             : std::wstring_view{},
@@ -1382,6 +1454,7 @@ void WidgetSurfaceCoordinator::Paint() {
 
 void WidgetSurfaceCoordinator::PublishAccessibility() {
     if (!pinned()) return;
+    const auto& snapshot = SelectedSnapshot();
     RECT client{};
     GetClientRect(window_, &client);
     const float scale =
@@ -1390,8 +1463,8 @@ void WidgetSurfaceCoordinator::PublishAccessibility() {
     accessibility::Tree tree{
         admission_->widgetId,
         admission_->runtimeGeneration,
-        admission_->snapshot.sequence,
-        admission_->snapshot.activeInputScopeId,
+        snapshot.sequence,
+        snapshot.activeInputScopeId,
     };
     tree.name = admission_->name + L" pinned surface";
     accessibility::Node heading;
@@ -1508,7 +1581,7 @@ void WidgetSurfaceCoordinator::PublishAccessibility() {
         lastRenderResult_.succeeded) {
         auto widgetTree = accessibility::BuildWidgetTree(
             admission_->widgetId, admission_->runtimeGeneration,
-            admission_->snapshot, lastRenderResult_,
+            snapshot, lastRenderResult_,
             controllerFocused_ ? std::wstring_view{focusedElementId_}
                                : std::wstring_view{});
         const std::size_t offset = tree.nodes.size();

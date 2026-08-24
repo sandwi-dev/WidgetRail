@@ -251,8 +251,21 @@ int main() {
                   "layout coordinator reuses the single production surface owner");
             layouts.OnOverlayShown();
             auto admission = Admission();
+            auto compactProjection = Snapshot();
+            compactProjection.activeInputScopeId = L"compact.root";
+            compactProjection.initialFocusId = L"compact.action";
+            compactProjection.root.id = L"compact.root";
+            compactProjection.root.inputScopeId = L"compact.root";
+            widgetrail::WidgetNode compactAction;
+            compactAction.id = L"compact.action";
+            compactAction.kind = L"button";
+            compactAction.text = L"Compact action";
+            compactAction.accessibilityLabel = compactAction.text;
+            compactAction.actionId = L"compact-action";
+            compactAction.inputScopeId = L"compact.root";
+            compactProjection.root.children = {std::move(compactAction)};
             admission.pinnedLayouts = {
-                {L"compact", L"Compact", 360.0F, 240.0F},
+                {L"compact", L"Compact", 360.0F, 240.0F, compactProjection},
                 {L"details", L"Details", 640.0F, 360.0F},
             };
             Check(layouts.Pin(admission, error) && layouts.setupActive() &&
@@ -265,6 +278,19 @@ int main() {
             Check(layouts.CycleLayout(1) && layouts.selectedLayoutIndex() == 1 &&
                       layouts.selectedLayoutName() == L"Compact",
                   "LT or RT setup cycling selects one bounded authored layout");
+            const auto compactDemand = layouts.TakeLayoutSelectionNotifications();
+            Check(compactDemand.size() == 1 && compactDemand[0].selected &&
+                      compactDemand[0].layoutId == L"compact" &&
+                      compactDemand[0].runtimeGeneration == admission.runtimeGeneration,
+                  "explicit selection publishes one generation-bound package demand");
+            Check(layouts.QueueFocusedInput(L"a"),
+                  "selected declarative projection owns focus and action resolution");
+            const auto projectedInput = layouts.TakeInputRequests();
+            Check(projectedInput.size() == 1 &&
+                      projectedInput[0].nodeId == L"compact.action" &&
+                      projectedInput[0].activeInputScopeId == L"compact.root" &&
+                      layouts.IsCurrentInputRequest(projectedInput[0]),
+                  "pinned input authority is bound to the atomically selected projection");
             Check(layouts.CommitSetup(error) && !layouts.setupActive() &&
                       layouts.interactionMode() ==
                           widgetrail::pinned::InteractionMode::ClickThrough,
@@ -282,6 +308,17 @@ int main() {
             Check(layouts.CancelSetup() && !layouts.setupActive() &&
                       layouts.selectedLayoutName() == L"Compact",
                   "B cancels Adjust and restores the selected layout checkpoint");
+            const auto restoredDemand = layouts.TakeLayoutSelectionNotifications();
+            Check(restoredDemand.size() == 4 &&
+                      !restoredDemand[0].selected &&
+                      restoredDemand[0].layoutId == L"compact" &&
+                      restoredDemand[1].selected &&
+                      restoredDemand[1].layoutId == L"details" &&
+                      !restoredDemand[2].selected &&
+                      restoredDemand[2].layoutId == L"details" &&
+                      restoredDemand[3].selected &&
+                      restoredDemand[3].layoutId == L"compact",
+                  "layout preview and cancellation retain exact demand revocation order");
             RECT canceledSetup{};
             GetWindowRect(layouts.window(), &canceledSetup);
             Check(EqualRect(&committedSetup, &canceledSetup),

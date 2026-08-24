@@ -42,6 +42,11 @@ public static class ViewSnapshotValidator
             Add("$.pinnedLayouts", "too_many",
                 $"A widget may expose at most {ProtocolConstants.MaximumPinnedPresentationLayoutCount} pinned layouts.");
         var pinnedLayoutIds = new HashSet<string>(StringComparer.Ordinal);
+        var aggregateNodes = 0;
+        var aggregateStrings = 0;
+        var aggregateResources = 0;
+        var hasPinnedProjection = false;
+        Measure(snapshot.Root);
         for (var index = 0; index < pinnedLayouts.Count; index++)
         {
             var layout = pinnedLayouts[index];
@@ -64,7 +69,55 @@ public static class ViewSnapshotValidator
                 Add($"{path}.surface", "required", "A pinned layout requires surface sizing hints.");
             else
                 ValidateSurfaceHints(layout.Surface, $"{path}.surface");
+            aggregateStrings += StringLength(layout.Id) + StringLength(layout.Name) +
+                StringLength(layout.ActiveInputScopeId) + StringLength(layout.InitialFocusId);
+            if (layout.Root is null)
+            {
+                if (layout.ActiveInputScopeId is not null)
+                    Add($"{path}.activeInputScopeId", "projection_required",
+                        "A pinned layout input scope requires a declarative root.");
+                if (layout.InitialFocusId is not null)
+                    Add($"{path}.initialFocusId", "projection_required",
+                        "A pinned layout initial focus requires a declarative root.");
+                continue;
+            }
+            hasPinnedProjection = true;
+
+            var projection = snapshot with
+            {
+                Root = layout.Root,
+                ActiveInputScopeId = layout.ActiveInputScopeId ?? string.Empty,
+                InitialFocusId = layout.InitialFocusId,
+                QuickActions = [],
+                PinnedLayouts = [],
+            };
+            foreach (var projectionError in Validate(projection))
+            {
+                var projectionPath = projectionError.Path switch
+                {
+                    "$.root" => $"{path}.root",
+                    var value when value.StartsWith("$.root.", StringComparison.Ordinal) =>
+                        $"{path}.root{value[6..]}",
+                    "$.activeInputScopeId" => $"{path}.activeInputScopeId",
+                    "$.initialFocusId" => $"{path}.initialFocusId",
+                    _ => $"{path}.root",
+                };
+                Add(projectionPath, projectionError.Code, projectionError.Message);
+            }
+            Measure(layout.Root);
         }
+        if (hasPinnedProjection &&
+            aggregateNodes > ProtocolConstants.MaximumPinnedPresentationAggregateNodeCount)
+            Add("$.pinnedLayouts", "aggregate_tree_too_large",
+                $"The full widget and pinned projections may contain at most {ProtocolConstants.MaximumPinnedPresentationAggregateNodeCount} nodes in total.");
+        if (hasPinnedProjection &&
+            aggregateStrings > ProtocolConstants.MaximumPinnedPresentationAggregateStringLength)
+            Add("$.pinnedLayouts", "aggregate_strings_too_large",
+                $"The full widget and pinned projections may contain at most {ProtocolConstants.MaximumPinnedPresentationAggregateStringLength} string characters in total.");
+        if (hasPinnedProjection &&
+            aggregateResources > ProtocolConstants.MaximumPinnedPresentationAggregateResourceCount)
+            Add("$.pinnedLayouts", "aggregate_resources_too_large",
+                $"The full widget and pinned projections may reference at most {ProtocolConstants.MaximumPinnedPresentationAggregateResourceCount} resources in total.");
         Visit(snapshot.Root, "$.root", 1, "$.root");
         var activeInputScopeId = snapshot.ActiveInputScopeId ?? string.Empty;
         CheckIdentifier(activeInputScopeId, "$.activeInputScopeId", "active input scope ID");
@@ -754,6 +807,37 @@ public static class ViewSnapshotValidator
             else if (!value.All(ch => char.IsAsciiLetterOrDigit(ch) || ch is '-' or '_' or '.'))
                 Add(path, "invalid_identifier", $"The {label} may contain only ASCII letters, digits, '.', '-' and '_'.");
         }
+
+        void Measure(ViewNode? root)
+        {
+            if (root is null) return;
+            var pending = new Stack<ViewNode>();
+            pending.Push(root);
+            while (pending.Count != 0)
+            {
+                var node = pending.Pop();
+                aggregateNodes++;
+                aggregateStrings += StringLength(node.Id) + StringLength(node.Text) +
+                    StringLength(node.AccessibilityLabel) + StringLength(node.AccessibilityValue) +
+                    StringLength(node.ActionId) + StringLength(node.TextEntryValue) +
+                    StringLength(node.TextEntryPlaceholder) + StringLength(node.ValueChangedActionId) +
+                    StringLength(node.ImageSource) + StringLength(node.ArtworkHandle) +
+                    StringLength(node.FocusPersistenceId) + StringLength(node.InputScopeId) +
+                    StringLength(node.ScrollNearStartActionId) + StringLength(node.ScrollNearEndActionId) +
+                    StringLength(node.CollectionAnchorKey) + StringLength(node.CollectionItemKey) +
+                    StringLength(node.Focus?.Up) + StringLength(node.Focus?.Down) +
+                    StringLength(node.Focus?.Left) + StringLength(node.Focus?.Right) +
+                    (node.StyleClasses?.Sum(StringLength) ?? 0) +
+                    (node.Shortcuts?.Sum(shortcut => StringLength(shortcut?.ActionId)) ?? 0);
+                if (node.ImageSource is not null || node.ArtworkHandle is not null)
+                    aggregateResources++;
+                if (node.Children is not null)
+                    foreach (var child in node.Children)
+                        if (child is not null) pending.Push(child);
+            }
+        }
+
+        static int StringLength(string? value) => value?.Length ?? 0;
 
         void CheckCapabilityIdentifier(string? value, string path, string label)
         {

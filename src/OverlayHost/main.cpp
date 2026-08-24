@@ -4054,9 +4054,17 @@ private:
         for (const auto& layout : snapshot.pinnedLayouts) {
             auto candidate = snapshot;
             candidate.surface = layout.surface;
+            if (layout.root) {
+                candidate.root = *layout.root;
+                candidate.activeInputScopeId = layout.activeInputScopeId;
+                candidate.initialFocusId = layout.initialFocusId;
+                candidate.pinnedLayouts.clear();
+            }
             const auto resolved = ResolvePinnedContentSurface(candidate);
             layouts.push_back({layout.id, layout.name,
-                               resolved.panelWidthDip, resolved.panelHeightDip});
+                               resolved.panelWidthDip, resolved.panelHeightDip,
+                               layout.root ? std::optional{std::move(candidate)}
+                                           : std::nullopt});
         }
         return layouts;
     }
@@ -5483,22 +5491,37 @@ private:
     }
 
     void DrainPinnedSurfaceInputs() {
+        for (const auto& selection :
+                 pinnedSurfaceCoordinator_.TakeLayoutSelectionNotifications()) {
+            const auto* descriptor = sessions_.FindDescriptor(selection.widgetId);
+            const auto* snapshot = SnapshotFor(selection.widgetId);
+            if (!descriptor || !snapshot ||
+                descriptor->runtimeGeneration != selection.runtimeGeneration ||
+                snapshot->sequence != selection.snapshotSequence) {
+                AppendDiagnostic(L"Dropped stale pinned-layout selection");
+                continue;
+            }
+            const auto delivered = bridge_.SendControllerInput(
+                selection.widgetId, L"view", L"pinnedLayoutSelection",
+                L"", L"", selection.snapshotSequence,
+                ++controllerSequence_,
+                static_cast<long long>(GetTickCount64() * 1000),
+                L"pressed", std::nullopt,
+                widgetrail::ControllerInputOrigin::PhysicalController,
+                selection.runtimeGeneration, selection.layoutId,
+                selection.selected);
+            if (!delivered || !*delivered)
+                AppendDiagnostic(L"Pinned-layout selection notification failed");
+        }
         for (const auto& request : pinnedSurfaceCoordinator_.TakeInputRequests()) {
-            const auto* snapshot = SnapshotFor(request.widgetId);
             const auto* descriptor = sessions_.FindDescriptor(request.widgetId);
-            const auto* node = snapshot
-                ? widgetrail::input::FindNodeInInputScope(
-                      *snapshot, request.nodeId, request.activeInputScopeId)
-                : nullptr;
             if (!pinnedSurfaceCoordinator_.pinned() ||
                 state_.surface() == widgetrail::Surface::Hidden ||
                 pinnedSurfaceCoordinator_.interactionMode() !=
                     widgetrail::pinned::InteractionMode::Focusable ||
-                !descriptor || !snapshot || !node ||
-                node->isDisabled || node->isBusy ||
+                !descriptor ||
                 descriptor->runtimeGeneration != request.runtimeGeneration ||
-                snapshot->sequence != request.snapshotSequence ||
-                snapshot->activeInputScopeId != request.activeInputScopeId) {
+                !pinnedSurfaceCoordinator_.IsCurrentInputRequest(request)) {
                 AppendDiagnostic(L"Dropped stale or unavailable pinned-surface input");
                 continue;
             }

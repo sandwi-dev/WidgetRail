@@ -85,8 +85,10 @@ constexpr std::size_t kMaximumIdentifierLength = 128;
 constexpr std::size_t kMaximumLabelLength = 256;
 constexpr std::size_t kMaximumControllerButtonLength = 32;
 constexpr int kMinimumWidgetSnapshotProtocolVersion = 1;
-constexpr int kMaximumWidgetSnapshotProtocolVersion = 20;
+constexpr int kMaximumWidgetSnapshotProtocolVersion = 21;
 constexpr std::size_t kMaximumPinnedLayoutCount = 8;
+constexpr std::size_t kMaximumPinnedProjectionAggregateCharacters = 256 * 1024;
+constexpr std::size_t kMaximumPinnedProjectionAggregateResources = 256;
 constexpr int kAtomicPresentationUpdateVersion = 18;
 constexpr std::size_t kMaximumPresentationUpdateOperations = 256;
 constexpr std::size_t kMaximumPresentationUpdateBytes = 256 * 1024;
@@ -886,9 +888,13 @@ WidgetComputedStyle ParseComputedStyle(const JsonObject& source) {
     return style;
 }
 
-void ApplyComputedStyles(WidgetNode& node, const JsonObject& styles) {
-    if (styles.HasKey(node.id)) {
-        const auto states = styles.GetNamedObject(node.id);
+void ApplyComputedStyles(
+    WidgetNode& node,
+    const JsonObject& styles,
+    const std::wstring_view prefix = {}) {
+    const auto key = std::wstring(prefix) + node.id;
+    if (styles.HasKey(key)) {
+        const auto states = styles.GetNamedObject(key);
         if (states.HasKey(L"base")) {
             node.baseStyle = ParseComputedStyle(states.GetNamedObject(L"base"));
         }
@@ -899,10 +905,56 @@ void ApplyComputedStyles(WidgetNode& node, const JsonObject& styles) {
             node.pressedStyle = ParseComputedStyle(states.GetNamedObject(L"pressed"));
         }
     }
-    for (auto& child : node.children) ApplyComputedStyles(child, styles);
+    for (auto& child : node.children) ApplyComputedStyles(child, styles, prefix);
+}
+
+void ValidatePinnedProjectionCatalogBounds(const JsonObject& source) {
+    if (!source.HasKey(L"pinnedLayouts")) return;
+    const auto layouts = source.GetNamedArray(L"pinnedLayouts");
+    bool hasProjection{};
+    std::size_t characters{};
+    std::size_t nodes{};
+    std::size_t resources{};
+    const auto inspect = [&](const auto& self, const JsonObject& root,
+                             const std::size_t depth,
+                             std::unordered_set<std::wstring>& ids) -> void {
+        if (++nodes > kMaximumWidgetNodes || depth > kMaximumWidgetTreeDepth)
+            throw winrt::hresult_invalid_argument(
+                L"Pinned projection catalog exceeds its structural bound.");
+        const auto id = OptionalString(root, L"id");
+        if (!IsIdentifier(id) || !ids.insert(id).second)
+            throw winrt::hresult_invalid_argument(
+                L"Pinned projection contains invalid node identity.");
+        if (root.HasKey(L"imageSource") || root.HasKey(L"artworkHandle")) {
+            if (++resources > kMaximumPinnedProjectionAggregateResources)
+                throw winrt::hresult_invalid_argument(
+                    L"Pinned projection catalog exceeds its resource bound.");
+        }
+        const auto children = root.GetNamedArray(L"children");
+        for (std::uint32_t index = 0; index < children.Size(); ++index)
+            self(self, children.GetObjectAt(index), depth + 1, ids);
+    };
+    for (std::uint32_t index = 0; index < layouts.Size(); ++index) {
+        const auto layout = layouts.GetObjectAt(index);
+        if (!layout.HasKey(L"root")) continue;
+        hasProjection = true;
+        const auto root = layout.GetNamedObject(L"root");
+        characters += std::wstring_view(root.Stringify()).size();
+        std::unordered_set<std::wstring> ids;
+        inspect(inspect, root, 1, ids);
+    }
+    if (!hasProjection) return;
+    const auto fullRoot = source.GetNamedObject(L"root");
+    characters += std::wstring_view(fullRoot.Stringify()).size();
+    std::unordered_set<std::wstring> ids;
+    inspect(inspect, fullRoot, 1, ids);
+    if (characters > kMaximumPinnedProjectionAggregateCharacters)
+        throw winrt::hresult_invalid_argument(
+            L"Pinned projection catalog exceeds its aggregate string bound.");
 }
 
 WidgetSnapshot ParseSnapshot(const JsonObject& source) {
+    ValidatePinnedProjectionCatalogBounds(source);
     WidgetSnapshot snapshot;
     if (source.HasKey(L"protocolVersion")) {
         const auto encodedVersion = source.GetNamedValue(L"protocolVersion");
@@ -983,7 +1035,9 @@ WidgetSnapshot ParseSnapshot(const JsonObject& source) {
         snapshot.pinnedLayouts.reserve(layouts.Size());
         for (uint32_t index = 0; index < layouts.Size(); ++index) {
             const auto layout = layouts.GetObjectAt(index);
-            if (!HasNoUnknownProperties(layout, {L"id", L"name", L"surface"}))
+            if (!HasNoUnknownProperties(layout,
+                    {L"id", L"name", L"surface", L"root",
+                     L"activeInputScopeId", L"initialFocusId"}))
                 throw winrt::hresult_invalid_argument(
                     L"Widget snapshot pinned layout contains an unknown property.");
             WidgetPinnedLayout parsed{
@@ -996,6 +1050,24 @@ WidgetSnapshot ParseSnapshot(const JsonObject& source) {
                 !ids.insert(parsed.id).second)
                 throw winrt::hresult_invalid_argument(
                     L"Widget snapshot pinned layout identity is invalid.");
+            if (layout.HasKey(L"root")) {
+                if (snapshot.protocolVersion < 21 ||
+                    !layout.HasKey(L"activeInputScopeId"))
+                    throw winrt::hresult_invalid_argument(
+                        L"Widget snapshot pinned projection version is invalid.");
+                parsed.root = ParseNode(layout.GetNamedObject(L"root"));
+                parsed.activeInputScopeId = OptionalString(layout, L"activeInputScopeId");
+                parsed.initialFocusId = OptionalString(layout, L"initialFocusId");
+                if (!IsIdentifier(parsed.activeInputScopeId) ||
+                    (!parsed.initialFocusId.empty() &&
+                     !IsIdentifier(parsed.initialFocusId)))
+                    throw winrt::hresult_invalid_argument(
+                        L"Widget snapshot pinned projection focus authority is invalid.");
+            } else if (layout.HasKey(L"activeInputScopeId") ||
+                       layout.HasKey(L"initialFocusId")) {
+                throw winrt::hresult_invalid_argument(
+                    L"Widget snapshot pinned projection root is missing.");
+            }
             snapshot.pinnedLayouts.push_back(std::move(parsed));
         }
         if (!snapshot.pinnedLayouts.empty() && snapshot.protocolVersion < 20)
@@ -2704,6 +2776,12 @@ std::optional<WidgetPresentationPublication> WidgetBridgeClient::GetSnapshot(
             if (responsePayload.HasKey(L"renderStyles")) {
                 ApplyComputedStyles(snapshot.root,
                                     responsePayload.GetNamedObject(L"renderStyles"));
+                for (auto& layout : snapshot.pinnedLayouts)
+                    if (layout.root)
+                        ApplyComputedStyles(
+                            *layout.root,
+                            responsePayload.GetNamedObject(L"renderStyles"),
+                            layout.id + L"/");
             }
             WidgetPresentationPublication publication;
             publication.transactionKind = transactionKind;
@@ -2772,7 +2850,10 @@ std::optional<bool> WidgetBridgeClient::SendControllerInput(
     const long long monotonicTimestampMicroseconds,
     const std::wstring_view phase,
     const std::optional<double> requestedValue,
-    const ControllerInputOrigin origin) {
+    const ControllerInputOrigin origin,
+    const std::wstring_view runtimeGeneration,
+    const std::wstring_view pinnedLayoutId,
+    const std::optional<bool> pinnedLayoutSelected) {
     std::scoped_lock lock(requestMutex_);
     if (pipe_ == INVALID_HANDLE_VALUE) return std::nullopt;
     try {
@@ -2806,8 +2887,18 @@ std::optional<bool> WidgetBridgeClient::SendControllerInput(
         if (requestedValue && std::isfinite(*requestedValue)) {
             input.Insert(L"requestedValue", JsonValue::CreateNumberValue(*requestedValue));
         }
+        if (pinnedLayoutSelected) {
+            input.Insert(L"isPinnedLayoutSelected",
+                         JsonValue::CreateBooleanValue(*pinnedLayoutSelected));
+            if (!pinnedLayoutId.empty())
+                input.Insert(L"pinnedLayoutId",
+                             JsonValue::CreateStringValue(winrt::hstring(pinnedLayoutId)));
+        }
         JsonObject payload;
         payload.Insert(L"widgetId", JsonValue::CreateStringValue(winrt::hstring(widgetId)));
+        if (!runtimeGeneration.empty())
+            payload.Insert(L"runtimeGeneration",
+                           JsonValue::CreateStringValue(winrt::hstring(runtimeGeneration)));
         payload.Insert(L"input", input);
         const long long requestId = ++nextRequestId_;
         JsonObject envelope;
@@ -3350,6 +3441,11 @@ std::optional<WidgetSnapshot> ParseWidgetSnapshotResponse(
         auto snapshot = ParseSnapshot(payload.GetNamedObject(L"snapshot"));
         if (payload.HasKey(L"renderStyles")) {
             ApplyComputedStyles(snapshot.root, payload.GetNamedObject(L"renderStyles"));
+            for (auto& layout : snapshot.pinnedLayouts)
+                if (layout.root)
+                    ApplyComputedStyles(
+                        *layout.root, payload.GetNamedObject(L"renderStyles"),
+                        layout.id + L"/");
         }
         error.clear();
         return snapshot;

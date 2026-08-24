@@ -11,11 +11,40 @@ public sealed record WidgetView(
     WidgetSurfaceHints? Surface = null)
 {
     /// <summary>
-    /// Optional bounded sizing profiles for the host-owned pinned projection.
+    /// Optional bounded size profiles or declarative projections for the
+    /// host-owned pinned surface.
     /// This additive property deliberately preserves the positional constructor
     /// and Deconstruct contracts.
     /// </summary>
     public IReadOnlyList<PinnedPresentationLayout>? PinnedLayouts { get; init; }
+
+    /// <summary>
+    /// Creates one bounded pinned layout. Omitting <paramref name="root"/>
+    /// preserves the protocol-v20 size-profile behavior.
+    /// </summary>
+    public static PinnedPresentationLayout PinnedLayout(
+        string id,
+        string name,
+        WidgetSurfaceHints surface,
+        WidgetElement? root = null,
+        string? initialFocusId = null,
+        string? activeInputScopeId = null)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(id);
+        ArgumentException.ThrowIfNullOrWhiteSpace(name);
+        ArgumentNullException.ThrowIfNull(surface);
+        return new PinnedPresentationLayout
+        {
+            Id = id,
+            Name = name,
+            Surface = surface,
+            Root = root?.ToProtocolNode(),
+            ActiveInputScopeId = root is null
+                ? null
+                : activeInputScopeId ?? RootScopeId(root),
+            InitialFocusId = root is null ? null : initialFocusId,
+        };
+    }
 
     public ViewSnapshot CreateSnapshot(string widgetInstanceId, long sequence)
     {
@@ -70,6 +99,7 @@ public enum ControllerInputContext
 {
     DashboardQuickAction,
     OpenWidget,
+    PinnedLayoutSelection,
 }
 
 /// <summary>
@@ -98,7 +128,15 @@ public sealed record ControllerInputEvent(
     long SnapshotSequence = 0,
     double? RequestedValue = null,
     [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
-    ControllerInputOrigin Origin = ControllerInputOrigin.PhysicalController);
+    ControllerInputOrigin Origin = ControllerInputOrigin.PhysicalController)
+{
+    /// <summary>
+    /// The package-authored layout selected by the current host generation.
+    /// Null with IsPinnedLayoutSelected false revokes prior selection demand.
+    /// </summary>
+    public string? PinnedLayoutId { get; init; }
+    public bool? IsPinnedLayoutSelected { get; init; }
+}
 
 public sealed record WidgetInvalidatedEventArgs(long Revision);
 
@@ -457,6 +495,19 @@ public abstract partial class Widget
     }
 
     /// <summary>
+    /// Observes demand for one package-authored pinned projection. The host
+    /// revokes demand with <paramref name="layoutId"/> null. This notification
+    /// grants no provider, capability, focus, or window authority.
+    /// </summary>
+    public virtual ValueTask OnPinnedLayoutSelectionChangedAsync(
+        string? layoutId,
+        CancellationToken cancellationToken = default)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        return ValueTask.CompletedTask;
+    }
+
+    /// <summary>
     /// Resolves raw input against the latest host-rendered snapshot. Override
     /// this for controls that are not represented by declarative shortcuts.
     /// </summary>
@@ -467,6 +518,14 @@ public abstract partial class Widget
         ArgumentNullException.ThrowIfNull(input);
         cancellationToken.ThrowIfCancellationRequested();
         if (!Enum.IsDefined(input.Origin)) return ValueTask.FromResult(false);
+        if (input.Context == ControllerInputContext.PinnedLayoutSelection)
+        {
+            if (input.IsPinnedLayoutSelected is null ||
+                (input.IsPinnedLayoutSelected.Value &&
+                 string.IsNullOrWhiteSpace(input.PinnedLayoutId)))
+                return ValueTask.FromResult(false);
+            return ObservePinnedLayoutSelectionAsync(input, cancellationToken);
+        }
         var snapshot = Volatile.Read(ref _latestSnapshot);
         if (snapshot is null) return ValueTask.FromResult(false);
 
@@ -581,6 +640,18 @@ public abstract partial class Widget
         }
 
         return ValueTask.FromResult(false);
+    }
+
+
+    private async ValueTask<bool> ObservePinnedLayoutSelectionAsync(
+        ControllerInputEvent input,
+        CancellationToken cancellationToken)
+    {
+        await OnPinnedLayoutSelectionChangedAsync(
+                input.IsPinnedLayoutSelected == true ? input.PinnedLayoutId : null,
+                cancellationToken)
+            .ConfigureAwait(false);
+        return true;
     }
 
     protected void Invalidate()

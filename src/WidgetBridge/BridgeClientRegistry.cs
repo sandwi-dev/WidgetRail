@@ -668,6 +668,7 @@ internal sealed class BridgeClientRegistry : IAsyncDisposable
     internal async Task<BridgeClientPublication<bool>> SendControllerInputAsync(
         string widgetId,
         ControllerInputEvent input,
+        string? expectedRuntimeGeneration,
         CancellationToken sessionCancellation,
         CancellationToken cancellationToken)
     {
@@ -676,7 +677,15 @@ internal sealed class BridgeClientRegistry : IAsyncDisposable
         try
         {
             DemandCurrent(registration);
-            DemandInteractionAllowed(registration);
+            if (expectedRuntimeGeneration is not null &&
+                !string.Equals(
+                    registration.Configured.PublicDescriptor().RuntimeGeneration,
+                    expectedRuntimeGeneration,
+                    StringComparison.Ordinal))
+                throw new BridgeProtocolException(
+                    "Pinned layout selection authority is stale or unavailable.");
+            if (input.Context != ControllerInputContext.PinnedLayoutSelection)
+                DemandInteractionAllowed(registration);
             registration.CancelIdleUnload();
             var handled = await ExecuteClientOperationAsync(
                     registration,

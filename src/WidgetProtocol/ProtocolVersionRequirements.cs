@@ -49,6 +49,12 @@ internal sealed class ProtocolVersionRequirements
                 ProtocolConstants.PinnedPresentationLayoutsVersion,
                 "$.pinnedLayouts",
                 $"Pinned presentation layouts require protocol version {ProtocolConstants.PinnedPresentationLayoutsVersion} or later.");
+        if (snapshot.PinnedLayouts?.Any(layout => layout?.Root is not null) == true)
+            Add(
+                "pinned-presentation-projections",
+                ProtocolConstants.PinnedPresentationProjectionsVersion,
+                "$.pinnedLayouts",
+                $"Pinned presentation projections require protocol version {ProtocolConstants.PinnedPresentationProjectionsVersion} or later.");
 
         Visit(snapshot.Root, "$.root", 1);
 

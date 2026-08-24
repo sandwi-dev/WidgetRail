@@ -251,6 +251,42 @@ void VerifyAtomicPresentationUpdateMaterialization() {
     })json", error),
             "Protocol-v19 snapshot admitted a pinned layout catalog");
 
+    error.clear();
+    const auto projected = widgetrail::testing::ParseWidgetSnapshotResponse(R"json({
+        "snapshot": {
+            "protocolVersion":21,"sequence":2,
+            "widgetInstanceId":"layouts.projected","activeInputScopeId":"root",
+            "pinnedLayouts":[{"id":"compact","name":"Compact",
+                "surface":{"mode":"compact","preferredWidth":360,"preferredHeight":240},
+                "activeInputScopeId":"compact.root","initialFocusId":"compact.play",
+                "root":{"id":"compact.root","kind":"stack","children":[
+                    {"id":"compact.play","kind":"button","text":"Play",
+                     "actionId":"play","children":[]}
+                ]}}],
+            "root":{"id":"root","kind":"stack","children":[]}
+        },"renderStyles":{}
+    })json", error);
+    Require(projected && error.empty() && projected->protocolVersion == 21 &&
+                projected->pinnedLayouts.size() == 1 &&
+                projected->pinnedLayouts[0].root &&
+                projected->pinnedLayouts[0].root->id == L"compact.root" &&
+                projected->pinnedLayouts[0].activeInputScopeId == L"compact.root" &&
+                projected->pinnedLayouts[0].initialFocusId == L"compact.play",
+            "Native admission did not retain the bounded declarative projection");
+
+    error.clear();
+    Require(!widgetrail::testing::ParseWidgetSnapshotResponse(R"json({
+        "snapshot": {
+            "protocolVersion":20,"sequence":2,
+            "widgetInstanceId":"layouts.projected.old","activeInputScopeId":"root",
+            "pinnedLayouts":[{"id":"compact","name":"Compact",
+                "surface":{"mode":"compact"},"activeInputScopeId":"compact.root",
+                "root":{"id":"compact.root","kind":"stack","children":[]}}],
+            "root":{"id":"root","kind":"stack","children":[]}
+        },"renderStyles":{}
+    })json", error),
+            "Protocol-v20 snapshot admitted a declarative pinned projection");
+
     std::string tooManyLayouts = R"json({"snapshot":{"protocolVersion":20,"sequence":1,
         "widgetInstanceId":"layouts.many","activeInputScopeId":"root","pinnedLayouts":[)json";
     for (int index = 0; index < 9; ++index) {

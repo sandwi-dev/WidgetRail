@@ -528,6 +528,15 @@ internal sealed class WidgetWorkerServer
              !input.ActiveInputScopeId.All(ch => char.IsAsciiLetterOrDigit(ch) || ch is '-' or '_' or '.')))
             throw new WidgetProtocolViolationException(
                 "Open-widget input requires a valid active scope ID and positive snapshot sequence.");
+        if (input.Context == ControllerInputContext.PinnedLayoutSelection &&
+            (input.IsPinnedLayoutSelected is null ||
+             (input.IsPinnedLayoutSelected == true &&
+              (string.IsNullOrWhiteSpace(input.PinnedLayoutId) ||
+               input.PinnedLayoutId.Length > 128 ||
+               !input.PinnedLayoutId.All(ch =>
+                   char.IsAsciiLetterOrDigit(ch) || ch is '-' or '_' or '.')))))
+            throw new WidgetProtocolViolationException(
+                "Pinned layout selection input is invalid.");
     }
 
     private static void ValidateHostState(WidgetLifecycleState state)

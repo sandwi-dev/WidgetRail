@@ -122,14 +122,17 @@ public sealed record WidgetSurfaceHints
 
 /// <summary>
 /// One optional, bounded sizing profile for the host-owned pinned projection.
-/// It grants no window, renderer, input, focus, or independent view authority.
-/// The ordinary validated snapshot remains the content checkpoint.
+/// A protocol-v21 layout may additionally carry one declarative projection.
+/// It grants no window, renderer, provider, or independent input/focus authority.
 /// </summary>
 public sealed record PinnedPresentationLayout
 {
     public required string Id { get; init; }
     public required string Name { get; init; }
     public required WidgetSurfaceHints Surface { get; init; }
+    public ViewNode? Root { get; init; }
+    public string? ActiveInputScopeId { get; init; }
+    public string? InitialFocusId { get; init; }
 }
 
 [JsonConverter(typeof(JsonStringEnumConverter<ImageFit>))]

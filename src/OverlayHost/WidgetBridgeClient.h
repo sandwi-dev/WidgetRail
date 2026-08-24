@@ -330,6 +330,9 @@ struct WidgetPinnedLayout final {
     std::wstring id;
     std::wstring name;
     WidgetSurfaceHints surface;
+    std::optional<WidgetNode> root;
+    std::wstring activeInputScopeId;
+    std::wstring initialFocusId;
 };
 
 struct WidgetSnapshot final {
@@ -583,7 +586,10 @@ public:
         long long monotonicTimestampMicroseconds,
         std::wstring_view phase = L"pressed",
         std::optional<double> requestedValue = std::nullopt,
-        ControllerInputOrigin origin = ControllerInputOrigin::PhysicalController);
+        ControllerInputOrigin origin = ControllerInputOrigin::PhysicalController,
+        std::wstring_view runtimeGeneration = {},
+        std::wstring_view pinnedLayoutId = {},
+        std::optional<bool> pinnedLayoutSelected = std::nullopt);
     [[nodiscard]] std::optional<bool> SendAction(
         std::wstring_view widgetId,
         std::wstring_view actionId,
