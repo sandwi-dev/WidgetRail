@@ -908,6 +908,13 @@ void ApplyComputedStyles(
     for (auto& child : node.children) ApplyComputedStyles(child, styles, prefix);
 }
 
+void ApplyComputedStyles(WidgetSnapshot& snapshot, const JsonObject& styles) {
+    ApplyComputedStyles(snapshot.root, styles);
+    for (auto& layout : snapshot.pinnedLayouts)
+        if (layout.root)
+            ApplyComputedStyles(*layout.root, styles, layout.id + L"/");
+}
+
 void ValidatePinnedProjectionCatalogBounds(const JsonObject& source) {
     if (!source.HasKey(L"pinnedLayouts")) return;
     const auto layouts = source.GetNamedArray(L"pinnedLayouts");
@@ -1096,6 +1103,13 @@ WidgetSnapshot ParseSnapshot(const JsonObject& source) {
         snapshot.protocolVersion < 19)
         throw winrt::hresult_invalid_argument();
     snapshot.documentJson = std::wstring(std::wstring_view(source.Stringify()));
+    return snapshot;
+}
+
+WidgetSnapshot ParseStyledSnapshotPayload(const JsonObject& payload) {
+    auto snapshot = ParseSnapshot(payload.GetNamedObject(L"snapshot"));
+    if (payload.HasKey(L"renderStyles"))
+        ApplyComputedStyles(snapshot, payload.GetNamedObject(L"renderStyles"));
     return snapshot;
 }
 
@@ -1917,9 +1931,8 @@ MaterializeWidgetPresentationUpdate(
         }
         auto materialized = ParseSnapshot(candidate);
         if (!update.renderStylesJson.empty()) {
-            ApplyComputedStyles(
-                materialized.root,
-                JsonObject::Parse(winrt::hstring(update.renderStylesJson)));
+            ApplyComputedStyles(materialized, JsonObject::Parse(
+                winrt::hstring(update.renderStylesJson)));
         }
         auto impact = ClassifyPresentationImpact(update);
         error.clear();
@@ -2582,12 +2595,7 @@ WidgetBridgeClient::EstablishWidgetPresentation(
                 lastError_.clear();
                 return publication;
             }
-            auto snapshot = ParseSnapshot(responsePayload.GetNamedObject(L"snapshot"));
-            if (responsePayload.HasKey(L"renderStyles")) {
-                ApplyComputedStyles(
-                    snapshot.root,
-                    responsePayload.GetNamedObject(L"renderStyles"));
-            }
+            auto snapshot = ParseStyledSnapshotPayload(responsePayload);
             lastRuntimeFailure_.reset();
             lastError_.clear();
             WidgetPresentationPublication publication;
@@ -2772,17 +2780,7 @@ std::optional<WidgetPresentationPublication> WidgetBridgeClient::GetSnapshot(
                 lastError_.clear();
                 return publication;
             }
-            auto snapshot = ParseSnapshot(responsePayload.GetNamedObject(L"snapshot"));
-            if (responsePayload.HasKey(L"renderStyles")) {
-                ApplyComputedStyles(snapshot.root,
-                                    responsePayload.GetNamedObject(L"renderStyles"));
-                for (auto& layout : snapshot.pinnedLayouts)
-                    if (layout.root)
-                        ApplyComputedStyles(
-                            *layout.root,
-                            responsePayload.GetNamedObject(L"renderStyles"),
-                            layout.id + L"/");
-            }
+            auto snapshot = ParseStyledSnapshotPayload(responsePayload);
             WidgetPresentationPublication publication;
             publication.transactionKind = transactionKind;
             publication.requestBaseSequence = baseSequence;
@@ -3438,15 +3436,7 @@ std::optional<WidgetSnapshot> ParseWidgetSnapshotResponse(
     std::wstring& error) {
     try {
         const auto payload = JsonObject::Parse(winrt::to_hstring(payloadUtf8));
-        auto snapshot = ParseSnapshot(payload.GetNamedObject(L"snapshot"));
-        if (payload.HasKey(L"renderStyles")) {
-            ApplyComputedStyles(snapshot.root, payload.GetNamedObject(L"renderStyles"));
-            for (auto& layout : snapshot.pinnedLayouts)
-                if (layout.root)
-                    ApplyComputedStyles(
-                        *layout.root, payload.GetNamedObject(L"renderStyles"),
-                        layout.id + L"/");
-        }
+        auto snapshot = ParseStyledSnapshotPayload(payload);
         error.clear();
         return snapshot;
     } catch (const winrt::hresult_error& exception) {
