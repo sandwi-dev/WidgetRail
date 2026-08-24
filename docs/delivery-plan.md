@@ -867,6 +867,24 @@ review the corrected input ordering, run one coherent packaged Release build,
 and commit one separate clean production correction. The reviewer will then
 review and launch the cumulative exact candidate for the user's verdict.
 
+Correction `53ab7b0` is source-accepted for physical review. Its one-line change
+resolves every visible complete pin chord before ordinary widget dispatch;
+enabled state still toggles Pin/Unpin, while disabled state publishes the
+existing bounded unavailable reason and returns without forwarding LB, RB, or
+RS. Bare buttons and all other pin lifecycle/placement behavior remain
+unchanged. The cumulative seven-file production/public-doc candidate is clean,
+its coherent packaged Release build exited 0, and no tests ran.
+
+Prior accepted integrated PID 113716 was re-shown only to resolve its exact
+planner-owned HWND, then exited gracefully through verified `WM_CLOSE`. The
+exact cumulative DLV-289 worktree Release is now visibly launched as responsive
+OverlayHost PID 109508 with Bridge PID 135848, no `startup-error.txt`, and
+executable SHA-256
+`AD9BDDFF437B2F938E7C1885A0BFA9CFEAD4FE09DB97BFD31D7B0A0B8F1F339A`.
+This candidate is unaccepted and unintegrated pending the user's physical Pin,
+overlay-hide, Interactive, placement, and teardown verdict. Do not add or run
+tests before that verdict.
+
 ## Future architecture queue — maturity review additions
 
 Status: DLV-288 is accepted/integrated and the explicitly requested visible
