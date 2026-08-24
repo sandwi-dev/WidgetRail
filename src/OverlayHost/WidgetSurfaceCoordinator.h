@@ -113,6 +113,10 @@ public:
     [[nodiscard]] bool EmergencyHideAll() noexcept;
     [[nodiscard]] bool BeginPlacement(PlacementMode mode);
     [[nodiscard]] bool StepPlacement(PlacementDirection direction, float stepDip = 16.0F);
+    [[nodiscard]] bool StepPlacement(
+        PlacementMode operation,
+        PlacementDirection direction,
+        float stepDip = 16.0F);
     [[nodiscard]] bool CommitPlacement(std::wstring& error);
     [[nodiscard]] bool CancelPlacement() noexcept;
     void ReconcileDisplayEnvironment() noexcept;

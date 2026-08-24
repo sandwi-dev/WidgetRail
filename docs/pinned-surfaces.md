@@ -47,19 +47,20 @@ provider.
 
 Only one surface may be pinned in this first bounded release:
 
-1. open a supporting widget and choose the host-owned Pin action in the guide,
-   invoke its UI Automation button, click it, press `LB`+`RB`+right-stick, or
-   use the `P` keyboard fallback; the new peer surface starts in nonactivating
-   click-through mode and the main overlay keeps controller focus;
+1. focus a supporting widget in the tray and press controller Menu/Options, or
+   right-click that exact tray item, then choose the host-owned **Pin** menu
+   item. UI Automation invokes the same typed menu action. The `P` keyboard
+   fallback remains available while the widget is open. The new peer surface
+   starts in nonactivating click-through mode and the main overlay keeps
+   controller focus;
 2. while that widget remains open in the main overlay, press `P` or controller
    right-stick click to enter the pinned surface. D-pad/stick navigation and
    `A` then use the exact current widget generation; `B` or another right-stick
    click returns focus to the overlay and restores Click-through;
-3. choose the same guide action when it says Unpin, invoke or click that action,
-   press `LB`+`RB`+right-stick again, use the `U` keyboard fallback, use the
-   pinned Interactive chrome, close the pinned window, remove or replace its
-   package generation, restart its worker, or exit the host to perform one
-   exact paired HWND/semantic teardown;
+3. reopen the selected tray item's menu and choose **Unpin**, use the `U`
+   keyboard fallback, use the pinned Interactive chrome, close the pinned
+   window, remove or replace its package generation, restart its worker, or
+   exit the host to perform one exact paired HWND/semantic teardown;
 4. closing the main overlay preserves the current declarative content and keeps
    repainting accepted snapshot replacements, but always returns the surface to
    click-through. Reopen the main overlay before explicitly restoring
@@ -73,10 +74,11 @@ path from the visible overlay. Guide closes the overlay through its existing
 global authority, which cancels placement/focus and leaves every surviving pin
 nonactivating and click-through. No hidden-overlay controller input is forwarded.
 
-Interactive placement uses one host state machine across input routes. With the
-same widget open, controller `Menu` starts Move and `View` starts Resize;
-D-pad/left stick changes the preview, `A` commits, and `B` restores the exact
-pre-gesture rectangle. Keyboard uses `M`/`R`, arrows, Enter, and Escape.
+Interactive placement uses one host state machine across input routes. The
+current pin's tray menu exposes **Adjust pinned widget**: D-pad or left stick
+moves, right stick resizes, `A` commits, and `B` restores the exact pre-gesture
+rectangle. The pinned surface shows the live dimensions and control legend.
+Keyboard uses `M`/`R`, arrows, Enter, and Escape.
 Dragging the host-owned Move or Resize chrome commits on pointer release, and
 UI Automation exposes the same Move/Resize then Commit/Cancel actions. Closing
 the main overlay or losing input capture cancels an unfinished gesture.
@@ -91,10 +93,12 @@ not discoverable. Safe action failures publish one bounded assertive live status
 High contrast uses Windows system colors; reduced-motion rendering remains
 immediate with no new ambient animation or timer.
 
-The guide and accessibility action report Not pinned, Pinned Click-through,
-Pinned Interactive, still loading, unsupported, or the one-surface capacity
-state from current host authority. Unsupported widgets retain their existing
-behavior. Omitted
+The tray menu and accessibility action report Not pinned, Pinned
+Click-through, Pinned Interactive, still loading, unsupported, or the
+one-surface capacity state from current host authority. A complete Menu action
+is consumed only while tray focus owns input; Menu in widget content and every
+package-declared bumper, stick-click, trigger, Menu, or View action remain
+package input. Unsupported widgets retain their existing behavior. Omitted
 `pinningSupported` is exactly `false`, a wrong JSON type fails manifest parsing,
 and admission failures produce bounded host diagnostics rather than a fallback
 window. Worker loss, stale runtime or presentation generations, catalog

@@ -169,7 +169,8 @@ std::optional<PlacementSession> BeginPlacementSession(
     const PhysicalRect bounds,
     std::wstring runtimeGeneration,
     std::wstring presentationGeneration) noexcept {
-    if ((mode != PlacementMode::Move && mode != PlacementMode::Resize) ||
+    if ((mode != PlacementMode::Move && mode != PlacementMode::Resize &&
+         mode != PlacementMode::Adjust) ||
         bounds.right <= bounds.left || bounds.bottom <= bounds.top ||
         runtimeGeneration.empty() || presentationGeneration.empty()) return std::nullopt;
     return PlacementSession{

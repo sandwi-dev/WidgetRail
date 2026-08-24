@@ -41,7 +41,9 @@ enum class HostAction {
     SelectTrayOverflow,
     BackToTray,
     BackWithinWidget,
-    TogglePinnedSurface,
+    PinTrayWidget,
+    AdjustPinnedSurface,
+    UnpinSurface,
     CloseOverlay,
 };
 

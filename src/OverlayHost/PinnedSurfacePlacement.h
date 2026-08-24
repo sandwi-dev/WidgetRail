@@ -15,6 +15,7 @@ enum class PlacementMode {
     None,
     Move,
     Resize,
+    Adjust,
 };
 
 enum class PlacementDirection {

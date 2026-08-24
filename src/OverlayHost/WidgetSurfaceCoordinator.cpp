@@ -333,7 +333,8 @@ bool WidgetSurfaceCoordinator::EmergencyHideAll() noexcept {
 }
 
 bool WidgetSurfaceCoordinator::BeginPlacement(const PlacementMode mode) {
-    if (!pinned() || (mode != PlacementMode::Move && mode != PlacementMode::Resize))
+    if (!pinned() || (mode != PlacementMode::Move && mode != PlacementMode::Resize &&
+                      mode != PlacementMode::Adjust))
         return false;
     RECT bounds{};
     if (!GetWindowRect(window_, &bounds)) return false;
@@ -384,6 +385,26 @@ bool WidgetSurfaceCoordinator::StepPlacement(
     if (!placementSession_ || !monitor ||
         !StepPlacementSession(
             *placementSession_, direction, *monitor, placementLimits_, stepDip)) return false;
+    ApplyPlacementBounds(placementSession_->current);
+    PublishAccessibility();
+    return true;
+}
+
+bool WidgetSurfaceCoordinator::StepPlacement(
+    const PlacementMode operation,
+    const PlacementDirection direction,
+    const float stepDip) {
+    if (!placementSession_ || placementSession_->mode != PlacementMode::Adjust ||
+        (operation != PlacementMode::Move && operation != PlacementMode::Resize))
+        return false;
+    const auto monitor = CurrentWindowMonitor();
+    if (!monitor) return false;
+    const auto ownerMode = placementSession_->mode;
+    placementSession_->mode = operation;
+    const bool changed = StepPlacementSession(
+        *placementSession_, direction, *monitor, placementLimits_, stepDip);
+    placementSession_->mode = ownerMode;
+    if (!changed) return false;
     ApplyPlacementBounds(placementSession_->current);
     PublishAccessibility();
     return true;
@@ -738,10 +759,16 @@ LRESULT WidgetSurfaceCoordinator::HandleMessage(
         return 0;
     case WM_KEYDOWN:
         if (placementSession_) {
-            if (wParam == VK_LEFT) (void)StepPlacement(PlacementDirection::Left);
-            else if (wParam == VK_RIGHT) (void)StepPlacement(PlacementDirection::Right);
-            else if (wParam == VK_UP) (void)StepPlacement(PlacementDirection::Up);
-            else if (wParam == VK_DOWN) (void)StepPlacement(PlacementDirection::Down);
+            const auto step = [&](const PlacementDirection direction) {
+                if (placementSession_->mode == PlacementMode::Adjust)
+                    (void)StepPlacement(PlacementMode::Move, direction);
+                else
+                    (void)StepPlacement(direction);
+            };
+            if (wParam == VK_LEFT) step(PlacementDirection::Left);
+            else if (wParam == VK_RIGHT) step(PlacementDirection::Right);
+            else if (wParam == VK_UP) step(PlacementDirection::Up);
+            else if (wParam == VK_DOWN) step(PlacementDirection::Down);
             else if (wParam == VK_RETURN) {
                 std::wstring ignored;
                 (void)CommitPlacement(ignored);
@@ -834,6 +861,8 @@ void WidgetSurfaceCoordinator::HandleAccessibilityActions() {
             (void)BeginPlacement(PlacementMode::Move);
         else if (request.actionId == L"pinned.resize")
             (void)BeginPlacement(PlacementMode::Resize);
+        else if (request.actionId == L"pinned.adjust")
+            (void)BeginPlacement(PlacementMode::Adjust);
         else if (request.actionId == L"pinned.commit") {
             std::wstring ignored;
             (void)CommitPlacement(ignored);
@@ -967,9 +996,16 @@ void WidgetSurfaceCoordinator::Paint() {
         textBrush_.Get(), D2D1_DRAW_TEXT_OPTIONS_CLIP);
     std::wstring chrome;
     if (placementSession_) {
-        chrome = placementSession_->mode == PlacementMode::Move
-            ? L"Moving — arrows/D-pad · Enter/A commit · Esc/B cancel"
-            : L"Resizing — arrows/D-pad · Enter/A commit · Esc/B cancel";
+        if (placementSession_->mode == PlacementMode::Move) {
+            chrome = L"Moving — arrows/D-pad · Enter/A commit · Esc/B cancel";
+        } else if (placementSession_->mode == PlacementMode::Resize) {
+            chrome = L"Resizing — arrows/D-pad · Enter/A commit · Esc/B cancel";
+        } else {
+            const auto& bounds = placementSession_->current;
+            chrome = L"Adjust — left stick/D-pad move · right stick resize · A commit · B cancel · " +
+                std::to_wstring(bounds.right - bounds.left) + L"x" +
+                std::to_wstring(bounds.bottom - bounds.top);
+        }
     } else {
         chrome = policy_.interactionMode() == InteractionMode::Focusable
             ? L"P Mode · M Move · R Resize · U Unpin · Close"
@@ -1032,9 +1068,12 @@ void WidgetSurfaceCoordinator::PublishAccessibility() {
     state.id = L"pinned.mode";
     state.name = L"Pinned surface mode";
     if (placementSession_) {
-        state.value = placementSession_->mode == PlacementMode::Move
-            ? L"Move mode. Direction changes position. Commit or cancel."
-            : L"Resize mode. Direction changes size. Commit or cancel.";
+        if (placementSession_->mode == PlacementMode::Move)
+            state.value = L"Move mode. Direction changes position. Commit or cancel.";
+        else if (placementSession_->mode == PlacementMode::Resize)
+            state.value = L"Resize mode. Direction changes size. Commit or cancel.";
+        else
+            state.value = L"Adjust mode. Left stick or D-pad moves. Right stick resizes. Commit or cancel.";
     } else {
         state.value = policy_.interactionMode() == InteractionMode::Focusable
             ? L"Interactive. Move and Resize are available. P switches to click-through. U unpins."
@@ -1083,6 +1122,7 @@ void WidgetSurfaceCoordinator::PublishAccessibility() {
                                controllerFocused_ ? L"pinned.exit" : L"pinned.enter"});
             actions.push_back({L"pinned.move", L"Move pinned surface", L"pinned.move"});
             actions.push_back({L"pinned.resize", L"Resize pinned surface", L"pinned.resize"});
+            actions.push_back({L"pinned.adjust", L"Adjust pinned surface", L"pinned.adjust"});
         }
         actions.push_back({L"pinned.clickthrough", L"Make click-through",
                            L"pinned.clickthrough"});
