@@ -77,11 +77,11 @@ historical evidence only; this file is the sole implementation authority.
   so accepted PID 113716 remains the coherent visible candidate without a
   rebuild or relaunch. That accepted integrated executable remained the rollback
   through PID 54348, which exited cooperatively through verified `WM_CLOSE` for
-  corrected DLV-289 review. Exact unintegrated candidate `da1f848` is now
-  visibly running and responsive as PID 94188 from the platform worktree with
+  corrected DLV-289 review. Final unintegrated candidate `7cc2be0` is now
+  visibly running and responsive as PID 37884 from the platform worktree with
   SHA-256
-  `1A8C48349C90FEE122381B0E557D78DE350D433F6DD7D65BC50AD11B36D1DE2A`;
-  it produced no `startup-error.txt`.
+  `BF7D98B1BC43B1C9CAD451BF18B437816352A4E783C23F8A050AF415FD399D05`;
+  it produced no `startup-error.txt` and awaits the final physical verdict.
 - DLV-318 is the exact recoverable prior accepted Release at
   `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative-dlv318-build`;
   executable SHA-256 is
@@ -98,7 +98,7 @@ historical evidence only; this file is the sole implementation authority.
 
 | Lane | Task/worktree | State |
 | --- | --- | --- |
-| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | The DLV-289 foundation through `da1f848` is physically accepted but held unintegrated. One final production-only pinning-polish correction is Assigned on that exact clean tip; no tests run until the refined candidate receives a user verdict. |
+| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | DLV-289 correction `7cc2be0` is source-accepted, Release-build green, clean, visibly running, and held unintegrated for the final physical verdict. The lane is idle; no tests run before acceptance. |
 | Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | DLV-288 `8be0ebb` is accepted/integrated as `a37d614`; the lane is idle. Game Launcher tests remain explicitly deferred and out of scope. |
 
 ## Execution rules
@@ -881,13 +881,13 @@ do not repair or rerun it under DLV-289.
 
 Rejected pin-history commits `78f90d4`, `53ab7b0`, and `ddb2d91` remain
 unintegrated. The user accepted `da1f848` as the foundation, then required the
-five final refinements above. The platform lane owns one production-only
-correction on that clean tip using the existing HWND/coordinator/renderer/
-input/focus/semantic and placement-persistence owners. Preserve generation,
-click-through/Interactive, package-action, DPI/work-area, cancellation, and
-teardown invariants. No tests, process control, state mutation, public wire or
-manifest change, Game Launcher, Avalonia/AVP, or push. Source-review, build one
-coherent Release, commit, and stop for reviewer launch and the final verdict.
+five final refinements above. Production-only correction `7cc2be0` reuses the
+existing HWND/coordinator/renderer/input/focus/semantic and placement store;
+direct source review found no second authority or package-action conflict.
+Its packaged Release build exited 0 without tests; executable SHA-256 is
+`BF7D98B1BC43B1C9CAD451BF18B437816352A4E783C23F8A050AF415FD399D05`.
+Responsive PID 37884 is visibly running from that clean exact worktree commit.
+It remains unintegrated and the platform lane is idle for the physical verdict.
 
 ## Ready pinned-presentation work
 
@@ -935,7 +935,7 @@ without explicit promotion.
 
 ## Ordered queues
 
-1. DLV-289 user-ready single-widget pinning: Assigned platform, physical-first.
+1. DLV-289 user-ready single-widget pinning: physical verdict on `7cc2be0`.
 2. DLV-290 generic selectable pinned layouts: Ready platform after accepted
    DLV-289 integration.
 3. DLV-291 Spotify compact pinned layouts: widgets Awaiting DLV-290 integration.
@@ -970,7 +970,7 @@ remain deferred; maturity work waits for the changing surface contract.
 | DLV-286 | The user physically accepted complete correction `a41bd72`; cumulative chain `d0ca29b` + `058efbc` + `a41bd72` is integrated as merge `627ba4c`. Responsive accepted PID 85884 already contains that production tip, so it remains running without a merge-only rebuild/relaunch. The dedicated Game Launcher test project remains untouched/deferred, and the broader Bridge aggregate must not be repeated. |
 | DLV-287 | Production/test `dccf49a` is accepted and integrated as `fc91157`; focused Release build passed and WidgetSdk protocol contracts passed 89/89. Exact prior PID 85884 exited gracefully. Refreshed integrated PID 113716 is responsive, has no startup error, and admitted the generic full-application and Spotify widgets. |
 | DLV-288 | Documentation `8be0ebb` is accepted and integrated as `a37d614`; scoped link/reference/contract inspection passed. Its single documentation gate stopped only on three pre-existing OverlayHost packaging assertions, with no DLV-288 link failure, and was not rerun. No runtime input changed, so PID 113716 remains accepted. |
-| DLV-289 | Foundation through `da1f848` is physically accepted but held unintegrated. Final production polish for initial sizing, compact chrome, selection-independent tray View entry, controller-first guidance, and persisted 30–100% opacity is Assigned; no tests run before the refined verdict. |
+| DLV-289 | Final correction `7cc2be0` is source-accepted and Release-build green; responsive exact PID 37884 is visibly running for the physical verdict. It covers initial sizing, compact chrome, selection-independent tray View entry, controller-first guidance, and persisted 30–100% opacity. No tests have run. |
 | DLV-248 | Deferred until explicit user promotion. |
 
 ## Recent dispositions
