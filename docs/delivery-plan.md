@@ -138,15 +138,19 @@ historical evidence only; this file is the sole implementation authority.
   The running candidate already contains that exact production commit, so no
   integration-only rebuild or relaunch is required. DLV-291 remains unaccepted:
   Spotify's package renders the two layouts but its manifest omits the existing
-  `pinningSupported` admission flag, so the tray correctly withholds Pin. A
-  production-only 0.3.16 manifest/version correction is Assigned; 0.3.15 must
-  not be mutated in place.
+  `pinningSupported` admission flag, so the tray correctly withholds Pin. Clean
+  production-only correction `64b14864` adds that generic flag and advances the
+  immutable package to 0.3.16. Its package build passed with SHA-256
+  `35CFC14F0989C5E3B59580D949BF2A8F8D24C81CC395D0FC2428A48ABA459EBC`;
+  no tests ran. Spotify 0.3.16 is installed, selected, and enabled, and exact
+  candidate owner PID 116316 was visibly resurfaced through authenticated
+  `--show`. DLV-291 awaits the user's tray Pin/layout verdict.
 - DLV-318 is the exact recoverable prior accepted Release at
   `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative-dlv318-build`;
   executable SHA-256 is
   `86AC9946CC54F2B4CF51B14EEAA48CE32FECDF2C381DA73F24107DBE755F13AD`.
-- Spotify 0.3.15 is installed, selected, and enabled for the current physical
-  candidate; 0.3.14 remains the immediate installed rollback. Preserve every
+- Spotify 0.3.16 is installed, selected, and enabled for the current physical
+  candidate; 0.3.15 and 0.3.14 remain installed rollbacks. Preserve every
   package, credential, account, provider, and configuration state.
 - Managed tests are accepted through `676cd76`: DLV-319 `199a81b`, DLV-324
   `6b63edf`, DLV-325 `e441f25`, and DLV-326 `676cd76`. All named managed
@@ -159,7 +163,7 @@ historical evidence only; this file is the sole implementation authority.
 | Lane | Task/worktree | State |
 | --- | --- | --- |
 | Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | DLV-473 production `4c66b128` is physically accepted and integrated as `055ec2f`; focused post-acceptance test follow-up is Assigned in a separate clean worktree. The standing tree retains exactly two uncommitted DLV-293 test diffs; preserve them unchanged. |
-| Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | DLV-291 0.3.15 production `5435eaf` is rejected for omitted manifest pin admission. A clean production-only 0.3.16 manifest/version correction from current main is Assigned. Game Launcher tests remain deferred/out of scope. |
+| Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | DLV-291 0.3.15 production `5435eaf` is superseded by clean correction `64b14864`; Spotify 0.3.16 is installed and exact candidate PID 116316 awaits physical tray Pin/layout verdict. Game Launcher tests remain deferred/out of scope. |
 
 ## Execution rules
 
@@ -288,7 +292,8 @@ state, public contract change, substantial conflict, or an unrelated red.
 
 ### DLV-291 Spotify compact pinned layouts
 
-Lane: widgets. Status: 0.3.15 production `5435eaf` rejected because the package
+Lane: widgets. Status: Awaiting physical verdict on correction `64b14864` and
+installed Spotify 0.3.16. The 0.3.15 production `5435eaf` was rejected because the package
 manifest omits `pinningSupported: true`, so host admission prevents tray Pin
 despite the rendered layouts. Produce a clean production-only 0.3.16 correction
 from current main that adds only the existing generic flag and required version
@@ -357,9 +362,9 @@ without explicit promotion.
 
 ## Ordered queues
 
-1. DLV-291 Spotify compact pinned layouts: 0.3.15 is rejected only for omitted
-   manifest admission; clean production-only 0.3.16 correction Assigned before
-   another build/install/launch and physical verdict.
+1. DLV-291 Spotify compact pinned layouts: clean 0.3.16 correction `64b14864`
+   is installed and visibly surfaced through exact PID 116316; await physical
+   tray Pin and LT/RT layout-cycling verdict before integration or tests.
 2. DLV-473 focused post-acceptance tests: production is accepted/integrated as
    `055ec2f`; smallest linked coverage is Assigned with Game Launcher excluded.
 3. DLV-294 generic pinned-layout projections: accepted/integrated as `60536ff`; closed.
@@ -368,7 +373,7 @@ without explicit promotion.
 6. DLV-248 remains deliberately deferred until explicit user promotion.
 
 DLV-473 production is accepted/integrated and its tests are post-acceptance
-work. DLV-291 awaits the bounded 0.3.16 admission correction. DLV-293 production is accepted/integrated;
+work. DLV-291 awaits the 0.3.16 physical verdict. DLV-293 production is accepted/integrated;
 its incomplete test follow-up is retained as blocked debt, and Game Launcher
 tests remain deferred.
 
