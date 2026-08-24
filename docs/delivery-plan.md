@@ -145,6 +145,13 @@ historical evidence only; this file is the sole implementation authority.
   no tests ran. Spotify 0.3.16 is installed, selected, and enabled, and exact
   candidate owner PID 116316 was visibly resurfaced through authenticated
   `--show`. DLV-291 awaits the user's tray Pin/layout verdict.
+- DLV-473 post-acceptance test commit `34f15ae9` is retained clean and
+  unintegrated. Its first authorized focused SDK gate exited 1 during build
+  before test output, emitted no compiler diagnostic, and produced no test
+  artifacts. Per stop-first-red ordering it was not rerun or repaired, and the
+  Bridge/native pinned-input gates did not run. This opaque pre-test build red
+  changes no production/runtime input, so exact candidate PID 116316 remains
+  running without rebuild or relaunch.
 - DLV-318 is the exact recoverable prior accepted Release at
   `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative-dlv318-build`;
   executable SHA-256 is
@@ -162,7 +169,7 @@ historical evidence only; this file is the sole implementation authority.
 
 | Lane | Task/worktree | State |
 | --- | --- | --- |
-| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | DLV-473 production `4c66b128` is physically accepted and integrated as `055ec2f`; focused post-acceptance test follow-up is Assigned in a separate clean worktree. The standing tree retains exactly two uncommitted DLV-293 test diffs; preserve them unchanged. |
+| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | DLV-473 production `4c66b128` is physically accepted/integrated as `055ec2f`. Test-only `34f15ae9` is retained unintegrated after its first focused gate stopped on an opaque pre-test build red; no rerun. The standing tree's two DLV-293 test diffs remain byte-identical. |
 | Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | DLV-291 0.3.15 production `5435eaf` is superseded by clean correction `64b14864`; Spotify 0.3.16 is installed and exact candidate PID 116316 awaits physical tray Pin/layout verdict. Game Launcher tests remain deferred/out of scope. |
 
 ## Execution rules
@@ -206,8 +213,10 @@ The current accepted-state summary above remains the live disposition.
 ### DLV-473 pinned-surface action routing and controller ownership
 
 Lane: platform lead, serialized SDK/Bridge/native-host correction. Status:
-production `4c66b128` physically accepted and integrated as `055ec2f`; focused
-post-acceptance tests Assigned from current main. The standing platform
+production `4c66b128` physically accepted and integrated as `055ec2f`.
+Post-acceptance test-only `34f15ae9` is retained unintegrated after the first
+focused SDK gate stopped on an opaque pre-test build red; no rerun or repair is
+authorized under this milestone. The standing platform
 worktree's two uncommitted DLV-293
 test files are retained evidence: do not edit, stage, discard, stash, move, or
 otherwise disturb them. Create a separate bounded clean worktree for DLV-473,
@@ -365,8 +374,9 @@ without explicit promotion.
 1. DLV-291 Spotify compact pinned layouts: clean 0.3.16 correction `64b14864`
    is installed and visibly surfaced through exact PID 116316; await physical
    tray Pin and LT/RT layout-cycling verdict before integration or tests.
-2. DLV-473 focused post-acceptance tests: production is accepted/integrated as
-   `055ec2f`; smallest linked coverage is Assigned with Game Launcher excluded.
+2. DLV-473 focused post-acceptance tests: clean `34f15ae9` is retained
+   unintegrated after the first SDK gate stopped before tests on an opaque build
+   red; later gates did not run and no rerun is authorized.
 3. DLV-294 generic pinned-layout projections: accepted/integrated as `60536ff`; closed.
 4. DLV-293 focused test debt: retained uncommitted after unrelated Game Launcher stationarity red; no rerun under the explicit deferral.
 5. Remaining maturity deliverables, ordered after the pinned-layout UX settles.
