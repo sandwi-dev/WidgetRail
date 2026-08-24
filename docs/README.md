@@ -48,9 +48,9 @@ planner and implementation turns do not spend context on closed evidence.
 - [Widget SDK compatibility and release unit](widget-sdk-compatibility.md) —
   checked-in public API baseline, exact CLI/template/package version contract,
   and the intentional pre-release addition or breaking-reset workflow.
-- [Widget SDK governance proposal](widget-sdk-governance-proposal.md) — current
-  executable artifact report plus a planner-ready, non-operative migration and
-  deprecation policy proposal.
+- [Widget SDK stability, migration, and deprecation](widget-sdk-evolution.md) —
+  active pre-release API classification, release-unit movement, migration
+  record, external-distribution trigger, and separate protocol policy.
 - [Widget lifecycle and process residency](widget-residency.md) — lifecycle
   callbacks, versioned manifest policy, safe suspension, bounded idle unload,
   cached views, lazy resume, and legacy migration.
