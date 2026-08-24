@@ -257,6 +257,10 @@ historical evidence only; this file is the sole implementation authority.
   confirms adaptive polling refreshes playback but not the demanded queue on an
   external item-identity change. The same bounded 0.3.20 package correction now
   owns demand-gated queue refresh plus a small multi-row pinned projection.
+  Native 640x340 proof is conclusive: 0.3.19 gives the player a 280x316 outer
+  box but zero width to every immediate content descendant, while the queue is
+  280x316. Using typed `flex-basis: 0px` instead yields a 326x316 player,
+  96-DIP artwork, 306-DIP details/scrubber/controls, and the same 280x316 queue.
 - DLV-473 post-acceptance test commit `34f15ae9` is retained clean and
   unintegrated. Its first authorized focused SDK gate exited 1 during build
   before test output, emitted no compiler diagnostic, and produced no test
@@ -282,7 +286,7 @@ historical evidence only; this file is the sole implementation authority.
 | Lane | Task/worktree | State |
 | --- | --- | --- |
 | Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | DLV-474 correction passed the native gate, then the managed sanitized-terminal gate stopped on an opaque pre-test build red. Four intentional diffs remain retained uncommitted in the isolated worktree; no rerun or repair is authorized. DLV-473 test-only `34f15ae9` remains blocked after its first red; the standing tree's two DLV-293 test diffs remain byte-identical and must not be touched. |
-| Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | DLV-291 0.3.19 `9dda3bf` is physically rejected: selected queue is visible but active Now Playing is blank. Active 0.3.20 work proves player geometry, adds demand-gated queue refresh on natural track identity change for both main and pinned views, and shows a bounded multi-row pinned queue. Game Launcher tests remain deferred/out of scope. |
+| Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | DLV-291 0.3.19 `9dda3bf` is physically rejected. Native geometry conclusively proves authored `width: 0px` collapses player descendants and typed `flex-basis: 0px` preserves both columns. Active 0.3.20 work applies that proof, demand-gated queue refresh, and bounded multi-row pinned queue. Game Launcher tests remain deferred/out of scope. |
 
 ## Execution rules
 
@@ -552,11 +556,12 @@ player rendering.
 Next correction: use a credential-free ready-playback snapshot at the admitted
 640-DIP surface to record native bounds for the Up Next shell, player card,
 player's immediate artwork/details/scrubber/control descendants, and queue.
-Prove whether the new authored `width: 0px` collapses player descendants while
-`min-width` preserves only the empty outer panel. If proven, use the existing
-typed `flex-basis` contract—or another equally evidenced ordinary WRSS rule—to
-control row allocation without giving the player's content a zero authored
-width. Do not guess from the screenshot or change platform code. Correct only
+Native proof confirms the new authored `width: 0px` collapses every immediate
+player descendant to width 0 while `min-width` preserves only a 280x316 empty
+outer panel; the queue remains 280x316. Replacing that width with the existing
+typed `flex-basis: 0px` contract produces a 326x316 player, 96-DIP artwork,
+306-DIP details/scrubber/controls, and the same queue geometry. Apply that exact
+evidenced rule. Do not change platform code. Correct only
 Spotify package source: WRSS geometry, the existing shared queue-refresh owner,
 and pinned queue presentation. Bump the immutable version, run one coherent
 Release/package build, commit the scoped production change, and stop before
@@ -694,7 +699,7 @@ tests remain deferred.
 | DLV-292 | `ff5e7e4` binds each Bridge-cached snapshot to its worker start ordinal and uses existing typed stale-base recovery after replacement. Production build and three focused lifecycle/native gates passed; integrated as `80cdb10`. The user accepted PID 81980 by default because live reproduction is impractical. |
 | DLV-293 | Production `a9d36cf` is physically accepted and integrated as `10c3e26`; PID 137288 already contains that production tip. New catalog-removal/focus/Guide assertions completed before the focused host gate stopped on an older Game Launcher stationarity correlation. The pin-coordinator suite did not run; both uncommitted test diffs remain retained, with no rerun or Game Launcher repair authorized. |
 | DLV-474 | Production `a830f026` was provisionally accepted by user disposition because the historical bridge-session loss could not be reproduced, then rejected before integration when the first focused native gate proved fresh sequence 1 was compared against retained prior-session sequences 10/20. The retained correction passed 29 native coordinator scenarios plus linked native checks, then the managed diagnostic gate exited 1 during an opaque pre-test build. Four diffs remain uncommitted at identity `d14a224507d682e9c67f83860e713fe0118bb4dd`; no rerun or repair occurred. |
-| DLV-291 | Reviewed Spotify 0.3.18 `2dc8ab8`, package SHA-256 `DB463A3AF2F035FC6F88BA8216CA08674C992BF5E0495CFF2FC2894D0BB88D05`, is physically rejected and retired. Deterministic snapshot proof found the Up Next root structurally correct and in bounds, but a package WRSS specificity defect clipped its queue. Clean 0.3.19 `9dda3bf`, package SHA-256 `D877986774C1B64100B6680C4B717845AA04F4197E6AF2C0925F9A3229AB2C86`, is the sole installed, selected, enabled version under explicit full-trust approval. Reviewed host PID 90896 loaded the exact worker. Physical review rejects it: queue selection/rendering works, but active playback leaves Now Playing blank. Ordinary Queue is also stale after natural track transitions, and the pinned view can show multiple loaded rows. 0.3.20 owns proven player geometry, demand-gated identity-change refresh, and bounded multi-row pinned presentation. |
+| DLV-291 | Reviewed Spotify 0.3.18 `2dc8ab8`, package SHA-256 `DB463A3AF2F035FC6F88BA8216CA08674C992BF5E0495CFF2FC2894D0BB88D05`, is physically rejected and retired. Clean 0.3.19 `9dda3bf`, package SHA-256 `D877986774C1B64100B6680C4B717845AA04F4197E6AF2C0925F9A3229AB2C86`, is the sole installed active version but is physically rejected: queue renders while active Now Playing is blank. Native 640x340 proof shows its 280x316 player descendants at width 0; typed flex-basis yields a 326x316 visible player and retains the 280x316 queue. Ordinary Queue is also stale after natural track transitions, and pinned Up Next can show multiple loaded rows. Active 0.3.20 owns the proven geometry, demand-gated identity-change refresh, and bounded multi-row presentation. |
 | DLV-248 | Deferred until explicit user promotion. |
 
 ## Integrated reliability — DLV-292 fresh-worker virtual-window recovery
