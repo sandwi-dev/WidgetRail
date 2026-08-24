@@ -34,7 +34,37 @@ public static class ViewSnapshotValidator
                 Add(requirement.Path, "feature_requires_version", requirement.Message);
         }
         CheckIdentifier(snapshot.WidgetInstanceId, "$.widgetInstanceId", "widget instance ID");
-        ValidateSurfaceHints();
+        ValidateSurfaceHints(snapshot.Surface, "$.surface");
+        var pinnedLayouts = snapshot.PinnedLayouts ?? [];
+        if (snapshot.PinnedLayouts is null)
+            Add("$.pinnedLayouts", "required", "Pinned layouts cannot be null.");
+        if (pinnedLayouts.Count > ProtocolConstants.MaximumPinnedPresentationLayoutCount)
+            Add("$.pinnedLayouts", "too_many",
+                $"A widget may expose at most {ProtocolConstants.MaximumPinnedPresentationLayoutCount} pinned layouts.");
+        var pinnedLayoutIds = new HashSet<string>(StringComparer.Ordinal);
+        for (var index = 0; index < pinnedLayouts.Count; index++)
+        {
+            var layout = pinnedLayouts[index];
+            var path = $"$.pinnedLayouts[{index}]";
+            if (layout is null)
+            {
+                Add(path, "required", "A pinned layout cannot be null.");
+                continue;
+            }
+            CheckIdentifier(layout.Id, $"{path}.id", "pinned layout ID");
+            if (!string.IsNullOrWhiteSpace(layout.Id) && !pinnedLayoutIds.Add(layout.Id))
+                Add($"{path}.id", "duplicate_identifier", "Pinned layout IDs must be unique.");
+            CheckString(layout.Name, $"{path}.name");
+            if (string.IsNullOrWhiteSpace(layout.Name))
+                Add($"{path}.name", "required", "A pinned layout requires a visible name.");
+            else if (layout.Name.Length > ProtocolConstants.MaximumPinnedPresentationLayoutNameLength)
+                Add($"{path}.name", "too_long",
+                    $"A pinned layout name may not exceed {ProtocolConstants.MaximumPinnedPresentationLayoutNameLength} characters.");
+            if (layout.Surface is null)
+                Add($"{path}.surface", "required", "A pinned layout requires surface sizing hints.");
+            else
+                ValidateSurfaceHints(layout.Surface, $"{path}.surface");
+        }
         Visit(snapshot.Root, "$.root", 1, "$.root");
         var activeInputScopeId = snapshot.ActiveInputScopeId ?? string.Empty;
         CheckIdentifier(activeInputScopeId, "$.activeInputScopeId", "active input scope ID");
@@ -108,36 +138,34 @@ public static class ViewSnapshotValidator
 
         return errors;
 
-        void ValidateSurfaceHints()
+        void ValidateSurfaceHints(WidgetSurfaceHints? surface, string path)
         {
-            if (snapshot.Surface is null) return;
-            if (!Enum.IsDefined(snapshot.Surface.Mode))
-                Add("$.surface.mode", "invalid_surface_mode", "The surface mode is not supported.");
-            if (!Enum.IsDefined(snapshot.Surface.WidthMode))
-                Add("$.surface.widthMode", "invalid_surface_axis_mode",
+            if (surface is null) return;
+            if (!Enum.IsDefined(surface.Mode))
+                Add($"{path}.mode", "invalid_surface_mode", "The surface mode is not supported.");
+            if (!Enum.IsDefined(surface.WidthMode))
+                Add($"{path}.widthMode", "invalid_surface_axis_mode",
                     "The surface width mode is not supported.");
-            if (!Enum.IsDefined(snapshot.Surface.HeightMode))
-                Add("$.surface.heightMode", "invalid_surface_axis_mode",
+            if (!Enum.IsDefined(surface.HeightMode))
+                Add($"{path}.heightMode", "invalid_surface_axis_mode",
                     "The surface height mode is not supported.");
-            CheckPair(snapshot.Surface.PreferredWidth, snapshot.Surface.PreferredHeight,
+            CheckPair(surface.PreferredWidth, surface.PreferredHeight,
                 "preferred", ProtocolConstants.MinimumSurfaceWidth,
                 ProtocolConstants.MaximumSurfaceWidth,
-                ProtocolConstants.MinimumSurfaceHeight,
-                ProtocolConstants.MaximumSurfaceHeight);
-            CheckPair(snapshot.Surface.MinimumWidth, snapshot.Surface.MinimumHeight,
+                ProtocolConstants.MinimumSurfaceHeight, ProtocolConstants.MaximumSurfaceHeight, path);
+            CheckPair(surface.MinimumWidth, surface.MinimumHeight,
                 "minimum", ProtocolConstants.MinimumSurfaceWidth,
                 ProtocolConstants.MaximumSurfaceWidth,
-                ProtocolConstants.MinimumSurfaceHeight,
-                ProtocolConstants.MaximumSurfaceHeight);
-            if (snapshot.Surface.PreferredWidth is { } preferredWidth &&
-                snapshot.Surface.MinimumWidth is { } minimumWidth &&
+                ProtocolConstants.MinimumSurfaceHeight, ProtocolConstants.MaximumSurfaceHeight, path);
+            if (surface.PreferredWidth is { } preferredWidth &&
+                surface.MinimumWidth is { } minimumWidth &&
                 minimumWidth > preferredWidth)
-                Add("$.surface.minimumWidth", "surface_minimum_exceeds_preferred",
+                Add($"{path}.minimumWidth", "surface_minimum_exceeds_preferred",
                     "Minimum width cannot exceed preferred width.");
-            if (snapshot.Surface.PreferredHeight is { } preferredHeight &&
-                snapshot.Surface.MinimumHeight is { } minimumHeight &&
+            if (surface.PreferredHeight is { } preferredHeight &&
+                surface.MinimumHeight is { } minimumHeight &&
                 minimumHeight > preferredHeight)
-                Add("$.surface.minimumHeight", "surface_minimum_exceeds_preferred",
+                Add($"{path}.minimumHeight", "surface_minimum_exceeds_preferred",
                     "Minimum height cannot exceed preferred height.");
         }
 
@@ -148,20 +176,21 @@ public static class ViewSnapshotValidator
             double minimumWidth,
             double maximumWidth,
             double minimumHeight,
-            double maximumHeight)
+            double maximumHeight,
+            string path)
         {
             if (width.HasValue != height.HasValue)
             {
-                Add($"$.surface.{label}Width", "incomplete_surface_size",
+                Add($"{path}.{label}Width", "incomplete_surface_size",
                     $"The {label} width and height must be supplied together.");
             }
             if (width is { } actualWidth &&
                 (!double.IsFinite(actualWidth) || actualWidth < minimumWidth || actualWidth > maximumWidth))
-                Add($"$.surface.{label}Width", "invalid_surface_size",
+                Add($"{path}.{label}Width", "invalid_surface_size",
                     $"The {label} width must be finite and between {minimumWidth} and {maximumWidth} DIPs.");
             if (height is { } actualHeight &&
                 (!double.IsFinite(actualHeight) || actualHeight < minimumHeight || actualHeight > maximumHeight))
-                Add($"$.surface.{label}Height", "invalid_surface_size",
+                Add($"{path}.{label}Height", "invalid_surface_size",
                     $"The {label} height must be finite and between {minimumHeight} and {maximumHeight} DIPs.");
         }
 

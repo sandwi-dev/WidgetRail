@@ -16,6 +16,7 @@ namespace {
 constexpr std::size_t kMaximumStoredWidgets = 64;
 constexpr unsigned int kMinimumOpacityPercent = 30;
 constexpr unsigned int kMaximumOpacityPercent = 100;
+constexpr std::size_t kMaximumLayoutIdLength = 128;
 
 [[nodiscard]] bool ValidLimits(const PlacementLimits& limits) noexcept {
     return std::isfinite(limits.minimumWidthDip) &&
@@ -93,7 +94,9 @@ constexpr unsigned int kMaximumOpacityPercent = 100;
         placement.widthDip >= limits.minimumWidthDip &&
         placement.heightDip >= limits.minimumHeightDip &&
         placement.widthDip <= limits.maximumWidthDip &&
-        placement.heightDip <= limits.maximumHeightDip;
+        placement.heightDip <= limits.maximumHeightDip &&
+        !placement.selectedLayoutId.empty() &&
+        placement.selectedLayoutId.size() <= kMaximumLayoutIdLength;
 }
 
 } // namespace
@@ -174,6 +177,7 @@ std::optional<DurablePinnedPlacement> CaptureDurablePlacement(
         static_cast<float>(width) * 96.0F / monitor.dpi,
         static_cast<float>(height) * 96.0F / monitor.dpi,
         100,
+        L"host.full-widget",
     };
 }
 
@@ -252,9 +256,11 @@ std::map<std::wstring, DurablePinnedPlacement> PinnedPlacementStore::LoadAll() c
     std::size_t count{};
     if (!(input >> header >> count) ||
         (header != L"wrail-pinned-placement-v1" &&
-         header != L"wrail-pinned-placement-v2") ||
+         header != L"wrail-pinned-placement-v2" &&
+         header != L"wrail-pinned-placement-v3") ||
         count > kMaximumStoredWidgets) return {};
-    const bool hasOpacity = header == L"wrail-pinned-placement-v2";
+    const bool hasOpacity = header != L"wrail-pinned-placement-v1";
+    const bool hasLayout = header == L"wrail-pinned-placement-v3";
     input.ignore(std::numeric_limits<std::streamsize>::max(), L'\n');
     for (std::size_t index = 0; index < count; ++index) {
         std::wstring line;
@@ -282,6 +288,7 @@ std::map<std::wstring, DurablePinnedPlacement> PinnedPlacementStore::LoadAll() c
                 }
             }
         }
+        if (hasLayout && !(row >> std::quoted(placement.selectedLayoutId))) return {};
         std::wstring trailingField;
         if (row >> trailingField) return {};
         if (placement.opacityPercent < kMinimumOpacityPercent ||
@@ -332,13 +339,14 @@ bool PinnedPlacementStore::Save(
             error = L"Pinned placement temporary file could not be created.";
             return false;
         }
-        output << L"wrail-pinned-placement-v2 " << all.size() << L'\n'
+        output << L"wrail-pinned-placement-v3 " << all.size() << L'\n'
                << std::setprecision(17);
         for (const auto& [id, value] : all) {
             output << std::quoted(id) << L' ' << value.schemaVersion << L' '
                    << std::quoted(value.monitorId) << L' ' << value.anchorX << L' '
                    << value.anchorY << L' ' << value.widthDip << L' '
-                   << value.heightDip << L' ' << value.opacityPercent << L'\n';
+                   << value.heightDip << L' ' << value.opacityPercent << L' '
+                   << std::quoted(value.selectedLayoutId) << L'\n';
         }
         output.flush();
         if (!output) {

@@ -4,7 +4,7 @@ public static class ProtocolConstants
 {
     public const int MinimumSupportedVersion = 1;
     public const int BaselineVersion = 1;
-    public const int CurrentVersion = 19;
+    public const int CurrentVersion = 20;
     public const int ScrollContainerVersion = 2;
     public const int SurfaceHintsVersion = 2;
     public const int SliderVersion = 3;
@@ -23,6 +23,9 @@ public static class ProtocolConstants
     public const int SurfaceAxisSizingVersion = 17;
     public const int AtomicPresentationUpdateVersion = 18;
     public const int VirtualCollectionWindowVersion = 19;
+    public const int PinnedPresentationLayoutsVersion = 20;
+    public const int MaximumPinnedPresentationLayoutCount = 8;
+    public const int MaximumPinnedPresentationLayoutNameLength = 96;
     public const int MaximumPresentationUpdateOperations = 256;
     public const int MaximumPresentationUpdateBytes = 256 * 1024;
     public const int MaximumPendingPresentationUpdates = 4;

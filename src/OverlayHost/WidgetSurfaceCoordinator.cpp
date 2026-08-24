@@ -26,6 +26,7 @@ constexpr unsigned int kMinimumOpacityPercent = 30;
 constexpr unsigned int kMaximumOpacityPercent = 100;
 constexpr std::size_t kMaximumPendingInputRequests = 16;
 constexpr std::size_t kMaximumFeedbackCharacters = 160;
+constexpr std::wstring_view kFullWidgetLayoutId = L"host.full-widget";
 
 [[nodiscard]] std::filesystem::path DefaultPlacementPath() {
     std::array<wchar_t, 32768> localAppData{};
@@ -153,6 +154,24 @@ bool WidgetSurfaceCoordinator::Pin(
         error = L"The pinned surface descriptor was rejected.";
         return false;
     }
+    std::vector<PinnedLayoutOption> layouts;
+    layouts.push_back({std::wstring(kFullWidgetLayoutId), L"Full widget",
+                       admission.initialContentWidthDip,
+                       admission.initialContentHeightDip});
+    for (auto& layout : admission.pinnedLayouts) {
+        if (layout.id.empty() || layout.name.empty() ||
+            !std::isfinite(layout.contentWidthDip) ||
+            !std::isfinite(layout.contentHeightDip) ||
+            layout.contentWidthDip <= 0.0F || layout.contentHeightDip <= 0.0F ||
+            std::ranges::any_of(layouts, [&](const auto& existing) {
+                return existing.id == layout.id;
+            })) {
+            error = L"The current widget exposes an invalid pinned layout catalog.";
+            policy_.Stop(StopReason::Unpin);
+            return false;
+        }
+        layouts.push_back(std::move(layout));
+    }
     placementLimits_ = admission.placementLimits;
     placementLimits_.maximumWidthDip = std::max(
         placementLimits_.maximumWidthDip,
@@ -161,6 +180,8 @@ bool WidgetSurfaceCoordinator::Pin(
         placementLimits_.maximumHeightDip,
         admission.initialContentHeightDip + kChromeHeightDip + kBottomInsetDip);
     admission_ = std::move(admission);
+    layoutOptions_ = std::move(layouts);
+    selectedLayoutIndex_ = 0;
     focusedElementId_ = admission_->snapshot.initialFocusId;
     inputRequests_.clear();
     actionFeedback_.clear();
@@ -170,7 +191,13 @@ bool WidgetSurfaceCoordinator::Pin(
     opacityPreviewOriginal_.reset();
     if (!CreateWindowForAdmission(error)) {
         admission_.reset();
+        layoutOptions_.clear();
         policy_.Stop(StopReason::Unpin);
+        return false;
+    }
+    if (!BeginSetup(true)) {
+        (void)Unpin(WidgetSurfaceStopReason::Unpin);
+        error = L"The pinned layout setup could not be started.";
         return false;
     }
     PublishAccessibility();
@@ -181,13 +208,28 @@ bool WidgetSurfaceCoordinator::Pin(
 bool WidgetSurfaceCoordinator::UpdateSnapshot(
     const std::wstring_view widgetIdValue,
     const std::wstring_view runtimeGenerationValue,
-    const WidgetSnapshot& snapshot) {
+    const WidgetSnapshot& snapshot,
+    std::vector<PinnedLayoutOption> layouts) {
     if (!pinned() || widgetIdValue != admission_->widgetId ||
         runtimeGenerationValue != admission_->runtimeGeneration ||
         snapshot.instanceId != admission_->instanceId) {
         return false;
     }
     admission_->snapshot = snapshot;
+    admission_->pinnedLayouts = std::move(layouts);
+    std::vector<PinnedLayoutOption> nextLayouts;
+    nextLayouts.push_back({std::wstring(kFullWidgetLayoutId), L"Full widget",
+                           admission_->initialContentWidthDip,
+                           admission_->initialContentHeightDip});
+    for (auto& layout : admission_->pinnedLayouts) nextLayouts.push_back(std::move(layout));
+    const std::wstring selectedId = selectedLayoutIndex_ < layoutOptions_.size()
+        ? layoutOptions_[selectedLayoutIndex_].id : std::wstring(kFullWidgetLayoutId);
+    layoutOptions_ = std::move(nextLayouts);
+    const auto selected = std::ranges::find_if(layoutOptions_, [&](const auto& layout) {
+        return layout.id == selectedId;
+    });
+    selectedLayoutIndex_ = selected == layoutOptions_.end()
+        ? 0 : static_cast<std::size_t>(selected - layoutOptions_.begin());
     inputRequests_.clear();
     actionFeedback_.clear();
     actionFeedbackFailure_ = false;
@@ -195,6 +237,12 @@ bool WidgetSurfaceCoordinator::UpdateSnapshot(
     if (renderer_) renderer_->ForgetWidgetState(admission_->instanceId);
     if (window_) InvalidateRect(window_, nullptr, FALSE);
     return true;
+}
+
+std::wstring_view WidgetSurfaceCoordinator::selectedLayoutName() const noexcept {
+    return selectedLayoutIndex_ < layoutOptions_.size()
+        ? std::wstring_view(layoutOptions_[selectedLayoutIndex_].name)
+        : std::wstring_view{};
 }
 
 bool WidgetSurfaceCoordinator::SetInteractionMode(const InteractionMode mode) {
@@ -351,6 +399,7 @@ bool WidgetSurfaceCoordinator::EmergencyHideAll() noexcept {
 }
 
 bool WidgetSurfaceCoordinator::BeginPlacement(const PlacementMode mode) {
+    if (mode == PlacementMode::Adjust) return BeginSetup(false);
     if (!pinned() || (mode != PlacementMode::Move && mode != PlacementMode::Resize &&
                       mode != PlacementMode::Adjust))
         return false;
@@ -370,6 +419,91 @@ bool WidgetSurfaceCoordinator::BeginPlacement(const PlacementMode mode) {
     InvalidateRect(window_, nullptr, FALSE);
     NotifyOwner();
     return true;
+}
+
+bool WidgetSurfaceCoordinator::BeginSetup(const bool newPin) {
+    if (!pinned() || layoutOptions_.empty()) return false;
+    if (opacityPreviewOriginal_) (void)CancelOpacity();
+    RECT bounds{};
+    if (!GetWindowRect(window_, &bounds)) return false;
+    if (placementSession_) (void)CancelPlacement();
+    placementSession_ = BeginPlacementSession(
+        PlacementMode::Adjust, {bounds.left, bounds.top, bounds.right, bounds.bottom},
+        admission_->runtimeGeneration, admission_->presentationGeneration);
+    if (!placementSession_) return false;
+    setupNewPin_ = newPin;
+    setupOriginalLayoutId_ = std::wstring(kFullWidgetLayoutId);
+    if (committedPlacement_) setupOriginalLayoutId_ = committedPlacement_->selectedLayoutId;
+    if (policy_.interactionMode() != InteractionMode::Focusable) {
+        policy_.SetInteractionMode(InteractionMode::Focusable);
+        ApplyWindowPolicy();
+    }
+    (void)SetFocus(window_);
+    (void)EnterControllerFocus();
+    PublishAccessibility();
+    InvalidateRect(window_, nullptr, FALSE);
+    NotifyOwner();
+    return true;
+}
+
+bool WidgetSurfaceCoordinator::CycleLayout(const int delta) {
+    if (!setupNewPin_ || !placementSession_ || layoutOptions_.empty() || delta == 0)
+        return false;
+    const auto count = static_cast<long long>(layoutOptions_.size());
+    const auto current = static_cast<long long>(selectedLayoutIndex_);
+    selectedLayoutIndex_ = static_cast<std::size_t>((current + delta % count + count) % count);
+    const auto& layout = layoutOptions_[selectedLayoutIndex_];
+    const auto monitor = CurrentWindowMonitor();
+    if (!monitor) return false;
+    const int width = std::max(1, static_cast<int>(std::lround(
+        (layout.contentWidthDip + kSideInsetDip * 2.0F) * monitor->dpi / 96.0F)));
+    const int height = std::max(1, static_cast<int>(std::lround(
+        (layout.contentHeightDip + kChromeHeightDip + kBottomInsetDip) * monitor->dpi / 96.0F)));
+    const auto ownerMode = placementSession_->mode;
+    placementSession_->mode = PlacementMode::Resize;
+    const bool changed = SetPlacementSessionBounds(
+        *placementSession_,
+        {placementSession_->current.left, placementSession_->current.top,
+         placementSession_->current.left + width,
+         placementSession_->current.top + height},
+        *monitor, placementLimits_);
+    placementSession_->mode = ownerMode;
+    if (changed) ApplyPlacementBounds(placementSession_->current);
+    PublishAccessibility();
+    InvalidateRect(window_, nullptr, FALSE);
+    NotifyOwner();
+    return true;
+}
+
+bool WidgetSurfaceCoordinator::CommitSetup(std::wstring& error) {
+    if (!setupNewPin_) {
+        error = L"No pinned layout setup is active.";
+        return false;
+    }
+    if (!CommitPlacement(error)) return false;
+    setupNewPin_.reset();
+    setupOriginalLayoutId_.clear();
+    (void)ExitControllerFocus();
+    (void)SetInteractionMode(InteractionMode::ClickThrough);
+    error.clear();
+    return true;
+}
+
+bool WidgetSurfaceCoordinator::CancelSetup() noexcept {
+    if (!setupNewPin_) return false;
+    const bool newPin = *setupNewPin_;
+    setupNewPin_.reset();
+    if (newPin) return Unpin(WidgetSurfaceStopReason::Unpin);
+    const auto original = std::ranges::find_if(layoutOptions_, [&](const auto& layout) {
+        return layout.id == setupOriginalLayoutId_;
+    });
+    if (original != layoutOptions_.end())
+        selectedLayoutIndex_ = static_cast<std::size_t>(original - layoutOptions_.begin());
+    setupOriginalLayoutId_.clear();
+    const bool canceled = CancelPlacement();
+    (void)ExitControllerFocus();
+    (void)SetInteractionMode(InteractionMode::ClickThrough);
+    return canceled;
 }
 
 std::optional<MonitorWorkArea> WidgetSurfaceCoordinator::CurrentWindowMonitor() const noexcept {
@@ -444,6 +578,8 @@ bool WidgetSurfaceCoordinator::CommitPlacement(std::wstring& error) {
         return false;
     }
     committed->opacityPercent = opacityPercent_;
+    if (selectedLayoutIndex_ < layoutOptions_.size())
+        committed->selectedLayoutId = layoutOptions_[selectedLayoutIndex_].id;
     if (!placementStore_ ||
         !placementStore_->Save(admission_->widgetId, *committed, error)) {
         (void)CancelPlacement();
@@ -451,7 +587,10 @@ bool WidgetSurfaceCoordinator::CommitPlacement(std::wstring& error) {
     }
     committedPlacement_ = *committed;
     placementSession_.reset();
+    setupNewPin_.reset();
+    setupOriginalLayoutId_.clear();
     pointerPlacement_ = false;
+    pointerPlacementMode_ = PlacementMode::None;
     if (GetCapture() == window_) ReleaseCapture();
     PublishAccessibility();
     InvalidateRect(window_, nullptr, FALSE);
@@ -464,6 +603,7 @@ bool WidgetSurfaceCoordinator::CancelPlacement() noexcept {
     const auto original = placementSession_->original;
     placementSession_.reset();
     pointerPlacement_ = false;
+    pointerPlacementMode_ = PlacementMode::None;
     if (GetCapture() == window_) ReleaseCapture();
     ApplyPlacementBounds(original);
     PublishAccessibility();
@@ -498,6 +638,8 @@ bool WidgetSurfaceCoordinator::SaveCurrentState(std::wstring& error) {
         return false;
     }
     current->opacityPercent = opacityPercent_;
+    if (selectedLayoutIndex_ < layoutOptions_.size())
+        current->selectedLayoutId = layoutOptions_[selectedLayoutIndex_].id;
     if (!placementStore_->Save(admission_->widgetId, *current, error)) return false;
     committedPlacement_ = std::move(current);
     return true;
@@ -627,11 +769,14 @@ bool WidgetSurfaceCoordinator::Unpin(const WidgetSurfaceStopReason reason) noexc
     if (!pinned() && !window_) return false;
     lastStopReason_ = reason;
     placementSession_.reset();
+    setupNewPin_.reset();
+    setupOriginalLayoutId_.clear();
     opacityPreviewOriginal_.reset();
     opacityPercent_ = 100;
     controllerFocused_ = false;
     overlayVisible_ = false;
     pointerPlacement_ = false;
+    pointerPlacementMode_ = PlacementMode::None;
     pointerActionNode_.clear();
     inputRequests_.clear();
     actionFeedback_.clear();
@@ -645,6 +790,8 @@ bool WidgetSurfaceCoordinator::Unpin(const WidgetSurfaceStopReason reason) noexc
     tearingDown_ = false;
     ReleaseGraphicsResources();
     admission_.reset();
+    layoutOptions_.clear();
+    selectedLayoutIndex_ = 0;
     committedPlacement_.reset();
     focusedElementId_.clear();
     lastRenderResult_ = {};
@@ -659,6 +806,10 @@ bool WidgetSurfaceCoordinator::Unpin(const WidgetSurfaceStopReason reason) noexc
 
 void WidgetSurfaceCoordinator::OnOverlayHidden() noexcept {
     overlayVisible_ = false;
+    if (setupNewPin_) {
+        (void)CancelSetup();
+        return;
+    }
     if (opacityPreviewOriginal_) (void)CancelOpacity();
     (void)ExitControllerFocus();
     policy_.OnMainOverlayHidden();
@@ -763,7 +914,10 @@ LRESULT WidgetSurfaceCoordinator::HandleMessage(
         return 0;
     case WM_KILLFOCUS:
         accessibilityProvider_.SetWindowFocused(false);
-        if (pointerPlacement_) (void)CancelPlacement();
+        if (pointerPlacement_) {
+            if (setupNewPin_) (void)CancelSetup();
+            else (void)CancelPlacement();
+        }
         if (opacityPreviewOriginal_) (void)CancelOpacity();
         pointerActionNode_.clear();
         if (GetCapture() == window_) ReleaseCapture();
@@ -788,8 +942,11 @@ LRESULT WidgetSurfaceCoordinator::HandleMessage(
                 else if (fromRight >= MulDiv(132, dpi, 96) &&
                          fromRight < MulDiv(208, dpi, 96)) mode = PlacementMode::Resize;
             }
-            if (mode != PlacementMode::None && BeginPlacement(mode)) {
+            const bool placementReady = mode != PlacementMode::None &&
+                (setupNewPin_ ? placementSession_.has_value() : BeginPlacement(mode));
+            if (placementReady) {
                 pointerPlacement_ = true;
+                pointerPlacementMode_ = mode;
                 GetCursorPos(&pointerStart_);
                 pointerStartBounds_ = placementSession_->current;
                 SetCapture(window_);
@@ -817,7 +974,7 @@ LRESULT WidgetSurfaceCoordinator::HandleMessage(
             const int dx = current.x - pointerStart_.x;
             const int dy = current.y - pointerStart_.y;
             auto proposed = pointerStartBounds_;
-            if (placementSession_->mode == PlacementMode::Move) {
+            if (pointerPlacementMode_ == PlacementMode::Move) {
                 proposed.left += dx;
                 proposed.right += dx;
                 proposed.top += dy;
@@ -827,8 +984,12 @@ LRESULT WidgetSurfaceCoordinator::HandleMessage(
                 proposed.bottom += dy;
             }
             const auto monitor = CurrentWindowMonitor();
-            if (monitor && SetPlacementSessionBounds(
-                    *placementSession_, proposed, *monitor, placementLimits_)) {
+            const auto ownerMode = placementSession_->mode;
+            placementSession_->mode = pointerPlacementMode_;
+            const bool changed = monitor && SetPlacementSessionBounds(
+                    *placementSession_, proposed, *monitor, placementLimits_);
+            placementSession_->mode = ownerMode;
+            if (changed) {
                 ApplyPlacementBounds(placementSession_->current);
             }
         }
@@ -836,9 +997,12 @@ LRESULT WidgetSurfaceCoordinator::HandleMessage(
     case WM_LBUTTONUP:
         if (pointerPlacement_) {
             pointerPlacement_ = false;
+            pointerPlacementMode_ = PlacementMode::None;
             if (GetCapture() == window_) ReleaseCapture();
             std::wstring ignored;
-            if (!CommitPlacement(ignored)) (void)CancelPlacement();
+            if (setupNewPin_) {
+                if (!CommitSetup(ignored)) (void)CancelSetup();
+            } else if (!CommitPlacement(ignored)) (void)CancelPlacement();
             return 0;
         }
         if (!pointerActionNode_.empty()) {
@@ -880,7 +1044,10 @@ LRESULT WidgetSurfaceCoordinator::HandleMessage(
         }
         return 0;
     case WM_CAPTURECHANGED:
-        if (pointerPlacement_) (void)CancelPlacement();
+        if (pointerPlacement_) {
+            if (setupNewPin_) (void)CancelSetup();
+            else (void)CancelPlacement();
+        }
         pointerActionNode_.clear();
         return 0;
     case WM_KEYDOWN:
@@ -1003,9 +1170,11 @@ void WidgetSurfaceCoordinator::HandleAccessibilityActions() {
         else if (request.actionId == L"pinned.commit") {
             std::wstring ignored;
             if (opacityPreviewOriginal_) (void)CommitOpacity(ignored);
+            else if (setupNewPin_) (void)CommitSetup(ignored);
             else (void)CommitPlacement(ignored);
         } else if (request.actionId == L"pinned.cancel") {
             if (opacityPreviewOriginal_) (void)CancelOpacity();
+            else if (setupNewPin_) (void)CancelSetup();
             else (void)CancelPlacement();
         }
         else if (request.actionId == L"pinned.clickthrough")
@@ -1026,11 +1195,19 @@ bool WidgetSurfaceCoordinator::CreateWindowForAdmission(std::wstring& error) {
     const auto persisted = placementStore_
         ? placementStore_->Load(admission_->widgetId)
         : std::optional<DurablePinnedPlacement>{};
+    if (persisted) {
+        const auto selected = std::ranges::find_if(layoutOptions_, [&](const auto& layout) {
+            return layout.id == persisted->selectedLayoutId;
+        });
+        if (selected != layoutOptions_.end())
+            selectedLayoutIndex_ = static_cast<std::size_t>(selected - layoutOptions_.begin());
+    }
+    const auto& initialLayout = layoutOptions_[selectedLayoutIndex_];
     const auto placement = ResolveDurablePlacement(
         monitors, persisted, placementLimits_,
         std::pair{
-            admission_->initialContentWidthDip + kSideInsetDip * 2.0F,
-            admission_->initialContentHeightDip + kChromeHeightDip + kBottomInsetDip});
+            initialLayout.contentWidthDip + kSideInsetDip * 2.0F,
+            initialLayout.contentHeightDip + kChromeHeightDip + kBottomInsetDip});
     if (!placement) {
         error = L"No valid monitor work area is available for a pinned surface.";
         return false;
@@ -1062,6 +1239,8 @@ bool WidgetSurfaceCoordinator::CreateWindowForAdmission(std::wstring& error) {
         committedPlacement_ = CaptureDurablePlacement(
             *monitor, placement->bounds, placementLimits_);
     if (committedPlacement_) committedPlacement_->opacityPercent = opacityPercent_;
+    if (committedPlacement_)
+        committedPlacement_->selectedLayoutId = layoutOptions_[selectedLayoutIndex_].id;
     InvalidateRect(window_, nullptr, FALSE);
     error.clear();
     return true;
@@ -1154,7 +1333,10 @@ void WidgetSurfaceCoordinator::Paint() {
             chrome = L"Resizing · D-pad resize · A save · B cancel";
         } else {
             const auto& bounds = placementSession_->current;
-            chrome = L"Adjust — left stick/D-pad move · right stick resize · A commit · B cancel · " +
+            chrome = selectedLayoutName().empty() ? L"Full widget" : std::wstring(selectedLayoutName());
+            chrome += L" " + std::to_wstring(selectedLayoutIndex_ + 1) + L"/" +
+                std::to_wstring(layoutOptions_.size()) +
+                L" · LT/RT layout · left stick/D-pad move · right stick resize · A commit · B cancel · " +
                 std::to_wstring(bounds.right - bounds.left) + L"x" +
                 std::to_wstring(bounds.bottom - bounds.top);
         }
@@ -1233,7 +1415,10 @@ void WidgetSurfaceCoordinator::PublishAccessibility() {
         else if (placementSession_->mode == PlacementMode::Resize)
             state.value = L"Resize mode. Direction changes size. Commit or cancel.";
         else
-            state.value = L"Adjust mode. Left stick or D-pad moves. Right stick resizes. Commit or cancel.";
+            state.value = std::wstring(selectedLayoutName()) + L", layout " +
+                std::to_wstring(selectedLayoutIndex_ + 1) + L" of " +
+                std::to_wstring(layoutOptions_.size()) +
+                L". Left or right trigger changes layout. Left stick or D-pad moves. Right stick resizes. Commit or cancel.";
     } else {
         state.value = policy_.interactionMode() == InteractionMode::Focusable
             ? L"Interactive. D-pad navigates. A activates. B returns to the tray. Menu opens options."

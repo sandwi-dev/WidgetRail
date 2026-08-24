@@ -1757,6 +1757,7 @@ property System.Collections.Generic.IReadOnlyList<WidgetRail.WidgetProtocol.Cont
 property System.Collections.Generic.IReadOnlyList<WidgetRail.WidgetProtocol.ControllerShortcut> WidgetRail.WidgetSdk.RowElement.Shortcuts { get; set; }
 property System.Collections.Generic.IReadOnlyList<WidgetRail.WidgetProtocol.ControllerShortcut> WidgetRail.WidgetSdk.ScrollElement.Shortcuts { get; set; }
 property System.Collections.Generic.IReadOnlyList<WidgetRail.WidgetProtocol.ControllerShortcut> WidgetRail.WidgetSdk.StackElement.Shortcuts { get; set; }
+property System.Collections.Generic.IReadOnlyList<WidgetRail.WidgetProtocol.PinnedPresentationLayout>? WidgetRail.WidgetSdk.WidgetView.PinnedLayouts { get; set; }
 property System.Collections.Generic.IReadOnlyList<WidgetRail.WidgetProtocol.WidgetQuickAction>? WidgetRail.WidgetSdk.WidgetView.QuickActions { get; set; }
 property System.Collections.Generic.IReadOnlyList<WidgetRail.WidgetSdk.WidgetAppLibraryAction> WidgetRail.WidgetSdk.WidgetAppLibraryCapabilitySet.Actions { get; set; }
 property System.Collections.Generic.IReadOnlyList<WidgetRail.WidgetSdk.WidgetAppLibraryArtwork> WidgetRail.WidgetSdk.WidgetAppLibraryArtworkSet.Items { get; set; }

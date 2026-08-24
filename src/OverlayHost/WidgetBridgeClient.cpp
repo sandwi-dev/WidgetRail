@@ -85,7 +85,8 @@ constexpr std::size_t kMaximumIdentifierLength = 128;
 constexpr std::size_t kMaximumLabelLength = 256;
 constexpr std::size_t kMaximumControllerButtonLength = 32;
 constexpr int kMinimumWidgetSnapshotProtocolVersion = 1;
-constexpr int kMaximumWidgetSnapshotProtocolVersion = 19;
+constexpr int kMaximumWidgetSnapshotProtocolVersion = 20;
+constexpr std::size_t kMaximumPinnedLayoutCount = 8;
 constexpr int kAtomicPresentationUpdateVersion = 18;
 constexpr std::size_t kMaximumPresentationUpdateOperations = 256;
 constexpr std::size_t kMaximumPresentationUpdateBytes = 256 * 1024;
@@ -924,8 +925,12 @@ WidgetSnapshot ParseSnapshot(const JsonObject& source) {
     snapshot.activeInputScopeId =
         std::wstring(std::wstring_view(source.GetNamedString(L"activeInputScopeId")));
     snapshot.initialFocusId = OptionalString(source, L"initialFocusId");
-    if (source.HasKey(L"surface")) {
-        const auto hints = source.GetNamedObject(L"surface");
+    const auto parseSurface = [](const JsonObject& hints) {
+        if (!HasNoUnknownProperties(hints,
+                {L"mode", L"widthMode", L"heightMode", L"preferredWidth",
+                 L"preferredHeight", L"minimumWidth", L"minimumHeight"}))
+            throw winrt::hresult_invalid_argument(
+                L"Widget surface hints contain an unknown property.");
         WidgetSurfaceHints parsed;
         parsed.mode = OptionalString(hints, L"mode");
         if (hints.HasKey(L"widthMode"))
@@ -940,7 +945,61 @@ WidgetSnapshot ParseSnapshot(const JsonObject& source) {
         parsed.preferredHeight = optionalNumber(L"preferredHeight");
         parsed.minimumWidth = optionalNumber(L"minimumWidth");
         parsed.minimumHeight = optionalNumber(L"minimumHeight");
-        snapshot.surface = std::move(parsed);
+        const auto validMode = parsed.mode.empty() || parsed.mode == L"adaptive" ||
+            parsed.mode == L"compact" || parsed.mode == L"standard" ||
+            parsed.mode == L"wide";
+        const auto validAxis = [](const std::optional<std::wstring>& value) {
+            return !value || *value == L"preferred" || *value == L"content" ||
+                *value == L"fillAvailable";
+        };
+        const auto validPair = [](const std::optional<double> width,
+                                  const std::optional<double> height) {
+            if (width.has_value() != height.has_value()) return false;
+            if (!width) return true;
+            return std::isfinite(*width) && std::isfinite(*height) &&
+                *width >= 240.0 && *width <= 1600.0 &&
+                *height >= 180.0 && *height <= 1200.0;
+        };
+        if (!validMode || !validAxis(parsed.widthMode) ||
+            !validAxis(parsed.heightMode) ||
+            !validPair(parsed.preferredWidth, parsed.preferredHeight) ||
+            !validPair(parsed.minimumWidth, parsed.minimumHeight) ||
+            (parsed.preferredWidth && parsed.minimumWidth &&
+             *parsed.minimumWidth > *parsed.preferredWidth) ||
+            (parsed.preferredHeight && parsed.minimumHeight &&
+             *parsed.minimumHeight > *parsed.preferredHeight))
+            throw winrt::hresult_invalid_argument(
+                L"Widget surface hints are invalid.");
+        return parsed;
+    };
+    if (source.HasKey(L"surface"))
+        snapshot.surface = parseSurface(source.GetNamedObject(L"surface"));
+    if (source.HasKey(L"pinnedLayouts")) {
+        const JsonArray layouts = source.GetNamedArray(L"pinnedLayouts");
+        if (layouts.Size() > kMaximumPinnedLayoutCount)
+            throw winrt::hresult_invalid_argument(
+                L"Widget snapshot has too many pinned layouts.");
+        std::unordered_set<std::wstring> ids;
+        snapshot.pinnedLayouts.reserve(layouts.Size());
+        for (uint32_t index = 0; index < layouts.Size(); ++index) {
+            const auto layout = layouts.GetObjectAt(index);
+            if (!HasNoUnknownProperties(layout, {L"id", L"name", L"surface"}))
+                throw winrt::hresult_invalid_argument(
+                    L"Widget snapshot pinned layout contains an unknown property.");
+            WidgetPinnedLayout parsed{
+                std::wstring(std::wstring_view(layout.GetNamedString(L"id"))),
+                std::wstring(std::wstring_view(layout.GetNamedString(L"name"))),
+                parseSurface(layout.GetNamedObject(L"surface")),
+            };
+            if (parsed.id.empty() || parsed.id.size() > 128 ||
+                parsed.name.empty() || parsed.name.size() > 96 ||
+                !ids.insert(parsed.id).second)
+                throw winrt::hresult_invalid_argument(
+                    L"Widget snapshot pinned layout identity is invalid.");
+            snapshot.pinnedLayouts.push_back(std::move(parsed));
+        }
+        if (!snapshot.pinnedLayouts.empty() && snapshot.protocolVersion < 20)
+            throw winrt::hresult_invalid_argument();
     }
     if (source.HasKey(L"quickActions")) {
         const JsonArray actions = source.GetNamedArray(L"quickActions");
@@ -1021,7 +1080,7 @@ bool ValidateWidgetDocumentStructure(
     if (!HasNoUnknownProperties(document,
             {L"protocolVersion", L"sequence", L"widgetInstanceId",
              L"activeInputScopeId", L"initialFocusId", L"quickActions",
-             L"surface", L"root"}) ||
+             L"surface", L"pinnedLayouts", L"root"}) ||
         !document.HasKey(L"root") ||
         document.GetNamedValue(L"root").ValueType() != JsonValueType::Object) {
         error = L"The materialized widget document shape is invalid.";

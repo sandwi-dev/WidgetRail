@@ -110,12 +110,26 @@ int main() {
         const auto storePath = storeRoot / L"placement.ini";
         widgetrail::pinned::PinnedPlacementStore store(storePath);
         std::wstring error;
-        Check(store.Save(L"dev.example.widget", *committed, error),
+        auto selectedLayout = *committed;
+        selectedLayout.opacityPercent = 70;
+        selectedLayout.selectedLayoutId = L"compact-now-playing";
+        Check(store.Save(L"dev.example.widget", selectedLayout, error),
               "placement store commits atomically");
         const auto loaded = store.Load(L"dev.example.widget");
         Check(loaded && loaded->monitorId == committed->monitorId &&
-                  std::abs(loaded->anchorX - committed->anchorX) < 0.000001,
-              "placement store restores the exact schema-1 record");
+                  std::abs(loaded->anchorX - committed->anchorX) < 0.000001 &&
+                  loaded->opacityPercent == 70 &&
+                  loaded->selectedLayoutId == L"compact-now-playing",
+              "placement store restores geometry opacity and selected layout together");
+        {
+            std::wofstream legacy(storePath, std::ios::trunc);
+            legacy << L"wrail-pinned-placement-v2 1\n"
+                   << L"\"dev.example.widget\" 1 \"DISPLAY-A\" 0.5 0.5 480 270 80\n";
+        }
+        const auto legacyLoaded = store.Load(L"dev.example.widget");
+        Check(legacyLoaded && legacyLoaded->opacityPercent == 80 &&
+                  legacyLoaded->selectedLayoutId == L"host.full-widget",
+              "pre-layout placement falls back to the host Full widget checkpoint");
         {
             std::wofstream malformed(storePath, std::ios::trunc);
             malformed << L"wrail-pinned-placement-v1 1\n\"bad\" 99 \"DISPLAY-A\" 0 0 480 270\n";

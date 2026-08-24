@@ -10,6 +10,13 @@ public sealed record WidgetView(
     string? ActiveInputScopeId = null,
     WidgetSurfaceHints? Surface = null)
 {
+    /// <summary>
+    /// Optional bounded sizing profiles for the host-owned pinned projection.
+    /// This additive property deliberately preserves the positional constructor
+    /// and Deconstruct contracts.
+    /// </summary>
+    public IReadOnlyList<PinnedPresentationLayout>? PinnedLayouts { get; init; }
+
     public ViewSnapshot CreateSnapshot(string widgetInstanceId, long sequence)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(widgetInstanceId);
@@ -24,6 +31,7 @@ public sealed record WidgetView(
             InitialFocusId = InitialFocusId,
             QuickActions = QuickActions?.ToArray() ?? [],
             Surface = Surface,
+            PinnedLayouts = PinnedLayouts?.ToArray() ?? [],
             Root = Root.ToProtocolNode(),
         };
         var requirements = ProtocolVersionRequirements.Calculate(snapshot);

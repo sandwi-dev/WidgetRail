@@ -43,6 +43,13 @@ internal sealed class ProtocolVersionRequirements
             }
         }
 
+        if ((snapshot.PinnedLayouts?.Count ?? 0) != 0)
+            Add(
+                "pinned-presentation-layouts",
+                ProtocolConstants.PinnedPresentationLayoutsVersion,
+                "$.pinnedLayouts",
+                $"Pinned presentation layouts require protocol version {ProtocolConstants.PinnedPresentationLayoutsVersion} or later.");
+
         Visit(snapshot.Root, "$.root", 1);
 
         var quickActions = snapshot.QuickActions ?? [];

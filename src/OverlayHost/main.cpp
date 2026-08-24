@@ -2857,7 +2857,8 @@ private:
                 (void)pinnedSurfaceCoordinator_.UpdateSnapshot(
                     event.widgetId,
                     pinnedSurfaceCoordinator_.runtimeGeneration(),
-                    *current);
+                    *current,
+                    ResolvePinnedLayouts(*current));
             }
             const auto currentWidget = state_.surface() == widgetrail::Surface::Widget
                 ? state_.activeWidget()
@@ -4032,6 +4033,20 @@ private:
             request, constraints, measure).value_or(
                 widgetrail::ResolveWidgetSurfaceTarget(
                     request, CurrentTextScale()));
+    }
+
+    [[nodiscard]] std::vector<widgetrail::pinned::PinnedLayoutOption>
+    ResolvePinnedLayouts(const widgetrail::WidgetSnapshot& snapshot) const {
+        std::vector<widgetrail::pinned::PinnedLayoutOption> layouts;
+        layouts.reserve(snapshot.pinnedLayouts.size());
+        for (const auto& layout : snapshot.pinnedLayouts) {
+            auto candidate = snapshot;
+            candidate.surface = layout.surface;
+            const auto resolved = ResolvePinnedContentSurface(candidate);
+            layouts.push_back({layout.id, layout.name,
+                               resolved.panelWidthDip, resolved.panelHeightDip});
+        }
+        return layouts;
     }
 
     void CommitAdmittedWidgetPresentation(const std::wstring_view widgetId) {
@@ -5312,7 +5327,7 @@ private:
         }
         std::wstring error;
         const auto pinnedSurface = ResolvePinnedContentSurface(*snapshot);
-        if (!pinnedSurfaceCoordinator_.Pin({
+        widgetrail::pinned::WidgetSurfaceAdmission admission{
                 descriptor->id,
                 descriptor->instanceId,
                 descriptor->runtimeGeneration,
@@ -5322,7 +5337,9 @@ private:
                 *snapshot,
                 pinnedSurface.panelWidthDip,
                 pinnedSurface.panelHeightDip,
-            }, error)) {
+            };
+        admission.pinnedLayouts = ResolvePinnedLayouts(*snapshot);
+        if (!pinnedSurfaceCoordinator_.Pin(std::move(admission), error)) {
             lastActionWidgetId_ = widgetId;
             lastActionMessage_ = error;
             lastActionExpiresAt_ = GetTickCount64() + 4000;
@@ -5332,7 +5349,7 @@ private:
         }
         lastActionWidgetId_ = widgetId;
         lastActionMessage_ =
-            L"Pinned click-through surface created. From the tray, press View to enter or Menu for options.";
+            L"Pinned layout setup: LT/RT layout, left stick/D-pad move, right stick resize, A commit, B cancel.";
         lastActionExpiresAt_ = GetTickCount64() + 5000;
         SyncWidgetActivity();
         AppendDiagnostic(L"Pinned surface created for " + widgetId);
@@ -5396,7 +5413,7 @@ private:
                     widgetrail::input::PressedInputTransition::Clear);
                 lastActionWidgetId_ = widgetId;
                 lastActionMessage_ =
-                    L"Adjust pinned widget: left stick/D-pad move, right stick resize, A commit, B cancel";
+                    L"Adjust pinned widget: LT/RT layout, left stick/D-pad move, right stick resize, A commit, B cancel";
                 lastActionExpiresAt_ = GetTickCount64() + 6000;
             }
             return;
@@ -5563,13 +5580,19 @@ private:
                 changed = step(widgetrail::pinned::PlacementDirection::Down);
             else if (!repeated && key == VK_RETURN) {
                 std::wstring error;
-                changed = pinnedSurfaceCoordinator_.CommitPlacement(error);
-                lastActionMessage_ = changed ? L"Pinned placement saved" : error;
+                changed = pinnedSurfaceCoordinator_.setupActive()
+                    ? pinnedSurfaceCoordinator_.CommitSetup(error)
+                    : pinnedSurfaceCoordinator_.CommitPlacement(error);
+                lastActionMessage_ = changed ? L"Pinned layout and placement saved" : error;
                 lastActionExpiresAt_ = GetTickCount64() + 3000;
+                if (changed) (void)SetFocus(window_);
             } else if (!repeated && key == VK_ESCAPE) {
-                changed = pinnedSurfaceCoordinator_.CancelPlacement();
-                lastActionMessage_ = L"Pinned placement canceled";
+                changed = pinnedSurfaceCoordinator_.setupActive()
+                    ? pinnedSurfaceCoordinator_.CancelSetup()
+                    : pinnedSurfaceCoordinator_.CancelPlacement();
+                lastActionMessage_ = L"Pinned layout setup canceled";
                 lastActionExpiresAt_ = GetTickCount64() + 2400;
+                if (changed) (void)SetFocus(window_);
             }
             if (pinnedSurfaceCoordinator_.placementMode() ==
                 widgetrail::pinned::PlacementMode::None) {
@@ -6458,15 +6481,27 @@ private:
             } else {
                 placementRightStickNavigator_.Reset();
             }
+            if (pinnedSurfaceCoordinator_.setupActive()) {
+                if (frame.leftTriggerPressed != WRAIL_OVERLAY_PLATFORM_FALSE)
+                    (void)pinnedSurfaceCoordinator_.CycleLayout(-1);
+                if (frame.rightTriggerPressed != WRAIL_OVERLAY_PLATFORM_FALSE)
+                    (void)pinnedSurfaceCoordinator_.CycleLayout(1);
+            }
             if ((pressed & XINPUT_GAMEPAD_A) != 0) {
                 std::wstring error;
-                const bool committed = pinnedSurfaceCoordinator_.CommitPlacement(error);
-                lastActionMessage_ = committed ? L"Pinned placement saved" : error;
+                const bool committed = pinnedSurfaceCoordinator_.setupActive()
+                    ? pinnedSurfaceCoordinator_.CommitSetup(error)
+                    : pinnedSurfaceCoordinator_.CommitPlacement(error);
+                lastActionMessage_ = committed ? L"Pinned layout and placement saved" : error;
                 lastActionExpiresAt_ = now + 3000;
+                if (committed) (void)SetFocus(window_);
             } else if ((pressed & XINPUT_GAMEPAD_B) != 0) {
-                (void)pinnedSurfaceCoordinator_.CancelPlacement();
-                lastActionMessage_ = L"Pinned placement canceled";
+                const bool canceled = pinnedSurfaceCoordinator_.setupActive()
+                    ? pinnedSurfaceCoordinator_.CancelSetup()
+                    : pinnedSurfaceCoordinator_.CancelPlacement();
+                lastActionMessage_ = L"Pinned layout setup canceled";
                 lastActionExpiresAt_ = now + 2400;
+                if (canceled) (void)SetFocus(window_);
             }
             if (pinnedSurfaceCoordinator_.placementMode() ==
                 widgetrail::pinned::PlacementMode::None)
