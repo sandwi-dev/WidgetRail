@@ -733,7 +733,7 @@ public sealed class SpotifyWidget : Widget
                     .ConfigureAwait(false);
                 SetState(generation, SpotifyWidgetViewState.Ready,
                     playback.IsAvailable ? "Live from Spotify" : "Connected · no active playback",
-                    playback);
+                    playback, refreshDemandedQueueOnPlaybackChange: true);
             }
             catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { }
             catch (Exception exception)
@@ -1383,11 +1383,15 @@ public sealed class SpotifyWidget : Widget
         long generation,
         SpotifyWidgetViewState state,
         string status,
-        SpotifyPlaybackSummary? playback)
+        SpotifyPlaybackSummary? playback,
+        bool refreshDemandedQueueOnPlaybackChange = false)
     {
         if (generation != Volatile.Read(ref _activeGeneration)) return;
+        bool playbackIdentityChanged;
         lock (_gate)
         {
+            playbackIdentityChanged = refreshDemandedQueueOnPlaybackChange &&
+                PlaybackQueueIdentity(_playback) != PlaybackQueueIdentity(playback);
             _viewState = state;
             _status = status;
             _playback = playback;
@@ -1396,7 +1400,14 @@ public sealed class SpotifyWidget : Widget
             _consecutiveRefreshFailures = 0;
         }
         Invalidate();
+        if (playbackIdentityChanged) InvalidateQueueCollection();
     }
+
+    private static (bool Available, string? Uri) PlaybackQueueIdentity(
+        SpotifyPlaybackSummary? playback) =>
+        playback is { IsAvailable: true }
+            ? (true, playback.Item?.Uri)
+            : (false, null);
 
     private void ApplyRefreshFailure(long generation, Exception exception)
     {

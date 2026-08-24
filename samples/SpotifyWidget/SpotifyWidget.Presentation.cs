@@ -5,6 +5,9 @@ namespace WidgetRail.Samples.SpotifyWidget;
 
 internal static class SpotifyPresentation
 {
+    // Two authored 82-DIP rows plus the section header and gaps fit the
+    // 340-DIP minimum pinned surface. A third row would require clipping.
+    private const int PinnedUpNextMaximumItems = 2;
     private const string InputScope = "spotify.window";
     private const string SetupScope = "spotify.setup";
     internal const string CompactPinnedLayoutId = "spotify.pinned.compact";
@@ -188,16 +191,29 @@ internal static class SpotifyPresentation
         WidgetElement content;
         if (queue.Items.Count != 0)
         {
-            var item = queue.Items[0];
-            var itemId = SpotifyCollectionIdentity.FocusId(
-                "spotify.queue.item", mode, item.Key);
-            content = MediaRow(item.Value, $"spotify.queue.play.{item.Key.Value}",
-                    itemId,
-                    SpotifyCollectionIdentity.FocusId(
-                        "spotify.queue.persist", "shared", item.Key))
-                .FocusLeft(playerFocusId)
-                .CollectionItem(item.Key)
-                .Classes("spotify-pinned-next-row");
+            var items = queue.Items.Take(PinnedUpNextMaximumItems).ToArray();
+            var rows = items.Select((item, index) =>
+            {
+                var itemId = SpotifyCollectionIdentity.FocusId(
+                    "spotify.queue.item", mode, item.Key);
+                var row = MediaRow(item.Value,
+                        $"spotify.queue.play.{item.Key.Value}", itemId,
+                        SpotifyCollectionIdentity.FocusId(
+                            "spotify.queue.persist", "shared", item.Key))
+                    .FocusLeft(playerFocusId)
+                    .CollectionItem(item.Key)
+                    .Classes("spotify-pinned-next-row");
+                if (index != 0)
+                    row = row.FocusUp(SpotifyCollectionIdentity.FocusId(
+                        "spotify.queue.item", mode, items[index - 1].Key));
+                if (index + 1 != items.Length)
+                    row = row.FocusDown(SpotifyCollectionIdentity.FocusId(
+                        "spotify.queue.item", mode, items[index + 1].Key));
+                return row;
+            }).ToArray();
+            content = UI.VerticalScroll($"spotify.{mode}.scroll", rows)
+                .Classes("spotify-pinned-queue-scroll") with
+            { CollectionAnchorKey = queue.Anchor?.Value };
         }
         else if (queue.Status is WidgetPagedResourceStatus.Loading or
                  WidgetPagedResourceStatus.NotLoaded)
