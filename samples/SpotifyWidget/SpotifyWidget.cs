@@ -1,4 +1,5 @@
 using WidgetRail.WidgetProtocol;
+using System.Diagnostics;
 using WidgetRail.WidgetSdk;
 
 namespace WidgetRail.Samples.SpotifyWidget;
@@ -36,6 +37,7 @@ public sealed class SpotifyWidget : Widget
     private static readonly TimeSpan ErrorPollInterval = TimeSpan.FromSeconds(30);
     private static readonly TimeSpan ProgressInterval = TimeSpan.FromMilliseconds(250);
     private static readonly TimeSpan SetupRefreshTimeout = TimeSpan.FromSeconds(5);
+    private static readonly TimeSpan QueueLoadTimeout = TimeSpan.FromSeconds(45);
     private static readonly TimeSpan DevicesCacheLifetime = TimeSpan.FromSeconds(20);
     private static readonly IReadOnlyList<SpotifyAuthorizationScope> SpotifyScopes =
     [
@@ -74,6 +76,7 @@ public sealed class SpotifyWidget : Widget
     private long? _playlistItemsSelectionGeneration;
     private long _playlistSelectionGeneration;
     private long _presentationCaptureSequence;
+    private long _queueLoadOperationSequence;
     private SpotifyPlaybackOperation? _pendingOperation;
     private string _status = "Spotify loads when this widget becomes visible";
     private SpotifyRefreshWarning? _refreshWarning;
@@ -654,11 +657,65 @@ public sealed class SpotifyWidget : Widget
     {
         if (cursor is not null || direction is not null)
             throw new InvalidOperationException("Spotify queue does not expose adjacent cursors.");
-        var queue = await _spotify.GetQueueAsync(cancellationToken).ConfigureAwait(false);
-        var occurrenceRequest = _queueOccurrences.BeginPage("queue", 0, direction);
-        var items = _queueOccurrences.NormalizePage(
-            occurrenceRequest, queue.Items, []);
-        return new(items, null, null);
+        var operation = Interlocked.Increment(ref _queueLoadOperationSequence);
+        var generation = Math.Max(0, Volatile.Read(ref _activeGeneration));
+        var started = Stopwatch.GetTimestamp();
+        _runtimeDiagnostics.Record(
+            "queue-refresh", "admitted", operation, generation, 0);
+        using var queueLifetime =
+            CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        queueLifetime.CancelAfter(QueueLoadTimeout);
+        try
+        {
+            var queue = _spotify is ISpotifyCorrelatedQueueService correlated
+                ? await correlated.GetQueueAsync(
+                        operation, generation, queueLifetime.Token)
+                    .ConfigureAwait(false)
+                : await _spotify.GetQueueAsync(queueLifetime.Token).ConfigureAwait(false);
+            var occurrenceRequest = _queueOccurrences.BeginPage("queue", 0, direction);
+            var items = _queueOccurrences.NormalizePage(
+                occurrenceRequest, queue.Items, []);
+            _runtimeDiagnostics.Record(
+                "queue-refresh",
+                items.Count == 0 ? "empty" : "success",
+                operation,
+                generation,
+                ElapsedMilliseconds(started));
+            return new(items, null, null);
+        }
+        catch (OperationCanceledException exception)
+            when (!cancellationToken.IsCancellationRequested &&
+                  queueLifetime.IsCancellationRequested)
+        {
+            _runtimeDiagnostics.Record(
+                "queue-refresh", "deadline", operation, generation,
+                ElapsedMilliseconds(started));
+            throw new SpotifyApplicationException(
+                "spotify_timeout", "Spotify queue did not respond in time.", exception);
+        }
+        catch (OperationCanceledException)
+        {
+            _runtimeDiagnostics.Record(
+                "queue-refresh", "canceled", operation, generation,
+                ElapsedMilliseconds(started));
+            throw;
+        }
+        catch (Exception exception)
+        {
+            _runtimeDiagnostics.Record(
+                "queue-refresh", QueueFailureDiagnosticCode(exception),
+                operation, generation, ElapsedMilliseconds(started));
+            throw;
+        }
+    }
+
+    private static long ElapsedMilliseconds(long started) =>
+        Math.Max(0, (long)Stopwatch.GetElapsedTime(started).TotalMilliseconds);
+
+    private static string QueueFailureDiagnosticCode(Exception exception)
+    {
+        var code = SpotifyRuntimeDiagnostics.Code(exception);
+        return code.Length <= 56 ? "failure-" + code : "failure";
     }
 
     private void StartAuthorization()

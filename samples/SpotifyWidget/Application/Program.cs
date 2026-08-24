@@ -24,7 +24,7 @@ var exitCode = await WidgetApplicationBootstrap.RunAsync(args, () =>
 {
     var identity = new SpotifyIntegrationIdentity(publisherId, packageId);
     var configuration = SpotifyClientConfigurationFileStore.CreateDefault();
-    var backend = new WindowsSpotifyPlatformBackend(configuration);
+    var backend = new WindowsSpotifyPlatformBackend(configuration, diagnostics);
     return new SpotifyWidget(
         new SpotifyApplicationService(backend, identity),
         timeProvider: null,

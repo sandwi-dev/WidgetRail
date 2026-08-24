@@ -23,9 +23,16 @@ internal sealed class SpotifyApplicationDiagnostics : ISpotifyRuntimeDiagnostics
         return new(Path.Combine(root, "runtime-diagnostics.log"));
     }
 
-    public void Record(string boundary, string code)
+    public void Record(
+        string boundary,
+        string code,
+        long operation = 0,
+        long generation = 0,
+        long elapsedMilliseconds = 0)
     {
-        if (!IsToken(boundary) || !IsToken(code)) return;
+        if (!IsToken(boundary) || !IsToken(code) || operation < 0 ||
+            generation < 0 || elapsedMilliseconds < 0)
+            return;
         try
         {
             lock (_gate)
@@ -39,6 +46,9 @@ internal sealed class SpotifyApplicationDiagnostics : ISpotifyRuntimeDiagnostics
                     DateTimeOffset.UtcNow.ToString("O", CultureInfo.InvariantCulture),
                     " boundary=", boundary,
                     " code=", code,
+                    " operation=", operation.ToString(CultureInfo.InvariantCulture),
+                    " generation=", generation.ToString(CultureInfo.InvariantCulture),
+                    " elapsed-ms=", elapsedMilliseconds.ToString(CultureInfo.InvariantCulture),
                     Environment.NewLine);
                 File.AppendAllText(_path, line, new UTF8Encoding(false));
             }

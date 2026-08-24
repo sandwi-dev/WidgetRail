@@ -4,7 +4,12 @@ namespace WidgetRail.Samples.SpotifyWidget;
 
 internal interface ISpotifyRuntimeDiagnostics
 {
-    void Record(string boundary, string code);
+    void Record(
+        string boundary,
+        string code,
+        long operation = 0,
+        long generation = 0,
+        long elapsedMilliseconds = 0);
 }
 
 internal static class SpotifyRuntimeDiagnostics
@@ -16,6 +21,7 @@ internal static class SpotifyRuntimeDiagnostics
     {
         ProtocolValidationException validation =>
             validation.Errors.FirstOrDefault()?.Code ?? "protocol-validation",
+        SpotifyApplicationException application => application.Code,
         OperationCanceledException => "operation-canceled",
         InvalidOperationException => "invalid-operation",
         ArgumentException => "invalid-argument",
@@ -25,7 +31,12 @@ internal static class SpotifyRuntimeDiagnostics
 
     private sealed class NullSpotifyRuntimeDiagnostics : ISpotifyRuntimeDiagnostics
     {
-        public void Record(string boundary, string code)
+        public void Record(
+            string boundary,
+            string code,
+            long operation = 0,
+            long generation = 0,
+            long elapsedMilliseconds = 0)
         {
         }
     }
