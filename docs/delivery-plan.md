@@ -65,6 +65,17 @@ historical evidence only; this file is the sole implementation authority.
   Spotify widgets, has executable SHA-256
   `5C8FC0B43BA54279E7DBB666FBD98338C592E25629CB9ABE722D1E02957DB43E`,
   and has no `startup-error.txt`.
+- DLV-288 documentation commit `8be0ebb` is independently accepted and
+  integrated into local `main` as merge `a37d614`. One active pre-release SDK
+  evolution contract now owns release-unit classification, migration records,
+  the external-distribution trigger, deprecation timing, emergency authority,
+  and the separation between public API and wire-protocol evolution. Scoped
+  Markdown-link and active-reference checks passed. The assigned documentation
+  gate stopped only on three pre-existing OverlayHost packaging assertions and
+  reported no DLV-288 link failure; it was not rerun or repaired under this
+  documentation-only milestone. No production/runtime artifact input changed,
+  so accepted PID 113716 remains the coherent visible candidate without a
+  rebuild or relaunch.
 - DLV-318 is the exact recoverable prior accepted Release at
   `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative-dlv318-build`;
   executable SHA-256 is
@@ -81,8 +92,8 @@ historical evidence only; this file is the sole implementation authority.
 
 | Lane | Task/worktree | State |
 | --- | --- | --- |
-| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | DLV-287 `dccf49a` is accepted/integrated as `fc91157`; its focused 89/89 contract route is green and the lane is idle. |
-| Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | DLV-288 is Assigned from the exact planner baseline that follows merge `fc91157`; Game Launcher tests remain explicitly deferred and out of scope. |
+| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | DLV-289 user-ready single-widget pinning is Assigned from the exact planner baseline that follows accepted DLV-288 merge `a37d614`; this is the sole serialized surface owner. |
+| Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | DLV-288 `8be0ebb` is accepted/integrated as `a37d614`; the lane is idle. Game Launcher tests remain explicitly deferred and out of scope. |
 
 ## Execution rules
 
@@ -654,7 +665,7 @@ aggregate, Tier 3, or Game Launcher widget test ran. The refreshed integrated
 Release is visibly running as responsive PID 113716; its log admits the generic
 full-application and Spotify widgets with current presentations.
 
-## Assigned widgets documentation/test — DLV-288 SDK evolution contract
+## Accepted widgets documentation/test — DLV-288 SDK evolution contract
 
 Lane: widgets, as the owner of the public authoring contract. Baseline: the
 exact clean local-main planner commit that assigns DLV-288 on top of accepted
@@ -716,11 +727,132 @@ an artifact, changing a public symbol/version/wire, adding runtime compatibility
 code, or making a legal/trademark commitment. Report the exact decision rather
 than inventing a promise.
 
+Commit `8be0ebb` is accepted and integrated as merge `a37d614`. The four-path
+documentation migration creates one active SDK evolution contract, expands the
+copyable compatibility review sequence and migration table, updates the
+documentation index, and removes the obsolete proposal. Scoped Markdown-link,
+active-reference, metadata-name, verifier-step, and protocol-range inspection
+passed. The single documentation gate exited 1 only on three pre-existing
+OverlayHost incremental-packaging assertions and reported no missing/stale link
+from DLV-288; per the stop-first and unchanged-gate rules, it was not rerun or
+repaired. No executable contract, product input, Game Launcher test, runtime,
+package, or process state changed, and nothing was pushed.
+
+## Assigned platform production — DLV-289 user-ready single-widget pinning
+
+Lane: platform, as the sole serialized owner of native surface, shell input,
+focus, accessibility, placement, and window lifecycle. Baseline: the exact clean
+local-main planner commit that assigns DLV-289 on top of accepted DLV-288 merge
+`a37d614`; create a fresh branch rather than continuing the retained DLV-287
+branch. Dependencies: DLV-288 is accepted and integrated. The widgets lane
+remains idle while this cross-surface milestone is active. Game Launcher tests
+remain explicitly deferred and must not be built, edited, or run.
+
+Objective: productize the already implemented one-surface pinned-window
+foundation as a discoverable controller-first feature. A user must be able to
+pin the current eligible widget from the visible overlay, leave that validated
+declarative projection on screen after closing the overlay, deliberately enter
+and leave Interactive mode, move or resize it anywhere inside the selected
+monitor's usable work area, and unpin or close it through visible host-owned
+controls. This is one simultaneous pin, not a multi-pin redesign.
+
+Ownership and design boundary:
+
+1. Reuse the existing `WidgetSurfaceCoordinator`, `PinnedSurfacePolicy`,
+   `PinnedSurfacePlacement`, peer tool-window HWND, declarative renderer,
+   generation admission, normalized placement store, and exact teardown. Do
+   not add another HWND, coordinator, renderer, input owner, persistence owner,
+   public protocol, or widget-controlled native authority.
+2. Add one visible host-owned Pin action for a loaded current descriptor with
+   `pinningSupported=true`, plus truthful unavailable/currently-pinned state,
+   accessible name/state/action, pointer activation, and a controller-native
+   route advertised in the existing guide/chrome. Extend the existing
+   right-stick pinned-surface interaction only if source review proves it does
+   not steal a current package-declared action in that scope; otherwise retain
+   package actions and use the smallest conflict-free host command. Keyboard
+   `P`/`U` remains a supported fallback, not the only discoverable route.
+3. Preserve the current safety model: a new pin starts nonactivating and
+   click-through; closing the main overlay cancels placement/focus, leaves the
+   pin visible and updating, and forwards no hidden-overlay controller input.
+   Explicit Interactive mode alone may receive current-generation input. `B`
+   or the documented focus-return action restores click-through; Close,
+   Unpin, worker/runtime/package replacement, catalog removal, display failure,
+   emergency hide, and host exit retain exact paired native/semantic teardown.
+4. Preserve host-owned placement bounds and persistence. Move and Resize must
+   share one preview/commit/cancel state machine across controller, keyboard,
+   pointer, and UI Automation; commit fully clamps the rectangle to the valid
+   monitor work area and current DPI. Invalid persisted data, monitor removal,
+   or an unusable work area fails closed or resolves through the existing safe
+   fallback rather than creating an offscreen/undersized window.
+5. Enable the bundled `Now Playing` manifest as the first safe production
+   acceptance widget by setting only the existing generic
+   `pinningSupported` declaration. This narrow manifest edit is explicitly
+   included in the serialized platform assignment so the physical candidate
+   exercises the real packaged path. It must not create a Now Playing identity,
+   tree-shape, action, or style special case in native code. Other widget
+   opt-ins remain independent package decisions after the generic experience is
+   accepted.
+6. Before materially extending the application-sized native host, report a
+   before/after responsibility map. Keep surface lifecycle and placement in the
+   existing cohesive owners; do not grow `main.cpp` with a second pin state
+   machine or duplicate focus/controller/accessibility knowledge.
+
+Physical-first verification: change production and directly affected public
+feature documentation only. Do not add, edit, generate, or run automated tests
+before the user verdict. Build one coherent packaged Release with every command
+emitting useful output or a terminal result within 60 seconds, perform direct
+source review of HWND styles/lifetime, focus and hidden-input authority,
+coordinate/DPI handling, generation revalidation, accessibility, and teardown,
+then commit one clean production-only `[DLV-289]` candidate. Report exact files,
+numeric build exit, executable/runtime hashes, the chosen conflict-free
+controller interaction, responsibility-map delta, and residual physical risks.
+Do not launch or terminate OverlayHost, install/reset packages, alter provider,
+account, credential, or configuration state, push, or touch Avalonia/AVP; the
+reviewer owns exact-candidate launch and the user owns the physical verdict.
+
+The user acceptance route must visibly establish: Now Playing can be pinned
+through the advertised host action; the pin is click-through by default;
+closing and reopening the main overlay preserves the same live pin; Interactive
+entry/exit and one safe current action work; controller and pointer Move/Resize
+commit and cancel are understandable; the committed rectangle can occupy the
+chosen monitor work area without crossing its safe bounds; and Unpin/Close
+removes the surface. Multi-monitor movement, taskbar/work-area changes, DPI,
+and worker replacement should be exercised when safely available, but a
+physical environment limitation is reported rather than converted into capture
+or harness work.
+
+Only after the user physically accepts the production behavior may the same
+platform lane add focused regression coverage for the accepted visible Pin
+action/controller route, overlay-hide click-through lifetime, current-generation
+input admission, placement commit/cancel/clamp, Now Playing opt-in projection,
+accessibility actions, and exact teardown. Run the directly affected pinned
+surface/coordinator/placement and smallest shell/controller/manifest boundary
+suites once; no Tier 3, broad aggregate, Game Launcher test, screenshot harness,
+or unchanged rerun. Commit the test follow-up separately and report numeric
+counts and retained manual debt.
+
+Out of scope: multiple simultaneous pins, arbitrary widget/native windows,
+auto-pin or startup rehydration of window authority, opacity controls, video or
+WebView, Windows App SDK, a new compositor, hidden-overlay controller forwarding,
+exclusive-fullscreen/anti-cheat/HDR guarantees, new manifest/protocol fields,
+package-specific host behavior, enabling additional widget manifests, broad
+shell redesign, Game Launcher work/tests, Avalonia/AVP, publication, or push.
+
+Stop conditions: stop before implementation if a discoverable controller route
+requires stealing an existing widget action, the feature needs another
+window/input/focus/semantic owner, a public wire or manifest change, a broad
+host rewrite, a package identity special case, destructive state change,
+substantial merge conflict, or a materially different multi-monitor/product
+choice. Stop on the first unrelated build red after preserving exact evidence;
+do not repair or rerun it under DLV-289.
+
 ## Future architecture queue — maturity review additions
 
-Status: DLV-287 is accepted/integrated and DLV-288 is Assigned. Later items are
-ordered future work and are not assigned until the active public SDK contract
-is reviewed.
+Status: DLV-288 is accepted/integrated and the explicitly requested visible
+DLV-289 pinning milestone is Assigned ahead of the internal maturity queue.
+Later items remain ordered future work and will be restacked after the physical
+pinning verdict so surface accessibility/diagnostic evidence is not specified
+against a changing user interaction.
 
 1. Stable structured diagnostic contract.
 2. Localization and accessibility semantics.
@@ -734,15 +866,16 @@ Extract native authorities only when real work touches them.
 
 ## Ordered queues
 
-1. DLV-288 SDK stability/evolution contract: Assigned widgets.
-2. Remaining maturity deliverables, ordered only after DLV-288 review because
-   their public diagnostic/accessibility promises depend on the active SDK
-   governance boundary.
+1. DLV-289 user-ready single-widget pinning: Assigned platform, physical-first.
+2. Remaining maturity deliverables, ordered after the DLV-289 physical verdict;
+   their diagnostic/accessibility promises consume the accepted surface
+   interaction rather than a rejected candidate.
 3. DLV-248 remains deliberately deferred until explicit user promotion.
 
-There is no concurrent Ready production work in either standing lane: DLV-288
-is the active public-contract decision, the user deferred Game Launcher
-verification, and no other reproduced visible defect is currently unblocked.
+There is no concurrent Ready production work in either standing lane: DLV-289
+is a serialized native surface assignment with one explicitly included bundled
+manifest edit, the user deferred Game Launcher verification, and the internal
+maturity queue is deliberately held until the visible physical verdict.
 
 ## Manual and blocked evidence
 
@@ -767,6 +900,8 @@ verification, and no other reproduced visible defect is currently unblocked.
 | DLV-285 | Production `ccb46e7` from exact baseline `12728a2` is physically accepted and integrated as `609d34e`; package and Release builds exited 0. Game Launcher 0.2.1 is installed/full-trust enabled. Accepted PID 144052 was replaced only for DLV-286 physical review. Widget tests are explicitly deferred for future package work. |
 | DLV-286 | The user physically accepted complete correction `a41bd72`; cumulative chain `d0ca29b` + `058efbc` + `a41bd72` is integrated as merge `627ba4c`. Responsive accepted PID 85884 already contains that production tip, so it remains running without a merge-only rebuild/relaunch. The dedicated Game Launcher test project remains untouched/deferred, and the broader Bridge aggregate must not be repeated. |
 | DLV-287 | Production/test `dccf49a` is accepted and integrated as `fc91157`; focused Release build passed and WidgetSdk protocol contracts passed 89/89. Exact prior PID 85884 exited gracefully. Refreshed integrated PID 113716 is responsive, has no startup error, and admitted the generic full-application and Spotify widgets. |
+| DLV-288 | Documentation `8be0ebb` is accepted and integrated as `a37d614`; scoped link/reference/contract inspection passed. Its single documentation gate stopped only on three pre-existing OverlayHost packaging assertions, with no DLV-288 link failure, and was not rerun. No runtime input changed, so PID 113716 remains accepted. |
+| DLV-289 | Assigned physical-first to the platform lane from the exact planner baseline above `a37d614`; one simultaneous pin, discoverable host/controller action, Now Playing opt-in, overlay-hide survival, bounded placement, and focused post-verdict tests only. |
 | DLV-248 | Deferred until explicit user promotion. |
 
 ## Recent dispositions
