@@ -649,8 +649,12 @@ without explicit promotion.
    The package refreshes a demanded queue once on natural playback item-identity
    change and renders two focusable rows in the pinned queue. Immutable package
    SHA-256 is `31B3B888DCF5868EC60ECECC42AAF8B135B8AE676B636D4A3C3B974825454ACC`.
-   Install and launch this production candidate for the user's verdict; do not
-   run tests or integrate first.
+   Rejected 0.3.19 was cooperatively retired without clearing credentials or
+   private data. Exact-hash 0.3.20 is now the sole installed, selected, enabled
+   Spotify version under responsive PID 123124 using the unchanged reviewed
+   DLV-474 host SHA-256
+   `1C7C8849B014F538AD5AC7FEFA8947B6F85735808A64BF7D9F2BD70A134B1C18`.
+   Await the user's physical verdict; do not run tests or integrate first.
 2. DLV-474 fresh-session sequence-authority correction: retained correction
    passed its native gate, then the managed gate stopped on an opaque pre-test
    build red. Four diffs remain uncommitted; no rerun or repair is authorized.
@@ -663,10 +667,10 @@ without explicit promotion.
 7. DLV-248 remains deliberately deferred until explicit user promotion.
 
 DLV-473 production is accepted/integrated and its tests are post-acceptance
-work. DLV-291 0.3.17 and 0.3.18 are physically rejected; deterministic proof
-assigns the visible queue failure to the package WRSS cascade, and built 0.3.19
-is the sole active installed version under PID 90896 but is physically rejected
-for blank active Now Playing content.
+work. DLV-291 versions through 0.3.19 are physically rejected. Exact-hash 0.3.20
+is the sole installed active Spotify version under responsive PID 123124 and
+awaits the user's physical verdict on visible Now Playing content, two pinned
+queue rows, and main/pinned queue refresh after a natural track transition.
 DLV-474 production is rejected before integration by deterministic
 fresh-session sequence evidence; its exact historical exit trigger remains
 unproven and retained diagnostics are ready for a future recurrence.
@@ -702,7 +706,7 @@ tests remain deferred.
 | DLV-292 | `ff5e7e4` binds each Bridge-cached snapshot to its worker start ordinal and uses existing typed stale-base recovery after replacement. Production build and three focused lifecycle/native gates passed; integrated as `80cdb10`. The user accepted PID 81980 by default because live reproduction is impractical. |
 | DLV-293 | Production `a9d36cf` is physically accepted and integrated as `10c3e26`; PID 137288 already contains that production tip. New catalog-removal/focus/Guide assertions completed before the focused host gate stopped on an older Game Launcher stationarity correlation. The pin-coordinator suite did not run; both uncommitted test diffs remain retained, with no rerun or Game Launcher repair authorized. |
 | DLV-474 | Production `a830f026` was provisionally accepted by user disposition because the historical bridge-session loss could not be reproduced, then rejected before integration when the first focused native gate proved fresh sequence 1 was compared against retained prior-session sequences 10/20. The retained correction passed 29 native coordinator scenarios plus linked native checks, then the managed diagnostic gate exited 1 during an opaque pre-test build. Four diffs remain uncommitted at identity `d14a224507d682e9c67f83860e713fe0118bb4dd`; no rerun or repair occurred. |
-| DLV-291 | Spotify 0.3.18 `2dc8ab8` and 0.3.19 `9dda3bf` are physically rejected; 0.3.19 remains the sole active installed version only until clean replacement. Reviewer inspection accepts clean 0.3.20 commits `8948d1d` + `17e875f` for physical promotion: typed `flex-basis` restores the player, demanded Queue/Up Next refreshes once when polled playback identity changes, and pinned Up Next renders two focusable rows. Coherent Release and package builds exited 0. The 1,171,003-byte immutable package SHA-256 is `31B3B888DCF5868EC60ECECC42AAF8B135B8AE676B636D4A3C3B974825454ACC`; final tree is `e2236c56be03e432c8e1aafba1848c5b95829aaa`. No tests, install, launch, integration, or push occurred before review. |
+| DLV-291 | Spotify 0.3.18 `2dc8ab8` and 0.3.19 `9dda3bf` are physically rejected. Reviewer inspection accepted clean 0.3.20 commits `8948d1d` + `17e875f` for physical promotion: typed `flex-basis` restores the player, demanded Queue/Up Next refreshes once when polled playback identity changes, and pinned Up Next renders two focusable rows. Coherent Release and package builds exited 0. The 1,171,003-byte immutable package SHA-256 is `31B3B888DCF5868EC60ECECC42AAF8B135B8AE676B636D4A3C3B974825454ACC`; final tree is `e2236c56be03e432c8e1aafba1848c5b95829aaa`. PID 90896 and its six top-level windows exited cooperatively; 0.3.19 was retired without clearing credentials/private data; exact-hash 0.3.20 is the sole installed active version. Unchanged reviewed DLV-474 host SHA-256 `1C7C8849B014F538AD5AC7FEFA8947B6F85735808A64BF7D9F2BD70A134B1C18` is responsive as PID 123124 with Bridge PID 61764 and no startup error in the bounded log prefix. Await user verdict; no tests or integration. |
 | DLV-248 | Deferred until explicit user promotion. |
 
 ## Integrated reliability — DLV-292 fresh-worker virtual-window recovery
