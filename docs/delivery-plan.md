@@ -42,17 +42,17 @@ historical evidence only; this file is the sole implementation authority.
   its accepted production commit is integrated. For DLV-286 review, PID 144052
   exposed no closable main window; the reviewer reverified its exact executable
   path and force-stopped only that planner-owned process.
-- DLV-286 candidate `d0ca29b` was physically rejected after Spotify worker PID
-  71612 failed its first visible lifecycle request and exited 1. Follow-up
-  `058efbc` proved the source deletion was not causal and corrected Bridge plus
-  generic WorkerHost publication under `-SkipPackaging`, but its visible PID
-  103768 was also rejected when the stale bundled Settings worker exited 1 on
-  its first lifecycle request. Both commits remain unintegrated. Exact rejected
-  PIDs 80988 and 103768 have been stopped after evidence capture. The complete
-  host-launched managed runtime graph is corrected by clean follow-up `a41bd72`.
-  Its production build and complete focused coherence/startup scenario passed;
-  unaccepted visible PID 85884 admitted Settings successfully and now awaits the
-  user's Spotify/Settings physical verdict before any integration.
+- DLV-286 cumulative production `d0ca29b` + `058efbc` + `a41bd72` is physically
+  accepted and integrated into local `main` as merge `627ba4c`. The first two
+  visible candidates were rejected and their exact PIDs 80988 and 103768 are
+  stopped; the complete correction regenerates the finite seven-runtime host
+  graph and deterministically removes retired roots. Production Release build
+  and the one focused artifact-coherence/startup scenario passed. The user
+  accepted responsive PID 85884 with executable SHA-256
+  `3E12B4A4B78890801D642311EE63CEA3B5065785FCE59EEA1B2E4E1651BFFDDC`.
+  That accepted candidate already contains exact integrated production tip
+  `a41bd72`, so no merge-only rebuild or relaunch is required. Game Launcher
+  widget tests remain explicitly deferred.
 - DLV-318 is the exact recoverable prior accepted Release at
   `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative-dlv318-build`;
   executable SHA-256 is
@@ -69,7 +69,7 @@ historical evidence only; this file is the sole implementation authority.
 
 | Lane | Task/worktree | State |
 | --- | --- | --- |
-| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | DLV-286 chain through complete runtime-graph correction `a41bd72` is source-reviewed and visibly running as unaccepted PID 85884. Settings startup is admitted; awaiting the user's Spotify/Settings physical verdict. Nothing is integrated. |
+| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | DLV-287 is Assigned from exact local-main baseline after accepted DLV-286 merge `627ba4c`; the lane must create a fresh branch and consolidate protocol-version requirements without a wire or SDK break. |
 | Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | DLV-285 production `ccb46e7` is physically accepted/integrated; Game Launcher tests are explicitly deferred and the lane is idle for the user's future package plans. |
 
 ## Execution rules
@@ -413,7 +413,7 @@ deferred Game Launcher widget tests for future package work. Production
 `ccb46e7` is integrated as `609d34e`; the same accepted candidate remains
 running, so no test-only rebuild or relaunch is required.
 
-## Assigned platform production — DLV-286 remove LauncherExperience
+## Accepted platform production — DLV-286 remove LauncherExperience
 
 Lane: platform, acting as the sole serialized cross-framework owner. Baseline:
 exact clean local-main merge `609d34e` in a new branch
@@ -559,23 +559,89 @@ host-owned widget workers, Spotify cold-start plus exactly one reopen, and one
 independent generic neighbor; Game Launcher was explicitly excluded and no Tier
 3 ran. Reviewed executable SHA-256 is
 `3E12B4A4B78890801D642311EE63CEA3B5065785FCE59EEA1B2E4E1651BFFDDC`.
-Unaccepted PID 85884 is responsive, `startup-error.txt` is absent, and Settings
-worker PID 133656 completed visible lifecycle and published a current snapshot.
-Do not integrate before the user's physical Spotify/Settings verdict.
+PID 85884 is responsive, `startup-error.txt` is absent, and Settings worker PID
+133656 completed visible lifecycle and published a current snapshot. The user
+physically accepted the complete corrected candidate. The cumulative chain
+`d0ca29b` + `058efbc` + `a41bd72` is integrated as merge `627ba4c`; because the
+running accepted candidate already contains exact production tip `a41bd72`, no
+merge-only rebuild or relaunch is required.
+
+## Assigned platform production — DLV-287 protocol-version requirements
+
+Lane: platform, as the sole owner of this shared SDK/protocol seam. Baseline:
+the exact clean local-main planner commit that assigns DLV-287 on top of accepted
+DLV-286 merge `627ba4c`; create a fresh branch rather than continuing the
+retained DLV-286 branch. Dependencies: DLV-286 is physically accepted and
+integrated. The widgets lane remains idle, and Game Launcher widget tests remain
+explicitly deferred.
+
+Objective: replace the duplicated SDK feature scan and raw-validator version
+predicates with one authoritative model-level protocol-version requirement
+calculator. It must traverse the finite declarative snapshot model once, report
+the maximum required protocol version, and retain exact requirement provenance
+for every gated surface, quick-action capability, node kind, and gated property.
+`WidgetView.CreateSnapshot` must use that shared result when choosing the
+snapshot version, while `ViewSnapshotValidator` must use the same requirements
+when rejecting a raw snapshot whose declared version is too old.
+
+Ownership and scope: the calculator belongs in `WidgetProtocol` beside the
+model and validator. `WidgetSdk` may consume it but must not keep an independent
+recursive feature matrix. Preserve existing validation paths, error codes, and
+actionable messages for version failures. Cover the complete current protocol
+matrix through version 19, including surface hints/axis sizing, scrolling and
+pagination, slider modes, dashboard capability authority, loading, inline PNG,
+action surfaces, responsive grid/visibility, Repeat One, focus persistence,
+cursor collections and artwork handles, text entry, and virtual collection
+windows. Include nested responsive branches and every legal container path.
+
+Out of scope: no new protocol feature, version bump, wire-shape change, public
+SDK signature break, manifest/host-API change, compatibility adapter, native
+host change, package-specific knowledge, broad validator rewrite, generic forms,
+LauncherExperience resurrection, Game Launcher widget test change/run, or
+Avalonia/AVP work. Do not change validation behavior unrelated to deciding the
+minimum required snapshot version.
+
+Acceptance: one production implementation owns the requirement matrix; SDK-
+authored snapshots choose the exact maximum gated version rather than always
+current; raw snapshots below each requirement fail at the same precise path;
+raw snapshots at the requirement pass version admission; ungated baseline
+trees remain version 1; nested and combined features choose the maximum once;
+and adding a future gated feature has one model-level registration point rather
+than coordinated SDK/validator predicates. Add focused table-driven tests that
+enumerate every current gated node/property in isolation, representative nested
+forms, and representative maximum-of-many combinations.
+
+Verification: normal production/test ordering, not physical-first. Run the
+directly affected WidgetProtocol/WidgetSdk builds and focused SDK protocol-
+version tests once, followed by the smallest existing raw-snapshot validation
+group that proves the shared calculator is enforced outside SDK construction.
+Do not run Tier 3 or the broad Bridge aggregate. Every command must emit useful
+output or terminate within 60 seconds; inspect immediately otherwise, stop at
+the first red, preserve exact evidence, and do not rerun an unchanged gate.
+Commit one coherent `[DLV-287]` change, report exact files and numeric exits,
+leave the worktree clean, and do not launch/terminate the accepted OverlayHost,
+install/reset packages, alter user state, edit reviewer documents, or push.
+
+Concurrency and stop conditions: this shared-model change is serialized in the
+platform lane. Stop before implementation if a public wire or SDK break, a
+protocol-version bump, multiple competing calculators, a second full model
+traversal, a package-specific exception, substantial merge conflict, or a
+material validation-behavior change is required. No reproduced unblocked
+visible product defect remains after DLV-286, and the user deferred Game
+Launcher verification; this is the single internal prerequisite before the
+remaining framework-maturity queue is reconsidered.
 
 ## Future architecture queue — maturity review additions
 
-Status: complete DLV-286 correction `a41bd72` is in physical review; later items
-are ordered future work and are not assigned.
+Status: DLV-287 is Assigned as the serialized prerequisite; later items are
+ordered future work and are not assigned because their exact contracts depend
+on its accepted model-level boundary.
 
-1. One authoritative model-level protocol-version calculator shared by SDK
-   snapshot creation and raw validation, with exact gated-node/property
-   coverage, before any new protocol feature.
-2. SDK stability/evolution contract.
-3. Stable structured diagnostic contract.
-4. Localization and accessibility semantics.
-5. Author diagnostics and preview inspection.
-6. Public-source pre-alpha readiness.
+1. SDK stability/evolution contract.
+2. Stable structured diagnostic contract.
+3. Localization and accessibility semantics.
+4. Author diagnostics and preview inspection.
+5. Public-source pre-alpha readiness.
 
 Do not schedule generic forms, broad OverlayApp refactoring, mediated import/
 export, background scheduling, marketplace/publisher infrastructure, or new
@@ -584,12 +650,15 @@ Extract native authorities only when real work touches them.
 
 ## Ordered queues
 
-1. DLV-286 corrected candidate `a41bd72`: user Spotify/Settings physical verdict,
-   then integration only if accepted.
-2. Protocol requirements; then the remaining maturity deliverables.
+1. DLV-287 authoritative protocol-version requirements: Assigned platform.
+2. Remaining maturity deliverables, ordered only after DLV-287 review and
+   integration because their exact contracts depend on that shared boundary.
 3. DLV-248 remains deliberately deferred until explicit user promotion.
 
-There is no concurrent Ready production work in either standing lane.
+There is no concurrent Ready production work in either standing lane: DLV-287
+is the serialized prerequisite for the remaining maturity contracts, the user
+deferred Game Launcher verification, and no other reproduced visible defect is
+currently unblocked.
 
 ## Manual and blocked evidence
 
@@ -612,7 +681,7 @@ There is no concurrent Ready production work in either standing lane.
 | Audio Mixer synthetic focus | Final Tier 3 passed 44/45 then retained Master after synthetic Down; unrelated source was previously green, so no unchanged rerun is authorized. |
 | DLV-284 | `21c3b8b` + `86d6532` integrated as `7f31e04`; compatibility `60130b4` as `052a392`; correlation/redaction `f583f40` + `ac79ed0` as `8ac55d`. The cumulative diagnostic stack is accepted only with metadata-only correction `a65228c`, integrated as `12728a2`; production build and two direct one-case gates passed, no Tier-3 rerun. The user physically accepted coherent PID 133304. |
 | DLV-285 | Production `ccb46e7` from exact baseline `12728a2` is physically accepted and integrated as `609d34e`; package and Release builds exited 0. Game Launcher 0.2.1 is installed/full-trust enabled. Accepted PID 144052 was replaced only for DLV-286 physical review. Widget tests are explicitly deferred for future package work. |
-| DLV-286 | Production `d0ca29b` and incomplete coherence follow-up `058efbc` are physically rejected/unintegrated; PIDs 80988 and 103768 are stopped. Complete correction `a41bd72` passed production build and the one focused seven-runtime/Spotify/neighbor scenario. Unaccepted PID 85884 is responsive and Settings is admitted; awaiting the user's Spotify/Settings verdict. The dedicated Game Launcher test project remains untouched/deferred, and the broader Bridge aggregate must not be repeated. |
+| DLV-286 | The user physically accepted complete correction `a41bd72`; cumulative chain `d0ca29b` + `058efbc` + `a41bd72` is integrated as merge `627ba4c`. Responsive accepted PID 85884 already contains that production tip, so it remains running without a merge-only rebuild/relaunch. The dedicated Game Launcher test project remains untouched/deferred, and the broader Bridge aggregate must not be repeated. |
 | DLV-248 | Deferred until explicit user promotion. |
 
 ## Recent dispositions
