@@ -37,7 +37,6 @@ public sealed class SpotifyWidget : Widget
     private static readonly TimeSpan ProgressInterval = TimeSpan.FromMilliseconds(250);
     private static readonly TimeSpan SetupRefreshTimeout = TimeSpan.FromSeconds(5);
     private static readonly TimeSpan DevicesCacheLifetime = TimeSpan.FromSeconds(20);
-    private const int MaximumQueuePlaybackReconciliationAttempts = 2;
     private static readonly IReadOnlyList<SpotifyAuthorizationScope> SpotifyScopes =
     [
         SpotifyAuthorizationScope.PlaybackStateRead,
@@ -655,25 +654,11 @@ public sealed class SpotifyWidget : Widget
     {
         if (cursor is not null || direction is not null)
             throw new InvalidOperationException("Spotify queue does not expose adjacent cursors.");
-        for (var attempt = 0; attempt < MaximumQueuePlaybackReconciliationAttempts; attempt++)
-        {
-            var queue = await _spotify.GetQueueAsync(cancellationToken).ConfigureAwait(false);
-            if (!QueueMatchesLatestPlayback(queue.CurrentlyPlaying)) continue;
-
-            var occurrenceRequest = _queueOccurrences.BeginPage("queue", 0, direction);
-            var items = _queueOccurrences.NormalizePage(
-                occurrenceRequest, queue.Items, []);
-            return new(items, null, null);
-        }
-
-        throw new InvalidOperationException(
-            "Spotify queue did not converge with the current playback item.");
-    }
-
-    private bool QueueMatchesLatestPlayback(SpotifyMediaItemSummary? currentlyPlaying)
-    {
-        lock (_gate)
-            return PlaybackQueueIdentity(_playback) == QueuePlaybackIdentity(currentlyPlaying);
+        var queue = await _spotify.GetQueueAsync(cancellationToken).ConfigureAwait(false);
+        var occurrenceRequest = _queueOccurrences.BeginPage("queue", 0, direction);
+        var items = _queueOccurrences.NormalizePage(
+            occurrenceRequest, queue.Items, []);
+        return new(items, null, null);
     }
 
     private void StartAuthorization()
@@ -735,30 +720,37 @@ public sealed class SpotifyWidget : Widget
         }
     }
 
-    private async Task RefreshPlaybackAsync(
+    private async Task<bool> RefreshPlaybackAsync(
         long generation,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        bool refreshDemandedQueueOnPlaybackChange = true)
     {
         await _refreshGate.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
-            if (generation != Volatile.Read(ref _activeGeneration)) return;
+            if (generation != Volatile.Read(ref _activeGeneration)) return false;
             lock (_gate)
             {
-                if (_authorizationState != SpotifyAuthorizationState.Connected) return;
+                if (_authorizationState != SpotifyAuthorizationState.Connected) return false;
             }
             try
             {
                 var playback = await _spotify.GetPlaybackAsync(cancellationToken)
                     .ConfigureAwait(false);
+                if (generation != Volatile.Read(ref _activeGeneration)) return false;
                 SetState(generation, SpotifyWidgetViewState.Ready,
                     playback.IsAvailable ? "Live from Spotify" : "Connected · no active playback",
-                    playback, refreshDemandedQueueOnPlaybackChange: true);
+                    playback, refreshDemandedQueueOnPlaybackChange);
+                return true;
             }
-            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            {
+                return false;
+            }
             catch (Exception exception)
             {
                 ApplyRefreshFailure(generation, exception);
+                return false;
             }
         }
         finally
@@ -1367,8 +1359,14 @@ public sealed class SpotifyWidget : Widget
                 _status = "Updated in Spotify";
             }
             Invalidate();
-            await RefreshPlaybackAsync(Volatile.Read(ref _activeGeneration), cancellationToken)
+            var refreshQueueAfterPlayback = operation is SpotifyPlaybackOperation.Next or
+                SpotifyPlaybackOperation.Previous;
+            var playbackRefreshed = await RefreshPlaybackAsync(
+                    Volatile.Read(ref _activeGeneration), cancellationToken,
+                    refreshDemandedQueueOnPlaybackChange: !refreshQueueAfterPlayback)
                 .ConfigureAwait(false);
+            if (refreshQueueAfterPlayback && playbackRefreshed)
+                InvalidateQueueCollection();
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
@@ -1423,12 +1421,6 @@ public sealed class SpotifyWidget : Widget
         playback is { IsAvailable: true }
             ? (true, playback.Item?.Uri)
             : (false, null);
-
-    private static (bool Available, string? Uri) QueuePlaybackIdentity(
-        SpotifyMediaItemSummary? currentlyPlaying) =>
-        currentlyPlaying is null
-            ? (false, null)
-            : (true, currentlyPlaying.Uri);
 
     private void ApplyRefreshFailure(long generation, Exception exception)
     {
