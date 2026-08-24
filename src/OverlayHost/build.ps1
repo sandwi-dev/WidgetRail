@@ -99,6 +99,42 @@ $env:PATH = "$sdkBin;$compilerBin;$env:PATH"
 
 $outputDirectory = Join-Path $projectDirectory "out\$Configuration"
 
+function Assert-NoReparsePointInPath {
+    param([Parameter(Mandatory = $true)] [string]$Path)
+
+    $resolved = [System.IO.Path]::GetFullPath($Path)
+    $root = [System.IO.Path]::GetPathRoot($resolved)
+    $current = $root
+    foreach ($segment in $resolved.Substring($root.Length).Split(
+        [System.IO.Path]::DirectorySeparatorChar,
+        [System.StringSplitOptions]::RemoveEmptyEntries)) {
+        $current = Join-Path $current $segment
+        if (Test-Path -LiteralPath $current) {
+            $attributes = [System.IO.File]::GetAttributes($current)
+            if (($attributes -band [System.IO.FileAttributes]::ReparsePoint) -ne 0) {
+                throw "Build output paths cannot traverse a reparse point: $current"
+            }
+        }
+    }
+}
+
+function Remove-GeneratedDirectory {
+    param([Parameter(Mandatory = $true)] [string]$Path)
+
+    $resolvedOutputRoot = [System.IO.Path]::GetFullPath($outputDirectory)
+    $resolvedPath = [System.IO.Path]::GetFullPath($Path)
+    if (-not $resolvedPath.StartsWith(
+        $resolvedOutputRoot + [System.IO.Path]::DirectorySeparatorChar,
+        [System.StringComparison]::OrdinalIgnoreCase)) {
+        throw "Generated output escaped the build layout: $resolvedPath"
+    }
+    Assert-NoReparsePointInPath -Path $resolvedOutputRoot
+    Assert-NoReparsePointInPath -Path $resolvedPath
+    if (Test-Path -LiteralPath $resolvedPath) {
+        Remove-Item -LiteralPath $resolvedPath -Recurse -Force
+    }
+}
+
 function Invoke-SerializedManagedPublish {
     param(
         [Parameter(Mandatory = $true)] [string]$Project,
@@ -1531,42 +1567,29 @@ if ($LASTEXITCODE -ne 0) {
     throw "OverlayHost build failed with exit code $LASTEXITCODE."
 }
 
+$bridgeOutput = Join-Path $outputDirectory 'runtime\Bridge'
+$workerHostOutput = Join-Path $outputDirectory 'runtime\WidgetWorkerHost'
+Remove-GeneratedDirectory -Path $bridgeOutput
+Remove-GeneratedDirectory -Path $workerHostOutput
+$managedPublishExitCode = 0
+Invoke-SerializedManagedPublish `
+    -Project (Join-Path $projectDirectory '..\WidgetBridge\WidgetBridge.csproj') `
+    -Configuration $Configuration -Output $bridgeOutput `
+    -ExitCode ([ref]$managedPublishExitCode)
+if ($managedPublishExitCode -ne 0) {
+    throw "WidgetBridge publish failed with exit code $managedPublishExitCode."
+}
+$managedPublishExitCode = 0
+Invoke-SerializedManagedPublish `
+    -Project (Join-Path $projectDirectory '..\WidgetWorkerHost\WidgetWorkerHost.csproj') `
+    -Configuration $Configuration -Output $workerHostOutput `
+    -ExitCode ([ref]$managedPublishExitCode)
+if ($managedPublishExitCode -ne 0 -or
+    -not (Test-Path -LiteralPath (Join-Path $workerHostOutput 'WidgetWorkerHost.exe'))) {
+    throw "Generic widget worker host publish failed with exit code $managedPublishExitCode."
+}
+
 if (-not $SkipPackaging) {
-    function Assert-NoReparsePointInPath {
-        param([Parameter(Mandatory = $true)] [string]$Path)
-
-        $resolved = [System.IO.Path]::GetFullPath($Path)
-        $root = [System.IO.Path]::GetPathRoot($resolved)
-        $current = $root
-        foreach ($segment in $resolved.Substring($root.Length).Split(
-            [System.IO.Path]::DirectorySeparatorChar,
-            [System.StringSplitOptions]::RemoveEmptyEntries)) {
-            $current = Join-Path $current $segment
-            if (Test-Path -LiteralPath $current) {
-                $attributes = [System.IO.File]::GetAttributes($current)
-                if (($attributes -band [System.IO.FileAttributes]::ReparsePoint) -ne 0) {
-                    throw "Build output paths cannot traverse a reparse point: $current"
-                }
-            }
-        }
-    }
-
-    function Remove-GeneratedDirectory {
-        param([Parameter(Mandatory = $true)] [string]$Path)
-
-        $resolvedOutputRoot = [System.IO.Path]::GetFullPath($outputDirectory)
-        $resolvedPath = [System.IO.Path]::GetFullPath($Path)
-        if (-not $resolvedPath.StartsWith(
-            $resolvedOutputRoot + [System.IO.Path]::DirectorySeparatorChar,
-            [System.StringComparison]::OrdinalIgnoreCase)) {
-            throw "Generated output escaped the build layout: $resolvedPath"
-        }
-        Assert-NoReparsePointInPath -Path $resolvedOutputRoot
-        Assert-NoReparsePointInPath -Path $resolvedPath
-        if (Test-Path -LiteralPath $resolvedPath) {
-            Remove-Item -LiteralPath $resolvedPath -Recurse -Force
-        }
-    }
 
     function Publish-BundledWidgetPackage {
         param(
@@ -1632,8 +1655,6 @@ if (-not $SkipPackaging) {
         }
     }
 
-    $bridgeOutput = Join-Path $outputDirectory 'runtime\Bridge'
-    $workerHostOutput = Join-Path $outputDirectory 'runtime\WidgetWorkerHost'
     $settingsOutput = Join-Path $outputDirectory 'runtime\Settings'
     $audioMixerOutput = Join-Path $outputDirectory 'runtime\AudioMixer'
     $networkControlsOutput = Join-Path $outputDirectory 'runtime\NetworkControls'
@@ -1644,27 +1665,9 @@ if (-not $SkipPackaging) {
     # tree so stale executables or Bridge dependency assemblies cannot ship.
     Remove-GeneratedDirectory -Path (Join-Path $outputDirectory 'runtime\GameLauncher')
     Remove-GeneratedDirectory -Path (Join-Path $outputDirectory 'runtime\SpotifyPlaybackHost')
-    Remove-GeneratedDirectory -Path $bridgeOutput
     # YT Music is a community addon now. Remove an incremental build's retired
     # trusted worker so it cannot remain as an accidental fallback.
     Remove-GeneratedDirectory -Path (Join-Path $outputDirectory 'runtime\YtMusic')
-    $managedPublishExitCode = 0
-    Invoke-SerializedManagedPublish `
-        -Project (Join-Path $projectDirectory '..\WidgetBridge\WidgetBridge.csproj') `
-        -Configuration $Configuration -Output $bridgeOutput `
-        -ExitCode ([ref]$managedPublishExitCode)
-    if ($managedPublishExitCode -ne 0) {
-        throw "WidgetBridge publish failed with exit code $managedPublishExitCode."
-    }
-    $managedPublishExitCode = 0
-    Invoke-SerializedManagedPublish `
-        -Project (Join-Path $projectDirectory '..\WidgetWorkerHost\WidgetWorkerHost.csproj') `
-        -Configuration $Configuration -Output $workerHostOutput `
-        -ExitCode ([ref]$managedPublishExitCode)
-    if ($managedPublishExitCode -ne 0 -or
-        -not (Test-Path -LiteralPath (Join-Path $workerHostOutput 'WidgetWorkerHost.exe'))) {
-        throw "Generic widget worker host publish failed with exit code $managedPublishExitCode."
-    }
     $managedPublishExitCode = 0
     Invoke-SerializedManagedPublish `
         -Project (Join-Path $projectDirectory '..\FirstPartyWidgets\SettingsWidget.Worker\SettingsWidget.Worker.csproj') `
