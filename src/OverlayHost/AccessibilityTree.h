@@ -43,6 +43,7 @@ enum class HostAction {
     BackWithinWidget,
     PinTrayWidget,
     AdjustPinnedSurface,
+    AdjustPinnedOpacity,
     UnpinSurface,
     CloseOverlay,
 };

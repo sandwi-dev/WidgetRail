@@ -53,10 +53,11 @@ Only one surface may be pinned in this first bounded release:
    fallback remains available while the widget is open. The new peer surface
    starts in nonactivating click-through mode and the main overlay keeps
    controller focus;
-2. while that widget remains open in the main overlay, press `P` or controller
-   right-stick click to enter the pinned surface. D-pad/stick navigation and
-   `A` then use the exact current widget generation; `B` or another right-stick
-   click returns focus to the overlay and restores Click-through;
+2. while the tray owns focus, controller View enters the single pinned surface
+   regardless of which tray tile is selected. D-pad/stick navigation and `A`
+   then use the exact current widget generation; `B` returns focus to the tray
+   and restores Click-through. View remains package input while widget content
+   owns focus, and View+Menu retains its recovery meaning;
 3. reopen the selected tray item's menu and choose **Unpin**, use the `U`
    keyboard fallback, use the pinned Interactive chrome, close the pinned
    window, remove or replace its package generation, restart its worker, or
@@ -82,6 +83,13 @@ Keyboard uses `M`/`R`, arrows, Enter, and Escape.
 Dragging the host-owned Move or Resize chrome commits on pointer release, and
 UI Automation exposes the same Move/Resize then Commit/Cancel actions. Closing
 the main overlay or losing input capture cancels an unfinished gesture.
+
+The same tray menu exposes **Opacity — N%**. `A` begins a live whole-surface
+preview, horizontal D-pad or left stick changes opacity in 10-point steps from
+30% through 100%, `A` commits, and `B` restores the exact prior alpha. Opacity
+is stored with host-owned placement data; a missing or invalid opacity defaults
+to 100% without discarding valid geometry. The chosen alpha remains authoritative
+in Windows High Contrast because it is an explicit user surface setting.
 
 Interactive UI Automation composes the exact current widget semantic tree after
 the ordered host Enter/Exit, Move, Resize, Click-through, Unpin, Close, and
@@ -121,7 +129,8 @@ its own deployment/runtime contract; adopting it requires planner authority.
 ## Placement and display lifecycle
 
 Persisted placement is data, not window authority: schema version, monitor
-stable ID, normalized work-area X/Y anchors, and logical width/height in DIPs.
+stable ID, normalized work-area X/Y anchors, logical width/height in DIPs, and
+bounded whole-surface opacity.
 The host atomically replaces
 `%LOCALAPPDATA%\WidgetRail\pinned-surface-placement.ini`; at most 64
 bounded widget records are accepted. Resolution follows one deterministic rule:
@@ -133,10 +142,12 @@ bounded widget records are accepted. Resolution follows one deterministic rule:
    through 960x540-DIP limits (a trusted host surface may inject a stricter
    minimum; widgets cannot);
 4. resolve normalized anchors over the remaining work-area travel and fully
-   clamp the rectangle; malformed/incompatible state resets as a whole;
+   clamp the rectangle; malformed placement resets while malformed opacity
+   alone normalizes to 100%;
 5. monitor loss falls back to the valid primary/first monitor, re-normalizes,
-   and atomically records that fallback; a first/default pin uses 480x270 DIPs
-   at the top-right with a 16-DIP safe margin;
+   and atomically records that fallback; a first/default pin uses the same
+   host-resolved content extent as the ordinary widget surface plus compact
+   pinned chrome, at the top-right with a 16-DIP safe margin;
 6. if no work area can contain the declared minimum, fail closed rather than
    creating an offscreen or undersized HWND.
 

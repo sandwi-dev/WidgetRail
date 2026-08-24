@@ -7,6 +7,7 @@
 #include <optional>
 #include <string>
 #include <string_view>
+#include <utility>
 #include <vector>
 
 namespace widgetrail::pinned {
@@ -39,6 +40,7 @@ struct DurablePinnedPlacement final {
     double anchorY{};
     float widthDip{480.0F};
     float heightDip{270.0F};
+    unsigned int opacityPercent{100};
 };
 
 struct PlacementSession final {
@@ -52,7 +54,8 @@ struct PlacementSession final {
 [[nodiscard]] std::optional<ResolvedPlacement> ResolveDurablePlacement(
     const std::vector<MonitorWorkArea>& monitors,
     const std::optional<DurablePinnedPlacement>& persisted,
-    PlacementLimits limits = {}) noexcept;
+    PlacementLimits limits = {},
+    std::optional<std::pair<float, float>> initialWindowExtentDip = std::nullopt) noexcept;
 
 [[nodiscard]] std::optional<DurablePinnedPlacement> CaptureDurablePlacement(
     const MonitorWorkArea& monitor,
