@@ -152,6 +152,16 @@ historical evidence only; this file is the sole implementation authority.
   correction is Assigned with validator weakening forbidden. The selected
   installed version remains 0.3.16 because restoring the full-trust 0.3.14
   rollback requires explicit user approval; no indirect mutation is permitted.
+  Concrete source diagnosis found the invalid transition: when playback was
+  unavailable, the first Up Next row pointed left to an absent Repeat button
+  while the projection authored an empty-state Refresh button. Clean 0.3.17
+  production `009af955` derives the actual player focus target from the same
+  snapshot and uses it for both initial focus and the row edge. Its package
+  build passed with SHA-256
+  `F79F9E9064334C6122FD909796BFB8894C5B786435CA128BEB46E9191C32F28D`;
+  no tests ran. Installation/selection is blocked pending the user's explicit
+  approval to keep Spotify's full-trust enablement; rejected 0.3.16 remains
+  selected and no workaround is authorized.
 - DLV-473 post-acceptance test commit `34f15ae9` is retained clean and
   unintegrated. Its first authorized focused SDK gate exited 1 during build
   before test output, emitted no compiler diagnostic, and produced no test
@@ -178,7 +188,7 @@ historical evidence only; this file is the sole implementation authority.
 | Lane | Task/worktree | State |
 | --- | --- | --- |
 | Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | DLV-473 production `4c66b128` is physically accepted/integrated as `055ec2f`. Test-only `34f15ae9` is retained unintegrated after its first focused gate stopped on an opaque pre-test build red; no rerun. The standing tree's two DLV-293 test diffs remain byte-identical. |
-| Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | DLV-291 0.3.16 `64b14864` is rejected after a fresh worker's sequence-32 render failed protocol validation. Concrete diagnosis and immutable 0.3.17 production correction are Assigned. Game Launcher tests remain deferred/out of scope. |
+| Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | DLV-291 0.3.16 `64b14864` is rejected. Clean 0.3.17 correction `009af955` and package are reviewed/built; installation awaits explicit user approval for the persistent full-trust catalog change. Game Launcher tests remain deferred/out of scope. |
 
 ## Execution rules
 
@@ -310,8 +320,9 @@ state, public contract change, substantial conflict, or an unrelated red.
 ### DLV-291 Spotify compact pinned layouts
 
 Lane: widgets. Status: 0.3.16 correction `64b14864` rejected after a fresh
-worker's next render following 31 valid snapshots failed protocol validation;
-concrete diagnosis and immutable 0.3.17 production correction Assigned. The
+worker's next render following 31 valid snapshots failed protocol validation.
+Concrete immutable 0.3.17 correction `009af955` is reviewed and built; physical
+installation awaits explicit full-trust approval. The
 0.3.15 production `5435eaf` was rejected because the package
 manifest omits `pinningSupported: true`, so host admission prevents tray Pin
 despite the rendered layouts. Produce a clean production-only 0.3.16 correction
@@ -381,9 +392,9 @@ without explicit promotion.
 
 ## Ordered queues
 
-1. DLV-291 Spotify compact pinned layouts: 0.3.16 `64b14864` rejected on a
-   concrete fresh-worker protocol-validation render failure; diagnose the exact
-   authored transition and produce immutable 0.3.17 before another launch.
+1. DLV-291 Spotify compact pinned layouts: clean correction `009af955` and
+   immutable 0.3.17 package are reviewed/built; installing/selecting it while
+   retaining full-trust enablement awaits explicit user approval.
 2. DLV-473 focused post-acceptance tests: clean `34f15ae9` is retained
    unintegrated after the first SDK gate stopped before tests on an opaque build
    red; later gates did not run and no rerun is authorized.
@@ -393,7 +404,7 @@ without explicit promotion.
 6. DLV-248 remains deliberately deferred until explicit user promotion.
 
 DLV-473 production is accepted/integrated and its tests are post-acceptance
-work. DLV-291 awaits concrete diagnosis and a 0.3.17 production correction.
+work. DLV-291 awaits explicit approval to install its reviewed 0.3.17 correction.
 DLV-293 production is accepted/integrated;
 its incomplete test follow-up is retained as blocked debt, and Game Launcher
 tests remain deferred.
