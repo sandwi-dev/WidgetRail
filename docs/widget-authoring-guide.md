@@ -1821,6 +1821,14 @@ widget content has focus. The surface starts click-through; a second
 `P` or a bare right-stick click while the same widget is open explicitly makes
 it Interactive. Menu while widget content owns focus remains available to the
 widget, as do all package-declared bumper, trigger, stick-click, and View actions.
+Supporting widgets may also pass `PinnedLayouts` to `WidgetView`. Each
+`PinnedPresentationLayout` has a stable ID, a visible name, and ordinary bounded
+`WidgetSurfaceHints`; the host accepts at most eight and always prepends its
+own **Full widget** fallback. These are sizing profiles for the same validated
+responsive view, not alternate HWNDs or presentation trees. During Pin or
+Adjust setup, `LT`/`RT` cycles the visible name/index; outside setup those
+triggers remain package actions. The selected layout is persisted independently
+of ordinary view refreshes, while a removed ID falls back safely to Full widget.
 Overlay close preserves the surface but restores click-through. Package
 removal/replacement, worker restart/loss, pinned close, and host exit tear it
 down. Authors publish ordinary immutable snapshots and lifecycle behavior only;

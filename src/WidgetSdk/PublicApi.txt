@@ -123,7 +123,7 @@ ctor WidgetRail.WidgetSdk.WidgetScenarioRunResult(string CaseId, bool Passed, Sy
 ctor WidgetRail.WidgetSdk.WidgetScenarioStepResult(string StepId, bool Passed, string Code, string? Message)
 ctor WidgetRail.WidgetSdk.WidgetTestHostServicesBuilder()
 ctor WidgetRail.WidgetSdk.WidgetTestPrivateState(string? initialJson = null, long initialRevision = 0)
-ctor WidgetRail.WidgetSdk.WidgetView(WidgetRail.WidgetSdk.WidgetElement Root, string? InitialFocusId = null, System.Collections.Generic.IReadOnlyList<WidgetRail.WidgetProtocol.WidgetQuickAction>? QuickActions = null, string? ActiveInputScopeId = null, WidgetRail.WidgetProtocol.WidgetSurfaceHints? Surface = null)
+ctor WidgetRail.WidgetSdk.WidgetView(WidgetRail.WidgetSdk.WidgetElement Root, string? InitialFocusId = null, System.Collections.Generic.IReadOnlyList<WidgetRail.WidgetProtocol.WidgetQuickAction>? QuickActions = null, string? ActiveInputScopeId = null, WidgetRail.WidgetProtocol.WidgetSurfaceHints? Surface = null, System.Collections.Generic.IReadOnlyList<WidgetRail.WidgetProtocol.PinnedPresentationLayout>? PinnedLayouts = null)
 ctor WidgetRail.WidgetSdk.WidgetWifiRadio(WidgetRail.WidgetSdk.WidgetWifiRadioState State, bool CanControl)
 ctor WidgetRail.WidgetSdk.WidgetWifiRadioChanged(WidgetRail.WidgetSdk.WidgetWifiRadio Radio)
 enum WidgetRail.WidgetSdk.ActionSheetItemTone.Danger = WidgetRail.WidgetSdk.ActionSheetItemTone.Danger
@@ -1234,7 +1234,7 @@ method WidgetRail.WidgetSdk.WidgetTestPrivateState.SimulateExternalClear() -> vo
 method WidgetRail.WidgetSdk.WidgetTestPrivateState.SimulateExternalWriteJson(string json) -> void
 method WidgetRail.WidgetSdk.WidgetView.<Clone>$() -> WidgetRail.WidgetSdk.WidgetView
 method WidgetRail.WidgetSdk.WidgetView.CreateSnapshot(string widgetInstanceId, long sequence) -> WidgetRail.WidgetProtocol.ViewSnapshot
-method WidgetRail.WidgetSdk.WidgetView.Deconstruct(out WidgetRail.WidgetSdk.WidgetElement Root, out string? InitialFocusId, out System.Collections.Generic.IReadOnlyList<WidgetRail.WidgetProtocol.WidgetQuickAction>? QuickActions, out string? ActiveInputScopeId, out WidgetRail.WidgetProtocol.WidgetSurfaceHints? Surface) -> void
+method WidgetRail.WidgetSdk.WidgetView.Deconstruct(out WidgetRail.WidgetSdk.WidgetElement Root, out string? InitialFocusId, out System.Collections.Generic.IReadOnlyList<WidgetRail.WidgetProtocol.WidgetQuickAction>? QuickActions, out string? ActiveInputScopeId, out WidgetRail.WidgetProtocol.WidgetSurfaceHints? Surface, out System.Collections.Generic.IReadOnlyList<WidgetRail.WidgetProtocol.PinnedPresentationLayout>? PinnedLayouts) -> void
 method WidgetRail.WidgetSdk.WidgetView.Equals(object? obj) -> bool
 method WidgetRail.WidgetSdk.WidgetView.GetHashCode() -> int
 method WidgetRail.WidgetSdk.WidgetView.ToString() -> string
@@ -1757,6 +1757,7 @@ property System.Collections.Generic.IReadOnlyList<WidgetRail.WidgetProtocol.Cont
 property System.Collections.Generic.IReadOnlyList<WidgetRail.WidgetProtocol.ControllerShortcut> WidgetRail.WidgetSdk.RowElement.Shortcuts { get; set; }
 property System.Collections.Generic.IReadOnlyList<WidgetRail.WidgetProtocol.ControllerShortcut> WidgetRail.WidgetSdk.ScrollElement.Shortcuts { get; set; }
 property System.Collections.Generic.IReadOnlyList<WidgetRail.WidgetProtocol.ControllerShortcut> WidgetRail.WidgetSdk.StackElement.Shortcuts { get; set; }
+property System.Collections.Generic.IReadOnlyList<WidgetRail.WidgetProtocol.PinnedPresentationLayout>? WidgetRail.WidgetSdk.WidgetView.PinnedLayouts { get; set; }
 property System.Collections.Generic.IReadOnlyList<WidgetRail.WidgetProtocol.WidgetQuickAction>? WidgetRail.WidgetSdk.WidgetView.QuickActions { get; set; }
 property System.Collections.Generic.IReadOnlyList<WidgetRail.WidgetSdk.WidgetAppLibraryAction> WidgetRail.WidgetSdk.WidgetAppLibraryCapabilitySet.Actions { get; set; }
 property System.Collections.Generic.IReadOnlyList<WidgetRail.WidgetSdk.WidgetAppLibraryArtwork> WidgetRail.WidgetSdk.WidgetAppLibraryArtworkSet.Items { get; set; }

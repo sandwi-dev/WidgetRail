@@ -85,7 +85,8 @@ constexpr std::size_t kMaximumIdentifierLength = 128;
 constexpr std::size_t kMaximumLabelLength = 256;
 constexpr std::size_t kMaximumControllerButtonLength = 32;
 constexpr int kMinimumWidgetSnapshotProtocolVersion = 1;
-constexpr int kMaximumWidgetSnapshotProtocolVersion = 19;
+constexpr int kMaximumWidgetSnapshotProtocolVersion = 20;
+constexpr std::size_t kMaximumPinnedLayoutCount = 8;
 constexpr int kAtomicPresentationUpdateVersion = 18;
 constexpr std::size_t kMaximumPresentationUpdateOperations = 256;
 constexpr std::size_t kMaximumPresentationUpdateBytes = 256 * 1024;
@@ -924,8 +925,7 @@ WidgetSnapshot ParseSnapshot(const JsonObject& source) {
     snapshot.activeInputScopeId =
         std::wstring(std::wstring_view(source.GetNamedString(L"activeInputScopeId")));
     snapshot.initialFocusId = OptionalString(source, L"initialFocusId");
-    if (source.HasKey(L"surface")) {
-        const auto hints = source.GetNamedObject(L"surface");
+    const auto parseSurface = [](const JsonObject& hints) {
         WidgetSurfaceHints parsed;
         parsed.mode = OptionalString(hints, L"mode");
         if (hints.HasKey(L"widthMode"))
@@ -940,7 +940,33 @@ WidgetSnapshot ParseSnapshot(const JsonObject& source) {
         parsed.preferredHeight = optionalNumber(L"preferredHeight");
         parsed.minimumWidth = optionalNumber(L"minimumWidth");
         parsed.minimumHeight = optionalNumber(L"minimumHeight");
-        snapshot.surface = std::move(parsed);
+        return parsed;
+    };
+    if (source.HasKey(L"surface"))
+        snapshot.surface = parseSurface(source.GetNamedObject(L"surface"));
+    if (source.HasKey(L"pinnedLayouts")) {
+        const JsonArray layouts = source.GetNamedArray(L"pinnedLayouts");
+        if (layouts.Size() > kMaximumPinnedLayoutCount)
+            throw winrt::hresult_invalid_argument(
+                L"Widget snapshot has too many pinned layouts.");
+        std::unordered_set<std::wstring> ids;
+        snapshot.pinnedLayouts.reserve(layouts.Size());
+        for (uint32_t index = 0; index < layouts.Size(); ++index) {
+            const auto layout = layouts.GetObjectAt(index);
+            WidgetPinnedLayout parsed{
+                std::wstring(std::wstring_view(layout.GetNamedString(L"id"))),
+                std::wstring(std::wstring_view(layout.GetNamedString(L"name"))),
+                parseSurface(layout.GetNamedObject(L"surface")),
+            };
+            if (parsed.id.empty() || parsed.id.size() > 128 ||
+                parsed.name.empty() || parsed.name.size() > 96 ||
+                !ids.insert(parsed.id).second)
+                throw winrt::hresult_invalid_argument(
+                    L"Widget snapshot pinned layout identity is invalid.");
+            snapshot.pinnedLayouts.push_back(std::move(parsed));
+        }
+        if (!snapshot.pinnedLayouts.empty() && snapshot.protocolVersion < 20)
+            throw winrt::hresult_invalid_argument();
     }
     if (source.HasKey(L"quickActions")) {
         const JsonArray actions = source.GetNamedArray(L"quickActions");

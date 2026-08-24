@@ -326,6 +326,12 @@ struct WidgetSurfaceHints final {
     std::optional<double> minimumHeight;
 };
 
+struct WidgetPinnedLayout final {
+    std::wstring id;
+    std::wstring name;
+    WidgetSurfaceHints surface;
+};
+
 struct WidgetSnapshot final {
     int protocolVersion{1};
     long long sequence{};
@@ -334,6 +340,7 @@ struct WidgetSnapshot final {
     std::wstring initialFocusId;
     std::vector<WidgetQuickAction> quickActions;
     std::optional<WidgetSurfaceHints> surface;
+    std::vector<WidgetPinnedLayout> pinnedLayouts;
     WidgetNode root;
     // Canonical unstyled semantic document retained by the sole native
     // session owner. It is the immutable base for an atomic update candidate;

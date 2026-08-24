@@ -52,6 +52,13 @@ struct WidgetSurfaceInputRequest final {
     ControllerInputOrigin origin{ControllerInputOrigin::PhysicalController};
 };
 
+struct PinnedLayoutOption final {
+    std::wstring id;
+    std::wstring name;
+    float contentWidthDip{};
+    float contentHeightDip{};
+};
+
 struct WidgetSurfaceAdmission final {
     std::wstring widgetId;
     std::wstring instanceId;
@@ -64,6 +71,7 @@ struct WidgetSurfaceAdmission final {
     float initialContentHeightDip{270.0F};
     // Host-injected policy. Public manifests cannot set physical geometry.
     PlacementLimits placementLimits{};
+    std::vector<PinnedLayoutOption> pinnedLayouts;
 };
 
 #ifdef WRAIL_WIDGET_SURFACE_COORDINATOR_TESTING
@@ -100,7 +108,8 @@ public:
     [[nodiscard]] bool UpdateSnapshot(
         std::wstring_view widgetId,
         std::wstring_view runtimeGeneration,
-        const WidgetSnapshot& snapshot);
+        const WidgetSnapshot& snapshot,
+        std::vector<PinnedLayoutOption> layouts = {});
     [[nodiscard]] bool SetInteractionMode(InteractionMode mode);
     [[nodiscard]] bool ToggleInteractionMode();
     [[nodiscard]] bool EnterControllerFocus();
@@ -114,6 +123,10 @@ public:
     void SetActionFeedback(std::wstring message, bool failure);
     [[nodiscard]] bool EmergencyHideAll() noexcept;
     [[nodiscard]] bool BeginPlacement(PlacementMode mode);
+    [[nodiscard]] bool BeginSetup(bool newPin);
+    [[nodiscard]] bool CycleLayout(int delta);
+    [[nodiscard]] bool CommitSetup(std::wstring& error);
+    [[nodiscard]] bool CancelSetup() noexcept;
     [[nodiscard]] bool StepPlacement(PlacementDirection direction, float stepDip = 16.0F);
     [[nodiscard]] bool StepPlacement(
         PlacementMode operation,
@@ -160,6 +173,10 @@ public:
     [[nodiscard]] bool opacityAdjustmentActive() const noexcept {
         return opacityPreviewOriginal_.has_value();
     }
+    [[nodiscard]] bool setupActive() const noexcept { return setupNewPin_.has_value(); }
+    [[nodiscard]] std::wstring_view selectedLayoutName() const noexcept;
+    [[nodiscard]] std::size_t selectedLayoutIndex() const noexcept { return selectedLayoutIndex_; }
+    [[nodiscard]] std::size_t layoutCount() const noexcept { return layoutOptions_.size(); }
     [[nodiscard]] unsigned int opacityPercent() const noexcept {
         return opacityPercent_;
     }
@@ -219,6 +236,10 @@ private:
     std::unique_ptr<PinnedPlacementStore> placementStore_;
     std::optional<DurablePinnedPlacement> committedPlacement_;
     std::optional<PlacementSession> placementSession_;
+    std::vector<PinnedLayoutOption> layoutOptions_;
+    std::size_t selectedLayoutIndex_{};
+    std::optional<bool> setupNewPin_;
+    std::wstring setupOriginalLayoutId_;
     unsigned int opacityPercent_{100};
     std::optional<unsigned int> opacityPreviewOriginal_;
     RenderResult lastRenderResult_;
@@ -229,6 +250,7 @@ private:
     bool overlayVisible_{};
     bool controllerFocused_{};
     bool pointerPlacement_{};
+    PlacementMode pointerPlacementMode_{PlacementMode::None};
     std::wstring pointerActionNode_;
     POINT pointerStart_{};
     PhysicalRect pointerStartBounds_{};

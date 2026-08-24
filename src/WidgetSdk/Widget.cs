@@ -8,7 +8,8 @@ public sealed record WidgetView(
     string? InitialFocusId = null,
     IReadOnlyList<WidgetQuickAction>? QuickActions = null,
     string? ActiveInputScopeId = null,
-    WidgetSurfaceHints? Surface = null)
+    WidgetSurfaceHints? Surface = null,
+    IReadOnlyList<PinnedPresentationLayout>? PinnedLayouts = null)
 {
     public ViewSnapshot CreateSnapshot(string widgetInstanceId, long sequence)
     {
@@ -24,6 +25,7 @@ public sealed record WidgetView(
             InitialFocusId = InitialFocusId,
             QuickActions = QuickActions?.ToArray() ?? [],
             Surface = Surface,
+            PinnedLayouts = PinnedLayouts?.ToArray() ?? [],
             Root = Root.ToProtocolNode(),
         };
         var requirements = ProtocolVersionRequirements.Calculate(snapshot);

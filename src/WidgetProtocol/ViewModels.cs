@@ -120,6 +120,18 @@ public sealed record WidgetSurfaceHints
     public double? MinimumHeight { get; init; }
 }
 
+/// <summary>
+/// One optional, bounded sizing profile for the host-owned pinned projection.
+/// It grants no window, renderer, input, focus, or independent view authority.
+/// The ordinary validated snapshot remains the content checkpoint.
+/// </summary>
+public sealed record PinnedPresentationLayout
+{
+    public required string Id { get; init; }
+    public required string Name { get; init; }
+    public required WidgetSurfaceHints Surface { get; init; }
+}
+
 [JsonConverter(typeof(JsonStringEnumConverter<ImageFit>))]
 public enum ImageFit
 {
@@ -362,5 +374,6 @@ public sealed record ViewSnapshot
     public IReadOnlyList<WidgetQuickAction> QuickActions { get; init; } = [];
     /// <summary>Versioned, host-clamped sizing hints for this exact view.</summary>
     public WidgetSurfaceHints? Surface { get; init; }
+    public IReadOnlyList<PinnedPresentationLayout> PinnedLayouts { get; init; } = [];
     public required ViewNode Root { get; init; }
 }

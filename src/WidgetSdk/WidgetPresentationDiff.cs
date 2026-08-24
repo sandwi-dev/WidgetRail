@@ -68,6 +68,8 @@ internal static class WidgetPresentationDiff
         };
         if (!StableRelationships(previous.Root, current.Root))
             return Checkpoint("unstable_identity");
+        if (!SameJson(previous.PinnedLayouts, current.PinnedLayouts))
+            return Checkpoint("pinned_layout_catalog_changed");
 
         var operations = new List<PresentationUpdateOperation>();
         AddDocumentChanges(previous, current, operations);
@@ -164,6 +166,12 @@ internal static class WidgetPresentationDiff
 
     private static bool ValidGeneration(string value) =>
         value is { Length: 32 or 64 } && value.All(char.IsAsciiHexDigit);
+
+    private static bool SameJson<T>(T previous, T current) =>
+        string.Equals(
+            PresentationUpdateJson.Value(previous).GetRawText(),
+            PresentationUpdateJson.Value(current).GetRawText(),
+            StringComparison.Ordinal);
 
     private static ViewSnapshot NormalizeVirtualWindowReentry(
         ViewSnapshot? previous,

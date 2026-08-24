@@ -49,7 +49,11 @@ Only one surface may be pinned in this first bounded release:
 
 1. focus a supporting widget in the tray and press controller Menu/Options, or
    right-click that exact tray item, then choose the host-owned **Pin** menu
-   item. The full menu is always stacked above the bottom tray, with its bottom
+   item. Pin immediately enters the host-owned setup transaction. `LT`/`RT`
+   cycles the visible bounded layout catalog (the host's **Full widget** choice
+   is always present), D-pad or left stick moves, right stick resizes, `A`
+   commits and returns the surface to click-through, and `B` cancels a new pin
+   and restores exact tray focus. The full menu is always stacked above the bottom tray, with its bottom
    edge anchored to that tray and its rows ordered consistently from top to
    bottom. UI Automation invokes the same typed menu action. The `P` keyboard
    fallback remains available while the widget is open. The new peer surface
@@ -79,8 +83,9 @@ nonactivating and click-through. No hidden-overlay controller input is forwarded
 
 Interactive placement uses one host state machine across input routes. The
 current pin's tray menu exposes **Adjust pinned widget**: D-pad or left stick
-moves, right stick resizes, `A` commits, and `B` restores the exact pre-gesture
-rectangle. The pinned surface shows the live dimensions and control legend.
+moves, right stick resizes, `LT`/`RT` cycles the current named layout, `A`
+commits, and `B` restores the exact pre-gesture layout and rectangle. The pinned
+surface shows the layout name/index, live dimensions, and control legend.
 Keyboard uses `M`/`R`, arrows, Enter, and Escape.
 Dragging the host-owned Move or Resize chrome commits on pointer release, and
 UI Automation exposes the same Move/Resize then Commit/Cancel actions. Closing
@@ -132,7 +137,9 @@ its own deployment/runtime contract; adopting it requires planner authority.
 
 Persisted placement is data, not window authority: schema version, monitor
 stable ID, normalized work-area X/Y anchors, logical width/height in DIPs, and
-bounded whole-surface opacity.
+bounded whole-surface opacity plus the selected stable layout ID. A missing or
+retired layout ID fails safely to the host-owned **Full widget** fallback without
+discarding otherwise valid placement.
 The host atomically replaces
 `%LOCALAPPDATA%\WidgetRail\pinned-surface-placement.ini`; at most 64
 bounded widget records are accepted. Resolution follows one deterministic rule:

@@ -41,6 +41,7 @@ struct DurablePinnedPlacement final {
     float widthDip{480.0F};
     float heightDip{270.0F};
     unsigned int opacityPercent{100};
+    std::wstring selectedLayoutId{L"host.full-widget"};
 };
 
 struct PlacementSession final {
