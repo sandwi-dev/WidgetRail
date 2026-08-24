@@ -118,7 +118,7 @@ historical evidence only; this file is the sole implementation authority.
 | Lane | Task/worktree | State |
 | --- | --- | --- |
 | Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | DLV-293 production is accepted/integrated as `10c3e26`; two uncommitted test diffs are retained as blocked evidence after the first unrelated red. |
-| Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | DLV-294 generic pinned-layout projections is Assigned as the serialized prerequisite; DLV-291 waits behind it. Game Launcher tests remain deferred/out of scope. |
+| Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | DLV-294 candidate `94fb256` is rejected pending a bounded projection-style correction; DLV-291 waits behind accepted integration. Game Launcher tests remain deferred/out of scope. |
 
 ## Execution rules
 
@@ -200,7 +200,8 @@ package-state mutation, publication, Avalonia/AVP, or push.
 ### DLV-294 generic pinned-layout projections
 
 Lane: widgets lead, serialized SDK/protocol/native-host prerequisite. Status:
-Assigned from clean planner baseline `3b0424c`. Replace the current size-profile-
+Correction assigned after review rejection of `94fb256`, from clean planner
+baseline `546ab34`. Replace the current size-profile-
 only limitation with one generic versioned contract that lets each bounded
 pinned layout carry its own package-authored declarative root, surface hints,
 active input scope, and initial focus while the host continues to inject the
@@ -235,6 +236,14 @@ Stop for a second presentation/focus authority, unbounded aggregate retention,
 service-specific core behavior, destructive state, or a public design with
 materially different ownership outcomes.
 
+Review disposition: `94fb256` preserves the intended generic ownership model
+and its assigned focused gates passed, but it is not accepted or integrated.
+Initial lifecycle/presentation checkpoint handling and incremental-update
+materialization apply computed styles only to the ordinary root; unlike the
+ordinary GetSnapshot/parser paths, they omit every layout-ID-prefixed projection
+root. The bounded correction must style those projection trees on both paths and
+add direct native regression coverage before DLV-294 can be accepted.
+
 The later maturity queue remains: structured diagnostics; localization and
 accessibility semantics; author diagnostics/preview inspection; and public-
 source pre-alpha readiness. Do not schedule generic forms, broad OverlayApp
@@ -243,13 +252,13 @@ without explicit promotion.
 
 ## Ordered queues
 
-1. DLV-294 generic pinned-layout projections: Assigned serialized prerequisite.
+1. DLV-294 generic pinned-layout projections: correction assigned after rejected `94fb256`.
 2. DLV-291 Spotify compact pinned layouts: dependency-blocked on DLV-294 integration.
 3. DLV-293 focused test debt: retained uncommitted after unrelated Game Launcher stationarity red; no rerun under the explicit deferral.
 4. Remaining maturity deliverables, ordered after the pinned-layout UX settles.
 5. DLV-248 remains deliberately deferred until explicit user promotion.
 
-DLV-294 is the sole executable production assignment; DLV-291 is its named
+DLV-294 correction is the sole executable production assignment; DLV-291 is its named
 visible successor. DLV-293 production is
 accepted/integrated; its incomplete test follow-up is retained as blocked debt,
 and Game Launcher tests remain deferred.
