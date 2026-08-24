@@ -109,7 +109,7 @@ internal static class SpotifyPresentation
             if (includeUpNext)
             {
                 content.Add(UI.Row($"spotify.{mode}.shell",
-                        player, PinnedUpNext(
+                        player.AddClasses("spotify-pinned-player-up-next"), PinnedUpNext(
                             presentation.Queue, mode, playerFocusId))
                     .Classes("spotify-pinned-shell"));
             }
