@@ -13,6 +13,15 @@ neither continue emitting the package-API-1-compatible protocol-v1 snapshot.
 See [Declarative UI](../../docs/declarative-ui.md) and
 [Display and resolution](../../docs/display-and-resolution.md).
 
+Pinned widgets reuse the same host ownership. `WidgetView.PinnedLayouts`
+accepts legacy size-only profiles and protocol-v21 declarative projections
+created with `WidgetView.PinnedLayout(...)`. A projection supplies only its
+bounded root, surface, input scope, and initial focus. The host injects Full
+widget, validates each projection plus the aggregate catalog, and atomically
+selects one on the single pinned surface. Override
+`OnPinnedLayoutSelectionChangedAsync` only to observe package data demand;
+null revokes it and never grants host authority.
+
 Keep returning complete immutable `WidgetView` values on every render. When a
 protocol-v18 host explicitly negotiates atomic presentation updates, the SDK
 automatically compares stable element IDs and chooses a bounded typed update or

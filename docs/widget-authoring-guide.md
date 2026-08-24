@@ -1822,14 +1822,21 @@ widget content has focus. The surface starts click-through; a second
 it Interactive. Menu while widget content owns focus remains available to the
 widget, as do all package-declared bumper, trigger, stick-click, and View actions.
 Supporting widgets may also set the optional `WidgetView.PinnedLayouts` init
-property. Each
-`PinnedPresentationLayout` has a stable ID, a visible name, and ordinary bounded
-`WidgetSurfaceHints`; the host accepts at most eight and always prepends its
-own **Full widget** fallback. These are sizing profiles for the same validated
-responsive view, not alternate HWNDs or presentation trees. During Pin or
+property. Each `PinnedPresentationLayout` has a stable ID, visible name, and
+ordinary bounded `WidgetSurfaceHints`; use `WidgetView.PinnedLayout(...)` when
+the layout also needs its own declarative root, active input scope, and initial
+focus. The host validates every projection and the aggregate catalog, accepts
+at most eight, and always prepends its own **Full widget** fallback. Omitting a
+root preserves the original size-profile behavior for the full responsive
+tree. A projection is content for the same pinned HWND, renderer, focus router,
+and action owner; it is not another window or navigation authority. During Pin or
 Adjust setup, `LT`/`RT` cycles the visible name/index; outside setup those
 triggers remain package actions. The selected layout is persisted independently
 of ordinary view refreshes, while a removed ID falls back safely to Full widget.
+After explicit selection, `OnPinnedLayoutSelectionChangedAsync` receives the
+selected package layout ID; null revokes that demand on removal, replacement,
+unpin, or shutdown. The notification grants no provider, capability, focus, or
+window authority.
 Overlay close preserves the surface but restores click-through. Package
 removal/replacement, worker restart/loss, pinned close, and host exit tear it
 down. Authors publish ordinary immutable snapshots and lifecycle behavior only;

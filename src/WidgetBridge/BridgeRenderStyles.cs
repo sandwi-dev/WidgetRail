@@ -40,10 +40,12 @@ internal static class BridgeRenderStyleResolver
         ArgumentNullException.ThrowIfNull(snapshot);
         var nodes = new SortedDictionary<string, BridgeNodeRenderStyles>(StringComparer.Ordinal);
         var totalProperties = 0;
-        Visit(snapshot.Root);
+        Visit(snapshot.Root, string.Empty);
+        foreach (var layout in snapshot.PinnedLayouts)
+            if (layout.Root is { } root) Visit(root, layout.Id + "/");
         return new ReadOnlyDictionary<string, BridgeNodeRenderStyles>(nodes);
 
-        void Visit(ViewNode node)
+        void Visit(ViewNode node, string prefix)
         {
             if (nodes.Count >= BridgeRenderStyleLimits.MaximumNodes)
                 throw new BridgeProtocolException(
@@ -65,13 +67,13 @@ internal static class BridgeRenderStyleResolver
             if (totalProperties > BridgeRenderStyleLimits.MaximumTotalProperties)
                 throw new BridgeProtocolException(
                     $"Computed style map exceeds {BridgeRenderStyleLimits.MaximumTotalProperties} properties.");
-            nodes.Add(node.Id, new BridgeNodeRenderStyles
+            nodes.Add(prefix + node.Id, new BridgeNodeRenderStyles
             {
                 Base = baseStyle,
                 Focused = focusedStyle,
                 Pressed = pressedStyle,
             });
-            foreach (var child in node.Children) Visit(child);
+            foreach (var child in node.Children) Visit(child, prefix);
         }
 
         static HashSet<WrssPseudoState> SemanticStates(ViewNode node)

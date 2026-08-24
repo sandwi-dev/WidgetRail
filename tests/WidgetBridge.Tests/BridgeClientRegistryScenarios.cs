@@ -24,6 +24,36 @@ internal static class BridgeClientRegistryScenarios
         RegistryAssert.Equal(17L, fixture.Invalidations[0].Revision);
     }
 
+    internal static async Task PinnedLayoutSelectionIsGenerationBound()
+    {
+        var configured = Widget("pinned-selection", worker: 'p', catalog: 'p');
+        await using var fixture = new RegistryFixture(Catalog(configured));
+        await fixture.SetLifecycleAsync(configured.Id, WidgetLifecycleState.Visible);
+        var client = fixture.Clients.Single();
+        var generation = configured.PublicDescriptor().RuntimeGeneration;
+        var input = new ControllerInputEvent(
+            ControllerButton.View,
+            ControllerEventPhase.Pressed,
+            ControllerInputContext.PinnedLayoutSelection)
+        {
+            PinnedLayoutId = "compact",
+            IsPinnedLayoutSelected = true,
+        };
+
+        using (var publication = await fixture.Registry.SendControllerInputAsync(
+                   configured.Id, input, generation,
+                   CancellationToken.None, CancellationToken.None))
+            RegistryAssert.True(publication.Value);
+        RegistryAssert.Equal(1, client.ControllerInputs.Count);
+        RegistryAssert.Equal("compact", client.ControllerInputs[0].PinnedLayoutId);
+
+        await RegistryAssert.ThrowsAsync<BridgeProtocolException>(() =>
+            fixture.Registry.SendControllerInputAsync(
+                configured.Id, input, new string('f', 32),
+                CancellationToken.None, CancellationToken.None));
+        RegistryAssert.Equal(1, client.ControllerInputs.Count);
+    }
+
     internal static async Task CatalogReplacementAndRemovalOwnGenerations()
     {
         var initial = Widget("alpha", worker: 'a', catalog: 'a');
@@ -1184,6 +1214,7 @@ internal sealed class RegistryTestClient(
     internal List<WidgetLifecycleState> LifecycleStates { get; } = [];
     internal List<(WidgetPresentationTransactionKind TransactionKind,
         long BaseSequence, long RecoveryOriginSequence)> PresentationRequests { get; } = [];
+    internal List<ControllerInputEvent> ControllerInputs { get; } = [];
     public bool IsRunning => Volatile.Read(ref _running) != 0;
     public int Starts => Volatile.Read(ref _starts);
 
@@ -1283,6 +1314,7 @@ internal sealed class RegistryTestClient(
     {
         cancellationToken.ThrowIfCancellationRequested();
         EnsureStarted();
+        ControllerInputs.Add(input);
         return Task.FromResult(true);
     }
 

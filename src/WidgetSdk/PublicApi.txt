@@ -137,6 +137,7 @@ enum WidgetRail.WidgetSdk.CardVariant.Subtle = WidgetRail.WidgetSdk.CardVariant.
 enum WidgetRail.WidgetSdk.CardVariant.Transparent = WidgetRail.WidgetSdk.CardVariant.Transparent
 enum WidgetRail.WidgetSdk.ControllerInputContext.DashboardQuickAction = WidgetRail.WidgetSdk.ControllerInputContext.DashboardQuickAction
 enum WidgetRail.WidgetSdk.ControllerInputContext.OpenWidget = WidgetRail.WidgetSdk.ControllerInputContext.OpenWidget
+enum WidgetRail.WidgetSdk.ControllerInputContext.PinnedLayoutSelection = WidgetRail.WidgetSdk.ControllerInputContext.PinnedLayoutSelection
 enum WidgetRail.WidgetSdk.ControllerInputOrigin.AccessibilityAutomation = WidgetRail.WidgetSdk.ControllerInputOrigin.AccessibilityAutomation
 enum WidgetRail.WidgetSdk.ControllerInputOrigin.PhysicalController = WidgetRail.WidgetSdk.ControllerInputOrigin.PhysicalController
 enum WidgetRail.WidgetSdk.IconButtonSize.Large = WidgetRail.WidgetSdk.IconButtonSize.Large
@@ -1581,6 +1582,7 @@ method static WidgetRail.WidgetSdk.WidgetTestHost.DestroyAsync(WidgetRail.Widget
 method static WidgetRail.WidgetSdk.WidgetTestHost.InitializeAsync(WidgetRail.WidgetSdk.Widget widget, System.Threading.CancellationToken cancellationToken = null) -> System.Threading.Tasks.ValueTask
 method static WidgetRail.WidgetSdk.WidgetTestHost.SetLifecycleStateAsync(WidgetRail.WidgetSdk.Widget widget, WidgetRail.WidgetSdk.WidgetLifecycleState state, System.Threading.CancellationToken cancellationToken = null) -> System.Threading.Tasks.ValueTask
 method static WidgetRail.WidgetSdk.WidgetTicker.RunWhileActiveAsync(System.TimeSpan interval, System.Func<System.Threading.CancellationToken,System.Threading.Tasks.ValueTask> tickAsync, System.Threading.CancellationToken activeLifetime, bool tickImmediately = false, System.TimeProvider? timeProvider = null) -> System.Threading.Tasks.Task
+method static WidgetRail.WidgetSdk.WidgetView.PinnedLayout(string id, string name, WidgetRail.WidgetProtocol.WidgetSurfaceHints surface, WidgetRail.WidgetSdk.WidgetElement? root = null, string? initialFocusId = null, string? activeInputScopeId = null) -> WidgetRail.WidgetProtocol.PinnedPresentationLayout
 method static WidgetRail.WidgetSdk.WidgetView.op_Equality(WidgetRail.WidgetSdk.WidgetView? left, WidgetRail.WidgetSdk.WidgetView? right) -> bool
 method static WidgetRail.WidgetSdk.WidgetView.op_Inequality(WidgetRail.WidgetSdk.WidgetView? left, WidgetRail.WidgetSdk.WidgetView? right) -> bool
 method static WidgetRail.WidgetSdk.WidgetWifiRadio.op_Equality(WidgetRail.WidgetSdk.WidgetWifiRadio? left, WidgetRail.WidgetSdk.WidgetWifiRadio? right) -> bool
@@ -1652,6 +1654,7 @@ method virtual WidgetRail.WidgetSdk.ToastElement.Equals(WidgetRail.WidgetSdk.Toa
 method virtual WidgetRail.WidgetSdk.UnpairWidgetBluetoothDeviceRequest.Equals(WidgetRail.WidgetSdk.UnpairWidgetBluetoothDeviceRequest? other) -> bool
 method virtual WidgetRail.WidgetSdk.Widget.OnActionAsync(WidgetRail.WidgetSdk.WidgetActionEvent action, System.Threading.CancellationToken cancellationToken = null) -> System.Threading.Tasks.ValueTask
 method virtual WidgetRail.WidgetSdk.Widget.OnControllerInputAsync(WidgetRail.WidgetSdk.ControllerInputEvent input, System.Threading.CancellationToken cancellationToken = null) -> System.Threading.Tasks.ValueTask<bool>
+method virtual WidgetRail.WidgetSdk.Widget.OnPinnedLayoutSelectionChangedAsync(string? layoutId, System.Threading.CancellationToken cancellationToken = null) -> System.Threading.Tasks.ValueTask
 method virtual WidgetRail.WidgetSdk.WidgetActionEvent.Equals(WidgetRail.WidgetSdk.WidgetActionEvent? other) -> bool
 method virtual WidgetRail.WidgetSdk.WidgetActionFailedEventArgs.<Clone>$() -> WidgetRail.WidgetSdk.WidgetActionFailedEventArgs
 method virtual WidgetRail.WidgetSdk.WidgetActionFailedEventArgs.Equals(WidgetRail.WidgetSdk.WidgetActionFailedEventArgs? other) -> bool
@@ -2039,6 +2042,7 @@ property bool? WidgetRail.WidgetSdk.ActionSurfaceElement.IsSelected { get; set; 
 property bool? WidgetRail.WidgetSdk.ButtonElement.IsBusy { get; set; }
 property bool? WidgetRail.WidgetSdk.ButtonElement.IsDisabled { get; set; }
 property bool? WidgetRail.WidgetSdk.ButtonElement.IsSelected { get; set; }
+property bool? WidgetRail.WidgetSdk.ControllerInputEvent.IsPinnedLayoutSelected { get; set; }
 property bool? WidgetRail.WidgetSdk.ScrubberElement.IsBusy { get; set; }
 property bool? WidgetRail.WidgetSdk.ScrubberElement.IsDisabled { get; set; }
 property bool? WidgetRail.WidgetSdk.SliderElement.IsBusy { get; set; }
@@ -2300,6 +2304,7 @@ property string? WidgetRail.WidgetSdk.ButtonElement.LeadingArtworkHandle { get; 
 property string? WidgetRail.WidgetSdk.ButtonElement.LeadingImageSource { get; set; }
 property string? WidgetRail.WidgetSdk.ControllerInputEvent.ActiveInputScopeId { get; set; }
 property string? WidgetRail.WidgetSdk.ControllerInputEvent.FocusedElementId { get; set; }
+property string? WidgetRail.WidgetSdk.ControllerInputEvent.PinnedLayoutId { get; set; }
 property string? WidgetRail.WidgetSdk.GridElement.InputScopeId { get; set; }
 property string? WidgetRail.WidgetSdk.ImageElement.ArtworkHandle { get; set; }
 property string? WidgetRail.WidgetSdk.NavigationShellDestination.AccessibilityLabel { get; set; }

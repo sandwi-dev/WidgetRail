@@ -137,7 +137,7 @@ void VerifyAtomicPresentationUpdateMaterialization() {
     std::wstring error;
     const auto checkpoint = widgetrail::testing::ParseWidgetSnapshotResponse(R"json({
         "snapshot": {
-            "protocolVersion":20,
+            "protocolVersion":21,
             "sequence":9,
             "widgetInstanceId":"update.sample",
             "activeInputScopeId":"root",
@@ -146,7 +146,12 @@ void VerifyAtomicPresentationUpdateMaterialization() {
             "pinnedLayouts":[
                 {"id":"compact","name":"Compact",
                  "surface":{"mode":"compact","preferredWidth":360,"preferredHeight":240,
-                            "minimumWidth":240,"minimumHeight":180}}
+                            "minimumWidth":240,"minimumHeight":180},
+                 "activeInputScopeId":"compact.root","initialFocusId":"compact.play",
+                 "root":{"id":"compact.root","kind":"stack","children":[
+                    {"id":"compact.play","kind":"button","text":"Play",
+                     "actionId":"play","children":[]}
+                 ]}}
             ],
             "root":{"id":"root","kind":"stack","children":[
                 {"id":"a","kind":"button","text":"Before","actionId":"activate.a","children":[]},
@@ -182,7 +187,10 @@ void VerifyAtomicPresentationUpdateMaterialization() {
                 ]}
             ]
         },
-        "renderStyles":{"a":{"base":{"opacity":{"kind":"number","text":"0.75","number":0.75,"unit":null}}}}
+        "renderStyles":{
+            "a":{"base":{"opacity":{"kind":"number","text":"0.75","number":0.75,"unit":null}}},
+            "compact/compact.play":{"base":{"opacity":{"kind":"number","text":"0.5","number":0.5,"unit":null}}}
+        }
     })json", error);
     Require(update && error.empty(), "Could not parse the bounded update batch");
 
@@ -229,9 +237,12 @@ void VerifyAtomicPresentationUpdateMaterialization() {
         *checkpoint, *update, L"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", error);
     Require(materialized && error.empty(), "Could not materialize the atomic update");
     const auto& materializedSnapshot = materialized->snapshot;
-    Require(materializedSnapshot.protocolVersion == 20 && materializedSnapshot.sequence == 10 &&
+    Require(materializedSnapshot.protocolVersion == 21 && materializedSnapshot.sequence == 10 &&
                 materializedSnapshot.pinnedLayouts.size() == 1 &&
                 materializedSnapshot.pinnedLayouts[0].id == L"compact" &&
+                materializedSnapshot.pinnedLayouts[0].root &&
+                materializedSnapshot.pinnedLayouts[0].root->children[0]
+                        .baseStyle.at(L"opacity").number == 0.5 &&
                 materializedSnapshot.root.children.size() == 2 &&
                 materializedSnapshot.root.children[0].id == L"c" &&
                 materializedSnapshot.root.children[1].id == L"a" &&
@@ -250,6 +261,46 @@ void VerifyAtomicPresentationUpdateMaterialization() {
         },"renderStyles":{}
     })json", error),
             "Protocol-v19 snapshot admitted a pinned layout catalog");
+
+    error.clear();
+    const auto projected = widgetrail::testing::ParseWidgetSnapshotResponse(R"json({
+        "snapshot": {
+            "protocolVersion":21,"sequence":2,
+            "widgetInstanceId":"layouts.projected","activeInputScopeId":"root",
+            "pinnedLayouts":[{"id":"compact","name":"Compact",
+                "surface":{"mode":"compact","preferredWidth":360,"preferredHeight":240},
+                "activeInputScopeId":"compact.root","initialFocusId":"compact.play",
+                "root":{"id":"compact.root","kind":"stack","children":[
+                    {"id":"compact.play","kind":"button","text":"Play",
+                     "actionId":"play","children":[]}
+                ]}}],
+            "root":{"id":"root","kind":"stack","children":[]}
+        },"renderStyles":{
+            "compact/compact.play":{"base":{"opacity":{"kind":"number","text":"0.625","number":0.625,"unit":null}}}
+        }
+    })json", error);
+    Require(projected && error.empty() && projected->protocolVersion == 21 &&
+                projected->pinnedLayouts.size() == 1 &&
+                projected->pinnedLayouts[0].root &&
+                projected->pinnedLayouts[0].root->id == L"compact.root" &&
+                projected->pinnedLayouts[0].root->children[0]
+                        .baseStyle.at(L"opacity").number == 0.625 &&
+                projected->pinnedLayouts[0].activeInputScopeId == L"compact.root" &&
+                projected->pinnedLayouts[0].initialFocusId == L"compact.play",
+            "Native admission did not retain the bounded declarative projection");
+
+    error.clear();
+    Require(!widgetrail::testing::ParseWidgetSnapshotResponse(R"json({
+        "snapshot": {
+            "protocolVersion":20,"sequence":2,
+            "widgetInstanceId":"layouts.projected.old","activeInputScopeId":"root",
+            "pinnedLayouts":[{"id":"compact","name":"Compact",
+                "surface":{"mode":"compact"},"activeInputScopeId":"compact.root",
+                "root":{"id":"compact.root","kind":"stack","children":[]}}],
+            "root":{"id":"root","kind":"stack","children":[]}
+        },"renderStyles":{}
+    })json", error),
+            "Protocol-v20 snapshot admitted a declarative pinned projection");
 
     std::string tooManyLayouts = R"json({"snapshot":{"protocolVersion":20,"sequence":1,
         "widgetInstanceId":"layouts.many","activeInputScopeId":"root","pinnedLayouts":[)json";

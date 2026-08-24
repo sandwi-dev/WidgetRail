@@ -67,6 +67,8 @@ internal readonly record struct BridgeRequestKey
         value is { Length: > 0 and <= 128 } &&
         value.All(character => char.IsAsciiLetterOrDigit(character) ||
             character is '-' or '_' or '.');
+
+    internal static bool IsBoundedIdentifier(string? value) => IsIdentifier(value);
 }
 
 /// <summary>

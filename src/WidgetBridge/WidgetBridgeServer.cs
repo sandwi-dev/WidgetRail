@@ -481,6 +481,7 @@ public sealed class WidgetBridgeServer : IAsyncDisposable
             using var controllerPublication = await _registry.SendControllerInputAsync(
                     controllerRequest.WidgetId,
                     controllerRequest.Input,
+                    controllerRequest.RuntimeGeneration,
                     _sessionCancellation,
                     cancellationToken)
                 .ConfigureAwait(false);
@@ -1026,6 +1027,12 @@ public sealed class WidgetBridgeServer : IAsyncDisposable
             ControllerButton.DPadLeft or ControllerButton.DPadRight)
             throw new BridgeProtocolException(
                 "A, B, Y, and D-pad input are owned by the dashboard and cannot be forwarded.");
+        if (input.Context == ControllerInputContext.PinnedLayoutSelection &&
+            (input.IsPinnedLayoutSelected is null ||
+             (input.IsPinnedLayoutSelected == true &&
+              !BridgeRequestKey.IsBoundedIdentifier(input.PinnedLayoutId))))
+            throw new BridgeProtocolException(
+                "Pinned layout selection input is invalid.");
     }
 
     private static void ValidateHostState(WidgetLifecycleState state)

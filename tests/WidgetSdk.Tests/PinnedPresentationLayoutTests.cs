@@ -5,12 +5,129 @@ internal static class PinnedPresentationLayoutTests
 {
     private const string Generation = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
 
-    internal static Task Run()
+    internal static async Task Run()
     {
         ExistingWidgetViewApiRemainsAdditive();
         CatalogIsBoundedAndVersioned();
+        ProjectionIsDeclarativeBoundedAndVersioned();
+        await SelectionDemandIsExplicitAndRevocable();
         CatalogChangesRequireCheckpointFallback();
-        return Task.CompletedTask;
+    }
+
+    private static void ProjectionIsDeclarativeBoundedAndVersioned()
+    {
+        var view = new WidgetView(UI.Text("Full", "full"), ActiveInputScopeId: "full")
+        {
+            PinnedLayouts =
+            [
+                WidgetView.PinnedLayout(
+                    "compact", "Compact", Surface(360, 240),
+                    UI.Stack("compact.root",
+                        UI.Button("Play", "play", "compact.play")),
+                    initialFocusId: "compact.play"),
+            ],
+        };
+        var snapshot = view.CreateSnapshot("layouts.projection", 2);
+        Equal(ProtocolConstants.PinnedPresentationProjectionsVersion,
+            snapshot.ProtocolVersion);
+        Equal("compact.root", snapshot.PinnedLayouts[0].Root?.Id);
+        Equal("compact.root", snapshot.PinnedLayouts[0].ActiveInputScopeId);
+        Equal("compact.play", snapshot.PinnedLayouts[0].InitialFocusId);
+
+        AssertError(Baseline() with
+        {
+            ProtocolVersion = ProtocolConstants.PinnedPresentationProjectionsVersion,
+            PinnedLayouts =
+            [
+                Layout("compact", "Compact", 360, 240) with
+                {
+                    Root = new ViewNode
+                    {
+                        Id = "projection.root",
+                        Kind = ViewNodeKind.Stack,
+                        Children = Enumerable.Range(
+                                0, ProtocolConstants.MaximumPinnedPresentationAggregateNodeCount)
+                            .Select(index => new ViewNode
+                            {
+                                Id = $"projection.item.{index}",
+                                Kind = ViewNodeKind.Text,
+                            }).ToArray(),
+                    },
+                    ActiveInputScopeId = "projection.root",
+                },
+            ],
+        }, "$.pinnedLayouts", "aggregate_tree_too_large");
+
+        AssertError(Baseline() with
+        {
+            ProtocolVersion = ProtocolConstants.PinnedPresentationProjectionsVersion,
+            PinnedLayouts =
+            [
+                Layout("compact", "Compact", 360, 240) with
+                {
+                    Root = new ViewNode
+                    {
+                        Id = "projection.root",
+                        Kind = ViewNodeKind.Stack,
+                        Children = Enumerable.Range(0, 65)
+                            .Select(index => new ViewNode
+                            {
+                                Id = $"projection.text.{index}",
+                                Kind = ViewNodeKind.Text,
+                                Text = new string('T', ProtocolConstants.MaximumStringLength),
+                            }).ToArray(),
+                    },
+                    ActiveInputScopeId = "projection.root",
+                },
+            ],
+        }, "$.pinnedLayouts", "aggregate_strings_too_large");
+
+        AssertError(Baseline() with
+        {
+            ProtocolVersion = ProtocolConstants.PinnedPresentationProjectionsVersion,
+            PinnedLayouts =
+            [
+                Layout("compact", "Compact", 360, 240) with
+                {
+                    Root = new ViewNode
+                    {
+                        Id = "projection.root",
+                        Kind = ViewNodeKind.Stack,
+                        Children = Enumerable.Range(
+                                0, ProtocolConstants.MaximumPinnedPresentationAggregateResourceCount + 1)
+                            .Select(index => new ViewNode
+                            {
+                                Id = $"projection.image.{index}",
+                                Kind = ViewNodeKind.Image,
+                                ArtworkHandle = $"artwork-{index}",
+                            }).ToArray(),
+                    },
+                    ActiveInputScopeId = "projection.root",
+                },
+            ],
+        }, "$.pinnedLayouts", "aggregate_resources_too_large");
+    }
+
+    private static async Task SelectionDemandIsExplicitAndRevocable()
+    {
+        var widget = new SelectionWidget();
+        var selected = new ControllerInputEvent(
+            ControllerButton.View,
+            ControllerEventPhase.Pressed,
+            ControllerInputContext.PinnedLayoutSelection)
+        {
+            PinnedLayoutId = "compact",
+            IsPinnedLayoutSelected = true,
+        };
+        True(await widget.OnControllerInputAsync(selected),
+            "A valid selected-layout notification was not handled.");
+        Equal("compact", widget.LayoutId);
+        True(await widget.OnControllerInputAsync(selected with
+        {
+            PinnedLayoutId = null,
+            IsPinnedLayoutSelected = false,
+        }), "A selected-layout revocation was not handled.");
+        Equal<string?>(null, widget.LayoutId);
     }
 
     private static void ExistingWidgetViewApiRemainsAdditive()
@@ -124,6 +241,29 @@ internal static class PinnedPresentationLayoutTests
             MinimumHeight = 180,
         },
     };
+
+    private static WidgetSurfaceHints Surface(double width, double height) => new()
+    {
+        Mode = WidgetSurfaceMode.Compact,
+        PreferredWidth = width,
+        PreferredHeight = height,
+        MinimumWidth = 240,
+        MinimumHeight = 180,
+    };
+
+    private sealed class SelectionWidget : Widget
+    {
+        internal string? LayoutId { get; private set; }
+        public override WidgetView Render() => new(UI.Text("Ready", "root"));
+        public override ValueTask OnPinnedLayoutSelectionChangedAsync(
+            string? layoutId,
+            CancellationToken cancellationToken = default)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            LayoutId = layoutId;
+            return ValueTask.CompletedTask;
+        }
+    }
 
     private static void AssertError(ViewSnapshot snapshot, string path, string code)
     {

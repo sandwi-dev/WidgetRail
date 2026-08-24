@@ -57,6 +57,15 @@ struct PinnedLayoutOption final {
     std::wstring name;
     float contentWidthDip{};
     float contentHeightDip{};
+    std::optional<WidgetSnapshot> projection;
+};
+
+struct PinnedLayoutSelectionNotification final {
+    std::wstring widgetId;
+    std::wstring runtimeGeneration;
+    long long snapshotSequence{};
+    std::wstring layoutId;
+    bool selected{};
 };
 
 struct WidgetSurfaceAdmission final {
@@ -120,6 +129,10 @@ public:
         ControllerInputOrigin origin = ControllerInputOrigin::PhysicalController,
         std::optional<double> requestedValue = std::nullopt);
     [[nodiscard]] std::vector<WidgetSurfaceInputRequest> TakeInputRequests() noexcept;
+    [[nodiscard]] bool IsCurrentInputRequest(
+        const WidgetSurfaceInputRequest& request) const noexcept;
+    [[nodiscard]] std::vector<PinnedLayoutSelectionNotification>
+        TakeLayoutSelectionNotifications() noexcept;
     void SetActionFeedback(std::wstring message, bool failure);
     [[nodiscard]] bool EmergencyHideAll() noexcept;
     [[nodiscard]] bool BeginPlacement(PlacementMode mode);
@@ -208,6 +221,8 @@ private:
         std::wstring protocolButton,
         ControllerInputOrigin origin,
         std::optional<double> requestedValue);
+    [[nodiscard]] const WidgetSnapshot& SelectedSnapshot() const noexcept;
+    void QueueLayoutSelection(std::wstring_view layoutId, bool selected);
 
     HINSTANCE instance_{};
     HWND notificationWindow_{};
@@ -245,6 +260,7 @@ private:
     RenderResult lastRenderResult_;
     std::wstring focusedElementId_;
     std::vector<WidgetSurfaceInputRequest> inputRequests_;
+    std::vector<PinnedLayoutSelectionNotification> layoutSelectionNotifications_;
     std::wstring actionFeedback_;
     bool actionFeedbackFailure_{};
     bool overlayVisible_{};
