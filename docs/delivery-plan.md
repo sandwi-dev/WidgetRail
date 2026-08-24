@@ -49,8 +49,10 @@ historical evidence only; this file is the sole implementation authority.
   103768 was also rejected when the stale bundled Settings worker exited 1 on
   its first lifecycle request. Both commits remain unintegrated. Exact rejected
   PIDs 80988 and 103768 have been stopped after evidence capture. The complete
-  host-launched managed runtime graph now requires one coherent build-boundary
-  correction before another physical candidate.
+  host-launched managed runtime graph is corrected by clean follow-up `a41bd72`.
+  Its production build and complete focused coherence/startup scenario passed;
+  unaccepted visible PID 85884 admitted Settings successfully and now awaits the
+  user's Spotify/Settings physical verdict before any integration.
 - DLV-318 is the exact recoverable prior accepted Release at
   `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative-dlv318-build`;
   executable SHA-256 is
@@ -67,7 +69,7 @@ historical evidence only; this file is the sole implementation authority.
 
 | Lane | Task/worktree | State |
 | --- | --- | --- |
-| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | DLV-286 `d0ca29b` and incomplete artifact-coherence follow-up `058efbc` are physically rejected and unintegrated. A complete host-runtime-graph build correction is Assigned on top of `058efbc`; no candidate is running. |
+| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | DLV-286 chain through complete runtime-graph correction `a41bd72` is source-reviewed and visibly running as unaccepted PID 85884. Settings startup is admitted; awaiting the user's Spotify/Settings physical verdict. Nothing is integrated. |
 | Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | DLV-285 production `ccb46e7` is physically accepted/integrated; Game Launcher tests are explicitly deferred and the lane is idle for the user's future package plans. |
 
 ## Execution rules
@@ -546,10 +548,25 @@ or be inspected by 60 seconds. Do not touch installed state, credentials,
 accounts, Avalonia/AVP, reviewer docs, or push. Commit one coherent follow-up;
 the reviewer owns visible replacement and integration.
 
+Complete correction `a41bd72` is clean on exact parent `058efbc`. It moves the
+finite seven-runtime generation graph—Bridge, WorkerHost, Settings, Audio Mixer,
+Network Controls, Games & Apps, and Media Sessions—outside the package skip,
+purges all ten active/retired roots first, and leaves only Community/test package
+publication conditional. Production Release build with `-SkipTests
+-SkipPackaging` exited 0. The single focused scenario passed 1/1 with exact
+artifact hashes, no bundled shadow contracts, first snapshots for all five
+host-owned widget workers, Spotify cold-start plus exactly one reopen, and one
+independent generic neighbor; Game Launcher was explicitly excluded and no Tier
+3 ran. Reviewed executable SHA-256 is
+`3E12B4A4B78890801D642311EE63CEA3B5065785FCE59EEA1B2E4E1651BFFDDC`.
+Unaccepted PID 85884 is responsive, `startup-error.txt` is absent, and Settings
+worker PID 133656 completed visible lifecycle and published a current snapshot.
+Do not integrate before the user's physical Spotify/Settings verdict.
+
 ## Future architecture queue — maturity review additions
 
-Status: the complete DLV-286 host-runtime-graph build correction is assigned;
-later items are ordered future work and are not assigned.
+Status: complete DLV-286 correction `a41bd72` is in physical review; later items
+are ordered future work and are not assigned.
 
 1. One authoritative model-level protocol-version calculator shared by SDK
    snapshot creation and raw validation, with exact gated-node/property
@@ -567,9 +584,8 @@ Extract native authorities only when real work touches them.
 
 ## Ordered queues
 
-1. DLV-286 correction: make every host-launched managed runtime artifact
-   coherent under `-SkipPackaging`, then return one replacement for the
-   otherwise reviewed LauncherExperience/AdvancedPresentation deletion.
+1. DLV-286 corrected candidate `a41bd72`: user Spotify/Settings physical verdict,
+   then integration only if accepted.
 2. Protocol requirements; then the remaining maturity deliverables.
 3. DLV-248 remains deliberately deferred until explicit user promotion.
 
@@ -596,7 +612,7 @@ There is no concurrent Ready production work in either standing lane.
 | Audio Mixer synthetic focus | Final Tier 3 passed 44/45 then retained Master after synthetic Down; unrelated source was previously green, so no unchanged rerun is authorized. |
 | DLV-284 | `21c3b8b` + `86d6532` integrated as `7f31e04`; compatibility `60130b4` as `052a392`; correlation/redaction `f583f40` + `ac79ed0` as `8ac55d`. The cumulative diagnostic stack is accepted only with metadata-only correction `a65228c`, integrated as `12728a2`; production build and two direct one-case gates passed, no Tier-3 rerun. The user physically accepted coherent PID 133304. |
 | DLV-285 | Production `ccb46e7` from exact baseline `12728a2` is physically accepted and integrated as `609d34e`; package and Release builds exited 0. Game Launcher 0.2.1 is installed/full-trust enabled. Accepted PID 144052 was replaced only for DLV-286 physical review. Widget tests are explicitly deferred for future package work. |
-| DLV-286 | Production `d0ca29b` and artifact-coherence follow-up `058efbc` are clean but physically rejected/unintegrated: the first launched stale Bridge/runtime outputs and lost Spotify; the second refreshed Bridge/WorkerHost but left stale bundled Settings output, whose worker exited 1. PIDs 80988 and 103768 are stopped. A complete finite host-runtime-graph correction is Assigned. The dedicated Game Launcher test project remains untouched/deferred, and the broader Bridge aggregate must not be repeated. |
+| DLV-286 | Production `d0ca29b` and incomplete coherence follow-up `058efbc` are physically rejected/unintegrated; PIDs 80988 and 103768 are stopped. Complete correction `a41bd72` passed production build and the one focused seven-runtime/Spotify/neighbor scenario. Unaccepted PID 85884 is responsive and Settings is admitted; awaiting the user's Spotify/Settings verdict. The dedicated Game Launcher test project remains untouched/deferred, and the broader Bridge aggregate must not be repeated. |
 | DLV-248 | Deferred until explicit user promotion. |
 
 ## Recent dispositions
