@@ -1352,13 +1352,7 @@ private:
         case WM_NCHITTEST: {
             POINT point{static_cast<LONG>(static_cast<short>(LOWORD(lParam))),
                         static_cast<LONG>(static_cast<short>(HIWORD(lParam)))};
-            if (!app->compositionChromeSession_) return HTTRANSPARENT;
-            const auto guide = app->ProjectChromeClientBoundsToScreen(
-                app->compositionChromeSession_->guideClientBounds);
-            const auto tray = app->ProjectChromeClientBoundsToScreen(
-                app->compositionChromeSession_->trayClientBounds);
-            if (!guide || !tray ||
-                !widgetrail::shell::IsFixedChromeHit(point, *guide, *tray))
+            if (!app->IsCurrentFixedChromeHit(point))
                 return HTTRANSPARENT;
             return HTCLIENT;
         }
@@ -4817,6 +4811,14 @@ private:
         widgetrail::accessibility::TrayContextMenuSemantics semantics;
     };
 
+    static constexpr float kTrayContextMenuItemHeightDip = 48.0F;
+    static constexpr float kTrayContextMenuGapDip = 8.0F;
+    static constexpr std::size_t kTrayContextMenuMaximumItems = 3;
+    static constexpr float kTrayContextMenuHeadroomDip =
+        kTrayContextMenuGapDip +
+        kTrayContextMenuItemHeightDip *
+            static_cast<float>(kTrayContextMenuMaximumItems);
+
     [[nodiscard]] CurrentPinActionState PinActionFor(
         const std::wstring_view widgetId) const {
         CurrentPinActionState action;
@@ -4896,13 +4898,13 @@ private:
             });
         if (tile == tray.tiles.end()) return std::nullopt;
         const float menuWidth = std::min(286.0F, std::max(1.0F, width - 16.0F));
-        constexpr float itemHeight = 48.0F;
-        constexpr float menuGap = 8.0F;
-        const float menuHeight = itemHeight * static_cast<float>(actions.size());
+        const float menuHeight =
+            kTrayContextMenuItemHeightDip * static_cast<float>(actions.size());
         const float left = std::clamp(
             tile->bounds.x + tile->bounds.width * 0.5F - menuWidth * 0.5F,
             8.0F, std::max(8.0F, width - menuWidth - 8.0F));
-        const float top = tray.stripBounds.y - menuGap - menuHeight;
+        const float top =
+            tray.stripBounds.y - kTrayContextMenuGapDip - menuHeight;
         TrayContextMenuLayout result;
         result.bounds = {left, top, menuWidth, menuHeight};
         result.semantics.targetId = trayContextMenu_->widgetId;
@@ -4925,8 +4927,9 @@ private:
                 action.name,
                 action.value,
                 action.targetId,
-                {left, top + itemHeight * static_cast<float>(index),
-                 menuWidth, itemHeight},
+                {left, top +
+                    kTrayContextMenuItemHeightDip * static_cast<float>(index),
+                 menuWidth, kTrayContextMenuItemHeightDip},
                 hostAction,
                 action.enabled,
                 index == selectedItem,
@@ -5148,7 +5151,8 @@ private:
         }
         if (trayContextMenu_ && trayLayout) {
             const auto menu = CurrentTrayContextMenuLayout(
-                *trayLayout, metrics->viewportWidthDip);
+                *trayLayout,
+                CurrentTrayViewportWidthDip(metrics->viewportWidthDip));
             if (menu) {
                 const auto item = std::find_if(
                     menu->semantics.items.begin(), menu->semantics.items.end(),
@@ -7215,7 +7219,8 @@ private:
             const std::wstring name{DisplayWidgetName(widgetId)};
             items.push_back({widgetId, name});
         }
-        const auto menuLayout = CurrentTrayContextMenuLayout(layout, width);
+        const auto menuLayout = CurrentTrayContextMenuLayout(
+            layout, CurrentTrayViewportWidthDip(width));
         const widgetrail::accessibility::TrayContextMenuSemantics menuSemantics =
             menuLayout ? menuLayout->semantics
                        : widgetrail::accessibility::TrayContextMenuSemantics{};
@@ -8750,7 +8755,8 @@ private:
 
         if (layer == CompositionPaintLayer::Tray && trayLayout) {
             DrawIconStrip(
-                width, height, nullptr, nullptr, trayLayout, false);
+                metrics->viewportWidthDip, metrics->viewportHeightDip,
+                nullptr, nullptr, trayLayout, false);
             finishUpdate();
             return;
         }
@@ -8931,6 +8937,7 @@ private:
         unsigned int guideHeight{};
         unsigned int trayWidth{};
         unsigned int trayHeight{};
+        unsigned int trayMenuHeadroom{};
         unsigned int trayFocusPadding{};
         UINT dpi{};
         std::uint64_t appearanceRevision{};
@@ -8941,6 +8948,15 @@ private:
         RECT windowBounds{};
         widgetrail::shell::FixedChromeSessionKey key;
     };
+
+    [[nodiscard]] float CurrentTrayViewportWidthDip(
+        const float fallback) const noexcept {
+        return compositionChromeSession_ &&
+                compositionChromeSession_->pixelsPerDip > 0.0F
+            ? static_cast<float>(compositionChromeSession_->trayWidth) /
+                compositionChromeSession_->pixelsPerDip
+            : fallback;
+    }
 
     void RequestFixedChromeAnchorRefresh(
         const FixedChromePlacementReason reason) {
@@ -9119,6 +9135,44 @@ private:
         };
     }
 
+    [[nodiscard]] std::optional<RECT> ProjectTrayBoundsToScreen(
+        const widgetrail::declarative::Rect& bounds) const {
+        if (!compositionChromeSession_ ||
+            compositionChromeSession_->pixelsPerDip <= 0.0F) {
+            return std::nullopt;
+        }
+        const auto& session = *compositionChromeSession_;
+        const RECT physical{
+            session.trayClientBounds.left + static_cast<LONG>(std::floor(
+                bounds.x * session.pixelsPerDip)),
+            session.trayClientBounds.top + static_cast<LONG>(std::floor(
+                bounds.y * session.pixelsPerDip)),
+            session.trayClientBounds.left + static_cast<LONG>(std::ceil(
+                (bounds.x + bounds.width) * session.pixelsPerDip)),
+            session.trayClientBounds.top + static_cast<LONG>(std::ceil(
+                (bounds.y + bounds.height) * session.pixelsPerDip)),
+        };
+        return ProjectChromeClientBoundsToScreen(physical);
+    }
+
+    [[nodiscard]] bool IsCurrentFixedChromeHit(
+        const POINT screenPoint) const {
+        if (!compositionChromeSession_) return false;
+        const auto guide = ProjectChromeClientBoundsToScreen(
+            compositionChromeSession_->guideClientBounds);
+        const auto trayLayout = CurrentCompositionTrayLayout();
+        if (!guide || !trayLayout) return false;
+        const auto tray = ProjectTrayBoundsToScreen(trayLayout->stripBounds);
+        if (!tray) return false;
+        if (widgetrail::shell::IsFixedChromeHit(screenPoint, *guide, *tray))
+            return true;
+        const auto menu = CurrentTrayContextMenuLayout(
+            *trayLayout, CurrentTrayViewportWidthDip(0.0F));
+        if (!menu) return false;
+        const auto menuBounds = ProjectTrayBoundsToScreen(menu->bounds);
+        return menuBounds && PtInRect(&*menuBounds, screenPoint) != FALSE;
+    }
+
     [[nodiscard]] bool EnsureFixedChromeAnchor() {
         if (fixedChromeAnchor_) return true;
         if (pendingFixedChromePlacementReason_ ==
@@ -9234,6 +9288,11 @@ private:
             1L, static_cast<LONG>(std::ceil(
                 policyLayout->stripBounds.height *
                 metrics->physicalPixelsPerDip))) + focusPadding * 2;
+        const LONG trayMenuHeadroom = std::max(
+            1L, static_cast<LONG>(std::ceil(
+                kTrayContextMenuHeadroomDip *
+                metrics->physicalPixelsPerDip)));
+        const LONG traySurfaceHeight = trayHeight + trayMenuHeadroom;
         const LONG guideWidth = std::max(
             1L, static_cast<LONG>(std::ceil(
                 policyLayout->stripBounds.width *
@@ -9246,7 +9305,7 @@ private:
                 kGuideToTrayGapDip * metrics->physicalPixelsPerDip)));
         const LONG chromeWidth = std::max(trayWidth, guideWidth);
         const LONG chromeHeight =
-            guideHeight + guideToTrayGap + trayHeight;
+            trayMenuHeadroom + guideHeight + guideToTrayGap + trayHeight;
         if (chromeWidth <= 0 || chromeHeight <= 0) return false;
 
         CompositionChromeSession session;
@@ -9255,7 +9314,9 @@ private:
         session.guideWidth = static_cast<unsigned int>(guideWidth);
         session.guideHeight = static_cast<unsigned int>(guideHeight);
         session.trayWidth = static_cast<unsigned int>(trayWidth);
-        session.trayHeight = static_cast<unsigned int>(trayHeight);
+        session.trayHeight = static_cast<unsigned int>(traySurfaceHeight);
+        session.trayMenuHeadroom =
+            static_cast<unsigned int>(trayMenuHeadroom);
         session.trayFocusPadding = static_cast<unsigned int>(focusPadding);
         session.dpi = effectiveDpi;
         session.key = std::move(key);
@@ -9266,10 +9327,12 @@ private:
         const LONG guideLeft = (chromeWidth - guideWidth) / 2;
         const LONG trayLeft = (chromeWidth - trayWidth) / 2;
         session.guideClientBounds = {
-            guideLeft, 0, guideLeft + guideWidth, guideHeight,
+            guideLeft, trayMenuHeadroom,
+            guideLeft + guideWidth, trayMenuHeadroom + guideHeight,
         };
         session.trayClientBounds = {
-            trayLeft, trayTop, trayLeft + trayWidth, trayTop + trayHeight,
+            trayLeft, trayTop,
+            trayLeft + trayWidth, trayTop + traySurfaceHeight,
         };
         session.guideBounds = {
             0.0F,
@@ -9388,13 +9451,17 @@ private:
             static_cast<int>(contentWidth), static_cast<int>(contentHeight),
             session.dpi, interfaceScale);
         if (!metrics) return std::nullopt;
+        const float inset = static_cast<float>(session.trayFocusPadding) /
+            session.pixelsPerDip;
+        const float menuHeadroom =
+            static_cast<float>(session.trayMenuHeadroom) /
+            session.pixelsPerDip;
         auto layout = widgetrail::shell::ComputeTrayLayout(
             metrics->viewportWidthDip, metrics->viewportHeightDip,
             state_.order().size(), state_.selectedSlot(),
-            widgetrail::shell::TrayBand{0.0F, metrics->viewportHeightDip});
+            widgetrail::shell::TrayBand{
+                menuHeadroom, metrics->viewportHeightDip});
         if (!layout) return std::nullopt;
-        const float inset = static_cast<float>(session.trayFocusPadding) /
-            session.pixelsPerDip;
         const auto offset = [inset](widgetrail::declarative::Rect& bounds) {
             bounds.x += inset;
             bounds.y += inset;
@@ -10087,7 +10154,8 @@ private:
                 2.35F);
         }
         if (layout->nextOverflow) drawOverflow(*layout->nextOverflow);
-        if (const auto menu = CurrentTrayContextMenuLayout(*layout, width)) {
+        if (const auto menu = CurrentTrayContextMenuLayout(
+                *layout, CurrentTrayViewportWidthDip(width))) {
             const D2D1_ROUNDED_RECT panel{
                 D2D1::RectF(
                     menu->bounds.x, menu->bounds.y,
