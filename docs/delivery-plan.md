@@ -936,15 +936,15 @@ without explicit promotion.
 ## Ordered queues
 
 1. DLV-289 user-ready single-widget pinning: above-tray correction Assigned.
-2. DLV-290 generic selectable pinned layouts: Ready platform after accepted
+2. DLV-292 fresh-worker virtual-window recovery: Ready platform after accepted
+   DLV-289 integration; ahead of new pinned-layout contract work.
+3. DLV-290 generic selectable pinned layouts: Ready platform after accepted
    DLV-289 integration.
-3. DLV-291 Spotify compact pinned layouts: widgets Awaiting DLV-290 integration.
-4. Remaining maturity deliverables, ordered after the pinned-layout UX settles.
-5. DLV-248 remains deliberately deferred until explicit user promotion.
+4. DLV-291 Spotify compact pinned layouts: widgets Awaiting DLV-290 integration.
+5. Remaining maturity deliverables, ordered after the pinned-layout UX settles.
+6. DLV-248 remains deliberately deferred until explicit user promotion.
 
-There is no concurrently executable Ready production work: DLV-290 consumes
-accepted DLV-289 and DLV-291 consumes accepted DLV-290. Game Launcher tests
-remain deferred; maturity work waits for the changing surface contract.
+There is no concurrently executable Ready production work: DLV-292 consumes accepted DLV-289, DLV-290 follows DLV-292, and DLV-291 consumes accepted DLV-290. Game Launcher tests remain deferred.
 
 ## Manual and blocked evidence
 
@@ -973,28 +973,28 @@ remain deferred; maturity work waits for the changing surface contract.
 | DLV-289 | `7cc2be0` is held unintegrated: all requested polish reached physical review, but its menu opens downward over the bottom tray. A bounded production correction is Assigned to always anchor the menu above the tray with stable item/semantic order. No tests have run. |
 | DLV-248 | Deferred until explicit user promotion. |
 
-## Recent dispositions
+## Ready platform reliability — DLV-292 fresh-worker virtual-window recovery
 
-| Milestone | Disposition |
-| --- | --- |
-| DLV-449 | Cargo passed; outer PowerShell stream merging later reclassified MSVC diagnostics. |
-| DLV-450 | Separated capture passed; child lacked the parent-only Utility import. |
-| DLV-451 | Wrapper passed; reused partial artifact tree failed isolated Bridge startup. |
-| DLV-452 | Fresh parity tree reproduced startup; malformed test catalog JSON was the exact cause. |
-| DLV-453 | Catalog delimiter passed; worker-local arm acknowledgements did not prove host-visible invalidation. |
-| DLV-458 | Atomic seam fast-green; focused startup hit unrelated Bridge pipe access denial. |
-| DLV-460 | Seven native files were source-clean, but its exact checkpoint omitted the accepted managed chain. |
-| DLV-461 | PowerShell-7 aggregate reached Runtime 77/78; missing DLV-326 reproduced its already-fixed PID publication race. |
-| DLV-463 | Exact cumulative Tier 3 passed through 291 real-host accessibility checks; WidgetSwitch then selected a delayed tray-owned paint. |
-| DLV-464 | Exact post-Up focus selection passed; fallback priming then crossed the block boundary before its intrinsic resize settled. |
-| DLV-467 | Distinct success/failure callbacks from one status sender were separated by exact semantic snapshots; focused native gate passed. |
-| DLV-468 | Tier 3 reached 44 passed steps, then exact transition/paint records exposed a six-millisecond concurrent diagnostic append inversion. |
-| DLV-469 | DLV-468 table evidence passed; the focused route then produced eight 0-7 ms samples and one 54 ms scheduler outlier that nearest-rank p95 treated as the whole verdict. |
-| DLV-468/469 | Direction-independent full-calendar spans and inclusive p95 tables passed with the complete focused WidgetSwitch route. |
-| DLV-470 | Tier 3 passed the full native aggregate, then hidden smoke launched the default production profile and exited 0 after activating the resident owner. |
-| DLV-470 accepted | A unique process profile kept the focused hidden owner resident without touching PID 89008; cleanup accounted for all five test processes. |
-| DLV-471 | Tier 3 passed 44 steps, then the modal initial-focus assertion failed without recording the actual focus identity; candidate `8531915` added useful diagnostics but not a causal UI-loop fence. |
-| DLV-471 accepted | `8886e25` replaces the sent-message fence with a tokenized queued-message acknowledgment after modal-loop entry; focused route and 2,582 linked checks passed. |
-| DLV-472 | Tier 3 passed 42 steps, then an immediately crashing full-trust fixture exited before the action acknowledgment reached the managed presentation facade. |
-| DLV-472 accepted | `29601e2` makes the fixture accept only the two process-exit ordering outcomes while preserving the same full recovery proof; focused `WidgetBridge.Tests` passed 96/96. |
-| Cumulative integration | Exact tip `82093d5` passed 44/45 Tier-3 steps with DLV-472 green, then hit unrelated Audio Mixer synthetic-focus debt; reviewed accepted history is integrated as `cf77507`, and coherent PID 78860 is ready for user testing. |
+Lane: platform, serialized shared runtime/native admission owner. Baseline: a fresh clean branch from accepted integrated DLV-289. Dependencies: DLV-289 is accepted/integrated; this runs before DLV-290. User evidence on exact candidate PID 37884 shows Games & Apps, Network Controls, and Full Application Reference failing with the same invalid/stale virtual collection transition. In each captured route a retained checkpoint is visible, a worker starts fresh, and the first refreshed snapshot is rejected after the Bridge reports it admitted.
+
+Diagnose and correct the one generic authority seam across worker/runtime,
+Bridge typed transaction/recovery, and native `WidgetSessionCoordinator`.
+Fresh worker state must not be compared as an ordinary directional continuation
+of a retained process-local collection generation. Preserve the last valid
+checkpoint, exact runtime/presentation identity, bounded virtual windows, and
+typed recovery; never merely accept a decreasing/reused generation, clear the
+checkpoint on ordinary invalidation, add package IDs, or reset user state.
+
+Normal verification ordering applies. Build the affected production graph,
+then run one focused deterministic lifecycle group covering at least two
+differently named generic workers: unload-after-idle restart and suspended/
+restarted worker, with retained checkpoint, fresh Replace baseline, paging in
+both directions, stale reply rejection, and last-valid retention. Run the
+smallest linked Runtime/Bridge/native admission group only; no Tier 3, broad
+aggregate, Game Launcher test, live process control, package/config mutation,
+Avalonia/AVP, publication, or push. Commit one coherent `[DLV-292]` result.
+
+Stop before a public wire/SDK break, second transaction owner, unbounded retry,
+identity-specific exception, destructive state reset, or substantial conflict.
+Report exact root cause, responsibility map, files, numeric build/test counts,
+and residual packaged risk. The reviewer owns integration and visible launch.
