@@ -921,10 +921,10 @@ Candidate `32ce34f` was rejected before launch: its sixth positional
 a breaking change under DLV-288 rather than an optional compatible addition.
 Correction `bc5a312` preserves those exact five-value APIs and exposes
 `PinnedLayouts` only as an optional init property.
-PID 109724 was initially accepted, but a live Spotify incremental refresh then
-proved a DLV-290 regression: the native materialized-document allowlist omitted
-new `pinnedLayouts` while the full-snapshot parser accepted it. The candidate is
-rejected; platform owns the exact fix and focused one-pass tests, no integration.
+PID 109724 was rejected after live refresh proved the native materializer omitted
+`pinnedLayouts`. Correction `1e64ad1` and focused tests `863c955` pass SDK 90/90,
+compatibility 12/12, Bridge, placement 17, coordinator 95, and isolated Release.
+Corrected PID 90872 is responsive and awaits a regression verdict; no integration.
 
 ### DLV-291 Spotify compact pinned layouts
 
