@@ -101,6 +101,20 @@ historical evidence only; this file is the sole implementation authority.
   focused host gate stopped on an older Game Launcher stationarity correlation.
   Per the user's explicit Game Launcher test deferral, that unrelated red is not
   rerun or repaired; the pin-coordinator test did not run and remains test debt.
+- DLV-294 cumulative production/test `94fb256` + correction `02cec4e` is
+  independently accepted and integrated as `60536ff`. The generic protocol-v21
+  contract admits bounded package-authored pinned projection roots while the
+  host retains its single HWND, renderer, focus, input, placement, and layout-
+  selection authorities. Correction `02cec4e` closes the initial-checkpoint and
+  incremental-materialization style gap through one shared projection-aware
+  style applicator. Focused SDK, Bridge, native catalog/materialization,
+  selection-generation, and pinned-coordinator evidence passed; the required
+  Release builds passed. Coherent main Release PID 31132 is responsive with
+  executable SHA-256
+  `43166C13F59BD33A35413107006DD69954B0614DAD1523186D56B9CC40458936`
+  and no `startup-error.txt`. Prior PID 137288 had no top-level HWND, so after
+  its path was reverified the reviewer stopped only that exact orphaned accepted
+  process before launch. DLV-291 is now the named visible proof.
 - DLV-318 is the exact recoverable prior accepted Release at
   `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative-dlv318-build`;
   executable SHA-256 is
@@ -118,7 +132,7 @@ historical evidence only; this file is the sole implementation authority.
 | Lane | Task/worktree | State |
 | --- | --- | --- |
 | Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | DLV-293 production is accepted/integrated as `10c3e26`; two uncommitted test diffs are retained as blocked evidence after the first unrelated red. |
-| Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | DLV-294 candidate `94fb256` is rejected pending a bounded projection-style correction; DLV-291 waits behind accepted integration. Game Launcher tests remain deferred/out of scope. |
+| Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | DLV-294 is accepted/integrated as `60536ff`; DLV-291 Spotify compact pinned layouts is Assigned as the visible successor. Game Launcher tests remain deferred/out of scope. |
 
 ## Execution rules
 
@@ -186,8 +200,8 @@ state, public contract change, substantial conflict, or an unrelated red.
 
 ### DLV-291 Spotify compact pinned layouts
 
-Lane: widgets. Status: Dependency-blocked on accepted/integrated DLV-294.
-Baseline: fresh clean widgets branch from that integration. Add two package-owned layouts—
+Lane: widgets. Status: Assigned from the fresh planner assignment commit whose
+parent is accepted DLV-294 integration `60536ff`. Add two package-owned layouts—
 `Compact now playing` and `Now playing + up next`—beside the host `Full widget`
 fallback. Reuse Spotify's existing session/queue model and polling; do not add
 duplicate provider work, credentials, host knowledge, or a Spotify protocol
@@ -200,8 +214,8 @@ package-state mutation, publication, Avalonia/AVP, or push.
 ### DLV-294 generic pinned-layout projections
 
 Lane: widgets lead, serialized SDK/protocol/native-host prerequisite. Status:
-Correction assigned after review rejection of `94fb256`, from clean planner
-baseline `546ab34`. Replace the current size-profile-
+Accepted cumulative commits `94fb256` + `02cec4e`, integrated as `60536ff` from
+clean planner baseline `546ab34`. Replace the current size-profile-
 only limitation with one generic versioned contract that lets each bounded
 pinned layout carry its own package-authored declarative root, surface hints,
 active input scope, and initial focus while the host continues to inject the
@@ -236,13 +250,12 @@ Stop for a second presentation/focus authority, unbounded aggregate retention,
 service-specific core behavior, destructive state, or a public design with
 materially different ownership outcomes.
 
-Review disposition: `94fb256` preserves the intended generic ownership model
-and its assigned focused gates passed, but it is not accepted or integrated.
-Initial lifecycle/presentation checkpoint handling and incremental-update
-materialization apply computed styles only to the ordinary root; unlike the
-ordinary GetSnapshot/parser paths, they omit every layout-ID-prefixed projection
-root. The bounded correction must style those projection trees on both paths and
-add direct native regression coverage before DLV-294 can be accepted.
+Review disposition: initial candidate `94fb256` preserved the intended generic
+ownership model but was rejected because initial lifecycle checkpoints and
+incremental materialization omitted projection computed styles. Correction
+`02cec4e` routes those paths and ordinary snapshots through one projection-aware
+style helper and adds focused checkpoint/incremental regression coverage. The
+cumulative stack is accepted and integrated; DLV-294 is closed.
 
 The later maturity queue remains: structured diagnostics; localization and
 accessibility semantics; author diagnostics/preview inspection; and public-
@@ -252,14 +265,14 @@ without explicit promotion.
 
 ## Ordered queues
 
-1. DLV-294 generic pinned-layout projections: correction assigned after rejected `94fb256`.
-2. DLV-291 Spotify compact pinned layouts: dependency-blocked on DLV-294 integration.
+1. DLV-291 Spotify compact pinned layouts: Assigned visible production successor.
+2. DLV-294 generic pinned-layout projections: accepted/integrated as `60536ff`; closed.
 3. DLV-293 focused test debt: retained uncommitted after unrelated Game Launcher stationarity red; no rerun under the explicit deferral.
 4. Remaining maturity deliverables, ordered after the pinned-layout UX settles.
 5. DLV-248 remains deliberately deferred until explicit user promotion.
 
-DLV-294 correction is the sole executable production assignment; DLV-291 is its named
-visible successor. DLV-293 production is
+DLV-291 is the sole executable production assignment and the named visible
+successor to integrated DLV-294. DLV-293 production is
 accepted/integrated; its incomplete test follow-up is retained as blocked debt,
 and Game Launcher tests remain deferred.
 
