@@ -272,10 +272,9 @@ historical evidence only; this file is the sole implementation authority.
   `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative-dlv318-build`;
   executable SHA-256 is
   `86AC9946CC54F2B4CF51B14EEAA48CE32FECDF2C381DA73F24107DBE755F13AD`.
-- Spotify 0.3.22 is the sole installed, selected, and enabled version after the
-  user's explicit full-trust and inactive-version retirement approval. It is a
-  physically rejected diagnostic baseline; preserve its credential, account,
-  provider, and configuration state until its reviewed replacement is ready.
+- Spotify 0.3.23 is the sole installed, selected, and enabled version after the
+  user's explicit full-trust and inactive-version retirement approval. Preserve
+  its credential, account, provider, and configuration state.
 - Managed tests are accepted through `676cd76`: DLV-319 `199a81b`, DLV-324
   `6b63edf`, DLV-325 `e441f25`, and DLV-326 `676cd76`. All named managed
   Tier-3 gates are green.
@@ -287,7 +286,7 @@ historical evidence only; this file is the sole implementation authority.
 | Lane | Task/worktree | State |
 | --- | --- | --- |
 | Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | DLV-474 correction passed the native gate, then the managed sanitized-terminal gate stopped on an opaque pre-test build red. Four intentional diffs remain retained uncommitted in the isolated worktree; no rerun or repair is authorized. DLV-473 test-only `34f15ae9` remains blocked after its first red; the standing tree's two DLV-293 test diffs remain byte-identical and must not be touched. |
-| Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | DLV-291 cumulative 0.3.23 `2031a8c` is source-reviewed and built but not installed. It adds redacted queue/provider-gate correlation plus a 45-second total queue-load deadline that commits through the existing last-good/error cursor path. No public/shared contract, queue ordering, retry, host, SDK, Game Launcher, test, integration, or push change. |
+| Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | DLV-291 cumulative 0.3.23 `2031a8c` is source-reviewed, installed as the sole active Spotify package, and visibly launched for physical review. It adds redacted queue/provider-gate correlation plus a 45-second total queue-load deadline that commits through the existing last-good/error cursor path. No public/shared contract, queue ordering, retry, host, SDK, Game Launcher, test, integration, or push change. |
 
 ## Execution rules
 
@@ -724,7 +723,21 @@ unchanged. Exact source diff and `git diff --check` are clean. The single
 tests-skipped Release build and single immutable package build exited 0; no
 tests ran. The 1,173,526-byte 0.3.23 package SHA-256 is
 `C29CA62EFF45C010DBEEF41F3A6CC71F898B476651B8E58E22E511C194F3659B`.
-It is not yet installed or launched.
+
+Physical promotion: prior PID 14100 exited cooperatively after `WM_CLOSE` was
+posted to its six WidgetRail top-level windows; Bridge PID 54496 and Spotify PID
+93148 retired with it. The supported CLI first rejected live enabled mutation,
+so the stopped package was disabled, exact-hash 0.3.23 installed, selected, and
+explicitly full-trust enabled. Catalog repair then identified only inactive
+0.3.22 as removable and retired it; 0.3.23 is the sole installed Spotify
+version. The unchanged reviewed DLV-474 host was launched and visibly activated
+with `--show`. It is responsive as PID 28912 with unchanged executable SHA-256
+`1C7C8849B014F538AD5AC7FEFA8947B6F85735808A64BF7D9F2BD70A134B1C18`;
+Bridge PID 34368 started session 1, and Spotify PID 128796 runs from the exact
+installed 0.3.23 path. The worker admitted current visible snapshots, the
+pinned Spotify surface was recreated, and the startup log has no candidate
+failure. Await the user's pinned Next/Previous queue verdict. Do not test or
+integrate before acceptance.
 
 ### DLV-294 generic pinned-layout projections
 
@@ -783,9 +796,9 @@ without explicit promotion.
 1. DLV-291 Spotify compact pinned layouts: cumulative 0.3.22 `e0fa1a3` +
    `ca80217` + `8dd3a8d` is physically rejected because pinned Next/Previous can
    leave Up Next indefinitely Loading. Production-only 0.3.23 `2031a8c` is
-   source-reviewed and built with exact package hash; promote it physically,
-   then await the queue refresh/deadline/diagnostic verdict. No tests or
-   integration before that verdict.
+   source-reviewed, installed as the sole active version, and visibly running
+   under PID 28912. Await the queue refresh/deadline/diagnostic verdict. No
+   tests or integration before that verdict.
 2. DLV-474 fresh-session sequence-authority correction: retained correction
    passed its native gate, then the managed gate stopped on an opaque pre-test
    build red. Four diffs remain uncommitted; no rerun or repair is authorized.
@@ -799,9 +812,8 @@ without explicit promotion.
 
 DLV-473 production is accepted/integrated and its tests are post-acceptance
 work. DLV-291 versions through 0.3.22 are physically rejected overall. Exact-
-hash 0.3.22 remains the sole installed active Spotify diagnostic baseline under
-responsive PID 14100 until reviewed 0.3.23 production is ready; no DLV-291
-production is integrated.
+hash 0.3.23 is the sole installed active Spotify version under responsive PID
+28912 for physical review; no DLV-291 production is integrated.
 DLV-474 production is rejected before integration by deterministic
 fresh-session sequence evidence; its exact historical exit trigger remains
 unproven and retained diagnostics are ready for a future recurrence.
@@ -837,7 +849,7 @@ tests remain deferred.
 | DLV-292 | `ff5e7e4` binds each Bridge-cached snapshot to its worker start ordinal and uses existing typed stale-base recovery after replacement. Production build and three focused lifecycle/native gates passed; integrated as `80cdb10`. The user accepted PID 81980 by default because live reproduction is impractical. |
 | DLV-293 | Production `a9d36cf` is physically accepted and integrated as `10c3e26`; PID 137288 already contains that production tip. New catalog-removal/focus/Guide assertions completed before the focused host gate stopped on an older Game Launcher stationarity correlation. The pin-coordinator suite did not run; both uncommitted test diffs remain retained, with no rerun or Game Launcher repair authorized. |
 | DLV-474 | Production `a830f026` was provisionally accepted by user disposition because the historical bridge-session loss could not be reproduced, then rejected before integration when the first focused native gate proved fresh sequence 1 was compared against retained prior-session sequences 10/20. The retained correction passed 29 native coordinator scenarios plus linked native checks, then the managed diagnostic gate exited 1 during an opaque pre-test build. Four diffs remain uncommitted at identity `d14a224507d682e9c67f83860e713fe0118bb4dd`; no rerun or repair occurred. |
-| DLV-291 | Spotify versions through 0.3.22 are physically rejected overall. Production-only 0.3.23 `2031a8c` is source-reviewed; its Release/package builds passed with tests skipped. It adds internal redacted queue/provider-gate correlation and a 45-second whole-load deadline, using the existing cursor terminal path to retain last-good rows or publish recoverable error. Exact package `C29CA62EFF45C010DBEEF41F3A6CC71F898B476651B8E58E22E511C194F3659B` is not installed yet; 0.3.22 remains the sole active diagnostic baseline under PID 14100. No tests or integration. |
+| DLV-291 | Spotify versions through 0.3.22 are physically rejected overall. Production-only 0.3.23 `2031a8c` is source-reviewed; its Release/package builds passed with tests skipped. It adds internal redacted queue/provider-gate correlation and a 45-second whole-load deadline, using the existing cursor terminal path to retain last-good rows or publish recoverable error. Exact package `C29CA62EFF45C010DBEEF41F3A6CC71F898B476651B8E58E22E511C194F3659B` is the sole installed active Spotify version under responsive PID 28912; await physical verdict before tests or integration. |
 | DLV-248 | Deferred until explicit user promotion. |
 
 ## Integrated reliability — DLV-292 fresh-worker virtual-window recovery
