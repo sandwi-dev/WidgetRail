@@ -37,6 +37,7 @@ public sealed class SpotifyWidget : Widget
     private static readonly TimeSpan ProgressInterval = TimeSpan.FromMilliseconds(250);
     private static readonly TimeSpan SetupRefreshTimeout = TimeSpan.FromSeconds(5);
     private static readonly TimeSpan DevicesCacheLifetime = TimeSpan.FromSeconds(20);
+    private const int MaximumQueuePlaybackReconciliationAttempts = 2;
     private static readonly IReadOnlyList<SpotifyAuthorizationScope> SpotifyScopes =
     [
         SpotifyAuthorizationScope.PlaybackStateRead,
@@ -108,16 +109,7 @@ public sealed class SpotifyWidget : Widget
         {
             PageSize = SpotifyApplicationContract.MaximumQueueItems,
             MaximumRetainedItems = SpotifyApplicationContract.MaximumQueueItems * 2,
-            LoadPage = async (cursor, direction, limit, token) =>
-            {
-                if (cursor is not null || direction is not null)
-                    throw new InvalidOperationException("Spotify queue does not expose adjacent cursors.");
-                var occurrenceRequest = _queueOccurrences.BeginPage("queue", 0, direction);
-                var queue = await _spotify.GetQueueAsync(token).ConfigureAwait(false);
-                var items = _queueOccurrences.NormalizePage(
-                    occurrenceRequest, queue.Items, []);
-                return new(items, null, null);
-            },
+            LoadPage = LoadQueuePageAsync,
             MapError = SpotifyResourceError,
             Viewports =
             [
@@ -654,6 +646,35 @@ public sealed class SpotifyWidget : Widget
         if (destination == SpotifyDestination.Queue || upNextPinnedLayoutSelected)
             _queue.Refresh();
         else _queue.Reset(invalidate: false);
+    }
+
+    private async ValueTask<WidgetCursorPage<SpotifyMediaCollectionItem>> LoadQueuePageAsync(
+        WidgetCollectionCursor? cursor,
+        WidgetCursorDirection? direction,
+        int _,
+        CancellationToken cancellationToken)
+    {
+        if (cursor is not null || direction is not null)
+            throw new InvalidOperationException("Spotify queue does not expose adjacent cursors.");
+        for (var attempt = 0; attempt < MaximumQueuePlaybackReconciliationAttempts; attempt++)
+        {
+            var queue = await _spotify.GetQueueAsync(cancellationToken).ConfigureAwait(false);
+            if (!QueueMatchesLatestPlayback(queue.CurrentlyPlaying)) continue;
+
+            var occurrenceRequest = _queueOccurrences.BeginPage("queue", 0, direction);
+            var items = _queueOccurrences.NormalizePage(
+                occurrenceRequest, queue.Items, []);
+            return new(items, null, null);
+        }
+
+        throw new InvalidOperationException(
+            "Spotify queue did not converge with the current playback item.");
+    }
+
+    private bool QueueMatchesLatestPlayback(SpotifyMediaItemSummary? currentlyPlaying)
+    {
+        lock (_gate)
+            return PlaybackQueueIdentity(_playback) == QueuePlaybackIdentity(currentlyPlaying);
     }
 
     private void StartAuthorization()
@@ -1408,6 +1429,12 @@ public sealed class SpotifyWidget : Widget
         playback is { IsAvailable: true }
             ? (true, playback.Item?.Uri)
             : (false, null);
+
+    private static (bool Available, string? Uri) QueuePlaybackIdentity(
+        SpotifyMediaItemSummary? currentlyPlaying) =>
+        currentlyPlaying is null
+            ? (false, null)
+            : (true, currentlyPlaying.Uri);
 
     private void ApplyRefreshFailure(long generation, Exception exception)
     {

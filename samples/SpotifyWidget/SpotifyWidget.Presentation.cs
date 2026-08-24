@@ -192,6 +192,10 @@ internal static class SpotifyPresentation
         if (queue.Items.Count != 0)
         {
             var items = queue.Items.Take(PinnedUpNextMaximumItems).ToArray();
+            var projectedAnchor = queue.Anchor is { } retainedAnchor &&
+                                  items.Any(item => item.Key == retainedAnchor)
+                ? retainedAnchor
+                : items[0].Key;
             var rows = items.Select((item, index) =>
             {
                 var itemId = SpotifyCollectionIdentity.FocusId(
@@ -212,7 +216,7 @@ internal static class SpotifyPresentation
             }).ToArray();
             content = UI.VerticalScroll($"spotify.{mode}.scroll", rows)
                 .Classes("spotify-pinned-queue-scroll") with
-            { CollectionAnchorKey = queue.Anchor?.Value };
+            { CollectionAnchorKey = projectedAnchor.Value };
         }
         else if (queue.Status is WidgetPagedResourceStatus.Loading or
                  WidgetPagedResourceStatus.NotLoaded)
