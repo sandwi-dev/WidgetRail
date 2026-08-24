@@ -286,7 +286,7 @@ historical evidence only; this file is the sole implementation authority.
 | Lane | Task/worktree | State |
 | --- | --- | --- |
 | Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | DLV-474 correction passed the native gate, then the managed sanitized-terminal gate stopped on an opaque pre-test build red. Four intentional diffs remain retained uncommitted in the isolated worktree; no rerun or repair is authorized. DLV-473 test-only `34f15ae9` remains blocked after its first red; the standing tree's two DLV-293 test diffs remain byte-identical and must not be touched. |
-| Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | DLV-291 production is accepted/integrated as `e7ebdbe`. Its native test gate passed 108 checks; the Spotify gate stopped after 75 seconds without output, leaving two reviewed test diffs blocked. Preserve them in one explicitly unaccepted evidence commit without rerun, switch this standing worktree to a clean branch from integrated main, then execute assigned DLV-295. |
+| Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | Assigned DLV-295 on clean branch `codex/dlv-295-pinned-layout-authoring` from `874b881`. DLV-291 blocked tests are preserved only as unaccepted `bdda057` on the old branch. Implement the high-level API and Spotify migration first, then add/fix the Spotify regression against that final API and run its focused gate once. |
 
 ## Execution rules
 
@@ -799,16 +799,14 @@ broad aggregate, live-provider, package mutation, or unrelated tests. The
 running accepted candidate already contains `bbdc2368`, so tests or integration
 alone do not authorize a rebuild or relaunch.
 
-Post-acceptance evidence: the native coordinator gate passed all 108 checks.
-The assigned Spotify command produced no output for 75 seconds, exceeding the
-one-minute observability rule; the lane stopped only that owned invocation and
-did not rerun it. The reviewer inspected the retained two-file test diff and
-found it scoped to the accepted invariants, but it remains unaccepted because
-the Spotify gate is red. Production is independently accepted and integrated as
-merge `e7ebdbe`. Preserve the test diff in one clearly reported unaccepted
-`[DLV-291]` evidence commit solely to cleanly serialize DLV-295; never integrate
-that test commit without a future explicit disposition. No rebuild or relaunch:
-responsive PID 32880 already contains the integrated production commit.
+Post-acceptance evidence: the native coordinator gate passed 108/108. The
+Spotify command produced no output for 75 seconds, so the lane stopped only
+that invocation and did not rerun it. Production is accepted/integrated as
+`e7ebdbe`; the inspected two-file test diff is preserved only as unaccepted
+`bdda057`. By user direction, never integrate, fix, or rerun that obsolete
+low-level test. Recreate its pinned Next/Previous demand regression only after
+the DLV-295 Spotify migration, then run the final focused gate once. Responsive
+PID 32880 already contains production, so no tests-only rebuild/relaunch.
 
 ### DLV-294 generic pinned-layout projections
 
@@ -885,11 +883,14 @@ invalidation, Full widget behavior, and compatibility with the low-level API.
 Migrate Spotify's accepted pinned layouts from its manual selected-layout
 boolean/string comparison to the new optional handle as the real Community
 package proof, without changing its accepted presentation, provider, queue, or
-controller behavior. Update public API baselines and directly affected author
-guidance. Run only the SDK/public-API, focused pinned-layout harness, and
-Spotify deterministic package/runtime gates; Tier 2 only if the existing worker
-ingress boundary changes. Stop for a protocol revision, hidden window authority,
-destructive state, or a design that makes handles mandatory.
+controller behavior. Only after that migration is complete, add or correct the
+Spotify regression proving pinned Up Next demand survives lifecycle and
+Next/Previous without returning to NotLoaded; do not port the obsolete manual-
+boolean test mechanically. Update public API baselines and directly affected
+author guidance. Run only the SDK/public-API, focused pinned-layout harness, and
+final migrated Spotify deterministic package/runtime gates; Tier 2 only if the
+existing worker ingress boundary changes. Stop for a protocol revision, hidden
+window authority, destructive state, or a design that makes handles mandatory.
 
 ### DLV-296 pinned-layout preview and diagnostics
 
@@ -923,9 +924,9 @@ no live provider, installation, Game Launcher tests, broad aggregate, or push.
 4. DLV-474 fresh-session sequence-authority correction: retained correction
    passed its native gate, then the managed gate stopped on an opaque pre-test
    build red. Four diffs remain uncommitted; no rerun or repair is authorized.
-5. DLV-291 focused post-acceptance tests: native 108/108 green; Spotify gate
-   stopped after 75 seconds without output. Preserve as unaccepted evidence;
-   no rerun or integration is authorized.
+5. DLV-291 focused post-acceptance evidence: native 108/108 green; obsolete
+   low-level Spotify attempt is retained only as unaccepted `bdda057`. Its
+   behavior regression moves into DLV-295 after the high-level migration.
 6. DLV-473 focused post-acceptance tests: clean `34f15ae9` is retained
    unintegrated after the first SDK gate stopped before tests on an opaque build
    red; later gates did not run and no rerun is authorized.
