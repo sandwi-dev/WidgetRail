@@ -220,6 +220,10 @@ destination reveal in the same shell afterward, rapid reversal, same-identity
 refresh, exact retained/admitted tray bounds, stable widget-switch tray
 capacity, live work-area/DPI re-resolution, contained HWND placement, and
 synchronous catalog addition/removal without stale tray focus or dispatch.
+Visible catalog-order replacement first re-establishes the fixed-chrome anchor
+and composition session for the new tray order, then commits the synchronous
+paint. Disabling a widget therefore cannot strand content on a retired chrome
+session or force the main overlay into its legacy HWND fallback.
 
 The current packaged continuity verdict also uses this eight-widget route as a
 functional temporal gate rather than capture output. It requires the shared tray
