@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using System.Diagnostics;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
@@ -54,6 +55,7 @@ public sealed class WindowsSpotifyPlatformBackend : IAsyncDisposable
     private readonly SpotifyLocalPlaybackManager _localPlayback;
     private readonly SpotifyPlaybackApi _playbackApi;
     private readonly SpotifyCollectionApi _collectionApi;
+    private readonly ISpotifyRuntimeDiagnostics _runtimeDiagnostics;
     private readonly ConcurrentDictionary<string, IntegrationState> _states = new();
     private int _disposed;
     public WindowsSpotifyPlatformBackend(ISpotifyClientConfigurationStore configuration)
@@ -64,13 +66,22 @@ public sealed class WindowsSpotifyPlatformBackend : IAsyncDisposable
 
     internal WindowsSpotifyPlatformBackend(
         ISpotifyClientConfigurationStore configuration,
+        ISpotifyRuntimeDiagnostics runtimeDiagnostics)
+        : this(configuration, new WindowsCredentialSpotifyTokenVault(),
+            new SpotifyHttpTransport(), new SpotifyBrowserLauncher(),
+            new LoopbackSpotifyAuthorizationCallbackReceiver(), new SpotifyDelay(),
+            TimeProvider.System, runtimeDiagnostics: runtimeDiagnostics) { }
+
+    internal WindowsSpotifyPlatformBackend(
+        ISpotifyClientConfigurationStore configuration,
         ISpotifyTokenVault vault,
         ISpotifyHttpTransport http,
         ISpotifyBrowserLauncher browser,
         ISpotifyAuthorizationCallbackReceiver callback,
         ISpotifyDelay delay,
         TimeProvider time,
-        SpotifyLocalPlaybackManager? localPlayback = null)
+        SpotifyLocalPlaybackManager? localPlayback = null,
+        ISpotifyRuntimeDiagnostics? runtimeDiagnostics = null)
     {
         _configuration = configuration ?? throw new ArgumentNullException(nameof(configuration));
         _vault = vault ?? throw new ArgumentNullException(nameof(vault));
@@ -78,6 +89,7 @@ public sealed class WindowsSpotifyPlatformBackend : IAsyncDisposable
         _browser = browser ?? throw new ArgumentNullException(nameof(browser));
         _callback = callback ?? throw new ArgumentNullException(nameof(callback));
         _time = time ?? throw new ArgumentNullException(nameof(time));
+        _runtimeDiagnostics = runtimeDiagnostics ?? SpotifyRuntimeDiagnostics.None;
         _httpPolicy = new SpotifyHttpPolicy(
             _http, delay ?? throw new ArgumentNullException(nameof(delay)), _time);
         _localPlayback = localPlayback ?? new SpotifyLocalPlaybackManager(
@@ -399,7 +411,20 @@ public sealed class WindowsSpotifyPlatformBackend : IAsyncDisposable
         ApplicationCallAsync(async () =>
         {
             return await _playbackApi.GetQueueAsync(
-                identity, cancellationToken).ConfigureAwait(false);
+                identity, diagnostic: null, cancellationToken).ConfigureAwait(false);
+        });
+
+    internal Task<SpotifyQueueSummary> GetSpotifyQueueAsync(
+        SpotifyIntegrationIdentity identity,
+        long operation,
+        long generation,
+        CancellationToken cancellationToken) =>
+        ApplicationCallAsync(async () =>
+        {
+            return await _playbackApi.GetQueueAsync(
+                identity,
+                new SpotifyQueueDiagnosticContext(operation, generation),
+                cancellationToken).ConfigureAwait(false);
         });
 
     public Task AddSpotifyQueueItemAsync(
@@ -545,7 +570,8 @@ public sealed class WindowsSpotifyPlatformBackend : IAsyncDisposable
             request.RequiredScope,
             cancellationToken,
             request.JsonBody,
-            request.AdditionalRequiredScope);
+            request.AdditionalRequiredScope,
+            request.QueueDiagnostic);
 
     private async Task<SpotifyHttpResponse> SendPlayerRequestAsync(
         SpotifyIntegrationIdentity identity,
@@ -554,11 +580,15 @@ public sealed class WindowsSpotifyPlatformBackend : IAsyncDisposable
         string requiredScope,
         CancellationToken cancellationToken,
         string? jsonBody = null,
-        string? additionalRequiredScope = null)
+        string? additionalRequiredScope = null,
+        SpotifyQueueDiagnosticContext? queueDiagnostic = null)
     {
         ThrowIfDisposed();
         var state = StateFor(identity);
+        var started = Stopwatch.GetTimestamp();
+        RecordQueueDiagnostic(queueDiagnostic, "queue-provider-gate", "waiting", started);
         await state.Gate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        RecordQueueDiagnostic(queueDiagnostic, "queue-provider-gate", "acquired", started);
         try
         {
             var configuration = await RequireConfigurationAsync(identity, cancellationToken)
@@ -568,6 +598,7 @@ public sealed class WindowsSpotifyPlatformBackend : IAsyncDisposable
                 cancellationToken).ConfigureAwait(false);
             if (additionalRequiredScope is not null)
                 EnsureScope(token.GrantedScopes, additionalRequiredScope);
+            RecordQueueDiagnostic(queueDiagnostic, "queue-http", "attempt-1", started);
             var response = await _httpPolicy.SendAsync(
                 new SpotifyHttpRequest(
                     method, uri, Bearer(token.Value), JsonBody: jsonBody), cancellationToken)
@@ -580,12 +611,28 @@ public sealed class WindowsSpotifyPlatformBackend : IAsyncDisposable
                 cancellationToken).ConfigureAwait(false);
             if (additionalRequiredScope is not null)
                 EnsureScope(token.GrantedScopes, additionalRequiredScope);
+            RecordQueueDiagnostic(queueDiagnostic, "queue-http", "attempt-2", started);
             return await _httpPolicy.SendAsync(
                 new SpotifyHttpRequest(
                     method, uri, Bearer(token.Value), JsonBody: jsonBody), cancellationToken)
                 .ConfigureAwait(false);
         }
         finally { state.Gate.Release(); }
+    }
+
+    private void RecordQueueDiagnostic(
+        SpotifyQueueDiagnosticContext? diagnostic,
+        string boundary,
+        string code,
+        long started)
+    {
+        if (diagnostic is not { } correlation) return;
+        _runtimeDiagnostics.Record(
+            boundary,
+            code,
+            correlation.Operation,
+            correlation.Generation,
+            Math.Max(0, (long)Stopwatch.GetElapsedTime(started).TotalMilliseconds));
     }
 
     private async Task<SpotifyAuthorizationCallback> ReceiveAuthorizationAsync(

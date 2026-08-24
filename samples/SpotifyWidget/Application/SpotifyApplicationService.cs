@@ -5,7 +5,9 @@ namespace WidgetRail.Samples.SpotifyWidget;
 internal sealed class SpotifyApplicationService(
     WindowsSpotifyPlatformBackend backend,
     SpotifyIntegrationIdentity identity,
-    ISpotifySetupActions? setupActions = null) : ISpotifyApplicationService
+    ISpotifySetupActions? setupActions = null) :
+    ISpotifyApplicationService,
+    ISpotifyCorrelatedQueueService
 {
     private readonly WindowsSpotifyPlatformBackend _backend = backend ??
         throw new ArgumentNullException(nameof(backend));
@@ -68,6 +70,13 @@ internal sealed class SpotifyApplicationService(
     public ValueTask<SpotifyQueueSummary> GetQueueAsync(
         CancellationToken cancellationToken = default) => new(
         _backend.GetSpotifyQueueAsync(_identity, cancellationToken));
+
+    ValueTask<SpotifyQueueSummary> ISpotifyCorrelatedQueueService.GetQueueAsync(
+        long operation,
+        long generation,
+        CancellationToken cancellationToken) => new(
+        _backend.GetSpotifyQueueAsync(
+            _identity, operation, generation, cancellationToken));
 
     public ValueTask AddToQueueAsync(
         string uri,

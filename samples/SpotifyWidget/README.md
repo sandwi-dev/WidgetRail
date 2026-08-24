@@ -35,6 +35,13 @@ same commit produces a checkout-independent managed payload and sealed archive.
   the package-owned Web Playback SDK child. Its short-lived token handoff and
   local device ID stay inside the application process tree.
 
+When pinned, Spotify contributes **Compact now playing** and **Now playing +
+up next** beside the host's always-available **Full widget** fallback. Both
+projections reuse the ordinary playback snapshot, artwork, progress, transport,
+and focus actions. The up-next projection admits the existing bounded queue
+demand only while that layout is selected; deselection, removal, deactivation,
+and destruction revoke that demand without adding another provider or poller.
+
 Internally, one non-partial widget owns lifecycle, provider calls, resources,
 committed state, and invalidation. Closed value-only policies classify authored
 route/actions and reconcile playback/device commands; a separate pure presenter

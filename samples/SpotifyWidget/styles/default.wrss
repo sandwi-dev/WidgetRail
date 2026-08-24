@@ -9,6 +9,64 @@
   overflow: clip;
 }
 
+/* Package-owned protocol-v21 pinned projections reuse the ordinary player and
+   queue rows. The host still owns the pinned surface, layout selection, focus,
+   rendering, and LT/RT cycling. */
+.spotify-pinned-root {
+  width: 100vw;
+  min-width: 0px;
+  min-height: 0px;
+  gap: 10px;
+  padding: 12px;
+  background: var(--surface);
+  color: var(--text);
+  overflow: clip;
+}
+.spotify-pinned-now-playing { align: stretch; justify: center; }
+.spotify-pinned-shell {
+  width: 100%;
+  min-width: 0px;
+  min-height: 0px;
+  flex-grow: 1;
+  flex-shrink: 1;
+  gap: 10px;
+  align: stretch;
+  overflow: clip;
+}
+.spotify-pinned-player {
+  min-width: 280px;
+  flex-grow: 1;
+  flex-shrink: 1;
+}
+.spotify-player-card.spotify-pinned-player-up-next {
+  flex-basis: 0px;
+  min-width: 280px;
+  flex-grow: 1;
+  flex-shrink: 1;
+}
+.spotify-pinned-queue {
+  width: 280px;
+  min-width: 240px;
+  min-height: 0px;
+  flex-grow: 1;
+  flex-shrink: 1;
+  gap: 8px;
+  padding: 12px;
+  background: var(--surface-raised);
+  corner-radius: 12px;
+  overflow: clip;
+}
+.spotify-pinned-next-row { width: 100%; min-width: 0px; }
+.spotify-pinned-queue-scroll {
+  width: 100%;
+  min-width: 0px;
+  min-height: 0px;
+  flex-grow: 1;
+  flex-shrink: 1;
+  gap: 8px;
+  overflow: clip;
+}
+
 .spotify-header { gap: 2px; flex-shrink: 0; }
 .spotify-heading {
   min-width: 0px;

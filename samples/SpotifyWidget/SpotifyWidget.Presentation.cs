@@ -5,8 +5,15 @@ namespace WidgetRail.Samples.SpotifyWidget;
 
 internal static class SpotifyPresentation
 {
+    // Two authored 82-DIP rows plus the section header and gaps fit the
+    // 340-DIP minimum pinned surface. A third row would require clipping.
+    private const int PinnedUpNextMaximumItems = 2;
     private const string InputScope = "spotify.window";
     private const string SetupScope = "spotify.setup";
+    internal const string CompactPinnedLayoutId = "spotify.pinned.compact";
+    internal const string UpNextPinnedLayoutId = "spotify.pinned.up-next";
+    private const string CompactPinnedScope = "spotify.pinned.compact.scope";
+    internal const string UpNextPinnedScope = "spotify.pinned.up-next.scope";
     private static readonly WidgetSurfaceHints StandardSurface = new()
     {
         Mode = WidgetSurfaceMode.Adaptive,
@@ -15,28 +22,227 @@ internal static class SpotifyPresentation
         MinimumWidth = 620,
         MinimumHeight = 400,
     };
+    private static readonly WidgetSurfaceHints CompactPinnedSurface = new()
+    {
+        Mode = WidgetSurfaceMode.Compact,
+        PreferredWidth = 360,
+        PreferredHeight = 360,
+        MinimumWidth = 320,
+        MinimumHeight = 300,
+    };
+    private static readonly WidgetSurfaceHints UpNextPinnedSurface = new()
+    {
+        Mode = WidgetSurfaceMode.Wide,
+        PreferredWidth = 760,
+        PreferredHeight = 420,
+        MinimumWidth = 640,
+        MinimumHeight = 340,
+    };
+
     internal static WidgetView Render(SpotifyPresentationState presentation)
     {
-        if (presentation.ShowSetup)
-            return RenderSetup(
+        var view = presentation.ShowSetup
+            ? RenderSetup(
                 presentation.Status, presentation.SetupViewGeneration,
-                presentation.SetupBusy);
-        var header = Header(presentation.Status, presentation.ViewState);
-        return presentation.ViewState switch
+                presentation.SetupBusy)
+            : presentation.ViewState switch
+            {
+                SpotifyWidgetViewState.Unconfigured => RenderUnconfigured(
+                    Header(presentation.Status, presentation.ViewState)),
+                SpotifyWidgetViewState.Disconnected => RenderDisconnected(
+                    Header(presentation.Status, presentation.ViewState), false),
+                SpotifyWidgetViewState.Authorizing => RenderAuthorizing(
+                    Header(presentation.Status, presentation.ViewState)),
+                SpotifyWidgetViewState.PermissionDenied => RenderPermissionDenied(
+                    Header(presentation.Status, presentation.ViewState)),
+                SpotifyWidgetViewState.ServiceUnavailable => RenderError(
+                    Header(presentation.Status, presentation.ViewState),
+                    "Spotify service unavailable",
+                    "The trusted Spotify provider is not available. Try again after the host recovers."),
+                SpotifyWidgetViewState.Error => RenderError(
+                    Header(presentation.Status, presentation.ViewState),
+                    "Spotify could not be loaded",
+                    "The provider returned an unexpected error. Retry without leaving the overlay."),
+                SpotifyWidgetViewState.Ready => RenderConnected(
+                    Header(presentation.Status, presentation.ViewState), presentation),
+                _ => RenderLoading(Header(presentation.Status, presentation.ViewState)),
+            };
+        return view with
         {
-            SpotifyWidgetViewState.Unconfigured => RenderUnconfigured(header),
-            SpotifyWidgetViewState.Disconnected => RenderDisconnected(header, false),
-            SpotifyWidgetViewState.Authorizing => RenderAuthorizing(header),
-            SpotifyWidgetViewState.PermissionDenied => RenderPermissionDenied(header),
-            SpotifyWidgetViewState.ServiceUnavailable => RenderError(
-                header, "Spotify service unavailable",
-                "The trusted Spotify provider is not available. Try again after the host recovers."),
-            SpotifyWidgetViewState.Error => RenderError(
-                header, "Spotify could not be loaded",
-                "The provider returned an unexpected error. Retry without leaving the overlay."),
-            SpotifyWidgetViewState.Ready => RenderConnected(header, presentation),
-            _ => RenderLoading(header),
+            PinnedLayouts =
+            [
+                CreatePinnedLayout(presentation, CompactPinnedLayoutId,
+                    "Compact now playing", CompactPinnedSurface, CompactPinnedScope,
+                    includeUpNext: false),
+                CreatePinnedLayout(presentation, UpNextPinnedLayoutId,
+                    "Now playing + up next", UpNextPinnedSurface, UpNextPinnedScope,
+                    includeUpNext: true),
+            ],
         };
+    }
+
+    private static PinnedPresentationLayout CreatePinnedLayout(
+        SpotifyPresentationState presentation,
+        string layoutId,
+        string name,
+        WidgetSurfaceHints surface,
+        string inputScope,
+        bool includeUpNext)
+    {
+        var mode = includeUpNext ? "pinned-up-next" : "pinned-compact";
+        var content = new List<WidgetElement>();
+        string? initialFocusId;
+        if (presentation.ViewState == SpotifyWidgetViewState.Ready)
+        {
+            var playerFocusId = presentation.Playback is
+                { IsAvailable: true, Item: not null }
+                    ? $"spotify.player.{mode}.play-toggle"
+                    : $"spotify.player.empty.{mode}.action";
+            var nextItemId = includeUpNext && presentation.Queue.Items.Count != 0
+                ? SpotifyCollectionIdentity.FocusId(
+                    "spotify.queue.item", mode, presentation.Queue.Items[0].Key)
+                : null;
+            var player = PlayerPanel(
+                presentation.Playback,
+                presentation.PendingOperation,
+                presentation.Destination,
+                mode,
+                pinned: true,
+                adjacentFocusId: nextItemId);
+            if (includeUpNext)
+            {
+                content.Add(UI.Row($"spotify.{mode}.shell",
+                        player.AddClasses("spotify-pinned-player-up-next"), PinnedUpNext(
+                            presentation.Queue, mode, playerFocusId))
+                    .Classes("spotify-pinned-shell"));
+            }
+            else
+            {
+                content.Add(player);
+            }
+            initialFocusId = playerFocusId;
+        }
+        else
+        {
+            var state = PinnedState(presentation.ViewState, mode);
+            content.Add(state.Element);
+            initialFocusId = state.InitialFocusId;
+        }
+
+        var root = UI.Stack($"spotify.{mode}.root", content.ToArray())
+            .InputScope(inputScope)
+            .Classes("spotify-pinned-root",
+                includeUpNext ? "spotify-pinned-up-next" : "spotify-pinned-now-playing");
+        root = ApplyPlaybackShortcuts(root, presentation.Playback)
+            .Shortcut(ControllerButton.Y, "spotify.refresh");
+        return WidgetView.PinnedLayout(
+            layoutId, name, surface, root, initialFocusId, inputScope);
+    }
+
+    private static (WidgetElement Element, string? InitialFocusId) PinnedState(
+        SpotifyWidgetViewState state,
+        string mode) => state switch
+        {
+            SpotifyWidgetViewState.Unconfigured => (
+                StateCard(WidgetGlyph.Settings, "Client ID required",
+                    "Open Spotify setup in the full widget.",
+                    UI.Button("Open setup", "spotify.setup.open",
+                            $"spotify.{mode}.setup")
+                        .Icon(WidgetGlyph.Settings, "Open Spotify setup")
+                        .Classes("spotify-primary")),
+                $"spotify.{mode}.setup"),
+            SpotifyWidgetViewState.Disconnected => (
+                StateCard(WidgetGlyph.Music, "Connect Spotify",
+                    "Connect your account to show playback here.",
+                    UI.Button("Connect", "spotify.connect",
+                            $"spotify.{mode}.connect")
+                        .Icon(WidgetGlyph.Play, "Connect Spotify account")
+                        .Classes("spotify-primary")),
+                $"spotify.{mode}.connect"),
+            SpotifyWidgetViewState.PermissionDenied => (
+                StateCard(WidgetGlyph.Settings, "Spotify permission is off",
+                    "Allow the declared capabilities in Settings, then retry.",
+                    UI.Button("Retry", "spotify.retry", $"spotify.{mode}.retry")
+                        .Icon(WidgetGlyph.Refresh, "Retry Spotify")
+                        .Classes("spotify-primary")),
+                $"spotify.{mode}.retry"),
+            SpotifyWidgetViewState.ServiceUnavailable or SpotifyWidgetViewState.Error => (
+                StateCard(WidgetGlyph.Music, "Spotify unavailable",
+                    "Spotify could not load. Retry from this pinned view.",
+                    UI.Button("Try again", "spotify.retry", $"spotify.{mode}.retry")
+                        .Icon(WidgetGlyph.Refresh, "Try Spotify again")
+                        .Classes("spotify-primary")),
+                $"spotify.{mode}.retry"),
+            SpotifyWidgetViewState.Authorizing => (
+                StateCard(WidgetGlyph.Music, "Finish in your browser",
+                    "This pinned view will update when Spotify finishes connecting."),
+                null),
+            _ => (
+                StateCard(WidgetGlyph.Music, "Loading Spotify",
+                    "Checking your local account state…"),
+                null),
+        };
+
+    private static WidgetElement PinnedUpNext(
+        WidgetCursorResourceSnapshot<SpotifyMediaCollectionItem> queue,
+        string mode,
+        string playerFocusId)
+    {
+        WidgetElement content;
+        if (queue.Items.Count != 0)
+        {
+            var items = queue.Items.Take(PinnedUpNextMaximumItems).ToArray();
+            var projectedAnchor = queue.Anchor is { } retainedAnchor &&
+                                  items.Any(item => item.Key == retainedAnchor)
+                ? retainedAnchor
+                : items[0].Key;
+            var rows = items.Select((item, index) =>
+            {
+                var itemId = SpotifyCollectionIdentity.FocusId(
+                    "spotify.queue.item", mode, item.Key);
+                var row = MediaRow(item.Value,
+                        $"spotify.queue.play.{item.Key.Value}", itemId,
+                        SpotifyCollectionIdentity.FocusId(
+                            "spotify.queue.persist", "shared", item.Key))
+                    .FocusLeft(playerFocusId);
+                if (index != 0)
+                    row = row.FocusUp(SpotifyCollectionIdentity.FocusId(
+                        "spotify.queue.item", mode, items[index - 1].Key));
+                if (index + 1 != items.Length)
+                    row = row.FocusDown(SpotifyCollectionIdentity.FocusId(
+                        "spotify.queue.item", mode, items[index + 1].Key));
+                return row.CollectionItem(item.Key)
+                    .Classes("spotify-pinned-next-row");
+            }).ToArray();
+            content = UI.VerticalScroll($"spotify.{mode}.scroll", rows)
+                .Classes("spotify-pinned-queue-scroll") with
+            { CollectionAnchorKey = projectedAnchor.Value };
+        }
+        else if (queue.Status is WidgetPagedResourceStatus.Loading or
+                 WidgetPagedResourceStatus.NotLoaded)
+        {
+            content = UI.LoadingIndicator(
+                $"spotify.{mode}.loading", "Loading next queue item");
+        }
+        else if (queue.Error is { } error)
+        {
+            content = UI.Alert("Queue unavailable", error.Message, AlertTone.Warning,
+                $"spotify.{mode}.error",
+                new ComponentAction("Retry", "spotify.refresh", WidgetGlyph.Refresh));
+        }
+        else
+        {
+            content = UI.EmptyState("Queue is empty", "Spotify has no upcoming item.",
+                $"spotify.{mode}.empty",
+                new ComponentAction("Refresh", "spotify.refresh", WidgetGlyph.Refresh),
+                WidgetGlyph.Next);
+        }
+
+        return UI.Stack($"spotify.{mode}.queue",
+                UI.SectionHeader("Up next", $"spotify.{mode}.header", "QUEUE",
+                    "The next item from Spotify's current queue."),
+                content)
+            .Classes("spotify-pinned-queue");
     }
 
     private static StackElement Header(string status, SpotifyWidgetViewState state) =>
@@ -235,18 +441,8 @@ internal static class SpotifyPresentation
             .Classes("spotify-widget", "is-ready");
         if (playlistDetail is not null && destination == SpotifyDestination.Playlists)
             root = root.Shortcut(ControllerButton.B, "spotify.playlist.back");
-        if (playback is { IsAvailable: true })
-        {
-            var disallowed = playback.DisallowedActions;
-            var toggleBlocked = playback.IsPlaying ? disallowed.Pausing : disallowed.Resuming;
-            if (!disallowed.SkippingPrevious)
-                root = root.Shortcut(ControllerButton.LeftBumper, "spotify.previous");
-            if (!toggleBlocked)
-                root = root.Shortcut(ControllerButton.X, "spotify.play-toggle");
-            if (!disallowed.SkippingNext)
-                root = root.Shortcut(ControllerButton.RightBumper, "spotify.next");
-        }
-        root = root.Shortcut(ControllerButton.Y, "spotify.refresh");
+        root = ApplyPlaybackShortcuts(root, playback)
+            .Shortcut(ControllerButton.Y, "spotify.refresh");
 
         var quickActions = new List<WidgetQuickAction>();
         if (playback is { IsAvailable: true })
@@ -317,7 +513,9 @@ internal static class SpotifyPresentation
         SpotifyPlaybackSummary? playback,
         SpotifyPlaybackOperation? pending,
         SpotifyDestination selectedDestination,
-        string mode)
+        string mode,
+        bool pinned = false,
+        string? adjacentFocusId = null)
     {
         if (playback is not { IsAvailable: true, Item: not null })
             return UI.EmptyState("Nothing playing",
@@ -352,7 +550,7 @@ internal static class SpotifyPresentation
         var repeatId = $"{prefix}.repeat";
         var seekId = $"{prefix}.seek";
         var seekSliderId = $"{seekId}.slider";
-        var compact = mode == "compact";
+        var compact = mode == "compact" || pinned;
         WidgetElement artwork = string.IsNullOrWhiteSpace(item.ArtworkUrl)
             ? UI.Icon(WidgetGlyph.Music, placeholderId, "No artwork")
                 .Classes("spotify-artwork-placeholder",
@@ -407,10 +605,13 @@ internal static class SpotifyPresentation
             .Disabled(disallowed.Seeking)
             .Busy(pending == SpotifyPlaybackOperation.Seek)
             .PersistFocusAs("spotify.transport.seek")
-            .FocusLeft(NavId(selectedDestination, mode))
             .FocusDown(toggleId)
             .RequireControllerActivation()
             .AddClasses("spotify-scrubber");
+        if (!pinned)
+            seek = seek.FocusLeft(NavId(selectedDestination, mode));
+        if (adjacentFocusId is not null)
+            repeat = repeat.FocusRight(adjacentFocusId);
 
         return UI.Stack($"{prefix}.card",
                 UI.Stack(frameId, artwork).Classes("spotify-artwork-frame",
@@ -439,8 +640,25 @@ internal static class SpotifyPresentation
                         compact ? "spotify-compact-attribution" :
                             "spotify-wide-attribution"))
             .Classes("spotify-player-card",
-                mode == "compact" ? "spotify-player-card-compact" :
-                    "spotify-player-card-wide");
+                compact ? "spotify-player-card-compact" :
+                    "spotify-player-card-wide",
+                pinned ? "spotify-pinned-player" : "spotify-player-standard");
+    }
+
+    private static StackElement ApplyPlaybackShortcuts(
+        StackElement root,
+        SpotifyPlaybackSummary? playback)
+    {
+        if (playback is not { IsAvailable: true }) return root;
+        var disallowed = playback.DisallowedActions;
+        var toggleBlocked = playback.IsPlaying ? disallowed.Pausing : disallowed.Resuming;
+        if (!disallowed.SkippingPrevious)
+            root = root.Shortcut(ControllerButton.LeftBumper, "spotify.previous");
+        if (!toggleBlocked)
+            root = root.Shortcut(ControllerButton.X, "spotify.play-toggle");
+        if (!disallowed.SkippingNext)
+            root = root.Shortcut(ControllerButton.RightBumper, "spotify.next");
+        return root;
     }
 
     private static WidgetElement DestinationPage(

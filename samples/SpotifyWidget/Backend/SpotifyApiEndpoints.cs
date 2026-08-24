@@ -9,7 +9,12 @@ internal sealed record SpotifyAuthorizedRequest(
     Uri Uri,
     string RequiredScope,
     string? AdditionalRequiredScope = null,
-    string? JsonBody = null);
+    string? JsonBody = null,
+    SpotifyQueueDiagnosticContext? QueueDiagnostic = null);
+
+internal readonly record struct SpotifyQueueDiagnosticContext(
+    long Operation,
+    long Generation);
 
 /// <summary>
 /// Narrow token-session boundary. Endpoint families can request only an exact
@@ -105,10 +110,16 @@ internal sealed class SpotifyPlaybackApi(ISpotifyAuthorizedRequestSender sender)
 
     internal async Task<SpotifyQueueSummary> GetQueueAsync(
         SpotifyIntegrationIdentity identity,
+        SpotifyQueueDiagnosticContext? diagnostic,
         CancellationToken cancellationToken)
     {
-        var response = await SendAsync(identity, HttpMethod.Get, QueueUri,
-            WindowsSpotifyPlatformBackend.PlaybackReadScope, cancellationToken)
+        var response = await _sender.SendAsync(identity,
+            new SpotifyAuthorizedRequest(
+                HttpMethod.Get,
+                QueueUri,
+                WindowsSpotifyPlatformBackend.PlaybackReadScope,
+                QueueDiagnostic: diagnostic),
+            cancellationToken)
             .ConfigureAwait(false);
         if (response.StatusCode == 204) return new SpotifyQueueSummary(null, [], false);
         SpotifyResponseParser.EnsureSuccess(response);
