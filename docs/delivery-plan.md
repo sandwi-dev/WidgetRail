@@ -286,7 +286,7 @@ historical evidence only; this file is the sole implementation authority.
 | Lane | Task/worktree | State |
 | --- | --- | --- |
 | Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | DLV-474 correction passed the native gate, then the managed sanitized-terminal gate stopped on an opaque pre-test build red. Four intentional diffs remain retained uncommitted in the isolated worktree; no rerun or repair is authorized. DLV-473 test-only `34f15ae9` remains blocked after its first red; the standing tree's two DLV-293 test diffs remain byte-identical and must not be touched. |
-| Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | DLV-291 cumulative 0.3.23 `2031a8c` is source-reviewed, installed as the sole active Spotify package, and visibly launched for physical review. It adds redacted queue/provider-gate correlation plus a 45-second total queue-load deadline that commits through the existing last-good/error cursor path. No public/shared contract, queue ordering, retry, host, SDK, Game Launcher, test, integration, or push change. |
+| Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | DLV-291 production-only 0.3.24 `bbdc2368` is clean, independently source-reviewed, and accepted for physical promotion only. It queues the existing generic selected-layout notification after successful pin setup when the restored selection is an authored layout; the built-in Full widget fallback remains unnotified. The coherent Release/package build passed with no tests. User verdict and integration remain pending. |
 
 ## Execution rules
 
@@ -774,6 +774,19 @@ production-only candidate, and stop before tests, install, launch, or
 integration. After planner source review, replace 0.3.23 and repeat the exact
 pinned Next/Previous sequence. Tests remain post-acceptance.
 
+Review disposition: clean production-only commit `bbdc2368` changes only the
+native coordinator lifecycle edge above plus Spotify's immutable package
+version. The reviewer confirmed it reuses `QueueLayoutSelection`, executes only
+after successful `BeginSetup`, skips the built-in index-zero Full widget
+fallback, and carries the coordinator's current widget/runtime/snapshot
+authority. The coherent Release build and Spotify 0.3.24 package build exited
+0; no tests ran. OverlayHost SHA-256 is
+`FC259234F53EC995A2D41DB9228326D18A1294656E9C516F6E43116CFE0F2056` and
+package SHA-256 is
+`734E162386BD6B75BDC384263D7B6C03C00E60886D0ABC020EABCCDCA6A748E6`.
+This is accepted only for exact physical promotion; behavior and integration
+remain gated on the user's pinned Next/Previous verdict.
+
 ### DLV-294 generic pinned-layout projections
 
 Lane: widgets lead, serialized SDK/protocol/native-host prerequisite. Status:
@@ -829,12 +842,10 @@ without explicit promotion.
 ## Ordered queues
 
 1. DLV-291 Spotify compact pinned layouts: versions through production-only
-   0.3.23 `2031a8c` are physically rejected. The 0.3.23 diagnostic proves the
-   only queue request was ordinary Queue navigation, not pinned refresh. The
-   generic native coordinator restores persisted authored layout selection
-   without notifying the package, so Spotify resets the undemanded queue to
-   NotLoaded. Assign production-only 0.3.24 as that lifecycle correction and
-   Spotify physical proof. No tests or integration before the user verdict.
+   0.3.23 `2031a8c` are physically rejected. Production-only 0.3.24
+   `bbdc2368` is clean, source-reviewed, and accepted for exact physical
+   promotion after its coherent Release/package build passed. No tests or
+   integration before the user verdict.
 2. DLV-474 fresh-session sequence-authority correction: retained correction
    passed its native gate, then the managed gate stopped on an opaque pre-test
    build red. Four diffs remain uncommitted; no rerun or repair is authorized.
@@ -847,9 +858,9 @@ without explicit promotion.
 7. DLV-248 remains deliberately deferred until explicit user promotion.
 
 DLV-473 production is accepted/integrated and its tests are post-acceptance
-work. DLV-291 versions through 0.3.23 are physically rejected overall. Exact-
-hash 0.3.23 remains the sole installed active Spotify version under responsive
-PID 28912 only until the 0.3.24 correction is reviewed; no DLV-291 production is
+work. DLV-291 versions through 0.3.23 are physically rejected overall. Reviewed
+0.3.24 `bbdc2368` is ready to replace the sole installed 0.3.23 package and
+running PID 28912 for exact physical review; no DLV-291 production is
 integrated.
 DLV-474 production is rejected before integration by deterministic
 fresh-session sequence evidence; its exact historical exit trigger remains
@@ -886,7 +897,7 @@ tests remain deferred.
 | DLV-292 | `ff5e7e4` binds each Bridge-cached snapshot to its worker start ordinal and uses existing typed stale-base recovery after replacement. Production build and three focused lifecycle/native gates passed; integrated as `80cdb10`. The user accepted PID 81980 by default because live reproduction is impractical. |
 | DLV-293 | Production `a9d36cf` is physically accepted and integrated as `10c3e26`; PID 137288 already contains that production tip. New catalog-removal/focus/Guide assertions completed before the focused host gate stopped on an older Game Launcher stationarity correlation. The pin-coordinator suite did not run; both uncommitted test diffs remain retained, with no rerun or Game Launcher repair authorized. |
 | DLV-474 | Production `a830f026` was provisionally accepted by user disposition because the historical bridge-session loss could not be reproduced, then rejected before integration when the first focused native gate proved fresh sequence 1 was compared against retained prior-session sequences 10/20. The retained correction passed 29 native coordinator scenarios plus linked native checks, then the managed diagnostic gate exited 1 during an opaque pre-test build. Four diffs remain uncommitted at identity `d14a224507d682e9c67f83860e713fe0118bb4dd`; no rerun or repair occurred. |
-| DLV-291 | Spotify versions through production-only 0.3.23 `2031a8c` are physically rejected overall. The sole successful queue diagnostic was ordinary Queue navigation, not pinned refresh. The native coordinator restores a persisted authored layout without sending the generic selected-layout notification, so Spotify keeps pinned demand false and resets the queue to NotLoaded after Next/Previous while periodic redraws display Loading. Exact 0.3.23 remains installed under responsive PID 28912 only until production-only 0.3.24 is reviewed; no tests or integration before the next physical verdict. |
+| DLV-291 | Spotify versions through production-only 0.3.23 `2031a8c` are physically rejected overall. Clean production-only 0.3.24 `bbdc2368` corrects the proven generic restored-layout notification gap and is source-reviewed for exact physical promotion. Its coherent Release/package build passed; no tests ran. Package SHA-256 is `734E162386BD6B75BDC384263D7B6C03C00E60886D0ABC020EABCCDCA6A748E6`. User verdict and integration remain pending. |
 | DLV-248 | Deferred until explicit user promotion. |
 
 ## Integrated reliability — DLV-292 fresh-worker virtual-window recovery
