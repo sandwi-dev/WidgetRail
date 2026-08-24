@@ -98,7 +98,7 @@ historical evidence only; this file is the sole implementation authority.
 
 | Lane | Task/worktree | State |
 | --- | --- | --- |
-| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | DLV-289 cumulative production candidate through `da1f848` is source-accepted, build-green, unintegrated, and ready for exact-candidate physical review. The lane is idle. |
+| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | The DLV-289 foundation through `da1f848` is physically accepted but held unintegrated. One final production-only pinning-polish correction is Assigned on that exact clean tip; no tests run until the refined candidate receives a user verdict. |
 | Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | DLV-288 `8be0ebb` is accepted/integrated as `a37d614`; the lane is idle. Game Launcher tests remain explicitly deferred and out of scope. |
 
 ## Execution rules
@@ -776,10 +776,14 @@ Ownership and design boundary:
    unsupported/loading widget or a widget blocked by the one-pin cap exposes a
    disabled truthful `Pin` item and reason; never silently replace the existing
    pin. D-pad/left-stick navigates, `A` activates, and `B` or Menu dismisses and
-   restores the exact tray selection/focus. Menu remains a package action while
-   widget content owns focus, and LB, RB, RS, and other package actions remain
-   untouched. Keyboard `P`/`U`, pinned chrome, and pointer controls may remain
-   secondary fallbacks, not the discoverable primary route.
+   restores the exact tray selection/focus. While the tray owns focus and the
+   one pin exists, View enters that pin regardless of which tray item is
+   selected; `B` returns to the tray. This selected-item-independent rule is
+   the future-compatible seam for cycling several pins, but DLV-289 must not
+   implement multi-pin behavior. Menu and View remain package actions while
+   widget content owns focus, the existing View+Menu recovery route remains
+   intact, and LB, RB, RS, and other package actions remain untouched. Keyboard
+   `P`/`U`, pinned chrome, and pointer controls may remain secondary fallbacks.
 3. Preserve the current safety model: a new pin starts nonactivating and
    click-through; closing the main overlay cancels placement/focus, leaves the
    pin visible and updating, and forwards no hidden-overlay controller input.
@@ -787,7 +791,14 @@ Ownership and design boundary:
    or the documented focus-return action restores click-through; Close,
    Unpin, worker/runtime/package replacement, catalog removal, display failure,
    emergency hide, and host exit retain exact paired native/semantic teardown.
-4. Preserve host-owned placement bounds and persistence. `Adjust pinned widget`
+4. Preserve host-owned placement bounds and persistence. When a widget has no
+   valid saved placement, seed its first pin from the same host-resolved content
+   extent used by the ordinary widget surface, add only the compact pinned
+   chrome footprint, and clamp to the current monitor work area. A valid saved
+   user rectangle always wins, and later content updates must not auto-resize
+   it. Reduce the pinned surface to a compact header, thin border, and small
+   content inset; stronger move/resize affordances belong only to Adjust mode.
+   `Adjust pinned widget`
    enters one preview/commit/cancel transaction: left stick or D-pad moves,
    right stick resizes, `A` commits, and `B` cancels and restores the exact
    starting rectangle. Show a visible control legend and live outline or
@@ -796,7 +807,14 @@ Ownership and design boundary:
    and current DPI. Invalid persisted data, monitor removal, or an unusable
    work area fails closed or uses the existing safe fallback rather than
    creating an offscreen/undersized window.
-5. Enable the bundled `Now Playing` manifest as the first safe production
+5. Add one host-owned whole-surface opacity value per pinned widget. The pinned
+   Options menu exposes `Opacity — N%`; `A` enters a live preview transaction,
+   horizontal D-pad/left-stick changes 10 percentage points within 30–100%,
+   `A` commits and persists, and `B` restores the exact prior alpha. Default and
+   invalid persisted values resolve safely to 100% without corrupting a valid
+   placement. Honor the user's selected opacity in Windows High Contrast too;
+   do not add an automatic override, warning, or separate accessibility mode.
+6. Enable the bundled `Now Playing` manifest as the first safe production
    acceptance widget by setting only the existing generic
    `pinningSupported` declaration. This narrow manifest edit is explicitly
    included in the serialized platform assignment so the physical candidate
@@ -804,7 +822,7 @@ Ownership and design boundary:
    tree-shape, action, or style special case in native code. Other widget
    opt-ins remain independent package decisions after the generic experience is
    accepted.
-6. Before materially extending the application-sized native host, report a
+7. Before materially extending the application-sized native host, report a
    before/after responsibility map. Keep surface lifecycle and placement in the
    existing cohesive owners; do not grow `main.cpp` with a second pin state
    machine or duplicate focus/controller/accessibility knowledge.
@@ -822,17 +840,19 @@ Do not launch or terminate OverlayHost, install/reset packages, alter provider,
 account, credential, or configuration state, push, or touch Avalonia/AVP; the
 reviewer owns exact-candidate launch and the user owns the physical verdict.
 
-The user acceptance route must visibly establish: Now Playing can be pinned
+The final user acceptance route must visibly establish: Now Playing can be pinned
 through the tray Options menu; the pin is click-through by default;
 closing and reopening the main overlay preserves the same live pin; Interactive
-entry/exit and one safe current action work; controller and pointer Move/Resize
-commit and cancel are understandable; Menu while widget content is focused and
-LB/RB/RS continue reaching package actions; the committed rectangle can occupy the
-chosen monitor work area without crossing its safe bounds; and Unpin/Close
-removes the surface. Multi-monitor movement, taskbar/work-area changes, DPI,
-and worker replacement should be exercised when safely available, but a
-physical environment limitation is reported rather than converted into capture
-or harness work.
+entry/exit and one safe current action work; tray-scope View enters the pin
+regardless of tray selection and `B` returns; first-pin sizing shows the complete
+ordinary widget extent with compact chrome; the visible/accessibility guide is
+controller-first and accurate for the current mode; controller and pointer
+Move/Resize commit and cancel are understandable; whole-surface opacity previews,
+commits, cancels, persists, and stays within 30–100%; Menu/View while widget
+content is focused and LB/RB/RS continue reaching package actions; the committed
+rectangle stays inside the chosen monitor work area; and Unpin/Close removes the
+surface. Environment-limited monitor/DPI/worker cases are reported, not converted
+into capture or harness work.
 
 Only after the user physically accepts the production behavior may the same
 platform lane add focused regression coverage for the accepted visible Pin
@@ -845,8 +865,8 @@ or unchanged rerun. Commit the test follow-up separately and report numeric
 counts and retained manual debt.
 
 Out of scope: multiple simultaneous pins, arbitrary widget/native windows,
-auto-pin or startup rehydration of window authority, opacity controls, video or
-WebView, Windows App SDK, a new compositor, hidden-overlay controller forwarding,
+auto-pin or startup rehydration of window authority, video or WebView, Windows
+App SDK, a new compositor, hidden-overlay controller forwarding,
 exclusive-fullscreen/anti-cheat/HDR guarantees, new manifest/protocol fields,
 package-specific host behavior, enabling additional widget manifests, broad
 shell redesign, Game Launcher work/tests, Avalonia/AVP, publication, or push.
@@ -859,36 +879,30 @@ substantial merge conflict, or a materially different multi-monitor/product
 choice. Stop on the first unrelated build red after preserving exact evidence;
 do not repair or rerun it under DLV-289.
 
-Production commits `78f90d4` and `53ab7b0` are rejected cumulatively and remain
-unintegrated. They proved the packaged pin foundation builds, but their
-`LB+RB+RS` chord consumes controls that widgets may legitimately map and is not
-the accepted product interaction. Exact candidate PID 109508 was closed; the
-accepted integrated main Release is restored as PID 54348.
+The rejected chord and incomplete-menu history remains preserved in commits
+`78f90d4`, `53ab7b0`, and `ddb2d91`. Correction `da1f848` provides the vertical
+tray menu and coherent held-stick Adjust route; its Release build exited 0 and
+exact PID 94188 is responsive. The user physically accepted that foundation,
+then required the final sizing, compact-chrome, View-entry, controller-guide,
+and opacity polish above. The cumulative chain remains unintegrated and no tests
+are authorized until the refined exact candidate receives a verdict.
 
-The platform lane owns one complete production-only correction on top of
-`53ab7b0`. Remove the host chord and its guide prompt completely, implement the
-tray-focused Options menu and the single `Adjust pinned widget` transaction
-specified above, update only directly affected public feature documentation,
-and preserve the existing one-pin, surface, placement, focus, accessibility,
-generation, hidden-overlay, click-through, Interactive, persistence, and exact
-teardown owners. Do not add another HWND/coordinator/input/focus/semantic
-authority, auto-swap pins, change public protocol/manifest shape, add or run
-tests, control product processes, alter user state, or broaden shell behavior.
-Source-review the complete menu/focus/input/placement ordering, run one coherent
-packaged Release build, and commit one clean `[DLV-289]` production correction.
-The reviewer will inspect and launch that exact candidate for the user's verdict.
-
-Candidate `ddb2d91` was rejected before launch for its horizontal action ribbon,
-one-shot right-stick resize, and no-op Adjust keyboard route. Correction
-`da1f848` is source-accepted: it supplies the requested vertical adjacent menu
-with shared render/pointer/UIA row bounds and Up/Down navigation, routes held
-right-stick resize through the existing 360/125-ms controller cadence with
-deterministic lifecycle resets, and makes Adjust arrow keys explicitly move.
-The clean three-production-file correction preserves existing ownership and its
-coherent packaged Release build exited 0. Executable SHA-256 is
-`1A8C48349C90FEE122381B0E557D78DE350D433F6DD7D65BC50AD11B36D1DE2A`.
-No tests ran. Exact candidate PID 94188 is responsive and visibly awaiting the
-user's physical verdict before integration.
+The platform lane owns one production-only correction on clean tip `da1f848`.
+Implement all five refinements as one coherent build: reuse the normal resolved
+content extent only for first pin without valid placement; compact host chrome;
+make tray-scope View enter the sole pin independent of selected tile; publish
+mode-accurate controller-first visible and accessibility guidance; and add the
+30–100% persisted whole-window opacity transaction exactly specified above.
+Evolve the current host-owned placement/persistence model narrowly rather than
+adding a second store or state machine. Preserve the existing one HWND,
+coordinator, renderer, input/focus/semantic owners, generation revalidation,
+click-through/Interactive lifetime, package action isolation, work-area/DPI
+clamp, cancel restoration, and exact teardown. Do not add or run tests, control
+product processes, mutate installed/provider/account state, change public wire
+or manifest shape, touch Game Launcher or Avalonia/AVP, or push. Source-review
+the complete responsibility/input/persistence/lifecycle delta, build the
+coherent packaged Release once, and commit one clean `[DLV-289]` correction for
+reviewer launch and final physical verdict.
 
 ## Future architecture queue — maturity review additions
 
@@ -945,7 +959,7 @@ maturity queue is deliberately held until the visible physical verdict.
 | DLV-286 | The user physically accepted complete correction `a41bd72`; cumulative chain `d0ca29b` + `058efbc` + `a41bd72` is integrated as merge `627ba4c`. Responsive accepted PID 85884 already contains that production tip, so it remains running without a merge-only rebuild/relaunch. The dedicated Game Launcher test project remains untouched/deferred, and the broader Bridge aggregate must not be repeated. |
 | DLV-287 | Production/test `dccf49a` is accepted and integrated as `fc91157`; focused Release build passed and WidgetSdk protocol contracts passed 89/89. Exact prior PID 85884 exited gracefully. Refreshed integrated PID 113716 is responsive, has no startup error, and admitted the generic full-application and Spotify widgets. |
 | DLV-288 | Documentation `8be0ebb` is accepted and integrated as `a37d614`; scoped link/reference/contract inspection passed. Its single documentation gate stopped only on three pre-existing OverlayHost packaging assertions, with no DLV-288 link failure, and was not rerun. No runtime input changed, so PID 113716 remains accepted. |
-| DLV-289 | Cumulative candidate through correction `da1f848` is source-accepted, build-green, and unintegrated. Exact-candidate physical review is next for the tray Options menu, Pin/Adjust/Unpin, move/resize, persistence, and content-action isolation; no tests ran. |
+| DLV-289 | Foundation through `da1f848` is physically accepted but held unintegrated. Final production polish for initial sizing, compact chrome, selection-independent tray View entry, controller-first guidance, and persisted 30–100% opacity is Assigned; no tests run before the refined verdict. |
 | DLV-248 | Deferred until explicit user promotion. |
 
 ## Recent dispositions
