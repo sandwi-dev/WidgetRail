@@ -6075,7 +6075,7 @@ private:
             (pressed & XINPUT_GAMEPAD_RIGHT_THUMB) != 0 &&
             (buttons & XINPUT_GAMEPAD_LEFT_SHOULDER) != 0 &&
             (buttons & XINPUT_GAMEPAD_RIGHT_SHOULDER) != 0;
-        if (pinChordPressed && pinAction.enabled &&
+        if (pinChordPressed && pinAction.visible &&
             pinnedSurfaceCoordinator_.placementMode() ==
                 widgetrail::pinned::PlacementMode::None) {
             ToggleCurrentPinState();
