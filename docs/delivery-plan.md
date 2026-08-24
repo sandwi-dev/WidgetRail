@@ -286,7 +286,7 @@ historical evidence only; this file is the sole implementation authority.
 | Lane | Task/worktree | State |
 | --- | --- | --- |
 | Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | DLV-474 correction passed the native gate, then the managed sanitized-terminal gate stopped on an opaque pre-test build red. Four intentional diffs remain retained uncommitted in the isolated worktree; no rerun or repair is authorized. DLV-473 test-only `34f15ae9` remains blocked after its first red; the standing tree's two DLV-293 test diffs remain byte-identical and must not be touched. |
-| Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | Assigned nonvisual DLV-295 SDK handle/lifecycle and public test-host work on clean branch `codex/dlv-295-pinned-layout-authoring`. Review and integrate automatically when focused gates are green. DLV-298 then migrates Spotify and is the next user-acceptance boundary; its regressions remain post-migration. |
+| Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | DLV-295 corrected nine-file SDK diff is retained uncommitted on `codex/dlv-295-pinned-layout-authoring`: direct SDK compile is green, but the compatibility launcher twice exited 1 before tests with only `Build failed` and no result/binlog. Preserve it as an explicitly unaccepted evidence commit, then execute Assigned DLV-299 from clean main. DLV-295 resumes after that prerequisite; DLV-298 remains the next user-acceptance boundary. |
 
 ## Execution rules
 
@@ -856,12 +856,7 @@ cumulative stack is accepted and integrated; DLV-294 is closed.
 
 ### DLV-295 pinned-layout authoring ergonomics
 
-Lane: widgets, baseline accepted integration `e7ebdbe`. Status: first attempt
-retained uncommitted after its compatibility gate failed before tests with only
-`Build failed`; focused harness did not run. Source review also rejects its
-authoring shape: metadata remained repeated per render, the protected creation
-entrypoint was absent from the API baseline, and `CurrentPresentation` exposed
-unnecessary last-rendered state. Correct it before a new gate sequence.
+Lane: widgets, baseline accepted integration `e7ebdbe`. Status: dependency-blocked by DLV-299. The corrected nine-file diff is retained uncommitted after two compatibility invocations exited 1 before tests with only `Build failed`, no result/binlog, and stale compatibility outputs; its separate direct SDK compile passed. Preserve it in an explicitly unaccepted evidence commit; do not integrate it or start DLV-298 before DLV-299 is green.
 
 Define stable ID, name, surface, initial focus, and input scope once in an
 optional widget-instance handle whose compatibility-tracked author entrypoint
@@ -881,6 +876,11 @@ Update API baselines/guidance, then run the corrected SDK/public-API and focused
 pinned-layout harness gates once. Do not edit Spotify; it is DLV-298's physical
 proof. Stop for protocol revision, hidden window authority, destructive state,
 or mandatory handles.
+
+### DLV-299 compatibility test-launcher diagnosis and repair
+
+Lane: widgets, immediate nonvisual prerequisite to DLV-295. Status: Assigned. Baseline: clean local `main` at the latest planner tip; preserve the DLV-295 evidence commit on its existing branch, then create `codex/dlv-299-compatibility-runner` from this baseline. Ownership: the existing WidgetSdk compatibility MSTest project and repository verification invocation only. Diagnose the exact command `dotnet test --project tests/WidgetSdk.Compatibility.Tests/WidgetSdk.Compatibility.Tests.csproj --configuration Release --no-restore --no-ansi --no-progress --output Detailed --minimum-expected-tests 12`. Both prior attempts terminated in about four seconds before tests and retained no diagnostic. Use one direct compatibility-project Release build with durable stdout/stderr and a binary log to expose the concrete compile/launcher failure; do not repeat the unchanged opaque command first. Compare with one currently green MSTest.Sdk 4.3.2 invocation and correct only a proven project or repository-runner defect. If the direct build instead proves a DLV-295 source defect, make no DLV-299 implementation change: report the exact compiler evidence so DLV-295 can own it.
+Acceptance: retain the concrete cause; any repository-owned correction is minimal and preserves Microsoft Testing Platform discovery; the supported compatibility invocation reports 12/12. Verification is the one diagnostic build followed, only after a justified correction, by the focused compatibility step once. A verification-manifest change additionally requires its existing verifier self-tests but not the complete product aggregate. Exclude SDK feature/API changes, Spotify, Game Launcher, protocol/native/package code, live state, broad tests, Avalonia/AVP, and push. Stop for environment-only failure, network/dependency acquisition, destructive recovery, a public API decision, unrelated first red, or no concrete repository-owned cause. Review/integrate automatically when green; no build/relaunch for this test-infrastructure-only prerequisite.
 
 ### DLV-298 Spotify high-level pinned-layout migration
 
@@ -919,25 +919,23 @@ no live provider, installation, Game Launcher tests, broad aggregate, or push.
 
 ## Ordered queues
 
-1. DLV-295 pinned-layout authoring ergonomics: typed handles, SDK-managed
-   selection/cancellation/invalidation, and focused public test host; review and
-   integrate automatically when green.
-2. DLV-298 Spotify high-level migration and physical proof; next user verdict.
-3. DLV-296 pinned-layout preview and diagnostics.
-4. DLV-297 pinned-layout templates and examples.
-5. DLV-474 fresh-session sequence-authority correction: retained correction
+1. DLV-299 compatibility launcher: expose and repair the concrete pre-test failure; integrate automatically when green.
+2. DLV-295 pinned-layout authoring ergonomics: resume the preserved corrected diff on accepted DLV-299, run focused gates once, and integrate automatically when green.
+3. DLV-298 Spotify high-level migration and physical proof; next user verdict.
+4. DLV-296 pinned-layout preview and diagnostics.
+5. DLV-297 pinned-layout templates and examples.
+6. DLV-474 fresh-session sequence-authority correction: retained correction
    passed its native gate, then the managed gate stopped on an opaque pre-test
    build red. Four diffs remain uncommitted; no rerun or repair is authorized.
-6. DLV-291 focused post-acceptance evidence: native 108/108 green; obsolete
+7. DLV-291 focused post-acceptance evidence: native 108/108 green; obsolete
    low-level Spotify attempt is retained only as unaccepted `bdda057`. Its
    behavior regression moves into DLV-295 after the high-level migration.
-7. DLV-473 focused post-acceptance tests: clean `34f15ae9` is retained
+8. DLV-473 focused post-acceptance tests: clean `34f15ae9` is retained
    unintegrated after the first SDK gate stopped before tests on an opaque build
    red; later gates did not run and no rerun is authorized.
-8. DLV-294 generic pinned-layout projections: accepted/integrated as `60536ff`; closed.
-9. DLV-293 focused test debt: retained uncommitted after unrelated Game Launcher stationarity red; no rerun under the explicit deferral.
-10. Remaining maturity deliverables after the pinned-layout author workflow.
-11. DLV-248 remains deliberately deferred until explicit user promotion.
+9. DLV-294 generic pinned-layout projections: accepted/integrated as `60536ff`; closed.
+10. DLV-293 focused test debt: retained uncommitted after unrelated Game Launcher stationarity red; no rerun under the explicit deferral.
+11. Remaining maturity deliverables after the pinned-layout author workflow; DLV-248 stays deferred until explicit user promotion.
 
 DLV-473 production is accepted/integrated and its tests are post-acceptance
 work. DLV-291 versions through 0.3.23 are physically rejected overall. Reviewed
