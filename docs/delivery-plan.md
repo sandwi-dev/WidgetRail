@@ -738,30 +738,41 @@ installed 0.3.23 path. The worker admitted current visible snapshots, the
 pinned Spotify surface was recreated, and the startup log has no candidate
 failure.
 
-Physical disposition: 0.3.23 is rejected. With the pinned Up Next surface left
-visible, the queue remained Loading even though the new package diagnostic
-proved operation 1/generation 3 was admitted at `20:29:59.497Z`, acquired the
-provider gate immediately, issued HTTP attempt 1, and completed successfully in
-320 ms. Opening the ordinary Queue later publishes the already-loaded rows.
-Source inspection identifies the shared publication gap: `WidgetCursorResource`
-commits its terminal Ready/Error snapshot inside `LoadCoreAsync`, but the normal
-started-operation success/error path does not invalidate the owning widget after
-that commit. A later unrelated invalidation therefore exposes the terminal
-snapshot. The provider, deadline, and Spotify pinned projection are not the
-remaining cause.
+Physical disposition: 0.3.23 is rejected. The initial queue/provider hypothesis
+and subsequent cursor-terminal-publication hypothesis are both disproven. The
+seek bar forces a complete widget invalidation every 250 ms while playing, so a
+committed queue snapshot would already be visible. Exact log correlation shows
+the sole queue operation was admitted only after ordinary Queue navigation at
+13:29:59 and successfully published 20 rows; it was not a pinned Next/Previous
+refresh.
 
-Produce one production-only 0.3.24 correction. Fix the generic public
-`WidgetCursorResource` owner so an accepted asynchronous cursor load publishes
-its Loading/Refreshing transition and its terminal Ready/empty/Error commit,
-without publishing a stale, superseded, canceled, reset, or destroying result
-and without duplicate invalidation storms. Keep one cursor/resource owner; do
-not add Spotify-specific SDK behavior, another queue timer, provider retry, or
-host projection special case. Use the existing package only as the physical
-proof: bump the immutable Spotify package version, build one coherent Release
-and package containing the corrected SDK, commit the production-only candidate,
-and stop before tests, install, launch, or integration. After planner source
-review, replace 0.3.23 and repeat the exact pinned Next/Previous sequence. Tests
-remain post-acceptance under physical-first ordering.
+Concrete cause: the native pinned coordinator restores the persisted authored
+Up Next layout by assigning `selectedLayoutIndex_` in
+`CreateWindowForAdmission`, but it does not queue the corresponding generic
+selected-layout notification. Spotify therefore renders the host-selected Up
+Next projection while `_upNextPinnedLayoutSelected` remains false. After
+Next/Previous, `InvalidateQueueCollection` sees no ordinary Queue or pinned Up
+Next demand, resets the cursor to NotLoaded, and the pinned presentation renders
+NotLoaded with the same Loading indicator. Periodic seek-bar invalidations keep
+publishing that state. Layout-cycle/revocation notifications already use
+`QueueLayoutSelection`; persisted initial selection is the missing lifecycle
+edge. Cursor admission/cleanup is not the incident owner.
+
+Produce one production-only 0.3.24 correction at the generic native
+pinned-layout selection-notification boundary. When a persisted authored layout
+is restored and actually becomes the visible admitted projection, notify the
+owning current widget/runtime generation through the same bounded generic
+selection channel used by layout cycling. Emit the selection exactly once for
+that admitted selection, after the coordinator has current authority; do not
+notify a stale/replaced admission, the built-in whole-widget fallback, or a
+layout that was not restored. Preserve existing cycle, revocation, unpin,
+runtime-replacement, and shutdown semantics. Do not add Spotify identity/data to
+the host, change cursor/operation policy, add another timer/provider retry, or
+special-case projection rendering. Bump the immutable Spotify package to
+0.3.24 as the physical proof, build one coherent Release and package, commit the
+production-only candidate, and stop before tests, install, launch, or
+integration. After planner source review, replace 0.3.23 and repeat the exact
+pinned Next/Previous sequence. Tests remain post-acceptance.
 
 ### DLV-294 generic pinned-layout projections
 
@@ -819,11 +830,11 @@ without explicit promotion.
 
 1. DLV-291 Spotify compact pinned layouts: versions through production-only
    0.3.23 `2031a8c` are physically rejected. The 0.3.23 diagnostic proves the
-   queue request succeeds in 320 ms while the pinned presentation remains
-   Loading; source review identifies the generic `WidgetCursorResource`
-   terminal-invalidation gap. Assign production-only 0.3.24 as the shared SDK
-   correction and Spotify physical proof. No tests or integration before the
-   user verdict.
+   only queue request was ordinary Queue navigation, not pinned refresh. The
+   generic native coordinator restores persisted authored layout selection
+   without notifying the package, so Spotify resets the undemanded queue to
+   NotLoaded. Assign production-only 0.3.24 as that lifecycle correction and
+   Spotify physical proof. No tests or integration before the user verdict.
 2. DLV-474 fresh-session sequence-authority correction: retained correction
    passed its native gate, then the managed gate stopped on an opaque pre-test
    build red. Four diffs remain uncommitted; no rerun or repair is authorized.
@@ -875,7 +886,7 @@ tests remain deferred.
 | DLV-292 | `ff5e7e4` binds each Bridge-cached snapshot to its worker start ordinal and uses existing typed stale-base recovery after replacement. Production build and three focused lifecycle/native gates passed; integrated as `80cdb10`. The user accepted PID 81980 by default because live reproduction is impractical. |
 | DLV-293 | Production `a9d36cf` is physically accepted and integrated as `10c3e26`; PID 137288 already contains that production tip. New catalog-removal/focus/Guide assertions completed before the focused host gate stopped on an older Game Launcher stationarity correlation. The pin-coordinator suite did not run; both uncommitted test diffs remain retained, with no rerun or Game Launcher repair authorized. |
 | DLV-474 | Production `a830f026` was provisionally accepted by user disposition because the historical bridge-session loss could not be reproduced, then rejected before integration when the first focused native gate proved fresh sequence 1 was compared against retained prior-session sequences 10/20. The retained correction passed 29 native coordinator scenarios plus linked native checks, then the managed diagnostic gate exited 1 during an opaque pre-test build. Four diffs remain uncommitted at identity `d14a224507d682e9c67f83860e713fe0118bb4dd`; no rerun or repair occurred. |
-| DLV-291 | Spotify versions through production-only 0.3.23 `2031a8c` are physically rejected overall. Its redacted diagnostic proved the pinned queue load succeeded in 320 ms while the UI remained Loading; opening ordinary Queue later published the rows. The remaining defect is the generic `WidgetCursorResource` terminal-invalidation gap. Exact 0.3.23 remains installed under responsive PID 28912 only until production-only 0.3.24 is reviewed; no tests or integration before the next physical verdict. |
+| DLV-291 | Spotify versions through production-only 0.3.23 `2031a8c` are physically rejected overall. The sole successful queue diagnostic was ordinary Queue navigation, not pinned refresh. The native coordinator restores a persisted authored layout without sending the generic selected-layout notification, so Spotify keeps pinned demand false and resets the queue to NotLoaded after Next/Previous while periodic redraws display Loading. Exact 0.3.23 remains installed under responsive PID 28912 only until production-only 0.3.24 is reviewed; no tests or integration before the next physical verdict. |
 | DLV-248 | Deferred until explicit user promotion. |
 
 ## Integrated reliability — DLV-292 fresh-worker virtual-window recovery
