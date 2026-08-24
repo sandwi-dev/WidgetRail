@@ -286,7 +286,7 @@ historical evidence only; this file is the sole implementation authority.
 | Lane | Task/worktree | State |
 | --- | --- | --- |
 | Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | DLV-474 correction passed the native gate, then the managed sanitized-terminal gate stopped on an opaque pre-test build red. Four intentional diffs remain retained uncommitted in the isolated worktree; no rerun or repair is authorized. DLV-473 test-only `34f15ae9` remains blocked after its first red; the standing tree's two DLV-293 test diffs remain byte-identical and must not be touched. |
-| Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | DLV-291 0.3.19 `9dda3bf` is physically rejected. Native geometry conclusively proves authored `width: 0px` collapses player descendants and typed `flex-basis: 0px` preserves both columns. Active 0.3.20 work applies that proof, demand-gated queue refresh, and bounded multi-row pinned queue. Game Launcher tests remain deferred/out of scope. |
+| Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | DLV-291 0.3.21 `77122d3` is physically rejected overall. Active 0.3.22 work preserves pinned-layout demand across ordinary deactivation, removes the undocumented queue/playback generation guard and retry, and makes Next/Previous perform exactly one demanded queue refresh after playback reconciliation. Game Launcher tests remain deferred/out of scope. |
 
 ## Execution rules
 
@@ -597,25 +597,27 @@ projected items. Keep the main Queue cursor unchanged, but give the pinned
 two-row projection an anchor that is present in that projection and preserve
 typed focus/scroll behavior. Return the exact validation code as evidence.
 
-Treat the incorrect next item as separate package/provider-generation work.
-The queue response already carries `CurrentlyPlaying`, but the current loader
-ignores it. A queue refresh fired immediately by a polled playback identity
-change may therefore commit a response still correlated to the previous track
-and never refresh again. Add a bounded reconciliation at the existing queue
-load/refresh boundary: compare the response's currently-playing identity with
-the latest demanded playback identity, do not publish a mismatched generation,
-and retry/defer only within an explicit small bound. Do not poll the queue on
-every playback tick, add a second timer/provider owner, or alter the host. Build
-one immutable 0.3.21 package and stop before install, tests, or integration.
+Treat the incorrect next item as provider queue behavior, not as a package-
+invented generation contract. Spotify's documented `GET /me/player/queue`
+response contains `currently_playing` and `queue`, but does not define
+`currently_playing` as a generation token or promise atomic consistency with a
+separate playback-state request. Spotify separately documents that Autoplay
+chooses similar songs after a user's album, playlist, or selection ends. The
+user's physical evidence shows playlist-backed queue order is correct while
+Autoplay can expose a different next-item behavior. Therefore consume one
+successful queue response as Spotify's authoritative queue for that request;
+do not reject or retry it by comparing its current item with independently
+sampled playback state. Do not poll the queue on every playback tick, add a
+second timer/provider owner, or alter the host.
 
 Review disposition: clean production commit `77122d3` proves the rejected
 shared-anchor case fails exactly with `missing_collection_anchor`, then selects
 an anchor present among the two projected rows without changing ordinary Queue
-state. Queue loading now compares every response's `CurrentlyPlaying` identity
-with the latest demanded playback identity, never normalizes or publishes a
-mismatch, and allows at most two total requests through the existing resource
-owner. Coherent tests-skipped Release and exact package builds exited 0; no
-tests ran. The 1,171,340-byte immutable 0.3.21 package SHA-256 is
+state. Its additional queue/playback generation comparison and two-attempt
+retry are now rejected: the public Spotify contract does not provide that
+cross-request generation guarantee, and user evidence distinguishes the
+Autoplay case from playlist-backed playback. Coherent tests-skipped Release and
+exact package builds exited 0; no tests ran. The 1,171,340-byte immutable 0.3.21 package SHA-256 is
 `F6AE87ADDB82C8DA4C643130BD9009274AA9430D58E588C8BCD0E6A97628DB0D`;
 final tree is `88eac9f1b30e97424dc9ebaa51123810d3bd04db`. Reviewer source inspection
 accepts this candidate for physical promotion only; it remains unintegrated.
@@ -640,18 +642,23 @@ change still calls the existing bounded queue refresh owner exactly once, while
 switching away/unpinning prevents further queue demand. Change package code
 only, build once, and stop before install, tests, integration, or push.
 
+Remove the 0.3.21 queue/playback generation guard and its retry machinery in
+0.3.22. A successful `GET /me/player/queue` response is the authoritative
+provider result for that request even when its `currently_playing` field differs
+from an independently sampled playback response. Preserve the proven projected-
+anchor correction. Do not synthesize playlist order, special-case Autoplay,
+hide a provider result, or add delay/retry polling to chase agreement.
+
 The same 0.3.22 correction also owns the active pinned-control ordering exposed
 by user review. Pressing Next in the focused pinned surface currently completes
 the provider control, calls `InvalidateQueueCollection` while `_playback` still
-identifies the old track, and only then calls `RefreshPlaybackAsync`. The 0.3.21
-generation guard can therefore reject the newly advanced queue against stale
-local playback, while the later authoritative playback transition starts a
-second competing queue refresh; the pinned projection remains at Loading.
-After Next/Previous, reconcile authoritative playback first and let the real
-identity transition invoke the existing queue invalidation exactly once. Do not
-start a pre-reconciliation queue refresh, weaken queue/playback correlation, or
-special-case the pinned renderer. Prove active pinned Next/Previous reaches a
-terminal refreshed or retained-error queue state and never remains Loading.
+identifies the old track, and only then calls `RefreshPlaybackAsync`. Reconcile
+authoritative playback first and run one demanded queue refresh after the
+control path; do not start the obsolete pre-reconciliation load or allow the
+playback identity callback to create a competing duplicate load. The queue
+response itself is authoritative and must reach a terminal refreshed or
+retained-error state rather than remain Loading. Do not special-case the pinned
+renderer.
 
 ### DLV-294 generic pinned-layout projections
 
@@ -713,11 +720,13 @@ without explicit promotion.
    `OnDeactivatedAsync` clears its selected-layout demand while the pin and
    unchanged host selection remain alive. Produce one immutable 0.3.22 package
    correction that preserves demand across ordinary deactivation and clears it
-   only on selection change/unpin or destruction/replacement. Also reorder
-   package-originated Next/Previous completion: fetch authoritative playback
-   before queue invalidation and let the identity transition refresh Queue once,
-   eliminating the stale-identity competing load that leaves pinned Up Next at
-   Loading. Build once and stop before install, tests, or integration.
+   only on selection change/unpin or destruction/replacement. Remove the
+   undocumented 0.3.21 queue/playback generation guard and bounded retry; accept
+   one successful Spotify queue response as authoritative. Also reorder
+   package-originated Next/Previous completion so authoritative playback is
+   reconciled before exactly one demanded queue refresh, eliminating competing
+   loads that leave pinned Up Next at Loading. Build once and stop before
+   install, tests, or integration.
 2. DLV-474 fresh-session sequence-authority correction: retained correction
    passed its native gate, then the managed gate stopped on an opaque pre-test
    build red. Four diffs remain uncommitted; no rerun or repair is authorized.
@@ -769,7 +778,7 @@ tests remain deferred.
 | DLV-292 | `ff5e7e4` binds each Bridge-cached snapshot to its worker start ordinal and uses existing typed stale-base recovery after replacement. Production build and three focused lifecycle/native gates passed; integrated as `80cdb10`. The user accepted PID 81980 by default because live reproduction is impractical. |
 | DLV-293 | Production `a9d36cf` is physically accepted and integrated as `10c3e26`; PID 137288 already contains that production tip. New catalog-removal/focus/Guide assertions completed before the focused host gate stopped on an older Game Launcher stationarity correlation. The pin-coordinator suite did not run; both uncommitted test diffs remain retained, with no rerun or Game Launcher repair authorized. |
 | DLV-474 | Production `a830f026` was provisionally accepted by user disposition because the historical bridge-session loss could not be reproduced, then rejected before integration when the first focused native gate proved fresh sequence 1 was compared against retained prior-session sequences 10/20. The retained correction passed 29 native coordinator scenarios plus linked native checks, then the managed diagnostic gate exited 1 during an opaque pre-test build. Four diffs remain uncommitted at identity `d14a224507d682e9c67f83860e713fe0118bb4dd`; no rerun or repair occurred. |
-| DLV-291 | Spotify versions through 0.3.21 are physically rejected overall. Clean 0.3.21 `77122d3` fixes the prior `missing_collection_anchor` runtime failure and adds bounded queue/playback generation correlation; exact-hash package `F6AE87ADDB82C8DA4C643130BD9009274AA9430D58E588C8BCD0E6A97628DB0D` is the sole installed active version under responsive PID 110872. User review confirms the runtime error is fixed but pinned Up Next stops refreshing after overlay deactivation until main Queue is opened; source proves `OnDeactivatedAsync` wrongly clears persistent selected-layout demand. A second active-overlay reproduction shows pinned Next leaves Queue at Loading; source proves the command path invalidates Queue against stale pre-refresh `_playback` before authoritative playback reconciliation, then can start a competing identity-triggered refresh. Active 0.3.22 must fix both lifecycle and action ordering at package scope. No tests or integration. |
+| DLV-291 | Spotify versions through 0.3.21 are physically rejected overall. Clean 0.3.21 `77122d3` fixes the prior `missing_collection_anchor` runtime failure, but its queue/playback generation guard is also rejected because Spotify does not document cross-endpoint snapshot consistency and user evidence shows the discrepancy is Autoplay-specific while playlist-backed queues are correct. Exact-hash package `F6AE87ADDB82C8DA4C643130BD9009274AA9430D58E588C8BCD0E6A97628DB0D` is the sole installed active version under responsive PID 110872. User review confirms the runtime error is fixed but pinned Up Next stops refreshing after overlay deactivation until main Queue is opened; source proves `OnDeactivatedAsync` wrongly clears persistent selected-layout demand. A second active-overlay reproduction shows pinned Next leaves Queue at Loading; source proves the command path starts queue work before playback reconciliation and can create competing refreshes. Active 0.3.22 must preserve selected-layout demand, remove the generation guard/retry, and perform exactly one demanded post-control queue refresh. No tests or integration. |
 | DLV-248 | Deferred until explicit user promotion. |
 
 ## Integrated reliability — DLV-292 fresh-worker virtual-window recovery
