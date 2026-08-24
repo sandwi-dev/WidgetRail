@@ -10,6 +10,15 @@ public static class ViewSnapshotValidator
     public static IReadOnlyList<ProtocolValidationError> Validate(ViewSnapshot snapshot)
     {
         ArgumentNullException.ThrowIfNull(snapshot);
+        return Validate(snapshot, ProtocolVersionRequirements.Calculate(snapshot));
+    }
+
+    internal static IReadOnlyList<ProtocolValidationError> Validate(
+        ViewSnapshot snapshot,
+        ProtocolVersionRequirements requirements)
+    {
+        ArgumentNullException.ThrowIfNull(snapshot);
+        ArgumentNullException.ThrowIfNull(requirements);
         var errors = new List<ProtocolValidationError>();
         var ids = new Dictionary<string, (ViewNode Node, string Path, string ScopeKey)>(StringComparer.Ordinal);
         var inputScopes = new Dictionary<string, string>(StringComparer.Ordinal);
@@ -19,6 +28,11 @@ public static class ViewSnapshotValidator
             snapshot.ProtocolVersion > ProtocolConstants.CurrentVersion)
             Add("$.protocolVersion", "unsupported_version",
                 $"Expected protocol version {ProtocolConstants.MinimumSupportedVersion}-{ProtocolConstants.CurrentVersion}.");
+        foreach (var requirement in requirements.Requirements)
+        {
+            if (snapshot.ProtocolVersion < requirement.Version)
+                Add(requirement.Path, "feature_requires_version", requirement.Message);
+        }
         CheckIdentifier(snapshot.WidgetInstanceId, "$.widgetInstanceId", "widget instance ID");
         ValidateSurfaceHints();
         Visit(snapshot.Root, "$.root", 1, "$.root");
@@ -56,9 +70,6 @@ public static class ViewSnapshotValidator
                 Add($"$.quickActions[{index}].button", "duplicate_button", "A dashboard button can trigger only one quick action.");
             if (quickAction.Capability is { } capability)
             {
-                if (snapshot.ProtocolVersion < ProtocolConstants.DashboardGestureAuthorityVersion)
-                    Add($"$.quickActions[{index}].capability", "feature_requires_version",
-                        $"Dashboard capability authority requires protocol version {ProtocolConstants.DashboardGestureAuthorityVersion} or later.");
                 CheckCapabilityIdentifier(capability.CapabilityId,
                     $"$.quickActions[{index}].capability.capabilityId", "capability ID");
                 CheckIdentifier(capability.OperationId,
@@ -100,9 +111,6 @@ public static class ViewSnapshotValidator
         void ValidateSurfaceHints()
         {
             if (snapshot.Surface is null) return;
-            if (snapshot.ProtocolVersion < ProtocolConstants.SurfaceHintsVersion)
-                Add("$.surface", "feature_requires_version",
-                    $"Surface hints require protocol version {ProtocolConstants.SurfaceHintsVersion} or later.");
             if (!Enum.IsDefined(snapshot.Surface.Mode))
                 Add("$.surface.mode", "invalid_surface_mode", "The surface mode is not supported.");
             if (!Enum.IsDefined(snapshot.Surface.WidthMode))
@@ -111,11 +119,6 @@ public static class ViewSnapshotValidator
             if (!Enum.IsDefined(snapshot.Surface.HeightMode))
                 Add("$.surface.heightMode", "invalid_surface_axis_mode",
                     "The surface height mode is not supported.");
-            if ((snapshot.Surface.WidthMode != WidgetSurfaceAxisMode.Preferred ||
-                 snapshot.Surface.HeightMode != WidgetSurfaceAxisMode.Preferred) &&
-                snapshot.ProtocolVersion < ProtocolConstants.SurfaceAxisSizingVersion)
-                Add("$.surface", "feature_requires_version",
-                    $"Surface axis sizing requires protocol version {ProtocolConstants.SurfaceAxisSizingVersion} or later.");
             CheckPair(snapshot.Surface.PreferredWidth, snapshot.Surface.PreferredHeight,
                 "preferred", ProtocolConstants.MinimumSurfaceWidth,
                 ProtocolConstants.MaximumSurfaceWidth,
@@ -189,9 +192,6 @@ public static class ViewSnapshotValidator
                 Add($"{path}.kind", "invalid_node_kind", "The node kind is not supported.");
             if (node.VisibleWhen is { } visibility)
             {
-                if (snapshot.ProtocolVersion < ProtocolConstants.ResponsiveVisibilityVersion)
-                    Add($"{path}.visibleWhen", "feature_requires_version",
-                        $"Responsive visibility requires protocol version {ProtocolConstants.ResponsiveVisibilityVersion} or later.");
                 if (!Enum.IsDefined(visibility))
                     Add($"{path}.visibleWhen", "invalid_responsive_visibility",
                         "The responsive visibility mode is not supported.");
@@ -207,9 +207,6 @@ public static class ViewSnapshotValidator
             CheckString(node.ValueChangedActionId, $"{path}.valueChangedActionId");
             if (node.FocusPersistenceId is not null)
             {
-                if (snapshot.ProtocolVersion < ProtocolConstants.FocusPersistenceVersion)
-                    Add($"{path}.focusPersistenceId", "feature_requires_version",
-                        $"Focus persistence requires protocol version {ProtocolConstants.FocusPersistenceVersion} or later.");
                 CheckIdentifier(node.FocusPersistenceId,
                     $"{path}.focusPersistenceId", "focus persistence ID");
                 if (!node.IsFocusable)
@@ -225,9 +222,6 @@ public static class ViewSnapshotValidator
             var isActionSurface = node.Kind is ViewNodeKind.ActionSurface;
             if (node.Kind is ViewNodeKind.LoadingIndicator)
             {
-                if (snapshot.ProtocolVersion < ProtocolConstants.LoadingIndicatorVersion)
-                    Add(path, "feature_requires_version",
-                        $"LoadingIndicator requires protocol version {ProtocolConstants.LoadingIndicatorVersion} or later.");
                 if (string.IsNullOrWhiteSpace(node.AccessibilityLabel))
                     Add($"{path}.accessibilityLabel", "required",
                         "A loading indicator requires an accessibility label.");
@@ -250,9 +244,6 @@ public static class ViewSnapshotValidator
             }
             if (node.Kind is ViewNodeKind.Scroll)
             {
-                if (snapshot.ProtocolVersion < ProtocolConstants.ScrollContainerVersion)
-                    Add(path, "feature_requires_version",
-                        $"Scroll requires protocol version {ProtocolConstants.ScrollContainerVersion} or later.");
                 if (node.ScrollAxis is null)
                     Add($"{path}.scrollAxis", "required", "A scroll container requires an axis.");
                 else if (!Enum.IsDefined(node.ScrollAxis.Value))
@@ -262,9 +253,6 @@ public static class ViewSnapshotValidator
                     node.ScrollPaginationThreshold is not null;
                 if (hasPagination)
                 {
-                    if (snapshot.ProtocolVersion < ProtocolConstants.ScrollPaginationVersion)
-                        Add(path, "feature_requires_version",
-                            $"Scroll pagination requires protocol version {ProtocolConstants.ScrollPaginationVersion} or later.");
                     if (node.ScrollNearStartActionId is not null)
                         CheckIdentifier(node.ScrollNearStartActionId,
                             $"{path}.scrollNearStartActionId", "scroll near-start action ID");
@@ -285,9 +273,6 @@ public static class ViewSnapshotValidator
                     CollectCollectionItems(node, path);
                 if (node.CollectionAnchorKey is not null)
                 {
-                    if (snapshot.ProtocolVersion < ProtocolConstants.CursorCollectionVersion)
-                        Add($"{path}.collectionAnchorKey", "feature_requires_version",
-                            $"Cursor collections require protocol version {ProtocolConstants.CursorCollectionVersion} or later.");
                     CheckIdentifier(node.CollectionAnchorKey,
                         $"{path}.collectionAnchorKey", "collection anchor key");
                     if (itemCount > ProtocolConstants.MaximumCursorCollectionItems)
@@ -305,9 +290,6 @@ public static class ViewSnapshotValidator
 
                 if (node.VirtualCollectionWindow is { } window)
                 {
-                    if (snapshot.ProtocolVersion < ProtocolConstants.VirtualCollectionWindowVersion)
-                        Add($"{path}.virtualCollectionWindow", "feature_requires_version",
-                            $"Virtual collection windows require protocol version {ProtocolConstants.VirtualCollectionWindowVersion} or later.");
                     if (node.CollectionAnchorKey is null || itemCount == 0)
                         Add($"{path}.virtualCollectionWindow", "virtual_collection_items_required",
                             "A virtual collection window requires a non-empty keyed cursor collection.");
@@ -400,17 +382,11 @@ public static class ViewSnapshotValidator
             }
             if (node.CollectionItemKey is not null)
             {
-                if (snapshot.ProtocolVersion < ProtocolConstants.CursorCollectionVersion)
-                    Add($"{path}.collectionItemKey", "feature_requires_version",
-                        $"Cursor collection item keys require protocol version {ProtocolConstants.CursorCollectionVersion} or later.");
                 CheckIdentifier(node.CollectionItemKey,
                     $"{path}.collectionItemKey", "collection item key");
             }
             if (node.Kind is ViewNodeKind.Grid)
             {
-                if (snapshot.ProtocolVersion < ProtocolConstants.ResponsiveGridVersion)
-                    Add(path, "feature_requires_version",
-                        $"Grid requires protocol version {ProtocolConstants.ResponsiveGridVersion} or later.");
                 if (node.GridMinimumColumnWidth is not { } minimumColumnWidth ||
                     !double.IsFinite(minimumColumnWidth) ||
                     minimumColumnWidth < ProtocolConstants.MinimumGridColumnWidth ||
@@ -429,9 +405,6 @@ public static class ViewSnapshotValidator
             }
             if (isActionSurface)
             {
-                if (snapshot.ProtocolVersion < ProtocolConstants.ActionSurfaceVersion)
-                    Add(path, "feature_requires_version",
-                        $"ActionSurface requires protocol version {ProtocolConstants.ActionSurfaceVersion} or later.");
                 if (node.ActionSurfaceOrientation is null)
                     Add($"{path}.actionSurfaceOrientation", "required",
                         "An action surface requires a bounded content orientation.");
@@ -496,9 +469,6 @@ public static class ViewSnapshotValidator
                 Add(path, "invalid_progress", "Progress requires 0 <= value <= maximum and maximum > 0.");
             if (node.Kind is ViewNodeKind.Slider)
             {
-                if (snapshot.ProtocolVersion < ProtocolConstants.SliderVersion)
-                    Add(path, "feature_requires_version",
-                        $"Slider requires protocol version {ProtocolConstants.SliderVersion} or later.");
                 var minimum = node.Minimum ?? double.NaN;
                 var maximum = node.Maximum ?? double.NaN;
                 var value = node.Value ?? double.NaN;
@@ -518,9 +488,6 @@ public static class ViewSnapshotValidator
                     CheckIdentifier(node.ActionId, $"{path}.actionId", "slider activation action ID");
                 if (node.SliderInteractionMode is { } interactionMode)
                 {
-                    if (snapshot.ProtocolVersion < ProtocolConstants.SliderActivationVersion)
-                        Add($"{path}.sliderInteractionMode", "feature_requires_version",
-                            $"Slider interaction modes require protocol version {ProtocolConstants.SliderActivationVersion} or later.");
                     if (!Enum.IsDefined(interactionMode))
                         Add($"{path}.sliderInteractionMode", "invalid_slider_interaction_mode",
                             "The slider interaction mode is not supported.");
@@ -549,9 +516,6 @@ public static class ViewSnapshotValidator
             }
             if (node.Kind is ViewNodeKind.TextEntry)
             {
-                if (snapshot.ProtocolVersion < ProtocolConstants.TextEntryVersion)
-                    Add(path, "feature_requires_version",
-                        $"Text entry requires protocol version {ProtocolConstants.TextEntryVersion} or later.");
                 if (node.TextEntryMaximumLength is not (>= 1 and <= ProtocolConstants.MaximumTextEntryLength))
                     Add($"{path}.textEntryMaximumLength", "invalid_text_entry_limit",
                         $"Text entry maximum length must be 1-{ProtocolConstants.MaximumTextEntryLength}.");
@@ -577,9 +541,6 @@ public static class ViewSnapshotValidator
             var supportsImageSource = node.Kind is ViewNodeKind.Image or ViewNodeKind.Button;
             if (node.ArtworkHandle is not null)
             {
-                if (snapshot.ProtocolVersion < ProtocolConstants.CursorCollectionVersion)
-                    Add($"{path}.artworkHandle", "feature_requires_version",
-                        $"Opaque artwork handles require protocol version {ProtocolConstants.CursorCollectionVersion} or later.");
                 if (!supportsImageSource)
                     Add($"{path}.artworkHandle", "artwork_handle_not_allowed",
                         "Opaque artwork handles apply only to image and button nodes.");
@@ -600,10 +561,6 @@ public static class ViewSnapshotValidator
                 if (imageSource == ImageSourceKind.Invalid)
                     Add($"{path}.imageSource", "invalid_image_source",
                         "Artwork requires an absolute HTTPS URL without credentials or a bounded canonical PNG data source.");
-                else if (imageSource == ImageSourceKind.InlinePng &&
-                    snapshot.ProtocolVersion < ProtocolConstants.InlinePngImageVersion)
-                    Add($"{path}.imageSource", "feature_requires_version",
-                        $"Inline PNG images require protocol version {ProtocolConstants.InlinePngImageVersion} or later.");
                 if (node.ImageFit is null)
                     Add($"{path}.imageFit", "required", "An image requires a fit mode.");
                 else if (!Enum.IsDefined(node.ImageFit.Value))
@@ -645,10 +602,6 @@ public static class ViewSnapshotValidator
             }
             if (node.Kind is ViewNodeKind.Button && node.Glyph is not null && !Enum.IsDefined(node.Glyph.Value))
                 Add($"{path}.glyph", "invalid_glyph", "The semantic glyph is not supported.");
-            if (node.Glyph == WidgetGlyph.RepeatOne &&
-                snapshot.ProtocolVersion < ProtocolConstants.RepeatOneGlyphVersion)
-                Add($"{path}.glyph", "feature_requires_version",
-                    $"Repeat One requires protocol version {ProtocolConstants.RepeatOneGlyphVersion} or later.");
             var children = node.Children ?? [];
             var shortcuts = node.Shortcuts ?? [];
             var styleClasses = node.StyleClasses ?? [];
@@ -821,7 +774,7 @@ public static class ViewSnapshotValidator
         return IsValidInlinePng(source) ? ImageSourceKind.InlinePng : ImageSourceKind.Invalid;
     }
 
-    private static bool IsValidInlinePng(string? source)
+    internal static bool IsValidInlinePng(string? source)
     {
         const string prefix = "data:image/png;base64,";
         if (string.IsNullOrEmpty(source) ||

@@ -8,6 +8,10 @@ using WidgetRail.WidgetSdk;
 var tests = new (string Name, Func<Task> Run)[]
 {
     ("Snapshot serialization is deterministic and round-trips", SnapshotRoundTrip),
+    ("SDK snapshots use the shared maximum protocol requirement",
+        ProtocolVersionRequirementsTests.SdkSnapshotsUseSharedMaximum),
+    ("Raw snapshots enforce the complete shared protocol requirement matrix",
+        ProtocolVersionRequirementsTests.RawSnapshotsUseCompleteRequirementMatrix),
     ("Automatic presentation updates are atomic bounded and fallback-safe", WidgetPresentationUpdateTests.Run),
     ("Protocol v2 scroll containers round-trip with host-owned semantics", ScrollContainersRoundTrip),
     ("Protocol v11 scroll pagination is bounded and versioned", ScrollPaginationRoundTrip),
