@@ -295,7 +295,7 @@ public sealed class SpotifyWidget : Widget
     }
 
     public override ValueTask OnPinnedLayoutSelectionChangedAsync(
-        string? _,
+        string? _selectedLayoutId,
         CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
