@@ -81,6 +81,7 @@ public sealed class SpotifyWidget : Widget
     private bool _showSetup;
     private long _setupViewGeneration;
     private bool _setupBusy;
+    private bool _upNextPinnedLayoutSelected;
     private long _activeGeneration;
     private Task? _pollTask;
     private Task? _progressTask;
@@ -240,7 +241,8 @@ public sealed class SpotifyWidget : Widget
                 _playlistItems.EnsureLoaded();
             else if (_destination == SpotifyDestination.Playlists)
                 _playlists.EnsureLoaded();
-            else if (_destination == SpotifyDestination.Queue)
+            else if (_destination == SpotifyDestination.Queue ||
+                     _upNextPinnedLayoutSelected)
                 _queue.EnsureLoaded();
         }
         return ValueTask.CompletedTask;
@@ -249,6 +251,7 @@ public sealed class SpotifyWidget : Widget
     protected override async ValueTask OnDeactivatedAsync(CancellationToken transitionToken)
     {
         Interlocked.Increment(ref _activeGeneration);
+        lock (_gate) _upNextPinnedLayoutSelected = false;
         var tasks = new[] { _pollTask, _progressTask }
             .Where(task => task is not null).Cast<Task>().ToArray();
         _pollTask = null;
@@ -259,6 +262,7 @@ public sealed class SpotifyWidget : Widget
 
     protected override async ValueTask OnDestroyingAsync(CancellationToken shutdownToken)
     {
+        lock (_gate) _upNextPinnedLayoutSelected = false;
         Task? authorization;
         lock (_authorizationGate) authorization = _authorizationTask;
         var tasks = new[] { authorization }
@@ -281,6 +285,32 @@ public sealed class SpotifyWidget : Widget
         if (previous is WidgetLifecycleState.Visible or WidgetLifecycleState.Interactive ||
             current is WidgetLifecycleState.Visible or WidgetLifecycleState.Interactive)
             Invalidate();
+        return ValueTask.CompletedTask;
+    }
+
+    public override ValueTask OnPinnedLayoutSelectionChangedAsync(
+        string? layoutId,
+        CancellationToken cancellationToken = default)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        var selected = string.Equals(
+            layoutId, SpotifyPresentation.UpNextPinnedLayoutId,
+            StringComparison.Ordinal);
+        bool changed;
+        bool reset;
+        bool load;
+        lock (_gate)
+        {
+            changed = _upNextPinnedLayoutSelected != selected;
+            _upNextPinnedLayoutSelected = selected;
+            reset = changed && !selected && _destination != SpotifyDestination.Queue;
+            load = changed && selected && IsActive &&
+                _viewState == SpotifyWidgetViewState.Ready;
+        }
+        if (!changed) return ValueTask.CompletedTask;
+        if (reset) _queue.Reset(invalidate: false);
+        else if (load) _queue.EnsureLoaded();
+        Invalidate();
         return ValueTask.CompletedTask;
     }
 
@@ -343,7 +373,7 @@ public sealed class SpotifyWidget : Widget
             case SpotifyActionKind.Refresh:
                 await RunCommandOperationAsync(RefreshAsync, cancellationToken)
                     .ConfigureAwait(false);
-                RefreshVisibleCollection();
+                RefreshVisibleCollection(action.InputScopeId);
                 break;
             case SpotifyActionKind.Playback:
                 var playbackOperation = intent.PlaybackOperation is null
@@ -588,7 +618,7 @@ public sealed class SpotifyWidget : Widget
 
     private void CancelPageOperation() => Operations.Cancel("spotify.page");
 
-    private void RefreshVisibleCollection()
+    private void RefreshVisibleCollection(string? inputScopeId)
     {
         SpotifyDestination destination;
         bool detail;
@@ -600,7 +630,11 @@ public sealed class SpotifyWidget : Widget
             ready = _viewState == SpotifyWidgetViewState.Ready;
         }
         if (!ready) return;
-        if (destination == SpotifyDestination.Queue) _queue.Refresh();
+        if (string.Equals(inputScopeId, SpotifyPresentation.UpNextPinnedScope,
+                StringComparison.Ordinal))
+            _queue.Refresh();
+        else if (destination == SpotifyDestination.Queue)
+            _queue.Refresh();
         else if (destination == SpotifyDestination.Playlists)
         {
             if (detail) _playlistItems.Refresh();
@@ -611,8 +645,14 @@ public sealed class SpotifyWidget : Widget
     private void InvalidateQueueCollection()
     {
         SpotifyDestination destination;
-        lock (_gate) destination = _destination;
-        if (destination == SpotifyDestination.Queue) _queue.Refresh();
+        bool upNextPinnedLayoutSelected;
+        lock (_gate)
+        {
+            destination = _destination;
+            upNextPinnedLayoutSelected = _upNextPinnedLayoutSelected;
+        }
+        if (destination == SpotifyDestination.Queue || upNextPinnedLayoutSelected)
+            _queue.Refresh();
         else _queue.Reset(invalidate: false);
     }
 
