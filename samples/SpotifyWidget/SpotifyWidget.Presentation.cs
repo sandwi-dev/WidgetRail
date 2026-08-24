@@ -200,16 +200,15 @@ internal static class SpotifyPresentation
                         $"spotify.queue.play.{item.Key.Value}", itemId,
                         SpotifyCollectionIdentity.FocusId(
                             "spotify.queue.persist", "shared", item.Key))
-                    .FocusLeft(playerFocusId)
-                    .CollectionItem(item.Key)
-                    .Classes("spotify-pinned-next-row");
+                    .FocusLeft(playerFocusId);
                 if (index != 0)
                     row = row.FocusUp(SpotifyCollectionIdentity.FocusId(
                         "spotify.queue.item", mode, items[index - 1].Key));
                 if (index + 1 != items.Length)
                     row = row.FocusDown(SpotifyCollectionIdentity.FocusId(
                         "spotify.queue.item", mode, items[index + 1].Key));
-                return row;
+                return row.CollectionItem(item.Key)
+                    .Classes("spotify-pinned-next-row");
             }).ToArray();
             content = UI.VerticalScroll($"spotify.{mode}.scroll", rows)
                 .Classes("spotify-pinned-queue-scroll") with
