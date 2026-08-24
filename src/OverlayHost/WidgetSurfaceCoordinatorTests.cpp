@@ -237,8 +237,66 @@ int main() {
                   d2d.Get(), write.Get(), nullptr, error,
                   placementRoot / L"placement.ini"),
               "coordinator initializes with current production primitives");
+        coordinator.OnOverlayShown();
         Check(!coordinator.Pin(Admission(false), error) && !error.empty(),
               "non-supporting widget is rejected safely");
+
+        {
+            widgetrail::pinned::WidgetSurfaceCoordinator layouts;
+            const auto layoutRoot = placementRoot / L"layouts";
+            Check(layouts.Initialize(
+                      GetModuleHandleW(nullptr), nullptr, WM_APP + 0x411,
+                      d2d.Get(), write.Get(), nullptr, error,
+                      layoutRoot / L"placement.ini"),
+                  "layout coordinator reuses the single production surface owner");
+            layouts.OnOverlayShown();
+            auto admission = Admission();
+            admission.pinnedLayouts = {
+                {L"compact", L"Compact", 360.0F, 240.0F},
+                {L"details", L"Details", 640.0F, 360.0F},
+            };
+            Check(layouts.Pin(admission, error) && layouts.setupActive() &&
+                      layouts.layoutCount() == 3 && layouts.selectedLayoutIndex() == 0 &&
+                      layouts.selectedLayoutName() == L"Full widget",
+                  "Pin enters setup with the host Full widget fallback first");
+            Check(!layouts.Pin(admission, error) &&
+                      layouts.pinned() && layouts.layoutCount() == 3,
+                  "layout setup retains the one-surface ownership cap");
+            Check(layouts.CycleLayout(1) && layouts.selectedLayoutIndex() == 1 &&
+                      layouts.selectedLayoutName() == L"Compact",
+                  "LT or RT setup cycling selects one bounded authored layout");
+            Check(layouts.CommitSetup(error) && !layouts.setupActive() &&
+                      layouts.interactionMode() ==
+                          widgetrail::pinned::InteractionMode::ClickThrough,
+                  "A commits layout setup and restores click-through");
+            RECT committedSetup{};
+            GetWindowRect(layouts.window(), &committedSetup);
+            Check(!layouts.CycleLayout(1) && layouts.selectedLayoutName() == L"Compact",
+                  "layout triggers cannot consume LT or RT outside setup");
+            Check(layouts.BeginSetup(false) && layouts.CycleLayout(1) &&
+                      layouts.selectedLayoutName() == L"Details" &&
+                      layouts.StepPlacement(
+                          widgetrail::pinned::PlacementMode::Move,
+                          widgetrail::pinned::PlacementDirection::Left),
+                  "Adjust reopens the same layout and placement transaction");
+            Check(layouts.CancelSetup() && !layouts.setupActive() &&
+                      layouts.selectedLayoutName() == L"Compact",
+                  "B cancels Adjust and restores the selected layout checkpoint");
+            RECT canceledSetup{};
+            GetWindowRect(layouts.window(), &canceledSetup);
+            Check(EqualRect(&committedSetup, &canceledSetup),
+                  "B restores the exact pre-Adjust rectangle");
+            Check(layouts.UpdateSnapshot(
+                      admission.widgetId, admission.runtimeGeneration, Snapshot(2), {}) &&
+                      layouts.layoutCount() == 1 && layouts.selectedLayoutIndex() == 0 &&
+                      layouts.selectedLayoutName() == L"Full widget",
+                  "catalog removal falls back to the host Full widget layout");
+            Check(layouts.Unpin(widgetrail::pinned::WidgetSurfaceStopReason::Unpin),
+                  "layout fixture performs exact single-surface teardown");
+            layouts.Dispose();
+            std::error_code layoutCleanup;
+            std::filesystem::remove_all(layoutRoot, layoutCleanup);
+        }
 
         const auto privateBefore = PrivateWorkingSetBytes();
         if (!coordinator.Pin(Admission(), error)) {
@@ -248,6 +306,11 @@ int main() {
         const HWND surface = coordinator.window();
         Check(surface && IsWindow(surface) && IsWindowVisible(surface),
               "real pinned HWND is visible");
+        Check(coordinator.setupActive() && coordinator.controllerFocused() &&
+                  coordinator.selectedLayoutName() == L"Full widget",
+              "new pin immediately focuses host-owned Full widget setup");
+        Check(coordinator.CommitSetup(error),
+              "A-equivalent setup commit returns the new pin to click-through");
         Check(coordinator.presentationState() ==
                   widgetrail::pinned::WidgetSurfacePresentationState::PinnedClickThrough,
               "new pin has typed nonactivating presentation state");
@@ -542,6 +605,8 @@ int main() {
         Check(coordinator.Pin(Admission(), error),
               "surface can be pinned for UI Automation Close");
         coordinator.OnOverlayShown();
+        Check(coordinator.CommitSetup(error),
+              "Close fixture commits the new-pin setup transaction");
         Check(coordinator.ToggleInteractionMode(),
               "Close fixture explicitly enters Interactive mode");
         const HWND closeSurface = coordinator.window();
@@ -556,6 +621,8 @@ int main() {
         Check(coordinator.Pin(Admission(), error),
               "surface can be pinned for emergency hide");
         coordinator.OnOverlayShown();
+        Check(coordinator.CommitSetup(error),
+              "emergency fixture commits the new-pin setup transaction");
         Check(coordinator.ToggleInteractionMode(),
               "emergency fixture explicitly enters Interactive mode");
         const HWND emergencySurface = coordinator.window();
