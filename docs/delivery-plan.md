@@ -284,7 +284,7 @@ historical evidence only; this file is the sole implementation authority.
 | Lane | Task/worktree | State |
 | --- | --- | --- |
 | Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | DLV-474 correction passed the native gate, then the managed sanitized-terminal gate stopped on an opaque pre-test build red. Four intentional diffs remain retained uncommitted in the isolated worktree; no rerun or repair is authorized. DLV-473 test-only `34f15ae9` remains blocked after its first red; the standing tree's two DLV-293 test diffs remain byte-identical and must not be touched. |
-| Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | DLV-295 is accepted/integrated through `3d4b940`. DLV-298 cumulative `65d7872` + `d3b7cf7` + `9396363` is clean and the coherent Release build passed. Spotify compilation passed; packaging then stopped only on restricted NuGet vulnerability-metadata access. Repeat only packaging with normal network access; migration remains the next verdict. |
+| Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | DLV-295 is accepted/integrated through `3d4b940`. DLV-298 cumulative `65d7872` + `d3b7cf7` + `9396363` is clean, built, packaged, and installed as sole active Spotify 0.3.25. Exact reviewed Release PID 19164 is responsive and visible; stop for the user's migration verdict before integration/tests. |
 
 ## Execution rules
 
@@ -882,10 +882,11 @@ Lane: widgets. Status: closed with no implementation commit. Direct compatibilit
 ### DLV-298 Spotify high-level pinned-layout migration
 
 Lane: widgets, baseline accepted DLV-295 integration `3d4b940`. Status: cumulative
-`65d7872` + `d3b7cf7` + `9396363` is clean and Release build green. Spotify
-compilation passed; packaging stopped only when restricted NuGet access could
-not fetch vulnerability metadata. Repeat packaging outside that restriction,
-without another build or source change. This is the next user-
+`65d7872` + `d3b7cf7` + `9396363` is clean and Release build green. Normal-access
+packaging passed; exact 0.3.25 package SHA-256 is `B69BAEDF946FE56B193EE57289003B8BEB5582A7419D055F078BE70095FBDA7B`.
+It is the sole installed, selected, enabled Spotify version with configuration
+and credentials preserved. Exact reviewed Release PID 19164 is responsive and
+visible. Stop for the user's verdict before integration or tests. This is the user-
 acceptance boundary. Migrate Spotify's Compact and Up Next layouts
 from manual selection plumbing to the optional typed handle, deleting the old
 demand owner while preserving accepted roots, sizing, focus/scopes, controls,
