@@ -77,11 +77,10 @@ historical evidence only; this file is the sole implementation authority.
   so accepted PID 113716 remains the coherent visible candidate without a
   rebuild or relaunch. That accepted integrated executable remained the rollback
   through PID 54348, which exited cooperatively through verified `WM_CLOSE` for
-  corrected DLV-289 review. Final unintegrated candidate `7cc2be0` was rejected
-  only because its tray menu expands downward over the bottom-anchored tray;
-  SHA-256
-  `BF7D98B1BC43B1C9CAD451BF18B437816352A4E783C23F8A050AF415FD399D05`;
-  responsive PID 37884 remains exact while the bounded correction is assigned.
+  corrected DLV-289 review. Replacement candidate `e7b24f4`, stacked on
+  `7cc2be0`, always opens the complete menu above the tray; its coherent Release
+  build exited 0 and responsive exact PID 105648 awaits physical acceptance.
+  No tests have run.
 - DLV-318 is the exact recoverable prior accepted Release at
   `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative-dlv318-build`;
   executable SHA-256 is
@@ -98,7 +97,7 @@ historical evidence only; this file is the sole implementation authority.
 
 | Lane | Task/worktree | State |
 | --- | --- | --- |
-| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | DLV-289 candidate `7cc2be0` is held unintegrated. One production-only correction is Assigned: always place the tray menu above the tray while preserving stable item order and focus semantics. No tests run before the replacement verdict. |
+| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | DLV-289 replacement `e7b24f4` is source-reviewed and Release-green; responsive exact PID 105648 awaits physical verdict on the always-above tray menu. No tests have run. |
 | Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | DLV-288 `8be0ebb` is accepted/integrated as `a37d614`; the lane is idle. Game Launcher tests remain explicitly deferred and out of scope. |
 
 ## Execution rules
@@ -935,7 +934,7 @@ without explicit promotion.
 
 ## Ordered queues
 
-1. DLV-289 user-ready single-widget pinning: above-tray correction Assigned.
+1. DLV-289 user-ready single-widget pinning: replacement Awaiting user verdict.
 2. DLV-292 fresh-worker virtual-window recovery: Ready platform after accepted
    DLV-289 integration; ahead of new pinned-layout contract work.
 3. DLV-290 generic selectable pinned layouts: Ready platform after accepted
@@ -970,7 +969,7 @@ There is no concurrently executable Ready production work: DLV-292 consumes acce
 | DLV-286 | The user physically accepted complete correction `a41bd72`; cumulative chain `d0ca29b` + `058efbc` + `a41bd72` is integrated as merge `627ba4c`. Responsive accepted PID 85884 already contains that production tip, so it remains running without a merge-only rebuild/relaunch. The dedicated Game Launcher test project remains untouched/deferred, and the broader Bridge aggregate must not be repeated. |
 | DLV-287 | Production/test `dccf49a` is accepted and integrated as `fc91157`; focused Release build passed and WidgetSdk protocol contracts passed 89/89. Exact prior PID 85884 exited gracefully. Refreshed integrated PID 113716 is responsive, has no startup error, and admitted the generic full-application and Spotify widgets. |
 | DLV-288 | Documentation `8be0ebb` is accepted and integrated as `a37d614`; scoped link/reference/contract inspection passed. Its single documentation gate stopped only on three pre-existing OverlayHost packaging assertions, with no DLV-288 link failure, and was not rerun. No runtime input changed, so PID 113716 remains accepted. |
-| DLV-289 | `7cc2be0` is held unintegrated: all requested polish reached physical review, but its menu opens downward over the bottom tray. A bounded production correction is Assigned to always anchor the menu above the tray with stable item/semantic order. No tests have run. |
+| DLV-289 | Replacement `e7b24f4`, stacked on `7cc2be0`, is source-reviewed and its coherent Release build exited 0. Responsive exact PID 105648 is visibly launched for physical verdict on the always-above menu. No tests have run and the chain remains unintegrated. |
 | DLV-248 | Deferred until explicit user promotion. |
 
 ## Ready platform reliability — DLV-292 fresh-worker virtual-window recovery
