@@ -115,6 +115,16 @@ historical evidence only; this file is the sole implementation authority.
   and no `startup-error.txt`. Prior PID 137288 had no top-level HWND, so after
   its path was reverified the reviewer stopped only that exact orphaned accepted
   process before launch. DLV-291 is now the named visible proof.
+- User testing of accepted PID 31132 exposed a platform blocker before DLV-291
+  can receive a meaningful physical verdict: controller focus enters the pinned
+  surface, but ordinary actions fail and X closes the surface. The exact 09:26
+  session records `Pinned action transport failed for media-sessions` twice.
+  Current source confirms two independent contract defects: native input sends
+  the JSON context `pinnedSurface`, which is absent from the public SDK enum and
+  therefore rejected by Bridge deserialization, and the pinned controller
+  policy reserves X as `Close` while forwarding only A. DLV-473 is Assigned as
+  the serialized platform correction. DLV-291 production `5435eaf` is retained
+  clean and unlaunched until that prerequisite is accepted and integrated.
 - DLV-318 is the exact recoverable prior accepted Release at
   `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative-dlv318-build`;
   executable SHA-256 is
@@ -131,8 +141,8 @@ historical evidence only; this file is the sole implementation authority.
 
 | Lane | Task/worktree | State |
 | --- | --- | --- |
-| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | DLV-293 production is accepted/integrated as `10c3e26`; two uncommitted test diffs are retained as blocked evidence after the first unrelated red. |
-| Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | DLV-294 is accepted/integrated as `60536ff`; DLV-291 Spotify compact pinned layouts is Assigned as the visible successor. Game Launcher tests remain deferred/out of scope. |
+| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | DLV-473 pinned-surface action routing is Assigned from a separate clean worktree because the standing tree retains exactly two uncommitted DLV-293 test diffs. Preserve those diffs unchanged. |
+| Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | DLV-291 production `5435eaf` is clean and held before physical launch/tests on DLV-473. Game Launcher tests remain deferred/out of scope. |
 
 ## Execution rules
 
@@ -171,6 +181,65 @@ Detailed accepted evidence for DLV-284 through DLV-290 is preserved in the
 The current accepted-state summary above remains the live disposition.
 
 ## Ready overlay recovery
+
+### DLV-473 pinned-surface action routing and controller ownership
+
+Lane: platform lead, serialized SDK/Bridge/native-host correction. Status:
+Assigned from a fresh clean branch whose baseline is planner main plus this
+assignment commit. The standing platform worktree's two uncommitted DLV-293
+test files are retained evidence: do not edit, stage, discard, stash, move, or
+otherwise disturb them. Create a separate bounded clean worktree for DLV-473,
+and remove only that new worktree after its branch/commit is safely retained.
+
+Correct the reproduced pinned-input contract rather than masking its failure.
+The accepted PID 31132 session at 09:26 records two `Pinned action transport
+failed for media-sessions` events. Native sends context `pinnedSurface`, while
+the public `ControllerInputContext` admits only DashboardQuickAction,
+OpenWidget, and PinnedLayoutSelection; Bridge therefore rejects the JSON before
+the widget can handle it. Native policy also deliberately maps X to host Close
+and only queues A, contrary to the product rule that X, bumpers, triggers, stick
+clicks, and other non-reserved controls remain available to a focused widget.
+
+Add one generic versioned pinned-surface input context across SDK, Bridge, and
+native host. Bind every request to the exact widget runtime generation,
+snapshot sequence, selected pinned layout identity, selected projection input
+scope, and focused element. The SDK's default resolver must resolve against the
+exact selected projection root, or the ordinary full-widget root for the
+host-injected Full widget fallback; it must not search sibling layouts or an
+unselected root. Reuse the existing bounded action queue, current-generation
+checks, selected `WidgetSurfaceCoordinator` snapshot, and ordinary widget
+action semantics. Do not create a second input/focus/session authority.
+
+While pinned focus is active, D-pad and left-stick navigation remain host-owned
+focus movement, A activates the focused control, and B returns focus to the
+overlay without unpinning. X, Y, LB, RB, LT, RT, LS, RS, and Menu are delivered
+as ordinary authored widget input with exact current authority; an unhandled
+button remains inert. View remains the host-owned entry/future pinned-surface
+cycle control. Retain the explicit LB+RB+X emergency-hide chord, but never treat
+X alone as Close or Unpin. Close and Unpin remain explicit tray-menu or
+accessibility/chrome actions. Placement/setup and opacity modes retain their
+exclusive documented controls.
+
+Use physical-first ordering. Change production/API code only, source-audit the
+complete boundary, run one coherent Release/package build, and commit
+`[DLV-473]`; do not write, modify, regenerate, or run tests before the user
+accepts the launched behavior. The planner will integrate the reviewed
+production candidate, rebase/stack DLV-291 only through a bounded clean
+integration if needed, then launch one coherent candidate containing DLV-473
+and DLV-291 for the user's controller verdict. After acceptance, add only
+focused SDK JSON/context, Bridge generation/layout admission, controller-route,
+pinned focus/action, and projection-root tests. Do not run Game Launcher tests,
+broad aggregates, DLV-293 retained tests, account/package-state mutation,
+multi-pin, Avalonia/AVP, or push.
+
+Acceptance: View enters the one pinned surface regardless of tray selection;
+focus movement is visible; A and authored non-reserved shortcuts operate the
+selected Full widget or package projection; X alone never closes/unpins; B
+returns to the overlay; stale generation, layout, scope, focus, and sequence
+requests fail closed without disturbing the last valid pin. Stop for a second
+input/focus/session owner, an incompatible public design with materially
+different ownership, destructive state, substantial conflict, or unrelated
+first red.
 
 ### DLV-293 disable-widget main-overlay survival
 
@@ -265,16 +334,19 @@ without explicit promotion.
 
 ## Ordered queues
 
-1. DLV-291 Spotify compact pinned layouts: Assigned visible production successor.
-2. DLV-294 generic pinned-layout projections: accepted/integrated as `60536ff`; closed.
-3. DLV-293 focused test debt: retained uncommitted after unrelated Game Launcher stationarity red; no rerun under the explicit deferral.
-4. Remaining maturity deliverables, ordered after the pinned-layout UX settles.
-5. DLV-248 remains deliberately deferred until explicit user promotion.
+1. DLV-473 pinned-surface action routing: Assigned serialized platform blocker.
+2. DLV-291 Spotify compact pinned layouts: production `5435eaf` retained clean;
+   physical launch/tests wait for DLV-473 integration.
+3. DLV-294 generic pinned-layout projections: accepted/integrated as `60536ff`; closed.
+4. DLV-293 focused test debt: retained uncommitted after unrelated Game Launcher stationarity red; no rerun under the explicit deferral.
+5. Remaining maturity deliverables, ordered after the pinned-layout UX settles.
+6. DLV-248 remains deliberately deferred until explicit user promotion.
 
-DLV-291 is the sole executable production assignment and the named visible
-successor to integrated DLV-294. DLV-293 production is
-accepted/integrated; its incomplete test follow-up is retained as blocked debt,
-and Game Launcher tests remain deferred.
+DLV-473 is the sole executable production assignment and the direct blocker for
+a meaningful DLV-291 physical verdict. DLV-291's package-only commit remains
+retained but unlaunched/unaccepted. DLV-293 production is accepted/integrated;
+its incomplete test follow-up is retained as blocked debt, and Game Launcher
+tests remain deferred.
 
 ## Manual and blocked evidence
 
