@@ -4886,8 +4886,7 @@ private:
 
     [[nodiscard]] std::optional<TrayContextMenuLayout> CurrentTrayContextMenuLayout(
         const widgetrail::shell::TrayLayout& tray,
-        const float width,
-        const float height) const {
+        const float width) const {
         const auto actions = CurrentTrayMenuActions();
         if (!trayContextMenu_ || actions.empty()) return std::nullopt;
         const auto tile = std::find_if(
@@ -4903,11 +4902,7 @@ private:
         const float left = std::clamp(
             tile->bounds.x + tile->bounds.width * 0.5F - menuWidth * 0.5F,
             8.0F, std::max(8.0F, width - menuWidth - 8.0F));
-        const float above = tile->bounds.y - menuHeight - menuGap;
-        const float below = tile->bounds.y + tile->bounds.height + menuGap;
-        const float preferredTop = above >= 8.0F ? above : below;
-        const float top = std::clamp(
-            preferredTop, 8.0F, std::max(8.0F, height - menuHeight - 8.0F));
+        const float top = tray.stripBounds.y - menuGap - menuHeight;
         TrayContextMenuLayout result;
         result.bounds = {left, top, menuWidth, menuHeight};
         result.semantics.targetId = trayContextMenu_->widgetId;
@@ -5153,7 +5148,7 @@ private:
         }
         if (trayContextMenu_ && trayLayout) {
             const auto menu = CurrentTrayContextMenuLayout(
-                *trayLayout, metrics->viewportWidthDip, metrics->viewportHeightDip);
+                *trayLayout, metrics->viewportWidthDip);
             if (menu) {
                 const auto item = std::find_if(
                     menu->semantics.items.begin(), menu->semantics.items.end(),
@@ -7220,7 +7215,7 @@ private:
             const std::wstring name{DisplayWidgetName(widgetId)};
             items.push_back({widgetId, name});
         }
-        const auto menuLayout = CurrentTrayContextMenuLayout(layout, width, height);
+        const auto menuLayout = CurrentTrayContextMenuLayout(layout, width);
         const widgetrail::accessibility::TrayContextMenuSemantics menuSemantics =
             menuLayout ? menuLayout->semantics
                        : widgetrail::accessibility::TrayContextMenuSemantics{};
@@ -10092,7 +10087,7 @@ private:
                 2.35F);
         }
         if (layout->nextOverflow) drawOverflow(*layout->nextOverflow);
-        if (const auto menu = CurrentTrayContextMenuLayout(*layout, width, height)) {
+        if (const auto menu = CurrentTrayContextMenuLayout(*layout, width)) {
             const D2D1_ROUNDED_RECT panel{
                 D2D1::RectF(
                     menu->bounds.x, menu->bounds.y,

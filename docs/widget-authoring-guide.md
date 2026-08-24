@@ -1810,7 +1810,9 @@ Use only the published closed IDs above.
 For a supporting widget, focus its tray item and press controller Menu/Options
 or right-click that exact tray item. The host-owned context menu exposes
 **Pin**, or **Adjust pinned widget**, **Opacity — N%**, and **Unpin** for the current pin; UI
-Automation invokes those same typed menu actions. An unavailable Pin item names
+Automation invokes those same typed menu actions. The complete vertical menu
+always opens above the bottom tray while retaining the same top-to-bottom visual,
+controller, pointer, and semantic order. An unavailable Pin item names
 loading, unsupported, or one-pin-cap authority without replacing the existing
 pin. `P` remains the keyboard interaction/pin fallback while the widget is open,
 and `U` remains the unpin fallback. From tray focus, controller View enters the

@@ -49,7 +49,9 @@ Only one surface may be pinned in this first bounded release:
 
 1. focus a supporting widget in the tray and press controller Menu/Options, or
    right-click that exact tray item, then choose the host-owned **Pin** menu
-   item. UI Automation invokes the same typed menu action. The `P` keyboard
+   item. The full menu is always stacked above the bottom tray, with its bottom
+   edge anchored to that tray and its rows ordered consistently from top to
+   bottom. UI Automation invokes the same typed menu action. The `P` keyboard
    fallback remains available while the widget is open. The new peer surface
    starts in nonactivating click-through mode and the main overlay keeps
    controller focus;
