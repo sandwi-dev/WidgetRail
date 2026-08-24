@@ -286,7 +286,7 @@ historical evidence only; this file is the sole implementation authority.
 | Lane | Task/worktree | State |
 | --- | --- | --- |
 | Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | DLV-474 correction passed the native gate, then the managed sanitized-terminal gate stopped on an opaque pre-test build red. Four intentional diffs remain retained uncommitted in the isolated worktree; no rerun or repair is authorized. DLV-473 test-only `34f15ae9` remains blocked after its first red; the standing tree's two DLV-293 test diffs remain byte-identical and must not be touched. |
-| Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | Assigned DLV-295 candidate `225e736`: direct compile is green and DLV-299 refreshed the stale graph outside restricted NuGet access, after which compatibility passed 12/12. Run the focused handle/lifecycle harness once; review/integrate automatically when green. DLV-298 remains the next user-acceptance boundary. |
+| Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | DLV-295 candidate `225e736` is rejected before integration by its focused test: callback-state evidence compared .NET `True/False` interpolation to lowercase text, and `--no-build` used a stale runner without the new prefix filter, so 90 cases ran. Assigned bounded test-only correction: use typed callback observations, build the current test project once, then run only the prefixed handle group. DLV-298 remains the next user-acceptance boundary. |
 
 ## Execution rules
 
@@ -856,7 +856,7 @@ cumulative stack is accepted and integrated; DLV-294 is closed.
 
 ### DLV-295 pinned-layout authoring ergonomics
 
-Lane: widgets, baseline accepted integration `e7ebdbe`. Status: Assigned from explicitly unaccepted `225e736`; planner merges are docs only and the branch is clean. Direct SDK compile passes and DLV-299 compatibility is green 12/12 after the environment-only restore repair. Run only the focused pinned-layout handle/public-test-host harness once, source-audit the nine-file commit, then review/integrate automatically if green. Do not rerun compatibility or start DLV-298 before planner integration.
+Lane: widgets, baseline accepted integration `e7ebdbe`. Status: `225e736` rejected before integration by the first focused gate. DLV-299 compatibility is green 12/12. The handle test executed inside 90 cases and failed only because string evidence expected lowercase booleans while .NET interpolation emitted `True/False`; the stale pre-prefix binary also proves `--no-build` did not compile final `Program.cs`. Replace string-encoded callback observations with typed layout/selection state, build the current WidgetSdk test project once, then run only the exact prefixed pinned-layout group with `--no-build --no-restore`. Append one scoped test-only DLV-295 correction commit if green; do not rerun compatibility or start DLV-298 before planner integration.
 
 Define stable ID, name, surface, initial focus, and input scope once in an
 optional widget-instance handle whose compatibility-tracked author entrypoint
@@ -918,7 +918,7 @@ no live provider, installation, Game Launcher tests, broad aggregate, or push.
 
 ## Ordered queues
 
-1. DLV-295 pinned-layout authoring ergonomics: run only the focused handle harness and integrate automatically when green.
+1. DLV-295 test-evidence correction: typed callback state, current test-project build, then one prefixed handle gate; integrate the cumulative stack automatically when green.
 2. DLV-298 Spotify high-level migration and physical proof; next user verdict.
 3. DLV-296 pinned-layout preview and diagnostics.
 4. DLV-297 pinned-layout templates and examples.
