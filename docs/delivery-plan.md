@@ -75,10 +75,13 @@ historical evidence only; this file is the sole implementation authority.
   reported no DLV-288 link failure; it was not rerun or repaired under this
   documentation-only milestone. No production/runtime artifact input changed,
   so accepted PID 113716 remains the coherent visible candidate without a
-  rebuild or relaunch. After the rejected DLV-289 physical candidate was
-  closed, this same accepted integrated executable was restored and remains
-  responsive as PID 54348 with SHA-256
-  `5C8FC0B43BA54279E7DBB666FBD98338C592E25629CB9ABE722D1E02957DB43E`.
+  rebuild or relaunch. That accepted integrated executable remained the rollback
+  through PID 54348, which exited cooperatively through verified `WM_CLOSE` for
+  corrected DLV-289 review. Exact unintegrated candidate `da1f848` is now
+  visibly running and responsive as PID 94188 from the platform worktree with
+  SHA-256
+  `1A8C48349C90FEE122381B0E557D78DE350D433F6DD7D65BC50AD11B36D1DE2A`;
+  it produced no `startup-error.txt`.
 - DLV-318 is the exact recoverable prior accepted Release at
   `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative-dlv318-build`;
   executable SHA-256 is
@@ -884,7 +887,8 @@ deterministic lifecycle resets, and makes Adjust arrow keys explicitly move.
 The clean three-production-file correction preserves existing ownership and its
 coherent packaged Release build exited 0. Executable SHA-256 is
 `1A8C48349C90FEE122381B0E557D78DE350D433F6DD7D65BC50AD11B36D1DE2A`.
-No tests ran; exact-candidate physical review is next, before integration.
+No tests ran. Exact candidate PID 94188 is responsive and visibly awaiting the
+user's physical verdict before integration.
 
 ## Future architecture queue — maturity review additions
 
