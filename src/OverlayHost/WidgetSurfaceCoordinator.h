@@ -45,6 +45,7 @@ struct WidgetSurfaceInputRequest final {
     std::wstring widgetId;
     std::wstring runtimeGeneration;
     long long snapshotSequence{};
+    std::wstring selectedLayoutId;
     std::wstring activeInputScopeId;
     std::wstring nodeId;
     std::wstring protocolButton;
@@ -222,6 +223,7 @@ private:
         ControllerInputOrigin origin,
         std::optional<double> requestedValue);
     [[nodiscard]] const WidgetSnapshot& SelectedSnapshot() const noexcept;
+    [[nodiscard]] std::wstring_view SelectedLayoutId() const noexcept;
     void QueueLayoutSelection(std::wstring_view layoutId, bool selected);
 
     HINSTANCE instance_{};

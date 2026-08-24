@@ -677,15 +677,20 @@ internal sealed class BridgeClientRegistry : IAsyncDisposable
         try
         {
             DemandCurrent(registration);
+            if (input.Context == ControllerInputContext.PinnedSurface &&
+                string.IsNullOrWhiteSpace(expectedRuntimeGeneration))
+                throw new BridgeProtocolException(
+                    "Pinned-surface input requires exact runtime generation authority.");
             if (expectedRuntimeGeneration is not null &&
                 !string.Equals(
                     registration.Configured.PublicDescriptor().RuntimeGeneration,
                     expectedRuntimeGeneration,
                     StringComparison.Ordinal))
                 throw new BridgeProtocolException(
-                    "Pinned layout selection authority is stale or unavailable.");
+                    "Controller input runtime authority is stale or unavailable.");
             if (input.Context != ControllerInputContext.PinnedLayoutSelection)
                 DemandInteractionAllowed(registration);
+            DemandPinnedSurfaceAuthority(registration, input);
             registration.CancelIdleUnload();
             var handled = await ExecuteClientOperationAsync(
                     registration,
@@ -1633,6 +1638,71 @@ internal sealed class BridgeClientRegistry : IAsyncDisposable
             input.Sequence,
             input.SnapshotSequence,
             PlatformCapabilityBroker.MaximumDashboardGestureLifetime);
+    }
+
+    private static void DemandPinnedSurfaceAuthority(
+        ClientRegistration registration,
+        ControllerInputEvent input)
+    {
+        if (input.Context != ControllerInputContext.PinnedSurface) return;
+        var snapshot = registration.CachedSnapshot ?? throw new BridgeProtocolException(
+            "Pinned-surface input has no cached rendered snapshot.");
+        if (snapshot.Sequence != input.SnapshotSequence)
+            throw new BridgeProtocolException(
+                "Pinned-surface input targets a stale snapshot sequence.");
+
+        ViewNode root;
+        string inputScopeId;
+        if (string.Equals(input.PinnedLayoutId, "host.full-widget", StringComparison.Ordinal))
+        {
+            root = snapshot.Root;
+            inputScopeId = snapshot.ActiveInputScopeId;
+        }
+        else
+        {
+            var selectedLayout = snapshot.PinnedLayouts.SingleOrDefault(layout =>
+                string.Equals(layout.Id, input.PinnedLayoutId, StringComparison.Ordinal));
+            if (selectedLayout?.Root is null ||
+                string.IsNullOrWhiteSpace(selectedLayout.ActiveInputScopeId))
+                throw new BridgeProtocolException(
+                    "Pinned-surface input targets an unavailable layout projection.");
+            root = selectedLayout.Root;
+            inputScopeId = selectedLayout.ActiveInputScopeId;
+        }
+        if (!string.Equals(input.ActiveInputScopeId, inputScopeId, StringComparison.Ordinal))
+            throw new BridgeProtocolException(
+                "Pinned-surface input targets a stale input scope.");
+        var scopeRoot = FindInputScope(root, inputScopeId, isRoot: true);
+        var focusedNode = scopeRoot is null ? null :
+            FindNodeInScope(scopeRoot, input.FocusedElementId!, isScopeRoot: true);
+        if (focusedNode is null || focusedNode.IsDisabled is true || focusedNode.IsBusy is true)
+            throw new BridgeProtocolException(
+                "Pinned-surface input targets an unavailable focused element.");
+    }
+
+    private static ViewNode? FindInputScope(ViewNode node, string scopeId, bool isRoot)
+    {
+        if ((isRoot || node.InputScopeId is not null) &&
+            string.Equals(node.InputScopeId ?? node.Id, scopeId, StringComparison.Ordinal))
+            return node;
+        foreach (var child in node.Children)
+        {
+            var match = FindInputScope(child, scopeId, isRoot: false);
+            if (match is not null) return match;
+        }
+        return null;
+    }
+
+    private static ViewNode? FindNodeInScope(ViewNode node, string id, bool isScopeRoot)
+    {
+        if (!isScopeRoot && node.InputScopeId is not null) return null;
+        if (string.Equals(node.Id, id, StringComparison.Ordinal)) return node;
+        foreach (var child in node.Children)
+        {
+            var match = FindNodeInScope(child, id, isScopeRoot: false);
+            if (match is not null) return match;
+        }
+        return null;
     }
 
     private sealed class ClientRegistration(

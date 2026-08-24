@@ -364,6 +364,7 @@ void WidgetSurfaceCoordinator::QueueResolvedInput(
         admission_->widgetId,
         admission_->runtimeGeneration,
         snapshot.sequence,
+        std::wstring(SelectedLayoutId()),
         snapshot.activeInputScopeId,
         std::move(nodeId),
         std::move(protocolButton),
@@ -397,7 +398,8 @@ WidgetSurfaceCoordinator::TakeInputRequests() noexcept {
 bool WidgetSurfaceCoordinator::IsCurrentInputRequest(
     const WidgetSurfaceInputRequest& request) const noexcept {
     if (!pinned() || request.widgetId != admission_->widgetId ||
-        request.runtimeGeneration != admission_->runtimeGeneration)
+        request.runtimeGeneration != admission_->runtimeGeneration ||
+        std::wstring_view(request.selectedLayoutId) != SelectedLayoutId())
         return false;
     const auto& snapshot = SelectedSnapshot();
     const auto* node = input::FindNodeInInputScope(
@@ -419,6 +421,12 @@ const WidgetSnapshot& WidgetSurfaceCoordinator::SelectedSnapshot() const noexcep
         layoutOptions_[selectedLayoutIndex_].projection)
         return *layoutOptions_[selectedLayoutIndex_].projection;
     return admission_->snapshot;
+}
+
+std::wstring_view WidgetSurfaceCoordinator::SelectedLayoutId() const noexcept {
+    if (selectedLayoutIndex_ < layoutOptions_.size())
+        return layoutOptions_[selectedLayoutIndex_].id;
+    return kFullWidgetLayoutId;
 }
 
 void WidgetSurfaceCoordinator::QueueLayoutSelection(

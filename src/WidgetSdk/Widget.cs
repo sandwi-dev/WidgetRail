@@ -100,6 +100,7 @@ public enum ControllerInputContext
     DashboardQuickAction,
     OpenWidget,
     PinnedLayoutSelection,
+    PinnedSurface,
 }
 
 /// <summary>
@@ -549,12 +550,40 @@ public abstract partial class Widget
                 gestureContext));
         }
 
-        if (input.Context == ControllerInputContext.OpenWidget)
+        if (input.Context is ControllerInputContext.OpenWidget or
+            ControllerInputContext.PinnedSurface)
         {
+            ViewNode inputRoot;
+            string inputScopeId;
+            if (input.Context == ControllerInputContext.OpenWidget)
+            {
+                inputRoot = snapshot.Root;
+                inputScopeId = snapshot.ActiveInputScopeId;
+            }
+            else
+            {
+                if (string.IsNullOrWhiteSpace(input.PinnedLayoutId))
+                    return ValueTask.FromResult(false);
+                if (string.Equals(input.PinnedLayoutId, "host.full-widget", StringComparison.Ordinal))
+                {
+                    inputRoot = snapshot.Root;
+                    inputScopeId = snapshot.ActiveInputScopeId;
+                }
+                else
+                {
+                    var selectedLayout = snapshot.PinnedLayouts.SingleOrDefault(layout =>
+                        string.Equals(layout.Id, input.PinnedLayoutId, StringComparison.Ordinal));
+                    if (selectedLayout?.Root is null ||
+                        string.IsNullOrWhiteSpace(selectedLayout.ActiveInputScopeId))
+                        return ValueTask.FromResult(false);
+                    inputRoot = selectedLayout.Root;
+                    inputScopeId = selectedLayout.ActiveInputScopeId;
+                }
+            }
             if (input.SnapshotSequence != snapshot.Sequence ||
-                !string.Equals(input.ActiveInputScopeId, snapshot.ActiveInputScopeId, StringComparison.Ordinal))
+                !string.Equals(input.ActiveInputScopeId, inputScopeId, StringComparison.Ordinal))
                 return ValueTask.FromResult(false);
-            var scopeRoot = FindInputScope(snapshot.Root, snapshot.ActiveInputScopeId, isRoot: true);
+            var scopeRoot = FindInputScope(inputRoot, inputScopeId, isRoot: true);
             if (scopeRoot is null) return ValueTask.FromResult(false);
             var focusedNode = input.FocusedElementId is { } focusedId
                 ? FindNodeInScope(scopeRoot, focusedId, isScopeRoot: true)
@@ -587,7 +616,7 @@ public abstract partial class Widget
                     input.Sequence,
                     input.MonotonicTimestampMicroseconds,
                     requested,
-                    snapshot.ActiveInputScopeId)));
+                    inputScopeId)));
             }
             if (input.Button == ControllerButton.A &&
                 input.Phase == ControllerEventPhase.Pressed &&
@@ -602,7 +631,7 @@ public abstract partial class Widget
                     input.Phase,
                     input.Sequence,
                     input.MonotonicTimestampMicroseconds,
-                    InputScopeId: snapshot.ActiveInputScopeId)));
+                    InputScopeId: inputScopeId)));
             }
 
             // A always belongs to focused activation and never falls back to a
@@ -621,7 +650,7 @@ public abstract partial class Widget
                     input.Phase,
                     input.Sequence,
                     input.MonotonicTimestampMicroseconds,
-                    InputScopeId: snapshot.ActiveInputScopeId)));
+                    InputScopeId: inputScopeId)));
             }
 
             var scopedShortcut = input.FocusedElementId is { } activeFocus
@@ -636,7 +665,7 @@ public abstract partial class Widget
                 input.Phase,
                 input.Sequence,
                 input.MonotonicTimestampMicroseconds,
-                InputScopeId: snapshot.ActiveInputScopeId)));
+                InputScopeId: inputScopeId)));
         }
 
         return ValueTask.FromResult(false);

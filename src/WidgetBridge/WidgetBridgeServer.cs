@@ -1033,6 +1033,14 @@ public sealed class WidgetBridgeServer : IAsyncDisposable
               !BridgeRequestKey.IsBoundedIdentifier(input.PinnedLayoutId))))
             throw new BridgeProtocolException(
                 "Pinned layout selection input is invalid.");
+        if (input.Context == ControllerInputContext.PinnedSurface &&
+            (input.SnapshotSequence <= 0 ||
+             !BridgeRequestKey.IsBoundedIdentifier(input.ActiveInputScopeId) ||
+             !BridgeRequestKey.IsBoundedIdentifier(input.FocusedElementId) ||
+             !BridgeRequestKey.IsBoundedIdentifier(input.PinnedLayoutId) ||
+             input.IsPinnedLayoutSelected is not null))
+            throw new BridgeProtocolException(
+                "Pinned-surface input requires exact layout, scope, focus, and snapshot authority.");
     }
 
     private static void ValidateHostState(WidgetLifecycleState state)

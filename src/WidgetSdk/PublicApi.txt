@@ -138,6 +138,7 @@ enum WidgetRail.WidgetSdk.CardVariant.Transparent = WidgetRail.WidgetSdk.CardVar
 enum WidgetRail.WidgetSdk.ControllerInputContext.DashboardQuickAction = WidgetRail.WidgetSdk.ControllerInputContext.DashboardQuickAction
 enum WidgetRail.WidgetSdk.ControllerInputContext.OpenWidget = WidgetRail.WidgetSdk.ControllerInputContext.OpenWidget
 enum WidgetRail.WidgetSdk.ControllerInputContext.PinnedLayoutSelection = WidgetRail.WidgetSdk.ControllerInputContext.PinnedLayoutSelection
+enum WidgetRail.WidgetSdk.ControllerInputContext.PinnedSurface = WidgetRail.WidgetSdk.ControllerInputContext.PinnedSurface
 enum WidgetRail.WidgetSdk.ControllerInputOrigin.AccessibilityAutomation = WidgetRail.WidgetSdk.ControllerInputOrigin.AccessibilityAutomation
 enum WidgetRail.WidgetSdk.ControllerInputOrigin.PhysicalController = WidgetRail.WidgetSdk.ControllerInputOrigin.PhysicalController
 enum WidgetRail.WidgetSdk.IconButtonSize.Large = WidgetRail.WidgetSdk.IconButtonSize.Large

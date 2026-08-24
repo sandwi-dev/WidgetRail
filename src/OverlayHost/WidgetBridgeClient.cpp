@@ -2885,12 +2885,12 @@ std::optional<bool> WidgetBridgeClient::SendControllerInput(
         if (requestedValue && std::isfinite(*requestedValue)) {
             input.Insert(L"requestedValue", JsonValue::CreateNumberValue(*requestedValue));
         }
+        if (!pinnedLayoutId.empty())
+            input.Insert(L"pinnedLayoutId",
+                         JsonValue::CreateStringValue(winrt::hstring(pinnedLayoutId)));
         if (pinnedLayoutSelected) {
             input.Insert(L"isPinnedLayoutSelected",
                          JsonValue::CreateBooleanValue(*pinnedLayoutSelected));
-            if (!pinnedLayoutId.empty())
-                input.Insert(L"pinnedLayoutId",
-                             JsonValue::CreateStringValue(winrt::hstring(pinnedLayoutId)));
         }
         JsonObject payload;
         payload.Insert(L"widgetId", JsonValue::CreateStringValue(winrt::hstring(widgetId)));

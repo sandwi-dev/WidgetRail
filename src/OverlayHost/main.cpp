@@ -5530,7 +5530,8 @@ private:
                 request.nodeId, request.activeInputScopeId, request.snapshotSequence,
                 ++controllerSequence_,
                 static_cast<long long>(GetTickCount64() * 1000), L"pressed",
-                request.requestedValue, request.origin);
+                request.requestedValue, request.origin,
+                request.runtimeGeneration, request.selectedLayoutId);
             if (!handled) {
                 pinnedSurfaceCoordinator_.SetActionFeedback(
                     L"Pinned action failed. Reopen the overlay and try again.", true);
@@ -6544,24 +6545,6 @@ private:
             InvalidateRect(window_, nullptr, FALSE);
             return;
         }
-        if (pinnedControllerCommand == widgetrail::pinned::ControllerCommand::Enter) {
-            if (pinnedSurfaceCoordinator_.interactionMode() !=
-                widgetrail::pinned::InteractionMode::Focusable)
-                (void)pinnedSurfaceCoordinator_.SetInteractionMode(
-                    widgetrail::pinned::InteractionMode::Focusable);
-            if (pinnedSurfaceCoordinator_.EnterControllerFocus()) {
-                (void)interactionSession_.TransitionPressedPresentation(
-                    widgetrail::input::PressedInputTransition::Clear);
-                lastActionWidgetId_ =
-                    std::wstring(pinnedSurfaceCoordinator_.widgetId());
-                lastActionMessage_ =
-                    L"Pinned focus entered. B returns and X closes.";
-                lastActionExpiresAt_ = now + 5000;
-                InvalidateRect(window_, nullptr, FALSE);
-            }
-            return;
-        }
-
         if (pinnedSurfaceCoordinator_.controllerFocused()) {
             const auto movePinnedFocus = [&](const widgetrail::input::StickNavigationEvent& event) {
                 (void)pinnedSurfaceCoordinator_.MoveControllerFocus(event.direction);
@@ -6582,15 +6565,32 @@ private:
                     widgetrail::pinned::InteractionMode::ClickThrough);
                 lastActionMessage_ = L"Controller focus returned to the overlay";
                 lastActionExpiresAt_ = now + 2400;
-            } else if (pinnedControllerCommand ==
-                       widgetrail::pinned::ControllerCommand::Close) {
-                const std::wstring widgetId(pinnedSurfaceCoordinator_.widgetId());
-                (void)pinnedSurfaceCoordinator_.Unpin(
-                    widgetrail::pinned::WidgetSurfaceStopReason::Close);
-                lastActionWidgetId_ = widgetId;
-                lastActionMessage_ = L"Pinned surface closed";
-                lastActionExpiresAt_ = now + 2400;
-                SyncWidgetActivity();
+            }
+            const auto queuePinnedButton = [&](const bool pressedNow,
+                                               const std::wstring_view protocolButton) {
+                if (!pressedNow) return;
+                if (!pinnedSurfaceCoordinator_.QueueFocusedInput(
+                        protocolButton,
+                        widgetrail::ControllerInputOrigin::PhysicalController))
+                    pinnedSurfaceCoordinator_.SetActionFeedback(
+                        L"The focused pinned item is unavailable.", false);
+            };
+            if (pinnedControllerCommand != widgetrail::pinned::ControllerCommand::Exit) {
+                queuePinnedButton((pressed & XINPUT_GAMEPAD_X) != 0, L"x");
+                queuePinnedButton((pressed & XINPUT_GAMEPAD_Y) != 0, L"y");
+                queuePinnedButton((pressed & XINPUT_GAMEPAD_LEFT_SHOULDER) != 0,
+                                  L"leftBumper");
+                queuePinnedButton((pressed & XINPUT_GAMEPAD_RIGHT_SHOULDER) != 0,
+                                  L"rightBumper");
+                queuePinnedButton(frame.leftTriggerPressed != WRAIL_OVERLAY_PLATFORM_FALSE,
+                                  L"leftTrigger");
+                queuePinnedButton(frame.rightTriggerPressed != WRAIL_OVERLAY_PLATFORM_FALSE,
+                                  L"rightTrigger");
+                queuePinnedButton((pressed & XINPUT_GAMEPAD_LEFT_THUMB) != 0,
+                                  L"leftStick");
+                queuePinnedButton((pressed & XINPUT_GAMEPAD_RIGHT_THUMB) != 0,
+                                  L"rightStick");
+                queuePinnedButton((pressed & XINPUT_GAMEPAD_START) != 0, L"menu");
             }
             InvalidateRect(window_, nullptr, FALSE);
             return;

@@ -528,6 +528,14 @@ internal sealed class WidgetWorkerServer
              !input.ActiveInputScopeId.All(ch => char.IsAsciiLetterOrDigit(ch) || ch is '-' or '_' or '.')))
             throw new WidgetProtocolViolationException(
                 "Open-widget input requires a valid active scope ID and positive snapshot sequence.");
+        if (input.Context == ControllerInputContext.PinnedSurface &&
+            (input.SnapshotSequence <= 0 ||
+             !IsBoundedIdentifier(input.ActiveInputScopeId) ||
+             !IsBoundedIdentifier(input.FocusedElementId) ||
+             !IsBoundedIdentifier(input.PinnedLayoutId) ||
+             input.IsPinnedLayoutSelected is not null))
+            throw new WidgetProtocolViolationException(
+                "Pinned-surface input requires exact layout, scope, focus, and snapshot authority.");
         if (input.Context == ControllerInputContext.PinnedLayoutSelection &&
             (input.IsPinnedLayoutSelected is null ||
              (input.IsPinnedLayoutSelected == true &&
@@ -538,6 +546,10 @@ internal sealed class WidgetWorkerServer
             throw new WidgetProtocolViolationException(
                 "Pinned layout selection input is invalid.");
     }
+
+    private static bool IsBoundedIdentifier(string? value) =>
+        !string.IsNullOrWhiteSpace(value) && value.Length <= 128 &&
+        value.All(ch => char.IsAsciiLetterOrDigit(ch) || ch is '-' or '_' or '.');
 
     private static void ValidateHostState(WidgetLifecycleState state)
     {
