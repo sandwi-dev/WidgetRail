@@ -171,6 +171,15 @@ public:
                 lastRenderResult_.succeeded, pinned() && lastRenderResult_.succeeded,
                 lastRenderResult_.navigationRects.size()};
     }
+    [[nodiscard]] std::optional<float> ScrollOffsetForTesting(
+        const std::wstring_view scrollId) const noexcept {
+        const auto found = lastRenderResult_.scrollOffsets.find(scrollId);
+        return found == lastRenderResult_.scrollOffsets.end()
+            ? std::nullopt : std::optional<float>{found->second};
+    }
+    [[nodiscard]] bool FreeScrollBindingForTesting() const noexcept {
+        return freeScroll_.binding().has_value();
+    }
 #endif
     [[nodiscard]] bool Unpin(WidgetSurfaceStopReason reason) noexcept;
     void OnOverlayHidden() noexcept;

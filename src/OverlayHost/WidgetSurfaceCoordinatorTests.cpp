@@ -199,6 +199,55 @@ widgetrail::WidgetSnapshot Snapshot(const long long sequence = 1) {
     return snapshot;
 }
 
+widgetrail::WidgetStyleValue Length(const double value) {
+    return {L"length", std::to_wstring(value) + L"px", value, L"px"};
+}
+
+widgetrail::WidgetStyleValue Number(const double value) {
+    return {L"number", std::to_wstring(value), value, {}};
+}
+
+widgetrail::WidgetSnapshot ScrollSnapshot(const long long sequence = 1) {
+    auto snapshot = Snapshot(sequence);
+    snapshot.initialFocusId = L"pin.scroll.item.0";
+    snapshot.root.children.clear();
+
+    widgetrail::WidgetNode scroll;
+    scroll.id = L"pin.scroll";
+    scroll.kind = L"scroll";
+    scroll.inputScopeId = L"root";
+    scroll.scrollAxis = L"vertical";
+    scroll.baseStyle = {
+        {L"height", Length(140.0)},
+        {L"flex-shrink", Number(0.0)},
+    };
+    for (int index = 0; index < 8; ++index) {
+        widgetrail::WidgetNode item;
+        item.id = L"pin.scroll.item." + std::to_wstring(index);
+        item.kind = L"button";
+        item.text = L"Scrollable item " + std::to_wstring(index);
+        item.accessibilityLabel = item.text;
+        item.actionId = L"scroll-item";
+        item.inputScopeId = L"root";
+        item.focusRight = L"pin.outside";
+        item.baseStyle = {
+            {L"min-height", Length(44.0)},
+            {L"flex-shrink", Number(0.0)},
+        };
+        scroll.children.push_back(std::move(item));
+    }
+
+    widgetrail::WidgetNode outside;
+    outside.id = L"pin.outside";
+    outside.kind = L"button";
+    outside.text = L"Outside scroll";
+    outside.accessibilityLabel = outside.text;
+    outside.actionId = L"outside";
+    outside.inputScopeId = L"root";
+    snapshot.root.children = {std::move(scroll), std::move(outside)};
+    return snapshot;
+}
+
 widgetrail::pinned::WidgetSurfaceAdmission Admission(const bool supported = true) {
     return {
         L"widgetrail.samples.sdk-gallery",
@@ -370,6 +419,76 @@ int main() {
             layouts.Dispose();
             std::error_code layoutCleanup;
             std::filesystem::remove_all(layoutRoot, layoutCleanup);
+        }
+
+        {
+            widgetrail::pinned::WidgetSurfaceCoordinator scrolling;
+            const auto scrollRoot = placementRoot / L"scroll-retention";
+            Check(scrolling.Initialize(
+                      GetModuleHandleW(nullptr), nullptr, WM_APP + 0x413,
+                      d2d.Get(), write.Get(), nullptr, error,
+                      scrollRoot / L"placement.ini"),
+                  "scroll fixture reuses the production pinned coordinator");
+            scrolling.OnOverlayShown();
+            auto admission = Admission();
+            admission.snapshot = ScrollSnapshot();
+            admission.pinnedLayouts = {{
+                L"scroll-layout", L"Scrollable", 420.0F, 320.0F,
+                ScrollSnapshot(),
+            }};
+            Check(scrolling.Pin(admission, error) && scrolling.CycleLayout(1) &&
+                      scrolling.CommitSetup(error),
+                  "scroll fixture commits one authored selected layout");
+            Check(scrolling.ToggleInteractionMode(),
+                  "scroll fixture enters the existing interactive surface mode");
+            UpdateWindow(scrolling.window());
+            Check(scrolling.EnterControllerFocus(),
+                  "scroll fixture establishes exact pinned controller focus");
+            UpdateWindow(scrolling.window());
+            Check(scrolling.ScrollFocusedProjection(0, -32'768, 100),
+                  "right stick commits one renderer-owned free-scroll offset");
+            UpdateWindow(scrolling.window());
+            const auto scrolledOffset = scrolling.ScrollOffsetForTesting(L"pin.scroll");
+            Check(scrolledOffset && *scrolledOffset > 0.0F &&
+                      scrolling.FreeScrollBindingForTesting(),
+                  "free scroll retains exact renderer offset and interaction binding");
+            Check(scrolling.MoveControllerFocus(
+                      widgetrail::input::NavigationDirection::Right) &&
+                      !scrolling.FreeScrollBindingForTesting() &&
+                      scrolling.MoveControllerFocus(
+                          widgetrail::input::NavigationDirection::Right) &&
+                      scrolling.focusedElementId() == L"pin.outside",
+                  "re-entry retires only its binding and focus can leave the list");
+            UpdateWindow(scrolling.window());
+
+            auto compatibleProjection = ScrollSnapshot(2);
+            Check(scrolling.UpdateSnapshot(
+                      admission.widgetId, admission.runtimeGeneration,
+                      ScrollSnapshot(2), {{
+                          L"scroll-layout", L"Scrollable", 420.0F, 320.0F,
+                          compatibleProjection,
+                      }}),
+                  "ordinary compatible pinned snapshot is admitted after re-entry");
+            UpdateWindow(scrolling.window());
+            const auto retainedOffset = scrolling.ScrollOffsetForTesting(L"pin.scroll");
+            Check(retainedOffset && *retainedOffset == *scrolledOffset &&
+                      !scrolling.FreeScrollBindingForTesting(),
+                  "compatible snapshot retains renderer state independently of binding lifetime");
+
+            Check(scrolling.UpdateSnapshot(
+                      admission.widgetId, admission.runtimeGeneration,
+                      ScrollSnapshot(3), {}) &&
+                      scrolling.selectedLayoutName() == L"Full widget",
+                  "selected-layout removal falls back through coordinator authority");
+            UpdateWindow(scrolling.window());
+            const auto replacedOffset = scrolling.ScrollOffsetForTesting(L"pin.scroll");
+            Check(replacedOffset && *replacedOffset == 0.0F,
+                  "genuine selected-layout replacement forgets incompatible renderer state");
+            Check(scrolling.Unpin(widgetrail::pinned::WidgetSurfaceStopReason::Unpin),
+                  "scroll fixture performs exact teardown");
+            scrolling.Dispose();
+            std::error_code scrollCleanup;
+            std::filesystem::remove_all(scrollRoot, scrollCleanup);
         }
 
         {

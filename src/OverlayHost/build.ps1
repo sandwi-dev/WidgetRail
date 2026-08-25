@@ -506,6 +506,8 @@ function Invoke-WidgetSurfaceCoordinatorTests {
         (Join-Path $projectDirectory 'AccessibilityEvents.cpp'),
         (Join-Path $projectDirectory 'AccessibilityTree.cpp'),
         (Join-Path $projectDirectory 'ControllerNavigation.cpp'),
+        (Join-Path $projectDirectory 'SliderInteraction.cpp'),
+        (Join-Path $projectDirectory 'WidgetInteractionSession.cpp'),
         (Join-Path $projectDirectory 'FocusNavigation.cpp'),
         (Join-Path $projectDirectory 'WidgetSurfaceFocus.cpp'),
         (Join-Path $projectDirectory 'DeclarativeRenderer.cpp'),
