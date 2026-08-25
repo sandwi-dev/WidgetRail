@@ -1,4 +1,5 @@
 #include "WidgetBridgeClient.h"
+#include "WidgetSurfaceGeometry.h"
 
 #include <winrt/base.h>
 #include <winrt/Windows.Foundation.h>
@@ -1016,8 +1017,10 @@ WidgetSnapshot ParseSnapshot(const JsonObject& source) {
             if (width.has_value() != height.has_value()) return false;
             if (!width) return true;
             return std::isfinite(*width) && std::isfinite(*height) &&
-                *width >= 240.0 && *width <= 1600.0 &&
-                *height >= 180.0 && *height <= 1200.0;
+                *width >= surface_geometry::kMinimumAuthoredContentWidthDip &&
+                *width <= surface_geometry::kMaximumAuthoredContentWidthDip &&
+                *height >= surface_geometry::kMinimumAuthoredContentHeightDip &&
+                *height <= surface_geometry::kMaximumAuthoredContentHeightDip;
         };
         if (!validMode || !validAxis(parsed.widthMode) ||
             !validAxis(parsed.heightMode) ||

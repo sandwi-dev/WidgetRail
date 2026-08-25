@@ -3,6 +3,7 @@
 #include "AccessibilityTree.h"
 #include "FocusNavigation.h"
 #include "WidgetSurfaceFocus.h"
+#include "WidgetSurfaceGeometry.h"
 
 #include <ShellScalingApi.h>
 
@@ -17,9 +18,9 @@ namespace {
 constexpr wchar_t kWindowClass[] = L"WidgetRail.PinnedSurface";
 constexpr wchar_t kWindowTitle[] = L"WidgetRail pinned surface";
 constexpr UINT kAccessibilityActionMessage = WM_APP + 0x316;
-constexpr float kChromeHeightDip = 36.0F;
-constexpr float kSideInsetDip = 8.0F;
-constexpr float kBottomInsetDip = 8.0F;
+constexpr float kChromeHeightDip = surface_geometry::kPinnedChromeHeightDip;
+constexpr float kSideInsetDip = surface_geometry::kPinnedSideInsetDip;
+constexpr float kBottomInsetDip = surface_geometry::kPinnedBottomInsetDip;
 constexpr float kPinnedBorderDip = 1.0F;
 constexpr float kAdjustBorderDip = 3.0F;
 constexpr unsigned int kMinimumOpacityPercent = 30;

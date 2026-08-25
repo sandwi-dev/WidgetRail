@@ -1,6 +1,7 @@
 #pragma once
 
 #include "PinnedSurfacePolicy.h"
+#include "WidgetSurfaceGeometry.h"
 
 #include <filesystem>
 #include <map>
@@ -27,8 +28,8 @@ enum class PlacementDirection {
 };
 
 struct PlacementLimits final {
-    float minimumWidthDip{240.0F};
-    float minimumHeightDip{135.0F};
+    float minimumWidthDip{surface_geometry::kMinimumPinnedWidthDip};
+    float minimumHeightDip{surface_geometry::kMinimumPinnedHeightDip};
     float maximumWidthDip{960.0F};
     float maximumHeightDip{540.0F};
 };

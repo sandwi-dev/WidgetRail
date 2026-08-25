@@ -20,7 +20,10 @@ constexpr std::size_t kMaximumLayoutIdLength = 128;
 // The durable parser owns a structural envelope, not a widget's current
 // interactive resize policy: maximum authored content plus pinned chrome.
 constexpr PlacementLimits kDurableStorageLimits{
-    240.0F, 135.0F, 1'616.0F, 1'244.0F};
+    surface_geometry::kMinimumPinnedWidthDip,
+    surface_geometry::kMinimumPinnedHeightDip,
+    surface_geometry::kMaximumPinnedWidthDip,
+    surface_geometry::kMaximumPinnedHeightDip};
 
 [[nodiscard]] bool ValidLimits(const PlacementLimits& limits) noexcept {
     return std::isfinite(limits.minimumWidthDip) &&
