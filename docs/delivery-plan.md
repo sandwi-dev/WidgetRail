@@ -35,7 +35,7 @@ historical evidence only; this file is the sole implementation authority.
 | Lane | Task/worktree | State |
 | --- | --- | --- |
 | Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | DLV-300 is closed through integrated production validation and green focused tests. DLV-301 is Ready after serialized DLV-303 instrumentation. The standing worktree's retained DLV-474/DLV-293 diffs and blocked DLV-473 test commit remain immutable evidence and must not be touched. |
-| Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | DLV-302 closed with a precise observability gap. DLV-303 generic action-correlation instrumentation is assigned but held until DLV-300 test closure; it has no fix authority. The dirty standing DLV-298 evidence remains untouched. DLV-296 and DLV-297 remain Ready. |
+| Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | DLV-302 closed with a precise observability gap. DLV-303 generic action-correlation instrumentation is active from clean integrated `b089f94` in a separate worktree and has no fix authority. The dirty standing DLV-298 evidence remains untouched. DLV-296 and DLV-297 remain Ready. |
 
 ## Execution rules
 
@@ -180,7 +180,7 @@ before any corrective implementation is authorized.
 ### DLV-303 end-to-end widget action correlation diagnostics
 
 Lane: widgets lead, serialized generic host/SDK plus package-local diagnostics.
-Status: Assigned from integrated `b1385ff` in a separate clean worktree. Reuse
+Status: Assigned from integrated `b089f94` in a separate clean worktree. Reuse
 the existing controller/action request identity to emit one bounded correlation
 across generic host admission/reply (button, widget, focus, scope, snapshot and
 runtime generation, handled/error), SDK serial-queue admission/dequeue/terminal
