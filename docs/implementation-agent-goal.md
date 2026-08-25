@@ -167,6 +167,23 @@ The review and planning agent may send lane identity, assignment
 clarifications, bounded integration instructions, corrections, or stop
 instructions directly to this task.
 
+A first-red stop pauses only the current assignment's ordered verification.
+Preserve the exact worktree and evidence, do not rerun or repair beyond the
+current authority, and report the stop directly to the reviewer immediately;
+do not wait for a scheduled heartbeat. Phrase the report as requiring
+`reviewer disposition`, not user approval. Include the exact first failure,
+what executed, what did not execute, the retained diff/commit state, the
+source-supported cause if known, and the smallest bounded next action that
+would distinguish or correct it.
+
+After the report, do not infer that the planner goal or other lane is paused.
+If task-specific edits are retained, wait only for the reviewer's bounded
+follow-up for this assignment. When that follow-up arrives, continue directly
+under its exact edit and gate authority and report the next terminal result
+back to the reviewer. The reviewer, not the implementation agent, decides
+whether the evidence permits automatic correction, reclassification, another
+eligible item, or a user-owned escalation.
+
 An ordinary review correction applies at the next clean assignment boundary;
 it does not cancel a different milestone already in progress. Finish that
 milestone first, then execute the queued correction before later Ready work.

@@ -483,6 +483,41 @@ correction, and resume the blocked gate. Independent focused gates may continue
 when they cannot mask or overwrite the failure. Never repeat an unchanged
 invocation and call the rerun a fix.
 
+### Automatic reviewer disposition after a stop
+
+`Stop at the first red` pauses the implementation agent's current ordered gate;
+it does not pause this continuing planner goal, every delivery lane, or the
+whole project. Treat every direct stop report as an actionable reviewer event,
+not as a user decision by default. In the same review pass:
+
+1. Inspect the retained diff, exact failure, artifacts, and relevant current
+   source before authorizing another edit or invocation.
+2. If the cause and correction are concrete, bounded, in scope, and preserve
+   the accepted product, architecture, security, and verification boundaries,
+   immediately send the correction and one proportional ordered gate sequence
+   back to the implementation task. Keep the Plane item `In Progress`; do not
+   wait for the user or the next heartbeat.
+3. If the failure is environmental or belongs to the harness, authorize only a
+   source-proven safe-state or command correction and the smallest exact retry
+   allowed by the assignment. Do not weaken an assertion, extend a deadline,
+   or repeat an unchanged invocation merely to obtain green evidence.
+4. If the cause is not yet concrete, perform bounded read-only reviewer
+   diagnosis. Then either issue a precise correction, record an exact blocker,
+   or re-own/reclassify the work and continue the first independent eligible
+   item in the free lane.
+5. Escalate to the user only for a material product or security decision with
+   genuinely different outcomes, a trust/scope expansion, credentials, a
+   destructive action, a substantial conflict, a push, or another authority
+   explicitly reserved to the user. Routine correction scope, test
+   disposition, Plane state maintenance, and known-safe continuation are
+   reviewer-owned.
+
+A scheduled heartbeat is a continuation trigger, not a reason to leave a
+reviewed stop idle. When a safe disposition is available, take that action
+before reporting the heartbeat status. If no safe action exists, report the
+exact missing evidence or user-owned decision rather than the implementation
+agent's generic phrase `decision needed`.
+
 This exception does not waive a successful Release build, source review, or
 ordinary safety boundaries. It changes the ordering of physical acceptance and
 automated regression work so tests encode accepted behavior rather than
