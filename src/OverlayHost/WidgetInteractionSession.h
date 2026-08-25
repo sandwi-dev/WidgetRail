@@ -57,6 +57,44 @@ struct FreeScrollReentryRequest final {
     std::optional<FreeScrollBinding> retiredBinding;
 };
 
+/// Shared free-scroll interaction authority. Surface owners supply their exact
+/// current focus and admitted semantics; this state owns only stick sampling,
+/// the bounded authority binding, and deterministic navigation re-entry.
+class FreeScrollInteractionState final {
+public:
+    [[nodiscard]] RightStickScrollUpdate SampleRightStick(
+        short x,
+        short y,
+        std::uint64_t now) noexcept;
+    [[nodiscard]] FreeScrollAuthorityDecision Evaluate(
+        const WidgetInteractionAuthority& authority,
+        std::wstring_view focusedElementId) const noexcept;
+    [[nodiscard]] bool Bind(
+        const WidgetInteractionAuthority& authority,
+        std::wstring_view focusedElementId,
+        std::wstring_view scrollId,
+        declarative::ScrollAxis axis);
+    [[nodiscard]] std::optional<FreeScrollBinding> Clear() noexcept;
+    [[nodiscard]] bool SetRefreshDeferred(bool deferred) noexcept;
+    [[nodiscard]] const std::optional<FreeScrollBinding>& binding() const noexcept {
+        return binding_;
+    }
+    [[nodiscard]] FreeScrollReentryRequest ResolveReentry(
+        const WidgetInteractionAuthority& authority,
+        std::wstring_view focusedElementId,
+        const RenderResult& renderResult);
+
+private:
+    [[nodiscard]] static bool BindingMatches(
+        const FreeScrollBinding& binding,
+        const WidgetInteractionAuthority& authority,
+        std::wstring_view focusedElementId) noexcept;
+
+    RightStickScrollKinetics kinetics_;
+    std::optional<FreeScrollBinding> binding_;
+    bool refreshDeferred_{};
+};
+
 /// Typed visual work returned when focus authority changes. OverlayApp remains
 /// the final damage arbiter because it owns the HWND and renderer geometry.
 struct FocusMutation final {
@@ -245,7 +283,7 @@ public:
     [[nodiscard]] bool SetRefreshDeferred(bool deferred) noexcept;
     [[nodiscard]] const std::optional<FreeScrollBinding>& freeScrollBinding()
         const noexcept {
-        return freeScrollBinding_;
+        return freeScroll_.binding();
     }
     [[nodiscard]] FreeScrollReentryRequest ResolveFreeScrollReentry(
         const WidgetInteractionAuthority& authority,
@@ -351,9 +389,6 @@ public:
         std::wstring_view reason);
 
 private:
-    [[nodiscard]] bool BindingMatches(
-        const FreeScrollBinding& binding,
-        const WidgetInteractionAuthority& authority) const noexcept;
     [[nodiscard]] static SliderInputDescriptor SliderDescriptor(
         const WidgetSnapshot& snapshot,
         const WidgetNode& node) noexcept;
@@ -416,9 +451,7 @@ private:
         const ScrollPaginationDemandLatch& latch,
         const WidgetInteractionAuthority& authority) noexcept;
 
-    RightStickScrollKinetics rightStickKinetics_;
-    std::optional<FreeScrollBinding> freeScrollBinding_;
-    bool freeScrollRefreshDeferred_{};
+    FreeScrollInteractionState freeScroll_;
     std::wstring focusedElementId_;
     WidgetSurfaceFocusMemory focusMemory_;
     SliderInteractionState sliders_;

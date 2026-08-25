@@ -161,34 +161,36 @@ void WidgetInteractionSession::ForgetWidget(const std::wstring_view widgetId) {
     RefreshSliderDeadline();
 }
 
-RightStickScrollUpdate WidgetInteractionSession::SampleRightStick(
+RightStickScrollUpdate FreeScrollInteractionState::SampleRightStick(
     const short x,
     const short y,
     const std::uint64_t now) noexcept {
-    return rightStickKinetics_.Update(x, y, now);
+    return kinetics_.Update(x, y, now);
 }
 
-bool WidgetInteractionSession::BindingMatches(
+bool FreeScrollInteractionState::BindingMatches(
     const FreeScrollBinding& binding,
-    const WidgetInteractionAuthority& authority) const noexcept {
+    const WidgetInteractionAuthority& authority,
+    const std::wstring_view focusedElementId) noexcept {
     return authority.semantics &&
         binding.widgetId == authority.widgetId &&
         binding.widgetInstanceId == authority.semantics->instanceId &&
         binding.runtimeGeneration == authority.runtimeGeneration &&
         binding.presentationGeneration == authority.presentationGeneration &&
         binding.inputScopeId == authority.semantics->activeInputScopeId &&
-        binding.focusedElementId == focusedElementId_ &&
+        binding.focusedElementId == focusedElementId &&
         binding.axis != declarative::ScrollAxis::None;
 }
 
-FreeScrollAuthorityDecision WidgetInteractionSession::EvaluateFreeScrollAuthority(
-    const WidgetInteractionAuthority& authority) const noexcept {
+FreeScrollAuthorityDecision FreeScrollInteractionState::Evaluate(
+    const WidgetInteractionAuthority& authority,
+    const std::wstring_view focusedElementId) const noexcept {
     if (!authority.semantics) {
         return {FreeScrollAuthorityDisposition::Missing, false};
     }
-    if (!freeScrollBinding_)
+    if (!binding_)
         return {FreeScrollAuthorityDisposition::Current, false};
-    if (!BindingMatches(*freeScrollBinding_, authority))
+    if (!BindingMatches(*binding_, authority, focusedElementId))
         return {FreeScrollAuthorityDisposition::Replaced, false};
     return {
         authority.retainedRefresh
@@ -198,59 +200,61 @@ FreeScrollAuthorityDecision WidgetInteractionSession::EvaluateFreeScrollAuthorit
     };
 }
 
-bool WidgetInteractionSession::BindFreeScroll(
+bool FreeScrollInteractionState::Bind(
     const WidgetInteractionAuthority& authority,
+    const std::wstring_view focusedElementId,
     const std::wstring_view scrollId,
     const declarative::ScrollAxis axis) {
     if (!authority.semantics || axis == declarative::ScrollAxis::None ||
         scrollId.empty()) {
         return false;
     }
-    const bool changed = !freeScrollBinding_ ||
-        freeScrollBinding_->scrollId != scrollId ||
-        freeScrollBinding_->axis != axis;
-    freeScrollBinding_ = FreeScrollBinding{
+    const bool changed = !binding_ ||
+        binding_->scrollId != scrollId ||
+        binding_->axis != axis;
+    binding_ = FreeScrollBinding{
         std::wstring{authority.widgetId},
         authority.semantics->instanceId,
         std::wstring{authority.runtimeGeneration},
         std::wstring{authority.presentationGeneration},
         authority.semantics->activeInputScopeId,
-        focusedElementId_,
+        std::wstring{focusedElementId},
         std::wstring{scrollId},
         axis,
     };
-    freeScrollRefreshDeferred_ = false;
+    refreshDeferred_ = false;
     return changed;
 }
 
-std::optional<FreeScrollBinding> WidgetInteractionSession::ClearFreeScroll() noexcept {
-    auto prior = std::move(freeScrollBinding_);
-    freeScrollBinding_.reset();
-    freeScrollRefreshDeferred_ = false;
-    rightStickKinetics_.Reset();
+std::optional<FreeScrollBinding> FreeScrollInteractionState::Clear() noexcept {
+    auto prior = std::move(binding_);
+    binding_.reset();
+    refreshDeferred_ = false;
+    kinetics_.Reset();
     return prior;
 }
 
-bool WidgetInteractionSession::SetRefreshDeferred(const bool deferred) noexcept {
-    if (!freeScrollBinding_ || freeScrollRefreshDeferred_ == deferred)
+bool FreeScrollInteractionState::SetRefreshDeferred(const bool deferred) noexcept {
+    if (!binding_ || refreshDeferred_ == deferred)
         return false;
-    freeScrollRefreshDeferred_ = deferred;
+    refreshDeferred_ = deferred;
     return true;
 }
 
-FreeScrollReentryRequest WidgetInteractionSession::ResolveFreeScrollReentry(
+FreeScrollReentryRequest FreeScrollInteractionState::ResolveReentry(
     const WidgetInteractionAuthority& authority,
+    const std::wstring_view focusedElementId,
     const RenderResult& renderResult) {
     FreeScrollReentryRequest request;
-    if (!freeScrollBinding_ || !authority.semantics ||
-        !BindingMatches(*freeScrollBinding_, authority)) {
+    if (!binding_ || !authority.semantics ||
+        !BindingMatches(*binding_, authority, focusedElementId)) {
         return request;
     }
     request.consumed = true;
-    request.retiredBinding = std::move(freeScrollBinding_);
-    freeScrollBinding_.reset();
-    freeScrollRefreshDeferred_ = false;
-    rightStickKinetics_.Reset();
+    request.retiredBinding = std::move(binding_);
+    binding_.reset();
+    refreshDeferred_ = false;
+    kinetics_.Reset();
     request.target = FindFreeScrollReentryTarget(
         authority.semantics->root,
         request.retiredBinding->scrollId,
@@ -260,10 +264,44 @@ FreeScrollReentryRequest WidgetInteractionSession::ResolveFreeScrollReentry(
     return request;
 }
 
+RightStickScrollUpdate WidgetInteractionSession::SampleRightStick(
+    const short x,
+    const short y,
+    const std::uint64_t now) noexcept {
+    return freeScroll_.SampleRightStick(x, y, now);
+}
+
+FreeScrollAuthorityDecision WidgetInteractionSession::EvaluateFreeScrollAuthority(
+    const WidgetInteractionAuthority& authority) const noexcept {
+    return freeScroll_.Evaluate(authority, focusedElementId_);
+}
+
+bool WidgetInteractionSession::BindFreeScroll(
+    const WidgetInteractionAuthority& authority,
+    const std::wstring_view scrollId,
+    const declarative::ScrollAxis axis) {
+    return freeScroll_.Bind(authority, focusedElementId_, scrollId, axis);
+}
+
+std::optional<FreeScrollBinding> WidgetInteractionSession::ClearFreeScroll() noexcept {
+    return freeScroll_.Clear();
+}
+
+bool WidgetInteractionSession::SetRefreshDeferred(const bool deferred) noexcept {
+    return freeScroll_.SetRefreshDeferred(deferred);
+}
+
+FreeScrollReentryRequest WidgetInteractionSession::ResolveFreeScrollReentry(
+    const WidgetInteractionAuthority& authority,
+    const RenderResult& renderResult) {
+    return freeScroll_.ResolveReentry(authority, focusedElementId_, renderResult);
+}
+
 WidgetInteractionPresentation WidgetInteractionSession::Presentation(
     const WidgetInteractionAuthority& authority) const noexcept {
     const bool exact = authority.semantics &&
-        (!freeScrollBinding_ || BindingMatches(*freeScrollBinding_, authority));
+        (!freeScroll_.binding() ||
+         freeScroll_.Evaluate(authority, focusedElementId_).followSuppressed);
     const auto pressedElement = authority.semantics
         ? pressed_.ActiveElementId(*authority.semantics, focusedElementId_)
         : std::wstring_view{};
@@ -271,7 +309,7 @@ WidgetInteractionPresentation WidgetInteractionSession::Presentation(
         focusedElementId_,
         pressedElement,
         sliders_.presentationRevision(),
-        exact && freeScrollBinding_.has_value(),
+        exact && freeScroll_.binding().has_value(),
     };
 }
 

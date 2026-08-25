@@ -219,7 +219,7 @@ bool WidgetSurfaceCoordinator::UpdateSnapshot(
         snapshot.instanceId != admission_->instanceId) {
         return false;
     }
-    ClearFreeScroll();
+    const std::wstring priorLayoutId{SelectedLayoutId()};
     admission_->snapshot = snapshot;
     admission_->pinnedLayouts = std::move(layouts);
     std::vector<PinnedLayoutOption> nextLayouts;
@@ -241,11 +241,30 @@ bool WidgetSurfaceCoordinator::UpdateSnapshot(
     actionFeedback_.clear();
     actionFeedbackFailure_ = false;
     const auto& selectedSnapshot = SelectedSnapshot();
+    const std::wstring priorFocus = focusedElementId_;
     if (focusedElementId_.empty() ||
         !input::FindNodeInInputScope(
             selectedSnapshot, focusedElementId_, selectedSnapshot.activeInputScopeId))
         focusedElementId_ = selectedSnapshot.initialFocusId;
-    if (renderer_) renderer_->ForgetWidgetState(admission_->instanceId);
+    const input::WidgetInteractionAuthority authority{
+        admission_->widgetId,
+        &selectedSnapshot,
+        admission_->runtimeGeneration,
+        admission_->presentationGeneration,
+        false,
+    };
+    const auto decision = freeScroll_.Evaluate(authority, focusedElementId_);
+    const auto& binding = freeScroll_.binding();
+    const bool preserveFreeScroll = binding &&
+        priorLayoutId == SelectedLayoutId() && priorFocus == focusedElementId_ &&
+        decision.disposition == input::FreeScrollAuthorityDisposition::Current &&
+        input::IsExactScrollAuthorityCurrent(
+            selectedSnapshot.root, binding->scrollId, binding->axis,
+            lastRenderResult_);
+    if (!preserveFreeScroll) {
+        ClearFreeScroll();
+        if (renderer_) renderer_->ForgetWidgetState(admission_->instanceId);
+    }
     if (window_) InvalidateRect(window_, nullptr, FALSE);
     return true;
 }
@@ -317,21 +336,23 @@ bool WidgetSurfaceCoordinator::MoveControllerFocus(
         !pinned()) return false;
     const auto& snapshot = SelectedSnapshot();
     const auto activeScope = std::wstring_view(snapshot.activeInputScopeId);
-    if (freeScrollBinding_) {
-        const auto binding = freeScrollBinding_->authority;
-        const bool current = IsFreeScrollAuthorityCurrent(
-            snapshot, lastRenderResult_);
-        ClearFreeScroll();
-        if (current) {
-            if (const auto target = input::FindFreeScrollReentryTarget(
-                    snapshot.root, binding.scrollId, binding.axis,
-                    activeScope, lastRenderResult_)) {
-                focusedElementId_ = *target;
-            }
+    if (freeScroll_.binding()) {
+        const input::WidgetInteractionAuthority authority{
+            admission_->widgetId,
+            &snapshot,
+            admission_->runtimeGeneration,
+            admission_->presentationGeneration,
+            false,
+        };
+        auto reentry = freeScroll_.ResolveReentry(
+            authority, focusedElementId_, lastRenderResult_);
+        if (reentry.consumed) {
+            if (reentry.target) focusedElementId_ = *reentry.target;
             PublishAccessibility();
             InvalidateRect(window_, nullptr, FALSE);
             return true;
         }
+        ClearFreeScroll();
     }
     const auto visible = input::ResolveVisibleFocusTarget(
         focusedElementId_, activeScope, lastRenderResult_);
@@ -375,7 +396,7 @@ bool WidgetSurfaceCoordinator::ScrollFocusedProjection(
     const short rightThumbX,
     const short rightThumbY,
     const std::uint64_t now) {
-    const auto sample = rightStickScrollKinetics_.Update(
+    const auto sample = freeScroll_.SampleRightStick(
         rightThumbX, rightThumbY, now);
     if (!pinned() || !controllerFocused_ ||
         policy_.interactionMode() != InteractionMode::Focusable ||
@@ -397,8 +418,21 @@ bool WidgetSurfaceCoordinator::ScrollFocusedProjection(
         ClearFreeScroll();
         return false;
     }
-    if (freeScrollBinding_ &&
-        !IsFreeScrollAuthorityCurrent(snapshot, lastRenderResult_)) {
+    const input::WidgetInteractionAuthority authority{
+        admission_->widgetId,
+        &snapshot,
+        admission_->runtimeGeneration,
+        admission_->presentationGeneration,
+        false,
+    };
+    const auto decision = freeScroll_.Evaluate(authority, focusedElementId_);
+    if (decision.disposition == input::FreeScrollAuthorityDisposition::Replaced) {
+        ClearFreeScroll();
+    }
+    if (const auto& binding = freeScroll_.binding();
+        binding && !input::IsExactScrollAuthorityCurrent(
+            snapshot.root, binding->scrollId, binding->axis,
+            lastRenderResult_)) {
         ClearFreeScroll();
     }
     if (!sample.moving) return false;
@@ -416,8 +450,8 @@ bool WidgetSurfaceCoordinator::ScrollFocusedProjection(
         ? declarative::ScrollAxis::Horizontal
         : declarative::ScrollAxis::Vertical;
     std::wstring exactScrollId;
-    if (freeScrollBinding_ && freeScrollBinding_->authority.axis == axis) {
-        exactScrollId = freeScrollBinding_->authority.scrollId;
+    if (freeScroll_.binding() && freeScroll_.binding()->axis == axis) {
+        exactScrollId = freeScroll_.binding()->scrollId;
     } else {
         const auto owner = input::ResolveFocusedScrollOwner(
             snapshot.root, focusedElementId_, axis,
@@ -450,44 +484,13 @@ bool WidgetSurfaceCoordinator::ScrollFocusedProjection(
         return false;
     }
     InvalidateRect(window_, &update, FALSE);
-    freeScrollBinding_ = PinnedFreeScrollBinding{
-        {
-            admission_->widgetId,
-            snapshot.instanceId,
-            admission_->runtimeGeneration,
-            admission_->presentationGeneration,
-            snapshot.activeInputScopeId,
-            focusedElementId_,
-            plan->scrollId,
-            plan->axis,
-        },
-        std::wstring{SelectedLayoutId()},
-        snapshot.sequence,
-    };
+    (void)freeScroll_.Bind(
+        authority, focusedElementId_, plan->scrollId, plan->axis);
     return true;
 }
 
-bool WidgetSurfaceCoordinator::IsFreeScrollAuthorityCurrent(
-    const WidgetSnapshot& snapshot,
-    const RenderResult& renderResult) const noexcept {
-    if (!freeScrollBinding_ || !admission_) return false;
-    const auto& pinned = *freeScrollBinding_;
-    const auto& binding = pinned.authority;
-    return binding.widgetId == admission_->widgetId &&
-        binding.widgetInstanceId == snapshot.instanceId &&
-        binding.runtimeGeneration == admission_->runtimeGeneration &&
-        binding.presentationGeneration == admission_->presentationGeneration &&
-        pinned.selectedLayoutId == SelectedLayoutId() &&
-        pinned.snapshotSequence == snapshot.sequence &&
-        binding.inputScopeId == snapshot.activeInputScopeId &&
-        binding.focusedElementId == focusedElementId_ &&
-        input::IsExactScrollAuthorityCurrent(
-            snapshot.root, binding.scrollId, binding.axis, renderResult);
-}
-
 void WidgetSurfaceCoordinator::ClearFreeScroll() noexcept {
-    freeScrollBinding_.reset();
-    rightStickScrollKinetics_.Reset();
+    (void)freeScroll_.Clear();
 }
 
 void WidgetSurfaceCoordinator::QueueResolvedInput(
@@ -1588,8 +1591,26 @@ void WidgetSurfaceCoordinator::Paint() {
     options.surfaceBackground = NativeColor{22.0F / 255.0F, 33.0F / 255.0F, 46.0F / 255.0F, 1.0F};
     options.accessibility.reducedMotion = true;
     const auto& selectedSnapshot = SelectedSnapshot();
+    const input::WidgetInteractionAuthority authority{
+        admission_->widgetId,
+        &selectedSnapshot,
+        admission_->runtimeGeneration,
+        admission_->presentationGeneration,
+        false,
+    };
+    const auto freeScrollDecision = freeScroll_.Evaluate(
+        authority, focusedElementId_);
+    if (freeScroll_.binding() &&
+        freeScrollDecision.disposition !=
+            input::FreeScrollAuthorityDisposition::Current) {
+        ClearFreeScroll();
+    }
+    const auto& freeScrollBinding = freeScroll_.binding();
     options.suppressFocusedDescendantFollow =
-        IsFreeScrollAuthorityCurrent(selectedSnapshot, lastRenderResult_);
+        freeScrollDecision.followSuppressed && freeScrollBinding &&
+        input::IsExactScrollAuthorityCurrent(
+            selectedSnapshot.root, freeScrollBinding->scrollId,
+            freeScrollBinding->axis, lastRenderResult_);
     const declarative::Rect viewport{
         kSideInsetDip, kChromeHeightDip,
         std::max(1.0F, widthDip - kSideInsetDip * 2.0F),
@@ -1602,7 +1623,11 @@ void WidgetSurfaceCoordinator::Paint() {
             : std::wstring_view{},
         viewport, options);
     if (options.suppressFocusedDescendantFollow &&
-        !IsFreeScrollAuthorityCurrent(selectedSnapshot, lastRenderResult_)) {
+        (!freeScroll_.Evaluate(authority, focusedElementId_).followSuppressed ||
+         !freeScroll_.binding() ||
+         !input::IsExactScrollAuthorityCurrent(
+             selectedSnapshot.root, freeScroll_.binding()->scrollId,
+             freeScroll_.binding()->axis, lastRenderResult_))) {
         ClearFreeScroll();
     }
     renderTarget_->DrawRectangle(
