@@ -39,7 +39,13 @@ historical evidence only; this file is the sole implementation authority.
   the widget-expanded placement limits, but persistence revalidates that legal
   placement against fresh default 960 by 540 DIP maxima, rejects it as invalid,
   and the explicit failure/cancel path restores the original HWND without
-  replacing the durable file. The scoped correction remains active.
+  replacing the durable file. Production commits `377c5d4` and `b24899c` are
+  source-reviewed, built, and remain unaccepted pending physical review. The
+  first candidate's repeated durable maxima were corrected through one internal
+  geometry contract shared by authored admission, pinned chrome, defaults, and
+  persistence. Exact prior accepted PID 109280 accepted a non-forced close and
+  destroyed all top-level HWNDs but remains alive in shutdown, so the candidate
+  has not been launched over its still-owned single-instance boundary.
 - Full detailed evidence through this state is preserved in the
   [2026-08-24 19:39 snapshot](history/delivery-plan/2026-08-24T19-39-18-07-00.md).
   That snapshot is historical evidence only.
@@ -262,7 +268,14 @@ conflict.
 
 ### DLV-305 preserve a committed pinned resize
 
-Lane: platform native placement owner. Status: Assigned concurrently with the
+Lane: platform native placement owner. Status: Awaiting physical launch after
+source-reviewed production `377c5d4` plus centralized-geometry correction
+`b24899c`; the exact Release build exited 0 and produced OverlayHost SHA-256
+`1E8087432F2EACCEF8B32683D8D665414EF7F7C318C1922D95E32D381F0AF8D6`.
+The prior accepted PID 109280 has no remaining top-level HWND after non-forced
+close but remains alive in shutdown and still blocks the single-instance
+candidate launch. Do not force-terminate it without explicit user approval.
+This milestone was Assigned concurrently with the
 non-behavioral DLV-303 diagnostics in a separate clean worktree from local main
 `8dfe871`; do not touch the standing platform worktree's retained evidence. The
 user reports that resizing a pinned surface visibly works during adjustment,
