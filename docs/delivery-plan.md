@@ -10,7 +10,8 @@ historical evidence only; this file is the sole implementation authority.
 
 ## Current accepted state
 
-- Local `main` is `8dfe871`, whose latest runtime input remains `283c9ff`,
+- Local `main` contains reviewer planning through DLV-305; its latest runtime
+  input remains `283c9ff`,
   integrating physically accepted DLV-300
   production `5bb7a57`, production validation correction `5b1c170`, and focused
   tests `d1a3d5d` after accepted DLV-298 Spotify migration merge `c9e9b97`.
@@ -33,11 +34,12 @@ historical evidence only; this file is the sole implementation authority.
   pinned-layout selection and action delivery during rapidly advancing Spotify
   progress snapshots. DLV-304 owns the serialized generic authority correction
   after DLV-303; this is not a provider or package-version failure.
-- A newly reported resize commit visibly returns the pin to its prior size. The
-  current durable placement file did not advance after the attempt, while
-  source inspection shows snapshot refresh does not intentionally resize the
-  HWND. DLV-305 owns a separate native placement diagnosis/correction; no cause
-  or fix is inferred from the symptom alone.
+- A newly reported resize commit visibly returns the pin to its prior size.
+  DLV-305 proved the exact native cause before editing: preview and capture use
+  the widget-expanded placement limits, but persistence revalidates that legal
+  placement against fresh default 960 by 540 DIP maxima, rejects it as invalid,
+  and the explicit failure/cancel path restores the original HWND without
+  replacing the durable file. The scoped correction remains active.
 - Full detailed evidence through this state is preserved in the
   [2026-08-24 19:39 snapshot](history/delivery-plan/2026-08-24T19-39-18-07-00.md).
   That snapshot is historical evidence only.
@@ -266,17 +268,17 @@ non-behavioral DLV-303 diagnostics in a separate clean worktree from local main
 user reports that resizing a pinned surface visibly works during adjustment,
 but choosing Commit now snaps the HWND back to its original size. The current
 `pinned-surface-placement.ini` still holds Spotify's earlier 776 by 464 DIP
-placement with its prior timestamp. Source inspection shows `UpdateSnapshot`
-does not resize the HWND, `CommitPlacement` is intended to atomically save the
-current placement, and explicit cancellation/display reconciliation can restore
-the prior durable bounds. Existing logs do not identify which terminal path
-occurred, so no corrective cause is yet accepted.
+placement with its prior timestamp. Direct source tracing proved the terminal
+path: preview and `CommitPlacementSession` use the coordinator's effective
+widget-expanded `placementLimits_`, but `PinnedPlacementStore::Save` calls
+`ValidPlacement` with a fresh default `PlacementLimits{}` whose 960 by 540 DIP
+maxima can reject the otherwise legal committed preview. `CommitPlacement` then
+executes `CancelPlacement`, restoring the original HWND, and never replaces the
+atomic store. Snapshot refresh is not the cause.
 
-First establish one exact native cause from the placement session, commit
-result, durable save, controller/accessibility routing, window message, and
-display-reconciliation paths. Report that cause to the planner before writing a
-behavioral correction. Then correct only the existing coordinator/placement
-owner so a successful Commit now retains the exact constrained preview bounds
+The exact cause was reported to the planner before modification. Correct only
+the existing coordinator/placement owner so a successful Commit now retains the
+exact constrained preview bounds
 in the live HWND and durable store, including after focus/click-through
 transition and ordinary snapshot publication. A failed commit must retain the
 current explicit failure/cancel semantics and precise user feedback; never
