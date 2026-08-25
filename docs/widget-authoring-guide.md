@@ -1871,6 +1871,14 @@ to select/restore/revoke layouts, replace the current immutable snapshot, and
 route actions against the exact selected projection in deterministic tests.
 The handle remains optional: callback-only and `WidgetView.PinnedLayout(...)`
 authoring continue to use the same protocol-v21 ingress.
+
+When one layout renders different state roots, use
+`Present(root, initialFocusId)` to choose a focusable target that exists in that
+exact immutable root. Passing `null` preserves ordinary focus fallback for a
+loading or informational root with no focusable child. The handle still supplies
+its registered stable ID, visible name, surface, and active input scope;
+`Present(root)` continues to use its registered default initial focus.
+
 Overlay close preserves the surface but restores click-through. Package
 removal/replacement, worker restart/loss, pinned close, and host exit tear it
 down. Authors publish ordinary immutable snapshots and lifecycle behavior only;

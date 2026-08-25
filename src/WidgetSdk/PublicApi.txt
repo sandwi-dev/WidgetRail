@@ -524,6 +524,7 @@ method WidgetRail.WidgetSdk.PickerOption.Equals(object? obj) -> bool
 method WidgetRail.WidgetSdk.PickerOption.GetHashCode() -> int
 method WidgetRail.WidgetSdk.PickerOption.ToString() -> string
 method WidgetRail.WidgetSdk.PinnedLayoutHandle.Present(WidgetRail.WidgetSdk.WidgetElement? root) -> WidgetRail.WidgetProtocol.PinnedPresentationLayout
+method WidgetRail.WidgetSdk.PinnedLayoutHandle.Present(WidgetRail.WidgetSdk.WidgetElement? root, string? initialFocusId) -> WidgetRail.WidgetProtocol.PinnedPresentationLayout
 method WidgetRail.WidgetSdk.ProgressElement.Equals(WidgetRail.WidgetSdk.WidgetElement? other) -> bool
 method WidgetRail.WidgetSdk.ProgressElement.Equals(object? obj) -> bool
 method WidgetRail.WidgetSdk.ProgressElement.GetHashCode() -> int

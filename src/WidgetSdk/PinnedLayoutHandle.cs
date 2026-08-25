@@ -66,6 +66,17 @@ public sealed class PinnedLayoutHandle
         WidgetView.PinnedLayout(
             Id, Name, Surface, root, InitialFocusId, ActiveInputScopeId);
 
+    /// <summary>
+    /// Presents this handle's current immutable root with a focus target chosen
+    /// for this exact presentation. Stable identity, name, surface, and input
+    /// scope remain those registered by the handle.
+    /// </summary>
+    public PinnedPresentationLayout Present(
+        WidgetElement? root,
+        string? initialFocusId) =>
+        WidgetView.PinnedLayout(
+            Id, Name, Surface, root, initialFocusId, ActiveInputScopeId);
+
     internal void SetSelection(bool selected, CancellationToken token)
     {
         lock (_gate)

@@ -43,6 +43,9 @@ demand through its SDK-owned typed pinned-layout handle only while that layout i
 selected. Selection revocation, removal, runtime replacement, unpin, and
 destruction revoke that demand without adding another provider or poller;
 ordinary overlay deactivation does not revoke a still-selected pinned surface.
+Each immutable presentation supplies the focus target that exists in its exact
+ready, empty, setup, connection, failure, or loading root while the typed handle
+continues to own the stable layout metadata.
 
 Internally, one non-partial widget owns lifecycle, provider calls, resources,
 committed state, and invalidation. Closed value-only policies classify authored

@@ -5726,10 +5726,13 @@ remain compatible.
 
 ### DLV-298 — Spotify typed pinned-layout adoption
 
-Spotify 0.3.25 registers its Compact and Up Next projections once through the
+Spotify 0.3.26 registers its Compact and Up Next projections once through the
 public `PinnedLayoutHandle` API and presents only their current declarative
 roots. The SDK owns selected identity and cancellation for the package; Spotify
 retains only the existing queue-demand start/reset reaction and no longer
 mirrors selected layout state in a package boolean or string comparison. The
 projection trees, Full widget fallback, queue/provider lifecycle, controls,
 focus graph, account configuration, and credential boundaries are unchanged.
+The additive typed-handle overload accepts the focus target for the exact
+presentation, retaining the registered default overload while preventing a
+ready-only focus identity from invalidating non-ready roots.

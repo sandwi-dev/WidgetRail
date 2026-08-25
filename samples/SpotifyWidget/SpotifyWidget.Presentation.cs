@@ -92,6 +92,7 @@ internal static class SpotifyPresentation
         var mode = includeUpNext ? "pinned-up-next" : "pinned-compact";
         var inputScope = layout.ActiveInputScopeId!;
         var content = new List<WidgetElement>();
+        string? initialFocusId;
         if (presentation.ViewState == SpotifyWidgetViewState.Ready)
         {
             var playerFocusId = presentation.Playback is
@@ -120,11 +121,13 @@ internal static class SpotifyPresentation
             {
                 content.Add(player);
             }
+            initialFocusId = playerFocusId;
         }
         else
         {
             var state = PinnedState(presentation.ViewState, mode);
             content.Add(state.Element);
+            initialFocusId = state.InitialFocusId;
         }
 
         var root = UI.Stack($"spotify.{mode}.root", content.ToArray())
@@ -133,7 +136,7 @@ internal static class SpotifyPresentation
                 includeUpNext ? "spotify-pinned-up-next" : "spotify-pinned-now-playing");
         root = ApplyPlaybackShortcuts(root, presentation.Playback)
             .Shortcut(ControllerButton.Y, "spotify.refresh");
-        return layout.Present(root);
+        return layout.Present(root, initialFocusId);
     }
 
     private static (WidgetElement Element, string? InitialFocusId) PinnedState(
