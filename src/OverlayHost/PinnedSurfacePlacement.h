@@ -75,7 +75,7 @@ struct PlacementSession final {
     PlacementDirection direction,
     const MonitorWorkArea& monitor,
     PlacementLimits limits = {},
-    float stepDip = 16.0F) noexcept;
+    float stepDip = surface_geometry::kPlacementAdjustmentStepDip) noexcept;
 
 [[nodiscard]] bool SetPlacementSessionBounds(
     PlacementSession& session,

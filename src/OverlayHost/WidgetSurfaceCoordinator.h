@@ -141,11 +141,13 @@ public:
     [[nodiscard]] bool CycleLayout(int delta);
     [[nodiscard]] bool CommitSetup(std::wstring& error);
     [[nodiscard]] bool CancelSetup() noexcept;
-    [[nodiscard]] bool StepPlacement(PlacementDirection direction, float stepDip = 16.0F);
+    [[nodiscard]] bool StepPlacement(
+        PlacementDirection direction,
+        float stepDip = surface_geometry::kPlacementAdjustmentStepDip);
     [[nodiscard]] bool StepPlacement(
         PlacementMode operation,
         PlacementDirection direction,
-        float stepDip = 16.0F);
+        float stepDip = surface_geometry::kPlacementAdjustmentStepDip);
     [[nodiscard]] bool CommitPlacement(std::wstring& error);
     [[nodiscard]] bool CancelPlacement() noexcept;
     [[nodiscard]] bool BeginOpacityAdjustment();

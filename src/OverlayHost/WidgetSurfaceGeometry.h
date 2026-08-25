@@ -12,6 +12,7 @@ inline constexpr float kMinimumPinnedHeightDip = 135.0F;
 inline constexpr float kPinnedChromeHeightDip = 36.0F;
 inline constexpr float kPinnedSideInsetDip = 8.0F;
 inline constexpr float kPinnedBottomInsetDip = 8.0F;
+inline constexpr float kPlacementAdjustmentStepDip = 32.0F;
 inline constexpr float kMaximumPinnedWidthDip =
     kMaximumAuthoredContentWidthDip + kPinnedSideInsetDip * 2.0F;
 inline constexpr float kMaximumPinnedHeightDip =
