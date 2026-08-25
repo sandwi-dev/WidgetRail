@@ -10,49 +10,9 @@ historical evidence only; this file is the sole implementation authority.
 
 ## Current accepted state
 
-- Local `main` integrates corrected DLV-284 worker-failure metadata stack
-  `54167ee` + `f66e082` + `a65228c` as merge `12728a2`, after the accepted
-  correlation pair `f583f40` + `ac79ed0` merged as `8ac55d`. The final
-  cumulative state persists only validated widget ID, request type, and worker
-  error code; arbitrary/forgeable worker message text is absent.
-- The latest physically accepted integrated Release is preserved at
-  `C:\Users\dwive\Projects\GameBarAlternative\src\OverlayHost\out\Release`.
-  Executable SHA-256 is
-  `29FDA868ACEAF0BB7DE09F64AA6D4C6F1A0A7E44B37D6239CE71D4077AE80153`.
-  Its PID 133304 and Bridge PID 26620 were responsive, and
-  `startup-error.txt` was absent. Prior
-  accepted PID 47948 had no top-level HWND and survived its graceful exact-PID
-  signal, so the reviewer force-stopped only that verified process before the
-  refresh. Exact `--show` activation PID 69700 forwarded Show and exited;
-  Settings reached visible lifecycle under the resident owner. Windows-control
-  discovery omitted the overlay HWND, so no automated first-page claim is made.
-  The user physically accepted this coherent Release; DLV-285 is released.
-- DLV-285 production `ccb46e7` is physically accepted and integrated into local
-  `main` as merge `609d34e`. Its exact reviewed Release ran from the clean
-  widgets worktree as OverlayHost PID 144052, Bridge PID 142324, with executable
-  SHA-256 `55E31C824E96656B14DC8485FFBA9608B63033C08A553B32CDB0ED462FE42A2C`.
-  Reviewed Game Launcher 0.2.1 package SHA-256 is
-  `54989DDCB8A75FA813284585E06F55F56C704FA4310410126E72B30D0DF7FB4C`;
-  it was installed and explicitly full-trust enabled for physical review. The
-  catalog admits nine tray widgets and startup is clean. Accepted PID 133304
-  survived its graceful exact-PID signal, so the reviewer reverified its path
-  and force-stopped only that planner-owned process before candidate launch.
-  The user explicitly deferred Game Launcher widget tests for future package
-  work. No test-only follow-up, rebuild, or relaunch is required for DLV-285;
-  its accepted production commit is integrated. For DLV-286 review, PID 144052
-  exposed no closable main window; the reviewer reverified its exact executable
-  path and force-stopped only that planner-owned process.
-- DLV-286 cumulative production `d0ca29b` + `058efbc` + `a41bd72` is physically
-  accepted and integrated into local `main` as merge `627ba4c`. The first two
-  visible candidates were rejected and their exact PIDs 80988 and 103768 are
-  stopped; the complete correction regenerates the finite seven-runtime host
-  graph and deterministically removes retired roots. Production Release build
-  and the one focused artifact-coherence/startup scenario passed. The user
-  accepted responsive PID 85884 with executable SHA-256
-  `3E12B4A4B78890801D642311EE63CEA3B5065785FCE59EEA1B2E4E1651BFFDDC`.
-  That accepted candidate already contains exact integrated production tip
-  `a41bd72`, so no merge-only rebuild or relaunch is required. Game Launcher
-  widget tests remain explicitly deferred.
+- Accepted DLV-284 through DLV-286 evidence is preserved in the current
+  delivery-plan history snapshot. Their production chains are integrated;
+  Game Launcher tests remain explicitly deferred.
 - DLV-287 production/test `dccf49a` is independently accepted and integrated
   into local `main` as merge `fc91157`. One internal WidgetProtocol calculator
   now owns the complete version-1-through-19 snapshot requirement matrix and
@@ -273,6 +233,13 @@ historical evidence only; this file is the sole implementation authority.
   executable SHA-256 is
   `86AC9946CC54F2B4CF51B14EEAA48CE32FECDF2C381DA73F24107DBE755F13AD`.
 - DLV-295 cumulative `225e736` + `3d4b940` is independently accepted and integrated by fast-forward to local main. The optional typed handle owns stable layout metadata, selected state, scoped cancellation, one effective invalidation, and a public deterministic test host while low-level protocol-v21 authoring remains supported. SDK compile passed, compatibility passed 12/12 after the environment-only DLV-299 restore repair, and the focused handle group passed 1/1. No runtime/package input changed, so accepted PID 32880 remains running. Spotify 0.3.24 remains the sole installed, selected, enabled version with credential/account/provider/configuration state preserved; DLV-298 is the migration proof.
+- DLV-298 cumulative production `65d7872` + `d3b7cf7` + `9396363` +
+  `fc9adc8` is physically accepted by the user. Spotify 0.3.26 is the sole
+  installed, selected, enabled version under responsive exact candidate PID
+  63284. The typed handle now owns layout selection and demand lifecycle while
+  preserving state-specific initial focus. Focused migrated Spotify regression
+  tests are Assigned before independent review and integration; the accepted
+  candidate remains running and no tests-only rebuild/relaunch is authorized.
 - Managed tests are accepted through `676cd76`: DLV-319 `199a81b`, DLV-324
   `6b63edf`, DLV-325 `e441f25`, and DLV-326 `676cd76`. All named managed
   Tier-3 gates are green.
@@ -283,8 +250,8 @@ historical evidence only; this file is the sole implementation authority.
 
 | Lane | Task/worktree | State |
 | --- | --- | --- |
-| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | DLV-474 correction passed the native gate, then the managed sanitized-terminal gate stopped on an opaque pre-test build red. Four intentional diffs remain retained uncommitted in the isolated worktree; no rerun or repair is authorized. DLV-473 test-only `34f15ae9` remains blocked after its first red; the standing tree's two DLV-293 test diffs remain byte-identical and must not be touched. |
-| Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | DLV-298 correction `fc9adc8` is clean, built, packaged, and installed as sole active Spotify 0.3.26. It adds the bounded typed-handle focus override and restores state-specific focus/null. Exact reviewed Release PID 63284 is responsive and visible; stop for the user's renewed verdict before integration/tests. |
+| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | DLV-474 correction passed the native gate, then the managed sanitized-terminal gate stopped on an opaque pre-test build red. Four intentional diffs remain retained uncommitted in the isolated worktree; no rerun or repair is authorized. DLV-473 test-only `34f15ae9` remains blocked after its first red; the standing tree's two DLV-293 test diffs remain byte-identical and must not be touched. DLV-300 is next after accepted DLV-298 reaches local `main`, and must use a separate clean worktree. |
+| Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | DLV-298 production through `fc9adc8` is physically accepted. Add only the assigned migrated Spotify/typed-handle regression tests, run the two focused gates once in order, stop at the first red, and commit the test-only follow-up separately. Do not rebuild/relaunch for tests alone. |
 
 ## Execution rules
 
@@ -305,16 +272,6 @@ historical evidence only; this file is the sole implementation authority.
   interaction authority, installed/configured state, and unrelated user work.
   Never push.
 
-
-## Preserved accepted baseline
-
-Detailed DLV-465–472 stabilization, focused evidence, and held-branch
-history are preserved in the current timestamped delivery-plan snapshot. Local
-`main` contains the complete reviewed production/test chain through `cf77507`,
-including accepted DLV-472 `29601e2`; its named managed Tier-3 gates are
-green. Do not integrate rejected/restoration/ancestry-bound platform history or
-the closed Avalonia/AVP experiment. Reopen older evidence only for a named
-decision, regression, or provenance check.
 
 ## Archived accepted milestone details
 
@@ -881,20 +838,22 @@ Lane: widgets. Status: closed with no implementation commit. Direct compatibilit
 
 ### DLV-298 Spotify high-level pinned-layout migration
 
-Lane: widgets, baseline accepted DLV-295 integration `3d4b940`. Status: 0.3.25 is
-physically rejected after `worker_protocol_validation_failed` on its invalid
-non-ready focus projection. Correction `fc9adc8` adds the bounded typed-handle
-presentation focus override, restores Spotify's prior state-specific focus/null,
-and advances to 0.3.26. Release build passed; exact package SHA-256 is
+Lane: widgets, baseline accepted DLV-295 integration `3d4b940`. Status:
+production `65d7872` + `d3b7cf7` + `9396363` + `fc9adc8` is physically
+accepted. The final correction adds the bounded typed-handle presentation focus
+override, restores Spotify's state-specific focus/null, and advances to 0.3.26.
+Release/package builds passed; exact package SHA-256 is
 `D44C54861A566A7D62B4C9763E8C1162421DEFF9F6EC690512B80950FA7858B7`.
-It is sole installed/selected/enabled under responsive visible PID 63284. This remains the user-
-acceptance boundary. Migrate Spotify's Compact and Up Next layouts
+It is sole installed/selected/enabled under responsive visible PID 63284.
+Post-acceptance focused tests are Assigned before integration. Migrate Spotify's Compact and Up Next layouts
 from manual selection plumbing to the optional typed handle, deleting the old
 demand owner while preserving accepted roots, sizing, focus/scopes, controls,
 queue/provider behavior, credentials, and Full widget fallback. Bump the
 immutable package, build without tests, then planner-review/install/launch the
-exact candidate. The user authorizes automatic prerequisite integration through
-this migration; no intermediate verdict is required before DLV-298.
+exact candidate. The user has accepted the migration and authorizes its focused
+test completion and integration without another production relaunch. The
+running accepted candidate already contains `fc9adc8`; tests or reviewer
+documents alone do not change runtime artifact inputs.
 
 After the user accepts the migrated package, add a fresh deterministic Spotify
 regression against the final handle API proving selection, lifecycle, and
@@ -902,6 +861,58 @@ pinned Next/Previous retain Up Next demand without returning to NotLoaded. Do
 not port or rerun obsolete `bdda057`. Run only the focused migrated Spotify and
 direct SDK-handle gates once; no Game Launcher, live provider/account, broad
 aggregate, package-state tests, protocol/native change, Avalonia/AVP, or push.
+
+### DLV-300 host-reserved View and widget-owned pinned Back
+
+Lane: platform, serialized native-input/public-authoring contract. Status:
+Ready after accepted DLV-298 production and its focused test follow-up are
+integrated into local `main`. Use a separate clean worktree; do not disturb the
+standing platform worktree's retained DLV-474/DLV-293 evidence.
+
+Make View an unconditional native host navigation control. Widgets may not map
+View as an open-widget shortcut or dashboard quick action, and the host must
+never forward a physical View press as an authored widget action. Keep the
+public button identity only where the host-owned pinned-layout selection
+notification contract requires it; do not remove or renumber the protocol enum.
+Reject authored View mappings through the existing validator with a precise
+author-facing diagnostic and update the directly affected SDK guidance,
+templates, compatibility baseline, and implementation status.
+
+For the current single-pin product, View from the tray or an open overlay widget
+enters the pinned surface regardless of tray selection. View while the pinned
+surface owns controller focus returns to the tray. B inside an ordinary focused
+pinned layout is delivered to that selected projection with the same current
+widget/runtime/layout/scope/focus/sequence authority as its other authored
+buttons; it is never interpreted by the host as Return to tray. This preserves
+nested widget Back behavior such as Spotify playlist detail navigation. At the
+root, an unhandled B remains inert rather than triggering a host fallback.
+Placement/setup/opacity cancellation, the existing recovery chord, Guide, Menu
+options, emergency hide, explicit accessibility actions, and click-through
+lifecycle remain host-owned and unchanged.
+
+Design the one-pin View transition so its host policy can later extend to the
+user-approved cycle `tray -> pin 1 -> pin 2 -> ... -> tray`, but do not add
+multiple pins, a second focus/session owner, or speculative collection state in
+this milestone. Update controller-guide and accessibility copy so View and B
+ownership are unambiguous.
+
+Use physical-first ordering for the controller-feel change: production/API/docs
+only, source review, one coherent Release build, exact production commit, then
+planner launch and user verdict before tests. After acceptance, add only focused
+native route/policy tests, SDK/protocol validation tests proving authored View
+rejection, and pinned-surface tests proving B delivery at root and nested scopes,
+View entry/exit, no widget View delivery, current-authority rejection, and
+unchanged modal/emergency controls. Run the smallest affected native and managed
+gates once in that order and stop at the first red. No Game Launcher tests,
+broad aggregate, package/account mutation, multi-pin, Avalonia/AVP, or push.
+
+Acceptance: View deterministically transfers focus between overlay/tray and the
+single pin; a widget cannot declare or receive View; B performs the widget's own
+nested Back action in both full-widget and authored pinned layouts and never
+returns to the tray; stale/wrong-layout input still fails closed; guide and
+accessibility semantics match the physical controls. Stop for protocol enum
+removal/version expansion, a second native input/focus authority, destructive
+state, substantial conflict, or materially different exit/cycle semantics.
 
 ### DLV-296 pinned-layout preview and diagnostics
 
@@ -923,21 +934,23 @@ no live provider, installation, Game Launcher tests, broad aggregate, or push.
 
 ## Ordered queues
 
-1. DLV-298 Spotify high-level migration and physical proof; next user verdict.
-2. DLV-296 pinned-layout preview and diagnostics.
-3. DLV-297 pinned-layout templates and examples.
-4. DLV-474 fresh-session sequence-authority correction: retained correction
+1. DLV-298 focused migrated Spotify/typed-handle tests, then integration.
+2. DLV-300 host-reserved View and widget-owned pinned Back; visible next
+   deliverable after DLV-298 integration.
+3. DLV-296 pinned-layout preview and diagnostics.
+4. DLV-297 pinned-layout templates and examples.
+5. DLV-474 fresh-session sequence-authority correction: retained correction
    passed its native gate, then the managed gate stopped on an opaque pre-test
    build red. Four diffs remain uncommitted; no rerun or repair is authorized.
-5. DLV-291 focused post-acceptance evidence: native 108/108 green; obsolete
+6. DLV-291 focused post-acceptance evidence: native 108/108 green; obsolete
    low-level Spotify attempt is retained only as unaccepted `bdda057`. Its
    behavior regression moves into DLV-295 after the high-level migration.
-6. DLV-473 focused post-acceptance tests: clean `34f15ae9` is retained
+7. DLV-473 focused post-acceptance tests: clean `34f15ae9` is retained
    unintegrated after the first SDK gate stopped before tests on an opaque build
    red; later gates did not run and no rerun is authorized.
-7. DLV-294 generic pinned-layout projections: accepted/integrated as `60536ff`; closed.
-8. DLV-293 focused test debt: retained uncommitted after unrelated Game Launcher stationarity red; no rerun under the explicit deferral.
-9. Remaining maturity deliverables after the pinned-layout author workflow; DLV-248 stays deferred until explicit user promotion.
+8. DLV-294 generic pinned-layout projections: accepted/integrated as `60536ff`; closed.
+9. DLV-293 focused test debt: retained uncommitted after unrelated Game Launcher stationarity red; no rerun under the explicit deferral.
+10. Remaining maturity deliverables after the pinned-layout author workflow; DLV-248 stays deferred until explicit user promotion.
 
 DLV-473 production is accepted/integrated and its tests are post-acceptance
 work. DLV-291 versions through 0.3.23 are physically rejected overall. Reviewed
@@ -981,20 +994,3 @@ tests remain deferred.
 | DLV-474 | Production `a830f026` was provisionally accepted by user disposition because the historical bridge-session loss could not be reproduced, then rejected before integration when the first focused native gate proved fresh sequence 1 was compared against retained prior-session sequences 10/20. The retained correction passed 29 native coordinator scenarios plus linked native checks, then the managed diagnostic gate exited 1 during an opaque pre-test build. Four diffs remain uncommitted at identity `d14a224507d682e9c67f83860e713fe0118bb4dd`; no rerun or repair occurred. |
 | DLV-291 | Spotify versions through production-only 0.3.23 `2031a8c` are physically rejected overall. The user accepted clean 0.3.24 `bbdc2368`; production is integrated as `e7ebdbe` and exact-hash 0.3.24 remains sole installed/selected/enabled under responsive PID 32880. Native tests passed 108/108; the Spotify gate stopped after 75 seconds without output, so its two-file test diff remains unaccepted debt. |
 | DLV-248 | Deferred until explicit user promotion. |
-
-## Integrated reliability — DLV-292 fresh-worker virtual-window recovery
-
-Lane: platform, serialized shared runtime/native admission owner. Status: accepted/integrated as `80cdb10`; the user accepted PID 81980 by default because live reproduction is impractical. User evidence on prior PID 37884 showed Games & Apps, Network Controls, and Full Application Reference failing after a retained checkpoint crossed a fresh worker start.
-
-Root cause: Bridge retained snapshot sequence without the worker start ordinal
-that produced it, so a restarted worker appeared to continue the old process-
-local virtual-window generation. `ff5e7e4` binds both, returns typed stale-base
-after replacement, and reuses native RecoveryCheckpoint for a fresh Replace.
-No stale-generation validation, checkpoint retention, or identity rule weakened.
-
-The Release build passed. Focused Runtime idle-unload, two-widget Bridge restart,
-and native coordinator/lifecycle/action-feedback gates passed. Tier 3, broad
-aggregate, Game Launcher tests, and package/config mutation did not run.
-
-Live packaged-worker reproduction remains unperformed by explicit user
-disposition; the focused deterministic lifecycle evidence is final for DLV-292.
