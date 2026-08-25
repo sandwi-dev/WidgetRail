@@ -369,6 +369,20 @@ delivery assignment invokes it:
    commit the test follow-up. The planner then reviews and integrates the
    accepted cumulative commits.
 
+Physical acceptance starts the required focused-test phase; it does not close
+the milestone or waive regression coverage. Do not advance that lane to its
+next production deliverable while ordinary in-scope post-acceptance test work
+is merely deferred. Resolve, commit, review, and integrate the focused test
+follow-up unless a genuine assignment stop condition requires the user.
+
+A failing assertion, failed test prerequisite, or product/build defect stops
+the ordered verification at that evidence. A failure before any test executes
+because of an environmental or infrastructure condition does not silently
+convert into test debt: diagnose it once, make only a proven safe state
+correction, and resume the blocked gate. Independent focused gates may continue
+when they cannot mask or overwrite the failure. Never repeat an unchanged
+invocation and call the rerun a fix.
+
 This exception does not waive a successful Release build, source review, or
 ordinary safety boundaries. It changes the ordering of physical acceptance and
 automated regression work so tests encode accepted behavior rather than

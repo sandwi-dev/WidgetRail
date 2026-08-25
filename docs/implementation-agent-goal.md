@@ -470,6 +470,12 @@ supersedes the normal Tier 1 ordering for that assignment:
   follow-up separately. The cumulative code and test commits then receive
   normal planner review and integration.
 
+Physical acceptance begins this focused-test follow-up; it does not complete
+the assignment. Do not start the next production deliverable while ordinary
+in-scope regression work for the accepted behavior is only retained as debt.
+Close it through a reviewed test commit and the required focused evidence,
+unless an explicit assignment stop condition genuinely requires the user.
+
 Do not use physical-first mode for protocol, security, persistence, destructive
 state, or data-integrity changes unless the user explicitly extends it to that
 surface. A Release compile remains required before every physical candidate.
@@ -551,6 +557,11 @@ When a test fails:
 - Fix the root cause when it is in scope.
 - Do not treat an unchanged rerun as a fix.
 - Record an unrelated or timing-sensitive failure honestly.
+- If the command fails before any test executes because of an environmental or
+  infrastructure condition, diagnose it once. After a proven safe state
+  correction, resume that exact blocked gate and continue independent focused
+  gates that cannot mask or overwrite the failure. Do not carry the condition
+  as routine post-acceptance debt or repeat the unchanged invocation.
 
 Product-level ship gates are not instructions to run Tier 3 after every
 milestone.
