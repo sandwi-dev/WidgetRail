@@ -273,6 +273,9 @@ struct StickNavigationOptions final {
     std::uint64_t repeatMilliseconds{125};
 };
 
+inline constexpr StickNavigationOptions kPinnedPlacementNavigationOptions{
+    15'000, 9'000, 250, 80};
+
 /// Converts a noisy two-axis stick into stable four-way navigation with
 /// hysteresis, dominant-axis switching, and deterministic repeat timing.
 class StickNavigator final {

@@ -1592,7 +1592,7 @@ private:
             if (!pinnedSurfaceCoordinator_.pinned() ||
                 pinnedSurfaceCoordinator_.placementMode() ==
                     widgetrail::pinned::PlacementMode::None) {
-                placementRightStickNavigator_.Reset();
+                ResetPinnedPlacementNavigation();
             }
             if (state_.surface() == widgetrail::Surface::Hidden) {
                 if (pinnedSurfaceCoordinator_.pinned())
@@ -2054,7 +2054,7 @@ private:
             (void)bridge_.CancelLocalWidgetPackageInstall(
                 *operation);
         }
-        placementRightStickNavigator_.Reset();
+        ResetPinnedPlacementNavigation();
         pinnedSurfaceCoordinator_.Dispose();
         DiscardGraphicsResources();
         widgetrail::shell::ResetFixedChromeComposition(
@@ -2604,7 +2604,7 @@ private:
 
     void ApplyPendingDisplayEnvironmentRefresh() {
         const auto plan = displayRefresh_.Take();
-        placementRightStickNavigator_.Reset();
+        ResetPinnedPlacementNavigation();
         pinnedSurfaceCoordinator_.ReconcileDisplayEnvironment();
         if (state_.surface() == widgetrail::Surface::Hidden) return;
         if (!plan.repositionWindows) return;
@@ -3840,7 +3840,7 @@ private:
             (void)bridge_.CancelLocalWidgetPackageInstall(
                 *operation);
         }
-        placementRightStickNavigator_.Reset();
+        ResetPinnedPlacementNavigation();
         (void)pinnedSurfaceCoordinator_.CancelPlacement();
         pinnedSurfaceCoordinator_.OnOverlayHidden();
         KillTimer(window_, kControllerTimer);
@@ -5367,6 +5367,7 @@ private:
             InvalidateRect(window_, nullptr, FALSE);
             return;
         }
+        ResetPinnedPlacementNavigation();
         lastActionWidgetId_ = widgetId;
         lastActionMessage_ =
             L"Pinned layout setup: LT/RT layout, left stick/D-pad move, right stick resize, A commit, B cancel.";
@@ -5424,7 +5425,7 @@ private:
             return;
         }
         if (itemIndex == 0) {
-            placementRightStickNavigator_.Reset();
+            ResetPinnedPlacementNavigation();
             if (pinnedSurfaceCoordinator_.pinned() &&
                 pinnedSurfaceCoordinator_.widgetId() == widgetId &&
                 pinnedSurfaceCoordinator_.BeginPlacement(
@@ -5552,7 +5553,7 @@ private:
 
     void EmergencyHidePinnedSurfaces() {
         if (!pinnedSurfaceCoordinator_.pinned()) return;
-        placementRightStickNavigator_.Reset();
+        ResetPinnedPlacementNavigation();
         const std::wstring widgetId(pinnedSurfaceCoordinator_.widgetId());
         (void)interactionSession_.TransitionPressedPresentation(
             widgetrail::input::PressedInputTransition::Clear);
@@ -5632,7 +5633,7 @@ private:
             }
             if (pinnedSurfaceCoordinator_.placementMode() ==
                 widgetrail::pinned::PlacementMode::None) {
-                placementRightStickNavigator_.Reset();
+                ResetPinnedPlacementNavigation();
             }
             if (changed) InvalidateRect(window_, nullptr, FALSE);
             return;
@@ -5645,6 +5646,7 @@ private:
                 ? widgetrail::pinned::PlacementMode::Move
                 : widgetrail::pinned::PlacementMode::Resize;
             if (pinnedSurfaceCoordinator_.BeginPlacement(mode)) {
+                ResetPinnedPlacementNavigation();
                 (void)interactionSession_.TransitionPressedPresentation(
                     widgetrail::input::PressedInputTransition::Clear);
                 lastActionWidgetId_ = std::wstring(pinnedSurfaceCoordinator_.widgetId());
@@ -5794,6 +5796,33 @@ private:
             platform_,
             PlatformBoolean(IsOverlayProcessForeground()),
             GetTickCount64());
+    }
+
+    void ResetPinnedPlacementNavigation() noexcept {
+        placementMoveStickNavigator_.Reset();
+        placementDpadNavigator_.Reset();
+        placementRightStickNavigator_.Reset();
+        placementNavigationPrimed_ = false;
+    }
+
+    void PrimePinnedPlacementNavigation(
+        const WidgetRailOverlayPlatformControllerFrame& frame,
+        const std::uint64_t now) noexcept {
+        placementMoveStickNavigator_.Prime(
+            frame.state.leftThumbX, frame.state.leftThumbY, now);
+        placementDpadNavigator_.Prime(
+            widgetrail::input::DigitalNavigationAxis(
+                frame.state.buttons,
+                XINPUT_GAMEPAD_DPAD_LEFT,
+                XINPUT_GAMEPAD_DPAD_RIGHT),
+            widgetrail::input::DigitalNavigationAxis(
+                frame.state.buttons,
+                XINPUT_GAMEPAD_DPAD_DOWN,
+                XINPUT_GAMEPAD_DPAD_UP),
+            now);
+        placementRightStickNavigator_.Prime(
+            frame.state.rightThumbX, frame.state.rightThumbY, now);
+        placementNavigationPrimed_ = true;
     }
 
     [[nodiscard]] static std::optional<widgetrail::input::StickNavigationEvent>
@@ -6495,28 +6524,42 @@ private:
                     stepPinnedPlacement(event);
                 }
             };
-            if (const auto direction = DecodeNavigation(frame.stickNavigation))
-                step(*direction, widgetrail::pinned::PlacementMode::Move);
-            if (const auto direction = DecodeNavigation(frame.dpadNavigation))
-                step(*direction, widgetrail::pinned::PlacementMode::Move);
-            if (adjusting) {
-                if (const auto resize = placementRightStickNavigator_.UpdateEvent(
-                        frame.state.rightThumbX, frame.state.rightThumbY, now)) {
-                    using widgetrail::input::NavigationDirection;
-                    std::optional<widgetrail::pinned::PlacementDirection> direction;
-                    if (resize->direction == NavigationDirection::Left)
-                        direction = widgetrail::pinned::PlacementDirection::Left;
-                    else if (resize->direction == NavigationDirection::Right)
-                        direction = widgetrail::pinned::PlacementDirection::Right;
-                    else if (resize->direction == NavigationDirection::Up)
-                        direction = widgetrail::pinned::PlacementDirection::Up;
-                    else if (resize->direction == NavigationDirection::Down)
-                        direction = widgetrail::pinned::PlacementDirection::Down;
-                    if (direction) (void)pinnedSurfaceCoordinator_.StepPlacement(
-                        widgetrail::pinned::PlacementMode::Resize, *direction);
-                }
+            if (!placementNavigationPrimed_) {
+                PrimePinnedPlacementNavigation(frame, now);
             } else {
-                placementRightStickNavigator_.Reset();
+                if (const auto direction = placementMoveStickNavigator_.UpdateEvent(
+                        frame.state.leftThumbX, frame.state.leftThumbY, now))
+                    step(*direction, widgetrail::pinned::PlacementMode::Move);
+                if (const auto direction = placementDpadNavigator_.UpdateEvent(
+                        widgetrail::input::DigitalNavigationAxis(
+                            frame.state.buttons,
+                            XINPUT_GAMEPAD_DPAD_LEFT,
+                            XINPUT_GAMEPAD_DPAD_RIGHT),
+                        widgetrail::input::DigitalNavigationAxis(
+                            frame.state.buttons,
+                            XINPUT_GAMEPAD_DPAD_DOWN,
+                            XINPUT_GAMEPAD_DPAD_UP),
+                        now))
+                    step(*direction, widgetrail::pinned::PlacementMode::Move);
+                if (adjusting) {
+                    if (const auto resize = placementRightStickNavigator_.UpdateEvent(
+                            frame.state.rightThumbX, frame.state.rightThumbY, now)) {
+                        using widgetrail::input::NavigationDirection;
+                        std::optional<widgetrail::pinned::PlacementDirection> direction;
+                        if (resize->direction == NavigationDirection::Left)
+                            direction = widgetrail::pinned::PlacementDirection::Left;
+                        else if (resize->direction == NavigationDirection::Right)
+                            direction = widgetrail::pinned::PlacementDirection::Right;
+                        else if (resize->direction == NavigationDirection::Up)
+                            direction = widgetrail::pinned::PlacementDirection::Up;
+                        else if (resize->direction == NavigationDirection::Down)
+                            direction = widgetrail::pinned::PlacementDirection::Down;
+                        if (direction) (void)pinnedSurfaceCoordinator_.StepPlacement(
+                            widgetrail::pinned::PlacementMode::Resize, *direction);
+                    }
+                } else {
+                    placementRightStickNavigator_.Reset();
+                }
             }
             if (pinnedSurfaceCoordinator_.setupActive()) {
                 if (frame.leftTriggerPressed != WRAIL_OVERLAY_PLATFORM_FALSE)
@@ -6542,7 +6585,7 @@ private:
             }
             if (pinnedSurfaceCoordinator_.placementMode() ==
                 widgetrail::pinned::PlacementMode::None)
-                placementRightStickNavigator_.Reset();
+                ResetPinnedPlacementNavigation();
             InvalidateRect(window_, nullptr, FALSE);
             return;
         }
@@ -11257,7 +11300,13 @@ private:
     std::wstring lastActionWidgetId_;
     ULONGLONG lastActionExpiresAt_{};
     std::optional<TrayContextMenuState> trayContextMenu_;
-    widgetrail::input::StickNavigator placementRightStickNavigator_;
+    widgetrail::input::StickNavigator placementMoveStickNavigator_{
+        widgetrail::input::kPinnedPlacementNavigationOptions};
+    widgetrail::input::StickNavigator placementDpadNavigator_{
+        widgetrail::input::kPinnedPlacementNavigationOptions};
+    widgetrail::input::StickNavigator placementRightStickNavigator_{
+        widgetrail::input::kPinnedPlacementNavigationOptions};
+    bool placementNavigationPrimed_{};
     std::wstring admissionTraceWidget_;
     std::uint64_t admissionTraceCorrelationId_{};
     std::optional<PendingWidgetSwitchSnap> pendingWidgetSwitchSnap_;
