@@ -62,8 +62,11 @@ historical evidence only; this file is the sole implementation authority.
   preserving ordinary tray/widget navigation at 360/125 ms. Its exact Release
   build exited 0 with OverlayHost SHA-256
   `97D001FD98E005315B9BDE25A33691E4BA8F98C38745D884A9B642CE0C35FFA3`.
-  Exact unaccepted candidate PID 69068 is responsive with no startup-error file
-  and awaits the combined speed/cadence verdict.
+  Exact candidate PID 69068 is responsive with no startup-error file. The user
+  physically accepted the combined persistence, 32-DIP step, and 250/80-ms
+  placement-cadence behavior. DLV-305 is now in its required focused-test phase;
+  this accepted production instance remains running because tests alone do not
+  change runtime inputs.
 - Full detailed evidence through this state is preserved in the
   [2026-08-24 19:39 snapshot](history/delivery-plan/2026-08-24T19-39-18-07-00.md).
   That snapshot is historical evidence only.
@@ -72,8 +75,8 @@ historical evidence only; this file is the sole implementation authority.
 
 | Lane | Task/worktree | State |
 | --- | --- | --- |
-| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | DLV-305 pinned resize commit diagnosis/correction is Assigned in a separate clean worktree and may not overlap DLV-303 files. DLV-304 is Ready after serialized DLV-303 instrumentation; DLV-301 follows both corrections. The standing worktree's retained DLV-474/DLV-293 diffs and blocked DLV-473 test commit remain immutable evidence and must not be touched. |
-| Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | DLV-302 closed with a precise observability gap. DLV-303 generic action-correlation instrumentation is active from clean integrated `b089f94` in a separate worktree and has no fix authority. The dirty standing DLV-298 evidence remains untouched. DLV-296 and DLV-297 remain Ready. |
+| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | Physically accepted DLV-305 focused tests are Assigned in a separate clean worktree and may not overlap DLV-303 files. DLV-304 is Ready after serialized DLV-303 instrumentation; DLV-301 follows both corrections. The standing worktree's retained DLV-474/DLV-293 diffs and blocked DLV-473 test commit remain immutable evidence and must not be touched. |
+| Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | DLV-303 generic action-correlation commits `9afdbf2` and `a173cc3` are complete in a separate clean worktree and awaiting planner review; the milestone has no fix authority. The dirty standing DLV-298 evidence remains untouched. DLV-296 and DLV-297 remain Ready. |
 
 ## Execution rules
 
@@ -286,8 +289,8 @@ conflict.
 
 ### DLV-305 preserve a committed pinned resize
 
-Lane: platform native placement owner. Status: Physically accepted persistence
-with the 32-DIP production follow-up live-verifying before tests. The accepted
+Lane: platform native placement owner. Status: Physically accepted production;
+focused tests Assigned before integration. The accepted
 source is source-reviewed production `377c5d4` plus centralized-geometry
 correction `b24899c`; the exact Release build exited 0 and produced OverlayHost SHA-256
 `1E8087432F2EACCEF8B32683D8D665414EF7F7C318C1922D95E32D381F0AF8D6`.
@@ -307,9 +310,10 @@ was force-terminated only after explicit approval. Production commit `3f1fc23`
 uses the existing `StickNavigator` algorithm through one named semantic preset
 shared by placement-local D-pad, left-stick, and right-stick state. Placement
 alone now uses a 250-ms initial delay and 80-ms repeat interval; ordinary
-tray/widget focus retains 360/125 ms. Exact unaccepted candidate PID 69068 is
-responsive with no startup-error file and awaits the combined physical verdict.
-No focused test is authored or run until that verdict.
+tray/widget focus retains 360/125 ms. Exact candidate PID 69068 is responsive
+with no startup-error file. The user physically accepted the complete behavior,
+which starts the required focused-test follow-up; no production relaunch is
+required for that tests-only delta.
 This milestone was Assigned concurrently with the
 non-behavioral DLV-303 diagnostics in a separate clean worktree from local main
 `8dfe871`; do not touch the standing platform worktree's retained evidence. The
