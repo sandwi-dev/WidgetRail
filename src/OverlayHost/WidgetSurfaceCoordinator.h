@@ -6,6 +6,7 @@
 #include "PinnedSurfacePolicy.h"
 #include "PinnedSurfacePlacement.h"
 #include "WidgetBridgeClient.h"
+#include "WidgetInteractionSession.h"
 
 #include <Windows.h>
 #include <d2d1.h>
@@ -206,6 +207,12 @@ public:
     }
 
 private:
+    struct PinnedFreeScrollBinding final {
+        input::FreeScrollBinding authority;
+        std::wstring selectedLayoutId;
+        long long snapshotSequence{};
+    };
+
     static LRESULT CALLBACK WindowProc(HWND, UINT, WPARAM, LPARAM);
     LRESULT HandleMessage(UINT message, WPARAM wParam, LPARAM lParam);
     [[nodiscard]] bool CreateWindowForAdmission(std::wstring& error);
@@ -230,6 +237,10 @@ private:
         std::optional<double> requestedValue);
     [[nodiscard]] const WidgetSnapshot& SelectedSnapshot() const noexcept;
     [[nodiscard]] std::wstring_view SelectedLayoutId() const noexcept;
+    [[nodiscard]] bool IsFreeScrollAuthorityCurrent(
+        const WidgetSnapshot& snapshot,
+        const RenderResult& renderResult) const noexcept;
+    void ClearFreeScroll() noexcept;
     void QueueLayoutSelection(std::wstring_view layoutId, bool selected);
 
     HINSTANCE instance_{};
@@ -268,6 +279,7 @@ private:
     RenderResult lastRenderResult_;
     std::wstring focusedElementId_;
     input::RightStickScrollKinetics rightStickScrollKinetics_;
+    std::optional<PinnedFreeScrollBinding> freeScrollBinding_;
     std::vector<WidgetSurfaceInputRequest> inputRequests_;
     std::vector<PinnedLayoutSelectionNotification> layoutSelectionNotifications_;
     std::wstring actionFeedback_;
