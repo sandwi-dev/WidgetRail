@@ -54,6 +54,129 @@ bool SameScrollPaginationRequest(
 
 } // namespace
 
+DirectionalFocusResolution SurfaceInteractionTransactions::ResolveDirectionalFocus(
+    const WidgetSnapshot& snapshot, const std::wstring_view focusedElementId,
+    const NavigationDirection direction, const RenderResult& renderResult) {
+    const auto visible = ResolveVisibleFocusTarget(
+        focusedElementId, snapshot.activeInputScopeId, renderResult);
+    if (!visible) return {DirectionalFocusDisposition::MissingVisibleFocus, {}};
+    if (*visible != focusedElementId)
+        return {DirectionalFocusDisposition::VisibleRecovery, *visible};
+    const auto* focused = FindNodeInInputScope(
+        snapshot, focusedElementId, snapshot.activeInputScopeId);
+    if (!focused) return {DirectionalFocusDisposition::Boundary, {}};
+    const std::wstring* authored{};
+    switch (direction) {
+    case NavigationDirection::Left: authored = &focused->focusLeft; break;
+    case NavigationDirection::Right: authored = &focused->focusRight; break;
+    case NavigationDirection::Up: authored = &focused->focusUp; break;
+    case NavigationDirection::Down: authored = &focused->focusDown; break;
+    case NavigationDirection::None: break;
+    }
+    const auto* explicitTarget = authored && !authored->empty()
+        ? FindNodeInInputScope(snapshot, *authored, snapshot.activeInputScopeId)
+        : nullptr;
+    if (explicitTarget && IsDistinctFocusMove(
+            focusedElementId, explicitTarget->id,
+            IsEnabledFocusTarget(explicitTarget->id, renderResult))) {
+        return {DirectionalFocusDisposition::Explicit, explicitTarget->id};
+    }
+    if (const auto geometric = FindGeometricFocusTarget(
+            focusedElementId, direction, renderResult)) {
+        return {DirectionalFocusDisposition::Geometric, *geometric};
+    }
+    return {DirectionalFocusDisposition::Boundary, {}};
+}
+
+FocusMutation SurfaceInteractionTransactions::MoveFocus(
+    std::wstring& focusedElementId, const std::wstring_view target) {
+    FocusMutation result;
+    result.priorFocus = focusedElementId;
+    focusedElementId = target;
+    result.focusedElementId = focusedElementId;
+    result.changed = result.priorFocus != result.focusedElementId;
+    return result;
+}
+
+FreeScrollAuthorityDecision SurfaceInteractionTransactions::EvaluateFreeScroll(
+    FreeScrollInteractionState& state,
+    const WidgetInteractionAuthority& authority,
+    const std::wstring_view focusedElementId,
+    const RenderResult& renderResult) {
+    auto decision = state.Evaluate(authority, focusedElementId);
+    if (decision.disposition == FreeScrollAuthorityDisposition::Replaced) {
+        (void)state.Clear();
+        return decision;
+    }
+    if (const auto& binding = state.binding(); binding && authority.semantics &&
+        !IsExactScrollAuthorityCurrent(
+            authority.semantics->root, binding->scrollId, binding->axis,
+            renderResult)) {
+        (void)state.Clear();
+        return {FreeScrollAuthorityDisposition::Replaced, false};
+    }
+    return decision;
+}
+
+FreeScrollReentryRequest SurfaceInteractionTransactions::ResolveFreeScrollReentry(
+    FreeScrollInteractionState& state,
+    const WidgetInteractionAuthority& authority,
+    const std::wstring_view focusedElementId,
+    const RenderResult& renderResult) {
+    (void)EvaluateFreeScroll(state, authority, focusedElementId, renderResult);
+    return state.ResolveReentry(authority, focusedElementId, renderResult);
+}
+
+std::optional<FocusedFreeScrollPlan> SurfaceInteractionTransactions::PlanFreeScroll(
+    FreeScrollInteractionState& state, DeclarativeRenderer& renderer,
+    const WidgetInteractionAuthority& authority,
+    const std::wstring_view focusedElementId,
+    const RenderResult& renderResult, const declarative::ScrollAxis axis,
+    const float deltaDip, const declarative::Rect viewport,
+    FocusedFreeScrollPlanDiagnostic* diagnostic) {
+    const auto decision = EvaluateFreeScroll(
+        state, authority, focusedElementId, renderResult);
+    if (!authority.semantics ||
+        decision.disposition == FreeScrollAuthorityDisposition::Missing ||
+        decision.disposition == FreeScrollAuthorityDisposition::Replaced) {
+        return std::nullopt;
+    }
+    std::wstring exactScrollId;
+    if (state.binding() && state.binding()->axis == axis) {
+        exactScrollId = state.binding()->scrollId;
+    } else {
+        const auto owner = ResolveFocusedScrollOwner(
+            authority.semantics->root, focusedElementId, axis,
+            authority.semantics->activeInputScopeId, renderResult);
+        if (owner.disposition != FocusedScrollResolutionDisposition::Resolved)
+            return std::nullopt;
+        exactScrollId = owner.scrollId;
+    }
+    return renderer.PlanFocusedFreeScroll(
+        *authority.semantics, focusedElementId, axis, deltaDip, viewport,
+        exactScrollId, diagnostic);
+}
+
+bool SurfaceInteractionTransactions::CommitFreeScroll(
+    FreeScrollInteractionState& state,
+    const WidgetInteractionAuthority& authority,
+    const std::wstring_view focusedElementId,
+    const FocusedFreeScrollPlan& plan) {
+    return state.Bind(authority, focusedElementId, plan.scrollId, plan.axis);
+}
+
+std::optional<IncrementalPresentationPlan>
+SurfaceInteractionTransactions::PlanFocusUpdate(
+    DeclarativeRenderer& renderer, const WidgetSnapshot& snapshot,
+    const std::wstring_view priorFocusedElementId,
+    const std::wstring_view nextFocusedElementId,
+    const declarative::Rect viewport,
+    const std::vector<std::wstring>& additionalPaintNodeIds) {
+    return renderer.PlanFocusUpdate(
+        snapshot, priorFocusedElementId, nextFocusedElementId, viewport,
+        additionalPaintNodeIds);
+}
+
 std::wstring FormatScrollPaginationDiagnostic(
     const ScrollPaginationDiagnostic& diagnostic) {
     const auto& request = diagnostic.request;
@@ -117,17 +240,15 @@ FocusMutation WidgetInteractionSession::MoveFocus(
     const std::wstring_view target,
     const bool retireSliderPresentations,
     const bool retirePressedPresentation) {
-    FocusMutation result;
-    result.priorFocus = focusedElementId_;
+    auto result = SurfaceInteractionTransactions::MoveFocus(
+        focusedElementId_, target);
     if (retireSliderPresentations) {
         result.sliderDamageNodeIds = CurrentSliderNodeIds(
             snapshot, sliders_.DeactivateAll());
     }
     result.pressedPresentationChanged =
         retirePressedPresentation && pressed_.Clear();
-    SetFocus(widgetId, snapshot, target);
-    result.focusedElementId = focusedElementId_;
-    result.changed = result.priorFocus != result.focusedElementId;
+    focusMemory_.Remember(widgetId, snapshot, focusedElementId_);
     if (retireSliderPresentations) RefreshSliderDeadline();
     return result;
 }

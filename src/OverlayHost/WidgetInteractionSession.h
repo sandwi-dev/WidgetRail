@@ -105,6 +105,52 @@ struct FocusMutation final {
     bool changed{};
 };
 
+enum class DirectionalFocusDisposition {
+    MissingVisibleFocus,
+    VisibleRecovery,
+    Explicit,
+    Geometric,
+    Boundary,
+};
+
+struct DirectionalFocusResolution final {
+    DirectionalFocusDisposition disposition{
+        DirectionalFocusDisposition::Boundary};
+    std::optional<std::wstring> target;
+};
+
+/// Shared transaction policy for the main and pinned widget surfaces. The
+/// surface owner retains its renderer, HWND, interaction state, and damage
+/// submission; this type keeps focus/free-scroll mutation and renderer planning
+/// identical across those owners.
+class SurfaceInteractionTransactions final {
+public:
+    [[nodiscard]] static DirectionalFocusResolution ResolveDirectionalFocus(
+        const WidgetSnapshot&, std::wstring_view, NavigationDirection,
+        const RenderResult&);
+    [[nodiscard]] static FocusMutation MoveFocus(
+        std::wstring&, std::wstring_view);
+    [[nodiscard]] static FreeScrollAuthorityDecision EvaluateFreeScroll(
+        FreeScrollInteractionState&, const WidgetInteractionAuthority&,
+        std::wstring_view, const RenderResult&);
+    [[nodiscard]] static FreeScrollReentryRequest ResolveFreeScrollReentry(
+        FreeScrollInteractionState&, const WidgetInteractionAuthority&,
+        std::wstring_view, const RenderResult&);
+    [[nodiscard]] static std::optional<FocusedFreeScrollPlan> PlanFreeScroll(
+        FreeScrollInteractionState&, DeclarativeRenderer&,
+        const WidgetInteractionAuthority&, std::wstring_view,
+        const RenderResult&, declarative::ScrollAxis, float,
+        declarative::Rect, FocusedFreeScrollPlanDiagnostic* = nullptr);
+    [[nodiscard]] static bool CommitFreeScroll(
+        FreeScrollInteractionState&, const WidgetInteractionAuthority&,
+        std::wstring_view, const FocusedFreeScrollPlan&);
+    [[nodiscard]] static std::optional<IncrementalPresentationPlan>
+    PlanFocusUpdate(
+        DeclarativeRenderer&, const WidgetSnapshot&, std::wstring_view,
+        std::wstring_view, declarative::Rect,
+        const std::vector<std::wstring>& = {});
+};
+
 struct WidgetInteractionPresentation final {
     std::wstring_view focusedElementId;
     std::wstring_view pressedElementId;
@@ -245,6 +291,9 @@ class WidgetInteractionSession final {
 public:
     [[nodiscard]] const std::wstring& focusedElementId() const noexcept {
         return focusedElementId_;
+    }
+    [[nodiscard]] FreeScrollInteractionState& freeScrollState() noexcept {
+        return freeScroll_;
     }
 
     void SetFocus(

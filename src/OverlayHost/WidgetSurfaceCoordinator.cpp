@@ -335,61 +335,67 @@ bool WidgetSurfaceCoordinator::MoveControllerFocus(
     if (!controllerFocused_ || direction == input::NavigationDirection::None ||
         !pinned()) return false;
     const auto& snapshot = SelectedSnapshot();
-    const auto activeScope = std::wstring_view(snapshot.activeInputScopeId);
-    if (freeScroll_.binding()) {
-        const input::WidgetInteractionAuthority authority{
-            admission_->widgetId,
-            &snapshot,
-            admission_->runtimeGeneration,
-            admission_->presentationGeneration,
-            false,
-        };
-        auto reentry = freeScroll_.ResolveReentry(
-            authority, focusedElementId_, lastRenderResult_);
-        if (reentry.consumed) {
-            if (reentry.target) focusedElementId_ = *reentry.target;
+    const input::WidgetInteractionAuthority authority{
+        admission_->widgetId, &snapshot, admission_->runtimeGeneration,
+        admission_->presentationGeneration, false};
+    const auto applyFocus = [&](const std::wstring_view target) {
+        const auto mutation = input::SurfaceInteractionTransactions::MoveFocus(
+            focusedElementId_, target);
+        if (!mutation.changed) return true;
+        RECT client{};
+        if (!renderer_ || !window_ || !GetClientRect(window_, &client)) {
             PublishAccessibility();
             InvalidateRect(window_, nullptr, FALSE);
             return true;
         }
+        const float scale =
+            static_cast<float>(std::max(1U, GetDpiForWindow(window_))) / 96.0F;
+        const float widthDip = static_cast<float>(client.right - client.left) / scale;
+        const float heightDip = static_cast<float>(client.bottom - client.top) / scale;
+        const declarative::Rect viewport{
+            kSideInsetDip, kChromeHeightDip,
+            std::max(1.0F, widthDip - kSideInsetDip * 2.0F),
+            std::max(1.0F, heightDip - kChromeHeightDip - kBottomInsetDip)};
+        const auto plan = input::SurfaceInteractionTransactions::PlanFocusUpdate(
+            *renderer_, snapshot, mutation.priorFocus,
+            mutation.focusedElementId, viewport);
+        if (!plan) {
+            renderer_->CancelPresentationUpdatePlan();
+            PublishAccessibility();
+            InvalidateRect(window_, nullptr, FALSE);
+            return true;
+        }
+        const auto& damage = plan->damage;
+        RECT update{
+            static_cast<LONG>(std::floor(damage.x * scale)),
+            static_cast<LONG>(std::floor(damage.y * scale)),
+            static_cast<LONG>(std::ceil((damage.x + damage.width) * scale)),
+            static_cast<LONG>(std::ceil((damage.y + damage.height) * scale))};
+        update.left = std::clamp<LONG>(update.left, client.left, client.right);
+        update.top = std::clamp<LONG>(update.top, client.top, client.bottom);
+        update.right = std::clamp<LONG>(update.right, update.left, client.right);
+        update.bottom = std::clamp<LONG>(update.bottom, update.top, client.bottom);
+        PublishAccessibility();
+        if (update.right > update.left && update.bottom > update.top) {
+            InvalidateRect(window_, &update, FALSE);
+        } else {
+            renderer_->CancelPresentationUpdatePlan();
+            InvalidateRect(window_, nullptr, FALSE);
+        }
+        return true;
+    };
+    if (freeScroll_.binding()) {
+        auto reentry = input::SurfaceInteractionTransactions::ResolveFreeScrollReentry(
+            freeScroll_, authority, focusedElementId_, lastRenderResult_);
+        if (reentry.consumed) {
+            if (reentry.target) (void)applyFocus(*reentry.target);
+            return true;
+        }
         ClearFreeScroll();
     }
-    const auto visible = input::ResolveVisibleFocusTarget(
-        focusedElementId_, activeScope, lastRenderResult_);
-    if (!visible) return false;
-    if (*visible != focusedElementId_) {
-        focusedElementId_ = *visible;
-        PublishAccessibility();
-        InvalidateRect(window_, nullptr, FALSE);
-        return true;
-    }
-    const auto* focused = input::FindNodeInInputScope(
-        snapshot, focusedElementId_, activeScope);
-    if (!focused) return false;
-    const std::wstring* authored{};
-    switch (direction) {
-    case input::NavigationDirection::Left: authored = &focused->focusLeft; break;
-    case input::NavigationDirection::Right: authored = &focused->focusRight; break;
-    case input::NavigationDirection::Up: authored = &focused->focusUp; break;
-    case input::NavigationDirection::Down: authored = &focused->focusDown; break;
-    case input::NavigationDirection::None: break;
-    }
-    const auto* explicitTarget = authored && !authored->empty()
-        ? input::FindNodeInInputScope(snapshot, *authored, activeScope)
-        : nullptr;
-    if (explicitTarget && input::IsDistinctFocusMove(
-            focusedElementId_, explicitTarget->id,
-            input::IsEnabledFocusTarget(explicitTarget->id, lastRenderResult_))) {
-        focusedElementId_ = explicitTarget->id;
-    } else if (const auto geometric = input::FindGeometricFocusTarget(
-                   focusedElementId_, direction, lastRenderResult_)) {
-        focusedElementId_ = *geometric;
-    } else {
-        return false;
-    }
-    PublishAccessibility();
-    InvalidateRect(window_, nullptr, FALSE);
-    return true;
+    const auto resolution = input::SurfaceInteractionTransactions::ResolveDirectionalFocus(
+        snapshot, focusedElementId_, direction, lastRenderResult_);
+    return resolution.target ? applyFocus(*resolution.target) : false;
 }
 
 bool WidgetSurfaceCoordinator::ScrollFocusedProjection(
@@ -425,16 +431,6 @@ bool WidgetSurfaceCoordinator::ScrollFocusedProjection(
         admission_->presentationGeneration,
         false,
     };
-    const auto decision = freeScroll_.Evaluate(authority, focusedElementId_);
-    if (decision.disposition == input::FreeScrollAuthorityDisposition::Replaced) {
-        ClearFreeScroll();
-    }
-    if (const auto& binding = freeScroll_.binding();
-        binding && !input::IsExactScrollAuthorityCurrent(
-            snapshot.root, binding->scrollId, binding->axis,
-            lastRenderResult_)) {
-        ClearFreeScroll();
-    }
     if (!sample.moving) return false;
     const float scale =
         static_cast<float>(std::max(1U, GetDpiForWindow(window_))) / 96.0F;
@@ -449,23 +445,9 @@ bool WidgetSurfaceCoordinator::ScrollFocusedProjection(
     const auto axis = sample.axis == input::FreeScrollAxis::Horizontal
         ? declarative::ScrollAxis::Horizontal
         : declarative::ScrollAxis::Vertical;
-    std::wstring exactScrollId;
-    if (freeScroll_.binding() && freeScroll_.binding()->axis == axis) {
-        exactScrollId = freeScroll_.binding()->scrollId;
-    } else {
-        const auto owner = input::ResolveFocusedScrollOwner(
-            snapshot.root, focusedElementId_, axis,
-            snapshot.activeInputScopeId, lastRenderResult_);
-        if (owner.disposition !=
-            input::FocusedScrollResolutionDisposition::Resolved) {
-            return false;
-        }
-        exactScrollId = owner.scrollId;
-    }
-
-    const auto plan = renderer_->PlanFocusedFreeScroll(
-        snapshot, focusedElementId_, axis, sample.deltaDip,
-        viewport, exactScrollId);
+    const auto plan = input::SurfaceInteractionTransactions::PlanFreeScroll(
+        freeScroll_, *renderer_, authority, focusedElementId_,
+        lastRenderResult_, axis, sample.deltaDip, viewport);
     if (!plan) return false;
 
     const auto& damage = plan->render.damage;
@@ -484,8 +466,8 @@ bool WidgetSurfaceCoordinator::ScrollFocusedProjection(
         return false;
     }
     InvalidateRect(window_, &update, FALSE);
-    (void)freeScroll_.Bind(
-        authority, focusedElementId_, plan->scrollId, plan->axis);
+    (void)input::SurfaceInteractionTransactions::CommitFreeScroll(
+        freeScroll_, authority, focusedElementId_, *plan);
     return true;
 }
 
@@ -1598,19 +1580,16 @@ void WidgetSurfaceCoordinator::Paint() {
         admission_->presentationGeneration,
         false,
     };
-    const auto freeScrollDecision = freeScroll_.Evaluate(
-        authority, focusedElementId_);
+    const auto freeScrollDecision =
+        input::SurfaceInteractionTransactions::EvaluateFreeScroll(
+            freeScroll_, authority, focusedElementId_, lastRenderResult_);
     if (freeScroll_.binding() &&
         freeScrollDecision.disposition !=
             input::FreeScrollAuthorityDisposition::Current) {
         ClearFreeScroll();
     }
-    const auto& freeScrollBinding = freeScroll_.binding();
     options.suppressFocusedDescendantFollow =
-        freeScrollDecision.followSuppressed && freeScrollBinding &&
-        input::IsExactScrollAuthorityCurrent(
-            selectedSnapshot.root, freeScrollBinding->scrollId,
-            freeScrollBinding->axis, lastRenderResult_);
+        freeScrollDecision.followSuppressed;
     const declarative::Rect viewport{
         kSideInsetDip, kChromeHeightDip,
         std::max(1.0F, widthDip - kSideInsetDip * 2.0F),
@@ -1623,11 +1602,9 @@ void WidgetSurfaceCoordinator::Paint() {
             : std::wstring_view{},
         viewport, options);
     if (options.suppressFocusedDescendantFollow &&
-        (!freeScroll_.Evaluate(authority, focusedElementId_).followSuppressed ||
-         !freeScroll_.binding() ||
-         !input::IsExactScrollAuthorityCurrent(
-             selectedSnapshot.root, freeScroll_.binding()->scrollId,
-             freeScroll_.binding()->axis, lastRenderResult_))) {
+        !input::SurfaceInteractionTransactions::EvaluateFreeScroll(
+            freeScroll_, authority, focusedElementId_, lastRenderResult_)
+             .followSuppressed) {
         ClearFreeScroll();
     }
     renderTarget_->DrawRectangle(

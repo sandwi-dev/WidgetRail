@@ -4237,7 +4237,8 @@ private:
             geometry->widgetViewportWidth,
             geometry->widgetViewportHeight,
         };
-        const auto plan = declarativeRenderer_->PlanFocusUpdate(
+        const auto plan = widgetrail::input::SurfaceInteractionTransactions::PlanFocusUpdate(
+            *declarativeRenderer_,
             *snapshot, priorFocusedElementId, interactionSession_.focusedElementId(), viewport,
             sliderDamageNodeIds);
         if (!plan || !SubmitWidgetContentDamage(
@@ -6204,7 +6205,10 @@ private:
             descriptor->presentationGeneration,
             false,
         };
-        if (interactionSession_.EvaluateFreeScrollAuthority(authority).disposition ==
+        if (widgetrail::input::SurfaceInteractionTransactions::EvaluateFreeScroll(
+                interactionSession_.freeScrollState(), authority,
+                interactionSession_.focusedElementId(), lastWidgetRenderResult_)
+                .disposition ==
             widgetrail::input::FreeScrollAuthorityDisposition::Replaced) {
             ClearFreeScrollReentry(L"authority-changed");
         }
@@ -6276,28 +6280,16 @@ private:
             geometry->widgetViewportWidth,
             geometry->widgetViewportHeight,
         };
-        std::wstring exactScrollId;
-        if (const auto& binding = interactionSession_.freeScrollBinding();
-            binding && binding->axis == axis &&
-            widgetrail::input::IsExactScrollAuthorityCurrent(
-                snapshot->root, binding->scrollId, binding->axis,
-                lastWidgetRenderResult_)) {
-            exactScrollId = binding->scrollId;
-        } else {
-            const auto owner = widgetrail::input::ResolveFocusedScrollOwner(
-                snapshot->root, interactionSession_.focusedElementId(), axis,
-                snapshot->activeInputScopeId, lastWidgetRenderResult_);
-            if (owner.disposition !=
-                    widgetrail::input::FocusedScrollResolutionDisposition::Resolved) {
-                reject(FocusedScrollResolutionName(owner.disposition));
-                return true;
-            }
-            exactScrollId = owner.scrollId;
-        }
+        const auto priorFreeScrollBinding = interactionSession_.freeScrollBinding()
+            ? std::optional<widgetrail::input::FreeScrollBinding>{
+                *interactionSession_.freeScrollBinding()}
+            : std::nullopt;
         widgetrail::FocusedFreeScrollPlanDiagnostic planDiagnostic;
-        const auto plan = declarativeRenderer_->PlanFocusedFreeScroll(
-            *snapshot, interactionSession_.focusedElementId(), axis,
-            sample.deltaDip, viewport, exactScrollId, &planDiagnostic);
+        const auto plan = widgetrail::input::SurfaceInteractionTransactions::PlanFreeScroll(
+            interactionSession_.freeScrollState(), *declarativeRenderer_,
+            authority, interactionSession_.focusedElementId(),
+            lastWidgetRenderResult_, axis, sample.deltaDip, viewport,
+            &planDiagnostic);
         if (!plan) {
             const auto rectText = [](const widgetrail::declarative::Rect value) {
                 return std::to_wstring(value.x) + L"," +
@@ -6318,15 +6310,22 @@ private:
                     planDiagnostic.scrollAxis)} +
                 L" offset=" + std::to_wstring(planDiagnostic.priorOffset) +
                 L"/" + std::to_wstring(planDiagnostic.maximumOffset);
-            reject(reason, exactScrollId);
+            reject(
+                reason,
+                interactionSession_.freeScrollBinding()
+                    ? interactionSession_.freeScrollBinding()->scrollId
+                    : std::wstring_view{});
             return true;
         }
         if (!SubmitWidgetContentDamage(
                 plan->render, metrics->physicalPixelsPerDip, client)) {
             declarativeRenderer_->CancelPresentationUpdatePlan();
-            reject(L"damage-rejected", exactScrollId);
+            reject(L"damage-rejected", plan->scrollId);
             return true;
         }
+        (void)widgetrail::input::SurfaceInteractionTransactions::CommitFreeScroll(
+            interactionSession_.freeScrollState(), authority,
+            interactionSession_.focusedElementId(), *plan);
 
         ObserveScrollPaginationIntent(
             widget, *snapshot, plan->scrollId, plan->axis,
@@ -6335,8 +6334,9 @@ private:
                 : widgetrail::input::ScrollPaginationEdge::After,
             widgetrail::input::ScrollPaginationIntentSource::RightStick);
 
-        const bool newBinding = interactionSession_.BindFreeScroll(
-            authority, plan->scrollId, plan->axis);
+        const bool newBinding = !priorFreeScrollBinding ||
+            priorFreeScrollBinding->scrollId != plan->scrollId ||
+            priorFreeScrollBinding->axis != plan->axis;
         FlushRightStickDropDiagnostic();
         committedWidgetVisualState_.reset();
         widgetAccessibilityProjection_.Clear();
@@ -6385,8 +6385,10 @@ private:
             return false;
         }
         SetFreeScrollRefreshDeferred(false);
-        auto request = interactionSession_.ResolveFreeScrollReentry(
-            authority, lastWidgetRenderResult_);
+        auto request = widgetrail::input::SurfaceInteractionTransactions::
+            ResolveFreeScrollReentry(
+                interactionSession_.freeScrollState(), authority,
+                interactionSession_.focusedElementId(), lastWidgetRenderResult_);
         if (!request.consumed || !request.retiredBinding) return false;
         const auto& binding = *request.retiredBinding;
         if (!request.target) {
@@ -8082,9 +8084,12 @@ private:
         else if (direction == L"right") navigationDirection = widgetrail::input::NavigationDirection::Right;
         else if (direction == L"up") navigationDirection = widgetrail::input::NavigationDirection::Up;
         else if (direction == L"down") navigationDirection = widgetrail::input::NavigationDirection::Down;
-        const auto visibleFocus = widgetrail::input::ResolveVisibleFocusTarget(
-            interactionSession_.focusedElementId(), activeScope, lastWidgetRenderResult_);
-        if (!visibleFocus) {
+        const auto resolution =
+            widgetrail::input::SurfaceInteractionTransactions::ResolveDirectionalFocus(
+                *snapshot, interactionSession_.focusedElementId(),
+                navigationDirection, lastWidgetRenderResult_);
+        if (resolution.disposition ==
+            widgetrail::input::DirectionalFocusDisposition::MissingVisibleFocus) {
             // A constrained viewport or responsive branch can leave a valid
             // root snapshot with no currently reachable control. Preserve the
             // same lower-boundary contract as an ordinary last row instead of
@@ -8098,58 +8103,20 @@ private:
             }
             return;
         }
-        if (*visibleFocus != interactionSession_.focusedElementId()) {
+        if (resolution.target) {
             ObserveScrollPaginationFocusIntent(
                 widgetId, *snapshot, interactionSession_.focusedElementId(),
-                *visibleFocus,
+                *resolution.target,
                 widgetrail::input::ScrollPaginationIntentSource::
                     DirectionalNavigation);
             const auto focus = interactionSession_.MoveFocus(
-                widgetId, *snapshot, *visibleFocus);
-            InvalidateWidgetFocusChange(
-                focus.priorFocus, focus.sliderDamageNodeIds);
-            return;
-        }
-        const auto* focused = widgetrail::input::FindNodeInInputScope(
-            *snapshot, interactionSession_.focusedElementId(), activeScope);
-        if (!focused) return;
-        const std::wstring* target = nullptr;
-        if (direction == L"up") target = &focused->focusUp;
-        else if (direction == L"down") target = &focused->focusDown;
-        else if (direction == L"left") target = &focused->focusLeft;
-        else if (direction == L"right") target = &focused->focusRight;
-        const auto* explicitTarget = target && !target->empty()
-            ? widgetrail::input::FindNodeInInputScope(*snapshot, *target, activeScope)
-            : nullptr;
-        const bool explicitNavigable = explicitTarget &&
-            widgetrail::input::IsEnabledFocusTarget(explicitTarget->id, lastWidgetRenderResult_);
-        const bool explicitMoves = explicitTarget && widgetrail::input::IsDistinctFocusMove(
-            interactionSession_.focusedElementId(), explicitTarget->id, explicitNavigable);
-        if (explicitMoves) {
-            ObserveScrollPaginationFocusIntent(
-                widgetId, *snapshot, interactionSession_.focusedElementId(),
-                explicitTarget->id,
-                widgetrail::input::ScrollPaginationIntentSource::
-                    DirectionalNavigation);
-            const auto focus = interactionSession_.MoveFocus(
-                widgetId, *snapshot, explicitTarget->id);
-            (void)scrollEvidenceProbe_.RecordTarget(explicitTarget->id, direction);
-            InvalidateWidgetFocusChange(
-                focus.priorFocus, focus.sliderDamageNodeIds);
-            return;
-        }
-
-        const auto fallback = widgetrail::input::FindGeometricFocusTarget(
-            interactionSession_.focusedElementId(), navigationDirection, lastWidgetRenderResult_);
-        if (fallback) {
-            ObserveScrollPaginationFocusIntent(
-                widgetId, *snapshot, interactionSession_.focusedElementId(),
-                *fallback,
-                widgetrail::input::ScrollPaginationIntentSource::
-                    DirectionalNavigation);
-            const auto focus = interactionSession_.MoveFocus(
-                widgetId, *snapshot, *fallback);
-            (void)scrollEvidenceProbe_.RecordTarget(*fallback, direction);
+                widgetId, *snapshot, *resolution.target);
+            if (resolution.disposition ==
+                    widgetrail::input::DirectionalFocusDisposition::Explicit ||
+                resolution.disposition ==
+                    widgetrail::input::DirectionalFocusDisposition::Geometric) {
+                (void)scrollEvidenceProbe_.RecordTarget(*resolution.target, direction);
+            }
             InvalidateWidgetFocusChange(
                 focus.priorFocus, focus.sliderDamageNodeIds);
             return;
@@ -8168,8 +8135,8 @@ private:
         if (widgetrail::input::ShouldTransferFocusToTray(
                 navigationDirection,
                 activeScope == widgetrail::input::RootInputScope(*snapshot),
-                explicitMoves,
-                fallback.has_value())) {
+                false,
+                false)) {
             Dispatch(widgetrail::Command::SampleWidgetBack);
         }
     }
@@ -10927,13 +10894,17 @@ private:
                     widgetrail::WidgetPresentationAuthority::RefreshRetained;
             const auto freeScrollDecision = snapshot && descriptor &&
                     renderedWidget == state_.activeWidget()
-                ? interactionSession_.EvaluateFreeScrollAuthority({
-                      renderedWidget,
-                      snapshot,
-                      descriptor->runtimeGeneration,
-                      descriptor->presentationGeneration,
-                      retainedRefresh,
-                  })
+                ? widgetrail::input::SurfaceInteractionTransactions::EvaluateFreeScroll(
+                      interactionSession_.freeScrollState(),
+                      {
+                          renderedWidget,
+                          snapshot,
+                          descriptor->runtimeGeneration,
+                          descriptor->presentationGeneration,
+                          retainedRefresh,
+                      },
+                      interactionSession_.focusedElementId(),
+                      lastWidgetRenderResult_)
                 : widgetrail::input::FreeScrollAuthorityDecision{};
             const bool retainedRefreshFreeScroll =
                 freeScrollDecision.disposition ==
