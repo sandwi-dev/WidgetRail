@@ -252,8 +252,12 @@ void TestPolicyAndPlacement() {
     controller.sameWidgetOpen = true;
     Check(widgetrail::pinned::ResolveControllerCommand(controller) == ControllerCommand::Enter,
           "View enters the current pin from an open overlay widget");
-    controller.controllerFocused = true;
     controller.viewPressed = false;
+    controller.rightStickPressed = true;
+    Check(widgetrail::pinned::ResolveControllerCommand(controller) == ControllerCommand::None,
+          "right-stick click remains ordinary widget input outside pinned focus");
+    controller.controllerFocused = true;
+    controller.rightStickPressed = false;
     controller.aPressed = true;
     Check(widgetrail::pinned::ResolveControllerCommand(controller) == ControllerCommand::Activate,
           "A activates only through the focused pinned owner");
@@ -268,7 +272,13 @@ void TestPolicyAndPlacement() {
     controller.viewPressed = false;
     controller.xPressed = true;
     Check(widgetrail::pinned::ResolveControllerCommand(controller) == ControllerCommand::None,
-          "ordinary authored buttons retain selected-projection ownership");
+          "X alone remains ordinary authored input while pinned focus is active");
+    controller.xPressed = false;
+    controller.rightStickPressed = true;
+    Check(widgetrail::pinned::ResolveControllerCommand(controller) == ControllerCommand::None,
+          "right-stick click remains ordinary authored input while pinned focus is active");
+    controller.rightStickPressed = false;
+    controller.xPressed = true;
     controller.leftShoulderDown = true;
     controller.rightShoulderDown = true;
     Check(widgetrail::pinned::ResolveControllerCommand(controller) ==

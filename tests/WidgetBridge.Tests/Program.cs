@@ -84,6 +84,7 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Client registry observes retirement failures and disposes every client", BridgeClientRegistryScenarios.RetirementFailuresAreObservedAndDrained),
     ("Visible registry publication reaches its configured publisher once", BridgeClientRegistryScenarios.VisibleRegistrationPublishesInvalidationExactlyOnce),
     ("Pinned layout selection is exact current runtime generation", BridgeClientRegistryScenarios.PinnedLayoutSelectionIsGenerationBound),
+    ("Pinned surface input requires exact generation layout scope and focus", BridgeClientRegistryScenarios.PinnedSurfaceInputRequiresExactAuthority),
     ("Local package import origin is exact current Interactive Settings", BridgeClientRegistryScenarios.LocalPackageImportOriginIsExact),
     ("Local package import is disabled revisioned and path free", LocalPackageImportIsDisabledRevisionedAndPathFree),
     ("Local package import failures preserve catalog state", LocalPackageImportFailuresPreserveCatalog),

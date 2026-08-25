@@ -1,3 +1,4 @@
+using System.Threading.Channels;
 using WidgetRail.WidgetProtocol;
 using WidgetRail.WidgetSdk;
 
@@ -13,6 +14,7 @@ internal static class PinnedPresentationLayoutTests
         await SelectionDemandIsExplicitAndRevocable();
         await TypedHandleAndPublicTestHostOwnSelection();
         await PinnedBackUsesOnlyTheSelectedProjection();
+        await PinnedInputResolvesOnlyTheSelectedRoot();
         CatalogChangesRequireCheckpointFallback();
     }
 
@@ -247,6 +249,52 @@ internal static class PinnedPresentationLayoutTests
         True(destroyingSelection.IsCancellationRequested && !widget.Details.IsSelected,
             "Widget teardown retained pinned-layout demand authority.");
     }
+
+    private static async Task PinnedInputResolvesOnlyTheSelectedRoot()
+    {
+        var widget = new PinnedRoutingWidget();
+        _ = widget.RenderSnapshot("pinned.routing", 17);
+        await widget.SetActiveAsync(true, CancellationToken.None);
+
+        True(await widget.OnControllerInputAsync(PinnedInput(
+            "compact", "compact.root", "compact.play", 17)),
+            "The selected pinned projection did not resolve its focused action.");
+        Equal("compact-play", (await widget.NextActionAsync()).ActionId);
+
+        True(await widget.OnControllerInputAsync(PinnedInput(
+            "host.full-widget", "full.root", "full.play", 17)),
+            "The host Full widget fallback did not resolve the ordinary root.");
+        Equal("full-play", (await widget.NextActionAsync()).ActionId);
+
+        True(!await widget.OnControllerInputAsync(PinnedInput(
+            "compact", "full.root", "full.play", 17)),
+            "A selected projection searched the unselected full-widget root.");
+        True(!await widget.OnControllerInputAsync(PinnedInput(
+            "compact", "expanded.root", "expanded.play", 17)),
+            "A selected projection searched a sibling layout root.");
+        True(!await widget.OnControllerInputAsync(PinnedInput(
+            "retired", "compact.root", "compact.play", 17)),
+            "A retired pinned layout identity resolved input.");
+        True(!await widget.OnControllerInputAsync(PinnedInput(
+            "compact", "compact.root", "compact.play", 16)),
+            "A stale pinned snapshot sequence resolved input.");
+    }
+
+    private static ControllerInputEvent PinnedInput(
+        string layoutId,
+        string scopeId,
+        string focusedElementId,
+        long snapshotSequence) => new(
+            ControllerButton.A,
+            ControllerEventPhase.Pressed,
+            ControllerInputContext.PinnedSurface,
+            focusedElementId,
+            Sequence: 1,
+            ActiveInputScopeId: scopeId,
+            SnapshotSequence: snapshotSequence)
+        {
+            PinnedLayoutId = layoutId,
+        };
 
     private static void ExistingWidgetViewApiRemainsAdditive()
     {
@@ -547,6 +595,44 @@ internal static class PinnedPresentationLayoutTests
         string? LayoutId,
         bool CompactSelected,
         bool DetailsSelected);
+
+    private sealed class PinnedRoutingWidget : Widget
+    {
+        private readonly Channel<WidgetActionEvent> _actions =
+            Channel.CreateUnbounded<WidgetActionEvent>();
+
+        public override WidgetView Render() => new(
+            UI.Stack("full.root", UI.Button("Play full", "full-play", "full.play")),
+            InitialFocusId: "full.play",
+            ActiveInputScopeId: "full.root")
+        {
+            PinnedLayouts =
+            [
+                WidgetView.PinnedLayout(
+                    "compact", "Compact", Surface(360, 240),
+                    UI.Stack("compact.root",
+                        UI.Button("Play compact", "compact-play", "compact.play")),
+                    initialFocusId: "compact.play"),
+                WidgetView.PinnedLayout(
+                    "expanded", "Expanded", Surface(560, 360),
+                    UI.Stack("expanded.root",
+                        UI.Button("Play expanded", "expanded-play", "expanded.play")),
+                    initialFocusId: "expanded.play"),
+            ],
+        };
+
+        public override ValueTask OnActionAsync(
+            WidgetActionEvent action,
+            CancellationToken cancellationToken = default)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            _actions.Writer.TryWrite(action);
+            return ValueTask.CompletedTask;
+        }
+
+        public ValueTask<WidgetActionEvent> NextActionAsync() =>
+            _actions.Reader.ReadAsync();
+    }
 
     private static void AssertError(ViewSnapshot snapshot, string path, string code)
     {

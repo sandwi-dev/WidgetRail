@@ -54,6 +54,115 @@ internal static class BridgeClientRegistryScenarios
         RegistryAssert.Equal(1, client.ControllerInputs.Count);
     }
 
+    internal static async Task PinnedSurfaceInputRequiresExactAuthority()
+    {
+        var configured = Widget("pinned-input", worker: 'i', catalog: 'i');
+        await using var fixture = new RegistryFixture(
+            Catalog(configured),
+            configure: (_, client) => client.SnapshotFactory = sequence => new ViewSnapshot
+            {
+                ProtocolVersion = ProtocolConstants.PinnedPresentationProjectionsVersion,
+                Sequence = sequence,
+                WidgetInstanceId = configured.InstanceId,
+                ActiveInputScopeId = "full.root",
+                InitialFocusId = "full.play",
+                Root = new ViewNode
+                {
+                    Id = "full.root",
+                    Kind = ViewNodeKind.Stack,
+                    InputScopeId = "full.root",
+                    Children =
+                    [
+                        new ViewNode { Id = "full.play", Kind = ViewNodeKind.Button,
+                            ActionId = "full-play" },
+                    ],
+                },
+                PinnedLayouts =
+                [
+                    new PinnedPresentationLayout
+                    {
+                        Id = "compact",
+                        Name = "Compact",
+                        Surface = new WidgetSurfaceHints
+                        {
+                            PreferredWidth = 360,
+                            PreferredHeight = 240,
+                            MinimumWidth = 240,
+                            MinimumHeight = 180,
+                        },
+                        Root = new ViewNode
+                        {
+                            Id = "compact.root",
+                            Kind = ViewNodeKind.Stack,
+                            InputScopeId = "compact.root",
+                            Children =
+                            [
+                                new ViewNode { Id = "compact.play", Kind = ViewNodeKind.Button,
+                                    ActionId = "compact-play" },
+                            ],
+                        },
+                        ActiveInputScopeId = "compact.root",
+                        InitialFocusId = "compact.play",
+                    },
+                ],
+            });
+        await fixture.SetLifecycleAsync(configured.Id, WidgetLifecycleState.Interactive);
+        var client = fixture.Clients.Single();
+        var snapshot = (await fixture.GetSnapshotAsync(configured.Id)).Snapshot;
+        var generation = configured.PublicDescriptor().RuntimeGeneration;
+        var input = new ControllerInputEvent(
+            ControllerButton.X,
+            ControllerEventPhase.Pressed,
+            ControllerInputContext.PinnedSurface,
+            FocusedElementId: "compact.play",
+            Sequence: 1,
+            ActiveInputScopeId: "compact.root",
+            SnapshotSequence: snapshot.Sequence)
+        {
+            PinnedLayoutId = "compact",
+        };
+
+        var wire = BridgeJson.ToElement(new BridgeControllerInputRequest(
+            configured.Id, input, generation));
+        RegistryAssert.Equal("pinnedSurface",
+            wire.GetProperty("input").GetProperty("context").GetString());
+        RegistryAssert.Equal("compact",
+            wire.GetProperty("input").GetProperty("pinnedLayoutId").GetString());
+        var roundTrip = BridgeJson.FromElement<BridgeControllerInputRequest>(wire);
+        RegistryAssert.Equal(ControllerInputContext.PinnedSurface, roundTrip.Input.Context);
+
+        using (var publication = await fixture.Registry.SendControllerInputAsync(
+                   configured.Id, input, generation,
+                   CancellationToken.None, CancellationToken.None))
+            RegistryAssert.True(publication.Value);
+        using (var publication = await fixture.Registry.SendControllerInputAsync(
+                   configured.Id, input with
+                   {
+                       FocusedElementId = "full.play",
+                       ActiveInputScopeId = "full.root",
+                       PinnedLayoutId = "host.full-widget",
+                   }, generation, CancellationToken.None, CancellationToken.None))
+            RegistryAssert.True(publication.Value);
+        RegistryAssert.Equal(2, client.ControllerInputs.Count);
+
+        foreach (var stale in new (ControllerInputEvent Input, string? Generation)[]
+        {
+            (input, null),
+            (input, new string('f', 32)),
+            (input with { SnapshotSequence = snapshot.Sequence + 1 }, generation),
+            (input with { PinnedLayoutId = "retired" }, generation),
+            (input with { ActiveInputScopeId = "full.root" }, generation),
+            (input with { FocusedElementId = "full.play" }, generation),
+        })
+        {
+            await RegistryAssert.ThrowsAsync<BridgeProtocolException>(() =>
+                fixture.Registry.SendControllerInputAsync(
+                    configured.Id, stale.Input, stale.Generation,
+                    CancellationToken.None, CancellationToken.None));
+        }
+        RegistryAssert.Equal(2, client.ControllerInputs.Count);
+    }
+
     internal static async Task CatalogReplacementAndRemovalOwnGenerations()
     {
         var initial = Widget("alpha", worker: 'a', catalog: 'a');
@@ -1215,6 +1324,7 @@ internal sealed class RegistryTestClient(
     internal List<(WidgetPresentationTransactionKind TransactionKind,
         long BaseSequence, long RecoveryOriginSequence)> PresentationRequests { get; } = [];
     internal List<ControllerInputEvent> ControllerInputs { get; } = [];
+    internal Func<long, ViewSnapshot>? SnapshotFactory { get; set; }
     public bool IsRunning => Volatile.Read(ref _running) != 0;
     public int Starts => Volatile.Read(ref _starts);
 
@@ -1236,6 +1346,7 @@ internal sealed class RegistryTestClient(
         cancellationToken.ThrowIfCancellationRequested();
         var sequence = Interlocked.Increment(ref _snapshotSequence) +
             ((long)ClientGeneration << 32);
+        if (SnapshotFactory is { } snapshotFactory) return snapshotFactory(sequence);
         return new ViewSnapshot
         {
             Sequence = sequence,
