@@ -45,9 +45,11 @@ historical evidence only; this file is the sole implementation authority.
   geometry contract shared by authored admission, pinned chrome, defaults, and
   persistence. After explicit user approval, exact prior accepted PID 109280
   was force-terminated only after its non-forced close had destroyed all top-
-  level HWNDs but left the process hung in shutdown. Unaccepted exact candidate
-  PID 122540 is responsive with no startup-error file and is ready for physical
-  resize-and-commit review.
+  level HWNDs but left the process hung in shutdown. Exact candidate PID 122540
+  is responsive with no startup-error file, and the user physically accepted
+  committed resize persistence. Before tests, the user requested one small
+  same-owner follow-up: double the shared placement-adjustment step because move
+  and resize currently feel slow.
 - Full detailed evidence through this state is preserved in the
   [2026-08-24 19:39 snapshot](history/delivery-plan/2026-08-24T19-39-18-07-00.md).
   That snapshot is historical evidence only.
@@ -270,14 +272,17 @@ conflict.
 
 ### DLV-305 preserve a committed pinned resize
 
-Lane: platform native placement owner. Status: Physical review after
+Lane: platform native placement owner. Status: Physically accepted persistence
+with one requested production follow-up before tests. The accepted source is
 source-reviewed production `377c5d4` plus centralized-geometry correction
 `b24899c`; the exact Release build exited 0 and produced OverlayHost SHA-256
 `1E8087432F2EACCEF8B32683D8D665414EF7F7C318C1922D95E32D381F0AF8D6`.
 After explicit user approval, the planner force-terminated exact shutdown-hung
 prior PID 109280 and visibly launched unaccepted candidate PID 122540. It is
-responsive and has no startup-error file. Await the user's resize, Commit now,
-ordinary refresh, and restart verdict before tests or integration.
+responsive and has no startup-error file. The user accepted committed resize
+persistence, then requested doubling the adjustment speed before the focused
+test phase. Direct source review proves keyboard arrows, D-pad, left-stick move,
+and right-stick resize all reach the same 16-DIP default placement step.
 This milestone was Assigned concurrently with the
 non-behavioral DLV-303 diagnostics in a separate clean worktree from local main
 `8dfe871`; do not touch the standing platform worktree's retained evidence. The
@@ -306,6 +311,13 @@ protocol/SDK, or DLV-303 diagnostic files. Stop without edits if the proven
 cause requires a file currently changed by DLV-303, then serialize after its
 integration.
 
+Before tests, change that one semantic placement-adjustment step from 16 to 32
+DIPs through the centralized native geometry contract. Do not change input
+repeat/dead-zone timing, acceleration, opacity increments, layout cycling,
+pointer dragging, monitor/DPI clamping, or introduce separate move and resize
+speeds. Keyboard, D-pad, left-stick move, and right-stick resize must continue
+to consume the same value so the product cannot drift by input route.
+
 Use physical-first ordering after the cause is reported: production only,
 direct lifecycle/persistence review, one coherent Release build and exact
 commit, planner launch, and user verdict before focused tests. After acceptance,
@@ -317,9 +329,11 @@ destructive state reset, Avalonia/AVP, or push.
 Acceptance: Commit now leaves the resized pin at the previewed constrained
 dimensions and persists those dimensions across ordinary refresh and restart;
 Cancel still restores the original bounds; failed persistence never reports a
-successful commit; no new placement/window owner or widget-specific behavior is
-introduced. Stop for destructive placement-store recovery, a second window or
-authority, overlap with active DLV-303 work, or materially different resize UX.
+successful commit; each discrete move/resize step is 32 DIPs across keyboard,
+D-pad, and analog adjustment routes; no new placement/window owner or widget-
+specific behavior is introduced. Stop for destructive placement-store
+recovery, a second window or authority, overlap with active DLV-303 work, or
+materially different resize UX.
 
 ### DLV-296 pinned-layout preview and diagnostics
 
