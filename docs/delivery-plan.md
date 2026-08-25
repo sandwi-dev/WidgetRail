@@ -235,12 +235,12 @@ historical evidence only; this file is the sole implementation authority.
 - DLV-295 cumulative `225e736` + `3d4b940` is independently accepted and integrated by fast-forward to local main. The optional typed handle owns stable layout metadata, selected state, scoped cancellation, one effective invalidation, and a public deterministic test host while low-level protocol-v21 authoring remains supported. SDK compile passed, compatibility passed 12/12 after the environment-only DLV-299 restore repair, and the focused handle group passed 1/1. No runtime/package input changed, so accepted PID 32880 remains running. Spotify 0.3.24 remains the sole installed, selected, enabled version with credential/account/provider/configuration state preserved; DLV-298 is the migration proof.
 - DLV-298 cumulative production `65d7872` + `d3b7cf7` + `9396363` +
   `fc9adc8` is physically accepted and integrated as merge `c9e9b97`. Spotify 0.3.26 is the sole
-  installed, selected, enabled version under responsive exact candidate PID
-  63284. The typed handle now owns layout selection and demand lifecycle while
+  installed, selected, enabled version. The typed handle owns layout selection and demand lifecycle while
   preserving state-specific initial focus. Focused migrated Spotify regression
   test gate stopped in an opaque pre-test build with zero tests; its one-file
-  uncommitted diff is retained as debt. The accepted candidate remains running
-  and no integration/tests-only rebuild or relaunch is authorized.
+  uncommitted diff is retained as debt. Accepted PID 63284 exited cooperatively
+  after `WM_CLOSE` reached its five top-level windows; reviewed unaccepted
+  DLV-300 candidate PID 67596 is now staged for the next physical verdict.
 - Managed tests are accepted through `676cd76`: DLV-319 `199a81b`, DLV-324
   `6b63edf`, DLV-325 `e441f25`, and DLV-326 `676cd76`. All named managed
   Tier-3 gates are green.
@@ -251,7 +251,7 @@ historical evidence only; this file is the sole implementation authority.
 
 | Lane | Task/worktree | State |
 | --- | --- | --- |
-| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | DLV-300 is Assigned from integrated baseline `c9e9b97` in a separate clean worktree. The standing worktree's retained DLV-474/DLV-293 diffs and blocked DLV-473 test commit remain immutable evidence and must not be touched. |
+| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | DLV-300 production `5bb7a57` is clean, reviewed, built, and visibly running as unaccepted PID 67596 pending the user's physical verdict. The standing worktree's retained DLV-474/DLV-293 diffs and blocked DLV-473 test commit remain immutable evidence and must not be touched. |
 | Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | DLV-298 production is integrated. Its first migrated Spotify test gate failed opaquely before tests; the uncommitted one-file test diff is retained without rerun or commit. Do not rebuild/relaunch for this debt. DLV-296 remains Ready but must not reuse or disturb the dirty evidence tree. |
 
 ## Execution rules
@@ -862,9 +862,15 @@ not authorize a rebuild or relaunch.
 ### DLV-300 host-reserved View and widget-owned pinned Back
 
 Lane: platform, serialized native-input/public-authoring contract. Status:
-Assigned from clean integrated local-main baseline `c9e9b97`. Use a separate
-clean worktree; do not disturb the
-standing platform worktree's retained DLV-474/DLV-293 evidence.
+production candidate `5bb7a57` from clean integrated baseline `c9e9b97` is
+source-reviewed and awaiting the user's physical verdict. Its Release build
+passed with packaging enabled; `OverlayHost.exe` SHA-256 is
+`5043E212349F0445B53E9F57DF5D3C14E3ADCCF5DF2570E7FA09B4B71829A942`.
+Accepted PID 63284 exited cooperatively after verified `WM_CLOSE` reached all
+five owned top-level windows. Exact unaccepted PID 67596 is responsive and
+visibly running. No tests have run and nothing is integrated. The clean
+candidate remains in its separate worktree; the standing platform worktree's
+retained DLV-474/DLV-293 evidence was not touched.
 
 Make View an unconditional native host navigation control. Widgets may not map
 View as an open-widget shortcut or dashboard quick action, and the host must
@@ -931,8 +937,8 @@ no live provider, installation, Game Launcher tests, broad aggregate, or push.
 
 ## Ordered queues
 
-1. DLV-300 host-reserved View and widget-owned pinned Back; Assigned visible
-   milestone from integrated baseline `c9e9b97`.
+1. DLV-300 host-reserved View and widget-owned pinned Back; production
+   `5bb7a57` is visibly staged and awaiting the user's verdict.
 2. DLV-296 pinned-layout preview and diagnostics.
 3. DLV-297 pinned-layout templates and examples.
 4. DLV-474 fresh-session sequence-authority correction: retained correction
