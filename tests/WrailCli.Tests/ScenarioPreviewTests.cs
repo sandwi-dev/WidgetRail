@@ -1,6 +1,7 @@
 using System.Text.Json;
 using WidgetRail.WrailCli;
 using WidgetRail.WidgetProtocol;
+using WidgetRail.WidgetSdk;
 
 internal static class ScenarioPreviewTests
 {
@@ -10,6 +11,7 @@ internal static class ScenarioPreviewTests
         await ListsWithoutResolvingTheAssemblyAsync();
         await MissingAssemblyFailsWithoutWritingAsync();
         await RejectsMalformedAndUnboundedDeclarationsAsync();
+        await DescendantScopedPinnedLayoutUsesTheRealCliPathAsync();
         PinnedLayoutsUseValidatedSemanticPreview();
     }
 
@@ -177,6 +179,42 @@ internal static class ScenarioPreviewTests
         Contains("initialFocusId", validation.Message);
     }
 
+    private static async Task DescendantScopedPinnedLayoutUsesTheRealCliPathAsync()
+    {
+        using var temp = new ScenarioDirectory();
+        var assemblyName = "pinned-preview-fixture.dll";
+        File.Copy(
+            typeof(PinnedPreviewScenarioProvider).Assembly.Location,
+            Path.Combine(temp.Path, assemblyName));
+        await temp.WriteManifestAsync(
+            assemblyName,
+            typeof(PinnedPreviewScenarioProvider).FullName!,
+            Scenario("descendant", nameof(PinnedPreviewScenarioProvider.DescendantScoped)));
+
+        var ordinary = await RunCliAsync(
+            "preview", temp.Path, "--scenario", "descendant");
+        Equal(0, ordinary.Code);
+        using (var document = JsonDocument.Parse(ordinary.Output))
+            Equal("descendant", document.RootElement.GetProperty("scenario").GetString());
+
+        var destination = Path.Combine(temp.Path, "descendant.scenario.json");
+        var pinned = await RunCliAsync(
+            "preview", temp.Path, "--scenario", "descendant",
+            "--pinned-layout", "descendant", "--output", destination);
+        Equal(0, pinned.Code);
+        Contains("Layout descendant | Descendant scope", pinned.Output);
+        Contains("Active input scope: descendant.scope", pinned.Output);
+        Contains("▶ Button #descendant.play", pinned.Output);
+        Contains(
+            "Warning: pinned layouts 'descendant' and 'descendant-copy' have semantically identical roots.",
+            pinned.Output);
+        using var written = JsonDocument.Parse(await File.ReadAllBytesAsync(destination));
+        Equal("descendant", written.RootElement.GetProperty("scenario").GetString());
+        Equal("descendant.scope", written.RootElement.GetProperty("snapshot")
+            .GetProperty("pinnedLayouts")[0]
+            .GetProperty("activeInputScopeId").GetString());
+    }
+
     private static PinnedPresentationLayout Layout(
         string id,
         string name,
@@ -254,11 +292,18 @@ internal static class ScenarioPreviewTests
         internal string Path { get; }
 
         internal Task WriteManifestAsync(params object[] scenarios) =>
+            WriteManifestAsync(
+                MissingAssembly, "Tests.PreviewScenarios", scenarios);
+
+        internal Task WriteManifestAsync(
+            string assembly,
+            string providerType,
+            params object[] scenarios) =>
             WriteRawManifestAsync(JsonSerializer.Serialize(new
             {
                 version = 1,
-                assembly = MissingAssembly,
-                providerType = "Tests.PreviewScenarios",
+                assembly,
+                providerType,
                 scenarios,
             }));
 
@@ -322,5 +367,48 @@ internal static class ScenarioPreviewTests
         }
         throw new InvalidOperationException(
             $"Expected {typeof(TException).Name} to be thrown.");
+    }
+}
+
+public static class PinnedPreviewScenarioProvider
+{
+    public static WidgetScenarioDefinition DescendantScoped() => new(
+        new DescendantScopedPinnedPreviewWidget(),
+        new WidgetTestHostServicesBuilder().Build());
+
+    private sealed class DescendantScopedPinnedPreviewWidget : Widget
+    {
+        public override WidgetView Render()
+        {
+            var root = UI.Stack(
+                "descendant.root",
+                UI.Stack(
+                        "descendant.scope.root",
+                        UI.Button("Play", "descendant.toggle", "descendant.play") with
+                        {
+                            AccessibilityLabel = "Descendant playback",
+                        })
+                    .InputScope("descendant.scope"));
+            var surface = new WidgetSurfaceHints
+            {
+                Mode = WidgetSurfaceMode.Compact,
+                PreferredWidth = 360,
+                PreferredHeight = 240,
+                MinimumWidth = 240,
+                MinimumHeight = 180,
+            };
+            return new WidgetView(UI.Text("Full widget", "full.root"))
+            {
+                PinnedLayouts =
+                [
+                    WidgetView.PinnedLayout(
+                        "descendant", "Descendant scope", surface, root,
+                        "descendant.play", "descendant.scope"),
+                    WidgetView.PinnedLayout(
+                        "descendant-copy", "Descendant scope copy", surface, root,
+                        "descendant.play", "descendant.scope"),
+                ],
+            };
+        }
     }
 }

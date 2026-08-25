@@ -101,8 +101,8 @@ public static class SnapshotPreview
             var canonical = Convert.ToBase64String(SnapshotJson.Serialize(snapshot with
             {
                 Sequence = 0,
-                ActiveInputScopeId = layout.Root.InputScopeId ?? layout.Root.Id,
-                InitialFocusId = null,
+                ActiveInputScopeId = layout.ActiveInputScopeId!,
+                InitialFocusId = layout.InitialFocusId,
                 QuickActions = [],
                 PinnedLayouts = [],
                 Surface = null,
