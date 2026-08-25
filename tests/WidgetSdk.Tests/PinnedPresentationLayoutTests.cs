@@ -12,6 +12,7 @@ internal static class PinnedPresentationLayoutTests
         ProjectionIsDeclarativeBoundedAndVersioned();
         await SelectionDemandIsExplicitAndRevocable();
         await TypedHandleAndPublicTestHostOwnSelection();
+        await PinnedBackUsesOnlyTheSelectedProjection();
         CatalogChangesRequireCheckpointFallback();
     }
 
@@ -271,6 +272,41 @@ internal static class PinnedPresentationLayoutTests
         Equal("Compact", restored.PinnedLayouts[0].Name);
     }
 
+    private static async Task PinnedBackUsesOnlyTheSelectedProjection()
+    {
+        var widget = new BackWidget();
+        await WidgetTestHost.InitializeAsync(widget);
+        await WidgetTestHost.SetLifecycleStateAsync(
+            widget, WidgetLifecycleState.Visible);
+        var host = WidgetTestHost.CreatePinnedLayoutHost(
+            widget, "layouts.back", initialSequence: 3);
+        True(await host.SelectAsync("compact"),
+            "The Back fixture could not select its authored projection.");
+
+        var rootAction = widget.ExpectAction();
+        True(await host.RouteActionAsync(ControllerButton.B, "back.action"),
+            "Pinned root B was not delivered to the selected projection.");
+        var rootBack = await rootAction.WaitAsync(TimeSpan.FromSeconds(2));
+        Equal("back.root.action", rootBack.ActionId);
+        Equal("back.root", rootBack.InputScopeId);
+
+        widget.Mode = BackMode.Nested;
+        await host.ReplaceSnapshotAsync();
+        var nestedAction = widget.ExpectAction();
+        True(await host.RouteActionAsync(ControllerButton.B, "back.nested.action"),
+            "Pinned nested B was not delivered to the selected projection.");
+        var nestedBack = await nestedAction.WaitAsync(TimeSpan.FromSeconds(2));
+        Equal("back.nested.action", nestedBack.ActionId);
+        Equal("back.nested", nestedBack.InputScopeId);
+
+        widget.Mode = BackMode.UnhandledRoot;
+        await host.ReplaceSnapshotAsync();
+        True(!await host.RouteActionAsync(ControllerButton.B, "back.action"),
+            "An unhandled pinned root B escaped as a host fallback.");
+
+        await WidgetTestHost.DestroyAsync(widget);
+    }
+
     private static void CatalogIsBoundedAndVersioned()
     {
         var snapshot = Baseline() with { PinnedLayouts = [Layout("compact", "Compact", 360, 240)] };
@@ -378,6 +414,67 @@ internal static class PinnedPresentationLayoutTests
         {
             cancellationToken.ThrowIfCancellationRequested();
             LayoutId = layoutId;
+            return ValueTask.CompletedTask;
+        }
+    }
+
+    private enum BackMode { Root, Nested, UnhandledRoot }
+
+    private sealed class BackWidget : Widget
+    {
+        private TaskCompletionSource<WidgetActionEvent>? _nextAction;
+
+        internal BackMode Mode { get; set; }
+
+        internal Task<WidgetActionEvent> ExpectAction()
+        {
+            _nextAction = new(TaskCreationOptions.RunContinuationsAsynchronously);
+            return _nextAction.Task;
+        }
+
+        public override WidgetView Render()
+        {
+            WidgetElement root;
+            string scope;
+            string focus;
+            if (Mode == BackMode.Nested)
+            {
+                scope = "back.nested";
+                focus = "back.nested.action";
+                root = UI.Stack("back.root",
+                    UI.Stack("back.nested.root",
+                            UI.Button("Nested", "noop", focus))
+                        .InputScope(scope)
+                        .Shortcut(ControllerButton.B, "back.nested.action"));
+            }
+            else
+            {
+                scope = "back.root";
+                focus = "back.action";
+                var stack = UI.Stack("back.root",
+                        UI.Button("Root", "noop", focus))
+                    .InputScope(scope);
+                root = Mode == BackMode.Root
+                    ? stack.Shortcut(ControllerButton.B, "back.root.action")
+                    : stack;
+            }
+            return new WidgetView(UI.Text("Full", "full"))
+            {
+                PinnedLayouts =
+                [
+                    WidgetView.PinnedLayout(
+                        "compact", "Compact", Surface(360, 240),
+                        root, focus, scope),
+                ],
+            };
+        }
+
+        public override ValueTask OnActionAsync(
+            WidgetActionEvent action,
+            CancellationToken cancellationToken = default)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            _nextAction?.TrySetResult(action);
             return ValueTask.CompletedTask;
         }
     }
