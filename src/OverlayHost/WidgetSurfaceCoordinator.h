@@ -125,6 +125,10 @@ public:
     [[nodiscard]] bool EnterControllerFocus();
     [[nodiscard]] bool ExitControllerFocus() noexcept;
     [[nodiscard]] bool MoveControllerFocus(input::NavigationDirection direction);
+    [[nodiscard]] bool ScrollFocusedProjection(
+        short rightThumbX,
+        short rightThumbY,
+        std::uint64_t now);
     [[nodiscard]] bool QueueFocusedInput(
         std::wstring_view protocolButton,
         ControllerInputOrigin origin = ControllerInputOrigin::PhysicalController,
@@ -263,6 +267,7 @@ private:
     std::optional<unsigned int> opacityPreviewOriginal_;
     RenderResult lastRenderResult_;
     std::wstring focusedElementId_;
+    input::RightStickScrollKinetics rightStickScrollKinetics_;
     std::vector<WidgetSurfaceInputRequest> inputRequests_;
     std::vector<PinnedLayoutSelectionNotification> layoutSelectionNotifications_;
     std::wstring actionFeedback_;

@@ -299,6 +299,7 @@ bool WidgetSurfaceCoordinator::ExitControllerFocus() noexcept {
     if (placementSession_) (void)CancelPlacement();
     if (opacityPreviewOriginal_) (void)CancelOpacity();
     controllerFocused_ = false;
+    rightStickScrollKinetics_.Reset();
     if (overlayVisible_ && notificationWindow_ && IsWindow(notificationWindow_))
         (void)SetFocus(notificationWindow_);
     PublishAccessibility();
@@ -348,6 +349,75 @@ bool WidgetSurfaceCoordinator::MoveControllerFocus(
     }
     PublishAccessibility();
     InvalidateRect(window_, nullptr, FALSE);
+    return true;
+}
+
+bool WidgetSurfaceCoordinator::ScrollFocusedProjection(
+    const short rightThumbX,
+    const short rightThumbY,
+    const std::uint64_t now) {
+    const auto sample = rightStickScrollKinetics_.Update(
+        rightThumbX, rightThumbY, now);
+    if (!sample.moving || !pinned() || !controllerFocused_ ||
+        policy_.interactionMode() != InteractionMode::Focusable ||
+        !renderer_ || !window_ || focusedElementId_.empty()) {
+        return false;
+    }
+
+    RECT pendingPaint{};
+    RECT client{};
+    if (GetUpdateRect(window_, &pendingPaint, FALSE) != FALSE ||
+        !GetClientRect(window_, &client)) {
+        return false;
+    }
+
+    const auto& snapshot = SelectedSnapshot();
+    if (snapshot.sequence <= 0 || snapshot.instanceId != admission_->instanceId ||
+        snapshot.activeInputScopeId.empty()) {
+        return false;
+    }
+    const float scale =
+        static_cast<float>(std::max(1U, GetDpiForWindow(window_))) / 96.0F;
+    const float widthDip = static_cast<float>(client.right - client.left) / scale;
+    const float heightDip = static_cast<float>(client.bottom - client.top) / scale;
+    const declarative::Rect viewport{
+        kSideInsetDip,
+        kChromeHeightDip,
+        std::max(1.0F, widthDip - kSideInsetDip * 2.0F),
+        std::max(1.0F, heightDip - kChromeHeightDip - kBottomInsetDip),
+    };
+    const auto axis = sample.axis == input::FreeScrollAxis::Horizontal
+        ? declarative::ScrollAxis::Horizontal
+        : declarative::ScrollAxis::Vertical;
+    const auto owner = input::ResolveFocusedScrollOwner(
+        snapshot.root, focusedElementId_, axis,
+        snapshot.activeInputScopeId, lastRenderResult_);
+    if (owner.disposition !=
+        input::FocusedScrollResolutionDisposition::Resolved) {
+        return false;
+    }
+
+    const auto plan = renderer_->PlanFocusedFreeScroll(
+        snapshot, focusedElementId_, axis, sample.deltaDip,
+        viewport, owner.scrollId);
+    if (!plan) return false;
+
+    const auto& damage = plan->render.damage;
+    RECT update{
+        static_cast<LONG>(std::floor(damage.x * scale)),
+        static_cast<LONG>(std::floor(damage.y * scale)),
+        static_cast<LONG>(std::ceil((damage.x + damage.width) * scale)),
+        static_cast<LONG>(std::ceil((damage.y + damage.height) * scale)),
+    };
+    update.left = std::clamp<LONG>(update.left, client.left, client.right);
+    update.top = std::clamp<LONG>(update.top, client.top, client.bottom);
+    update.right = std::clamp<LONG>(update.right, update.left, client.right);
+    update.bottom = std::clamp<LONG>(update.bottom, update.top, client.bottom);
+    if (update.right <= update.left || update.bottom <= update.top) {
+        renderer_->CancelPresentationUpdatePlan();
+        return false;
+    }
+    InvalidateRect(window_, &update, FALSE);
     return true;
 }
 
@@ -856,6 +926,7 @@ bool WidgetSurfaceCoordinator::Unpin(const WidgetSurfaceStopReason reason) noexc
     opacityPreviewOriginal_.reset();
     opacityPercent_ = 100;
     controllerFocused_ = false;
+    rightStickScrollKinetics_.Reset();
     overlayVisible_ = false;
     pointerPlacement_ = false;
     pointerPlacementMode_ = PlacementMode::None;

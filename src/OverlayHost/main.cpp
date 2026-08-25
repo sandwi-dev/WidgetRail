@@ -6715,6 +6715,8 @@ private:
             return;
         }
         if (pinnedSurfaceCoordinator_.controllerFocused()) {
+            (void)pinnedSurfaceCoordinator_.ScrollFocusedProjection(
+                frame.state.rightThumbX, frame.state.rightThumbY, now);
             const auto movePinnedFocus = [&](const widgetrail::input::StickNavigationEvent& event) {
                 (void)pinnedSurfaceCoordinator_.MoveControllerFocus(event.direction);
             };
