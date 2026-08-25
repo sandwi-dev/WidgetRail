@@ -10,8 +10,8 @@ historical evidence only; this file is the sole implementation authority.
 
 ## Current accepted state
 
-- Local `main` contains reviewer planning through DLV-306; its latest runtime
-  input remains `283c9ff`,
+- Local `main` contains reviewer planning through DLV-306 and fully integrated
+  DLV-305 through `4deb2ae`. Its preceding runtime input was `283c9ff`,
   integrating physically accepted DLV-300
   production `5bb7a57`, production validation correction `5b1c170`, and focused
   tests `d1a3d5d` after accepted DLV-298 Spotify migration merge `c9e9b97`.
@@ -61,11 +61,14 @@ historical evidence only; this file is the sole implementation authority.
   preserving ordinary tray/widget navigation at 360/125 ms. Its exact Release
   build exited 0 with OverlayHost SHA-256
   `97D001FD98E005315B9BDE25A33691E4BA8F98C38745D884A9B642CE0C35FFA3`.
-  Exact candidate PID 69068 is responsive with no startup-error file. The user
-  physically accepted the combined persistence, 32-DIP step, and 250/80-ms
-  placement-cadence behavior. DLV-305 is now in its required focused-test phase;
-  this accepted production instance remains running because tests alone do not
-  change runtime inputs.
+  Exact candidate PID 69068 was physically accepted for combined persistence,
+  32-DIP step, and 250/80-ms placement cadence, then closed to release its test
+  output DLL. Focused test commit `2330c6c` passed 22 placement checks, 120
+  coordinator checks, and seven platform-interoperability executables with
+  112,633 reported checks plus one suite without a numeric counter. The full
+  chain is integrated through `4deb2ae`. Coherent main Release PID 109940 is
+  responsive with no startup-error file and OverlayHost SHA-256
+  `357E84BCABA3825D51AD4388B0D4E85C524014F4A5FD90E58D2B24C73BD7BB26`.
 - Full detailed evidence through this state is preserved in the
   [2026-08-24 19:39 snapshot](history/delivery-plan/2026-08-24T19-39-18-07-00.md).
   That snapshot is historical evidence only.
@@ -74,7 +77,7 @@ historical evidence only; this file is the sole implementation authority.
 
 | Lane | Task/worktree | State |
 | --- | --- | --- |
-| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | Physically accepted DLV-305 focused tests are Assigned in a separate clean worktree and may not overlap DLV-303 files. DLV-301 follows DLV-305 and reviewed DLV-303 integration. DLV-304 is recurrence-blocked. The standing worktree's retained DLV-474/DLV-293 diffs and blocked DLV-473 test commit remain immutable evidence and must not be touched. |
+| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | DLV-305 is closed and integrated through `4deb2ae`. DLV-301 is Ready after reviewed DLV-303 integration. DLV-304 is recurrence-blocked. The standing worktree's retained DLV-474/DLV-293 diffs and blocked DLV-473 test commit remain immutable evidence and must not be touched. |
 | Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | DLV-303 commits `9afdbf2` and `a173cc3` are rejected pending a bounded metadata-only correction in their separate clean worktree: the real Spotify sink silently drops dotted action IDs while the test recorder accepts them, and host correlation includes raw Bridge error text. The milestone has no fix authority. The dirty standing DLV-298 evidence remains untouched. DLV-296 and DLV-297 remain Ready. |
 
 ## Execution rules
@@ -299,8 +302,8 @@ conflict.
 
 ### DLV-305 preserve a committed pinned resize
 
-Lane: platform native placement owner. Status: Physically accepted production;
-focused tests Assigned before integration. The accepted
+Lane: platform native placement owner. Status: Closed and integrated through
+`4deb2ae`. The accepted
 source is source-reviewed production `377c5d4` plus centralized-geometry
 correction `b24899c`; the exact Release build exited 0 and produced OverlayHost SHA-256
 `1E8087432F2EACCEF8B32683D8D665414EF7F7C318C1922D95E32D381F0AF8D6`.
@@ -320,10 +323,10 @@ was force-terminated only after explicit approval. Production commit `3f1fc23`
 uses the existing `StickNavigator` algorithm through one named semantic preset
 shared by placement-local D-pad, left-stick, and right-stick state. Placement
 alone now uses a 250-ms initial delay and 80-ms repeat interval; ordinary
-tray/widget focus retains 360/125 ms. Exact candidate PID 69068 is responsive
-with no startup-error file. The user physically accepted the complete behavior,
-which starts the required focused-test follow-up; no production relaunch is
-required for that tests-only delta.
+tray/widget focus retains 360/125 ms. Exact candidate PID 69068 received the
+user's physical acceptance, then was closed to release its test output DLL.
+Focused commit `2330c6c` passed the three affected native gates and is integrated
+as `4deb2ae`. Coherent main PID 109940 is responsive with no startup-error file.
 This milestone was Assigned concurrently with the
 non-behavioral DLV-303 diagnostics in a separate clean worktree from local main
 `8dfe871`; do not touch the standing platform worktree's retained evidence. The
@@ -442,9 +445,9 @@ work ahead of cleanup.
 
 ## Ordered queues
 
-1. DLV-303 generic end-to-end widget action correlation diagnostics and DLV-305
-   pinned resize commit diagnosis/correction are Assigned concurrently in
-   separate non-overlapping worktrees.
+1. DLV-303 generic end-to-end widget action correlation diagnostics correction
+   is Assigned in its separate clean worktree; DLV-305 is closed through
+   `4deb2ae`.
 2. DLV-301 pinned-surface right-stick free scrolling; Ready after reviewed
    DLV-303 integration and DLV-305.
 3. DLV-304 stable pinned demand and input authority under live updates; deferred
@@ -492,6 +495,7 @@ work ahead of cleanup.
 | DLV-289 | The user physically accepted correction `a74e677` after `e7b24f4` was rejected for clipped active pixels. Test-only `941b0f9` passed six focused groups and the full chain is integrated as `4c8048d`. Exact PID 121188 contains the accepted production tip, so no tests-only rebuild/relaunch occurred. |
 | DLV-292 | `ff5e7e4` binds each Bridge-cached snapshot to its worker start ordinal and uses existing typed stale-base recovery after replacement. Production build and three focused lifecycle/native gates passed; integrated as `80cdb10`. The user accepted PID 81980 by default because live reproduction is impractical. |
 | DLV-293 | Production `a9d36cf` is physically accepted and integrated as `10c3e26`; PID 137288 already contains that production tip. New catalog-removal/focus/Guide assertions completed before the focused host gate stopped on an older Game Launcher stationarity correlation. The pin-coordinator suite did not run; both uncommitted test diffs remain retained, with no rerun or Game Launcher repair authorized. |
+| DLV-305 | Production `377c5d4` + `b24899c` + `8eb1f4a` + `3f1fc23` was physically accepted; focused test `2330c6c` passed 22 placement checks, 120 coordinator checks, and seven platform-interoperability executables with 112,633 reported checks plus one uncounted suite. Integrated through `4deb2ae`; coherent main PID 109940 is responsive with no startup error. |
 | DLV-474 | Production `a830f026` was provisionally accepted by user disposition because the historical bridge-session loss could not be reproduced, then rejected before integration when the first focused native gate proved fresh sequence 1 was compared against retained prior-session sequences 10/20. The retained correction passed 29 native coordinator scenarios plus linked native checks, then the managed diagnostic gate exited 1 during an opaque pre-test build. Four diffs remain uncommitted at identity `d14a224507d682e9c67f83860e713fe0118bb4dd`; no rerun or repair occurred. |
 | DLV-291 | Spotify versions through production-only 0.3.23 `2031a8c` are physically rejected overall. The user accepted clean 0.3.24 `bbdc2368`; production is integrated as `e7ebdbe` and exact-hash 0.3.24 remains sole installed/selected/enabled under responsive PID 32880. Native tests passed 108/108; the Spotify gate stopped after 75 seconds without output, so its two-file test diff remains unaccepted debt. |
 | DLV-248 | Deferred until explicit user promotion. |
