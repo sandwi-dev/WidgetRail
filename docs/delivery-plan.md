@@ -75,7 +75,7 @@ historical evidence only; this file is the sole implementation authority.
 | Lane | Task/worktree | State |
 | --- | --- | --- |
 | Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | Physically accepted DLV-305 focused tests are Assigned in a separate clean worktree and may not overlap DLV-303 files. DLV-301 follows DLV-305 and reviewed DLV-303 integration. DLV-304 is recurrence-blocked. The standing worktree's retained DLV-474/DLV-293 diffs and blocked DLV-473 test commit remain immutable evidence and must not be touched. |
-| Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | DLV-303 generic action-correlation commits `9afdbf2` and `a173cc3` are complete in a separate clean worktree and awaiting planner review; the milestone has no fix authority. The dirty standing DLV-298 evidence remains untouched. DLV-296 and DLV-297 remain Ready. |
+| Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | DLV-303 commits `9afdbf2` and `a173cc3` are rejected pending a bounded metadata-only correction in their separate clean worktree: the real Spotify sink silently drops dotted action IDs while the test recorder accepts them, and host correlation includes raw Bridge error text. The milestone has no fix authority. The dirty standing DLV-298 evidence remains untouched. DLV-296 and DLV-297 remain Ready. |
 
 ## Execution rules
 
@@ -220,7 +220,14 @@ before any corrective implementation is authorized.
 ### DLV-303 end-to-end widget action correlation diagnostics
 
 Lane: widgets lead, serialized generic host/SDK plus package-local diagnostics.
-Status: Assigned from integrated `b089f94` in a separate clean worktree. Reuse
+Status: Correction Assigned after planner rejection of `9afdbf2` plus test
+follow-up `a173cc3`. The real Spotify sink's token policy silently drops dotted
+action IDs that the in-memory tests accept, and dynamic IDs may embed provider
+keys; correlate queue stages through numeric sequence plus fixed metadata-only
+tokens instead. Host correlation must retain only its bounded reply
+classification and never append raw Bridge error text. Add coverage through the
+real sink or its exact shared encoding policy before review. Work remains in the
+separate clean worktree from integrated `b089f94`. Reuse
 the existing controller/action request identity to emit one bounded correlation
 across generic host admission/reply (button, widget, focus, scope, snapshot and
 runtime generation, handled/error), SDK serial-queue admission/dequeue/terminal
