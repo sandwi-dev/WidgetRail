@@ -600,8 +600,10 @@ unavailable, or refused result. Community widgets cannot request this channel.
 
 The MVP accepts only Pressed shortcuts. A and D-pad are reserved for focused
 activation and navigation. Dashboard quick actions are separate: the host owns
-A, B, Y, D-pad/analog, and Guide, while cards may expose X, bumpers, triggers,
-stick clicks, Menu, or View.
+A, B, Y, D-pad/analog, View, and Guide, while cards may expose X, bumpers,
+triggers, stick clicks, or Menu. View remains in the public enum for host-owned
+pinned-layout selection notification and cannot be authored as a shortcut or
+quick action.
 
 Continue with the [declarative UI reference](declarative-ui.md), [controller
 input model](controller-input.md), [widget capabilities](capabilities.md), and

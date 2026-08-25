@@ -2,7 +2,9 @@
 
 Status: implemented prototype policy
 
-Guide/Home is the global overlay toggle. The visible widget panel and icon tray
+Guide/Home is the global overlay toggle. View is the global one-pin navigation
+control: from the tray or an open overlay widget it enters the current pin, and
+from the focused pin it returns to the tray. The visible widget panel and icon tray
 are persistent sibling regions while the overlay is open; changing focus does
 not hide the selected panel. B is hierarchical Back: nested widget scope,
 widget root to tray, then tray to close. Dashboard navigation and reordering are
@@ -10,15 +12,18 @@ host responsibilities; while widget controls own focus, their semantic focus
 graph and actions receive B before the host considers a root-level fallback.
 
 Guide/Home is intentionally absent from `ControllerButton`, so widgets cannot
-intercept, remap, or suppress it.
+intercept, remap, or suppress it. View remains in the protocol only for the
+host-owned pinned-layout selection notification; authored View shortcuts and
+quick actions are invalid.
 
 ## Contexts
 
 | Context | Host-owned input | Widget input |
 | --- | --- | --- |
 | Hidden | Guide/Home opens the overlay. | No widget controller input. Ordinary polling is stopped. |
-| Tray / dashboard focus | D-pad or left-stick Left/Right selects the adjacent widget and swaps the visible panel automatically; A moves focus into that panel; B closes; tapping Y enters/exits reorder. Holding Y for 700 ms restarts the exact selected bundled or installed bridge widget once through the F5 authority. | The selected panel is Visible and may expose up to three declared quick actions on X, LB, RB, LT, RT, stick clicks, Menu, or View. Y remains host-owned and is never forwarded from tray focus. Other undeclared input is unhandled. |
-| Widget-panel focus | Guide/Home closes. D-pad and two-dimensional left-stick movement change widget focus; focused Sliders own horizontal adjustment. Unhandled root-scope B and a root Down boundary return focus to the still-visible tray. | A activates the focused Button or an optional Slider activation. B is offered to the active scope first; X, Y, bumpers, triggers, stick clicks, Menu, and View are available as scoped shortcuts or custom semantic handling. |
+| Tray / dashboard focus | D-pad or left-stick Left/Right selects the adjacent widget and swaps the visible panel automatically; A moves focus into that panel; B closes; View enters the single pin regardless of tray selection; tapping Y enters/exits reorder. Holding Y for 700 ms restarts the exact selected bundled or installed bridge widget once through the F5 authority. | The selected panel is Visible and may expose up to three declared quick actions on X, LB, RB, LT, RT, stick clicks, or Menu. Y and View remain host-owned and are never forwarded from tray focus. Other undeclared input is unhandled. |
+| Widget-panel focus | Guide/Home closes. View enters the single pin. D-pad and two-dimensional left-stick movement change widget focus; focused Sliders own horizontal adjustment. Unhandled root-scope B and a root Down boundary return focus to the still-visible tray. | A activates the focused Button or an optional Slider activation. B is offered to the active scope first; X, Y, bumpers, triggers, stick clicks, and Menu are available as scoped shortcuts or custom semantic handling. |
+| Pinned-surface focus | Guide/Home closes the overlay; View returns to tray focus; placement/setup/opacity retain their exclusive A/B controls. | D-pad/stick moves focus, A activates, and B plus other nonreserved authored buttons route only against the exact selected projection. An unhandled root B is inert. |
 
 The protocol names the contexts `DashboardQuickAction` and `OpenWidget`.
 Events carry button, phase, optional focused element ID, input sequence,
@@ -350,29 +355,25 @@ making compatibility claims.
 
 ## Pinned-surface placement mode
 
-With the main overlay visible and the same pinned widget open, Menu enters Move
-and View enters Resize. This host interception applies only to that explicit
-placement context; it does not turn those buttons into widget actions. D-pad or
-left-stick repeat changes the bounded preview, A commits atomically, and B
-cancels to the exact pre-gesture rectangle. Hiding the overlay, capture loss,
-package/runtime replacement, or display reconciliation also cancels unfinished
-placement. Keyboard (`M`/`R`, arrows, Enter/Escape), host pointer chrome, and UI
-Automation actions use the same generation-bound state machine. This is a
-logical mapping verified by focused fixtures, not physical-controller or game
-compatibility evidence.
+Pinned setup and adjustment are entered through the host-owned tray menu rather
+than by repurposing View. D-pad or left-stick repeat changes the bounded move
+preview, right stick resizes, LT/RT cycles layouts during setup, A commits
+atomically, and B cancels to the exact pre-gesture state. Hiding the overlay,
+capture loss, package/runtime replacement, or display reconciliation also
+cancels unfinished placement. Keyboard (`M`/`R`, arrows, Enter/Escape), host
+pointer chrome, and UI Automation actions use the same generation-bound state
+machine.
 
 ## Pinned-surface focus and emergency exit
 
-With the same pinned widget open, right-stick click explicitly transfers the
-one controller focus owner from the overlay to the Interactive pin. D-pad/stick
-uses the shared authored/geometric focus resolver and A queues one exact
-generation/snapshot-bound action. B or another right-stick click returns focus
-to the overlay and restores Click-through; X closes the pin. Guide retains its
-global overlay-close meaning, cancels pinned placement/focus, and never forwards
-hidden input. LB+RB+X and visible-overlay Ctrl+Shift+H invoke one host-owned
-emergency unpin path. Placement mode continues to own A/B before these ordinary
-routes. The 306-check pinned policy/host fixture directly asserts these closed
-routes; this is not physical-controller or game compatibility evidence.
+View explicitly transfers the one controller focus owner from either the tray
+or open overlay widget to the Interactive pin and returns it to the tray.
+D-pad/stick uses the shared authored/geometric focus resolver; A and B queue
+exact generation/layout/scope/snapshot-bound widget actions. A root-unhandled B
+is inert. Guide retains its global overlay-close meaning, cancels pinned
+placement/focus, and never forwards hidden input. LB+RB+X and visible-overlay
+Ctrl+Shift+H invoke one host-owned emergency unpin path. Placement mode continues
+to own A/B before these ordinary routes.
 
 ## Foreground ownership and containment limitation
 

@@ -251,10 +251,10 @@ public sealed class ClockWidget : Widget
   D-pad/analog navigation, and Guide. Tap Y toggles reorder; a fixed 700 ms hold
   refreshes the revalidated selected worker exactly once through the host's F5
   reload path. A widget card may expose at most three quick actions on X,
-  bumpers, triggers, stick clicks, Menu, or View; tray Y never reaches a worker.
+  bumpers, triggers, stick clicks, or Menu; tray Y and View never reach a worker.
 - In an open widget, the shell owns D-pad/analog focus navigation and A focused
-  activation. B, X, Y, bumpers, triggers, stick clicks, Menu, and View are
-  available to the active widget input scope.
+  activation. View enters the current pin. B, X, Y, bumpers, triggers, stick
+  clicks, and Menu are available to the active widget input scope.
 - The active widget scope receives `B` first; root fallback returns to the
   dashboard and dashboard B closes. `LB` and `RB` remain ordinary widget inputs.
 - MVP button events carry button, Pressed phase, input sequence, monotonic

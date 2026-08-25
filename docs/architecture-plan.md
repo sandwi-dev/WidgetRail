@@ -101,10 +101,11 @@ Internal routing is deterministic:
 - Dashboard/tray focus: shell owns Guide, D-pad/analog navigation, A activation,
   B close, and Y tap/hold arbitration. Tap Y toggles reorder; a fixed 700 ms
   hold revalidates and refreshes the selected worker through the F5 reload path.
-  A selected card may expose bounded X/bumper/trigger/stick-click/Menu/View quick
-  actions, but never receives tray Y.
+  A selected card may expose bounded X/bumper/trigger/stick-click/Menu quick
+  actions, but never receives tray Y or host-reserved View.
 - Widget active: the shell owns D-pad/analog focus movement and A activation;
-  the active widget scope owns the remaining non-Guide semantic buttons.
+  View transfers focus to the current pin, while the active widget scope owns
+  the remaining non-Guide, non-View semantic buttons.
 - Guide release is quarantined across a visibility transition to prevent double activation.
 - Widgets never open GameInput or controller HID devices themselves.
 

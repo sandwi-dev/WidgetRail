@@ -147,6 +147,9 @@ public static class ViewSnapshotValidator
             if (!Enum.IsDefined(quickAction.Button))
                 Add($"$.quickActions[{index}].button", "invalid_controller_button",
                     "The controller button is not supported.");
+            else if (quickAction.Button == ControllerButton.View)
+                Add($"$.quickActions[{index}].button", "host_reserved_view",
+                    "View is reserved for host pinned-surface navigation and cannot be a dashboard quick action.");
             else if (!IsDashboardQuickActionButton(quickAction.Button))
                 Add($"$.quickActions[{index}].button", "reserved_button", "This button is reserved for dashboard navigation or host behavior.");
             if (!quickActionButtons.Add(quickAction.Button))
@@ -755,6 +758,9 @@ public static class ViewSnapshotValidator
                 if (!Enum.IsDefined(shortcut.Button))
                     Add($"{path}.shortcuts[{index}].button", "invalid_controller_button",
                         "The controller button is not supported.");
+                else if (shortcut.Button == ControllerButton.View)
+                    Add($"{path}.shortcuts[{index}].button", "host_reserved_view",
+                        "View is reserved for host pinned-surface navigation and cannot be an authored shortcut.");
                 else if (!IsOpenWidgetShortcutButton(shortcut.Button))
                     Add($"{path}.shortcuts[{index}].button", "reserved_shortcut_button",
                         "A and D-pad buttons are reserved for activation and focus navigation.");
@@ -867,10 +873,11 @@ public static class ViewSnapshotValidator
         ControllerButton.LeftBumper or ControllerButton.RightBumper or
         ControllerButton.LeftTrigger or ControllerButton.RightTrigger or
         ControllerButton.LeftStick or ControllerButton.RightStick or
-        ControllerButton.Menu or ControllerButton.View;
+        ControllerButton.Menu;
 
     private static bool IsOpenWidgetShortcutButton(ControllerButton button) => button is not (
         ControllerButton.A or
+        ControllerButton.View or
         ControllerButton.DPadUp or ControllerButton.DPadDown or
         ControllerButton.DPadLeft or ControllerButton.DPadRight);
 

@@ -375,6 +375,12 @@ All open-widget actions produced by the standard router carry the current
 shortcuts, and Slider changes. Validate it for nested manual routing; never
 derive the active page from an element-ID substring.
 
+Physical View is reserved for host pinned-surface navigation. Do not declare it
+as a dashboard quick action or open-widget shortcut; snapshot validation reports
+`host_reserved_view`. The `ControllerButton.View` enum value remains public only
+for the host-owned `PinnedLayoutSelection` notification delivered by the pinned
+layout handle/test-host contract.
+
 Use `WidgetIds.Scope(root)` to construct validated hierarchical IDs.
 `scope.Scope(segment)` creates a child prefix, `scope.Id(name)` creates a leaf,
 and `scope.KeyedId(name, durableKey)` creates a deterministic opaque leaf by

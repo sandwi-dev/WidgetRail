@@ -45,10 +45,11 @@ ControllerCommand ResolveControllerCommand(
         return ControllerCommand::EmergencyHide;
     if (context.placementActive) return ControllerCommand::None;
     if (context.controllerFocused) {
-        if (context.bPressed) return ControllerCommand::Exit;
+        if (context.viewPressed) return ControllerCommand::Exit;
         if (context.aPressed) return ControllerCommand::Activate;
         return ControllerCommand::None;
     }
+    if (context.viewPressed) return ControllerCommand::Enter;
     return ControllerCommand::None;
 }
 

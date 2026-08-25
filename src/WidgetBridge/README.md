@@ -71,7 +71,8 @@ node count; malformed, stale, mismatched, and oversized batches fail closed.
 `snapshotSequence`. For `dashboardQuickAction`, the SDK resolves the button
 from the latest rendered snapshot's `quickActions`. The host owns A activation,
 B close, Y reorder, D-pad/analog navigation, and Guide; widgets may declare X,
-bumpers, triggers, stick clicks, Menu, or View as dashboard quick actions.
+bumpers, triggers, stick clicks, or Menu as dashboard quick actions. View is
+reserved for host pinned-surface navigation; authored View mappings are rejected.
 
 A snapshot quick action may optionally name one `WidgetQuickActionCapability`
 (capability ID plus operation ID). For a Pressed event while the widget remains

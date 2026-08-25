@@ -6410,6 +6410,7 @@ private:
             (pressed & XINPUT_GAMEPAD_RIGHT_THUMB) != 0,
             (buttons & XINPUT_GAMEPAD_LEFT_SHOULDER) != 0,
             (buttons & XINPUT_GAMEPAD_RIGHT_SHOULDER) != 0,
+            !recoveryChordDown && (pressed & XINPUT_GAMEPAD_BACK) != 0,
         });
         if (pinnedControllerCommand ==
             widgetrail::pinned::ControllerCommand::EmergencyHide) {
@@ -6563,7 +6564,8 @@ private:
                 (void)pinnedSurfaceCoordinator_.ExitControllerFocus();
                 (void)pinnedSurfaceCoordinator_.SetInteractionMode(
                     widgetrail::pinned::InteractionMode::ClickThrough);
-                lastActionMessage_ = L"Controller focus returned to the overlay";
+                Dispatch(widgetrail::Command::SampleWidgetBack);
+                lastActionMessage_ = L"View returned focus to the tray";
                 lastActionExpiresAt_ = now + 2400;
             }
             const auto queuePinnedButton = [&](const bool pressedNow,
@@ -6576,6 +6578,7 @@ private:
                         L"The focused pinned item is unavailable.", false);
             };
             if (pinnedControllerCommand != widgetrail::pinned::ControllerCommand::Exit) {
+                queuePinnedButton((pressed & XINPUT_GAMEPAD_B) != 0, L"b");
                 queuePinnedButton((pressed & XINPUT_GAMEPAD_X) != 0, L"x");
                 queuePinnedButton((pressed & XINPUT_GAMEPAD_Y) != 0, L"y");
                 queuePinnedButton((pressed & XINPUT_GAMEPAD_LEFT_SHOULDER) != 0,
@@ -6596,10 +6599,8 @@ private:
             return;
         }
 
-        if (!recoveryChordDown &&
-            (pressed & XINPUT_GAMEPAD_BACK) != 0 &&
-            state_.focusRegion() == widgetrail::FocusRegion::Tray &&
-            pinnedSurfaceCoordinator_.pinned()) {
+        if (pinnedControllerCommand == widgetrail::pinned::ControllerCommand::Enter &&
+            state_.surface() != widgetrail::Surface::Hidden) {
             if (pinnedSurfaceCoordinator_.interactionMode() !=
                 widgetrail::pinned::InteractionMode::Focusable)
                 (void)pinnedSurfaceCoordinator_.SetInteractionMode(
@@ -6610,7 +6611,7 @@ private:
                 lastActionWidgetId_ =
                     std::wstring(pinnedSurfaceCoordinator_.widgetId());
                 lastActionMessage_ =
-                    L"Pinned focus entered. B returns to the tray.";
+                    L"Pinned focus entered. View returns to the tray; B stays in the widget.";
                 lastActionExpiresAt_ = now + 4000;
                 InvalidateRect(window_, nullptr, FALSE);
             }
@@ -6631,7 +6632,6 @@ private:
         releaseButton(XINPUT_GAMEPAD_RIGHT_SHOULDER, L"rightBumper");
         releaseButton(XINPUT_GAMEPAD_LEFT_THUMB, L"leftStick");
         releaseButton(XINPUT_GAMEPAD_RIGHT_THUMB, L"rightStick");
-        releaseButton(XINPUT_GAMEPAD_BACK, L"view");
         releaseButton(XINPUT_GAMEPAD_START, L"menu");
 
         if (interactionSession_.SliderReconcileDue(now)) {
@@ -6681,9 +6681,6 @@ private:
         }
         if (pressed & XINPUT_GAMEPAD_RIGHT_THUMB) {
             DispatchControllerAction(L"RS", true);
-        }
-        if (!recoveryChordDown && (pressed & XINPUT_GAMEPAD_BACK)) {
-            DispatchControllerAction(L"View", true);
         }
         if (!recoveryChordDown && (pressed & XINPUT_GAMEPAD_START)) {
             DispatchControllerAction(L"Menu", true);

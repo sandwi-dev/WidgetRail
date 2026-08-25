@@ -59,11 +59,13 @@ Only one surface may be pinned in this first bounded release:
    fallback remains available while the widget is open. The new peer surface
    starts in nonactivating click-through mode and the main overlay keeps
    controller focus;
-2. while the tray owns focus, controller View enters the single pinned surface
-   regardless of which tray tile is selected. D-pad/stick navigation and `A`
-   then use the exact current widget generation; `B` returns focus to the tray
-   and restores Click-through. View remains package input while widget content
-   owns focus, and View+Menu retains its recovery meaning;
+2. from either tray focus or an open overlay widget, controller View enters the
+   single pinned surface regardless of which tray tile is selected. D-pad/stick
+   navigation and `A` then use the exact current widget generation; `B` is
+   delivered to the selected pinned projection for package-owned root or nested
+   Back behavior, while View returns focus to the tray and restores
+   Click-through. Widgets cannot declare or receive physical View; View+Menu
+   retains its recovery meaning;
 3. reopen the selected tray item's menu and choose **Unpin**, use the `U`
    keyboard fallback, use the pinned Interactive chrome, close the pinned
    window, remove or replace its package generation, restart its worker, or
@@ -112,8 +114,10 @@ The tray menu and accessibility action report Not pinned, Pinned
 Click-through, Pinned Interactive, still loading, unsupported, or the
 one-surface capacity state from current host authority. A complete Menu action
 is consumed only while tray focus owns input; Menu in widget content and every
-package-declared bumper, stick-click, trigger, Menu, or View action remain
-package input. Unsupported widgets retain their existing behavior. Omitted
+package-declared bumper, stick-click, trigger, or Menu action remains package
+input. View is always host-owned and authored View shortcuts or quick actions
+fail snapshot validation with an author-facing diagnostic. Unsupported widgets
+retain their existing behavior. Omitted
 `pinningSupported` is exactly `false`, a wrong JSON type fails manifest parsing,
 and admission failures produce bounded host diagnostics rather than a fallback
 window. Worker loss, stale runtime or presentation generations, catalog

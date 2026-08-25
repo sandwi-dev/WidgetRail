@@ -281,7 +281,8 @@ to open, `B` to close, and tray `Y`. A `Y` tap enters/exits reorder; a fixed
 700 ms hold restarts the exact revalidated selected worker once through the
 host's F5 reload path. Neither gesture is a widget input. A selected card may
 expose up to three quick actions on `X`, `LB`, `RB`, `LT`, `RT`, either stick
-click, Menu, or View. The mapping comes from the widget snapshot; it is not
+click, or Menu. View is reserved for host pinned-surface navigation and cannot
+be declared as a quick action. The mapping comes from the widget snapshot; it is not
 hard-coded by the shell:
 
 ```csharp
@@ -319,8 +320,9 @@ subscription, or assume a second broker call is authorized.
 
 Guide/Home remains host-owned and closes the overlay. The host uses D-pad and
 two-dimensional left-stick movement for focus and `A` to activate the focused
-button. `B`, `X`, `Y`, bumpers, triggers, stick clicks, Menu, and View are
-available to the active widget input scope.
+button. `B`, `X`, `Y`, bumpers, triggers, stick clicks, and Menu are available
+to the active widget input scope. View remains host-owned even while an overlay
+widget is open; declaring it as a shortcut fails validation.
 
 Attach a control-local shortcut to the Button that owns it. Attach a command
 that must work anywhere in the open window once to the active scope root:

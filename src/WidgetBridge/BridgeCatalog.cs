@@ -688,6 +688,9 @@ public sealed class BridgeCatalog
             ValidateIdentifier(action.ActionId, "action ID");
             ValidateIdentifier(action.SourceElementId, "source element ID");
             ValidateLabel(action.Label, "quick action label");
+            if (action.ControllerButton == ControllerButton.View)
+                throw new BridgeCatalogException(
+                    $"Widget '{widgetId}' quick action '{action.Id}' cannot use View because View is reserved for host pinned-surface navigation.");
             if (!ids.Add(action.Id))
                 throw new BridgeCatalogException(
                     $"Widget '{widgetId}' repeats quick action '{action.Id}'.");
