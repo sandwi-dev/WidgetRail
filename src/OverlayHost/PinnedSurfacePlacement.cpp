@@ -17,6 +17,10 @@ constexpr std::size_t kMaximumStoredWidgets = 64;
 constexpr unsigned int kMinimumOpacityPercent = 30;
 constexpr unsigned int kMaximumOpacityPercent = 100;
 constexpr std::size_t kMaximumLayoutIdLength = 128;
+// The durable parser owns a structural envelope, not a widget's current
+// interactive resize policy: maximum authored content plus pinned chrome.
+constexpr PlacementLimits kDurableStorageLimits{
+    240.0F, 135.0F, 1'616.0F, 1'244.0F};
 
 [[nodiscard]] bool ValidLimits(const PlacementLimits& limits) noexcept {
     return std::isfinite(limits.minimumWidthDip) &&
@@ -272,7 +276,7 @@ std::map<std::wstring, DurablePinnedPlacement> PinnedPlacementStore::LoadAll() c
               std::quoted(placement.monitorId) >> placement.anchorX >> placement.anchorY >>
               placement.widthDip >> placement.heightDip) ||
             widgetId.empty() || widgetId.size() > 128 ||
-            !ValidPlacement(placement, {})) return {};
+            !ValidPlacement(placement, kDurableStorageLimits)) return {};
         if (hasOpacity) {
             std::wstring opacityToken;
             if (row >> opacityToken) {
@@ -316,7 +320,8 @@ bool PinnedPlacementStore::Save(
     const std::wstring_view widgetId,
     const DurablePinnedPlacement& placement,
     std::wstring& error) const {
-    if (widgetId.empty() || widgetId.size() > 128 || !ValidPlacement(placement, {})) {
+    if (widgetId.empty() || widgetId.size() > 128 ||
+        !ValidPlacement(placement, kDurableStorageLimits)) {
         error = L"Pinned placement data is invalid.";
         return false;
     }
