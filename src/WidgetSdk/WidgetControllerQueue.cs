@@ -42,6 +42,14 @@ public abstract partial class Widget
     /// </summary>
     public event EventHandler<WidgetControllerActionFailedEventArgs>? ControllerActionFailed;
 
+    /// <summary>Observes bounded serial action-queue progress.</summary>
+    protected virtual void OnActionDiagnostic(
+        WidgetActionEvent action,
+        string stage,
+        string code)
+    {
+    }
+
     /// <summary>
     /// Appends to the active lifetime's bounded serial FIFO. A contiguous tail
     /// of absolute changes for the same slider is latest-wins coalesced; a
@@ -52,38 +60,56 @@ public abstract partial class Widget
         WidgetCapabilityGestureContext? gestureContext = null)
     {
         ArgumentNullException.ThrowIfNull(action);
-        if (!IsActive) return WidgetOperationAdmission.RejectedInactive;
+        if (!IsActive)
+        {
+            ObserveActionDiagnostic(action, "admission", "rejected-inactive");
+            return WidgetOperationAdmission.RejectedInactive;
+        }
         var lifetime = ActiveCancellationToken;
-        if (lifetime.IsCancellationRequested) return WidgetOperationAdmission.RejectedInactive;
+        if (lifetime.IsCancellationRequested)
+        {
+            ObserveActionDiagnostic(action, "admission", "rejected-inactive");
+            return WidgetOperationAdmission.RejectedInactive;
+        }
 
         ActionQueueState queue;
+        WidgetOperationAdmission admission;
+        WidgetActionEvent? replacedAction = null;
         lock (_actionQueueLock)
         {
             if (!IsActive || lifetime.IsCancellationRequested)
-                return WidgetOperationAdmission.RejectedInactive;
-            if (_actionQueue is null || _actionQueue.Lifetime != lifetime)
-            {
-                queue = new ActionQueueState(lifetime);
-                _actionQueue = queue;
-                _ = ConsumeActionsAsync(queue);
-            }
+                admission = WidgetOperationAdmission.RejectedInactive;
             else
             {
-                queue = _actionQueue;
-            }
+                if (_actionQueue is null || _actionQueue.Lifetime != lifetime)
+                {
+                    queue = new ActionQueueState(lifetime);
+                    _actionQueue = queue;
+                    _ = ConsumeActionsAsync(queue);
+                }
+                else queue = _actionQueue;
 
-            if (action.RequestedValue is not null && queue.Pending.Last is { } tail &&
-                CanCoalesceSliderChange(tail.Value.Action, action))
-            {
-                tail.Value = new(action, gestureContext);
-                return WidgetOperationAdmission.Replaced;
+                if (action.RequestedValue is not null && queue.Pending.Last is { } tail &&
+                    CanCoalesceSliderChange(tail.Value.Action, action))
+                {
+                    replacedAction = tail.Value.Action;
+                    tail.Value = new(action, gestureContext);
+                    admission = WidgetOperationAdmission.Replaced;
+                }
+                else if (queue.Pending.Count >= ActionQueueCapacity)
+                    admission = WidgetOperationAdmission.RejectedCapacity;
+                else
+                {
+                    queue.Pending.AddLast(new QueuedAction(action, gestureContext));
+                    queue.Available.Release();
+                    admission = WidgetOperationAdmission.Enqueued;
+                }
             }
-            if (queue.Pending.Count >= ActionQueueCapacity)
-                return WidgetOperationAdmission.RejectedCapacity;
-            queue.Pending.AddLast(new QueuedAction(action, gestureContext));
-            queue.Available.Release();
-            return WidgetOperationAdmission.Enqueued;
         }
+        if (replacedAction is not null)
+            ObserveActionDiagnostic(replacedAction, "terminal", "replaced");
+        ObserveActionDiagnostic(action, "admission", AdmissionCode(admission));
+        return admission;
     }
 
     private bool TryQueueControllerAction(
@@ -119,16 +145,20 @@ public abstract partial class Widget
 
                 using var invocation = WidgetCapabilityInvocationContext.Enter(
                     queued.GestureContext);
+                ObserveActionDiagnostic(queued.Action, "dequeue", "started");
                 try
                 {
                     await OnActionAsync(queued.Action, queue.Lifetime).ConfigureAwait(false);
+                    ObserveActionDiagnostic(queued.Action, "terminal", "succeeded");
                 }
                 catch (OperationCanceledException) when (queue.Lifetime.IsCancellationRequested)
                 {
+                    ObserveActionDiagnostic(queued.Action, "terminal", "canceled");
                     return;
                 }
                 catch (Exception exception)
                 {
+                    ObserveActionDiagnostic(queued.Action, "terminal", "failed");
                     ReportActionFailure(queued.Action, exception);
                 }
             }
@@ -138,11 +168,15 @@ public abstract partial class Widget
         }
         finally
         {
+            List<WidgetActionEvent> canceled = [];
             lock (_actionQueueLock)
             {
+                canceled.AddRange(queue.Pending.Select(item => item.Action));
                 queue.Pending.Clear();
                 if (ReferenceEquals(_actionQueue, queue)) _actionQueue = null;
             }
+            foreach (var action in canceled)
+                ObserveActionDiagnostic(action, "terminal", "canceled");
             queue.Available.Dispose();
             queue.Completion.TrySetResult();
         }
@@ -167,6 +201,21 @@ public abstract partial class Widget
         InvokeFailureHandlers(
             ControllerActionFailed,
             new WidgetControllerActionFailedEventArgs(action, exception));
+    }
+
+    private static string AdmissionCode(WidgetOperationAdmission admission) => admission switch
+    {
+        WidgetOperationAdmission.Enqueued => "enqueued",
+        WidgetOperationAdmission.Replaced => "replaced",
+        WidgetOperationAdmission.RejectedInactive => "rejected-inactive",
+        WidgetOperationAdmission.RejectedCapacity => "rejected-capacity",
+        _ => "unknown",
+    };
+
+    private void ObserveActionDiagnostic(WidgetActionEvent action, string stage, string code)
+    {
+        try { OnActionDiagnostic(action, stage, code); }
+        catch { }
     }
 
     private void InvokeFailureHandlers<T>(EventHandler<T>? handler, T args)

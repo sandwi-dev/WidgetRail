@@ -375,6 +375,12 @@ All open-widget actions produced by the standard router carry the current
 shortcuts, and Slider changes. Validate it for nested manual routing; never
 derive the active page from an element-ID substring.
 
+Packages that need bounded operational diagnostics may override
+`OnActionDiagnostic`. The SDK calls it with the same `WidgetActionEvent` at
+serial-queue admission, dequeue, and terminal completion. Observers must remain
+best-effort, bounded, non-secret, and must not influence action handling; SDK
+queue behavior is unchanged if an observer throws.
+
 Physical View is reserved for host pinned-surface navigation. Do not declare it
 as a dashboard quick action or open-widget shortcut; snapshot validation reports
 `host_reserved_view`. The `ControllerButton.View` enum value remains public only

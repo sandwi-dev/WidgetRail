@@ -2856,7 +2856,11 @@ std::optional<bool> WidgetBridgeClient::SendControllerInput(
     const std::wstring_view pinnedLayoutId,
     const std::optional<bool> pinnedLayoutSelected) {
     std::scoped_lock lock(requestMutex_);
-    if (pipe_ == INVALID_HANDLE_VALUE) return std::nullopt;
+    lastControllerInputResultCode_.clear();
+    if (pipe_ == INVALID_HANDLE_VALUE) {
+        lastControllerInputResultCode_ = L"transport-unavailable";
+        return std::nullopt;
+    }
     try {
         JsonObject input;
         input.Insert(L"button", JsonValue::CreateStringValue(winrt::hstring(button)));
@@ -2869,6 +2873,7 @@ std::optional<bool> WidgetBridgeClient::SendControllerInput(
             input.Insert(L"origin", JsonValue::CreateStringValue(L"accessibilityAutomation"));
             break;
         default:
+            lastControllerInputResultCode_ = L"invalid-origin";
             Fail(L"Invalid controller input origin.");
             return std::nullopt;
         }
@@ -2907,32 +2912,50 @@ std::optional<bool> WidgetBridgeClient::SendControllerInput(
         envelope.Insert(L"type", JsonValue::CreateStringValue(L"controller-input"));
         envelope.Insert(L"requestId", JsonValue::CreateNumberValue(static_cast<double>(requestId)));
         envelope.Insert(L"payload", payload);
-        if (!WriteFrame(winrt::to_string(envelope.Stringify()))) return std::nullopt;
+        if (!WriteFrame(winrt::to_string(envelope.Stringify()))) {
+            lastControllerInputResultCode_ = L"transport-write-failed";
+            return std::nullopt;
+        }
         while (const auto frame = ReadFrame()) {
             const auto response = JsonObject::Parse(winrt::to_hstring(*frame));
             const auto responseId = static_cast<long long>(response.GetNamedNumber(L"requestId"));
             if (responseId == 0) {
                 std::wstring status;
                 if (!HandleAsyncEvent(response, invalidations_, actionFailures_, hostEffects_, appearanceChanges_, catalogChanges_, status, &artworkResults_, &localPackageInstallResults_)) {
+                    lastControllerInputResultCode_ = L"async-event-invalid";
                     Fail(std::move(status));
                     return std::nullopt;
                 }
                 if (!status.empty()) lastError_ = std::move(status);
                 continue;
             }
-            if (responseId != requestId) return std::nullopt;
+            if (responseId != requestId) {
+                lastControllerInputResultCode_ = L"response-id-mismatch";
+                return std::nullopt;
+            }
             if (response.GetNamedString(L"type") == L"error") {
-                Fail(std::wstring(std::wstring_view(
-                    response.GetNamedObject(L"payload").GetNamedString(L"message"))));
+                const auto payload = response.GetNamedObject(L"payload");
+                const auto code = OptionalString(payload, L"code");
+                lastControllerInputResultCode_ =
+                    IsIdentifier(code) && code.size() <= 64
+                        ? std::move(code)
+                        : L"bridge-error-invalid";
+                Fail(SafeBridgeError(response));
                 return std::nullopt;
             }
             if (response.GetNamedString(L"type") != L"controller-input-result") {
+                lastControllerInputResultCode_ = L"response-type-invalid";
                 Fail(L"WidgetBridge returned an unexpected controller response.");
                 return std::nullopt;
             }
-            return response.GetNamedObject(L"payload").GetNamedBoolean(L"handled");
+            const auto handled =
+                response.GetNamedObject(L"payload").GetNamedBoolean(L"handled");
+            lastControllerInputResultCode_ = handled ? L"handled" : L"unhandled";
+            return handled;
         }
+        lastControllerInputResultCode_ = L"transport-closed";
     } catch (const winrt::hresult_error& error) {
+        lastControllerInputResultCode_ = L"response-json-invalid";
         Fail(L"Invalid WidgetBridge JSON: " + std::wstring(error.message()));
     }
     return std::nullopt;
@@ -3261,6 +3284,11 @@ void WidgetBridgeClient::Fail(std::wstring message) {
 std::wstring WidgetBridgeClient::lastError() const {
     std::scoped_lock lock(requestMutex_);
     return lastError_;
+}
+
+std::wstring WidgetBridgeClient::lastControllerInputResultCode() const {
+    std::scoped_lock lock(requestMutex_);
+    return lastControllerInputResultCode_;
 }
 
 std::optional<WidgetBridgeRuntimeFailureCategory>

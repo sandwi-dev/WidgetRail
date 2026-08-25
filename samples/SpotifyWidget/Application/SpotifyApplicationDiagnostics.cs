@@ -44,7 +44,7 @@ internal sealed class SpotifyApplicationDiagnostics : ISpotifyRuntimeDiagnostics
                     File.WriteAllText(_path, string.Empty, new UTF8Encoding(false));
                 var line = string.Concat(
                     DateTimeOffset.UtcNow.ToString("O", CultureInfo.InvariantCulture),
-                    " boundary=", boundary,
+                    " level=debug category=spotify-runtime boundary=", boundary,
                     " code=", code,
                     " operation=", operation.ToString(CultureInfo.InvariantCulture),
                     " generation=", generation.ToString(CultureInfo.InvariantCulture),

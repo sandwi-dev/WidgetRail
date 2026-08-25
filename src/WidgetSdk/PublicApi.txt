@@ -1663,6 +1663,7 @@ method virtual WidgetRail.WidgetSdk.ToastElement.<Clone>$() -> WidgetRail.Widget
 method virtual WidgetRail.WidgetSdk.ToastElement.Equals(WidgetRail.WidgetSdk.ToastElement? other) -> bool
 method virtual WidgetRail.WidgetSdk.UnpairWidgetBluetoothDeviceRequest.Equals(WidgetRail.WidgetSdk.UnpairWidgetBluetoothDeviceRequest? other) -> bool
 method virtual WidgetRail.WidgetSdk.Widget.OnActionAsync(WidgetRail.WidgetSdk.WidgetActionEvent action, System.Threading.CancellationToken cancellationToken = null) -> System.Threading.Tasks.ValueTask
+method virtual WidgetRail.WidgetSdk.Widget.OnActionDiagnostic(WidgetRail.WidgetSdk.WidgetActionEvent action, string stage, string code) -> void
 method virtual WidgetRail.WidgetSdk.Widget.OnControllerInputAsync(WidgetRail.WidgetSdk.ControllerInputEvent input, System.Threading.CancellationToken cancellationToken = null) -> System.Threading.Tasks.ValueTask<bool>
 method virtual WidgetRail.WidgetSdk.Widget.OnPinnedLayoutSelectionChangedAsync(string? layoutId, System.Threading.CancellationToken cancellationToken = null) -> System.Threading.Tasks.ValueTask
 method virtual WidgetRail.WidgetSdk.WidgetActionEvent.Equals(WidgetRail.WidgetSdk.WidgetActionEvent? other) -> bool

@@ -351,6 +351,75 @@ void AppendDiagnostic(const std::wstring_view message) {
     }
 }
 
+enum class DiagnosticSeverity { Debug, Information, Warning, Error };
+
+constexpr std::wstring_view DiagnosticSeverityValue(
+    const DiagnosticSeverity severity) noexcept {
+    switch (severity) {
+    case DiagnosticSeverity::Debug: return L"debug";
+    case DiagnosticSeverity::Information: return L"information";
+    case DiagnosticSeverity::Warning: return L"warning";
+    case DiagnosticSeverity::Error: return L"error";
+    }
+    return L"unknown";
+}
+
+// High-volume action correlation is isolated from overlay.log and bounded to
+// three one-MiB generations. Rotation is best-effort and diagnostics never own
+// action routing or transport behavior.
+void AppendActionCorrelation(
+    std::wstring message,
+    const DiagnosticSeverity severity = DiagnosticSeverity::Debug) {
+    static std::mutex logMutex;
+    std::lock_guard lock(logMutex);
+    constexpr std::uintmax_t maximumBytes = 1024 * 1024;
+    constexpr std::size_t maximumMessageCharacters = 2048;
+    if (message.size() > maximumMessageCharacters)
+        message.resize(maximumMessageCharacters);
+
+    wchar_t localAppData[MAX_PATH]{};
+    if (GetEnvironmentVariableW(L"LOCALAPPDATA", localAppData, MAX_PATH) == 0)
+        return;
+    const auto directory = std::filesystem::path(localAppData) / L"WidgetRail";
+    std::error_code error;
+    std::filesystem::create_directories(directory, error);
+    if (error) return;
+
+    const auto current = directory / L"action-correlation.log";
+    const auto prior = directory / L"action-correlation.1.log";
+    const auto oldest = directory / L"action-correlation.2.log";
+    const bool currentExists = std::filesystem::exists(current, error);
+    if (error) return;
+    const auto size = currentExists
+        ? std::filesystem::file_size(current, error)
+        : 0;
+    if (error) return;
+    if (size >= maximumBytes) {
+        std::filesystem::remove(oldest, error);
+        if (error && error != std::errc::no_such_file_or_directory) return;
+        error.clear();
+        const bool priorExists = std::filesystem::exists(prior, error);
+        if (error) return;
+        if (priorExists) {
+            error.clear();
+            std::filesystem::rename(prior, oldest, error);
+            if (error) return;
+        }
+        error.clear();
+        std::filesystem::rename(current, prior, error);
+        if (error) return;
+    }
+
+    SYSTEMTIME now{};
+    GetLocalTime(&now);
+    std::wofstream output(current, std::ios::app);
+    if (!output) return;
+    output << now.wYear << L'-' << now.wMonth << L'-' << now.wDay << L' '
+           << now.wHour << L':' << now.wMinute << L':' << now.wSecond << L'.'
+           << now.wMilliseconds << L" level=" << DiagnosticSeverityValue(severity)
+           << L" category=widget-action " << message << L'\n';
+}
+
 class OverlayApp final {
 public:
     // The dashboard is catalog-owned. Persisted IDs are reconciled only after
@@ -5496,26 +5565,71 @@ private:
                  pinnedSurfaceCoordinator_.TakeLayoutSelectionNotifications()) {
             const auto* descriptor = sessions_.FindDescriptor(selection.widgetId);
             const auto* snapshot = SnapshotFor(selection.widgetId);
+            const auto correlationSequence = ++controllerSequence_;
+            AppendActionCorrelation(
+                L"stage=host-admission sequence=" +
+                std::to_wstring(correlationSequence) +
+                L" context=pinnedLayoutSelection button=view widget=" +
+                selection.widgetId +
+                L" focus=none scope=none native-snapshot=" +
+                std::to_wstring(selection.snapshotSequence) +
+                L" worker-snapshot=" +
+                    std::to_wstring(snapshot ? snapshot->sequence : 0) +
+                L" layout=" + selection.layoutId +
+                L" selected=" + (selection.selected ? L"true" : L"false") +
+                L" requested-runtime=" + selection.runtimeGeneration +
+                L" current-runtime=" +
+                    (descriptor ? descriptor->runtimeGeneration : L"none"));
             if (!descriptor || !snapshot ||
                 descriptor->runtimeGeneration != selection.runtimeGeneration ||
                 snapshot->sequence != selection.snapshotSequence) {
-                AppendDiagnostic(L"Dropped stale pinned-layout selection");
+                AppendActionCorrelation(
+                    L"stage=host-reply sequence=" +
+                    std::to_wstring(correlationSequence) +
+                    L" result=host-authority-rejected",
+                    DiagnosticSeverity::Warning);
                 continue;
             }
             const auto delivered = bridge_.SendControllerInput(
                 selection.widgetId, L"view", L"pinnedLayoutSelection",
                 L"", L"", selection.snapshotSequence,
-                ++controllerSequence_,
+                correlationSequence,
                 static_cast<long long>(GetTickCount64() * 1000),
                 L"pressed", std::nullopt,
                 widgetrail::ControllerInputOrigin::PhysicalController,
                 selection.runtimeGeneration, selection.layoutId,
                 selection.selected);
+            const auto replyCode = bridge_.lastControllerInputResultCode();
+            AppendActionCorrelation(
+                L"stage=host-reply sequence=" +
+                std::to_wstring(correlationSequence) +
+                L" result=" + (replyCode.empty() ? L"unknown" : replyCode) +
+                (!delivered
+                    ? L" error=" + bridge_.lastError()
+                    : std::wstring{}),
+                delivered && *delivered
+                    ? DiagnosticSeverity::Debug
+                    : DiagnosticSeverity::Warning);
             if (!delivered || !*delivered)
                 AppendDiagnostic(L"Pinned-layout selection notification failed");
         }
         for (const auto& request : pinnedSurfaceCoordinator_.TakeInputRequests()) {
             const auto* descriptor = sessions_.FindDescriptor(request.widgetId);
+            const auto* workerSnapshot = SnapshotFor(request.widgetId);
+            const auto correlationSequence = ++controllerSequence_;
+            AppendActionCorrelation(
+                L"stage=host-admission sequence=" +
+                std::to_wstring(correlationSequence) +
+                L" context=pinnedSurface button=" + request.protocolButton +
+                L" widget=" + request.widgetId +
+                L" focus=" + request.nodeId +
+                L" scope=" + request.activeInputScopeId +
+                L" native-snapshot=" + std::to_wstring(request.snapshotSequence) +
+                L" worker-snapshot=" +
+                    std::to_wstring(workerSnapshot ? workerSnapshot->sequence : 0) +
+                L" requested-runtime=" + request.runtimeGeneration +
+                L" current-runtime=" +
+                    (descriptor ? descriptor->runtimeGeneration : L"none"));
             if (!pinnedSurfaceCoordinator_.pinned() ||
                 state_.surface() == widgetrail::Surface::Hidden ||
                 pinnedSurfaceCoordinator_.interactionMode() !=
@@ -5523,16 +5637,33 @@ private:
                 !descriptor ||
                 descriptor->runtimeGeneration != request.runtimeGeneration ||
                 !pinnedSurfaceCoordinator_.IsCurrentInputRequest(request)) {
-                AppendDiagnostic(L"Dropped stale or unavailable pinned-surface input");
+                AppendActionCorrelation(
+                    L"stage=host-reply sequence=" +
+                    std::to_wstring(correlationSequence) +
+                    L" result=host-authority-rejected",
+                    DiagnosticSeverity::Warning);
                 continue;
             }
             const auto handled = bridge_.SendControllerInput(
                 request.widgetId, request.protocolButton, L"pinnedSurface",
                 request.nodeId, request.activeInputScopeId, request.snapshotSequence,
-                ++controllerSequence_,
+                correlationSequence,
                 static_cast<long long>(GetTickCount64() * 1000), L"pressed",
                 request.requestedValue, request.origin,
                 request.runtimeGeneration, request.selectedLayoutId);
+            const auto replyCode = bridge_.lastControllerInputResultCode();
+            AppendActionCorrelation(
+                L"stage=host-reply sequence=" +
+                std::to_wstring(correlationSequence) +
+                L" result=" + (replyCode.empty() ? L"unknown" : replyCode) +
+                (!handled
+                    ? L" error=" + bridge_.lastError()
+                    : std::wstring{}),
+                !handled
+                    ? DiagnosticSeverity::Warning
+                    : *handled
+                        ? DiagnosticSeverity::Debug
+                        : DiagnosticSeverity::Information);
             if (!handled) {
                 pinnedSurfaceCoordinator_.SetActionFeedback(
                     L"Pinned action failed. Reopen the overlay and try again.", true);
@@ -8255,6 +8386,33 @@ private:
                 if (focusedNode && TryInvokeLocalWidgetPackageImport(
                         *snapshot, *focusedNode, protocolButton, phase)) return;
             }
+            const auto* descriptor = sessions_.FindDescriptor(widget);
+            const auto* workerSnapshot = SnapshotFor(widget);
+            const auto nativeSnapshotSequence = exactActionRequest
+                ? exactActionRequest->snapshotSequence
+                : snapshot->sequence;
+            const auto correlationSequence = ++controllerSequence_;
+            const std::wstring_view correlationFocus = exactActionRequest
+                ? std::wstring_view{exactActionRequest->sourceElementId}
+                : isOpen && visibleFocus
+                    ? std::wstring_view(*visibleFocus)
+                    : std::wstring_view{};
+            const std::wstring_view correlationScope = exactActionRequest
+                ? std::wstring_view{exactActionRequest->inputScopeId}
+                : std::wstring_view{snapshot->activeInputScopeId};
+            AppendActionCorrelation(
+                L"stage=host-admission sequence=" +
+                std::to_wstring(correlationSequence) +
+                L" context=" + (isOpen ? L"openWidget" : L"dashboardQuickAction") +
+                L" button=" + std::wstring(protocolButton) +
+                L" widget=" + std::wstring(widget) +
+                L" focus=" + std::wstring(correlationFocus) +
+                L" scope=" + std::wstring(correlationScope) +
+                L" native-snapshot=" + std::to_wstring(nativeSnapshotSequence) +
+                L" worker-snapshot=" +
+                    std::to_wstring(workerSnapshot ? workerSnapshot->sequence : 0) +
+                L" current-runtime=" +
+                    (descriptor ? descriptor->runtimeGeneration : L"none"));
             const auto handled = bridge_.SendControllerInput(
                 exactActionRequest
                     ? std::wstring_view{exactActionRequest->widgetId}
@@ -8269,10 +8427,8 @@ private:
                 exactActionRequest
                     ? std::wstring_view{exactActionRequest->inputScopeId}
                     : std::wstring_view{snapshot->activeInputScopeId},
-                exactActionRequest
-                    ? exactActionRequest->snapshotSequence
-                    : snapshot->sequence,
-                ++controllerSequence_, static_cast<long long>(GetTickCount64() * 1000),
+                nativeSnapshotSequence,
+                correlationSequence, static_cast<long long>(GetTickCount64() * 1000),
                 phase == widgetrail::input::NavigationEventPhase::Repeated
                     ? std::wstring_view{L"repeated"}
                     : std::wstring_view{L"pressed"},
@@ -8280,6 +8436,19 @@ private:
                     ? exactActionRequest->requestedValue
                     : std::nullopt,
                 widgetrail::ControllerInputOrigin::PhysicalController);
+            const auto replyCode = bridge_.lastControllerInputResultCode();
+            AppendActionCorrelation(
+                L"stage=host-reply sequence=" +
+                std::to_wstring(correlationSequence) +
+                L" result=" + (replyCode.empty() ? L"unknown" : replyCode) +
+                (!handled
+                    ? L" error=" + bridge_.lastError()
+                    : std::wstring{}),
+                !handled
+                    ? DiagnosticSeverity::Warning
+                    : *handled
+                        ? DiagnosticSeverity::Debug
+                        : DiagnosticSeverity::Information);
             lastActionWidgetId_ = widget;
             if (!handled) {
                 if (interactionSession_.TransitionPressedPresentation(

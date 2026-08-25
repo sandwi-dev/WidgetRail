@@ -608,6 +608,8 @@ public:
     [[nodiscard]] std::optional<bool> CancelLocalWidgetPackageInstall(
         std::wstring_view operationId);
     [[nodiscard]] std::wstring lastError() const;
+    /// Bounded classification for the most recent controller-input reply.
+    [[nodiscard]] std::wstring lastControllerInputResultCode() const;
     [[nodiscard]] std::optional<WidgetBridgeRuntimeFailureCategory>
         lastRuntimeFailureCategory(std::wstring_view widgetId) const noexcept;
     [[nodiscard]] WidgetBridgeRequestFailureCategory
@@ -640,6 +642,7 @@ private:
     bool transportTainted_{};
     std::wstring pipeName_;
     std::wstring lastError_;
+    std::wstring lastControllerInputResultCode_;
     std::optional<WidgetBridgeRuntimeFailure> lastRuntimeFailure_;
     WidgetBridgeRequestFailureCategory lastRequestFailureCategory_{
         WidgetBridgeRequestFailureCategory::None};
