@@ -10,7 +10,8 @@ historical evidence only; this file is the sole implementation authority.
 
 ## Current accepted state
 
-- Local `main` is `283c9ff`, integrating physically accepted DLV-300
+- Local `main` is `2af272c`, whose latest runtime input remains `283c9ff`,
+  integrating physically accepted DLV-300
   production `5bb7a57`, production validation correction `5b1c170`, and focused
   tests `d1a3d5d` after accepted DLV-298 Spotify migration merge `c9e9b97`.
 - DLV-300 makes View host-owned for tray/pin transfer and leaves B widget-owned
@@ -26,6 +27,12 @@ historical evidence only; this file is the sole implementation authority.
   high-level pinned-layout migration is accepted. The intermittent consumed-
   input report has no proven cause; DLV-303 owns diagnostics only and no fix is
   authorized.
+- The current coherent Release and Spotify package are confirmed current, but
+  the Up Next pin can remain on Loading. Provider diagnostics prove the queue
+  operations complete successfully while host diagnostics record failed
+  pinned-layout selection and action delivery during rapidly advancing Spotify
+  progress snapshots. DLV-304 owns the serialized generic authority correction
+  after DLV-303; this is not a provider or package-version failure.
 - Full detailed evidence through this state is preserved in the
   [2026-08-24 19:39 snapshot](history/delivery-plan/2026-08-24T19-39-18-07-00.md).
   That snapshot is historical evidence only.
@@ -34,7 +41,7 @@ historical evidence only; this file is the sole implementation authority.
 
 | Lane | Task/worktree | State |
 | --- | --- | --- |
-| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | DLV-300 is closed through integrated production validation and green focused tests. DLV-301 is Ready after serialized DLV-303 instrumentation. The standing worktree's retained DLV-474/DLV-293 diffs and blocked DLV-473 test commit remain immutable evidence and must not be touched. |
+| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | DLV-300 is closed through integrated production validation and green focused tests. DLV-304 is Ready after serialized DLV-303 instrumentation; DLV-301 follows it. The standing worktree's retained DLV-474/DLV-293 diffs and blocked DLV-473 test commit remain immutable evidence and must not be touched. |
 | Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | DLV-302 closed with a precise observability gap. DLV-303 generic action-correlation instrumentation is active from clean integrated `b089f94` in a separate worktree and has no fix authority. The dirty standing DLV-298 evidence remains untouched. DLV-296 and DLV-297 remain Ready. |
 
 ## Execution rules
@@ -199,6 +206,53 @@ launch the diagnostic Release and ask the user for one bounded reproduction.
 Stop for a new public protocol, service-specific core behavior, sensitive data,
 unbounded log volume, or any behavioral correction.
 
+### DLV-304 stable pinned demand and input authority under live updates
+
+Lane: platform, serialized generic native/Bridge/SDK correction after reviewed
+DLV-303 integration. Status: Ready. Baseline: the integrated DLV-303 diagnostic
+milestone on local `main`. The current packaged evidence rules out an old build
+and a stuck Spotify provider: Release PID 109280 runs the current integrated
+host, Spotify 0.3.26 is the sole installed generation, queue operations complete
+successfully, and the same session logs pinned-layout selection/action delivery
+failures while Spotify's 250 ms progress invalidations rapidly advance snapshot
+sequences. Source review shows layout-selection observation and pinned action
+admission both bind to exact snapshot sequence, so an otherwise current pin can
+lose demand or input authority when a newer semantically compatible projection
+is published between native resolution and Bridge/worker admission. Up Next then
+has no durable selected-layout demand and renders its NotLoaded/Loading state.
+
+Correct this only through the generic pin authority owners. Keep runtime
+generation, selected layout, input scope, focus identity, actionable state,
+button/action semantics, and current presentation authority explicit. A newer
+snapshot may be used only after the existing Bridge/SDK owner proves the
+selected layout and resolved input target remain semantically equivalent; do
+not blindly accept an old sequence, replay an action across a changed target,
+or create a second native/Bridge authority. Host-owned layout-demand
+notification must survive unrelated live-data/progress publications and be
+revoked deterministically. Pinned widget input must remain responsive under the
+same publication churn while genuinely stale runtime/layout/scope/focus/action
+requests continue to fail closed. Reuse DLV-303 correlation evidence and keep
+core layers widget-agnostic; no Spotify identity, provider behavior, queue
+special case, public protocol change, retry storm, or duplicate renderer/state.
+
+Use physical-first ordering: production/API changes only, direct authority and
+lifecycle review, one coherent Release build and exact production commit, then
+planner launch and user verdict before tests. After acceptance, add focused
+native/Bridge/SDK regressions with deterministic rapid compatible publication,
+layout selection/revocation, pinned action delivery, and incompatible
+runtime/layout/scope/focus/action rejection. Run only the smallest affected
+native and managed gates once in the documented order. No Game Launcher tests,
+broad aggregate, package/account mutation, Avalonia/AVP, or push.
+
+Acceptance: the authored Up Next pin leaves Loading after a successful queue
+result and stays demanded while unrelated progress snapshots advance; pinned
+controls continue to work across equivalent live updates; deselection and every
+materially stale or changed authority reject without executing an action; the
+implementation retains one renderer, interaction owner, and generic contract.
+Stop for protocol/version expansion, a second authority, inability to prove
+semantic equivalence before rebasing, destructive state, or substantial
+conflict.
+
 ### DLV-296 pinned-layout preview and diagnostics
 
 Lane: widgets, after DLV-295. Status: Ready. Extend `wrail preview` to select one
@@ -221,17 +275,19 @@ no live provider, installation, Game Launcher tests, broad aggregate, or push.
 
 1. DLV-303 generic end-to-end widget action correlation diagnostics; Assigned
    with no fix authority after DLV-300 test closure.
-2. DLV-301 pinned-surface right-stick free scrolling; Ready after DLV-303.
-3. Recover accepted DLV-298 high-level Spotify focused regression coverage.
-4. Recover DLV-473 focused SDK/Bridge/native regression coverage from its proven
+2. DLV-304 stable pinned demand and input authority under live updates; Ready
+   after reviewed DLV-303 integration.
+3. DLV-301 pinned-surface right-stick free scrolling; Ready after DLV-304.
+4. Recover accepted DLV-298 high-level Spotify focused regression coverage.
+5. Recover DLV-473 focused SDK/Bridge/native regression coverage from its proven
    pre-test infrastructure failure.
-5. DLV-296 pinned-layout preview and diagnostics.
-6. DLV-297 pinned-layout templates and examples.
-7. DLV-474 fresh-session sequence-authority correction remains retained and
+6. DLV-296 pinned-layout preview and diagnostics.
+7. DLV-297 pinned-layout templates and examples.
+8. DLV-474 fresh-session sequence-authority correction remains retained and
    unintegrated pending a separately controlled recovery.
-8. DLV-293 generic focused debt may be recovered without Game Launcher tests;
+9. DLV-293 generic focused debt may be recovered without Game Launcher tests;
    Game Launcher testing remains explicitly deferred.
-9. Remaining maturity deliverables after the pinned-layout author workflow;
+10. Remaining maturity deliverables after the pinned-layout author workflow;
     DLV-248 stays deferred until explicit user promotion.
 
 ## Manual and blocked evidence
