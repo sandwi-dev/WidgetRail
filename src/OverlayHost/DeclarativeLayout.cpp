@@ -1,5 +1,6 @@
 #include "DeclarativeLayout.h"
 #include "TaffyLayoutBridge.h"
+#include "WidgetProtocolPresentationContract.generated.h"
 
 #include <algorithm>
 #include <cmath>
@@ -18,9 +19,11 @@ constexpr float kMaximumRatio = 5.0F;
 constexpr float kEpsilon = 0.0001F;
 constexpr std::size_t kMaximumNodes = 4096;
 constexpr std::size_t kMaximumDepth = 64;
-constexpr float kMinimumGridColumnWidth = 44.0F;
-constexpr float kMaximumGridColumnWidth = 1'600.0F;
-constexpr std::size_t kMaximumGridColumns = 32;
+constexpr float kMinimumGridColumnWidth =
+    static_cast<float>(protocol_contract::MinimumGridColumnWidth);
+constexpr float kMaximumGridColumnWidth =
+    static_cast<float>(protocol_contract::MaximumGridColumnWidth);
+constexpr std::size_t kMaximumGridColumns = protocol_contract::MaximumGridColumns;
 
 struct Edges {
     float top{};

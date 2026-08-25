@@ -1,11 +1,17 @@
 #pragma once
 
+#include "WidgetProtocolPresentationContract.generated.h"
+
 namespace widgetrail::surface_geometry {
 
-inline constexpr float kMinimumAuthoredContentWidthDip = 240.0F;
-inline constexpr float kMinimumAuthoredContentHeightDip = 180.0F;
-inline constexpr float kMaximumAuthoredContentWidthDip = 1'600.0F;
-inline constexpr float kMaximumAuthoredContentHeightDip = 1'200.0F;
+inline constexpr float kMinimumAuthoredContentWidthDip =
+    static_cast<float>(protocol_contract::MinimumSurfaceWidth);
+inline constexpr float kMinimumAuthoredContentHeightDip =
+    static_cast<float>(protocol_contract::MinimumSurfaceHeight);
+inline constexpr float kMaximumAuthoredContentWidthDip =
+    static_cast<float>(protocol_contract::MaximumSurfaceWidth);
+inline constexpr float kMaximumAuthoredContentHeightDip =
+    static_cast<float>(protocol_contract::MaximumSurfaceHeight);
 
 inline constexpr float kMinimumPinnedWidthDip = 240.0F;
 inline constexpr float kMinimumPinnedHeightDip = 135.0F;

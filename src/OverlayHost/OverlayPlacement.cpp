@@ -1,4 +1,5 @@
 #include "OverlayPlacement.h"
+#include "WidgetSurfaceGeometry.h"
 
 #include <algorithm>
 #include <cmath>
@@ -7,10 +8,10 @@
 namespace widgetrail {
 namespace {
 
-constexpr float kMinimumPanelWidthDip = 240.0F;
-constexpr float kMaximumPanelWidthDip = 1'600.0F;
-constexpr float kMinimumPanelHeightDip = 180.0F;
-constexpr float kMaximumPanelHeightDip = 1'200.0F;
+constexpr float kMinimumPanelWidthDip = surface_geometry::kMinimumAuthoredContentWidthDip;
+constexpr float kMaximumPanelWidthDip = surface_geometry::kMaximumAuthoredContentWidthDip;
+constexpr float kMinimumPanelHeightDip = surface_geometry::kMinimumAuthoredContentHeightDip;
+constexpr float kMaximumPanelHeightDip = surface_geometry::kMaximumAuthoredContentHeightDip;
 constexpr float kShellSideReservationDip = 72.0F;
 constexpr float kShellVerticalReservationDip = 178.0F;
 constexpr float kPanelHorizontalChromeReservationDip = 2.0F;

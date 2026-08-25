@@ -1,5 +1,7 @@
 #pragma once
 
+#include "WidgetProtocolPresentationContract.generated.h"
+
 #include <optional>
 #include <functional>
 #include <span>
@@ -55,7 +57,8 @@ enum class WidgetSurfaceAxisMode {
     FillAvailable,
 };
 
-inline constexpr int kWidgetSurfaceAxisProtocolVersion = 17;
+inline constexpr int kWidgetSurfaceAxisProtocolVersion =
+    protocol_contract::SurfaceAxisSizingVersion;
 
 [[nodiscard]] std::optional<WidgetSurfaceAxisMode> ParseWidgetSurfaceAxisMode(
     std::wstring_view value,

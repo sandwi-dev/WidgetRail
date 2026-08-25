@@ -4,6 +4,7 @@
 #include "FocusNavigation.h"
 #include "HostAccessibility.h"
 #include "TrayLayout.h"
+#include "WidgetProtocolPresentationContract.generated.h"
 
 #include <Windows.h>
 #include <ole2.h>
@@ -367,7 +368,8 @@ void VerifyNativeSnapshotProtocolVersions() {
         R"json("protocolVersion":0,)json",
         "below-range native snapshot protocolVersion fails closed");
     rejectWithoutReplacing(
-        R"json("protocolVersion":20,)json",
+        "\"protocolVersion\":" +
+            std::to_string(widgetrail::protocol_contract::CurrentVersion + 1) + ",",
         "above-range native snapshot protocolVersion fails closed");
 }
 

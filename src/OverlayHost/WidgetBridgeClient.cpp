@@ -1,5 +1,6 @@
 #include "WidgetBridgeClient.h"
 #include "WidgetSurfaceGeometry.h"
+#include "WidgetProtocolPresentationContract.generated.h"
 
 #include <winrt/base.h>
 #include <winrt/Windows.Foundation.h>
@@ -82,25 +83,39 @@ using winrt::Windows::Data::Json::JsonValueType;
 constexpr DWORD kMaximumFrameBytes = 1024 * 1024;
 constexpr uint32_t kMaximumWidgetDescriptors = 256;
 constexpr uint32_t kMaximumDescriptorQuickActions = 16;
-constexpr std::size_t kMaximumIdentifierLength = 128;
+constexpr std::size_t kMaximumIdentifierLength =
+    protocol_contract::MaximumCapabilityIdLength;
 constexpr std::size_t kMaximumLabelLength = 256;
 constexpr std::size_t kMaximumControllerButtonLength = 32;
-constexpr int kMinimumWidgetSnapshotProtocolVersion = 1;
-constexpr int kMaximumWidgetSnapshotProtocolVersion = 21;
-constexpr std::size_t kMaximumPinnedLayoutCount = 8;
-constexpr std::size_t kMaximumPinnedProjectionAggregateCharacters = 256 * 1024;
-constexpr std::size_t kMaximumPinnedProjectionAggregateResources = 256;
-constexpr int kAtomicPresentationUpdateVersion = 18;
-constexpr std::size_t kMaximumPresentationUpdateOperations = 256;
-constexpr std::size_t kMaximumPresentationUpdateBytes = 256 * 1024;
-constexpr std::size_t kMaximumWidgetNodes = 2048;
-constexpr std::size_t kMaximumWidgetTreeDepth = 32;
-constexpr std::uint64_t kMaximumVirtualCollectionItems = 1'000'000;
+constexpr int kMinimumWidgetSnapshotProtocolVersion =
+    protocol_contract::MinimumSupportedVersion;
+constexpr int kMaximumWidgetSnapshotProtocolVersion = protocol_contract::CurrentVersion;
+constexpr std::size_t kMaximumPinnedLayoutCount =
+    protocol_contract::MaximumPinnedPresentationLayoutCount;
+constexpr std::size_t kMaximumPinnedProjectionAggregateNodes =
+    protocol_contract::MaximumPinnedPresentationAggregateNodeCount;
+constexpr std::size_t kMaximumPinnedProjectionAggregateCharacters =
+    protocol_contract::MaximumPinnedPresentationAggregateStringLength;
+constexpr std::size_t kMaximumPinnedProjectionAggregateResources =
+    protocol_contract::MaximumPinnedPresentationAggregateResourceCount;
+constexpr int kAtomicPresentationUpdateVersion =
+    protocol_contract::AtomicPresentationUpdateVersion;
+constexpr std::size_t kMaximumPresentationUpdateOperations =
+    protocol_contract::MaximumPresentationUpdateOperations;
+constexpr std::size_t kMaximumPresentationUpdateBytes =
+    protocol_contract::MaximumPresentationUpdateBytes;
+constexpr std::size_t kMaximumWidgetNodes = protocol_contract::MaximumNodeCount;
+constexpr std::size_t kMaximumWidgetTreeDepth = protocol_contract::MaximumTreeDepth;
+constexpr std::uint64_t kMaximumVirtualCollectionItems =
+    protocol_contract::MaximumVirtualCollectionItems;
 constexpr std::uint64_t kMaximumVirtualCollectionRequestGeneration =
-    9'007'199'254'740'991;
-constexpr double kMinimumVirtualCollectionItemExtent = 1.0;
-constexpr double kMaximumVirtualCollectionItemExtent = 512.0;
-constexpr double kMaximumVirtualCollectionExtent = 1'000'000.0;
+    protocol_contract::MaximumVirtualCollectionRequestGeneration;
+constexpr double kMinimumVirtualCollectionItemExtent =
+    protocol_contract::MinimumVirtualCollectionItemExtent;
+constexpr double kMaximumVirtualCollectionItemExtent =
+    protocol_contract::MaximumVirtualCollectionItemExtent;
+constexpr double kMaximumVirtualCollectionExtent =
+    protocol_contract::MaximumVirtualCollectionExtent;
 
 constexpr uint32_t kMaximumShellStyles = 12;
 constexpr uint32_t kMaximumShellProperties = 64;
@@ -646,14 +661,16 @@ WidgetNode ParseNode(const JsonObject& source) {
     node.textEntryPlaceholder = OptionalString(source, L"textEntryPlaceholder");
     if (source.HasKey(L"textEntryMaximumLength")) {
         const auto value = source.GetNamedNumber(L"textEntryMaximumLength");
-        if (!std::isfinite(value) || value < 1 || value > 96 || std::floor(value) != value)
+        if (!std::isfinite(value) || value < 1 ||
+            value > protocol_contract::MaximumTextEntryLength ||
+            std::floor(value) != value)
             throw winrt::hresult_invalid_argument();
         node.textEntryMaximumLength = static_cast<std::size_t>(value);
     }
     if (node.kind == L"textEntry" &&
         (node.textEntryMaximumLength == 0 ||
          node.textEntryValue.size() > node.textEntryMaximumLength ||
-         node.textEntryPlaceholder.size() > 96 ||
+         node.textEntryPlaceholder.size() > protocol_contract::MaximumTextEntryLength ||
          std::any_of(node.textEntryValue.begin(), node.textEntryValue.end(),
              [](const wchar_t value) { return std::iswcntrl(value) != 0; }) ||
          std::any_of(node.textEntryPlaceholder.begin(), node.textEntryPlaceholder.end(),
@@ -703,7 +720,8 @@ WidgetNode ParseNode(const JsonObject& source) {
             JsonValueType::Number)
             throw winrt::hresult_invalid_argument();
         const auto value = source.GetNamedNumber(L"scrollPaginationThreshold");
-        if (!std::isfinite(value) || value < 1.0 || value > 8.0 ||
+        if (!std::isfinite(value) || value < 1.0 ||
+            value > protocol_contract::MaximumScrollPaginationThreshold ||
             std::floor(value) != value)
             throw winrt::hresult_invalid_argument();
         node.scrollPaginationThreshold = static_cast<std::size_t>(value);
@@ -774,7 +792,9 @@ WidgetNode ParseNode(const JsonObject& source) {
         if (source.GetNamedValue(L"gridMinimumColumnWidth").ValueType() != JsonValueType::Number)
             throw winrt::hresult_invalid_argument();
         const auto value = source.GetNamedNumber(L"gridMinimumColumnWidth");
-        if (!std::isfinite(value) || value < 44.0 || value > 1600.0)
+        if (!std::isfinite(value) ||
+            value < protocol_contract::MinimumGridColumnWidth ||
+            value > protocol_contract::MaximumGridColumnWidth)
             throw winrt::hresult_invalid_argument();
         node.gridMinimumColumnWidth = value;
     }
@@ -782,7 +802,8 @@ WidgetNode ParseNode(const JsonObject& source) {
         if (source.GetNamedValue(L"gridMaximumColumns").ValueType() != JsonValueType::Number)
             throw winrt::hresult_invalid_argument();
         const auto value = source.GetNamedNumber(L"gridMaximumColumns");
-        if (!std::isfinite(value) || value < 1.0 || value > 32.0 ||
+        if (!std::isfinite(value) || value < 1.0 ||
+            value > protocol_contract::MaximumGridColumns ||
             std::floor(value) != value)
             throw winrt::hresult_invalid_argument();
         node.gridMaximumColumns = static_cast<std::size_t>(value);
@@ -926,7 +947,8 @@ void ValidatePinnedProjectionCatalogBounds(const JsonObject& source) {
     const auto inspect = [&](const auto& self, const JsonObject& root,
                              const std::size_t depth,
                              std::unordered_set<std::wstring>& ids) -> void {
-        if (++nodes > kMaximumWidgetNodes || depth > kMaximumWidgetTreeDepth)
+        if (++nodes > kMaximumPinnedProjectionAggregateNodes ||
+            depth > kMaximumWidgetTreeDepth)
             throw winrt::hresult_invalid_argument(
                 L"Pinned projection catalog exceeds its structural bound.");
         const auto id = OptionalString(root, L"id");
@@ -1055,13 +1077,17 @@ WidgetSnapshot ParseSnapshot(const JsonObject& source) {
                 std::wstring(std::wstring_view(layout.GetNamedString(L"name"))),
                 parseSurface(layout.GetNamedObject(L"surface")),
             };
-            if (parsed.id.empty() || parsed.id.size() > 128 ||
-                parsed.name.empty() || parsed.name.size() > 96 ||
+            if (parsed.id.empty() ||
+                parsed.id.size() > protocol_contract::MaximumCapabilityIdLength ||
+                parsed.name.empty() ||
+                parsed.name.size() >
+                    protocol_contract::MaximumPinnedPresentationLayoutNameLength ||
                 !ids.insert(parsed.id).second)
                 throw winrt::hresult_invalid_argument(
                     L"Widget snapshot pinned layout identity is invalid.");
             if (layout.HasKey(L"root")) {
-                if (snapshot.protocolVersion < 21 ||
+                if (snapshot.protocolVersion <
+                        protocol_contract::PinnedPresentationProjectionsVersion ||
                     !layout.HasKey(L"activeInputScopeId"))
                     throw winrt::hresult_invalid_argument(
                         L"Widget snapshot pinned projection version is invalid.");
@@ -1080,7 +1106,8 @@ WidgetSnapshot ParseSnapshot(const JsonObject& source) {
             }
             snapshot.pinnedLayouts.push_back(std::move(parsed));
         }
-        if (!snapshot.pinnedLayouts.empty() && snapshot.protocolVersion < 20)
+        if (!snapshot.pinnedLayouts.empty() &&
+            snapshot.protocolVersion < protocol_contract::PinnedPresentationLayoutsVersion)
             throw winrt::hresult_invalid_argument();
     }
     if (source.HasKey(L"quickActions")) {
@@ -1103,7 +1130,7 @@ WidgetSnapshot ParseSnapshot(const JsonObject& source) {
             [&](const WidgetNode& child) { return self(self, child); });
     };
     if (usesVirtualWindow(usesVirtualWindow, snapshot.root) &&
-        snapshot.protocolVersion < 19)
+        snapshot.protocolVersion < protocol_contract::VirtualCollectionWindowVersion)
         throw winrt::hresult_invalid_argument();
     snapshot.documentJson = std::wstring(std::wstring_view(source.Stringify()));
     return snapshot;
