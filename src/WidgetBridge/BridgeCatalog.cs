@@ -236,21 +236,12 @@ public sealed class BridgeCatalog
                     $"Widget '{source.Id}' has an invalid residency policy ({residencyErrors[0].Code}).");
             if (source.QuickActions is null || source.QuickActions.Count > 16)
                 throw new BridgeCatalogException($"Widget '{source.Id}' has too many quick actions.");
+            ValidateQuickActions(source.Id, source.QuickActions);
 
             var executable = Path.GetFullPath(source.WorkerExecutable, directory);
             if (!File.Exists(executable))
                 throw new BridgeCatalogException($"Worker executable for '{source.Id}' does not exist.");
             var style = CompileTheme(source, directory);
-            var quickActionIds = new HashSet<string>(StringComparer.Ordinal);
-            foreach (var action in source.QuickActions)
-            {
-                ValidateIdentifier(action.Id, "quick action ID");
-                ValidateIdentifier(action.ActionId, "action ID");
-                ValidateIdentifier(action.SourceElementId, "source element ID");
-                ValidateLabel(action.Label, "quick action label");
-                if (!quickActionIds.Add(action.Id))
-                    throw new BridgeCatalogException($"Widget '{source.Id}' repeats quick action '{action.Id}'.");
-            }
             var configured = WithFingerprints(source with
                 {
                     WorkerExecutable = executable,
