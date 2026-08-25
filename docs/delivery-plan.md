@@ -33,6 +33,11 @@ historical evidence only; this file is the sole implementation authority.
   pinned-layout selection and action delivery during rapidly advancing Spotify
   progress snapshots. DLV-304 owns the serialized generic authority correction
   after DLV-303; this is not a provider or package-version failure.
+- A newly reported resize commit visibly returns the pin to its prior size. The
+  current durable placement file did not advance after the attempt, while
+  source inspection shows snapshot refresh does not intentionally resize the
+  HWND. DLV-305 owns a separate native placement diagnosis/correction; no cause
+  or fix is inferred from the symptom alone.
 - Full detailed evidence through this state is preserved in the
   [2026-08-24 19:39 snapshot](history/delivery-plan/2026-08-24T19-39-18-07-00.md).
   That snapshot is historical evidence only.
@@ -41,7 +46,7 @@ historical evidence only; this file is the sole implementation authority.
 
 | Lane | Task/worktree | State |
 | --- | --- | --- |
-| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | DLV-300 is closed through integrated production validation and green focused tests. DLV-304 is Ready after serialized DLV-303 instrumentation; DLV-301 follows it. The standing worktree's retained DLV-474/DLV-293 diffs and blocked DLV-473 test commit remain immutable evidence and must not be touched. |
+| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | DLV-305 pinned resize commit diagnosis/correction is Assigned in a separate clean worktree and may not overlap DLV-303 files. DLV-304 is Ready after serialized DLV-303 instrumentation; DLV-301 follows both corrections. The standing worktree's retained DLV-474/DLV-293 diffs and blocked DLV-473 test commit remain immutable evidence and must not be touched. |
 | Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | DLV-302 closed with a precise observability gap. DLV-303 generic action-correlation instrumentation is active from clean integrated `b089f94` in a separate worktree and has no fix authority. The dirty standing DLV-298 evidence remains untouched. DLV-296 and DLV-297 remain Ready. |
 
 ## Execution rules
@@ -253,6 +258,51 @@ Stop for protocol/version expansion, a second authority, inability to prove
 semantic equivalence before rebasing, destructive state, or substantial
 conflict.
 
+### DLV-305 preserve a committed pinned resize
+
+Lane: platform native placement owner. Status: Assigned concurrently with the
+non-behavioral DLV-303 diagnostics in a separate clean worktree from local main
+`e1cfd40`; do not touch the standing platform worktree's retained evidence. The
+user reports that resizing a pinned surface visibly works during adjustment,
+but choosing Commit now snaps the HWND back to its original size. The current
+`pinned-surface-placement.ini` still holds Spotify's earlier 776 by 464 DIP
+placement with its prior timestamp. Source inspection shows `UpdateSnapshot`
+does not resize the HWND, `CommitPlacement` is intended to atomically save the
+current placement, and explicit cancellation/display reconciliation can restore
+the prior durable bounds. Existing logs do not identify which terminal path
+occurred, so no corrective cause is yet accepted.
+
+First establish one exact native cause from the placement session, commit
+result, durable save, controller/accessibility routing, window message, and
+display-reconciliation paths. Report that cause to the planner before writing a
+behavioral correction. Then correct only the existing coordinator/placement
+owner so a successful Commit now retains the exact constrained preview bounds
+in the live HWND and durable store, including after focus/click-through
+transition and ordinary snapshot publication. A failed commit must retain the
+current explicit failure/cancel semantics and precise user feedback; never
+claim success then restore prior bounds. Preserve DPI/work-area constraints,
+atomic persistence, layout ID and opacity, runtime/presentation generation
+checks, topmost policy, and one native window/placement authority. Do not change
+authored preferred sizes, layout cycling, input mappings, Spotify, public
+protocol/SDK, or DLV-303 diagnostic files. Stop without edits if the proven
+cause requires a file currently changed by DLV-303, then serialize after its
+integration.
+
+Use physical-first ordering after the cause is reported: production only,
+direct lifecycle/persistence review, one coherent Release build and exact
+commit, planner launch, and user verdict before focused tests. After acceptance,
+add the smallest native regression proving preview-to-commit bounds, persistence
+and reload, ordinary snapshot update, focus/click-through transition, and
+explicit failed/canceled restoration. No Game Launcher tests, broad aggregate,
+destructive state reset, Avalonia/AVP, or push.
+
+Acceptance: Commit now leaves the resized pin at the previewed constrained
+dimensions and persists those dimensions across ordinary refresh and restart;
+Cancel still restores the original bounds; failed persistence never reports a
+successful commit; no new placement/window owner or widget-specific behavior is
+introduced. Stop for destructive placement-store recovery, a second window or
+authority, overlap with active DLV-303 work, or materially different resize UX.
+
 ### DLV-296 pinned-layout preview and diagnostics
 
 Lane: widgets, after DLV-295. Status: Ready. Extend `wrail preview` to select one
@@ -273,11 +323,13 @@ no live provider, installation, Game Launcher tests, broad aggregate, or push.
 
 ## Ordered queues
 
-1. DLV-303 generic end-to-end widget action correlation diagnostics; Assigned
-   with no fix authority after DLV-300 test closure.
+1. DLV-303 generic end-to-end widget action correlation diagnostics and DLV-305
+   pinned resize commit diagnosis/correction are Assigned concurrently in
+   separate non-overlapping worktrees.
 2. DLV-304 stable pinned demand and input authority under live updates; Ready
    after reviewed DLV-303 integration.
-3. DLV-301 pinned-surface right-stick free scrolling; Ready after DLV-304.
+3. DLV-301 pinned-surface right-stick free scrolling; Ready after DLV-304 and
+   DLV-305.
 4. Recover accepted DLV-298 high-level Spotify focused regression coverage.
 5. Recover DLV-473 focused SDK/Bridge/native regression coverage from its proven
    pre-test infrastructure failure.
