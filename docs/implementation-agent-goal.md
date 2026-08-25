@@ -30,9 +30,30 @@ decision recorded in the delivery plan.
 Never take work from the other lane. Shared protocol or architecture work is
 serialized through an explicit integration assignment owned by the planner.
 
+## Plane-first implementation authority
+
+This section takes precedence over older references in this document to live
+assignment tables or `docs/delivery-plan.md` as the implementation queue.
+
+Legacy DLV references elsewhere in this document are historical evidence only;
+they never identify or authorize new work.
+
+Plane's `WidgetRail` project is the sole source for active work selection. The
+assigned Plane work item is the durable assignment: read it, its dependencies,
+and its linked technical records before editing. Do not select an item merely
+because it is visible in a backlog view; execute only the lane-matching item
+that Plane marks Todo or In Progress and whose assignment fields are complete.
+
+Use Plane comments for the completion report: Plane identifier, branch, commit, changed
+surfaces, verification, residual risk, and next-state recommendation. Do not
+edit Plane state yourself after committing; the independent reviewer sets review
+disposition and integration state. If Plane conflicts with a stable repository
+rule or lacks a complete assignment, preserve the worktree and ask the planner.
+
 ## Source of implementation authority
 
-`docs/delivery-plan.md` is the sole authority for selecting implementation work.
+Plane's `WidgetRail` project is the sole authority for selecting implementation
+work. `docs/delivery-plan.md` is a stable workflow contract, not a queue.
 
 The review and planning agent owns:
 
@@ -74,12 +95,12 @@ another message from the planning agent.
 
 Before starting an assignment:
 
-1. Read `docs/delivery-plan.md` completely.
-2. Locate the section for the lane named in this task's prompt. Select only that
-   lane's current `Assigned` milestone. After completing it, select the first
-   `Ready` milestone in that same lane in document order.
+1. Read the assigned Plane item and its linked technical records.
+2. Select only the Plane item for the lane named in this task's prompt. After
+   completing it, select the top Plane Todo item in that lane by Plane column
+   order only when its native dependencies are resolved.
 3. Confirm the assignment has:
-   - A stable `DLV-nnn` production identifier.
+   - Its native Plane production identifier (for example, `WIDGE-9`).
    - A valid baseline.
    - A bounded objective.
    - An owning architectural layer.
@@ -89,7 +110,7 @@ Before starting an assignment:
    - Stop and escalation conditions.
 4. Inspect HEAD, the worktree, relevant implementation, tests, and documentation.
 5. Identify reviewer-owned and user-owned uncommitted changes and preserve them.
-6. State the assignment ID, problem, ownership boundary, intended design,
+6. State the Plane identifier, problem, ownership boundary, intended design,
    acceptance evidence, and important risks before editing.
 
 Execute assignments strictly in document order.
@@ -139,11 +160,11 @@ An ordinary review correction applies at the next clean assignment boundary;
 it does not cancel a different milestone already in progress. Finish that
 milestone first, then execute the queued correction before later Ready work.
 
-`docs/delivery-plan.md` remains the durable authority. A direct planner message
-may clarify an assignment but may not silently expand it beyond the documented
-product objective and acceptance criteria.
+The Plane assignment remains the durable work authority. A direct planner
+message may clarify an assignment but may not silently expand it beyond the
+recorded product objective and acceptance criteria.
 
-If a planner request appears inconsistent with the delivery plan:
+If a planner request appears inconsistent with the Plane assignment:
 
 1. Preserve the current worktree.
 2. Report the inconsistency.
@@ -185,8 +206,8 @@ A task may be skipped for a documented blocker only when:
 When all four conditions hold, skipping is the required action: report the
 blocked assignment, leave it untouched, and immediately take the first later
 same-lane Ready assignment whose own dependencies are present. Wording such as
-`Ready after DLV-x` expresses queue order, not a dependency, unless the
-assignment's baseline/dependencies section explicitly consumes DLV-x output.
+`Ready after WIDGE-x` expresses queue order, not a dependency, unless the
+assignment's Plane dependency relation explicitly consumes that work item's output.
 Do not idle the lane merely because an earlier Ready assignment stopped before
 task-specific edits. The planner will reclassify or re-own that blocker
 asynchronously.
@@ -460,7 +481,7 @@ supersedes the normal Tier 1 ordering for that assignment:
 - Perform a direct source review for ownership, lifecycle, failure cleanup,
   documented platform APIs, coordinate spaces, and scope. Build the Release
   once from the coherent production diff.
-- Commit the production-only candidate with the assignment ID, report its exact
+- Commit the production-only candidate with the Plane identifier, report its exact
   files and build result, and stop for planner launch and user testing. A code-
   only candidate commit is not acceptance and must not be integrated.
 - On physical rejection, correct production code only and build a new exact
@@ -580,9 +601,9 @@ Before committing:
 4. Inspect the staged diff and run `git diff --cached --check`.
 5. Confirm reviewer-owned files are not staged.
 
-The commit subject must begin with the assignment ID:
+The commit subject must begin with the Plane work-item identifier:
 
-`[DLV-nnn] concise milestone description`
+`[WIDGE-n] concise milestone description`
 
 Commit locally. Do not push.
 
@@ -880,5 +901,5 @@ shows:
 These are release conditions, not authorization to implement unassigned work or
 run the complete repository verifier after every milestone.
 
-Continue through the ordered Assigned and Ready delivery queue until no valid
-assignment remains or a genuine stop condition is reached. Do not push.
+Continue through the Plane-ordered Todo queue for the assigned lane until no
+valid assignment remains or a genuine stop condition is reached. Do not push.

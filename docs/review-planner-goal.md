@@ -18,6 +18,96 @@ because one assignment, queue cluster, review cycle, or heartbeat finishes.
 Continue until the user pauses or replaces the goal, or until every useful lane
 is genuinely blocked by a stop condition requiring the user.
 
+## Plane-first delivery control
+
+This section takes precedence over older references in this document to an
+active document queue, `Assigned`/`Ready` tables, or `docs/delivery-plan.md` as
+implementation-selection authority.
+
+Legacy DLV references elsewhere in this document are historical evidence only;
+they never identify or authorize new work.
+
+Plane's `WidgetRail` project is the sole live delivery control plane. It owns
+every active Plane work item's assignment text, lane, priority, dependencies, status,
+blocker, review disposition, and evidence links. The repository owns only
+stable operating rules, technical records, architecture decisions, and source
+history.
+
+At startup and each meaningful review pass:
+
+1. Read this stable goal and the implementation-agent goal; do not reread
+   historical delivery narratives.
+2. Query Plane for the active work items in both lanes, the review queue, and
+   blocked work.
+3. Select or update work only through Plane. A Plane item is implementable only
+   when its description supplies its Plane identifier, lane, baseline, dependencies, scope,
+   exclusions, acceptance, verification, and stop conditions.
+4. Record real transitions only: dispatch, blocker, commit, review disposition,
+   physical verdict, focused-test closure, or integration. Do not mirror routine
+   heartbeats or duplicate detailed evidence into repository planning files.
+
+Use Plane labels for lanes and gates, modules for durable product areas, and
+work-item comments for commit/test/acceptance evidence. `Done` means accepted,
+integrated, and fully closed; accepted production awaiting focused tests remains
+open with `gate:tests`. A blocked item states its exact unblocking evidence.
+
+Do not use Plane Pages as a duplicate technical archive. Do not use Plane to
+authorize a push, destructive recovery, credentials, or a material product
+decision that still requires the user.
+
+The user pre-authorizes the reviewer to change Plane work-item states whenever
+the transition accurately records a real delivery event under this goal. Do
+not request separate approval for routine Todo, In Progress, Backlog, Done,
+Cancelled, or gate-state maintenance. This authority does not extend to a
+push, destructive recovery, credentials, or a material product decision.
+
+### Plane MCP playbook
+
+The configured Plane MCP is the review agent's normal delivery interface; do
+not research or reconfigure it during ordinary review work. Follow this compact
+routine:
+
+1. Use `project list` to resolve the existing `WidgetRail` project with
+   identifier `WIDGE`; never create a replacement project.
+2. Use `workitem list` with that project ID to inspect active work, then
+   `workitem retrieve` (or `retrieve_by_identifier`) before dispatching,
+   reviewing, or changing a specific item. Treat `WIDGE-n` as the only live
+   assignment identifier.
+3. Use `workitem_comment create` for a concise immutable milestone record:
+   commit(s), changed surfaces, verification or physical verdict, review
+   disposition, residual risk, and the recommended next state. Link durable
+   repository records rather than copying their content.
+4. Use `workitem update` only for real assignment, label, state, `sort_order`,
+   description changes. The reviewer owns review disposition and integration
+   state; implementation agents report through comments and do not advance
+   those states themselves.
+5. Read back the updated item or comment after a mutation. If the MCP reports
+   an error, preserve the local evidence and report the exact error; do not
+   recreate the project, duplicate a work item, or fall back to a Git queue.
+
+### Work-order rule
+
+Plane's visible column order is the delivery order. For each lane, list `Todo`
+or `Backlog` by ascending `sort_order`: the top card is next. Do not derive a
+second priority order from labels, prose, or identifiers.
+
+The top `Todo` item may be dispatched only when it has no unresolved native
+`blocked_by` relation and no `gate:blocked` label. Dependencies remain hard
+constraints; convert any prose such as “after WIDGE-n” into a native relation
+before it governs selection. `In Progress` is the single active item for that
+lane. `Backlog` is the explicitly ordered waiting line: promote its top
+unblocked card to `Todo` when the lane becomes available, rather than
+dispatching it directly.
+
+The reviewer changes Plane `sort_order` whenever intended work order changes,
+then reads the affected list back to confirm it. Maintain at most one active
+implementation item per exclusive lane unless the user explicitly authorizes
+parallel work.
+
+Use `lane:*` labels for exclusive delivery lanes and `gate:*` labels for
+blocked/manual/test gates. Modules group durable product areas. Do not create
+Pages, cycles, or historical issue imports for routine delivery management.
+
 ## Required startup state
 
 At the beginning of every goal continuation or scheduled heartbeat:
@@ -132,9 +222,9 @@ different files. Distinguish that aggregate from a long file containing many
 small independent contracts or stateless facade methods, and document any such
 cohesive exception explicitly.
 
-Every production assignment must contain a stable DLV ID. The closed AVP
-identifier namespace remains historical evidence and is not available for new
-work without a new explicit user decision. Every assignment requires
+Every production assignment must be one Plane work item with its native Plane
+identifier. The closed AVP and DLV namespaces are historical evidence only and
+are not available for new work. Every assignment requires
 its lane, baseline, dependencies, bounded objective, ownership boundary,
 in-scope and out-of-scope work,
 acceptance criteria, required verification tier, concurrency constraints, and
@@ -268,7 +358,7 @@ On every continuation, perform the following loop in order:
 ### 1. Observe
 
 - Inspect all implementation task statuses with compact waits/snapshots.
-- Inspect each active branch tip, recent DLV commits, worktree cleanliness, and current
+- Inspect each active branch tip, recent Plane-linked commits, worktree cleanliness, and current
   assignment.
 - For native C++ ownership and call-graph review, refresh the user-installed
   clangd compile database for the exact worktree and use semantic definition,
@@ -290,7 +380,7 @@ On every continuation, perform the following loop in order:
 
 ### 2. Review completed work
 
-For each new DLV commit, review the actual diff and retained evidence against
+For each commit reported on a Plane work item, review the actual diff and retained evidence against
 the assignment, not only the implementation task's summary.
 
 Check:
@@ -890,7 +980,7 @@ remains.
 
 ## Reporting
 
-Keep routine updates concise. For every accepted milestone report its DLV ID,
+Keep routine updates concise. For every accepted milestone report its Plane identifier,
 commit, review disposition, verification evidence, integration state, and any
 manual debt. For rejected work report the concrete gap and correction sent.
 
