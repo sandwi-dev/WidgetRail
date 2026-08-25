@@ -81,6 +81,10 @@ int main() {
                   *session, widgetrail::pinned::PlacementDirection::Left, Primary()) &&
                   session->current.left < original.left,
               "controller move step changes one constrained logical position");
+        Check(original.left - session->current.left ==
+                  static_cast<int>(
+                      widgetrail::surface_geometry::kPlacementAdjustmentStepDip),
+              "placement session consumes the one centralized 32-DIP step");
         Check(!widgetrail::pinned::CommitPlacementSession(
                   *session, L"stale", L"view-1", Primary()),
               "stale runtime cannot commit placement");
@@ -105,6 +109,27 @@ int main() {
                   resize->current.bottom <= Primary().workArea.bottom,
               "pointer-sized proposal is finite and work-area constrained");
 
+        const widgetrail::pinned::PlacementLimits expandedLimits{
+            widgetrail::surface_geometry::kMinimumPinnedWidthDip,
+            widgetrail::surface_geometry::kMinimumPinnedHeightDip,
+            widgetrail::surface_geometry::kMaximumPinnedWidthDip,
+            widgetrail::surface_geometry::kMaximumPinnedHeightDip,
+        };
+        auto expandedResize = widgetrail::pinned::BeginPlacementSession(
+            widgetrail::pinned::PlacementMode::Resize,
+            {-1600, 100, -600, 700}, L"runtime-1", L"view-1");
+        Check(expandedResize && widgetrail::pinned::StepPlacementSession(
+                  *expandedResize, widgetrail::pinned::PlacementDirection::Right,
+                  Primary(), expandedLimits) &&
+                  expandedResize->current.right - expandedResize->current.left == 1032,
+              "expanded preview applies the shared 32-DIP resize within live limits");
+        const auto expandedCommitted = widgetrail::pinned::CommitPlacementSession(
+            *expandedResize, L"runtime-1", L"view-1", Primary(), expandedLimits);
+        Check(expandedCommitted &&
+                  std::abs(expandedCommitted->widthDip - 1032.0F) < 0.01F &&
+                  std::abs(expandedCommitted->heightDip - 600.0F) < 0.01F,
+              "expanded preview commits its exact constrained geometry");
+
         const auto storeRoot = std::filesystem::temp_directory_path() /
             (L"wrail-dlv068-" + std::to_wstring(GetCurrentProcessId()));
         const auto storePath = storeRoot / L"placement.ini";
@@ -121,6 +146,16 @@ int main() {
                   loaded->opacityPercent == 70 &&
                   loaded->selectedLayoutId == L"compact-now-playing",
               "placement store restores geometry opacity and selected layout together");
+        auto expandedStored = *expandedCommitted;
+        expandedStored.opacityPercent = 90;
+        expandedStored.selectedLayoutId = L"host.full-widget";
+        Check(store.Save(L"dev.example.expanded", expandedStored, error),
+              "durable storage accepts geometry admitted beyond legacy default maxima");
+        const auto expandedReloaded = store.Load(L"dev.example.expanded");
+        Check(expandedReloaded &&
+                  std::abs(expandedReloaded->widthDip - expandedStored.widthDip) < 0.01F &&
+                  std::abs(expandedReloaded->heightDip - expandedStored.heightDip) < 0.01F,
+              "committed expanded geometry reloads without snap-back");
         {
             std::wofstream legacy(storePath, std::ios::trunc);
             legacy << L"wrail-pinned-placement-v2 1\n"

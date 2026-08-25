@@ -10,6 +10,7 @@
 #include <chrono>
 #include <cstddef>
 #include <filesystem>
+#include <fstream>
 #include <iostream>
 #include <optional>
 #include <stdexcept>
@@ -371,6 +372,51 @@ int main() {
             std::filesystem::remove_all(layoutRoot, layoutCleanup);
         }
 
+        {
+            const auto blockedParent = placementRoot / L"blocked-placement-parent";
+            std::filesystem::create_directories(placementRoot);
+            std::ofstream blocker(blockedParent, std::ios::trunc);
+            Check(static_cast<bool>(blocker),
+                  "failed-store fixture creates one deterministic parent-file blocker");
+            blocker.close();
+            widgetrail::pinned::WidgetSurfaceCoordinator failedStore;
+            Check(failedStore.Initialize(
+                      GetModuleHandleW(nullptr), nullptr, WM_APP + 0x412,
+                      d2d.Get(), write.Get(), nullptr, error,
+                      blockedParent / L"placement.ini"),
+                  "failed-store coordinator reuses the production placement owner");
+            failedStore.OnOverlayShown();
+            Check(failedStore.Pin(Admission(), error),
+                  "failed-store fixture enters the ordinary new-pin setup");
+            RECT failedOriginal{};
+            GetWindowRect(failedStore.window(), &failedOriginal);
+            Check(failedStore.StepPlacement(
+                      widgetrail::pinned::PlacementMode::Resize,
+                      widgetrail::pinned::PlacementDirection::Right),
+                  "failed-store fixture produces one legal preview");
+            RECT failedPreview{};
+            GetWindowRect(failedStore.window(), &failedPreview);
+            Check(!EqualRect(&failedOriginal, &failedPreview),
+                  "failed-store preview visibly differs from its captured original");
+            error.clear();
+            Check(!failedStore.CommitPlacement(error) &&
+                      error == L"Pinned placement directory is unavailable." &&
+                      failedStore.placementMode() ==
+                          widgetrail::pinned::PlacementMode::None,
+                  "failed persistence reports its precise error and closes placement");
+            RECT failedRestored{};
+            GetWindowRect(failedStore.window(), &failedRestored);
+            Check(EqualRect(&failedOriginal, &failedRestored) &&
+                      !std::filesystem::exists(blockedParent / L"placement.ini"),
+                  "failed persistence restores exact original bounds without claiming a save");
+            Check(failedStore.Unpin(
+                      widgetrail::pinned::WidgetSurfaceStopReason::Unpin),
+                  "failed-store fixture performs exact teardown");
+            failedStore.Dispose();
+            std::error_code blockerCleanup;
+            std::filesystem::remove(blockedParent, blockerCleanup);
+        }
+
         const auto privateBefore = PrivateWorkingSetBytes();
         if (!coordinator.Pin(Admission(), error)) {
             std::wcerr << L"pin error: " << error << L'\n';
@@ -408,12 +454,33 @@ int main() {
         Check(coordinator.BeginPlacement(widgetrail::pinned::PlacementMode::Resize) &&
                   coordinator.StepPlacement(widgetrail::pinned::PlacementDirection::Left),
               "controller resize changes the real HWND through the placement state machine");
+        RECT previewBounds{};
+        GetWindowRect(surface, &previewBounds);
+        const UINT committedDpi = std::max(1U, GetDpiForWindow(surface));
+        const int placementStepPixels = MulDiv(
+            static_cast<int>(
+                widgetrail::surface_geometry::kPlacementAdjustmentStepDip),
+            static_cast<int>(committedDpi), 96);
+        Check((originalBounds.right - originalBounds.left) -
+                  (previewBounds.right - previewBounds.left) == placementStepPixels,
+              "coordinator resize consumes the centralized 32-DIP session step");
         Check(coordinator.CommitPlacement(error),
               "current generation atomically commits real-HWND geometry");
         RECT committedBounds{};
         GetWindowRect(surface, &committedBounds);
-        Check(std::filesystem::exists(placementRoot / L"placement.ini"),
-              "committed real-HWND geometry creates the isolated durable record");
+        Check(EqualRect(&previewBounds, &committedBounds),
+              "successful commit retains the exact constrained preview bounds");
+        widgetrail::pinned::PinnedPlacementStore committedStore(
+            placementRoot / L"placement.ini");
+        const auto durableCommitted = committedStore.Load(coordinator.widgetId());
+        Check(durableCommitted &&
+                  static_cast<int>(std::lround(
+                      durableCommitted->widthDip * committedDpi / 96.0F)) ==
+                      committedBounds.right - committedBounds.left &&
+                  static_cast<int>(std::lround(
+                      durableCommitted->heightDip * committedDpi / 96.0F)) ==
+                      committedBounds.bottom - committedBounds.top,
+              "successful commit persists exact logical bounds for durable reload");
         const auto originalOpacity = coordinator.opacityPercent();
         Check(coordinator.BeginOpacityAdjustment() &&
                   coordinator.StepOpacity(widgetrail::pinned::PlacementDirection::Left) &&
@@ -432,6 +499,10 @@ int main() {
 
         Check(coordinator.SetInteractionMode(widgetrail::pinned::InteractionMode::ClickThrough),
               "fixture returns to closed click-through mode after placement setup");
+        RECT clickThroughBounds{};
+        GetWindowRect(surface, &clickThroughBounds);
+        Check(EqualRect(&committedBounds, &clickThroughBounds),
+              "click-through transition retains committed placement bounds");
         UpdateWindow(surface);
         const auto initialClickThroughPaint = coordinator.PaintTraceForTesting();
         Check(initialClickThroughPaint.snapshotSequence == 1 &&
@@ -458,9 +529,17 @@ int main() {
         Check(coordinator.UpdateSnapshot(
                   coordinator.widgetId(), coordinator.runtimeGeneration(), Snapshot(2)),
               "current runtime updates the declarative surface");
+        RECT refreshedBounds{};
+        GetWindowRect(surface, &refreshedBounds);
+        Check(EqualRect(&committedBounds, &refreshedBounds),
+              "ordinary snapshot publication retains committed placement bounds");
 
         Check(coordinator.ToggleInteractionMode(),
               "visible overlay can explicitly make the pin interactive");
+        RECT interactiveBounds{};
+        GetWindowRect(surface, &interactiveBounds);
+        Check(EqualRect(&committedBounds, &interactiveBounds),
+              "interactive focus transition retains committed placement bounds");
         coordinator.OnOverlayHidden();
         Check(coordinator.pinned() && IsWindowVisible(surface),
               "main overlay hide preserves the visible pinned HWND");
@@ -504,6 +583,10 @@ int main() {
         Check(coordinator.EnterControllerFocus() && coordinator.controllerFocused() &&
                   GetFocus() == surface,
               "one explicit host transition gives controller focus to the pinned HWND");
+        RECT focusedBounds{};
+        GetWindowRect(surface, &focusedBounds);
+        Check(EqualRect(&committedBounds, &focusedBounds),
+              "controller focus acquisition retains committed placement bounds");
         UpdateWindow(surface);
         Check(FindAutomationId(surface, L"widget:pin.fixture.action") &&
                   FindAutomationId(surface, L"host:pinned.close") &&

@@ -136,6 +136,67 @@ int main() {
     navigator.Prime(-20'000, 0, 700);
     Check(!navigator.Update(-20'000, 0, 710), "priming prevents an opening ghost move");
 
+    const auto ordinaryOptions = widgetrail::input::StickNavigationOptions{};
+    Check(ordinaryOptions.initialRepeatMilliseconds == 360 &&
+              ordinaryOptions.repeatMilliseconds == 125,
+          "ordinary tray and widget navigation retains the 360/125 cadence");
+    Check(widgetrail::input::kPinnedPlacementNavigationOptions.engageThreshold ==
+              ordinaryOptions.engageThreshold &&
+              widgetrail::input::kPinnedPlacementNavigationOptions.releaseThreshold ==
+                  ordinaryOptions.releaseThreshold &&
+              widgetrail::input::kPinnedPlacementNavigationOptions
+                      .initialRepeatMilliseconds == 250 &&
+              widgetrail::input::kPinnedPlacementNavigationOptions.repeatMilliseconds == 80,
+          "pinned placement changes only the shared repeat cadence");
+    std::array placementNavigators{
+        widgetrail::input::StickNavigator{
+            widgetrail::input::kPinnedPlacementNavigationOptions},
+        widgetrail::input::StickNavigator{
+            widgetrail::input::kPinnedPlacementNavigationOptions},
+        widgetrail::input::StickNavigator{
+            widgetrail::input::kPinnedPlacementNavigationOptions},
+    };
+    for (auto& placement : placementNavigators) {
+        placement.Prime(0, 0, 0);
+        const auto pressed = placement.UpdateEvent(20'000, 0, 10);
+        Check(pressed && pressed->direction == NavigationDirection::Right &&
+                  pressed->phase == widgetrail::input::NavigationEventPhase::Pressed,
+              "each placement route emits its new direction immediately");
+        Check(!placement.UpdateEvent(20'000, 0, 259),
+              "each placement route waits the full 250-ms initial delay");
+        const auto initialRepeat = placement.UpdateEvent(20'000, 0, 260);
+        Check(initialRepeat && initialRepeat->phase ==
+                  widgetrail::input::NavigationEventPhase::Repeated,
+              "each placement route repeats at exactly 250 ms");
+        Check(!placement.UpdateEvent(20'000, 0, 339),
+              "each placement route waits the full 80-ms repeat interval");
+        const auto steadyRepeat = placement.UpdateEvent(20'000, 0, 340);
+        Check(steadyRepeat && steadyRepeat->phase ==
+                  widgetrail::input::NavigationEventPhase::Repeated,
+              "each placement route repeats every 80 ms");
+    }
+    auto& placementLifecycle = placementNavigators.front();
+    placementLifecycle.Reset();
+    placementLifecycle.Prime(-20'000, 0, 1'000);
+    Check(!placementLifecycle.UpdateEvent(-20'000, 0, 1'001),
+          "placement entry prime suppresses an inherited held direction");
+    placementLifecycle.Reset();
+    placementLifecycle.Prime(-20'000, 0, 1'100);
+    Check(!placementLifecycle.UpdateEvent(-20'000, 0, 1'349),
+          "placement reentry cannot inherit the prior repeat deadline");
+    const auto reenteredRepeat =
+        placementLifecycle.UpdateEvent(-20'000, 0, 1'350);
+    Check(reenteredRepeat && reenteredRepeat->phase ==
+              widgetrail::input::NavigationEventPhase::Repeated,
+          "placement reentry starts one fresh bounded repeat cadence");
+    placementLifecycle.Reset();
+    placementLifecycle.Prime(0, 0, 1'400);
+    const auto freshAfterExit =
+        placementLifecycle.UpdateEvent(0, 20'000, 1'401);
+    Check(freshAfterExit && freshAfterExit->phase ==
+              widgetrail::input::NavigationEventPhase::Pressed,
+          "placement exit reset permits exactly one later fresh direction");
+
     widgetrail::input::StickNavigator menuNavigation;
     menuNavigation.Prime(0, 0, 1'000);
     const auto menuDown = menuNavigation.UpdateEvent(0, -20'000, 1'010);
