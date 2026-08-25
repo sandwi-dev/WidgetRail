@@ -1,0 +1,162 @@
+using Microsoft.VisualStudio.TestTools.UnitTesting;
+using WidgetRail.WidgetProtocol;
+using WidgetRail.WidgetSdk;
+
+namespace {{Publisher}}.{{WidgetName}}.Tests;
+
+[TestClass]
+public sealed class MediaScenarioTests
+{
+    [TestMethod]
+    public async Task FullWidgetRemainsTheOrdinaryFallback()
+    {
+        var result = await new WidgetScenario("ready", Scenarios.Ready())
+            .Activate()
+            .Action("primary-action", new("primary", "primary"))
+            .ExpectText("result", "status", Scenarios.ExpectedText)
+            .ExpectFocus("focus", "primary")
+            .RunAsync();
+        Assert.IsTrue(result.Passed,
+            string.Join("; ", result.Steps.Where(step => !step.Passed)
+                .Select(step => $"{step.StepId}:{step.Code}:{step.Message}")));
+    }
+
+    [TestMethod]
+    public async Task PinnedLayoutsDeclareStableResponsiveAccessibleProjections()
+    {
+        var widget = new {{WidgetName}}();
+        await Activate(widget);
+        var host = WidgetTestHost.CreatePinnedLayoutHost(widget, "media.template");
+        var compact = host.CurrentSnapshot.PinnedLayouts[0];
+        var detailed = host.CurrentSnapshot.PinnedLayouts[1];
+
+        Assert.AreEqual("media.full.root", host.CurrentSnapshot.Root.Id);
+        Assert.AreEqual("primary", host.CurrentSnapshot.InitialFocusId);
+        Assert.AreEqual(2, host.CurrentSnapshot.PinnedLayouts.Count);
+        Assert.AreEqual({{WidgetName}}.CompactLayoutId, compact.Id);
+        Assert.AreEqual({{WidgetName}}.DetailedLayoutId, detailed.Id);
+        Assert.AreEqual("media.compact.play", compact.InitialFocusId);
+        Assert.AreEqual("media.detailed.play", detailed.InitialFocusId);
+        Assert.AreEqual("media.compact.scope", compact.ActiveInputScopeId);
+        Assert.AreEqual("media.detailed.scope", detailed.ActiveInputScopeId);
+        Assert.AreEqual(300D, compact.Surface.MinimumWidth);
+        Assert.AreEqual(680D, detailed.Surface.PreferredWidth);
+        Assert.AreEqual(0, ViewSnapshotValidator.Validate(host.CurrentSnapshot).Count);
+    }
+
+    [TestMethod]
+    public async Task DetailedSelectionOwnsLoadingReadyAndRevocation()
+    {
+        var source = new ControlledQueueSource();
+        var widget = new {{WidgetName}}(source);
+        await Activate(widget);
+        var host = WidgetTestHost.CreatePinnedLayoutHost(widget, "media.selection");
+
+        Assert.IsTrue(await host.SelectAsync({{WidgetName}}.DetailedLayoutId));
+        var first = await source.NextRequest.Task.WaitAsync(TimeSpan.FromSeconds(2));
+        await host.ReplaceSnapshotAsync();
+        Assert.IsNotNull(Find(Details(host), "media.queue.loading"));
+
+        var ready = NextInvalidation(widget);
+        first.Complete([
+            new("second-track", "Second Track", "Sample Artist"),
+            new("third-track", "Third Track", "Sample Artist"),
+        ]);
+        await ready.WaitAsync(TimeSpan.FromSeconds(2));
+        await host.ReplaceSnapshotAsync();
+        Assert.IsNotNull(Find(Details(host), "media.queue.item.second-track"));
+
+        Assert.IsTrue(await host.SelectAsync({{WidgetName}}.CompactLayoutId));
+        await host.ReplaceSnapshotAsync();
+        Assert.IsNotNull(Find(Details(host), "media.queue.idle"));
+    }
+
+    [TestMethod]
+    public async Task RevokedSelectionRejectsLateResultAndRendersEmptyAndError()
+    {
+        var source = new ControlledQueueSource();
+        var widget = new {{WidgetName}}(source);
+        await Activate(widget);
+        var host = WidgetTestHost.CreatePinnedLayoutHost(widget, "media.stale");
+
+        Assert.IsTrue(await host.SelectAsync({{WidgetName}}.DetailedLayoutId));
+        var stale = await source.NextRequest.Task.WaitAsync(TimeSpan.FromSeconds(2));
+        Assert.IsTrue(await host.SelectAsync({{WidgetName}}.CompactLayoutId));
+        Assert.IsTrue(stale.CancellationToken.IsCancellationRequested);
+        var retired = NextInvalidation(widget);
+        stale.Complete([new("retired", "Retired Result", "Wrong Generation")]);
+        await retired.WaitAsync(TimeSpan.FromSeconds(2));
+        await host.ReplaceSnapshotAsync();
+        Assert.IsNull(Find(Details(host), "media.queue.item.retired"));
+
+        source.PrepareNext();
+        Assert.IsTrue(await host.SelectAsync({{WidgetName}}.DetailedLayoutId));
+        var empty = await source.NextRequest.Task.WaitAsync(TimeSpan.FromSeconds(2));
+        var emptyReady = NextInvalidation(widget);
+        empty.Complete([]);
+        await emptyReady.WaitAsync(TimeSpan.FromSeconds(2));
+        await host.ReplaceSnapshotAsync();
+        Assert.IsNotNull(Find(Details(host), "media.queue.empty"));
+
+        Assert.IsTrue(await host.SelectAsync({{WidgetName}}.CompactLayoutId));
+        source.PrepareNext();
+        Assert.IsTrue(await host.SelectAsync({{WidgetName}}.DetailedLayoutId));
+        var failed = await source.NextRequest.Task.WaitAsync(TimeSpan.FromSeconds(2));
+        var failedReady = NextInvalidation(widget);
+        failed.Fail();
+        await failedReady.WaitAsync(TimeSpan.FromSeconds(2));
+        await host.ReplaceSnapshotAsync();
+        Assert.IsNotNull(Find(Details(host), "media.queue.error"));
+    }
+
+    private static async Task Activate(Widget widget)
+    {
+        await WidgetTestHost.InitializeAsync(widget);
+        await WidgetTestHost.SetLifecycleStateAsync(widget, WidgetLifecycleState.Visible);
+    }
+
+    private static ViewNode Details(WidgetPinnedLayoutTestHost host) =>
+        host.CurrentSnapshot.PinnedLayouts.Single(layout =>
+            layout.Id == {{WidgetName}}.DetailedLayoutId).Root!;
+
+    private static Task NextInvalidation(Widget widget)
+    {
+        var signal = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        EventHandler<WidgetInvalidatedEventArgs>? handler = null;
+        handler = (_, _) => { widget.Invalidated -= handler; signal.TrySetResult(); };
+        widget.Invalidated += handler;
+        return signal.Task;
+    }
+
+    private static ViewNode? Find(ViewNode node, string id)
+    {
+        if (node.Id == id) return node;
+        foreach (var child in node.Children)
+            if (Find(child, id) is { } match) return match;
+        return null;
+    }
+
+    private sealed class ControlledQueueSource : IMediaQueueSource
+    {
+        internal TaskCompletionSource<Request> NextRequest { get; private set; } = NewSignal();
+        public async ValueTask<IReadOnlyList<MediaQueueItem>> LoadAsync(
+            CancellationToken cancellationToken = default)
+        {
+            var request = new Request(cancellationToken);
+            NextRequest.TrySetResult(request);
+            return await request.Result.Task;
+        }
+        internal void PrepareNext() => NextRequest = NewSignal();
+        private static TaskCompletionSource<Request> NewSignal() =>
+            new(TaskCreationOptions.RunContinuationsAsynchronously);
+    }
+
+    private sealed class Request(CancellationToken cancellationToken)
+    {
+        internal CancellationToken CancellationToken { get; } = cancellationToken;
+        internal TaskCompletionSource<IReadOnlyList<MediaQueueItem>> Result { get; } =
+            new(TaskCreationOptions.RunContinuationsAsynchronously);
+        internal void Complete(IReadOnlyList<MediaQueueItem> items) => Result.TrySetResult(items);
+        internal void Fail() => Result.TrySetException(new InvalidOperationException("fixture failure"));
+    }
+}

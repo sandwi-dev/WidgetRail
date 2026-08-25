@@ -95,6 +95,14 @@ version. CLI, SDK, and template compatibility is checked before generation;
 see [Widget SDK compatibility and release unit](widget-sdk-compatibility.md)
 before intentionally changing the public SDK surface.
 
+Choose `--template media` when the starting point needs package-authored pinned
+media projections. That profile compiles an ordinary Full widget fallback plus
+typed **Compact media** and **Media and queue** handles, selection-scoped fake
+queue loading, stable controller focus/scopes, and deterministic lifecycle
+tests. Use `wrail preview ... --pinned-layout media.compact`,
+`media.detailed`, or `@all` to inspect the real validated authored trees without
+opening the overlay.
+
 ### Prove the workflow in an isolated catalog
 
 The optional [Full Application reference](../samples/FullApplicationWidget/README.md)

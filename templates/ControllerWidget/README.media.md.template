@@ -1,0 +1,43 @@
+# {{WidgetName}}
+
+`{{WidgetId}}` is a controller-first WidgetRail media widget generated from the
+`media` starter. One widget instance owns three projections:
+
+- the ordinary **Full widget** root, which remains the host fallback;
+- package-authored **Compact media** controls; and
+- package-authored **Media and queue**, whose fake queue demand exists only while
+  that typed layout handle is selected.
+
+The authored layouts register stable identity, sizing, focus, and input scope
+once through `PinnedLayoutHandle`. Selection receives a fresh cancellation token;
+a revoked or replaced selection cannot publish a late queue result. Replace
+`SampleMediaQueueSource` with one bounded package-owned source without creating a
+second lifecycle, focus, input, or provider owner.
+
+## Build, test, and preview
+
+```powershell
+dotnet build .\{{WidgetName}}.csproj --configuration Release
+dotnet test --project .\tests\{{WidgetName}}.Tests.csproj --configuration Release
+wrail preview . --scenario ready --pinned-layout media.compact --output .\fixtures\compact.snapshot.json
+wrail preview . --scenario ready --pinned-layout media.detailed --output .\fixtures\detailed.snapshot.json
+wrail preview . --scenario ready --pinned-layout @all --output .\fixtures\pinned
+wrail validate .
+```
+
+The focused `MSTest.Sdk` 4.3.2 project proves the ordinary Full fallback,
+stable layout order, bounded responsive surfaces, valid focus/scope identities,
+loading/ready/empty/error states, selection cancellation, and stale-result
+rejection without sleeps or a live media provider. Semantic preview uses the
+same production snapshot validation as runtime admission; it does not claim
+physical pixel geometry.
+
+## Package locally
+
+```powershell
+wrail pack . --configuration Release --output .\{{WidgetName}}-0.1.0.wrwidget
+```
+
+Locally generated packages remain unsigned development artifacts. Do not put
+credentials, raw paths, provider responses, or unbounded media data in snapshots.
+Keep controller actions and accessible labels stable across responsive surfaces.

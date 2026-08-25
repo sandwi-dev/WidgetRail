@@ -1874,6 +1874,25 @@ route actions against the exact selected projection in deterministic tests.
 The handle remains optional: callback-only and `WidgetView.PinnedLayout(...)`
 authoring continue to use the same protocol-v21 ingress.
 
+For a compiled high-level example, generate the `media` profile. It registers
+**Compact media** and **Media and queue** handles once, keeps the ordinary root
+as the host-injected Full widget fallback, and binds deterministic queue demand
+to the detailed handle's selection token. Its focused generated tests drive the
+public pinned-layout test host through loading, ready, empty, error, revocation,
+and late-result rejection:
+
+```powershell
+& $wrail new widget MediaDeck --template media --output .\scratch\MediaDeck
+& $wrail preview .\scratch\MediaDeck --scenario ready --pinned-layout media.compact
+& $wrail preview .\scratch\MediaDeck --scenario ready --pinned-layout media.detailed
+& $wrail preview .\scratch\MediaDeck --scenario ready --pinned-layout @all
+```
+
+The example's media source is a bounded fake seam, not a provider or credential
+contract. Replace it inside the package while retaining one widget lifecycle,
+one typed selection owner, stable actions/focus/scopes, and the host Full
+fallback.
+
 When one layout renders different state roots, use
 `Present(root, initialFocusId)` to choose a focusable target that exists in that
 exact immutable root. Passing `null` preserves ordinary focus fallback for a

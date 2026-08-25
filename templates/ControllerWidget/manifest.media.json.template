@@ -1,0 +1,32 @@
+{
+  "manifestVersion": 1,
+  "id": "{{WidgetId}}",
+  "publisher": "{{Publisher}}",
+  "name": "{{WidgetName}}",
+  "version": "0.1.0",
+  "pinningSupported": true,
+  "hostApi": {
+    "minimum": "1.0",
+    "maximumMajor": 1
+  },
+  "entrypoint": {
+    "runtime": "dotnet-worker",
+    "assembly": "payload/{{WidgetName}}.dll",
+    "type": "{{Publisher}}.{{WidgetName}}.{{WidgetName}}"
+  },
+  "presentation": { "icon": "music" },
+  "permissions": [],
+  "optionalPermissions": [],
+  "residencyPolicy": {
+    "schemaVersion": 1,
+    "mode": "unload-after-idle",
+    "idleSeconds": 300
+  },
+  "resourceRequest": {
+    "updateHz": 4
+  },
+  "architectures": [
+    "x64",
+    "arm64"
+  ]
+}

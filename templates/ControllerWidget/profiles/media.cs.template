@@ -1,48 +1,203 @@
+using WidgetRail.WidgetProtocol;
 using WidgetRail.WidgetSdk;
 
 namespace {{Publisher}}.{{WidgetName}};
 
-public sealed record PlaybackState(int Percent, bool Pending, string? Error);
+public sealed record MediaQueueItem(string Id, string Title, string Artist);
+
+public interface IMediaQueueSource
+{
+    ValueTask<IReadOnlyList<MediaQueueItem>> LoadAsync(CancellationToken cancellationToken = default);
+}
+
+public sealed class SampleMediaQueueSource : IMediaQueueSource
+{
+    public ValueTask<IReadOnlyList<MediaQueueItem>> LoadAsync(CancellationToken cancellationToken = default)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        return ValueTask.FromResult<IReadOnlyList<MediaQueueItem>>
+        ([new("second-track", "Second Track", "Sample Artist"),
+          new("third-track", "Third Track", "Sample Artist")]);
+    }
+}
+
+public enum MediaQueueStatus { NotLoaded, Loading, Ready, Empty, Error }
+
+public sealed record PlaybackState(
+    int Percent, bool Pending, string? Error,
+    MediaQueueStatus QueueStatus, IReadOnlyList<MediaQueueItem> Queue);
 
 public sealed class {{WidgetName}} : Widget
 {
+    public const string CompactLayoutId = "media.compact";
+    public const string DetailedLayoutId = "media.detailed";
+    private const string QueueOperationKey = "media.pinned-queue";
+    private static readonly WidgetSurfaceHints CompactSurface = new()
+    {
+        MinimumWidth = 300, MinimumHeight = 180,
+        PreferredWidth = 380, PreferredHeight = 220,
+    };
+    private static readonly WidgetSurfaceHints DetailedSurface = new()
+    {
+        MinimumWidth = 480, MinimumHeight = 280,
+        PreferredWidth = 680, PreferredHeight = 380,
+    };
+
+    private readonly IMediaQueueSource _queueSource;
     private readonly WidgetModel<PlaybackState> _state;
     private readonly WidgetOptimisticCommand<PlaybackState, int, int, int> _seek;
+    private readonly PinnedLayoutHandle _compactLayout;
+    private readonly PinnedLayoutHandle _detailedLayout;
 
-    public {{WidgetName}}()
+    public {{WidgetName}}() : this(new SampleMediaQueueSource()) { }
+
+    public {{WidgetName}}(IMediaQueueSource queueSource)
     {
-        _state = CreateModel(new PlaybackState(45, false, null));
+        _queueSource = queueSource ?? throw new ArgumentNullException(nameof(queueSource));
+        _state = CreateModel(new PlaybackState(45, false, null, MediaQueueStatus.NotLoaded, []));
         _seek = CreateOptimisticCommand("media.seek", _state,
             new WidgetOptimisticCommandOptions<PlaybackState, int, int, int>
             {
                 Policy = WidgetCommandPolicy.Latest,
                 Apply = (state, delta) => new(
-                    state with { Percent = Math.Clamp(state.Percent + delta, 0, 100), Pending = true, Error = null },
+                    state with
+                    {
+                        Percent = Math.Clamp(state.Percent + delta, 0, 100),
+                        Pending = true,
+                        Error = null,
+                    },
                     Math.Clamp(state.Percent + delta, 0, 100)),
                 Execute = (percent, _) => ValueTask.FromResult(percent),
                 Reconcile = (state, _, percent) => state with { Percent = percent, Pending = false },
                 Rollback = (state, baseline, _) => state with { Percent = baseline.Percent, Pending = false },
                 MapError = _ => new("seek_failed", "Playback position could not be changed."),
                 Fail = (state, baseline, _, error) => state with
-                { Percent = baseline.Percent, Pending = false, Error = error.Message },
+                {
+                    Percent = baseline.Percent, Pending = false, Error = error.Message,
+                },
             });
+        _compactLayout = CreatePinnedLayoutHandle(
+            CompactLayoutId, "Compact media", CompactSurface,
+            "media.compact.play", "media.compact.scope");
+        _detailedLayout = CreatePinnedLayoutHandle(
+            DetailedLayoutId, "Media and queue", DetailedSurface,
+            "media.detailed.play", "media.detailed.scope");
     }
 
     public override WidgetView Render()
     {
         var state = _state.Value;
-        return new(UI.Stack("root",
-            UI.Text($"Playing · {state.Percent}%", "status"),
-            UI.Slider(state.Percent, 0, 100, 5, "seek", "progress", "Progress"),
-            UI.Button("Skip 10%", "primary", "primary").Busy(state.Pending)),
-            InitialFocusId: "primary");
+        return new WidgetView(RenderFull(state), "primary", ActiveInputScopeId: "media.full.scope")
+        {
+            PinnedLayouts =
+            [
+                _compactLayout.Present(RenderCompact(state)),
+                _detailedLayout.Present(RenderDetailed(state)),
+            ],
+        };
     }
 
-    public override async ValueTask OnActionAsync(WidgetActionEvent action,
-        CancellationToken cancellationToken = default)
+    public override ValueTask OnPinnedLayoutSelectionChangedAsync(
+        string? layoutId, CancellationToken cancellationToken = default)
     {
-        if (action.ActionId == "primary")
+        cancellationToken.ThrowIfCancellationRequested();
+        if (_detailedLayout.IsSelected)
+            StartDetailedQueueLoad(_detailedLayout.SelectionCancellationToken);
+        else
+        {
+            Operations.Cancel(QueueOperationKey);
+            _state.Update(state => state with
+            {
+                QueueStatus = MediaQueueStatus.NotLoaded,
+                Queue = [],
+            });
+        }
+        return ValueTask.CompletedTask;
+    }
+
+    public override async ValueTask OnActionAsync(
+        WidgetActionEvent action, CancellationToken cancellationToken = default)
+    {
+        if (action.ActionId is "primary" or "media.compact.skip" or "media.detailed.skip")
             await _seek.Run(10).Completion.WaitAsync(cancellationToken);
+    }
+
+    private void StartDetailedQueueLoad(CancellationToken selectionToken)
+    {
+        _state.Update(state => state with { QueueStatus = MediaQueueStatus.Loading, Queue = [] });
+        Operations.RunLatest(QueueOperationKey, async context =>
+        {
+            using var lifetime = CancellationTokenSource.CreateLinkedTokenSource(
+                context.CancellationToken, selectionToken);
+            try
+            {
+                var items = await _queueSource.LoadAsync(lifetime.Token);
+                if (!context.IsCurrent || !_detailedLayout.IsSelected ||
+                    selectionToken.IsCancellationRequested) return;
+                var bounded = items.Take(4).ToArray();
+                _state.Update(state => state with
+                {
+                    QueueStatus = bounded.Length == 0 ? MediaQueueStatus.Empty : MediaQueueStatus.Ready,
+                    Queue = bounded,
+                });
+            }
+            catch (OperationCanceledException) when (lifetime.IsCancellationRequested) { }
+            catch
+            {
+                if (!context.IsCurrent || !_detailedLayout.IsSelected ||
+                    selectionToken.IsCancellationRequested) return;
+                _state.Update(state => state with { QueueStatus = MediaQueueStatus.Error, Queue = [] });
+            }
+        }, WidgetOperationLifetime.Widget);
+    }
+
+    private static WidgetElement RenderFull(PlaybackState state) =>
+        UI.Stack("media.full.root",
+                UI.Text("Sample media controller", "title"),
+                UI.Text($"Playing · {state.Percent}%", "status"),
+                UI.Slider(state.Percent, 0, 100, 5, "media.seek", "progress", "Progress"),
+                UI.Button("Skip 10%", "primary", "primary").Busy(state.Pending))
+            .InputScope("media.full.scope");
+
+    private static WidgetElement RenderCompact(PlaybackState state) =>
+        UI.Stack("media.compact.root",
+                UI.Text("Sample Track", "media.compact.title", "Now playing: Sample Track"),
+                UI.Text($"{state.Percent}%", "media.compact.progress-label", "Playback progress"),
+                UI.Progress(state.Percent, 100, "media.compact.progress", "Playback progress"),
+                UI.Row("media.compact.controls",
+                    UI.Button("Play", "media.play", "media.compact.play"),
+                    UI.Button("Skip", "media.compact.skip", "media.compact.skip")))
+            .InputScope("media.compact.scope")
+            .AddClasses("media-pinned", "media-pinned--compact");
+
+    private static WidgetElement RenderDetailed(PlaybackState state) =>
+        UI.Row("media.detailed.root",
+                UI.Stack("media.detailed.player",
+                    UI.Text("Sample Track", "media.detailed.title", "Now playing: Sample Track"),
+                    UI.Text("Sample Artist", "media.detailed.artist"),
+                    UI.Progress(state.Percent, 100, "media.detailed.progress", "Playback progress"),
+                    UI.Row("media.detailed.controls",
+                        UI.Button("Play", "media.play", "media.detailed.play"),
+                        UI.Button("Skip", "media.detailed.skip", "media.detailed.skip"))),
+                RenderQueue(state))
+            .InputScope("media.detailed.scope")
+            .AddClasses("media-pinned", "media-pinned--detailed");
+
+    private static WidgetElement RenderQueue(PlaybackState state)
+    {
+        WidgetElement content = state.QueueStatus switch
+        {
+            MediaQueueStatus.Loading => UI.Text("Loading queue…", "media.queue.loading", "Queue is loading"),
+            MediaQueueStatus.Empty => UI.Text("Queue is empty", "media.queue.empty"),
+            MediaQueueStatus.Error => UI.Text("Queue unavailable", "media.queue.error"),
+            MediaQueueStatus.Ready => UI.VerticalScroll("media.queue.items",
+                state.Queue.Select(item => (WidgetElement)UI.Button(
+                    $"{item.Title} — {item.Artist}", $"media.queue.play.{item.Id}",
+                    $"media.queue.item.{item.Id}")).ToArray()),
+            _ => UI.Text("Select this layout to load the queue", "media.queue.idle"),
+        };
+        return UI.Stack("media.queue.panel", UI.Text("Up next", "media.queue.heading"), content)
+            .AddClasses("media-queue");
     }
 }
 

@@ -80,6 +80,7 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Widget config is package scoped and rejects secrets", WidgetConfigWorkflow),
     ("New scaffolds a token-free controller widget", NewScaffolds),
     ("New ships four deterministic template profiles", AdvancedTemplateProfiles),
+    ("Media template authors typed pinned layouts end to end", MediaTemplatePinnedLayouts),
     ("New validates a bounded versioned template transaction", ScaffoldTransactionScenarios.Run),
     ("CLI template and WidgetSdk form one release unit", WidgetSdkReleaseUnitScenarios.Run),
     ("Built wrail artifacts support an isolated external SDK consumer", ExternalVersionedSdkConsumer),
@@ -439,6 +440,58 @@ static async Task AdvancedTemplateProfiles()
     Assert.Contains("Choose basic, data, media, or multipage", invalid.Error);
     Assert.True(!Directory.Exists(invalidTarget),
         "An invalid template selection published a partial target.");
+}
+
+static async Task MediaTemplatePinnedLayouts()
+{
+    using var temp = new TemporaryDirectory();
+    var destination = Path.Combine(temp.Path, "PinnedMediaStarter");
+    var created = await RunCli(
+        "new", "widget", "PinnedMediaStarter", "--template", "media",
+        "--output", destination, "--id", "dev.templates.pinned-media",
+        "--publisher", "dev.templates");
+    Assert.Equal(0, created.Code);
+    Assert.Contains("Template: media", created.Output);
+
+    var project = Path.Combine(destination, "PinnedMediaStarter.csproj");
+    var build = await RunProcessAsync(
+        "dotnet", ["build", project, "-c", "Release", "--nologo"],
+        TimeSpan.FromSeconds(120), destination);
+    Assert.True(build.Code == 0, "build: " + build.Output);
+
+    var tests = await RunProcessAsync(
+        "dotnet", ["test", "--project",
+            Path.Combine(destination, "tests", "PinnedMediaStarter.Tests.csproj"),
+            "--configuration", "Release", "--no-ansi", "--no-progress",
+            "--output", "Detailed", "--minimum-expected-tests", "4"],
+        TimeSpan.FromSeconds(120), Environment.CurrentDirectory);
+    Assert.True(tests.Code == 0, "tests: " + tests.Output);
+    Assert.Contains("Passed!", tests.Output);
+
+    var compact = await RunCli(
+        "preview", destination, "--scenario", "ready",
+        "--pinned-layout", "media.compact");
+    Assert.Equal(0, compact.Code);
+    Assert.Contains("Layout media.compact | Compact media", compact.Output);
+    Assert.Contains("Initial focus: media.compact.play", compact.Output);
+    Assert.Contains("Active input scope: media.compact.scope", compact.Output);
+
+    var detailed = await RunCli(
+        "preview", destination, "--scenario", "ready",
+        "--pinned-layout", "media.detailed");
+    Assert.Equal(0, detailed.Code);
+    Assert.Contains("Layout media.detailed | Media and queue", detailed.Output);
+    Assert.Contains("Up next", detailed.Output);
+    Assert.Contains("Initial focus: media.detailed.play", detailed.Output);
+
+    var all = await RunCli(
+        "preview", destination, "--scenario", "ready", "--pinned-layout", "@all");
+    Assert.Equal(0, all.Code);
+    Assert.True(
+        all.Output.IndexOf("Layout media.compact |", StringComparison.Ordinal) <
+        all.Output.IndexOf("Layout media.detailed |", StringComparison.Ordinal),
+        "Pinned layout declaration order changed.");
+    Assert.Equal(0, (await RunCli("validate", destination)).Code);
 }
 
 static async Task NewScaffoldsOutsideCheckout()

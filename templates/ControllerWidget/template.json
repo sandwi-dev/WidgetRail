@@ -37,18 +37,18 @@
     },
     {
       "id": "media",
-      "name": "Optimistic media widget",
-      "description": "Optimistic progress commands with lifecycle cancellation and rollback.",
+      "name": "Pinned media controller",
+      "description": "Full fallback plus compact and detailed typed pinned layouts with selection-scoped queue demand.",
       "files": [
         { "source": "WidgetName.csproj.template", "destination": "{{WidgetName}}.csproj", "kind": "text" },
-        { "source": "manifest.json.template", "destination": "manifest.json", "kind": "text" },
+        { "source": "manifest.media.json.template", "destination": "manifest.json", "kind": "text" },
         { "source": "NuGet.Config.template", "destination": "NuGet.Config", "kind": "text" },
-        { "source": "README.md.template", "destination": "README.md", "kind": "text" },
+        { "source": "README.media.md.template", "destination": "README.md", "kind": "text" },
         { "source": "profiles/media.cs.template", "destination": "src/{{WidgetName}}.cs", "kind": "text" },
         { "source": "tests/WidgetName.Tests.csproj.template", "destination": "tests/{{WidgetName}}.Tests.csproj", "kind": "text" },
-        { "source": "tests/ScenarioTests.cs.template", "destination": "tests/ScenarioTests.cs", "kind": "text" },
+        { "source": "tests/MediaScenarioTests.cs.template", "destination": "tests/ScenarioTests.cs", "kind": "text" },
         { "source": "widgetrail.scenarios.json.template", "destination": "widgetrail.scenarios.json", "kind": "text" },
-        { "source": "styles/default.wrss", "destination": "styles/default.wrss", "kind": "binary" },
+        { "source": "styles/media.wrss", "destination": "styles/default.wrss", "kind": "binary" },
         { "source": "replays/smoke.json", "destination": "replays/smoke.json", "kind": "binary" }
       ]
     },
