@@ -1978,23 +1978,21 @@ static async Task PlaybackDiagnosticsCorrelate()
         SnapshotSequence: snapshot.Sequence));
     Assert.True(handled, "The correlated playback action was not admitted.");
     await WaitUntil(() =>
-        diagnostics.Contains("action-queue-admission", "spotify.play-toggle", 303001) &&
+        diagnostics.Contains("action-queue-stage", "admission", 303001) &&
         diagnostics.Contains("action-queue-result", "enqueued", 303001) &&
-        diagnostics.Contains("action-queue-terminal", "spotify.play-toggle", 303001) &&
+        diagnostics.Contains("action-queue-stage", "terminal", 303001) &&
         diagnostics.Contains("action-queue-result", "succeeded", 303001));
 
     var correlated = diagnostics.ForOperation(303001);
     Assert.True(correlated.Any(item =>
-        item.Boundary == "action-queue-admission" &&
-        item.Code == "spotify.play-toggle"),
-        "The SDK admission did not preserve the exact action identity.");
+        item.Boundary == "action-queue-stage" && item.Code == "admission"),
+        "The SDK admission did not preserve the fixed stage token.");
     Assert.True(correlated.Any(item =>
         item.Boundary == "action-queue-result" && item.Code == "enqueued"),
         "The SDK admission result was not recorded.");
     Assert.Ordered(correlated,
-        ("action-queue-dequeue", "spotify.play-toggle"),
+        ("action-queue-stage", "dequeue"),
         ("action-queue-result", "started"),
-        ("action-id", "spotify.play-toggle"),
         ("action-classification", "playback"),
         ("playback-decision", "admitted"),
         ("action-status", "optimistic"),
@@ -2003,7 +2001,7 @@ static async Task PlaybackDiagnosticsCorrelate()
         ("playback-provider", "succeeded"),
         ("action-status", "provider-succeeded"),
         ("action-invalidation", "provider-succeeded"),
-        ("action-queue-terminal", "spotify.play-toggle"),
+        ("action-queue-stage", "terminal"),
         ("action-queue-result", "succeeded"));
 
     var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -2021,6 +2019,30 @@ static async Task PlaybackDiagnosticsCorrelate()
         "The pending decision did not correlate its resulting invalidation.");
     release.TrySetResult();
     await first;
+
+    const string providerMessage = "provider title secret\nforged-log-line";
+    harness.ControlError = new SpotifyApplicationException("forbidden", providerMessage);
+    await widget.OnActionAsync(new WidgetActionEvent(
+        "spotify.shuffle", "spotify.shuffle", Sequence: 303004));
+    Assert.True(diagnostics.Contains("playback-provider", "failed-forbidden", 303004),
+        "The provider failure was not reduced to its fixed classification.");
+
+    const string dynamicActionId = "provider.media.secret.with.dots";
+    await widget.OnActionAsync(new WidgetActionEvent(
+        dynamicActionId, dynamicActionId, Sequence: 303005));
+    Assert.True(diagnostics.Contains("action-classification", "unknown", 303005),
+        "The dynamic action was not reduced to its local fixed classification.");
+
+    diagnostics.Record("action-queue-stage", dynamicActionId, 303006);
+    diagnostics.Record("provider\nmessage", "failed", 303007);
+    var encoded = diagnostics.EncodedLines;
+    Assert.True(encoded.Count > 0, "The shared diagnostic encoding emitted no records.");
+    Assert.True(encoded.All(line =>
+            !line.Contains("spotify.play-toggle", StringComparison.Ordinal) &&
+            !line.Contains(dynamicActionId, StringComparison.Ordinal) &&
+            !line.Contains(providerMessage, StringComparison.Ordinal) &&
+            !line.Contains("forged-log-line", StringComparison.Ordinal)),
+        "A raw action identity or provider-controlled message reached encoded diagnostics.");
     await StopAsync(widget);
 }
 
@@ -2666,6 +2688,7 @@ file sealed class RecordingSpotifyDiagnostics : ISpotifyRuntimeDiagnostics
 {
     private readonly object _gate = new();
     private readonly List<SpotifyDiagnosticObservation> _observations = [];
+    private readonly List<string> _encodedLines = [];
 
     public void Record(
         string boundary,
@@ -2674,9 +2697,17 @@ file sealed class RecordingSpotifyDiagnostics : ISpotifyRuntimeDiagnostics
         long generation = 0,
         long elapsedMilliseconds = 0)
     {
+        if (!SpotifyRuntimeDiagnostics.TryEncode(
+                new DateTimeOffset(2026, 8, 24, 0, 0, 0, TimeSpan.Zero),
+                boundary, code, operation, generation, elapsedMilliseconds,
+                out var line))
+            return;
         lock (_gate)
+        {
             _observations.Add(new(
                 boundary, code, operation, generation, elapsedMilliseconds));
+            _encodedLines.Add(line);
+        }
     }
 
     public bool Contains(string boundary, string code, long operation)
@@ -2690,6 +2721,14 @@ file sealed class RecordingSpotifyDiagnostics : ISpotifyRuntimeDiagnostics
         lock (_gate) return _observations
             .Where(item => item.Operation == operation)
             .ToArray();
+    }
+
+    public IReadOnlyList<string> EncodedLines
+    {
+        get
+        {
+            lock (_gate) return _encodedLines.ToArray();
+        }
     }
 }
 
