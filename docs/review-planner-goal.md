@@ -83,7 +83,10 @@ routine:
    `<pre><code>` blocks, and `<br>` soft line breaks. Prefer short labeled
    paragraphs such as `<p><strong>Commit:</strong> <code>...</code>.</p>` for
    ordinary milestones; use headings, lists, quotes, and code blocks when they
-   materially improve readability. Do not use presentation-only `<div>` markup.
+   materially improve readability. Send a wrapper-free, contiguous fragment:
+   do not use presentation-only `<div>` markup or whitespace-only/newline
+   indentation between block tags, because Plane imports those nodes as empty
+   paragraphs or list items.
 4. Use `workitem update` only for real assignment, label, state, `sort_order`,
    description changes. The reviewer owns review disposition and integration
    state; implementation agents report through comments and do not advance

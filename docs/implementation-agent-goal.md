@@ -56,7 +56,10 @@ text. The Plane API-to-editor path preserves headings, paragraphs, `<strong>`,
 `<pre><code>` blocks, and `<br>` soft line breaks. Prefer short labeled
 paragraphs such as `<p><strong>Commit:</strong> <code>...</code>.</p>` for
 ordinary reports; use headings, lists, quotes, and code blocks when they
-materially improve readability. Do not use presentation-only `<div>` markup.
+materially improve readability. Send a wrapper-free, contiguous fragment: do
+not use presentation-only `<div>` markup or whitespace-only/newline indentation
+between block tags, because Plane imports those nodes as empty paragraphs or
+list items.
 
 ## Source of implementation authority
 
