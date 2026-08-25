@@ -514,34 +514,11 @@ input, or other launched artifact input changed.
    unrelated or user-owned process.
 6. Leave the overlay running so the user can test it. Report the integrated
    commit and whether launch succeeded.
-7. After every newly launched accepted Release, run one bounded interactive
-   first-page smoke pass with the Windows computer-control tool. Activate the
-   exact planner-launched OverlayHost window and cycle through every currently
-   installed tray widget using keyboard, mouse, or controller input. For each
-   widget, wait for its admitted first page and inspect the live window for the
-   expected title/content, fully visible text and buttons, reachable first-page
-   controls, and absence of clipping, overlap, black borders, malformed layout,
-   or visible failure copy. This is a live product inspection requested by the
-   user, not synthetic capture-harness engineering; do not debug the capture
-   tool when its frame is not credible.
-   If the supported tool omits the visible OverlayHost from window discovery,
-   do not treat that omission as an interaction blocker. Resolve the exact
-   planner-owned OverlayHost HWND, use its existing UI-Automation tree to read
-   current tray/control bounds, and send ordinary coordinate mouse or keyboard
-   input to the visible surface. Re-read bounds before every pointer action
-   because widget transitions may move the shell. This is a bounded planner
-   smoke fallback only; do not change the product's taskbar/Alt-Tab identity or
-   build a parallel screenshot harness merely to satisfy automation discovery.
-8. Immediately after the interactive pass, inspect `overlay.log` and directly
-   relevant worker/provider logs for the exact launched PID/session and smoke
-   interval. Correlate visible failures with typed protocol, worker, capability,
-   layout, transition, or provider errors. Add every credible regression to
-   `docs/delivery-plan.md` with the proper widget/SDK/native-host owner and
-   visible-first priority. Do not implement the fix yourself. If interaction
-   automation cannot reach a widget or a credible live frame cannot be
-   obtained, record that widget as not inspected rather than claiming it passed.
-   A desktop tool taking foreground may hide the overlay normally; correlate
-   the admitted widget and hide transition in the log before calling it a crash.
+7. Perform only bounded non-interactive launch-health checks: confirm the exact
+   planner-owned process is still running and responsive, inspect the startup-
+   error file, and inspect relevant startup logs for typed fatal errors from the
+   exact PID/session. Do not automate first-page widget interaction as a routine
+   launch gate. The user owns live product interaction and visual defect reports.
 
 Outside the explicit physical-first exception, do not launch rejected, partial,
 dirty, or unintegrated implementation work. Never launch a physical-first
