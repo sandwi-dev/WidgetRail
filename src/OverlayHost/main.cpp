@@ -5603,10 +5603,7 @@ private:
             AppendActionCorrelation(
                 L"stage=host-reply sequence=" +
                 std::to_wstring(correlationSequence) +
-                L" result=" + (replyCode.empty() ? L"unknown" : replyCode) +
-                (!delivered
-                    ? L" error=" + bridge_.lastError()
-                    : std::wstring{}),
+                L" result=" + (replyCode.empty() ? L"unknown" : replyCode),
                 delivered && *delivered
                     ? DiagnosticSeverity::Debug
                     : DiagnosticSeverity::Warning);
@@ -5655,10 +5652,7 @@ private:
             AppendActionCorrelation(
                 L"stage=host-reply sequence=" +
                 std::to_wstring(correlationSequence) +
-                L" result=" + (replyCode.empty() ? L"unknown" : replyCode) +
-                (!handled
-                    ? L" error=" + bridge_.lastError()
-                    : std::wstring{}),
+                L" result=" + (replyCode.empty() ? L"unknown" : replyCode),
                 !handled
                     ? DiagnosticSeverity::Warning
                     : *handled
@@ -8440,10 +8434,7 @@ private:
             AppendActionCorrelation(
                 L"stage=host-reply sequence=" +
                 std::to_wstring(correlationSequence) +
-                L" result=" + (replyCode.empty() ? L"unknown" : replyCode) +
-                (!handled
-                    ? L" error=" + bridge_.lastError()
-                    : std::wstring{}),
+                L" result=" + (replyCode.empty() ? L"unknown" : replyCode),
                 !handled
                     ? DiagnosticSeverity::Warning
                     : *handled

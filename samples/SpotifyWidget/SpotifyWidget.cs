@@ -328,7 +328,6 @@ public sealed class SpotifyWidget : Widget
         ArgumentNullException.ThrowIfNull(action);
         cancellationToken.ThrowIfCancellationRequested();
         var intent = SpotifyRouteActionPolicy.Classify(action);
-        RecordActionDiagnostic(action, "action-id", action.ActionId);
         RecordActionDiagnostic(action, "action-classification", ActionKindCode(intent.Kind));
         if (TryHandlePageAction(action, intent)) return;
 
@@ -455,7 +454,7 @@ public sealed class SpotifyWidget : Widget
         string stage,
         string code)
     {
-        RecordActionDiagnostic(action, $"action-queue-{stage}", action.ActionId);
+        RecordActionDiagnostic(action, "action-queue-stage", stage);
         RecordActionDiagnostic(action, "action-queue-result", code);
     }
 

@@ -1,3 +1,4 @@
+using System.Globalization;
 using WidgetRail.WidgetProtocol;
 
 namespace WidgetRail.Samples.SpotifyWidget;
@@ -28,6 +29,37 @@ internal static class SpotifyRuntimeDiagnostics
         IOException => "io-failure",
         _ => "unexpected-failure",
     };
+
+    internal static bool TryEncode(
+        DateTimeOffset timestamp,
+        string boundary,
+        string code,
+        long operation,
+        long generation,
+        long elapsedMilliseconds,
+        out string line)
+    {
+        if (!IsToken(boundary) || !IsToken(code) || operation < 0 ||
+            generation < 0 || elapsedMilliseconds < 0)
+        {
+            line = string.Empty;
+            return false;
+        }
+
+        line = string.Concat(
+            timestamp.ToString("O", CultureInfo.InvariantCulture),
+            " level=debug category=spotify-runtime boundary=", boundary,
+            " code=", code,
+            " operation=", operation.ToString(CultureInfo.InvariantCulture),
+            " generation=", generation.ToString(CultureInfo.InvariantCulture),
+            " elapsed-ms=", elapsedMilliseconds.ToString(CultureInfo.InvariantCulture));
+        return true;
+    }
+
+    private static bool IsToken(string value) =>
+        value.Length is > 0 and <= 64 &&
+        value.All(character => char.IsAsciiLetterOrDigit(character) ||
+            character is '-' or '_');
 
     private sealed class NullSpotifyRuntimeDiagnostics : ISpotifyRuntimeDiagnostics
     {

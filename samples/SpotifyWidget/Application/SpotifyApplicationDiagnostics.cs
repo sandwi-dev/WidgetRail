@@ -1,4 +1,3 @@
-using System.Globalization;
 using System.Text;
 using WidgetRail.Samples.SpotifyWidget;
 
@@ -30,8 +29,9 @@ internal sealed class SpotifyApplicationDiagnostics : ISpotifyRuntimeDiagnostics
         long generation = 0,
         long elapsedMilliseconds = 0)
     {
-        if (!IsToken(boundary) || !IsToken(code) || operation < 0 ||
-            generation < 0 || elapsedMilliseconds < 0)
+        if (!SpotifyRuntimeDiagnostics.TryEncode(
+                DateTimeOffset.UtcNow, boundary, code, operation, generation,
+                elapsedMilliseconds, out var line))
             return;
         try
         {
@@ -42,15 +42,8 @@ internal sealed class SpotifyApplicationDiagnostics : ISpotifyRuntimeDiagnostics
                 Directory.CreateDirectory(directory);
                 if (File.Exists(_path) && new FileInfo(_path).Length >= MaximumBytes)
                     File.WriteAllText(_path, string.Empty, new UTF8Encoding(false));
-                var line = string.Concat(
-                    DateTimeOffset.UtcNow.ToString("O", CultureInfo.InvariantCulture),
-                    " level=debug category=spotify-runtime boundary=", boundary,
-                    " code=", code,
-                    " operation=", operation.ToString(CultureInfo.InvariantCulture),
-                    " generation=", generation.ToString(CultureInfo.InvariantCulture),
-                    " elapsed-ms=", elapsedMilliseconds.ToString(CultureInfo.InvariantCulture),
-                    Environment.NewLine);
-                File.AppendAllText(_path, line, new UTF8Encoding(false));
+                File.AppendAllText(
+                    _path, line + Environment.NewLine, new UTF8Encoding(false));
             }
         }
         catch (Exception exception) when (exception is IOException or
@@ -59,9 +52,4 @@ internal sealed class SpotifyApplicationDiagnostics : ISpotifyRuntimeDiagnostics
             // Diagnostics are best-effort and must never become a worker failure.
         }
     }
-
-    private static bool IsToken(string value) =>
-        value.Length is > 0 and <= 64 &&
-        value.All(character => char.IsAsciiLetterOrDigit(character) ||
-            character is '-' or '_');
 }
