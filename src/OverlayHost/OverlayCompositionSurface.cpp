@@ -125,6 +125,8 @@ void OverlayCompositionSurface::Reset() noexcept {
         (void)device_->Commit();
     }
     content_ = {};
+    externalContentVisual_.Reset();
+    externalContentAttached_ = false;
     guide_ = {};
     tray_ = {};
     effect_.Reset();
@@ -137,6 +139,73 @@ void OverlayCompositionSurface::Reset() noexcept {
     d2dDevice_.Reset();
     d3dDevice_.Reset();
     paintCounters_ = {};
+}
+
+HRESULT OverlayCompositionSurface::CreateExternalContentTarget(
+    IUnknown** target) noexcept {
+    if (!target) return E_POINTER;
+    *target = nullptr;
+    if (!device_ || !rootVisual_ || !content_.visual || externalContentVisual_)
+        return E_UNEXPECTED;
+    HRESULT result = device_->CreateVisual(
+        externalContentVisual_.ReleaseAndGetAddressOf());
+    if (FAILED(result)) {
+        externalContentVisual_.Reset();
+        return result;
+    }
+    return externalContentVisual_.CopyTo(target);
+}
+
+HRESULT OverlayCompositionSurface::CommitExternalContentPresentation(
+    const RECT& bounds, const bool visible, CommitTiming& timing) noexcept {
+    timing = {};
+    if (!device_ || !externalContentVisual_ || !content_.visual ||
+        bounds.right <= bounds.left || bounds.bottom <= bounds.top)
+        return E_INVALIDARG;
+    const auto started = std::chrono::steady_clock::now();
+    const D2D_RECT_F clip{
+        0.0F, 0.0F,
+        static_cast<float>(bounds.right - bounds.left),
+        static_cast<float>(bounds.bottom - bounds.top),
+    };
+    HRESULT result = externalContentVisual_->SetOffsetX(
+        static_cast<float>(bounds.left));
+    if (SUCCEEDED(result)) result = externalContentVisual_->SetOffsetY(
+        static_cast<float>(bounds.top));
+    if (SUCCEEDED(result)) result = externalContentVisual_->SetClip(clip);
+    if (SUCCEEDED(result) && visible && !externalContentAttached_) {
+        result = rootVisual_->AddVisual(
+            externalContentVisual_.Get(), TRUE, content_.visual.Get());
+        if (SUCCEEDED(result)) externalContentAttached_ = true;
+    } else if (SUCCEEDED(result) && !visible && externalContentAttached_) {
+        result = rootVisual_->RemoveVisual(externalContentVisual_.Get());
+        if (SUCCEEDED(result)) externalContentAttached_ = false;
+    }
+    if (SUCCEEDED(result)) result = device_->Commit();
+    timing.commitMicroseconds = static_cast<std::uint64_t>(
+        std::chrono::duration_cast<std::chrono::microseconds>(
+            std::chrono::steady_clock::now() - started).count());
+    return result;
+}
+
+HRESULT OverlayCompositionSurface::DetachExternalContentTarget(
+    CommitTiming& timing) noexcept {
+    timing = {};
+    if (!device_ || !rootVisual_ || !content_.visual) return E_UNEXPECTED;
+    if (!externalContentVisual_) return S_FALSE;
+    const auto started = std::chrono::steady_clock::now();
+    HRESULT result = S_OK;
+    if (externalContentAttached_)
+        result = rootVisual_->RemoveVisual(externalContentVisual_.Get());
+    if (SUCCEEDED(result)) result = device_->Commit();
+    timing.commitMicroseconds = static_cast<std::uint64_t>(
+        std::chrono::duration_cast<std::chrono::microseconds>(
+            std::chrono::steady_clock::now() - started).count());
+    if (SUCCEEDED(result)) {
+        externalContentVisual_.Reset();
+        externalContentAttached_ = false;
+    }
+    return result;
 }
 
 OverlayCompositionSurface::LayerState& OverlayCompositionSurface::StateFor(

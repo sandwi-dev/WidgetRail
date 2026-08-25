@@ -32,19 +32,31 @@ param(
     [switch]$TrayRefreshHostTestsOnly,
     [switch]$PlatformInteropTestsOnly,
     [switch]$WidgetActionFailureHostTestsOnly,
-    [switch]$AudioMixerScrollHostTestsOnly
+    [switch]$AudioMixerScrollHostTestsOnly,
+    [switch]$RichMediaTestsOnly,
+    [switch]$RichMediaPerformanceTestsOnly
 )
 
 $ErrorActionPreference = 'Stop'
 $projectDirectory = Split-Path -Parent $MyInvocation.MyCommand.Path
 $gameInputVersion = '3.5.262'
+$webView2Version = '1.0.4078.44'
 $nugetRoot = if ($env:NUGET_PACKAGES) { $env:NUGET_PACKAGES } else { Join-Path $env:USERPROFILE '.nuget\packages' }
 $gameInputPackage = Join-Path $nugetRoot "microsoft.gameinput\$gameInputVersion"
 $gameInputHeader = Join-Path $gameInputPackage 'native\include\GameInput.h'
-if (-not (Test-Path -LiteralPath $gameInputHeader)) {
+$webView2Package = Join-Path $nugetRoot "microsoft.web.webview2\$webView2Version"
+$webView2Header = Join-Path $webView2Package 'build\native\include\WebView2.h'
+$webView2Loader = Join-Path $webView2Package "build\native\$Architecture\WebView2LoaderStatic.lib"
+if (-not (Test-Path -LiteralPath $gameInputHeader) -or
+    -not (Test-Path -LiteralPath $webView2Header) -or
+    -not (Test-Path -LiteralPath $webView2Loader)) {
     & dotnet restore (Join-Path $projectDirectory 'NativeDependencies.csproj') --nologo
     if ($LASTEXITCODE -ne 0 -or -not (Test-Path -LiteralPath $gameInputHeader)) {
         throw "Microsoft.GameInput $gameInputVersion could not be restored."
+    }
+    if (-not (Test-Path -LiteralPath $webView2Header) -or
+        -not (Test-Path -LiteralPath $webView2Loader)) {
+        throw "Microsoft.Web.WebView2 $webView2Version could not be restored."
     }
 }
 $vsWhere = Join-Path ${env:ProgramFiles} 'Microsoft Visual Studio\Installer\vswhere.exe'
@@ -242,13 +254,15 @@ $processOwnerTestObjectDirectory = Join-Path $outputDirectory 'obj\process-owner
 $componentGeometryTestObjectDirectory = Join-Path $outputDirectory 'obj\component-geometry-tests'
 $trayRefreshHostTestObjectDirectory = Join-Path $outputDirectory 'obj\tray-refresh-host-tests'
 $trayRefreshCommunityFixtureOutput = Join-Path $outputDirectory 'obj\tray-refresh-community-fixture'
-New-Item -ItemType Directory -Force -Path $hostObjectDirectory, $platformObjectDirectory, $platformTestObjectDirectory, $testObjectDirectory, $imageTestObjectDirectory, $layoutTestObjectDirectory, $iconTestObjectDirectory, $styleTestObjectDirectory, $textLayoutTestObjectDirectory, $motionTestObjectDirectory, $placementTestObjectDirectory, $targetingTestObjectDirectory, $transitionTestObjectDirectory, $chromeTestObjectDirectory, $guideTestObjectDirectory, $inputOwnershipTestObjectDirectory, $navigationTestObjectDirectory, $pressedTestObjectDirectory, $sliderTestObjectDirectory, $widgetInteractionTestObjectDirectory, $focusTestObjectDirectory, $surfaceFocusTestObjectDirectory, $lifecycleTestObjectDirectory, $actionFeedbackTestObjectDirectory, $accessibilityTreeTestObjectDirectory, $accessibilityProjectionTestObjectDirectory, $accessibilityProviderTestObjectDirectory, $realHostAccessibilityTestObjectDirectory, $actionFailureHostTestObjectDirectory, $actionFailureFixtureOutput, $widgetSwitchHostTestObjectDirectory, $coldDashboardHostTestObjectDirectory, $widgetSwitchFixtureOutput, $audioMixerScrollHostTestObjectDirectory, $audioMixerScrollFixtureOutput, $scrollEvidenceProbeTestObjectDirectory, $trayLayoutTestObjectDirectory, $hostAccessibilityTestObjectDirectory, $accessibilityEventsTestObjectDirectory, $bridgeCatalogTestObjectDirectory, $localPackageImportTestObjectDirectory, $textEntryModalTestObjectDirectory, $rendererTestObjectDirectory, $semanticChurnTestObjectDirectory, $pinnedSurfaceTestObjectDirectory, $pinnedPlacementTestObjectDirectory, $widgetSurfaceTestObjectDirectory, $widgetSessionTestObjectDirectory, $processOwnerTestObjectDirectory, $componentGeometryTestObjectDirectory, $trayRefreshHostTestObjectDirectory, $trayRefreshCommunityFixtureOutput | Out-Null
+$richMediaTestObjectDirectory = Join-Path $outputDirectory 'obj\rich-media-tests'
+New-Item -ItemType Directory -Force -Path $hostObjectDirectory, $platformObjectDirectory, $platformTestObjectDirectory, $testObjectDirectory, $imageTestObjectDirectory, $layoutTestObjectDirectory, $iconTestObjectDirectory, $styleTestObjectDirectory, $textLayoutTestObjectDirectory, $motionTestObjectDirectory, $placementTestObjectDirectory, $targetingTestObjectDirectory, $transitionTestObjectDirectory, $chromeTestObjectDirectory, $guideTestObjectDirectory, $inputOwnershipTestObjectDirectory, $navigationTestObjectDirectory, $pressedTestObjectDirectory, $sliderTestObjectDirectory, $widgetInteractionTestObjectDirectory, $focusTestObjectDirectory, $surfaceFocusTestObjectDirectory, $lifecycleTestObjectDirectory, $actionFeedbackTestObjectDirectory, $accessibilityTreeTestObjectDirectory, $accessibilityProjectionTestObjectDirectory, $accessibilityProviderTestObjectDirectory, $realHostAccessibilityTestObjectDirectory, $actionFailureHostTestObjectDirectory, $actionFailureFixtureOutput, $widgetSwitchHostTestObjectDirectory, $coldDashboardHostTestObjectDirectory, $widgetSwitchFixtureOutput, $audioMixerScrollHostTestObjectDirectory, $audioMixerScrollFixtureOutput, $scrollEvidenceProbeTestObjectDirectory, $trayLayoutTestObjectDirectory, $hostAccessibilityTestObjectDirectory, $accessibilityEventsTestObjectDirectory, $bridgeCatalogTestObjectDirectory, $localPackageImportTestObjectDirectory, $textEntryModalTestObjectDirectory, $rendererTestObjectDirectory, $semanticChurnTestObjectDirectory, $pinnedSurfaceTestObjectDirectory, $pinnedPlacementTestObjectDirectory, $widgetSurfaceTestObjectDirectory, $widgetSessionTestObjectDirectory, $processOwnerTestObjectDirectory, $componentGeometryTestObjectDirectory, $trayRefreshHostTestObjectDirectory, $trayRefreshCommunityFixtureOutput, $richMediaTestObjectDirectory | Out-Null
 Copy-Item -LiteralPath (Join-Path $projectDirectory '..\..\THIRD_PARTY_NOTICES.md') `
     -Destination (Join-Path $outputDirectory 'THIRD_PARTY_NOTICES.md') -Force
 
 $optimization = if ($Configuration -eq 'Release') { @('/O2', '/DNDEBUG') } else { @('/Od', '/Zi') }
 $includeArguments = @(
     "/I$gameInputPackage\native\include",
+    "/I$webView2Package\build\native\include",
     "/I$($vcTools.FullName)\include",
     "/I$sdkRoot\Include\$($sdk.Name)\ucrt",
     "/I$sdkRoot\Include\$($sdk.Name)\shared",
@@ -258,6 +272,7 @@ $includeArguments = @(
 )
 $libraryArguments = @(
     "/LIBPATH:$gameInputPackage\native\lib\$Architecture",
+    "/LIBPATH:$webView2Package\build\native\$Architecture",
     "/LIBPATH:$($vcTools.FullName)\lib\$Architecture",
     "/LIBPATH:$sdkRoot\Lib\$($sdk.Name)\ucrt\$Architecture",
     "/LIBPATH:$sdkRoot\Lib\$($sdk.Name)\um\$Architecture",
@@ -289,6 +304,29 @@ function Invoke-OverlayPlatformInteropBuild {
     & $cl $arguments
     if ($LASTEXITCODE -ne 0) {
         throw "OverlayPlatformInterop build failed with exit code $LASTEXITCODE."
+    }
+}
+
+function Invoke-RichMediaTests {
+    $arguments = $common + @(
+        (Join-Path $projectDirectory 'RichMediaSurfaceCoordinatorTests.cpp'),
+        (Join-Path $projectDirectory 'RichMediaSurfaceCoordinator.cpp'),
+        (Join-Path $projectDirectory 'OverlayCompositionSurface.cpp'),
+        "/Fo:$richMediaTestObjectDirectory\",
+        "/Fe:$outputDirectory\RichMediaSurfaceCoordinatorTests.exe",
+        '/link', '/SUBSYSTEM:CONSOLE'
+    ) + $libraryArguments + @(
+        'WebView2LoaderStatic.lib', 'user32.lib', 'd2d1.lib', 'd3d11.lib',
+        'dxgi.lib', 'dcomp.lib', 'windowsapp.lib', 'ole32.lib',
+        'uiautomationcore.lib', 'psapi.lib', 'shlwapi.lib', 'version.lib')
+    & $cl $arguments
+    if ($LASTEXITCODE -ne 0) {
+        throw "RichMediaSurfaceCoordinatorTests build failed with exit code $LASTEXITCODE."
+    }
+    $testArguments = if ($RichMediaPerformanceTestsOnly) { @('--performance') } else { @() }
+    & (Join-Path $outputDirectory 'RichMediaSurfaceCoordinatorTests.exe') $testArguments
+    if ($LASTEXITCODE -ne 0) {
+        throw "RichMediaSurfaceCoordinatorTests failed with exit code $LASTEXITCODE."
     }
 }
 
@@ -1481,6 +1519,14 @@ if ($TrustedArtworkTestsOnly) {
     return
 }
 
+if ($RichMediaTestsOnly -or $RichMediaPerformanceTestsOnly) {
+    if ($SkipTests) {
+        throw 'RichMedia test routes cannot be combined with SkipTests.'
+    }
+    Invoke-RichMediaTests
+    return
+}
+
 if ($WidgetSessionTestsOnly) {
     if ($SkipTests) {
         throw 'WidgetSessionTestsOnly cannot be combined with SkipTests.'
@@ -1514,6 +1560,7 @@ $hostArguments = $common + @(
     '/DWRAIL_OVERLAY_PLATFORM_IMPORTS',
     (Join-Path $projectDirectory 'main.cpp'),
     (Join-Path $projectDirectory 'OverlayCompositionSurface.cpp'),
+    (Join-Path $projectDirectory 'RichMediaSurfaceCoordinator.cpp'),
     (Join-Path $projectDirectory 'OverlayProcessOwner.cpp'),
     (Join-Path $projectDirectory 'OverlayState.cpp'),
     (Join-Path $projectDirectory 'WidgetBridgeClient.cpp'),
@@ -1558,6 +1605,7 @@ $hostArguments = $common + @(
     "/MANIFESTINPUT:$(Join-Path $projectDirectory 'app.manifest')",
     'user32.lib', 'gdi32.lib', 'd2d1.lib', 'dwrite.lib', 'dwmapi.lib',
     'd3d11.lib', 'dxgi.lib', 'dcomp.lib',
+    'WebView2LoaderStatic.lib',
     'gameinput.lib', 'shcore.lib', 'xinput9_1_0.lib', 'windowsapp.lib',
     (Join-Path $outputDirectory 'OverlayPlatformInterop.lib'),
     'winhttp.lib', 'windowscodecs.lib', 'ole32.lib', 'oleaut32.lib',

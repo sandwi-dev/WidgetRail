@@ -80,6 +80,9 @@ public:
     void Detach() noexcept;
     void SetWindowFocused(bool focused) noexcept;
     void SetWindowVisible(bool visible) noexcept;
+    // Embeds an HWND-less composition renderer below the existing host root;
+    // this does not create a second accessibility/focus owner.
+    void SetEmbeddedFragmentRoot(IRawElementProviderFragmentRoot* provider) noexcept;
     void Publish(Tree tree, ScreenTransform transform);
     void Clear() noexcept;
 

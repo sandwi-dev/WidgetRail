@@ -18,6 +18,7 @@
 #include "OverlayTargeting.h"
 #include "OverlayTransition.h"
 #include "RemoteImageCache.h"
+#include "RichMediaSurfaceCoordinator.h"
 #include "ScrollEvidenceProbe.h"
 #include "LocalWidgetPackageImport.h"
 #include "WidgetBridgeClient.h"
@@ -876,6 +877,7 @@ public:
                 startShown = false;
             }
         }
+        if (richMediaProof_) startShown = true;
         if (startShown && !developmentProbeOnly_) {
             if (developmentCatalogRoot_) {
                 Dispatch(widgetrail::Command::ToggleOverlay);
@@ -901,6 +903,7 @@ public:
             if (!InteractiveDevelopmentHostReady()) return false;
             if (!PublishDevelopmentReady()) return false;
         }
+        if (richMediaProof_ && !InitializeRichMediaProof()) return false;
         return true;
     }
 
@@ -1020,6 +1023,12 @@ private:
             } else if (_wcsicmp(__wargv[i], L"--scroll-evidence-path") == 0) {
                 if (!takeValue(i, scrollEvidencePath_, L"--scroll-evidence-path")) return false;
                 ++i;
+            } else if (_wcsicmp(__wargv[i], L"--rich-media-proof") == 0) {
+                if (richMediaProof_) {
+                    initializationError_ = L"--rich-media-proof was supplied more than once.";
+                    return false;
+                }
+                richMediaProof_ = true;
             }
         }
         try {
@@ -1728,6 +1737,8 @@ private:
             return DefWindowProcW(window_, message, wParam, lParam);
         case WM_SHOWWINDOW:
             accessibilityProvider_.SetWindowVisible(wParam != FALSE);
+            if (richMediaProof_)
+                (void)richMediaSurface_.SetVisible(wParam != FALSE);
             if (wParam == FALSE) {
                 trayYGesture_.Reset();
                 ClearFreeScrollReentry(L"window-hidden");
@@ -1751,6 +1762,10 @@ private:
             }
             return DefWindowProcW(window_, message, wParam, lParam);
         case WM_NCHITTEST:
+            if (richMediaProof_ &&
+                richMediaSurface_.state().lifecycle ==
+                    widgetrail::richmedia::Lifecycle::Visible)
+                return HTCLIENT;
             if (compositionSurface_.available() &&
                 state_.surface() != widgetrail::Surface::Hidden) {
                 POINT point{
@@ -1766,16 +1781,33 @@ private:
             }
             return DefWindowProcW(window_, message, wParam, lParam);
         case WM_KEYDOWN:
+            if (richMediaProof_ &&
+                richMediaSurface_.ForwardKey(message, wParam, lParam))
+                return 0;
             HandleKey(
                 static_cast<UINT>(wParam),
                 (lParam & (1LL << 30)) != 0);
             return 0;
+        case WM_MOUSEMOVE:
+        case WM_LBUTTONDOWN:
+        case WM_RBUTTONDOWN:
+        case WM_MOUSEWHEEL:
+            if (richMediaProof_ &&
+                richMediaSurface_.ForwardMouse(message, wParam, lParam))
+                return 0;
+            return DefWindowProcW(window_, message, wParam, lParam);
         case WM_LBUTTONUP:
+            if (richMediaProof_ &&
+                richMediaSurface_.ForwardMouse(message, wParam, lParam))
+                return 0;
             HandlePointerActivation(
                 static_cast<float>(static_cast<short>(LOWORD(lParam))),
                 static_cast<float>(static_cast<short>(HIWORD(lParam))));
             return 0;
         case WM_RBUTTONUP:
+            if (richMediaProof_ &&
+                richMediaSurface_.ForwardMouse(message, wParam, lParam))
+                return 0;
             HandlePointerActivation(
                 static_cast<float>(static_cast<short>(LOWORD(lParam))),
                 static_cast<float>(static_cast<short>(HIWORD(lParam))), true);
@@ -2063,11 +2095,28 @@ private:
             }
             if (resize.invalidate && !compositionPlacementInProgress_)
                 InvalidateRect(window_, nullptr, FALSE);
+            if (richMediaProof_ && width > 0 && height > 0) {
+                const RECT bounds{0, 0, static_cast<LONG>(width), static_cast<LONG>(height)};
+                (void)richMediaSurface_.UpdateGeometry(
+                    bounds,
+                    static_cast<double>(std::max(1U, GetDpiForWindow(window_))) / 96.0);
+                widgetrail::OverlayCompositionSurface::CommitTiming timing;
+                (void)compositionSurface_.CommitExternalContentPresentation(
+                    bounds, true, timing);
+            }
             return 0;
         }
         case WM_DPICHANGED:
             ClearFreeScrollReentry(L"dpi-changed");
             if (accessibilityActive_) ClearAccessibilityTree();
+            if (richMediaProof_) {
+                RECT bounds{};
+                if (GetClientRect(window_, &bounds))
+                    (void)richMediaSurface_.UpdateGeometry(
+                        bounds,
+                        static_cast<double>(std::max(1U, GetDpiForWindow(window_))) /
+                            96.0);
+            }
             QueueDisplayEnvironmentRefresh(widgetrail::DisplayEnvironmentChange::Dpi);
             return 0;
         case WM_DISPLAYCHANGE:
@@ -2117,7 +2166,70 @@ private:
         }
     }
 
+    bool InitializeRichMediaProof() {
+        if (!compositionSurface_.available()) {
+            initializationError_ =
+                L"The bounded rich-media proof requires DirectComposition.";
+            return false;
+        }
+        Microsoft::WRL::ComPtr<IUnknown> target;
+        const HRESULT targetResult =
+            compositionSurface_.CreateExternalContentTarget(&target);
+        if (FAILED(targetResult))
+            return FailHresult(L"CreateExternalContentTarget", targetResult);
+        RECT bounds{};
+        if (!GetClientRect(window_, &bounds))
+            return FailWin32(L"GetClientRect(rich-media)", GetLastError());
+        wchar_t temporary[MAX_PATH]{};
+        if (!GetTempPathW(static_cast<DWORD>(std::size(temporary)), temporary))
+            return FailWin32(L"GetTempPathW(rich-media)", GetLastError());
+        richMediaProfileDirectory_ =
+            (std::filesystem::path{temporary} /
+             (L"wrail-rich-media-" + std::to_wstring(GetCurrentProcessId()))).wstring();
+        widgetrail::richmedia::Configuration configuration;
+        configuration.ownerWindow = window_;
+        configuration.compositionTarget = std::move(target);
+        configuration.bounds = bounds;
+        configuration.rasterScale =
+            static_cast<double>(std::max(1U, GetDpiForWindow(window_))) / 96.0;
+        configuration.initiallyVisible = true;
+        configuration.ephemeralProfileDirectory = richMediaProfileDirectory_;
+        configuration.diagnostic = [this](const std::wstring_view message) {
+            AppendDiagnostic(std::wstring{message});
+        };
+        configuration.invalidate = [this] { OnRichMediaStateChanged(); };
+        const HRESULT initialize = richMediaSurface_.Initialize(std::move(configuration));
+        if (FAILED(initialize))
+            return FailHresult(L"RichMediaSurfaceCoordinator::Initialize", initialize);
+        widgetrail::OverlayCompositionSurface::CommitTiming timing;
+        const HRESULT presentation = compositionSurface_.CommitExternalContentPresentation(
+            bounds, true, timing);
+        if (FAILED(presentation))
+            return FailHresult(L"CommitExternalContentPresentation", presentation);
+        AppendDiagnostic(
+            L"Rich media proof requested owner=existing-content-hwnd origin=embedded-only");
+        return true;
+    }
+
+    void OnRichMediaStateChanged() {
+        Microsoft::WRL::ComPtr<IRawElementProviderSimple> provider;
+        Microsoft::WRL::ComPtr<IRawElementProviderFragmentRoot> fragmentRoot;
+        const auto state = richMediaSurface_.state();
+        if (state.lifecycle != widgetrail::richmedia::Lifecycle::Faulted &&
+            !state.focusedElement.empty() &&
+            SUCCEEDED(richMediaSurface_.GetAutomationProvider(&provider)) && provider)
+            (void)provider.As(&fragmentRoot);
+        accessibilityProvider_.SetEmbeddedFragmentRoot(fragmentRoot.Get());
+        if (window_) InvalidateRect(window_, nullptr, FALSE);
+    }
+
     void Shutdown() {
+        if (richMediaProof_) {
+            accessibilityProvider_.SetEmbeddedFragmentRoot(nullptr);
+            richMediaSurface_.Shutdown();
+            widgetrail::OverlayCompositionSurface::CommitTiming detachTiming;
+            (void)compositionSurface_.DetachExternalContentTarget(detachTiming);
+        }
         localWidgetPackageImport_.CancelPicker();
         if (const auto operation = localWidgetPackageImport_.CancelActiveOperation()) {
             (void)bridge_.CancelLocalWidgetPackageInstall(
@@ -6418,6 +6530,19 @@ private:
     void DispatchStickNavigation(const widgetrail::input::StickNavigationEvent event) {
         using widgetrail::input::NavigationDirection;
         const auto direction = event.direction;
+        if (richMediaProof_ &&
+            richMediaSurface_.state().lifecycle ==
+                widgetrail::richmedia::Lifecycle::Visible) {
+            if (direction == NavigationDirection::Left ||
+                direction == NavigationDirection::Up)
+                (void)richMediaSurface_.SendCommand(
+                    widgetrail::richmedia::Command::NavigatePrevious);
+            else if (direction == NavigationDirection::Right ||
+                     direction == NavigationDirection::Down)
+                (void)richMediaSurface_.SendCommand(
+                    widgetrail::richmedia::Command::NavigateNext);
+            return;
+        }
         if (state_.focusRegion() == widgetrail::FocusRegion::Tray) {
             if (direction == NavigationDirection::Left) {
                 Dispatch(widgetrail::Command::NavigateLeft);
@@ -6458,6 +6583,30 @@ private:
         const WORD buttons = frame.state.buttons;
         const WORD pressed = frame.pressedButtons;
         const WORD released = frame.releasedButtons;
+        if (richMediaProof_ &&
+            richMediaSurface_.state().lifecycle ==
+                widgetrail::richmedia::Lifecycle::Visible) {
+            if (const auto direction = DecodeNavigation(frame.stickNavigation))
+                DispatchStickNavigation(*direction);
+            if (const auto direction = DecodeNavigation(frame.dpadNavigation))
+                DispatchStickNavigation(*direction);
+            if ((pressed & XINPUT_GAMEPAD_A) != 0)
+                (void)richMediaSurface_.SendCommand(
+                    widgetrail::richmedia::Command::Activate);
+            if ((pressed & XINPUT_GAMEPAD_B) != 0)
+                (void)richMediaSurface_.SendCommand(
+                    widgetrail::richmedia::Command::Back);
+            if ((pressed & XINPUT_GAMEPAD_X) != 0)
+                (void)richMediaSurface_.SendCommand(
+                    widgetrail::richmedia::Command::TogglePlayback);
+            if ((pressed & XINPUT_GAMEPAD_LEFT_SHOULDER) != 0)
+                (void)richMediaSurface_.SendCommand(
+                    widgetrail::richmedia::Command::SeekBackward);
+            if ((pressed & XINPUT_GAMEPAD_RIGHT_SHOULDER) != 0)
+                (void)richMediaSurface_.SendCommand(
+                    widgetrail::richmedia::Command::SeekForward);
+            return;
+        }
         if (textEntryModal_.active()) {
             if (textEntryControllerPhase_ ==
                 TextEntryControllerPhase::AwaitingEntryNeutral) {
@@ -11415,6 +11564,9 @@ private:
     std::optional<std::wstring> performanceDiagnosticsNonce_;
     std::optional<std::wstring> scrollEvidencePath_;
     widgetrail::ScrollEvidenceProbe scrollEvidenceProbe_;
+    bool richMediaProof_{};
+    std::wstring richMediaProfileDirectory_;
+    widgetrail::richmedia::RichMediaSurfaceCoordinator richMediaSurface_;
     bool performanceCountersActive_{};
     unsigned long long performanceCounterStarted_{};
     unsigned long long performanceTimerMessages_{};

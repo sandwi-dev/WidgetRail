@@ -161,6 +161,13 @@ public:
     HRESULT CommitChromePresentation(
         const ChromePresentation& presentation, CommitTiming& timing) noexcept;
     HRESULT CommitOpacity(float opacity, CommitTiming& timing) noexcept;
+    // Creates the only external content slot under this HWND's existing root.
+    // The caller may connect a composition-hosted renderer to the returned
+    // visual, but this class remains the sole visual-tree/presentation owner.
+    HRESULT CreateExternalContentTarget(IUnknown** target) noexcept;
+    HRESULT CommitExternalContentPresentation(
+        const RECT& bounds, bool visible, CommitTiming& timing) noexcept;
+    HRESULT DetachExternalContentTarget(CommitTiming& timing) noexcept;
     void AbandonFrame(Frame& frame) noexcept;
 
 private:
@@ -178,6 +185,8 @@ private:
     };
 
     Microsoft::WRL::ComPtr<IDCompositionVisual2> rootVisual_;
+    Microsoft::WRL::ComPtr<IDCompositionVisual2> externalContentVisual_;
+    bool externalContentAttached_{};
     Microsoft::WRL::ComPtr<IDCompositionVisual2> chromeRootVisual_;
     Microsoft::WRL::ComPtr<IDCompositionEffectGroup> effect_;
     LayerState content_;

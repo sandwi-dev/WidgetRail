@@ -191,6 +191,7 @@ struct ProviderState final {
     bool windowFocused{};
     bool windowVisible{};
     std::uint64_t bindingGeneration{};
+    ComPtr<IRawElementProviderFragmentRoot> embeddedFragmentRoot;
 
     [[nodiscard]] std::shared_ptr<const PublishedTree> Snapshot(
         const std::uint64_t expectedBinding) const noexcept {
@@ -216,6 +217,13 @@ struct ProviderState final {
     [[nodiscard]] HWND WindowHandle(const std::uint64_t expectedBinding) const noexcept {
         std::scoped_lock lock(mutex);
         return window && bindingGeneration == expectedBinding ? window : nullptr;
+    }
+
+    [[nodiscard]] ComPtr<IRawElementProviderFragmentRoot> EmbeddedFragmentRoot(
+        const std::uint64_t expectedBinding) const noexcept {
+        std::scoped_lock lock(mutex);
+        return window && bindingGeneration == expectedBinding
+            ? embeddedFragmentRoot : nullptr;
     }
 
     [[nodiscard]] HRESULT Enqueue(
@@ -483,6 +491,18 @@ public:
         if (!result) return E_INVALIDARG;
         *result = nullptr;
         if (!Available()) return UIA_E_ELEMENTNOTAVAILABLE;
+        const auto embedded = state_->EmbeddedFragmentRoot(bindingGeneration_);
+        if (!embedded) return S_OK;
+        SAFEARRAY* roots = SafeArrayCreateVector(VT_UNKNOWN, 0, 1);
+        if (!roots) return E_OUTOFMEMORY;
+        LONG index{};
+        IUnknown* embeddedValue = embedded.Get();
+        const HRESULT put = SafeArrayPutElement(roots, &index, embeddedValue);
+        if (FAILED(put)) {
+            SafeArrayDestroy(roots);
+            return put;
+        }
+        *result = roots;
         return S_OK;
     }
 
@@ -827,6 +847,7 @@ void ProviderHost::Detach() noexcept {
     state_->current.reset();
     state_->announced.reset();
     state_->pending.clear();
+    state_->embeddedFragmentRoot.Reset();
     ++state_->bindingGeneration;
 }
 
@@ -838,6 +859,12 @@ void ProviderHost::SetWindowFocused(const bool focused) noexcept {
 void ProviderHost::SetWindowVisible(const bool visible) noexcept {
     std::scoped_lock lock(state_->mutex);
     if (state_->window) state_->windowVisible = visible;
+}
+
+void ProviderHost::SetEmbeddedFragmentRoot(
+    IRawElementProviderFragmentRoot* provider) noexcept {
+    std::scoped_lock lock(state_->mutex);
+    if (state_->window) state_->embeddedFragmentRoot = provider;
 }
 
 void ProviderHost::Publish(Tree tree, const ScreenTransform transform) {
