@@ -32,6 +32,7 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Inline PNG images are bounded local and negotiate the highest protocol", InlinePngImagesAreBounded),
     ("Input surfaces serialize and validate scoped shortcuts", InputSurfacesValidate),
     ("Dashboard quick action authority is typed bounded and versioned", DashboardAuthorityContract),
+    ("Host-reserved View mappings fail with precise author diagnostics", HostReservedViewMappingsAreRejected),
     ("Unsafe image sources are rejected", UnsafeImageSourcesAreRejected),
     ("Visual nodes require accessibility and semantic data", VisualNodeRequirementsAreEnforced),
     ("Button interaction states serialize deterministically", ButtonStatesRoundTrip),
@@ -102,6 +103,38 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Private state canonicalizes JSON and exposes typed revision CAS helpers", PrivateStateServiceContracts),
     ("Capability subscriptions acknowledge before event consumption", SubscriptionOpenAcknowledges),
 };
+
+static Task HostReservedViewMappingsAreRejected()
+{
+    var quickActionFailure = Assert.Throws<ProtocolValidationException>(() =>
+        new WidgetView(
+            UI.Button("Ready", "ready", "view.quick.ready"),
+            InitialFocusId: "view.quick.ready",
+            QuickActions:
+            [
+                new WidgetQuickAction(ControllerButton.View, "view.quick", "Invalid View"),
+            ]).CreateSnapshot("view.quick.fixture", 1));
+    var quickActionError = quickActionFailure.Errors.Single(error =>
+        error.Path == "$.quickActions[0].button" &&
+        error.Code == "host_reserved_view");
+    Assert.True(quickActionError.Message.Contains(
+        "reserved for host pinned-surface navigation", StringComparison.Ordinal),
+        "Host-reserved View quick-action validation did not provide the precise diagnostic.");
+
+    var shortcutFailure = Assert.Throws<ProtocolValidationException>(() =>
+        new WidgetView(
+            UI.Button("Ready", "ready", "view.shortcut.ready")
+                .Shortcut(ControllerButton.View, actionId: "view.shortcut"),
+            InitialFocusId: "view.shortcut.ready")
+            .CreateSnapshot("view.shortcut.fixture", 1));
+    var shortcutError = shortcutFailure.Errors.Single(error =>
+        error.Path == "$.root.shortcuts[0].button" &&
+        error.Code == "host_reserved_view");
+    Assert.True(shortcutError.Message.Contains(
+        "reserved for host pinned-surface navigation", StringComparison.Ordinal),
+        "Host-reserved View shortcut validation did not provide the precise diagnostic.");
+    return Task.CompletedTask;
+}
 
 var testPrefixIndex = Array.IndexOf(args, "--test-prefix");
 if (testPrefixIndex >= 0)

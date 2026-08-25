@@ -246,23 +246,29 @@ void TestPolicyAndPlacement() {
     Check(widgetrail::pinned::ResolveControllerCommand(controller) == ControllerCommand::None,
           "unpinned controller input has no pinned-surface route");
     controller.pinned = true;
-    controller.sameWidgetOpen = true;
-    controller.rightStickPressed = true;
+    controller.viewPressed = true;
     Check(widgetrail::pinned::ResolveControllerCommand(controller) == ControllerCommand::Enter,
-          "right-stick click explicitly enters the current pinned surface");
+          "View enters the current pin from tray authority regardless of selection");
+    controller.sameWidgetOpen = true;
+    Check(widgetrail::pinned::ResolveControllerCommand(controller) == ControllerCommand::Enter,
+          "View enters the current pin from an open overlay widget");
     controller.controllerFocused = true;
-    controller.rightStickPressed = false;
+    controller.viewPressed = false;
     controller.aPressed = true;
     Check(widgetrail::pinned::ResolveControllerCommand(controller) == ControllerCommand::Activate,
           "A activates only through the focused pinned owner");
     controller.aPressed = false;
     controller.bPressed = true;
-    Check(widgetrail::pinned::ResolveControllerCommand(controller) == ControllerCommand::Exit,
-          "B deterministically returns pinned focus to the overlay");
+    Check(widgetrail::pinned::ResolveControllerCommand(controller) == ControllerCommand::None,
+          "B remains selected-projection input while the pin owns focus");
     controller.bPressed = false;
+    controller.viewPressed = true;
+    Check(widgetrail::pinned::ResolveControllerCommand(controller) == ControllerCommand::Exit,
+          "View deterministically returns pinned focus to the tray");
+    controller.viewPressed = false;
     controller.xPressed = true;
-    Check(widgetrail::pinned::ResolveControllerCommand(controller) == ControllerCommand::Close,
-          "X closes only while the pinned surface owns controller focus");
+    Check(widgetrail::pinned::ResolveControllerCommand(controller) == ControllerCommand::None,
+          "ordinary authored buttons retain selected-projection ownership");
     controller.leftShoulderDown = true;
     controller.rightShoulderDown = true;
     Check(widgetrail::pinned::ResolveControllerCommand(controller) ==
@@ -271,8 +277,9 @@ void TestPolicyAndPlacement() {
     controller.placementActive = true;
     controller.xPressed = false;
     controller.bPressed = true;
+    controller.viewPressed = true;
     Check(widgetrail::pinned::ResolveControllerCommand(controller) == ControllerCommand::None,
-          "placement mode retains exclusive A/B controller ownership");
+          "placement mode retains exclusive A/B/View controller ownership");
 
     const auto clickThroughPresentation =
         widgetrail::pinned::ResolveSurfacePresentationPolicy(

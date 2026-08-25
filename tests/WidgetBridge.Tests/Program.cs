@@ -26,6 +26,7 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Event cancellation preserves the serialized frame boundary", BridgeEventWriteBoundaryScenarios.CancellationPreservesFrameBoundary),
     ("Bridge read and reply timeouts have exact frame owners", BridgeFrameOwnershipScenarios.TimeoutAndCancellationHaveExactOwners),
     ("Strict catalog rejects unknown properties", StrictCatalogRejectsUnknownProperties),
+    ("Catalog rejects host-reserved View quick actions", CatalogRejectsHostReservedView),
     ("Bridge startup scopes an explicit development installed catalog", DevelopmentCatalogRootIsScoped),
     ("Settings reviews the same catalog selected by the bridge", SettingsUsesSelectedCatalog),
     ("Catalog treats worker memory guidance as optional advisory metadata", CatalogMemoryGuidanceIsAdvisory),
@@ -248,6 +249,24 @@ static Task StrictCatalogRejectsUnknownProperties()
     using var forgedState = TemporaryCatalog.Create(
         declaredCapabilities: [PlatformCapabilities.PrivateStateV1]);
     Assert.Throws<BridgeCatalogException>(() => BridgeCatalog.Load(forgedState.Path));
+    return Task.CompletedTask;
+}
+
+static Task CatalogRejectsHostReservedView()
+{
+    using var catalog = TemporaryCatalog.Create();
+    var document = File.ReadAllText(catalog.Path);
+    const string authored = "\"controllerButton\":\"x\"";
+    Assert.True(document.Contains(authored, StringComparison.Ordinal),
+        "The catalog fixture omitted its authored quick-action button.");
+    File.WriteAllText(catalog.Path, document.Replace(
+        authored, "\"controllerButton\":\"view\"", StringComparison.Ordinal));
+    var exception = Assert.Throws<BridgeCatalogException>(() =>
+        BridgeCatalog.Load(catalog.Path));
+    Assert.True(exception.Message.Contains(
+        "cannot use View because View is reserved for host pinned-surface navigation",
+        StringComparison.Ordinal),
+        "Bridge catalog validation did not provide the precise host-reserved View diagnostic.");
     return Task.CompletedTask;
 }
 

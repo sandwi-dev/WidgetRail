@@ -128,6 +128,19 @@ bool IsAssertiveLiveRegion(const HWND window, const wchar_t* automationId) {
     return assertive;
 }
 
+bool AutomationValueContains(const HWND window, const wchar_t* automationId,
+                             const std::wstring_view expected) {
+    const auto element = FindAutomationId(window, automationId);
+    if (!element) return false;
+    VARIANT value{};
+    const HRESULT result = element->GetCurrentPropertyValue(
+        UIA_HelpTextPropertyId, &value);
+    const bool contains = SUCCEEDED(result) && value.vt == VT_BSTR && value.bstrVal &&
+        std::wstring_view(value.bstrVal).find(expected) != std::wstring_view::npos;
+    VariantClear(&value);
+    return contains;
+}
+
 [[nodiscard]] std::size_t PrivateWorkingSetBytes() {
     std::vector<std::byte> buffer(256 * 1024);
     for (int attempt = 0; attempt < 8; ++attempt) {
@@ -291,6 +304,29 @@ int main() {
                       projectedInput[0].activeInputScopeId == L"compact.root" &&
                       layouts.IsCurrentInputRequest(projectedInput[0]),
                   "pinned input authority is bound to the atomically selected projection");
+            auto wrongLayoutInput = projectedInput[0];
+            wrongLayoutInput.selectedLayoutId = L"details";
+            auto staleSequenceInput = projectedInput[0];
+            --staleSequenceInput.snapshotSequence;
+            Check(!layouts.IsCurrentInputRequest(wrongLayoutInput) &&
+                      !layouts.IsCurrentInputRequest(staleSequenceInput),
+                  "wrong-layout and stale-sequence pinned input fail closed");
+            Check(layouts.QueueFocusedInput(L"b"),
+                  "B enters the same selected-projection queue as other authored input");
+            const auto backInput = layouts.TakeInputRequests();
+            Check(backInput.size() == 1 &&
+                      backInput[0].protocolButton == L"b" &&
+                      backInput[0].selectedLayoutId == L"compact" &&
+                      backInput[0].activeInputScopeId == L"compact.root" &&
+                      layouts.IsCurrentInputRequest(backInput[0]),
+                  "pinned B retains exact layout scope focus and sequence authority");
+            Check(layouts.QueueFocusedInput(L"menu"),
+                  "Menu remains ordinary selected-projection input outside host modes");
+            const auto menuInput = layouts.TakeInputRequests();
+            Check(menuInput.size() == 1 &&
+                      menuInput[0].protocolButton == L"menu" &&
+                      layouts.IsCurrentInputRequest(menuInput[0]),
+                  "pinned Menu retains the same current authority as B");
             Check(layouts.CommitSetup(error) && !layouts.setupActive() &&
                       layouts.interactionMode() ==
                           widgetrail::pinned::InteractionMode::ClickThrough,
@@ -378,6 +414,13 @@ int main() {
         GetWindowRect(surface, &committedBounds);
         Check(std::filesystem::exists(placementRoot / L"placement.ini"),
               "committed real-HWND geometry creates the isolated durable record");
+        const auto originalOpacity = coordinator.opacityPercent();
+        Check(coordinator.BeginOpacityAdjustment() &&
+                  coordinator.StepOpacity(widgetrail::pinned::PlacementDirection::Left) &&
+                  coordinator.opacityPercent() != originalOpacity &&
+                  coordinator.CancelOpacity() &&
+                  coordinator.opacityPercent() == originalOpacity,
+              "B-equivalent opacity cancellation restores the exact prior alpha");
         Check(!coordinator.Pin(Admission(), error) &&
                   error.find(L"already pinned") != std::wstring::npos,
               "duplicate pin is bounded");
@@ -466,6 +509,9 @@ int main() {
                   FindAutomationId(surface, L"host:pinned.close") &&
                   FindAutomationId(surface, L"host:pinned.emergency"),
               "interactive UIA composes widget content with Close and emergency host actions");
+        Check(AutomationValueContains(surface, L"host:pinned.mode", L"B is widget Back") &&
+                  AutomationValueContains(surface, L"host:pinned.mode", L"View returns to the tray"),
+              "pinned accessibility semantics distinguish widget B from host View");
         Check(coordinator.MoveControllerFocus(
                   widgetrail::input::NavigationDirection::Right) &&
                   coordinator.focusedElementId() == L"pin.fixture.second" &&
