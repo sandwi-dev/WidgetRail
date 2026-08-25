@@ -234,12 +234,13 @@ historical evidence only; this file is the sole implementation authority.
   `86AC9946CC54F2B4CF51B14EEAA48CE32FECDF2C381DA73F24107DBE755F13AD`.
 - DLV-295 cumulative `225e736` + `3d4b940` is independently accepted and integrated by fast-forward to local main. The optional typed handle owns stable layout metadata, selected state, scoped cancellation, one effective invalidation, and a public deterministic test host while low-level protocol-v21 authoring remains supported. SDK compile passed, compatibility passed 12/12 after the environment-only DLV-299 restore repair, and the focused handle group passed 1/1. No runtime/package input changed, so accepted PID 32880 remains running. Spotify 0.3.24 remains the sole installed, selected, enabled version with credential/account/provider/configuration state preserved; DLV-298 is the migration proof.
 - DLV-298 cumulative production `65d7872` + `d3b7cf7` + `9396363` +
-  `fc9adc8` is physically accepted by the user. Spotify 0.3.26 is the sole
+  `fc9adc8` is physically accepted and integrated as merge `c9e9b97`. Spotify 0.3.26 is the sole
   installed, selected, enabled version under responsive exact candidate PID
   63284. The typed handle now owns layout selection and demand lifecycle while
   preserving state-specific initial focus. Focused migrated Spotify regression
-  tests are Assigned before independent review and integration; the accepted
-  candidate remains running and no tests-only rebuild/relaunch is authorized.
+  test gate stopped in an opaque pre-test build with zero tests; its one-file
+  uncommitted diff is retained as debt. The accepted candidate remains running
+  and no integration/tests-only rebuild or relaunch is authorized.
 - Managed tests are accepted through `676cd76`: DLV-319 `199a81b`, DLV-324
   `6b63edf`, DLV-325 `e441f25`, and DLV-326 `676cd76`. All named managed
   Tier-3 gates are green.
@@ -250,8 +251,8 @@ historical evidence only; this file is the sole implementation authority.
 
 | Lane | Task/worktree | State |
 | --- | --- | --- |
-| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | DLV-474 correction passed the native gate, then the managed sanitized-terminal gate stopped on an opaque pre-test build red. Four intentional diffs remain retained uncommitted in the isolated worktree; no rerun or repair is authorized. DLV-473 test-only `34f15ae9` remains blocked after its first red; the standing tree's two DLV-293 test diffs remain byte-identical and must not be touched. DLV-300 is next after accepted DLV-298 reaches local `main`, and must use a separate clean worktree. |
-| Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | DLV-298 production through `fc9adc8` is physically accepted. Add only the assigned migrated Spotify/typed-handle regression tests, run the two focused gates once in order, stop at the first red, and commit the test-only follow-up separately. Do not rebuild/relaunch for tests alone. |
+| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | DLV-300 is Assigned from integrated baseline `c9e9b97` in a separate clean worktree. The standing worktree's retained DLV-474/DLV-293 diffs and blocked DLV-473 test commit remain immutable evidence and must not be touched. |
+| Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | DLV-298 production is integrated. Its first migrated Spotify test gate failed opaquely before tests; the uncommitted one-file test diff is retained without rerun or commit. Do not rebuild/relaunch for this debt. DLV-296 remains Ready but must not reuse or disturb the dirty evidence tree. |
 
 ## Execution rules
 
@@ -840,33 +841,29 @@ Lane: widgets. Status: closed with no implementation commit. Direct compatibilit
 
 Lane: widgets, baseline accepted DLV-295 integration `3d4b940`. Status:
 production `65d7872` + `d3b7cf7` + `9396363` + `fc9adc8` is physically
-accepted. The final correction adds the bounded typed-handle presentation focus
+accepted and integrated as merge `c9e9b97`. The final correction adds the bounded typed-handle presentation focus
 override, restores Spotify's state-specific focus/null, and advances to 0.3.26.
 Release/package builds passed; exact package SHA-256 is
 `D44C54861A566A7D62B4C9763E8C1162421DEFF9F6EC690512B80950FA7858B7`.
 It is sole installed/selected/enabled under responsive visible PID 63284.
-Post-acceptance focused tests are Assigned before integration. Migrate Spotify's Compact and Up Next layouts
+The post-acceptance focused test gate stopped during an opaque build with zero
+tests and no compiler diagnostic; its one-file diff remains uncommitted and was
+not rerun. Migrate Spotify's Compact and Up Next layouts
 from manual selection plumbing to the optional typed handle, deleting the old
 demand owner while preserving accepted roots, sizing, focus/scopes, controls,
-queue/provider behavior, credentials, and Full widget fallback. Bump the
-immutable package, build without tests, then planner-review/install/launch the
-exact candidate. The user has accepted the migration and authorizes its focused
-test completion and integration without another production relaunch. The
-running accepted candidate already contains `fc9adc8`; tests or reviewer
-documents alone do not change runtime artifact inputs.
-
-After the user accepts the migrated package, add a fresh deterministic Spotify
-regression against the final handle API proving selection, lifecycle, and
-pinned Next/Previous retain Up Next demand without returning to NotLoaded. Do
-not port or rerun obsolete `bdda057`. Run only the focused migrated Spotify and
-direct SDK-handle gates once; no Game Launcher, live provider/account, broad
-aggregate, package-state tests, protocol/native change, Avalonia/AVP, or push.
+queue/provider behavior, credentials, and Full widget fallback. The attempted
+fresh regression targeted typed-handle selection/lifecycle and pinned
+Next/Previous demand, but the first assigned command failed before tests. Close
+DLV-298 with accepted production and retained test debt; do not port/rerun
+obsolete `bdda057` or the new uncommitted attempt. The running accepted
+candidate already contains `fc9adc8`, so integration and reviewer documents do
+not authorize a rebuild or relaunch.
 
 ### DLV-300 host-reserved View and widget-owned pinned Back
 
 Lane: platform, serialized native-input/public-authoring contract. Status:
-Ready after accepted DLV-298 production and its focused test follow-up are
-integrated into local `main`. Use a separate clean worktree; do not disturb the
+Assigned from clean integrated local-main baseline `c9e9b97`. Use a separate
+clean worktree; do not disturb the
 standing platform worktree's retained DLV-474/DLV-293 evidence.
 
 Make View an unconditional native host navigation control. Widgets may not map
@@ -934,23 +931,22 @@ no live provider, installation, Game Launcher tests, broad aggregate, or push.
 
 ## Ordered queues
 
-1. DLV-298 focused migrated Spotify/typed-handle tests, then integration.
-2. DLV-300 host-reserved View and widget-owned pinned Back; visible next
-   deliverable after DLV-298 integration.
-3. DLV-296 pinned-layout preview and diagnostics.
-4. DLV-297 pinned-layout templates and examples.
-5. DLV-474 fresh-session sequence-authority correction: retained correction
+1. DLV-300 host-reserved View and widget-owned pinned Back; Assigned visible
+   milestone from integrated baseline `c9e9b97`.
+2. DLV-296 pinned-layout preview and diagnostics.
+3. DLV-297 pinned-layout templates and examples.
+4. DLV-474 fresh-session sequence-authority correction: retained correction
    passed its native gate, then the managed gate stopped on an opaque pre-test
    build red. Four diffs remain uncommitted; no rerun or repair is authorized.
-6. DLV-291 focused post-acceptance evidence: native 108/108 green; obsolete
+5. DLV-291 focused post-acceptance evidence: native 108/108 green; obsolete
    low-level Spotify attempt is retained only as unaccepted `bdda057`. Its
    behavior regression moves into DLV-295 after the high-level migration.
-7. DLV-473 focused post-acceptance tests: clean `34f15ae9` is retained
+6. DLV-473 focused post-acceptance tests: clean `34f15ae9` is retained
    unintegrated after the first SDK gate stopped before tests on an opaque build
    red; later gates did not run and no rerun is authorized.
-8. DLV-294 generic pinned-layout projections: accepted/integrated as `60536ff`; closed.
-9. DLV-293 focused test debt: retained uncommitted after unrelated Game Launcher stationarity red; no rerun under the explicit deferral.
-10. Remaining maturity deliverables after the pinned-layout author workflow; DLV-248 stays deferred until explicit user promotion.
+7. DLV-294 generic pinned-layout projections: accepted/integrated as `60536ff`; closed.
+8. DLV-293 focused test debt: retained uncommitted after unrelated Game Launcher stationarity red; no rerun under the explicit deferral.
+9. Remaining maturity deliverables after the pinned-layout author workflow; DLV-248 stays deferred until explicit user promotion.
 
 DLV-473 production is accepted/integrated and its tests are post-acceptance
 work. DLV-291 versions through 0.3.23 are physically rejected overall. Reviewed
