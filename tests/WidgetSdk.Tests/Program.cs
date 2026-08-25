@@ -93,6 +93,7 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Default controller routing blocks disabled and busy buttons", DisabledAndBusyButtonsDoNotActivate),
     ("Slider routing is stale-safe and uses absolute requested values", SliderInputResolves),
     ("Pending slider actions coalesce latest-wins without crossing actions", SliderActionsCoalesceInOrder),
+    ("Serial action diagnostics preserve exact correlation and terminal ownership", ActionDiagnosticsCorrelate),
     ("Controller shortcut fallback stays in explicit active input surface", ScopedShortcutRouting),
     ("Public test host services are typed immutable and attach once", HostCapabilityServices),
     ("Audio and network host services use typed provider contracts", TypedPlatformServices),
@@ -3257,6 +3258,39 @@ static async Task SliderActionsCoalesceInOrder()
     Assert.Equal("volume.mute", canceled.Actions[1].ActionId);
 }
 
+static async Task ActionDiagnosticsCorrelate()
+{
+    var widget = new DiagnosticRoutingWidget();
+    _ = widget.RenderSnapshot("diagnostic.instance", 7);
+    await widget.SetActiveAsync(true, CancellationToken.None);
+
+    Assert.True(await widget.OnControllerInputAsync(OpenInput(
+        ControllerButton.A, "diagnostic.action", 7, "diagnostic.root", 303001)),
+        "The diagnostic action was not admitted.");
+    await widget.AllObserved.Task.WaitAsync(TimeSpan.FromSeconds(2));
+
+    var observations = widget.Observations;
+    Assert.Equal(3, observations.Count);
+    Assert.True(observations.Any(item =>
+        item.Stage == "admission" && item.Code == "enqueued"),
+        "Admission diagnostics were not observed.");
+    Assert.True(observations.Any(item =>
+        item.Stage == "dequeue" && item.Code == "started"),
+        "Dequeue diagnostics were not observed.");
+    Assert.True(observations.Any(item =>
+        item.Stage == "terminal" && item.Code == "succeeded"),
+        "Terminal diagnostics were not observed.");
+    foreach (var observation in observations)
+    {
+        Assert.Equal("diagnostic.activate", observation.Action.ActionId);
+        Assert.Equal("diagnostic.action", observation.Action.SourceElementId);
+        Assert.Equal(303001L, observation.Action.Sequence);
+        Assert.Equal("diagnostic.root", observation.Action.InputScopeId);
+    }
+
+    await widget.SetActiveAsync(false, CancellationToken.None);
+}
+
 static async Task ScopedShortcutRouting()
 {
     var widget = new SurfaceRoutingWidget();
@@ -3410,6 +3444,54 @@ file sealed class RoutingWidget : Widget
         return ValueTask.CompletedTask;
     }
 }
+
+file sealed class DiagnosticRoutingWidget : Widget
+{
+    private readonly object _gate = new();
+    private readonly List<ActionDiagnosticObservation> _observations = [];
+
+    public TaskCompletionSource AllObserved { get; } =
+        new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+    public IReadOnlyList<ActionDiagnosticObservation> Observations
+    {
+        get
+        {
+            lock (_gate) return _observations.ToArray();
+        }
+    }
+
+    public override WidgetView Render() => new(
+        UI.Stack("diagnostic.root",
+            UI.Button("Activate", "diagnostic.activate", "diagnostic.action")),
+        "diagnostic.action",
+        ActiveInputScopeId: "diagnostic.root");
+
+    protected override void OnActionDiagnostic(
+        WidgetActionEvent action,
+        string stage,
+        string code)
+    {
+        lock (_gate)
+        {
+            _observations.Add(new(action, stage, code));
+            if (_observations.Count == 3) AllObserved.TrySetResult();
+        }
+    }
+
+    public override ValueTask OnActionAsync(
+        WidgetActionEvent action,
+        CancellationToken cancellationToken = default)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        return ValueTask.CompletedTask;
+    }
+}
+
+file sealed record ActionDiagnosticObservation(
+    WidgetActionEvent Action,
+    string Stage,
+    string Code);
 
 file sealed class SliderRoutingWidget : Widget
 {

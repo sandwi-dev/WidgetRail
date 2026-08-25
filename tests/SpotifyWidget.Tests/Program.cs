@@ -54,6 +54,7 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Missing playback device produces actionable guidance", MissingPlaybackDeviceGuidance),
     ("Progress is projected locally without provider polling", ProjectedProgress),
     ("Playback actions publish optimistic state and reconcile", OptimisticPlayback),
+    ("Playback diagnostics correlate queue classification provider and pending state", PlaybackDiagnosticsCorrelate),
     ("Failed controls roll back optimistic state", FailedControlRollback),
     ("Permission denial remains an actionable UI state", PermissionDenied),
     ("Manifest declares only the generic full-trust application route", ManifestContract),
@@ -63,6 +64,19 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Spotify internals have real stable-responsibility boundaries", ResponsibilitySplitContract),
     ("Time labels are stable", TimeFormatting),
 };
+
+var testPrefixIndex = Array.IndexOf(args, "--test-prefix");
+if (testPrefixIndex >= 0)
+{
+    if (testPrefixIndex + 1 >= args.Length)
+        throw new ArgumentException("Missing --test-prefix value.");
+    var prefix = args[testPrefixIndex + 1];
+    tests = tests
+        .Where(test => test.Name.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
+        .ToArray();
+    if (tests.Length == 0)
+        throw new InvalidOperationException($"No tests match prefix '{prefix}'.");
+}
 
 var failures = new List<string>();
 foreach (var (name, run) in tests)
@@ -1947,6 +1961,69 @@ static async Task OptimisticPlayback()
     await StopAsync(widget);
 }
 
+static async Task PlaybackDiagnosticsCorrelate()
+{
+    var diagnostics = new RecordingSpotifyDiagnostics();
+    var harness = SpotifyHarness.Ready();
+    var widget = await StartAsync(harness, diagnostics: diagnostics);
+    await WaitUntil(() => widget.ViewState == SpotifyWidgetViewState.Ready);
+    var snapshot = widget.RenderSnapshot("spotify.diagnostics", 303);
+    var handled = await widget.OnControllerInputAsync(new ControllerInputEvent(
+        ControllerButton.A,
+        ControllerEventPhase.Pressed,
+        ControllerInputContext.OpenWidget,
+        "spotify.play-toggle",
+        Sequence: 303001,
+        ActiveInputScopeId: snapshot.ActiveInputScopeId,
+        SnapshotSequence: snapshot.Sequence));
+    Assert.True(handled, "The correlated playback action was not admitted.");
+    await WaitUntil(() =>
+        diagnostics.Contains("action-queue-admission", "spotify.play-toggle", 303001) &&
+        diagnostics.Contains("action-queue-result", "enqueued", 303001) &&
+        diagnostics.Contains("action-queue-terminal", "spotify.play-toggle", 303001) &&
+        diagnostics.Contains("action-queue-result", "succeeded", 303001));
+
+    var correlated = diagnostics.ForOperation(303001);
+    Assert.True(correlated.Any(item =>
+        item.Boundary == "action-queue-admission" &&
+        item.Code == "spotify.play-toggle"),
+        "The SDK admission did not preserve the exact action identity.");
+    Assert.True(correlated.Any(item =>
+        item.Boundary == "action-queue-result" && item.Code == "enqueued"),
+        "The SDK admission result was not recorded.");
+    Assert.Ordered(correlated,
+        ("action-queue-dequeue", "spotify.play-toggle"),
+        ("action-queue-result", "started"),
+        ("action-id", "spotify.play-toggle"),
+        ("action-classification", "playback"),
+        ("playback-decision", "admitted"),
+        ("action-status", "optimistic"),
+        ("action-invalidation", "optimistic"),
+        ("playback-provider", "started"),
+        ("playback-provider", "succeeded"),
+        ("action-status", "provider-succeeded"),
+        ("action-invalidation", "provider-succeeded"),
+        ("action-queue-terminal", "spotify.play-toggle"),
+        ("action-queue-result", "succeeded"));
+
+    var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+    harness.ControlWait = release.Task;
+    var first = widget.OnActionAsync(new WidgetActionEvent(
+        "spotify.play-toggle", "spotify.play-toggle", Sequence: 303002)).AsTask();
+    await WaitUntil(() => harness.Commands.Count >= 2);
+    await widget.OnActionAsync(new WidgetActionEvent(
+        "spotify.play-toggle", "spotify.play-toggle", Sequence: 303003));
+    Assert.True(diagnostics.Contains("playback-decision", "pending", 303003),
+        "A concurrent playback action did not record the pending-operation decision.");
+    Assert.True(diagnostics.Contains("action-status", "control-unavailable", 303003),
+        "The pending decision did not correlate its resulting status.");
+    Assert.True(diagnostics.Contains("action-invalidation", "control-unavailable", 303003),
+        "The pending decision did not correlate its resulting invalidation.");
+    release.TrySetResult();
+    await first;
+    await StopAsync(widget);
+}
+
 static async Task FailedControlRollback()
 {
     var harness = SpotifyHarness.Ready();
@@ -2014,10 +2091,13 @@ static Task PresentationBoundaryIsPure()
             UI.VerticalScroll("spotify.playlists.scroll.compact", [])),
         null, null, null, false, null, "spotify.setup.open");
 
+    var handles = new SpotifyPresentationHandleFixture();
     var first = SnapshotJson.Serialize(
-        SpotifyPresentation.Render(state).CreateSnapshot("spotify.presentation", 1));
+        SpotifyPresentation.Render(state, handles.Compact, handles.UpNext)
+            .CreateSnapshot("spotify.presentation", 1));
     var second = SnapshotJson.Serialize(
-        SpotifyPresentation.Render(state).CreateSnapshot("spotify.presentation", 1));
+        SpotifyPresentation.Render(state, handles.Compact, handles.UpNext)
+            .CreateSnapshot("spotify.presentation", 1));
     Assert.SequenceEqual(first, second);
     return Task.CompletedTask;
 }
@@ -2140,9 +2220,12 @@ static Task TimeFormatting()
 
 static async Task<SpotifyWidget> StartAsync(
     SpotifyHarness harness,
-    TimeProvider? timeProvider = null)
+    TimeProvider? timeProvider = null,
+    ISpotifyRuntimeDiagnostics? diagnostics = null)
 {
-    var widget = new SpotifyWidget(harness, timeProvider);
+    var widget = diagnostics is null
+        ? new SpotifyWidget(harness, timeProvider)
+        : new SpotifyWidget(harness, timeProvider, diagnostics);
     await WidgetTestHost.InitializeAsync(widget);
     await WidgetTestHost.SetLifecycleStateAsync(widget, WidgetLifecycleState.Visible);
     return widget;
@@ -2550,6 +2633,66 @@ file sealed class SpotifyHarness : ISpotifyApplicationService
         "Spotify");
 }
 
+file sealed record SpotifyDiagnosticObservation(
+    string Boundary,
+    string Code,
+    long Operation,
+    long Generation,
+    long ElapsedMilliseconds);
+
+internal sealed class SpotifyPresentationHandleFixture : Widget
+{
+    internal SpotifyPresentationHandleFixture()
+    {
+        Compact = CreatePinnedLayoutHandle(
+            SpotifyPresentation.CompactPinnedLayoutId,
+            SpotifyPresentation.CompactPinnedLayoutName,
+            SpotifyPresentation.CompactPinnedSurface,
+            activeInputScopeId: SpotifyPresentation.CompactPinnedScope);
+        UpNext = CreatePinnedLayoutHandle(
+            SpotifyPresentation.UpNextPinnedLayoutId,
+            SpotifyPresentation.UpNextPinnedLayoutName,
+            SpotifyPresentation.UpNextPinnedSurface,
+            activeInputScopeId: SpotifyPresentation.UpNextPinnedScope);
+    }
+
+    internal PinnedLayoutHandle Compact { get; }
+    internal PinnedLayoutHandle UpNext { get; }
+
+    public override WidgetView Render() => new(UI.Text("Fixture", "fixture.root"));
+}
+
+file sealed class RecordingSpotifyDiagnostics : ISpotifyRuntimeDiagnostics
+{
+    private readonly object _gate = new();
+    private readonly List<SpotifyDiagnosticObservation> _observations = [];
+
+    public void Record(
+        string boundary,
+        string code,
+        long operation = 0,
+        long generation = 0,
+        long elapsedMilliseconds = 0)
+    {
+        lock (_gate)
+            _observations.Add(new(
+                boundary, code, operation, generation, elapsedMilliseconds));
+    }
+
+    public bool Contains(string boundary, string code, long operation)
+    {
+        lock (_gate) return _observations.Any(item =>
+            item.Boundary == boundary && item.Code == code && item.Operation == operation);
+    }
+
+    public IReadOnlyList<SpotifyDiagnosticObservation> ForOperation(long operation)
+    {
+        lock (_gate) return _observations
+            .Where(item => item.Operation == operation)
+            .ToArray();
+    }
+}
+
 file sealed class ManualTimeProvider(DateTimeOffset initial) : TimeProvider
 {
     private DateTimeOffset _now = initial;
@@ -2579,5 +2722,23 @@ file static class Assert
     {
         if (!expected.SequenceEqual(actual))
             throw new InvalidOperationException("Sequences differ.");
+    }
+
+    public static void Ordered(
+        IReadOnlyList<SpotifyDiagnosticObservation> actual,
+        params (string Boundary, string Code)[] expected)
+    {
+        var index = 0;
+        foreach (var item in actual)
+        {
+            if (index < expected.Length &&
+                item.Boundary == expected[index].Boundary &&
+                item.Code == expected[index].Code)
+                index++;
+        }
+        if (index != expected.Length)
+            throw new InvalidOperationException(
+                $"Expected diagnostic {expected[index].Boundary}:{expected[index].Code} " +
+                $"at ordered position {index}.");
     }
 }

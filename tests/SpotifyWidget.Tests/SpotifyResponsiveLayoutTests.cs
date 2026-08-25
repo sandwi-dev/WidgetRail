@@ -15,7 +15,9 @@ internal static class SpotifyResponsiveLayoutTests
     internal static Task NamedHostEnvelopesFitAndPreserveFocus()
     {
         var theme = CompileTheme();
-        var view = SpotifyPresentation.Render(ReadyState());
+        var handles = new SpotifyPresentationHandleFixture();
+        var view = SpotifyPresentation.Render(
+            ReadyState(), handles.Compact, handles.UpNext);
         var snapshot = view.CreateSnapshot("spotify.responsive-fit", 1);
         var wide = Find(snapshot.Root, "spotify.shell.wide");
         var compact = Find(snapshot.Root, "spotify.shell.compact");
