@@ -12,7 +12,9 @@ internal static class SpotifyPresentation
     private const string SetupScope = "spotify.setup";
     internal const string CompactPinnedLayoutId = "spotify.pinned.compact";
     internal const string UpNextPinnedLayoutId = "spotify.pinned.up-next";
-    private const string CompactPinnedScope = "spotify.pinned.compact.scope";
+    internal const string CompactPinnedLayoutName = "Compact now playing";
+    internal const string UpNextPinnedLayoutName = "Now playing + up next";
+    internal const string CompactPinnedScope = "spotify.pinned.compact.scope";
     internal const string UpNextPinnedScope = "spotify.pinned.up-next.scope";
     private static readonly WidgetSurfaceHints StandardSurface = new()
     {
@@ -22,7 +24,7 @@ internal static class SpotifyPresentation
         MinimumWidth = 620,
         MinimumHeight = 400,
     };
-    private static readonly WidgetSurfaceHints CompactPinnedSurface = new()
+    internal static readonly WidgetSurfaceHints CompactPinnedSurface = new()
     {
         Mode = WidgetSurfaceMode.Compact,
         PreferredWidth = 360,
@@ -30,7 +32,7 @@ internal static class SpotifyPresentation
         MinimumWidth = 320,
         MinimumHeight = 300,
     };
-    private static readonly WidgetSurfaceHints UpNextPinnedSurface = new()
+    internal static readonly WidgetSurfaceHints UpNextPinnedSurface = new()
     {
         Mode = WidgetSurfaceMode.Wide,
         PreferredWidth = 760,
@@ -39,7 +41,10 @@ internal static class SpotifyPresentation
         MinimumHeight = 340,
     };
 
-    internal static WidgetView Render(SpotifyPresentationState presentation)
+    internal static WidgetView Render(
+        SpotifyPresentationState presentation,
+        PinnedLayoutHandle compactPinnedLayout,
+        PinnedLayoutHandle upNextPinnedLayout)
     {
         var view = presentation.ShowSetup
             ? RenderSetup(
@@ -71,11 +76,9 @@ internal static class SpotifyPresentation
         {
             PinnedLayouts =
             [
-                CreatePinnedLayout(presentation, CompactPinnedLayoutId,
-                    "Compact now playing", CompactPinnedSurface, CompactPinnedScope,
+                CreatePinnedLayout(presentation, compactPinnedLayout,
                     includeUpNext: false),
-                CreatePinnedLayout(presentation, UpNextPinnedLayoutId,
-                    "Now playing + up next", UpNextPinnedSurface, UpNextPinnedScope,
+                CreatePinnedLayout(presentation, upNextPinnedLayout,
                     includeUpNext: true),
             ],
         };
@@ -83,13 +86,11 @@ internal static class SpotifyPresentation
 
     private static PinnedPresentationLayout CreatePinnedLayout(
         SpotifyPresentationState presentation,
-        string layoutId,
-        string name,
-        WidgetSurfaceHints surface,
-        string inputScope,
+        PinnedLayoutHandle layout,
         bool includeUpNext)
     {
         var mode = includeUpNext ? "pinned-up-next" : "pinned-compact";
+        var inputScope = layout.ActiveInputScopeId!;
         var content = new List<WidgetElement>();
         string? initialFocusId;
         if (presentation.ViewState == SpotifyWidgetViewState.Ready)
@@ -135,8 +136,7 @@ internal static class SpotifyPresentation
                 includeUpNext ? "spotify-pinned-up-next" : "spotify-pinned-now-playing");
         root = ApplyPlaybackShortcuts(root, presentation.Playback)
             .Shortcut(ControllerButton.Y, "spotify.refresh");
-        return WidgetView.PinnedLayout(
-            layoutId, name, surface, root, initialFocusId, inputScope);
+        return layout.Present(root, initialFocusId);
     }
 
     private static (WidgetElement Element, string? InitialFocusId) PinnedState(

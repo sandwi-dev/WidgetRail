@@ -52,6 +52,8 @@ public sealed class SpotifyWidget : Widget
     private readonly ISpotifyApplicationService _spotify;
     private readonly TimeProvider _timeProvider;
     private readonly ISpotifyRuntimeDiagnostics _runtimeDiagnostics;
+    private readonly PinnedLayoutHandle _compactPinnedLayout;
+    private readonly PinnedLayoutHandle _upNextPinnedLayout;
     private SpotifyWidgetViewState _viewState = SpotifyWidgetViewState.Initial;
     private SpotifyAuthorizationState _authorizationState =
         SpotifyAuthorizationState.Disconnected;
@@ -84,7 +86,6 @@ public sealed class SpotifyWidget : Widget
     private bool _showSetup;
     private long _setupViewGeneration;
     private bool _setupBusy;
-    private bool _upNextPinnedLayoutSelected;
     private long _activeGeneration;
     private Task? _pollTask;
     private Task? _progressTask;
@@ -107,6 +108,16 @@ public sealed class SpotifyWidget : Widget
         _timeProvider = timeProvider ?? TimeProvider.System;
         _runtimeDiagnostics = runtimeDiagnostics ??
             throw new ArgumentNullException(nameof(runtimeDiagnostics));
+        _compactPinnedLayout = CreatePinnedLayoutHandle(
+            SpotifyPresentation.CompactPinnedLayoutId,
+            SpotifyPresentation.CompactPinnedLayoutName,
+            SpotifyPresentation.CompactPinnedSurface,
+            activeInputScopeId: SpotifyPresentation.CompactPinnedScope);
+        _upNextPinnedLayout = CreatePinnedLayoutHandle(
+            SpotifyPresentation.UpNextPinnedLayoutId,
+            SpotifyPresentation.UpNextPinnedLayoutName,
+            SpotifyPresentation.UpNextPinnedSurface,
+            activeInputScopeId: SpotifyPresentation.UpNextPinnedScope);
         _queue = CreateCursorResource<SpotifyMediaCollectionItem>("spotify.queue", new()
         {
             PageSize = SpotifyApplicationContract.MaximumQueueItems,
@@ -201,7 +212,8 @@ public sealed class SpotifyWidget : Widget
     {
         try
         {
-            return SpotifyPresentation.Render(CapturePresentationState());
+            return SpotifyPresentation.Render(
+                CapturePresentationState(), _compactPinnedLayout, _upNextPinnedLayout);
         }
         catch (Exception exception)
         {
@@ -236,7 +248,7 @@ public sealed class SpotifyWidget : Widget
             else if (_destination == SpotifyDestination.Playlists)
                 _playlists.EnsureLoaded();
             else if (_destination == SpotifyDestination.Queue ||
-                     _upNextPinnedLayoutSelected)
+                     IsUpNextPinnedLayoutDemanded())
                 _queue.EnsureLoaded();
         }
         return ValueTask.CompletedTask;
@@ -255,7 +267,6 @@ public sealed class SpotifyWidget : Widget
 
     protected override async ValueTask OnDestroyingAsync(CancellationToken shutdownToken)
     {
-        lock (_gate) _upNextPinnedLayoutSelected = false;
         Task? authorization;
         lock (_authorizationGate) authorization = _authorizationTask;
         var tasks = new[] { authorization }
@@ -282,29 +293,32 @@ public sealed class SpotifyWidget : Widget
     }
 
     public override ValueTask OnPinnedLayoutSelectionChangedAsync(
-        string? layoutId,
+        string? _selectedLayoutId,
         CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
-        var selected = string.Equals(
-            layoutId, SpotifyPresentation.UpNextPinnedLayoutId,
-            StringComparison.Ordinal);
-        bool changed;
-        bool reset;
+        if (!_upNextPinnedLayout.IsSelected) return ValueTask.CompletedTask;
+
+        var selectionToken = _upNextPinnedLayout.SelectionCancellationToken;
+        selectionToken.ThrowIfCancellationRequested();
+        _ = selectionToken.Register(
+            static state => ((SpotifyWidget)state!).ReleaseUpNextPinnedLayoutDemand(),
+            this);
+
         bool load;
         lock (_gate)
         {
-            changed = _upNextPinnedLayoutSelected != selected;
-            _upNextPinnedLayoutSelected = selected;
-            reset = changed && !selected && _destination != SpotifyDestination.Queue;
-            load = changed && selected && IsActive &&
-                _viewState == SpotifyWidgetViewState.Ready;
+            load = IsActive && _viewState == SpotifyWidgetViewState.Ready;
         }
-        if (!changed) return ValueTask.CompletedTask;
-        if (reset) _queue.Reset(invalidate: false);
-        else if (load) _queue.EnsureLoaded();
-        Invalidate();
+        if (load) _queue.EnsureLoaded();
         return ValueTask.CompletedTask;
+    }
+
+    private void ReleaseUpNextPinnedLayoutDemand()
+    {
+        bool reset;
+        lock (_gate) reset = _destination != SpotifyDestination.Queue;
+        if (reset) _queue.Reset(invalidate: false);
     }
 
     public override async ValueTask OnActionAsync(
@@ -638,15 +652,19 @@ public sealed class SpotifyWidget : Widget
     private void InvalidateQueueCollection()
     {
         SpotifyDestination destination;
-        bool upNextPinnedLayoutSelected;
         lock (_gate)
         {
             destination = _destination;
-            upNextPinnedLayoutSelected = _upNextPinnedLayoutSelected;
         }
-        if (destination == SpotifyDestination.Queue || upNextPinnedLayoutSelected)
+        if (destination == SpotifyDestination.Queue || IsUpNextPinnedLayoutDemanded())
             _queue.Refresh();
         else _queue.Reset(invalidate: false);
+    }
+
+    private bool IsUpNextPinnedLayoutDemanded()
+    {
+        var selectionToken = _upNextPinnedLayout.SelectionCancellationToken;
+        return _upNextPinnedLayout.IsSelected && !selectionToken.IsCancellationRequested;
     }
 
     private async ValueTask<WidgetCursorPage<SpotifyMediaCollectionItem>> LoadQueuePageAsync(
