@@ -163,6 +163,70 @@ internal static class BridgeClientRegistryScenarios
         RegistryAssert.Equal(2, client.ControllerInputs.Count);
     }
 
+    internal static async Task EmbeddedMediaRequiresExactPublicationAuthority()
+    {
+        var configured = Widget("embedded-media-authority", worker: 'm', catalog: 'm');
+        await using var fixture = new RegistryFixture(
+            Catalog(configured),
+            configure: (_, client) => client.SnapshotFactory = sequence => new ViewSnapshot
+            {
+                ProtocolVersion = ProtocolConstants.EmbeddedMediaSurfaceVersion,
+                Sequence = sequence,
+                WidgetInstanceId = configured.InstanceId,
+                ActiveInputScopeId = "root",
+                Root = new ViewNode { Id = "root", Kind = ViewNodeKind.Stack },
+                EmbeddedMedia = new EmbeddedMediaSurface
+                {
+                    Id = "primary-media",
+                    AccessibleName = "Neutral media",
+                    EntryAsset = "media/index.html",
+                    Surface = new WidgetSurfaceHints
+                    {
+                        PreferredWidth = 760,
+                        PreferredHeight = 425,
+                        MinimumWidth = 320,
+                        MinimumHeight = 180,
+                    },
+                    AspectRatio = 16.0 / 9.0,
+                    Resources =
+                    [
+                        new EmbeddedMediaResource
+                        {
+                            Path = "media/index.html",
+                            ContentType = "text/html",
+                        },
+                    ],
+                },
+            });
+        await fixture.SetLifecycleAsync(configured.Id, WidgetLifecycleState.Visible);
+        var snapshot = await fixture.GetSnapshotAsync(configured.Id);
+        var descriptor = configured.PublicDescriptor();
+        var exact = new BridgeEmbeddedMediaRequest(
+            configured.Id,
+            snapshot.Snapshot.WidgetInstanceId,
+            descriptor.RuntimeGeneration,
+            descriptor.PresentationGeneration,
+            snapshot.Snapshot.Sequence,
+            snapshot.Snapshot.EmbeddedMedia!.Id);
+
+        using (var admitted = fixture.Registry.AdmitEmbeddedMedia(exact))
+        {
+            RegistryAssert.Equal(configured.Id, admitted.Value.Configured.Id);
+            RegistryAssert.Equal(snapshot.Snapshot.Sequence, admitted.Value.Snapshot.Sequence);
+        }
+
+        await RegistryAssert.ThrowsAsync<BridgeProtocolException>(() => Task.Run(() =>
+        {
+            using var _ = fixture.Registry.AdmitEmbeddedMedia(
+                exact with { Sequence = exact.Sequence + 1 });
+        }));
+        await RegistryAssert.ThrowsAsync<BridgeProtocolException>(() => Task.Run(() =>
+        {
+            using var _ = fixture.Registry.AdmitEmbeddedMedia(
+                exact with { RuntimeGeneration = new string('f', 32) });
+        }));
+    }
+
     internal static async Task CatalogReplacementAndRemovalOwnGenerations()
     {
         var initial = Widget("alpha", worker: 'a', catalog: 'a');

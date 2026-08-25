@@ -1855,6 +1855,7 @@ property WidgetRail.WidgetProtocol.ControllerButton WidgetRail.WidgetSdk.Control
 property WidgetRail.WidgetProtocol.ControllerButton? WidgetRail.WidgetSdk.WidgetActionEvent.ControllerButton { get; set; }
 property WidgetRail.WidgetProtocol.ControllerEventPhase WidgetRail.WidgetSdk.ControllerInputEvent.Phase { get; set; }
 property WidgetRail.WidgetProtocol.ControllerEventPhase WidgetRail.WidgetSdk.WidgetActionEvent.Phase { get; set; }
+property WidgetRail.WidgetProtocol.EmbeddedMediaSurface? WidgetRail.WidgetSdk.WidgetView.EmbeddedMedia { get; set; }
 property WidgetRail.WidgetProtocol.FocusNeighbors? WidgetRail.WidgetSdk.ActionSurfaceElement.FocusNeighbors { get; set; }
 property WidgetRail.WidgetProtocol.FocusNeighbors? WidgetRail.WidgetSdk.ButtonElement.FocusNeighbors { get; set; }
 property WidgetRail.WidgetProtocol.FocusNeighbors? WidgetRail.WidgetSdk.ScrubberElement.FocusNeighbors { get; set; }

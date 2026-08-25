@@ -34,6 +34,13 @@ public:
     static bool IsAllowedNavigation(const std::wstring_view uri) {
         return RichMediaSurfaceCoordinator::IsAllowedNavigation(uri);
     }
+    static bool IsAllowedMessageSource(const std::wstring_view source,
+                                       const std::wstring_view page) {
+        return RichMediaSurfaceCoordinator::IsAllowedMessageSource(source, page);
+    }
+    static bool IsValidAdapterConfiguration(const Configuration& configuration) {
+        return RichMediaSurfaceCoordinator::IsValidAdapterConfiguration(configuration);
+    }
     static bool SurfaceLocalPoint(HWND ownerWindow, const RECT& bounds,
                                   const UINT message, const LPARAM lParam,
                                   POINT& point) {
@@ -106,13 +113,15 @@ LRESULT CALLBACK WindowProc(HWND window, UINT message, WPARAM wParam, LPARAM lPa
 class Fixture final {
 public:
     Fixture(const unsigned int ordinal, const bool visible,
-            std::filesystem::path profileRoot = {})
+            std::filesystem::path profileRoot = {},
+            std::wstring adapterIdentity = {})
         : profileRoot_(profileRoot.empty()
               ? std::filesystem::temp_directory_path() /
                     (L"wrail-rich-media-proof-root-" +
                      std::to_wstring(GetCurrentProcessId()) + L"-" +
                      std::to_wstring(ordinal))
-              : std::move(profileRoot)) {
+              : std::move(profileRoot)),
+          adapterIdentity_(std::move(adapterIdentity)) {
         WNDCLASSW windowClass{};
         windowClass.hInstance = GetModuleHandleW(nullptr);
         windowClass.lpfnWndProc = WindowProc;
@@ -213,6 +222,25 @@ private:
         configuration.rasterScale = 1.0;
         configuration.initiallyVisible = visible;
         configuration.profileRootDirectory = profileRoot_.wstring();
+        if (!adapterIdentity_.empty()) {
+            configuration.origin =
+                L"https://wrail-media-" + adapterIdentity_ + L".invalid";
+            configuration.entryAsset = L"adapter/index.html";
+            const std::string firstId = adapterIdentity_ == L"aurora-adapter"
+                ? "aurora.primary" : "cedar.primary";
+            const std::string secondId = adapterIdentity_ == L"aurora-adapter"
+                ? "aurora.secondary" : "cedar.secondary";
+            const std::string page = R"HTML(<!doctype html><meta charset="utf-8">
+<button id=")HTML" + firstId + R"HTML(">First</button><button id=")HTML" +
+                secondId + R"HTML(">Second</button><script>
+let a={},seq=0,focus=')HTML" + firstId + R"HTML(';
+function emit(type,id){const r=document.activeElement.getBoundingClientRect();chrome.webview.postMessage({type,...a,eventSequence:++seq,commandId:id,focus,playing:false,bounds:{x:r.x,y:r.y,width:r.width,height:r.height}});}
+chrome.webview.addEventListener('message',e=>{const m=e.data;if(m.command==='initialize'){a={environmentGeneration:m.environmentGeneration,surfaceGeneration:m.surfaceGeneration,sessionGeneration:m.sessionGeneration,controllerGeneration:m.controllerGeneration,documentGeneration:m.documentGeneration};document.getElementById(focus).focus();emit('ready',m.commandId);return;}if(Object.keys(a).some(k=>m[k]!==a[k]))return;if(m.command==='next'||m.command==='previous'){focus=m.command==='next'?')HTML" + secondId + R"HTML(':')HTML" + firstId + R"HTML(';document.getElementById(focus).focus();emit('focus',m.commandId);}});
+</script>)HTML";
+            configuration.resources.push_back({
+                configuration.entryAsset, L"text/html",
+                std::vector<std::uint8_t>(page.begin(), page.end())});
+        }
         configuration.diagnostic = [this](const std::wstring_view message) {
             diagnostics_.emplace_back(message);
             std::wcout << L"diagnostic " << message << L'\n' << std::flush;
@@ -231,6 +259,7 @@ private:
     widgetrail::OverlayCompositionSurface composition_;
     widgetrail::richmedia::RichMediaSurfaceCoordinator coordinator_;
     std::filesystem::path profileRoot_;
+    std::wstring adapterIdentity_;
     bool sessionOpen_{};
     bool presentationVisible_{};
     bool presentationCommitFailed_{};
@@ -273,6 +302,22 @@ void RunContractCases() {
     Require(!RichMediaSurfaceCoordinator::ValidatePageEvent(
         LR"({"type":"focus","environmentGeneration":2,"surfaceGeneration":3,"sessionGeneration":7,"controllerGeneration":11,"documentGeneration":13,"eventSequence":4,"commandId":17,"focus":"seek","playing":false,"bounds":{"x":-1,"y":40,"width":120,"height":60}})",
         state.authority, 3, 17, next), "invalid focused bounds were admitted");
+    Require(RichMediaSurfaceCoordinator::ValidatePageEvent(
+        LR"({"type":"focus","environmentGeneration":2,"surfaceGeneration":3,"sessionGeneration":7,"controllerGeneration":11,"documentGeneration":13,"eventSequence":4,"commandId":17,"focus":"aurora.primary","playing":false,"bounds":{"x":100,"y":40,"width":120,"height":60}})",
+        state.authority, 3, 17, next), "valid document-local focus identity was rejected");
+    Require(!RichMediaSurfaceCoordinator::ValidatePageEvent(
+        LR"({"type":"focus","environmentGeneration":2,"surfaceGeneration":3,"sessionGeneration":7,"controllerGeneration":11,"documentGeneration":13,"eventSequence":4,"commandId":17,"focus":"invalid focus","playing":false,"bounds":{"x":100,"y":40,"width":120,"height":60}})",
+        state.authority, 3, 17, next), "invalid focus identity grammar was admitted");
+    const std::wstring oversizedFocusJson =
+        LR"({"type":"focus","environmentGeneration":2,"surfaceGeneration":3,"sessionGeneration":7,"controllerGeneration":11,"documentGeneration":13,"eventSequence":4,"commandId":17,"focus":")" +
+        std::wstring(129, L'a') +
+        LR"(","playing":false,"bounds":{"x":100,"y":40,"width":120,"height":60}})";
+    Require(!RichMediaSurfaceCoordinator::ValidatePageEvent(
+        oversizedFocusJson, state.authority, 3, 17, next),
+        "oversized document-local focus identity was admitted");
+    Require(!RichMediaSurfaceCoordinator::ValidatePageEvent(
+        LR"({"type":"script","environmentGeneration":2,"surfaceGeneration":3,"sessionGeneration":7,"controllerGeneration":11,"documentGeneration":13,"eventSequence":4,"commandId":17,"focus":"aurora.primary","playing":false,"bounds":{"x":100,"y":40,"width":120,"height":60}})",
+        state.authority, 3, 17, next), "unknown event kind was admitted");
     const auto command = RichMediaSurfaceCoordinator::CommandJson(
         Command::Activate, {5, 2, 9, 12, 14, 6}, 19);
     Require(command == LR"({"command":"arm-activate","environmentGeneration":5,"surfaceGeneration":2,"sessionGeneration":9,"controllerGeneration":12,"documentGeneration":14,"commandId":19})",
@@ -283,13 +328,45 @@ void RunContractCases() {
     Require(!RichMediaSurfaceCoordinatorTestPeer::IsAllowedNavigation(
                 L"https://wrail-rich-media.invalid/frame.html"),
             "non-embedded frame navigation was admitted");
+    Require(RichMediaSurfaceCoordinatorTestPeer::IsAllowedMessageSource(
+                L"https://wrail-media-aurora.invalid/adapter/index.html",
+                L"https://wrail-media-aurora.invalid/adapter/index.html") &&
+            !RichMediaSurfaceCoordinatorTestPeer::IsAllowedMessageSource(
+                L"https://wrong-origin.invalid/adapter/index.html",
+                L"https://wrail-media-aurora.invalid/adapter/index.html"),
+            "exact document message-origin admission drifted");
+    const auto adapterConfiguration = [](const std::wstring_view identity) {
+        Configuration configuration;
+        configuration.origin = L"https://wrail-media-" + std::wstring{identity} +
+            L".invalid";
+        configuration.entryAsset = L"media/index.html";
+        configuration.resources = {
+            {L"media/index.html", L"text/html",
+                {static_cast<std::uint8_t>('<'), static_cast<std::uint8_t>('>')}},
+            {L"media/tone.bin", L"application/octet-stream", {std::uint8_t{1}}},
+        };
+        return configuration;
+    };
+    auto aurora = adapterConfiguration(L"aurora");
+    auto cedar = adapterConfiguration(L"cedar");
+    Require(RichMediaSurfaceCoordinatorTestPeer::IsValidAdapterConfiguration(aurora) &&
+                RichMediaSurfaceCoordinatorTestPeer::IsValidAdapterConfiguration(cedar),
+            "provider-neutral adapters did not receive equal native admission");
+    auto unsafe = aurora;
+    unsafe.entryAsset = L"../credential.txt";
+    Require(!RichMediaSurfaceCoordinatorTestPeer::IsValidAdapterConfiguration(unsafe),
+            "unsafe adapter entry path was admitted");
+    auto oversized = cedar;
+    oversized.resources.front().content.resize(256 * 1024 + 1);
+    Require(!RichMediaSurfaceCoordinatorTestPeer::IsValidAdapterConfiguration(oversized),
+            "oversized adapter resource was admitted");
     POINT activationPoint{};
     Require(RichMediaSurfaceCoordinatorTestPeer::FocusedActionPoint(
                 {100.0, 40.0, 120.0, 60.0}, {12, 18, 712, 438},
                 activationPoint) &&
                 activationPoint.x == 160 && activationPoint.y == 70,
             "1.5x DPI client-space activation point was raster-scaled");
-    std::cout << "RichMediaSurfaceCoordinator contract cases passed=12\n";
+    std::cout << "RichMediaSurfaceCoordinator contract cases passed=21\n";
 }
 
 struct ProcessSample final {
@@ -548,12 +625,14 @@ void RunCpuWorkloadPolicyCases() {
     std::cout << "RichMedia CPU workload policy cases passed=4\n";
 }
 
-void RequireReady(Fixture& fixture, const char* message) {
+void RequireReady(Fixture& fixture, const char* message,
+                  const std::wstring_view expectedFocus = L"play") {
+    Require(!expectedFocus.empty(), "ready focus authority must be explicit");
     Require(PumpUntil([&] {
         const auto state = fixture.coordinator().state();
         return (state.lifecycle == widgetrail::richmedia::Lifecycle::Visible ||
                 state.lifecycle == widgetrail::richmedia::Lifecycle::ReadyHidden) &&
-            state.focusedElement == L"play";
+            state.focusedElement == expectedFocus;
     }, 15s), message);
 }
 
@@ -655,6 +734,30 @@ void RunLifecycleCases() {
     Require(std::filesystem::exists(marker),
             "final shutdown did not mark the process-lifetime profile for deferred cleanup");
     std::cout << "RichMediaSurfaceCoordinator lifecycle cases passed=20\n";
+}
+
+void RunProviderNeutralAdapterCases() {
+    using namespace widgetrail::richmedia;
+    unsigned int ordinal = 40;
+    for (const auto identity : {L"aurora-adapter", L"cedar-adapter"}) {
+        const std::wstring_view adapterIdentity{identity};
+        const std::wstring_view initialFocus = adapterIdentity == L"aurora-adapter"
+            ? L"aurora.primary" : L"cedar.primary";
+        const std::wstring_view nextFocus = adapterIdentity == L"aurora-adapter"
+            ? L"aurora.secondary" : L"cedar.secondary";
+        Fixture fixture(ordinal++, true, {}, identity);
+        RequireReady(fixture, "provider-neutral adapter did not become ready",
+                     initialFocus);
+        const auto before = fixture.coordinator().state().lastAcknowledgedCommandId;
+        Require(fixture.coordinator().SendCommand(Command::NavigateNext),
+                "provider-neutral adapter command was rejected");
+        Require(PumpUntil([&] {
+            const auto state = fixture.coordinator().state();
+            return state.lastAcknowledgedCommandId > before &&
+                state.focusedElement == nextFocus;
+        }, 2s), "provider-neutral adapter event was not exactly correlated");
+    }
+    std::cout << "RichMedia provider-neutral adapter cases passed=2\n";
 }
 
 void RunLifecycleAndPerformance() {
@@ -865,6 +968,7 @@ int wmain(int argc, wchar_t**) {
         RunCpuBudgetCases();
         RunMemoryBudgetScopeCases();
         RunCpuWorkloadPolicyCases();
+        RunProviderNeutralAdapterCases();
         if (argc > 1) RunLifecycleAndPerformance();
         else RunLifecycleCases();
         CoUninitialize();

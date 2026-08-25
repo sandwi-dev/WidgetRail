@@ -409,6 +409,19 @@ public sealed class WidgetBridgeServer : IAsyncDisposable
                 _sessionCancellation).ConfigureAwait(false);
             break;
         }
+
+        case BridgeMessageTypes.ResolveEmbeddedMedia:
+        {
+            var mediaRequest = BridgeJson.FromElement<BridgeEmbeddedMediaRequest>(request.Payload);
+            using var mediaAdmission = _registry.AdmitEmbeddedMedia(mediaRequest);
+            var bundle = EmbeddedMediaAssetResolver.Resolve(mediaRequest, mediaAdmission.Value);
+            await ReplyAsync(
+                BridgeMessageTypes.EmbeddedMedia,
+                request.RequestId,
+                bundle,
+                cancellationToken).ConfigureAwait(false);
+            break;
+        }
         case BridgeMessageTypes.RestartWidget:
         {
             var restartRequest = BridgeJson.FromElement<WidgetIdRequest>(request.Payload);

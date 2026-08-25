@@ -22,6 +22,19 @@ selects one on the single pinned surface. Override
 `OnPinnedLayoutSelectionChangedAsync` only to observe package data demand;
 null revokes it and never grants host authority.
 
+Widgets that need one embedded media rectangle may set the optional
+`WidgetView.EmbeddedMedia` protocol-v22 property. The declaration contains a
+stable surface ID and accessible name, bounded surface/aspect hints, a closed
+typed command set, and a finite inventory of package-local assets. Every asset
+path must be normalized and declared in the signed package inventory; the host
+revalidates its length and digest before creating the native surface. The host
+owns the WebView2 controller, origin, bounds/DPI, focus and input routing,
+accessibility boundary, visibility, fault handling, and teardown. Widgets own
+only their provider adapter assets and typed state. The contract intentionally
+does not expose navigation, DOM access, script execution, arbitrary URLs, or a
+second HWND/input owner. Widgets that omit `EmbeddedMedia` retain their existing
+snapshot and rendering behavior.
+
 For selection-driven data, create an optional per-widget
 `PinnedLayoutHandle` with `CreatePinnedLayoutHandle(id, name, surface,
 initialFocusId, activeInputScopeId)`. Those stable values are registered once;

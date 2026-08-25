@@ -987,6 +987,32 @@ internal sealed class BridgeClientRegistry : IAsyncDisposable
         throw new BridgeProtocolException($"Widget '{widgetId}' has no current generation.");
     }
 
+    internal BridgeClientPublication<BridgeClientSnapshot> AdmitEmbeddedMedia(
+        BridgeEmbeddedMediaRequest request)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        lock (_gate)
+        {
+            if (_clients.TryGetValue(request.WidgetId, out var registration) &&
+                !registration.IsRetiring && registration.CachedSnapshot is { } snapshot)
+            {
+                var descriptor = registration.Configured.PublicDescriptor();
+                var media = snapshot.EmbeddedMedia;
+                if (media is not null &&
+                    snapshot.Sequence == request.Sequence &&
+                    string.Equals(snapshot.WidgetInstanceId, request.InstanceId, StringComparison.Ordinal) &&
+                    string.Equals(descriptor.RuntimeGeneration, request.RuntimeGeneration, StringComparison.Ordinal) &&
+                    string.Equals(descriptor.PresentationGeneration, request.PresentationGeneration, StringComparison.Ordinal) &&
+                    string.Equals(media.Id, request.SurfaceId, StringComparison.Ordinal))
+                    return AdmitPublicationLocked(
+                        registration,
+                        new BridgeClientSnapshot(registration.Configured, snapshot));
+            }
+        }
+        throw new BridgeProtocolException(
+            "Embedded media authority is stale or unavailable.");
+    }
+
     internal BridgeClientPublication<ConfiguredWidget> AdmitProtectedWifi(
         string widgetId,
         string runtimeGeneration)

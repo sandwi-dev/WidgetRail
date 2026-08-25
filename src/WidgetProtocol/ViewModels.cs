@@ -378,5 +378,45 @@ public sealed record ViewSnapshot
     /// <summary>Versioned, host-clamped sizing hints for this exact view.</summary>
     public WidgetSurfaceHints? Surface { get; init; }
     public IReadOnlyList<PinnedPresentationLayout> PinnedLayouts { get; init; } = [];
+    /// <summary>
+    /// Optional protocol-v22 declaration for one host-owned embedded-media
+    /// surface. The host retains HWND, composition, input, focus,
+    /// accessibility, geometry, navigation, and teardown authority. Adapter
+    /// files are normalized package-relative references resolved only through
+    /// the installed package's verified content inventory.
+    /// </summary>
+    public EmbeddedMediaSurface? EmbeddedMedia { get; init; }
     public required ViewNode Root { get; init; }
+}
+
+public enum EmbeddedMediaCommand
+{
+    Previous,
+    Next,
+    Activate,
+    Back,
+    TogglePlayback,
+    SeekBackward,
+    SeekForward,
+}
+
+public sealed record EmbeddedMediaResource
+{
+    public required string Path { get; init; }
+    public required string ContentType { get; init; }
+}
+
+/// <summary>
+/// A closed, package-local adapter contract for a single host-owned media
+/// surface. This is not a browser, navigation, DOM, or script API.
+/// </summary>
+public sealed record EmbeddedMediaSurface
+{
+    public required string Id { get; init; }
+    public required string AccessibleName { get; init; }
+    public required string EntryAsset { get; init; }
+    public required WidgetSurfaceHints Surface { get; init; }
+    public required double AspectRatio { get; init; }
+    public IReadOnlyList<EmbeddedMediaResource> Resources { get; init; } = [];
+    public IReadOnlyList<EmbeddedMediaCommand> Commands { get; init; } = [];
 }

@@ -26,6 +26,8 @@ internal static class BridgeMessageTypes
     public const string GetSnapshot = "get-snapshot";
     public const string ResolveArtwork = "resolve-artwork";
     public const string Artwork = "artwork";
+    public const string ResolveEmbeddedMedia = "resolve-embedded-media";
+    public const string EmbeddedMedia = "embedded-media";
     public const string RestartWidget = "restart-widget";
     public const string SetWidgetLifecycle = "set-widget-lifecycle";
     public const string Snapshot = "snapshot";
@@ -64,6 +66,31 @@ internal sealed record BridgePresentationRequest(
         WidgetRail.WidgetSdk.WidgetPresentationTransactionKind.OrdinaryCheckpoint,
     long RecoveryOriginSequence = 0);
 internal sealed record BridgeArtworkRequest(string WidgetId, string ArtworkHandle);
+internal sealed record BridgeEmbeddedMediaRequest(
+    string WidgetId,
+    string InstanceId,
+    string RuntimeGeneration,
+    string PresentationGeneration,
+    long Sequence,
+    string SurfaceId);
+internal sealed record BridgeEmbeddedMediaResource(
+    string Path,
+    string ContentType,
+    string Sha256,
+    string ContentBase64);
+internal sealed record BridgeEmbeddedMediaBundle(
+    string WidgetId,
+    string InstanceId,
+    string RuntimeGeneration,
+    string PresentationGeneration,
+    long Sequence,
+    string SurfaceId,
+    string EntryAsset,
+    WidgetSurfaceHints Surface,
+    double AspectRatio,
+    string AccessibleName,
+    IReadOnlyList<EmbeddedMediaCommand> Commands,
+    IReadOnlyList<BridgeEmbeddedMediaResource> Resources);
 internal sealed record BridgeWidgetLifecycleRequest(
     string WidgetId,
     WidgetRail.WidgetSdk.WidgetLifecycleState State,

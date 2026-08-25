@@ -397,6 +397,49 @@ void VerifyAtomicPresentationUpdateMaterialization() {
             "Unknown presentation payload fields did not fail closed");
 }
 
+void VerifyEmbeddedMediaSnapshotContract() {
+    std::wstring error;
+    const auto valid = widgetrail::testing::ParseWidgetSnapshotResponse(R"json({
+        "snapshot": {
+            "protocolVersion":22,"sequence":7,
+            "widgetInstanceId":"neutral.adapter","activeInputScopeId":"root",
+            "surface":{"mode":"standard","preferredWidth":760,"preferredHeight":425,
+                       "minimumWidth":320,"minimumHeight":180},
+            "embeddedMedia":{"id":"media","accessibleName":"Neutral media",
+                "entryAsset":"media/index.html","aspectRatio":1.7777777778,
+                "surface":{"mode":"standard","preferredWidth":760,"preferredHeight":425,
+                           "minimumWidth":320,"minimumHeight":180},
+                "resources":[
+                    {"path":"media/index.html","contentType":"text/html"},
+                    {"path":"media/tone.bin","contentType":"application/octet-stream"}],
+                "commands":["activate","togglePlayback","back"]},
+            "root":{"id":"root","kind":"stack","children":[]}
+        }
+    })json", error);
+    Require(valid && error.empty() && valid->embeddedMedia &&
+                valid->embeddedMedia->id == L"media" &&
+                valid->embeddedMedia->resources.size() == 2 &&
+                valid->embeddedMedia->commands.size() == 3,
+            "valid protocol-v22 embedded media snapshot was rejected");
+
+    error.clear();
+    const auto unknown = widgetrail::testing::ParseWidgetSnapshotResponse(R"json({
+        "snapshot": {
+            "protocolVersion":22,"sequence":7,
+            "widgetInstanceId":"neutral.adapter","activeInputScopeId":"root",
+            "embeddedMedia":{"id":"media","accessibleName":"Neutral media",
+                "entryAsset":"media/index.html","aspectRatio":1.0,
+                "surface":{"mode":"standard","preferredWidth":320,"preferredHeight":180,
+                           "minimumWidth":320,"minimumHeight":180},
+                "resources":[{"path":"media/index.html","contentType":"text/html"}],
+                "commands":[],"navigate":"https://example.invalid"},
+            "root":{"id":"root","kind":"stack","children":[]}
+        }
+    })json", error);
+    Require(!unknown && error.find(L"unknown") != std::wstring::npos,
+            "unknown embedded media browsing field was admitted");
+}
+
 void VerifyVirtualCollectionProtocol() {
     std::wstring error;
     const auto snapshot = widgetrail::testing::ParseWidgetSnapshotResponse(R"json({
@@ -539,6 +582,7 @@ int main() {
 
     VerifyFrameSafeCancellationRecovery();
     VerifyAtomicPresentationUpdateMaterialization();
+    VerifyEmbeddedMediaSnapshotContract();
     VerifyVirtualCollectionProtocol();
     std::vector<wchar_t> secret(14);
     for (std::size_t index = 0; index < secret.size(); ++index)

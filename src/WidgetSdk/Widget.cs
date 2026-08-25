@@ -19,6 +19,12 @@ public sealed record WidgetView(
     public IReadOnlyList<PinnedPresentationLayout>? PinnedLayouts { get; init; }
 
     /// <summary>
+    /// Optional host-owned embedded-media surface. This additive property
+    /// preserves the established positional constructor and Deconstruct API.
+    /// </summary>
+    public EmbeddedMediaSurface? EmbeddedMedia { get; init; }
+
+    /// <summary>
     /// Creates one bounded pinned layout. Omitting <paramref name="root"/>
     /// preserves the protocol-v20 size-profile behavior.
     /// </summary>
@@ -61,6 +67,7 @@ public sealed record WidgetView(
             QuickActions = QuickActions?.ToArray() ?? [],
             Surface = Surface,
             PinnedLayouts = PinnedLayouts?.ToArray() ?? [],
+            EmbeddedMedia = EmbeddedMedia,
             Root = Root.ToProtocolNode(),
         };
         var requirements = ProtocolVersionRequirements.Calculate(snapshot);

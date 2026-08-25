@@ -1,4 +1,5 @@
 #include "RichMediaSurfaceCoordinator.h"
+#include "WidgetProtocolPresentationContract.generated.h"
 
 #include <WebView2EnvironmentOptions.h>
 #include <UIAutomation.h>
@@ -17,6 +18,7 @@
 #include <fstream>
 #include <format>
 #include <string>
+#include <unordered_set>
 #include <vector>
 
 using Microsoft::WRL::Callback;
@@ -29,6 +31,56 @@ constexpr wchar_t kOrigin[] = L"https://wrail-rich-media.invalid";
 constexpr wchar_t kPageUri[] = L"https://wrail-rich-media.invalid/index.html";
 constexpr wchar_t kResourceFilter[] = L"*";
 constexpr std::size_t kMaximumMessageCharacters = 512;
+
+bool IsDocumentLocalIdentifier(const std::wstring_view value) noexcept {
+    return !value.empty() &&
+        value.size() <= protocol_contract::MaximumCapabilityIdLength &&
+        std::all_of(value.begin(), value.end(), [](const wchar_t character) {
+            return (character >= L'a' && character <= L'z') ||
+                (character >= L'A' && character <= L'Z') ||
+                (character >= L'0' && character <= L'9') ||
+                character == L'-' || character == L'_' || character == L'.';
+        });
+}
+
+std::wstring BoundedSyntheticPath(const std::wstring_view origin,
+                                  const std::wstring_view uri) {
+    const std::wstring prefix = std::wstring{origin} + L"/";
+    if (origin.empty() || !uri.starts_with(prefix)) return L"<outside-origin>";
+    const auto path = uri.substr(prefix.size(), 128);
+    if (path.empty() || !std::all_of(path.begin(), path.end(), [](const wchar_t character) {
+            return (character >= L'a' && character <= L'z') ||
+                (character >= L'A' && character <= L'Z') ||
+                (character >= L'0' && character <= L'9') ||
+                character == L'-' || character == L'_' || character == L'.' ||
+                character == L'/';
+        })) return L"<invalid-path>";
+    return std::wstring{path};
+}
+
+bool IsValidPublicAdapterConfiguration(const Configuration& configuration) {
+    if (configuration.resources.empty())
+        return configuration.origin.empty() && configuration.entryAsset.empty();
+    if (!configuration.origin.starts_with(L"https://wrail-media-") ||
+        !configuration.origin.ends_with(L".invalid") ||
+        configuration.origin.find_first_of(L"/?#@", 8) != std::wstring::npos ||
+        configuration.entryAsset.empty() || configuration.resources.size() > 16)
+        return false;
+    std::size_t aggregate{};
+    bool hasEntry{};
+    std::unordered_set<std::wstring> paths;
+    for (const auto& resource : configuration.resources) {
+        if (resource.path.empty() || resource.path.starts_with(L"/") ||
+            resource.path.find(L"..") != std::wstring::npos ||
+            resource.path.find(L'\\') != std::wstring::npos ||
+            resource.content.empty() || resource.content.size() > 256 * 1024 ||
+            !paths.insert(resource.path).second) return false;
+        aggregate += resource.content.size();
+        if (aggregate > 512 * 1024) return false;
+        hasEntry = hasEntry || resource.path == configuration.entryAsset;
+    }
+    return hasEntry;
+}
 
 constexpr char kPage[] = R"HTML(<!doctype html>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width">
@@ -162,7 +214,8 @@ HRESULT RichMediaSurfaceCoordinator::Initialize(Configuration configuration) noe
     if (state_.lifecycle != Lifecycle::Absent || !configuration.ownerWindow ||
         !configuration.compositionTarget || configuration.bounds.right <= configuration.bounds.left ||
         configuration.bounds.bottom <= configuration.bounds.top ||
-        configuration.profileRootDirectory.empty()) return E_INVALIDARG;
+        configuration.profileRootDirectory.empty() ||
+        !IsValidPublicAdapterConfiguration(configuration)) return E_INVALIDARG;
     if (environmentLifecycle_ == EnvironmentLifecycle::ShuttingDown) return E_UNEXPECTED;
     if (!profileRootDirectory_.empty() &&
         profileRootDirectory_ != configuration.profileRootDirectory) return E_INVALIDARG;
@@ -187,6 +240,7 @@ HRESULT RichMediaSurfaceCoordinator::Retry(Configuration configuration) noexcept
     if (state_.lifecycle != Lifecycle::Absent || !retrySurfaceGeneration_ ||
         !configuration.ownerWindow ||
         !configuration.compositionTarget || configuration.profileRootDirectory.empty() ||
+        !IsValidPublicAdapterConfiguration(configuration) ||
         configuration.profileRootDirectory != profileRootDirectory_) return E_UNEXPECTED;
     if (environmentFaulted_ || BrowserProcessExitObserved())
         ReleaseEnvironment(true);
@@ -359,7 +413,10 @@ HRESULT RichMediaSurfaceCoordinator::OnControllerCreated(
     if (configuration_.invalidate) configuration_.invalidate();
     state_.authority.documentGeneration = ++nextDocumentGeneration_;
     lease->authority.documentGeneration = state_.authority.documentGeneration;
-    configured = core_->Navigate(kPageUri);
+    pageUri_ = configuration_.origin.empty()
+        ? std::wstring{kPageUri}
+        : configuration_.origin + L"/" + configuration_.entryAsset;
+    configured = core_->Navigate(pageUri_.c_str());
     if (FAILED(configured)) Fault(L"navigate", configured);
     return S_OK;
 }
@@ -483,6 +540,21 @@ bool RichMediaSurfaceCoordinator::IsAllowedNavigation(
     return uri == kPageUri;
 }
 
+bool RichMediaSurfaceCoordinator::IsAllowedNavigation(
+    const std::wstring_view uri, const std::wstring_view exactPageUri) noexcept {
+    return !exactPageUri.empty() && uri == exactPageUri;
+}
+
+bool RichMediaSurfaceCoordinator::IsAllowedMessageSource(
+    const std::wstring_view source, const std::wstring_view exactPageUri) noexcept {
+    return !exactPageUri.empty() && source == exactPageUri;
+}
+
+bool RichMediaSurfaceCoordinator::IsValidAdapterConfiguration(
+    const Configuration& configuration) noexcept {
+    return IsValidPublicAdapterConfiguration(configuration);
+}
+
 HRESULT RichMediaSurfaceCoordinator::ServeResource(
     ICoreWebView2WebResourceRequestedEventArgs* args) noexcept {
     ComPtr<ICoreWebView2WebResourceRequest> request;
@@ -491,18 +563,60 @@ HRESULT RichMediaSurfaceCoordinator::ServeResource(
     if (SUCCEEDED(result)) result = request->get_Uri(&rawUri);
     const std::wstring uri = rawUri ? rawUri : L"";
     CoTaskMemFree(rawUri);
+    COREWEBVIEW2_WEB_RESOURCE_CONTEXT resourceContext{};
+    const HRESULT contextResult = args->get_ResourceContext(&resourceContext);
+    COREWEBVIEW2_WEB_RESOURCE_REQUEST_SOURCE_KINDS sourceKind{};
+    ComPtr<ICoreWebView2WebResourceRequestedEventArgs2> args2;
+    HRESULT sourceResult = args->QueryInterface(IID_PPV_ARGS(&args2));
+    if (SUCCEEDED(sourceResult)) sourceResult = args2->get_RequestedSourceKind(&sourceKind);
     ComPtr<IStream> stream;
     const wchar_t* contentType{};
-    if (uri == kPageUri) {
+    bool matchedEntry{};
+    bool matchedAsset{};
+    std::wstring_view matchedMime{L"<none>"};
+    if (configuration_.resources.empty() && uri == kPageUri) {
         stream = StreamFor(kPage, sizeof(kPage) - 1);
         contentType = L"Content-Type: text/html; charset=utf-8\r\nCache-Control: no-store";
-    } else if (uri == std::wstring{kOrigin} + L"/tone.wav") {
+    } else if (configuration_.resources.empty() &&
+               uri == std::wstring{kOrigin} + L"/tone.wav") {
         const auto wave = WaveBytes();
         stream = StreamFor(wave.data(), wave.size());
         contentType = L"Content-Type: audio/wav\r\nCache-Control: no-store";
     } else {
-        Emit(L"Rich media resource denied");
-        contentType = L"Content-Type: text/plain\r\nCache-Control: no-store";
+        const auto prefix = configuration_.origin + L"/";
+        const auto found = !prefix.empty() && uri.starts_with(prefix)
+            ? std::find_if(
+                configuration_.resources.begin(), configuration_.resources.end(),
+                [&](const Configuration::Resource& resource) {
+                    return uri == prefix + resource.path;
+                })
+            : configuration_.resources.end();
+        if (found != configuration_.resources.end()) {
+            stream = StreamFor(found->content.data(), found->content.size());
+            matchedEntry = found->path == configuration_.entryAsset;
+            matchedAsset = true;
+            matchedMime = std::wstring_view{found->contentType}.substr(0, 64);
+            static thread_local std::wstring headers;
+            headers = L"Content-Type: " + found->contentType +
+                L"\r\nCache-Control: no-store\r\nX-Content-Type-Options: nosniff";
+            contentType = headers.c_str();
+        } else {
+            Emit(L"Rich media resource denied");
+            contentType = L"Content-Type: text/plain\r\nCache-Control: no-store";
+        }
+    }
+    if (!configuration_.resources.empty()) {
+        Emit(std::format(
+            L"Rich media load resource origin={} path={} context={} source={} "
+            L"environment={} controller={} document={} entry={} lookup={} mime={} status={}",
+            configuration_.origin, BoundedSyntheticPath(configuration_.origin, uri),
+            SUCCEEDED(contextResult) ? static_cast<int>(resourceContext) : -1,
+            SUCCEEDED(sourceResult) ? static_cast<unsigned int>(sourceKind) : 0,
+            state_.authority.environmentGeneration,
+            state_.authority.controllerGeneration,
+            state_.authority.documentGeneration,
+            matchedEntry ? L"yes" : L"no", matchedAsset ? L"matched" : L"missing",
+            matchedMime, stream ? 200 : 404));
     }
     ComPtr<ICoreWebView2WebResourceResponse> response;
     result = environment_->CreateWebResourceResponse(
@@ -520,7 +634,14 @@ HRESULT RichMediaSurfaceCoordinator::OnNavigationStarting(
     const std::wstring uri = rawUri ? rawUri : L"";
     CoTaskMemFree(rawUri);
     if (FAILED(result)) return result;
-    if (!IsAllowedNavigation(uri)) {
+    if (!configuration_.resources.empty()) {
+        Emit(std::format(
+            L"Rich media load milestone=navigation-start origin={} path={} controller={} document={}",
+            configuration_.origin, BoundedSyntheticPath(configuration_.origin, uri),
+            state_.authority.controllerGeneration,
+            state_.authority.documentGeneration));
+    }
+    if (!IsAllowedNavigation(uri, pageUri_)) {
         Emit(L"Rich media navigation denied");
         return args->put_Cancel(TRUE);
     }
@@ -566,7 +687,7 @@ HRESULT RichMediaSurfaceCoordinator::OnFrameNavigationStarting(
     const std::wstring uri = rawUri ? rawUri : L"";
     CoTaskMemFree(rawUri);
     if (FAILED(result)) return result;
-    if (IsAllowedNavigation(uri)) return S_OK;
+    if (IsAllowedNavigation(uri, pageUri_)) return S_OK;
     Emit(L"Rich media frame navigation denied");
     return args->put_Cancel(TRUE);
 }
@@ -587,6 +708,12 @@ HRESULT RichMediaSurfaceCoordinator::OnNavigationCompleted(
         Fault(L"navigation-complete", FAILED(result) ? result : E_FAIL);
         return S_OK;
     }
+    if (!configuration_.resources.empty()) {
+        Emit(std::format(
+            L"Rich media load milestone=navigation-complete controller={} document={} navigation={}",
+            state_.authority.controllerGeneration,
+            state_.authority.documentGeneration, navigationId));
+    }
     const auto commandId = ++nextCommandId_;
     pendingCommand_ = PendingCommand{commandId, Command::Activate,
                                      PendingPhase::AwaitingEvent};
@@ -597,6 +724,12 @@ HRESULT RichMediaSurfaceCoordinator::OnNavigationCompleted(
         state_.authority.controllerGeneration, state_.authority.documentGeneration,
         commandId);
     result = core_->PostWebMessageAsJson(command.c_str());
+    if (SUCCEEDED(result) && !configuration_.resources.empty()) {
+        Emit(std::format(
+            L"Rich media load milestone=initialize-sent controller={} document={} command={}",
+            state_.authority.controllerGeneration,
+            state_.authority.documentGeneration, commandId));
+    }
     if (FAILED(result)) Fault(L"initialize-command", result);
     return S_OK;
 }
@@ -612,7 +745,15 @@ HRESULT RichMediaSurfaceCoordinator::OnWebMessage(
     const std::wstring source = rawSource ? rawSource : L"";
     const std::wstring json = rawJson ? rawJson : L"";
     CoTaskMemFree(rawSource); CoTaskMemFree(rawJson);
-    if (FAILED(result) || source != kPageUri || json.size() > kMaximumMessageCharacters) {
+    if (!configuration_.resources.empty()) {
+        Emit(std::format(
+            L"Rich media load milestone=page-event-received source={} controller={} document={} bytes={}",
+            IsAllowedMessageSource(source, pageUri_) ? L"exact" : L"rejected",
+            state_.authority.controllerGeneration,
+            state_.authority.documentGeneration, json.size()));
+    }
+    if (FAILED(result) || !IsAllowedMessageSource(source, pageUri_) ||
+        json.size() > kMaximumMessageCharacters) {
         Fault(L"message-envelope", FAILED(result) ? result : E_ACCESSDENIED); return S_OK;
     }
     State next = state_;
@@ -878,7 +1019,7 @@ bool RichMediaSurfaceCoordinator::ValidatePageEvent(
             (pendingCommandId ? commandId != *pendingCommandId : commandId != 0) ||
             (type != L"ready" && type != L"focus" && type != L"media" &&
              type != L"back" && type != L"armed") ||
-            (focus != L"back" && focus != L"play" && focus != L"seek")) return false;
+            !IsDocumentLocalIdentifier(focus)) return false;
         const auto boundsObject = object.GetNamedObject(L"bounds");
         constexpr std::array boundsKeys{L"x", L"y", L"width", L"height"};
         if (boundsObject.Size() != boundsKeys.size() ||

@@ -56,6 +56,13 @@ internal sealed class ProtocolVersionRequirements
                 "$.pinnedLayouts",
                 $"Pinned presentation projections require protocol version {ProtocolConstants.PinnedPresentationProjectionsVersion} or later.");
 
+        if (snapshot.EmbeddedMedia is not null)
+            Add(
+                "embedded-media-surface",
+                ProtocolConstants.EmbeddedMediaSurfaceVersion,
+                "$.embeddedMedia",
+                $"Embedded media surfaces require protocol version {ProtocolConstants.EmbeddedMediaSurfaceVersion} or later.");
+
         Visit(snapshot.Root, "$.root", 1);
 
         var quickActions = snapshot.QuickActions ?? [];

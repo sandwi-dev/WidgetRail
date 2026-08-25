@@ -37,6 +37,29 @@ internal static class ProtocolVersionRequirementsTests
     {
         var cases = new RequirementCase[]
         {
+            new("embedded media", "embedded-media-surface",
+                ProtocolConstants.EmbeddedMediaSurfaceVersion,
+                "$.embeddedMedia", snapshot => snapshot with
+                {
+                    EmbeddedMedia = new()
+                    {
+                        Id = "media",
+                        AccessibleName = "Neutral media",
+                        EntryAsset = "media/index.html",
+                        Surface = new()
+                        {
+                            PreferredWidth = 760,
+                            PreferredHeight = 425,
+                            MinimumWidth = 320,
+                            MinimumHeight = 180,
+                        },
+                        AspectRatio = 16.0 / 9.0,
+                        Resources =
+                        [
+                            new() { Path = "media/index.html", ContentType = "text/html" },
+                        ],
+                    },
+                }),
             new("surface hints", "surface-hints", ProtocolConstants.SurfaceHintsVersion,
                 "$.surface", snapshot => snapshot with { Surface = new() }),
             new("surface width policy", "surface-axis-sizing", ProtocolConstants.SurfaceAxisSizingVersion,

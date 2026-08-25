@@ -15,6 +15,8 @@ var tests = new (string Name, Func<Task> Run)[]
         ProtocolVersionRequirementsTests.RawSnapshotsUseCompleteRequirementMatrix),
     ("Pinned presentation layouts preserve additive bounded v20 contracts",
         PinnedPresentationLayoutTests.Run),
+    ("Embedded media is additive bounded package-local protocol v22",
+        EmbeddedMediaSurfaceTests.Run),
     ("Automatic presentation updates are atomic bounded and fallback-safe", WidgetPresentationUpdateTests.Run),
     ("Protocol v2 scroll containers round-trip with host-owned semantics", ScrollContainersRoundTrip),
     ("Protocol v11 scroll pagination is bounded and versioned", ScrollPaginationRoundTrip),

@@ -335,6 +335,38 @@ struct WidgetPinnedLayout final {
     std::wstring initialFocusId;
 };
 
+struct EmbeddedMediaResourceDeclaration final {
+    std::wstring path;
+    std::wstring contentType;
+};
+
+struct EmbeddedMediaSurfaceDeclaration final {
+    std::wstring id;
+    std::wstring accessibleName;
+    std::wstring entryAsset;
+    WidgetSurfaceHints surface;
+    double aspectRatio{};
+    std::vector<EmbeddedMediaResourceDeclaration> resources;
+    std::vector<std::wstring> commands;
+};
+
+struct EmbeddedMediaResource final {
+    std::wstring path;
+    std::wstring contentType;
+    std::wstring sha256;
+    std::vector<std::uint8_t> content;
+};
+
+struct EmbeddedMediaBundle final {
+    std::wstring widgetId;
+    std::wstring instanceId;
+    std::wstring runtimeGeneration;
+    std::wstring presentationGeneration;
+    long long sequence{};
+    EmbeddedMediaSurfaceDeclaration surface;
+    std::vector<EmbeddedMediaResource> resources;
+};
+
 struct WidgetSnapshot final {
     int protocolVersion{1};
     long long sequence{};
@@ -344,6 +376,7 @@ struct WidgetSnapshot final {
     std::vector<WidgetQuickAction> quickActions;
     std::optional<WidgetSurfaceHints> surface;
     std::vector<WidgetPinnedLayout> pinnedLayouts;
+    std::optional<EmbeddedMediaSurfaceDeclaration> embeddedMedia;
     WidgetNode root;
     // Canonical unstyled semantic document retained by the sole native
     // session owner. It is the immutable base for an atomic update candidate;
@@ -575,6 +608,13 @@ public:
     [[nodiscard]] std::optional<bool> RequestArtwork(
         std::wstring_view widgetId,
         std::wstring_view artworkHandle);
+    [[nodiscard]] std::optional<EmbeddedMediaBundle> ResolveEmbeddedMedia(
+        std::wstring_view widgetId,
+        std::wstring_view instanceId,
+        std::wstring_view runtimeGeneration,
+        std::wstring_view presentationGeneration,
+        long long sequence,
+        std::wstring_view surfaceId);
     [[nodiscard]] std::optional<bool> SendControllerInput(
         std::wstring_view widgetId,
         std::wstring_view button,

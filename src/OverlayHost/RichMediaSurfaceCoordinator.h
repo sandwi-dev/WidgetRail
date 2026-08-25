@@ -93,12 +93,23 @@ struct EnvironmentState final {
 };
 
 struct Configuration final {
+    struct Resource final {
+        std::wstring path;
+        std::wstring contentType;
+        std::vector<std::uint8_t> content;
+    };
     HWND ownerWindow{};
     Microsoft::WRL::ComPtr<IUnknown> compositionTarget;
     RECT bounds{};
     double rasterScale{1.0};
     bool initiallyVisible{};
     std::wstring profileRootDirectory;
+    // Empty values select the embedded provider-neutral WIDGE-20 proof. A
+    // public session supplies one host-generated origin plus an exact bounded
+    // package-local resource bundle admitted by WidgetBridge.
+    std::wstring origin;
+    std::wstring entryAsset;
+    std::vector<Resource> resources;
     std::function<void(std::wstring_view)> diagnostic;
     std::function<void()> invalidate;
     std::function<void(bool)> setPresentationVisible;
@@ -175,6 +186,12 @@ private:
     [[nodiscard]] HRESULT OnFrameNavigationStarting(
         ICoreWebView2NavigationStartingEventArgs* args) noexcept;
     [[nodiscard]] static bool IsAllowedNavigation(std::wstring_view uri) noexcept;
+    [[nodiscard]] static bool IsAllowedNavigation(
+        std::wstring_view uri, std::wstring_view exactPageUri) noexcept;
+    [[nodiscard]] static bool IsAllowedMessageSource(
+        std::wstring_view source, std::wstring_view exactPageUri) noexcept;
+    [[nodiscard]] static bool IsValidAdapterConfiguration(
+        const Configuration& configuration) noexcept;
     [[nodiscard]] static bool SurfaceLocalPoint(
         HWND ownerWindow, const RECT& bounds, UINT message, LPARAM lParam,
         POINT& point) noexcept;
@@ -239,6 +256,7 @@ private:
     std::uint64_t retrySurfaceGeneration_{};
     bool teardownBegun_{};
     HRESULT browserEventRegistrationResult_{E_UNEXPECTED};
+    std::wstring pageUri_;
 
     friend class RichMediaSurfaceCoordinatorTestPeer;
 };

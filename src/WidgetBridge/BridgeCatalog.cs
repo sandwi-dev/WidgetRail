@@ -99,6 +99,15 @@ internal sealed record ConfiguredWidget
     public string WorkerFingerprint { get; init; } = string.Empty;
     [JsonIgnore]
     public string CatalogFingerprint { get; init; } = string.Empty;
+    /// <summary>
+    /// Host-validated package root used only to resolve protocol-v22 media
+    /// adapter assets. Workers never receive or choose this authority.
+    /// </summary>
+    [JsonIgnore]
+    public string? PackageRoot { get; init; }
+    [JsonIgnore]
+    public IReadOnlyDictionary<string, VerifiedPackageFile> VerifiedPackageFiles { get; init; } =
+        new Dictionary<string, VerifiedPackageFile>(StringComparer.Ordinal);
 
     public BridgeWidgetDescriptor PublicDescriptor() => new()
     {
@@ -415,6 +424,8 @@ public sealed class BridgeCatalog
                 QuickActions = [],
                 CompiledTheme = style.Theme,
                 StylePackage = style.Package,
+                PackageRoot = packageRoot,
+                VerifiedPackageFiles = widget.ActiveVersion.VerifiedFiles,
             }));
         }
         return new BridgeCatalogLoadResult(new BridgeCatalog(combined), warnings, InstalledCatalogValid: true);
@@ -482,6 +493,15 @@ public sealed class BridgeCatalog
                 action.SourceElementId,
                 action.ControllerButton?.ToString() ?? string.Empty,
             }),
+            .. source.VerifiedPackageFiles
+                .OrderBy(file => file.Key, StringComparer.Ordinal)
+                .SelectMany(file => new[]
+                {
+                    file.Key,
+                    file.Value.Length.ToString(
+                        System.Globalization.CultureInfo.InvariantCulture),
+                    file.Value.Sha256,
+                }),
             .. CanonicalStyle(source.StylePackage),
         ]);
         return source with
@@ -665,6 +685,7 @@ public sealed class BridgeCatalog
             QuickActions = source.QuickActions,
             CompiledTheme = style.Theme,
             StylePackage = style.Package,
+            PackageRoot = packageRoot,
         });
     }
 

@@ -35,6 +35,7 @@ public static class ViewSnapshotValidator
         }
         CheckIdentifier(snapshot.WidgetInstanceId, "$.widgetInstanceId", "widget instance ID");
         ValidateSurfaceHints(snapshot.Surface, "$.surface");
+        ValidateEmbeddedMedia(snapshot.EmbeddedMedia);
         var pinnedLayouts = snapshot.PinnedLayouts ?? [];
         if (snapshot.PinnedLayouts is null)
             Add("$.pinnedLayouts", "required", "Pinned layouts cannot be null.");
@@ -90,6 +91,7 @@ public static class ViewSnapshotValidator
                 InitialFocusId = layout.InitialFocusId,
                 QuickActions = [],
                 PinnedLayouts = [],
+                EmbeddedMedia = null,
             };
             foreach (var projectionError in Validate(projection))
             {
@@ -193,6 +195,88 @@ public static class ViewSnapshotValidator
         }
 
         return errors;
+
+        void ValidateEmbeddedMedia(EmbeddedMediaSurface? media)
+        {
+            if (media is null) return;
+            const string path = "$.embeddedMedia";
+            CheckIdentifier(media.Id, $"{path}.id", "embedded media surface ID");
+            CheckString(media.AccessibleName, $"{path}.accessibleName");
+            if (string.IsNullOrWhiteSpace(media.AccessibleName))
+                Add($"{path}.accessibleName", "required",
+                    "An embedded media surface requires an accessible name.");
+            if (media.Surface is null)
+                Add($"{path}.surface", "required",
+                    "An embedded media surface requires bounded sizing hints.");
+            else
+            {
+                ValidateSurfaceHints(media.Surface, $"{path}.surface");
+                if (media.Surface.PreferredWidth is null || media.Surface.PreferredHeight is null ||
+                    media.Surface.MinimumWidth is null || media.Surface.MinimumHeight is null)
+                    Add($"{path}.surface", "complete_bounds_required",
+                        "Embedded media requires preferred and minimum width and height.");
+            }
+            if (!double.IsFinite(media.AspectRatio) || media.AspectRatio is < 0.1 or > 10.0)
+                Add($"{path}.aspectRatio", "out_of_range",
+                    "Embedded media aspect ratio must be finite and between 0.1 and 10.");
+
+            var resources = media.Resources ?? [];
+            if (media.Resources is null)
+                Add($"{path}.resources", "required", "Embedded media resources cannot be null.");
+            if (resources.Count is < 1 or > ProtocolConstants.MaximumEmbeddedMediaResourceCount)
+                Add($"{path}.resources", "resource_count",
+                    $"Embedded media requires 1-{ProtocolConstants.MaximumEmbeddedMediaResourceCount} package resources.");
+            var resourcePaths = new HashSet<string>(StringComparer.Ordinal);
+            for (var index = 0; index < resources.Count; index++)
+            {
+                var resource = resources[index];
+                var resourcePath = $"{path}.resources[{index}]";
+                if (resource is null)
+                {
+                    Add(resourcePath, "required", "An embedded media resource cannot be null.");
+                    continue;
+                }
+                if (!IsNormalizedPackageAssetPath(resource.Path))
+                    Add($"{resourcePath}.path", "invalid_package_asset_path",
+                        "Media resources must use a normalized package-relative path without traversal.");
+                else if (!resourcePaths.Add(resource.Path))
+                    Add($"{resourcePath}.path", "duplicate_resource",
+                        "Embedded media resource paths must be unique.");
+                if (!IsEmbeddedMediaContentType(resource.ContentType))
+                    Add($"{resourcePath}.contentType", "unsupported_content_type",
+                        "The embedded media content type is not in the closed host allowlist.");
+            }
+            if (!IsNormalizedPackageAssetPath(media.EntryAsset))
+                Add($"{path}.entryAsset", "invalid_package_asset_path",
+                    "The media entry asset must be a normalized package-relative path.");
+            else if (!resourcePaths.Contains(media.EntryAsset))
+                Add($"{path}.entryAsset", "entry_not_declared",
+                    "The media entry asset must be present in resources.");
+            else
+            {
+                var entry = resources.First(resource => resource?.Path == media.EntryAsset);
+                if (!string.Equals(entry.ContentType, "text/html", StringComparison.Ordinal))
+                    Add($"{path}.entryAsset", "entry_not_html",
+                        "The media entry asset must declare text/html.");
+            }
+
+            var commands = media.Commands ?? [];
+            if (media.Commands is null)
+                Add($"{path}.commands", "required", "Embedded media commands cannot be null.");
+            if (commands.Count > ProtocolConstants.MaximumEmbeddedMediaCommandCount)
+                Add($"{path}.commands", "too_many",
+                    $"Embedded media may declare at most {ProtocolConstants.MaximumEmbeddedMediaCommandCount} commands.");
+            var knownCommands = new HashSet<EmbeddedMediaCommand>();
+            for (var index = 0; index < commands.Count; index++)
+            {
+                if (!Enum.IsDefined(commands[index]))
+                    Add($"{path}.commands[{index}]", "unsupported_command",
+                        "The embedded media command is not supported.");
+                else if (!knownCommands.Add(commands[index]))
+                    Add($"{path}.commands[{index}]", "duplicate_command",
+                        "Embedded media commands must be unique.");
+            }
+        }
 
         void ValidateSurfaceHints(WidgetSurfaceHints? surface, string path)
         {
@@ -867,6 +951,22 @@ public static class ViewSnapshotValidator
 
         void Add(string path, string code, string message) => errors.Add(new(path, code, message));
     }
+
+    private static bool IsNormalizedPackageAssetPath(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value) ||
+            value.Length > ProtocolConstants.MaximumEmbeddedMediaResourcePathLength ||
+            value.StartsWith("/", StringComparison.Ordinal) || value.Contains('\\') ||
+            value.Any(char.IsControl)) return false;
+        var segments = value.Split('/');
+        return segments.All(segment => segment.Length != 0 && segment is not "." and not ".." &&
+            segment.All(ch => char.IsAsciiLetterOrDigit(ch) || ch is '-' or '_' or '.'));
+    }
+
+    private static bool IsEmbeddedMediaContentType(string? value) => value is
+        "text/html" or "text/css" or "text/javascript" or "application/javascript" or
+        "image/png" or "image/jpeg" or "image/webp" or
+        "audio/wav" or "audio/mpeg" or "audio/ogg";
 
     private static bool IsDashboardQuickActionButton(ControllerButton button) => button is
         ControllerButton.X or

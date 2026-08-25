@@ -41,6 +41,7 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Protected Wi-Fi host admission is exact trusted and bounded", ProtectedWifiHostAdmissionIsExact),
     ("Protected Wi-Fi production dispatch clears one exact secret owner", ProtectedWifiProductionDispatchIsZeroed),
     ("Trusted artwork demand is exact current and lazy through the production bridge", TrustedArtworkDemandIsExact),
+    ("Two provider-neutral media adapters resolve through one sealed contract", EmbeddedMediaAssetsAreProviderNeutral),
     ("Request dispatcher preserves FIFO and predecessor failure", RequestDispatcherOwnsWidgetOrdering),
     ("Request dispatcher rejects duplicates and global over-capacity", RequestDispatcherBoundsAdmission),
     ("Request dispatcher deadline quarantines cancellation-ignoring work", RequestDispatcherForcedDrainIsComplete),
@@ -85,6 +86,7 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Visible registry publication reaches its configured publisher once", BridgeClientRegistryScenarios.VisibleRegistrationPublishesInvalidationExactlyOnce),
     ("Pinned layout selection is exact current runtime generation", BridgeClientRegistryScenarios.PinnedLayoutSelectionIsGenerationBound),
     ("Pinned surface input requires exact generation layout scope and focus", BridgeClientRegistryScenarios.PinnedSurfaceInputRequiresExactAuthority),
+    ("Embedded media resolution requires exact current publication authority", BridgeClientRegistryScenarios.EmbeddedMediaRequiresExactPublicationAuthority),
     ("Local package import origin is exact current Interactive Settings", BridgeClientRegistryScenarios.LocalPackageImportOriginIsExact),
     ("Local package import is disabled revisioned and path free", LocalPackageImportIsDisabledRevisionedAndPathFree),
     ("Local package import failures preserve catalog state", LocalPackageImportFailuresPreserveCatalog),
@@ -3813,6 +3815,97 @@ static string RequiredValue(string[] values, string name)
     var index = Array.IndexOf(values, name);
     if (index < 0 || index + 1 >= values.Length) throw new ArgumentException($"Missing {name}.");
     return values[index + 1];
+}
+
+static Task EmbeddedMediaAssetsAreProviderNeutral()
+{
+    foreach (var adapterName in new[] { "aurora-adapter", "cedar-adapter" })
+    {
+        var root = Path.Combine(Path.GetTempPath(), $"wrail-{adapterName}-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(Path.Combine(root, "media"));
+        try
+        {
+            var htmlPath = Path.Combine(root, "media", "adapter.html");
+            var audioPath = Path.Combine(root, "media", "sample.wav");
+            var html = System.Text.Encoding.UTF8.GetBytes(
+                $"<!doctype html><title>{adapterName}</title><audio src='sample.wav'></audio>");
+            var audio = new byte[] { 0x52, 0x49, 0x46, 0x46, 4, 0, 0, 0 };
+            File.WriteAllBytes(htmlPath, html);
+            File.WriteAllBytes(audioPath, audio);
+            var verified = new Dictionary<string, VerifiedPackageFile>(StringComparer.Ordinal)
+            {
+                ["media/adapter.html"] = Verified("media/adapter.html", html),
+                ["media/sample.wav"] = Verified("media/sample.wav", audio),
+            };
+            var configured = new ConfiguredWidget
+            {
+                Id = adapterName,
+                PackageId = $"fixture.{adapterName}",
+                PublisherId = "fixture",
+                Name = adapterName,
+                InstanceId = $"{adapterName}.instance",
+                WorkerExecutable = "fixture.exe",
+                WorkerFingerprint = new string('a', 64),
+                CatalogFingerprint = new string('b', 64),
+                PackageRoot = root,
+                VerifiedPackageFiles = verified,
+            };
+            var descriptor = configured.PublicDescriptor();
+            var media = new EmbeddedMediaSurface
+            {
+                Id = "primary-media",
+                AccessibleName = $"{adapterName} media",
+                EntryAsset = "media/adapter.html",
+                Surface = new WidgetSurfaceHints
+                {
+                    PreferredWidth = 760,
+                    PreferredHeight = 425,
+                    MinimumWidth = 320,
+                    MinimumHeight = 180,
+                },
+                AspectRatio = 16.0 / 9.0,
+                Resources =
+                [
+                    new() { Path = "media/adapter.html", ContentType = "text/html" },
+                    new() { Path = "media/sample.wav", ContentType = "audio/wav" },
+                ],
+                Commands = [EmbeddedMediaCommand.Activate, EmbeddedMediaCommand.TogglePlayback],
+            };
+            var snapshot = new ViewSnapshot
+            {
+                ProtocolVersion = ProtocolConstants.EmbeddedMediaSurfaceVersion,
+                Sequence = 7,
+                WidgetInstanceId = configured.InstanceId,
+                ActiveInputScopeId = "root",
+                EmbeddedMedia = media,
+                Root = new ViewNode { Id = "root", Kind = ViewNodeKind.Stack },
+            };
+            var request = new BridgeEmbeddedMediaRequest(
+                configured.Id, configured.InstanceId, descriptor.RuntimeGeneration,
+                descriptor.PresentationGeneration, snapshot.Sequence, media.Id);
+            var bundle = EmbeddedMediaAssetResolver.Resolve(
+                request, new BridgeClientSnapshot(configured, snapshot));
+            Assert.Equal(adapterName, bundle.WidgetId);
+            Assert.Equal(media.Id, bundle.SurfaceId);
+            Assert.Equal(2, bundle.Resources.Count);
+            Assert.SequenceEqual(html, Convert.FromBase64String(bundle.Resources[0].ContentBase64));
+            Assert.SequenceEqual(audio, Convert.FromBase64String(bundle.Resources[1].ContentBase64));
+
+            File.WriteAllText(htmlPath, "tampered");
+            Assert.Throws<BridgeProtocolException>(() => EmbeddedMediaAssetResolver.Resolve(
+                request, new BridgeClientSnapshot(configured, snapshot)));
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
+    static VerifiedPackageFile Verified(string path, byte[] bytes) => new(
+        path,
+        bytes.LongLength,
+        Convert.ToHexString(SHA256.HashData(bytes)).ToLowerInvariant());
+    return Task.CompletedTask;
 }
 
 file sealed class BridgeTestWidget : Widget

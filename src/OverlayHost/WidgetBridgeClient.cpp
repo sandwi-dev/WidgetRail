@@ -145,6 +145,40 @@ bool HasNoUnknownProperties(
     });
 }
 
+std::optional<std::vector<std::uint8_t>> DecodeBase64Bounded(
+    const std::wstring_view source,
+    const std::size_t maximumBytes) {
+    if (source.empty() || source.size() % 4 != 0 ||
+        source.size() > ((maximumBytes + 2) / 3) * 4) return std::nullopt;
+    const auto decode = [](const wchar_t value) noexcept -> int {
+        if (value >= L'A' && value <= L'Z') return value - L'A';
+        if (value >= L'a' && value <= L'z') return 26 + value - L'a';
+        if (value >= L'0' && value <= L'9') return 52 + value - L'0';
+        if (value == L'+') return 62;
+        if (value == L'/') return 63;
+        return -1;
+    };
+    std::vector<std::uint8_t> result;
+    result.reserve((source.size() / 4) * 3);
+    for (std::size_t offset = 0; offset < source.size(); offset += 4) {
+        const int a = decode(source[offset]);
+        const int b = decode(source[offset + 1]);
+        const bool padC = source[offset + 2] == L'=';
+        const bool padD = source[offset + 3] == L'=';
+        const int c = padC ? 0 : decode(source[offset + 2]);
+        const int d = padD ? 0 : decode(source[offset + 3]);
+        if (a < 0 || b < 0 || c < 0 || d < 0 || padC && !padD ||
+            (padC || padD) && offset + 4 != source.size()) return std::nullopt;
+        const std::uint32_t value = static_cast<std::uint32_t>(
+            (a << 18) | (b << 12) | (c << 6) | d);
+        result.push_back(static_cast<std::uint8_t>(value >> 16));
+        if (!padC) result.push_back(static_cast<std::uint8_t>(value >> 8));
+        if (!padD) result.push_back(static_cast<std::uint8_t>(value));
+        if (result.size() > maximumBytes) return std::nullopt;
+    }
+    return result;
+}
+
 bool IsComputedValueKind(const std::wstring_view value) noexcept {
     static constexpr std::array<std::wstring_view, 9> kinds{
         L"color", L"length", L"lengthList", L"number", L"integer", L"ratio",
@@ -1110,6 +1144,66 @@ WidgetSnapshot ParseSnapshot(const JsonObject& source) {
             snapshot.protocolVersion < protocol_contract::PinnedPresentationLayoutsVersion)
             throw winrt::hresult_invalid_argument();
     }
+    if (source.HasKey(L"embeddedMedia")) {
+        if (snapshot.protocolVersion < protocol_contract::EmbeddedMediaSurfaceVersion)
+            throw winrt::hresult_invalid_argument(
+                L"Embedded media requires protocol version 22 or later.");
+        const auto media = source.GetNamedObject(L"embeddedMedia");
+        if (!HasNoUnknownProperties(media,
+                {L"id", L"accessibleName", L"entryAsset", L"surface",
+                 L"aspectRatio", L"resources", L"commands"}))
+            throw winrt::hresult_invalid_argument(
+                L"Embedded media contains an unknown property.");
+        EmbeddedMediaSurfaceDeclaration parsed;
+        parsed.id = OptionalString(media, L"id");
+        parsed.accessibleName = OptionalString(media, L"accessibleName");
+        parsed.entryAsset = OptionalString(media, L"entryAsset");
+        parsed.surface = parseSurface(media.GetNamedObject(L"surface"));
+        parsed.aspectRatio = media.GetNamedNumber(L"aspectRatio");
+        const auto resources = media.GetNamedArray(L"resources");
+        const auto commands = media.GetNamedArray(L"commands");
+        if (resources.Size() == 0 ||
+            resources.Size() > protocol_contract::MaximumEmbeddedMediaResourceCount ||
+            commands.Size() > protocol_contract::MaximumEmbeddedMediaCommandCount ||
+            !std::isfinite(parsed.aspectRatio) ||
+            parsed.aspectRatio < 0.1 || parsed.aspectRatio > 10.0 ||
+            !IsIdentifier(parsed.id) || parsed.accessibleName.empty() ||
+            !parsed.surface.preferredWidth || !parsed.surface.preferredHeight ||
+            !parsed.surface.minimumWidth || !parsed.surface.minimumHeight)
+            throw winrt::hresult_invalid_argument(
+                L"Embedded media authority or bounds are invalid.");
+        std::unordered_set<std::wstring> paths;
+        for (uint32_t index = 0; index < resources.Size(); ++index) {
+            const auto resource = resources.GetObjectAt(index);
+            if (!HasNoUnknownProperties(resource, {L"path", L"contentType"}))
+                throw winrt::hresult_invalid_argument(
+                    L"Embedded media resource contains an unknown property.");
+            EmbeddedMediaResourceDeclaration item{
+                OptionalString(resource, L"path"),
+                OptionalString(resource, L"contentType")};
+            if (item.path.empty() || item.path.size() >
+                    protocol_contract::MaximumEmbeddedMediaResourcePathLength ||
+                item.contentType.empty() || item.contentType.size() >
+                    protocol_contract::MaximumEmbeddedMediaContentTypeLength ||
+                !paths.insert(item.path).second)
+                throw winrt::hresult_invalid_argument(
+                    L"Embedded media resource declaration is invalid.");
+            parsed.resources.push_back(std::move(item));
+        }
+        if (!paths.contains(parsed.entryAsset))
+            throw winrt::hresult_invalid_argument(
+                L"Embedded media entry asset is not declared.");
+        std::unordered_set<std::wstring> commandSet;
+        for (uint32_t index = 0; index < commands.Size(); ++index) {
+            const auto command = std::wstring(
+                std::wstring_view(commands.GetStringAt(index)));
+            if (command.empty() || !commandSet.insert(command).second)
+                throw winrt::hresult_invalid_argument(
+                    L"Embedded media command declaration is invalid.");
+            parsed.commands.push_back(command);
+        }
+        snapshot.embeddedMedia = std::move(parsed);
+    }
     if (source.HasKey(L"quickActions")) {
         const JsonArray actions = source.GetNamedArray(L"quickActions");
         snapshot.quickActions.reserve(actions.Size());
@@ -1196,7 +1290,7 @@ bool ValidateWidgetDocumentStructure(
     if (!HasNoUnknownProperties(document,
             {L"protocolVersion", L"sequence", L"widgetInstanceId",
              L"activeInputScopeId", L"initialFocusId", L"quickActions",
-             L"surface", L"pinnedLayouts", L"root"}) ||
+             L"surface", L"pinnedLayouts", L"embeddedMedia", L"root"}) ||
         !document.HasKey(L"root") ||
         document.GetNamedValue(L"root").ValueType() != JsonValueType::Object) {
         error = L"The materialized widget document shape is invalid.";
@@ -2863,6 +2957,123 @@ std::optional<bool> WidgetBridgeClient::RequestArtwork(
             return true;
         }
     } catch (const winrt::hresult_error&) {
+    }
+    return std::nullopt;
+}
+
+std::optional<EmbeddedMediaBundle> WidgetBridgeClient::ResolveEmbeddedMedia(
+    const std::wstring_view widgetId,
+    const std::wstring_view instanceId,
+    const std::wstring_view runtimeGeneration,
+    const std::wstring_view presentationGeneration,
+    const long long sequence,
+    const std::wstring_view surfaceId) {
+    std::scoped_lock lock(requestMutex_);
+    if (pipe_ == INVALID_HANDLE_VALUE || sequence <= 0 ||
+        !IsIdentifier(widgetId) || !IsIdentifier(instanceId) ||
+        !IsIdentifier(runtimeGeneration) || !IsIdentifier(presentationGeneration) ||
+        !IsIdentifier(surfaceId)) return std::nullopt;
+    try {
+        JsonObject payload;
+        payload.Insert(L"widgetId", JsonValue::CreateStringValue(winrt::hstring(widgetId)));
+        payload.Insert(L"instanceId", JsonValue::CreateStringValue(winrt::hstring(instanceId)));
+        payload.Insert(L"runtimeGeneration", JsonValue::CreateStringValue(winrt::hstring(runtimeGeneration)));
+        payload.Insert(L"presentationGeneration", JsonValue::CreateStringValue(winrt::hstring(presentationGeneration)));
+        payload.Insert(L"sequence", JsonValue::CreateNumberValue(static_cast<double>(sequence)));
+        payload.Insert(L"surfaceId", JsonValue::CreateStringValue(winrt::hstring(surfaceId)));
+        const long long requestId = ++nextRequestId_;
+        JsonObject envelope;
+        envelope.Insert(L"protocolVersion", JsonValue::CreateNumberValue(1));
+        envelope.Insert(L"type", JsonValue::CreateStringValue(L"resolve-embedded-media"));
+        envelope.Insert(L"requestId", JsonValue::CreateNumberValue(static_cast<double>(requestId)));
+        envelope.Insert(L"payload", payload);
+        if (!WriteFrame(winrt::to_string(envelope.Stringify()))) return std::nullopt;
+        while (const auto frame = ReadFrame()) {
+            const auto response = JsonObject::Parse(winrt::to_hstring(*frame));
+            long long responseId{};
+            if (!ReadRequestId(response, responseId)) return std::nullopt;
+            if (responseId == 0) {
+                std::wstring status;
+                if (!HandleAsyncEvent(response, invalidations_, actionFailures_, hostEffects_,
+                        appearanceChanges_, catalogChanges_, status, &artworkResults_,
+                        &localPackageInstallResults_)) return std::nullopt;
+                continue;
+            }
+            if (responseId != requestId) return std::nullopt;
+            const auto type = response.GetNamedString(L"type");
+            if (type == L"error") {
+                Fail(SafeBridgeError(response));
+                return std::nullopt;
+            }
+            if (type != L"embedded-media") return std::nullopt;
+            const auto body = response.GetNamedObject(L"payload");
+            if (!HasOnlyProperties(body,
+                    {L"widgetId", L"instanceId", L"runtimeGeneration",
+                     L"presentationGeneration", L"sequence", L"surfaceId",
+                     L"entryAsset", L"surface", L"aspectRatio", L"accessibleName",
+                     L"commands", L"resources"})) return std::nullopt;
+            EmbeddedMediaBundle bundle;
+            bundle.widgetId = OptionalString(body, L"widgetId");
+            bundle.instanceId = OptionalString(body, L"instanceId");
+            bundle.runtimeGeneration = OptionalString(body, L"runtimeGeneration");
+            bundle.presentationGeneration = OptionalString(body, L"presentationGeneration");
+            bundle.sequence = RequiredIntegral(body, L"sequence");
+            bundle.surface.id = OptionalString(body, L"surfaceId");
+            bundle.surface.entryAsset = OptionalString(body, L"entryAsset");
+            bundle.surface.accessibleName = OptionalString(body, L"accessibleName");
+            bundle.surface.aspectRatio = body.GetNamedNumber(L"aspectRatio");
+            if (bundle.widgetId != widgetId || bundle.instanceId != instanceId ||
+                bundle.runtimeGeneration != runtimeGeneration ||
+                bundle.presentationGeneration != presentationGeneration ||
+                bundle.sequence != sequence || bundle.surface.id != surfaceId)
+                return std::nullopt;
+            const auto surface = body.GetNamedObject(L"surface");
+            bundle.surface.surface.mode = OptionalString(surface, L"mode");
+            const auto number = [&surface](const wchar_t* name) -> std::optional<double> {
+                return surface.HasKey(name)
+                    ? std::optional<double>{surface.GetNamedNumber(name)}
+                    : std::nullopt;
+            };
+            bundle.surface.surface.preferredWidth = number(L"preferredWidth");
+            bundle.surface.surface.preferredHeight = number(L"preferredHeight");
+            bundle.surface.surface.minimumWidth = number(L"minimumWidth");
+            bundle.surface.surface.minimumHeight = number(L"minimumHeight");
+            const auto commands = body.GetNamedArray(L"commands");
+            for (uint32_t index = 0; index < commands.Size(); ++index)
+                bundle.surface.commands.emplace_back(
+                    std::wstring_view(commands.GetStringAt(index)));
+            const auto resources = body.GetNamedArray(L"resources");
+            if (resources.Size() == 0 ||
+                resources.Size() > protocol_contract::MaximumEmbeddedMediaResourceCount)
+                return std::nullopt;
+            std::size_t aggregate{};
+            for (uint32_t index = 0; index < resources.Size(); ++index) {
+                const auto item = resources.GetObjectAt(index);
+                if (!HasOnlyProperties(item,
+                        {L"path", L"contentType", L"sha256", L"contentBase64"}))
+                    return std::nullopt;
+                EmbeddedMediaResource resource;
+                resource.path = OptionalString(item, L"path");
+                resource.contentType = OptionalString(item, L"contentType");
+                resource.sha256 = OptionalString(item, L"sha256");
+                const auto decoded = DecodeBase64Bounded(
+                    OptionalString(item, L"contentBase64"),
+                    protocol_contract::MaximumEmbeddedMediaResourceBytes);
+                if (!decoded || resource.sha256.size() != 64 ||
+                    !std::all_of(resource.sha256.begin(), resource.sha256.end(),
+                        [](const wchar_t value) { return std::iswxdigit(value) != 0; }))
+                    return std::nullopt;
+                resource.content = std::move(*decoded);
+                aggregate += resource.content.size();
+                if (aggregate > protocol_contract::MaximumEmbeddedMediaAggregateBytes)
+                    return std::nullopt;
+                bundle.resources.push_back(std::move(resource));
+            }
+            lastError_.clear();
+            return bundle;
+        }
+    } catch (const winrt::hresult_error& error) {
+        Fail(L"Invalid embedded media response: " + std::wstring(error.message()));
     }
     return std::nullopt;
 }
