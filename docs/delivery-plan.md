@@ -28,12 +28,11 @@ historical evidence only; this file is the sole implementation authority.
   high-level pinned-layout migration is accepted. The intermittent consumed-
   input report has no proven cause; DLV-303 owns diagnostics only and no fix is
   authorized.
-- The current coherent Release and Spotify package are confirmed current, but
-  the Up Next pin can remain on Loading. Provider diagnostics prove the queue
-  operations complete successfully while host diagnostics record failed
-  pinned-layout selection and action delivery during rapidly advancing Spotify
-  progress snapshots. DLV-304 owns the serialized generic authority correction
-  after DLV-303; this is not a provider or package-version failure.
+- The intermittent Up Next Loading report is not currently reproducible and the
+  user confirms it is working now. DLV-304 is deferred until a fresh recurrence
+  can be captured through integrated DLV-303 correlation diagnostics. Existing
+  evidence remains useful but is not sufficient to spend another physical-first
+  cycle on a correction that cannot currently receive a meaningful verdict.
 - A newly reported resize commit visibly returns the pin to its prior size.
   DLV-305 proved the exact native cause before editing: preview and capture use
   the widget-expanded placement limits, but persistence revalidates that legal
@@ -75,7 +74,7 @@ historical evidence only; this file is the sole implementation authority.
 
 | Lane | Task/worktree | State |
 | --- | --- | --- |
-| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | Physically accepted DLV-305 focused tests are Assigned in a separate clean worktree and may not overlap DLV-303 files. DLV-304 is Ready after serialized DLV-303 instrumentation; DLV-301 follows both corrections. The standing worktree's retained DLV-474/DLV-293 diffs and blocked DLV-473 test commit remain immutable evidence and must not be touched. |
+| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | Physically accepted DLV-305 focused tests are Assigned in a separate clean worktree and may not overlap DLV-303 files. DLV-301 follows DLV-305 and reviewed DLV-303 integration. DLV-304 is recurrence-blocked. The standing worktree's retained DLV-474/DLV-293 diffs and blocked DLV-473 test commit remain immutable evidence and must not be touched. |
 | Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | DLV-303 generic action-correlation commits `9afdbf2` and `a173cc3` are complete in a separate clean worktree and awaiting planner review; the milestone has no fix authority. The dirty standing DLV-298 evidence remains untouched. DLV-296 and DLV-297 remain Ready. |
 
 ## Execution rules
@@ -183,7 +182,7 @@ state, substantial conflict, or materially different exit/cycle semantics.
 
 ### DLV-301 pinned-surface right-stick free scrolling
 
-Lane: platform, after serialized DLV-303 instrumentation. Status: Ready. The defect is
+Lane: platform, after serialized DLV-303 instrumentation and DLV-305. Status: Ready. The defect is
 concrete: the pinned-focus branch returns before the ordinary overlay's
 `HandleRightStickFreeScroll` path, sends only left-stick/D-pad navigation to the
 pinned coordinator, and exposes the right stick only as a pressed button. Route
@@ -243,7 +242,11 @@ unbounded log volume, or any behavioral correction.
 ### DLV-304 stable pinned demand and input authority under live updates
 
 Lane: platform, serialized generic native/Bridge/SDK correction after reviewed
-DLV-303 integration. Status: Ready. Baseline: the integrated DLV-303 diagnostic
+DLV-303 integration. Status: Deferred pending a fresh user-reported recurrence
+captured by the integrated correlation diagnostics. Do not assign production
+correction while Up Next is behaving correctly; reopen from the exact recurrent
+session and report the first failing authority boundary before editing.
+Baseline: the integrated DLV-303 diagnostic
 milestone on local `main`. The current packaged evidence rules out an old build
 and a stuck Spotify provider: Release PID 109280 runs the current integrated
 host, Spotify 0.3.26 is the sole installed generation, queue operations complete
@@ -435,10 +438,11 @@ work ahead of cleanup.
 1. DLV-303 generic end-to-end widget action correlation diagnostics and DLV-305
    pinned resize commit diagnosis/correction are Assigned concurrently in
    separate non-overlapping worktrees.
-2. DLV-304 stable pinned demand and input authority under live updates; Ready
-   after reviewed DLV-303 integration.
-3. DLV-301 pinned-surface right-stick free scrolling; Ready after DLV-304 and
-   DLV-305.
+2. DLV-301 pinned-surface right-stick free scrolling; Ready after reviewed
+   DLV-303 integration and DLV-305.
+3. DLV-304 stable pinned demand and input authority under live updates; deferred
+   until the user reports a fresh recurrence and integrated DLV-303 diagnostics
+   capture the first failing authority boundary.
 4. Recover accepted DLV-298 high-level Spotify focused regression coverage.
 5. Recover DLV-473 focused SDK/Bridge/native regression coverage from its proven
    pre-test infrastructure failure.
