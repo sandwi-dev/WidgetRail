@@ -623,6 +623,65 @@ bool HasExpectedStatus(
     return propertiesMatch;
 }
 
+std::string DescribeStatusQuery(
+    IUIAutomation* automation, HWND window,
+    const std::wstring_view automationId) {
+    auto root = RootForWindow(automation, window);
+    if (!root) return "root=absent";
+    auto status = FindByAutomationId(automation, root.Get(), automationId);
+    std::string result = status ? "query=present" : "query=absent";
+    if (status) {
+        const auto name = StringProperty(status.Get(), UIA_NamePropertyId);
+        CONTROLTYPEID controlType{};
+        VARIANT live{};
+        RECT bounds{};
+        const HRESULT controlResult = status->get_CurrentControlType(&controlType);
+        const HRESULT liveResult = status->GetCurrentPropertyValue(
+            UIA_LiveSettingPropertyId, &live);
+        const HRESULT boundsResult = status->get_CurrentBoundingRectangle(&bounds);
+        result += " name=" +
+            (name ? WideToUtf8(*name) : std::string{"<absent>"}) +
+            " control-hr=" + std::to_string(controlResult) +
+            " control=" + std::to_string(controlType) +
+            " live-hr=" + std::to_string(liveResult) +
+            " live-vt=" + std::to_string(V_VT(&live)) +
+            " live=" +
+            std::to_string(V_VT(&live) == VT_I4 ? V_I4(&live) : -1) +
+            " bounds-hr=" + std::to_string(boundsResult) +
+            " bounds=" + std::to_string(bounds.left) + "," +
+            std::to_string(bounds.top) + "," +
+            std::to_string(bounds.right - bounds.left) + "," +
+            std::to_string(bounds.bottom - bounds.top);
+        VariantClear(&live);
+    }
+
+    ComPtr<IUIAutomationCondition> trueCondition;
+    ComPtr<IUIAutomationElementArray> descendants;
+    if (SUCCEEDED(automation->CreateTrueCondition(trueCondition.GetAddressOf())) &&
+        trueCondition && SUCCEEDED(root->FindAll(
+            TreeScope_Descendants, trueCondition.Get(), descendants.GetAddressOf())) &&
+        descendants) {
+        int count{};
+        if (SUCCEEDED(descendants->get_Length(&count))) {
+            result += " descendants=" + std::to_string(count) + " ids=[";
+            const int bounded = std::min(count, 128);
+            bool first = true;
+            for (int index = 0; index < bounded; ++index) {
+                ComPtr<IUIAutomationElement> element;
+                if (FAILED(descendants->GetElement(index, element.GetAddressOf())) ||
+                    !element) continue;
+                const auto id = StringProperty(element.Get(), UIA_AutomationIdPropertyId);
+                if (!id || !id->starts_with(L"host:")) continue;
+                if (!first) result += ",";
+                first = false;
+                result += WideToUtf8(*id);
+            }
+            result += "]";
+        }
+    }
+    return result;
+}
+
 std::string ReadLog(const fs::path& path) {
     std::ifstream input(path, std::ios::binary);
     if (!input) return {};
@@ -712,6 +771,78 @@ std::vector<DWORD> FixtureDescendants(
 
 void PostKey(HWND window, const WPARAM virtualKey) {
     Require(PostMessageW(window, WM_KEYDOWN, virtualKey, 0), Win32Error("PostMessageW(WM_KEYDOWN)"));
+}
+
+void SendKeyAndWait(HWND window, const WPARAM virtualKey) {
+    DWORD_PTR messageResult{};
+    SetLastError(ERROR_SUCCESS);
+    Require(SendMessageTimeoutW(
+                window, WM_KEYDOWN, virtualKey, 0,
+                SMTO_ABORTIFHUNG | SMTO_BLOCK,
+                kOperationTimeoutMilliseconds, &messageResult) != 0,
+            Win32Error("SendMessageTimeoutW(WM_KEYDOWN)"));
+}
+
+std::string DescribeActionProvider(IUIAutomationElement* element) {
+    if (!element) return "provider=absent";
+    const auto automationId = StringProperty(element, UIA_AutomationIdPropertyId);
+    const auto name = StringProperty(element, UIA_NamePropertyId);
+    CONTROLTYPEID controlType{};
+    BOOL enabled{};
+    BOOL offscreen{};
+    BOOL focused{};
+    const HRESULT controlResult = element->get_CurrentControlType(&controlType);
+    const HRESULT enabledResult = element->get_CurrentIsEnabled(&enabled);
+    const HRESULT offscreenResult = element->get_CurrentIsOffscreen(&offscreen);
+    const HRESULT focusedResult = element->get_CurrentHasKeyboardFocus(&focused);
+    ComPtr<IUnknown> invoke;
+    ComPtr<IUnknown> range;
+    ComPtr<IUnknown> selectionItem;
+    const HRESULT invokeResult = element->GetCurrentPatternAs(
+        UIA_InvokePatternId, IID_PPV_ARGS(invoke.GetAddressOf()));
+    const HRESULT rangeResult = element->GetCurrentPatternAs(
+        UIA_RangeValuePatternId, IID_PPV_ARGS(range.GetAddressOf()));
+    const HRESULT selectionResult = element->GetCurrentPatternAs(
+        UIA_SelectionItemPatternId, IID_PPV_ARGS(selectionItem.GetAddressOf()));
+    SAFEARRAY* runtimeId{};
+    const HRESULT runtimeResult = element->GetRuntimeId(&runtimeId);
+    std::string runtime = "[";
+    if (SUCCEEDED(runtimeResult) && runtimeId) {
+        LONG lower{};
+        LONG upper{-1};
+        if (SUCCEEDED(SafeArrayGetLBound(runtimeId, 1, &lower)) &&
+            SUCCEEDED(SafeArrayGetUBound(runtimeId, 1, &upper))) {
+            for (LONG index = lower; index <= upper; ++index) {
+                int value{};
+                if (FAILED(SafeArrayGetElement(runtimeId, &index, &value))) continue;
+                if (runtime.size() > 1) runtime += ",";
+                runtime += std::to_string(value);
+            }
+        }
+        SafeArrayDestroy(runtimeId);
+    }
+    runtime += "]";
+    return "provider=present id=" +
+        (automationId ? WideToUtf8(*automationId) : std::string{"<absent>"}) +
+        " name=" + (name ? WideToUtf8(*name) : std::string{"<absent>"}) +
+        " control-hr=" + std::to_string(controlResult) +
+        " control=" + std::to_string(controlType) +
+        " enabled-hr=" + std::to_string(enabledResult) +
+        " enabled=" + (enabled ? "true" : "false") +
+        " offscreen-hr=" + std::to_string(offscreenResult) +
+        " offscreen=" + (offscreen ? "true" : "false") +
+        " focused-hr=" + std::to_string(focusedResult) +
+        " focused=" + (focused ? "true" : "false") +
+        " runtime-hr=" + std::to_string(runtimeResult) +
+        " runtime=" + runtime +
+        " patterns=invoke:" +
+        (SUCCEEDED(invokeResult) && invoke ? "present" : "absent") +
+        "(" + std::to_string(invokeResult) + ")" +
+        ",range:" + (SUCCEEDED(rangeResult) && range ? "present" : "absent") +
+        "(" + std::to_string(rangeResult) + ")" +
+        ",selection-item:" +
+        (SUCCEEDED(selectionResult) && selectionItem ? "present" : "absent") +
+        "(" + std::to_string(selectionResult) + ")";
 }
 
 struct Arguments {
@@ -963,8 +1094,22 @@ void Run(const Arguments& arguments) {
         const int expectedFailureCountBeforeFirstFailure =
             eventHandler->ExpectedFailureCount();
 
+        const auto activateCurrentPlayPause = [&] {
+            auto currentRoot = RootForWindow(automation.Get(), window);
+            auto current = currentRoot
+                ? FindByAutomationId(
+                    automation.Get(), currentRoot.Get(), kPlayPauseAutomationId)
+                : ComPtr<IUIAutomationElement>{};
+            Require(current && IsFocused(current.Get()),
+                    "The current play-pause action did not retain exact focused authority.");
+            std::cout << "Current play-pause UIA authority: "
+                      << DescribeActionProvider(current.Get()) << '\n';
+            SendKeyAndWait(window, VK_RETURN);
+        };
+
+        const auto firstInvocationLogBoundary = ReadLog(logPath).size();
         const ULONGLONG firstFailureAt = GetTickCount64();
-        PostKey(window, VK_RETURN);
+        activateCurrentPlayPause();
         if (!WaitUntil(kOperationTimeoutMilliseconds, [&] {
                 return HasExpectedStatus(
                     automation.Get(), chromeWindow, kOpenStatusAutomationId);
@@ -976,14 +1121,31 @@ void Run(const Arguments& arguments) {
                 : ComPtr<IUIAutomationElement>{};
             const auto statusName = StringProperty(status.Get(), UIA_NamePropertyId);
             const auto log = ReadLog(logPath);
-            const auto suffixStart = std::min(activationLogBoundary, log.size());
-            const auto suffixLength = std::min<std::size_t>(
-                8192, log.size() - suffixStart);
+            const auto tailStart = std::min(firstInvocationLogBoundary, log.size());
+            const fs::path retainedLogPath = fs::temp_directory_path() /
+                (L"wrail-widget-action-failure-" +
+                 installation.ProcessProfile() + L".overlay.log");
+            std::error_code retainError;
+            fs::copy_file(
+                logPath, retainedLogPath,
+                fs::copy_options::overwrite_existing, retainError);
             Fail("The production host did not paint/project the exact polite status. "
                  "Projected status: " +
                  (statusName ? WideToUtf8(*statusName) : std::string{"<absent>"}) +
-                 ". Activation log suffix: " +
-                 log.substr(suffixStart, suffixLength));
+                 ". UIA query: " + DescribeStatusQuery(
+                     automation.Get(), chromeWindow, kOpenStatusAutomationId) +
+                 ". Event counts live=" +
+                 std::to_string(eventHandler->Count()) +
+                 " exact-status=" +
+                 std::to_string(eventHandler->ExactStatusCount()) +
+                 " expected-failure=" +
+                 std::to_string(eventHandler->ExpectedFailureCount()) +
+                 ". Retained overlay log: " + retainedLogPath.string() +
+                 (retainError
+                      ? " (copy failed: " + retainError.message() + ")"
+                      : std::string{}) +
+                 ". Complete post-invocation log tail: " +
+                 log.substr(tailStart));
         }
         Require(WaitUntil(3000, [&] {
                     return eventHandler->ExpectedFailureCount() >=
@@ -1035,7 +1197,7 @@ void Run(const Arguments& arguments) {
         Require(failureCountBeforeReplacement == 1,
                 "The first action produced an unexpected number of failure records.");
         const ULONGLONG secondFailureAt = GetTickCount64();
-        PostKey(window, VK_RETURN);
+        activateCurrentPlayPause();
         Require(WaitUntil(kOperationTimeoutMilliseconds, [&] {
                     const auto count = MatchingFailureRecords(ReadLog(logPath));
                     return count == failureCountBeforeReplacement + 1;
@@ -1086,7 +1248,7 @@ void Run(const Arguments& arguments) {
                     return IsFocused(playPause.Get());
                 }), "Retained replacement feedback moved widget focus.");
 
-        PostKey(window, VK_RETURN);
+        activateCurrentPlayPause();
         Require(WaitUntil(kOperationTimeoutMilliseconds, [&] {
                     return HasExpectedStatus(
                         automation.Get(), chromeWindow, kOpenStatusAutomationId);

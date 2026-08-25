@@ -196,6 +196,11 @@ WidgetActionFeedbackBatchResult WidgetActionFeedbackHost::PublishBridgeFailures(
         changed = true;
     }
     Apply(changed);
+    if (changed && callbacks_.commitAccessibility &&
+        callbacks_.commitAccessibility() &&
+        callbacks_.raiseAccessibilityEvents) {
+        callbacks_.raiseAccessibilityEvents();
+    }
     return result;
 }
 

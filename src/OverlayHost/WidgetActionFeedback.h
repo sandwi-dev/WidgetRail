@@ -134,6 +134,8 @@ struct WidgetActionFeedbackHostCallbacks final {
     std::function<std::uint64_t()> now;
     std::function<void(std::optional<std::uint64_t>)> scheduleExpiry;
     std::function<void()> invalidate;
+    std::function<bool()> commitAccessibility;
+    std::function<void()> raiseAccessibilityEvents;
 };
 
 /// Thin composition boundary used by OverlayApp. It owns only the bounded

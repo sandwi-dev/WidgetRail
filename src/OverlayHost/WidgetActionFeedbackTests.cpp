@@ -1,5 +1,6 @@
 #include "WidgetActionFeedback.h"
 #include "WidgetBridgeClient.h"
+#include "AccessibilityTree.h"
 
 #include <cstdlib>
 #include <iostream>
@@ -185,6 +186,74 @@ int main() {
               widgetrail::WidgetActionFeedbackSurface::OpenWidget, L"music", L"chat") ==
               L"Chat action failed; try again",
           "open-widget surface selects feedback independently");
+
+    bool projectionInvalidated = false;
+    bool guideSemanticInputsUpdated = false;
+    bool fixedChromeTreeRebuilt = false;
+    bool providerSawCommittedStatus = false;
+    bool accessibilityEventRaised = false;
+    std::uint64_t semanticGeneration{};
+    std::uint64_t providerGeneration{};
+    std::uint64_t eventGeneration{};
+    std::optional<widgetrail::accessibility::Node> fixedChromeStatus;
+    widgetrail::WidgetActionFeedbackHost* projectionHostAddress = nullptr;
+    widgetrail::WidgetActionFeedbackHost projectionHost({
+        [] { return 12'000ULL; },
+        [](const std::optional<std::uint64_t>) {},
+        [&] { projectionInvalidated = true; },
+        [&] {
+            const auto status = projectionHostAddress->MessageForSurface(
+                widgetrail::WidgetActionFeedbackSurface::OpenWidget,
+                L"music", L"music");
+            if (!projectionInvalidated ||
+                status != L"Music action failed; try again") return false;
+            guideSemanticInputsUpdated = true;
+            fixedChromeStatus = widgetrail::accessibility::Node{};
+            fixedChromeStatus->id = L"host.open.status";
+            fixedChromeStatus->domain =
+                widgetrail::accessibility::ElementDomain::HostShell;
+            fixedChromeStatus->name = std::wstring{*status};
+            fixedChromeStatus->bounds = {12.0F, 18.0F, 240.0F, 28.0F};
+            fixedChromeStatus->role = widgetrail::accessibility::Role::Status;
+            fixedChromeStatus->liveSetting =
+                widgetrail::accessibility::LiveSetting::Polite;
+            fixedChromeStatus->keyboardFocusable = false;
+            semanticGeneration = 1;
+            fixedChromeTreeRebuilt = guideSemanticInputsUpdated &&
+                fixedChromeStatus->id == L"host.open.status" &&
+                fixedChromeStatus->name == L"Music action failed; try again" &&
+                fixedChromeStatus->role == widgetrail::accessibility::Role::Status &&
+                fixedChromeStatus->liveSetting ==
+                    widgetrail::accessibility::LiveSetting::Polite;
+            providerSawCommittedStatus = fixedChromeTreeRebuilt;
+            providerGeneration = semanticGeneration;
+            return providerSawCommittedStatus;
+        },
+        [&] {
+            Check(guideSemanticInputsUpdated && fixedChromeTreeRebuilt &&
+                      providerSawCommittedStatus &&
+                      providerGeneration == semanticGeneration &&
+                      providerGeneration != 0,
+                  "pending accessibility events follow the committed provider generation");
+            eventGeneration = providerGeneration;
+            accessibilityEventRaised = true;
+        },
+    });
+    projectionHostAddress = &projectionHost;
+    Check(projectionHost.ReconcileCatalog({
+              {L"music", L"Music", L"music.instance", L"music.g1", L"music.p1"},
+          }),
+          "projection host accepts its exact catalog authority");
+    projectionHost.Show();
+    Check(projectionHost.PublishBridgeFailures({
+              {L"music", L"music.g1", L"music.play", L"music.play.button"},
+          }).OutcomeAt(0) == widgetrail::WidgetActionFeedbackOutcome::Published,
+          "projection host publishes the exact current failure");
+    Check(guideSemanticInputsUpdated && fixedChromeTreeRebuilt &&
+              providerSawCommittedStatus &&
+              accessibilityEventRaised && eventGeneration == providerGeneration,
+          "published feedback updates Guide semantics, rebuilds fixed chrome, "
+          "publishes that generation, then raises its event");
 
     now = 10'500;
     const auto offscreenBatch = host.PublishBridgeFailures({

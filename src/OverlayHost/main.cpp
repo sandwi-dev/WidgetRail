@@ -435,6 +435,13 @@ public:
               },
               [this] {
                   if (window_) InvalidateRect(window_, nullptr, FALSE);
+              },
+              [this] {
+                  return CommitActionFailureFixedChrome();
+              },
+              [this] {
+                  accessibilityProvider_.RaisePendingEvents();
+                  chromeAccessibilityProvider_.RaisePendingEvents();
               }}),
           admissionTrace_([](std::wstring message) {
               AppendDiagnostic(message);
@@ -7586,6 +7593,128 @@ private:
         return true;
     }
 
+    bool CommitActionFailureFixedChrome() {
+        if (!window_ || !accessibilityActive_ ||
+            state_.surface() == widgetrail::Surface::Hidden) {
+            return false;
+        }
+
+        if (compositionSurface_.available()) {
+            pendingActionFailureAccessibilityProjection_.reset();
+            if (!compositionChromeSession_) return false;
+            const auto trayLayout = CurrentCompositionTrayLayout();
+            if (!trayLayout) return false;
+            const auto& chromeSession = *compositionChromeSession_;
+            const auto guideKey = CurrentGuidePaintKey(
+                chromeSession.guideWidth,
+                chromeSession.guideHeight,
+                chromeSession.dpi);
+            CompositionFrameSet frames;
+            const CompositionLayerGeometry guideGeometry{
+                chromeSession.guideWidth,
+                chromeSession.guideHeight,
+            };
+            if (!RenderCompositionLayer(
+                    chromeSession.guideWidth,
+                    chromeSession.guideHeight,
+                    chromeSession.dpi,
+                    widgetrail::OverlayCompositionSurface::Layer::Guide,
+                    CompositionPaintLayer::Guide,
+                    guideGeometry,
+                    nullptr,
+                    frames,
+                    &*trayLayout,
+                    &chromeSession.guideBounds,
+                    true)) {
+                pendingActionFailureAccessibilityProjection_.reset();
+                DisableCompositionFallback(L"action-feedback guide draw failed");
+                return false;
+            }
+            std::vector<widgetrail::OverlayCompositionSurface::Frame*> framePointers;
+            framePointers.reserve(frames.frames.size());
+            for (auto& frame : frames.frames) framePointers.push_back(&frame);
+            widgetrail::OverlayCompositionSurface::CommitTiming timing;
+            const HRESULT result = compositionSurface_.CommitFrames(
+                framePointers, false, timing, nullptr);
+            if (FAILED(result)) {
+                pendingActionFailureAccessibilityProjection_.reset();
+                DisableCompositionFallback(
+                    L"action-feedback guide commit failed hresult=" +
+                    std::to_wstring(static_cast<unsigned long>(result)));
+                return false;
+            }
+            retainedGuidePaintKey_ = guideKey;
+            if (!pendingActionFailureAccessibilityProjection_) return false;
+        } else {
+            InvalidateRect(window_, nullptr, FALSE);
+            UpdateWindow(window_);
+        }
+
+        const bool dashboardStatus =
+            state_.surface() == widgetrail::Surface::Dashboard ||
+            state_.focusRegion() == widgetrail::FocusRegion::Tray;
+        const auto expectedStatus = dashboardStatus
+            ? DashboardStatus()
+            : OpenWidgetStatus();
+        const std::wstring_view statusId =
+            state_.surface() == widgetrail::Surface::Dashboard
+            ? L"host.dashboard.status"
+            : L"host.open.status";
+        const auto semanticStatus = std::find_if(
+            accessibilityTree_.nodes.begin(), accessibilityTree_.nodes.end(),
+            [&](const widgetrail::accessibility::Node& node) {
+                return node.domain ==
+                           widgetrail::accessibility::ElementDomain::HostShell &&
+                       node.id == statusId;
+            });
+        AppendDiagnostic(
+            L"Action failure accessibility projection stage=semantic-committed" +
+            std::wstring{L" expected="} +
+            (expectedStatus ? *expectedStatus : L"<absent>") +
+            L" node=" +
+            (semanticStatus == accessibilityTree_.nodes.end()
+                ? L"absent"
+                : semanticStatus->id + L" role=" +
+                    std::to_wstring(static_cast<int>(semanticStatus->role)) +
+                    L" name=" + semanticStatus->name +
+                    L" live=" +
+                    std::to_wstring(static_cast<int>(semanticStatus->liveSetting)) +
+                    L" bounds=" + std::to_wstring(semanticStatus->bounds.x) + L"," +
+                    std::to_wstring(semanticStatus->bounds.y) + L"," +
+                    std::to_wstring(semanticStatus->bounds.width) + L"," +
+                    std::to_wstring(semanticStatus->bounds.height)));
+        if (!expectedStatus || semanticStatus == accessibilityTree_.nodes.end() ||
+            semanticStatus->name != *expectedStatus ||
+            semanticStatus->role != widgetrail::accessibility::Role::Status ||
+            semanticStatus->liveSetting !=
+                widgetrail::accessibility::LiveSetting::Polite) {
+            return false;
+        }
+
+        if (compositionSurface_.available()) {
+            auto projection = std::move(*pendingActionFailureAccessibilityProjection_);
+            pendingActionFailureAccessibilityProjection_.reset();
+            if (!PublishAccessibilityTree(projection.pixelsPerDip)) return false;
+            accessibilityProjection_.Published(std::move(projection));
+        } else {
+            RECT client{};
+            const UINT dpi = std::max(1U, GetDpiForWindow(window_));
+            const float interfaceScale = appearanceState_.current()
+                ? static_cast<float>(appearanceState_.current()->interfaceScale)
+                : 1.0F;
+            const auto metrics = GetClientRect(window_, &client)
+                ? widgetrail::ComputeOverlayRenderMetrics(
+                    client.right - client.left, client.bottom - client.top,
+                    dpi, interfaceScale)
+                : std::nullopt;
+            if (!metrics ||
+                !PublishAccessibilityTree(metrics->physicalPixelsPerDip)) {
+                return false;
+            }
+        }
+        return true;
+    }
+
     void PublishNonCurrentHostBackAccessibility() {
         if (!accessibilityActive_ || openWidgetAccessibility_.title.empty()) return;
         const auto hostBack = NonCurrentHostRootBackAuthority();
@@ -7621,7 +7750,8 @@ private:
         const widgetrail::shell::TrayLayout& layout,
         const float width,
         const float height,
-        const widgetrail::accessibility::DashboardSemantics* dashboard = nullptr) {
+        const widgetrail::accessibility::DashboardSemantics* dashboard = nullptr,
+        const bool deferProviderPublication = false) {
         if (!accessibilityActive_) return;
         if (textEntryModal_.active()) {
             ClearAccessibilityTree();
@@ -7669,17 +7799,25 @@ private:
             const auto semanticRevision =
                 widgetrail::accessibility::ComputeOpenWidgetSemanticRevision(
                     items, openWidgetAccessibility_);
+            if (deferProviderPublication) {
+                accessibilityTree_ = widgetrail::accessibility::BuildOpenWidgetTree(
+                    semanticTree, items, layout, state_.selectedSlot(),
+                    state_.focusRegion() == widgetrail::FocusRegion::Tray,
+                    openWidgetAccessibility_);
+            }
+            const auto& projectionTree = deferProviderPublication
+                ? accessibilityTree_ : semanticTree;
             const auto policy = appearanceState_.current()
                 ? CurrentAccessibilityPolicy()
                 : widgetrail::NativeAccessibilityPolicy{};
             widgetrail::accessibility::ProjectionKey key{
-                semanticTree.widgetId,
-                semanticTree.runtimeGeneration,
-                semanticTree.activeInputScopeId,
+                projectionTree.widgetId,
+                projectionTree.runtimeGeneration,
+                projectionTree.activeInputScopeId,
                 state_.focusRegion() == widgetrail::FocusRegion::Tray
                     ? std::wstring{state_.selectedWidget()}
                     : interactionSession_.focusedElementId(),
-                semanticTree.snapshotSequence,
+                projectionTree.snapshotSequence,
                 widgetAccessibilityRevision_,
                 appearanceState_.current() ? appearanceState_.current()->revision : 0,
                 layout.stripBounds.x,
@@ -7695,7 +7833,12 @@ private:
                 policy.reducedTransparency,
             };
             key.hostSemanticRevision = semanticRevision;
-            if (!accessibilityProjection_.ShouldCollect(key)) return;
+            if (!deferProviderPublication &&
+                !accessibilityProjection_.ShouldCollect(key)) return;
+            if (deferProviderPublication) {
+                pendingActionFailureAccessibilityProjection_ = std::move(key);
+                return;
+            }
             accessibilityTree_ = widgetrail::accessibility::BuildOpenWidgetTree(
                 std::move(semanticTree), items, layout, state_.selectedSlot(),
                 state_.focusRegion() == widgetrail::FocusRegion::Tray,
@@ -7736,10 +7879,15 @@ private:
             policy.reducedMotion,
             policy.reducedTransparency,
         };
-        if (!accessibilityProjection_.ShouldCollect(key)) return;
+        if (!deferProviderPublication &&
+            !accessibilityProjection_.ShouldCollect(key)) return;
         accessibilityTree_ = widgetrail::accessibility::BuildTrayTree(
             items, layout, state_.selectedSlot(), ++hostAccessibilitySequence_,
             effectiveDashboard);
+        if (deferProviderPublication) {
+            pendingActionFailureAccessibilityProjection_ = key;
+            return;
+        }
         if (PublishAccessibilityTree(key.pixelsPerDip))
             accessibilityProjection_.Published(key);
     }
@@ -9095,7 +9243,8 @@ private:
         const widgetrail::shell::TrayLayout* trayLayout = nullptr,
         const widgetrail::declarative::Rect* guideBounds = nullptr,
         std::optional<widgetrail::CompositionUpdateRasterMapping>*
-            rasterMapping = nullptr) {
+            rasterMapping = nullptr,
+        const bool deferFixedChromeAccessibilityPublication = false) {
         const float interfaceScale = appearanceState_.current()
             ? static_cast<float>(appearanceState_.current()->interfaceScale)
             : 1.0F;
@@ -9181,7 +9330,9 @@ private:
                 localGuideGeometry.footerHeight = guideBounds->height;
                 DrawWidgetFooter(localGuideGeometry, guideBounds);
                 if (accessibilityActive_ && trayLayout) {
-                    PublishTrayAccessibility(*trayLayout, width, height);
+                    PublishTrayAccessibility(
+                        *trayLayout, width, height, nullptr,
+                        deferFixedChromeAccessibilityPublication);
                 }
             }
             finishUpdate();
@@ -9988,7 +10139,8 @@ private:
         const RECT* update,
         CompositionFrameSet& set,
         const widgetrail::shell::TrayLayout* trayLayout = nullptr,
-        const widgetrail::declarative::Rect* guideBounds = nullptr) {
+        const widgetrail::declarative::Rect* guideBounds = nullptr,
+        const bool deferFixedChromeAccessibilityPublication = false) {
         widgetrail::OverlayCompositionSurface::Frame frame;
         const auto beginStarted = std::chrono::steady_clock::now();
         HRESULT result = compositionSurface_.BeginFrame(
@@ -10029,7 +10181,8 @@ private:
             paintLayer, trayLayout, guideBounds,
             paintLayer == CompositionPaintLayer::Content
                 ? &rasterMapping
-                : nullptr);
+                : nullptr,
+            deferFixedChromeAccessibilityPublication);
         if (paintLayer == CompositionPaintLayer::Content)
             set.contentRasterMapping = rasterMapping;
         if (paintLayer == CompositionPaintLayer::Content &&
@@ -10872,7 +11025,7 @@ private:
                 ? hostBack->inputScopeId
                 : snapshot->activeInputScopeId;
         }
-        if (contentRight - contentLeft >= 420.0F) {
+        if (contentRight - contentLeft >= 420.0F || status) {
             const float backPromptWidth = hasBack ? 74.0F : 0.0F;
             const float closePromptWidth = 106.0F;
             const float hostPromptWidth = backPromptWidth + closePromptWidth;
@@ -11691,6 +11844,8 @@ private:
     FixedChromePlacementReason pendingFixedChromePlacementReason_{
         FixedChromePlacementReason::NewVisibleSession};
     std::uint64_t fixedChromePlacementCount_{};
+    std::optional<widgetrail::accessibility::ProjectionKey>
+        pendingActionFailureAccessibilityProjection_;
     bool awaitingSuccessfulOpenPaint_{};
     ULONGLONG nextOpenPaintRetryAt_{};
     std::wstring pendingContentRevealWidget_;
