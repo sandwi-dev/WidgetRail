@@ -24,6 +24,7 @@ public sealed class SampleMediaQueueSource : IMediaQueueSource
 public enum MediaQueueStatus { NotLoaded, Loading, Ready, Empty, Error }
 
 public sealed record PlaybackState(
+    string Title, string Artist, bool IsPlaying,
     int Percent, bool Pending, string? Error,
     MediaQueueStatus QueueStatus, IReadOnlyList<MediaQueueItem> Queue);
 
@@ -54,7 +55,9 @@ public sealed class {{WidgetName}} : Widget
     public {{WidgetName}}(IMediaQueueSource queueSource)
     {
         _queueSource = queueSource ?? throw new ArgumentNullException(nameof(queueSource));
-        _state = CreateModel(new PlaybackState(45, false, null, MediaQueueStatus.NotLoaded, []));
+        _state = CreateModel(new PlaybackState(
+            "Sample Track", "Sample Artist", false,
+            45, false, null, MediaQueueStatus.NotLoaded, []));
         _seek = CreateOptimisticCommand("media.seek", _state,
             new WidgetOptimisticCommandOptions<PlaybackState, int, int, int>
             {
@@ -118,8 +121,32 @@ public sealed class {{WidgetName}} : Widget
     public override async ValueTask OnActionAsync(
         WidgetActionEvent action, CancellationToken cancellationToken = default)
     {
+        if (action.ActionId == "media.play")
+        {
+            _state.Update(state => state with { IsPlaying = !state.IsPlaying });
+            return;
+        }
         if (action.ActionId is "primary" or "media.compact.skip" or "media.detailed.skip")
+        {
             await _seek.Run(10).Completion.WaitAsync(cancellationToken);
+            return;
+        }
+        const string queueActionPrefix = "media.queue.play.";
+        if (action.ActionId.StartsWith(queueActionPrefix, StringComparison.Ordinal))
+        {
+            var itemId = action.ActionId[queueActionPrefix.Length..];
+            _state.Update(state =>
+            {
+                var item = state.Queue.SingleOrDefault(candidate => candidate.Id == itemId);
+                return item is null ? state : state with
+                {
+                    Title = item.Title,
+                    Artist = item.Artist,
+                    IsPlaying = true,
+                    Percent = 0,
+                };
+            });
+        }
     }
 
     private void StartDetailedQueueLoad(CancellationToken selectionToken)
@@ -161,11 +188,11 @@ public sealed class {{WidgetName}} : Widget
 
     private static WidgetElement RenderCompact(PlaybackState state) =>
         UI.Stack("media.compact.root",
-                UI.Text("Sample Track", "media.compact.title", "Now playing: Sample Track"),
+                UI.Text(state.Title, "media.compact.title", $"Now playing: {state.Title}"),
                 UI.Text($"{state.Percent}%", "media.compact.progress-label", "Playback progress"),
                 UI.Progress(state.Percent, 100, "media.compact.progress", "Playback progress"),
                 UI.Row("media.compact.controls",
-                    UI.Button("Play", "media.play", "media.compact.play"),
+                    UI.Button(state.IsPlaying ? "Pause" : "Play", "media.play", "media.compact.play"),
                     UI.Button("Skip", "media.compact.skip", "media.compact.skip")))
             .InputScope("media.compact.scope")
             .AddClasses("media-pinned", "media-pinned--compact");
@@ -173,11 +200,12 @@ public sealed class {{WidgetName}} : Widget
     private static WidgetElement RenderDetailed(PlaybackState state) =>
         UI.Row("media.detailed.root",
                 UI.Stack("media.detailed.player",
-                    UI.Text("Sample Track", "media.detailed.title", "Now playing: Sample Track"),
-                    UI.Text("Sample Artist", "media.detailed.artist"),
+                    UI.Text(state.Title, "media.detailed.title", $"Now playing: {state.Title}"),
+                    UI.Text(state.Artist, "media.detailed.artist"),
+                    UI.Text($"{state.Percent}%", "media.detailed.progress-label", "Playback progress"),
                     UI.Progress(state.Percent, 100, "media.detailed.progress", "Playback progress"),
                     UI.Row("media.detailed.controls",
-                        UI.Button("Play", "media.play", "media.detailed.play"),
+                        UI.Button(state.IsPlaying ? "Pause" : "Play", "media.play", "media.detailed.play"),
                         UI.Button("Skip", "media.detailed.skip", "media.detailed.skip"))),
                 RenderQueue(state))
             .InputScope("media.detailed.scope")

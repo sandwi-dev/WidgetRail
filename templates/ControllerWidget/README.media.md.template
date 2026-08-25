@@ -18,7 +18,7 @@ second lifecycle, focus, input, or provider owner.
 
 ```powershell
 dotnet build .\{{WidgetName}}.csproj --configuration Release
-dotnet test --project .\tests\{{WidgetName}}.Tests.csproj --configuration Release
+dotnet run --project .\tests\{{WidgetName}}.Tests.csproj --configuration Release
 wrail preview . --scenario ready --pinned-layout media.compact --output .\fixtures\compact.snapshot.json
 wrail preview . --scenario ready --pinned-layout media.detailed --output .\fixtures\detailed.snapshot.json
 wrail preview . --scenario ready --pinned-layout @all --output .\fixtures\pinned

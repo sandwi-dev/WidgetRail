@@ -460,11 +460,11 @@ static async Task MediaTemplatePinnedLayouts()
     Assert.True(build.Code == 0, "build: " + build.Output);
 
     var tests = await RunProcessAsync(
-        "dotnet", ["test", "--project",
+        "dotnet", ["run", "--project",
             Path.Combine(destination, "tests", "PinnedMediaStarter.Tests.csproj"),
-            "--configuration", "Release", "--no-ansi", "--no-progress",
+            "--configuration", "Release", "--", "--no-ansi", "--no-progress",
             "--output", "Detailed", "--minimum-expected-tests", "4"],
-        TimeSpan.FromSeconds(120), Environment.CurrentDirectory);
+        TimeSpan.FromSeconds(120), destination);
     Assert.True(tests.Code == 0, "tests: " + tests.Output);
     Assert.Contains("Passed!", tests.Output);
 

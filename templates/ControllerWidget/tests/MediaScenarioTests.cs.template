@@ -1,4 +1,5 @@
 using Microsoft.VisualStudio.TestTools.UnitTesting;
+using System.Threading.Channels;
 using WidgetRail.WidgetProtocol;
 using WidgetRail.WidgetSdk;
 
@@ -66,9 +67,22 @@ public sealed class MediaScenarioTests
         await host.ReplaceSnapshotAsync();
         Assert.IsNotNull(Find(Details(host), "media.queue.item.second-track"));
 
+        await RouteAndExpectText(widget, host, {{WidgetName}}.DetailedLayoutId,
+            "media.detailed.play", "media.detailed.play", "Pause");
+        await RouteAndExpectText(widget, host, {{WidgetName}}.DetailedLayoutId,
+            "media.detailed.skip", "media.detailed.progress-label", "55%");
+        await RouteAndExpectText(widget, host, {{WidgetName}}.DetailedLayoutId,
+            "media.queue.item.second-track", "media.detailed.title", "Second Track");
+        await RouteAndExpectText(widget, host, {{WidgetName}}.DetailedLayoutId,
+            "media.queue.item.third-track", "media.detailed.title", "Third Track");
+
         Assert.IsTrue(await host.SelectAsync({{WidgetName}}.CompactLayoutId));
         await host.ReplaceSnapshotAsync();
         Assert.IsNotNull(Find(Details(host), "media.queue.idle"));
+        await RouteAndExpectText(widget, host, {{WidgetName}}.CompactLayoutId,
+            "media.compact.play", "media.compact.play", "Play");
+        await RouteAndExpectText(widget, host, {{WidgetName}}.CompactLayoutId,
+            "media.compact.skip", "media.compact.progress-label", "10%");
     }
 
     [TestMethod]
@@ -118,6 +132,53 @@ public sealed class MediaScenarioTests
     private static ViewNode Details(WidgetPinnedLayoutTestHost host) =>
         host.CurrentSnapshot.PinnedLayouts.Single(layout =>
             layout.Id == {{WidgetName}}.DetailedLayoutId).Root!;
+
+    private static async Task RouteAndExpectText(
+        Widget widget,
+        WidgetPinnedLayoutTestHost host,
+        string layoutId,
+        string focusedElementId,
+        string observedElementId,
+        string expectedText)
+    {
+        const int MaximumInvalidations = 4;
+        var invalidations = Channel.CreateBounded<bool>(new BoundedChannelOptions(
+            MaximumInvalidations)
+        {
+            SingleReader = true,
+            SingleWriter = false,
+            FullMode = BoundedChannelFullMode.DropWrite,
+        });
+        EventHandler<WidgetInvalidatedEventArgs> handler = (_, _) =>
+            invalidations.Writer.TryWrite(true);
+        widget.Invalidated += handler;
+        var observed = 0;
+        string? lastText = null;
+        try
+        {
+            Assert.IsTrue(await host.RouteActionAsync(
+                ControllerButton.A, focusedElementId));
+            while (observed < MaximumInvalidations)
+            {
+                await invalidations.Reader.ReadAsync().AsTask()
+                    .WaitAsync(TimeSpan.FromSeconds(2));
+                observed++;
+                await host.ReplaceSnapshotAsync();
+                var root = host.CurrentSnapshot.PinnedLayouts.Single(layout =>
+                    layout.Id == layoutId).Root!;
+                lastText = Find(root, observedElementId)?.Text;
+                if (lastText == expectedText) return;
+            }
+        }
+        finally
+        {
+            widget.Invalidated -= handler;
+        }
+        Assert.Fail(
+            $"Expected '{expectedText}' at '{observedElementId}' after at most " +
+            $"{MaximumInvalidations} invalidations; observed {observed}, last text " +
+            $"was '{lastText ?? "<missing>"}'.");
+    }
 
     private static Task NextInvalidation(Widget widget)
     {
