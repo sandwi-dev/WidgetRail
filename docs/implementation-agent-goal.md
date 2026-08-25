@@ -50,14 +50,13 @@ edit Plane state yourself after committing; the independent reviewer sets review
 disposition and integration state. If Plane conflicts with a stable repository
 rule or lacks a complete assignment, preserve the worktree and ask the planner.
 
-Format every Plane `comment_html` completion or blocker report as one compact
-sequence of flat `<p>` blocks with no whitespace between tags. Use only inline
-`<strong>`, `<code>`, and `<a>` elements inside those paragraphs. Do not use
-`<div>`, headings, `<ul>`, `<ol>`, `<li>`, indentation, or newline-separated
-tags: Plane's rich-text importer turns inter-tag whitespace into empty
-paragraphs and its comment renderer does not present imported lists
-consistently. Prefer short labeled paragraphs such as
-`<p><strong>Commit:</strong> <code>...</code>.</p>`.
+Format every Plane `comment_html` completion or blocker report as semantic rich
+text. The Plane API-to-editor path preserves headings, paragraphs, `<strong>`,
+`<em>`, inline `<code>`, links, `<ul>`/`<ol>` lists, `<blockquote>`,
+`<pre><code>` blocks, and `<br>` soft line breaks. Prefer short labeled
+paragraphs such as `<p><strong>Commit:</strong> <code>...</code>.</p>` for
+ordinary reports; use headings, lists, quotes, and code blocks when they
+materially improve readability. Do not use presentation-only `<div>` markup.
 
 ## Source of implementation authority
 

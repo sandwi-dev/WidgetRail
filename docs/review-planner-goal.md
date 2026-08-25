@@ -77,13 +77,13 @@ routine:
    commit(s), changed surfaces, verification or physical verdict, review
    disposition, residual risk, and the recommended next state. Link durable
    repository records rather than copying their content.
-   Format `comment_html` as one compact sequence of flat `<p>` blocks with no
-   whitespace between tags. Use only inline `<strong>`, `<code>`, and `<a>`
-   elements inside those paragraphs. Do not use `<div>`, headings, `<ul>`,
-   `<ol>`, `<li>`, indentation, or newline-separated tags: Plane's rich-text
-   importer turns inter-tag whitespace into empty paragraphs and its comment
-   renderer does not present imported lists consistently. Prefer short labeled
-   paragraphs such as `<p><strong>Commit:</strong> <code>...</code>.</p>`.
+   Format `comment_html` as semantic rich text. The Plane API-to-editor path
+   has been verified to preserve headings, paragraphs, `<strong>`, `<em>`,
+   inline `<code>`, links, `<ul>`/`<ol>` lists, `<blockquote>`,
+   `<pre><code>` blocks, and `<br>` soft line breaks. Prefer short labeled
+   paragraphs such as `<p><strong>Commit:</strong> <code>...</code>.</p>` for
+   ordinary milestones; use headings, lists, quotes, and code blocks when they
+   materially improve readability. Do not use presentation-only `<div>` markup.
 4. Use `workitem update` only for real assignment, label, state, `sort_order`,
    description changes. The reviewer owns review disposition and integration
    state; implementation agents report through comments and do not advance
