@@ -10,15 +10,18 @@ historical evidence only; this file is the sole implementation authority.
 
 ## Current accepted state
 
-- Local `main` is `b1385ff`, integrating physically accepted DLV-300
-  production `5bb7a57` after accepted DLV-298 Spotify migration merge
-  `c9e9b97`.
+- Local `main` is `283c9ff`, integrating physically accepted DLV-300
+  production `5bb7a57`, production validation correction `5b1c170`, and focused
+  tests `d1a3d5d` after accepted DLV-298 Spotify migration merge `c9e9b97`.
 - DLV-300 makes View host-owned for tray/pin transfer and leaves B widget-owned
   inside a pin. Its Release build and physical controller verdict passed.
-- The exact accepted DLV-300 candidate PID 67596 was closed cooperatively only
-  to release its output DLL for the required post-acceptance gates. Native
-  focused gates already passed 310 and 106 checks; the remaining blocked and
-  managed gates are active test-closure work, not deferred debt.
+- The exact accepted DLV-300 candidate PID 67596 was closed cooperatively to
+  release its output DLL. The resumed interop gate, native 310/106-check gates,
+  two SDK cases, Bridge catalog case, and focused Bridge Release build are all
+  green. Fully packaged coherent main Release PID 109280 is responsive with
+  executable SHA-256
+  `31BF9C88F3336B9E8645FD30B693EA4E54B115D374C567F060020DCEA14448E8`
+  and no `startup-error.txt`.
 - Spotify 0.3.26 remains the sole installed, selected, enabled version. Its
   high-level pinned-layout migration is accepted. The intermittent consumed-
   input report has no proven cause; DLV-303 owns diagnostics only and no fix is
@@ -31,7 +34,7 @@ historical evidence only; this file is the sole implementation authority.
 
 | Lane | Task/worktree | State |
 | --- | --- | --- |
-| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | DLV-300 production is integrated and its five-file post-acceptance test follow-up is active in the separate clean DLV-300 worktree. The accepted PID exited cooperatively to remove the proven interop-DLL lock. DLV-301 is Ready after serialized DLV-303 instrumentation. The standing worktree's retained DLV-474/DLV-293 diffs and blocked DLV-473 test commit remain immutable evidence and must not be touched. |
+| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | DLV-300 is closed through integrated production validation and green focused tests. DLV-301 is Ready after serialized DLV-303 instrumentation. The standing worktree's retained DLV-474/DLV-293 diffs and blocked DLV-473 test commit remain immutable evidence and must not be touched. |
 | Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | DLV-302 closed with a precise observability gap. DLV-303 generic action-correlation instrumentation is assigned but held until DLV-300 test closure; it has no fix authority. The dirty standing DLV-298 evidence remains untouched. DLV-296 and DLV-297 remain Ready. |
 
 ## Execution rules
@@ -81,19 +84,16 @@ historical evidence only; this file is the sole implementation authority.
 ### DLV-300 host-reserved View and widget-owned pinned Back
 
 Lane: platform, serialized native-input/public-authoring contract. Status:
-production `5bb7a57` from clean integrated baseline `c9e9b97` is source-reviewed,
-physically accepted, and integrated as merge `b1385ff`. Its Release build
-passed with packaging enabled; `OverlayHost.exe` SHA-256 is
-`5043E212349F0445B53E9F57DF5D3C14E3ADCCF5DF2570E7FA09B4B71829A942`.
-Accepted PID 63284 exited cooperatively after verified `WM_CLOSE` reached all
-five owned top-level windows. Exact accepted PID 67596 was then used for the
-physical verdict and exited cooperatively only to release its proven output-DLL
-lock for test closure. Post-acceptance native gates passed 310 and 106 checks.
-The next gate stopped before tests on `LNK1104` replacing the candidate output's
-locked `OverlayPlatformInterop.dll`; after the proven state change, that gate
-and the remaining managed gates are active. The five-file test diff remains
-uncommitted until all required focused gates close. Retained DLV-474/DLV-293
-evidence was not touched.
+closed. Production `5bb7a57` was physically accepted and integrated as
+`b1385ff`. Focused testing then exposed that ordinary configured widgets did
+not use the existing host-reserved-View catalog validator. Shared Bridge
+correction `5b1c170` and five-file regression follow-up `d1a3d5d` are reviewed
+and integrated as `283c9ff`. The interop gate passed seven native components;
+the pinned host/coordinator gates passed 310 and 106 checks; both focused SDK
+cases and the Bridge catalog case passed 1/1; the focused Bridge Release build
+passed without warnings or errors. Fully packaged main Release PID 109280 is
+responsive with the current Bridge runtime. Retained DLV-474/DLV-293 evidence
+was not touched.
 
 Make View an unconditional native host navigation control. Widgets may not map
 View as an open-widget shortcut or dashboard quick action, and the host must
@@ -219,21 +219,19 @@ no live provider, installation, Game Launcher tests, broad aggregate, or push.
 
 ## Ordered queues
 
-1. Finish DLV-300 post-acceptance focused tests and integrate the test-only
-   follow-up before advancing either serialized platform assignment.
-2. DLV-303 generic end-to-end widget action correlation diagnostics; Assigned
+1. DLV-303 generic end-to-end widget action correlation diagnostics; Assigned
    with no fix authority after DLV-300 test closure.
-3. DLV-301 pinned-surface right-stick free scrolling; Ready after DLV-303.
-4. Recover accepted DLV-298 high-level Spotify focused regression coverage.
-5. Recover DLV-473 focused SDK/Bridge/native regression coverage from its proven
+2. DLV-301 pinned-surface right-stick free scrolling; Ready after DLV-303.
+3. Recover accepted DLV-298 high-level Spotify focused regression coverage.
+4. Recover DLV-473 focused SDK/Bridge/native regression coverage from its proven
    pre-test infrastructure failure.
-6. DLV-296 pinned-layout preview and diagnostics.
-7. DLV-297 pinned-layout templates and examples.
-8. DLV-474 fresh-session sequence-authority correction remains retained and
+5. DLV-296 pinned-layout preview and diagnostics.
+6. DLV-297 pinned-layout templates and examples.
+7. DLV-474 fresh-session sequence-authority correction remains retained and
    unintegrated pending a separately controlled recovery.
-9. DLV-293 generic focused debt may be recovered without Game Launcher tests;
+8. DLV-293 generic focused debt may be recovered without Game Launcher tests;
    Game Launcher testing remains explicitly deferred.
-10. Remaining maturity deliverables after the pinned-layout author workflow;
+9. Remaining maturity deliverables after the pinned-layout author workflow;
     DLV-248 stays deferred until explicit user promotion.
 
 ## Manual and blocked evidence
