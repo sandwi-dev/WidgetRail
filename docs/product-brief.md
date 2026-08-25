@@ -17,8 +17,8 @@ The interaction should feel immediate, predictable, personal, and substantially 
 ## Product principles
 
 1. **Controller-only runtime.** Every host surface and every accepted widget must be usable without mouse, keyboard, or touch.
-2. **Guide is the boundary.** Guide/Home is the only controller input globally reserved by the shell.
-3. **The active widget owns actions; B is hierarchical Back.** The active scope receives `B` first, an unhandled root `B` returns to the dashboard, and dashboard `B` closes the overlay. Bumpers, triggers, stick clicks, Menu, and View are never repurposed as host widget switching while a widget is active.
+2. **Guide and View are navigation boundaries.** Guide/Home toggles the overlay; View transfers the one focus owner between the overlay/tray and the current pin.
+3. **The active widget owns actions; B is hierarchical Back.** The active scope receives `B` first, an unhandled root `B` returns to the dashboard, and dashboard `B` closes the overlay. In a focused pin, B remains package Back even at the root, while bumpers, triggers, stick clicks, and Menu remain package actions.
 4. **Resume, do not reset.** Reopening restores the last widget, focused element, selected tab, scroll position, and relevant widget state.
 5. **The layout belongs to the user.** Widget order, visibility, favorites, and presentation are persistent and controller-editable.
 6. **Deep customization is a platform feature.** A safe CSS-like language styles stable semantic roles and controller states across the shell and participating widgets.

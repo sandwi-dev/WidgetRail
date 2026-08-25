@@ -56,6 +56,7 @@ struct ControllerInputContext final {
     bool rightStickPressed{};
     bool leftShoulderDown{};
     bool rightShoulderDown{};
+    bool viewPressed{};
 };
 
 [[nodiscard]] ControllerCommand ResolveControllerCommand(

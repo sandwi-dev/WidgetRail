@@ -2364,6 +2364,16 @@ single admission/HWND/render/focus/input/placement/UIA/teardown owner and no new
 mutable dependency, state machine, timer, public API, media authority, or
 compositor.
 
+DLV-300 makes physical View an unconditional host navigation control without
+adding another focus or session owner. View enters the one current pin from the
+tray or an open overlay widget and returns from pinned focus to the tray; it is
+never forwarded as authored input. Pinned B now uses the selected projection's
+existing generation/layout/scope/focus/sequence queue at root and nested scopes,
+so an unhandled root B is inert. Snapshot and catalog validation reject authored
+View shortcuts and dashboard quick actions with `host_reserved_view`, while the
+unchanged public enum continues to identify host-owned pinned-layout selection
+notifications.
+
 Five-process focused Release evidence `dlv011-native-20260811T070422Z` passes
 302 checks per retained sample. Incremental private working set is
 **0.684-0.707 MiB**, normalized 750 ms idle CPU is **0%**, and the two-node host

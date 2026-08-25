@@ -917,8 +917,10 @@ QuickActions:
 ]
 ```
 
-Allowed dashboard buttons are X, LB, RB, LT, RT, both stick clicks, Menu, and
-View. A, B, Y, D-pad, and Guide/Home are reserved by the dashboard. See the
+Allowed dashboard buttons are X, LB, RB, LT, RT, both stick clicks, and Menu.
+A, B, Y, D-pad, View, and Guide/Home are reserved by the host. View is the
+global pinned-surface navigation control and any authored View mapping is
+rejected with `host_reserved_view`. See the
 [controller input model](controller-input.md).
 
 ## State changes and invalidation

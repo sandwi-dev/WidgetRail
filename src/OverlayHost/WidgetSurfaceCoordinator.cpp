@@ -1424,7 +1424,7 @@ void WidgetSurfaceCoordinator::Paint() {
         }
     } else {
         chrome = policy_.interactionMode() == InteractionMode::Focusable
-            ? L"Interactive · D-pad navigate · A activate · B return"
+            ? L"Interactive · A activate · B widget back · View tray"
             : L"Click-through · View enters · Menu options";
     }
     renderTarget_->DrawTextW(
@@ -1504,8 +1504,8 @@ void WidgetSurfaceCoordinator::PublishAccessibility() {
                 L". Left or right trigger changes layout. Left stick or D-pad moves. Right stick resizes. Commit or cancel.";
     } else {
         state.value = policy_.interactionMode() == InteractionMode::Focusable
-            ? L"Interactive. D-pad navigates. A activates. B returns to the tray. Menu opens options."
-            : L"Click-through. From the tray, View enters this pin and Menu opens options.";
+            ? L"Interactive. D-pad navigates. A activates. B is widget Back. View returns to the tray. Menu opens options."
+            : L"Click-through. From the tray or open overlay widget, View enters this pin. Menu opens options from the tray.";
     }
     state.domain = accessibility::ElementDomain::HostShell;
     state.role = accessibility::Role::Status;
