@@ -29,6 +29,8 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Responsive player fits named host envelopes and preserves focus identity", SpotifyResponsiveLayoutTests.NamedHostEnvelopesFitAndPreserveFocus),
     ("Seek Left follows the selected responsive destination", SeekLeftFollowsResponsiveDestination),
     ("Collection pages load lazily and remain cached", LazyPageLoading),
+    ("Typed pinned Up Next demand survives lifecycle and transport",
+        TypedPinnedUpNextDemandSurvivesLifecycleAndTransport),
     ("Queue traverses every bounded occurrence without wrapping", QueueTraversesContinuously),
     ("Playlist pages load automatically in bounded cached windows", MaximumPlaylistPageContract),
     ("Controller edges traverse compact and expanded 12/12/5 playlist pages", ControllerPlaylistPaginationRoundTrip),
@@ -690,6 +692,67 @@ static async Task LazyPageLoading()
     Assert.NotNull(Find(widget.RenderSnapshot("spotify.playlists", 1).Root,
         PlaylistFocus("wide", "playlist-one")));
     await StopAsync(widget);
+}
+
+static async Task TypedPinnedUpNextDemandSurvivesLifecycleAndTransport()
+{
+    var harness = SpotifyHarness.Ready();
+    var widget = await StartAsync(harness);
+    await WaitUntil(() => widget.ViewState == SpotifyWidgetViewState.Ready);
+    var host = WidgetTestHost.CreatePinnedLayoutHost(
+        widget, "spotify.pinned.handle", initialSequence: 10);
+
+    Assert.True(await host.SelectAsync(SpotifyPresentation.UpNextPinnedLayoutId),
+        "The final typed handle did not accept the Up Next selection.");
+    await WaitUntil(() => harness.QueueCalls == 1,
+        "Selecting typed Up Next did not admit its existing queue demand.");
+    await host.ReplaceSnapshotAsync();
+    AssertPinnedUpNextReady(host.CurrentSnapshot);
+
+    await WidgetTestHost.SetLifecycleStateAsync(widget, WidgetLifecycleState.Background);
+    await host.ReplaceSnapshotAsync();
+    AssertPinnedUpNextReady(host.CurrentSnapshot);
+    await WidgetTestHost.SetLifecycleStateAsync(widget, WidgetLifecycleState.Visible);
+    await host.ReplaceSnapshotAsync();
+    AssertPinnedUpNextReady(host.CurrentSnapshot);
+    Assert.Equal(1, harness.QueueCalls);
+
+    Assert.True(await host.RouteActionAsync(
+            ControllerButton.RightBumper,
+            "spotify.player.pinned-up-next.play-toggle"),
+        "Pinned Right Bumper was not routed through the selected projection.");
+    await WaitUntil(() =>
+            harness.Commands.Count(command =>
+                command.Operation == SpotifyPlaybackOperation.Next) == 1 &&
+            harness.QueueCalls == 2,
+        "Pinned Next did not perform exactly one demanded queue refresh.");
+    await host.ReplaceSnapshotAsync();
+    AssertPinnedUpNextReady(host.CurrentSnapshot);
+
+    Assert.True(await host.RouteActionAsync(
+            ControllerButton.LeftBumper,
+            "spotify.player.pinned-up-next.play-toggle"),
+        "Pinned Left Bumper was not routed through the selected projection.");
+    await WaitUntil(() =>
+            harness.Commands.Count(command =>
+                command.Operation == SpotifyPlaybackOperation.Previous) == 1 &&
+            harness.QueueCalls == 3,
+        "Pinned Previous did not perform exactly one demanded queue refresh.");
+    await host.ReplaceSnapshotAsync();
+    AssertPinnedUpNextReady(host.CurrentSnapshot);
+
+    await StopAsync(widget);
+}
+
+static void AssertPinnedUpNextReady(ViewSnapshot snapshot)
+{
+    var layout = snapshot.PinnedLayouts.Single(candidate =>
+        candidate.Id == SpotifyPresentation.UpNextPinnedLayoutId);
+    Assert.NotNull(layout.Root);
+    Assert.True(!ContainsId(layout.Root!, "spotify.pinned-up-next.loading"),
+        "Selected Up Next returned to its NotLoaded/Loading presentation.");
+    Assert.NotNull(Find(layout.Root!,
+        QueueFocus("pinned-up-next", "spotify:track:next")));
 }
 
 static async Task QueueTraversesContinuously()
