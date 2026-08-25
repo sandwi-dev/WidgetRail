@@ -10,7 +10,7 @@ historical evidence only; this file is the sole implementation authority.
 
 ## Current accepted state
 
-- Local `main` contains reviewer planning through DLV-305; its latest runtime
+- Local `main` contains reviewer planning through DLV-306; its latest runtime
   input remains `283c9ff`,
   integrating physically accepted DLV-300
   production `5bb7a57`, production validation correction `5b1c170`, and focused
@@ -336,6 +336,48 @@ fake-service tests while keeping basic templates unchanged and helpers optional.
 Validate the external package, links, and smallest template/example gates;
 no live provider, installation, Game Launcher tests, broad aggregate, or push.
 
+### DLV-306 semantic-constant ownership audit and correction queue
+
+Lane: serialized architecture review led by widgets after DLV-297 and platform
+DLV-301 are integrated. Status: Ready after those visible/product-authoring
+milestones. Review production source under `src/**` and `samples/**` for numeric,
+string, identifier, timeout, capacity, geometry, protocol, and policy constants
+repeated across files or components where the occurrences appear to enforce the
+same semantic contract. Begin with evidence only: record every confirmed family,
+all consumers, the current owning layer, drift consequence, and whether the
+values are genuinely one contract or merely coincidentally equal. Include the
+surface-geometry family exposed by DLV-305 and compare native admission,
+persistence, chrome, and managed `ProtocolConstants` ownership rather than
+assuming the new native header is a complete cross-language source of truth.
+
+Do not create a repository-wide `Constants` type, centralize file-local tuning
+values, merge constants solely because their literals match, or use search-and-
+replace as proof of shared meaning. Same-process families should move behind the
+narrowest existing domain owner. Cross-language/process protocol values must use
+one versioned/generated source when the build already has a suitable ownership
+path, or explicit compile/parity validation when independent representations are
+required; never make one language's private header an undocumented authority for
+another runtime. Preserve public values and behavior unless a later explicitly
+scoped correction authorizes a contract change.
+
+DLV-306 is diagnostic and planning work only. Before any production edit, return
+the inventory to the planner, which will create bounded lane-owned corrective
+DLVs ordered by demonstrated drift/correctness risk. The milestone closes only
+when every confirmed shared-contract family is either assigned to an exact
+correction, documented as an intentional independent representation with a
+parity gate, or rejected with evidence as a coincidental/local value. Use static
+source inspection plus existing build/project graphs; run no product tests,
+package/account mutation, broad aggregate, Game Launcher tests, or UI launch.
+Stop for an architectural choice between generated contracts and runtime
+protocol expansion, a proposed public-value change, unclear semantic ownership,
+or an inventory too broad to disposition into independently reviewable cohorts.
+
+Acceptance: the audit is complete enough to name every production consumer of
+each confirmed family; no unrelated literals are centralized; each drift-prone
+family has one explicit owner and a bounded queued correction or parity gate;
+the resulting correction queue preserves lane ownership and prioritizes visible
+work ahead of cleanup.
+
 ## Ordered queues
 
 1. DLV-303 generic end-to-end widget action correlation diagnostics and DLV-305
@@ -350,11 +392,14 @@ no live provider, installation, Game Launcher tests, broad aggregate, or push.
    pre-test infrastructure failure.
 6. DLV-296 pinned-layout preview and diagnostics.
 7. DLV-297 pinned-layout templates and examples.
-8. DLV-474 fresh-session sequence-authority correction remains retained and
+8. DLV-306 semantic-constant ownership audit and bounded correction queue;
+   Ready after DLV-297 and DLV-301 so current visible defects and the pinned-
+   layout author workflow remain ahead of internal consolidation.
+9. DLV-474 fresh-session sequence-authority correction remains retained and
    unintegrated pending a separately controlled recovery.
-9. DLV-293 generic focused debt may be recovered without Game Launcher tests;
+10. DLV-293 generic focused debt may be recovered without Game Launcher tests;
    Game Launcher testing remains explicitly deferred.
-10. Remaining maturity deliverables after the pinned-layout author workflow;
+11. Remaining maturity deliverables after the pinned-layout author workflow;
     DLV-248 stays deferred until explicit user promotion.
 
 ## Manual and blocked evidence
