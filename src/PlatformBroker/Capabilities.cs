@@ -1,5 +1,7 @@
 namespace WidgetRail.PlatformBroker;
 
+using WidgetRail.Internal;
+
 public enum BrokerCapabilityKind
 {
     Read,
@@ -76,8 +78,8 @@ public static class PlatformCapabilities
     public const string PrivateStateV1 = "storage.private-state.v1";
 
     public const string LoopbackCapabilityPrefix = "network.loopback:";
-    public const int MinimumLoopbackPort = 1024;
-    public const int MaximumLoopbackPort = 65535;
+    public const int MinimumLoopbackPort = CommunityPlatformContractLimits.MinimumLoopbackPort;
+    public const int MaximumLoopbackPort = CommunityPlatformContractLimits.MaximumLoopbackPort;
 
     public const string AudioSessionsList = "audio.sessions.list";
     public const string AudioSessionSetVolume = "audio.session.set-volume";

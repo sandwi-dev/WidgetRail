@@ -2,6 +2,7 @@ using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using WidgetRail.Samples.ClockWidget;
+using WidgetRail.PlatformBroker;
 using WidgetRail.WidgetProtocol;
 using WidgetRail.WidgetSdk;
 
@@ -101,9 +102,66 @@ var tests = new (string Name, Func<Task> Run)[]
     ("App library values and relationship composer validate independently",
         AppLibraryPresentationValidationTests.Run),
     ("Community services expose exact loopback and write-only secret contracts", CommunityPlatformServices),
+    ("SDK and broker platform limits remain exactly parity bound", CommunityPlatformLimitParity),
     ("Private state canonicalizes JSON and exposes typed revision CAS helpers", PrivateStateServiceContracts),
     ("Capability subscriptions acknowledge before event consumption", SubscriptionOpenAcknowledges),
 };
+
+static Task CommunityPlatformLimitParity()
+{
+    const System.Reflection.BindingFlags allStatic =
+        System.Reflection.BindingFlags.Public |
+        System.Reflection.BindingFlags.NonPublic |
+        System.Reflection.BindingFlags.Static;
+    var sharedNames = new[]
+    {
+        nameof(WidgetCommunityPlatformLimits.MinimumLoopbackPort),
+        nameof(WidgetCommunityPlatformLimits.MaximumLoopbackPort),
+        nameof(WidgetCommunityPlatformLimits.MaximumLoopbackPathCharacters),
+        nameof(WidgetCommunityPlatformLimits.MaximumLoopbackHeaderCount),
+        nameof(WidgetCommunityPlatformLimits.MaximumLoopbackHeaderNameCharacters),
+        nameof(WidgetCommunityPlatformLimits.MaximumLoopbackHeaderValueCharacters),
+        nameof(WidgetCommunityPlatformLimits.MaximumLoopbackHeaderCharacters),
+        nameof(WidgetCommunityPlatformLimits.MaximumLoopbackRequestBodyUtf8Bytes),
+        nameof(WidgetCommunityPlatformLimits.MaximumLoopbackResponseBodyUtf8Bytes),
+        nameof(WidgetCommunityPlatformLimits.DefaultLoopbackTimeoutMilliseconds),
+        nameof(WidgetCommunityPlatformLimits.MaximumLoopbackTimeoutMilliseconds),
+        nameof(WidgetCommunityPlatformLimits.MaximumPrivateSecretSlotCharacters),
+        nameof(WidgetCommunityPlatformLimits.MaximumPrivateSecretUtf8Bytes),
+        nameof(WidgetCommunityPlatformLimits.MaximumPrivateStateUtf8Bytes),
+        "MaximumPrivateStateBase64Characters",
+    };
+
+    var sdk = typeof(WidgetCommunityPlatformLimits).GetFields(allStatic)
+        .Where(field => sharedNames.Contains(field.Name, StringComparer.Ordinal))
+        .ToDictionary(field => field.Name, field => (int)field.GetRawConstantValue()!,
+            StringComparer.Ordinal);
+    var broker = typeof(CommunityPlatformLimits).GetFields(allStatic)
+        .ToDictionary(field => field.Name, field => (int)field.GetRawConstantValue()!,
+            StringComparer.Ordinal);
+    broker.Add(nameof(WidgetCommunityPlatformLimits.MinimumLoopbackPort),
+        PlatformCapabilities.MinimumLoopbackPort);
+    broker.Add(nameof(WidgetCommunityPlatformLimits.MaximumLoopbackPort),
+        PlatformCapabilities.MaximumLoopbackPort);
+
+    Assert.Equal(sharedNames.Length, sdk.Count);
+    Assert.Equal(sharedNames.Length, broker.Count);
+    Assert.True(sharedNames.Order(StringComparer.Ordinal).SequenceEqual(
+            sdk.Keys.Order(StringComparer.Ordinal), StringComparer.Ordinal),
+        "The SDK shared platform-limit matrix is missing or contains renamed fields.");
+    Assert.True(sharedNames.Order(StringComparer.Ordinal).SequenceEqual(
+            broker.Keys.Order(StringComparer.Ordinal), StringComparer.Ordinal),
+        "The broker shared platform-limit matrix is missing or contains renamed fields.");
+    foreach (var name in sharedNames)
+        Assert.Equal(sdk[name], broker[name]);
+
+    Assert.Equal(256 * 1_024,
+        WidgetCommunityPlatformLimits.MaximumPrivateStateInputUtf8Bytes);
+    Assert.True(!broker.ContainsKey(
+            nameof(WidgetCommunityPlatformLimits.MaximumPrivateStateInputUtf8Bytes)),
+        "The SDK-only private-state recovery ceiling entered the broker contract.");
+    return Task.CompletedTask;
+}
 
 static Task HostReservedViewMappingsAreRejected()
 {

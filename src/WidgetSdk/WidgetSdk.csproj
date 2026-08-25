@@ -16,4 +16,8 @@
   <ItemGroup>
     <ProjectReference Include="..\WidgetProtocol\WidgetProtocol.csproj" />
   </ItemGroup>
+  <ItemGroup>
+    <Compile Include="..\Shared\CommunityPlatformContractLimits.cs"
+             Link="Internal\CommunityPlatformContractLimits.cs" />
+  </ItemGroup>
 </Project>

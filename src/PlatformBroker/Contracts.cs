@@ -1,5 +1,6 @@
 using System.Text.RegularExpressions;
 using System.Text.Json.Serialization;
+using WidgetRail.Internal;
 
 namespace WidgetRail.PlatformBroker;
 
@@ -777,20 +778,32 @@ public sealed record PrivateStateMutationSummary([property: JsonRequired] long R
 
 public static class CommunityPlatformLimits
 {
-    public const int MaximumLoopbackPathCharacters = 2_048;
-    public const int MaximumLoopbackHeaderCount = 16;
-    public const int MaximumLoopbackHeaderNameCharacters = 64;
-    public const int MaximumLoopbackHeaderValueCharacters = 1_024;
-    public const int MaximumLoopbackHeaderCharacters = 8_192;
-    public const int MaximumLoopbackRequestBodyUtf8Bytes = 16 * 1024;
-    public const int MaximumLoopbackResponseBodyUtf8Bytes = 96 * 1024;
-    public const int DefaultLoopbackTimeoutMilliseconds = 10_000;
-    public const int MaximumLoopbackTimeoutMilliseconds = 40_000;
-    public const int MaximumPrivateSecretSlotCharacters = 64;
-    public const int MaximumPrivateSecretUtf8Bytes = 2_048;
-    public const int MaximumPrivateStateUtf8Bytes = 64 * 1024;
+    public const int MaximumLoopbackPathCharacters =
+        CommunityPlatformContractLimits.MaximumLoopbackPathCharacters;
+    public const int MaximumLoopbackHeaderCount =
+        CommunityPlatformContractLimits.MaximumLoopbackHeaderCount;
+    public const int MaximumLoopbackHeaderNameCharacters =
+        CommunityPlatformContractLimits.MaximumLoopbackHeaderNameCharacters;
+    public const int MaximumLoopbackHeaderValueCharacters =
+        CommunityPlatformContractLimits.MaximumLoopbackHeaderValueCharacters;
+    public const int MaximumLoopbackHeaderCharacters =
+        CommunityPlatformContractLimits.MaximumLoopbackHeaderCharacters;
+    public const int MaximumLoopbackRequestBodyUtf8Bytes =
+        CommunityPlatformContractLimits.MaximumLoopbackRequestBodyUtf8Bytes;
+    public const int MaximumLoopbackResponseBodyUtf8Bytes =
+        CommunityPlatformContractLimits.MaximumLoopbackResponseBodyUtf8Bytes;
+    public const int DefaultLoopbackTimeoutMilliseconds =
+        CommunityPlatformContractLimits.DefaultLoopbackTimeoutMilliseconds;
+    public const int MaximumLoopbackTimeoutMilliseconds =
+        CommunityPlatformContractLimits.MaximumLoopbackTimeoutMilliseconds;
+    public const int MaximumPrivateSecretSlotCharacters =
+        CommunityPlatformContractLimits.MaximumPrivateSecretSlotCharacters;
+    public const int MaximumPrivateSecretUtf8Bytes =
+        CommunityPlatformContractLimits.MaximumPrivateSecretUtf8Bytes;
+    public const int MaximumPrivateStateUtf8Bytes =
+        CommunityPlatformContractLimits.MaximumPrivateStateUtf8Bytes;
     public const int MaximumPrivateStateBase64Characters =
-        ((MaximumPrivateStateUtf8Bytes + 2) / 3) * 4;
+        CommunityPlatformContractLimits.MaximumPrivateStateBase64Characters;
 }
 
 public sealed record BrokerPlatformEvent(string CapabilityId, string EventType, object Payload);
