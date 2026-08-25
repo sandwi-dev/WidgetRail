@@ -54,11 +54,16 @@ historical evidence only; this file is the sole implementation authority.
   0 with OverlayHost SHA-256
   `246991F37FE3A080E0ED6D9CF0E23A2F067221FEF928D4F02AEC53F8CC7744C1`.
   PID 122540 again remained hung after a graceful close and was force-terminated
-  only after explicit approval. Exact unaccepted candidate PID 55548 is now
-  responsive with no startup-error file. The user confirmed the 32-DIP step is
-  improved but still finds held adjustment laggy, so the same physical-first
-  follow-up now also owns a placement-only 250-ms initial repeat and 80-ms
-  repeat cadence. Ordinary tray/widget navigation must remain at 360/125 ms.
+  only after explicit approval. Exact candidate PID 55548 proved the 32-DIP
+  step improved adjustment, but the user still found held input laggy. It too
+  remained hung after a graceful close and was force-terminated only after
+  explicit approval. Production commit `3f1fc23` adds one reusable semantic
+  placement preset with a 250-ms initial repeat and 80-ms repeat interval while
+  preserving ordinary tray/widget navigation at 360/125 ms. Its exact Release
+  build exited 0 with OverlayHost SHA-256
+  `97D001FD98E005315B9BDE25A33691E4BA8F98C38745D884A9B642CE0C35FFA3`.
+  Exact unaccepted candidate PID 69068 is responsive with no startup-error file
+  and awaits the combined speed/cadence verdict.
 - Full detailed evidence through this state is preserved in the
   [2026-08-24 19:39 snapshot](history/delivery-plan/2026-08-24T19-39-18-07-00.md).
   That snapshot is historical evidence only.
@@ -295,12 +300,16 @@ default placement step. Production commit `8eb1f4a` replaces the three defaults
 with one centralized 32-DIP geometry constant; exact Release build exit 0 and a
 clean worktree verify its production scope. PID 122540 remained hung after its
 graceful close and was force-terminated only after explicit approval. Exact
-candidate PID 55548 is responsive with no startup-error file. The user confirmed
-the 32-DIP step is improved but requested a faster held cadence before the
-physical verdict: placement adjustment alone must use a 250-ms initial delay
-and 80-ms repeat interval, while ordinary tray/widget focus navigation retains
-its current 360/125-ms cadence. No focused test is authored or run until that
-combined production candidate receives a physical verdict.
+candidate PID 55548 was responsive with no startup-error file. The user confirmed
+the 32-DIP step improved adjustment but requested a faster held cadence before
+the physical verdict. PID 55548 then remained hung after a graceful close and
+was force-terminated only after explicit approval. Production commit `3f1fc23`
+uses the existing `StickNavigator` algorithm through one named semantic preset
+shared by placement-local D-pad, left-stick, and right-stick state. Placement
+alone now uses a 250-ms initial delay and 80-ms repeat interval; ordinary
+tray/widget focus retains 360/125 ms. Exact unaccepted candidate PID 69068 is
+responsive with no startup-error file and awaits the combined physical verdict.
+No focused test is authored or run until that verdict.
 This milestone was Assigned concurrently with the
 non-behavioral DLV-303 diagnostics in a separate clean worktree from local main
 `8dfe871`; do not touch the standing platform worktree's retained evidence. The
