@@ -255,14 +255,17 @@ bool WidgetSurfaceCoordinator::UpdateSnapshot(
     };
     const auto decision = freeScroll_.Evaluate(authority, focusedElementId_);
     const auto& binding = freeScroll_.binding();
-    const bool preserveFreeScroll = binding &&
-        priorLayoutId == SelectedLayoutId() && priorFocus == focusedElementId_ &&
+    const bool selectedLayoutReplaced = priorLayoutId != SelectedLayoutId();
+    const bool preserveFreeScrollBinding = binding &&
+        !selectedLayoutReplaced && priorFocus == focusedElementId_ &&
         decision.disposition == input::FreeScrollAuthorityDisposition::Current &&
         input::IsExactScrollAuthorityCurrent(
             selectedSnapshot.root, binding->scrollId, binding->axis,
             lastRenderResult_);
-    if (!preserveFreeScroll) {
+    if (!preserveFreeScrollBinding) {
         ClearFreeScroll();
+    }
+    if (selectedLayoutReplaced) {
         if (renderer_) renderer_->ForgetWidgetState(admission_->instanceId);
     }
     if (window_) InvalidateRect(window_, nullptr, FALSE);
