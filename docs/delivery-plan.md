@@ -46,10 +46,16 @@ historical evidence only; this file is the sole implementation authority.
   persistence. After explicit user approval, exact prior accepted PID 109280
   was force-terminated only after its non-forced close had destroyed all top-
   level HWNDs but left the process hung in shutdown. Exact candidate PID 122540
-  is responsive with no startup-error file, and the user physically accepted
+  was responsive with no startup-error file, and the user physically accepted
   committed resize persistence. Before tests, the user requested one small
   same-owner follow-up: double the shared placement-adjustment step because move
-  and resize currently feel slow.
+  and resize currently feel slow. Production commit `8eb1f4a` centralizes that
+  value at 32 DIPs across every adjustment route; its exact Release build exited
+  0 with OverlayHost SHA-256
+  `246991F37FE3A080E0ED6D9CF0E23A2F067221FEF928D4F02AEC53F8CC7744C1`.
+  PID 122540 again remained hung after a graceful close and was force-terminated
+  only after explicit approval. Exact unaccepted candidate PID 55548 is now
+  responsive with no startup-error file and awaits the user's speed verdict.
 - Full detailed evidence through this state is preserved in the
   [2026-08-24 19:39 snapshot](history/delivery-plan/2026-08-24T19-39-18-07-00.md).
   That snapshot is historical evidence only.
@@ -273,16 +279,21 @@ conflict.
 ### DLV-305 preserve a committed pinned resize
 
 Lane: platform native placement owner. Status: Physically accepted persistence
-with one requested production follow-up before tests. The accepted source is
-source-reviewed production `377c5d4` plus centralized-geometry correction
-`b24899c`; the exact Release build exited 0 and produced OverlayHost SHA-256
+with the 32-DIP production follow-up live-verifying before tests. The accepted
+source is source-reviewed production `377c5d4` plus centralized-geometry
+correction `b24899c`; the exact Release build exited 0 and produced OverlayHost SHA-256
 `1E8087432F2EACCEF8B32683D8D665414EF7F7C318C1922D95E32D381F0AF8D6`.
 After explicit user approval, the planner force-terminated exact shutdown-hung
-prior PID 109280 and visibly launched unaccepted candidate PID 122540. It is
-responsive and has no startup-error file. The user accepted committed resize
-persistence, then requested doubling the adjustment speed before the focused
-test phase. Direct source review proves keyboard arrows, D-pad, left-stick move,
-and right-stick resize all reach the same 16-DIP default placement step.
+prior PID 109280 and visibly launched candidate PID 122540. The user accepted
+committed resize persistence, then requested doubling the adjustment speed
+before the focused test phase. Direct source review proved keyboard arrows,
+D-pad, left-stick move, and right-stick resize all reached the same 16-DIP
+default placement step. Production commit `8eb1f4a` replaces the three defaults
+with one centralized 32-DIP geometry constant; exact Release build exit 0 and a
+clean worktree verify its production scope. PID 122540 remained hung after its
+graceful close and was force-terminated only after explicit approval. Exact
+candidate PID 55548 is responsive with no startup-error file and awaits the
+user's physical speed verdict before any focused test is authored or run.
 This milestone was Assigned concurrently with the
 non-behavioral DLV-303 diagnostics in a separate clean worktree from local main
 `8dfe871`; do not touch the standing platform worktree's retained evidence. The
