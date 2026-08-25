@@ -788,6 +788,11 @@ for a genuinely reusable overlay/runtime primitive exercised by differently
 named packages. A bundled first-party widget may use first-party providers, but
 that does not make the provider part of the Community authoring contract.
 
+Test framework and public-SDK behavior only with built-in widgets or
+purpose-built provider-neutral samples. A Community widget may test its own
+package integration, but must not become a framework fixture, privileged
+acceptance proof, or identity-specific host dependency.
+
 Treat packages, manifests, snapshots, scenario inputs, companion responses,
 images, provider data, paths, and protocol messages as untrusted. Enforce
 appropriate size, count, path, origin, time, serialization, and retention bounds.

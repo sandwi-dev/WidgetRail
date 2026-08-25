@@ -834,6 +834,10 @@ Preserve the product direction already recorded in the roadmap:
   process rather than product host code.
 - Host-owned pinning/surface placement and a narrow trusted rich-media process
   before any YouTube widget; no generic community WebView.
+- Validate framework and public-SDK behavior only through built-in widgets or
+  purpose-built provider-neutral samples. Community widgets may validate their
+  own package integration, but they are not framework fixtures, privileged
+  acceptance proofs, or reasons to add identity-specific host behavior.
 - Retain the native presentation, Microsoft GameInput/Guide, controller focus,
   accessibility, rendering, motion, window, WRSS, bridge, and widget-domain
   owners. Modernize only explicitly assigned boundaries rather than replacing
