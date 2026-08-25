@@ -284,7 +284,7 @@ historical evidence only; this file is the sole implementation authority.
 | Lane | Task/worktree | State |
 | --- | --- | --- |
 | Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | DLV-474 correction passed the native gate, then the managed sanitized-terminal gate stopped on an opaque pre-test build red. Four intentional diffs remain retained uncommitted in the isolated worktree; no rerun or repair is authorized. DLV-473 test-only `34f15ae9` remains blocked after its first red; the standing tree's two DLV-293 test diffs remain byte-identical and must not be touched. |
-| Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | DLV-298 0.3.25 is physically rejected: its first Spotify render returned `worker_protocol_validation_failed` because fixed play-toggle focus IDs do not exist in non-ready roots. Add a bounded presentation-time focus override to the typed handle, restore Spotify's state-specific focus, bump the immutable package, and rebuild without tests. |
+| Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | DLV-298 correction `fc9adc8` is clean, built, packaged, and installed as sole active Spotify 0.3.26. It adds the bounded typed-handle focus override and restores state-specific focus/null. Exact reviewed Release PID 63284 is responsive and visible; stop for the user's renewed verdict before integration/tests. |
 
 ## Execution rules
 
@@ -881,13 +881,13 @@ Lane: widgets. Status: closed with no implementation commit. Direct compatibilit
 
 ### DLV-298 Spotify high-level pinned-layout migration
 
-Lane: widgets, baseline accepted DLV-295 integration `3d4b940`. Status: 0.3.25
-cumulative `65d7872` + `d3b7cf7` + `9396363` is physically rejected. At first
-Spotify establishment, Bridge session 1 reported `worker_protocol_validation_failed`:
-the registered play-toggle focus target is absent from non-ready pinned roots.
-Add a typed-handle `Present` focus override while keeping stable layout metadata;
-restore Spotify's prior state-specific focus/null behavior, then bump
-the immutable package, and rebuild without tests. This remains the user-
+Lane: widgets, baseline accepted DLV-295 integration `3d4b940`. Status: 0.3.25 is
+physically rejected after `worker_protocol_validation_failed` on its invalid
+non-ready focus projection. Correction `fc9adc8` adds the bounded typed-handle
+presentation focus override, restores Spotify's prior state-specific focus/null,
+and advances to 0.3.26. Release build passed; exact package SHA-256 is
+`D44C54861A566A7D62B4C9763E8C1162421DEFF9F6EC690512B80950FA7858B7`.
+It is sole installed/selected/enabled under responsive visible PID 63284. This remains the user-
 acceptance boundary. Migrate Spotify's Compact and Up Next layouts
 from manual selection plumbing to the optional typed handle, deleting the old
 demand owner while preserving accepted roots, sizing, focus/scopes, controls,
