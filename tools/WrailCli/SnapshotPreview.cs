@@ -18,6 +18,113 @@ public static class SnapshotPreview
         return writer.ToString().TrimEnd();
     }
 
+    internal static string FormatPinnedLayouts(ViewSnapshot snapshot, string selection)
+    {
+        ArgumentNullException.ThrowIfNull(snapshot);
+        ArgumentException.ThrowIfNullOrWhiteSpace(selection);
+        try
+        {
+            _ = SnapshotJson.Serialize(snapshot);
+        }
+        catch (ProtocolValidationException exception)
+        {
+            var first = exception.Errors[0];
+            throw new CliOperationException(
+                $"Snapshot is invalid at {first.Path} ({first.Code}): {first.Message}",
+                exception);
+        }
+
+        IReadOnlyList<PinnedPresentationLayout> selected;
+        if (string.Equals(selection, "@all", StringComparison.Ordinal))
+        {
+            selected = snapshot.PinnedLayouts;
+        }
+        else
+        {
+            var layout = snapshot.PinnedLayouts.SingleOrDefault(candidate =>
+                string.Equals(candidate.Id, selection, StringComparison.Ordinal));
+            if (layout is null)
+            {
+                var available = snapshot.PinnedLayouts.Count == 0
+                    ? "none"
+                    : string.Join(", ", snapshot.PinnedLayouts.Select(candidate => candidate.Id));
+                throw new CliUsageException(
+                    $"Pinned layout '{selection}' was not declared. Available: {available}.");
+            }
+            selected = [layout];
+        }
+
+        var writer = new StringWriter(System.Globalization.CultureInfo.InvariantCulture);
+        writer.WriteLine(
+            $"Pinned layout preview | widget {snapshot.WidgetInstanceId} | sequence {snapshot.Sequence}");
+        if (selected.Count == 0)
+        {
+            writer.WriteLine("Pinned layouts: (none declared)");
+        }
+        else
+        {
+            foreach (var layout in selected)
+                WritePinnedLayout(writer, layout);
+        }
+
+        foreach (var warning in FindEquivalentRootWarnings(snapshot))
+            writer.WriteLine(warning);
+        return writer.ToString().TrimEnd();
+    }
+
+    private static void WritePinnedLayout(TextWriter writer, PinnedPresentationLayout layout)
+    {
+        writer.WriteLine($"Layout {layout.Id} | {layout.Name}");
+        writer.WriteLine(
+            $"  Surface: mode={layout.Surface.Mode} width={layout.Surface.WidthMode} height={layout.Surface.HeightMode}");
+        writer.WriteLine($"  Preferred extent: {FormatExtent(
+            layout.Surface.PreferredWidth, layout.Surface.PreferredHeight)}");
+        writer.WriteLine($"  Minimum extent: {FormatExtent(
+            layout.Surface.MinimumWidth, layout.Surface.MinimumHeight)}");
+        writer.WriteLine($"  Active input scope: {layout.ActiveInputScopeId ?? "(none)"}");
+        writer.WriteLine($"  Initial focus: {layout.InitialFocusId ?? "(automatic)"}");
+        if (layout.Root is null)
+        {
+            writer.WriteLine("  Projection root: (not authored)");
+            return;
+        }
+        writer.WriteLine("  Projection root:");
+        WriteNode(writer, layout.Root, "  ", true, layout.InitialFocusId);
+    }
+
+    private static IEnumerable<string> FindEquivalentRootWarnings(ViewSnapshot snapshot)
+    {
+        var canonicalRoots = new Dictionary<string, string>(StringComparer.Ordinal);
+        foreach (var layout in snapshot.PinnedLayouts)
+        {
+            if (layout.Root is null) continue;
+            var canonical = Convert.ToBase64String(SnapshotJson.Serialize(snapshot with
+            {
+                Sequence = 0,
+                ActiveInputScopeId = layout.Root.InputScopeId ?? layout.Root.Id,
+                InitialFocusId = null,
+                QuickActions = [],
+                PinnedLayouts = [],
+                Surface = null,
+                Root = layout.Root,
+            }));
+            if (canonicalRoots.TryGetValue(canonical, out var existing))
+            {
+                yield return
+                    $"Warning: pinned layouts '{existing}' and '{layout.Id}' have semantically identical roots.";
+            }
+            else
+            {
+                canonicalRoots.Add(canonical, layout.Id);
+            }
+        }
+    }
+
+    private static string FormatExtent(double? width, double? height) =>
+        width is { } actualWidth && height is { } actualHeight
+            ? $"{actualWidth:R} x {actualHeight:R} DIP"
+            : "(host selected)";
+
     private static void WriteNode(TextWriter writer, ViewNode node, string prefix, bool last, string? focusedId)
     {
         writer.Write(prefix);

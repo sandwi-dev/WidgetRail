@@ -1,5 +1,6 @@
 using System.Text.Json;
 using WidgetRail.WrailCli;
+using WidgetRail.WidgetProtocol;
 
 internal static class ScenarioPreviewTests
 {
@@ -9,6 +10,7 @@ internal static class ScenarioPreviewTests
         await ListsWithoutResolvingTheAssemblyAsync();
         await MissingAssemblyFailsWithoutWritingAsync();
         await RejectsMalformedAndUnboundedDeclarationsAsync();
+        PinnedLayoutsUseValidatedSemanticPreview();
     }
 
     private static async Task ExplainsTheIsolatedContractAsync()
@@ -115,6 +117,114 @@ internal static class ScenarioPreviewTests
         Contains("between 1 and 65536 bytes", oversized.Error);
     }
 
+    private static void PinnedLayoutsUseValidatedSemanticPreview()
+    {
+        var compactRoot = ProjectionRoot(
+            "compact", "Compact playback", "compact.play", "compact.scope");
+        var queueRoot = ProjectionRoot(
+            "queue", "Now playing and queue", "queue.play", "queue.scope");
+        var snapshot = new ViewSnapshot
+        {
+            ProtocolVersion = ProtocolConstants.CurrentVersion,
+            Sequence = 42,
+            WidgetInstanceId = "preview.layouts",
+            ActiveInputScopeId = "full.root",
+            Root = new ViewNode { Id = "full.root", Kind = ViewNodeKind.Stack },
+            PinnedLayouts =
+            [
+                Layout("compact", "Compact now playing", 360, 240,
+                    compactRoot, "compact.scope", "compact.play"),
+                Layout("up-next", "Now playing + up next", 640, 360,
+                    queueRoot, "queue.scope", "queue.play"),
+                Layout("compact-copy", "Compact duplicate", 420, 280,
+                    compactRoot, "compact.scope", "compact.play"),
+            ],
+        };
+
+        var exact = SnapshotPreview.FormatPinnedLayouts(snapshot, "up-next");
+        Contains("Layout up-next | Now playing + up next", exact);
+        Contains("Preferred extent: 640 x 360 DIP", exact);
+        Contains("Minimum extent: 240 x 180 DIP", exact);
+        Contains("Active input scope: queue.scope", exact);
+        Contains("Initial focus: queue.play", exact);
+        Contains("▶ Button #queue.play", exact);
+        Contains("action=queue.toggle", exact);
+        Contains("a11y=\"Now playing and queue\"", exact);
+        DoesNotContain("Layout compact |", exact);
+
+        var all = SnapshotPreview.FormatPinnedLayouts(snapshot, "@all");
+        Ordered(all, "Layout compact |", "Layout up-next |", "Layout compact-copy |");
+        Contains(
+            "Warning: pinned layouts 'compact' and 'compact-copy' have semantically identical roots.",
+            all);
+
+        var unknown = Throws<CliUsageException>(() =>
+            SnapshotPreview.FormatPinnedLayouts(snapshot, "missing"));
+        Contains("Pinned layout 'missing' was not declared", unknown.Message);
+        Contains("Available: compact, up-next, compact-copy", unknown.Message);
+
+        var invalid = snapshot with
+        {
+            PinnedLayouts =
+            [
+                Layout("invalid", "Invalid", 360, 240,
+                    compactRoot, "compact.scope", "missing.focus"),
+            ],
+        };
+        var validation = Throws<CliOperationException>(() =>
+            SnapshotPreview.FormatPinnedLayouts(invalid, "invalid"));
+        Contains("Snapshot is invalid", validation.Message);
+        Contains("initialFocusId", validation.Message);
+    }
+
+    private static PinnedPresentationLayout Layout(
+        string id,
+        string name,
+        double width,
+        double height,
+        ViewNode root,
+        string scope,
+        string focus) => new()
+    {
+        Id = id,
+        Name = name,
+        Surface = new WidgetSurfaceHints
+        {
+            Mode = WidgetSurfaceMode.Compact,
+            WidthMode = WidgetSurfaceAxisMode.Preferred,
+            HeightMode = WidgetSurfaceAxisMode.Content,
+            PreferredWidth = width,
+            PreferredHeight = height,
+            MinimumWidth = 240,
+            MinimumHeight = 180,
+        },
+        Root = root,
+        ActiveInputScopeId = scope,
+        InitialFocusId = focus,
+    };
+
+    private static ViewNode ProjectionRoot(
+        string prefix,
+        string label,
+        string focus,
+        string scope) => new()
+    {
+        Id = $"{prefix}.root",
+        Kind = ViewNodeKind.Stack,
+        InputScopeId = scope,
+        Children =
+        [
+            new ViewNode
+            {
+                Id = focus,
+                Kind = ViewNodeKind.Button,
+                Text = "Play",
+                ActionId = $"{prefix}.toggle",
+                AccessibilityLabel = label,
+            },
+        ],
+    };
+
     private static object Scenario(
         string name,
         string factory,
@@ -184,5 +294,33 @@ internal static class ScenarioPreviewTests
         if (actual.Contains(expected, StringComparison.Ordinal))
             throw new InvalidOperationException(
                 $"Expected output not to contain '{expected}'.");
+    }
+
+    private static void Ordered(string actual, params string[] expected)
+    {
+        var previous = -1;
+        foreach (var value in expected)
+        {
+            var index = actual.IndexOf(value, previous + 1, StringComparison.Ordinal);
+            if (index < 0)
+                throw new InvalidOperationException(
+                    $"Expected output to contain '{value}' after offset {previous}. Actual: {actual}");
+            previous = index;
+        }
+    }
+
+    private static TException Throws<TException>(Action action)
+        where TException : Exception
+    {
+        try
+        {
+            action();
+        }
+        catch (TException exception)
+        {
+            return exception;
+        }
+        throw new InvalidOperationException(
+            $"Expected {typeof(TException).Name} to be thrown.");
     }
 }

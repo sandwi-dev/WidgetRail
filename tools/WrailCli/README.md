@@ -21,6 +21,8 @@ wrail validate .\\VolumeControl
 wrail dev .\\VolumeControl
 wrail preview .\\VolumeControl
 wrail preview .\\VolumeControl --scenario ready --output .\\VolumeControl\\fixtures\\ready.scenario.json
+wrail preview .\\VolumeControl --scenario ready --pinned-layout compact
+wrail preview .\\VolumeControl --scenario ready --pinned-layout @all
 wrail render .\\VolumeControl\\fixtures\\ready.snapshot.json --output snapshot.json
 wrail replay .\\VolumeControl\\fixtures\\ready.snapshot.json .\\VolumeControl\\replays\\smoke.json
 wrail pack .\\VolumeControl --configuration Release --output .\\VolumeControl-1.0.0.wrwidget
@@ -125,6 +127,17 @@ wrail launcher-theme remove dev.example.deep-space 1.0.0
   snapshot tree and can write a canonical copy. DLL input fails closed before
   type resolution or output handling. Use `dev` when author code must execute;
   it retains the production AppContainer/worker boundary.
+- `preview` lists bounded scenario declarations without loading author code, or
+  executes one selected declaration in the isolated preview worker. Add
+  `--pinned-layout <exact-id>` to inspect one package-authored pinned projection,
+  or `--pinned-layout @all` to inspect all declarations in stable declaration
+  order. The output uses the production snapshot validator and the same semantic
+  tree formatter as `render`; it includes names, bounded surface extents, roots,
+  input scopes, initial focus, actions, shortcuts, focus edges, and accessibility
+  metadata. Likely duplicate authored roots are a warning, not a validation
+  failure. With `--output`, the versioned scenario JSON is still written while
+  the pinned diagnostics remain terminal output. This is not native rendering
+  or a screenshot.
 - `install` and `enable` reject a package declaring the versioned
   `full-trust-application-v1` entrypoint unless the same command includes
   `--accept-full-trust`. The command then states that the exact package

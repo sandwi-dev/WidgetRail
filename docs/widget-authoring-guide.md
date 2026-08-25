@@ -1970,6 +1970,27 @@ No broker companion, credentials, native pixels, or neighboring filesystem
 authority are supplied. This remains author-controlled executable code, not a
 general sandbox for downloaded repositories.
 
+When that validated scenario declares package-authored pinned layouts, inspect
+one exact projection or all projections without opening the overlay:
+
+```powershell
+& $wrail preview .\scratch\Clock --scenario running --pinned-layout compact
+& $wrail preview .\scratch\Clock --scenario running --pinned-layout @all
+```
+
+`@all` cannot collide with a valid authored stable ID and preserves declaration
+order. The report identifies each layout and visible name, its typed width and
+height policy, preferred/minimum DIP extents, declarative root, active input
+scope, initial focus, actions, shortcuts, focus edges, and accessibility
+metadata. It is produced from the production-validated snapshot through the
+same semantic tree formatter as `wrail render`; there is no second renderer or
+tree model. An unknown exact ID or invalid snapshot fails with a bounded
+diagnostic. Semantically identical authored roots produce a deterministic
+warning because they are often an accidental copy, but remain valid. The
+ordinary command without `--pinned-layout` continues to emit its versioned
+scenario result, and `--output` continues to write that result even when pinned
+diagnostics are requested.
+
 For transport-free unit tests, configure typed fakes and drive real lifecycle
 hooks:
 

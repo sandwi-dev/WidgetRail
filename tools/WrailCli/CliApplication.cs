@@ -98,7 +98,7 @@ public static class CliApplication
           wrail new widget <Name> [--output <directory>] [--id <reverse.dns.id>] [--publisher <reverse.dns.id>] [--template <basic|data|media|multipage>]
           wrail validate <widget-directory|manifest.json|style.wrss>
           wrail dev <widget-directory|widget.csproj|file.wrwidget> [--host <OverlayHost.exe>] [--configuration <name>] [--build-timeout-seconds <10-600>] [--debounce-ms <50-2000>]
-          wrail preview <widget-directory|widgetrail.scenarios.json> [--scenario <name>] [--output <snapshot.json>] [--instance <id>]
+          wrail preview <widget-directory|widgetrail.scenarios.json> [--scenario <name>] [--pinned-layout <id|@all>] [--output <snapshot.json>] [--instance <id>]
           wrail render <snapshot.json> [--output <canonical-snapshot.json>]
           wrail replay <snapshot.json> <input-replay.json>
           wrail pack <widget-directory|widget.csproj> [--output <file.wrwidget>] [--configuration <name>] [--build-timeout-seconds <10-600>]

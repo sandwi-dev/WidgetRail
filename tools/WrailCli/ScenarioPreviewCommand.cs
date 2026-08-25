@@ -33,10 +33,10 @@ internal static class ScenarioPreviewCommand
             return 0;
         }
         var parsed = new CommandArguments(
-            args, "--scenario", "--output", "--instance");
+            args, "--scenario", "--output", "--instance", "--pinned-layout");
         if (parsed.Positionals.Count != 1)
             throw new CliUsageException(
-                "Usage: wrail preview <widget-directory|widgetrail.scenarios.json> [--scenario <name>] [--output <snapshot.json>] [--instance <id>]");
+                "Usage: wrail preview <widget-directory|widgetrail.scenarios.json> [--scenario <name>] [--pinned-layout <id|@all>] [--output <snapshot.json>] [--instance <id>]");
 
         var manifestPath = ResolveManifest(parsed.Positionals[0]);
         var manifest = await ReadManifestAsync(manifestPath, cancellationToken)
@@ -44,6 +44,9 @@ internal static class ScenarioPreviewCommand
         var scenarioName = parsed.Option("--scenario");
         if (scenarioName is null)
         {
+            if (parsed.Option("--pinned-layout") is not null)
+                throw new CliUsageException(
+                    "--pinned-layout requires one executed --scenario snapshot.");
             await output.WriteLineAsync($"Scenarios in {manifestPath}:");
             foreach (var declaration in manifest.Scenarios)
             {
@@ -75,12 +78,16 @@ internal static class ScenarioPreviewCommand
             : null;
         var result = await ExecuteAsync(Path.GetDirectoryName(assemblyPath)!, assemblyPath, manifest.ProviderType,
             scenario, instance, cancellationToken).ConfigureAwait(false);
+        var pinnedLayoutPreview = parsed.Option("--pinned-layout") is { } pinnedLayout
+            ? SnapshotPreview.FormatPinnedLayouts(result.Snapshot, pinnedLayout)
+            : null;
         var bytes = JsonSerializer.SerializeToUtf8Bytes(result, JsonOptions);
         if (bytes.Length > WidgetRuntimeProtocol.DefaultMaximumMessageBytes)
             throw new CliOperationException("Scenario result exceeded the semantic preview bound.");
         if (destination is null)
         {
-            await output.WriteLineAsync(Encoding.UTF8.GetString(bytes));
+            await output.WriteLineAsync(
+                pinnedLayoutPreview ?? Encoding.UTF8.GetString(bytes));
         }
         else
         {
@@ -88,6 +95,8 @@ internal static class ScenarioPreviewCommand
                 .ConfigureAwait(false);
             await output.WriteLineAsync(
                 $"Scenario '{scenarioName}' completed in an isolated preview worker ({bytes.Length} bytes).");
+            if (pinnedLayoutPreview is not null)
+                await output.WriteLineAsync(pinnedLayoutPreview);
         }
         return 0;
     }
@@ -95,7 +104,7 @@ internal static class ScenarioPreviewCommand
     internal const string HelpText = """
         Usage:
           wrail preview <widget-directory|widgetrail.scenarios.json>
-          wrail preview <widget-directory|widgetrail.scenarios.json> --scenario <name> [--output <snapshot.json>] [--instance <id>]
+          wrail preview <widget-directory|widgetrail.scenarios.json> --scenario <name> [--pinned-layout <id|@all>] [--output <snapshot.json>] [--instance <id>]
 
         A directory uses widgetrail.scenarios.json. With no --scenario, declarations
         are listed without loading or executing the provider assembly.
@@ -114,6 +123,9 @@ internal static class ScenarioPreviewCommand
         loading the provider assembly. --scenario executes the one declared
         factory in a capability-free AppContainer/Job worker, transitions it
         through the normal lifecycle, and emits a versioned semantic result.
+        --pinned-layout selects one exact authored layout ID. Use @all to print
+        every declared layout in declaration order. This semantic preview uses
+        the validated scenario snapshot and does not render native pixels.
         The CLI never loads or executes scenario code in-process.
         """;
 
