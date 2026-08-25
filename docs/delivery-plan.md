@@ -1,6 +1,7 @@
 # WidgetRail transition — Delivery Plan
 
-Status: active implementation authority
+Status: paused at the user's explicit PC-restart stop condition; active
+implementation authority resumes only after the user returns.
 
 The complete delivery record through the rejected `54167ee` DLV-284 diagnostic
 candidate is preserved in the
@@ -10,8 +11,9 @@ historical evidence only; this file is the sole implementation authority.
 
 ## Current accepted state
 
-- Local `main` contains reviewer planning through DLV-306 and fully integrated
-  DLV-305 through `4deb2ae`. Its preceding runtime input was `283c9ff`,
+- Local `main` contains reviewer planning through DLV-306, fully integrated
+  DLV-305 through `4deb2ae`, and reviewed metadata-only DLV-303 diagnostics
+  through `5ccb540`. Its preceding runtime input was `283c9ff`,
   integrating physically accepted DLV-300
   production `5bb7a57`, production validation correction `5b1c170`, and focused
   tests `d1a3d5d` after accepted DLV-298 Spotify migration merge `c9e9b97`.
@@ -25,9 +27,11 @@ historical evidence only; this file is the sole implementation authority.
   `31BF9C88F3336B9E8645FD30B693EA4E54B115D374C567F060020DCEA14448E8`
   and no `startup-error.txt`.
 - Spotify 0.3.26 remains the sole installed, selected, enabled version. Its
-  high-level pinned-layout migration is accepted. The intermittent consumed-
-  input report has no proven cause; DLV-303 owns diagnostics only and no fix is
-  authorized.
+  high-level pinned-layout migration is accepted. Corrected DLV-303 diagnostics
+  are integrated through `5ccb540`; the reviewed 0.3.28 package has not yet been
+  installed because the user requested a pause for a PC restart before the
+  coherent runtime refresh. The intermittent consumed-input report has no
+  proven cause, and no speculative fix is authorized.
 - The intermittent Up Next Loading report is not currently reproducible and the
   user confirms it is working now. DLV-304 is deferred until a fresh recurrence
   can be captured through integrated DLV-303 correlation diagnostics. Existing
@@ -77,8 +81,8 @@ historical evidence only; this file is the sole implementation authority.
 
 | Lane | Task/worktree | State |
 | --- | --- | --- |
-| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | DLV-305 is closed and integrated through `4deb2ae`. DLV-301 is Ready after reviewed DLV-303 integration. DLV-304 is recurrence-blocked. The standing worktree's retained DLV-474/DLV-293 diffs and blocked DLV-473 test commit remain immutable evidence and must not be touched. |
-| Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | DLV-303 commits `9afdbf2` and `a173cc3` are rejected pending a bounded metadata-only correction in their separate clean worktree: the real Spotify sink silently drops dotted action IDs while the test recorder accepts them, and host correlation includes raw Bridge error text. The milestone has no fix authority. The dirty standing DLV-298 evidence remains untouched. DLV-296 and DLV-297 remain Ready. |
+| Platform | `Implementation agent — platform lane`; `C:\Users\dwive\.codex\worktrees\6196\GameBarAlternative` | Paused at the user's PC-restart stop condition. DLV-305 is closed through `4deb2ae`; DLV-301 is Ready but must not start until the user returns. DLV-304 is recurrence-blocked. The standing worktree's retained DLV-474/DLV-293 diffs and blocked DLV-473 test commit remain immutable evidence and must not be touched. |
+| Widgets | `Implementation agent — widgets lane`; `C:\Users\dwive\.codex\worktrees\563c\GameBarAlternative` | Paused at the user's PC-restart stop condition. Corrected DLV-303 is integrated through `5ccb540`; its coherent runtime/package refresh remains pending after restart. The dirty standing DLV-298 evidence remains untouched. DLV-296 and DLV-297 remain Ready but unassigned. |
 
 ## Execution rules
 
@@ -223,14 +227,13 @@ before any corrective implementation is authorized.
 ### DLV-303 end-to-end widget action correlation diagnostics
 
 Lane: widgets lead, serialized generic host/SDK plus package-local diagnostics.
-Status: Correction Assigned after planner rejection of `9afdbf2` plus test
-follow-up `a173cc3`. The real Spotify sink's token policy silently drops dotted
-action IDs that the in-memory tests accept, and dynamic IDs may embed provider
-keys; correlate queue stages through numeric sequence plus fixed metadata-only
-tokens instead. Host correlation must retain only its bounded reply
-classification and never append raw Bridge error text. Add coverage through the
-real sink or its exact shared encoding policy before review. Work remains in the
-separate clean worktree from integrated `b089f94`. Reuse
+Status: Closed and integrated through `5ccb540`. The planner rejected the first
+production/test pair `9afdbf2` + `a173cc3` because the real Spotify sink silently
+dropped dotted action IDs accepted by the in-memory recorder and host correlation
+included raw Bridge error text. Corrections `b5d51e9` + `c54e1a6` reduced the
+record to bounded fixed metadata-only classifications and covered the real
+encoding policy. The full reviewed chain passed the focused SDK, Spotify policy,
+Release, and package gates. Reuse
 the existing controller/action request identity to emit one bounded correlation
 across generic host admission/reply (button, widget, focus, scope, snapshot and
 runtime generation, handled/error), SDK serial-queue admission/dequeue/terminal
@@ -244,8 +247,9 @@ timeouts, pending-operation policy, provider behavior, presentation semantics,
 or user-visible controls. Perform direct lifecycle/volume review, one Release
 build, and the smallest generic action plus Spotify diagnostic gates. Commit
 production/tests separately if required, but do not install, launch, or fix the
-reported behavior. After review and integration, the planner will visibly
-launch the diagnostic Release and ask the user for one bounded reproduction.
+reported behavior. On resume after the PC restart, the planner will refresh the
+integrated diagnostic Release and package so a future natural recurrence can be
+captured without requesting an artificial reproduction.
 Stop for a new public protocol, service-specific core behavior, sensitive data,
 unbounded log volume, or any behavioral correction.
 
@@ -445,11 +449,11 @@ work ahead of cleanup.
 
 ## Ordered queues
 
-1. DLV-303 generic end-to-end widget action correlation diagnostics correction
-   is Assigned in its separate clean worktree; DLV-305 is closed through
-   `4deb2ae`.
-2. DLV-301 pinned-surface right-stick free scrolling; Ready after reviewed
-   DLV-303 integration and DLV-305.
+1. Pause at the user's explicit PC-restart stop condition. After the user
+   returns, refresh the coherent integrated DLV-303 runtime and install the
+   reviewed Spotify 0.3.28 diagnostic package before starting new production.
+2. DLV-301 pinned-surface right-stick free scrolling; Ready after that refresh,
+   but explicitly unassigned until the user returns.
 3. DLV-304 stable pinned demand and input authority under live updates; deferred
    until the user reports a fresh recurrence and integrated DLV-303 diagnostics
    capture the first failing authority boundary.
@@ -496,6 +500,7 @@ work ahead of cleanup.
 | DLV-292 | `ff5e7e4` binds each Bridge-cached snapshot to its worker start ordinal and uses existing typed stale-base recovery after replacement. Production build and three focused lifecycle/native gates passed; integrated as `80cdb10`. The user accepted PID 81980 by default because live reproduction is impractical. |
 | DLV-293 | Production `a9d36cf` is physically accepted and integrated as `10c3e26`; PID 137288 already contains that production tip. New catalog-removal/focus/Guide assertions completed before the focused host gate stopped on an older Game Launcher stationarity correlation. The pin-coordinator suite did not run; both uncommitted test diffs remain retained, with no rerun or Game Launcher repair authorized. |
 | DLV-305 | Production `377c5d4` + `b24899c` + `8eb1f4a` + `3f1fc23` was physically accepted; focused test `2330c6c` passed 22 placement checks, 120 coordinator checks, and seven platform-interoperability executables with 112,633 reported checks plus one uncounted suite. Integrated through `4deb2ae`; coherent main PID 109940 is responsive with no startup error. |
+| DLV-303 | Production/test `9afdbf2` + `a173cc3` was corrected by `b5d51e9` + `c54e1a6` after planner rejection of unsafe/dropped diagnostic fields. The corrected metadata-only chain passed its focused SDK, Spotify policy, Release, and 0.3.28 package gates and is integrated through `5ccb540`. Runtime/package refresh is intentionally paused for the user's PC restart. |
 | DLV-474 | Production `a830f026` was provisionally accepted by user disposition because the historical bridge-session loss could not be reproduced, then rejected before integration when the first focused native gate proved fresh sequence 1 was compared against retained prior-session sequences 10/20. The retained correction passed 29 native coordinator scenarios plus linked native checks, then the managed diagnostic gate exited 1 during an opaque pre-test build. Four diffs remain uncommitted at identity `d14a224507d682e9c67f83860e713fe0118bb4dd`; no rerun or repair occurred. |
 | DLV-291 | Spotify versions through production-only 0.3.23 `2031a8c` are physically rejected overall. The user accepted clean 0.3.24 `bbdc2368`; production is integrated as `e7ebdbe` and exact-hash 0.3.24 remains sole installed/selected/enabled under responsive PID 32880. Native tests passed 108/108; the Spotify gate stopped after 75 seconds without output, so its two-file test diff remains unaccepted debt. |
 | DLV-248 | Deferred until explicit user promotion. |
