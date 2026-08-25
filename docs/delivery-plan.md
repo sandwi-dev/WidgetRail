@@ -10,7 +10,7 @@ historical evidence only; this file is the sole implementation authority.
 
 ## Current accepted state
 
-- Local `main` is `2af272c`, whose latest runtime input remains `283c9ff`,
+- Local `main` is `8dfe871`, whose latest runtime input remains `283c9ff`,
   integrating physically accepted DLV-300
   production `5bb7a57`, production validation correction `5b1c170`, and focused
   tests `d1a3d5d` after accepted DLV-298 Spotify migration merge `c9e9b97`.
@@ -262,7 +262,7 @@ conflict.
 
 Lane: platform native placement owner. Status: Assigned concurrently with the
 non-behavioral DLV-303 diagnostics in a separate clean worktree from local main
-`e1cfd40`; do not touch the standing platform worktree's retained evidence. The
+`8dfe871`; do not touch the standing platform worktree's retained evidence. The
 user reports that resizing a pinned surface visibly works during adjustment,
 but choosing Commit now snaps the HWND back to its original size. The current
 `pinned-surface-placement.ini` still holds Spotify's earlier 776 by 464 DIP
