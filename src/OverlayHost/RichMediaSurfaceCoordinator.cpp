@@ -10,9 +10,11 @@
 
 #include <algorithm>
 #include <array>
+#include <chrono>
 #include <cmath>
 #include <cstring>
 #include <filesystem>
+#include <fstream>
 #include <format>
 #include <string>
 #include <vector>
@@ -32,22 +34,28 @@ constexpr char kPage[] = R"HTML(<!doctype html>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width">
 <style>html,body{margin:0;background:#111;color:#fff;font:24px system-ui}main{padding:28px}
 button{font:inherit;margin:8px;padding:12px 22px}button:focus{outline:4px solid #65b8ff}
-</style><main><h1>Embedded media proof</h1><audio id="media" src="/tone.wav"></audio>
+</style><main><h1>Embedded media proof</h1><audio id="media" src="/tone.wav" loop></audio>
 <button id="back">Back</button><button id="play">Play</button><button id="seek">Seek</button>
 <p id="state">Ready</p></main><script>
-let generation=0,last=0,focus='play'; const media=document.querySelector('#media');
+let environmentGeneration=0,surfaceGeneration=0,sessionGeneration=0,controllerGeneration=0,documentGeneration=0;
+let eventSequence=0,focus='play',spatialCommandId=0; const media=document.querySelector('#media');
 const buttons=[...document.querySelectorAll('button')];
-function emit(type){chrome.webview.postMessage({type,generation,sequence:++last,focus,playing:!media.paused});}
-function select(delta){let i=Math.max(0,buttons.indexOf(document.activeElement));i=(i+delta+buttons.length)%buttons.length;buttons[i].focus();focus=buttons[i].id;emit('focus');}
-document.querySelector('#back').onclick=()=>emit('back');
-document.querySelector('#play').onclick=()=>{media.paused?media.play():media.pause();emit('media');};
-document.querySelector('#seek').onclick=()=>{media.currentTime=Math.min(media.duration||1,media.currentTime+.2);emit('media');};
-chrome.webview.addEventListener('message',e=>{const m=e.data;if(!m||m.generation!==generation||m.sequence<=last)return;last=m.sequence;
-if(m.command==='initialize'){generation=m.nextGeneration;last=0;buttons[1].focus();focus='play';emit('ready');return;}
-if(m.command==='previous')select(-1);else if(m.command==='next')select(1);else if(m.command==='activate')document.activeElement.click();
-else if(m.command==='back')emit('back');else if(m.command==='toggle')document.querySelector('#play').click();
-else if(m.command==='seek-back'){media.currentTime=Math.max(0,media.currentTime-.2);emit('media');}
-else if(m.command==='seek-forward')document.querySelector('#seek').click();});
+function bounds(){const r=document.activeElement.getBoundingClientRect();return{x:r.x,y:r.y,width:r.width,height:r.height};}
+function emit(type,commandId){chrome.webview.postMessage({type,environmentGeneration,surfaceGeneration,sessionGeneration,controllerGeneration,documentGeneration,eventSequence:++eventSequence,commandId,focus,playing:!media.paused,bounds:bounds()});}
+function takeSpatial(){const id=spatialCommandId;spatialCommandId=0;return id;}
+function select(delta){let i=Math.max(0,buttons.indexOf(document.activeElement));i=(i+delta+buttons.length)%buttons.length;buttons[i].focus();focus=buttons[i].id;}
+document.querySelector('#back').onclick=()=>emit('back',takeSpatial());
+document.querySelector('#play').onclick=async()=>{const id=takeSpatial();if(media.paused)await media.play();else media.pause();emit('media',id);};
+document.querySelector('#seek').onclick=()=>{const id=takeSpatial();media.currentTime=Math.min(media.duration||1,media.currentTime+.2);emit('media',id);};
+chrome.webview.addEventListener('message',async e=>{const m=e.data;if(!m)return;
+if(m.command==='initialize'){environmentGeneration=m.environmentGeneration;surfaceGeneration=m.surfaceGeneration;sessionGeneration=m.sessionGeneration;controllerGeneration=m.controllerGeneration;documentGeneration=m.documentGeneration;eventSequence=0;buttons[1].focus();focus='play';emit('ready',m.commandId);return;}
+if(m.environmentGeneration!==environmentGeneration||m.surfaceGeneration!==surfaceGeneration||m.sessionGeneration!==sessionGeneration||m.controllerGeneration!==controllerGeneration||m.documentGeneration!==documentGeneration)return;
+if(m.command==='arm-activate'){spatialCommandId=m.commandId;emit('armed',m.commandId);return;}
+let type='focus';if(m.command==='previous')select(-1);else if(m.command==='next')select(1);else if(m.command==='activate'){if(document.activeElement.id==='back')type='back';else if(document.activeElement.id==='play'){if(media.paused)await media.play();else media.pause();type='media';}else if(document.activeElement.id==='seek'){media.currentTime=Math.min(media.duration||1,media.currentTime+.2);type='media';}}
+else if(m.command==='back')type='back';else if(m.command==='toggle'){if(media.paused)await media.play();else media.pause();type='media';}
+else if(m.command==='seek-back'){media.currentTime=Math.max(0,media.currentTime-.2);type='media';}
+else if(m.command==='seek-forward'){media.currentTime=Math.min(media.duration||1,media.currentTime+.2);type='media';}
+else return;emit(type,m.commandId);});
 </script>)HTML";
 
 std::vector<std::byte> WaveBytes() {
@@ -104,88 +112,240 @@ const wchar_t* LifecycleName(const Lifecycle lifecycle) {
 
 } // namespace
 
+struct RichMediaSurfaceCoordinator::CallbackLease final {
+    std::atomic<RichMediaSurfaceCoordinator*> owner{};
+    std::atomic_uint outstandingCreates{};
+    Authority authority;
+};
+
+struct RichMediaSurfaceCoordinator::EnvironmentSignal final {
+    std::atomic_bool browserProcessExited{};
+    std::atomic<DWORD> browserProcessId{};
+};
+
+struct RichMediaSurfaceCoordinator::FrameSubscription final {
+    ComPtr<ICoreWebView2Frame2> frame;
+    EventRegistrationToken navigationStartingToken{};
+};
+
+void RichMediaSurfaceCoordinator::RecordBrowserProcessExit(
+    const std::shared_ptr<EnvironmentSignal>& signal, const DWORD processId) noexcept {
+    if (!signal) return;
+    if (processId != 0 &&
+        signal->browserProcessId.load(std::memory_order_acquire) == 0)
+        signal->browserProcessId.store(processId, std::memory_order_release);
+    signal->browserProcessExited.store(true, std::memory_order_release);
+}
+
+bool RichMediaSurfaceCoordinator::BrowserProcessExitObserved() const noexcept {
+    return environmentSignal_ &&
+        environmentSignal_->browserProcessExited.load(std::memory_order_acquire);
+}
+
+bool RichMediaSurfaceCoordinator::BrowserProcessExitObserverActive() const noexcept {
+    return environment5_ && browserProcessExitedToken_.value;
+}
+
 RichMediaSurfaceCoordinator::RichMediaSurfaceCoordinator() = default;
 RichMediaSurfaceCoordinator::~RichMediaSurfaceCoordinator() { Shutdown(); }
+
+EnvironmentState RichMediaSurfaceCoordinator::environmentState() const noexcept {
+    return {
+        environmentLifecycle_, nextEnvironmentGeneration_,
+        environmentSignal_
+            ? environmentSignal_->browserProcessId.load(std::memory_order_acquire) : 0,
+        BrowserProcessExitObserved(), environmentFaulted_,
+        BrowserProcessExitObserverActive(), environmentProfileDirectory_};
+}
 
 HRESULT RichMediaSurfaceCoordinator::Initialize(Configuration configuration) noexcept {
     if (state_.lifecycle != Lifecycle::Absent || !configuration.ownerWindow ||
         !configuration.compositionTarget || configuration.bounds.right <= configuration.bounds.left ||
         configuration.bounds.bottom <= configuration.bounds.top ||
-        configuration.ephemeralProfileDirectory.empty()) return E_INVALIDARG;
+        configuration.profileRootDirectory.empty()) return E_INVALIDARG;
+    if (environmentLifecycle_ == EnvironmentLifecycle::ShuttingDown) return E_UNEXPECTED;
+    if (!profileRootDirectory_.empty() &&
+        profileRootDirectory_ != configuration.profileRootDirectory) return E_INVALIDARG;
+    profileRootDirectory_ = configuration.profileRootDirectory;
+    if (environmentLifecycle_ == EnvironmentLifecycle::Ready &&
+        BrowserProcessExitObserved()) ReleaseEnvironment(true);
     configuration_ = std::move(configuration);
     state_ = {};
     desiredVisible_ = configuration_.initiallyVisible;
-    state_.authority.sessionGeneration = 1;
+    state_.authority.surfaceGeneration = ++nextSurfaceGeneration_;
+    state_.authority.sessionGeneration = ++nextSessionGeneration_;
+    if (environmentLifecycle_ == EnvironmentLifecycle::Ready &&
+        !environmentFaulted_ && !BrowserProcessExitObserved()) {
+        state_.authority.environmentGeneration = nextEnvironmentGeneration_;
+        return BeginController();
+    }
+    if (environmentLifecycle_ != EnvironmentLifecycle::Cold) return E_UNEXPECTED;
     return BeginEnvironment();
 }
 
-HRESULT RichMediaSurfaceCoordinator::Retry() noexcept {
-    if (state_.lifecycle != Lifecycle::Faulted) return E_UNEXPECTED;
-    const auto generation = state_.authority.sessionGeneration + 1;
-    Shutdown();
-    state_.authority.sessionGeneration = generation;
+HRESULT RichMediaSurfaceCoordinator::Retry(Configuration configuration) noexcept {
+    if (state_.lifecycle != Lifecycle::Absent || !retrySurfaceGeneration_ ||
+        !configuration.ownerWindow ||
+        !configuration.compositionTarget || configuration.profileRootDirectory.empty() ||
+        configuration.profileRootDirectory != profileRootDirectory_) return E_UNEXPECTED;
+    if (environmentFaulted_ || BrowserProcessExitObserved())
+        ReleaseEnvironment(true);
+    configuration_ = std::move(configuration);
+    state_ = {};
+    state_.authority.surfaceGeneration = retrySurfaceGeneration_;
+    state_.authority.sessionGeneration = ++nextSessionGeneration_;
+    retrySurfaceGeneration_ = 0;
     desiredVisible_ = configuration_.initiallyVisible;
-    state_.authority.commandSequence = 0;
+    if (environmentLifecycle_ == EnvironmentLifecycle::Ready) {
+        state_.authority.environmentGeneration = nextEnvironmentGeneration_;
+        return BeginController();
+    }
     return BeginEnvironment();
+}
+
+std::shared_ptr<RichMediaSurfaceCoordinator::CallbackLease>
+RichMediaSurfaceCoordinator::CreateCallbackLease() noexcept {
+    auto lease = std::make_shared<CallbackLease>();
+    lease->owner.store(this, std::memory_order_release);
+    lease->authority = state_.authority;
+    callbackLease_ = lease;
+    return lease;
+}
+
+bool RichMediaSurfaceCoordinator::IsCurrentCallback(
+    const std::shared_ptr<CallbackLease>& lease, const bool requireDocument) const noexcept {
+    if (!lease || lease->owner.load(std::memory_order_acquire) != this) return false;
+    return lease->authority.environmentGeneration ==
+            state_.authority.environmentGeneration &&
+        lease->authority.surfaceGeneration == state_.authority.surfaceGeneration &&
+        lease->authority.sessionGeneration == state_.authority.sessionGeneration &&
+        lease->authority.controllerGeneration == state_.authority.controllerGeneration &&
+        (!requireDocument ||
+         lease->authority.documentGeneration == state_.authority.documentGeneration);
+}
+
+void RichMediaSurfaceCoordinator::RetireCallbacks() noexcept {
+    if (callbackLease_) {
+        callbackLease_->owner.store(nullptr, std::memory_order_release);
+        retiredLeases_.push_back(callbackLease_);
+    }
+    callbackLease_.reset();
 }
 
 HRESULT RichMediaSurfaceCoordinator::BeginEnvironment() noexcept {
+    if (environmentLifecycle_ != EnvironmentLifecycle::Cold ||
+        profileRootDirectory_.empty()) return E_UNEXPECTED;
+    CleanupMarkedPriorProfiles();
+    environmentLifecycle_ = EnvironmentLifecycle::Creating;
+    environmentFaulted_ = false;
+    state_.authority.environmentGeneration = ++nextEnvironmentGeneration_;
+    environmentProfileDirectory_ =
+        (std::filesystem::path{profileRootDirectory_} /
+         (L"wrail-rich-media-" + std::to_wstring(GetCurrentProcessId()) + L"-" +
+          std::to_wstring(state_.authority.environmentGeneration))).wstring();
+    state_.authority.controllerGeneration = 0;
+    state_.authority.documentGeneration = 0;
+    state_.authority.eventSequence = 0;
+    pendingCommand_.reset();
+    pendingNavigationId_ = 0;
+    const auto lease = CreateCallbackLease();
     state_.lifecycle = Lifecycle::EnvironmentCreating;
     Emit(L"Rich media lifecycle=environment-creating generation=" +
          std::to_wstring(state_.authority.sessionGeneration));
     ComPtr<ICoreWebView2EnvironmentOptions> options =
         Microsoft::WRL::Make<CoreWebView2EnvironmentOptions>();
+    lease->outstandingCreates.fetch_add(1, std::memory_order_relaxed);
     const HRESULT result = CreateCoreWebView2EnvironmentWithOptions(
-        nullptr, configuration_.ephemeralProfileDirectory.c_str(), options.Get(),
+        nullptr, environmentProfileDirectory_.c_str(), options.Get(),
         Callback<ICoreWebView2CreateCoreWebView2EnvironmentCompletedHandler>(
-            [this](HRESULT status, ICoreWebView2Environment* environment) {
-                return OnEnvironmentCreated(status, environment);
+            [lease](HRESULT status, ICoreWebView2Environment* environment) {
+                auto* owner = lease->owner.load(std::memory_order_acquire);
+                const HRESULT callbackResult = owner
+                    ? owner->OnEnvironmentCreated(lease, status, environment) : S_FALSE;
+                lease->outstandingCreates.fetch_sub(1, std::memory_order_release);
+                return callbackResult;
             }).Get());
-    if (FAILED(result)) Fault(L"environment-start", result);
+    if (FAILED(result)) {
+        lease->outstandingCreates.fetch_sub(1, std::memory_order_release);
+        environmentFaulted_ = true;
+        Fault(L"environment-start", result);
+    }
     return result;
 }
 
 HRESULT RichMediaSurfaceCoordinator::OnEnvironmentCreated(
-    const HRESULT result, ICoreWebView2Environment* environment) noexcept {
-    if (state_.lifecycle != Lifecycle::EnvironmentCreating) return S_FALSE;
-    if (FAILED(result) || !environment) { Fault(L"environment-create", result); return S_OK; }
+    const std::shared_ptr<CallbackLease>& lease, const HRESULT result,
+    ICoreWebView2Environment* environment) noexcept {
+    if (!IsCurrentCallback(lease, false) ||
+        state_.lifecycle != Lifecycle::EnvironmentCreating) return S_FALSE;
+    if (FAILED(result) || !environment) {
+        environmentFaulted_ = true;
+        Fault(L"environment-create", result);
+        return S_OK;
+    }
     environment_ = environment;
-    browserProcessExited_ = false;
+    environmentLifecycle_ = EnvironmentLifecycle::Ready;
+    environmentSignal_ = std::make_shared<EnvironmentSignal>();
     if (SUCCEEDED(environment_.As(&environment5_))) {
-        (void)environment5_->add_BrowserProcessExited(
+        const auto environmentSignal = environmentSignal_;
+        browserEventRegistrationResult_ = environment5_->add_BrowserProcessExited(
             Callback<ICoreWebView2BrowserProcessExitedEventHandler>(
-                [this](ICoreWebView2Environment*, ICoreWebView2BrowserProcessExitedEventArgs*) {
-                    browserProcessExited_ = true;
-                    Emit(L"Rich media browser-process-exited");
+                [environmentSignal](ICoreWebView2Environment*, ICoreWebView2BrowserProcessExitedEventArgs* args) {
+                    UINT32 browserProcessId{};
+                    if (args) (void)args->get_BrowserProcessId(&browserProcessId);
+                    RecordBrowserProcessExit(environmentSignal, browserProcessId);
                     return S_OK;
                 }).Get(), &browserProcessExitedToken_);
     }
+    return BeginController();
+}
+
+HRESULT RichMediaSurfaceCoordinator::BeginController() noexcept {
+    if (!environment_ || environmentLifecycle_ != EnvironmentLifecycle::Ready ||
+        environmentFaulted_ || BrowserProcessExitObserved()) return E_UNEXPECTED;
+    const auto lease = callbackLease_ ? callbackLease_ : CreateCallbackLease();
+    state_.authority.controllerGeneration = ++nextControllerGeneration_;
+    lease->authority.controllerGeneration = state_.authority.controllerGeneration;
     state_.lifecycle = Lifecycle::ControllerCreating;
     Emit(L"Rich media lifecycle=controller-creating");
     ComPtr<ICoreWebView2Environment3> compositionEnvironment;
     const HRESULT environment3 = environment_.As(&compositionEnvironment);
     if (FAILED(environment3)) {
+        environmentFaulted_ = true;
         Fault(L"composition-environment", environment3);
         return S_OK;
     }
+    lease->outstandingCreates.fetch_add(1, std::memory_order_relaxed);
     const HRESULT create = compositionEnvironment->CreateCoreWebView2CompositionController(
         configuration_.ownerWindow,
         Callback<ICoreWebView2CreateCoreWebView2CompositionControllerCompletedHandler>(
-            [this](HRESULT status, ICoreWebView2CompositionController* controller) {
-                return OnControllerCreated(status, controller);
+            [lease](HRESULT status, ICoreWebView2CompositionController* controller) {
+                auto* owner = lease->owner.load(std::memory_order_acquire);
+                const HRESULT callbackResult = owner
+                    ? owner->OnControllerCreated(lease, status, controller) : S_FALSE;
+                lease->outstandingCreates.fetch_sub(1, std::memory_order_release);
+                return callbackResult;
             }).Get());
-    if (FAILED(create)) Fault(L"controller-start", create);
+    if (FAILED(create)) {
+        lease->outstandingCreates.fetch_sub(1, std::memory_order_release);
+        Fault(L"controller-start", create);
+    }
     return S_OK;
 }
 
 HRESULT RichMediaSurfaceCoordinator::OnControllerCreated(
-    const HRESULT result, ICoreWebView2CompositionController* controller) noexcept {
-    if (state_.lifecycle != Lifecycle::ControllerCreating) return S_FALSE;
+    const std::shared_ptr<CallbackLease>& lease, const HRESULT result,
+    ICoreWebView2CompositionController* controller) noexcept {
+    if (!IsCurrentCallback(lease, false) ||
+        state_.lifecycle != Lifecycle::ControllerCreating) return S_FALSE;
     if (FAILED(result) || !controller) { Fault(L"controller-create", result); return S_OK; }
     controller_ = controller;
     if (FAILED(controller_.As(&controllerBase_)) || FAILED(controllerBase_->get_CoreWebView2(&core_))) {
         Fault(L"controller-interface", E_NOINTERFACE); return S_OK;
     }
+    UINT32 browserProcessId{};
+    if (environmentSignal_ && SUCCEEDED(core_->get_BrowserProcessId(&browserProcessId)))
+        environmentSignal_->browserProcessId.store(browserProcessId, std::memory_order_release);
     HRESULT configured = controller_->put_RootVisualTarget(configuration_.compositionTarget.Get());
     if (SUCCEEDED(configured)) configured = UpdateGeometry(configuration_.bounds, configuration_.rasterScale);
     if (SUCCEEDED(configured)) configured = ConfigureCore();
@@ -194,14 +354,18 @@ HRESULT RichMediaSurfaceCoordinator::OnControllerCreated(
     state_.inputEnabled = false;
     pageReady_ = false;
     (void)controllerBase_->put_IsVisible(FALSE);
+    if (configuration_.setPresentationVisible) configuration_.setPresentationVisible(false);
     Emit(L"Rich media lifecycle=ready-hidden");
     if (configuration_.invalidate) configuration_.invalidate();
+    state_.authority.documentGeneration = ++nextDocumentGeneration_;
+    lease->authority.documentGeneration = state_.authority.documentGeneration;
     configured = core_->Navigate(kPageUri);
     if (FAILED(configured)) Fault(L"navigate", configured);
     return S_OK;
 }
 
 HRESULT RichMediaSurfaceCoordinator::ConfigureCore() noexcept {
+    const auto lease = callbackLease_;
     ComPtr<ICoreWebView2Settings> settings;
     HRESULT result = core_->get_Settings(&settings);
     if (SUCCEEDED(result)) result = settings->put_AreDefaultContextMenusEnabled(FALSE);
@@ -219,28 +383,38 @@ HRESULT RichMediaSurfaceCoordinator::ConfigureCore() noexcept {
         kResourceFilter, COREWEBVIEW2_WEB_RESOURCE_CONTEXT_ALL);
     if (SUCCEEDED(result)) result = core_->add_WebResourceRequested(
         Callback<ICoreWebView2WebResourceRequestedEventHandler>(
-            [this](ICoreWebView2*, ICoreWebView2WebResourceRequestedEventArgs* args) {
-                return ServeResource(args);
+            [lease](ICoreWebView2*, ICoreWebView2WebResourceRequestedEventArgs* args) {
+                auto* owner = lease->owner.load(std::memory_order_acquire);
+                return owner && owner->IsCurrentCallback(lease, true)
+                    ? owner->ServeResource(args) : S_FALSE;
             }).Get(), &webResourceRequestedToken_);
     if (SUCCEEDED(result)) result = core_->add_NavigationStarting(
         Callback<ICoreWebView2NavigationStartingEventHandler>(
-            [this](ICoreWebView2*, ICoreWebView2NavigationStartingEventArgs* args) {
-                return OnNavigationStarting(args);
+            [lease](ICoreWebView2*, ICoreWebView2NavigationStartingEventArgs* args) {
+                auto* owner = lease->owner.load(std::memory_order_acquire);
+                return owner && owner->IsCurrentCallback(lease, true)
+                    ? owner->OnNavigationStarting(args) : S_FALSE;
             }).Get(), &navigationStartingToken_);
     if (SUCCEEDED(result)) result = core_->add_NavigationCompleted(
         Callback<ICoreWebView2NavigationCompletedEventHandler>(
-            [this](ICoreWebView2*, ICoreWebView2NavigationCompletedEventArgs* args) {
-                return OnNavigationCompleted(args);
+            [lease](ICoreWebView2*, ICoreWebView2NavigationCompletedEventArgs* args) {
+                auto* owner = lease->owner.load(std::memory_order_acquire);
+                return owner && owner->IsCurrentCallback(lease, true)
+                    ? owner->OnNavigationCompleted(args) : S_FALSE;
             }).Get(), &navigationCompletedToken_);
     if (SUCCEEDED(result)) result = core_->add_WebMessageReceived(
         Callback<ICoreWebView2WebMessageReceivedEventHandler>(
-            [this](ICoreWebView2*, ICoreWebView2WebMessageReceivedEventArgs* args) {
-                return OnWebMessage(args);
+            [lease](ICoreWebView2*, ICoreWebView2WebMessageReceivedEventArgs* args) {
+                auto* owner = lease->owner.load(std::memory_order_acquire);
+                return owner && owner->IsCurrentCallback(lease, true)
+                    ? owner->OnWebMessage(args) : S_FALSE;
             }).Get(), &webMessageReceivedToken_);
     if (SUCCEEDED(result)) result = core_->add_ProcessFailed(
         Callback<ICoreWebView2ProcessFailedEventHandler>(
-            [this](ICoreWebView2*, ICoreWebView2ProcessFailedEventArgs* args) {
-                return OnProcessFailed(args);
+            [lease](ICoreWebView2*, ICoreWebView2ProcessFailedEventArgs* args) {
+                auto* owner = lease->owner.load(std::memory_order_acquire);
+                return owner && owner->IsCurrentCallback(lease, true)
+                    ? owner->OnProcessFailed(args) : S_FALSE;
             }).Get(), &processFailedToken_);
     if (SUCCEEDED(result)) result = core_->add_NewWindowRequested(
         Callback<ICoreWebView2NewWindowRequestedEventHandler>(
@@ -253,7 +427,16 @@ HRESULT RichMediaSurfaceCoordinator::ConfigureCore() noexcept {
                 return args->put_State(COREWEBVIEW2_PERMISSION_STATE_DENY);
             }).Get(), &permissionRequestedToken_);
     ComPtr<ICoreWebView2_4> core4;
-    if (SUCCEEDED(result) && SUCCEEDED(core_.As(&core4)))
+    if (SUCCEEDED(result) && SUCCEEDED(core_.As(&core4))) {
+        result = core4->add_FrameCreated(
+            Callback<ICoreWebView2FrameCreatedEventHandler>(
+                [lease](ICoreWebView2*, ICoreWebView2FrameCreatedEventArgs* args) {
+                    auto* owner = lease->owner.load(std::memory_order_acquire);
+                    return owner && owner->IsCurrentCallback(lease, true)
+                        ? owner->OnFrameCreated(args) : S_FALSE;
+                }).Get(), &frameCreatedToken_);
+    }
+    if (SUCCEEDED(result) && core4)
         result = core4->add_DownloadStarting(
             Callback<ICoreWebView2DownloadStartingEventHandler>(
                 [](ICoreWebView2*, ICoreWebView2DownloadStartingEventArgs* args) {
@@ -295,6 +478,11 @@ HRESULT RichMediaSurfaceCoordinator::ConfigureCore() noexcept {
     return result;
 }
 
+bool RichMediaSurfaceCoordinator::IsAllowedNavigation(
+    const std::wstring_view uri) noexcept {
+    return uri == kPageUri;
+}
+
 HRESULT RichMediaSurfaceCoordinator::ServeResource(
     ICoreWebView2WebResourceRequestedEventArgs* args) noexcept {
     ComPtr<ICoreWebView2WebResourceRequest> request;
@@ -325,29 +513,89 @@ HRESULT RichMediaSurfaceCoordinator::ServeResource(
 
 HRESULT RichMediaSurfaceCoordinator::OnNavigationStarting(
     ICoreWebView2NavigationStartingEventArgs* args) noexcept {
+    if (state_.lifecycle == Lifecycle::Faulted ||
+        state_.lifecycle == Lifecycle::Closing) return S_FALSE;
     LPWSTR rawUri{};
     HRESULT result = args->get_Uri(&rawUri);
     const std::wstring uri = rawUri ? rawUri : L"";
     CoTaskMemFree(rawUri);
     if (FAILED(result)) return result;
-    if (uri != kPageUri) {
+    if (!IsAllowedNavigation(uri)) {
         Emit(L"Rich media navigation denied");
         return args->put_Cancel(TRUE);
     }
+    std::uint64_t navigationId{};
+    if (FAILED(result = args->get_NavigationId(&navigationId))) return result;
+    pendingNavigationId_ = navigationId;
     return S_OK;
+}
+
+HRESULT RichMediaSurfaceCoordinator::OnFrameCreated(
+    ICoreWebView2FrameCreatedEventArgs* args) noexcept {
+    if (state_.lifecycle == Lifecycle::Faulted ||
+        state_.lifecycle == Lifecycle::Closing) return S_FALSE;
+    ComPtr<ICoreWebView2Frame> frame;
+    HRESULT result = args ? args->get_Frame(&frame) : E_POINTER;
+    ComPtr<ICoreWebView2Frame2> frame2;
+    if (SUCCEEDED(result)) result = frame.As(&frame2);
+    if (FAILED(result) || !frame2) return FAILED(result) ? result : E_NOINTERFACE;
+    if (frameSubscriptions_.size() >= 16) {
+        Fault(L"frame-count", E_BOUNDS);
+        return S_OK;
+    }
+    const auto lease = callbackLease_;
+    FrameSubscription subscription;
+    subscription.frame = frame2;
+    result = frame2->add_NavigationStarting(
+        Callback<ICoreWebView2FrameNavigationStartingEventHandler>(
+            [lease](ICoreWebView2Frame*, ICoreWebView2NavigationStartingEventArgs* eventArgs) {
+                auto* owner = lease->owner.load(std::memory_order_acquire);
+                return owner && owner->IsCurrentCallback(lease, true)
+                    ? owner->OnFrameNavigationStarting(eventArgs) : S_FALSE;
+            }).Get(), &subscription.navigationStartingToken);
+    if (SUCCEEDED(result)) frameSubscriptions_.push_back(std::move(subscription));
+    return result;
+}
+
+HRESULT RichMediaSurfaceCoordinator::OnFrameNavigationStarting(
+    ICoreWebView2NavigationStartingEventArgs* args) noexcept {
+    if (state_.lifecycle == Lifecycle::Faulted ||
+        state_.lifecycle == Lifecycle::Closing) return S_FALSE;
+    LPWSTR rawUri{};
+    const HRESULT result = args ? args->get_Uri(&rawUri) : E_POINTER;
+    const std::wstring uri = rawUri ? rawUri : L"";
+    CoTaskMemFree(rawUri);
+    if (FAILED(result)) return result;
+    if (IsAllowedNavigation(uri)) return S_OK;
+    Emit(L"Rich media frame navigation denied");
+    return args->put_Cancel(TRUE);
 }
 
 HRESULT RichMediaSurfaceCoordinator::OnNavigationCompleted(
     ICoreWebView2NavigationCompletedEventArgs* args) noexcept {
+    if (state_.lifecycle == Lifecycle::Faulted ||
+        state_.lifecycle == Lifecycle::Closing) return S_FALSE;
     BOOL success{};
     HRESULT result = args->get_IsSuccess(&success);
+    std::uint64_t navigationId{};
+    if (SUCCEEDED(result)) result = args->get_NavigationId(&navigationId);
+    if (SUCCEEDED(result) && navigationId != pendingNavigationId_) {
+        Fault(L"navigation-generation", E_ACCESSDENIED);
+        return S_OK;
+    }
     if (FAILED(result) || !success) {
         Fault(L"navigation-complete", FAILED(result) ? result : E_FAIL);
         return S_OK;
     }
+    const auto commandId = ++nextCommandId_;
+    pendingCommand_ = PendingCommand{commandId, Command::Activate,
+                                     PendingPhase::AwaitingEvent};
     const std::wstring command = std::format(
-        L"{{\"command\":\"initialize\",\"generation\":0,\"sequence\":1,\"nextGeneration\":{}}}",
-        state_.authority.sessionGeneration);
+        L"{{\"command\":\"initialize\",\"environmentGeneration\":{},\"surfaceGeneration\":{},\"sessionGeneration\":{},\"controllerGeneration\":{},\"documentGeneration\":{},\"commandId\":{}}}",
+        state_.authority.environmentGeneration, state_.authority.surfaceGeneration,
+        state_.authority.sessionGeneration,
+        state_.authority.controllerGeneration, state_.authority.documentGeneration,
+        commandId);
     result = core_->PostWebMessageAsJson(command.c_str());
     if (FAILED(result)) Fault(L"initialize-command", result);
     return S_OK;
@@ -355,6 +603,8 @@ HRESULT RichMediaSurfaceCoordinator::OnNavigationCompleted(
 
 HRESULT RichMediaSurfaceCoordinator::OnWebMessage(
     ICoreWebView2WebMessageReceivedEventArgs* args) noexcept {
+    if (state_.lifecycle == Lifecycle::Faulted ||
+        state_.lifecycle == Lifecycle::Closing) return S_FALSE;
     LPWSTR rawSource{};
     LPWSTR rawJson{};
     HRESULT result = args->get_Source(&rawSource);
@@ -366,14 +616,29 @@ HRESULT RichMediaSurfaceCoordinator::OnWebMessage(
         Fault(L"message-envelope", FAILED(result) ? result : E_ACCESSDENIED); return S_OK;
     }
     State next = state_;
-    if (!ValidatePageEvent(json, state_.authority.sessionGeneration,
-                           state_.authority.commandSequence, next)) {
+    const std::optional<std::uint64_t> pendingId = pendingCommand_
+        ? std::optional<std::uint64_t>{pendingCommand_->id} : std::nullopt;
+    if (!ValidatePageEvent(json, state_.authority, state_.authority.eventSequence,
+                           pendingId, next)) {
         Fault(L"message-authority", E_ACCESSDENIED); return S_OK;
     }
+    const auto type = winrt::Windows::Data::Json::JsonObject::Parse(json)
+                          .GetNamedString(L"type");
     state_ = std::move(next);
-    if (const auto type = winrt::Windows::Data::Json::JsonObject::Parse(json)
-                              .GetNamedString(L"type");
-        type == L"ready") {
+    if (type == L"armed") {
+        if (!pendingCommand_ || pendingCommand_->command != Command::Activate ||
+            pendingCommand_->phase != PendingPhase::AwaitingEvent) {
+            Fault(L"spatial-activation-authority", E_ACCESSDENIED);
+            return S_OK;
+        }
+        pendingCommand_->phase = PendingPhase::AwaitingSpatialActivation;
+        if (!SendFocusedSpatialActivation())
+            Fault(L"spatial-activation-input", E_FAIL);
+        return S_OK;
+    }
+    if (pendingCommand_ &&
+        state_.lastAcknowledgedCommandId == pendingCommand_->id) pendingCommand_.reset();
+    if (type == L"ready") {
         pageReady_ = true;
         if (desiredVisible_) (void)SetVisible(true);
     }
@@ -382,7 +647,16 @@ HRESULT RichMediaSurfaceCoordinator::OnWebMessage(
 }
 
 HRESULT RichMediaSurfaceCoordinator::OnProcessFailed(
-    ICoreWebView2ProcessFailedEventArgs*) noexcept {
+    ICoreWebView2ProcessFailedEventArgs* args) noexcept {
+    if (state_.lifecycle == Lifecycle::Faulted ||
+        state_.lifecycle == Lifecycle::Closing) return S_FALSE;
+    COREWEBVIEW2_PROCESS_FAILED_KIND kind{};
+    if (!args || FAILED(args->get_ProcessFailedKind(&kind))) {
+        Fault(L"browser-process-failed", E_FAIL);
+        return S_OK;
+    }
+    if (kind == COREWEBVIEW2_PROCESS_FAILED_KIND_BROWSER_PROCESS_EXITED)
+        environmentFaulted_ = true;
     Fault(L"browser-process-failed");
     return S_OK;
 }
@@ -399,6 +673,8 @@ HRESULT RichMediaSurfaceCoordinator::SetVisible(const bool visible) noexcept {
     state_.lifecycle = effectiveVisible
         ? Lifecycle::Visible : Lifecycle::ReadyHidden;
     state_.inputEnabled = effectiveVisible;
+    if (configuration_.setPresentationVisible)
+        configuration_.setPresentationVisible(effectiveVisible);
     Emit(L"Rich media lifecycle=" + std::wstring{LifecycleName(state_.lifecycle)});
     return S_OK;
 }
@@ -409,6 +685,7 @@ HRESULT RichMediaSurfaceCoordinator::UpdateGeometry(
         rasterScale < 0.5 || rasterScale > 8.0) return E_INVALIDARG;
     configuration_.bounds = bounds;
     configuration_.rasterScale = rasterScale;
+    state_.focusedActionBoundsCurrent = false;
     if (!controllerBase_) return S_FALSE;
     HRESULT result = controllerBase_->put_Bounds(bounds);
     ComPtr<ICoreWebView2Controller3> controller3;
@@ -418,28 +695,66 @@ HRESULT RichMediaSurfaceCoordinator::UpdateGeometry(
 }
 
 std::wstring RichMediaSurfaceCoordinator::CommandJson(
-    const Command command, const Authority& authority) {
+    const Command command, const Authority& authority, const std::uint64_t commandId) {
     const wchar_t* name{};
     switch (command) {
     case Command::NavigatePrevious: name = L"previous"; break;
     case Command::NavigateNext: name = L"next"; break;
-    case Command::Activate: name = L"activate"; break;
+    case Command::Activate: name = L"arm-activate"; break;
     case Command::Back: name = L"back"; break;
     case Command::TogglePlayback: name = L"toggle"; break;
     case Command::SeekBackward: name = L"seek-back"; break;
     case Command::SeekForward: name = L"seek-forward"; break;
     }
-    return std::format(L"{{\"command\":\"{}\",\"generation\":{},\"sequence\":{}}}",
-                       name, authority.sessionGeneration, authority.commandSequence);
+    return std::format(
+        L"{{\"command\":\"{}\",\"environmentGeneration\":{},\"surfaceGeneration\":{},\"sessionGeneration\":{},\"controllerGeneration\":{},\"documentGeneration\":{},\"commandId\":{}}}",
+        name, authority.environmentGeneration, authority.surfaceGeneration,
+        authority.sessionGeneration,
+        authority.controllerGeneration, authority.documentGeneration, commandId);
+}
+
+bool RichMediaSurfaceCoordinator::SendFocusedSpatialActivation() noexcept {
+    if (!controller_ || !state_.inputEnabled || !pendingCommand_ ||
+        pendingCommand_->command != Command::Activate ||
+        pendingCommand_->phase != PendingPhase::AwaitingSpatialActivation ||
+        !state_.focusedActionBoundsCurrent) return false;
+    const auto& bounds = state_.focusedActionBounds;
+    POINT point{};
+    if (!FocusedActionPoint(bounds, configuration_.bounds, point)) return false;
+    HRESULT result = controller_->SendMouseInput(
+        COREWEBVIEW2_MOUSE_EVENT_KIND_MOVE,
+        COREWEBVIEW2_MOUSE_EVENT_VIRTUAL_KEYS_NONE, 0, point);
+    if (SUCCEEDED(result)) result = controller_->SendMouseInput(
+        COREWEBVIEW2_MOUSE_EVENT_KIND_LEFT_BUTTON_DOWN,
+        COREWEBVIEW2_MOUSE_EVENT_VIRTUAL_KEYS_LEFT_BUTTON, 0, point);
+    if (SUCCEEDED(result)) result = controller_->SendMouseInput(
+        COREWEBVIEW2_MOUSE_EVENT_KIND_LEFT_BUTTON_UP,
+        COREWEBVIEW2_MOUSE_EVENT_VIRTUAL_KEYS_NONE, 0, point);
+    return SUCCEEDED(result);
+}
+
+bool RichMediaSurfaceCoordinator::FocusedActionPoint(
+    const ActionBounds& actionBounds, const RECT& surfaceBounds,
+    POINT& point) noexcept {
+    const double centerX = actionBounds.x + actionBounds.width / 2.0;
+    const double centerY = actionBounds.y + actionBounds.height / 2.0;
+    const double surfaceWidth = surfaceBounds.right - surfaceBounds.left;
+    const double surfaceHeight = surfaceBounds.bottom - surfaceBounds.top;
+    if (!std::isfinite(centerX) || !std::isfinite(centerY) || centerX < 0.0 ||
+        centerY < 0.0 || centerX >= surfaceWidth || centerY >= surfaceHeight) return false;
+    point = {static_cast<LONG>(std::lround(centerX)),
+             static_cast<LONG>(std::lround(centerY))};
+    return true;
 }
 
 bool RichMediaSurfaceCoordinator::SendCommand(const Command command) noexcept {
-    if (!core_ || state_.lifecycle != Lifecycle::Visible || !state_.inputEnabled) return false;
-    Authority authority = state_.authority;
-    authority.commandSequence++;
-    const std::wstring json = CommandJson(command, authority);
+    if (!core_ || state_.lifecycle != Lifecycle::Visible || !state_.inputEnabled ||
+        pendingCommand_ || (command == Command::Activate &&
+                            !state_.focusedActionBoundsCurrent)) return false;
+    const auto commandId = ++nextCommandId_;
+    const std::wstring json = CommandJson(command, state_.authority, commandId);
     if (FAILED(core_->PostWebMessageAsJson(json.c_str()))) return false;
-    state_.authority.commandSequence = authority.commandSequence;
+    pendingCommand_ = PendingCommand{commandId, command, PendingPhase::AwaitingEvent};
     return true;
 }
 
@@ -454,12 +769,45 @@ bool RichMediaSurfaceCoordinator::ForwardMouse(
     case WM_RBUTTONDOWN: kind = COREWEBVIEW2_MOUSE_EVENT_KIND_RIGHT_BUTTON_DOWN; break;
     case WM_RBUTTONUP: kind = COREWEBVIEW2_MOUSE_EVENT_KIND_RIGHT_BUTTON_UP; break;
     case WM_MOUSEWHEEL: kind = COREWEBVIEW2_MOUSE_EVENT_KIND_WHEEL; break;
+    case WM_MOUSELEAVE: kind = COREWEBVIEW2_MOUSE_EVENT_KIND_LEAVE; break;
     default: return false;
     }
-    POINT point{GET_X_LPARAM(lParam), GET_Y_LPARAM(lParam)};
+    POINT point = lastMousePoint_;
+    if (message != WM_MOUSELEAVE &&
+        !SurfaceLocalPoint(configuration_.ownerWindow, configuration_.bounds,
+                           message, lParam, point)) {
+        if (mouseInside_) {
+            mouseInside_ = false;
+            (void)controller_->SendMouseInput(
+                COREWEBVIEW2_MOUSE_EVENT_KIND_LEAVE,
+                COREWEBVIEW2_MOUSE_EVENT_VIRTUAL_KEYS_NONE, 0, POINT{});
+        }
+        return false;
+    }
+    if (message == WM_MOUSELEAVE) point = {};
+    if (message == WM_MOUSEMOVE && !mouseInside_) {
+        TRACKMOUSEEVENT tracking{sizeof(tracking), TME_LEAVE,
+                                 configuration_.ownerWindow, 0};
+        (void)TrackMouseEvent(&tracking);
+    }
+    mouseInside_ = message != WM_MOUSELEAVE;
+    lastMousePoint_ = point;
     return SUCCEEDED(controller_->SendMouseInput(
         kind, static_cast<COREWEBVIEW2_MOUSE_EVENT_VIRTUAL_KEYS>(LOWORD(wParam)),
         message == WM_MOUSEWHEEL ? GET_WHEEL_DELTA_WPARAM(wParam) : 0, point));
+}
+
+bool RichMediaSurfaceCoordinator::SurfaceLocalPoint(
+    HWND ownerWindow, const RECT& bounds, const UINT message, const LPARAM lParam,
+    POINT& point) noexcept {
+    point = {GET_X_LPARAM(lParam), GET_Y_LPARAM(lParam)};
+    if (message == WM_MOUSEWHEEL &&
+        (!ownerWindow || !ScreenToClient(ownerWindow, &point))) return false;
+    point.x -= bounds.left;
+    point.y -= bounds.top;
+    return point.x >= 0 && point.y >= 0 &&
+        point.x < bounds.right - bounds.left &&
+        point.y < bounds.bottom - bounds.top;
 }
 
 bool RichMediaSurfaceCoordinator::ForwardKey(
@@ -479,7 +827,8 @@ HRESULT RichMediaSurfaceCoordinator::GetAutomationProvider(
     IRawElementProviderSimple** provider) const noexcept {
     if (!provider) return E_POINTER;
     *provider = nullptr;
-    if (!controller_) return S_FALSE;
+    if (!controller_ || state_.lifecycle != Lifecycle::Visible ||
+        !state_.inputEnabled || !pageReady_) return S_FALSE;
     ComPtr<ICoreWebView2CompositionController2> controller2;
     HRESULT result = controller_.As(&controller2);
     ComPtr<IUnknown> unknown;
@@ -488,32 +837,65 @@ HRESULT RichMediaSurfaceCoordinator::GetAutomationProvider(
 }
 
 bool RichMediaSurfaceCoordinator::ValidatePageEvent(
-    const std::wstring_view json, const std::uint64_t expectedGeneration,
-    const std::uint64_t lastSequence, State& next) noexcept {
+    const std::wstring_view json, const Authority& expectedAuthority,
+    const std::uint64_t lastSequence,
+    const std::optional<std::uint64_t> pendingCommandId, State& next) noexcept {
     if (json.empty() || json.size() > kMaximumMessageCharacters || json.front() != L'{' || json.back() != L'}')
         return false;
     try {
         const auto object = winrt::Windows::Data::Json::JsonObject::Parse(json);
-        if (object.Size() != 5 || !object.HasKey(L"type") ||
-            !object.HasKey(L"generation") || !object.HasKey(L"sequence") ||
-            !object.HasKey(L"focus") || !object.HasKey(L"playing")) return false;
+        constexpr std::array required{
+            L"type", L"environmentGeneration", L"surfaceGeneration", L"sessionGeneration",
+            L"controllerGeneration", L"documentGeneration", L"eventSequence",
+            L"commandId", L"focus", L"playing", L"bounds"};
+        if (object.Size() != required.size() ||
+            std::any_of(required.begin(), required.end(),
+                        [&](const wchar_t* key) { return !object.HasKey(key); })) return false;
         const std::wstring type = object.GetNamedString(L"type").c_str();
         const std::wstring focus = object.GetNamedString(L"focus").c_str();
-        const double generationNumber = object.GetNamedNumber(L"generation");
-        const double sequenceNumber = object.GetNamedNumber(L"sequence");
-        if (generationNumber < 0.0 || sequenceNumber <= 0.0 ||
-            generationNumber != std::floor(generationNumber) ||
-            sequenceNumber != std::floor(sequenceNumber) ||
-            generationNumber > static_cast<double>(UINT64_MAX) ||
-            sequenceNumber > static_cast<double>(UINT64_MAX)) return false;
-        const auto generation = static_cast<std::uint64_t>(generationNumber);
-        const auto sequence = static_cast<std::uint64_t>(sequenceNumber);
-        if (generation != expectedGeneration || sequence <= lastSequence ||
+        const auto number = [&](const wchar_t* key, std::uint64_t& value) {
+            const double raw = object.GetNamedNumber(key);
+            if (raw < 0.0 || raw != std::floor(raw) ||
+                raw > static_cast<double>(UINT64_MAX)) return false;
+            value = static_cast<std::uint64_t>(raw);
+            return true;
+        };
+        Authority received;
+        std::uint64_t commandId{};
+        if (!number(L"environmentGeneration", received.environmentGeneration) ||
+            !number(L"surfaceGeneration", received.surfaceGeneration) ||
+            !number(L"sessionGeneration", received.sessionGeneration) ||
+            !number(L"controllerGeneration", received.controllerGeneration) ||
+            !number(L"documentGeneration", received.documentGeneration) ||
+            !number(L"eventSequence", received.eventSequence) ||
+            !number(L"commandId", commandId) || received.eventSequence == 0) return false;
+        if (received.environmentGeneration != expectedAuthority.environmentGeneration ||
+            received.surfaceGeneration != expectedAuthority.surfaceGeneration ||
+            received.sessionGeneration != expectedAuthority.sessionGeneration ||
+            received.controllerGeneration != expectedAuthority.controllerGeneration ||
+            received.documentGeneration != expectedAuthority.documentGeneration ||
+            received.eventSequence <= lastSequence ||
+            (pendingCommandId ? commandId != *pendingCommandId : commandId != 0) ||
             (type != L"ready" && type != L"focus" && type != L"media" &&
-             type != L"back") ||
+             type != L"back" && type != L"armed") ||
             (focus != L"back" && focus != L"play" && focus != L"seek")) return false;
-        next.authority.sessionGeneration = generation;
-        next.authority.commandSequence = sequence;
+        const auto boundsObject = object.GetNamedObject(L"bounds");
+        constexpr std::array boundsKeys{L"x", L"y", L"width", L"height"};
+        if (boundsObject.Size() != boundsKeys.size() ||
+            std::any_of(boundsKeys.begin(), boundsKeys.end(),
+                        [&](const wchar_t* key) { return !boundsObject.HasKey(key); })) return false;
+        ActionBounds bounds{
+            boundsObject.GetNamedNumber(L"x"), boundsObject.GetNamedNumber(L"y"),
+            boundsObject.GetNamedNumber(L"width"), boundsObject.GetNamedNumber(L"height")};
+        if (!std::isfinite(bounds.x) || !std::isfinite(bounds.y) ||
+            !std::isfinite(bounds.width) || !std::isfinite(bounds.height) ||
+            bounds.x < 0.0 || bounds.y < 0.0 || bounds.width <= 0.0 ||
+            bounds.height <= 0.0 || bounds.x + bounds.width > 8192.0 ||
+            bounds.y + bounds.height > 8192.0) return false;
+        next.authority = received;
+        next.lastAcknowledgedCommandId = commandId;
+        next.focusedActionBounds = bounds;
+        next.focusedActionBoundsCurrent = true;
         next.focusedElement = focus;
         next.playing = object.GetNamedBoolean(L"playing");
         return true;
@@ -528,6 +910,9 @@ void RichMediaSurfaceCoordinator::Fault(
     state_.inputEnabled = false;
     state_.failureCode.assign(code);
     if (controllerBase_) (void)controllerBase_->put_IsVisible(FALSE);
+    pendingCommand_.reset();
+    pageReady_ = false;
+    if (configuration_.setPresentationVisible) configuration_.setPresentationVisible(false);
     Emit(L"Rich media lifecycle=faulted code=" + std::wstring{code} +
          L" hr=" + std::to_wstring(static_cast<long>(result)));
     if (configuration_.invalidate) configuration_.invalidate();
@@ -535,6 +920,12 @@ void RichMediaSurfaceCoordinator::Fault(
 
 void RichMediaSurfaceCoordinator::RemoveEvents() noexcept {
     if (!core_) return;
+    for (auto& subscription : frameSubscriptions_) {
+        if (subscription.frame && subscription.navigationStartingToken.value)
+            (void)subscription.frame->remove_NavigationStarting(
+                subscription.navigationStartingToken);
+    }
+    frameSubscriptions_.clear();
     if (navigationStartingToken_.value) (void)core_->remove_NavigationStarting(navigationStartingToken_);
     if (navigationCompletedToken_.value) (void)core_->remove_NavigationCompleted(navigationCompletedToken_);
     if (webResourceRequestedToken_.value) (void)core_->remove_WebResourceRequested(webResourceRequestedToken_);
@@ -543,6 +934,8 @@ void RichMediaSurfaceCoordinator::RemoveEvents() noexcept {
     if (newWindowRequestedToken_.value) (void)core_->remove_NewWindowRequested(newWindowRequestedToken_);
     if (permissionRequestedToken_.value) (void)core_->remove_PermissionRequested(permissionRequestedToken_);
     ComPtr<ICoreWebView2_4> core4;
+    if (frameCreatedToken_.value && SUCCEEDED(core_.As(&core4)))
+        (void)core4->remove_FrameCreated(frameCreatedToken_);
     if (downloadStartingToken_.value && SUCCEEDED(core_.As(&core4)))
         (void)core4->remove_DownloadStarting(downloadStartingToken_);
     ComPtr<ICoreWebView2_10> core10;
@@ -559,59 +952,163 @@ void RichMediaSurfaceCoordinator::RemoveEvents() noexcept {
     processFailedToken_ = {}; newWindowRequestedToken_ = {}; permissionRequestedToken_ = {};
     downloadStartingToken_ = {}; basicAuthenticationToken_ = {};
     serverCertificateToken_ = {}; externalUriToken_ = {};
+    frameCreatedToken_ = {};
 }
 
 void RichMediaSurfaceCoordinator::Shutdown() noexcept {
-    if (state_.lifecycle == Lifecycle::Absent) return;
+    BeginSessionTeardown();
+    CompleteSessionTeardown();
+    ReleaseEnvironment(true);
+    profileRootDirectory_.clear();
+}
+
+void RichMediaSurfaceCoordinator::BeginSessionTeardown() noexcept {
+    if (state_.lifecycle == Lifecycle::Absent || teardownBegun_) return;
+    sessionTeardownResult_ = {};
+    retrySurfaceGeneration_ = state_.lifecycle == Lifecycle::Faulted
+        ? state_.authority.surfaceGeneration : 0;
+    const auto creatingLease = callbackLease_;
+    if (creatingLease &&
+        (state_.lifecycle == Lifecycle::EnvironmentCreating ||
+         state_.lifecycle == Lifecycle::ControllerCreating)) {
+        desiredVisible_ = false;
+        state_.inputEnabled = false;
+        if (configuration_.setPresentationVisible)
+            configuration_.setPresentationVisible(false);
+        const auto creationDeadline = std::chrono::steady_clock::now() +
+            std::chrono::seconds(5);
+        while (creatingLease->outstandingCreates.load(std::memory_order_acquire) != 0 &&
+               std::chrono::steady_clock::now() < creationDeadline) {
+            MSG message{};
+            while (PeekMessageW(&message, nullptr, 0, 0, PM_REMOVE)) {
+                TranslateMessage(&message);
+                DispatchMessageW(&message);
+            }
+            MsgWaitForMultipleObjectsEx(
+                0, nullptr, 10, QS_ALLINPUT, MWMO_INPUTAVAILABLE);
+        }
+        if (creatingLease->outstandingCreates.load(std::memory_order_acquire) != 0)
+            Emit(L"Rich media callback-retirement deadline expired");
+    }
     state_.lifecycle = Lifecycle::Closing;
     state_.inputEnabled = false;
+    pendingCommand_.reset();
     Emit(L"Rich media lifecycle=closing");
+    if (configuration_.setPresentationVisible) configuration_.setPresentationVisible(false);
+    RetireCallbacks();
+    const auto retiredLeases = retiredLeases_;
     RemoveEvents();
-    if (controllerBase_) (void)controllerBase_->put_IsVisible(FALSE);
-    if (controller_) (void)controller_->put_RootVisualTarget(nullptr);
-    if (controllerBase_) (void)controllerBase_->Close();
+    sessionTeardownResult_.browserProcessId = environmentSignal_
+        ? environmentSignal_->browserProcessId.load(std::memory_order_acquire) : 0;
+    sessionTeardownResult_.visibilityResult = controllerBase_
+        ? controllerBase_->put_IsVisible(FALSE) : S_FALSE;
+    sessionTeardownResult_.rootVisualResult = controller_
+        ? controller_->put_RootVisualTarget(nullptr) : S_FALSE;
+    sessionTeardownResult_.controllerCloseResult = controllerBase_
+        ? controllerBase_->Close() : S_FALSE;
     core_.Reset(); controllerBase_.Reset(); controller_.Reset();
-    const auto exitDeadline = std::chrono::steady_clock::now() +
+    const auto callbackDeadline = std::chrono::steady_clock::now() +
         std::chrono::seconds(5);
-    while (environment5_ && !browserProcessExited_ &&
-           std::chrono::steady_clock::now() < exitDeadline) {
+    const auto callbacksPending = [&] {
+        return std::any_of(retiredLeases.begin(), retiredLeases.end(),
+            [](const auto& lease) {
+                return lease->outstandingCreates.load(std::memory_order_acquire) != 0;
+            });
+    };
+    while (callbacksPending() &&
+           std::chrono::steady_clock::now() < callbackDeadline) {
         MSG message{};
         while (PeekMessageW(&message, nullptr, 0, 0, PM_REMOVE)) {
             TranslateMessage(&message);
             DispatchMessageW(&message);
         }
-        MsgWaitForMultipleObjectsEx(
-            0, nullptr, 10, QS_ALLINPUT, MWMO_INPUTAVAILABLE);
+        MsgWaitForMultipleObjectsEx(0, nullptr, 10, QS_ALLINPUT, MWMO_INPUTAVAILABLE);
     }
-    if (environment5_ && browserProcessExitedToken_.value)
-        (void)environment5_->remove_BrowserProcessExited(
-            browserProcessExitedToken_);
-    browserProcessExitedToken_ = {};
-    environment5_.Reset();
-    environment_.Reset();
-    if (!browserProcessExited_)
-        Emit(L"Rich media browser-process-exit deadline expired");
-    if (!configuration_.ephemeralProfileDirectory.empty()) {
-        std::error_code error;
-        const auto cleanupDeadline = std::chrono::steady_clock::now() +
-            std::chrono::seconds(2);
-        do {
-            error.clear();
-            std::filesystem::remove_all(
-                configuration_.ephemeralProfileDirectory, error);
-            if (!error ||
-                !std::filesystem::exists(configuration_.ephemeralProfileDirectory))
-                break;
-            MsgWaitForMultipleObjectsEx(
-                0, nullptr, 20, QS_ALLINPUT, MWMO_INPUTAVAILABLE);
-        } while (std::chrono::steady_clock::now() < cleanupDeadline);
-        if (error) Emit(L"Rich media ephemeral-profile removal deferred error=" +
-                        std::to_wstring(error.value()));
-    }
+    const bool callbackDeadlineExpired = callbacksPending();
+    if (callbackDeadlineExpired)
+        Emit(L"Rich media callback-retirement deadline expired");
+    retiredLeases_.clear();
+    sessionTeardownResult_.callbackDeadlineExpired = callbackDeadlineExpired;
+    configuration_ = {};
+    sessionTeardownResult_.sessionOwnersEmpty =
+        !core_ && !controllerBase_ && !controller_ && !callbackLease_ &&
+        retiredLeases_.empty() && frameSubscriptions_.empty() &&
+        !configuration_.compositionTarget && !configuration_.diagnostic &&
+        !configuration_.invalidate && !configuration_.setPresentationVisible;
+    sessionTeardownResult_.environmentRetained =
+        environmentLifecycle_ == EnvironmentLifecycle::Ready && environment_;
+    teardownBegun_ = true;
+}
+
+void RichMediaSurfaceCoordinator::CompleteSessionTeardown() noexcept {
+    if (!teardownBegun_) return;
     state_ = {};
     desiredVisible_ = false;
     pageReady_ = false;
-    Emit(L"Rich media lifecycle=absent");
+    mouseInside_ = false;
+    pendingNavigationId_ = 0;
+    teardownBegun_ = false;
+}
+
+void RichMediaSurfaceCoordinator::ReleaseEnvironment(
+    const bool markForDeferredCleanup) noexcept {
+    if (environmentLifecycle_ == EnvironmentLifecycle::Cold) return;
+    environmentLifecycle_ = EnvironmentLifecycle::ShuttingDown;
+    if (environment5_ && browserProcessExitedToken_.value)
+        (void)environment5_->remove_BrowserProcessExited(browserProcessExitedToken_);
+    browserProcessExitedToken_ = {};
+    environment5_.Reset();
+    environment_.Reset();
+    if (markForDeferredCleanup) MarkCurrentProfileForDeferredCleanup();
+    environmentSignal_.reset();
+    environmentFaulted_ = false;
+    environmentLifecycle_ = EnvironmentLifecycle::Cold;
+}
+
+void RichMediaSurfaceCoordinator::MarkCurrentProfileForDeferredCleanup() const noexcept {
+    if (environmentProfileDirectory_.empty()) return;
+    try {
+        std::filesystem::create_directories(environmentProfileDirectory_);
+        const auto marker = std::filesystem::path{environmentProfileDirectory_} /
+            (L".wrail-retired-owner-" + std::to_wstring(GetCurrentProcessId()));
+        std::ofstream stream(marker, std::ios::binary | std::ios::trunc);
+        stream << "WidgetRail rich-media deferred cleanup\n";
+    } catch (...) {
+    }
+}
+
+void RichMediaSurfaceCoordinator::CleanupMarkedPriorProfiles() const noexcept {
+    if (profileRootDirectory_.empty()) return;
+    try {
+        std::size_t inspected{};
+        for (const auto& entry : std::filesystem::directory_iterator(profileRootDirectory_)) {
+            if (++inspected > 32) break;
+            if (!entry.is_directory()) continue;
+            const auto name = entry.path().filename().wstring();
+            if (!name.starts_with(L"wrail-rich-media-")) continue;
+            for (const auto& marker : std::filesystem::directory_iterator(entry.path())) {
+                const auto markerName = marker.path().filename().wstring();
+                constexpr std::wstring_view prefix = L".wrail-retired-owner-";
+                if (!marker.is_regular_file() || !markerName.starts_with(prefix)) continue;
+                const auto ownerText = markerName.substr(prefix.size());
+                wchar_t* end{};
+                const unsigned long owner = std::wcstoul(ownerText.c_str(), &end, 10);
+                if (!end || *end != L'\0' || owner == 0 || owner > MAXDWORD) break;
+                HANDLE process = OpenProcess(SYNCHRONIZE, FALSE, static_cast<DWORD>(owner));
+                if (process) {
+                    const bool alive = WaitForSingleObject(process, 0) != WAIT_OBJECT_0;
+                    CloseHandle(process);
+                    if (alive) break;
+                } else if (GetLastError() != ERROR_INVALID_PARAMETER) {
+                    break;
+                }
+                std::error_code error;
+                std::filesystem::remove_all(entry.path(), error);
+                break;
+            }
+        }
+    } catch (...) {
+    }
 }
 
 void RichMediaSurfaceCoordinator::Emit(std::wstring message) const {

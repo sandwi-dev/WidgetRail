@@ -8,16 +8,75 @@
 #include <wrl/client.h>
 
 #include <algorithm>
+#include <array>
 #include <chrono>
 #include <filesystem>
+#include <fstream>
 #include <iostream>
+#include <memory>
 #include <numeric>
+#include <stdexcept>
 #include <string>
 #include <thread>
 #include <vector>
 
 using namespace std::chrono_literals;
 using Microsoft::WRL::ComPtr;
+
+namespace widgetrail::richmedia {
+
+class RichMediaSurfaceCoordinatorTestPeer final {
+public:
+    static void Fault(RichMediaSurfaceCoordinator& coordinator,
+                      const std::wstring_view code) {
+        coordinator.Fault(code, E_FAIL);
+    }
+    static bool IsAllowedNavigation(const std::wstring_view uri) {
+        return RichMediaSurfaceCoordinator::IsAllowedNavigation(uri);
+    }
+    static bool SurfaceLocalPoint(HWND ownerWindow, const RECT& bounds,
+                                  const UINT message, const LPARAM lParam,
+                                  POINT& point) {
+        return RichMediaSurfaceCoordinator::SurfaceLocalPoint(
+            ownerWindow, bounds, message, lParam, point);
+    }
+    static bool FocusedActionPoint(const ActionBounds& actionBounds,
+                                   const RECT& surfaceBounds, POINT& point) {
+        return RichMediaSurfaceCoordinator::FocusedActionPoint(
+            actionBounds, surfaceBounds, point);
+    }
+    static bool FinalConfigurationReleased(
+        const RichMediaSurfaceCoordinator& coordinator) {
+        const auto& configuration = coordinator.configuration_;
+        return !configuration.compositionTarget && !configuration.diagnostic &&
+            !configuration.invalidate && !configuration.setPresentationVisible;
+    }
+    static bool BrowserExitObserverActive(
+        const RichMediaSurfaceCoordinator& coordinator) {
+        return coordinator.BrowserProcessExitObserverActive();
+    }
+    static bool BrowserExitObserved(
+        const RichMediaSurfaceCoordinator& coordinator) {
+        return coordinator.BrowserProcessExitObserved();
+    }
+    static bool EnvironmentObjectsReleased(
+        const RichMediaSurfaceCoordinator& coordinator) {
+        return !coordinator.environment_ && !coordinator.environment5_ &&
+            !coordinator.environmentSignal_ &&
+            !coordinator.browserProcessExitedToken_.value;
+    }
+    static void RecordLiveUnexpectedBrowserExit(
+        RichMediaSurfaceCoordinator& coordinator, const DWORD processId) {
+        RichMediaSurfaceCoordinator::RecordBrowserProcessExit(
+            coordinator.environmentSignal_, processId);
+    }
+    static void MarkEnvironmentFaulted(
+        RichMediaSurfaceCoordinator& coordinator) {
+        coordinator.environmentFaulted_ = true;
+    }
+};
+
+} // namespace widgetrail::richmedia
 
 namespace {
 
@@ -46,7 +105,14 @@ LRESULT CALLBACK WindowProc(HWND window, UINT message, WPARAM wParam, LPARAM lPa
 
 class Fixture final {
 public:
-    Fixture(const unsigned int ordinal, const bool visible) {
+    Fixture(const unsigned int ordinal, const bool visible,
+            std::filesystem::path profileRoot = {})
+        : profileRoot_(profileRoot.empty()
+              ? std::filesystem::temp_directory_path() /
+                    (L"wrail-rich-media-proof-root-" +
+                     std::to_wstring(GetCurrentProcessId()) + L"-" +
+                     std::to_wstring(ordinal))
+              : std::move(profileRoot)) {
         WNDCLASSW windowClass{};
         windowClass.hInstance = GetModuleHandleW(nullptr);
         windowClass.lpfnWndProc = WindowProc;
@@ -64,114 +130,309 @@ public:
         std::wstring error;
         Require(composition_.Initialize(window_, factory_.Get(), error),
                 "composition owner initialization failed");
-        ComPtr<IUnknown> target;
-        Require(SUCCEEDED(composition_.CreateExternalContentTarget(&target)),
-                "external composition slot creation failed");
-        profile_ = std::filesystem::temp_directory_path() /
-            (L"wrail-rich-media-proof-test-" + std::to_wstring(GetCurrentProcessId()) +
-             L"-" + std::to_wstring(ordinal));
-        widgetrail::richmedia::Configuration configuration;
-        configuration.ownerWindow = window_;
-        configuration.compositionTarget = target;
-        configuration.bounds = {0, 0, 800, 520};
-        configuration.rasterScale = 1.0;
-        configuration.initiallyVisible = visible;
-        configuration.ephemeralProfileDirectory = profile_.wstring();
-        configuration.diagnostic = [](const std::wstring_view message) {
-            std::wcout << L"diagnostic " << message << L'\n' << std::flush;
-        };
-        Require(SUCCEEDED(coordinator_.Initialize(std::move(configuration))),
+        Require(SUCCEEDED(OpenSession(visible, false)),
                 "coordinator initialization submission failed");
-        widgetrail::OverlayCompositionSurface::CommitTiming timing;
-        Require(SUCCEEDED(composition_.CommitExternalContentPresentation(
-                    {0, 0, 800, 520}, visible, timing)),
-                "external composition presentation failed");
     }
 
-    ~Fixture() { Close(); }
-
-    void Close() {
-        if (!window_) return;
+    ~Fixture() {
+        if (sessionOpen_) (void)CloseSession();
         coordinator_.Shutdown();
-        widgetrail::OverlayCompositionSurface::CommitTiming timing;
-        (void)composition_.DetachExternalContentTarget(timing);
         composition_.Reset();
         factory_.Reset();
-        DestroyWindow(window_);
-        window_ = nullptr;
+        if (window_) DestroyWindow(window_);
+    }
+
+    HRESULT OpenSession(const bool visible, const bool retry) {
+        ComPtr<IUnknown> target;
+        HRESULT result = composition_.CreateExternalContentTarget(&target);
+        if (FAILED(result)) return result;
+        auto configuration = ConfigurationFor(target, visible);
+        result = retry ? coordinator_.Retry(std::move(configuration))
+                       : coordinator_.Initialize(std::move(configuration));
+        if (FAILED(result)) return result;
+        widgetrail::OverlayCompositionSurface::CommitTiming timing;
+        result = composition_.CommitExternalContentPresentation(
+            {0, 0, 800, 520}, false, timing);
+        if (SUCCEEDED(result)) sessionOpen_ = true;
+        return result;
+    }
+
+    HRESULT CloseSession() {
+        if (!sessionOpen_) return S_FALSE;
+        coordinator_.BeginSessionTeardown();
+        releasedBeforeDetach_ =
+            widgetrail::richmedia::RichMediaSurfaceCoordinatorTestPeer::
+                FinalConfigurationReleased(coordinator_);
+        widgetrail::OverlayCompositionSurface::CommitTiming timing;
+        const HRESULT result = composition_.DetachExternalContentTarget(timing);
+        detachWaited_ = timing.waitedForCompletion;
+        coordinator_.CompleteSessionTeardown();
+        sessionOpen_ = false;
+        return result;
     }
 
     widgetrail::richmedia::RichMediaSurfaceCoordinator& coordinator() {
         return coordinator_;
     }
-    const std::filesystem::path& profile() const { return profile_; }
+    HRESULT Retry() {
+        const HRESULT result = CloseSession();
+        if (FAILED(result) || !detachWaited_) return FAILED(result) ? result : E_FAIL;
+        return OpenSession(true, true);
+    }
+    HRESULT Reopen(const bool visible = true) {
+        const HRESULT result = CloseSession();
+        if (FAILED(result) || !detachWaited_) return FAILED(result) ? result : E_FAIL;
+        return OpenSession(visible, false);
+    }
+    const std::filesystem::path& profileRoot() const { return profileRoot_; }
+    bool presentationVisible() const { return presentationVisible_; }
+    bool presentationCommitFailed() const { return presentationCommitFailed_; }
+    HWND window() const { return window_; }
+    bool sawDiagnostic(const std::wstring_view text) const {
+        return std::any_of(diagnostics_.begin(), diagnostics_.end(),
+            [&](const std::wstring& value) { return value.find(text) != std::wstring::npos; });
+    }
+    bool finalConfigurationReleased() const {
+        return widgetrail::richmedia::RichMediaSurfaceCoordinatorTestPeer::
+            FinalConfigurationReleased(coordinator_);
+    }
+    bool finalConfigurationReleasedBeforeDetach() const {
+        return releasedBeforeDetach_;
+    }
+    bool finalDetachSucceededAndWaited() const {
+        return detachWaited_;
+    }
 
 private:
+    widgetrail::richmedia::Configuration ConfigurationFor(
+        Microsoft::WRL::ComPtr<IUnknown> target, const bool visible) {
+        widgetrail::richmedia::Configuration configuration;
+        configuration.ownerWindow = window_;
+        configuration.compositionTarget = std::move(target);
+        configuration.bounds = {0, 0, 800, 520};
+        configuration.rasterScale = 1.0;
+        configuration.initiallyVisible = visible;
+        configuration.profileRootDirectory = profileRoot_.wstring();
+        configuration.diagnostic = [this](const std::wstring_view message) {
+            diagnostics_.emplace_back(message);
+            std::wcout << L"diagnostic " << message << L'\n' << std::flush;
+        };
+        configuration.setPresentationVisible = [this](const bool shown) {
+            presentationVisible_ = shown;
+            widgetrail::OverlayCompositionSurface::CommitTiming timing;
+            const HRESULT result = composition_.CommitExternalContentPresentation(
+                {0, 0, 800, 520}, shown, timing);
+            if (FAILED(result)) presentationCommitFailed_ = true;
+        };
+        return configuration;
+    }
     HWND window_{};
     ComPtr<ID2D1Factory1> factory_;
     widgetrail::OverlayCompositionSurface composition_;
     widgetrail::richmedia::RichMediaSurfaceCoordinator coordinator_;
-    std::filesystem::path profile_;
+    std::filesystem::path profileRoot_;
+    bool sessionOpen_{};
+    bool presentationVisible_{};
+    bool presentationCommitFailed_{};
+    bool releasedBeforeDetach_{};
+    bool detachWaited_{};
+    std::vector<std::wstring> diagnostics_;
 };
 
 void RunContractCases() {
     using namespace widgetrail::richmedia;
     State state;
-    state.authority = {7, 3};
+    state.authority = {2, 3, 7, 11, 13, 3};
     State next = state;
     Require(RichMediaSurfaceCoordinator::ValidatePageEvent(
-        LR"({"type":"focus","generation":7,"sequence":4,"focus":"seek","playing":false})",
-        7, 3, next), "exact current event was rejected");
-    Require(next.focusedElement == L"seek" && next.authority.commandSequence == 4,
+        LR"({"type":"focus","environmentGeneration":2,"surfaceGeneration":3,"sessionGeneration":7,"controllerGeneration":11,"documentGeneration":13,"eventSequence":4,"commandId":17,"focus":"seek","playing":false,"bounds":{"x":100,"y":40,"width":120,"height":60}})",
+        state.authority, 3, 17, next), "exact current correlated event was rejected");
+    Require(next.focusedElement == L"seek" && next.authority.eventSequence == 4 &&
+            next.lastAcknowledgedCommandId == 17 &&
+            next.focusedActionBoundsCurrent && next.focusedActionBounds.x == 100.0,
             "exact event authority was not retained");
     next = state;
     Require(!RichMediaSurfaceCoordinator::ValidatePageEvent(
-        LR"({"type":"focus","generation":6,"sequence":4,"focus":"seek","playing":false})",
-        7, 3, next), "stale generation was admitted");
+        LR"({"type":"focus","environmentGeneration":2,"surfaceGeneration":3,"sessionGeneration":6,"controllerGeneration":11,"documentGeneration":13,"eventSequence":4,"commandId":17,"focus":"seek","playing":false,"bounds":{"x":100,"y":40,"width":120,"height":60}})",
+        state.authority, 3, 17, next), "stale session was admitted");
     Require(!RichMediaSurfaceCoordinator::ValidatePageEvent(
-        LR"({"type":"focus","generation":7,"sequence":3,"focus":"seek","playing":false})",
-        7, 3, next), "reused sequence was admitted");
+        LR"({"type":"focus","environmentGeneration":2,"surfaceGeneration":2,"sessionGeneration":7,"controllerGeneration":11,"documentGeneration":13,"eventSequence":4,"commandId":17,"focus":"seek","playing":false,"bounds":{"x":100,"y":40,"width":120,"height":60}})",
+        state.authority, 3, 17, next), "stale surface was admitted");
     Require(!RichMediaSurfaceCoordinator::ValidatePageEvent(
-        LR"({"type":"focus","generation":7,"sequence":4,"focus":"seek","playing":false,"script":"bad"})",
-        7, 3, next), "unknown page field was admitted");
+        LR"({"type":"focus","environmentGeneration":2,"surfaceGeneration":3,"sessionGeneration":7,"controllerGeneration":10,"documentGeneration":13,"eventSequence":4,"commandId":17,"focus":"seek","playing":false,"bounds":{"x":100,"y":40,"width":120,"height":60}})",
+        state.authority, 3, 17, next), "stale controller was admitted");
+    Require(!RichMediaSurfaceCoordinator::ValidatePageEvent(
+        LR"({"type":"focus","environmentGeneration":2,"surfaceGeneration":3,"sessionGeneration":7,"controllerGeneration":11,"documentGeneration":12,"eventSequence":4,"commandId":17,"focus":"seek","playing":false,"bounds":{"x":100,"y":40,"width":120,"height":60}})",
+        state.authority, 3, 17, next), "stale document was admitted");
+    Require(!RichMediaSurfaceCoordinator::ValidatePageEvent(
+        LR"({"type":"focus","environmentGeneration":2,"surfaceGeneration":3,"sessionGeneration":7,"controllerGeneration":11,"documentGeneration":13,"eventSequence":4,"commandId":18,"focus":"seek","playing":false,"bounds":{"x":100,"y":40,"width":120,"height":60}})",
+        state.authority, 3, 17, next), "wrong command correlation was admitted");
+    Require(!RichMediaSurfaceCoordinator::ValidatePageEvent(
+        LR"({"type":"focus","environmentGeneration":2,"surfaceGeneration":3,"sessionGeneration":7,"controllerGeneration":11,"documentGeneration":13,"eventSequence":4,"commandId":17,"focus":"seek","playing":false,"bounds":{"x":100,"y":40,"width":120,"height":60},"script":"bad"})",
+        state.authority, 3, 17, next), "unknown page field was admitted");
+    Require(!RichMediaSurfaceCoordinator::ValidatePageEvent(
+        LR"({"type":"focus","environmentGeneration":2,"surfaceGeneration":3,"sessionGeneration":7,"controllerGeneration":11,"documentGeneration":13,"eventSequence":4,"commandId":17,"focus":"seek","playing":false,"bounds":{"x":-1,"y":40,"width":120,"height":60}})",
+        state.authority, 3, 17, next), "invalid focused bounds were admitted");
     const auto command = RichMediaSurfaceCoordinator::CommandJson(
-        Command::Activate, {9, 12});
-    Require(command == LR"({"command":"activate","generation":9,"sequence":12})",
+        Command::Activate, {5, 2, 9, 12, 14, 6}, 19);
+    Require(command == LR"({"command":"arm-activate","environmentGeneration":5,"surfaceGeneration":2,"sessionGeneration":9,"controllerGeneration":12,"documentGeneration":14,"commandId":19})",
             "private command encoding drifted");
-    std::cout << "RichMediaSurfaceCoordinator contract cases passed=5\n";
+    Require(RichMediaSurfaceCoordinatorTestPeer::IsAllowedNavigation(
+                L"https://wrail-rich-media.invalid/index.html"),
+            "exact embedded navigation was denied");
+    Require(!RichMediaSurfaceCoordinatorTestPeer::IsAllowedNavigation(
+                L"https://wrail-rich-media.invalid/frame.html"),
+            "non-embedded frame navigation was admitted");
+    POINT activationPoint{};
+    Require(RichMediaSurfaceCoordinatorTestPeer::FocusedActionPoint(
+                {100.0, 40.0, 120.0, 60.0}, {12, 18, 712, 438},
+                activationPoint) &&
+                activationPoint.x == 160 && activationPoint.y == 70,
+            "1.5x DPI client-space activation point was raster-scaled");
+    std::cout << "RichMediaSurfaceCoordinator contract cases passed=12\n";
 }
 
 struct ProcessSample final {
+    struct Entry final {
+        DWORD processId{};
+        DWORD parentProcessId{};
+        std::wstring image;
+        std::wstring role;
+        std::size_t privateBytes{};
+        std::uint64_t cpu100ns{};
+    };
     std::size_t privateBytes{};
     std::uint64_t cpu100ns{};
     std::size_t processCount{};
+    std::vector<Entry> entries;
 };
+
+struct ProcessIdentity final {
+    DWORD processId{};
+    DWORD parentProcessId{};
+    std::uint64_t creation100ns{};
+};
+
+bool TryAdmitTemporalDescendant(
+    const ProcessIdentity& candidate, std::vector<ProcessIdentity>& owned) {
+    if (!candidate.processId || candidate.creation100ns == 0 ||
+        std::any_of(owned.begin(), owned.end(), [&](const auto& current) {
+            return current.processId == candidate.processId;
+        })) return false;
+    const auto parent = std::find_if(
+        owned.begin(), owned.end(), [&](const auto& current) {
+            return current.processId == candidate.parentProcessId;
+        });
+    if (parent == owned.end() || candidate.creation100ns < parent->creation100ns)
+        return false;
+    owned.push_back(candidate);
+    return true;
+}
+
+std::uint64_t ProcessCreationTime(const HANDLE process) {
+    FILETIME created{}, exited{}, kernel{}, user{};
+    if (!process || !GetProcessTimes(process, &created, &exited, &kernel, &user))
+        return 0;
+    ULARGE_INTEGER value{created.dwLowDateTime, created.dwHighDateTime};
+    return value.QuadPart;
+}
+
+std::wstring ProcessCommandLine(const HANDLE process) {
+    struct NativeUnicodeString final {
+        USHORT length{};
+        USHORT maximumLength{};
+        PWSTR buffer{};
+    };
+    using NtQueryInformationProcessFn = LONG(NTAPI*)(
+        HANDLE, ULONG, PVOID, ULONG, PULONG);
+    static const auto query = reinterpret_cast<NtQueryInformationProcessFn>(
+        GetProcAddress(GetModuleHandleW(L"ntdll.dll"), "NtQueryInformationProcess"));
+    if (!query) return {};
+    ULONG length{};
+    (void)query(process, 60, nullptr, 0, &length);
+    if (length < sizeof(NativeUnicodeString) || length > 64 * 1024) return {};
+    std::vector<std::byte> storage(length);
+    if (query(process, 60, storage.data(), length, &length) < 0) return {};
+    const auto* command = reinterpret_cast<const NativeUnicodeString*>(storage.data());
+    if (!command->buffer || command->length == 0 ||
+        command->length > command->maximumLength) return {};
+    return {command->buffer, command->length / sizeof(wchar_t)};
+}
+
+std::wstring ProcessRole(const DWORD processId, const DWORD parentProcessId,
+                         const DWORD root, const std::wstring_view image,
+                         const std::wstring_view commandLine) {
+    if (processId == root) return L"test-host";
+    if (image != L"msedgewebview2.exe") return L"owned-child";
+    if (commandLine.find(L"--type=renderer") != std::wstring_view::npos)
+        return L"renderer";
+    if (commandLine.find(L"--type=gpu-process") != std::wstring_view::npos)
+        return L"gpu";
+    if (commandLine.find(L"--type=utility") != std::wstring_view::npos)
+        return L"utility";
+    if (commandLine.find(L"--type=crashpad-handler") != std::wstring_view::npos)
+        return L"crashpad";
+    return parentProcessId == root ? L"browser" : L"browser-child";
+}
 
 ProcessSample OwnedProcessSample() {
     const DWORD root = GetCurrentProcessId();
-    std::vector<DWORD> owned{root};
+    std::vector<PROCESSENTRY32W> processEntries;
     const HANDLE snapshot = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
     Require(snapshot != INVALID_HANDLE_VALUE, "process snapshot failed");
     PROCESSENTRY32W entry{sizeof(entry)};
+    if (Process32FirstW(snapshot, &entry)) {
+        do {
+            processEntries.push_back(entry);
+        } while (Process32NextW(snapshot, &entry));
+    }
+    CloseHandle(snapshot);
+    const HANDLE rootProcess = OpenProcess(
+        PROCESS_QUERY_LIMITED_INFORMATION, FALSE, root);
+    Require(rootProcess != nullptr, "test-host process authority was unavailable");
+    const auto rootCreation = ProcessCreationTime(rootProcess);
+    CloseHandle(rootProcess);
+    Require(rootCreation != 0, "test-host creation authority was unavailable");
+    std::vector<ProcessIdentity> owned{{root, 0, rootCreation}};
     bool changed = true;
     while (changed) {
         changed = false;
-        if (Process32FirstW(snapshot, &entry)) {
-            do {
-                if (std::find(owned.begin(), owned.end(), entry.th32ProcessID) == owned.end() &&
-                    std::find(owned.begin(), owned.end(), entry.th32ParentProcessID) != owned.end()) {
-                    owned.push_back(entry.th32ProcessID);
-                    changed = true;
-                }
-            } while (Process32NextW(snapshot, &entry));
+        for (const auto& candidate : processEntries) {
+            if (std::any_of(owned.begin(), owned.end(), [&](const auto& current) {
+                    return current.processId == candidate.th32ProcessID;
+                }) || !std::any_of(owned.begin(), owned.end(), [&](const auto& current) {
+                    return current.processId == candidate.th32ParentProcessID;
+                })) continue;
+            const HANDLE process = OpenProcess(
+                PROCESS_QUERY_LIMITED_INFORMATION, FALSE, candidate.th32ProcessID);
+            if (!process) continue;
+            const ProcessIdentity identity{
+                candidate.th32ProcessID, candidate.th32ParentProcessID,
+                ProcessCreationTime(process)};
+            CloseHandle(process);
+            if (TryAdmitTemporalDescendant(identity, owned)) changed = true;
         }
     }
-    CloseHandle(snapshot);
     ProcessSample sample;
-    for (const DWORD processId : owned) {
+    for (const auto& identity : owned) {
+        const DWORD processId = identity.processId;
         const HANDLE process = OpenProcess(
             PROCESS_QUERY_LIMITED_INFORMATION | PROCESS_VM_READ, FALSE, processId);
         if (!process) continue;
+        ProcessSample::Entry processSample;
+        processSample.processId = processId;
+        const auto processEntry = std::find_if(
+            processEntries.begin(), processEntries.end(), [&](const auto& candidate) {
+                return candidate.th32ProcessID == processId;
+            });
+        if (processEntry != processEntries.end()) {
+            processSample.parentProcessId = processEntry->th32ParentProcessID;
+            processSample.image = processEntry->szExeFile;
+        }
+        const auto commandLine = ProcessCommandLine(process);
+        processSample.role = ProcessRole(
+            processId, processSample.parentProcessId, root,
+            processSample.image, commandLine);
         PROCESS_MEMORY_COUNTERS_EX counters{sizeof(counters)};
         FILETIME created{}, exited{}, kernel{}, user{};
         if (GetProcessMemoryInfo(
@@ -179,132 +440,414 @@ ProcessSample OwnedProcessSample() {
                 sizeof(counters))) {
             sample.privateBytes += counters.PrivateUsage;
             ++sample.processCount;
+            processSample.privateBytes = counters.PrivateUsage;
         }
         if (GetProcessTimes(process, &created, &exited, &kernel, &user)) {
             ULARGE_INTEGER kernelValue{kernel.dwLowDateTime, kernel.dwHighDateTime};
             ULARGE_INTEGER userValue{user.dwLowDateTime, user.dwHighDateTime};
             sample.cpu100ns += kernelValue.QuadPart + userValue.QuadPart;
+            processSample.cpu100ns = kernelValue.QuadPart + userValue.QuadPart;
         }
+        sample.entries.push_back(std::move(processSample));
         CloseHandle(process);
     }
     return sample;
 }
 
-void RunLifecycleAndPerformance() {
-    std::vector<long long> coldMilliseconds;
-    for (unsigned int run = 0; run < 5; ++run) {
-        const auto started = std::chrono::steady_clock::now();
-        Fixture fixture(run, true);
+void RunProcessOwnershipCases() {
+    std::vector<ProcessIdentity> owned{{100, 0, 1'000}};
+    const std::array candidates{
+        ProcessIdentity{102, 101, 1'200},
+        ProcessIdentity{103, 101, 900},
+        ProcessIdentity{101, 100, 1'100}};
+    bool changed = true;
+    while (changed) {
+        changed = false;
+        for (const auto& candidate : candidates)
+            if (TryAdmitTemporalDescendant(candidate, owned)) changed = true;
+    }
+    const auto admitted = [&](const DWORD processId) {
+        return std::any_of(owned.begin(), owned.end(), [&](const auto& process) {
+            return process.processId == processId;
+        });
+    };
+    Require(admitted(101) && admitted(102),
+            "temporally valid descendant chain was rejected");
+    Require(!admitted(103),
+            "stale parent-PID-reuse process was admitted");
+    std::cout << "RichMedia process ownership cases passed=2\n";
+}
+
+constexpr std::uint64_t kCpuAccountingQuantum100ns = 156'250;
+
+std::uint64_t RoundedCpuBudget100ns(
+    const std::uint64_t wall100ns, const std::uint64_t basisPoints) {
+    constexpr std::uint64_t kBasisPointsPerWhole = 10'000;
+    const auto exactCeiling =
+        (wall100ns * basisPoints + kBasisPointsPerWhole - 1) /
+        kBasisPointsPerWhole;
+    return ((exactCeiling + kCpuAccountingQuantum100ns - 1) /
+            kCpuAccountingQuantum100ns) * kCpuAccountingQuantum100ns;
+}
+
+bool CpuWithinRoundedBudget(const std::uint64_t cpu100ns,
+                            const std::uint64_t wall100ns,
+                            const std::uint64_t basisPoints) {
+    return cpu100ns <= RoundedCpuBudget100ns(wall100ns, basisPoints);
+}
+
+void RunCpuBudgetCases() {
+    const auto rounded = RoundedCpuBudget100ns(10'000'000, 150);
+    Require(rounded == kCpuAccountingQuantum100ns &&
+                CpuWithinRoundedBudget(150'001, 10'000'000, 150),
+            "sub-quantum CPU remainder did not reach the rounded ceiling");
+    Require(!CpuWithinRoundedBudget(
+                rounded + kCpuAccountingQuantum100ns, 10'000'000, 150),
+            "the next full CPU accounting quantum was admitted");
+    std::cout << "RichMedia CPU budget arithmetic cases passed=2\n";
+}
+
+bool EnforcesPostCloseMemoryBudget(const std::string_view state) {
+    return state == "post-close";
+}
+
+void RunMemoryBudgetScopeCases() {
+    Require(!EnforcesPostCloseMemoryBudget("active-media"),
+            "active-media was assigned a post-close memory ceiling");
+    Require(EnforcesPostCloseMemoryBudget("post-close"),
+            "post-close lost its retained-process memory ceiling");
+    std::cout << "RichMedia memory budget scope cases passed=2\n";
+}
+
+struct CpuWorkloadPolicy final {
+    std::uint64_t totalBasisPoints{};
+    bool enforceFiveSampleIdleCeiling{};
+};
+
+CpuWorkloadPolicy CpuPolicyForState(const std::string_view state) {
+    if (state == "active-media" || state == "hidden-before-close")
+        return {300, false};
+    return {150, true};
+}
+
+void RunCpuWorkloadPolicyCases() {
+    const auto visible = CpuPolicyForState("visible-idle");
+    const auto closed = CpuPolicyForState("post-close");
+    const auto active = CpuPolicyForState("active-media");
+    const auto hidden = CpuPolicyForState("hidden-before-close");
+    Require(visible.totalBasisPoints == 150 &&
+                visible.enforceFiveSampleIdleCeiling &&
+                closed.totalBasisPoints == 150 &&
+                closed.enforceFiveSampleIdleCeiling,
+            "idle state lost its sustained or five-sample CPU ceiling");
+    Require(active.totalBasisPoints == 300 &&
+                !active.enforceFiveSampleIdleCeiling &&
+                hidden.totalBasisPoints == 300 &&
+                !hidden.enforceFiveSampleIdleCeiling,
+            "playing state did not receive the active sustained CPU policy");
+    std::cout << "RichMedia CPU workload policy cases passed=4\n";
+}
+
+void RequireReady(Fixture& fixture, const char* message) {
+    Require(PumpUntil([&] {
+        const auto state = fixture.coordinator().state();
+        return (state.lifecycle == widgetrail::richmedia::Lifecycle::Visible ||
+                state.lifecycle == widgetrail::richmedia::Lifecycle::ReadyHidden) &&
+            state.focusedElement == L"play";
+    }, 15s), message);
+}
+
+void RequireRetainedEnvironment(
+    const widgetrail::richmedia::EnvironmentState& expected,
+    const widgetrail::richmedia::EnvironmentState& actual,
+    const char* message) {
+    Require(actual.lifecycle == widgetrail::richmedia::EnvironmentLifecycle::Ready &&
+            actual.generation == expected.generation &&
+            actual.browserProcessId == expected.browserProcessId &&
+            actual.profileDirectory == expected.profileDirectory &&
+            actual.observerActive && !actual.faulted,
+            message);
+}
+
+void RunLifecycleCases() {
+    using namespace widgetrail::richmedia;
+    const auto root = std::filesystem::temp_directory_path() /
+        (L"wrail-rich-media-proof-lifecycle-" + std::to_wstring(GetCurrentProcessId()));
+    const auto retired = root / L"wrail-rich-media-retired-proof";
+    const auto active = root / L"wrail-rich-media-active-proof";
+    std::filesystem::create_directories(retired);
+    std::filesystem::create_directories(active);
+    std::ofstream(retired / L".wrail-retired-owner-4294967295") << "retired\n";
+    std::ofstream(active / (L".wrail-retired-owner-" +
+        std::to_wstring(GetCurrentProcessId()))) << "active\n";
+
+    std::filesystem::path finalProfile;
+    {
+        Fixture fixture(1, true, root);
+        RequireReady(fixture, "initial process-lifetime session did not become ready");
+        const auto initialEnvironment = fixture.coordinator().environmentState();
+        Require(initialEnvironment.lifecycle == EnvironmentLifecycle::Ready &&
+                    initialEnvironment.generation > 0 &&
+                    initialEnvironment.browserProcessId > 0 &&
+                    initialEnvironment.observerActive &&
+                    std::filesystem::exists(initialEnvironment.profileDirectory),
+                "initial environment authority was incomplete");
+        Require(!std::filesystem::exists(retired) && std::filesystem::exists(active),
+                "deferred cleanup did not remove only an owner-absent marked profile");
+
+        const auto before = fixture.coordinator().state().lastAcknowledgedCommandId;
+        Require(fixture.coordinator().SendCommand(Command::Activate),
+                "trusted spatial activation was rejected");
         Require(PumpUntil([&] {
             const auto state = fixture.coordinator().state();
-            return state.lifecycle == widgetrail::richmedia::Lifecycle::Visible &&
-                state.focusedElement == L"play";
-        }, 15s), "cold session did not become ready");
-        const auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
-            std::chrono::steady_clock::now() - started).count();
-        coldMilliseconds.push_back(elapsed);
+            return state.lastAcknowledgedCommandId > before && state.playing;
+        }, 2s), "local media did not become active");
+        Require(SUCCEEDED(fixture.CloseSession()) && fixture.finalDetachSucceededAndWaited(),
+                "session target detach was not completion-fenced");
+        const auto teardown = fixture.coordinator().sessionTeardownResult();
+        Require(teardown.sessionOwnersEmpty && teardown.environmentRetained &&
+                    !teardown.callbackDeadlineExpired &&
+                    fixture.finalConfigurationReleasedBeforeDetach() &&
+                    fixture.coordinator().state().lifecycle == Lifecycle::Absent &&
+                    !fixture.presentationVisible(),
+                "normal close retained surface authority or released the environment");
+        RequireRetainedEnvironment(initialEnvironment,
+            fixture.coordinator().environmentState(),
+            "normal close replaced process-lifetime environment authority");
+
+        Require(SUCCEEDED(fixture.OpenSession(true, false)),
+                "normal controller reopen submission failed");
+        RequireReady(fixture, "normal controller reopen did not become ready");
+        RequireRetainedEnvironment(initialEnvironment,
+            fixture.coordinator().environmentState(),
+            "normal reopen replaced process-lifetime environment authority");
+
+        RichMediaSurfaceCoordinatorTestPeer::Fault(
+            fixture.coordinator(), L"proof-explicit-fault");
+        Require(fixture.coordinator().state().lifecycle == Lifecycle::Faulted &&
+                    !fixture.coordinator().state().inputEnabled &&
+                    !fixture.presentationVisible(),
+                "fault retained visible or input authority");
         ComPtr<IRawElementProviderSimple> provider;
-        Require(SUCCEEDED(fixture.coordinator().GetAutomationProvider(&provider)) && provider,
-                "composition UIA provider was unavailable");
-        if (run == 0) {
-            Require(SUCCEEDED(fixture.coordinator().UpdateGeometry(
-                        {12, 18, 712, 438}, 1.5)),
-                    "DPI/bounds update was rejected");
-            const auto prior = fixture.coordinator().state().authority.commandSequence;
-            Require(fixture.coordinator().SendCommand(
-                        widgetrail::richmedia::Command::NavigateNext),
-                    "focus command was rejected");
-            Require(PumpUntil([&] {
-                const auto state = fixture.coordinator().state();
-                return state.authority.commandSequence > prior + 1 &&
-                    state.focusedElement == L"seek";
-            }, 50ms), "focus command did not acknowledge within 50 ms");
-            Require(SUCCEEDED(fixture.coordinator().SetVisible(false)),
-                    "hide transition failed");
-            Require(!fixture.coordinator().SendCommand(
-                        widgetrail::richmedia::Command::Activate),
-                    "hidden surface retained input admission");
-            Require(SUCCEEDED(fixture.coordinator().SetVisible(true)),
-                    "show transition failed");
-        }
-        fixture.Close();
-        Require(!std::filesystem::exists(fixture.profile()),
-                "ephemeral profile survived teardown");
-        std::cout << "cold-session run=" << run + 1 << " ready-ms=" << elapsed << '\n'
-                  << std::flush;
+        Require(fixture.coordinator().GetAutomationProvider(&provider) == S_FALSE && !provider,
+                "fault retained UIA authority");
+        Require(SUCCEEDED(fixture.Retry()), "healthy-environment Retry submission failed");
+        RequireReady(fixture, "healthy-environment Retry did not become ready");
+        RequireRetainedEnvironment(initialEnvironment,
+            fixture.coordinator().environmentState(),
+            "healthy Retry replaced process-lifetime environment authority");
+
+        RichMediaSurfaceCoordinatorTestPeer::MarkEnvironmentFaulted(fixture.coordinator());
+        RichMediaSurfaceCoordinatorTestPeer::Fault(
+            fixture.coordinator(), L"proof-browser-environment-fault");
+        Require(SUCCEEDED(fixture.Retry()), "faulted-environment Retry submission failed");
+        RequireReady(fixture, "faulted-environment Retry did not recreate a ready session");
+        const auto recreated = fixture.coordinator().environmentState();
+        Require(recreated.lifecycle == EnvironmentLifecycle::Ready &&
+                    recreated.generation > initialEnvironment.generation &&
+                    recreated.profileDirectory != initialEnvironment.profileDirectory &&
+                    recreated.observerActive && !recreated.faulted,
+                "environment fault did not establish one fresh environment generation");
+        finalProfile = recreated.profileDirectory;
+    }
+    const auto marker = finalProfile /
+        (L".wrail-retired-owner-" + std::to_wstring(GetCurrentProcessId()));
+    Require(std::filesystem::exists(marker),
+            "final shutdown did not mark the process-lifetime profile for deferred cleanup");
+    std::cout << "RichMediaSurfaceCoordinator lifecycle cases passed=20\n";
+}
+
+void RunLifecycleAndPerformance() {
+    using namespace widgetrail::richmedia;
+    Fixture fixture(20, true);
+    std::vector<long long> startupMilliseconds;
+    auto started = std::chrono::steady_clock::now();
+    RequireReady(fixture, "cold environment/session did not become ready");
+    startupMilliseconds.push_back(std::chrono::duration_cast<std::chrono::milliseconds>(
+        std::chrono::steady_clock::now() - started).count());
+    const auto environment = fixture.coordinator().environmentState();
+    for (int run = 1; run < 5; ++run) {
+        started = std::chrono::steady_clock::now();
+        Require(SUCCEEDED(fixture.Reopen(true)), "controller restart submission failed");
+        RequireReady(fixture, "controller restart did not become ready");
+        startupMilliseconds.push_back(std::chrono::duration_cast<std::chrono::milliseconds>(
+            std::chrono::steady_clock::now() - started).count());
+        RequireRetainedEnvironment(environment, fixture.coordinator().environmentState(),
+            "controller restart replaced process-lifetime environment");
     }
 
-    Fixture fixture(20, false);
-    Require(PumpUntil([&] {
-        return fixture.coordinator().state().focusedElement == L"play";
-    }, 15s), "hidden session did not initialize");
-    Require(!fixture.coordinator().SendCommand(
-                widgetrail::richmedia::Command::NavigateNext),
-            "hidden session admitted input");
-
     const auto sampleState = [&](const char* label, const bool visible,
-                                 const bool interactive) {
-        Require(SUCCEEDED(fixture.coordinator().SetVisible(visible)),
-                "visibility transition failed");
+                                 const bool activeMedia) {
+        if (fixture.coordinator().state().lifecycle != Lifecycle::Absent)
+            Require(SUCCEEDED(fixture.coordinator().SetVisible(visible)),
+                    "visibility transition failed");
+        if (activeMedia && !fixture.coordinator().state().playing) {
+            const auto before = fixture.coordinator().state().lastAcknowledgedCommandId;
+            Require(fixture.coordinator().SendCommand(Command::Activate),
+                    "local media activation command was rejected");
+            Require(PumpUntil([&] {
+                const auto state = fixture.coordinator().state();
+                return state.lastAcknowledgedCommandId > before && state.playing;
+            }, 2s), "local media did not become active");
+        }
         std::this_thread::sleep_for(3s);
-        std::size_t maximum{};
-        std::size_t maximumProcesses{};
+        std::size_t maximumBytes{};
+        std::vector<double> cpuPercent;
+        std::vector<std::uint64_t> cpu100ns;
+        std::vector<std::uint64_t> wall100ns;
         std::vector<long long> acknowledgements;
-        const auto cpuStarted = OwnedProcessSample();
-        const auto stateStarted = std::chrono::steady_clock::now();
+        auto previous = OwnedProcessSample();
+        auto previousAt = std::chrono::steady_clock::now();
+        const auto printMembership = [&](const ProcessSample& value) {
+            for (const auto& process : value.entries)
+                std::wcout << L"process-membership state="
+                           << std::wstring{label,
+                               label + std::char_traits<char>::length(label)}
+                           << L" pid=" << process.processId
+                           << L" parent=" << process.parentProcessId
+                           << L" role=" << process.role
+                           << L" image=" << process.image << L'\n';
+            std::wcout << std::flush;
+        };
+        printMembership(previous);
         for (int sample = 0; sample < 30; ++sample) {
-            if (interactive) {
-                const auto before = fixture.coordinator().state().authority.commandSequence;
-                const auto started = std::chrono::steady_clock::now();
-                Require(fixture.coordinator().SendCommand(
-                            widgetrail::richmedia::Command::NavigateNext),
+            if (activeMedia) {
+                const auto before = fixture.coordinator().state().lastAcknowledgedCommandId;
+                const auto commandStarted = std::chrono::steady_clock::now();
+                Require(fixture.coordinator().SendCommand(Command::NavigateNext),
                         "interactive command was rejected");
                 Require(PumpUntil([&] {
-                    return fixture.coordinator().state().authority.commandSequence > before + 1;
+                    const auto state = fixture.coordinator().state();
+                    return state.lastAcknowledgedCommandId > before && state.playing;
                 }, 50ms), "input acknowledgement exceeded 50 ms");
-                acknowledgements.push_back(
-                    std::chrono::duration_cast<std::chrono::milliseconds>(
-                        std::chrono::steady_clock::now() - started).count());
+                acknowledgements.push_back(std::chrono::duration_cast<std::chrono::milliseconds>(
+                    std::chrono::steady_clock::now() - commandStarted).count());
             }
-            const auto processSample = OwnedProcessSample();
-            maximum = std::max(maximum, processSample.privateBytes);
-            maximumProcesses = std::max(maximumProcesses, processSample.processCount);
-            std::cout << "sample state=" << label << " index=" << sample + 1
-                      << " process-count=" << processSample.processCount
-                      << " private-bytes=" << processSample.privateBytes << '\n'
-                      << std::flush;
             std::this_thread::sleep_for(1s);
+            const auto now = std::chrono::steady_clock::now();
+            const auto current = OwnedProcessSample();
+            const double wall = std::chrono::duration<double>(now - previousAt).count();
+            const auto cpuDelta = current.cpu100ns >= previous.cpu100ns
+                ? current.cpu100ns - previous.cpu100ns : 0;
+            const auto wallDelta100ns = static_cast<std::uint64_t>(
+                std::chrono::duration_cast<std::chrono::duration<long long,
+                    std::ratio<1, 10'000'000>>>(now - previousAt).count());
+            const double cpu = wall > 0.0
+                ? static_cast<double>(cpuDelta) / 1.0e7 / wall * 100.0 : 0.0;
+            const auto hasPid = [](const ProcessSample& value, const DWORD processId) {
+                return std::any_of(value.entries.begin(), value.entries.end(),
+                    [&](const auto& process) { return process.processId == processId; });
+            };
+            const bool membershipChanged =
+                current.entries.size() != previous.entries.size() ||
+                std::any_of(current.entries.begin(), current.entries.end(),
+                    [&](const auto& process) { return !hasPid(previous, process.processId); }) ||
+                std::any_of(previous.entries.begin(), previous.entries.end(),
+                    [&](const auto& process) { return !hasPid(current, process.processId); });
+            cpuPercent.push_back(cpu);
+            cpu100ns.push_back(cpuDelta);
+            wall100ns.push_back(wallDelta100ns);
+            maximumBytes = std::max(maximumBytes, current.privateBytes);
+            std::cout << "sample state=" << label << " index=" << sample + 1
+                      << " process-count=" << current.processCount
+                      << " private-bytes=" << current.privateBytes
+                      << " wall-seconds=" << wall
+                      << " cpu-core-percent=" << cpu
+                      << " membership-changed=" << (membershipChanged ? 1 : 0)
+                      << '\n' << std::flush;
+            if (membershipChanged) printMembership(current);
+            previous = current;
+            previousAt = now;
         }
-        Require(maximum < 500ULL * 1024ULL * 1024ULL,
-                "visible proof exceeded 500 MiB private-memory stop threshold");
-        const auto cpuFinished = OwnedProcessSample();
-        const auto wall = std::chrono::duration<double>(
-            std::chrono::steady_clock::now() - stateStarted).count();
-        const auto cpuDelta = cpuFinished.cpu100ns >= cpuStarted.cpu100ns
-            ? cpuFinished.cpu100ns - cpuStarted.cpu100ns : 0;
+        const double rawMaximumCpu =
+            *std::max_element(cpuPercent.begin(), cpuPercent.end());
+        double maximumFiveSecondCpu{};
+        std::uint64_t maximumFiveCpu100ns{};
+        std::uint64_t maximumFiveWall100ns{};
+        std::uint64_t maximumFiveBudget100ns{};
+        for (std::size_t first = 0; first + 5 <= cpuPercent.size(); ++first) {
+            const auto windowCpu = std::accumulate(
+                cpu100ns.begin() + first, cpu100ns.begin() + first + 5,
+                std::uint64_t{});
+            const auto windowWall = std::accumulate(
+                wall100ns.begin() + first, wall100ns.begin() + first + 5,
+                std::uint64_t{});
+            const double average = windowWall
+                ? static_cast<double>(windowCpu) /
+                    static_cast<double>(windowWall) * 100.0
+                : 0.0;
+            if (first == 0 || average > maximumFiveSecondCpu) {
+                maximumFiveSecondCpu = average;
+                maximumFiveCpu100ns = windowCpu;
+                maximumFiveWall100ns = windowWall;
+                maximumFiveBudget100ns = RoundedCpuBudget100ns(windowWall, 300);
+            }
+        }
+        const auto totalCpu100ns = std::accumulate(
+            cpu100ns.begin(), cpu100ns.end(), std::uint64_t{});
+        const auto totalWall100ns = std::accumulate(
+            wall100ns.begin(), wall100ns.end(), std::uint64_t{});
+        const double totalWindowMeanCpu = totalWall100ns
+            ? static_cast<double>(totalCpu100ns) /
+                static_cast<double>(totalWall100ns) * 100.0
+            : 0.0;
+        const auto cpuPolicy = CpuPolicyForState(label);
+        const auto totalBudget100ns = RoundedCpuBudget100ns(
+            totalWall100ns, cpuPolicy.totalBasisPoints);
+        auto sortedCpuPercent = cpuPercent;
+        std::sort(sortedCpuPercent.begin(), sortedCpuPercent.end());
+        const double medianCpu = sortedCpuPercent[sortedCpuPercent.size() / 2];
         std::cout << "state-summary state=" << label
-                  << " max-private-bytes=" << maximum
-                  << " max-process-count=" << maximumProcesses
-                  << " cpu-core-percent=" << (static_cast<double>(cpuDelta) / 1.0e7 / wall * 100.0)
-                  << '\n';
+                  << " max-private-bytes=" << maximumBytes
+                  << " median-cpu-core-percent=" << medianCpu
+                  << " raw-max-cpu-core-percent=" << rawMaximumCpu
+                  << " total-window-mean-cpu-core-percent=" << totalWindowMeanCpu
+                  << " total-cpu-100ns=" << totalCpu100ns
+                  << " total-wall-100ns=" << totalWall100ns
+                  << " total-cpu-ceiling-100ns=" << totalBudget100ns
+                  << " total-cpu-budget-basis-points="
+                  << cpuPolicy.totalBasisPoints
+                  << " max-five-second-cpu-core-percent=" << maximumFiveSecondCpu
+                  << " max-five-cpu-100ns=" << maximumFiveCpu100ns
+                  << " max-five-wall-100ns=" << maximumFiveWall100ns
+                  << " max-five-cpu-ceiling-100ns=" << maximumFiveBudget100ns
+                  << '\n' << std::flush;
+        if (EnforcesPostCloseMemoryBudget(label))
+            Require(maximumBytes <= 256ULL * 1024ULL * 1024ULL,
+                    "post-close rich-media proof exceeded 256 MiB private memory");
+        Require(CpuWithinRoundedBudget(
+                    totalCpu100ns, totalWall100ns, cpuPolicy.totalBasisPoints) &&
+                    (!cpuPolicy.enforceFiveSampleIdleCeiling ||
+                        CpuWithinRoundedBudget(
+                            maximumFiveCpu100ns, maximumFiveWall100ns, 300)),
+                "rich-media proof exceeded bounded CPU budget");
         if (!acknowledgements.empty()) {
             std::sort(acknowledgements.begin(), acknowledgements.end());
-            std::cout << "input-ack p95-ms="
-                      << acknowledgements[(acknowledgements.size() * 95 - 1) / 100]
+            const auto p95 = acknowledgements[(acknowledgements.size() * 95 - 1) / 100];
+            Require(p95 < 50, "rich-media input p95 exceeded 50 ms");
+            std::cout << "input-ack p95-ms=" << p95
                       << " max-ms=" << acknowledgements.back() << '\n';
         }
     };
 
-    sampleState("ready-hidden", false, false);
     sampleState("visible-idle", true, false);
-    sampleState("visible-interactive", true, true);
-    fixture.Close();
-    Require(!std::filesystem::exists(fixture.profile()),
-            "performance profile survived teardown");
-    std::sort(coldMilliseconds.begin(), coldMilliseconds.end());
-    std::cout << "cold-session min-ms=" << coldMilliseconds.front()
-              << " median-ms=" << coldMilliseconds[coldMilliseconds.size() / 2]
-              << " max-ms=" << coldMilliseconds.back() << '\n';
+    sampleState("active-media", true, true);
+    sampleState("hidden-before-close", false, false);
+    Require(SUCCEEDED(fixture.CloseSession()) && fixture.finalDetachSucceededAndWaited(),
+            "performance session close was not completion-fenced");
+    const auto teardown = fixture.coordinator().sessionTeardownResult();
+    Require(teardown.sessionOwnersEmpty && teardown.environmentRetained &&
+                !teardown.callbackDeadlineExpired &&
+                fixture.coordinator().state().lifecycle == Lifecycle::Absent &&
+                !fixture.presentationVisible(),
+            "post-close surface retained active authority");
+    RequireRetainedEnvironment(environment, fixture.coordinator().environmentState(),
+        "post-close sampling lost process-lifetime environment authority");
+    sampleState("post-close", false, false);
+    std::sort(startupMilliseconds.begin(), startupMilliseconds.end());
+    std::cout << "session-start min-ms=" << startupMilliseconds.front()
+              << " median-ms=" << startupMilliseconds[startupMilliseconds.size() / 2]
+              << " max-ms=" << startupMilliseconds.back() << '\n';
     std::cout << "RichMediaSurfaceCoordinator lifecycle/performance passed=1\n";
 }
 
@@ -318,7 +861,12 @@ int wmain(int argc, wchar_t**) {
     }
     try {
         RunContractCases();
+        RunProcessOwnershipCases();
+        RunCpuBudgetCases();
+        RunMemoryBudgetScopeCases();
+        RunCpuWorkloadPolicyCases();
         if (argc > 1) RunLifecycleAndPerformance();
+        else RunLifecycleCases();
         CoUninitialize();
         return 0;
     } catch (const std::exception& error) {

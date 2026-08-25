@@ -1789,6 +1789,7 @@ private:
                 (lParam & (1LL << 30)) != 0);
             return 0;
         case WM_MOUSEMOVE:
+        case WM_MOUSELEAVE:
         case WM_LBUTTONDOWN:
         case WM_RBUTTONDOWN:
         case WM_MOUSEWHEEL:
@@ -2184,8 +2185,7 @@ private:
         if (!GetTempPathW(static_cast<DWORD>(std::size(temporary)), temporary))
             return FailWin32(L"GetTempPathW(rich-media)", GetLastError());
         richMediaProfileDirectory_ =
-            (std::filesystem::path{temporary} /
-             (L"wrail-rich-media-" + std::to_wstring(GetCurrentProcessId()))).wstring();
+            (std::filesystem::path{temporary} / L"WidgetRail.RichMedia").wstring();
         widgetrail::richmedia::Configuration configuration;
         configuration.ownerWindow = window_;
         configuration.compositionTarget = std::move(target);
@@ -2193,17 +2193,27 @@ private:
         configuration.rasterScale =
             static_cast<double>(std::max(1U, GetDpiForWindow(window_))) / 96.0;
         configuration.initiallyVisible = true;
-        configuration.ephemeralProfileDirectory = richMediaProfileDirectory_;
+        configuration.profileRootDirectory = richMediaProfileDirectory_;
         configuration.diagnostic = [this](const std::wstring_view message) {
             AppendDiagnostic(std::wstring{message});
         };
         configuration.invalidate = [this] { OnRichMediaStateChanged(); };
+        configuration.setPresentationVisible = [this](const bool visible) {
+            RECT currentBounds{};
+            if (!window_ || !GetClientRect(window_, &currentBounds)) return;
+            widgetrail::OverlayCompositionSurface::CommitTiming timing;
+            const HRESULT result = compositionSurface_.CommitExternalContentPresentation(
+                currentBounds, visible, timing);
+            if (FAILED(result))
+                AppendDiagnostic(L"Rich media presentation commit failed hr=" +
+                                 std::to_wstring(static_cast<long>(result)));
+        };
         const HRESULT initialize = richMediaSurface_.Initialize(std::move(configuration));
         if (FAILED(initialize))
             return FailHresult(L"RichMediaSurfaceCoordinator::Initialize", initialize);
         widgetrail::OverlayCompositionSurface::CommitTiming timing;
         const HRESULT presentation = compositionSurface_.CommitExternalContentPresentation(
-            bounds, true, timing);
+            bounds, false, timing);
         if (FAILED(presentation))
             return FailHresult(L"CommitExternalContentPresentation", presentation);
         AppendDiagnostic(
@@ -2226,9 +2236,25 @@ private:
     void Shutdown() {
         if (richMediaProof_) {
             accessibilityProvider_.SetEmbeddedFragmentRoot(nullptr);
-            richMediaSurface_.Shutdown();
+            richMediaSurface_.BeginSessionTeardown();
             widgetrail::OverlayCompositionSurface::CommitTiming detachTiming;
-            (void)compositionSurface_.DetachExternalContentTarget(detachTiming);
+            const HRESULT detachResult =
+                compositionSurface_.DetachExternalContentTarget(detachTiming);
+            richMediaSurface_.CompleteSessionTeardown();
+            const auto teardown = richMediaSurface_.sessionTeardownResult();
+            const auto environment = richMediaSurface_.environmentState();
+            richMediaSurface_.Shutdown();
+            AppendDiagnostic(
+                L"Rich media external-target-detached hr=" +
+                std::to_wstring(static_cast<long>(detachResult)) +
+                L" waited=" + (detachTiming.waitedForCompletion ? L"1" : L"0"));
+            AppendDiagnostic(
+                L"Rich media process-lifetime environment released generation=" +
+                std::to_wstring(environment.generation) +
+                L" pid=" + std::to_wstring(environment.browserProcessId) +
+                L" profile-marked=1");
+            if (teardown.callbackDeadlineExpired)
+                AppendDiagnostic(L"Rich media callback-retirement deadline expired");
         }
         localWidgetPackageImport_.CancelPicker();
         if (const auto operation = localWidgetPackageImport_.CancelActiveOperation()) {

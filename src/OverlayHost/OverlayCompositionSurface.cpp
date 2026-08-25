@@ -198,6 +198,10 @@ HRESULT OverlayCompositionSurface::DetachExternalContentTarget(
     if (externalContentAttached_)
         result = rootVisual_->RemoveVisual(externalContentVisual_.Get());
     if (SUCCEEDED(result)) result = device_->Commit();
+    if (SUCCEEDED(result)) {
+        result = device_->WaitForCommitCompletion();
+        timing.waitedForCompletion = true;
+    }
     timing.commitMicroseconds = static_cast<std::uint64_t>(
         std::chrono::duration_cast<std::chrono::microseconds>(
             std::chrono::steady_clock::now() - started).count());
