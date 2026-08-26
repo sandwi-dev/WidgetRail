@@ -2552,19 +2552,36 @@ private:
             : std::nullopt;
         if (destination == EmbeddedMediaProjection::Pinned && !pinnedPresentation)
             return;
+        const auto reconcileVisibility = [&] {
+            const bool visible = EmbeddedMediaPresentationVisible();
+            if (embeddedMediaClientBounds_ && embeddedMediaClientClip_) {
+                widgetrail::OverlayCompositionSurface::CommitTiming timing;
+                (void)compositionSurface_.CommitExternalContentPresentation(
+                    CompositionEndpoint(destination), *embeddedMediaClientBounds_,
+                    *embeddedMediaClientClip_, visible, timing);
+                RecordEmbeddedMediaPresentation(
+                    CompositionEndpoint(destination), timing,
+                    L"visibility-reconcile");
+            }
+            (void)richMediaSurface_.SetVisible(visible);
+        };
         if (destination == EmbeddedMediaProjection::Pinned &&
             embeddedMediaAuthority_->projection == destination &&
             embeddedMediaAuthority_->pinnedFrameGeneration ==
-                pinnedPresentation->frameGeneration)
+                pinnedPresentation->frameGeneration) {
+            reconcileVisibility();
             return;
+        }
         if (!TransferEmbeddedMediaSurface(destination, reason)) {
             StopEmbeddedMediaSurface(L"projection-transfer-failed");
             return;
         }
         if (destination == EmbeddedMediaProjection::Pinned &&
             embeddedMediaAuthority_->pinnedFrameGeneration ==
-                pinnedPresentation->frameGeneration)
+                pinnedPresentation->frameGeneration) {
+            reconcileVisibility();
             return;
+        }
         const auto geometry = ResolveEmbeddedMediaPresentationGeometry(
             embeddedMediaAuthority_->sequence);
         if (!geometry) return;
