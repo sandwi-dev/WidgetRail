@@ -588,7 +588,8 @@ static async Task ResponsiveNavigation()
     var widget = await StartAsync(harness);
     await WaitUntil(() => widget.ViewState == SpotifyWidgetViewState.Ready);
     var snapshot = widget.RenderSnapshot("spotify.responsive", 1);
-    Assert.Equal(ProtocolConstants.FocusPersistenceVersion, snapshot.ProtocolVersion);
+    Assert.True(snapshot.ProtocolVersion >= ProtocolConstants.FocusPersistenceVersion,
+        "Responsive navigation did not negotiate focus-persistence support.");
     Assert.Equal(ResponsiveVisibility.ExpandedOnly,
         Find(snapshot.Root, "spotify.shell.wide").VisibleWhen);
     Assert.Equal(ResponsiveVisibility.CompactOnly,
@@ -597,6 +598,10 @@ static async Task ResponsiveNavigation()
         "Wide player destination was not selected.");
     Assert.True(Find(snapshot.Root, "spotify.nav.compact.player").IsSelected == true,
         "Compact player destination was not selected.");
+    Assert.Equal("spotify.destination.player",
+        Find(snapshot.Root, "spotify.nav.wide.player").FocusPersistenceId);
+    Assert.Equal("spotify.destination.player",
+        Find(snapshot.Root, "spotify.nav.compact.player").FocusPersistenceId);
     var compactPlayerScroll = Find(snapshot.Root, "spotify.player.compact.scroll");
     Assert.Equal(ViewNodeKind.Scroll, compactPlayerScroll.Kind);
     Assert.NotNull(Find(compactPlayerScroll, "spotify.player.compact.play-toggle"));
@@ -1273,8 +1278,10 @@ static async Task MaximumPlaylistPageContract()
     await widget.OnActionAsync(new("spotify.nav.playlists", "spotify.nav.wide.playlists"));
     await WaitUntil(() => harness.PlaylistCalls == 1);
     var firstPage = widget.RenderSnapshot("spotify.maximum-playlists", 1);
-    Assert.Equal(ProtocolConstants.VirtualCollectionWindowVersion, firstPage.ProtocolVersion);
+    Assert.True(firstPage.ProtocolVersion >= ProtocolConstants.VirtualCollectionWindowVersion,
+        "Playlist paging did not negotiate virtual-collection support.");
     var playlistScroll = Find(firstPage.Root, "spotify.playlists.scroll.wide");
+    Assert.NotNull(playlistScroll.VirtualCollectionWindow);
     Assert.Equal(12, playlistScroll.Children.Count);
     Assert.Equal("spotify.playlists.cursor.after", playlistScroll.ScrollNearEndActionId);
     Assert.True(playlistScroll.ScrollNearStartActionId is null,
@@ -2154,7 +2161,7 @@ static Task ManifestContract()
         "Full-trust Spotify retained the sandbox worker entrypoint.");
     Assert.Equal(0, manifest.Permissions.Count);
     Assert.Equal(0, manifest.OptionalPermissions.Count);
-    Assert.Equal("0.3.14", manifest.Version);
+    Assert.Equal("0.3.28", manifest.Version);
     Assert.SequenceEqual(["x64"], manifest.Architectures);
     Assert.NotNull(manifest.ResidencyPolicy);
     Assert.Equal(WidgetResidencyPolicies.KeepAlive, manifest.ResidencyPolicy!.Mode);
