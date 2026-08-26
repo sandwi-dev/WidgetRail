@@ -750,55 +750,6 @@ public sealed class GameLauncherTests
     }
 
     [TestMethod, Timeout(30_000)]
-    public async Task ExperiencePickerPersistsExactSelectionAndBackRestoresLibraryFocus()
-    {
-        var privateState = new WidgetTestPrivateState();
-        var host = new FakeHost(3, privateState);
-        var widget = Create(host);
-        await Interactive(widget);
-        await Ready(widget, host);
-        await Bounded(widget.WhenWarmStateIdleAsync(), "experience warm state");
-
-        var library = Snapshot(widget, 680);
-        var origin = Nodes(library.Root).Single(node =>
-            node.ActionId == "game-launcher.experiences.open");
-        await widget.OnActionAsync(new(origin.ActionId!, origin.Id));
-        var picker = Snapshot(widget, 681);
-        Assert.AreEqual(4, Nodes(picker.Root).Count(node =>
-            node.ActionId?.StartsWith("game-launcher.experience.select.",
-                StringComparison.Ordinal) == true));
-
-        await widget.OnActionAsync(new(
-            "game-launcher.experience.select.carousel",
-            "game-launcher.experience.carousel"));
-        Assert.AreEqual("carousel", widget.Organization.ExperienceId);
-        await widget.OnActionAsync(new(
-            "game-launcher.experiences.back",
-            "game-launcher.experiences.back"));
-        var selected = Snapshot(widget, 682);
-        Assert.AreEqual(WidgetAdvancedPresentationPreset.Carousel,
-            selected.AdvancedPresentation?.Preset);
-        Assert.AreEqual(ProtocolConstants.AdvancedPresentationVersion,
-            selected.ProtocolVersion);
-        Assert.AreEqual(origin.Id, selected.InitialFocusId);
-        await Background(widget);
-
-        var restartedHost = new FakeHost(3, privateState);
-        var restarted = Create(restartedHost);
-        await Interactive(restarted);
-        await Ready(restarted, restartedHost);
-        await Bounded(restarted.WhenWarmStateIdleAsync(),
-            "restarted experience warm state");
-        Assert.AreEqual("carousel", restarted.Organization.ExperienceId);
-        var restartedSnapshot = Snapshot(restarted, 683);
-        Assert.AreEqual(WidgetAdvancedPresentationPreset.Carousel,
-            restartedSnapshot.AdvancedPresentation?.Preset);
-        Assert.AreEqual(ProtocolConstants.AdvancedPresentationVersion,
-            restartedSnapshot.ProtocolVersion);
-        await Background(restarted);
-    }
-
-    [TestMethod, Timeout(30_000)]
     public async Task EveryTopControlKeepsPendingAndCommittedSnapshotsValid()
     {
         var displays = Enumerable.Range(0, 32)
@@ -856,7 +807,7 @@ public sealed class GameLauncherTests
         host.QueryHandler = null;
         await AssertRoute("game-launcher.add.open", GameLauncherRoute.AddGames);
         await AssertRoute("game-launcher.running.open", GameLauncherRoute.Running);
-        await AssertRoute("game-launcher.experiences.open", GameLauncherRoute.Experiences);
+        await AssertRoute("game-launcher.categories.open", GameLauncherRoute.Categories);
         await AssertRoute("game-launcher.hidden.open", GameLauncherRoute.Hidden);
         await Background(widget);
 
@@ -871,32 +822,32 @@ public sealed class GameLauncherTests
             {
                 GameLauncherRoute.AddGames => "Add games",
                 GameLauncherRoute.Running => "Add running app",
-                GameLauncherRoute.Experiences => "Launcher experience",
+                GameLauncherRoute.Categories => "Categories",
                 _ => "Hidden games",
             };
             Assert.AreEqual(expectedTitle, Nodes(route.Root).Single(node =>
                 node.Id == "game-launcher.compact.title").Text);
             if (expected == GameLauncherRoute.Running)
                 Assert.AreEqual(beforeRunning + 1, host.RunningObservationCount);
-            else if (expected != GameLauncherRoute.Experiences)
+            else if (expected != GameLauncherRoute.Categories)
                 Assert.AreEqual(beforeQueries + 1, host.Queries.Count);
             else
             {
                 Assert.AreEqual(beforeQueries, host.Queries.Count);
                 Assert.AreEqual(
-                    "Choose a layout. Content, actions, and game identity stay the same.",
+                    "Create local categories within the shared 64 KiB " +
+                    "organization budget. Membership uses exact saved game identity.",
                     Nodes(route.Root).Single(node =>
-                        node.Id == "game-launcher.experiences.help").Text);
-                Assert.AreEqual(4, Nodes(route.Root).Count(node =>
-                    node.ActionId?.StartsWith("game-launcher.experience.select.",
-                        StringComparison.Ordinal) == true));
+                        node.Id == "game-launcher.categories.help").Text);
+                Assert.AreEqual(ViewNodeKind.TextEntry, Nodes(route.Root).Single(node =>
+                    node.Id == "game-launcher.category.create").Kind);
             }
 
             var backId = expected switch
             {
                 GameLauncherRoute.AddGames => "game-launcher.add.back",
                 GameLauncherRoute.Running => "game-launcher.running.back",
-                GameLauncherRoute.Experiences => "game-launcher.experiences.back",
+                GameLauncherRoute.Categories => "game-launcher.categories.back",
                 _ => "game-launcher.hidden.back",
             };
             await widget.OnActionAsync(new(backId, backId));
@@ -979,8 +930,8 @@ public sealed class GameLauncherTests
         var tile = Nodes(ready.Root).First(node =>
             node.ActionId == "game-launcher.launch");
         var shortcuts = tile.Shortcuts.ToDictionary(shortcut => shortcut.Button);
-        Assert.AreEqual("game-launcher.details.open",
-            shortcuts[ControllerButton.View].ActionId);
+        Assert.IsFalse(shortcuts.ContainsKey(ControllerButton.View),
+            "View is host-reserved and must not be authored by the widget.");
         Assert.AreEqual("game-launcher.favorite",
             shortcuts[ControllerButton.X].ActionId);
         Assert.AreEqual(GameLauncherActionSheet.OpenAction,
@@ -991,7 +942,6 @@ public sealed class GameLauncherTests
             shortcuts[ControllerButton.RightBumper].ActionId);
         foreach (var (hintId, label) in new[]
                  {
-                     ("game-launcher.hint.details", "Game details"),
                      ("game-launcher.hint.favorite", "Favorite"),
                      ("game-launcher.hint.actions", "Game actions"),
                      ("game-launcher.hint.variant", "Group variants"),
@@ -1022,7 +972,7 @@ public sealed class GameLauncherTests
         await Bounded(launch, "shortcut busy completion");
         await Bounded(widget.WhenLibraryIdleAsync(), "shortcut recent refresh");
         var completed = Snapshot(widget, 952);
-        Assert.AreEqual(5, Nodes(completed.Root).Single(node =>
+        Assert.AreEqual(4, Nodes(completed.Root).Single(node =>
             node.Id == tile.Id).Shortcuts.Count);
         await Background(widget);
     }
@@ -1056,8 +1006,15 @@ public sealed class GameLauncherTests
             node.Id == "game-launcher.actions.variant").Text);
         Assert.AreEqual("Refresh Steam source", Nodes(sheet.Root).Single(node =>
             node.Id == "game-launcher.actions.refresh-source").Text);
+        var detailsAction = Nodes(sheet.Root).Single(node =>
+            node.Id == GameLauncherActionSheet.DetailsItemId);
+        Assert.AreEqual("View details", detailsAction.Text);
+        Assert.AreEqual(GameLauncherActionSheet.DetailsAction,
+            detailsAction.ActionId);
         Assert.IsFalse(Nodes(sheet.Root).Any(node =>
-            node.ActionId is "game-launcher.launch" or "game-launcher.details.open"));
+            node.ActionId == "game-launcher.launch"));
+        Assert.IsFalse(Nodes(sheet.Root).SelectMany(node => node.Shortcuts).Any(
+            shortcut => shortcut.Button == ControllerButton.View));
 
         await widget.OnActionAsync(new("game-launcher.favorite",
             GameLauncherActionSheet.InitialFocusId));
@@ -3966,7 +3923,7 @@ public sealed class GameLauncherTests
     }
 
     [TestMethod, Timeout(30_000)]
-    public async Task ViewOpensExactDetailsAndBackRestoresOriginTile()
+    public async Task YActionsOpenExactDetailsAndBackRestoresOriginTile()
     {
         var host = new FakeHost(2)
         {
@@ -3980,10 +3937,23 @@ public sealed class GameLauncherTests
         var tiles = Nodes(library.Root)
             .Where(node => node.ActionId == "game-launcher.launch").ToArray();
 
-        Assert.IsTrue(tiles[1].Shortcuts.Any(shortcut =>
-            shortcut.Button == ControllerButton.View &&
-            shortcut.ActionId == "game-launcher.details.open"));
-        await widget.OnActionAsync(new("game-launcher.details.open", tiles[1].Id));
+        Assert.IsFalse(tiles[1].Shortcuts.Any(shortcut =>
+            shortcut.Button == ControllerButton.View));
+        Assert.AreEqual(GameLauncherActionSheet.OpenAction,
+            tiles[1].Shortcuts.Single(shortcut =>
+                shortcut.Button == ControllerButton.Y).ActionId);
+        await widget.OnActionAsync(new(GameLauncherActionSheet.OpenAction,
+            tiles[1].Id, ControllerButton.Y, ControllerEventPhase.Pressed,
+            InputScopeId: library.ActiveInputScopeId));
+        var librarySheet = Snapshot(widget, 401);
+        var viewDetails = Nodes(librarySheet.Root).Single(node =>
+            node.Id == GameLauncherActionSheet.DetailsItemId);
+        Assert.AreEqual("View details", viewDetails.Text);
+        Assert.AreEqual(GameLauncherActionSheet.DetailsAction,
+            viewDetails.ActionId);
+        await widget.OnActionAsync(new(GameLauncherActionSheet.DetailsAction,
+            viewDetails.Id, ControllerButton.A, ControllerEventPhase.Pressed,
+            InputScopeId: librarySheet.ActiveInputScopeId));
         var details = Snapshot(widget, 41);
         Assert.AreEqual("Shared title", Nodes(details.Root).Single(node =>
             node.Id == "game-launcher.details.title").Text);
@@ -3997,8 +3967,8 @@ public sealed class GameLauncherTests
         Assert.AreEqual(GameLauncherActionSheet.ScopeId, detailSheet.ActiveInputScopeId);
         StringAssert.Contains(Nodes(detailSheet.Root).Single(node =>
             node.Id == "game-launcher.actions.sheet.title").Text!, "Shared title");
-        Assert.IsFalse(Nodes(detailSheet.Root).Any(node =>
-            node.ActionId == "game-launcher.details.open"));
+        Assert.IsTrue(Nodes(detailSheet.Root).Any(node =>
+            node.ActionId == GameLauncherActionSheet.DetailsAction));
         await widget.OnActionAsync(new(GameLauncherActionSheet.CloseAction,
             GameLauncherActionSheet.InitialFocusId));
         Assert.IsTrue(Nodes(Snapshot(widget, 412).Root).Any(node =>
@@ -4043,11 +4013,19 @@ public sealed class GameLauncherTests
         var library = Snapshot(widget, 44);
         var tile = Nodes(library.Root).Single(node =>
             node.ActionId == "game-launcher.launch");
-        Assert.IsTrue(tile.Shortcuts.Any(shortcut =>
-            shortcut.Button == ControllerButton.View &&
-            shortcut.ActionId == "game-launcher.details.open"));
-
-        await widget.OnActionAsync(new("game-launcher.details.open", tile.Id));
+        Assert.IsFalse(tile.Shortcuts.Any(shortcut =>
+            shortcut.Button == ControllerButton.View));
+        await widget.OnActionAsync(new(GameLauncherActionSheet.OpenAction,
+            tile.Id, ControllerButton.Y, ControllerEventPhase.Pressed,
+            InputScopeId: library.ActiveInputScopeId));
+        var sheet = Snapshot(widget, 441);
+        var viewDetails = Nodes(sheet.Root).Single(node =>
+            node.Id == GameLauncherActionSheet.DetailsItemId);
+        Assert.AreEqual(GameLauncherActionSheet.DetailsAction,
+            viewDetails.ActionId);
+        await widget.OnActionAsync(new(GameLauncherActionSheet.DetailsAction,
+            viewDetails.Id, ControllerButton.A, ControllerEventPhase.Pressed,
+            InputScopeId: sheet.ActiveInputScopeId));
         var details = Snapshot(widget, 45);
         var detailScroll = Nodes(details.Root).Single(node =>
             node.Id == "game-launcher.details.scroll");

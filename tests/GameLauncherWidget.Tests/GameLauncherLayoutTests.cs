@@ -80,39 +80,15 @@ public sealed class GameLauncherLayoutTests
                 StringComparer.Ordinal).Count(), $"{scenario.Name}: duplicate semantic ID");
 
             var root = snapshot.Root;
-            var projected = snapshot.AdvancedPresentation is not null;
-            Assert.AreEqual(projected ? 6 : 4, root.Children.Count,
+            Assert.AreEqual(4, root.Children.Count,
                 $"{scenario.Name}: fixed/main root ownership changed");
-            if (projected)
+            CollectionAssert.AreEqual(new[]
             {
-                Assert.AreEqual(ProtocolConstants.AdvancedPresentationVersion,
-                    snapshot.ProtocolVersion,
-                    $"{scenario.Name}: advanced presentation did not negotiate v16");
-                Assert.AreEqual(WidgetAdvancedPresentationKind.LauncherExperience,
-                    snapshot.AdvancedPresentation!.Kind,
-                    $"{scenario.Name}: advanced presentation kind changed");
-                CollectionAssert.AreEquivalent(new[]
-                {
-                    WidgetAdvancedPresentationSlot.DetailsPanel,
-                    WidgetAdvancedPresentationSlot.PrimaryCollection,
-                    WidgetAdvancedPresentationSlot.CollectionNavigation,
-                    WidgetAdvancedPresentationSlot.SourceStatus,
-                    WidgetAdvancedPresentationSlot.OperationStatus,
-                    WidgetAdvancedPresentationSlot.ControllerHints,
-                }, root.Children.Select(child =>
-                    child.AdvancedPresentationSlot!.Value).ToArray(),
-                    $"{scenario.Name}: semantic launcher slots changed");
-            }
-            else
-            {
-                CollectionAssert.AreEqual(new[]
-                {
-                    "game-launcher.header",
-                    "game-launcher.sources",
-                    "game-launcher.query",
-                }, root.Children.Take(3).Select(child => child.Id).ToArray(),
-                    $"{scenario.Name}: fixed chrome order changed");
-            }
+                "game-launcher.header",
+                "game-launcher.sources",
+                "game-launcher.query",
+            }, root.Children.Take(3).Select(child => child.Id).ToArray(),
+                $"{scenario.Name}: fixed chrome order changed");
             foreach (var fixedId in new[]
                      {
                          "game-launcher.header", "game-launcher.sources",
@@ -213,7 +189,7 @@ public sealed class GameLauncherLayoutTests
             Assert.IsFalse(string.IsNullOrWhiteSpace(scroll.CollectionAnchorKey),
                 $"{profile.Name}: collection viewport omitted its stable anchor");
             var controllerHints = visible.Single(node =>
-                node.Id == "game-launcher.slot.controller-hints");
+                node.Id == "game-launcher.organization.hints");
             Assert.AreEqual(ViewNodeKind.Row, controllerHints.Kind,
                 $"{profile.Name}: wrapping controller hints are not row-owned");
             Assert.IsNull(controllerHints.ScrollAxis,
@@ -260,7 +236,7 @@ public sealed class GameLauncherLayoutTests
     }
 
     [TestMethod, Timeout(30_000)]
-    public void EveryExperienceProjectsTheSameExactGameAuthorityAndSemanticSlots()
+    public void CurrentDeclarativeLibraryPreservesExactGameAuthorityAndSemanticRegions()
     {
         var items = Enumerable.Range(0, 64)
             .Select(index => GameLauncherItem.From(Item(
@@ -273,119 +249,41 @@ public sealed class GameLauncherLayoutTests
             item.Presentation.Source.DisplayName)).ToArray();
         var collection = Snapshot(WidgetPagedResourceStatus.Ready, items,
             after: "cursor.after");
-        string[]? baselineActions = null;
-        string[]? baselineItems = null;
-        string[]? baselineHints = null;
-
-        foreach (var experience in Enum.GetValues<GameLauncherExperience>())
+        var organization = new GameLauncherPrivateState(
+            GameLauncherPrivateState.CurrentVersion, display);
+        var view = GameLauncherPresentation.Render(State(
+            collection, organization, GameLauncherRoute.Library, []));
+        var snapshot = new PresentationWidget(view).RenderSnapshot(
+            "game-launcher.presentation", 1);
+        var nodes = Nodes(snapshot.Root).ToArray();
+        CollectionAssert.AreEqual(new[]
         {
-            var organization = new GameLauncherPrivateState(
-                GameLauncherPrivateState.CurrentVersion, display)
-            {
-                ExperienceId = GameLauncherExperienceIdentity.Id(experience),
-            };
-            var view = GameLauncherPresentation.Render(State(
-                collection, organization, GameLauncherRoute.Library, []));
-            var snapshot = new PresentationWidget(view).RenderSnapshot(
-                "game-launcher.experience", 1);
-            Assert.AreEqual(ProtocolConstants.AdvancedPresentationVersion,
-                snapshot.ProtocolVersion);
-            Assert.AreEqual(WidgetAdvancedPresentationKind.LauncherExperience,
-                snapshot.AdvancedPresentation?.Kind);
-            Assert.AreEqual(experience switch
-            {
-                GameLauncherExperience.CoverWall =>
-                    WidgetAdvancedPresentationPreset.CoverWall,
-                GameLauncherExperience.Carousel =>
-                    WidgetAdvancedPresentationPreset.Carousel,
-                GameLauncherExperience.CompactGrid =>
-                    WidgetAdvancedPresentationPreset.CompactGrid,
-                _ => WidgetAdvancedPresentationPreset.HeroRail,
-            }, snapshot.AdvancedPresentation?.Preset);
-            CollectionAssert.AreEquivalent(
-                Enum.GetValues<WidgetAdvancedPresentationSlot>(),
-                Nodes(snapshot.Root)
-                    .Where(node => node.AdvancedPresentationSlot is not null)
-                    .Select(node => node.AdvancedPresentationSlot!.Value)
-                    .ToArray());
-            var nodes = Nodes(snapshot.Root).ToArray();
-            var actions = nodes.Where(node => !string.IsNullOrEmpty(node.ActionId))
-                .Select(node => $"{node.Id}\0{node.ActionId}").Order().ToArray();
-            var collectionItems = nodes.Where(node => node.CollectionItemKey is not null)
-                .Select(node => $"{node.Id}\0{node.CollectionItemKey}").Order().ToArray();
-            var hintRegion = nodes.Single(node =>
-                node.Id == "game-launcher.slot.controller-hints");
-            Assert.AreEqual(ViewNodeKind.Row, hintRegion.Kind,
-                $"{experience}: controller hints must be a non-scroll row for wrapping");
-            Assert.IsNull(hintRegion.ScrollAxis,
-                $"{experience}: controller hints unexpectedly own scrolling");
-            var hints = Nodes(hintRegion).Where(node =>
-                    node.Id.StartsWith("game-launcher.hint.", StringComparison.Ordinal))
-                .Select(node => $"{node.Id}\0{node.Text}\0{node.ActionId}")
-                .Order().ToArray();
-            baselineActions ??= actions;
-            baselineItems ??= collectionItems;
-            baselineHints ??= hints;
-            CollectionAssert.AreEqual(baselineActions, actions,
-                $"{experience}: experience changed exact action authority");
-            CollectionAssert.AreEqual(baselineItems, collectionItems,
-                $"{experience}: experience changed SavedId-derived collection identity");
-            CollectionAssert.AreEqual(baselineHints, hints,
-                $"{experience}: experience changed controller help identity");
-            Assert.AreEqual(GameLauncherIdentity.FocusId("grid", items[0].Key),
-                snapshot.InitialFocusId);
-            Assert.AreEqual(new string('L', 96),
-                nodes.Single(node => node.Id == "game-launcher.hero.title").Text);
-            var heroArtwork = nodes.Single(node =>
-                node.Id == "game-launcher.hero.artwork");
-            Assert.IsNull(heroArtwork.ArtworkHandle);
-            Assert.IsNotNull(heroArtwork.Glyph);
-        }
-    }
-
-    [TestMethod, Timeout(30_000)]
-    public void ExperienceSelectionPersistsAndUnavailableSelectionFallsBackAtomically()
-    {
-        var display = new GameLauncherDisplayItem("saved-one", "One", "Fixture");
-        var baseline = new GameLauncherPrivateState(
-            GameLauncherPrivateState.CurrentVersion, [display])
-        {
-            FavoriteSavedIds = [display.SavedId],
-        };
-        foreach (var experience in Enum.GetValues<GameLauncherExperience>())
-        {
-            var changed = GameLauncherOrganizationPolicy.SelectExperience(
-                baseline, experience).State;
-            var restored = JsonSerializer.Deserialize<GameLauncherPrivateState>(
-                JsonSerializer.Serialize(changed));
-            var normalized = GameLauncherOrganizationPolicy.Normalize(restored);
-            Assert.AreEqual(GameLauncherExperienceIdentity.Id(experience),
-                normalized.ExperienceId);
-            CollectionAssert.AreEqual(new[] { display.SavedId },
-                normalized.FavoriteSavedIds.ToArray());
-        }
-
-        var unavailable = GameLauncherOrganizationPolicy.Normalize(
-            baseline with { ExperienceId = "missing-experience" });
-        Assert.AreEqual(GameLauncherExperienceIdentity.HeroRail,
-            unavailable.ExperienceId);
-        CollectionAssert.AreEqual(new[] { display.SavedId },
-            unavailable.FavoriteSavedIds.ToArray(),
-            "experience recovery must not reset unrelated launcher state");
-
-        var picker = GameLauncherPresentation.Render(State(
-            Snapshot(WidgetPagedResourceStatus.Ready, []), unavailable,
-            GameLauncherRoute.Experiences, []));
-        var pickerSnapshot = new PresentationWidget(picker).RenderSnapshot(
-            "game-launcher.experience-picker", 2);
-        var choices = Nodes(pickerSnapshot.Root).Where(node =>
-                node.ActionId?.StartsWith("game-launcher.experience.select.",
-                    StringComparison.Ordinal) == true)
+            "game-launcher.header",
+            "game-launcher.sources.pending",
+            "game-launcher.query",
+            "game-launcher.content",
+        }, snapshot.Root.Children.Select(child => child.Id).ToArray());
+        var collectionItems = nodes.Where(node => node.CollectionItemKey is not null)
+            .Select(node => node.CollectionItemKey!)
             .ToArray();
-        Assert.AreEqual(4, choices.Length);
-        Assert.AreEqual(1, choices.Count(node => node.IsSelected == true));
-        Assert.IsTrue(Nodes(pickerSnapshot.Root).Any(node =>
-            node.ActionId == "game-launcher.experiences.back"));
+        CollectionAssert.AreEquivalent(items.Select(item => item.Key.Value).ToArray(),
+            collectionItems);
+        var hintRegion = nodes.Single(node =>
+            node.Id == "game-launcher.organization.hints");
+        Assert.AreEqual(ViewNodeKind.Row, hintRegion.Kind,
+            "controller hints must be a non-scroll row for wrapping");
+        Assert.IsNull(hintRegion.ScrollAxis,
+            "controller hints unexpectedly own scrolling");
+        Assert.IsTrue(Nodes(hintRegion).Any(node =>
+            node.Id.StartsWith("game-launcher.hint.", StringComparison.Ordinal)));
+        Assert.AreEqual(GameLauncherIdentity.FocusId("grid", items[0].Key),
+            snapshot.InitialFocusId);
+        Assert.AreEqual(new string('L', 96),
+            nodes.Single(node => node.Id == "game-launcher.hero.title").Text);
+        var heroArtwork = nodes.Single(node =>
+            node.Id == "game-launcher.hero.artwork");
+        Assert.IsNull(heroArtwork.ArtworkHandle);
+        Assert.IsNotNull(heroArtwork.Glyph);
     }
 
     [TestMethod, Timeout(30_000)]
