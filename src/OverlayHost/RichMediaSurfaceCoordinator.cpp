@@ -45,7 +45,7 @@ bool IsDocumentLocalIdentifier(const std::wstring_view value) noexcept {
 
 bool CanonicalHttpsOrigin(const std::wstring_view origin) noexcept {
     if (!origin.starts_with(L"https://") || origin.size() <= 8 ||
-        origin.find_first_of(L"/?#@*", 8) != std::wstring_view::npos)
+        origin.find_first_of(L"/?#@*:", 8) != std::wstring_view::npos)
         return false;
     return std::all_of(origin.begin() + 8, origin.end(), [](const wchar_t character) {
         return (character >= L'a' && character <= L'z') ||

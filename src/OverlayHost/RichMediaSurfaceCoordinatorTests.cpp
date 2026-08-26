@@ -409,7 +409,8 @@ void RunContractCases() {
             std::vector<std::wstring>{L"https://frames.aurora.invalid/"},
             std::vector<std::wstring>{L"HTTPS://frames.aurora.invalid"},
             std::vector<std::wstring>{L"https://user@frames.aurora.invalid"},
-            std::vector<std::wstring>{L"https://*.aurora.invalid"}}) {
+            std::vector<std::wstring>{L"https://*.aurora.invalid"},
+            std::vector<std::wstring>{L"https://frames.aurora.invalid:443"}}) {
         Require(!RichMediaSurfaceCoordinatorTestPeer::IsAllowedFrameResource(
                     L"https://frames.aurora.invalid/embed/index.html",
                     invalidOrigins),
@@ -443,6 +444,11 @@ void RunContractCases() {
     Require(RichMediaSurfaceCoordinatorTestPeer::IsValidAdapterConfiguration(aurora) &&
                 RichMediaSurfaceCoordinatorTestPeer::IsValidAdapterConfiguration(cedar),
             "provider-neutral adapters did not receive equal native admission");
+    auto explicitPort = aurora;
+    explicitPort.allowedFrameOrigins = {L"https://frames.aurora.invalid:443"};
+    Require(!RichMediaSurfaceCoordinatorTestPeer::IsValidAdapterConfiguration(
+                explicitPort),
+            "explicit-port frame origin crossed native configuration admission");
     auto unsafe = aurora;
     unsafe.entryAsset = L"../credential.txt";
     Require(!RichMediaSurfaceCoordinatorTestPeer::IsValidAdapterConfiguration(unsafe),
@@ -457,7 +463,7 @@ void RunContractCases() {
                 activationPoint) &&
                 activationPoint.x == 160 && activationPoint.y == 70,
             "1.5x DPI client-space activation point was raster-scaled");
-    std::cout << "RichMediaSurfaceCoordinator contract cases passed=24\n";
+    std::cout << "RichMediaSurfaceCoordinator contract cases passed=25\n";
 }
 
 struct ProcessSample final {
