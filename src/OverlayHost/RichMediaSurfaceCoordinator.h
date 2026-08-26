@@ -316,6 +316,7 @@ private:
     bool teardownBegun_{};
     bool presentationTransferPending_{};
     bool transferDesiredVisible_{};
+    bool controllerGeometryApplied_{};
     HRESULT browserEventRegistrationResult_{E_UNEXPECTED};
     std::wstring pageUri_;
 

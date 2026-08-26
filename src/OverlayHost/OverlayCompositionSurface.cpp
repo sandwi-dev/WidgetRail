@@ -156,8 +156,10 @@ void OverlayCompositionSurface::Reset() noexcept {
     content_ = {};
     externalContentVisual_.Reset();
     externalContentAttached_ = false;
+    externalContentPresentation_ = {};
     pinnedExternalContentVisual_.Reset();
     pinnedExternalContentAttached_ = false;
+    pinnedExternalContentPresentation_ = {};
     pinnedExternalRootVisual_.Reset();
     guide_ = {};
     tray_ = {};
@@ -185,6 +187,7 @@ HRESULT OverlayCompositionSurface::CreateExternalContentTarget(
     *target = nullptr;
     auto& visual = endpoint == ExternalContentEndpoint::Overlay
         ? externalContentVisual_ : pinnedExternalContentVisual_;
+    auto& presentation = ExternalPresentationFor(endpoint);
     const bool endpointReady = endpoint == ExternalContentEndpoint::Overlay
         ? rootVisual_ && content_.visual
         : pinnedExternalTarget_ && pinnedExternalRootVisual_;
@@ -195,6 +198,7 @@ HRESULT OverlayCompositionSurface::CreateExternalContentTarget(
         visual.Reset();
         return result;
     }
+    presentation.current = false;
     return visual.CopyTo(target);
 }
 
@@ -213,6 +217,8 @@ HRESULT OverlayCompositionSurface::CommitExternalContentPresentation(
         ? externalContentVisual_ : pinnedExternalContentVisual_;
     auto& attached = endpoint == ExternalContentEndpoint::Overlay
         ? externalContentAttached_ : pinnedExternalContentAttached_;
+    auto& presentation = ExternalPresentationFor(endpoint);
+    ++presentation.counters.requested;
     const auto coordinates = ExternalContentCoordinates(endpoint);
     auto* parent = coordinates == ExternalContentCoordinateSpace::ContentLocal
         ? content_.visual.Get() : pinnedExternalRootVisual_.Get();
@@ -228,6 +234,14 @@ HRESULT OverlayCompositionSurface::CommitExternalContentPresentation(
         static_cast<float>(std::clamp(clipBounds.right - bounds.left, 0L, width)),
         static_cast<float>(std::clamp(clipBounds.bottom - bounds.top, 0L, height))};
     if (clip.right <= clip.left || clip.bottom <= clip.top) return E_INVALIDARG;
+    const auto sameRect = [](const RECT& left, const RECT& right) noexcept {
+        return left.left == right.left && left.top == right.top &&
+            left.right == right.right && left.bottom == right.bottom;
+    };
+    if (presentation.current && presentation.visual == visual.Get() &&
+        presentation.parent == parent && sameRect(presentation.bounds, bounds) &&
+        sameRect(presentation.clipBounds, clipBounds) &&
+        presentation.visible == visible) return S_FALSE;
     HRESULT result = visual->SetOffsetX(static_cast<float>(bounds.left));
     if (SUCCEEDED(result)) result = visual->SetOffsetY(static_cast<float>(bounds.top));
     if (SUCCEEDED(result)) result = visual->SetClip(clip);
@@ -245,6 +259,16 @@ HRESULT OverlayCompositionSurface::CommitExternalContentPresentation(
     timing.commitMicroseconds = static_cast<std::uint64_t>(
         std::chrono::duration_cast<std::chrono::microseconds>(
             std::chrono::steady_clock::now() - started).count());
+    if (SUCCEEDED(result)) {
+        timing.externalPresentationCommitted = true;
+        ++presentation.counters.committed;
+        presentation.current = true;
+        presentation.visual = visual.Get();
+        presentation.parent = parent;
+        presentation.bounds = bounds;
+        presentation.clipBounds = clipBounds;
+        presentation.visible = visible;
+    }
     return result;
 }
 
@@ -256,45 +280,8 @@ HRESULT OverlayCompositionSurface::CommitExternalContentPresentation(
 HRESULT OverlayCompositionSurface::CommitExternalContentPresentation(
     const RECT& bounds, const RECT& clipBounds,
     const bool visible, CommitTiming& timing) noexcept {
-    timing = {};
-    if (!device_ || !externalContentVisual_ || !content_.visual ||
-        bounds.right <= bounds.left || bounds.bottom <= bounds.top ||
-        clipBounds.right <= clipBounds.left ||
-        clipBounds.bottom <= clipBounds.top)
-        return E_INVALIDARG;
-    const auto started = std::chrono::steady_clock::now();
-    const auto width = bounds.right - bounds.left;
-    const auto height = bounds.bottom - bounds.top;
-    const D2D_RECT_F clip{
-        static_cast<float>(std::clamp(
-            clipBounds.left - bounds.left, 0L, width)),
-        static_cast<float>(std::clamp(
-            clipBounds.top - bounds.top, 0L, height)),
-        static_cast<float>(std::clamp(
-            clipBounds.right - bounds.left, 0L, width)),
-        static_cast<float>(std::clamp(
-            clipBounds.bottom - bounds.top, 0L, height)),
-    };
-    if (clip.right <= clip.left || clip.bottom <= clip.top)
-        return E_INVALIDARG;
-    HRESULT result = externalContentVisual_->SetOffsetX(
-        static_cast<float>(bounds.left));
-    if (SUCCEEDED(result)) result = externalContentVisual_->SetOffsetY(
-        static_cast<float>(bounds.top));
-    if (SUCCEEDED(result)) result = externalContentVisual_->SetClip(clip);
-    if (SUCCEEDED(result) && visible && !externalContentAttached_) {
-        result = content_.visual->AddVisual(
-            externalContentVisual_.Get(), TRUE, nullptr);
-        if (SUCCEEDED(result)) externalContentAttached_ = true;
-    } else if (SUCCEEDED(result) && !visible && externalContentAttached_) {
-        result = content_.visual->RemoveVisual(externalContentVisual_.Get());
-        if (SUCCEEDED(result)) externalContentAttached_ = false;
-    }
-    if (SUCCEEDED(result)) result = device_->Commit();
-    timing.commitMicroseconds = static_cast<std::uint64_t>(
-        std::chrono::duration_cast<std::chrono::microseconds>(
-            std::chrono::steady_clock::now() - started).count());
-    return result;
+    return CommitExternalContentPresentation(
+        ExternalContentEndpoint::Overlay, bounds, clipBounds, visible, timing);
 }
 
 HRESULT OverlayCompositionSurface::DetachExternalContentTarget(
@@ -328,6 +315,7 @@ HRESULT OverlayCompositionSurface::DetachExternalContentTarget(
     if (SUCCEEDED(result)) {
         visual.Reset();
         attached = false;
+        ExternalPresentationFor(endpoint).current = false;
     }
     return result;
 }
@@ -352,6 +340,7 @@ HRESULT OverlayCompositionSurface::ReleasePinnedExternalContentEndpoint(
         pinnedExternalRootVisual_.Reset();
         pinnedExternalTarget_.Reset();
         pinnedExternalContentAttached_ = false;
+        pinnedExternalContentPresentation_.current = false;
     }
     return result;
 }
@@ -374,6 +363,26 @@ const OverlayCompositionSurface::LayerState& OverlayCompositionSurface::StateFor
     case Layer::Content:
     default: return content_;
     }
+}
+
+OverlayCompositionSurface::ExternalContentPresentationState&
+OverlayCompositionSurface::ExternalPresentationFor(
+    const ExternalContentEndpoint endpoint) noexcept {
+    return endpoint == ExternalContentEndpoint::Overlay
+        ? externalContentPresentation_ : pinnedExternalContentPresentation_;
+}
+
+const OverlayCompositionSurface::ExternalContentPresentationState&
+OverlayCompositionSurface::ExternalPresentationFor(
+    const ExternalContentEndpoint endpoint) const noexcept {
+    return endpoint == ExternalContentEndpoint::Overlay
+        ? externalContentPresentation_ : pinnedExternalContentPresentation_;
+}
+
+OverlayCompositionSurface::ExternalContentCommitCounters
+OverlayCompositionSurface::externalContentCommitCounters(
+    const ExternalContentEndpoint endpoint) const noexcept {
+    return ExternalPresentationFor(endpoint).counters;
 }
 
 bool OverlayCompositionSurface::hasContent() const noexcept {

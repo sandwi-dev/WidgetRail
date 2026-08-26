@@ -2435,6 +2435,23 @@ private:
             : widgetrail::OverlayCompositionSurface::ExternalContentEndpoint::Overlay;
     }
 
+    void RecordEmbeddedMediaPresentation(
+        const widgetrail::OverlayCompositionSurface::ExternalContentEndpoint endpoint,
+        const widgetrail::OverlayCompositionSurface::CommitTiming& timing,
+        const std::wstring_view reason) {
+        const auto counters = compositionSurface_.externalContentCommitCounters(endpoint);
+        if (!timing.externalPresentationCommitted && counters.requested % 256 != 0) return;
+        AppendDiagnostic(
+            L"Embedded media presentation endpoint=" +
+            std::wstring{endpoint ==
+                    widgetrail::OverlayCompositionSurface::ExternalContentEndpoint::Pinned
+                ? L"pinned" : L"overlay"} +
+            L" result=" + (timing.externalPresentationCommitted ? L"committed" : L"unchanged") +
+            L" requested=" + std::to_wstring(counters.requested) +
+            L" committed=" + std::to_wstring(counters.committed) +
+            L" reason=" + std::wstring{reason});
+    }
+
     [[nodiscard]] static RECT Win32Rect(
         const widgetrail::PhysicalRect& bounds) noexcept {
         return {bounds.left, bounds.top, bounds.right, bounds.bottom};
@@ -2499,12 +2516,14 @@ private:
             (void)compositionSurface_.CommitExternalContentPresentation(
                 endpoint, *embeddedMediaClientBounds_, *embeddedMediaClientClip_,
                 visible, timing);
+            RecordEmbeddedMediaPresentation(endpoint, timing, L"transfer-visibility");
         };
         result = richMediaSurface_.CompletePresentationTransfer(std::move(presentation));
         if (FAILED(result)) return false;
         (void)compositionSurface_.CommitExternalContentPresentation(
             endpoint, Win32Rect(geometry->hostBounds), Win32Rect(geometry->hostClip),
             EmbeddedMediaPresentationVisible(), detachTiming);
+        RecordEmbeddedMediaPresentation(endpoint, detachTiming, L"transfer-complete");
         (void)richMediaSurface_.SetVisible(EmbeddedMediaPresentationVisible());
         AppendDiagnostic(
             L"Embedded media transferred widget=" + embeddedMediaAuthority_->widgetId +
@@ -2541,6 +2560,8 @@ private:
             CompositionEndpoint(destination), Win32Rect(geometry->hostBounds),
             Win32Rect(geometry->hostClip),
             EmbeddedMediaPresentationVisible(), timing);
+        RecordEmbeddedMediaPresentation(
+            CompositionEndpoint(destination), timing, L"projection-reconcile");
         (void)richMediaSurface_.SetVisible(EmbeddedMediaPresentationVisible());
     }
 
@@ -2676,18 +2697,8 @@ private:
                 CompositionEndpoint(desiredProjection), *embeddedMediaClientBounds_,
                 *embeddedMediaClientClip_, EmbeddedMediaPresentationVisible(), timing);
             (void)richMediaSurface_.SetVisible(EmbeddedMediaPresentationVisible());
-            AppendDiagnostic(
-                L"Embedded media geometry committed widget=" + std::wstring{widgetId} +
-                L" surface=" + declaration.id + L" sequence=" +
-                std::to_wstring(snapshot.sequence) + L" local-bounds=" +
-                std::to_wstring(embeddedMediaClientBounds_->left) + L"," +
-                std::to_wstring(embeddedMediaClientBounds_->top) + L"," +
-                std::to_wstring(embeddedMediaClientBounds_->right) + L"," +
-                std::to_wstring(embeddedMediaClientBounds_->bottom) + L" local-clip=" +
-                std::to_wstring(embeddedMediaClientClip_->left) + L"," +
-                std::to_wstring(embeddedMediaClientClip_->top) + L"," +
-                std::to_wstring(embeddedMediaClientClip_->right) + L"," +
-                std::to_wstring(embeddedMediaClientClip_->bottom));
+            RecordEmbeddedMediaPresentation(
+                CompositionEndpoint(desiredProjection), timing, L"snapshot-reconcile");
             DispatchPendingEmbeddedMediaCommand();
         };
         if (retainedIdentityCurrent && embeddedMediaAuthority_ &&
@@ -2850,6 +2861,7 @@ private:
             const HRESULT result = compositionSurface_.CommitExternalContentPresentation(
                 endpoint, *embeddedMediaClientBounds_, *embeddedMediaClientClip_,
                 visible, timing);
+            RecordEmbeddedMediaPresentation(endpoint, timing, L"visibility");
             if (FAILED(result)) AppendDiagnostic(
                 L"Embedded media presentation commit failed hr=" +
                 std::to_wstring(static_cast<long>(result)));
@@ -2873,6 +2885,7 @@ private:
         widgetrail::OverlayCompositionSurface::CommitTiming timing;
         (void)compositionSurface_.CommitExternalContentPresentation(
             endpoint, bounds, *embeddedMediaClientClip_, false, timing);
+        RecordEmbeddedMediaPresentation(endpoint, timing, L"admission");
         AppendDiagnostic(
             L"Embedded media admitted widget=" + std::wstring{widgetId} +
             L" surface=" + declaration.id + L" sequence=" +

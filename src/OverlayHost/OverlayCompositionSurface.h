@@ -98,6 +98,12 @@ public:
     struct CommitTiming final {
         std::uint64_t commitMicroseconds{};
         bool waitedForCompletion{};
+        bool externalPresentationCommitted{};
+    };
+
+    struct ExternalContentCommitCounters final {
+        std::uint64_t requested{};
+        std::uint64_t committed{};
     };
 
     struct VisualPresentation final {
@@ -137,6 +143,8 @@ public:
     [[nodiscard]] unsigned int width(Layer layer) const noexcept;
     [[nodiscard]] unsigned int height(Layer layer) const noexcept;
     [[nodiscard]] PaintCounters paintCounters() const noexcept { return paintCounters_; }
+    [[nodiscard]] ExternalContentCommitCounters externalContentCommitCounters(
+        ExternalContentEndpoint endpoint) const noexcept;
 
     /// Ordinary frame commits own content placement only. Guide/tray offsets
     /// belong to the fixed chrome session across repaint and replacement.
@@ -218,6 +226,17 @@ private:
     Microsoft::WRL::ComPtr<IDCompositionVisual2> pinnedExternalRootVisual_;
     Microsoft::WRL::ComPtr<IDCompositionVisual2> pinnedExternalContentVisual_;
     bool pinnedExternalContentAttached_{};
+    struct ExternalContentPresentationState final {
+        bool current{};
+        IDCompositionVisual2* visual{};
+        IDCompositionVisual2* parent{};
+        RECT bounds{};
+        RECT clipBounds{};
+        bool visible{};
+        ExternalContentCommitCounters counters{};
+    };
+    ExternalContentPresentationState externalContentPresentation_{};
+    ExternalContentPresentationState pinnedExternalContentPresentation_{};
     Microsoft::WRL::ComPtr<IDCompositionVisual2> chromeRootVisual_;
     Microsoft::WRL::ComPtr<IDCompositionEffectGroup> effect_;
     LayerState content_;
@@ -229,6 +248,10 @@ private:
     HRESULT ApplyChromePresentation(const ChromePresentation& presentation) noexcept;
     [[nodiscard]] LayerState& StateFor(Layer layer) noexcept;
     [[nodiscard]] const LayerState& StateFor(Layer layer) const noexcept;
+    [[nodiscard]] ExternalContentPresentationState& ExternalPresentationFor(
+        ExternalContentEndpoint endpoint) noexcept;
+    [[nodiscard]] const ExternalContentPresentationState& ExternalPresentationFor(
+        ExternalContentEndpoint endpoint) const noexcept;
 };
 
 } // namespace widgetrail

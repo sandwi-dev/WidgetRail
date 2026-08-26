@@ -249,6 +249,7 @@ HRESULT RichMediaSurfaceCoordinator::Initialize(Configuration configuration) noe
         BrowserProcessExitObserved()) ReleaseEnvironment(true);
     configuration_ = std::move(configuration);
     state_ = {};
+    controllerGeometryApplied_ = false;
     desiredVisible_ = configuration_.initiallyVisible;
     state_.authority.surfaceGeneration = ++nextSurfaceGeneration_;
     state_.authority.sessionGeneration = ++nextSessionGeneration_;
@@ -271,6 +272,7 @@ HRESULT RichMediaSurfaceCoordinator::Retry(Configuration configuration) noexcept
         ReleaseEnvironment(true);
     configuration_ = std::move(configuration);
     state_ = {};
+    controllerGeometryApplied_ = false;
     state_.authority.surfaceGeneration = retrySurfaceGeneration_;
     state_.authority.sessionGeneration = ++nextSessionGeneration_;
     retrySurfaceGeneration_ = 0;
@@ -1003,11 +1005,14 @@ HRESULT RichMediaSurfaceCoordinator::SetVisible(const bool visible) noexcept {
     if (state_.lifecycle != Lifecycle::ReadyHidden && state_.lifecycle != Lifecycle::Visible)
         return E_UNEXPECTED;
     const bool effectiveVisible = visible && pageReady_;
+    const auto desiredLifecycle = effectiveVisible
+        ? Lifecycle::Visible : Lifecycle::ReadyHidden;
+    if (state_.lifecycle == desiredLifecycle &&
+        state_.inputEnabled == effectiveVisible) return S_FALSE;
     const HRESULT result = controllerBase_->put_IsVisible(
         effectiveVisible ? TRUE : FALSE);
     if (FAILED(result)) { Fault(L"visibility", result); return result; }
-    state_.lifecycle = effectiveVisible
-        ? Lifecycle::Visible : Lifecycle::ReadyHidden;
+    state_.lifecycle = desiredLifecycle;
     state_.inputEnabled = effectiveVisible;
     if (configuration_.setPresentationVisible)
         configuration_.setPresentationVisible(effectiveVisible);
@@ -1035,6 +1040,7 @@ HRESULT RichMediaSurfaceCoordinator::UpdateGeometry(
         state_.focusedActionBoundsCurrent = true;
     }
     if (!controllerBase_) return S_FALSE;
+    if (controllerGeometryApplied_ && !geometryChanged) return S_FALSE;
     // The host owns placement in its DirectComposition tree. WebView2 owns
     // pixels in controller-local coordinates only; retaining the host offset
     // here would apply placement twice.
@@ -1044,6 +1050,7 @@ HRESULT RichMediaSurfaceCoordinator::UpdateGeometry(
     ComPtr<ICoreWebView2Controller3> controller3;
     if (SUCCEEDED(result) && SUCCEEDED(controllerBase_.As(&controller3)))
         result = controller3->put_RasterizationScale(rasterScale);
+    if (SUCCEEDED(result)) controllerGeometryApplied_ = true;
     return result;
 }
 
@@ -1066,6 +1073,7 @@ HRESULT RichMediaSurfaceCoordinator::BeginPresentationTransfer() noexcept {
     configuration_.setPresentationVisible = {};
     state_.lifecycle = Lifecycle::ReadyHidden;
     state_.focusedActionBoundsCurrent = false;
+    controllerGeometryApplied_ = false;
     presentationTransferPending_ = true;
     Emit(L"Rich media presentation transfer=detached");
     return S_OK;
@@ -1493,6 +1501,7 @@ void RichMediaSurfaceCoordinator::BeginSessionTeardown() noexcept {
     sessionTeardownResult_.controllerCloseResult = controllerBase_
         ? controllerBase_->Close() : S_FALSE;
     core_.Reset(); controllerBase_.Reset(); controller_.Reset();
+    controllerGeometryApplied_ = false;
     const auto callbackDeadline = std::chrono::steady_clock::now() +
         std::chrono::seconds(5);
     const auto callbacksPending = [&] {
@@ -1531,6 +1540,7 @@ void RichMediaSurfaceCoordinator::CompleteSessionTeardown() noexcept {
     if (!teardownBegun_) return;
     state_ = {};
     desiredVisible_ = false;
+    controllerGeometryApplied_ = false;
     pageReady_ = false;
     mouseInside_ = false;
     pendingNavigationId_ = 0;
