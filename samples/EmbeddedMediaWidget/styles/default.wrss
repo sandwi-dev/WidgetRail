@@ -4,15 +4,15 @@
 .media-shell-eyebrow { color: var(--text-muted); font-size: 10px; font-weight: 500; letter-spacing: 0.03em; max-lines: 1; }
 .media-shell-title { color: var(--text); font-size: 24px; font-weight: 500; max-lines: 1; text-overflow: ellipsis; }
 .media-shell-status { color: var(--success); font-size: 11px; max-lines: 1; }
-.media-shell-back { min-width: 94px; min-height: 42px; padding: 9px 13px; color: var(--text); background: var(--surface-raised); border-color: var(--border); border-width: 1px; corner-radius: 9px; }
-.media-shell-viewport { width: 100%; min-width: 320px; min-height: 180px; flex-grow: 1; background: var(--surface-raised); border-color: var(--border); border-width: 1px; corner-radius: 12px; overflow: clip; }
+.media-shell-back { min-width: 94px; min-height: 42px; padding: 9px 13px; color: var(--text); background: var(--surface-raised); border-color: var(--text-subdued); border-width: 1px; corner-radius: 9px; }
+.media-shell-viewport { width: 100%; min-width: 320px; min-height: 180px; flex-grow: 1; background: var(--surface-raised); border-color: var(--text-subdued); border-width: 1px; corner-radius: 12px; overflow: clip; }
 .media-shell-timeline { align: center; gap: 9px; flex-shrink: 0; }
 .media-shell-time { width: 40px; color: var(--text-muted); font-size: 11px; max-lines: 1; }
 .media-shell-time.is-end { text-align: end; }
-.media-shell-progress { min-width: 220px; height: 4px; flex-grow: 1; color: var(--accent); background: var(--surface-active); }
+.media-shell-progress { min-width: 220px; height: 4px; flex-grow: 1; color: var(--accent); background: var(--surface-muted); }
 .media-shell-controls { height: 54px; align: center; justify: center; gap: 10px; flex-shrink: 0; }
-.media-shell-transport, .media-shell-play { color: var(--text); background: var(--surface-raised); border-color: var(--border); border-width: 1px; shape: circle; transition-duration: 90ms; transition-easing: ease-out; }
+.media-shell-transport, .media-shell-play { color: var(--text); background: var(--surface-raised); border-color: var(--text-subdued); border-width: 1px; shape: circle; transition-duration: 90ms; transition-easing: ease-out; }
 .media-shell-transport { width: 44px; height: 44px; min-width: 44px; min-height: 44px; padding: 11px; }
-.media-shell-play { width: 54px; height: 54px; min-width: 54px; min-height: 54px; padding: 15px; background: var(--accent); color: var(--canvas); border-color: transparent; }
+.media-shell-play { width: 54px; height: 54px; min-width: 54px; min-height: 54px; padding: 15px; background: var(--accent); color: var(--surface); border-color: transparent; }
 .media-shell-back:focused, .media-shell-transport:focused, .media-shell-play:focused { outline-color: var(--focus); outline-width: 2px; outline-offset: -2px; }
-.media-shell-back:focused, .media-shell-transport:focused { background: var(--surface-active); }
+.media-shell-back:focused, .media-shell-transport:focused { background: var(--surface-muted); }
