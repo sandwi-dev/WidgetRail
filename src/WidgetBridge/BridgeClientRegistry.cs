@@ -1061,6 +1061,13 @@ internal sealed class BridgeClientRegistry : IAsyncDisposable
                 !string.Equals(media.Id, request.Event.SurfaceId, StringComparison.Ordinal))
                 throw new BridgeProtocolException(
                     "Embedded media event authority is stale or unavailable.");
+            if (playbackEvent.CommandSequence > 0 &&
+                (media.PendingCommand is not { } pendingCommand ||
+                 pendingCommand.Sequence != playbackEvent.CommandSequence ||
+                 !string.Equals(pendingCommand.MediaKey, playbackEvent.MediaKey,
+                     StringComparison.Ordinal)))
+                throw new BridgeProtocolException(
+                    "Embedded media playback command authority is stale or unavailable.");
             await registration.Client.SendEmbeddedMediaPlaybackEventAsync(
                 request.Event, cancellationToken).ConfigureAwait(false);
             DemandCurrent(registration);

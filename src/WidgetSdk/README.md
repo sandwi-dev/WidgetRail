@@ -426,7 +426,9 @@ seek/volume vocabulary over bounded opaque media keys; observations contain
 only typed playback state, time, volume, and sanitized error codes. The host
 revalidates widget, instance, runtime, presentation, snapshot, surface, and
 command authority before either direction crosses the worker boundary. Optional
-`AllowedFrameOrigins` entries are exact HTTPS origins for subframes only; the
+`AllowedFrameOrigins` entries use canonical lowercase `https://host` form with
+no trailing slash, userinfo, wildcard, or explicit port, and are exact origins
+for subframes only; the
 top-level document remains the sealed package entry asset. This contract does
 not expose URLs, DOM, script, browsing, or provider identity.
 

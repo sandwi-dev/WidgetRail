@@ -84,7 +84,7 @@ ctor WidgetRail.WidgetSdk.WidgetMediaSession(string SessionId, string AppName, s
 ctor WidgetRail.WidgetSdk.WidgetMediaSessionsChanged(System.Collections.Generic.IReadOnlyList<WidgetRail.WidgetSdk.WidgetMediaSession> Sessions)
 ctor WidgetRail.WidgetSdk.WidgetModelChangedEventArgs<TState>(WidgetRail.WidgetSdk.WidgetModelSnapshot<TState> previous, WidgetRail.WidgetSdk.WidgetModelSnapshot<TState> current)
 ctor WidgetRail.WidgetSdk.WidgetModelSnapshot<TState>(TState Value, long Revision)
-ctor WidgetRail.WidgetSdk.WidgetModelUpdate<TState,TResult>(TState Previous, TState Current, TResult? Result, long Revision, bool Changed)
+ctor WidgetRail.WidgetSdk.WidgetModelUpdate<TState,TResult>(TState Previous, TState Current, TResult Result, long Revision, bool Changed)
 ctor WidgetRail.WidgetSdk.WidgetModelUpdate<TState>(TState Previous, TState Current, long Revision, bool Changed)
 ctor WidgetRail.WidgetSdk.WidgetNavigationSnapshot<TRoute>(TRoute Route, TRoute RootRoute, int Depth, string InputScopeId, string? InitialFocusId, string? BackActionId, long Revision, System.Threading.CancellationToken RouteCancellationToken)
 ctor WidgetRail.WidgetSdk.WidgetNetworkConnectionDetails(long Revision, WidgetRail.WidgetSdk.WidgetNetworkConnectionDetailsState State, WidgetRail.WidgetSdk.WidgetNetworkConnectionDetailsConnectivity Connectivity, WidgetRail.WidgetSdk.WidgetNetworkTransportKind Transport, System.Collections.Generic.IReadOnlyList<string> IpAddresses, System.Collections.Generic.IReadOnlyList<string> DefaultGateways, System.Collections.Generic.IReadOnlyList<string> DnsServers)

@@ -87,6 +87,17 @@ constexpr std::size_t kMaximumIdentifierLength =
     protocol_contract::MaximumCapabilityIdLength;
 constexpr std::size_t kMaximumLabelLength = 256;
 constexpr std::size_t kMaximumControllerButtonLength = 32;
+
+bool IsCanonicalHttpsOrigin(const std::wstring_view origin) noexcept {
+    if (!origin.starts_with(L"https://") || origin.size() <= 8 ||
+        origin.find_first_of(L"/?#@*:", 8) != std::wstring_view::npos)
+        return false;
+    return std::all_of(origin.begin() + 8, origin.end(), [](const wchar_t character) {
+        return (character >= L'a' && character <= L'z') ||
+            (character >= L'0' && character <= L'9') ||
+            character == L'-' || character == L'.';
+    });
+}
 constexpr int kMinimumWidgetSnapshotProtocolVersion =
     protocol_contract::MinimumSupportedVersion;
 constexpr int kMaximumWidgetSnapshotProtocolVersion = protocol_contract::CurrentVersion;
@@ -1240,10 +1251,8 @@ WidgetSnapshot ParseSnapshot(const JsonObject& source) {
         std::unordered_set<std::wstring> originSet;
         for (uint32_t index = 0; index < frameOrigins.Size(); ++index) {
             const auto origin = std::wstring(std::wstring_view(frameOrigins.GetStringAt(index)));
-            const auto authorityEnd = origin.find_first_of(L"/?#", 8);
             if (origin.size() > protocol_contract::MaximumEmbeddedMediaFrameOriginLength ||
-                !origin.starts_with(L"https://") || authorityEnd != std::wstring::npos ||
-                origin.find(L'@') != std::wstring::npos || origin.size() <= 8 ||
+                !IsCanonicalHttpsOrigin(origin) ||
                 !originSet.insert(origin).second)
                 throw winrt::hresult_invalid_argument(
                     L"Embedded media frame origin declaration is invalid.");
@@ -2091,11 +2100,18 @@ std::optional<EmbeddedMediaBundle> ParseEmbeddedMediaBundle(
     const std::wstring_view presentationGeneration,
     const long long sequence,
     const std::wstring_view surfaceId) {
-    if (!HasOnlyProperties(body,
+    if (!HasNoUnknownProperties(body,
             {L"widgetId", L"instanceId", L"runtimeGeneration",
              L"presentationGeneration", L"sequence", L"surfaceId",
              L"entryAsset", L"surface", L"aspectRatio", L"accessibleName",
-             L"commands", L"allowedFrameOrigins", L"pendingCommand", L"resources"}))
+             L"commands", L"allowedFrameOrigins", L"pendingCommand", L"resources"}) ||
+        !body.HasKey(L"widgetId") || !body.HasKey(L"instanceId") ||
+        !body.HasKey(L"runtimeGeneration") ||
+        !body.HasKey(L"presentationGeneration") || !body.HasKey(L"sequence") ||
+        !body.HasKey(L"surfaceId") || !body.HasKey(L"entryAsset") ||
+        !body.HasKey(L"surface") || !body.HasKey(L"aspectRatio") ||
+        !body.HasKey(L"accessibleName") || !body.HasKey(L"commands") ||
+        !body.HasKey(L"allowedFrameOrigins") || !body.HasKey(L"resources"))
         return std::nullopt;
     EmbeddedMediaBundle bundle;
     bundle.widgetId = OptionalString(body, L"widgetId");
@@ -2188,8 +2204,8 @@ std::optional<EmbeddedMediaBundle> ParseEmbeddedMediaBundle(
     std::unordered_set<std::wstring> originSet;
     for (uint32_t index = 0; index < frameOrigins.Size(); ++index) {
         auto origin = std::wstring(std::wstring_view(frameOrigins.GetStringAt(index)));
-        if (origin.empty() ||
-            origin.size() > protocol_contract::MaximumEmbeddedMediaFrameOriginLength ||
+        if (origin.size() > protocol_contract::MaximumEmbeddedMediaFrameOriginLength ||
+            !IsCanonicalHttpsOrigin(origin) ||
             !originSet.insert(origin).second) return std::nullopt;
         bundle.surface.allowedFrameOrigins.push_back(std::move(origin));
     }

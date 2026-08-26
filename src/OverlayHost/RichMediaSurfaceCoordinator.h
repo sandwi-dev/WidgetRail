@@ -229,6 +229,15 @@ private:
         std::wstring_view uri, std::wstring_view exactPageUri) noexcept;
     [[nodiscard]] static bool IsAllowedMessageSource(
         std::wstring_view source, std::wstring_view exactPageUri) noexcept;
+    [[nodiscard]] static bool IsCanonicalHttpsOrigin(
+        std::wstring_view origin) noexcept;
+    [[nodiscard]] static bool IsAllowedFrameResource(
+        std::wstring_view uri,
+        const std::vector<std::wstring>& allowedOrigins) noexcept;
+    [[nodiscard]] static bool IsPlaybackCommandCorrelated(
+        std::uint64_t commandSequence, std::wstring_view mediaKey,
+        std::optional<std::uint64_t> pendingSequence,
+        std::wstring_view pendingMediaKey) noexcept;
     [[nodiscard]] static bool IsValidAdapterConfiguration(
         const Configuration& configuration) noexcept;
     [[nodiscard]] static bool SurfaceLocalPoint(
@@ -258,6 +267,7 @@ private:
         std::uint64_t id{};
         Command command{};
         std::uint64_t playbackSequence{};
+        std::wstring mediaKey;
         PendingPhase phase{PendingPhase::AwaitingEvent};
     };
     std::optional<PendingCommand> pendingCommand_;

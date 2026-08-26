@@ -124,13 +124,19 @@ public sealed class EmbeddedMediaSampleWidget : Widget
         lock (_gate)
         {
             if (playbackEvent.Sequence <= _eventSequence) return ValueTask.CompletedTask;
+            if (playbackEvent.CommandSequence > 0 &&
+                (_pendingCommand is not { } pending ||
+                 pending.Sequence != playbackEvent.CommandSequence ||
+                 !string.Equals(pending.MediaKey, playbackEvent.MediaKey,
+                     StringComparison.Ordinal)))
+                return ValueTask.CompletedTask;
             _eventSequence = playbackEvent.Sequence;
             _mediaKey = playbackEvent.MediaKey;
             _state = playbackEvent.State;
             _position = playbackEvent.PositionSeconds;
             _duration = playbackEvent.DurationSeconds;
-            if (_pendingCommand is { } pending &&
-                playbackEvent.CommandSequence == pending.Sequence)
+            if (_pendingCommand is { } current &&
+                playbackEvent.CommandSequence == current.Sequence)
                 _pendingCommand = null;
         }
         return ValueTask.CompletedTask;

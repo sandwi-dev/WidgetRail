@@ -401,7 +401,7 @@ void VerifyEmbeddedMediaSnapshotContract() {
     std::wstring error;
     const auto valid = widgetrail::testing::ParseWidgetSnapshotResponse(R"json({
         "snapshot": {
-            "protocolVersion":23,"sequence":7,
+            "protocolVersion":24,"sequence":7,
             "widgetInstanceId":"neutral.adapter","activeInputScopeId":"root",
             "surface":{"mode":"standard","preferredWidth":760,"preferredHeight":425,
                        "minimumWidth":320,"minimumHeight":180},
@@ -412,7 +412,8 @@ void VerifyEmbeddedMediaSnapshotContract() {
                 "resources":[
                     {"path":"media/index.html","contentType":"text/html"},
                     {"path":"media/tone.wav","contentType":"audio/wav"}],
-                "commands":["activate","togglePlayback","back"]},
+                "commands":["activate","togglePlayback","back"],
+                "allowedFrameOrigins":["https://frames.neutral.invalid"]},
             "root":{"id":"root","kind":"stack","children":[
                 {"id":"title","kind":"text","text":"Aurora fixture","children":[]},
                 {"id":"viewport","kind":"mediaViewport","mediaSurfaceId":"media",
@@ -430,7 +431,7 @@ void VerifyEmbeddedMediaSnapshotContract() {
                 valid->root.children.size() == 3 &&
                 valid->root.children[1].kind == L"mediaViewport" &&
                 valid->root.children[1].mediaSurfaceId == L"media",
-            "valid protocol-v23 MediaViewport snapshot was rejected");
+            "valid protocol-v24 MediaViewport snapshot was rejected");
 
     const auto mutate = [](std::string source, const std::string_view from,
                            const std::string_view to) {
@@ -442,14 +443,15 @@ void VerifyEmbeddedMediaSnapshotContract() {
     };
     constexpr std::string_view validJson = R"json({
         "snapshot": {
-            "protocolVersion":23,"sequence":7,
+            "protocolVersion":24,"sequence":7,
             "widgetInstanceId":"cedar.adapter","activeInputScopeId":"root",
             "embeddedMedia":{"id":"cedar-media","accessibleName":"Cedar media",
                 "entryAsset":"media/index.html","aspectRatio":1.7777777778,
                 "surface":{"mode":"standard","preferredWidth":640,"preferredHeight":360,
                            "minimumWidth":240,"minimumHeight":180},
                 "resources":[{"path":"media/index.html","contentType":"text/html"}],
-                "commands":["activate"]},
+                "commands":["activate"],
+                "allowedFrameOrigins":["https://frames.cedar.invalid"]},
             "root":{"id":"root","kind":"stack","children":[
                 {"id":"cedar.viewport","kind":"mediaViewport",
                  "mediaSurfaceId":"cedar-media","accessibilityLabel":"Cedar media",
@@ -476,7 +478,19 @@ void VerifyEmbeddedMediaSnapshotContract() {
              std::pair{mutate(std::string{validJson},
                  R"json("shortcuts":[])json",
                  R"json("shortcuts":[{"button":"a","actionId":"escape","phase":"pressed"}])json"),
-                 std::wstring_view{L"shortcuts must be empty"}}}) {
+                 std::wstring_view{L"shortcuts must be empty"}},
+             std::pair{mutate(std::string{validJson},
+                 "https://frames.cedar.invalid", "https://frames.cedar.invalid/"),
+                 std::wstring_view{L"frame origin declaration is invalid"}},
+             std::pair{mutate(std::string{validJson},
+                 "https://frames.cedar.invalid", "HTTPS://frames.cedar.invalid"),
+                 std::wstring_view{L"frame origin declaration is invalid"}},
+             std::pair{mutate(std::string{validJson},
+                 "https://frames.cedar.invalid", "https://user@frames.cedar.invalid"),
+                 std::wstring_view{L"frame origin declaration is invalid"}},
+             std::pair{mutate(std::string{validJson},
+                 "https://frames.cedar.invalid", "https://*.cedar.invalid"),
+                 std::wstring_view{L"frame origin declaration is invalid"}}}) {
         error.clear();
         Require(!widgetrail::testing::ParseWidgetSnapshotResponse(malformed, error) &&
                     error.find(expected) != std::wstring::npos,
@@ -510,6 +524,7 @@ void VerifyEmbeddedMediaBundleBoundary() {
                    "minimumWidth":320,"minimumHeight":180},
         "aspectRatio":1.7777777778,"accessibleName":"Aurora media",
         "commands":["activate","togglePlayback"],
+        "allowedFrameOrigins":["https://frames.aurora.invalid"],
         "resources":[{"path":"media/index.html","contentType":"text/html",
             "sha256":"0000000000000000000000000000000000000000000000000000000000000000",
             "contentBase64":"QQ=="}]
@@ -540,6 +555,14 @@ void VerifyEmbeddedMediaBundleBoundary() {
                      "\"commands\":[\"activate\",\"activate\"]"),
              replace(std::string{valid}, "\"commands\":[\"activate\",\"togglePlayback\"]",
                      "\"commands\":[\"browse\"]"),
+             replace(std::string{valid}, "https://frames.aurora.invalid",
+                     "https://frames.aurora.invalid/"),
+             replace(std::string{valid}, "https://frames.aurora.invalid",
+                     "HTTPS://frames.aurora.invalid"),
+             replace(std::string{valid}, "https://frames.aurora.invalid",
+                     "https://user@frames.aurora.invalid"),
+             replace(std::string{valid}, "https://frames.aurora.invalid",
+                     "https://*.aurora.invalid"),
              replace(std::string{valid}, "media/index.html", "../secret.html"),
              replace(std::string{valid}, "\"contentType\":\"text/html\"",
                      "\"contentType\":\"text/html\\r\\nX-Test: injected\""),

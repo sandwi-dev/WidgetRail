@@ -43,6 +43,17 @@ bool IsDocumentLocalIdentifier(const std::wstring_view value) noexcept {
         });
 }
 
+bool CanonicalHttpsOrigin(const std::wstring_view origin) noexcept {
+    if (!origin.starts_with(L"https://") || origin.size() <= 8 ||
+        origin.find_first_of(L"/?#@*", 8) != std::wstring_view::npos)
+        return false;
+    return std::all_of(origin.begin() + 8, origin.end(), [](const wchar_t character) {
+        return (character >= L'a' && character <= L'z') ||
+            (character >= L'0' && character <= L'9') ||
+            character == L'-' || character == L'.';
+    });
+}
+
 std::wstring BoundedSyntheticPath(const std::wstring_view origin,
                                   const std::wstring_view uri) {
     const std::wstring prefix = std::wstring{origin} + L"/";
@@ -66,6 +77,16 @@ bool IsValidPublicAdapterConfiguration(const Configuration& configuration) {
         configuration.origin.find_first_of(L"/?#@", 8) != std::wstring::npos ||
         configuration.entryAsset.empty() || configuration.resources.size() > 16)
         return false;
+    if (configuration.allowedFrameOrigins.size() >
+        protocol_contract::MaximumEmbeddedMediaFrameOriginCount)
+        return false;
+    std::unordered_set<std::wstring> frameOrigins;
+    for (const auto& origin : configuration.allowedFrameOrigins) {
+        if (!CanonicalHttpsOrigin(origin) ||
+            origin.size() > protocol_contract::MaximumEmbeddedMediaFrameOriginLength ||
+            !frameOrigins.insert(origin).second)
+            return false;
+    }
     std::size_t aggregate{};
     bool hasEntry{};
     std::unordered_set<std::wstring> paths;
@@ -550,6 +571,34 @@ bool RichMediaSurfaceCoordinator::IsAllowedMessageSource(
     return !exactPageUri.empty() && source == exactPageUri;
 }
 
+bool RichMediaSurfaceCoordinator::IsCanonicalHttpsOrigin(
+    const std::wstring_view origin) noexcept {
+    return CanonicalHttpsOrigin(origin);
+}
+
+bool RichMediaSurfaceCoordinator::IsAllowedFrameResource(
+    const std::wstring_view uri,
+    const std::vector<std::wstring>& allowedOrigins) noexcept {
+    return std::any_of(allowedOrigins.begin(), allowedOrigins.end(),
+        [&](const std::wstring& origin) {
+            if (!IsCanonicalHttpsOrigin(origin) || !uri.starts_with(origin))
+                return false;
+            return uri.size() == origin.size() ||
+                (uri.size() > origin.size() &&
+                    (uri[origin.size()] == L'/' || uri[origin.size()] == L'?' ||
+                     uri[origin.size()] == L'#'));
+        });
+}
+
+bool RichMediaSurfaceCoordinator::IsPlaybackCommandCorrelated(
+    const std::uint64_t commandSequence, const std::wstring_view mediaKey,
+    const std::optional<std::uint64_t> pendingSequence,
+    const std::wstring_view pendingMediaKey) noexcept {
+    return commandSequence == 0 ||
+        (pendingSequence && commandSequence == *pendingSequence &&
+            mediaKey == pendingMediaKey);
+}
+
 bool RichMediaSurfaceCoordinator::IsValidAdapterConfiguration(
     const Configuration& configuration) noexcept {
     return IsValidPublicAdapterConfiguration(configuration);
@@ -569,6 +618,11 @@ HRESULT RichMediaSurfaceCoordinator::ServeResource(
     ComPtr<ICoreWebView2WebResourceRequestedEventArgs2> args2;
     HRESULT sourceResult = args->QueryInterface(IID_PPV_ARGS(&args2));
     if (SUCCEEDED(sourceResult)) sourceResult = args2->get_RequestedSourceKind(&sourceKind);
+    if (SUCCEEDED(result) &&
+        IsAllowedFrameResource(uri, configuration_.allowedFrameOrigins)) {
+        Emit(L"Rich media declared frame resource continued to network");
+        return S_OK;
+    }
     ComPtr<IStream> stream;
     const wchar_t* contentType{};
     bool matchedEntry{};
@@ -688,13 +742,7 @@ HRESULT RichMediaSurfaceCoordinator::OnFrameNavigationStarting(
     CoTaskMemFree(rawUri);
     if (FAILED(result)) return result;
     if (IsAllowedNavigation(uri, pageUri_)) return S_OK;
-    if (std::any_of(
-            configuration_.allowedFrameOrigins.begin(),
-            configuration_.allowedFrameOrigins.end(),
-            [&](const std::wstring& origin) {
-                return uri.starts_with(origin) && uri.size() > origin.size() &&
-                    uri[origin.size()] == L'/';
-            })) return S_OK;
+    if (IsAllowedFrameResource(uri, configuration_.allowedFrameOrigins)) return S_OK;
     Emit(L"Rich media frame navigation denied");
     return args->put_Cancel(TRUE);
 }
@@ -723,7 +771,7 @@ HRESULT RichMediaSurfaceCoordinator::OnNavigationCompleted(
     }
     const auto commandId = ++nextCommandId_;
     pendingCommand_ = PendingCommand{
-        commandId, Command::Activate, 0, PendingPhase::AwaitingEvent};
+        commandId, Command::Activate, 0, {}, PendingPhase::AwaitingEvent};
     const std::wstring command = std::format(
         L"{{\"command\":\"initialize\",\"environmentGeneration\":{},\"surfaceGeneration\":{},\"sessionGeneration\":{},\"controllerGeneration\":{},\"documentGeneration\":{},\"commandId\":{}}}",
         state_.authority.environmentGeneration, state_.authority.surfaceGeneration,
@@ -772,8 +820,8 @@ HRESULT RichMediaSurfaceCoordinator::OnWebMessage(
     }
     const auto type = winrt::Windows::Data::Json::JsonObject::Parse(json)
                           .GetNamedString(L"type");
-    state_ = std::move(next);
     if (type == L"armed") {
+        state_ = std::move(next);
         if (!pendingCommand_ || pendingCommand_->command != Command::Activate ||
             pendingCommand_->phase != PendingPhase::AwaitingEvent) {
             Fault(L"spatial-activation-authority", E_ACCESSDENIED);
@@ -792,7 +840,7 @@ HRESULT RichMediaSurfaceCoordinator::OnWebMessage(
                 message.HasKey(L"durationSeconds") && message.HasKey(L"volume") &&
                 message.HasKey(L"playbackState")) {
                 playbackEvent = PlaybackEvent{
-                    state_.authority.eventSequence,
+                    next.authority.eventSequence,
                     pendingCommand_ ? pendingCommand_->playbackSequence : 0,
                     std::wstring(std::wstring_view(message.GetNamedString(L"mediaKey"))),
                     std::wstring(std::wstring_view(message.GetNamedString(L"playbackState"))),
@@ -808,6 +856,17 @@ HRESULT RichMediaSurfaceCoordinator::OnWebMessage(
             return S_OK;
         }
     }
+    if (playbackEvent && !IsPlaybackCommandCorrelated(
+            playbackEvent->commandSequence, playbackEvent->mediaKey,
+            pendingCommand_ && pendingCommand_->playbackSequence > 0
+                ? std::optional<std::uint64_t>{pendingCommand_->playbackSequence}
+                : std::nullopt,
+            pendingCommand_ ? std::wstring_view{pendingCommand_->mediaKey}
+                            : std::wstring_view{})) {
+        Fault(L"message-playback-correlation", E_ACCESSDENIED);
+        return S_OK;
+    }
+    state_ = std::move(next);
     if (pendingCommand_ &&
         state_.lastAcknowledgedCommandId == pendingCommand_->id) pendingCommand_.reset();
     if (type == L"ready") {
@@ -1006,7 +1065,7 @@ bool RichMediaSurfaceCoordinator::SendCommand(const Command command) noexcept {
     const std::wstring json = CommandJson(command, state_.authority, commandId);
     if (FAILED(core_->PostWebMessageAsJson(json.c_str()))) return false;
     pendingCommand_ = PendingCommand{
-        commandId, command, 0, PendingPhase::AwaitingEvent};
+        commandId, command, 0, {}, PendingPhase::AwaitingEvent};
     return true;
 }
 
@@ -1038,7 +1097,8 @@ bool RichMediaSurfaceCoordinator::SendPlaybackCommand(
     json += L"}";
     if (FAILED(core_->PostWebMessageAsJson(json.c_str()))) return false;
     pendingCommand_ = PendingCommand{
-        commandId, transport, command.sequence, PendingPhase::AwaitingEvent};
+        commandId, transport, command.sequence, command.mediaKey,
+        PendingPhase::AwaitingEvent};
     return true;
 }
 

@@ -305,8 +305,11 @@ public static class ViewSnapshotValidator
             {
                 var origin = frameOrigins[index];
                 if (!Uri.TryCreate(origin, UriKind.Absolute, out var uri) ||
-                    !string.Equals(uri.Scheme, Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase) ||
-                    uri.UserInfo.Length != 0 || uri.PathAndQuery != "/" || uri.Fragment.Length != 0 ||
+                    !string.Equals(uri.Scheme, Uri.UriSchemeHttps, StringComparison.Ordinal) ||
+                    uri.UserInfo.Length != 0 || !uri.IsDefaultPort || uri.Fragment.Length != 0 ||
+                    origin.Contains('*') ||
+                    !string.Equals(origin, uri.GetLeftPart(UriPartial.Authority),
+                        StringComparison.Ordinal) ||
                     origin.Length > ProtocolConstants.MaximumEmbeddedMediaFrameOriginLength)
                     Add($"{path}.allowedFrameOrigins[{index}]", "invalid_origin",
                         "Embedded media frame origins must be exact bounded HTTPS origins.");

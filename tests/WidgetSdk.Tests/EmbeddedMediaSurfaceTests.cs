@@ -99,6 +99,22 @@ internal static class EmbeddedMediaSurfaceTests
                 AllowedFrameOrigins = ["http://not-secure.invalid"],
             },
         }, "invalid_origin");
+        foreach (var origin in new[]
+        {
+            "https://media-fixture.invalid/",
+            "HTTPS://media-fixture.invalid",
+            "https://user@media-fixture.invalid",
+            "https://*.media-fixture.invalid",
+        })
+        {
+            Error(snapshot with
+            {
+                EmbeddedMedia = Valid("primary-media") with
+                {
+                    AllowedFrameOrigins = [origin],
+                },
+            }, "invalid_origin");
+        }
         Error(snapshot with
         {
             EmbeddedMedia = Valid("primary-media") with
@@ -155,6 +171,30 @@ internal static class EmbeddedMediaSurfaceTests
         var playCommand = sample.Render().EmbeddedMedia?.PendingCommand;
         Equal(EmbeddedMediaPlaybackCommandKind.Play, playCommand?.Kind);
         Equal("aurora-tone-0", playCommand?.MediaKey);
+        await sample.OnEmbeddedMediaPlaybackEventAsync(new EmbeddedMediaPlaybackEvent
+        {
+            SurfaceId = "embedded-media-sample.primary",
+            Sequence = 1,
+            CommandSequence = playCommand!.Sequence + 1,
+            MediaKey = playCommand.MediaKey,
+            State = EmbeddedMediaPlaybackState.Playing,
+            PositionSeconds = 7,
+            DurationSeconds = 60,
+            Volume = 1,
+        });
+        Equal(playCommand, sample.Render().EmbeddedMedia?.PendingCommand);
+        await sample.OnEmbeddedMediaPlaybackEventAsync(new EmbeddedMediaPlaybackEvent
+        {
+            SurfaceId = "embedded-media-sample.primary",
+            Sequence = 1,
+            CommandSequence = playCommand.Sequence,
+            MediaKey = "cedar-tone-0",
+            State = EmbeddedMediaPlaybackState.Playing,
+            PositionSeconds = 7,
+            DurationSeconds = 60,
+            Volume = 1,
+        });
+        Equal(playCommand, sample.Render().EmbeddedMedia?.PendingCommand);
         await sample.OnEmbeddedMediaPlaybackEventAsync(new EmbeddedMediaPlaybackEvent
         {
             SurfaceId = "embedded-media-sample.primary",

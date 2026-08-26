@@ -38,6 +38,19 @@ public:
                                        const std::wstring_view page) {
         return RichMediaSurfaceCoordinator::IsAllowedMessageSource(source, page);
     }
+    static bool IsAllowedFrameResource(
+        const std::wstring_view uri,
+        const std::vector<std::wstring>& allowedOrigins) {
+        return RichMediaSurfaceCoordinator::IsAllowedFrameResource(
+            uri, allowedOrigins);
+    }
+    static bool IsPlaybackCommandCorrelated(
+        const std::uint64_t commandSequence, const std::wstring_view mediaKey,
+        const std::optional<std::uint64_t> pendingSequence,
+        const std::wstring_view pendingMediaKey) {
+        return RichMediaSurfaceCoordinator::IsPlaybackCommandCorrelated(
+            commandSequence, mediaKey, pendingSequence, pendingMediaKey);
+    }
     static bool IsValidAdapterConfiguration(const Configuration& configuration) {
         return RichMediaSurfaceCoordinator::IsValidAdapterConfiguration(configuration);
     }
@@ -374,6 +387,43 @@ void RunContractCases() {
                 L"https://wrong-origin.invalid/adapter/index.html",
                 L"https://wrail-media-aurora.invalid/adapter/index.html"),
             "exact document message-origin admission drifted");
+    const std::vector<std::wstring> allowedFrameOrigins{
+        L"https://frames.aurora.invalid"};
+    Require(RichMediaSurfaceCoordinatorTestPeer::IsAllowedFrameResource(
+                L"https://frames.aurora.invalid/embed/index.html",
+                allowedFrameOrigins) &&
+            RichMediaSurfaceCoordinatorTestPeer::IsAllowedFrameResource(
+                L"https://frames.aurora.invalid/media/tone.wav?revision=2",
+                allowedFrameOrigins),
+            "declared exact-origin frame traffic would be replaced by the local denial response");
+    for (const auto uri : {
+            L"https://frames.aurora.invalid.evil.example/embed/index.html",
+            L"https://frames.aurora.invalid@evil.example/embed/index.html",
+            L"https://cedar.invalid/embed/index.html",
+            L"http://frames.aurora.invalid/embed/index.html"}) {
+        Require(!RichMediaSurfaceCoordinatorTestPeer::IsAllowedFrameResource(
+                    uri, allowedFrameOrigins),
+                "undeclared or confused frame origin was admitted");
+    }
+    for (const std::vector<std::wstring> invalidOrigins : {
+            std::vector<std::wstring>{L"https://frames.aurora.invalid/"},
+            std::vector<std::wstring>{L"HTTPS://frames.aurora.invalid"},
+            std::vector<std::wstring>{L"https://user@frames.aurora.invalid"},
+            std::vector<std::wstring>{L"https://*.aurora.invalid"}}) {
+        Require(!RichMediaSurfaceCoordinatorTestPeer::IsAllowedFrameResource(
+                    L"https://frames.aurora.invalid/embed/index.html",
+                    invalidOrigins),
+                "non-canonical declared frame origin was admitted");
+    }
+    Require(RichMediaSurfaceCoordinatorTestPeer::IsPlaybackCommandCorrelated(
+                7, L"aurora-tone", 7, L"aurora-tone") &&
+            RichMediaSurfaceCoordinatorTestPeer::IsPlaybackCommandCorrelated(
+                0, L"aurora-tone", std::nullopt, L"") &&
+            !RichMediaSurfaceCoordinatorTestPeer::IsPlaybackCommandCorrelated(
+                8, L"aurora-tone", 7, L"aurora-tone") &&
+            !RichMediaSurfaceCoordinatorTestPeer::IsPlaybackCommandCorrelated(
+                7, L"cedar-tone", 7, L"aurora-tone"),
+            "typed playback command sequence/media-key correlation drifted");
     const auto adapterConfiguration = [](const std::wstring_view identity) {
         Configuration configuration;
         configuration.origin = L"https://wrail-media-" + std::wstring{identity} +
@@ -388,6 +438,8 @@ void RunContractCases() {
     };
     auto aurora = adapterConfiguration(L"aurora");
     auto cedar = adapterConfiguration(L"cedar");
+    aurora.allowedFrameOrigins = {L"https://frames.aurora.invalid"};
+    cedar.allowedFrameOrigins = {L"https://frames.cedar.invalid"};
     Require(RichMediaSurfaceCoordinatorTestPeer::IsValidAdapterConfiguration(aurora) &&
                 RichMediaSurfaceCoordinatorTestPeer::IsValidAdapterConfiguration(cedar),
             "provider-neutral adapters did not receive equal native admission");
@@ -405,7 +457,7 @@ void RunContractCases() {
                 activationPoint) &&
                 activationPoint.x == 160 && activationPoint.y == 70,
             "1.5x DPI client-space activation point was raster-scaled");
-    std::cout << "RichMediaSurfaceCoordinator contract cases passed=21\n";
+    std::cout << "RichMediaSurfaceCoordinator contract cases passed=24\n";
 }
 
 struct ProcessSample final {

@@ -188,6 +188,12 @@ internal static class BridgeClientRegistryScenarios
                         MinimumHeight = 180,
                     },
                     AspectRatio = 16.0 / 9.0,
+                    PendingCommand = new EmbeddedMediaPlaybackCommand
+                    {
+                        Sequence = 3,
+                        Kind = EmbeddedMediaPlaybackCommandKind.Play,
+                        MediaKey = "aurora-track",
+                    },
                     Resources =
                     [
                         new EmbeddedMediaResource
@@ -233,6 +239,20 @@ internal static class BridgeClientRegistryScenarios
             exact.PresentationGeneration,
             exact.Sequence,
             playbackEvent);
+        await RegistryAssert.ThrowsAsync<BridgeProtocolException>(() =>
+            fixture.Registry.PublishEmbeddedMediaPlaybackEventAsync(
+                eventRequest with
+                {
+                    Event = playbackEvent with { MediaKey = "cedar-track" },
+                },
+                CancellationToken.None));
+        await RegistryAssert.ThrowsAsync<BridgeProtocolException>(() =>
+            fixture.Registry.PublishEmbeddedMediaPlaybackEventAsync(
+                eventRequest with
+                {
+                    Event = playbackEvent with { CommandSequence = 4 },
+                },
+                CancellationToken.None));
         await fixture.Registry.PublishEmbeddedMediaPlaybackEventAsync(
             eventRequest, CancellationToken.None);
         var client = fixture.Clients.Single();
