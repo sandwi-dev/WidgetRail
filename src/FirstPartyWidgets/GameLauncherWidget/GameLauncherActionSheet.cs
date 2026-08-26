@@ -5,13 +5,15 @@ namespace WidgetRail.FirstPartyWidgets.GameLauncher;
 
 internal static class GameLauncherActionSheet
 {
-    private const int FixedActionCount = 7;
+    private const int FixedActionCount = 8;
     internal const string ScopeId = "game-launcher.actions.scope";
     internal const string CloseAction = "game-launcher.actions.close";
     internal const string OpenAction = "game-launcher.actions.open";
     internal const string RefreshSourceAction = "game-launcher.actions.refresh-source";
     internal const string ManageCategoriesAction = "game-launcher.actions.categories";
     internal const string EditTitleAction = "game-launcher.actions.edit-title";
+    internal const string DetailsAction = "game-launcher.details.open";
+    internal const string DetailsItemId = "game-launcher.actions.details";
     internal const string CategoryActionPrefix = "game-launcher.actions.category.";
     internal const string InitialFocusId = "game-launcher.actions.favorite";
 
@@ -25,6 +27,13 @@ internal static class GameLauncherActionSheet
             : state.SourceAttribution + " source";
         var items = new List<ActionSheetItem>
         {
+            new(
+                DetailsItemId,
+                "View details",
+                DetailsAction,
+                WidgetGlyph.Play,
+                "View full details for this exact game",
+                IsDisabled: !available),
             new(
                 InitialFocusId,
                 state.Favorite ? "Remove favorite" : "Add favorite",
@@ -98,7 +107,7 @@ internal static class GameLauncherActionSheet
             ScopeId,
             CloseAction,
             items,
-            $"{state.SourceAttribution} · {state.Availability}. View opens full game details.");
+            $"{state.SourceAttribution} · {state.Availability}.");
         return new WidgetView(sheet, InitialFocusId,
             ActiveInputScopeId: ScopeId,
             Surface: new WidgetSurfaceHints

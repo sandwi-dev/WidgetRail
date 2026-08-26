@@ -447,8 +447,6 @@ internal static class GameLauncherPresentation
             if (hasActionableGame)
             {
                 hintItems.Add(UI.ControllerHint(
-                    ControllerButton.View, "Game details", "game-launcher.hint.details"));
-                hintItems.Add(UI.ControllerHint(
                     ControllerButton.X, "Favorite", "game-launcher.hint.favorite"));
                 hintItems.Add(UI.ControllerHint(
                     ControllerButton.Y, "Game actions", "game-launcher.hint.actions"));
@@ -820,7 +818,6 @@ internal static class GameLauncherPresentation
             .Classes("game-launcher-tile");
         if (interactive && current is not null && !launching)
             tile = tile
-                .Shortcut(ControllerButton.View, actionId: "game-launcher.details.open")
                 .Shortcut(ControllerButton.X, actionId: "game-launcher.favorite")
                 .Shortcut(ControllerButton.Y, actionId: GameLauncherActionSheet.OpenAction);
         if (interactive && current is not null && !launching && !pageBumpers)

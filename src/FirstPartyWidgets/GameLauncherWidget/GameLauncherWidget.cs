@@ -268,7 +268,7 @@ public sealed class GameLauncherWidget : Widget
             case GameLauncherActionSheet.EditTitleAction:
                 OpenTitleEditor();
                 return;
-            case "game-launcher.details.open":
+            case GameLauncherActionSheet.DetailsAction:
                 OpenDetails(action.SourceElementId);
                 return;
             case "game-launcher.previous":
@@ -1558,21 +1558,45 @@ public sealed class GameLauncherWidget : Widget
 
     private void OpenDetails(string sourceElementId)
     {
-        if (LifecycleState != WidgetLifecycleState.Interactive ||
-            _navigation.Value.Route is not (GameLauncherRoute.Library or
-                GameLauncherRoute.Category)) return;
+        var route = _navigation.Value.Route;
+        if (LifecycleState != WidgetLifecycleState.Interactive || route is not
+            (GameLauncherRoute.Library or GameLauncherRoute.Category or
+                GameLauncherRoute.Details)) return;
+        GameLauncherDetailsSelection? retainedSelection;
         GameLauncherFixedRows fixedRows;
-        lock (_gate) fixedRows = _fixedRows;
-        var selection = GameLauncherDetailsPolicy.Select(
-            sourceElementId, _library.Snapshot, fixedRows);
-        if (selection is null) return;
         lock (_gate)
         {
+            retainedSelection = _actionSheetSelection;
+            fixedRows = _fixedRows;
+        }
+        var snapshot = _library.Snapshot;
+        var fromActionSheet = retainedSelection is not null && string.Equals(
+            sourceElementId, GameLauncherActionSheet.DetailsItemId,
+            StringComparison.Ordinal);
+        var selection = fromActionSheet
+            ? GameLauncherDetailsPolicy.ResolveActionSource(
+                retainedSelection, sourceElementId, snapshot, fixedRows) is not null
+                ? retainedSelection
+                : null
+            : GameLauncherDetailsPolicy.Select(sourceElementId, snapshot, fixedRows);
+        if (selection is null)
+        {
+            if (fromActionSheet) CloseActionSheet();
+            return;
+        }
+        lock (_gate)
+        {
+            if (fromActionSheet) _actionSheetSelection = null;
             _detailsSelection = selection;
             _heroSavedId = selection.SavedId;
             _preferLibraryContentFocus = false;
         }
-        if (_navigation.Push(GameLauncherRoute.Details, sourceElementId) !=
+        if (route == GameLauncherRoute.Details)
+        {
+            Invalidate();
+            return;
+        }
+        if (_navigation.Push(GameLauncherRoute.Details, selection.ReturnFocusId) !=
             WidgetNavigationResult.Changed)
             lock (_gate) _detailsSelection = null;
     }
@@ -1659,6 +1683,7 @@ public sealed class GameLauncherWidget : Widget
         GameLauncherActionSheet.RefreshSourceAction or
         GameLauncherActionSheet.ManageCategoriesAction or
         GameLauncherActionSheet.EditTitleAction or
+        GameLauncherActionSheet.DetailsAction or
         "game-launcher.favorite" or "game-launcher.hide" or
         "game-launcher.variant" or "game-launcher.prefer" ||
         actionId.StartsWith(
