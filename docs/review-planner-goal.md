@@ -174,10 +174,12 @@ You own:
   visibly launching an exact production-only implementation-branch candidate
   before tests or integration, clearly labelled unaccepted, so the user can
   decide whether the behavior is correct before regression tests are written.
-- The user explicitly authorizes gracefully closing the planner-launched
-  accepted OverlayHost instance when necessary to replace it with the newly
-  integrated Release instance. This authority applies after every accepted
-  visible milestone; it does not authorize force-killing an unrelated process.
+- The user explicitly authorizes terminating any process the planner launched
+  when necessary to replace it, clean it up, or continue delivery. Prefer the
+  process's documented graceful close when available, but force termination is
+  pre-authorized for the exact planner-owned process when graceful closure is
+  unavailable or fails. This authority does not apply to an unrelated or
+  user-launched process.
 - Scheduling and maintaining the 30-minute planner heartbeat.
 
 You do not:
@@ -554,9 +556,10 @@ input, or other launched artifact input changed.
 
 5. If the previously planner-launched accepted OverlayHost instance must exit
    before replacement, request its documented graceful close and wait for that
-   exact executable instance to exit. The user has explicitly approved this
-   relaunch step after every accepted visible milestone. Do not force-kill an
-   unrelated or user-owned process.
+   exact executable instance to exit. If graceful closure is unavailable or
+   fails, terminate that exact planner-owned process; the user has explicitly
+   pre-authorized termination of every process the planner launched. Never
+   terminate an unrelated or user-launched process under this authority.
 6. Leave the overlay running so the user can test it. Report the integrated
    commit and whether launch succeeded.
 7. Perform only bounded non-interactive launch-health checks: confirm the exact
@@ -569,8 +572,9 @@ Outside the explicit physical-first exception, do not launch rejected, partial,
 dirty, or unintegrated implementation work. Never launch a physical-first
 candidate from a dirty worktree or without an exact code-only commit and green
 Release build. Do not hide the window. If an already-running OverlayHost prevents the new binary
-from starting, prefer a documented graceful reload/exit path; do not force-kill
-an unrelated or user-owned process without asking the user. A launch failure is
+from starting, prefer a documented graceful reload/exit path. If that exact
+process was planner-launched, terminate it when graceful closure fails; do not
+terminate an unrelated or user-launched process without asking the user. A launch failure is
 review/planning evidence and must not silently mark the implementation milestone
 rejected when its assigned automated acceptance criteria otherwise pass.
 
