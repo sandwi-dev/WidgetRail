@@ -1541,7 +1541,7 @@ static Task InputSurfacesValidate()
         QuickActions:
         [
             new WidgetQuickAction(ControllerButton.Menu, "menu", "Menu"),
-            new WidgetQuickAction(ControllerButton.View, "view", "View"),
+            new WidgetQuickAction(ControllerButton.X, "secondary", "Secondary"),
         ]);
     _ = dashboardButtons.CreateSnapshot("scope.instance", 7);
     foreach (var reserved in new[]
