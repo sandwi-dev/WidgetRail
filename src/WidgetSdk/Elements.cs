@@ -548,6 +548,36 @@ public sealed record SpacerElement : WidgetElement
     };
 }
 
+/// <summary>
+/// One native layout-owned viewport for the host-owned embedded-media plane.
+/// The browser supplies pixels only; WidgetRail retains layout, clipping,
+/// focus, accessibility, input, and teardown authority.
+/// </summary>
+public sealed record MediaViewportElement : WidgetElement
+{
+    internal MediaViewportElement(string id, EmbeddedMediaSurface surface)
+        : base(RequireId(id))
+    {
+        Surface = surface ?? throw new ArgumentNullException(nameof(surface));
+        StableIdentifier.Validate(surface.Id, nameof(surface));
+        if (string.IsNullOrWhiteSpace(surface.AccessibleName))
+            throw new ArgumentException(
+                "An embedded media viewport requires an accessible surface name.",
+                nameof(surface));
+    }
+
+    public EmbeddedMediaSurface Surface { get; init; }
+
+    internal override ViewNode ToProtocolNode() => new()
+    {
+        Id = Id,
+        Kind = ViewNodeKind.MediaViewport,
+        MediaSurfaceId = Surface.Id,
+        AccessibilityLabel = Surface.AccessibleName,
+        StyleClasses = StyleClasses,
+    };
+}
+
 public sealed record ImageElement : WidgetElement
 {
     internal ImageElement(string id, string source, string accessibilityLabel, ImageFit fit) : base(RequireId(id))

@@ -638,7 +638,23 @@ struct DeclarativeRenderer::RenderPass final {
         element.flexShrink = style.flexShrink();
         if (!style.flexBasisAuto()) element.flexBasis = style.flexBasisPx();
         element.aspectRatio = style.aspectRatio();
-        if (node.kind == L"button") {
+        if (node.kind == L"mediaViewport" && snapshot->embeddedMedia &&
+            node.mediaSurfaceId == snapshot->embeddedMedia->id) {
+            const auto& media = *snapshot->embeddedMedia;
+            if (!element.width && media.surface.preferredWidth)
+                element.width = static_cast<float>(*media.surface.preferredWidth);
+            if (media.surface.minimumWidth)
+                element.minWidth = std::max(
+                    element.minWidth.value_or(0.0F),
+                    static_cast<float>(*media.surface.minimumWidth));
+            if (media.surface.minimumHeight)
+                element.minHeight = std::max(
+                    element.minHeight.value_or(0.0F),
+                    static_cast<float>(*media.surface.minimumHeight));
+            if (!element.aspectRatio)
+                element.aspectRatio = static_cast<float>(media.aspectRatio);
+            element.overflow = declarative::OverflowBehavior::Clip;
+        } else if (node.kind == L"button") {
             element.minHeight = std::max(
                 element.minHeight.value_or(0.0F), kMinimumControlSize);
         } else if (node.kind == L"slider") {
@@ -666,7 +682,7 @@ struct DeclarativeRenderer::RenderPass final {
         element.overflow = style.overflow() == NativeOverflow::Clip
             ? declarative::OverflowBehavior::Clip
             : declarative::OverflowBehavior::Visible;
-        if (node.kind == L"actionSurface")
+        if (node.kind == L"actionSurface" || node.kind == L"mediaViewport")
             element.overflow = declarative::OverflowBehavior::Clip;
         if (node.kind == L"scroll") {
             element.overflow = declarative::OverflowBehavior::Clip;
@@ -2195,6 +2211,13 @@ struct DeclarativeRenderer::RenderPass final {
                 std::max({minimumContentHeight, tokens.leadingSize, text.height}),
             };
         }
+        if (node.kind == L"mediaViewport" && snapshot->embeddedMedia &&
+            node.mediaSurfaceId == snapshot->embeddedMedia->id) {
+            return {
+                static_cast<float>(snapshot->embeddedMedia->surface.preferredWidth.value_or(0.0)),
+                static_cast<float>(snapshot->embeddedMedia->surface.preferredHeight.value_or(0.0)),
+            };
+        }
         if (node.kind == L"image") return {120.0F, 120.0F};
         if (node.kind == L"icon") return {24.0F, 24.0F};
         if (node.kind == L"loadingIndicator") {
@@ -2911,11 +2934,25 @@ struct DeclarativeRenderer::RenderPass final {
                     });
             }
         }
+        if (node.kind == L"mediaViewport") {
+            const auto mediaClip = Intersection(
+                presented.contentBox, presented.ancestorClip);
+            if (presented.contentBox.width > 0.5F &&
+                presented.contentBox.height > 0.5F &&
+                mediaClip.width > 0.5F && mediaClip.height > 0.5F) {
+                result.mediaViewportRegions.push_back({
+                    node.id,
+                    node.mediaSurfaceId,
+                    presented.contentBox,
+                    mediaClip,
+                });
+            }
+        }
         const bool semanticNode =
             node.kind == L"button" || node.kind == L"slider" ||
             node.kind == L"actionSurface" || node.kind == L"image" ||
             node.kind == L"icon" || node.kind == L"loadingIndicator" ||
-            node.kind == L"progress" ||
+            node.kind == L"progress" || node.kind == L"mediaViewport" ||
             (node.kind == L"text" &&
                 (!node.text.empty() || !node.accessibilityLabel.empty()));
         if (options.collectAccessibility && semanticNode &&
@@ -3024,6 +3061,10 @@ struct DeclarativeRenderer::RenderPass final {
                 // reduced-motion indicators never keep it awake.
                 result.animationActive = true;
             }
+        } else if (node.kind == L"mediaViewport") {
+            // The native GBSS surface is the deterministic loading/error and
+            // preview placeholder. The external media visual is composed into
+            // this exact content box only after the render commits.
         } else if (node.kind != L"stack" && node.kind != L"row" &&
                    node.kind != L"scroll" && node.kind != L"grid" &&
                    node.kind != L"spacer") {

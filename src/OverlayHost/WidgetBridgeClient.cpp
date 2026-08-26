@@ -687,6 +687,12 @@ WidgetNode ParseNode(const JsonObject& source) {
     WidgetNode node;
     node.id = std::wstring(std::wstring_view(source.GetNamedString(L"id")));
     node.kind = std::wstring(std::wstring_view(source.GetNamedString(L"kind")));
+    if (node.kind == L"mediaViewport" &&
+        !HasNoUnknownProperties(source,
+            {L"id", L"kind", L"mediaSurfaceId", L"accessibilityLabel",
+             L"visibleWhen", L"styleClasses", L"children"}))
+        throw winrt::hresult_invalid_argument(
+            L"MediaViewport contains unsupported properties.");
     node.text = OptionalString(source, L"text");
     node.accessibilityLabel = OptionalString(source, L"accessibilityLabel");
     node.accessibilityValue = OptionalString(source, L"accessibilityValue");
@@ -729,6 +735,16 @@ WidgetNode ParseNode(const JsonObject& source) {
          (node.artworkHandle.size() > kMaximumIdentifierLength ||
           !IsIdentifier(node.artworkHandle))))
         throw winrt::hresult_invalid_argument();
+    node.mediaSurfaceId = OptionalString(source, L"mediaSurfaceId");
+    if (!node.mediaSurfaceId.empty() &&
+        (node.kind != L"mediaViewport" ||
+         node.mediaSurfaceId.size() > kMaximumIdentifierLength ||
+         !IsIdentifier(node.mediaSurfaceId)))
+        throw winrt::hresult_invalid_argument(
+            L"MediaViewport surface identity is invalid.");
+    if (node.kind == L"mediaViewport" && node.mediaSurfaceId.empty())
+        throw winrt::hresult_invalid_argument(
+            L"MediaViewport requires an embedded media surface identity.");
     node.imageFit = OptionalString(source, L"imageFit");
     node.glyph = OptionalString(source, L"glyph");
     node.indicatorSize = OptionalString(source, L"indicatorSize");
@@ -1228,6 +1244,52 @@ WidgetSnapshot ParseSnapshot(const JsonObject& source) {
         }
     }
     snapshot.root = ParseNode(source.GetNamedObject(L"root"));
+    std::size_t mediaViewportCount{};
+    std::wstring mediaViewportSurfaceId;
+    std::wstring mediaViewportAccessibleName;
+    const auto collectMediaViewports = [&](const auto& self,
+                                           const WidgetNode& node) -> void {
+        if (node.kind == L"mediaViewport") {
+            ++mediaViewportCount;
+            if (mediaViewportSurfaceId.empty())
+                mediaViewportSurfaceId = node.mediaSurfaceId;
+            if (mediaViewportAccessibleName.empty())
+                mediaViewportAccessibleName = node.accessibilityLabel;
+            if (!node.children.empty() || node.accessibilityLabel.empty())
+                throw winrt::hresult_invalid_argument(
+                    L"MediaViewport must be a named declarative leaf.");
+        }
+        for (const auto& child : node.children) self(self, child);
+    };
+    collectMediaViewports(collectMediaViewports, snapshot.root);
+    if (mediaViewportCount != 0 && !snapshot.embeddedMedia)
+        throw winrt::hresult_invalid_argument(
+            L"MediaViewport has no current embedded media declaration.");
+    if (mediaViewportCount > 1)
+        throw winrt::hresult_invalid_argument(
+            L"A presentation may contain only one MediaViewport.");
+    if (snapshot.protocolVersion >= protocol_contract::MediaViewportVersion &&
+        snapshot.embeddedMedia && mediaViewportCount == 0)
+        throw winrt::hresult_invalid_argument(
+            L"Protocol-v23 embedded media requires one MediaViewport.");
+    if (mediaViewportCount == 1 && snapshot.embeddedMedia &&
+        (mediaViewportSurfaceId != snapshot.embeddedMedia->id ||
+         mediaViewportAccessibleName != snapshot.embeddedMedia->accessibleName))
+        throw winrt::hresult_invalid_argument(
+            L"MediaViewport does not match the current embedded media surface authority.");
+    for (const auto& layout : snapshot.pinnedLayouts) {
+        if (!layout.root) continue;
+        std::size_t pinnedMediaViewportCount{};
+        const auto countPinnedMediaViewports = [&](const auto& self,
+                                                   const WidgetNode& node) -> void {
+            if (node.kind == L"mediaViewport") ++pinnedMediaViewportCount;
+            for (const auto& child : node.children) self(self, child);
+        };
+        countPinnedMediaViewports(countPinnedMediaViewports, *layout.root);
+        if (pinnedMediaViewportCount != 0)
+            throw winrt::hresult_invalid_argument(
+                L"Pinned media projection requires the separate pinned-transfer contract.");
+    }
     const auto usesVirtualWindow = [&](const auto& self,
                                       const WidgetNode& node) -> bool {
         if (node.virtualCollectionWindow) return true;
@@ -1278,12 +1340,12 @@ bool IsDocumentPresentationProperty(const std::wstring_view property) noexcept {
 }
 
 bool IsNodePresentationProperty(const std::wstring_view property) noexcept {
-    static constexpr std::array<std::wstring_view, 37> properties{
+    static constexpr std::array<std::wstring_view, 38> properties{
         L"visibleWhen", L"text", L"accessibilityLabel", L"accessibilityValue",
         L"actionId", L"textEntryValue", L"textEntryPlaceholder",
         L"textEntryMaximumLength", L"value", L"minimum", L"maximum", L"step",
         L"valueChangedActionId", L"sliderInteractionMode", L"imageSource",
-        L"artworkHandle", L"imageFit", L"glyph", L"indicatorSize",
+        L"artworkHandle", L"mediaSurfaceId", L"imageFit", L"glyph", L"indicatorSize",
         L"actionSurfaceOrientation", L"gridMinimumColumnWidth",
         L"gridMaximumColumns", L"isDisabled", L"isSelected", L"isBusy",
         L"focusPersistenceId", L"focus", L"inputScopeId", L"scrollAxis",
@@ -1324,7 +1386,7 @@ bool ValidateWidgetDocumentStructure(
                  L"textEntryValue", L"textEntryPlaceholder",
                  L"textEntryMaximumLength", L"value", L"minimum", L"maximum",
                  L"step", L"valueChangedActionId", L"sliderInteractionMode",
-                 L"imageSource", L"artworkHandle", L"imageFit", L"glyph",
+                 L"imageSource", L"artworkHandle", L"mediaSurfaceId", L"imageFit", L"glyph",
                  L"indicatorSize", L"actionSurfaceOrientation",
                  L"gridMinimumColumnWidth", L"gridMaximumColumns", L"isDisabled",
                  L"isSelected", L"isBusy", L"focusPersistenceId", L"focus",
@@ -1810,6 +1872,10 @@ WidgetPresentationEffect ImpactForPresentationProperty(
         // depends on whether either resource is present.
         return Effect::Resource | Effect::MeasureLayout |
             Effect::Paint | Effect::Accessibility;
+    }
+    if (property == L"mediaSurfaceId") {
+        return Effect::Authority | Effect::SurfacePlacement |
+            Effect::MeasureLayout | Effect::Paint | Effect::Accessibility;
     }
     if (property == L"isDisabled" || property == L"isSelected" ||
         property == L"isBusy") {

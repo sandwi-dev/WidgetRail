@@ -92,6 +92,16 @@ struct ResponsiveSurfacePresentation final {
     ResponsiveSurfaceMode mode{ResponsiveSurfaceMode::Compact};
 };
 
+/// Exact final declarative geometry for the one host-owned embedded-media
+/// pixel plane. Bounds and clip are surface-local DIPs from the same Taffy
+/// layout/renderer pass that owns native paint and semantics.
+struct RenderMediaViewportRegion final {
+    std::wstring nodeId;
+    std::wstring mediaSurfaceId;
+    declarative::Rect bounds;
+    declarative::Rect clip;
+};
+
 struct RenderResult final {
     bool succeeded{};
     /// True only while at least one paint-only node transition requires a
@@ -106,6 +116,7 @@ struct RenderResult final {
     /// Visible semantic geometry retained for the immutable Windows
     /// accessibility snapshot. Decorative layout nodes are deliberately absent.
     std::vector<RenderAccessibilityRegion> accessibilityRegions;
+    std::vector<RenderMediaViewportRegion> mediaViewportRegions;
 #ifdef WRAIL_DECLARATIVE_RENDERER_TESTING
     // Test-only exact geometry seam. Production results intentionally retain
     // only interactive geometry so ordinary paints do not allocate two maps

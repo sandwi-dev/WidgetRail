@@ -277,6 +277,9 @@ struct WidgetNode final {
     std::wstring sliderInteractionMode;
     std::wstring imageSource;
     std::wstring artworkHandle;
+    // Protocol-v23 declarative binding from one native layout viewport to the
+    // one current embedded-media declaration. It grants no browser authority.
+    std::wstring mediaSurfaceId;
     std::wstring imageFit;
     std::wstring glyph;
     std::wstring indicatorSize;

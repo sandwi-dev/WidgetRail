@@ -401,7 +401,7 @@ void VerifyEmbeddedMediaSnapshotContract() {
     std::wstring error;
     const auto valid = widgetrail::testing::ParseWidgetSnapshotResponse(R"json({
         "snapshot": {
-            "protocolVersion":22,"sequence":7,
+            "protocolVersion":23,"sequence":7,
             "widgetInstanceId":"neutral.adapter","activeInputScopeId":"root",
             "surface":{"mode":"standard","preferredWidth":760,"preferredHeight":425,
                        "minimumWidth":320,"minimumHeight":180},
@@ -413,14 +413,70 @@ void VerifyEmbeddedMediaSnapshotContract() {
                     {"path":"media/index.html","contentType":"text/html"},
                     {"path":"media/tone.wav","contentType":"audio/wav"}],
                 "commands":["activate","togglePlayback","back"]},
-            "root":{"id":"root","kind":"stack","children":[]}
+            "root":{"id":"root","kind":"stack","children":[
+                {"id":"title","kind":"text","text":"Aurora fixture","children":[]},
+                {"id":"viewport","kind":"mediaViewport","mediaSurfaceId":"media",
+                 "accessibilityLabel":"Neutral media","children":[]},
+                {"id":"controls","kind":"button","text":"Play",
+                 "accessibilityLabel":"Play","actionId":"play","children":[]}
+            ]}
         }
     })json", error);
     Require(valid && error.empty() && valid->embeddedMedia &&
                 valid->embeddedMedia->id == L"media" &&
                 valid->embeddedMedia->resources.size() == 2 &&
-                valid->embeddedMedia->commands.size() == 3,
-            "valid protocol-v22 embedded media snapshot was rejected");
+                valid->embeddedMedia->commands.size() == 3 &&
+                valid->root.children.size() == 3 &&
+                valid->root.children[1].kind == L"mediaViewport" &&
+                valid->root.children[1].mediaSurfaceId == L"media",
+            "valid protocol-v23 MediaViewport snapshot was rejected");
+
+    const auto mutate = [](std::string source, const std::string_view from,
+                           const std::string_view to) {
+        const auto offset = source.find(from);
+        Require(offset != std::string::npos,
+            "MediaViewport mutation source was absent");
+        source.replace(offset, from.size(), to);
+        return source;
+    };
+    constexpr std::string_view validJson = R"json({
+        "snapshot": {
+            "protocolVersion":23,"sequence":7,
+            "widgetInstanceId":"cedar.adapter","activeInputScopeId":"root",
+            "embeddedMedia":{"id":"cedar-media","accessibleName":"Cedar media",
+                "entryAsset":"media/index.html","aspectRatio":1.7777777778,
+                "surface":{"mode":"standard","preferredWidth":640,"preferredHeight":360,
+                           "minimumWidth":240,"minimumHeight":180},
+                "resources":[{"path":"media/index.html","contentType":"text/html"}],
+                "commands":["activate"]},
+            "root":{"id":"root","kind":"stack","children":[
+                {"id":"cedar.viewport","kind":"mediaViewport",
+                 "mediaSurfaceId":"cedar-media","accessibilityLabel":"Cedar media",
+                 "children":[]}
+            ]}
+        }
+    })json";
+    for (const auto& [malformed, expected] : {
+             std::pair{mutate(
+                 mutate(std::string{validJson},
+                     R"json("kind":"mediaViewport")json",
+                     R"json("kind":"text")json"),
+                 R"json("mediaSurfaceId":"cedar-media",)json",
+                 R"json("text":"No viewport",)json"),
+                 std::wstring_view{L"requires one MediaViewport"}},
+             std::pair{mutate(std::string{validJson},
+                 R"json("mediaSurfaceId":"cedar-media")json",
+                 R"json("mediaSurfaceId":"wrong-media")json"),
+                 std::wstring_view{L"does not match"}},
+             std::pair{mutate(std::string{validJson},
+                 R"json("mediaSurfaceId":"cedar-media",)json",
+                 R"json("mediaSurfaceId":"cedar-media","actionId":"escape",)json"),
+                 std::wstring_view{L"unsupported properties"}}}) {
+        error.clear();
+        Require(!widgetrail::testing::ParseWidgetSnapshotResponse(malformed, error) &&
+                    error.find(expected) != std::wstring::npos,
+            "invalid MediaViewport binding did not fail closed precisely");
+    }
 
     error.clear();
     const auto unknown = widgetrail::testing::ParseWidgetSnapshotResponse(R"json({

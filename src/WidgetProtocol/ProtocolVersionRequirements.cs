@@ -171,6 +171,13 @@ internal sealed class ProtocolVersionRequirements
                         path,
                         $"Text entry requires protocol version {ProtocolConstants.TextEntryVersion} or later.");
                     break;
+                case ViewNodeKind.MediaViewport:
+                    Add(
+                        "media-viewport",
+                        ProtocolConstants.MediaViewportVersion,
+                        path,
+                        $"MediaViewport requires protocol version {ProtocolConstants.MediaViewportVersion} or later.");
+                    break;
             }
 
             if (node.CollectionItemKey is not null)

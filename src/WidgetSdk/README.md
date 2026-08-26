@@ -35,6 +35,15 @@ does not expose navigation, DOM access, script execution, arbitrary URLs, or a
 second HWND/input owner. Widgets that omit `EmbeddedMedia` retain their existing
 snapshot and rendering behavior.
 
+Protocol v23 adds `UI.MediaViewport(surface, id)`, a provider-neutral native
+layout leaf that binds the one current `WidgetView.EmbeddedMedia` declaration
+into the ordinary declarative tree. Taffy layout, WRSS/GBSS styling, clipping,
+accessibility, and responsive geometry remain host-owned; the embedded browser
+supplies only the pixels inside the committed viewport. Exactly one viewport
+must reference the current surface identity. Missing, duplicate, or mismatched
+bindings fail closed, and semantic previews display a deterministic native
+placeholder rather than creating WebView2.
+
 For selection-driven data, create an optional per-widget
 `PinnedLayoutHandle` with `CreatePinnedLayoutHandle(id, name, surface,
 initialFocusId, activeInputScopeId)`. Those stable values are registered once;

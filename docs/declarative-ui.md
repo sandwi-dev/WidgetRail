@@ -137,6 +137,7 @@ primary accessibility contract.
 | `UI.HorizontalScroll(id, children)` | `scroll` | Host-owned horizontal viewport with controller focus-follow. |
 | `UI.Scroll(id, axis, children)` | `scroll` | Axis-explicit form of the same bounded viewport. |
 | `UI.Text(text, id, accessibilityLabel?)` | `text` | Non-interactive text. |
+| `UI.MediaViewport(surface, id)` | `mediaViewport` | Protocol-v23 non-interactive native layout leaf for the one current `WidgetView.EmbeddedMedia` surface. The declarative renderer owns its responsive geometry, clip, theme placeholder, and Image semantics; WebView2 contributes only the bounded media pixels. |
 | `UI.CodeText(text, id, accessibilityLabel?)` | `text` | Bounded non-interactive diagnostics/command text with the semantic monospace class. |
 | `UI.Button(label, action, id)` | `button` | Focusable action control; may include one semantic glyph or bounded leading PNG inside the same focus target. |
 | `UI.ToggleButton(label, isOn, action, id)` | `button` | Controller-ready two-state button composed from existing button semantics. |

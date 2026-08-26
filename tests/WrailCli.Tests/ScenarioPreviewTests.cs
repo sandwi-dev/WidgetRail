@@ -13,6 +13,7 @@ internal static class ScenarioPreviewTests
         await RejectsMalformedAndUnboundedDeclarationsAsync();
         await DescendantScopedPinnedLayoutUsesTheRealCliPathAsync();
         PinnedLayoutsUseValidatedSemanticPreview();
+        MediaViewportUsesDeterministicNativePlaceholder();
     }
 
     private static async Task ExplainsTheIsolatedContractAsync()
@@ -177,6 +178,44 @@ internal static class ScenarioPreviewTests
             SnapshotPreview.FormatPinnedLayouts(invalid, "invalid"));
         Contains("Snapshot is invalid", validation.Message);
         Contains("initialFocusId", validation.Message);
+    }
+
+    private static void MediaViewportUsesDeterministicNativePlaceholder()
+    {
+        var media = new EmbeddedMediaSurface
+        {
+            Id = "aurora.media",
+            AccessibleName = "Aurora local media",
+            EntryAsset = "media/index.html",
+            Surface = new WidgetSurfaceHints
+            {
+                PreferredWidth = 640,
+                PreferredHeight = 360,
+                MinimumWidth = 240,
+                MinimumHeight = 180,
+            },
+            AspectRatio = 16.0 / 9.0,
+            Resources =
+            [
+                new() { Path = "media/index.html", ContentType = "text/html" },
+            ],
+        };
+        var snapshot = new WidgetView(
+            UI.Stack(
+                "root",
+                UI.Text("Aurora", "title"),
+                UI.MediaViewport(media, "viewport")),
+            ActiveInputScopeId: "root")
+        {
+            EmbeddedMedia = media,
+        }.CreateSnapshot("aurora.preview", 1);
+
+        var preview = SnapshotPreview.Format(snapshot);
+        Contains("MediaViewport #viewport", preview);
+        Contains("media=aurora.media placeholder=native", preview);
+        Contains("a11y=\"Aurora local media\"", preview);
+        DoesNotContain("WebView", preview);
+        DoesNotContain("media/index.html", preview);
     }
 
     private static async Task DescendantScopedPinnedLayoutUsesTheRealCliPathAsync()

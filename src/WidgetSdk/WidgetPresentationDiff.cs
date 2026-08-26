@@ -372,6 +372,7 @@ internal static class WidgetPresentationDiff
         Add(PresentationProperty.SliderInteractionMode, before.SliderInteractionMode, after.SliderInteractionMode);
         Add(PresentationProperty.ImageSource, before.ImageSource, after.ImageSource);
         Add(PresentationProperty.ArtworkHandle, before.ArtworkHandle, after.ArtworkHandle);
+        Add(PresentationProperty.MediaSurfaceId, before.MediaSurfaceId, after.MediaSurfaceId);
         Add(PresentationProperty.ImageFit, before.ImageFit, after.ImageFit);
         Add(PresentationProperty.Glyph, before.Glyph, after.Glyph);
         Add(PresentationProperty.IndicatorSize, before.IndicatorSize, after.IndicatorSize);

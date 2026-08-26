@@ -60,6 +60,36 @@ internal static class ProtocolVersionRequirementsTests
                         ],
                     },
                 }),
+            new("media viewport", "media-viewport",
+                ProtocolConstants.MediaViewportVersion,
+                "$.root.children[0]", snapshot => snapshot with
+                {
+                    EmbeddedMedia = new()
+                    {
+                        Id = "media",
+                        AccessibleName = "Neutral media",
+                        EntryAsset = "media/index.html",
+                        Surface = new()
+                        {
+                            PreferredWidth = 640,
+                            PreferredHeight = 360,
+                            MinimumWidth = 240,
+                            MinimumHeight = 135,
+                        },
+                        AspectRatio = 16.0 / 9.0,
+                        Resources =
+                        [
+                            new() { Path = "media/index.html", ContentType = "text/html" },
+                        ],
+                    },
+                    Root = Root(new ViewNode
+                    {
+                        Id = "media.viewport",
+                        Kind = ViewNodeKind.MediaViewport,
+                        MediaSurfaceId = "media",
+                        AccessibilityLabel = "Neutral media",
+                    }),
+                }),
             new("surface hints", "surface-hints", ProtocolConstants.SurfaceHintsVersion,
                 "$.surface", snapshot => snapshot with { Surface = new() }),
             new("surface width policy", "surface-axis-sizing", ProtocolConstants.SurfaceAxisSizingVersion,

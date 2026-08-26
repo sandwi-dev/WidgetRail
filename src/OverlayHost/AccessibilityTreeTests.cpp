@@ -177,6 +177,29 @@ int main() {
           virtualTree.nodes[1].sizeOfSet == 10'000,
           "realized virtual items expose accurate logical set positions");
 
+    widgetrail::WidgetSnapshot mediaSnapshot;
+    mediaSnapshot.protocolVersion = 23;
+    mediaSnapshot.sequence = 11;
+    mediaSnapshot.instanceId = L"cedar.instance";
+    mediaSnapshot.activeInputScopeId = L"cedar.root";
+    mediaSnapshot.root.id = L"cedar.root";
+    mediaSnapshot.root.kind = L"stack";
+    widgetrail::WidgetNode mediaViewport;
+    mediaViewport.id = L"cedar.viewport";
+    mediaViewport.kind = L"mediaViewport";
+    mediaViewport.mediaSurfaceId = L"cedar.media";
+    mediaViewport.accessibilityLabel = L"Cedar local media";
+    mediaSnapshot.root.children.push_back(mediaViewport);
+    widgetrail::RenderResult mediaRender;
+    mediaRender.accessibilityRegions = {Region(L"cedar.viewport", 20)};
+    const auto mediaTree = widgetrail::accessibility::BuildWidgetTree(
+        L"cedar", L"generation-2", mediaSnapshot, mediaRender, L"");
+    Check(mediaTree.nodes.size() == 1 &&
+          mediaTree.nodes[0].role == widgetrail::accessibility::Role::Image &&
+          mediaTree.nodes[0].name == L"Cedar local media" &&
+          mediaTree.nodes[0].actionId.empty() && !mediaTree.focusedNode,
+          "MediaViewport exposes one named native non-interactive media semantic");
+
     render.accessibilityRegions.clear();
     tree = widgetrail::accessibility::BuildWidgetTree(
         L"music", L"generation-1", snapshot, render, L"modal-text");

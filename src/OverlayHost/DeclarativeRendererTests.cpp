@@ -4108,6 +4108,126 @@ void ContentMeasurementUsesResponsiveTaffyGeometry() {
         "invalid measurement bounds fail closed before Taffy allocation");
 }
 
+void MediaViewportUsesFinalDeclarativeGeometry() {
+    WidgetSnapshot snapshot;
+    snapshot.protocolVersion = 23;
+    snapshot.sequence = 7;
+    snapshot.instanceId = L"aurora.instance";
+    snapshot.activeInputScopeId = L"aurora.root";
+    snapshot.embeddedMedia = widgetrail::EmbeddedMediaSurfaceDeclaration{
+        L"aurora.primary",
+        L"Aurora local media",
+        L"media/aurora.html",
+        widgetrail::WidgetSurfaceHints{
+            L"adaptive", std::nullopt, std::nullopt,
+            640.0, 360.0, 240.0, 180.0},
+        16.0 / 9.0,
+        {{L"media/aurora.html", L"text/html"}},
+        {L"activate", L"togglePlayback"},
+    };
+    snapshot.root = Node(L"aurora.root", L"stack");
+    snapshot.root.baseStyle = {
+        {L"padding", LengthList(L"12px")},
+        {L"gap", LengthList(L"8px")},
+        {L"overflow", Keyword(L"clip")},
+    };
+    auto title = Node(L"aurora.title", L"text");
+    title.text = L"Provider-neutral Aurora sample";
+    auto viewport = Node(L"aurora.viewport", L"mediaViewport");
+    viewport.mediaSurfaceId = L"aurora.primary";
+    viewport.accessibilityLabel = L"Aurora local media";
+    viewport.baseStyle = {
+        {L"flex-shrink", Number(1)},
+        {L"min-width", Length(0)},
+        {L"padding", LengthList(L"2px")},
+        {L"border-width", Length(1)},
+        {L"border-radius", Length(8)},
+    };
+    auto controls = Node(L"aurora.controls", L"button");
+    controls.text = L"Play or pause";
+    controls.accessibilityLabel = controls.text;
+    controls.actionId = L"aurora.toggle";
+    snapshot.root.children = {title, viewport, controls};
+
+    using Microsoft::WRL::ComPtr;
+    ComPtr<ID2D1Factory> d2d;
+    Check(SUCCEEDED(D2D1CreateFactory(
+        D2D1_FACTORY_TYPE_SINGLE_THREADED, d2d.ReleaseAndGetAddressOf())),
+        "MediaViewport creates a D2D factory");
+    ComPtr<IDWriteFactory> write;
+    Check(SUCCEEDED(DWriteCreateFactory(
+        DWRITE_FACTORY_TYPE_SHARED, __uuidof(IDWriteFactory),
+        reinterpret_cast<IUnknown**>(write.ReleaseAndGetAddressOf()))),
+        "MediaViewport creates a DirectWrite factory");
+    ComPtr<IWICImagingFactory> wic;
+    Check(SUCCEEDED(CoCreateInstance(
+        CLSID_WICImagingFactory, nullptr, CLSCTX_INPROC_SERVER,
+        IID_PPV_ARGS(wic.ReleaseAndGetAddressOf()))),
+        "MediaViewport creates a WIC factory");
+    ComPtr<IWICBitmap> canvas;
+    Check(SUCCEEDED(wic->CreateBitmap(
+        760, 520, GUID_WICPixelFormat32bppPBGRA,
+        WICBitmapCacheOnLoad, canvas.ReleaseAndGetAddressOf())),
+        "MediaViewport creates a WIC canvas");
+    ComPtr<ID2D1RenderTarget> target;
+    Check(SUCCEEDED(d2d->CreateWicBitmapRenderTarget(
+        canvas.Get(), D2D1::RenderTargetProperties(),
+        target.ReleaseAndGetAddressOf())),
+        "MediaViewport creates a WIC render target");
+    DeclarativeRenderer renderer{d2d.Get(), write.Get(), nullptr};
+    const auto renderAt = [&](const Size size, const float scale) {
+        widgetrail::DeclarativeRenderOptions options;
+        options.pixelScale = scale;
+        options.responsiveViewport = size;
+        options.collectAccessibility = true;
+        target->BeginDraw();
+        auto result = renderer.Render(
+            target.Get(), snapshot, L"aurora.controls",
+            {0.0F, 0.0F, size.width, size.height}, options);
+        Check(SUCCEEDED(target->EndDraw()),
+            "MediaViewport raster draw completes");
+        return result;
+    };
+    const auto wide = renderAt({760.0F, 520.0F}, 1.0F);
+    const auto compact = renderAt({420.0F, 320.0F}, 1.5F);
+    for (const auto* result : {&wide, &compact}) {
+        Check(result->succeeded, "MediaViewport sample renders successfully");
+        Check(result->mediaViewportRegions.size() == 1,
+            "exactly one renderer-owned media viewport is published");
+        const auto& media = result->mediaViewportRegions.front();
+        Check(media.nodeId == L"aurora.viewport" &&
+              media.mediaSurfaceId == L"aurora.primary",
+            "media geometry retains exact node and surface identity");
+        Check(media.bounds.width > 0.5F && media.bounds.height > 0.5F &&
+              media.clip.width > 0.5F && media.clip.height > 0.5F,
+            "media geometry and effective clip remain positive");
+        Check(media.clip.x >= media.bounds.x - 0.01F &&
+              media.clip.y >= media.bounds.y - 0.01F &&
+              media.clip.x + media.clip.width <=
+                  media.bounds.x + media.bounds.width + 0.01F &&
+              media.clip.y + media.clip.height <=
+                  media.bounds.y + media.bounds.height + 0.01F,
+            "effective media clip is derived from the final native layout box");
+        Check(std::any_of(
+                result->accessibilityRegions.begin(),
+                result->accessibilityRegions.end(),
+                [](const auto& region) {
+                    return region.nodeId == L"aurora.viewport";
+                }),
+            "MediaViewport contributes one native accessibility semantic");
+        Check(!result->navigationRects.contains(L"aurora.viewport") &&
+              std::none_of(
+                  result->hitRegions.begin(), result->hitRegions.end(),
+                  [](const auto& region) {
+                      return region.nodeId == L"aurora.viewport";
+                  }),
+            "MediaViewport does not create a second focus or pointer graph");
+    }
+    Check(compact.mediaViewportRegions.front().bounds.width <
+              wide.mediaViewportRegions.front().bounds.width,
+        "the same provider-neutral viewport responds to compact layout");
+}
+
 void BitmapRetentionPolicyIsBounded() {
     widgetrail::DeclarativeRenderer renderer(nullptr, nullptr, nullptr);
     const auto stats = renderer.GetImageBitmapCacheStats();
@@ -4161,6 +4281,7 @@ int main() {
     OffscreenScrollArtworkDoesNotEnterRemoteCache();
     TrustedArtworkTerminalFallbackIsStable();
     ContentMeasurementUsesResponsiveTaffyGeometry();
+    MediaViewportUsesFinalDeclarativeGeometry();
     BitmapRetentionPolicyIsBounded();
     std::cout << "DeclarativeRendererTests: " << checks << " checks passed\n";
     CoUninitialize();

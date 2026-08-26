@@ -548,4 +548,62 @@ std::optional<EmbeddedMediaSurfaceBounds> ResolveEmbeddedMediaSurfaceBounds(
     };
 }
 
+std::optional<MediaViewportPresentationGeometry>
+ResolveMediaViewportPresentationGeometry(
+    const EmbeddedMediaSurfaceBounds viewport,
+    const EmbeddedMediaSurfaceBounds clip,
+    const float physicalPixelsPerDip) noexcept {
+    const auto finiteRect = [](const EmbeddedMediaSurfaceBounds value) {
+        return std::isfinite(value.x) && std::isfinite(value.y) &&
+            std::isfinite(value.width) && std::isfinite(value.height) &&
+            value.width > 0.0F && value.height > 0.0F;
+    };
+    if (!finiteRect(viewport) || !finiteRect(clip) ||
+        !std::isfinite(physicalPixelsPerDip) || physicalPixelsPerDip <= 0.0F)
+        return std::nullopt;
+
+    const auto physical = [physicalPixelsPerDip](
+                              const EmbeddedMediaSurfaceBounds value)
+        -> std::optional<PhysicalRect> {
+        constexpr double kMaximumCoordinate =
+            static_cast<double>(std::numeric_limits<int>::max());
+        const double left = std::round(
+            static_cast<double>(value.x) * physicalPixelsPerDip);
+        const double top = std::round(
+            static_cast<double>(value.y) * physicalPixelsPerDip);
+        const double right = std::round(
+            static_cast<double>(value.x + value.width) * physicalPixelsPerDip);
+        const double bottom = std::round(
+            static_cast<double>(value.y + value.height) * physicalPixelsPerDip);
+        if (!std::isfinite(left) || !std::isfinite(top) ||
+            !std::isfinite(right) || !std::isfinite(bottom) ||
+            std::abs(left) > kMaximumCoordinate ||
+            std::abs(top) > kMaximumCoordinate ||
+            std::abs(right) > kMaximumCoordinate ||
+            std::abs(bottom) > kMaximumCoordinate)
+            return std::nullopt;
+        return PhysicalRect{
+            static_cast<int>(left), static_cast<int>(top),
+            static_cast<int>(right), static_cast<int>(bottom)};
+    };
+
+    const auto hostBounds = physical(viewport);
+    auto hostClip = physical(clip);
+    if (!hostBounds || !hostClip) return std::nullopt;
+    hostClip->left = std::max(hostClip->left, hostBounds->left);
+    hostClip->top = std::max(hostClip->top, hostBounds->top);
+    hostClip->right = std::min(hostClip->right, hostBounds->right);
+    hostClip->bottom = std::min(hostClip->bottom, hostBounds->bottom);
+    const int width = hostBounds->right - hostBounds->left;
+    const int height = hostBounds->bottom - hostBounds->top;
+    if (width <= 0 || height <= 0 ||
+        hostClip->right <= hostClip->left || hostClip->bottom <= hostClip->top)
+        return std::nullopt;
+    return MediaViewportPresentationGeometry{
+        *hostBounds,
+        *hostClip,
+        PhysicalRect{0, 0, width, height},
+    };
+}
+
 } // namespace widgetrail

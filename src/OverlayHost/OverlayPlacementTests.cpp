@@ -941,6 +941,35 @@ int main() {
               800.0F, 180.0F, 760.0F, 425.0F, 16.0F / 9.0F),
           "inverted embedded media minimum/preferred bounds fail closed");
 
+    const auto mediaPresentation = ResolveMediaViewportPresentationGeometry(
+        {100.0F, 50.0F, 640.0F, 360.0F},
+        {120.0F, 60.0F, 600.0F, 340.0F}, 1.5F);
+    Check(mediaPresentation.has_value(),
+          "media viewport geometry scales from final declarative DIPs");
+    Check(mediaPresentation->hostBounds.left == 150 &&
+              mediaPresentation->hostBounds.top == 75 &&
+              mediaPresentation->hostBounds.right == 1110 &&
+              mediaPresentation->hostBounds.bottom == 615,
+          "media viewport host placement uses the exact final layout box");
+    Check(mediaPresentation->hostClip.left == 180 &&
+              mediaPresentation->hostClip.top == 90 &&
+              mediaPresentation->hostClip.right == 1080 &&
+              mediaPresentation->hostClip.bottom == 600,
+          "media viewport clip uses the exact final ancestor intersection");
+    Check(mediaPresentation->controllerBounds.left == 0 &&
+              mediaPresentation->controllerBounds.top == 0 &&
+              mediaPresentation->controllerBounds.right == 960 &&
+              mediaPresentation->controllerBounds.bottom == 540,
+          "media controller remains local so host placement is applied once");
+    Check(!ResolveMediaViewportPresentationGeometry(
+              {100.0F, 50.0F, 640.0F, 360.0F},
+              {0.0F, 0.0F, 20.0F, 20.0F}, 1.5F),
+          "media viewport rejects a clip outside the committed layout box");
+    Check(!ResolveMediaViewportPresentationGeometry(
+              {100.0F, 50.0F, 640.0F, 360.0F},
+              {120.0F, 60.0F, 600.0F, 340.0F}, 0.0F),
+          "media viewport rejects an invalid DPI scale");
+
     std::cout << "OverlayPlacementTests passed (" << checks << " checks)\n";
     return EXIT_SUCCESS;
 }

@@ -3873,13 +3873,31 @@ static Task EmbeddedMediaAssetsAreProviderNeutral()
             };
             var snapshot = new ViewSnapshot
             {
-                ProtocolVersion = ProtocolConstants.EmbeddedMediaSurfaceVersion,
+                ProtocolVersion = ProtocolConstants.MediaViewportVersion,
                 Sequence = 7,
                 WidgetInstanceId = configured.InstanceId,
                 ActiveInputScopeId = "root",
                 EmbeddedMedia = media,
-                Root = new ViewNode { Id = "root", Kind = ViewNodeKind.Stack },
+                Root = new ViewNode
+                {
+                    Id = "root",
+                    Kind = ViewNodeKind.Stack,
+                    Children =
+                    [
+                        new()
+                        {
+                            Id = $"{adapterName}.viewport",
+                            Kind = ViewNodeKind.MediaViewport,
+                            MediaSurfaceId = media.Id,
+                            AccessibilityLabel = media.AccessibleName,
+                        },
+                    ],
+                },
             };
+            Assert.Equal(0, ViewSnapshotValidator.Validate(snapshot).Count);
+            var wire = SnapshotJson.Serialize(snapshot);
+            Assert.True(wire.Length > 0,
+                "MediaViewport snapshot must serialize through the production wire path.");
             var request = new BridgeEmbeddedMediaRequest(
                 configured.Id, configured.InstanceId, descriptor.RuntimeGeneration,
                 descriptor.PresentationGeneration, snapshot.Sequence, media.Id);

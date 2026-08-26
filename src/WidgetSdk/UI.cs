@@ -150,6 +150,15 @@ public static partial class UI
 
     public static SpacerElement Spacer(string id) => new(id);
 
+    /// <summary>
+    /// Places one declared embedded-media surface inside the ordinary native
+    /// declarative layout. The returned element grants no browser, DOM, HWND,
+    /// focus, or input authority.
+    /// </summary>
+    public static MediaViewportElement MediaViewport(
+        EmbeddedMediaSurface surface,
+        string id) => new(id, surface);
+
     public static ImageElement Image(
         string source,
         string id,

@@ -1778,8 +1778,8 @@ private:
                     static_cast<LONG>(static_cast<short>(HIWORD(lParam))),
                 };
                 if (ScreenToClient(window_, &point) &&
-                    embeddedMediaClientBounds_ &&
-                    PtInRect(&*embeddedMediaClientBounds_, point))
+                    embeddedMediaClientClip_ &&
+                    PtInRect(&*embeddedMediaClientClip_, point))
                     return HTCLIENT;
             }
             if (compositionSurface_.available() &&
@@ -2117,36 +2117,38 @@ private:
             }
             if (resize.invalidate && !compositionPlacementInProgress_)
                 InvalidateRect(window_, nullptr, FALSE);
-            if ((richMediaProof_ || embeddedMediaAuthority_) && width > 0 && height > 0) {
+            if (richMediaProof_ && width > 0 && height > 0) {
                 const RECT clientBounds{0, 0, static_cast<LONG>(width), static_cast<LONG>(height)};
-                const RECT bounds = richMediaProof_
-                    ? clientBounds
-                    : ResolveEmbeddedMediaClientBounds().value_or(clientBounds);
-                embeddedMediaClientBounds_ = bounds;
                 (void)richMediaSurface_.UpdateGeometry(
-                    bounds,
+                    clientBounds,
                     static_cast<double>(std::max(1U, GetDpiForWindow(window_))) / 96.0);
                 widgetrail::OverlayCompositionSurface::CommitTiming timing;
                 (void)compositionSurface_.CommitExternalContentPresentation(
-                    bounds, true, timing);
+                    clientBounds, true, timing);
+            } else if (embeddedMediaAuthority_) {
+                // A viewport resize revokes the old layout-owned geometry.
+                // The next successful native render republishes one exact box.
+                (void)richMediaSurface_.SetVisible(false);
+                embeddedMediaClientBounds_.reset();
+                embeddedMediaClientClip_.reset();
             }
             return 0;
         }
         case WM_DPICHANGED:
             ClearFreeScrollReentry(L"dpi-changed");
             if (accessibilityActive_) ClearAccessibilityTree();
-            if (richMediaProof_ || embeddedMediaAuthority_) {
+            if (richMediaProof_) {
                 RECT clientBounds{};
                 if (GetClientRect(window_, &clientBounds)) {
-                    const RECT bounds = richMediaProof_
-                        ? clientBounds
-                        : ResolveEmbeddedMediaClientBounds().value_or(clientBounds);
-                    embeddedMediaClientBounds_ = bounds;
                     (void)richMediaSurface_.UpdateGeometry(
-                        bounds,
+                        clientBounds,
                         static_cast<double>(std::max(1U, GetDpiForWindow(window_))) /
                             96.0);
                 }
+            } else if (embeddedMediaAuthority_) {
+                (void)richMediaSurface_.SetVisible(false);
+                embeddedMediaClientBounds_.reset();
+                embeddedMediaClientClip_.reset();
             }
             QueueDisplayEnvironmentRefresh(widgetrail::DisplayEnvironmentChange::Dpi);
             return 0;
@@ -2275,43 +2277,34 @@ private:
         std::vector<std::wstring> commands;
     };
 
-    [[nodiscard]] std::optional<RECT> ResolveEmbeddedMediaClientBounds() const {
+    [[nodiscard]] float CurrentMediaPixelsPerDip() const noexcept {
+        const float interfaceScale = appearanceState_.current()
+            ? static_cast<float>(appearanceState_.current()->interfaceScale)
+            : 1.0F;
+        return static_cast<float>(std::max(1U, GetDpiForWindow(window_))) /
+            96.0F * interfaceScale;
+    }
+
+    [[nodiscard]] std::optional<widgetrail::MediaViewportPresentationGeometry>
+    ResolveEmbeddedMediaPresentationGeometry(
+        const long long expectedSequence) const {
         if (!embeddedMediaAuthority_ || !window_) return std::nullopt;
         const auto* snapshot = SnapshotFor(embeddedMediaAuthority_->widgetId);
         if (!snapshot || !snapshot->embeddedMedia ||
-            snapshot->embeddedMedia->id != embeddedMediaAuthority_->surfaceId)
+            snapshot->embeddedMedia->id != embeddedMediaAuthority_->surfaceId ||
+            snapshot->sequence != expectedSequence ||
+            !lastWidgetRenderResult_.succeeded ||
+            lastWidgetRenderResult_.mediaViewportRegions.size() != 1)
             return std::nullopt;
-        RECT client{};
-        if (!GetClientRect(window_, &client) || client.right <= client.left ||
-            client.bottom <= client.top) return std::nullopt;
-        const double scale =
-            static_cast<double>(std::max(1U, GetDpiForWindow(window_))) / 96.0;
-        const float widthDip = static_cast<float>(
-            static_cast<double>(client.right - client.left) / scale);
-        const float heightDip = static_cast<float>(
-            static_cast<double>(client.bottom - client.top) / scale);
-        const auto geometry = ComputeCurrentWidgetSurfaceGeometry(widthDip, heightDip);
-        if (!geometry) return std::nullopt;
-        const auto& media = *snapshot->embeddedMedia;
-        const auto& hints = media.surface;
-        if (!hints.preferredWidth || !hints.preferredHeight ||
-            !hints.minimumWidth || !hints.minimumHeight)
+        const auto& viewport = lastWidgetRenderResult_.mediaViewportRegions.front();
+        if (viewport.mediaSurfaceId != embeddedMediaAuthority_->surfaceId)
             return std::nullopt;
-        const auto resolved = widgetrail::ResolveEmbeddedMediaSurfaceBounds(
-            {geometry->widgetViewportX, geometry->widgetViewportY,
-             geometry->widgetViewportWidth, geometry->widgetViewportHeight},
-            static_cast<float>(*hints.minimumWidth),
-            static_cast<float>(*hints.minimumHeight),
-            static_cast<float>(*hints.preferredWidth),
-            static_cast<float>(*hints.preferredHeight),
-            static_cast<float>(media.aspectRatio));
-        if (!resolved) return std::nullopt;
-        return RECT{
-            static_cast<LONG>(std::lround(resolved->x * scale)),
-            static_cast<LONG>(std::lround(resolved->y * scale)),
-            static_cast<LONG>(std::lround((resolved->x + resolved->width) * scale)),
-            static_cast<LONG>(std::lround((resolved->y + resolved->height) * scale)),
-        };
+        return widgetrail::ResolveMediaViewportPresentationGeometry(
+            {viewport.bounds.x, viewport.bounds.y,
+             viewport.bounds.width, viewport.bounds.height},
+            {viewport.clip.x, viewport.clip.y,
+             viewport.clip.width, viewport.clip.height},
+            CurrentMediaPixelsPerDip());
     }
 
     [[nodiscard]] bool EmbeddedMediaInputCurrent() const noexcept {
@@ -2321,6 +2314,11 @@ private:
         const auto* descriptor = sessions_.FindDescriptor(embeddedMediaAuthority_->widgetId);
         const auto* snapshot = SnapshotFor(embeddedMediaAuthority_->widgetId);
         return descriptor && snapshot && snapshot->embeddedMedia &&
+            embeddedMediaClientBounds_ && embeddedMediaClientClip_ &&
+            lastWidgetRenderResult_.succeeded &&
+            lastWidgetRenderResult_.mediaViewportRegions.size() == 1 &&
+            lastWidgetRenderResult_.mediaViewportRegions.front().mediaSurfaceId ==
+                embeddedMediaAuthority_->surfaceId &&
             snapshot->sequence == embeddedMediaAuthority_->sequence &&
             snapshot->instanceId == embeddedMediaAuthority_->instanceId &&
             descriptor->runtimeGeneration == embeddedMediaAuthority_->runtimeGeneration &&
@@ -2388,6 +2386,7 @@ private:
             (detachTiming.waitedForCompletion ? L"1" : L"0"));
         embeddedMediaAuthority_.reset();
         embeddedMediaClientBounds_.reset();
+        embeddedMediaClientClip_.reset();
     }
 
     void ReconcileEmbeddedMediaSurface(
@@ -2401,6 +2400,26 @@ private:
             return;
         }
         const auto& declaration = *snapshot.embeddedMedia;
+        const bool retainedIdentityCurrent = embeddedMediaAuthority_ &&
+            embeddedMediaAuthority_->widgetId == widgetId &&
+            embeddedMediaAuthority_->instanceId == snapshot.instanceId &&
+            embeddedMediaAuthority_->runtimeGeneration == descriptor->runtimeGeneration &&
+            embeddedMediaAuthority_->presentationGeneration ==
+                descriptor->presentationGeneration &&
+            embeddedMediaAuthority_->surfaceId == declaration.id;
+        if (embeddedMediaAuthority_ && !retainedIdentityCurrent)
+            StopEmbeddedMediaSurface(L"authority-replaced");
+        const bool layoutCurrent = committedWidgetVisualState_ &&
+            committedWidgetVisualState_->widgetId == widgetId &&
+            committedWidgetVisualState_->instanceId == snapshot.instanceId &&
+            committedWidgetVisualState_->snapshotSequence == snapshot.sequence &&
+            lastWidgetRenderResult_.succeeded;
+        if (!layoutCurrent) {
+            if (retainedIdentityCurrent) (void)richMediaSurface_.SetVisible(false);
+            embeddedMediaClientBounds_.reset();
+            embeddedMediaClientClip_.reset();
+            return;
+        }
         auto bundle = bridge_.ResolveEmbeddedMedia(
             widgetId, snapshot.instanceId, descriptor->runtimeGeneration,
             descriptor->presentationGeneration, snapshot.sequence, declaration.id);
@@ -2450,16 +2469,14 @@ private:
             std::to_wstring(bundle->surface.aspectRatio);
         for (const auto& command : bundle->surface.commands)
             signature += L"|" + command;
-        if (embeddedMediaAuthority_ &&
-            embeddedMediaAuthority_->widgetId == widgetId &&
-            embeddedMediaAuthority_->instanceId == snapshot.instanceId &&
-            embeddedMediaAuthority_->runtimeGeneration == descriptor->runtimeGeneration &&
-            embeddedMediaAuthority_->presentationGeneration ==
-                descriptor->presentationGeneration &&
-            embeddedMediaAuthority_->surfaceId == declaration.id &&
+        if (retainedIdentityCurrent && embeddedMediaAuthority_ &&
             embeddedMediaAuthority_->resourceSignature == signature) {
-            const auto bounds = ResolveEmbeddedMediaClientBounds();
-            if (!bounds) {
+            const auto geometry = ResolveEmbeddedMediaPresentationGeometry(
+                snapshot.sequence);
+            if (!geometry) {
+                (void)richMediaSurface_.SetVisible(false);
+                embeddedMediaClientBounds_.reset();
+                embeddedMediaClientClip_.reset();
                 AppendDiagnostic(
                     L"Embedded media geometry reconciliation failed widget=" +
                     std::wstring{widgetId} + L" surface=" + declaration.id);
@@ -2467,15 +2484,23 @@ private:
             }
             embeddedMediaAuthority_->sequence = snapshot.sequence;
             embeddedMediaAuthority_->commands = declaration.commands;
-            embeddedMediaClientBounds_ = *bounds;
+            embeddedMediaClientBounds_ = RECT{
+                geometry->hostBounds.left, geometry->hostBounds.top,
+                geometry->hostBounds.right, geometry->hostBounds.bottom};
+            embeddedMediaClientClip_ = RECT{
+                geometry->hostClip.left, geometry->hostClip.top,
+                geometry->hostClip.right, geometry->hostClip.bottom};
             (void)richMediaSurface_.UpdateGeometry(
-                *bounds,
-                static_cast<double>(std::max(1U, GetDpiForWindow(window_))) /
-                    96.0);
+                *embeddedMediaClientBounds_,
+                CurrentMediaPixelsPerDip());
+            widgetrail::OverlayCompositionSurface::CommitTiming timing;
+            (void)compositionSurface_.CommitExternalContentPresentation(
+                *embeddedMediaClientBounds_, *embeddedMediaClientClip_,
+                EmbeddedMediaInputCurrent(), timing);
             (void)richMediaSurface_.SetVisible(EmbeddedMediaInputCurrent());
             return;
         }
-        if (embeddedMediaAuthority_) StopEmbeddedMediaSurface(L"authority-replaced");
+        if (embeddedMediaAuthority_) StopEmbeddedMediaSurface(L"resource-replaced");
         if (!compositionSurface_.available()) {
             AppendDiagnostic(L"Embedded media requires DirectComposition");
             return;
@@ -2485,19 +2510,26 @@ private:
             descriptor->runtimeGeneration, descriptor->presentationGeneration,
             declaration.id, snapshot.sequence, signature,
             declaration.commands};
-        const auto resolvedBounds = ResolveEmbeddedMediaClientBounds();
-        if (!resolvedBounds) {
+        const auto resolvedGeometry = ResolveEmbeddedMediaPresentationGeometry(
+            snapshot.sequence);
+        if (!resolvedGeometry) {
             embeddedMediaAuthority_.reset();
             AppendDiagnostic(L"Embedded media bounds could not be resolved");
             return;
         }
-        const RECT bounds = *resolvedBounds;
+        const RECT bounds{
+            resolvedGeometry->hostBounds.left, resolvedGeometry->hostBounds.top,
+            resolvedGeometry->hostBounds.right, resolvedGeometry->hostBounds.bottom};
         embeddedMediaClientBounds_ = bounds;
+        embeddedMediaClientClip_ = RECT{
+            resolvedGeometry->hostClip.left, resolvedGeometry->hostClip.top,
+            resolvedGeometry->hostClip.right, resolvedGeometry->hostClip.bottom};
         if (richMediaProfileDirectory_.empty()) {
             wchar_t temporary[MAX_PATH]{};
             if (!GetTempPathW(static_cast<DWORD>(std::size(temporary)), temporary)) {
                 embeddedMediaAuthority_.reset();
                 embeddedMediaClientBounds_.reset();
+                embeddedMediaClientClip_.reset();
                 return;
             }
             richMediaProfileDirectory_ =
@@ -2508,6 +2540,7 @@ private:
         if (FAILED(targetResult)) {
             embeddedMediaAuthority_.reset();
             embeddedMediaClientBounds_.reset();
+            embeddedMediaClientClip_.reset();
             AppendDiagnostic(L"Embedded media target creation failed hr=" +
                 std::to_wstring(static_cast<long>(targetResult)));
             return;
@@ -2520,8 +2553,7 @@ private:
         configuration.ownerWindow = window_;
         configuration.compositionTarget = std::move(target);
         configuration.bounds = bounds;
-        configuration.rasterScale =
-            static_cast<double>(std::max(1U, GetDpiForWindow(window_))) / 96.0;
+        configuration.rasterScale = CurrentMediaPixelsPerDip();
         configuration.initiallyVisible = true;
         configuration.profileRootDirectory = richMediaProfileDirectory_;
         configuration.origin = std::format(
@@ -2536,10 +2568,10 @@ private:
         };
         configuration.invalidate = [this] { OnRichMediaStateChanged(); };
         configuration.setPresentationVisible = [this](const bool visible) {
-            if (!embeddedMediaClientBounds_) return;
+            if (!embeddedMediaClientBounds_ || !embeddedMediaClientClip_) return;
             widgetrail::OverlayCompositionSurface::CommitTiming timing;
             const HRESULT result = compositionSurface_.CommitExternalContentPresentation(
-                *embeddedMediaClientBounds_, visible, timing);
+                *embeddedMediaClientBounds_, *embeddedMediaClientClip_, visible, timing);
             if (FAILED(result)) AppendDiagnostic(
                 L"Embedded media presentation commit failed hr=" +
                 std::to_wstring(static_cast<long>(result)));
@@ -2552,14 +2584,26 @@ private:
                 std::to_wstring(static_cast<long>(initialize)));
             embeddedMediaAuthority_.reset();
             embeddedMediaClientBounds_.reset();
+            embeddedMediaClientClip_.reset();
             return;
         }
         widgetrail::OverlayCompositionSurface::CommitTiming timing;
-        (void)compositionSurface_.CommitExternalContentPresentation(bounds, false, timing);
+        (void)compositionSurface_.CommitExternalContentPresentation(
+            bounds, *embeddedMediaClientClip_, false, timing);
         AppendDiagnostic(
             L"Embedded media admitted widget=" + std::wstring{widgetId} +
             L" surface=" + declaration.id + L" sequence=" +
             std::to_wstring(snapshot.sequence));
+    }
+
+    void ReconcileCommittedEmbeddedMediaSurface() {
+        if (richMediaProof_ || state_.surface() != widgetrail::Surface::Widget)
+            return;
+        const auto widgetId = state_.activeWidget();
+        const auto* snapshot = SnapshotFor(widgetId);
+        if (!snapshot) return;
+        ReconcileEmbeddedMediaSurface(
+            widgetId, *snapshot, sessions_.FindDescriptor(widgetId));
     }
 
     void Shutdown() {
@@ -10822,6 +10866,7 @@ private:
             pendingContentRenderPlan_.reset();
             activeContentRenderPlan_.reset();
             BeginOpenAfterSuccessfulPaint();
+            ReconcileCommittedEmbeddedMediaSurface();
             return true;
         }
         std::vector<widgetrail::OverlayCompositionSurface::Frame*> framePointers;
@@ -10900,6 +10945,7 @@ private:
         pendingContentRenderPlan_.reset();
         activeContentRenderPlan_.reset();
         BeginOpenAfterSuccessfulPaint();
+        ReconcileCommittedEmbeddedMediaSurface();
         return true;
     }
 
@@ -10964,6 +11010,7 @@ private:
             pendingContentRenderPlan_.reset();
             activeContentRenderPlan_.reset();
             BeginOpenAfterSuccessfulPaint();
+            ReconcileCommittedEmbeddedMediaSurface();
         }
         EndPaint(window_, &paint);
     }
@@ -12090,6 +12137,7 @@ private:
     widgetrail::richmedia::RichMediaSurfaceCoordinator richMediaSurface_;
     std::optional<EmbeddedMediaAuthority> embeddedMediaAuthority_;
     std::optional<RECT> embeddedMediaClientBounds_;
+    std::optional<RECT> embeddedMediaClientClip_;
     bool performanceCountersActive_{};
     unsigned long long performanceCounterStarted_{};
     unsigned long long performanceTimerMessages_{};

@@ -19,6 +19,7 @@ public enum ViewNodeKind
     ActionSurface,
     Grid,
     TextEntry,
+    MediaViewport,
 }
 
 /// <summary>
@@ -292,6 +293,11 @@ public sealed record ViewNode
     /// widgets and grants no path, URL, file, network, or decode authority.
     /// </summary>
     public string? ArtworkHandle { get; init; }
+    /// <summary>
+    /// Protocol-v23 identity of the one top-level EmbeddedMedia declaration
+    /// whose pixels are placed inside this native layout node.
+    /// </summary>
+    public string? MediaSurfaceId { get; init; }
     public ImageFit? ImageFit { get; init; }
     public WidgetGlyph? Glyph { get; init; }
     public LoadingIndicatorSize? IndicatorSize { get; init; }

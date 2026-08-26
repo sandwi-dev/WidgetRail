@@ -5,16 +5,26 @@ internal static class EmbeddedMediaSurfaceTests
 {
     internal static Task Run()
     {
-        var view = new WidgetView(UI.Text("Fixture", "root"), ActiveInputScopeId: "root")
+        var media = Valid("primary-media");
+        var view = new WidgetView(
+            UI.Stack(
+                "root",
+                UI.Text("Fixture", "title"),
+                UI.MediaViewport(media, "media-viewport"),
+                UI.Text("Native controls", "controls")),
+            ActiveInputScopeId: "root")
         {
-            EmbeddedMedia = Valid("primary-media"),
+            EmbeddedMedia = media,
         };
         var snapshot = view.CreateSnapshot("fixture.instance", 4);
-        Equal(ProtocolConstants.EmbeddedMediaSurfaceVersion, snapshot.ProtocolVersion);
+        Equal(ProtocolConstants.MediaViewportVersion, snapshot.ProtocolVersion);
         Equal("primary-media", snapshot.EmbeddedMedia?.Id);
+        Equal(ViewNodeKind.MediaViewport, snapshot.Root.Children[1].Kind);
+        Equal("primary-media", snapshot.Root.Children[1].MediaSurfaceId);
         var roundTrip = SnapshotJson.Deserialize(SnapshotJson.Serialize(snapshot));
         Equal("media/adapter.html", roundTrip.EmbeddedMedia?.EntryAsset);
         Equal(2, roundTrip.EmbeddedMedia?.Resources.Count);
+        Equal("primary-media", roundTrip.Root.Children[1].MediaSurfaceId);
 
         // The additive property must not change the established positional API.
         var (root, initialFocus, quickActions, activeScope, surface) = view;
@@ -58,6 +68,38 @@ internal static class EmbeddedMediaSurfaceTests
             },
         }, "complete_bounds_required");
         Error(snapshot with { ProtocolVersion = 21 }, "feature_requires_version");
+        Error(snapshot with
+        {
+            Root = snapshot.Root with
+            {
+                Children = snapshot.Root.Children.Where(
+                    child => child.Kind is not ViewNodeKind.MediaViewport).ToArray(),
+            },
+        }, "media_viewport_required");
+        Error(snapshot with
+        {
+            Root = snapshot.Root with
+            {
+                Children =
+                [
+                    .. snapshot.Root.Children,
+                    snapshot.Root.Children[1] with { Id = "second-viewport" },
+                ],
+            },
+        }, "duplicate_media_viewport");
+        Error(snapshot with
+        {
+            Root = snapshot.Root with
+            {
+                Children =
+                [
+                    snapshot.Root.Children[0],
+                    snapshot.Root.Children[1] with { MediaSurfaceId = "wrong-media" },
+                    snapshot.Root.Children[2],
+                ],
+            },
+        }, "media_viewport_surface_mismatch");
+        Error(snapshot with { EmbeddedMedia = null }, "media_viewport_without_surface");
         return Task.CompletedTask;
     }
 

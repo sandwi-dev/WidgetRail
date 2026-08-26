@@ -167,6 +167,9 @@ public:
     HRESULT CreateExternalContentTarget(IUnknown** target) noexcept;
     HRESULT CommitExternalContentPresentation(
         const RECT& bounds, bool visible, CommitTiming& timing) noexcept;
+    HRESULT CommitExternalContentPresentation(
+        const RECT& bounds, const RECT& clipBounds,
+        bool visible, CommitTiming& timing) noexcept;
     HRESULT DetachExternalContentTarget(CommitTiming& timing) noexcept;
     void AbandonFrame(Frame& frame) noexcept;
 

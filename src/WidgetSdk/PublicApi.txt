@@ -503,6 +503,10 @@ method WidgetRail.WidgetSdk.LoadingIndicatorElement.Equals(WidgetRail.WidgetSdk.
 method WidgetRail.WidgetSdk.LoadingIndicatorElement.Equals(object? obj) -> bool
 method WidgetRail.WidgetSdk.LoadingIndicatorElement.GetHashCode() -> int
 method WidgetRail.WidgetSdk.LoadingIndicatorElement.ToString() -> string
+method WidgetRail.WidgetSdk.MediaViewportElement.Equals(WidgetRail.WidgetSdk.WidgetElement? other) -> bool
+method WidgetRail.WidgetSdk.MediaViewportElement.Equals(object? obj) -> bool
+method WidgetRail.WidgetSdk.MediaViewportElement.GetHashCode() -> int
+method WidgetRail.WidgetSdk.MediaViewportElement.ToString() -> string
 method WidgetRail.WidgetSdk.NavigationShellDestination.<Clone>$() -> WidgetRail.WidgetSdk.NavigationShellDestination
 method WidgetRail.WidgetSdk.NavigationShellDestination.Deconstruct(out string Id, out string Label, out string ActionId, out WidgetRail.WidgetProtocol.WidgetGlyph Glyph, out string? AccessibilityLabel, out bool IsDisabled) -> void
 method WidgetRail.WidgetSdk.NavigationShellDestination.Equals(object? obj) -> bool
@@ -1293,6 +1297,8 @@ method static WidgetRail.WidgetSdk.LaunchWidgetAppLibraryItemRequest.op_Equality
 method static WidgetRail.WidgetSdk.LaunchWidgetAppLibraryItemRequest.op_Inequality(WidgetRail.WidgetSdk.LaunchWidgetAppLibraryItemRequest? left, WidgetRail.WidgetSdk.LaunchWidgetAppLibraryItemRequest? right) -> bool
 method static WidgetRail.WidgetSdk.LoadingIndicatorElement.op_Equality(WidgetRail.WidgetSdk.LoadingIndicatorElement? left, WidgetRail.WidgetSdk.LoadingIndicatorElement? right) -> bool
 method static WidgetRail.WidgetSdk.LoadingIndicatorElement.op_Inequality(WidgetRail.WidgetSdk.LoadingIndicatorElement? left, WidgetRail.WidgetSdk.LoadingIndicatorElement? right) -> bool
+method static WidgetRail.WidgetSdk.MediaViewportElement.op_Equality(WidgetRail.WidgetSdk.MediaViewportElement? left, WidgetRail.WidgetSdk.MediaViewportElement? right) -> bool
+method static WidgetRail.WidgetSdk.MediaViewportElement.op_Inequality(WidgetRail.WidgetSdk.MediaViewportElement? left, WidgetRail.WidgetSdk.MediaViewportElement? right) -> bool
 method static WidgetRail.WidgetSdk.NavigationShellDestination.op_Equality(WidgetRail.WidgetSdk.NavigationShellDestination? left, WidgetRail.WidgetSdk.NavigationShellDestination? right) -> bool
 method static WidgetRail.WidgetSdk.NavigationShellDestination.op_Inequality(WidgetRail.WidgetSdk.NavigationShellDestination? left, WidgetRail.WidgetSdk.NavigationShellDestination? right) -> bool
 method static WidgetRail.WidgetSdk.OpenWidgetBluetoothDeviceSettingsRequest.op_Equality(WidgetRail.WidgetSdk.OpenWidgetBluetoothDeviceSettingsRequest? left, WidgetRail.WidgetSdk.OpenWidgetBluetoothDeviceSettingsRequest? right) -> bool
@@ -1378,6 +1384,7 @@ method static WidgetRail.WidgetSdk.UI.Image(string source, string id, string acc
 method static WidgetRail.WidgetSdk.UI.InlinePngImage(string pngBase64, string id, string accessibilityLabel, WidgetRail.WidgetProtocol.ImageFit fit = WidgetRail.WidgetProtocol.ImageFit.Contain) -> WidgetRail.WidgetSdk.ImageElement
 method static WidgetRail.WidgetSdk.UI.LoadingIndicator(string id, string accessibilityLabel = "Loading", WidgetRail.WidgetProtocol.LoadingIndicatorSize size = WidgetRail.WidgetProtocol.LoadingIndicatorSize.Standard) -> WidgetRail.WidgetSdk.LoadingIndicatorElement
 method static WidgetRail.WidgetSdk.UI.MediaTile(string title, string stateLabel, string action, string id, string? subtitle = null, string? metadata = null, WidgetRail.WidgetSdk.TileArtwork? artwork = null, string? accessibilityLabel = null, WidgetRail.WidgetProtocol.ActionSurfaceOrientation orientation = WidgetRail.WidgetProtocol.ActionSurfaceOrientation.Horizontal) -> WidgetRail.WidgetSdk.ActionSurfaceElement
+method static WidgetRail.WidgetSdk.UI.MediaViewport(WidgetRail.WidgetProtocol.EmbeddedMediaSurface surface, string id) -> WidgetRail.WidgetSdk.MediaViewportElement
 method static WidgetRail.WidgetSdk.UI.NavigationShell(string id, string selectedDestinationId, string contentEntryFocusId, WidgetRail.WidgetSdk.WidgetElement content, System.Collections.Generic.IReadOnlyList<WidgetRail.WidgetSdk.NavigationShellDestination> destinations, WidgetRail.WidgetSdk.WidgetElement? expandedPane = null, string? expandedPaneEntryFocusId = null) -> WidgetRail.WidgetSdk.StackElement
 method static WidgetRail.WidgetSdk.UI.Picker(string title, string id, string scopeId, string backAction, System.Collections.Generic.IReadOnlyList<WidgetRail.WidgetSdk.PickerOption> options, string? description = null) -> WidgetRail.WidgetSdk.StackElement
 method static WidgetRail.WidgetSdk.UI.Progress(double value, double maximum, string id, string? accessibilityLabel = null) -> WidgetRail.WidgetSdk.ProgressElement
@@ -1622,6 +1629,8 @@ method virtual WidgetRail.WidgetSdk.ImageElement.Equals(WidgetRail.WidgetSdk.Ima
 method virtual WidgetRail.WidgetSdk.LaunchWidgetAppLibraryItemRequest.Equals(WidgetRail.WidgetSdk.LaunchWidgetAppLibraryItemRequest? other) -> bool
 method virtual WidgetRail.WidgetSdk.LoadingIndicatorElement.<Clone>$() -> WidgetRail.WidgetSdk.LoadingIndicatorElement
 method virtual WidgetRail.WidgetSdk.LoadingIndicatorElement.Equals(WidgetRail.WidgetSdk.LoadingIndicatorElement? other) -> bool
+method virtual WidgetRail.WidgetSdk.MediaViewportElement.<Clone>$() -> WidgetRail.WidgetSdk.MediaViewportElement
+method virtual WidgetRail.WidgetSdk.MediaViewportElement.Equals(WidgetRail.WidgetSdk.MediaViewportElement? other) -> bool
 method virtual WidgetRail.WidgetSdk.NavigationShellDestination.Equals(WidgetRail.WidgetSdk.NavigationShellDestination? other) -> bool
 method virtual WidgetRail.WidgetSdk.OpenWidgetBluetoothDeviceSettingsRequest.Equals(WidgetRail.WidgetSdk.OpenWidgetBluetoothDeviceSettingsRequest? other) -> bool
 method virtual WidgetRail.WidgetSdk.PairWidgetBluetoothDeviceRequest.Equals(WidgetRail.WidgetSdk.PairWidgetBluetoothDeviceRequest? other) -> bool
@@ -1854,6 +1863,7 @@ property WidgetRail.WidgetProtocol.ControllerButton WidgetRail.WidgetSdk.Control
 property WidgetRail.WidgetProtocol.ControllerButton? WidgetRail.WidgetSdk.WidgetActionEvent.ControllerButton { get; set; }
 property WidgetRail.WidgetProtocol.ControllerEventPhase WidgetRail.WidgetSdk.ControllerInputEvent.Phase { get; set; }
 property WidgetRail.WidgetProtocol.ControllerEventPhase WidgetRail.WidgetSdk.WidgetActionEvent.Phase { get; set; }
+property WidgetRail.WidgetProtocol.EmbeddedMediaSurface WidgetRail.WidgetSdk.MediaViewportElement.Surface { get; set; }
 property WidgetRail.WidgetProtocol.EmbeddedMediaSurface? WidgetRail.WidgetSdk.WidgetView.EmbeddedMedia { get; set; }
 property WidgetRail.WidgetProtocol.FocusNeighbors? WidgetRail.WidgetSdk.ActionSurfaceElement.FocusNeighbors { get; set; }
 property WidgetRail.WidgetProtocol.FocusNeighbors? WidgetRail.WidgetSdk.ButtonElement.FocusNeighbors { get; set; }
@@ -2442,6 +2452,7 @@ type sealed class WidgetRail.WidgetSdk.IconElement : System.IEquatable<WidgetRai
 type sealed class WidgetRail.WidgetSdk.ImageElement : System.IEquatable<WidgetRail.WidgetSdk.ImageElement>, System.IEquatable<WidgetRail.WidgetSdk.WidgetElement>, WidgetRail.WidgetSdk.WidgetElement
 type sealed class WidgetRail.WidgetSdk.LaunchWidgetAppLibraryItemRequest : System.IEquatable<WidgetRail.WidgetSdk.LaunchWidgetAppLibraryItemRequest>
 type sealed class WidgetRail.WidgetSdk.LoadingIndicatorElement : System.IEquatable<WidgetRail.WidgetSdk.LoadingIndicatorElement>, System.IEquatable<WidgetRail.WidgetSdk.WidgetElement>, WidgetRail.WidgetSdk.WidgetElement
+type sealed class WidgetRail.WidgetSdk.MediaViewportElement : System.IEquatable<WidgetRail.WidgetSdk.MediaViewportElement>, System.IEquatable<WidgetRail.WidgetSdk.WidgetElement>, WidgetRail.WidgetSdk.WidgetElement
 type sealed class WidgetRail.WidgetSdk.NavigationShellDestination : System.IEquatable<WidgetRail.WidgetSdk.NavigationShellDestination>
 type sealed class WidgetRail.WidgetSdk.OpenWidgetBluetoothDeviceSettingsRequest : System.IEquatable<WidgetRail.WidgetSdk.OpenWidgetBluetoothDeviceSettingsRequest>
 type sealed class WidgetRail.WidgetSdk.PairWidgetBluetoothDeviceRequest : System.IEquatable<WidgetRail.WidgetSdk.PairWidgetBluetoothDeviceRequest>

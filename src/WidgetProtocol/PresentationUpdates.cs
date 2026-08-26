@@ -40,6 +40,7 @@ public enum PresentationProperty
     SliderInteractionMode,
     ImageSource,
     ArtworkHandle,
+    MediaSurfaceId,
     ImageFit,
     Glyph,
     IndicatorSize,
@@ -153,6 +154,12 @@ public static class PresentationPropertyMetadata
             PresentationPropertyImpact.Accessibility,
         PresentationProperty.ImageSource or PresentationProperty.ArtworkHandle =>
             PresentationPropertyImpact.Resource |
+            PresentationPropertyImpact.Paint |
+            PresentationPropertyImpact.Accessibility,
+        PresentationProperty.MediaSurfaceId =>
+            PresentationPropertyImpact.Authority |
+            PresentationPropertyImpact.SurfacePlacement |
+            PresentationPropertyImpact.MeasureLayout |
             PresentationPropertyImpact.Paint |
             PresentationPropertyImpact.Accessibility,
         PresentationProperty.IsDisabled or

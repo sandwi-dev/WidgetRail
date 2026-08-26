@@ -4,7 +4,7 @@ public static class ProtocolConstants
 {
     public const int MinimumSupportedVersion = 1;
     public const int BaselineVersion = 1;
-    public const int CurrentVersion = 22;
+    public const int CurrentVersion = 23;
     public const int ScrollContainerVersion = 2;
     public const int SurfaceHintsVersion = 2;
     public const int SliderVersion = 3;
@@ -26,6 +26,7 @@ public static class ProtocolConstants
     public const int PinnedPresentationLayoutsVersion = 20;
     public const int PinnedPresentationProjectionsVersion = 21;
     public const int EmbeddedMediaSurfaceVersion = 22;
+    public const int MediaViewportVersion = 23;
     public const int MaximumEmbeddedMediaResourceCount = 16;
     public const int MaximumEmbeddedMediaResourcePathLength = 160;
     public const int MaximumEmbeddedMediaContentTypeLength = 96;

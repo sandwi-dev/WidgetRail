@@ -828,7 +828,12 @@ HRESULT RichMediaSurfaceCoordinator::UpdateGeometry(
     configuration_.rasterScale = rasterScale;
     state_.focusedActionBoundsCurrent = false;
     if (!controllerBase_) return S_FALSE;
-    HRESULT result = controllerBase_->put_Bounds(bounds);
+    // The host owns placement in its DirectComposition tree. WebView2 owns
+    // pixels in controller-local coordinates only; retaining the host offset
+    // here would apply placement twice.
+    const RECT controllerBounds{
+        0, 0, bounds.right - bounds.left, bounds.bottom - bounds.top};
+    HRESULT result = controllerBase_->put_Bounds(controllerBounds);
     ComPtr<ICoreWebView2Controller3> controller3;
     if (SUCCEEDED(result) && SUCCEEDED(controllerBase_.As(&controller3)))
         result = controller3->put_RasterizationScale(rasterScale);

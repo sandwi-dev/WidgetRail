@@ -3,6 +3,7 @@
 #include <d3d11.h>
 #include <dxgi1_2.h>
 
+#include <algorithm>
 #include <chrono>
 #include <array>
 #include <cmath>
@@ -158,16 +159,33 @@ HRESULT OverlayCompositionSurface::CreateExternalContentTarget(
 
 HRESULT OverlayCompositionSurface::CommitExternalContentPresentation(
     const RECT& bounds, const bool visible, CommitTiming& timing) noexcept {
+    return CommitExternalContentPresentation(bounds, bounds, visible, timing);
+}
+
+HRESULT OverlayCompositionSurface::CommitExternalContentPresentation(
+    const RECT& bounds, const RECT& clipBounds,
+    const bool visible, CommitTiming& timing) noexcept {
     timing = {};
     if (!device_ || !externalContentVisual_ || !content_.visual ||
-        bounds.right <= bounds.left || bounds.bottom <= bounds.top)
+        bounds.right <= bounds.left || bounds.bottom <= bounds.top ||
+        clipBounds.right <= clipBounds.left ||
+        clipBounds.bottom <= clipBounds.top)
         return E_INVALIDARG;
     const auto started = std::chrono::steady_clock::now();
+    const auto width = bounds.right - bounds.left;
+    const auto height = bounds.bottom - bounds.top;
     const D2D_RECT_F clip{
-        0.0F, 0.0F,
-        static_cast<float>(bounds.right - bounds.left),
-        static_cast<float>(bounds.bottom - bounds.top),
+        static_cast<float>(std::clamp(
+            clipBounds.left - bounds.left, 0L, width)),
+        static_cast<float>(std::clamp(
+            clipBounds.top - bounds.top, 0L, height)),
+        static_cast<float>(std::clamp(
+            clipBounds.right - bounds.left, 0L, width)),
+        static_cast<float>(std::clamp(
+            clipBounds.bottom - bounds.top, 0L, height)),
     };
+    if (clip.right <= clip.left || clip.bottom <= clip.top)
+        return E_INVALIDARG;
     HRESULT result = externalContentVisual_->SetOffsetX(
         static_cast<float>(bounds.left));
     if (SUCCEEDED(result)) result = externalContentVisual_->SetOffsetY(

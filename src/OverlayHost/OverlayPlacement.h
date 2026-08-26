@@ -147,6 +147,21 @@ struct EmbeddedMediaSurfaceBounds final {
     float height{};
 };
 
+struct MediaViewportPresentationGeometry final {
+    PhysicalRect hostBounds{};
+    PhysicalRect hostClip{};
+    PhysicalRect controllerBounds{};
+};
+
+/// Converts the declarative renderer's final logical media viewport and clip
+/// into one physical host placement. The WebView controller remains local to
+/// that placement, preventing the host offset from being applied twice.
+[[nodiscard]] std::optional<MediaViewportPresentationGeometry>
+ResolveMediaViewportPresentationGeometry(
+    EmbeddedMediaSurfaceBounds viewport,
+    EmbeddedMediaSurfaceBounds clip,
+    float physicalPixelsPerDip) noexcept;
+
 /// Resolves one aspect-correct media rectangle inside the already-admitted
 /// widget viewport. Authored minimum/preferred sizes influence the bounded
 /// result but never permit the external surface to escape its safe area.

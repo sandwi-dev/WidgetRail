@@ -23,6 +23,8 @@ public static class ViewSnapshotValidator
         var ids = new Dictionary<string, (ViewNode Node, string Path, string ScopeKey)>(StringComparer.Ordinal);
         var inputScopes = new Dictionary<string, string>(StringComparer.Ordinal);
         var nodes = 0;
+        var mediaViewportCount = 0;
+        string? mediaViewportSurfaceId = null;
 
         if (snapshot.ProtocolVersion < ProtocolConstants.MinimumSupportedVersion ||
             snapshot.ProtocolVersion > ProtocolConstants.CurrentVersion)
@@ -121,6 +123,20 @@ public static class ViewSnapshotValidator
             Add("$.pinnedLayouts", "aggregate_resources_too_large",
                 $"The full widget and pinned projections may reference at most {ProtocolConstants.MaximumPinnedPresentationAggregateResourceCount} resources in total.");
         Visit(snapshot.Root, "$.root", 1, "$.root");
+        if (mediaViewportCount != 0 && snapshot.EmbeddedMedia is null)
+            Add("$.root", "media_viewport_without_surface",
+                "A MediaViewport requires one current embedded media surface declaration.");
+        else if (mediaViewportCount > 1)
+            Add("$.root", "duplicate_media_viewport",
+                "A presentation may contain exactly one MediaViewport for its embedded media surface.");
+        else if (snapshot.ProtocolVersion >= ProtocolConstants.MediaViewportVersion &&
+                 snapshot.EmbeddedMedia is not null && mediaViewportCount == 0)
+            Add("$.root", "media_viewport_required",
+                "Protocol-v23 embedded media requires one declarative MediaViewport.");
+        else if (mediaViewportCount == 1 && snapshot.EmbeddedMedia is { } embeddedMedia &&
+                 !string.Equals(mediaViewportSurfaceId, embeddedMedia.Id, StringComparison.Ordinal))
+            Add("$.root", "media_viewport_surface_mismatch",
+                "MediaViewport must reference the current embedded media surface identity.");
         var activeInputScopeId = snapshot.ActiveInputScopeId ?? string.Empty;
         CheckIdentifier(activeInputScopeId, "$.activeInputScopeId", "active input scope ID");
         var hasActiveScope = inputScopes.TryGetValue(activeInputScopeId, out var activeScopeKey);
@@ -389,6 +405,35 @@ public static class ViewSnapshotValidator
             var isContainer = node.Kind is
                 ViewNodeKind.Stack or ViewNodeKind.Row or ViewNodeKind.Scroll or ViewNodeKind.Grid;
             var isActionSurface = node.Kind is ViewNodeKind.ActionSurface;
+            if (node.Kind is ViewNodeKind.MediaViewport)
+            {
+                mediaViewportCount++;
+                mediaViewportSurfaceId ??= node.MediaSurfaceId;
+                CheckIdentifier(node.MediaSurfaceId, $"{path}.mediaSurfaceId",
+                    "embedded media surface ID");
+                if (snapshot.EmbeddedMedia is { } currentMedia &&
+                    !string.Equals(node.AccessibilityLabel, currentMedia.AccessibleName,
+                        StringComparison.Ordinal))
+                    Add($"{path}.accessibilityLabel", "media_viewport_accessible_name_mismatch",
+                        "MediaViewport accessibility must use the current embedded media accessible name.");
+                if (node.Text is not null || node.AccessibilityValue is not null ||
+                    node.ActionId is not null || node.Value is not null ||
+                    node.Minimum is not null || node.Maximum is not null || node.Step is not null ||
+                    node.ValueChangedActionId is not null || node.Focus is not null ||
+                    node.ImageSource is not null || node.ArtworkHandle is not null ||
+                    node.ImageFit is not null || node.Glyph is not null ||
+                    node.IndicatorSize is not null || node.InputScopeId is not null ||
+                    node.ScrollAxis is not null || node.GridMinimumColumnWidth is not null ||
+                    node.GridMaximumColumns is not null || node.IsDisabled is not null ||
+                    node.IsSelected is not null || node.IsBusy is not null)
+                    Add(path, "media_viewport_property_not_allowed",
+                        "MediaViewport accepts only its ID, media surface identity, accessible name, visibility, and style classes.");
+            }
+            else if (node.MediaSurfaceId is not null)
+            {
+                Add($"{path}.mediaSurfaceId", "media_surface_id_not_allowed",
+                    "Media surface identity applies only to MediaViewport nodes.");
+            }
             if (node.Kind is ViewNodeKind.LoadingIndicator)
             {
                 if (string.IsNullOrWhiteSpace(node.AccessibilityLabel))
@@ -912,6 +957,7 @@ public static class ViewSnapshotValidator
                     StringLength(node.ActionId) + StringLength(node.TextEntryValue) +
                     StringLength(node.TextEntryPlaceholder) + StringLength(node.ValueChangedActionId) +
                     StringLength(node.ImageSource) + StringLength(node.ArtworkHandle) +
+                    StringLength(node.MediaSurfaceId) +
                     StringLength(node.FocusPersistenceId) + StringLength(node.InputScopeId) +
                     StringLength(node.ScrollNearStartActionId) + StringLength(node.ScrollNearEndActionId) +
                     StringLength(node.CollectionAnchorKey) + StringLength(node.CollectionItemKey) +
