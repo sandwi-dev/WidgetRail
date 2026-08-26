@@ -1,4 +1,5 @@
 #include "OverlayCompositionSurface.h"
+#include "EmbeddedMediaResourceContract.h"
 #include "RichMediaSurfaceCoordinator.h"
 
 #include <Windows.h>
@@ -303,6 +304,32 @@ chrome.webview.addEventListener('message',e=>{const m=e.data;if(m.command==='ini
 
 void RunContractCases() {
     using namespace widgetrail::richmedia;
+    widgetrail::EmbeddedMediaSurfaceDeclaration initialSurface;
+    initialSurface.id = L"neutral.primary";
+    initialSurface.accessibleName = L"Neutral media";
+    initialSurface.entryAsset = L"media/index.html";
+    initialSurface.surface = {L"responsive", L"bounded", L"bounded",
+        760, 425, 320, 180};
+    initialSurface.aspectRatio = 16.0 / 9.0;
+    initialSurface.resources = {{L"media/index.html", L"text/html"}};
+    initialSurface.commands = {L"activate", L"togglePlayback"};
+    auto pendingSurface = initialSurface;
+    pendingSurface.pendingCommand = widgetrail::EmbeddedMediaPlaybackCommand{
+        3, L"play", L"neutral-tone", std::nullopt, std::nullopt};
+    const auto admittedContract =
+        widgetrail::EmbeddedMediaResourceContract(initialSurface);
+    Require(widgetrail::SameEmbeddedMediaResourceContract(
+                admittedContract, pendingSurface),
+            "playback command snapshot churn replaced the sealed media session");
+    pendingSurface.pendingCommand.reset();
+    Require(widgetrail::SameEmbeddedMediaResourceContract(
+                admittedContract, pendingSurface),
+            "playback acknowledgement snapshot churn replaced the sealed media session");
+    auto replacementSurface = pendingSurface;
+    replacementSurface.resources[0].path = L"media/replacement.html";
+    Require(!widgetrail::SameEmbeddedMediaResourceContract(
+                admittedContract, replacementSurface),
+            "genuine sealed media resource replacement retained stale authority");
     State state;
     state.authority = {2, 3, 7, 11, 13, 3};
     State next = state;

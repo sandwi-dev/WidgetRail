@@ -188,12 +188,14 @@ internal static class BridgeClientRegistryScenarios
                         MinimumHeight = 180,
                     },
                     AspectRatio = 16.0 / 9.0,
-                    PendingCommand = new EmbeddedMediaPlaybackCommand
-                    {
-                        Sequence = 3,
-                        Kind = EmbeddedMediaPlaybackCommandKind.Play,
-                        MediaKey = "aurora-track",
-                    },
+                    PendingCommand = (sequence & uint.MaxValue) >= 3
+                        ? new EmbeddedMediaPlaybackCommand
+                        {
+                            Sequence = 3,
+                            Kind = EmbeddedMediaPlaybackCommandKind.Play,
+                            MediaKey = "aurora-track",
+                        }
+                        : null,
                     Resources =
                     [
                         new EmbeddedMediaResource
@@ -206,8 +208,9 @@ internal static class BridgeClientRegistryScenarios
             });
         await fixture.SetLifecycleAsync(configured.Id, WidgetLifecycleState.Visible);
         var snapshot = await fixture.GetSnapshotAsync(configured.Id);
+        var initialSnapshotSequence = snapshot.Snapshot.Sequence;
         var descriptor = configured.PublicDescriptor();
-        var exact = new BridgeEmbeddedMediaRequest(
+        var initialExact = new BridgeEmbeddedMediaRequest(
             configured.Id,
             snapshot.Snapshot.WidgetInstanceId,
             descriptor.RuntimeGeneration,
@@ -215,11 +218,42 @@ internal static class BridgeClientRegistryScenarios
             snapshot.Snapshot.Sequence,
             snapshot.Snapshot.EmbeddedMedia!.Id);
 
-        using (var admitted = fixture.Registry.AdmitEmbeddedMedia(exact))
+        using (var admitted = fixture.Registry.AdmitEmbeddedMedia(initialExact))
         {
             RegistryAssert.Equal(configured.Id, admitted.Value.Configured.Id);
             RegistryAssert.Equal(snapshot.Snapshot.Sequence, admitted.Value.Snapshot.Sequence);
         }
+
+        var initialObservation = new EmbeddedMediaPlaybackEvent
+        {
+            SurfaceId = initialExact.SurfaceId,
+            Sequence = 1,
+            CommandSequence = 0,
+            MediaKey = "aurora-track",
+            State = EmbeddedMediaPlaybackState.Ready,
+            PositionSeconds = 0,
+            DurationSeconds = 60,
+            Volume = 0.8,
+        };
+        await fixture.Registry.PublishEmbeddedMediaPlaybackEventAsync(
+            new BridgeEmbeddedMediaPlaybackEventRequest(
+                initialExact.WidgetId,
+                initialExact.InstanceId,
+                initialExact.RuntimeGeneration,
+                initialExact.PresentationGeneration,
+                initialExact.Sequence,
+                initialObservation),
+            CancellationToken.None);
+
+        var stateSnapshot = await fixture.GetSnapshotAsync(configured.Id);
+        var commandSnapshot = await fixture.GetSnapshotAsync(configured.Id);
+        RegistryAssert.True(stateSnapshot.Snapshot.Sequence > initialSnapshotSequence);
+        RegistryAssert.True(
+            commandSnapshot.Snapshot.Sequence > stateSnapshot.Snapshot.Sequence);
+        RegistryAssert.Equal(
+            stateSnapshot.Snapshot.Sequence - initialSnapshotSequence,
+            commandSnapshot.Snapshot.Sequence - stateSnapshot.Snapshot.Sequence);
+        var exact = initialExact with { Sequence = commandSnapshot.Snapshot.Sequence };
 
         var playbackEvent = new EmbeddedMediaPlaybackEvent
         {
@@ -256,8 +290,9 @@ internal static class BridgeClientRegistryScenarios
         await fixture.Registry.PublishEmbeddedMediaPlaybackEventAsync(
             eventRequest, CancellationToken.None);
         var client = fixture.Clients.Single();
-        RegistryAssert.Equal(1, client.EmbeddedMediaPlaybackEvents.Count);
-        RegistryAssert.Equal(playbackEvent, client.EmbeddedMediaPlaybackEvents.Single());
+        RegistryAssert.Equal(2, client.EmbeddedMediaPlaybackEvents.Count);
+        RegistryAssert.Equal(initialObservation, client.EmbeddedMediaPlaybackEvents[0]);
+        RegistryAssert.Equal(playbackEvent, client.EmbeddedMediaPlaybackEvents[1]);
 
         await RegistryAssert.ThrowsAsync<BridgeProtocolException>(() => Task.Run(() =>
         {
@@ -280,7 +315,7 @@ internal static class BridgeClientRegistryScenarios
                     Event = playbackEvent with { MediaKey = "invalid key" },
                 },
                 CancellationToken.None));
-        RegistryAssert.Equal(1, client.EmbeddedMediaPlaybackEvents.Count);
+        RegistryAssert.Equal(2, client.EmbeddedMediaPlaybackEvents.Count);
     }
 
     internal static async Task CatalogReplacementAndRemovalOwnGenerations()

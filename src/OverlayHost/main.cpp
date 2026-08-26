@@ -4,6 +4,7 @@
 #include "AccessibilityProjection.h"
 #include "AccessibilityTree.h"
 #include "DeclarativeRenderer.h"
+#include "EmbeddedMediaResourceContract.h"
 #include "ControllerNavigation.h"
 #include "ControllerInputOwnership.h"
 #include "FocusNavigation.h"
@@ -2287,7 +2288,7 @@ private:
         std::wstring presentationGeneration;
         std::wstring surfaceId;
         long long sequence{};
-        std::wstring resourceSignature;
+        widgetrail::EmbeddedMediaSurfaceDeclaration resourceContract;
         std::vector<std::wstring> commands;
         long long lastDispatchedPlaybackCommand{};
         EmbeddedMediaProjection projection{EmbeddedMediaProjection::Overlay};
@@ -2598,13 +2599,62 @@ private:
             embeddedMediaClientClip_.reset();
             return;
         }
+        const auto retainCurrentSession = [&] {
+            embeddedMediaAuthority_->sequence = snapshot.sequence;
+            embeddedMediaAuthority_->commands = declaration.commands;
+            const auto desiredProjection = pinnedSurfaceCoordinator_.pinned() &&
+                    pinnedSurfaceCoordinator_.widgetId() == widgetId
+                ? EmbeddedMediaProjection::Pinned
+                : EmbeddedMediaProjection::Overlay;
+            if (desiredProjection == EmbeddedMediaProjection::Pinned &&
+                !pinnedSurfaceCoordinator_.CurrentMediaViewport(declaration.id)) {
+                (void)richMediaSurface_.SetVisible(false);
+                return;
+            }
+            if (!TransferEmbeddedMediaSurface(
+                    desiredProjection, L"snapshot-reconciliation")) {
+                StopEmbeddedMediaSurface(L"projection-transfer-failed");
+                return;
+            }
+            const auto geometry = ResolveEmbeddedMediaPresentationGeometry(
+                snapshot.sequence);
+            if (!geometry) {
+                (void)richMediaSurface_.SetVisible(false);
+                embeddedMediaClientBounds_.reset();
+                embeddedMediaClientClip_.reset();
+                AppendDiagnostic(
+                    L"Embedded media geometry reconciliation failed widget=" +
+                    std::wstring{widgetId} + L" surface=" + declaration.id);
+                return;
+            }
+            embeddedMediaClientBounds_ = Win32Rect(geometry->hostBounds);
+            embeddedMediaClientClip_ = Win32Rect(geometry->hostClip);
+            (void)richMediaSurface_.UpdateGeometry(
+                Win32Rect(geometry->controllerBounds),
+                MediaPixelsPerDip(EmbeddedMediaOwnerWindow(desiredProjection)));
+            widgetrail::OverlayCompositionSurface::CommitTiming timing;
+            (void)compositionSurface_.CommitExternalContentPresentation(
+                CompositionEndpoint(desiredProjection), *embeddedMediaClientBounds_,
+                *embeddedMediaClientClip_, EmbeddedMediaPresentationVisible(), timing);
+            (void)richMediaSurface_.SetVisible(EmbeddedMediaPresentationVisible());
+            DispatchPendingEmbeddedMediaCommand();
+        };
+        if (retainedIdentityCurrent && embeddedMediaAuthority_ &&
+            widgetrail::SameEmbeddedMediaResourceContract(
+                embeddedMediaAuthority_->resourceContract, declaration)) {
+            retainCurrentSession();
+            return;
+        }
         auto bundle = bridge_.ResolveEmbeddedMedia(
             widgetId, snapshot.instanceId, descriptor->runtimeGeneration,
             descriptor->presentationGeneration, snapshot.sequence, declaration.id);
         if (!bundle) {
+            const auto reason = bridge_.lastError().empty()
+                ? std::wstring{L"embedded-media-resolution-unavailable"}
+                : bridge_.lastError();
             AppendDiagnostic(
                 L"Embedded media admission rejected widget=" + std::wstring{widgetId} +
-                L" surface=" + declaration.id + L" reason=" + bridge_.lastError());
+                L" surface=" + declaration.id + L" reason=" + reason);
             return;
         }
         const auto& resolvedDeclaration = bundle->surface;
@@ -2650,63 +2700,6 @@ private:
                 L" reason=resolved-contract-mismatch");
             return;
         }
-        std::wstring signature;
-        for (const auto& resource : bundle->resources)
-            signature += resource.path + L":" + resource.sha256 + L";";
-        signature += bundle->surface.entryAsset + L"|" +
-            bundle->surface.accessibleName + L"|" +
-            bundle->surface.surface.mode + L"|" +
-            std::to_wstring(bundle->surface.aspectRatio);
-        for (const auto& command : bundle->surface.commands)
-            signature += L"|" + command;
-        for (const auto& origin : bundle->surface.allowedFrameOrigins)
-            signature += L"|frame:" + origin;
-        if (retainedIdentityCurrent && embeddedMediaAuthority_ &&
-            embeddedMediaAuthority_->resourceSignature == signature) {
-            embeddedMediaAuthority_->sequence = snapshot.sequence;
-            embeddedMediaAuthority_->commands = declaration.commands;
-            const auto desiredProjection = pinnedSurfaceCoordinator_.pinned() &&
-                    pinnedSurfaceCoordinator_.widgetId() == widgetId
-                ? EmbeddedMediaProjection::Pinned
-                : EmbeddedMediaProjection::Overlay;
-            if (desiredProjection == EmbeddedMediaProjection::Pinned &&
-                !pinnedSurfaceCoordinator_.CurrentMediaViewport(declaration.id)) {
-                (void)richMediaSurface_.SetVisible(false);
-                return;
-            }
-            if (!TransferEmbeddedMediaSurface(
-                    desiredProjection, L"snapshot-reconciliation")) {
-                StopEmbeddedMediaSurface(L"projection-transfer-failed");
-                return;
-            }
-            const auto geometry = ResolveEmbeddedMediaPresentationGeometry(
-                snapshot.sequence);
-            if (!geometry) {
-                (void)richMediaSurface_.SetVisible(false);
-                embeddedMediaClientBounds_.reset();
-                embeddedMediaClientClip_.reset();
-                AppendDiagnostic(
-                    L"Embedded media geometry reconciliation failed widget=" +
-                    std::wstring{widgetId} + L" surface=" + declaration.id);
-                return;
-            }
-            embeddedMediaClientBounds_ = RECT{
-                geometry->hostBounds.left, geometry->hostBounds.top,
-                geometry->hostBounds.right, geometry->hostBounds.bottom};
-            embeddedMediaClientClip_ = RECT{
-                geometry->hostClip.left, geometry->hostClip.top,
-                geometry->hostClip.right, geometry->hostClip.bottom};
-            (void)richMediaSurface_.UpdateGeometry(
-                Win32Rect(geometry->controllerBounds),
-                MediaPixelsPerDip(EmbeddedMediaOwnerWindow(desiredProjection)));
-            widgetrail::OverlayCompositionSurface::CommitTiming timing;
-            (void)compositionSurface_.CommitExternalContentPresentation(
-                CompositionEndpoint(desiredProjection), *embeddedMediaClientBounds_,
-                *embeddedMediaClientClip_, EmbeddedMediaPresentationVisible(), timing);
-            (void)richMediaSurface_.SetVisible(EmbeddedMediaPresentationVisible());
-            DispatchPendingEmbeddedMediaCommand();
-            return;
-        }
         if (embeddedMediaAuthority_) StopEmbeddedMediaSurface(L"resource-replaced");
         if (!compositionSurface_.available()) {
             AppendDiagnostic(L"Embedded media requires DirectComposition");
@@ -2719,7 +2712,8 @@ private:
         embeddedMediaAuthority_ = EmbeddedMediaAuthority{
             std::wstring{widgetId}, snapshot.instanceId,
             descriptor->runtimeGeneration, descriptor->presentationGeneration,
-            declaration.id, snapshot.sequence, signature,
+            declaration.id, snapshot.sequence,
+            widgetrail::EmbeddedMediaResourceContract(resolvedDeclaration),
             declaration.commands, 0, projection};
         const auto resolvedGeometry = ResolveEmbeddedMediaPresentationGeometry(
             snapshot.sequence);
