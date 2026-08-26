@@ -138,6 +138,12 @@ primary accessibility contract.
 | `UI.Scroll(id, axis, children)` | `scroll` | Axis-explicit form of the same bounded viewport. |
 | `UI.Text(text, id, accessibilityLabel?)` | `text` | Non-interactive text. |
 | `UI.MediaViewport(surface, id)` | `mediaViewport` | Protocol-v23 non-interactive native layout leaf for the one current `WidgetView.EmbeddedMedia` surface. The declarative renderer owns its responsive geometry, clip, theme placeholder, and Image semantics; WebView2 contributes only the bounded media pixels. |
+
+An embedded-media widget builds its visible shell from the same native Text,
+Progress, Button, Row, and Stack nodes as any other widget. Reserved
+`host.embeddedMedia.*` action IDs bind those native buttons to the existing
+closed media command declarations after normal focus and generation admission;
+they do not expose DOM, browsing, script, or arbitrary pointer authority.
 | `UI.CodeText(text, id, accessibilityLabel?)` | `text` | Bounded non-interactive diagnostics/command text with the semantic monospace class. |
 | `UI.Button(label, action, id)` | `button` | Focusable action control; may include one semantic glyph or bounded leading PNG inside the same focus target. |
 | `UI.ToggleButton(label, isOn, action, id)` | `button` | Controller-ready two-state button composed from existing button semantics. |

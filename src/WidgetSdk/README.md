@@ -44,6 +44,16 @@ must reference the current surface identity. Missing, duplicate, or mismatched
 bindings fail closed, and semantic previews display a deterministic native
 placeholder rather than creating WebView2.
 
+Visible media chrome remains ordinary declarative UI. Host-native buttons may
+bind their action IDs to `host.embeddedMedia.togglePlayback`,
+`host.embeddedMedia.seekBackward`, `host.embeddedMedia.seekForward`,
+`host.embeddedMedia.previous`, `host.embeddedMedia.next`, or
+`host.embeddedMedia.back`; the host admits those actions only against the exact
+current widget, surface, viewport, input scope, focus, sequence, and declared
+closed command set. The browser never receives the widget focus graph or raw
+controller keys. Overlay-root B remains host Back, while pinned B retains the
+ordinary selected-projection widget route.
+
 For selection-driven data, create an optional per-widget
 `PinnedLayoutHandle` with `CreatePinnedLayoutHandle(id, name, surface,
 initialFocusId, activeInputScopeId)`. Those stable values are registered once;

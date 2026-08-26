@@ -115,6 +115,14 @@ struct Configuration final {
     std::function<void(bool)> setPresentationVisible;
 };
 
+struct PresentationTarget final {
+    HWND ownerWindow{};
+    Microsoft::WRL::ComPtr<IUnknown> compositionTarget;
+    RECT bounds{};
+    double rasterScale{1.0};
+    std::function<void(bool)> setPresentationVisible;
+};
+
 // Owns the bounded rich-media session only. The OverlayApp remains the sole
 // HWND/input/focus/UIA/geometry/presentation/teardown authority and explicitly
 // forwards admitted operations to this coordinator.
@@ -129,6 +137,9 @@ public:
     [[nodiscard]] HRESULT Retry(Configuration configuration) noexcept;
     [[nodiscard]] HRESULT SetVisible(bool visible) noexcept;
     [[nodiscard]] HRESULT UpdateGeometry(const RECT& bounds, double rasterScale) noexcept;
+    [[nodiscard]] HRESULT BeginPresentationTransfer() noexcept;
+    [[nodiscard]] HRESULT CompletePresentationTransfer(
+        PresentationTarget target) noexcept;
     [[nodiscard]] bool SendCommand(Command command) noexcept;
     [[nodiscard]] bool ForwardMouse(UINT message, WPARAM wParam, LPARAM lParam) noexcept;
     [[nodiscard]] bool ForwardKey(UINT message, WPARAM wParam, LPARAM lParam) noexcept;
@@ -255,6 +266,8 @@ private:
     bool environmentFaulted_{};
     std::uint64_t retrySurfaceGeneration_{};
     bool teardownBegun_{};
+    bool presentationTransferPending_{};
+    bool transferDesiredVisible_{};
     HRESULT browserEventRegistrationResult_{E_UNEXPECTED};
     std::wstring pageUri_;
 

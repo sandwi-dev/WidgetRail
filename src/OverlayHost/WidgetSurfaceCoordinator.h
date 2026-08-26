@@ -15,6 +15,7 @@
 
 #include <cstddef>
 #include <filesystem>
+#include <functional>
 #include <memory>
 #include <optional>
 #include <string>
@@ -140,6 +141,8 @@ public:
     [[nodiscard]] std::vector<PinnedLayoutSelectionNotification>
         TakeLayoutSelectionNotifications() noexcept;
     void SetActionFeedback(std::wstring message, bool failure);
+    void SetBeforeWindowRetirement(
+        std::function<void(WidgetSurfaceStopReason)> callback);
     [[nodiscard]] bool EmergencyHideAll() noexcept;
     [[nodiscard]] bool BeginPlacement(PlacementMode mode);
     [[nodiscard]] bool BeginSetup(bool newPin);
@@ -196,6 +199,8 @@ public:
     [[nodiscard]] std::wstring_view focusedElementId() const noexcept {
         return focusedElementId_;
     }
+    [[nodiscard]] std::optional<RenderMediaViewportRegion>
+        CurrentMediaViewport(std::wstring_view surfaceId) const noexcept;
     [[nodiscard]] WidgetSurfacePresentationState presentationState() const noexcept;
     [[nodiscard]] PlacementMode placementMode() const noexcept {
         return placementSession_ ? placementSession_->mode : PlacementMode::None;
@@ -282,6 +287,7 @@ private:
     std::vector<WidgetSurfaceInputRequest> inputRequests_;
     std::vector<PinnedLayoutSelectionNotification> layoutSelectionNotifications_;
     std::wstring actionFeedback_;
+    std::function<void(WidgetSurfaceStopReason)> beforeWindowRetirement_;
     bool actionFeedbackFailure_{};
     bool overlayVisible_{};
     bool controllerFocused_{};

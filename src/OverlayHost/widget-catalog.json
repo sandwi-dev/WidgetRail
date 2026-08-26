@@ -53,6 +53,14 @@
       "packageRoot": "runtime/NetworkControls",
       "icon": "wifi",
       "quickActions": []
+    },
+    {
+      "id": "embedded-media-sample",
+      "packageId": "widgetrail.samples.embedded-media",
+      "instanceId": "embedded-media-sample.default",
+      "packageRoot": "runtime/EmbeddedMediaSample",
+      "icon": "play",
+      "quickActions": []
     }
   ]
 }

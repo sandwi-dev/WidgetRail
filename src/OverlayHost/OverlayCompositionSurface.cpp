@@ -117,7 +117,35 @@ bool OverlayCompositionSurface::InitializeChromeTarget(
     return true;
 }
 
+bool OverlayCompositionSurface::InitializePinnedExternalContentEndpoint(
+    const HWND window, std::wstring& error) {
+    if (!window || !device_ || !desktopDevice_ || pinnedExternalTarget_ ||
+        pinnedExternalRootVisual_ || pinnedExternalContentVisual_) {
+        error = L"DirectComposition pinned external endpoint received an invalid state";
+        return false;
+    }
+    HRESULT result = desktopDevice_->CreateTargetForHwnd(
+        window, TRUE, pinnedExternalTarget_.ReleaseAndGetAddressOf());
+    if (SUCCEEDED(result))
+        result = device_->CreateVisual(pinnedExternalRootVisual_.ReleaseAndGetAddressOf());
+    if (SUCCEEDED(result))
+        result = pinnedExternalTarget_->SetRoot(pinnedExternalRootVisual_.Get());
+    if (SUCCEEDED(result)) result = device_->Commit();
+    if (SUCCEEDED(result)) result = device_->WaitForCommitCompletion();
+    if (FAILED(result)) {
+        error = L"DirectComposition pinned external endpoint failed hresult=" +
+            std::to_wstring(static_cast<unsigned long>(result));
+        if (pinnedExternalTarget_) (void)pinnedExternalTarget_->SetRoot(nullptr);
+        pinnedExternalRootVisual_.Reset();
+        pinnedExternalTarget_.Reset();
+        return false;
+    }
+    return true;
+}
+
 void OverlayCompositionSurface::Reset() noexcept {
+    if (pinnedExternalTarget_ && device_)
+        (void)pinnedExternalTarget_->SetRoot(nullptr);
     if (chromeTarget_ && device_) {
         (void)chromeTarget_->SetRoot(nullptr);
     }
@@ -128,12 +156,16 @@ void OverlayCompositionSurface::Reset() noexcept {
     content_ = {};
     externalContentVisual_.Reset();
     externalContentAttached_ = false;
+    pinnedExternalContentVisual_.Reset();
+    pinnedExternalContentAttached_ = false;
+    pinnedExternalRootVisual_.Reset();
     guide_ = {};
     tray_ = {};
     effect_.Reset();
     chromeRootVisual_.Reset();
     rootVisual_.Reset();
     chromeTarget_.Reset();
+    pinnedExternalTarget_.Reset();
     target_.Reset();
     device_.Reset();
     desktopDevice_.Reset();
@@ -144,17 +176,74 @@ void OverlayCompositionSurface::Reset() noexcept {
 
 HRESULT OverlayCompositionSurface::CreateExternalContentTarget(
     IUnknown** target) noexcept {
+    return CreateExternalContentTarget(ExternalContentEndpoint::Overlay, target);
+}
+
+HRESULT OverlayCompositionSurface::CreateExternalContentTarget(
+    const ExternalContentEndpoint endpoint, IUnknown** target) noexcept {
     if (!target) return E_POINTER;
     *target = nullptr;
-    if (!device_ || !rootVisual_ || !content_.visual || externalContentVisual_)
+    auto& visual = endpoint == ExternalContentEndpoint::Overlay
+        ? externalContentVisual_ : pinnedExternalContentVisual_;
+    const bool endpointReady = endpoint == ExternalContentEndpoint::Overlay
+        ? rootVisual_ && content_.visual
+        : pinnedExternalTarget_ && pinnedExternalRootVisual_;
+    if (!device_ || !endpointReady || visual)
         return E_UNEXPECTED;
-    HRESULT result = device_->CreateVisual(
-        externalContentVisual_.ReleaseAndGetAddressOf());
+    HRESULT result = device_->CreateVisual(visual.ReleaseAndGetAddressOf());
     if (FAILED(result)) {
-        externalContentVisual_.Reset();
+        visual.Reset();
         return result;
     }
-    return externalContentVisual_.CopyTo(target);
+    return visual.CopyTo(target);
+}
+
+HRESULT OverlayCompositionSurface::CommitExternalContentPresentation(
+    const ExternalContentEndpoint endpoint, const RECT& bounds,
+    const bool visible, CommitTiming& timing) noexcept {
+    return CommitExternalContentPresentation(
+        endpoint, bounds, bounds, visible, timing);
+}
+
+HRESULT OverlayCompositionSurface::CommitExternalContentPresentation(
+    const ExternalContentEndpoint endpoint, const RECT& bounds,
+    const RECT& clipBounds, const bool visible, CommitTiming& timing) noexcept {
+    timing = {};
+    auto& visual = endpoint == ExternalContentEndpoint::Overlay
+        ? externalContentVisual_ : pinnedExternalContentVisual_;
+    auto& attached = endpoint == ExternalContentEndpoint::Overlay
+        ? externalContentAttached_ : pinnedExternalContentAttached_;
+    auto* root = endpoint == ExternalContentEndpoint::Overlay
+        ? rootVisual_.Get() : pinnedExternalRootVisual_.Get();
+    if (!device_ || !visual || !root || bounds.right <= bounds.left ||
+        bounds.bottom <= bounds.top || clipBounds.right <= clipBounds.left ||
+        clipBounds.bottom <= clipBounds.top) return E_INVALIDARG;
+    const auto started = std::chrono::steady_clock::now();
+    const auto width = bounds.right - bounds.left;
+    const auto height = bounds.bottom - bounds.top;
+    const D2D_RECT_F clip{
+        static_cast<float>(std::clamp(clipBounds.left - bounds.left, 0L, width)),
+        static_cast<float>(std::clamp(clipBounds.top - bounds.top, 0L, height)),
+        static_cast<float>(std::clamp(clipBounds.right - bounds.left, 0L, width)),
+        static_cast<float>(std::clamp(clipBounds.bottom - bounds.top, 0L, height))};
+    if (clip.right <= clip.left || clip.bottom <= clip.top) return E_INVALIDARG;
+    HRESULT result = visual->SetOffsetX(static_cast<float>(bounds.left));
+    if (SUCCEEDED(result)) result = visual->SetOffsetY(static_cast<float>(bounds.top));
+    if (SUCCEEDED(result)) result = visual->SetClip(clip);
+    if (SUCCEEDED(result) && visible && !attached) {
+        result = endpoint == ExternalContentEndpoint::Overlay
+            ? root->AddVisual(visual.Get(), TRUE, content_.visual.Get())
+            : root->AddVisual(visual.Get(), FALSE, nullptr);
+        if (SUCCEEDED(result)) attached = true;
+    } else if (SUCCEEDED(result) && !visible && attached) {
+        result = root->RemoveVisual(visual.Get());
+        if (SUCCEEDED(result)) attached = false;
+    }
+    if (SUCCEEDED(result)) result = device_->Commit();
+    timing.commitMicroseconds = static_cast<std::uint64_t>(
+        std::chrono::duration_cast<std::chrono::microseconds>(
+            std::chrono::steady_clock::now() - started).count());
+    return result;
 }
 
 HRESULT OverlayCompositionSurface::CommitExternalContentPresentation(
@@ -208,13 +297,23 @@ HRESULT OverlayCompositionSurface::CommitExternalContentPresentation(
 
 HRESULT OverlayCompositionSurface::DetachExternalContentTarget(
     CommitTiming& timing) noexcept {
+    return DetachExternalContentTarget(ExternalContentEndpoint::Overlay, timing);
+}
+
+HRESULT OverlayCompositionSurface::DetachExternalContentTarget(
+    const ExternalContentEndpoint endpoint, CommitTiming& timing) noexcept {
     timing = {};
-    if (!device_ || !rootVisual_ || !content_.visual) return E_UNEXPECTED;
-    if (!externalContentVisual_) return S_FALSE;
+    auto& visual = endpoint == ExternalContentEndpoint::Overlay
+        ? externalContentVisual_ : pinnedExternalContentVisual_;
+    auto& attached = endpoint == ExternalContentEndpoint::Overlay
+        ? externalContentAttached_ : pinnedExternalContentAttached_;
+    auto* root = endpoint == ExternalContentEndpoint::Overlay
+        ? rootVisual_.Get() : pinnedExternalRootVisual_.Get();
+    if (!device_ || !root) return E_UNEXPECTED;
+    if (!visual) return S_FALSE;
     const auto started = std::chrono::steady_clock::now();
     HRESULT result = S_OK;
-    if (externalContentAttached_)
-        result = rootVisual_->RemoveVisual(externalContentVisual_.Get());
+    if (attached) result = root->RemoveVisual(visual.Get());
     if (SUCCEEDED(result)) result = device_->Commit();
     if (SUCCEEDED(result)) {
         result = device_->WaitForCommitCompletion();
@@ -224,8 +323,32 @@ HRESULT OverlayCompositionSurface::DetachExternalContentTarget(
         std::chrono::duration_cast<std::chrono::microseconds>(
             std::chrono::steady_clock::now() - started).count());
     if (SUCCEEDED(result)) {
-        externalContentVisual_.Reset();
-        externalContentAttached_ = false;
+        visual.Reset();
+        attached = false;
+    }
+    return result;
+}
+
+HRESULT OverlayCompositionSurface::ReleasePinnedExternalContentEndpoint(
+    CommitTiming& timing) noexcept {
+    timing = {};
+    if (!device_ || !pinnedExternalTarget_ || !pinnedExternalRootVisual_)
+        return S_FALSE;
+    if (pinnedExternalContentVisual_) return E_UNEXPECTED;
+    const auto started = std::chrono::steady_clock::now();
+    HRESULT result = pinnedExternalTarget_->SetRoot(nullptr);
+    if (SUCCEEDED(result)) result = device_->Commit();
+    if (SUCCEEDED(result)) {
+        result = device_->WaitForCommitCompletion();
+        timing.waitedForCompletion = true;
+    }
+    timing.commitMicroseconds = static_cast<std::uint64_t>(
+        std::chrono::duration_cast<std::chrono::microseconds>(
+            std::chrono::steady_clock::now() - started).count());
+    if (SUCCEEDED(result)) {
+        pinnedExternalRootVisual_.Reset();
+        pinnedExternalTarget_.Reset();
+        pinnedExternalContentAttached_ = false;
     }
     return result;
 }

@@ -255,7 +255,8 @@ $componentGeometryTestObjectDirectory = Join-Path $outputDirectory 'obj\componen
 $trayRefreshHostTestObjectDirectory = Join-Path $outputDirectory 'obj\tray-refresh-host-tests'
 $trayRefreshCommunityFixtureOutput = Join-Path $outputDirectory 'obj\tray-refresh-community-fixture'
 $richMediaTestObjectDirectory = Join-Path $outputDirectory 'obj\rich-media-tests'
-New-Item -ItemType Directory -Force -Path $hostObjectDirectory, $platformObjectDirectory, $platformTestObjectDirectory, $testObjectDirectory, $imageTestObjectDirectory, $layoutTestObjectDirectory, $iconTestObjectDirectory, $styleTestObjectDirectory, $textLayoutTestObjectDirectory, $motionTestObjectDirectory, $placementTestObjectDirectory, $targetingTestObjectDirectory, $transitionTestObjectDirectory, $chromeTestObjectDirectory, $guideTestObjectDirectory, $inputOwnershipTestObjectDirectory, $navigationTestObjectDirectory, $pressedTestObjectDirectory, $sliderTestObjectDirectory, $widgetInteractionTestObjectDirectory, $focusTestObjectDirectory, $surfaceFocusTestObjectDirectory, $lifecycleTestObjectDirectory, $actionFeedbackTestObjectDirectory, $accessibilityTreeTestObjectDirectory, $accessibilityProjectionTestObjectDirectory, $accessibilityProviderTestObjectDirectory, $realHostAccessibilityTestObjectDirectory, $actionFailureHostTestObjectDirectory, $actionFailureFixtureOutput, $widgetSwitchHostTestObjectDirectory, $coldDashboardHostTestObjectDirectory, $widgetSwitchFixtureOutput, $audioMixerScrollHostTestObjectDirectory, $audioMixerScrollFixtureOutput, $scrollEvidenceProbeTestObjectDirectory, $trayLayoutTestObjectDirectory, $hostAccessibilityTestObjectDirectory, $accessibilityEventsTestObjectDirectory, $bridgeCatalogTestObjectDirectory, $localPackageImportTestObjectDirectory, $textEntryModalTestObjectDirectory, $rendererTestObjectDirectory, $semanticChurnTestObjectDirectory, $pinnedSurfaceTestObjectDirectory, $pinnedPlacementTestObjectDirectory, $widgetSurfaceTestObjectDirectory, $widgetSessionTestObjectDirectory, $processOwnerTestObjectDirectory, $componentGeometryTestObjectDirectory, $trayRefreshHostTestObjectDirectory, $trayRefreshCommunityFixtureOutput, $richMediaTestObjectDirectory | Out-Null
+$bundledPackageSealOutput = Join-Path $outputDirectory 'obj\bundled-package-seal'
+New-Item -ItemType Directory -Force -Path $hostObjectDirectory, $platformObjectDirectory, $platformTestObjectDirectory, $testObjectDirectory, $imageTestObjectDirectory, $layoutTestObjectDirectory, $iconTestObjectDirectory, $styleTestObjectDirectory, $textLayoutTestObjectDirectory, $motionTestObjectDirectory, $placementTestObjectDirectory, $targetingTestObjectDirectory, $transitionTestObjectDirectory, $chromeTestObjectDirectory, $guideTestObjectDirectory, $inputOwnershipTestObjectDirectory, $navigationTestObjectDirectory, $pressedTestObjectDirectory, $sliderTestObjectDirectory, $widgetInteractionTestObjectDirectory, $focusTestObjectDirectory, $surfaceFocusTestObjectDirectory, $lifecycleTestObjectDirectory, $actionFeedbackTestObjectDirectory, $accessibilityTreeTestObjectDirectory, $accessibilityProjectionTestObjectDirectory, $accessibilityProviderTestObjectDirectory, $realHostAccessibilityTestObjectDirectory, $actionFailureHostTestObjectDirectory, $actionFailureFixtureOutput, $widgetSwitchHostTestObjectDirectory, $coldDashboardHostTestObjectDirectory, $widgetSwitchFixtureOutput, $audioMixerScrollHostTestObjectDirectory, $audioMixerScrollFixtureOutput, $scrollEvidenceProbeTestObjectDirectory, $trayLayoutTestObjectDirectory, $hostAccessibilityTestObjectDirectory, $accessibilityEventsTestObjectDirectory, $bridgeCatalogTestObjectDirectory, $localPackageImportTestObjectDirectory, $textEntryModalTestObjectDirectory, $rendererTestObjectDirectory, $semanticChurnTestObjectDirectory, $pinnedSurfaceTestObjectDirectory, $pinnedPlacementTestObjectDirectory, $widgetSurfaceTestObjectDirectory, $widgetSessionTestObjectDirectory, $processOwnerTestObjectDirectory, $componentGeometryTestObjectDirectory, $trayRefreshHostTestObjectDirectory, $trayRefreshCommunityFixtureOutput, $richMediaTestObjectDirectory, $bundledPackageSealOutput | Out-Null
 Copy-Item -LiteralPath (Join-Path $projectDirectory '..\..\THIRD_PARTY_NOTICES.md') `
     -Destination (Join-Path $outputDirectory 'THIRD_PARTY_NOTICES.md') -Force
 
@@ -1624,6 +1625,7 @@ $audioMixerOutput = Join-Path $outputDirectory 'runtime\AudioMixer'
 $networkControlsOutput = Join-Path $outputDirectory 'runtime\NetworkControls'
 $gamesAppsOutput = Join-Path $outputDirectory 'runtime\GamesApps'
 $mediaSessionsOutput = Join-Path $outputDirectory 'runtime\MediaSessions'
+$embeddedMediaSampleOutput = Join-Path $outputDirectory 'runtime\EmbeddedMediaSample'
 
 # Host runtime generation is part of every coherent Release build. The
 # SkipPackaging switch omits Community/test package publication only; it must
@@ -1636,6 +1638,7 @@ foreach ($hostRuntimeOutput in @(
     $networkControlsOutput,
     $gamesAppsOutput,
     $mediaSessionsOutput,
+    $embeddedMediaSampleOutput,
     (Join-Path $outputDirectory 'runtime\GameLauncher'),
     (Join-Path $outputDirectory 'runtime\SpotifyPlaybackHost'),
     (Join-Path $outputDirectory 'runtime\YtMusic')
@@ -1658,6 +1661,16 @@ Invoke-SerializedManagedPublish `
 if ($managedPublishExitCode -ne 0 -or
     -not (Test-Path -LiteralPath (Join-Path $workerHostOutput 'WidgetWorkerHost.exe'))) {
     throw "Generic widget worker host publish failed with exit code $managedPublishExitCode."
+}
+$managedPublishExitCode = 0
+Remove-GeneratedDirectory -Path $bundledPackageSealOutput
+Invoke-SerializedManagedPublish `
+    -Project (Join-Path $projectDirectory '..\..\tools\BundledWidgetPackageSeal\BundledWidgetPackageSeal.csproj') `
+    -Configuration $Configuration -Output $bundledPackageSealOutput `
+    -ExitCode ([ref]$managedPublishExitCode)
+$bundledPackageSeal = Join-Path $bundledPackageSealOutput 'BundledWidgetPackageSeal.exe'
+if ($managedPublishExitCode -ne 0 -or -not (Test-Path -LiteralPath $bundledPackageSeal)) {
+    throw "Bundled widget package seal tool publish failed with exit code $managedPublishExitCode."
 }
 
 function Publish-BundledWidgetPackage {
@@ -1722,6 +1735,11 @@ function Publish-BundledWidgetPackage {
             throw "$DisplayName bundled package is missing $requiredFile."
         }
     }
+    & $bundledPackageSeal $resolvedOutputRoot $resolvedPackageRoot
+    if ($LASTEXITCODE -ne 0 -or
+        -not (Test-Path -LiteralPath (Join-Path $resolvedPackageRoot '.wrail-integrity.json'))) {
+        throw "$DisplayName bundled package sealing failed with exit code $LASTEXITCODE."
+    }
 }
 
 $managedPublishExitCode = 0
@@ -1764,6 +1782,9 @@ Publish-BundledWidgetPackage `
 Publish-BundledWidgetPackage `
     (Join-Path $projectDirectory '..\FirstPartyWidgets\MediaSessionsWidget') `
     $mediaSessionsOutput 'MediaSessionsWidget' 'Now Playing'
+Publish-BundledWidgetPackage `
+    (Join-Path $projectDirectory '..\..\samples\EmbeddedMediaWidget') `
+    $embeddedMediaSampleOutput 'EmbeddedMediaWidget' 'Embedded Media Sample'
 Copy-Item -LiteralPath (Join-Path $projectDirectory 'widget-catalog.json') `
     -Destination (Join-Path $outputDirectory 'widget-catalog.json') -Force
 

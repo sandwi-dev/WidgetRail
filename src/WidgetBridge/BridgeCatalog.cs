@@ -591,16 +591,19 @@ public sealed class BridgeCatalog
                 $"Bundled widget '{source.Id}' is missing a bounded manifest.json.");
         EnsureNoReparsePoints(packageRoot, manifestPath, "bundled manifest");
 
-        WidgetManifest manifest;
+        InstalledPackageVerification verification;
         try
         {
-            manifest = ManifestJson.Deserialize(File.ReadAllBytes(manifestPath));
+            verification = InstalledPackageIntegrity.Verify(
+                catalogDirectory, packageRoot, new WidgetCatalogOptions());
         }
-        catch (Exception exception) when (exception is JsonException or IOException or UnauthorizedAccessException)
+        catch (Exception exception) when (
+            exception is WidgetPackageException or IOException or UnauthorizedAccessException)
         {
             throw new BridgeCatalogException(
-                $"Bundled widget '{source.Id}' manifest is invalid.", exception);
+                $"Bundled widget '{source.Id}' sealed package inventory is invalid.", exception);
         }
+        var manifest = verification.Manifest;
         var errors = WidgetManifestValidator.Validate(manifest);
         if (errors.Count != 0)
             throw new BridgeCatalogException(
@@ -653,7 +656,7 @@ public sealed class BridgeCatalog
             InstanceId = source.InstanceId,
             WorkerExecutable = workerHost,
             StyleFile = styleFile,
-        }, packageRoot);
+        }, packageRoot, verification.WrssDigests);
         var residency = manifest.ResidencyPolicy ??
             (manifest.BackgroundPolicy == "suspend"
                 ? new WidgetResidencyPolicy { Mode = WidgetResidencyPolicies.SuspendWhenHidden }
@@ -686,6 +689,7 @@ public sealed class BridgeCatalog
             CompiledTheme = style.Theme,
             StylePackage = style.Package,
             PackageRoot = packageRoot,
+            VerifiedPackageFiles = verification.VerifiedFiles,
         });
     }
 

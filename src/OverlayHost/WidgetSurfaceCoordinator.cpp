@@ -980,6 +980,7 @@ std::optional<POINT> WidgetSurfaceCoordinator::PointerPointForTesting(
 bool WidgetSurfaceCoordinator::Unpin(const WidgetSurfaceStopReason reason) noexcept {
     if (!pinned() && !window_) return false;
     lastStopReason_ = reason;
+    if (beforeWindowRetirement_) beforeWindowRetirement_(reason);
     if (selectedLayoutIndex_ < layoutOptions_.size())
         QueueLayoutSelection(layoutOptions_[selectedLayoutIndex_].id, false);
     placementSession_.reset();
@@ -1017,6 +1018,11 @@ bool WidgetSurfaceCoordinator::Unpin(const WidgetSurfaceStopReason reason) noexc
     ++teardownCount_;
     NotifyOwner();
     return true;
+}
+
+void WidgetSurfaceCoordinator::SetBeforeWindowRetirement(
+    std::function<void(WidgetSurfaceStopReason)> callback) {
+    beforeWindowRetirement_ = std::move(callback);
 }
 
 void WidgetSurfaceCoordinator::OnOverlayHidden() noexcept {
@@ -1077,6 +1083,20 @@ std::wstring_view WidgetSurfaceCoordinator::widgetId() const noexcept {
 
 std::wstring_view WidgetSurfaceCoordinator::runtimeGeneration() const noexcept {
     return admission_ ? std::wstring_view{admission_->runtimeGeneration} : std::wstring_view{};
+}
+
+std::optional<RenderMediaViewportRegion>
+WidgetSurfaceCoordinator::CurrentMediaViewport(
+    const std::wstring_view surfaceId) const noexcept {
+    if (!pinned() || !lastRenderResult_.succeeded ||
+        lastRenderResult_.mediaViewportRegions.size() != 1)
+        return std::nullopt;
+    const auto& region = lastRenderResult_.mediaViewportRegions.front();
+    if (region.mediaSurfaceId != surfaceId) return std::nullopt;
+    const auto& snapshot = SelectedSnapshot();
+    if (!snapshot.embeddedMedia || snapshot.embeddedMedia->id != surfaceId)
+        return std::nullopt;
+    return region;
 }
 
 InteractionMode WidgetSurfaceCoordinator::interactionMode() const noexcept {
@@ -1620,6 +1640,8 @@ void WidgetSurfaceCoordinator::Paint() {
     if (result == D2DERR_RECREATE_TARGET) ReleaseGraphicsResources();
     else PublishAccessibility();
     EndPaint(window_, &paint);
+    if (SUCCEEDED(result) && !lastRenderResult_.mediaViewportRegions.empty())
+        NotifyOwner();
 }
 
 void WidgetSurfaceCoordinator::PublishAccessibility() {

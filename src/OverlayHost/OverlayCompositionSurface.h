@@ -73,6 +73,7 @@ PlanCompositionUpdateRasterMapping(
 // attaches it only after EndDraw has completed the full update rectangle.
 class OverlayCompositionSurface final {
 public:
+    enum class ExternalContentEndpoint { Overlay, Pinned };
     enum class Layer {
         Content,
         Guide,
@@ -124,6 +125,7 @@ public:
     // Adds the fixed chrome endpoint to the existing device. This deliberately
     // creates a second DirectComposition target, not another graphics owner.
     bool InitializeChromeTarget(HWND window, std::wstring& error);
+    bool InitializePinnedExternalContentEndpoint(HWND window, std::wstring& error);
     void Reset() noexcept;
 
     [[nodiscard]] bool available() const noexcept { return device_ != nullptr; }
@@ -165,12 +167,23 @@ public:
     // The caller may connect a composition-hosted renderer to the returned
     // visual, but this class remains the sole visual-tree/presentation owner.
     HRESULT CreateExternalContentTarget(IUnknown** target) noexcept;
+    HRESULT CreateExternalContentTarget(
+        ExternalContentEndpoint endpoint, IUnknown** target) noexcept;
     HRESULT CommitExternalContentPresentation(
         const RECT& bounds, bool visible, CommitTiming& timing) noexcept;
     HRESULT CommitExternalContentPresentation(
         const RECT& bounds, const RECT& clipBounds,
         bool visible, CommitTiming& timing) noexcept;
     HRESULT DetachExternalContentTarget(CommitTiming& timing) noexcept;
+    HRESULT CommitExternalContentPresentation(
+        ExternalContentEndpoint endpoint, const RECT& bounds,
+        bool visible, CommitTiming& timing) noexcept;
+    HRESULT CommitExternalContentPresentation(
+        ExternalContentEndpoint endpoint, const RECT& bounds,
+        const RECT& clipBounds, bool visible, CommitTiming& timing) noexcept;
+    HRESULT DetachExternalContentTarget(
+        ExternalContentEndpoint endpoint, CommitTiming& timing) noexcept;
+    HRESULT ReleasePinnedExternalContentEndpoint(CommitTiming& timing) noexcept;
     void AbandonFrame(Frame& frame) noexcept;
 
 private:
@@ -180,6 +193,7 @@ private:
     Microsoft::WRL::ComPtr<IDCompositionDevice2> device_;
     Microsoft::WRL::ComPtr<IDCompositionTarget> target_;
     Microsoft::WRL::ComPtr<IDCompositionTarget> chromeTarget_;
+    Microsoft::WRL::ComPtr<IDCompositionTarget> pinnedExternalTarget_;
     struct LayerState final {
         Microsoft::WRL::ComPtr<IDCompositionVisual2> visual;
         Microsoft::WRL::ComPtr<IDCompositionSurface> surface;
@@ -190,6 +204,9 @@ private:
     Microsoft::WRL::ComPtr<IDCompositionVisual2> rootVisual_;
     Microsoft::WRL::ComPtr<IDCompositionVisual2> externalContentVisual_;
     bool externalContentAttached_{};
+    Microsoft::WRL::ComPtr<IDCompositionVisual2> pinnedExternalRootVisual_;
+    Microsoft::WRL::ComPtr<IDCompositionVisual2> pinnedExternalContentVisual_;
+    bool pinnedExternalContentAttached_{};
     Microsoft::WRL::ComPtr<IDCompositionVisual2> chromeRootVisual_;
     Microsoft::WRL::ComPtr<IDCompositionEffectGroup> effect_;
     LayerState content_;

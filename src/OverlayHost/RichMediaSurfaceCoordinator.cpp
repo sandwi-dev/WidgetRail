@@ -840,6 +840,66 @@ HRESULT RichMediaSurfaceCoordinator::UpdateGeometry(
     return result;
 }
 
+HRESULT RichMediaSurfaceCoordinator::BeginPresentationTransfer() noexcept {
+    if (presentationTransferPending_ || !controller_ || !controllerBase_ ||
+        (state_.lifecycle != Lifecycle::ReadyHidden &&
+         state_.lifecycle != Lifecycle::Visible)) return E_UNEXPECTED;
+    transferDesiredVisible_ = desiredVisible_;
+    state_.inputEnabled = false;
+    if (configuration_.setPresentationVisible)
+        configuration_.setPresentationVisible(false);
+    HRESULT result = controllerBase_->put_IsVisible(FALSE);
+    if (SUCCEEDED(result)) result = controller_->put_RootVisualTarget(nullptr);
+    if (FAILED(result)) {
+        Fault(L"presentation-transfer-detach", result);
+        return result;
+    }
+    configuration_.ownerWindow = nullptr;
+    configuration_.compositionTarget.Reset();
+    configuration_.setPresentationVisible = {};
+    state_.lifecycle = Lifecycle::ReadyHidden;
+    state_.focusedActionBoundsCurrent = false;
+    presentationTransferPending_ = true;
+    Emit(L"Rich media presentation transfer=detached");
+    return S_OK;
+}
+
+HRESULT RichMediaSurfaceCoordinator::CompletePresentationTransfer(
+    PresentationTarget target) noexcept {
+    if (!presentationTransferPending_ || !controller_ || !controllerBase_ ||
+        !target.ownerWindow || !target.compositionTarget ||
+        target.bounds.right <= target.bounds.left ||
+        target.bounds.bottom <= target.bounds.top ||
+        target.rasterScale < 0.5 || target.rasterScale > 8.0 ||
+        !target.setPresentationVisible) return E_INVALIDARG;
+    configuration_.ownerWindow = target.ownerWindow;
+    configuration_.compositionTarget = std::move(target.compositionTarget);
+    configuration_.bounds = target.bounds;
+    configuration_.rasterScale = target.rasterScale;
+    configuration_.setPresentationVisible = std::move(target.setPresentationVisible);
+    HRESULT result = controllerBase_->put_ParentWindow(target.ownerWindow);
+    if (SUCCEEDED(result))
+        result = controller_->put_RootVisualTarget(configuration_.compositionTarget.Get());
+    if (SUCCEEDED(result)) result = UpdateGeometry(target.bounds, target.rasterScale);
+    const bool visible = transferDesiredVisible_ && pageReady_;
+    if (SUCCEEDED(result))
+        result = controllerBase_->put_IsVisible(visible ? TRUE : FALSE);
+    if (FAILED(result)) {
+        presentationTransferPending_ = false;
+        transferDesiredVisible_ = false;
+        Fault(L"presentation-transfer-attach", result);
+        return result;
+    }
+    desiredVisible_ = transferDesiredVisible_;
+    transferDesiredVisible_ = false;
+    presentationTransferPending_ = false;
+    state_.lifecycle = visible ? Lifecycle::Visible : Lifecycle::ReadyHidden;
+    state_.inputEnabled = visible;
+    configuration_.setPresentationVisible(visible);
+    Emit(L"Rich media presentation transfer=attached");
+    return S_OK;
+}
+
 std::wstring RichMediaSurfaceCoordinator::CommandJson(
     const Command command, const Authority& authority, const std::uint64_t commandId) {
     const wchar_t* name{};
@@ -1137,6 +1197,8 @@ void RichMediaSurfaceCoordinator::BeginSessionTeardown() noexcept {
             Emit(L"Rich media callback-retirement deadline expired");
     }
     state_.lifecycle = Lifecycle::Closing;
+    presentationTransferPending_ = false;
+    transferDesiredVisible_ = false;
     state_.inputEnabled = false;
     pendingCommand_.reset();
     Emit(L"Rich media lifecycle=closing");
@@ -1193,6 +1255,8 @@ void RichMediaSurfaceCoordinator::CompleteSessionTeardown() noexcept {
     pageReady_ = false;
     mouseInside_ = false;
     pendingNavigationId_ = 0;
+    presentationTransferPending_ = false;
+    transferDesiredVisible_ = false;
     teardownBegun_ = false;
 }
 
