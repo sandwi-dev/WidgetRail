@@ -1017,6 +1017,10 @@ void ValidatePinnedProjectionCatalogBounds(const JsonObject& source) {
             L"Pinned projection catalog exceeds its aggregate string bound.");
 }
 
+bool IsNormalizedEmbeddedMediaPath(std::wstring_view value);
+bool IsEmbeddedMediaContentType(std::wstring_view value);
+bool IsEmbeddedMediaCommand(std::wstring_view value);
+
 WidgetSnapshot ParseSnapshot(const JsonObject& source) {
     ValidatePinnedProjectionCatalogBounds(source);
     WidgetSnapshot snapshot;
@@ -1168,6 +1172,7 @@ WidgetSnapshot ParseSnapshot(const JsonObject& source) {
             !std::isfinite(parsed.aspectRatio) ||
             parsed.aspectRatio < 0.1 || parsed.aspectRatio > 10.0 ||
             !IsIdentifier(parsed.id) || parsed.accessibleName.empty() ||
+            parsed.accessibleName.size() > protocol_contract::MaximumStringLength ||
             !parsed.surface.preferredWidth || !parsed.surface.preferredHeight ||
             !parsed.surface.minimumWidth || !parsed.surface.minimumHeight)
             throw winrt::hresult_invalid_argument(
@@ -1181,23 +1186,29 @@ WidgetSnapshot ParseSnapshot(const JsonObject& source) {
             EmbeddedMediaResourceDeclaration item{
                 OptionalString(resource, L"path"),
                 OptionalString(resource, L"contentType")};
-            if (item.path.empty() || item.path.size() >
-                    protocol_contract::MaximumEmbeddedMediaResourcePathLength ||
-                item.contentType.empty() || item.contentType.size() >
-                    protocol_contract::MaximumEmbeddedMediaContentTypeLength ||
+            if (!IsNormalizedEmbeddedMediaPath(item.path) ||
+                !IsEmbeddedMediaContentType(item.contentType) ||
                 !paths.insert(item.path).second)
                 throw winrt::hresult_invalid_argument(
                     L"Embedded media resource declaration is invalid.");
             parsed.resources.push_back(std::move(item));
         }
-        if (!paths.contains(parsed.entryAsset))
+        if (!IsNormalizedEmbeddedMediaPath(parsed.entryAsset) ||
+            !paths.contains(parsed.entryAsset))
             throw winrt::hresult_invalid_argument(
                 L"Embedded media entry asset is not declared.");
+        const auto entry = std::find_if(
+            parsed.resources.begin(), parsed.resources.end(),
+            [&](const auto& resource) { return resource.path == parsed.entryAsset; });
+        if (entry == parsed.resources.end() || entry->contentType != L"text/html")
+            throw winrt::hresult_invalid_argument(
+                L"Embedded media entry asset must be HTML.");
         std::unordered_set<std::wstring> commandSet;
         for (uint32_t index = 0; index < commands.Size(); ++index) {
             const auto command = std::wstring(
                 std::wstring_view(commands.GetStringAt(index)));
-            if (command.empty() || !commandSet.insert(command).second)
+            if (!IsEmbeddedMediaCommand(command) ||
+                !commandSet.insert(command).second)
                 throw winrt::hresult_invalid_argument(
                     L"Embedded media command declaration is invalid.");
             parsed.commands.push_back(command);
@@ -1911,6 +1922,184 @@ WidgetPresentationImpact ClassifyPresentationImpact(
     }
     if (impact.effects == Effect::None) impact.effects = Effect::Unknown;
     return impact;
+}
+
+bool IsNormalizedEmbeddedMediaPath(const std::wstring_view value) {
+    if (value.empty() ||
+        value.size() > protocol_contract::MaximumEmbeddedMediaResourcePathLength ||
+        value.front() == L'/' || value.find(L'\\') != std::wstring_view::npos)
+        return false;
+    std::size_t start{};
+    while (start < value.size()) {
+        const auto end = value.find(L'/', start);
+        const auto segment = value.substr(
+            start, end == std::wstring_view::npos ? value.size() - start : end - start);
+        if (segment.empty() || segment == L"." || segment == L".." ||
+            !std::all_of(segment.begin(), segment.end(), [](const wchar_t character) {
+                return (character >= L'a' && character <= L'z') ||
+                    (character >= L'A' && character <= L'Z') ||
+                    (character >= L'0' && character <= L'9') ||
+                    character == L'-' || character == L'_' || character == L'.';
+            })) return false;
+        if (end == std::wstring_view::npos) break;
+        start = end + 1;
+    }
+    return true;
+}
+
+bool IsEmbeddedMediaContentType(const std::wstring_view value) {
+    constexpr std::array<std::wstring_view, 10> allowed{
+        L"text/html", L"text/css", L"text/javascript",
+        L"application/javascript", L"image/png", L"image/jpeg",
+        L"image/webp", L"audio/wav", L"audio/mpeg", L"audio/ogg"};
+    return std::find(allowed.begin(), allowed.end(), value) != allowed.end();
+}
+
+bool IsEmbeddedMediaCommand(const std::wstring_view value) {
+    constexpr std::array<std::wstring_view, 7> allowed{
+        L"navigatePrevious", L"navigateNext", L"activate", L"back",
+        L"togglePlayback", L"seekBackward", L"seekForward"};
+    return std::find(allowed.begin(), allowed.end(), value) != allowed.end();
+}
+
+std::optional<EmbeddedMediaBundle> ParseEmbeddedMediaBundle(
+    const JsonObject& body,
+    const std::wstring_view widgetId,
+    const std::wstring_view instanceId,
+    const std::wstring_view runtimeGeneration,
+    const std::wstring_view presentationGeneration,
+    const long long sequence,
+    const std::wstring_view surfaceId) {
+    if (!HasOnlyProperties(body,
+            {L"widgetId", L"instanceId", L"runtimeGeneration",
+             L"presentationGeneration", L"sequence", L"surfaceId",
+             L"entryAsset", L"surface", L"aspectRatio", L"accessibleName",
+             L"commands", L"resources"})) return std::nullopt;
+    EmbeddedMediaBundle bundle;
+    bundle.widgetId = OptionalString(body, L"widgetId");
+    bundle.instanceId = OptionalString(body, L"instanceId");
+    bundle.runtimeGeneration = OptionalString(body, L"runtimeGeneration");
+    bundle.presentationGeneration = OptionalString(body, L"presentationGeneration");
+    bundle.sequence = RequiredIntegral(body, L"sequence");
+    bundle.surface.id = OptionalString(body, L"surfaceId");
+    bundle.surface.entryAsset = OptionalString(body, L"entryAsset");
+    bundle.surface.accessibleName = OptionalString(body, L"accessibleName");
+    bundle.surface.aspectRatio = body.GetNamedNumber(L"aspectRatio");
+    if (bundle.widgetId != widgetId || bundle.instanceId != instanceId ||
+        bundle.runtimeGeneration != runtimeGeneration ||
+        bundle.presentationGeneration != presentationGeneration ||
+        bundle.sequence != sequence || bundle.surface.id != surfaceId ||
+        !IsIdentifier(bundle.widgetId) || !IsIdentifier(bundle.instanceId) ||
+        !IsIdentifier(bundle.runtimeGeneration) ||
+        !IsIdentifier(bundle.presentationGeneration) ||
+        !IsIdentifier(bundle.surface.id) ||
+        bundle.surface.accessibleName.empty() ||
+        bundle.surface.accessibleName.size() > protocol_contract::MaximumStringLength ||
+        std::all_of(bundle.surface.accessibleName.begin(),
+                    bundle.surface.accessibleName.end(), [](const wchar_t value) {
+                        return std::iswspace(value) != 0;
+                    }) ||
+        !std::isfinite(bundle.surface.aspectRatio) ||
+        bundle.surface.aspectRatio < 0.1 || bundle.surface.aspectRatio > 10.0 ||
+        !IsNormalizedEmbeddedMediaPath(bundle.surface.entryAsset))
+        return std::nullopt;
+
+    const auto surface = body.GetNamedObject(L"surface");
+    if (!HasNoUnknownProperties(surface,
+            {L"mode", L"widthMode", L"heightMode", L"preferredWidth",
+             L"preferredHeight", L"minimumWidth", L"minimumHeight"}) ||
+        !surface.HasKey(L"mode") || !surface.HasKey(L"preferredWidth") ||
+        !surface.HasKey(L"preferredHeight") || !surface.HasKey(L"minimumWidth") ||
+        !surface.HasKey(L"minimumHeight")) return std::nullopt;
+    bundle.surface.surface.mode = OptionalString(surface, L"mode");
+    if (surface.HasKey(L"widthMode"))
+        bundle.surface.surface.widthMode = OptionalString(surface, L"widthMode");
+    if (surface.HasKey(L"heightMode"))
+        bundle.surface.surface.heightMode = OptionalString(surface, L"heightMode");
+    const auto number = [&surface](const wchar_t* name) -> std::optional<double> {
+        return surface.HasKey(name)
+            ? std::optional<double>{surface.GetNamedNumber(name)} : std::nullopt;
+    };
+    bundle.surface.surface.preferredWidth = number(L"preferredWidth");
+    bundle.surface.surface.preferredHeight = number(L"preferredHeight");
+    bundle.surface.surface.minimumWidth = number(L"minimumWidth");
+    bundle.surface.surface.minimumHeight = number(L"minimumHeight");
+    const auto validMode = bundle.surface.surface.mode == L"adaptive" ||
+        bundle.surface.surface.mode == L"compact" ||
+        bundle.surface.surface.mode == L"standard" ||
+        bundle.surface.surface.mode == L"wide";
+    const auto validAxis = [](const std::optional<std::wstring>& value) {
+        return !value || *value == L"preferred" || *value == L"content" ||
+            *value == L"fillAvailable";
+    };
+    const auto validExtent = [](const std::optional<double> width,
+                                const std::optional<double> height) {
+        return width && height && std::isfinite(*width) && std::isfinite(*height) &&
+            *width >= surface_geometry::kMinimumAuthoredContentWidthDip &&
+            *width <= surface_geometry::kMaximumAuthoredContentWidthDip &&
+            *height >= surface_geometry::kMinimumAuthoredContentHeightDip &&
+            *height <= surface_geometry::kMaximumAuthoredContentHeightDip;
+    };
+    if (!validMode || !validAxis(bundle.surface.surface.widthMode) ||
+        !validAxis(bundle.surface.surface.heightMode) ||
+        !validExtent(bundle.surface.surface.preferredWidth,
+                     bundle.surface.surface.preferredHeight) ||
+        !validExtent(bundle.surface.surface.minimumWidth,
+                     bundle.surface.surface.minimumHeight) ||
+        *bundle.surface.surface.minimumWidth > *bundle.surface.surface.preferredWidth ||
+        *bundle.surface.surface.minimumHeight > *bundle.surface.surface.preferredHeight)
+        return std::nullopt;
+
+    const auto commands = body.GetNamedArray(L"commands");
+    if (commands.Size() > protocol_contract::MaximumEmbeddedMediaCommandCount)
+        return std::nullopt;
+    std::unordered_set<std::wstring> commandSet;
+    for (uint32_t index = 0; index < commands.Size(); ++index) {
+        const auto command = std::wstring(std::wstring_view(commands.GetStringAt(index)));
+        if (!IsEmbeddedMediaCommand(command) || !commandSet.insert(command).second)
+            return std::nullopt;
+        bundle.surface.commands.push_back(command);
+    }
+
+    const auto resources = body.GetNamedArray(L"resources");
+    if (resources.Size() == 0 ||
+        resources.Size() > protocol_contract::MaximumEmbeddedMediaResourceCount)
+        return std::nullopt;
+    std::size_t aggregate{};
+    std::unordered_set<std::wstring> resourcePaths;
+    for (uint32_t index = 0; index < resources.Size(); ++index) {
+        const auto item = resources.GetObjectAt(index);
+        if (!HasOnlyProperties(item,
+                {L"path", L"contentType", L"sha256", L"contentBase64"}))
+            return std::nullopt;
+        EmbeddedMediaResource resource;
+        resource.path = OptionalString(item, L"path");
+        resource.contentType = OptionalString(item, L"contentType");
+        resource.sha256 = OptionalString(item, L"sha256");
+        const auto decoded = DecodeBase64Bounded(
+            OptionalString(item, L"contentBase64"),
+            protocol_contract::MaximumEmbeddedMediaResourceBytes);
+        if (!IsNormalizedEmbeddedMediaPath(resource.path) ||
+            !resourcePaths.insert(resource.path).second ||
+            !IsEmbeddedMediaContentType(resource.contentType) || !decoded ||
+            resource.sha256.size() != 64 ||
+            !std::all_of(resource.sha256.begin(), resource.sha256.end(),
+                [](const wchar_t value) { return std::iswxdigit(value) != 0; }))
+            return std::nullopt;
+        resource.content = std::move(*decoded);
+        if (resource.content.size() >
+                protocol_contract::MaximumEmbeddedMediaAggregateBytes - aggregate)
+            return std::nullopt;
+        aggregate += resource.content.size();
+        bundle.resources.push_back(std::move(resource));
+    }
+    const auto entry = std::find_if(
+        bundle.resources.begin(), bundle.resources.end(), [&](const auto& resource) {
+            return resource.path == bundle.surface.entryAsset;
+        });
+    if (entry == bundle.resources.end() || entry->contentType != L"text/html")
+        return std::nullopt;
+    return bundle;
 }
 
 } // namespace
@@ -3007,68 +3196,10 @@ std::optional<EmbeddedMediaBundle> WidgetBridgeClient::ResolveEmbeddedMedia(
             }
             if (type != L"embedded-media") return std::nullopt;
             const auto body = response.GetNamedObject(L"payload");
-            if (!HasOnlyProperties(body,
-                    {L"widgetId", L"instanceId", L"runtimeGeneration",
-                     L"presentationGeneration", L"sequence", L"surfaceId",
-                     L"entryAsset", L"surface", L"aspectRatio", L"accessibleName",
-                     L"commands", L"resources"})) return std::nullopt;
-            EmbeddedMediaBundle bundle;
-            bundle.widgetId = OptionalString(body, L"widgetId");
-            bundle.instanceId = OptionalString(body, L"instanceId");
-            bundle.runtimeGeneration = OptionalString(body, L"runtimeGeneration");
-            bundle.presentationGeneration = OptionalString(body, L"presentationGeneration");
-            bundle.sequence = RequiredIntegral(body, L"sequence");
-            bundle.surface.id = OptionalString(body, L"surfaceId");
-            bundle.surface.entryAsset = OptionalString(body, L"entryAsset");
-            bundle.surface.accessibleName = OptionalString(body, L"accessibleName");
-            bundle.surface.aspectRatio = body.GetNamedNumber(L"aspectRatio");
-            if (bundle.widgetId != widgetId || bundle.instanceId != instanceId ||
-                bundle.runtimeGeneration != runtimeGeneration ||
-                bundle.presentationGeneration != presentationGeneration ||
-                bundle.sequence != sequence || bundle.surface.id != surfaceId)
-                return std::nullopt;
-            const auto surface = body.GetNamedObject(L"surface");
-            bundle.surface.surface.mode = OptionalString(surface, L"mode");
-            const auto number = [&surface](const wchar_t* name) -> std::optional<double> {
-                return surface.HasKey(name)
-                    ? std::optional<double>{surface.GetNamedNumber(name)}
-                    : std::nullopt;
-            };
-            bundle.surface.surface.preferredWidth = number(L"preferredWidth");
-            bundle.surface.surface.preferredHeight = number(L"preferredHeight");
-            bundle.surface.surface.minimumWidth = number(L"minimumWidth");
-            bundle.surface.surface.minimumHeight = number(L"minimumHeight");
-            const auto commands = body.GetNamedArray(L"commands");
-            for (uint32_t index = 0; index < commands.Size(); ++index)
-                bundle.surface.commands.emplace_back(
-                    std::wstring_view(commands.GetStringAt(index)));
-            const auto resources = body.GetNamedArray(L"resources");
-            if (resources.Size() == 0 ||
-                resources.Size() > protocol_contract::MaximumEmbeddedMediaResourceCount)
-                return std::nullopt;
-            std::size_t aggregate{};
-            for (uint32_t index = 0; index < resources.Size(); ++index) {
-                const auto item = resources.GetObjectAt(index);
-                if (!HasOnlyProperties(item,
-                        {L"path", L"contentType", L"sha256", L"contentBase64"}))
-                    return std::nullopt;
-                EmbeddedMediaResource resource;
-                resource.path = OptionalString(item, L"path");
-                resource.contentType = OptionalString(item, L"contentType");
-                resource.sha256 = OptionalString(item, L"sha256");
-                const auto decoded = DecodeBase64Bounded(
-                    OptionalString(item, L"contentBase64"),
-                    protocol_contract::MaximumEmbeddedMediaResourceBytes);
-                if (!decoded || resource.sha256.size() != 64 ||
-                    !std::all_of(resource.sha256.begin(), resource.sha256.end(),
-                        [](const wchar_t value) { return std::iswxdigit(value) != 0; }))
-                    return std::nullopt;
-                resource.content = std::move(*decoded);
-                aggregate += resource.content.size();
-                if (aggregate > protocol_contract::MaximumEmbeddedMediaAggregateBytes)
-                    return std::nullopt;
-                bundle.resources.push_back(std::move(resource));
-            }
+            auto bundle = ParseEmbeddedMediaBundle(
+                body, widgetId, instanceId, runtimeGeneration,
+                presentationGeneration, sequence, surfaceId);
+            if (!bundle) return std::nullopt;
             lastError_.clear();
             return bundle;
         }
@@ -3710,6 +3841,33 @@ std::optional<WidgetSnapshot> ParseWidgetSnapshotResponse(
         return snapshot;
     } catch (const winrt::hresult_error& exception) {
         error = L"Invalid widget snapshot JSON: " + std::wstring(exception.message());
+        return std::nullopt;
+    }
+}
+
+std::optional<EmbeddedMediaBundle> ParseEmbeddedMediaBundleResponse(
+    const std::string_view payloadUtf8,
+    const std::wstring_view widgetId,
+    const std::wstring_view instanceId,
+    const std::wstring_view runtimeGeneration,
+    const std::wstring_view presentationGeneration,
+    const long long sequence,
+    const std::wstring_view surfaceId,
+    std::wstring& error) {
+    try {
+        const auto payload = JsonObject::Parse(winrt::to_hstring(payloadUtf8));
+        auto bundle = ParseEmbeddedMediaBundle(
+            payload, widgetId, instanceId, runtimeGeneration,
+            presentationGeneration, sequence, surfaceId);
+        if (!bundle) {
+            error = L"Invalid embedded media bundle contract.";
+            return std::nullopt;
+        }
+        error.clear();
+        return bundle;
+    } catch (const winrt::hresult_error& exception) {
+        error = L"Invalid embedded media bundle JSON: " +
+            std::wstring(exception.message());
         return std::nullopt;
     }
 }

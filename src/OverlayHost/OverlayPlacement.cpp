@@ -513,4 +513,39 @@ std::wstring BuildTrayControllerGuide(
     return std::wstring{suffix};
 }
 
+std::optional<EmbeddedMediaSurfaceBounds> ResolveEmbeddedMediaSurfaceBounds(
+    const EmbeddedMediaSurfaceBounds safeArea,
+    const float minimumWidthDip,
+    const float minimumHeightDip,
+    const float preferredWidthDip,
+    const float preferredHeightDip,
+    const float aspectRatio) noexcept {
+    const auto positiveFinite = [](const float value) {
+        return std::isfinite(value) && value > 0.0F;
+    };
+    if (!std::isfinite(safeArea.x) || !std::isfinite(safeArea.y) ||
+        !positiveFinite(safeArea.width) || !positiveFinite(safeArea.height) ||
+        !positiveFinite(minimumWidthDip) || !positiveFinite(minimumHeightDip) ||
+        !positiveFinite(preferredWidthDip) || !positiveFinite(preferredHeightDip) ||
+        !positiveFinite(aspectRatio) || minimumWidthDip > preferredWidthDip ||
+        minimumHeightDip > preferredHeightDip) return std::nullopt;
+
+    const float safeWidth = std::min(
+        safeArea.width, safeArea.height * aspectRatio);
+    const float authoredPreferredWidth = std::min(
+        preferredWidthDip, preferredHeightDip * aspectRatio);
+    const float authoredMinimumWidth = std::max(
+        minimumWidthDip, minimumHeightDip * aspectRatio);
+    const float width = std::min(
+        safeWidth, std::max(authoredMinimumWidth, authoredPreferredWidth));
+    const float height = width / aspectRatio;
+    if (!positiveFinite(height) || height > safeArea.height) return std::nullopt;
+    return EmbeddedMediaSurfaceBounds{
+        safeArea.x + (safeArea.width - width) * 0.5F,
+        safeArea.y + (safeArea.height - height) * 0.5F,
+        width,
+        height,
+    };
+}
+
 } // namespace widgetrail

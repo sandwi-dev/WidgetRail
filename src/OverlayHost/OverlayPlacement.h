@@ -140,6 +140,25 @@ struct OverlaySurfaceGeometry final {
     float footerHeight{};
 };
 
+struct EmbeddedMediaSurfaceBounds final {
+    float x{};
+    float y{};
+    float width{};
+    float height{};
+};
+
+/// Resolves one aspect-correct media rectangle inside the already-admitted
+/// widget viewport. Authored minimum/preferred sizes influence the bounded
+/// result but never permit the external surface to escape its safe area.
+[[nodiscard]] std::optional<EmbeddedMediaSurfaceBounds>
+ResolveEmbeddedMediaSurfaceBounds(
+    EmbeddedMediaSurfaceBounds safeArea,
+    float minimumWidthDip,
+    float minimumHeightDip,
+    float preferredWidthDip,
+    float preferredHeightDip,
+    float aspectRatio) noexcept;
+
 enum class ControllerGuideDensity {
     Minimal,
     Compact,

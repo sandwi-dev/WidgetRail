@@ -915,6 +915,32 @@ int main() {
               1180, 700, 880, std::numeric_limits<float>::infinity()),
           "non-finite preferred panel height fails closed");
 
+    const auto mediaBounds = ResolveEmbeddedMediaSurfaceBounds(
+        {20.0F, 10.0F, 760.0F, 480.0F},
+        320.0F, 180.0F, 760.0F, 425.0F, 16.0F / 9.0F);
+    Check(mediaBounds.has_value(),
+          "bounded embedded media surface resolves inside widget safe area");
+    CheckNear(mediaBounds->x, 22.2222F,
+              "embedded media aspect fit remains centered in safe area");
+    CheckNear(mediaBounds->y, 37.5F,
+              "embedded media aspect ratio centers within safe area");
+    CheckNear(mediaBounds->width, 755.5556F,
+              "embedded media fits the preferred extent to the declared aspect");
+    CheckNear(mediaBounds->height, 425.0F,
+              "embedded media applies the declared aspect ratio");
+    const auto clampedMediaBounds = ResolveEmbeddedMediaSurfaceBounds(
+        {8.0F, 12.0F, 300.0F, 160.0F},
+        320.0F, 180.0F, 760.0F, 425.0F, 16.0F / 9.0F);
+    Check(clampedMediaBounds &&
+              clampedMediaBounds->x >= 8.0F && clampedMediaBounds->y >= 12.0F &&
+              clampedMediaBounds->x + clampedMediaBounds->width <= 308.001F &&
+              clampedMediaBounds->y + clampedMediaBounds->height <= 172.001F,
+          "embedded media clamps below authored minimum when the safe area is smaller");
+    Check(!ResolveEmbeddedMediaSurfaceBounds(
+              {0.0F, 0.0F, 760.0F, 425.0F},
+              800.0F, 180.0F, 760.0F, 425.0F, 16.0F / 9.0F),
+          "inverted embedded media minimum/preferred bounds fail closed");
+
     std::cout << "OverlayPlacementTests passed (" << checks << " checks)\n";
     return EXIT_SUCCESS;
 }

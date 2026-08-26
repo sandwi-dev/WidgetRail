@@ -719,6 +719,15 @@ struct BridgeFrameReadResult final {
 [[nodiscard]] std::optional<WidgetSnapshot> ParseWidgetSnapshotResponse(
     std::string_view payloadUtf8,
     std::wstring& error);
+[[nodiscard]] std::optional<EmbeddedMediaBundle> ParseEmbeddedMediaBundleResponse(
+    std::string_view payloadUtf8,
+    std::wstring_view widgetId,
+    std::wstring_view instanceId,
+    std::wstring_view runtimeGeneration,
+    std::wstring_view presentationGeneration,
+    long long sequence,
+    std::wstring_view surfaceId,
+    std::wstring& error);
 [[nodiscard]] std::optional<WidgetPresentationUpdate>
 ParseWidgetPresentationUpdateResponse(
     std::string_view payloadUtf8,

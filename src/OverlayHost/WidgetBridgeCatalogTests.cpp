@@ -411,7 +411,7 @@ void VerifyEmbeddedMediaSnapshotContract() {
                            "minimumWidth":320,"minimumHeight":180},
                 "resources":[
                     {"path":"media/index.html","contentType":"text/html"},
-                    {"path":"media/tone.bin","contentType":"application/octet-stream"}],
+                    {"path":"media/tone.wav","contentType":"audio/wav"}],
                 "commands":["activate","togglePlayback","back"]},
             "root":{"id":"root","kind":"stack","children":[]}
         }
@@ -438,6 +438,96 @@ void VerifyEmbeddedMediaSnapshotContract() {
     })json", error);
     Require(!unknown && error.find(L"unknown") != std::wstring::npos,
             "unknown embedded media browsing field was admitted");
+}
+
+void VerifyEmbeddedMediaBundleBoundary() {
+    constexpr std::string_view valid = R"json({
+        "widgetId":"aurora-widget","instanceId":"aurora-instance",
+        "runtimeGeneration":"runtime-1","presentationGeneration":"presentation-1",
+        "sequence":7,"surfaceId":"media","entryAsset":"media/index.html",
+        "surface":{"mode":"standard","preferredWidth":760,"preferredHeight":425,
+                   "minimumWidth":320,"minimumHeight":180},
+        "aspectRatio":1.7777777778,"accessibleName":"Aurora media",
+        "commands":["activate","togglePlayback"],
+        "resources":[{"path":"media/index.html","contentType":"text/html",
+            "sha256":"0000000000000000000000000000000000000000000000000000000000000000",
+            "contentBase64":"QQ=="}]
+    })json";
+    const auto parse = [](const std::string_view json) {
+        std::wstring error;
+        return widgetrail::testing::ParseEmbeddedMediaBundleResponse(
+            json, L"aurora-widget", L"aurora-instance", L"runtime-1",
+            L"presentation-1", 7, L"media", error);
+    };
+    const auto replace = [](std::string source, const std::string_view from,
+                            const std::string_view to) {
+        const auto offset = source.find(from);
+        Require(offset != std::string::npos, "embedded media mutation source was absent");
+        source.replace(offset, from.size(), to);
+        return source;
+    };
+    Require(parse(valid).has_value(),
+            "valid native embedded media bundle was rejected");
+    for (const auto& malformed : {
+             replace(std::string{valid}, "\"mode\":\"standard\"",
+                     "\"mode\":\"browser\""),
+             replace(std::string{valid}, "\"aspectRatio\":1.7777777778",
+                     "\"aspectRatio\":20"),
+             replace(std::string{valid}, "\"accessibleName\":\"Aurora media\"",
+                     "\"accessibleName\":\"\""),
+             replace(std::string{valid}, "\"commands\":[\"activate\",\"togglePlayback\"]",
+                     "\"commands\":[\"activate\",\"activate\"]"),
+             replace(std::string{valid}, "\"commands\":[\"activate\",\"togglePlayback\"]",
+                     "\"commands\":[\"browse\"]"),
+             replace(std::string{valid}, "media/index.html", "../secret.html"),
+             replace(std::string{valid}, "\"contentType\":\"text/html\"",
+                     "\"contentType\":\"text/html\\r\\nX-Test: injected\""),
+             replace(std::string{valid},
+                     "0000000000000000000000000000000000000000000000000000000000000000",
+                     "abcd"),
+             replace(std::string{valid}, "\"minimumWidth\":320",
+                     "\"minimumWidth\":800"),
+             replace(std::string{valid}, "\"minimumHeight\":180}",
+                     "\"minimumHeight\":180,\"unknown\":true}")}) {
+        Require(!parse(malformed),
+                "malformed native embedded media bundle crossed the trust boundary");
+    }
+
+    std::string oversized((262'145 / 3) * 4, 'A');
+    oversized += "AAA=";
+    Require(!parse(replace(std::string{valid}, "QQ==", oversized)),
+            "oversized decoded embedded media resource was admitted");
+
+    const auto encodedZeros = [](const std::size_t bytes) {
+        std::string encoded((bytes / 3) * 4, 'A');
+        if (bytes % 3 == 1) encoded += "AA==";
+        if (bytes % 3 == 2) encoded += "AAA=";
+        return encoded;
+    };
+    const auto resource = [](const std::string_view path,
+                             const std::string_view type,
+                             const std::string_view content) {
+        return "{\"path\":\"" + std::string{path} +
+            "\",\"contentType\":\"" + std::string{type} +
+            "\",\"sha256\":\"" + std::string(64, '0') +
+            "\",\"contentBase64\":\"" + std::string{content} + "\"}";
+    };
+    std::string aggregate{valid};
+    const auto resourcesStart = aggregate.find("\"resources\":[");
+    const auto resourcesEnd = aggregate.rfind(']');
+    Require(resourcesStart != std::string::npos && resourcesEnd != std::string::npos,
+            "embedded media aggregate fixture boundaries were absent");
+    const auto exactLimit = encodedZeros(262'144);
+    const auto excessiveResources =
+        "\"resources\":[" + resource("media/index.html", "text/html", exactLimit) +
+        "," + resource("media/second.wav", "audio/wav", exactLimit) +
+        "," + resource("media/third.wav", "audio/wav", "QQ==") + "]";
+    aggregate.replace(
+        resourcesStart, resourcesEnd + 1 - resourcesStart, excessiveResources);
+    Require(!parse(aggregate),
+            "embedded media aggregate decoded-size overflow was admitted");
+
+    std::cout << "WidgetBridge embedded media native boundary cases passed=13\n";
 }
 
 void VerifyVirtualCollectionProtocol() {
@@ -583,6 +673,7 @@ int main() {
     VerifyFrameSafeCancellationRecovery();
     VerifyAtomicPresentationUpdateMaterialization();
     VerifyEmbeddedMediaSnapshotContract();
+    VerifyEmbeddedMediaBundleBoundary();
     VerifyVirtualCollectionProtocol();
     std::vector<wchar_t> secret(14);
     for (std::size_t index = 0; index < secret.size(); ++index)

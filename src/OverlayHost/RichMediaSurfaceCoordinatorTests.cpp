@@ -193,6 +193,10 @@ public:
         if (FAILED(result) || !detachWaited_) return FAILED(result) ? result : E_FAIL;
         return OpenSession(visible, false);
     }
+    void SelectAdapter(std::wstring adapterIdentity) {
+        Require(!sessionOpen_, "adapter identity changed while a session was active");
+        adapterIdentity_ = std::move(adapterIdentity);
+    }
     const std::filesystem::path& profileRoot() const { return profileRoot_; }
     bool presentationVisible() const { return presentationVisible_; }
     bool presentationCommitFailed() const { return presentationCommitFailed_; }
@@ -757,7 +761,33 @@ void RunProviderNeutralAdapterCases() {
                 state.focusedElement == nextFocus;
         }, 2s), "provider-neutral adapter event was not exactly correlated");
     }
-    std::cout << "RichMedia provider-neutral adapter cases passed=2\n";
+
+    Fixture replacement(ordinal++, true, {}, L"aurora-adapter");
+    RequireReady(replacement, "replacement source adapter did not become ready",
+                 L"aurora.primary");
+    const auto environment = replacement.coordinator().environmentState();
+    const auto sourceAuthority = replacement.coordinator().state().authority;
+    Require(SUCCEEDED(replacement.CloseSession()) &&
+                replacement.finalDetachSucceededAndWaited(),
+            "replacement source session did not detach cleanly");
+    replacement.SelectAdapter(L"cedar-adapter");
+    Require(SUCCEEDED(replacement.OpenSession(true, false)),
+            "replacement destination session submission failed");
+    RequireReady(replacement, "replacement destination adapter did not become ready",
+                 L"cedar.primary");
+    const auto destinationAuthority = replacement.coordinator().state().authority;
+    RequireRetainedEnvironment(environment,
+        replacement.coordinator().environmentState(),
+        "widget replacement discarded the process-lifetime environment");
+    Require(destinationAuthority.environmentGeneration ==
+                sourceAuthority.environmentGeneration &&
+            destinationAuthority.surfaceGeneration > sourceAuthority.surfaceGeneration &&
+            destinationAuthority.sessionGeneration > sourceAuthority.sessionGeneration &&
+            destinationAuthority.controllerGeneration >
+                sourceAuthority.controllerGeneration &&
+            destinationAuthority.documentGeneration > sourceAuthority.documentGeneration,
+            "widget replacement did not change only document/controller/session authority");
+    std::cout << "RichMedia provider-neutral adapter cases passed=3\n";
 }
 
 void RunLifecycleAndPerformance() {
