@@ -264,6 +264,9 @@ public:
     }
     const std::filesystem::path& profileRoot() const { return profileRoot_; }
     bool presentationVisible() const { return presentationVisible_; }
+    std::uint64_t presentationApplications() const {
+        return presentationApplications_;
+    }
     bool presentationCommitFailed() const { return presentationCommitFailed_; }
     HWND window() const { return window_; }
     bool sawDiagnostic(const std::wstring_view text) const {
@@ -335,6 +338,7 @@ chrome.webview.addEventListener('message',e=>{const m=e.data;if(m.command==='ini
         configuration.setPresentationVisible = [this, probe = callbackProbe_](
                 const bool shown) {
             if (probe) probe->Record();
+            ++presentationApplications_;
             presentationVisible_ = shown;
             widgetrail::OverlayCompositionSurface::CommitTiming timing;
             const HRESULT result = composition_.CommitExternalContentPresentation(
@@ -352,6 +356,7 @@ chrome.webview.addEventListener('message',e=>{const m=e.data;if(m.command==='ini
     std::vector<widgetrail::richmedia::Configuration::Resource> adapterResources_;
     bool sessionOpen_{};
     bool presentationVisible_{};
+    std::uint64_t presentationApplications_{};
     bool presentationCommitFailed_{};
     bool releasedBeforeDetach_{};
     bool detachWaited_{};
@@ -928,6 +933,154 @@ void RequireRetainedEnvironment(
             message);
 }
 
+void RunExternalPresentationCommitCases() {
+    using Surface = widgetrail::OverlayCompositionSurface;
+    using Endpoint = Surface::ExternalContentEndpoint;
+
+    WNDCLASSW windowClass{};
+    windowClass.hInstance = GetModuleHandleW(nullptr);
+    windowClass.lpfnWndProc = WindowProc;
+    windowClass.lpszClassName = L"WidgetRail.ExternalPresentationTests";
+    RegisterClassW(&windowClass);
+    const auto createWindow = [&] {
+        return CreateWindowExW(
+            WS_EX_TOOLWINDOW | WS_EX_NOREDIRECTIONBITMAP,
+            windowClass.lpszClassName, L"", WS_POPUP,
+            0, 0, 900, 640, nullptr, nullptr, windowClass.hInstance, nullptr);
+    };
+    const HWND overlayWindow = createWindow();
+    const HWND pinnedWindow = createWindow();
+    const HWND replacementPinnedWindow = createWindow();
+    Require(overlayWindow && pinnedWindow && replacementPinnedWindow,
+            "external presentation owner HWND creation failed");
+
+    ComPtr<ID2D1Factory1> factory;
+    Require(SUCCEEDED(D2D1CreateFactory(
+                D2D1_FACTORY_TYPE_SINGLE_THREADED,
+                factory.ReleaseAndGetAddressOf())),
+            "external presentation D2D factory creation failed");
+    Surface composition;
+    std::wstring error;
+    Require(composition.Initialize(overlayWindow, factory.Get(), error) &&
+                composition.InitializePinnedExternalContentEndpoint(
+                    pinnedWindow, error),
+            "external presentation endpoints did not initialize");
+
+    const RECT overlayBounds{24, 36, 664, 396};
+    const RECT overlayClip{24, 36, 664, 396};
+    ComPtr<IUnknown> target;
+    Require(SUCCEEDED(composition.CreateExternalContentTarget(
+                Endpoint::Overlay, &target)),
+            "overlay external target creation failed");
+    Surface::CommitTiming timing;
+    Require(composition.CommitExternalContentPresentation(
+                Endpoint::Overlay, overlayBounds, overlayClip, true, timing) == S_OK &&
+                timing.externalPresentationCommitted,
+            "initial overlay external presentation was not committed");
+    auto overlayCounters = composition.externalContentCommitCounters(
+        Endpoint::Overlay);
+    Require(overlayCounters.requested == 1 && overlayCounters.committed == 1,
+            "initial overlay commit counters were incorrect");
+    Require(composition.CommitExternalContentPresentation(
+                Endpoint::Overlay, overlayBounds, overlayClip, true, timing) == S_FALSE &&
+                !timing.externalPresentationCommitted,
+            "identical overlay presentation mutated DirectComposition");
+    overlayCounters = composition.externalContentCommitCounters(Endpoint::Overlay);
+    Require(overlayCounters.requested == 2 && overlayCounters.committed == 1,
+            "identical overlay presentation incremented the commit count");
+
+    const RECT resizedBounds{24, 36, 704, 416};
+    Require(composition.CommitExternalContentPresentation(
+                Endpoint::Overlay, resizedBounds, resizedBounds, true, timing) == S_OK &&
+                timing.externalPresentationCommitted,
+            "genuine overlay resize did not permit a new commit");
+    const RECT dpiResolvedBounds{30, 45, 880, 520};
+    Require(composition.CommitExternalContentPresentation(
+                Endpoint::Overlay, dpiResolvedBounds, dpiResolvedBounds, true, timing) ==
+                    S_OK && timing.externalPresentationCommitted,
+            "genuine DPI-resolved overlay geometry did not permit a new commit");
+
+    Require(SUCCEEDED(composition.DetachExternalContentTarget(
+                Endpoint::Overlay, timing)) && timing.waitedForCompletion,
+            "overlay endpoint did not detach before transfer");
+    target.Reset();
+    Require(SUCCEEDED(composition.CreateExternalContentTarget(
+                Endpoint::Pinned, &target)),
+            "pinned external target creation failed");
+    const RECT pinnedBounds{16, 20, 656, 380};
+    const auto pinnedBefore = composition.externalContentCommitCounters(
+        Endpoint::Pinned);
+    Require(composition.CommitExternalContentPresentation(
+                Endpoint::Pinned, pinnedBounds, pinnedBounds, true, timing) == S_OK &&
+                timing.externalPresentationCommitted,
+            "overlay-to-pinned transfer did not commit the pinned endpoint");
+    Require(composition.CommitExternalContentPresentation(
+                Endpoint::Pinned, pinnedBounds, pinnedBounds, true, timing) == S_FALSE &&
+                !timing.externalPresentationCommitted,
+            "identical pinned presentation mutated DirectComposition");
+    auto pinnedAfter = composition.externalContentCommitCounters(Endpoint::Pinned);
+    Require(pinnedAfter.requested == pinnedBefore.requested + 2 &&
+                pinnedAfter.committed == pinnedBefore.committed + 1,
+            "overlay-to-pinned transfer did not produce exactly one genuine commit");
+
+    Require(SUCCEEDED(composition.DetachExternalContentTarget(
+                Endpoint::Pinned, timing)) && timing.waitedForCompletion,
+            "pinned endpoint did not detach before transfer back");
+    target.Reset();
+    Require(SUCCEEDED(composition.CreateExternalContentTarget(
+                Endpoint::Overlay, &target)),
+            "overlay target recreation failed");
+    const auto overlayBeforeReturn = composition.externalContentCommitCounters(
+        Endpoint::Overlay);
+    Require(composition.CommitExternalContentPresentation(
+                Endpoint::Overlay, overlayBounds, overlayClip, true, timing) == S_OK &&
+                timing.externalPresentationCommitted,
+            "pinned-to-overlay transfer did not commit the overlay endpoint");
+    Require(composition.CommitExternalContentPresentation(
+                Endpoint::Overlay, overlayBounds, overlayClip, true, timing) == S_FALSE,
+            "identical transferred overlay presentation was not a no-op");
+    overlayCounters = composition.externalContentCommitCounters(Endpoint::Overlay);
+    Require(overlayCounters.requested == overlayBeforeReturn.requested + 2 &&
+                overlayCounters.committed == overlayBeforeReturn.committed + 1,
+            "pinned-to-overlay transfer did not produce exactly one genuine commit");
+
+    Require(SUCCEEDED(composition.DetachExternalContentTarget(
+                Endpoint::Overlay, timing)) && timing.waitedForCompletion,
+            "returned overlay endpoint did not detach");
+    target.Reset();
+    Require(SUCCEEDED(composition.ReleasePinnedExternalContentEndpoint(timing)) &&
+                timing.waitedForCompletion &&
+                composition.InitializePinnedExternalContentEndpoint(
+                    replacementPinnedWindow, error),
+            "pinned endpoint owner replacement failed");
+    Require(SUCCEEDED(composition.CreateExternalContentTarget(
+                Endpoint::Pinned, &target)),
+            "replacement pinned external target creation failed");
+    const auto pinnedBeforeReplacement = composition.externalContentCommitCounters(
+        Endpoint::Pinned);
+    Require(composition.CommitExternalContentPresentation(
+                Endpoint::Pinned, pinnedBounds, pinnedBounds, true, timing) == S_OK &&
+                timing.externalPresentationCommitted,
+            "genuine pinned owner/target invalidation did not permit a new commit");
+    pinnedAfter = composition.externalContentCommitCounters(Endpoint::Pinned);
+    Require(pinnedAfter.committed == pinnedBeforeReplacement.committed + 1,
+            "replacement pinned owner did not produce one genuine commit");
+
+    Require(SUCCEEDED(composition.DetachExternalContentTarget(
+                Endpoint::Pinned, timing)) && timing.waitedForCompletion,
+            "replacement pinned endpoint did not detach");
+    target.Reset();
+    Require(SUCCEEDED(composition.ReleasePinnedExternalContentEndpoint(timing)) &&
+                timing.waitedForCompletion,
+            "replacement pinned endpoint did not release");
+    composition.Reset();
+    factory.Reset();
+    DestroyWindow(replacementPinnedWindow);
+    DestroyWindow(pinnedWindow);
+    DestroyWindow(overlayWindow);
+    std::cout << "Rich media external presentation cases passed=12\n";
+}
+
 void RunLifecycleCases() {
     using namespace widgetrail::richmedia;
     const auto root = std::filesystem::temp_directory_path() /
@@ -944,6 +1097,13 @@ void RunLifecycleCases() {
     {
         Fixture fixture(1, true, root);
         RequireReady(fixture, "initial process-lifetime session did not become ready");
+        const auto presentationApplications = fixture.presentationApplications();
+        Require(fixture.coordinator().SetVisible(true) == S_FALSE &&
+                    fixture.presentationApplications() == presentationApplications,
+                "identical visible state touched the WebView/DComp presentation path");
+        Require(fixture.coordinator().UpdateGeometry(
+                    {0, 0, 800, 520}, 1.0) == S_FALSE,
+                "identical controller geometry mutated the WebView presentation");
         const auto initialEnvironment = fixture.coordinator().environmentState();
         Require(initialEnvironment.lifecycle == EnvironmentLifecycle::Ready &&
                     initialEnvironment.generation > 0 &&
@@ -1076,6 +1236,14 @@ void RunProviderNeutralAdapterCases() {
         std::istreambuf_iterator<char>{sampleStream},
         std::istreambuf_iterator<char>{});
     Require(!sampleBytes.empty(), "built sample adapter was empty");
+    constexpr std::wstring_view primaryMediaKey = L"aurora-video-0";
+    constexpr std::wstring_view secondaryMediaKey = L"horizon-video-1";
+    const std::string sampleAdapter(sampleBytes.begin(), sampleBytes.end());
+    Require(sampleAdapter.find("['aurora-video-0','sample.mp4']") !=
+                std::string::npos &&
+                sampleAdapter.find("['horizon-video-1','horizon.mp4']") !=
+                    std::string::npos,
+            "built sample adapter did not declare the expected media keys");
     const auto videoPath = samplePath.parent_path() / L"sample.mp4";
     std::ifstream videoStream(videoPath, std::ios::binary);
     Require(videoStream.good(), "built sample sealed video asset was unavailable");
@@ -1083,6 +1251,15 @@ void RunProviderNeutralAdapterCases() {
         std::istreambuf_iterator<char>{videoStream},
         std::istreambuf_iterator<char>{});
     Require(!videoBytes.empty(), "built sample sealed video asset was empty");
+    const auto horizonVideoPath = samplePath.parent_path() / L"horizon.mp4";
+    std::ifstream horizonVideoStream(horizonVideoPath, std::ios::binary);
+    Require(horizonVideoStream.good(),
+            "built sample secondary sealed video asset was unavailable");
+    const std::vector<std::uint8_t> horizonVideoBytes(
+        std::istreambuf_iterator<char>{horizonVideoStream},
+        std::istreambuf_iterator<char>{});
+    Require(!horizonVideoBytes.empty(),
+            "built sample secondary sealed video asset was empty");
     std::string forcedProgressAdapter(sampleBytes.begin(), sampleBytes.end());
     const auto inject = [&](const std::string_view marker,
                             const std::string_view replacement) {
@@ -1091,8 +1268,9 @@ void RunProviderNeutralAdapterCases() {
                 "built adapter progress-boundary seam was unavailable");
         forcedProgressAdapter.replace(offset, marker.size(), replacement);
     };
-    inject("inFlight=operation;if(m.mediaKey)",
-           "inFlight=operation;media.dispatchEvent(new Event('timeupdate'));if(m.mediaKey)");
+    inject("inFlight=operation;if(m.command==='arm-activate')",
+           "inFlight=operation;media.dispatchEvent(new Event('timeupdate'));"
+           "if(m.command==='arm-activate')");
     inject("operation.phase='media';void play(operation)",
            "operation.phase='media';media.dispatchEvent(new Event('timeupdate'));void play(operation)");
     const std::vector<std::uint8_t> forcedProgressBytes(
@@ -1102,6 +1280,7 @@ void RunProviderNeutralAdapterCases() {
         Fixture forcedProgress(ordinal++, true, {}, {}, {
             {L"payload/media/adapter.html", L"text/html", forcedProgressBytes},
             {L"payload/media/sample.mp4", L"video/mp4", videoBytes},
+            {L"payload/media/horizon.mp4", L"video/mp4", horizonVideoBytes},
         }, forcedCallbackProbe);
         RequireReady(forcedProgress,
                      "forced-progress adapter did not become ready", L"media-plane");
@@ -1137,6 +1316,7 @@ void RunProviderNeutralAdapterCases() {
     Fixture sample(ordinal++, true, {}, {}, {
         {L"payload/media/adapter.html", L"text/html", sampleBytes},
         {L"payload/media/sample.mp4", L"video/mp4", videoBytes},
+        {L"payload/media/horizon.mp4", L"video/mp4", horizonVideoBytes},
     });
     RequireReady(sample, "built sample adapter did not become ready", L"media-plane");
     Require(forcedCallbackProbe->callbacksAfterRetirement.load(
@@ -1181,28 +1361,28 @@ void RunProviderNeutralAdapterCases() {
                     sequence, kind, std::wstring{key}, position, std::nullopt}),
                 "built sample rejected a consecutive typed playback command");
     };
-    sendPlayback(1, PlaybackCommandKind::Play, L"aurora-tone-0");
-    requirePlayback(1, L"aurora-tone-0", L"playing");
+    sendPlayback(1, PlaybackCommandKind::Play, primaryMediaKey);
+    requirePlayback(1, primaryMediaKey, L"playing");
     Require(PumpUntil([&] {
         return RichMediaSurfaceCoordinatorTestPeer::DocumentAudioOutputActive(
             sample.coordinator());
     }, 5s), "built sample did not produce active unmuted document audio");
-    sendPlayback(2, PlaybackCommandKind::Pause, L"aurora-tone-0");
-    requirePlayback(2, L"aurora-tone-0", L"paused");
-    sendPlayback(3, PlaybackCommandKind::Play, L"aurora-tone-0");
-    requirePlayback(3, L"aurora-tone-0", L"playing");
+    sendPlayback(2, PlaybackCommandKind::Pause, primaryMediaKey);
+    requirePlayback(2, primaryMediaKey, L"paused");
+    sendPlayback(3, PlaybackCommandKind::Play, primaryMediaKey);
+    requirePlayback(3, primaryMediaKey, L"playing");
     Require(PumpUntil([&] {
         return RichMediaSurfaceCoordinatorTestPeer::DocumentAudioOutputActive(
             sample.coordinator());
     }, 5s), "built sample resume did not restore active unmuted document audio");
-    sendPlayback(4, PlaybackCommandKind::Seek, L"aurora-tone-0", 12.0);
-    requirePlayback(4, L"aurora-tone-0", L"playing");
-    sendPlayback(5, PlaybackCommandKind::Load, L"aurora-tone-1");
-    requirePlayback(5, L"aurora-tone-1", L"ready");
-    sendPlayback(6, PlaybackCommandKind::Load, L"aurora-tone-0");
-    requirePlayback(6, L"aurora-tone-0", L"ready");
-    sendPlayback(7, PlaybackCommandKind::Seek, L"aurora-tone-0", 5.0);
-    requirePlayback(7, L"aurora-tone-0", L"paused");
+    sendPlayback(4, PlaybackCommandKind::Seek, primaryMediaKey, 12.0);
+    requirePlayback(4, primaryMediaKey, L"playing");
+    sendPlayback(5, PlaybackCommandKind::Load, secondaryMediaKey);
+    requirePlayback(5, secondaryMediaKey, L"ready");
+    sendPlayback(6, PlaybackCommandKind::Load, primaryMediaKey);
+    requirePlayback(6, primaryMediaKey, L"ready");
+    sendPlayback(7, PlaybackCommandKind::Seek, primaryMediaKey, 5.0);
+    requirePlayback(7, primaryMediaKey, L"paused");
     const auto finalSeek = std::find_if(
         sample.playbackEvents().begin(), sample.playbackEvents().end(),
         [](const PlaybackEvent& event) { return event.commandSequence == 7; });
@@ -1426,6 +1606,7 @@ int wmain(int argc, wchar_t**) {
         RunCpuBudgetCases();
         RunMemoryBudgetScopeCases();
         RunCpuWorkloadPolicyCases();
+        RunExternalPresentationCommitCases();
         RunProviderNeutralAdapterCases();
         if (argc > 1) RunLifecycleAndPerformance();
         else RunLifecycleCases();
