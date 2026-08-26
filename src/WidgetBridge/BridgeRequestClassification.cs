@@ -10,6 +10,7 @@ internal enum BridgeRequestKind
     GetSnapshot,
     ResolveArtwork,
     ResolveEmbeddedMedia,
+    EmbeddedMediaPlaybackEvent,
     RestartWidget,
     SetWidgetLifecycle,
     Action,
@@ -40,6 +41,7 @@ internal readonly record struct BridgeRequestKey
     {
         if (kind is BridgeRequestKind.GetSnapshot or
             BridgeRequestKind.ResolveEmbeddedMedia or
+            BridgeRequestKind.EmbeddedMediaPlaybackEvent or
             BridgeRequestKind.RestartWidget or
             BridgeRequestKind.SetWidgetLifecycle or
             BridgeRequestKind.Action or
@@ -54,6 +56,7 @@ internal readonly record struct BridgeRequestKey
     {
         if (kind is not (BridgeRequestKind.GetSnapshot or
             BridgeRequestKind.ResolveEmbeddedMedia or
+            BridgeRequestKind.EmbeddedMediaPlaybackEvent or
             BridgeRequestKind.RestartWidget or
             BridgeRequestKind.SetWidgetLifecycle or
             BridgeRequestKind.Action or
@@ -96,6 +99,7 @@ internal static class BridgeRequestClassifier
                     BridgeRequestKind.GetSnapshot),
                 BridgeMessageTypes.ResolveArtwork => Artwork(request.Payload),
                 BridgeMessageTypes.ResolveEmbeddedMedia => EmbeddedMedia(request.Payload),
+                BridgeMessageTypes.EmbeddedMediaPlaybackEvent => EmbeddedMediaEvent(request.Payload),
                 BridgeMessageTypes.RestartWidget => Widget(
                     BridgeJson.FromElement<WidgetIdRequest>(request.Payload).WidgetId,
                     BridgeRequestKind.RestartWidget),
@@ -158,6 +162,21 @@ internal static class BridgeRequestClassifier
             !BridgeRequestKey.IsBoundedIdentifier(request.SurfaceId))
             throw new BridgeProtocolException(
                 "Embedded media request authority is invalid.");
+        return key;
+    }
+
+    private static BridgeRequestKey EmbeddedMediaEvent(JsonElement payload)
+    {
+        var request = BridgeJson.FromElement<BridgeEmbeddedMediaPlaybackEventRequest>(payload);
+        var key = BridgeRequestKey.Widget(
+            BridgeRequestKind.EmbeddedMediaPlaybackEvent, request.WidgetId);
+        if (!BridgeRequestKey.IsBoundedIdentifier(request.InstanceId) ||
+            !BridgeRequestKey.IsBoundedIdentifier(request.RuntimeGeneration) ||
+            !BridgeRequestKey.IsBoundedIdentifier(request.PresentationGeneration) ||
+            request.Sequence <= 0 || request.Event is null ||
+            !BridgeRequestKey.IsBoundedIdentifier(request.Event.SurfaceId))
+            throw new BridgeProtocolException(
+                "Embedded media event authority is invalid.");
         return key;
     }
 

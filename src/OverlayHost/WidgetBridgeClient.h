@@ -343,6 +343,26 @@ struct EmbeddedMediaResourceDeclaration final {
     std::wstring contentType;
 };
 
+struct EmbeddedMediaPlaybackCommand final {
+    long long sequence{};
+    std::wstring kind;
+    std::wstring mediaKey;
+    std::optional<double> positionSeconds;
+    std::optional<double> volume;
+};
+
+struct EmbeddedMediaPlaybackEvent final {
+    std::wstring surfaceId;
+    long long sequence{};
+    long long commandSequence{};
+    std::wstring mediaKey;
+    std::wstring state;
+    double positionSeconds{};
+    double durationSeconds{};
+    double volume{};
+    std::wstring errorCode;
+};
+
 struct EmbeddedMediaSurfaceDeclaration final {
     std::wstring id;
     std::wstring accessibleName;
@@ -351,6 +371,8 @@ struct EmbeddedMediaSurfaceDeclaration final {
     double aspectRatio{};
     std::vector<EmbeddedMediaResourceDeclaration> resources;
     std::vector<std::wstring> commands;
+    std::vector<std::wstring> allowedFrameOrigins;
+    std::optional<EmbeddedMediaPlaybackCommand> pendingCommand;
 };
 
 struct EmbeddedMediaResource final {
@@ -618,6 +640,13 @@ public:
         std::wstring_view presentationGeneration,
         long long sequence,
         std::wstring_view surfaceId);
+    [[nodiscard]] std::optional<bool> PublishEmbeddedMediaPlaybackEvent(
+        std::wstring_view widgetId,
+        std::wstring_view instanceId,
+        std::wstring_view runtimeGeneration,
+        std::wstring_view presentationGeneration,
+        long long sequence,
+        const EmbeddedMediaPlaybackEvent& playbackEvent);
     [[nodiscard]] std::optional<bool> SendControllerInput(
         std::wstring_view widgetId,
         std::wstring_view button,

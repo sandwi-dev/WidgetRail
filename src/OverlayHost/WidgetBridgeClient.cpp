@@ -1174,7 +1174,8 @@ WidgetSnapshot ParseSnapshot(const JsonObject& source) {
         const auto media = source.GetNamedObject(L"embeddedMedia");
         if (!HasNoUnknownProperties(media,
                 {L"id", L"accessibleName", L"entryAsset", L"surface",
-                 L"aspectRatio", L"resources", L"commands"}))
+                 L"aspectRatio", L"resources", L"commands",
+                 L"allowedFrameOrigins", L"pendingCommand"}))
             throw winrt::hresult_invalid_argument(
                 L"Embedded media contains an unknown property.");
         EmbeddedMediaSurfaceDeclaration parsed;
@@ -1185,6 +1186,7 @@ WidgetSnapshot ParseSnapshot(const JsonObject& source) {
         parsed.aspectRatio = media.GetNamedNumber(L"aspectRatio");
         const auto resources = media.GetNamedArray(L"resources");
         const auto commands = media.GetNamedArray(L"commands");
+        const auto frameOrigins = media.GetNamedArray(L"allowedFrameOrigins", JsonArray{});
         if (resources.Size() == 0 ||
             resources.Size() > protocol_contract::MaximumEmbeddedMediaResourceCount ||
             commands.Size() > protocol_contract::MaximumEmbeddedMediaCommandCount ||
@@ -1231,6 +1233,56 @@ WidgetSnapshot ParseSnapshot(const JsonObject& source) {
                 throw winrt::hresult_invalid_argument(
                     L"Embedded media command declaration is invalid.");
             parsed.commands.push_back(command);
+        }
+        if (frameOrigins.Size() > protocol_contract::MaximumEmbeddedMediaFrameOriginCount)
+            throw winrt::hresult_invalid_argument(
+                L"Embedded media frame origin declaration is invalid.");
+        std::unordered_set<std::wstring> originSet;
+        for (uint32_t index = 0; index < frameOrigins.Size(); ++index) {
+            const auto origin = std::wstring(std::wstring_view(frameOrigins.GetStringAt(index)));
+            const auto authorityEnd = origin.find_first_of(L"/?#", 8);
+            if (origin.size() > protocol_contract::MaximumEmbeddedMediaFrameOriginLength ||
+                !origin.starts_with(L"https://") || authorityEnd != std::wstring::npos ||
+                origin.find(L'@') != std::wstring::npos || origin.size() <= 8 ||
+                !originSet.insert(origin).second)
+                throw winrt::hresult_invalid_argument(
+                    L"Embedded media frame origin declaration is invalid.");
+            parsed.allowedFrameOrigins.push_back(origin);
+        }
+        if (media.HasKey(L"pendingCommand")) {
+            const auto pending = media.GetNamedObject(L"pendingCommand");
+            if (!HasNoUnknownProperties(pending,
+                    {L"sequence", L"kind", L"mediaKey", L"positionSeconds", L"volume"}))
+                throw winrt::hresult_invalid_argument(
+                    L"Embedded media playback command contains an unknown property.");
+            EmbeddedMediaPlaybackCommand command;
+            const double rawSequence = pending.GetNamedNumber(L"sequence");
+            if (!std::isfinite(rawSequence) || rawSequence != std::floor(rawSequence) ||
+                rawSequence <= 0.0 || rawSequence > 9007199254740991.0)
+                throw winrt::hresult_invalid_argument(
+                    L"Embedded media playback command sequence is invalid.");
+            command.sequence = static_cast<long long>(rawSequence);
+            command.kind = OptionalString(pending, L"kind");
+            command.mediaKey = OptionalString(pending, L"mediaKey");
+            if (pending.HasKey(L"positionSeconds"))
+                command.positionSeconds = pending.GetNamedNumber(L"positionSeconds");
+            if (pending.HasKey(L"volume"))
+                command.volume = pending.GetNamedNumber(L"volume");
+            constexpr std::array<std::wstring_view, 6> playbackKinds{
+                L"load", L"cue", L"play", L"pause", L"seek", L"setVolume"};
+            const bool kindValid = std::find(
+                playbackKinds.begin(), playbackKinds.end(), command.kind) != playbackKinds.end();
+            if (command.sequence <= 0 || !kindValid || !IsIdentifier(command.mediaKey) ||
+                command.mediaKey.size() > protocol_contract::MaximumEmbeddedMediaKeyLength ||
+                (command.positionSeconds && (!std::isfinite(*command.positionSeconds) ||
+                    *command.positionSeconds < 0.0 || *command.positionSeconds > 86400.0)) ||
+                (command.volume && (!std::isfinite(*command.volume) ||
+                    *command.volume < 0.0 || *command.volume > 1.0)) ||
+                (command.kind == L"seek" && !command.positionSeconds) ||
+                (command.kind == L"setVolume" && !command.volume))
+                throw winrt::hresult_invalid_argument(
+                    L"Embedded media playback command is invalid.");
+            parsed.pendingCommand = std::move(command);
         }
         snapshot.embeddedMedia = std::move(parsed);
     }
@@ -2043,7 +2095,8 @@ std::optional<EmbeddedMediaBundle> ParseEmbeddedMediaBundle(
             {L"widgetId", L"instanceId", L"runtimeGeneration",
              L"presentationGeneration", L"sequence", L"surfaceId",
              L"entryAsset", L"surface", L"aspectRatio", L"accessibleName",
-             L"commands", L"resources"})) return std::nullopt;
+             L"commands", L"allowedFrameOrigins", L"pendingCommand", L"resources"}))
+        return std::nullopt;
     EmbeddedMediaBundle bundle;
     bundle.widgetId = OptionalString(body, L"widgetId");
     bundle.instanceId = OptionalString(body, L"instanceId");
@@ -2128,6 +2181,43 @@ std::optional<EmbeddedMediaBundle> ParseEmbeddedMediaBundle(
         if (!IsEmbeddedMediaCommand(command) || !commandSet.insert(command).second)
             return std::nullopt;
         bundle.surface.commands.push_back(command);
+    }
+    const auto frameOrigins = body.GetNamedArray(L"allowedFrameOrigins", JsonArray{});
+    if (frameOrigins.Size() > protocol_contract::MaximumEmbeddedMediaFrameOriginCount)
+        return std::nullopt;
+    std::unordered_set<std::wstring> originSet;
+    for (uint32_t index = 0; index < frameOrigins.Size(); ++index) {
+        auto origin = std::wstring(std::wstring_view(frameOrigins.GetStringAt(index)));
+        if (origin.empty() ||
+            origin.size() > protocol_contract::MaximumEmbeddedMediaFrameOriginLength ||
+            !originSet.insert(origin).second) return std::nullopt;
+        bundle.surface.allowedFrameOrigins.push_back(std::move(origin));
+    }
+    if (body.HasKey(L"pendingCommand")) {
+        const auto pending = body.GetNamedObject(L"pendingCommand");
+        if (!HasOnlyProperties(pending,
+                {L"sequence", L"kind", L"mediaKey", L"positionSeconds", L"volume"}))
+            return std::nullopt;
+        EmbeddedMediaPlaybackCommand command;
+        command.sequence = RequiredIntegral(pending, L"sequence");
+        command.kind = OptionalString(pending, L"kind");
+        command.mediaKey = OptionalString(pending, L"mediaKey");
+        if (pending.HasKey(L"positionSeconds"))
+            command.positionSeconds = pending.GetNamedNumber(L"positionSeconds");
+        if (pending.HasKey(L"volume")) command.volume = pending.GetNamedNumber(L"volume");
+        constexpr std::array<std::wstring_view, 6> playbackKinds{
+            L"load", L"cue", L"play", L"pause", L"seek", L"setVolume"};
+        if (command.sequence <= 0 || !IsIdentifier(command.mediaKey) ||
+            command.mediaKey.size() > protocol_contract::MaximumEmbeddedMediaKeyLength ||
+            std::find(playbackKinds.begin(), playbackKinds.end(), command.kind) ==
+                playbackKinds.end() ||
+            (command.positionSeconds && (!std::isfinite(*command.positionSeconds) ||
+                *command.positionSeconds < 0.0 || *command.positionSeconds > 86400.0)) ||
+            (command.volume && (!std::isfinite(*command.volume) ||
+                *command.volume < 0.0 || *command.volume > 1.0)) ||
+            (command.kind == L"seek" && !command.positionSeconds) ||
+            (command.kind == L"setVolume" && !command.volume)) return std::nullopt;
+        bundle.surface.pendingCommand = std::move(command);
     }
 
     const auto resources = body.GetNamedArray(L"resources");
@@ -3274,6 +3364,79 @@ std::optional<EmbeddedMediaBundle> WidgetBridgeClient::ResolveEmbeddedMedia(
         }
     } catch (const winrt::hresult_error& error) {
         Fail(L"Invalid embedded media response: " + std::wstring(error.message()));
+    }
+    return std::nullopt;
+}
+
+std::optional<bool> WidgetBridgeClient::PublishEmbeddedMediaPlaybackEvent(
+    const std::wstring_view widgetId,
+    const std::wstring_view instanceId,
+    const std::wstring_view runtimeGeneration,
+    const std::wstring_view presentationGeneration,
+    const long long sequence,
+    const EmbeddedMediaPlaybackEvent& playbackEvent) {
+    std::scoped_lock lock(requestMutex_);
+    if (pipe_ == INVALID_HANDLE_VALUE || sequence <= 0 ||
+        !IsIdentifier(widgetId) || !IsIdentifier(instanceId) ||
+        !IsIdentifier(runtimeGeneration) || !IsIdentifier(presentationGeneration) ||
+        !IsIdentifier(playbackEvent.surfaceId) || playbackEvent.sequence <= 0 ||
+        playbackEvent.commandSequence < 0 || !IsIdentifier(playbackEvent.mediaKey) ||
+        !std::isfinite(playbackEvent.positionSeconds) ||
+        !std::isfinite(playbackEvent.durationSeconds) ||
+        !std::isfinite(playbackEvent.volume)) return std::nullopt;
+    try {
+        JsonObject event;
+        event.Insert(L"surfaceId", JsonValue::CreateStringValue(playbackEvent.surfaceId));
+        event.Insert(L"sequence", JsonValue::CreateNumberValue(
+            static_cast<double>(playbackEvent.sequence)));
+        event.Insert(L"commandSequence", JsonValue::CreateNumberValue(
+            static_cast<double>(playbackEvent.commandSequence)));
+        event.Insert(L"mediaKey", JsonValue::CreateStringValue(playbackEvent.mediaKey));
+        event.Insert(L"state", JsonValue::CreateStringValue(playbackEvent.state));
+        event.Insert(L"positionSeconds", JsonValue::CreateNumberValue(
+            playbackEvent.positionSeconds));
+        event.Insert(L"durationSeconds", JsonValue::CreateNumberValue(
+            playbackEvent.durationSeconds));
+        event.Insert(L"volume", JsonValue::CreateNumberValue(playbackEvent.volume));
+        if (!playbackEvent.errorCode.empty())
+            event.Insert(L"errorCode", JsonValue::CreateStringValue(playbackEvent.errorCode));
+        JsonObject payload;
+        payload.Insert(L"widgetId", JsonValue::CreateStringValue(widgetId));
+        payload.Insert(L"instanceId", JsonValue::CreateStringValue(instanceId));
+        payload.Insert(L"runtimeGeneration", JsonValue::CreateStringValue(runtimeGeneration));
+        payload.Insert(L"presentationGeneration", JsonValue::CreateStringValue(
+            presentationGeneration));
+        payload.Insert(L"sequence", JsonValue::CreateNumberValue(static_cast<double>(sequence)));
+        payload.Insert(L"event", event);
+        const long long requestId = ++nextRequestId_;
+        JsonObject envelope;
+        envelope.Insert(L"protocolVersion", JsonValue::CreateNumberValue(1));
+        envelope.Insert(L"type", JsonValue::CreateStringValue(
+            L"embedded-media-playback-event"));
+        envelope.Insert(L"requestId", JsonValue::CreateNumberValue(
+            static_cast<double>(requestId)));
+        envelope.Insert(L"payload", payload);
+        if (!WriteFrame(winrt::to_string(envelope.Stringify()))) return std::nullopt;
+        while (const auto frame = ReadFrame()) {
+            const auto response = JsonObject::Parse(winrt::to_hstring(*frame));
+            long long responseId{};
+            if (!ReadRequestId(response, responseId)) return std::nullopt;
+            if (responseId == 0) {
+                std::wstring status;
+                if (!HandleAsyncEvent(response, invalidations_, actionFailures_, hostEffects_,
+                        appearanceChanges_, catalogChanges_, status, &artworkResults_,
+                        &localPackageInstallResults_)) return std::nullopt;
+                continue;
+            }
+            if (responseId != requestId) return std::nullopt;
+            if (response.GetNamedString(L"type") == L"error") {
+                Fail(SafeBridgeError(response));
+                return std::nullopt;
+            }
+            return response.GetNamedString(L"type") == L"acknowledged";
+        }
+    } catch (const winrt::hresult_error& error) {
+        Fail(L"Invalid embedded media event response: " + std::wstring(error.message()));
     }
     return std::nullopt;
 }

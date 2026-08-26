@@ -282,6 +282,19 @@ public sealed class WidgetProcessClient : IAsyncDisposable
         return ParseActionAdmission(response.Payload);
     }
 
+    public async Task SendEmbeddedMediaPlaybackEventAsync(
+        EmbeddedMediaPlaybackEvent playbackEvent,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(playbackEvent);
+        var response = await RequestAsync(
+            MessageTypes.EmbeddedMediaPlaybackEvent, playbackEvent, cancellationToken)
+            .ConfigureAwait(false);
+        if (response.Type != MessageTypes.Acknowledged)
+            throw new WidgetProtocolViolationException(
+                $"Expected acknowledgement, received '{response.Type}'.");
+    }
+
     /// <summary>
     /// Compatibility wrapper which throws when the active action queue rejects
     /// admission. Successful return does not mean the action has completed.

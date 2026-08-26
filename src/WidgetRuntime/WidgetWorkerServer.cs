@@ -439,6 +439,14 @@ internal sealed class WidgetWorkerServer
                 .ConfigureAwait(false);
             }
             break;
+        case MessageTypes.EmbeddedMediaPlaybackEvent:
+            var playbackEvent = RuntimeJson.FromElement<EmbeddedMediaPlaybackEvent>(request.Payload);
+            await _widget.ApplyEmbeddedMediaPlaybackEventAsync(
+                playbackEvent, cancellationToken).ConfigureAwait(false);
+            await ReplyAsync(
+                MessageTypes.Acknowledged, request.RequestId, new { }, cancellationToken)
+                .ConfigureAwait(false);
+            break;
         default:
             throw new WidgetProtocolViolationException($"Unknown request type '{request.Type}'.");
         }

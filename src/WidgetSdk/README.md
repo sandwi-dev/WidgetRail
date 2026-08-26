@@ -419,6 +419,17 @@ as a dashboard quick action or open-widget shortcut; snapshot validation reports
 for the host-owned `PinnedLayoutSelection` notification delivered by the pinned
 layout handle/test-host contract.
 
+Protocol v24 extends the single host-owned `EmbeddedMediaSurface` with one
+optional monotonic `PendingCommand` and validated playback observations through
+`OnEmbeddedMediaPlaybackEventAsync`. Commands are a closed load/cue/play/pause/
+seek/volume vocabulary over bounded opaque media keys; observations contain
+only typed playback state, time, volume, and sanitized error codes. The host
+revalidates widget, instance, runtime, presentation, snapshot, surface, and
+command authority before either direction crosses the worker boundary. Optional
+`AllowedFrameOrigins` entries are exact HTTPS origins for subframes only; the
+top-level document remains the sealed package entry asset. This contract does
+not expose URLs, DOM, script, browsing, or provider identity.
+
 Use `WidgetIds.Scope(root)` to construct validated hierarchical IDs.
 `scope.Scope(segment)` creates a child prefix, `scope.Id(name)` creates a leaf,
 and `scope.KeyedId(name, durableKey)` creates a deterministic opaque leaf by

@@ -84,7 +84,7 @@ ctor WidgetRail.WidgetSdk.WidgetMediaSession(string SessionId, string AppName, s
 ctor WidgetRail.WidgetSdk.WidgetMediaSessionsChanged(System.Collections.Generic.IReadOnlyList<WidgetRail.WidgetSdk.WidgetMediaSession> Sessions)
 ctor WidgetRail.WidgetSdk.WidgetModelChangedEventArgs<TState>(WidgetRail.WidgetSdk.WidgetModelSnapshot<TState> previous, WidgetRail.WidgetSdk.WidgetModelSnapshot<TState> current)
 ctor WidgetRail.WidgetSdk.WidgetModelSnapshot<TState>(TState Value, long Revision)
-ctor WidgetRail.WidgetSdk.WidgetModelUpdate<TState,TResult>(TState Previous, TState Current, TResult Result, long Revision, bool Changed)
+ctor WidgetRail.WidgetSdk.WidgetModelUpdate<TState,TResult>(TState Previous, TState Current, TResult? Result, long Revision, bool Changed)
 ctor WidgetRail.WidgetSdk.WidgetModelUpdate<TState>(TState Previous, TState Current, long Revision, bool Changed)
 ctor WidgetRail.WidgetSdk.WidgetNavigationSnapshot<TRoute>(TRoute Route, TRoute RootRoute, int Depth, string InputScopeId, string? InitialFocusId, string? BackActionId, long Revision, System.Threading.CancellationToken RouteCancellationToken)
 ctor WidgetRail.WidgetSdk.WidgetNetworkConnectionDetails(long Revision, WidgetRail.WidgetSdk.WidgetNetworkConnectionDetailsState State, WidgetRail.WidgetSdk.WidgetNetworkConnectionDetailsConnectivity Connectivity, WidgetRail.WidgetSdk.WidgetNetworkTransportKind Transport, System.Collections.Generic.IReadOnlyList<string> IpAddresses, System.Collections.Generic.IReadOnlyList<string> DefaultGateways, System.Collections.Generic.IReadOnlyList<string> DnsServers)
@@ -1673,6 +1673,7 @@ method virtual WidgetRail.WidgetSdk.ToastElement.Equals(WidgetRail.WidgetSdk.Toa
 method virtual WidgetRail.WidgetSdk.UnpairWidgetBluetoothDeviceRequest.Equals(WidgetRail.WidgetSdk.UnpairWidgetBluetoothDeviceRequest? other) -> bool
 method virtual WidgetRail.WidgetSdk.Widget.OnActionAsync(WidgetRail.WidgetSdk.WidgetActionEvent action, System.Threading.CancellationToken cancellationToken = null) -> System.Threading.Tasks.ValueTask
 method virtual WidgetRail.WidgetSdk.Widget.OnControllerInputAsync(WidgetRail.WidgetSdk.ControllerInputEvent input, System.Threading.CancellationToken cancellationToken = null) -> System.Threading.Tasks.ValueTask<bool>
+method virtual WidgetRail.WidgetSdk.Widget.OnEmbeddedMediaPlaybackEventAsync(WidgetRail.WidgetProtocol.EmbeddedMediaPlaybackEvent playbackEvent, System.Threading.CancellationToken cancellationToken = null) -> System.Threading.Tasks.ValueTask
 method virtual WidgetRail.WidgetSdk.Widget.OnPinnedLayoutSelectionChangedAsync(string? layoutId, System.Threading.CancellationToken cancellationToken = null) -> System.Threading.Tasks.ValueTask
 method virtual WidgetRail.WidgetSdk.WidgetActionEvent.Equals(WidgetRail.WidgetSdk.WidgetActionEvent? other) -> bool
 method virtual WidgetRail.WidgetSdk.WidgetActionFailedEventArgs.<Clone>$() -> WidgetRail.WidgetSdk.WidgetActionFailedEventArgs

@@ -62,6 +62,13 @@ internal sealed class ProtocolVersionRequirements
                 ProtocolConstants.EmbeddedMediaSurfaceVersion,
                 "$.embeddedMedia",
                 $"Embedded media surfaces require protocol version {ProtocolConstants.EmbeddedMediaSurfaceVersion} or later.");
+        if (snapshot.EmbeddedMedia is { } media &&
+            (media.PendingCommand is not null || (media.AllowedFrameOrigins?.Count ?? 0) != 0))
+            Add(
+                "embedded-media-playback",
+                ProtocolConstants.EmbeddedMediaPlaybackVersion,
+                "$.embeddedMedia",
+                $"Embedded media playback requires protocol version {ProtocolConstants.EmbeddedMediaPlaybackVersion} or later.");
 
         Visit(snapshot.Root, "$.root", 1);
 

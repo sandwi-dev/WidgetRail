@@ -136,6 +136,9 @@ internal interface IBridgeWidgetClient : IAsyncDisposable
     Task<WidgetOperationAdmission> AdmitActionAsync(
         WidgetActionEvent action,
         CancellationToken cancellationToken);
+    Task SendEmbeddedMediaPlaybackEventAsync(
+        EmbeddedMediaPlaybackEvent playbackEvent,
+        CancellationToken cancellationToken);
     Task<bool> SendControllerInputAsync(
         ControllerInputEvent input,
         WidgetDashboardGestureAuthority? authority,
@@ -198,6 +201,10 @@ internal sealed class WidgetProcessBridgeClient(WidgetProcessClient client)
         WidgetActionEvent action,
         CancellationToken cancellationToken) =>
         client.AdmitActionAsync(action, cancellationToken);
+    public Task SendEmbeddedMediaPlaybackEventAsync(
+        EmbeddedMediaPlaybackEvent playbackEvent,
+        CancellationToken cancellationToken) =>
+        client.SendEmbeddedMediaPlaybackEventAsync(playbackEvent, cancellationToken);
     public Task<bool> SendControllerInputAsync(
         ControllerInputEvent input,
         WidgetDashboardGestureAuthority? authority,
@@ -1011,6 +1018,57 @@ internal sealed class BridgeClientRegistry : IAsyncDisposable
         }
         throw new BridgeProtocolException(
             "Embedded media authority is stale or unavailable.");
+    }
+
+    internal async Task PublishEmbeddedMediaPlaybackEventAsync(
+        BridgeEmbeddedMediaPlaybackEventRequest request,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        var registration = await GetOrCreateAsync(request.WidgetId, cancellationToken)
+            .ConfigureAwait(false);
+        await registration.OperationGate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            DemandCurrent(registration);
+            var snapshot = registration.CachedSnapshot ?? throw new BridgeProtocolException(
+                "Embedded media event has no current snapshot authority.");
+            var descriptor = registration.Configured.PublicDescriptor();
+            var media = snapshot.EmbeddedMedia;
+            var playbackEvent = request.Event;
+            if (playbackEvent.Sequence <= 0 || playbackEvent.CommandSequence < 0 ||
+                string.IsNullOrWhiteSpace(playbackEvent.MediaKey) ||
+                playbackEvent.MediaKey.Length > ProtocolConstants.MaximumEmbeddedMediaKeyLength ||
+                !playbackEvent.MediaKey.All(character =>
+                    char.IsAsciiLetterOrDigit(character) || character is '-' or '_' or '.') ||
+                !Enum.IsDefined(playbackEvent.State) ||
+                !double.IsFinite(playbackEvent.PositionSeconds) ||
+                !double.IsFinite(playbackEvent.DurationSeconds) ||
+                !double.IsFinite(playbackEvent.Volume) ||
+                playbackEvent.PositionSeconds < 0 || playbackEvent.DurationSeconds < 0 ||
+                playbackEvent.PositionSeconds > playbackEvent.DurationSeconds ||
+                playbackEvent.DurationSeconds > 86_400 ||
+                playbackEvent.Volume is < 0 or > 1 ||
+                (playbackEvent.ErrorCode is { } errorCode &&
+                    (!BridgeRequestKey.IsBoundedIdentifier(errorCode))))
+                throw new BridgeProtocolException(
+                    "Embedded media playback event is invalid.");
+            if (media is null ||
+                snapshot.Sequence != request.Sequence ||
+                !string.Equals(snapshot.WidgetInstanceId, request.InstanceId, StringComparison.Ordinal) ||
+                !string.Equals(descriptor.RuntimeGeneration, request.RuntimeGeneration, StringComparison.Ordinal) ||
+                !string.Equals(descriptor.PresentationGeneration, request.PresentationGeneration, StringComparison.Ordinal) ||
+                !string.Equals(media.Id, request.Event.SurfaceId, StringComparison.Ordinal))
+                throw new BridgeProtocolException(
+                    "Embedded media event authority is stale or unavailable.");
+            await registration.Client.SendEmbeddedMediaPlaybackEventAsync(
+                request.Event, cancellationToken).ConfigureAwait(false);
+            DemandCurrent(registration);
+        }
+        finally
+        {
+            registration.OperationGate.Release();
+        }
     }
 
     internal BridgeClientPublication<ConfiguredWidget> AdmitProtectedWifi(

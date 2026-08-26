@@ -56,7 +56,8 @@ public:
         const RichMediaSurfaceCoordinator& coordinator) {
         const auto& configuration = coordinator.configuration_;
         return !configuration.compositionTarget && !configuration.diagnostic &&
-            !configuration.invalidate && !configuration.setPresentationVisible;
+            !configuration.invalidate && !configuration.playbackEvent &&
+            !configuration.setPresentationVisible;
     }
     static bool BrowserExitObserverActive(
         const RichMediaSurfaceCoordinator& coordinator) {
@@ -80,6 +81,21 @@ public:
     static void MarkEnvironmentFaulted(
         RichMediaSurfaceCoordinator& coordinator) {
         coordinator.environmentFaulted_ = true;
+    }
+    static bool PublicGeometryRetainsActivationAuthority(
+        const RECT before, const RECT after, const bool pageReady) {
+        RichMediaSurfaceCoordinator coordinator;
+        coordinator.configuration_.bounds = before;
+        coordinator.configuration_.rasterScale = 1.5;
+        coordinator.configuration_.resources.push_back(
+            {L"media/adapter.html", L"text/html", {1}});
+        coordinator.pageReady_ = pageReady;
+        coordinator.state_.focusedActionBounds = {0, 0, 320, 180};
+        coordinator.state_.focusedActionBoundsCurrent = true;
+        (void)coordinator.UpdateGeometry(after, 1.5);
+        return coordinator.state_.focusedActionBoundsCurrent &&
+            coordinator.state_.focusedActionBounds.width == after.right - after.left &&
+            coordinator.state_.focusedActionBounds.height == after.bottom - after.top;
     }
 };
 
@@ -322,6 +338,25 @@ void RunContractCases() {
     Require(!RichMediaSurfaceCoordinator::ValidatePageEvent(
         LR"({"type":"script","environmentGeneration":2,"surfaceGeneration":3,"sessionGeneration":7,"controllerGeneration":11,"documentGeneration":13,"eventSequence":4,"commandId":17,"focus":"aurora.primary","playing":false,"bounds":{"x":100,"y":40,"width":120,"height":60}})",
         state.authority, 3, 17, next), "unknown event kind was admitted");
+    next = state;
+    Require(RichMediaSurfaceCoordinator::ValidatePageEvent(
+        LR"({"type":"media","environmentGeneration":2,"surfaceGeneration":3,"sessionGeneration":7,"controllerGeneration":11,"documentGeneration":13,"eventSequence":4,"commandId":17,"focus":"aurora.primary","playing":true,"bounds":{"x":0,"y":0,"width":640,"height":360},"mediaKey":"aurora-tone-2","playbackState":"playing","positionSeconds":12,"durationSeconds":60,"volume":0.72})",
+        state.authority, 3, 17, next),
+        "typed provider-neutral playback event was rejected");
+    Require(next.mediaKey == L"aurora-tone-2" && next.playing &&
+            next.positionSeconds == 12.0 && next.durationSeconds == 60.0,
+            "typed playback state was not retained exactly");
+    Require(!RichMediaSurfaceCoordinator::ValidatePageEvent(
+        LR"({"type":"media","environmentGeneration":2,"surfaceGeneration":3,"sessionGeneration":7,"controllerGeneration":11,"documentGeneration":13,"eventSequence":4,"commandId":18,"focus":"cedar.primary","playing":true,"bounds":{"x":0,"y":0,"width":640,"height":360},"mediaKey":"cedar-tone","playbackState":"playing","positionSeconds":12,"durationSeconds":60,"volume":0.72})",
+        state.authority, 3, 17, next),
+        "uncorrelated typed playback event was admitted");
+    Require(RichMediaSurfaceCoordinatorTestPeer::
+                PublicGeometryRetainsActivationAuthority(
+                    {10, 20, 650, 380}, {10, 20, 650, 380}, true) &&
+            RichMediaSurfaceCoordinatorTestPeer::
+                PublicGeometryRetainsActivationAuthority(
+                    {10, 20, 650, 380}, {30, 40, 790, 465}, true),
+            "public MediaViewport geometry revoked exact viewport activation authority");
     const auto command = RichMediaSurfaceCoordinator::CommandJson(
         Command::Activate, {5, 2, 9, 12, 14, 6}, 19);
     Require(command == LR"({"command":"arm-activate","environmentGeneration":5,"surfaceGeneration":2,"sessionGeneration":9,"controllerGeneration":12,"documentGeneration":14,"commandId":19})",

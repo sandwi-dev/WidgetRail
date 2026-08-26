@@ -42,6 +42,7 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Protected Wi-Fi production dispatch clears one exact secret owner", ProtectedWifiProductionDispatchIsZeroed),
     ("Trusted artwork demand is exact current and lazy through the production bridge", TrustedArtworkDemandIsExact),
     ("Two provider-neutral media adapters resolve through one sealed contract", EmbeddedMediaAssetsAreProviderNeutral),
+    ("Built embedded media sample completes the typed playback loop", BuiltEmbeddedMediaSampleCompletesPlaybackLoop),
     ("Request dispatcher preserves FIFO and predecessor failure", RequestDispatcherOwnsWidgetOrdering),
     ("Request dispatcher rejects duplicates and global over-capacity", RequestDispatcherBoundsAdmission),
     ("Request dispatcher deadline quarantines cancellation-ignoring work", RequestDispatcherForcedDrainIsComplete),
@@ -3919,10 +3920,17 @@ static Task EmbeddedMediaAssetsAreProviderNeutral()
                     EmbeddedMediaCommand.SeekBackward,
                     EmbeddedMediaCommand.SeekForward,
                 ],
+                AllowedFrameOrigins = [$"https://{adapterName}.invalid"],
+                PendingCommand = new()
+                {
+                    Sequence = 9,
+                    Kind = EmbeddedMediaPlaybackCommandKind.Cue,
+                    MediaKey = $"{adapterName}.tone",
+                },
             };
             var snapshot = new ViewSnapshot
             {
-                ProtocolVersion = ProtocolConstants.MediaViewportVersion,
+                ProtocolVersion = ProtocolConstants.EmbeddedMediaPlaybackVersion,
                 Sequence = 7,
                 WidgetInstanceId = configured.InstanceId,
                 ActiveInputScopeId = "root",
@@ -3955,6 +3963,10 @@ static Task EmbeddedMediaAssetsAreProviderNeutral()
             Assert.Equal(adapterName, bundle.WidgetId);
             Assert.Equal(media.Id, bundle.SurfaceId);
             Assert.Equal(2, bundle.Resources.Count);
+            Assert.Equal($"{adapterName}.tone", bundle.PendingCommand?.MediaKey);
+            Assert.SequenceEqual(
+                new[] { $"https://{adapterName}.invalid" },
+                bundle.AllowedFrameOrigins);
             Assert.SequenceEqual(html, Convert.FromBase64String(bundle.Resources[0].ContentBase64));
             Assert.SequenceEqual(audio, Convert.FromBase64String(bundle.Resources[1].ContentBase64));
             var bundleWire = BridgeJson.ToElement(bundle);
@@ -3983,6 +3995,107 @@ static Task EmbeddedMediaAssetsAreProviderNeutral()
         bytes.LongLength,
         Convert.ToHexString(SHA256.HashData(bytes)).ToLowerInvariant());
     return Task.CompletedTask;
+}
+
+static async Task BuiltEmbeddedMediaSampleCompletesPlaybackLoop()
+{
+    if (!OperatingSystem.IsWindows()) return;
+    var catalogPath = Path.GetFullPath(
+        Path.Combine("src", "OverlayHost", "out", "Release", "widget-catalog.json"));
+    var catalog = BridgeCatalog.Load(catalogPath);
+    var descriptor = catalog.Widgets.Single(widget => widget.Id == "embedded-media-sample");
+    var pipeName = $"wrail-embedded-media-sample-{Guid.NewGuid():N}";
+    await using var server = new WidgetBridgeServer(pipeName, catalog, 64 * 1024);
+    var serverTask = server.RunAsync(TimeSpan.FromSeconds(5));
+    await using var client = await BridgeTestClient.ConnectAsync(pipeName, 64 * 1024);
+    try
+    {
+        var lifecycle = await client.RequestAsync(
+            BridgeMessageTypes.SetWidgetLifecycle,
+            new BridgeWidgetLifecycleRequest(
+                descriptor.Id, WidgetLifecycleState.Visible));
+        Assert.Equal(BridgeMessageTypes.Acknowledged, lifecycle.Type);
+        var initial = await SampleSnapshotAsync(client, descriptor.Id);
+        var media = initial.EmbeddedMedia
+            ?? throw new InvalidOperationException("Built sample omitted embedded media.");
+        Assert.Equal(ProtocolConstants.MediaViewportVersion, initial.ProtocolVersion);
+        Assert.Equal<EmbeddedMediaPlaybackCommand?>(null, media.PendingCommand);
+
+        var resolved = await client.RequestAsync(
+            BridgeMessageTypes.ResolveEmbeddedMedia,
+            new BridgeEmbeddedMediaRequest(
+                descriptor.Id, initial.WidgetInstanceId,
+                descriptor.RuntimeGeneration, descriptor.PresentationGeneration,
+                initial.Sequence, media.Id));
+        Assert.Equal(BridgeMessageTypes.EmbeddedMedia, resolved.Type);
+        var bundle = BridgeJson.FromElement<BridgeEmbeddedMediaBundle>(resolved.Payload);
+        Assert.True(bundle.Resources.Any(resource =>
+                resource.Path == "payload/media/adapter.html" &&
+                Convert.FromBase64String(resource.ContentBase64).Length > 0),
+            "Built sample did not resolve its exact sealed adapter bytes.");
+
+        _ = await client.RequestAsync(
+            BridgeMessageTypes.Action,
+            new BridgeActionRequest(descriptor.Id, new WidgetActionEvent(
+                "host.embeddedMedia.togglePlayback", "media-shell.play")));
+        _ = await client.ReadEventAsync(BridgeMessageTypes.Invalidation);
+        var play = await SampleSnapshotAsync(client, descriptor.Id);
+        var playCommand = play.EmbeddedMedia?.PendingCommand
+            ?? throw new InvalidOperationException("Play did not publish a typed command.");
+        Assert.Equal(ProtocolConstants.EmbeddedMediaPlaybackVersion, play.ProtocolVersion);
+        Assert.Equal(EmbeddedMediaPlaybackCommandKind.Play, playCommand.Kind);
+
+        _ = await client.RequestAsync(
+            BridgeMessageTypes.EmbeddedMediaPlaybackEvent,
+            new BridgeEmbeddedMediaPlaybackEventRequest(
+                descriptor.Id, play.WidgetInstanceId,
+                descriptor.RuntimeGeneration, descriptor.PresentationGeneration,
+                play.Sequence,
+                new EmbeddedMediaPlaybackEvent
+                {
+                    SurfaceId = play.EmbeddedMedia!.Id,
+                    Sequence = 1,
+                    CommandSequence = playCommand.Sequence,
+                    MediaKey = playCommand.MediaKey,
+                    State = EmbeddedMediaPlaybackState.Playing,
+                    PositionSeconds = 8,
+                    DurationSeconds = 60,
+                    Volume = 1,
+                }));
+        _ = await client.ReadEventAsync(BridgeMessageTypes.Invalidation);
+        var playing = await SampleSnapshotAsync(client, descriptor.Id);
+        Assert.Equal<EmbeddedMediaPlaybackCommand?>(
+            null, playing.EmbeddedMedia?.PendingCommand);
+        Assert.Equal(8D, Flatten(playing.Root).Single(
+            node => node.Id == "media-shell.progress").Value);
+
+        _ = await client.RequestAsync(
+            BridgeMessageTypes.Action,
+            new BridgeActionRequest(descriptor.Id, new WidgetActionEvent(
+                "host.embeddedMedia.seekForward", "media-shell.seek-forward")));
+        _ = await client.ReadEventAsync(BridgeMessageTypes.Invalidation);
+        var seek = await SampleSnapshotAsync(client, descriptor.Id);
+        Assert.Equal(EmbeddedMediaPlaybackCommandKind.Seek,
+            seek.EmbeddedMedia?.PendingCommand?.Kind);
+        Assert.Equal(18D, seek.EmbeddedMedia?.PendingCommand?.PositionSeconds);
+    }
+    finally
+    {
+        if (!client.IsTerminal)
+            _ = await client.RequestAsync(BridgeMessageTypes.Stop, new { });
+        await serverTask.WaitAsync(TimeSpan.FromSeconds(5));
+    }
+}
+
+static async Task<ViewSnapshot> SampleSnapshotAsync(
+    BridgeTestClient client,
+    string widgetId)
+{
+    var response = await client.RequestAsync(
+        BridgeMessageTypes.GetSnapshot, new WidgetIdRequest(widgetId));
+    Assert.Equal(BridgeMessageTypes.Snapshot, response.Type);
+    return SnapshotJson.Deserialize(System.Text.Encoding.UTF8.GetBytes(
+        response.Payload.GetProperty("snapshot").GetRawText()));
 }
 
 file sealed class BridgeTestWidget : Widget

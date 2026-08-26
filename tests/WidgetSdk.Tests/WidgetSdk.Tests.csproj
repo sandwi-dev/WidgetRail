@@ -10,5 +10,6 @@
     <ProjectReference Include="..\..\src\WidgetSdk\WidgetSdk.csproj" />
     <ProjectReference Include="..\..\src\PlatformBroker\PlatformBroker.csproj" />
     <ProjectReference Include="..\..\samples\ClockWidget\ClockWidget.csproj" />
+    <ProjectReference Include="..\..\samples\EmbeddedMediaWidget\EmbeddedMediaWidget.csproj" />
   </ItemGroup>
 </Project>

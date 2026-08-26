@@ -93,6 +93,8 @@ internal static class EmbeddedMediaAssetResolver
             media.AspectRatio,
             media.AccessibleName,
             media.Commands,
+            media.AllowedFrameOrigins,
+            media.PendingCommand,
             resources);
     }
 

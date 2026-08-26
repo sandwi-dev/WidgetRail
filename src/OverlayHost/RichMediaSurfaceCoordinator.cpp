@@ -688,6 +688,13 @@ HRESULT RichMediaSurfaceCoordinator::OnFrameNavigationStarting(
     CoTaskMemFree(rawUri);
     if (FAILED(result)) return result;
     if (IsAllowedNavigation(uri, pageUri_)) return S_OK;
+    if (std::any_of(
+            configuration_.allowedFrameOrigins.begin(),
+            configuration_.allowedFrameOrigins.end(),
+            [&](const std::wstring& origin) {
+                return uri.starts_with(origin) && uri.size() > origin.size() &&
+                    uri[origin.size()] == L'/';
+            })) return S_OK;
     Emit(L"Rich media frame navigation denied");
     return args->put_Cancel(TRUE);
 }
@@ -715,8 +722,8 @@ HRESULT RichMediaSurfaceCoordinator::OnNavigationCompleted(
             state_.authority.documentGeneration, navigationId));
     }
     const auto commandId = ++nextCommandId_;
-    pendingCommand_ = PendingCommand{commandId, Command::Activate,
-                                     PendingPhase::AwaitingEvent};
+    pendingCommand_ = PendingCommand{
+        commandId, Command::Activate, 0, PendingPhase::AwaitingEvent};
     const std::wstring command = std::format(
         L"{{\"command\":\"initialize\",\"environmentGeneration\":{},\"surfaceGeneration\":{},\"sessionGeneration\":{},\"controllerGeneration\":{},\"documentGeneration\":{},\"commandId\":{}}}",
         state_.authority.environmentGeneration, state_.authority.surfaceGeneration,
@@ -777,12 +784,38 @@ HRESULT RichMediaSurfaceCoordinator::OnWebMessage(
             Fault(L"spatial-activation-input", E_FAIL);
         return S_OK;
     }
+    std::optional<PlaybackEvent> playbackEvent;
+    if (type == L"ready" || type == L"media") {
+        try {
+            const auto message = winrt::Windows::Data::Json::JsonObject::Parse(json);
+            if (message.HasKey(L"mediaKey") && message.HasKey(L"positionSeconds") &&
+                message.HasKey(L"durationSeconds") && message.HasKey(L"volume") &&
+                message.HasKey(L"playbackState")) {
+                playbackEvent = PlaybackEvent{
+                    state_.authority.eventSequence,
+                    pendingCommand_ ? pendingCommand_->playbackSequence : 0,
+                    std::wstring(std::wstring_view(message.GetNamedString(L"mediaKey"))),
+                    std::wstring(std::wstring_view(message.GetNamedString(L"playbackState"))),
+                    message.GetNamedNumber(L"positionSeconds"),
+                    message.GetNamedNumber(L"durationSeconds"),
+                    message.GetNamedNumber(L"volume"),
+                    message.HasKey(L"errorCode")
+                        ? std::wstring(std::wstring_view(message.GetNamedString(L"errorCode")))
+                        : std::wstring{}};
+            }
+        } catch (...) {
+            Fault(L"message-playback-state", E_ACCESSDENIED);
+            return S_OK;
+        }
+    }
     if (pendingCommand_ &&
         state_.lastAcknowledgedCommandId == pendingCommand_->id) pendingCommand_.reset();
     if (type == L"ready") {
         pageReady_ = true;
         if (desiredVisible_) (void)SetVisible(true);
     }
+    if (playbackEvent && configuration_.playbackEvent)
+        configuration_.playbackEvent(*playbackEvent);
     if (configuration_.invalidate) configuration_.invalidate();
     return S_OK;
 }
@@ -824,9 +857,21 @@ HRESULT RichMediaSurfaceCoordinator::UpdateGeometry(
     const RECT& bounds, const double rasterScale) noexcept {
     if (bounds.right <= bounds.left || bounds.bottom <= bounds.top ||
         rasterScale < 0.5 || rasterScale > 8.0) return E_INVALIDARG;
+    const bool geometryChanged = configuration_.bounds.left != bounds.left ||
+        configuration_.bounds.top != bounds.top ||
+        configuration_.bounds.right != bounds.right ||
+        configuration_.bounds.bottom != bounds.bottom ||
+        configuration_.rasterScale != rasterScale;
     configuration_.bounds = bounds;
     configuration_.rasterScale = rasterScale;
-    state_.focusedActionBoundsCurrent = false;
+    if (geometryChanged && configuration_.resources.empty())
+        state_.focusedActionBoundsCurrent = false;
+    else if (!configuration_.resources.empty() && pageReady_) {
+        state_.focusedActionBounds = ActionBounds{
+            0.0, 0.0, static_cast<double>(bounds.right - bounds.left),
+            static_cast<double>(bounds.bottom - bounds.top)};
+        state_.focusedActionBoundsCurrent = true;
+    }
     if (!controllerBase_) return S_FALSE;
     // The host owns placement in its DirectComposition tree. WebView2 owns
     // pixels in controller-local coordinates only; retaining the host offset
@@ -960,7 +1005,40 @@ bool RichMediaSurfaceCoordinator::SendCommand(const Command command) noexcept {
     const auto commandId = ++nextCommandId_;
     const std::wstring json = CommandJson(command, state_.authority, commandId);
     if (FAILED(core_->PostWebMessageAsJson(json.c_str()))) return false;
-    pendingCommand_ = PendingCommand{commandId, command, PendingPhase::AwaitingEvent};
+    pendingCommand_ = PendingCommand{
+        commandId, command, 0, PendingPhase::AwaitingEvent};
+    return true;
+}
+
+bool RichMediaSurfaceCoordinator::SendPlaybackCommand(
+    const PlaybackCommand& command) noexcept {
+    if (!core_ || state_.lifecycle != Lifecycle::Visible || !state_.inputEnabled ||
+        pendingCommand_ || command.sequence == 0 || command.mediaKey.empty()) return false;
+    Command transport{};
+    std::wstring name;
+    switch (command.kind) {
+    case PlaybackCommandKind::Load: name = L"load"; transport = Command::TogglePlayback; break;
+    case PlaybackCommandKind::Cue: name = L"cue"; transport = Command::TogglePlayback; break;
+    case PlaybackCommandKind::Play: name = L"arm-activate"; transport = Command::Activate; break;
+    case PlaybackCommandKind::Pause: name = L"pause"; transport = Command::TogglePlayback; break;
+    case PlaybackCommandKind::Seek: name = L"seek"; transport = Command::SeekForward; break;
+    case PlaybackCommandKind::SetVolume: name = L"volume"; transport = Command::TogglePlayback; break;
+    }
+    if (transport == Command::Activate && !state_.focusedActionBoundsCurrent) return false;
+    const auto commandId = ++nextCommandId_;
+    std::wstring json = std::format(
+        L"{{\"command\":\"{}\",\"environmentGeneration\":{},\"surfaceGeneration\":{},\"sessionGeneration\":{},\"controllerGeneration\":{},\"documentGeneration\":{},\"commandId\":{},\"commandSequence\":{},\"mediaKey\":\"{}\"",
+        name, state_.authority.environmentGeneration, state_.authority.surfaceGeneration,
+        state_.authority.sessionGeneration, state_.authority.controllerGeneration,
+        state_.authority.documentGeneration, commandId, command.sequence,
+        command.mediaKey);
+    if (command.positionSeconds)
+        json += std::format(L",\"positionSeconds\":{}", *command.positionSeconds);
+    if (command.volume) json += std::format(L",\"volume\":{}", *command.volume);
+    json += L"}";
+    if (FAILED(core_->PostWebMessageAsJson(json.c_str()))) return false;
+    pendingCommand_ = PendingCommand{
+        commandId, transport, command.sequence, PendingPhase::AwaitingEvent};
     return true;
 }
 
@@ -1054,9 +1132,20 @@ bool RichMediaSurfaceCoordinator::ValidatePageEvent(
             L"type", L"environmentGeneration", L"surfaceGeneration", L"sessionGeneration",
             L"controllerGeneration", L"documentGeneration", L"eventSequence",
             L"commandId", L"focus", L"playing", L"bounds"};
-        if (object.Size() != required.size() ||
+        constexpr std::array playbackKeys{
+            L"mediaKey", L"playbackState", L"positionSeconds",
+            L"durationSeconds", L"volume"};
+        const bool hasPlayback = object.HasKey(L"mediaKey") ||
+            object.HasKey(L"playbackState") || object.HasKey(L"positionSeconds") ||
+            object.HasKey(L"durationSeconds") || object.HasKey(L"volume");
+        const std::size_t expectedSize = required.size() +
+            (hasPlayback ? playbackKeys.size() : 0) +
+            (object.HasKey(L"errorCode") ? 1 : 0);
+        if (object.Size() != expectedSize ||
             std::any_of(required.begin(), required.end(),
-                        [&](const wchar_t* key) { return !object.HasKey(key); })) return false;
+                        [&](const wchar_t* key) { return !object.HasKey(key); }) ||
+            (hasPlayback && std::any_of(playbackKeys.begin(), playbackKeys.end(),
+                        [&](const wchar_t* key) { return !object.HasKey(key); }))) return false;
         const std::wstring type = object.GetNamedString(L"type").c_str();
         const std::wstring focus = object.GetNamedString(L"focus").c_str();
         const auto number = [&](const wchar_t* key, std::uint64_t& value) {
@@ -1104,6 +1193,32 @@ bool RichMediaSurfaceCoordinator::ValidatePageEvent(
         next.focusedActionBoundsCurrent = true;
         next.focusedElement = focus;
         next.playing = object.GetNamedBoolean(L"playing");
+        if (hasPlayback) {
+            const auto mediaKey = std::wstring(
+                std::wstring_view(object.GetNamedString(L"mediaKey")));
+            const auto playbackState = std::wstring(
+                std::wstring_view(object.GetNamedString(L"playbackState")));
+            constexpr std::array<std::wstring_view, 6> states{
+                L"loading", L"ready", L"playing", L"paused", L"ended", L"error"};
+            const double position = object.GetNamedNumber(L"positionSeconds");
+            const double duration = object.GetNamedNumber(L"durationSeconds");
+            const double volume = object.GetNamedNumber(L"volume");
+            if (!IsDocumentLocalIdentifier(mediaKey) ||
+                std::find(states.begin(), states.end(), playbackState) == states.end() ||
+                !std::isfinite(position) || !std::isfinite(duration) ||
+                !std::isfinite(volume) || position < 0.0 || duration < 0.0 ||
+                duration > 86400.0 || position > duration || volume < 0.0 || volume > 1.0)
+                return false;
+            if (object.HasKey(L"errorCode")) {
+                const auto error = std::wstring(
+                    std::wstring_view(object.GetNamedString(L"errorCode")));
+                if (!IsDocumentLocalIdentifier(error)) return false;
+            }
+            next.mediaKey = mediaKey;
+            next.positionSeconds = position;
+            next.durationSeconds = duration;
+            next.volume = volume;
+        }
         return true;
     } catch (...) {
         return false;
@@ -1242,7 +1357,8 @@ void RichMediaSurfaceCoordinator::BeginSessionTeardown() noexcept {
         !core_ && !controllerBase_ && !controller_ && !callbackLease_ &&
         retiredLeases_.empty() && frameSubscriptions_.empty() &&
         !configuration_.compositionTarget && !configuration_.diagnostic &&
-        !configuration_.invalidate && !configuration_.setPresentationVisible;
+        !configuration_.invalidate && !configuration_.playbackEvent &&
+        !configuration_.setPresentationVisible;
     sessionTeardownResult_.environmentRetained =
         environmentLifecycle_ == EnvironmentLifecycle::Ready && environment_;
     teardownBegun_ = true;

@@ -24,6 +24,7 @@ internal static class MessageTypes
     public const string Action = "action";
     public const string ControllerInput = "controller-input";
     public const string ControllerInputResult = "controller-input-result";
+    public const string EmbeddedMediaPlaybackEvent = "embedded-media-playback-event";
     public const string DashboardGestureActivationRequested = "dashboard-gesture-activation-requested";
     public const string DashboardGestureActivationResult = "dashboard-gesture-activation-result";
     public const string Acknowledged = "acknowledged";

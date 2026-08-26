@@ -292,6 +292,60 @@ public static class ViewSnapshotValidator
                     Add($"{path}.commands[{index}]", "duplicate_command",
                         "Embedded media commands must be unique.");
             }
+
+            var frameOrigins = media.AllowedFrameOrigins ?? [];
+            if (media.AllowedFrameOrigins is null)
+                Add($"{path}.allowedFrameOrigins", "required",
+                    "Embedded media frame origins cannot be null.");
+            if (frameOrigins.Count > ProtocolConstants.MaximumEmbeddedMediaFrameOriginCount)
+                Add($"{path}.allowedFrameOrigins", "too_many",
+                    $"Embedded media may declare at most {ProtocolConstants.MaximumEmbeddedMediaFrameOriginCount} frame origins.");
+            var uniqueOrigins = new HashSet<string>(StringComparer.Ordinal);
+            for (var index = 0; index < frameOrigins.Count; index++)
+            {
+                var origin = frameOrigins[index];
+                if (!Uri.TryCreate(origin, UriKind.Absolute, out var uri) ||
+                    !string.Equals(uri.Scheme, Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase) ||
+                    uri.UserInfo.Length != 0 || uri.PathAndQuery != "/" || uri.Fragment.Length != 0 ||
+                    origin.Length > ProtocolConstants.MaximumEmbeddedMediaFrameOriginLength)
+                    Add($"{path}.allowedFrameOrigins[{index}]", "invalid_origin",
+                        "Embedded media frame origins must be exact bounded HTTPS origins.");
+                else if (!uniqueOrigins.Add(origin))
+                    Add($"{path}.allowedFrameOrigins[{index}]", "duplicate_origin",
+                        "Embedded media frame origins must be unique.");
+            }
+
+            if (media.PendingCommand is { } pending)
+            {
+                if (pending.Sequence <= 0 || pending.Sequence > 9_007_199_254_740_991)
+                    Add($"{path}.pendingCommand.sequence", "out_of_range",
+                        "Embedded media command sequence must be a positive safe integer.");
+                if (!Enum.IsDefined(pending.Kind))
+                    Add($"{path}.pendingCommand.kind", "unsupported_command",
+                        "Embedded media playback command is unsupported.");
+                if (string.IsNullOrWhiteSpace(pending.MediaKey) ||
+                    pending.MediaKey.Length > ProtocolConstants.MaximumEmbeddedMediaKeyLength ||
+                    !pending.MediaKey.All(ch => char.IsAsciiLetterOrDigit(ch) ||
+                        ch is '-' or '_' or '.'))
+                    Add($"{path}.pendingCommand.mediaKey", "invalid_identifier",
+                        "Embedded media keys must be bounded public identifiers.");
+                if (pending.PositionSeconds is { } position &&
+                    (!double.IsFinite(position) || position < 0 || position > 86_400))
+                    Add($"{path}.pendingCommand.positionSeconds", "out_of_range",
+                        "Embedded media position must be finite and between 0 and 86400 seconds.");
+                if (pending.Volume is { } volume &&
+                    (!double.IsFinite(volume) || volume < 0 || volume > 1))
+                    Add($"{path}.pendingCommand.volume", "out_of_range",
+                        "Embedded media volume must be finite and between 0 and 1.");
+                if (pending.Kind == EmbeddedMediaPlaybackCommandKind.Seek &&
+                    pending.PositionSeconds is null)
+                    Add($"{path}.pendingCommand.positionSeconds", "required",
+                        "Seek requires an exact position.");
+                if (pending.Kind == EmbeddedMediaPlaybackCommandKind.SetVolume &&
+                    pending.Volume is null)
+                    Add($"{path}.pendingCommand.volume", "required",
+                        "SetVolume requires an exact volume.");
+            }
         }
 
         void ValidateSurfaceHints(WidgetSurfaceHints? surface, string path)

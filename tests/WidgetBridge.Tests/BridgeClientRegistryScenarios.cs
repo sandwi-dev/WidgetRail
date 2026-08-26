@@ -170,7 +170,7 @@ internal static class BridgeClientRegistryScenarios
             Catalog(configured),
             configure: (_, client) => client.SnapshotFactory = sequence => new ViewSnapshot
             {
-                ProtocolVersion = ProtocolConstants.EmbeddedMediaSurfaceVersion,
+                ProtocolVersion = ProtocolConstants.EmbeddedMediaPlaybackVersion,
                 Sequence = sequence,
                 WidgetInstanceId = configured.InstanceId,
                 ActiveInputScopeId = "root",
@@ -215,6 +215,30 @@ internal static class BridgeClientRegistryScenarios
             RegistryAssert.Equal(snapshot.Snapshot.Sequence, admitted.Value.Snapshot.Sequence);
         }
 
+        var playbackEvent = new EmbeddedMediaPlaybackEvent
+        {
+            SurfaceId = exact.SurfaceId,
+            Sequence = 7,
+            CommandSequence = 3,
+            MediaKey = "aurora-track",
+            State = EmbeddedMediaPlaybackState.Playing,
+            PositionSeconds = 12,
+            DurationSeconds = 60,
+            Volume = 0.8,
+        };
+        var eventRequest = new BridgeEmbeddedMediaPlaybackEventRequest(
+            exact.WidgetId,
+            exact.InstanceId,
+            exact.RuntimeGeneration,
+            exact.PresentationGeneration,
+            exact.Sequence,
+            playbackEvent);
+        await fixture.Registry.PublishEmbeddedMediaPlaybackEventAsync(
+            eventRequest, CancellationToken.None);
+        var client = fixture.Clients.Single();
+        RegistryAssert.Equal(1, client.EmbeddedMediaPlaybackEvents.Count);
+        RegistryAssert.Equal(playbackEvent, client.EmbeddedMediaPlaybackEvents.Single());
+
         await RegistryAssert.ThrowsAsync<BridgeProtocolException>(() => Task.Run(() =>
         {
             using var _ = fixture.Registry.AdmitEmbeddedMedia(
@@ -225,6 +249,18 @@ internal static class BridgeClientRegistryScenarios
             using var _ = fixture.Registry.AdmitEmbeddedMedia(
                 exact with { RuntimeGeneration = new string('f', 32) });
         }));
+        await RegistryAssert.ThrowsAsync<BridgeProtocolException>(() =>
+            fixture.Registry.PublishEmbeddedMediaPlaybackEventAsync(
+                eventRequest with { Sequence = eventRequest.Sequence + 1 },
+                CancellationToken.None));
+        await RegistryAssert.ThrowsAsync<BridgeProtocolException>(() =>
+            fixture.Registry.PublishEmbeddedMediaPlaybackEventAsync(
+                eventRequest with
+                {
+                    Event = playbackEvent with { MediaKey = "invalid key" },
+                },
+                CancellationToken.None));
+        RegistryAssert.Equal(1, client.EmbeddedMediaPlaybackEvents.Count);
     }
 
     internal static async Task CatalogReplacementAndRemovalOwnGenerations()
@@ -1388,6 +1424,7 @@ internal sealed class RegistryTestClient(
     internal List<(WidgetPresentationTransactionKind TransactionKind,
         long BaseSequence, long RecoveryOriginSequence)> PresentationRequests { get; } = [];
     internal List<ControllerInputEvent> ControllerInputs { get; } = [];
+    internal List<EmbeddedMediaPlaybackEvent> EmbeddedMediaPlaybackEvents { get; } = [];
     internal Func<long, ViewSnapshot>? SnapshotFactory { get; set; }
     public bool IsRunning => Volatile.Read(ref _running) != 0;
     public int Starts => Volatile.Read(ref _starts);
@@ -1491,6 +1528,16 @@ internal sealed class RegistryTestClient(
         EnsureStarted();
         ControllerInputs.Add(input);
         return Task.FromResult(true);
+    }
+
+    public Task SendEmbeddedMediaPlaybackEventAsync(
+        EmbeddedMediaPlaybackEvent playbackEvent,
+        CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        EnsureStarted();
+        EmbeddedMediaPlaybackEvents.Add(playbackEvent);
+        return Task.CompletedTask;
     }
 
     public Task UnloadAsync(CancellationToken cancellationToken)

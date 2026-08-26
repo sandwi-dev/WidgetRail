@@ -422,6 +422,17 @@ public sealed class WidgetBridgeServer : IAsyncDisposable
                 cancellationToken).ConfigureAwait(false);
             break;
         }
+        case BridgeMessageTypes.EmbeddedMediaPlaybackEvent:
+        {
+            var playbackRequest = BridgeJson.FromElement<BridgeEmbeddedMediaPlaybackEventRequest>(
+                request.Payload);
+            await _registry.PublishEmbeddedMediaPlaybackEventAsync(
+                playbackRequest, cancellationToken).ConfigureAwait(false);
+            await ReplyAsync(
+                BridgeMessageTypes.Acknowledged, request.RequestId, new { }, cancellationToken)
+                .ConfigureAwait(false);
+            break;
+        }
         case BridgeMessageTypes.RestartWidget:
         {
             var restartRequest = BridgeJson.FromElement<WidgetIdRequest>(request.Payload);

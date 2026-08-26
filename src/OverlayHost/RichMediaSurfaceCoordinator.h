@@ -44,6 +44,27 @@ enum class Command {
     SeekForward,
 };
 
+enum class PlaybackCommandKind { Load, Cue, Play, Pause, Seek, SetVolume };
+
+struct PlaybackCommand final {
+    std::uint64_t sequence{};
+    PlaybackCommandKind kind{};
+    std::wstring mediaKey;
+    std::optional<double> positionSeconds;
+    std::optional<double> volume;
+};
+
+struct PlaybackEvent final {
+    std::uint64_t sequence{};
+    std::uint64_t commandSequence{};
+    std::wstring mediaKey;
+    std::wstring state;
+    double positionSeconds{};
+    double durationSeconds{};
+    double volume{};
+    std::wstring errorCode;
+};
+
 struct Authority final {
     std::uint64_t environmentGeneration{};
     std::uint64_t surfaceGeneration{};
@@ -65,6 +86,10 @@ struct State final {
     Authority authority;
     bool inputEnabled{};
     bool playing{};
+    double positionSeconds{};
+    double durationSeconds{};
+    double volume{1.0};
+    std::wstring mediaKey;
     std::uint64_t lastAcknowledgedCommandId{};
     ActionBounds focusedActionBounds;
     bool focusedActionBoundsCurrent{};
@@ -110,8 +135,10 @@ struct Configuration final {
     std::wstring origin;
     std::wstring entryAsset;
     std::vector<Resource> resources;
+    std::vector<std::wstring> allowedFrameOrigins;
     std::function<void(std::wstring_view)> diagnostic;
     std::function<void()> invalidate;
+    std::function<void(const PlaybackEvent&)> playbackEvent;
     std::function<void(bool)> setPresentationVisible;
 };
 
@@ -141,6 +168,7 @@ public:
     [[nodiscard]] HRESULT CompletePresentationTransfer(
         PresentationTarget target) noexcept;
     [[nodiscard]] bool SendCommand(Command command) noexcept;
+    [[nodiscard]] bool SendPlaybackCommand(const PlaybackCommand& command) noexcept;
     [[nodiscard]] bool ForwardMouse(UINT message, WPARAM wParam, LPARAM lParam) noexcept;
     [[nodiscard]] bool ForwardKey(UINT message, WPARAM wParam, LPARAM lParam) noexcept;
     [[nodiscard]] HRESULT GetAutomationProvider(
@@ -229,6 +257,7 @@ private:
     struct PendingCommand final {
         std::uint64_t id{};
         Command command{};
+        std::uint64_t playbackSequence{};
         PendingPhase phase{PendingPhase::AwaitingEvent};
     };
     std::optional<PendingCommand> pendingCommand_;

@@ -406,6 +406,50 @@ public enum EmbeddedMediaCommand
     SeekForward,
 }
 
+public enum EmbeddedMediaPlaybackCommandKind
+{
+    Load,
+    Cue,
+    Play,
+    Pause,
+    Seek,
+    SetVolume,
+}
+
+public enum EmbeddedMediaPlaybackState
+{
+    Loading,
+    Ready,
+    Playing,
+    Paused,
+    Ended,
+    Error,
+}
+
+/// <summary>One monotonic, bounded package request for the current media surface.</summary>
+public sealed record EmbeddedMediaPlaybackCommand
+{
+    public required long Sequence { get; init; }
+    public required EmbeddedMediaPlaybackCommandKind Kind { get; init; }
+    public required string MediaKey { get; init; }
+    public double? PositionSeconds { get; init; }
+    public double? Volume { get; init; }
+}
+
+/// <summary>A validated host observation from the exact current embedded-media adapter.</summary>
+public sealed record EmbeddedMediaPlaybackEvent
+{
+    public required string SurfaceId { get; init; }
+    public required long Sequence { get; init; }
+    public required long CommandSequence { get; init; }
+    public required string MediaKey { get; init; }
+    public required EmbeddedMediaPlaybackState State { get; init; }
+    public required double PositionSeconds { get; init; }
+    public required double DurationSeconds { get; init; }
+    public required double Volume { get; init; }
+    public string? ErrorCode { get; init; }
+}
+
 public sealed record EmbeddedMediaResource
 {
     public required string Path { get; init; }
@@ -425,4 +469,6 @@ public sealed record EmbeddedMediaSurface
     public required double AspectRatio { get; init; }
     public IReadOnlyList<EmbeddedMediaResource> Resources { get; init; } = [];
     public IReadOnlyList<EmbeddedMediaCommand> Commands { get; init; } = [];
+    public IReadOnlyList<string> AllowedFrameOrigins { get; init; } = [];
+    public EmbeddedMediaPlaybackCommand? PendingCommand { get; init; }
 }

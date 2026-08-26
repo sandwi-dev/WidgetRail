@@ -540,6 +540,29 @@ public abstract partial class Widget
     }
 
     /// <summary>
+    /// Receives one validated playback observation from the exact current
+    /// host-owned embedded-media session. The runtime republishes the widget
+    /// after this callback completes.
+    /// </summary>
+    public virtual ValueTask OnEmbeddedMediaPlaybackEventAsync(
+        EmbeddedMediaPlaybackEvent playbackEvent,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(playbackEvent);
+        cancellationToken.ThrowIfCancellationRequested();
+        return ValueTask.CompletedTask;
+    }
+
+    internal async ValueTask ApplyEmbeddedMediaPlaybackEventAsync(
+        EmbeddedMediaPlaybackEvent playbackEvent,
+        CancellationToken cancellationToken)
+    {
+        await OnEmbeddedMediaPlaybackEventAsync(playbackEvent, cancellationToken)
+            .ConfigureAwait(false);
+        Invalidate();
+    }
+
+    /// <summary>
     /// Observes demand for one package-authored pinned projection. The host
     /// revokes demand with <paramref name="layoutId"/> null. This notification
     /// grants no provider, capability, focus, or window authority.

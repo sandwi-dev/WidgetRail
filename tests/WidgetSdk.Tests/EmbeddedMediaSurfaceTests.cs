@@ -1,9 +1,10 @@
 using WidgetRail.WidgetProtocol;
 using WidgetRail.WidgetSdk;
+using WidgetRail.Samples.EmbeddedMediaWidget;
 
 internal static class EmbeddedMediaSurfaceTests
 {
-    internal static Task Run()
+    internal static async Task Run()
     {
         var media = Valid("primary-media");
         var view = new WidgetView(
@@ -25,6 +26,21 @@ internal static class EmbeddedMediaSurfaceTests
         Equal("media/adapter.html", roundTrip.EmbeddedMedia?.EntryAsset);
         Equal(2, roundTrip.EmbeddedMedia?.Resources.Count);
         Equal("primary-media", roundTrip.Root.Children[1].MediaSurfaceId);
+        var playback = Valid("primary-media") with
+        {
+            AllowedFrameOrigins = ["https://media-fixture.invalid"],
+            PendingCommand = new()
+            {
+                Sequence = 7,
+                Kind = EmbeddedMediaPlaybackCommandKind.Seek,
+                MediaKey = "aurora-tone",
+                PositionSeconds = 20,
+            },
+        };
+        var playbackSnapshot = view with { EmbeddedMedia = playback };
+        var playbackWire = playbackSnapshot.CreateSnapshot("fixture.instance", 5);
+        Equal(ProtocolConstants.EmbeddedMediaPlaybackVersion, playbackWire.ProtocolVersion);
+        Equal(7L, playbackWire.EmbeddedMedia?.PendingCommand?.Sequence);
         using (var document = System.Text.Json.JsonDocument.Parse(SnapshotJson.Serialize(snapshot)))
         {
             var commands = document.RootElement.GetProperty("embeddedMedia").GetProperty("commands")
@@ -78,6 +94,25 @@ internal static class EmbeddedMediaSurfaceTests
         Error(snapshot with { ProtocolVersion = 21 }, "feature_requires_version");
         Error(snapshot with
         {
+            EmbeddedMedia = Valid("primary-media") with
+            {
+                AllowedFrameOrigins = ["http://not-secure.invalid"],
+            },
+        }, "invalid_origin");
+        Error(snapshot with
+        {
+            EmbeddedMedia = Valid("primary-media") with
+            {
+                PendingCommand = new()
+                {
+                    Sequence = 1,
+                    Kind = EmbeddedMediaPlaybackCommandKind.Seek,
+                    MediaKey = "fixture-media",
+                },
+            },
+        }, "required");
+        Error(snapshot with
+        {
             Root = snapshot.Root with
             {
                 Children = snapshot.Root.Children.Where(
@@ -108,7 +143,55 @@ internal static class EmbeddedMediaSurfaceTests
             },
         }, "media_viewport_surface_mismatch");
         Error(snapshot with { EmbeddedMedia = null }, "media_viewport_without_surface");
-        return Task.CompletedTask;
+
+        var sample = new EmbeddedMediaSampleWidget();
+        var initialSample = sample.Render();
+        Equal(null, initialSample.EmbeddedMedia?.PendingCommand);
+        Equal(0D, Find(initialSample.CreateSnapshot(
+            "embedded-media-sample.instance", 1).Root, "media-shell.progress").Value);
+
+        await sample.OnActionAsync(new WidgetActionEvent(
+            "host.embeddedMedia.togglePlayback", "media-shell.play"));
+        var playCommand = sample.Render().EmbeddedMedia?.PendingCommand;
+        Equal(EmbeddedMediaPlaybackCommandKind.Play, playCommand?.Kind);
+        Equal("aurora-tone-0", playCommand?.MediaKey);
+        await sample.OnEmbeddedMediaPlaybackEventAsync(new EmbeddedMediaPlaybackEvent
+        {
+            SurfaceId = "embedded-media-sample.primary",
+            Sequence = 1,
+            CommandSequence = playCommand!.Sequence,
+            MediaKey = playCommand.MediaKey,
+            State = EmbeddedMediaPlaybackState.Playing,
+            PositionSeconds = 7,
+            DurationSeconds = 60,
+            Volume = 1,
+        });
+        var playingSample = sample.Render();
+        Equal(null, playingSample.EmbeddedMedia?.PendingCommand);
+        Equal(7D, Find(playingSample.CreateSnapshot(
+            "embedded-media-sample.instance", 2).Root, "media-shell.progress").Value);
+
+        await sample.OnActionAsync(new WidgetActionEvent(
+            "host.embeddedMedia.seekForward", "media-shell.seek-forward"));
+        var seekCommand = sample.Render().EmbeddedMedia?.PendingCommand;
+        Equal(EmbeddedMediaPlaybackCommandKind.Seek, seekCommand?.Kind);
+        Equal(17D, seekCommand?.PositionSeconds);
+        await sample.OnEmbeddedMediaPlaybackEventAsync(new EmbeddedMediaPlaybackEvent
+        {
+            SurfaceId = "embedded-media-sample.primary",
+            Sequence = 2,
+            CommandSequence = seekCommand!.Sequence,
+            MediaKey = seekCommand.MediaKey,
+            State = EmbeddedMediaPlaybackState.Playing,
+            PositionSeconds = 17,
+            DurationSeconds = 60,
+            Volume = 1,
+        });
+        await sample.OnActionAsync(new WidgetActionEvent(
+            "host.embeddedMedia.next", "media-shell.next"));
+        var nextCommand = sample.Render().EmbeddedMedia?.PendingCommand;
+        Equal(EmbeddedMediaPlaybackCommandKind.Load, nextCommand?.Kind);
+        Equal("aurora-tone-1", nextCommand?.MediaKey);
     }
 
     private static EmbeddedMediaSurface Valid(string id) => new()
@@ -140,6 +223,28 @@ internal static class EmbeddedMediaSurfaceTests
             EmbeddedMediaCommand.SeekForward,
         ],
     };
+
+    private static ViewNode Find(ViewNode node, string id)
+    {
+        if (string.Equals(node.Id, id, StringComparison.Ordinal)) return node;
+        foreach (var child in node.Children)
+        {
+            var match = FindOrNull(child, id);
+            if (match is not null) return match;
+        }
+        throw new InvalidOperationException($"Missing node '{id}'.");
+    }
+
+    private static ViewNode? FindOrNull(ViewNode node, string id)
+    {
+        if (string.Equals(node.Id, id, StringComparison.Ordinal)) return node;
+        foreach (var child in node.Children)
+        {
+            var match = FindOrNull(child, id);
+            if (match is not null) return match;
+        }
+        return null;
+    }
 
     private static void Error(ViewSnapshot snapshot, string code)
     {

@@ -2274,6 +2274,7 @@ private:
             SUCCEEDED(richMediaSurface_.GetAutomationProvider(&provider)) && provider)
             (void)provider.As(&fragmentRoot);
         accessibilityProvider_.SetEmbeddedFragmentRoot(fragmentRoot.Get());
+        DispatchPendingEmbeddedMediaCommand();
         if (window_) InvalidateRect(window_, nullptr, FALSE);
     }
 
@@ -2288,6 +2289,7 @@ private:
         long long sequence{};
         std::wstring resourceSignature;
         std::vector<std::wstring> commands;
+        long long lastDispatchedPlaybackCommand{};
         EmbeddedMediaProjection projection{EmbeddedMediaProjection::Overlay};
     };
 
@@ -2344,6 +2346,59 @@ private:
             descriptor->presentationGeneration ==
                 embeddedMediaAuthority_->presentationGeneration &&
             snapshot->embeddedMedia->id == embeddedMediaAuthority_->surfaceId;
+    }
+
+    void OnEmbeddedMediaPlaybackEvent(
+        const widgetrail::richmedia::PlaybackEvent& event) {
+        if (!EmbeddedMediaAuthorityCurrent() || !embeddedMediaAuthority_) return;
+        const widgetrail::EmbeddedMediaPlaybackEvent published{
+            embeddedMediaAuthority_->surfaceId,
+            static_cast<long long>(event.sequence),
+            static_cast<long long>(event.commandSequence),
+            event.mediaKey, event.state, event.positionSeconds,
+            event.durationSeconds, event.volume, event.errorCode};
+        const auto accepted = bridge_.PublishEmbeddedMediaPlaybackEvent(
+            embeddedMediaAuthority_->widgetId, embeddedMediaAuthority_->instanceId,
+            embeddedMediaAuthority_->runtimeGeneration,
+            embeddedMediaAuthority_->presentationGeneration,
+            embeddedMediaAuthority_->sequence, published);
+        AppendDiagnostic(
+            L"Embedded media playback event widget=" +
+            embeddedMediaAuthority_->widgetId + L" surface=" +
+            embeddedMediaAuthority_->surfaceId + L" event=" +
+            std::to_wstring(event.sequence) + L" command=" +
+            std::to_wstring(event.commandSequence) + L" result=" +
+            (accepted.value_or(false) ? L"published" : L"rejected"));
+    }
+
+    void DispatchPendingEmbeddedMediaCommand() {
+        if (!EmbeddedMediaAuthorityCurrent() || !embeddedMediaAuthority_) return;
+        const auto* snapshot = SnapshotFor(embeddedMediaAuthority_->widgetId);
+        if (!snapshot || !snapshot->embeddedMedia ||
+            !snapshot->embeddedMedia->pendingCommand) return;
+        const auto& pending = *snapshot->embeddedMedia->pendingCommand;
+        if (pending.sequence <= embeddedMediaAuthority_->lastDispatchedPlaybackCommand)
+            return;
+        using Kind = widgetrail::richmedia::PlaybackCommandKind;
+        std::optional<Kind> kind;
+        if (pending.kind == L"load") kind = Kind::Load;
+        else if (pending.kind == L"cue") kind = Kind::Cue;
+        else if (pending.kind == L"play") kind = Kind::Play;
+        else if (pending.kind == L"pause") kind = Kind::Pause;
+        else if (pending.kind == L"seek") kind = Kind::Seek;
+        else if (pending.kind == L"setVolume") kind = Kind::SetVolume;
+        if (!kind) return;
+        const bool sent = richMediaSurface_.SendPlaybackCommand({
+            static_cast<std::uint64_t>(pending.sequence), *kind, pending.mediaKey,
+            pending.positionSeconds, pending.volume});
+        if (sent)
+            embeddedMediaAuthority_->lastDispatchedPlaybackCommand = pending.sequence;
+        AppendDiagnostic(
+            L"Embedded media playback command widget=" +
+            embeddedMediaAuthority_->widgetId + L" surface=" +
+            embeddedMediaAuthority_->surfaceId + L" sequence=" +
+            std::to_wstring(pending.sequence) + L" kind=" + pending.kind +
+            L" result=" + (sent ? L"sent" : L"deferred"));
     }
 
     [[nodiscard]] bool EmbeddedMediaPresentationVisible() const noexcept {
@@ -2568,6 +2623,18 @@ private:
             resolvedHints.minimumWidth == declaredHints.minimumWidth &&
             resolvedHints.minimumHeight == declaredHints.minimumHeight &&
             resolvedDeclaration.commands == declaration.commands &&
+            resolvedDeclaration.allowedFrameOrigins == declaration.allowedFrameOrigins &&
+            ((!resolvedDeclaration.pendingCommand && !declaration.pendingCommand) ||
+             (resolvedDeclaration.pendingCommand && declaration.pendingCommand &&
+              resolvedDeclaration.pendingCommand->sequence ==
+                  declaration.pendingCommand->sequence &&
+              resolvedDeclaration.pendingCommand->kind == declaration.pendingCommand->kind &&
+              resolvedDeclaration.pendingCommand->mediaKey ==
+                  declaration.pendingCommand->mediaKey &&
+              resolvedDeclaration.pendingCommand->positionSeconds ==
+                  declaration.pendingCommand->positionSeconds &&
+              resolvedDeclaration.pendingCommand->volume ==
+                  declaration.pendingCommand->volume)) &&
             bundle->resources.size() == declaration.resources.size() &&
             std::equal(
                 bundle->resources.begin(), bundle->resources.end(),
@@ -2592,6 +2659,8 @@ private:
             std::to_wstring(bundle->surface.aspectRatio);
         for (const auto& command : bundle->surface.commands)
             signature += L"|" + command;
+        for (const auto& origin : bundle->surface.allowedFrameOrigins)
+            signature += L"|frame:" + origin;
         if (retainedIdentityCurrent && embeddedMediaAuthority_ &&
             embeddedMediaAuthority_->resourceSignature == signature) {
             embeddedMediaAuthority_->sequence = snapshot.sequence;
@@ -2635,6 +2704,7 @@ private:
                 CompositionEndpoint(desiredProjection), *embeddedMediaClientBounds_,
                 *embeddedMediaClientClip_, EmbeddedMediaPresentationVisible(), timing);
             (void)richMediaSurface_.SetVisible(EmbeddedMediaPresentationVisible());
+            DispatchPendingEmbeddedMediaCommand();
             return;
         }
         if (embeddedMediaAuthority_) StopEmbeddedMediaSurface(L"resource-replaced");
@@ -2650,7 +2720,7 @@ private:
             std::wstring{widgetId}, snapshot.instanceId,
             descriptor->runtimeGeneration, descriptor->presentationGeneration,
             declaration.id, snapshot.sequence, signature,
-            declaration.commands, projection};
+            declaration.commands, 0, projection};
         const auto resolvedGeometry = ResolveEmbeddedMediaPresentationGeometry(
             snapshot.sequence);
         if (!resolvedGeometry) {
@@ -2718,10 +2788,15 @@ private:
             configuration.resources.push_back({
                 std::move(resource.path), std::move(resource.contentType),
                 std::move(resource.content)});
+        configuration.allowedFrameOrigins = bundle->surface.allowedFrameOrigins;
         configuration.diagnostic = [this](const std::wstring_view message) {
             AppendDiagnostic(std::wstring{message});
         };
         configuration.invalidate = [this] { OnRichMediaStateChanged(); };
+        configuration.playbackEvent = [this](
+            const widgetrail::richmedia::PlaybackEvent& event) {
+            OnEmbeddedMediaPlaybackEvent(event);
+        };
         configuration.setPresentationVisible = [this, projection, endpoint](const bool visible) {
             if (!embeddedMediaAuthority_ ||
                 embeddedMediaAuthority_->projection != projection) return;
@@ -2757,6 +2832,7 @@ private:
             L"Embedded media admitted widget=" + std::wstring{widgetId} +
             L" surface=" + declaration.id + L" sequence=" +
             std::to_wstring(snapshot.sequence));
+        DispatchPendingEmbeddedMediaCommand();
     }
 
     void ReconcileCommittedEmbeddedMediaSurface() {
@@ -3556,7 +3632,11 @@ private:
             const bool overlayOwns = state_.surface() == widgetrail::Surface::Widget &&
                 state_.activeWidget() == embeddedMediaAuthority_->widgetId;
             if (!pinnedOwns && !overlayOwns) {
-                StopEmbeddedMediaSurface(L"active-widget-changed");
+                (void)richMediaSurface_.SetVisible(false);
+                embeddedMediaClientBounds_.reset();
+                embeddedMediaClientClip_.reset();
+                AppendDiagnostic(
+                    L"Embedded media retained hidden reason=active-widget-changed");
             } else {
                 ReconcileEmbeddedMediaProjection(L"lifecycle-reconciliation");
             }
@@ -9166,22 +9246,6 @@ private:
         }
     }
 
-    [[nodiscard]] std::optional<widgetrail::richmedia::Command>
-    NativeMediaCommandForAction(const std::wstring_view actionId) const noexcept {
-        using Command = widgetrail::richmedia::Command;
-        if (actionId == L"host.embeddedMedia.togglePlayback")
-            return Command::TogglePlayback;
-        if (actionId == L"host.embeddedMedia.seekBackward")
-            return Command::SeekBackward;
-        if (actionId == L"host.embeddedMedia.seekForward")
-            return Command::SeekForward;
-        if (actionId == L"host.embeddedMedia.previous")
-            return Command::NavigatePrevious;
-        if (actionId == L"host.embeddedMedia.next")
-            return Command::NavigateNext;
-        return std::nullopt;
-    }
-
     [[nodiscard]] bool TryDispatchNativeMediaAction(
         const std::wstring_view widgetId,
         const widgetrail::WidgetSnapshot& snapshot,
@@ -9201,33 +9265,10 @@ private:
             }
             return false;
         }
-        const auto command = NativeMediaCommandForAction(node.actionId);
-        if (!command) return false;
-        std::wstring_view declared;
-        switch (*command) {
-        case widgetrail::richmedia::Command::TogglePlayback:
-            declared = L"togglePlayback"; break;
-        case widgetrail::richmedia::Command::SeekBackward:
-            declared = L"seekBackward"; break;
-        case widgetrail::richmedia::Command::SeekForward:
-            declared = L"seekForward"; break;
-        case widgetrail::richmedia::Command::NavigatePrevious:
-            declared = L"navigatePrevious"; break;
-        case widgetrail::richmedia::Command::NavigateNext:
-            declared = L"navigateNext"; break;
-        default: return false;
-        }
-        if (!EmbeddedMediaCommandSupported(declared)) return false;
-        const auto operation = *command == widgetrail::richmedia::Command::TogglePlayback &&
-                EmbeddedMediaCommandSupported(L"activate")
-            ? widgetrail::richmedia::Command::Activate
-            : *command;
-        const bool sent = richMediaSurface_.SendCommand(operation);
-        AppendDiagnostic(
-            L"Embedded media native action widget=" + std::wstring{widgetId} +
-            L" node=" + node.id + L" action=" + node.actionId +
-            L" result=" + (sent ? L"sent" : L"refused"));
-        return sent;
+        // Native media controls remain ordinary package actions. The package
+        // publishes one typed playback command in its next exact snapshot;
+        // only the host-owned current session may execute that command.
+        return false;
     }
 
     void DispatchWidgetAction(
