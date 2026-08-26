@@ -2282,6 +2282,16 @@ private:
 
     enum class EmbeddedMediaProjection { Overlay, Pinned };
 
+    struct EmbeddedMediaCommandOriginAuthority final {
+        long long snapshotSequence{};
+        long long commandSequence{};
+        std::wstring mediaKey;
+        std::wstring surfaceId;
+        std::wstring instanceId;
+        std::wstring runtimeGeneration;
+        std::wstring presentationGeneration;
+    };
+
     struct EmbeddedMediaAuthority final {
         std::wstring widgetId;
         std::wstring instanceId;
@@ -2294,6 +2304,7 @@ private:
         long long lastDispatchedPlaybackCommand{};
         EmbeddedMediaProjection projection{EmbeddedMediaProjection::Overlay};
         std::uint64_t pinnedFrameGeneration{};
+        std::optional<EmbeddedMediaCommandOriginAuthority> commandOrigin;
     };
 
     [[nodiscard]] float MediaPixelsPerDip(const HWND owner) const noexcept {
@@ -2351,26 +2362,94 @@ private:
             snapshot->embeddedMedia->id == embeddedMediaAuthority_->surfaceId;
     }
 
+    void ReconcileEmbeddedMediaCommandOrigin(
+        const widgetrail::WidgetSnapshot& snapshot) {
+        if (!embeddedMediaAuthority_ || !snapshot.embeddedMedia ||
+            snapshot.instanceId != embeddedMediaAuthority_->instanceId ||
+            snapshot.embeddedMedia->id != embeddedMediaAuthority_->surfaceId) {
+            if (embeddedMediaAuthority_) embeddedMediaAuthority_->commandOrigin.reset();
+            return;
+        }
+        const auto& pending = snapshot.embeddedMedia->pendingCommand;
+        if (!pending) {
+            embeddedMediaAuthority_->commandOrigin.reset();
+            return;
+        }
+        const auto& retained = embeddedMediaAuthority_->commandOrigin;
+        if (retained && retained->commandSequence == pending->sequence &&
+            retained->mediaKey == pending->mediaKey &&
+            retained->surfaceId == embeddedMediaAuthority_->surfaceId &&
+            retained->instanceId == embeddedMediaAuthority_->instanceId &&
+            retained->runtimeGeneration ==
+                embeddedMediaAuthority_->runtimeGeneration &&
+            retained->presentationGeneration ==
+                embeddedMediaAuthority_->presentationGeneration) {
+            return;
+        }
+        embeddedMediaAuthority_->commandOrigin =
+            EmbeddedMediaCommandOriginAuthority{
+                snapshot.sequence,
+                pending->sequence,
+                pending->mediaKey,
+                embeddedMediaAuthority_->surfaceId,
+                embeddedMediaAuthority_->instanceId,
+                embeddedMediaAuthority_->runtimeGeneration,
+                embeddedMediaAuthority_->presentationGeneration,
+            };
+    }
+
     void OnEmbeddedMediaPlaybackEvent(
         const widgetrail::richmedia::PlaybackEvent& event) {
         if (!EmbeddedMediaAuthorityCurrent() || !embeddedMediaAuthority_) return;
+        const auto* snapshot = SnapshotFor(embeddedMediaAuthority_->widgetId);
+        const long long commandSequence =
+            static_cast<long long>(event.commandSequence);
+        long long publicationSequence = embeddedMediaAuthority_->sequence;
+        if (commandSequence > 0) {
+            const auto& origin = embeddedMediaAuthority_->commandOrigin;
+            const auto* pending = snapshot && snapshot->embeddedMedia &&
+                    snapshot->embeddedMedia->pendingCommand
+                ? &*snapshot->embeddedMedia->pendingCommand
+                : nullptr;
+            if (!origin || !pending ||
+                origin->commandSequence != commandSequence ||
+                origin->mediaKey != event.mediaKey ||
+                origin->surfaceId != embeddedMediaAuthority_->surfaceId ||
+                origin->instanceId != embeddedMediaAuthority_->instanceId ||
+                origin->runtimeGeneration !=
+                    embeddedMediaAuthority_->runtimeGeneration ||
+                origin->presentationGeneration !=
+                    embeddedMediaAuthority_->presentationGeneration ||
+                pending->sequence != commandSequence ||
+                pending->mediaKey != event.mediaKey) {
+                AppendDiagnostic(
+                    L"Embedded media playback event rejected by command-origin "
+                    L"authority widget=" + embeddedMediaAuthority_->widgetId +
+                    L" surface=" + embeddedMediaAuthority_->surfaceId +
+                    L" command=" + std::to_wstring(commandSequence));
+                return;
+            }
+            publicationSequence = origin->snapshotSequence;
+        }
         const widgetrail::EmbeddedMediaPlaybackEvent published{
             embeddedMediaAuthority_->surfaceId,
             static_cast<long long>(event.sequence),
-            static_cast<long long>(event.commandSequence),
+            commandSequence,
             event.mediaKey, event.state, event.positionSeconds,
             event.durationSeconds, event.volume, event.errorCode};
         const auto accepted = bridge_.PublishEmbeddedMediaPlaybackEvent(
             embeddedMediaAuthority_->widgetId, embeddedMediaAuthority_->instanceId,
             embeddedMediaAuthority_->runtimeGeneration,
             embeddedMediaAuthority_->presentationGeneration,
-            embeddedMediaAuthority_->sequence, published);
+            publicationSequence, published);
         AppendDiagnostic(
             L"Embedded media playback event widget=" +
             embeddedMediaAuthority_->widgetId + L" surface=" +
             embeddedMediaAuthority_->surfaceId + L" event=" +
             std::to_wstring(event.sequence) + L" command=" +
-            std::to_wstring(event.commandSequence) + L" result=" +
+            std::to_wstring(event.commandSequence) + L" origin=" +
+            std::to_wstring(publicationSequence) + L" current=" +
+            std::to_wstring(embeddedMediaAuthority_->sequence) + L" result=" +
             (accepted.value_or(false) ? L"published" : L"rejected"));
     }
 
@@ -2379,6 +2458,7 @@ private:
         const auto* snapshot = SnapshotFor(embeddedMediaAuthority_->widgetId);
         if (!snapshot || !snapshot->embeddedMedia ||
             !snapshot->embeddedMedia->pendingCommand) return;
+        ReconcileEmbeddedMediaCommandOrigin(*snapshot);
         const auto& pending = *snapshot->embeddedMedia->pendingCommand;
         if (pending.sequence <= embeddedMediaAuthority_->lastDispatchedPlaybackCommand)
             return;
@@ -2701,6 +2781,7 @@ private:
             return;
         }
         const auto retainCurrentSession = [&] {
+            ReconcileEmbeddedMediaCommandOrigin(snapshot);
             embeddedMediaAuthority_->sequence = snapshot.sequence;
             embeddedMediaAuthority_->commands = declaration.commands;
             const auto desiredProjection = pinnedSurfaceCoordinator_.pinned() &&
@@ -2836,6 +2917,7 @@ private:
             declaration.id, snapshot.sequence,
             widgetrail::EmbeddedMediaResourceContract(declaration),
             declaration.commands, 0, projection};
+        ReconcileEmbeddedMediaCommandOrigin(snapshot);
         const auto resolvedGeometry = ResolveEmbeddedMediaPresentationGeometry(
             snapshot.sequence);
         if (!resolvedGeometry) {
