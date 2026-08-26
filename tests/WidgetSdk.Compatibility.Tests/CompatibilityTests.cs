@@ -42,6 +42,41 @@ public sealed class CompatibilityTests
     }
 
     [TestMethod]
+    public void ActionDiagnosticHookRemainsProtectedVirtualAndNonPublic()
+    {
+        var parameterTypes = new[]
+        {
+            typeof(WidgetActionEvent),
+            typeof(string),
+            typeof(string),
+        };
+        var method = typeof(Widget).GetMethod(
+            "OnActionDiagnostic",
+            BindingFlags.Instance | BindingFlags.NonPublic,
+            binder: null,
+            types: parameterTypes,
+            modifiers: null);
+
+        Assert.IsNotNull(method);
+        Assert.IsTrue(method.IsFamily);
+        Assert.IsFalse(method.IsPublic);
+        Assert.IsFalse(method.IsStatic);
+        Assert.IsTrue(method.IsVirtual);
+        Assert.IsFalse(method.IsFinal);
+        Assert.AreEqual(typeof(void), method.ReturnType);
+        CollectionAssert.AreEqual(
+            parameterTypes,
+            method.GetParameters().Select(parameter => parameter.ParameterType).ToArray());
+        Assert.AreSame(method, method.GetBaseDefinition());
+        Assert.IsNull(typeof(Widget).GetMethod(
+            "OnActionDiagnostic",
+            BindingFlags.Instance | BindingFlags.Public,
+            binder: null,
+            types: parameterTypes,
+            modifiers: null));
+    }
+
+    [TestMethod]
     public void DiffClassifiesCompatibleAdditionExactly()
     {
         var diff = ApiDiff.Compare(
