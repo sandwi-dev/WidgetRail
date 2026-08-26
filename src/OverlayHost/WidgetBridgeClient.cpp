@@ -690,7 +690,7 @@ WidgetNode ParseNode(const JsonObject& source) {
     if (node.kind == L"mediaViewport" &&
         !HasNoUnknownProperties(source,
             {L"id", L"kind", L"mediaSurfaceId", L"accessibilityLabel",
-             L"visibleWhen", L"styleClasses", L"children"}))
+             L"visibleWhen", L"styleClasses", L"shortcuts", L"children"}))
         throw winrt::hresult_invalid_argument(
             L"MediaViewport contains unsupported properties.");
     node.text = OptionalString(source, L"text");
@@ -868,6 +868,9 @@ WidgetNode ParseNode(const JsonObject& source) {
     }
     if (source.HasKey(L"shortcuts")) {
         const auto shortcuts = source.GetNamedArray(L"shortcuts");
+        if (node.kind == L"mediaViewport" && shortcuts.Size() != 0)
+            throw winrt::hresult_invalid_argument(
+                L"MediaViewport shortcuts must be empty.");
         node.shortcuts.reserve(shortcuts.Size());
         for (uint32_t index = 0; index < shortcuts.Size(); ++index) {
             const auto shortcut = shortcuts.GetObjectAt(index);

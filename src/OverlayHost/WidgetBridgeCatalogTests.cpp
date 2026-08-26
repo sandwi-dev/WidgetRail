@@ -416,7 +416,8 @@ void VerifyEmbeddedMediaSnapshotContract() {
             "root":{"id":"root","kind":"stack","children":[
                 {"id":"title","kind":"text","text":"Aurora fixture","children":[]},
                 {"id":"viewport","kind":"mediaViewport","mediaSurfaceId":"media",
-                 "accessibilityLabel":"Neutral media","children":[]},
+                 "accessibilityLabel":"Neutral media","styleClasses":["media-shell-viewport"],
+                 "shortcuts":[],"children":[]},
                 {"id":"controls","kind":"button","text":"Play",
                  "accessibilityLabel":"Play","actionId":"play","children":[]}
             ]}
@@ -452,7 +453,7 @@ void VerifyEmbeddedMediaSnapshotContract() {
             "root":{"id":"root","kind":"stack","children":[
                 {"id":"cedar.viewport","kind":"mediaViewport",
                  "mediaSurfaceId":"cedar-media","accessibilityLabel":"Cedar media",
-                 "children":[]}
+                 "styleClasses":["media-shell-viewport"],"shortcuts":[],"children":[]}
             ]}
         }
     })json";
@@ -471,7 +472,11 @@ void VerifyEmbeddedMediaSnapshotContract() {
              std::pair{mutate(std::string{validJson},
                  R"json("mediaSurfaceId":"cedar-media",)json",
                  R"json("mediaSurfaceId":"cedar-media","actionId":"escape",)json"),
-                 std::wstring_view{L"unsupported properties"}}}) {
+                 std::wstring_view{L"unsupported properties"}},
+             std::pair{mutate(std::string{validJson},
+                 R"json("shortcuts":[])json",
+                 R"json("shortcuts":[{"button":"a","actionId":"escape","phase":"pressed"}])json"),
+                 std::wstring_view{L"shortcuts must be empty"}}}) {
         error.clear();
         Require(!widgetrail::testing::ParseWidgetSnapshotResponse(malformed, error) &&
                     error.find(expected) != std::wstring::npos,
