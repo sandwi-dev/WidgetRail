@@ -71,6 +71,8 @@ public sealed class EmbeddedMediaSampleWidget : Widget
         cancellationToken.ThrowIfCancellationRequested();
         lock (_gate)
         {
+            if (_pendingCommand is not null)
+                return ValueTask.CompletedTask;
             EmbeddedMediaPlaybackCommandKind? kind = null;
             double? position = null;
             switch (action.ActionId)

@@ -213,9 +213,10 @@ HRESULT OverlayCompositionSurface::CommitExternalContentPresentation(
         ? externalContentVisual_ : pinnedExternalContentVisual_;
     auto& attached = endpoint == ExternalContentEndpoint::Overlay
         ? externalContentAttached_ : pinnedExternalContentAttached_;
-    auto* root = endpoint == ExternalContentEndpoint::Overlay
-        ? rootVisual_.Get() : pinnedExternalRootVisual_.Get();
-    if (!device_ || !visual || !root || bounds.right <= bounds.left ||
+    const auto coordinates = ExternalContentCoordinates(endpoint);
+    auto* parent = coordinates == ExternalContentCoordinateSpace::ContentLocal
+        ? content_.visual.Get() : pinnedExternalRootVisual_.Get();
+    if (!device_ || !visual || !parent || bounds.right <= bounds.left ||
         bounds.bottom <= bounds.top || clipBounds.right <= clipBounds.left ||
         clipBounds.bottom <= clipBounds.top) return E_INVALIDARG;
     const auto started = std::chrono::steady_clock::now();
@@ -231,12 +232,13 @@ HRESULT OverlayCompositionSurface::CommitExternalContentPresentation(
     if (SUCCEEDED(result)) result = visual->SetOffsetY(static_cast<float>(bounds.top));
     if (SUCCEEDED(result)) result = visual->SetClip(clip);
     if (SUCCEEDED(result) && visible && !attached) {
-        result = endpoint == ExternalContentEndpoint::Overlay
-            ? root->AddVisual(visual.Get(), TRUE, content_.visual.Get())
-            : root->AddVisual(visual.Get(), FALSE, nullptr);
+        result = parent->AddVisual(
+            visual.Get(),
+            coordinates == ExternalContentCoordinateSpace::ContentLocal ? TRUE : FALSE,
+            nullptr);
         if (SUCCEEDED(result)) attached = true;
     } else if (SUCCEEDED(result) && !visible && attached) {
-        result = root->RemoveVisual(visual.Get());
+        result = parent->RemoveVisual(visual.Get());
         if (SUCCEEDED(result)) attached = false;
     }
     if (SUCCEEDED(result)) result = device_->Commit();
@@ -281,11 +283,11 @@ HRESULT OverlayCompositionSurface::CommitExternalContentPresentation(
         static_cast<float>(bounds.top));
     if (SUCCEEDED(result)) result = externalContentVisual_->SetClip(clip);
     if (SUCCEEDED(result) && visible && !externalContentAttached_) {
-        result = rootVisual_->AddVisual(
-            externalContentVisual_.Get(), TRUE, content_.visual.Get());
+        result = content_.visual->AddVisual(
+            externalContentVisual_.Get(), TRUE, nullptr);
         if (SUCCEEDED(result)) externalContentAttached_ = true;
     } else if (SUCCEEDED(result) && !visible && externalContentAttached_) {
-        result = rootVisual_->RemoveVisual(externalContentVisual_.Get());
+        result = content_.visual->RemoveVisual(externalContentVisual_.Get());
         if (SUCCEEDED(result)) externalContentAttached_ = false;
     }
     if (SUCCEEDED(result)) result = device_->Commit();
@@ -307,13 +309,14 @@ HRESULT OverlayCompositionSurface::DetachExternalContentTarget(
         ? externalContentVisual_ : pinnedExternalContentVisual_;
     auto& attached = endpoint == ExternalContentEndpoint::Overlay
         ? externalContentAttached_ : pinnedExternalContentAttached_;
-    auto* root = endpoint == ExternalContentEndpoint::Overlay
-        ? rootVisual_.Get() : pinnedExternalRootVisual_.Get();
-    if (!device_ || !root) return E_UNEXPECTED;
+    const auto coordinates = ExternalContentCoordinates(endpoint);
+    auto* parent = coordinates == ExternalContentCoordinateSpace::ContentLocal
+        ? content_.visual.Get() : pinnedExternalRootVisual_.Get();
+    if (!device_ || !parent) return E_UNEXPECTED;
     if (!visual) return S_FALSE;
     const auto started = std::chrono::steady_clock::now();
     HRESULT result = S_OK;
-    if (attached) result = root->RemoveVisual(visual.Get());
+    if (attached) result = parent->RemoveVisual(visual.Get());
     if (SUCCEEDED(result)) result = device_->Commit();
     if (SUCCEEDED(result)) {
         result = device_->WaitForCommitCompletion();

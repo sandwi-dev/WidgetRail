@@ -4034,50 +4034,113 @@ static async Task BuiltEmbeddedMediaSampleCompletesPlaybackLoop()
                 Convert.FromBase64String(resource.ContentBase64).Length > 0),
             "Built sample did not resolve its exact sealed adapter bytes.");
 
-        _ = await client.RequestAsync(
-            BridgeMessageTypes.Action,
-            new BridgeActionRequest(descriptor.Id, new WidgetActionEvent(
-                "host.embeddedMedia.togglePlayback", "media-shell.play")));
-        _ = await client.ReadEventAsync(BridgeMessageTypes.Invalidation);
-        var play = await SampleSnapshotAsync(client, descriptor.Id);
-        var playCommand = play.EmbeddedMedia?.PendingCommand
-            ?? throw new InvalidOperationException("Play did not publish a typed command.");
+        var eventSequence = 0L;
+        async Task<(ViewSnapshot Snapshot, EmbeddedMediaPlaybackCommand Command)>
+            CommandAsync(string actionId, string sourceElementId)
+        {
+            _ = await client.RequestAsync(
+                BridgeMessageTypes.Action,
+                new BridgeActionRequest(descriptor.Id, new WidgetActionEvent(
+                    actionId, sourceElementId)));
+            _ = await client.ReadEventAsync(BridgeMessageTypes.Invalidation);
+            var snapshot = await SampleSnapshotAsync(client, descriptor.Id);
+            var command = snapshot.EmbeddedMedia?.PendingCommand
+                ?? throw new InvalidOperationException(
+                    $"{actionId} did not publish a typed command.");
+            return (snapshot, command);
+        }
+
+        async Task<ViewSnapshot> AcknowledgeAsync(
+            ViewSnapshot snapshot,
+            EmbeddedMediaPlaybackCommand command,
+            EmbeddedMediaPlaybackState state,
+            double position)
+        {
+            var response = await client.RequestAsync(
+                BridgeMessageTypes.EmbeddedMediaPlaybackEvent,
+                new BridgeEmbeddedMediaPlaybackEventRequest(
+                    descriptor.Id, snapshot.WidgetInstanceId,
+                    descriptor.RuntimeGeneration, descriptor.PresentationGeneration,
+                    snapshot.Sequence,
+                    new EmbeddedMediaPlaybackEvent
+                    {
+                        SurfaceId = snapshot.EmbeddedMedia!.Id,
+                        Sequence = ++eventSequence,
+                        CommandSequence = command.Sequence,
+                        MediaKey = command.MediaKey,
+                        State = state,
+                        PositionSeconds = position,
+                        DurationSeconds = 60,
+                        Volume = 0.8,
+                    }));
+            Assert.Equal(BridgeMessageTypes.Acknowledged, response.Type);
+            _ = await client.ReadEventAsync(BridgeMessageTypes.Invalidation);
+            var acknowledged = await SampleSnapshotAsync(client, descriptor.Id);
+            Assert.Equal<EmbeddedMediaPlaybackCommand?>(
+                null, acknowledged.EmbeddedMedia?.PendingCommand);
+            return acknowledged;
+        }
+
+        var (play, playCommand) = await CommandAsync(
+            "host.embeddedMedia.togglePlayback", "media-shell.play");
         Assert.Equal(ProtocolConstants.EmbeddedMediaPlaybackVersion, play.ProtocolVersion);
         Assert.Equal(EmbeddedMediaPlaybackCommandKind.Play, playCommand.Kind);
-
-        _ = await client.RequestAsync(
-            BridgeMessageTypes.EmbeddedMediaPlaybackEvent,
-            new BridgeEmbeddedMediaPlaybackEventRequest(
-                descriptor.Id, play.WidgetInstanceId,
-                descriptor.RuntimeGeneration, descriptor.PresentationGeneration,
-                play.Sequence,
-                new EmbeddedMediaPlaybackEvent
-                {
-                    SurfaceId = play.EmbeddedMedia!.Id,
-                    Sequence = 1,
-                    CommandSequence = playCommand.Sequence,
-                    MediaKey = playCommand.MediaKey,
-                    State = EmbeddedMediaPlaybackState.Playing,
-                    PositionSeconds = 8,
-                    DurationSeconds = 60,
-                    Volume = 1,
-                }));
-        _ = await client.ReadEventAsync(BridgeMessageTypes.Invalidation);
-        var playing = await SampleSnapshotAsync(client, descriptor.Id);
-        Assert.Equal<EmbeddedMediaPlaybackCommand?>(
-            null, playing.EmbeddedMedia?.PendingCommand);
+        var playing = await AcknowledgeAsync(
+            play, playCommand, EmbeddedMediaPlaybackState.Playing, 8);
         Assert.Equal(8D, Flatten(playing.Root).Single(
             node => node.Id == "media-shell.progress").Value);
 
-        _ = await client.RequestAsync(
-            BridgeMessageTypes.Action,
-            new BridgeActionRequest(descriptor.Id, new WidgetActionEvent(
-                "host.embeddedMedia.seekForward", "media-shell.seek-forward")));
-        _ = await client.ReadEventAsync(BridgeMessageTypes.Invalidation);
-        var seek = await SampleSnapshotAsync(client, descriptor.Id);
-        Assert.Equal(EmbeddedMediaPlaybackCommandKind.Seek,
-            seek.EmbeddedMedia?.PendingCommand?.Kind);
-        Assert.Equal(18D, seek.EmbeddedMedia?.PendingCommand?.PositionSeconds);
+        var (pause, pauseCommand) = await CommandAsync(
+            "host.embeddedMedia.togglePlayback", "media-shell.play");
+        Assert.Equal(EmbeddedMediaPlaybackCommandKind.Pause, pauseCommand.Kind);
+        _ = await AcknowledgeAsync(
+            pause, pauseCommand, EmbeddedMediaPlaybackState.Paused, 8);
+
+        var (resume, resumeCommand) = await CommandAsync(
+            "host.embeddedMedia.togglePlayback", "media-shell.play");
+        Assert.Equal(EmbeddedMediaPlaybackCommandKind.Play, resumeCommand.Kind);
+        _ = await AcknowledgeAsync(
+            resume, resumeCommand, EmbeddedMediaPlaybackState.Playing, 8);
+
+        var (seekForward, seekForwardCommand) = await CommandAsync(
+            "host.embeddedMedia.seekForward", "media-shell.seek-forward");
+        Assert.Equal(EmbeddedMediaPlaybackCommandKind.Seek, seekForwardCommand.Kind);
+        Assert.Equal(18D, seekForwardCommand.PositionSeconds);
+        _ = await AcknowledgeAsync(
+            seekForward, seekForwardCommand, EmbeddedMediaPlaybackState.Playing, 18);
+
+        var (next, nextCommand) = await CommandAsync(
+            "host.embeddedMedia.next", "media-shell.next");
+        Assert.Equal(EmbeddedMediaPlaybackCommandKind.Load, nextCommand.Kind);
+        Assert.True(!string.Equals(
+            playCommand.MediaKey, nextCommand.MediaKey, StringComparison.Ordinal),
+            "Next did not publish a distinct provider-neutral media key.");
+        var nextReady = await AcknowledgeAsync(
+            next, nextCommand, EmbeddedMediaPlaybackState.Ready, 0);
+        Assert.True(Flatten(nextReady.Root).Single(
+            node => node.Id == "media-shell.title").Text!.Contains(
+                "Aurora Signal 2", StringComparison.Ordinal),
+            "Next acknowledgement did not project the current native scene title.");
+
+        var (previous, previousCommand) = await CommandAsync(
+            "host.embeddedMedia.previous", "media-shell.previous");
+        Assert.Equal(EmbeddedMediaPlaybackCommandKind.Load, previousCommand.Kind);
+        Assert.Equal(playCommand.MediaKey, previousCommand.MediaKey);
+        _ = await AcknowledgeAsync(
+            previous, previousCommand, EmbeddedMediaPlaybackState.Ready, 0);
+
+        var (finalSeek, finalSeekCommand) = await CommandAsync(
+            "host.embeddedMedia.seekForward", "media-shell.seek-forward");
+        Assert.Equal(EmbeddedMediaPlaybackCommandKind.Seek, finalSeekCommand.Kind);
+        Assert.True(finalSeekCommand.Sequence > previousCommand.Sequence &&
+            previousCommand.Sequence > nextCommand.Sequence &&
+            nextCommand.Sequence > seekForwardCommand.Sequence &&
+            seekForwardCommand.Sequence > resumeCommand.Sequence &&
+            resumeCommand.Sequence > pauseCommand.Sequence &&
+            pauseCommand.Sequence > playCommand.Sequence,
+            "Typed playback command correlation did not advance monotonically.");
+        _ = await AcknowledgeAsync(
+            finalSeek, finalSeekCommand, EmbeddedMediaPlaybackState.Paused, 10);
     }
     finally
     {

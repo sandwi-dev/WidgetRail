@@ -6,6 +6,26 @@
 
 namespace widgetrail {
 
+struct EmbeddedMediaPresentationRetention final {
+    bool identityCurrent{};
+    bool resourceContractCurrent{};
+    bool projectionCurrent{};
+    bool geometryCurrent{};
+    long long committedSequence{};
+    long long successorSequence{};
+};
+
+// A compatible successor may keep showing the last committed media plane while
+// its native shell renders. Geometry-changing notifications revoke the stored
+// bounds before reaching this decision, and genuine resource/owner changes are
+// excluded explicitly.
+[[nodiscard]] constexpr bool RetainEmbeddedMediaPresentation(
+    const EmbeddedMediaPresentationRetention& state) noexcept {
+    return state.identityCurrent && state.resourceContractCurrent &&
+        state.projectionCurrent && state.geometryCurrent &&
+        state.successorSequence > state.committedSequence;
+}
+
 // Pending playback commands are presentation state. They must not force the
 // sealed adapter bundle or its controller session to be resolved again.
 [[nodiscard]] inline bool SameEmbeddedMediaResourceContract(

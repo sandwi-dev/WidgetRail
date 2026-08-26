@@ -74,6 +74,7 @@ PlanCompositionUpdateRasterMapping(
 class OverlayCompositionSurface final {
 public:
     enum class ExternalContentEndpoint { Overlay, Pinned };
+    enum class ExternalContentCoordinateSpace { ContentLocal, EndpointLocal };
     enum class Layer {
         Content,
         Guide,
@@ -142,6 +143,16 @@ public:
     [[nodiscard]] static constexpr bool FrameOwnsVisualOffset(
         const Frame& frame) noexcept {
         return frame.layer == Layer::Content;
+    }
+
+    // MediaViewport geometry is emitted in the owning renderer's local space.
+    // Overlay media must therefore inherit the content visual's presentation
+    // transform; the separately targeted pinned endpoint is already local.
+    [[nodiscard]] static constexpr ExternalContentCoordinateSpace
+    ExternalContentCoordinates(const ExternalContentEndpoint endpoint) noexcept {
+        return endpoint == ExternalContentEndpoint::Overlay
+            ? ExternalContentCoordinateSpace::ContentLocal
+            : ExternalContentCoordinateSpace::EndpointLocal;
     }
 
     HRESULT BeginFrame(unsigned int width, unsigned int height, Frame& frame) noexcept;

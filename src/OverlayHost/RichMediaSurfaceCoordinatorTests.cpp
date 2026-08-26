@@ -14,6 +14,7 @@
 #include <filesystem>
 #include <fstream>
 #include <iostream>
+#include <iterator>
 #include <memory>
 #include <numeric>
 #include <stdexcept>
@@ -144,14 +145,16 @@ class Fixture final {
 public:
     Fixture(const unsigned int ordinal, const bool visible,
             std::filesystem::path profileRoot = {},
-            std::wstring adapterIdentity = {})
+            std::wstring adapterIdentity = {},
+            std::vector<std::uint8_t> adapterBytes = {})
         : profileRoot_(profileRoot.empty()
               ? std::filesystem::temp_directory_path() /
                     (L"wrail-rich-media-proof-root-" +
                      std::to_wstring(GetCurrentProcessId()) + L"-" +
                      std::to_wstring(ordinal))
               : std::move(profileRoot)),
-          adapterIdentity_(std::move(adapterIdentity)) {
+          adapterIdentity_(std::move(adapterIdentity)),
+          adapterBytes_(std::move(adapterBytes)) {
         WNDCLASSW windowClass{};
         windowClass.hInstance = GetModuleHandleW(nullptr);
         windowClass.lpfnWndProc = WindowProc;
@@ -245,6 +248,9 @@ public:
     bool finalDetachSucceededAndWaited() const {
         return detachWaited_;
     }
+    const std::vector<widgetrail::richmedia::PlaybackEvent>& playbackEvents() const {
+        return playbackEvents_;
+    }
 
 private:
     widgetrail::richmedia::Configuration ConfigurationFor(
@@ -256,7 +262,12 @@ private:
         configuration.rasterScale = 1.0;
         configuration.initiallyVisible = visible;
         configuration.profileRootDirectory = profileRoot_.wstring();
-        if (!adapterIdentity_.empty()) {
+        if (!adapterBytes_.empty()) {
+            configuration.origin = L"https://wrail-media-local-sample.invalid";
+            configuration.entryAsset = L"payload/media/adapter.html";
+            configuration.resources.push_back({
+                configuration.entryAsset, L"text/html", adapterBytes_});
+        } else if (!adapterIdentity_.empty()) {
             configuration.origin =
                 L"https://wrail-media-" + adapterIdentity_ + L".invalid";
             configuration.entryAsset = L"adapter/index.html";
@@ -279,6 +290,10 @@ chrome.webview.addEventListener('message',e=>{const m=e.data;if(m.command==='ini
             diagnostics_.emplace_back(message);
             std::wcout << L"diagnostic " << message << L'\n' << std::flush;
         };
+        configuration.playbackEvent = [this](
+                const widgetrail::richmedia::PlaybackEvent& event) {
+            playbackEvents_.push_back(event);
+        };
         configuration.setPresentationVisible = [this](const bool shown) {
             presentationVisible_ = shown;
             widgetrail::OverlayCompositionSurface::CommitTiming timing;
@@ -294,12 +309,14 @@ chrome.webview.addEventListener('message',e=>{const m=e.data;if(m.command==='ini
     widgetrail::richmedia::RichMediaSurfaceCoordinator coordinator_;
     std::filesystem::path profileRoot_;
     std::wstring adapterIdentity_;
+    std::vector<std::uint8_t> adapterBytes_;
     bool sessionOpen_{};
     bool presentationVisible_{};
     bool presentationCommitFailed_{};
     bool releasedBeforeDetach_{};
     bool detachWaited_{};
     std::vector<std::wstring> diagnostics_;
+    std::vector<widgetrail::richmedia::PlaybackEvent> playbackEvents_;
 };
 
 void RunContractCases() {
@@ -354,6 +371,26 @@ void RunContractCases() {
             admittedContract, replacementSurface)) ++controllerAdmissions;
     Require(controllerAdmissions == 2,
             "compatible updates or genuine replacement produced wrong controller count");
+    Require(widgetrail::RetainEmbeddedMediaPresentation({
+                true, true, true, true, 7, 8}) &&
+            !widgetrail::RetainEmbeddedMediaPresentation({
+                true, false, true, true, 7, 8}) &&
+            !widgetrail::RetainEmbeddedMediaPresentation({
+                true, true, false, true, 7, 8}) &&
+            !widgetrail::RetainEmbeddedMediaPresentation({
+                true, true, true, false, 7, 8}) &&
+            !widgetrail::RetainEmbeddedMediaPresentation({
+                true, true, true, true, 7, 7}),
+            "compatible successor plane retention crossed an authority boundary");
+    Require(widgetrail::OverlayCompositionSurface::ExternalContentCoordinates(
+                widgetrail::OverlayCompositionSurface::ExternalContentEndpoint::Overlay) ==
+                widgetrail::OverlayCompositionSurface::ExternalContentCoordinateSpace::
+                    ContentLocal &&
+            widgetrail::OverlayCompositionSurface::ExternalContentCoordinates(
+                widgetrail::OverlayCompositionSurface::ExternalContentEndpoint::Pinned) ==
+                widgetrail::OverlayCompositionSurface::ExternalContentCoordinateSpace::
+                    EndpointLocal,
+            "external media endpoint lost renderer-local coordinate ownership");
     State state;
     state.authority = {2, 3, 7, 11, 13, 3};
     State next = state;
@@ -514,7 +551,7 @@ void RunContractCases() {
                 activationPoint) &&
                 activationPoint.x == 160 && activationPoint.y == 70,
             "1.5x DPI client-space activation point was raster-scaled");
-    std::cout << "RichMediaSurfaceCoordinator contract cases passed=25\n";
+    std::cout << "RichMediaSurfaceCoordinator contract cases passed=27\n";
 }
 
 struct ProcessSample final {
@@ -931,7 +968,68 @@ void RunProviderNeutralAdapterCases() {
                 sourceAuthority.controllerGeneration &&
             destinationAuthority.documentGeneration > sourceAuthority.documentGeneration,
             "widget replacement did not change only document/controller/session authority");
-    std::cout << "RichMedia provider-neutral adapter cases passed=3\n";
+
+    wchar_t modulePath[MAX_PATH]{};
+    Require(GetModuleFileNameW(nullptr, modulePath, MAX_PATH) != 0,
+            "sample adapter test could not resolve its executable path");
+    const auto samplePath = std::filesystem::path{modulePath}.parent_path() /
+        L"runtime" / L"EmbeddedMediaSample" / L"payload" / L"media" /
+        L"adapter.html";
+    std::ifstream sampleStream(samplePath, std::ios::binary);
+    Require(sampleStream.good(), "built sample adapter was unavailable");
+    const std::vector<std::uint8_t> sampleBytes(
+        std::istreambuf_iterator<char>{sampleStream},
+        std::istreambuf_iterator<char>{});
+    Require(!sampleBytes.empty(), "built sample adapter was empty");
+    Fixture sample(ordinal++, true, {}, {}, sampleBytes);
+    RequireReady(sample, "built sample adapter did not become ready", L"media-plane");
+    auto requirePlayback = [&](const std::uint64_t sequence,
+                               const std::wstring_view expectedKey,
+                               const std::wstring_view expectedState) {
+        Require(PumpUntil([&] {
+            return std::any_of(
+                sample.playbackEvents().begin(), sample.playbackEvents().end(),
+                [&](const PlaybackEvent& event) {
+                    return event.commandSequence == sequence;
+                });
+        }, 5s), "built sample did not acknowledge a typed playback command");
+        const auto found = std::find_if(
+            sample.playbackEvents().begin(), sample.playbackEvents().end(),
+            [&](const PlaybackEvent& event) {
+                return event.commandSequence == sequence;
+            });
+        Require(found != sample.playbackEvents().end() &&
+                    found->mediaKey == expectedKey &&
+                    found->state == expectedState && found->errorCode.empty() &&
+                    found->volume > 0.0 && found->volume <= 1.0,
+                "built sample acknowledged playback with false or muted state");
+    };
+    const auto sendPlayback = [&](const std::uint64_t sequence,
+                                  const PlaybackCommandKind kind,
+                                  const std::wstring_view key,
+                                  const std::optional<double> position = std::nullopt) {
+        Require(sample.coordinator().SendPlaybackCommand({
+                    sequence, kind, std::wstring{key}, position, std::nullopt}),
+                "built sample rejected a consecutive typed playback command");
+    };
+    sendPlayback(1, PlaybackCommandKind::Play, L"aurora-tone-0");
+    requirePlayback(1, L"aurora-tone-0", L"playing");
+    sendPlayback(2, PlaybackCommandKind::Pause, L"aurora-tone-0");
+    requirePlayback(2, L"aurora-tone-0", L"paused");
+    sendPlayback(3, PlaybackCommandKind::Play, L"aurora-tone-0");
+    requirePlayback(3, L"aurora-tone-0", L"playing");
+    sendPlayback(4, PlaybackCommandKind::Seek, L"aurora-tone-0", 12.0);
+    requirePlayback(4, L"aurora-tone-0", L"playing");
+    sendPlayback(5, PlaybackCommandKind::Load, L"aurora-tone-1");
+    requirePlayback(5, L"aurora-tone-1", L"ready");
+    sendPlayback(6, PlaybackCommandKind::Load, L"aurora-tone-0");
+    requirePlayback(6, L"aurora-tone-0", L"ready");
+    sendPlayback(7, PlaybackCommandKind::Seek, L"aurora-tone-0", 10.0);
+    requirePlayback(7, L"aurora-tone-0", L"paused");
+    Require(sample.coordinator().state().lifecycle == Lifecycle::Visible &&
+                sample.presentationVisible() && !sample.presentationCommitFailed(),
+            "compatible playback updates replaced or hid the media controller");
+    std::cout << "RichMedia provider-neutral adapter cases passed=4\n";
 }
 
 void RunLifecycleAndPerformance() {

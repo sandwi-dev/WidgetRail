@@ -2599,6 +2599,40 @@ private:
             committedWidgetVisualState_->snapshotSequence == snapshot.sequence &&
             lastWidgetRenderResult_.succeeded;
         if (!layoutCurrent) {
+            const auto desiredProjection = pinnedSurfaceCoordinator_.pinned() &&
+                    pinnedSurfaceCoordinator_.widgetId() == widgetId
+                ? EmbeddedMediaProjection::Pinned
+                : EmbeddedMediaProjection::Overlay;
+            const bool projectionCurrent = embeddedMediaAuthority_ &&
+                embeddedMediaAuthority_->projection == desiredProjection &&
+                ((desiredProjection == EmbeddedMediaProjection::Pinned &&
+                  pinnedSurfaceCoordinator_.pinned() &&
+                  pinnedSurfaceCoordinator_.widgetId() == widgetId) ||
+                 (desiredProjection == EmbeddedMediaProjection::Overlay &&
+                  state_.surface() == widgetrail::Surface::Widget &&
+                  state_.activeWidget() == widgetId));
+            const bool resourceContractCurrent = embeddedMediaAuthority_ &&
+                widgetrail::SameEmbeddedMediaResourceContract(
+                    embeddedMediaAuthority_->resourceContract, declaration);
+            const bool retainCommittedPlane = embeddedMediaAuthority_ &&
+                widgetrail::RetainEmbeddedMediaPresentation({
+                    retainedIdentityCurrent,
+                    resourceContractCurrent,
+                    projectionCurrent,
+                    embeddedMediaClientBounds_.has_value() &&
+                        embeddedMediaClientClip_.has_value(),
+                    embeddedMediaAuthority_->sequence,
+                    snapshot.sequence,
+                });
+            if (retainCommittedPlane) {
+                AppendDiagnostic(
+                    L"Embedded media retained during compatible render widget=" +
+                    std::wstring{widgetId} + L" surface=" + declaration.id +
+                    L" committed-sequence=" +
+                    std::to_wstring(embeddedMediaAuthority_->sequence) +
+                    L" successor-sequence=" + std::to_wstring(snapshot.sequence));
+                return;
+            }
             if (retainedIdentityCurrent) (void)richMediaSurface_.SetVisible(false);
             embeddedMediaClientBounds_.reset();
             embeddedMediaClientClip_.reset();
@@ -2642,6 +2676,18 @@ private:
                 CompositionEndpoint(desiredProjection), *embeddedMediaClientBounds_,
                 *embeddedMediaClientClip_, EmbeddedMediaPresentationVisible(), timing);
             (void)richMediaSurface_.SetVisible(EmbeddedMediaPresentationVisible());
+            AppendDiagnostic(
+                L"Embedded media geometry committed widget=" + std::wstring{widgetId} +
+                L" surface=" + declaration.id + L" sequence=" +
+                std::to_wstring(snapshot.sequence) + L" local-bounds=" +
+                std::to_wstring(embeddedMediaClientBounds_->left) + L"," +
+                std::to_wstring(embeddedMediaClientBounds_->top) + L"," +
+                std::to_wstring(embeddedMediaClientBounds_->right) + L"," +
+                std::to_wstring(embeddedMediaClientBounds_->bottom) + L" local-clip=" +
+                std::to_wstring(embeddedMediaClientClip_->left) + L"," +
+                std::to_wstring(embeddedMediaClientClip_->top) + L"," +
+                std::to_wstring(embeddedMediaClientClip_->right) + L"," +
+                std::to_wstring(embeddedMediaClientClip_->bottom));
             DispatchPendingEmbeddedMediaCommand();
         };
         if (retainedIdentityCurrent && embeddedMediaAuthority_ &&
