@@ -14,6 +14,7 @@
 #include <wrl/client.h>
 
 #include <cstddef>
+#include <cstdint>
 #include <filesystem>
 #include <functional>
 #include <memory>
@@ -69,6 +70,11 @@ struct PinnedLayoutSelectionNotification final {
     long long snapshotSequence{};
     std::wstring layoutId;
     bool selected{};
+};
+
+struct CommittedMediaViewportPresentation final {
+    RenderMediaViewportRegion region;
+    std::uint64_t frameGeneration{};
 };
 
 struct WidgetSurfaceAdmission final {
@@ -199,7 +205,7 @@ public:
     [[nodiscard]] std::wstring_view focusedElementId() const noexcept {
         return focusedElementId_;
     }
-    [[nodiscard]] std::optional<RenderMediaViewportRegion>
+    [[nodiscard]] std::optional<CommittedMediaViewportPresentation>
         CurrentMediaViewport(std::wstring_view surfaceId) const noexcept;
     [[nodiscard]] WidgetSurfacePresentationState presentationState() const noexcept;
     [[nodiscard]] PlacementMode placementMode() const noexcept {
@@ -282,6 +288,9 @@ private:
     unsigned int opacityPercent_{100};
     std::optional<unsigned int> opacityPreviewOriginal_;
     RenderResult lastRenderResult_;
+    std::optional<CommittedMediaViewportPresentation> committedMediaViewport_;
+    std::uint64_t nextCommittedFrameGeneration_{1};
+    bool mediaViewportGeometryDirty_{true};
     std::wstring focusedElementId_;
     input::FreeScrollInteractionState freeScroll_;
     std::vector<WidgetSurfaceInputRequest> inputRequests_;

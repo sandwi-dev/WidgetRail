@@ -1,5 +1,7 @@
 #include "WidgetSurfaceCoordinator.h"
 
+#include "EmbeddedMediaResourceContract.h"
+
 #include "AccessibilityTree.h"
 #include "FocusNavigation.h"
 #include "WidgetSurfaceFocus.h"
@@ -220,6 +222,11 @@ bool WidgetSurfaceCoordinator::UpdateSnapshot(
         return false;
     }
     const std::wstring priorLayoutId{SelectedLayoutId()};
+    const std::optional<widgetrail::EmbeddedMediaSurfaceDeclaration>
+        priorMediaContract = SelectedSnapshot().embeddedMedia
+            ? std::optional{widgetrail::EmbeddedMediaResourceContract(
+                  *SelectedSnapshot().embeddedMedia)}
+            : std::nullopt;
     admission_->snapshot = snapshot;
     admission_->pinnedLayouts = std::move(layouts);
     std::vector<PinnedLayoutOption> nextLayouts;
@@ -256,6 +263,16 @@ bool WidgetSurfaceCoordinator::UpdateSnapshot(
     const auto decision = freeScroll_.Evaluate(authority, focusedElementId_);
     const auto& binding = freeScroll_.binding();
     const bool selectedLayoutReplaced = priorLayoutId != SelectedLayoutId();
+    const std::optional<widgetrail::EmbeddedMediaSurfaceDeclaration>
+        nextMediaContract = selectedSnapshot.embeddedMedia
+            ? std::optional{widgetrail::EmbeddedMediaResourceContract(
+                  *selectedSnapshot.embeddedMedia)}
+            : std::nullopt;
+    const bool mediaContractReplaced =
+        priorMediaContract.has_value() != nextMediaContract.has_value() ||
+        (priorMediaContract && nextMediaContract &&
+         !widgetrail::SameEmbeddedMediaResourceContract(
+             *priorMediaContract, *nextMediaContract));
     const bool preserveFreeScrollBinding = binding &&
         !selectedLayoutReplaced && priorFocus == focusedElementId_ &&
         decision.disposition == input::FreeScrollAuthorityDisposition::Current &&
@@ -268,6 +285,8 @@ bool WidgetSurfaceCoordinator::UpdateSnapshot(
     if (selectedLayoutReplaced) {
         if (renderer_) renderer_->ForgetWidgetState(admission_->instanceId);
     }
+    if (selectedLayoutReplaced || mediaContractReplaced)
+        mediaViewportGeometryDirty_ = true;
     if (window_) InvalidateRect(window_, nullptr, FALSE);
     return true;
 }
@@ -649,6 +668,7 @@ bool WidgetSurfaceCoordinator::CycleLayout(const int delta) {
     selectedLayoutIndex_ = static_cast<std::size_t>((current + delta % count + count) % count);
     const auto& layout = layoutOptions_[selectedLayoutIndex_];
     if (priorId != layout.id) {
+        mediaViewportGeometryDirty_ = true;
         ClearFreeScroll();
         QueueLayoutSelection(priorId, false);
         QueueLayoutSelection(layout.id, true);
@@ -737,6 +757,7 @@ std::optional<MonitorWorkArea> WidgetSurfaceCoordinator::CurrentWindowMonitor() 
 void WidgetSurfaceCoordinator::ApplyPlacementBounds(
     const PhysicalRect& bounds) noexcept {
     if (!window_) return;
+    mediaViewportGeometryDirty_ = true;
     SetWindowPos(
         window_, HWND_TOPMOST, bounds.left, bounds.top,
         bounds.right - bounds.left, bounds.bottom - bounds.top,
@@ -1011,6 +1032,8 @@ bool WidgetSurfaceCoordinator::Unpin(const WidgetSurfaceStopReason reason) noexc
     committedPlacement_.reset();
     focusedElementId_.clear();
     lastRenderResult_ = {};
+    committedMediaViewport_.reset();
+    mediaViewportGeometryDirty_ = true;
     policy_.Stop(reason == WidgetSurfaceStopReason::HostExit ||
                          reason == WidgetSurfaceStopReason::CoordinatorDisposed
                      ? StopReason::HostExit
@@ -1085,18 +1108,17 @@ std::wstring_view WidgetSurfaceCoordinator::runtimeGeneration() const noexcept {
     return admission_ ? std::wstring_view{admission_->runtimeGeneration} : std::wstring_view{};
 }
 
-std::optional<RenderMediaViewportRegion>
+std::optional<CommittedMediaViewportPresentation>
 WidgetSurfaceCoordinator::CurrentMediaViewport(
     const std::wstring_view surfaceId) const noexcept {
-    if (!pinned() || !lastRenderResult_.succeeded ||
-        lastRenderResult_.mediaViewportRegions.size() != 1)
+    if (!pinned() || !committedMediaViewport_)
         return std::nullopt;
-    const auto& region = lastRenderResult_.mediaViewportRegions.front();
+    const auto& region = committedMediaViewport_->region;
     if (region.mediaSurfaceId != surfaceId) return std::nullopt;
     const auto& snapshot = SelectedSnapshot();
     if (!snapshot.embeddedMedia || snapshot.embeddedMedia->id != surfaceId)
         return std::nullopt;
-    return region;
+    return committedMediaViewport_;
 }
 
 InteractionMode WidgetSurfaceCoordinator::interactionMode() const noexcept {
@@ -1336,6 +1358,7 @@ LRESULT WidgetSurfaceCoordinator::HandleMessage(
         else if (wParam == 'U') (void)Unpin(WidgetSurfaceStopReason::Unpin);
         return 0;
     case WM_DPICHANGED:
+        mediaViewportGeometryDirty_ = true;
         ReleaseGraphicsResources();
         ReconcileDisplayEnvironment();
         return 0;
@@ -1344,6 +1367,7 @@ LRESULT WidgetSurfaceCoordinator::HandleMessage(
         ReconcileDisplayEnvironment();
         return 0;
     case WM_SIZE:
+        if (wParam != SIZE_MINIMIZED) mediaViewportGeometryDirty_ = true;
         if (renderTarget_ && wParam != SIZE_MINIMIZED) {
             renderTarget_->Resize(D2D1::SizeU(LOWORD(lParam), HIWORD(lParam)));
             if (renderer_) renderer_->DiscardTargetResources();
@@ -1618,7 +1642,7 @@ void WidgetSurfaceCoordinator::Paint() {
         std::max(1.0F, widthDip - kSideInsetDip * 2.0F),
         std::max(1.0F, heightDip - kChromeHeightDip - kBottomInsetDip),
     };
-    lastRenderResult_ = renderer_->Render(
+    auto renderResult = renderer_->Render(
         renderTarget_.Get(), selectedSnapshot,
         controllerFocused_
             ? std::wstring_view{focusedElementId_}
@@ -1626,7 +1650,7 @@ void WidgetSurfaceCoordinator::Paint() {
         viewport, options);
     if (options.suppressFocusedDescendantFollow &&
         !input::SurfaceInteractionTransactions::EvaluateFreeScroll(
-            freeScroll_, authority, focusedElementId_, lastRenderResult_)
+            freeScroll_, authority, focusedElementId_, renderResult)
              .followSuppressed) {
         ClearFreeScroll();
     }
@@ -1638,9 +1662,24 @@ void WidgetSurfaceCoordinator::Paint() {
             ? kAdjustBorderDip : kPinnedBorderDip);
     const HRESULT result = renderTarget_->EndDraw();
     if (result == D2DERR_RECREATE_TARGET) ReleaseGraphicsResources();
-    else PublishAccessibility();
+    else if (SUCCEEDED(result)) {
+        lastRenderResult_ = std::move(renderResult);
+        if (mediaViewportGeometryDirty_) {
+            if (lastRenderResult_.succeeded &&
+                lastRenderResult_.mediaViewportRegions.size() == 1) {
+                committedMediaViewport_ = CommittedMediaViewportPresentation{
+                    lastRenderResult_.mediaViewportRegions.front(),
+                    nextCommittedFrameGeneration_++,
+                };
+            } else {
+                committedMediaViewport_.reset();
+            }
+            mediaViewportGeometryDirty_ = false;
+        }
+        PublishAccessibility();
+    }
     EndPaint(window_, &paint);
-    if (SUCCEEDED(result) && !lastRenderResult_.mediaViewportRegions.empty())
+    if (SUCCEEDED(result) && committedMediaViewport_)
         NotifyOwner();
 }
 
