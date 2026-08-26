@@ -3869,7 +3869,16 @@ static Task EmbeddedMediaAssetsAreProviderNeutral()
                     new() { Path = "media/adapter.html", ContentType = "text/html" },
                     new() { Path = "media/sample.wav", ContentType = "audio/wav" },
                 ],
-                Commands = [EmbeddedMediaCommand.Activate, EmbeddedMediaCommand.TogglePlayback],
+                Commands =
+                [
+                    EmbeddedMediaCommand.Previous,
+                    EmbeddedMediaCommand.Next,
+                    EmbeddedMediaCommand.Activate,
+                    EmbeddedMediaCommand.Back,
+                    EmbeddedMediaCommand.TogglePlayback,
+                    EmbeddedMediaCommand.SeekBackward,
+                    EmbeddedMediaCommand.SeekForward,
+                ],
             };
             var snapshot = new ViewSnapshot
             {
@@ -3908,6 +3917,16 @@ static Task EmbeddedMediaAssetsAreProviderNeutral()
             Assert.Equal(2, bundle.Resources.Count);
             Assert.SequenceEqual(html, Convert.FromBase64String(bundle.Resources[0].ContentBase64));
             Assert.SequenceEqual(audio, Convert.FromBase64String(bundle.Resources[1].ContentBase64));
+            var bundleWire = BridgeJson.ToElement(bundle);
+            var commands = bundleWire.GetProperty("commands").EnumerateArray()
+                .Select(command => command.GetString()).ToArray();
+            Assert.SequenceEqual(
+                new[]
+                {
+                    "navigatePrevious", "navigateNext", "activate", "back",
+                    "togglePlayback", "seekBackward", "seekForward",
+                },
+                commands);
 
             File.WriteAllText(htmlPath, "tampered");
             Assert.Throws<BridgeProtocolException>(() => EmbeddedMediaAssetResolver.Resolve(

@@ -25,6 +25,14 @@ internal static class EmbeddedMediaSurfaceTests
         Equal("media/adapter.html", roundTrip.EmbeddedMedia?.EntryAsset);
         Equal(2, roundTrip.EmbeddedMedia?.Resources.Count);
         Equal("primary-media", roundTrip.Root.Children[1].MediaSurfaceId);
+        using (var document = System.Text.Json.JsonDocument.Parse(SnapshotJson.Serialize(snapshot)))
+        {
+            var commands = document.RootElement.GetProperty("embeddedMedia").GetProperty("commands")
+                .EnumerateArray().Select(command => command.GetString()).ToArray();
+            Equal(
+                "navigatePrevious,navigateNext,activate,back,togglePlayback,seekBackward,seekForward",
+                string.Join(',', commands));
+        }
 
         // The additive property must not change the established positional API.
         var (root, initialFocus, quickActions, activeScope, surface) = view;
@@ -123,9 +131,13 @@ internal static class EmbeddedMediaSurfaceTests
         ],
         Commands =
         [
+            EmbeddedMediaCommand.Previous,
+            EmbeddedMediaCommand.Next,
             EmbeddedMediaCommand.Activate,
-            EmbeddedMediaCommand.TogglePlayback,
             EmbeddedMediaCommand.Back,
+            EmbeddedMediaCommand.TogglePlayback,
+            EmbeddedMediaCommand.SeekBackward,
+            EmbeddedMediaCommand.SeekForward,
         ],
     };
 

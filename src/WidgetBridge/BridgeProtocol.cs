@@ -157,6 +157,7 @@ internal static class BridgeJson
             DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
             UnmappedMemberHandling = JsonUnmappedMemberHandling.Disallow,
         };
+        options.Converters.Add(new EmbeddedMediaCommandJsonConverter());
         options.Converters.Add(new JsonStringEnumConverter(JsonNamingPolicy.CamelCase));
         return options;
     }

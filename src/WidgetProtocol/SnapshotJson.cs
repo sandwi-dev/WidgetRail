@@ -35,6 +35,7 @@ public static class SnapshotJson
             UnmappedMemberHandling = JsonUnmappedMemberHandling.Disallow,
             WriteIndented = false,
         };
+        options.Converters.Add(new EmbeddedMediaCommandJsonConverter());
         options.Converters.Add(new JsonStringEnumConverter(JsonNamingPolicy.CamelCase));
         return options;
     }
