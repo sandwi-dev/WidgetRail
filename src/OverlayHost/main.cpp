@@ -550,6 +550,7 @@ public:
                                 widgetrail::WidgetSessionFailureStage::Restart,
                                 bridge_.lastError());
                   },
+                  [this] { return bridge_.bridgeSessionGeneration(); },
               },
               [this] {
                   if (window_)
@@ -3701,8 +3702,60 @@ private:
         }
     }
 
+    void RetireBridgeSessionPresentationAuthority(
+        const widgetrail::WidgetSessionCatalogChange& retired,
+        const long long bridgeSessionGeneration) {
+        AppendDiagnostic(
+            L"WidgetBridge session replaced generation=" +
+            std::to_wstring(bridgeSessionGeneration) +
+            L" presentation-authority=retired");
+        pendingWidgetSwitchSnap_.reset();
+        pendingWidgetPresentationImpact_.reset();
+        pendingContentRevealWidget_.clear();
+        renderedSnapshotSequences_.clear();
+        committedWidgetVisualState_.reset();
+        pendingContentRenderPlan_.reset();
+        activeContentRenderPlan_.reset();
+        lastFallbackPresentationCheckpointKey_.clear();
+        presentationTransaction_.RetireBridgeSessionAuthority();
+        ClearFreeScrollReentry(L"bridge-session-replaced");
+        ClearScrollPaginationPrefetch(L"bridge-session-replaced");
+        (void)interactionSession_.RetirePresentations();
+        interactionSession_.ClearFocus();
+        for (const auto& runtime : retired.runtimeChanges) {
+            interactionSession_.ForgetWidget(runtime.widgetId);
+            if (!runtime.previousInstanceId.empty()) {
+                interactionSession_.ForgetRuntime(runtime.previousInstanceId);
+                if (declarativeRenderer_)
+                    declarativeRenderer_->ForgetWidgetState(
+                        runtime.previousInstanceId);
+            }
+        }
+        if (embeddedMediaAuthority_)
+            StopEmbeddedMediaSurface(L"bridge-session-replaced");
+        if (pinnedSurfaceCoordinator_.pinned()) {
+            (void)pinnedSurfaceCoordinator_.Unpin(
+                widgetrail::pinned::WidgetSurfaceStopReason::RuntimeReplaced);
+        }
+        if (textEntryModal_.active()) textEntryModal_.Close();
+        actionFailureFeedback_.Stop();
+        lastWidgetRenderResult_ = {};
+        ClearAccessibilityTree();
+        admissionTraceWidget_.clear();
+        admissionTraceCorrelationId_ = 0;
+        if (window_ && state_.surface() != widgetrail::Surface::Hidden)
+            InvalidateRect(window_, nullptr, FALSE);
+    }
+
     void ProcessWidgetSessionEvents() {
         for (auto& event : sessions_.TakeEvents()) {
+            if (event.kind ==
+                    widgetrail::WidgetSessionEventKind::BridgeSessionReplaced &&
+                event.catalog) {
+                RetireBridgeSessionPresentationAuthority(
+                    *event.catalog, event.bridgeSessionGeneration);
+                continue;
+            }
             if (event.kind == widgetrail::WidgetSessionEventKind::CatalogChanged && event.catalog) {
                 KillTimer(window_, kCatalogRetryTimer);
                 sessions_.ResetCatalogRetry();

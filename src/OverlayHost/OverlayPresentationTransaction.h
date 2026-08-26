@@ -374,6 +374,13 @@ public:
         return inFlight;
     }
 
+    void RetireBridgeSessionAuthority() noexcept {
+        (void)RetireHidden();
+        retainedSurfaceAvailable_ = false;
+        retainedSurfaceRequest_.reset();
+        retainedPresentation_.reset();
+    }
+
 private:
     bool retainedSurfaceAvailable_{};
     std::optional<WidgetSurfaceRequest> retainedSurfaceRequest_;

@@ -680,6 +680,7 @@ public:
     [[nodiscard]] std::optional<bool> CancelLocalWidgetPackageInstall(
         std::wstring_view operationId);
     [[nodiscard]] std::wstring lastError() const;
+    [[nodiscard]] long long bridgeSessionGeneration() const noexcept;
     /// Bounded classification for the most recent controller-input reply.
     [[nodiscard]] std::wstring lastControllerInputResultCode() const;
     [[nodiscard]] std::optional<WidgetBridgeRuntimeFailureCategory>

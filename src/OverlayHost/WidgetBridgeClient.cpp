@@ -2636,6 +2636,22 @@ bool WidgetBridgeClient::Launch(
         return false;
     }
 
+    // Every asynchronous value below is correlated only within the current
+    // Bridge process/session. A replacement must never publish buffered
+    // invalidation, failure, effect, result, or revision authority into the
+    // fresh session.
+    (void)invalidations_.Take();
+    (void)actionFailures_.Take();
+    runtimeFailures_.clear();
+    lastRuntimeFailure_.reset();
+    lastRequestFailureCategory_ = WidgetBridgeRequestFailureCategory::None;
+    lastControllerInputResultCode_.clear();
+    hostEffects_.Reset();
+    artworkResults_.Reset();
+    localPackageInstallResults_.Reset();
+    (void)appearanceChanges_.Take();
+    catalogChanges_.Reset();
+
     pipeName_ = L"wrail-host-" + std::to_wstring(GetCurrentProcessId()) + L"-" +
                 std::to_wstring(GetTickCount64());
     const auto bridgeSessionGeneration = ++bridgeSessionGeneration_;
@@ -3902,6 +3918,11 @@ void WidgetBridgeClient::Fail(std::wstring message) {
 std::wstring WidgetBridgeClient::lastError() const {
     std::scoped_lock lock(requestMutex_);
     return lastError_;
+}
+
+long long WidgetBridgeClient::bridgeSessionGeneration() const noexcept {
+    std::scoped_lock lock(requestMutex_);
+    return bridgeSessionGeneration_;
 }
 
 std::wstring WidgetBridgeClient::lastControllerInputResultCode() const {

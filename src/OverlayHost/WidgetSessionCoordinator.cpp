@@ -210,6 +210,14 @@ WidgetSessionCoordinator::EstablishCatalog() {
     if (!operations_.ensureStarted || !operations_.listWidgets) return std::nullopt;
     auto started = operations_.ensureStarted({});
     if (!started.value || !*started.value) return std::nullopt;
+    const auto sessionGeneration = CurrentBridgeSessionGeneration();
+    const auto retainedGeneration = bridgeSessionGeneration_.load();
+    if (sessionGeneration <= 0) return std::nullopt;
+    if (retainedGeneration != 0 && retainedGeneration != sessionGeneration) {
+        (void)ResetBridgeSessionAuthority(sessionGeneration);
+    } else {
+        bridgeSessionGeneration_.store(sessionGeneration);
+    }
     auto listed = operations_.listWidgets({});
     if (!listed.value) return std::nullopt;
     return ApplyCatalog(std::move(*listed.value));
@@ -223,6 +231,15 @@ std::optional<WidgetSnapshot> WidgetSessionCoordinator::EstablishPresentationFor
         !operations_.setLifecycle) return std::nullopt;
     auto started = operations_.ensureStarted({});
     if (!started.value || !*started.value) return std::nullopt;
+    const auto sessionGeneration = CurrentBridgeSessionGeneration();
+    const auto retainedGeneration = bridgeSessionGeneration_.load();
+    if (sessionGeneration <= 0) return std::nullopt;
+    if (retainedGeneration != 0 && retainedGeneration != sessionGeneration) {
+        (void)ResetBridgeSessionAuthority(sessionGeneration);
+        return std::nullopt;
+    } else {
+        bridgeSessionGeneration_.store(sessionGeneration);
+    }
     const auto* retained = Snapshot(widgetId);
     const bool hasIncrementalBase = retained && retained->sequence > 0 &&
         retained->instanceId == descriptor->instanceId &&
@@ -412,7 +429,32 @@ std::vector<WidgetSessionEvent> WidgetSessionCoordinator::TakeEvents() {
     }
     std::vector<WidgetSessionEvent> events;
     events.reserve(completions.size());
+    const auto retainedBridgeSession = bridgeSessionGeneration_.load();
+    long long replacementBridgeSession{};
+    for (const auto& completion : completions) {
+        if (completion.bridgeSessionGeneration > 0 &&
+            retainedBridgeSession != 0 &&
+            completion.bridgeSessionGeneration != retainedBridgeSession) {
+            replacementBridgeSession = std::max(
+                replacementBridgeSession, completion.bridgeSessionGeneration);
+        }
+    }
+    if (replacementBridgeSession > 0) {
+        auto change = ResetBridgeSessionAuthority(replacementBridgeSession);
+        WidgetSessionEvent event;
+        event.kind = WidgetSessionEventKind::BridgeSessionReplaced;
+        event.catalog = std::move(change);
+        event.bridgeSessionGeneration = replacementBridgeSession;
+        events.push_back(std::move(event));
+        return events;
+    }
     for (auto& completion : completions) {
+        if (completion.bridgeSessionGeneration > 0) {
+            if (bridgeSessionGeneration_.load() == 0)
+                bridgeSessionGeneration_.store(completion.bridgeSessionGeneration);
+            if (completion.bridgeSessionGeneration != bridgeSessionGeneration_.load())
+                continue;
+        }
         auto& request = completion.request;
         const bool runtimeCurrent = CompletionRuntimeIsCurrent(request);
         const bool primaryStartFailure =
@@ -1227,6 +1269,18 @@ WidgetSessionCoordinator::Completion WidgetSessionCoordinator::Execute(
             completion.failure = FailureFrom(started.failureStage, std::move(started.safeError));
             return completion;
         }
+        completion.bridgeSessionGeneration = CurrentBridgeSessionGeneration();
+        if (completion.bridgeSessionGeneration <= 0) {
+            completion.failure = FailureFrom(
+                WidgetSessionFailureStage::Start,
+                L"Widget session transport did not expose current session authority.");
+            return completion;
+        }
+        const auto retainedBridgeSession = bridgeSessionGeneration_.load();
+        if (retainedBridgeSession != 0 &&
+            completion.bridgeSessionGeneration != retainedBridgeSession) {
+            return completion;
+        }
         switch (completion.request.kind) {
         case RequestKind::Catalog: {
             if (!operations_.listWidgets) break;
@@ -1429,6 +1483,46 @@ void WidgetSessionCoordinator::HardRemoveCheckpoint(
     snapshots_.erase(id);
     refreshStates_.erase(id);
     refreshRequestIds_.erase(id);
+}
+
+long long WidgetSessionCoordinator::CurrentBridgeSessionGeneration() const noexcept {
+    if (!operations_.bridgeSessionGeneration) return 1;
+    try {
+        return operations_.bridgeSessionGeneration();
+    } catch (...) {
+        return 0;
+    }
+}
+
+WidgetSessionCatalogChange WidgetSessionCoordinator::ResetBridgeSessionAuthority(
+    const long long bridgeSessionGeneration) {
+    WidgetSessionCatalogChange change;
+    change.availableWidgetIds.reserve(descriptors_.size());
+    change.runtimeChanges.reserve(descriptors_.size());
+    for (const auto& descriptor : descriptors_) {
+        change.availableWidgetIds.push_back(descriptor.id);
+        change.runtimeChanges.push_back({descriptor.id, descriptor.instanceId});
+    }
+    {
+        std::scoped_lock lock(queueMutex_);
+        if (inFlightStop_) inFlightStop_->request_stop();
+        pending_.clear();
+        completed_.clear();
+        presentationAdmissions_.clear();
+    }
+    descriptors_.clear();
+    snapshots_.clear();
+    refreshStates_.clear();
+    refreshRequestIds_.clear();
+    failures_.clear();
+    lifecycleStates_.clear();
+    lifecycleTargets_.clear();
+    generations_.clear();
+    awaitingRestartSnapshot_.clear();
+    catalogRetryAttempts_ = 0;
+    bridgeSessionGeneration_.store(bridgeSessionGeneration);
+    (void)Queue(MakeRequest(RequestKind::Catalog));
+    return change;
 }
 
 void WidgetSessionCoordinator::FailCompletion(

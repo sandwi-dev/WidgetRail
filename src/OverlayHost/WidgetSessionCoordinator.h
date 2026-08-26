@@ -5,6 +5,7 @@
 
 #include <condition_variable>
 #include <chrono>
+#include <atomic>
 #include <cstddef>
 #include <cstdint>
 #include <deque>
@@ -33,6 +34,7 @@ enum class WidgetSessionFailureStage {
 };
 
 enum class WidgetSessionEventKind {
+    BridgeSessionReplaced,
     CatalogChanged,
     SnapshotAdmitted,
     LifecycleChanged,
@@ -155,6 +157,7 @@ struct WidgetSessionEvent final {
     WidgetSessionCompletionDisposition completionDisposition{
         WidgetSessionCompletionDisposition::None};
     std::optional<WidgetPresentationImpact> presentationImpact;
+    long long bridgeSessionGeneration{};
 };
 
 template <typename Value>
@@ -197,6 +200,7 @@ struct WidgetSessionOperations final {
         materializeUpdate;
     std::function<WidgetSessionOperationResult<bool>(
         std::stop_token, std::wstring_view)> restart;
+    std::function<long long()> bridgeSessionGeneration;
 };
 
 /// Owns bridge-facing widget session state and serial request policy. The host
@@ -337,6 +341,7 @@ private:
         std::optional<bool> acknowledged;
         std::uint64_t completedAt{};
         bool cancelled{};
+        long long bridgeSessionGeneration{};
     };
 
     [[nodiscard]] QueueResult Queue(Request request);
@@ -386,6 +391,9 @@ private:
     void MarkRefreshInFlight(std::wstring_view widgetId, std::uint64_t requestId);
     void CompleteRefresh(const Request& request, bool admitted) noexcept;
     void HardRemoveCheckpoint(std::wstring_view widgetId) noexcept;
+    [[nodiscard]] WidgetSessionCatalogChange ResetBridgeSessionAuthority(
+        long long bridgeSessionGeneration);
+    [[nodiscard]] long long CurrentBridgeSessionGeneration() const noexcept;
     void FailCompletion(Completion& completion, WidgetSessionOperationResult<bool> result);
 
     WidgetSessionOperations operations_;
@@ -412,6 +420,7 @@ private:
     std::unordered_map<std::wstring, WidgetLifecycleState> lifecycleTargets_;
     std::unordered_map<std::wstring, std::uint64_t> generations_;
     std::unordered_set<std::wstring> awaitingRestartSnapshot_;
+    std::atomic<long long> bridgeSessionGeneration_{};
     unsigned int catalogRetryAttempts_{};
 };
 
