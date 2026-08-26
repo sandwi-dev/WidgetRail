@@ -9,6 +9,7 @@ internal enum BridgeRequestKind
     GetPlatformAppearance,
     GetSnapshot,
     ResolveArtwork,
+    ResolveEmbeddedMedia,
     RestartWidget,
     SetWidgetLifecycle,
     Action,
@@ -38,6 +39,7 @@ internal readonly record struct BridgeRequestKey
     internal static BridgeRequestKey Global(BridgeRequestKind kind)
     {
         if (kind is BridgeRequestKind.GetSnapshot or
+            BridgeRequestKind.ResolveEmbeddedMedia or
             BridgeRequestKind.RestartWidget or
             BridgeRequestKind.SetWidgetLifecycle or
             BridgeRequestKind.Action or
@@ -51,6 +53,7 @@ internal readonly record struct BridgeRequestKey
     internal static BridgeRequestKey Widget(BridgeRequestKind kind, string? widgetId)
     {
         if (kind is not (BridgeRequestKind.GetSnapshot or
+            BridgeRequestKind.ResolveEmbeddedMedia or
             BridgeRequestKind.RestartWidget or
             BridgeRequestKind.SetWidgetLifecycle or
             BridgeRequestKind.Action or
@@ -92,6 +95,7 @@ internal static class BridgeRequestClassifier
                     BridgeJson.FromElement<BridgePresentationRequest>(request.Payload).WidgetId,
                     BridgeRequestKind.GetSnapshot),
                 BridgeMessageTypes.ResolveArtwork => Artwork(request.Payload),
+                BridgeMessageTypes.ResolveEmbeddedMedia => EmbeddedMedia(request.Payload),
                 BridgeMessageTypes.RestartWidget => Widget(
                     BridgeJson.FromElement<WidgetIdRequest>(request.Payload).WidgetId,
                     BridgeRequestKind.RestartWidget),
@@ -140,6 +144,21 @@ internal static class BridgeRequestClassifier
         if (!AppLibraryArtworkRegistry.IsHandle(request.ArtworkHandle))
             throw new BridgeProtocolException("Artwork handle is invalid.");
         return BridgeRequestKey.Global(BridgeRequestKind.ResolveArtwork);
+    }
+
+    private static BridgeRequestKey EmbeddedMedia(JsonElement payload)
+    {
+        var request = BridgeJson.FromElement<BridgeEmbeddedMediaRequest>(payload);
+        var key = BridgeRequestKey.Widget(
+            BridgeRequestKind.ResolveEmbeddedMedia, request.WidgetId);
+        if (!BridgeRequestKey.IsBoundedIdentifier(request.InstanceId) ||
+            !BridgeRequestKey.IsBoundedIdentifier(request.RuntimeGeneration) ||
+            !BridgeRequestKey.IsBoundedIdentifier(request.PresentationGeneration) ||
+            request.Sequence <= 0 ||
+            !BridgeRequestKey.IsBoundedIdentifier(request.SurfaceId))
+            throw new BridgeProtocolException(
+                "Embedded media request authority is invalid.");
+        return key;
     }
 
     private static BridgeRequestKey LocalPackageInstall(JsonElement payload)

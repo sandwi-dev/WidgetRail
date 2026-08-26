@@ -5,7 +5,7 @@
 .media-shell-title { color: var(--text); font-size: 24px; font-weight: 500; max-lines: 1; text-overflow: ellipsis; }
 .media-shell-status { color: var(--success); font-size: 11px; max-lines: 1; }
 .media-shell-back { min-width: 94px; min-height: 42px; padding: 9px 13px; color: var(--text); background: var(--surface-raised); border-color: var(--text-subdued); border-width: 1px; corner-radius: 9px; }
-.media-shell-viewport { width: 100%; min-width: 320px; min-height: 180px; flex-grow: 1; background: var(--surface-raised); border-color: var(--text-subdued); border-width: 1px; corner-radius: 12px; overflow: clip; }
+.media-shell-viewport { width: 100%; min-width: 320px; min-height: 180px; flex-basis: 360px; flex-grow: 1; flex-shrink: 1; background: var(--surface-raised); border-color: var(--text-subdued); border-width: 1px; corner-radius: 12px; overflow: clip; }
 .media-shell-timeline { align: center; gap: 9px; flex-shrink: 0; }
 .media-shell-time { width: 40px; color: var(--text-muted); font-size: 11px; max-lines: 1; }
 .media-shell-time.is-end { text-align: end; }

@@ -812,6 +812,46 @@ static Task RequestClassificationIsClosed()
     Assert.Equal(BridgeRequestKind.ResolveArtwork, artwork.Kind);
     Assert.Equal<string?>(null, artwork.WidgetId);
 
+    var embeddedMedia = BridgeRequestClassifier.Classify(new BridgeEnvelope
+    {
+        Type = BridgeMessageTypes.ResolveEmbeddedMedia,
+        RequestId = 14,
+        Payload = BridgeJson.ToElement(new BridgeEmbeddedMediaRequest(
+            "widget-a", "widget-a.default", "runtime-generation",
+            "presentation-generation", 7, "primary-media")),
+    });
+    Assert.Equal(BridgeRequestKind.ResolveEmbeddedMedia, embeddedMedia.Kind);
+    Assert.Equal("widget-a", embeddedMedia.WidgetId);
+
+    var malformedEmbeddedMedia = BridgeRequestClassifier.Classify(new BridgeEnvelope
+    {
+        Type = BridgeMessageTypes.ResolveEmbeddedMedia,
+        RequestId = 15,
+        Payload = BridgeJson.ToElement(new BridgeEmbeddedMediaRequest(
+            "widget-a", "widget-a.default", "runtime-generation",
+            "presentation-generation", 0, "primary-media")),
+    });
+    Assert.Equal(BridgeRequestKind.Malformed, malformedEmbeddedMedia.Kind);
+    Assert.Equal<string?>(null, malformedEmbeddedMedia.WidgetId);
+
+    var forgedEmbeddedMedia = BridgeRequestClassifier.Classify(new BridgeEnvelope
+    {
+        Type = BridgeMessageTypes.ResolveEmbeddedMedia,
+        RequestId = 16,
+        Payload = BridgeJson.ToElement(new
+        {
+            widgetId = "widget-a",
+            instanceId = "widget-a.default",
+            runtimeGeneration = "runtime-generation",
+            presentationGeneration = "presentation-generation",
+            sequence = 7,
+            surfaceId = "primary-media",
+            path = @"C:\\forbidden.html",
+        }),
+    });
+    Assert.Equal(BridgeRequestKind.Malformed, forgedEmbeddedMedia.Kind);
+    Assert.Equal<string?>(null, forgedEmbeddedMedia.WidgetId);
+
     var localInstall = BridgeRequestClassifier.Classify(new BridgeEnvelope
     {
         Type = BridgeMessageTypes.InstallLocalWidgetPackage,

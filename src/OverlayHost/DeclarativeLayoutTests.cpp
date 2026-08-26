@@ -707,6 +707,126 @@ void TinyAndPortraitWidgetContainment() {
     }
 }
 
+void NativeMediaShellKeepsControlsVisibleWhenHeightIsCapped() {
+    auto eyebrow = Element("media-shell-eyebrow");
+    auto title = Element("media-shell-title");
+    auto status = Element("media-shell-status");
+    auto heading = Element("media-shell-heading");
+    heading.minWidth = 0.0F;
+    heading.gap = 1.0F;
+    heading.flexGrow = 1.0F;
+    heading.children = {eyebrow, title, status};
+
+    auto back = Element("media-shell-back");
+    back.minWidth = 94.0F;
+    back.minHeight = 42.0F;
+    back.padding = BoxSpacing::Two(9.0F, 13.0F);
+
+    auto header = Element("media-shell-header", LayoutDirection::Row);
+    header.crossAxisAlignment = CrossAxisAlignment::Center;
+    header.mainAxisAlignment = MainAxisAlignment::SpaceBetween;
+    header.gap = 14.0F;
+    header.flexShrink = 0.0F;
+    header.children = {heading, back};
+
+    auto viewport = Element("media-shell-viewport");
+    viewport.width = 728.0F;
+    viewport.flexBasis = 360.0F;
+    viewport.flexGrow = 1.0F;
+    viewport.flexShrink = 1.0F;
+    viewport.minHeight = 180.0F;
+    viewport.aspectRatio = 16.0F / 9.0F;
+
+    auto position = Element("media-shell-position");
+    position.width = 40.0F;
+    auto progress = Element("media-shell-progress");
+    progress.minWidth = 220.0F;
+    progress.height = 4.0F;
+    progress.flexGrow = 1.0F;
+    auto duration = Element("media-shell-duration");
+    duration.width = 40.0F;
+    auto timeline = Element("media-shell-timeline", LayoutDirection::Row);
+    timeline.crossAxisAlignment = CrossAxisAlignment::Center;
+    timeline.gap = 9.0F;
+    timeline.flexShrink = 0.0F;
+    timeline.children = {position, progress, duration};
+
+    auto previous = Element("media-shell-previous");
+    previous.width = 44.0F;
+    previous.height = 44.0F;
+    previous.minWidth = 44.0F;
+    previous.minHeight = 44.0F;
+    auto seekBack = previous;
+    seekBack.id = "media-shell-seek-back";
+    auto play = Element("media-shell-play");
+    play.width = 54.0F;
+    play.height = 54.0F;
+    play.minWidth = 54.0F;
+    play.minHeight = 54.0F;
+    auto seekForward = previous;
+    seekForward.id = "media-shell-seek-forward";
+    auto next = previous;
+    next.id = "media-shell-next";
+    auto controls = Element("media-shell-controls", LayoutDirection::Row);
+    controls.height = 54.0F;
+    controls.crossAxisAlignment = CrossAxisAlignment::Center;
+    controls.mainAxisAlignment = MainAxisAlignment::Center;
+    controls.gap = 10.0F;
+    controls.flexShrink = 0.0F;
+    controls.children = {previous, seekBack, play, seekForward, next};
+
+    auto root = Element("media-shell-root");
+    root.padding = BoxSpacing::Two(14.0F, 16.0F);
+    root.gap = 10.0F;
+    root.overflow = OverflowBehavior::Clip;
+    root.children = {header, viewport, timeline, controls};
+
+    const IntrinsicMeasureCallback measure = [](
+        const LayoutElement& element,
+        const widgetrail::declarative::MeasureConstraints&) {
+        if (element.id == "media-shell-eyebrow") return Size{68.0F, 12.0F};
+        if (element.id == "media-shell-title") return Size{156.0F, 28.8F};
+        if (element.id == "media-shell-status") return Size{180.0F, 13.2F};
+        if (element.id == "media-shell-back") return Size{68.0F, 24.0F};
+        if (element.id == "media-shell-position" ||
+            element.id == "media-shell-duration") return Size{40.0F, 13.2F};
+        if (element.id == "media-shell-viewport") return Size{640.0F, 360.0F};
+        return Size{};
+    };
+    constexpr Rect admitted{0.0F, 0.0F, 760.0F, 555.2F};
+    const auto result = ComputeLayout(root, admitted, measure);
+    Check(result.valid(), "height-capped native media shell layout remains valid");
+    const auto* media = result.Find("media-shell-viewport");
+    const auto* transport = result.Find("media-shell-controls");
+    Check(media && transport, "native media shell publishes viewport and controls");
+    Check(media->borderBox.height >= 180.0F && media->borderBox.height > 360.0F,
+          "preferred media basis may grow into constrained shell remainder");
+    Check(media->borderBox.height <
+              media->borderBox.width / (16.0F / 9.0F),
+          "constrained shell shrinks below the unchanged 16:9 media-plane height");
+    Near(transport->borderBox.height, 54.0F,
+         "native transport row retains its authored height");
+    Near(transport->visibleBox.height, transport->borderBox.height,
+          "native transport row retains its complete reachable height");
+    Check(transport->borderBox.y + transport->borderBox.height <=
+              admitted.y + admitted.height + 0.01F,
+          "native transport row remains inside the admitted work-area height");
+
+    constexpr Rect pinned{0.0F, 0.0F, 760.0F, 700.0F};
+    const auto pinnedResult = ComputeLayout(root, pinned, measure);
+    Check(pinnedResult.valid(), "larger pinned native media shell layout remains valid");
+    const auto* pinnedMedia = pinnedResult.Find("media-shell-viewport");
+    const auto* pinnedTransport = pinnedResult.Find("media-shell-controls");
+    Check(pinnedMedia && pinnedTransport,
+          "larger pinned shell publishes viewport and controls");
+    Check(pinnedMedia->borderBox.height > media->borderBox.height &&
+              pinnedMedia->borderBox.height > 360.0F,
+          "larger pinned shell grows beyond the preferred media basis");
+    Check(pinnedTransport->borderBox.y + pinnedTransport->borderBox.height <=
+              pinned.y + pinned.height + 0.01F,
+          "larger pinned transport row remains inside its admitted root");
+}
+
 void AxisAlignment() {
     auto first = Element("first");
     first.width = 40.0F;
@@ -808,6 +928,7 @@ int main() {
     WrappedIntrinsicLeavesDoNotCollapseOrOverlap();
     ScrollExtentIncludesWrappedIntrinsicParagraphs();
     TinyAndPortraitWidgetContainment();
+    NativeMediaShellKeepsControlsVisibleWhenHeightIsCapped();
     AxisAlignment();
     PixelSnapAndSafeMath();
     DuplicateIdsFailClosed();
