@@ -20,6 +20,7 @@
 #include <stdexcept>
 #include <string>
 #include <thread>
+#include <tuple>
 #include <vector>
 
 using namespace std::chrono_literals;
@@ -55,6 +56,14 @@ public:
     }
     static bool IsValidAdapterConfiguration(const Configuration& configuration) {
         return RichMediaSurfaceCoordinator::IsValidAdapterConfiguration(configuration);
+    }
+    static auto SealedResourcePlan(const std::wstring_view range,
+                                   const std::wstring_view contentType,
+                                   const std::size_t length,
+                                   const bool eligible = true) {
+        const auto plan = RichMediaSurfaceCoordinator::PlanSealedResourceResponse(
+            range, contentType, length, eligible);
+        return std::tuple{plan.status, plan.offset, plan.length, plan.headers};
     }
     static bool SurfaceLocalPoint(HWND ownerWindow, const RECT& bounds,
                                   const UINT message, const LPARAM lParam,
@@ -112,6 +121,16 @@ public:
             coordinator.state_.focusedActionBounds.width == after.right - after.left &&
             coordinator.state_.focusedActionBounds.height == after.bottom - after.top;
     }
+    static bool DocumentAudioOutputActive(
+        const RichMediaSurfaceCoordinator& coordinator) {
+        ComPtr<ICoreWebView2_8> core8;
+        BOOL muted = TRUE;
+        BOOL playing = FALSE;
+        return coordinator.core_ && SUCCEEDED(coordinator.core_.As(&core8)) &&
+            SUCCEEDED(core8->get_IsMuted(&muted)) &&
+            SUCCEEDED(core8->get_IsDocumentPlayingAudio(&playing)) &&
+            !muted && playing;
+    }
 };
 
 } // namespace widgetrail::richmedia
@@ -141,12 +160,24 @@ LRESULT CALLBACK WindowProc(HWND window, UINT message, WPARAM wParam, LPARAM lPa
     return DefWindowProcW(window, message, wParam, lParam);
 }
 
+struct FixtureCallbackProbe final {
+    std::atomic_bool retired{};
+    std::atomic_uint32_t callbacksAfterRetirement{};
+
+    void Record() noexcept {
+        if (retired.load(std::memory_order_acquire))
+            callbacksAfterRetirement.fetch_add(1, std::memory_order_relaxed);
+    }
+};
+
 class Fixture final {
 public:
     Fixture(const unsigned int ordinal, const bool visible,
             std::filesystem::path profileRoot = {},
             std::wstring adapterIdentity = {},
-            std::vector<std::uint8_t> adapterBytes = {})
+            std::vector<widgetrail::richmedia::Configuration::Resource>
+                adapterResources = {},
+            std::shared_ptr<FixtureCallbackProbe> callbackProbe = {})
         : profileRoot_(profileRoot.empty()
               ? std::filesystem::temp_directory_path() /
                     (L"wrail-rich-media-proof-root-" +
@@ -154,7 +185,8 @@ public:
                      std::to_wstring(ordinal))
               : std::move(profileRoot)),
           adapterIdentity_(std::move(adapterIdentity)),
-          adapterBytes_(std::move(adapterBytes)) {
+          adapterResources_(std::move(adapterResources)),
+          callbackProbe_(std::move(callbackProbe)) {
         WNDCLASSW windowClass{};
         windowClass.hInstance = GetModuleHandleW(nullptr);
         windowClass.lpfnWndProc = WindowProc;
@@ -251,6 +283,10 @@ public:
     const std::vector<widgetrail::richmedia::PlaybackEvent>& playbackEvents() const {
         return playbackEvents_;
     }
+    void RetireCallbackProbe() {
+        if (callbackProbe_)
+            callbackProbe_->retired.store(true, std::memory_order_release);
+    }
 
 private:
     widgetrail::richmedia::Configuration ConfigurationFor(
@@ -262,11 +298,10 @@ private:
         configuration.rasterScale = 1.0;
         configuration.initiallyVisible = visible;
         configuration.profileRootDirectory = profileRoot_.wstring();
-        if (!adapterBytes_.empty()) {
+        if (!adapterResources_.empty()) {
             configuration.origin = L"https://wrail-media-local-sample.invalid";
             configuration.entryAsset = L"payload/media/adapter.html";
-            configuration.resources.push_back({
-                configuration.entryAsset, L"text/html", adapterBytes_});
+            configuration.resources = adapterResources_;
         } else if (!adapterIdentity_.empty()) {
             configuration.origin =
                 L"https://wrail-media-" + adapterIdentity_ + L".invalid";
@@ -286,15 +321,20 @@ chrome.webview.addEventListener('message',e=>{const m=e.data;if(m.command==='ini
                 configuration.entryAsset, L"text/html",
                 std::vector<std::uint8_t>(page.begin(), page.end())});
         }
-        configuration.diagnostic = [this](const std::wstring_view message) {
+        configuration.diagnostic = [this, probe = callbackProbe_](
+                const std::wstring_view message) {
+            if (probe) probe->Record();
             diagnostics_.emplace_back(message);
             std::wcout << L"diagnostic " << message << L'\n' << std::flush;
         };
-        configuration.playbackEvent = [this](
+        configuration.playbackEvent = [this, probe = callbackProbe_](
                 const widgetrail::richmedia::PlaybackEvent& event) {
+            if (probe) probe->Record();
             playbackEvents_.push_back(event);
         };
-        configuration.setPresentationVisible = [this](const bool shown) {
+        configuration.setPresentationVisible = [this, probe = callbackProbe_](
+                const bool shown) {
+            if (probe) probe->Record();
             presentationVisible_ = shown;
             widgetrail::OverlayCompositionSurface::CommitTiming timing;
             const HRESULT result = composition_.CommitExternalContentPresentation(
@@ -309,7 +349,7 @@ chrome.webview.addEventListener('message',e=>{const m=e.data;if(m.command==='ini
     widgetrail::richmedia::RichMediaSurfaceCoordinator coordinator_;
     std::filesystem::path profileRoot_;
     std::wstring adapterIdentity_;
-    std::vector<std::uint8_t> adapterBytes_;
+    std::vector<widgetrail::richmedia::Configuration::Resource> adapterResources_;
     bool sessionOpen_{};
     bool presentationVisible_{};
     bool presentationCommitFailed_{};
@@ -317,6 +357,7 @@ chrome.webview.addEventListener('message',e=>{const m=e.data;if(m.command==='ini
     bool detachWaited_{};
     std::vector<std::wstring> diagnostics_;
     std::vector<widgetrail::richmedia::PlaybackEvent> playbackEvents_;
+    std::shared_ptr<FixtureCallbackProbe> callbackProbe_;
 };
 
 void RunContractCases() {
@@ -545,13 +586,67 @@ void RunContractCases() {
     oversized.resources.front().content.resize(256 * 1024 + 1);
     Require(!RichMediaSurfaceCoordinatorTestPeer::IsValidAdapterConfiguration(oversized),
             "oversized adapter resource was admitted");
+    const auto requireRange = [](const std::wstring_view range,
+                                 const int expectedStatus,
+                                 const std::size_t expectedOffset,
+                                 const std::size_t expectedLength,
+                                 const std::wstring_view expectedContentRange) {
+        const auto [status, offset, length, headers] =
+            RichMediaSurfaceCoordinatorTestPeer::SealedResourcePlan(
+                range, L"video/mp4", 10);
+        Require(status == expectedStatus && offset == expectedOffset &&
+                    length == expectedLength &&
+                    headers.find(L"Accept-Ranges: bytes") != std::wstring::npos &&
+                    headers.find(L"Content-Length: " +
+                        std::to_wstring(expectedLength)) != std::wstring::npos &&
+                    headers.find(expectedContentRange) != std::wstring::npos,
+                "sealed media byte-range plan drifted");
+    };
+    requireRange(L"bytes=2-5", 206, 2, 4, L"Content-Range: bytes 2-5/10");
+    requireRange(L"bytes=6-", 206, 6, 4, L"Content-Range: bytes 6-9/10");
+    requireRange(L"bytes=-3", 206, 7, 3, L"Content-Range: bytes 7-9/10");
+    const auto [fullStatus, fullOffset, fullLength, fullHeaders] =
+        RichMediaSurfaceCoordinatorTestPeer::SealedResourcePlan(
+            L"", L"video/mp4", 10);
+    Require(fullStatus == 200 && fullOffset == 0 && fullLength == 10 &&
+                fullHeaders.find(L"Accept-Ranges: bytes") != std::wstring::npos &&
+                fullHeaders.find(L"Content-Range:") == std::wstring::npos,
+            "sealed media no-range request lost the full 200 response");
+    for (const std::wstring_view invalid : {
+            L"bytes=", L"bytes=1-2,4-5", L"bytes=9-8", L"bytes=10-",
+            L"bytes=-0", L"bytes=-11", L"bytes=0-10", L"items=0-1",
+            L"bytes=184467440737095516160-"}) {
+        const auto [status, offset, length, headers] =
+            RichMediaSurfaceCoordinatorTestPeer::SealedResourcePlan(
+                invalid, L"video/mp4", 10);
+        Require(status == 416 && offset == 0 && length == 0 &&
+                    headers.find(L"Content-Range: bytes */10") != std::wstring::npos &&
+                    headers.find(L"Content-Length: 0") != std::wstring::npos,
+                "malformed or unsatisfiable sealed media range was admitted");
+    }
+    const auto [htmlStatus, htmlOffset, htmlLength, htmlHeaders] =
+        RichMediaSurfaceCoordinatorTestPeer::SealedResourcePlan(
+            L"bytes=2-5", L"text/html", 10, false);
+    Require(htmlStatus == 200 && htmlOffset == 0 && htmlLength == 10 &&
+                htmlHeaders.find(L"Accept-Ranges") == std::wstring::npos,
+            "non-media sealed resource acquired byte-range behavior");
+    const std::array<std::uint8_t, 10> sealedBytes{0, 1, 2, 3, 4, 5, 6, 7, 8, 9};
+    const auto [sliceStatus, sliceOffset, sliceLength, sliceHeaders] =
+        RichMediaSurfaceCoordinatorTestPeer::SealedResourcePlan(
+            L"bytes=2-5", L"video/mp4", sealedBytes.size());
+    const std::array<std::uint8_t, 4> expectedSlice{2, 3, 4, 5};
+    Require(sliceStatus == 206 &&
+                std::equal(sealedBytes.begin() + sliceOffset,
+                           sealedBytes.begin() + sliceOffset + sliceLength,
+                           expectedSlice.begin()),
+            "sealed media byte-range plan escaped the admitted byte slice");
     POINT activationPoint{};
     Require(RichMediaSurfaceCoordinatorTestPeer::FocusedActionPoint(
                 {100.0, 40.0, 120.0, 60.0}, {12, 18, 712, 438},
                 activationPoint) &&
                 activationPoint.x == 160 && activationPoint.y == 70,
             "1.5x DPI client-space activation point was raster-scaled");
-    std::cout << "RichMediaSurfaceCoordinator contract cases passed=27\n";
+    std::cout << "RichMediaSurfaceCoordinator contract cases passed=34\n";
 }
 
 struct ProcessSample final {
@@ -981,8 +1076,72 @@ void RunProviderNeutralAdapterCases() {
         std::istreambuf_iterator<char>{sampleStream},
         std::istreambuf_iterator<char>{});
     Require(!sampleBytes.empty(), "built sample adapter was empty");
-    Fixture sample(ordinal++, true, {}, {}, sampleBytes);
+    const auto videoPath = samplePath.parent_path() / L"sample.mp4";
+    std::ifstream videoStream(videoPath, std::ios::binary);
+    Require(videoStream.good(), "built sample sealed video asset was unavailable");
+    const std::vector<std::uint8_t> videoBytes(
+        std::istreambuf_iterator<char>{videoStream},
+        std::istreambuf_iterator<char>{});
+    Require(!videoBytes.empty(), "built sample sealed video asset was empty");
+    std::string forcedProgressAdapter(sampleBytes.begin(), sampleBytes.end());
+    const auto inject = [&](const std::string_view marker,
+                            const std::string_view replacement) {
+        const auto offset = forcedProgressAdapter.find(marker);
+        Require(offset != std::string::npos,
+                "built adapter progress-boundary seam was unavailable");
+        forcedProgressAdapter.replace(offset, marker.size(), replacement);
+    };
+    inject("inFlight=operation;if(m.mediaKey)",
+           "inFlight=operation;media.dispatchEvent(new Event('timeupdate'));if(m.mediaKey)");
+    inject("operation.phase='media';void play(operation)",
+           "operation.phase='media';media.dispatchEvent(new Event('timeupdate'));void play(operation)");
+    const std::vector<std::uint8_t> forcedProgressBytes(
+        forcedProgressAdapter.begin(), forcedProgressAdapter.end());
+    const auto forcedCallbackProbe = std::make_shared<FixtureCallbackProbe>();
+    {
+        Fixture forcedProgress(ordinal++, true, {}, {}, {
+            {L"payload/media/adapter.html", L"text/html", forcedProgressBytes},
+            {L"payload/media/sample.mp4", L"video/mp4", videoBytes},
+        }, forcedCallbackProbe);
+        RequireReady(forcedProgress,
+                     "forced-progress adapter did not become ready", L"media-plane");
+        const auto zeroEventsBefore = std::count_if(
+            forcedProgress.playbackEvents().begin(), forcedProgress.playbackEvents().end(),
+            [](const PlaybackEvent& event) { return event.commandSequence == 0; });
+        Require(forcedProgress.coordinator().SendPlaybackCommand({
+                    71, PlaybackCommandKind::Play, L"aurora-video-0",
+                    std::nullopt, std::nullopt}),
+                "forced-progress Play command was rejected");
+        Require(PumpUntil([&] {
+            return std::any_of(
+                forcedProgress.playbackEvents().begin(),
+                forcedProgress.playbackEvents().end(),
+                [](const PlaybackEvent& event) {
+                    return event.commandSequence == 71 && event.state == L"playing";
+                });
+        }, 5s), "forced progress escaped the arm-to-Play command lifetime");
+        const auto zeroEventsAfter = std::count_if(
+            forcedProgress.playbackEvents().begin(), forcedProgress.playbackEvents().end(),
+            [](const PlaybackEvent& event) { return event.commandSequence == 0; });
+        Require(zeroEventsAfter == zeroEventsBefore &&
+                    forcedProgress.coordinator().state().lifecycle == Lifecycle::Visible,
+                "zero-ID playback publication escaped an in-flight command");
+        Require(SUCCEEDED(forcedProgress.CloseSession()) &&
+                    forcedProgress.finalDetachSucceededAndWaited(),
+                "forced-progress controller did not detach cleanly");
+        const auto teardown = forcedProgress.coordinator().sessionTeardownResult();
+        Require(teardown.sessionOwnersEmpty && !teardown.callbackDeadlineExpired,
+                "forced-progress controller or callback stream remained active");
+        forcedProgress.RetireCallbackProbe();
+    }
+    Fixture sample(ordinal++, true, {}, {}, {
+        {L"payload/media/adapter.html", L"text/html", sampleBytes},
+        {L"payload/media/sample.mp4", L"video/mp4", videoBytes},
+    });
     RequireReady(sample, "built sample adapter did not become ready", L"media-plane");
+    Require(forcedCallbackProbe->callbacksAfterRetirement.load(
+                std::memory_order_acquire) == 0,
+            "destroyed forced-progress callback sink reached the ordinary fixture");
     auto requirePlayback = [&](const std::uint64_t sequence,
                                const std::wstring_view expectedKey,
                                const std::wstring_view expectedState) {
@@ -998,6 +1157,16 @@ void RunProviderNeutralAdapterCases() {
             [&](const PlaybackEvent& event) {
                 return event.commandSequence == sequence;
             });
+        if (found != sample.playbackEvents().end()) {
+            std::wcout << L"built-sample-event command=" << found->commandSequence
+                       << L" mediaKey=" << found->mediaKey
+                       << L" state=" << found->state
+                       << L" error=" << (found->errorCode.empty()
+                            ? L"<none>" : found->errorCode)
+                       << L" duration=" << found->durationSeconds
+                       << L" position=" << found->positionSeconds
+                       << L" volume=" << found->volume << L'\n' << std::flush;
+        }
         Require(found != sample.playbackEvents().end() &&
                     found->mediaKey == expectedKey &&
                     found->state == expectedState && found->errorCode.empty() &&
@@ -1014,22 +1183,39 @@ void RunProviderNeutralAdapterCases() {
     };
     sendPlayback(1, PlaybackCommandKind::Play, L"aurora-tone-0");
     requirePlayback(1, L"aurora-tone-0", L"playing");
+    Require(PumpUntil([&] {
+        return RichMediaSurfaceCoordinatorTestPeer::DocumentAudioOutputActive(
+            sample.coordinator());
+    }, 5s), "built sample did not produce active unmuted document audio");
     sendPlayback(2, PlaybackCommandKind::Pause, L"aurora-tone-0");
     requirePlayback(2, L"aurora-tone-0", L"paused");
     sendPlayback(3, PlaybackCommandKind::Play, L"aurora-tone-0");
     requirePlayback(3, L"aurora-tone-0", L"playing");
+    Require(PumpUntil([&] {
+        return RichMediaSurfaceCoordinatorTestPeer::DocumentAudioOutputActive(
+            sample.coordinator());
+    }, 5s), "built sample resume did not restore active unmuted document audio");
     sendPlayback(4, PlaybackCommandKind::Seek, L"aurora-tone-0", 12.0);
     requirePlayback(4, L"aurora-tone-0", L"playing");
     sendPlayback(5, PlaybackCommandKind::Load, L"aurora-tone-1");
     requirePlayback(5, L"aurora-tone-1", L"ready");
     sendPlayback(6, PlaybackCommandKind::Load, L"aurora-tone-0");
     requirePlayback(6, L"aurora-tone-0", L"ready");
-    sendPlayback(7, PlaybackCommandKind::Seek, L"aurora-tone-0", 10.0);
+    sendPlayback(7, PlaybackCommandKind::Seek, L"aurora-tone-0", 5.0);
     requirePlayback(7, L"aurora-tone-0", L"paused");
+    const auto finalSeek = std::find_if(
+        sample.playbackEvents().begin(), sample.playbackEvents().end(),
+        [](const PlaybackEvent& event) { return event.commandSequence == 7; });
+    Require(finalSeek != sample.playbackEvents().end() &&
+                std::abs(finalSeek->positionSeconds - 5.0) <= 0.15,
+            "built sample final seek did not retain the exact in-duration position");
     Require(sample.coordinator().state().lifecycle == Lifecycle::Visible &&
                 sample.presentationVisible() && !sample.presentationCommitFailed(),
             "compatible playback updates replaced or hid the media controller");
-    std::cout << "RichMedia provider-neutral adapter cases passed=4\n";
+    Require(forcedCallbackProbe->callbacksAfterRetirement.load(
+                std::memory_order_acquire) == 0,
+            "retired forced-progress callbacks interleaved ordinary observations");
+    std::cout << "RichMedia provider-neutral adapter cases passed=5\n";
 }
 
 void RunLifecycleAndPerformance() {

@@ -238,6 +238,15 @@ private:
         std::uint64_t commandSequence, std::wstring_view mediaKey,
         std::optional<std::uint64_t> pendingSequence,
         std::wstring_view pendingMediaKey) noexcept;
+    struct SealedResourceResponsePlan final {
+        int status{200};
+        std::size_t offset{};
+        std::size_t length{};
+        std::wstring headers;
+    };
+    [[nodiscard]] static SealedResourceResponsePlan PlanSealedResourceResponse(
+        std::wstring_view rangeHeader, std::wstring_view contentType,
+        std::size_t resourceLength, bool rangeEligible) noexcept;
     [[nodiscard]] static bool IsValidAdapterConfiguration(
         const Configuration& configuration) noexcept;
     [[nodiscard]] static bool SurfaceLocalPoint(

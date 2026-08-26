@@ -166,6 +166,7 @@ internal static class BridgeClientRegistryScenarios
     internal static async Task EmbeddedMediaRequiresExactPublicationAuthority()
     {
         var configured = Widget("embedded-media-authority", worker: 'm', catalog: 'm');
+        var includePendingCommand = true;
         await using var fixture = new RegistryFixture(
             Catalog(configured),
             configure: (_, client) => client.SnapshotFactory = sequence => new ViewSnapshot
@@ -188,7 +189,8 @@ internal static class BridgeClientRegistryScenarios
                         MinimumHeight = 180,
                     },
                     AspectRatio = 16.0 / 9.0,
-                    PendingCommand = (sequence & uint.MaxValue) >= 3
+                    PendingCommand = includePendingCommand &&
+                        (sequence & uint.MaxValue) >= 3
                         ? new EmbeddedMediaPlaybackCommand
                         {
                             Sequence = 3,
@@ -287,12 +289,26 @@ internal static class BridgeClientRegistryScenarios
                     Event = playbackEvent with { CommandSequence = 4 },
                 },
                 CancellationToken.None));
+        var compatibleSuccessor = await fixture.GetSnapshotAsync(configured.Id);
+        RegistryAssert.True(
+            compatibleSuccessor.Snapshot.Sequence > commandSnapshot.Snapshot.Sequence);
+        RegistryAssert.Equal(
+            playbackEvent.CommandSequence,
+            compatibleSuccessor.Snapshot.EmbeddedMedia!.PendingCommand!.Sequence);
         await fixture.Registry.PublishEmbeddedMediaPlaybackEventAsync(
             eventRequest, CancellationToken.None);
         var client = fixture.Clients.Single();
         RegistryAssert.Equal(2, client.EmbeddedMediaPlaybackEvents.Count);
         RegistryAssert.Equal(initialObservation, client.EmbeddedMediaPlaybackEvents[0]);
         RegistryAssert.Equal(playbackEvent, client.EmbeddedMediaPlaybackEvents[1]);
+
+        includePendingCommand = false;
+        var retired = await fixture.GetSnapshotAsync(configured.Id);
+        RegistryAssert.Equal<EmbeddedMediaPlaybackCommand?>(
+            null, retired.Snapshot.EmbeddedMedia!.PendingCommand);
+        await RegistryAssert.ThrowsAsync<BridgeProtocolException>(() =>
+            fixture.Registry.PublishEmbeddedMediaPlaybackEventAsync(
+                eventRequest, CancellationToken.None));
 
         await RegistryAssert.ThrowsAsync<BridgeProtocolException>(() => Task.Run(() =>
         {

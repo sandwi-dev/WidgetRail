@@ -4005,9 +4005,11 @@ static async Task BuiltEmbeddedMediaSampleCompletesPlaybackLoop()
     var catalog = BridgeCatalog.Load(catalogPath);
     var descriptor = catalog.Widgets.Single(widget => widget.Id == "embedded-media-sample");
     var pipeName = $"wrail-embedded-media-sample-{Guid.NewGuid():N}";
-    await using var server = new WidgetBridgeServer(pipeName, catalog, 64 * 1024);
+    await using var server = new WidgetBridgeServer(
+        pipeName, catalog, BridgeProtocol.DefaultMaximumMessageBytes);
     var serverTask = server.RunAsync(TimeSpan.FromSeconds(5));
-    await using var client = await BridgeTestClient.ConnectAsync(pipeName, 64 * 1024);
+    await using var client = await BridgeTestClient.ConnectAsync(
+        pipeName, BridgeProtocol.DefaultMaximumMessageBytes);
     try
     {
         var lifecycle = await client.RequestAsync(
@@ -4033,6 +4035,11 @@ static async Task BuiltEmbeddedMediaSampleCompletesPlaybackLoop()
                 resource.Path == "payload/media/adapter.html" &&
                 Convert.FromBase64String(resource.ContentBase64).Length > 0),
             "Built sample did not resolve its exact sealed adapter bytes.");
+        Assert.True(bundle.Resources.Any(resource =>
+                resource.Path == "payload/media/sample.mp4" &&
+                resource.ContentType == "video/mp4" &&
+                Convert.FromBase64String(resource.ContentBase64).Length > 0),
+            "Built sample did not resolve its exact sealed video/audio asset bytes.");
 
         var eventSequence = 0L;
         async Task<(ViewSnapshot Snapshot, EmbeddedMediaPlaybackCommand Command)>
@@ -4081,6 +4088,33 @@ static async Task BuiltEmbeddedMediaSampleCompletesPlaybackLoop()
             return acknowledged;
         }
 
+        async Task<ViewSnapshot> ObserveAsync(
+            ViewSnapshot snapshot,
+            EmbeddedMediaPlaybackState state,
+            double position)
+        {
+            var response = await client.RequestAsync(
+                BridgeMessageTypes.EmbeddedMediaPlaybackEvent,
+                new BridgeEmbeddedMediaPlaybackEventRequest(
+                    descriptor.Id, snapshot.WidgetInstanceId,
+                    descriptor.RuntimeGeneration, descriptor.PresentationGeneration,
+                    snapshot.Sequence,
+                    new EmbeddedMediaPlaybackEvent
+                    {
+                        SurfaceId = snapshot.EmbeddedMedia!.Id,
+                        Sequence = ++eventSequence,
+                        CommandSequence = 0,
+                        MediaKey = snapshot.EmbeddedMedia.PendingCommand!.MediaKey,
+                        State = state,
+                        PositionSeconds = position,
+                        DurationSeconds = 60,
+                        Volume = 0.8,
+                    }));
+            Assert.Equal(BridgeMessageTypes.Acknowledged, response.Type);
+            _ = await client.ReadEventAsync(BridgeMessageTypes.Invalidation);
+            return await SampleSnapshotAsync(client, descriptor.Id);
+        }
+
         var (play, playCommand) = await CommandAsync(
             "host.embeddedMedia.togglePlayback", "media-shell.play");
         Assert.Equal(ProtocolConstants.EmbeddedMediaPlaybackVersion, play.ProtocolVersion);
@@ -4099,6 +4133,11 @@ static async Task BuiltEmbeddedMediaSampleCompletesPlaybackLoop()
         var (resume, resumeCommand) = await CommandAsync(
             "host.embeddedMedia.togglePlayback", "media-shell.play");
         Assert.Equal(EmbeddedMediaPlaybackCommandKind.Play, resumeCommand.Kind);
+        var compatibleResume = await ObserveAsync(
+            resume, EmbeddedMediaPlaybackState.Paused, 8);
+        Assert.True(compatibleResume.Sequence > resume.Sequence,
+            "Unsolicited progress did not advance the compatible snapshot.");
+        Assert.Equal(resumeCommand, compatibleResume.EmbeddedMedia!.PendingCommand);
         _ = await AcknowledgeAsync(
             resume, resumeCommand, EmbeddedMediaPlaybackState.Playing, 8);
 

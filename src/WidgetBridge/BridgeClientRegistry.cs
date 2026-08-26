@@ -1054,11 +1054,12 @@ internal sealed class BridgeClientRegistry : IAsyncDisposable
                 throw new BridgeProtocolException(
                     "Embedded media playback event is invalid.");
             if (media is null ||
-                snapshot.Sequence != request.Sequence ||
                 !string.Equals(snapshot.WidgetInstanceId, request.InstanceId, StringComparison.Ordinal) ||
                 !string.Equals(descriptor.RuntimeGeneration, request.RuntimeGeneration, StringComparison.Ordinal) ||
                 !string.Equals(descriptor.PresentationGeneration, request.PresentationGeneration, StringComparison.Ordinal) ||
-                !string.Equals(media.Id, request.Event.SurfaceId, StringComparison.Ordinal))
+                !string.Equals(media.Id, request.Event.SurfaceId, StringComparison.Ordinal) ||
+                !registration.AdmitsEmbeddedMediaPlaybackEvent(
+                    request.Sequence, playbackEvent, snapshot))
                 throw new BridgeProtocolException(
                     "Embedded media event authority is stale or unavailable.");
             if (playbackEvent.CommandSequence > 0 &&
@@ -1822,6 +1823,7 @@ internal sealed class BridgeClientRegistry : IAsyncDisposable
 
         internal ViewSnapshot? CachedSnapshot { get; private set; }
         private int _cachedSnapshotWorkerStart;
+        private EmbeddedMediaCommandAuthority? _embeddedMediaCommandAuthority;
         private long _lastDashboardInputSequence;
         private readonly object _residencyGate = new();
         private CancellationTokenSource? _idleUnloadCancellation;
@@ -1869,9 +1871,59 @@ internal sealed class BridgeClientRegistry : IAsyncDisposable
             if (workerStart <= 0 || !Client.IsRunning)
                 throw new BridgeProtocolException(
                     $"Widget '{Configured.Id}' lost its worker before snapshot publication.");
+            var media = snapshot.EmbeddedMedia;
+            var pending = media?.PendingCommand;
+            if (pending is null || media is null)
+            {
+                _embeddedMediaCommandAuthority = null;
+            }
+            else if (_embeddedMediaCommandAuthority is not { } current ||
+                !string.Equals(current.InstanceId, snapshot.WidgetInstanceId,
+                    StringComparison.Ordinal) ||
+                !string.Equals(current.SurfaceId, media.Id, StringComparison.Ordinal) ||
+                current.CommandSequence != pending.Sequence ||
+                !string.Equals(current.MediaKey, pending.MediaKey,
+                    StringComparison.Ordinal))
+            {
+                _embeddedMediaCommandAuthority = new(
+                    snapshot.Sequence,
+                    snapshot.WidgetInstanceId,
+                    media.Id,
+                    pending.Sequence,
+                    pending.MediaKey);
+            }
             CachedSnapshot = snapshot;
             _cachedSnapshotWorkerStart = workerStart;
         }
+
+        internal bool AdmitsEmbeddedMediaPlaybackEvent(
+            long requestSequence,
+            EmbeddedMediaPlaybackEvent playbackEvent,
+            ViewSnapshot snapshot)
+        {
+            if (playbackEvent.CommandSequence == 0)
+                return requestSequence == snapshot.Sequence;
+            var media = snapshot.EmbeddedMedia;
+            var pending = media?.PendingCommand;
+            return _embeddedMediaCommandAuthority is { } authority &&
+                requestSequence == authority.OriginSnapshotSequence &&
+                string.Equals(authority.InstanceId, snapshot.WidgetInstanceId,
+                    StringComparison.Ordinal) &&
+                string.Equals(authority.SurfaceId, media?.Id, StringComparison.Ordinal) &&
+                authority.CommandSequence == playbackEvent.CommandSequence &&
+                string.Equals(authority.MediaKey, playbackEvent.MediaKey,
+                    StringComparison.Ordinal) &&
+                pending?.Sequence == playbackEvent.CommandSequence &&
+                string.Equals(pending.MediaKey, playbackEvent.MediaKey,
+                    StringComparison.Ordinal);
+        }
+
+        private sealed record EmbeddedMediaCommandAuthority(
+            long OriginSnapshotSequence,
+            string InstanceId,
+            string SurfaceId,
+            long CommandSequence,
+            string MediaKey);
 
         internal void AcceptDashboardInputSequence(long sequence)
         {

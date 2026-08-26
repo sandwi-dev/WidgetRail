@@ -170,6 +170,10 @@ ComPtr<IStream> StreamFor(const void* data, const std::size_t size) {
     return stream;
 }
 
+bool IsSealedMediaType(const std::wstring_view contentType) noexcept {
+    return contentType.starts_with(L"audio/") || contentType.starts_with(L"video/");
+}
+
 const wchar_t* LifecycleName(const Lifecycle lifecycle) {
     switch (lifecycle) {
     case Lifecycle::Absent: return L"absent";
@@ -453,6 +457,9 @@ HRESULT RichMediaSurfaceCoordinator::ConfigureCore() noexcept {
     if (SUCCEEDED(result)) result = settings->put_IsBuiltInErrorPageEnabled(FALSE);
     if (SUCCEEDED(result)) result = settings->put_AreDefaultScriptDialogsEnabled(FALSE);
     if (SUCCEEDED(result)) result = settings->put_IsWebMessageEnabled(TRUE);
+    ComPtr<ICoreWebView2_8> core8;
+    if (SUCCEEDED(result)) result = core_.As(&core8);
+    if (SUCCEEDED(result)) result = core8->put_IsMuted(FALSE);
     ComPtr<ICoreWebView2Settings3> settings3;
     if (SUCCEEDED(result) && SUCCEEDED(settings.As(&settings3)))
         result = settings3->put_AreBrowserAcceleratorKeysEnabled(FALSE);
@@ -599,6 +606,84 @@ bool RichMediaSurfaceCoordinator::IsPlaybackCommandCorrelated(
             mediaKey == pendingMediaKey);
 }
 
+RichMediaSurfaceCoordinator::SealedResourceResponsePlan
+RichMediaSurfaceCoordinator::PlanSealedResourceResponse(
+    std::wstring_view rangeHeader, const std::wstring_view contentType,
+    const std::size_t resourceLength, const bool rangeEligible) noexcept {
+    SealedResourceResponsePlan plan;
+    plan.length = resourceLength;
+    const auto commonHeaders = [&] {
+        std::wstring headers = L"Content-Type: " + std::wstring{contentType} +
+            L"\r\nCache-Control: no-store\r\nX-Content-Type-Options: nosniff";
+        if (rangeEligible) headers += L"\r\nAccept-Ranges: bytes";
+        return headers;
+    };
+    if (!rangeEligible || rangeHeader.empty()) {
+        plan.headers = commonHeaders() + L"\r\nContent-Length: " +
+            std::to_wstring(resourceLength);
+        return plan;
+    }
+    const auto reject = [&] {
+        plan.status = 416;
+        plan.offset = 0;
+        plan.length = 0;
+        plan.headers = commonHeaders() + L"\r\nContent-Range: bytes */" +
+            std::to_wstring(resourceLength) + L"\r\nContent-Length: 0";
+        return plan;
+    };
+    if (!rangeHeader.starts_with(L"bytes=") || resourceLength == 0)
+        return reject();
+    std::wstring_view range = rangeHeader.substr(6);
+    while (!range.empty() && (range.front() == L' ' || range.front() == L'\t'))
+        range.remove_prefix(1);
+    while (!range.empty() && (range.back() == L' ' || range.back() == L'\t'))
+        range.remove_suffix(1);
+    if (range.empty() || range.find(L',') != std::wstring_view::npos)
+        return reject();
+    const auto hyphen = range.find(L'-');
+    if (hyphen == std::wstring_view::npos ||
+        range.find(L'-', hyphen + 1) != std::wstring_view::npos)
+        return reject();
+    const auto parse = [](const std::wstring_view text,
+                          std::size_t& value) noexcept {
+        if (text.empty()) return false;
+        value = 0;
+        for (const wchar_t character : text) {
+            if (character < L'0' || character > L'9') return false;
+            const auto digit = static_cast<std::size_t>(character - L'0');
+            if (value > (SIZE_MAX - digit) / 10) return false;
+            value = value * 10 + digit;
+        }
+        return true;
+    };
+    const auto first = range.substr(0, hyphen);
+    const auto last = range.substr(hyphen + 1);
+    std::size_t start{};
+    std::size_t end{};
+    if (first.empty()) {
+        std::size_t suffix{};
+        if (!parse(last, suffix) || suffix == 0 || suffix > resourceLength)
+            return reject();
+        start = resourceLength - suffix;
+        end = resourceLength - 1;
+    } else {
+        if (!parse(first, start) || start >= resourceLength) return reject();
+        if (last.empty()) {
+            end = resourceLength - 1;
+        } else if (!parse(last, end) || end < start || end >= resourceLength) {
+            return reject();
+        }
+    }
+    plan.status = 206;
+    plan.offset = start;
+    plan.length = end - start + 1;
+    plan.headers = commonHeaders() + L"\r\nContent-Range: bytes " +
+        std::to_wstring(start) + L"-" + std::to_wstring(end) + L"/" +
+        std::to_wstring(resourceLength) + L"\r\nContent-Length: " +
+        std::to_wstring(plan.length);
+    return plan;
+}
+
 bool RichMediaSurfaceCoordinator::IsValidAdapterConfiguration(
     const Configuration& configuration) noexcept {
     return IsValidPublicAdapterConfiguration(configuration);
@@ -612,6 +697,14 @@ HRESULT RichMediaSurfaceCoordinator::ServeResource(
     if (SUCCEEDED(result)) result = request->get_Uri(&rawUri);
     const std::wstring uri = rawUri ? rawUri : L"";
     CoTaskMemFree(rawUri);
+    std::wstring rangeHeader;
+    ComPtr<ICoreWebView2HttpRequestHeaders> requestHeaders;
+    if (SUCCEEDED(result) && SUCCEEDED(request->get_Headers(&requestHeaders))) {
+        LPWSTR rawRange{};
+        if (SUCCEEDED(requestHeaders->GetHeader(L"Range", &rawRange)) && rawRange)
+            rangeHeader.assign(rawRange);
+        CoTaskMemFree(rawRange);
+    }
     COREWEBVIEW2_WEB_RESOURCE_CONTEXT resourceContext{};
     const HRESULT contextResult = args->get_ResourceContext(&resourceContext);
     COREWEBVIEW2_WEB_RESOURCE_REQUEST_SOURCE_KINDS sourceKind{};
@@ -627,6 +720,8 @@ HRESULT RichMediaSurfaceCoordinator::ServeResource(
     const wchar_t* contentType{};
     bool matchedEntry{};
     bool matchedAsset{};
+    int responseStatus{200};
+    std::wstring responseReason{L"OK"};
     std::wstring_view matchedMime{L"<none>"};
     if (configuration_.resources.empty() && uri == kPageUri) {
         stream = StreamFor(kPage, sizeof(kPage) - 1);
@@ -646,13 +741,19 @@ HRESULT RichMediaSurfaceCoordinator::ServeResource(
                 })
             : configuration_.resources.end();
         if (found != configuration_.resources.end()) {
-            stream = StreamFor(found->content.data(), found->content.size());
             matchedEntry = found->path == configuration_.entryAsset;
             matchedAsset = true;
             matchedMime = std::wstring_view{found->contentType}.substr(0, 64);
+            const auto plan = PlanSealedResourceResponse(
+                rangeHeader, found->contentType, found->content.size(),
+                IsSealedMediaType(found->contentType));
+            responseStatus = plan.status;
+            responseReason = responseStatus == 206 ? L"Partial Content" :
+                responseStatus == 416 ? L"Range Not Satisfiable" : L"OK";
+            if (responseStatus != 416)
+                stream = StreamFor(found->content.data() + plan.offset, plan.length);
             static thread_local std::wstring headers;
-            headers = L"Content-Type: " + found->contentType +
-                L"\r\nCache-Control: no-store\r\nX-Content-Type-Options: nosniff";
+            headers = plan.headers;
             contentType = headers.c_str();
         } else {
             Emit(L"Rich media resource denied");
@@ -670,11 +771,13 @@ HRESULT RichMediaSurfaceCoordinator::ServeResource(
             state_.authority.controllerGeneration,
             state_.authority.documentGeneration,
             matchedEntry ? L"yes" : L"no", matchedAsset ? L"matched" : L"missing",
-            matchedMime, stream ? 200 : 404));
+            matchedMime, matchedAsset ? responseStatus : 404));
     }
     ComPtr<ICoreWebView2WebResourceResponse> response;
     result = environment_->CreateWebResourceResponse(
-        stream.Get(), stream ? 200 : 404, stream ? L"OK" : L"Not Found", contentType, &response);
+        stream.Get(), matchedAsset ? responseStatus : (stream ? 200 : 404),
+        matchedAsset ? responseReason.c_str() : (stream ? L"OK" : L"Not Found"),
+        contentType, &response);
     if (SUCCEEDED(result)) result = args->put_Response(response.Get());
     return result;
 }

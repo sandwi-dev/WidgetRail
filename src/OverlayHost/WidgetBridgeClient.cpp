@@ -2078,10 +2078,11 @@ bool IsNormalizedEmbeddedMediaPath(const std::wstring_view value) {
 }
 
 bool IsEmbeddedMediaContentType(const std::wstring_view value) {
-    constexpr std::array<std::wstring_view, 10> allowed{
+    constexpr std::array<std::wstring_view, 11> allowed{
         L"text/html", L"text/css", L"text/javascript",
         L"application/javascript", L"image/png", L"image/jpeg",
-        L"image/webp", L"audio/wav", L"audio/mpeg", L"audio/ogg"};
+        L"image/webp", L"audio/wav", L"audio/mpeg", L"audio/ogg",
+        L"video/mp4"};
     return std::find(allowed.begin(), allowed.end(), value) != allowed.end();
 }
 

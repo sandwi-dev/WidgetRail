@@ -39,7 +39,11 @@ public sealed class EmbeddedMediaSampleWidget : Widget
             EntryAsset = "payload/media/adapter.html",
             Surface = new WidgetSurfaceHints { PreferredWidth = 640, PreferredHeight = 360, MinimumWidth = 320, MinimumHeight = 180 },
             AspectRatio = 16.0 / 9.0,
-            Resources = [new EmbeddedMediaResource { Path = "payload/media/adapter.html", ContentType = "text/html" }],
+            Resources =
+            [
+                new EmbeddedMediaResource { Path = "payload/media/adapter.html", ContentType = "text/html" },
+                new EmbeddedMediaResource { Path = "payload/media/sample.mp4", ContentType = "video/mp4" },
+            ],
             Commands = [EmbeddedMediaCommand.Activate, EmbeddedMediaCommand.TogglePlayback, EmbeddedMediaCommand.Previous, EmbeddedMediaCommand.Next, EmbeddedMediaCommand.SeekBackward, EmbeddedMediaCommand.SeekForward],
             PendingCommand = pending,
         };

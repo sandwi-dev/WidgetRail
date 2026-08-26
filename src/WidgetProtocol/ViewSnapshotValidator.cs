@@ -1069,7 +1069,7 @@ public static class ViewSnapshotValidator
     private static bool IsEmbeddedMediaContentType(string? value) => value is
         "text/html" or "text/css" or "text/javascript" or "application/javascript" or
         "image/png" or "image/jpeg" or "image/webp" or
-        "audio/wav" or "audio/mpeg" or "audio/ogg";
+        "audio/wav" or "audio/mpeg" or "audio/ogg" or "video/mp4";
 
     private static bool IsDashboardQuickActionButton(ControllerButton button) => button is
         ControllerButton.X or
