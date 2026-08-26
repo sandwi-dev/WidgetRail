@@ -592,6 +592,10 @@ var seek = UI.Scrubber(
     .FocusRight("player.next");
 ```
 
+The five-second step above is an authoring choice, not a framework default.
+Each widget chooses a step appropriate to its media duration and interaction
+density, or publishes a direct absolute Slider target for an exact seek.
+
 Outside adjustment mode, every direction remains normal focus navigation and
 the Slider may declare horizontal neighbors. A enters host-owned adjustment
 mode; Left/Right then changes the value, and A or B exits without dispatching a

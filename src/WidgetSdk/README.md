@@ -54,6 +54,10 @@ closed command set. The browser never receives the widget focus graph or raw
 controller keys. Overlay-root B remains host Back, while pinned B retains the
 ordinary selected-projection widget route.
 
+Media widgets choose their own quick-seek increment or use the existing Slider
+absolute-value action for direct seeking; the generic embedded-media contract
+does not define a global seek step.
+
 For selection-driven data, create an optional per-widget
 `PinnedLayoutHandle` with `CreatePinnedLayoutHandle(id, name, surface,
 initialFocusId, activeInputScopeId)`. Those stable values are registered once;
