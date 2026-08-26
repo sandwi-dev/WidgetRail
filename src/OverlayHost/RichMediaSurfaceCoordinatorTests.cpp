@@ -318,18 +318,42 @@ void RunContractCases() {
         3, L"play", L"neutral-tone", std::nullopt, std::nullopt};
     const auto admittedContract =
         widgetrail::EmbeddedMediaResourceContract(initialSurface);
-    Require(widgetrail::SameEmbeddedMediaResourceContract(
-                admittedContract, pendingSurface),
+    std::wstring sourceWidgetId = L"neutral-widget";
+    std::wstring sourceSurfaceId = initialSurface.id;
+    const std::wstring retainedWidgetId{std::wstring_view{sourceWidgetId}};
+    const std::wstring retainedSurfaceId{std::wstring_view{sourceSurfaceId}};
+    sourceWidgetId.assign(L"navigatePrevious");
+    sourceSurfaceId.assign(L"retired-surface-with-different-storage");
+    initialSurface.id.assign(L"retired.contract");
+    initialSurface.resources.clear();
+    Require(retainedWidgetId == L"neutral-widget" &&
+                retainedSurfaceId == L"neutral.primary" &&
+                admittedContract.id == L"neutral.primary" &&
+                admittedContract.resources.size() == 1 &&
+                admittedContract.resources[0].path == L"media/index.html",
+            "retained media identity/resource contract borrowed snapshot storage");
+    int controllerAdmissions = 1;
+    const bool pendingRetainsSession = widgetrail::SameEmbeddedMediaResourceContract(
+        admittedContract, pendingSurface);
+    if (!pendingRetainsSession) ++controllerAdmissions;
+    Require(pendingRetainsSession,
             "playback command snapshot churn replaced the sealed media session");
     pendingSurface.pendingCommand.reset();
-    Require(widgetrail::SameEmbeddedMediaResourceContract(
-                admittedContract, pendingSurface),
+    const bool acknowledgementRetainsSession =
+        widgetrail::SameEmbeddedMediaResourceContract(
+            admittedContract, pendingSurface);
+    if (!acknowledgementRetainsSession) ++controllerAdmissions;
+    Require(acknowledgementRetainsSession,
             "playback acknowledgement snapshot churn replaced the sealed media session");
     auto replacementSurface = pendingSurface;
     replacementSurface.resources[0].path = L"media/replacement.html";
     Require(!widgetrail::SameEmbeddedMediaResourceContract(
                 admittedContract, replacementSurface),
             "genuine sealed media resource replacement retained stale authority");
+    if (!widgetrail::SameEmbeddedMediaResourceContract(
+            admittedContract, replacementSurface)) ++controllerAdmissions;
+    Require(controllerAdmissions == 2,
+            "compatible updates or genuine replacement produced wrong controller count");
     State state;
     state.authority = {2, 3, 7, 11, 13, 3};
     State next = state;

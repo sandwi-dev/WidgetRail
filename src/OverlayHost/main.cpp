@@ -2569,10 +2569,15 @@ private:
     }
 
     void ReconcileEmbeddedMediaSurface(
-        const std::wstring_view widgetId,
+        std::wstring_view widgetId,
         const widgetrail::WidgetSnapshot& snapshot,
         const widgetrail::WidgetDescriptor* descriptor) {
         if (richMediaProof_) return;
+        // Callers may select the current widget through embeddedMediaAuthority_.
+        // Retirement below resets that owner, so bind the identifier to storage
+        // whose lifetime spans the complete reconciliation transaction.
+        const std::wstring ownedWidgetId{widgetId};
+        widgetId = ownedWidgetId;
         if (!snapshot.embeddedMedia || !descriptor) {
             if (embeddedMediaAuthority_ && embeddedMediaAuthority_->widgetId == widgetId)
                 StopEmbeddedMediaSurface(L"declaration-removed");
@@ -2713,7 +2718,7 @@ private:
             std::wstring{widgetId}, snapshot.instanceId,
             descriptor->runtimeGeneration, descriptor->presentationGeneration,
             declaration.id, snapshot.sequence,
-            widgetrail::EmbeddedMediaResourceContract(resolvedDeclaration),
+            widgetrail::EmbeddedMediaResourceContract(declaration),
             declaration.commands, 0, projection};
         const auto resolvedGeometry = ResolveEmbeddedMediaPresentationGeometry(
             snapshot.sequence);
