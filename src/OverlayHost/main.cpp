@@ -2576,6 +2576,49 @@ private:
             L" reason=" + std::wstring{reason});
     }
 
+    struct CompactPinnedMediaChromeColors final {
+        widgetrail::NativeColor background;
+        widgetrail::NativeColor track;
+        widgetrail::NativeColor progress;
+        widgetrail::NativeColor focus;
+    };
+
+    [[nodiscard]] CompactPinnedMediaChromeColors
+    ResolveCompactPinnedMediaChromeColors() const noexcept {
+        const auto colorOr = [](const std::optional<widgetrail::NativeColor>& value,
+                                const widgetrail::NativeColor fallback) {
+            return value.value_or(fallback);
+        };
+        const auto paintedLayer = [](
+                const std::optional<widgetrail::NativeColor>& configured,
+                const widgetrail::NativeColor fallback,
+                const float opacity) {
+            auto result = configured.value_or(fallback);
+            result.alpha *= std::isfinite(opacity)
+                ? std::clamp(opacity, 0.0F, 1.0F)
+                : 1.0F;
+            return result;
+        };
+        const widgetrail::NativeColor defaultSecondary{
+            0x9B / 255.0F, 0xA3 / 255.0F, 0xB3 / 255.0F, 1.0F};
+        auto background = paintedLayer(
+            panelStyle_.background(), kDefaultPanel, panelStyle_.opacity());
+        background.alpha = std::min(background.alpha, 0.82F);
+        auto track = colorOr(hintStyle_.foreground(),
+            colorOr(bodyStyle_.foreground(), defaultSecondary));
+        track.alpha = std::min(track.alpha, 0.72F);
+        const auto progress = trayItemSelectedFocusedStyle_.background()
+            ? paintedLayer(trayItemSelectedFocusedStyle_.background(),
+                           kDefaultAccent,
+                           trayItemSelectedFocusedStyle_.opacity())
+            : paintedLayer(trayItemSelectedStyle_.background(),
+                           kDefaultAccent, trayItemSelectedStyle_.opacity());
+        const auto focus = colorOr(
+            trayItemSelectedFocusedStyle_.outlineColor(),
+            colorOr(trayItemFocusedStyle_.outlineColor(), kDefaultAccent));
+        return {background, track, progress, focus};
+    }
+
     void ReconcileCompactPinnedMediaChrome() {
         if (!embeddedMediaAuthority_ ||
             embeddedMediaAuthority_->projection != EmbeddedMediaProjection::Pinned ||
@@ -2586,18 +2629,14 @@ private:
             ? std::clamp(compact.previewPositionSeconds / compact.durationSeconds,
                          0.0, 1.0)
             : 0.0;
-        if (!EnsureGraphicsResources() || !cardBrush_ || !secondaryBrush_ ||
-            !accentBrush_ || !focusBrush_) return;
-        auto background = cardBrush_->GetColor();
-        background.a = std::min(background.a, 0.82F);
-        auto track = secondaryBrush_->GetColor();
-        track.a = std::min(track.a, 0.72F);
+        const auto colors = ResolveCompactPinnedMediaChromeColors();
         widgetrail::OverlayCompositionSurface::CommitTiming timing;
         const HRESULT result = compositionSurface_.CommitPinnedMediaChrome(
             {*embeddedMediaClientBounds_, compact.seekBarVisible,
              pinnedSurfaceCoordinator_.controllerFocused(),
-             compact.scrubActive, progress, background, track,
-             accentBrush_->GetColor(), focusBrush_->GetColor()}, timing);
+             compact.scrubActive, progress, D2DColor(colors.background),
+             D2DColor(colors.track), D2DColor(colors.progress),
+             D2DColor(colors.focus)}, timing);
         if (FAILED(result)) AppendDiagnostic(
             L"Compact pinned media chrome commit failed hr=" +
             std::to_wstring(static_cast<long>(result)));
@@ -5422,7 +5461,11 @@ private:
 
         const auto* source = SnapshotFor(widgetId);
         const auto* snapshot = InteractionSnapshotFor(widgetId);
-        if (!source || snapshot != source || !lastWidgetRenderResult_.succeeded)
+        if (!source || snapshot != source || !lastWidgetRenderResult_.succeeded ||
+            !committedWidgetVisualState_ ||
+            committedWidgetVisualState_->widgetId != widgetId ||
+            committedWidgetVisualState_->instanceId != snapshot->instanceId ||
+            committedWidgetVisualState_->snapshotSequence != impact.baseSequence)
             return false;
         RECT client{};
         if (!GetClientRect(window_, &client)) return false;
@@ -5518,7 +5561,9 @@ private:
                 compositionChromeSession_->trayWidth,
                 compositionChromeSession_->trayHeight);
         }
+        committedWidgetVisualState_->snapshotSequence = snapshot->sequence;
         pendingWidgetPresentationImpact_.reset();
+        ReconcileCommittedEmbeddedMediaSurface();
         return true;
     }
 
