@@ -259,6 +259,8 @@ $bundledPackageSealOutput = Join-Path $outputDirectory 'obj\bundled-package-seal
 New-Item -ItemType Directory -Force -Path $hostObjectDirectory, $platformObjectDirectory, $platformTestObjectDirectory, $testObjectDirectory, $imageTestObjectDirectory, $layoutTestObjectDirectory, $iconTestObjectDirectory, $styleTestObjectDirectory, $textLayoutTestObjectDirectory, $motionTestObjectDirectory, $placementTestObjectDirectory, $targetingTestObjectDirectory, $transitionTestObjectDirectory, $chromeTestObjectDirectory, $guideTestObjectDirectory, $inputOwnershipTestObjectDirectory, $navigationTestObjectDirectory, $pressedTestObjectDirectory, $sliderTestObjectDirectory, $widgetInteractionTestObjectDirectory, $focusTestObjectDirectory, $surfaceFocusTestObjectDirectory, $lifecycleTestObjectDirectory, $actionFeedbackTestObjectDirectory, $accessibilityTreeTestObjectDirectory, $accessibilityProjectionTestObjectDirectory, $accessibilityProviderTestObjectDirectory, $realHostAccessibilityTestObjectDirectory, $actionFailureHostTestObjectDirectory, $actionFailureFixtureOutput, $widgetSwitchHostTestObjectDirectory, $coldDashboardHostTestObjectDirectory, $widgetSwitchFixtureOutput, $audioMixerScrollHostTestObjectDirectory, $audioMixerScrollFixtureOutput, $scrollEvidenceProbeTestObjectDirectory, $trayLayoutTestObjectDirectory, $hostAccessibilityTestObjectDirectory, $accessibilityEventsTestObjectDirectory, $bridgeCatalogTestObjectDirectory, $localPackageImportTestObjectDirectory, $textEntryModalTestObjectDirectory, $rendererTestObjectDirectory, $semanticChurnTestObjectDirectory, $pinnedSurfaceTestObjectDirectory, $pinnedPlacementTestObjectDirectory, $widgetSurfaceTestObjectDirectory, $widgetSessionTestObjectDirectory, $processOwnerTestObjectDirectory, $componentGeometryTestObjectDirectory, $trayRefreshHostTestObjectDirectory, $trayRefreshCommunityFixtureOutput, $richMediaTestObjectDirectory, $bundledPackageSealOutput | Out-Null
 Copy-Item -LiteralPath (Join-Path $projectDirectory '..\..\THIRD_PARTY_NOTICES.md') `
     -Destination (Join-Path $outputDirectory 'THIRD_PARTY_NOTICES.md') -Force
+Copy-Item -LiteralPath (Join-Path $projectDirectory '..\..\third_party\public_suffix_list\public_suffix_list.dat') `
+    -Destination (Join-Path $outputDirectory 'public_suffix_list.dat') -Force
 
 $optimization = if ($Configuration -eq 'Release') { @('/O2', '/DNDEBUG') } else { @('/Od', '/Zi') }
 $includeArguments = @(
@@ -312,6 +314,7 @@ function Invoke-RichMediaTests {
     $arguments = $common + @(
         (Join-Path $projectDirectory 'RichMediaSurfaceCoordinatorTests.cpp'),
         (Join-Path $projectDirectory 'RichMediaSurfaceCoordinator.cpp'),
+        (Join-Path $projectDirectory 'PublicSuffixDomainAuthority.cpp'),
         (Join-Path $projectDirectory 'OverlayCompositionSurface.cpp'),
         "/Fo:$richMediaTestObjectDirectory\",
         "/Fe:$outputDirectory\RichMediaSurfaceCoordinatorTests.exe",
@@ -319,7 +322,8 @@ function Invoke-RichMediaTests {
     ) + $libraryArguments + @(
         'WebView2LoaderStatic.lib', 'user32.lib', 'd2d1.lib', 'd3d11.lib',
         'dxgi.lib', 'dcomp.lib', 'windowsapp.lib', 'ole32.lib',
-        'uiautomationcore.lib', 'psapi.lib', 'shlwapi.lib', 'version.lib')
+        'uiautomationcore.lib', 'psapi.lib', 'shlwapi.lib', 'version.lib',
+        'bcrypt.lib', 'normaliz.lib')
     & $cl $arguments
     if ($LASTEXITCODE -ne 0) {
         throw "RichMediaSurfaceCoordinatorTests build failed with exit code $LASTEXITCODE."
@@ -580,10 +584,11 @@ function Invoke-WidgetBridgeCatalogTests {
         '/DWRAIL_WIDGET_BRIDGE_CLIENT_TESTING',
         (Join-Path $projectDirectory 'WidgetBridgeCatalogTests.cpp'),
         (Join-Path $projectDirectory 'WidgetBridgeClient.cpp'),
+        (Join-Path $projectDirectory 'PublicSuffixDomainAuthority.cpp'),
         "/Fo:$bridgeCatalogTestObjectDirectory\",
         "/Fe:$outputDirectory\WidgetBridgeCatalogTests.exe",
         '/link', '/SUBSYSTEM:CONSOLE'
-    ) + $libraryArguments + @('windowsapp.lib', 'user32.lib')
+    ) + $libraryArguments + @('windowsapp.lib', 'user32.lib', 'bcrypt.lib', 'normaliz.lib')
     & $cl $arguments
     if ($LASTEXITCODE -ne 0) {
         throw "WidgetBridgeCatalogTests build failed with exit code $LASTEXITCODE."
@@ -1562,6 +1567,7 @@ $hostArguments = $common + @(
     (Join-Path $projectDirectory 'main.cpp'),
     (Join-Path $projectDirectory 'OverlayCompositionSurface.cpp'),
     (Join-Path $projectDirectory 'RichMediaSurfaceCoordinator.cpp'),
+    (Join-Path $projectDirectory 'PublicSuffixDomainAuthority.cpp'),
     (Join-Path $projectDirectory 'OverlayProcessOwner.cpp'),
     (Join-Path $projectDirectory 'OverlayState.cpp'),
     (Join-Path $projectDirectory 'WidgetBridgeClient.cpp'),
@@ -1610,7 +1616,7 @@ $hostArguments = $common + @(
     'gameinput.lib', 'shcore.lib', 'xinput9_1_0.lib', 'windowsapp.lib',
     (Join-Path $outputDirectory 'OverlayPlatformInterop.lib'),
     'winhttp.lib', 'windowscodecs.lib', 'ole32.lib', 'oleaut32.lib',
-    'uiautomationcore.lib', 'advapi32.lib', 'uuid.lib'
+    'uiautomationcore.lib', 'advapi32.lib', 'uuid.lib', 'bcrypt.lib', 'normaliz.lib'
 )
 
 & $cl $hostArguments

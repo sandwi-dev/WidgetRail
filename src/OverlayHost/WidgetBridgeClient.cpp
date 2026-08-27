@@ -1,4 +1,5 @@
 #include "WidgetBridgeClient.h"
+#include "PublicSuffixDomainAuthority.h"
 #include "WidgetSurfaceGeometry.h"
 #include "WidgetProtocolPresentationContract.generated.h"
 
@@ -1186,7 +1187,7 @@ WidgetSnapshot ParseSnapshot(const JsonObject& source) {
         if (!HasNoUnknownProperties(media,
                 {L"id", L"accessibleName", L"entryAsset", L"surface",
                  L"aspectRatio", L"resources", L"commands",
-                 L"allowedFrameOrigins", L"pendingCommand",
+                 L"allowedFrameOrigins", L"allowedFrameDomainFamilies", L"pendingCommand",
                  L"compactPinnedPresentation", L"compactPinnedSeekStepSeconds"}))
             throw winrt::hresult_invalid_argument(
                 L"Embedded media contains an unknown property.");
@@ -1204,6 +1205,8 @@ WidgetSnapshot ParseSnapshot(const JsonObject& source) {
         const auto resources = media.GetNamedArray(L"resources");
         const auto commands = media.GetNamedArray(L"commands");
         const auto frameOrigins = media.GetNamedArray(L"allowedFrameOrigins", JsonArray{});
+        const auto frameFamilies = media.GetNamedArray(
+            L"allowedFrameDomainFamilies", JsonArray{});
         if (resources.Size() == 0 ||
             resources.Size() > protocol_contract::MaximumEmbeddedMediaResourceCount ||
             commands.Size() > protocol_contract::MaximumEmbeddedMediaCommandCount ||
@@ -1288,6 +1291,32 @@ WidgetSnapshot ParseSnapshot(const JsonObject& source) {
                     L"Embedded media frame origin declaration is invalid.");
             parsed.allowedFrameOrigins.push_back(origin);
         }
+        if (frameFamilies.Size() >
+            protocol_contract::MaximumEmbeddedMediaFrameDomainFamilyCount)
+            throw winrt::hresult_invalid_argument(
+                L"Embedded media frame domain family declaration is invalid.");
+        static const auto suffixAuthority = PublicSuffixDomainAuthority::LoadDefault();
+        std::unordered_set<std::wstring> familySet;
+        std::size_t familyAggregate{};
+        for (uint32_t index = 0; index < frameFamilies.Size(); ++index) {
+            const auto family = std::wstring(
+                std::wstring_view(frameFamilies.GetStringAt(index)));
+            familyAggregate += family.size();
+            if (family.size() >
+                    protocol_contract::MaximumEmbeddedMediaFrameDomainFamilyLength ||
+                familyAggregate >
+                    protocol_contract::MaximumEmbeddedMediaFrameDomainFamilyAggregateLength ||
+                !suffixAuthority.IsRegistrableDomain(family) ||
+                !familySet.insert(family).second)
+                throw winrt::hresult_invalid_argument(
+                    L"Embedded media frame domain family declaration is invalid.");
+            parsed.allowedFrameDomainFamilies.push_back(family);
+        }
+        if (!parsed.allowedFrameDomainFamilies.empty() &&
+            snapshot.protocolVersion <
+                protocol_contract::EmbeddedMediaFrameDomainFamiliesVersion)
+            throw winrt::hresult_invalid_argument(
+                L"Embedded media frame domain families require protocol version 26.");
         if (media.HasKey(L"pendingCommand")) {
             const auto pending = media.GetNamedObject(L"pendingCommand");
             if (!HasNoUnknownProperties(pending,
@@ -2135,7 +2164,7 @@ std::optional<EmbeddedMediaBundle> ParseEmbeddedMediaBundle(
             {L"widgetId", L"instanceId", L"runtimeGeneration",
              L"presentationGeneration", L"sequence", L"surfaceId",
              L"entryAsset", L"surface", L"aspectRatio", L"accessibleName",
-             L"commands", L"allowedFrameOrigins", L"pendingCommand",
+             L"commands", L"allowedFrameOrigins", L"allowedFrameDomainFamilies", L"pendingCommand",
              L"compactPinnedPresentation", L"compactPinnedSeekStepSeconds",
              L"resources"}) ||
         !body.HasKey(L"widgetId") || !body.HasKey(L"instanceId") ||
@@ -2258,6 +2287,26 @@ std::optional<EmbeddedMediaBundle> ParseEmbeddedMediaBundle(
             !IsCanonicalHttpsOrigin(origin) ||
             !originSet.insert(origin).second) return std::nullopt;
         bundle.surface.allowedFrameOrigins.push_back(std::move(origin));
+    }
+    const auto frameFamilies = body.GetNamedArray(
+        L"allowedFrameDomainFamilies", JsonArray{});
+    if (frameFamilies.Size() >
+        protocol_contract::MaximumEmbeddedMediaFrameDomainFamilyCount)
+        return std::nullopt;
+    static const auto suffixAuthority = PublicSuffixDomainAuthority::LoadDefault();
+    std::unordered_set<std::wstring> familySet;
+    std::size_t familyAggregate{};
+    for (uint32_t index = 0; index < frameFamilies.Size(); ++index) {
+        auto family = std::wstring(
+            std::wstring_view(frameFamilies.GetStringAt(index)));
+        familyAggregate += family.size();
+        if (family.size() >
+                protocol_contract::MaximumEmbeddedMediaFrameDomainFamilyLength ||
+            familyAggregate >
+                protocol_contract::MaximumEmbeddedMediaFrameDomainFamilyAggregateLength ||
+            !suffixAuthority.IsRegistrableDomain(family) ||
+            !familySet.insert(family).second) return std::nullopt;
+        bundle.surface.allowedFrameDomainFamilies.push_back(std::move(family));
     }
     if (body.HasKey(L"pendingCommand")) {
         const auto pending = body.GetNamedObject(L"pendingCommand");

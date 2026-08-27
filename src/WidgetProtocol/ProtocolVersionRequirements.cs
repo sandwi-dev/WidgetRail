@@ -76,6 +76,12 @@ internal sealed class ProtocolVersionRequirements
                 ProtocolConstants.CompactPinnedMediaPresentationVersion,
                 "$.embeddedMedia.compactPinnedPresentation",
                 $"Compact pinned media presentation requires protocol version {ProtocolConstants.CompactPinnedMediaPresentationVersion} or later.");
+        if ((snapshot.EmbeddedMedia?.AllowedFrameDomainFamilies?.Count ?? 0) != 0)
+            Add(
+                "embedded-media-frame-domain-families",
+                ProtocolConstants.EmbeddedMediaFrameDomainFamiliesVersion,
+                "$.embeddedMedia.allowedFrameDomainFamilies",
+                $"Embedded media frame domain families require protocol version {ProtocolConstants.EmbeddedMediaFrameDomainFamiliesVersion} or later.");
 
         Visit(snapshot.Root, "$.root", 1);
 

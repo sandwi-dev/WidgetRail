@@ -41,6 +41,15 @@ internal static class EmbeddedMediaSurfaceTests
         var playbackWire = playbackSnapshot.CreateSnapshot("fixture.instance", 5);
         Equal(ProtocolConstants.EmbeddedMediaPlaybackVersion, playbackWire.ProtocolVersion);
         Equal(7L, playbackWire.EmbeddedMedia?.PendingCommand?.Sequence);
+        var familyMedia = Valid("primary-media") with
+        {
+            AllowedFrameDomainFamilies = ["example.com"],
+        };
+        var familyWire = (view with { EmbeddedMedia = familyMedia })
+            .CreateSnapshot("fixture.instance", 6);
+        Equal(ProtocolConstants.EmbeddedMediaFrameDomainFamiliesVersion,
+            familyWire.ProtocolVersion);
+        Equal("example.com", familyWire.EmbeddedMedia?.AllowedFrameDomainFamilies.Single());
         using (var document = System.Text.Json.JsonDocument.Parse(SnapshotJson.Serialize(snapshot)))
         {
             var commands = document.RootElement.GetProperty("embeddedMedia").GetProperty("commands")
@@ -115,6 +124,43 @@ internal static class EmbeddedMediaSurfaceTests
                 },
             }, "invalid_origin");
         }
+        foreach (var family in new[]
+        {
+            "com", "co.uk", "deep.example.com", "Example.com",
+            "https://example.com", "example.com:443", "*.example.com",
+            "user@example.com", "127.0.0.1", "éxample.com",
+        })
+        {
+            Error(snapshot with
+            {
+                EmbeddedMedia = Valid("primary-media") with
+                {
+                    AllowedFrameDomainFamilies = [family],
+                },
+            }, "invalid_domain_family");
+        }
+        Error(snapshot with
+        {
+            EmbeddedMedia = Valid("primary-media") with
+            {
+                AllowedFrameDomainFamilies = Enumerable.Repeat("example.com", 5).ToArray(),
+            },
+        }, "too_many");
+        Error(snapshot with
+        {
+            EmbeddedMedia = Valid("primary-media") with
+            {
+                AllowedFrameDomainFamilies = [new string('a', 254)],
+            },
+        }, "invalid_domain_family");
+        Error(snapshot with
+        {
+            EmbeddedMedia = Valid("primary-media") with
+            {
+                AllowedFrameDomainFamilies =
+                    Enumerable.Range(0, 4).Select(_ => new string('a', 130)).ToArray(),
+            },
+        }, "aggregate_too_large");
         Error(snapshot with
         {
             EmbeddedMedia = Valid("primary-media") with
@@ -164,13 +210,13 @@ internal static class EmbeddedMediaSurfaceTests
         var initialSample = sample.Render();
         Equal(null, initialSample.EmbeddedMedia?.PendingCommand);
         Equal(0D, Find(initialSample.CreateSnapshot(
-            "embedded-media-sample.instance", 1).Root, "media-shell.progress").Value);
+            "embedded-media-sample.instance", 1).Root, "media-shell.timeline.slider").Value);
 
         await sample.OnActionAsync(new WidgetActionEvent(
             "host.embeddedMedia.togglePlayback", "media-shell.play"));
         var playCommand = sample.Render().EmbeddedMedia?.PendingCommand;
         Equal(EmbeddedMediaPlaybackCommandKind.Play, playCommand?.Kind);
-        Equal("aurora-tone-0", playCommand?.MediaKey);
+        Equal("aurora-video-0", playCommand?.MediaKey);
         await sample.OnEmbeddedMediaPlaybackEventAsync(new EmbeddedMediaPlaybackEvent
         {
             SurfaceId = "embedded-media-sample.primary",
@@ -209,13 +255,13 @@ internal static class EmbeddedMediaSurfaceTests
         var playingSample = sample.Render();
         Equal(null, playingSample.EmbeddedMedia?.PendingCommand);
         Equal(7D, Find(playingSample.CreateSnapshot(
-            "embedded-media-sample.instance", 2).Root, "media-shell.progress").Value);
+            "embedded-media-sample.instance", 2).Root, "media-shell.timeline.slider").Value);
 
         await sample.OnActionAsync(new WidgetActionEvent(
             "host.embeddedMedia.seekForward", "media-shell.seek-forward"));
         var seekCommand = sample.Render().EmbeddedMedia?.PendingCommand;
         Equal(EmbeddedMediaPlaybackCommandKind.Seek, seekCommand?.Kind);
-        Equal(17D, seekCommand?.PositionSeconds);
+        Equal(9D, seekCommand?.PositionSeconds);
         await sample.OnEmbeddedMediaPlaybackEventAsync(new EmbeddedMediaPlaybackEvent
         {
             SurfaceId = "embedded-media-sample.primary",
@@ -223,7 +269,7 @@ internal static class EmbeddedMediaSurfaceTests
             CommandSequence = seekCommand!.Sequence,
             MediaKey = seekCommand.MediaKey,
             State = EmbeddedMediaPlaybackState.Playing,
-            PositionSeconds = 17,
+            PositionSeconds = 9,
             DurationSeconds = 60,
             Volume = 1,
         });
@@ -231,7 +277,7 @@ internal static class EmbeddedMediaSurfaceTests
             "host.embeddedMedia.next", "media-shell.next"));
         var nextCommand = sample.Render().EmbeddedMedia?.PendingCommand;
         Equal(EmbeddedMediaPlaybackCommandKind.Load, nextCommand?.Kind);
-        Equal("aurora-tone-1", nextCommand?.MediaKey);
+        Equal("horizon-video-1", nextCommand?.MediaKey);
     }
 
     private static EmbeddedMediaSurface Valid(string id) => new()

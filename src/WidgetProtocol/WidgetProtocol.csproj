@@ -5,4 +5,9 @@
     <Nullable>enable</Nullable>
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
   </PropertyGroup>
+  <ItemGroup>
+    <EmbeddedResource Include="..\..\third_party\public_suffix_list\public_suffix_list.dat"
+                      Link="public_suffix_list.dat"
+                      LogicalName="WidgetRail.PublicSuffixList.dat" />
+  </ItemGroup>
 </Project>

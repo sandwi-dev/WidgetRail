@@ -446,6 +446,15 @@ for subframes only; the
 top-level document remains the sealed package entry asset. This contract does
 not expose URLs, DOM, script, browsing, or provider identity.
 
+Protocol v26 adds `AllowedFrameDomainFamilies` for the bounded case where an
+external frame legitimately spans one registrable DNS family. Entries are
+lowercase ASCII registrable domains, not URLs or public suffixes, and match
+only the exact root plus dot-boundary subdomains over default-port HTTPS. The
+host validates them against its integrity-checked Public Suffix List snapshot,
+checks every navigation/redirect/resource independently, and fails closed when
+the suffix authority is unavailable or corrupt. Exact origins remain a
+separate compatible authority.
+
 Use `WidgetIds.Scope(root)` to construct validated hierarchical IDs.
 `scope.Scope(segment)` creates a child prefix, `scope.Id(name)` creates a leaf,
 and `scope.KeyedId(name, durableKey)` creates a deterministic opaque leaf by

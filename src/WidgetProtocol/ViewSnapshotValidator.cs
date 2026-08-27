@@ -334,6 +334,32 @@ public static class ViewSnapshotValidator
                         "Embedded media frame origins must be unique.");
             }
 
+            var frameFamilies = media.AllowedFrameDomainFamilies ?? [];
+            if (media.AllowedFrameDomainFamilies is null)
+                Add($"{path}.allowedFrameDomainFamilies", "required",
+                    "Embedded media frame domain families cannot be null.");
+            if (frameFamilies.Count >
+                ProtocolConstants.MaximumEmbeddedMediaFrameDomainFamilyCount)
+                Add($"{path}.allowedFrameDomainFamilies", "too_many",
+                    $"Embedded media may declare at most {ProtocolConstants.MaximumEmbeddedMediaFrameDomainFamilyCount} frame domain families.");
+            if (frameFamilies.Sum(value => value?.Length ?? 0) >
+                ProtocolConstants.MaximumEmbeddedMediaFrameDomainFamilyAggregateLength)
+                Add($"{path}.allowedFrameDomainFamilies", "aggregate_too_large",
+                    "Embedded media frame domain families exceed the aggregate length limit.");
+            var uniqueFamilies = new HashSet<string>(StringComparer.Ordinal);
+            for (var index = 0; index < frameFamilies.Count; index++)
+            {
+                var family = frameFamilies[index];
+                if (family is null ||
+                    family.Length > ProtocolConstants.MaximumEmbeddedMediaFrameDomainFamilyLength ||
+                    !PublicSuffixDomainAuthority.IsCanonicalRegistrableDomain(family))
+                    Add($"{path}.allowedFrameDomainFamilies[{index}]", "invalid_domain_family",
+                        "Embedded media frame domain families must be canonical registrable DNS domains and cannot be public suffixes.");
+                else if (!uniqueFamilies.Add(family))
+                    Add($"{path}.allowedFrameDomainFamilies[{index}]", "duplicate_domain_family",
+                        "Embedded media frame domain families must be unique.");
+            }
+
             if (media.PendingCommand is { } pending)
             {
                 if (pending.Sequence <= 0 || pending.Sequence > 9_007_199_254_740_991)

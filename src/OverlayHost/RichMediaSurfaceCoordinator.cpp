@@ -88,6 +88,22 @@ bool IsValidPublicAdapterConfiguration(const Configuration& configuration) {
             !frameOrigins.insert(origin).second)
             return false;
     }
+    if (configuration.allowedFrameDomainFamilies.size() >
+        protocol_contract::MaximumEmbeddedMediaFrameDomainFamilyCount)
+        return false;
+    static const auto suffixAuthority = PublicSuffixDomainAuthority::LoadDefault();
+    std::unordered_set<std::wstring> frameFamilies;
+    std::size_t familyAggregate{};
+    for (const auto& family : configuration.allowedFrameDomainFamilies) {
+        familyAggregate += family.size();
+        if (family.size() >
+                protocol_contract::MaximumEmbeddedMediaFrameDomainFamilyLength ||
+            familyAggregate >
+                protocol_contract::MaximumEmbeddedMediaFrameDomainFamilyAggregateLength ||
+            !suffixAuthority.IsRegistrableDomain(family) ||
+            !frameFamilies.insert(family).second)
+            return false;
+    }
     std::size_t aggregate{};
     bool hasEntry{};
     std::unordered_set<std::wstring> paths;
@@ -592,8 +608,9 @@ bool RichMediaSurfaceCoordinator::IsCanonicalHttpsOrigin(
 
 bool RichMediaSurfaceCoordinator::IsAllowedFrameResource(
     const std::wstring_view uri,
-    const std::vector<std::wstring>& allowedOrigins) noexcept {
-    return std::any_of(allowedOrigins.begin(), allowedOrigins.end(),
+    const std::vector<std::wstring>& allowedOrigins,
+    const std::vector<std::wstring>& allowedFamilies) noexcept {
+    const bool exact = std::any_of(allowedOrigins.begin(), allowedOrigins.end(),
         [&](const std::wstring& origin) {
             if (!IsCanonicalHttpsOrigin(origin) || !uri.starts_with(origin))
                 return false;
@@ -602,6 +619,9 @@ bool RichMediaSurfaceCoordinator::IsAllowedFrameResource(
                     (uri[origin.size()] == L'/' || uri[origin.size()] == L'?' ||
                      uri[origin.size()] == L'#'));
         });
+    if (exact) return true;
+    static const auto suffixAuthority = PublicSuffixDomainAuthority::LoadDefault();
+    return suffixAuthority.AllowsHttpsUri(uri, allowedFamilies);
 }
 
 bool RichMediaSurfaceCoordinator::IsPlaybackCommandCorrelated(
@@ -829,8 +849,9 @@ RichMediaSurfaceCoordinator::ApplyInstalledAppReferer(
     const std::wstring_view uri,
     const std::vector<std::wstring>& allowedOrigins,
     const std::wstring_view referer,
-    const std::function<HRESULT(const wchar_t*, const wchar_t*)>& setHeader) noexcept {
-    if (!IsAllowedFrameResource(uri, allowedOrigins))
+    const std::function<HRESULT(const wchar_t*, const wchar_t*)>& setHeader,
+    const std::vector<std::wstring>& allowedFamilies) noexcept {
+    if (!IsAllowedFrameResource(uri, allowedOrigins, allowedFamilies))
         return InstalledAppRefererResult::NotApplicable;
     if (referer.empty() || !setHeader ||
         !CanonicalHttpsOrigin(referer.ends_with(L'/')
@@ -872,7 +893,8 @@ HRESULT RichMediaSurfaceCoordinator::ServeResource(
                     [&](const wchar_t* name, const wchar_t* value) {
                         return requestHeaders->SetHeader(name, value);
                     }}
-                : std::function<HRESULT(const wchar_t*, const wchar_t*)>{});
+                : std::function<HRESULT(const wchar_t*, const wchar_t*)>{},
+            configuration_.allowedFrameDomainFamilies);
         if (refererResult == InstalledAppRefererResult::Applied) {
             Emit(L"Rich media declared frame resource continued with host referer");
             return S_OK;
@@ -1009,7 +1031,8 @@ HRESULT RichMediaSurfaceCoordinator::OnFrameNavigationStarting(
     CoTaskMemFree(rawUri);
     if (FAILED(result)) return result;
     if (IsAllowedNavigation(uri, pageUri_)) return S_OK;
-    if (IsAllowedFrameResource(uri, configuration_.allowedFrameOrigins)) return S_OK;
+    if (IsAllowedFrameResource(uri, configuration_.allowedFrameOrigins,
+            configuration_.allowedFrameDomainFamilies)) return S_OK;
     Emit(L"Rich media frame navigation denied");
     return args->put_Cancel(TRUE);
 }

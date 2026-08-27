@@ -3921,6 +3921,7 @@ static Task EmbeddedMediaAssetsAreProviderNeutral()
                     EmbeddedMediaCommand.SeekForward,
                 ],
                 AllowedFrameOrigins = [$"https://{adapterName}.invalid"],
+                AllowedFrameDomainFamilies = ["example.com"],
                 PendingCommand = new()
                 {
                     Sequence = 9,
@@ -3930,7 +3931,7 @@ static Task EmbeddedMediaAssetsAreProviderNeutral()
             };
             var snapshot = new ViewSnapshot
             {
-                ProtocolVersion = ProtocolConstants.EmbeddedMediaPlaybackVersion,
+                ProtocolVersion = ProtocolConstants.EmbeddedMediaFrameDomainFamiliesVersion,
                 Sequence = 7,
                 WidgetInstanceId = configured.InstanceId,
                 ActiveInputScopeId = "root",
@@ -3967,6 +3968,8 @@ static Task EmbeddedMediaAssetsAreProviderNeutral()
             Assert.SequenceEqual(
                 new[] { $"https://{adapterName}.invalid" },
                 bundle.AllowedFrameOrigins);
+            Assert.SequenceEqual(new[] { "example.com" },
+                bundle.AllowedFrameDomainFamilies);
             Assert.SequenceEqual(html, Convert.FromBase64String(bundle.Resources[0].ContentBase64));
             Assert.SequenceEqual(audio, Convert.FromBase64String(bundle.Resources[1].ContentBase64));
             var bundleWire = BridgeJson.ToElement(bundle);

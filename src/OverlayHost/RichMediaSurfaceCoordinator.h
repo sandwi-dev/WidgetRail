@@ -1,5 +1,7 @@
 #pragma once
 
+#include "PublicSuffixDomainAuthority.h"
+
 #include <Windows.h>
 #include <Unknwn.h>
 #include <WebView2.h>
@@ -136,6 +138,7 @@ struct Configuration final {
     std::wstring entryAsset;
     std::vector<Resource> resources;
     std::vector<std::wstring> allowedFrameOrigins;
+    std::vector<std::wstring> allowedFrameDomainFamilies;
     std::function<void(std::wstring_view)> diagnostic;
     std::function<void()> invalidate;
     std::function<void(const PlaybackEvent&)> playbackEvent;
@@ -239,7 +242,8 @@ private:
         std::wstring_view origin) noexcept;
     [[nodiscard]] static bool IsAllowedFrameResource(
         std::wstring_view uri,
-        const std::vector<std::wstring>& allowedOrigins) noexcept;
+        const std::vector<std::wstring>& allowedOrigins,
+        const std::vector<std::wstring>& allowedFamilies = {}) noexcept;
     [[nodiscard]] static std::optional<std::wstring>
         ManifestAssemblyIdentity(std::wstring_view manifest) noexcept;
     [[nodiscard]] static std::optional<std::wstring>
@@ -253,7 +257,8 @@ private:
         std::wstring_view uri,
         const std::vector<std::wstring>& allowedOrigins,
         std::wstring_view referer,
-        const std::function<HRESULT(const wchar_t*, const wchar_t*)>& setHeader) noexcept;
+        const std::function<HRESULT(const wchar_t*, const wchar_t*)>& setHeader,
+        const std::vector<std::wstring>& allowedFamilies = {}) noexcept;
     [[nodiscard]] static bool IsPlaybackCommandCorrelated(
         std::uint64_t commandSequence, std::wstring_view mediaKey,
         std::optional<std::uint64_t> pendingSequence,

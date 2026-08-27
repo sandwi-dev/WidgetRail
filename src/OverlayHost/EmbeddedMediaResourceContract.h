@@ -46,6 +46,7 @@ struct EmbeddedMediaPresentationRetention final {
         admitted.compactPinnedSeekStepSeconds == candidate.compactPinnedSeekStepSeconds &&
         admitted.commands == candidate.commands &&
         admitted.allowedFrameOrigins == candidate.allowedFrameOrigins &&
+        admitted.allowedFrameDomainFamilies == candidate.allowedFrameDomainFamilies &&
         admitted.resources.size() == candidate.resources.size() &&
         std::equal(
             admitted.resources.begin(), admitted.resources.end(),

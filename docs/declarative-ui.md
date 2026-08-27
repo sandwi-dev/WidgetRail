@@ -191,6 +191,17 @@ Progress, Button, Row, and Stack nodes as any other widget. Reserved
 closed media command declarations after normal focus and generation admission;
 they do not expose DOM, browsing, script, or arbitrary pointer authority.
 
+Protocol v26 adds `AllowedFrameDomainFamilies` beside the existing exact
+`AllowedFrameOrigins`. Each family is a lowercase ASCII registrable DNS domain
+(for example, `example.test` when that suffix is registrable), never a URL or a
+public suffix. It admits only that exact root and dot-boundary subdomains over
+default-port HTTPS. The host validates declarations against its integrity-
+checked Public Suffix List snapshot and independently checks every frame
+navigation, redirect target, and external resource request. Missing or corrupt
+suffix data rejects family declarations; exact-origin declarations remain
+independent. The installed-app Referer is attached only after that external
+traffic is admitted and is never sent to sealed or denied resources.
+
 Stack, Row, Grid, and Scroll containers may call `.InputScope("scope-id")` to start a nested
 controller input surface. The root is always the default input scope, so a
 simple widget does not need to declare one. Those containers may also call

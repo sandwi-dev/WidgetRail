@@ -401,7 +401,7 @@ void VerifyEmbeddedMediaSnapshotContract() {
     std::wstring error;
     const auto valid = widgetrail::testing::ParseWidgetSnapshotResponse(R"json({
         "snapshot": {
-            "protocolVersion":24,"sequence":7,
+            "protocolVersion":26,"sequence":7,
             "widgetInstanceId":"neutral.adapter","activeInputScopeId":"root",
             "surface":{"mode":"standard","preferredWidth":760,"preferredHeight":425,
                        "minimumWidth":320,"minimumHeight":180},
@@ -413,7 +413,8 @@ void VerifyEmbeddedMediaSnapshotContract() {
                     {"path":"media/index.html","contentType":"text/html"},
                     {"path":"media/tone.wav","contentType":"audio/wav"}],
                 "commands":["activate","togglePlayback","back"],
-                "allowedFrameOrigins":["https://frames.neutral.invalid"]},
+                "allowedFrameOrigins":["https://frames.neutral.invalid"],
+                "allowedFrameDomainFamilies":["example.com"]},
             "root":{"id":"root","kind":"stack","children":[
                 {"id":"title","kind":"text","text":"Aurora fixture","children":[]},
                 {"id":"viewport","kind":"mediaViewport","mediaSurfaceId":"media",
@@ -428,6 +429,8 @@ void VerifyEmbeddedMediaSnapshotContract() {
                 valid->embeddedMedia->id == L"media" &&
                 valid->embeddedMedia->resources.size() == 2 &&
                 valid->embeddedMedia->commands.size() == 3 &&
+                valid->embeddedMedia->allowedFrameDomainFamilies ==
+                    std::vector<std::wstring>{L"example.com"} &&
                 valid->root.children.size() == 3 &&
                 valid->root.children[1].kind == L"mediaViewport" &&
                 valid->root.children[1].mediaSurfaceId == L"media",
@@ -525,6 +528,7 @@ void VerifyEmbeddedMediaBundleBoundary() {
         "aspectRatio":1.7777777778,"accessibleName":"Aurora media",
         "commands":["activate","togglePlayback"],
         "allowedFrameOrigins":["https://frames.aurora.invalid"],
+        "allowedFrameDomainFamilies":["example.com"],
         "resources":[{"path":"media/index.html","contentType":"text/html",
             "sha256":"0000000000000000000000000000000000000000000000000000000000000000",
             "contentBase64":"QQ=="}]
@@ -542,11 +546,16 @@ void VerifyEmbeddedMediaBundleBoundary() {
         source.replace(offset, from.size(), to);
         return source;
     };
-    Require(parse(valid).has_value(),
-            "valid native embedded media bundle was rejected");
+    const auto parsed = parse(valid);
+    Require(parsed && parsed->surface.allowedFrameDomainFamilies ==
+                std::vector<std::wstring>{L"example.com"},
+            "valid native embedded media domain family bundle was rejected");
     for (const auto& malformed : {
              replace(std::string{valid}, "\"mode\":\"standard\"",
                      "\"mode\":\"browser\""),
+             replace(std::string{valid}, "\"example.com\"", "\"com\""),
+             replace(std::string{valid}, "\"example.com\"", "\"deep.example.com\""),
+             replace(std::string{valid}, "\"example.com\"", "\"Example.com\""),
              replace(std::string{valid}, "\"aspectRatio\":1.7777777778",
                      "\"aspectRatio\":20"),
              replace(std::string{valid}, "\"accessibleName\":\"Aurora media\"",

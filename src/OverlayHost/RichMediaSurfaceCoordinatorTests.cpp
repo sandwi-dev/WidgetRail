@@ -1,6 +1,7 @@
 #include "OverlayCompositionSurface.h"
 #include "EmbeddedMediaResourceContract.h"
 #include "RichMediaSurfaceCoordinator.h"
+#include "WidgetProtocolPresentationContract.generated.h"
 
 #include <Windows.h>
 #include <d2d1_1.h>
@@ -43,9 +44,10 @@ public:
     }
     static bool IsAllowedFrameResource(
         const std::wstring_view uri,
-        const std::vector<std::wstring>& allowedOrigins) {
+        const std::vector<std::wstring>& allowedOrigins,
+        const std::vector<std::wstring>& allowedFamilies = {}) {
         return RichMediaSurfaceCoordinator::IsAllowedFrameResource(
-            uri, allowedOrigins);
+            uri, allowedOrigins, allowedFamilies);
     }
     static std::optional<std::wstring> ManifestAssemblyIdentity(
         const std::wstring_view manifest) {
@@ -65,9 +67,10 @@ public:
         const std::wstring_view uri,
         const std::vector<std::wstring>& allowedOrigins,
         const std::wstring_view referer,
-        const std::function<HRESULT(const wchar_t*, const wchar_t*)>& setHeader) {
+        const std::function<HRESULT(const wchar_t*, const wchar_t*)>& setHeader,
+        const std::vector<std::wstring>& allowedFamilies = {}) {
         return static_cast<int>(RichMediaSurfaceCoordinator::ApplyInstalledAppReferer(
-            uri, allowedOrigins, referer, setHeader));
+            uri, allowedOrigins, referer, setHeader, allowedFamilies));
     }
     static bool IsPlaybackCommandCorrelated(
         const std::uint64_t commandSequence, const std::wstring_view mediaKey,
@@ -545,6 +548,7 @@ void RunContractCases() {
             "exact document message-origin admission drifted");
     const std::vector<std::wstring> allowedFrameOrigins{
         L"https://frames.aurora.invalid"};
+    const std::vector<std::wstring> allowedFrameFamilies{L"example.com"};
     Require(RichMediaSurfaceCoordinatorTestPeer::IsAllowedFrameResource(
                 L"https://frames.aurora.invalid/embed/index.html",
                 allowedFrameOrigins) &&
@@ -561,6 +565,45 @@ void RunContractCases() {
                     uri, allowedFrameOrigins),
                 "undeclared or confused frame origin was admitted");
     }
+    for (const auto uri : {
+            L"https://example.com/frame", L"https://media.example.com/frame",
+            L"https://deep.media.example.com/asset"}) {
+        Require(RichMediaSurfaceCoordinatorTestPeer::IsAllowedFrameResource(
+                    uri, {}, allowedFrameFamilies),
+                "registrable family root or dot-boundary subdomain was denied");
+    }
+    for (const auto uri : {
+            L"http://media.example.com/frame",
+            L"https://example.com.evil.test/frame",
+            L"https://notexample.com/frame",
+            L"https://user@example.com/frame",
+            L"https://example.com:443/frame"}) {
+        Require(!RichMediaSurfaceCoordinatorTestPeer::IsAllowedFrameResource(
+                    uri, {}, allowedFrameFamilies),
+                "scheme, authority, port, or label-confused family traffic was admitted");
+    }
+    const auto suffixAuthority = widgetrail::PublicSuffixDomainAuthority::LoadDefault();
+    Require(suffixAuthority.available() &&
+                suffixAuthority.IsRegistrableDomain(L"example.com") &&
+                suffixAuthority.IsRegistrableDomain(L"example.co.uk") &&
+                !suffixAuthority.IsRegistrableDomain(L"com") &&
+                !suffixAuthority.IsRegistrableDomain(L"co.uk") &&
+                !suffixAuthority.IsRegistrableDomain(L"deep.example.com") &&
+                !suffixAuthority.IsRegistrableDomain(L"Example.com") &&
+                !suffixAuthority.IsRegistrableDomain(L"éxample.com"),
+            "PSL registrable-domain authority or canonical grammar drifted");
+    const auto corruptPath = std::filesystem::temp_directory_path() /
+        L"wrail-corrupt-public-suffix-list.dat";
+    {
+        std::ofstream corrupt(corruptPath, std::ios::binary | std::ios::trunc);
+        corrupt << "// VERSION: corrupted\ncom\n";
+    }
+    const auto corruptAuthority = widgetrail::PublicSuffixDomainAuthority::Load(corruptPath);
+    std::error_code ignored;
+    std::filesystem::remove(corruptPath, ignored);
+    Require(!corruptAuthority.available() &&
+                !corruptAuthority.IsRegistrableDomain(L"example.com"),
+            "missing or corrupt PSL authority did not fail closed");
     for (const std::vector<std::wstring> invalidOrigins : {
             std::vector<std::wstring>{L"https://frames.aurora.invalid/"},
             std::vector<std::wstring>{L"HTTPS://frames.aurora.invalid"},
@@ -612,12 +655,17 @@ void RunContractCases() {
                 allowedFrameOrigins, *hostReferer, setHeader) == 1 &&
             headerWrites == 1 && callerReferer == *hostReferer,
             "declared frame request did not replace caller referer with host identity");
+    Require(RichMediaSurfaceCoordinatorTestPeer::ApplyInstalledAppReferer(
+                L"https://video.example.com/embed", {}, *hostReferer,
+                setHeader, allowedFrameFamilies) == 1 && headerWrites == 2 &&
+            callerReferer == *hostReferer,
+            "admitted domain-family traffic did not receive the host referer");
     for (const std::wstring_view uri : {
             L"https://wrail-media-aurora.invalid/media/index.html",
             L"https://undeclared.invalid/embed/index.html"}) {
         Require(RichMediaSurfaceCoordinatorTestPeer::ApplyInstalledAppReferer(
                     uri, allowedFrameOrigins, *hostReferer, setHeader) == 0 &&
-                headerWrites == 1,
+                headerWrites == 2,
                 "host referer leaked to local or undeclared resource traffic");
     }
     Require(RichMediaSurfaceCoordinatorTestPeer::ApplyInstalledAppReferer(
@@ -661,6 +709,39 @@ void RunContractCases() {
     Require(!RichMediaSurfaceCoordinatorTestPeer::IsValidAdapterConfiguration(
                 explicitPort),
             "explicit-port frame origin crossed native configuration admission");
+    auto family = aurora;
+    family.allowedFrameDomainFamilies = {L"example.com"};
+    Require(RichMediaSurfaceCoordinatorTestPeer::IsValidAdapterConfiguration(family),
+            "valid registrable domain family was rejected by native admission");
+    for (const auto invalidFamily : {
+            L"com", L"co.uk", L"deep.example.com", L"Example.com",
+            L"example.com:443", L"*.example.com", L"127.0.0.1"}) {
+        auto invalid = aurora;
+        invalid.allowedFrameDomainFamilies = {invalidFamily};
+        Require(!RichMediaSurfaceCoordinatorTestPeer::IsValidAdapterConfiguration(invalid),
+                "invalid or public-suffix family crossed native configuration admission");
+    }
+    auto tooManyFamilies = aurora;
+    tooManyFamilies.allowedFrameDomainFamilies = std::vector<std::wstring>(
+        widgetrail::protocol_contract::MaximumEmbeddedMediaFrameDomainFamilyCount + 1,
+        L"example.com");
+    Require(!RichMediaSurfaceCoordinatorTestPeer::IsValidAdapterConfiguration(
+                tooManyFamilies),
+            "domain-family count cap was not enforced at native admission");
+    auto oversizedFamily = aurora;
+    oversizedFamily.allowedFrameDomainFamilies = {
+        std::wstring(widgetrail::protocol_contract::MaximumEmbeddedMediaFrameDomainFamilyLength + 1,
+            L'a')};
+    Require(!RichMediaSurfaceCoordinatorTestPeer::IsValidAdapterConfiguration(
+                oversizedFamily),
+            "domain-family item length cap was not enforced at native admission");
+    auto aggregateFamilies = aurora;
+    aggregateFamilies.allowedFrameDomainFamilies = {
+        std::wstring(130, L'a'), std::wstring(130, L'b'),
+        std::wstring(130, L'c'), std::wstring(130, L'd')};
+    Require(!RichMediaSurfaceCoordinatorTestPeer::IsValidAdapterConfiguration(
+                aggregateFamilies),
+            "domain-family aggregate length cap was not enforced at native admission");
     auto unsafe = aurora;
     unsafe.entryAsset = L"../credential.txt";
     Require(!RichMediaSurfaceCoordinatorTestPeer::IsValidAdapterConfiguration(unsafe),

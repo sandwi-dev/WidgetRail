@@ -470,6 +470,7 @@ public sealed record EmbeddedMediaSurface
     public IReadOnlyList<EmbeddedMediaResource> Resources { get; init; } = [];
     public IReadOnlyList<EmbeddedMediaCommand> Commands { get; init; } = [];
     public IReadOnlyList<string> AllowedFrameOrigins { get; init; } = [];
+    public IReadOnlyList<string> AllowedFrameDomainFamilies { get; init; } = [];
     public EmbeddedMediaPlaybackCommand? PendingCommand { get; init; }
     /// <summary>Opts the pinned surface into the host-owned compact media player.</summary>
     public bool CompactPinnedPresentation { get; init; }

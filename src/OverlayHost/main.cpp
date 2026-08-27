@@ -3079,6 +3079,8 @@ private:
             resolvedHints.minimumHeight == declaredHints.minimumHeight &&
             resolvedDeclaration.commands == declaration.commands &&
             resolvedDeclaration.allowedFrameOrigins == declaration.allowedFrameOrigins &&
+            resolvedDeclaration.allowedFrameDomainFamilies ==
+                declaration.allowedFrameDomainFamilies &&
             resolvedDeclaration.compactPinnedPresentation ==
                 declaration.compactPinnedPresentation &&
             resolvedDeclaration.compactPinnedSeekStepSeconds ==
@@ -3193,6 +3195,8 @@ private:
                 std::move(resource.path), std::move(resource.contentType),
                 std::move(resource.content)});
         configuration.allowedFrameOrigins = bundle->surface.allowedFrameOrigins;
+        configuration.allowedFrameDomainFamilies =
+            bundle->surface.allowedFrameDomainFamilies;
         configuration.diagnostic = [this](const std::wstring_view message) {
             AppendDiagnostic(std::wstring{message});
         };

@@ -4,7 +4,7 @@ public static class ProtocolConstants
 {
     public const int MinimumSupportedVersion = 1;
     public const int BaselineVersion = 1;
-    public const int CurrentVersion = 25;
+    public const int CurrentVersion = 26;
     public const int ScrollContainerVersion = 2;
     public const int SurfaceHintsVersion = 2;
     public const int SliderVersion = 3;
@@ -29,6 +29,7 @@ public static class ProtocolConstants
     public const int MediaViewportVersion = 23;
     public const int EmbeddedMediaPlaybackVersion = 24;
     public const int CompactPinnedMediaPresentationVersion = 25;
+    public const int EmbeddedMediaFrameDomainFamiliesVersion = 26;
     public const double DefaultCompactPinnedMediaSeekStepSeconds = 10;
     public const double MinimumCompactPinnedMediaSeekStepSeconds = 1;
     public const double MaximumCompactPinnedMediaSeekStepSeconds = 60;
@@ -40,6 +41,9 @@ public static class ProtocolConstants
     public const int MaximumEmbeddedMediaCommandCount = 8;
     public const int MaximumEmbeddedMediaFrameOriginCount = 8;
     public const int MaximumEmbeddedMediaFrameOriginLength = 256;
+    public const int MaximumEmbeddedMediaFrameDomainFamilyCount = 4;
+    public const int MaximumEmbeddedMediaFrameDomainFamilyLength = 253;
+    public const int MaximumEmbeddedMediaFrameDomainFamilyAggregateLength = 512;
     public const int MaximumEmbeddedMediaKeyLength = 128;
     public const int MaximumPinnedPresentationLayoutCount = 8;
     public const int MaximumPinnedPresentationLayoutNameLength = 96;

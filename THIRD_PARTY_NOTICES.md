@@ -2,6 +2,15 @@
 
 The native WidgetRail overlay statically links the components below.
 
+## Public Suffix List snapshot 2026-08-19
+
+Project: https://publicsuffix.org/list/
+
+Snapshot commit: e8c9a2b2b2856b6449999dd0ec0d118f364ed0cd
+
+Licensed under the Mozilla Public License 2.0. The complete license and the
+unaltered checked-in snapshot are in `third_party/public_suffix_list`.
+
 ## Microsoft Edge WebView2 SDK 1.0.4078.44
 
 Project: https://developer.microsoft.com/microsoft-edge/webview2/

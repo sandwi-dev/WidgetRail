@@ -92,6 +92,7 @@ internal sealed record BridgeEmbeddedMediaBundle(
     string AccessibleName,
     IReadOnlyList<EmbeddedMediaCommand> Commands,
     IReadOnlyList<string> AllowedFrameOrigins,
+    IReadOnlyList<string> AllowedFrameDomainFamilies,
     EmbeddedMediaPlaybackCommand? PendingCommand,
     bool CompactPinnedPresentation,
     double? CompactPinnedSeekStepSeconds,
