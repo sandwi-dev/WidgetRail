@@ -19,6 +19,9 @@
 
 namespace widgetrail::richmedia {
 
+class RichMediaEnvironment;
+using RichMediaEnvironmentHandle = std::shared_ptr<RichMediaEnvironment>;
+
 enum class Lifecycle {
     Absent,
     EnvironmentCreating,
@@ -159,9 +162,12 @@ struct PresentationTarget final {
 class RichMediaSurfaceCoordinator final {
 public:
     RichMediaSurfaceCoordinator();
+    explicit RichMediaSurfaceCoordinator(RichMediaEnvironmentHandle environment);
     ~RichMediaSurfaceCoordinator();
     RichMediaSurfaceCoordinator(const RichMediaSurfaceCoordinator&) = delete;
     RichMediaSurfaceCoordinator& operator=(const RichMediaSurfaceCoordinator&) = delete;
+
+    [[nodiscard]] static RichMediaEnvironmentHandle CreateSharedEnvironment();
 
     [[nodiscard]] HRESULT Initialize(Configuration configuration) noexcept;
     [[nodiscard]] HRESULT Retry(Configuration configuration) noexcept;
@@ -182,6 +188,9 @@ public:
     void Shutdown() noexcept;
 
     [[nodiscard]] State state() const noexcept { return state_; }
+    [[nodiscard]] bool presentationTransferPending() const noexcept {
+        return presentationTransferPending_;
+    }
     [[nodiscard]] SessionTeardownResult sessionTeardownResult() const noexcept {
         return sessionTeardownResult_;
     }
@@ -348,8 +357,10 @@ private:
     HRESULT browserEventRegistrationResult_{E_UNEXPECTED};
     std::wstring pageUri_;
     std::wstring installedAppReferer_;
+    RichMediaEnvironmentHandle sharedEnvironment_;
 
     friend class RichMediaSurfaceCoordinatorTestPeer;
+    friend class RichMediaEnvironment;
 };
 
 } // namespace widgetrail::richmedia

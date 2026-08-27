@@ -35,6 +35,14 @@ does not expose navigation, DOM access, script execution, arbitrary URLs, or a
 second HWND/input owner. Widgets that omit `EmbeddedMedia` retain their existing
 snapshot and rendering behavior.
 
+The host retains at most four exact per-widget embedded-media sessions in one
+shared WebView2 environment/profile. Normal widget cycling, overlay hide/show,
+and overlay-to-pin transfer only change visibility and input focus; they do not
+recreate a resident controller or stop its audio. Playing and pinned sessions
+are never evicted. A fifth session fails explicitly until a slot is released by
+widget removal/restart, exact authority retirement, controller failure, or host
+shutdown. Those terminal boundaries start fresh and do not restore playback.
+
 Protocol v23 adds `UI.MediaViewport(surface, id)`, a provider-neutral native
 layout leaf that binds the one current `WidgetView.EmbeddedMedia` declaration
 into the ordinary declarative tree. Taffy layout, WRSS/GBSS styling, clipping,
