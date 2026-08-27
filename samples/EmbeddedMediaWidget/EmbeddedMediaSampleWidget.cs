@@ -52,6 +52,8 @@ public sealed class EmbeddedMediaSampleWidget : Widget
                 new EmbeddedMediaResource { Path = "payload/media/horizon.mp4", ContentType = "video/mp4" },
             ],
             Commands = [EmbeddedMediaCommand.Activate, EmbeddedMediaCommand.TogglePlayback, EmbeddedMediaCommand.Previous, EmbeddedMediaCommand.Next, EmbeddedMediaCommand.SeekBackward, EmbeddedMediaCommand.SeekForward],
+            CompactPinnedPresentation = true,
+            CompactPinnedSeekStepSeconds = SeekStepSeconds,
             PendingCommand = pending,
         };
         var back = UI.Button("Back", "host.embeddedMedia.back", "media-shell.back").FocusDown("media-shell.timeline.slider").Classes("media-shell-back");
