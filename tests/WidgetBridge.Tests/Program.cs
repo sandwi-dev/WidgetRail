@@ -4020,7 +4020,9 @@ static async Task BuiltEmbeddedMediaSampleCompletesPlaybackLoop()
         var initial = await SampleSnapshotAsync(client, descriptor.Id);
         var media = initial.EmbeddedMedia
             ?? throw new InvalidOperationException("Built sample omitted embedded media.");
-        Assert.Equal(ProtocolConstants.MediaViewportVersion, initial.ProtocolVersion);
+        Assert.Equal(
+            ProtocolConstants.CompactPinnedMediaPresentationVersion,
+            initial.ProtocolVersion);
         Assert.Equal<EmbeddedMediaPlaybackCommand?>(null, media.PendingCommand);
 
         var resolved = await client.RequestAsync(
@@ -4040,6 +4042,19 @@ static async Task BuiltEmbeddedMediaSampleCompletesPlaybackLoop()
                 resource.ContentType == "video/mp4" &&
                 Convert.FromBase64String(resource.ContentBase64).Length > 0),
             "Built sample did not resolve its exact sealed video/audio asset bytes.");
+        Assert.True(bundle.Resources.Any(resource =>
+                resource.Path == "payload/media/horizon.mp4" &&
+                resource.ContentType == "video/mp4" &&
+                Convert.FromBase64String(resource.ContentBase64).Length > 0),
+            "Built sample did not resolve its alternate sealed video/audio asset bytes.");
+        var adapter = System.Text.Encoding.UTF8.GetString(Convert.FromBase64String(
+            bundle.Resources.Single(resource =>
+                resource.Path == "payload/media/adapter.html").ContentBase64));
+        Assert.True(adapter.Contains("m.command==='previous'", StringComparison.Ordinal) &&
+                    adapter.Contains("m.command==='next'", StringComparison.Ordinal) &&
+                    adapter.Contains("await navigate(operation,-1)", StringComparison.Ordinal) &&
+                    adapter.Contains("await navigate(operation,1)", StringComparison.Ordinal),
+            "Built sample adapter did not retain both bounded spatial navigation routes.");
 
         var eventSequence = 0L;
         async Task<(ViewSnapshot Snapshot, EmbeddedMediaPlaybackCommand Command)>
@@ -4115,20 +4130,66 @@ static async Task BuiltEmbeddedMediaSampleCompletesPlaybackLoop()
             return await SampleSnapshotAsync(client, descriptor.Id);
         }
 
+        async Task<ViewSnapshot> ObserveMediaAsync(
+            ViewSnapshot snapshot,
+            string mediaKey,
+            EmbeddedMediaPlaybackState state,
+            double position)
+        {
+            var response = await client.RequestAsync(
+                BridgeMessageTypes.EmbeddedMediaPlaybackEvent,
+                new BridgeEmbeddedMediaPlaybackEventRequest(
+                    descriptor.Id, snapshot.WidgetInstanceId,
+                    descriptor.RuntimeGeneration, descriptor.PresentationGeneration,
+                    snapshot.Sequence,
+                    new EmbeddedMediaPlaybackEvent
+                    {
+                        SurfaceId = snapshot.EmbeddedMedia!.Id,
+                        Sequence = ++eventSequence,
+                        CommandSequence = 0,
+                        MediaKey = mediaKey,
+                        State = state,
+                        PositionSeconds = position,
+                        DurationSeconds = 60,
+                        Volume = 0.8,
+                    }));
+            Assert.Equal(BridgeMessageTypes.Acknowledged, response.Type);
+            _ = await client.ReadEventAsync(BridgeMessageTypes.Invalidation);
+            return await SampleSnapshotAsync(client, descriptor.Id);
+        }
+
         var (play, playCommand) = await CommandAsync(
             "host.embeddedMedia.togglePlayback", "media-shell.play");
-        Assert.Equal(ProtocolConstants.EmbeddedMediaPlaybackVersion, play.ProtocolVersion);
+        Assert.Equal(
+            ProtocolConstants.CompactPinnedMediaPresentationVersion,
+            play.ProtocolVersion);
         Assert.Equal(EmbeddedMediaPlaybackCommandKind.Play, playCommand.Kind);
         var playing = await AcknowledgeAsync(
             play, playCommand, EmbeddedMediaPlaybackState.Playing, 8);
         Assert.Equal(8D, Flatten(playing.Root).Single(
-            node => node.Id == "media-shell.progress").Value);
+            node => node.Id == "media-shell.timeline.slider").Value);
+        var nativeNext = await ObserveMediaAsync(
+            playing, "horizon-video-1", EmbeddedMediaPlaybackState.Playing, 0);
+        Assert.Equal("Horizon Grid", Flatten(nativeNext.Root).Single(
+            node => node.Id == "media-shell.title").Text);
+        var nativePrevious = await ObserveMediaAsync(
+            nativeNext, "aurora-video-0", EmbeddedMediaPlaybackState.Playing, 0);
+        Assert.Equal("Aurora Signal", Flatten(nativePrevious.Root).Single(
+            node => node.Id == "media-shell.title").Text);
 
         var (pause, pauseCommand) = await CommandAsync(
             "host.embeddedMedia.togglePlayback", "media-shell.play");
         Assert.Equal(EmbeddedMediaPlaybackCommandKind.Pause, pauseCommand.Kind);
-        _ = await AcknowledgeAsync(
+        var paused = await AcknowledgeAsync(
             pause, pauseCommand, EmbeddedMediaPlaybackState.Paused, 8);
+        var pausedNext = await ObserveMediaAsync(
+            paused, "horizon-video-1", EmbeddedMediaPlaybackState.Paused, 0);
+        Assert.Equal("Horizon Grid", Flatten(pausedNext.Root).Single(
+            node => node.Id == "media-shell.title").Text);
+        var pausedPrevious = await ObserveMediaAsync(
+            pausedNext, "aurora-video-0", EmbeddedMediaPlaybackState.Paused, 0);
+        Assert.Equal("Aurora Signal", Flatten(pausedPrevious.Root).Single(
+            node => node.Id == "media-shell.title").Text);
 
         var (resume, resumeCommand) = await CommandAsync(
             "host.embeddedMedia.togglePlayback", "media-shell.play");
@@ -4144,9 +4205,9 @@ static async Task BuiltEmbeddedMediaSampleCompletesPlaybackLoop()
         var (seekForward, seekForwardCommand) = await CommandAsync(
             "host.embeddedMedia.seekForward", "media-shell.seek-forward");
         Assert.Equal(EmbeddedMediaPlaybackCommandKind.Seek, seekForwardCommand.Kind);
-        Assert.Equal(18D, seekForwardCommand.PositionSeconds);
+        Assert.Equal(10D, seekForwardCommand.PositionSeconds);
         _ = await AcknowledgeAsync(
-            seekForward, seekForwardCommand, EmbeddedMediaPlaybackState.Playing, 18);
+            seekForward, seekForwardCommand, EmbeddedMediaPlaybackState.Playing, 10);
 
         var (next, nextCommand) = await CommandAsync(
             "host.embeddedMedia.next", "media-shell.next");
@@ -4158,7 +4219,7 @@ static async Task BuiltEmbeddedMediaSampleCompletesPlaybackLoop()
             next, nextCommand, EmbeddedMediaPlaybackState.Ready, 0);
         Assert.True(Flatten(nextReady.Root).Single(
             node => node.Id == "media-shell.title").Text!.Contains(
-                "Aurora Signal 2", StringComparison.Ordinal),
+                "Horizon Grid", StringComparison.Ordinal),
             "Next acknowledgement did not project the current native scene title.");
 
         var (previous, previousCommand) = await CommandAsync(

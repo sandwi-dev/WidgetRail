@@ -159,6 +159,10 @@ public sealed class EmbeddedMediaSampleWidget : Widget
         lock (_gate)
         {
             if (playbackEvent.Sequence <= _eventSequence) return ValueTask.CompletedTask;
+            var observedIndex = Array.FindIndex(MediaItems, item =>
+                string.Equals(item.Key, playbackEvent.MediaKey,
+                    StringComparison.Ordinal));
+            if (observedIndex < 0) return ValueTask.CompletedTask;
             if (playbackEvent.CommandSequence > 0 &&
                 (_pendingCommand is not { } pending ||
                  pending.Sequence != playbackEvent.CommandSequence ||
@@ -169,14 +173,13 @@ public sealed class EmbeddedMediaSampleWidget : Widget
             if (_pendingCommand is { Kind: EmbeddedMediaPlaybackCommandKind.Load } load &&
                 playbackEvent.CommandSequence == load.Sequence)
             {
-                var loadedIndex = Array.FindIndex(MediaItems, item =>
-                    string.Equals(item.Key, playbackEvent.MediaKey,
-                        StringComparison.Ordinal));
-                if (loadedIndex >= 0)
-                {
-                    _activeMediaIndex = loadedIndex;
-                    _mediaKey = MediaItems[loadedIndex].Key;
-                }
+                _activeMediaIndex = observedIndex;
+                _mediaKey = MediaItems[observedIndex].Key;
+            }
+            else if (playbackEvent.CommandSequence == 0)
+            {
+                _activeMediaIndex = observedIndex;
+                _mediaKey = MediaItems[observedIndex].Key;
             }
             _state = playbackEvent.State;
             _position = playbackEvent.PositionSeconds;
