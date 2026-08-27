@@ -107,6 +107,21 @@ constexpr widgetrail::NativeColor kDefaultPanel{
 constexpr widgetrail::NativeColor kDefaultAccent{
     0xFC / 255.0F, 0x3F / 255.0F, 0x6C / 255.0F, 1.0F};
 
+[[nodiscard]] constexpr std::optional<long long>
+NextEmbeddedMediaPlaybackObservationSequence(
+    const long long current) noexcept {
+    if (current == std::numeric_limits<long long>::max()) return std::nullopt;
+    return current + 1;
+}
+
+static_assert(
+    NextEmbeddedMediaPlaybackObservationSequence(4).value() == 5,
+    "A restarted document event epoch must project above the host watermark.");
+static_assert(
+    !NextEmbeddedMediaPlaybackObservationSequence(
+         std::numeric_limits<long long>::max()).has_value(),
+    "The host playback observation sequence must fail closed at exhaustion.");
+
 enum class OverlayShowResult {
     Shown,
     Deferred,
@@ -2451,6 +2466,15 @@ private:
     void OnEmbeddedMediaPlaybackEvent(
         const widgetrail::richmedia::PlaybackEvent& event) {
         if (!EmbeddedMediaAuthorityCurrent() || !embeddedMediaAuthority_) return;
+        const auto nextPublishedEventSequence =
+            NextEmbeddedMediaPlaybackObservationSequence(
+                embeddedMediaPlaybackEventSequence_);
+        if (!nextPublishedEventSequence) {
+            AppendDiagnostic(
+                L"Embedded media playback event rejected because the host "
+                L"observation sequence is exhausted");
+            return;
+        }
         const auto* snapshot = SnapshotFor(embeddedMediaAuthority_->widgetId);
         const long long commandSequence =
             static_cast<long long>(event.commandSequence);
@@ -2481,6 +2505,8 @@ private:
             }
             publicationSequence = origin->snapshotSequence;
         }
+        const auto publishedEventSequence = *nextPublishedEventSequence;
+        embeddedMediaPlaybackEventSequence_ = publishedEventSequence;
         if (pinnedSurfaceCoordinator_.compactMediaPresentation()) {
             pinnedSurfaceCoordinator_.UpdateCompactMediaPlayback(
                 event.positionSeconds, event.durationSeconds,
@@ -2489,7 +2515,7 @@ private:
         }
         const widgetrail::EmbeddedMediaPlaybackEvent published{
             embeddedMediaAuthority_->surfaceId,
-            static_cast<long long>(event.sequence),
+            publishedEventSequence,
             commandSequence,
             event.mediaKey, event.state, event.positionSeconds,
             event.durationSeconds, event.volume, event.errorCode};
@@ -2502,6 +2528,7 @@ private:
             L"Embedded media playback event widget=" +
             embeddedMediaAuthority_->widgetId + L" surface=" +
             embeddedMediaAuthority_->surfaceId + L" event=" +
+            std::to_wstring(publishedEventSequence) + L" page-event=" +
             std::to_wstring(event.sequence) + L" command=" +
             std::to_wstring(event.commandSequence) + L" origin=" +
             std::to_wstring(publicationSequence) + L" current=" +
@@ -12949,6 +12976,7 @@ private:
     std::wstring richMediaProfileDirectory_;
     widgetrail::richmedia::RichMediaSurfaceCoordinator richMediaSurface_;
     std::optional<EmbeddedMediaAuthority> embeddedMediaAuthority_;
+    long long embeddedMediaPlaybackEventSequence_{};
     std::optional<RECT> embeddedMediaClientBounds_;
     std::optional<RECT> embeddedMediaClientClip_;
     bool performanceCountersActive_{};
