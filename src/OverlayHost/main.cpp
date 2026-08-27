@@ -2586,11 +2586,18 @@ private:
             ? std::clamp(compact.previewPositionSeconds / compact.durationSeconds,
                          0.0, 1.0)
             : 0.0;
+        if (!EnsureGraphicsResources() || !cardBrush_ || !secondaryBrush_ ||
+            !accentBrush_ || !focusBrush_) return;
+        auto background = cardBrush_->GetColor();
+        background.a = std::min(background.a, 0.82F);
+        auto track = secondaryBrush_->GetColor();
+        track.a = std::min(track.a, 0.72F);
         widgetrail::OverlayCompositionSurface::CommitTiming timing;
         const HRESULT result = compositionSurface_.CommitPinnedMediaChrome(
             {*embeddedMediaClientBounds_, compact.seekBarVisible,
              pinnedSurfaceCoordinator_.controllerFocused(),
-             compact.scrubActive, progress}, timing);
+             compact.scrubActive, progress, background, track,
+             accentBrush_->GetColor(), focusBrush_->GetColor()}, timing);
         if (FAILED(result)) AppendDiagnostic(
             L"Compact pinned media chrome commit failed hr=" +
             std::to_wstring(static_cast<long>(result)));
@@ -7954,9 +7961,14 @@ private:
                         widgetrail::pinned::InteractionMode::ClickThrough);
                     Dispatch(widgetrail::Command::SampleWidgetBack);
                 } else if ((pressed & XINPUT_GAMEPAD_B) != 0) {
-                    if (!pinnedSurfaceCoordinator_.CancelCompactMediaScrub())
-                        (void)pinnedSurfaceCoordinator_.QueueSelectedProjectionBack(
-                            widgetrail::ControllerInputOrigin::PhysicalController);
+                    if (!pinnedSurfaceCoordinator_.CancelCompactMediaScrub()) {
+                        (void)pinnedSurfaceCoordinator_.ExitControllerFocus();
+                        (void)pinnedSurfaceCoordinator_.SetInteractionMode(
+                            widgetrail::pinned::InteractionMode::ClickThrough);
+                        lastActionMessage_ =
+                            L"Compact pinned media returned to click-through";
+                        lastActionExpiresAt_ = now + 2400;
+                    }
                 } else if ((pressed & XINPUT_GAMEPAD_A) != 0) {
                     if (pinnedSurfaceCoordinator_.compactMediaState().scrubActive) {
                         if (const auto target =
@@ -8047,8 +8059,9 @@ private:
                     widgetrail::input::PressedInputTransition::Clear);
                 lastActionWidgetId_ =
                     std::wstring(pinnedSurfaceCoordinator_.widgetId());
-                lastActionMessage_ =
-                    L"Pinned focus entered. View returns to the tray; B stays in the widget.";
+                lastActionMessage_ = pinnedSurfaceCoordinator_.compactMediaPresentation()
+                    ? L"Compact pinned focus entered. B exits to click-through; View returns to the tray."
+                    : L"Pinned focus entered. View returns to the tray; B stays in the widget.";
                 lastActionExpiresAt_ = now + 4000;
                 InvalidateRect(window_, nullptr, FALSE);
             }

@@ -163,8 +163,7 @@ void OverlayCompositionSurface::Reset() noexcept {
     pinnedMediaChromeVisual_.Reset();
     pinnedMediaChromeSurface_.Reset();
     pinnedMediaChromeAttached_ = false;
-    pinnedMediaChromeBounds_ = {};
-    pinnedMediaChromeVisible_ = false;
+    pinnedMediaChromePresentation_.reset();
     pinnedMediaChromeWidth_ = 0;
     pinnedMediaChromeHeight_ = 0;
     pinnedExternalRootVisual_.Reset();
@@ -347,7 +346,7 @@ HRESULT OverlayCompositionSurface::ReleasePinnedExternalContentEndpoint(
         pinnedMediaChromeVisual_.Reset();
         pinnedMediaChromeSurface_.Reset();
         pinnedMediaChromeAttached_ = false;
-        pinnedMediaChromeVisible_ = false;
+        pinnedMediaChromePresentation_.reset();
         pinnedMediaChromeWidth_ = 0;
         pinnedMediaChromeHeight_ = 0;
         pinnedExternalRootVisual_.Reset();
@@ -367,6 +366,29 @@ HRESULT OverlayCompositionSurface::CommitPinnedMediaChrome(
         presentation.bounds.bottom <= presentation.bounds.top ||
         !std::isfinite(presentation.progress) || presentation.progress < 0.0 ||
         presentation.progress > 1.0) return E_INVALIDARG;
+    const auto sameColor = [](const D2D1_COLOR_F& left,
+                              const D2D1_COLOR_F& right) noexcept {
+        return left.r == right.r && left.g == right.g && left.b == right.b &&
+            left.a == right.a;
+    };
+    const auto samePresentation = [&](
+        const PinnedMediaChromePresentation& left,
+        const PinnedMediaChromePresentation& right) noexcept {
+        return left.bounds.left == right.bounds.left &&
+            left.bounds.top == right.bounds.top &&
+            left.bounds.right == right.bounds.right &&
+            left.bounds.bottom == right.bounds.bottom &&
+            left.visible == right.visible && left.focused == right.focused &&
+            left.scrubActive == right.scrubActive &&
+            left.progress == right.progress &&
+            sameColor(left.backgroundColor, right.backgroundColor) &&
+            sameColor(left.trackColor, right.trackColor) &&
+            sameColor(left.accentColor, right.accentColor) &&
+            sameColor(left.focusColor, right.focusColor);
+    };
+    if (pinnedMediaChromePresentation_ &&
+        samePresentation(*pinnedMediaChromePresentation_, presentation))
+        return S_FALSE;
     const auto started = std::chrono::steady_clock::now();
     const unsigned int width = static_cast<unsigned int>(
         presentation.bounds.right - presentation.bounds.left);
@@ -374,6 +396,24 @@ HRESULT OverlayCompositionSurface::CommitPinnedMediaChrome(
         presentation.bounds.bottom - presentation.bounds.top);
     const bool replacement = !pinnedMediaChromeSurface_ ||
         width != pinnedMediaChromeWidth_ || height != pinnedMediaChromeHeight_;
+    const bool sameBounds = pinnedMediaChromePresentation_ &&
+        pinnedMediaChromePresentation_->bounds.left == presentation.bounds.left &&
+        pinnedMediaChromePresentation_->bounds.top == presentation.bounds.top &&
+        pinnedMediaChromePresentation_->bounds.right == presentation.bounds.right &&
+        pinnedMediaChromePresentation_->bounds.bottom == presentation.bounds.bottom;
+    const bool renderedContentChanged = replacement ||
+        !pinnedMediaChromePresentation_ ||
+        pinnedMediaChromePresentation_->focused != presentation.focused ||
+        pinnedMediaChromePresentation_->scrubActive != presentation.scrubActive ||
+        pinnedMediaChromePresentation_->progress != presentation.progress ||
+        !sameColor(pinnedMediaChromePresentation_->backgroundColor,
+                   presentation.backgroundColor) ||
+        !sameColor(pinnedMediaChromePresentation_->trackColor,
+                   presentation.trackColor) ||
+        !sameColor(pinnedMediaChromePresentation_->accentColor,
+                   presentation.accentColor) ||
+        !sameColor(pinnedMediaChromePresentation_->focusColor,
+                   presentation.focusColor);
     HRESULT result = S_OK;
     if (!pinnedMediaChromeVisual_)
         result = device_->CreateVisual(
@@ -389,67 +429,68 @@ HRESULT OverlayCompositionSurface::CommitPinnedMediaChrome(
     }
     if (FAILED(result)) return result;
 
-    RECT update{0, 0, static_cast<LONG>(width), static_cast<LONG>(height)};
-    ComPtr<ID2D1DeviceContext> target;
-    POINT offset{};
-    result = pinnedMediaChromeSurface_->BeginDraw(
-        &update, __uuidof(ID2D1DeviceContext),
-        reinterpret_cast<void**>(target.ReleaseAndGetAddressOf()), &offset);
-    if (SUCCEEDED(result)) {
-        target->SetTransform(D2D1::Matrix3x2F::Translation(
-            static_cast<float>(offset.x), static_cast<float>(offset.y)));
-        target->Clear(D2D1::ColorF(0, 0.0F));
-        const float barHeight = std::min(28.0F, static_cast<float>(height));
-        const float top = static_cast<float>(height) - barHeight;
-        ComPtr<ID2D1SolidColorBrush> shade;
-        ComPtr<ID2D1SolidColorBrush> track;
-        ComPtr<ID2D1SolidColorBrush> accent;
-        result = target->CreateSolidColorBrush(
-            D2D1::ColorF(0x07111C, 0.82F), shade.ReleaseAndGetAddressOf());
-        if (SUCCEEDED(result)) result = target->CreateSolidColorBrush(
-            D2D1::ColorF(0x8BA4BC, 0.72F), track.ReleaseAndGetAddressOf());
-        if (SUCCEEDED(result)) result = target->CreateSolidColorBrush(
-            presentation.scrubActive ? D2D1::ColorF(0x73D5FF)
-                                     : D2D1::ColorF(0x4EB9F2),
-            accent.ReleaseAndGetAddressOf());
+    if (renderedContentChanged) {
+        RECT update{0, 0, static_cast<LONG>(width), static_cast<LONG>(height)};
+        ComPtr<ID2D1DeviceContext> target;
+        POINT offset{};
+        result = pinnedMediaChromeSurface_->BeginDraw(
+            &update, __uuidof(ID2D1DeviceContext),
+            reinterpret_cast<void**>(target.ReleaseAndGetAddressOf()), &offset);
         if (SUCCEEDED(result)) {
-            target->FillRectangle(
-                D2D1::RectF(0.0F, top, static_cast<float>(width),
-                            static_cast<float>(height)), shade.Get());
-            const float left = 12.0F;
-            const float right = std::max(left, static_cast<float>(width) - 12.0F);
-            const float trackTop = top + barHeight * 0.5F - 2.0F;
-            target->FillRoundedRectangle(
-                D2D1::RoundedRect(
-                    D2D1::RectF(left, trackTop, right, trackTop + 4.0F), 2.0F, 2.0F),
-                track.Get());
-            const float progressRight = left + (right - left) *
-                static_cast<float>(presentation.progress);
-            target->FillRoundedRectangle(
-                D2D1::RoundedRect(
-                    D2D1::RectF(left, trackTop, progressRight, trackTop + 4.0F),
-                    2.0F, 2.0F), accent.Get());
-            if (presentation.focused) {
-                target->DrawRoundedRectangle(
+            target->SetTransform(D2D1::Matrix3x2F::Translation(
+                static_cast<float>(offset.x), static_cast<float>(offset.y)));
+            target->Clear(D2D1::ColorF(0, 0.0F));
+            const float barHeight = std::min(28.0F, static_cast<float>(height));
+            const float top = static_cast<float>(height) - barHeight;
+            ComPtr<ID2D1SolidColorBrush> shade;
+            ComPtr<ID2D1SolidColorBrush> track;
+            ComPtr<ID2D1SolidColorBrush> accent;
+            result = target->CreateSolidColorBrush(
+                presentation.backgroundColor, shade.ReleaseAndGetAddressOf());
+            if (SUCCEEDED(result)) result = target->CreateSolidColorBrush(
+                presentation.trackColor, track.ReleaseAndGetAddressOf());
+            if (SUCCEEDED(result)) result = target->CreateSolidColorBrush(
+                presentation.scrubActive ? presentation.focusColor
+                                         : presentation.accentColor,
+                accent.ReleaseAndGetAddressOf());
+            if (SUCCEEDED(result)) {
+                target->FillRectangle(
+                    D2D1::RectF(0.0F, top, static_cast<float>(width),
+                                static_cast<float>(height)), shade.Get());
+                const float left = 12.0F;
+                const float right = std::max(
+                    left, static_cast<float>(width) - 12.0F);
+                const float trackTop = top + barHeight * 0.5F - 2.0F;
+                target->FillRoundedRectangle(
                     D2D1::RoundedRect(
-                        D2D1::RectF(4.0F, top + 3.0F,
-                                    static_cast<float>(width) - 4.0F,
-                                    static_cast<float>(height) - 3.0F), 5.0F, 5.0F),
-                    accent.Get(), presentation.scrubActive ? 2.5F : 1.5F);
+                        D2D1::RectF(left, trackTop, right, trackTop + 4.0F),
+                        2.0F, 2.0F), track.Get());
+                const float progressRight = left + (right - left) *
+                    static_cast<float>(presentation.progress);
+                target->FillRoundedRectangle(
+                    D2D1::RoundedRect(
+                        D2D1::RectF(left, trackTop, progressRight,
+                                    trackTop + 4.0F), 2.0F, 2.0F),
+                    accent.Get());
+                if (presentation.focused) {
+                    target->DrawRoundedRectangle(
+                        D2D1::RoundedRect(
+                            D2D1::RectF(4.0F, top + 3.0F,
+                                        static_cast<float>(width) - 4.0F,
+                                        static_cast<float>(height) - 3.0F),
+                            5.0F, 5.0F),
+                        accent.Get(), presentation.scrubActive ? 2.5F : 1.5F);
+                }
             }
+            target.Reset();
+            const HRESULT end = pinnedMediaChromeSurface_->EndDraw();
+            if (SUCCEEDED(result)) result = end;
         }
-        target.Reset();
-        const HRESULT end = pinnedMediaChromeSurface_->EndDraw();
-        if (SUCCEEDED(result)) result = end;
+        if (FAILED(result)) return result;
     }
-    if (FAILED(result)) return result;
-
-    const bool sameBounds = pinnedMediaChromeBounds_.left == presentation.bounds.left &&
-        pinnedMediaChromeBounds_.top == presentation.bounds.top &&
-        pinnedMediaChromeBounds_.right == presentation.bounds.right &&
-        pinnedMediaChromeBounds_.bottom == presentation.bounds.bottom;
-    bool treeChanged = replacement || !sameBounds ||
-        pinnedMediaChromeVisible_ != presentation.visible;
+    const bool treeChanged = replacement || !sameBounds ||
+        !pinnedMediaChromePresentation_ ||
+        pinnedMediaChromePresentation_->visible != presentation.visible;
     if (!sameBounds) {
         result = pinnedMediaChromeVisual_->SetOffsetX(
             static_cast<float>(presentation.bounds.left));
@@ -466,14 +507,14 @@ HRESULT OverlayCompositionSurface::CommitPinnedMediaChrome(
             pinnedMediaChromeVisual_.Get());
         if (SUCCEEDED(result)) pinnedMediaChromeAttached_ = false;
     }
-    if (SUCCEEDED(result) && treeChanged) result = device_->Commit();
+    const bool presentationChanged = renderedContentChanged || treeChanged;
+    if (SUCCEEDED(result) && presentationChanged) result = device_->Commit();
     timing.commitMicroseconds = static_cast<std::uint64_t>(
         std::chrono::duration_cast<std::chrono::microseconds>(
             std::chrono::steady_clock::now() - started).count());
     if (SUCCEEDED(result)) {
-        timing.externalPresentationCommitted = treeChanged;
-        pinnedMediaChromeBounds_ = presentation.bounds;
-        pinnedMediaChromeVisible_ = presentation.visible;
+        timing.externalPresentationCommitted = presentationChanged;
+        pinnedMediaChromePresentation_ = presentation;
         pinnedMediaChromeWidth_ = width;
         pinnedMediaChromeHeight_ = height;
     }

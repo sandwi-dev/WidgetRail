@@ -151,8 +151,6 @@ public:
         std::wstring_view protocolButton,
         ControllerInputOrigin origin = ControllerInputOrigin::PhysicalController,
         std::optional<double> requestedValue = std::nullopt);
-    [[nodiscard]] bool QueueSelectedProjectionBack(
-        ControllerInputOrigin origin = ControllerInputOrigin::PhysicalController);
     [[nodiscard]] std::vector<WidgetSurfaceInputRequest> TakeInputRequests() noexcept;
     [[nodiscard]] bool IsCurrentInputRequest(
         const WidgetSurfaceInputRequest& request) const noexcept;

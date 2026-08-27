@@ -7,6 +7,7 @@
 #include <wrl/client.h>
 
 #include <cstdint>
+#include <optional>
 #include <span>
 #include <string>
 
@@ -112,6 +113,10 @@ public:
         bool focused{};
         bool scrubActive{};
         double progress{};
+        D2D1_COLOR_F backgroundColor{};
+        D2D1_COLOR_F trackColor{};
+        D2D1_COLOR_F accentColor{};
+        D2D1_COLOR_F focusColor{};
     };
 
     struct VisualPresentation final {
@@ -240,8 +245,8 @@ private:
     Microsoft::WRL::ComPtr<IDCompositionVisual2> pinnedMediaChromeVisual_;
     Microsoft::WRL::ComPtr<IDCompositionSurface> pinnedMediaChromeSurface_;
     bool pinnedMediaChromeAttached_{};
-    RECT pinnedMediaChromeBounds_{};
-    bool pinnedMediaChromeVisible_{};
+    std::optional<PinnedMediaChromePresentation>
+        pinnedMediaChromePresentation_;
     unsigned int pinnedMediaChromeWidth_{};
     unsigned int pinnedMediaChromeHeight_{};
     struct ExternalContentPresentationState final {

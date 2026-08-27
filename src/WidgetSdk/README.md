@@ -51,8 +51,9 @@ bind their action IDs to `host.embeddedMedia.togglePlayback`,
 `host.embeddedMedia.back`; the host admits those actions only against the exact
 current widget, surface, viewport, input scope, focus, sequence, and declared
 closed command set. The browser never receives the widget focus graph or raw
-controller keys. Overlay-root B remains host Back, while pinned B retains the
-ordinary selected-projection widget route.
+controller keys. Overlay-root B remains host Back, while ordinary pinned B
+retains the selected-projection widget route; the compact-pinned exception is
+described below.
 
 Media widgets choose their own quick-seek increment for authored overlay
 controls or use the existing Slider absolute-value action for direct seeking.
@@ -62,9 +63,10 @@ presentation with `CompactPinnedPresentation`. The pin keeps the same
 and overlays one native themed seek bar that hides during passive playback.
 `CompactPinnedSeekStepSeconds` defaults to 10 and accepts finite values from 1
 through 60 seconds. X toggles playback; A enters/applies seek scrub; Left/Right
-adjust only while scrubbing; B cancels scrub (and otherwise remains widget
-Back); LB/RB select Previous/Next only when those commands are declared; View
-retains the host tray route. Authors cannot remap these physical controls.
+adjust only while scrubbing; B cancels scrub or, outside scrub, exits compact
+controller interaction to click-through; LB/RB select Previous/Next only when
+those commands are declared; View retains the host tray route. Authors cannot
+remap these physical controls.
 
 For selection-driven data, create an optional per-widget
 `PinnedLayoutHandle` with `CreatePinnedLayoutHandle(id, name, surface,

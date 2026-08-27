@@ -179,7 +179,10 @@ bounded to 1–60 seconds. Compact presentation requires the existing
 `TogglePlayback`, `SeekBackward`, and `SeekForward` capabilities; Previous and
 Next become available only when those existing commands are declared. The host
 keeps controller mapping, focus, accessibility, theme, geometry, clipping, and
-the single browser/controller/document session authoritative.
+the single browser/controller/document session authoritative. In compact
+interaction, A enters or applies seek scrub, Left/Right adjusts the scrub value,
+and B cancels scrub or exits compact interaction to click-through. View retains
+the host tray route.
 
 An embedded-media widget builds its visible shell from the same native Text,
 Progress, Button, Row, and Stack nodes as any other widget. Reserved

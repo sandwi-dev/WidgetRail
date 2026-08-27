@@ -533,7 +533,7 @@ void WidgetSurfaceCoordinator::QueueResolvedInput(
     const ControllerInputOrigin origin,
     const std::optional<double> requestedValue) {
     if (!pinned() || policy_.interactionMode() != InteractionMode::Focusable ||
-        (nodeId.empty() && protocolButton != L"b") || protocolButton.empty()) return;
+        nodeId.empty() || protocolButton.empty()) return;
     if (inputRequests_.size() >= kMaximumPendingInputRequests) {
         SetActionFeedback(L"Pinned input queue is busy. Try again.", true);
         return;
@@ -567,13 +567,6 @@ bool WidgetSurfaceCoordinator::QueueFocusedInput(
     return true;
 }
 
-bool WidgetSurfaceCoordinator::QueueSelectedProjectionBack(
-    const ControllerInputOrigin origin) {
-    if (!controllerFocused_ || !compactMediaPresentation()) return false;
-    QueueResolvedInput({}, L"b", origin, std::nullopt);
-    return true;
-}
-
 std::vector<WidgetSurfaceInputRequest>
 WidgetSurfaceCoordinator::TakeInputRequests() noexcept {
     std::vector<WidgetSurfaceInputRequest> result;
@@ -588,9 +581,6 @@ bool WidgetSurfaceCoordinator::IsCurrentInputRequest(
         std::wstring_view(request.selectedLayoutId) != SelectedLayoutId())
         return false;
     const auto& snapshot = SelectedSnapshot();
-    if (request.protocolButton == L"b" && request.nodeId.empty())
-        return request.snapshotSequence == snapshot.sequence &&
-            request.activeInputScopeId == snapshot.activeInputScopeId;
     const auto* node = input::FindNodeInInputScope(
         snapshot, request.nodeId, request.activeInputScopeId);
     return node && !node->isDisabled && !node->isBusy &&
@@ -1903,7 +1893,7 @@ void WidgetSurfaceCoordinator::PublishAccessibility() {
         const auto media = compactMediaState();
         state.value = media.scrubActive
             ? L"Compact media scrub. Left or Right seeks. A applies. B cancels."
-            : L"Compact media. A enters seek. X plays or pauses. Left and right bumper select available media. View returns to the tray.";
+            : L"Compact media. A enters seek. X plays or pauses. Left and right bumper select available media. B exits to click-through. View returns to the tray.";
     } else {
         state.value = policy_.interactionMode() == InteractionMode::Focusable
             ? L"Interactive. D-pad navigates. A activates. B is widget Back. View returns to the tray. Menu opens options."
