@@ -3,6 +3,7 @@
 
 #include <WebView2EnvironmentOptions.h>
 #include <UIAutomation.h>
+#include <appmodel.h>
 #include <windowsx.h>
 #include <objidl.h>
 #include <wrl.h>
@@ -247,6 +248,10 @@ HRESULT RichMediaSurfaceCoordinator::Initialize(Configuration configuration) noe
     profileRootDirectory_ = configuration.profileRootDirectory;
     if (environmentLifecycle_ == EnvironmentLifecycle::Ready &&
         BrowserProcessExitObserved()) ReleaseEnvironment(true);
+    if (installedAppReferer_.empty()) {
+        const auto referer = ResolveInstalledAppReferer();
+        if (referer) installedAppReferer_ = *referer;
+    }
     configuration_ = std::move(configuration);
     state_ = {};
     controllerGeometryApplied_ = false;
@@ -691,6 +696,152 @@ bool RichMediaSurfaceCoordinator::IsValidAdapterConfiguration(
     return IsValidPublicAdapterConfiguration(configuration);
 }
 
+std::optional<std::wstring>
+RichMediaSurfaceCoordinator::ManifestAssemblyIdentity(
+    const std::wstring_view manifest) noexcept {
+    constexpr std::wstring_view elementName{L"assemblyIdentity"};
+    const auto element = manifest.find(L"<assemblyIdentity");
+    if (element == std::wstring_view::npos) return std::nullopt;
+    const auto nameEnd = element + 1 + elementName.size();
+    if (nameEnd >= manifest.size() ||
+        (manifest[nameEnd] != L'>' && manifest[nameEnd] != L'/' &&
+         manifest[nameEnd] != L' ' && manifest[nameEnd] != L'\t' &&
+         manifest[nameEnd] != L'\r' && manifest[nameEnd] != L'\n'))
+        return std::nullopt;
+    const auto elementEnd = manifest.find(L'>', nameEnd);
+    if (elementEnd == std::wstring_view::npos) return std::nullopt;
+    std::optional<std::wstring> identity;
+    auto cursor = nameEnd;
+    while (cursor < elementEnd) {
+        while (cursor < elementEnd &&
+               (manifest[cursor] == L' ' || manifest[cursor] == L'\t' ||
+                manifest[cursor] == L'\r' || manifest[cursor] == L'\n' ||
+                manifest[cursor] == L'/')) ++cursor;
+        if (cursor >= elementEnd) break;
+        const auto attributeStart = cursor;
+        while (cursor < elementEnd &&
+               ((manifest[cursor] >= L'a' && manifest[cursor] <= L'z') ||
+                (manifest[cursor] >= L'A' && manifest[cursor] <= L'Z') ||
+                (manifest[cursor] >= L'0' && manifest[cursor] <= L'9') ||
+                manifest[cursor] == L':' || manifest[cursor] == L'_' ||
+                manifest[cursor] == L'-')) ++cursor;
+        if (cursor == attributeStart) return std::nullopt;
+        const auto attribute = manifest.substr(attributeStart, cursor - attributeStart);
+        while (cursor < elementEnd &&
+               (manifest[cursor] == L' ' || manifest[cursor] == L'\t' ||
+                manifest[cursor] == L'\r' || manifest[cursor] == L'\n')) ++cursor;
+        if (cursor >= elementEnd || manifest[cursor++] != L'=') return std::nullopt;
+        while (cursor < elementEnd &&
+               (manifest[cursor] == L' ' || manifest[cursor] == L'\t' ||
+                manifest[cursor] == L'\r' || manifest[cursor] == L'\n')) ++cursor;
+        if (cursor >= elementEnd ||
+            (manifest[cursor] != L'\'' && manifest[cursor] != L'\"'))
+            return std::nullopt;
+        const wchar_t quote = manifest[cursor++];
+        const auto valueStart = cursor;
+        const auto valueEnd = manifest.find(quote, valueStart);
+        if (valueEnd == std::wstring_view::npos || valueEnd > elementEnd)
+            return std::nullopt;
+        if (attribute == L"name") {
+            if (identity || valueEnd == valueStart) return std::nullopt;
+            identity = std::wstring{manifest.substr(valueStart, valueEnd - valueStart)};
+        }
+        cursor = valueEnd + 1;
+    }
+    return identity;
+}
+
+std::optional<std::wstring>
+RichMediaSurfaceCoordinator::FormatInstalledAppReferer(
+    const std::wstring_view identity) noexcept {
+    if (identity.empty() || identity.size() > 253 || identity.front() == L'.' ||
+        identity.back() == L'.') return std::nullopt;
+    std::wstring canonical;
+    canonical.reserve(identity.size());
+    std::size_t labelLength{};
+    bool labelStartsWithHyphen{};
+    for (const wchar_t character : identity) {
+        if (character == L'.') {
+            if (labelLength == 0 || labelLength > 63 || labelStartsWithHyphen ||
+                canonical.back() == L'-') return std::nullopt;
+            canonical.push_back(L'.');
+            labelLength = 0;
+            labelStartsWithHyphen = false;
+            continue;
+        }
+        wchar_t lowered = character;
+        if (lowered >= L'A' && lowered <= L'Z') lowered += L'a' - L'A';
+        if (!((lowered >= L'a' && lowered <= L'z') ||
+              (lowered >= L'0' && lowered <= L'9') || lowered == L'-'))
+            return std::nullopt;
+        if (labelLength == 0) labelStartsWithHyphen = lowered == L'-';
+        ++labelLength;
+        canonical.push_back(lowered);
+    }
+    if (labelLength == 0 || labelLength > 63 || labelStartsWithHyphen ||
+        canonical.back() == L'-') return std::nullopt;
+    return L"https://" + canonical + L"/";
+}
+
+std::optional<std::wstring>
+RichMediaSurfaceCoordinator::SelectInstalledAppReferer(
+    const bool packaged, const std::wstring_view packageIdentity,
+    const std::wstring_view manifestIdentity) noexcept {
+    return FormatInstalledAppReferer(packaged ? packageIdentity : manifestIdentity);
+}
+
+std::optional<std::wstring>
+RichMediaSurfaceCoordinator::ResolveInstalledAppReferer() noexcept {
+    UINT32 packageBufferLength{};
+    const LONG packageProbe = GetCurrentPackageId(&packageBufferLength, nullptr);
+    if (packageProbe == ERROR_INSUFFICIENT_BUFFER && packageBufferLength > 0) {
+        std::vector<std::uint8_t> packageBuffer(packageBufferLength);
+        auto* package = reinterpret_cast<PACKAGE_ID*>(packageBuffer.data());
+        if (GetCurrentPackageId(&packageBufferLength, packageBuffer.data()) != ERROR_SUCCESS ||
+            !package->name) return std::nullopt;
+        return SelectInstalledAppReferer(true, package->name, {});
+    }
+    if (packageProbe != APPMODEL_ERROR_NO_PACKAGE) return std::nullopt;
+
+    const HMODULE module = GetModuleHandleW(nullptr);
+    const HRSRC resource = module
+        ? FindResourceW(module, MAKEINTRESOURCEW(1), RT_MANIFEST) : nullptr;
+    if (!resource) return std::nullopt;
+    const DWORD byteCount = SizeofResource(module, resource);
+    if (byteCount == 0 || byteCount > 64 * 1024) return std::nullopt;
+    const HGLOBAL loaded = LoadResource(module, resource);
+    const auto* bytes = loaded
+        ? static_cast<const char*>(LockResource(loaded)) : nullptr;
+    if (!bytes) return std::nullopt;
+    const int characterCount = MultiByteToWideChar(
+        CP_UTF8, MB_ERR_INVALID_CHARS, bytes, static_cast<int>(byteCount), nullptr, 0);
+    if (characterCount <= 0) return std::nullopt;
+    std::wstring manifest(static_cast<std::size_t>(characterCount), L'\0');
+    if (MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, bytes,
+            static_cast<int>(byteCount), manifest.data(), characterCount) != characterCount)
+        return std::nullopt;
+    const auto identity = ManifestAssemblyIdentity(manifest);
+    return identity ? SelectInstalledAppReferer(false, {}, *identity) : std::nullopt;
+}
+
+RichMediaSurfaceCoordinator::InstalledAppRefererResult
+RichMediaSurfaceCoordinator::ApplyInstalledAppReferer(
+    const std::wstring_view uri,
+    const std::vector<std::wstring>& allowedOrigins,
+    const std::wstring_view referer,
+    const std::function<HRESULT(const wchar_t*, const wchar_t*)>& setHeader) noexcept {
+    if (!IsAllowedFrameResource(uri, allowedOrigins))
+        return InstalledAppRefererResult::NotApplicable;
+    if (referer.empty() || !setHeader ||
+        !CanonicalHttpsOrigin(referer.ends_with(L'/')
+            ? referer.substr(0, referer.size() - 1) : std::wstring_view{}))
+        return InstalledAppRefererResult::Rejected;
+    const std::wstring value{referer};
+    return SUCCEEDED(setHeader(L"Referer", value.c_str()))
+        ? InstalledAppRefererResult::Applied
+        : InstalledAppRefererResult::Rejected;
+}
+
 HRESULT RichMediaSurfaceCoordinator::ServeResource(
     ICoreWebView2WebResourceRequestedEventArgs* args) noexcept {
     ComPtr<ICoreWebView2WebResourceRequest> request;
@@ -713,10 +864,21 @@ HRESULT RichMediaSurfaceCoordinator::ServeResource(
     ComPtr<ICoreWebView2WebResourceRequestedEventArgs2> args2;
     HRESULT sourceResult = args->QueryInterface(IID_PPV_ARGS(&args2));
     if (SUCCEEDED(sourceResult)) sourceResult = args2->get_RequestedSourceKind(&sourceKind);
-    if (SUCCEEDED(result) &&
-        IsAllowedFrameResource(uri, configuration_.allowedFrameOrigins)) {
-        Emit(L"Rich media declared frame resource continued to network");
-        return S_OK;
+    if (SUCCEEDED(result)) {
+        const auto refererResult = ApplyInstalledAppReferer(
+            uri, configuration_.allowedFrameOrigins, installedAppReferer_,
+            requestHeaders
+                ? std::function<HRESULT(const wchar_t*, const wchar_t*)>{
+                    [&](const wchar_t* name, const wchar_t* value) {
+                        return requestHeaders->SetHeader(name, value);
+                    }}
+                : std::function<HRESULT(const wchar_t*, const wchar_t*)>{});
+        if (refererResult == InstalledAppRefererResult::Applied) {
+            Emit(L"Rich media declared frame resource continued with host referer");
+            return S_OK;
+        }
+        if (refererResult == InstalledAppRefererResult::Rejected)
+            Emit(L"Rich media declared frame resource denied: host referer unavailable");
     }
     ComPtr<IStream> stream;
     const wchar_t* contentType{};

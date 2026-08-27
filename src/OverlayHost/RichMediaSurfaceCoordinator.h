@@ -191,6 +191,11 @@ public:
         Command command, const Authority& authority, std::uint64_t commandId);
 
 private:
+    enum class InstalledAppRefererResult {
+        NotApplicable,
+        Applied,
+        Rejected,
+    };
     [[nodiscard]] HRESULT BeginEnvironment() noexcept;
     struct CallbackLease;
     struct FrameSubscription;
@@ -235,6 +240,20 @@ private:
     [[nodiscard]] static bool IsAllowedFrameResource(
         std::wstring_view uri,
         const std::vector<std::wstring>& allowedOrigins) noexcept;
+    [[nodiscard]] static std::optional<std::wstring>
+        ManifestAssemblyIdentity(std::wstring_view manifest) noexcept;
+    [[nodiscard]] static std::optional<std::wstring>
+        FormatInstalledAppReferer(std::wstring_view identity) noexcept;
+    [[nodiscard]] static std::optional<std::wstring>
+        SelectInstalledAppReferer(bool packaged, std::wstring_view packageIdentity,
+                                  std::wstring_view manifestIdentity) noexcept;
+    [[nodiscard]] static std::optional<std::wstring>
+        ResolveInstalledAppReferer() noexcept;
+    [[nodiscard]] static InstalledAppRefererResult ApplyInstalledAppReferer(
+        std::wstring_view uri,
+        const std::vector<std::wstring>& allowedOrigins,
+        std::wstring_view referer,
+        const std::function<HRESULT(const wchar_t*, const wchar_t*)>& setHeader) noexcept;
     [[nodiscard]] static bool IsPlaybackCommandCorrelated(
         std::uint64_t commandSequence, std::wstring_view mediaKey,
         std::optional<std::uint64_t> pendingSequence,
@@ -320,6 +339,7 @@ private:
     bool controllerGeometryApplied_{};
     HRESULT browserEventRegistrationResult_{E_UNEXPECTED};
     std::wstring pageUri_;
+    std::wstring installedAppReferer_;
 
     friend class RichMediaSurfaceCoordinatorTestPeer;
 };

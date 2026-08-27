@@ -47,6 +47,28 @@ public:
         return RichMediaSurfaceCoordinator::IsAllowedFrameResource(
             uri, allowedOrigins);
     }
+    static std::optional<std::wstring> ManifestAssemblyIdentity(
+        const std::wstring_view manifest) {
+        return RichMediaSurfaceCoordinator::ManifestAssemblyIdentity(manifest);
+    }
+    static std::optional<std::wstring> FormatInstalledAppReferer(
+        const std::wstring_view identity) {
+        return RichMediaSurfaceCoordinator::FormatInstalledAppReferer(identity);
+    }
+    static std::optional<std::wstring> SelectInstalledAppReferer(
+        const bool packaged, const std::wstring_view packageIdentity,
+        const std::wstring_view manifestIdentity) {
+        return RichMediaSurfaceCoordinator::SelectInstalledAppReferer(
+            packaged, packageIdentity, manifestIdentity);
+    }
+    static auto ApplyInstalledAppReferer(
+        const std::wstring_view uri,
+        const std::vector<std::wstring>& allowedOrigins,
+        const std::wstring_view referer,
+        const std::function<HRESULT(const wchar_t*, const wchar_t*)>& setHeader) {
+        return static_cast<int>(RichMediaSurfaceCoordinator::ApplyInstalledAppReferer(
+            uri, allowedOrigins, referer, setHeader));
+    }
     static bool IsPlaybackCommandCorrelated(
         const std::uint64_t commandSequence, const std::wstring_view mediaKey,
         const std::optional<std::uint64_t> pendingSequence,
@@ -550,6 +572,62 @@ void RunContractCases() {
                     invalidOrigins),
                 "non-canonical declared frame origin was admitted");
     }
+    const auto manifestIdentity = RichMediaSurfaceCoordinatorTestPeer::
+        ManifestAssemblyIdentity(
+            LR"(<?xml version="1.0"?><assembly manifestVersion="1.0"><assemblyIdentity version="99.4.3.2" processorArchitecture="amd64" name="WidgetRail.OverlayHost" publicKeyToken="ignored" language="neutral"/></assembly>)");
+    Require(manifestIdentity && *manifestIdentity == L"WidgetRail.OverlayHost",
+            "trusted host manifest identity derivation included mutable metadata");
+    const auto hostReferer = RichMediaSurfaceCoordinatorTestPeer::
+        FormatInstalledAppReferer(*manifestIdentity);
+    Require(hostReferer && *hostReferer == L"https://widgetrail.overlayhost/",
+            "installed app identity did not produce the stable lowercase HTTPS referer");
+    Require(RichMediaSurfaceCoordinatorTestPeer::SelectInstalledAppReferer(
+                true, L"Store.WidgetRail", *manifestIdentity) ==
+                std::optional<std::wstring>{L"https://store.widgetrail/"} &&
+            RichMediaSurfaceCoordinatorTestPeer::SelectInstalledAppReferer(
+                false, L"Store.WidgetRail", *manifestIdentity) == hostReferer &&
+            !RichMediaSurfaceCoordinatorTestPeer::SelectInstalledAppReferer(
+                true, L"invalid_package", *manifestIdentity),
+            "package identity precedence or fail-closed selection drifted");
+    for (const std::wstring_view invalidIdentity : {
+            L"", L"WidgetRail_OverlayHost", L"WidgetRail..OverlayHost",
+            L"-WidgetRail.OverlayHost", L"WidgetRail.OverlayHost-",
+            L"WidgetRail.OverlayHost:443", L"WidgetRail/OverlayHost",
+            L"WidgetRail@OverlayHost", L"*.WidgetRail"}) {
+        Require(!RichMediaSurfaceCoordinatorTestPeer::FormatInstalledAppReferer(
+                    invalidIdentity),
+                "invalid installed app identity produced a referer");
+    }
+    std::wstring callerReferer{L"https://caller-controlled.invalid/"};
+    unsigned int headerWrites{};
+    const auto setHeader = [&](const wchar_t* name, const wchar_t* value) {
+        Require(std::wstring_view{name} == L"Referer",
+                "host referer policy mutated an unexpected header");
+        callerReferer = value;
+        ++headerWrites;
+        return S_OK;
+    };
+    Require(RichMediaSurfaceCoordinatorTestPeer::ApplyInstalledAppReferer(
+                L"https://frames.aurora.invalid/embed/index.html",
+                allowedFrameOrigins, *hostReferer, setHeader) == 1 &&
+            headerWrites == 1 && callerReferer == *hostReferer,
+            "declared frame request did not replace caller referer with host identity");
+    for (const std::wstring_view uri : {
+            L"https://wrail-media-aurora.invalid/media/index.html",
+            L"https://undeclared.invalid/embed/index.html"}) {
+        Require(RichMediaSurfaceCoordinatorTestPeer::ApplyInstalledAppReferer(
+                    uri, allowedFrameOrigins, *hostReferer, setHeader) == 0 &&
+                headerWrites == 1,
+                "host referer leaked to local or undeclared resource traffic");
+    }
+    Require(RichMediaSurfaceCoordinatorTestPeer::ApplyInstalledAppReferer(
+                L"https://frames.aurora.invalid/embed/index.html",
+                allowedFrameOrigins, L"", setHeader) == 2 &&
+            RichMediaSurfaceCoordinatorTestPeer::ApplyInstalledAppReferer(
+                L"https://frames.aurora.invalid/embed/index.html",
+                allowedFrameOrigins, *hostReferer,
+                [](const wchar_t*, const wchar_t*) { return E_ACCESSDENIED; }) == 2,
+            "missing identity or header mutation failure did not fail closed");
     Require(RichMediaSurfaceCoordinatorTestPeer::IsPlaybackCommandCorrelated(
                 7, L"aurora-tone", 7, L"aurora-tone") &&
             RichMediaSurfaceCoordinatorTestPeer::IsPlaybackCommandCorrelated(
