@@ -708,7 +708,14 @@ LRESULT CALLBACK TextEntryModal::KeyWindowProc(
         InvalidateRect(window, nullptr, TRUE);
     }
     if (message == WM_KEYDOWN) {
-        if (IsPasteGesture(wParam)) (void)self->PasteClipboard();
+        if (IsPasteGesture(wParam)) {
+            // A protected modal starts in its controller keyboard. Transfer
+            // this explicit paste gesture to the transient password edit so
+            // the edit owns focus before clipboard admission. Ordinary entry
+            // keeps its existing focus and paste behavior.
+            if (self->password_ && self->edit_) SetFocus(self->edit_);
+            (void)self->PasteClipboard();
+        }
         else if (wParam == VK_SPACE) SendMessageW(window, BM_CLICK, 0, 0);
         else if (wParam == VK_ESCAPE) self->Complete(TextEntryModalOutcome::Cancelled);
         else if (wParam == VK_RETURN) self->Complete(TextEntryModalOutcome::Committed);
