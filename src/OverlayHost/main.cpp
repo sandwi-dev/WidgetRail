@@ -2545,6 +2545,74 @@ private:
             ? pinnedSurfaceCoordinator_.window() : window_;
     }
 
+    [[nodiscard]] bool ReconcileEmbeddedMediaPresentationVisibility(
+        const EmbeddedMediaProjection projection,
+        const std::wstring_view reason) {
+        if (!embeddedMediaAuthority_ ||
+            embeddedMediaAuthority_->projection != projection) return false;
+        const bool visible = EmbeddedMediaPresentationVisible();
+        const auto geometry = ResolveEmbeddedMediaPresentationGeometry(
+            embeddedMediaAuthority_->sequence);
+        if (!geometry) {
+            (void)richMediaSurface_.SetVisible(false);
+            AppendDiagnostic(
+                L"Embedded media presentation reconciliation deferred projection=" +
+                std::wstring{projection == EmbeddedMediaProjection::Pinned
+                    ? L"pinned" : L"overlay"} +
+                L" visible=" + (visible ? L"1" : L"0") +
+                L" reason=" + std::wstring{reason} + L" geometry=unavailable");
+            return !visible;
+        }
+
+        const auto hostBounds = Win32Rect(geometry->hostBounds);
+        const auto hostClip = Win32Rect(geometry->hostClip);
+        const HRESULT geometryResult = richMediaSurface_.UpdateGeometry(
+            Win32Rect(geometry->controllerBounds),
+            MediaPixelsPerDip(EmbeddedMediaOwnerWindow(projection)));
+        if (FAILED(geometryResult)) {
+            (void)richMediaSurface_.SetVisible(false);
+            AppendDiagnostic(
+                L"Embedded media presentation geometry rejected hr=" +
+                std::to_wstring(static_cast<long>(geometryResult)) +
+                L" reason=" + std::wstring{reason});
+            return false;
+        }
+        embeddedMediaClientBounds_ = hostBounds;
+        embeddedMediaClientClip_ = hostClip;
+
+        const auto endpoint = CompositionEndpoint(projection);
+        widgetrail::OverlayCompositionSurface::CommitTiming timing;
+        const HRESULT presentationResult =
+            compositionSurface_.CommitExternalContentPresentation(
+                endpoint, hostBounds, hostClip, visible, timing);
+        RecordEmbeddedMediaPresentation(endpoint, timing, reason);
+        if (FAILED(presentationResult)) {
+            (void)richMediaSurface_.SetVisible(false);
+            AppendDiagnostic(
+                L"Embedded media presentation visibility rejected hr=" +
+                std::to_wstring(static_cast<long>(presentationResult)) +
+                L" reason=" + std::wstring{reason});
+            return false;
+        }
+
+        const HRESULT visibilityResult = richMediaSurface_.SetVisible(visible);
+        if (FAILED(visibilityResult)) {
+            if (visible) {
+                widgetrail::OverlayCompositionSurface::CommitTiming rollbackTiming;
+                (void)compositionSurface_.CommitExternalContentPresentation(
+                    endpoint, hostBounds, hostClip, false, rollbackTiming);
+                RecordEmbeddedMediaPresentation(
+                    endpoint, rollbackTiming, L"visibility-rollback");
+            }
+            AppendDiagnostic(
+                L"Embedded media controller visibility rejected hr=" +
+                std::to_wstring(static_cast<long>(visibilityResult)) +
+                L" reason=" + std::wstring{reason});
+            return false;
+        }
+        return true;
+    }
+
     [[nodiscard]] bool TransferEmbeddedMediaSurface(
         const EmbeddedMediaProjection destination,
         const std::wstring_view reason) {
@@ -2632,24 +2700,12 @@ private:
             : std::nullopt;
         if (destination == EmbeddedMediaProjection::Pinned && !pinnedPresentation)
             return;
-        const auto reconcileVisibility = [&] {
-            const bool visible = EmbeddedMediaPresentationVisible();
-            if (embeddedMediaClientBounds_ && embeddedMediaClientClip_) {
-                widgetrail::OverlayCompositionSurface::CommitTiming timing;
-                (void)compositionSurface_.CommitExternalContentPresentation(
-                    CompositionEndpoint(destination), *embeddedMediaClientBounds_,
-                    *embeddedMediaClientClip_, visible, timing);
-                RecordEmbeddedMediaPresentation(
-                    CompositionEndpoint(destination), timing,
-                    L"visibility-reconcile");
-            }
-            (void)richMediaSurface_.SetVisible(visible);
-        };
         if (destination == EmbeddedMediaProjection::Pinned &&
             embeddedMediaAuthority_->projection == destination &&
             embeddedMediaAuthority_->pinnedFrameGeneration ==
                 pinnedPresentation->frameGeneration) {
-            reconcileVisibility();
+            (void)ReconcileEmbeddedMediaPresentationVisibility(
+                destination, L"visibility-reconcile");
             return;
         }
         if (!TransferEmbeddedMediaSurface(destination, reason)) {
@@ -2659,28 +2715,14 @@ private:
         if (destination == EmbeddedMediaProjection::Pinned &&
             embeddedMediaAuthority_->pinnedFrameGeneration ==
                 pinnedPresentation->frameGeneration) {
-            reconcileVisibility();
+            (void)ReconcileEmbeddedMediaPresentationVisibility(
+                destination, L"visibility-reconcile");
             return;
         }
-        const auto geometry = ResolveEmbeddedMediaPresentationGeometry(
-            embeddedMediaAuthority_->sequence);
-        if (!geometry) return;
-        embeddedMediaClientBounds_ = Win32Rect(geometry->hostBounds);
-        embeddedMediaClientClip_ = Win32Rect(geometry->hostClip);
-        const HWND owner = EmbeddedMediaOwnerWindow(destination);
-        const HRESULT geometryResult = richMediaSurface_.UpdateGeometry(
-            Win32Rect(geometry->controllerBounds), MediaPixelsPerDip(owner));
-        widgetrail::OverlayCompositionSurface::CommitTiming timing;
-        const HRESULT presentationResult =
-            compositionSurface_.CommitExternalContentPresentation(
-            CompositionEndpoint(destination), Win32Rect(geometry->hostBounds),
-            Win32Rect(geometry->hostClip),
-            EmbeddedMediaPresentationVisible(), timing);
-        RecordEmbeddedMediaPresentation(
-            CompositionEndpoint(destination), timing, L"projection-reconcile");
-        (void)richMediaSurface_.SetVisible(EmbeddedMediaPresentationVisible());
+        const bool presentationCurrent = ReconcileEmbeddedMediaPresentationVisibility(
+            destination, L"projection-reconcile");
         if (destination == EmbeddedMediaProjection::Pinned &&
-            SUCCEEDED(geometryResult) && SUCCEEDED(presentationResult)) {
+            presentationCurrent) {
             embeddedMediaAuthority_->pinnedFrameGeneration =
                 pinnedPresentation->frameGeneration;
         }
@@ -2805,37 +2847,16 @@ private:
             if (desiredProjection == EmbeddedMediaProjection::Pinned &&
                 embeddedMediaAuthority_->pinnedFrameGeneration ==
                     pinnedPresentation->frameGeneration) {
-                (void)richMediaSurface_.SetVisible(
-                    EmbeddedMediaPresentationVisible());
+                (void)ReconcileEmbeddedMediaPresentationVisibility(
+                    desiredProjection, L"snapshot-visibility-reconcile");
                 DispatchPendingEmbeddedMediaCommand();
                 return;
             }
-            const auto geometry = ResolveEmbeddedMediaPresentationGeometry(
-                snapshot.sequence);
-            if (!geometry) {
-                (void)richMediaSurface_.SetVisible(false);
-                embeddedMediaClientBounds_.reset();
-                embeddedMediaClientClip_.reset();
-                AppendDiagnostic(
-                    L"Embedded media geometry reconciliation failed widget=" +
-                    std::wstring{widgetId} + L" surface=" + declaration.id);
-                return;
-            }
-            embeddedMediaClientBounds_ = Win32Rect(geometry->hostBounds);
-            embeddedMediaClientClip_ = Win32Rect(geometry->hostClip);
-            const HRESULT geometryResult = richMediaSurface_.UpdateGeometry(
-                Win32Rect(geometry->controllerBounds),
-                MediaPixelsPerDip(EmbeddedMediaOwnerWindow(desiredProjection)));
-            widgetrail::OverlayCompositionSurface::CommitTiming timing;
-            const HRESULT presentationResult =
-                compositionSurface_.CommitExternalContentPresentation(
-                CompositionEndpoint(desiredProjection), *embeddedMediaClientBounds_,
-                *embeddedMediaClientClip_, EmbeddedMediaPresentationVisible(), timing);
-            (void)richMediaSurface_.SetVisible(EmbeddedMediaPresentationVisible());
-            RecordEmbeddedMediaPresentation(
-                CompositionEndpoint(desiredProjection), timing, L"snapshot-reconcile");
+            const bool presentationCurrent =
+                ReconcileEmbeddedMediaPresentationVisibility(
+                    desiredProjection, L"snapshot-reconcile");
             if (desiredProjection == EmbeddedMediaProjection::Pinned &&
-                SUCCEEDED(geometryResult) && SUCCEEDED(presentationResult)) {
+                presentationCurrent) {
                 embeddedMediaAuthority_->pinnedFrameGeneration =
                     pinnedPresentation->frameGeneration;
             }
