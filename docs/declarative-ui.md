@@ -180,9 +180,10 @@ bounded to 1–60 seconds. Compact presentation requires the existing
 Next become available only when those existing commands are declared. The host
 keeps controller mapping, focus, accessibility, theme, geometry, clipping, and
 the single browser/controller/document session authoritative. In compact
-interaction, A enters or applies seek scrub, Left/Right adjusts the scrub value,
-and B cancels scrub or exits compact interaction to click-through. View retains
-the host tray route.
+interaction, LT/RT rewind or forward by the configured seek interval from the
+current media position. A does not enter a hidden seek mode, and D-pad or left
+stick navigation never seeks. B exits compact interaction to click-through.
+View retains the host tray route.
 
 An embedded-media widget builds its visible shell from the same native Text,
 Progress, Button, Row, and Stack nodes as any other widget. Reserved

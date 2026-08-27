@@ -62,11 +62,11 @@ presentation with `CompactPinnedPresentation`. The pin keeps the same
 `MediaViewport` and media session, removes the authored title/transport rows,
 and overlays one native themed seek bar that hides during passive playback.
 `CompactPinnedSeekStepSeconds` defaults to 10 and accepts finite values from 1
-through 60 seconds. X toggles playback; A enters/applies seek scrub; Left/Right
-adjust only while scrubbing; B cancels scrub or, outside scrub, exits compact
-controller interaction to click-through; LB/RB select Previous/Next only when
-those commands are declared; View retains the host tray route. Authors cannot
-remap these physical controls.
+through 60 seconds. X toggles playback; LT/RT rewind or forward from the current
+position by that interval; A does not enter a hidden seek mode; D-pad and left
+stick navigation do not seek; B exits compact controller interaction to
+click-through; LB/RB select Previous/Next only when those commands are declared;
+View retains the host tray route. Authors cannot remap these physical controls.
 
 For selection-driven data, create an optional per-widget
 `PinnedLayoutHandle` with `CreatePinnedLayoutHandle(id, name, surface,

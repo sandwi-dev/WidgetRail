@@ -8064,14 +8064,6 @@ private:
                             L"Compact pinned media returned to click-through";
                         lastActionExpiresAt_ = now + 2400;
                     }
-                } else if ((pressed & XINPUT_GAMEPAD_A) != 0) {
-                    if (pinnedSurfaceCoordinator_.compactMediaState().scrubActive) {
-                        if (const auto target =
-                                pinnedSurfaceCoordinator_.CommitCompactMediaScrub())
-                            (void)richMediaSurface_.SendSeekPosition(*target);
-                    } else {
-                        (void)pinnedSurfaceCoordinator_.BeginCompactMediaScrub();
-                    }
                 }
                 if ((pressed & XINPUT_GAMEPAD_X) != 0 &&
                     EmbeddedMediaCommandSupported(L"togglePlayback"))
@@ -8085,6 +8077,20 @@ private:
                     EmbeddedMediaCommandSupported(L"navigateNext"))
                     (void)richMediaSurface_.SendCommand(
                         widgetrail::richmedia::Command::NavigateNext);
+                if (frame.leftTriggerPressed != WRAIL_OVERLAY_PLATFORM_FALSE &&
+                    EmbeddedMediaCommandSupported(L"seekBackward")) {
+                    if (const auto target =
+                            pinnedSurfaceCoordinator_.CompactMediaSeekTarget(
+                                widgetrail::input::NavigationDirection::Left))
+                        (void)richMediaSurface_.SendSeekPosition(*target);
+                } else if (
+                    frame.rightTriggerPressed != WRAIL_OVERLAY_PLATFORM_FALSE &&
+                    EmbeddedMediaCommandSupported(L"seekForward")) {
+                    if (const auto target =
+                            pinnedSurfaceCoordinator_.CompactMediaSeekTarget(
+                                widgetrail::input::NavigationDirection::Right))
+                        (void)richMediaSurface_.SendSeekPosition(*target);
+                }
                 ReconcileCompactPinnedMediaChrome();
                 InvalidateRect(window_, nullptr, FALSE);
                 return;
@@ -8155,7 +8161,7 @@ private:
                 lastActionWidgetId_ =
                     std::wstring(pinnedSurfaceCoordinator_.widgetId());
                 lastActionMessage_ = pinnedSurfaceCoordinator_.compactMediaPresentation()
-                    ? L"Compact pinned focus entered. B exits to click-through; View returns to the tray."
+                    ? L"Compact pinned focus entered. X plays or pauses; LT and RT seek; B exits to click-through; View returns to the tray."
                     : L"Pinned focus entered. View returns to the tray; B stays in the widget.";
                 lastActionExpiresAt_ = now + 4000;
                 InvalidateRect(window_, nullptr, FALSE);

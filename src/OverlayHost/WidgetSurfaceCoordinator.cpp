@@ -379,13 +379,7 @@ bool WidgetSurfaceCoordinator::MoveControllerFocus(
     const input::NavigationDirection direction) {
     if (!controllerFocused_ || direction == input::NavigationDirection::None ||
         !pinned()) return false;
-    if (compactMediaPresentation()) {
-        if (compactMediaScrubActive_ &&
-            (direction == input::NavigationDirection::Left ||
-             direction == input::NavigationDirection::Right))
-            return StepCompactMediaScrub(direction);
-        return true;
-    }
+    if (compactMediaPresentation()) return true;
     const auto& snapshot = SelectedSnapshot();
     const input::WidgetInteractionAuthority authority{
         admission_->widgetId, &snapshot, admission_->runtimeGeneration,
@@ -1219,6 +1213,21 @@ bool WidgetSurfaceCoordinator::StepCompactMediaScrub(
     return true;
 }
 
+std::optional<double> WidgetSurfaceCoordinator::CompactMediaSeekTarget(
+    const input::NavigationDirection direction) const noexcept {
+    if (!compactMediaPresentation() || !controllerFocused_ ||
+        compactMediaDurationSeconds_ <= 0.0 ||
+        (direction != input::NavigationDirection::Left &&
+         direction != input::NavigationDirection::Right)) return std::nullopt;
+    const double delta = compactMediaState().seekStepSeconds *
+        (direction == input::NavigationDirection::Left ? -1.0 : 1.0);
+    const double target = std::clamp(
+        compactMediaPositionSeconds_ + delta, 0.0,
+        compactMediaDurationSeconds_);
+    if (target == compactMediaPositionSeconds_) return std::nullopt;
+    return target;
+}
+
 std::optional<double> WidgetSurfaceCoordinator::CommitCompactMediaScrub() noexcept {
     if (!compactMediaScrubActive_) return std::nullopt;
     compactMediaScrubActive_ = false;
@@ -1890,10 +1899,10 @@ void WidgetSurfaceCoordinator::PublishAccessibility() {
                 std::to_wstring(layoutOptions_.size()) +
                 L". Left or right trigger changes layout. Left stick or D-pad moves. Right stick resizes. Commit or cancel.";
     } else if (compactMedia) {
-        const auto media = compactMediaState();
-        state.value = media.scrubActive
-            ? L"Compact media scrub. Left or Right seeks. A applies. B cancels."
-            : L"Compact media. A enters seek. X plays or pauses. Left and right bumper select available media. B exits to click-through. View returns to the tray.";
+        state.value = L"Compact media. Left trigger rewinds and right trigger "
+            L"forwards by the configured seek interval. X plays or pauses. "
+            L"Left and right bumper select available media. B exits to "
+            L"click-through. View returns to the tray.";
     } else {
         state.value = policy_.interactionMode() == InteractionMode::Focusable
             ? L"Interactive. D-pad navigates. A activates. B is widget Back. View returns to the tray. Menu opens options."
@@ -1987,7 +1996,6 @@ void WidgetSurfaceCoordinator::PublishAccessibility() {
         seek.value = std::to_wstring(static_cast<int>(std::lround(media.previewPositionSeconds))) +
             L" of " + std::to_wstring(static_cast<int>(std::lround(media.durationSeconds))) +
             L" seconds";
-        seek.actionId = L"host.compact-media.seek";
         seek.valueChangedActionId = L"host.compact-media.seek";
         seek.domain = accessibility::ElementDomain::HostShell;
         seek.role = accessibility::Role::Slider;

@@ -252,10 +252,15 @@ HRESULT OverlayCompositionSurface::CommitExternalContentPresentation(
     if (SUCCEEDED(result)) result = visual->SetOffsetY(static_cast<float>(bounds.top));
     if (SUCCEEDED(result)) result = visual->SetClip(clip);
     if (SUCCEEDED(result) && visible && !attached) {
+        IDCompositionVisual2* reference =
+            endpoint == ExternalContentEndpoint::Pinned &&
+                pinnedMediaChromeAttached_
+            ? pinnedMediaChromeVisual_.Get()
+            : nullptr;
         result = parent->AddVisual(
             visual.Get(),
             coordinates == ExternalContentCoordinateSpace::ContentLocal ? TRUE : FALSE,
-            nullptr);
+            reference);
         if (SUCCEEDED(result)) attached = true;
     } else if (SUCCEEDED(result) && !visible && attached) {
         result = parent->RemoveVisual(visual.Get());
@@ -499,7 +504,7 @@ HRESULT OverlayCompositionSurface::CommitPinnedMediaChrome(
     }
     if (SUCCEEDED(result) && presentation.visible && !pinnedMediaChromeAttached_) {
         result = pinnedExternalRootVisual_->AddVisual(
-            pinnedMediaChromeVisual_.Get(), TRUE, nullptr);
+            pinnedMediaChromeVisual_.Get(), FALSE, nullptr);
         if (SUCCEEDED(result)) pinnedMediaChromeAttached_ = true;
     } else if (SUCCEEDED(result) && !presentation.visible &&
                pinnedMediaChromeAttached_) {

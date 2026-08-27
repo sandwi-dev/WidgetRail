@@ -224,6 +224,8 @@ public:
     [[nodiscard]] bool BeginCompactMediaScrub() noexcept;
     [[nodiscard]] bool StepCompactMediaScrub(
         input::NavigationDirection direction) noexcept;
+    [[nodiscard]] std::optional<double> CompactMediaSeekTarget(
+        input::NavigationDirection direction) const noexcept;
     [[nodiscard]] std::optional<double> CommitCompactMediaScrub() noexcept;
     [[nodiscard]] bool CancelCompactMediaScrub() noexcept;
     [[nodiscard]] std::optional<double> TakeCompactMediaSeekRequest() noexcept;
