@@ -245,10 +245,12 @@ private:
     EnvironmentLifecycle lifecycle{EnvironmentLifecycle::Cold};
     std::wstring profileRootDirectory;
     std::wstring profileDirectory;
+    std::vector<std::shared_ptr<RichMediaSurfaceCoordinator::CallbackLease>> waiters;
     std::uint64_t generation{};
     bool faulted{};
 
     friend class RichMediaSurfaceCoordinator;
+    friend class RichMediaSurfaceCoordinatorTestPeer;
 };
 
 struct RichMediaSurfaceCoordinator::FrameSubscription final {
@@ -334,7 +336,8 @@ HRESULT RichMediaSurfaceCoordinator::Initialize(Configuration configuration) noe
         state_.authority.environmentGeneration = shared.generation;
         return BeginController();
     }
-    if (shared.lifecycle == EnvironmentLifecycle::Creating) return E_PENDING;
+    if (shared.lifecycle == EnvironmentLifecycle::Creating)
+        return AwaitSharedEnvironment();
     if (shared.lifecycle != EnvironmentLifecycle::Cold) return E_UNEXPECTED;
     return BeginEnvironment();
 }
@@ -357,6 +360,7 @@ HRESULT RichMediaSurfaceCoordinator::Retry(Configuration configuration) noexcept
     retrySurfaceGeneration_ = 0;
     desiredVisible_ = configuration_.initiallyVisible;
     if (sharedEnvironment_->lifecycle == EnvironmentLifecycle::Ready) {
+        environmentFaulted_ = false;
         environment_ = sharedEnvironment_->environment;
         environment5_ = sharedEnvironment_->environment5;
         environmentSignal_ = sharedEnvironment_->signal;
@@ -447,16 +451,93 @@ HRESULT RichMediaSurfaceCoordinator::BeginEnvironment() noexcept {
     return result;
 }
 
+HRESULT RichMediaSurfaceCoordinator::AwaitSharedEnvironment() noexcept {
+    auto& shared = *sharedEnvironment_;
+    if (shared.lifecycle != EnvironmentLifecycle::Creating ||
+        shared.generation == 0 || shared.profileDirectory.empty()) return E_UNEXPECTED;
+    environmentLifecycle_ = EnvironmentLifecycle::Creating;
+    environmentFaulted_ = false;
+    nextEnvironmentGeneration_ = shared.generation;
+    state_.authority.environmentGeneration = shared.generation;
+    environmentProfileDirectory_ = shared.profileDirectory;
+    state_.authority.controllerGeneration = 0;
+    state_.authority.documentGeneration = 0;
+    state_.authority.eventSequence = 0;
+    pendingCommand_.reset();
+    pendingNavigationId_ = 0;
+    const auto lease = CreateCallbackLease();
+    state_.lifecycle = Lifecycle::EnvironmentCreating;
+    shared.waiters.push_back(lease);
+    Emit(L"Rich media lifecycle=environment-waiting generation=" +
+         std::to_wstring(state_.authority.sessionGeneration));
+    return S_OK;
+}
+
+HRESULT RichMediaSurfaceCoordinator::ResumeSharedEnvironment(
+    const std::shared_ptr<CallbackLease>& lease) noexcept {
+    if (!IsCurrentCallback(lease, false) ||
+        state_.lifecycle != Lifecycle::EnvironmentCreating) return S_FALSE;
+    const auto& shared = *sharedEnvironment_;
+    if (shared.lifecycle != EnvironmentLifecycle::Ready || shared.faulted ||
+        !shared.environment || !shared.signal ||
+        shared.signal->browserProcessExited.load(std::memory_order_acquire))
+        return E_UNEXPECTED;
+    environment_ = shared.environment;
+    environment5_ = shared.environment5;
+    environmentSignal_ = shared.signal;
+    environmentLifecycle_ = EnvironmentLifecycle::Ready;
+    nextEnvironmentGeneration_ = shared.generation;
+    environmentProfileDirectory_ = shared.profileDirectory;
+    state_.authority.environmentGeneration = shared.generation;
+    Emit(L"Rich media lifecycle=environment-resumed generation=" +
+         std::to_wstring(state_.authority.sessionGeneration));
+    return BeginController();
+}
+
+void RichMediaSurfaceCoordinator::FailSharedEnvironment(
+    const std::shared_ptr<CallbackLease>& lease, const HRESULT result) noexcept {
+    if (!IsCurrentCallback(lease, false) ||
+        state_.lifecycle != Lifecycle::EnvironmentCreating) return;
+    environmentFaulted_ = true;
+    Fault(L"environment-create", result);
+}
+
+void RichMediaSurfaceCoordinator::ResumeSharedEnvironmentWaiters() noexcept {
+    auto waiters = std::move(sharedEnvironment_->waiters);
+    sharedEnvironment_->waiters.clear();
+    for (const auto& waiter : waiters) {
+        auto* owner = waiter->owner.load(std::memory_order_acquire);
+        if (!owner) continue;
+        const HRESULT resume = owner->ResumeSharedEnvironment(waiter);
+        if (FAILED(resume)) owner->FailSharedEnvironment(waiter, resume);
+    }
+}
+
+void RichMediaSurfaceCoordinator::HoldSharedEnvironmentCreatingForTest() noexcept {
+    sharedEnvironment_->lifecycle = EnvironmentLifecycle::Creating;
+}
+
+void RichMediaSurfaceCoordinator::ReleaseSharedEnvironmentReadyForTest() noexcept {
+    sharedEnvironment_->lifecycle = EnvironmentLifecycle::Ready;
+    ResumeSharedEnvironmentWaiters();
+}
+
 HRESULT RichMediaSurfaceCoordinator::OnEnvironmentCreated(
     const std::shared_ptr<CallbackLease>& lease, const HRESULT result,
     ICoreWebView2Environment* environment) noexcept {
     if (!IsCurrentCallback(lease, false) ||
         state_.lifecycle != Lifecycle::EnvironmentCreating) return S_FALSE;
     if (FAILED(result) || !environment) {
+        auto waiters = std::move(sharedEnvironment_->waiters);
+        sharedEnvironment_->waiters.clear();
         environmentFaulted_ = true;
         sharedEnvironment_->faulted = true;
         sharedEnvironment_->lifecycle = EnvironmentLifecycle::Cold;
         Fault(L"environment-create", result);
+        for (const auto& waiter : waiters) {
+            if (auto* owner = waiter->owner.load(std::memory_order_acquire))
+                owner->FailSharedEnvironment(waiter, result);
+        }
         return S_OK;
     }
     environment_ = environment;
@@ -479,7 +560,9 @@ HRESULT RichMediaSurfaceCoordinator::OnEnvironmentCreated(
         sharedEnvironment_->environment5 = environment5_;
         sharedEnvironment_->browserProcessExitedToken = browserProcessExitedToken_;
     }
-    return BeginController();
+    const HRESULT controllerResult = BeginController();
+    ResumeSharedEnvironmentWaiters();
+    return controllerResult;
 }
 
 HRESULT RichMediaSurfaceCoordinator::BeginController() noexcept {

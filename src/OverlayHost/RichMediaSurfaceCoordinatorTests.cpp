@@ -128,6 +128,18 @@ public:
             !coordinator.environmentSignal_ &&
             !coordinator.browserProcessExitedToken_.value;
     }
+    static RichMediaEnvironmentHandle SharedEnvironment(
+        const RichMediaSurfaceCoordinator& coordinator) {
+        return coordinator.sharedEnvironment_;
+    }
+    static void HoldSharedEnvironmentCreating(
+        RichMediaSurfaceCoordinator& coordinator) {
+        coordinator.HoldSharedEnvironmentCreatingForTest();
+    }
+    static void ReleaseSharedEnvironmentReady(
+        RichMediaSurfaceCoordinator& coordinator) {
+        coordinator.ReleaseSharedEnvironmentReadyForTest();
+    }
     static void RecordLiveUnexpectedBrowserExit(
         RichMediaSurfaceCoordinator& coordinator, const DWORD processId) {
         RichMediaSurfaceCoordinator::RecordBrowserProcessExit(
@@ -208,8 +220,14 @@ public:
             std::wstring adapterIdentity = {},
             std::vector<widgetrail::richmedia::Configuration::Resource>
                 adapterResources = {},
-            std::shared_ptr<FixtureCallbackProbe> callbackProbe = {})
-        : profileRoot_(profileRoot.empty()
+            std::shared_ptr<FixtureCallbackProbe> callbackProbe = {},
+            widgetrail::richmedia::RichMediaEnvironmentHandle sharedEnvironment = {},
+            const bool deferInitialPresentation = false)
+        : coordinator_(sharedEnvironment
+              ? std::move(sharedEnvironment)
+              : widgetrail::richmedia::RichMediaSurfaceCoordinator::
+                    CreateSharedEnvironment()),
+          profileRoot_(profileRoot.empty()
               ? std::filesystem::temp_directory_path() /
                     (L"wrail-rich-media-proof-root-" +
                      std::to_wstring(GetCurrentProcessId()) + L"-" +
@@ -217,6 +235,7 @@ public:
               : std::move(profileRoot)),
           adapterIdentity_(std::move(adapterIdentity)),
           adapterResources_(std::move(adapterResources)),
+          deferInitialPresentation_(deferInitialPresentation),
           callbackProbe_(std::move(callbackProbe)) {
         WNDCLASSW windowClass{};
         windowClass.hInstance = GetModuleHandleW(nullptr);
@@ -255,10 +274,15 @@ public:
         result = retry ? coordinator_.Retry(std::move(configuration))
                        : coordinator_.Initialize(std::move(configuration));
         if (FAILED(result)) return result;
+        sessionOpen_ = true;
+        if (deferInitialPresentation_) return S_OK;
+        return CommitInitialPresentation();
+    }
+
+    HRESULT CommitInitialPresentation() {
         widgetrail::OverlayCompositionSurface::CommitTiming timing;
-        result = composition_.CommitExternalContentPresentation(
+        const HRESULT result = composition_.CommitExternalContentPresentation(
             {0, 0, 800, 520}, false, timing);
-        if (SUCCEEDED(result)) sessionOpen_ = true;
         return result;
     }
 
@@ -304,6 +328,10 @@ public:
         return std::any_of(diagnostics_.begin(), diagnostics_.end(),
             [&](const std::wstring& value) { return value.find(text) != std::wstring::npos; });
     }
+    std::size_t countDiagnostic(const std::wstring_view text) const {
+        return std::count_if(diagnostics_.begin(), diagnostics_.end(),
+            [&](const std::wstring& value) { return value.find(text) != std::wstring::npos; });
+    }
     bool finalConfigurationReleased() const {
         return widgetrail::richmedia::RichMediaSurfaceCoordinatorTestPeer::
             FinalConfigurationReleased(coordinator_);
@@ -320,6 +348,11 @@ public:
     void RetireCallbackProbe() {
         if (callbackProbe_)
             callbackProbe_->retired.store(true, std::memory_order_release);
+    }
+    std::uint32_t callbacksAfterRetirement() const {
+        return callbackProbe_
+            ? callbackProbe_->callbacksAfterRetirement.load(std::memory_order_acquire)
+            : 0;
     }
 
 private:
@@ -389,6 +422,7 @@ chrome.webview.addEventListener('message',e=>{const m=e.data;if(m.command==='ini
     bool presentationVisible_{};
     std::uint64_t presentationApplications_{};
     bool presentationCommitFailed_{};
+    bool deferInitialPresentation_{};
     bool releasedBeforeDetach_{};
     bool detachWaited_{};
     std::vector<std::wstring> diagnostics_;
@@ -1378,24 +1412,162 @@ void RunLifecycleCases() {
             fixture.coordinator().environmentState(),
             "healthy Retry replaced process-lifetime environment authority");
 
+        const auto localFaultAuthority = fixture.coordinator().state().authority;
         RichMediaSurfaceCoordinatorTestPeer::MarkEnvironmentFaulted(fixture.coordinator());
         RichMediaSurfaceCoordinatorTestPeer::Fault(
-            fixture.coordinator(), L"proof-browser-environment-fault");
-        Require(SUCCEEDED(fixture.Retry()), "faulted-environment Retry submission failed");
-        RequireReady(fixture, "faulted-environment Retry did not recreate a ready session");
-        const auto recreated = fixture.coordinator().environmentState();
-        Require(recreated.lifecycle == EnvironmentLifecycle::Ready &&
-                    recreated.generation > initialEnvironment.generation &&
-                    recreated.profileDirectory != initialEnvironment.profileDirectory &&
-                    recreated.observerActive && !recreated.faulted,
-                "environment fault did not establish one fresh environment generation");
-        finalProfile = recreated.profileDirectory;
+            fixture.coordinator(), L"proof-local-environment-fault");
+        Require(SUCCEEDED(fixture.Retry()), "local-fault Retry submission failed");
+        RequireReady(fixture, "local-fault Retry did not recreate a ready session");
+        RequireRetainedEnvironment(initialEnvironment,
+            fixture.coordinator().environmentState(),
+            "local-fault Retry replaced the healthy shared environment");
+        const auto localRetryAuthority = fixture.coordinator().state().authority;
+        Require(localRetryAuthority.environmentGeneration ==
+                    localFaultAuthority.environmentGeneration &&
+                localRetryAuthority.surfaceGeneration ==
+                    localFaultAuthority.surfaceGeneration &&
+                localRetryAuthority.sessionGeneration >
+                    localFaultAuthority.sessionGeneration &&
+                localRetryAuthority.controllerGeneration >
+                    localFaultAuthority.controllerGeneration &&
+                localRetryAuthority.documentGeneration >
+                    localFaultAuthority.documentGeneration,
+                "local-fault Retry did not retain environment/surface and refresh session authority");
+        finalProfile = initialEnvironment.profileDirectory;
     }
     const auto marker = finalProfile /
         (L".wrail-retired-owner-" + std::to_wstring(GetCurrentProcessId()));
     Require(std::filesystem::exists(marker),
             "final shutdown did not mark the process-lifetime profile for deferred cleanup");
-    std::cout << "RichMediaSurfaceCoordinator lifecycle cases passed=20\n";
+
+    const auto failedRoot = root / L"shared-browser-failure";
+    {
+        Fixture failed(2, true, failedRoot, L"aurora-adapter");
+        RequireReady(failed, "shared-browser failure fixture did not become ready",
+                     L"aurora.primary");
+        const auto failedEnvironment = failed.coordinator().environmentState();
+        RichMediaSurfaceCoordinatorTestPeer::RecordLiveUnexpectedBrowserExit(
+            failed.coordinator(), failedEnvironment.browserProcessId);
+        RichMediaSurfaceCoordinatorTestPeer::Fault(
+            failed.coordinator(), L"proof-shared-browser-exit");
+        Require(failed.Retry() == E_UNEXPECTED,
+                "shared browser-exit authority incorrectly permitted Retry");
+    }
+    {
+        Fixture recreated(3, true, root / L"shared-browser-recreated",
+                          L"aurora-adapter");
+        RequireReady(recreated, "fresh owner did not recreate after shared browser failure",
+                     L"aurora.primary");
+        const auto environment = recreated.coordinator().environmentState();
+        Require(environment.lifecycle == EnvironmentLifecycle::Ready &&
+                    environment.browserProcessId > 0 && environment.observerActive &&
+                    !environment.browserExitObserved && !environment.faulted,
+                "fresh owner retained shared browser-failure authority");
+    }
+    std::cout << "RichMediaSurfaceCoordinator lifecycle cases passed=26\n";
+}
+
+void RunSharedEnvironmentAdmissionCases() {
+    using namespace widgetrail::richmedia;
+    const auto root = std::filesystem::temp_directory_path() /
+        (L"wrail-rich-media-shared-environment-" +
+         std::to_wstring(GetCurrentProcessId()));
+    const auto retiredProbe = std::make_shared<FixtureCallbackProbe>();
+    Fixture environmentOwner(29, true, root, L"aurora-adapter");
+    RequireReady(environmentOwner, "shared environment owner did not become ready",
+                 L"aurora.primary");
+    const auto initialEnvironment = environmentOwner.coordinator().environmentState();
+    const auto environment = RichMediaSurfaceCoordinatorTestPeer::SharedEnvironment(
+        environmentOwner.coordinator());
+    Require(SUCCEEDED(environmentOwner.CloseSession()) &&
+                environmentOwner.finalDetachSucceededAndWaited(),
+            "shared environment owner session did not retire cleanly");
+    RichMediaSurfaceCoordinatorTestPeer::HoldSharedEnvironmentCreating(
+        environmentOwner.coordinator());
+
+    Fixture aurora(30, true, root, L"aurora-adapter", {}, {}, environment, true);
+    Require(aurora.coordinator().state().lifecycle == Lifecycle::EnvironmentCreating &&
+                aurora.sawDiagnostic(L"environment-waiting"),
+            "first overlapping media session was not retained as an environment waiter");
+    Fixture cedar(31, true, root, L"cedar-adapter", {}, {}, environment, true);
+    Require(cedar.coordinator().state().lifecycle == Lifecycle::EnvironmentCreating &&
+                cedar.sawDiagnostic(L"environment-waiting"),
+            "overlapping media session was not retained as an environment waiter");
+    Fixture retired(32, true, root, L"aurora-adapter", {}, retiredProbe, environment, true);
+    Require(retired.coordinator().state().lifecycle == Lifecycle::EnvironmentCreating &&
+                retired.sawDiagnostic(L"environment-waiting"),
+            "retirement fixture was not admitted while the environment was creating");
+    Require(SUCCEEDED(retired.CloseSession()) && retired.finalDetachSucceededAndWaited(),
+            "waiting media session did not retire cleanly before environment readiness");
+    retired.RetireCallbackProbe();
+    RichMediaSurfaceCoordinatorTestPeer::ReleaseSharedEnvironmentReady(
+        environmentOwner.coordinator());
+    Require(SUCCEEDED(aurora.CommitInitialPresentation()) &&
+                SUCCEEDED(cedar.CommitInitialPresentation()),
+            "shared-environment fixtures did not commit their initial targets");
+
+    RequireReady(aurora, "environment creator did not become ready", L"aurora.primary");
+    RequireReady(cedar, "retained environment waiter did not resume", L"cedar.primary");
+    const auto auroraEnvironment = aurora.coordinator().environmentState();
+    const auto cedarEnvironment = cedar.coordinator().environmentState();
+    Require(auroraEnvironment.lifecycle == EnvironmentLifecycle::Ready &&
+                cedarEnvironment.lifecycle == EnvironmentLifecycle::Ready &&
+                auroraEnvironment.generation == cedarEnvironment.generation &&
+                auroraEnvironment.profileDirectory == cedarEnvironment.profileDirectory &&
+                auroraEnvironment.browserProcessId != 0 &&
+                auroraEnvironment.browserProcessId == cedarEnvironment.browserProcessId &&
+                auroraEnvironment.generation == initialEnvironment.generation &&
+                cedar.countDiagnostic(L"environment-resumed") == 1 &&
+                aurora.countDiagnostic(L"environment-resumed") == 1 &&
+                aurora.countDiagnostic(L"controller-creating") == 1 &&
+                cedar.countDiagnostic(L"controller-creating") == 1,
+            "overlapping sessions did not share one environment and create one controller each");
+    Require(retired.callbacksAfterRetirement() == 0 &&
+                retired.coordinator().state().lifecycle == Lifecycle::Absent,
+            "retired environment waiter received a readiness callback");
+
+    const auto auroraCommand = aurora.coordinator().state().lastAcknowledgedCommandId;
+    const auto cedarCommand = cedar.coordinator().state().lastAcknowledgedCommandId;
+    Require(aurora.coordinator().SendCommand(Command::NavigateNext) &&
+                cedar.coordinator().SendCommand(Command::NavigateNext),
+            "shared-environment sessions did not accept independent commands");
+    Require(PumpUntil([&] {
+        return aurora.coordinator().state().lastAcknowledgedCommandId > auroraCommand &&
+            aurora.coordinator().state().focusedElement == L"aurora.secondary" &&
+            cedar.coordinator().state().lastAcknowledgedCommandId > cedarCommand &&
+            cedar.coordinator().state().focusedElement == L"cedar.secondary";
+    }, 2s), "shared-environment sessions did not publish independent events");
+
+    const auto cedarAuthority = cedar.coordinator().state().authority;
+    RichMediaSurfaceCoordinatorTestPeer::MarkEnvironmentFaulted(aurora.coordinator());
+    RichMediaSurfaceCoordinatorTestPeer::Fault(
+        aurora.coordinator(), L"proof-local-environment-fault");
+    Require(SUCCEEDED(aurora.Retry()),
+            "locally faulted coordinator did not retry on the healthy shared environment");
+    RequireReady(aurora, "locally faulted coordinator did not become ready after Retry",
+                 L"aurora.primary");
+    const auto cedarAfterRetry = cedar.coordinator().state();
+    Require(cedarAfterRetry.lifecycle == Lifecycle::Visible &&
+                cedarAfterRetry.authority.environmentGeneration ==
+                    cedarAuthority.environmentGeneration &&
+                cedarAfterRetry.authority.surfaceGeneration ==
+                    cedarAuthority.surfaceGeneration &&
+                cedarAfterRetry.authority.sessionGeneration ==
+                    cedarAuthority.sessionGeneration &&
+                cedarAfterRetry.authority.controllerGeneration ==
+                    cedarAuthority.controllerGeneration &&
+                cedarAfterRetry.authority.documentGeneration ==
+                    cedarAuthority.documentGeneration,
+            "local Retry mutated the separate live shared-environment coordinator");
+    const auto cedarAfterRetryCommand = cedarAfterRetry.lastAcknowledgedCommandId;
+    Require(cedar.coordinator().SendCommand(Command::NavigatePrevious) &&
+                PumpUntil([&] {
+                    return cedar.coordinator().state().lastAcknowledgedCommandId >
+                            cedarAfterRetryCommand &&
+                        cedar.coordinator().state().focusedElement == L"cedar.primary";
+                }, 2s),
+            "separate live coordinator stopped dispatching after peer-local Retry");
+    std::cout << "RichMediaSurfaceCoordinator shared environment cases passed=17\n";
 }
 
 void RunProviderNeutralAdapterCases() {
@@ -1829,6 +2001,7 @@ int wmain(int argc, wchar_t**) {
         RunMemoryBudgetScopeCases();
         RunCpuWorkloadPolicyCases();
         RunExternalPresentationCommitCases();
+        RunSharedEnvironmentAdmissionCases();
         RunProviderNeutralAdapterCases();
         if (argc > 1) RunLifecycleAndPerformance();
         else RunLifecycleCases();

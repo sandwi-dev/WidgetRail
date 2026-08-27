@@ -221,6 +221,14 @@ private:
         const std::shared_ptr<CallbackLease>& lease, bool requireDocument) const noexcept;
     void RetireCallbacks() noexcept;
     [[nodiscard]] HRESULT BeginController() noexcept;
+    [[nodiscard]] HRESULT AwaitSharedEnvironment() noexcept;
+    [[nodiscard]] HRESULT ResumeSharedEnvironment(
+        const std::shared_ptr<CallbackLease>& lease) noexcept;
+    void ResumeSharedEnvironmentWaiters() noexcept;
+    void HoldSharedEnvironmentCreatingForTest() noexcept;
+    void ReleaseSharedEnvironmentReadyForTest() noexcept;
+    void FailSharedEnvironment(
+        const std::shared_ptr<CallbackLease>& lease, HRESULT result) noexcept;
     [[nodiscard]] HRESULT OnEnvironmentCreated(
         const std::shared_ptr<CallbackLease>& lease, HRESULT result,
         ICoreWebView2Environment* environment) noexcept;

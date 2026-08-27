@@ -3472,6 +3472,12 @@ private:
                 std::to_wstring(static_cast<long>(result)));
         };
         const HRESULT initialize = richMediaSurface_->Initialize(std::move(configuration));
+        if (initialize == E_PENDING) {
+            incompleteAdmission.release();
+            AppendDiagnostic(
+                L"Embedded media admission retained reason=shared-environment-creating");
+            return;
+        }
         if (FAILED(initialize)) {
             widgetrail::OverlayCompositionSurface::CommitTiming timing;
             (void)compositionSurface_.DetachExternalContentTarget(endpoint, timing);
@@ -3482,11 +3488,7 @@ private:
             }
             AppendDiagnostic(L"Embedded media initialization failed hr=" +
                 std::to_wstring(static_cast<long>(initialize)));
-            const bool waitingForSharedEnvironment = initialize == E_PENDING;
             RemoveBoundEmbeddedMediaSession();
-            if (waitingForSharedEnvironment)
-                AppendDiagnostic(
-                    L"Embedded media admission deferred reason=shared-environment-creating");
             return;
         }
         incompleteAdmission.release();
