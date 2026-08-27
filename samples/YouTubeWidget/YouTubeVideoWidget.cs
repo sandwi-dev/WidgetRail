@@ -292,32 +292,6 @@ public sealed class YouTubeVideoWidget : Widget
         return ValueTask.CompletedTask;
     }
 
-    protected override ValueTask OnActivatedAsync(CancellationToken activeLifetime)
-    {
-        lock (_gate)
-        {
-            if (_videoId is { } videoId && _pendingCommand is null)
-                QueueCommand(EmbeddedMediaPlaybackCommandKind.Cue, videoId);
-        }
-        return ValueTask.CompletedTask;
-    }
-
-    protected override ValueTask OnDeactivatedAsync(CancellationToken transitionToken)
-    {
-        transitionToken.ThrowIfCancellationRequested();
-        lock (_gate)
-        {
-            _pendingCommand = null;
-            if (_videoId is not null)
-            {
-                _state = EmbeddedMediaPlaybackState.Ready;
-                _position = 0;
-                _duration = 0;
-            }
-        }
-        return ValueTask.CompletedTask;
-    }
-
     private void QueueCommand(
         EmbeddedMediaPlaybackCommandKind kind,
         string videoId,
@@ -325,7 +299,6 @@ public sealed class YouTubeVideoWidget : Widget
         double? volume = null)
     {
         _playbackError = null;
-        _state = EmbeddedMediaPlaybackState.Loading;
         _pendingCommand = new EmbeddedMediaPlaybackCommand
         {
             Sequence = ++_commandSequence,

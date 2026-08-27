@@ -153,21 +153,46 @@ public sealed class YouTubeWidgetTests
     }
 
     [TestMethod]
-    public async Task DeactivationRetiresPendingWorkAndReactivationOnlyCues()
+    public async Task RetainedControllerReactivationPreservesPlaybackAndAcceptsNextCommand()
     {
         var widget = WidgetTestHost.Attach(
             new YouTubeVideoWidget(), new WidgetTestHostServicesBuilder().Build());
         await WidgetTestHost.InitializeAsync(widget);
         await WidgetTestHost.SetLifecycleStateAsync(widget, WidgetLifecycleState.Visible);
         await CommitAsync(widget, $"https://youtu.be/{VideoId}");
-        Assert.AreEqual(EmbeddedMediaPlaybackCommandKind.Load,
-            widget.RenderSnapshot("youtube-test", 1).EmbeddedMedia!.PendingCommand!.Kind);
+        var load = widget.RenderSnapshot("youtube-test", 1).EmbeddedMedia!.PendingCommand!;
+        await ObserveAsync(widget, load, EmbeddedMediaPlaybackState.Ready, 1);
+        await widget.OnActionAsync(new WidgetActionEvent(
+            YouTubeVideoWidget.ToggleActionId, "youtube.playback.toggle"));
+        var play = widget.RenderSnapshot("youtube-test", 2).EmbeddedMedia!.PendingCommand!;
+        await ObserveAsync(widget, play, EmbeddedMediaPlaybackState.Playing, 2,
+            position: 37, duration: 120, volume: 0.55);
 
         await WidgetTestHost.SetLifecycleStateAsync(widget, WidgetLifecycleState.Background);
-        Assert.IsNull(widget.RenderSnapshot("youtube-test", 2).EmbeddedMedia!.PendingCommand);
+        var hidden = widget.RenderSnapshot("youtube-test", 3);
+        Assert.IsNull(hidden.EmbeddedMedia!.PendingCommand);
+        Assert.AreEqual(37d, Find(hidden.Root, "youtube.timeline").Value);
+        Assert.AreEqual("Playing", Find(hidden.Root, "youtube.status").Text);
+
         await WidgetTestHost.SetLifecycleStateAsync(widget, WidgetLifecycleState.Visible);
-        Assert.AreEqual(EmbeddedMediaPlaybackCommandKind.Cue,
-            widget.RenderSnapshot("youtube-test", 3).EmbeddedMedia!.PendingCommand!.Kind);
+        var retained = widget.RenderSnapshot("youtube-test", 5);
+        Assert.IsNull(retained.EmbeddedMedia!.PendingCommand);
+        Assert.AreEqual(37d, Find(retained.Root, "youtube.timeline").Value);
+        Assert.AreEqual("Playing", Find(retained.Root, "youtube.status").Text);
+
+        await widget.OnActionAsync(new WidgetActionEvent(
+            YouTubeVideoWidget.VolumeActionId, "youtube.volume") { RequestedValue = 0.6 });
+        var volume = widget.RenderSnapshot("youtube-test", 6).EmbeddedMedia!.PendingCommand!;
+        Assert.AreEqual(EmbeddedMediaPlaybackCommandKind.SetVolume, volume.Kind);
+        await WidgetTestHost.SetLifecycleStateAsync(widget, WidgetLifecycleState.Background);
+        Assert.AreEqual(volume,
+            widget.RenderSnapshot("youtube-test", 7).EmbeddedMedia!.PendingCommand);
+        await WidgetTestHost.SetLifecycleStateAsync(widget, WidgetLifecycleState.Visible);
+        Assert.AreEqual(volume,
+            widget.RenderSnapshot("youtube-test", 8).EmbeddedMedia!.PendingCommand);
+        await ObserveAsync(widget, volume, EmbeddedMediaPlaybackState.Playing, 3,
+            position: 38, duration: 120, volume: 0.6);
+        Assert.IsNull(widget.RenderSnapshot("youtube-test", 9).EmbeddedMedia!.PendingCommand);
         await WidgetTestHost.DestroyAsync(widget);
     }
 
@@ -211,7 +236,7 @@ public sealed class YouTubeWidgetTests
             File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "manifest.json")));
         var root = document.RootElement;
         Assert.AreEqual("widgetrail.samples.youtube-video", root.GetProperty("id").GetString());
-        Assert.AreEqual("0.1.4", root.GetProperty("version").GetString());
+        Assert.AreEqual("0.1.5", root.GetProperty("version").GetString());
         Assert.AreEqual(0, root.GetProperty("permissions").GetArrayLength());
         Assert.AreEqual(0, root.GetProperty("optionalPermissions").GetArrayLength());
         Assert.AreEqual("suspend-when-hidden",
