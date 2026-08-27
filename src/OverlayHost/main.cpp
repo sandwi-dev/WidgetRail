@@ -2777,11 +2777,16 @@ private:
             embeddedMediaAuthority_->surfaceId == declaration.id;
         if (embeddedMediaAuthority_ && !retainedIdentityCurrent)
             StopEmbeddedMediaSurface(L"authority-replaced");
-        const bool layoutCurrent = committedWidgetVisualState_ &&
+        const bool pinnedLayoutCurrent =
+            pinnedSurfaceCoordinator_.pinned() &&
+            pinnedSurfaceCoordinator_.widgetId() == widgetId &&
+            pinnedSurfaceCoordinator_.CurrentMediaViewport(declaration.id).has_value();
+        const bool overlayLayoutCurrent = committedWidgetVisualState_ &&
             committedWidgetVisualState_->widgetId == widgetId &&
             committedWidgetVisualState_->instanceId == snapshot.instanceId &&
             committedWidgetVisualState_->snapshotSequence == snapshot.sequence &&
             lastWidgetRenderResult_.succeeded;
+        const bool layoutCurrent = pinnedLayoutCurrent || overlayLayoutCurrent;
         if (!layoutCurrent) {
             const auto desiredProjection = pinnedSurfaceCoordinator_.pinned() &&
                     pinnedSurfaceCoordinator_.widgetId() == widgetId
