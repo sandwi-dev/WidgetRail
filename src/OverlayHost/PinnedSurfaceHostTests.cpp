@@ -12,6 +12,7 @@
 #include <filesystem>
 #include <fstream>
 #include <iostream>
+#include <iterator>
 #include <limits>
 #include <numeric>
 #include <stdexcept>
@@ -41,6 +42,46 @@ int checks{};
 void Check(const bool condition, const std::string_view message) {
     ++checks;
     if (!condition) throw std::runtime_error(std::string(message));
+}
+
+std::string ReadSource(const fs::path& path) {
+    std::ifstream stream(path, std::ios::binary);
+    Check(static_cast<bool>(stream), "host routing source opens");
+    return {std::istreambuf_iterator<char>(stream), {}};
+}
+
+void TestAcceptedCompactMediaHostContract() {
+    const auto source = ReadSource(
+        fs::path{__FILE__}.parent_path() / "main.cpp");
+    const auto has = [&](const std::string_view text) {
+        return source.find(text) != std::string::npos;
+    };
+    Check(has("if (current == std::numeric_limits<long long>::max()) return std::nullopt;") &&
+              has("return current + 1;") &&
+              has("NextEmbeddedMediaPlaybackObservationSequence(\n                embeddedMediaPlaybackEventSequence_)") &&
+              has("embeddedMediaPlaybackEventSequence_ = publishedEventSequence;") &&
+              has("event.mediaKey, event.state, event.positionSeconds") &&
+              has("origin->commandSequence != commandSequence") &&
+              has("origin->mediaKey != event.mediaKey"),
+          "page-event restart projects onto a host-monotonic sequence, fails closed at exhaustion, and retains command/media/origin authority");
+    Check(has("XINPUT_GAMEPAD_X") &&
+              has("Command::TogglePlayback") &&
+              has("XINPUT_GAMEPAD_LEFT_SHOULDER") &&
+              has("Command::NavigatePrevious") &&
+              has("XINPUT_GAMEPAD_RIGHT_SHOULDER") &&
+              has("Command::NavigateNext") &&
+              has("frame.leftTriggerPressed") &&
+              has("CompactMediaSeekTarget(\n                                widgetrail::input::NavigationDirection::Left)") &&
+              has("frame.rightTriggerPressed") &&
+              has("CompactMediaSeekTarget(\n                                widgetrail::input::NavigationDirection::Right)"),
+          "compact X, LB/RB, and LT/RT retain the accepted typed command routes");
+    Check(has("Compact pinned media returned to click-through") &&
+              has("pinnedControllerCommand ==\n                    widgetrail::pinned::ControllerCommand::Exit") &&
+              has("Dispatch(widgetrail::Command::SampleWidgetBack);") &&
+              !has("BeginCompactMediaScrub()") &&
+              !has("StepCompactMediaScrub(") &&
+              !has("CommitCompactMediaScrub()"),
+          "compact B exits to click-through, View uses the tray route, and A/navigation expose no scrub mapping");
 }
 
 struct FixtureWindowState final {
@@ -551,6 +592,7 @@ int wmain(const int argc, wchar_t** argv) {
     try {
         Check(SUCCEEDED(apartment), "COM apartment initializes");
         (void)SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
+        TestAcceptedCompactMediaHostContract();
         TestPolicyAndPlacement();
         const auto result = TestRealHostWindow(ParseEvidencePath(argc, argv));
         std::cout << "PinnedSurfaceHostTests passed (" << checks

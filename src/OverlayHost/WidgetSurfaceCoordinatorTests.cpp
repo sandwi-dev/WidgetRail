@@ -142,6 +142,26 @@ bool AutomationValueContains(const HWND window, const wchar_t* automationId,
     return contains;
 }
 
+bool HasRangeValueWithoutInvoke(
+    const HWND window, const wchar_t* automationId,
+    const double expectedValue, const double expectedMaximum) {
+    const auto element = FindAutomationId(window, automationId);
+    if (!element) return false;
+    ComPtr<IUIAutomationRangeValuePattern> range;
+    ComPtr<IUIAutomationInvokePattern> invoke;
+    double value{};
+    double maximum{};
+    return SUCCEEDED(element->GetCurrentPatternAs(
+               UIA_RangeValuePatternId,
+               IID_PPV_ARGS(range.ReleaseAndGetAddressOf()))) && range &&
+        SUCCEEDED(range->get_CurrentValue(&value)) &&
+        SUCCEEDED(range->get_CurrentMaximum(&maximum)) &&
+        value == expectedValue && maximum == expectedMaximum &&
+        (FAILED(element->GetCurrentPatternAs(
+             UIA_InvokePatternId,
+             IID_PPV_ARGS(invoke.ReleaseAndGetAddressOf()))) || !invoke);
+}
+
 [[nodiscard]] std::size_t PrivateWorkingSetBytes() {
     std::vector<std::byte> buffer(256 * 1024);
     for (int attempt = 0; attempt < 8; ++attempt) {
@@ -245,6 +265,22 @@ widgetrail::WidgetSnapshot ScrollSnapshot(const long long sequence = 1) {
     outside.actionId = L"outside";
     outside.inputScopeId = L"root";
     snapshot.root.children = {std::move(scroll), std::move(outside)};
+    return snapshot;
+}
+
+widgetrail::WidgetSnapshot CompactMediaSnapshot(const long long sequence = 1) {
+    auto snapshot = Snapshot(sequence);
+    widgetrail::EmbeddedMediaSurfaceDeclaration media;
+    media.id = L"fixture.media";
+    media.accessibleName = L"Provider-neutral compact media";
+    media.entryAsset = L"index.html";
+    media.aspectRatio = 16.0 / 9.0;
+    media.commands = {
+        L"togglePlayback", L"navigatePrevious", L"navigateNext",
+        L"seekBackward", L"seekForward"};
+    media.compactPinnedPresentation = true;
+    media.compactPinnedSeekStepSeconds = 7.0;
+    snapshot.embeddedMedia = std::move(media);
     return snapshot;
 }
 
@@ -419,6 +455,63 @@ int main() {
             layouts.Dispose();
             std::error_code layoutCleanup;
             std::filesystem::remove_all(layoutRoot, layoutCleanup);
+        }
+
+        {
+            widgetrail::pinned::WidgetSurfaceCoordinator compact;
+            const auto compactRoot = placementRoot / L"compact-media";
+            Check(compact.Initialize(
+                      GetModuleHandleW(nullptr), nullptr, WM_APP + 0x414,
+                      d2d.Get(), write.Get(), nullptr, error,
+                      compactRoot / L"placement.ini"),
+                  "compact media fixture reuses the pinned frame and UIA owner");
+            compact.OnOverlayShown();
+            auto admission = Admission();
+            admission.snapshot = CompactMediaSnapshot();
+            Check(compact.Pin(admission, error) && compact.CommitSetup(error) &&
+                      compact.ToggleInteractionMode() && compact.EnterControllerFocus(),
+                  "compact media fixture establishes one focused native presentation");
+            compact.UpdateCompactMediaPlayback(3.0, 20.0, false);
+            UpdateWindow(compact.window());
+            const auto rewind = compact.CompactMediaSeekTarget(
+                widgetrail::input::NavigationDirection::Left);
+            const auto forward = compact.CompactMediaSeekTarget(
+                widgetrail::input::NavigationDirection::Right);
+            Check(rewind && *rewind == 0.0 && forward && *forward == 10.0,
+                  "compact LT and RT targets use the declared step and clamp exact playback state");
+            compact.UpdateCompactMediaPlayback(18.0, 20.0, true);
+            const auto clampedForward = compact.CompactMediaSeekTarget(
+                widgetrail::input::NavigationDirection::Right);
+            Check(clampedForward && *clampedForward == 20.0,
+                  "compact forward seek clamps to the exact current duration");
+            const auto beforeNavigation = compact.compactMediaState();
+            Check(compact.MoveControllerFocus(
+                      widgetrail::input::NavigationDirection::Left) &&
+                      compact.MoveControllerFocus(
+                          widgetrail::input::NavigationDirection::Right) &&
+                      compact.MoveControllerFocus(
+                          widgetrail::input::NavigationDirection::Up) &&
+                      compact.MoveControllerFocus(
+                          widgetrail::input::NavigationDirection::Down) &&
+                      compact.focusedElementId() == L"host.compact-media.seek" &&
+                      compact.compactMediaState().previewPositionSeconds ==
+                          beforeNavigation.previewPositionSeconds &&
+                      !compact.TakeCompactMediaSeekRequest(),
+                  "D-pad and left-stick navigation cannot mutate compact seek state");
+            Check(!compact.QueueFocusedInput(
+                      L"a", widgetrail::ControllerInputOrigin::PhysicalController) &&
+                      compact.TakeInputRequests().empty() &&
+                      !compact.TakeCompactMediaSeekRequest(),
+                  "compact A has no authored or hidden scrub admission path");
+            UpdateWindow(compact.window());
+            Check(HasRangeValueWithoutInvoke(
+                      compact.window(), L"host:host.compact-media.seek", 18.0, 20.0),
+                  "compact seek UIA exposes RangeValue without Invoke");
+            Check(compact.Unpin(widgetrail::pinned::WidgetSurfaceStopReason::Unpin),
+                  "compact media fixture performs exact teardown");
+            compact.Dispose();
+            std::error_code compactCleanup;
+            std::filesystem::remove_all(compactRoot, compactCleanup);
         }
 
         {

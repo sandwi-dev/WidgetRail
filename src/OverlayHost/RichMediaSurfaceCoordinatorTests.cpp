@@ -317,7 +317,7 @@ private:
 <button id=")HTML" + firstId + R"HTML(">First</button><button id=")HTML" +
                 secondId + R"HTML(">Second</button><script>
 let a={},seq=0,focus=')HTML" + firstId + R"HTML(';
-function emit(type,id){const r=document.activeElement.getBoundingClientRect();chrome.webview.postMessage({type,...a,eventSequence:++seq,commandId:id,focus,playing:false,bounds:{x:r.x,y:r.y,width:r.width,height:r.height}});}
+function emit(type,id){const r=document.activeElement.getBoundingClientRect();chrome.webview.postMessage({type,...a,eventSequence:++seq,commandId:id,commandSequence:id,focus,playing:false,bounds:{x:r.x,y:r.y,width:r.width,height:r.height}});}
 chrome.webview.addEventListener('message',e=>{const m=e.data;if(m.command==='initialize'){a={environmentGeneration:m.environmentGeneration,surfaceGeneration:m.surfaceGeneration,sessionGeneration:m.sessionGeneration,controllerGeneration:m.controllerGeneration,documentGeneration:m.documentGeneration};document.getElementById(focus).focus();emit('ready',m.commandId);return;}if(Object.keys(a).some(k=>m[k]!==a[k]))return;if(m.command==='next'||m.command==='previous'){focus=m.command==='next'?')HTML" + secondId + R"HTML(':')HTML" + firstId + R"HTML(';document.getElementById(focus).focus();emit('focus',m.commandId);}});
 </script>)HTML";
             configuration.resources.push_back({
@@ -441,7 +441,7 @@ void RunContractCases() {
     state.authority = {2, 3, 7, 11, 13, 3};
     State next = state;
     Require(RichMediaSurfaceCoordinator::ValidatePageEvent(
-        LR"({"type":"focus","environmentGeneration":2,"surfaceGeneration":3,"sessionGeneration":7,"controllerGeneration":11,"documentGeneration":13,"eventSequence":4,"commandId":17,"focus":"seek","playing":false,"bounds":{"x":100,"y":40,"width":120,"height":60}})",
+        LR"({"type":"focus","environmentGeneration":2,"surfaceGeneration":3,"sessionGeneration":7,"controllerGeneration":11,"documentGeneration":13,"eventSequence":4,"commandId":17,"commandSequence":17,"focus":"seek","playing":false,"bounds":{"x":100,"y":40,"width":120,"height":60}})",
         state.authority, 3, 17, next), "exact current correlated event was rejected");
     Require(next.focusedElement == L"seek" && next.authority.eventSequence == 4 &&
             next.lastAcknowledgedCommandId == 17 &&
@@ -449,52 +449,52 @@ void RunContractCases() {
             "exact event authority was not retained");
     next = state;
     Require(!RichMediaSurfaceCoordinator::ValidatePageEvent(
-        LR"({"type":"focus","environmentGeneration":2,"surfaceGeneration":3,"sessionGeneration":6,"controllerGeneration":11,"documentGeneration":13,"eventSequence":4,"commandId":17,"focus":"seek","playing":false,"bounds":{"x":100,"y":40,"width":120,"height":60}})",
+        LR"({"type":"focus","environmentGeneration":2,"surfaceGeneration":3,"sessionGeneration":6,"controllerGeneration":11,"documentGeneration":13,"eventSequence":4,"commandId":17,"commandSequence":17,"focus":"seek","playing":false,"bounds":{"x":100,"y":40,"width":120,"height":60}})",
         state.authority, 3, 17, next), "stale session was admitted");
     Require(!RichMediaSurfaceCoordinator::ValidatePageEvent(
-        LR"({"type":"focus","environmentGeneration":2,"surfaceGeneration":2,"sessionGeneration":7,"controllerGeneration":11,"documentGeneration":13,"eventSequence":4,"commandId":17,"focus":"seek","playing":false,"bounds":{"x":100,"y":40,"width":120,"height":60}})",
+        LR"({"type":"focus","environmentGeneration":2,"surfaceGeneration":2,"sessionGeneration":7,"controllerGeneration":11,"documentGeneration":13,"eventSequence":4,"commandId":17,"commandSequence":17,"focus":"seek","playing":false,"bounds":{"x":100,"y":40,"width":120,"height":60}})",
         state.authority, 3, 17, next), "stale surface was admitted");
     Require(!RichMediaSurfaceCoordinator::ValidatePageEvent(
-        LR"({"type":"focus","environmentGeneration":2,"surfaceGeneration":3,"sessionGeneration":7,"controllerGeneration":10,"documentGeneration":13,"eventSequence":4,"commandId":17,"focus":"seek","playing":false,"bounds":{"x":100,"y":40,"width":120,"height":60}})",
+        LR"({"type":"focus","environmentGeneration":2,"surfaceGeneration":3,"sessionGeneration":7,"controllerGeneration":10,"documentGeneration":13,"eventSequence":4,"commandId":17,"commandSequence":17,"focus":"seek","playing":false,"bounds":{"x":100,"y":40,"width":120,"height":60}})",
         state.authority, 3, 17, next), "stale controller was admitted");
     Require(!RichMediaSurfaceCoordinator::ValidatePageEvent(
-        LR"({"type":"focus","environmentGeneration":2,"surfaceGeneration":3,"sessionGeneration":7,"controllerGeneration":11,"documentGeneration":12,"eventSequence":4,"commandId":17,"focus":"seek","playing":false,"bounds":{"x":100,"y":40,"width":120,"height":60}})",
+        LR"({"type":"focus","environmentGeneration":2,"surfaceGeneration":3,"sessionGeneration":7,"controllerGeneration":11,"documentGeneration":12,"eventSequence":4,"commandId":17,"commandSequence":17,"focus":"seek","playing":false,"bounds":{"x":100,"y":40,"width":120,"height":60}})",
         state.authority, 3, 17, next), "stale document was admitted");
     Require(!RichMediaSurfaceCoordinator::ValidatePageEvent(
-        LR"({"type":"focus","environmentGeneration":2,"surfaceGeneration":3,"sessionGeneration":7,"controllerGeneration":11,"documentGeneration":13,"eventSequence":4,"commandId":18,"focus":"seek","playing":false,"bounds":{"x":100,"y":40,"width":120,"height":60}})",
+        LR"({"type":"focus","environmentGeneration":2,"surfaceGeneration":3,"sessionGeneration":7,"controllerGeneration":11,"documentGeneration":13,"eventSequence":4,"commandId":18,"commandSequence":17,"focus":"seek","playing":false,"bounds":{"x":100,"y":40,"width":120,"height":60}})",
         state.authority, 3, 17, next), "wrong command correlation was admitted");
     Require(!RichMediaSurfaceCoordinator::ValidatePageEvent(
-        LR"({"type":"focus","environmentGeneration":2,"surfaceGeneration":3,"sessionGeneration":7,"controllerGeneration":11,"documentGeneration":13,"eventSequence":4,"commandId":17,"focus":"seek","playing":false,"bounds":{"x":100,"y":40,"width":120,"height":60},"script":"bad"})",
+        LR"({"type":"focus","environmentGeneration":2,"surfaceGeneration":3,"sessionGeneration":7,"controllerGeneration":11,"documentGeneration":13,"eventSequence":4,"commandId":17,"commandSequence":17,"focus":"seek","playing":false,"bounds":{"x":100,"y":40,"width":120,"height":60},"script":"bad"})",
         state.authority, 3, 17, next), "unknown page field was admitted");
     Require(!RichMediaSurfaceCoordinator::ValidatePageEvent(
-        LR"({"type":"focus","environmentGeneration":2,"surfaceGeneration":3,"sessionGeneration":7,"controllerGeneration":11,"documentGeneration":13,"eventSequence":4,"commandId":17,"focus":"seek","playing":false,"bounds":{"x":-1,"y":40,"width":120,"height":60}})",
+        LR"({"type":"focus","environmentGeneration":2,"surfaceGeneration":3,"sessionGeneration":7,"controllerGeneration":11,"documentGeneration":13,"eventSequence":4,"commandId":17,"commandSequence":17,"focus":"seek","playing":false,"bounds":{"x":-1,"y":40,"width":120,"height":60}})",
         state.authority, 3, 17, next), "invalid focused bounds were admitted");
     Require(RichMediaSurfaceCoordinator::ValidatePageEvent(
-        LR"({"type":"focus","environmentGeneration":2,"surfaceGeneration":3,"sessionGeneration":7,"controllerGeneration":11,"documentGeneration":13,"eventSequence":4,"commandId":17,"focus":"aurora.primary","playing":false,"bounds":{"x":100,"y":40,"width":120,"height":60}})",
+        LR"({"type":"focus","environmentGeneration":2,"surfaceGeneration":3,"sessionGeneration":7,"controllerGeneration":11,"documentGeneration":13,"eventSequence":4,"commandId":17,"commandSequence":17,"focus":"aurora.primary","playing":false,"bounds":{"x":100,"y":40,"width":120,"height":60}})",
         state.authority, 3, 17, next), "valid document-local focus identity was rejected");
     Require(!RichMediaSurfaceCoordinator::ValidatePageEvent(
-        LR"({"type":"focus","environmentGeneration":2,"surfaceGeneration":3,"sessionGeneration":7,"controllerGeneration":11,"documentGeneration":13,"eventSequence":4,"commandId":17,"focus":"invalid focus","playing":false,"bounds":{"x":100,"y":40,"width":120,"height":60}})",
+        LR"({"type":"focus","environmentGeneration":2,"surfaceGeneration":3,"sessionGeneration":7,"controllerGeneration":11,"documentGeneration":13,"eventSequence":4,"commandId":17,"commandSequence":17,"focus":"invalid focus","playing":false,"bounds":{"x":100,"y":40,"width":120,"height":60}})",
         state.authority, 3, 17, next), "invalid focus identity grammar was admitted");
     const std::wstring oversizedFocusJson =
-        LR"({"type":"focus","environmentGeneration":2,"surfaceGeneration":3,"sessionGeneration":7,"controllerGeneration":11,"documentGeneration":13,"eventSequence":4,"commandId":17,"focus":")" +
+        LR"({"type":"focus","environmentGeneration":2,"surfaceGeneration":3,"sessionGeneration":7,"controllerGeneration":11,"documentGeneration":13,"eventSequence":4,"commandId":17,"commandSequence":17,"focus":")" +
         std::wstring(129, L'a') +
         LR"(","playing":false,"bounds":{"x":100,"y":40,"width":120,"height":60}})";
     Require(!RichMediaSurfaceCoordinator::ValidatePageEvent(
         oversizedFocusJson, state.authority, 3, 17, next),
         "oversized document-local focus identity was admitted");
     Require(!RichMediaSurfaceCoordinator::ValidatePageEvent(
-        LR"({"type":"script","environmentGeneration":2,"surfaceGeneration":3,"sessionGeneration":7,"controllerGeneration":11,"documentGeneration":13,"eventSequence":4,"commandId":17,"focus":"aurora.primary","playing":false,"bounds":{"x":100,"y":40,"width":120,"height":60}})",
+        LR"({"type":"script","environmentGeneration":2,"surfaceGeneration":3,"sessionGeneration":7,"controllerGeneration":11,"documentGeneration":13,"eventSequence":4,"commandId":17,"commandSequence":17,"focus":"aurora.primary","playing":false,"bounds":{"x":100,"y":40,"width":120,"height":60}})",
         state.authority, 3, 17, next), "unknown event kind was admitted");
     next = state;
     Require(RichMediaSurfaceCoordinator::ValidatePageEvent(
-        LR"({"type":"media","environmentGeneration":2,"surfaceGeneration":3,"sessionGeneration":7,"controllerGeneration":11,"documentGeneration":13,"eventSequence":4,"commandId":17,"focus":"aurora.primary","playing":true,"bounds":{"x":0,"y":0,"width":640,"height":360},"mediaKey":"aurora-tone-2","playbackState":"playing","positionSeconds":12,"durationSeconds":60,"volume":0.72})",
+        LR"({"type":"media","environmentGeneration":2,"surfaceGeneration":3,"sessionGeneration":7,"controllerGeneration":11,"documentGeneration":13,"eventSequence":4,"commandId":17,"commandSequence":17,"focus":"aurora.primary","playing":true,"bounds":{"x":0,"y":0,"width":640,"height":360},"mediaKey":"aurora-tone-2","playbackState":"playing","positionSeconds":12,"durationSeconds":60,"volume":0.72})",
         state.authority, 3, 17, next),
         "typed provider-neutral playback event was rejected");
     Require(next.mediaKey == L"aurora-tone-2" && next.playing &&
             next.positionSeconds == 12.0 && next.durationSeconds == 60.0,
             "typed playback state was not retained exactly");
     Require(!RichMediaSurfaceCoordinator::ValidatePageEvent(
-        LR"({"type":"media","environmentGeneration":2,"surfaceGeneration":3,"sessionGeneration":7,"controllerGeneration":11,"documentGeneration":13,"eventSequence":4,"commandId":18,"focus":"cedar.primary","playing":true,"bounds":{"x":0,"y":0,"width":640,"height":360},"mediaKey":"cedar-tone","playbackState":"playing","positionSeconds":12,"durationSeconds":60,"volume":0.72})",
+        LR"({"type":"media","environmentGeneration":2,"surfaceGeneration":3,"sessionGeneration":7,"controllerGeneration":11,"documentGeneration":13,"eventSequence":4,"commandId":18,"commandSequence":17,"focus":"cedar.primary","playing":true,"bounds":{"x":0,"y":0,"width":640,"height":360},"mediaKey":"cedar-tone","playbackState":"playing","positionSeconds":12,"durationSeconds":60,"volume":0.72})",
         state.authority, 3, 17, next),
         "uncorrelated typed playback event was admitted");
     Require(RichMediaSurfaceCoordinatorTestPeer::
@@ -1022,6 +1022,52 @@ void RunExternalPresentationCommitCases() {
     Require(pinnedAfter.requested == pinnedBefore.requested + 2 &&
                 pinnedAfter.committed == pinnedBefore.committed + 1,
             "overlay-to-pinned transfer did not produce exactly one genuine commit");
+
+    Surface::PinnedMediaChromePresentation chrome{
+        pinnedBounds, true, true, false, 0.4,
+        D2D1::ColorF(0.02F, 0.03F, 0.05F, 0.8F),
+        D2D1::ColorF(0.20F, 0.24F, 0.30F, 1.0F),
+        D2D1::ColorF(0.30F, 0.70F, 0.95F, 1.0F),
+        D2D1::ColorF(0.55F, 0.80F, 1.0F, 1.0F)};
+    Require(composition.CommitPinnedMediaChrome(chrome, timing) == S_OK &&
+                timing.externalPresentationCommitted,
+            "compact pinned chrome was not committed above the retained media visual");
+    Require(composition.CommitPinnedMediaChrome(chrome, timing) == S_FALSE &&
+                !timing.externalPresentationCommitted,
+            "identical compact chrome presentation was not a no-op");
+    const auto pinnedBeforeChromeNoop = composition.externalContentCommitCounters(
+        Endpoint::Pinned);
+    Require(composition.CommitExternalContentPresentation(
+                Endpoint::Pinned, pinnedBounds, pinnedBounds, true, timing) == S_FALSE &&
+                !timing.externalPresentationCommitted,
+            "ordinary compact chrome update detached or recommitted the media visual");
+    const auto pinnedAfterChromeNoop = composition.externalContentCommitCounters(
+        Endpoint::Pinned);
+    Require(pinnedAfterChromeNoop.requested == pinnedBeforeChromeNoop.requested + 1 &&
+                pinnedAfterChromeNoop.committed == pinnedBeforeChromeNoop.committed,
+            "ordinary compact chrome update caused external-media commit churn");
+
+    Require(SUCCEEDED(composition.DetachExternalContentTarget(
+                Endpoint::Pinned, timing)) && timing.waitedForCompletion,
+            "pinned media visual did not detach for the reattachment case");
+    target.Reset();
+    Require(SUCCEEDED(composition.CreateExternalContentTarget(
+                Endpoint::Pinned, &target)),
+            "pinned media target did not recreate under retained compact chrome");
+    const auto pinnedBeforeReattach = composition.externalContentCommitCounters(
+        Endpoint::Pinned);
+    Require(composition.CommitExternalContentPresentation(
+                Endpoint::Pinned, pinnedBounds, pinnedBounds, true, timing) == S_OK &&
+                timing.externalPresentationCommitted,
+            "later pinned media reattachment did not commit behind retained chrome");
+    Require(composition.CommitExternalContentPresentation(
+                Endpoint::Pinned, pinnedBounds, pinnedBounds, true, timing) == S_FALSE &&
+                !timing.externalPresentationCommitted,
+            "identical reattached media presentation was not a no-op");
+    pinnedAfter = composition.externalContentCommitCounters(Endpoint::Pinned);
+    Require(pinnedAfter.requested == pinnedBeforeReattach.requested + 2 &&
+                pinnedAfter.committed == pinnedBeforeReattach.committed + 1,
+            "pinned media reattachment produced more than one genuine commit");
 
     Require(SUCCEEDED(composition.DetachExternalContentTarget(
                 Endpoint::Pinned, timing)) && timing.waitedForCompletion,
