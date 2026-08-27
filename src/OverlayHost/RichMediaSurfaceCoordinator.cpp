@@ -1189,6 +1189,27 @@ bool RichMediaSurfaceCoordinator::SendCommand(const Command command) noexcept {
     return true;
 }
 
+bool RichMediaSurfaceCoordinator::SendSeekPosition(
+    const double positionSeconds) noexcept {
+    if (!core_ || state_.lifecycle != Lifecycle::Visible || !state_.inputEnabled ||
+        pendingCommand_ || state_.mediaKey.empty() ||
+        !std::isfinite(positionSeconds) || positionSeconds < 0.0 ||
+        (state_.durationSeconds > 0.0 && positionSeconds > state_.durationSeconds))
+        return false;
+    const auto commandId = ++nextCommandId_;
+    const std::wstring json = std::format(
+        L"{{\"command\":\"seek\",\"environmentGeneration\":{},\"surfaceGeneration\":{},\"sessionGeneration\":{},\"controllerGeneration\":{},\"documentGeneration\":{},\"commandId\":{},\"commandSequence\":0,\"mediaKey\":\"{}\",\"positionSeconds\":{}}}",
+        state_.authority.environmentGeneration, state_.authority.surfaceGeneration,
+        state_.authority.sessionGeneration, state_.authority.controllerGeneration,
+        state_.authority.documentGeneration, commandId, state_.mediaKey,
+        positionSeconds);
+    if (FAILED(core_->PostWebMessageAsJson(json.c_str()))) return false;
+    pendingCommand_ = PendingCommand{
+        commandId, Command::SeekForward, 0, state_.mediaKey,
+        PendingPhase::AwaitingEvent};
+    return true;
+}
+
 bool RichMediaSurfaceCoordinator::SendPlaybackCommand(
     const PlaybackCommand& command) noexcept {
     if (!core_ || state_.lifecycle != Lifecycle::Visible || !state_.inputEnabled ||

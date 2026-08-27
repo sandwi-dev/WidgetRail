@@ -287,6 +287,16 @@ bool WidgetSurfaceCoordinator::UpdateSnapshot(
     }
     if (selectedLayoutReplaced || mediaContractReplaced)
         mediaViewportGeometryDirty_ = true;
+    if (mediaContractReplaced) {
+        compactMediaPositionSeconds_ = 0.0;
+        compactMediaDurationSeconds_ = 0.0;
+        compactMediaPreviewSeconds_ = 0.0;
+        compactMediaPlaying_ = false;
+        compactMediaScrubActive_ = false;
+        compactMediaSeekRequest_.reset();
+        if (compactMediaPresentation())
+            focusedElementId_ = L"host.compact-media.seek";
+    }
     if (window_) InvalidateRect(window_, nullptr, FALSE);
     return true;
 }
@@ -318,6 +328,18 @@ bool WidgetSurfaceCoordinator::EnterControllerFocus() {
     if (!pinned() || !overlayVisible_ ||
         policy_.interactionMode() != InteractionMode::Focusable) return false;
     const auto& snapshot = SelectedSnapshot();
+    if (compactMediaPresentation()) {
+        focusedElementId_ = L"host.compact-media.seek";
+        controllerFocused_ = true;
+        if (window_) {
+            (void)SetActiveWindow(window_);
+            (void)SetFocus(window_);
+        }
+        PublishAccessibility();
+        InvalidateRect(window_, nullptr, FALSE);
+        NotifyOwner();
+        return true;
+    }
     const std::wstring priorFocus = focusedElementId_;
     if (const auto visible = input::ResolveVisibleFocusTarget(
             focusedElementId_, snapshot.activeInputScopeId,
@@ -342,6 +364,7 @@ bool WidgetSurfaceCoordinator::ExitControllerFocus() noexcept {
     if (!controllerFocused_) return false;
     if (placementSession_) (void)CancelPlacement();
     if (opacityPreviewOriginal_) (void)CancelOpacity();
+    (void)CancelCompactMediaScrub();
     controllerFocused_ = false;
     ClearFreeScroll();
     if (overlayVisible_ && notificationWindow_ && IsWindow(notificationWindow_))
@@ -356,6 +379,13 @@ bool WidgetSurfaceCoordinator::MoveControllerFocus(
     const input::NavigationDirection direction) {
     if (!controllerFocused_ || direction == input::NavigationDirection::None ||
         !pinned()) return false;
+    if (compactMediaPresentation()) {
+        if (compactMediaScrubActive_ &&
+            (direction == input::NavigationDirection::Left ||
+             direction == input::NavigationDirection::Right))
+            return StepCompactMediaScrub(direction);
+        return true;
+    }
     const auto& snapshot = SelectedSnapshot();
     const input::WidgetInteractionAuthority authority{
         admission_->widgetId, &snapshot, admission_->runtimeGeneration,
@@ -503,7 +533,7 @@ void WidgetSurfaceCoordinator::QueueResolvedInput(
     const ControllerInputOrigin origin,
     const std::optional<double> requestedValue) {
     if (!pinned() || policy_.interactionMode() != InteractionMode::Focusable ||
-        nodeId.empty() || protocolButton.empty()) return;
+        (nodeId.empty() && protocolButton != L"b") || protocolButton.empty()) return;
     if (inputRequests_.size() >= kMaximumPendingInputRequests) {
         SetActionFeedback(L"Pinned input queue is busy. Try again.", true);
         return;
@@ -537,6 +567,13 @@ bool WidgetSurfaceCoordinator::QueueFocusedInput(
     return true;
 }
 
+bool WidgetSurfaceCoordinator::QueueSelectedProjectionBack(
+    const ControllerInputOrigin origin) {
+    if (!controllerFocused_ || !compactMediaPresentation()) return false;
+    QueueResolvedInput({}, L"b", origin, std::nullopt);
+    return true;
+}
+
 std::vector<WidgetSurfaceInputRequest>
 WidgetSurfaceCoordinator::TakeInputRequests() noexcept {
     std::vector<WidgetSurfaceInputRequest> result;
@@ -551,6 +588,9 @@ bool WidgetSurfaceCoordinator::IsCurrentInputRequest(
         std::wstring_view(request.selectedLayoutId) != SelectedLayoutId())
         return false;
     const auto& snapshot = SelectedSnapshot();
+    if (request.protocolButton == L"b" && request.nodeId.empty())
+        return request.snapshotSequence == snapshot.sequence &&
+            request.activeInputScopeId == snapshot.activeInputScopeId;
     const auto* node = input::FindNodeInInputScope(
         snapshot, request.nodeId, request.activeInputScopeId);
     return node && !node->isDisabled && !node->isBusy &&
@@ -1010,6 +1050,12 @@ bool WidgetSurfaceCoordinator::Unpin(const WidgetSurfaceStopReason reason) noexc
     opacityPreviewOriginal_.reset();
     opacityPercent_ = 100;
     controllerFocused_ = false;
+    compactMediaPositionSeconds_ = 0.0;
+    compactMediaDurationSeconds_ = 0.0;
+    compactMediaPreviewSeconds_ = 0.0;
+    compactMediaPlaying_ = false;
+    compactMediaScrubActive_ = false;
+    compactMediaSeekRequest_.reset();
     ClearFreeScroll();
     overlayVisible_ = false;
     pointerPlacement_ = false;
@@ -1119,6 +1165,90 @@ WidgetSurfaceCoordinator::CurrentMediaViewport(
     if (!snapshot.embeddedMedia || snapshot.embeddedMedia->id != surfaceId)
         return std::nullopt;
     return committedMediaViewport_;
+}
+
+bool WidgetSurfaceCoordinator::compactMediaPresentation() const noexcept {
+    if (!pinned()) return false;
+    const auto& media = SelectedSnapshot().embeddedMedia;
+    return media && media->compactPinnedPresentation;
+}
+
+CompactPinnedMediaState WidgetSurfaceCoordinator::compactMediaState() const noexcept {
+    const auto& media = SelectedSnapshot().embeddedMedia;
+    const double step = media && media->compactPinnedSeekStepSeconds
+        ? *media->compactPinnedSeekStepSeconds
+        : protocol_contract::DefaultCompactPinnedMediaSeekStepSeconds;
+    return {
+        compactMediaPositionSeconds_, compactMediaDurationSeconds_,
+        compactMediaScrubActive_ ? compactMediaPreviewSeconds_
+                                 : compactMediaPositionSeconds_,
+        step, compactMediaPlaying_, compactMediaScrubActive_,
+        compactMediaPresentation() &&
+            (controllerFocused_ || compactMediaScrubActive_ || !compactMediaPlaying_),
+    };
+}
+
+void WidgetSurfaceCoordinator::UpdateCompactMediaPlayback(
+    const double positionSeconds, const double durationSeconds,
+    const bool playing) noexcept {
+    if (!std::isfinite(positionSeconds) || !std::isfinite(durationSeconds) ||
+        positionSeconds < 0.0 || durationSeconds < 0.0) return;
+    compactMediaPositionSeconds_ = durationSeconds > 0.0
+        ? std::clamp(positionSeconds, 0.0, durationSeconds) : 0.0;
+    compactMediaDurationSeconds_ = durationSeconds;
+    compactMediaPlaying_ = playing;
+    if (!compactMediaScrubActive_)
+        compactMediaPreviewSeconds_ = compactMediaPositionSeconds_;
+    PublishAccessibility();
+    if (window_) InvalidateRect(window_, nullptr, FALSE);
+    NotifyOwner();
+}
+
+bool WidgetSurfaceCoordinator::BeginCompactMediaScrub() noexcept {
+    if (!compactMediaPresentation() || !controllerFocused_ ||
+        compactMediaDurationSeconds_ <= 0.0) return false;
+    compactMediaPreviewSeconds_ = compactMediaPositionSeconds_;
+    compactMediaScrubActive_ = true;
+    PublishAccessibility();
+    NotifyOwner();
+    return true;
+}
+
+bool WidgetSurfaceCoordinator::StepCompactMediaScrub(
+    const input::NavigationDirection direction) noexcept {
+    if (!compactMediaScrubActive_ || compactMediaDurationSeconds_ <= 0.0 ||
+        (direction != input::NavigationDirection::Left &&
+         direction != input::NavigationDirection::Right)) return false;
+    const double delta = compactMediaState().seekStepSeconds *
+        (direction == input::NavigationDirection::Left ? -1.0 : 1.0);
+    compactMediaPreviewSeconds_ = std::clamp(
+        compactMediaPreviewSeconds_ + delta, 0.0, compactMediaDurationSeconds_);
+    PublishAccessibility();
+    if (window_) InvalidateRect(window_, nullptr, FALSE);
+    NotifyOwner();
+    return true;
+}
+
+std::optional<double> WidgetSurfaceCoordinator::CommitCompactMediaScrub() noexcept {
+    if (!compactMediaScrubActive_) return std::nullopt;
+    compactMediaScrubActive_ = false;
+    const double target = compactMediaPreviewSeconds_;
+    PublishAccessibility();
+    NotifyOwner();
+    return target;
+}
+
+bool WidgetSurfaceCoordinator::CancelCompactMediaScrub() noexcept {
+    if (!compactMediaScrubActive_) return false;
+    compactMediaScrubActive_ = false;
+    compactMediaPreviewSeconds_ = compactMediaPositionSeconds_;
+    PublishAccessibility();
+    NotifyOwner();
+    return true;
+}
+
+std::optional<double> WidgetSurfaceCoordinator::TakeCompactMediaSeekRequest() noexcept {
+    return std::exchange(compactMediaSeekRequest_, std::nullopt);
 }
 
 InteractionMode WidgetSurfaceCoordinator::interactionMode() const noexcept {
@@ -1414,6 +1544,18 @@ void WidgetSurfaceCoordinator::HandleAccessibilityActions() {
             }
             continue;
         }
+        if (compactMediaPresentation() &&
+            request.domain == accessibility::ElementDomain::HostShell &&
+            request.kind == accessibility::ActionKind::SetValue &&
+            request.actionId == L"host.compact-media.seek" &&
+            request.requestedValue && std::isfinite(*request.requestedValue) &&
+            *request.requestedValue >= 0.0 &&
+            *request.requestedValue <= compactMediaDurationSeconds_) {
+            compactMediaPreviewSeconds_ = *request.requestedValue;
+            compactMediaSeekRequest_ = *request.requestedValue;
+            NotifyOwner();
+            continue;
+        }
         if (request.kind != accessibility::ActionKind::Invoke ||
             request.domain != accessibility::ElementDomain::HostShell)
             continue;
@@ -1578,12 +1720,17 @@ void WidgetSurfaceCoordinator::Paint() {
     renderTarget_->SetDpi(96.0F * dpiScale, 96.0F * dpiScale);
     renderTarget_->BeginDraw();
     renderTarget_->Clear(D2D1::ColorF(0x16212E));
-    renderTarget_->FillRectangle(D2D1::RectF(0, 0, widthDip, kChromeHeightDip), chromeBrush_.Get());
-    renderTarget_->DrawTextW(
-        admission_->name.c_str(), static_cast<UINT32>(admission_->name.size()),
-        titleFormat_.Get(), D2D1::RectF(
-            kSideInsetDip, 7.0F, std::max(kSideInsetDip + 1.0F, widthDip * 0.40F), 31.0F),
-        textBrush_.Get(), D2D1_DRAW_TEXT_OPTIONS_CLIP);
+    const bool compactMedia = compactMediaPresentation();
+    if (!compactMedia) {
+        renderTarget_->FillRectangle(
+            D2D1::RectF(0, 0, widthDip, kChromeHeightDip), chromeBrush_.Get());
+        renderTarget_->DrawTextW(
+            admission_->name.c_str(), static_cast<UINT32>(admission_->name.size()),
+            titleFormat_.Get(), D2D1::RectF(
+                kSideInsetDip, 7.0F,
+                std::max(kSideInsetDip + 1.0F, widthDip * 0.40F), 31.0F),
+            textBrush_.Get(), D2D1_DRAW_TEXT_OPTIONS_CLIP);
+    }
     std::wstring chrome;
     if (opacityPreviewOriginal_) {
         chrome = L"Opacity " + std::to_wstring(opacityPercent_) +
@@ -1607,11 +1754,13 @@ void WidgetSurfaceCoordinator::Paint() {
             ? L"Interactive · A activate · B widget back · View tray"
             : L"Click-through · View enters · Menu options";
     }
-    renderTarget_->DrawTextW(
-        chrome.c_str(), static_cast<UINT32>(chrome.size()), chromeFormat_.Get(),
-        D2D1::RectF(std::max(kSideInsetDip, widthDip * 0.42F), 9.0F,
-                    widthDip - kSideInsetDip, 31.0F),
-        secondaryBrush_.Get(), D2D1_DRAW_TEXT_OPTIONS_CLIP);
+    if (!compactMedia) {
+        renderTarget_->DrawTextW(
+            chrome.c_str(), static_cast<UINT32>(chrome.size()), chromeFormat_.Get(),
+            D2D1::RectF(std::max(kSideInsetDip, widthDip * 0.42F), 9.0F,
+                        widthDip - kSideInsetDip, 31.0F),
+            secondaryBrush_.Get(), D2D1_DRAW_TEXT_OPTIONS_CLIP);
+    }
     DeclarativeRenderOptions options;
     options.pixelScale = dpiScale;
     options.collectAccessibility = ResolveSurfacePresentationPolicy(
@@ -1637,18 +1786,43 @@ void WidgetSurfaceCoordinator::Paint() {
     }
     options.suppressFocusedDescendantFollow =
         freeScrollDecision.followSuppressed;
-    const declarative::Rect viewport{
-        kSideInsetDip, kChromeHeightDip,
-        std::max(1.0F, widthDip - kSideInsetDip * 2.0F),
-        std::max(1.0F, heightDip - kChromeHeightDip - kBottomInsetDip),
-    };
-    auto renderResult = renderer_->Render(
-        renderTarget_.Get(), selectedSnapshot,
-        controllerFocused_
-            ? std::wstring_view{focusedElementId_}
-            : std::wstring_view{},
-        viewport, options);
-    if (options.suppressFocusedDescendantFollow &&
+    const declarative::Rect viewport = compactMedia
+        ? declarative::Rect{
+              kPinnedBorderDip, kPinnedBorderDip,
+              std::max(1.0F, widthDip - kPinnedBorderDip * 2.0F),
+              std::max(1.0F, heightDip - kPinnedBorderDip * 2.0F)}
+        : declarative::Rect{
+              kSideInsetDip, kChromeHeightDip,
+              std::max(1.0F, widthDip - kSideInsetDip * 2.0F),
+              std::max(1.0F, heightDip - kChromeHeightDip - kBottomInsetDip)};
+    RenderResult renderResult;
+    if (compactMedia && selectedSnapshot.embeddedMedia) {
+        const float aspect = static_cast<float>(selectedSnapshot.embeddedMedia->aspectRatio);
+        float mediaWidth = viewport.width;
+        float mediaHeight = mediaWidth / aspect;
+        if (mediaHeight > viewport.height) {
+            mediaHeight = viewport.height;
+            mediaWidth = mediaHeight * aspect;
+        }
+        const declarative::Rect mediaBounds{
+            viewport.x + (viewport.width - mediaWidth) * 0.5F,
+            viewport.y + (viewport.height - mediaHeight) * 0.5F,
+            mediaWidth, mediaHeight};
+        renderResult.succeeded = true;
+        renderResult.responsiveSurface = ResponsiveSurfacePresentation{
+            {viewport.width, viewport.height}, ResponsiveSurfaceMode::Compact};
+        renderResult.mediaViewportRegions.push_back({
+            L"host.compact-media.viewport", selectedSnapshot.embeddedMedia->id,
+            mediaBounds, mediaBounds});
+    } else {
+        renderResult = renderer_->Render(
+            renderTarget_.Get(), selectedSnapshot,
+            controllerFocused_
+                ? std::wstring_view{focusedElementId_}
+                : std::wstring_view{},
+            viewport, options);
+    }
+    if (!compactMedia && options.suppressFocusedDescendantFollow &&
         !input::SurfaceInteractionTransactions::EvaluateFreeScroll(
             freeScroll_, authority, focusedElementId_, renderResult)
              .followSuppressed) {
@@ -1698,9 +1872,11 @@ void WidgetSurfaceCoordinator::PublishAccessibility() {
         snapshot.activeInputScopeId,
     };
     tree.name = admission_->name + L" pinned surface";
+    const bool compactMedia = compactMediaPresentation();
     accessibility::Node heading;
     heading.id = L"pinned.heading";
-    heading.name = tree.name;
+    heading.name = compactMedia && snapshot.embeddedMedia
+        ? snapshot.embeddedMedia->accessibleName : tree.name;
     heading.domain = accessibility::ElementDomain::HostShell;
     heading.role = accessibility::Role::Heading;
     heading.keyboardFocusable = false;
@@ -1723,6 +1899,11 @@ void WidgetSurfaceCoordinator::PublishAccessibility() {
                 std::to_wstring(selectedLayoutIndex_ + 1) + L" of " +
                 std::to_wstring(layoutOptions_.size()) +
                 L". Left or right trigger changes layout. Left stick or D-pad moves. Right stick resizes. Commit or cancel.";
+    } else if (compactMedia) {
+        const auto media = compactMediaState();
+        state.value = media.scrubActive
+            ? L"Compact media scrub. Left or Right seeks. A applies. B cancels."
+            : L"Compact media. A enters seek. X plays or pauses. Left and right bumper select available media. View returns to the tray.";
     } else {
         state.value = policy_.interactionMode() == InteractionMode::Focusable
             ? L"Interactive. D-pad navigates. A activates. B is widget Back. View returns to the tray. Menu opens options."
@@ -1808,7 +1989,29 @@ void WidgetSurfaceCoordinator::PublishAccessibility() {
     for (std::size_t index = 0; index < actions.size(); ++index)
         addAction(std::move(actions[index]), index);
 
-    if (policy_.interactionMode() == InteractionMode::Focusable &&
+    if (compactMedia && policy_.interactionMode() == InteractionMode::Focusable) {
+        const auto media = compactMediaState();
+        accessibility::Node seek;
+        seek.id = L"host.compact-media.seek";
+        seek.name = L"Media position";
+        seek.value = std::to_wstring(static_cast<int>(std::lround(media.previewPositionSeconds))) +
+            L" of " + std::to_wstring(static_cast<int>(std::lround(media.durationSeconds))) +
+            L" seconds";
+        seek.actionId = L"host.compact-media.seek";
+        seek.valueChangedActionId = L"host.compact-media.seek";
+        seek.domain = accessibility::ElementDomain::HostShell;
+        seek.role = accessibility::Role::Slider;
+        seek.enabled = media.durationSeconds > 0.0;
+        seek.rangeValue = media.previewPositionSeconds;
+        seek.rangeMinimum = 0.0;
+        seek.rangeMaximum = media.durationSeconds;
+        seek.rangeStep = media.seekStepSeconds;
+        seek.keyboardFocusable = true;
+        seek.bounds = {kSideInsetDip, std::max(0.0F, static_cast<float>(client.bottom - client.top) / scale - 34.0F),
+                       std::max(1.0F, widthDip - kSideInsetDip * 2.0F), 26.0F};
+        tree.nodes.push_back(std::move(seek));
+        if (controllerFocused_) tree.focusedNode = tree.nodes.size() - 1;
+    } else if (policy_.interactionMode() == InteractionMode::Focusable &&
         lastRenderResult_.succeeded) {
         auto widgetTree = accessibility::BuildWidgetTree(
             admission_->widgetId, admission_->runtimeGeneration,

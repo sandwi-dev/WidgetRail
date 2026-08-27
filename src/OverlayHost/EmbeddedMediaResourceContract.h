@@ -42,6 +42,8 @@ struct EmbeddedMediaPresentationRetention final {
         admitted.surface.minimumWidth == candidate.surface.minimumWidth &&
         admitted.surface.minimumHeight == candidate.surface.minimumHeight &&
         admitted.aspectRatio == candidate.aspectRatio &&
+        admitted.compactPinnedPresentation == candidate.compactPinnedPresentation &&
+        admitted.compactPinnedSeekStepSeconds == candidate.compactPinnedSeekStepSeconds &&
         admitted.commands == candidate.commands &&
         admitted.allowedFrameOrigins == candidate.allowedFrameOrigins &&
         admitted.resources.size() == candidate.resources.size() &&

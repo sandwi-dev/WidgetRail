@@ -54,9 +54,17 @@ closed command set. The browser never receives the widget focus graph or raw
 controller keys. Overlay-root B remains host Back, while pinned B retains the
 ordinary selected-projection widget route.
 
-Media widgets choose their own quick-seek increment or use the existing Slider
-absolute-value action for direct seeking; the generic embedded-media contract
-does not define a global seek step.
+Media widgets choose their own quick-seek increment for authored overlay
+controls or use the existing Slider absolute-value action for direct seeking.
+Protocol v25 additionally lets a widget opt into the host-owned compact pinned
+presentation with `CompactPinnedPresentation`. The pin keeps the same
+`MediaViewport` and media session, removes the authored title/transport rows,
+and overlays one native themed seek bar that hides during passive playback.
+`CompactPinnedSeekStepSeconds` defaults to 10 and accepts finite values from 1
+through 60 seconds. X toggles playback; A enters/applies seek scrub; Left/Right
+adjust only while scrubbing; B cancels scrub (and otherwise remains widget
+Back); LB/RB select Previous/Next only when those commands are declared; View
+retains the host tray route. Authors cannot remap these physical controls.
 
 For selection-driven data, create an optional per-widget
 `PinnedLayoutHandle` with `CreatePinnedLayoutHandle(id, name, surface,

@@ -93,6 +93,8 @@ internal sealed record BridgeEmbeddedMediaBundle(
     IReadOnlyList<EmbeddedMediaCommand> Commands,
     IReadOnlyList<string> AllowedFrameOrigins,
     EmbeddedMediaPlaybackCommand? PendingCommand,
+    bool CompactPinnedPresentation,
+    double? CompactPinnedSeekStepSeconds,
     IReadOnlyList<BridgeEmbeddedMediaResource> Resources);
 internal sealed record BridgeEmbeddedMediaPlaybackEventRequest(
     string WidgetId,

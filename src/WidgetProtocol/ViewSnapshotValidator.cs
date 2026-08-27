@@ -292,6 +292,22 @@ public static class ViewSnapshotValidator
                     Add($"{path}.commands[{index}]", "duplicate_command",
                         "Embedded media commands must be unique.");
             }
+            if (media.CompactPinnedSeekStepSeconds is { } seekStep &&
+                (!double.IsFinite(seekStep) ||
+                 seekStep < ProtocolConstants.MinimumCompactPinnedMediaSeekStepSeconds ||
+                 seekStep > ProtocolConstants.MaximumCompactPinnedMediaSeekStepSeconds))
+                Add($"{path}.compactPinnedSeekStepSeconds", "out_of_range",
+                    $"Compact pinned media seek step must be finite and between {ProtocolConstants.MinimumCompactPinnedMediaSeekStepSeconds} and {ProtocolConstants.MaximumCompactPinnedMediaSeekStepSeconds} seconds.");
+            if (!media.CompactPinnedPresentation &&
+                media.CompactPinnedSeekStepSeconds is not null)
+                Add($"{path}.compactPinnedSeekStepSeconds", "compact_presentation_required",
+                    "A compact pinned seek step requires compact pinned presentation.");
+            if (media.CompactPinnedPresentation &&
+                (!knownCommands.Contains(EmbeddedMediaCommand.TogglePlayback) ||
+                 !knownCommands.Contains(EmbeddedMediaCommand.SeekBackward) ||
+                 !knownCommands.Contains(EmbeddedMediaCommand.SeekForward)))
+                Add($"{path}.commands", "compact_media_capabilities_required",
+                    "Compact pinned media requires toggle-playback and seek-backward/seek-forward capabilities.");
 
             var frameOrigins = media.AllowedFrameOrigins ?? [];
             if (media.AllowedFrameOrigins is null)

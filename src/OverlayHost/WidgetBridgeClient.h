@@ -373,6 +373,8 @@ struct EmbeddedMediaSurfaceDeclaration final {
     std::vector<std::wstring> commands;
     std::vector<std::wstring> allowedFrameOrigins;
     std::optional<EmbeddedMediaPlaybackCommand> pendingCommand;
+    bool compactPinnedPresentation{};
+    std::optional<double> compactPinnedSeekStepSeconds;
 };
 
 struct EmbeddedMediaResource final {

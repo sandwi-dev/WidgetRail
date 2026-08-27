@@ -471,4 +471,8 @@ public sealed record EmbeddedMediaSurface
     public IReadOnlyList<EmbeddedMediaCommand> Commands { get; init; } = [];
     public IReadOnlyList<string> AllowedFrameOrigins { get; init; } = [];
     public EmbeddedMediaPlaybackCommand? PendingCommand { get; init; }
+    /// <summary>Opts the pinned surface into the host-owned compact media player.</summary>
+    public bool CompactPinnedPresentation { get; init; }
+    /// <summary>Optional bounded scrub step; the host default applies when omitted.</summary>
+    public double? CompactPinnedSeekStepSeconds { get; init; }
 }

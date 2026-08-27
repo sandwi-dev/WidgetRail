@@ -170,6 +170,17 @@ primary accessibility contract.
 | `UI.ChoiceRow(...)` | `button` | One full-row choice/action target with selected, Disabled, and Busy semantics. |
 | `UI.ControllerHint(...)` | `row`, `text` | Display-only key/label pair; does not bind controller input. |
 
+Protocol v25 adds an optional compact pinned presentation to
+`EmbeddedMediaSurface`. Set `CompactPinnedPresentation` to keep the ordinary
+authored player in the overlay while the pinned owner presents the existing
+`MediaViewport` as a video-first surface with one host-native, auto-hiding seek
+bar. `CompactPinnedSeekStepSeconds` is optional (10 seconds by default) and is
+bounded to 1–60 seconds. Compact presentation requires the existing
+`TogglePlayback`, `SeekBackward`, and `SeekForward` capabilities; Previous and
+Next become available only when those existing commands are declared. The host
+keeps controller mapping, focus, accessibility, theme, geometry, clipping, and
+the single browser/controller/document session authoritative.
+
 An embedded-media widget builds its visible shell from the same native Text,
 Progress, Button, Row, and Stack nodes as any other widget. Reserved
 `host.embeddedMedia.*` action IDs bind those native buttons to the existing

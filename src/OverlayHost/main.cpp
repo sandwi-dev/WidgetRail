@@ -2276,6 +2276,11 @@ private:
             SUCCEEDED(richMediaSurface_.GetAutomationProvider(&provider)) && provider)
             (void)provider.As(&fragmentRoot);
         accessibilityProvider_.SetEmbeddedFragmentRoot(fragmentRoot.Get());
+        if (pinnedSurfaceCoordinator_.compactMediaPresentation()) {
+            pinnedSurfaceCoordinator_.UpdateCompactMediaPlayback(
+                state.positionSeconds, state.durationSeconds, state.playing);
+            ReconcileCompactPinnedMediaChrome();
+        }
         DispatchPendingEmbeddedMediaCommand();
         if (window_) InvalidateRect(window_, nullptr, FALSE);
     }
@@ -2462,6 +2467,12 @@ private:
             }
             publicationSequence = origin->snapshotSequence;
         }
+        if (pinnedSurfaceCoordinator_.compactMediaPresentation()) {
+            pinnedSurfaceCoordinator_.UpdateCompactMediaPlayback(
+                event.positionSeconds, event.durationSeconds,
+                event.state == L"playing");
+            ReconcileCompactPinnedMediaChrome();
+        }
         const widgetrail::EmbeddedMediaPlaybackEvent published{
             embeddedMediaAuthority_->surfaceId,
             static_cast<long long>(event.sequence),
@@ -2565,6 +2576,26 @@ private:
             L" reason=" + std::wstring{reason});
     }
 
+    void ReconcileCompactPinnedMediaChrome() {
+        if (!embeddedMediaAuthority_ ||
+            embeddedMediaAuthority_->projection != EmbeddedMediaProjection::Pinned ||
+            !pinnedSurfaceCoordinator_.compactMediaPresentation() ||
+            !embeddedMediaClientBounds_) return;
+        const auto compact = pinnedSurfaceCoordinator_.compactMediaState();
+        const double progress = compact.durationSeconds > 0.0
+            ? std::clamp(compact.previewPositionSeconds / compact.durationSeconds,
+                         0.0, 1.0)
+            : 0.0;
+        widgetrail::OverlayCompositionSurface::CommitTiming timing;
+        const HRESULT result = compositionSurface_.CommitPinnedMediaChrome(
+            {*embeddedMediaClientBounds_, compact.seekBarVisible,
+             pinnedSurfaceCoordinator_.controllerFocused(),
+             compact.scrubActive, progress}, timing);
+        if (FAILED(result)) AppendDiagnostic(
+            L"Compact pinned media chrome commit failed hr=" +
+            std::to_wstring(static_cast<long>(result)));
+    }
+
     [[nodiscard]] static RECT Win32Rect(
         const widgetrail::PhysicalRect& bounds) noexcept {
         return {bounds.left, bounds.top, bounds.right, bounds.bottom};
@@ -2656,6 +2687,8 @@ private:
                 L" reason=" + std::wstring{reason});
             return false;
         }
+        if (projection == EmbeddedMediaProjection::Pinned)
+            ReconcileCompactPinnedMediaChrome();
         return true;
     }
 
@@ -2726,6 +2759,8 @@ private:
                 ? pinnedSurfaceCoordinator_.CurrentMediaViewport(
                       embeddedMediaAuthority_->surfaceId)->frameGeneration
                 : 0;
+        if (destination == EmbeddedMediaProjection::Pinned)
+            ReconcileCompactPinnedMediaChrome();
         AppendDiagnostic(
             L"Embedded media transferred widget=" + embeddedMediaAuthority_->widgetId +
             L" projection=" +
@@ -2948,6 +2983,10 @@ private:
             resolvedHints.minimumHeight == declaredHints.minimumHeight &&
             resolvedDeclaration.commands == declaration.commands &&
             resolvedDeclaration.allowedFrameOrigins == declaration.allowedFrameOrigins &&
+            resolvedDeclaration.compactPinnedPresentation ==
+                declaration.compactPinnedPresentation &&
+            resolvedDeclaration.compactPinnedSeekStepSeconds ==
+                declaration.compactPinnedSeekStepSeconds &&
             ((!resolvedDeclaration.pendingCommand && !declaration.pendingCommand) ||
              (resolvedDeclaration.pendingCommand && declaration.pendingCommand &&
               resolvedDeclaration.pendingCommand->sequence ==
@@ -6678,6 +6717,14 @@ private:
     }
 
     void DrainPinnedSurfaceInputs() {
+        if (const auto target =
+                pinnedSurfaceCoordinator_.TakeCompactMediaSeekRequest()) {
+            if (embeddedMediaAuthority_ &&
+                embeddedMediaAuthority_->projection ==
+                    EmbeddedMediaProjection::Pinned &&
+                pinnedSurfaceCoordinator_.compactMediaPresentation())
+                (void)richMediaSurface_.SendSeekPosition(*target);
+        }
         for (const auto& selection :
                  pinnedSurfaceCoordinator_.TakeLayoutSelectionNotifications()) {
             const auto* descriptor = sessions_.FindDescriptor(selection.widgetId);
@@ -7890,6 +7937,51 @@ private:
             return;
         }
         if (pinnedSurfaceCoordinator_.controllerFocused()) {
+            if (pinnedSurfaceCoordinator_.compactMediaPresentation()) {
+                const auto moveCompactFocus = [&](
+                    const widgetrail::input::StickNavigationEvent& event) {
+                    (void)pinnedSurfaceCoordinator_.MoveControllerFocus(
+                        event.direction);
+                };
+                if (const auto direction = DecodeNavigation(frame.stickNavigation))
+                    moveCompactFocus(*direction);
+                if (const auto direction = DecodeNavigation(frame.dpadNavigation))
+                    moveCompactFocus(*direction);
+                if (pinnedControllerCommand ==
+                    widgetrail::pinned::ControllerCommand::Exit) {
+                    (void)pinnedSurfaceCoordinator_.ExitControllerFocus();
+                    (void)pinnedSurfaceCoordinator_.SetInteractionMode(
+                        widgetrail::pinned::InteractionMode::ClickThrough);
+                    Dispatch(widgetrail::Command::SampleWidgetBack);
+                } else if ((pressed & XINPUT_GAMEPAD_B) != 0) {
+                    if (!pinnedSurfaceCoordinator_.CancelCompactMediaScrub())
+                        (void)pinnedSurfaceCoordinator_.QueueSelectedProjectionBack(
+                            widgetrail::ControllerInputOrigin::PhysicalController);
+                } else if ((pressed & XINPUT_GAMEPAD_A) != 0) {
+                    if (pinnedSurfaceCoordinator_.compactMediaState().scrubActive) {
+                        if (const auto target =
+                                pinnedSurfaceCoordinator_.CommitCompactMediaScrub())
+                            (void)richMediaSurface_.SendSeekPosition(*target);
+                    } else {
+                        (void)pinnedSurfaceCoordinator_.BeginCompactMediaScrub();
+                    }
+                }
+                if ((pressed & XINPUT_GAMEPAD_X) != 0 &&
+                    EmbeddedMediaCommandSupported(L"togglePlayback"))
+                    (void)richMediaSurface_.SendCommand(
+                        widgetrail::richmedia::Command::TogglePlayback);
+                if ((pressed & XINPUT_GAMEPAD_LEFT_SHOULDER) != 0 &&
+                    EmbeddedMediaCommandSupported(L"navigatePrevious"))
+                    (void)richMediaSurface_.SendCommand(
+                        widgetrail::richmedia::Command::NavigatePrevious);
+                if ((pressed & XINPUT_GAMEPAD_RIGHT_SHOULDER) != 0 &&
+                    EmbeddedMediaCommandSupported(L"navigateNext"))
+                    (void)richMediaSurface_.SendCommand(
+                        widgetrail::richmedia::Command::NavigateNext);
+                ReconcileCompactPinnedMediaChrome();
+                InvalidateRect(window_, nullptr, FALSE);
+                return;
+            }
             (void)pinnedSurfaceCoordinator_.ScrollFocusedProjection(
                 frame.state.rightThumbX, frame.state.rightThumbY, now);
             const auto movePinnedFocus = [&](const widgetrail::input::StickNavigationEvent& event) {

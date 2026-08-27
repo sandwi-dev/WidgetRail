@@ -168,6 +168,7 @@ public:
     [[nodiscard]] HRESULT CompletePresentationTransfer(
         PresentationTarget target) noexcept;
     [[nodiscard]] bool SendCommand(Command command) noexcept;
+    [[nodiscard]] bool SendSeekPosition(double positionSeconds) noexcept;
     [[nodiscard]] bool SendPlaybackCommand(const PlaybackCommand& command) noexcept;
     [[nodiscard]] bool ForwardMouse(UINT message, WPARAM wParam, LPARAM lParam) noexcept;
     [[nodiscard]] bool ForwardKey(UINT message, WPARAM wParam, LPARAM lParam) noexcept;

@@ -1186,7 +1186,8 @@ WidgetSnapshot ParseSnapshot(const JsonObject& source) {
         if (!HasNoUnknownProperties(media,
                 {L"id", L"accessibleName", L"entryAsset", L"surface",
                  L"aspectRatio", L"resources", L"commands",
-                 L"allowedFrameOrigins", L"pendingCommand"}))
+                 L"allowedFrameOrigins", L"pendingCommand",
+                 L"compactPinnedPresentation", L"compactPinnedSeekStepSeconds"}))
             throw winrt::hresult_invalid_argument(
                 L"Embedded media contains an unknown property.");
         EmbeddedMediaSurfaceDeclaration parsed;
@@ -1195,6 +1196,11 @@ WidgetSnapshot ParseSnapshot(const JsonObject& source) {
         parsed.entryAsset = OptionalString(media, L"entryAsset");
         parsed.surface = parseSurface(media.GetNamedObject(L"surface"));
         parsed.aspectRatio = media.GetNamedNumber(L"aspectRatio");
+        parsed.compactPinnedPresentation =
+            media.GetNamedBoolean(L"compactPinnedPresentation", false);
+        if (media.HasKey(L"compactPinnedSeekStepSeconds"))
+            parsed.compactPinnedSeekStepSeconds =
+                media.GetNamedNumber(L"compactPinnedSeekStepSeconds");
         const auto resources = media.GetNamedArray(L"resources");
         const auto commands = media.GetNamedArray(L"commands");
         const auto frameOrigins = media.GetNamedArray(L"allowedFrameOrigins", JsonArray{});
@@ -1209,6 +1215,18 @@ WidgetSnapshot ParseSnapshot(const JsonObject& source) {
             !parsed.surface.minimumWidth || !parsed.surface.minimumHeight)
             throw winrt::hresult_invalid_argument(
                 L"Embedded media authority or bounds are invalid.");
+        if (parsed.compactPinnedSeekStepSeconds &&
+            (!std::isfinite(*parsed.compactPinnedSeekStepSeconds) ||
+             *parsed.compactPinnedSeekStepSeconds <
+                 protocol_contract::MinimumCompactPinnedMediaSeekStepSeconds ||
+             *parsed.compactPinnedSeekStepSeconds >
+                 protocol_contract::MaximumCompactPinnedMediaSeekStepSeconds))
+            throw winrt::hresult_invalid_argument(
+                L"Compact pinned media seek step is invalid.");
+        if (!parsed.compactPinnedPresentation &&
+            parsed.compactPinnedSeekStepSeconds)
+            throw winrt::hresult_invalid_argument(
+                L"Compact pinned media seek step requires compact presentation.");
         std::unordered_set<std::wstring> paths;
         for (uint32_t index = 0; index < resources.Size(); ++index) {
             const auto resource = resources.GetObjectAt(index);
@@ -1245,6 +1263,18 @@ WidgetSnapshot ParseSnapshot(const JsonObject& source) {
                     L"Embedded media command declaration is invalid.");
             parsed.commands.push_back(command);
         }
+        if (parsed.compactPinnedPresentation &&
+            (!commandSet.contains(L"togglePlayback") ||
+             !commandSet.contains(L"seekBackward") ||
+             !commandSet.contains(L"seekForward")))
+            throw winrt::hresult_invalid_argument(
+                L"Compact pinned media capabilities are incomplete.");
+        if ((parsed.compactPinnedPresentation ||
+             parsed.compactPinnedSeekStepSeconds) &&
+            snapshot.protocolVersion <
+                protocol_contract::CompactPinnedMediaPresentationVersion)
+            throw winrt::hresult_invalid_argument(
+                L"Compact pinned media presentation requires protocol version 25.");
         if (frameOrigins.Size() > protocol_contract::MaximumEmbeddedMediaFrameOriginCount)
             throw winrt::hresult_invalid_argument(
                 L"Embedded media frame origin declaration is invalid.");
@@ -2105,7 +2135,9 @@ std::optional<EmbeddedMediaBundle> ParseEmbeddedMediaBundle(
             {L"widgetId", L"instanceId", L"runtimeGeneration",
              L"presentationGeneration", L"sequence", L"surfaceId",
              L"entryAsset", L"surface", L"aspectRatio", L"accessibleName",
-             L"commands", L"allowedFrameOrigins", L"pendingCommand", L"resources"}) ||
+             L"commands", L"allowedFrameOrigins", L"pendingCommand",
+             L"compactPinnedPresentation", L"compactPinnedSeekStepSeconds",
+             L"resources"}) ||
         !body.HasKey(L"widgetId") || !body.HasKey(L"instanceId") ||
         !body.HasKey(L"runtimeGeneration") ||
         !body.HasKey(L"presentationGeneration") || !body.HasKey(L"sequence") ||
@@ -2124,6 +2156,11 @@ std::optional<EmbeddedMediaBundle> ParseEmbeddedMediaBundle(
     bundle.surface.entryAsset = OptionalString(body, L"entryAsset");
     bundle.surface.accessibleName = OptionalString(body, L"accessibleName");
     bundle.surface.aspectRatio = body.GetNamedNumber(L"aspectRatio");
+    bundle.surface.compactPinnedPresentation =
+        body.GetNamedBoolean(L"compactPinnedPresentation", false);
+    if (body.HasKey(L"compactPinnedSeekStepSeconds"))
+        bundle.surface.compactPinnedSeekStepSeconds =
+            body.GetNamedNumber(L"compactPinnedSeekStepSeconds");
     if (bundle.widgetId != widgetId || bundle.instanceId != instanceId ||
         bundle.runtimeGeneration != runtimeGeneration ||
         bundle.presentationGeneration != presentationGeneration ||
@@ -2140,6 +2177,14 @@ std::optional<EmbeddedMediaBundle> ParseEmbeddedMediaBundle(
                     }) ||
         !std::isfinite(bundle.surface.aspectRatio) ||
         bundle.surface.aspectRatio < 0.1 || bundle.surface.aspectRatio > 10.0 ||
+        (bundle.surface.compactPinnedSeekStepSeconds &&
+            (!std::isfinite(*bundle.surface.compactPinnedSeekStepSeconds) ||
+             *bundle.surface.compactPinnedSeekStepSeconds <
+                 protocol_contract::MinimumCompactPinnedMediaSeekStepSeconds ||
+             *bundle.surface.compactPinnedSeekStepSeconds >
+                 protocol_contract::MaximumCompactPinnedMediaSeekStepSeconds)) ||
+        (!bundle.surface.compactPinnedPresentation &&
+            bundle.surface.compactPinnedSeekStepSeconds) ||
         !IsNormalizedEmbeddedMediaPath(bundle.surface.entryAsset))
         return std::nullopt;
 
@@ -2199,6 +2244,10 @@ std::optional<EmbeddedMediaBundle> ParseEmbeddedMediaBundle(
             return std::nullopt;
         bundle.surface.commands.push_back(command);
     }
+    if (bundle.surface.compactPinnedPresentation &&
+        (commandSet.find(L"togglePlayback") == commandSet.end() ||
+         commandSet.find(L"seekBackward") == commandSet.end() ||
+         commandSet.find(L"seekForward") == commandSet.end())) return std::nullopt;
     const auto frameOrigins = body.GetNamedArray(L"allowedFrameOrigins", JsonArray{});
     if (frameOrigins.Size() > protocol_contract::MaximumEmbeddedMediaFrameOriginCount)
         return std::nullopt;

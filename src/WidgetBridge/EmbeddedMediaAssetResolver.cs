@@ -95,6 +95,8 @@ internal static class EmbeddedMediaAssetResolver
             media.Commands,
             media.AllowedFrameOrigins,
             media.PendingCommand,
+            media.CompactPinnedPresentation,
+            media.CompactPinnedSeekStepSeconds,
             resources);
     }
 

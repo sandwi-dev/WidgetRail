@@ -106,6 +106,14 @@ public:
         std::uint64_t committed{};
     };
 
+    struct PinnedMediaChromePresentation final {
+        RECT bounds{};
+        bool visible{};
+        bool focused{};
+        bool scrubActive{};
+        double progress{};
+    };
+
     struct VisualPresentation final {
         float scaleX{1.0F};
         float scaleY{1.0F};
@@ -203,6 +211,9 @@ public:
     HRESULT DetachExternalContentTarget(
         ExternalContentEndpoint endpoint, CommitTiming& timing) noexcept;
     HRESULT ReleasePinnedExternalContentEndpoint(CommitTiming& timing) noexcept;
+    HRESULT CommitPinnedMediaChrome(
+        const PinnedMediaChromePresentation& presentation,
+        CommitTiming& timing) noexcept;
     void AbandonFrame(Frame& frame) noexcept;
 
 private:
@@ -226,6 +237,13 @@ private:
     Microsoft::WRL::ComPtr<IDCompositionVisual2> pinnedExternalRootVisual_;
     Microsoft::WRL::ComPtr<IDCompositionVisual2> pinnedExternalContentVisual_;
     bool pinnedExternalContentAttached_{};
+    Microsoft::WRL::ComPtr<IDCompositionVisual2> pinnedMediaChromeVisual_;
+    Microsoft::WRL::ComPtr<IDCompositionSurface> pinnedMediaChromeSurface_;
+    bool pinnedMediaChromeAttached_{};
+    RECT pinnedMediaChromeBounds_{};
+    bool pinnedMediaChromeVisible_{};
+    unsigned int pinnedMediaChromeWidth_{};
+    unsigned int pinnedMediaChromeHeight_{};
     struct ExternalContentPresentationState final {
         bool current{};
         IDCompositionVisual2* visual{};

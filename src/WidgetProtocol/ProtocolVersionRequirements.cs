@@ -69,6 +69,13 @@ internal sealed class ProtocolVersionRequirements
                 ProtocolConstants.EmbeddedMediaPlaybackVersion,
                 "$.embeddedMedia",
                 $"Embedded media playback requires protocol version {ProtocolConstants.EmbeddedMediaPlaybackVersion} or later.");
+        if (snapshot.EmbeddedMedia is { CompactPinnedPresentation: true } ||
+            snapshot.EmbeddedMedia?.CompactPinnedSeekStepSeconds is not null)
+            Add(
+                "compact-pinned-media-presentation",
+                ProtocolConstants.CompactPinnedMediaPresentationVersion,
+                "$.embeddedMedia.compactPinnedPresentation",
+                $"Compact pinned media presentation requires protocol version {ProtocolConstants.CompactPinnedMediaPresentationVersion} or later.");
 
         Visit(snapshot.Root, "$.root", 1);
 

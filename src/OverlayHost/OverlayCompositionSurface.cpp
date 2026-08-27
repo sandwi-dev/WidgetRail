@@ -160,6 +160,13 @@ void OverlayCompositionSurface::Reset() noexcept {
     pinnedExternalContentVisual_.Reset();
     pinnedExternalContentAttached_ = false;
     pinnedExternalContentPresentation_ = {};
+    pinnedMediaChromeVisual_.Reset();
+    pinnedMediaChromeSurface_.Reset();
+    pinnedMediaChromeAttached_ = false;
+    pinnedMediaChromeBounds_ = {};
+    pinnedMediaChromeVisible_ = false;
+    pinnedMediaChromeWidth_ = 0;
+    pinnedMediaChromeHeight_ = 0;
     pinnedExternalRootVisual_.Reset();
     guide_ = {};
     tray_ = {};
@@ -337,10 +344,138 @@ HRESULT OverlayCompositionSurface::ReleasePinnedExternalContentEndpoint(
         std::chrono::duration_cast<std::chrono::microseconds>(
             std::chrono::steady_clock::now() - started).count());
     if (SUCCEEDED(result)) {
+        pinnedMediaChromeVisual_.Reset();
+        pinnedMediaChromeSurface_.Reset();
+        pinnedMediaChromeAttached_ = false;
+        pinnedMediaChromeVisible_ = false;
+        pinnedMediaChromeWidth_ = 0;
+        pinnedMediaChromeHeight_ = 0;
         pinnedExternalRootVisual_.Reset();
         pinnedExternalTarget_.Reset();
         pinnedExternalContentAttached_ = false;
         pinnedExternalContentPresentation_.current = false;
+    }
+    return result;
+}
+
+HRESULT OverlayCompositionSurface::CommitPinnedMediaChrome(
+    const PinnedMediaChromePresentation& presentation,
+    CommitTiming& timing) noexcept {
+    timing = {};
+    if (!device_ || !pinnedExternalRootVisual_ ||
+        presentation.bounds.right <= presentation.bounds.left ||
+        presentation.bounds.bottom <= presentation.bounds.top ||
+        !std::isfinite(presentation.progress) || presentation.progress < 0.0 ||
+        presentation.progress > 1.0) return E_INVALIDARG;
+    const auto started = std::chrono::steady_clock::now();
+    const unsigned int width = static_cast<unsigned int>(
+        presentation.bounds.right - presentation.bounds.left);
+    const unsigned int height = static_cast<unsigned int>(
+        presentation.bounds.bottom - presentation.bounds.top);
+    const bool replacement = !pinnedMediaChromeSurface_ ||
+        width != pinnedMediaChromeWidth_ || height != pinnedMediaChromeHeight_;
+    HRESULT result = S_OK;
+    if (!pinnedMediaChromeVisual_)
+        result = device_->CreateVisual(
+            pinnedMediaChromeVisual_.ReleaseAndGetAddressOf());
+    if (SUCCEEDED(result) && replacement) {
+        result = device_->CreateSurface(
+            width, height, DXGI_FORMAT_B8G8R8A8_UNORM,
+            DXGI_ALPHA_MODE_PREMULTIPLIED,
+            pinnedMediaChromeSurface_.ReleaseAndGetAddressOf());
+        if (SUCCEEDED(result))
+            result = pinnedMediaChromeVisual_->SetContent(
+                pinnedMediaChromeSurface_.Get());
+    }
+    if (FAILED(result)) return result;
+
+    RECT update{0, 0, static_cast<LONG>(width), static_cast<LONG>(height)};
+    ComPtr<ID2D1DeviceContext> target;
+    POINT offset{};
+    result = pinnedMediaChromeSurface_->BeginDraw(
+        &update, __uuidof(ID2D1DeviceContext),
+        reinterpret_cast<void**>(target.ReleaseAndGetAddressOf()), &offset);
+    if (SUCCEEDED(result)) {
+        target->SetTransform(D2D1::Matrix3x2F::Translation(
+            static_cast<float>(offset.x), static_cast<float>(offset.y)));
+        target->Clear(D2D1::ColorF(0, 0.0F));
+        const float barHeight = std::min(28.0F, static_cast<float>(height));
+        const float top = static_cast<float>(height) - barHeight;
+        ComPtr<ID2D1SolidColorBrush> shade;
+        ComPtr<ID2D1SolidColorBrush> track;
+        ComPtr<ID2D1SolidColorBrush> accent;
+        result = target->CreateSolidColorBrush(
+            D2D1::ColorF(0x07111C, 0.82F), shade.ReleaseAndGetAddressOf());
+        if (SUCCEEDED(result)) result = target->CreateSolidColorBrush(
+            D2D1::ColorF(0x8BA4BC, 0.72F), track.ReleaseAndGetAddressOf());
+        if (SUCCEEDED(result)) result = target->CreateSolidColorBrush(
+            presentation.scrubActive ? D2D1::ColorF(0x73D5FF)
+                                     : D2D1::ColorF(0x4EB9F2),
+            accent.ReleaseAndGetAddressOf());
+        if (SUCCEEDED(result)) {
+            target->FillRectangle(
+                D2D1::RectF(0.0F, top, static_cast<float>(width),
+                            static_cast<float>(height)), shade.Get());
+            const float left = 12.0F;
+            const float right = std::max(left, static_cast<float>(width) - 12.0F);
+            const float trackTop = top + barHeight * 0.5F - 2.0F;
+            target->FillRoundedRectangle(
+                D2D1::RoundedRect(
+                    D2D1::RectF(left, trackTop, right, trackTop + 4.0F), 2.0F, 2.0F),
+                track.Get());
+            const float progressRight = left + (right - left) *
+                static_cast<float>(presentation.progress);
+            target->FillRoundedRectangle(
+                D2D1::RoundedRect(
+                    D2D1::RectF(left, trackTop, progressRight, trackTop + 4.0F),
+                    2.0F, 2.0F), accent.Get());
+            if (presentation.focused) {
+                target->DrawRoundedRectangle(
+                    D2D1::RoundedRect(
+                        D2D1::RectF(4.0F, top + 3.0F,
+                                    static_cast<float>(width) - 4.0F,
+                                    static_cast<float>(height) - 3.0F), 5.0F, 5.0F),
+                    accent.Get(), presentation.scrubActive ? 2.5F : 1.5F);
+            }
+        }
+        target.Reset();
+        const HRESULT end = pinnedMediaChromeSurface_->EndDraw();
+        if (SUCCEEDED(result)) result = end;
+    }
+    if (FAILED(result)) return result;
+
+    const bool sameBounds = pinnedMediaChromeBounds_.left == presentation.bounds.left &&
+        pinnedMediaChromeBounds_.top == presentation.bounds.top &&
+        pinnedMediaChromeBounds_.right == presentation.bounds.right &&
+        pinnedMediaChromeBounds_.bottom == presentation.bounds.bottom;
+    bool treeChanged = replacement || !sameBounds ||
+        pinnedMediaChromeVisible_ != presentation.visible;
+    if (!sameBounds) {
+        result = pinnedMediaChromeVisual_->SetOffsetX(
+            static_cast<float>(presentation.bounds.left));
+        if (SUCCEEDED(result)) result = pinnedMediaChromeVisual_->SetOffsetY(
+            static_cast<float>(presentation.bounds.top));
+    }
+    if (SUCCEEDED(result) && presentation.visible && !pinnedMediaChromeAttached_) {
+        result = pinnedExternalRootVisual_->AddVisual(
+            pinnedMediaChromeVisual_.Get(), TRUE, nullptr);
+        if (SUCCEEDED(result)) pinnedMediaChromeAttached_ = true;
+    } else if (SUCCEEDED(result) && !presentation.visible &&
+               pinnedMediaChromeAttached_) {
+        result = pinnedExternalRootVisual_->RemoveVisual(
+            pinnedMediaChromeVisual_.Get());
+        if (SUCCEEDED(result)) pinnedMediaChromeAttached_ = false;
+    }
+    if (SUCCEEDED(result) && treeChanged) result = device_->Commit();
+    timing.commitMicroseconds = static_cast<std::uint64_t>(
+        std::chrono::duration_cast<std::chrono::microseconds>(
+            std::chrono::steady_clock::now() - started).count());
+    if (SUCCEEDED(result)) {
+        timing.externalPresentationCommitted = treeChanged;
+        pinnedMediaChromeBounds_ = presentation.bounds;
+        pinnedMediaChromeVisible_ = presentation.visible;
+        pinnedMediaChromeWidth_ = width;
+        pinnedMediaChromeHeight_ = height;
     }
     return result;
 }

@@ -77,6 +77,16 @@ struct CommittedMediaViewportPresentation final {
     std::uint64_t frameGeneration{};
 };
 
+struct CompactPinnedMediaState final {
+    double positionSeconds{};
+    double durationSeconds{};
+    double previewPositionSeconds{};
+    double seekStepSeconds{};
+    bool playing{};
+    bool scrubActive{};
+    bool seekBarVisible{};
+};
+
 struct WidgetSurfaceAdmission final {
     std::wstring widgetId;
     std::wstring instanceId;
@@ -141,6 +151,8 @@ public:
         std::wstring_view protocolButton,
         ControllerInputOrigin origin = ControllerInputOrigin::PhysicalController,
         std::optional<double> requestedValue = std::nullopt);
+    [[nodiscard]] bool QueueSelectedProjectionBack(
+        ControllerInputOrigin origin = ControllerInputOrigin::PhysicalController);
     [[nodiscard]] std::vector<WidgetSurfaceInputRequest> TakeInputRequests() noexcept;
     [[nodiscard]] bool IsCurrentInputRequest(
         const WidgetSurfaceInputRequest& request) const noexcept;
@@ -207,6 +219,16 @@ public:
     }
     [[nodiscard]] std::optional<CommittedMediaViewportPresentation>
         CurrentMediaViewport(std::wstring_view surfaceId) const noexcept;
+    [[nodiscard]] bool compactMediaPresentation() const noexcept;
+    [[nodiscard]] CompactPinnedMediaState compactMediaState() const noexcept;
+    void UpdateCompactMediaPlayback(
+        double positionSeconds, double durationSeconds, bool playing) noexcept;
+    [[nodiscard]] bool BeginCompactMediaScrub() noexcept;
+    [[nodiscard]] bool StepCompactMediaScrub(
+        input::NavigationDirection direction) noexcept;
+    [[nodiscard]] std::optional<double> CommitCompactMediaScrub() noexcept;
+    [[nodiscard]] bool CancelCompactMediaScrub() noexcept;
+    [[nodiscard]] std::optional<double> TakeCompactMediaSeekRequest() noexcept;
     [[nodiscard]] WidgetSurfacePresentationState presentationState() const noexcept;
     [[nodiscard]] PlacementMode placementMode() const noexcept {
         return placementSession_ ? placementSession_->mode : PlacementMode::None;
@@ -300,6 +322,12 @@ private:
     bool actionFeedbackFailure_{};
     bool overlayVisible_{};
     bool controllerFocused_{};
+    double compactMediaPositionSeconds_{};
+    double compactMediaDurationSeconds_{};
+    double compactMediaPreviewSeconds_{};
+    bool compactMediaPlaying_{};
+    bool compactMediaScrubActive_{};
+    std::optional<double> compactMediaSeekRequest_;
     bool pointerPlacement_{};
     PlacementMode pointerPlacementMode_{PlacementMode::None};
     std::wstring pointerActionNode_;
