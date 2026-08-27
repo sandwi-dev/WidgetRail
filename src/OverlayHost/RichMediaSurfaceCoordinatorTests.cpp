@@ -439,6 +439,11 @@ void RunContractCases() {
     if (!acknowledgementRetainsSession) ++controllerAdmissions;
     Require(acknowledgementRetainsSession,
             "playback acknowledgement snapshot churn replaced the sealed media session");
+    auto renamedSurface = pendingSurface;
+    renamedSurface.accessibleName = L"Neutral media for the selected item";
+    Require(widgetrail::SameEmbeddedMediaResourceContract(
+                admittedContract, renamedSurface),
+            "semantic accessible-name update replaced the sealed media session");
     auto replacementSurface = pendingSurface;
     replacementSurface.resources[0].path = L"media/replacement.html";
     Require(!widgetrail::SameEmbeddedMediaResourceContract(

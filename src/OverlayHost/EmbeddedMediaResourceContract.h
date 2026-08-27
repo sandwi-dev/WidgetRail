@@ -32,7 +32,6 @@ struct EmbeddedMediaPresentationRetention final {
     const EmbeddedMediaSurfaceDeclaration& admitted,
     const EmbeddedMediaSurfaceDeclaration& candidate) noexcept {
     return admitted.id == candidate.id &&
-        admitted.accessibleName == candidate.accessibleName &&
         admitted.entryAsset == candidate.entryAsset &&
         admitted.surface.mode == candidate.surface.mode &&
         admitted.surface.widthMode == candidate.surface.widthMode &&
