@@ -182,6 +182,17 @@ public sealed class YouTubeWidgetTests
         StringAssert.Contains(adapter, "controls:1");
         StringAssert.Contains(adapter,
             "commandId:message.commandId,commandSequence:0,playing:false,focus:'youtube-player'");
+        StringAssert.Contains(adapter,
+            "commandId,commandSequence,focus:'youtube-player',playing:state==='playing',bounds:bounds(),mediaKey:key,playbackState:state,positionSeconds:position(),durationSeconds:duration(),volume:volume()");
+        Assert.AreEqual(2, CountOccurrences(adapter, "chrome.webview.postMessage("),
+            "Only initialization and the shared closed event envelope may write page events.");
+        StringAssert.Contains(adapter,
+            "emit('media',operation.id,operation.sequence,errorCode,playbackState,operation.mediaKey)");
+        StringAssert.Contains(adapter, "return}emit('media')");
+        StringAssert.Contains(adapter, "emit('media',0,0,code,'error')");
+        StringAssert.Contains(adapter, "lastProgressSecond=second;emit('media')");
+        StringAssert.Contains(adapter,
+            "emit('armed',operation.id,operation.sequence,undefined,playbackState,operation.mediaKey)");
         StringAssert.Contains(adapter, "client-identity-rejected");
         StringAssert.Contains(adapter, "embedding-disabled");
         Assert.DoesNotContain("fetch(", adapter);
@@ -196,7 +207,7 @@ public sealed class YouTubeWidgetTests
             File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "manifest.json")));
         var root = document.RootElement;
         Assert.AreEqual("widgetrail.samples.youtube-video", root.GetProperty("id").GetString());
-        Assert.AreEqual("0.1.2", root.GetProperty("version").GetString());
+        Assert.AreEqual("0.1.3", root.GetProperty("version").GetString());
         Assert.AreEqual(0, root.GetProperty("permissions").GetArrayLength());
         Assert.AreEqual(0, root.GetProperty("optionalPermissions").GetArrayLength());
         Assert.AreEqual("suspend-when-hidden",
@@ -206,6 +217,15 @@ public sealed class YouTubeWidgetTests
     private static async Task CommitAsync(YouTubeVideoWidget widget, string link) =>
         await widget.OnActionAsync(new WidgetActionEvent(
             YouTubeVideoWidget.LinkActionId, "youtube.link") { CommittedText = link });
+
+    private static int CountOccurrences(string value, string token)
+    {
+        var count = 0;
+        for (var index = 0; (index = value.IndexOf(token, index, StringComparison.Ordinal)) >= 0;
+             index += token.Length)
+            count++;
+        return count;
+    }
 
     private static async Task ObserveAsync(
         YouTubeVideoWidget widget,

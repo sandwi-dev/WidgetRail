@@ -21,7 +21,7 @@ function stateName(value){return value===1?'playing':value===2?'paused':value===
 function position(){const value=Number(player?.getCurrentTime?.());return Number.isFinite(value)?Math.max(0,value):0}
 function duration(){const value=Number(player?.getDuration?.());return Number.isFinite(value)?Math.max(0,value):0}
 function volume(){const value=Number(player?.getVolume?.());return Number.isFinite(value)?Math.max(0,Math.min(1,value/100)):.8}
-function emit(type,commandId=0,commandSequence=0,errorCode,state=playbackState,key=mediaKey){if(!initialized)return;const value={type,...authority,eventSequence:++eventSequence,commandId,commandSequence,focus:'youtube-player',bounds:bounds(),mediaKey:key,playbackState:state,positionSeconds:position(),durationSeconds:duration(),volume:volume()};if(errorCode)value.errorCode=fixedCode(errorCode);chrome.webview.postMessage(value)}
+function emit(type,commandId=0,commandSequence=0,errorCode,state=playbackState,key=mediaKey){if(!initialized)return;const value={type,...authority,eventSequence:++eventSequence,commandId,commandSequence,focus:'youtube-player',playing:state==='playing',bounds:bounds(),mediaKey:key,playbackState:state,positionSeconds:position(),durationSeconds:duration(),volume:volume()};if(errorCode)value.errorCode=fixedCode(errorCode);chrome.webview.postMessage(value)}
 function failApi(code){if(apiFailure)return;apiFailure=fixedCode(code);clearTimeout(apiTimer);rejectApi(new Error(apiFailure))}
 function complete(operation,errorCode,state=playbackState){if(inFlight!==operation)return;playbackState=errorCode?'error':state;emit('media',operation.id,operation.sequence,errorCode,playbackState,operation.mediaKey);inFlight=null}
 function onReady(){clearTimeout(apiTimer);resolveApi(player)}
