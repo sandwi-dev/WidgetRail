@@ -49,6 +49,12 @@ public:
         return RichMediaSurfaceCoordinator::IsAllowedFrameResource(
             uri, allowedOrigins, allowedFamilies);
     }
+    static bool IsAllowedFrameNavigation(
+        const std::wstring_view uri,
+        const std::vector<std::wstring>& allowedOrigins) {
+        return RichMediaSurfaceCoordinator::IsAllowedFrameNavigation(
+            uri, allowedOrigins);
+    }
     static std::optional<std::wstring> ManifestAssemblyIdentity(
         const std::wstring_view manifest) {
         return RichMediaSurfaceCoordinator::ManifestAssemblyIdentity(manifest);
@@ -572,6 +578,12 @@ void RunContractCases() {
                     uri, {}, allowedFrameFamilies),
                 "registrable family root or dot-boundary subdomain was denied");
     }
+    Require(!RichMediaSurfaceCoordinatorTestPeer::IsAllowedFrameNavigation(
+                L"https://media.example.com/frame", {}) &&
+            RichMediaSurfaceCoordinatorTestPeer::IsAllowedFrameNavigation(
+                L"https://frames.aurora.invalid/embed/index.html",
+                allowedFrameOrigins),
+            "resource-family authority leaked into exact-origin frame navigation");
     for (const auto uri : {
             L"http://media.example.com/frame",
             L"https://example.com.evil.test/frame",

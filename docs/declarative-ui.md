@@ -199,7 +199,9 @@ default-port HTTPS. The host validates declarations against its integrity-
 checked Public Suffix List snapshot and independently checks every frame
 navigation, redirect target, and external resource request. Missing or corrupt
 suffix data rejects family declarations; exact-origin declarations remain
-independent. The installed-app Referer is attached only after that external
+independent and remain the only authority for frame-document navigation.
+Families apply only to intercepted external resource and redirected-resource
+destinations. The installed-app Referer is attached only after that external
 traffic is admitted and is never sent to sealed or denied resources.
 
 Stack, Row, Grid, and Scroll containers may call `.InputScope("scope-id")` to start a nested

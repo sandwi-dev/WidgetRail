@@ -624,6 +624,12 @@ bool RichMediaSurfaceCoordinator::IsAllowedFrameResource(
     return suffixAuthority.AllowsHttpsUri(uri, allowedFamilies);
 }
 
+bool RichMediaSurfaceCoordinator::IsAllowedFrameNavigation(
+    const std::wstring_view uri,
+    const std::vector<std::wstring>& allowedOrigins) noexcept {
+    return IsAllowedFrameResource(uri, allowedOrigins);
+}
+
 bool RichMediaSurfaceCoordinator::IsPlaybackCommandCorrelated(
     const std::uint64_t commandSequence, const std::wstring_view mediaKey,
     const std::optional<std::uint64_t> pendingSequence,
@@ -1031,8 +1037,8 @@ HRESULT RichMediaSurfaceCoordinator::OnFrameNavigationStarting(
     CoTaskMemFree(rawUri);
     if (FAILED(result)) return result;
     if (IsAllowedNavigation(uri, pageUri_)) return S_OK;
-    if (IsAllowedFrameResource(uri, configuration_.allowedFrameOrigins,
-            configuration_.allowedFrameDomainFamilies)) return S_OK;
+    if (IsAllowedFrameNavigation(uri, configuration_.allowedFrameOrigins))
+        return S_OK;
     Emit(L"Rich media frame navigation denied");
     return args->put_Cancel(TRUE);
 }

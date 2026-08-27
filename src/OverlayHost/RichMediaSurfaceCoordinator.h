@@ -244,6 +244,9 @@ private:
         std::wstring_view uri,
         const std::vector<std::wstring>& allowedOrigins,
         const std::vector<std::wstring>& allowedFamilies = {}) noexcept;
+    [[nodiscard]] static bool IsAllowedFrameNavigation(
+        std::wstring_view uri,
+        const std::vector<std::wstring>& allowedOrigins) noexcept;
     [[nodiscard]] static std::optional<std::wstring>
         ManifestAssemblyIdentity(std::wstring_view manifest) noexcept;
     [[nodiscard]] static std::optional<std::wstring>

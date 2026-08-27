@@ -451,9 +451,10 @@ external frame legitimately spans one registrable DNS family. Entries are
 lowercase ASCII registrable domains, not URLs or public suffixes, and match
 only the exact root plus dot-boundary subdomains over default-port HTTPS. The
 host validates them against its integrity-checked Public Suffix List snapshot,
-checks every navigation/redirect/resource independently, and fails closed when
-the suffix authority is unavailable or corrupt. Exact origins remain a
-separate compatible authority.
+checks every intercepted resource and redirected-resource destination, and
+fails closed when the suffix authority is unavailable or corrupt. Exact
+origins remain the sole frame-document navigation authority; families do not
+admit frame navigation.
 
 Use `WidgetIds.Scope(root)` to construct validated hierarchical IDs.
 `scope.Scope(segment)` creates a child prefix, `scope.Id(name)` creates a leaf,
