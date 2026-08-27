@@ -1,0 +1,34 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width">
+<title>YouTube player adapter</title>
+<style>
+html,body,#player{width:100%;height:100%;margin:0;overflow:hidden;background:#000}
+iframe{width:100%;height:100%;display:block;border:0}
+</style>
+<div id="player" aria-label="YouTube video player"></div>
+<script>
+const apiDeadlineMs=12000;
+let authority={},eventSequence=0,player=null,initialized=false,apiFailure=null;
+let mediaKey='',playbackState='ready',inFlight=null,lastProgressSecond=-1;
+let resolveApi,rejectApi;
+const apiReady=new Promise((resolve,reject)=>{resolveApi=resolve;rejectApi=reject});
+const apiTimer=setTimeout(()=>failApi('player-api-load-failed'),apiDeadlineMs);
+function bounds(){return{x:0,y:0,width:document.documentElement.clientWidth,height:document.documentElement.clientHeight}}
+function fixedCode(value){return String(value||'player-error').toLowerCase().replace(/[^a-z0-9-]/g,'').slice(0,48)||'player-error'}
+function playerError(code){return code===2?'invalid-video':code===5?'playback-unavailable':code===100?'video-private-or-missing':code===101||code===150?'embedding-disabled':code===153?'client-identity-rejected':'player-error'}
+function stateName(value){return value===1?'playing':value===2?'paused':value===3?'loading':value===0?'ended':'ready'}
+function position(){const value=Number(player?.getCurrentTime?.());return Number.isFinite(value)?Math.max(0,value):0}
+function duration(){const value=Number(player?.getDuration?.());return Number.isFinite(value)?Math.max(0,value):0}
+function volume(){const value=Number(player?.getVolume?.());return Number.isFinite(value)?Math.max(0,Math.min(1,value/100)):.8}
+function emit(type,commandId=0,commandSequence=0,errorCode,state=playbackState,key=mediaKey){if(!initialized)return;const value={type,...authority,eventSequence:++eventSequence,commandId,commandSequence,focus:'youtube-player',bounds:bounds(),mediaKey:key,playbackState:state,positionSeconds:position(),durationSeconds:duration(),volume:volume()};if(errorCode)value.errorCode=fixedCode(errorCode);chrome.webview.postMessage(value)}
+function failApi(code){if(apiFailure)return;apiFailure=fixedCode(code);clearTimeout(apiTimer);rejectApi(new Error(apiFailure))}
+function complete(operation,errorCode,state=playbackState){if(inFlight!==operation)return;playbackState=errorCode?'error':state;emit('media',operation.id,operation.sequence,errorCode,playbackState,operation.mediaKey);inFlight=null}
+function onReady(){clearTimeout(apiTimer);resolveApi(player)}
+function onStateChange(event){playbackState=stateName(event.data);const operation=inFlight;if(operation){if(operation.kind==='load'&&event.data===5)complete(operation,undefined,'ready');else if(operation.kind==='pause'&&event.data===2)complete(operation,undefined,'paused');else if(operation.kind==='play'&&event.data===1)complete(operation,undefined,'playing');return}emit('media')}
+function onError(event){const operation=inFlight,code=playerError(Number(event.data));if(operation)complete(operation,code,'error');else{playbackState='error';emit('media',0,0,code,'error')}}
+window.onYouTubeIframeAPIReady=()=>{try{player=new YT.Player('player',{width:'100%',height:'100%',playerVars:{autoplay:0,controls:1,disablekb:1,enablejsapi:1,fs:0,playsinline:1,origin:location.origin,rel:0},events:{onReady,onStateChange,onError}})}catch{failApi('player-api-load-failed')}};
+const script=document.createElement('script');script.src='https://www.youtube.com/iframe_api';script.async=true;script.onerror=()=>failApi('player-api-load-failed');document.head.appendChild(script);
+setInterval(()=>{if(!inFlight&&playbackState==='playing'){const second=Math.floor(position());if(second!==lastProgressSecond){lastProgressSecond=second;emit('media')}}},500);
+chrome.webview.addEventListener('message',async event=>{const message=event.data;if(!message)return;if(message.command==='initialize'){authority={environmentGeneration:message.environmentGeneration,surfaceGeneration:message.surfaceGeneration,sessionGeneration:message.sessionGeneration,controllerGeneration:message.controllerGeneration,documentGeneration:message.documentGeneration};eventSequence=0;inFlight=null;initialized=true;chrome.webview.postMessage({type:'ready',...authority,eventSequence:++eventSequence,commandId:message.commandId,focus:'youtube-player',bounds:bounds()});return}for(const key of Object.keys(authority))if(message[key]!==authority[key])return;if(inFlight)return;const operation={id:message.commandId,sequence:message.commandSequence||0,mediaKey:message.mediaKey||mediaKey,kind:message.command};inFlight=operation;try{await apiReady;if(apiFailure)throw new Error(apiFailure);if(message.command==='load'||message.command==='cue'){mediaKey=operation.mediaKey;playbackState='loading';player.cueVideoById({videoId:mediaKey,startSeconds:0});return}if(operation.mediaKey!==mediaKey){complete(operation,'media-key-mismatch','error');return}if(message.command==='arm-activate'){operation.kind='play';emit('armed',operation.id,operation.sequence,undefined,playbackState,operation.mediaKey);return}if(message.command==='pause'){operation.kind='pause';player.pauseVideo();if(player.getPlayerState()===2)complete(operation,undefined,'paused');return}if(message.command==='seek'){player.seekTo(Math.max(0,Number(message.positionSeconds)||0),true);setTimeout(()=>complete(operation,undefined,stateName(player.getPlayerState())),100);return}if(message.command==='volume'){player.setVolume(Math.round(Math.max(0,Math.min(1,Number(message.volume)||0))*100));complete(operation,undefined,stateName(player.getPlayerState()));return}complete(operation,'command-unsupported','error')}catch(error){complete(operation,apiFailure||fixedCode(error?.message),'error')}});
+</script>

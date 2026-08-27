@@ -1,0 +1,16 @@
+<Project Sdk="MSTest.Sdk/4.3.2">
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\..\samples\YouTubeWidget\YouTubeWidget.csproj" />
+    <ProjectReference Include="..\..\src\WidgetProtocol\WidgetProtocol.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="..\..\samples\YouTubeWidget\manifest.json" Link="manifest.json" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="..\..\samples\YouTubeWidget\media\adapter.html" Link="media\adapter.html" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+</Project>

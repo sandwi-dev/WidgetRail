@@ -1,0 +1,31 @@
+{
+  "manifestVersion": 1,
+  "id": "widgetrail.samples.youtube-video",
+  "publisher": "widgetrail.samples",
+  "name": "YouTube Video",
+  "version": "0.1.0",
+  "hostApi": {
+    "minimum": "1.0",
+    "maximumMajor": 1
+  },
+  "entrypoint": {
+    "runtime": "dotnet-worker",
+    "assembly": "payload/YouTubeWidget.dll",
+    "type": "WidgetRail.Samples.YouTubeWidget.YouTubeVideoWidget"
+  },
+  "presentation": { "icon": "play" },
+  "permissions": [],
+  "optionalPermissions": [],
+  "residencyPolicy": {
+    "schemaVersion": 1,
+    "mode": "suspend-when-hidden"
+  },
+  "resourceRequest": {
+    "memoryMb": 48,
+    "updateHz": 4
+  },
+  "architectures": [
+    "x64",
+    "arm64"
+  ]
+}

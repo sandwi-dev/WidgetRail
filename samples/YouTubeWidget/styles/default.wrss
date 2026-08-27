@@ -1,0 +1,23 @@
+.youtube-root { width: 100vw; min-width: 0px; gap: 10px; padding: 14px 16px; background: var(--surface); color: var(--text); overflow: clip; }
+.youtube-header { min-width: 0px; gap: 1px; flex-shrink: 0; }
+.youtube-eyebrow { color: var(--text-muted); font-size: 10px; font-weight: 500; letter-spacing: 0.03em; max-lines: 1; }
+.youtube-title { color: var(--text); font-size: 24px; font-weight: 500; max-lines: 1; }
+.youtube-status { color: var(--text-muted); font-size: 11px; max-lines: 2; }
+.youtube-status.is-error { color: var(--danger, #c98181); }
+.youtube-link { width: 100%; min-height: 44px; color: var(--text); background: var(--surface-raised); border-color: var(--text-subdued); border-width: 1px; corner-radius: 9px; flex-shrink: 0; }
+.youtube-link:focused { outline-color: var(--focus); outline-width: 2px; outline-offset: -2px; }
+.youtube-viewport { width: 100%; min-width: 356px; min-height: 200px; flex-basis: 360px; flex-grow: 1; flex-shrink: 1; background: #000000; border-color: var(--text-subdued); border-width: 1px; corner-radius: 10px; overflow: clip; }
+.youtube-controls { min-height: 46px; align: center; justify: center; gap: 10px; flex-shrink: 0; }
+.youtube-primary, .youtube-secondary { min-height: 42px; padding: 9px 16px; border-width: 1px; corner-radius: 9px; }
+.youtube-primary { min-width: 108px; background: var(--accent); color: var(--surface); border-color: transparent; }
+.youtube-secondary { min-width: 82px; background: var(--surface-raised); color: var(--text); border-color: var(--text-subdued); }
+.youtube-primary:focused, .youtube-secondary:focused { outline-color: var(--focus); outline-width: 2px; outline-offset: -2px; }
+.youtube-secondary:focused { background: var(--surface-muted); }
+.youtube-primary:disabled, .youtube-secondary:disabled { color: var(--text-subdued); background: var(--surface-muted); }
+.youtube-slider-row { min-height: 44px; align: center; gap: 9px; flex-shrink: 0; }
+.youtube-time { width: 40px; color: var(--text-muted); font-size: 11px; max-lines: 1; }
+.youtube-time.is-end { text-align: end; }
+.youtube-label { width: 56px; color: var(--text-muted); font-size: 11px; max-lines: 1; }
+.youtube-slider { min-width: 220px; height: 44px; flex-grow: 1; color: var(--accent); background: var(--surface-muted); }
+.youtube-slider:focused { outline-color: var(--focus); outline-width: 2px; outline-offset: -2px; }
+.youtube-volume { min-width: 240px; }
