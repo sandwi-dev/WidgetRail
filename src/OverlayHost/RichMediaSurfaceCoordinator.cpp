@@ -1298,6 +1298,7 @@ HRESULT RichMediaSurfaceCoordinator::OnWebMessage(
             if (message.HasKey(L"mediaKey") && message.HasKey(L"positionSeconds") &&
                 message.HasKey(L"durationSeconds") && message.HasKey(L"volume") &&
                 message.HasKey(L"playbackState")) {
+                const bool hasPreferences = message.HasKey(L"playbackRate");
                 playbackEvent = PlaybackEvent{
                     next.authority.eventSequence,
                     static_cast<std::uint64_t>(
@@ -1309,7 +1310,11 @@ HRESULT RichMediaSurfaceCoordinator::OnWebMessage(
                     message.GetNamedNumber(L"volume"),
                     message.HasKey(L"errorCode")
                         ? std::wstring(std::wstring_view(message.GetNamedString(L"errorCode")))
-                        : std::wstring{}};
+                        : std::wstring{},
+                    hasPreferences ? message.GetNamedNumber(L"playbackRate") : 1.0,
+                    hasPreferences ? message.GetNamedBoolean(L"muted") : false,
+                    hasPreferences ? message.GetNamedBoolean(L"loop") : false,
+                    hasPreferences};
             }
         } catch (...) {
             Fault(L"message-playback-state", E_ACCESSDENIED);
@@ -1333,6 +1338,28 @@ HRESULT RichMediaSurfaceCoordinator::OnWebMessage(
     if (!playbackCorrelated) {
         Fault(L"message-playback-correlation", E_ACCESSDENIED);
         return S_OK;
+    }
+    if (playbackEvent && pendingCommand_ &&
+        playbackEvent->commandSequence == pendingCommand_->playbackSequence &&
+        pendingCommand_->playbackKind &&
+        (*pendingCommand_->playbackKind == PlaybackCommandKind::SetPlaybackRate ||
+         *pendingCommand_->playbackKind == PlaybackCommandKind::SetMuted ||
+         *pendingCommand_->playbackKind == PlaybackCommandKind::SetLoop)) {
+        const bool failed = !playbackEvent->errorCode.empty();
+        const bool applied = playbackEvent->hasPlaybackPreferences &&
+            (*pendingCommand_->playbackKind != PlaybackCommandKind::SetPlaybackRate ||
+             (pendingCommand_->expectedPlaybackRate &&
+              playbackEvent->playbackRate == *pendingCommand_->expectedPlaybackRate)) &&
+            (*pendingCommand_->playbackKind != PlaybackCommandKind::SetMuted ||
+             (pendingCommand_->expectedMuted &&
+              playbackEvent->muted == *pendingCommand_->expectedMuted)) &&
+            (*pendingCommand_->playbackKind != PlaybackCommandKind::SetLoop ||
+             (pendingCommand_->expectedLoop &&
+              playbackEvent->loop == *pendingCommand_->expectedLoop));
+        if (!failed && !applied) {
+            Fault(L"message-playback-preference-state", E_ACCESSDENIED);
+            return S_OK;
+        }
     }
     state_ = std::move(next);
     if (pendingCommand_ &&
@@ -1579,6 +1606,9 @@ bool RichMediaSurfaceCoordinator::SendPlaybackCommand(
     case PlaybackCommandKind::Pause: name = L"pause"; transport = Command::TogglePlayback; break;
     case PlaybackCommandKind::Seek: name = L"seek"; transport = Command::SeekForward; break;
     case PlaybackCommandKind::SetVolume: name = L"volume"; transport = Command::TogglePlayback; break;
+    case PlaybackCommandKind::SetPlaybackRate: name = L"playback-rate"; transport = Command::TogglePlayback; break;
+    case PlaybackCommandKind::SetMuted: name = L"muted"; transport = Command::TogglePlayback; break;
+    case PlaybackCommandKind::SetLoop: name = L"loop"; transport = Command::TogglePlayback; break;
     }
     if (transport == Command::Activate && !state_.focusedActionBoundsCurrent) return false;
     const auto commandId = ++nextCommandId_;
@@ -1591,11 +1621,18 @@ bool RichMediaSurfaceCoordinator::SendPlaybackCommand(
     if (command.positionSeconds)
         json += std::format(L",\"positionSeconds\":{}", *command.positionSeconds);
     if (command.volume) json += std::format(L",\"volume\":{}", *command.volume);
+    if (command.playbackRate)
+        json += std::format(L",\"playbackRate\":{}", *command.playbackRate);
+    if (command.muted)
+        json += std::format(L",\"muted\":{}", *command.muted ? L"true" : L"false");
+    if (command.loop)
+        json += std::format(L",\"loop\":{}", *command.loop ? L"true" : L"false");
     json += L"}";
     if (FAILED(core_->PostWebMessageAsJson(json.c_str()))) return false;
     pendingCommand_ = PendingCommand{
         commandId, transport, command.sequence, command.mediaKey,
-        PendingPhase::AwaitingEvent};
+        PendingPhase::AwaitingEvent, command.kind, command.playbackRate,
+        command.muted, command.loop};
     return true;
 }
 
@@ -1692,17 +1729,26 @@ bool RichMediaSurfaceCoordinator::ValidatePageEvent(
         constexpr std::array playbackKeys{
             L"mediaKey", L"playbackState", L"positionSeconds",
             L"durationSeconds", L"volume"};
+        constexpr std::array preferenceKeys{L"playbackRate", L"muted", L"loop"};
         const bool hasPlayback = object.HasKey(L"mediaKey") ||
             object.HasKey(L"playbackState") || object.HasKey(L"positionSeconds") ||
             object.HasKey(L"durationSeconds") || object.HasKey(L"volume");
+        const bool hasAnyPreference = std::any_of(
+            preferenceKeys.begin(), preferenceKeys.end(),
+            [&](const wchar_t* key) { return object.HasKey(key); });
+        const bool hasAllPreferences = std::all_of(
+            preferenceKeys.begin(), preferenceKeys.end(),
+            [&](const wchar_t* key) { return object.HasKey(key); });
         const std::size_t expectedSize = required.size() +
             (hasPlayback ? playbackKeys.size() : 0) +
+            (hasAnyPreference ? preferenceKeys.size() : 0) +
             (object.HasKey(L"errorCode") ? 1 : 0);
         if (object.Size() != expectedSize ||
             std::any_of(required.begin(), required.end(),
                         [&](const wchar_t* key) { return !object.HasKey(key); }) ||
             (hasPlayback && std::any_of(playbackKeys.begin(), playbackKeys.end(),
-                        [&](const wchar_t* key) { return !object.HasKey(key); }))) return false;
+                        [&](const wchar_t* key) { return !object.HasKey(key); })) ||
+            (hasAnyPreference && (!hasPlayback || !hasAllPreferences))) return false;
         const std::wstring type = object.GetNamedString(L"type").c_str();
         const std::wstring focus = object.GetNamedString(L"focus").c_str();
         const auto number = [&](const wchar_t* key, std::uint64_t& value) {
@@ -1772,6 +1818,16 @@ bool RichMediaSurfaceCoordinator::ValidatePageEvent(
                 !std::isfinite(volume) || position < 0.0 || duration < 0.0 ||
                 duration > 86400.0 || position > duration || volume < 0.0 || volume > 1.0)
                 return false;
+            if (hasAllPreferences) {
+                const double playbackRate = object.GetNamedNumber(L"playbackRate");
+                if (!std::isfinite(playbackRate) ||
+                    playbackRate < protocol_contract::MinimumEmbeddedMediaPlaybackRate ||
+                    playbackRate > protocol_contract::MaximumEmbeddedMediaPlaybackRate)
+                    return false;
+                next.playbackRate = playbackRate;
+                next.muted = object.GetNamedBoolean(L"muted");
+                next.loop = object.GetNamedBoolean(L"loop");
+            }
             if (object.HasKey(L"errorCode")) {
                 const auto error = std::wstring(
                     std::wstring_view(object.GetNamedString(L"errorCode")));

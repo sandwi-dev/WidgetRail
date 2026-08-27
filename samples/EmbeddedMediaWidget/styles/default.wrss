@@ -18,3 +18,6 @@
 .media-shell-play { width: 54px; height: 54px; min-width: 54px; min-height: 54px; padding: 15px; background: var(--accent); color: var(--surface); border-color: transparent; }
 .media-shell-back:focused, .media-shell-transport:focused, .media-shell-play:focused { outline-color: var(--focus); outline-width: 2px; outline-offset: -2px; }
 .media-shell-back:focused, .media-shell-transport:focused { background: var(--surface-muted); }
+.media-shell-preferences { height: 38px; align: center; justify: center; gap: 8px; flex-shrink: 0; }
+.media-shell-preference { min-width: 84px; min-height: 34px; padding: 7px 11px; color: var(--text); background: var(--surface-raised); border-color: var(--text-subdued); border-width: 1px; corner-radius: 8px; }
+.media-shell-preference:focused { background: var(--surface-muted); outline-color: var(--focus); outline-width: 2px; outline-offset: -2px; }

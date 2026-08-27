@@ -1320,7 +1320,8 @@ WidgetSnapshot ParseSnapshot(const JsonObject& source) {
         if (media.HasKey(L"pendingCommand")) {
             const auto pending = media.GetNamedObject(L"pendingCommand");
             if (!HasNoUnknownProperties(pending,
-                    {L"sequence", L"kind", L"mediaKey", L"positionSeconds", L"volume"}))
+                    {L"sequence", L"kind", L"mediaKey", L"positionSeconds", L"volume",
+                     L"playbackRate", L"muted", L"loop"}))
                 throw winrt::hresult_invalid_argument(
                     L"Embedded media playback command contains an unknown property.");
             EmbeddedMediaPlaybackCommand command;
@@ -1336,8 +1337,15 @@ WidgetSnapshot ParseSnapshot(const JsonObject& source) {
                 command.positionSeconds = pending.GetNamedNumber(L"positionSeconds");
             if (pending.HasKey(L"volume"))
                 command.volume = pending.GetNamedNumber(L"volume");
-            constexpr std::array<std::wstring_view, 6> playbackKinds{
-                L"load", L"cue", L"play", L"pause", L"seek", L"setVolume"};
+            if (pending.HasKey(L"playbackRate"))
+                command.playbackRate = pending.GetNamedNumber(L"playbackRate");
+            if (pending.HasKey(L"muted"))
+                command.muted = pending.GetNamedBoolean(L"muted");
+            if (pending.HasKey(L"loop"))
+                command.loop = pending.GetNamedBoolean(L"loop");
+            constexpr std::array<std::wstring_view, 9> playbackKinds{
+                L"load", L"cue", L"play", L"pause", L"seek", L"setVolume",
+                L"setPlaybackRate", L"setMuted", L"setLoop"};
             const bool kindValid = std::find(
                 playbackKinds.begin(), playbackKinds.end(), command.kind) != playbackKinds.end();
             if (command.sequence <= 0 || !kindValid || !IsIdentifier(command.mediaKey) ||
@@ -1346,8 +1354,20 @@ WidgetSnapshot ParseSnapshot(const JsonObject& source) {
                     *command.positionSeconds < 0.0 || *command.positionSeconds > 86400.0)) ||
                 (command.volume && (!std::isfinite(*command.volume) ||
                     *command.volume < 0.0 || *command.volume > 1.0)) ||
+                (command.playbackRate && (!std::isfinite(*command.playbackRate) ||
+                    *command.playbackRate < protocol_contract::MinimumEmbeddedMediaPlaybackRate ||
+                    *command.playbackRate > protocol_contract::MaximumEmbeddedMediaPlaybackRate)) ||
                 (command.kind == L"seek" && !command.positionSeconds) ||
-                (command.kind == L"setVolume" && !command.volume))
+                (command.kind == L"setVolume" && !command.volume) ||
+                (command.kind == L"setPlaybackRate" && !command.playbackRate) ||
+                (command.kind == L"setMuted" && !command.muted) ||
+                (command.kind == L"setLoop" && !command.loop) ||
+                (command.kind != L"setPlaybackRate" && command.playbackRate) ||
+                (command.kind != L"setMuted" && command.muted) ||
+                (command.kind != L"setLoop" && command.loop) ||
+                ((command.kind == L"setPlaybackRate" || command.kind == L"setMuted" ||
+                  command.kind == L"setLoop") &&
+                 snapshot.protocolVersion < protocol_contract::EmbeddedMediaPlaybackPreferencesVersion))
                 throw winrt::hresult_invalid_argument(
                     L"Embedded media playback command is invalid.");
             parsed.pendingCommand = std::move(command);
@@ -2310,8 +2330,9 @@ std::optional<EmbeddedMediaBundle> ParseEmbeddedMediaBundle(
     }
     if (body.HasKey(L"pendingCommand")) {
         const auto pending = body.GetNamedObject(L"pendingCommand");
-        if (!HasOnlyProperties(pending,
-                {L"sequence", L"kind", L"mediaKey", L"positionSeconds", L"volume"}))
+        if (!HasNoUnknownProperties(pending,
+                {L"sequence", L"kind", L"mediaKey", L"positionSeconds", L"volume",
+                 L"playbackRate", L"muted", L"loop"}))
             return std::nullopt;
         EmbeddedMediaPlaybackCommand command;
         command.sequence = RequiredIntegral(pending, L"sequence");
@@ -2320,8 +2341,13 @@ std::optional<EmbeddedMediaBundle> ParseEmbeddedMediaBundle(
         if (pending.HasKey(L"positionSeconds"))
             command.positionSeconds = pending.GetNamedNumber(L"positionSeconds");
         if (pending.HasKey(L"volume")) command.volume = pending.GetNamedNumber(L"volume");
-        constexpr std::array<std::wstring_view, 6> playbackKinds{
-            L"load", L"cue", L"play", L"pause", L"seek", L"setVolume"};
+        if (pending.HasKey(L"playbackRate"))
+            command.playbackRate = pending.GetNamedNumber(L"playbackRate");
+        if (pending.HasKey(L"muted")) command.muted = pending.GetNamedBoolean(L"muted");
+        if (pending.HasKey(L"loop")) command.loop = pending.GetNamedBoolean(L"loop");
+        constexpr std::array<std::wstring_view, 9> playbackKinds{
+            L"load", L"cue", L"play", L"pause", L"seek", L"setVolume",
+            L"setPlaybackRate", L"setMuted", L"setLoop"};
         if (command.sequence <= 0 || !IsIdentifier(command.mediaKey) ||
             command.mediaKey.size() > protocol_contract::MaximumEmbeddedMediaKeyLength ||
             std::find(playbackKinds.begin(), playbackKinds.end(), command.kind) ==
@@ -2330,8 +2356,17 @@ std::optional<EmbeddedMediaBundle> ParseEmbeddedMediaBundle(
                 *command.positionSeconds < 0.0 || *command.positionSeconds > 86400.0)) ||
             (command.volume && (!std::isfinite(*command.volume) ||
                 *command.volume < 0.0 || *command.volume > 1.0)) ||
+            (command.playbackRate && (!std::isfinite(*command.playbackRate) ||
+                *command.playbackRate < protocol_contract::MinimumEmbeddedMediaPlaybackRate ||
+                *command.playbackRate > protocol_contract::MaximumEmbeddedMediaPlaybackRate)) ||
             (command.kind == L"seek" && !command.positionSeconds) ||
-            (command.kind == L"setVolume" && !command.volume)) return std::nullopt;
+            (command.kind == L"setVolume" && !command.volume) ||
+            (command.kind == L"setPlaybackRate" && !command.playbackRate) ||
+            (command.kind == L"setMuted" && !command.muted) ||
+            (command.kind == L"setLoop" && !command.loop) ||
+            (command.kind != L"setPlaybackRate" && command.playbackRate) ||
+            (command.kind != L"setMuted" && command.muted) ||
+            (command.kind != L"setLoop" && command.loop)) return std::nullopt;
         bundle.surface.pendingCommand = std::move(command);
     }
 
@@ -3514,7 +3549,11 @@ std::optional<bool> WidgetBridgeClient::PublishEmbeddedMediaPlaybackEvent(
         playbackEvent.commandSequence < 0 || !IsIdentifier(playbackEvent.mediaKey) ||
         !std::isfinite(playbackEvent.positionSeconds) ||
         !std::isfinite(playbackEvent.durationSeconds) ||
-        !std::isfinite(playbackEvent.volume)) return std::nullopt;
+        !std::isfinite(playbackEvent.volume) ||
+        !std::isfinite(playbackEvent.playbackRate) ||
+        playbackEvent.playbackRate < protocol_contract::MinimumEmbeddedMediaPlaybackRate ||
+        playbackEvent.playbackRate > protocol_contract::MaximumEmbeddedMediaPlaybackRate)
+        return std::nullopt;
     try {
         JsonObject event;
         event.Insert(L"surfaceId", JsonValue::CreateStringValue(playbackEvent.surfaceId));
@@ -3529,6 +3568,10 @@ std::optional<bool> WidgetBridgeClient::PublishEmbeddedMediaPlaybackEvent(
         event.Insert(L"durationSeconds", JsonValue::CreateNumberValue(
             playbackEvent.durationSeconds));
         event.Insert(L"volume", JsonValue::CreateNumberValue(playbackEvent.volume));
+        event.Insert(L"playbackRate", JsonValue::CreateNumberValue(
+            playbackEvent.playbackRate));
+        event.Insert(L"muted", JsonValue::CreateBooleanValue(playbackEvent.muted));
+        event.Insert(L"loop", JsonValue::CreateBooleanValue(playbackEvent.loop));
         if (!playbackEvent.errorCode.empty())
             event.Insert(L"errorCode", JsonValue::CreateStringValue(playbackEvent.errorCode));
         JsonObject payload;

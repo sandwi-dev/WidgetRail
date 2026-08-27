@@ -454,6 +454,16 @@ for subframes only; the
 top-level document remains the sealed package entry asset. This contract does
 not expose URLs, DOM, script, browsing, or provider identity.
 
+Protocol v27 adds the closed `SetPlaybackRate`, `SetMuted`, and `SetLoop`
+playback commands. Playback rate is finite and bounded from 0.5 through 2.0;
+mute and loop carry exact Boolean values. Every correlated terminal observation
+reports the applied playback rate, muted state, and loop state. Adapters must
+return a bounded correlated error when a requested rate is unavailable rather
+than assuming success. These preferences belong to the current adapter
+document: `Load` and `Cue` retain them while changing media within that
+document, while controller/document replacement resets them to adapter
+defaults. Muting never changes the authored volume.
+
 Protocol v26 adds `AllowedFrameDomainFamilies` for the bounded case where an
 external frame legitimately spans one registrable DNS family. Entries are
 lowercase ASCII registrable domains, not URLs or public suffixes, and match

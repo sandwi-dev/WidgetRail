@@ -171,7 +171,7 @@ internal static class BridgeClientRegistryScenarios
             Catalog(configured),
             configure: (_, client) => client.SnapshotFactory = sequence => new ViewSnapshot
             {
-                ProtocolVersion = ProtocolConstants.EmbeddedMediaPlaybackVersion,
+                ProtocolVersion = ProtocolConstants.EmbeddedMediaPlaybackPreferencesVersion,
                 Sequence = sequence,
                 WidgetInstanceId = configured.InstanceId,
                 ActiveInputScopeId = "root",
@@ -194,8 +194,9 @@ internal static class BridgeClientRegistryScenarios
                         ? new EmbeddedMediaPlaybackCommand
                         {
                             Sequence = 3,
-                            Kind = EmbeddedMediaPlaybackCommandKind.Play,
+                            Kind = EmbeddedMediaPlaybackCommandKind.SetMuted,
                             MediaKey = "aurora-track",
+                            Muted = true,
                         }
                         : null,
                     Resources =
@@ -236,6 +237,9 @@ internal static class BridgeClientRegistryScenarios
             PositionSeconds = 0,
             DurationSeconds = 60,
             Volume = 0.8,
+            PlaybackRate = 1,
+            Muted = false,
+            Loop = false,
         };
         await fixture.Registry.PublishEmbeddedMediaPlaybackEventAsync(
             new BridgeEmbeddedMediaPlaybackEventRequest(
@@ -263,10 +267,13 @@ internal static class BridgeClientRegistryScenarios
             Sequence = 7,
             CommandSequence = 3,
             MediaKey = "aurora-track",
-            State = EmbeddedMediaPlaybackState.Playing,
+            State = EmbeddedMediaPlaybackState.Paused,
             PositionSeconds = 12,
             DurationSeconds = 60,
             Volume = 0.8,
+            PlaybackRate = 1,
+            Muted = true,
+            Loop = false,
         };
         var eventRequest = new BridgeEmbeddedMediaPlaybackEventRequest(
             exact.WidgetId,
@@ -287,6 +294,13 @@ internal static class BridgeClientRegistryScenarios
                 eventRequest with
                 {
                     Event = playbackEvent with { CommandSequence = 4 },
+                },
+                CancellationToken.None));
+        await RegistryAssert.ThrowsAsync<BridgeProtocolException>(() =>
+            fixture.Registry.PublishEmbeddedMediaPlaybackEventAsync(
+                eventRequest with
+                {
+                    Event = playbackEvent with { Muted = false },
                 },
                 CancellationToken.None));
         var compatibleSuccessor = await fixture.GetSnapshotAsync(configured.Id);

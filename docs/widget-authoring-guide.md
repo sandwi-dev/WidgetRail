@@ -86,7 +86,7 @@ Do not use these version numbers interchangeably.
 | --- | ---: | --- | --- |
 | Manifest schema | `manifestVersion: 1` | `manifest.json` | Shape and validation rules of the package manifest. |
 | Package host API | major `1` | `hostApi.minimum` and `hostApi.maximumMajor` | Compatibility range used when the catalog decides whether this host may load the package. |
-| Declarative snapshot protocol | `1` through `19` | Generated `ViewSnapshot.ProtocolVersion` | Shape of one rendered UI checkpoint and the optional atomic update contract. The SDK selects the highest version required by the complete tree automatically. |
+| Declarative snapshot protocol | `1` through `27` | Generated `ViewSnapshot.ProtocolVersion` | Shape of one rendered UI checkpoint and the optional atomic update contract. The SDK selects the highest version required by the complete tree automatically. |
 
 A plain Stack/Row view is emitted as protocol 1. Scroll/surface hints require
 v2; Slider v3; dashboard gesture authority v4; LoadingIndicator v5; inline PNG

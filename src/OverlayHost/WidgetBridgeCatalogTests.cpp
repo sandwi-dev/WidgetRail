@@ -401,7 +401,7 @@ void VerifyEmbeddedMediaSnapshotContract() {
     std::wstring error;
     const auto valid = widgetrail::testing::ParseWidgetSnapshotResponse(R"json({
         "snapshot": {
-            "protocolVersion":26,"sequence":7,
+            "protocolVersion":27,"sequence":7,
             "widgetInstanceId":"neutral.adapter","activeInputScopeId":"root",
             "surface":{"mode":"standard","preferredWidth":760,"preferredHeight":425,
                        "minimumWidth":320,"minimumHeight":180},
@@ -414,7 +414,9 @@ void VerifyEmbeddedMediaSnapshotContract() {
                     {"path":"media/tone.wav","contentType":"audio/wav"}],
                 "commands":["activate","togglePlayback","back"],
                 "allowedFrameOrigins":["https://frames.neutral.invalid"],
-                "allowedFrameDomainFamilies":["example.com"]},
+                "allowedFrameDomainFamilies":["example.com"],
+                "pendingCommand":{"sequence":8,"kind":"setPlaybackRate",
+                    "mediaKey":"aurora-video","playbackRate":1.5}},
             "root":{"id":"root","kind":"stack","children":[
                 {"id":"title","kind":"text","text":"Aurora fixture","children":[]},
                 {"id":"viewport","kind":"mediaViewport","mediaSurfaceId":"media",
@@ -431,6 +433,9 @@ void VerifyEmbeddedMediaSnapshotContract() {
                 valid->embeddedMedia->commands.size() == 3 &&
                 valid->embeddedMedia->allowedFrameDomainFamilies ==
                     std::vector<std::wstring>{L"example.com"} &&
+                valid->embeddedMedia->pendingCommand &&
+                valid->embeddedMedia->pendingCommand->kind == L"setPlaybackRate" &&
+                valid->embeddedMedia->pendingCommand->playbackRate == 1.5 &&
                 valid->root.children.size() == 3 &&
                 valid->root.children[1].kind == L"mediaViewport" &&
                 valid->root.children[1].mediaSurfaceId == L"media",
@@ -529,6 +534,8 @@ void VerifyEmbeddedMediaBundleBoundary() {
         "commands":["activate","togglePlayback"],
         "allowedFrameOrigins":["https://frames.aurora.invalid"],
         "allowedFrameDomainFamilies":["example.com"],
+        "pendingCommand":{"sequence":8,"kind":"setMuted",
+            "mediaKey":"aurora-video","muted":true},
         "resources":[{"path":"media/index.html","contentType":"text/html",
             "sha256":"0000000000000000000000000000000000000000000000000000000000000000",
             "contentBase64":"QQ=="}]
@@ -548,8 +555,25 @@ void VerifyEmbeddedMediaBundleBoundary() {
     };
     const auto parsed = parse(valid);
     Require(parsed && parsed->surface.allowedFrameDomainFamilies ==
-                std::vector<std::wstring>{L"example.com"},
+                std::vector<std::wstring>{L"example.com"} &&
+                parsed->surface.pendingCommand &&
+                parsed->surface.pendingCommand->kind == L"setMuted" &&
+                parsed->surface.pendingCommand->muted == true,
             "valid native embedded media domain family bundle was rejected");
+    const auto rateCommand = parse(replace(
+        replace(std::string{valid}, "\"kind\":\"setMuted\"",
+                "\"kind\":\"setPlaybackRate\""),
+        "\"muted\":true", "\"playbackRate\":1.5"));
+    Require(rateCommand && rateCommand->surface.pendingCommand &&
+                rateCommand->surface.pendingCommand->playbackRate == 1.5,
+            "valid sparse SetPlaybackRate bundle command was rejected");
+    const auto loopCommand = parse(replace(
+        replace(std::string{valid}, "\"kind\":\"setMuted\"",
+                "\"kind\":\"setLoop\""),
+        "\"muted\":true", "\"loop\":false"));
+    Require(loopCommand && loopCommand->surface.pendingCommand &&
+                loopCommand->surface.pendingCommand->loop == false,
+            "valid sparse SetLoop bundle command was rejected");
     for (const auto& malformed : {
              replace(std::string{valid}, "\"mode\":\"standard\"",
                      "\"mode\":\"browser\""),
@@ -564,6 +588,9 @@ void VerifyEmbeddedMediaBundleBoundary() {
                      "\"commands\":[\"activate\",\"activate\"]"),
              replace(std::string{valid}, "\"commands\":[\"activate\",\"togglePlayback\"]",
                      "\"commands\":[\"browse\"]"),
+             replace(std::string{valid}, "\"muted\":true", "\"loop\":true"),
+             replace(std::string{valid}, "\"muted\":true",
+                     "\"muted\":true,\"script\":\"bad\""),
              replace(std::string{valid}, "https://frames.aurora.invalid",
                      "https://frames.aurora.invalid/"),
              replace(std::string{valid}, "https://frames.aurora.invalid",

@@ -563,6 +563,21 @@ void RunContractCases() {
     Require(next.mediaKey == L"aurora-tone-2" && next.playing &&
             next.positionSeconds == 12.0 && next.durationSeconds == 60.0,
             "typed playback state was not retained exactly");
+    next = state;
+    Require(RichMediaSurfaceCoordinator::ValidatePageEvent(
+        LR"({"type":"media","environmentGeneration":2,"surfaceGeneration":3,"sessionGeneration":7,"controllerGeneration":11,"documentGeneration":13,"eventSequence":4,"commandId":17,"commandSequence":17,"focus":"aurora.primary","playing":false,"bounds":{"x":0,"y":0,"width":640,"height":360},"mediaKey":"aurora-tone-2","playbackState":"paused","positionSeconds":12,"durationSeconds":60,"volume":0.72,"playbackRate":1.5,"muted":true,"loop":false})",
+        state.authority, 3, 17, next),
+        "typed playback preference terminal state was rejected");
+    Require(next.playbackRate == 1.5 && next.muted && !next.loop,
+            "typed playback preference state was not retained exactly");
+    Require(!RichMediaSurfaceCoordinator::ValidatePageEvent(
+        LR"({"type":"media","environmentGeneration":2,"surfaceGeneration":3,"sessionGeneration":7,"controllerGeneration":11,"documentGeneration":13,"eventSequence":4,"commandId":17,"commandSequence":17,"focus":"aurora.primary","playing":false,"bounds":{"x":0,"y":0,"width":640,"height":360},"mediaKey":"aurora-tone-2","playbackState":"paused","positionSeconds":12,"durationSeconds":60,"volume":0.72,"playbackRate":2.1,"muted":true,"loop":false})",
+        state.authority, 3, 17, next),
+        "out-of-range playback preference was admitted");
+    Require(!RichMediaSurfaceCoordinator::ValidatePageEvent(
+        LR"({"type":"media","environmentGeneration":2,"surfaceGeneration":3,"sessionGeneration":7,"controllerGeneration":11,"documentGeneration":13,"eventSequence":4,"commandId":17,"commandSequence":17,"focus":"aurora.primary","playing":false,"bounds":{"x":0,"y":0,"width":640,"height":360},"mediaKey":"aurora-tone-2","playbackState":"paused","positionSeconds":12,"durationSeconds":60,"volume":0.72,"playbackRate":1.5,"muted":true})",
+        state.authority, 3, 17, next),
+        "partial playback preference terminal state was admitted");
     Require(!RichMediaSurfaceCoordinator::ValidatePageEvent(
         LR"({"type":"media","environmentGeneration":2,"surfaceGeneration":3,"sessionGeneration":7,"controllerGeneration":11,"documentGeneration":13,"eventSequence":4,"commandId":18,"commandSequence":17,"focus":"cedar.primary","playing":true,"bounds":{"x":0,"y":0,"width":640,"height":360},"mediaKey":"cedar-tone","playbackState":"playing","positionSeconds":12,"durationSeconds":60,"volume":0.72})",
         state.authority, 3, 17, next),
@@ -1739,7 +1754,10 @@ void RunProviderNeutralAdapterCases() {
                             ? L"<none>" : found->errorCode)
                        << L" duration=" << found->durationSeconds
                        << L" position=" << found->positionSeconds
-                       << L" volume=" << found->volume << L'\n' << std::flush;
+                       << L" volume=" << found->volume
+                       << L" rate=" << found->playbackRate
+                       << L" muted=" << found->muted
+                       << L" loop=" << found->loop << L'\n' << std::flush;
         }
         Require(found != sample.playbackEvents().end() &&
                     found->mediaKey == expectedKey &&
@@ -1783,6 +1801,68 @@ void RunProviderNeutralAdapterCases() {
     Require(finalSeek != sample.playbackEvents().end() &&
                 std::abs(finalSeek->positionSeconds - 5.0) <= 0.15,
             "built sample final seek did not retain the exact in-duration position");
+    const auto preferenceControllerGeneration =
+        sample.coordinator().state().authority.controllerGeneration;
+    Require(sample.coordinator().SendPlaybackCommand({
+                8, PlaybackCommandKind::SetPlaybackRate, std::wstring{primaryMediaKey},
+                std::nullopt, std::nullopt, 1.5, std::nullopt, std::nullopt}),
+            "built sample rejected a playback-rate preference command");
+    requirePlayback(8, primaryMediaKey, L"paused");
+    const auto rateEvent = std::find_if(
+        sample.playbackEvents().begin(), sample.playbackEvents().end(),
+        [](const PlaybackEvent& event) { return event.commandSequence == 8; });
+    Require(rateEvent != sample.playbackEvents().end() &&
+                rateEvent->playbackRate == 1.5,
+            "built sample did not report the applied playback rate");
+    const double authoredVolume = rateEvent->volume;
+    Require(sample.coordinator().SendPlaybackCommand({
+                9, PlaybackCommandKind::SetMuted, std::wstring{primaryMediaKey},
+                std::nullopt, std::nullopt, std::nullopt, true, std::nullopt}),
+            "built sample rejected an exact mute preference command");
+    requirePlayback(9, primaryMediaKey, L"paused");
+    const auto mutedEvent = std::find_if(
+        sample.playbackEvents().begin(), sample.playbackEvents().end(),
+        [](const PlaybackEvent& event) { return event.commandSequence == 9; });
+    Require(mutedEvent != sample.playbackEvents().end() && mutedEvent->muted &&
+                mutedEvent->volume == authoredVolume,
+            "mute changed authored volume or did not report applied state");
+    Require(sample.coordinator().SendPlaybackCommand({
+                10, PlaybackCommandKind::SetLoop, std::wstring{primaryMediaKey},
+                std::nullopt, std::nullopt, std::nullopt, std::nullopt, false}),
+            "built sample rejected an exact loop preference command");
+    requirePlayback(10, primaryMediaKey, L"paused");
+    const auto loopEvent = std::find_if(
+        sample.playbackEvents().begin(), sample.playbackEvents().end(),
+        [](const PlaybackEvent& event) { return event.commandSequence == 10; });
+    Require(loopEvent != sample.playbackEvents().end() && !loopEvent->loop,
+            "built sample did not report the applied loop state");
+    Require(sample.coordinator().SendPlaybackCommand({
+                11, PlaybackCommandKind::Load, std::wstring{secondaryMediaKey}}),
+            "built sample rejected preference-retaining media load");
+    requirePlayback(11, secondaryMediaKey, L"ready");
+    const auto retainedEvent = std::find_if(
+        sample.playbackEvents().begin(), sample.playbackEvents().end(),
+        [](const PlaybackEvent& event) { return event.commandSequence == 11; });
+    Require(retainedEvent != sample.playbackEvents().end() &&
+                retainedEvent->playbackRate == 1.5 && retainedEvent->muted &&
+                !retainedEvent->loop && retainedEvent->volume == authoredVolume,
+            "Load did not deterministically retain document-owned preferences");
+    Require(sample.coordinator().state().authority.controllerGeneration ==
+                preferenceControllerGeneration,
+            "ordinary preference changes recreated the media controller");
+    const auto eventsBeforeReplacement = sample.playbackEvents().size();
+    Require(SUCCEEDED(sample.Reopen(true)),
+            "preference session replacement submission failed");
+    RequireReady(sample, "replacement media document did not become ready",
+                 L"media-plane");
+    Require(PumpUntil([&] {
+        return sample.playbackEvents().size() > eventsBeforeReplacement;
+    }, 5s), "replacement media document did not publish its initial state");
+    const auto& replacementEvent = sample.playbackEvents().back();
+    Require(replacementEvent.commandSequence == 0 &&
+                replacementEvent.playbackRate == 1.0 && !replacementEvent.muted &&
+                replacementEvent.loop,
+            "controller/document replacement did not reset preferences to adapter defaults");
     Require(sample.coordinator().state().lifecycle == Lifecycle::Visible &&
                 sample.presentationVisible() && !sample.presentationCommitFailed(),
             "compatible playback updates replaced or hid the media controller");

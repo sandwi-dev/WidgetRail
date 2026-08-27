@@ -41,6 +41,25 @@ internal static class EmbeddedMediaSurfaceTests
         var playbackWire = playbackSnapshot.CreateSnapshot("fixture.instance", 5);
         Equal(ProtocolConstants.EmbeddedMediaPlaybackVersion, playbackWire.ProtocolVersion);
         Equal(7L, playbackWire.EmbeddedMedia?.PendingCommand?.Sequence);
+        var preference = Valid("primary-media") with
+        {
+            PendingCommand = new()
+            {
+                Sequence = 8,
+                Kind = EmbeddedMediaPlaybackCommandKind.SetPlaybackRate,
+                MediaKey = "aurora-tone",
+                PlaybackRate = 1.5,
+            },
+        };
+        var preferenceWire = (view with { EmbeddedMedia = preference })
+            .CreateSnapshot("fixture.instance", 6);
+        Equal(ProtocolConstants.EmbeddedMediaPlaybackPreferencesVersion,
+            preferenceWire.ProtocolVersion);
+        var preferenceRoundTrip = SnapshotJson.Deserialize(
+            SnapshotJson.Serialize(preferenceWire)).EmbeddedMedia!.PendingCommand!;
+        Equal(EmbeddedMediaPlaybackCommandKind.SetPlaybackRate,
+            preferenceRoundTrip.Kind);
+        Equal(1.5D, preferenceRoundTrip.PlaybackRate);
         var familyMedia = Valid("primary-media") with
         {
             AllowedFrameDomainFamilies = ["example.com"],
@@ -175,6 +194,44 @@ internal static class EmbeddedMediaSurfaceTests
         }, "required");
         Error(snapshot with
         {
+            EmbeddedMedia = Valid("primary-media") with
+            {
+                PendingCommand = new()
+                {
+                    Sequence = 2,
+                    Kind = EmbeddedMediaPlaybackCommandKind.SetPlaybackRate,
+                    MediaKey = "fixture-media",
+                    PlaybackRate = 2.01,
+                },
+            },
+        }, "out_of_range");
+        Error(snapshot with
+        {
+            EmbeddedMedia = Valid("primary-media") with
+            {
+                PendingCommand = new()
+                {
+                    Sequence = 2,
+                    Kind = EmbeddedMediaPlaybackCommandKind.SetMuted,
+                    MediaKey = "fixture-media",
+                },
+            },
+        }, "required");
+        Error(snapshot with
+        {
+            EmbeddedMedia = Valid("primary-media") with
+            {
+                PendingCommand = new()
+                {
+                    Sequence = 2,
+                    Kind = EmbeddedMediaPlaybackCommandKind.Play,
+                    MediaKey = "fixture-media",
+                    Loop = true,
+                },
+            },
+        }, "unexpected");
+        Error(snapshot with
+        {
             Root = snapshot.Root with
             {
                 Children = snapshot.Root.Children.Where(
@@ -278,6 +335,38 @@ internal static class EmbeddedMediaSurfaceTests
         var nextCommand = sample.Render().EmbeddedMedia?.PendingCommand;
         Equal(EmbeddedMediaPlaybackCommandKind.Load, nextCommand?.Kind);
         Equal("horizon-video-1", nextCommand?.MediaKey);
+
+        var preferences = new EmbeddedMediaSampleWidget();
+        await preferences.OnActionAsync(new WidgetActionEvent(
+            "host.embeddedMedia.playbackRate", "media-shell.rate"));
+        var rateCommand = preferences.Render().EmbeddedMedia!.PendingCommand!;
+        Equal(EmbeddedMediaPlaybackCommandKind.SetPlaybackRate, rateCommand.Kind);
+        Equal(1.25D, rateCommand.PlaybackRate);
+        await preferences.OnEmbeddedMediaPlaybackEventAsync(PreferenceEvent(
+            1, rateCommand, playbackRate: 1.25, muted: false, loop: true));
+        Equal(null, preferences.Render().EmbeddedMedia?.PendingCommand);
+        Equal("1.25x", Find(preferences.Render().CreateSnapshot(
+            "embedded-media-sample.instance", 3).Root, "media-shell.rate").Text);
+
+        await preferences.OnActionAsync(new WidgetActionEvent(
+            "host.embeddedMedia.muted", "media-shell.mute"));
+        var muteCommand = preferences.Render().EmbeddedMedia!.PendingCommand!;
+        Equal(true, muteCommand.Muted);
+        await preferences.OnEmbeddedMediaPlaybackEventAsync(PreferenceEvent(
+            2, muteCommand, playbackRate: 1.25, muted: true, loop: true,
+            volume: 0.8));
+        Equal("Unmute", Find(preferences.Render().CreateSnapshot(
+            "embedded-media-sample.instance", 4).Root, "media-shell.mute").Text);
+
+        await preferences.OnActionAsync(new WidgetActionEvent(
+            "host.embeddedMedia.loop", "media-shell.loop"));
+        var loopCommand = preferences.Render().EmbeddedMedia!.PendingCommand!;
+        Equal(false, loopCommand.Loop);
+        await preferences.OnEmbeddedMediaPlaybackEventAsync(PreferenceEvent(
+            3, loopCommand, playbackRate: 1.25, muted: true, loop: false,
+            volume: 0.8));
+        Equal("Loop off", Find(preferences.Render().CreateSnapshot(
+            "embedded-media-sample.instance", 5).Root, "media-shell.loop").Text);
     }
 
     private static EmbeddedMediaSurface Valid(string id) => new()
@@ -320,6 +409,27 @@ internal static class EmbeddedMediaSurfaceTests
         }
         throw new InvalidOperationException($"Missing node '{id}'.");
     }
+
+    private static EmbeddedMediaPlaybackEvent PreferenceEvent(
+        long eventSequence,
+        EmbeddedMediaPlaybackCommand command,
+        double playbackRate,
+        bool muted,
+        bool loop,
+        double volume = 0.8) => new()
+    {
+        SurfaceId = "embedded-media-sample.primary",
+        Sequence = eventSequence,
+        CommandSequence = command.Sequence,
+        MediaKey = command.MediaKey,
+        State = EmbeddedMediaPlaybackState.Ready,
+        PositionSeconds = 0,
+        DurationSeconds = 60,
+        Volume = volume,
+        PlaybackRate = playbackRate,
+        Muted = muted,
+        Loop = loop,
+    };
 
     private static ViewNode? FindOrNull(ViewNode node, string id)
     {

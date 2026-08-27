@@ -1045,10 +1045,13 @@ internal sealed class BridgeClientRegistry : IAsyncDisposable
                 !double.IsFinite(playbackEvent.PositionSeconds) ||
                 !double.IsFinite(playbackEvent.DurationSeconds) ||
                 !double.IsFinite(playbackEvent.Volume) ||
+                !double.IsFinite(playbackEvent.PlaybackRate) ||
                 playbackEvent.PositionSeconds < 0 || playbackEvent.DurationSeconds < 0 ||
                 playbackEvent.PositionSeconds > playbackEvent.DurationSeconds ||
                 playbackEvent.DurationSeconds > 86_400 ||
                 playbackEvent.Volume is < 0 or > 1 ||
+                playbackEvent.PlaybackRate < ProtocolConstants.MinimumEmbeddedMediaPlaybackRate ||
+                playbackEvent.PlaybackRate > ProtocolConstants.MaximumEmbeddedMediaPlaybackRate ||
                 (playbackEvent.ErrorCode is { } errorCode &&
                     (!BridgeRequestKey.IsBoundedIdentifier(errorCode))))
                 throw new BridgeProtocolException(
@@ -1069,6 +1072,17 @@ internal sealed class BridgeClientRegistry : IAsyncDisposable
                      StringComparison.Ordinal)))
                 throw new BridgeProtocolException(
                     "Embedded media playback command authority is stale or unavailable.");
+            if (playbackEvent.CommandSequence > 0 &&
+                playbackEvent.ErrorCode is null &&
+                media.PendingCommand is { } preferenceCommand &&
+                ((preferenceCommand.Kind == EmbeddedMediaPlaybackCommandKind.SetPlaybackRate &&
+                  preferenceCommand.PlaybackRate != playbackEvent.PlaybackRate) ||
+                 (preferenceCommand.Kind == EmbeddedMediaPlaybackCommandKind.SetMuted &&
+                  preferenceCommand.Muted != playbackEvent.Muted) ||
+                 (preferenceCommand.Kind == EmbeddedMediaPlaybackCommandKind.SetLoop &&
+                  preferenceCommand.Loop != playbackEvent.Loop)))
+                throw new BridgeProtocolException(
+                    "Embedded media playback preference terminal state does not match the pending command.");
             await registration.Client.SendEmbeddedMediaPlaybackEventAsync(
                 request.Event, cancellationToken).ConfigureAwait(false);
             DemandCurrent(registration);

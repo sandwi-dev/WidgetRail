@@ -2631,7 +2631,8 @@ private:
             publishedEventSequence,
             commandSequence,
             event.mediaKey, event.state, event.positionSeconds,
-            event.durationSeconds, event.volume, event.errorCode};
+            event.durationSeconds, event.volume, event.errorCode,
+            event.playbackRate, event.muted, event.loop};
         const auto accepted = bridge_.PublishEmbeddedMediaPlaybackEvent(
             embeddedMediaAuthority_->widgetId, embeddedMediaAuthority_->instanceId,
             embeddedMediaAuthority_->runtimeGeneration,
@@ -2665,10 +2666,14 @@ private:
         else if (pending.kind == L"pause") kind = Kind::Pause;
         else if (pending.kind == L"seek") kind = Kind::Seek;
         else if (pending.kind == L"setVolume") kind = Kind::SetVolume;
+        else if (pending.kind == L"setPlaybackRate") kind = Kind::SetPlaybackRate;
+        else if (pending.kind == L"setMuted") kind = Kind::SetMuted;
+        else if (pending.kind == L"setLoop") kind = Kind::SetLoop;
         if (!kind) return;
         const bool sent = richMediaSurface_->SendPlaybackCommand({
             static_cast<std::uint64_t>(pending.sequence), *kind, pending.mediaKey,
-            pending.positionSeconds, pending.volume});
+            pending.positionSeconds, pending.volume, pending.playbackRate,
+            pending.muted, pending.loop});
         if (sent)
             embeddedMediaAuthority_->lastDispatchedPlaybackCommand = pending.sequence;
         AppendDiagnostic(

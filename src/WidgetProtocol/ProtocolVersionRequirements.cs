@@ -82,6 +82,15 @@ internal sealed class ProtocolVersionRequirements
                 ProtocolConstants.EmbeddedMediaFrameDomainFamiliesVersion,
                 "$.embeddedMedia.allowedFrameDomainFamilies",
                 $"Embedded media frame domain families require protocol version {ProtocolConstants.EmbeddedMediaFrameDomainFamiliesVersion} or later.");
+        if (snapshot.EmbeddedMedia?.PendingCommand?.Kind is
+            EmbeddedMediaPlaybackCommandKind.SetPlaybackRate or
+            EmbeddedMediaPlaybackCommandKind.SetMuted or
+            EmbeddedMediaPlaybackCommandKind.SetLoop)
+            Add(
+                "embedded-media-playback-preferences",
+                ProtocolConstants.EmbeddedMediaPlaybackPreferencesVersion,
+                "$.embeddedMedia.pendingCommand",
+                $"Embedded media playback preferences require protocol version {ProtocolConstants.EmbeddedMediaPlaybackPreferencesVersion} or later.");
 
         Visit(snapshot.Root, "$.root", 1);
 

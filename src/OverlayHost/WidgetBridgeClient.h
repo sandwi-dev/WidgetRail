@@ -349,6 +349,9 @@ struct EmbeddedMediaPlaybackCommand final {
     std::wstring mediaKey;
     std::optional<double> positionSeconds;
     std::optional<double> volume;
+    std::optional<double> playbackRate;
+    std::optional<bool> muted;
+    std::optional<bool> loop;
 };
 
 struct EmbeddedMediaPlaybackEvent final {
@@ -361,6 +364,9 @@ struct EmbeddedMediaPlaybackEvent final {
     double durationSeconds{};
     double volume{};
     std::wstring errorCode;
+    double playbackRate{1.0};
+    bool muted{};
+    bool loop{};
 };
 
 struct EmbeddedMediaSurfaceDeclaration final {

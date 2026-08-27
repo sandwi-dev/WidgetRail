@@ -414,6 +414,9 @@ public enum EmbeddedMediaPlaybackCommandKind
     Pause,
     Seek,
     SetVolume,
+    SetPlaybackRate,
+    SetMuted,
+    SetLoop,
 }
 
 public enum EmbeddedMediaPlaybackState
@@ -434,6 +437,9 @@ public sealed record EmbeddedMediaPlaybackCommand
     public required string MediaKey { get; init; }
     public double? PositionSeconds { get; init; }
     public double? Volume { get; init; }
+    public double? PlaybackRate { get; init; }
+    public bool? Muted { get; init; }
+    public bool? Loop { get; init; }
 }
 
 /// <summary>A validated host observation from the exact current embedded-media adapter.</summary>
@@ -447,6 +453,9 @@ public sealed record EmbeddedMediaPlaybackEvent
     public required double PositionSeconds { get; init; }
     public required double DurationSeconds { get; init; }
     public required double Volume { get; init; }
+    public double PlaybackRate { get; init; } = 1.0;
+    public bool Muted { get; init; }
+    public bool Loop { get; init; }
     public string? ErrorCode { get; init; }
 }
 

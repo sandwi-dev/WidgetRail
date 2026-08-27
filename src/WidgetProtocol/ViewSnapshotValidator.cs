@@ -382,6 +382,12 @@ public static class ViewSnapshotValidator
                     (!double.IsFinite(volume) || volume < 0 || volume > 1))
                     Add($"{path}.pendingCommand.volume", "out_of_range",
                         "Embedded media volume must be finite and between 0 and 1.");
+                if (pending.PlaybackRate is { } playbackRate &&
+                    (!double.IsFinite(playbackRate) ||
+                     playbackRate < ProtocolConstants.MinimumEmbeddedMediaPlaybackRate ||
+                     playbackRate > ProtocolConstants.MaximumEmbeddedMediaPlaybackRate))
+                    Add($"{path}.pendingCommand.playbackRate", "out_of_range",
+                        $"Embedded media playback rate must be finite and between {ProtocolConstants.MinimumEmbeddedMediaPlaybackRate} and {ProtocolConstants.MaximumEmbeddedMediaPlaybackRate}.");
                 if (pending.Kind == EmbeddedMediaPlaybackCommandKind.Seek &&
                     pending.PositionSeconds is null)
                     Add($"{path}.pendingCommand.positionSeconds", "required",
@@ -390,6 +396,30 @@ public static class ViewSnapshotValidator
                     pending.Volume is null)
                     Add($"{path}.pendingCommand.volume", "required",
                         "SetVolume requires an exact volume.");
+                if (pending.Kind == EmbeddedMediaPlaybackCommandKind.SetPlaybackRate &&
+                    pending.PlaybackRate is null)
+                    Add($"{path}.pendingCommand.playbackRate", "required",
+                        "SetPlaybackRate requires an exact playback rate.");
+                if (pending.Kind != EmbeddedMediaPlaybackCommandKind.SetPlaybackRate &&
+                    pending.PlaybackRate is not null)
+                    Add($"{path}.pendingCommand.playbackRate", "unexpected",
+                        "PlaybackRate is valid only for SetPlaybackRate.");
+                if (pending.Kind == EmbeddedMediaPlaybackCommandKind.SetMuted &&
+                    pending.Muted is null)
+                    Add($"{path}.pendingCommand.muted", "required",
+                        "SetMuted requires an exact boolean value.");
+                if (pending.Kind != EmbeddedMediaPlaybackCommandKind.SetMuted &&
+                    pending.Muted is not null)
+                    Add($"{path}.pendingCommand.muted", "unexpected",
+                        "Muted is valid only for SetMuted.");
+                if (pending.Kind == EmbeddedMediaPlaybackCommandKind.SetLoop &&
+                    pending.Loop is null)
+                    Add($"{path}.pendingCommand.loop", "required",
+                        "SetLoop requires an exact boolean value.");
+                if (pending.Kind != EmbeddedMediaPlaybackCommandKind.SetLoop &&
+                    pending.Loop is not null)
+                    Add($"{path}.pendingCommand.loop", "unexpected",
+                        "Loop is valid only for SetLoop.");
             }
         }
 

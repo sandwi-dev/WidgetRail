@@ -49,7 +49,9 @@ enum class Command {
     SeekForward,
 };
 
-enum class PlaybackCommandKind { Load, Cue, Play, Pause, Seek, SetVolume };
+enum class PlaybackCommandKind {
+    Load, Cue, Play, Pause, Seek, SetVolume, SetPlaybackRate, SetMuted, SetLoop
+};
 
 struct PlaybackCommand final {
     std::uint64_t sequence{};
@@ -57,6 +59,9 @@ struct PlaybackCommand final {
     std::wstring mediaKey;
     std::optional<double> positionSeconds;
     std::optional<double> volume;
+    std::optional<double> playbackRate;
+    std::optional<bool> muted;
+    std::optional<bool> loop;
 };
 
 struct PlaybackEvent final {
@@ -68,6 +73,10 @@ struct PlaybackEvent final {
     double durationSeconds{};
     double volume{};
     std::wstring errorCode;
+    double playbackRate{1.0};
+    bool muted{};
+    bool loop{};
+    bool hasPlaybackPreferences{};
 };
 
 struct Authority final {
@@ -94,6 +103,9 @@ struct State final {
     double positionSeconds{};
     double durationSeconds{};
     double volume{1.0};
+    double playbackRate{1.0};
+    bool muted{};
+    bool loop{};
     std::wstring mediaKey;
     std::uint64_t lastAcknowledgedCommandId{};
     ActionBounds focusedActionBounds;
@@ -323,6 +335,10 @@ private:
         std::uint64_t playbackSequence{};
         std::wstring mediaKey;
         PendingPhase phase{PendingPhase::AwaitingEvent};
+        std::optional<PlaybackCommandKind> playbackKind;
+        std::optional<double> expectedPlaybackRate;
+        std::optional<bool> expectedMuted;
+        std::optional<bool> expectedLoop;
     };
     std::optional<PendingCommand> pendingCommand_;
     bool desiredVisible_{};

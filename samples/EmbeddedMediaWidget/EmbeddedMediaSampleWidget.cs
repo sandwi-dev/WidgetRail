@@ -21,6 +21,9 @@ public sealed class EmbeddedMediaSampleWidget : Widget
     private EmbeddedMediaPlaybackState _state = EmbeddedMediaPlaybackState.Ready;
     private double _position;
     private double _duration = 60;
+    private double _playbackRate = 1;
+    private bool _muted;
+    private bool _loop = true;
     private EmbeddedMediaPlaybackCommand? _pendingCommand;
 
     public override WidgetView Render()
@@ -30,6 +33,9 @@ public sealed class EmbeddedMediaSampleWidget : Widget
         double duration;
         int activeMediaIndex;
         EmbeddedMediaPlaybackCommand? pending;
+        double playbackRate;
+        bool muted;
+        bool loop;
         lock (_gate)
         {
             playbackState = _state;
@@ -37,6 +43,9 @@ public sealed class EmbeddedMediaSampleWidget : Widget
             duration = _duration;
             activeMediaIndex = _activeMediaIndex;
             pending = _pendingCommand;
+            playbackRate = _playbackRate;
+            muted = _muted;
+            loop = _loop;
         }
         var media = new EmbeddedMediaSurface
         {
@@ -63,6 +72,12 @@ public sealed class EmbeddedMediaSampleWidget : Widget
         var play = UI.Button("", "host.embeddedMedia.togglePlayback", "media-shell.play").Icon(playing ? WidgetGlyph.Pause : WidgetGlyph.Play, playing ? "Pause local media" : "Play local media").FocusUp("media-shell.timeline.slider").FocusLeft("media-shell.seek-back").FocusRight("media-shell.seek-forward").Classes("media-shell-play");
         var seekForward = UI.Button("+2s", "host.embeddedMedia.seekForward", "media-shell.seek-forward").FocusUp("media-shell.timeline.slider").FocusLeft("media-shell.play").FocusRight("media-shell.next").Classes("media-shell-transport", "media-shell-quick-seek");
         var next = UI.Button("", "host.embeddedMedia.next", "media-shell.next").Icon(WidgetGlyph.Next, "Next video").FocusUp("media-shell.timeline.slider").FocusLeft("media-shell.seek-forward").Classes("media-shell-transport");
+        var rate = UI.Button($"{playbackRate:0.##}x", "host.embeddedMedia.playbackRate", "media-shell.rate")
+            .FocusUp("media-shell.play").FocusRight("media-shell.mute").Classes("media-shell-preference");
+        var mute = UI.Button(muted ? "Unmute" : "Mute", "host.embeddedMedia.muted", "media-shell.mute")
+            .FocusUp("media-shell.play").FocusLeft("media-shell.rate").FocusRight("media-shell.loop").Classes("media-shell-preference");
+        var loopButton = UI.Button(loop ? "Loop on" : "Loop off", "host.embeddedMedia.loop", "media-shell.loop")
+            .FocusUp("media-shell.play").FocusLeft("media-shell.mute").Classes("media-shell-preference");
         var timeline = UI.Slider(
                 position,
                 0,
@@ -85,7 +100,8 @@ public sealed class EmbeddedMediaSampleWidget : Widget
                     UI.Text(StatusText(playbackState), "media-shell.status").Classes("media-shell-status")).Classes("media-shell-heading"), back).Classes("media-shell-header"),
                 UI.MediaViewport(media, "media-shell.viewport").Classes("media-shell-viewport"),
                 UI.Row("media-shell.timeline", UI.Text(FormatTime(position), "media-shell.position").Classes("media-shell-time"), timeline, UI.Text(FormatTime(duration), "media-shell.duration").Classes("media-shell-time", "is-end")).Classes("media-shell-timeline"),
-                UI.Row("media-shell.controls", previous, seekBack, play, seekForward, next).Classes("media-shell-controls")).Classes("media-shell-root"),
+                UI.Row("media-shell.controls", previous, seekBack, play, seekForward, next).Classes("media-shell-controls"),
+                UI.Row("media-shell.preferences", rate, mute, loopButton).Classes("media-shell-preferences")).Classes("media-shell-root"),
             InitialFocusId: "media-shell.play", ActiveInputScopeId: "media-shell.root",
             Surface: new WidgetSurfaceHints { Mode = WidgetSurfaceMode.Standard, PreferredWidth = 760, PreferredHeight = 610, MinimumWidth = 440, MinimumHeight = 410 })
         { EmbeddedMedia = media };
@@ -133,6 +149,15 @@ public sealed class EmbeddedMediaSampleWidget : Widget
                         (_activeMediaIndex + 1) % MediaItems.Length].Key;
                     kind = EmbeddedMediaPlaybackCommandKind.Load;
                     break;
+                case "host.embeddedMedia.playbackRate":
+                    kind = EmbeddedMediaPlaybackCommandKind.SetPlaybackRate;
+                    break;
+                case "host.embeddedMedia.muted":
+                    kind = EmbeddedMediaPlaybackCommandKind.SetMuted;
+                    break;
+                case "host.embeddedMedia.loop":
+                    kind = EmbeddedMediaPlaybackCommandKind.SetLoop;
+                    break;
             }
             if (kind is { } commandKind)
             {
@@ -142,6 +167,12 @@ public sealed class EmbeddedMediaSampleWidget : Widget
                     Kind = commandKind,
                     MediaKey = commandMediaKey,
                     PositionSeconds = position,
+                    PlaybackRate = commandKind == EmbeddedMediaPlaybackCommandKind.SetPlaybackRate
+                        ? NextPlaybackRate(_playbackRate) : null,
+                    Muted = commandKind == EmbeddedMediaPlaybackCommandKind.SetMuted
+                        ? !_muted : null,
+                    Loop = commandKind == EmbeddedMediaPlaybackCommandKind.SetLoop
+                        ? !_loop : null,
                 };
                 Invalidate();
             }
@@ -184,6 +215,9 @@ public sealed class EmbeddedMediaSampleWidget : Widget
             _state = playbackEvent.State;
             _position = playbackEvent.PositionSeconds;
             _duration = playbackEvent.DurationSeconds;
+            _playbackRate = playbackEvent.PlaybackRate;
+            _muted = playbackEvent.Muted;
+            _loop = playbackEvent.Loop;
             if (_pendingCommand is { } current &&
                 playbackEvent.CommandSequence == current.Sequence)
                 _pendingCommand = null;
@@ -205,6 +239,16 @@ public sealed class EmbeddedMediaSampleWidget : Widget
         var value = Math.Max(0, (int)Math.Round(seconds));
         return $"{value / 60}:{value % 60:00}";
     }
+
+    private static double NextPlaybackRate(double current) => current switch
+    {
+        < 0.75 => 0.75,
+        < 1 => 1,
+        < 1.25 => 1.25,
+        < 1.5 => 1.5,
+        < 2 => 2,
+        _ => 0.5,
+    };
 
     private sealed record MediaItem(string Key, string Title);
 }
