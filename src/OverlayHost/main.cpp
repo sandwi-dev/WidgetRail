@@ -2362,6 +2362,37 @@ private:
             snapshot->embeddedMedia->id == embeddedMediaAuthority_->surfaceId;
     }
 
+    [[nodiscard]] bool EmbeddedMediaPresentationAuthorityCurrent() const noexcept {
+        if (EmbeddedMediaAuthorityCurrent()) return true;
+        if (!embeddedMediaAuthority_ ||
+            embeddedMediaAuthority_->projection != EmbeddedMediaProjection::Pinned)
+            return false;
+        const auto* descriptor = sessions_.FindDescriptor(embeddedMediaAuthority_->widgetId);
+        const auto* snapshot = SnapshotFor(embeddedMediaAuthority_->widgetId);
+        if (!descriptor || !snapshot || !snapshot->embeddedMedia) return false;
+        const bool identityCurrent =
+            snapshot->instanceId == embeddedMediaAuthority_->instanceId &&
+            descriptor->runtimeGeneration == embeddedMediaAuthority_->runtimeGeneration &&
+            descriptor->presentationGeneration ==
+                embeddedMediaAuthority_->presentationGeneration &&
+            snapshot->embeddedMedia->id == embeddedMediaAuthority_->surfaceId;
+        const bool resourceContractCurrent =
+            widgetrail::SameEmbeddedMediaResourceContract(
+                embeddedMediaAuthority_->resourceContract, *snapshot->embeddedMedia);
+        const bool projectionCurrent = pinnedSurfaceCoordinator_.pinned() &&
+            pinnedSurfaceCoordinator_.widgetId() == embeddedMediaAuthority_->widgetId;
+        const bool geometryCurrent = pinnedSurfaceCoordinator_.CurrentMediaViewport(
+            embeddedMediaAuthority_->surfaceId).has_value();
+        return widgetrail::RetainEmbeddedMediaPresentation({
+            identityCurrent,
+            resourceContractCurrent,
+            projectionCurrent,
+            geometryCurrent,
+            embeddedMediaAuthority_->sequence,
+            snapshot->sequence,
+        });
+    }
+
     void ReconcileEmbeddedMediaCommandOrigin(
         const widgetrail::WidgetSnapshot& snapshot) {
         if (!embeddedMediaAuthority_ || !snapshot.embeddedMedia ||
@@ -2485,7 +2516,7 @@ private:
     }
 
     [[nodiscard]] bool EmbeddedMediaPresentationVisible() const noexcept {
-        if (!EmbeddedMediaAuthorityCurrent()) return false;
+        if (!EmbeddedMediaPresentationAuthorityCurrent()) return false;
         if (embeddedMediaAuthority_->projection == EmbeddedMediaProjection::Pinned)
             return pinnedSurfaceCoordinator_.pinned() &&
                 pinnedSurfaceCoordinator_.widgetId() == embeddedMediaAuthority_->widgetId &&
@@ -2551,8 +2582,23 @@ private:
         if (!embeddedMediaAuthority_ ||
             embeddedMediaAuthority_->projection != projection) return false;
         const bool visible = EmbeddedMediaPresentationVisible();
-        const auto geometry = ResolveEmbeddedMediaPresentationGeometry(
+        auto geometry = ResolveEmbeddedMediaPresentationGeometry(
             embeddedMediaAuthority_->sequence);
+        if (!geometry && projection == EmbeddedMediaProjection::Pinned &&
+            EmbeddedMediaPresentationAuthorityCurrent()) {
+            const auto committed = pinnedSurfaceCoordinator_.CurrentMediaViewport(
+                embeddedMediaAuthority_->surfaceId);
+            const HWND owner = pinnedSurfaceCoordinator_.window();
+            if (committed && owner) {
+                const auto& viewport = committed->region;
+                geometry = widgetrail::ResolveMediaViewportPresentationGeometry(
+                    {viewport.bounds.x, viewport.bounds.y,
+                     viewport.bounds.width, viewport.bounds.height},
+                    {viewport.clip.x, viewport.clip.y,
+                     viewport.clip.width, viewport.clip.height},
+                    MediaPixelsPerDip(owner));
+            }
+        }
         if (!geometry) {
             (void)richMediaSurface_.SetVisible(false);
             AppendDiagnostic(
