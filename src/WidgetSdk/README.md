@@ -106,6 +106,16 @@ cross the worker boundary. Values are capped at 96 characters and negotiate
 protocol v15 only when authored. `.Disabled()` preserves a stable focus stop
 while suppressing activation.
 
+Use `UI.SensitiveTextEntry(placeholder, action, id, maximumLength)` when the
+committed value is a credential or other secret. It negotiates protocol v28,
+always publishes an empty snapshot value, uses a masked native edit with
+protected UI Automation semantics, and sends the bounded commit exactly once
+through `WidgetActionEvent.CommittedText`. Transfer that value immediately to
+the widget's credential owner and render only configured/unconfigured status.
+Cancel sends nothing. Sensitive values are removed from framework action
+diagnostics and failure observations; never copy them into presentation state,
+logs, exceptions, or support artifacts.
+
 For settings and contextual commands, prefer the public controller composites
 over custom focus routing. `UI.SettingsRow` keeps long supporting copy separate
 from its one stable `id.action` target. `UI.ActionSheet` accepts 1–32 stable

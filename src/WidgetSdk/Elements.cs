@@ -349,7 +349,8 @@ public sealed record ButtonElement : WidgetElement
 public sealed record TextEntryElement : WidgetElement
 {
     internal TextEntryElement(
-        string id, string value, string placeholder, int maximumLength, string actionId)
+        string id, string value, string placeholder, int maximumLength, string actionId,
+        TextEntryInputKind inputKind)
         : base(RequireId(id))
     {
         ArgumentNullException.ThrowIfNull(value);
@@ -358,16 +359,23 @@ public sealed record TextEntryElement : WidgetElement
             throw new ArgumentOutOfRangeException(nameof(maximumLength));
         if (value.Length > maximumLength)
             throw new ArgumentException("The text-entry value exceeds its maximum length.", nameof(value));
+        if (!Enum.IsDefined(inputKind))
+            throw new ArgumentOutOfRangeException(nameof(inputKind));
+        if (inputKind == TextEntryInputKind.Sensitive && value.Length != 0)
+            throw new ArgumentException(
+                "Sensitive text entry cannot publish an authored value.", nameof(value));
         Value = value;
         Placeholder = placeholder;
         MaximumLength = maximumLength;
         ActionId = RequireId(actionId);
+        InputKind = inputKind;
     }
 
     public string Value { get; init; }
     public string Placeholder { get; init; }
     public int MaximumLength { get; init; }
     public string ActionId { get; init; }
+    public TextEntryInputKind InputKind { get; init; }
     public string? AccessibilityLabel { get; init; }
     public bool IsDisabled { get; init; }
     public FocusNeighbors? FocusNeighbors { get; init; }
@@ -390,11 +398,12 @@ public sealed record TextEntryElement : WidgetElement
         Kind = ViewNodeKind.TextEntry,
         Text = Value.Length == 0 ? Placeholder : Value,
         AccessibilityLabel = AccessibilityLabel ?? Placeholder,
-        AccessibilityValue = Value,
+        AccessibilityValue = InputKind == TextEntryInputKind.Sensitive ? null : Value,
         ActionId = ActionId,
         TextEntryValue = Value,
         TextEntryPlaceholder = Placeholder,
         TextEntryMaximumLength = MaximumLength,
+        TextEntryInputKind = InputKind == TextEntryInputKind.Ordinary ? null : InputKind,
         IsDisabled = IsDisabled,
         Focus = FocusNeighbors,
         StyleClasses = StyleClasses,

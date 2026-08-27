@@ -406,7 +406,10 @@ void TextEntryModal::Insert(const wchar_t value) {
 }
 
 bool TextEntryModal::PasteClipboard() {
-    if (password_ || !window_ || !edit_) return false;
+    // Clipboard contents are read only for an explicit paste directed at the
+    // focused edit control. Sensitive entry retains the same bounded scan and
+    // native password buffer; outbound clipboard operations remain blocked.
+    if (!window_ || !edit_ || GetFocus() != edit_) return false;
 
     const int length = GetWindowTextLengthW(edit_);
     if (length < 0 || static_cast<std::size_t>(length) > maximumLength_)

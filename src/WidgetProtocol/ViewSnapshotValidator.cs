@@ -859,6 +859,9 @@ public static class ViewSnapshotValidator
             }
             if (node.Kind is ViewNodeKind.TextEntry)
             {
+                if (node.TextEntryInputKind is { } inputKind && !Enum.IsDefined(inputKind))
+                    Add($"{path}.textEntryInputKind", "invalid_text_entry_input_kind",
+                        "The text-entry input kind is not supported.");
                 if (node.TextEntryMaximumLength is not (>= 1 and <= ProtocolConstants.MaximumTextEntryLength))
                     Add($"{path}.textEntryMaximumLength", "invalid_text_entry_limit",
                         $"Text entry maximum length must be 1-{ProtocolConstants.MaximumTextEntryLength}.");
@@ -867,6 +870,14 @@ public static class ViewSnapshotValidator
                     node.TextEntryValue.Any(char.IsControl))
                     Add($"{path}.textEntryValue", "invalid_text_entry_value",
                         "Text entry requires a bounded control-free current value.");
+                if (node.TextEntryInputKind is TextEntryInputKind.Sensitive &&
+                    node.TextEntryValue is not "")
+                    Add($"{path}.textEntryValue", "sensitive_text_entry_value_not_empty",
+                        "Sensitive text entry cannot publish an authored value.");
+                if (node.TextEntryInputKind is TextEntryInputKind.Sensitive &&
+                    node.AccessibilityValue is not null)
+                    Add($"{path}.accessibilityValue", "sensitive_text_entry_accessibility_value_not_allowed",
+                        "Sensitive text entry cannot publish an accessibility value.");
                 if (node.TextEntryPlaceholder is null ||
                     node.TextEntryPlaceholder.Length > ProtocolConstants.MaximumTextEntryLength ||
                     node.TextEntryPlaceholder.Any(char.IsControl))
@@ -874,7 +885,7 @@ public static class ViewSnapshotValidator
                         "Text entry requires a bounded control-free placeholder.");
             }
             else if (node.TextEntryValue is not null || node.TextEntryPlaceholder is not null ||
-                     node.TextEntryMaximumLength is not null)
+                     node.TextEntryMaximumLength is not null || node.TextEntryInputKind is not null)
                 Add(path, "text_entry_property_not_allowed",
                     "Text-entry properties apply only to text-entry nodes.");
             if (node.Kind is not (ViewNodeKind.Button or ViewNodeKind.Slider or ViewNodeKind.ActionSurface or ViewNodeKind.TextEntry) &&

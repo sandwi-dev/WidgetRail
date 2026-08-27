@@ -197,10 +197,11 @@ public abstract partial class Widget
 
     private void ReportActionFailure(WidgetActionEvent action, Exception exception)
     {
-        InvokeFailureHandlers(ActionFailed, new WidgetActionFailedEventArgs(action, exception));
+        var diagnosticAction = action with { CommittedText = null };
+        InvokeFailureHandlers(ActionFailed, new WidgetActionFailedEventArgs(diagnosticAction, exception));
         InvokeFailureHandlers(
             ControllerActionFailed,
-            new WidgetControllerActionFailedEventArgs(action, exception));
+            new WidgetControllerActionFailedEventArgs(diagnosticAction, exception));
     }
 
     private static string AdmissionCode(WidgetOperationAdmission admission) => admission switch
@@ -214,7 +215,10 @@ public abstract partial class Widget
 
     private void ObserveActionDiagnostic(WidgetActionEvent action, string stage, string code)
     {
-        try { OnActionDiagnostic(action, stage, code); }
+        // Diagnostics retain correlation metadata but never receive text-entry
+        // contents. The widget action callback remains the sole consumer of a
+        // committed value.
+        try { OnActionDiagnostic(action with { CommittedText = null }, stage, code); }
         catch { }
     }
 

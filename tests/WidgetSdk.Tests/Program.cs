@@ -39,7 +39,7 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Unsafe image sources are rejected", UnsafeImageSourcesAreRejected),
     ("Visual nodes require accessibility and semantic data", VisualNodeRequirementsAreEnforced),
     ("Button interaction states serialize deterministically", ButtonStatesRoundTrip),
-    ("Text entry is host-owned bounded and protocol v15", TextEntryRoundTrip),
+    ("Text entry is host-owned bounded with protected sensitive mode", TextEntryRoundTrip),
     ("Buttons expose closed semantic icons without action-ID inference", ButtonIconsRoundTrip),
     ("Settings composites expose stable controller and accessibility semantics", SettingsCompositesAreSemantic),
     ("Modern composites preserve semantic classes IDs and accessibility", ModernComponentsAreSemantic),
@@ -251,6 +251,50 @@ static Task TextEntryRoundTrip()
     Assert.True(ViewSnapshotValidator.Validate(invalid).Any(error =>
         error.Code == "invalid_text_entry_value"),
         "Control characters must fail text-entry validation.");
+
+    const string secretSentinel = "must-never-enter-a-snapshot";
+    var sensitiveSnapshot = new WidgetView(UI.Stack("sensitive.root",
+        UI.SensitiveTextEntry(
+            "Enter access key", "credential.commit", "credential.entry", 64)))
+        .CreateSnapshot("sensitive-text-entry.test", 2);
+    var sensitive = sensitiveSnapshot.Root.Children.Single();
+    Assert.Equal(ProtocolConstants.SensitiveTextEntryVersion,
+        sensitiveSnapshot.ProtocolVersion);
+    Assert.Equal(TextEntryInputKind.Sensitive, sensitive.TextEntryInputKind);
+    Assert.Equal(string.Empty, sensitive.TextEntryValue);
+    Assert.Equal<string?>(null, sensitive.AccessibilityValue);
+    Assert.Equal("Enter access key", sensitive.Text);
+    Assert.Equal("Enter access key", sensitive.AccessibilityLabel);
+    var sensitiveJson = Encoding.UTF8.GetString(SnapshotJson.Serialize(sensitiveSnapshot));
+    Assert.True(sensitiveJson.Contains(
+        "\"textEntryInputKind\":\"sensitive\"", StringComparison.Ordinal),
+        "Sensitive text-entry kind was not serialized.");
+    Assert.True(!sensitiveJson.Contains(secretSentinel, StringComparison.Ordinal),
+        "Sensitive snapshot JSON exposed the secret sentinel.");
+
+    var leaked = sensitiveSnapshot with
+    {
+        Root = sensitiveSnapshot.Root with
+        {
+            Children = [sensitive with { TextEntryValue = secretSentinel }],
+        },
+    };
+    Assert.True(ViewSnapshotValidator.Validate(leaked).Any(error =>
+        error.Code == "sensitive_text_entry_value_not_empty"),
+        "Sensitive text entry must reject every non-empty authored value.");
+    var accessibilityLeak = sensitiveSnapshot with
+    {
+        Root = sensitiveSnapshot.Root with
+        {
+            Children = [sensitive with { AccessibilityValue = secretSentinel }],
+        },
+    };
+    Assert.True(ViewSnapshotValidator.Validate(accessibilityLeak).Any(error =>
+        error.Code == "sensitive_text_entry_accessibility_value_not_allowed"),
+        "Sensitive text entry must reject an authored accessibility value.");
+    Assert.Throws<ArgumentOutOfRangeException>(() =>
+        UI.SensitiveTextEntry(
+            "Enter access key", "credential.commit", "credential.entry", 97));
     return Task.CompletedTask;
 }
 

@@ -19,7 +19,12 @@ std::optional<TextEntryActionRequest> CaptureTextEntryActionRequest(
         node->actionId.empty() || node->textEntryMaximumLength == 0 ||
         node->textEntryMaximumLength > TextEntryModal::MaximumLength ||
         node->textEntryValue.size() > node->textEntryMaximumLength ||
-        node->textEntryPlaceholder.size() > TextEntryModal::MaximumLength) {
+        node->textEntryPlaceholder.size() > TextEntryModal::MaximumLength ||
+        (node->textEntryInputKind != L"sensitive" &&
+         !node->textEntryInputKind.empty() &&
+         node->textEntryInputKind != L"ordinary") ||
+        (node->textEntryInputKind == L"sensitive" &&
+         !node->textEntryValue.empty())) {
         return std::nullopt;
     }
     return TextEntryActionRequest{
@@ -32,6 +37,7 @@ std::optional<TextEntryActionRequest> CaptureTextEntryActionRequest(
         snapshot.activeInputScopeId,
         node->textEntryValue,
         node->textEntryPlaceholder,
+        node->textEntryInputKind,
         node->textEntryMaximumLength,
     };
 }
@@ -55,7 +61,8 @@ std::optional<TextEntryActionTarget> ResolveTextEntryActionTarget(
     if (!node || !node->isTextEntry || node->isDisabled || node->isBusy ||
         node->id != request.nodeId || node->actionId != request.actionId ||
         node->textEntryMaximumLength != request.maximumLength ||
-        node->textEntryValue != request.value) {
+        node->textEntryValue != request.value ||
+        node->textEntryInputKind != request.inputKind) {
         return std::nullopt;
     }
     return TextEntryActionTarget{

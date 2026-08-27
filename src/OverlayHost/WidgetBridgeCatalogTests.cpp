@@ -1030,6 +1030,58 @@ int main() {
     CHECK(!invalidTextEntry && !error.empty());
 
     error.clear();
+    const auto sensitiveTextEntry = widgetrail::testing::ParseWidgetSnapshotResponse(R"json({
+        "snapshot": {
+            "protocolVersion": 28,
+            "sequence": 2,
+            "widgetInstanceId": "provider-neutral.secret",
+            "activeInputScopeId": "secret.root",
+            "root": {
+                "id":"secret.root","kind":"stack","children":[{
+                    "id":"secret.entry","kind":"textEntry","text":"Enter access key",
+                    "actionId":"secret.commit","accessibilityLabel":"Enter access key",
+                    "textEntryValue":"","textEntryPlaceholder":"Enter access key",
+                    "textEntryMaximumLength":64,"textEntryInputKind":"sensitive"
+                }]
+            }
+        }
+    })json", error);
+    CHECK(sensitiveTextEntry && error.empty());
+    if (sensitiveTextEntry) {
+        const auto& sensitive = sensitiveTextEntry->root.children.front();
+        CHECK(sensitive.isTextEntry);
+        CHECK(sensitive.textEntryInputKind == L"sensitive");
+        CHECK(sensitive.textEntryValue.empty());
+        CHECK(sensitive.accessibilityValue.empty());
+    }
+
+    error.clear();
+    CHECK(!widgetrail::testing::ParseWidgetSnapshotResponse(R"json({
+        "snapshot": {
+            "protocolVersion": 28,"sequence":3,
+            "widgetInstanceId":"provider-neutral.secret",
+            "activeInputScopeId":"secret.entry",
+            "root":{"id":"secret.entry","kind":"textEntry",
+                "actionId":"secret.commit","textEntryValue":"must-not-cross",
+                "textEntryPlaceholder":"Enter access key","textEntryMaximumLength":64,
+                "textEntryInputKind":"sensitive"}
+        }
+    })json", error) && !error.empty());
+
+    error.clear();
+    CHECK(!widgetrail::testing::ParseWidgetSnapshotResponse(R"json({
+        "snapshot": {
+            "protocolVersion":28,"sequence":4,
+            "widgetInstanceId":"provider-neutral.secret",
+            "activeInputScopeId":"secret.entry",
+            "root":{"id":"secret.entry","kind":"textEntry",
+                "actionId":"secret.commit","textEntryValue":"",
+                "textEntryPlaceholder":"Enter access key","textEntryMaximumLength":64,
+                "textEntryInputKind":"opaque"}
+        }
+    })json", error) && !error.empty());
+
+    error.clear();
     const auto invalidVisibility = widgetrail::testing::ParseWidgetSnapshotResponse(R"json({
         "snapshot": {
             "sequence": 1,

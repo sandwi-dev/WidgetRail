@@ -269,6 +269,7 @@ struct WidgetNode final {
     std::wstring actionId;
     std::wstring textEntryValue;
     std::wstring textEntryPlaceholder;
+    std::wstring textEntryInputKind;
     std::size_t textEntryMaximumLength{};
     std::wstring valueChangedActionId;
     // Optional protocol-v13 identity for mutually exclusive presentations of

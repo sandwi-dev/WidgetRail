@@ -960,22 +960,34 @@ static Task RequestClassificationIsClosed()
 
 static async Task CommittedTextCrossesBridgeAndWorker()
 {
-    await using var harness = await BridgeHarness.StartAsync();
+    const string secretSentinel = "provider-neutral-secret-sentinel";
+    await using var harness = await BridgeHarness.StartAsync(
+        instanceId: "sensitive-text-entry.instance");
     var lifecycle = await harness.Client.RequestAsync(
         BridgeMessageTypes.SetWidgetLifecycle,
         new BridgeWidgetLifecycleRequest(
             "test-widget", WidgetLifecycleState.Interactive));
     Assert.Equal(BridgeMessageTypes.Acknowledged, lifecycle.Type);
-    _ = await harness.Client.RequestAsync(
+    var initial = await harness.Client.RequestAsync(
         BridgeMessageTypes.GetSnapshot, new WidgetIdRequest("test-widget"));
+    var initialSnapshot = SnapshotJson.Deserialize(System.Text.Encoding.UTF8.GetBytes(
+        initial.Payload.GetProperty("snapshot").GetRawText()));
+    var sensitiveEntry = Flatten(initialSnapshot.Root).Single(
+        node => node.Id == "credential.entry");
+    Assert.Equal(TextEntryInputKind.Sensitive, sensitiveEntry.TextEntryInputKind);
+    Assert.Equal(string.Empty, sensitiveEntry.TextEntryValue);
+    Assert.Equal<string?>(null, sensitiveEntry.AccessibilityValue);
+    Assert.True(!initial.Payload.GetRawText().Contains(
+        secretSentinel, StringComparison.Ordinal),
+        "Initial sensitive snapshot exposed the secret sentinel.");
 
     var action = await harness.Client.RequestAsync(
         BridgeMessageTypes.Action,
         new BridgeActionRequest(
             "test-widget",
-            new WidgetActionEvent("committed-text", "button")
+            new WidgetActionEvent("committed-text", "credential.entry")
             {
-                CommittedText = "Controller Proof",
+                CommittedText = secretSentinel,
             }));
     Assert.Equal(BridgeMessageTypes.Acknowledged, action.Type);
     _ = await harness.Client.ReadEventAsync(BridgeMessageTypes.Invalidation);
@@ -983,8 +995,11 @@ static async Task CommittedTextCrossesBridgeAndWorker()
         BridgeMessageTypes.GetSnapshot, new WidgetIdRequest("test-widget"));
     var snapshot = SnapshotJson.Deserialize(System.Text.Encoding.UTF8.GetBytes(
         response.Payload.GetProperty("snapshot").GetRawText()));
-    Assert.Equal("committed:16", Flatten(snapshot.Root).Single(
+    Assert.Equal("committed:32:diagnostic-redacted", Flatten(snapshot.Root).Single(
         node => node.Id == "committed-text-status").Text);
+    Assert.True(!System.Text.Encoding.UTF8.GetString(SnapshotJson.Serialize(snapshot))
+            .Contains(secretSentinel, StringComparison.Ordinal),
+        "Successor sensitive snapshot exposed the secret sentinel.");
 }
 
 static async Task TrustedArtworkDemandIsExact()
@@ -4269,10 +4284,12 @@ file sealed class BridgeTestWidget : Widget
     private double _volume = 0.5;
     private string _actionOrder = "none";
     private string _committedTextStatus = "committed:none";
+    private int _committedTextDiagnosticState;
     private readonly System.Collections.Concurrent.ConcurrentDictionary<long, string>
         _inputOrigins = new();
     private readonly bool _artworkFixture;
     private readonly bool _oversizedFixture;
+    private readonly bool _sensitiveTextEntryFixture;
     private bool _oversized;
     private WidgetAppLibraryItem? _artworkItem;
 
@@ -4282,6 +4299,8 @@ file sealed class BridgeTestWidget : Widget
             instanceId, "artwork.instance", StringComparison.Ordinal);
         _oversizedFixture = string.Equals(
             instanceId, "oversized.instance", StringComparison.Ordinal);
+        _sensitiveTextEntryFixture = string.Equals(
+            instanceId, "sensitive-text-entry.instance", StringComparison.Ordinal);
     }
 
     public override WidgetView Render()
@@ -4299,6 +4318,9 @@ file sealed class BridgeTestWidget : Widget
             UI.Slider(_volume, 0, 1, 0.1, "volume.changed", "volume",
                 "Volume", $"{_volume:P0}"),
         };
+        if (_sensitiveTextEntryFixture)
+            children.Add(UI.SensitiveTextEntry(
+                "Enter provider-neutral secret", "committed-text", "credential.entry", 64));
         if (_artworkFixture)
         {
             children.Add(UI.Button("Load artwork", "artwork.load", "artwork.load"));
@@ -4432,7 +4454,10 @@ file sealed class BridgeTestWidget : Widget
         else if (action.ActionId == "committed-text")
         {
             _committedTextStatus = action.CommittedText is { } committed
-                ? $"committed:{committed.Length}"
+                ? $"committed:{committed.Length}:" +
+                  (Volatile.Read(ref _committedTextDiagnosticState) == -1
+                      ? "diagnostic-leaked"
+                      : "diagnostic-redacted")
                 : "committed:missing";
             Invalidate();
         }
@@ -4461,6 +4486,20 @@ file sealed class BridgeTestWidget : Widget
             _actionOrder += ",second";
             Invalidate();
         }
+    }
+
+    protected override void OnActionDiagnostic(
+        WidgetActionEvent action,
+        string stage,
+        string code)
+    {
+        _ = stage;
+        _ = code;
+        if (action.ActionId != "committed-text") return;
+        if (action.CommittedText is null)
+            Interlocked.CompareExchange(ref _committedTextDiagnosticState, 1, 0);
+        else
+            Interlocked.Exchange(ref _committedTextDiagnosticState, -1);
     }
 }
 
@@ -4701,9 +4740,11 @@ file sealed class BridgeHarness : IAsyncDisposable
 
     public static async Task<BridgeHarness> StartAsync(
         bool withAppearance = false,
-        WidgetResidencyPolicy? residencyPolicy = null)
+        WidgetResidencyPolicy? residencyPolicy = null,
+        string instanceId = "test.instance")
     {
-        var temporary = TemporaryCatalog.Create(residencyPolicy: residencyPolicy);
+        var temporary = TemporaryCatalog.Create(
+            instanceId: instanceId, residencyPolicy: residencyPolicy);
         TemporaryAppearance? appearance = null;
         try
         {

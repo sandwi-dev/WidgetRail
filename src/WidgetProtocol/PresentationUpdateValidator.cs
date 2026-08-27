@@ -265,6 +265,7 @@ public static class PresentationUpdateMaterializer
                 PresentationProperty.Value or PresentationProperty.Minimum or PresentationProperty.Maximum or
                 PresentationProperty.Step or PresentationProperty.GridMinimumColumnWidth => Read<double?>(change.Value),
                 PresentationProperty.SliderInteractionMode => Read<SliderInteractionMode?>(change.Value),
+                PresentationProperty.TextEntryInputKind => Read<TextEntryInputKind?>(change.Value),
                 PresentationProperty.ImageFit => Read<ImageFit?>(change.Value),
                 PresentationProperty.Glyph => Read<WidgetGlyph?>(change.Value),
                 PresentationProperty.IndicatorSize => Read<LoadingIndicatorSize?>(change.Value),
@@ -380,6 +381,7 @@ public static class PresentationUpdateMaterializer
                 PresentationProperty.TextEntryValue => node with { TextEntryValue = Read<string?>(change.Value) },
                 PresentationProperty.TextEntryPlaceholder => node with { TextEntryPlaceholder = Read<string?>(change.Value) },
                 PresentationProperty.TextEntryMaximumLength => node with { TextEntryMaximumLength = Read<int?>(change.Value) },
+                PresentationProperty.TextEntryInputKind => node with { TextEntryInputKind = Read<TextEntryInputKind?>(change.Value) },
                 PresentationProperty.Value => node with { Value = Read<double?>(change.Value) },
                 PresentationProperty.Minimum => node with { Minimum = Read<double?>(change.Value) },
                 PresentationProperty.Maximum => node with { Maximum = Read<double?>(change.Value) },

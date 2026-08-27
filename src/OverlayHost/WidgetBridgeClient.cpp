@@ -711,6 +711,13 @@ WidgetNode ParseNode(const JsonObject& source) {
     node.actionId = OptionalString(source, L"actionId");
     node.textEntryValue = OptionalString(source, L"textEntryValue");
     node.textEntryPlaceholder = OptionalString(source, L"textEntryPlaceholder");
+    node.textEntryInputKind = OptionalString(source, L"textEntryInputKind");
+    if (!node.textEntryInputKind.empty() &&
+        node.textEntryInputKind != L"ordinary" &&
+        node.textEntryInputKind != L"sensitive")
+        throw winrt::hresult_invalid_argument();
+    if (node.kind != L"textEntry" && !node.textEntryInputKind.empty())
+        throw winrt::hresult_invalid_argument();
     if (source.HasKey(L"textEntryMaximumLength")) {
         const auto value = source.GetNamedNumber(L"textEntryMaximumLength");
         if (!std::isfinite(value) || value < 1 ||
@@ -720,9 +727,15 @@ WidgetNode ParseNode(const JsonObject& source) {
         node.textEntryMaximumLength = static_cast<std::size_t>(value);
     }
     if (node.kind == L"textEntry" &&
-        (node.textEntryMaximumLength == 0 ||
+        (!source.HasKey(L"textEntryValue") ||
+         source.GetNamedValue(L"textEntryValue").ValueType() != JsonValueType::String ||
+         !source.HasKey(L"textEntryPlaceholder") ||
+         source.GetNamedValue(L"textEntryPlaceholder").ValueType() != JsonValueType::String ||
+         node.textEntryMaximumLength == 0 ||
          node.textEntryValue.size() > node.textEntryMaximumLength ||
          node.textEntryPlaceholder.size() > protocol_contract::MaximumTextEntryLength ||
+         (node.textEntryInputKind == L"sensitive" && !node.textEntryValue.empty()) ||
+         (node.textEntryInputKind == L"sensitive" && source.HasKey(L"accessibilityValue")) ||
          std::any_of(node.textEntryValue.begin(), node.textEntryValue.end(),
              [](const wchar_t value) { return std::iswcntrl(value) != 0; }) ||
          std::any_of(node.textEntryPlaceholder.begin(), node.textEntryPlaceholder.end(),
@@ -1483,10 +1496,10 @@ bool IsDocumentPresentationProperty(const std::wstring_view property) noexcept {
 }
 
 bool IsNodePresentationProperty(const std::wstring_view property) noexcept {
-    static constexpr std::array<std::wstring_view, 38> properties{
+    static constexpr std::array<std::wstring_view, 39> properties{
         L"visibleWhen", L"text", L"accessibilityLabel", L"accessibilityValue",
         L"actionId", L"textEntryValue", L"textEntryPlaceholder",
-        L"textEntryMaximumLength", L"value", L"minimum", L"maximum", L"step",
+        L"textEntryMaximumLength", L"textEntryInputKind", L"value", L"minimum", L"maximum", L"step",
         L"valueChangedActionId", L"sliderInteractionMode", L"imageSource",
         L"artworkHandle", L"mediaSurfaceId", L"imageFit", L"glyph", L"indicatorSize",
         L"actionSurfaceOrientation", L"gridMinimumColumnWidth",
@@ -1527,7 +1540,7 @@ bool ValidateWidgetDocumentStructure(
                 {L"id", L"kind", L"visibleWhen", L"text",
                  L"accessibilityLabel", L"accessibilityValue", L"actionId",
                  L"textEntryValue", L"textEntryPlaceholder",
-                 L"textEntryMaximumLength", L"value", L"minimum", L"maximum",
+                 L"textEntryMaximumLength", L"textEntryInputKind", L"value", L"minimum", L"maximum",
                  L"step", L"valueChangedActionId", L"sliderInteractionMode",
                  L"imageSource", L"artworkHandle", L"mediaSurfaceId", L"imageFit", L"glyph",
                  L"indicatorSize", L"actionSurfaceOrientation",
@@ -2057,7 +2070,7 @@ WidgetPresentationEffect ImpactForPresentationProperty(
     if (property == L"sliderInteractionMode") {
         return Effect::Paint | Effect::Interaction | Effect::Accessibility;
     }
-    if (property == L"textEntryMaximumLength") {
+    if (property == L"textEntryMaximumLength" || property == L"textEntryInputKind") {
         return Effect::Authority | Effect::Interaction | Effect::Accessibility;
     }
     return Effect::Unknown;

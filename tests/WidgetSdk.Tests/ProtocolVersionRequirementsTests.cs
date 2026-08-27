@@ -220,6 +220,19 @@ internal static class ProtocolVersionRequirementsTests
                     TextEntryPlaceholder = "Search",
                     TextEntryMaximumLength = 32,
                 }),
+            NodeCase("sensitive text entry", "sensitive-text-entry",
+                ProtocolConstants.SensitiveTextEntryVersion,
+                new()
+                {
+                    Id = "credential",
+                    Kind = ViewNodeKind.TextEntry,
+                    ActionId = "credential.commit",
+                    AccessibilityLabel = "Enter access key",
+                    TextEntryValue = "",
+                    TextEntryPlaceholder = "Enter access key",
+                    TextEntryMaximumLength = 64,
+                    TextEntryInputKind = TextEntryInputKind.Sensitive,
+                }, "$.root.children[0].textEntryInputKind"),
             NodeCase("virtual collection window", "virtual-collection-window",
                 ProtocolConstants.VirtualCollectionWindowVersion,
                 CursorCollection() with

@@ -199,6 +199,12 @@ internal sealed class ProtocolVersionRequirements
                         ProtocolConstants.TextEntryVersion,
                         path,
                         $"Text entry requires protocol version {ProtocolConstants.TextEntryVersion} or later.");
+                    if (node.TextEntryInputKind is not null)
+                        Add(
+                            "sensitive-text-entry",
+                            ProtocolConstants.SensitiveTextEntryVersion,
+                            $"{path}.textEntryInputKind",
+                            $"Sensitive text entry requires protocol version {ProtocolConstants.SensitiveTextEntryVersion} or later.");
                     break;
                 case ViewNodeKind.MediaViewport:
                     Add(

@@ -1396,6 +1396,7 @@ method static WidgetRail.WidgetSdk.UI.Scroll(string id, WidgetRail.WidgetProtoco
 method static WidgetRail.WidgetSdk.UI.Scrubber(System.TimeSpan position, System.TimeSpan duration, System.TimeSpan step, string valueChangedAction, string id, string accessibilityLabel = "Playback position", string? elapsedLabel = null, string? durationLabel = null, string? activationAction = null) -> WidgetRail.WidgetSdk.ScrubberElement
 method static WidgetRail.WidgetSdk.UI.SectionHeader(string title, string id, string? eyebrow = null, string? description = null, WidgetRail.WidgetSdk.WidgetElement? trailing = null) -> WidgetRail.WidgetSdk.StackElement
 method static WidgetRail.WidgetSdk.UI.SegmentedTabs(string id, string selectedTabId, params WidgetRail.WidgetSdk.SegmentedTab[] tabs) -> WidgetRail.WidgetSdk.RowElement
+method static WidgetRail.WidgetSdk.UI.SensitiveTextEntry(string placeholder, string action, string id, int maximumLength = 96) -> WidgetRail.WidgetSdk.TextEntryElement
 method static WidgetRail.WidgetSdk.UI.SettingsRow(string label, WidgetRail.WidgetSdk.ComponentAction action, string id, string? description = null, string? value = null, string? status = null, WidgetRail.WidgetSdk.StatusTone statusTone = WidgetRail.WidgetSdk.StatusTone.Neutral, bool isDisabled = false, bool isBusy = false, WidgetRail.WidgetProtocol.WidgetGlyph? glyph = null) -> WidgetRail.WidgetSdk.StackElement
 method static WidgetRail.WidgetSdk.UI.Slider(double value, double minimum, double maximum, double step, string valueChangedAction, string id, string accessibilityLabel, string? accessibilityValue = null, string? activationAction = null) -> WidgetRail.WidgetSdk.SliderElement
 method static WidgetRail.WidgetSdk.UI.Spacer(string id) -> WidgetRail.WidgetSdk.SpacerElement
@@ -1878,6 +1879,7 @@ property WidgetRail.WidgetProtocol.ResponsiveVisibility WidgetRail.WidgetSdk.Res
 property WidgetRail.WidgetProtocol.ScrollAxis WidgetRail.WidgetSdk.ScrollElement.Axis { get; set; }
 property WidgetRail.WidgetProtocol.SliderInteractionMode? WidgetRail.WidgetSdk.ScrubberElement.ControllerInteractionMode { get; set; }
 property WidgetRail.WidgetProtocol.SliderInteractionMode? WidgetRail.WidgetSdk.SliderElement.ControllerInteractionMode { get; set; }
+property WidgetRail.WidgetProtocol.TextEntryInputKind WidgetRail.WidgetSdk.TextEntryElement.InputKind { get; set; }
 property WidgetRail.WidgetProtocol.ViewSnapshot WidgetRail.WidgetSdk.WidgetPinnedLayoutTestHost.CurrentSnapshot { get; }
 property WidgetRail.WidgetProtocol.ViewSnapshot WidgetRail.WidgetSdk.WidgetScenarioResult.Snapshot { get; }
 property WidgetRail.WidgetProtocol.ViewSnapshot? WidgetRail.WidgetSdk.WidgetScenarioRunResult.FinalSnapshot { get; set; }

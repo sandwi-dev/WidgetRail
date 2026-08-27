@@ -183,6 +183,42 @@ bool WaitUntil(const auto& predicate) {
     return predicate();
 }
 
+bool SetClipboardText(const HWND owner, const std::wstring_view value) {
+    const auto bytes = (value.size() + 1) * sizeof(wchar_t);
+    HGLOBAL memory = GlobalAlloc(GMEM_MOVEABLE, bytes);
+    if (!memory) return false;
+    auto* destination = static_cast<wchar_t*>(GlobalLock(memory));
+    if (!destination) {
+        GlobalFree(memory);
+        return false;
+    }
+    std::copy(value.begin(), value.end(), destination);
+    destination[value.size()] = L'\0';
+    GlobalUnlock(memory);
+    if (!OpenClipboard(owner)) {
+        GlobalFree(memory);
+        return false;
+    }
+    EmptyClipboard();
+    const bool transferred = SetClipboardData(CF_UNICODETEXT, memory) != nullptr;
+    CloseClipboard();
+    if (!transferred) GlobalFree(memory);
+    return transferred;
+}
+
+bool ClipboardTextEquals(const HWND owner, const std::wstring_view expected) {
+    if (!OpenClipboard(owner)) return false;
+    bool equal{};
+    if (const HANDLE handle = GetClipboardData(CF_UNICODETEXT)) {
+        if (const auto* value = static_cast<const wchar_t*>(GlobalLock(handle))) {
+            equal = std::wstring_view(value) == expected;
+            GlobalUnlock(handle);
+        }
+    }
+    CloseClipboard();
+    return equal;
+}
+
 widgetrail::WidgetSnapshot TextEntrySnapshot() {
     widgetrail::WidgetNode entry{};
     entry.id = L"search";
@@ -291,6 +327,36 @@ void CheckAdmission() {
     Check(!widgetrail::input::ResolveTextEntryActionTarget(
         *request, true, L"game-launcher", L"runtime-a", L"presentation-a", changed),
         "changed text-entry bound rejects modal commit");
+    changed = snapshot;
+    changed.root.children[0].textEntryInputKind = L"sensitive";
+    Check(!widgetrail::input::ResolveTextEntryActionTarget(
+        *request, true, L"game-launcher", L"runtime-a", L"presentation-a", changed),
+        "changed text-entry sensitivity rejects modal commit");
+
+    auto sensitiveSnapshot = snapshot;
+    sensitiveSnapshot.root.children[0].textEntryValue.clear();
+    sensitiveSnapshot.root.children[0].textEntryInputKind = L"sensitive";
+    const auto sensitiveRequest = widgetrail::input::CaptureTextEntryActionRequest(
+        L"provider-neutral", L"runtime-secret", L"presentation-secret",
+        sensitiveSnapshot, L"search");
+    Check(sensitiveRequest && sensitiveRequest->value.empty() &&
+            sensitiveRequest->inputKind == L"sensitive",
+        "sensitive text entry captures empty presentation state and exact mode authority");
+    Check(sensitiveRequest && widgetrail::input::ResolveTextEntryActionTarget(
+            *sensitiveRequest, true, L"provider-neutral", L"runtime-secret",
+            L"presentation-secret", sensitiveSnapshot).has_value(),
+        "sensitive commit resolves exactly once through current action authority");
+    auto retiredSensitive = sensitiveSnapshot;
+    retiredSensitive.root.children[0].textEntryInputKind = L"ordinary";
+    Check(sensitiveRequest && !widgetrail::input::ResolveTextEntryActionTarget(
+            *sensitiveRequest, true, L"provider-neutral", L"runtime-secret",
+            L"presentation-secret", retiredSensitive),
+        "sensitivity replacement retires the captured secret action route");
+    sensitiveSnapshot.root.children[0].textEntryValue = L"must-not-enter-snapshot";
+    Check(!widgetrail::input::CaptureTextEntryActionRequest(
+        L"provider-neutral", L"runtime-secret", L"presentation-secret",
+        sensitiveSnapshot, L"search"),
+        "sensitive text entry rejects a non-empty authored value");
 }
 
 void CheckLayout(const RECT workArea, const UINT dpi, const char* name) {
@@ -659,6 +725,7 @@ int wmain() {
             "password modal uses native password semantics");
         IUIAutomation* automation{};
         IUIAutomationElement* element{};
+        IUIAutomationValuePattern* valuePattern{};
         Check(SUCCEEDED(CoCreateInstance(
                 CLSID_CUIAutomation, nullptr, CLSCTX_INPROC_SERVER,
                 IID_PPV_ARGS(&automation))) && automation &&
@@ -672,20 +739,84 @@ int wmain() {
                     isPassword.vt == VT_BOOL && isPassword.boolVal == VARIANT_TRUE,
                 "UI Automation marks the protected edit as a password");
             VariantClear(&isPassword);
-            element->Release();
+            Check(SUCCEEDED(element->GetCurrentPatternAs(
+                        UIA_ValuePatternId, IID_PPV_ARGS(&valuePattern))) && valuePattern,
+                "protected edit retains the standard ValuePattern identity");
         }
-        if (automation) automation->Release();
+        constexpr std::wstring_view secret{L"bounded-secret-42"};
+        Check(SetClipboardText(window, secret),
+            "protected paste fixture owns one bounded clipboard value");
         SendMessageW(edit, WM_PASTE, 0, 0);
-        Check(WindowText(edit).empty(), "clipboard paste is suppressed for protected input");
-        Check(modal.PostController(L"B"), "controller B cancels protected input");
+        Check(WindowText(edit).empty(),
+            "protected edit does not read the clipboard while another modal control has focus");
+        for (std::size_t transition = 0;
+            transition < 64 && CurrentFocus(window) != edit; ++transition) {
+            const HWND focused = CurrentFocus(window);
+            if (!focused) break;
+            SendMessageW(focused, WM_KEYDOWN, VK_TAB, 0);
+        }
+        Check(WaitUntil([&] { return CurrentFocus(window) == edit; }),
+            "protected paste is admitted only after the native edit receives focus");
+        SendMessageW(edit, WM_PASTE, 0, 0);
+        Check(WaitUntil([&] { return WindowText(edit) == secret; }),
+            "focused protected edit admits one bounded user paste");
+        if (valuePattern) {
+            BSTR exposed{};
+            const HRESULT valueResult = valuePattern->get_CurrentValue(&exposed);
+            const bool protectedValue =
+                (FAILED(valueResult) && !exposed) ||
+                (SUCCEEDED(valueResult) && (!exposed || SysStringLen(exposed) == 0));
+            Check(protectedValue,
+                "UI Automation never exposes the live protected edit value");
+            if (exposed) SysFreeString(exposed);
+            valuePattern->Release();
+        }
+        if (element) element->Release();
+        if (automation) automation->Release();
+
+        SendMessageW(edit, EM_SETSEL, 0, -1);
+        constexpr std::wstring_view clipboardGuard{L"clipboard-guard"};
+        Check(SetClipboardText(window, clipboardGuard),
+            "protected export fixture owns one clipboard guard");
+        SendMessageW(edit, WM_COPY, 0, 0);
+        Check(WaitUntil([&] { return ClipboardTextEquals(window, clipboardGuard); }),
+            "protected copy cannot export the live secret");
+        SendMessageW(edit, WM_CUT, 0, 0);
+        Check(WindowText(edit) == secret && ClipboardTextEquals(window, clipboardGuard),
+            "protected cut cannot export or mutate the live secret");
+        SendMessageW(edit, WM_CONTEXTMENU, reinterpret_cast<WPARAM>(edit), 0);
+        Check(WindowText(edit) == secret && ClipboardTextEquals(window, clipboardGuard),
+            "protected context menu cannot export or mutate the live secret");
+        Check((GetWindowLongPtrW(edit, GWL_EXSTYLE) & WS_EX_ACCEPTFILES) == 0,
+            "protected edit does not admit shell drag/drop");
+        Check(modal.PostController(L"RT"), "controller Enter commits protected input");
         if (SUCCEEDED(comResult)) CoUninitialize();
     });
-    const auto protectedCancelled = modal.Show(
+    auto protectedCommitted = modal.Show(
         GetModuleHandleW(nullptr), owner, L"", L"Password for test network", 63, true);
     passwordDriver.join();
-    Check(protectedCancelled.outcome == widgetrail::input::TextEntryModalOutcome::Cancelled &&
-        !protectedCancelled.committedText,
-        "cancelled protected input publishes no secret");
+    constexpr std::wstring_view expectedSecret{L"bounded-secret-42"};
+    Check(protectedCommitted.outcome == widgetrail::input::TextEntryModalOutcome::Committed &&
+            protectedCommitted.committedText &&
+            std::wstring_view(protectedCommitted.committedText->view().data(),
+                protectedCommitted.committedText->view().size()) == expectedSecret,
+        "protected input returns one bounded secure commit after paste");
+    if (protectedCommitted.committedText) protectedCommitted.committedText->clear();
+    Check(SetClipboardText(owner, L""),
+        "protected paste fixture removes its clipboard sentinel");
+    std::thread protectedCancelDriver([&] {
+        Check(WaitUntil([&] { return modal.active(); }),
+            "protected cancel modal becomes active");
+        Check(modal.PostController(L"B"),
+            "controller B cancels protected input without a commit");
+    });
+    const auto protectedCancelled = modal.Show(
+        GetModuleHandleW(nullptr), owner, L"", L"Enter access key", 64, true);
+    protectedCancelDriver.join();
+    Check(protectedCancelled.outcome ==
+            widgetrail::input::TextEntryModalOutcome::Cancelled &&
+            !protectedCancelled.committedText,
+        "cancelled protected input publishes no secret action value");
     Check(!modal.active(), "protected modal releases its window");
     if (owner) DestroyWindow(owner);
     if (failures == 0) std::cout << "TextEntryModalTests passed\n";

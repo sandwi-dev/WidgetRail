@@ -20,6 +20,7 @@ struct TextEntryActionRequest final {
     std::wstring activeInputScopeId;
     std::wstring value;
     std::wstring placeholder;
+    std::wstring inputKind;
     std::size_t maximumLength{};
 };
 

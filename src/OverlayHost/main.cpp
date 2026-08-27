@@ -10412,6 +10412,7 @@ private:
             interactionSession_.focusedElementId()};
         const bool protectedWifi = descriptor->protectedWifiPromptSupported &&
             request->actionId == L"wifi.connect.protected";
+        const bool sensitive = request->inputKind == L"sensitive";
         const auto modalTitle = protectedWifi
             ? std::wstring(L"Password for ") + request->placeholder
             : request->placeholder;
@@ -10436,7 +10437,7 @@ private:
             TextEntryControllerPhase::AwaitingEntryNeutral;
         auto modalResult = textEntryModal_.Show(
             instance_, window_, request->value,
-            modalTitle, request->maximumLength, protectedWifi,
+            modalTitle, request->maximumLength, sensitive || protectedWifi,
             CurrentTextEntryTheme());
         // The terminal modal sample (B/RT/mouse/keyboard) and every other held
         // controller category remain quarantined until one complete neutral

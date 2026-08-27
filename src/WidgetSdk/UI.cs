@@ -49,7 +49,20 @@ public static partial class UI
         string action,
         string id,
         int maximumLength = ProtocolConstants.MaximumTextEntryLength) =>
-        new(id, value, placeholder, maximumLength, action);
+        new(id, value, placeholder, maximumLength, action, TextEntryInputKind.Ordinary);
+
+    /// <summary>
+    /// Creates a host-owned sensitive text-entry trigger. The authored view
+    /// always carries an empty value; only the final bounded commit reaches
+    /// the widget action callback.
+    /// </summary>
+    public static TextEntryElement SensitiveTextEntry(
+        string placeholder,
+        string action,
+        string id,
+        int maximumLength = ProtocolConstants.MaximumTextEntryLength) =>
+        new(id, string.Empty, placeholder, maximumLength, action,
+            TextEntryInputKind.Sensitive);
 
     /// <summary>
     /// Creates a controller-ready two-state button. The visual and

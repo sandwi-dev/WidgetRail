@@ -5746,3 +5746,21 @@ focus graph, account configuration, and credential boundaries are unchanged.
 The additive typed-handle overload accepts the focus target for the exact
 presentation, retaining the registered default overload while preventing a
 ready-only focus identity from invalidating non-ready roots.
+
+### WIDGE-55 — sensitive TextEntry contract
+
+Protocol v28 adds one provider-neutral `sensitive` TextEntry input kind and the
+`UI.SensitiveTextEntry` authoring helper. Its authored value is always empty,
+its accessibility value is absent, and any non-empty snapshot value or unknown
+mode fails managed and native admission. Ordinary protocol-v15 TextEntry
+behavior remains unchanged.
+
+The existing native modal owns the only live edit buffer. Sensitive entry uses
+native password rendering and protected UI Automation semantics, admits only a
+bounded user-invoked paste while the edit has focus, and blocks copy, cut,
+context-menu/export, and drag/drop. Commit revalidates the exact widget,
+runtime, presentation, snapshot, scope, node, action, mode, and length before
+the existing action request carries the value once. Cancel carries no value;
+replacement or route retirement rejects the commit. Framework action
+diagnostics and failure observations keep correlation metadata with committed
+text removed, and no host persistence or credential service is introduced.

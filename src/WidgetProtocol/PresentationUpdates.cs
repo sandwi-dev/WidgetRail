@@ -32,6 +32,7 @@ public enum PresentationProperty
     TextEntryValue,
     TextEntryPlaceholder,
     TextEntryMaximumLength,
+    TextEntryInputKind,
     Value,
     Minimum,
     Maximum,
@@ -198,6 +199,10 @@ public static class PresentationPropertyMetadata
         PresentationProperty.TextEntryMaximumLength =>
             PresentationPropertyImpact.MeasureLayout |
             PresentationPropertyImpact.Paint |
+            PresentationPropertyImpact.Interaction |
+            PresentationPropertyImpact.Accessibility,
+        PresentationProperty.TextEntryInputKind =>
+            PresentationPropertyImpact.Authority |
             PresentationPropertyImpact.Interaction |
             PresentationPropertyImpact.Accessibility,
         _ => throw new ArgumentOutOfRangeException(nameof(property), property, null),

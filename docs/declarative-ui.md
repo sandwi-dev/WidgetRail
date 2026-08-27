@@ -141,7 +141,8 @@ primary accessibility contract.
 | `UI.CodeText(text, id, accessibilityLabel?)` | `text` | Bounded non-interactive diagnostics/command text with the semantic monospace class. |
 | `UI.Button(label, action, id)` | `button` | Focusable action control; may include one semantic glyph or bounded leading PNG inside the same focus target. |
 | `UI.ToggleButton(label, isOn, action, id)` | `button` | Controller-ready two-state button composed from existing button semantics. |
-| `UI.TextEntry(value, placeholder, action, id, maximumLength)` | `textEntry` | Protocol-v15 bounded host-owned text entry. Worker snapshots carry only committed text; the bridge emits a distinct computed-style role keyed by stable node ID. |
+| `UI.TextEntry(value, placeholder, action, id, maximumLength)` | `textEntry` | Protocol-v15 bounded host-owned ordinary text entry. Worker snapshots carry the current non-sensitive value; the bridge emits a distinct computed-style role keyed by stable node ID. |
+| `UI.SensitiveTextEntry(placeholder, action, id, maximumLength)` | `textEntry` | Protocol-v28 protected entry. The authored snapshot value is always empty; only one final bounded commit reaches the exact widget action. |
 | `UI.Stepper(label, value, decrementAction, incrementAction, id, canDecrement?, canIncrement?)` | `row`, `text`, `button` | Label/value row with separate bounded decrement and increment actions. |
 | `UI.Progress(value, maximum, id, accessibilityLabel?)` | `progress` | Read-only bounded progress where `0 <= value <= maximum` and `maximum > 0`. |
 | `UI.Slider(value, minimum, maximum, step, valueChangedAction, id, accessibilityLabel, accessibilityValue?, activationAction?)` | `slider` | Protocol-v3 controller value control with absolute requested values. |

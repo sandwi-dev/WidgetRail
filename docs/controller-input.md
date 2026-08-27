@@ -89,13 +89,15 @@ or right with bounded repeat; it does not move key focus. Shift and symbol keys
 change the reachable character layer. There is no focusable Clear/Cancel/Enter
 action row: a nonfocusable themed legend explains these mappings. Pointer or
 UI Automation Invoke activates an exact key once, while physical Left/Right,
-Enter, Escape, Backspace, typing, and ordinary non-password clipboard editing
-remain available through the native edit control.
+Enter, Escape, Backspace, and typing remain available through the native edit
+control. Paste is admitted only when explicitly requested while that edit has
+focus and only when the complete value fits its authored bound.
 
 The authored prompt is a label, never the editable value. The committed value
 and live edit buffer are distinct; every insertion, deletion, paste, and caret
-move is reflected immediately. Password input is masked and blocks copy, cut,
-paste, and the context menu. The active WidgetRail appearance supplies the
+move is reflected immediately. Sensitive input uses native password semantics
+and blocks copy, cut, context-menu/export, drag/drop, and UI Automation value
+retrieval while retaining bounded user-invoked paste. The active WidgetRail appearance supplies the
 complete canvas, panel, controls, focus treatment, typeface, text scale, and
 interface scale. The borderless popup has no caption, resize, or system-menu
 affordance and remains centered inside compact, wide, high-DPI, and scaled work
@@ -110,7 +112,10 @@ cancel, window close, and commit remain distinct sanitized outcomes. Cancel and
 close dispatch no action, preserve the committed snapshot value, and restore
 the exact current semantic/UIA focus target.
 
-Only one final bounded committed value is sent with the semantic widget action.
+`UI.SensitiveTextEntry` publishes an empty authored value and non-secret prompt
+or status copy only. The live secret exists solely in the protected modal edit
+buffer and the one exact semantic widget action. Only one final bounded
+committed value is sent with that action.
 Raw key events, HWNDs, insertion history, and canceled text never enter the
 snapshot or worker. The host rejects values beyond the authored maximum (at
 most 96 UTF-16 code units) or containing control characters. No snapshot or
@@ -119,8 +124,10 @@ resolves the active widget, runtime and presentation generation, input scope,
 source ID, action ID, authored bound/value, and enabled/busy state. A harmless
 higher-sequence refresh may retain authority only when all of those values are
 unchanged. Replacement, removal, hide, scope/action/value/bound change, or an
-unavailable control rejects the result. Enter reports bounded host feedback
-without displaying or logging the committed text.
+unavailable control rejects the result. Replacement and Bridge-session
+retirement cannot replay it. Enter reports bounded host feedback without
+displaying or logging the committed text; framework diagnostics and failure
+events retain correlation metadata with the committed value removed.
 
 ## B behavior
 

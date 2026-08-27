@@ -62,6 +62,18 @@ public enum SliderInteractionMode
 }
 
 /// <summary>
+/// Selects whether a host-owned TextEntry carries an ordinary authored value
+/// or a transient sensitive value that must never enter presentation state.
+/// Omission is equivalent to <see cref="Ordinary"/>.
+/// </summary>
+[JsonConverter(typeof(JsonStringEnumConverter<TextEntryInputKind>))]
+public enum TextEntryInputKind
+{
+    Ordinary,
+    Sensitive,
+}
+
+/// <summary>
 /// A semantic sizing class, not a window size. The host resolves it against
 /// the current work area, DPI, accessibility scale, and shell chrome.
 /// </summary>
@@ -276,6 +288,7 @@ public sealed record ViewNode
     public string? TextEntryValue { get; init; }
     public string? TextEntryPlaceholder { get; init; }
     public int? TextEntryMaximumLength { get; init; }
+    public TextEntryInputKind? TextEntryInputKind { get; init; }
     public double? Value { get; init; }
     public double? Minimum { get; init; }
     public double? Maximum { get; init; }
