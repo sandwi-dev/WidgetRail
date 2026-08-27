@@ -111,24 +111,24 @@ button{font:inherit;margin:8px;padding:12px 22px}button:focus{outline:4px solid 
 <button id="back">Back</button><button id="play">Play</button><button id="seek">Seek</button>
 <p id="state">Ready</p></main><script>
 let environmentGeneration=0,surfaceGeneration=0,sessionGeneration=0,controllerGeneration=0,documentGeneration=0;
-let eventSequence=0,focus='play',spatialCommandId=0; const media=document.querySelector('#media');
+let eventSequence=0,focus='play',spatialCommandId=0,spatialCommandSequence=0; const media=document.querySelector('#media');
 const buttons=[...document.querySelectorAll('button')];
 function bounds(){const r=document.activeElement.getBoundingClientRect();return{x:r.x,y:r.y,width:r.width,height:r.height};}
-function emit(type,commandId){chrome.webview.postMessage({type,environmentGeneration,surfaceGeneration,sessionGeneration,controllerGeneration,documentGeneration,eventSequence:++eventSequence,commandId,focus,playing:!media.paused,bounds:bounds()});}
-function takeSpatial(){const id=spatialCommandId;spatialCommandId=0;return id;}
+function emit(type,commandId,commandSequence=0){chrome.webview.postMessage({type,environmentGeneration,surfaceGeneration,sessionGeneration,controllerGeneration,documentGeneration,eventSequence:++eventSequence,commandId,commandSequence,focus,playing:!media.paused,bounds:bounds()});}
+function takeSpatial(){const command={id:spatialCommandId,sequence:spatialCommandSequence};spatialCommandId=0;spatialCommandSequence=0;return command;}
 function select(delta){let i=Math.max(0,buttons.indexOf(document.activeElement));i=(i+delta+buttons.length)%buttons.length;buttons[i].focus();focus=buttons[i].id;}
-document.querySelector('#back').onclick=()=>emit('back',takeSpatial());
-document.querySelector('#play').onclick=async()=>{const id=takeSpatial();if(media.paused)await media.play();else media.pause();emit('media',id);};
-document.querySelector('#seek').onclick=()=>{const id=takeSpatial();media.currentTime=Math.min(media.duration||1,media.currentTime+.2);emit('media',id);};
+document.querySelector('#back').onclick=()=>{const command=takeSpatial();emit('back',command.id,command.sequence);};
+document.querySelector('#play').onclick=async()=>{const command=takeSpatial();if(media.paused)await media.play();else media.pause();emit('media',command.id,command.sequence);};
+document.querySelector('#seek').onclick=()=>{const command=takeSpatial();media.currentTime=Math.min(media.duration||1,media.currentTime+.2);emit('media',command.id,command.sequence);};
 chrome.webview.addEventListener('message',async e=>{const m=e.data;if(!m)return;
 if(m.command==='initialize'){environmentGeneration=m.environmentGeneration;surfaceGeneration=m.surfaceGeneration;sessionGeneration=m.sessionGeneration;controllerGeneration=m.controllerGeneration;documentGeneration=m.documentGeneration;eventSequence=0;buttons[1].focus();focus='play';emit('ready',m.commandId);return;}
 if(m.environmentGeneration!==environmentGeneration||m.surfaceGeneration!==surfaceGeneration||m.sessionGeneration!==sessionGeneration||m.controllerGeneration!==controllerGeneration||m.documentGeneration!==documentGeneration)return;
-if(m.command==='arm-activate'){spatialCommandId=m.commandId;emit('armed',m.commandId);return;}
+if(m.command==='arm-activate'){spatialCommandId=m.commandId;spatialCommandSequence=m.commandSequence||0;emit('armed',m.commandId,spatialCommandSequence);return;}
 let type='focus';if(m.command==='previous')select(-1);else if(m.command==='next')select(1);else if(m.command==='activate'){if(document.activeElement.id==='back')type='back';else if(document.activeElement.id==='play'){if(media.paused)await media.play();else media.pause();type='media';}else if(document.activeElement.id==='seek'){media.currentTime=Math.min(media.duration||1,media.currentTime+.2);type='media';}}
 else if(m.command==='back')type='back';else if(m.command==='toggle'){if(media.paused)await media.play();else media.pause();type='media';}
 else if(m.command==='seek-back'){media.currentTime=Math.max(0,media.currentTime-.2);type='media';}
 else if(m.command==='seek-forward'){media.currentTime=Math.min(media.duration||1,media.currentTime+.2);type='media';}
-else return;emit(type,m.commandId);});
+else return;emit(type,m.commandId,m.commandSequence||0);});
 </script>)HTML";
 
 std::vector<std::byte> WaveBytes() {
@@ -946,7 +946,8 @@ HRESULT RichMediaSurfaceCoordinator::OnWebMessage(
                 message.HasKey(L"playbackState")) {
                 playbackEvent = PlaybackEvent{
                     next.authority.eventSequence,
-                    pendingCommand_ ? pendingCommand_->playbackSequence : 0,
+                    static_cast<std::uint64_t>(
+                        message.GetNamedNumber(L"commandSequence")),
                     std::wstring(std::wstring_view(message.GetNamedString(L"mediaKey"))),
                     std::wstring(std::wstring_view(message.GetNamedString(L"playbackState"))),
                     message.GetNamedNumber(L"positionSeconds"),
@@ -961,13 +962,21 @@ HRESULT RichMediaSurfaceCoordinator::OnWebMessage(
             return S_OK;
         }
     }
-    if (playbackEvent && !IsPlaybackCommandCorrelated(
-            playbackEvent->commandSequence, playbackEvent->mediaKey,
-            pendingCommand_ && pendingCommand_->playbackSequence > 0
-                ? std::optional<std::uint64_t>{pendingCommand_->playbackSequence}
-                : std::nullopt,
-            pendingCommand_ ? std::wstring_view{pendingCommand_->mediaKey}
-                            : std::wstring_view{})) {
+    const bool unsolicitedObservation = next.lastAcknowledgedCommandId == 0;
+    const bool playbackCorrelated = !playbackEvent ||
+        (unsolicitedObservation
+            ? playbackEvent->commandSequence == 0 &&
+                !state_.mediaKey.empty() &&
+                playbackEvent->mediaKey == state_.mediaKey
+            : pendingCommand_ &&
+                (pendingCommand_->playbackSequence == 0
+                    ? playbackEvent->commandSequence == 0
+                    : IsPlaybackCommandCorrelated(
+                        playbackEvent->commandSequence,
+                        playbackEvent->mediaKey,
+                        pendingCommand_->playbackSequence,
+                        pendingCommand_->mediaKey)));
+    if (!playbackCorrelated) {
         Fault(L"message-playback-correlation", E_ACCESSDENIED);
         return S_OK;
     }
@@ -1302,7 +1311,7 @@ bool RichMediaSurfaceCoordinator::ValidatePageEvent(
         constexpr std::array required{
             L"type", L"environmentGeneration", L"surfaceGeneration", L"sessionGeneration",
             L"controllerGeneration", L"documentGeneration", L"eventSequence",
-            L"commandId", L"focus", L"playing", L"bounds"};
+            L"commandId", L"commandSequence", L"focus", L"playing", L"bounds"};
         constexpr std::array playbackKeys{
             L"mediaKey", L"playbackState", L"positionSeconds",
             L"durationSeconds", L"volume"};
@@ -1328,20 +1337,26 @@ bool RichMediaSurfaceCoordinator::ValidatePageEvent(
         };
         Authority received;
         std::uint64_t commandId{};
+        std::uint64_t commandSequence{};
         if (!number(L"environmentGeneration", received.environmentGeneration) ||
             !number(L"surfaceGeneration", received.surfaceGeneration) ||
             !number(L"sessionGeneration", received.sessionGeneration) ||
             !number(L"controllerGeneration", received.controllerGeneration) ||
             !number(L"documentGeneration", received.documentGeneration) ||
             !number(L"eventSequence", received.eventSequence) ||
-            !number(L"commandId", commandId) || received.eventSequence == 0) return false;
+            !number(L"commandId", commandId) ||
+            !number(L"commandSequence", commandSequence) ||
+            received.eventSequence == 0) return false;
+        const bool unsolicitedObservation = commandId == 0;
         if (received.environmentGeneration != expectedAuthority.environmentGeneration ||
             received.surfaceGeneration != expectedAuthority.surfaceGeneration ||
             received.sessionGeneration != expectedAuthority.sessionGeneration ||
             received.controllerGeneration != expectedAuthority.controllerGeneration ||
             received.documentGeneration != expectedAuthority.documentGeneration ||
             received.eventSequence <= lastSequence ||
-            (pendingCommandId ? commandId != *pendingCommandId : commandId != 0) ||
+            (unsolicitedObservation
+                ? commandSequence != 0
+                : (!pendingCommandId || commandId != *pendingCommandId)) ||
             (type != L"ready" && type != L"focus" && type != L"media" &&
              type != L"back" && type != L"armed") ||
             !IsDocumentLocalIdentifier(focus)) return false;
