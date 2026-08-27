@@ -70,6 +70,8 @@ internal static class WidgetPresentationDiff
             return Checkpoint("unstable_identity");
         if (!SameJson(previous.PinnedLayouts, current.PinnedLayouts))
             return Checkpoint("pinned_layout_catalog_changed");
+        if (!SameJson(previous.EmbeddedMedia, current.EmbeddedMedia))
+            return Checkpoint("embedded_media_changed");
 
         var operations = new List<PresentationUpdateOperation>();
         AddDocumentChanges(previous, current, operations);

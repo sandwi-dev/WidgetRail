@@ -2354,17 +2354,23 @@ private:
             MediaPixelsPerDip(owner));
     }
 
-    [[nodiscard]] bool EmbeddedMediaAuthorityCurrent() const noexcept {
+    [[nodiscard]] bool EmbeddedMediaAuthorityMatches(
+        const widgetrail::WidgetSnapshot& snapshot) const noexcept {
         if (!embeddedMediaAuthority_) return false;
         const auto* descriptor = sessions_.FindDescriptor(embeddedMediaAuthority_->widgetId);
-        const auto* snapshot = SnapshotFor(embeddedMediaAuthority_->widgetId);
-        return descriptor && snapshot && snapshot->embeddedMedia &&
-            snapshot->sequence == embeddedMediaAuthority_->sequence &&
-            snapshot->instanceId == embeddedMediaAuthority_->instanceId &&
+        return descriptor && snapshot.embeddedMedia &&
+            snapshot.sequence == embeddedMediaAuthority_->sequence &&
+            snapshot.instanceId == embeddedMediaAuthority_->instanceId &&
             descriptor->runtimeGeneration == embeddedMediaAuthority_->runtimeGeneration &&
             descriptor->presentationGeneration ==
                 embeddedMediaAuthority_->presentationGeneration &&
-            snapshot->embeddedMedia->id == embeddedMediaAuthority_->surfaceId;
+            snapshot.embeddedMedia->id == embeddedMediaAuthority_->surfaceId;
+    }
+
+    [[nodiscard]] bool EmbeddedMediaAuthorityCurrent() const noexcept {
+        if (!embeddedMediaAuthority_) return false;
+        const auto* snapshot = SnapshotFor(embeddedMediaAuthority_->widgetId);
+        return snapshot && EmbeddedMediaAuthorityMatches(*snapshot);
     }
 
     [[nodiscard]] bool EmbeddedMediaPresentationAuthorityCurrent() const noexcept {
@@ -2434,6 +2440,14 @@ private:
             };
     }
 
+    void AdvanceCompatibleEmbeddedMediaCommandAuthority(
+        const widgetrail::WidgetSnapshot& snapshot,
+        const widgetrail::EmbeddedMediaSurfaceDeclaration& declaration) {
+        ReconcileEmbeddedMediaCommandOrigin(snapshot);
+        embeddedMediaAuthority_->sequence = snapshot.sequence;
+        embeddedMediaAuthority_->commands = declaration.commands;
+    }
+
     void OnEmbeddedMediaPlaybackEvent(
         const widgetrail::richmedia::PlaybackEvent& event) {
         if (!EmbeddedMediaAuthorityCurrent() || !embeddedMediaAuthority_) return;
@@ -2495,13 +2509,12 @@ private:
             (accepted.value_or(false) ? L"published" : L"rejected"));
     }
 
-    void DispatchPendingEmbeddedMediaCommand() {
-        if (!EmbeddedMediaAuthorityCurrent() || !embeddedMediaAuthority_) return;
-        const auto* snapshot = SnapshotFor(embeddedMediaAuthority_->widgetId);
-        if (!snapshot || !snapshot->embeddedMedia ||
-            !snapshot->embeddedMedia->pendingCommand) return;
-        ReconcileEmbeddedMediaCommandOrigin(*snapshot);
-        const auto& pending = *snapshot->embeddedMedia->pendingCommand;
+    void DispatchPendingEmbeddedMediaCommand(
+        const widgetrail::WidgetSnapshot& snapshot) {
+        if (!embeddedMediaAuthority_ || !EmbeddedMediaAuthorityMatches(snapshot)) return;
+        if (!snapshot.embeddedMedia->pendingCommand) return;
+        ReconcileEmbeddedMediaCommandOrigin(snapshot);
+        const auto& pending = *snapshot.embeddedMedia->pendingCommand;
         if (pending.sequence <= embeddedMediaAuthority_->lastDispatchedPlaybackCommand)
             return;
         using Kind = widgetrail::richmedia::PlaybackCommandKind;
@@ -2524,6 +2537,13 @@ private:
             embeddedMediaAuthority_->surfaceId + L" sequence=" +
             std::to_wstring(pending.sequence) + L" kind=" + pending.kind +
             L" result=" + (sent ? L"sent" : L"deferred"));
+    }
+
+    void DispatchPendingEmbeddedMediaCommand() {
+        if (!embeddedMediaAuthority_) return;
+        const auto* snapshot = SnapshotFor(embeddedMediaAuthority_->widgetId);
+        if (!snapshot) return;
+        DispatchPendingEmbeddedMediaCommand(*snapshot);
     }
 
     [[nodiscard]] bool EmbeddedMediaPresentationVisible() const noexcept {
@@ -2941,11 +2961,15 @@ private:
                     snapshot.sequence,
                 });
             if (retainCommittedPlane) {
+                const auto committedSequence = embeddedMediaAuthority_->sequence;
+                AdvanceCompatibleEmbeddedMediaCommandAuthority(
+                    snapshot, declaration);
+                DispatchPendingEmbeddedMediaCommand(snapshot);
                 AppendDiagnostic(
                     L"Embedded media retained during compatible render widget=" +
                     std::wstring{widgetId} + L" surface=" + declaration.id +
                     L" committed-sequence=" +
-                    std::to_wstring(embeddedMediaAuthority_->sequence) +
+                    std::to_wstring(committedSequence) +
                     L" successor-sequence=" + std::to_wstring(snapshot.sequence));
                 return;
             }
@@ -2955,9 +2979,8 @@ private:
             return;
         }
         const auto retainCurrentSession = [&] {
-            ReconcileEmbeddedMediaCommandOrigin(snapshot);
-            embeddedMediaAuthority_->sequence = snapshot.sequence;
-            embeddedMediaAuthority_->commands = declaration.commands;
+            AdvanceCompatibleEmbeddedMediaCommandAuthority(
+                snapshot, declaration);
             const auto desiredProjection = pinnedSurfaceCoordinator_.pinned() &&
                     pinnedSurfaceCoordinator_.widgetId() == widgetId
                 ? EmbeddedMediaProjection::Pinned

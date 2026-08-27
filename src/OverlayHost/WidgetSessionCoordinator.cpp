@@ -4,6 +4,7 @@
 
 #include <algorithm>
 #include <exception>
+#include <limits>
 #include <unordered_set>
 #include <utility>
 
@@ -691,8 +692,10 @@ std::vector<WidgetSessionEvent> WidgetSessionCoordinator::TakeEvents() {
                 events.push_back(std::move(event));
                 continue;
             }
+            const auto refreshRevision = refreshRevisions_.find(request.widgetId);
             const bool refreshRequestedDuringAdmission =
-                RefreshState(request.widgetId) == WidgetRefreshState::RefreshRequested;
+                refreshRevision != refreshRevisions_.end() &&
+                refreshRevision->second > request.refreshRevision;
             snapshots_.insert_or_assign(request.widgetId, std::move(*completion.snapshot));
             CompleteRefresh(request, true);
             failures_.erase(request.widgetId);
@@ -814,8 +817,9 @@ void WidgetSessionCoordinator::MarkRefreshRequested(
     const std::wstring_view widgetId) {
     if (!Contains(widgetId)) return;
     const auto id = std::wstring(widgetId);
+    auto& revision = refreshRevisions_[id];
+    if (revision != std::numeric_limits<std::uint64_t>::max()) ++revision;
     refreshStates_.insert_or_assign(id, WidgetRefreshState::RefreshRequested);
-    refreshRequestIds_.erase(id);
 }
 
 void WidgetSessionCoordinator::MarkAllRefreshRequested() {
@@ -986,6 +990,7 @@ bool WidgetSessionCoordinator::SamePresentationAuthority(
         left.expectedInstanceId == right.expectedInstanceId &&
         left.expectedRuntimeGeneration == right.expectedRuntimeGeneration &&
         left.expectedPresentationGeneration == right.expectedPresentationGeneration &&
+        left.expectedBridgeSessionGeneration == right.expectedBridgeSessionGeneration &&
         left.baseSequence == right.baseSequence &&
         left.transactionKind == right.transactionKind &&
         left.recoveryOriginSequence == right.recoveryOriginSequence;
@@ -1134,6 +1139,11 @@ WidgetSessionCoordinator::Request WidgetSessionCoordinator::MakeRequest(
             request.expectedInstanceId = descriptor->instanceId;
             request.expectedRuntimeGeneration = descriptor->runtimeGeneration;
             request.expectedPresentationGeneration = descriptor->presentationGeneration;
+        }
+        request.expectedBridgeSessionGeneration = bridgeSessionGeneration_.load();
+        if (const auto revision = refreshRevisions_.find(request.widgetId);
+            revision != refreshRevisions_.end()) {
+            request.refreshRevision = revision->second;
         }
         if (kind == RequestKind::Snapshot || kind == RequestKind::Establish) {
             const auto* checkpoint = Snapshot(request.widgetId);
@@ -1436,6 +1446,9 @@ bool WidgetSessionCoordinator::CompletionRuntimeIsCurrent(
 
 bool WidgetSessionCoordinator::CompletionIsCurrent(const Request& request) const noexcept {
     if (!CompletionRuntimeIsCurrent(request)) return false;
+    if (request.expectedBridgeSessionGeneration > 0 &&
+        request.expectedBridgeSessionGeneration != bridgeSessionGeneration_.load())
+        return false;
     if (request.widgetId.empty()) return true;
     if (request.kind == RequestKind::Snapshot) {
         const auto target = lifecycleTargets_.find(request.widgetId);
@@ -1470,10 +1483,13 @@ void WidgetSessionCoordinator::CompleteRefresh(
         request.kind != RequestKind::Snapshot) return;
     const auto found = refreshRequestIds_.find(request.widgetId);
     if (found == refreshRequestIds_.end() || found->second != request.id) return;
-    refreshStates_.insert_or_assign(
-        request.widgetId,
-        admitted ? WidgetRefreshState::Current
-                 : WidgetRefreshState::RefreshRequested);
+    const auto revision = refreshRevisions_.find(request.widgetId);
+    const bool newerDemand = revision != refreshRevisions_.end() &&
+        revision->second > request.refreshRevision;
+    refreshStates_.insert_or_assign(request.widgetId,
+        admitted && !newerDemand
+            ? WidgetRefreshState::Current
+            : WidgetRefreshState::RefreshRequested);
     refreshRequestIds_.erase(found);
 }
 
@@ -1483,6 +1499,7 @@ void WidgetSessionCoordinator::HardRemoveCheckpoint(
     snapshots_.erase(id);
     refreshStates_.erase(id);
     refreshRequestIds_.erase(id);
+    refreshRevisions_.erase(id);
 }
 
 long long WidgetSessionCoordinator::CurrentBridgeSessionGeneration() const noexcept {
@@ -1514,6 +1531,7 @@ WidgetSessionCatalogChange WidgetSessionCoordinator::ResetBridgeSessionAuthority
     snapshots_.clear();
     refreshStates_.clear();
     refreshRequestIds_.clear();
+    refreshRevisions_.clear();
     failures_.clear();
     lifecycleStates_.clear();
     lifecycleTargets_.clear();

@@ -318,6 +318,8 @@ private:
         std::wstring expectedInstanceId;
         std::wstring expectedRuntimeGeneration;
         std::wstring expectedPresentationGeneration;
+        long long expectedBridgeSessionGeneration{};
+        std::uint64_t refreshRevision{};
         long long baseSequence{};
         WidgetPresentationTransactionKind transactionKind{
             WidgetPresentationTransactionKind::OrdinaryCheckpoint};
@@ -415,6 +417,7 @@ private:
     std::unordered_map<std::wstring, WidgetSnapshot> snapshots_;
     std::unordered_map<std::wstring, WidgetRefreshState> refreshStates_;
     std::unordered_map<std::wstring, std::uint64_t> refreshRequestIds_;
+    std::unordered_map<std::wstring, std::uint64_t> refreshRevisions_;
     std::unordered_map<std::wstring, WidgetSessionFailure> failures_;
     std::unordered_map<std::wstring, WidgetLifecycleState> lifecycleStates_;
     std::unordered_map<std::wstring, WidgetLifecycleState> lifecycleTargets_;
