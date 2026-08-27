@@ -193,6 +193,10 @@ public sealed class YouTubeWidgetTests
         StringAssert.Contains(adapter, "lastProgressSecond=second;emit('media')");
         StringAssert.Contains(adapter,
             "emit('armed',operation.id,operation.sequence,undefined,playbackState,operation.mediaKey)");
+        StringAssert.Contains(adapter,
+            "if((operation.kind==='load'||operation.kind==='cue')&&event.data===5)complete(operation,undefined,'ready')");
+        StringAssert.Contains(adapter,
+            "if(message.command==='load'||message.command==='cue'){mediaKey=operation.mediaKey;playbackState='loading';player.cueVideoById");
         StringAssert.Contains(adapter, "client-identity-rejected");
         StringAssert.Contains(adapter, "embedding-disabled");
         Assert.DoesNotContain("fetch(", adapter);
@@ -207,7 +211,7 @@ public sealed class YouTubeWidgetTests
             File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "manifest.json")));
         var root = document.RootElement;
         Assert.AreEqual("widgetrail.samples.youtube-video", root.GetProperty("id").GetString());
-        Assert.AreEqual("0.1.3", root.GetProperty("version").GetString());
+        Assert.AreEqual("0.1.4", root.GetProperty("version").GetString());
         Assert.AreEqual(0, root.GetProperty("permissions").GetArrayLength());
         Assert.AreEqual(0, root.GetProperty("optionalPermissions").GetArrayLength());
         Assert.AreEqual("suspend-when-hidden",
