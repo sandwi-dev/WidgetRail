@@ -180,6 +180,8 @@ public sealed class YouTubeWidgetTests
         StringAssert.Contains(adapter, "new YT.Player");
         StringAssert.Contains(adapter, "autoplay:0");
         StringAssert.Contains(adapter, "controls:1");
+        StringAssert.Contains(adapter,
+            "commandId:message.commandId,commandSequence:0,focus:'youtube-player'");
         StringAssert.Contains(adapter, "client-identity-rejected");
         StringAssert.Contains(adapter, "embedding-disabled");
         Assert.DoesNotContain("fetch(", adapter);
@@ -194,7 +196,7 @@ public sealed class YouTubeWidgetTests
             File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "manifest.json")));
         var root = document.RootElement;
         Assert.AreEqual("widgetrail.samples.youtube-video", root.GetProperty("id").GetString());
-        Assert.AreEqual("0.1.0", root.GetProperty("version").GetString());
+        Assert.AreEqual("0.1.1", root.GetProperty("version").GetString());
         Assert.AreEqual(0, root.GetProperty("permissions").GetArrayLength());
         Assert.AreEqual(0, root.GetProperty("optionalPermissions").GetArrayLength());
         Assert.AreEqual("suspend-when-hidden",
