@@ -43,8 +43,9 @@ separate, explicit action; package versions are immutable.
 ## Controller use
 
 Search, link playback, and setup share one route bar. Search and setup use compact
-task cards; the player keeps the 16:9 video primary and groups transport, timeline,
-volume, and status in one control deck.
+task cards; the player keeps the 16:9 video primary and places transport, timeline,
+and volume in one immediately adjacent bottom deck. Fullscreen/settings remain in
+the external player and pinning remains host-owned.
 
 1. Open **YouTube Video** and choose **Discover**, **Play a link**, or **Setup** from the route bar.
 2. Choose **Play a link**, press A, paste a supported public video URL, and commit the host-owned text

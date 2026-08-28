@@ -115,13 +115,25 @@ public sealed partial class YouTubeVideoWidget : Widget
         var statusClass = error is not null ? "is-error" :
             pending is not null ? "is-busy" :
             state == EmbeddedMediaPlaybackState.Playing ? "is-playing" : "is-normal";
+        WidgetElement sourceEntry = videoId is null
+            ? UI.Stack("youtube.link-card",
+                    UI.Text("VIDEO SOURCE", "youtube.link.label").Classes("youtube-section-label"),
+                    UI.Text("Paste a public embeddable link. Playback begins only after you press Play.",
+                        "youtube.link.help").Classes("youtube-section-copy"),
+                    linkEntry)
+                .Classes("youtube-card", "youtube-link-card")
+            : UI.Row("youtube.link-strip",
+                    UI.Text("VIDEO URL", "youtube.link.label")
+                        .Classes("youtube-section-label", "youtube-link-strip-label"),
+                    linkEntry)
+                .Classes("youtube-link-strip");
         var root = UI.Stack(
                 "youtube.root",
                 UI.Row(
                         "youtube.header",
                         UI.Button("Back", BackActionId, "youtube.player.back")
                             .FocusDown("youtube.link")
-                            .Classes("youtube-route-button"),
+                            .Classes("youtube-route-button", "youtube-player-back"),
                         UI.Stack("youtube.player.heading-copy",
                             UI.Text("YOUTUBE", "youtube.eyebrow").Classes("youtube-eyebrow"),
                             UI.Text(videoId is null ? "Play a link" : "Now playing", "youtube.title")
@@ -130,39 +142,28 @@ public sealed partial class YouTubeVideoWidget : Widget
                         UI.Text(status, "youtube.status")
                             .Classes("youtube-status", "youtube-status-pill", statusClass))
                     .Classes("youtube-header", "youtube-appbar"),
-                UI.Stack("youtube.link-card",
-                        UI.Text("VIDEO SOURCE", "youtube.link.label").Classes("youtube-section-label"),
-                        UI.Text(videoId is null
-                                ? "Paste a public embeddable link. Playback begins only after you press Play."
-                                : "Paste another public link at any time to change the video.",
-                            "youtube.link.help").Classes("youtube-section-copy"),
-                        linkEntry)
-                    .Classes("youtube-card", "youtube-link-card"),
-                UI.Stack("youtube.media-frame",
+                sourceEntry,
+                UI.Stack("youtube.player-shell",
                         UI.Row("youtube.media-heading",
                             UI.Text("PLAYER", "youtube.media.label").Classes("youtube-section-label"),
                             UI.Text(videoId is null ? "Waiting for a video" : "16:9 embedded playback",
                                 "youtube.media.hint").Classes("youtube-section-meta")),
-                        UI.MediaViewport(media, "youtube.viewport").Classes("youtube-viewport"))
-                    .Classes("youtube-card", "youtube-media-frame"),
-                UI.Stack("youtube.control-deck",
-                        UI.Row("youtube.control-heading",
-                            UI.Text("PLAYBACK", "youtube.controls.label").Classes("youtube-section-label"),
-                            UI.Text(videoId is null ? "Controls unlock after a valid link" : "A selects · sliders require A",
-                                "youtube.controls.help").Classes("youtube-section-meta")),
-                        UI.Row("youtube.controls", toggle, seekBack, seekForward).Classes("youtube-controls"),
-                        UI.Row(
-                                "youtube.timeline-row",
-                                UI.Text(FormatTime(position), "youtube.position").Classes("youtube-time"),
-                                timeline,
-                                UI.Text(FormatTime(duration), "youtube.duration").Classes("youtube-time", "is-end"))
-                            .Classes("youtube-slider-row"),
-                        UI.Row(
-                                "youtube.volume-row",
-                                UI.Text("Volume", "youtube.volume-label").Classes("youtube-label"),
-                                volumeControl)
-                            .Classes("youtube-slider-row"))
-                    .Classes("youtube-card", "youtube-control-deck", videoId is null ? "is-unavailable" : "is-ready"))
+                        UI.MediaViewport(media, "youtube.viewport").Classes("youtube-viewport"),
+                        UI.Stack("youtube.control-deck",
+                                UI.Row("youtube.controls", toggle, seekBack, seekForward).Classes("youtube-controls"),
+                                UI.Row(
+                                        "youtube.timeline-row",
+                                        UI.Text(FormatTime(position), "youtube.position").Classes("youtube-time"),
+                                        timeline,
+                                        UI.Text(FormatTime(duration), "youtube.duration").Classes("youtube-time", "is-end"))
+                                    .Classes("youtube-slider-row"),
+                                UI.Row(
+                                        "youtube.volume-row",
+                                        UI.Text("Volume", "youtube.volume-label").Classes("youtube-label"),
+                                        volumeControl)
+                                    .Classes("youtube-slider-row"))
+                            .Classes("youtube-control-deck", videoId is null ? "is-unavailable" : "is-ready"))
+                    .Classes("youtube-player-shell"))
             .InputScope("youtube.root")
             .Classes("youtube-root");
         return new WidgetView(
