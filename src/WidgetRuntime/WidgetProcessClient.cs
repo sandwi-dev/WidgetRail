@@ -511,6 +511,7 @@ public sealed class WidgetProcessClient : IAsyncDisposable
     {
         if (IsRunning) return;
         await _lifecycleGate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        CancellationTokenSource? startupDeadline = null;
         try
         {
             if (IsRunning) return;
@@ -524,18 +525,26 @@ public sealed class WidgetProcessClient : IAsyncDisposable
             var previousSession = Volatile.Read(ref _session);
             previousSession?.Terminate();
             await DisposeSessionAsync(previousSession, cancellationToken).ConfigureAwait(false);
+            _stopping = false;
+            Interlocked.Exchange(ref _failureReported, 0);
+            startupDeadline = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            startupDeadline.CancelAfter(_options.ConnectTimeout);
+            var startupToken = startupDeadline.Token;
             var currentSession = new WidgetProcessSession(
                 _timeProvider,
                 MaximumDashboardGestureReservationLifetime);
             Volatile.Write(ref _session, currentSession);
             if (_options.ProcessLeaseFactory is { } leaseFactory)
+            {
                 currentSession.AttachProcessLease(
                     leaseFactory() ?? throw new WidgetProcessAdmissionException(
                         "Worker process admission returned no lease."));
+                startupToken.ThrowIfCancellationRequested();
+            }
             if (_options.ContentLeaseFactory is { } contentLeaseFactory)
             {
                 using var contentTimeout = CancellationTokenSource.CreateLinkedTokenSource(
-                    cancellationToken);
+                    startupToken);
                 contentTimeout.CancelAfter(_options.ContentLeaseTimeout);
                 try
                 {
@@ -547,19 +556,19 @@ public sealed class WidgetProcessClient : IAsyncDisposable
                     ValidateContentLease(contentLease);
                 }
                 catch (OperationCanceledException) when (
-                    !cancellationToken.IsCancellationRequested &&
+                    !startupToken.IsCancellationRequested &&
                     contentTimeout.IsCancellationRequested)
                 {
                     throw new WidgetProcessAdmissionException(
                         "Worker content admission exceeded its time limit.");
                 }
             }
-            _stopping = false;
-            Interlocked.Exchange(ref _failureReported, 0);
+            startupToken.ThrowIfCancellationRequested();
             using var appContainer = _options.IsolationPolicy ==
                 WidgetWorkerIsolationPolicy.RequireAppContainer
                     ? WindowsAppContainer.OpenOrCreate(_options.IsolationKey!)
                     : null;
+            startupToken.ThrowIfCancellationRequested();
             if (appContainer is not null)
             {
                 var executableDirectory = Path.GetDirectoryName(
@@ -577,11 +586,15 @@ public sealed class WidgetProcessClient : IAsyncDisposable
                         "Worker content authority overlaps the trusted runtime directory.");
                 appContainer.GrantReadAndExecute(
                     new[] { executableDirectory }.Concat(_options.ReadOnlyPaths));
+                startupToken.ThrowIfCancellationRequested();
                 if (currentSession.ContentLease is not null)
+                {
                     appContainer.ReplaceReadAndExecuteGrant(
                         currentSession.ContentLease.Targets,
                         _options.ContentAuthorityOperations,
                         _options.ContentAuthorityJournal);
+                    startupToken.ThrowIfCancellationRequested();
+                }
             }
             var pipeSuffix = $"wrail-widget-{Environment.ProcessId}-{Guid.NewGuid():N}";
             var pipeName = pipeSuffix;
@@ -596,6 +609,7 @@ public sealed class WidgetProcessClient : IAsyncDisposable
                 : appContainer.CreatePipe(serverPipeName, 4096);
             var channel = new LengthPrefixedJsonChannel(pipe, _options.MaximumMessageBytes);
             currentSession.AttachTransport(pipe, channel);
+            startupToken.ThrowIfCancellationRequested();
 
             if (_options.CompanionSessionFactory is not null)
             {
@@ -607,6 +621,7 @@ public sealed class WidgetProcessClient : IAsyncDisposable
                     ?? throw new WidgetProcessException("Companion session factory returned null.");
                 ValidateCompanionArguments(companion.WorkerArguments, companionContext);
                 currentSession.AttachCompanion(companion);
+                startupToken.ThrowIfCancellationRequested();
             }
 
             var startInfo = new ProcessStartInfo(_options.ExecutablePath)
@@ -632,7 +647,8 @@ public sealed class WidgetProcessClient : IAsyncDisposable
             startInfo.ArgumentList.Add(_options.MaximumMessageBytes.ToString(System.Globalization.CultureInfo.InvariantCulture));
 
             if (_testHooks?.BeforeProcessStartAsync is { } beforeProcessStart)
-                await beforeProcessStart(cancellationToken).ConfigureAwait(false);
+                await beforeProcessStart(startupToken).ConfigureAwait(false);
+            startupToken.ThrowIfCancellationRequested();
             currentSession.StartProcess(() =>
             {
                 if (!OperatingSystem.IsWindows())
@@ -650,6 +666,7 @@ public sealed class WidgetProcessClient : IAsyncDisposable
                     throw;
                 }
             });
+            startupToken.ThrowIfCancellationRequested();
             if (currentSession.Companion is not null)
             {
                 currentSession.Companion.BindWorkerProcess(currentSession.Process!.Id);
@@ -665,15 +682,13 @@ public sealed class WidgetProcessClient : IAsyncDisposable
                 session: currentSession,
                 startOrdinal: startOrdinal);
 
-            using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-            timeout.CancelAfter(_options.ConnectTimeout);
-            await pipe.WaitForConnectionAsync(timeout.Token).ConfigureAwait(false);
+            await pipe.WaitForConnectionAsync(startupToken).ConfigureAwait(false);
             if (OperatingSystem.IsWindows())
                 WindowsAppContainer.VerifyPipeClientProcess(
                     pipe,
                     currentSession.Process?.Id ??
                         throw new WidgetProcessException("Worker process identity is unavailable."));
-            var hello = await channel.ReadAsync(timeout.Token).ConfigureAwait(false);
+            var hello = await channel.ReadAsync(startupToken).ConfigureAwait(false);
             if (hello.Type != MessageTypes.Hello || hello.RequestId != 0)
                 throw new WidgetProtocolViolationException("Worker handshake was malformed.");
             var helloPayload = RuntimeJson.FromElement<HelloPayload>(hello.Payload);
@@ -691,22 +706,35 @@ public sealed class WidgetProcessClient : IAsyncDisposable
             {
                 Type = MessageTypes.HelloAccepted,
                 Payload = RuntimeJson.ToElement(new { }),
-            }, timeout.Token).ConfigureAwait(false);
+            }, startupToken).ConfigureAwait(false);
             currentSession.MarkHandshakeCompleted();
             currentSession.StartReader(token =>
                 ReadResponsesAsync(currentSession, channel, token));
             if (_hostLifecycle != WidgetLifecycleState.Background)
             {
                 await SetCompanionLifecycleAsync(
-                    currentSession, _hostLifecycle, timeout.Token).ConfigureAwait(false);
+                    currentSession, _hostLifecycle, startupToken).ConfigureAwait(false);
                 var lifecycleResponse = await RequestConnectedAsync(
                     currentSession, MessageTypes.SetWidgetLifecycle,
-                    new WidgetLifecyclePayload(_hostLifecycle),
-                    timeout.Token).ConfigureAwait(false);
+                    new WidgetLifecyclePayload(_hostLifecycle), startupToken)
+                    .ConfigureAwait(false);
                 if (lifecycleResponse.Type != MessageTypes.Acknowledged)
                     throw new WidgetProtocolViolationException(
                         $"Expected lifecycle acknowledgement, received '{lifecycleResponse.Type}'.");
             }
+        }
+        catch (OperationCanceledException) when (
+            !cancellationToken.IsCancellationRequested &&
+            startupDeadline?.IsCancellationRequested == true)
+        {
+            var exception = new WidgetProcessException(
+                "Widget worker startup exceeded its time limit.");
+            if (!_stopping)
+                ReportFailure(WidgetFailureReason.ConnectionFailed, exception);
+            var session = Volatile.Read(ref _session);
+            session?.Terminate();
+            await DisposeSessionAsync(session, CancellationToken.None).ConfigureAwait(false);
+            throw exception;
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
@@ -755,6 +783,7 @@ public sealed class WidgetProcessClient : IAsyncDisposable
         }
         finally
         {
+            startupDeadline?.Dispose();
             _lifecycleGate.Release();
         }
     }

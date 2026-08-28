@@ -32,6 +32,7 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Catalog treats worker memory guidance as optional advisory metadata", CatalogMemoryGuidanceIsAdvisory),
     ("Worker residency budget options are bounded and explicit", WorkerResidencyBudgetOptionsAreBounded),
     ("Worker residency budget admission is race safe", WorkerResidencyBudgetAdmissionIsRaceSafe),
+    ("Permitted eighth worker pre-start timeout releases its exact slot", PermittedEighthWorkerPreStartTimeoutReleasesSlot),
     ("Catalog widget icons use the closed WidgetGlyph set with a safe fallback", CatalogGlyphIsClosed),
     ("Catalog rejects invalid WRSS with safe diagnostics", InvalidThemeIsRejected),
     ("Catalog rejects style paths outside package root", UnsafeStylePathIsRejected),
@@ -333,6 +334,71 @@ static async Task WorkerResidencyBudgetAdmissionIsRaceSafe()
     foreach (var owner in owners) budget.Release(owner);
     Assert.Equal(0, budget.Snapshot.ApplicationWorkers);
     Assert.Equal(0L, budget.Snapshot.ApplicationAdvisoryMemoryMb);
+}
+
+static async Task PermittedEighthWorkerPreStartTimeoutReleasesSlot()
+{
+    var budget = new WorkerResidencyBudget(new WorkerResidencyBudgetOptions
+    {
+        MaximumApplicationWorkers = 8,
+    });
+    var retainedOwners = Enumerable.Range(0, 7).Select(_ => new object()).ToArray();
+    var retainedLeases = retainedOwners.Select((owner, index) =>
+        budget.Reserve(owner, $"retained-{index}", 64, isControlPlane: false)).ToArray();
+    try
+    {
+        Assert.Equal(7, budget.Snapshot.ApplicationWorkers);
+        var timedOutOwner = new object();
+        var preStartEntered = new TaskCompletionSource(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        var failures = 0;
+        var hooks = new WidgetProcessClientTestHooks
+        {
+            BeforeProcessStartAsync = async cancellationToken =>
+            {
+                preStartEntered.TrySetResult();
+                await Task.Delay(Timeout.InfiniteTimeSpan, cancellationToken)
+                    .ConfigureAwait(false);
+            },
+        };
+        await using var client = new WidgetProcessClient(
+            new WidgetProcessOptions
+            {
+                ExecutablePath = Environment.ProcessPath!,
+                WidgetInstanceId = "permitted-eighth-worker",
+                ConnectTimeout = TimeSpan.FromMilliseconds(100),
+                RequestTimeout = TimeSpan.FromSeconds(2),
+                ProcessLeaseFactory = () => budget.Reserve(
+                    timedOutOwner, "permitted-eighth", 64, isControlPlane: false),
+            },
+            TimeProvider.System,
+            hooks);
+        client.Failed += (_, _) => failures++;
+
+        var startup = client.GetSnapshotAsync();
+        await preStartEntered.Task.WaitAsync(TimeSpan.FromSeconds(2));
+        var exception = await Assert.ThrowsAsync<WidgetProcessException>(async () =>
+            await startup.ConfigureAwait(false));
+
+        Assert.Equal("Widget worker startup exceeded its time limit.", exception.Message);
+        Assert.Equal(1, failures);
+        Assert.Equal(0, client.Starts);
+        Assert.True(!client.IsRunning, "Timed-out provisional worker remained running.");
+        Assert.Equal(7, budget.Snapshot.ApplicationWorkers);
+
+        var replacementOwner = new object();
+        using (budget.Reserve(
+            replacementOwner, "replacement-eighth", 64, isControlPlane: false))
+        {
+            Assert.Equal(8, budget.Snapshot.ApplicationWorkers);
+        }
+        Assert.Equal(7, budget.Snapshot.ApplicationWorkers);
+    }
+    finally
+    {
+        foreach (var lease in retainedLeases) lease.Dispose();
+    }
+    Assert.Equal(0, budget.Snapshot.ApplicationWorkers);
 }
 
 static async Task SettingsUsesSelectedCatalog()
