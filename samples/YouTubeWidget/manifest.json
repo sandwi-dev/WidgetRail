@@ -3,7 +3,7 @@
   "id": "widgetrail.samples.youtube-video",
   "publisher": "widgetrail.samples",
   "name": "YouTube Video",
-  "version": "0.2.6",
+  "version": "0.2.7",
   "pinningSupported": true,
   "hostApi": {
     "minimum": "1.0",

@@ -322,7 +322,7 @@ public sealed partial class YouTubeVideoWidget
 
     private WidgetView RenderLinkPlayer()
     {
-        var view = RenderPlayer();
+        var view = RenderPlayer(includeDashboardQuickActions: false);
         return view with { InitialFocusId = "youtube.link" };
     }
 

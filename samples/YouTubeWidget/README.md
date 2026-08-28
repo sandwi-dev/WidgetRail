@@ -43,8 +43,8 @@ separate, explicit action; package versions are immutable.
 ## Controller use
 
 Search, link playback, and setup share one route bar. Search and setup use compact
-task cards; the player keeps the 16:9 video primary and places icon transport plus
-compact volume on one row, with timeline below it. Fullscreen/settings remain in
+task cards; the player keeps the 16:9 video primary and places icon transport,
+timeline, and compact volume on one row. Fullscreen/settings remain in
 the external player and pinning remains host-owned.
 
 1. Open **YouTube Video** and choose **Discover**, **Play a link**, or **Setup** from the route bar.
@@ -52,9 +52,12 @@ the external player and pinning remains host-owned.
    entry. The widget validates the URL and cues the video without autoplay.
 3. Focus **Play** and press A. WidgetRail correlates that visible user action
    with the embedded player before playback starts.
-4. Use the native `-10s`, `+10s`, timeline, and volume controls. The web player
-   remains inside its unobscured, minimum 200-by-200 media viewport.
-5. Return to search without losing the retained query/result window. A compact
+4. Use the native seek-back/seek-forward icons, timeline, and volume controls.
+   The web player remains inside its unobscured, minimum 200-by-200 media viewport.
+5. With a current video ready on **Now playing**, the dashboard exposes X for
+   Play/Pause, LT for a bounded 10-second seek backward, and RT for a bounded
+   10-second seek forward. Other routes expose no YouTube dashboard actions.
+6. Return to search without losing the retained query/result window. A compact
    pin remains the host-owned video-only presentation. In compact pinned focus,
    X pauses or resumes the current video in place and LT/RT retain their bounded
    seek behavior.

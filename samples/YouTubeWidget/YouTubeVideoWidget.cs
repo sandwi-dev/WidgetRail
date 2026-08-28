@@ -29,7 +29,7 @@ public sealed partial class YouTubeVideoWidget : Widget
 
     public override WidgetView Render() => RenderApplication();
 
-    private WidgetView RenderPlayer()
+    private WidgetView RenderPlayer(bool includeDashboardQuickActions = true)
     {
         string link;
         string? videoId;
@@ -55,7 +55,7 @@ public sealed partial class YouTubeVideoWidget : Widget
 
         var linkEntry = UI.TextEntry(
                 link,
-                "Paste a youtube.com or youtu.be link",
+                "Paste YouTube link",
                 LinkActionId,
                 "youtube.link",
                 ProtocolConstants.MaximumTextEntryLength)
@@ -73,16 +73,16 @@ public sealed partial class YouTubeVideoWidget : Widget
         var seekBack = UI.Button("", SeekBackwardActionId, "youtube.playback.seek-backward")
             .Icon(WidgetGlyph.Previous, "Seek backward 10 seconds")
             .Disabled(videoId is null || pending is not null)
-            .FocusUp("youtube.timeline")
+            .FocusUp("youtube.link")
             .FocusLeft("youtube.playback.toggle")
             .FocusRight("youtube.playback.seek-forward")
             .Classes("youtube-secondary", "youtube-transport-button");
         var seekForward = UI.Button("", SeekForwardActionId, "youtube.playback.seek-forward")
             .Icon(WidgetGlyph.Next, "Seek forward 10 seconds")
             .Disabled(videoId is null || pending is not null)
-            .FocusUp("youtube.timeline")
+            .FocusUp("youtube.link")
             .FocusLeft("youtube.playback.seek-backward")
-            .FocusRight("youtube.volume")
+            .FocusRight("youtube.timeline")
             .Classes("youtube-secondary", "youtube-transport-button");
         var timeline = UI.Slider(
                 position,
@@ -96,8 +96,9 @@ public sealed partial class YouTubeVideoWidget : Widget
             .RequireControllerActivation()
             .Disabled(videoId is null)
             .Busy(pending is not null)
-            .FocusUp("youtube.playback.seek-backward")
-            .FocusDown("youtube.volume")
+            .FocusUp("youtube.link")
+            .FocusLeft("youtube.playback.seek-forward")
+            .FocusRight("youtube.volume")
             .Classes("youtube-slider");
         var volumeControl = UI.Slider(
                 volume,
@@ -111,24 +112,29 @@ public sealed partial class YouTubeVideoWidget : Widget
             .RequireControllerActivation()
             .Disabled(videoId is null)
             .Busy(pending is not null)
-            .FocusUp("youtube.timeline")
-            .FocusLeft("youtube.playback.seek-forward")
+            .FocusUp("youtube.link")
+            .FocusLeft("youtube.timeline")
             .Classes("youtube-slider", "youtube-volume");
 
         var status = error ?? StatusText(videoId, state, pending is not null);
         var statusClass = error is not null ? "is-error" :
             pending is not null ? "is-busy" :
             state == EmbeddedMediaPlaybackState.Playing ? "is-playing" : "is-normal";
-        WidgetElement sourceEntry = videoId is null
-            ? UI.Stack("youtube.link-card",
-                    UI.Text("VIDEO SOURCE", "youtube.link.label").Classes("youtube-section-label"),
-                    linkEntry)
-                .Classes("youtube-card", "youtube-link-card")
-            : UI.Row("youtube.link-strip",
-                    UI.Text("VIDEO URL", "youtube.link.label")
-                        .Classes("youtube-section-label", "youtube-link-strip-label"),
-                    linkEntry)
-                .Classes("youtube-link-strip");
+        IReadOnlyList<WidgetQuickAction>? quickActions =
+            includeDashboardQuickActions &&
+            videoId is not null &&
+            error is null &&
+            pending is null &&
+            state != EmbeddedMediaPlaybackState.Loading
+                ?
+                [
+                    new WidgetQuickAction(ControllerButton.X, ToggleActionId, "Play or pause"),
+                    new WidgetQuickAction(ControllerButton.LeftTrigger, SeekBackwardActionId,
+                        "Seek backward 10 seconds"),
+                    new WidgetQuickAction(ControllerButton.RightTrigger, SeekForwardActionId,
+                        "Seek forward 10 seconds"),
+                ]
+                : null;
         var root = UI.Stack(
                 "youtube.root",
                 UI.Row(
@@ -144,10 +150,9 @@ public sealed partial class YouTubeVideoWidget : Widget
                         UI.Text(status, "youtube.status")
                             .Classes("youtube-status", "youtube-status-pill", statusClass))
                     .Classes("youtube-header", "youtube-appbar"),
-                sourceEntry,
+                linkEntry,
                 UI.Stack("youtube.player-shell",
                         UI.Row("youtube.media-heading",
-                            UI.Text("PLAYER", "youtube.media.label").Classes("youtube-section-label"),
                             UI.Text(videoId is null ? "Waiting for a video" : "16:9 embedded playback",
                                 "youtube.media.hint").Classes("youtube-section-meta")),
                         UI.MediaViewport(media, "youtube.viewport").Classes("youtube-viewport"),
@@ -156,15 +161,14 @@ public sealed partial class YouTubeVideoWidget : Widget
                                         toggle,
                                         seekBack,
                                         seekForward,
-                                        UI.Text("Volume", "youtube.volume-label").Classes("youtube-label"),
+                                        UI.Row(
+                                                "youtube.timeline-group",
+                                                UI.Text(FormatTime(position), "youtube.position").Classes("youtube-time"),
+                                                timeline,
+                                                UI.Text(FormatTime(duration), "youtube.duration").Classes("youtube-time", "is-end"))
+                                            .Classes("youtube-timeline-group"),
                                         volumeControl)
-                                    .Classes("youtube-controls"),
-                                UI.Row(
-                                        "youtube.timeline-row",
-                                        UI.Text(FormatTime(position), "youtube.position").Classes("youtube-time"),
-                                        timeline,
-                                        UI.Text(FormatTime(duration), "youtube.duration").Classes("youtube-time", "is-end"))
-                                    .Classes("youtube-slider-row"))
+                                    .Classes("youtube-controls"))
                             .Classes("youtube-control-deck", videoId is null ? "is-unavailable" : "is-ready"))
                     .Classes("youtube-player-shell"))
             .InputScope("youtube.root")
@@ -172,6 +176,7 @@ public sealed partial class YouTubeVideoWidget : Widget
         return new WidgetView(
             root,
             InitialFocusId: videoId is null ? "youtube.link" : "youtube.playback.toggle",
+            QuickActions: quickActions,
             ActiveInputScopeId: "youtube.root",
             Surface: new WidgetSurfaceHints
             {
@@ -365,7 +370,7 @@ public sealed partial class YouTubeVideoWidget : Widget
         string? videoId,
         EmbeddedMediaPlaybackState state,
         bool pending) =>
-        videoId is null ? "Paste a public embeddable YouTube video link." :
+        videoId is null ? "Paste YouTube link to start" :
         pending || state == EmbeddedMediaPlaybackState.Loading ? "Loading YouTube video…" :
         state switch
         {
