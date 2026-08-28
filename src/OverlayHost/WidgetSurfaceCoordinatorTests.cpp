@@ -946,8 +946,22 @@ int main() {
                   ActionBoundsInsideWindow(surface, L"host:pinned.resize"),
               "reconciled minimum surface retains bounded host UIA actions");
 
+        auto unrelatedDescriptor = Descriptor();
+        unrelatedDescriptor.id = L"widgetrail.tests.unrelated-peer";
+        unrelatedDescriptor.name = L"Unrelated peer";
+        unrelatedDescriptor.instanceId = L"unrelated.instance";
+        unrelatedDescriptor.runtimeGeneration = L"unrelated-runtime";
+        unrelatedDescriptor.presentationGeneration = L"unrelated-presentation";
+        const HWND catalogPeerSurface = coordinator.window();
+        const auto catalogPeerTeardownCount = coordinator.teardownCount();
+        coordinator.ReconcileCatalog({Descriptor(), unrelatedDescriptor});
+        Check(coordinator.pinned() && coordinator.window() == catalogPeerSurface &&
+                  coordinator.teardownCount() == catalogPeerTeardownCount,
+              "catalog admission of an unrelated peer leaves the current pin untouched");
         coordinator.ReconcileCatalog({Descriptor()});
-        Check(coordinator.pinned(), "current catalog generation retains the surface");
+        Check(coordinator.pinned() && coordinator.window() == catalogPeerSurface &&
+                  coordinator.teardownCount() == catalogPeerTeardownCount,
+              "removing an unrelated catalog peer preserves the current pin and HWND");
         coordinator.ReconcileCatalog({Descriptor(L"runtime-2")});
         Check(!coordinator.pinned() && coordinator.teardownCount() == 1 &&
                   !coordinator.controllerFocused() &&

@@ -264,8 +264,8 @@ internal static class Program
                     MinimumWidth = 420,
                     MinimumHeight = 300,
                 });
-            if (value.StartsWith("game-launcher.", StringComparison.Ordinal))
-                return new("launcher", "Game Launcher", "launcher-surface", 420, new WidgetSurfaceHints
+            if (value.StartsWith("wide-peer.", StringComparison.Ordinal))
+                return new("wide-peer", "Wide Peer", "wide-peer-surface", 420, new WidgetSurfaceHints
                 {
                     Mode = WidgetSurfaceMode.Wide,
                     PreferredWidth = 980,
