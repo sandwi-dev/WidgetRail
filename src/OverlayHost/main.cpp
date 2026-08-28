@@ -8407,7 +8407,6 @@ private:
         }
         if (OverlayFullscreenMediaRequested() &&
             !recoveryChordDown && (pressed & XINPUT_GAMEPAD_BACK) != 0) {
-            Dispatch(widgetrail::Command::SampleWidgetBack);
             return;
         }
         if (frame.recoveryChordPressed != WRAIL_OVERLAY_PLATFORM_FALSE) {
@@ -11085,17 +11084,11 @@ private:
         }
         if (overlayFullscreen && layer == CompositionPaintLayer::Guide && guideBounds) {
             openWidgetAccessibility_ = {};
-            openWidgetAccessibility_.title =
-                std::wstring{DisplayWidgetName(state_.activeWidget())};
-            openWidgetAccessibility_.help = L"B exits fullscreen. View returns to tray.";
-            openWidgetAccessibility_.helpBounds = *guideBounds;
-            DrawTextLine(
-                L"B  Exit fullscreen     View  Tray", hintFormat_.Get(),
-                D2D1::RectF(
-                    guideBounds->x + 24.0F, guideBounds->y,
-                    guideBounds->x + guideBounds->width - 24.0F,
-                    guideBounds->y + guideBounds->height),
-                secondaryBrush_.Get());
+            pendingActionFailureAccessibilityProjection_.reset();
+            if (accessibilityActive_) {
+                chromeAccessibilityProvider_.Clear();
+                accessibilityProjection_.Clear();
+            }
             finishUpdate();
             return;
         }
