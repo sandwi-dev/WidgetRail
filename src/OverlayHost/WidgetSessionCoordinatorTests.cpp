@@ -1046,7 +1046,7 @@ void RefreshDemandQueuesAgainstCurrentLifecycle() {
     coordinator.MarkRefreshRequested(L"alpha");
     assert(coordinator.RequestSnapshot(L"alpha"));
     assert(coordinator.RefreshState(L"alpha") ==
-           WidgetRefreshState::RefreshRequested);
+           WidgetRefreshState::RefreshInFlight);
     {
         std::scoped_lock lock(bridge.mutex);
         bridge.releaseStall = true;
@@ -1089,6 +1089,167 @@ void RefreshDemandQueuesAgainstCurrentLifecycle() {
            failed.authority == WidgetPresentationAuthority::FailureRetained &&
            coordinator.RefreshState(L"alpha") ==
                WidgetRefreshState::RefreshRequested);
+}
+
+void DeduplicatedSnapshotAdmissionsRetainExactTerminalOwnership() {
+    FakeBridge bridge;
+    bridge.catalog = {
+        Descriptor(L"alpha", L"alpha.one", L"runtime-1", L"view-1"),
+    };
+    bridge.snapshots[L"alpha"] = Snapshot(L"alpha.one", 1);
+    std::atomic<unsigned int> completionNotifications{};
+    std::mutex traceMutex;
+    std::vector<widgetrail::WidgetSessionTraceEvent> trace;
+    WidgetSessionCoordinator coordinator(
+        bridge.Operations(),
+        [&] { completionNotifications.fetch_add(1); },
+        [&](const widgetrail::WidgetSessionTraceEvent& event) {
+            std::scoped_lock lock(traceMutex);
+            trace.push_back(event);
+        });
+    assert(coordinator.EstablishCatalog());
+    coordinator.SetLifecycleTargets({
+        {L"alpha", WidgetLifecycleState::Visible},
+    });
+    (void)WaitEvents(coordinator, [](const auto& events) {
+        return std::any_of(events.begin(), events.end(), [](const auto& event) {
+            return event.widgetId == L"alpha" &&
+                   event.kind == WidgetSessionEventKind::SnapshotAdmitted;
+        });
+    });
+    assert(coordinator.RefreshState(L"alpha") == WidgetRefreshState::Current);
+
+    bridge.snapshots[L"alpha"] = Snapshot(L"alpha.one", 2);
+    bridge.snapshotAfterNextRead = Snapshot(L"alpha.one", 3);
+    const auto beforeCompletion = completionNotifications.load();
+    assert(coordinator.RequestSnapshot(L"alpha", false, 100));
+    const auto completionDeadline = std::chrono::steady_clock::now() + 2s;
+    while (completionNotifications.load() == beforeCompletion &&
+           std::chrono::steady_clock::now() < completionDeadline) {
+        std::this_thread::yield();
+    }
+    assert(completionNotifications.load() > beforeCompletion);
+
+    assert(coordinator.RequestSnapshot(L"alpha", false, 201));
+    assert(coordinator.RequestSnapshot(L"alpha", false, 202));
+    assert(coordinator.RefreshState(L"alpha") ==
+           WidgetRefreshState::RefreshInFlight);
+
+    const auto firstAdmission = coordinator.TakeEvents();
+    assert(std::any_of(
+        firstAdmission.begin(), firstAdmission.end(), [](const auto& event) {
+            return event.widgetId == L"alpha" &&
+                   event.kind == WidgetSessionEventKind::SnapshotAdmitted;
+        }));
+    (void)WaitEvents(coordinator, [&](const auto&) {
+        return coordinator.RefreshState(L"alpha") == WidgetRefreshState::Current;
+    });
+    assert(coordinator.Snapshot(L"alpha") &&
+           coordinator.Snapshot(L"alpha")->sequence == 3);
+    assert(bridge.snapshotCalls == 3);
+
+    {
+        std::scoped_lock lock(traceMutex);
+        const auto deduplicatedRequestId = [&](const std::uint64_t correlationId) {
+            const auto queued = std::find_if(
+                trace.begin(), trace.end(), [&](const auto& event) {
+                    return event.correlationId == correlationId &&
+                           event.stage ==
+                               widgetrail::WidgetSessionTraceStage::RequestQueued &&
+                           event.action ==
+                               widgetrail::WidgetSessionTraceAction::Deduplicated &&
+                           event.reason ==
+                               widgetrail::WidgetSessionTraceReason::ExistingRequest;
+                });
+            assert(queued != trace.end() && queued->requestId > 0);
+            return queued->requestId;
+        };
+        const auto firstRequestId = deduplicatedRequestId(201);
+        const auto secondRequestId = deduplicatedRequestId(202);
+        assert(firstRequestId == secondRequestId);
+        for (const auto correlationId : {201ULL, 202ULL}) {
+            const auto terminalCount = std::count_if(
+                trace.begin(), trace.end(), [&](const auto& event) {
+                    return event.correlationId == correlationId &&
+                           event.requestId == firstRequestId &&
+                           event.stage ==
+                               widgetrail::WidgetSessionTraceStage::RequestCompleted &&
+                           event.disposition ==
+                               widgetrail::WidgetSessionCompletionDisposition::Admitted;
+                });
+            assert(terminalCount == 1);
+        }
+    }
+
+    bridge.failingWidget = L"alpha";
+    const auto beforeFailure = completionNotifications.load();
+    assert(coordinator.RequestSnapshot(L"alpha", false, 300));
+    const auto failureDeadline = std::chrono::steady_clock::now() + 2s;
+    while (completionNotifications.load() == beforeFailure &&
+           std::chrono::steady_clock::now() < failureDeadline) {
+        std::this_thread::yield();
+    }
+    assert(completionNotifications.load() > beforeFailure);
+    assert(coordinator.RequestSnapshot(L"alpha", false, 301));
+    (void)WaitEvents(coordinator, [](const auto& events) {
+        return std::any_of(events.begin(), events.end(), [](const auto& event) {
+            return event.widgetId == L"alpha" &&
+                   event.kind == WidgetSessionEventKind::Failed;
+        });
+    });
+    assert(coordinator.RefreshState(L"alpha") ==
+           WidgetRefreshState::RefreshRequested);
+    {
+        std::scoped_lock lock(traceMutex);
+        assert(std::count_if(trace.begin(), trace.end(), [](const auto& event) {
+            return event.correlationId == 301 &&
+                   event.stage ==
+                       widgetrail::WidgetSessionTraceStage::RequestCompleted &&
+                   event.disposition ==
+                       widgetrail::WidgetSessionCompletionDisposition::Failed;
+        }) == 1);
+    }
+
+    bridge.failingWidget.clear();
+    bridge.snapshots[L"alpha"] = Snapshot(L"alpha.one", 4);
+    assert(coordinator.RequestSnapshot(L"alpha", false, 400));
+    (void)WaitEvents(coordinator, [](const auto& events) {
+        return std::any_of(events.begin(), events.end(), [](const auto& event) {
+            return event.widgetId == L"alpha" &&
+                   event.kind == WidgetSessionEventKind::SnapshotAdmitted;
+        });
+    });
+    assert(coordinator.RefreshState(L"alpha") == WidgetRefreshState::Current);
+
+    bridge.stalledWidget = L"alpha";
+    bridge.releaseStall = false;
+    const auto beforeCalls = bridge.snapshotCalls;
+    assert(coordinator.RequestSnapshot(L"alpha", false, 500));
+    {
+        std::unique_lock lock(bridge.mutex);
+        assert(bridge.changed.wait_for(lock, 1s, [&] {
+            return bridge.snapshotCalls > beforeCalls;
+        }));
+    }
+    assert(coordinator.RequestSnapshot(L"alpha", false, 501));
+    coordinator.RemoveSnapshot(L"alpha");
+    (void)WaitEvents(coordinator, [](const auto& events) {
+        return std::any_of(events.begin(), events.end(), [](const auto& event) {
+            return event.widgetId == L"alpha" &&
+                   event.kind == WidgetSessionEventKind::StaleCompletionRejected;
+        });
+    });
+    assert(!coordinator.Snapshot(L"alpha"));
+    {
+        std::scoped_lock lock(traceMutex);
+        assert(std::count_if(trace.begin(), trace.end(), [](const auto& event) {
+            return event.correlationId == 501 &&
+                   event.stage ==
+                       widgetrail::WidgetSessionTraceStage::RequestCompleted &&
+                   event.disposition ==
+                       widgetrail::WidgetSessionCompletionDisposition::Cancelled;
+        }) == 1);
+    }
 }
 
 void EightWidgetRetentionDoesNotWakeBackgroundWorkers() {
@@ -2198,6 +2359,7 @@ int main() {
     SelectionRevokesNeverCompletingRequest();
     DelayedSuccessRetainsLastGoodSnapshot();
     RefreshDemandQueuesAgainstCurrentLifecycle();
+    DeduplicatedSnapshotAdmissionsRetainExactTerminalOwnership();
     EightWidgetRetentionDoesNotWakeBackgroundWorkers();
     HideAndWorkerExitRevokePendingSnapshots();
     CancellationIgnoringLateResultsAreStale();
@@ -2215,5 +2377,5 @@ int main() {
     VirtualWindowAdmissionEnforcesDirectionalAuthority();
     VirtualWindowReplacementOwnsMutationAndUnknownPosition();
     VirtualWindowFreshSessionRequiresReplacement();
-    std::cout << "WidgetSessionCoordinatorTests passed (28 scenarios)\n";
+    std::cout << "WidgetSessionCoordinatorTests passed (29 scenarios)\n";
 }

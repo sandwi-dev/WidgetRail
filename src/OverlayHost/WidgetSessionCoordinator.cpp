@@ -315,8 +315,7 @@ bool WidgetSessionCoordinator::RequestSnapshot(
             : WidgetLifecycleState::Background;
     const auto queued = Queue(MakeRequest(
         RequestKind::Snapshot, id, lifecycle, correlationId));
-    if (queued.accepted() &&
-        queued.action != WidgetSessionTraceAction::Deduplicated) {
+    if (queued.accepted()) {
         MarkRefreshInFlight(id, queued.requestId);
     }
     return queued.accepted();
@@ -405,7 +404,6 @@ void WidgetSessionCoordinator::SetLifecycleTargets(
         request.queuedAt = queued.queuedAt;
         request.startedAt = queued.startedAt;
         if (queued.accepted() &&
-            queued.action != WidgetSessionTraceAction::Deduplicated &&
             (requestKind == RequestKind::Establish ||
              requestKind == RequestKind::Snapshot)) {
             MarkRefreshInFlight(widgetId, queued.requestId);
@@ -488,9 +486,8 @@ std::vector<WidgetSessionEvent> WidgetSessionCoordinator::TakeEvents() {
                 completion.snapshot = std::move(*candidate);
                 completion.update.reset();
             } else if (request.kind == RequestKind::Snapshot) {
-                EmitTrace(
-                    request, WidgetSessionTraceStage::RequestCompleted,
-                    WidgetSessionTraceAction::None,
+                EmitCompletionTrace(
+                    request,
                     WidgetSessionTraceReason::CheckpointFallback,
                     WidgetSessionCompletionDisposition::Failed,
                     completion.completedAt);
@@ -569,9 +566,8 @@ std::vector<WidgetSessionEvent> WidgetSessionCoordinator::TakeEvents() {
             retry.baseSequence = 0;
             retry.queuedAt = timestamp_();
             retry.startedAt = 0;
-            EmitTrace(
-                request, WidgetSessionTraceStage::RequestCompleted,
-                WidgetSessionTraceAction::None,
+            EmitCompletionTrace(
+                request,
                 WidgetSessionTraceReason::StaleBaseResynchronization,
                 WidgetSessionCompletionDisposition::Failed,
                 completion.completedAt);
@@ -585,9 +581,8 @@ std::vector<WidgetSessionEvent> WidgetSessionCoordinator::TakeEvents() {
             }
         }
         if (!completionTraceEmitted) {
-            EmitTrace(
-                request, WidgetSessionTraceStage::RequestCompleted,
-                WidgetSessionTraceAction::None,
+            EmitCompletionTrace(
+                request,
                 WidgetSessionTraceReason::None, disposition,
                 completion.completedAt);
         }
@@ -885,6 +880,8 @@ void WidgetSessionCoordinator::Shutdown() noexcept {
     std::scoped_lock lock(queueMutex_);
     completed_.clear();
     presentationAdmissions_.clear();
+    deduplicatedCompletionObservers_.clear();
+    deduplicatedCompletionObserverCount_ = 0;
 }
 
 WidgetSessionCoordinator::QueueResult WidgetSessionCoordinator::Queue(
@@ -911,9 +908,13 @@ WidgetSessionCoordinator::QueueResult WidgetSessionCoordinator::Queue(
             request.generation = admission.generation;
             request.queuedAt = admission.queuedAt;
             request.startedAt = admission.startedAt;
-            result = {
-                WidgetSessionTraceAction::Deduplicated,
-                WidgetSessionTraceReason::ExistingRequest};
+            result = AttachDeduplicatedCompletionObserverLocked(admission, request)
+                ? QueueResult{
+                    WidgetSessionTraceAction::Deduplicated,
+                    WidgetSessionTraceReason::ExistingRequest}
+                : QueueResult{
+                    WidgetSessionTraceAction::Skipped,
+                    WidgetSessionTraceReason::QueueFull};
         } else if (auto existing = std::find_if(
                 pending_.begin(), pending_.end(), [&](const Request& candidate) {
                 return candidate.kind == request.kind &&
@@ -932,9 +933,13 @@ WidgetSessionCoordinator::QueueResult WidgetSessionCoordinator::Queue(
             request.generation = inFlight_->generation;
             request.queuedAt = inFlight_->queuedAt;
             request.startedAt = inFlight_->startedAt;
-            result = {
-                WidgetSessionTraceAction::Deduplicated,
-                WidgetSessionTraceReason::ExistingRequest};
+            result = AttachDeduplicatedCompletionObserverLocked(*inFlight_, request)
+                ? QueueResult{
+                    WidgetSessionTraceAction::Deduplicated,
+                    WidgetSessionTraceReason::ExistingRequest}
+                : QueueResult{
+                    WidgetSessionTraceAction::Skipped,
+                    WidgetSessionTraceReason::QueueFull};
         } else if (pending_.size() + completed_.size() + (inFlight_ ? 1U : 0U) >=
             MaximumPendingRequests) {
             result = {
@@ -1037,8 +1042,7 @@ void WidgetSessionCoordinator::QueueCoalescedRefreshAfterAdmission(
         request.widgetId,
         request.lifecycle,
         request.correlationId));
-    if (queued.accepted() &&
-        queued.action != WidgetSessionTraceAction::Deduplicated) {
+    if (queued.accepted()) {
         MarkRefreshInFlight(request.widgetId, queued.requestId);
     }
 }
@@ -1185,6 +1189,51 @@ void WidgetSessionCoordinator::EmitTrace(
                 ? (completedAt != 0 ? completedAt : timestamp_()) : 0,
         });
     } catch (...) {
+    }
+}
+
+bool WidgetSessionCoordinator::AttachDeduplicatedCompletionObserverLocked(
+    const Request& owner,
+    const Request& request) {
+    if (request.correlationId == 0 ||
+        request.correlationId == owner.correlationId) return true;
+    auto& observers = deduplicatedCompletionObservers_[request.id];
+    if (std::any_of(observers.begin(), observers.end(), [&](const Request& observer) {
+            return observer.correlationId == request.correlationId;
+        })) {
+        return true;
+    }
+    if (deduplicatedCompletionObserverCount_ >= MaximumPendingRequests) {
+        if (observers.empty()) deduplicatedCompletionObservers_.erase(request.id);
+        return false;
+    }
+    observers.push_back(request);
+    ++deduplicatedCompletionObserverCount_;
+    return true;
+}
+
+void WidgetSessionCoordinator::EmitCompletionTrace(
+    const Request& request,
+    const WidgetSessionTraceReason reason,
+    const WidgetSessionCompletionDisposition disposition,
+    const std::uint64_t completedAt) {
+    std::vector<Request> observers;
+    {
+        std::scoped_lock lock(queueMutex_);
+        const auto found = deduplicatedCompletionObservers_.find(request.id);
+        if (found != deduplicatedCompletionObservers_.end()) {
+            observers = std::move(found->second);
+            deduplicatedCompletionObserverCount_ -= observers.size();
+            deduplicatedCompletionObservers_.erase(found);
+        }
+    }
+    EmitTrace(
+        request, WidgetSessionTraceStage::RequestCompleted,
+        WidgetSessionTraceAction::None, reason, disposition, completedAt);
+    for (const auto& observer : observers) {
+        EmitTrace(
+            observer, WidgetSessionTraceStage::RequestCompleted,
+            WidgetSessionTraceAction::None, reason, disposition, completedAt);
     }
 }
 
@@ -1526,6 +1575,8 @@ WidgetSessionCatalogChange WidgetSessionCoordinator::ResetBridgeSessionAuthority
         pending_.clear();
         completed_.clear();
         presentationAdmissions_.clear();
+        deduplicatedCompletionObservers_.clear();
+        deduplicatedCompletionObserverCount_ = 0;
     }
     descriptors_.clear();
     snapshots_.clear();

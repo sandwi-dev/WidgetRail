@@ -376,6 +376,14 @@ private:
         WidgetSessionCompletionDisposition disposition =
             WidgetSessionCompletionDisposition::None,
         std::uint64_t completedAt = 0) const;
+    [[nodiscard]] bool AttachDeduplicatedCompletionObserverLocked(
+        const Request& owner,
+        const Request& request);
+    void EmitCompletionTrace(
+        const Request& request,
+        WidgetSessionTraceReason reason,
+        WidgetSessionCompletionDisposition disposition,
+        std::uint64_t completedAt = 0);
     void EmitLifecycleDecision(
         std::uint64_t correlationId,
         std::wstring_view widgetId,
@@ -407,6 +415,9 @@ private:
     std::deque<Request> pending_;
     std::deque<Completion> completed_;
     std::unordered_map<std::wstring, Request> presentationAdmissions_;
+    std::unordered_map<std::uint64_t, std::vector<Request>>
+        deduplicatedCompletionObservers_;
+    std::size_t deduplicatedCompletionObserverCount_{};
     std::optional<Request> inFlight_;
     std::optional<std::stop_source> inFlightStop_;
     std::jthread worker_;
