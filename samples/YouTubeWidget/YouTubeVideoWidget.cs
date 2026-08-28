@@ -354,6 +354,7 @@ public sealed partial class YouTubeVideoWidget : Widget
         "client-identity-rejected" => "YouTube could not verify this desktop client.",
         "player-api-load-failed" => "The YouTube player could not be loaded. Check the network and retry.",
         "playback-unavailable" => "YouTube could not play this video in the embedded player.",
+        "command-unsupported" => "This YouTube player control is unavailable.",
         _ => "YouTube playback failed. Try another public embeddable video.",
     };
 

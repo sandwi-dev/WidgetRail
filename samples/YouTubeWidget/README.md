@@ -50,7 +50,9 @@ separate, explicit action; package versions are immutable.
 4. Use the native `-10s`, `+10s`, timeline, and volume controls. The web player
    remains inside its unobscured, minimum 200-by-200 media viewport.
 5. Return to search without losing the retained query/result window. A compact
-   pin remains the host-owned video-only presentation.
+   pin remains the host-owned video-only presentation. In compact pinned focus,
+   X pauses or resumes the current video in place and LT/RT retain their bounded
+   seek behavior.
 
 Private, removed, unavailable, malformed, or embedding-disabled videos report
 a bounded error in the native widget. Physical playback still depends on the
