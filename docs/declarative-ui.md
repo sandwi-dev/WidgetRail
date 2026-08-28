@@ -196,6 +196,14 @@ the background and does not survive declaration removal, incompatible
 authority/resource replacement, widget removal or restart, browser failure,
 slot retirement, or host shutdown.
 
+Protocol v30 adds `OverlayFullscreenPresentation`. A widget toggles this
+Boolean on its existing `EmbeddedMediaSurface`; the host then aspect-fits that
+same media plane inside the monitor work area using the existing overlay HWND,
+DirectComposition endpoint, controller session, input scope, and accessibility
+owner. Browser/DOM fullscreen is never used. The ordinary declarative player
+is restored when the request clears. In fullscreen, B remains a widget-owned
+exit action and View retains the host tray route.
+
 An embedded-media widget builds its visible shell from the same native Text,
 Progress, Button, Row, and Stack nodes as any other widget. Reserved
 `host.embeddedMedia.*` action IDs bind those native buttons to the existing

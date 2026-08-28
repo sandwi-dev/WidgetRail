@@ -485,6 +485,14 @@ a background session, and ordinary declaration removal, identity/resource or
 runtime replacement, widget removal, browser failure, slot retirement, and
 host shutdown remain terminal.
 
+Protocol v30 adds `OverlayFullscreenPresentation` to the existing embedded
+media declaration. It is presentation state rather than resource identity:
+changing it preserves the sealed adapter, controller, document, and playback
+session. The host owns safe-work-area placement, aspect fit, DPI, native guide,
+focus, accessibility, and return to the authored layout. Widgets provide an
+ordinary root B shortcut that clears the request; View remains host-owned.
+Webpages cannot request or exit fullscreen directly.
+
 Protocol v26 adds `AllowedFrameDomainFamilies` for the bounded case where an
 external frame legitimately spans one registrable DNS family. Entries are
 lowercase ASCII registrable domains, not URLs or public suffixes, and match

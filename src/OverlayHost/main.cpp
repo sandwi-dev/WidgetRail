@@ -2332,6 +2332,34 @@ private:
 
     enum class EmbeddedMediaProjection { Overlay, Pinned };
 
+    [[nodiscard]] bool OverlayFullscreenMediaRequested() const noexcept {
+        if (state_.surface() != widgetrail::Surface::Widget) return false;
+        const auto* snapshot = SnapshotFor(state_.activeWidget());
+        if (!snapshot || !snapshot->embeddedMedia ||
+            !snapshot->embeddedMedia->overlayFullscreenPresentation)
+            return false;
+        return !pinnedSurfaceCoordinator_.pinned() ||
+            pinnedSurfaceCoordinator_.widgetId() != state_.activeWidget();
+    }
+
+    [[nodiscard]] widgetrail::OverlayPresentationExtent
+    OverlayFullscreenPresentationExtentDip() const noexcept {
+        if (!fixedChromeAnchor_ || fixedChromeAnchor_->dpi == 0 ||
+            fixedChromeAnchor_->interfaceScale <= 0.0F)
+            return DesiredContentPanelExtentDip();
+        const auto& anchor = *fixedChromeAnchor_;
+        const double pixelsPerDip = static_cast<double>(anchor.dpi) / 96.0 *
+            static_cast<double>(anchor.interfaceScale);
+        const double width = static_cast<double>(
+            anchor.workArea.right - anchor.workArea.left) / pixelsPerDip - 48.0;
+        const double height = static_cast<double>(
+            anchor.workArea.bottom - anchor.workArea.top) / pixelsPerDip - 56.0;
+        return {
+            std::max(1, static_cast<int>(std::floor(width))),
+            std::max(1, static_cast<int>(std::floor(height))),
+        };
+    }
+
     struct EmbeddedMediaCommandOriginAuthority final {
         long long snapshotSequence{};
         long long commandSequence{};
@@ -2461,6 +2489,29 @@ private:
             if (!pinned) return std::nullopt;
             viewport = pinned->region;
             owner = pinnedSurfaceCoordinator_.window();
+        } else if (snapshot->embeddedMedia->overlayFullscreenPresentation &&
+                   OverlayFullscreenMediaRequested()) {
+            const float pixelsPerDip = MediaPixelsPerDip(window_);
+            const float widthDip = static_cast<float>(compositionSurface_.width()) /
+                pixelsPerDip;
+            const float heightDip = static_cast<float>(compositionSurface_.height()) /
+                pixelsPerDip;
+            const auto fullscreen =
+                widgetrail::ResolveOverlayFullscreenMediaSurfaceBounds(
+                    {0.0F, 0.0F, widthDip, heightDip},
+                    static_cast<float>(
+                        snapshot->embeddedMedia->surface.minimumWidth.value_or(1.0)),
+                    static_cast<float>(
+                        snapshot->embeddedMedia->surface.minimumHeight.value_or(1.0)),
+                    static_cast<float>(snapshot->embeddedMedia->aspectRatio));
+            if (!fullscreen) return std::nullopt;
+            viewport.nodeId = L"host.overlay-fullscreen-media";
+            viewport.mediaSurfaceId = embeddedMediaAuthority_->surfaceId;
+            viewport.bounds = {
+                fullscreen->x, fullscreen->y,
+                fullscreen->width, fullscreen->height};
+            viewport.clip = viewport.bounds;
+            owner = window_;
         } else {
             if (!lastWidgetRenderResult_.succeeded ||
                 lastWidgetRenderResult_.mediaViewportRegions.size() != 1)
@@ -3445,6 +3496,8 @@ private:
                 declaration.compactPinnedSeekStepSeconds &&
             resolvedDeclaration.retainSessionWhenHidden ==
                 declaration.retainSessionWhenHidden &&
+            resolvedDeclaration.overlayFullscreenPresentation ==
+                declaration.overlayFullscreenPresentation &&
             ((!resolvedDeclaration.pendingCommand && !declaration.pendingCommand) ||
              (resolvedDeclaration.pendingCommand && declaration.pendingCommand &&
               resolvedDeclaration.pendingCommand->sequence ==
@@ -5263,7 +5316,7 @@ private:
             DisableCompositionFallback(
                 L"local fixed chrome session unavailable");
         }
-        if (compositionSurface_.available()) {
+        if (compositionSurface_.available() && !OverlayFullscreenMediaRequested()) {
             const auto anchoredPlacement = AnchorContentPlacementToChrome(
                 *placement);
             const auto anchoredContainer = compositionContainer
@@ -6231,6 +6284,8 @@ private:
         if (state_.surface() != widgetrail::Surface::Widget) {
             return {kPanelWidth, kDashboardHeight};
         }
+        if (OverlayFullscreenMediaRequested())
+            return OverlayFullscreenPresentationExtentDip();
         const auto target = DesiredWidgetSurfaceTarget();
         if (compositionSurface_.available()) {
             return DesiredContentPanelExtentDip();
@@ -8332,6 +8387,11 @@ private:
             EmergencyHidePinnedSurfaces();
             return;
         }
+        if (OverlayFullscreenMediaRequested() &&
+            !recoveryChordDown && (pressed & XINPUT_GAMEPAD_BACK) != 0) {
+            Dispatch(widgetrail::Command::SampleWidgetBack);
+            return;
+        }
         if (frame.recoveryChordPressed != WRAIL_OVERLAY_PLATFORM_FALSE) {
             RestartCurrentWidget();
         }
@@ -10183,6 +10243,13 @@ private:
         if (state_.surface() == widgetrail::Surface::Widget)
             (void)BindEmbeddedMediaSessionForWidget(
                 state_.activeWidget(), EmbeddedMediaProjection::Overlay);
+        if (button == L"B" && OverlayFullscreenMediaRequested() &&
+            EmbeddedMediaAuthorityCurrent() &&
+            embeddedMediaAuthority_->projection == EmbeddedMediaProjection::Overlay) {
+            DispatchWidgetAction(button, widgetrail::input::NavigationEventPhase::Pressed,
+                                 std::nullopt, physicalPress);
+            return;
+        }
         if (button == L"B" && EmbeddedMediaAuthorityCurrent() &&
             embeddedMediaAuthority_->projection == EmbeddedMediaProjection::Overlay &&
             state_.surface() == widgetrail::Surface::Widget &&
@@ -10993,6 +11060,89 @@ private:
             renderTarget_->PopAxisAlignedClip();
         };
 
+        const bool overlayFullscreen = OverlayFullscreenMediaRequested();
+        if (overlayFullscreen && layer == CompositionPaintLayer::Tray) {
+            finishUpdate();
+            return;
+        }
+        if (overlayFullscreen && layer == CompositionPaintLayer::Guide && guideBounds) {
+            openWidgetAccessibility_ = {};
+            openWidgetAccessibility_.title =
+                std::wstring{DisplayWidgetName(state_.activeWidget())};
+            openWidgetAccessibility_.help = L"B exits fullscreen. View returns to tray.";
+            openWidgetAccessibility_.helpBounds = *guideBounds;
+            DrawTextLine(
+                L"B  Exit fullscreen     View  Tray", hintFormat_.Get(),
+                D2D1::RectF(
+                    guideBounds->x + 24.0F, guideBounds->y,
+                    guideBounds->x + guideBounds->width - 24.0F,
+                    guideBounds->y + guideBounds->height),
+                secondaryBrush_.Get());
+            finishUpdate();
+            return;
+        }
+        if (overlayFullscreen && layer == CompositionPaintLayer::Content) {
+            renderTarget_->FillRectangle(
+                D2D1::RectF(
+                    0.0F, 0.0F,
+                    metrics->viewportWidthDip, metrics->viewportHeightDip),
+                backgroundBrush_.Get());
+            const auto* snapshot = SnapshotFor(state_.activeWidget());
+            if (snapshot && snapshot->embeddedMedia) {
+                const auto bounds =
+                    widgetrail::ResolveOverlayFullscreenMediaSurfaceBounds(
+                        {0.0F, 0.0F, metrics->viewportWidthDip,
+                         metrics->viewportHeightDip},
+                        static_cast<float>(snapshot->embeddedMedia->surface.minimumWidth.value_or(1.0)),
+                        static_cast<float>(snapshot->embeddedMedia->surface.minimumHeight.value_or(1.0)),
+                        static_cast<float>(snapshot->embeddedMedia->aspectRatio));
+                if (bounds) {
+                    const auto findViewport = [&](const auto& self,
+                                                  const widgetrail::WidgetNode& node)
+                        -> const widgetrail::WidgetNode* {
+                        if (node.kind == L"mediaViewport" &&
+                            node.mediaSurfaceId == snapshot->embeddedMedia->id)
+                            return &node;
+                        for (const auto& child : node.children) {
+                            if (const auto* found = self(self, child)) return found;
+                        }
+                        return nullptr;
+                    };
+                    if (const auto* node = findViewport(findViewport, snapshot->root)) {
+                        widgetrail::RenderResult result;
+                        result.succeeded = true;
+                        const widgetrail::declarative::Rect rect{
+                            bounds->x, bounds->y, bounds->width, bounds->height};
+                        result.mediaViewportRegions.push_back({
+                            node->id, snapshot->embeddedMedia->id, rect, rect});
+                        result.accessibilityRegions.push_back({node->id, rect});
+                        lastWidgetRenderResult_ = result;
+                        committedWidgetVisualState_ = CommittedWidgetVisualState{
+                            std::wstring{state_.activeWidget()}, snapshot->instanceId,
+                            {}, {}, snapshot->sequence, 0,
+                            appearanceState_.current()
+                                ? appearanceState_.current()->revision : 0,
+                            {}, state_.focusRegion(), false,
+                            presentationTransaction_.contentPlacement(),
+                        };
+                        if (accessibilityActive_) {
+                            if (const auto* descriptor =
+                                    sessions_.FindDescriptor(state_.activeWidget())) {
+                                widgetAccessibilityTree_ =
+                                    widgetrail::accessibility::BuildWidgetTree(
+                                        std::wstring{state_.activeWidget()},
+                                        descriptor->runtimeGeneration,
+                                        *snapshot, result, {});
+                                ++widgetAccessibilityRevision_;
+                            }
+                        }
+                    }
+                }
+            }
+            finishUpdate();
+            return;
+        }
+
         if (layer == CompositionPaintLayer::Tray && trayLayout) {
             DrawIconStrip(
                 metrics->viewportWidthDip, metrics->viewportHeightDip,
@@ -11733,6 +11883,9 @@ private:
             std::to_wstring(appearanceState_.current()
                 ? appearanceState_.current()->revision : 0) + L"\n" +
             std::to_wstring(static_cast<int>(state_.focusRegion()));
+        key += OverlayFullscreenMediaRequested()
+            ? L"\noverlay-fullscreen=true"
+            : L"\noverlay-fullscreen=false";
         if (state_.focusRegion() == widgetrail::FocusRegion::Tray) {
             if (const auto status = DashboardStatus()) key += L"\n" + *status;
             key += L"\n" + DashboardHint(static_cast<float>(width));
@@ -12038,6 +12191,7 @@ private:
             *trayLayout, chromeSession.trayWidth, chromeSession.trayHeight,
             chromeSession.pixelsPerDip);
         if (!nextTrayState) return false;
+        if (OverlayFullscreenMediaRequested()) nextTrayState->items.clear();
         const bool trayDirty = widgetrail::shell::RequiresTrayRepaint(
             retainedTrayPaintState_ ? &*retainedTrayPaintState_ : nullptr,
             *nextTrayState);

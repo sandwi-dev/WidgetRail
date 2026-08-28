@@ -1202,7 +1202,7 @@ WidgetSnapshot ParseSnapshot(const JsonObject& source) {
                  L"aspectRatio", L"resources", L"commands",
                  L"allowedFrameOrigins", L"allowedFrameDomainFamilies", L"pendingCommand",
                  L"compactPinnedPresentation", L"compactPinnedSeekStepSeconds",
-                 L"retainSessionWhenHidden"}))
+                 L"retainSessionWhenHidden", L"overlayFullscreenPresentation"}))
             throw winrt::hresult_invalid_argument(
                 L"Embedded media contains an unknown property.");
         EmbeddedMediaSurfaceDeclaration parsed;
@@ -1215,6 +1215,8 @@ WidgetSnapshot ParseSnapshot(const JsonObject& source) {
             media.GetNamedBoolean(L"compactPinnedPresentation", false);
         parsed.retainSessionWhenHidden =
             media.GetNamedBoolean(L"retainSessionWhenHidden", false);
+        parsed.overlayFullscreenPresentation =
+            media.GetNamedBoolean(L"overlayFullscreenPresentation", false);
         if (media.HasKey(L"compactPinnedSeekStepSeconds"))
             parsed.compactPinnedSeekStepSeconds =
                 media.GetNamedNumber(L"compactPinnedSeekStepSeconds");
@@ -1294,6 +1296,11 @@ WidgetSnapshot ParseSnapshot(const JsonObject& source) {
                 protocol_contract::CompactPinnedMediaPresentationVersion)
             throw winrt::hresult_invalid_argument(
                 L"Compact pinned media presentation requires protocol version 25.");
+        if (parsed.overlayFullscreenPresentation &&
+            snapshot.protocolVersion <
+                protocol_contract::OverlayFullscreenMediaPresentationVersion)
+            throw winrt::hresult_invalid_argument(
+                L"Overlay fullscreen media presentation requires protocol version 30.");
         if (frameOrigins.Size() > protocol_contract::MaximumEmbeddedMediaFrameOriginCount)
             throw winrt::hresult_invalid_argument(
                 L"Embedded media frame origin declaration is invalid.");
@@ -2211,7 +2218,7 @@ std::optional<EmbeddedMediaBundle> ParseEmbeddedMediaBundle(
              L"entryAsset", L"surface", L"aspectRatio", L"accessibleName",
              L"commands", L"allowedFrameOrigins", L"allowedFrameDomainFamilies", L"pendingCommand",
              L"compactPinnedPresentation", L"compactPinnedSeekStepSeconds",
-             L"retainSessionWhenHidden",
+             L"retainSessionWhenHidden", L"overlayFullscreenPresentation",
              L"resources"}) ||
         !body.HasKey(L"widgetId") || !body.HasKey(L"instanceId") ||
         !body.HasKey(L"runtimeGeneration") ||
@@ -2235,6 +2242,8 @@ std::optional<EmbeddedMediaBundle> ParseEmbeddedMediaBundle(
         body.GetNamedBoolean(L"compactPinnedPresentation", false);
     bundle.surface.retainSessionWhenHidden =
         body.GetNamedBoolean(L"retainSessionWhenHidden", false);
+    bundle.surface.overlayFullscreenPresentation =
+        body.GetNamedBoolean(L"overlayFullscreenPresentation", false);
     if (body.HasKey(L"compactPinnedSeekStepSeconds"))
         bundle.surface.compactPinnedSeekStepSeconds =
             body.GetNamedNumber(L"compactPinnedSeekStepSeconds");

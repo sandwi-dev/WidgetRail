@@ -24,6 +24,7 @@ public sealed class EmbeddedMediaSampleWidget : Widget
     private double _playbackRate = 1;
     private bool _muted;
     private bool _loop = true;
+    private bool _overlayFullscreen;
     private EmbeddedMediaPlaybackCommand? _pendingCommand;
 
     public override WidgetView Render()
@@ -36,6 +37,7 @@ public sealed class EmbeddedMediaSampleWidget : Widget
         double playbackRate;
         bool muted;
         bool loop;
+        bool overlayFullscreen;
         lock (_gate)
         {
             playbackState = _state;
@@ -46,6 +48,7 @@ public sealed class EmbeddedMediaSampleWidget : Widget
             playbackRate = _playbackRate;
             muted = _muted;
             loop = _loop;
+            overlayFullscreen = _overlayFullscreen;
         }
         var media = new EmbeddedMediaSurface
         {
@@ -64,8 +67,15 @@ public sealed class EmbeddedMediaSampleWidget : Widget
             CompactPinnedPresentation = true,
             CompactPinnedSeekStepSeconds = SeekStepSeconds,
             PendingCommand = pending,
+            OverlayFullscreenPresentation = overlayFullscreen,
         };
         var back = UI.Button("Back", "host.embeddedMedia.back", "media-shell.back").FocusDown("media-shell.timeline.slider").Classes("media-shell-back");
+        var fullscreen = UI.Button(
+                "Fullscreen", "host.embeddedMedia.enterFullscreen",
+                "media-shell.fullscreen")
+            .FocusDown("media-shell.timeline.slider")
+            .FocusRight("media-shell.back")
+            .Classes("media-shell-back");
         var previous = UI.Button("", "host.embeddedMedia.previous", "media-shell.previous").Icon(WidgetGlyph.Previous, "Previous video").FocusUp("media-shell.timeline.slider").FocusRight("media-shell.seek-back").Classes("media-shell-transport");
         var seekBack = UI.Button("-2s", "host.embeddedMedia.seekBackward", "media-shell.seek-back").FocusUp("media-shell.timeline.slider").FocusLeft("media-shell.previous").FocusRight("media-shell.play").Classes("media-shell-transport", "media-shell-quick-seek");
         var playing = playbackState == EmbeddedMediaPlaybackState.Playing;
@@ -97,11 +107,14 @@ public sealed class EmbeddedMediaSampleWidget : Widget
                 UI.Row("media-shell.header", UI.Stack("media-shell.heading",
                     UI.Text("LOCAL MEDIA", "media-shell.eyebrow").Classes("media-shell-eyebrow"),
                     UI.Text(MediaItems[activeMediaIndex].Title, "media-shell.title").Classes("media-shell-title"),
-                    UI.Text(StatusText(playbackState), "media-shell.status").Classes("media-shell-status")).Classes("media-shell-heading"), back).Classes("media-shell-header"),
+                    UI.Text(StatusText(playbackState), "media-shell.status").Classes("media-shell-status")).Classes("media-shell-heading"),
+                    UI.Row("media-shell.header-actions", fullscreen, back)).Classes("media-shell-header"),
                 UI.MediaViewport(media, "media-shell.viewport").Classes("media-shell-viewport"),
                 UI.Row("media-shell.timeline", UI.Text(FormatTime(position), "media-shell.position").Classes("media-shell-time"), timeline, UI.Text(FormatTime(duration), "media-shell.duration").Classes("media-shell-time", "is-end")).Classes("media-shell-timeline"),
                 UI.Row("media-shell.controls", previous, seekBack, play, seekForward, next).Classes("media-shell-controls"),
-                UI.Row("media-shell.preferences", rate, mute, loopButton).Classes("media-shell-preferences")).Classes("media-shell-root"),
+                UI.Row("media-shell.preferences", rate, mute, loopButton).Classes("media-shell-preferences"))
+                .Classes("media-shell-root")
+                .Shortcut(ControllerButton.B, "host.embeddedMedia.exitFullscreen"),
             InitialFocusId: "media-shell.play", ActiveInputScopeId: "media-shell.root",
             Surface: new WidgetSurfaceHints { Mode = WidgetSurfaceMode.Standard, PreferredWidth = 760, PreferredHeight = 610, MinimumWidth = 440, MinimumHeight = 410 })
         { EmbeddedMedia = media };
@@ -114,6 +127,18 @@ public sealed class EmbeddedMediaSampleWidget : Widget
         cancellationToken.ThrowIfCancellationRequested();
         lock (_gate)
         {
+            if (action.ActionId == "host.embeddedMedia.enterFullscreen")
+            {
+                _overlayFullscreen = true;
+                Invalidate();
+                return ValueTask.CompletedTask;
+            }
+            if (action.ActionId == "host.embeddedMedia.exitFullscreen")
+            {
+                _overlayFullscreen = false;
+                Invalidate();
+                return ValueTask.CompletedTask;
+            }
             if (_pendingCommand is not null)
                 return ValueTask.CompletedTask;
             EmbeddedMediaPlaybackCommandKind? kind = null;

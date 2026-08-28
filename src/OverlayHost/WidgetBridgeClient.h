@@ -384,6 +384,7 @@ struct EmbeddedMediaSurfaceDeclaration final {
     bool compactPinnedPresentation{};
     std::optional<double> compactPinnedSeekStepSeconds;
     bool retainSessionWhenHidden{};
+    bool overlayFullscreenPresentation{};
 };
 
 struct EmbeddedMediaResource final {

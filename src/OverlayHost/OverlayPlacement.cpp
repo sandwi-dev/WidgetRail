@@ -548,6 +548,33 @@ std::optional<EmbeddedMediaSurfaceBounds> ResolveEmbeddedMediaSurfaceBounds(
     };
 }
 
+std::optional<EmbeddedMediaSurfaceBounds>
+ResolveOverlayFullscreenMediaSurfaceBounds(
+    const EmbeddedMediaSurfaceBounds safeArea,
+    const float minimumWidthDip,
+    const float minimumHeightDip,
+    const float aspectRatio) noexcept {
+    const auto positiveFinite = [](const float value) {
+        return std::isfinite(value) && value > 0.0F;
+    };
+    if (!std::isfinite(safeArea.x) || !std::isfinite(safeArea.y) ||
+        !positiveFinite(safeArea.width) || !positiveFinite(safeArea.height) ||
+        !positiveFinite(minimumWidthDip) || !positiveFinite(minimumHeightDip) ||
+        !positiveFinite(aspectRatio)) return std::nullopt;
+    const float width = std::min(
+        safeArea.width, safeArea.height * aspectRatio);
+    const float height = width / aspectRatio;
+    if (!positiveFinite(height) || width < minimumWidthDip ||
+        height < minimumHeightDip || height > safeArea.height)
+        return std::nullopt;
+    return EmbeddedMediaSurfaceBounds{
+        safeArea.x + (safeArea.width - width) * 0.5F,
+        safeArea.y + (safeArea.height - height) * 0.5F,
+        width,
+        height,
+    };
+}
+
 std::optional<MediaViewportPresentationGeometry>
 ResolveMediaViewportPresentationGeometry(
     const EmbeddedMediaSurfaceBounds viewport,

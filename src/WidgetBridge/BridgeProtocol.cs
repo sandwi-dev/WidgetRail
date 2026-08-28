@@ -97,6 +97,7 @@ internal sealed record BridgeEmbeddedMediaBundle(
     bool CompactPinnedPresentation,
     double? CompactPinnedSeekStepSeconds,
     bool RetainSessionWhenHidden,
+    bool OverlayFullscreenPresentation,
     IReadOnlyList<BridgeEmbeddedMediaResource> Resources);
 internal sealed record BridgeEmbeddedMediaPlaybackEventRequest(
     string WidgetId,

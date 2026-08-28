@@ -174,6 +174,16 @@ ResolveEmbeddedMediaSurfaceBounds(
     float preferredHeightDip,
     float aspectRatio) noexcept;
 
+/// Aspect-fits a host-owned fullscreen media plane inside the committed
+/// overlay safe area. Unlike authored inline placement, preferred dimensions
+/// are not a maximum; the host may grow the plane to the available extent.
+[[nodiscard]] std::optional<EmbeddedMediaSurfaceBounds>
+ResolveOverlayFullscreenMediaSurfaceBounds(
+    EmbeddedMediaSurfaceBounds safeArea,
+    float minimumWidthDip,
+    float minimumHeightDip,
+    float aspectRatio) noexcept;
+
 enum class ControllerGuideDensity {
     Minimal,
     Compact,

@@ -504,4 +504,9 @@ public sealed record EmbeddedMediaSurface
     /// viewport or permit an undeclared background session.
     /// </summary>
     public bool RetainSessionWhenHidden { get; init; }
+    /// <summary>
+    /// Requests host-owned fullscreen presentation of this media surface in
+    /// the existing overlay window. The webpage remains a bounded pixel plane.
+    /// </summary>
+    public bool OverlayFullscreenPresentation { get; init; }
 }

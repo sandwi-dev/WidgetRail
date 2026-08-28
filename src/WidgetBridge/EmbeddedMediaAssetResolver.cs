@@ -99,6 +99,7 @@ internal static class EmbeddedMediaAssetResolver
             media.CompactPinnedPresentation,
             media.CompactPinnedSeekStepSeconds,
             media.RetainSessionWhenHidden,
+            media.OverlayFullscreenPresentation,
             resources);
     }
 

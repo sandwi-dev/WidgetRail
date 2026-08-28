@@ -97,6 +97,12 @@ internal sealed class ProtocolVersionRequirements
                 ProtocolConstants.RetainedHiddenEmbeddedMediaVersion,
                 "$.embeddedMedia.retainSessionWhenHidden",
                 $"Retained hidden embedded media requires protocol version {ProtocolConstants.RetainedHiddenEmbeddedMediaVersion} or later.");
+        if (snapshot.EmbeddedMedia?.OverlayFullscreenPresentation == true)
+            Add(
+                "overlay-fullscreen-media-presentation",
+                ProtocolConstants.OverlayFullscreenMediaPresentationVersion,
+                "$.embeddedMedia.overlayFullscreenPresentation",
+                $"Overlay fullscreen media presentation requires protocol version {ProtocolConstants.OverlayFullscreenMediaPresentationVersion} or later.");
 
         Visit(snapshot.Root, "$.root", 1);
 
