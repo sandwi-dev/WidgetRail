@@ -1,9 +1,25 @@
 # YouTube Video Community widget
 
-This package accepts a public `youtube.com` or `youtu.be` video link and plays
-it through YouTube's official IFrame Player API inside WidgetRail's host-owned
-embedded-media surface. It does not use an API key, account, search API, stream
-extraction, arbitrary browsing, autoplay, fullscreen, or a pinned layout.
+This full-trust Community package searches public YouTube videos through the
+YouTube Data API v3 and retains the existing link-to-play route. Playback uses
+YouTube's official IFrame Player API inside WidgetRail's host-owned
+embedded-media surface. It does not use an account, OAuth, stream extraction,
+arbitrary browsing, autoplay, or fullscreen.
+
+## Search setup
+
+The user owns the API key. In Google Cloud Console, create a project, enable
+**YouTube Data API v3**, create an API key, and restrict that key to the YouTube
+Data API. Open **Setup** in the widget and use its masked entry to test and
+save the key. Testing uses a low-cost public `videos.list` lookup rather than a
+search request. The package stores the key locally through Windows Credential
+Manager, sends it only in Google's documented `x-goog-api-key` request header,
+and never puts it in presentation state, logs, support data, or the package.
+
+Configured startup opens public-video search. A query runs only after explicit
+submission; bounded forward pages load near the end of the controller-focused
+result list. Setup also provides explicit Replace and Delete paths. Quota,
+offline, invalid-key, empty, and unavailable states remain native widget UI.
 
 The sealed package adapter is the top-level document. Its only external frame
 navigation is `https://www.youtube.com`; package-declared exact origins and
@@ -27,13 +43,14 @@ separate, explicit action; package versions are immutable.
 ## Controller use
 
 1. Open **YouTube Video** and focus the link field.
-2. Press A, paste a supported public video URL, and commit the host-owned text
+2. Choose **Play a link**, press A, paste a supported public video URL, and commit the host-owned text
    entry. The widget validates the URL and cues the video without autoplay.
 3. Focus **Play** and press A. WidgetRail correlates that visible user action
    with the embedded player before playback starts.
 4. Use the native `-10s`, `+10s`, timeline, and volume controls. The web player
    remains inside its unobscured, minimum 200-by-200 media viewport.
-5. Press B through the ordinary overlay navigation to leave the widget.
+5. Return to search without losing the retained query/result window. A compact
+   pin remains the host-owned video-only presentation.
 
 Private, removed, unavailable, malformed, or embedding-disabled videos report
 a bounded error in the native widget. Physical playback still depends on the

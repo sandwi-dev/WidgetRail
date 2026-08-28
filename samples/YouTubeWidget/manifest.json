@@ -3,29 +3,28 @@
   "id": "widgetrail.samples.youtube-video",
   "publisher": "widgetrail.samples",
   "name": "YouTube Video",
-  "version": "0.1.5",
+  "version": "0.2.2",
+  "pinningSupported": true,
   "hostApi": {
     "minimum": "1.0",
     "maximumMajor": 1
   },
   "entrypoint": {
-    "runtime": "dotnet-worker",
-    "assembly": "payload/YouTubeWidget.dll",
-    "type": "WidgetRail.Samples.YouTubeWidget.YouTubeVideoWidget"
+    "runtime": "full-trust-application-v1",
+    "executable": "payload/YouTubeApplication.exe"
   },
   "presentation": { "icon": "play" },
   "permissions": [],
   "optionalPermissions": [],
   "residencyPolicy": {
     "schemaVersion": 1,
-    "mode": "suspend-when-hidden"
+    "mode": "keep-alive"
   },
   "resourceRequest": {
     "memoryMb": 48,
     "updateHz": 4
   },
   "architectures": [
-    "x64",
-    "arm64"
+    "x64"
   ]
 }

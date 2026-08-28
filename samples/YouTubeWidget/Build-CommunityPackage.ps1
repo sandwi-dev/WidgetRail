@@ -27,7 +27,7 @@ $manifestPath = Join-Path $sampleRoot 'manifest.json'
 $manifest = Get-Content -LiteralPath $manifestPath -Raw | ConvertFrom-Json
 $packagePath = Join-Path $artifactsRoot "$($manifest.id)-$($manifest.version).wrwidget"
 $cliProject = Join-Path $repositoryRoot 'tools\WrailCli\WrailCli.csproj'
-$widgetProject = Join-Path $sampleRoot 'YouTubeWidget.csproj'
+$applicationProject = Join-Path $sampleRoot 'Application\YouTubeApplication.csproj'
 
 function Assert-ChildPath {
     param([string]$Parent, [string]$Child)
@@ -71,31 +71,42 @@ foreach ($generatedDirectory in @($stagingRoot, $publishRoot)) {
 }
 New-Item -ItemType Directory -Force -Path $mediaRoot, (Join-Path $stagingRoot 'styles') | Out-Null
 
-& dotnet publish $widgetProject --configuration $Configuration --no-self-contained --nologo `
+& dotnet publish $applicationProject --configuration $Configuration --no-self-contained --nologo `
     --property:UseSharedCompilation=false --property:BuildInParallel=false --output $publishRoot
-if ($LASTEXITCODE -ne 0) { throw "YouTube widget publish failed with exit code $LASTEXITCODE." }
+if ($LASTEXITCODE -ne 0) { throw "YouTube application publish failed with exit code $LASTEXITCODE." }
 
-Copy-Item -LiteralPath (Join-Path $publishRoot 'YouTubeWidget.dll') `
-    -Destination (Join-Path $payloadRoot 'YouTubeWidget.dll') -Force
+Get-ChildItem -LiteralPath $publishRoot -File | Where-Object {
+    $_.Extension -notin @('.pdb', '.xml')
+} | ForEach-Object {
+    Copy-Item -LiteralPath $_.FullName -Destination (Join-Path $payloadRoot $_.Name) -Force
+}
 Copy-Item -LiteralPath $manifestPath -Destination (Join-Path $stagingRoot 'manifest.json') -Force
 Copy-Item -LiteralPath (Join-Path $sampleRoot 'styles\default.wrss') `
     -Destination (Join-Path $stagingRoot 'styles\default.wrss') -Force
 Copy-Item -LiteralPath (Join-Path $sampleRoot 'media\adapter.html') `
     -Destination (Join-Path $mediaRoot 'adapter.html') -Force
 
-$expectedFiles = @(
+$requiredFiles = @(
     'manifest.json',
+    'payload\YouTubeApplication.exe',
+    'payload\YouTubeApplication.dll',
     'payload\YouTubeWidget.dll',
+    'payload\WidgetApplicationRuntime.dll',
+    'payload\WidgetSdk.dll',
+    'payload\WidgetProtocol.dll',
     'payload\media\adapter.html',
     'styles\default.wrss'
 )
 $stagedFiles = @(Get-ChildItem -LiteralPath $stagingRoot -File -Recurse | ForEach-Object {
     [System.IO.Path]::GetRelativePath($stagingRoot, $_.FullName)
 })
-$unexpectedFiles = @($stagedFiles | Where-Object { $_ -notin $expectedFiles })
-$missingFiles = @($expectedFiles | Where-Object { $_ -notin $stagedFiles })
-if ($unexpectedFiles.Count -ne 0 -or $missingFiles.Count -ne 0) {
-    throw "Staged package allowlist mismatch. Unexpected: [$($unexpectedFiles -join ', ')]; missing: [$($missingFiles -join ', ')]."
+$missingFiles = @($requiredFiles | Where-Object { $_ -notin $stagedFiles })
+$forbiddenFiles = @($stagedFiles | Where-Object {
+    $_ -match '\.(pdb|xml)$' -or
+    $_ -match '(^|\\)(PlatformBroker|WindowsSpotifyProvider|PlatformSettings)\.dll$'
+})
+if ($forbiddenFiles.Count -ne 0 -or $missingFiles.Count -ne 0) {
+    throw "Staged package graph mismatch. Forbidden: [$($forbiddenFiles -join ', ')]; missing: [$($missingFiles -join ', ')]."
 }
 
 if (Test-Path -LiteralPath $packagePath) {
@@ -121,7 +132,7 @@ if ($Install) {
     }
     & dotnet run --project $cliProject --configuration $Configuration --no-launch-profile `
         --property:UseSharedCompilation=false --property:BuildInParallel=false -- `
-        install $packagePath @catalogArguments
+        install $packagePath --accept-full-trust @catalogArguments
     if ($LASTEXITCODE -ne 0) {
         throw 'wrail install failed. Installed versions are immutable; bump manifest.json before replacing one.'
     }

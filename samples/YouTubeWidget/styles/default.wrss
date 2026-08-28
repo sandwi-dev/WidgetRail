@@ -21,3 +21,25 @@
 .youtube-slider { min-width: 220px; height: 44px; flex-grow: 1; color: var(--accent); background: var(--surface-muted); }
 .youtube-slider:focused { outline-color: var(--focus); outline-width: 2px; outline-offset: -2px; }
 .youtube-volume { min-width: 240px; }
+.youtube-page { width: 100%; min-width: 0px; gap: 12px; }
+.youtube-centered { align: center; justify: center; min-height: 320px; }
+.youtube-setup { gap: 12px; padding: 4px; }
+.youtube-copy { color: var(--text-muted); font-size: 12px; max-lines: 5; }
+.youtube-entry { width: 100%; min-height: 44px; color: var(--text); background: var(--surface-raised); border-color: var(--text-subdued); border-width: 1px; corner-radius: 9px; }
+.youtube-entry:focused { outline-color: var(--focus); outline-width: 2px; outline-offset: -2px; }
+.youtube-danger, .youtube-tertiary { min-height: 38px; padding: 7px 12px; border-width: 1px; corner-radius: 8px; }
+.youtube-danger { color: var(--danger, #c98181); background: var(--surface-raised); border-color: var(--danger, #c98181); }
+.youtube-tertiary { color: var(--text-muted); background: transparent; border-color: var(--text-subdued); }
+.youtube-danger:focused, .youtube-tertiary:focused { outline-color: var(--focus); outline-width: 2px; outline-offset: -2px; }
+.youtube-search-root { gap: 10px; }
+.youtube-search-header { gap: 8px; flex-shrink: 0; }
+.youtube-search-heading-row, .youtube-player-heading-row { align: center; gap: 8px; }
+.youtube-results { width: 100%; min-height: 220px; flex-grow: 1; gap: 8px; }
+.youtube-result-row { width: 100%; min-height: 84px; padding: 6px; gap: 10px; background: var(--surface-raised); corner-radius: 9px; }
+.youtube-result-image { width: 124px; height: 70px; flex-shrink: 0; corner-radius: 7px; overflow: clip; }
+.youtube-result-copy { min-width: 0px; flex-grow: 1; gap: 2px; }
+.youtube-result-title { color: var(--text); font-size: 13px; font-weight: 500; max-lines: 2; }
+.youtube-result-meta { color: var(--text-muted); font-size: 11px; max-lines: 1; }
+.youtube-result-action { min-height: 34px; padding: 5px 10px; background: var(--surface-muted); border-color: var(--text-subdued); border-width: 1px; corner-radius: 7px; }
+.youtube-result-action:focused, .youtube-now-playing:focused { outline-color: var(--focus); outline-width: 2px; outline-offset: -2px; }
+.youtube-now-playing { width: 100%; min-height: 38px; padding: 7px 10px; background: var(--surface-muted); border-color: var(--accent); border-width: 1px; corner-radius: 8px; }

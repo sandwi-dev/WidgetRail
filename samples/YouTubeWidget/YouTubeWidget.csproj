@@ -9,6 +9,10 @@
     <ProjectReference Include="..\..\src\WidgetSdk\WidgetSdk.csproj" />
   </ItemGroup>
   <ItemGroup>
+    <Compile Remove="Application\**\*.cs" />
+    <None Remove="Application\**\*" />
+  </ItemGroup>
+  <ItemGroup>
     <InternalsVisibleTo Include="YouTubeWidget.Tests" />
   </ItemGroup>
   <ItemGroup>

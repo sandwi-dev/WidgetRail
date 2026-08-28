@@ -62,7 +62,7 @@ internal static class YouTubeLinkParser
         return null;
     }
 
-    private static bool IsVideoId(string? value) =>
+    internal static bool IsVideoId(string? value) =>
         value is { Length: VideoIdCharacters } &&
         value.All(character =>
             char.IsAsciiLetterOrDigit(character) || character is '-' or '_');

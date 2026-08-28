@@ -48,9 +48,11 @@ public sealed class YouTubeWidgetTests
     }
 
     [TestMethod]
-    public void SnapshotUsesV26BoundedYouTubeAuthorityAndAccessibleNativeControls()
+    public async Task SnapshotUsesV26BoundedYouTubeAuthorityAndAccessibleNativeControls()
     {
-        var snapshot = new YouTubeVideoWidget().RenderSnapshot("youtube-test", 1);
+        var widget = await CreateConfiguredLinkWidgetAsync();
+        await CommitAsync(widget, $"https://youtu.be/{VideoId}");
+        var snapshot = widget.RenderSnapshot("youtube-test", 1);
         Assert.AreEqual(ProtocolConstants.EmbeddedMediaFrameDomainFamiliesVersion,
             snapshot.ProtocolVersion);
         Assert.IsEmpty(ViewSnapshotValidator.Validate(snapshot));
@@ -74,9 +76,59 @@ public sealed class YouTubeWidgetTests
     }
 
     [TestMethod]
+    public async Task SearchRetainsOnlyAnEstablishedSessionAndPlayerReturnDoesNotReload()
+    {
+        var widget = WidgetTestHost.Attach(
+            new YouTubeVideoWidget(new FakeApplicationService()),
+            new WidgetTestHostServicesBuilder().Build());
+        var configured = NextInvalidation(widget);
+        await WidgetTestHost.InitializeAsync(widget);
+        await WidgetTestHost.SetLifecycleStateAsync(widget, WidgetLifecycleState.Visible);
+        await configured;
+
+        var home = widget.RenderSnapshot("youtube-test", 1);
+        Assert.IsNull(home.EmbeddedMedia);
+        Assert.IsNotNull(TryFind(home.Root, "youtube.search.root"));
+
+        await widget.OnActionAsync(new WidgetActionEvent(
+            "youtube.link.open", "youtube.link.open"));
+        await CommitAsync(widget, $"https://youtu.be/{VideoId}");
+        var loading = widget.RenderSnapshot("youtube-test", 2);
+        var load = loading.EmbeddedMedia!.PendingCommand!;
+        await ObserveAsync(widget, load, EmbeddedMediaPlaybackState.Playing, 1,
+            position: 37, duration: 120, volume: 0.55);
+
+        await widget.OnActionAsync(new WidgetActionEvent(
+            "youtube.back", "youtube.player.back"));
+        var hidden = widget.RenderSnapshot("youtube-test", 3);
+        Assert.AreEqual(ProtocolConstants.RetainedHiddenEmbeddedMediaVersion,
+            hidden.ProtocolVersion);
+        Assert.IsNotNull(hidden.EmbeddedMedia);
+        Assert.IsTrue(hidden.EmbeddedMedia.RetainSessionWhenHidden);
+        Assert.IsNull(hidden.EmbeddedMedia.PendingCommand);
+        Assert.IsNull(TryFind(hidden.Root, "youtube.viewport"));
+        Assert.IsNotNull(TryFind(hidden.Root, "youtube.player.return"));
+        Assert.IsEmpty(ViewSnapshotValidator.Validate(hidden));
+
+        await widget.OnActionAsync(new WidgetActionEvent(
+            "youtube.player.return", "youtube.player.return"));
+        var returned = widget.RenderSnapshot("youtube-test", 4);
+        Assert.IsNotNull(returned.EmbeddedMedia);
+        Assert.IsFalse(returned.EmbeddedMedia.RetainSessionWhenHidden);
+        Assert.IsNull(returned.EmbeddedMedia.PendingCommand);
+        Assert.IsNotNull(TryFind(returned.Root, "youtube.viewport"));
+        Assert.AreEqual(hidden.EmbeddedMedia.EntryAsset, returned.EmbeddedMedia.EntryAsset);
+        CollectionAssert.AreEqual(
+            hidden.EmbeddedMedia.Resources.ToArray(),
+            returned.EmbeddedMedia.Resources.ToArray());
+        Assert.IsEmpty(ViewSnapshotValidator.Validate(returned));
+        await WidgetTestHost.DestroyAsync(widget);
+    }
+
+    [TestMethod]
     public async Task CommittedLinkCuesWithoutAutoplayThenPlayUsesTypedCommand()
     {
-        var widget = new YouTubeVideoWidget();
+        var widget = await CreateConfiguredLinkWidgetAsync();
         await CommitAsync(widget, $"https://youtu.be/{VideoId}");
         var loading = widget.RenderSnapshot("youtube-test", 1);
         var load = loading.EmbeddedMedia!.PendingCommand!;
@@ -98,7 +150,7 @@ public sealed class YouTubeWidgetTests
     [TestMethod]
     public async Task TypedPlaybackEventsDrivePauseSeekVolumeAndRejectStaleAuthority()
     {
-        var widget = new YouTubeVideoWidget();
+        var widget = await CreateConfiguredLinkWidgetAsync();
         await CommitAsync(widget, $"https://www.youtube.com/watch?v={VideoId}");
         var load = widget.RenderSnapshot("youtube-test", 1).EmbeddedMedia!.PendingCommand!;
         await ObserveAsync(widget, load, EmbeddedMediaPlaybackState.Ready, 1);
@@ -141,7 +193,7 @@ public sealed class YouTubeWidgetTests
         };
         foreach (var pair in expected)
         {
-            var widget = new YouTubeVideoWidget();
+            var widget = await CreateConfiguredLinkWidgetAsync();
             await CommitAsync(widget, $"https://youtu.be/{VideoId}");
             var command = widget.RenderSnapshot("youtube-test", 1).EmbeddedMedia!.PendingCommand!;
             await ObserveAsync(widget, command, EmbeddedMediaPlaybackState.Error, 1,
@@ -236,16 +288,73 @@ public sealed class YouTubeWidgetTests
             File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "manifest.json")));
         var root = document.RootElement;
         Assert.AreEqual("widgetrail.samples.youtube-video", root.GetProperty("id").GetString());
-        Assert.AreEqual("0.1.5", root.GetProperty("version").GetString());
+        Assert.AreEqual("0.2.2", root.GetProperty("version").GetString());
         Assert.AreEqual(0, root.GetProperty("permissions").GetArrayLength());
         Assert.AreEqual(0, root.GetProperty("optionalPermissions").GetArrayLength());
-        Assert.AreEqual("suspend-when-hidden",
+        Assert.AreEqual("keep-alive",
             root.GetProperty("residencyPolicy").GetProperty("mode").GetString());
+    }
+
+    private static Task NextInvalidation(Widget widget)
+    {
+        var completion = new TaskCompletionSource(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        EventHandler<WidgetInvalidatedEventArgs>? handler = null;
+        handler = (_, _) =>
+        {
+            widget.Invalidated -= handler;
+            completion.TrySetResult();
+        };
+        widget.Invalidated += handler;
+        return completion.Task.WaitAsync(TimeSpan.FromSeconds(2));
+    }
+
+    private sealed class FakeApplicationService : IYouTubeApplicationService
+    {
+        public ValueTask<YouTubeConfigurationSummary> GetConfigurationAsync(
+            CancellationToken cancellationToken)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            return ValueTask.FromResult(new YouTubeConfigurationSummary(true));
+        }
+
+        public ValueTask ConfigureApiKeyAsync(
+            string apiKey, CancellationToken cancellationToken) =>
+            ValueTask.CompletedTask;
+
+        public ValueTask DeleteApiKeyAsync(CancellationToken cancellationToken) =>
+            ValueTask.CompletedTask;
+
+        public ValueTask OpenGoogleCloudConsoleAsync(CancellationToken cancellationToken) =>
+            ValueTask.CompletedTask;
+
+        public ValueTask<YouTubeSearchPage> SearchAsync(
+            string query,
+            string? pageToken,
+            int pageSize,
+            CancellationToken cancellationToken) =>
+            ValueTask.FromResult(new YouTubeSearchPage([], null, 0));
+
+        public ValueTask DisposeAsync() => ValueTask.CompletedTask;
     }
 
     private static async Task CommitAsync(YouTubeVideoWidget widget, string link) =>
         await widget.OnActionAsync(new WidgetActionEvent(
             YouTubeVideoWidget.LinkActionId, "youtube.link") { CommittedText = link });
+
+    private static async Task<YouTubeVideoWidget> CreateConfiguredLinkWidgetAsync()
+    {
+        var widget = WidgetTestHost.Attach(
+            new YouTubeVideoWidget(new FakeApplicationService()),
+            new WidgetTestHostServicesBuilder().Build());
+        var configured = NextInvalidation(widget);
+        await WidgetTestHost.InitializeAsync(widget);
+        await WidgetTestHost.SetLifecycleStateAsync(widget, WidgetLifecycleState.Visible);
+        await configured;
+        await widget.OnActionAsync(new WidgetActionEvent(
+            "youtube.link.open", "youtube.link.open"));
+        return widget;
+    }
 
     private static int CountOccurrences(string value, string token)
     {

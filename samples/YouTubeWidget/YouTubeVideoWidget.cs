@@ -4,7 +4,7 @@ using WidgetRail.WidgetSdk;
 namespace WidgetRail.Samples.YouTubeWidget;
 
 /// <summary>A link-to-play YouTube client over the generic embedded-media contract.</summary>
-public sealed class YouTubeVideoWidget : Widget
+public sealed partial class YouTubeVideoWidget : Widget
 {
     internal const string SurfaceId = "youtube-video.primary";
     internal const string LinkActionId = "youtube.link.commit";
@@ -27,7 +27,9 @@ public sealed class YouTubeVideoWidget : Widget
     private double _volume = 0.8;
     private EmbeddedMediaPlaybackCommand? _pendingCommand;
 
-    public override WidgetView Render()
+    public override WidgetView Render() => RenderApplication();
+
+    private WidgetView RenderPlayer()
     {
         string link;
         string? videoId;
@@ -49,49 +51,7 @@ public sealed class YouTubeVideoWidget : Widget
             pending = _pendingCommand;
         }
 
-        var media = new EmbeddedMediaSurface
-        {
-            Id = SurfaceId,
-            AccessibleName = videoId is null
-                ? "YouTube player. No video loaded."
-                : $"YouTube player for video {videoId}",
-            EntryAsset = "payload/media/adapter.html",
-            Surface = new WidgetSurfaceHints
-            {
-                PreferredWidth = 640,
-                PreferredHeight = 360,
-                MinimumWidth = 356,
-                MinimumHeight = 200,
-            },
-            AspectRatio = 16.0 / 9.0,
-            Resources =
-            [
-                new EmbeddedMediaResource
-                {
-                    Path = "payload/media/adapter.html",
-                    ContentType = "text/html",
-                },
-            ],
-            AllowedFrameOrigins =
-            [
-                "https://www.youtube.com",
-                "https://fonts.gstatic.com",
-                "https://googleads.g.doubleclick.net",
-                "https://static.doubleclick.net",
-                "https://ssl.gstatic.com",
-                "https://www.google.com",
-                "https://jnn-pa.googleapis.com",
-                "https://i.ytimg.com",
-            ],
-            AllowedFrameDomainFamilies =
-            [
-                "youtube.com",
-                "googlevideo.com",
-                "ytimg.com",
-                "gstatic.com",
-            ],
-            PendingCommand = pending,
-        };
+        var media = CreateMediaSurface(videoId, pending, retainSessionWhenHidden: false);
 
         var linkEntry = UI.TextEntry(
                 link,
@@ -155,7 +115,10 @@ public sealed class YouTubeVideoWidget : Widget
                 "youtube.root",
                 UI.Stack(
                         "youtube.header",
-                        UI.Text("YOUTUBE VIDEO", "youtube.eyebrow").Classes("youtube-eyebrow"),
+                        UI.Row("youtube.player.heading-row",
+                            UI.Button("Back", BackActionId, "youtube.player.back")
+                                .Classes("youtube-tertiary"),
+                            UI.Text("YOUTUBE VIDEO", "youtube.eyebrow").Classes("youtube-eyebrow")),
                         UI.Text("Link to play", "youtube.title").Classes("youtube-title"),
                         UI.Text(status, "youtube.status")
                             .Classes("youtube-status", error is null ? "is-normal" : "is-error"))
@@ -191,11 +154,68 @@ public sealed class YouTubeVideoWidget : Widget
         { EmbeddedMedia = media };
     }
 
+    private static EmbeddedMediaSurface CreateMediaSurface(
+        string? videoId,
+        EmbeddedMediaPlaybackCommand? pendingCommand,
+        bool retainSessionWhenHidden) => new()
+    {
+        Id = SurfaceId,
+        AccessibleName = videoId is null
+            ? "YouTube player. No video loaded."
+            : $"YouTube player for video {videoId}",
+        EntryAsset = "payload/media/adapter.html",
+        Surface = new WidgetSurfaceHints
+        {
+            PreferredWidth = 640,
+            PreferredHeight = 360,
+            MinimumWidth = 356,
+            MinimumHeight = 200,
+        },
+        AspectRatio = 16.0 / 9.0,
+        Resources =
+        [
+            new EmbeddedMediaResource
+            {
+                Path = "payload/media/adapter.html",
+                ContentType = "text/html",
+            },
+        ],
+        Commands =
+        [
+            EmbeddedMediaCommand.TogglePlayback,
+            EmbeddedMediaCommand.SeekBackward,
+            EmbeddedMediaCommand.SeekForward,
+        ],
+        AllowedFrameOrigins =
+        [
+            "https://www.youtube.com",
+            "https://fonts.gstatic.com",
+            "https://googleads.g.doubleclick.net",
+            "https://static.doubleclick.net",
+            "https://ssl.gstatic.com",
+            "https://www.google.com",
+            "https://jnn-pa.googleapis.com",
+            "https://i.ytimg.com",
+        ],
+        AllowedFrameDomainFamilies =
+        [
+            "youtube.com",
+            "googlevideo.com",
+            "ytimg.com",
+            "gstatic.com",
+        ],
+        CompactPinnedPresentation = true,
+        CompactPinnedSeekStepSeconds = SeekStepSeconds,
+        PendingCommand = pendingCommand,
+        RetainSessionWhenHidden = retainSessionWhenHidden,
+    };
+
     public override ValueTask OnActionAsync(
         WidgetActionEvent action,
         CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
+        if (TryHandleApplicationAction(action)) return ValueTask.CompletedTask;
         lock (_gate)
         {
             if (action.ActionId == LinkActionId && action.CommittedText is { } committed)
@@ -210,6 +230,7 @@ public sealed class YouTubeVideoWidget : Widget
                 }
                 _validationError = null;
                 _videoId = parsedVideoId;
+                _route = YouTubeRoute.Player;
                 _position = 0;
                 _duration = 0;
                 QueueCommand(EmbeddedMediaPlaybackCommandKind.Load, parsedVideoId);
