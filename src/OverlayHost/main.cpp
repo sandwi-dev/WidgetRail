@@ -2850,6 +2850,37 @@ private:
                     embeddedMediaAuthority_->commands.end());
     }
 
+    [[nodiscard]] std::optional<double> OverlayFullscreenMediaSeekTarget(
+        const widgetrail::input::NavigationDirection direction) const noexcept {
+        if (!OverlayFullscreenMediaRequested() || !embeddedMediaAuthority_ ||
+            embeddedMediaAuthority_->projection != EmbeddedMediaProjection::Overlay ||
+            !EmbeddedMediaAuthorityCurrent() || !richMediaSurface_ ||
+            (direction != widgetrail::input::NavigationDirection::Left &&
+             direction != widgetrail::input::NavigationDirection::Right)) {
+            return std::nullopt;
+        }
+        const auto* snapshot = SnapshotFor(embeddedMediaAuthority_->widgetId);
+        if (!snapshot || !snapshot->embeddedMedia) return std::nullopt;
+        const auto playback = richMediaSurface_->state();
+        if (!std::isfinite(playback.positionSeconds) ||
+            !std::isfinite(playback.durationSeconds) ||
+            playback.positionSeconds < 0.0 || playback.durationSeconds <= 0.0) {
+            return std::nullopt;
+        }
+        const double position = std::clamp(
+            playback.positionSeconds, 0.0, playback.durationSeconds);
+        const double step = snapshot->embeddedMedia->compactPinnedSeekStepSeconds
+            .value_or(
+                widgetrail::protocol_contract::
+                    DefaultCompactPinnedMediaSeekStepSeconds);
+        const double target = std::clamp(
+            position + (direction == widgetrail::input::NavigationDirection::Left
+                ? -step : step),
+            0.0, playback.durationSeconds);
+        return target == position ? std::nullopt
+                                  : std::optional<double>{target};
+    }
+
     [[nodiscard]] static widgetrail::OverlayCompositionSurface::ExternalContentEndpoint
     CompositionEndpoint(const EmbeddedMediaProjection projection) noexcept {
         return projection == EmbeddedMediaProjection::Pinned
@@ -8376,6 +8407,34 @@ private:
         }
         constexpr WORD recoveryChord = XINPUT_GAMEPAD_BACK | XINPUT_GAMEPAD_START;
         const bool recoveryChordDown = (buttons & recoveryChord) == recoveryChord;
+        if (OverlayFullscreenMediaRequested()) {
+            if (frame.recoveryChordPressed != WRAIL_OVERLAY_PLATFORM_FALSE) {
+                RestartCurrentWidget();
+                return;
+            }
+            if ((pressed & XINPUT_GAMEPAD_B) != 0) {
+                DispatchControllerAction(L"B", true);
+            } else if ((pressed & XINPUT_GAMEPAD_X) != 0 && richMediaSurface_ &&
+                       EmbeddedMediaCommandSupported(L"togglePlayback")) {
+                (void)richMediaSurface_->SendCommand(
+                    widgetrail::richmedia::Command::TogglePlayback);
+            } else if (
+                frame.leftTriggerPressed != WRAIL_OVERLAY_PLATFORM_FALSE &&
+                EmbeddedMediaCommandSupported(L"seekBackward")) {
+                if (const auto target = OverlayFullscreenMediaSeekTarget(
+                        widgetrail::input::NavigationDirection::Left)) {
+                    (void)richMediaSurface_->SendSeekPosition(*target);
+                }
+            } else if (
+                frame.rightTriggerPressed != WRAIL_OVERLAY_PLATFORM_FALSE &&
+                EmbeddedMediaCommandSupported(L"seekForward")) {
+                if (const auto target = OverlayFullscreenMediaSeekTarget(
+                        widgetrail::input::NavigationDirection::Right)) {
+                    (void)richMediaSurface_->SendSeekPosition(*target);
+                }
+            }
+            return;
+        }
         if (!recoveryChordDown &&
             (pressed & XINPUT_GAMEPAD_START) != 0 &&
             state_.focusRegion() == widgetrail::FocusRegion::Tray &&
@@ -8403,10 +8462,6 @@ private:
         if (pinnedControllerCommand ==
             widgetrail::pinned::ControllerCommand::EmergencyHide) {
             EmergencyHidePinnedSurfaces();
-            return;
-        }
-        if (OverlayFullscreenMediaRequested() &&
-            !recoveryChordDown && (pressed & XINPUT_GAMEPAD_BACK) != 0) {
             return;
         }
         if (frame.recoveryChordPressed != WRAIL_OVERLAY_PLATFORM_FALSE) {
@@ -11085,19 +11140,12 @@ private:
         if (overlayFullscreen && layer == CompositionPaintLayer::Guide && guideBounds) {
             openWidgetAccessibility_ = {};
             pendingActionFailureAccessibilityProjection_.reset();
-            if (accessibilityActive_) {
-                chromeAccessibilityProvider_.Clear();
-                accessibilityProjection_.Clear();
-            }
+            ClearAccessibilityTree();
             finishUpdate();
             return;
         }
         if (overlayFullscreen && layer == CompositionPaintLayer::Content) {
-            renderTarget_->FillRectangle(
-                D2D1::RectF(
-                    0.0F, 0.0F,
-                    metrics->viewportWidthDip, metrics->viewportHeightDip),
-                backgroundBrush_.Get());
+            ClearAccessibilityTree();
             const auto* snapshot = SnapshotFor(state_.activeWidget());
             if (snapshot && snapshot->embeddedMedia) {
                 const auto bounds =
@@ -11136,17 +11184,6 @@ private:
                             {}, state_.focusRegion(), false,
                             presentationTransaction_.contentPlacement(),
                         };
-                        if (accessibilityActive_) {
-                            if (const auto* descriptor =
-                                    sessions_.FindDescriptor(state_.activeWidget())) {
-                                widgetAccessibilityTree_ =
-                                    widgetrail::accessibility::BuildWidgetTree(
-                                        std::wstring{state_.activeWidget()},
-                                        descriptor->runtimeGeneration,
-                                        *snapshot, result, {});
-                                ++widgetAccessibilityRevision_;
-                            }
-                        }
                     }
                 }
             }
