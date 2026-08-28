@@ -5086,6 +5086,13 @@ private:
                                 (void)PublishAccessibilityTree(pixelScale);
                             }
                             AppendCompositionCoordinateSample(step->index);
+                            // The destination frame owns the final authored
+                            // MediaViewport, but the external plane is not a
+                            // child of the animated content visual. Reconcile
+                            // it only after the exact destination placement is
+                            // committed so fullscreen exit does not wait for a
+                            // later paint or input to restore the widget plane.
+                            ReconcileCommittedEmbeddedMediaSurface();
                         }
                     }
                 }
