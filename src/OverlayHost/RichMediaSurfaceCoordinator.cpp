@@ -247,6 +247,7 @@ private:
     std::wstring profileDirectory;
     std::vector<std::shared_ptr<RichMediaSurfaceCoordinator::CallbackLease>> waiters;
     std::uint64_t generation{};
+    std::size_t liveControllerOwners{};
     bool faulted{};
 
     friend class RichMediaSurfaceCoordinator;
@@ -311,9 +312,7 @@ HRESULT RichMediaSurfaceCoordinator::Initialize(Configuration configuration) noe
         shared.profileRootDirectory != configuration.profileRootDirectory) return E_INVALIDARG;
     profileRootDirectory_ = configuration.profileRootDirectory;
     shared.profileRootDirectory = configuration.profileRootDirectory;
-    if (shared.lifecycle == EnvironmentLifecycle::Ready && shared.signal &&
-        shared.signal->browserProcessExited.load(std::memory_order_acquire))
-        return E_UNEXPECTED;
+    const HRESULT recovery = RecoverExitedSharedEnvironment();
     if (installedAppReferer_.empty()) {
         const auto referer = ResolveInstalledAppReferer();
         if (referer) installedAppReferer_ = *referer;
@@ -324,6 +323,12 @@ HRESULT RichMediaSurfaceCoordinator::Initialize(Configuration configuration) noe
     desiredVisible_ = configuration_.initiallyVisible;
     state_.authority.surfaceGeneration = ++nextSurfaceGeneration_;
     state_.authority.sessionGeneration = ++nextSessionGeneration_;
+    if (FAILED(recovery)) {
+        Fault(L"shared-environment-exited-with-live-controller", recovery);
+        return S_OK;
+    }
+    if (recovery == S_OK)
+        Emit(L"Rich media shared environment retired reason=browser-exited");
     if (shared.lifecycle == EnvironmentLifecycle::Ready &&
         !shared.faulted && shared.environment &&
         (!shared.signal || !shared.signal->browserProcessExited.load(std::memory_order_acquire))) {
@@ -340,6 +345,31 @@ HRESULT RichMediaSurfaceCoordinator::Initialize(Configuration configuration) noe
         return AwaitSharedEnvironment();
     if (shared.lifecycle != EnvironmentLifecycle::Cold) return E_UNEXPECTED;
     return BeginEnvironment();
+}
+
+HRESULT RichMediaSurfaceCoordinator::RecoverExitedSharedEnvironment() noexcept {
+    auto& shared = *sharedEnvironment_;
+    if (shared.lifecycle != EnvironmentLifecycle::Ready || !shared.signal ||
+        !shared.signal->browserProcessExited.load(std::memory_order_acquire))
+        return S_FALSE;
+    if (shared.liveControllerOwners != 0 || !shared.waiters.empty())
+        return HRESULT_FROM_WIN32(ERROR_BUSY);
+    if (shared.environment5 && shared.browserProcessExitedToken.value) {
+        const HRESULT remove = shared.environment5->remove_BrowserProcessExited(
+            shared.browserProcessExitedToken);
+        if (FAILED(remove)) return remove;
+    }
+    shared.lifecycle = EnvironmentLifecycle::ShuttingDown;
+    environmentProfileDirectory_ = shared.profileDirectory;
+    shared.browserProcessExitedToken = {};
+    shared.environment5.Reset();
+    shared.environment.Reset();
+    MarkCurrentProfileForDeferredCleanup();
+    shared.signal.reset();
+    shared.profileDirectory.clear();
+    shared.faulted = false;
+    shared.lifecycle = EnvironmentLifecycle::Cold;
+    return S_OK;
 }
 
 HRESULT RichMediaSurfaceCoordinator::Retry(Configuration configuration) noexcept {
@@ -605,6 +635,10 @@ HRESULT RichMediaSurfaceCoordinator::OnControllerCreated(
         state_.lifecycle != Lifecycle::ControllerCreating) return S_FALSE;
     if (FAILED(result) || !controller) { Fault(L"controller-create", result); return S_OK; }
     controller_ = controller;
+    if (!ownsSharedController_) {
+        ++sharedEnvironment_->liveControllerOwners;
+        ownsSharedController_ = true;
+    }
     if (FAILED(controller_.As(&controllerBase_)) || FAILED(controllerBase_->get_CoreWebView2(&core_))) {
         Fault(L"controller-interface", E_NOINTERFACE); return S_OK;
     }
@@ -1934,6 +1968,11 @@ void RichMediaSurfaceCoordinator::BeginSessionTeardown() noexcept {
     presentationTransferPending_ = false;
     transferDesiredVisible_ = false;
     state_.inputEnabled = false;
+    if (ownsSharedController_) {
+        if (sharedEnvironment_->liveControllerOwners != 0)
+            --sharedEnvironment_->liveControllerOwners;
+        ownsSharedController_ = false;
+    }
     pendingCommand_.reset();
     Emit(L"Rich media lifecycle=closing");
     if (configuration_.setPresentationVisible) configuration_.setPresentationVisible(false);

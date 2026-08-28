@@ -221,6 +221,7 @@ private:
         Rejected,
     };
     [[nodiscard]] HRESULT BeginEnvironment() noexcept;
+    [[nodiscard]] HRESULT RecoverExitedSharedEnvironment() noexcept;
     struct CallbackLease;
     struct FrameSubscription;
     struct EnvironmentSignal;
@@ -373,6 +374,7 @@ private:
     std::wstring profileRootDirectory_;
     std::wstring environmentProfileDirectory_;
     bool environmentFaulted_{};
+    bool ownsSharedController_{};
     std::uint64_t retrySurfaceGeneration_{};
     bool teardownBegun_{};
     bool presentationTransferPending_{};
