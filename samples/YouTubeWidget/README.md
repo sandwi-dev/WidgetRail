@@ -43,8 +43,8 @@ separate, explicit action; package versions are immutable.
 ## Controller use
 
 Search, link playback, and setup share one route bar. Search and setup use compact
-task cards; the player keeps the 16:9 video primary and places transport, timeline,
-and volume in one immediately adjacent bottom deck. Fullscreen/settings remain in
+task cards; the player keeps the 16:9 video primary and places icon transport plus
+compact volume on one row, with timeline below it. Fullscreen/settings remain in
 the external player and pinning remains host-owned.
 
 1. Open **YouTube Video** and choose **Discover**, **Play a link**, or **Setup** from the route bar.

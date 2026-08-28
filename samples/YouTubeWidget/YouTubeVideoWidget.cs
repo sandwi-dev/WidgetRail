@@ -62,25 +62,28 @@ public sealed partial class YouTubeVideoWidget : Widget
             .FocusUp("youtube.player.back")
             .FocusDown("youtube.playback.toggle")
             .Classes("youtube-link");
-        var toggle = UI.Button(
-                state == EmbeddedMediaPlaybackState.Playing ? "Pause" : "Play",
-                ToggleActionId,
-                "youtube.playback.toggle")
+        var toggleLabel = state == EmbeddedMediaPlaybackState.Playing ? "Pause" : "Play";
+        var toggle = UI.Button("", ToggleActionId, "youtube.playback.toggle")
+            .Icon(state == EmbeddedMediaPlaybackState.Playing ? WidgetGlyph.Pause : WidgetGlyph.Play,
+                toggleLabel)
             .Disabled(videoId is null || pending is not null)
             .FocusUp("youtube.link")
             .FocusRight("youtube.playback.seek-backward")
-            .Classes("youtube-primary");
-        var seekBack = UI.Button("-10s", SeekBackwardActionId, "youtube.playback.seek-backward")
+            .Classes("youtube-primary", "youtube-transport-button", "youtube-play-toggle");
+        var seekBack = UI.Button("", SeekBackwardActionId, "youtube.playback.seek-backward")
+            .Icon(WidgetGlyph.Previous, "Seek backward 10 seconds")
             .Disabled(videoId is null || pending is not null)
             .FocusUp("youtube.timeline")
             .FocusLeft("youtube.playback.toggle")
             .FocusRight("youtube.playback.seek-forward")
-            .Classes("youtube-secondary");
-        var seekForward = UI.Button("+10s", SeekForwardActionId, "youtube.playback.seek-forward")
+            .Classes("youtube-secondary", "youtube-transport-button");
+        var seekForward = UI.Button("", SeekForwardActionId, "youtube.playback.seek-forward")
+            .Icon(WidgetGlyph.Next, "Seek forward 10 seconds")
             .Disabled(videoId is null || pending is not null)
             .FocusUp("youtube.timeline")
             .FocusLeft("youtube.playback.seek-backward")
-            .Classes("youtube-secondary");
+            .FocusRight("youtube.volume")
+            .Classes("youtube-secondary", "youtube-transport-button");
         var timeline = UI.Slider(
                 position,
                 0,
@@ -109,6 +112,7 @@ public sealed partial class YouTubeVideoWidget : Widget
             .Disabled(videoId is null)
             .Busy(pending is not null)
             .FocusUp("youtube.timeline")
+            .FocusLeft("youtube.playback.seek-forward")
             .Classes("youtube-slider", "youtube-volume");
 
         var status = error ?? StatusText(videoId, state, pending is not null);
@@ -118,8 +122,6 @@ public sealed partial class YouTubeVideoWidget : Widget
         WidgetElement sourceEntry = videoId is null
             ? UI.Stack("youtube.link-card",
                     UI.Text("VIDEO SOURCE", "youtube.link.label").Classes("youtube-section-label"),
-                    UI.Text("Paste a public embeddable link. Playback begins only after you press Play.",
-                        "youtube.link.help").Classes("youtube-section-copy"),
                     linkEntry)
                 .Classes("youtube-card", "youtube-link-card")
             : UI.Row("youtube.link-strip",
@@ -150,17 +152,18 @@ public sealed partial class YouTubeVideoWidget : Widget
                                 "youtube.media.hint").Classes("youtube-section-meta")),
                         UI.MediaViewport(media, "youtube.viewport").Classes("youtube-viewport"),
                         UI.Stack("youtube.control-deck",
-                                UI.Row("youtube.controls", toggle, seekBack, seekForward).Classes("youtube-controls"),
+                                UI.Row("youtube.controls",
+                                        toggle,
+                                        seekBack,
+                                        seekForward,
+                                        UI.Text("Volume", "youtube.volume-label").Classes("youtube-label"),
+                                        volumeControl)
+                                    .Classes("youtube-controls"),
                                 UI.Row(
                                         "youtube.timeline-row",
                                         UI.Text(FormatTime(position), "youtube.position").Classes("youtube-time"),
                                         timeline,
                                         UI.Text(FormatTime(duration), "youtube.duration").Classes("youtube-time", "is-end"))
-                                    .Classes("youtube-slider-row"),
-                                UI.Row(
-                                        "youtube.volume-row",
-                                        UI.Text("Volume", "youtube.volume-label").Classes("youtube-label"),
-                                        volumeControl)
                                     .Classes("youtube-slider-row"))
                             .Classes("youtube-control-deck", videoId is null ? "is-unavailable" : "is-ready"))
                     .Classes("youtube-player-shell"))
