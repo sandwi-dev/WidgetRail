@@ -1222,6 +1222,7 @@ void DeduplicatedSnapshotAdmissionsRetainExactTerminalOwnership() {
     assert(coordinator.RefreshState(L"alpha") == WidgetRefreshState::Current);
 
     bridge.stalledWidget = L"alpha";
+    bridge.ignoreCancellationWidget = L"alpha";
     bridge.releaseStall = false;
     const auto beforeCalls = bridge.snapshotCalls;
     assert(coordinator.RequestSnapshot(L"alpha", false, 500));
@@ -1231,8 +1232,30 @@ void DeduplicatedSnapshotAdmissionsRetainExactTerminalOwnership() {
             return bridge.snapshotCalls > beforeCalls;
         }));
     }
-    assert(coordinator.RequestSnapshot(L"alpha", false, 501));
+    constexpr std::uint64_t cancelledObserverBase = 501;
+    for (std::size_t index = 0;
+         index < WidgetSessionCoordinator::MaximumPendingRequests; ++index) {
+        assert(coordinator.RequestSnapshot(
+            L"alpha", false, cancelledObserverBase + index));
+    }
+    const auto rejectedObserver = cancelledObserverBase +
+        WidgetSessionCoordinator::MaximumPendingRequests;
+    assert(!coordinator.RequestSnapshot(L"alpha", false, rejectedObserver));
     coordinator.RemoveSnapshot(L"alpha");
+    {
+        std::scoped_lock lock(traceMutex);
+        assert(std::none_of(trace.begin(), trace.end(), [](const auto& event) {
+            return event.correlationId >= cancelledObserverBase &&
+                   event.correlationId < rejectedObserver &&
+                   event.stage ==
+                       widgetrail::WidgetSessionTraceStage::RequestCompleted;
+        }));
+    }
+    {
+        std::scoped_lock lock(bridge.mutex);
+        bridge.releaseStall = true;
+    }
+    bridge.changed.notify_all();
     (void)WaitEvents(coordinator, [](const auto& events) {
         return std::any_of(events.begin(), events.end(), [](const auto& event) {
             return event.widgetId == L"alpha" &&
@@ -1242,13 +1265,80 @@ void DeduplicatedSnapshotAdmissionsRetainExactTerminalOwnership() {
     assert(!coordinator.Snapshot(L"alpha"));
     {
         std::scoped_lock lock(traceMutex);
-        assert(std::count_if(trace.begin(), trace.end(), [](const auto& event) {
-            return event.correlationId == 501 &&
+        for (std::size_t index = 0;
+             index < WidgetSessionCoordinator::MaximumPendingRequests; ++index) {
+            const auto correlationId = cancelledObserverBase + index;
+            assert(std::count_if(
+                trace.begin(), trace.end(), [&](const auto& event) {
+                    return event.correlationId == correlationId &&
+                           event.stage ==
+                               widgetrail::WidgetSessionTraceStage::RequestCompleted &&
+                           event.disposition ==
+                               widgetrail::WidgetSessionCompletionDisposition::Cancelled;
+                }) == 1);
+        }
+        assert(std::none_of(trace.begin(), trace.end(), [&](const auto& event) {
+            return event.correlationId == rejectedObserver &&
                    event.stage ==
-                       widgetrail::WidgetSessionTraceStage::RequestCompleted &&
-                   event.disposition ==
-                       widgetrail::WidgetSessionCompletionDisposition::Cancelled;
-        }) == 1);
+                       widgetrail::WidgetSessionTraceStage::RequestCompleted;
+        }));
+    }
+
+    // The late, cancellation-ignoring owner completion drained every observer
+    // exactly once. A fresh owner can therefore consume the complete bounded
+    // observer capacity without inheriting or re-terminalizing the retired set.
+    bridge.ignoreCancellationWidget.clear();
+    bridge.releaseStall = false;
+    bridge.snapshots[L"alpha"] = Snapshot(L"alpha.one", 5);
+    const auto replacementBeforeCalls = bridge.snapshotCalls;
+    assert(coordinator.RequestSnapshot(L"alpha", false, 600));
+    {
+        std::unique_lock lock(bridge.mutex);
+        assert(bridge.changed.wait_for(lock, 1s, [&] {
+            return bridge.snapshotCalls > replacementBeforeCalls;
+        }));
+    }
+    constexpr std::uint64_t replacementObserverBase = 601;
+    for (std::size_t index = 0;
+         index < WidgetSessionCoordinator::MaximumPendingRequests; ++index) {
+        assert(coordinator.RequestSnapshot(
+            L"alpha", false, replacementObserverBase + index));
+    }
+    const auto replacementRejected = replacementObserverBase +
+        WidgetSessionCoordinator::MaximumPendingRequests;
+    assert(!coordinator.RequestSnapshot(
+        L"alpha", false, replacementRejected));
+    {
+        std::scoped_lock lock(bridge.mutex);
+        bridge.releaseStall = true;
+    }
+    bridge.changed.notify_all();
+    (void)WaitEvents(coordinator, [](const auto& events) {
+        return std::any_of(events.begin(), events.end(), [](const auto& event) {
+            return event.widgetId == L"alpha" &&
+                   event.kind == WidgetSessionEventKind::SnapshotAdmitted;
+        });
+    });
+    (void)coordinator.TakeEvents();
+    {
+        std::scoped_lock lock(traceMutex);
+        for (std::size_t index = 0;
+             index < WidgetSessionCoordinator::MaximumPendingRequests; ++index) {
+            const auto correlationId = replacementObserverBase + index;
+            assert(std::count_if(
+                trace.begin(), trace.end(), [&](const auto& event) {
+                    return event.correlationId == correlationId &&
+                           event.stage ==
+                               widgetrail::WidgetSessionTraceStage::RequestCompleted &&
+                           event.disposition ==
+                               widgetrail::WidgetSessionCompletionDisposition::Admitted;
+                }) == 1);
+        }
+        assert(std::none_of(trace.begin(), trace.end(), [&](const auto& event) {
+            return event.correlationId == replacementRejected &&
+                   event.stage ==
+                       widgetrail::WidgetSessionTraceStage::RequestCompleted;
+        }));
     }
 }
 

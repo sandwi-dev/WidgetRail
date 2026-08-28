@@ -951,9 +951,8 @@ WidgetSessionCoordinator::QueueResult WidgetSessionCoordinator::Queue(
         }
     }
     if (replaced) {
-        EmitTrace(
-            *replaced, WidgetSessionTraceStage::RequestCompleted,
-            WidgetSessionTraceAction::None,
+        EmitCompletionTrace(
+            *replaced,
             WidgetSessionTraceReason::NewerTarget,
             WidgetSessionCompletionDisposition::Cancelled);
     }
@@ -1081,9 +1080,8 @@ void WidgetSessionCoordinator::SupersedeSnapshotRequests(
         refreshRequestIds_.erase(id);
     }
     for (const auto& request : cancelled) {
-        EmitTrace(
-            request, WidgetSessionTraceStage::RequestCompleted,
-            WidgetSessionTraceAction::None,
+        EmitCompletionTrace(
+            request,
             WidgetSessionTraceReason::NewerTarget,
             WidgetSessionCompletionDisposition::Cancelled);
     }
@@ -1118,9 +1116,8 @@ void WidgetSessionCoordinator::RevokeRequests(
         refreshRequestIds_.erase(id);
     }
     for (const auto& request : cancelled) {
-        EmitTrace(
-            request, WidgetSessionTraceStage::RequestCompleted,
-            WidgetSessionTraceAction::None,
+        EmitCompletionTrace(
+            request,
             WidgetSessionTraceReason::NewerTarget,
             WidgetSessionCompletionDisposition::Cancelled);
     }
