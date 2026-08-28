@@ -25,6 +25,12 @@
 
 namespace widgetrail::pinned {
 
+[[nodiscard]] std::optional<double> ResolveBoundedMediaSeekTarget(
+    double currentPositionSeconds,
+    double durationSeconds,
+    double seekStepSeconds,
+    input::NavigationDirection direction) noexcept;
+
 enum class WidgetSurfacePresentationState {
     Hidden,
     Overlay,

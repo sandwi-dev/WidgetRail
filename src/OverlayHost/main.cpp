@@ -2867,18 +2867,12 @@ private:
             playback.positionSeconds < 0.0 || playback.durationSeconds <= 0.0) {
             return std::nullopt;
         }
-        const double position = std::clamp(
-            playback.positionSeconds, 0.0, playback.durationSeconds);
         const double step = snapshot->embeddedMedia->compactPinnedSeekStepSeconds
             .value_or(
                 widgetrail::protocol_contract::
                     DefaultCompactPinnedMediaSeekStepSeconds);
-        const double target = std::clamp(
-            position + (direction == widgetrail::input::NavigationDirection::Left
-                ? -step : step),
-            0.0, playback.durationSeconds);
-        return target == position ? std::nullopt
-                                  : std::optional<double>{target};
+        return widgetrail::pinned::ResolveBoundedMediaSeekTarget(
+            playback.positionSeconds, playback.durationSeconds, step, direction);
     }
 
     [[nodiscard]] static widgetrail::OverlayCompositionSurface::ExternalContentEndpoint

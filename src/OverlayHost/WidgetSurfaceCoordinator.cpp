@@ -77,6 +77,28 @@ constexpr std::wstring_view kFullWidgetLayoutId = L"host.full-widget";
 
 } // namespace
 
+std::optional<double> ResolveBoundedMediaSeekTarget(
+    const double currentPositionSeconds,
+    const double durationSeconds,
+    const double seekStepSeconds,
+    const input::NavigationDirection direction) noexcept {
+    if (!std::isfinite(currentPositionSeconds) ||
+        !std::isfinite(durationSeconds) ||
+        !std::isfinite(seekStepSeconds) ||
+        currentPositionSeconds < 0.0 || durationSeconds <= 0.0 ||
+        seekStepSeconds <= 0.0 ||
+        (direction != input::NavigationDirection::Left &&
+         direction != input::NavigationDirection::Right)) return std::nullopt;
+    const double position = std::clamp(
+        currentPositionSeconds, 0.0, durationSeconds);
+    const double target = std::clamp(
+        position + seekStepSeconds *
+            (direction == input::NavigationDirection::Left ? -1.0 : 1.0),
+        0.0, durationSeconds);
+    return target == position ? std::nullopt
+                              : std::optional<double>{target};
+}
+
 WidgetSurfaceCoordinator::WidgetSurfaceCoordinator() = default;
 
 WidgetSurfaceCoordinator::~WidgetSurfaceCoordinator() {
@@ -1219,13 +1241,9 @@ std::optional<double> WidgetSurfaceCoordinator::CompactMediaSeekTarget(
         compactMediaDurationSeconds_ <= 0.0 ||
         (direction != input::NavigationDirection::Left &&
          direction != input::NavigationDirection::Right)) return std::nullopt;
-    const double delta = compactMediaState().seekStepSeconds *
-        (direction == input::NavigationDirection::Left ? -1.0 : 1.0);
-    const double target = std::clamp(
-        compactMediaPositionSeconds_ + delta, 0.0,
-        compactMediaDurationSeconds_);
-    if (target == compactMediaPositionSeconds_) return std::nullopt;
-    return target;
+    return ResolveBoundedMediaSeekTarget(
+        compactMediaPositionSeconds_, compactMediaDurationSeconds_,
+        compactMediaState().seekStepSeconds, direction);
 }
 
 std::optional<double> WidgetSurfaceCoordinator::CommitCompactMediaScrub() noexcept {
