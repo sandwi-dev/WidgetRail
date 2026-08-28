@@ -1321,7 +1321,13 @@ HRESULT RichMediaSurfaceCoordinator::OnWebMessage(
             return S_OK;
         }
         pendingCommand_->phase = PendingPhase::AwaitingSpatialActivation;
-        if (!SendFocusedSpatialActivation())
+        const bool activationSent = SendFocusedSpatialActivation();
+        Emit(std::format(
+            L"Rich media spatial activation command={} sequence={} page-event={} result={}",
+            pendingCommand_->id, pendingCommand_->playbackSequence,
+            state_.authority.eventSequence,
+            activationSent ? L"sent" : L"refused"));
+        if (!activationSent)
             Fault(L"spatial-activation-input", E_FAIL);
         return S_OK;
     }
@@ -1577,7 +1583,14 @@ bool RichMediaSurfaceCoordinator::SendFocusedSpatialActivation() noexcept {
     if (SUCCEEDED(result)) result = controller_->SendMouseInput(
         COREWEBVIEW2_MOUSE_EVENT_KIND_LEFT_BUTTON_UP,
         COREWEBVIEW2_MOUSE_EVENT_VIRTUAL_KEYS_NONE, 0, point);
-    return SUCCEEDED(result);
+    // This host synthesizes a complete, bounded pointer gesture rather than
+    // forwarding a system mouse stream. WebView2 requires composition hosts to
+    // terminate injected movement with LEAVE; otherwise hover/hit-test state can
+    // survive across later controller activations and presentation changes.
+    const HRESULT leaveResult = controller_->SendMouseInput(
+        COREWEBVIEW2_MOUSE_EVENT_KIND_LEAVE,
+        COREWEBVIEW2_MOUSE_EVENT_VIRTUAL_KEYS_NONE, 0, POINT{});
+    return SUCCEEDED(result) && SUCCEEDED(leaveResult);
 }
 
 bool RichMediaSurfaceCoordinator::FocusedActionPoint(
