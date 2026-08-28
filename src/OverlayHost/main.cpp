@@ -2394,6 +2394,17 @@ private:
         std::optional<RECT> clientClip;
     };
 
+    struct CommittedOverlayFullscreenMediaPresentation final {
+        std::wstring widgetId;
+        std::wstring instanceId;
+        std::wstring runtimeGeneration;
+        std::wstring presentationGeneration;
+        std::wstring surfaceId;
+        long long snapshotSequence{};
+        widgetrail::EmbeddedMediaSurfaceDeclaration resourceContract;
+        widgetrail::MediaViewportPresentationGeometry geometry;
+    };
+
     [[nodiscard]] static std::wstring EmbeddedMediaSessionKey(
         const std::wstring_view widgetId,
         const widgetrail::WidgetSnapshot& snapshot,
@@ -2491,27 +2502,30 @@ private:
             owner = pinnedSurfaceCoordinator_.window();
         } else if (snapshot->embeddedMedia->overlayFullscreenPresentation &&
                    OverlayFullscreenMediaRequested()) {
-            const float pixelsPerDip = MediaPixelsPerDip(window_);
-            const float widthDip = static_cast<float>(compositionSurface_.width()) /
-                pixelsPerDip;
-            const float heightDip = static_cast<float>(compositionSurface_.height()) /
-                pixelsPerDip;
-            const auto fullscreen =
-                widgetrail::ResolveOverlayFullscreenMediaSurfaceBounds(
-                    {0.0F, 0.0F, widthDip, heightDip},
-                    static_cast<float>(
-                        snapshot->embeddedMedia->surface.minimumWidth.value_or(1.0)),
-                    static_cast<float>(
-                        snapshot->embeddedMedia->surface.minimumHeight.value_or(1.0)),
-                    static_cast<float>(snapshot->embeddedMedia->aspectRatio));
-            if (!fullscreen) return std::nullopt;
-            viewport.nodeId = L"host.overlay-fullscreen-media";
-            viewport.mediaSurfaceId = embeddedMediaAuthority_->surfaceId;
-            viewport.bounds = {
-                fullscreen->x, fullscreen->y,
-                fullscreen->width, fullscreen->height};
-            viewport.clip = viewport.bounds;
-            owner = window_;
+            const auto* descriptor = sessions_.FindDescriptor(
+                embeddedMediaAuthority_->widgetId);
+            const auto& committed = committedOverlayFullscreenMediaPresentation_;
+            if (!descriptor || !committed ||
+                committed->widgetId != embeddedMediaAuthority_->widgetId ||
+                committed->instanceId != embeddedMediaAuthority_->instanceId ||
+                committed->runtimeGeneration !=
+                    embeddedMediaAuthority_->runtimeGeneration ||
+                committed->presentationGeneration !=
+                    embeddedMediaAuthority_->presentationGeneration ||
+                committed->surfaceId != embeddedMediaAuthority_->surfaceId ||
+                committed->snapshotSequence > expectedSequence ||
+                descriptor->runtimeGeneration != committed->runtimeGeneration ||
+                descriptor->presentationGeneration !=
+                    committed->presentationGeneration ||
+                !committedWidgetVisualState_ ||
+                committedWidgetVisualState_->widgetId != committed->widgetId ||
+                committedWidgetVisualState_->instanceId != committed->instanceId ||
+                committedWidgetVisualState_->snapshotSequence != expectedSequence ||
+                !widgetrail::SameEmbeddedMediaResourceContract(
+                    committed->resourceContract, *snapshot->embeddedMedia)) {
+                return std::nullopt;
+            }
+            return committed->geometry;
         } else {
             if (!lastWidgetRenderResult_.succeeded ||
                 lastWidgetRenderResult_.mediaViewportRegions.size() != 1)
@@ -5184,6 +5198,8 @@ private:
             state_.surface() == widgetrail::Surface::Widget
                 ? state_.activeWidget()
                 : state_.selectedWidget());
+        committedOverlayFullscreenMediaPresentation_ =
+            std::move(frames.overlayFullscreenMediaPresentation);
         if (accessibilityActive_ && !accessibilityTree_.widgetId.empty()) {
             const float pixelScale = static_cast<float>(placement.width) /
                 static_cast<float>(std::max(
@@ -5242,6 +5258,8 @@ private:
         AppendCompositionCoordinateSample(0);
         if (performanceCountersActive_) ++performanceSuccessfulFrames_;
         BeginOpenAfterSuccessfulPaint();
+        if (committedOverlayFullscreenMediaPresentation_)
+            ReconcileCommittedEmbeddedMediaSurface();
         return true;
     }
 
@@ -11202,6 +11220,8 @@ private:
             contentRasterMapping;
         std::vector<widgetrail::OverlayCompositionSurface::Frame> frames;
         std::optional<widgetrail::shell::RetainedTrayState> trayState;
+        std::optional<CommittedOverlayFullscreenMediaPresentation>
+            overlayFullscreenMediaPresentation;
         std::wstring guideKey;
     };
 
@@ -12211,6 +12231,38 @@ private:
             }
         }
         set.trayState = std::move(nextTrayState);
+        if (OverlayFullscreenMediaRequested() && metrics &&
+            lastWidgetRenderResult_.succeeded &&
+            lastWidgetRenderResult_.mediaViewportRegions.size() == 1) {
+            const auto* snapshot = SnapshotFor(state_.activeWidget());
+            const auto* descriptor = sessions_.FindDescriptor(state_.activeWidget());
+            const auto& viewport =
+                lastWidgetRenderResult_.mediaViewportRegions.front();
+            if (snapshot && descriptor && snapshot->embeddedMedia &&
+                viewport.mediaSurfaceId == snapshot->embeddedMedia->id) {
+                const auto resolved =
+                    widgetrail::ResolveMediaViewportPresentationGeometry(
+                        {viewport.bounds.x, viewport.bounds.y,
+                         viewport.bounds.width, viewport.bounds.height},
+                        {viewport.clip.x, viewport.clip.y,
+                         viewport.clip.width, viewport.clip.height},
+                        metrics->physicalPixelsPerDip);
+                if (resolved) {
+                    set.overlayFullscreenMediaPresentation =
+                        CommittedOverlayFullscreenMediaPresentation{
+                            std::wstring{state_.activeWidget()},
+                            snapshot->instanceId,
+                            descriptor->runtimeGeneration,
+                            descriptor->presentationGeneration,
+                            snapshot->embeddedMedia->id,
+                            snapshot->sequence,
+                            widgetrail::EmbeddedMediaResourceContract(
+                                *snapshot->embeddedMedia),
+                            *resolved,
+                        };
+                }
+            }
+        }
         drawMicroseconds = static_cast<std::uint64_t>(
             std::chrono::duration_cast<std::chrono::microseconds>(
                 std::chrono::steady_clock::now() - started).count());
@@ -12332,6 +12384,8 @@ private:
             state_.surface() == widgetrail::Surface::Widget
                 ? state_.activeWidget()
                 : state_.selectedWidget());
+        committedOverlayFullscreenMediaPresentation_ =
+            std::move(frames.overlayFullscreenMediaPresentation);
         AppendCompositionCoordinateSample(0);
         const bool presentationChanged =
             priorPresentationPaintKey != lastWidgetPresentationPaintKey_;
@@ -13671,6 +13725,8 @@ private:
     std::optional<widgetrail::DeclarativeRenderTiming>
         currentCompositionRenderTiming_;
     std::optional<CommittedWidgetVisualState> committedWidgetVisualState_;
+    std::optional<CommittedOverlayFullscreenMediaPresentation>
+        committedOverlayFullscreenMediaPresentation_;
     std::optional<widgetrail::WidgetPresentationImpact>
         pendingWidgetPresentationImpact_;
     std::optional<widgetrail::IncrementalPresentationPlan>
