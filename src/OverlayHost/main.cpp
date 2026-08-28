@@ -2360,7 +2360,6 @@ private:
     struct EmbeddedMediaSession final {
         std::shared_ptr<widgetrail::richmedia::RichMediaSurfaceCoordinator> coordinator;
         std::optional<EmbeddedMediaAuthority> authority;
-        long long playbackEventSequence{};
         std::optional<RECT> clientBounds;
         std::optional<RECT> clientClip;
     };
@@ -2382,11 +2381,9 @@ private:
         if (found == residentEmbeddedMediaSessions_.end()) return;
         found->second.coordinator = std::move(richMediaSurface_);
         found->second.authority = std::move(embeddedMediaAuthority_);
-        found->second.playbackEventSequence = embeddedMediaPlaybackEventSequence_;
         found->second.clientBounds = embeddedMediaClientBounds_;
         found->second.clientClip = embeddedMediaClientClip_;
         embeddedMediaAuthority_.reset();
-        embeddedMediaPlaybackEventSequence_ = 0;
         embeddedMediaClientBounds_.reset();
         embeddedMediaClientClip_.reset();
         boundEmbeddedMediaSessionKey_.clear();
@@ -2399,7 +2396,6 @@ private:
         if (found == residentEmbeddedMediaSessions_.end()) return false;
         richMediaSurface_ = std::move(found->second.coordinator);
         embeddedMediaAuthority_ = std::move(found->second.authority);
-        embeddedMediaPlaybackEventSequence_ = found->second.playbackEventSequence;
         embeddedMediaClientBounds_ = found->second.clientBounds;
         embeddedMediaClientClip_ = found->second.clientClip;
         boundEmbeddedMediaSessionKey_.assign(key);
@@ -2422,7 +2418,6 @@ private:
         if (!inserted) return false;
         richMediaSurface_ = std::move(found->second.coordinator);
         embeddedMediaAuthority_.reset();
-        embeddedMediaPlaybackEventSequence_ = 0;
         embeddedMediaClientBounds_.reset();
         embeddedMediaClientClip_.reset();
         boundEmbeddedMediaSessionKey_ = key;
@@ -2432,7 +2427,6 @@ private:
     void RemoveBoundEmbeddedMediaSession() {
         const auto key = boundEmbeddedMediaSessionKey_;
         embeddedMediaAuthority_.reset();
-        embeddedMediaPlaybackEventSequence_ = 0;
         embeddedMediaClientBounds_.reset();
         embeddedMediaClientClip_.reset();
         richMediaSurface_.reset();
@@ -2947,7 +2941,16 @@ private:
         embeddedMediaAuthority_->projection = destination;
         const auto geometry = ResolveEmbeddedMediaPresentationGeometry(
             embeddedMediaAuthority_->sequence);
-        if (!geometry) return false;
+        if (!geometry) {
+            AppendDiagnostic(
+                L"Embedded media presentation transfer deferred widget=" +
+                embeddedMediaAuthority_->widgetId + L" projection=" +
+                (destination == EmbeddedMediaProjection::Pinned
+                    ? L"pinned" : L"overlay") +
+                L" reason=" + std::wstring{reason} +
+                L" geometry=awaiting-committed-frame");
+            return true;
+        }
         Microsoft::WRL::ComPtr<IUnknown> target;
         result = compositionSurface_.CreateExternalContentTarget(
             CompositionEndpoint(destination), &target);
@@ -3019,6 +3022,7 @@ private:
             StopEmbeddedMediaSurface(L"projection-transfer-failed");
             return;
         }
+        if (richMediaSurface_->presentationTransferPending()) return;
         if (destination == EmbeddedMediaProjection::Pinned &&
             embeddedMediaAuthority_->pinnedFrameGeneration ==
                 pinnedPresentation->frameGeneration) {
@@ -3268,6 +3272,10 @@ private:
             if (!TransferEmbeddedMediaSurface(
                     desiredProjection, L"snapshot-reconciliation")) {
                 StopEmbeddedMediaSurface(L"projection-transfer-failed");
+                return;
+            }
+            if (richMediaSurface_->presentationTransferPending()) {
+                DispatchPendingEmbeddedMediaCommand();
                 return;
             }
             if (desiredProjection == EmbeddedMediaProjection::Pinned &&
@@ -4342,6 +4350,7 @@ private:
                     embeddedMediaAuthority_->widgetId);
                 continue;
             }
+            if (richMediaSurface_->presentationTransferPending()) continue;
             ReconcileEmbeddedMediaProjection(L"lifecycle-reconciliation");
         }
         AppendDiagnostic(
