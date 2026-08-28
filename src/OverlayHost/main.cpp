@@ -2340,6 +2340,8 @@ private:
         std::wstring instanceId;
         std::wstring runtimeGeneration;
         std::wstring presentationGeneration;
+        widgetrail::richmedia::PlaybackCommandStage stage{
+            widgetrail::richmedia::PlaybackCommandStage::Accepted};
     };
 
     struct EmbeddedMediaAuthority final {
@@ -2570,9 +2572,11 @@ private:
         embeddedMediaAuthority_->commands = declaration.commands;
     }
 
-    void OnEmbeddedMediaPlaybackEvent(
-        const widgetrail::richmedia::PlaybackEvent& event) {
-        if (!EmbeddedMediaAuthorityCurrent() || !embeddedMediaAuthority_) return;
+    [[nodiscard]] bool OnEmbeddedMediaPlaybackEvent(
+        const widgetrail::richmedia::PlaybackEvent& event,
+        const widgetrail::richmedia::PlaybackTerminalSource terminalSource =
+            widgetrail::richmedia::PlaybackTerminalSource::Page) {
+        if (!embeddedMediaAuthority_) return false;
         const auto nextPublishedEventSequence =
             NextEmbeddedMediaPlaybackObservationSequence(
                 embeddedMediaPlaybackEventSequence_);
@@ -2580,19 +2584,23 @@ private:
             AppendDiagnostic(
                 L"Embedded media playback event rejected because the host "
                 L"observation sequence is exhausted");
-            return;
+            return false;
         }
         const auto* snapshot = SnapshotFor(embeddedMediaAuthority_->widgetId);
+        const auto* descriptor =
+            sessions_.FindDescriptor(embeddedMediaAuthority_->widgetId);
         const long long commandSequence =
             static_cast<long long>(event.commandSequence);
         long long publicationSequence = embeddedMediaAuthority_->sequence;
         if (commandSequence > 0) {
-            const auto& origin = embeddedMediaAuthority_->commandOrigin;
+            auto& origin = embeddedMediaAuthority_->commandOrigin;
             const auto* pending = snapshot && snapshot->embeddedMedia &&
                     snapshot->embeddedMedia->pendingCommand
                 ? &*snapshot->embeddedMedia->pendingCommand
                 : nullptr;
             if (!origin || !pending ||
+                !widgetrail::richmedia::CanPublishPlaybackTerminal(
+                    origin->stage, terminalSource) ||
                 origin->commandSequence != commandSequence ||
                 origin->mediaKey != event.mediaKey ||
                 origin->surfaceId != embeddedMediaAuthority_->surfaceId ||
@@ -2601,6 +2609,16 @@ private:
                     embeddedMediaAuthority_->runtimeGeneration ||
                 origin->presentationGeneration !=
                     embeddedMediaAuthority_->presentationGeneration ||
+                !descriptor || !snapshot->embeddedMedia ||
+                snapshot->instanceId != origin->instanceId ||
+                descriptor->runtimeGeneration != origin->runtimeGeneration ||
+                descriptor->presentationGeneration !=
+                    origin->presentationGeneration ||
+                snapshot->embeddedMedia->id != origin->surfaceId ||
+                !widgetrail::SameEmbeddedMediaResourceContract(
+                    embeddedMediaAuthority_->resourceContract,
+                    *snapshot->embeddedMedia) ||
+                snapshot->sequence < origin->snapshotSequence ||
                 pending->sequence != commandSequence ||
                 pending->mediaKey != event.mediaKey) {
                 AppendDiagnostic(
@@ -2608,9 +2626,13 @@ private:
                     L"authority widget=" + embeddedMediaAuthority_->widgetId +
                     L" surface=" + embeddedMediaAuthority_->surfaceId +
                     L" command=" + std::to_wstring(commandSequence));
-                return;
+                return false;
             }
             publicationSequence = origin->snapshotSequence;
+        } else if (terminalSource !=
+                       widgetrail::richmedia::PlaybackTerminalSource::Page ||
+                   !EmbeddedMediaAuthorityCurrent()) {
+            return false;
         }
         const auto publishedEventSequence = *nextPublishedEventSequence;
         embeddedMediaPlaybackEventSequence_ = publishedEventSequence;
@@ -2632,6 +2654,10 @@ private:
             embeddedMediaAuthority_->runtimeGeneration,
             embeddedMediaAuthority_->presentationGeneration,
             publicationSequence, published);
+        if (commandSequence > 0 && accepted.value_or(false) &&
+            embeddedMediaAuthority_->commandOrigin)
+            embeddedMediaAuthority_->commandOrigin->stage =
+                widgetrail::richmedia::PlaybackCommandStage::Terminal;
         AppendDiagnostic(
             L"Embedded media playback event widget=" +
             embeddedMediaAuthority_->widgetId + L" surface=" +
@@ -2642,6 +2668,31 @@ private:
             std::to_wstring(publicationSequence) + L" current=" +
             std::to_wstring(embeddedMediaAuthority_->sequence) + L" result=" +
             (accepted.value_or(false) ? L"published" : L"rejected"));
+        return accepted.value_or(false);
+    }
+
+    [[nodiscard]] bool PublishEmbeddedMediaCommandDisposition(
+        const std::wstring_view errorCode,
+        const widgetrail::richmedia::PlaybackTerminalSource terminalSource) {
+        if (!embeddedMediaAuthority_ || !embeddedMediaAuthority_->commandOrigin ||
+            embeddedMediaAuthority_->commandOrigin->stage ==
+                widgetrail::richmedia::PlaybackCommandStage::Terminal)
+            return false;
+        const auto mediaState = richMediaSurface_->state();
+        const auto& command = *embeddedMediaAuthority_->commandOrigin;
+        return OnEmbeddedMediaPlaybackEvent({
+            0,
+            static_cast<std::uint64_t>(command.commandSequence),
+            command.mediaKey,
+            L"error",
+            std::max(0.0, mediaState.positionSeconds),
+            std::max(mediaState.positionSeconds, mediaState.durationSeconds),
+            std::clamp(mediaState.volume, 0.0, 1.0),
+            std::wstring{errorCode},
+            mediaState.playbackRate,
+            mediaState.muted,
+            mediaState.loop,
+            true}, terminalSource);
     }
 
     void DispatchPendingEmbeddedMediaCommand(
@@ -2650,7 +2701,10 @@ private:
         if (!snapshot.embeddedMedia->pendingCommand) return;
         ReconcileEmbeddedMediaCommandOrigin(snapshot);
         const auto& pending = *snapshot.embeddedMedia->pendingCommand;
-        if (pending.sequence <= embeddedMediaAuthority_->lastDispatchedPlaybackCommand)
+        if (!embeddedMediaAuthority_->commandOrigin ||
+            embeddedMediaAuthority_->commandOrigin->stage !=
+                widgetrail::richmedia::PlaybackCommandStage::Accepted ||
+            pending.sequence <= embeddedMediaAuthority_->lastDispatchedPlaybackCommand)
             return;
         using Kind = widgetrail::richmedia::PlaybackCommandKind;
         std::optional<Kind> kind;
@@ -2663,19 +2717,39 @@ private:
         else if (pending.kind == L"setPlaybackRate") kind = Kind::SetPlaybackRate;
         else if (pending.kind == L"setMuted") kind = Kind::SetMuted;
         else if (pending.kind == L"setLoop") kind = Kind::SetLoop;
-        if (!kind) return;
-        const bool sent = richMediaSurface_->SendPlaybackCommand({
+        if (!kind) {
+            (void)PublishEmbeddedMediaCommandDisposition(
+                L"media-command-rejected",
+                widgetrail::richmedia::PlaybackTerminalSource::
+                    HostDispatchRejection);
+            return;
+        }
+        const auto dispatch = richMediaSurface_->DispatchPlaybackCommand({
             static_cast<std::uint64_t>(pending.sequence), *kind, pending.mediaKey,
             pending.positionSeconds, pending.volume, pending.playbackRate,
             pending.muted, pending.loop});
-        if (sent)
+        const bool sent = dispatch ==
+            widgetrail::richmedia::PlaybackCommandDispatchResult::Sent;
+        if (sent) {
             embeddedMediaAuthority_->lastDispatchedPlaybackCommand = pending.sequence;
+            embeddedMediaAuthority_->commandOrigin->stage =
+                widgetrail::richmedia::PlaybackCommandStage::Dispatched;
+        } else if (dispatch ==
+                   widgetrail::richmedia::PlaybackCommandDispatchResult::Rejected) {
+            (void)PublishEmbeddedMediaCommandDisposition(
+                L"media-command-rejected",
+                widgetrail::richmedia::PlaybackTerminalSource::
+                    HostDispatchRejection);
+        }
         AppendDiagnostic(
             L"Embedded media playback command widget=" +
             embeddedMediaAuthority_->widgetId + L" surface=" +
             embeddedMediaAuthority_->surfaceId + L" sequence=" +
             std::to_wstring(pending.sequence) + L" kind=" + pending.kind +
-            L" result=" + (sent ? L"sent" : L"deferred"));
+            L" result=" +
+            (sent ? L"sent" :
+             dispatch == widgetrail::richmedia::PlaybackCommandDispatchResult::Deferred
+                ? L"deferred" : L"rejected"));
     }
 
     void DispatchPendingEmbeddedMediaCommand() {
@@ -3041,19 +3115,19 @@ private:
 
     void StopEmbeddedMediaSurface(const std::wstring_view reason) {
         if (!embeddedMediaAuthority_) return;
-        if (embeddedMediaAuthority_->commandOrigin) {
-            const auto mediaState = richMediaSurface_->state();
-            const auto command = *embeddedMediaAuthority_->commandOrigin;
-            OnEmbeddedMediaPlaybackEvent({
-                0,
-                static_cast<std::uint64_t>(command.commandSequence),
-                command.mediaKey,
-                L"error",
-                std::max(0.0, mediaState.positionSeconds),
-                std::max(mediaState.positionSeconds, mediaState.durationSeconds),
-                std::clamp(mediaState.volume, 0.0, 1.0),
-                L"media-session-retired"});
-        }
+        const bool commandRetired =
+            !embeddedMediaAuthority_->commandOrigin ||
+            embeddedMediaAuthority_->commandOrigin->stage ==
+                widgetrail::richmedia::PlaybackCommandStage::Terminal ||
+            PublishEmbeddedMediaCommandDisposition(
+                L"media-command-canceled",
+                widgetrail::richmedia::PlaybackTerminalSource::
+                    AuthorityRetirement);
+        if (!commandRetired)
+            sessions_.RecordFailure(
+                embeddedMediaAuthority_->widgetId,
+                widgetrail::WidgetSessionFailureStage::Protocol,
+                L"Embedded media command cancellation could not be delivered.");
         richMediaSurface_->BeginSessionTeardown();
         widgetrail::OverlayCompositionSurface::CommitTiming detachTiming;
         const auto projection = embeddedMediaAuthority_->projection;
@@ -3501,7 +3575,7 @@ private:
         configuration.playbackEvent = [this, sessionKey](
             const widgetrail::richmedia::PlaybackEvent& event) {
             if (!BindEmbeddedMediaSession(sessionKey)) return;
-            OnEmbeddedMediaPlaybackEvent(event);
+            (void)OnEmbeddedMediaPlaybackEvent(event);
         };
         configuration.setPresentationVisible =
             [this, sessionKey, projection, endpoint](const bool visible) {

@@ -1640,14 +1640,20 @@ bool RichMediaSurfaceCoordinator::SendSeekPosition(
     return true;
 }
 
-bool RichMediaSurfaceCoordinator::SendPlaybackCommand(
+PlaybackCommandDispatchResult RichMediaSurfaceCoordinator::DispatchPlaybackCommand(
     const PlaybackCommand& command) noexcept {
     const bool typedCommandLifecycle =
         state_.lifecycle == Lifecycle::Visible ||
         state_.lifecycle == Lifecycle::ReadyHidden;
+    if (command.sequence == 0 || command.mediaKey.empty() ||
+        state_.lifecycle == Lifecycle::Absent ||
+        state_.lifecycle == Lifecycle::Faulted ||
+        state_.lifecycle == Lifecycle::Closing)
+        return PlaybackCommandDispatchResult::Rejected;
     if (!core_ || !pageReady_ || !typedCommandLifecycle ||
         (state_.lifecycle == Lifecycle::Visible && !state_.inputEnabled) ||
-        pendingCommand_ || command.sequence == 0 || command.mediaKey.empty()) return false;
+        pendingCommand_)
+        return PlaybackCommandDispatchResult::Deferred;
     Command transport{};
     std::wstring name;
     switch (command.kind) {
@@ -1661,7 +1667,8 @@ bool RichMediaSurfaceCoordinator::SendPlaybackCommand(
     case PlaybackCommandKind::SetMuted: name = L"muted"; transport = Command::TogglePlayback; break;
     case PlaybackCommandKind::SetLoop: name = L"loop"; transport = Command::TogglePlayback; break;
     }
-    if (transport == Command::Activate && !state_.focusedActionBoundsCurrent) return false;
+    if (transport == Command::Activate && !state_.focusedActionBoundsCurrent)
+        return PlaybackCommandDispatchResult::Rejected;
     const auto commandId = ++nextCommandId_;
     std::wstring json = std::format(
         L"{{\"command\":\"{}\",\"environmentGeneration\":{},\"surfaceGeneration\":{},\"sessionGeneration\":{},\"controllerGeneration\":{},\"documentGeneration\":{},\"commandId\":{},\"commandSequence\":{},\"mediaKey\":\"{}\"",
@@ -1679,12 +1686,18 @@ bool RichMediaSurfaceCoordinator::SendPlaybackCommand(
     if (command.loop)
         json += std::format(L",\"loop\":{}", *command.loop ? L"true" : L"false");
     json += L"}";
-    if (FAILED(core_->PostWebMessageAsJson(json.c_str()))) return false;
+    if (FAILED(core_->PostWebMessageAsJson(json.c_str())))
+        return PlaybackCommandDispatchResult::Rejected;
     pendingCommand_ = PendingCommand{
         commandId, transport, command.sequence, command.mediaKey,
         PendingPhase::AwaitingEvent, command.kind, command.playbackRate,
         command.muted, command.loop};
-    return true;
+    return PlaybackCommandDispatchResult::Sent;
+}
+
+bool RichMediaSurfaceCoordinator::SendPlaybackCommand(
+    const PlaybackCommand& command) noexcept {
+    return DispatchPlaybackCommand(command) == PlaybackCommandDispatchResult::Sent;
 }
 
 bool RichMediaSurfaceCoordinator::ForwardMouse(

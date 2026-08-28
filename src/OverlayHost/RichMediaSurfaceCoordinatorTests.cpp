@@ -85,6 +85,14 @@ public:
         return RichMediaSurfaceCoordinator::IsPlaybackCommandCorrelated(
             commandSequence, mediaKey, pendingSequence, pendingMediaKey);
     }
+    static PlaybackCommandDispatchResult ClassifyPlaybackCommandDispatch(
+        const Lifecycle lifecycle) {
+        RichMediaSurfaceCoordinator coordinator;
+        coordinator.state_.lifecycle = lifecycle;
+        coordinator.state_.inputEnabled = lifecycle == Lifecycle::Visible;
+        return coordinator.DispatchPlaybackCommand({
+            41, PlaybackCommandKind::Pause, L"neutral-media"});
+    }
     static bool IsValidAdapterConfiguration(const Configuration& configuration) {
         return RichMediaSurfaceCoordinator::IsValidAdapterConfiguration(configuration);
     }
@@ -777,6 +785,36 @@ void RunContractCases() {
             !RichMediaSurfaceCoordinatorTestPeer::IsPlaybackCommandCorrelated(
                 7, L"cedar-tone", 7, L"aurora-tone"),
             "typed playback command sequence/media-key correlation drifted");
+    Require(RichMediaSurfaceCoordinatorTestPeer::ClassifyPlaybackCommandDispatch(
+                Lifecycle::Absent) == PlaybackCommandDispatchResult::Rejected &&
+            RichMediaSurfaceCoordinatorTestPeer::ClassifyPlaybackCommandDispatch(
+                Lifecycle::Faulted) == PlaybackCommandDispatchResult::Rejected &&
+            RichMediaSurfaceCoordinatorTestPeer::ClassifyPlaybackCommandDispatch(
+                Lifecycle::EnvironmentCreating) ==
+                PlaybackCommandDispatchResult::Deferred &&
+            RichMediaSurfaceCoordinatorTestPeer::ClassifyPlaybackCommandDispatch(
+                Lifecycle::Visible) == PlaybackCommandDispatchResult::Deferred &&
+            RichMediaSurfaceCoordinatorTestPeer::ClassifyPlaybackCommandDispatch(
+                Lifecycle::ReadyHidden) == PlaybackCommandDispatchResult::Deferred,
+            "typed playback command terminal/deferred classification drifted");
+    using Stage = PlaybackCommandStage;
+    using Source = PlaybackTerminalSource;
+    Require(CanPublishPlaybackTerminal(
+                Stage::Accepted, Source::HostDispatchRejection) &&
+            !CanPublishPlaybackTerminal(
+                Stage::Dispatched, Source::HostDispatchRejection) &&
+            CanPublishPlaybackTerminal(Stage::Dispatched, Source::Page) &&
+            !CanPublishPlaybackTerminal(Stage::Accepted, Source::Page) &&
+            CanPublishPlaybackTerminal(
+                Stage::Accepted, Source::AuthorityRetirement) &&
+            CanPublishPlaybackTerminal(
+                Stage::Dispatched, Source::AuthorityRetirement) &&
+            !CanPublishPlaybackTerminal(
+                Stage::Terminal, Source::HostDispatchRejection) &&
+            !CanPublishPlaybackTerminal(Stage::Terminal, Source::Page) &&
+            !CanPublishPlaybackTerminal(
+                Stage::Terminal, Source::AuthorityRetirement),
+            "trusted playback terminal source crossed its exact prior-stage authority");
     const auto adapterConfiguration = [](const std::wstring_view identity) {
         Configuration configuration;
         configuration.origin = L"https://wrail-media-" + std::wstring{identity} +
@@ -902,7 +940,7 @@ void RunContractCases() {
                 activationPoint) &&
                 activationPoint.x == 160 && activationPoint.y == 70,
             "1.5x DPI client-space activation point was raster-scaled");
-    std::cout << "RichMediaSurfaceCoordinator contract cases passed=34\n";
+    std::cout << "RichMediaSurfaceCoordinator contract cases passed=48\n";
 }
 
 struct ProcessSample final {
@@ -1798,6 +1836,10 @@ void RunProviderNeutralAdapterCases() {
         Require(sample.coordinator().SendPlaybackCommand({
                     sequence, kind, std::wstring{key}, position, std::nullopt}),
                 "built sample rejected a consecutive typed playback command");
+        Require(sample.coordinator().DispatchPlaybackCommand({
+                    sequence + 1000, PlaybackCommandKind::Pause,
+                    std::wstring{key}}) == PlaybackCommandDispatchResult::Deferred,
+                "in-flight typed command admitted a duplicate dispatch");
     };
     sendPlayback(1, PlaybackCommandKind::Play, primaryMediaKey);
     requirePlayback(1, primaryMediaKey, L"playing");
@@ -1940,8 +1982,10 @@ void RunProviderNeutralAdapterCases() {
                 sample.finalDetachSucceededAndWaited() &&
                 sample.coordinator().state().lifecycle == Lifecycle::Absent &&
                 !sample.coordinator().presentationTransferPending() &&
-                !sample.coordinator().SendPlaybackCommand({
-                    12, PlaybackCommandKind::Pause, std::wstring{secondaryMediaKey}}),
+                sample.coordinator().DispatchPlaybackCommand({
+                    12, PlaybackCommandKind::Pause,
+                    std::wstring{secondaryMediaKey}}) ==
+                    PlaybackCommandDispatchResult::Rejected,
             "ordinary non-retained declaration removal preserved command authority");
     std::cout << "RichMedia provider-neutral adapter cases passed=5\n";
 }
@@ -2142,7 +2186,7 @@ void RunLifecycleAndPerformance() {
 
 } // namespace
 
-int wmain(int argc, wchar_t**) {
+int wmain(int argc, wchar_t** argv) {
     const HRESULT initialize = CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
     if (FAILED(initialize)) {
         std::cerr << "COM initialization failed hr=" << initialize << '\n';
@@ -2150,6 +2194,10 @@ int wmain(int argc, wchar_t**) {
     }
     try {
         RunContractCases();
+        if (argc > 1 && std::wstring_view{argv[1]} == L"--contract-only") {
+            CoUninitialize();
+            return 0;
+        }
         RunProcessOwnershipCases();
         RunCpuBudgetCases();
         RunMemoryBudgetScopeCases();

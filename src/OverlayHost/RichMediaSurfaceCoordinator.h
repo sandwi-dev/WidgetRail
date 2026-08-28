@@ -53,6 +53,40 @@ enum class PlaybackCommandKind {
     Load, Cue, Play, Pause, Seek, SetVolume, SetPlaybackRate, SetMuted, SetLoop
 };
 
+enum class PlaybackCommandDispatchResult {
+    Sent,
+    Deferred,
+    Rejected,
+};
+
+enum class PlaybackCommandStage {
+    Accepted,
+    Dispatched,
+    Terminal,
+};
+
+enum class PlaybackTerminalSource {
+    Page,
+    HostDispatchRejection,
+    AuthorityRetirement,
+};
+
+[[nodiscard]] constexpr bool CanPublishPlaybackTerminal(
+    const PlaybackCommandStage stage,
+    const PlaybackTerminalSource source) noexcept {
+    if (stage == PlaybackCommandStage::Terminal) return false;
+    switch (source) {
+    case PlaybackTerminalSource::Page:
+        return stage == PlaybackCommandStage::Dispatched;
+    case PlaybackTerminalSource::HostDispatchRejection:
+        return stage == PlaybackCommandStage::Accepted;
+    case PlaybackTerminalSource::AuthorityRetirement:
+        return stage == PlaybackCommandStage::Accepted ||
+            stage == PlaybackCommandStage::Dispatched;
+    }
+    return false;
+}
+
 struct PlaybackCommand final {
     std::uint64_t sequence{};
     PlaybackCommandKind kind{};
@@ -190,6 +224,8 @@ public:
         PresentationTarget target) noexcept;
     [[nodiscard]] bool SendCommand(Command command) noexcept;
     [[nodiscard]] bool SendSeekPosition(double positionSeconds) noexcept;
+    [[nodiscard]] PlaybackCommandDispatchResult DispatchPlaybackCommand(
+        const PlaybackCommand& command) noexcept;
     [[nodiscard]] bool SendPlaybackCommand(const PlaybackCommand& command) noexcept;
     [[nodiscard]] bool ForwardMouse(UINT message, WPARAM wParam, LPARAM lParam) noexcept;
     [[nodiscard]] bool ForwardKey(UINT message, WPARAM wParam, LPARAM lParam) noexcept;
