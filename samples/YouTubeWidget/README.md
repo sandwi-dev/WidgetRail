@@ -42,7 +42,11 @@ separate, explicit action; package versions are immutable.
 
 ## Controller use
 
-1. Open **YouTube Video** and focus the link field.
+Search, link playback, and setup share one route bar. Search and setup use compact
+task cards; the player keeps the 16:9 video primary and groups transport, timeline,
+volume, and status in one control deck.
+
+1. Open **YouTube Video** and choose **Discover**, **Play a link**, or **Setup** from the route bar.
 2. Choose **Play a link**, press A, paste a supported public video URL, and commit the host-owned text
    entry. The widget validates the URL and cues the video without autoplay.
 3. Focus **Play** and press A. WidgetRail correlates that visible user action

@@ -146,31 +146,61 @@ public sealed partial class YouTubeVideoWidget
             .FocusUp("youtube.setup.console")
             .FocusDown(configured ? "youtube.setup.delete" : LinkRouteActionId)
             .Classes("youtube-entry");
+        var routeActionId = configured ? SearchRouteActionId : LinkRouteActionId;
+        var routeActionLabel = configured ? "Back to search" : "Play a link";
         var children = new List<WidgetElement>
         {
-            UI.Text("YOUTUBE SEARCH SETUP", "youtube.setup.eyebrow").Classes("youtube-eyebrow"),
-            UI.Text(configured ? "Change API key" : "Connect public-video search", "youtube.setup.title")
-                .Classes("youtube-title"),
-            UI.Text("The key stays on this PC in Windows Credential Manager. WidgetRail never displays it again.",
-                "youtube.setup.disclosure").Classes("youtube-copy"),
-            UI.Text("In Google Cloud Console: create a project, enable YouTube Data API v3, create an API key, and restrict it to that API. Then paste it below to test and save.",
-                "youtube.setup.instructions").Classes("youtube-copy"),
-            UI.Button("Open Google Cloud Console", SetupOpenConsoleActionId, "youtube.setup.console")
-                .Disabled(busy).FocusDown("youtube.setup.key").Classes("youtube-secondary"),
-            keyEntry,
+            UI.Row("youtube.setup.appbar",
+                    UI.Stack("youtube.setup.heading-copy",
+                        UI.Text("YOUTUBE", "youtube.setup.eyebrow").Classes("youtube-eyebrow"),
+                        UI.Text("Search setup", "youtube.setup.title").Classes("youtube-title"))
+                        .Classes("youtube-appbar-copy"),
+                    UI.Button(routeActionLabel, routeActionId, routeActionId)
+                        .Disabled(busy).Classes("youtube-route-button"))
+                .Classes("youtube-appbar"),
+            UI.Stack("youtube.setup.intro-card",
+                    UI.Text(configured ? "Update your search access" : "Connect public-video search",
+                        "youtube.setup.card-title").Classes("youtube-card-title"),
+                    UI.Text("A restricted YouTube Data API key enables search only. Link playback works without it.",
+                        "youtube.setup.disclosure").Classes("youtube-copy"))
+                .Classes("youtube-card", "youtube-setup-intro"),
+            UI.Stack("youtube.setup.console-card",
+                    UI.Text("1  CREATE A RESTRICTED KEY", "youtube.setup.console-label")
+                        .Classes("youtube-section-label"),
+                    UI.Text("In Google Cloud Console, enable YouTube Data API v3 and restrict the key to that API.",
+                        "youtube.setup.instructions").Classes("youtube-copy"),
+                    UI.Button("Open Google Cloud Console", SetupOpenConsoleActionId, "youtube.setup.console")
+                        .Disabled(busy).FocusDown("youtube.setup.key").Classes("youtube-secondary"))
+                .Classes("youtube-card", "youtube-setup-step"),
+            UI.Stack("youtube.setup.key-card",
+                    UI.Text("2  SAVE IT SECURELY", "youtube.setup.key-label")
+                        .Classes("youtube-section-label"),
+                    UI.Text("The key stays protected in Windows Credential Manager and is never displayed again.",
+                        "youtube.setup.key-help").Classes("youtube-copy"),
+                    keyEntry)
+                .Classes("youtube-card", "youtube-setup-step"),
         };
         if (busy)
-            children.Add(UI.LoadingIndicator("youtube.setup.busy", "Testing and saving API key"));
+            children.Add(UI.Stack("youtube.setup.busy-card",
+                    UI.LoadingIndicator("youtube.setup.busy", "Testing and saving API key"),
+                    UI.Text("Testing and saving your key…", "youtube.setup.busy-text")
+                        .Classes("youtube-copy"))
+                .Classes("youtube-state-card", "is-loading"));
         if (error is not null)
-            children.Add(UI.Text(error, "youtube.setup.error").Classes("youtube-status", "is-error"));
+            children.Add(UI.Stack("youtube.setup.error-card",
+                    UI.Text("Setup needs attention", "youtube.setup.error-title")
+                        .Classes("youtube-card-title"),
+                    UI.Text(error, "youtube.setup.error").Classes("youtube-status", "is-error"))
+                .Classes("youtube-state-card", "is-error"));
         if (configured)
-            children.Add(UI.Button("Delete saved API key", SetupDeleteActionId, "youtube.setup.delete")
-                .Disabled(busy).FocusUp("youtube.setup.key").FocusDown(SearchRouteActionId)
-                .Classes("youtube-danger"));
-        children.Add(UI.Button(configured ? "Back to search" : "Play a link instead",
-                configured ? SearchRouteActionId : LinkRouteActionId,
-                configured ? SearchRouteActionId : LinkRouteActionId)
-            .Disabled(busy).Classes("youtube-secondary"));
+            children.Add(UI.Stack("youtube.setup.manage-card",
+                    UI.Text("SAVED KEY", "youtube.setup.manage-label").Classes("youtube-section-label"),
+                    UI.Text("Remove the saved key to disconnect search. Link playback remains available.",
+                        "youtube.setup.manage-help").Classes("youtube-copy"),
+                    UI.Button("Delete saved API key", SetupDeleteActionId, "youtube.setup.delete")
+                        .Disabled(busy).FocusUp("youtube.setup.key").FocusDown(SearchRouteActionId)
+                        .Classes("youtube-danger"))
+                .Classes("youtube-card", "youtube-setup-manage"));
         return ApplicationView(UI.VerticalScroll("youtube.setup.scroll", children.ToArray())
             .Classes("youtube-page", "youtube-setup"), "youtube.setup.console");
     }
@@ -187,35 +217,59 @@ public sealed partial class YouTubeVideoWidget
         var snapshot = _searchResults.Snapshot;
         var query = UI.TextEntry(draft, "Search public YouTube videos", SearchCommitActionId,
                 "youtube.search.query", 96)
-            .FocusDown(SearchSubmitActionId).Classes("youtube-entry");
-        var header = UI.Stack("youtube.search.header",
-            UI.Row("youtube.search.heading-row",
-                UI.Text("YOUTUBE", "youtube.search.eyebrow").Classes("youtube-eyebrow"),
-                UI.Button("Setup", SetupRouteActionId, "youtube.search.setup").Classes("youtube-tertiary"),
-                UI.Button("Play a link", LinkRouteActionId, LinkRouteActionId).Classes("youtube-tertiary")),
-            UI.Text("Search public videos", "youtube.search.title").Classes("youtube-title"),
-            query,
-            UI.Button("Search", SearchSubmitActionId, SearchSubmitActionId)
-                .Disabled(string.IsNullOrWhiteSpace(draft) || _searchResults.IsBusy)
-                .FocusUp("youtube.search.query").Classes("youtube-primary"));
+            .FocusRight(SearchSubmitActionId).Classes("youtube-entry", "youtube-search-entry");
+        var header = UI.Row("youtube.search.header",
+                UI.Stack("youtube.search.heading-copy",
+                    UI.Text("YOUTUBE", "youtube.search.eyebrow").Classes("youtube-eyebrow"),
+                    UI.Text("Discover", "youtube.search.title").Classes("youtube-title"))
+                    .Classes("youtube-appbar-copy"),
+                UI.Row("youtube.search.routes",
+                    UI.Button("Play a link", LinkRouteActionId, LinkRouteActionId)
+                        .Classes("youtube-route-button"),
+                    UI.Button("Setup", SetupRouteActionId, "youtube.search.setup")
+                        .Classes("youtube-route-button"))
+                    .Classes("youtube-route-actions"))
+            .Classes("youtube-appbar");
+        var searchTask = UI.Stack("youtube.search.task-card",
+                UI.Text("SEARCH PUBLIC VIDEOS", "youtube.search.task-label")
+                    .Classes("youtube-section-label"),
+                UI.Text("Find a video by title, channel, or topic.", "youtube.search.task-help")
+                    .Classes("youtube-section-copy"),
+                UI.Row("youtube.search.controls",
+                        query,
+                        UI.Button("Search", SearchSubmitActionId, SearchSubmitActionId)
+                            .Disabled(string.IsNullOrWhiteSpace(draft) || _searchResults.IsBusy)
+                            .FocusLeft("youtube.search.query").Classes("youtube-primary", "youtube-search-submit"))
+                    .Classes("youtube-search-controls"))
+            .Classes("youtube-card", "youtube-search-task");
         WidgetElement content;
         if (snapshot.Status == WidgetPagedResourceStatus.NotLoaded)
             content = UI.Stack("youtube.search.empty-start",
-                UI.Text("Enter a query, then choose Search. Results load only when submitted.",
-                    "youtube.search.help").Classes("youtube-copy"));
+                    UI.Text("Ready to discover", "youtube.search.empty-title").Classes("youtube-card-title"),
+                    UI.Text("Enter a query above. Results load only when you choose Search.",
+                        "youtube.search.help").Classes("youtube-section-copy"))
+                .Classes("youtube-state-card", "is-empty");
         else if (snapshot.Status == WidgetPagedResourceStatus.Loading && snapshot.Items.Count == 0)
             content = UI.Stack("youtube.search.loading",
-                UI.LoadingIndicator("youtube.search.loading.indicator", "Searching YouTube"),
-                UI.Text($"Searching for {active}…", "youtube.search.loading.text"));
+                    UI.LoadingIndicator("youtube.search.loading.indicator", "Searching YouTube"),
+                    UI.Text("Searching YouTube", "youtube.search.loading.title").Classes("youtube-card-title"),
+                    UI.Text($"Looking for {active}…", "youtube.search.loading.text")
+                        .Classes("youtube-section-copy"))
+                .Classes("youtube-state-card", "is-loading");
         else if (snapshot.Status == WidgetPagedResourceStatus.Error && snapshot.Items.Count == 0)
             content = UI.Stack("youtube.search.error",
-                UI.Text(snapshot.Error?.Message ?? "YouTube search failed.", "youtube.search.error.text")
-                    .Classes("youtube-status", "is-error"),
-                UI.Button("Retry", SearchRetryActionId, SearchRetryActionId).Classes("youtube-primary"));
+                    UI.Text("Search needs attention", "youtube.search.error.title")
+                        .Classes("youtube-card-title"),
+                    UI.Text(snapshot.Error?.Message ?? "YouTube search failed.", "youtube.search.error.text")
+                        .Classes("youtube-status", "is-error"),
+                    UI.Button("Try again", SearchRetryActionId, SearchRetryActionId).Classes("youtube-primary"))
+                .Classes("youtube-state-card", "is-error");
         else if (snapshot.Items.Count == 0)
             content = UI.Stack("youtube.search.no-results",
-                UI.Text("No public videos matched this query.", "youtube.search.no-results.text")
-                    .Classes("youtube-copy"));
+                    UI.Text("No matches", "youtube.search.no-results.title").Classes("youtube-card-title"),
+                    UI.Text("Try a broader title, channel, or topic.", "youtube.search.no-results.text")
+                        .Classes("youtube-section-copy"))
+                .Classes("youtube-state-card", "is-empty");
         else
         {
             var rows = snapshot.Items.Select(item => _searchResults.PresentItem(item,
@@ -226,19 +280,26 @@ public sealed partial class YouTubeVideoWidget
                         UI.Text(item.Title, "youtube.result.title." + item.VideoId).Classes("youtube-result-title"),
                         UI.Text($"{item.Channel} · {item.Duration}", "youtube.result.meta." + item.VideoId)
                             .Classes("youtube-result-meta"),
-                        UI.Button("Play video", SearchOpenActionId, ResultFocusId(item.VideoId))
+                        UI.Button("Play", SearchOpenActionId, ResultFocusId(item.VideoId))
                             .Classes("youtube-result-action"))
                     .Classes("youtube-result-copy"))
                 .Classes("youtube-result-row"))).ToArray();
             content = _searchResults.Present(UI.VerticalScroll(SearchScrollId, rows))
                 .Classes("youtube-results");
         }
-        var root = UI.Stack("youtube.search.root", header, NowPlayingRow(), content)
+        var children = new List<WidgetElement> { header, searchTask };
+        if (NowPlayingRow() is { } nowPlaying) children.Add(nowPlaying);
+        children.Add(content);
+        var root = UI.Stack("youtube.search.root", children.ToArray())
             .InputScope("youtube.search.root").Classes("youtube-root", "youtube-search-root");
         return new WidgetView(root, SearchInitialFocus(snapshot),
             ActiveInputScopeId: "youtube.search.root", Surface: new WidgetSurfaceHints
         {
             Mode = WidgetSurfaceMode.Standard,
+            WidthMode = WidgetSurfaceAxisMode.Preferred,
+            HeightMode = snapshot.Items.Count == 0
+                ? WidgetSurfaceAxisMode.Content
+                : WidgetSurfaceAxisMode.Preferred,
             PreferredWidth = 820,
             PreferredHeight = 640,
             MinimumWidth = 420,
@@ -247,15 +308,14 @@ public sealed partial class YouTubeVideoWidget
         { EmbeddedMedia = RetainedHiddenMediaSurface() };
     }
 
-    private WidgetElement NowPlayingRow()
+    private WidgetElement? NowPlayingRow()
     {
         string? videoId;
         EmbeddedMediaPlaybackState state;
         lock (_gate) { videoId = _videoId; state = _state; }
-        return videoId is null
-            ? UI.Spacer("youtube.search.now-playing.empty")
-            : UI.Button(
-                    $"Now playing · {(state == EmbeddedMediaPlaybackState.Playing ? "Playing" : "Paused or ready")}",
+        return videoId is null ? null :
+            UI.Button(
+                    $"Return to player  ·  {(state == EmbeddedMediaPlaybackState.Playing ? "Playing" : "Paused or ready")}",
                     "youtube.player.return", "youtube.player.return")
                 .Classes("youtube-now-playing");
     }
@@ -274,6 +334,8 @@ public sealed partial class YouTubeVideoWidget
             ActiveInputScopeId: "youtube.application.root", Surface: new WidgetSurfaceHints
         {
             Mode = WidgetSurfaceMode.Standard,
+            WidthMode = WidgetSurfaceAxisMode.Preferred,
+            HeightMode = WidgetSurfaceAxisMode.Content,
             PreferredWidth = 760,
             PreferredHeight = 640,
             MinimumWidth = 420,
