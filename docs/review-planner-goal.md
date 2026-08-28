@@ -55,10 +55,13 @@ Do not use Plane Pages as a duplicate technical archive. Do not use Plane to
 authorize a push, destructive recovery, credentials, or a material product
 decision that still requires the user.
 
-The user pre-authorizes the reviewer to change Plane work-item states whenever
-the transition accurately records a real delivery event under this goal. Do
-not request separate approval for routine Todo, In Progress, Backlog, Done,
-Cancelled, or gate-state maintenance. This authority does not extend to a
+The user pre-authorizes the reviewer to create and groom Plane work items,
+change work-item states, labels, ordering, dependencies, and relations, and
+post or update delivery comments whenever those mutations accurately record
+or organize work under this goal. This routine Plane authority is always
+available and is not revoked by an implementation report stating that its
+implementation task performed no Plane mutation. Do not request separate
+approval for these control-plane actions. This authority does not extend to a
 push, destructive recovery, credentials, or a material product decision.
 
 ### Plane MCP playbook
