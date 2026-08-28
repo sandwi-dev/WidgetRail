@@ -5764,3 +5764,20 @@ the existing action request carries the value once. Cancel carries no value;
 replacement or route retirement rejects the commit. Framework action
 diagnostics and failure observations keep correlation metadata with committed
 text removed, and no host persistence or credential service is introduced.
+
+### WIDGE-63 — retained hidden embedded-media sessions
+
+Protocol v29 lets an active widget route explicitly retain an already-resident
+embedded-media session while declaring zero `MediaViewport` nodes. The host
+detaches and hides the composition plane but preserves the exact coordinator,
+controller, document, typed command/event authority, and one of the fixed four
+resident slots. A compatible successor with the exact viewport reattaches that
+session without navigation or recreation; typed commands and observations
+remain authoritative while hidden.
+
+The mode cannot create a hidden session and does not weaken terminal
+revocation. Declaration removal, widget/runtime/presentation/resource
+replacement, widget removal or restart, Bridge/session replacement, browser or
+environment failure, explicit slot retirement, and host shutdown still retire
+the session. No playback persistence, hidden geometry convention, retry loop,
+or provider-specific route was added.

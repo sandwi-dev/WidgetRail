@@ -129,10 +129,15 @@ public static class ViewSnapshotValidator
         else if (mediaViewportCount > 1)
             Add("$.root", "duplicate_media_viewport",
                 "A presentation may contain exactly one MediaViewport for its embedded media surface.");
+        else if (snapshot.EmbeddedMedia?.RetainSessionWhenHidden == true &&
+                 mediaViewportCount != 0)
+            Add("$.embeddedMedia.retainSessionWhenHidden", "hidden_media_has_viewport",
+                "Retained hidden embedded media cannot publish a MediaViewport.");
         else if (snapshot.ProtocolVersion >= ProtocolConstants.MediaViewportVersion &&
-                 snapshot.EmbeddedMedia is not null && mediaViewportCount == 0)
+                 snapshot.EmbeddedMedia is not null && mediaViewportCount == 0 &&
+                 !snapshot.EmbeddedMedia.RetainSessionWhenHidden)
             Add("$.root", "media_viewport_required",
-                "Protocol-v23 embedded media requires one declarative MediaViewport.");
+                "Embedded media requires one declarative MediaViewport unless its existing session is explicitly retained hidden.");
         else if (mediaViewportCount == 1 && snapshot.EmbeddedMedia is { } embeddedMedia &&
                  !string.Equals(mediaViewportSurfaceId, embeddedMedia.Id, StringComparison.Ordinal))
             Add("$.root", "media_viewport_surface_mismatch",

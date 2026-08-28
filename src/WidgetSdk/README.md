@@ -474,6 +474,17 @@ document: `Load` and `Cue` retain them while changing media within that
 document, while controller/document replacement resets them to adapter
 defaults. Muting never changes the authored volume.
 
+Protocol v29 adds `RetainSessionWhenHidden` for an already-resident embedded
+media session whose current widget route intentionally has no `MediaViewport`.
+The hidden snapshot must still declare the exact surface and sealed resource
+contract, and it must contain zero media viewports. The host detaches and hides
+composition while retaining the same bounded controller/document slot and its
+typed command/event authority. Returning the exact viewport reattaches that
+session without a load, cue, or controller recreation. The flag cannot create
+a background session, and ordinary declaration removal, identity/resource or
+runtime replacement, widget removal, browser failure, slot retirement, and
+host shutdown remain terminal.
+
 Protocol v26 adds `AllowedFrameDomainFamilies` for the bounded case where an
 external frame legitimately spans one registrable DNS family. Entries are
 lowercase ASCII registrable domains, not URLs or public suffixes, and match

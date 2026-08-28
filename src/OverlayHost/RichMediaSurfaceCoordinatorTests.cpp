@@ -286,6 +286,28 @@ public:
         return result;
     }
 
+    HRESULT SuspendPresentation() {
+        HRESULT result = coordinator_.BeginPresentationTransfer();
+        if (FAILED(result)) return result;
+        widgetrail::OverlayCompositionSurface::CommitTiming timing;
+        result = composition_.DetachExternalContentTarget(timing);
+        detachWaited_ = timing.waitedForCompletion;
+        return result;
+    }
+
+    HRESULT ResumePresentation() {
+        ComPtr<IUnknown> target;
+        HRESULT result = composition_.CreateExternalContentTarget(&target);
+        if (FAILED(result)) return result;
+        widgetrail::richmedia::PresentationTarget presentation;
+        presentation.ownerWindow = window_;
+        presentation.compositionTarget = std::move(target);
+        presentation.bounds = {0, 0, 800, 520};
+        presentation.rasterScale = 1.0;
+        presentation.setPresentationVisible = PresentationVisibilityCallback();
+        return coordinator_.CompletePresentationTransfer(std::move(presentation));
+    }
+
     HRESULT CloseSession() {
         if (!sessionOpen_) return S_FALSE;
         coordinator_.BeginSessionTeardown();
@@ -399,7 +421,12 @@ chrome.webview.addEventListener('message',e=>{const m=e.data;if(m.command==='ini
             if (probe) probe->Record();
             playbackEvents_.push_back(event);
         };
-        configuration.setPresentationVisible = [this, probe = callbackProbe_](
+        configuration.setPresentationVisible = PresentationVisibilityCallback();
+        return configuration;
+    }
+
+    std::function<void(bool)> PresentationVisibilityCallback() {
+        return [this, probe = callbackProbe_](
                 const bool shown) {
             if (probe) probe->Record();
             ++presentationApplications_;
@@ -409,7 +436,6 @@ chrome.webview.addEventListener('message',e=>{const m=e.data;if(m.command==='ini
                 {0, 0, 800, 520}, shown, timing);
             if (FAILED(result)) presentationCommitFailed_ = true;
         };
-        return configuration;
     }
     HWND window_{};
     ComPtr<ID2D1Factory1> factory_;
@@ -1779,8 +1805,49 @@ void RunProviderNeutralAdapterCases() {
         return RichMediaSurfaceCoordinatorTestPeer::DocumentAudioOutputActive(
             sample.coordinator());
     }, 5s), "built sample did not produce active unmuted document audio");
+    const auto retainedHiddenAuthority = sample.coordinator().state().authority;
+    Require(SUCCEEDED(sample.SuspendPresentation()) &&
+                sample.finalDetachSucceededAndWaited() &&
+                sample.coordinator().presentationTransferPending() &&
+                sample.coordinator().state().lifecycle == Lifecycle::ReadyHidden &&
+                !sample.coordinator().state().inputEnabled &&
+                !sample.presentationVisible(),
+            "retained-hidden suspension did not detach presentation authority");
+    Require(!sample.coordinator().SendCommand(Command::NavigateNext) &&
+                !sample.coordinator().ForwardKey(WM_KEYDOWN, VK_RETURN, 0),
+            "retained-hidden session admitted raw controller input");
     sendPlayback(2, PlaybackCommandKind::Pause, primaryMediaKey);
     requirePlayback(2, primaryMediaKey, L"paused");
+    const auto hiddenTerminalAuthority = sample.coordinator().state().authority;
+    Require(hiddenTerminalAuthority.environmentGeneration ==
+                retainedHiddenAuthority.environmentGeneration &&
+            hiddenTerminalAuthority.surfaceGeneration ==
+                retainedHiddenAuthority.surfaceGeneration &&
+            hiddenTerminalAuthority.sessionGeneration ==
+                retainedHiddenAuthority.sessionGeneration &&
+            hiddenTerminalAuthority.controllerGeneration ==
+                retainedHiddenAuthority.controllerGeneration &&
+            hiddenTerminalAuthority.documentGeneration ==
+                retainedHiddenAuthority.documentGeneration,
+            "hidden typed command changed controller/document/session authority");
+    Require(SUCCEEDED(sample.ResumePresentation()) &&
+                !sample.coordinator().presentationTransferPending() &&
+                sample.coordinator().state().lifecycle == Lifecycle::Visible &&
+                sample.coordinator().state().inputEnabled &&
+                sample.presentationVisible(),
+            "exact MediaViewport return did not reattach the retained session");
+    const auto reattachedAuthority = sample.coordinator().state().authority;
+    Require(reattachedAuthority.environmentGeneration ==
+                retainedHiddenAuthority.environmentGeneration &&
+            reattachedAuthority.surfaceGeneration ==
+                retainedHiddenAuthority.surfaceGeneration &&
+            reattachedAuthority.sessionGeneration ==
+                retainedHiddenAuthority.sessionGeneration &&
+            reattachedAuthority.controllerGeneration ==
+                retainedHiddenAuthority.controllerGeneration &&
+            reattachedAuthority.documentGeneration ==
+                retainedHiddenAuthority.documentGeneration,
+            "exact MediaViewport return recreated the retained controller/document");
     sendPlayback(3, PlaybackCommandKind::Play, primaryMediaKey);
     requirePlayback(3, primaryMediaKey, L"playing");
     Require(PumpUntil([&] {
@@ -1869,6 +1936,13 @@ void RunProviderNeutralAdapterCases() {
     Require(forcedCallbackProbe->callbacksAfterRetirement.load(
                 std::memory_order_acquire) == 0,
             "retired forced-progress callbacks interleaved ordinary observations");
+    Require(SUCCEEDED(sample.CloseSession()) &&
+                sample.finalDetachSucceededAndWaited() &&
+                sample.coordinator().state().lifecycle == Lifecycle::Absent &&
+                !sample.coordinator().presentationTransferPending() &&
+                !sample.coordinator().SendPlaybackCommand({
+                    12, PlaybackCommandKind::Pause, std::wstring{secondaryMediaKey}}),
+            "ordinary non-retained declaration removal preserved command authority");
     std::cout << "RichMedia provider-neutral adapter cases passed=5\n";
 }
 

@@ -1642,7 +1642,11 @@ bool RichMediaSurfaceCoordinator::SendSeekPosition(
 
 bool RichMediaSurfaceCoordinator::SendPlaybackCommand(
     const PlaybackCommand& command) noexcept {
-    if (!core_ || state_.lifecycle != Lifecycle::Visible || !state_.inputEnabled ||
+    const bool typedCommandLifecycle =
+        state_.lifecycle == Lifecycle::Visible ||
+        state_.lifecycle == Lifecycle::ReadyHidden;
+    if (!core_ || !pageReady_ || !typedCommandLifecycle ||
+        (state_.lifecycle == Lifecycle::Visible && !state_.inputEnabled) ||
         pendingCommand_ || command.sequence == 0 || command.mediaKey.empty()) return false;
     Command transport{};
     std::wstring name;

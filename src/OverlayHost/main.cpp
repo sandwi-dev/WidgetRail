@@ -3109,24 +3109,28 @@ private:
         return false;
     }
 
-    void SuspendBoundEmbeddedMediaPresentation(const std::wstring_view reason) {
-        if (!embeddedMediaAuthority_ ||
-            richMediaSurface_->presentationTransferPending()) return;
-        (void)richMediaSurface_->SetVisible(false);
-        if (FAILED(richMediaSurface_->BeginPresentationTransfer())) return;
+    [[nodiscard]] bool SuspendBoundEmbeddedMediaPresentation(
+        const std::wstring_view reason) {
+        if (!embeddedMediaAuthority_) return false;
+        if (richMediaSurface_->presentationTransferPending()) return true;
+        if (FAILED(richMediaSurface_->SetVisible(false)) ||
+            FAILED(richMediaSurface_->BeginPresentationTransfer())) return false;
         widgetrail::OverlayCompositionSurface::CommitTiming timing;
         const auto endpoint = CompositionEndpoint(embeddedMediaAuthority_->projection);
         const HRESULT detach = compositionSurface_.DetachExternalContentTarget(
             endpoint, timing);
+        if (FAILED(detach)) return false;
         if (embeddedMediaAuthority_->projection == EmbeddedMediaProjection::Pinned) {
             widgetrail::OverlayCompositionSurface::CommitTiming releaseTiming;
-            (void)compositionSurface_.ReleasePinnedExternalContentEndpoint(releaseTiming);
+            if (FAILED(compositionSurface_.ReleasePinnedExternalContentEndpoint(
+                    releaseTiming))) return false;
         }
         AppendDiagnostic(
             L"Embedded media retained hidden widget=" +
             embeddedMediaAuthority_->widgetId + L" reason=" +
             std::wstring{reason} + L" detach-hr=" +
             std::to_wstring(static_cast<long>(detach)));
+        return true;
     }
 
     void ReconcileEmbeddedMediaSurface(
@@ -3149,6 +3153,18 @@ private:
             widgetId, snapshot, *descriptor, declaration);
         bool creatingSession =
             !residentEmbeddedMediaSessions_.contains(sessionKey);
+        if (declaration.retainSessionWhenHidden && creatingSession) {
+            RetireEmbeddedMediaSessionsForWidget(
+                widgetId, L"retained-session-authority-replaced");
+            sessions_.RecordFailure(
+                widgetId, widgetrail::WidgetSessionFailureStage::Snapshot,
+                L"A retained hidden media declaration requires an existing exact session.");
+            AppendDiagnostic(
+                L"Embedded media retained-hidden rejected widget=" +
+                std::wstring{widgetId} + L" surface=" + declaration.id +
+                L" reason=resident-session-unavailable");
+            return;
+        }
         if (creatingSession) {
             RetireEmbeddedMediaSessionsForWidget(
                 widgetId, L"authority-replaced", sessionKey);
@@ -3196,6 +3212,22 @@ private:
             embeddedMediaAuthority_->surfaceId == declaration.id;
         if (embeddedMediaAuthority_ && !retainedIdentityCurrent) {
             StopEmbeddedMediaSurface(L"authority-replaced");
+            return;
+        }
+        if (declaration.retainSessionWhenHidden) {
+            if (!embeddedMediaAuthority_ ||
+                !widgetrail::SameEmbeddedMediaResourceContract(
+                    embeddedMediaAuthority_->resourceContract, declaration)) {
+                StopEmbeddedMediaSurface(L"resource-replaced");
+                return;
+            }
+            AdvanceCompatibleEmbeddedMediaCommandAuthority(snapshot, declaration);
+            if (!SuspendBoundEmbeddedMediaPresentation(L"declared-retained-hidden")) {
+                StopEmbeddedMediaSurface(L"retained-hidden-detach-failed");
+                return;
+            }
+            DispatchPendingEmbeddedMediaCommand(snapshot);
+            incompleteAdmission.release();
             return;
         }
         const bool pinnedLayoutCurrent =
@@ -3337,6 +3369,8 @@ private:
                 declaration.compactPinnedPresentation &&
             resolvedDeclaration.compactPinnedSeekStepSeconds ==
                 declaration.compactPinnedSeekStepSeconds &&
+            resolvedDeclaration.retainSessionWhenHidden ==
+                declaration.retainSessionWhenHidden &&
             ((!resolvedDeclaration.pendingCommand && !declaration.pendingCommand) ||
              (resolvedDeclaration.pendingCommand && declaration.pendingCommand &&
               resolvedDeclaration.pendingCommand->sequence ==
@@ -4337,7 +4371,10 @@ private:
             const bool overlayOwns = state_.surface() == widgetrail::Surface::Widget &&
                 state_.activeWidget() == embeddedMediaAuthority_->widgetId;
             if (!pinnedOwns && !overlayOwns) {
-                SuspendBoundEmbeddedMediaPresentation(L"active-widget-changed");
+                if (!SuspendBoundEmbeddedMediaPresentation(L"active-widget-changed"))
+                    AppendDiagnostic(
+                        L"Embedded media presentation suspend failed widget=" +
+                        embeddedMediaAuthority_->widgetId);
                 continue;
             }
             const auto destination = pinnedOwns

@@ -1201,7 +1201,8 @@ WidgetSnapshot ParseSnapshot(const JsonObject& source) {
                 {L"id", L"accessibleName", L"entryAsset", L"surface",
                  L"aspectRatio", L"resources", L"commands",
                  L"allowedFrameOrigins", L"allowedFrameDomainFamilies", L"pendingCommand",
-                 L"compactPinnedPresentation", L"compactPinnedSeekStepSeconds"}))
+                 L"compactPinnedPresentation", L"compactPinnedSeekStepSeconds",
+                 L"retainSessionWhenHidden"}))
             throw winrt::hresult_invalid_argument(
                 L"Embedded media contains an unknown property.");
         EmbeddedMediaSurfaceDeclaration parsed;
@@ -1212,6 +1213,8 @@ WidgetSnapshot ParseSnapshot(const JsonObject& source) {
         parsed.aspectRatio = media.GetNamedNumber(L"aspectRatio");
         parsed.compactPinnedPresentation =
             media.GetNamedBoolean(L"compactPinnedPresentation", false);
+        parsed.retainSessionWhenHidden =
+            media.GetNamedBoolean(L"retainSessionWhenHidden", false);
         if (media.HasKey(L"compactPinnedSeekStepSeconds"))
             parsed.compactPinnedSeekStepSeconds =
                 media.GetNamedNumber(L"compactPinnedSeekStepSeconds");
@@ -1424,10 +1427,19 @@ WidgetSnapshot ParseSnapshot(const JsonObject& source) {
     if (mediaViewportCount > 1)
         throw winrt::hresult_invalid_argument(
             L"A presentation may contain only one MediaViewport.");
+    if (snapshot.embeddedMedia && snapshot.embeddedMedia->retainSessionWhenHidden &&
+        mediaViewportCount != 0)
+        throw winrt::hresult_invalid_argument(
+            L"Retained hidden embedded media cannot publish a MediaViewport.");
     if (snapshot.protocolVersion >= protocol_contract::MediaViewportVersion &&
-        snapshot.embeddedMedia && mediaViewportCount == 0)
+        snapshot.embeddedMedia && mediaViewportCount == 0 &&
+        !snapshot.embeddedMedia->retainSessionWhenHidden)
         throw winrt::hresult_invalid_argument(
             L"Protocol-v23 embedded media requires one MediaViewport.");
+    if (snapshot.embeddedMedia && snapshot.embeddedMedia->retainSessionWhenHidden &&
+        snapshot.protocolVersion < protocol_contract::RetainedHiddenEmbeddedMediaVersion)
+        throw winrt::hresult_invalid_argument(
+            L"Retained hidden embedded media requires protocol version 29.");
     if (mediaViewportCount == 1 && snapshot.embeddedMedia &&
         (mediaViewportSurfaceId != snapshot.embeddedMedia->id ||
          mediaViewportAccessibleName != snapshot.embeddedMedia->accessibleName))
@@ -2199,6 +2211,7 @@ std::optional<EmbeddedMediaBundle> ParseEmbeddedMediaBundle(
              L"entryAsset", L"surface", L"aspectRatio", L"accessibleName",
              L"commands", L"allowedFrameOrigins", L"allowedFrameDomainFamilies", L"pendingCommand",
              L"compactPinnedPresentation", L"compactPinnedSeekStepSeconds",
+             L"retainSessionWhenHidden",
              L"resources"}) ||
         !body.HasKey(L"widgetId") || !body.HasKey(L"instanceId") ||
         !body.HasKey(L"runtimeGeneration") ||
@@ -2220,6 +2233,8 @@ std::optional<EmbeddedMediaBundle> ParseEmbeddedMediaBundle(
     bundle.surface.aspectRatio = body.GetNamedNumber(L"aspectRatio");
     bundle.surface.compactPinnedPresentation =
         body.GetNamedBoolean(L"compactPinnedPresentation", false);
+    bundle.surface.retainSessionWhenHidden =
+        body.GetNamedBoolean(L"retainSessionWhenHidden", false);
     if (body.HasKey(L"compactPinnedSeekStepSeconds"))
         bundle.surface.compactPinnedSeekStepSeconds =
             body.GetNamedNumber(L"compactPinnedSeekStepSeconds");

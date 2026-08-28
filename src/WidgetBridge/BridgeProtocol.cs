@@ -96,6 +96,7 @@ internal sealed record BridgeEmbeddedMediaBundle(
     EmbeddedMediaPlaybackCommand? PendingCommand,
     bool CompactPinnedPresentation,
     double? CompactPinnedSeekStepSeconds,
+    bool RetainSessionWhenHidden,
     IReadOnlyList<BridgeEmbeddedMediaResource> Resources);
 internal sealed record BridgeEmbeddedMediaPlaybackEventRequest(
     string WidgetId,

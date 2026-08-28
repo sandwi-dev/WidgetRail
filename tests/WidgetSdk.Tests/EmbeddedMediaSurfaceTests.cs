@@ -238,6 +238,34 @@ internal static class EmbeddedMediaSurfaceTests
                     child => child.Kind is not ViewNodeKind.MediaViewport).ToArray(),
             },
         }, "media_viewport_required");
+        var retainedHidden = snapshot with
+        {
+            ProtocolVersion = ProtocolConstants.RetainedHiddenEmbeddedMediaVersion,
+            EmbeddedMedia = Valid("primary-media") with
+            {
+                RetainSessionWhenHidden = true,
+            },
+            Root = snapshot.Root with
+            {
+                Children = snapshot.Root.Children.Where(
+                    child => child.Kind is not ViewNodeKind.MediaViewport).ToArray(),
+            },
+        };
+        Equal(0, ViewSnapshotValidator.Validate(retainedHidden).Count);
+        Equal(true, SnapshotJson.Deserialize(
+            SnapshotJson.Serialize(retainedHidden)).EmbeddedMedia?.RetainSessionWhenHidden);
+        Error(retainedHidden with
+        {
+            ProtocolVersion = ProtocolConstants.RetainedHiddenEmbeddedMediaVersion - 1,
+        }, "feature_requires_version");
+        Error(snapshot with
+        {
+            ProtocolVersion = ProtocolConstants.RetainedHiddenEmbeddedMediaVersion,
+            EmbeddedMedia = Valid("primary-media") with
+            {
+                RetainSessionWhenHidden = true,
+            },
+        }, "hidden_media_has_viewport");
         Error(snapshot with
         {
             Root = snapshot.Root with

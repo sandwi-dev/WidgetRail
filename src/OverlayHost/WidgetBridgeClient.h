@@ -383,6 +383,7 @@ struct EmbeddedMediaSurfaceDeclaration final {
     std::optional<EmbeddedMediaPlaybackCommand> pendingCommand;
     bool compactPinnedPresentation{};
     std::optional<double> compactPinnedSeekStepSeconds;
+    bool retainSessionWhenHidden{};
 };
 
 struct EmbeddedMediaResource final {

@@ -60,6 +60,30 @@ internal static class ProtocolVersionRequirementsTests
                         ],
                     },
                 }),
+            new("retained hidden media", "retained-hidden-embedded-media",
+                ProtocolConstants.RetainedHiddenEmbeddedMediaVersion,
+                "$.embeddedMedia.retainSessionWhenHidden", snapshot => snapshot with
+                {
+                    EmbeddedMedia = new()
+                    {
+                        Id = "media",
+                        AccessibleName = "Neutral media",
+                        EntryAsset = "media/index.html",
+                        RetainSessionWhenHidden = true,
+                        Surface = new()
+                        {
+                            PreferredWidth = 760,
+                            PreferredHeight = 425,
+                            MinimumWidth = 320,
+                            MinimumHeight = 180,
+                        },
+                        AspectRatio = 16.0 / 9.0,
+                        Resources =
+                        [
+                            new() { Path = "media/index.html", ContentType = "text/html" },
+                        ],
+                    },
+                }),
             new("media viewport", "media-viewport",
                 ProtocolConstants.MediaViewportVersion,
                 "$.root.children[0]", snapshot => snapshot with

@@ -98,6 +98,7 @@ internal static class EmbeddedMediaAssetResolver
             media.PendingCommand,
             media.CompactPinnedPresentation,
             media.CompactPinnedSeekStepSeconds,
+            media.RetainSessionWhenHidden,
             resources);
     }
 

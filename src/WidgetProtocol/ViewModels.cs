@@ -498,4 +498,10 @@ public sealed record EmbeddedMediaSurface
     public bool CompactPinnedPresentation { get; init; }
     /// <summary>Optional bounded scrub step; the host default applies when omitted.</summary>
     public double? CompactPinnedSeekStepSeconds { get; init; }
+    /// <summary>
+    /// Retains an already-resident controller/document while this snapshot
+    /// intentionally contains no MediaViewport. It does not create a hidden
+    /// viewport or permit an undeclared background session.
+    /// </summary>
+    public bool RetainSessionWhenHidden { get; init; }
 }

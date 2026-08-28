@@ -186,6 +186,16 @@ current media position. A does not enter a hidden seek mode, and D-pad or left
 stick navigation never seeks. B exits compact interaction to click-through.
 View retains the host tray route.
 
+Protocol v29 adds `RetainSessionWhenHidden` for route changes that deliberately
+omit the `MediaViewport` while retaining an already-resident exact media
+session. Such a snapshot declares the same `EmbeddedMediaSurface`, contains no
+media viewport, and leaves the external plane detached and hidden. Reintroducing
+the exact viewport rebinds the existing controller/document and playback state;
+it does not navigate or recreate the adapter. The option cannot start media in
+the background and does not survive declaration removal, incompatible
+authority/resource replacement, widget removal or restart, browser failure,
+slot retirement, or host shutdown.
+
 An embedded-media widget builds its visible shell from the same native Text,
 Progress, Button, Row, and Stack nodes as any other widget. Reserved
 `host.embeddedMedia.*` action IDs bind those native buttons to the existing

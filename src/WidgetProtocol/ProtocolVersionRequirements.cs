@@ -91,6 +91,12 @@ internal sealed class ProtocolVersionRequirements
                 ProtocolConstants.EmbeddedMediaPlaybackPreferencesVersion,
                 "$.embeddedMedia.pendingCommand",
                 $"Embedded media playback preferences require protocol version {ProtocolConstants.EmbeddedMediaPlaybackPreferencesVersion} or later.");
+        if (snapshot.EmbeddedMedia?.RetainSessionWhenHidden == true)
+            Add(
+                "retained-hidden-embedded-media",
+                ProtocolConstants.RetainedHiddenEmbeddedMediaVersion,
+                "$.embeddedMedia.retainSessionWhenHidden",
+                $"Retained hidden embedded media requires protocol version {ProtocolConstants.RetainedHiddenEmbeddedMediaVersion} or later.");
 
         Visit(snapshot.Root, "$.root", 1);
 

@@ -521,6 +521,41 @@ void VerifyEmbeddedMediaSnapshotContract() {
     })json", error);
     Require(!unknown && error.find(L"unknown") != std::wstring::npos,
             "unknown embedded media browsing field was admitted");
+
+    constexpr std::string_view retainedHiddenJson = R"json({
+        "snapshot": {
+            "protocolVersion":29,"sequence":8,
+            "widgetInstanceId":"cedar.adapter","activeInputScopeId":"root",
+            "embeddedMedia":{"id":"cedar-media","accessibleName":"Cedar media",
+                "entryAsset":"media/index.html","retainSessionWhenHidden":true,
+                "aspectRatio":1.7777777778,
+                "surface":{"mode":"standard","preferredWidth":640,"preferredHeight":360,
+                           "minimumWidth":240,"minimumHeight":180},
+                "resources":[{"path":"media/index.html","contentType":"text/html"}],
+                "commands":["activate"]},
+            "root":{"id":"root","kind":"stack","children":[]}
+        }
+    })json";
+    error.clear();
+    const auto retainedHidden =
+        widgetrail::testing::ParseWidgetSnapshotResponse(retainedHiddenJson, error);
+    Require(retainedHidden && retainedHidden->embeddedMedia &&
+                retainedHidden->embeddedMedia->retainSessionWhenHidden && error.empty(),
+            "valid retained-hidden embedded media snapshot was rejected");
+    error.clear();
+    Require(!widgetrail::testing::ParseWidgetSnapshotResponse(
+                mutate(std::string{retainedHiddenJson},
+                    R"json("children":[])json",
+                    R"json("children":[{"id":"viewport","kind":"mediaViewport","mediaSurfaceId":"cedar-media","accessibilityLabel":"Cedar media","shortcuts":[],"children":[]}])json"),
+                error) && error.find(L"cannot publish a MediaViewport") != std::wstring::npos,
+            "retained-hidden media with a viewport did not fail closed");
+    error.clear();
+    Require(!widgetrail::testing::ParseWidgetSnapshotResponse(
+                mutate(std::string{retainedHiddenJson},
+                    R"json("protocolVersion":29)json",
+                    R"json("protocolVersion":28)json"), error) &&
+                error.find(L"protocol version 29") != std::wstring::npos,
+            "retained-hidden media was admitted before protocol v29");
 }
 
 void VerifyEmbeddedMediaBundleBoundary() {
@@ -528,6 +563,7 @@ void VerifyEmbeddedMediaBundleBoundary() {
         "widgetId":"aurora-widget","instanceId":"aurora-instance",
         "runtimeGeneration":"runtime-1","presentationGeneration":"presentation-1",
         "sequence":7,"surfaceId":"media","entryAsset":"media/index.html",
+        "retainSessionWhenHidden":true,
         "surface":{"mode":"standard","preferredWidth":760,"preferredHeight":425,
                    "minimumWidth":320,"minimumHeight":180},
         "aspectRatio":1.7777777778,"accessibleName":"Aurora media",
@@ -554,7 +590,8 @@ void VerifyEmbeddedMediaBundleBoundary() {
         return source;
     };
     const auto parsed = parse(valid);
-    Require(parsed && parsed->surface.allowedFrameDomainFamilies ==
+    Require(parsed && parsed->surface.retainSessionWhenHidden &&
+                parsed->surface.allowedFrameDomainFamilies ==
                 std::vector<std::wstring>{L"example.com"} &&
                 parsed->surface.pendingCommand &&
                 parsed->surface.pendingCommand->kind == L"setMuted" &&

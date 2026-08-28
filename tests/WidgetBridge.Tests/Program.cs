@@ -3912,6 +3912,7 @@ static Task EmbeddedMediaAssetsAreProviderNeutral()
                 Id = "primary-media",
                 AccessibleName = $"{adapterName} media",
                 EntryAsset = "media/adapter.html",
+                RetainSessionWhenHidden = true,
                 Surface = new WidgetSurfaceHints
                 {
                     PreferredWidth = 760,
@@ -3946,7 +3947,7 @@ static Task EmbeddedMediaAssetsAreProviderNeutral()
             };
             var snapshot = new ViewSnapshot
             {
-                ProtocolVersion = ProtocolConstants.EmbeddedMediaFrameDomainFamiliesVersion,
+                ProtocolVersion = ProtocolConstants.RetainedHiddenEmbeddedMediaVersion,
                 Sequence = 7,
                 WidgetInstanceId = configured.InstanceId,
                 ActiveInputScopeId = "root",
@@ -3955,16 +3956,7 @@ static Task EmbeddedMediaAssetsAreProviderNeutral()
                 {
                     Id = "root",
                     Kind = ViewNodeKind.Stack,
-                    Children =
-                    [
-                        new()
-                        {
-                            Id = $"{adapterName}.viewport",
-                            Kind = ViewNodeKind.MediaViewport,
-                            MediaSurfaceId = media.Id,
-                            AccessibilityLabel = media.AccessibleName,
-                        },
-                    ],
+                    Children = [],
                 },
             };
             Assert.Equal(0, ViewSnapshotValidator.Validate(snapshot).Count);
@@ -3978,6 +3970,8 @@ static Task EmbeddedMediaAssetsAreProviderNeutral()
                 request, new BridgeClientSnapshot(configured, snapshot));
             Assert.Equal(adapterName, bundle.WidgetId);
             Assert.Equal(media.Id, bundle.SurfaceId);
+            Assert.True(bundle.RetainSessionWhenHidden,
+                "Bridge resolution dropped retained-hidden session authority.");
             Assert.Equal(2, bundle.Resources.Count);
             Assert.Equal($"{adapterName}.tone", bundle.PendingCommand?.MediaKey);
             Assert.SequenceEqual(
