@@ -2276,6 +2276,7 @@ if (-not $SkipTests) {
         (Join-Path $projectDirectory 'AccessibilityEvents.cpp'),
         (Join-Path $projectDirectory 'TrayLayout.cpp'),
         (Join-Path $projectDirectory 'WidgetBridgeClient.cpp'),
+        (Join-Path $projectDirectory 'PublicSuffixDomainAuthority.cpp'),
         (Join-Path $projectDirectory 'DeclarativeRenderer.cpp'),
         (Join-Path $projectDirectory 'DeclarativeLayout.cpp'),
         (Join-Path $projectDirectory 'NativeStyle.cpp'),
