@@ -556,6 +556,39 @@ void VerifyEmbeddedMediaSnapshotContract() {
                     R"json("protocolVersion":28)json"), error) &&
                 error.find(L"protocol version 29") != std::wstring::npos,
             "retained-hidden media was admitted before protocol v29");
+
+    constexpr std::string_view overlayFullscreenJson = R"json({
+        "snapshot": {
+            "protocolVersion":30,"sequence":9,
+            "widgetInstanceId":"cedar.adapter","activeInputScopeId":"root",
+            "embeddedMedia":{"id":"cedar-media","accessibleName":"Cedar media",
+                "entryAsset":"media/index.html","overlayFullscreenPresentation":true,
+                "aspectRatio":1.7777777778,
+                "surface":{"mode":"standard","preferredWidth":640,"preferredHeight":360,
+                           "minimumWidth":240,"minimumHeight":180},
+                "resources":[{"path":"media/index.html","contentType":"text/html"}],
+                "commands":["togglePlayback","seekBackward","seekForward","back"]},
+            "root":{"id":"root","kind":"stack","children":[
+                {"id":"cedar.viewport","kind":"mediaViewport",
+                 "mediaSurfaceId":"cedar-media","accessibilityLabel":"Cedar media",
+                 "shortcuts":[],"children":[]}
+            ]}
+        }
+    })json";
+    error.clear();
+    const auto overlayFullscreen =
+        widgetrail::testing::ParseWidgetSnapshotResponse(overlayFullscreenJson, error);
+    Require(overlayFullscreen && overlayFullscreen->embeddedMedia &&
+                overlayFullscreen->embeddedMedia->overlayFullscreenPresentation &&
+                error.empty(),
+            "valid protocol-v30 overlay fullscreen media snapshot was rejected");
+    error.clear();
+    Require(!widgetrail::testing::ParseWidgetSnapshotResponse(
+                mutate(std::string{overlayFullscreenJson},
+                    R"json("protocolVersion":30)json",
+                    R"json("protocolVersion":29)json"), error) &&
+                error.find(L"protocol version 30") != std::wstring::npos,
+            "overlay fullscreen media was admitted before protocol v30");
 }
 
 void VerifyEmbeddedMediaBundleBoundary() {

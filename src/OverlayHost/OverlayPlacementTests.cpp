@@ -941,6 +941,28 @@ int main() {
               800.0F, 180.0F, 760.0F, 425.0F, 16.0F / 9.0F),
           "inverted embedded media minimum/preferred bounds fail closed");
 
+    const auto fullscreenMediaBounds = ResolveOverlayFullscreenMediaSurfaceBounds(
+        {24.0F, 28.0F, 1920.0F, 1040.0F},
+        320.0F, 180.0F, 16.0F / 9.0F);
+    Check(fullscreenMediaBounds.has_value(),
+          "overlay fullscreen media resolves inside the safe work area");
+    CheckNear(fullscreenMediaBounds->x, 59.5556F,
+              "overlay fullscreen aspect fit centers horizontally");
+    CheckNear(fullscreenMediaBounds->y, 28.0F,
+              "overlay fullscreen aspect fit retains the safe-area top");
+    CheckNear(fullscreenMediaBounds->width, 1848.8889F,
+              "overlay fullscreen aspect fit consumes the bounded safe width");
+    CheckNear(fullscreenMediaBounds->height, 1040.0F,
+              "overlay fullscreen aspect fit consumes the bounded safe height");
+    Check(!ResolveOverlayFullscreenMediaSurfaceBounds(
+              {0.0F, 0.0F, 300.0F, 160.0F},
+              320.0F, 180.0F, 16.0F / 9.0F),
+          "overlay fullscreen media fails closed below its declared minimum");
+    Check(!ResolveOverlayFullscreenMediaSurfaceBounds(
+              {0.0F, 0.0F, 1920.0F, 1040.0F},
+              320.0F, 180.0F, 0.0F),
+          "overlay fullscreen media rejects an invalid aspect ratio");
+
     const auto mediaPresentation = ResolveMediaViewportPresentationGeometry(
         {100.0F, 50.0F, 640.0F, 360.0F},
         {120.0F, 60.0F, 600.0F, 340.0F}, 1.5F);

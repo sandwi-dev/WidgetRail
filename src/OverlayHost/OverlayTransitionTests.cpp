@@ -476,6 +476,48 @@ void AnimationPreferencePathsPreserveContainerGeometry() {
          "animation-on admission preserves existing y motion offset");
 }
 
+void FullscreenExitSettlesBeforeCompositionAdmission() {
+    widgetrail::OverlayPresentationTransaction transaction;
+    constexpr widgetrail::OverlayPresentationExtent fullscreen{5072, 1384};
+    constexpr widgetrail::OverlayPresentationExtent ordinary{760, 555};
+    constexpr widgetrail::OverlayPlacement ordinaryPlacement{820, 325, 760, 555};
+
+    transaction.BeginExtentTransition(fullscreen, ordinary, 100, false, true);
+    Check(transaction.extentTransitionActive() && transaction.hasActiveExtent(),
+          "fullscreen exit begins with pending extent authority");
+
+    // The accepted host exit derives this decision from the last committed
+    // fullscreen frame, even when the mutable successor snapshot is already
+    // non-fullscreen, and settles before preparing composition admission.
+    transaction.SettleExtent(ordinary, 101, true);
+    const auto directive = transaction.PrepareCompositionAdmission(
+        fullscreen.widthDip, fullscreen.heightDip,
+        ordinaryPlacement, ordinaryPlacement, ordinary,
+        101, false, true);
+    Check(!transaction.extentTransitionActive() && !directive.animateMotion,
+          "committed fullscreen exit cannot admit extent composition motion");
+    Near(directive.initialPresentation.scaleX, 1.0F,
+         "fullscreen exit directly restores ordinary viewport scale x");
+    Near(directive.initialPresentation.scaleY, 1.0F,
+         "fullscreen exit directly restores ordinary viewport scale y");
+    Near(directive.initialPresentation.offsetX, 0.0F,
+         "fullscreen exit directly restores ordinary viewport offset x");
+    Near(directive.initialPresentation.offsetY, 0.0F,
+         "fullscreen exit directly restores ordinary viewport offset y");
+
+    transaction.AcceptCompositionAdmission(directive, L"neutral-media");
+    Check(!transaction.hasActiveExtent() &&
+              transaction.PresentedExtent(ordinary, true) == ordinary &&
+              transaction.contentPlacement() &&
+              transaction.contentPlacement()->x == ordinaryPlacement.x &&
+              transaction.contentPlacement()->y == ordinaryPlacement.y &&
+              transaction.contentPlacement()->width == ordinaryPlacement.width &&
+              transaction.contentPlacement()->height == ordinaryPlacement.height,
+          "fullscreen exit clears pending placement and commits exact ordinary viewport");
+    Check(!transaction.PrepareCompositionStep(102, false),
+          "fullscreen exit schedules no later composition motion frame");
+}
+
 void ClockAndDecisionsAreStable() {
     widgetrail::OverlayTransitionTimeline timeline;
     timeline.BeginOpen(100, false);
@@ -519,6 +561,7 @@ int main() {
     CommittedDestinationDrivesLateAdmissionAndStableRefresh();
     ReducedMotionAdmissionCommitsDestinationDirectly();
     AnimationPreferencePathsPreserveContainerGeometry();
+    FullscreenExitSettlesBeforeCompositionAdmission();
     ClockAndDecisionsAreStable();
     std::cout << "OverlayTransitionTests: " << checks << " checks passed\n";
     return EXIT_SUCCESS;

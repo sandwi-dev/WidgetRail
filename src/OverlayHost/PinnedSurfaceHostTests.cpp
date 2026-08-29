@@ -84,6 +84,78 @@ void TestAcceptedCompactMediaHostContract() {
           "compact B exits to click-through, View uses the tray route, and A/navigation expose no scrub mapping");
 }
 
+void TestAcceptedOverlayFullscreenMediaHostContract() {
+    const auto source = ReadSource(
+        fs::path{__FILE__}.parent_path() / "main.cpp");
+    const auto requireOrdered = [&](const std::string_view first,
+                                    const std::string_view second,
+                                    const std::string_view message) {
+        const auto firstOffset = source.find(first);
+        const auto secondOffset = source.find(second, firstOffset);
+        Check(firstOffset != std::string::npos && secondOffset != std::string::npos &&
+                  firstOffset < secondOffset,
+              message);
+    };
+    const auto section = [&](const std::string_view begin,
+                             const std::string_view end) {
+        const auto beginOffset = source.find(begin);
+        Check(beginOffset != std::string::npos,
+              "fullscreen host contract section begins");
+        const auto endOffset = source.find(end, beginOffset + begin.size());
+        Check(endOffset != std::string::npos,
+              "fullscreen host contract section ends");
+        return source.substr(beginOffset, endOffset - beginOffset);
+    };
+
+    const auto fullscreenInput = section(
+        "if (OverlayFullscreenMediaRequested()) {",
+        "const auto pinnedControllerCommand");
+    Check(fullscreenInput.find("DispatchControllerAction(L\"B\", true);") !=
+              std::string::npos &&
+              fullscreenInput.find("Command::TogglePlayback") != std::string::npos &&
+              fullscreenInput.find("frame.leftTriggerPressed") != std::string::npos &&
+              fullscreenInput.find("NavigationDirection::Left") != std::string::npos &&
+              fullscreenInput.find("frame.rightTriggerPressed") != std::string::npos &&
+              fullscreenInput.find("NavigationDirection::Right") != std::string::npos &&
+              fullscreenInput.find("XINPUT_GAMEPAD_BACK") == std::string::npos,
+          "fullscreen routes B, X, LT, and RT while View cannot reach hidden tray routing");
+
+    const auto fullscreenPaint = section(
+        "const bool overlayFullscreen = OverlayFullscreenMediaRequested();",
+        "if (layer == CompositionPaintLayer::Tray && trayLayout)");
+    Check(fullscreenPaint.find(
+              "overlayFullscreen && layer == CompositionPaintLayer::Tray") !=
+              std::string::npos &&
+              fullscreenPaint.find(
+                  "overlayFullscreen && layer == CompositionPaintLayer::Guide") !=
+              std::string::npos &&
+              fullscreenPaint.find("ClearAccessibilityTree();") != std::string::npos &&
+              fullscreenPaint.find("ResolveOverlayFullscreenMediaSurfaceBounds") !=
+              std::string::npos &&
+              fullscreenPaint.find("mediaViewportRegions.push_back") !=
+              std::string::npos,
+          "fullscreen suppresses tray, guide, and widget accessibility while retaining one media viewport");
+
+    requireOrdered(
+        "CommittedOverlayFullscreenMediaAuthorityCurrent(priorVisibleWidget)",
+        "std::forward<Refresh>(refresh)();",
+        "fullscreen exit captures committed visual authority before mutable refresh");
+    requireOrdered(
+        "const bool settleOverlayFullscreenExit =",
+        "presentationTransaction_.SettleExtent(",
+        "fullscreen exit derives and settles the committed-authority transition");
+    requireOrdered(
+        "presentationTransaction_.SettleExtent(",
+        "ApplyPresentation(presentation);",
+        "fullscreen exit settles before composition admission");
+    Check(source.find("!settleOverlayFullscreenExit;") != std::string::npos &&
+              source.find("committedOverlayFullscreenMediaPresentation_ ||\n            replacedOverlayFullscreenPresentation") !=
+              std::string::npos &&
+              source.find("ReconcileCommittedEmbeddedMediaSurface();") !=
+              std::string::npos,
+          "fullscreen exit suppresses motion and immediately reconciles the retained external media plane");
+}
+
 struct FixtureWindowState final {
     bool clickThrough{true};
     HBRUSH background{};
@@ -593,6 +665,7 @@ int wmain(const int argc, wchar_t** argv) {
         Check(SUCCEEDED(apartment), "COM apartment initializes");
         (void)SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
         TestAcceptedCompactMediaHostContract();
+        TestAcceptedOverlayFullscreenMediaHostContract();
         TestPolicyAndPlacement();
         const auto result = TestRealHostWindow(ParseEvidencePath(argc, argv));
         std::cout << "PinnedSurfaceHostTests passed (" << checks

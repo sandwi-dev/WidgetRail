@@ -258,6 +258,22 @@ internal static class EmbeddedMediaSurfaceTests
         {
             ProtocolVersion = ProtocolConstants.RetainedHiddenEmbeddedMediaVersion - 1,
         }, "feature_requires_version");
+        var overlayFullscreen = snapshot with
+        {
+            ProtocolVersion = ProtocolConstants.OverlayFullscreenMediaPresentationVersion,
+            EmbeddedMedia = Valid("primary-media") with
+            {
+                OverlayFullscreenPresentation = true,
+            },
+        };
+        Equal(0, ViewSnapshotValidator.Validate(overlayFullscreen).Count);
+        Equal(true, SnapshotJson.Deserialize(
+            SnapshotJson.Serialize(overlayFullscreen)).EmbeddedMedia?
+            .OverlayFullscreenPresentation);
+        Error(overlayFullscreen with
+        {
+            ProtocolVersion = ProtocolConstants.OverlayFullscreenMediaPresentationVersion - 1,
+        }, "feature_requires_version");
         Error(snapshot with
         {
             ProtocolVersion = ProtocolConstants.RetainedHiddenEmbeddedMediaVersion,
