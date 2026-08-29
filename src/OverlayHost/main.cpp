@@ -2082,6 +2082,7 @@ private:
                         break;
                     }
                 }
+                RecordPinnedSurfaceWorkCounters();
             } else if (wParam == kGuideCompatibilityTimer) {
                 WidgetRailOverlayPlatformEvent event;
                 std::uint32_t hasEvent = WRAIL_OVERLAY_PLATFORM_FALSE;
@@ -2343,13 +2344,16 @@ private:
             SUCCEEDED(richMediaSurface_->GetAutomationProvider(&provider)) && provider)
             (void)provider.As(&fragmentRoot);
         accessibilityProvider_.SetEmbeddedFragmentRoot(fragmentRoot.Get());
+        const bool pinnedProjection = embeddedMediaAuthority_ &&
+            pinnedSurfaceCoordinator_.pinned() &&
+            pinnedSurfaceCoordinator_.widgetId() == embeddedMediaAuthority_->widgetId;
         if (pinnedSurfaceCoordinator_.compactMediaPresentation()) {
             pinnedSurfaceCoordinator_.UpdateCompactMediaPlayback(
                 state.positionSeconds, state.durationSeconds, state.playing);
             ReconcileCompactPinnedMediaChrome();
         }
         DispatchPendingEmbeddedMediaCommand();
-        if (window_) InvalidateRect(window_, nullptr, FALSE);
+        if (window_ && !pinnedProjection) InvalidateRect(window_, nullptr, FALSE);
         if (!richMediaProof_) ReconcileCommittedEmbeddedMediaSurface();
     }
 
@@ -2958,6 +2962,54 @@ private:
             L" requested=" + std::to_wstring(counters.requested) +
             L" committed=" + std::to_wstring(counters.committed) +
             L" reason=" + std::wstring{reason});
+    }
+
+    void RecordPinnedSurfaceWorkCounters() {
+        if (!pinnedSurfaceCoordinator_.pinned()) {
+            pinnedWorkDiagnosticWidgetId_.clear();
+            pinnedWorkDiagnosticPublished_ = false;
+            pinnedWorkDiagnosticPaintBucket_ = 0;
+            pinnedWorkDiagnosticMediaReconciliations_ = 0;
+            return;
+        }
+        const auto counters = pinnedSurfaceCoordinator_.workCounters();
+        if (counters.paintMessages == 0) return;
+        const std::wstring widgetId{pinnedSurfaceCoordinator_.widgetId()};
+        if (widgetId != pinnedWorkDiagnosticWidgetId_) {
+            pinnedWorkDiagnosticWidgetId_ = widgetId;
+            pinnedWorkDiagnosticPublished_ = false;
+            pinnedWorkDiagnosticPaintBucket_ = 0;
+            pinnedWorkDiagnosticMediaReconciliations_ = 0;
+        }
+        constexpr std::uint64_t kPaintsPerDiagnostic = 64;
+        const std::uint64_t paintBucket =
+            counters.paintMessages / kPaintsPerDiagnostic;
+        if (pinnedWorkDiagnosticPublished_ &&
+            paintBucket <= pinnedWorkDiagnosticPaintBucket_ &&
+            counters.mediaViewportReconciliations <=
+                pinnedWorkDiagnosticMediaReconciliations_) {
+            return;
+        }
+        pinnedWorkDiagnosticPublished_ = true;
+        pinnedWorkDiagnosticPaintBucket_ = paintBucket;
+        pinnedWorkDiagnosticMediaReconciliations_ =
+            counters.mediaViewportReconciliations;
+        const auto dcomp = compositionSurface_.externalContentCommitCounters(
+            widgetrail::OverlayCompositionSurface::ExternalContentEndpoint::Pinned);
+        AppendDiagnostic(
+            L"Pinned presentation work widget=" + widgetId +
+            L" snapshots=" + std::to_wstring(counters.snapshots) +
+            L" invalidations=" + std::to_wstring(counters.invalidations) +
+            L" coalesced=" +
+                std::to_wstring(counters.coalescedInvalidations) +
+            L" paints=" + std::to_wstring(counters.paintMessages) +
+            L" raster-draws=" + std::to_wstring(counters.rasterDraws) +
+            L" media-geometry=" +
+                std::to_wstring(counters.mediaViewportReconciliations) +
+            L" owner-signals=" +
+                std::to_wstring(counters.ownerNotifications) +
+            L" dcomp-requested=" + std::to_wstring(dcomp.requested) +
+            L" dcomp-committed=" + std::to_wstring(dcomp.committed));
     }
 
     struct CompactPinnedMediaChromeColors final {
@@ -14290,6 +14342,10 @@ private:
     std::unique_ptr<widgetrail::RemoteImageCache> imageCache_;
     std::unique_ptr<widgetrail::DeclarativeRenderer> declarativeRenderer_;
     widgetrail::pinned::WidgetSurfaceCoordinator pinnedSurfaceCoordinator_;
+    std::wstring pinnedWorkDiagnosticWidgetId_;
+    std::uint64_t pinnedWorkDiagnosticPaintBucket_{};
+    std::uint64_t pinnedWorkDiagnosticMediaReconciliations_{};
+    bool pinnedWorkDiagnosticPublished_{};
     bool runtimeInitialized_{};
     std::unordered_map<std::wstring, long long> renderedSnapshotSequences_;
     widgetrail::RenderResult lastWidgetRenderResult_;

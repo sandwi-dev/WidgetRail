@@ -205,6 +205,7 @@ bool WidgetSurfaceCoordinator::Pin(
     placementLimits_.maximumHeightDip = std::max(
         placementLimits_.maximumHeightDip,
         admission.initialContentHeightDip + kChromeHeightDip + kBottomInsetDip);
+    workCounters_ = {};
     admission_ = std::move(admission);
     layoutOptions_ = std::move(layouts);
     selectedLayoutIndex_ = 0;
@@ -244,6 +245,7 @@ bool WidgetSurfaceCoordinator::UpdateSnapshot(
         snapshot.instanceId != admission_->instanceId) {
         return false;
     }
+    ++workCounters_.snapshots;
     const std::wstring priorLayoutId{SelectedLayoutId()};
     const std::wstring priorInputScopeId{
         SelectedSnapshot().activeInputScopeId};
@@ -351,7 +353,7 @@ bool WidgetSurfaceCoordinator::UpdateSnapshot(
         if (compactMediaPresentation())
             focusedElementId_ = L"host.compact-media.seek";
     }
-    if (window_) InvalidateRect(window_, nullptr, FALSE);
+    RequestPaint();
     return true;
 }
 
@@ -367,7 +369,7 @@ bool WidgetSurfaceCoordinator::SetInteractionMode(const InteractionMode mode) {
     policy_.SetInteractionMode(mode);
     ApplyWindowPolicy();
     PublishAccessibility();
-    InvalidateRect(window_, nullptr, FALSE);
+    RequestPaint();
     NotifyOwner();
     return true;
 }
@@ -391,7 +393,7 @@ bool WidgetSurfaceCoordinator::EnterControllerFocus() {
             (void)SetFocus(window_);
         }
         PublishAccessibility();
-        InvalidateRect(window_, nullptr, FALSE);
+        RequestPaint();
         NotifyOwner();
         return true;
     }
@@ -413,7 +415,7 @@ bool WidgetSurfaceCoordinator::EnterControllerFocus() {
         (void)SetFocus(window_);
     }
     PublishAccessibility();
-    InvalidateRect(window_, nullptr, FALSE);
+    RequestPaint();
     NotifyOwner();
     return true;
 }
@@ -429,7 +431,7 @@ bool WidgetSurfaceCoordinator::ExitControllerFocus() noexcept {
     if (overlayVisible_ && notificationWindow_ && IsWindow(notificationWindow_))
         (void)SetFocus(notificationWindow_);
     PublishAccessibility();
-    if (window_) InvalidateRect(window_, nullptr, FALSE);
+    RequestPaint();
     NotifyOwner();
     return true;
 }
@@ -469,8 +471,7 @@ bool WidgetSurfaceCoordinator::MoveControllerFocus(
                     adjustment.actionRequest->requestedValue,
                     adjustment.actionRequest);
             }
-            if (adjustment.visualChanged && window_)
-                InvalidateRect(window_, nullptr, FALSE);
+            if (adjustment.visualChanged) RequestPaint();
             return adjustment.consumed;
         }
     }
@@ -482,7 +483,7 @@ bool WidgetSurfaceCoordinator::MoveControllerFocus(
         RECT client{};
         if (!renderer_ || !window_ || !GetClientRect(window_, &client)) {
             PublishAccessibility();
-            InvalidateRect(window_, nullptr, FALSE);
+            RequestPaint();
             return true;
         }
         const float scale =
@@ -499,7 +500,7 @@ bool WidgetSurfaceCoordinator::MoveControllerFocus(
         if (!plan) {
             renderer_->CancelPresentationUpdatePlan();
             PublishAccessibility();
-            InvalidateRect(window_, nullptr, FALSE);
+            RequestPaint();
             return true;
         }
         const auto& damage = plan->damage;
@@ -514,10 +515,10 @@ bool WidgetSurfaceCoordinator::MoveControllerFocus(
         update.bottom = std::clamp<LONG>(update.bottom, update.top, client.bottom);
         PublishAccessibility();
         if (update.right > update.left && update.bottom > update.top) {
-            InvalidateRect(window_, &update, FALSE);
+            RequestPaint(&update);
         } else {
             renderer_->CancelPresentationUpdatePlan();
-            InvalidateRect(window_, nullptr, FALSE);
+            RequestPaint();
         }
         return true;
     };
@@ -559,13 +560,13 @@ bool WidgetSurfaceCoordinator::HandleFocusedSliderModeButton(
         (void)sliderInteraction_.TransitionSliderAdjustmentMode(
             authority, *focused,
             input::SliderAdjustmentModeTransition::Enter, now);
-        if (window_) InvalidateRect(window_, nullptr, FALSE);
+        RequestPaint();
         return true;
     case FocusedSliderButtonRoute::ExitAdjustment:
         (void)sliderInteraction_.TransitionSliderAdjustmentMode(
             authority, *focused,
             input::SliderAdjustmentModeTransition::Exit, now);
-        if (window_) InvalidateRect(window_, nullptr, FALSE);
+        RequestPaint();
         return true;
     case FocusedSliderButtonRoute::Widget:
         return false;
@@ -640,7 +641,7 @@ bool WidgetSurfaceCoordinator::ScrollFocusedProjection(
         renderer_->CancelPresentationUpdatePlan();
         return false;
     }
-    InvalidateRect(window_, &update, FALSE);
+    RequestPaint(&update);
     (void)input::SurfaceInteractionTransactions::CommitFreeScroll(
         freeScroll_, authority, focusedElementId_, *plan);
     return true;
@@ -685,7 +686,7 @@ void WidgetSurfaceCoordinator::QueueResolvedInput(
          sliderActionRequest->requestedValue != requestedValue)) {
         if (sliderInteraction_.CancelSliderAction(
                 *sliderActionRequest, GetTickCount64()).visualChanged && window_) {
-            InvalidateRect(window_, nullptr, FALSE);
+            RequestPaint();
         }
         return;
     }
@@ -776,7 +777,7 @@ void WidgetSurfaceCoordinator::RejectInputRequest(
         admission_->presentationGeneration, false};
     if (sliderInteraction_.CancelSliderAction(
             authority, *node, now).visualChanged && window_) {
-        InvalidateRect(window_, nullptr, FALSE);
+        RequestPaint();
     }
 }
 
@@ -824,7 +825,7 @@ void WidgetSurfaceCoordinator::SetActionFeedback(
     actionFeedback_ = std::move(message);
     actionFeedbackFailure_ = failure;
     PublishAccessibility();
-    if (window_) InvalidateRect(window_, nullptr, FALSE);
+    RequestPaint();
 }
 
 bool WidgetSurfaceCoordinator::EmergencyHideAll() noexcept {
@@ -850,7 +851,7 @@ bool WidgetSurfaceCoordinator::BeginPlacement(const PlacementMode mode) {
         ApplyWindowPolicy();
     }
     PublishAccessibility();
-    InvalidateRect(window_, nullptr, FALSE);
+    RequestPaint();
     NotifyOwner();
     return true;
 }
@@ -876,7 +877,7 @@ bool WidgetSurfaceCoordinator::BeginSetup(const bool newPin) {
     (void)SetFocus(window_);
     (void)EnterControllerFocus();
     PublishAccessibility();
-    InvalidateRect(window_, nullptr, FALSE);
+    RequestPaint();
     NotifyOwner();
     return true;
 }
@@ -916,7 +917,7 @@ bool WidgetSurfaceCoordinator::CycleLayout(const int delta) {
     placementSession_->mode = ownerMode;
     if (changed) ApplyPlacementBounds(placementSession_->current);
     PublishAccessibility();
-    InvalidateRect(window_, nullptr, FALSE);
+    RequestPaint();
     NotifyOwner();
     return true;
 }
@@ -1049,7 +1050,7 @@ bool WidgetSurfaceCoordinator::CommitPlacement(std::wstring& error) {
     pointerPlacementMode_ = PlacementMode::None;
     if (GetCapture() == window_) ReleaseCapture();
     PublishAccessibility();
-    InvalidateRect(window_, nullptr, FALSE);
+    RequestPaint();
     NotifyOwner();
     return true;
 }
@@ -1063,7 +1064,7 @@ bool WidgetSurfaceCoordinator::CancelPlacement() noexcept {
     if (GetCapture() == window_) ReleaseCapture();
     ApplyPlacementBounds(original);
     PublishAccessibility();
-    InvalidateRect(window_, nullptr, FALSE);
+    RequestPaint();
     NotifyOwner();
     return true;
 }
@@ -1111,7 +1112,7 @@ bool WidgetSurfaceCoordinator::BeginOpacityAdjustment() {
         ApplyWindowPolicy();
     }
     PublishAccessibility();
-    InvalidateRect(window_, nullptr, FALSE);
+    RequestPaint();
     NotifyOwner();
     return true;
 }
@@ -1129,7 +1130,7 @@ bool WidgetSurfaceCoordinator::StepOpacity(const PlacementDirection direction) {
     opacityPercent_ = next;
     ApplyOpacity();
     PublishAccessibility();
-    InvalidateRect(window_, nullptr, FALSE);
+    RequestPaint();
     NotifyOwner();
     return true;
 }
@@ -1145,13 +1146,13 @@ bool WidgetSurfaceCoordinator::CommitOpacity(std::wstring& error) {
         ApplyOpacity();
         opacityPreviewOriginal_.reset();
         PublishAccessibility();
-        InvalidateRect(window_, nullptr, FALSE);
+        RequestPaint();
         NotifyOwner();
         return false;
     }
     opacityPreviewOriginal_.reset();
     PublishAccessibility();
-    InvalidateRect(window_, nullptr, FALSE);
+    RequestPaint();
     NotifyOwner();
     error.clear();
     return true;
@@ -1163,7 +1164,7 @@ bool WidgetSurfaceCoordinator::CancelOpacity() noexcept {
     opacityPreviewOriginal_.reset();
     ApplyOpacity();
     PublishAccessibility();
-    InvalidateRect(window_, nullptr, FALSE);
+    RequestPaint();
     NotifyOwner();
     return true;
 }
@@ -1386,8 +1387,6 @@ void WidgetSurfaceCoordinator::UpdateCompactMediaPlayback(
     if (!compactMediaScrubActive_)
         compactMediaPreviewSeconds_ = compactMediaPositionSeconds_;
     PublishAccessibility();
-    if (window_) InvalidateRect(window_, nullptr, FALSE);
-    NotifyOwner();
 }
 
 bool WidgetSurfaceCoordinator::BeginCompactMediaScrub() noexcept {
@@ -1410,7 +1409,7 @@ bool WidgetSurfaceCoordinator::StepCompactMediaScrub(
     compactMediaPreviewSeconds_ = std::clamp(
         compactMediaPreviewSeconds_ + delta, 0.0, compactMediaDurationSeconds_);
     PublishAccessibility();
-    if (window_) InvalidateRect(window_, nullptr, FALSE);
+    RequestPaint();
     NotifyOwner();
     return true;
 }
@@ -1555,7 +1554,7 @@ LRESULT WidgetSurfaceCoordinator::HandleMessage(
                 pointerActionNode_ = hit->enabled ? hit->id : std::wstring{};
                 SetCapture(window_);
                 PublishAccessibility();
-                InvalidateRect(window_, nullptr, FALSE);
+                RequestPaint();
             }
         }
         return 0;
@@ -1741,7 +1740,7 @@ void WidgetSurfaceCoordinator::HandleAccessibilityActions() {
                     RetireSliderInteraction();
                 focusedElementId_ = resolved->nodeId;
                 PublishAccessibility();
-                InvalidateRect(window_, nullptr, FALSE);
+                RequestPaint();
             } else {
                 QueueResolvedInput(
                     resolved->nodeId, resolved->protocolButton,
@@ -1851,7 +1850,7 @@ bool WidgetSurfaceCoordinator::CreateWindowForAdmission(std::wstring& error) {
     if (committedPlacement_) committedPlacement_->opacityPercent = opacityPercent_;
     if (committedPlacement_)
         committedPlacement_->selectedLayoutId = layoutOptions_[selectedLayoutIndex_].id;
-    InvalidateRect(window_, nullptr, FALSE);
+    RequestPaint();
     error.clear();
     return true;
 }
@@ -1912,6 +1911,7 @@ bool WidgetSurfaceCoordinator::EnsureGraphicsResources() {
 }
 
 void WidgetSurfaceCoordinator::Paint() {
+    ++workCounters_.paintMessages;
     PAINTSTRUCT paint{};
     BeginPaint(window_, &paint);
     if (!pinned() || !EnsureGraphicsResources()) {
@@ -1924,6 +1924,7 @@ void WidgetSurfaceCoordinator::Paint() {
     const float widthDip = static_cast<float>(client.right - client.left) / dpiScale;
     const float heightDip = static_cast<float>(client.bottom - client.top) / dpiScale;
     renderTarget_->SetDpi(96.0F * dpiScale, 96.0F * dpiScale);
+    ++workCounters_.rasterDraws;
     renderTarget_->BeginDraw();
     renderTarget_->Clear(D2D1::ColorF(0x16212E));
     const bool compactMedia = compactMediaPresentation();
@@ -2051,6 +2052,7 @@ void WidgetSurfaceCoordinator::Paint() {
         placementSession_ && placementSession_->mode == PlacementMode::Adjust
             ? kAdjustBorderDip : kPinnedBorderDip);
     const HRESULT result = renderTarget_->EndDraw();
+    bool mediaViewportReconciled{};
     if (result == D2DERR_RECREATE_TARGET) ReleaseGraphicsResources();
     else if (SUCCEEDED(result)) {
         lastRenderResult_ = std::move(renderResult);
@@ -2065,12 +2067,13 @@ void WidgetSurfaceCoordinator::Paint() {
                 committedMediaViewport_.reset();
             }
             mediaViewportGeometryDirty_ = false;
+            mediaViewportReconciled = true;
+            ++workCounters_.mediaViewportReconciliations;
         }
         PublishAccessibility();
     }
     EndPaint(window_, &paint);
-    if (SUCCEEDED(result) && committedMediaViewport_)
-        NotifyOwner();
+    if (SUCCEEDED(result) && mediaViewportReconciled) NotifyOwner();
 }
 
 void WidgetSurfaceCoordinator::PublishAccessibility() {
@@ -2267,8 +2270,19 @@ void WidgetSurfaceCoordinator::ApplyWindowPolicy() {
 }
 
 void WidgetSurfaceCoordinator::NotifyOwner() const noexcept {
-    if (notificationWindow_ && IsWindow(notificationWindow_))
+    if (notificationWindow_ && IsWindow(notificationWindow_)) {
+        ++workCounters_.ownerNotifications;
         (void)PostMessageW(notificationWindow_, notificationMessage_, 0, 0);
+    }
+}
+
+void WidgetSurfaceCoordinator::RequestPaint(const RECT* update) noexcept {
+    if (!window_) return;
+    ++workCounters_.invalidations;
+    RECT pending{};
+    if (GetUpdateRect(window_, &pending, FALSE) != FALSE)
+        ++workCounters_.coalescedInvalidations;
+    InvalidateRect(window_, update, FALSE);
 }
 
 void WidgetSurfaceCoordinator::ReleaseGraphicsResources() noexcept {

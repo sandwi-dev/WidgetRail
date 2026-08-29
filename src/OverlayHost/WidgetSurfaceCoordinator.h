@@ -85,6 +85,16 @@ struct CommittedMediaViewportPresentation final {
     std::uint64_t frameGeneration{};
 };
 
+struct WidgetSurfaceWorkCounters final {
+    std::uint64_t snapshots{};
+    std::uint64_t invalidations{};
+    std::uint64_t coalescedInvalidations{};
+    std::uint64_t paintMessages{};
+    std::uint64_t rasterDraws{};
+    std::uint64_t mediaViewportReconciliations{};
+    std::uint64_t ownerNotifications{};
+};
+
 struct CompactPinnedMediaState final {
     double positionSeconds{};
     double durationSeconds{};
@@ -260,6 +270,9 @@ public:
         return opacityPercent_;
     }
     [[nodiscard]] std::size_t teardownCount() const noexcept { return teardownCount_; }
+    [[nodiscard]] WidgetSurfaceWorkCounters workCounters() const noexcept {
+        return workCounters_;
+    }
     [[nodiscard]] WidgetSurfaceStopReason lastStopReason() const noexcept {
         return lastStopReason_;
     }
@@ -270,6 +283,7 @@ private:
     [[nodiscard]] bool CreateWindowForAdmission(std::wstring& error);
     [[nodiscard]] bool EnsureGraphicsResources();
     void Paint();
+    void RequestPaint(const RECT* update = nullptr) noexcept;
     void PublishAccessibility();
     void ApplyWindowPolicy();
     void NotifyOwner() const noexcept;
@@ -332,6 +346,7 @@ private:
     std::optional<CommittedMediaViewportPresentation> committedMediaViewport_;
     std::uint64_t nextCommittedFrameGeneration_{1};
     bool mediaViewportGeometryDirty_{true};
+    mutable WidgetSurfaceWorkCounters workCounters_;
     std::wstring focusedElementId_;
     input::FreeScrollInteractionState freeScroll_;
     input::WidgetInteractionSession sliderInteraction_;
