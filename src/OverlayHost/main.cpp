@@ -5225,6 +5225,9 @@ private:
         }
         retainedGuidePaintKey_ = std::move(frames.guideKey);
         retainedTrayPaintState_ = std::move(frames.trayState);
+        const bool replacedOverlayFullscreenPresentation =
+            committedOverlayFullscreenMediaPresentation_.has_value() &&
+            !frames.overlayFullscreenMediaPresentation.has_value();
         presentationTransaction_.AcceptCompositionAdmission(
             directive,
             state_.surface() == widgetrail::Surface::Widget
@@ -5290,7 +5293,8 @@ private:
         AppendCompositionCoordinateSample(0);
         if (performanceCountersActive_) ++performanceSuccessfulFrames_;
         BeginOpenAfterSuccessfulPaint();
-        if (committedOverlayFullscreenMediaPresentation_)
+        if (committedOverlayFullscreenMediaPresentation_ ||
+            replacedOverlayFullscreenPresentation)
             ReconcileCommittedEmbeddedMediaSurface();
         return true;
     }
@@ -6567,6 +6571,7 @@ private:
             priorSessionPresentation.snapshot
                 ? priorSessionPresentation.snapshot->sequence
                 : 0;
+        const bool priorOverlayFullscreen = OverlayFullscreenMediaRequested();
         const auto priorDesiredExtent = DesiredPresentationExtentDip();
         const auto priorExtent = compositionSurface_.available()
             ? presentationTransaction_.CommittedDestinationExtent(
@@ -6582,6 +6587,8 @@ private:
                 : std::wstring(state_.selectedWidget());
         std::forward<Refresh>(refresh)();
         const bool isVisible = state_.surface() != widgetrail::Surface::Hidden;
+        const bool settleOverlayFullscreenExit =
+            priorOverlayFullscreen && !OverlayFullscreenMediaRequested();
         const auto nextExtent = DesiredPresentationExtentDip();
         const std::wstring nextVisibleWidget = state_.surface() == widgetrail::Surface::Widget
             ? std::wstring(state_.activeWidget())
@@ -6636,8 +6643,9 @@ private:
         const bool animateWidgetExtent =
             wasVisible && isVisible &&
             state_.surface() == widgetrail::Surface::Widget &&
-            priorExtent != nextExtent && !snapTrayWidgetSwitch;
-        if (snapTrayWidgetSwitch) {
+            priorExtent != nextExtent && !snapTrayWidgetSwitch &&
+            !settleOverlayFullscreenExit;
+        if (snapTrayWidgetSwitch || settleOverlayFullscreenExit) {
             presentationTransaction_.SettleExtent(
                 nextExtent, GetTickCount64(), true);
         } else if (animateWidgetExtent) {
@@ -6662,7 +6670,7 @@ private:
                         ? L"composition-motion"
                         : L"composition-surface-commit")
                     : CurrentAccessibilityPolicy().reducedMotion ||
-                      snapTrayWidgetSwitch
+                      snapTrayWidgetSwitch || settleOverlayFullscreenExit
                     ? L"resize-in-place"
                     : L"animated-resize-in-place"));
         }
