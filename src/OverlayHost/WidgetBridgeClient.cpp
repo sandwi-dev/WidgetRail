@@ -903,6 +903,8 @@ WidgetNode ParseNode(const JsonObject& source) {
                 std::wstring(std::wstring_view(shortcut.GetNamedString(L"button"))),
                 std::wstring(std::wstring_view(shortcut.GetNamedString(L"actionId"))),
                 std::wstring(std::wstring_view(shortcut.GetNamedString(L"phase"))),
+                std::wstring(std::wstring_view(
+                    shortcut.GetNamedString(L"repeatPolicy", L"none"))),
             });
         }
     }
@@ -1406,6 +1408,8 @@ WidgetSnapshot ParseSnapshot(const JsonObject& source) {
                 std::wstring(std::wstring_view(action.GetNamedString(L"button"))),
                 std::wstring(std::wstring_view(action.GetNamedString(L"actionId"))),
                 std::wstring(std::wstring_view(action.GetNamedString(L"label"))),
+                std::wstring(std::wstring_view(
+                    action.GetNamedString(L"repeatPolicy", L"none"))),
             });
         }
     }

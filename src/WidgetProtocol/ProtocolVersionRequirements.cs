@@ -109,6 +109,12 @@ internal sealed class ProtocolVersionRequirements
         var quickActions = snapshot.QuickActions ?? [];
         for (var index = 0; index < quickActions.Count; index++)
         {
+            if (quickActions[index]?.RepeatPolicy == ControllerActionRepeatPolicy.WhileHeld)
+                Add(
+                    "held-button-action-repeat",
+                    ProtocolConstants.HeldButtonActionRepeatVersion,
+                    $"$.quickActions[{index}].repeatPolicy",
+                    $"Held-button action repeat requires protocol version {ProtocolConstants.HeldButtonActionRepeatVersion} or later.");
             if (quickActions[index]?.Capability is null) continue;
             Add(
                 "dashboard-capability-authority",
@@ -139,6 +145,17 @@ internal sealed class ProtocolVersionRequirements
                     ProtocolConstants.FocusPersistenceVersion,
                     $"{path}.focusPersistenceId",
                     $"Focus persistence requires protocol version {ProtocolConstants.FocusPersistenceVersion} or later.");
+            var shortcuts = node.Shortcuts ?? [];
+            for (var shortcutIndex = 0; shortcutIndex < shortcuts.Count; shortcutIndex++)
+            {
+                if (shortcuts[shortcutIndex]?.RepeatPolicy !=
+                    ControllerActionRepeatPolicy.WhileHeld) continue;
+                Add(
+                    "held-button-action-repeat",
+                    ProtocolConstants.HeldButtonActionRepeatVersion,
+                    $"{path}.shortcuts[{shortcutIndex}].repeatPolicy",
+                    $"Held-button action repeat requires protocol version {ProtocolConstants.HeldButtonActionRepeatVersion} or later.");
+            }
 
             switch (node.Kind)
             {

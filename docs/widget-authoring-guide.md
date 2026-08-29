@@ -365,8 +365,11 @@ that value for manually routed nested actions; do not infer a route or dialog
 from `SourceElementId`. Dashboard quick actions are not open-scope actions and
 therefore do not publish an input scope.
 
-Only the `Pressed` shortcut phase is carried end to end today. Do not bind
-`Released` or `Repeated`, and do not bind `A` or D-pad as shortcuts.
+Declare shortcuts with the `Pressed` phase. Eligible discrete shortcuts can set
+`repeatPolicy: ControllerActionRepeatPolicy.WhileHeld` to receive bounded
+`Repeated` action events after the initial press; the default is edge-only.
+Do not bind `Released` or `Repeated` directly, and do not bind `A` or D-pad as
+shortcuts. B and host-reserved shell/navigation buttons cannot opt into repeat.
 
 ### B behavior
 

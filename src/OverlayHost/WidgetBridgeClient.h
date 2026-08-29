@@ -226,12 +226,14 @@ struct WidgetQuickAction final {
     std::wstring button;
     std::wstring actionId;
     std::wstring label;
+    std::wstring repeatPolicy;
 };
 
 struct WidgetShortcut final {
     std::wstring button;
     std::wstring actionId;
     std::wstring phase;
+    std::wstring repeatPolicy;
 };
 
 struct WidgetStyleValue final {

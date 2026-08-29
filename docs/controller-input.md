@@ -31,8 +31,12 @@ monotonic timestamp, active input-scope ID, rendered snapshot sequence, and a
 closed origin: `PhysicalController` or `AccessibilityAutomation`. The default
 physical origin is omitted on the wire, so legacy payloads retain their prior
 meaning; automation is always explicit and requires a matching strict transport
-peer. The MVP host emits only `Pressed`; snapshot validation rejects `Released`
-or `Repeated` shortcut bindings until those phases are transported end to end.
+peer. Authored actions remain edge-only by default. A shortcut or dashboard
+quick action may opt into `ControllerActionRepeatPolicy.WhileHeld`; the host
+then emits one `Pressed`, waits 360 ms, and emits bounded `Repeated` actions at
+125 ms while the same exact button and semantic authority remain current.
+Authors still declare the shortcut phase as `Pressed`; `Released` and authored
+`Repeated` bindings remain invalid.
 
 ### Tray Y tap/hold arbitration
 

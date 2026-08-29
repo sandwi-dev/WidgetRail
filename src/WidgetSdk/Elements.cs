@@ -91,9 +91,10 @@ public sealed record StackElement : WidgetElement
     public StackElement Shortcut(
         ControllerButton button,
         string actionId,
-        ControllerEventPhase phase = ControllerEventPhase.Pressed) => this with
+        ControllerEventPhase phase = ControllerEventPhase.Pressed,
+        ControllerActionRepeatPolicy repeatPolicy = ControllerActionRepeatPolicy.None) => this with
         {
-            Shortcuts = [.. Shortcuts, new ControllerShortcut(button, RequireId(actionId), phase)],
+            Shortcuts = [.. Shortcuts, new ControllerShortcut(button, RequireId(actionId), phase, repeatPolicy)],
         };
 
     internal override ViewNode ToProtocolNode() => new()
@@ -117,9 +118,10 @@ public sealed record RowElement : WidgetElement
     public RowElement Shortcut(
         ControllerButton button,
         string actionId,
-        ControllerEventPhase phase = ControllerEventPhase.Pressed) => this with
+        ControllerEventPhase phase = ControllerEventPhase.Pressed,
+        ControllerActionRepeatPolicy repeatPolicy = ControllerActionRepeatPolicy.None) => this with
         {
-            Shortcuts = [.. Shortcuts, new ControllerShortcut(button, RequireId(actionId), phase)],
+            Shortcuts = [.. Shortcuts, new ControllerShortcut(button, RequireId(actionId), phase, repeatPolicy)],
         };
 
     internal override ViewNode ToProtocolNode() => new()
@@ -161,9 +163,10 @@ public sealed record ScrollElement : WidgetElement
     public ScrollElement Shortcut(
         ControllerButton button,
         string actionId,
-        ControllerEventPhase phase = ControllerEventPhase.Pressed) => this with
+        ControllerEventPhase phase = ControllerEventPhase.Pressed,
+        ControllerActionRepeatPolicy repeatPolicy = ControllerActionRepeatPolicy.None) => this with
         {
-            Shortcuts = [.. Shortcuts, new ControllerShortcut(button, RequireId(actionId), phase)],
+            Shortcuts = [.. Shortcuts, new ControllerShortcut(button, RequireId(actionId), phase, repeatPolicy)],
         };
 
     /// <summary>
@@ -315,9 +318,10 @@ public sealed record ButtonElement : WidgetElement
     public ButtonElement Shortcut(
         ControllerButton button,
         ControllerEventPhase phase = ControllerEventPhase.Pressed,
-        string? actionId = null) => this with
+        string? actionId = null,
+        ControllerActionRepeatPolicy repeatPolicy = ControllerActionRepeatPolicy.None) => this with
         {
-            Shortcuts = [.. Shortcuts, new ControllerShortcut(button, actionId ?? ActionId, phase)],
+            Shortcuts = [.. Shortcuts, new ControllerShortcut(button, actionId ?? ActionId, phase, repeatPolicy)],
         };
 
     internal override ViewNode ToProtocolNode() => new()

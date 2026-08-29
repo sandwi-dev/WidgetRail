@@ -276,6 +276,57 @@ struct StickNavigationOptions final {
 inline constexpr StickNavigationOptions kPinnedPlacementNavigationOptions{
     15'000, 9'000, 250, 80};
 
+struct HeldButtonActionRepeatOptions final {
+    std::uint64_t initialRepeatMilliseconds{360};
+    std::uint64_t repeatMilliseconds{125};
+};
+
+/// Owns only the cadence of one explicitly repeatable discrete action. The
+/// caller retains the captured semantic authority and must revalidate it before
+/// every emission. Missed ticks coalesce into one event and are never queued.
+class HeldButtonActionRepeat final {
+public:
+    explicit HeldButtonActionRepeat(
+        HeldButtonActionRepeatOptions options = {}) noexcept
+        : options_(options) {
+        options_.initialRepeatMilliseconds = std::max<std::uint64_t>(
+            1, options_.initialRepeatMilliseconds);
+        options_.repeatMilliseconds = std::max<std::uint64_t>(
+            1, options_.repeatMilliseconds);
+    }
+
+    void Begin(const std::uint32_t button, const std::uint64_t now) noexcept {
+        button_ = button;
+        nextRepeat_ = now + options_.initialRepeatMilliseconds;
+    }
+
+    [[nodiscard]] bool Update(
+        const bool buttonStillDown,
+        const bool authorityCurrent,
+        const std::uint64_t now) noexcept {
+        if (button_ == 0 || !buttonStillDown || !authorityCurrent) {
+            Reset();
+            return false;
+        }
+        if (now < nextRepeat_) return false;
+        nextRepeat_ = now + options_.repeatMilliseconds;
+        return true;
+    }
+
+    void Reset() noexcept {
+        button_ = 0;
+        nextRepeat_ = 0;
+    }
+
+    [[nodiscard]] bool active() const noexcept { return button_ != 0; }
+    [[nodiscard]] std::uint32_t button() const noexcept { return button_; }
+
+private:
+    HeldButtonActionRepeatOptions options_;
+    std::uint32_t button_{};
+    std::uint64_t nextRepeat_{};
+};
+
 /// Converts a noisy two-axis stick into stable four-way navigation with
 /// hysteresis, dominant-axis switching, and deterministic repeat timing.
 class StickNavigator final {

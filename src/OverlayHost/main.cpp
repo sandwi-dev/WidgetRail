@@ -3932,6 +3932,11 @@ private:
         if (!mutation()) {
             return;
         }
+        // A held authored action never crosses an accepted shell transition.
+        // A still-physical press must be released and pressed again under the
+        // new focus/selection/lifecycle authority.
+        heldActionRepeat_.Reset();
+        heldActionAuthority_.reset();
         if (trayContextMenu_ &&
             (state_.focusRegion() != widgetrail::FocusRegion::Tray ||
              trayContextMenu_->widgetId != state_.selectedWidget())) {
@@ -8379,6 +8384,8 @@ private:
                 now,
                 &frame) !=
             WidgetRailOverlayPlatformStatus::Ok) {
+            heldActionRepeat_.Reset();
+            heldActionAuthority_.reset();
             if (textEntryModal_.active())
                 textEntryModal_.UpdateControllerRepeat({}, now);
             return;
@@ -8388,6 +8395,15 @@ private:
         const WORD buttons = frame.state.buttons;
         const WORD pressed = frame.pressedButtons;
         const WORD released = frame.releasedButtons;
+        constexpr WORD repeatRecoveryChord =
+            XINPUT_GAMEPAD_BACK | XINPUT_GAMEPAD_START;
+        if (!connected || !foregroundOwned ||
+            (buttons & repeatRecoveryChord) == repeatRecoveryChord) {
+            heldActionRepeat_.Reset();
+            heldActionAuthority_.reset();
+        } else {
+            PumpHeldActionRepeat(frame, now);
+        }
         if (RichMediaInputCurrent() &&
             richMediaSurface_->state().lifecycle ==
                 widgetrail::richmedia::Lifecycle::Visible) {
@@ -8522,6 +8538,8 @@ private:
             } else if (
                 frame.leftTriggerPressed != WRAIL_OVERLAY_PLATFORM_FALSE &&
                 EmbeddedMediaCommandSupported(L"seekBackward")) {
+                BeginMediaHeldActionRepeat(
+                    HeldActionKind::FullscreenMedia, L"leftTrigger", now);
                 if (const auto target = OverlayFullscreenMediaSeekTarget(
                         widgetrail::input::NavigationDirection::Left)) {
                     (void)richMediaSurface_->SendSeekPosition(*target);
@@ -8529,6 +8547,8 @@ private:
             } else if (
                 frame.rightTriggerPressed != WRAIL_OVERLAY_PLATFORM_FALSE &&
                 EmbeddedMediaCommandSupported(L"seekForward")) {
+                BeginMediaHeldActionRepeat(
+                    HeldActionKind::FullscreenMedia, L"rightTrigger", now);
                 if (const auto target = OverlayFullscreenMediaSeekTarget(
                         widgetrail::input::NavigationDirection::Right)) {
                     (void)richMediaSurface_->SendSeekPosition(*target);
@@ -8752,6 +8772,8 @@ private:
                         widgetrail::richmedia::Command::NavigateNext);
                 if (frame.leftTriggerPressed != WRAIL_OVERLAY_PLATFORM_FALSE &&
                     EmbeddedMediaCommandSupported(L"seekBackward")) {
+                    BeginMediaHeldActionRepeat(
+                        HeldActionKind::CompactMedia, L"leftTrigger", now);
                     if (const auto target =
                             pinnedSurfaceCoordinator_.CompactMediaSeekTarget(
                                 widgetrail::input::NavigationDirection::Left))
@@ -8759,6 +8781,8 @@ private:
                 } else if (
                     frame.rightTriggerPressed != WRAIL_OVERLAY_PLATFORM_FALSE &&
                     EmbeddedMediaCommandSupported(L"seekForward")) {
+                    BeginMediaHeldActionRepeat(
+                        HeldActionKind::CompactMedia, L"rightTrigger", now);
                     if (const auto target =
                             pinnedSurfaceCoordinator_.CompactMediaSeekTarget(
                                 widgetrail::input::NavigationDirection::Right))
@@ -8889,7 +8913,7 @@ private:
         }
 
         if (pressed & XINPUT_GAMEPAD_A) {
-            DispatchControllerAction(L"A", true);
+            DispatchRepeatableControllerAction(L"A", now);
             // Opening a modal runs a nested message loop. When it returns, the
             // original activation frame is still on this stack and must not be
             // interpreted a second time after modal authority is retired.
@@ -8897,31 +8921,31 @@ private:
                 return;
         }
         if (pressed & XINPUT_GAMEPAD_B) {
-            DispatchControllerAction(L"B", true);
+            DispatchRepeatableControllerAction(L"B", now);
         }
         if (pressed & XINPUT_GAMEPAD_X) {
-            DispatchControllerAction(L"X", true);
+            DispatchRepeatableControllerAction(L"X", now);
         }
         if (pressed & XINPUT_GAMEPAD_LEFT_SHOULDER) {
-            DispatchControllerAction(L"LB", true);
+            DispatchRepeatableControllerAction(L"LB", now);
         }
         if (pressed & XINPUT_GAMEPAD_RIGHT_SHOULDER) {
-            DispatchControllerAction(L"RB", true);
+            DispatchRepeatableControllerAction(L"RB", now);
         }
         if (pressed & XINPUT_GAMEPAD_LEFT_THUMB) {
-            DispatchControllerAction(L"LS", true);
+            DispatchRepeatableControllerAction(L"LS", now);
         }
         if (pressed & XINPUT_GAMEPAD_RIGHT_THUMB) {
-            DispatchControllerAction(L"RS", true);
+            DispatchRepeatableControllerAction(L"RS", now);
         }
         if (!recoveryChordDown && (pressed & XINPUT_GAMEPAD_START)) {
-            DispatchControllerAction(L"Menu", true);
+            DispatchRepeatableControllerAction(L"Menu", now);
         }
         if (frame.leftTriggerPressed != WRAIL_OVERLAY_PLATFORM_FALSE) {
-            DispatchControllerAction(L"LT", true);
+            DispatchRepeatableControllerAction(L"LT", now);
         }
         if (frame.rightTriggerPressed != WRAIL_OVERLAY_PLATFORM_FALSE) {
-            DispatchControllerAction(L"RT", true);
+            DispatchRepeatableControllerAction(L"RT", now);
         }
         if (frame.leftTriggerReleased != WRAIL_OVERLAY_PLATFORM_FALSE &&
             interactionSession_.TransitionPressedPresentation(
@@ -8950,7 +8974,7 @@ private:
                     state_.selectedWidget(), TrayYRestartEligible(), now);
                 InvalidateRect(window_, nullptr, FALSE);
             } else {
-                DispatchControllerAction(L"Y", true);
+                DispatchRepeatableControllerAction(L"Y", now);
             }
         }
         if (connected && trayYGesture_.capturing() &&
@@ -10367,6 +10391,250 @@ private:
         if (button == L"DPadLeft") return L"dPadLeft";
         if (button == L"DPadRight") return L"dPadRight";
         return L"";
+    }
+
+    enum class HeldActionKind { Authored, CompactMedia, FullscreenMedia };
+
+    struct HeldActionAuthority final {
+        HeldActionKind kind{HeldActionKind::Authored};
+        std::wstring widgetId;
+        std::wstring instanceId;
+        std::wstring runtimeGeneration;
+        std::wstring presentationGeneration;
+        std::wstring inputScopeId;
+        std::wstring sourceElementId;
+        std::wstring protocolButton;
+        std::wstring actionId;
+        bool dashboard{};
+        bool pinned{};
+        long long lastDispatchedSnapshotSequence{};
+    };
+
+    [[nodiscard]] static bool RepeatShortcutMatches(
+        const widgetrail::WidgetShortcut& shortcut,
+        const std::wstring_view button) noexcept {
+        return shortcut.button == button && shortcut.phase == L"pressed" &&
+            shortcut.repeatPolicy == L"whileHeld";
+    }
+
+    [[nodiscard]] static bool FindNodePathInScope(
+        const widgetrail::WidgetNode& node,
+        const std::wstring_view target,
+        const bool scopeRoot,
+        std::vector<const widgetrail::WidgetNode*>& path) {
+        if (!scopeRoot && !node.inputScopeId.empty()) return false;
+        path.push_back(&node);
+        if (node.id == target) return true;
+        for (const auto& child : node.children) {
+            if (FindNodePathInScope(child, target, false, path)) return true;
+        }
+        path.pop_back();
+        return false;
+    }
+
+    [[nodiscard]] static const widgetrail::WidgetNode* FindScopeRoot(
+        const widgetrail::WidgetNode& node,
+        const std::wstring_view scopeId,
+        const bool root = true) noexcept {
+        if ((root || !node.inputScopeId.empty()) &&
+            (node.inputScopeId.empty() ? std::wstring_view{node.id}
+                                       : std::wstring_view{node.inputScopeId}) == scopeId)
+            return &node;
+        for (const auto& child : node.children) {
+            if (const auto* found = FindScopeRoot(child, scopeId, false)) return found;
+        }
+        return nullptr;
+    }
+
+    [[nodiscard]] std::optional<HeldActionAuthority> ResolveAuthoredHeldAction(
+        const std::wstring_view protocolButton) const {
+        if (state_.surface() == widgetrail::Surface::Hidden ||
+            textEntryModal_.active() || trayContextMenu_ ||
+            OverlayFullscreenMediaRequested() ||
+            pinnedSurfaceCoordinator_.controllerFocused() ||
+            pinnedSurfaceCoordinator_.placementMode() !=
+                widgetrail::pinned::PlacementMode::None ||
+            pinnedSurfaceCoordinator_.opacityAdjustmentActive() ||
+            RichMediaInputCurrent())
+            return std::nullopt;
+        const bool dashboard = state_.focusRegion() == widgetrail::FocusRegion::Tray;
+        const std::wstring_view widgetId = dashboard
+            ? state_.selectedWidget() : state_.activeWidget();
+        if (!dashboard && (state_.surface() != widgetrail::Surface::Widget ||
+                           state_.focusRegion() != widgetrail::FocusRegion::Widget))
+            return std::nullopt;
+        const auto* snapshot = InteractionSnapshotFor(widgetId);
+        const auto* descriptor = sessions_.FindDescriptor(widgetId);
+        if (!snapshot || !descriptor) return std::nullopt;
+
+        HeldActionAuthority authority{
+            HeldActionKind::Authored, std::wstring{widgetId}, snapshot->instanceId,
+            descriptor->runtimeGeneration, descriptor->presentationGeneration,
+            snapshot->activeInputScopeId, {}, std::wstring{protocolButton}, {},
+            dashboard, pinnedSurfaceCoordinator_.pinned(), snapshot->sequence};
+        if (dashboard) {
+            const auto action = std::find_if(
+                snapshot->quickActions.begin(), snapshot->quickActions.end(),
+                [&](const auto& candidate) {
+                    return candidate.button == protocolButton &&
+                        candidate.repeatPolicy == L"whileHeld";
+                });
+            if (action == snapshot->quickActions.end()) return std::nullopt;
+            authority.sourceElementId = L"dashboard-card";
+            authority.actionId = action->actionId;
+            return authority;
+        }
+
+        const auto visible = widgetrail::input::ResolveVisibleFocusTarget(
+            interactionSession_.focusedElementId(), snapshot->activeInputScopeId,
+            lastWidgetRenderResult_);
+        if (!visible) return std::nullopt;
+        const auto* scopeRoot = FindScopeRoot(
+            snapshot->root, snapshot->activeInputScopeId);
+        if (!scopeRoot) return std::nullopt;
+        std::vector<const widgetrail::WidgetNode*> path;
+        if (!FindNodePathInScope(*scopeRoot, *visible, true, path) || path.empty())
+            return std::nullopt;
+        const auto* focused = path.back();
+        if (focused->isDisabled || focused->isBusy) return std::nullopt;
+        for (auto cursor = path.rbegin(); cursor != path.rend(); ++cursor) {
+            const auto shortcut = std::find_if(
+                (*cursor)->shortcuts.begin(), (*cursor)->shortcuts.end(),
+                [&](const auto& candidate) {
+                    return RepeatShortcutMatches(candidate, protocolButton);
+                });
+            if (shortcut != (*cursor)->shortcuts.end()) {
+                authority.sourceElementId = (*cursor)->id;
+                authority.actionId = shortcut->actionId;
+                return authority;
+            }
+        }
+        return std::nullopt;
+    }
+
+    [[nodiscard]] bool HeldActionAuthorityCurrent(
+        const HeldActionAuthority& captured) const {
+        if (captured.kind != HeldActionKind::Authored) {
+            if (!embeddedMediaAuthority_ || !EmbeddedMediaAuthorityCurrent() ||
+                embeddedMediaAuthority_->widgetId != captured.widgetId ||
+                embeddedMediaAuthority_->instanceId != captured.instanceId ||
+                embeddedMediaAuthority_->runtimeGeneration != captured.runtimeGeneration ||
+                embeddedMediaAuthority_->presentationGeneration !=
+                    captured.presentationGeneration ||
+                pinnedSurfaceCoordinator_.pinned() != captured.pinned ||
+                !EmbeddedMediaCommandSupported(
+                    captured.protocolButton == L"leftTrigger"
+                        ? L"seekBackward" : L"seekForward"))
+                return false;
+            return captured.kind == HeldActionKind::CompactMedia
+                ? pinnedSurfaceCoordinator_.controllerFocused() &&
+                    pinnedSurfaceCoordinator_.compactMediaPresentation() &&
+                    embeddedMediaAuthority_->projection == EmbeddedMediaProjection::Pinned
+                : OverlayFullscreenMediaRequested() &&
+                    embeddedMediaAuthority_->projection == EmbeddedMediaProjection::Overlay;
+        }
+        const auto current = ResolveAuthoredHeldAction(captured.protocolButton);
+        return current && current->kind == captured.kind &&
+            current->widgetId == captured.widgetId &&
+            current->instanceId == captured.instanceId &&
+            current->runtimeGeneration == captured.runtimeGeneration &&
+            current->presentationGeneration == captured.presentationGeneration &&
+            current->inputScopeId == captured.inputScopeId &&
+            current->sourceElementId == captured.sourceElementId &&
+            current->actionId == captured.actionId &&
+            current->dashboard == captured.dashboard &&
+            current->pinned == captured.pinned;
+    }
+
+    [[nodiscard]] static std::uint32_t RepeatButtonKey(
+        const std::wstring_view protocolButton) noexcept {
+        if (protocolButton == L"leftTrigger") return 0x1'0000;
+        if (protocolButton == L"rightTrigger") return 0x2'0000;
+        if (protocolButton == L"a") return XINPUT_GAMEPAD_A;
+        if (protocolButton == L"b") return XINPUT_GAMEPAD_B;
+        if (protocolButton == L"x") return XINPUT_GAMEPAD_X;
+        if (protocolButton == L"y") return XINPUT_GAMEPAD_Y;
+        if (protocolButton == L"leftBumper") return XINPUT_GAMEPAD_LEFT_SHOULDER;
+        if (protocolButton == L"rightBumper") return XINPUT_GAMEPAD_RIGHT_SHOULDER;
+        if (protocolButton == L"leftStick") return XINPUT_GAMEPAD_LEFT_THUMB;
+        if (protocolButton == L"rightStick") return XINPUT_GAMEPAD_RIGHT_THUMB;
+        if (protocolButton == L"menu") return XINPUT_GAMEPAD_START;
+        return 0;
+    }
+
+    [[nodiscard]] static bool RepeatButtonDown(
+        const WidgetRailOverlayPlatformControllerFrame& frame,
+        const std::uint32_t key) noexcept {
+        if (key == 0x1'0000)
+            return frame.state.leftTrigger >= XINPUT_GAMEPAD_TRIGGER_THRESHOLD;
+        if (key == 0x2'0000)
+            return frame.state.rightTrigger >= XINPUT_GAMEPAD_TRIGGER_THRESHOLD;
+        return key != 0 && (frame.state.buttons & static_cast<WORD>(key)) != 0;
+    }
+
+    void BeginHeldActionRepeat(
+        HeldActionAuthority authority,
+        const ULONGLONG now) {
+        const auto key = RepeatButtonKey(authority.protocolButton);
+        if (key == 0) return;
+        heldActionAuthority_ = std::move(authority);
+        heldActionRepeat_.Begin(key, now);
+    }
+
+    void BeginMediaHeldActionRepeat(
+        const HeldActionKind kind,
+        const std::wstring_view protocolButton,
+        const ULONGLONG now) {
+        if (!embeddedMediaAuthority_) return;
+        BeginHeldActionRepeat({
+            kind,
+            embeddedMediaAuthority_->widgetId,
+            embeddedMediaAuthority_->instanceId,
+            embeddedMediaAuthority_->runtimeGeneration,
+            embeddedMediaAuthority_->presentationGeneration,
+            {}, {}, std::wstring{protocolButton}, {}, false,
+            pinnedSurfaceCoordinator_.pinned(), embeddedMediaAuthority_->sequence,
+        }, now);
+    }
+
+    void DispatchRepeatableControllerAction(
+        const std::wstring_view button,
+        const ULONGLONG now) {
+        if (const auto authority = ResolveAuthoredHeldAction(ProtocolButton(button)))
+            BeginHeldActionRepeat(*authority, now);
+        DispatchControllerAction(button, true);
+    }
+
+    void PumpHeldActionRepeat(
+        const WidgetRailOverlayPlatformControllerFrame& frame,
+        const ULONGLONG now) {
+        if (!heldActionAuthority_) return;
+        const auto key = heldActionRepeat_.button();
+        if (!heldActionRepeat_.Update(
+                RepeatButtonDown(frame, key),
+                HeldActionAuthorityCurrent(*heldActionAuthority_), now)) {
+            if (!heldActionRepeat_.active()) heldActionAuthority_.reset();
+            return;
+        }
+        auto& authority = *heldActionAuthority_;
+        if (authority.kind == HeldActionKind::Authored) {
+            const auto* snapshot = InteractionSnapshotFor(authority.widgetId);
+            if (!snapshot || snapshot->sequence <=
+                    authority.lastDispatchedSnapshotSequence)
+                return;
+            authority.lastDispatchedSnapshotSequence = snapshot->sequence;
+            const auto button = DisplayButton(authority.protocolButton);
+            DispatchWidgetAction(
+                button, widgetrail::input::NavigationEventPhase::Repeated);
+            return;
+        }
+        const auto direction = authority.protocolButton == L"leftTrigger"
+            ? widgetrail::input::NavigationDirection::Left
+            : widgetrail::input::NavigationDirection::Right;
+        const auto target = authority.kind == HeldActionKind::CompactMedia
+            ? pinnedSurfaceCoordinator_.CompactMediaSeekTarget(direction)
+            : OverlayFullscreenMediaSeekTarget(direction);
+        if (target) (void)richMediaSurface_->SendSeekPosition(*target);
     }
 
     bool HandleFocusedSliderModeButton(const std::wstring_view button) {
@@ -13806,6 +14074,8 @@ private:
     unsigned long long performanceSuccessfulFrames_{};
     widgetrail::OverlayState state_;
     widgetrail::input::TrayYGesture trayYGesture_;
+    widgetrail::input::HeldButtonActionRepeat heldActionRepeat_;
+    std::optional<HeldActionAuthority> heldActionAuthority_;
     widgetrail::input::WidgetInteractionSession interactionSession_;
     std::wstring rightStickDropSignature_;
     std::uint64_t rightStickDropCount_{};

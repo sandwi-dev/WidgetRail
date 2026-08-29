@@ -1,3 +1,5 @@
+using WidgetRail.WidgetProtocol;
+
 namespace WidgetRail.WidgetSdk;
 
 public record WidgetActionFailedEventArgs(
@@ -18,6 +20,7 @@ public abstract partial class Widget
     {
         public CancellationToken Lifetime { get; } = lifetime;
         public LinkedList<QueuedAction> Pending { get; } = [];
+        public QueuedAction? Active { get; set; }
         public SemaphoreSlim Available { get; } = new(0);
         public TaskCompletionSource Completion { get; } = new(
             TaskCreationOptions.RunContinuationsAsynchronously);
@@ -89,7 +92,18 @@ public abstract partial class Widget
                 }
                 else queue = _actionQueue;
 
-                if (action.RequestedValue is not null && queue.Pending.Last is { } tail &&
+                if (action.Phase == ControllerEventPhase.Repeated &&
+                    ((queue.Active is { } active &&
+                      IsSameDiscreteAction(active.Action, action)) ||
+                     (queue.Pending.Last is { } pending &&
+                      IsSameDiscreteAction(pending.Value.Action, action))))
+                {
+                    // A held action owns at most one active or pending
+                    // invocation. Due ticks while it is still owned coalesce
+                    // instead of filling the bounded discrete-action FIFO.
+                    admission = WidgetOperationAdmission.Joined;
+                }
+                else if (action.RequestedValue is not null && queue.Pending.Last is { } tail &&
                     CanCoalesceSliderChange(tail.Value.Action, action))
                 {
                     replacedAction = tail.Value.Action;
@@ -128,6 +142,15 @@ public abstract partial class Widget
         string.Equals(previous.SourceElementId, current.SourceElementId, StringComparison.Ordinal) &&
         string.Equals(previous.InputScopeId, current.InputScopeId, StringComparison.Ordinal);
 
+    private static bool IsSameDiscreteAction(
+        WidgetActionEvent previous,
+        WidgetActionEvent current) =>
+        previous.RequestedValue is null && current.RequestedValue is null &&
+        string.Equals(previous.ActionId, current.ActionId, StringComparison.Ordinal) &&
+        string.Equals(previous.SourceElementId, current.SourceElementId, StringComparison.Ordinal) &&
+        string.Equals(previous.InputScopeId, current.InputScopeId, StringComparison.Ordinal) &&
+        previous.ControllerButton == current.ControllerButton;
+
     private async Task ConsumeActionsAsync(ActionQueueState queue)
     {
         try
@@ -141,6 +164,7 @@ public abstract partial class Widget
                     if (queue.Pending.First is not { } first) continue;
                     queued = first.Value;
                     queue.Pending.RemoveFirst();
+                    queue.Active = queued;
                 }
 
                 using var invocation = WidgetCapabilityInvocationContext.Enter(
@@ -160,6 +184,13 @@ public abstract partial class Widget
                 {
                     ObserveActionDiagnostic(queued.Action, "terminal", "failed");
                     ReportActionFailure(queued.Action, exception);
+                }
+                finally
+                {
+                    lock (_actionQueueLock)
+                    {
+                        if (ReferenceEquals(queue.Active, queued)) queue.Active = null;
+                    }
                 }
             }
         }
@@ -208,6 +239,7 @@ public abstract partial class Widget
     {
         WidgetOperationAdmission.Enqueued => "enqueued",
         WidgetOperationAdmission.Replaced => "replaced",
+        WidgetOperationAdmission.Joined => "joined",
         WidgetOperationAdmission.RejectedInactive => "rejected-inactive",
         WidgetOperationAdmission.RejectedCapacity => "rejected-capacity",
         _ => "unknown",

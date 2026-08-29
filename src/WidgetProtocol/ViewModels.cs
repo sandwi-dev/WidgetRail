@@ -216,6 +216,13 @@ public enum ControllerEventPhase
     Repeated,
 }
 
+[JsonConverter(typeof(JsonStringEnumConverter<ControllerActionRepeatPolicy>))]
+public enum ControllerActionRepeatPolicy
+{
+    None,
+    WhileHeld,
+}
+
 public sealed record FocusNeighbors(
     string? Up = null,
     string? Down = null,
@@ -225,7 +232,8 @@ public sealed record FocusNeighbors(
 public sealed record ControllerShortcut(
     ControllerButton Button,
     string ActionId,
-    ControllerEventPhase Phase = ControllerEventPhase.Pressed);
+    ControllerEventPhase Phase = ControllerEventPhase.Pressed,
+    ControllerActionRepeatPolicy RepeatPolicy = ControllerActionRepeatPolicy.None);
 
 /// <summary>
 /// Names the one exact control-capability operation a dashboard quick action may
@@ -244,7 +252,8 @@ public sealed record WidgetQuickAction(
     ControllerButton Button,
     string ActionId,
     string Label,
-    WidgetQuickActionCapability? Capability = null);
+    WidgetQuickActionCapability? Capability = null,
+    ControllerActionRepeatPolicy RepeatPolicy = ControllerActionRepeatPolicy.None);
 
 [JsonConverter(typeof(JsonStringEnumConverter<VirtualCollectionWindowChange>))]
 public enum VirtualCollectionWindowChange

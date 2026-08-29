@@ -1729,6 +1729,10 @@ internal sealed class BridgeClientRegistry : IAsyncDisposable
         var quickAction = snapshot.QuickActions.SingleOrDefault(
             action => action.Button == input.Button) ?? throw new BridgeProtocolException(
                 "Dashboard button is not exposed by the cached snapshot.");
+        if (input.Phase == ControllerEventPhase.Repeated &&
+            quickAction.RepeatPolicy != ControllerActionRepeatPolicy.WhileHeld)
+            throw new BridgeProtocolException(
+                "Dashboard button does not admit held repetition.");
         if (input.Phase != ControllerEventPhase.Pressed ||
             input.Origin != ControllerInputOrigin.PhysicalController ||
             quickAction.Capability is null)
@@ -1843,7 +1847,7 @@ internal sealed class BridgeClientRegistry : IAsyncDisposable
                 focusedNode.Minimum, focusedNode.Maximum, focusedNode.Step);
 
         var shortcut = focusedNode.Shortcuts.FirstOrDefault(candidate =>
-            candidate.Button == input.Button && candidate.Phase == input.Phase);
+            ShortcutMatchesInput(candidate, input));
         if (shortcut is not null)
             return new(shortcut.ActionId, focusedNode.Id, focusedNode.Kind);
         var path = new List<ViewNode>();
@@ -1853,12 +1857,21 @@ internal sealed class BridgeClientRegistry : IAsyncDisposable
         for (var index = path.Count - 2; index >= 0; index--)
         {
             shortcut = path[index].Shortcuts.FirstOrDefault(candidate =>
-                candidate.Button == input.Button && candidate.Phase == input.Phase);
+                ShortcutMatchesInput(candidate, input));
             if (shortcut is not null)
                 return new(shortcut.ActionId, path[index].Id, path[index].Kind);
         }
         return null;
     }
+
+    private static bool ShortcutMatchesInput(
+        ControllerShortcut shortcut,
+        ControllerInputEvent input) =>
+        shortcut.Button == input.Button &&
+        (shortcut.Phase == input.Phase ||
+         (input.Phase == ControllerEventPhase.Repeated &&
+          shortcut.Phase == ControllerEventPhase.Pressed &&
+          shortcut.RepeatPolicy == ControllerActionRepeatPolicy.WhileHeld));
 
     private sealed record PinnedSurfaceInputBinding(
         string ActionId,

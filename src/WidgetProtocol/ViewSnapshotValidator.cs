@@ -177,6 +177,13 @@ public static class ViewSnapshotValidator
                 Add($"$.quickActions[{index}].button", "reserved_button", "This button is reserved for dashboard navigation or host behavior.");
             if (!quickActionButtons.Add(quickAction.Button))
                 Add($"$.quickActions[{index}].button", "duplicate_button", "A dashboard button can trigger only one quick action.");
+            if (!Enum.IsDefined(quickAction.RepeatPolicy))
+                Add($"$.quickActions[{index}].repeatPolicy", "invalid_repeat_policy",
+                    "The controller action repeat policy is not supported.");
+            else if (quickAction.RepeatPolicy == ControllerActionRepeatPolicy.WhileHeld &&
+                     !IsRepeatableDiscreteActionButton(quickAction.Button))
+                Add($"$.quickActions[{index}].repeatPolicy", "reserved_repeat_button",
+                    "This button remains edge-only because the host owns its navigation or shell behavior.");
             if (quickAction.Capability is { } capability)
             {
                 CheckCapabilityIdentifier(capability.CapabilityId,
@@ -1041,6 +1048,13 @@ public static class ViewSnapshotValidator
                 if (!shortcutButtons.Add((shortcut.Button, shortcut.Phase)))
                     Add($"{path}.shortcuts[{index}].button", "duplicate_shortcut",
                         "A node cannot declare the same controller button and phase twice.");
+                if (!Enum.IsDefined(shortcut.RepeatPolicy))
+                    Add($"{path}.shortcuts[{index}].repeatPolicy", "invalid_repeat_policy",
+                        "The controller action repeat policy is not supported.");
+                else if (shortcut.RepeatPolicy == ControllerActionRepeatPolicy.WhileHeld &&
+                         !IsRepeatableDiscreteActionButton(shortcut.Button))
+                    Add($"{path}.shortcuts[{index}].repeatPolicy", "reserved_repeat_button",
+                        "This button remains edge-only because the host owns its navigation or shell behavior.");
             }
 
             for (var index = 0; index < children.Count; index++)
@@ -1171,6 +1185,12 @@ public static class ViewSnapshotValidator
         ControllerButton.View or
         ControllerButton.DPadUp or ControllerButton.DPadDown or
         ControllerButton.DPadLeft or ControllerButton.DPadRight);
+
+    private static bool IsRepeatableDiscreteActionButton(ControllerButton button) => button is
+        ControllerButton.X or ControllerButton.Y or
+        ControllerButton.LeftBumper or ControllerButton.RightBumper or
+        ControllerButton.LeftTrigger or ControllerButton.RightTrigger or
+        ControllerButton.LeftStick or ControllerButton.RightStick;
 
     private enum ImageSourceKind { Invalid, Https, InlinePng }
 

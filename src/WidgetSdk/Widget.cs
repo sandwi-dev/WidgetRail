@@ -599,11 +599,14 @@ public abstract partial class Widget
 
         if (input.Context == ControllerInputContext.DashboardQuickAction)
         {
-            if (input.Phase != ControllerEventPhase.Pressed ||
-                input.SnapshotSequence != snapshot.Sequence)
+            if (input.SnapshotSequence != snapshot.Sequence)
                 return ValueTask.FromResult(false);
             var quickAction = snapshot.QuickActions.FirstOrDefault(action => action.Button == input.Button);
-            if (quickAction is null) return ValueTask.FromResult(false);
+            if (quickAction is null ||
+                (input.Phase == ControllerEventPhase.Repeated &&
+                 quickAction.RepeatPolicy != ControllerActionRepeatPolicy.WhileHeld) ||
+                input.Phase is not (ControllerEventPhase.Pressed or ControllerEventPhase.Repeated))
+                return ValueTask.FromResult(false);
             var gestureContext = input.Origin == ControllerInputOrigin.PhysicalController
                 ? new WidgetCapabilityGestureContext(input.Sequence, input.SnapshotSequence)
                 : null;
@@ -706,7 +709,7 @@ public abstract partial class Widget
             if (input.Button == ControllerButton.A) return ValueTask.FromResult(false);
 
             var focusedShortcut = focusedNode?.Shortcuts.FirstOrDefault(candidate =>
-                candidate.Button == input.Button && candidate.Phase == input.Phase);
+                ShortcutMatchesInput(candidate, input.Button, input.Phase));
             if (focusedShortcut is not null)
             {
                 if (!focusedActionable) return ValueTask.FromResult(false);
@@ -876,7 +879,7 @@ public abstract partial class Widget
     {
         if (scopeRoot.IsDisabled is true || scopeRoot.IsBusy is true) return null;
         var shortcut = scopeRoot.Shortcuts.FirstOrDefault(candidate =>
-            candidate.Button == button && candidate.Phase == phase);
+            ShortcutMatchesInput(candidate, button, phase));
         return shortcut is null ? null : (scopeRoot, shortcut);
     }
 
@@ -893,7 +896,7 @@ public abstract partial class Widget
         {
             var ancestor = path[index];
             var shortcut = ancestor.Shortcuts.FirstOrDefault(candidate =>
-                candidate.Button == button && candidate.Phase == phase);
+                ShortcutMatchesInput(candidate, button, phase));
             if (shortcut is not null) return (ancestor, shortcut);
         }
         return null;
@@ -915,4 +918,14 @@ public abstract partial class Widget
             return false;
         }
     }
+
+    private static bool ShortcutMatchesInput(
+        ControllerShortcut shortcut,
+        ControllerButton button,
+        ControllerEventPhase phase) =>
+        shortcut.Button == button &&
+        (shortcut.Phase == phase ||
+         (phase == ControllerEventPhase.Repeated &&
+          shortcut.Phase == ControllerEventPhase.Pressed &&
+          shortcut.RepeatPolicy == ControllerActionRepeatPolicy.WhileHeld));
 }

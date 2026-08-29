@@ -51,12 +51,13 @@ public sealed record GridElement : WidgetElement
     public GridElement Shortcut(
         ControllerButton button,
         string actionId,
-        ControllerEventPhase phase = ControllerEventPhase.Pressed) => this with
+        ControllerEventPhase phase = ControllerEventPhase.Pressed,
+        ControllerActionRepeatPolicy repeatPolicy = ControllerActionRepeatPolicy.None) => this with
         {
             Shortcuts =
             [
                 .. Shortcuts,
-                new ControllerShortcut(button, RequireId(actionId), phase),
+                new ControllerShortcut(button, RequireId(actionId), phase, repeatPolicy),
             ],
         };
 

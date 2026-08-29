@@ -916,8 +916,10 @@ return new WidgetView(
 When `confirm-dialog` is active, Y and the container's focusless B resolve only
 inside that scope. The root binding cannot fire. Dashboard quick actions use
 their separate bounded contract, and Guide/Home is never part of a widget input
-scope. The MVP accepts only Pressed shortcuts and rejects A or D-pad shortcut
-bindings because those buttons are reserved for activation and navigation.
+scope. Shortcuts are authored as Pressed. Eligible discrete actions may opt
+into `ControllerActionRepeatPolicy.WhileHeld`; the host supplies bounded
+Repeated events while preserving the same binding. A, D-pad, and shell-owned
+navigation remain unavailable as repeatable shortcuts.
 
 Every snapshot contains a concrete `ActiveInputScopeId`; `WidgetView` defaults
 it to the root container's `.InputScope(...)` value or root node ID. Every
@@ -971,9 +973,14 @@ QuickActions:
 [
     new WidgetQuickAction(ControllerButton.LeftBumper, "previous", "Previous"),
     new WidgetQuickAction(ControllerButton.X, "toggle", "Play or pause"),
-    new WidgetQuickAction(ControllerButton.RightBumper, "next", "Next"),
+new WidgetQuickAction(ControllerButton.RightBumper, "next", "Next"),
 ]
 ```
+
+Quick actions are edge-only unless the declaration sets
+`RepeatPolicy: ControllerActionRepeatPolicy.WhileHeld`. Opt-in repetition uses
+the same fixed host cadence and revalidates the selected widget, snapshot, and
+action binding before every emission; missed ticks do not accumulate.
 
 Allowed dashboard buttons are X, LB, RB, LT, RT, both stick clicks, and Menu.
 A, B, Y, D-pad, View, and Guide/Home are reserved by the host. View is the
