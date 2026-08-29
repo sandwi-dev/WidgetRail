@@ -596,16 +596,19 @@ int wmain() {
         Check(modal.PostController(L"X"), "X backspaces at the caret");
         Check(WaitUntil([&] { return WindowText(edit) == L"abA"; }),
             "Backspace removes the character before the live caret");
-        modal.UpdateCaretRepeat(true, false, true, false, 1000);
+        modal.UpdateControllerRepeat({
+            .caretLeftDown = true,
+            .caretLeftPressed = true,
+        }, 1000);
         Check(EditSelection(edit) == std::pair<DWORD, DWORD>{1, 1},
             "new shoulder press moves the caret once");
-        modal.UpdateCaretRepeat(true, false, false, false, 1300);
+        modal.UpdateControllerRepeat({.caretLeftDown = true}, 1300);
         Check(EditSelection(edit) == std::pair<DWORD, DWORD>{1, 1},
             "caret repeat waits for the bounded initial delay");
-        modal.UpdateCaretRepeat(true, false, false, false, 1400);
+        modal.UpdateControllerRepeat({.caretLeftDown = true}, 1400);
         Check(EditSelection(edit) == std::pair<DWORD, DWORD>{0, 0},
             "held shoulder repeats after the bounded delay");
-        modal.UpdateCaretRepeat(false, false, false, false, 1500);
+        modal.UpdateControllerRepeat({}, 1500);
         Check(modal.PostController(L"A"), "A inserts at the moved caret");
         Check(modal.PostController(L"RB"), "RB moves the caret right");
         Check(modal.PostController(L"A"), "A inserts again at the new caret");
@@ -626,6 +629,192 @@ int wmain() {
     Check(!modal.active(), "committed modal releases its window");
     Check(IsWindowEnabled(owner) && GetFocus() == owner,
         "Enter re-enables the owner and restores its focus");
+
+    std::thread repeatDriver([&] {
+        Check(WaitUntil([&] { return modal.active(); }),
+            "controller-repeat modal becomes active");
+        HWND window{};
+        HWND edit{};
+        Check(WaitUntil([&] {
+            window = FindWindowW(
+                L"WidgetRail.TextEntryModal", ModalTitle(L"Repeatable input").c_str());
+            edit = window ? GetDlgItem(window, 101) : nullptr;
+            return window && edit;
+        }), "controller-repeat modal controls finish creation");
+        ModalLoopAcknowledgment repeatModalLoopAcknowledgment(
+            GetWindowThreadProcessId(window, nullptr));
+        Check(repeatModalLoopAcknowledgment.Wait(),
+            "controller-repeat modal enters its message loop before timing oracles");
+        Check(WindowText(CurrentFocus(window)) == L"q",
+            "controller-repeat modal starts on the declared printable key");
+
+        modal.UpdateControllerRepeat({
+            .activateDown = true,
+            .activatePressed = true,
+        }, 1000);
+        Check(WindowText(edit) == L"abcdq",
+            "fresh A press activates the selected printable key exactly once");
+        modal.UpdateControllerRepeat({.activateDown = true}, 1399);
+        Check(WindowText(edit) == L"abcdq",
+            "held A does not repeat before the 400 millisecond delay");
+        modal.UpdateControllerRepeat({.activateDown = true}, 1400);
+        Check(WindowText(edit) == L"abcdqq",
+            "held A repeats once at the initial deadline");
+        modal.UpdateControllerRepeat({.activateDown = true}, 1400);
+        modal.UpdateControllerRepeat({.activateDown = true}, 1489);
+        Check(WindowText(edit) == L"abcdqq",
+            "controller polls do not duplicate a logical A repeat");
+        modal.UpdateControllerRepeat({.activateDown = true}, 1490);
+        Check(WindowText(edit) == L"abcdqqq",
+            "held A repeats once at the 90 millisecond cadence");
+        modal.UpdateControllerRepeat({}, 1500);
+        modal.UpdateControllerRepeat({
+            .activateDown = true,
+            .activatePressed = true,
+        }, 1600);
+        Check(WindowText(edit) == L"abcdqqqq",
+            "A repress performs one new immediate action");
+        modal.UpdateControllerRepeat({.activateDown = true}, 1999);
+        Check(WindowText(edit) == L"abcdqqqq",
+            "A repress receives a fresh initial delay");
+        modal.UpdateControllerRepeat({}, 2000);
+
+        modal.UpdateControllerRepeat({
+            .activateDown = true,
+            .activatePressed = true,
+        }, 2100);
+        const auto capturedKeyText = WindowText(edit);
+        Check(modal.PostController(L"DPadRight"),
+            "directional owner can change selection during an A hold");
+        Check(WaitUntil([&] { return WindowText(CurrentFocus(window)) == L"w"; }),
+            "directional navigation retains its existing repeat owner");
+        modal.UpdateControllerRepeat({.activateDown = true}, 2500);
+        Check(WindowText(edit) == capturedKeyText,
+            "A hold cancels instead of retargeting to a newly selected key");
+        modal.UpdateControllerRepeat({}, 2510);
+        Check(modal.PostController(L"DPadLeft"), "selection returns to q");
+        Check(modal.PostController(L"DPadDown"), "selection reaches a");
+        Check(modal.PostController(L"DPadDown"), "selection reaches Shift");
+        Check(WaitUntil([&] { return WindowText(CurrentFocus(window)) == L"Shift"; }),
+            "non-printable layer key is selected");
+        modal.UpdateControllerRepeat({
+            .activateDown = true,
+            .activatePressed = true,
+        }, 2600);
+        Check(WaitUntil([&] { return WindowText(CurrentFocus(window)) == L"ABC"; }),
+            "fresh A press activates a layer key once");
+        modal.UpdateControllerRepeat({.activateDown = true}, 3000);
+        Check(WindowText(CurrentFocus(window)) == L"ABC",
+            "non-printable layer key remains one-shot while A is held");
+        modal.UpdateControllerRepeat({}, 3010);
+
+        SetWindowTextW(edit, L"ab");
+        SendMessageW(edit, EM_SETSEL, 2, 2);
+        modal.UpdateControllerRepeat({
+            .backspaceDown = true,
+            .backspacePressed = true,
+            .caretLeftDown = true,
+            .caretLeftPressed = true,
+        }, 3100);
+        Check(WindowText(edit) == L"ab" &&
+                EditSelection(edit) == std::pair<DWORD, DWORD>{2, 2},
+            "simultaneous repeatable buttons fail closed without choosing an action");
+        modal.UpdateControllerRepeat({.backspaceDown = true}, 3500);
+        Check(WindowText(edit) == L"ab",
+            "remaining held button requires a fresh edge after chord cancellation");
+        modal.UpdateControllerRepeat({}, 3510);
+
+        SetWindowTextW(edit, L"");
+        SendMessageW(edit, EM_SETSEL, 0, 0);
+        modal.UpdateControllerRepeat({
+            .backspaceDown = true,
+            .backspacePressed = true,
+        }, 4000);
+        Check(WindowText(edit).empty(),
+            "fresh X at an empty buffer is one bounded no-op");
+        SetWindowTextW(edit, L"z");
+        SendMessageW(edit, EM_SETSEL, 1, 1);
+        modal.UpdateControllerRepeat({.backspaceDown = true}, 4400);
+        Check(WindowText(edit).empty(),
+            "empty-buffer no-op retains X ownership until the held repeat deadline");
+        modal.UpdateControllerRepeat({}, 4410);
+
+        SetWindowTextW(edit, L"ab");
+        SendMessageW(edit, EM_SETSEL, 0, 0);
+        modal.UpdateControllerRepeat({
+            .caretLeftDown = true,
+            .caretLeftPressed = true,
+        }, 5000);
+        Check(EditSelection(edit) == std::pair<DWORD, DWORD>{0, 0},
+            "fresh LB at the left caret bound is one bounded no-op");
+        SendMessageW(edit, EM_SETSEL, 1, 1);
+        modal.UpdateControllerRepeat({.caretLeftDown = true}, 5400);
+        Check(EditSelection(edit) == std::pair<DWORD, DWORD>{0, 0},
+            "left-bound no-op retains LB ownership until repeat");
+        modal.UpdateControllerRepeat({}, 5410);
+        SendMessageW(edit, EM_SETSEL, 2, 2);
+        modal.UpdateControllerRepeat({
+            .caretRightDown = true,
+            .caretRightPressed = true,
+        }, 6000);
+        Check(EditSelection(edit) == std::pair<DWORD, DWORD>{2, 2},
+            "fresh RB at the right caret bound is one bounded no-op");
+        SendMessageW(edit, EM_SETSEL, 1, 1);
+        modal.UpdateControllerRepeat({.caretRightDown = true}, 6400);
+        Check(EditSelection(edit) == std::pair<DWORD, DWORD>{2, 2},
+            "right-bound no-op retains RB ownership until repeat");
+        modal.UpdateControllerRepeat({}, 6410);
+        SendMessageW(edit, EM_SETSEL, 0, 0);
+        modal.UpdateControllerRepeat({
+            .caretRightDown = true,
+            .caretRightPressed = true,
+        }, 6500);
+        Check(EditSelection(edit) == std::pair<DWORD, DWORD>{1, 1},
+            "fresh RB performs exactly one immediate caret move");
+        modal.UpdateControllerRepeat({.caretRightDown = true}, 6899);
+        Check(EditSelection(edit) == std::pair<DWORD, DWORD>{1, 1},
+            "held RB waits through its initial delay");
+        modal.UpdateControllerRepeat({.caretRightDown = true}, 6900);
+        modal.UpdateControllerRepeat({.caretRightDown = true}, 6900);
+        Check(EditSelection(edit) == std::pair<DWORD, DWORD>{2, 2},
+            "RB cadence emits one logical repeat without per-poll duplication");
+        modal.UpdateControllerRepeat({}, 6910);
+
+        SetWindowTextW(edit, L"ab");
+        SendMessageW(edit, EM_SETSEL, 2, 2);
+        modal.UpdateControllerRepeat({
+            .backspaceDown = true,
+            .backspacePressed = true,
+        }, 7000);
+        Check(WindowText(edit) == L"a", "fresh X performs one immediate backspace");
+        modal.UpdateControllerRepeat({}, 7100);
+        SetWindowTextW(edit, L"ab");
+        SendMessageW(edit, EM_SETSEL, 2, 2);
+        modal.UpdateControllerRepeat({.backspaceDown = true}, 7500);
+        Check(WindowText(edit) == L"ab",
+            "neutral or lost context cancels repeat without a held-state escape");
+        modal.UpdateControllerRepeat({
+            .backspaceDown = true,
+            .backspacePressed = true,
+        }, 7600);
+        Check(WindowText(edit) == L"a",
+            "fresh X edge is required after context cancellation");
+        modal.UpdateControllerRepeat({}, 7610);
+        Check(modal.PostController(L"B"),
+            "B remains one edge-triggered modal cancellation");
+    });
+    const auto repeatCancelled = modal.Show(
+        GetModuleHandleW(nullptr), owner, L"abcd", L"Repeatable input", 32);
+    repeatDriver.join();
+    Check(repeatCancelled.outcome ==
+            widgetrail::input::TextEntryModalOutcome::Cancelled &&
+            !repeatCancelled.committedText && !modal.active(),
+        "modal cancellation terminally owns and clears the repeat transaction");
+    modal.UpdateControllerRepeat({
+        .backspaceDown = true,
+        .backspacePressed = true,
+    }, 8000);
+    Check(!modal.active(), "closed modal cannot admit a later repeat action");
 
     std::thread hintDriver([&] {
         Check(WaitUntil([&] { return modal.active(); }), "hint modal becomes active");
@@ -723,6 +912,31 @@ int wmain() {
         }), "password modal exposes one native edit control");
         Check((GetWindowLongPtrW(edit, GWL_STYLE) & ES_PASSWORD) != 0,
             "password modal uses native password semantics");
+        ModalLoopAcknowledgment protectedModalLoopAcknowledgment(
+            GetWindowThreadProcessId(window, nullptr));
+        Check(protectedModalLoopAcknowledgment.Wait(),
+            "protected repeat modal enters its message loop before timing oracles");
+        modal.UpdateControllerRepeat({
+            .activateDown = true,
+            .activatePressed = true,
+        }, 9000);
+        Check(GetWindowTextLengthW(edit) == 1,
+            "protected entry admits one immediate printable-key action");
+        modal.UpdateControllerRepeat({.activateDown = true}, 9399);
+        Check(GetWindowTextLengthW(edit) == 1,
+            "protected entry uses the same bounded initial delay");
+        modal.UpdateControllerRepeat({.activateDown = true}, 9400);
+        Check(GetWindowTextLengthW(edit) == 2,
+            "protected entry uses the same repeat cadence");
+        modal.UpdateControllerRepeat({}, 9410);
+        modal.UpdateControllerRepeat({
+            .backspaceDown = true,
+            .backspacePressed = true,
+        }, 9500);
+        modal.UpdateControllerRepeat({.backspaceDown = true}, 9900);
+        modal.UpdateControllerRepeat({}, 9910);
+        Check(GetWindowTextLengthW(edit) == 0,
+            "protected entry repeats backspace without exposing its contents");
         IUIAutomation* automation{};
         IUIAutomationElement* element{};
         IUIAutomationValuePattern* valuePattern{};
