@@ -21,6 +21,7 @@
 .youtube-section-copy, .youtube-copy { color: var(--text-muted); font-size: 12px; max-lines: 5; }
 .youtube-section-meta { min-width: 0px; color: var(--text-subdued); font-size: 10px; max-lines: 1; text-align: end; flex-grow: 1; }
 .youtube-link { width: 100%; min-height: 36px; padding: 3px 12px; color: var(--text); background: var(--surface); border-color: var(--text-subdued); border-width: 1px; corner-radius: 10px; text-align: start; flex-shrink: 1; }
+.youtube-link.is-empty { color: var(--text-subdued); }
 .youtube-link:focused { border-color: var(--focus); outline-color: var(--focus); outline-width: 2px; outline-offset: -2px; }
 .youtube-player-shell { width: 100%; min-width: 0px; min-height: 0px; gap: 6px; padding: 8px; background: var(--surface-raised); border-color: var(--text-subdued); border-width: 1px; corner-radius: 10px; flex-grow: 1; flex-shrink: 1; overflow: clip; }
 .youtube-media-heading { width: 100%; min-width: 0px; align: center; gap: 8px; flex-shrink: 0; }

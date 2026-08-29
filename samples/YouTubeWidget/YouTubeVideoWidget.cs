@@ -55,13 +55,13 @@ public sealed partial class YouTubeVideoWidget : Widget
 
         var linkEntry = UI.TextEntry(
                 link,
-                "Paste a youtube.com or youtu.be link",
+                "Enter youtube.com or youtu.be link here",
                 LinkActionId,
                 "youtube.link",
                 ProtocolConstants.MaximumTextEntryLength)
             .FocusUp("youtube.player.back")
             .FocusDown("youtube.playback.toggle")
-            .Classes("youtube-link");
+            .Classes("youtube-link", link.Length == 0 ? "is-empty" : "has-value");
         var toggleLabel = state == EmbeddedMediaPlaybackState.Playing ? "Pause" : "Play";
         var toggle = UI.Button("", ToggleActionId, "youtube.playback.toggle")
             .Icon(state == EmbeddedMediaPlaybackState.Playing ? WidgetGlyph.Pause : WidgetGlyph.Play,
@@ -120,12 +120,13 @@ public sealed partial class YouTubeVideoWidget : Widget
         var statusClass = error is not null ? "is-error" :
             pending is not null ? "is-busy" :
             state == EmbeddedMediaPlaybackState.Playing ? "is-playing" : "is-normal";
-        IReadOnlyList<WidgetQuickAction>? quickActions =
+        var playerActionsAvailable =
             includeDashboardQuickActions &&
             videoId is not null &&
             error is null &&
             pending is null &&
-            state != EmbeddedMediaPlaybackState.Loading
+            state != EmbeddedMediaPlaybackState.Loading;
+        IReadOnlyList<WidgetQuickAction>? quickActions = playerActionsAvailable
                 ?
                 [
                     new WidgetQuickAction(ControllerButton.X, ToggleActionId, "Play or pause"),
@@ -174,6 +175,13 @@ public sealed partial class YouTubeVideoWidget : Widget
                     .Classes("youtube-player-shell"))
             .InputScope("youtube.root")
             .Classes("youtube-root");
+        if (playerActionsAvailable)
+        {
+            root = root
+                .Shortcut(ControllerButton.X, ToggleActionId)
+                .Shortcut(ControllerButton.LeftTrigger, SeekBackwardActionId)
+                .Shortcut(ControllerButton.RightTrigger, SeekForwardActionId);
+        }
         return new WidgetView(
             root,
             InitialFocusId: videoId is null ? "youtube.link" : "youtube.playback.toggle",
