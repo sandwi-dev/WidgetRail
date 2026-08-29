@@ -269,7 +269,6 @@ bool WidgetSurfaceCoordinator::UpdateSnapshot(
         ? 0 : static_cast<std::size_t>(selected - layoutOptions_.begin());
     if (selected == layoutOptions_.end() && selectedId != kFullWidgetLayoutId)
         QueueLayoutSelection(selectedId, false);
-    inputRequests_.clear();
     actionFeedback_.clear();
     actionFeedbackFailure_ = false;
     const auto& selectedSnapshot = SelectedSnapshot();
@@ -318,6 +317,17 @@ bool WidgetSurfaceCoordinator::UpdateSnapshot(
         (void)sliderInteraction_.ReconcileAdmission(
             selectedSnapshot, GetTickCount64());
     }
+    std::vector<WidgetSurfaceInputRequest> retainedInputRequests;
+    retainedInputRequests.reserve(inputRequests_.size());
+    const auto inputReconciliationTime = GetTickCount64();
+    for (auto& request : inputRequests_) {
+        if (request.sliderActionRequest && IsCurrentInputRequest(request)) {
+            retainedInputRequests.push_back(std::move(request));
+        } else if (request.sliderActionRequest) {
+            RejectInputRequest(request, inputReconciliationTime);
+        }
+    }
+    inputRequests_.swap(retainedInputRequests);
     if (selectedLayoutReplaced) {
         if (renderer_) renderer_->ForgetWidgetState(admission_->instanceId);
     }
