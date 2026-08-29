@@ -51,7 +51,6 @@ constexpr float kRevealEpsilon = 0.01F;
 // clipping still fails closed because no Scroll can repair it.
 constexpr float kRevealRasterEdgePixelTolerance = 1.0F;
 constexpr NativeColor kDefaultText{0.969F, 0.973F, 0.988F, 1.0F};
-constexpr NativeColor kMutedText{0.725F, 0.741F, 0.784F, 1.0F};
 constexpr NativeColor kDefaultFocus{1.0F, 1.0F, 1.0F, 1.0F};
 constexpr NativeColor kDefaultButton{0.122F, 0.133F, 0.169F, 0.96F};
 constexpr NativeColor kDefaultTrack{0.25F, 0.26F, 0.30F, 0.72F};
@@ -2162,7 +2161,7 @@ struct DeclarativeRenderer::RenderPass final {
                 !node.artworkHandle.empty() || !node.glyph.empty();
             const bool hasText = !node.text.empty();
             const bool reserveStateCue = hasText &&
-                (node.isBusy || node.isSelected || node.isDisabled);
+                (node.isBusy || node.isSelected);
             const auto lineHeight = style.fontSizePx() * style.lineHeight();
             const auto maximumLeadingSize =
                 node.imageSource.empty() && node.artworkHandle.empty() ? 32.0F : 44.0F;
@@ -2839,11 +2838,6 @@ struct DeclarativeRenderer::RenderPass final {
                                      rect.y + rect.height - radius - 3.0F),
                         radius, radius),
                     brush.Get());
-            } else if (node.isDisabled) {
-                target->DrawLine(
-                    D2D1::Point2F(rect.x + 9.0F, rect.y + rect.height - 9.0F),
-                    D2D1::Point2F(rect.x + rect.width - 9.0F, rect.y + 9.0F),
-                    brush.Get(), 2.0F);
             }
             return;
         }
@@ -2861,16 +2855,6 @@ struct DeclarativeRenderer::RenderPass final {
             DrawSemanticIcon(node, style, cue, opacity, L"refresh");
         } else if (node.isSelected) {
             DrawSemanticIcon(node, style, cue, opacity, L"check");
-        } else if (node.isDisabled) {
-            const auto cueColor = UseAccessibleDeclarativeStateCue(options.accessibility)
-                ? style.foreground().value_or(kMutedText)
-                : kMutedText;
-            auto brush = Brush(target, WithOpacity(cueColor, opacity));
-            if (brush) target->DrawLine(
-                D2D1::Point2F(cue.x, cue.y + cue.height),
-                D2D1::Point2F(cue.x + cue.width, cue.y),
-                brush.Get(),
-                2.0F);
         }
     }
 
@@ -3004,7 +2988,7 @@ struct DeclarativeRenderer::RenderPass final {
                 !node.artworkHandle.empty() || !node.glyph.empty();
             const bool hasText = !node.text.empty();
             const bool reserveStateCue = hasText &&
-                (node.isBusy || node.isSelected || node.isDisabled);
+                (node.isBusy || node.isSelected);
             const auto maximumLeadingSize =
                 node.imageSource.empty() && node.artworkHandle.empty() ? 32.0F : 44.0F;
             const auto iconSize = hasLeading
