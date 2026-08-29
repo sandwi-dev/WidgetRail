@@ -173,9 +173,11 @@ public sealed partial class YouTubeVideoWidget : Widget
                 [
                     new WidgetQuickAction(ControllerButton.X, ToggleActionId, "Play or pause"),
                     new WidgetQuickAction(ControllerButton.LeftTrigger, SeekBackwardActionId,
-                        "Seek backward 10 seconds"),
+                        "Seek backward 10 seconds",
+                        RepeatPolicy: ControllerActionRepeatPolicy.WhileHeld),
                     new WidgetQuickAction(ControllerButton.RightTrigger, SeekForwardActionId,
-                        "Seek forward 10 seconds"),
+                        "Seek forward 10 seconds",
+                        RepeatPolicy: ControllerActionRepeatPolicy.WhileHeld),
                 ]
                 : null;
         var back = UI.Button("Back", BackActionId, "youtube.player.back")
@@ -233,8 +235,10 @@ public sealed partial class YouTubeVideoWidget : Widget
         {
             root = root
                 .Shortcut(ControllerButton.X, ToggleActionId)
-                .Shortcut(ControllerButton.LeftTrigger, SeekBackwardActionId)
-                .Shortcut(ControllerButton.RightTrigger, SeekForwardActionId);
+                .Shortcut(ControllerButton.LeftTrigger, SeekBackwardActionId,
+                    repeatPolicy: ControllerActionRepeatPolicy.WhileHeld)
+                .Shortcut(ControllerButton.RightTrigger, SeekForwardActionId,
+                    repeatPolicy: ControllerActionRepeatPolicy.WhileHeld);
         }
         if (overlayFullscreen)
             root = root.Shortcut(ControllerButton.B, ExitFullscreenActionId);
