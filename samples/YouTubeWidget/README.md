@@ -63,6 +63,9 @@ and fullscreen paths disabled. Pinning remains host-owned.
 6. With a current video ready on **Now playing**, the dashboard exposes X for
    Play/Pause, LT for a bounded 10-second seek backward, and RT for a bounded
    10-second seek forward. Other routes expose no YouTube dashboard actions.
+   A slow command marks only its initiating transport control busy; other
+   controls retain their normal appearance while the existing single-flight
+   authority rejects competing input without queuing it.
 7. Return to search without losing the retained query/result window. A compact
    pin remains the host-owned video-only presentation. In compact pinned focus,
    X pauses or resumes the current video in place and LT/RT retain their bounded

@@ -32,11 +32,18 @@ public sealed partial class YouTubeVideoWidget
     private string _activeQuery = string.Empty;
     private string? _searchReturnFocus;
 
-    public YouTubeVideoWidget() : this(new UnavailableYouTubeApplicationService()) { }
+    public YouTubeVideoWidget() : this(
+        new UnavailableYouTubeApplicationService(), TimeProvider.System) { }
 
-    public YouTubeVideoWidget(IYouTubeApplicationService application)
+    public YouTubeVideoWidget(IYouTubeApplicationService application) :
+        this(application, TimeProvider.System) { }
+
+    internal YouTubeVideoWidget(
+        IYouTubeApplicationService application,
+        TimeProvider timeProvider)
     {
         _application = application ?? throw new ArgumentNullException(nameof(application));
+        _timeProvider = timeProvider ?? throw new ArgumentNullException(nameof(timeProvider));
         _searchResults = CreateCursorResource<YouTubeSearchItem>("youtube.search", new()
         {
             PageSize = SearchPageSize,
@@ -59,6 +66,12 @@ public sealed partial class YouTubeVideoWidget
 
     protected override ValueTask OnActivatedAsync(CancellationToken activeLifetime)
     {
+        lock (_gate)
+        {
+            _isActive = true;
+            _activeLifetime = activeLifetime;
+            SchedulePendingFeedbackLocked();
+        }
         if (_configurationKnown) return ValueTask.CompletedTask;
         Operations.RunSingleFlight("youtube.configuration", async context =>
         {
@@ -94,14 +107,27 @@ public sealed partial class YouTubeVideoWidget
 
     protected override ValueTask OnDeactivatedAsync(CancellationToken transitionToken)
     {
-        lock (_gate) _overlayFullscreen = false;
+        lock (_gate)
+        {
+            _isActive = false;
+            _overlayFullscreen = false;
+            CancelPendingFeedbackLocked();
+        }
         return ValueTask.CompletedTask;
     }
 
     protected override async ValueTask OnDestroyingAsync(CancellationToken shutdownToken)
     {
+        Task pendingFeedback;
+        lock (_gate)
+        {
+            _isActive = false;
+            CancelPendingFeedbackLocked();
+            pendingFeedback = _pendingFeedbackTask;
+        }
         try
         {
+            await pendingFeedback.WaitAsync(shutdownToken).ConfigureAwait(false);
             await _application.DisposeAsync().AsTask().WaitAsync(shutdownToken)
                 .ConfigureAwait(false);
         }
