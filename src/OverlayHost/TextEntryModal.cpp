@@ -46,8 +46,8 @@ constexpr UINT kControllerMessage = WM_APP + 1;
 constexpr int kBaseWidth = 760;
 constexpr int kBaseHeight = 560;
 constexpr int kColumns = 10;
-constexpr unsigned long long kCaretRepeatDelayMilliseconds = 400;
-constexpr unsigned long long kCaretRepeatIntervalMilliseconds = 90;
+constexpr unsigned long long kControllerRepeatDelayMilliseconds = 400;
+constexpr unsigned long long kControllerRepeatIntervalMilliseconds = 90;
 
 constexpr std::wstring_view kDigits = L"1234567890";
 constexpr std::wstring_view kTopLetters = L"qwertyuiop";
@@ -165,8 +165,7 @@ TextEntryModalResult TextEntryModal::Show(
     keys_.fill(nullptr);
     focusIndex_ = 10;
     layer_ = Layer::Lowercase;
-    caretRepeatAt_ = 0;
-    caretRepeatDirection_ = 0;
+    ResetControllerRepeat();
 
     RECT workArea{};
     MONITORINFO monitorInfo{sizeof(monitorInfo)};
@@ -520,6 +519,7 @@ void TextEntryModal::ActivateFocusedKey() {
 
 void TextEntryModal::Complete(const TextEntryModalOutcome outcome) {
     if (completed_) return;
+    ResetControllerRepeat();
     completed_ = true;
     outcome_ = outcome;
     if (outcome == TextEntryModalOutcome::Committed) {
@@ -538,6 +538,9 @@ void TextEntryModal::Complete(const TextEntryModalOutcome outcome) {
 
 void TextEntryModal::SetKeyboardFocus(const std::size_t index) {
     if (index >= keys_.size() || !keys_[index]) return;
+    if (index != focusIndex_ &&
+        controllerRepeatAction_ == RepeatAction::ActivateKey)
+        ResetControllerRepeat();
     const auto prior = focusIndex_ < keys_.size() ? keys_[focusIndex_] : nullptr;
     focusIndex_ = index;
     SetFocus(keys_[focusIndex_]);
@@ -574,30 +577,87 @@ void TextEntryModal::Close() noexcept {
     if (window_) Complete(TextEntryModalOutcome::Closed);
 }
 
-void TextEntryModal::UpdateCaretRepeat(
-    const bool leftDown,
-    const bool rightDown,
-    const bool leftPressed,
-    const bool rightPressed,
+void TextEntryModal::InvokeRepeatAction(const RepeatAction action) {
+    switch (action) {
+    case RepeatAction::ActivateKey: {
+        const auto key = KeyValue(focusIndex_);
+        if (focusIndex_ == controllerRepeatFocusIndex_ && key &&
+            *key == controllerRepeatKey_)
+            Insert(controllerRepeatKey_);
+        else
+            ResetControllerRepeat();
+        break;
+    }
+    case RepeatAction::Backspace: Backspace(); break;
+    case RepeatAction::CaretLeft: MoveCaret(-1); break;
+    case RepeatAction::CaretRight: MoveCaret(1); break;
+    case RepeatAction::None: break;
+    }
+}
+
+void TextEntryModal::UpdateControllerRepeat(
+    const TextEntryControllerRepeatSample& sample,
     const unsigned long long now) noexcept {
-    const int requestedDirection = leftDown == rightDown ? 0 : leftDown ? -1 : 1;
-    const bool newlyPressed = requestedDirection < 0 ? leftPressed :
-        requestedDirection > 0 ? rightPressed : false;
-    if (requestedDirection == 0) {
-        caretRepeatDirection_ = 0;
-        caretRepeatAt_ = 0;
+    // Translate the modal's raw button state into one logical immediate action
+    // and a bounded repeated stream. Directional navigation keeps its existing
+    // platform repeat owner; B and RT remain edge-triggered outside this owner.
+    const std::array<std::pair<RepeatAction, bool>, 4> held{{
+        {RepeatAction::ActivateKey, sample.activateDown},
+        {RepeatAction::Backspace, sample.backspaceDown},
+        {RepeatAction::CaretLeft, sample.caretLeftDown},
+        {RepeatAction::CaretRight, sample.caretRightDown},
+    }};
+    RepeatAction requested = RepeatAction::None;
+    unsigned int heldCount{};
+    for (const auto& [action, down] : held) {
+        if (!down) continue;
+        requested = action;
+        ++heldCount;
+    }
+    if (!window_ || heldCount != 1) {
+        ResetControllerRepeat();
         return;
     }
-    if (newlyPressed || requestedDirection != caretRepeatDirection_) {
-        MoveCaret(requestedDirection);
-        caretRepeatDirection_ = requestedDirection;
-        caretRepeatAt_ = now + kCaretRepeatDelayMilliseconds;
+    const bool pressed = requested == RepeatAction::ActivateKey
+        ? sample.activatePressed
+        : requested == RepeatAction::Backspace
+            ? sample.backspacePressed
+            : requested == RepeatAction::CaretLeft
+                ? sample.caretLeftPressed
+                : sample.caretRightPressed;
+    if (controllerRepeatAction_ == RepeatAction::None) {
+        if (!pressed) return;
+        if (requested == RepeatAction::ActivateKey) {
+            const auto key = KeyValue(focusIndex_);
+            if (!key) {
+                ActivateFocusedKey();
+                return;
+            }
+            controllerRepeatFocusIndex_ = focusIndex_;
+            controllerRepeatKey_ = *key;
+        }
+        controllerRepeatAction_ = requested;
+        InvokeRepeatAction(requested);
+        if (controllerRepeatAction_ != RepeatAction::None)
+            controllerRepeatAt_ = now + kControllerRepeatDelayMilliseconds;
         return;
     }
-    if (caretRepeatAt_ != 0 && now >= caretRepeatAt_) {
-        MoveCaret(requestedDirection);
-        caretRepeatAt_ = now + kCaretRepeatIntervalMilliseconds;
+    if (requested != controllerRepeatAction_) {
+        ResetControllerRepeat();
+        return;
     }
+    if (controllerRepeatAt_ != 0 && now >= controllerRepeatAt_) {
+        InvokeRepeatAction(requested);
+        if (controllerRepeatAction_ != RepeatAction::None)
+            controllerRepeatAt_ = now + kControllerRepeatIntervalMilliseconds;
+    }
+}
+
+void TextEntryModal::ResetControllerRepeat() noexcept {
+    controllerRepeatAt_ = 0;
+    controllerRepeatAction_ = RepeatAction::None;
+    controllerRepeatFocusIndex_ = 0;
+    controllerRepeatKey_ = L'\0';
 }
 
 bool TextEntryModal::PostController(const std::wstring_view button) noexcept {
@@ -701,10 +761,16 @@ LRESULT CALLBACK TextEntryModal::KeyWindowProc(
     if (message == WM_GETDLGCODE)
         return DLGC_WANTARROWS | DLGC_WANTCHARS | DLGC_WANTALLKEYS;
     if (message == WM_SETFOCUS && found != self->keys_.end()) {
-        self->focusIndex_ = static_cast<std::size_t>(found - self->keys_.begin());
+        const auto index = static_cast<std::size_t>(found - self->keys_.begin());
+        if (index != self->focusIndex_ &&
+            self->controllerRepeatAction_ == RepeatAction::ActivateKey)
+            self->ResetControllerRepeat();
+        self->focusIndex_ = index;
         InvalidateRect(window, nullptr, TRUE);
         if (self->edit_) InvalidateRect(self->edit_, nullptr, TRUE);
     } else if (message == WM_KILLFOCUS) {
+        if (self->controllerRepeatAction_ == RepeatAction::ActivateKey)
+            self->ResetControllerRepeat();
         InvalidateRect(window, nullptr, TRUE);
     }
     if (message == WM_KEYDOWN) {
@@ -760,12 +826,18 @@ LRESULT TextEntryModal::HandleMessage(
             return key != nullptr;
         }) ? 0 : -1;
     case WM_CLOSE: Complete(TextEntryModalOutcome::Closed); return 0;
+    case WM_ACTIVATE:
+        if (LOWORD(wParam) == WA_INACTIVE) ResetControllerRepeat();
+        return DefWindowProcW(window_, message, wParam, lParam);
     case WM_COMMAND: {
         const int id = LOWORD(wParam);
         if (id >= kKeyBase && id < kKeyBase + static_cast<int>(keys_.size())) {
             const auto index = static_cast<std::size_t>(id - kKeyBase);
             const auto source = reinterpret_cast<HWND>(lParam);
             if (HIWORD(wParam) == BN_CLICKED && source == keys_[index]) {
+                if (index != focusIndex_ &&
+                    controllerRepeatAction_ == RepeatAction::ActivateKey)
+                    ResetControllerRepeat();
                 focusIndex_ = index;
                 ActivateFocusedKey();
             }

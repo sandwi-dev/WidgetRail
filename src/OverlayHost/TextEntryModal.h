@@ -45,6 +45,17 @@ struct TextEntryModalTheme final {
     std::wstring fontFamily{L"Segoe UI"};
 };
 
+struct TextEntryControllerRepeatSample final {
+    bool activateDown{};
+    bool activatePressed{};
+    bool backspaceDown{};
+    bool backspacePressed{};
+    bool caretLeftDown{};
+    bool caretLeftPressed{};
+    bool caretRightDown{};
+    bool caretRightPressed{};
+};
+
 enum class TextEntryModalOutcome {
     Failed,
     Cancelled,
@@ -91,17 +102,15 @@ public:
     [[nodiscard]] bool active() const noexcept { return window_ != nullptr; }
     void Close() noexcept;
     void HandleController(std::wstring_view button) noexcept;
-    void UpdateCaretRepeat(
-        bool leftDown,
-        bool rightDown,
-        bool leftPressed,
-        bool rightPressed,
+    void UpdateControllerRepeat(
+        const TextEntryControllerRepeatSample& sample,
         unsigned long long now) noexcept;
     [[nodiscard]] bool PostController(std::wstring_view button) noexcept;
 
 private:
     enum class Direction { Left, Right, Up, Down };
     enum class Layer { Lowercase, Uppercase, Symbols };
+    enum class RepeatAction { None, ActivateKey, Backspace, CaretLeft, CaretRight };
 
     static LRESULT CALLBACK WindowProc(HWND window, UINT message, WPARAM wParam, LPARAM lParam);
     static LRESULT CALLBACK EditWindowProc(HWND window, UINT message, WPARAM wParam, LPARAM lParam);
@@ -115,6 +124,8 @@ private:
     void Insert(wchar_t value);
     [[nodiscard]] bool PasteClipboard();
     void Backspace();
+    void ResetControllerRepeat() noexcept;
+    void InvokeRepeatAction(RepeatAction action);
     void MoveCaret(int delta);
     void ActivateFocusedKey();
     [[nodiscard]] std::optional<wchar_t> KeyValue(std::size_t index) const noexcept;
@@ -148,8 +159,10 @@ private:
     HFONT bodyFont_{};
     HFONT keyFont_{};
     HFONT legendFont_{};
-    unsigned long long caretRepeatAt_{};
-    int caretRepeatDirection_{};
+    unsigned long long controllerRepeatAt_{};
+    RepeatAction controllerRepeatAction_{RepeatAction::None};
+    std::size_t controllerRepeatFocusIndex_{};
+    wchar_t controllerRepeatKey_{};
     TextEntryModalOutcome outcome_{TextEntryModalOutcome::Failed};
     bool completed_{};
     bool password_{};

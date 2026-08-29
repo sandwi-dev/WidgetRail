@@ -8326,13 +8326,16 @@ private:
 
     void PollController() {
         const ULONGLONG now = GetTickCount64();
+        const bool foregroundOwned = IsOverlayProcessForeground();
         WidgetRailOverlayPlatformControllerFrame frame;
         if (WidgetRailOverlayPlatformReadController(
                 platform_,
-                PlatformBoolean(IsOverlayProcessForeground()),
+                PlatformBoolean(foregroundOwned),
                 now,
                 &frame) !=
             WidgetRailOverlayPlatformStatus::Ok) {
+            if (textEntryModal_.active())
+                textEntryModal_.UpdateControllerRepeat({}, now);
             return;
         }
         const bool connected =
@@ -8370,8 +8373,13 @@ private:
             return;
         }
         if (textEntryModal_.active()) {
+            if (!foregroundOwned) {
+                textEntryModal_.UpdateControllerRepeat({}, now);
+                return;
+            }
             if (textEntryControllerPhase_ ==
                 TextEntryControllerPhase::AwaitingEntryNeutral) {
+                textEntryModal_.UpdateControllerRepeat({}, now);
                 if (TextEntryControllerFrameNeutral(frame)) {
                     textEntryControllerPhase_ = TextEntryControllerPhase::Active;
                     AppendDiagnostic(
@@ -8389,18 +8397,18 @@ private:
             };
             routeDirection(frame.stickNavigation);
             routeDirection(frame.dpadNavigation);
-            textEntryModal_.UpdateCaretRepeat(
-                (buttons & XINPUT_GAMEPAD_LEFT_SHOULDER) != 0,
-                (buttons & XINPUT_GAMEPAD_RIGHT_SHOULDER) != 0,
-                (pressed & XINPUT_GAMEPAD_LEFT_SHOULDER) != 0,
-                (pressed & XINPUT_GAMEPAD_RIGHT_SHOULDER) != 0,
-                now);
             if ((pressed & XINPUT_GAMEPAD_B) != 0)
                 textEntryModal_.HandleController(L"B");
-            if ((pressed & XINPUT_GAMEPAD_A) != 0)
-                textEntryModal_.HandleController(L"A");
-            if ((pressed & XINPUT_GAMEPAD_X) != 0)
-                textEntryModal_.HandleController(L"X");
+            textEntryModal_.UpdateControllerRepeat({
+                .activateDown = (buttons & XINPUT_GAMEPAD_A) != 0,
+                .activatePressed = (pressed & XINPUT_GAMEPAD_A) != 0,
+                .backspaceDown = (buttons & XINPUT_GAMEPAD_X) != 0,
+                .backspacePressed = (pressed & XINPUT_GAMEPAD_X) != 0,
+                .caretLeftDown = (buttons & XINPUT_GAMEPAD_LEFT_SHOULDER) != 0,
+                .caretLeftPressed = (pressed & XINPUT_GAMEPAD_LEFT_SHOULDER) != 0,
+                .caretRightDown = (buttons & XINPUT_GAMEPAD_RIGHT_SHOULDER) != 0,
+                .caretRightPressed = (pressed & XINPUT_GAMEPAD_RIGHT_SHOULDER) != 0,
+            }, now);
             if (frame.rightTriggerPressed != WRAIL_OVERLAY_PLATFORM_FALSE)
                 textEntryModal_.HandleController(L"RT");
             // The modal is the complete controller scope. Every unassigned
