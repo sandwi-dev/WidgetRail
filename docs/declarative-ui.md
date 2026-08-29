@@ -140,7 +140,6 @@ primary accessibility contract.
 | `UI.MediaViewport(surface, id)` | `mediaViewport` | Protocol-v23 non-interactive native layout leaf for the one current `WidgetView.EmbeddedMedia` surface. The declarative renderer owns its responsive geometry, clip, theme placeholder, and Image semantics; WebView2 contributes only the bounded media pixels. |
 | `UI.CodeText(text, id, accessibilityLabel?)` | `text` | Bounded non-interactive diagnostics/command text with the semantic monospace class. |
 | `UI.Button(label, action, id)` | `button` | Focusable action control; may include one semantic glyph or bounded leading PNG inside the same focus target. |
-| `UI.ToggleButton(label, isOn, action, id)` | `button` | Controller-ready two-state button composed from existing button semantics. |
 | `UI.TextEntry(value, placeholder, action, id, maximumLength)` | `textEntry` | Protocol-v15 bounded host-owned ordinary text entry. Worker snapshots carry the current non-sensitive value; the bridge emits a distinct computed-style role keyed by stable node ID. |
 | `UI.SensitiveTextEntry(placeholder, action, id, maximumLength)` | `textEntry` | Protocol-v28 protected entry. The authored snapshot value is always empty; only one final bounded commit reaches the exact widget action. |
 | `UI.Stepper(label, value, decrementAction, incrementAction, id, canDecrement?, canIncrement?)` | `row`, `text`, `button` | Label/value row with separate bounded decrement and increment actions. |
@@ -666,14 +665,14 @@ Glyphs are valid only on `icon` and `button` nodes.
 
 ## Controller-ready setting composites
 
-`ToggleButton` and `Stepper` are SDK composition helpers, not new protocol node
+`Switch` and `Stepper` are SDK composition helpers, not new protocol node
 kinds. They produce the same bounded semantic nodes as hand-authored UI, so
 focus, validation, WRSS, accessibility, and controller dispatch do not need a
 special renderer path.
 
 ```csharp
 UI.Stack("appearance-settings",
-    UI.ToggleButton(
+    UI.Switch(
         "Reduced motion",
         isOn: _reducedMotion,
         action: "toggle-reduced-motion",
@@ -688,8 +687,8 @@ UI.Stack("appearance-settings",
         canIncrement: _textScale < 1.50))
 ```
 
-`ToggleButton` renders visible `On`/`Off` text, a matching accessibility label,
-`.wrail-toggle`, `.wrail-toggle--on` / `.wrail-toggle--off`, and selected state
+`Switch` renders visible `On`/`Off` text, a matching accessibility label,
+`.wrail-switch`, `.wrail-switch--on` / `.wrail-switch--off`, and selected state
 while on. The widget still owns the value: handle its action, update state, and
 call `Invalidate()`.
 
@@ -706,16 +705,9 @@ names, and disabled state at a bound. Its semantic classes are:
 - `.wrail-stepper__button--decrement` / `.wrail-stepper__button--increment` on
   the respective action.
 
-This pre-release migration is intentionally breaking: the former
-`.setting-toggle`, `.setting-stepper`, `.setting-stepper-label`,
-`.setting-stepper-value`, `.setting-stepper-button`,
-`.setting-stepper-decrement`, and `.setting-stepper-increment` hooks are no
-longer emitted. Replace them respectively with `.wrail-toggle`,
-`.wrail-stepper`, `.wrail-stepper__label`, `.wrail-stepper__value`,
-`.wrail-stepper__button`, `.wrail-stepper__button--decrement`, and
-`.wrail-stepper__button--increment`. The built-in theme covers the neutral,
-selected, focused, and disabled ToggleButton states plus every Stepper part and
-bound button state.
+This pre-release component contract is intentionally breaking and exposes no
+legacy class aliases. The built-in theme covers the neutral, selected, focused,
+and disabled Switch states plus every Stepper part and bound button state.
 
 The helper does not parse, clamp, persist, or mutate the displayed value.
 Validate the domain in widget/host logic, then rebuild the composite from that

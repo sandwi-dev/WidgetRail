@@ -37,7 +37,7 @@ WRSS design constrained by controller navigation and overlay performance.
 | Rich content tile | `Tile`, `TileArtwork` | Full-tile ActionSurface composition with optional safe artwork, multiline copy, and visible state. |
 | Transient feedback | `Toast` | Nonfocusable baseline-node composition; widget lifecycle owns its bounded duration. |
 | Discrete action | `Button`, button glyph, shortcut | One focus stop; A activates; scoped shortcuts remain explicit. |
-| Two-state action | `ToggleButton`, selected Button | Visible and accessible state remains widget-owned. |
+| Two-state action | `Switch`, selected Button | Visible and accessible state remains widget-owned. |
 | Read-only value | `Progress` | Not focusable and never accepts controller changes. |
 | Stepped setting | `Stepper` | Separate decrement/increment focus stops; useful when each action must be explicit. |
 | Direct value | `Slider` | Protocol v3, one focus stop, direct L/R adjustment, optional A action; protocol v10 can require A before adjustment. |

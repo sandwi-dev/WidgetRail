@@ -113,7 +113,7 @@ internal static class GameLauncherPresentation
                     $"Categories ({state.Organization.Categories.Count})",
                     "game-launcher.categories.open", "game-launcher.categories.open")
                 .Disabled(!state.Interactive));
-            filterControls.Add(UI.ToggleButton("Favorites", state.FavoriteFilter,
+            filterControls.Add(UI.Switch("Favorites", state.FavoriteFilter,
                     "game-launcher.filter.favorites", "game-launcher.filter.favorites")
                 .Disabled(!state.Interactive ||
                     state.Organization.FavoriteSavedIds.Count == 0));
@@ -177,7 +177,7 @@ internal static class GameLauncherPresentation
             };
             if (state.Route == GameLauncherRoute.Library)
                 queryChildren.Add(UI.HorizontalScroll("game-launcher.collections",
-                        state.Collections.Select(option => UI.ToggleButton(
+                        state.Collections.Select(option => UI.Switch(
                                 option.Label,
                                 option.Selected,
                                 option.ActionId,

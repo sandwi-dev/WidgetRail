@@ -55,7 +55,7 @@
 
 .category-card,
 .setting-row,
-.wrail-toggle,
+.wrail-switch,
 .primary-button,
 .secondary-button,
 .danger-button,
@@ -73,7 +73,7 @@
 
 .category-card:focused,
 .setting-row:focused,
-.wrail-toggle:focused,
+.wrail-switch:focused,
 .primary-button:focused,
 .secondary-button:focused,
 .wrail-stepper__button:focused {
@@ -83,7 +83,7 @@
   outline-offset: -2px;
 }
 
-.wrail-toggle:selected,
+.wrail-switch:selected,
 .setting-row.is-enabled { color: var(--accent); }
 
 .primary-button,

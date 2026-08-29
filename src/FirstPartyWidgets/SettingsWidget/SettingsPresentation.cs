@@ -153,7 +153,7 @@ internal static class SettingsPresentation
         var theme = UI.Button(label, "open.themes", "appearance.theme")
             .FocusDown("appearance.animate-widget-switching")
             .Busy(busy).Classes("setting-row");
-        var animateWidgetSwitching = UI.ToggleButton(
+        var animateWidgetSwitching = UI.Switch(
                 "Animate widget switching",
                 settings.Appearance.AnimateWidgetSwitching,
                 "widget-switch-animation.toggle",
@@ -187,11 +187,11 @@ internal static class SettingsPresentation
             up: null,
             down: "motion.system",
             busy);
-        var system = UI.ToggleButton(
+        var system = UI.Switch(
                 "Follow Windows motion", appearance.Motion == MotionPreference.System,
                 "motion.system", "motion.system")
             .FocusUp("text.stepper.decrement").FocusDown("motion.reduced").Busy(busy);
-        var reduced = UI.ToggleButton(
+        var reduced = UI.Switch(
                 "Reduced motion", appearance.Motion == MotionPreference.Reduced,
                 "motion.reduced", "motion.reduced")
             .FocusUp("motion.system").FocusDown("accessibility.visual").Busy(busy);
@@ -213,18 +213,18 @@ internal static class SettingsPresentation
         bool busy)
     {
         var appearance = settings.Appearance;
-        var systemContrast = UI.ToggleButton(
+        var systemContrast = UI.Switch(
                 "Follow Windows high contrast", appearance.Contrast == ContrastPreference.System,
                 "contrast.system", "contrast.system")
             .FocusDown("contrast.high").Busy(busy);
-        var highContrast = UI.ToggleButton(
+        var highContrast = UI.Switch(
                 "High contrast", appearance.Contrast == ContrastPreference.High,
                 "contrast.high", "contrast.high")
             .FocusUp("contrast.system").FocusDown("bold-text.toggle").Busy(busy);
-        var boldText = UI.ToggleButton(
+        var boldText = UI.Switch(
                 "Bold text", appearance.BoldText, "bold-text.toggle", "bold-text.toggle")
             .FocusUp("contrast.high").FocusDown("transparency.reduced").Busy(busy);
-        var reducedTransparency = UI.ToggleButton(
+        var reducedTransparency = UI.Switch(
                 "Reduced transparency",
                 appearance.Transparency == TransparencyPreference.Reduced,
                 "transparency.reduced", "transparency.reduced")
@@ -279,13 +279,13 @@ internal static class SettingsPresentation
         PlatformSettingsDocument settings,
         bool busy)
     {
-        var epic = UI.ToggleButton(
+        var epic = UI.Switch(
                 "Epic installed games",
                 settings.AppLibrary.EpicInstalledGamesEnabled,
                 "app-library.epic.toggle",
                 "app-library.epic.toggle")
             .Busy(busy).AddClasses("setting-row");
-        var gog = UI.ToggleButton(
+        var gog = UI.Switch(
                 "GOG installed games",
                 settings.AppLibrary.GogInstalledGamesEnabled,
                 "app-library.gog.toggle",

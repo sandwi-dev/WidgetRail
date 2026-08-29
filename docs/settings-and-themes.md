@@ -34,7 +34,7 @@ Accessibility policy remains host-owned and wins after every theme layer.
 | Validate a widget `.wrss` file | Implemented | Run `wrail validate <style.wrss>`. |
 | Package-relative imports and variables | Implemented | Keep imports inside the widget package and use the WRSS allowlist. |
 | Widget-computed `base` and `focused` styles | Implemented | Use semantic roles, stable IDs, and classes; see current renderer limits. |
-| Controller toggle and stepper composites | Implemented | Use `UI.ToggleButton` and `UI.Stepper`; state and persistence remain the caller's responsibility. |
+| Controller switch and stepper composites | Implemented | Use `UI.Switch` and `UI.Stepper`; state and persistence remain the caller's responsibility. |
 | Strict appearance settings store | Implemented | The first-party Settings worker persists through it and the shell consumes its bounded appearance revision. |
 | Versioned theme discovery and immutable install | Implemented | Use `wrail theme install`; an existing ID/version is never overwritten. |
 | Exact installed-version management | Implemented | Settings groups versions by theme ID; select a valid exact version or confirm removal of an inactive user version. `wrail theme remove <id> <version>` uses the same policy. |
@@ -248,7 +248,7 @@ optional declarations are shown separately. Open **Permissions &
 configuration** on the same widget management page to make an explicit consent
 decision.
 
-The SDK now provides verified `UI.ToggleButton(...)` and `UI.Stepper(...)`
+The SDK now provides verified `UI.Switch(...)` and `UI.Stepper(...)`
 helpers for this interaction model. They are available to any widget and are
 documented in the [declarative UI reference](declarative-ui.md#controller-ready-setting-composites).
 The Settings worker supplies platform range validation and persistence around

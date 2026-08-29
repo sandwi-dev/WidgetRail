@@ -65,27 +65,6 @@ public static partial class UI
             TextEntryInputKind.Sensitive);
 
     /// <summary>
-    /// Creates a controller-ready two-state button. The visual and
-    /// accessibility labels expose the current state, while IsSelected gives
-    /// themes a semantic state instead of requiring label inspection.
-    /// </summary>
-    public static ButtonElement ToggleButton(string label, bool isOn, string action, string id)
-    {
-        ArgumentNullException.ThrowIfNull(label);
-        var state = isOn ? "On" : "Off";
-        return new ButtonElement(id, $"{label}: {state}", action)
-        {
-            AccessibilityLabel = $"{label}, {state}",
-            IsSelected = isOn ? true : null,
-            StyleClasses =
-            [
-                "wrail-toggle",
-                isOn ? "wrail-toggle--on" : "wrail-toggle--off",
-            ],
-        };
-    }
-
-    /// <summary>
     /// Creates a semantic label/value/decrement/increment row from existing
     /// protocol primitives. Child IDs are stable suffixes of <paramref name="id"/>
     /// and the two buttons are explicitly linked for reliable controller focus.

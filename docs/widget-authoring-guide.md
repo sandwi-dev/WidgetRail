@@ -242,7 +242,7 @@ path that does not exist. On any failure, `wrail` removes its staging directory
 without deleting or overwriting an author-owned path.
 
 The current CLI/template/SDK release unit is the pre-release version
-`0.2.0-dev`. The generated local package appends a deterministic
+`0.3.0-dev`. The generated local package appends a deterministic
 `.local.<16-hex>` content suffix and the project consumes that exact version.
 Contributors changing public SDK signatures must use the checked-in
 [Widget SDK compatibility workflow](widget-sdk-compatibility.md); additions,
@@ -763,7 +763,7 @@ or `ResponsiveGrid` when only placement, not hierarchy, changes.
 | `UI.CodeText(text, id, accessibilityLabel?)` | semantic monospace text | Nonfocusable, whitespace-preserving, and bounded to 4,096 characters. |
 | `UI.Button(label, action, id)` | focusable button | `A` invokes its action. |
 | `focusable.PersistFocusAs(id)` | explicit cross-presentation focus identity | Protocol 13; use only on mutually exclusive controls representing one logical destination. Omission preserves legacy behavior. |
-| `UI.ToggleButton(label, isOn, action, id)` | composed button | Emits On/Off text and selected semantics. |
+| `UI.Switch(label, isOn, action, id)` | composed button | Emits On/Off text and selected semantics. |
 | `UI.Stepper(...)` | composed row | Stable `.label`, `.decrement`, `.value`, `.increment` children. |
 | `UI.Progress(value, maximum, id, label?)` | progress | Requires finite `0 <= value <= maximum`, `maximum > 0`. |
 | `UI.Slider(value, minimum, maximum, step, valueChangedAction, id, label, value?, activation?)` | focusable value control | Protocol 3; absolute requested values and direct L/R adjustment. `.RequireControllerActivation()` opts into protocol-v10 A-to-adjust behavior. |

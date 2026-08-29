@@ -305,7 +305,7 @@ internal static class NetworkControlsPresentation
             WidgetWifiRadioState.Unavailable => "Windows could not read the software radio",
             _ => "Software radio",
         };
-        var toggle = UI.ToggleButton(label, isOn, "wifi.radio.toggle", "network.wifi.radio")
+        var toggle = UI.Switch(label, isOn, "wifi.radio.toggle", "network.wifi.radio")
             .Icon(WidgetGlyph.Wifi, label)
             .Busy(busy)
             .Disabled(!interactive || busy || !radio.CanControl)
@@ -468,7 +468,7 @@ internal static class NetworkControlsPresentation
             ? snapshot.Devices : [];
         var firstDeviceId = devices.Count == 0
             ? null : NetworkControlsElementIds.Bluetooth(devices[0].DeviceId);
-        var toggle = UI.ToggleButton(
+        var toggle = UI.Switch(
                 radioLabel, isOn, "bluetooth.radio.toggle", "network.bluetooth.radio")
             .Icon(WidgetGlyph.Connection, radioLabel)
             .Busy(state.BluetoothBusy)

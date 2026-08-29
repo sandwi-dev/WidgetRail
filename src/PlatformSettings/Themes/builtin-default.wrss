@@ -430,7 +430,7 @@ slider:focused {
   overflow: clip;
 }
 
-.wrail-toggle {
+.wrail-switch {
   min-height: 44px;
   padding: 10px 14px;
   background: var(--surface-raised);
@@ -439,18 +439,18 @@ slider:focused {
   border-width: 1px;
   corner-radius: 10px;
 }
-.wrail-toggle--on {
+.wrail-switch--on {
   background: var(--surface-active);
   color: var(--text);
   border-color: var(--border-strong);
 }
-.wrail-toggle:focused {
+.wrail-switch:focused {
   background: var(--surface-active);
   outline-color: var(--focus);
   outline-width: 2px;
   outline-offset: -2px;
 }
-.wrail-toggle:disabled {
+.wrail-switch:disabled {
   background: var(--surface-subtle);
   color: var(--text-subdued);
   border-color: var(--border);
@@ -503,17 +503,6 @@ slider:focused {
   border-color: transparent;
   opacity: 0.64;
 }
-
-.wrail-switch {
-  min-height: 44px;
-  padding: 10px 14px;
-  background: var(--surface-raised);
-  color: var(--text-muted);
-  border-color: var(--border);
-  border-width: 1px;
-  corner-radius: 10px;
-}
-.wrail-switch--on { background: var(--surface-active); color: var(--text); }
 
 .wrail-dialog {
   gap: 12px;
