@@ -69,6 +69,8 @@ void ClosedSemanticIds() {
         Pair{L"volume", NativeIcon::Volume}, Pair{L"muted", NativeIcon::Muted},
         Pair{L"microphone", NativeIcon::Microphone},
         Pair{L"wifi", NativeIcon::Wifi}, Pair{L"ethernet", NativeIcon::Ethernet},
+        Pair{L"rewind", NativeIcon::Rewind},
+        Pair{L"fastForward", NativeIcon::FastForward},
     };
     for (const auto& [name, expectedIcon] : expected) {
         NativeIcon parsed = NativeIcon::Warning;
@@ -129,7 +131,9 @@ void RenderEveryIcon() {
         NativeIcon::Check, NativeIcon::Connection,
         NativeIcon::Volume, NativeIcon::Muted, NativeIcon::Microphone,
         NativeIcon::Wifi, NativeIcon::Ethernet,
+        NativeIcon::Rewind, NativeIcon::FastForward,
     };
+    int rewindAlpha{};
     for (const NativeIcon icon : icons) {
         target->BeginDraw();
         target->Clear(D2D1::ColorF(0, 0.0F));
@@ -168,6 +172,24 @@ void RenderEveryIcon() {
             Check(CountAlpha(bytes, stride, 21, 17, 32, 25) >
                     CountAlpha(bytes, stride, 33, 17, 44, 25),
                 "Next triangle points right");
+        }
+        if (icon == NativeIcon::Rewind || icon == NativeIcon::FastForward) {
+            const int visibleAlpha = CountAlpha(bytes, stride, 0, 0, 64, 64);
+            Check(CountAlpha(bytes, stride, 20, 17, 31, 24) > 0 &&
+                      CountAlpha(bytes, stride, 36, 17, 48, 24) > 0,
+                  "semantic seek glyph renders two distinct triangle lobes");
+            if (icon == NativeIcon::Rewind) {
+                rewindAlpha = visibleAlpha;
+                Check(CountAlpha(bytes, stride, 12, 27, 20, 37) >
+                          CountAlpha(bytes, stride, 48, 27, 56, 37),
+                      "Rewind double triangles point left without a stop bar");
+            } else {
+                Check(std::abs(visibleAlpha - rewindAlpha) <= 255,
+                      "mirrored seek glyphs retain the same bounded filled footprint");
+                Check(CountAlpha(bytes, stride, 44, 27, 52, 37) >
+                          CountAlpha(bytes, stride, 8, 27, 16, 37),
+                      "Fast Forward double triangles point right without a stop bar");
+            }
         }
         Release(lock);
     }

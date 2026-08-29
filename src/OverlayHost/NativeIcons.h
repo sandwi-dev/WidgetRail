@@ -29,6 +29,8 @@ enum class NativeIcon : std::uint8_t {
     Microphone,
     Wifi,
     Ethernet,
+    Rewind,
+    FastForward,
 };
 
 struct LoadingIndicatorArc final {

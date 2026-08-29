@@ -251,6 +251,12 @@ internal sealed class ProtocolVersionRequirements
                     ProtocolConstants.RepeatOneGlyphVersion,
                     $"{path}.glyph",
                     $"Repeat One requires protocol version {ProtocolConstants.RepeatOneGlyphVersion} or later.");
+            if (node.Glyph is WidgetGlyph.Rewind or WidgetGlyph.FastForward)
+                Add(
+                    "semantic-seek-glyph",
+                    ProtocolConstants.SemanticSeekGlyphVersion,
+                    $"{path}.glyph",
+                    $"Rewind and Fast Forward require protocol version {ProtocolConstants.SemanticSeekGlyphVersion} or later.");
 
             var children = node.Children ?? [];
             for (var index = 0; index < children.Count; index++)

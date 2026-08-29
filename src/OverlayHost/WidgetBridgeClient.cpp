@@ -220,10 +220,10 @@ bool IsCanonicalThemeVersion(const std::wstring_view value) noexcept {
 }
 
 bool IsWidgetGlyph(const std::wstring_view value) noexcept {
-    static constexpr std::array<std::wstring_view, 20> glyphs{
+    static constexpr std::array<std::wstring_view, 22> glyphs{
         L"music", L"play", L"pause", L"previous", L"next", L"refresh", L"shuffle",
         L"like", L"dislike", L"repeat", L"repeatOne", L"settings", L"warning", L"check", L"connection",
-        L"volume", L"muted", L"microphone", L"wifi", L"ethernet"};
+        L"volume", L"muted", L"microphone", L"wifi", L"ethernet", L"rewind", L"fastForward"};
     return std::find(glyphs.begin(), glyphs.end(), value) != glyphs.end();
 }
 

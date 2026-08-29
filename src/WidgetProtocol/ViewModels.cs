@@ -183,6 +183,8 @@ public enum WidgetGlyph
     Microphone,
     Wifi,
     Ethernet,
+    Rewind,
+    FastForward,
 }
 
 [JsonConverter(typeof(JsonStringEnumConverter<ControllerButton>))]

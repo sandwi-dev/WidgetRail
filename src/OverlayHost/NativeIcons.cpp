@@ -185,6 +185,25 @@ template <std::size_t Count>
     return result;
 }
 
+[[nodiscard]] bool DrawSeek(
+    ID2D1RenderTarget* target,
+    ID2D1Brush* brush,
+    const Canvas& c,
+    const bool forward) noexcept {
+    // Rewind owns one canonical pair of left-pointing triangles. Fast Forward
+    // is its exact horizontal mirror so direction cannot drift independently.
+    const auto x = [forward](const float value) {
+        return forward ? 1.0F - value : value;
+    };
+    const bool leading = FillPolygon(target, brush, std::array{
+        c.Point(x(0.44F), 0.16F), c.Point(x(0.08F), 0.50F),
+        c.Point(x(0.44F), 0.84F)});
+    const bool trailing = FillPolygon(target, brush, std::array{
+        c.Point(x(0.82F), 0.16F), c.Point(x(0.46F), 0.50F),
+        c.Point(x(0.82F), 0.84F)});
+    return leading && trailing;
+}
+
 [[nodiscard]] bool DrawRefresh(
     ID2D1RenderTarget* target, ID2D1Brush* brush, const Canvas& c, const float stroke) noexcept {
     const bool result = PaintPath(target, brush, stroke, PathPaint::Stroke,
@@ -452,6 +471,8 @@ bool TryParseNativeIcon(const std::wstring_view semanticId, NativeIcon& icon) no
         Pair{L"volume", NativeIcon::Volume}, Pair{L"muted", NativeIcon::Muted},
         Pair{L"microphone", NativeIcon::Microphone},
         Pair{L"wifi", NativeIcon::Wifi}, Pair{L"ethernet", NativeIcon::Ethernet},
+        Pair{L"rewind", NativeIcon::Rewind},
+        Pair{L"fastForward", NativeIcon::FastForward},
         Pair{L"toggle-playback", NativeIcon::Play}, Pair{L"play-pause", NativeIcon::Play},
         Pair{L"previous-track", NativeIcon::Previous}, Pair{L"next-track", NativeIcon::Next},
         Pair{L"retry", NativeIcon::Refresh}, Pair{L"repeat-mode", NativeIcon::Repeat},
@@ -497,6 +518,8 @@ bool DrawNativeIcon(
         case NativeIcon::Microphone: return DrawMicrophone(renderTarget, brush, canvas, stroke);
         case NativeIcon::Wifi: return DrawConnection(renderTarget, brush, canvas, stroke);
         case NativeIcon::Ethernet: return DrawEthernet(renderTarget, brush, canvas, stroke);
+        case NativeIcon::Rewind: return DrawSeek(renderTarget, brush, canvas, false);
+        case NativeIcon::FastForward: return DrawSeek(renderTarget, brush, canvas, true);
         default: return false;
     }
 }

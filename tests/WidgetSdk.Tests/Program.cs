@@ -1767,22 +1767,32 @@ static Task ButtonIconsRoundTrip()
                 .Icon(WidgetGlyph.Previous, "Previous track"),
             UI.Button("Pause", "toggle-playback", "play-pause")
                 .Icon(WidgetGlyph.Pause),
+            UI.Button("Rewind", "seek-back", "rewind")
+                .Icon(WidgetGlyph.Rewind),
+            UI.Button("Fast forward", "seek-forward", "fast-forward")
+                .Icon(WidgetGlyph.FastForward),
             UI.Button("Repeat one", "repeat", "repeat-one")
                 .Icon(WidgetGlyph.RepeatOne)))
         .CreateSnapshot("test.instance", 8);
 
-    Assert.Equal(ProtocolConstants.RepeatOneGlyphVersion, snapshot.ProtocolVersion);
+    Assert.Equal(ProtocolConstants.SemanticSeekGlyphVersion, snapshot.ProtocolVersion);
     var restored = SnapshotJson.Deserialize(SnapshotJson.Serialize(snapshot));
     Assert.Equal(WidgetGlyph.Previous, Find(restored.Root, "previous").Glyph);
     Assert.Equal("Previous track", Find(restored.Root, "previous").AccessibilityLabel);
     Assert.Equal(WidgetGlyph.Pause, Find(restored.Root, "play-pause").Glyph);
+    Assert.Equal(WidgetGlyph.Rewind, Find(restored.Root, "rewind").Glyph);
+    Assert.Equal(WidgetGlyph.FastForward, Find(restored.Root, "fast-forward").Glyph);
     Assert.Equal(WidgetGlyph.RepeatOne, Find(restored.Root, "repeat-one").Glyph);
 
-    var legacy = snapshot with { ProtocolVersion = ProtocolConstants.ScrollPaginationVersion };
+    var legacy = snapshot with
+    {
+        ProtocolVersion = ProtocolConstants.SemanticSeekGlyphVersion - 1,
+    };
     Assert.True(ViewSnapshotValidator.Validate(legacy).Any(error =>
             error.Code == "feature_requires_version" &&
-            error.Path.EndsWith("glyph", StringComparison.Ordinal)),
-        "Protocol v11 must reject the Repeat One glyph.");
+            error.Path.EndsWith("glyph", StringComparison.Ordinal) &&
+            error.Message.Contains("Rewind and Fast Forward", StringComparison.Ordinal)),
+        "The prior protocol must reject semantic seek glyphs explicitly.");
 
     var invalid = snapshot with
     {
