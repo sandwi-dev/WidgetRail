@@ -698,8 +698,14 @@ internal sealed class BridgeClientRegistry : IAsyncDisposable
                     "Controller input runtime authority is stale or unavailable.");
             if (input.Context != ControllerInputContext.PinnedLayoutSelection)
                 DemandInteractionAllowed(registration);
-            input = DemandPinnedSurfaceAuthority(
+            var admitted = DemandPinnedSurfaceAuthority(
                 registration, input, expectedActionId);
+            // A pinned button that binds to nothing here is an ordinary
+            // not-handled outcome, not a loss of input authority. Report it the
+            // way every other surface does instead of dispatching input the
+            // admitted projection has no action for.
+            if (admitted is null) return AdmitPublication(registration, false);
+            input = admitted;
             registration.CancelIdleUnload();
             var handled = await ExecuteClientOperationAsync(
                     registration,
@@ -1750,7 +1756,9 @@ internal sealed class BridgeClientRegistry : IAsyncDisposable
             PlatformCapabilityBroker.MaximumDashboardGestureLifetime);
     }
 
-    private static ControllerInputEvent DemandPinnedSurfaceAuthority(
+    /// Returns the admitted input, or null when the pinned projection binds no
+    /// action to this button. Every genuine authority failure still throws.
+    private static ControllerInputEvent? DemandPinnedSurfaceAuthority(
         ClientRegistration registration,
         ControllerInputEvent input,
         string? expectedActionId)
@@ -1763,20 +1771,29 @@ internal sealed class BridgeClientRegistry : IAsyncDisposable
                 "Pinned-surface input origin snapshot authority is no longer available.");
         var originBinding = ResolvePinnedSurfaceInputBinding(origin, input, "origin");
         var currentBinding = ResolvePinnedSurfaceInputBinding(snapshot, input, "current");
+        // A binding that appears or disappears between admission and now is an
+        // authority change even when one side binds nothing.
         if (originBinding != currentBinding)
             throw new BridgeStalePinnedInputAuthorityException(
                 "Pinned-surface input action binding changed after admission.");
+        // An expected action ID is the host asserting one exact admitted
+        // binding, so its absence stays an authority failure.
         if (expectedActionId is not null &&
-            (!string.Equals(
+            (originBinding is null || currentBinding is null ||
+             !string.Equals(
                  originBinding.ActionId, expectedActionId, StringComparison.Ordinal) ||
              !string.Equals(
                  currentBinding.ActionId, expectedActionId, StringComparison.Ordinal)))
             throw new BridgeStalePinnedInputAuthorityException(
                 "Pinned-surface input does not match its admitted action binding.");
+        if (originBinding is null) return null;
         return input with { SnapshotSequence = snapshot.Sequence };
     }
 
-    private static PinnedSurfaceInputBinding ResolvePinnedSurfaceInputBinding(
+    /// Returns the exact action this button reaches in one admitted pinned
+    /// projection, or null when the projection binds nothing to it. Stale or
+    /// unavailable authority always throws.
+    private static PinnedSurfaceInputBinding? ResolvePinnedSurfaceInputBinding(
         ViewSnapshot snapshot,
         ControllerInputEvent input,
         string authority)
@@ -1816,8 +1833,7 @@ internal sealed class BridgeClientRegistry : IAsyncDisposable
                     ViewNodeKind.ActionSurface &&
                 !string.IsNullOrWhiteSpace(focusedNode.ActionId))
                 return new(focusedNode.ActionId, focusedNode.Id, focusedNode.Kind);
-            throw new BridgeStalePinnedInputAuthorityException(
-                $"Pinned-surface input has no actionable {authority} activation binding.");
+            return null;
         }
         if (focusedNode.Kind == ViewNodeKind.Slider &&
             input.Button is ControllerButton.DPadLeft or ControllerButton.DPadRight &&
@@ -1841,8 +1857,7 @@ internal sealed class BridgeClientRegistry : IAsyncDisposable
             if (shortcut is not null)
                 return new(shortcut.ActionId, path[index].Id, path[index].Kind);
         }
-        throw new BridgeStalePinnedInputAuthorityException(
-            $"Pinned-surface input has no actionable {authority} command binding.");
+        return null;
     }
 
     private sealed record PinnedSurfaceInputBinding(

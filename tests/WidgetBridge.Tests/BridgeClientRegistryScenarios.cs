@@ -99,6 +99,16 @@ internal static class BridgeClientRegistryScenarios
                             [
                                 new ViewNode { Id = "compact.play", Kind = ViewNodeKind.Button,
                                     ActionId = "compact-play" },
+                                new ViewNode { Id = "compact.label", Kind = ViewNodeKind.Text },
+                                new ViewNode
+                                {
+                                    Id = "compact.mute",
+                                    Kind = ViewNodeKind.Slider,
+                                    Minimum = 0,
+                                    Maximum = 100,
+                                    Value = 20,
+                                    Step = 5,
+                                },
                                 new ViewNode
                                 {
                                     Id = "compact.seek",
@@ -210,6 +220,35 @@ internal static class BridgeClientRegistryScenarios
                     configured.Id, staleAuthority, generation,
                     CancellationToken.None, CancellationToken.None));
         }
+        RegistryAssert.Equal(3, client.ControllerInputs.Count);
+
+        // A button the admitted projection binds nothing to is an ordinary
+        // not-handled outcome. It must not be reported as stale authority and
+        // must not reach the worker.
+        foreach (var unbound in new ControllerInputEvent[]
+        {
+            // B has no shortcut on the focused node or any ancestor in scope.
+            input with { Button = ControllerButton.B },
+            // A on a node in scope that carries no action ID.
+            input with { FocusedElementId = "compact.label" },
+            // A slider D-pad step on a node with no valueChanged action.
+            sliderInput with { FocusedElementId = "compact.mute" },
+        })
+        {
+            using var publication = await fixture.Registry.SendControllerInputAsync(
+                configured.Id, unbound, generation,
+                CancellationToken.None, CancellationToken.None);
+            RegistryAssert.False(publication.Value);
+        }
+        RegistryAssert.Equal(3, client.ControllerInputs.Count);
+
+        // An expected action ID is the host asserting one exact binding, so a
+        // projection that binds nothing remains an authority failure.
+        await RegistryAssert.ThrowsAsync<BridgeStalePinnedInputAuthorityException>(() =>
+            fixture.Registry.SendControllerInputAsync(
+                configured.Id, sliderInput with { FocusedElementId = "compact.mute" },
+                generation, CancellationToken.None, CancellationToken.None,
+                expectedActionId: "compact-seek.changed"));
         RegistryAssert.Equal(3, client.ControllerInputs.Count);
     }
 
@@ -1854,6 +1893,11 @@ internal static class RegistryAssert
     internal static void True(bool condition, string message = "Expected true.")
     {
         if (!condition) throw new InvalidOperationException(message);
+    }
+
+    internal static void False(bool condition, string message = "Expected false.")
+    {
+        if (condition) throw new InvalidOperationException(message);
     }
 
     internal static void Equal<T>(T expected, T actual)
