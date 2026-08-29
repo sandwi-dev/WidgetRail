@@ -70,9 +70,12 @@ public sealed partial class YouTubeVideoWidget : Widget
 
         var media = CreateMediaSurface(videoId, pending, retainSessionWhenHidden: false,
             overlayFullscreen);
-        var mediaLoading = state == EmbeddedMediaPlaybackState.Loading ||
-            pending?.Kind is EmbeddedMediaPlaybackCommandKind.Load or
-                EmbeddedMediaPlaybackCommandKind.Cue;
+        var seekBuffering = state == EmbeddedMediaPlaybackState.Loading &&
+            pending?.Kind == EmbeddedMediaPlaybackCommandKind.Seek;
+        var mediaLoading = !seekBuffering &&
+            (state == EmbeddedMediaPlaybackState.Loading ||
+             pending?.Kind is EmbeddedMediaPlaybackCommandKind.Load or
+                 EmbeddedMediaPlaybackCommandKind.Cue);
         var controlsUnavailable = videoId is null || error is not null || mediaLoading;
         var showFullscreenAction = includeDashboardQuickActions && videoId is not null;
         var fullscreenActionEnabled = overlayFullscreen ||
@@ -145,9 +148,11 @@ public sealed partial class YouTubeVideoWidget : Widget
             .FocusLeft("youtube.timeline")
             .Classes("youtube-slider", "youtube-volume");
 
-        var status = error ?? StatusText(videoId, state, mediaLoading);
+        var status = error ?? (seekBuffering
+            ? "Buffering YouTube video…"
+            : StatusText(videoId, state, mediaLoading));
         var statusClass = error is not null ? "is-error" :
-            mediaLoading ? "is-busy" :
+            mediaLoading || seekBuffering ? "is-busy" :
             state == EmbeddedMediaPlaybackState.Playing ? "is-playing" : "is-normal";
         var playerActionsAvailable =
             includeDashboardQuickActions &&
@@ -197,10 +202,6 @@ public sealed partial class YouTubeVideoWidget : Widget
                     .Classes("youtube-header", "youtube-appbar"),
                 linkEntry,
                 UI.Stack("youtube.player-shell",
-                        UI.Row("youtube.media-heading",
-                            UI.Text("PLAYER", "youtube.media.label").Classes("youtube-section-label"),
-                            UI.Text(videoId is null ? "Waiting for a video" : "16:9 embedded playback",
-                                "youtube.media.hint").Classes("youtube-section-meta")),
                         UI.MediaViewport(media, "youtube.viewport").Classes("youtube-viewport"),
                         UI.Stack("youtube.control-deck",
                                 UI.Row("youtube.controls",
