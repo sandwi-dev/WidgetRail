@@ -71,14 +71,14 @@ public sealed partial class YouTubeVideoWidget : Widget
             .FocusRight("youtube.playback.seek-backward")
             .Classes("youtube-primary", "youtube-transport-button", "youtube-play-toggle");
         var seekBack = UI.Button("", SeekBackwardActionId, "youtube.playback.seek-backward")
-            .Icon(WidgetGlyph.Previous, "Seek backward 10 seconds")
+            .Icon(WidgetGlyph.Rewind, "Seek backward 10 seconds")
             .Disabled(videoId is null || pending is not null)
             .FocusUp("youtube.link")
             .FocusLeft("youtube.playback.toggle")
             .FocusRight("youtube.playback.seek-forward")
             .Classes("youtube-secondary", "youtube-transport-button");
         var seekForward = UI.Button("", SeekForwardActionId, "youtube.playback.seek-forward")
-            .Icon(WidgetGlyph.Next, "Seek forward 10 seconds")
+            .Icon(WidgetGlyph.FastForward, "Seek forward 10 seconds")
             .Disabled(videoId is null || pending is not null)
             .FocusUp("youtube.link")
             .FocusLeft("youtube.playback.seek-backward")
