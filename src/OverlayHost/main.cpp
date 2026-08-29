@@ -4006,9 +4006,13 @@ private:
                 correlationId, nextDesiredLifecycle->widgetId,
                 priorDesiredLifecycle->state, nextDesiredLifecycle->state, now);
         }
+        const bool reopenedWidgetFocus =
+            priorSurface == widgetrail::Surface::Hidden &&
+            state_.surface() == widgetrail::Surface::Widget &&
+            state_.focusRegion() == widgetrail::FocusRegion::Widget;
         if (state_.surface() == widgetrail::Surface::Widget &&
-            priorFocusRegion != state_.focusRegion() &&
-            state_.focusRegion() == widgetrail::FocusRegion::Widget) {
+            state_.focusRegion() == widgetrail::FocusRegion::Widget &&
+            (priorFocusRegion != state_.focusRegion() || reopenedWidgetFocus)) {
             RestoreFocusForActiveSurface(state_.activeWidget());
         }
 
