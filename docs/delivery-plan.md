@@ -51,5 +51,7 @@ exact evidence needed to reopen it.
    review result, physical verdict, test closure, or integration.
 
 Plane does not authorize pushes, credential use, destructive recovery, or a
-material product decision requiring the user. Do not bulk-import historical DLVs
-or duplicate source-level evidence into Plane Pages.
+material product decision requiring the user. The reviewer goal separately
+records the user's standing authority to push only accepted integrated `main`.
+Do not bulk-import historical DLVs or duplicate source-level evidence into Plane
+Pages.

@@ -61,8 +61,9 @@ post or update delivery comments whenever those mutations accurately record
 or organize work under this goal. This routine Plane authority is always
 available and is not revoked by an implementation report stating that its
 implementation task performed no Plane mutation. Do not request separate
-approval for these control-plane actions. This authority does not extend to a
-push, destructive recovery, credentials, or a material product decision.
+approval for these control-plane actions. This authority does not extend to
+destructive recovery, credentials, or a material product decision. The separate
+accepted-main push authority below is user-owned and does not come from Plane.
 
 ### Plane MCP playbook
 
@@ -184,6 +185,11 @@ You own:
   unavailable or fails. This authority does not apply to an unrelated or
   user-launched process.
 - Scheduling and maintaining the 30-minute planner heartbeat.
+- Pushing the accepted integrated `main` branch to its configured remote after
+  each accepted integration checkpoint. Verify ancestry and exact accepted scope
+  before pushing; never push implementation worktrees, unaccepted commits,
+  reviewer-only dirty files, tags, releases, or other branches under this
+  standing authority.
 
 You do not:
 
@@ -192,7 +198,7 @@ You do not:
 - Edit `docs/implementation-status.md` or public feature documentation on behalf
   of implementation tasks, except to correct planner-owned cross-references
   when no product claim changes.
-- Push, publish, deploy, open pull requests, or contact external parties.
+- Publish releases, deploy, open pull requests, or contact external parties.
 - Use third-party credentials or accounts.
 - Perform destructive recovery, reset, discard, rewrite, or rebase user work.
 - Resolve substantial merge conflicts or make a material product decision with
@@ -445,7 +451,10 @@ preempt work already in progress.
   contiguous prefix through a safe local Git operation; do not imply later
   commits are accepted.
 - Never integrate from a dirty main worktree.
-- Never push.
+- After verifying accepted ancestry and worktree status, push the accepted
+  integrated `main` tip to its configured upstream. A missing or changed remote,
+  non-fast-forward rejection, authentication failure, or unexpected remote
+  divergence is a blocker; do not force-push or guess recovery.
 - If integration produces a substantial conflict, stop and ask the user. For a
   small mechanical conflict in reviewer-owned documentation, resolve it only
   when product meaning is unchanged and review the result.
@@ -512,8 +521,9 @@ not as a user decision by default. In the same review pass:
    item in the free lane.
 5. Escalate to the user only for a material product or security decision with
    genuinely different outcomes, a trust/scope expansion, credentials, a
-   destructive action, a substantial conflict, a push, or another authority
-   explicitly reserved to the user. Routine correction scope, test
+    destructive action, a substantial conflict, a push outside the accepted
+    integrated `main` authority, or another authority explicitly reserved to
+    the user. Routine correction scope, test
    disposition, Plane state maintenance, and known-safe continuation are
    reviewer-owned.
 
@@ -1001,7 +1011,8 @@ Stop the affected action and ask the user when it requires:
   interaction that cannot be safely automated.
 - Destructive recovery, deletion, reset, discard, history rewrite, or loss of
   uncommitted work.
-- External push, publication, deployment, partner contact, or policy acceptance.
+- A push outside the accepted integrated `main` authority, publication,
+  deployment, partner contact, or policy acceptance.
 - A substantial merge conflict or architecture choice with materially different
   product outcomes.
 - New authority beyond this goal.
