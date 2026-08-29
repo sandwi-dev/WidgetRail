@@ -313,7 +313,7 @@ internal static class NetworkControlsPresentation
             .FocusDown("network.wifi.scan")
             .FocusLeft("network.wifi.radio")
             .FocusRight("network.wifi.radio")
-            .Classes("network-radio-toggle", isOn ? "is-on" : "is-off");
+            .AddClasses("network-radio-toggle", isOn ? "is-on" : "is-off");
         return UI.Row("network.wifi.radio.row",
                 UI.Stack("network.wifi.radio.copy",
                         UI.Text("WI-FI", "network.wifi.radio.label", "Wi-Fi radio")
@@ -477,7 +477,7 @@ internal static class NetworkControlsPresentation
             .FocusUp("network.tab.bluetooth")
             .FocusLeft("network.bluetooth.radio")
             .FocusRight("network.bluetooth.radio")
-            .Classes("network-radio-toggle", "network-bluetooth-toggle",
+            .AddClasses("network-radio-toggle", "network-bluetooth-toggle",
                 isOn ? "is-on" : "is-off");
         if (firstDeviceId is not null) toggle = toggle.FocusDown(firstDeviceId);
 

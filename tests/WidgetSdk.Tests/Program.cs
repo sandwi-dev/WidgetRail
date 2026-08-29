@@ -1822,7 +1822,10 @@ static Task SettingsCompositesAreSemantic()
     Assert.Equal("Reduced motion, On", toggle.AccessibilityLabel);
     Assert.Equal(true, toggle.IsSelected);
     Assert.Equal(null, toggle.Glyph);
-    Assert.Equal("setting-toggle", toggle.StyleClasses.Single());
+    Assert.True(
+        new[] { "wrail-toggle", "wrail-toggle--on" }
+            .SequenceEqual(toggle.StyleClasses),
+        "ToggleButton must expose only the platform root and current-state hooks.");
 
     var offToggle = Find(snapshot.Root, "bold-toggle");
     Assert.Equal("Bold text: Off", offToggle.Text);

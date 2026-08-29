@@ -55,11 +55,11 @@
 
 .category-card,
 .setting-row,
-.setting-toggle,
+.wrail-toggle,
 .primary-button,
 .secondary-button,
 .danger-button,
-.setting-stepper-button {
+.wrail-stepper__button {
   min-height: 44px;
   padding: 10px 12px;
   background: transparent;
@@ -73,22 +73,22 @@
 
 .category-card:focused,
 .setting-row:focused,
-.setting-toggle:focused,
+.wrail-toggle:focused,
 .primary-button:focused,
 .secondary-button:focused,
-.setting-stepper-button:focused {
+.wrail-stepper__button:focused {
   background: var(--surface-active, rgba(48, 47, 43, 0.98));
   outline-color: var(--focus);
   outline-width: 2px;
   outline-offset: -2px;
 }
 
-.setting-toggle:selected,
+.wrail-toggle:selected,
 .setting-row.is-enabled { color: var(--accent); }
 
 .primary-button,
 .secondary-button,
-.setting-stepper-button {
+.wrail-stepper__button {
   background: var(--surface-raised);
   border-color: var(--border, rgba(246, 240, 226, 0.12));
 }
@@ -96,11 +96,11 @@
 .primary-button { color: var(--text); }
 .primary-button:focused { color: var(--text); }
 
-.setting-stepper,
+.wrail-stepper,
 .reset-actions { gap: 10px; align: center; }
-.setting-stepper-label { min-width: 180px; color: var(--text); }
-.setting-stepper-value { min-width: 64px; color: var(--text-muted); text-align: center; }
-.setting-stepper-button { width: 44px; height: 44px; padding: 10px; }
+.wrail-stepper__label { min-width: 180px; color: var(--text); }
+.wrail-stepper__value { min-width: 64px; color: var(--text-muted); text-align: center; }
+.wrail-stepper__button { width: 44px; height: 44px; padding: 10px; }
 
 .danger-card,
 .danger-button { color: var(--danger, #c98181); }

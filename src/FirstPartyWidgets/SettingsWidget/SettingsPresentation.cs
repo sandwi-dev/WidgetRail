@@ -159,7 +159,7 @@ internal static class SettingsPresentation
                 "widget-switch-animation.toggle",
                 "appearance.animate-widget-switching")
             .FocusUp("appearance.theme")
-            .Busy(busy).Classes("setting-row");
+            .Busy(busy).AddClasses("setting-row");
         return View(header,
             PageScope("appearance.page",
                 UI.Text("Appearance", "appearance.heading", "Appearance settings")
@@ -284,13 +284,13 @@ internal static class SettingsPresentation
                 settings.AppLibrary.EpicInstalledGamesEnabled,
                 "app-library.epic.toggle",
                 "app-library.epic.toggle")
-            .Busy(busy).Classes("setting-row");
+            .Busy(busy).AddClasses("setting-row");
         var gog = UI.ToggleButton(
                 "GOG installed games",
                 settings.AppLibrary.GogInstalledGamesEnabled,
                 "app-library.gog.toggle",
                 "app-library.gog.toggle")
-            .Busy(busy).Classes("setting-row");
+            .Busy(busy).AddClasses("setting-row");
         return View(header,
             PageScope("app-library.sources.page",
                 UI.Text("Game sources", "app-library.sources.heading",

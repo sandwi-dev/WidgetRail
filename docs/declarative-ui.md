@@ -689,8 +689,9 @@ UI.Stack("appearance-settings",
 ```
 
 `ToggleButton` renders visible `On`/`Off` text, a matching accessibility label,
-`.setting-toggle`, and selected state while on. The widget still owns the
-value: handle its action, update state, and call `Invalidate()`.
+`.wrail-toggle`, `.wrail-toggle--on` / `.wrail-toggle--off`, and selected state
+while on. The widget still owns the value: handle its action, update state, and
+call `Invalidate()`.
 
 `Stepper` creates stable child IDs by appending `.label`, `.decrement`,
 `.value`, and `.increment` to its base ID. Keep the resulting IDs within the
@@ -699,11 +700,22 @@ value changes. The two buttons expose independent action IDs, explicit
 left/right focus neighbors, accessible `Decrease <label>` / `Increase <label>`
 names, and disabled state at a bound. Its semantic classes are:
 
-- `.setting-stepper` on the row;
-- `.setting-stepper-label` and `.setting-stepper-value` on text;
-- `.setting-stepper-button` on both buttons; and
-- `.setting-stepper-decrement` / `.setting-stepper-increment` on the respective
-  action.
+- `.wrail-stepper` on the row;
+- `.wrail-stepper__label` and `.wrail-stepper__value` on text;
+- `.wrail-stepper__button` on both buttons; and
+- `.wrail-stepper__button--decrement` / `.wrail-stepper__button--increment` on
+  the respective action.
+
+This pre-release migration is intentionally breaking: the former
+`.setting-toggle`, `.setting-stepper`, `.setting-stepper-label`,
+`.setting-stepper-value`, `.setting-stepper-button`,
+`.setting-stepper-decrement`, and `.setting-stepper-increment` hooks are no
+longer emitted. Replace them respectively with `.wrail-toggle`,
+`.wrail-stepper`, `.wrail-stepper__label`, `.wrail-stepper__value`,
+`.wrail-stepper__button`, `.wrail-stepper__button--decrement`, and
+`.wrail-stepper__button--increment`. The built-in theme covers the neutral,
+selected, focused, and disabled ToggleButton states plus every Stepper part and
+bound button state.
 
 The helper does not parse, clamp, persist, or mutate the displayed value.
 Validate the domain in widget/host logic, then rebuild the composite from that

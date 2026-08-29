@@ -77,7 +77,11 @@ public static partial class UI
         {
             AccessibilityLabel = $"{label}, {state}",
             IsSelected = isOn ? true : null,
-            StyleClasses = ["setting-toggle"],
+            StyleClasses =
+            [
+                "wrail-toggle",
+                isOn ? "wrail-toggle--on" : "wrail-toggle--off",
+            ],
         };
     }
 
@@ -106,30 +110,38 @@ public static partial class UI
             AccessibilityLabel = $"Decrease {label}",
             IsDisabled = canDecrement ? null : true,
             FocusNeighbors = new FocusNeighbors(Right: incrementId),
-            StyleClasses = ["setting-stepper-button", "setting-stepper-decrement"],
+            StyleClasses =
+            [
+                "wrail-stepper__button",
+                "wrail-stepper__button--decrement",
+            ],
         };
         var increment = new ButtonElement(incrementId, "+", incrementAction)
         {
             AccessibilityLabel = $"Increase {label}",
             IsDisabled = canIncrement ? null : true,
             FocusNeighbors = new FocusNeighbors(Left: decrementId),
-            StyleClasses = ["setting-stepper-button", "setting-stepper-increment"],
+            StyleClasses =
+            [
+                "wrail-stepper__button",
+                "wrail-stepper__button--increment",
+            ],
         };
         return new RowElement(id,
         [
             new TextElement(labelId, label, label)
             {
-                StyleClasses = ["setting-stepper-label"],
+                StyleClasses = ["wrail-stepper__label"],
             },
             decrement,
             new TextElement(valueId, value, $"{label}: {value}")
             {
-                StyleClasses = ["setting-stepper-value"],
+                StyleClasses = ["wrail-stepper__value"],
             },
             increment,
         ])
         {
-            StyleClasses = ["setting-stepper"],
+            StyleClasses = ["wrail-stepper"],
         };
     }
 
