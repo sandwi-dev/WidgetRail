@@ -184,7 +184,7 @@ public sealed partial class YouTubeVideoWidget : Widget
         }
         return new WidgetView(
             root,
-            InitialFocusId: videoId is null ? "youtube.link" : "youtube.playback.toggle",
+            InitialFocusId: "youtube.playback.toggle",
             QuickActions: quickActions,
             ActiveInputScopeId: "youtube.root",
             Surface: new WidgetSurfaceHints
