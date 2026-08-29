@@ -2405,6 +2405,44 @@ private:
         widgetrail::MediaViewportPresentationGeometry geometry;
     };
 
+    [[nodiscard]] bool CommittedOverlayFullscreenMediaAuthorityCurrent(
+        const std::wstring_view widgetId) const noexcept {
+        const auto& committed = committedOverlayFullscreenMediaPresentation_;
+        const auto presentation = sessions_.Presentation(widgetId);
+        const auto* snapshot = presentation.snapshot;
+        const auto* descriptor = sessions_.FindDescriptor(widgetId);
+        return state_.surface() == widgetrail::Surface::Widget &&
+            state_.activeWidget() == widgetId && committed && snapshot &&
+            snapshot->embeddedMedia && descriptor && embeddedMediaAuthority_ &&
+            embeddedMediaAuthority_->projection == EmbeddedMediaProjection::Overlay &&
+            presentation.authority ==
+                widgetrail::WidgetPresentationAuthority::Current &&
+            committedWidgetVisualState_ &&
+            committedWidgetVisualState_->widgetId == committed->widgetId &&
+            committedWidgetVisualState_->instanceId == committed->instanceId &&
+            committedWidgetVisualState_->snapshotSequence ==
+                committed->snapshotSequence &&
+            committed->widgetId == widgetId &&
+            committed->instanceId == snapshot->instanceId &&
+            committed->runtimeGeneration == descriptor->runtimeGeneration &&
+            committed->presentationGeneration ==
+                descriptor->presentationGeneration &&
+            committed->surfaceId == snapshot->embeddedMedia->id &&
+            committed->snapshotSequence <= snapshot->sequence &&
+            embeddedMediaAuthority_->widgetId == committed->widgetId &&
+            embeddedMediaAuthority_->instanceId == committed->instanceId &&
+            embeddedMediaAuthority_->runtimeGeneration ==
+                committed->runtimeGeneration &&
+            embeddedMediaAuthority_->presentationGeneration ==
+                committed->presentationGeneration &&
+            embeddedMediaAuthority_->surfaceId == committed->surfaceId &&
+            widgetrail::SameEmbeddedMediaResourceContract(
+                committed->resourceContract, *snapshot->embeddedMedia) &&
+            widgetrail::SameEmbeddedMediaResourceContract(
+                embeddedMediaAuthority_->resourceContract,
+                *snapshot->embeddedMedia);
+    }
+
     [[nodiscard]] static std::wstring EmbeddedMediaSessionKey(
         const std::wstring_view widgetId,
         const widgetrail::WidgetSnapshot& snapshot,
@@ -6571,7 +6609,8 @@ private:
             priorSessionPresentation.snapshot
                 ? priorSessionPresentation.snapshot->sequence
                 : 0;
-        const bool priorOverlayFullscreen = OverlayFullscreenMediaRequested();
+        const bool committedOverlayFullscreen =
+            CommittedOverlayFullscreenMediaAuthorityCurrent(priorVisibleWidget);
         const auto priorDesiredExtent = DesiredPresentationExtentDip();
         const auto priorExtent = compositionSurface_.available()
             ? presentationTransaction_.CommittedDestinationExtent(
@@ -6588,7 +6627,7 @@ private:
         std::forward<Refresh>(refresh)();
         const bool isVisible = state_.surface() != widgetrail::Surface::Hidden;
         const bool settleOverlayFullscreenExit =
-            priorOverlayFullscreen && !OverlayFullscreenMediaRequested();
+            committedOverlayFullscreen && !OverlayFullscreenMediaRequested();
         const auto nextExtent = DesiredPresentationExtentDip();
         const std::wstring nextVisibleWidget = state_.surface() == widgetrail::Surface::Widget
             ? std::wstring(state_.activeWidget())
