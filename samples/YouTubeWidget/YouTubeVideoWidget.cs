@@ -55,7 +55,7 @@ public sealed partial class YouTubeVideoWidget : Widget
 
         var linkEntry = UI.TextEntry(
                 link,
-                "Paste YouTube link",
+                "Paste a youtube.com or youtu.be link",
                 LinkActionId,
                 "youtube.link",
                 ProtocolConstants.MaximumTextEntryLength)
@@ -153,6 +153,7 @@ public sealed partial class YouTubeVideoWidget : Widget
                 linkEntry,
                 UI.Stack("youtube.player-shell",
                         UI.Row("youtube.media-heading",
+                            UI.Text("PLAYER", "youtube.media.label").Classes("youtube-section-label"),
                             UI.Text(videoId is null ? "Waiting for a video" : "16:9 embedded playback",
                                 "youtube.media.hint").Classes("youtube-section-meta")),
                         UI.MediaViewport(media, "youtube.viewport").Classes("youtube-viewport"),
