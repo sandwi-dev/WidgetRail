@@ -656,6 +656,22 @@ After every assignment, report:
 - The lane name and whether the next same-lane Ready assignment is immediately
   executable or awaiting planner integration.
 
+Before writing the implementation task's own final answer, explicitly call
+`send_message_to_thread` for the reviewer task that assigned the work. When the
+assignment arrived through `codex_delegation`, use its `source_thread_id` as the
+reviewer target. Send the same concise terminal report directly for every
+outcome: completed or committed work, first-red stop, blocker, rejection,
+no-commit result, and diagnosis-only or no-change result. The direct report must
+include the assignment, baseline/worktree/branch, exact scope, commit/tree or
+retained diff and cleanliness, verification results, launch/install/integration/
+push/Plane mutations, and the exact reviewer decision needed.
+
+A Plane comment, the implementation task's own final answer, a
+`codex_delegation` wrapper, or an expectation that the reviewer will poll the
+task does not satisfy this notification requirement. Send the direct reviewer
+message before ending every assigned turn, including follow-up corrections to
+an earlier assignment.
+
 Do not edit reviewer-owned documents to mark your work Done or pending review.
 The planning agent independently reviews the commit and updates assignment,
 issue, roadmap, and review dispositions.
