@@ -4,7 +4,7 @@ This full-trust Community package searches public YouTube videos through the
 YouTube Data API v3 and retains the existing link-to-play route. Playback uses
 YouTube's official IFrame Player API inside WidgetRail's host-owned
 embedded-media surface. It does not use an account, OAuth, stream extraction,
-arbitrary browsing, autoplay, or fullscreen.
+arbitrary browsing, autoplay, or browser-owned fullscreen.
 
 ## Search setup
 
@@ -44,8 +44,10 @@ separate, explicit action; package versions are immutable.
 
 Search, link playback, and setup share one route bar. Search and setup use compact
 task cards; the player keeps the 16:9 video primary and places icon transport,
-timeline, and compact volume on one row. Fullscreen/settings remain in
-the external player and pinning remains host-owned.
+timeline, and compact volume on one row. The native **Fullscreen** action asks
+WidgetRail to transfer the same media plane into its host-owned overlay
+fullscreen presentation; the YouTube iframe keeps its own controls, keyboard,
+and fullscreen paths disabled. Pinning remains host-owned.
 
 1. Open **YouTube Video** and choose **Discover**, **Play a link**, or **Setup** from the route bar.
 2. Choose **Play a link**, press A, paste a supported public video URL, and commit the host-owned text
@@ -54,10 +56,14 @@ the external player and pinning remains host-owned.
    with the embedded player before playback starts.
 4. Use the native seek-back/seek-forward icons, timeline, and volume controls.
    The web player remains inside its unobscured, minimum 200-by-200 media viewport.
-5. With a current video ready on **Now playing**, the dashboard exposes X for
+5. With a current video ready on **Now playing**, choose **Fullscreen** to show
+   only the aspect-fitted video plane. X toggles playback, LT/RT seek by ten
+   seconds, and B exits back to the same focused native control. The tray and
+   controller guide remain hidden while fullscreen is active.
+6. With a current video ready on **Now playing**, the dashboard exposes X for
    Play/Pause, LT for a bounded 10-second seek backward, and RT for a bounded
    10-second seek forward. Other routes expose no YouTube dashboard actions.
-6. Return to search without losing the retained query/result window. A compact
+7. Return to search without losing the retained query/result window. A compact
    pin remains the host-owned video-only presentation. In compact pinned focus,
    X pauses or resumes the current video in place and LT/RT retain their bounded
    seek behavior.

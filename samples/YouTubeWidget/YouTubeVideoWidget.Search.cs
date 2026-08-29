@@ -71,7 +71,8 @@ public sealed partial class YouTubeVideoWidget
                 {
                     _configurationKnown = true;
                     _configured = summary.IsConfigured;
-                    _route = summary.IsConfigured ? YouTubeRoute.Search : YouTubeRoute.Setup;
+                    SetRouteLocked(summary.IsConfigured
+                        ? YouTubeRoute.Search : YouTubeRoute.Setup);
                     _setupError = null;
                 }
             }
@@ -82,12 +83,18 @@ public sealed partial class YouTubeVideoWidget
                 {
                     _configurationKnown = true;
                     _configured = false;
-                    _route = YouTubeRoute.Setup;
+                    SetRouteLocked(YouTubeRoute.Setup);
                     _setupError = SafeMessage(exception);
                 }
             }
             finally { if (context.IsCurrent) Invalidate(); }
         });
+        return ValueTask.CompletedTask;
+    }
+
+    protected override ValueTask OnDeactivatedAsync(CancellationToken transitionToken)
+    {
+        lock (_gate) _overlayFullscreen = false;
         return ValueTask.CompletedTask;
     }
 
@@ -370,23 +377,25 @@ public sealed partial class YouTubeVideoWidget
                 StartDelete();
                 return true;
             case SetupRouteActionId:
-                lock (_gate) { _route = YouTubeRoute.Setup; _setupError = null; }
+                lock (_gate) { SetRouteLocked(YouTubeRoute.Setup); _setupError = null; }
                 Invalidate();
                 return true;
             case SearchRouteActionId:
-                lock (_gate) _route = _configured ? YouTubeRoute.Search : YouTubeRoute.Setup;
+                lock (_gate) SetRouteLocked(_configured
+                    ? YouTubeRoute.Search : YouTubeRoute.Setup);
                 Invalidate();
                 return true;
             case LinkRouteActionId:
-                lock (_gate) _route = YouTubeRoute.Link;
+                lock (_gate) SetRouteLocked(YouTubeRoute.Link);
                 Invalidate();
                 return true;
             case "youtube.player.return":
-                lock (_gate) _route = YouTubeRoute.Player;
+                lock (_gate) SetRouteLocked(YouTubeRoute.Player);
                 Invalidate();
                 return true;
             case BackActionId:
-                lock (_gate) _route = _configured ? YouTubeRoute.Search : YouTubeRoute.Setup;
+                lock (_gate) SetRouteLocked(_configured
+                    ? YouTubeRoute.Search : YouTubeRoute.Setup);
                 Invalidate();
                 return true;
             case SearchCommitActionId when action.CommittedText is { } query:
@@ -423,7 +432,7 @@ public sealed partial class YouTubeVideoWidget
                     _configurationKnown = true;
                     _setupBusy = false;
                     _setupError = null;
-                    _route = YouTubeRoute.Search;
+                    SetRouteLocked(YouTubeRoute.Search);
                 }
             }
             catch (Exception exception)
@@ -492,10 +501,16 @@ public sealed partial class YouTubeVideoWidget
             _playbackError = null;
             _position = 0;
             _duration = 0;
-            _route = YouTubeRoute.Player;
+            SetRouteLocked(YouTubeRoute.Player);
             QueueCommand(EmbeddedMediaPlaybackCommandKind.Load, item.VideoId);
         }
         return true;
+    }
+
+    private void SetRouteLocked(YouTubeRoute route)
+    {
+        _route = route;
+        if (route != YouTubeRoute.Player) _overlayFullscreen = false;
     }
 
     private async ValueTask<WidgetCursorPage<YouTubeSearchItem>> LoadSearchPageAsync(
