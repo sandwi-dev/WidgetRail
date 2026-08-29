@@ -215,11 +215,28 @@ static async Task CompositeControls()
     var widget = Create(temp.Path);
     await Action(widget, "open.accessibility");
     var snapshot = Snapshot(widget);
+    var nodes = Nodes(snapshot.Root).ToDictionary(node => node.Id, StringComparer.Ordinal);
     var buttons = Buttons(snapshot.Root).ToDictionary(button => button.Id, StringComparer.Ordinal);
+    Assert.SequenceEqual(["wrail-stepper"], nodes["text.stepper"].StyleClasses);
+    Assert.SequenceEqual(["wrail-stepper__label"], nodes["text.stepper.label"].StyleClasses);
+    Assert.SequenceEqual(["wrail-stepper__value"], nodes["text.stepper.value"].StyleClasses);
+    Assert.SequenceEqual(
+        ["wrail-stepper__button", "wrail-stepper__button--decrement"],
+        buttons["text.stepper.decrement"].StyleClasses);
+    Assert.SequenceEqual(
+        ["wrail-stepper__button", "wrail-stepper__button--increment"],
+        buttons["text.stepper.increment"].StyleClasses);
+    Assert.Equal("text.decrease", buttons["text.stepper.decrement"].ActionId);
+    Assert.Equal("text.increase", buttons["text.stepper.increment"].ActionId);
     Assert.Equal("Decrease Text size", buttons["text.stepper.decrement"].AccessibilityLabel);
     Assert.Equal("Increase Text size", buttons["text.stepper.increment"].AccessibilityLabel);
     Assert.Equal("Follow Windows motion: On", buttons["motion.system"].Text);
     Assert.Equal(true, buttons["motion.system"].IsSelected);
+    Assert.Equal("motion.system", buttons["motion.system"].ActionId);
+    Assert.SequenceEqual(["wrail-toggle", "wrail-toggle--on"],
+        buttons["motion.system"].StyleClasses);
+    Assert.SequenceEqual(["wrail-toggle", "wrail-toggle--off"],
+        buttons["motion.reduced"].StyleClasses);
     Assert.Equal(null, buttons["motion.system"].Glyph);
     Assert.Equal(null, buttons["motion.reduced"].Glyph);
     Assert.Equal("motion.reduced", buttons["motion.system"].Focus!.Down);

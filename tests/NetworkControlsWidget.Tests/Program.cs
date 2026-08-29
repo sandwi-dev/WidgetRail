@@ -581,6 +581,11 @@ static async Task WifiRadioToggle()
 
     var on = Button(Snapshot(widget, 1).Root, "network.wifi.radio");
     Assert.True(on.IsSelected is true);
+    Assert.Equal("wifi.radio.toggle", on.ActionId);
+    Assert.Equal("Wi-Fi on", on.AccessibilityLabel);
+    Assert.SequenceEqual(
+        ["wrail-toggle", "wrail-toggle--on", "network-radio-toggle", "is-on"],
+        on.StyleClasses);
     Assert.Equal("network.wifi.scan", on.Focus?.Down);
     await widget.OnActionAsync(new("wifi.radio.toggle", on.Id));
     await WaitUntil(() => widget.WifiRadio?.State == WidgetWifiRadioState.Off &&
@@ -589,6 +594,9 @@ static async Task WifiRadioToggle()
     var off = Button(Snapshot(widget, 2).Root, "network.wifi.radio");
     Assert.True(off.IsSelected is not true);
     Assert.Equal("network.wifi.radio", off.Id);
+    Assert.SequenceEqual(
+        ["wrail-toggle", "wrail-toggle--off", "network-radio-toggle", "is-off"],
+        off.StyleClasses);
 
     fake.EmitRadio(new WidgetWifiRadio(WidgetWifiRadioState.HardwareDisabled, false));
     await WaitUntil(() => widget.WifiRadio?.State == WidgetWifiRadioState.HardwareDisabled);
@@ -745,11 +753,22 @@ static async Task BluetoothRadioToggle()
     await widget.OnActionAsync(new("network.tab.select", "network.tab.bluetooth"));
     var radio = Button(Snapshot(widget, 1).Root, "network.bluetooth.radio");
     Assert.True(radio.IsSelected is true);
+    Assert.Equal("bluetooth.radio.toggle", radio.ActionId);
+    Assert.Equal("Bluetooth on", radio.AccessibilityLabel);
+    Assert.SequenceEqual(
+        ["wrail-toggle", "wrail-toggle--on", "network-radio-toggle",
+            "network-bluetooth-toggle", "is-on"],
+        radio.StyleClasses);
     await widget.OnActionAsync(new("bluetooth.radio.toggle", radio.Id));
     await WaitUntil(() => widget.Bluetooth?.RadioState == WidgetBluetoothRadioState.Off);
     Assert.Equal(1, fake.BluetoothRadioSetCalls);
     Assert.Equal(1, widget.BluetoothRadioControlCount);
-    Assert.True(Button(Snapshot(widget, 2).Root, "network.bluetooth.radio").IsSelected is not true);
+    var radioOff = Button(Snapshot(widget, 2).Root, "network.bluetooth.radio");
+    Assert.True(radioOff.IsSelected is not true);
+    Assert.SequenceEqual(
+        ["wrail-toggle", "wrail-toggle--off", "network-radio-toggle",
+            "network-bluetooth-toggle", "is-off"],
+        radioOff.StyleClasses);
 
     fake.EmitBluetooth(new WidgetBluetoothSnapshot(
         WidgetBluetoothRadioState.HardwareDisabled, false,

@@ -1820,6 +1820,7 @@ static Task SettingsCompositesAreSemantic()
     var toggle = Find(snapshot.Root, "motion-toggle");
     Assert.Equal("Reduced motion: On", toggle.Text);
     Assert.Equal("Reduced motion, On", toggle.AccessibilityLabel);
+    Assert.Equal("toggle-motion", toggle.ActionId);
     Assert.Equal(true, toggle.IsSelected);
     Assert.Equal(null, toggle.Glyph);
     Assert.True(
@@ -1832,6 +1833,11 @@ static Task SettingsCompositesAreSemantic()
     Assert.Equal("Bold text, Off", offToggle.AccessibilityLabel);
     Assert.Equal(null, offToggle.IsSelected);
     Assert.Equal(null, offToggle.Glyph);
+    Assert.Equal("toggle-bold", offToggle.ActionId);
+    Assert.True(
+        new[] { "wrail-toggle", "wrail-toggle--off" }
+            .SequenceEqual(offToggle.StyleClasses),
+        "ToggleButton must expose only the platform root and current-state hooks.");
 
     var explicitIcon = UI.Button("Liked", "like", "liked")
         .Icon(WidgetGlyph.Like, "Like track")
@@ -1840,8 +1846,25 @@ static Task SettingsCompositesAreSemantic()
     Assert.Equal(WidgetGlyph.Like, explicitIcon.Glyph);
     Assert.Equal(true, explicitIcon.IsSelected);
 
+    var stepper = Find(snapshot.Root, "text-scale");
     var decrement = Find(snapshot.Root, "text-scale.decrement");
     var increment = Find(snapshot.Root, "text-scale.increment");
+    Assert.True(new[] { "wrail-stepper" }.SequenceEqual(stepper.StyleClasses),
+        "Stepper must expose the platform root hook.");
+    Assert.True(new[] { "wrail-stepper__label" }.SequenceEqual(
+        Find(snapshot.Root, "text-scale.label").StyleClasses),
+        "Stepper label must expose the platform part hook.");
+    Assert.True(new[] { "wrail-stepper__value" }.SequenceEqual(
+        Find(snapshot.Root, "text-scale.value").StyleClasses),
+        "Stepper value must expose the platform part hook.");
+    Assert.True(new[] { "wrail-stepper__button", "wrail-stepper__button--decrement" }
+        .SequenceEqual(decrement.StyleClasses),
+        "Stepper decrement must expose the common and direction part hooks.");
+    Assert.True(new[] { "wrail-stepper__button", "wrail-stepper__button--increment" }
+        .SequenceEqual(increment.StyleClasses),
+        "Stepper increment must expose the common and direction part hooks.");
+    Assert.Equal("text-smaller", decrement.ActionId);
+    Assert.Equal("text-larger", increment.ActionId);
     Assert.Equal(true, decrement.IsDisabled);
     Assert.Equal("text-scale.increment", decrement.Focus!.Right);
     Assert.Equal("text-scale.decrement", increment.Focus!.Left);

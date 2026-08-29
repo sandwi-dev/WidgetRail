@@ -297,6 +297,60 @@ static Task ThemeDiscovery()
     Assert.Equal("44px", primaryIconButton.Get("min-height")!.Text);
     Assert.Equal("10px", primaryIconButton.Get("corner-radius")!.Text);
     Assert.Equal("#b8ae92", primaryIconButton.Get("background")!.Text);
+    var toggleOff = compiled.Theme.Resolve(new WrssElement(
+        "button", null,
+        new HashSet<string>(["wrail-toggle", "wrail-toggle--off"]),
+        new HashSet<WrssPseudoState>()));
+    Assert.Equal("44px", toggleOff.Get("min-height")!.Text);
+    Assert.Equal("10px", toggleOff.Get("corner-radius")!.Text);
+    var toggleOn = compiled.Theme.Resolve(new WrssElement(
+        "button", null,
+        new HashSet<string>(["wrail-toggle", "wrail-toggle--on"]),
+        new HashSet<WrssPseudoState>()));
+    Assert.Equal("rgba(48, 47, 43, 0.98)", toggleOn.Get("background")!.Text);
+    Assert.Equal("rgba(246, 240, 226, 0.22)", toggleOn.Get("border-color")!.Text);
+    var focusedToggle = compiled.Theme.Resolve(new WrssElement(
+        "button", null,
+        new HashSet<string>(["wrail-toggle", "wrail-toggle--off"]),
+        new HashSet<WrssPseudoState>([WrssPseudoState.Focused])));
+    Assert.Equal("#f4f0e8", focusedToggle.Get("outline-color")!.Text);
+    var disabledToggle = compiled.Theme.Resolve(new WrssElement(
+        "button", null,
+        new HashSet<string>(["wrail-toggle", "wrail-toggle--off"]),
+        new HashSet<WrssPseudoState>([WrssPseudoState.Disabled])));
+    Assert.Equal("0.64", disabledToggle.Get("opacity")!.Text);
+    var stepper = compiled.Theme.Resolve(new WrssElement(
+        "row", null, new HashSet<string>(["wrail-stepper"]),
+        new HashSet<WrssPseudoState>()));
+    Assert.Equal("10px", stepper.Get("gap")!.Text);
+    Assert.Equal("center", stepper.Get("align")!.Text);
+    var stepperLabel = compiled.Theme.Resolve(new WrssElement(
+        "text", null, new HashSet<string>(["wrail-stepper__label"]),
+        new HashSet<WrssPseudoState>()));
+    Assert.Equal("1", stepperLabel.Get("flex-grow")!.Text);
+    var stepperValue = compiled.Theme.Resolve(new WrssElement(
+        "text", null, new HashSet<string>(["wrail-stepper__value"]),
+        new HashSet<WrssPseudoState>()));
+    Assert.Equal("64px", stepperValue.Get("min-width")!.Text);
+    Assert.Equal("center", stepperValue.Get("text-align")!.Text);
+    foreach (var direction in new[] { "decrement", "increment" })
+    {
+        var stepperButton = compiled.Theme.Resolve(new WrssElement(
+            "button", null,
+            new HashSet<string>(["wrail-stepper__button", $"wrail-stepper__button--{direction}"]),
+            new HashSet<WrssPseudoState>()));
+        Assert.Equal("44px", stepperButton.Get("width")!.Text);
+        Assert.Equal("44px", stepperButton.Get("min-width")!.Text);
+        Assert.Equal("0", stepperButton.Get("flex-shrink")!.Text);
+    }
+    var focusedStepperButton = compiled.Theme.Resolve(new WrssElement(
+        "button", null, new HashSet<string>(["wrail-stepper__button"]),
+        new HashSet<WrssPseudoState>([WrssPseudoState.Focused])));
+    Assert.Equal("#f4f0e8", focusedStepperButton.Get("outline-color")!.Text);
+    var disabledStepperButton = compiled.Theme.Resolve(new WrssElement(
+        "button", null, new HashSet<string>(["wrail-stepper__button"]),
+        new HashSet<WrssPseudoState>([WrssPseudoState.Disabled])));
+    Assert.Equal("0.64", disabledStepperButton.Get("opacity")!.Text);
     var slider = compiled.Theme.Resolve(new WrssElement("slider"));
     Assert.Equal("44px", slider.Get("min-height")!.Text);
     Assert.Equal("1px", slider.Get("border-width")!.Text);

@@ -101,6 +101,24 @@ public sealed class GameLauncherLayoutTests
                 .StyleClasses.Contains("game-launcher-main", StringComparer.Ordinal),
                 $"{scenario.Name}: main region does not own remaining height");
 
+            if (scenario.Name == "library")
+            {
+                var favorites = nodes.Single(node =>
+                    node.Id == "game-launcher.filter.favorites");
+                CollectionAssert.AreEqual(
+                    new[] { "wrail-toggle", "wrail-toggle--off" },
+                    favorites.StyleClasses.ToArray());
+                Assert.AreEqual("game-launcher.filter.favorites", favorites.ActionId);
+                Assert.AreEqual("Favorites, Off", favorites.AccessibilityLabel);
+
+                var allInstalled = nodes.Single(node =>
+                    node.ActionId == "game-launcher.collection.select.all");
+                CollectionAssert.AreEqual(
+                    new[] { "wrail-toggle", "wrail-toggle--on" },
+                    allInstalled.StyleClasses.ToArray());
+                Assert.AreEqual("All installed, On", allInstalled.AccessibilityLabel);
+            }
+
             Assert.AreEqual(ResponsiveVisibility.CompactOnly,
                 nodes.Single(node => node.Id == "game-launcher.compact.title").VisibleWhen,
                 $"{scenario.Name}: compact title branch missing");
@@ -437,7 +455,12 @@ public sealed class GameLauncherLayoutTests
             new Dictionary<string, GameLauncherLaunchState>(StringComparer.Ordinal),
             OrganizationBusy: false, Interactive: true, new WidgetAppLibraryQuery(),
             GameLauncherRecentMode.Off, FavoriteFilter: false, route,
-            GameLauncherFixedRows.Empty, sources, HeroSavedId: null, HeroIndex: 0);
+            GameLauncherFixedRows.Empty, sources, HeroSavedId: null, HeroIndex: 0)
+        {
+            Collections = GameLauncherCollectionPolicy.Options(
+                organization, organization.ProvenSources.ToArray(),
+                GameLauncherCollectionPolicy.AllInstalled),
+        };
 
     private static WidgetCursorResourceSnapshot<GameLauncherItem> Snapshot(
         WidgetPagedResourceStatus status,
