@@ -8979,13 +8979,22 @@ private:
         return authority;
     }
 
+    [[nodiscard]] bool WidgetOwnsInputFocus(
+        const std::wstring_view widgetId) const noexcept {
+        return state_.surface() == widgetrail::Surface::Widget &&
+            state_.focusRegion() == widgetrail::FocusRegion::Widget &&
+            state_.activeWidget() == widgetId;
+    }
+
     void RememberCurrentFocus(const std::wstring_view widgetId) {
+        if (!WidgetOwnsInputFocus(widgetId)) return;
         const auto* snapshot = InteractionSnapshotFor(widgetId);
         if (!snapshot || interactionSession_.focusedElementId().empty()) return;
         interactionSession_.RememberFocus(widgetId, *snapshot);
     }
 
     void RestoreFocusForActiveSurface(const std::wstring_view widgetId) {
+        if (!WidgetOwnsInputFocus(widgetId)) return;
         if (textEntryModal_.active()) {
             interactionSession_.ClearFocus();
             return;
@@ -13562,7 +13571,8 @@ private:
                     }
                 }
                 declarativeMotionActive_ = !inertRetainedSnapshot && result.animationActive;
-                if (!textEntryModal_.active() && !inertRetainedSnapshot &&
+                if (WidgetOwnsInputFocus(renderedWidget) &&
+                    !textEntryModal_.active() && !inertRetainedSnapshot &&
                     !options.suppressFocusedDescendantFollow) {
                     (void)ReconcileResponsiveFocusPersistence(
                         renderedWidget, semanticSnapshot, result);
