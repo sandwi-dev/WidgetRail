@@ -448,7 +448,8 @@ bool WidgetSurfaceCoordinator::MoveControllerFocus(
                     direction == input::NavigationDirection::Left
                         ? L"dPadLeft" : L"dPadRight",
                     ControllerInputOrigin::PhysicalController,
-                    adjustment.actionRequest->requestedValue);
+                    adjustment.actionRequest->requestedValue,
+                    adjustment.actionRequest);
             }
             if (adjustment.visualChanged && window_)
                 InvalidateRect(window_, nullptr, FALSE);
@@ -639,7 +640,8 @@ void WidgetSurfaceCoordinator::QueueResolvedInput(
     std::wstring nodeId,
     std::wstring protocolButton,
     const ControllerInputOrigin origin,
-    const std::optional<double> requestedValue) {
+    const std::optional<double> requestedValue,
+    std::optional<input::WidgetInteractionActionRequest> sliderActionRequest) {
     if (!pinned() || policy_.interactionMode() != InteractionMode::Focusable ||
         nodeId.empty() || protocolButton.empty()) return;
     if (inputRequests_.size() >= kMaximumPendingInputRequests) {
@@ -650,6 +652,25 @@ void WidgetSurfaceCoordinator::QueueResolvedInput(
     const auto* node = input::FindNodeInInputScope(
         snapshot, nodeId, snapshot.activeInputScopeId);
     if (!node || node->isDisabled || node->isBusy) return;
+    if (sliderActionRequest &&
+        (node->kind != L"slider" ||
+         (protocolButton != L"dPadLeft" && protocolButton != L"dPadRight") ||
+         sliderActionRequest->widgetId != admission_->widgetId ||
+         sliderActionRequest->widgetInstanceId != snapshot.instanceId ||
+         sliderActionRequest->runtimeGeneration != admission_->runtimeGeneration ||
+         sliderActionRequest->presentationGeneration !=
+             admission_->presentationGeneration ||
+         sliderActionRequest->inputScopeId != snapshot.activeInputScopeId ||
+         sliderActionRequest->sourceElementId != node->id ||
+         sliderActionRequest->actionId != node->valueChangedActionId ||
+         sliderActionRequest->snapshotSequence != snapshot.sequence ||
+         sliderActionRequest->requestedValue != requestedValue)) {
+        if (sliderInteraction_.CancelSliderAction(
+                *sliderActionRequest, GetTickCount64()).visualChanged && window_) {
+            InvalidateRect(window_, nullptr, FALSE);
+        }
+        return;
+    }
     inputRequests_.push_back({
         admission_->widgetId,
         admission_->runtimeGeneration,
@@ -660,6 +681,7 @@ void WidgetSurfaceCoordinator::QueueResolvedInput(
         protocolButton,
         protocolButton == L"a" ? node->actionId : std::wstring{},
         requestedValue,
+        std::move(sliderActionRequest),
         origin,
     });
     NotifyOwner();
@@ -695,7 +717,22 @@ bool WidgetSurfaceCoordinator::IsCurrentInputRequest(
     const auto& snapshot = SelectedSnapshot();
     const auto* node = input::FindNodeInInputScope(
         snapshot, request.nodeId, request.activeInputScopeId);
-    return node && !node->isDisabled && !node->isBusy &&
+    const bool sliderActionCurrent = !request.sliderActionRequest ||
+        (node && node->kind == L"slider" &&
+         request.sliderActionRequest->widgetId == admission_->widgetId &&
+         request.sliderActionRequest->widgetInstanceId == snapshot.instanceId &&
+         request.sliderActionRequest->runtimeGeneration ==
+             admission_->runtimeGeneration &&
+         request.sliderActionRequest->presentationGeneration ==
+             admission_->presentationGeneration &&
+         request.sliderActionRequest->inputScopeId == snapshot.activeInputScopeId &&
+         request.sliderActionRequest->sourceElementId == node->id &&
+         request.sliderActionRequest->actionId == node->valueChangedActionId &&
+         request.sliderActionRequest->snapshotSequence == request.snapshotSequence &&
+         request.sliderActionRequest->requestedValue == request.requestedValue &&
+         (request.protocolButton == L"dPadLeft" ||
+          request.protocolButton == L"dPadRight"));
+    return node && !node->isDisabled && !node->isBusy && sliderActionCurrent &&
         request.nodeId == focusedElementId_ &&
         request.snapshotSequence <= snapshot.sequence &&
         request.activeInputScopeId == snapshot.activeInputScopeId;
@@ -704,7 +741,7 @@ bool WidgetSurfaceCoordinator::IsCurrentInputRequest(
 void WidgetSurfaceCoordinator::RejectInputRequest(
     const WidgetSurfaceInputRequest& request,
     const std::uint64_t now) noexcept {
-    if (!request.requestedValue || !pinned() ||
+    if (!request.requestedValue || !request.sliderActionRequest || !pinned() ||
         request.widgetId != admission_->widgetId ||
         request.runtimeGeneration != admission_->runtimeGeneration ||
         request.selectedLayoutId != SelectedLayoutId()) return;
@@ -712,7 +749,11 @@ void WidgetSurfaceCoordinator::RejectInputRequest(
     if (request.activeInputScopeId != snapshot.activeInputScopeId) return;
     const auto* node = input::FindNodeInInputScope(
         snapshot, request.nodeId, snapshot.activeInputScopeId);
-    if (!node || node->kind != L"slider") return;
+    if (!node || node->kind != L"slider" ||
+        node->valueChangedActionId != request.sliderActionRequest->actionId ||
+        snapshot.instanceId != request.sliderActionRequest->widgetInstanceId ||
+        admission_->presentationGeneration !=
+            request.sliderActionRequest->presentationGeneration) return;
     const input::WidgetInteractionAuthority authority{
         admission_->widgetId, &snapshot, admission_->runtimeGeneration,
         admission_->presentationGeneration, false};

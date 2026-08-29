@@ -677,7 +677,8 @@ internal sealed class BridgeClientRegistry : IAsyncDisposable
         ControllerInputEvent input,
         string? expectedRuntimeGeneration,
         CancellationToken sessionCancellation,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        string? expectedActionId = null)
     {
         var registration = await GetOrCreateAsync(widgetId, cancellationToken).ConfigureAwait(false);
         await registration.OperationGate.WaitAsync(cancellationToken).ConfigureAwait(false);
@@ -697,7 +698,8 @@ internal sealed class BridgeClientRegistry : IAsyncDisposable
                     "Controller input runtime authority is stale or unavailable.");
             if (input.Context != ControllerInputContext.PinnedLayoutSelection)
                 DemandInteractionAllowed(registration);
-            input = DemandPinnedSurfaceAuthority(registration, input);
+            input = DemandPinnedSurfaceAuthority(
+                registration, input, expectedActionId);
             registration.CancelIdleUnload();
             var handled = await ExecuteClientOperationAsync(
                     registration,
@@ -1750,7 +1752,8 @@ internal sealed class BridgeClientRegistry : IAsyncDisposable
 
     private static ControllerInputEvent DemandPinnedSurfaceAuthority(
         ClientRegistration registration,
-        ControllerInputEvent input)
+        ControllerInputEvent input,
+        string? expectedActionId)
     {
         if (input.Context != ControllerInputContext.PinnedSurface) return input;
         var snapshot = registration.CachedSnapshot ?? throw new BridgeProtocolException(
@@ -1763,6 +1766,13 @@ internal sealed class BridgeClientRegistry : IAsyncDisposable
         if (originBinding != currentBinding)
             throw new BridgeStalePinnedInputAuthorityException(
                 "Pinned-surface input action binding changed after admission.");
+        if (expectedActionId is not null &&
+            (!string.Equals(
+                 originBinding.ActionId, expectedActionId, StringComparison.Ordinal) ||
+             !string.Equals(
+                 currentBinding.ActionId, expectedActionId, StringComparison.Ordinal)))
+            throw new BridgeStalePinnedInputAuthorityException(
+                "Pinned-surface input does not match its admitted action binding.");
         return input with { SnapshotSequence = snapshot.Sequence };
     }
 

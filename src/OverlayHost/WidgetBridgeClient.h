@@ -673,7 +673,8 @@ public:
         ControllerInputOrigin origin = ControllerInputOrigin::PhysicalController,
         std::wstring_view runtimeGeneration = {},
         std::wstring_view pinnedLayoutId = {},
-        std::optional<bool> pinnedLayoutSelected = std::nullopt);
+        std::optional<bool> pinnedLayoutSelected = std::nullopt,
+        std::wstring_view expectedActionId = {});
     [[nodiscard]] std::optional<bool> SendAction(
         std::wstring_view widgetId,
         std::wstring_view actionId,

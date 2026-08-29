@@ -7494,6 +7494,8 @@ private:
                     std::to_wstring(correlationSequence) +
                     L" result=host-authority-rejected",
                     DiagnosticSeverity::Warning);
+                pinnedSurfaceCoordinator_.RejectInputRequest(
+                    request, GetTickCount64());
                 continue;
             }
             const auto* nativeNode = workerSnapshot
@@ -7517,7 +7519,11 @@ private:
                 correlationSequence,
                 static_cast<long long>(GetTickCount64() * 1000), L"pressed",
                 request.requestedValue, request.origin,
-                request.runtimeGeneration, request.selectedLayoutId);
+                request.runtimeGeneration, request.selectedLayoutId,
+                std::nullopt,
+                request.sliderActionRequest
+                    ? std::wstring_view{request.sliderActionRequest->actionId}
+                    : std::wstring_view{});
             const auto replyCode = bridge_.lastControllerInputResultCode();
             AppendActionCorrelation(
                 L"stage=host-reply sequence=" +

@@ -60,6 +60,7 @@ struct WidgetSurfaceInputRequest final {
     std::wstring protocolButton;
     std::wstring activationActionId;
     std::optional<double> requestedValue;
+    std::optional<input::WidgetInteractionActionRequest> sliderActionRequest;
     ControllerInputOrigin origin{ControllerInputOrigin::PhysicalController};
 };
 
@@ -285,7 +286,9 @@ private:
         std::wstring nodeId,
         std::wstring protocolButton,
         ControllerInputOrigin origin,
-        std::optional<double> requestedValue);
+        std::optional<double> requestedValue,
+        std::optional<input::WidgetInteractionActionRequest> sliderActionRequest =
+            std::nullopt);
     [[nodiscard]] const WidgetSnapshot& SelectedSnapshot() const noexcept;
     [[nodiscard]] std::wstring_view SelectedLayoutId() const noexcept;
     void ClearFreeScroll() noexcept;

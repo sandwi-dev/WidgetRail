@@ -502,12 +502,22 @@ public sealed class WidgetBridgeServer : IAsyncDisposable
         {
             var controllerRequest = BridgeJson.FromElement<BridgeControllerInputRequest>(request.Payload);
             ValidateControllerInput(controllerRequest.Input);
+            if (controllerRequest.ExpectedActionId is not null &&
+                (controllerRequest.Input.Context != ControllerInputContext.PinnedSurface ||
+                 controllerRequest.Input.Button is not
+                     (ControllerButton.DPadLeft or ControllerButton.DPadRight) ||
+                 controllerRequest.Input.RequestedValue is null ||
+                 !BridgeRequestKey.IsBoundedIdentifier(
+                     controllerRequest.ExpectedActionId)))
+                throw new BridgeProtocolException(
+                    "Expected controller action authority is invalid.");
             using var controllerPublication = await _registry.SendControllerInputAsync(
                     controllerRequest.WidgetId,
                     controllerRequest.Input,
                     controllerRequest.RuntimeGeneration,
                     _sessionCancellation,
-                    cancellationToken)
+                    cancellationToken,
+                    controllerRequest.ExpectedActionId)
                 .ConfigureAwait(false);
             var handled = controllerPublication.Value;
             await ReplyAsync(BridgeMessageTypes.ControllerInputResult, request.RequestId,

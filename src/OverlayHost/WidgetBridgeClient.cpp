@@ -3666,7 +3666,8 @@ std::optional<bool> WidgetBridgeClient::SendControllerInput(
     const ControllerInputOrigin origin,
     const std::wstring_view runtimeGeneration,
     const std::wstring_view pinnedLayoutId,
-    const std::optional<bool> pinnedLayoutSelected) {
+    const std::optional<bool> pinnedLayoutSelected,
+    const std::wstring_view expectedActionId) {
     std::scoped_lock lock(requestMutex_);
     lastControllerInputResultCode_.clear();
     if (pipe_ == INVALID_HANDLE_VALUE) {
@@ -3717,6 +3718,9 @@ std::optional<bool> WidgetBridgeClient::SendControllerInput(
         if (!runtimeGeneration.empty())
             payload.Insert(L"runtimeGeneration",
                            JsonValue::CreateStringValue(winrt::hstring(runtimeGeneration)));
+        if (!expectedActionId.empty())
+            payload.Insert(L"expectedActionId",
+                           JsonValue::CreateStringValue(winrt::hstring(expectedActionId)));
         payload.Insert(L"input", input);
         const long long requestId = ++nextRequestId_;
         JsonObject envelope;
