@@ -153,7 +153,7 @@ primary accessibility contract.
 | `UI.Icon(glyph, id, accessibilityLabel)` | `icon` | Host-rendered semantic vector icon from a closed enum. |
 | `UI.LoadingIndicator(id, accessibilityLabel, size?)` | `loadingIndicator` | Protocol-v5 nonfocusable native activity arc with Compact, Standard, or Large sizing. |
 | `UI.ActionSurface(action, id, accessibilityLabel, orientation, children...)` | `actionSurface` | Protocol-v7 rich full-surface action whose bounded descendants are presentation only. |
-| `UI.MediaTile(...)`, `UI.AppTile(...)` | `actionSurface` | Controller-first tile compositions with optional artwork, multiline copy, visible state, and one full-tile target. |
+| `UI.Tile(...)` | `actionSurface` | Controller-first tile composition with optional artwork, multiline copy, visible state, and one full-tile target. |
 | `UI.Toast(title, message, tone, id, duration?, glyph?)` | baseline `row`, `stack`, `text`, `icon` | Nonfocusable lifecycle-owned notification with bounded copy, tone, and duration metadata. |
 | `UI.IconButton(glyph, action, id, accessibilityLabel, variant?, size?)` | `button` | Accessible icon-only action with controller-safe semantic classes. |
 | `UI.SettingsRow(label, action, id, ...)` | `stack`, `row`, `text`, `button` | Responsive setting summary whose `id.action` Button is its only focus stop. |
@@ -252,7 +252,7 @@ surface's complete border box for focus, hit testing, pressed feedback, and
 state cues.
 
 ```csharp
-var tile = UI.MediaTile(
+var tile = UI.Tile(
     title: track.Title,
     stateLabel: track.IsPlaying ? "Playing" : "Paused",
     action: "track.open",
@@ -263,19 +263,19 @@ var tile = UI.MediaTile(
     accessibilityLabel: $"Open {track.Title} by {track.Artist}");
 ```
 
-`UI.MediaTile(...)` and `UI.AppTile(...)` build that safe structure for common
+`UI.Tile(...)` builds that safe structure for common
 content. Artwork is optional and accepts exactly one closed semantic glyph,
 absolute credential-free HTTPS image, or canonical bounded inline PNG through
-`TileArtwork.FromGlyph`, `FromHttps`, or `FromInlinePng`. Both tiles require a
+`TileArtwork.FromGlyph`, `FromHttps`, or `FromInlinePng`. Tiles require a
 title, visible state label, action, and stable base ID; subtitle and metadata
 are optional. Horizontal is the default orientation and Vertical is available
 for tall compositions.
 
-The generated root classes are `.wrail-action-surface`, `.wrail-tile`, and
-`.wrail-media-tile` or `.wrail-app-tile`. Generated child IDs are
+The generated root classes are `.wrail-action-surface` and `.wrail-tile`.
+Generated child IDs are
 `id.artwork` when present, `id.content`, `id.title`, optional `id.subtitle`,
-optional `id.metadata`, and `id.state`; matching generic and media/app-specific
-`wrail-*` classes are stable theme hooks. Keep the base ID stable because it is
+optional `id.metadata`, and `id.state`; matching `wrail-tile__*` classes are
+stable theme hooks. Keep the base ID stable because it is
 the only focus/action identity.
 
 ActionSurface content is intentionally bounded to 1–8 direct children, at most

@@ -182,8 +182,8 @@ only while it is visible; reduced-motion mode keeps the same accessible status
 as a static indeterminate arc. Keep fast cached transitions visually quiet
 instead of flashing a spinner for a single frame.
 
-For rich media/application rows, use `UI.MediaTile` or `UI.AppTile`. Both are
-protocol-v7 `ActionSurface` compositions: the complete tile is the sole focus,
+For rich content rows, use `UI.Tile`. It is a protocol-v7 `ActionSurface`
+composition: the complete tile is the sole focus,
 pointer, pressed, and A-action target, while generated artwork/copy children are
 presentation only. `TileArtwork` accepts one semantic glyph, credential-free
 HTTPS image, or bounded inline PNG. Custom rich actions may use

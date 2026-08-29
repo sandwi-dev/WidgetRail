@@ -155,7 +155,7 @@ internal static class GamesAppsPresentation
                 state.LaunchingAppId, item.AppId, StringComparison.Ordinal);
             var isResolved = state.ResolvedSavedIds.Contains(item.SavedId);
             var tileState = isOpening ? "Opening…" : isResolved ? "Ready" : "Checking…";
-            var tile = UI.AppTile(
+            var tile = UI.Tile(
                     GamesAppsAppLibraryPresentation.DisplayName(item),
                     tileState,
                     "games.launch",
@@ -273,7 +273,7 @@ internal static class GamesAppsPresentation
                 ? elementIds[index + 1]
                 : state.HasNextPage ? "games.load-more" : id;
             var running = state.Page == GamesAppsPage.Running;
-            rows.Add(UI.AppTile(
+            rows.Add(UI.Tile(
                     GamesAppsAppLibraryPresentation.DisplayName(item),
                     saved ? "Already included" : running ? "Running" : "Available",
                     "games.toggle-curation",

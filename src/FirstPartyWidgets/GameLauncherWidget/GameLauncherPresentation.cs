@@ -735,7 +735,7 @@ internal static class GameLauncherPresentation
         var actionId = automatic
             ? "game-launcher.manual.included"
             : "game-launcher.manual.toggle";
-        return UI.AppTile(item.Presentation.DisplayName, state,
+        return UI.Tile(item.Presentation.DisplayName, state,
                 actionId,
                 GameLauncherIdentity.FocusId("add", item.Key),
                 subtitle: $"{kind} · {item.Presentation.Source.DisplayName}",
@@ -757,7 +757,7 @@ internal static class GameLauncherPresentation
             ? TileArtwork.FromGlyph(WidgetGlyph.Play, row.Display.DisplayName)
             : Artwork(current);
         var availability = current is null ? "Unavailable · Restore" : "Hidden · Restore";
-        return UI.AppTile(row.Display.DisplayName, availability,
+        return UI.Tile(row.Display.DisplayName, availability,
                 "game-launcher.restore",
                 GameLauncherIdentity.FocusId(
                     "hidden", GameLauncherIdentity.Key(row.Display.SavedId)),
@@ -809,7 +809,7 @@ internal static class GameLauncherPresentation
         if (preferred) traits.Add("Preferred variant");
         if (groupSize > 1) traits.Add($"{groupSize} grouped variants");
         var subtitle = traits.Count == 0 ? source : source + " · " + string.Join(" · ", traits);
-        var tile = UI.AppTile(title, state,
+        var tile = UI.Tile(title, state,
                 "game-launcher.launch", id, subtitle: subtitle, artwork: artwork,
                 accessibilityLabel: $"{title}, {subtitle}, {state}",
                 orientation: ActionSurfaceOrientation.Vertical)

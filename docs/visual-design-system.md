@@ -139,8 +139,8 @@ immutable, licensed, bounded host asset contract exists.
 
 `SettingsRow`, nested `ActionSheet`, single-select `Picker`, controller
 `Scrubber`, non-focus-stealing `Toast`, and protocol-v7
-`ActionSurface`/`MediaTile`/`AppTile` now have shared public contracts. Games &
-Apps uses the public AppTile and Toast APIs rather than private geometry. Rows
+`ActionSurface`/`Tile` now have shared public contracts. Games & Apps uses the
+public Tile and Toast APIs rather than private geometry. Rows
 can wrap responsively without widget-specific layout hacks. Protocol-v8
 `ResponsiveGrid` provides bounded row-major reflow, WRSS supports independent
 per-edge border colors/widths, and `UI.CodeText` supplies controller-neutral

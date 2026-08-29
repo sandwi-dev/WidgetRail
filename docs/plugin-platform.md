@@ -219,7 +219,7 @@ target for a clipped bounded presentational subtree; invalid nested actions,
 focus, scopes, scrolling, or oversized/deep content fail closed. The public SDK composes those
 nodes into controller-safe ToggleButton, Stepper, IconButton, Card,
 SectionHeader, StatusBadge, Divider, Alert, EmptyState, SegmentedTabs, Switch,
-ScopedDialog, SettingsRow, ActionSheet, Picker, Scrubber, MediaTile, AppTile,
+ScopedDialog, SettingsRow, ActionSheet, Picker, Scrubber, Tile,
 lifecycle-owned Toast, and semantic CodeText helpers. These helpers publish stable focus behavior,
 accessibility labels, selected/disabled semantics, nested B handling, and
 documented `wrail-*` theme hooks; only Grid requires the protocol-v8 native

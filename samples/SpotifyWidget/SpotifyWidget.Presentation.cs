@@ -754,7 +754,7 @@ internal static class SpotifyPresentation
                 new ComponentAction("Refresh", "spotify.page.retry", WidgetGlyph.Refresh),
                 WidgetGlyph.Music).Classes("spotify-page");
         var rows = playlists.Items.Select((item, index) =>
-            (Item: item, Row: UI.MediaTile(
+            (Item: item, Row: UI.Tile(
                 item.Value.Name, $"{item.Value.ItemCount} items",
                 $"spotify.playlist.open.{item.Key.Value}",
                 SpotifyCollectionIdentity.FocusId("spotify.playlist.item", mode, item.Key),
@@ -939,7 +939,7 @@ internal static class SpotifyPresentation
         SpotifyMediaItemSummary item,
         string action,
         string id,
-        string focusPersistenceId) => UI.MediaTile(
+        string focusPersistenceId) => UI.Tile(
             item.Title, FormatTime(item.DurationMilliseconds),
             action, id, item.Subtitle, null, Artwork(item.ArtworkUrl, item.Title),
             $"Play {item.Title} by {item.Subtitle}")

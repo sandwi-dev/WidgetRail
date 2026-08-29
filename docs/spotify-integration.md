@@ -233,7 +233,7 @@ Stages 2–7 land behind nested controller surfaces and incremental scopes after
 the provider/SDK contract is stable. The Player already uses `UI.Scrubber` so
 Left/Right emits coalesced absolute millisecond targets while Up/Down remains
 ordinary navigation. Search result and collection tiles should use the public
-`MediaTile`/`AppTile` contracts plus the existing Picker/ActionSheet
+`Tile` contract plus the existing Picker/ActionSheet
 components instead of private layout hacks.
 
 ### Playback boundary

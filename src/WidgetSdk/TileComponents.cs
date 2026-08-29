@@ -259,10 +259,10 @@ public static partial class UI
     }
 
     /// <summary>
-    /// Creates a controller-first media tile with separate title, subtitle,
-    /// metadata, and visible state lines inside one full-tile focus target.
+    /// Creates a controller-first tile with separate title, subtitle, metadata,
+    /// and visible state lines inside one full-tile focus target.
     /// </summary>
-    public static ActionSurfaceElement MediaTile(
+    public static ActionSurfaceElement Tile(
         string title,
         string stateLabel,
         string action,
@@ -273,30 +273,10 @@ public static partial class UI
         string? accessibilityLabel = null,
         ActionSurfaceOrientation orientation = ActionSurfaceOrientation.Horizontal) =>
         BuildTile(
-            "media", title, stateLabel, action, id, subtitle, metadata,
-            artwork, accessibilityLabel, orientation);
-
-    /// <summary>
-    /// Creates a controller-first application tile with a visible availability
-    /// state and optional multi-line supporting metadata inside one full-tile
-    /// focus target.
-    /// </summary>
-    public static ActionSurfaceElement AppTile(
-        string title,
-        string stateLabel,
-        string action,
-        string id,
-        string? subtitle = null,
-        string? metadata = null,
-        TileArtwork? artwork = null,
-        string? accessibilityLabel = null,
-        ActionSurfaceOrientation orientation = ActionSurfaceOrientation.Horizontal) =>
-        BuildTile(
-            "app", title, stateLabel, action, id, subtitle, metadata,
+            title, stateLabel, action, id, subtitle, metadata,
             artwork, accessibilityLabel, orientation);
 
     private static ActionSurfaceElement BuildTile(
-        string kind,
         string title,
         string stateLabel,
         string action,
@@ -319,23 +299,23 @@ public static partial class UI
         {
             new TextElement(StableIdentifier.Child(id, "title"), title, title)
             {
-                StyleClasses = ["wrail-tile__title", $"wrail-{kind}-tile__title"],
+                StyleClasses = ["wrail-tile__title"],
             },
         };
         if (subtitle is not null)
             copy.Add(new TextElement(StableIdentifier.Child(id, "subtitle"), subtitle, subtitle)
             {
-                StyleClasses = ["wrail-tile__subtitle", $"wrail-{kind}-tile__subtitle"],
+                StyleClasses = ["wrail-tile__subtitle"],
             });
         if (metadata is not null)
             copy.Add(new TextElement(StableIdentifier.Child(id, "metadata"), metadata, metadata)
             {
-                StyleClasses = ["wrail-tile__metadata", $"wrail-{kind}-tile__metadata"],
+                StyleClasses = ["wrail-tile__metadata"],
             });
         copy.Add(new TextElement(
             StableIdentifier.Child(id, "state"), stateLabel, $"State: {stateLabel}")
         {
-            StyleClasses = ["wrail-tile__state", $"wrail-{kind}-tile__state"],
+            StyleClasses = ["wrail-tile__state"],
         });
 
         var children = new List<WidgetElement>();
@@ -353,12 +333,12 @@ public static partial class UI
                     artwork.AccessibilityLabel, artwork.ImageFit);
             children.Add(leading with
             {
-                StyleClasses = ["wrail-tile__artwork", $"wrail-{kind}-tile__artwork"],
+                StyleClasses = ["wrail-tile__artwork"],
             });
         }
         children.Add(new StackElement(StableIdentifier.Child(id, "content"), copy)
         {
-            StyleClasses = ["wrail-tile__content", $"wrail-{kind}-tile__content"],
+            StyleClasses = ["wrail-tile__content"],
         });
 
         var spoken = accessibilityLabel ?? string.Join(", ",
@@ -367,7 +347,7 @@ public static partial class UI
         ValidateTileText(spoken, nameof(accessibilityLabel), ProtocolConstants.MaximumStringLength);
         return new ActionSurfaceElement(id, action, spoken, orientation, children)
         {
-            StyleClasses = ["wrail-action-surface", "wrail-tile", $"wrail-{kind}-tile"],
+            StyleClasses = ["wrail-action-surface", "wrail-tile"],
         };
     }
 

@@ -8,9 +8,9 @@ internal static class TileComponentTests
         "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJ" +
         "AAAADUlEQVR42mP8z8BQDwAFgwJ/lK3Q7wAAAABJRU5ErkJggg==";
 
-    internal static Task MediaTilesAreSemantic()
+    internal static Task TilesAreSemantic()
     {
-        var tile = UI.MediaTile(
+        var tile = UI.Tile(
                 "Like Whatever",
                 "Playing",
                 "open.now-playing",
@@ -21,7 +21,7 @@ internal static class TileComponentTests
             .FocusDown("app.discord")
             .Shortcut(ControllerButton.X, actionId: "toggle-playback")
             .Busy();
-        var app = UI.AppTile(
+        var app = UI.Tile(
             "Discord", "Ready to launch", "launch.discord", "app.discord",
             artwork: TileArtwork.FromGlyph(WidgetGlyph.Play, "Discord icon"));
         var snapshot = new WidgetView(
@@ -37,26 +37,41 @@ internal static class TileComponentTests
         True(node.IsFocusable, "Busy tiles must remain controller-focusable.");
         Equal("app.discord", node.Focus!.Down);
         Equal("toggle-playback", node.Shortcuts.Single().ActionId);
-        True(new[] { "wrail-action-surface", "wrail-tile", "wrail-media-tile" }
+        True(new[] { "wrail-action-surface", "wrail-tile" }
                 .SequenceEqual(node.StyleClasses),
-            "Media tile root classes changed.");
+            "Tile root classes changed.");
         True(new[] { "media.current.artwork", "media.current.content" }
                 .SequenceEqual(node.Children.Select(child => child.Id)),
-            "Media tile child order or stable IDs changed.");
+            "Tile child order or stable IDs changed.");
         Equal("Like Whatever", Find(node, "media.current.title").Text);
+        True(Find(node, "media.current.title").StyleClasses
+                .SequenceEqual(["wrail-tile__title"]),
+            "Tile title classes changed.");
         Equal("Craig Connelly", Find(node, "media.current.subtitle").Text);
+        True(Find(node, "media.current.subtitle").StyleClasses
+                .SequenceEqual(["wrail-tile__subtitle"]),
+            "Tile subtitle classes changed.");
         Equal("The Sound of Garuda · 4:14", Find(node, "media.current.metadata").Text);
+        True(Find(node, "media.current.metadata").StyleClasses
+                .SequenceEqual(["wrail-tile__metadata"]),
+            "Tile metadata classes changed.");
         Equal("Playing", Find(node, "media.current.state").Text);
         Equal("State: Playing", Find(node, "media.current.state").AccessibilityLabel);
+        True(Find(node, "media.current.state").StyleClasses
+                .SequenceEqual(["wrail-tile__state"]),
+            "Tile state classes changed.");
+        True(Find(node, "media.current.content").StyleClasses
+                .SequenceEqual(["wrail-tile__content"]),
+            "Tile content classes changed.");
         Equal(WidgetGlyph.Music, Find(node, "media.current.artwork").Glyph);
         Equal(1, AllNodes(node).Count(candidate => candidate.IsFocusable));
         Equal(1, AllNodes(node).Count(candidate => candidate.ActionId is not null));
         return Task.CompletedTask;
     }
 
-    internal static Task AppTilesAreSemantic()
+    internal static Task TilesConstrainArtworkAndState()
     {
-        var remote = UI.AppTile(
+        var remote = UI.Tile(
                 "Disaster Crew",
                 "Update available",
                 "launch.game",
@@ -67,7 +82,7 @@ internal static class TileComponentTests
                     "https://cdn.example.test/icons/disaster-crew.png",
                     "Disaster Crew icon"))
             .Disabled();
-        var inline = UI.AppTile(
+        var inline = UI.Tile(
             "Terminal", "Running", "focus.terminal", "app.terminal",
             artwork: TileArtwork.FromInlinePng(Png, "Terminal icon", ImageFit.Contain));
         var snapshot = new WidgetView(
@@ -75,15 +90,15 @@ internal static class TileComponentTests
             .CreateSnapshot("apps.instance", 2);
 
         var remoteNode = Find(snapshot.Root, remote.Id);
-        True(remoteNode.IsFocusable, "Disabled app tiles must remain focusable.");
+        True(remoteNode.IsFocusable, "Disabled tiles must remain focusable.");
         Equal(true, remoteNode.IsDisabled);
         Equal("Update available", Find(remoteNode, "app.game.state").Text);
         var remoteArt = Find(remoteNode, "app.game.artwork");
         Equal(ViewNodeKind.Image, remoteArt.Kind);
         Equal("https://cdn.example.test/icons/disaster-crew.png", remoteArt.ImageSource);
         Equal(ImageFit.Cover, remoteArt.ImageFit);
-        True(remoteArt.StyleClasses.Contains("wrail-app-tile__artwork"),
-            "App artwork lacks its semantic class.");
+        True(remoteArt.StyleClasses.SequenceEqual(["wrail-tile__artwork"]),
+            "Tile artwork classes changed.");
 
         var inlineArt = Find(snapshot.Root, "app.terminal.artwork");
         True(inlineArt.ImageSource!.StartsWith("data:image/png;base64,", StringComparison.Ordinal),
@@ -95,9 +110,9 @@ internal static class TileComponentTests
             "https://user:secret@example.test/icon.png", "Credentialed icon"));
         Throws<ArgumentOutOfRangeException>(() => TileArtwork.FromGlyph(
             (WidgetGlyph)999, "Unknown icon"));
-        Throws<ArgumentException>(() => UI.AppTile(
+        Throws<ArgumentException>(() => UI.Tile(
             "Application", " ", "launch", "bad.state"));
-        Throws<ArgumentException>(() => UI.AppTile(
+        Throws<ArgumentException>(() => UI.Tile(
             new string('a', UI.MaximumTileTitleCharacters + 1),
             "Ready", "launch", "bad.title"));
         return Task.CompletedTask;
@@ -272,7 +287,7 @@ internal static class TileComponentTests
         private readonly Channel<WidgetActionEvent> _actions = Channel.CreateUnbounded<WidgetActionEvent>();
 
         public override WidgetView Render() => new(
-            UI.AppTile("Game", "Ready", "routing.open", "routing.tile"),
+            UI.Tile("Game", "Ready", "routing.open", "routing.tile"),
             InitialFocusId: "routing.tile");
 
         public override ValueTask OnActionAsync(

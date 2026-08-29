@@ -185,9 +185,9 @@ therefore claimed by the direct production-renderer component matrix rather
 than by unavailable semantic PNGs.
 
 Responsive Row wrapping, protocol-v7 ActionSurface, protocol-v8 ResponsiveGrid,
-MediaTile/AppTile, Toast, semantic CodeText, independent per-edge borders, and
+Tile, Toast, semantic CodeText, independent per-edge borders, and
 the first production uses of the public Picker and Scrubber are implemented in
-source and focused tests. Games & Apps uses AppTile for its full-tile launch/
+source and focused tests. Games & Apps uses Tile for its full-tile launch/
 catalog targets and lifecycle-safe Toast feedback. Settings uses ResponsiveGrid
 for root categories and CodeText for schema/worker diagnostics. The authoritative
 full Release verification aggregate is green; hands-on packaged visual/
@@ -411,10 +411,10 @@ ran.
 
 DLV-047 establishes one pre-release WidgetSdk release unit without publishing
 it externally. `eng/WidgetSdkRelease.props` is the canonical
-`0.1.0-dev`/package-ID/template-version source imported by both WidgetSdk and
+`0.2.0-dev`/package-ID/template-version source imported by both WidgetSdk and
 WrailCli; both assemblies carry matching metadata, the closed template manifest
 must use that supported version, and the local package plus generated
-`PackageReference` use one exact `0.1.0-dev.local.<16-hex>` version. The
+`PackageReference` use one exact `0.2.0-dev.local.<16-hex>` version. The
 deterministic `src/WidgetSdk/PublicApi.txt` baseline currently describes 2,400
 ordinal public symbols with a 5,000-symbol/1-MiB check bound. The focused
 compatibility runner classifies exact removed or changed symbols separately
@@ -694,7 +694,7 @@ DLV-004 repairs the Games & Apps product surface without changing catalog
 authority, protocol, or native geometry. Library, Add applications, loading,
 healthy-empty, and failure states now share the same bounded responsive
 hierarchy and the public SectionHeader, StatusBadge, Card, EmptyState, Alert,
-AppTile, and Toast components retain their shared style classes. Catalog
+Tile, and Toast components retain their shared style classes. Catalog
 navigation keeps only one 32-row page in a semantic snapshot while preserving
 bounded opaque Next/Previous cursors through the current provider revision. Render
 no longer publishes a mutable element-to-app lookup; actions revalidate the
@@ -738,7 +738,7 @@ real user catalog.
 DLV-017 adds a bounded display-only warm-start projection to the Games & Apps
 schema without persisting launch authority. A fresh worker immediately renders
 the saved order, selection, automatic/explicit membership, and exclusions as
-disabled **Checking…** AppTiles containing only SavedId, a sanitized 20-scalar
+disabled **Checking…** Tiles containing only SavedId, a sanitized 20-scalar
 name prefix, and closed kind. Fresh resolution atomically replaces them with
 short-lived AppIds while SavedId-derived focus and order remain stable. Missing
 identities stay visible but disabled, reappearance receives new authority,
@@ -1051,7 +1051,7 @@ Up/Down navigation.
   controller-ready ToggleButton, Stepper,
   IconButton, Card, SectionHeader, StatusBadge, Divider, Alert, EmptyState,
   SegmentedTabs, Switch, ScopedDialog, SettingsRow, and bounded nested
-  ActionSheet plus single-select Picker, Scrubber, MediaTile, AppTile, and Toast
+  ActionSheet plus single-select Picker, Scrubber, Tile, and Toast
   composites with stable semantic
   `wrail-*` theme hooks; button glyphs; focus/shortcut/state helpers; scoped
   shortcut routing; bounded latest-wins Slider coalescing; invalidation;
@@ -2656,7 +2656,7 @@ expected PID, nonce, and widget identity checks in force.
  Library/Catalog flow and exact shortcut launch revalidation.
  The retained Recent Apps and Windows activity reference suites pass 8/8 and
  10/10; Windows Media provider and Now Playing pass 11/11 and 17/17. Games &
- Apps passes 26/26, including its vertical full-tile AppTile Library/Catalog
+ Apps passes 26/26, including its vertical full-tile Tile Library/Catalog
  focus model and lifecycle-bound Toast feedback.
  The first-party conformance suite passes 6/6 by building and installing the
 actual Audio Mixer, Network Controls, Games & Apps, Now Playing, and YT Music
@@ -3112,7 +3112,7 @@ with C++ installed:
   matching widget/handle entry once, posts one invalidation, and emits one
   sanitized `widget`/opaque-`handle` transition diagnostic; later paints,
   focus changes, and same-snapshot republishes do not report `image_failed`.
-  Shared Image/AppTile rendering keeps pending artwork neutral, uses the same
+  Shared Image/Tile rendering keeps pending artwork neutral, uses the same
   closed Play glyph as the authored no-artwork tile when resolution is
   terminal, and preserves the tile's layout, focus, hit-test, action, and UIA
   geometry. A new opaque revision evicts the prior node revision and supplied
@@ -4065,7 +4065,7 @@ unchanged.
 No managed product gap reproduced. Trusted Steam artwork and explicit
 Application icons remain lazy provider demands, cross the broker only as opaque
 generation-bound handles, and retain bounded decoded caches. Games & Apps
-projects current handles into the existing AppTile, shows a semantic Play-glyph
+projects current handles into the existing Tile, shows a semantic Play-glyph
 fallback while saved-first rows await authority, restores current handles after
 refresh and worker restart, and leaves a current row enabled when artwork is
 absent.

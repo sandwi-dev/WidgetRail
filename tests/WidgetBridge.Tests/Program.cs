@@ -3713,7 +3713,7 @@ static Task ActionSurfaceRenderRole()
 {
     var snapshot = new WidgetView(
         UI.Stack("root",
-            UI.AppTile(
+            UI.Tile(
                 "Long application name",
                 "Ready",
                 "launch",

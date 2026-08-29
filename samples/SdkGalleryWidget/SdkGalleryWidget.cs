@@ -264,7 +264,7 @@ public sealed class SdkGalleryWidget : Widget
             "gallery.tiles.header",
             description: "Each complete tile is one focus target; its descendants stay presentational."),
         UI.ResponsiveGrid("gallery.tiles.grid", 250, 2,
-            UI.MediaTile(
+            UI.Tile(
                 "Night Drive",
                 "Playing",
                 "gallery.media.open",
@@ -272,7 +272,7 @@ public sealed class SdkGalleryWidget : Widget
                 subtitle: "Example Artist",
                 metadata: "Controller UI Sessions",
                 artwork: TileArtwork.FromGlyph(WidgetGlyph.Music, "Music artwork")),
-            UI.AppTile(
+            UI.Tile(
                 "Sample Game",
                 "Ready",
                 "gallery.app.open",

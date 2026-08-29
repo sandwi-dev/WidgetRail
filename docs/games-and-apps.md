@@ -159,7 +159,7 @@ text scaling with a 144-DPI pixel-scale render, while standard/default coverage
 starts at 100%. Root/content/Scroll minimum heights are zero, so short surfaces
 yield space to the focus-follow Scroll instead of clipping the header or an
 essential action. Names are sanitized to 120 characters and remain a two-line,
-ellipsis-bounded part of the one focusable AppTile. High-contrast captures and
+ellipsis-bounded part of the one focusable Tile. High-contrast captures and
 semantic labels provide non-color state evidence; physical display,
 controller, and assistive-technology sign-off remains manual release evidence.
 The Library and Catalog now request a safe 600-DIP preferred height, up from the

@@ -9,8 +9,8 @@ internal static class GridComponentTests
                 "library.grid",
                 minimumColumnWidth: 180,
                 maximumColumns: 5,
-                UI.AppTile("Discord", "Ready", "launch.discord", "app.discord"),
-                UI.MediaTile("Current song", "Playing", "open.media", "media.current"))
+                UI.Tile("Discord", "Ready", "launch.discord", "app.discord"),
+                UI.Tile("Current song", "Playing", "open.media", "media.current"))
             .InputScope("library.scope")
             .Shortcut(ControllerButton.B, "library.back")
             .AddClasses("library-grid");

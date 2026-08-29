@@ -2294,8 +2294,8 @@ static async Task ExportEvidenceAsync(string outputDirectory)
                 "The trusted Game was not auto-curated in the real package path.");
             Assert.True(Nodes(initial.Root).Any(node =>
                 string.Equals(node.ActionId, "games.launch", StringComparison.Ordinal) &&
-                node.StyleClasses.Contains("wrail-app-tile", StringComparer.Ordinal)),
-                "Games & Apps did not retain the shared AppTile geometry classes.");
+                node.StyleClasses.Contains("wrail-tile", StringComparer.Ordinal)),
+                "Games & Apps did not retain the shared Tile geometry classes.");
             Assert.True(!Nodes(initial.Root).Any(node =>
                 (node.Text ?? string.Empty).Contains(
                     "Conformance Library App", StringComparison.Ordinal)),

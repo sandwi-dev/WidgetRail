@@ -2646,7 +2646,7 @@ struct DeclarativeRenderer::RenderPass final {
             target, node, *this, options.artworkWidgetId, presentationState);
         if (!bitmap) {
             if (presentationState == ImagePresentationState::TrustedArtworkUnavailable) {
-                // AppTile's no-artwork presentation uses this same closed
+                // Tile's no-artwork presentation uses this same closed
                 // semantic glyph. A terminal host resolution failure must not
                 // leave the authored image box blank or change tile geometry.
                 DrawSemanticIcon(

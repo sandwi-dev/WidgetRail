@@ -75,8 +75,8 @@ static async Task PageCoverage()
     await Act(widget, "gallery.tab.tiles");
     var tiles = Snapshot(widget, 3);
     Assert.Equal(2, Nodes(tiles.Root).Count(node => node.Kind == ViewNodeKind.ActionSurface));
-    Assert.ContainsClass(tiles, "wrail-media-tile");
-    Assert.ContainsClass(tiles, "wrail-app-tile");
+    Assert.Equal(2, Nodes(tiles.Root).Count(node =>
+        node.StyleClasses.SequenceEqual(["wrail-action-surface", "wrail-tile"])));
     Assert.Equal(ViewNodeKind.Grid, Find(tiles, "gallery.tiles.grid").Kind);
 
     await Act(widget, "gallery.tab.utilities");

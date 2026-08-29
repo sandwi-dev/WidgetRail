@@ -242,7 +242,7 @@ path that does not exist. On any failure, `wrail` removes its staging directory
 without deleting or overwriting an author-owned path.
 
 The current CLI/template/SDK release unit is the pre-release version
-`0.1.0-dev`. The generated local package appends a deterministic
+`0.2.0-dev`. The generated local package appends a deterministic
 `.local.<16-hex>` content suffix and the project consumes that exact version.
 Contributors changing public SDK signatures must use the checked-in
 [Widget SDK compatibility workflow](widget-sdk-compatibility.md); additions,
@@ -772,7 +772,7 @@ or `ResponsiveGrid` when only placement, not hierarchy, changes.
 | `UI.Icon(glyph, id, label)` | semantic icon | Closed host-rendered glyph vocabulary. |
 | `UI.LoadingIndicator(id, label, size?)` | indeterminate status | Protocol 5; native, nonfocusable, static under reduced motion. |
 | `UI.ActionSurface(action, id, label, orientation, children...)` | rich full-surface action | Protocol 7; one focus/pointer/action target with bounded presentational children. |
-| `UI.MediaTile(...)`, `UI.AppTile(...)` | rich tile ActionSurface | Optional `TileArtwork`, multiline copy, visible state, and one full-tile action. |
+| `UI.Tile(...)` | rich tile ActionSurface | Optional `TileArtwork`, multiline copy, visible state, and one full-tile action. |
 | `UI.Toast(title, message, tone, id, duration?, glyph?)` | transient feedback | No focus or timer; remove through lifecycle-owned widget state. |
 | `UI.IconButton(...)` | icon-only button | Required accessible name plus stable size/variant classes. |
 | `UI.Card(...)`, `UI.SectionHeader(...)`, `UI.Divider(...)` | nonfocusable hierarchy | Theme-respecting grouping, heading, and separator compositions. |

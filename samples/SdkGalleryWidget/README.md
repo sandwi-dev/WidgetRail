@@ -9,7 +9,7 @@ The four pages cover:
 - icon buttons, cards, section headers, status badges, alerts, and empty states;
 - switches, segmented tabs, `SettingsRow`, `Picker`, nested-B `ActionSheet`, and
   a controller-native `Scrubber`;
-- responsive `MediaTile` and `AppTile` action surfaces; and
+- responsive `Tile` action surfaces for media and application content; and
 - `CodeText`, `LoadingIndicator`, and non-focus-stealing `Toast` feedback.
 
 The sample is also the production-style reference for the public responsive

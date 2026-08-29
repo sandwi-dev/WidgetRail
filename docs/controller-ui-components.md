@@ -34,7 +34,7 @@ WRSS design constrained by controller navigation and overlay performance.
 | Content | `Text`, `CodeText`, `Image`, `Icon` | Bounded semantic content, controller-neutral monospace diagnostics/commands, and a closed glyph vocabulary. |
 | Indeterminate activity | `LoadingIndicator` | Protocol v5, nonfocusable native arc; bounded size and required accessible label. |
 | Rich full-tile action | `ActionSurface` | Protocol v7, one full-surface focus/pointer/action target with bounded presentational descendants. |
-| Media/application tile | `MediaTile`, `AppTile`, `TileArtwork` | Full-tile ActionSurface compositions with optional safe artwork, multiline copy, and visible state. |
+| Rich content tile | `Tile`, `TileArtwork` | Full-tile ActionSurface composition with optional safe artwork, multiline copy, and visible state. |
 | Transient feedback | `Toast` | Nonfocusable baseline-node composition; widget lifecycle owns its bounded duration. |
 | Discrete action | `Button`, button glyph, shortcut | One focus stop; A activates; scoped shortcuts remain explicit. |
 | Two-state action | `ToggleButton`, selected Button | Visible and accessible state remains widget-owned. |
@@ -157,11 +157,11 @@ semantic classes. They do not add worker code, polling, or a new native node:
   shortcuts, interaction state, scrolling, Buttons, Sliders, and
   ActionSurfaces. Content is bounded to 8 direct children, 32 descendants, and
   four relative levels, and the native host clips it to the actionable box.
-- `UI.MediaTile(...)` and `UI.AppTile(...)` build safe ActionSurfaces with
+- `UI.Tile(...)` builds a safe ActionSurface with
   title, state, optional subtitle/metadata, and optional `TileArtwork` from a
   semantic glyph, credential-free HTTPS image, or bounded inline PNG. The
   entire tile activates; do not put a second Button around or inside it. Games
-  & Apps uses `AppTile` for both its curated launch rows and add/remove catalog
+  & Apps uses `Tile` for both its curated launch rows and add/remove catalog
   rows, proving first-party widgets use the same public API as Community code.
 - `UI.Toast(...)` composes a nonfocusable notification from baseline nodes.
   Neutral/Info/Success/Warning/Danger tone is always paired with text. The

@@ -7,7 +7,7 @@ sets the pre-release SDK version, package ID, and supported ControllerWidget
 template version stamped into both `WidgetSdk.dll` and `wrail.dll`. The
 version-2 template manifest must match that metadata. `wrail new widget` writes
 an exact content-addressed package version such as
-`0.1.0-dev.local.<16-hex>` into the generated project and uses that exact value
+`0.2.0-dev.local.<16-hex>` into the generated project and uses that exact value
 in its `PackageReference`. A CLI, SDK assembly, template, or generated
 dependency from another release unit fails closed instead of silently mixing.
 
@@ -124,10 +124,10 @@ Use this table in this guide for each approved breaking change or deprecation:
 
 | Old surface or behavior | Replacement | First deprecated release unit | First removed release unit | Protocol impact | Template impact | Before/after example |
 |---|---|---|---|---|---|---|
-| _Exact symbol, signature, template behavior, or contract_ | _Exact supported API/workflow_ | _Version or `not distributed`_ | _Version or planned earliest unit_ | _`none` or separately reviewed version/effect_ | _`none` or separately reviewed version/effect_ | _Copyable old and new code/commands_ |
+| `UI.MediaTile(...)` and `UI.AppTile(...)` | Argument-compatible `UI.Tile(...)` | `not distributed` | `0.2.0-dev` | none | none | Before: `UI.MediaTile(title, state, action, id)` or `UI.AppTile(title, state, action, id)`; after: `UI.Tile(title, state, action, id)` |
 
-There are no active migration records yet. This repository has not claimed an
-externally distributed SDK release unit, so no deprecation interval has begun.
+This repository has not claimed an externally distributed SDK release unit, so
+the intentional pre-release consolidation required no deprecation interval.
 
 ## App-library launch observations
 

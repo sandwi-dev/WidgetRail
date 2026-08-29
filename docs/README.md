@@ -57,9 +57,9 @@ planner and implementation turns do not spend context on closed evidence.
   and the public controller-safe Card, IconButton, StatusBadge, Alert,
   EmptyState, SegmentedTabs, Switch, ScopedDialog, SettingsRow, ActionSheet,
   single-select Picker, Scrubber, non-focus-stealing Toast, and protocol-v7
-  ActionSurface/MediaTile/AppTile compositions, plus protocol-v8 ResponsiveGrid
+  ActionSurface/Tile compositions, plus protocol-v8 ResponsiveGrid
   and semantic CodeText. Settings uses Picker, Grid, and CodeText; Spotify uses
-  Scrubber; Games & Apps uses AppTile and lifecycle-safe Toast feedback.
+  Scrubber; Games & Apps uses Tile and lifecycle-safe Toast feedback.
   Responsive Row wrapping and per-edge WRSS borders are implemented. The full
   Release gate is green; hands-on packaged visual/controller/accessibility
   evidence remains open.
