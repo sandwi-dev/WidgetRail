@@ -10373,6 +10373,7 @@ private:
         if (button == L"B" && EmbeddedMediaAuthorityCurrent() &&
             embeddedMediaAuthority_->projection == EmbeddedMediaProjection::Overlay &&
             state_.surface() == widgetrail::Surface::Widget &&
+            state_.focusRegion() == widgetrail::FocusRegion::Widget &&
             state_.activeWidget() == embeddedMediaAuthority_->widgetId) {
             Dispatch(widgetrail::Command::SampleWidgetBack);
             return;
