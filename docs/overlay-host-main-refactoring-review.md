@@ -1,300 +1,134 @@
-# OverlayHost `main.cpp` Refactoring Review
-
-Status: planner analysis complete; no implementation authorized by this document  
-Baseline: local `main` at planner commit `44f0c33` on 2026-08-16  
-Scope: native `OverlayApp` responsibility and mutable-authority reduction only
-
-## Executive conclusion
-
-`OverlayApp` is a genuine ownership hotspot. It is not large merely because
-Win32 requires an entry point or because several helper functions happen to be
-co-located. At this baseline, `main.cpp` contains 9,164 physical lines and the
-`OverlayApp` class spans lines 357–9,105: 8,749 lines. Exact-main clangd reports
-307 class members: 138 fields, 158 ordinary methods, two
-constructor/destructor symbols, seven nested types, and two other declarations.
-
-Refactoring is beneficial, but a broad class split would be dangerous and
-mostly cosmetic. `OverlayApp` is the legitimate top-level process/UI
-coordinator. It should continue to own the event loop and the sequencing among
-state, widget-session, placement, presentation, input, accessibility, and
-rendering authorities. The useful work is to move independently testable
-mutable state and its invariants behind small owners, one seam at a time.
-
-The recommended order is:
-
-1. development/performance diagnostics session;
-2. accessibility publication session;
-3. widget interaction state (focus, slider, and pressed presentation state);
-4. fixed-chrome composition session, after DLV-254 is accepted and stable;
-5. widget-content painter and committed-render checkpoint;
-6. reassess before considering any window-lifetime extraction.
-
-Do not begin this sequence while a user-visible milestone is under physical
-review. DLV-254 and DLV-256 remain ahead of implementation work produced from
-this analysis.
-
-## Method and evidence
-
-The review used:
-
-- an exact-main compile database at `out/clangd-main-vsenv` derived from the
-  current OverlayHost CMake target and the installed MSVC/Windows SDK paths;
-- clangd 22.1.6 document-symbol, workspace-symbol, hover, definition, and
-  reference queries against `src/OverlayHost/main.cpp`;
-- `rg` caller searches and direct inspection of method bodies, field lifetime,
-  initialization, shutdown, and existing focused owners/tests.
-
-The LSP inventory identified the largest methods as:
-
-| Method | Lines | Span |
-| --- | ---: | ---: |
-| `DrawWidget` | 8,324–8,957 | 634 |
-| `HandleMessage` | 1,396–1,947 | 552 |
-| `Initialize` | 489–802 | 314 |
-| `PollController` | 5,108–5,412 | 305 |
-| `ApplyStateTransition` | 2,015–2,246 | 232 |
-| `HandleAccessibilityActions` | 5,447–5,666 | 220 |
-| `EnsureGraphicsResources` | 6,741–6,927 | 187 |
-| `ShowOverlay` | 3,319–3,502 | 184 |
-| `EnsureCompositionChromeSession` | 7,225–7,384 | 160 |
-| `RenderCompositionFrames` | 7,577–7,734 | 158 |
-
-Semantic queries also show why some tempting splits are wrong:
-
-- `HandleMessage` has only its Win32 thunk plus its definition as references.
-  Moving the switch to another file would change no ownership.
-- `DrawWidget` is called only by `DrawCurrentFrame`, so it has a narrow call
-  boundary even though its state inputs are currently broad.
-- `ProcessWidgetSessionEvents` has three callers plus its definition, which is
-  a workable orchestration boundary.
-- `ShowOverlay` has six callers plus its definition and coordinates several
-  already-extracted placement/transition owners.
-- `sessions_` has 68 semantic references distributed from initialization
-  through event handling, presentation, interaction, accessibility, and paint.
-  Moving it together with all callers would create another application-sized
-  coordinator instead of reducing coupling.
-
-The clangd index parsed the full current source and returned the expected
-types/signatures. Its exhaustive `--check` code-action sweep was intentionally
-stopped after AST/index construction because testing every refactoring action
-for every token is unrelated to this analysis and disproportionately slow.
-
-## Current responsibility map
-
-| Responsibility | Existing focused owner(s) | Residual `OverlayApp` authority |
-| --- | --- | --- |
-| Process startup and shutdown | `OverlayProcessOwner`, platform DLL | Constructs every subsystem, creates/destroys three HWNDs, binds callbacks, sequences shutdown. |
-| User-visible navigation state | `OverlayState` | Applies every transition side effect, persistence, focus reset, visibility, lifecycle, and repaint. |
-| Widget transport and lifecycle | `WidgetBridgeClient`, `WidgetSessionCoordinator`, `WidgetAdmissionTrace` | Adapts bridge operations, requests work, consumes events, connects admission to state/presentation/paint. |
-| Placement and display changes | `OverlayPlacement`, `OverlayTargeting`, `OverlayPresentationTransaction` | Chooses timing, reads HWND/monitor state, owns refresh gate, commits window/composition placement. |
-| Open/close/content transitions | `OverlayTransitionTimeline`, declarative motion policies | Owns transition samples, opacity, content reveal, retries, and visibility side effects. |
-| Fixed guide/tray chrome | `OverlayCompositionSurface`, `TrayLayout`, `OverlayChrome` helpers | Owns anchor/session structs, retained paint keys, placement reasons, coordinate projection, and layer repaint decisions. |
-| Controller, keyboard, pointer | platform input owner, `ControllerNavigation`, `GuideInputCompatibility` | Polls and decodes controller state, routes every input domain, manages foreground acquisition and repetition. |
-| Widget focus and interaction | `WidgetSurfaceFocusMemory`, `SliderInteractionState`, `PressedInteractionState`, `TextEntryModal` | Owns focused ID, reconciles semantic focus/scroll/slider pixels, and dispatches host/widget actions. |
-| Accessibility | `AccessibilityTree`, `ProviderHost`, projection helpers | Owns both host/chrome providers, published trees, action draining, projection revisions, and frame semantics. |
-| Declarative rendering | `DeclarativeRenderer`, `DeclarativeLayout`, native style/text/icon owners | Owns renderer/cache lifetime, committed visual checkpoint, damage plan, render result, brushes/formats, and the 634-line widget paint adapter. |
-| Pinned/full-application surfaces | `WidgetSurfaceCoordinator` | Admits/toggles/drains the already-focused owner and coordinates it with shared host state. |
-| Local package import | `LocalWidgetPackageImport` | Supplies authority provenance, invokes the bridge, and retains the last result for presentation. |
-| Launcher experience | focused launcher projection/presentation owners | Refreshes/selects/publishes the focused projection and coordinates host proof/state. |
-| Development/performance evidence | `ScrollEvidenceProbe` and global diagnostic writer | Parses all profile flags, owns counters/nonces/paths, probes readiness, and publishes evidence. |
-
-## Mutable-authority map
-
-The 138 fields are not one homogeneous bag. They form these state clusters:
-
-| Cluster | Representative fields | Current lifetime risk |
-| --- | --- | --- |
-| Window/process/display | `window_`, `chromeWindow_`, `backdropWindow_`, `platform_`, hooks, `placementRefreshGate_`, `displayRefresh_` | One incorrect teardown or coordinate owner can invalidate all visible surfaces. |
-| Development/performance | profile paths/nonces/widget IDs, eight counters, `scrollEvidenceProbe_` | Cohesive and largely independent of production presentation state. |
-| Product state/input feedback | `state_`, tray-Y gesture, controller sequence, action feedback/trace IDs | State changes fan out into nearly every subsystem. |
-| Accessibility | two trees, two providers, two projection trackers, open-widget semantics, revisions | Cohesive publication/action lifetime is spread across message, input, and paint methods. |
-| Interaction | focused element, focus memory, slider/pressed states, text-entry modal, reconciliation deadline | Cohesive per-surface mutable state exists, but dispatch authority should remain outside it. |
-| Widget runtime | `bridge_`, `sessions_`, package import, last import result | Already has strong focused owners; the remaining host references are orchestration, not a new domain to copy. |
-| Appearance/style | appearance state, native styles/colors/radii | Rebuilt together and consumed by both content and host chrome. |
-| Presentation/checkpoint | render sequences/result, committed visual state, incremental plans, motion/transition/transaction, reveal and opacity state | Correctness depends on one admitted semantic generation and one committed visual generation. |
-| Fixed chrome | retained guide/tray keys, fixed anchor/session, placement reason/count | A coherent temporal authority with a promising extraction boundary, but recently changed and physically sensitive. |
-| Graphics resources | factories, composition surface, render targets, brushes, formats, renderer/cache | One device-lifetime cluster, but exposing all resources through getters would only create a service locator. |
-
-## Prioritized extraction seams
-
-### 1. Development and performance diagnostics session
-
-Proposed owner: `OverlayDiagnosticsSession`.
-
-Move the development/performance argument state, nonces/paths, readiness probe,
-counter lifetime, and evidence publication from lines 818–1,197 and fields
-8,971–8,989. It may receive immutable observations and narrow callbacks for
-catalog/snapshot availability. It must not own `OverlayState`,
-`WidgetSessionCoordinator`, any HWND, or product placement.
-
-Why first: this is cohesive, optional process-profile state with low production
-risk. It removes real mutable state and initialization branches rather than
-only relocating functions.
-
-Focused proof: existing development-ready/performance routes, exact nonce and
-path rejection, counter reset/publish behavior, normal production startup with
-the session disabled, and ordinary shutdown.
-
-### 2. Accessibility publication session
-
-Proposed owner: `OverlayAccessibilitySession`.
-
-Move the two provider hosts, host/widget trees, open-widget semantics,
-projection trackers, revision/sequence fields, action queues, and publication
-lifetime represented by lines 5,447–5,878 and fields 9,001–9,010. The owner
-should accept an immutable `AccessibilityFrame` containing already-authorized
-geometry, semantics, focus, and runtime generation, and return typed host/widget
-actions. It must not mutate `OverlayState`, invoke the bridge, or decide widget
-lifecycle.
-
-Why second: the domain already has focused tree/provider/event policies, and
-the mutable publication lifetime is clearly cohesive. This removes authority
-from message handling and paint while preserving the host as action arbiter.
-
-Focused proof: `AccessibilityTreeTests`, `AccessibilityProviderTests`,
-`AccessibilityProjectionTests`, `HostAccessibilityTests`,
-`RealHostAccessibilityTests`, retained-generation invalidation, Back/Close
-semantics, and a physical controller/UIA smoke after the production candidate.
-
-### 3. Widget interaction state
-
-Proposed owner: `WidgetInteractionSession`.
-
-Move only per-widget focus/slider/pressed presentation state and its pure
-reconciliation rules: fields 9,011–9,016 and the focused methods around
-5,431–5,445, 5,880–6,054, and 6,255–6,438. Inputs should be the current semantic
-snapshot, runtime/presentation generation, focus region, and timestamp. Outputs
-should be typed focus changes, damage requests, slider action requests, and
-presentation overrides.
+# OverlayHost `main.cpp` decomposition — declined
 
-Keep controller polling, `OverlayState` transitions, bridge action dispatch,
-worker restart, and text-entry authorization in `OverlayApp`. The extracted
-owner may hold `TextEntryModal` only if it also owns that modal's complete
-lifetime; otherwise the modal remains injected.
-
-Why third: it removes a real cluster of mutable interaction state without
-creating a second input router. The boundary also reduces the current feedback
-loop among paint, focus reconciliation, slider optimism, and input dispatch.
-
-Focused proof: `FocusNavigationTests`, `WidgetSurfaceFocusTests`,
-`SliderInteractionTests`, `PressedInteractionTests`, `TextEntryModalTests`,
-Audio Mixer first-input/slider focus cases, and physical tray-to-widget and
-same-session focus restoration.
-
-### 4. Fixed-chrome composition session
-
-Proposed owner: `FixedChromeSession` (distinct from the existing pure
-`OverlayChrome` helpers).
-
-Move nested `FixedChromeAnchor`/`CompositionChromeSession`, retained guide/tray
-paint keys, placement reason/count, coordinate projection, anchor admission,
-and layer-retention decisions from roughly lines 7,078–7,527 and fields
-9,065–9,071. It may operate on the existing sole `OverlayCompositionSurface`
-and the existing chrome HWND supplied by the host; it must not create a second
-HWND, screen anchor, focus tree, or placement policy.
-
-Why fourth: this is a real temporal authority, but it must wait until DLV-254 is
-accepted because the optional switch animation touches adjacent transition and
-presentation sequencing. Recent physical tray/guide regressions make this a
-high-proof seam even when the source move appears mechanical.
-
-Focused proof: `OverlayChromeTests`, `TrayLayoutTests`,
-`OverlayPlacementTests`, `OverlayTransitionTests`, exact absolute chrome
-stationarity across differently sized widgets, display/DPI refresh, legacy
-fallback, device loss, and the user's physical verdict before test expansion.
-
-### 5. Widget-content painter and committed visual checkpoint
-
-Proposed owner: `WidgetContentPresenter`.
-
-Move the declarative widget-body portion of `DrawWidget`, the committed visual
-checkpoint, incremental damage plans, last render result, declarative motion
-flag, and renderer/cache lifetime behind immutable `WidgetPaintFrame` input and
-typed `WidgetPaintOutcome` output. The frame supplies an already-admitted
-snapshot/presentation authority, geometry, appearance, focus/slider/pressed
-state, and layer target. The outcome supplies render result, accessibility
-regions, committed checkpoint, motion state, damage, and diagnostics.
-
-Host guide/tray painting, HWND placement, session admission, focus mutation,
-and lifecycle must stay outside. If the proposed class needs direct access to
-`OverlayState`, `WidgetSessionCoordinator`, or HWND mutation, the seam is not
-ready.
-
-Why fifth: `DrawWidget` has a narrow semantic call boundary and is the largest
-method, but its current body mixes drawing with committed-generation and focus
-side effects. The earlier seams make those inputs/outputs explicit before this
-high-value, high-risk extraction.
-
-Focused proof: `DeclarativeRendererTests`, `SemanticChurnPerformanceTests`,
-`SharedComponentGeometryTests`, real Settings/Audio/Network/YT renderer suites,
-incremental/no-raster routes, retained/failure-retained authority, device loss,
-and physical settings/media/slider updates without flicker or stale pixels.
-
-## Deferred or rejected extractions
-
-### Keep `OverlayApp` as the top-level transition coordinator
-
-`ApplyStateTransition`, `SyncWidgetActivity`, and
-`ProcessWidgetSessionEvents` intentionally connect independent authorities.
-They may become shorter as the owners above gain typed inputs/outputs, but
-moving them together would merely rename `OverlayApp`.
-
-### Do not wrap `WidgetSessionCoordinator` in another coordinator
-
-The existing session owner already owns queues, generations, completion
-admission, retained checkpoints, failures, and lifecycle. The 68 `sessions_`
-references show broad read/orchestration use, not evidence that its state should
-be copied. First reduce consumers through the seams above; later reassess
-whether a small read-only session view is useful.
-
-### Defer an HWND/window-set owner
-
-A future `OverlayWindowSet` could own registration, creation, destruction,
-show/hide, hooks, and explicit Z-order for content/chrome/backdrop HWNDs. It is
-not a first-stage refactor. Those roles recently required repeated physical
-correction, and the message loop still coordinates platform, accessibility,
-painting, timers, and shutdown. Reconsider only after fixed chrome and widget
-painting have stable typed boundaries.
-
-### Do not create a graphics-resource service locator
-
-Moving factories, brushes, formats, render targets, and the renderer into a bag
-of getters reduces line count but not authority. Resource ownership should move
-only with a complete painter or chrome-rendering lifetime.
-
-### Reject cosmetic splitting
-
-The following do not close EQ-003:
-
-- `#include`-ing method bodies from another file;
-- partial/friend declarations that retain all 138 fields in `OverlayApp`;
-- free functions taking `OverlayApp&` or a large context struct;
-- one wrapper that exposes state/session/window/render objects through getters;
-- moving the 552-line message switch without moving any lifetime;
-- replacing one application class with another class of similar fan-out.
-
-## Implementation rules for any future extraction
-
-Each extraction requires its own delivery assignment and must:
-
-1. start from the then-current accepted `main` and one coherent responsibility;
-2. provide a before/after field and method ownership map;
-3. move the state and invariant together, not only function text;
-4. use typed immutable inputs and typed outcomes instead of back-references;
-5. add no second transport, HWND role, focus tree, controller owner, render
-   checkpoint, or lifecycle coordinator;
-6. preserve exact runtime/presentation generation authority;
-7. produce a production candidate for the user's physical verdict before
-   post-acceptance test edits, consistent with the active delivery workflow;
-8. run only the focused proof for that seam after physical acceptance unless a
-   named aggregate checkpoint is explicitly authorized;
-9. stop if the extraction requires a protocol change, broad redesign, or
-   simultaneous changes to more than one mutable-authority cluster.
-
-## Completion disposition
-
-DLV-255 closes the analysis requirement for EQ-003 but does not close the
-maintainability finding itself. EQ-003 should move from **Review Assigned** to
-**Plan available; implementation deferred behind active visible work**. Close
-it only after the prioritized extractions materially reduce `OverlayApp` field
-and responsibility ownership without recreating the same fan-out elsewhere.
+Status: decision record; no extraction authorized
+Baseline: local `main` at `6afde5dc` on 2026-08-28
+Supersedes: [the DLV-255 analysis](history/overlay-host-main-refactoring-review/2026-08-28T21-24-06-07-00.md)
+
+## Decision
+
+`OverlayApp` decomposition is not scheduled. The candidate seams remove roughly
+700 of 13,922 lines (~5%) while the only prerequisite that makes them safe —
+deterministic Back/focus coverage — is itself the most expensive part and
+reduces nothing. The cost/benefit does not clear.
+
+EQ-003 stays open as a known, accepted condition rather than a planned work
+item. This document exists to stop the next re-attempt from repeating DLV-273,
+not to sequence one.
+
+## The invariant DLV-273 established
+
+This is the durable content of this page and applies whether or not any
+extraction is ever attempted.
+
+DLV-273 moved renderer, checkpoint, and committed-visual publication into a
+`WidgetContentPresenter`. After a nested Back returned to the Settings root the
+controller went directionally dead until an unrelated button event; the log
+recorded a root paint with `input-owner=tray`, `visual-focus=none`, and
+`semantic-focus=tray:settings` immediately after the matching root commit. Two
+corrections — post-commit direction retention, then a bounded replay token —
+each introduced new stale controller states and were also rejected.
+
+The cause is a boundary, not a bug:
+
+> `inputOwner`, `renderedFocusId`, `semanticFocus`, the presentation authority,
+> and `lastWidgetPresentationPaintKey_` are derived from **one** frame in a
+> single straight-line block ([main.cpp:13389](../src/OverlayHost/main.cpp)) and
+> committed together. `DiscardGraphicsResources`
+> ([main.cpp:11063](../src/OverlayHost/main.cpp)) clears that checkpoint
+> alongside `pendingContentRenderPlan_`, `activeContentRenderPlan_`,
+> `lastWidgetRenderResult_`, and `committedWidgetVisualState_`, and already
+> carries a comment explaining that retained hit/focus geometry is valid only
+> for the current render target viewport.
+
+**Any seam that introduces a call boundary between deciding a frame and
+publishing who owns input and where focus is will reproduce DLV-273.**
+
+## Rejected seams
+
+### Widget content presenter — rejected
+
+Not deferred. The retirement decision requires that committed checkpoint and
+interaction publication stay in the accepted owner. A future proposal needs a
+new decision record, not a reference to this page.
+
+### Device resource set — rejected on inspection
+
+Proposed during this review and withdrawn after reading the code.
+`EnsureGraphicsResources` is not a device-resource function. It calls
+`RebuildShellStyles` at the top ([main.cpp:10910](../src/OverlayHost/main.cpp)),
+derives ~13 colors through a fallback chain, creates 12 brushes and 4 text
+formats, then writes `panelCornerRadius_`, `trayCornerRadius_`,
+`trayItemCornerRadius_`, and `focusOutlineWidth_` at the bottom. Style rebuild
+and device creation are interleaved inside one function, so the "device objects
+now, style values later" split it was based on does not exist.
+
+### Accessibility session — rejected
+
+DLV-255 ranked this second-easiest. Measurement does not support that: 10
+fields, 22 straddling methods, zero methods touching the cluster alone. It also
+publishes `semanticFocus`, one of the three values in the DLV-273 failure
+signature.
+
+### Fixed chrome, embedded media — not candidates
+
+Both sit in code changed within the last week (`WIDGE-25`, `WIDGE-77`,
+`WIDGE-80`). Extracting from actively debugged code compounds two risks.
+
+### `WidgetRuntime` host/worker assembly split — rejected
+
+The host half (`WidgetProcessClient`, `WidgetProcessOptions`,
+`RuntimeProtocol`) touches `WidgetSdk` for exactly two types,
+`WidgetLifecycleState` and `WidgetLifecyclePayload`. Both are public SDK API
+([Widget.cs:152](../src/WidgetSdk/Widget.cs)) used by eight widgets including
+the installed Spotify and YT Music community packages, so relocating them to
+`WidgetProtocol` is a binary break for shipped packages. The transitive
+`WidgetSdk.dll` in the bridge runtime directory is a closure artifact, not a
+trust or correctness issue.
+
+## On the fan-out measurements
+
+The cluster and fan-out figures produced for DLV-255 and for this revision
+count **direct field references only**. They cannot see field access through a
+method call, so any function that delegates measures cleaner than it is. The
+device-resource seam above was proposed and withdrawn for exactly this reason.
+
+Treat every published fan-out number as a lower bound on coupling, and do not
+propose a seam from these numbers without reading the function bodies.
+
+## Separately worth doing
+
+Neither of these is refactoring work; both stand alone.
+
+### Deterministic Back/focus coverage
+
+Focus, controller, input, and routing account for **53 of 107** ledger
+entries, 21 of them P0. **17 entries are currently blocked only on a physical
+controller verdict** — that bug class is detected today by a person holding a
+controller, which is how DLV-273 was caught three times across two correction
+attempts.
+
+`HostAccessibilityTests` covers nested-Back *publication* (lines 282, 301,
+324). Nothing covers input ownership or directional navigation *after* the root
+commit, which is the state DLV-273 actually broke. A deterministic host-level
+case driving widget → submenu → Back → root, asserting against the committed
+root frame that the widget remains input owner, visible focus is restored, and
+the first subsequent Up and Down each act exactly once, would close the
+detection gap for the largest category in the ledger.
+
+### Field-count ceiling
+
+A build-failing ceiling on `OverlayApp`'s field count — fields are authority,
+lines are text — set at today's 148 and lowered only deliberately. Since
+decomposition is declined, this is what keeps the condition from worsening; a
+new field then requires either an explicit raise or a home in one of the
+existing focused owners.
+
+### Delete the source-text assertions
+
+23 `has(` checks in `PinnedSurfaceHostTests.cpp` and two in
+`WidgetBridgeCatalogTests.cpp` read `main.cpp` as a string and assert exact
+substrings including embedded newlines and indentation. They assert formatting,
+not behavior: they fire spuriously on reflow and stay silent on behavior
+changes that preserve the text. Where one names real behavior worth keeping
+(compact media X/LB/RB/LT/RT routing, embedded-media observation sequencing),
+re-express it as a behavioral assertion in the owning focused test.
