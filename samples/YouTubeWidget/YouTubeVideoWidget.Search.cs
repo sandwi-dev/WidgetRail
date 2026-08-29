@@ -111,6 +111,7 @@ public sealed partial class YouTubeVideoWidget
         {
             _isActive = false;
             _overlayFullscreen = false;
+            _transientSeekBuffering = false;
             CancelPendingFeedbackLocked();
         }
         return ValueTask.CompletedTask;
@@ -122,6 +123,7 @@ public sealed partial class YouTubeVideoWidget
         lock (_gate)
         {
             _isActive = false;
+            _transientSeekBuffering = false;
             CancelPendingFeedbackLocked();
             pendingFeedback = _pendingFeedbackTask;
         }
@@ -525,6 +527,7 @@ public sealed partial class YouTubeVideoWidget
             _videoId = item.VideoId;
             _validationError = null;
             _playbackError = null;
+            _transientSeekBuffering = false;
             _position = 0;
             _duration = 0;
             SetRouteLocked(YouTubeRoute.Player);

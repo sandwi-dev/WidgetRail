@@ -390,6 +390,52 @@ public sealed class YouTubeWidgetTests
     }
 
     [TestMethod]
+    public async Task CorrelatedSeekLoadingKeepsOtherControlsAvailableUntilPlaybackSettles()
+    {
+        var widget = await CreateConfiguredLinkWidgetAsync();
+        await CommitAsync(widget, $"https://www.youtube.com/watch?v={VideoId}");
+        var load = widget.RenderSnapshot("youtube-test", 1).EmbeddedMedia!.PendingCommand!;
+        await ObserveAsync(widget, load, EmbeddedMediaPlaybackState.Ready, 1);
+
+        await widget.OnActionAsync(new WidgetActionEvent(
+            YouTubeVideoWidget.ToggleActionId, "youtube.playback.toggle"));
+        var play = widget.RenderSnapshot("youtube-test", 2).EmbeddedMedia!.PendingCommand!;
+        await ObserveAsync(widget, play, EmbeddedMediaPlaybackState.Playing, 2,
+            position: 14, duration: 120, volume: 0.65);
+
+        await widget.OnActionAsync(new WidgetActionEvent(
+            YouTubeVideoWidget.SeekForwardActionId, "youtube.playback.seek-forward"));
+        var seek = widget.RenderSnapshot("youtube-test", 3).EmbeddedMedia!.PendingCommand!;
+        await ObserveAsync(widget, seek, EmbeddedMediaPlaybackState.Loading, 3,
+            position: 24, duration: 120, volume: 0.65);
+
+        var buffering = widget.RenderSnapshot("youtube-test", 4);
+        Assert.IsNull(buffering.EmbeddedMedia!.PendingCommand);
+        Assert.AreEqual("Buffering YouTube video…", Find(buffering.Root, "youtube.status").Text);
+        Assert.IsTrue(Find(buffering.Root, "youtube.playback.toggle").IsDisabled is not true);
+        Assert.IsTrue(Find(buffering.Root, "youtube.playback.seek-backward").IsDisabled is not true);
+        Assert.IsTrue(Find(buffering.Root, "youtube.playback.seek-forward").IsDisabled is not true);
+        Assert.IsTrue(Find(buffering.Root, "youtube.timeline").IsDisabled is not true);
+        Assert.IsTrue(Find(buffering.Root, "youtube.volume").IsDisabled is not true);
+
+        await widget.OnEmbeddedMediaPlaybackEventAsync(new EmbeddedMediaPlaybackEvent
+        {
+            SurfaceId = YouTubeVideoWidget.SurfaceId,
+            Sequence = 4,
+            CommandSequence = 0,
+            MediaKey = VideoId,
+            State = EmbeddedMediaPlaybackState.Playing,
+            PositionSeconds = 24,
+            DurationSeconds = 120,
+            Volume = 0.65,
+        });
+        var settled = widget.RenderSnapshot("youtube-test", 5);
+        Assert.AreEqual("Playing", Find(settled.Root, "youtube.status").Text);
+        Assert.IsTrue(Find(settled.Root, "youtube.playback.toggle").IsDisabled is not true);
+        Assert.IsEmpty(ViewSnapshotValidator.Validate(settled));
+    }
+
+    [TestMethod]
     public async Task ProviderErrorsRemainFixedClearAndNonSecret()
     {
         var expected = new Dictionary<string, string>

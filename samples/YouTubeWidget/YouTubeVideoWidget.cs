@@ -33,6 +33,7 @@ public sealed partial class YouTubeVideoWidget : Widget
     private bool _overlayFullscreen;
     private EmbeddedMediaPlaybackCommand? _pendingCommand;
     private PendingMediaControl _pendingControl;
+    private bool _transientSeekBuffering;
     private long? _busyCommandSequence;
     private bool _isActive;
     private CancellationToken _activeLifetime;
@@ -53,6 +54,7 @@ public sealed partial class YouTubeVideoWidget : Widget
         bool overlayFullscreen;
         PendingMediaControl busyControl;
         EmbeddedMediaPlaybackCommand? pending;
+        bool transientSeekBuffering;
         lock (_gate)
         {
             link = _link;
@@ -64,6 +66,7 @@ public sealed partial class YouTubeVideoWidget : Widget
             volume = _volume;
             overlayFullscreen = _overlayFullscreen;
             pending = _pendingCommand;
+            transientSeekBuffering = _transientSeekBuffering;
             busyControl = pending is not null && _busyCommandSequence == pending.Sequence
                 ? _pendingControl : PendingMediaControl.None;
         }
@@ -71,7 +74,7 @@ public sealed partial class YouTubeVideoWidget : Widget
         var media = CreateMediaSurface(videoId, pending, retainSessionWhenHidden: false,
             overlayFullscreen);
         var seekBuffering = state == EmbeddedMediaPlaybackState.Loading &&
-            pending?.Kind == EmbeddedMediaPlaybackCommandKind.Seek;
+            (pending?.Kind == EmbeddedMediaPlaybackCommandKind.Seek || transientSeekBuffering);
         var mediaLoading = !seekBuffering &&
             (state == EmbeddedMediaPlaybackState.Loading ||
              pending?.Kind is EmbeddedMediaPlaybackCommandKind.Load or
@@ -336,6 +339,7 @@ public sealed partial class YouTubeVideoWidget : Widget
             {
                 _link = committed.Trim();
                 _playbackError = null;
+                _transientSeekBuffering = false;
                 if (!YouTubeLinkParser.TryParse(_link, out var parsedVideoId))
                 {
                     _validationError = "Enter a supported youtube.com or youtu.be video link.";
@@ -425,6 +429,10 @@ public sealed partial class YouTubeVideoWidget : Widget
             _playbackError = playbackEvent.State == EmbeddedMediaPlaybackState.Error
                 ? PlaybackErrorText(playbackEvent.ErrorCode)
                 : null;
+            _transientSeekBuffering = playbackEvent.State == EmbeddedMediaPlaybackState.Loading &&
+                (_transientSeekBuffering ||
+                 _pendingCommand is { Kind: EmbeddedMediaPlaybackCommandKind.Seek } currentSeek &&
+                 playbackEvent.CommandSequence == currentSeek.Sequence);
             if (_pendingCommand is { } current &&
                 playbackEvent.CommandSequence == current.Sequence)
             {
@@ -444,6 +452,7 @@ public sealed partial class YouTubeVideoWidget : Widget
         double? volume = null)
     {
         _playbackError = null;
+        _transientSeekBuffering = false;
         _pendingCommand = new EmbeddedMediaPlaybackCommand
         {
             Sequence = ++_commandSequence,
