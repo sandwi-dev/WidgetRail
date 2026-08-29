@@ -44,6 +44,7 @@ int main() {
     button.kind = L"button";
     button.accessibilityLabel = L"Next track";
     button.actionId = L"next";
+    button.isDisabled = true;
     snapshot.root.children.push_back(button);
 
     widgetrail::WidgetNode slider;
@@ -64,6 +65,7 @@ int main() {
     tile.kind = L"actionSurface";
     tile.accessibilityLabel = L"Open album";
     tile.actionId = L"open-album";
+    tile.isDisabled = true;
     tile.children.push_back(Text(L"album-title", L"Duplicate visual title"));
     snapshot.root.children.push_back(tile);
 
@@ -102,7 +104,8 @@ int main() {
     Check(tree.nodes[0].role == widgetrail::accessibility::Role::Text &&
           tree.nodes[0].name == L"Now playing", "visible text has a static-text name");
     Check(tree.nodes[1].role == widgetrail::accessibility::Role::Button &&
-          tree.nodes[1].actionId == L"next", "button exposes Invoke authority metadata");
+          tree.nodes[1].actionId == L"next" && !tree.nodes[1].enabled,
+          "disabled button retains Invoke identity while exposing Unavailable");
     Check(tree.focusedNode == 1 && tree.nodes[1].focused,
           "logical controller focus is represented");
     Check(tree.nodes[2].role == widgetrail::accessibility::Role::Slider &&
@@ -117,8 +120,9 @@ int main() {
         L"music", L"generation-1", snapshot, render, L"next", presentedValues);
     Check(tree.nodes[2].rangeValue == 75,
           "accessibility range uses the same optimistic value as rendered pixels");
-    Check(tree.nodes[3].name == L"Open album" && tree.nodes[3].children.empty(),
-          "action-surface descendants remain presentation-only");
+    Check(tree.nodes[3].name == L"Open album" && tree.nodes[3].children.empty() &&
+          !tree.nodes[3].enabled,
+          "disabled action surface is Unavailable and its descendants remain presentational");
     Check(tree.nodes[4].role == widgetrail::accessibility::Role::Button &&
           tree.nodes[4].id == L"search" &&
           tree.nodes[4].actionId == L"search.commit",

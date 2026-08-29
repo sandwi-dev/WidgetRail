@@ -196,14 +196,14 @@ void AccessibleStatePresentation() {
     Near(widgetrail::DeclarativeStateOpacityFactor(false, true, normal), 0.72F,
          "standard busy content remains muted");
     Check(!widgetrail::UseAccessibleDeclarativeStateCue(normal),
-          "standard presentation retains muted disabled cue");
+          "standard presentation uses opacity for disabled state");
 
     widgetrail::NativeAccessibilityPolicy reducedTransparency;
     reducedTransparency.reducedTransparency = true;
     Near(widgetrail::DeclarativeStateOpacityFactor(true, false, reducedTransparency), 1.0F,
          "reduced transparency does not fade disabled content");
     Check(widgetrail::UseAccessibleDeclarativeStateCue(reducedTransparency),
-          "reduced transparency uses resolved disabled cue foreground");
+          "reduced transparency retains full-opacity state presentation");
 
     widgetrail::NativeAccessibilityPolicy highContrast;
     highContrast.contrastHook = [](widgetrail::NativeColor color, widgetrail::NativeColor) {
@@ -211,8 +211,10 @@ void AccessibleStatePresentation() {
     };
     Near(widgetrail::DeclarativeStateOpacityFactor(false, true, highContrast), 1.0F,
          "high contrast does not fade busy content");
+    Near(widgetrail::DeclarativeStateOpacityFactor(true, false, highContrast), 1.0F,
+         "high contrast does not fade disabled content");
     Check(widgetrail::UseAccessibleDeclarativeStateCue(highContrast),
-          "high contrast uses policy-owned disabled cue foreground");
+          "high contrast retains policy-owned state presentation");
 }
 
 void PressedComputedStyleLayersOnFocusedState() {
@@ -739,6 +741,7 @@ void ActionSurfacePlanningAndInteractionGeometry() {
         {0.0F, 0.0F, 340.0F, 180.0F});
     Check(selected.hitRegions.front().enabled,
           "selected ActionSurface remains actionable");
+    horizontalSnapshot.root.children[0].isSelected = false;
     horizontalSnapshot.root.children[0].isDisabled = true;
     const auto disabled = renderer.Render(
         nullptr, horizontalSnapshot, L"album.tile",
@@ -3197,6 +3200,87 @@ void RealDirect2DSmoke() {
          optimisticSliderRect.x + focusedTrackInset + focusedTrackWidth * 0.75F,
          "optimistic Slider thumb paints at the presented value instead of snapshot value");
 
+    struct DisabledActionRaster final {
+        widgetrail::RenderResult result;
+        std::vector<BYTE> pixels;
+    };
+    const auto renderDisabledAction = [&](const wchar_t* kind, const bool disabled) {
+        WidgetSnapshot state;
+        state.instanceId = L"disabled-action.runtime";
+        state.activeInputScopeId = L"disabled-action.root";
+        state.root = Node(L"disabled-action.root", L"stack");
+        state.root.inputScopeId = state.activeInputScopeId;
+        auto action = Node(L"disabled-action.control", kind);
+        action.actionId = L"activate";
+        action.accessibilityLabel = L"Provider-neutral action";
+        action.isDisabled = disabled;
+        action.baseStyle = {
+            {L"width", Length(220)},
+            {L"height", Length(64)},
+            {L"background", Color(L"#203040")},
+            {L"color", Color(L"#ffffff")},
+            {L"border-width", Length(2)},
+            {L"border-color", Color(L"#ffffff")},
+        };
+        if (action.kind == L"button") {
+            action.text = L"Provider-neutral action";
+            action.glyph = L"play";
+        } else {
+            action.actionSurfaceOrientation = L"horizontal";
+            auto label = Node(L"disabled-action.label", L"text");
+            label.text = L"Provider-neutral action";
+            action.children.push_back(std::move(label));
+        }
+        state.root.children.push_back(std::move(action));
+
+        widgetrail::DeclarativeRenderOptions stateOptions;
+        stateOptions.accessibility.reducedMotion = true;
+        stateOptions.accessibility.contrastHook = [](
+                const widgetrail::NativeColor color,
+                const widgetrail::NativeColor) { return color; };
+        DeclarativeRenderer stateRenderer{d2d.Get(), write.Get(), nullptr};
+        target->BeginDraw();
+        target->Clear(D2D1::ColorF(D2D1::ColorF::Black));
+        auto stateResult = stateRenderer.Render(
+            target.Get(), state, L"disabled-action.control",
+            {0.0F, 0.0F, 640.0F, 360.0F}, stateOptions);
+        Check(SUCCEEDED(target->EndDraw()),
+            "disabled action comparison frame draws");
+        Check(stateResult.succeeded,
+            "disabled action comparison render succeeds");
+
+        ComPtr<IWICBitmapLock> stateLock;
+        const WICRect stateLockArea{0, 0, 640, 360};
+        Check(SUCCEEDED(canvas->Lock(
+            &stateLockArea, WICBitmapLockRead,
+            stateLock.ReleaseAndGetAddressOf())),
+            "disabled action comparison bitmap locks");
+        UINT stateByteCount = 0;
+        BYTE* statePixels = nullptr;
+        Check(SUCCEEDED(stateLock->GetDataPointer(
+            &stateByteCount, &statePixels)),
+            "disabled action comparison pixels are available");
+        std::vector<BYTE> copiedPixels(statePixels, statePixels + stateByteCount);
+        stateLock.Reset();
+        return DisabledActionRaster{
+            std::move(stateResult), std::move(copiedPixels)};
+    };
+
+    for (const auto* kind : {L"button", L"actionSurface"}) {
+        const auto enabledAction = renderDisabledAction(kind, false);
+        const auto disabledAction = renderDisabledAction(kind, true);
+        Check(enabledAction.pixels == disabledAction.pixels,
+            "disabled Button and ActionSurface add no diagonal raster cue");
+        Check(enabledAction.result.hitRegions.size() == 1 &&
+              enabledAction.result.hitRegions.front().enabled &&
+              disabledAction.result.hitRegions.size() == 1 &&
+              !disabledAction.result.hitRegions.front().enabled,
+            "disabled raster parity does not weaken activation suppression");
+        Check(disabledAction.result.navigationEnabled.at(L"disabled-action.control") &&
+              disabledAction.result.focusRects.contains(L"disabled-action.control"),
+            "disabled raster parity retains controller focus and navigation");
+    }
+
     WidgetSnapshot responsiveSnapshot;
     responsiveSnapshot.sequence = 77;
     responsiveSnapshot.instanceId = L"responsive-commit.runtime";
@@ -3566,17 +3650,22 @@ void RealDirect2DSmoke() {
         Near(selectedPlacement.leading.x, selectedRect.x + 10.0F,
             "authored justify-start aligns selection-row content at the shared leading inset",
             0.51F);
-        for (const auto* id : {L"matrix.selected", L"matrix.busy", L"matrix.disabled"}) {
+        for (const auto* id : {L"matrix.selected", L"matrix.busy"}) {
             const auto& placement = matrixResult.buttonContentPlacements.at(id);
             const auto& rect = matrixResult.elementRects.at(id);
             Near(placement.trailingStateCue.y + placement.trailingStateCue.height * 0.5F,
                 rect.y + rect.height * 0.5F,
-                "selected, busy, and disabled cues share vertical centering",
+                "selected and busy cues share vertical centering",
                 0.51F);
             Check(placement.text.x + placement.text.width + 7.5F <=
                     placement.trailingStateCue.x,
                 "stateful label remains clear of the shared cue lane");
         }
+        const auto& disabledPlacement =
+            matrixResult.buttonContentPlacements.at(L"matrix.disabled");
+        Check(disabledPlacement.trailingStateCue.width == 0.0F &&
+              disabledPlacement.trailingStateCue.height == 0.0F,
+              "disabled button reserves no diagonal state-cue lane");
         if (textScale == 1.5F) {
             Check(matrixResult.elementRects.at(L"matrix.wrapped").height > 44.0F,
                 "150-percent wrapped label contributes its measured intrinsic height");
