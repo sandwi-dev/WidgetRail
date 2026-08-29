@@ -1,9 +1,11 @@
 #include "OverlayHostTestSupport.h"
+#include "../OverlayPlatformInterop/OverlayPlatformInterop.h"
 
 #include <ole2.h>
 #include <TlHelp32.h>
 #include <UIAutomation.h>
 #include <Windows.h>
+#include <Xinput.h>
 #include <wrl/client.h>
 
 #include <array>
@@ -49,6 +51,7 @@ constexpr wchar_t kDevelopmentNonce[] =
     L"0780780780780780780780780780780780780780780780780780780780780780";
 constexpr char kDevelopmentNonceUtf8[] =
     "0780780780780780780780780780780780780780780780780780780780780780";
+constexpr ULONG_PTR kPinnedSliderControllerFrameCopyData = 0x5752534cU;
 
 struct Arguments final {
     fs::path installation;
@@ -60,6 +63,7 @@ struct Arguments final {
     std::optional<std::size_t> fallbackAuthorityReplayMarker;
     std::optional<long long> fallbackAuthorityReplaySequence;
     bool geometryOnly{};
+    bool pinnedSliderRouteOnly{};
     bool fallbackAuthoritySelectionOnly{};
 };
 
@@ -89,7 +93,8 @@ class TemporaryInstallation final {
 public:
     TemporaryInstallation(
         const fs::path& source,
-        const fs::path& fixtureWorker) {
+        const fs::path& fixtureWorker,
+        const bool pinnedSliderRoute = false) {
         Require(fs::is_regular_file(source / L"OverlayHost.exe"),
                 "--installation does not contain OverlayHost.exe");
         Require(fs::is_regular_file(source / L"OverlayPlatformInterop.dll"),
@@ -129,6 +134,7 @@ public:
         blockedSnapshotSignal_ = root_ / L"block-snapshot.started";
         blockedSnapshotRelease_ = root_ / L"block-snapshot.release";
         blockedSnapshotComplete_ = root_ / L"block-snapshot.completed";
+        actionSignal_ = root_ / L"pinned-slider.actions";
 
         WriteUtf8(root_ / L"runtime" / L"switch-fixture.wrss",
             ".switch-surface { padding: 28px; gap: 18px; corner-radius: 18px; }\n"
@@ -147,7 +153,8 @@ public:
         const std::string worker = JsonEscape(fs::absolute(fixtureWorker).wstring());
         const auto widget = [&](const char* id, const char* packageId, const char* name,
                                 const char* instanceId, const char* icon,
-                                const bool blockable = false) {
+                                const bool blockable = false,
+                                const bool pinnable = false) {
             const auto startupSignal = JsonEscape(
                 fs::absolute(startupSignalRoot_ / (std::string(id) + ".started")).wstring());
             const std::string blockingArguments = blockable
@@ -162,6 +169,10 @@ public:
                     "\",\"--block-snapshot-complete\",\"" +
                     JsonEscape(fs::absolute(blockedSnapshotComplete_).wstring()) + "\""
                 : "";
+            const std::string actionArguments = pinnable
+                ? ",\"--action-signal\",\"" +
+                    JsonEscape(fs::absolute(actionSignal_).wstring()) + "\""
+                : "";
             return std::string(
                 "    {\"id\":\"") + id + "\",\"packageId\":\"" + packageId +
                 "\",\"publisherId\":\"widgetrail.tests\",\"name\":\"" + name +
@@ -171,9 +182,22 @@ public:
                 "\"memoryLimitMb\":64,\"residencyPolicy\":{\"schemaVersion\":1,"
                 "\"mode\":\"suspend-when-hidden\"},\"workerArguments\":["
                 "\"--first-snapshot-signal\",\"" + startupSignal + "\"" +
-                blockingArguments + "],"
+                blockingArguments + actionArguments + "],"
+                "\"pinningSupported\":" + (pinnable ? "true" : "false") + ","
                 "\"declaredCapabilities\":[],\"quickActions\":[]}";
         };
+        if (pinnedSliderRoute) {
+            catalog_ =
+                "{\n  \"catalogVersion\":1,\n"
+                "  \"genericWorkerExecutable\":\"runtime/WidgetWorkerHost/WidgetWorkerHost.exe\",\n"
+                "  \"widgets\":[\n" +
+                widget("pinned-slider", "widgetrail.tests.pinned-slider", "Pinned Slider",
+                       "pinned-slider.default", "settings", false, true) +
+                "\n  ],\n  \"bundledWidgets\":[]\n}\n";
+            catalogWithProbe_ = catalog_;
+            WriteUtf8(root_ / L"widget-catalog.json", catalog_);
+            return;
+        }
         catalog_ =
             "{\n  \"catalogVersion\":1,\n"
             "  \"genericWorkerExecutable\":\"runtime/WidgetWorkerHost/WidgetWorkerHost.exe\",\n"
@@ -211,6 +235,7 @@ public:
     [[nodiscard]] const fs::path& Root() const noexcept { return root_; }
     [[nodiscard]] const fs::path& LocalAppData() const noexcept { return localAppData_; }
     [[nodiscard]] const fs::path& ReadyPath() const noexcept { return readyPath_; }
+    [[nodiscard]] const fs::path& ActionSignal() const noexcept { return actionSignal_; }
     [[nodiscard]] const std::wstring& ProcessProfile() const noexcept {
         return processProfile_;
     }
@@ -288,6 +313,7 @@ private:
     fs::path blockedSnapshotSignal_;
     fs::path blockedSnapshotRelease_;
     fs::path blockedSnapshotComplete_;
+    fs::path actionSignal_;
     long long blockedSnapshotEpoch_{};
     std::wstring processProfile_;
     std::string catalog_;
@@ -300,6 +326,8 @@ Arguments ParseArguments(const int argc, wchar_t** argv) {
         const std::wstring_view argument(argv[index]);
         if (argument == L"--geometry-only") {
             result.geometryOnly = true;
+        } else if (argument == L"--pinned-slider-route-only") {
+            result.pinnedSliderRouteOnly = true;
         } else if (argument == L"--fallback-authority-selection-only") {
             result.fallbackAuthoritySelectionOnly = true;
         } else if (argument == L"--fallback-authority-replay-log" && index + 1 < argc) {
@@ -333,6 +361,7 @@ Arguments ParseArguments(const int argc, wchar_t** argv) {
             Fail("Usage: WidgetSwitchHostTests --installation <dir> "
                  "--fixture-worker <exe> --repository-commit <sha> "
                  "--host-sha256 <sha256> [--geometry-only] "
+                 "[--pinned-slider-route-only] "
                  "[--fallback-authority-selection-only] "
                  "[--fallback-authority-replay-log <path> "
                  "--fallback-authority-marker <offset> "
@@ -970,6 +999,45 @@ bool IsEnabled(IUIAutomationElement* element) {
     BOOL enabled{};
     return element &&
         SUCCEEDED(element->get_CurrentIsEnabled(&enabled)) && enabled;
+}
+
+void SendControllerFrame(
+    const HWND window,
+    const WORD buttons,
+    const WORD pressedButtons,
+    const WidgetRailOverlayPlatformNavigationDirection dpadDirection =
+        WidgetRailOverlayPlatformNavigationDirection::None) {
+    WidgetRailOverlayPlatformControllerFrame frame;
+    frame.connected = WRAIL_OVERLAY_PLATFORM_TRUE;
+    frame.foregroundExclusive = WRAIL_OVERLAY_PLATFORM_TRUE;
+    frame.state.buttons = buttons;
+    frame.pressedButtons = pressedButtons;
+    if (dpadDirection != WidgetRailOverlayPlatformNavigationDirection::None) {
+        frame.dpadNavigation.direction = dpadDirection;
+        frame.dpadNavigation.phase = WidgetRailOverlayPlatformNavigationPhase::Pressed;
+    }
+    COPYDATASTRUCT copy{
+        kPinnedSliderControllerFrameCopyData,
+        static_cast<DWORD>(sizeof(frame)),
+        &frame,
+    };
+    DWORD_PTR accepted{};
+    Require(SendMessageTimeoutW(
+                window, WM_COPYDATA, 0, reinterpret_cast<LPARAM>(&copy),
+                SMTO_ABORTIFHUNG | SMTO_BLOCK, 5000, &accepted) != 0 &&
+                accepted == TRUE,
+            "Test-only controller frame was not accepted by the real host route");
+}
+
+std::optional<double> AutomationRangeValue(IUIAutomationElement* element) {
+    if (!element) return std::nullopt;
+    ComPtr<IUIAutomationRangeValuePattern> range;
+    if (FAILED(element->GetCurrentPatternAs(
+            UIA_RangeValuePatternId, IID_PPV_ARGS(range.GetAddressOf()))) || !range)
+        return std::nullopt;
+    double value{};
+    return SUCCEEDED(range->get_CurrentValue(&value))
+        ? std::optional<double>{value} : std::nullopt;
 }
 
 std::string AutomationIdOf(IUIAutomationElement* element) {
@@ -4536,6 +4604,118 @@ void RunRetentionScenario(const Arguments& arguments) {
     installation.reset();
 }
 
+void RunPinnedSliderRouteScenario(const Arguments& arguments) {
+    auto installation = std::make_unique<TemporaryInstallation>(
+        arguments.installation, arguments.fixtureWorker, true);
+    const auto quoted = [](const fs::path& path) {
+        return L"\"" + path.wstring() + L"\"";
+    };
+    const std::wstring hostArguments =
+        L"--show --process-profile " + installation->ProcessProfile() +
+        L" --development-catalog-root " + quoted(installation->Root()) +
+        L" --development-ready-path " + quoted(installation->ReadyPath()) +
+        L" --development-ready-nonce " + kDevelopmentNonce +
+        L" --development-widget-id pinned-slider"
+        L" --development-widget-instance pinned-slider.default";
+    auto host = std::make_unique<HostProcess>(
+        installation->Root(), installation->LocalAppData(), hostArguments);
+    const auto logPath = installation->LocalAppData() / L"WidgetRail" / L"overlay.log";
+    Require(WaitUntil(kStartupTimeoutMilliseconds, [&] {
+                return ReadUtf8(installation->ReadyPath()).find(kDevelopmentNonceUtf8) !=
+                    std::string::npos;
+            }), "Pinned-slider host did not publish authenticated readiness; log=" +
+                ReadUtf8(logPath));
+    HWND window{};
+    Require(WaitUntil(kStartupTimeoutMilliseconds, [&] {
+                window = LocateHostWindow(host->Id());
+                return window && IsWindowVisible(window);
+            }), "Pinned-slider host window did not become visible");
+    FenceWindow(window);
+    ComPtr<IUIAutomation> automation;
+    Require(SUCCEEDED(CoCreateInstance(
+                CLSID_CUIAutomation, nullptr, CLSCTX_INPROC_SERVER,
+                IID_PPV_ARGS(automation.GetAddressOf()))) && automation,
+            "UI Automation initializes for the pinned-slider route");
+    const auto findInWindow = [&](const HWND target, const wchar_t* id) {
+        ComPtr<IUIAutomationElement> root;
+        if (!target || FAILED(automation->ElementFromHandle(
+                target, root.GetAddressOf())) || !root) return ComPtr<IUIAutomationElement>{};
+        return FindAutomationElement(automation.Get(), root.Get(), id);
+    };
+
+    if (!WaitUntil(kOperationTimeoutMilliseconds, [&] {
+            return static_cast<bool>(findInWindow(window, L"widget:pinned-slider"));
+        })) {
+        SendKey(window, VK_RETURN);
+    }
+    Require(WaitUntil(kOperationTimeoutMilliseconds, [&] {
+                return static_cast<bool>(findInWindow(window, L"widget:pinned-slider"));
+            }), "Provider-neutral slider did not reach the current full-widget surface");
+
+    SendKey(window, 'P');
+    HWND pinned{};
+    Require(WaitUntil(kOperationTimeoutMilliseconds, [&] {
+                pinned = LocateHostWindow(host->Id(), L"WidgetRail.PinnedSurface");
+                return pinned && IsWindowVisible(pinned);
+            }), "Provider-neutral pinned surface was not created");
+    SendKey(window, VK_RETURN);
+    SendKey(window, 'P');
+    Require(WaitUntil(kOperationTimeoutMilliseconds, [&] {
+                const auto slider = findInWindow(pinned, L"widget:pinned-slider");
+                return slider && IsEnabled(slider.Get()) && IsKeyboardFocused(slider.Get()) &&
+                    AutomationRangeValue(slider.Get()) == 50.0;
+            }), "Pinned slider did not own focus and exact initial value");
+
+    SendControllerFrame(window, XINPUT_GAMEPAD_A, XINPUT_GAMEPAD_A);
+    SendControllerFrame(
+        window, XINPUT_GAMEPAD_DPAD_LEFT, XINPUT_GAMEPAD_DPAD_LEFT,
+        WidgetRailOverlayPlatformNavigationDirection::Left);
+    Require(WaitUntil(kOperationTimeoutMilliseconds, [&] {
+                const auto actions = ReadUtf8(installation->ActionSignal());
+                return actions.find("value=45") != std::string::npos;
+            }), "Pinned A then Left did not deliver one absolute valueChanged action");
+    Require(WaitUntil(kOperationTimeoutMilliseconds, [&] {
+                const auto slider = findInWindow(pinned, L"widget:pinned-slider");
+                return AutomationRangeValue(slider.Get()) == 45.0;
+            }), "Authoritative successor did not reconcile pinned slider value 45");
+    SendControllerFrame(
+        window, XINPUT_GAMEPAD_DPAD_RIGHT, XINPUT_GAMEPAD_DPAD_RIGHT,
+        WidgetRailOverlayPlatformNavigationDirection::Right);
+    Require(WaitUntil(kOperationTimeoutMilliseconds, [&] {
+                const auto actions = ReadUtf8(installation->ActionSignal());
+                return actions.find("value=50") != std::string::npos;
+            }), "Pinned Right did not deliver one absolute valueChanged action");
+
+    SendControllerFrame(window, XINPUT_GAMEPAD_A, XINPUT_GAMEPAD_A);
+    const auto actionsBeforeNavigation = ReadUtf8(installation->ActionSignal());
+    SendControllerFrame(
+        window, XINPUT_GAMEPAD_DPAD_RIGHT, XINPUT_GAMEPAD_DPAD_RIGHT,
+        WidgetRailOverlayPlatformNavigationDirection::Right);
+    Require(WaitUntil(kOperationTimeoutMilliseconds, [&] {
+                return IsKeyboardFocused(
+                    findInWindow(pinned, L"widget:pinned-slider-peer").Get());
+            }), "D-pad outside adjustment mode did not resume spatial navigation");
+    Require(ReadUtf8(installation->ActionSignal()) == actionsBeforeNavigation,
+            "D-pad outside adjustment mode emitted a slider value action");
+
+    const auto actionLog = ReadUtf8(installation->ActionSignal());
+    const auto count = [&](const std::string_view needle) {
+        std::size_t result{}, at{};
+        while ((at = actionLog.find(needle, at)) != std::string::npos) {
+            ++result;
+            at += needle.size();
+        }
+        return result;
+    };
+    Require(count("value=45") == 1 && count("value=50") == 1,
+            "Pinned slider emitted a duplicate or missing absolute action");
+    Require(count("action=fixture.slider.changed source=pinned-slider") == 2,
+            "Pinned slider delivery omitted exact action/source authority");
+    std::cout << "Pinned slider integrated route actions=2 passed\n";
+    host.reset();
+    installation.reset();
+}
+
 } // namespace
 
 int wmain(const int argc, wchar_t** argv) {
@@ -4558,6 +4738,8 @@ int wmain(const int argc, wchar_t** argv) {
             RunFallbackCheckpointSelectionTests();
         else if (!arguments.fallbackAuthorityReplayLog.empty())
             RunFallbackCheckpointReplay(arguments);
+        else if (arguments.pinnedSliderRouteOnly)
+            RunPinnedSliderRouteScenario(arguments);
         else
             RunRetentionScenario(arguments);
         std::cout << "WidgetSwitchHostTests passed\n";

@@ -23,6 +23,7 @@ internal static class Program
         var blockSnapshotSignal = OptionalValue(args, "--block-snapshot-signal");
         var blockSnapshotRelease = OptionalValue(args, "--block-snapshot-release");
         var blockSnapshotComplete = OptionalValue(args, "--block-snapshot-complete");
+        var actionSignal = OptionalValue(args, "--action-signal");
 
         using var shutdown = new CancellationTokenSource();
         ConsoleCancelEventHandler cancelHandler = (_, eventArgs) =>
@@ -42,7 +43,8 @@ internal static class Program
                         blockSnapshotArmed,
                         blockSnapshotSignal,
                         blockSnapshotRelease,
-                        blockSnapshotComplete),
+                        blockSnapshotComplete,
+                        actionSignal),
                     instanceId,
                     pipeName,
                     maximumBytes,
@@ -86,13 +88,15 @@ internal static class Program
         string? blockSnapshotArmed,
         string? blockSnapshotSignal,
         string? blockSnapshotRelease,
-        string? blockSnapshotComplete) : Widget
+        string? blockSnapshotComplete,
+        string? actionSignal) : Widget
     {
         private readonly SurfaceDefinition _surface = ResolveSurface(instanceId);
         private bool _firstSnapshotDelayed;
         private int _renderCount;
         private volatile bool _blockNextSnapshot;
         private long _blockedEpoch;
+        private double _sliderValue = 50;
 
         public override WidgetView Render()
         {
@@ -128,6 +132,21 @@ internal static class Program
                     File.WriteAllText(blockSnapshotComplete,
                         $"epoch={epoch.ToString(CultureInfo.InvariantCulture)} completed");
             }
+            if (_surface.Id == "pinned-slider")
+            {
+                return new WidgetView(
+                    UI.Stack(
+                        "pinned-slider-root",
+                        UI.Slider(
+                                _sliderValue, 0, 100, 5, "fixture.slider.changed",
+                                "pinned-slider", "Position", $"{_sliderValue:F0}")
+                            .RequireControllerActivation()
+                            .FocusRight("pinned-slider-peer"),
+                        UI.Button("Peer", "fixture.peer", "pinned-slider-peer")
+                            .FocusLeft("pinned-slider")),
+                    InitialFocusId: "pinned-slider",
+                    Surface: _surface.Hints);
+            }
             return new WidgetView(
                 UI.Stack(
                     $"{_surface.Id}-root",
@@ -152,6 +171,23 @@ internal static class Program
             CancellationToken cancellationToken = default)
         {
             cancellationToken.ThrowIfCancellationRequested();
+            if (action is
+                {
+                    ActionId: "fixture.slider.changed",
+                    SourceElementId: "pinned-slider",
+                    RequestedValue: { } requested
+                })
+            {
+                _sliderValue = requested;
+                if (actionSignal is not null)
+                    File.AppendAllText(
+                        actionSignal,
+                        $"sequence={action.Sequence.ToString(CultureInfo.InvariantCulture)} " +
+                        $"action={action.ActionId} source={action.SourceElementId} " +
+                        $"value={requested.ToString("F0", CultureInfo.InvariantCulture)}\n");
+                Invalidate();
+                return ValueTask.CompletedTask;
+            }
             if (action.ActionId == "fixture.ready")
             {
                 if (TryConsumeBlockEpoch(out var epoch))
@@ -209,6 +245,16 @@ internal static class Program
 
         private static SurfaceDefinition ResolveSurface(string value)
         {
+            if (value.StartsWith("pinned-slider.", StringComparison.Ordinal))
+                return new("pinned-slider", "Pinned Slider", "settings-surface", 0,
+                    new WidgetSurfaceHints
+                    {
+                        Mode = WidgetSurfaceMode.Compact,
+                        PreferredWidth = 520,
+                        PreferredHeight = 360,
+                        MinimumWidth = 320,
+                        MinimumHeight = 260,
+                    });
             if (value.StartsWith("audio-mixer.", StringComparison.Ordinal))
                 return new("audio", "Audio Mixer", "audio-surface", 0, new WidgetSurfaceHints
                 {

@@ -731,8 +731,7 @@ bool WidgetSurfaceCoordinator::IsCurrentInputRequest(
         (node && node->kind == L"slider" &&
          request.sliderActionRequest->widgetId == admission_->widgetId &&
          request.sliderActionRequest->widgetInstanceId == snapshot.instanceId &&
-         request.sliderActionRequest->runtimeGeneration ==
-             admission_->runtimeGeneration &&
+         request.sliderActionRequest->runtimeGeneration == admission_->runtimeGeneration &&
          request.sliderActionRequest->presentationGeneration ==
              admission_->presentationGeneration &&
          request.sliderActionRequest->inputScopeId == snapshot.activeInputScopeId &&

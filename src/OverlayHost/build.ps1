@@ -15,6 +15,7 @@ param(
     [switch]$ProcessOwnerTestsOnly,
     [switch]$CompositionTestsOnly,
     [switch]$WidgetSwitchTestsOnly,
+    [switch]$PinnedSliderRouteTestsOnly,
     [switch]$WidgetSwitchFallbackAuthorityTestsOnly,
     [string]$WidgetSwitchFallbackAuthorityReplayLog,
     [Int64]$WidgetSwitchFallbackAuthorityReplayMarker,
@@ -990,6 +991,9 @@ function Invoke-WidgetSwitchHostTests {
     if ($WidgetSwitchGeometryOnly) {
         $widgetSwitchArguments += '--geometry-only'
     }
+    if ($PinnedSliderRouteTestsOnly) {
+        $widgetSwitchArguments += '--pinned-slider-route-only'
+    }
     & (Join-Path $outputDirectory 'WidgetSwitchHostTests.exe') $widgetSwitchArguments
     if ($LASTEXITCODE -ne 0) {
         throw "WidgetSwitchHostTests failed with exit code $LASTEXITCODE."
@@ -1573,7 +1577,11 @@ if ($WidgetSwitchFallbackAuthorityTestsOnly -or
 
 Invoke-OverlayPlatformInteropBuild
 
-$hostArguments = $common + @(
+$hostCompileArguments = $common
+if ($PinnedSliderRouteTestsOnly) {
+    $hostCompileArguments += '/DWRAIL_PINNED_SLIDER_ROUTE_TESTING'
+}
+$hostArguments = $hostCompileArguments + @(
     '/DWRAIL_OVERLAY_PLATFORM_IMPORTS',
     (Join-Path $projectDirectory 'main.cpp'),
     (Join-Path $projectDirectory 'OverlayCompositionSurface.cpp'),
@@ -1805,7 +1813,7 @@ Publish-BundledWidgetPackage `
 Copy-Item -LiteralPath (Join-Path $projectDirectory 'widget-catalog.json') `
     -Destination (Join-Path $outputDirectory 'widget-catalog.json') -Force
 
-if ($WidgetSwitchTestsOnly) {
+if ($WidgetSwitchTestsOnly -or $PinnedSliderRouteTestsOnly) {
     if ($SkipTests) {
         throw 'WidgetSwitchTestsOnly cannot be combined with SkipTests.'
     }

@@ -93,6 +93,9 @@ constexpr UINT kPinnedSurfaceChangedMessage = WM_APP + 11;
 constexpr UINT kProcessActivationMessage = WM_APP + 12;
 constexpr UINT kDevelopmentTrayYHoldMessage = WM_APP + 14;
 constexpr UINT kScrollPaginationPrefetchMessage = WM_APP + 15;
+#if defined(WRAIL_PINNED_SLIDER_ROUTE_TESTING)
+constexpr ULONG_PTR kPinnedSliderControllerFrameCopyData = 0x5752534cU;
+#endif
 
 constexpr BYTE kBackdropOpacity = 164;
 constexpr std::uint64_t kSlowCompositionFrameMicroseconds = 100000;
@@ -1602,6 +1605,26 @@ private:
 
     LRESULT HandleMessage(UINT message, WPARAM wParam, LPARAM lParam) {
         switch (message) {
+#if defined(WRAIL_PINNED_SLIDER_ROUTE_TESTING)
+        case WM_COPYDATA: {
+            const auto* copy = reinterpret_cast<const COPYDATASTRUCT*>(lParam);
+            if (!developmentReadyNonce_ || !developmentCatalogRoot_ || !copy ||
+                copy->dwData != kPinnedSliderControllerFrameCopyData ||
+                copy->cbData != sizeof(WidgetRailOverlayPlatformControllerFrame) ||
+                !copy->lpData) {
+                return FALSE;
+            }
+            const auto& frame = *static_cast<const WidgetRailOverlayPlatformControllerFrame*>(
+                copy->lpData);
+            if (frame.structSize != sizeof(frame) ||
+                frame.abiVersion != WRAIL_OVERLAY_PLATFORM_ABI_VERSION) {
+                return FALSE;
+            }
+            testControllerFrame_ = frame;
+            PollController();
+            return TRUE;
+        }
+#endif
         case WM_HOTKEY:
             if (textEntryModal_.active()) return 0;
             if (wParam == kDeveloperHotkey) {
@@ -8340,6 +8363,12 @@ private:
         const ULONGLONG now = GetTickCount64();
         const bool foregroundOwned = IsOverlayProcessForeground();
         WidgetRailOverlayPlatformControllerFrame frame;
+#if defined(WRAIL_PINNED_SLIDER_ROUTE_TESTING)
+        if (testControllerFrame_) {
+            frame = *testControllerFrame_;
+            testControllerFrame_.reset();
+        } else
+#endif
         if (WidgetRailOverlayPlatformReadController(
                 platform_,
                 PlatformBoolean(foregroundOwned),
@@ -13726,6 +13755,9 @@ private:
     HWND window_{};
     HWND chromeWindow_{};
     WidgetRailOverlayPlatformHandle* platform_{};
+#if defined(WRAIL_PINNED_SLIDER_ROUTE_TESTING)
+    std::optional<WidgetRailOverlayPlatformControllerFrame> testControllerFrame_;
+#endif
     widgetrail::PlacementRefreshGate placementRefreshGate_;
     widgetrail::DisplayRefreshAccumulator displayRefresh_;
     HWND backdropWindow_{};

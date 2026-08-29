@@ -99,6 +99,17 @@ internal static class BridgeClientRegistryScenarios
                             [
                                 new ViewNode { Id = "compact.play", Kind = ViewNodeKind.Button,
                                     ActionId = "compact-play" },
+                                new ViewNode
+                                {
+                                    Id = "compact.seek",
+                                    Kind = ViewNodeKind.Slider,
+                                    ValueChangedActionId = "compact-seek.changed",
+                                    Minimum = 0,
+                                    Maximum = 100,
+                                    Value = 40,
+                                    Step = 5,
+                                    SliderInteractionMode = SliderInteractionMode.ActivateToAdjust,
+                                },
                             ],
                         },
                         ActiveInputScopeId = "compact.root",
@@ -111,7 +122,7 @@ internal static class BridgeClientRegistryScenarios
         var snapshot = (await fixture.GetSnapshotAsync(configured.Id)).Snapshot;
         var generation = configured.PublicDescriptor().RuntimeGeneration;
         var input = new ControllerInputEvent(
-            ControllerButton.X,
+            ControllerButton.A,
             ControllerEventPhase.Pressed,
             ControllerInputContext.PinnedSurface,
             FocusedElementId: "compact.play",
@@ -145,22 +156,61 @@ internal static class BridgeClientRegistryScenarios
             RegistryAssert.True(publication.Value);
         RegistryAssert.Equal(2, client.ControllerInputs.Count);
 
-        foreach (var stale in new (ControllerInputEvent Input, string? Generation)[]
+        var sliderInput = new ControllerInputEvent(
+            ControllerButton.DPadRight,
+            ControllerEventPhase.Pressed,
+            ControllerInputContext.PinnedSurface,
+            FocusedElementId: "compact.seek",
+            Sequence: 2,
+            ActiveInputScopeId: "compact.root",
+            SnapshotSequence: snapshot.Sequence,
+            RequestedValue: 45)
+        {
+            PinnedLayoutId = "compact",
+        };
+        var successor = (await fixture.GetSnapshotAsync(configured.Id)).Snapshot;
+        using (var publication = await fixture.Registry.SendControllerInputAsync(
+                   configured.Id, sliderInput, generation,
+                   CancellationToken.None, CancellationToken.None,
+                   expectedActionId: "compact-seek.changed"))
+            RegistryAssert.True(publication.Value);
+        RegistryAssert.Equal(3, client.ControllerInputs.Count);
+        RegistryAssert.Equal(ControllerButton.DPadRight, client.ControllerInputs[2].Button);
+        RegistryAssert.Equal(45d, client.ControllerInputs[2].RequestedValue);
+        RegistryAssert.Equal(successor.Sequence, client.ControllerInputs[2].SnapshotSequence);
+
+        await RegistryAssert.ThrowsAsync<BridgeStalePinnedInputAuthorityException>(() =>
+            fixture.Registry.SendControllerInputAsync(
+                configured.Id, sliderInput, generation,
+                CancellationToken.None, CancellationToken.None,
+                expectedActionId: "wrong-seek.changed"));
+        RegistryAssert.Equal(3, client.ControllerInputs.Count);
+
+        foreach (var staleGeneration in new (ControllerInputEvent Input, string? Generation)[]
         {
             (input, null),
             (input, new string('f', 32)),
-            (input with { SnapshotSequence = snapshot.Sequence + 1 }, generation),
-            (input with { PinnedLayoutId = "retired" }, generation),
-            (input with { ActiveInputScopeId = "full.root" }, generation),
-            (input with { FocusedElementId = "full.play" }, generation),
         })
         {
             await RegistryAssert.ThrowsAsync<BridgeProtocolException>(() =>
                 fixture.Registry.SendControllerInputAsync(
-                    configured.Id, stale.Input, stale.Generation,
+                    configured.Id, staleGeneration.Input, staleGeneration.Generation,
                     CancellationToken.None, CancellationToken.None));
         }
-        RegistryAssert.Equal(2, client.ControllerInputs.Count);
+        foreach (var staleAuthority in new ControllerInputEvent[]
+        {
+            input with { SnapshotSequence = successor.Sequence + 1 },
+            input with { PinnedLayoutId = "retired" },
+            input with { ActiveInputScopeId = "full.root" },
+            input with { FocusedElementId = "full.play" },
+        })
+        {
+            await RegistryAssert.ThrowsAsync<BridgeStalePinnedInputAuthorityException>(() =>
+                fixture.Registry.SendControllerInputAsync(
+                    configured.Id, staleAuthority, generation,
+                    CancellationToken.None, CancellationToken.None));
+        }
+        RegistryAssert.Equal(3, client.ControllerInputs.Count);
     }
 
     internal static async Task EmbeddedMediaRequiresExactPublicationAuthority()

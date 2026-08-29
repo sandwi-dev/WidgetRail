@@ -284,6 +284,36 @@ widgetrail::WidgetSnapshot CompactMediaSnapshot(const long long sequence = 1) {
     return snapshot;
 }
 
+widgetrail::WidgetSnapshot SliderSnapshot(
+    const long long sequence = 1,
+    const double value = 40.0) {
+    auto snapshot = Snapshot(sequence);
+    snapshot.initialFocusId = L"pin.fixture.slider";
+    snapshot.root.children.clear();
+    widgetrail::WidgetNode slider;
+    slider.id = L"pin.fixture.slider";
+    slider.kind = L"slider";
+    slider.accessibilityLabel = L"Provider-neutral pinned slider";
+    slider.valueChangedActionId = L"fixture-slider.changed";
+    slider.hasSliderRange = true;
+    slider.minimum = 0.0;
+    slider.maximum = 100.0;
+    slider.value = value;
+    slider.step = 5.0;
+    slider.sliderInteractionMode = L"activateToAdjust";
+    slider.inputScopeId = L"root";
+    slider.focusRight = L"pin.fixture.after-slider";
+    widgetrail::WidgetNode after;
+    after.id = L"pin.fixture.after-slider";
+    after.kind = L"button";
+    after.accessibilityLabel = L"After slider";
+    after.actionId = L"after-slider";
+    after.inputScopeId = L"root";
+    after.focusLeft = slider.id;
+    snapshot.root.children = {std::move(slider), std::move(after)};
+    return snapshot;
+}
+
 widgetrail::pinned::WidgetSurfaceAdmission Admission(const bool supported = true) {
     return {
         L"widgetrail.samples.sdk-gallery",
@@ -341,6 +371,58 @@ int main() {
               "non-supporting widget is rejected safely");
 
         {
+            widgetrail::pinned::WidgetSurfaceCoordinator slider;
+            const auto sliderRoot = placementRoot / L"slider";
+            Check(slider.Initialize(
+                      GetModuleHandleW(nullptr), nullptr, WM_APP + 0x414,
+                      d2d.Get(), write.Get(), nullptr, error,
+                      sliderRoot / L"placement.ini"),
+                  "pinned slider fixture initializes through the production owner");
+            slider.OnOverlayShown();
+            auto admission = Admission();
+            admission.snapshot = SliderSnapshot();
+            Check(slider.Pin(admission, error) && slider.CommitSetup(error),
+                  "provider-neutral slider pin commits its full-widget projection");
+            Check(slider.SetInteractionMode(
+                      widgetrail::pinned::InteractionMode::Focusable) &&
+                      slider.EnterControllerFocus() &&
+                      slider.focusedElementId() == L"pin.fixture.slider",
+                  "controller focus reaches the pinned slider");
+            Check(slider.HandleFocusedSliderModeButton(L"a", 1'000),
+                  "A enters pinned slider adjustment through the shared interaction session");
+            Check(slider.MoveControllerFocus(
+                      widgetrail::input::NavigationDirection::Right, true),
+                  "D-pad Right is consumed by active pinned slider adjustment");
+            auto requests = slider.TakeInputRequests();
+            Check(requests.size() == 1 && requests[0].sliderActionRequest &&
+                      requests[0].requestedValue == 45.0 &&
+                      requests[0].sliderActionRequest->actionId ==
+                          L"fixture-slider.changed" &&
+                      requests[0].protocolButton == L"dPadRight",
+                  "active pinned adjustment queues one exact absolute valueChanged action");
+            Check(slider.UpdateSnapshot(
+                      admission.widgetId, admission.runtimeGeneration,
+                      SliderSnapshot(2, 40.0)) &&
+                      slider.IsCurrentInputRequest(requests[0]),
+                  "compatible successor retains queued pinned slider authority");
+            Check(slider.UpdateSnapshot(
+                      admission.widgetId, admission.runtimeGeneration,
+                      SliderSnapshot(3, 45.0)),
+                  "authoritative successor acknowledges the pinned slider value");
+            Check(slider.HandleFocusedSliderModeButton(L"a", 1'100),
+                  "A exits active pinned slider adjustment");
+            Check(slider.MoveControllerFocus(
+                      widgetrail::input::NavigationDirection::Right, true) &&
+                      slider.focusedElementId() == L"pin.fixture.after-slider",
+                  "outside adjustment mode D-pad resumes directional navigation");
+            Check(slider.Unpin(widgetrail::pinned::WidgetSurfaceStopReason::Unpin),
+                  "pinned slider fixture retires its exact controller authority");
+            slider.Dispose();
+            std::error_code sliderCleanup;
+            std::filesystem::remove_all(sliderRoot, sliderCleanup);
+        }
+
+        {
             widgetrail::pinned::WidgetSurfaceCoordinator layouts;
             const auto layoutRoot = placementRoot / L"layouts";
             Check(layouts.Initialize(
@@ -392,11 +474,11 @@ int main() {
                   "pinned input authority is bound to the atomically selected projection");
             auto wrongLayoutInput = projectedInput[0];
             wrongLayoutInput.selectedLayoutId = L"details";
-            auto staleSequenceInput = projectedInput[0];
-            --staleSequenceInput.snapshotSequence;
+            auto futureSequenceInput = projectedInput[0];
+            ++futureSequenceInput.snapshotSequence;
             Check(!layouts.IsCurrentInputRequest(wrongLayoutInput) &&
-                      !layouts.IsCurrentInputRequest(staleSequenceInput),
-                  "wrong-layout and stale-sequence pinned input fail closed");
+                      !layouts.IsCurrentInputRequest(futureSequenceInput),
+                  "wrong-layout and future-sequence pinned input fail closed");
             Check(layouts.QueueFocusedInput(L"b"),
                   "B enters the same selected-projection queue as other authored input");
             const auto backInput = layouts.TakeInputRequests();
