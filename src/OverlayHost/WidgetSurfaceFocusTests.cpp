@@ -134,6 +134,25 @@ int main() {
     memory.Remember(L"widget", root, L"root-second");
     Check(memory.Restore(L"widget", root) == L"root-second",
           "root remembered focus wins");
+    auto reopenedRoot = root;
+    reopenedRoot.sequence++;
+    Check(memory.Restore(L"widget", reopenedRoot) == L"root-second",
+          "compatible same-session reopen restores the exact remembered control");
+    auto changedInitial = reopenedRoot;
+    changedInitial.root.children.insert(
+        changedInitial.root.children.begin() + 2, Button(L"root-third"));
+    changedInitial.initialFocusId = L"root-third";
+    Check(memory.Restore(L"widget", changedInitial) == L"root-third",
+          "a changed valid initial focus request wins on reopen");
+    auto invalidInitial = reopenedRoot;
+    invalidInitial.initialFocusId = L"missing-initial";
+    Check(memory.Restore(L"widget", invalidInitial) == L"root-second",
+          "an invalid changed initial focus cannot displace exact compatible memory");
+    auto removedRemembered = reopenedRoot;
+    removedRemembered.root.children.erase(
+        removedRemembered.root.children.begin() + 1);
+    Check(memory.Restore(L"widget", removedRemembered) == L"root-first",
+          "a removed remembered control uses the bounded nearest ordinal fallback");
 
     auto modal = Snapshot(L"modal");
     // Root initial focus is outside this active surface, so tree-order fallback
@@ -170,7 +189,7 @@ int main() {
 
     memory.Forget(L"widget");
     Check(memory.Restore(L"widget", root) == L"root-first",
-          "runtime replacement clears all remembered widget surfaces");
+          "package or runtime retirement clears all remembered widget surfaces");
     Check(memory.Restore(L"widget", modal) == L"modal-first",
           "runtime replacement clears remembered modal focus");
 

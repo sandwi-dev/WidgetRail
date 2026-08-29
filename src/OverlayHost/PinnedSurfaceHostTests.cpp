@@ -209,15 +209,28 @@ void TestAcceptedWidgetOwnedFocusMemoryHostContract() {
     const auto stateTransition = section(
         "template <typename Mutation>\n    void ApplyStateTransition(",
         "void ApplyPresentation(");
-    Check(stateTransition.find(
-              "if (priorSurface == widgetrail::Surface::Widget && IsBridgeWidget(priorActive)) {\n"
-              "            RememberCurrentFocus(priorActive);") !=
-              std::string::npos &&
-              stateTransition.find(
-                  "state_.focusRegion() == widgetrail::FocusRegion::Widget) {\n"
-                  "            RestoreFocusForActiveSurface(state_.activeWidget());") !=
-              std::string::npos,
-          "B stores widget-owned focus and the later tray-to-widget entry restores it immediately");
+    const auto remember = stateTransition.find(
+        "if (priorSurface == widgetrail::Surface::Widget && IsBridgeWidget(priorActive)) {\n"
+        "            RememberCurrentFocus(priorActive);");
+    const auto clearLiveFocus = stateTransition.find(
+        "interactionSession_.ClearFocus();", remember);
+    const auto reopenAuthority = stateTransition.find(
+        "const bool reopenedWidgetFocus =\n"
+        "            priorSurface == widgetrail::Surface::Hidden &&\n"
+        "            state_.surface() == widgetrail::Surface::Widget &&\n"
+        "            state_.focusRegion() == widgetrail::FocusRegion::Widget;",
+        clearLiveFocus);
+    const auto restore = stateTransition.find(
+        "(priorFocusRegion != state_.focusRegion() || reopenedWidgetFocus)) {\n"
+        "            RestoreFocusForActiveSurface(state_.activeWidget());",
+        reopenAuthority);
+    Check(remember != std::string::npos &&
+              clearLiveFocus != std::string::npos &&
+              reopenAuthority != std::string::npos &&
+              restore != std::string::npos &&
+              remember < clearLiveFocus && clearLiveFocus < reopenAuthority &&
+              reopenAuthority < restore,
+          "widget hide remembers exact focus, clears only live focus, and restores on exact Hidden-to-Widget authority before presentation");
 }
 
 void TestAcceptedMediaBackOwnershipHostContract() {
