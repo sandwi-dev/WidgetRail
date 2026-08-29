@@ -209,6 +209,7 @@ bool WidgetSurfaceCoordinator::Pin(
     layoutOptions_ = std::move(layouts);
     selectedLayoutIndex_ = 0;
     focusedElementId_ = SelectedSnapshot().initialFocusId;
+    RetireSliderInteraction();
     inputRequests_.clear();
     actionFeedback_.clear();
     actionFeedbackFailure_ = false;
@@ -244,6 +245,8 @@ bool WidgetSurfaceCoordinator::UpdateSnapshot(
         return false;
     }
     const std::wstring priorLayoutId{SelectedLayoutId()};
+    const std::wstring priorInputScopeId{
+        SelectedSnapshot().activeInputScopeId};
     const std::optional<widgetrail::EmbeddedMediaSurfaceDeclaration>
         priorMediaContract = SelectedSnapshot().embeddedMedia
             ? std::optional{widgetrail::EmbeddedMediaResourceContract(
@@ -304,6 +307,17 @@ bool WidgetSurfaceCoordinator::UpdateSnapshot(
     if (!preserveFreeScrollBinding) {
         ClearFreeScroll();
     }
+    const auto* retainedFocus = input::FindNodeInInputScope(
+        selectedSnapshot, focusedElementId_, selectedSnapshot.activeInputScopeId);
+    if (selectedLayoutReplaced || priorFocus != focusedElementId_ ||
+        priorInputScopeId != selectedSnapshot.activeInputScopeId ||
+        !retainedFocus || retainedFocus->kind != L"slider" ||
+        retainedFocus->isDisabled || retainedFocus->isBusy) {
+        RetireSliderInteraction();
+    } else {
+        (void)sliderInteraction_.ReconcileAdmission(
+            selectedSnapshot, GetTickCount64());
+    }
     if (selectedLayoutReplaced) {
         if (renderer_) renderer_->ForgetWidgetState(admission_->instanceId);
     }
@@ -351,6 +365,7 @@ bool WidgetSurfaceCoordinator::EnterControllerFocus() {
         policy_.interactionMode() != InteractionMode::Focusable) return false;
     const auto& snapshot = SelectedSnapshot();
     if (compactMediaPresentation()) {
+        RetireSliderInteraction();
         focusedElementId_ = L"host.compact-media.seek";
         controllerFocused_ = true;
         if (window_) {
@@ -370,7 +385,10 @@ bool WidgetSurfaceCoordinator::EnterControllerFocus() {
     } else if (focusedElementId_.empty()) {
         focusedElementId_ = snapshot.initialFocusId;
     }
-    if (focusedElementId_ != priorFocus) ClearFreeScroll();
+    if (focusedElementId_ != priorFocus) {
+        ClearFreeScroll();
+        RetireSliderInteraction();
+    }
     controllerFocused_ = true;
     if (window_) {
         (void)SetActiveWindow(window_);
@@ -389,6 +407,7 @@ bool WidgetSurfaceCoordinator::ExitControllerFocus() noexcept {
     (void)CancelCompactMediaScrub();
     controllerFocused_ = false;
     ClearFreeScroll();
+    RetireSliderInteraction();
     if (overlayVisible_ && notificationWindow_ && IsWindow(notificationWindow_))
         (void)SetFocus(notificationWindow_);
     PublishAccessibility();
@@ -398,7 +417,8 @@ bool WidgetSurfaceCoordinator::ExitControllerFocus() noexcept {
 }
 
 bool WidgetSurfaceCoordinator::MoveControllerFocus(
-    const input::NavigationDirection direction) {
+    const input::NavigationDirection direction,
+    const bool sliderAdjustmentEligible) {
     if (!controllerFocused_ || direction == input::NavigationDirection::None ||
         !pinned()) return false;
     if (compactMediaPresentation()) return true;
@@ -406,10 +426,40 @@ bool WidgetSurfaceCoordinator::MoveControllerFocus(
     const input::WidgetInteractionAuthority authority{
         admission_->widgetId, &snapshot, admission_->runtimeGeneration,
         admission_->presentationGeneration, false};
+    const auto* focused = input::FindNodeInInputScope(
+        snapshot, focusedElementId_, snapshot.activeInputScopeId);
+    if (focused) {
+        const bool activationRequired =
+            focused->sliderInteractionMode == L"activateToAdjust";
+        const bool adjustmentActive = activationRequired &&
+            sliderInteraction_.SliderAdjustmentModeActive(
+                authority, *focused, GetTickCount64());
+        const auto route = input::RouteFocusedDirection(
+            focused->kind, focused->isDisabled, focused->isBusy,
+            activationRequired, adjustmentActive, direction);
+        if (route == input::FocusedDirectionRoute::Consume) return true;
+        if (route == input::FocusedDirectionRoute::SliderAdjustment) {
+            if (!sliderAdjustmentEligible) return true;
+            const auto adjustment = sliderInteraction_.AdjustSlider(
+                authority, *focused, direction, GetTickCount64());
+            if (adjustment.actionRequest) {
+                QueueResolvedInput(
+                    focused->id,
+                    direction == input::NavigationDirection::Left
+                        ? L"dPadLeft" : L"dPadRight",
+                    ControllerInputOrigin::PhysicalController,
+                    adjustment.actionRequest->requestedValue);
+            }
+            if (adjustment.visualChanged && window_)
+                InvalidateRect(window_, nullptr, FALSE);
+            return adjustment.consumed;
+        }
+    }
     const auto applyFocus = [&](const std::wstring_view target) {
         const auto mutation = input::SurfaceInteractionTransactions::MoveFocus(
             focusedElementId_, target);
         if (!mutation.changed) return true;
+        RetireSliderInteraction();
         RECT client{};
         if (!renderer_ || !window_ || !GetClientRect(window_, &client)) {
             PublishAccessibility();
@@ -464,6 +514,44 @@ bool WidgetSurfaceCoordinator::MoveControllerFocus(
     const auto resolution = input::SurfaceInteractionTransactions::ResolveDirectionalFocus(
         snapshot, focusedElementId_, direction, lastRenderResult_);
     return resolution.target ? applyFocus(*resolution.target) : false;
+}
+
+bool WidgetSurfaceCoordinator::HandleFocusedSliderModeButton(
+    const std::wstring_view protocolButton,
+    const std::uint64_t now) {
+    if (!controllerFocused_ || !pinned() ||
+        (protocolButton != L"a" && protocolButton != L"b")) return false;
+    const auto& snapshot = SelectedSnapshot();
+    const auto* focused = input::FindNodeInInputScope(
+        snapshot, focusedElementId_, snapshot.activeInputScopeId);
+    if (!focused) return false;
+    const input::WidgetInteractionAuthority authority{
+        admission_->widgetId, &snapshot, admission_->runtimeGeneration,
+        admission_->presentationGeneration, false};
+    const bool activationRequired =
+        focused->sliderInteractionMode == L"activateToAdjust";
+    const bool adjustmentActive = activationRequired &&
+        sliderInteraction_.SliderAdjustmentModeActive(authority, *focused, now);
+    using input::FocusedSliderButtonRoute;
+    switch (input::RouteFocusedSliderButton(
+        focused->kind, activationRequired, adjustmentActive,
+        protocolButton == L"a" ? L"A" : L"B")) {
+    case FocusedSliderButtonRoute::EnterAdjustment:
+        (void)sliderInteraction_.TransitionSliderAdjustmentMode(
+            authority, *focused,
+            input::SliderAdjustmentModeTransition::Enter, now);
+        if (window_) InvalidateRect(window_, nullptr, FALSE);
+        return true;
+    case FocusedSliderButtonRoute::ExitAdjustment:
+        (void)sliderInteraction_.TransitionSliderAdjustmentMode(
+            authority, *focused,
+            input::SliderAdjustmentModeTransition::Exit, now);
+        if (window_) InvalidateRect(window_, nullptr, FALSE);
+        return true;
+    case FocusedSliderButtonRoute::Widget:
+        return false;
+    }
+    return false;
 }
 
 bool WidgetSurfaceCoordinator::ScrollFocusedProjection(
@@ -543,6 +631,10 @@ void WidgetSurfaceCoordinator::ClearFreeScroll() noexcept {
     (void)freeScroll_.Clear();
 }
 
+void WidgetSurfaceCoordinator::RetireSliderInteraction() noexcept {
+    (void)sliderInteraction_.RetirePresentations();
+}
+
 void WidgetSurfaceCoordinator::QueueResolvedInput(
     std::wstring nodeId,
     std::wstring protocolButton,
@@ -607,6 +699,27 @@ bool WidgetSurfaceCoordinator::IsCurrentInputRequest(
         request.nodeId == focusedElementId_ &&
         request.snapshotSequence <= snapshot.sequence &&
         request.activeInputScopeId == snapshot.activeInputScopeId;
+}
+
+void WidgetSurfaceCoordinator::RejectInputRequest(
+    const WidgetSurfaceInputRequest& request,
+    const std::uint64_t now) noexcept {
+    if (!request.requestedValue || !pinned() ||
+        request.widgetId != admission_->widgetId ||
+        request.runtimeGeneration != admission_->runtimeGeneration ||
+        request.selectedLayoutId != SelectedLayoutId()) return;
+    const auto& snapshot = SelectedSnapshot();
+    if (request.activeInputScopeId != snapshot.activeInputScopeId) return;
+    const auto* node = input::FindNodeInInputScope(
+        snapshot, request.nodeId, snapshot.activeInputScopeId);
+    if (!node || node->kind != L"slider") return;
+    const input::WidgetInteractionAuthority authority{
+        admission_->widgetId, &snapshot, admission_->runtimeGeneration,
+        admission_->presentationGeneration, false};
+    if (sliderInteraction_.CancelSliderAction(
+            authority, *node, now).visualChanged && window_) {
+        InvalidateRect(window_, nullptr, FALSE);
+    }
 }
 
 std::vector<PinnedLayoutSelectionNotification>
@@ -721,6 +834,7 @@ bool WidgetSurfaceCoordinator::CycleLayout(const int delta) {
     if (priorId != layout.id) {
         mediaViewportGeometryDirty_ = true;
         ClearFreeScroll();
+        RetireSliderInteraction();
         QueueLayoutSelection(priorId, false);
         QueueLayoutSelection(layout.id, true);
         focusedElementId_ = SelectedSnapshot().initialFocusId;
@@ -777,6 +891,7 @@ bool WidgetSurfaceCoordinator::CancelSetup() noexcept {
     const auto restoredId = layoutOptions_[selectedLayoutIndex_].id;
     if (selectedId != restoredId) {
         ClearFreeScroll();
+        RetireSliderInteraction();
         QueueLayoutSelection(selectedId, false);
         QueueLayoutSelection(restoredId, true);
         focusedElementId_ = SelectedSnapshot().initialFocusId;
@@ -1068,6 +1183,8 @@ bool WidgetSurfaceCoordinator::Unpin(const WidgetSurfaceStopReason reason) noexc
     compactMediaScrubActive_ = false;
     compactMediaSeekRequest_.reset();
     ClearFreeScroll();
+    if (admission_)
+        sliderInteraction_.ForgetRuntime(admission_->instanceId);
     overlayVisible_ = false;
     pointerPlacement_ = false;
     pointerPlacementMode_ = PlacementMode::None;
@@ -1329,6 +1446,7 @@ LRESULT WidgetSurfaceCoordinator::HandleMessage(
         }
         if (opacityPreviewOriginal_) (void)CancelOpacity();
         pointerActionNode_.clear();
+        RetireSliderInteraction();
         if (GetCapture() == window_) ReleaseCapture();
         return 0;
     case kAccessibilityActionMessage:
@@ -1369,6 +1487,7 @@ LRESULT WidgetSurfaceCoordinator::HandleMessage(
                     SelectedSnapshot().activeInputScopeId,
                     lastRenderResult_)) {
                 ClearFreeScroll();
+                if (focusedElementId_ != hit->id) RetireSliderInteraction();
                 focusedElementId_ = hit->id;
                 pointerActionNode_ = hit->enabled ? hit->id : std::wstring{};
                 SetCapture(window_);
@@ -1555,6 +1674,8 @@ void WidgetSurfaceCoordinator::HandleAccessibilityActions() {
                 continue;
             if (resolved->kind == accessibility::ActionKind::Focus) {
                 ClearFreeScroll();
+                if (focusedElementId_ != resolved->nodeId)
+                    RetireSliderInteraction();
                 focusedElementId_ = resolved->nodeId;
                 PublishAccessibility();
                 InvalidateRect(window_, nullptr, FALSE);
@@ -1791,6 +1912,16 @@ void WidgetSurfaceCoordinator::Paint() {
     options.surfaceBackground = NativeColor{22.0F / 255.0F, 33.0F / 255.0F, 46.0F / 255.0F, 1.0F};
     options.accessibility.reducedMotion = true;
     const auto& selectedSnapshot = SelectedSnapshot();
+    auto sliderPresentation = sliderInteraction_.PrepareRenderPresentation(
+        selectedSnapshot,
+        controllerFocused_ ? std::wstring_view{focusedElementId_}
+                           : std::wstring_view{},
+        GetTickCount64(), controllerFocused_, controllerFocused_,
+        controllerFocused_);
+    options.sliderValueOverrides =
+        std::move(sliderPresentation.sliderValueOverrides);
+    options.pressedElementId =
+        std::move(sliderPresentation.pressedElementId);
     const input::WidgetInteractionAuthority authority{
         admission_->widgetId,
         &selectedSnapshot,

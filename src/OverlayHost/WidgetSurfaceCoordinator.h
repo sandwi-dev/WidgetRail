@@ -149,7 +149,12 @@ public:
     [[nodiscard]] bool ToggleInteractionMode();
     [[nodiscard]] bool EnterControllerFocus();
     [[nodiscard]] bool ExitControllerFocus() noexcept;
-    [[nodiscard]] bool MoveControllerFocus(input::NavigationDirection direction);
+    [[nodiscard]] bool MoveControllerFocus(
+        input::NavigationDirection direction,
+        bool sliderAdjustmentEligible = true);
+    [[nodiscard]] bool HandleFocusedSliderModeButton(
+        std::wstring_view protocolButton,
+        std::uint64_t now);
     [[nodiscard]] bool ScrollFocusedProjection(
         short rightThumbX,
         short rightThumbY,
@@ -161,6 +166,9 @@ public:
     [[nodiscard]] std::vector<WidgetSurfaceInputRequest> TakeInputRequests() noexcept;
     [[nodiscard]] bool IsCurrentInputRequest(
         const WidgetSurfaceInputRequest& request) const noexcept;
+    void RejectInputRequest(
+        const WidgetSurfaceInputRequest& request,
+        std::uint64_t now) noexcept;
     [[nodiscard]] std::vector<PinnedLayoutSelectionNotification>
         TakeLayoutSelectionNotifications() noexcept;
     void SetActionFeedback(std::wstring message, bool failure);
@@ -281,6 +289,7 @@ private:
     [[nodiscard]] const WidgetSnapshot& SelectedSnapshot() const noexcept;
     [[nodiscard]] std::wstring_view SelectedLayoutId() const noexcept;
     void ClearFreeScroll() noexcept;
+    void RetireSliderInteraction() noexcept;
     void QueueLayoutSelection(std::wstring_view layoutId, bool selected);
 
     HINSTANCE instance_{};
@@ -322,6 +331,7 @@ private:
     bool mediaViewportGeometryDirty_{true};
     std::wstring focusedElementId_;
     input::FreeScrollInteractionState freeScroll_;
+    input::WidgetInteractionSession sliderInteraction_;
     std::vector<WidgetSurfaceInputRequest> inputRequests_;
     std::vector<PinnedLayoutSelectionNotification> layoutSelectionNotifications_;
     std::wstring actionFeedback_;

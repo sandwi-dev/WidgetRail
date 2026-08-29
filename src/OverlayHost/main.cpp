@@ -7528,6 +7528,9 @@ private:
                     : *handled
                         ? DiagnosticSeverity::Debug
                         : DiagnosticSeverity::Information);
+            if (!handled || !*handled)
+                pinnedSurfaceCoordinator_.RejectInputRequest(
+                    request, GetTickCount64());
             if (!handled) {
                 pinnedSurfaceCoordinator_.SetActionFeedback(
                     L"Pinned action failed. Reopen the overlay and try again.", true);
@@ -8729,14 +8732,18 @@ private:
             (void)pinnedSurfaceCoordinator_.ScrollFocusedProjection(
                 frame.state.rightThumbX, frame.state.rightThumbY, now);
             const auto movePinnedFocus = [&](const widgetrail::input::StickNavigationEvent& event) {
-                (void)pinnedSurfaceCoordinator_.MoveControllerFocus(event.direction);
+                (void)pinnedSurfaceCoordinator_.MoveControllerFocus(
+                    event.direction, false);
             };
             if (const auto direction = DecodeNavigation(frame.stickNavigation))
                 movePinnedFocus(*direction);
             if (const auto direction = DecodeNavigation(frame.dpadNavigation))
-                movePinnedFocus(*direction);
+                (void)pinnedSurfaceCoordinator_.MoveControllerFocus(
+                    direction->direction, true);
             if (pinnedControllerCommand == widgetrail::pinned::ControllerCommand::Activate) {
-                if (!pinnedSurfaceCoordinator_.QueueFocusedInput(
+                if (!pinnedSurfaceCoordinator_.HandleFocusedSliderModeButton(
+                        L"a", now) &&
+                    !pinnedSurfaceCoordinator_.QueueFocusedInput(
                         L"a", widgetrail::ControllerInputOrigin::PhysicalController))
                     pinnedSurfaceCoordinator_.SetActionFeedback(
                         L"The focused pinned item is unavailable.", false);
@@ -8752,6 +8759,8 @@ private:
             const auto queuePinnedButton = [&](const bool pressedNow,
                                                const std::wstring_view protocolButton) {
                 if (!pressedNow) return;
+                if (pinnedSurfaceCoordinator_.HandleFocusedSliderModeButton(
+                        protocolButton, now)) return;
                 if (!pinnedSurfaceCoordinator_.QueueFocusedInput(
                         protocolButton,
                         widgetrail::ControllerInputOrigin::PhysicalController))
