@@ -308,10 +308,14 @@ bool WidgetSurfaceCoordinator::UpdateSnapshot(
     }
     const auto* retainedFocus = input::FindNodeInInputScope(
         selectedSnapshot, focusedElementId_, selectedSnapshot.activeInputScopeId);
+    // Disabled and busy are transient states an adjustment itself provokes: a
+    // widget marks its slider busy while the value change it just accepted is
+    // in flight. Retiring on them would cancel the mode after every step, so
+    // they only suppress new adjustments through the shared directional route
+    // and the slider interaction state, exactly as the full widget does.
     if (selectedLayoutReplaced || priorFocus != focusedElementId_ ||
         priorInputScopeId != selectedSnapshot.activeInputScopeId ||
-        !retainedFocus || retainedFocus->kind != L"slider" ||
-        retainedFocus->isDisabled || retainedFocus->isBusy) {
+        !retainedFocus || retainedFocus->kind != L"slider") {
         RetireSliderInteraction();
     } else {
         (void)sliderInteraction_.ReconcileAdmission(
@@ -320,8 +324,12 @@ bool WidgetSurfaceCoordinator::UpdateSnapshot(
     std::vector<WidgetSurfaceInputRequest> retainedInputRequests;
     retainedInputRequests.reserve(inputRequests_.size());
     const auto inputReconciliationTime = GetTickCount64();
+    // A publish can land between the queue and its posted drain. Every request
+    // is re-tested against the same exact current authority instead of being
+    // dropped for arriving one frame early; only slider requests own an
+    // optimistic presentation that a rejection must roll back.
     for (auto& request : inputRequests_) {
-        if (request.sliderActionRequest && IsCurrentInputRequest(request)) {
+        if (IsCurrentInputRequest(request)) {
             retainedInputRequests.push_back(std::move(request));
         } else if (request.sliderActionRequest) {
             RejectInputRequest(request, inputReconciliationTime);
@@ -1496,7 +1504,12 @@ LRESULT WidgetSurfaceCoordinator::HandleMessage(
         }
         if (opacityPreviewOriginal_) (void)CancelOpacity();
         pointerActionNode_.clear();
-        RetireSliderInteraction();
+        // Win32 keyboard focus owns pointer and keyboard input, not this
+        // surface's controller-input authority. A topmost tool window loses it
+        // routinely while the controller still owns the projection, so only a
+        // surface without controller focus retires shared interaction state.
+        // Real controller authority loss runs through ExitControllerFocus.
+        if (!controllerFocused_) RetireSliderInteraction();
         if (GetCapture() == window_) ReleaseCapture();
         return 0;
     case kAccessibilityActionMessage:

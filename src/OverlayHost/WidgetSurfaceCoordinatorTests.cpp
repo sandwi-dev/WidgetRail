@@ -314,6 +314,105 @@ widgetrail::WidgetSnapshot SliderSnapshot(
     return snapshot;
 }
 
+void PumpPendingMessages() {
+    MSG message{};
+    while (PeekMessageW(&message, nullptr, 0, 0, PM_REMOVE)) {
+        TranslateMessage(&message);
+        DispatchMessageW(&message);
+    }
+}
+
+// Mirrors the shape a real media widget publishes: one semantic tree carrying
+// both responsive shells, an activation-first scrubber nested several levels
+// deep, and a millisecond-scale range whose value advances on every publish.
+widgetrail::WidgetSnapshot MediaTimelineSnapshot(
+    const long long sequence,
+    const double positionMilliseconds,
+    const bool transportDisallowed = false,
+    const bool seekPending = false) {
+    widgetrail::WidgetSnapshot snapshot;
+    snapshot.sequence = sequence;
+    snapshot.instanceId = L"gallery.instance";
+    snapshot.activeInputScopeId = L"media.window";
+    snapshot.initialFocusId = L"media.play-toggle";
+    snapshot.root.id = L"media.root";
+    snapshot.root.kind = L"stack";
+    snapshot.root.inputScopeId = L"media.window";
+
+    const auto buildPlayer = [&](const std::wstring& prefix,
+                                 const std::wstring& sliderId) {
+        widgetrail::WidgetNode slider;
+        slider.id = sliderId;
+        slider.kind = L"slider";
+        slider.accessibilityLabel = L"Playback position";
+        slider.valueChangedActionId = L"media.seek";
+        slider.focusPersistenceId = L"media.transport.seek";
+        slider.hasSliderRange = true;
+        slider.minimum = 0.0;
+        slider.maximum = 213000.0;
+        slider.value = positionMilliseconds;
+        slider.step = 5000.0;
+        slider.sliderInteractionMode = L"activateToAdjust";
+        slider.inputScopeId = L"media.window";
+        slider.isBusy = seekPending;
+        slider.focusDown = prefix + L".play-toggle";
+
+        widgetrail::WidgetNode elapsed;
+        elapsed.id = sliderId + L".elapsed";
+        elapsed.kind = L"text";
+        elapsed.text = L"1:23";
+        elapsed.accessibilityLabel = elapsed.text;
+        elapsed.inputScopeId = L"media.window";
+
+        widgetrail::WidgetNode scrubber;
+        scrubber.id = prefix + L".seek";
+        scrubber.kind = L"stack";
+        scrubber.inputScopeId = L"media.window";
+        scrubber.children = {std::move(slider), std::move(elapsed)};
+
+        widgetrail::WidgetNode toggle;
+        toggle.id = prefix + L".play-toggle";
+        toggle.kind = L"button";
+        toggle.text = L"Pause";
+        toggle.accessibilityLabel = toggle.text;
+        toggle.actionId = L"media.play-toggle";
+        toggle.inputScopeId = L"media.window";
+        toggle.isDisabled = transportDisallowed;
+        toggle.focusUp = sliderId;
+
+        widgetrail::WidgetNode controls;
+        controls.id = prefix + L".controls";
+        controls.kind = L"row";
+        controls.inputScopeId = L"media.window";
+        controls.children = {std::move(toggle)};
+
+        widgetrail::WidgetNode card;
+        card.id = prefix + L".card";
+        card.kind = L"stack";
+        card.inputScopeId = L"media.window";
+        card.children = {std::move(scrubber), std::move(controls)};
+        return card;
+    };
+
+    widgetrail::WidgetNode wide;
+    wide.id = L"media.shell.wide";
+    wide.kind = L"row";
+    wide.inputScopeId = L"media.window";
+    wide.visibleWhen = L"expandedOnly";
+    wide.children = {buildPlayer(L"media", L"media.seek.slider")};
+
+    widgetrail::WidgetNode compact;
+    compact.id = L"media.shell.compact";
+    compact.kind = L"row";
+    compact.inputScopeId = L"media.window";
+    compact.visibleWhen = L"compactOnly";
+    compact.children = {
+        buildPlayer(L"media.player.compact", L"media.player.compact.seek.slider")};
+
+    snapshot.root.children = {std::move(wide), std::move(compact)};
+    return snapshot;
+}
+
 widgetrail::pinned::WidgetSurfaceAdmission Admission(const bool supported = true) {
     return {
         L"widgetrail.samples.sdk-gallery",
@@ -420,6 +519,171 @@ int main() {
             slider.Dispose();
             std::error_code sliderCleanup;
             std::filesystem::remove_all(sliderRoot, sliderCleanup);
+        }
+
+        for (int variant = 0; variant < 2; ++variant) {
+            // A real media timeline publishes one semantic tree carrying both
+            // responsive shells and republishes progress several times per
+            // second. Cover the compact and expanded projections because the
+            // selected shell decides which exact slider owns pinned focus.
+            const bool expanded = variant == 1;
+            widgetrail::pinned::WidgetSurfaceCoordinator media;
+            const auto mediaRoot = placementRoot /
+                (expanded ? L"media-expanded" : L"media-compact");
+            Check(media.Initialize(
+                      GetModuleHandleW(nullptr), nullptr, WM_APP + 0x415,
+                      d2d.Get(), write.Get(), nullptr, error,
+                      mediaRoot / L"placement.ini"),
+                  "media timeline fixture initializes through the production owner");
+            media.OnOverlayShown();
+            auto admission = Admission();
+            admission.snapshot = MediaTimelineSnapshot(1, 123456.0);
+            admission.initialContentWidthDip = expanded ? 1040.0F : 480.0F;
+            admission.initialContentHeightDip = expanded ? 620.0F : 270.0F;
+            admission.placementLimits.maximumWidthDip = 1600.0F;
+            admission.placementLimits.maximumHeightDip = 1000.0F;
+            Check(media.Pin(admission, error) && media.CommitSetup(error),
+                  "media timeline pins its full-widget projection");
+            Check(media.SetInteractionMode(
+                      widgetrail::pinned::InteractionMode::Focusable) &&
+                      media.EnterControllerFocus(),
+                  "media timeline enters pinned controller focus");
+            PumpPendingMessages();
+            const std::wstring timelineId = expanded
+                ? L"media.seek.slider"
+                : L"media.player.compact.seek.slider";
+            for (int attempt = 0;
+                 attempt < 6 && media.focusedElementId() != timelineId; ++attempt) {
+                (void)media.MoveControllerFocus(
+                    widgetrail::input::NavigationDirection::Up, true);
+                PumpPendingMessages();
+            }
+            Check(media.focusedElementId() == timelineId,
+                  "pinned controller focus reaches the selected shell timeline");
+            Check(media.HandleFocusedSliderModeButton(L"a", GetTickCount64()),
+                  "A enters activation-first adjustment on the pinned timeline");
+            PumpPendingMessages();
+
+            // The provider republishes progress between the A press and the
+            // first D-pad sample.
+            long long sequence = 2;
+            double position = 123456.0;
+            for (int publish = 0; publish < 4; ++publish) {
+                position += 220.0;
+                Check(media.UpdateSnapshot(
+                          admission.widgetId, admission.runtimeGeneration,
+                          MediaTimelineSnapshot(sequence++, position)),
+                      "media timeline accepts its authoritative successor");
+                PumpPendingMessages();
+            }
+
+            // A topmost pinned tool window loses Win32 keyboard focus while the
+            // controller still owns the projection. That is a pointer/keyboard
+            // ownership change, not a loss of controller input authority.
+            Check(media.window() != nullptr, "pinned media timeline owns a window");
+            SendMessageW(media.window(), WM_KILLFOCUS,
+                         reinterpret_cast<WPARAM>(HWND{}), 0);
+            PumpPendingMessages();
+            Check(media.controllerFocused() &&
+                      media.focusedElementId() == timelineId,
+                  "Win32 focus loss retains pinned controller focus and its target");
+
+            Check(media.MoveControllerFocus(
+                      widgetrail::input::NavigationDirection::Right, true),
+                  "D-pad Right stays consumed by adjustment after Win32 focus loss");
+            auto queued = media.TakeInputRequests();
+            Check(queued.size() == 1 && queued[0].sliderActionRequest &&
+                      queued[0].nodeId == timelineId &&
+                      queued[0].protocolButton == L"dPadRight" &&
+                      queued[0].requestedValue == 125000.0 &&
+                      queued[0].sliderActionRequest->actionId == L"media.seek" &&
+                      queued[0].sliderActionRequest->requestedValue == 125000.0,
+                  "adjustment surviving Win32 focus loss queues one exact absolute value");
+            Check(media.focusedElementId() == timelineId,
+                  "an adjusting pinned timeline never navigates away on D-pad");
+
+            // A widget marks its slider busy while the value change it just
+            // accepted is in flight. That must not cancel the adjustment the
+            // user is still holding, and a further step must land once the
+            // provider settles.
+            Check(media.UpdateSnapshot(
+                      admission.widgetId, admission.runtimeGeneration,
+                      MediaTimelineSnapshot(sequence++, position, false, true)),
+                  "media timeline accepts a busy in-flight successor");
+            PumpPendingMessages();
+            Check(media.MoveControllerFocus(
+                      widgetrail::input::NavigationDirection::Right, true) &&
+                      media.focusedElementId() == timelineId,
+                  "a busy in-flight slider consumes D-pad without leaving adjustment");
+            Check(media.TakeInputRequests().empty(),
+                  "a busy in-flight slider queues no further value change");
+            Check(media.UpdateSnapshot(
+                      admission.widgetId, admission.runtimeGeneration,
+                      MediaTimelineSnapshot(sequence++, 125000.0)),
+                  "media timeline accepts the settled successor");
+            PumpPendingMessages();
+            Check(media.MoveControllerFocus(
+                      widgetrail::input::NavigationDirection::Right, true),
+                  "adjustment survives the busy round trip for the next step");
+            auto secondStep = media.TakeInputRequests();
+            Check(secondStep.size() == 1 && secondStep[0].sliderActionRequest &&
+                      secondStep[0].requestedValue == 130000.0,
+                  "the step after a busy round trip queues the next absolute value");
+
+            // The left stick is the same directional owner as the D-pad.
+            Check(media.UpdateSnapshot(
+                      admission.widgetId, admission.runtimeGeneration,
+                      MediaTimelineSnapshot(sequence++, 130000.0)),
+                  "media timeline accepts the successor before the stick step");
+            PumpPendingMessages();
+            Check(media.MoveControllerFocus(
+                      widgetrail::input::NavigationDirection::Left, true),
+                  "the left stick adjusts a selected pinned slider like the D-pad");
+            auto stickStep = media.TakeInputRequests();
+            Check(stickStep.size() == 1 && stickStep[0].sliderActionRequest &&
+                      stickStep[0].protocolButton == L"dPadLeft" &&
+                      stickStep[0].requestedValue == 125000.0,
+                  "a stick step queues one exact absolute value change");
+            Check(media.focusedElementId() == timelineId,
+                  "a stick step never navigates away from the adjusting slider");
+
+            // Leave adjustment and prove ordinary pinned input queued one frame
+            // before a publish is still delivered exactly once.
+            Check(media.HandleFocusedSliderModeButton(L"b", GetTickCount64()),
+                  "B exits pinned timeline adjustment");
+            Check(media.MoveControllerFocus(
+                      widgetrail::input::NavigationDirection::Down, true) &&
+                      media.focusedElementId() != timelineId,
+                  "outside adjustment mode D-pad resumes pinned focus navigation");
+            PumpPendingMessages();
+            const std::wstring activationTarget{media.focusedElementId()};
+            Check(media.QueueFocusedInput(L"a"),
+                  "the pinned transport button accepts controller activation");
+            Check(media.UpdateSnapshot(
+                      admission.widgetId, admission.runtimeGeneration,
+                      MediaTimelineSnapshot(sequence++, 125000.0)),
+                  "media timeline accepts a successor while input is queued");
+            const auto survivors = media.TakeInputRequests();
+            Check(survivors.size() == 1 && !survivors[0].sliderActionRequest &&
+                      survivors[0].protocolButton == L"a" &&
+                      survivors[0].nodeId == activationTarget,
+                  "compatible queued pinned activation survives one publish exactly once");
+
+            // A successor that withdraws the target still retires the request.
+            Check(media.QueueFocusedInput(L"a"),
+                  "the pinned transport button queues a second activation");
+            Check(media.UpdateSnapshot(
+                      admission.widgetId, admission.runtimeGeneration,
+                      MediaTimelineSnapshot(sequence++, 125000.0, true)),
+                  "media timeline accepts a successor disabling its transport");
+            Check(media.TakeInputRequests().empty(),
+                  "a successor disabling the target retires queued pinned input");
+
+            Check(media.Unpin(widgetrail::pinned::WidgetSurfaceStopReason::Unpin),
+                  "media timeline retires its pinned authority");
+            media.Dispose();
+            std::error_code mediaCleanup;
+            std::filesystem::remove_all(mediaRoot, mediaCleanup);
         }
 
         {

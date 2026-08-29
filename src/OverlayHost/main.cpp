@@ -8766,15 +8766,17 @@ private:
             }
             (void)pinnedSurfaceCoordinator_.ScrollFocusedProjection(
                 frame.state.rightThumbX, frame.state.rightThumbY, now);
+            // The left stick and the D-pad are one directional owner on the
+            // pinned surface, exactly as they are in the full widget, so both
+            // adjust a selected activation-first slider.
             const auto movePinnedFocus = [&](const widgetrail::input::StickNavigationEvent& event) {
                 (void)pinnedSurfaceCoordinator_.MoveControllerFocus(
-                    event.direction, false);
+                    event.direction, true);
             };
             if (const auto direction = DecodeNavigation(frame.stickNavigation))
                 movePinnedFocus(*direction);
             if (const auto direction = DecodeNavigation(frame.dpadNavigation))
-                (void)pinnedSurfaceCoordinator_.MoveControllerFocus(
-                    direction->direction, true);
+                movePinnedFocus(*direction);
             if (pinnedControllerCommand == widgetrail::pinned::ControllerCommand::Activate) {
                 if (!pinnedSurfaceCoordinator_.HandleFocusedSliderModeButton(
                         L"a", now) &&
