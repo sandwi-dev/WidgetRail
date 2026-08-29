@@ -33,7 +33,7 @@ public sealed partial class YouTubeVideoWidget : Widget
     private bool _overlayFullscreen;
     private EmbeddedMediaPlaybackCommand? _pendingCommand;
     private PendingMediaControl _pendingControl;
-    private bool _transientSeekBuffering;
+    private SeekBufferingState? _seekBuffering;
     private long? _busyCommandSequence;
     private bool _isActive;
     private CancellationToken _activeLifetime;
@@ -52,9 +52,11 @@ public sealed partial class YouTubeVideoWidget : Widget
         double duration;
         double volume;
         bool overlayFullscreen;
+        bool isActive;
+        YouTubeRoute route;
         PendingMediaControl busyControl;
         EmbeddedMediaPlaybackCommand? pending;
-        bool transientSeekBuffering;
+        SeekBufferingState? seekBufferingState;
         lock (_gate)
         {
             link = _link;
@@ -65,8 +67,10 @@ public sealed partial class YouTubeVideoWidget : Widget
             duration = _duration;
             volume = _volume;
             overlayFullscreen = _overlayFullscreen;
+            isActive = _isActive;
+            route = _route;
             pending = _pendingCommand;
-            transientSeekBuffering = _transientSeekBuffering;
+            seekBufferingState = _seekBuffering;
             busyControl = pending is not null && _busyCommandSequence == pending.Sequence
                 ? _pendingControl : PendingMediaControl.None;
         }
@@ -74,7 +78,10 @@ public sealed partial class YouTubeVideoWidget : Widget
         var media = CreateMediaSurface(videoId, pending, retainSessionWhenHidden: false,
             overlayFullscreen);
         var seekBuffering = state == EmbeddedMediaPlaybackState.Loading &&
-            (pending?.Kind == EmbeddedMediaPlaybackCommandKind.Seek || transientSeekBuffering);
+            (pending?.Kind == EmbeddedMediaPlaybackCommandKind.Seek || seekBufferingState is not null);
+        var playbackSemantic = seekBufferingState is { } retained
+            ? retained.PlaybackSemantic
+            : state;
         var mediaLoading = !seekBuffering &&
             (state == EmbeddedMediaPlaybackState.Loading ||
              pending?.Kind is EmbeddedMediaPlaybackCommandKind.Load or
@@ -94,9 +101,10 @@ public sealed partial class YouTubeVideoWidget : Widget
                 ? FullscreenFocusId : "youtube.player.back")
             .FocusDown("youtube.playback.toggle")
             .Classes("youtube-link", link.Length == 0 ? "is-empty" : "has-value");
-        var toggleLabel = state == EmbeddedMediaPlaybackState.Playing ? "Pause" : "Play";
+        var toggleLabel = playbackSemantic == EmbeddedMediaPlaybackState.Playing ? "Pause" : "Play";
         var toggle = UI.Button("", ToggleActionId, "youtube.playback.toggle")
-            .Icon(state == EmbeddedMediaPlaybackState.Playing ? WidgetGlyph.Pause : WidgetGlyph.Play,
+            .Icon(playbackSemantic == EmbeddedMediaPlaybackState.Playing
+                    ? WidgetGlyph.Pause : WidgetGlyph.Play,
                 toggleLabel)
             .Disabled(controlsUnavailable)
             .Busy(busyControl == PendingMediaControl.TogglePlayback)
@@ -157,11 +165,9 @@ public sealed partial class YouTubeVideoWidget : Widget
         var statusClass = error is not null ? "is-error" :
             mediaLoading || seekBuffering ? "is-busy" :
             state == EmbeddedMediaPlaybackState.Playing ? "is-playing" : "is-normal";
-        var playerActionsAvailable =
-            includeDashboardQuickActions &&
-            videoId is not null &&
-            error is null &&
-            !mediaLoading;
+        var playerActionsAvailable = includeDashboardQuickActions &&
+            CanDispatchTransportAction(
+                route, isActive, videoId, error, pending, state, seekBufferingState);
         IReadOnlyList<WidgetQuickAction>? quickActions = playerActionsAvailable
                 ?
                 [
@@ -339,7 +345,7 @@ public sealed partial class YouTubeVideoWidget : Widget
             {
                 _link = committed.Trim();
                 _playbackError = null;
-                _transientSeekBuffering = false;
+                ClearTransientSeekBufferingLocked();
                 if (!YouTubeLinkParser.TryParse(_link, out var parsedVideoId))
                 {
                     _validationError = "Enter a supported youtube.com or youtu.be video link.";
@@ -355,13 +361,15 @@ public sealed partial class YouTubeVideoWidget : Widget
                 return ValueTask.CompletedTask;
             }
 
-            if (_videoId is not { } videoId || _pendingCommand is not null)
+            if (_videoId is not { } videoId ||
+                !CanDispatchTransportActionLocked())
                 return ValueTask.CompletedTask;
             switch (action.ActionId)
             {
                 case ToggleActionId:
+                    var playbackSemantic = _seekBuffering?.PlaybackSemantic ?? _state;
                     QueueCommand(
-                        _state == EmbeddedMediaPlaybackState.Playing
+                        playbackSemantic == EmbeddedMediaPlaybackState.Playing
                             ? EmbeddedMediaPlaybackCommandKind.Pause
                             : EmbeddedMediaPlaybackCommandKind.Play,
                         videoId,
@@ -421,6 +429,22 @@ public sealed partial class YouTubeVideoWidget : Widget
                  !string.Equals(pending.MediaKey, videoId, StringComparison.Ordinal)))
                 return ValueTask.CompletedTask;
 
+            var matchingSeekLoading =
+                playbackEvent.State == EmbeddedMediaPlaybackState.Loading &&
+                _pendingCommand is { Kind: EmbeddedMediaPlaybackCommandKind.Seek } currentSeek &&
+                playbackEvent.CommandSequence == currentSeek.Sequence;
+            if (matchingSeekLoading)
+            {
+                _seekBuffering = _state is EmbeddedMediaPlaybackState.Playing or
+                    EmbeddedMediaPlaybackState.Paused
+                        ? new SeekBufferingState(_state)
+                        : null;
+            }
+            else if (playbackEvent.State != EmbeddedMediaPlaybackState.Loading)
+            {
+                ClearTransientSeekBufferingLocked();
+            }
+
             _eventSequence = playbackEvent.Sequence;
             _state = playbackEvent.State;
             _position = Math.Max(0, playbackEvent.PositionSeconds);
@@ -429,10 +453,6 @@ public sealed partial class YouTubeVideoWidget : Widget
             _playbackError = playbackEvent.State == EmbeddedMediaPlaybackState.Error
                 ? PlaybackErrorText(playbackEvent.ErrorCode)
                 : null;
-            _transientSeekBuffering = playbackEvent.State == EmbeddedMediaPlaybackState.Loading &&
-                (_transientSeekBuffering ||
-                 _pendingCommand is { Kind: EmbeddedMediaPlaybackCommandKind.Seek } currentSeek &&
-                 playbackEvent.CommandSequence == currentSeek.Sequence);
             if (_pendingCommand is { } current &&
                 playbackEvent.CommandSequence == current.Sequence)
             {
@@ -452,7 +472,7 @@ public sealed partial class YouTubeVideoWidget : Widget
         double? volume = null)
     {
         _playbackError = null;
-        _transientSeekBuffering = false;
+        ClearTransientSeekBufferingLocked();
         _pendingCommand = new EmbeddedMediaPlaybackCommand
         {
             Sequence = ++_commandSequence,
@@ -465,6 +485,36 @@ public sealed partial class YouTubeVideoWidget : Widget
         SchedulePendingFeedbackLocked();
         Invalidate();
     }
+
+    private void ClearTransientSeekBufferingLocked()
+    {
+        _seekBuffering = null;
+    }
+
+    private bool CanDispatchTransportActionLocked() => CanDispatchTransportAction(
+        _route,
+        _isActive,
+        _videoId,
+        _validationError ?? _playbackError,
+        _pendingCommand,
+        _state,
+        _seekBuffering);
+
+    private static bool CanDispatchTransportAction(
+        YouTubeRoute route,
+        bool isActive,
+        string? videoId,
+        string? error,
+        EmbeddedMediaPlaybackCommand? pending,
+        EmbeddedMediaPlaybackState state,
+        SeekBufferingState? seekBuffering) =>
+        route == YouTubeRoute.Player &&
+        isActive &&
+        videoId is not null &&
+        error is null &&
+        pending is null &&
+        state != EmbeddedMediaPlaybackState.Error &&
+        (state != EmbeddedMediaPlaybackState.Loading || seekBuffering is not null);
 
     private void SchedulePendingFeedbackLocked()
     {
@@ -554,4 +604,7 @@ public sealed partial class YouTubeVideoWidget : Widget
         Timeline,
         Volume,
     }
+
+    private readonly record struct SeekBufferingState(
+        EmbeddedMediaPlaybackState PlaybackSemantic);
 }

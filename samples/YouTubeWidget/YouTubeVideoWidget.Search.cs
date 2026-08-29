@@ -111,7 +111,7 @@ public sealed partial class YouTubeVideoWidget
         {
             _isActive = false;
             _overlayFullscreen = false;
-            _transientSeekBuffering = false;
+            ClearTransientSeekBufferingLocked();
             CancelPendingFeedbackLocked();
         }
         return ValueTask.CompletedTask;
@@ -123,7 +123,7 @@ public sealed partial class YouTubeVideoWidget
         lock (_gate)
         {
             _isActive = false;
-            _transientSeekBuffering = false;
+            ClearTransientSeekBufferingLocked();
             CancelPendingFeedbackLocked();
             pendingFeedback = _pendingFeedbackTask;
         }
@@ -527,7 +527,7 @@ public sealed partial class YouTubeVideoWidget
             _videoId = item.VideoId;
             _validationError = null;
             _playbackError = null;
-            _transientSeekBuffering = false;
+            ClearTransientSeekBufferingLocked();
             _position = 0;
             _duration = 0;
             SetRouteLocked(YouTubeRoute.Player);

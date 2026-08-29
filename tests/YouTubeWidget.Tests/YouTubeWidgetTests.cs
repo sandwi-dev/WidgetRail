@@ -390,7 +390,7 @@ public sealed class YouTubeWidgetTests
     }
 
     [TestMethod]
-    public async Task CorrelatedSeekLoadingKeepsOtherControlsAvailableUntilPlaybackSettles()
+    public async Task Widge93CorrelatedSeekLoadingKeepsOtherControlsAvailableUntilPlaybackSettles()
     {
         var widget = await CreateConfiguredLinkWidgetAsync();
         await CommitAsync(widget, $"https://www.youtube.com/watch?v={VideoId}");
@@ -412,7 +412,10 @@ public sealed class YouTubeWidgetTests
         var buffering = widget.RenderSnapshot("youtube-test", 4);
         Assert.IsNull(buffering.EmbeddedMedia!.PendingCommand);
         Assert.AreEqual("Buffering YouTube video…", Find(buffering.Root, "youtube.status").Text);
-        Assert.IsTrue(Find(buffering.Root, "youtube.playback.toggle").IsDisabled is not true);
+        var bufferingToggle = Find(buffering.Root, "youtube.playback.toggle");
+        Assert.AreEqual(WidgetGlyph.Pause, bufferingToggle.Glyph);
+        Assert.AreEqual("Pause", bufferingToggle.AccessibilityLabel);
+        Assert.IsTrue(bufferingToggle.IsDisabled is not true);
         Assert.IsTrue(Find(buffering.Root, "youtube.playback.seek-backward").IsDisabled is not true);
         Assert.IsTrue(Find(buffering.Root, "youtube.playback.seek-forward").IsDisabled is not true);
         Assert.IsTrue(Find(buffering.Root, "youtube.timeline").IsDisabled is not true);
@@ -433,6 +436,189 @@ public sealed class YouTubeWidgetTests
         Assert.AreEqual("Playing", Find(settled.Root, "youtube.status").Text);
         Assert.IsTrue(Find(settled.Root, "youtube.playback.toggle").IsDisabled is not true);
         Assert.IsEmpty(ViewSnapshotValidator.Validate(settled));
+    }
+
+    [TestMethod]
+    public async Task Widge93PausedSeekLoadingRetainsPlaySemanticUntilPlaybackSettles()
+    {
+        var widget = await CreateConfiguredLinkWidgetAsync();
+        await CommitAsync(widget, $"https://www.youtube.com/watch?v={VideoId}");
+        var load = widget.RenderSnapshot("youtube-test", 1).EmbeddedMedia!.PendingCommand!;
+        await ObserveAsync(widget, load, EmbeddedMediaPlaybackState.Ready, 1,
+            duration: 120, volume: 0.65);
+        await widget.OnEmbeddedMediaPlaybackEventAsync(new EmbeddedMediaPlaybackEvent
+        {
+            SurfaceId = YouTubeVideoWidget.SurfaceId,
+            Sequence = 2,
+            CommandSequence = 0,
+            MediaKey = VideoId,
+            State = EmbeddedMediaPlaybackState.Paused,
+            PositionSeconds = 14,
+            DurationSeconds = 120,
+            Volume = 0.65,
+        });
+
+        await widget.OnActionAsync(new WidgetActionEvent(
+            YouTubeVideoWidget.SeekForwardActionId, "youtube.playback.seek-forward"));
+        var seek = widget.RenderSnapshot("youtube-test", 2).EmbeddedMedia!.PendingCommand!;
+        await ObserveAsync(widget, seek, EmbeddedMediaPlaybackState.Loading, 3,
+            position: 24, duration: 120, volume: 0.65);
+
+        var buffering = widget.RenderSnapshot("youtube-test", 3);
+        var toggle = Find(buffering.Root, "youtube.playback.toggle");
+        Assert.AreEqual("Buffering YouTube video…", Find(buffering.Root, "youtube.status").Text);
+        Assert.AreEqual(WidgetGlyph.Play, toggle.Glyph);
+        Assert.AreEqual("Play", toggle.AccessibilityLabel);
+        Assert.IsTrue(toggle.IsDisabled is not true);
+        Assert.IsEmpty(ViewSnapshotValidator.Validate(buffering));
+
+        await widget.OnEmbeddedMediaPlaybackEventAsync(new EmbeddedMediaPlaybackEvent
+        {
+            SurfaceId = YouTubeVideoWidget.SurfaceId,
+            Sequence = 4,
+            CommandSequence = 0,
+            MediaKey = VideoId,
+            State = EmbeddedMediaPlaybackState.Paused,
+            PositionSeconds = 24,
+            DurationSeconds = 120,
+            Volume = 0.65,
+        });
+        var settled = widget.RenderSnapshot("youtube-test", 4);
+        Assert.AreEqual("Paused", Find(settled.Root, "youtube.status").Text);
+        Assert.AreEqual(WidgetGlyph.Play, Find(settled.Root, "youtube.playback.toggle").Glyph);
+    }
+
+    [TestMethod]
+    public async Task Widge93TransportShortcutsDispatchExactCommandsInStableAndSeekBufferingStates()
+    {
+        var cases = new[]
+        {
+            (EmbeddedMediaPlaybackState.Playing, false),
+            (EmbeddedMediaPlaybackState.Paused, false),
+            (EmbeddedMediaPlaybackState.Playing, true),
+            (EmbeddedMediaPlaybackState.Paused, true),
+        };
+        var routes = new[]
+        {
+            ControllerInputContext.DashboardQuickAction,
+            ControllerInputContext.OpenWidget,
+        };
+        var buttons = new[]
+        {
+            ControllerButton.X,
+            ControllerButton.LeftTrigger,
+            ControllerButton.RightTrigger,
+        };
+
+        foreach (var (playbackState, seekBuffering) in cases)
+        foreach (var route in routes)
+        foreach (var button in buttons)
+        {
+            var (widget, snapshot, position) = await CreateTransportWidgetAsync(
+                playbackState, seekBuffering);
+            var expectedActionId = button switch
+            {
+                ControllerButton.X => YouTubeVideoWidget.ToggleActionId,
+                ControllerButton.LeftTrigger => YouTubeVideoWidget.SeekBackwardActionId,
+                ControllerButton.RightTrigger => YouTubeVideoWidget.SeekForwardActionId,
+                _ => throw new InvalidOperationException(),
+            };
+            Assert.IsTrue(snapshot.QuickActions.Any(action =>
+                action.Button == button && action.ActionId == expectedActionId));
+            Assert.IsTrue(Find(snapshot.Root, "youtube.root").Shortcuts.Any(shortcut =>
+                shortcut.Button == button && shortcut.ActionId == expectedActionId));
+
+            var invalidated = NextInvalidation(widget);
+            var handled = await widget.OnControllerInputAsync(new ControllerInputEvent(
+                button,
+                ControllerEventPhase.Pressed,
+                route,
+                FocusedElementId: route == ControllerInputContext.OpenWidget
+                    ? "youtube.playback.toggle" : null,
+                Sequence: 91,
+                ActiveInputScopeId: route == ControllerInputContext.OpenWidget
+                    ? snapshot.ActiveInputScopeId : null,
+                SnapshotSequence: snapshot.Sequence));
+            Assert.IsTrue(handled,
+                $"{route} {button} was not admitted from {playbackState}, buffering={seekBuffering}.");
+            await invalidated;
+
+            var command = widget.RenderSnapshot("youtube-test", snapshot.Sequence + 1)
+                .EmbeddedMedia!.PendingCommand!;
+            if (button == ControllerButton.X)
+            {
+                Assert.AreEqual(
+                    playbackState == EmbeddedMediaPlaybackState.Playing
+                        ? EmbeddedMediaPlaybackCommandKind.Pause
+                        : EmbeddedMediaPlaybackCommandKind.Play,
+                    command.Kind,
+                    $"{route} X selected the wrong toggle command from {playbackState}, buffering={seekBuffering}.");
+                Assert.IsNull(command.PositionSeconds);
+            }
+            else
+            {
+                Assert.AreEqual(EmbeddedMediaPlaybackCommandKind.Seek, command.Kind);
+                Assert.AreEqual(
+                    button == ControllerButton.LeftTrigger ? position - 10 : position + 10,
+                    command.PositionSeconds,
+                    $"{route} {button} selected the wrong bounded seek target from {playbackState}, buffering={seekBuffering}.");
+            }
+            Assert.AreEqual(VideoId, command.MediaKey);
+            await WidgetTestHost.DestroyAsync(widget);
+        }
+    }
+
+    [TestMethod]
+    public async Task Widge93TransportShortcutsFailClosedOutsideCurrentActionablePlayer()
+    {
+        var search = await CreateConfiguredSearchWidgetAsync();
+        await AssertTransportInputsRejectedAsync(
+            search, search.RenderSnapshot("youtube-test", 1), "Search route");
+        await WidgetTestHost.DestroyAsync(search);
+
+        var loading = await CreateConfiguredLinkWidgetAsync();
+        await CommitAsync(loading, $"https://youtu.be/{VideoId}");
+        await AssertTransportInputsRejectedAsync(
+            loading, loading.RenderSnapshot("youtube-test", 1), "Initial Load");
+        await WidgetTestHost.DestroyAsync(loading);
+
+        var error = await CreateConfiguredLinkWidgetAsync();
+        await CommitAsync(error, $"https://youtu.be/{VideoId}");
+        var errorLoad = error.RenderSnapshot("youtube-test", 1).EmbeddedMedia!.PendingCommand!;
+        await ObserveAsync(error, errorLoad, EmbeddedMediaPlaybackState.Error, 1,
+            errorCode: "embedding-disabled");
+        await AssertTransportInputsRejectedAsync(
+            error, error.RenderSnapshot("youtube-test", 2), "Error state");
+        await WidgetTestHost.DestroyAsync(error);
+
+        var wrongRoute = await CreateTransportWidgetAsync(
+            EmbeddedMediaPlaybackState.Paused, seekBuffering: false);
+        await wrongRoute.Widget.OnActionAsync(new WidgetActionEvent(
+            "youtube.back", "youtube.player.back"));
+        await AssertTransportInputsRejectedAsync(
+            wrongRoute.Widget,
+            wrongRoute.Widget.RenderSnapshot("youtube-test", 21),
+            "Non-player route");
+        await WidgetTestHost.DestroyAsync(wrongRoute.Widget);
+
+        var inactive = await CreateTransportWidgetAsync(
+            EmbeddedMediaPlaybackState.Playing, seekBuffering: false);
+        await WidgetTestHost.SetLifecycleStateAsync(
+            inactive.Widget, WidgetLifecycleState.Background);
+        await AssertTransportInputsRejectedAsync(
+            inactive.Widget,
+            inactive.Widget.RenderSnapshot("youtube-test", 21),
+            "Deactivated player");
+        await WidgetTestHost.DestroyAsync(inactive.Widget);
+
+        var stale = await CreateTransportWidgetAsync(
+            EmbeddedMediaPlaybackState.Playing, seekBuffering: false);
+        var staleSnapshot = stale.Widget.RenderSnapshot("youtube-test", 21);
+        _ = stale.Widget.RenderSnapshot("youtube-test", 22);
+        await AssertTransportInputsRejectedAsync(
+            stale.Widget, staleSnapshot, "Stale snapshot authority",
+            expectDeclarationsAbsent: false);
+        await WidgetTestHost.DestroyAsync(stale.Widget);
     }
 
     [TestMethod]
@@ -543,7 +729,7 @@ public sealed class YouTubeWidgetTests
             File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "manifest.json")));
         var root = document.RootElement;
         Assert.AreEqual("widgetrail.samples.youtube-video", root.GetProperty("id").GetString());
-        Assert.AreEqual("0.2.11", root.GetProperty("version").GetString());
+        Assert.AreEqual("0.2.20", root.GetProperty("version").GetString());
         Assert.IsTrue(root.GetProperty("pinningSupported").GetBoolean());
         Assert.AreEqual("full-trust-application-v1",
             root.GetProperty("entrypoint").GetProperty("runtime").GetString());
@@ -650,6 +836,73 @@ public sealed class YouTubeWidgetTests
             Volume = volume,
             ErrorCode = errorCode,
         });
+
+    private static async Task<(YouTubeVideoWidget Widget, ViewSnapshot Snapshot, double Position)>
+        CreateTransportWidgetAsync(
+            EmbeddedMediaPlaybackState playbackState,
+            bool seekBuffering)
+    {
+        var widget = await CreateConfiguredLinkWidgetAsync();
+        await CommitAsync(widget, $"https://youtu.be/{VideoId}");
+        var load = widget.RenderSnapshot("youtube-test", 1).EmbeddedMedia!.PendingCommand!;
+        await ObserveAsync(widget, load, EmbeddedMediaPlaybackState.Ready, 1,
+            position: 50, duration: 120, volume: 0.65);
+        await widget.OnEmbeddedMediaPlaybackEventAsync(new EmbeddedMediaPlaybackEvent
+        {
+            SurfaceId = YouTubeVideoWidget.SurfaceId,
+            Sequence = 2,
+            CommandSequence = 0,
+            MediaKey = VideoId,
+            State = playbackState,
+            PositionSeconds = 50,
+            DurationSeconds = 120,
+            Volume = 0.65,
+        });
+        var position = 50d;
+        if (seekBuffering)
+        {
+            await widget.OnActionAsync(new WidgetActionEvent(
+                YouTubeVideoWidget.SeekForwardActionId, "youtube.playback.seek-forward"));
+            var seek = widget.RenderSnapshot("youtube-test", 2).EmbeddedMedia!.PendingCommand!;
+            await ObserveAsync(widget, seek, EmbeddedMediaPlaybackState.Loading, 3,
+                position: 60, duration: 120, volume: 0.65);
+            position = 60;
+        }
+        return (widget, widget.RenderSnapshot("youtube-test", 20), position);
+    }
+
+    private static async Task AssertTransportInputsRejectedAsync(
+        YouTubeVideoWidget widget,
+        ViewSnapshot snapshot,
+        string state,
+        bool expectDeclarationsAbsent = true)
+    {
+        if (expectDeclarationsAbsent)
+            Assert.IsEmpty(snapshot.QuickActions, $"{state} exposed dashboard QuickActions.");
+        foreach (var button in new[]
+                 {
+                     ControllerButton.X,
+                     ControllerButton.LeftTrigger,
+                     ControllerButton.RightTrigger,
+                 })
+        {
+            Assert.IsFalse(await widget.OnControllerInputAsync(new ControllerInputEvent(
+                    button,
+                    ControllerEventPhase.Pressed,
+                    ControllerInputContext.DashboardQuickAction,
+                    Sequence: 92,
+                    SnapshotSequence: snapshot.Sequence)),
+                $"{state} admitted dashboard {button}.");
+            Assert.IsFalse(await widget.OnControllerInputAsync(new ControllerInputEvent(
+                    button,
+                    ControllerEventPhase.Pressed,
+                    ControllerInputContext.OpenWidget,
+                    Sequence: 93,
+                    ActiveInputScopeId: snapshot.ActiveInputScopeId,
+                    SnapshotSequence: snapshot.Sequence)),
+                $"{state} admitted page-scoped {button}.");
+        }
+    }
 
     private static ViewNode Find(ViewNode node, string id)
     {
