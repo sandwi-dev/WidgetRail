@@ -69,7 +69,8 @@ public sealed partial class YouTubeVideoWidget : Widget
                 LinkActionId,
                 "youtube.link",
                 ProtocolConstants.MaximumTextEntryLength)
-            .FocusUp(fullscreenActionEnabled ? FullscreenFocusId : "youtube.player.back")
+            .FocusUp(showFullscreenAction && fullscreenActionEnabled
+                ? FullscreenFocusId : "youtube.player.back")
             .FocusDown("youtube.playback.toggle")
             .Classes("youtube-link", link.Length == 0 ? "is-empty" : "has-value");
         var toggleLabel = state == EmbeddedMediaPlaybackState.Playing ? "Pause" : "Play";

@@ -146,6 +146,56 @@ public sealed class YouTubeWidgetTests
     }
 
     [TestMethod]
+    public async Task RetainedVideoLinkRouteAndFullscreenStatesRemainValid()
+    {
+        var widget = await CreateConfiguredLinkWidgetAsync();
+        await CommitAsync(widget, $"https://youtu.be/{VideoId}");
+
+        var loading = widget.RenderSnapshot("youtube-test", 1);
+        Assert.IsEmpty(ViewSnapshotValidator.Validate(loading));
+        var loadingFullscreen = Find(loading.Root, "youtube.player.fullscreen");
+        Assert.IsTrue(loadingFullscreen.IsDisabled);
+        Assert.AreEqual("youtube.player.back", Find(loading.Root, "youtube.link").Focus!.Up);
+
+        var load = loading.EmbeddedMedia!.PendingCommand!;
+        await ObserveAsync(widget, load, EmbeddedMediaPlaybackState.Ready, 1,
+            duration: 120);
+        var ready = widget.RenderSnapshot("youtube-test", 2);
+        Assert.IsEmpty(ViewSnapshotValidator.Validate(ready));
+        Assert.IsTrue(Find(ready.Root, "youtube.player.fullscreen").IsDisabled is not true);
+        Assert.AreEqual("youtube.player.fullscreen", Find(ready.Root, "youtube.link").Focus!.Up);
+        Assert.IsFalse(ready.EmbeddedMedia!.OverlayFullscreenPresentation);
+
+        await widget.OnActionAsync(new WidgetActionEvent(
+            YouTubeVideoWidget.EnterFullscreenActionId, "youtube.player.fullscreen"));
+        var fullscreen = widget.RenderSnapshot("youtube-test", 3);
+        Assert.IsEmpty(ViewSnapshotValidator.Validate(fullscreen));
+        Assert.IsTrue(fullscreen.EmbeddedMedia!.OverlayFullscreenPresentation);
+        Assert.AreEqual(YouTubeVideoWidget.ExitFullscreenActionId,
+            Find(fullscreen.Root, "youtube.player.fullscreen").ActionId);
+
+        await widget.OnActionAsync(new WidgetActionEvent(
+            YouTubeVideoWidget.ExitFullscreenActionId, "youtube.player.fullscreen"));
+        var exited = widget.RenderSnapshot("youtube-test", 4);
+        Assert.IsEmpty(ViewSnapshotValidator.Validate(exited));
+        Assert.IsFalse(exited.EmbeddedMedia!.OverlayFullscreenPresentation);
+        Assert.AreEqual(YouTubeVideoWidget.EnterFullscreenActionId,
+            Find(exited.Root, "youtube.player.fullscreen").ActionId);
+
+        await widget.OnActionAsync(new WidgetActionEvent(
+            "youtube.back", "youtube.player.back"));
+        await widget.OnActionAsync(new WidgetActionEvent(
+            "youtube.link.open", "youtube.link.open"));
+        var retainedLink = widget.RenderSnapshot("youtube-test", 5);
+        Assert.IsEmpty(ViewSnapshotValidator.Validate(retainedLink));
+        Assert.IsNull(TryFind(retainedLink.Root, "youtube.player.fullscreen"));
+        Assert.AreEqual("youtube.player.back",
+            Find(retainedLink.Root, "youtube.link").Focus!.Up);
+        Assert.IsFalse(retainedLink.EmbeddedMedia!.OverlayFullscreenPresentation);
+        await WidgetTestHost.DestroyAsync(widget);
+    }
+
+    [TestMethod]
     public async Task AcceptedPlayerSnapshotAndStylesStayCompactAccessibleAndStateful()
     {
         var widget = await CreateConfiguredLinkWidgetAsync();
