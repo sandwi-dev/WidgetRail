@@ -58,6 +58,7 @@ struct WidgetSurfaceInputRequest final {
     std::wstring activeInputScopeId;
     std::wstring nodeId;
     std::wstring protocolButton;
+    std::wstring activationActionId;
     std::optional<double> requestedValue;
     ControllerInputOrigin origin{ControllerInputOrigin::PhysicalController};
 };

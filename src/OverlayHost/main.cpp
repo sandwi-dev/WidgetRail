@@ -7500,7 +7500,10 @@ private:
                 ? widgetrail::input::FindNodeInInputScope(
                     *workerSnapshot, request.nodeId, request.activeInputScopeId)
                 : nullptr;
-            if (nativeNode && TryDispatchNativeMediaAction(
+            if (nativeNode &&
+                request.protocolButton == L"a" &&
+                nativeNode->actionId == request.activationActionId &&
+                TryDispatchNativeMediaAction(
                     request.widgetId, *workerSnapshot, *nativeNode,
                     request.protocolButton,
                     widgetrail::input::NavigationEventPhase::Pressed)) {

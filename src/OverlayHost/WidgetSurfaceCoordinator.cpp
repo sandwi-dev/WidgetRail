@@ -555,6 +555,9 @@ void WidgetSurfaceCoordinator::QueueResolvedInput(
         return;
     }
     const auto& snapshot = SelectedSnapshot();
+    const auto* node = input::FindNodeInInputScope(
+        snapshot, nodeId, snapshot.activeInputScopeId);
+    if (!node || node->isDisabled || node->isBusy) return;
     inputRequests_.push_back({
         admission_->widgetId,
         admission_->runtimeGeneration,
@@ -562,7 +565,8 @@ void WidgetSurfaceCoordinator::QueueResolvedInput(
         std::wstring(SelectedLayoutId()),
         snapshot.activeInputScopeId,
         std::move(nodeId),
-        std::move(protocolButton),
+        protocolButton,
+        protocolButton == L"a" ? node->actionId : std::wstring{},
         requestedValue,
         origin,
     });
