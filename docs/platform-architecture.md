@@ -7,16 +7,9 @@ logic. The host owns the window, pixels, focus, controller policy, and
 persistence. Widgets return bounded semantic UI snapshots; they do not create
 windows, draw arbitrary paths, inject into games, or ship browser UI.
 
-The native presentation stack below remains the current accepted product.
-The user has accepted a reuse-first Avalonia candidate direction, documented in
-[the Avalonia presentation migration plan](avalonia-migration-plan.md).
-That migration retains the `WidgetBridge` backend and every process, trust,
-lifecycle, package, and domain boundary shown here. It replaces the native
-presentation-side bridge client, renderer, layout, motion, styling, focus
-projection, and widget accessibility projection with a managed typed session
-facade and one generic Avalonia semantic-tree adapter. The existing native
-Microsoft GameInput/Guide and Win32 targeting/placement owner is extracted
-behind narrow interop rather than reimplemented in C#.
+The native presentation stack below remains the current accepted product. Its
+process, trust, lifecycle, package, domain, rendering, focus, accessibility,
+GameInput/Guide, and Win32 targeting/placement boundaries are authoritative.
 
 ```mermaid
 flowchart LR

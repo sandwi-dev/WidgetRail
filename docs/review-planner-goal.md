@@ -9,9 +9,9 @@ steadily produce a polished, maintainable, accessible, security-conscious, and
 performance-conscious product resembling work from a cohesive senior
 engineering team. The user has also authorized one temporary test-only lane to
 independently disposition red native host tests without touching production
-code. The Avalonia evaluation is closed by user decision after it
-failed physical product acceptance; its retained code and prior extraction
-history are evidence only, not an active migration or cutover authority.
+code. The retired presentation evaluation is closed by user decision after it
+failed physical product acceptance; its prior extraction history is evidence
+only, not an active migration or cutover authority.
 
 This is a continuing product-delivery goal. Do not mark it complete merely
 because one assignment, queue cluster, review cycle, or heartbeat finishes.
@@ -135,9 +135,9 @@ At the beginning of every goal continuation or scheduled heartbeat:
    - `Implementation agent — platform lane`
    DLV-245 is closed and rejected; do not locate or resume its preserved
    temporary red-test task during normal startup.
-   The Avalonia lead and AVP-004 extraction tasks are closed historical tasks,
-   not startup dependencies. Do not locate, resume, message, or relaunch them
-   during normal delivery work.
+   The retired presentation lead and extraction tasks are closed historical
+   tasks, not startup dependencies. Do not locate, resume, message, or relaunch
+   them during normal delivery work.
 5. Inspect compact task progress and any new completion report or commit.
 6. Reconcile observed state with the delivery plan before taking action.
 
@@ -238,7 +238,7 @@ small independent contracts or stateless facade methods, and document any such
 cohesive exception explicitly.
 
 Every production assignment must be one Plane work item with its native Plane
-identifier. The closed AVP and DLV namespaces are historical evidence only and
+identifier. Closed experimental and DLV namespaces are historical evidence only and
 are not available for new work. Every assignment requires
 its lane, baseline, dependencies, bounded objective, ownership boundary,
 in-scope and out-of-scope work,
@@ -734,10 +734,9 @@ Then repeat the loop.
   remain preserved as evidence; do not resume, integrate, or discard them
   without new user authority. The production defect it exposed was repaired by
   accepted and integrated DLV-246.
-- The retained `codex/avalonia-prototype` and `codex/avp004-*` branches are
-  closed failed-experiment history. They are not normal startup or review
-  surfaces. Do not dispatch, integrate, relaunch, cut over, or delete them
-  without a new explicit user decision.
+- Retained failed-experiment branches are closed history. They are not normal
+  startup or review surfaces. Do not dispatch, integrate, relaunch, cut over,
+  or delete them without a new explicit user decision.
 - Implementation tasks never edit reviewer-owned documents and never push.
 - The planner never authors implementation code in any branch.
 - Shared protocol/architecture work is assigned serially to one lead lane after

@@ -22,10 +22,10 @@ prompt:
 - `platform` owns the native host, renderer, input, focus, accessibility,
   window/surface management, and directly affected native documentation.
 
-The Avalonia prototype and AVP extraction tasks are closed failed-experiment
-history. They are not implementation lanes and must not be resumed, merged,
-launched, removed, or treated as verification debt without a new explicit user
-decision recorded in the delivery plan.
+The retired presentation prototype and its extraction tasks are closed
+failed-experiment history. They are not implementation lanes and must not be
+resumed, merged, launched, or treated as verification debt without a new
+explicit user decision recorded in Plane.
 
 Never take work from the other lane. Shared protocol or architecture work is
 serialized through an explicit integration assignment owned by the planner.

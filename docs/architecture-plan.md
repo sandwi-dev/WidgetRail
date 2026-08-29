@@ -1,17 +1,12 @@
 # Architecture and technology plan
 
-Status: historical native-first research baseline, superseded for presentation
-technology by the accepted
-[Avalonia migration plan](avalonia-migration-plan.md), 2026-08-13
+Status: historical native-first research baseline. Current presentation
+decisions are documented in [platform architecture](platform-architecture.md)
+and [implementation status](implementation-status.md).
 
-Current behavior is tracked in [implementation status](implementation-status.md)
-and [platform architecture](platform-architecture.md). The current native host
-remains the accepted product until an explicit Avalonia cutover milestone, but
-new migration work retains the Widget SDK/protocol, runtime, catalog,
-WidgetBridge backend, trust/lifecycle/domain code, and production native
-GameInput/Guide owner while replacing the presentation boundary. Proposed D3D11,
+The current native host remains the accepted product. Proposed D3D11,
 DirectComposition, and Protobuf components below are not claims about the
-current Win32/Direct2D and JSON named-pipe prototype. The narrower mandatory
+current Win32/Direct2D and JSON named-pipe implementation. The narrower mandatory
 AppContainer worker and typed broker design has since been implemented; use the
 current documents above rather than this research baseline for its contract.
 
@@ -79,7 +74,6 @@ D3D11 is simpler than D3D12 for a predominantly 2D UI and interoperates directly
 | Native D2D/DWrite/DirectComposition | Lowest controllable resident footprint; exact overlay behavior | We must build layout, focus, controls, accessibility, and styling | Prototype first |
 | WinUI 3 | Productive XAML, built-in focus/navigation, modern controls | Higher startup/RAM floor and less direct rendering lifecycle control | Build a small comparison if native control work dominates |
 | WPF | Mature and productive | Older transparent-window and controller model | Do not start here |
-| Avalonia Desktop/Skia | Mature controls, styling, animation, virtualization, standard UIA, and accepted AVP visual/controller feasibility | Requires one generic semantic adapter, a managed bridge client facade, and narrow native GameInput/Win32 interop | Accepted migration candidate; follow the reuse-first migration plan |
 | WebView2/Electron | Familiar web development and isolation tools | Multi-process browser baseline and resource variability | Reject for resident/default UI |
 
 The widget protocol must not expose renderer-specific types. If the native approach proves too costly, the host renderer can change without redesigning every widget.

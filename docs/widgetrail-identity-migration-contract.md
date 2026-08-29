@@ -77,7 +77,7 @@ through the user's own accounts.
 
 ## Repository inventory
 
-A current non-Avalonia, non-history, non-generated scan at accepted main
+A current active-source, non-history, non-generated scan at accepted main
 `1ae21df` found:
 
 - 5,889 `GameBarAlternative` occurrences across 485 files.
@@ -222,8 +222,8 @@ Removed at cutover:
 Intentionally unchanged historical evidence:
 
 - Git commit history and tags.
-- `docs/history/**` snapshots and closed DLV/AVP evidence.
-- Closed Avalonia experiment sources unless separately authorized.
+- `docs/history/**` snapshots and closed delivery evidence.
+- Closed experiment sources unless separately authorized.
 - Accurate third-party notices, quotations, external URLs, and historical
   artifact hashes that must retain their original names.
 

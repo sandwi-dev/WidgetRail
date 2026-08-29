@@ -4430,7 +4430,7 @@ The isolated package path emits 23 files / 3,271,094 bytes, requires explicit
 full-trust approval, installs/selects/enables 0.3.0, and returns the exact
 credential-free setup snapshot through the ordinary installed catalog and
 generic full-trust supervisor. No aggregate, account credential, live Premium/
-EME session, native renderer, Avalonia, capture, or publication work is claimed.
+EME session, native renderer, capture, or publication work is claimed.
 
 ### Exact-commit full-trust Runtime verification correction (DLV-220)
 
@@ -5519,8 +5519,8 @@ These are identity-only cutovers: no compatibility endpoint, legacy reader,
 migration, public protocol, provider, or runtime behavior was added.
 
 The remaining tracked old-name matches are classified and retained deliberately:
-immutable history and the closed Avalonia experiment; reviewer-owned control
-documents and the frozen identity contract; stable `GBA-###` issue identifiers;
+immutable history; reviewer-owned control documents and the frozen identity
+contract; stable `GBA-###` issue identifiers;
 accurate negative assertions and the explicit record that the untouched old
 local-data root must never be accessed; opaque third-party/test package IDs such
 as `org.gbar.tests.*`; and deletion-only sentinels that remove stale generated

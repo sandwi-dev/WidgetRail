@@ -1,7 +1,0 @@
-<UserControl xmlns="https://github.com/avaloniaui"
-             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-             xmlns:local="using:GameBarAlternative.AvaloniaPrototype.InvalidBindingFixture"
-             x:Class="GameBarAlternative.AvaloniaPrototype.InvalidBindingFixture.InvalidView"
-             x:DataType="local:InvalidViewModel">
-  <TextBlock Text="{Binding PropertyThatDoesNotExist}" />
-</UserControl>

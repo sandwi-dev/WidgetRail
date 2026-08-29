@@ -3162,7 +3162,7 @@ static async Task ManagedPresentationSessionPreservesSandboxedAuthority()
         pipeName,
         new WidgetPresentationSessionOptions
         {
-            ClientName = "WidgetBridge.Tests.AVP004.Session",
+            ClientName = "WidgetBridge.Tests.SessionFixture",
             MaximumMessageBytes = 64 * 1024,
             MaximumRetainedDiagnostics = 8,
         });
@@ -3290,7 +3290,7 @@ static async Task ManagedPresentationSessionPreservesFullTrustRuntime()
         temporary.Path,
         fixtureOutput,
         "FullTrustAlphaFixture.exe",
-        "dev.avp004.session-full-trust");
+        "dev.sessionfixture.full-trust");
     var installedRoot = Path.Combine(temporary.Path, "installed");
     var installedCatalog = new WidgetRail.WidgetCatalog.WidgetCatalog(installedRoot);
     var installed = await installedCatalog.InstallAsync(
@@ -3322,7 +3322,7 @@ static async Task ManagedPresentationSessionPreservesFullTrustRuntime()
         pipeName,
         new WidgetPresentationSessionOptions
         {
-            ClientName = "WidgetBridge.Tests.AVP004.FullTrust",
+            ClientName = "WidgetBridge.Tests.FullTrustSessionFixture",
             MaximumMessageBytes = 64 * 1024,
         });
     try
@@ -3435,8 +3435,8 @@ static string CreateFullTrustSessionPackage(
     var manifest = new WidgetManifest
     {
         Id = id,
-        Publisher = "dev.avp004",
-        Name = "AVP-004 full-trust session fixture",
+        Publisher = "dev.sessionfixture",
+        Name = "Full-trust session fixture",
         Version = "1.0.0",
         HostApi = new HostApiRange("1.0", 1),
         Entrypoint = new WidgetEntrypoint(
