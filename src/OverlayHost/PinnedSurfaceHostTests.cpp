@@ -1,4 +1,6 @@
 #include "AccessibilityProvider.h"
+#include "ControllerNavigation.h"
+#include "OverlayState.h"
 #include "PinnedSurfacePolicy.h"
 
 #include <Windows.h>
@@ -216,6 +218,115 @@ void TestAcceptedWidgetOwnedFocusMemoryHostContract() {
                   "            RestoreFocusForActiveSurface(state_.activeWidget());") !=
               std::string::npos,
           "B stores widget-owned focus and the later tray-to-widget entry restores it immediately");
+}
+
+void TestAcceptedMediaBackOwnershipHostContract() {
+    const auto source = ReadSource(
+        fs::path{__FILE__}.parent_path() / "main.cpp");
+    const auto dispatchBegin = source.find(
+        "void DispatchControllerAction(");
+    const auto dispatchEnd = source.find(
+        "[[nodiscard]] bool TryDispatchNativeMediaAction(", dispatchBegin);
+    Check(dispatchBegin != std::string::npos &&
+              dispatchEnd != std::string::npos && dispatchBegin < dispatchEnd,
+          "controller action owner has one bounded source section");
+    const auto dispatch = source.substr(dispatchBegin, dispatchEnd - dispatchBegin);
+    const auto fullscreenBack = dispatch.find(
+        "button == L\"B\" && OverlayFullscreenMediaRequested()");
+    const auto mediaBack = dispatch.find(
+        "button == L\"B\" && EmbeddedMediaAuthorityCurrent()");
+    const auto genericRoute = dispatch.find(
+        "using widgetrail::input::ControllerActionContext", mediaBack);
+    Check(fullscreenBack != std::string::npos &&
+              mediaBack != std::string::npos && genericRoute != std::string::npos &&
+              fullscreenBack < mediaBack && mediaBack < genericRoute,
+          "fullscreen, media Back, and generic controller routes retain exact ownership order");
+    const auto mediaBackBranch = dispatch.substr(mediaBack, genericRoute - mediaBack);
+    Check(mediaBackBranch.find(
+              "embeddedMediaAuthority_->projection == EmbeddedMediaProjection::Overlay") !=
+              std::string::npos &&
+              mediaBackBranch.find(
+                  "state_.surface() == widgetrail::Surface::Widget") !=
+              std::string::npos &&
+              mediaBackBranch.find(
+                  "state_.focusRegion() == widgetrail::FocusRegion::Widget") !=
+              std::string::npos &&
+              mediaBackBranch.find(
+                  "state_.activeWidget() == embeddedMediaAuthority_->widgetId") !=
+              std::string::npos &&
+              mediaBackBranch.find(
+                  "Dispatch(widgetrail::Command::SampleWidgetBack);") !=
+              std::string::npos,
+          "media Back shortcut requires exact overlay media and widget-owned focus authority");
+    Check(mediaBackBranch.find("youtube") == std::string::npos &&
+              mediaBackBranch.find("YouTube") == std::string::npos,
+          "media Back ownership remains provider-neutral");
+    Check(dispatch.find(
+              "const auto context = state_.focusRegion() == widgetrail::FocusRegion::Tray") !=
+              std::string::npos &&
+              dispatch.find("case ControllerActionRoute::HostCloseOverlay:") !=
+              std::string::npos &&
+              dispatch.find("Dispatch(widgetrail::Command::ToggleOverlay);") !=
+              std::string::npos,
+          "tray-owned B retains the generic host close route after media Back");
+
+    using widgetrail::Command;
+    using widgetrail::FocusRegion;
+    using widgetrail::OverlayState;
+    using widgetrail::Surface;
+    using widgetrail::input::ControllerActionContext;
+    using widgetrail::input::ControllerActionRoute;
+    using widgetrail::input::RouteControllerAction;
+
+    OverlayState mediaState({}, {L"media-peer", L"ordinary-peer"});
+    (void)mediaState.Dispatch(Command::ToggleOverlay);
+    (void)mediaState.Dispatch(Command::Activate);
+    const auto mediaBackEligible = [&](const bool authorityCurrent,
+                                       const bool overlayProjection) {
+        return authorityCurrent && overlayProjection &&
+            mediaState.surface() == Surface::Widget &&
+            mediaState.focusRegion() == FocusRegion::Widget &&
+            mediaState.activeWidget() == L"media-peer";
+    };
+    Check(mediaBackEligible(true, true),
+          "active provider-neutral media widget admits its first media Back");
+    if (mediaBackEligible(true, true))
+        (void)mediaState.Dispatch(Command::SampleWidgetBack);
+    Check(mediaState.surface() == Surface::Widget &&
+              mediaState.focusRegion() == FocusRegion::Tray,
+          "first media Back preserves the widget and returns focus to Tray exactly once");
+    Check(!mediaBackEligible(true, true),
+          "media Back shortcut is no longer eligible after Tray takes focus");
+    const auto trayBack = RouteControllerAction(ControllerActionContext::Tray, L"B");
+    Check(trayBack == ControllerActionRoute::HostCloseOverlay,
+          "second B at Tray resolves to exactly one host-owned close");
+    if (trayBack == ControllerActionRoute::HostCloseOverlay)
+        (void)mediaState.Dispatch(Command::ToggleOverlay);
+    Check(mediaState.surface() == Surface::Hidden,
+          "second B closes the overlay without replaying media Back");
+
+    (void)mediaState.Dispatch(Command::ToggleOverlay);
+    Check(mediaState.surface() == Surface::Widget &&
+              mediaState.focusRegion() == FocusRegion::Tray,
+          "reopen restores the visible media widget with Tray input authority");
+    (void)mediaState.Dispatch(Command::Activate);
+    Check(mediaBackEligible(true, true),
+          "restored widget focus re-enables the same exact media command authority");
+    Check(!mediaBackEligible(true, false),
+          "pinned projection remains outside the overlay media Back shortcut");
+
+    OverlayState ordinaryState({}, {L"ordinary-peer"});
+    (void)ordinaryState.Dispatch(Command::ToggleOverlay);
+    (void)ordinaryState.Dispatch(Command::Activate);
+    Check(ordinaryState.surface() == Surface::Widget &&
+              ordinaryState.focusRegion() == FocusRegion::Widget &&
+              RouteControllerAction(
+                  ControllerActionContext::RootWidgetScope, L"B") ==
+                  ControllerActionRoute::Widget,
+          "ordinary widget B remains widget-owned and bypasses the media shortcut");
+    Check(dispatch.find("case ControllerActionRoute::Widget:") != std::string::npos &&
+              dispatch.find("DispatchWidgetAction(") != std::string::npos,
+          "playback and all non-Back widget commands retain generic widget dispatch eligibility");
 }
 
 struct FixtureWindowState final {
@@ -729,6 +840,7 @@ int wmain(const int argc, wchar_t** argv) {
         TestAcceptedCompactMediaHostContract();
         TestAcceptedOverlayFullscreenMediaHostContract();
         TestAcceptedWidgetOwnedFocusMemoryHostContract();
+        TestAcceptedMediaBackOwnershipHostContract();
         TestPolicyAndPlacement();
         const auto result = TestRealHostWindow(ParseEvidencePath(argc, argv));
         std::cout << "PinnedSurfaceHostTests passed (" << checks

@@ -500,6 +500,8 @@ function Invoke-DeclarativeRendererTests {
 function Invoke-PinnedSurfaceHostTests {
     $arguments = $common + @(
         (Join-Path $projectDirectory 'PinnedSurfaceHostTests.cpp'),
+        (Join-Path $projectDirectory 'ControllerNavigation.cpp'),
+        (Join-Path $projectDirectory 'OverlayState.cpp'),
         (Join-Path $projectDirectory 'PinnedSurfacePolicy.cpp'),
         (Join-Path $projectDirectory 'AccessibilityProvider.cpp'),
         (Join-Path $projectDirectory 'AccessibilityEvents.cpp'),

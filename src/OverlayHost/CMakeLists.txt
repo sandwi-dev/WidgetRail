@@ -202,7 +202,8 @@ if(WRAIL_BUILD_TESTS)
     add_test(NAME OverlayPlacementTests COMMAND OverlayPlacementTests)
 
     add_executable(PinnedSurfaceHostTests
-        PinnedSurfaceHostTests.cpp PinnedSurfacePolicy.cpp
+        PinnedSurfaceHostTests.cpp ControllerNavigation.cpp OverlayState.cpp
+        PinnedSurfacePolicy.cpp
         AccessibilityProvider.cpp AccessibilityEvents.cpp)
     target_compile_features(PinnedSurfaceHostTests PRIVATE cxx_std_20)
     target_compile_options(PinnedSurfaceHostTests PRIVATE /W4 /permissive- /EHsc)
