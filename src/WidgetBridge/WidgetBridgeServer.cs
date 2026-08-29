@@ -597,6 +597,7 @@ public sealed class WidgetBridgeServer : IAsyncDisposable
                 .ConfigureAwait(false);
         }
         catch (Exception exception) when (exception is BridgeProtocolException or
+            BridgeStalePinnedInputAuthorityException or
             BridgeStalePresentationBaseException or JsonException)
         {
             await ReplyRequestFailureAsync(request.RequestId, exception, cancellationToken)
@@ -647,9 +648,12 @@ public sealed class WidgetBridgeServer : IAsyncDisposable
     {
         ArgumentNullException.ThrowIfNull(exception);
         return new BridgeError(
-            exception is BridgeStalePresentationBaseException
-                ? "stale_presentation_base"
-                : "request_failed",
+            exception switch
+            {
+                BridgeStalePresentationBaseException => "stale_presentation_base",
+                BridgeStalePinnedInputAuthorityException => "stale_pinned_input_authority",
+                _ => "request_failed",
+            },
             SafeMessage(exception));
     }
 

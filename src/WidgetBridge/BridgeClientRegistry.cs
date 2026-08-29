@@ -697,7 +697,7 @@ internal sealed class BridgeClientRegistry : IAsyncDisposable
                     "Controller input runtime authority is stale or unavailable.");
             if (input.Context != ControllerInputContext.PinnedLayoutSelection)
                 DemandInteractionAllowed(registration);
-            DemandPinnedSurfaceAuthority(registration, input);
+            input = DemandPinnedSurfaceAuthority(registration, input);
             registration.CancelIdleUnload();
             var handled = await ExecuteClientOperationAsync(
                     registration,
@@ -1748,17 +1748,29 @@ internal sealed class BridgeClientRegistry : IAsyncDisposable
             PlatformCapabilityBroker.MaximumDashboardGestureLifetime);
     }
 
-    private static void DemandPinnedSurfaceAuthority(
+    private static ControllerInputEvent DemandPinnedSurfaceAuthority(
         ClientRegistration registration,
         ControllerInputEvent input)
     {
-        if (input.Context != ControllerInputContext.PinnedSurface) return;
+        if (input.Context != ControllerInputContext.PinnedSurface) return input;
         var snapshot = registration.CachedSnapshot ?? throw new BridgeProtocolException(
             "Pinned-surface input has no cached rendered snapshot.");
-        if (snapshot.Sequence != input.SnapshotSequence)
-            throw new BridgeProtocolException(
-                "Pinned-surface input targets a stale snapshot sequence.");
+        var origin = registration.FindPinnedInputOriginSnapshot(input.SnapshotSequence) ??
+            throw new BridgeStalePinnedInputAuthorityException(
+                "Pinned-surface input origin snapshot authority is no longer available.");
+        var originBinding = ResolvePinnedSurfaceInputBinding(origin, input, "origin");
+        var currentBinding = ResolvePinnedSurfaceInputBinding(snapshot, input, "current");
+        if (originBinding != currentBinding)
+            throw new BridgeStalePinnedInputAuthorityException(
+                "Pinned-surface input action binding changed after admission.");
+        return input with { SnapshotSequence = snapshot.Sequence };
+    }
 
+    private static PinnedSurfaceInputBinding ResolvePinnedSurfaceInputBinding(
+        ViewSnapshot snapshot,
+        ControllerInputEvent input,
+        string authority)
+    {
         ViewNode root;
         string inputScopeId;
         if (string.Equals(input.PinnedLayoutId, "host.full-widget", StringComparison.Ordinal))
@@ -1772,20 +1784,75 @@ internal sealed class BridgeClientRegistry : IAsyncDisposable
                 string.Equals(layout.Id, input.PinnedLayoutId, StringComparison.Ordinal));
             if (selectedLayout?.Root is null ||
                 string.IsNullOrWhiteSpace(selectedLayout.ActiveInputScopeId))
-                throw new BridgeProtocolException(
-                    "Pinned-surface input targets an unavailable layout projection.");
+                throw new BridgeStalePinnedInputAuthorityException(
+                    $"Pinned-surface input targets an unavailable {authority} layout projection.");
             root = selectedLayout.Root;
             inputScopeId = selectedLayout.ActiveInputScopeId;
         }
         if (!string.Equals(input.ActiveInputScopeId, inputScopeId, StringComparison.Ordinal))
-            throw new BridgeProtocolException(
-                "Pinned-surface input targets a stale input scope.");
+            throw new BridgeStalePinnedInputAuthorityException(
+                $"Pinned-surface input targets a stale {authority} input scope.");
         var scopeRoot = FindInputScope(root, inputScopeId, isRoot: true);
         var focusedNode = scopeRoot is null ? null :
             FindNodeInScope(scopeRoot, input.FocusedElementId!, isScopeRoot: true);
         if (focusedNode is null || focusedNode.IsDisabled is true || focusedNode.IsBusy is true)
-            throw new BridgeProtocolException(
-                "Pinned-surface input targets an unavailable focused element.");
+            throw new BridgeStalePinnedInputAuthorityException(
+                $"Pinned-surface input targets an unavailable {authority} focused element.");
+
+        if (input.Button == ControllerButton.A)
+        {
+            if (input.Phase == ControllerEventPhase.Pressed &&
+                focusedNode.Kind is ViewNodeKind.Button or ViewNodeKind.Slider or
+                    ViewNodeKind.ActionSurface &&
+                !string.IsNullOrWhiteSpace(focusedNode.ActionId))
+                return new(focusedNode.ActionId, focusedNode.Id, focusedNode.Kind);
+            throw new BridgeStalePinnedInputAuthorityException(
+                $"Pinned-surface input has no actionable {authority} activation binding.");
+        }
+        if (focusedNode.Kind == ViewNodeKind.Slider &&
+            input.Button is ControllerButton.DPadLeft or ControllerButton.DPadRight &&
+            !string.IsNullOrWhiteSpace(focusedNode.ValueChangedActionId))
+            return new(
+                focusedNode.ValueChangedActionId, focusedNode.Id, focusedNode.Kind,
+                focusedNode.Minimum, focusedNode.Maximum, focusedNode.Step);
+
+        var shortcut = focusedNode.Shortcuts.FirstOrDefault(candidate =>
+            candidate.Button == input.Button && candidate.Phase == input.Phase);
+        if (shortcut is not null)
+            return new(shortcut.ActionId, focusedNode.Id, focusedNode.Kind);
+        var path = new List<ViewNode>();
+        if (!FindPathInScope(scopeRoot!, focusedNode.Id, isScopeRoot: true, path))
+            throw new BridgeStalePinnedInputAuthorityException(
+                $"Pinned-surface input lost its {authority} focused-element path.");
+        for (var index = path.Count - 2; index >= 0; index--)
+        {
+            shortcut = path[index].Shortcuts.FirstOrDefault(candidate =>
+                candidate.Button == input.Button && candidate.Phase == input.Phase);
+            if (shortcut is not null)
+                return new(shortcut.ActionId, path[index].Id, path[index].Kind);
+        }
+        throw new BridgeStalePinnedInputAuthorityException(
+            $"Pinned-surface input has no actionable {authority} command binding.");
+    }
+
+    private sealed record PinnedSurfaceInputBinding(
+        string ActionId,
+        string SourceElementId,
+        ViewNodeKind SourceKind,
+        double? Minimum = null,
+        double? Maximum = null,
+        double? Step = null);
+
+    private static bool FindPathInScope(
+        ViewNode node, string id, bool isScopeRoot, List<ViewNode> path)
+    {
+        if (!isScopeRoot && node.InputScopeId is not null) return false;
+        path.Add(node);
+        if (string.Equals(node.Id, id, StringComparison.Ordinal)) return true;
+        foreach (var child in node.Children)
+            if (FindPathInScope(child, id, isScopeRoot: false, path)) return true;
+        path.RemoveAt(path.Count - 1);
+        return false;
     }
 
     private static ViewNode? FindInputScope(ViewNode node, string scopeId, bool isRoot)
@@ -1819,6 +1886,7 @@ internal sealed class BridgeClientRegistry : IAsyncDisposable
         long generation,
         Action<Exception> recordFailure)
     {
+        private const int MaximumPinnedInputOriginSnapshots = 16;
         private ConfiguredWidget _configured = configured;
         internal ConfiguredWidget Configured
         {
@@ -1839,6 +1907,7 @@ internal sealed class BridgeClientRegistry : IAsyncDisposable
 
         internal ViewSnapshot? CachedSnapshot { get; private set; }
         private int _cachedSnapshotWorkerStart;
+        private readonly Queue<ViewSnapshot> _pinnedInputOriginSnapshots = new();
         private EmbeddedMediaCommandAuthority? _embeddedMediaCommandAuthority;
         private long _lastDashboardInputSequence;
         private readonly object _residencyGate = new();
@@ -1887,6 +1956,14 @@ internal sealed class BridgeClientRegistry : IAsyncDisposable
             if (workerStart <= 0 || !Client.IsRunning)
                 throw new BridgeProtocolException(
                     $"Widget '{Configured.Id}' lost its worker before snapshot publication.");
+            if (_cachedSnapshotWorkerStart != 0 && _cachedSnapshotWorkerStart != workerStart)
+                _pinnedInputOriginSnapshots.Clear();
+            if (CachedSnapshot is { } prior && prior.Sequence != snapshot.Sequence)
+            {
+                _pinnedInputOriginSnapshots.Enqueue(prior);
+                while (_pinnedInputOriginSnapshots.Count > MaximumPinnedInputOriginSnapshots)
+                    _pinnedInputOriginSnapshots.Dequeue();
+            }
             var media = snapshot.EmbeddedMedia;
             var pending = media?.PendingCommand;
             if (pending is null || media is null)
@@ -1911,6 +1988,13 @@ internal sealed class BridgeClientRegistry : IAsyncDisposable
             }
             CachedSnapshot = snapshot;
             _cachedSnapshotWorkerStart = workerStart;
+        }
+
+        internal ViewSnapshot? FindPinnedInputOriginSnapshot(long sequence)
+        {
+            if (CachedSnapshot?.Sequence == sequence) return CachedSnapshot;
+            return _pinnedInputOriginSnapshots.FirstOrDefault(candidate =>
+                candidate.Sequence == sequence);
         }
 
         internal bool AdmitsEmbeddedMediaPlaybackEvent(

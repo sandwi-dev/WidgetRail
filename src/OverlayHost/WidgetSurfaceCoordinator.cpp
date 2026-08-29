@@ -600,7 +600,8 @@ bool WidgetSurfaceCoordinator::IsCurrentInputRequest(
     const auto* node = input::FindNodeInInputScope(
         snapshot, request.nodeId, request.activeInputScopeId);
     return node && !node->isDisabled && !node->isBusy &&
-        request.snapshotSequence == snapshot.sequence &&
+        request.nodeId == focusedElementId_ &&
+        request.snapshotSequence <= snapshot.sequence &&
         request.activeInputScopeId == snapshot.activeInputScopeId;
 }
 
