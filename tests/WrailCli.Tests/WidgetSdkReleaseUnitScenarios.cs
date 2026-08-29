@@ -9,7 +9,7 @@ internal static class WidgetSdkReleaseUnitScenarios
     public static Task Run()
     {
         var contract = WidgetSdkReleaseContract.Current;
-        Equal("0.2.0-dev", contract.Version);
+        Equal("0.3.0-dev", contract.Version);
         Equal("WidgetRail.WidgetSdk", contract.PackageId);
         Equal(ControllerWidgetScaffolder.SupportedTemplateVersion, contract.TemplateVersion);
 

@@ -2115,7 +2115,7 @@ public sealed class GameLauncherTests
             node.ActionId?.StartsWith(GameLauncherCollectionPolicy.ActionPrefix,
                 StringComparison.Ordinal) == true &&
             Nodes(node).Any(child =>
-                (child.Text ?? string.Empty).StartsWith("Manual (32):", StringComparison.Ordinal)));
+                (child.Text ?? string.Empty).StartsWith("Manual (32)  ", StringComparison.Ordinal)));
         await widget.OnActionAsync(new(manualOption.ActionId!, manualOption.Id));
         await Bounded(widget.WhenLibraryIdleAsync(), "manual fixed-slice collection");
         sortedFixed = Nodes(Snapshot(widget, 7512).Root)
@@ -2842,7 +2842,7 @@ public sealed class GameLauncherTests
                 StringComparison.Ordinal) == true &&
             Nodes(node).Any(child =>
                 (child.Text ?? string.Empty).StartsWith(
-                    "Continue (1):", StringComparison.Ordinal)));
+                    "Continue (1)  ", StringComparison.Ordinal)));
         await widget.OnActionAsync(new(recent.ActionId!, recent.Id));
         await Bounded(widget.WhenLibraryIdleAsync(), "Continue collection load");
         var selected = Snapshot(widget, 657);
@@ -3557,8 +3557,8 @@ public sealed class GameLauncherTests
         }
 
         static bool MatchesToggle(ViewNode node, string label) =>
-            string.Equals(node.Text, label + ": On", StringComparison.Ordinal) ||
-            string.Equals(node.Text, label + ": Off", StringComparison.Ordinal) ||
+            string.Equals(node.Text, label + "  On", StringComparison.Ordinal) ||
+            string.Equals(node.Text, label + "  Off", StringComparison.Ordinal) ||
             string.Equals(node.AccessibilityLabel, label + ", On", StringComparison.Ordinal) ||
             string.Equals(node.AccessibilityLabel, label + ", Off", StringComparison.Ordinal);
     }
@@ -3718,8 +3718,8 @@ public sealed class GameLauncherTests
         }
 
         static bool MatchesToggle(ViewNode node, string label) =>
-            string.Equals(node.Text, label + ": On", StringComparison.Ordinal) ||
-            string.Equals(node.Text, label + ": Off", StringComparison.Ordinal) ||
+            string.Equals(node.Text, label + "  On", StringComparison.Ordinal) ||
+            string.Equals(node.Text, label + "  Off", StringComparison.Ordinal) ||
             string.Equals(node.AccessibilityLabel, label + ", On", StringComparison.Ordinal) ||
             string.Equals(node.AccessibilityLabel, label + ", Off", StringComparison.Ordinal);
     }
@@ -3816,7 +3816,7 @@ public sealed class GameLauncherTests
                 StringComparison.Ordinal) == true && node.IsSelected == true &&
             Nodes(node).Any(child =>
                 (child.Text ?? string.Empty).StartsWith(
-                    "Favorites (1):", StringComparison.Ordinal))));
+                    "Favorites (1)  ", StringComparison.Ordinal))));
         await Background(widget);
     }
 

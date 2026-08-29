@@ -299,24 +299,24 @@ static Task ThemeDiscovery()
     Assert.Equal("#b8ae92", primaryIconButton.Get("background")!.Text);
     var toggleOff = compiled.Theme.Resolve(new WrssElement(
         "button", null,
-        new HashSet<string>(["wrail-toggle", "wrail-toggle--off"]),
+        new HashSet<string>(["wrail-switch", "wrail-switch--off"]),
         new HashSet<WrssPseudoState>()));
     Assert.Equal("44px", toggleOff.Get("min-height")!.Text);
     Assert.Equal("10px", toggleOff.Get("corner-radius")!.Text);
     var toggleOn = compiled.Theme.Resolve(new WrssElement(
         "button", null,
-        new HashSet<string>(["wrail-toggle", "wrail-toggle--on"]),
+        new HashSet<string>(["wrail-switch", "wrail-switch--on"]),
         new HashSet<WrssPseudoState>()));
     Assert.Equal("rgba(48, 47, 43, 0.98)", toggleOn.Get("background")!.Text);
     Assert.Equal("rgba(246, 240, 226, 0.22)", toggleOn.Get("border-color")!.Text);
     var focusedToggle = compiled.Theme.Resolve(new WrssElement(
         "button", null,
-        new HashSet<string>(["wrail-toggle", "wrail-toggle--off"]),
+        new HashSet<string>(["wrail-switch", "wrail-switch--off"]),
         new HashSet<WrssPseudoState>([WrssPseudoState.Focused])));
     Assert.Equal("#f4f0e8", focusedToggle.Get("outline-color")!.Text);
     var disabledToggle = compiled.Theme.Resolve(new WrssElement(
         "button", null,
-        new HashSet<string>(["wrail-toggle", "wrail-toggle--off"]),
+        new HashSet<string>(["wrail-switch", "wrail-switch--off"]),
         new HashSet<WrssPseudoState>([WrssPseudoState.Disabled])));
     Assert.Equal("0.64", disabledToggle.Get("opacity")!.Text);
     var stepper = compiled.Theme.Resolve(new WrssElement(

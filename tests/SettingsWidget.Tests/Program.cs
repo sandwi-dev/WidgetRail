@@ -230,14 +230,14 @@ static async Task CompositeControls()
     Assert.Equal("text.increase", buttons["text.stepper.increment"].ActionId);
     Assert.Equal("Decrease Text size", buttons["text.stepper.decrement"].AccessibilityLabel);
     Assert.Equal("Increase Text size", buttons["text.stepper.increment"].AccessibilityLabel);
-    Assert.Equal("Follow Windows motion: On", buttons["motion.system"].Text);
+    Assert.Equal("Follow Windows motion  On", buttons["motion.system"].Text);
     Assert.Equal(true, buttons["motion.system"].IsSelected);
     Assert.Equal("motion.system", buttons["motion.system"].ActionId);
-    Assert.SequenceEqual(["wrail-toggle", "wrail-toggle--on"],
+    Assert.SequenceEqual(["wrail-switch", "wrail-switch--on"],
         buttons["motion.system"].StyleClasses);
-    Assert.SequenceEqual(["wrail-toggle", "wrail-toggle--off"],
+    Assert.SequenceEqual(["wrail-switch", "wrail-switch--off"],
         buttons["motion.reduced"].StyleClasses);
-    Assert.Equal(null, buttons["motion.system"].Glyph);
+    Assert.Equal(WidgetGlyph.Check, buttons["motion.system"].Glyph);
     Assert.Equal(null, buttons["motion.reduced"].Glyph);
     Assert.Equal("motion.reduced", buttons["motion.system"].Focus!.Down);
     Assert.Equal("accessibility.visual", buttons["motion.reduced"].Focus!.Down);
@@ -256,7 +256,7 @@ static async Task VisualAccessibilityPersistence()
     Assert.Equal("contrast.system", initial.InitialFocusId);
     Assert.HasShortcut(initial.Root, "accessibility.visual.page", ControllerButton.B, "back");
     Assert.Equal(true, Button(initial.Root, "contrast.system").IsSelected);
-    Assert.Equal(null, Button(initial.Root, "contrast.system").Glyph);
+    Assert.Equal(WidgetGlyph.Check, Button(initial.Root, "contrast.system").Glyph);
     Assert.Equal(null, Button(initial.Root, "contrast.high").Glyph);
     Assert.Equal(null, Button(initial.Root, "bold-text.toggle").Glyph);
     Assert.Equal(null, Button(initial.Root, "transparency.reduced").Glyph);

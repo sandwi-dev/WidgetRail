@@ -1811,33 +1811,33 @@ static Task SettingsCompositesAreSemantic()
 {
     var snapshot = new WidgetView(
         UI.Stack("settings-root",
-            UI.ToggleButton("Reduced motion", true, "toggle-motion", "motion-toggle"),
-            UI.ToggleButton("Bold text", false, "toggle-bold", "bold-toggle"),
+            UI.Switch("Reduced motion", true, "toggle-motion", "motion-toggle"),
+            UI.Switch("Bold text", false, "toggle-bold", "bold-toggle"),
             UI.Stepper("Text scale", "110%", "text-smaller", "text-larger", "text-scale",
                 canDecrement: false)),
         "motion-toggle").CreateSnapshot("settings.test", 1);
 
     var toggle = Find(snapshot.Root, "motion-toggle");
-    Assert.Equal("Reduced motion: On", toggle.Text);
+    Assert.Equal("Reduced motion  On", toggle.Text);
     Assert.Equal("Reduced motion, On", toggle.AccessibilityLabel);
     Assert.Equal("toggle-motion", toggle.ActionId);
     Assert.Equal(true, toggle.IsSelected);
-    Assert.Equal(null, toggle.Glyph);
+    Assert.Equal(WidgetGlyph.Check, toggle.Glyph);
     Assert.True(
-        new[] { "wrail-toggle", "wrail-toggle--on" }
+        new[] { "wrail-switch", "wrail-switch--on" }
             .SequenceEqual(toggle.StyleClasses),
-        "ToggleButton must expose only the platform root and current-state hooks.");
+        "Switch must expose only the platform root and current-state hooks.");
 
     var offToggle = Find(snapshot.Root, "bold-toggle");
-    Assert.Equal("Bold text: Off", offToggle.Text);
+    Assert.Equal("Bold text  Off", offToggle.Text);
     Assert.Equal("Bold text, Off", offToggle.AccessibilityLabel);
     Assert.Equal(null, offToggle.IsSelected);
     Assert.Equal(null, offToggle.Glyph);
     Assert.Equal("toggle-bold", offToggle.ActionId);
     Assert.True(
-        new[] { "wrail-toggle", "wrail-toggle--off" }
+        new[] { "wrail-switch", "wrail-switch--off" }
             .SequenceEqual(offToggle.StyleClasses),
-        "ToggleButton must expose only the platform root and current-state hooks.");
+        "Switch must expose only the platform root and current-state hooks.");
 
     var explicitIcon = UI.Button("Liked", "like", "liked")
         .Icon(WidgetGlyph.Like, "Like track")

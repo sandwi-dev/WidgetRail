@@ -584,7 +584,7 @@ static async Task WifiRadioToggle()
     Assert.Equal("wifi.radio.toggle", on.ActionId);
     Assert.Equal("Wi-Fi on", on.AccessibilityLabel);
     Assert.SequenceEqual(
-        ["wrail-toggle", "wrail-toggle--on", "network-radio-toggle", "is-on"],
+        ["wrail-switch", "wrail-switch--on", "network-radio-toggle", "is-on"],
         on.StyleClasses);
     Assert.Equal("network.wifi.scan", on.Focus?.Down);
     await widget.OnActionAsync(new("wifi.radio.toggle", on.Id));
@@ -595,7 +595,7 @@ static async Task WifiRadioToggle()
     Assert.True(off.IsSelected is not true);
     Assert.Equal("network.wifi.radio", off.Id);
     Assert.SequenceEqual(
-        ["wrail-toggle", "wrail-toggle--off", "network-radio-toggle", "is-off"],
+        ["wrail-switch", "wrail-switch--off", "network-radio-toggle", "is-off"],
         off.StyleClasses);
 
     fake.EmitRadio(new WidgetWifiRadio(WidgetWifiRadioState.HardwareDisabled, false));
@@ -756,7 +756,7 @@ static async Task BluetoothRadioToggle()
     Assert.Equal("bluetooth.radio.toggle", radio.ActionId);
     Assert.Equal("Bluetooth on", radio.AccessibilityLabel);
     Assert.SequenceEqual(
-        ["wrail-toggle", "wrail-toggle--on", "network-radio-toggle",
+        ["wrail-switch", "wrail-switch--on", "network-radio-toggle",
             "network-bluetooth-toggle", "is-on"],
         radio.StyleClasses);
     await widget.OnActionAsync(new("bluetooth.radio.toggle", radio.Id));
@@ -766,7 +766,7 @@ static async Task BluetoothRadioToggle()
     var radioOff = Button(Snapshot(widget, 2).Root, "network.bluetooth.radio");
     Assert.True(radioOff.IsSelected is not true);
     Assert.SequenceEqual(
-        ["wrail-toggle", "wrail-toggle--off", "network-radio-toggle",
+        ["wrail-switch", "wrail-switch--off", "network-radio-toggle",
             "network-bluetooth-toggle", "is-off"],
         radioOff.StyleClasses);
 

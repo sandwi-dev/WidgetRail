@@ -106,7 +106,7 @@ public sealed class GameLauncherLayoutTests
                 var favorites = nodes.Single(node =>
                     node.Id == "game-launcher.filter.favorites");
                 CollectionAssert.AreEqual(
-                    new[] { "wrail-toggle", "wrail-toggle--off" },
+                    new[] { "wrail-switch", "wrail-switch--off" },
                     favorites.StyleClasses.ToArray());
                 Assert.AreEqual("game-launcher.filter.favorites", favorites.ActionId);
                 Assert.AreEqual("Favorites, Off", favorites.AccessibilityLabel);
@@ -114,7 +114,7 @@ public sealed class GameLauncherLayoutTests
                 var allInstalled = nodes.Single(node =>
                     node.ActionId == "game-launcher.collection.select.all");
                 CollectionAssert.AreEqual(
-                    new[] { "wrail-toggle", "wrail-toggle--on" },
+                    new[] { "wrail-switch", "wrail-switch--on" },
                     allInstalled.StyleClasses.ToArray());
                 Assert.AreEqual("All installed, On", allInstalled.AccessibilityLabel);
             }
