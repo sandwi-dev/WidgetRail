@@ -156,6 +156,68 @@ void TestAcceptedOverlayFullscreenMediaHostContract() {
           "fullscreen exit suppresses motion and immediately reconciles the retained external media plane");
 }
 
+void TestAcceptedWidgetOwnedFocusMemoryHostContract() {
+    const auto source = ReadSource(
+        fs::path{__FILE__}.parent_path() / "main.cpp");
+    const auto section = [&](const std::string_view begin,
+                             const std::string_view end) {
+        const auto beginOffset = source.find(begin);
+        Check(beginOffset != std::string::npos,
+              "widget focus ownership section begins");
+        const auto endOffset = source.find(end, beginOffset + begin.size());
+        Check(endOffset != std::string::npos,
+              "widget focus ownership section ends");
+        return source.substr(beginOffset, endOffset - beginOffset);
+    };
+
+    const auto focusOwner = section(
+        "[[nodiscard]] bool WidgetOwnsInputFocus(",
+        "void HandleAccessibilityActions()");
+    Check(focusOwner.find(
+              "state_.surface() == widgetrail::Surface::Widget") !=
+              std::string::npos &&
+              focusOwner.find(
+                  "state_.focusRegion() == widgetrail::FocusRegion::Widget") !=
+              std::string::npos &&
+              focusOwner.find("state_.activeWidget() == widgetId") !=
+              std::string::npos,
+          "focus memory authority requires the exact active widget-owned surface");
+    Check(focusOwner.find(
+              "void RememberCurrentFocus(const std::wstring_view widgetId) {\n"
+              "        if (!WidgetOwnsInputFocus(widgetId)) return;") !=
+              std::string::npos &&
+              focusOwner.find(
+                  "void RestoreFocusForActiveSurface(const std::wstring_view widgetId) {\n"
+                  "        if (!WidgetOwnsInputFocus(widgetId)) return;") !=
+              std::string::npos,
+          "tray-owned cycling cannot overwrite or restore widget focus memory");
+
+    const auto renderReconciliation = section(
+        "declarativeMotionActive_ = !inertRetainedSnapshot && result.animationActive;",
+        "if (inertRetainedSnapshot) {");
+    Check(renderReconciliation.find(
+              "if (WidgetOwnsInputFocus(renderedWidget) &&") !=
+              std::string::npos &&
+              renderReconciliation.find("ReconcileResponsiveFocusPersistence(") !=
+              std::string::npos &&
+              renderReconciliation.find("ResolveVisibleFocusTarget(") !=
+              std::string::npos,
+          "fresh Current rendering cannot reconcile focus while Tray owns input");
+
+    const auto stateTransition = section(
+        "template <typename Mutation>\n    void ApplyStateTransition(",
+        "void ApplyPresentation(");
+    Check(stateTransition.find(
+              "if (priorSurface == widgetrail::Surface::Widget && IsBridgeWidget(priorActive)) {\n"
+              "            RememberCurrentFocus(priorActive);") !=
+              std::string::npos &&
+              stateTransition.find(
+                  "state_.focusRegion() == widgetrail::FocusRegion::Widget) {\n"
+                  "            RestoreFocusForActiveSurface(state_.activeWidget());") !=
+              std::string::npos,
+          "B stores widget-owned focus and the later tray-to-widget entry restores it immediately");
+}
+
 struct FixtureWindowState final {
     bool clickThrough{true};
     HBRUSH background{};
@@ -666,6 +728,7 @@ int wmain(const int argc, wchar_t** argv) {
         (void)SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
         TestAcceptedCompactMediaHostContract();
         TestAcceptedOverlayFullscreenMediaHostContract();
+        TestAcceptedWidgetOwnedFocusMemoryHostContract();
         TestPolicyAndPlacement();
         const auto result = TestRealHostWindow(ParseEvidencePath(argc, argv));
         std::cout << "PinnedSurfaceHostTests passed (" << checks

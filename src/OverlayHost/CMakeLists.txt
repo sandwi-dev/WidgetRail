@@ -320,11 +320,16 @@ if(WRAIL_BUILD_TESTS)
     add_executable(WidgetInteractionSessionTests
         WidgetInteractionSessionTests.cpp WidgetInteractionSession.cpp
         ControllerNavigation.cpp FocusNavigation.cpp SliderInteraction.cpp
-        WidgetSurfaceFocus.cpp)
+        WidgetSurfaceFocus.cpp DeclarativeRenderer.cpp DeclarativeLayout.cpp
+        NativeStyle.cpp NativeTextLayout.cpp DeclarativeMotion.cpp
+        NativeIcons.cpp RemoteImageCache.cpp)
     target_compile_features(WidgetInteractionSessionTests PRIVATE cxx_std_20)
     target_compile_options(WidgetInteractionSessionTests PRIVATE /W4 /permissive- /EHsc)
     target_compile_definitions(WidgetInteractionSessionTests PRIVATE
         UNICODE _UNICODE WIN32_LEAN_AND_MEAN NOMINMAX)
+    target_link_libraries(WidgetInteractionSessionTests PRIVATE
+        d2d1 dwrite winhttp windowscodecs ole32)
+    widgetrail_link_taffy(WidgetInteractionSessionTests)
     add_test(NAME WidgetInteractionSessionTests COMMAND WidgetInteractionSessionTests)
 
     add_executable(FocusNavigationTests

@@ -632,7 +632,16 @@ function Invoke-WidgetInteractionTests {
             (Join-Path $projectDirectory 'ControllerNavigation.cpp'),
             (Join-Path $projectDirectory 'FocusNavigation.cpp'),
             (Join-Path $projectDirectory 'SliderInteraction.cpp'),
-            (Join-Path $projectDirectory 'WidgetSurfaceFocus.cpp'))
+            (Join-Path $projectDirectory 'WidgetSurfaceFocus.cpp'),
+            (Join-Path $projectDirectory 'DeclarativeRenderer.cpp'),
+            (Join-Path $projectDirectory 'DeclarativeLayout.cpp'),
+            (Join-Path $projectDirectory 'NativeStyle.cpp'),
+            (Join-Path $projectDirectory 'NativeTextLayout.cpp'),
+            (Join-Path $projectDirectory 'DeclarativeMotion.cpp'),
+            (Join-Path $projectDirectory 'NativeIcons.cpp'),
+            (Join-Path $projectDirectory 'RemoteImageCache.cpp')) `
+        -Libraries @(
+            'd2d1.lib', 'dwrite.lib', 'winhttp.lib', 'windowscodecs.lib', 'ole32.lib')
     Invoke-OverlayPlatformParityTest `
         -Name 'ControllerNavigationTests' `
         -ObjectDirectory $navigationTestObjectDirectory `

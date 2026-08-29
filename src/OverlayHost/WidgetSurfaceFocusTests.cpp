@@ -94,6 +94,36 @@ widgetrail::WidgetSnapshot SessionList(std::initializer_list<const wchar_t*> ids
     return snapshot;
 }
 
+widgetrail::WidgetSnapshot EmbeddedMediaSnapshot(
+    const wchar_t* activeScope = L"media.root",
+    const long long sequence = 1) {
+    widgetrail::WidgetSnapshot snapshot;
+    snapshot.sequence = sequence;
+    snapshot.instanceId = L"media.runtime.v1";
+    snapshot.activeInputScopeId = activeScope;
+    snapshot.initialFocusId = L"media.play";
+    snapshot.root.id = L"media.root";
+    snapshot.root.kind = L"stack";
+    snapshot.root.inputScopeId = L"media.root";
+
+    widgetrail::WidgetNode viewport;
+    viewport.id = L"media.viewport";
+    viewport.kind = L"mediaViewport";
+    snapshot.root.children.push_back(std::move(viewport));
+    snapshot.root.children.push_back(Button(L"media.previous"));
+    snapshot.root.children.push_back(Button(L"media.play"));
+    snapshot.root.children.push_back(Button(L"media.seek-forward"));
+
+    widgetrail::WidgetNode options;
+    options.id = L"media.options";
+    options.kind = L"stack";
+    options.inputScopeId = L"media.options";
+    options.children.push_back(Button(L"media.options.loop"));
+    options.children.push_back(Button(L"media.options.mute"));
+    snapshot.root.children.push_back(std::move(options));
+    return snapshot;
+}
+
 } // namespace
 
 int main() {
@@ -115,6 +145,28 @@ int main() {
           "modal focus is remembered independently");
     Check(memory.Restore(L"widget", root) == L"root-second",
           "returning to root restores root focus");
+
+    auto media = EmbeddedMediaSnapshot();
+    Check(memory.Restore(L"media-widget", media) == L"media.play",
+          "fresh single-page media enters its declared default control");
+    memory.Remember(L"media-widget", media, L"media.seek-forward");
+    auto mediaReadmitted = EmbeddedMediaSnapshot(L"media.root", 2);
+    Check(memory.Restore(L"media-widget", mediaReadmitted) == L"media.seek-forward",
+          "fresh compatible media admission preserves the exact non-default control");
+    auto mediaOptions = EmbeddedMediaSnapshot(L"media.options", 3);
+    Check(memory.Restore(L"media-widget", mediaOptions) == L"media.options.loop",
+          "a distinct media input scope starts from its own first control");
+    memory.Remember(L"media-widget", mediaOptions, L"media.options.mute");
+    Check(memory.Restore(L"media-widget", mediaReadmitted) == L"media.seek-forward",
+          "media root memory is independent from its alternate input scope");
+    Check(memory.Restore(L"media-widget", mediaOptions) == L"media.options.mute",
+          "returning to an alternate media scope restores its exact memory");
+
+    auto mediaControlRemoved = mediaReadmitted;
+    mediaControlRemoved.root.children.erase(
+        mediaControlRemoved.root.children.begin() + 3);
+    Check(memory.Restore(L"media-widget", mediaControlRemoved) == L"media.play",
+          "removed media memory falls back to the nearest valid controller control");
 
     memory.Forget(L"widget");
     Check(memory.Restore(L"widget", root) == L"root-first",
