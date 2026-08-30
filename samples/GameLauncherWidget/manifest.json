@@ -1,8 +1,8 @@
 {
   "manifestVersion": 1,
-  "id": "widgetrail.community.reference.game-launcher",
-  "publisher": "widgetrail.community.reference",
-  "name": "Game Launcher Community",
+  "id": "widgetrail.samples.game-launcher",
+  "publisher": "widgetrail.samples",
+  "name": "Game Launcher",
   "version": "0.2.2",
   "hostApi": { "minimum": "1.0", "maximumMajor": 1 },
   "entrypoint": {

@@ -2,7 +2,7 @@ using WidgetRail.WidgetProtocol;
 using WidgetRail.WidgetSdk;
 using System.Globalization;
 
-namespace WidgetRail.FirstPartyWidgets.GameLauncher;
+namespace WidgetRail.Samples.GameLauncher;
 
 internal sealed record GameLauncherDetailsSelection(
     string SavedId,

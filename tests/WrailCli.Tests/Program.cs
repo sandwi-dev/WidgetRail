@@ -67,12 +67,6 @@ if (args.Contains("--development-catalog-root", StringComparer.Ordinal))
     return 0;
 }
 
-if (args.Contains("--game-launcher-community-reference", StringComparer.Ordinal))
-{
-    await ExternalGameLauncherCommunityReference();
-    Console.WriteLine("PASS Game Launcher public SDK Community repository");
-    return 0;
-}
 
 if (args.Contains("--embedded-media-template", StringComparer.Ordinal))
 {
@@ -94,7 +88,6 @@ var tests = new (string Name, Func<Task> Run)[]
     ("CLI template and WidgetSdk form one release unit", WidgetSdkReleaseUnitScenarios.Run),
     ("Built wrail artifacts support an isolated external SDK consumer", ExternalVersionedSdkConsumer),
     ("External repository completes full application onboarding and author loop", ExternalFullApplicationOnboarding),
-    ("Game Launcher exports as a public SDK Community repository", ExternalGameLauncherCommunityReference),
     ("Generated widget completes the offline external package journey", NewScaffoldsOutsideCheckout),
     ("New rejects invalid package identity before writing", NewRejectsIdentity),
     ("Theme commands provide a deterministic end-to-end author workflow", ThemeWorkflow),
@@ -1061,155 +1054,6 @@ static async Task ExternalFullApplicationOnboarding()
                          StringComparison.OrdinalIgnoreCase) &&
                      !path.EndsWith(".nupkg", StringComparison.OrdinalIgnoreCase)))
         Assert.DoesNotContain(repositorySource, await File.ReadAllTextAsync(input));
-}
-
-static async Task ExternalGameLauncherCommunityReference()
-{
-    using var temp = new TemporaryDirectory();
-    var checkout = Environment.CurrentDirectory;
-    var distribution = Path.Combine(temp.Path, "wrail-dist");
-    var repository = Path.Combine(temp.Path, "external-game-launcher");
-    var widget = Path.Combine(repository, "GameLauncherCommunity");
-    var packages = Path.Combine(temp.Path, "nuget-packages");
-    var catalog = Path.Combine(temp.Path, "catalog");
-    Directory.CreateDirectory(distribution);
-    Directory.CreateDirectory(Path.Combine(repository, ".git"));
-    var toolchain = await ExternalConsumerToolchain.ConfigureAsync(repository);
-    await AssertExternalConsumerToolchainAsync(repository, toolchain);
-    CopyWrailDistribution(AppContext.BaseDirectory, distribution);
-    var environment = new Dictionary<string, string?>
-    {
-        ["WRAIL_TEMPLATE_ROOT"] = null,
-        ["NUGET_PACKAGES"] = packages,
-    };
-    var wrail = Path.Combine(distribution, "wrail.exe");
-    var exporter = Path.Combine(checkout, "src", "FirstPartyWidgets",
-        "GameLauncherWidget", "Export-CommunityReference.ps1");
-    var exported = await RunProcessAsync(
-        "pwsh",
-        ["-NoProfile", "-File", exporter, "-Wrail", wrail, "-Output", widget],
-        TimeSpan.FromSeconds(45), repository, environment);
-    Assert.True(exported.Code == 0,
-        "game launcher export: " + exported.Output + exported.Error);
-    Assert.Contains("self-contained Game Launcher Community reference", exported.Output);
-
-    var project = Path.Combine(widget, "GameLauncherCommunity.csproj");
-    var projectText = await File.ReadAllTextAsync(project);
-    Assert.Contains("PackageReference Include=\"WidgetRail.WidgetSdk\"", projectText);
-    Assert.DoesNotContain("ProjectReference", projectText);
-    Assert.DoesNotContain(checkout, projectText);
-    var sdkReference = XDocument.Load(project).Descendants("PackageReference").Single(element =>
-        string.Equals((string?)element.Attribute("Include"),
-            "WidgetRail.WidgetSdk", StringComparison.Ordinal));
-    var sdkVersion = (string?)sdkReference.Attribute("Version") ??
-        throw new InvalidOperationException("The Community reference omitted its exact SDK version.");
-    Assert.True(!File.Exists(Path.Combine(widget, "src", "AssemblyInfo.cs")),
-        "The external reference retained repository-only friend declarations.");
-    foreach (var input in Directory.EnumerateFiles(widget, "*", SearchOption.AllDirectories)
-                 .Where(path => !path.Contains(
-                     $"{Path.DirectorySeparatorChar}bin{Path.DirectorySeparatorChar}",
-                     StringComparison.OrdinalIgnoreCase) &&
-                     !path.Contains(
-                         $"{Path.DirectorySeparatorChar}obj{Path.DirectorySeparatorChar}",
-                         StringComparison.OrdinalIgnoreCase) &&
-                     !path.EndsWith(".nupkg", StringComparison.OrdinalIgnoreCase)))
-        Assert.DoesNotContain(checkout, await File.ReadAllTextAsync(input));
-
-    var restore = await RunProcessAsync(
-        "dotnet", ["restore", project, "--force", "--no-cache", "--nologo"],
-        TimeSpan.FromSeconds(120), widget, environment);
-    Assert.True(restore.Code == 0, "game launcher restore: " + restore.Output + restore.Error);
-    var restoredSdk = Path.Combine(
-        packages,
-        "widgetrail.widgetsdk",
-        sdkVersion.ToLowerInvariant(),
-        "lib",
-        "net8.0");
-    Assert.True(File.Exists(Path.Combine(restoredSdk, "WidgetSdk.dll")),
-        "The Community reference did not restore the exact SDK into its fresh cache.");
-    Assert.True(File.Exists(Path.Combine(restoredSdk, "WidgetProtocol.dll")),
-        "The Community reference SDK package omitted WidgetProtocol.dll.");
-    var build = await RunProcessAsync(
-        "dotnet", ["build", project, "-c", "Release", "--no-restore", "--nologo"],
-        TimeSpan.FromSeconds(120), widget, environment);
-    Assert.True(build.Code == 0, "game launcher build: " + build.Output + build.Error);
-    var applicationOutput = Path.Combine(
-        widget, "bin", "Release", "net8.0-windows10.0.19041.0", "win-x64");
-    var staging = Path.Combine(repository, "game-launcher-package-root");
-    Directory.CreateDirectory(Path.Combine(staging, "payload"));
-    Directory.CreateDirectory(Path.Combine(staging, "styles"));
-    File.Copy(Path.Combine(widget, "manifest.json"), Path.Combine(staging, "manifest.json"));
-    File.Copy(Path.Combine(widget, "styles", "default.wrss"),
-        Path.Combine(staging, "styles", "default.wrss"));
-    foreach (var input in Directory.EnumerateFiles(
-                 applicationOutput, "*", SearchOption.AllDirectories)
-             .Where(path => !path.EndsWith(".pdb", StringComparison.OrdinalIgnoreCase) &&
-                            !path.EndsWith(".xml", StringComparison.OrdinalIgnoreCase)))
-    {
-        var destination = Path.Combine(
-            staging, "payload", Path.GetRelativePath(applicationOutput, input));
-        Directory.CreateDirectory(Path.GetDirectoryName(destination)!);
-        File.Copy(input, destination);
-    }
-    var validation = await RunProcessAsync(
-        wrail, ["validate", staging], TimeSpan.FromSeconds(30), repository, environment);
-    Assert.True(validation.Code == 0,
-        "game launcher validate: " + validation.Output + validation.Error);
-
-    var archive = Path.Combine(repository,
-        "widgetrail.community.reference.game-launcher-0.2.0.wrwidget");
-    var packed = await RunProcessAsync(
-        wrail,
-        ["pack", staging, "--output", archive],
-        TimeSpan.FromSeconds(150), repository, environment);
-    Assert.True(packed.Code == 0, "game launcher pack: " + packed.Output + packed.Error);
-    var installed = await RunProcessAsync(
-        wrail, ["install", archive, "--catalog", catalog, "--accept-full-trust"],
-        TimeSpan.FromSeconds(60), repository, environment);
-    Assert.True(installed.Code == 0,
-        "game launcher install: " + installed.Output + installed.Error);
-    var manifest = ManifestJson.Deserialize(
-        await File.ReadAllBytesAsync(Path.Combine(widget, "manifest.json")));
-    Assert.Equal("widgetrail.community.reference.game-launcher", manifest.Id);
-    Assert.Equal("widgetrail.community.reference", manifest.Publisher);
-    Assert.Equal(WidgetEntrypointRuntimes.FullTrustApplicationV1,
-        manifest.Entrypoint.Runtime);
-    Assert.Equal("payload/GameLauncherApplication.exe", manifest.Entrypoint.Executable);
-    Assert.True(manifest.Permissions.Count == 0 && manifest.OptionalPermissions.Count == 0,
-        "The autonomous Community application retained product capability authority.");
-    Assert.True(File.Exists(Path.Combine(applicationOutput, "GameLauncherApplication.exe")),
-        "The exported Community application did not build its ordinary executable.");
-    foreach (var productAssembly in new[]
-             {
-                 "PlatformBroker.dll", "WindowsAppLibraryProvider.dll",
-                 "PlatformSettings.dll", "GameLauncherWidget.dll",
-             })
-        Assert.True(!File.Exists(Path.Combine(applicationOutput, productAssembly)),
-            $"The exported application retained product assembly {productAssembly}.");
-    Assert.True(!File.Exists(Path.Combine(applicationOutput, "GameLauncherWidget.Core.dll")),
-        "The source-export application unexpectedly split its single capability-free assembly.");
-    Assert.True(File.Exists(Path.Combine(applicationOutput, "Microsoft.Windows.SDK.NET.dll")),
-        "The exported application omitted its required Windows SDK runtime projection.");
-    var coreBytes = await File.ReadAllBytesAsync(Path.Combine(
-        applicationOutput, "GameLauncherApplication.dll"));
-    foreach (var forbiddenCapability in new[]
-             {
-                 "system.apps.library.read.v1",
-                 "system.apps.library.launch.v1",
-                 "storage.private-state.v1",
-                 "HostGameLauncherApplicationService",
-             })
-        Assert.True(!ContainsBytes(coreBytes, Encoding.UTF8.GetBytes(forbiddenCapability)) &&
-                    !ContainsBytes(coreBytes, Encoding.Unicode.GetBytes(forbiddenCapability)),
-            $"The shipped widget core retained dormant capability '{forbiddenCapability}'.");
-    var snapshot = await new WidgetCatalog(catalog).DiscoverAsync();
-    var candidate = snapshot.Widgets.Single();
-    Assert.Equal(manifest.Id, candidate.Id);
-    Assert.Equal(manifest.Publisher, candidate.ActiveVersion.Manifest.Publisher);
-    Assert.True(!candidate.Enabled,
-        "A newly installed Community reference became visible without explicit enablement.");
-    await AssertArchiveHasNoPathsAsync(
-        archive, checkout, distribution, repository, packages, catalog);
 }
 
 static async Task AssertExternalConsumerToolchainAsync(

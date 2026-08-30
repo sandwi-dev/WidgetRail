@@ -1,4 +1,4 @@
-using WidgetRail.FirstPartyWidgets.GameLauncher;
+using WidgetRail.Samples.GameLauncher;
 using WidgetRail.WidgetSdk;
 
 namespace GameLauncherCommunityApplication.Tests;
@@ -39,7 +39,6 @@ public sealed class PackageStateTests
         var expected = GameLauncherPrivateState.Empty with
         {
             ProvenSources = ["Steam"],
-            ExperienceId = "compact-grid",
         };
 
         var mutation = await first.WriteAsync(expected, 0, CancellationToken.None);
@@ -50,7 +49,6 @@ public sealed class PackageStateTests
         Assert.IsTrue(actual.Exists);
         Assert.AreEqual(1L, actual.Revision);
         Assert.AreEqual("Steam", actual.Value!.ProvenSources.Single());
-        Assert.AreEqual("compact-grid", actual.Value.ExperienceId);
 
         var conflict = await Assert.ThrowsExactlyAsync<WidgetCapabilityException>(
             async () => await restarted.WriteAsync(

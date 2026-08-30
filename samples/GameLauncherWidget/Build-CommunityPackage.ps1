@@ -13,7 +13,7 @@ $env:MSBUILDDISABLENODEREUSE = '1'
 $env:UseSharedCompilation = 'false'
 
 $widgetRoot = [System.IO.Path]::GetFullPath($PSScriptRoot)
-$repositoryRoot = [System.IO.Path]::GetFullPath((Join-Path $widgetRoot '..\..\..'))
+$repositoryRoot = [System.IO.Path]::GetFullPath((Join-Path $widgetRoot '..\..'))
 $artifactsRoot = if ([string]::IsNullOrWhiteSpace($OutputDirectory)) {
     Join-Path $repositoryRoot 'artifacts\community-addons\game-launcher'
 } else {
@@ -23,7 +23,7 @@ $stagingRoot = Join-Path $artifactsRoot 'package-root'
 $payloadRoot = Join-Path $stagingRoot 'payload'
 $publishRoot = Join-Path $artifactsRoot 'application-publish'
 $buildGraphRoot = Join-Path $artifactsRoot 'build-graph'
-$manifestPath = Join-Path $widgetRoot 'community-manifest.json'
+$manifestPath = Join-Path $widgetRoot 'manifest.json'
 $manifest = Get-Content -LiteralPath $manifestPath -Raw | ConvertFrom-Json
 $packagePath = Join-Path $artifactsRoot "$($manifest.id)-$($manifest.version).wrwidget"
 $applicationProject = Join-Path $widgetRoot 'Application\GameLauncherApplication.csproj'
@@ -109,7 +109,7 @@ $required = @(
     'manifest.json',
     'payload\GameLauncherApplication.exe',
     'payload\GameLauncherApplication.dll',
-    'payload\GameLauncherWidget.Core.dll',
+    'payload\GameLauncherWidget.dll',
     'payload\WidgetApplicationRuntime.dll',
     'payload\WidgetSdk.dll',
     'payload\WidgetProtocol.dll',
@@ -121,7 +121,7 @@ if ($missing.Count -ne 0) {
     throw "Staged Game Launcher application is incomplete: [$($missing -join ', ')]."
 }
 $forbidden = @($stagedFiles | Where-Object {
-    $_ -match '(^|\\)(PlatformBroker|WindowsAppLibraryProvider|PlatformSettings|GameLauncherWidget)\.dll$' -or
+    $_ -match '(^|\\)(PlatformBroker|WindowsAppLibraryProvider|PlatformSettings)\.dll$' -or
     $_ -match '\.(pdb|xml)$'
 })
 if ($forbidden.Count -ne 0) {

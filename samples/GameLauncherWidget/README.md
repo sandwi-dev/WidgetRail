@@ -8,27 +8,27 @@ lifecycle and presentation channel; there is no Game Launcher capability,
 product-specific host API, or dependency on `PlatformBroker.dll` or
 `WindowsAppLibraryProvider.dll` in the package payload.
 
-Create a self-contained Community candidate from a built `wrail` distribution:
+Build and validate the Community sample directly from its maintained source:
 
 ```powershell
-pwsh -NoProfile -File .\src\FirstPartyWidgets\GameLauncherWidget\Export-CommunityReference.ps1 `
-  -Wrail .\artifacts\wrail\wrail.exe `
-  -Output C:\temp\GameLauncherCommunity
+pwsh -NoProfile -File .\samples\GameLauncherWidget\Build-CommunityPackage.ps1 `
+  -Configuration Release
 ```
 
-The generated project contains no checkout `ProjectReference` or friend access.
-It restores the exact locally packaged `WidgetRail.WidgetSdk`, declares
-the reviewed `full-trust-application-v1` executable with no product capabilities,
-and packages as `widgetrail.community.reference.game-launcher`. Installation and
-enablement require the normal explicit full-trust disclosure.
+The maintained sample declares the reviewed `full-trust-application-v1`
+executable with no product capabilities and packages as
+`widgetrail.samples.game-launcher`. Installation and enablement require the
+normal explicit full-trust disclosure.
 
 Package-local files under
-`%LOCALAPPDATA%\WidgetRail\community-apps\widgetrail.community.reference.game-launcher`
+`%LOCALAPPDATA%\WidgetRail\community-apps\widgetrail.samples.game-launcher`
 own the SavedId key, organization state, and source opt-ins. On first run the
 package imports only the existing Epic/GOG opt-in booleans and then owns its
 bounded `sources.json`. The retired overlay-host private-state representation is
 not reused; this is an intentional narrow pre-release organization-state reset.
 External store/account data and credentials are neither deleted nor copied.
+The earlier `widgetrail.community.reference.game-launcher` installation and its
+package-local state remain separate and independently uninstallable.
 
 Every package source row enters the widget as one immutable normalized presentation
 containing its sanitized item/source identity, availability, role-keyed artwork,
@@ -61,10 +61,9 @@ into details, game-rail, collection, source, operation, and controller-hint
 slots. The partition moves the existing elements without creating action IDs,
 SavedIds, focus IDs, provider authority, or another retained library.
 
-These slot markers are a private first-party host seam, not a public widget or
-pack authoring API. Until the ordinary OverlayHost render path adopts that seam,
-the declarative fallback remains usable and selection persists, but production
-does not yet apply the four native slot layouts.
+These package-authored slot classes are styling details, not host identity or a
+public widget API. The ordinary declarative fallback remains usable without any
+Game Launcher-specific host path.
 
 The hero reuses only the selected row's opaque trusted artwork handle and otherwise
 shows a semantic fallback. It names the exact source, availability, favorite,

@@ -3,7 +3,7 @@ using System.Text.Json.Serialization;
 using System.Text.Json.Nodes;
 using WidgetRail.WidgetSdk;
 
-namespace WidgetRail.FirstPartyWidgets.GameLauncher;
+namespace WidgetRail.Samples.GameLauncher;
 
 internal sealed class GameLauncherStateFileStore
 {

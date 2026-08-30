@@ -1,7 +1,7 @@
 using WidgetRail.WidgetProtocol;
 using WidgetRail.WidgetSdk;
 
-namespace WidgetRail.FirstPartyWidgets.GameLauncher;
+namespace WidgetRail.Samples.GameLauncher;
 
 internal static class GameLauncherActionSheet
 {

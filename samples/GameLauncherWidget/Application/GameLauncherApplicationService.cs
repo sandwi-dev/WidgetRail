@@ -4,7 +4,7 @@ using WidgetRail.WindowsAppLibraryProvider;
 using PackageAppLibraryProvider =
     WidgetRail.WindowsAppLibraryProvider.WindowsAppLibraryProvider;
 
-namespace WidgetRail.FirstPartyWidgets.GameLauncher;
+namespace WidgetRail.Samples.GameLauncher;
 
 internal sealed class GameLauncherApplicationService(
     PackageAppLibraryProvider provider,

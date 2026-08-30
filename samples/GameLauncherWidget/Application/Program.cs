@@ -1,4 +1,4 @@
-using WidgetRail.FirstPartyWidgets.GameLauncher;
+using WidgetRail.Samples.GameLauncher;
 using WidgetRail.WidgetRuntime;
 using WidgetRail.WindowsAppLibraryProvider;
 using PackageAppLibraryProvider =

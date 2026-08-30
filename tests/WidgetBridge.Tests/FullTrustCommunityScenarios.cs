@@ -257,13 +257,12 @@ internal static class FullTrustCommunityScenarios
     {
         var root = RepositoryRoot();
         var applicationOutput = Path.Combine(
-            root, "src", "FirstPartyWidgets", "GameLauncherWidget", "Application",
+            root, "samples", "GameLauncherWidget", "Application",
             "bin", "Release", "net8.0-windows10.0.19041.0", "win-x64");
         Check(File.Exists(Path.Combine(applicationOutput, "GameLauncherApplication.exe")),
             "The package-owned Game Launcher application was not built.");
         Check(File.Exists(Path.Combine(applicationOutput, "Microsoft.Windows.SDK.NET.dll")) &&
-              File.Exists(Path.Combine(applicationOutput, "GameLauncherWidget.Core.dll")) &&
-              !File.Exists(Path.Combine(applicationOutput, "GameLauncherWidget.dll")),
+              File.Exists(Path.Combine(applicationOutput, "GameLauncherWidget.dll")),
             "The Game Launcher package graph did not contain the Windows runtime and " +
             "capability-free widget core exclusively.");
         using var temporary = new ScenarioDirectory();
@@ -520,14 +519,14 @@ internal static class FullTrustCommunityScenarios
         string destination)
     {
         var package = Path.Combine(
-            destination, "widgetrail.community.reference.game-launcher-0.2.0.wrwidget");
+            destination, "widgetrail.samples.game-launcher-0.2.2.wrwidget");
         using var stream = new FileStream(
             package, FileMode.CreateNew, FileAccess.ReadWrite, FileShare.None);
         using var archive = new ZipArchive(stream, ZipArchiveMode.Create);
         var widgetRoot = Path.Combine(
-            repositoryRoot, "src", "FirstPartyWidgets", "GameLauncherWidget");
+            repositoryRoot, "samples", "GameLauncherWidget");
         Write(archive, "manifest.json", File.ReadAllBytes(Path.Combine(
-            widgetRoot, "community-manifest.json")));
+            widgetRoot, "manifest.json")));
         Write(archive, "styles/default.wrss", File.ReadAllBytes(Path.Combine(
             widgetRoot, "styles", "default.wrss")));
         foreach (var file in Directory.EnumerateFiles(

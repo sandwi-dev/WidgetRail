@@ -2,7 +2,7 @@ using System.Security.Cryptography;
 using System.Text;
 using WidgetRail.WidgetSdk;
 
-namespace WidgetRail.FirstPartyWidgets.GameLauncher;
+namespace WidgetRail.Samples.GameLauncher;
 
 internal sealed record GameLauncherItem(
     WidgetAppLibraryItem Value,

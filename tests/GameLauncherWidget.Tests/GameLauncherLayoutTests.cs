@@ -1,4 +1,4 @@
-using WidgetRail.FirstPartyWidgets.GameLauncher;
+using WidgetRail.Samples.GameLauncher;
 using WidgetRail.WidgetProtocol;
 using WidgetRail.WidgetSdk;
 using Microsoft.VisualStudio.TestTools.UnitTesting;

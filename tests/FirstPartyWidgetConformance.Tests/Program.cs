@@ -4,7 +4,7 @@ using System.Globalization;
 using System.Text.Json;
 using WidgetRail.FirstPartyWidgets.AudioMixer;
 using WidgetRail.FirstPartyWidgets.GamesApps;
-using WidgetRail.FirstPartyWidgets.GameLauncher;
+using WidgetRail.Samples.GameLauncher;
 using WidgetRail.FirstPartyWidgets.MediaSessions;
 using WidgetRail.FirstPartyWidgets.NetworkControls;
 using WidgetRail.FirstPartyWidgets.Settings;
@@ -109,7 +109,7 @@ if (args.Contains("--game-launcher-launch-acceptance", StringComparer.Ordinal))
         deployment.InstalledCatalogRoot,
         deployment.WorkerHostPath);
     var package = deployment.Packages.Single(candidate =>
-        candidate.Manifest.Id == "widgetrail.firstparty.game-launcher");
+        candidate.Manifest.Id == "widgetrail.samples.game-launcher");
     await RunCatalogAsync(
         installed.Catalog,
         [package],
@@ -129,8 +129,8 @@ if (args.Contains("--game-launcher-community-acceptance", StringComparer.Ordinal
     using var deployment = await Deployment.CreateAsync(installAsCommunity: false);
     var packageCatalog = new WidgetCatalog(deployment.InstalledCatalogRoot);
     var installedVersion = await packageCatalog.InstallAsync(packagePath);
-    Assert.Equal("widgetrail.community.reference.game-launcher", installedVersion.Id);
-    Assert.Equal("widgetrail.community.reference", installedVersion.Manifest.Publisher);
+    Assert.Equal("widgetrail.samples.game-launcher", installedVersion.Id);
+    Assert.Equal("widgetrail.samples", installedVersion.Manifest.Publisher);
     await packageCatalog.SetEnabledAsync(installedVersion.Id, true);
     var installed = await BridgeCatalog.LoadWithInstalledAsync(
         deployment.EmptyTrustedCatalogPath,
@@ -203,7 +203,7 @@ if (args.Contains("--text-entry-acceptance", StringComparer.Ordinal))
         deployment.WorkerHostPath);
     var packages = deployment.Packages
         .Where(package => package.Manifest.Id is
-            "widgetrail.firstparty.game-launcher" or
+            "widgetrail.samples.game-launcher" or
             "widgetrail.firstparty.network-controls")
         .ToArray();
     Assert.Equal(2, packages.Length);
@@ -563,7 +563,7 @@ static async Task InstalledSteamArtworkRunsIsolated(BridgeCatalog catalog)
         privateSecrets: simulator,
         loopbackHttp: simulator,
         privateState: simulator);
-    var configured = catalog.GetConfigured("widgetrail.firstparty.game-launcher");
+    var configured = catalog.GetConfigured("widgetrail.samples.game-launcher");
     Assert.True(configured.RequiresAppContainer,
         "Installed Steam artwork did not use the generic AppContainer route.");
     using var consentRoot = new TemporaryDirectory("wrail-installed-steam-artwork-consent");
@@ -711,7 +711,7 @@ static async Task InstalledGogRunsIsolated(BridgeCatalog catalog)
         privateSecrets: simulator,
         loopbackHttp: simulator,
         privateState: simulator);
-    var configured = catalog.GetConfigured("widgetrail.firstparty.game-launcher");
+    var configured = catalog.GetConfigured("widgetrail.samples.game-launcher");
     using var consentRoot = new TemporaryDirectory("wrail-installed-gog-consent");
     var consent = new ConsentStore(consentRoot.Path);
     var identity = new BrokerWidgetIdentity(
@@ -799,7 +799,7 @@ static async Task InstalledGameLauncherCategoryRunsIsolated(BridgeCatalog catalo
             "source-empty-store", "Empty Store", AppLibrarySourceHealth.Healthy,
             1, "healthy"),
     ];
-    var configured = catalog.GetConfigured("widgetrail.firstparty.game-launcher");
+    var configured = catalog.GetConfigured("widgetrail.samples.game-launcher");
     using var consentRoot = new TemporaryDirectory("wrail-installed-category-consent");
     var consent = new ConsentStore(consentRoot.Path);
     var identity = new BrokerWidgetIdentity(
@@ -1302,7 +1302,7 @@ static async Task InstalledGameLauncherOwnedRunsIsolated(BridgeCatalog catalog)
                 new AppLibraryCapabilitySet([AppLibraryAction.Install]),
                 ActiveOperation: null)),
     ]);
-    var configured = catalog.GetConfigured("widgetrail.firstparty.game-launcher");
+    var configured = catalog.GetConfigured("widgetrail.samples.game-launcher");
     using var consentRoot = new TemporaryDirectory("wrail-installed-owned-consent");
     var consent = new ConsentStore(consentRoot.Path);
     var identity = new BrokerWidgetIdentity(
@@ -1403,7 +1403,7 @@ static async Task InstalledGameLauncherOfflineRunsIsolated(BridgeCatalog catalog
         privateSecrets: simulated,
         loopbackHttp: simulated,
         privateState: simulated);
-    var configured = catalog.GetConfigured("widgetrail.firstparty.game-launcher");
+    var configured = catalog.GetConfigured("widgetrail.samples.game-launcher");
     using var consentRoot = new TemporaryDirectory("wrail-installed-offline-consent");
     var consent = new ConsentStore(consentRoot.Path);
     var identity = new BrokerWidgetIdentity(
@@ -1492,7 +1492,7 @@ static async Task InstalledRunningAppRunsIsolated(BridgeCatalog catalog)
         new("stable-manual-app", "fixture-instance", "A Conformance Manual App",
             AppLibraryKind.Application, "Windows"),
     ]);
-    var configured = catalog.GetConfigured("widgetrail.firstparty.game-launcher");
+    var configured = catalog.GetConfigured("widgetrail.samples.game-launcher");
     Assert.True(configured.RequiresAppContainer,
         "Installed running-app route did not use the generic AppContainer worker.");
     using var consentRoot = new TemporaryDirectory("wrail-installed-running-app-consent");
@@ -2539,8 +2539,7 @@ static async Task RunCatalogAsync(
             var configured = catalog.GetConfigured(widgetId(package));
             backend = sharedBackend ?? CreateBackend(
                 gameLibraryCount: package.Manifest.Id is
-                    "widgetrail.firstparty.game-launcher" or
-                    "widgetrail.community.reference.game-launcher"
+                    "widgetrail.samples.game-launcher"
                     ? 10_000 : 2);
             using var consentRoot = new TemporaryDirectory("wrail-firstparty-consent");
             var consent = new ConsentStore(consentRoot.Path);
@@ -2580,8 +2579,7 @@ static async Task RunCatalogAsync(
                 verifyGamesAppsRestart ? "Conformance Library App" : package.ExpectedText);
             Assert.Equal(0, ViewSnapshotValidator.Validate(snapshot).Count);
             if (package.Manifest.Id is
-                "widgetrail.firstparty.game-launcher" or
-                "widgetrail.community.reference.game-launcher" or
+                "widgetrail.samples.game-launcher" or
                 "widgetrail.firstparty.network-controls")
             {
                 var entry = Nodes(snapshot.Root).Single(node =>
@@ -2786,7 +2784,7 @@ static async Task ExerciseTextEntryAsync(
         return;
     }
 
-    Assert.Equal("widgetrail.firstparty.game-launcher", package.Manifest.Id);
+    Assert.Equal("widgetrail.samples.game-launcher", package.Manifest.Id);
     var search = Nodes(snapshot.Root).Single(node =>
         node.Kind == ViewNodeKind.TextEntry &&
         node.ActionId == "game-launcher.search.commit");
@@ -2929,8 +2927,7 @@ static async Task ExerciseControlAsync(
             actionId = "games.launch";
             calls = () => backend.AppLibraryLaunchCalls;
             break;
-        case "widgetrail.firstparty.game-launcher":
-        case "widgetrail.community.reference.game-launcher":
+        case "widgetrail.samples.game-launcher":
             Assert.Equal(64, Nodes(snapshot.Root).Count(node =>
                 node.ActionId == "game-launcher.launch"));
             Assert.True(Nodes(snapshot.Root).Count() < 1_024,

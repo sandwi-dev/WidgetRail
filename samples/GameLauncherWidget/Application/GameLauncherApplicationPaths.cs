@@ -1,7 +1,7 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
 
-namespace WidgetRail.FirstPartyWidgets.GameLauncher;
+namespace WidgetRail.Samples.GameLauncher;
 
 internal sealed record GameLauncherApplicationPaths(
     string Root,
@@ -24,7 +24,7 @@ internal sealed record GameLauncherApplicationPaths(
             ? Path.Combine(local, "WidgetRail")
             : Path.GetFullPath(local);
         var root = Path.Combine(productRoot, "community-apps",
-            "widgetrail.community.reference.game-launcher");
+            "widgetrail.samples.game-launcher");
         return new(
             root,
             Path.Combine(root, "organization.json"),

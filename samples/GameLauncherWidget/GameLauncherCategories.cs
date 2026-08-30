@@ -2,7 +2,7 @@ using System.Text;
 using System.Text.Json;
 using WidgetRail.WidgetSdk;
 
-namespace WidgetRail.FirstPartyWidgets.GameLauncher;
+namespace WidgetRail.Samples.GameLauncher;
 
 internal enum GameLauncherCollectionDirection
 {

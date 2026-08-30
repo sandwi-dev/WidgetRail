@@ -151,6 +151,7 @@ string[] retiredDomainMarkers =
     "WindowsSpotifyProvider",
     "widgetrail.samples.spotify",
     "widgetrail.community.reference.game-launcher",
+    "widgetrail.samples.game-launcher",
     "widgetrail.firstparty.game-launcher",
     "HostGameLauncherApplicationService",
 ];
@@ -181,8 +182,7 @@ foreach (var retiredPath in new[]
              Path.Combine(repository, "src", "WindowsSpotifyProvider", "WindowsSpotifyProvider.csproj"),
              Path.Combine(repository, "src", "SpotifyPlaybackProtocol", "SpotifyPlaybackProtocol.csproj"),
              Path.Combine(repository, "src", "SpotifyPlaybackHost", "SpotifyPlaybackHost.csproj"),
-             Path.Combine(repository, "src", "FirstPartyWidgets", "GameLauncherWidget", "Legacy",
-                 "HostGameLauncherApplicationService.cs"),
+             Path.Combine(repository, "src", "FirstPartyWidgets", "GameLauncherWidget"),
          })
     if (File.Exists(retiredPath))
         failures.Add($"{Relative(retiredPath)} is a retired product-owned domain path.");
@@ -194,7 +194,7 @@ var bridgeOutputCleanup = overlayBuild.IndexOf(
     "Remove-GeneratedDirectory -Path $bridgeOutput", StringComparison.Ordinal);
 var bridgePublish = overlayBuild.IndexOf(
     "..\\WidgetBridge\\WidgetBridge.csproj", StringComparison.Ordinal);
-foreach (var retiredOutput in new[] { "runtime\\GameLauncher", "runtime\\SpotifyPlaybackHost" })
+foreach (var retiredOutput in new[] { "runtime\\SpotifyPlaybackHost" })
     if (!overlayBuild.Contains(
             $"Remove-GeneratedDirectory -Path (Join-Path $outputDirectory '{retiredOutput}')",
             StringComparison.Ordinal))
@@ -207,6 +207,10 @@ RequireLink(Path.Combine(repository, "README.md"), "docs/widget-authoring-guide.
 RequireLink(Path.Combine(repository, "README.md"), "docs/community-companion-services.md");
 RequireLink(Path.Combine(repository, "docs", "README.md"), "widget-authoring-guide.md");
 RequireLink(Path.Combine(repository, "docs", "README.md"), "community-companion-services.md");
+RequireLink(Path.Combine(repository, "docs", "README.md"),
+    "../samples/GameLauncherWidget/README.md");
+RequireLink(Path.Combine(repository, "README.md"),
+    "samples/GameLauncherWidget/README.md");
 RequireLink(Path.Combine(repository, "samples", "ClockWidget", "README.md"),
     "../../docs/widget-authoring-guide.md");
 RequireLink(Path.Combine(repository, "samples", "YtMusicWidget", "README.md"),

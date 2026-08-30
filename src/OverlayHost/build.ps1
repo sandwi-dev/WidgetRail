@@ -1684,7 +1684,6 @@ foreach ($hostRuntimeOutput in @(
     $gamesAppsOutput,
     $mediaSessionsOutput,
     $embeddedMediaSampleOutput,
-    (Join-Path $outputDirectory 'runtime\GameLauncher'),
     (Join-Path $outputDirectory 'runtime\SpotifyPlaybackHost'),
     (Join-Path $outputDirectory 'runtime\YtMusic')
 )) {

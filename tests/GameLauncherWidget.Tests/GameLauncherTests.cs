@@ -1,11 +1,11 @@
 using System.Text.Json;
 using System.Text;
 using System.Globalization;
-using WidgetRail.FirstPartyWidgets.GameLauncher;
+using WidgetRail.Samples.GameLauncher;
 using WidgetRail.WidgetProtocol;
 using WidgetRail.WidgetSdk;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
-using LauncherWidget = WidgetRail.FirstPartyWidgets.GameLauncher.GameLauncherWidget;
+using LauncherWidget = WidgetRail.Samples.GameLauncher.GameLauncherWidget;
 
 namespace WidgetRail.Tests.GameLauncher;
 

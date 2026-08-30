@@ -167,7 +167,8 @@ OS APIs rather than product/domain capability contracts. Assembly/type fields
 and declared capabilities conflict with this runtime and fail manifest
 validation.
 
-The in-repository Game Launcher is the complete domain example: its Community
+The [Game Launcher Community sample](../samples/GameLauncherWidget/README.md) is
+the complete domain example: its Community
 package owns installed-game discovery, bounded caches and organization state,
 opaque SavedIds, source health, and exact launch revalidation while the host owns
 only generic package admission, lifecycle, IPC, and presentation. Its manifest

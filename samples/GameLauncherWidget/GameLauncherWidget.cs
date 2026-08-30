@@ -2,7 +2,7 @@ using WidgetRail.WidgetProtocol;
 using WidgetRail.WidgetSdk;
 using System.Text;
 
-namespace WidgetRail.FirstPartyWidgets.GameLauncher;
+namespace WidgetRail.Samples.GameLauncher;
 
 /// <summary>
 /// Controller-first complete installed game library. The trusted provider owns

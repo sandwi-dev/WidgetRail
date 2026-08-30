@@ -1,7 +1,7 @@
 using WidgetRail.WidgetSdk;
 using System.Text.Json;
 
-namespace WidgetRail.FirstPartyWidgets.GameLauncher;
+namespace WidgetRail.Samples.GameLauncher;
 
 internal sealed record GameLauncherVariantGroup(
     string Id,

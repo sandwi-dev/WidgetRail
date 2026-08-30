@@ -1,9 +1,10 @@
 # Game Launcher reference
 
-Status: bundled package 0.6.0 implements the installed-only controller-first
-library and uses the
-generic AppContainer worker, normalized app-library broker, shared trusted
-provider cache, lazy artwork registry, and exact launch authority.
+Status: the ordinary full-trust Community sample under
+`samples/GameLauncherWidget` implements the installed-only controller-first
+library. Its package-owned application uses the generic Community application
+runtime, normalized public SDK contracts, lazy artwork, and exact launch
+authority without host or package-identity special cases.
 
 The proposed multi-source console-home expansion and launcher-specific theme
 system are specified separately in
@@ -315,5 +316,5 @@ identity refusal, exact Back focus restoration, long labels, and deterministic
 bounded detail layout. Exact first/second variant selection, existing-group
 removal, same/stale identity refusal, committed hide closure, and failed/busy
 organization feedback are also covered. The
-installed generic-worker fixture covers the bundled manifest/catalog route,
+installed Community fixture covers the sample manifest/catalog route,
 10,000-row broker source, adjacent grid focus, artwork handle, and exact launch.

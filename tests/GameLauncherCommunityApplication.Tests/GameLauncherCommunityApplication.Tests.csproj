@@ -7,6 +7,6 @@
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
   </PropertyGroup>
   <ItemGroup>
-    <ProjectReference Include="..\..\src\FirstPartyWidgets\GameLauncherWidget\Application\GameLauncherApplication.csproj" />
+    <ProjectReference Include="..\..\samples\GameLauncherWidget\Application\GameLauncherApplication.csproj" />
   </ItemGroup>
 </Project>

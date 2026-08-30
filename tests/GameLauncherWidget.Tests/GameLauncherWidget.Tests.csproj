@@ -6,12 +6,12 @@
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
   </PropertyGroup>
   <ItemGroup>
-    <ProjectReference Include="..\..\src\FirstPartyWidgets\GameLauncherWidget\GameLauncherWidget.Core.csproj" />
+    <ProjectReference Include="..\..\samples\GameLauncherWidget\GameLauncherWidget.csproj" />
     <ProjectReference Include="..\..\src\WidgetSdk\WidgetSdk.csproj" />
     <ProjectReference Include="..\..\src\WidgetProtocol\WidgetProtocol.csproj" />
   </ItemGroup>
   <ItemGroup>
-    <None Include="..\..\src\FirstPartyWidgets\GameLauncherWidget\styles\default.wrss"
+    <None Include="..\..\samples\GameLauncherWidget\styles\default.wrss"
           Link="styles\default.wrss"
           CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
