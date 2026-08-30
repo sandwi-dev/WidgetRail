@@ -4,6 +4,7 @@ param(
     [string]$Configuration = 'Debug',
     [ValidateSet('x64')]
     [string]$Architecture = 'x64',
+    [switch]$NoRestore,
     [switch]$SkipTests,
     [switch]$SkipPackaging,
     [switch]$SemanticChurnTestsOnly,
@@ -48,17 +49,31 @@ $gameInputHeader = Join-Path $gameInputPackage 'native\include\GameInput.h'
 $webView2Package = Join-Path $nugetRoot "microsoft.web.webview2\$webView2Version"
 $webView2Header = Join-Path $webView2Package 'build\native\include\WebView2.h'
 $webView2Loader = Join-Path $webView2Package "build\native\$Architecture\WebView2LoaderStatic.lib"
-if (-not (Test-Path -LiteralPath $gameInputHeader) -or
-    -not (Test-Path -LiteralPath $webView2Header) -or
+$restoredNuGetProjects = [System.Collections.Generic.HashSet[string]]::new(
+    [System.StringComparer]::OrdinalIgnoreCase)
+
+function Invoke-NuGetAuditedRestore {
+    param([Parameter(Mandatory = $true)] [string]$Project)
+
+    $resolvedProject = [System.IO.Path]::GetFullPath($Project)
+    if (-not $restoredNuGetProjects.Add($resolvedProject)) {
+        return
+    }
+    & dotnet restore $resolvedProject --nologo
+    if ($LASTEXITCODE -ne 0) {
+        throw "NuGet-audited restore failed for $resolvedProject with exit code $LASTEXITCODE."
+    }
+}
+
+if (-not $NoRestore) {
+    Invoke-NuGetAuditedRestore -Project (Join-Path $projectDirectory 'NativeDependencies.csproj')
+}
+if (-not (Test-Path -LiteralPath $gameInputHeader)) {
+    throw "Microsoft.GameInput $gameInputVersion is unavailable. Run this restore-bearing build with supported network access, or restore it before using -NoRestore."
+}
+if (-not (Test-Path -LiteralPath $webView2Header) -or
     -not (Test-Path -LiteralPath $webView2Loader)) {
-    & dotnet restore (Join-Path $projectDirectory 'NativeDependencies.csproj') --nologo
-    if ($LASTEXITCODE -ne 0 -or -not (Test-Path -LiteralPath $gameInputHeader)) {
-        throw "Microsoft.GameInput $gameInputVersion could not be restored."
-    }
-    if (-not (Test-Path -LiteralPath $webView2Header) -or
-        -not (Test-Path -LiteralPath $webView2Loader)) {
-        throw "Microsoft.Web.WebView2 $webView2Version could not be restored."
-    }
+    throw "Microsoft.Web.WebView2 $webView2Version is unavailable. Run this restore-bearing build with supported network access, or restore it before using -NoRestore."
 }
 $vsWhere = Join-Path ${env:ProgramFiles} 'Microsoft Visual Studio\Installer\vswhere.exe'
 
@@ -156,7 +171,10 @@ function Invoke-SerializedManagedPublish {
         [Parameter(Mandatory = $true)] [ref]$ExitCode
     )
 
-    & dotnet publish $Project `
+    if (-not $NoRestore) {
+        Invoke-NuGetAuditedRestore -Project $Project
+    }
+    & dotnet publish $Project --no-restore `
         --configuration $Configuration --no-self-contained --nologo --output $Output `
         -m:1 -p:BuildInParallel=false -nr:false -p:UseSharedCompilation=false
     $ExitCode.Value = $LASTEXITCODE

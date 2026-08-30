@@ -59,6 +59,11 @@ Managed verification is immediately available:
 .\scripts\Verify.ps1 -Configuration Release -Lane managed
 ```
 
+Commands that can restore NuGet packages require supported network access on
+their first attempt and retain NuGet auditing fail-closed. See [build execution
+and NuGet auditing](docs/build-execution.md) before running managed verification
+or a coherent OverlayHost build.
+
 `-SkipNative` remains a compatibility alias for `-Lane managed`. Every step is
 defined in `scripts/verification-steps.json`, has a process-tree timeout, and
 writes stdout, stderr, JUnit-compatible results, revision/dirty-state/toolchain

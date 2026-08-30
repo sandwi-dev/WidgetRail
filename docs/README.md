@@ -41,6 +41,9 @@ planner and implementation turns do not spend context on closed evidence.
   bounded scenario declarations, render trusted code, replay, and run a
   controller widget through the isolated `wrail dev` watch loop with
   authenticated readiness and last-good recovery.
+- [Build execution and NuGet auditing](build-execution.md) — choose supported
+  network execution for restore-bearing commands and restricted execution for
+  exact already-restored gates without weakening audit failures.
 - [Embedded-media widget template](embedded-media-widget.md) — generate and
   verify a provider-neutral two-source player, explicitly stage the shared
   adapter runtime, and follow route, command, terminal, replacement, and
