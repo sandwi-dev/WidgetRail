@@ -8808,26 +8808,9 @@ private:
         }
 
         const auto stepPinnedPlacement = [&](const widgetrail::input::StickNavigationEvent& event) {
-            using widgetrail::input::NavigationDirection;
-            switch (event.direction) {
-            case NavigationDirection::Left:
-                (void)pinnedSurfaceCoordinator_.StepPlacement(
-                    widgetrail::pinned::PlacementDirection::Left);
-                break;
-            case NavigationDirection::Right:
-                (void)pinnedSurfaceCoordinator_.StepPlacement(
-                    widgetrail::pinned::PlacementDirection::Right);
-                break;
-            case NavigationDirection::Up:
-                (void)pinnedSurfaceCoordinator_.StepPlacement(
-                    widgetrail::pinned::PlacementDirection::Up);
-                break;
-            case NavigationDirection::Down:
-                (void)pinnedSurfaceCoordinator_.StepPlacement(
-                    widgetrail::pinned::PlacementDirection::Down);
-                break;
-            default: break;
-            }
+            if (const auto direction =
+                    widgetrail::pinned::ResolvePlacementDirection(event.direction))
+                (void)pinnedSurfaceCoordinator_.StepPlacement(*direction);
         };
         if (pinnedSurfaceCoordinator_.placementMode() !=
             widgetrail::pinned::PlacementMode::None) {
@@ -8836,18 +8819,10 @@ private:
             const auto step = [&](const widgetrail::input::StickNavigationEvent& event,
                                   const widgetrail::pinned::PlacementMode operation) {
                 if (adjusting) {
-                    using widgetrail::input::NavigationDirection;
-                    widgetrail::pinned::PlacementDirection direction{};
-                    if (event.direction == NavigationDirection::Left)
-                        direction = widgetrail::pinned::PlacementDirection::Left;
-                    else if (event.direction == NavigationDirection::Right)
-                        direction = widgetrail::pinned::PlacementDirection::Right;
-                    else if (event.direction == NavigationDirection::Up)
-                        direction = widgetrail::pinned::PlacementDirection::Up;
-                    else if (event.direction == NavigationDirection::Down)
-                        direction = widgetrail::pinned::PlacementDirection::Down;
-                    else return;
-                    (void)pinnedSurfaceCoordinator_.StepPlacement(operation, direction);
+                    const auto direction =
+                        widgetrail::pinned::ResolvePlacementDirection(event.direction);
+                    if (!direction) return;
+                    (void)pinnedSurfaceCoordinator_.StepPlacement(operation, *direction);
                 } else {
                     stepPinnedPlacement(event);
                 }
@@ -8872,16 +8847,9 @@ private:
                 if (adjusting) {
                     if (const auto resize = placementRightStickNavigator_.UpdateEvent(
                             frame.state.rightThumbX, frame.state.rightThumbY, now)) {
-                        using widgetrail::input::NavigationDirection;
-                        std::optional<widgetrail::pinned::PlacementDirection> direction;
-                        if (resize->direction == NavigationDirection::Left)
-                            direction = widgetrail::pinned::PlacementDirection::Left;
-                        else if (resize->direction == NavigationDirection::Right)
-                            direction = widgetrail::pinned::PlacementDirection::Right;
-                        else if (resize->direction == NavigationDirection::Up)
-                            direction = widgetrail::pinned::PlacementDirection::Up;
-                        else if (resize->direction == NavigationDirection::Down)
-                            direction = widgetrail::pinned::PlacementDirection::Down;
+                        const auto direction =
+                            widgetrail::pinned::ResolvePlacementDirection(
+                                resize->direction);
                         if (direction) (void)pinnedSurfaceCoordinator_.StepPlacement(
                             widgetrail::pinned::PlacementMode::Resize, *direction);
                     }

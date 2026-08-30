@@ -1,5 +1,6 @@
 #pragma once
 
+#include "ControllerNavigation.h"
 #include "PinnedSurfacePolicy.h"
 #include "WidgetSurfaceGeometry.h"
 
@@ -26,6 +27,18 @@ enum class PlacementDirection {
     Up,
     Down,
 };
+
+[[nodiscard]] constexpr std::optional<PlacementDirection>
+ResolvePlacementDirection(const input::NavigationDirection direction) noexcept {
+    switch (direction) {
+    case input::NavigationDirection::None: return std::nullopt;
+    case input::NavigationDirection::Left: return PlacementDirection::Left;
+    case input::NavigationDirection::Right: return PlacementDirection::Right;
+    case input::NavigationDirection::Up: return PlacementDirection::Up;
+    case input::NavigationDirection::Down: return PlacementDirection::Down;
+    }
+    return std::nullopt;
+}
 
 struct PlacementLimits final {
     float minimumWidthDip{surface_geometry::kMinimumPinnedWidthDip};

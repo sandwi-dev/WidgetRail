@@ -33,6 +33,26 @@ widgetrail::pinned::MonitorWorkArea Secondary() {
 
 int main() {
     try {
+        using widgetrail::input::NavigationDirection;
+        using widgetrail::pinned::PlacementDirection;
+        Check(!widgetrail::pinned::ResolvePlacementDirection(NavigationDirection::None),
+              "neutral navigation has no placement direction");
+        Check(widgetrail::pinned::ResolvePlacementDirection(NavigationDirection::Left) ==
+                  PlacementDirection::Left,
+              "left navigation maps to left placement");
+        Check(widgetrail::pinned::ResolvePlacementDirection(NavigationDirection::Right) ==
+                  PlacementDirection::Right,
+              "right navigation maps to right placement");
+        Check(widgetrail::pinned::ResolvePlacementDirection(NavigationDirection::Up) ==
+                  PlacementDirection::Up,
+              "up navigation maps to up placement");
+        Check(widgetrail::pinned::ResolvePlacementDirection(NavigationDirection::Down) ==
+                  PlacementDirection::Down,
+              "down navigation maps to down placement");
+        Check(!widgetrail::pinned::ResolvePlacementDirection(
+                  static_cast<NavigationDirection>(255)),
+              "invalid navigation remains explicitly unmapped");
+
         const std::vector monitors{Primary(), Secondary()};
         const auto fallback = widgetrail::pinned::ResolveDurablePlacement(monitors, std::nullopt);
         Check(fallback && fallback->monitorId == L"DISPLAY-A" &&
